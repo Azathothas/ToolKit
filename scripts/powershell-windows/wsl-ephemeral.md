@@ -71,6 +71,7 @@ with a message rather than silently when there is no network.
 | `-Ephemeral` | `New` | run `-Command`, then destroy the distro |
 | `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
 | `-Systemd` | `New` | write `/etc/wsl.conf` enabling systemd, restart the distro, and ⛔ refuse if systemd did not become PID 1. Most base images do not ship systemd; see below. |
+| `-TimeoutSeconds` | `New` | how long the script's own questions to a distro may take. Default 120. ⛔ It does not bound `-Command`. |
 | `-Force` | destructive actions | required when the session is non-interactive. Skips the confirmation. |
 
 ⛔ `-Image` and `-Tarball` are mutually exclusive, and `New` requires one of
@@ -119,6 +120,40 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 ```
 
 ---
+
+## The bound on the script's own questions
+
+⛔ **Every question this script asks a distro has a hard time limit.** A distro
+whose init wedges used to hang it forever with no output at all.
+
+```text
+ERROR: TIMED OUT after 15s waiting for the smoke probe in 'eph-x'. It never
+answered, which is not the same as it not being installed: the distro is
+registered and wsl.exe ran, and nothing came back. Its init is most likely
+wedged. The distro has been terminated. Raise the bound with -TimeoutSeconds if
+this machine is simply slow.
+```
+
+⭐ **"It never answered" and "it is not installed" are different facts and get
+different messages.** `wsl.exe` missing is refused by name before anything runs;
+a distro whose `/bin/sh` produced the wrong answer says `did not run`; and a
+distro that produced no answer at all says `TIMED OUT`.
+
+⛔ **`-Command` is NOT bounded by this, deliberately.** A build that runs for an
+hour is a legitimate command, and a tool that kills it at two minutes is broken.
+What is bounded is the smoke probe and the `-Systemd` check: the questions the
+script asks for itself.
+
+| | |
+| --- | --- |
+| default | 120 seconds |
+| change it with | `-TimeoutSeconds N`, 5 to 3600 |
+| when it fires | the distro is terminated, rolled back, and nothing stays registered |
+
+⚠ **Raise it rather than removing it if this machine is slow.** The measured
+costs it has to cover on this one: about 11 seconds for systemd to boot under
+`-Systemd`, and up to 10 seconds inside the probe itself waiting for the drvfs
+automount of `/mnt/c`.
 
 ## systemd, with `-Systemd`
 
@@ -472,7 +507,6 @@ being true the moment one of them was closed as a decision.
 | --- | --- |
 | ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
 | ⚠ on Windows PowerShell 5.1, a `-Command` value loses its double quotes when this tool is launched as a child process | 5.1 drops them building the child's argument list, before this script sees anything, so nothing here can recover them. ⭐ Use `-CommandB64`. Not an open item: it is 5.1's argument handling, one layer above this tool. See the command channel section. |
-| ⚠ the smoke probe has no timeout | a distro whose init wedges hangs the script with no output. |
 | ⚠ `Run` calls `exit` | correct when the script is invoked, fatal to the host session if it is dot-sourced. ⛔ Invoke it, never dot-source it. |
 
 ---

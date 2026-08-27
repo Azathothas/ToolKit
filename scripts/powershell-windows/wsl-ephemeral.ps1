@@ -185,6 +185,21 @@ param(
     [switch]$Ephemeral,
     [switch]$OciEnv,
     [switch]$Systemd,
+    # How long the SCRIPT'S OWN questions to a distro may take before it gives
+    # up. ⛔ The caller's -Command is deliberately NOT bounded by it: a build
+    # that runs for an hour is a legitimate command and a tool that kills it at
+    # two minutes is broken. What is bounded is every question this script asks
+    # for itself, which is where a wedged init hangs it with no output.
+    #
+    # ⛔ READ AS $script:TimeoutSeconds BY THE FUNCTIONS BELOW, and there must
+    # be NO CONSTANT OF THAT NAME. A script parameter IS a script-scoped
+    # variable, so a `$script:TimeoutSeconds = 120` in the constants block
+    # further down silently overwrote whatever the caller passed. It did: this
+    # shipped for one run, -TimeoutSeconds 15 timed out at 120, and the
+    # acceptance caught it because it asserted the number and not just the
+    # refusal.
+    [ValidateRange(5, 3600)]
+    [int]$TimeoutSeconds = 120,
     [switch]$Force
 )
 
@@ -805,6 +820,94 @@ function Write-DistroFile {
     }
 }
 
+function ConvertTo-NativeArgumentString {
+    <#
+      Joins arguments into the one command-line string ProcessStartInfo takes.
+      ⚠ ProcessStartInfo.ArgumentList, which would do this properly, is .NET
+      Core only: Windows PowerShell 5.1 runs on .NET Framework and has only the
+      string. So the join is done here, and it is SAFE ONLY BECAUSE OF WHAT IT
+      REFUSES.
+
+      ⛔ An argument carrying a double quote or a backslash is refused rather
+      than escaped. Every argument this script passes is one it built: a distro
+      name from ConvertTo-SafeName, a user name, and a transport skeleton
+      ConvertTo-DistroScriptCommand has already checked against an alphabet
+      with no quote in it. Hand-rolling an escape for a case that cannot occur
+      is how a quoting bug gets written and never exercised.
+    #>
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+    $parts = @()
+    foreach ($a in $Arguments) {
+        if ($a -match '["\\]') {
+            throw ("Refusing to build a command line containing a quote or a backslash: '$a'. " +
+                   "This script passes only arguments it built itself.")
+        }
+        if ($a -match '\s') { $parts += ('"' + $a + '"') } else { $parts += $a }
+    }
+    return ($parts -join ' ')
+}
+
+function Invoke-WslBounded {
+    <#
+      Runs wsl.exe with a HARD TIME LIMIT and returns what it printed.
+
+      The defect: a distro whose init wedges hangs the script forever with no
+      output. There is a bounded sleep loop INSIDE the guest for the drvfs
+      race, but the outer call had no limit at all, so anything that never
+      answers never returns.
+
+      ⛔ "IT NEVER ANSWERED" IS A DIFFERENT FACT FROM "IT IS NOT INSTALLED",
+      and docs/conventions/shell.md section 9 says so in as many words. They
+      come back in different fields here: -TimedOut for the first, and
+      Get-WslExe's own throw for the second, which fires before this runs.
+
+      ⚠ The streams are read BEFORE the wait, not after. Calling WaitForExit
+      first deadlocks any child that fills the pipe buffer: the child blocks
+      writing, the parent blocks waiting, and neither moves until the timeout.
+      docs/conventions/shell.md section 8.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
+        [Parameter(Mandatory = $true)][ref]$ExitCode,
+        [Parameter(Mandatory = $true)][ref]$TimedOut
+    )
+    $ExitCode.Value = 1
+    $TimedOut.Value = $false
+
+    $psi = New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName               = Get-WslExe
+    $psi.Arguments              = ConvertTo-NativeArgumentString -Arguments $Arguments
+    $psi.UseShellExecute        = $false
+    $psi.CreateNoWindow         = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    # WSL_UTF8 is set at the top of this script; without this the decode on
+    # this side would use the console code page and mangle anything non-ASCII.
+    $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding  = [Text.Encoding]::UTF8
+
+    $proc = [Diagnostics.Process]::Start($psi)
+    $outTask = $proc.StandardOutput.ReadToEndAsync()
+    $errTask = $proc.StandardError.ReadToEndAsync()
+
+    if ($proc.WaitForExit($TimeoutSeconds * 1000)) {
+        $ExitCode.Value = $proc.ExitCode
+    }
+    else {
+        $TimedOut.Value = $true
+        try { $proc.Kill() } catch { $null = $_ }
+        # Without an argument this waits for the streams to close as well, so
+        # the two tasks below are complete rather than merely started.
+        try { $proc.WaitForExit() } catch { $null = $_ }
+    }
+
+    $text = ''
+    try { $text = [string]$outTask.Result + [string]$errTask.Result } catch { $null = $_ }
+    $proc.Dispose()
+    return $text
+}
+
 function Get-DistroOutput {
     <#
       Runs a payload inside a distro and RETURNS what it printed. Invoke-InDistro
@@ -820,18 +923,28 @@ function Get-DistroOutput {
         [Parameter(Mandatory = $true)][string]$DistroName,
         [Parameter(Mandatory = $true)][string]$RunAs,
         [Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$ScriptBytes,
-        [Parameter(Mandatory = $true)][ref]$ExitCode
+        [Parameter(Mandatory = $true)][ref]$ExitCode,
+        [string]$What = 'the distro'
     )
     $ExitCode.Value = 1
     $line = ConvertTo-DistroScriptCommand -ScriptBytes $ScriptBytes -GuestPath (New-GuestScratchPath)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        $out = & (Get-WslExe) -d $DistroName -u $RunAs -- /bin/sh -lc $line 2>&1
-        if ($null -ne $LASTEXITCODE) { $ExitCode.Value = [int]$LASTEXITCODE }
+
+    $timedOut = $false
+    $text = Invoke-WslBounded -Arguments @('-d', $DistroName, '-u', $RunAs, '--', '/bin/sh', '-lc', $line) `
+        -TimeoutSeconds $script:TimeoutSeconds -ExitCode $ExitCode -TimedOut ([ref]$timedOut)
+
+    if ($timedOut) {
+        # ⛔ The wedged userspace is stopped rather than left running. Killing
+        # wsl.exe on this side ends the wait, not the process in the guest.
+        try { Invoke-Native -FilePath (Get-WslExe) -Arguments @('--terminate', $DistroName) -IgnoreExitCode | Out-Null }
+        catch { $null = $_ }
+        throw ("TIMED OUT after $($script:TimeoutSeconds)s waiting for $What in '$DistroName'. " +
+               "It never answered, which is not the same as it not being installed: the distro " +
+               "is registered and wsl.exe ran, and nothing came back. Its init is most likely " +
+               "wedged. The distro has been terminated. Raise the bound with -TimeoutSeconds if " +
+               "this machine is simply slow. Partial output: $($text.Trim())")
     }
-    finally { $ErrorActionPreference = $prev }
-    return ($out | Out-String)
+    return $text
 }
 
 function Enable-DistroSystemd {
@@ -869,7 +982,7 @@ function Enable-DistroSystemd {
     $rc = 0
     $probe = 'printf "WSLEPH_PID1[%s]" "$(cat /proc/1/comm 2>/dev/null)"'
     $text = Get-DistroOutput -DistroName $DistroName -RunAs 'root' `
-        -ScriptBytes (ConvertTo-Utf8Bytes -Text $probe) -ExitCode ([ref]$rc)
+        -ScriptBytes (ConvertTo-Utf8Bytes -Text $probe) -ExitCode ([ref]$rc) -What 'systemd to come up'
 
     $match = [regex]::Match($text, 'WSLEPH_PID1\[([^\]]*)\]')
     $pid1 = if ($match.Success) { $match.Groups[1].Value } else { '' }
@@ -1142,7 +1255,8 @@ function Invoke-ActionNew {
         ) -join "`n"
         $probeRc = 0
         $probeText = Get-DistroOutput -DistroName $distro -RunAs 'root' `
-            -ScriptBytes (ConvertTo-Utf8Bytes -Text $probeScript) -ExitCode ([ref]$probeRc)
+            -ScriptBytes (ConvertTo-Utf8Bytes -Text $probeScript) -ExitCode ([ref]$probeRc) `
+            -What 'the smoke probe'
         if ($probeText -notmatch '__WSL_OK__') {
             throw ("Distro imported but /bin/sh did not run, or this rootfs cannot carry a " +
                    "command: the channel needs base64 and /dev/fd inside the guest. " +

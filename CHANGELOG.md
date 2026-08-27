@@ -21,6 +21,28 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T11:15:00Z: a hard bound on the script's own questions
+
+**Record:** `WSL-09` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed
+in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⭐ **A distro whose init wedges no longer hangs the script forever.** Every
+question `wsl-ephemeral.ps1` asks a distro now has a hard time limit, default
+120 seconds, changed with `-TimeoutSeconds`.
+
+- ⛔ **`-Command` is not bounded by it.** A build that runs for an hour is a
+  legitimate command; what is bounded is the smoke probe and the `-Systemd`
+  check, which are the script's own questions.
+- ⭐ **"It never answered" is a different message from "it is not installed"**,
+  which is what [`docs/conventions/shell.md`](docs/conventions/shell.md) section
+  9 asks for.
+- ⚠ **New behaviour for a caller:** `New` can exit 1 where it used to hang. On
+  the timeout path the distro is terminated and rolled back.
+- ⚠ It was proven against a rootfs whose `/bin/sh` is `exec sleep 900`, not
+  against a simulation. Unbounded, the same distro left the script running
+  after 75 seconds with no output.
+
 ### 2026-08-27T10:55:00Z: optional systemd, and a switch that checks its own effect
 
 **Record:** `WSL-07` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed

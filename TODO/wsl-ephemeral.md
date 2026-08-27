@@ -1095,7 +1095,7 @@ image's value. That is the correct value and it was not reachable before.
 ## WSL-09. Bound the smoke probe with a timeout
 
 **Source** issue 3, part 3.13.
-**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** done
 
 **Problem.** A distro whose init wedges hangs the script with no output.
 
@@ -1109,6 +1109,86 @@ facts and belong in different messages.
 
 **Prove.** Against a distro whose init blocks, the script exits non-zero within
 the bound with a message naming the timeout.
+
+### Closed 2026-08-27
+
+**What changed.** `Invoke-WslBounded` runs `wsl.exe` with a hard limit and
+returns what it printed; `Get-DistroOutput` uses it, so **every question this
+script asks a distro** is bounded. `-TimeoutSeconds` defaults to 120.
+
+⚠ **The scope was widened from "the smoke probe" to "the script's own
+questions", deliberately.** `WSL-07` added a second capture-style probe in the
+same session, and a bound applied to one of two identical calls is the
+one-gated-door pattern this repository keeps finding. ⛔ The caller's
+`-Command` is deliberately NOT bounded: a build that runs for an hour is a
+legitimate command.
+
+⚠ **A parameter WAS added here, where `WSL-06` declined one.** The difference is
+what the number depends on. `WSL-06`'s threshold is derived from the tarball, so
+the script can compute it; a timeout depends on the machine, and a user on a
+slow disk whose import legitimately takes three minutes has no way to say so
+except by telling it. `ValidateRange(5, 3600)` keeps it honest at both ends.
+
+### ⛔ The fix shipped broken for one run, and the acceptance is what caught it
+
+⛔ **`-TimeoutSeconds 15` timed out after 120 seconds.** The constant was
+written as `$script:TimeoutSeconds = 120` in the constants block, and **a script
+parameter IS a script-scoped variable**, so that line overwrote whatever the
+caller passed, on every run, before any function read it.
+
+```text
+ERROR: TIMED OUT after 120s waiting for the smoke probe in 'eph-w09wedge'. ...
+  exit=1 after 121s
+```
+
+⭐ **The refusal was correct and the number was a lie**, which is the shape that
+survives review: a test asserting only "it refused" passes over it. The
+acceptance asserted the bound it asked for, and that is the only reason this is
+a paragraph rather than a defect. The constant is gone and the comment on the
+parameter says why there must never be one of that name.
+
+**Mutation proof, against a REAL wedged init rather than a simulated one.** A
+rootfs was built whose `/bin/sh` is:
+
+```text
+#!/bin/busybox sh
+exec /bin/busybox sleep 900
+```
+
+| the wait | result |
+| --- | --- |
+| `WaitForExit([int]::MaxValue)`, the pre-fix shape | ⛔ **STILL RUNNING after 75s**, no output, killed by the harness |
+| `WaitForExit($TimeoutSeconds * 1000)` | exit 1 at 16s, on both hosts |
+
+**Acceptance.** Every code read from the process that produced it.
+
+| host | run | result |
+| --- | --- | --- |
+| pwsh 7.6.5 | `New -Tarball w09-wedged.tar -TimeoutSeconds 15` | ⭐ exit 1 after **16s**, `TIMED OUT after 15s waiting for the smoke probe` |
+| Windows PowerShell 5.1 | the same | ⭐ exit 1 after **16s**, same message |
+| both | `wsl --list --quiet` after each | byte-identical to before, and the disk directory is gone |
+| pwsh 7.6.5 | `New -Image alpine:3.22 -Command 'echo normal-ok' -Ephemeral` | exit 0, unchanged |
+
+### ⚠ Two implementation facts worth keeping
+
+- ⛔ **`ProcessStartInfo.ArgumentList` is .NET Core only.** Windows PowerShell
+  5.1 has only the single `Arguments` string, so the join is done in
+  `ConvertTo-NativeArgumentString`, which **refuses** an argument containing a
+  quote or a backslash rather than escaping one. Every argument this script
+  passes is one it built, and the transport skeleton has already been checked
+  against an alphabet with no quote in it. Writing an escape for a case that
+  cannot occur is how a quoting bug gets written and never exercised.
+- ⚠ **The streams are read before the wait.** `docs/conventions/shell.md`
+  section 8: `WaitForExit` first deadlocks any child that fills the pipe
+  buffer. `ReadToEndAsync` is started on both streams first, and it exists on
+  .NET Framework and .NET Core alike.
+
+⚠ **Killing `wsl.exe` on this side does not stop the process in the guest**, so
+the timeout path runs `wsl --terminate` before it throws. The distro is then
+rolled back by the normal path.
+
+**Consumers.** Adding a parameter with a default. Not a break. ⚠ `New` can now
+exit 1 where it used to hang, which is the point.
 
 ---
 

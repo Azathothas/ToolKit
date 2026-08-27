@@ -13,7 +13,7 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 17  open 5  blocked 0  done 12
+total 17  open 4  blocked 0  done 13
 ```
 
 | priority | open | blocked | done | total |
@@ -21,8 +21,8 @@ total 17  open 5  blocked 0  done 12
 | P0 | 0 | 0 | 2 | 2 |
 | P1 | 1 | 0 | 5 | 6 |
 | P2 | 0 | 0 | 5 | 5 |
-| P3 | 4 | 0 | 0 | 4 |
-| **all** | **5** | **0** | **12** | **17** |
+| P3 | 3 | 0 | 1 | 4 |
+| **all** | **4** | **0** | **13** | **17** |
 
 ---
 
@@ -43,7 +43,7 @@ total 17  open 5  blocked 0  done 12
 | WSL-06 | P2 | S | done | Disk-space preflight before import | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-07 | P2 | S | done | Optional systemd via `/etc/wsl.conf` | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-08 | P2 | M | done | A `-Command` channel that survives two shells | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-09 | P3 | S | open | Bound the smoke probe with a timeout | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-09 | P3 | S | done | Bound the smoke probe with a timeout | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-10 | P3 | S | open | Retry a generated name on collision | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-11 | P3 | S | open | An `Enter` action | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-12 | P0 | S | done | `-Action New` fails outright on Windows PowerShell 5.1 | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
