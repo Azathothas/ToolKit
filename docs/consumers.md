@@ -17,6 +17,44 @@ wrote down is a consumer nobody checks before a rename.
 | consumer | fetches | how it is pinned | breaks if |
 | --- | --- | --- | --- |
 | `Azathothas/TEMPLATE`, at `scripts/powershell-windows/wsl-ephemeral.ps1` | `scripts/powershell-windows/wsl-ephemeral.ps1` | a commit SHA and a SHA-256 of the file, both hardcoded in the wrapper | the path moves, a parameter is renamed, or an exit code changes meaning |
+| `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | ⛔ **nothing. It carries a vendored COPY**, 536 lines against this tree's 1,579 | ⛔ not pinned, not fetched, no digest, no reference to this repository | ⚠ nothing here can break it, and nothing here can fix it either |
+
+### ⛔ The vendored copy in `pkgforge-dev/cross-libc-dlopen`
+
+⚠ **Found on 2026-08-27 while reading that repository for an unrelated reason**,
+its `experiments/` layout. It was not in this register, and it is the shape the
+register exists to catch, from the direction the register does not cover.
+
+⭐ **A pinned consumer is one this repository can reach. A copy is one it cannot.**
+The row above is not a rename hazard: a rename here cannot break a file that
+never fetches. It is a **drift** hazard, and the drift is already measured.
+
+| checked at `scripts/wsl-ephemeral.ps1` | result |
+| --- | --- |
+| `-CommandB64`, `-CommandFile`, `-TimeoutSeconds`, `-Systemd` | ⛔ absent, all four |
+| `ConvertTo-DistroScriptCommand`, `Assert-EnoughDiskSpace`, `Invoke-ActionEnter` | ⛔ absent |
+| the base64 transport | ⛔ absent. `-Command` is passed as an argument to `/bin/sh -lc` |
+
+⛔ **It carries both P0s this repository has closed**, verified by reading its
+source rather than inferred from its age:
+
+- **`WSL-01`.** Its `-Action New` path runs the command and then
+  `if ($rc -ne 0) { Write-Warn "command exited $rc" }`. It warns and does not
+  exit with the code. ⚠ Its `-Action Run` path does `exit $rc` correctly, which
+  is exactly the one-gated-door shape `WSL-01` was filed against.
+- **`WSL-12`.** Its smoke probe is a here-string passed as an argument, and the
+  payload contains both a bracket and a double quote. Windows PowerShell 5.1
+  drops the double quote when it builds the child argument list, so
+  `-Action New` fails outright there.
+
+⛔ **Not fixed from here.** That repository is read-only to this one, and
+[`security/remote-ops.md`](security/remote-ops.md) is absolute about it. It is
+that repository's change to make, and the honest options are to take the current
+file or to adopt the wrapper `Azathothas/TEMPLATE` already uses.
+
+⚠ **The register's own closing line was already right and is now demonstrated.**
+It says to treat the register as a lower bound rather than the complete set. One
+reading of one unrelated repository found a consumer it did not have.
 
 ⚠ **The dependency also runs the other way, and it is not a consumer row.**
 `pkgforge-dev/docker-bsd` publishes the BSD images that `BSD-01` consumes.

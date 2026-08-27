@@ -9,42 +9,86 @@ fastest orientation into what the last session actually did.
 
 ---
 
-## 2026-08-27, the `WSL-06` to `WSL-11` batch
+## 2026-08-27, the BSD reference sweep
 
 | row | before | after |
 | --- | --- | --- |
-| **Elapsed** | probe at 2026-08-27T09:46:21Z | 2026-08-27T11:31:12Z, 1h 45m |
-| **Commits** | `4837470` | `13bb310`, **8 commits** here, plus **1** in `Azathothas/TEMPLATE` (`83f573c`) |
-| **Work** | 6 assigned: `WSL-06` `WSL-07` `WSL-08` `WSL-09` `WSL-10` `WSL-11` | ⭐ **6 completed, 0 deferred, 0 failed.** Plus `TOOL-03` filed and closed unassigned, and 2 door-sweep fixes recorded under existing entries |
-| **Changes** | | 10 files, **+1996 / -181**. No file added or removed |
-| **Size** | 16,180 lines, 74 files | 17,995 lines, 74 files, **+1,815**. `wsl-ephemeral.ps1` 979 to 1,579 |
-| **Checks** | `check-gate --fast`: 12 passed, 1 skipped | ⭐ `check-gate` **full: 13 of 13, 0 skipped**. The `.ps1` twin agrees. ⚠ The full gate was **not** run at the start, only `--fast`; the 13/13 has no before to compare against |
-| **Cost** | | no money. 5 OCI images pulled: rootfs sizes 8.2, 45.4, 74.3, 76.9 and 190.7 MiB. ⚠ **Download volume was not measured** and no number is given for it |
-| **Health** | 17 entries, 8 open, 9 done | 18 entries, **2 open**, 16 done. Tree clean. CI green on all three jobs at both ends |
+| **Elapsed** | probe at 2026-08-27T11:54:27Z | 2026-08-27T12:37:50Z, **43m** |
+| **Commits** | `9503a23` | **2 here**, plus **1** in `pkgforge-dev/docker-bsd` (`878e286`) |
+| **Work** | 1 assigned: mine the references, correct the entries, prepare `docker-bsd` | ⭐ **completed, 0 deferred, 0 failed.** Plus `BSD-02` closed unassigned, and an unregistered consumer found and recorded |
+| **Changes** | | 8 files here, **+1,495 / -131**. 6 files in `docker-bsd`, **+627**. ⛔ No code changed in either |
+| **Size** | 18,090 lines, 75 files | 19,454 lines, 75 files, **+1,364**. ⚠ Measured before this table's own final edit, so both figures are short by a few lines. No file added or removed here |
+| **Checks** | `check-gate --fast`: 12 passed, 1 skipped | ⭐ same, run twice. ⚠ The **full** gate was not run in this session, so `check-twins` was skipped at both ends and this row has no 13-of-13 behind it |
+| **Cost** | | no money. ⚠ **No BSD was booted and nothing was built.** ⛔ The API call count is **not given**: the hourly limit reset mid-session, so nothing measured it |
+| **Health** | 18 entries, 2 open, 16 done | 18 entries, **1 open**, 17 done. Both trees clean. CI green: three jobs at `796e40f`, two jobs at `878e286` |
+
+### ⛔ CAUTION: this session did not finish the gate
+
+⛔ **Part (c) of [`../docs/methodology/gate.md`](../docs/methodology/gate.md),
+the three deep reviews, was NOT run.** The session ran out of budget and the
+operator ended it deliberately. Parts (a) and (b) were run: the local gate
+twice, and both probes driven on all three hosts.
+
+⚠ **So treat the sweep as one pass, not as reviewed work.** Specifically:
+
+- ⭐ **The measurements taken on this machine are real** and are labelled as
+  such: the WHPX capability, the absent tooling, the host CPU identity, the
+  re-derived nested KVM facts, and the two probe defects found by running them.
+- ⛔ **Everything attributed to another repository is one reading of it.**
+  Verdicts, rankings, quoted numbers and the Pre/Post/Misc classification were
+  reviewed twice for classification only, not audited for accuracy. ⚠ Some of
+  it may be wrong. Re-derive any claim before building on it, which
+  [`../docs/security/remote-ops.md`](../docs/security/remote-ops.md) requires
+  anyway.
+- ⚠ **The per-BSD table that closed `BSD-02` is the same kind of claim.** It
+  closed because its acceptance was a written answer with its evidence, and the
+  evidence is cited. It did not close because anything was run.
 
 ### What moved
 
 | | |
 | --- | --- |
-| ⭐ `wsl-ephemeral.ps1` | **no open entry left.** Every `WSL-*` item is closed |
-| ⭐ the command channel | base64 through one checked function; `-CommandFile` and `-CommandB64` added |
-| ⭐ the consumer pin | `Azathothas/TEMPLATE` moved to `ea5d483`, verified by running the wrapper on both hosts |
-| ⛔ `TOOL-03` | a P0 in `git-sync.ps1`: it committed under an author of `sh scripts/common/check-control-bytes.sh` and printed `identity verified` under it |
+| ⭐ the sweep | **28 repositories** from the operator's 23 rows, one of which was an organisation query. Every one reached, none gone. `R6` to `R28`, classified, reviewed twice, and ranked |
+| ⭐ `BSD-02` | **closed.** Its acceptance was a written answer per BSD; that is what the sweep produced |
+| ⭐ `BSD-01` | six corrections underneath its table, and a changed order of work. It keeps every word it had |
+| ⭐ `docker-bsd` | an `experiments/` layout with two probes that were run, its own ignored `.tmp/`, and `TOOLKIT.md` |
+| ⛔ `consumers.md` | a **second consumer**, unregistered until now, carrying a vendored copy with both closed P0s in it |
+
+### ⭐ The five findings that change what the next session does
+
+1. ⛔ **`x86_64` GitHub runners have `/dev/kvm` and arm64 runners do not.** Four
+   references agree. `BSD-01` called this its single highest-value unknown.
+2. ⛔ **Under WHPX, `-cpu host` and `-cpu max` wedge QEMU**, and so does a named
+   model newer than the host. Two projects measured it independently.
+3. ⭐ **A BSD microvm is the option the table did not have**: about 10 ms for
+   NetBSD through PVH, about 12 s for FreeBSD under Firecracker, with published
+   kernels and root filesystems for both.
+4. ⭐ **WSL's own host will drive a non-Linux guest**, and the guest half is 819
+   lines of C over Hyper-V sockets. ⛔ Refused: the cost is a rebuilt
+   `wslservice.exe`, which runs this machine's podman machine. ⭐ What survives
+   is that the Host Compute System takes a JSON document and boots an arbitrary
+   UEFI disk, needing no patch at all.
+5. ⛔ **A reverse Linuxulator exists and this repository said it did not.**
 
 ### Debts introduced, named rather than left
 
-- ⛔ **`Azathothas/TEMPLATE` carries `git-sync.ps1` with `TOOL-03`'s defect.**
-  Not fixed there: that tree is read-only to this one except for the pin.
-- ⚠ **Three things worth an entry are unfiled**, listed in
-  [`PROGRESS.md`](PROGRESS.md) rather than invented as work nobody asked for.
+- ⛔ **`pkgforge-dev/cross-libc-dlopen` carries `wsl-ephemeral.ps1` with
+  `WSL-01` and `WSL-12` in it.** Not fixed: that tree is read-only to this one.
+  Recorded in [`../docs/consumers.md`](../docs/consumers.md).
+- ⚠ **`docker-bsd` publishes a root filesystem that three of its four BSDs have
+  nothing to run.** Whether it should publish something bootable instead is an
+  open question in [`PROGRESS.md`](PROGRESS.md), deliberately not decided here.
 
 ### What was NOT measured, so it is not claimed
 
-- ⚠ **A real out-of-space `--import`.** The `WSL-06` guard is proven to fire and
-  to leave nothing registered; filling a 428 GiB volume to see the fault itself
-  was not done.
-- ⚠ **The `--unregister` release race.** Still unreproduced, exactly as `WSL-04`
-  recorded. The rollback now terminates first, which is two paths agreeing
-  rather than a measured fix.
-- ⚠ **A human TTY session for `-Action Enter`.** This harness cannot allocate a
-  terminal. Everything under the TTY was driven: stdin, `-User`, the exit code.
+- ⛔ **No BSD was booted.** Not one, on any host. Every boot time in the sweep
+  is somebody else's, attributed where it appears.
+- ⛔ **No QEMU exists on either side of this machine**, so the WHPX CPU-model
+  prediction for this host's Model 154 CPU is **derived** from another project's
+  rule and its measurements. It is not a measurement of this machine.
+- ⚠ **The `/dev/kvm` answer for CI runners is sourced, not measured.** This
+  session has no runner to probe.
+- ⚠ **`oras` is absent here**, so the zero-byte pull on Windows is a report from
+  smolBSD's tracker and was not reproduced.
+- ⚠ **The gate timings in [`PROGRESS.md`](PROGRESS.md), 41s and 208s, were not
+  re-timed** in this session and are carried from the one that measured them.

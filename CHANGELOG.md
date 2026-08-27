@@ -21,7 +21,12 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
-### 2026-08-27T14:05:00Z: the BSD reference sweep, and BSD-02 answered
+### 2026-08-27T12:52:00Z: the BSD reference sweep, BSD-02 answered, and an unregistered consumer
+
+⚠ **One entry for one session, covering two commits**, `796e40f` and the
+commit that carries this line. They are one unit of work: the sweep, what it
+corrected, and what it turned up on the way.
+
 
 **Record:** [`docs/reference-sweeps/findings.md`](docs/reference-sweeps/findings.md)
 carries `R6` to `R28` with the ranking;
@@ -71,6 +76,41 @@ their comments, which is where nearly everything below came from.
 is somebody else's measurement, attributed where it appears. The four local
 measurements are the WHPX capability, the absent tooling, the host CPU identity,
 and a re-derivation of the nested KVM facts already on record.
+
+
+**Record:** [`docs/consumers.md`](docs/consumers.md) carries the consumer row and
+the evidence; [`TODO/PROGRESS.md`](TODO/PROGRESS.md) and
+[`TODO/SUMMARY.md`](TODO/SUMMARY.md) carry the session.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing. The
+`pkgforge-dev/docker-bsd` half shipped as `878e286`, CI green on both jobs.
+
+- ⛔ **A second consumer of `wsl-ephemeral.ps1` was found and it was not in the
+  register.** `pkgforge-dev/cross-libc-dlopen` carries a **vendored copy**, 536
+  lines against this tree's 1,579, with no pin, no digest and no reference back
+  here. ⭐ **It carries both P0s this repository has closed**, verified by
+  reading its source: its `-Action New` path warns on a non-zero exit instead of
+  propagating it, which is `WSL-01`, and its smoke probe is a here-string passed
+  as an argument carrying a double quote, which is `WSL-12` on Windows
+  PowerShell 5.1. ⚠ Its `-Action Run` path propagates correctly, which is the
+  one-gated-door shape `WSL-01` was filed against.
+- ⚠ **Not fixed, and not filed as work.** That repository is read-only to this
+  one. It is recorded in the register rather than turned into an entry this
+  repository cannot close.
+- ⭐ **The register's own closing line is now demonstrated rather than asserted.**
+  It says to treat the register as a lower bound. One reading of one unrelated
+  repository, for an unrelated reason, found a consumer it did not have.
+- **`pkgforge-dev/docker-bsd` prepared** for the session that follows: an
+  `experiments/` directory with the layout borrowed from
+  `pkgforge-dev/cross-libc-dlopen`, two host probes that were actually run, its
+  own ignored `.tmp/`, and a `TOOLKIT.md` naming in three tiers what it must
+  carry from here to stand alone, including which scripts **not** to copy.
+- ⛔ **Driving those probes on all three hosts found two defects in them**, which
+  is the whole reason part (b) of the gate exists. `grep -i microsoft
+  /proc/version` answers "not WSL" inside a machine running a custom WSL2 kernel
+  that reports `7.2.0-WSL2-STABLE`. And `Add-Type` on Windows PowerShell 5.1
+  shells out to `csc.exe`, which reads `LIB` and treats a stale directory there
+  as a warning, and `Add-Type` compiles warnings-as-errors, so the whole probe
+  failed with a message about the C# compiler and nothing about the hypervisor.
 
 ### 2026-08-27T12:35:00Z: git-sync.ps1 bound a gate string to the author identity
 
