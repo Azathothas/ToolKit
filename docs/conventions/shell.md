@@ -269,7 +269,51 @@ rather than warns, over every tracked text file.
   "not a valid application for this OS platform" on a `.ps1` and refuses a
   `.cmd`. Route a `.ps1` to a PowerShell host and a `.cmd` to `cmd.exe`.
 - ⚠ **`wsl.exe` writes UTF-16LE**, which a redirected stdout reads as empty or
-  as mojibake.
+  as mojibake. `WSL_UTF8=1` fixes it.
+- ⛔ **A payload handed to `wsl.exe -- /bin/sh -lc` does NOT keep its quoting,
+  and the caller cannot fix it by quoting harder.** Measured on 2026-08-27
+  against real Alpine and Debian distros, under **both** PowerShell hosts, with
+  every hazard **already correctly single-quoted for `sh`** before it was
+  passed:
+
+  | POSIX-quoted for sh | PowerShell 7.6.5 | Windows PowerShell 5.1 |
+  | --- | --- | --- |
+  | `$VAR` | ⛔ expanded in transit, and the **result** is then re-parsed | ⛔ the same |
+  | a backtick | ⛔ opens a command substitution | ⛔ the same |
+  | a double quote | arrives | ⛔ `syntax error: unterminated quoted string` |
+  | a bracket, a single quote, a tab, a space | arrives | arrives |
+
+  ⭐ **The mechanism is expand-then-re-parse**, which is not what "as though it
+  were double-quoted" would predict: a double-quoted expansion does not re-parse
+  its result. `printf %s a$HOME` answers `a/root` and `printf %s a$PATH` dies
+  with ``syntax error: unexpected "("``, because WSL appends
+  `/mnt/c/Program Files (x86)/...`. ⛔ **So the hazard is not the `$`. It is
+  whatever the value happens to contain**, which is why no alphabet a caller
+  keeps to is safe.
+
+  ⭐ **The fix is section 1's fix**, reached from a different direction: send the
+  payload as base64 and decode it in the guest. A worked implementation is
+  `ConvertTo-DistroScriptCommand` in
+  [`../../scripts/powershell-windows/wsl-ephemeral.ps1`](../../scripts/powershell-windows/wsl-ephemeral.ps1),
+  which also **asserts** that the skeleton it builds stays inside the measured
+  alphabet, because a payload hand-written inside a safe alphabet is a
+  constraint nothing enforces.
+
+  ⚠ **Create the file, open it, unlink it, and only then decode into it.**
+  Writing it first and unlinking after reads the same in a diff and is not: a
+  redirect creates the file before the decode runs, so a guest with no `base64`
+  is left holding an empty one that nothing removes.
+- ⛔ **`wsl.exe` is one of the commands the path-conversion rule above applies
+  to**, which is not obvious because `wsl.exe` is itself a Windows program.
+  From Git Bash, `wsl -d D -- /bin/sh -lc ...` has `/bin/sh` rewritten to
+  `C:/Program Files/Git/bin/sh`, and the distro reports as unstartable on a
+  machine where it is running fine.
+- ⚠ **Windows PowerShell 5.1 drops a double quote when it builds a CHILD
+  PROCESS's argument list**, one layer above `wsl.exe`. A `-Command` value of
+  ``a'b"c`d$e`` reaches a script spawned as `powershell -File s.ps1 -Command ...`
+  as ``a'bc`d$e``. In-process it arrives intact, and PowerShell 7.6.5 is fine
+  either way. ⛔ Nothing the spawned script does can recover it, so a scripted
+  5.1 caller passes base64 rather than text.
 - ⚠ **A machine-wide install is not under the user's home.** Checking only
   `~/scoop` reports a tool as absent on a machine that has it under
   `C:\ProgramData\scoop`. Look in both.
