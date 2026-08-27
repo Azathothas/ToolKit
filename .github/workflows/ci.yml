@@ -189,13 +189,21 @@ jobs:
           else { Write-Output "ok   check-changelog.ps1 (exit $LASTEXITCODE)" }
           exit $fail
 
-      - name: PSScriptAnalyzer
+      # ⛔ The module is installed EXPLICITLY here and the check is told to
+      # expect it. check-powershell.ps1 treats a missing analyzer as SKIPPED and
+      # exits 0, which is right on a developer's machine and wrong in CI: a
+      # runner that silently stopped installing it would turn this job green
+      # over an unanalysed tree. The assertion below is what makes the skip
+      # impossible to reach here.
+      - name: PSScriptAnalyzer, and every .ps1 parses
         shell: pwsh
         run: |
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
-          $r = Invoke-ScriptAnalyzer -Path .\scripts -Recurse -Severity Error, Warning
-          if ($r) { $r | Format-Table -AutoSize | Out-String | Write-Output; exit 1 }
-          Write-Output "clean"
+          pwsh -NoProfile -File .\scripts\common\check-powershell.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $j = pwsh -NoProfile -File .\scripts\common\check-powershell.ps1 -Json | ConvertFrom-Json
+          if ($j.analyzerSkipped) { Write-Output "PSScriptAnalyzer was SKIPPED in CI"; exit 1 }
+          Write-Output ("clean over " + $j.files + " file(s)")
 
   # ── the two probes must agree. The drift rule, with a machine behind it ────
   twins:

@@ -18,6 +18,16 @@
 #                    POSIX layer" is one of the questions it answers. So it
 #                    needs a native implementation per host family.
 #
+#   scripts/common/  check-gate EARNS ONE TOO, and for the same reason as the
+#   check-gate       probe rather than a different one. It is the command a
+#                    session runs FIRST, before anything has established that a
+#                    POSIX shell is reachable, and on a native PowerShell
+#                    session with no Git Bash on PATH an sh-only runner is a
+#                    runner that cannot start. Its two halves delegate to the
+#                    same underlying checks, so the drift surface is the LIST
+#                    and not the rules, and the row below is what holds the list
+#                    in step.
+#
 #   everything else  runs AFTER the probe has reported. By then sh is known to
 #                    be present or known to be absent, and on Windows that means
 #                    Git Bash, WSL or msys, all of which the probe reports. A
@@ -50,6 +60,14 @@
 # ⛔ Read the exit code from this process, unpiped.
 
 set -u
+
+# ⛔ Every child of this script gets the recursion guard. check-gate is one of
+# the pairs compared below and check-gate runs THIS script, so without it the
+# two call each other until something times out. Exported once here rather than
+# at each spawn site, because a guard applied at one of several call sites is
+# the most recurring hole there is.
+CHECK_GATE_INNER=1
+export CHECK_GATE_INNER
 
 JSON=0
 VERBOSE=0
@@ -287,6 +305,21 @@ compare_pair "check-changelog"      check-changelog.sh      "--json"          ch
 compare_pair "check-record"         check-record.sh         "--json"          check-record.ps1         "-Json"
 compare_pair "check-no-secrets"     check-no-secrets.sh     "--json"          check-no-secrets.ps1     "-Json"
 compare_pair "check-no-secrets pub" check-no-secrets.sh     "--public --json" check-no-secrets.ps1     "-Public -Json"
+
+# ⚠ THE GATE RUNNER'S TWO HALVES RUN DIFFERENT PROGRAMS TO REACH THE SAME
+# ANSWER, which is exactly the drift this file exists to catch. The sh half
+# spawns a PowerShell for the analyzer; the ps half spawns an sh for everything
+# POSIX. On a machine that has both they must produce the same counts, and a
+# machine that has only one reports the other's checks as SKIPPED in the same
+# number. ⛔ If this row ever fails because one half quietly stopped running
+# something, fix the half, never the comparison.
+compare_pair "check-gate"           check-gate.sh           "--json"          check-gate.ps1           "-Json"
+
+# ⚠ THIS PAIR NEEDS A RUNNING WSL DISTRO and both twins exit 2 without one. Two
+# 2s is agreement: it says the pair could not run, not that it passed. ⛔ Do not
+# drop the row on a machine with no podman machine, for the same reason the
+# check-remote-items row stays on a machine with no gh.
+compare_pair "check-binfmt"         check-binfmt.sh         "--json"          check-binfmt.ps1         "-Json"
 
 # ⚠ git-sync is compared through its READ-ONLY half only. -Check reports on
 # HEAD and changes nothing; running the writing half here would commit.

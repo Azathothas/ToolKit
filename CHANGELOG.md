@@ -21,6 +21,35 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T08:45:00Z: one command for the gate, a record writer, and a binfmt check
+
+**Record:** `TOOL-02`, `TOOL-01` and `DOC-01` in
+[`TODO/tooling.md`](TODO/tooling.md), each closed in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+Three tools, and each removes something a session was doing by hand.
+
+- `scripts/common/check-gate.sh` and its twin run every local gate in one
+  command. ⛔ Not a second set of rules: every line delegates to a check that
+  already exists. `--fast` skips `check-twins` alone, measured at 41s against
+  208s for the full run.
+- `scripts/common/check-powershell.ps1` holds the two PowerShell assertions CI
+  had inline. ⚠ **PSScriptAnalyzer is optional and saying so is the point**: a
+  machine without it reports SKIPPED and exits 0, and CI installs it and then
+  asserts it was not skipped.
+- `scripts/common/set-record.mjs` moves an entry's status and re-derives every
+  count. It does not run the reader and report green.
+- `scripts/common/check-binfmt.sh` and its twin read the kernel rather than a
+  unit's exit code. ⭐ **No `podman machine ssh`**, so nothing is written into
+  the directory it runs from.
+
+⭐ **The gate found three defects, two of them its own**, and they are written
+into `TOOL-02`: an infinite recursion with `check-twins` that left twenty stray
+shells holding their own files open; a skipped analyzer reported as a passed
+check, which is the forbidden pattern its own header cites; and a `.ps1`
+shipped with no UTF-8 BOM, caught by the analyzer it had just wired in.
+
+
 ### 2026-08-27T07:32:10Z: `New -Command` propagates the inner exit code
 
 **Record:** `WSL-01` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md),

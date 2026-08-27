@@ -143,6 +143,9 @@ are plausible and wrong**, which is the hardest kind to catch.
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |
 | run any check on Windows | ⭐ the `.ps1` half of the pair | the `.sh` half. ⚠ Native PowerShell may have no `sed`, and its `sort` is an alias for `Sort-Object`, which succeeds and answers differently. |
+| run the whole local gate before a commit | ⭐ `scripts/common/check-gate.sh --fast`, or its `.ps1` twin | remembering the list. ⚠ It is nine checks and the one you forget is the one that was added last. |
+| close an entry and move its counts | `scripts/common/set-record.mjs` | editing seven numbers by hand across three files |
+| find out why a cross-architecture container will not run | `scripts/common/check-binfmt.sh` | `systemctl status systemd-binfmt`, which reports success over zero handlers |
 | run something on Linux from a Windows host | `scripts/powershell-windows/wsl-ephemeral.ps1` | installing a distro by hand and leaving it there |
 | check what an open issue or pull request actually asserts | `scripts/common/check-remote-items.sh` | the item's own description |
 

@@ -64,10 +64,11 @@ from one twin's extension list changed no number here, because this repository
 has no `.py` file. Dropping `.md` was caught instantly. ⭐ Prove a scope rule
 with a fixture, not by trusting the comparison to notice.
 
-### The three things that do NOT have twins, and why
+### The four things that do NOT have twins, and why
 
 | | |
 | --- | --- |
+| [`common/set-record.mjs`](common/) | ⛔ **It does not need one**, and for the same reason as `write-file.mjs` below: it is node. ⚠ What it would cost to give it one is the thing to notice: a twin here means a second implementation of table arithmetic, which is a second place for that arithmetic to be wrong, in the one file whose whole job is that the arithmetic is right. |
 | [`common/write-file.mjs`](common/) | ⛔ **It does not need one.** It is node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. The reason the sh checks needed twins does not apply to it. ⚠ What it needs instead is node itself, which is the one dependency anything under `scripts/` has, and the reason a project may decline this helper rather than inherit it. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. It is a maintainer's tool and it runs where both implementations do: this machine, and the CI job that has `pwsh` on an Ubuntu runner. |
 | [`powershell-windows/wsl-ephemeral.ps1`](powershell-windows/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
@@ -204,6 +205,77 @@ prints "Binary files differ" so a code review shows no diff at all.
 ⚠ The runtime value is identical either way, so only reviewability is ever at
 stake. That is exactly why it survives unnoticed.
 
+### `common/check-gate.sh`
+
+⭐ **Run every local gate this host can run, in one command.** Part (a) of
+[`../docs/methodology/gate.md`](../docs/methodology/gate.md) is a list, and a
+list run by hand is run in the order somebody recalls it, missing whichever
+entry was added last.
+
+```bash
+sh scripts/common/check-gate.sh --fast
+```
+
+⛔ **It is not a second set of rules.** Every line delegates to a check that
+already exists and reads that check's own exit code. When it and
+`.github/workflows/ci.yml` disagree about what runs, CI gates the push and this
+one is the defect.
+
+⚠ **A skipped check is not a passed check.** `shellcheck`, `jq`, `pwsh` and
+PSScriptAnalyzer are not on every machine. A missing one is reported as `SKIP`,
+counted separately, named in the summary and carried in `--json` as
+`skipped`. The exit code is still 0, because "this host cannot run that one" is
+not a failure of the tree.
+
+⛔ **The analyzer and the parse are scored separately**, because they can have
+different answers and `check-powershell` exits 0 either way. One verdict for
+both is how a skipped analyzer reads as a passed check, which is what it did
+here once.
+
+⚠ **`--fast` skips `check-twins` and nothing else.** Measured on one Windows 11
+machine, 2026-08-27: the full run took 208s and `check-twins` was 171s of it.
+That is the right price before a push and the wrong one before each of eleven
+commits.
+
+⛔ **It runs `check-twins`, which runs it.** A recursion guard breaks the cycle;
+without it the pair hung for ten minutes and left twenty stray shells holding
+their own files open.
+
+### `common/check-powershell.ps1`
+
+Does every tracked `.ps1` parse, and is PSScriptAnalyzer clean over `scripts/`
+at Error and Warning.
+
+⚠ **The analyzer is a module, not part of PowerShell.** Without it this reports
+`SKIPPED` and exits 0. ⛔ **It never installs it**: a check that installs
+software changes the machine it is measuring, and this one runs before a commit.
+CI installs it explicitly and then asserts it was not skipped.
+
+⭐ Its last line is a fixed `analyzer=clean|skipped|issues:N`, which is what
+`check-gate` reads. ⛔ Parse that, never the prose above it.
+
+### `common/check-binfmt.sh`
+
+Are `binfmt_misc` handlers actually registered in the kernel containers run
+against, and can that directory be read at all.
+
+⭐ **It reads the kernel, not a unit's exit code**, because the unit is the thing
+that lied: `systemd-binfmt.service` reported `status=0/SUCCESS` having
+registered zero handlers, with an autofs stacked on the mount so every read
+returned `ELOOP`. Green unit, complete config, installed emulators, and
+cross-architecture execution had never once worked.
+
+⛔ **It does not use `podman machine ssh`**, which is what the reporting issue
+assumed. On Windows that command passes `-o UserKnownHostsFile=NUL` to its own
+ssh, and under Git Bash `NUL` is a filename rather than the null device, so it
+writes a 99-byte file called `NUL` into the directory you ran it from. ⭐ It is
+also unnecessary: every WSL2 distro shares one kernel, so `wsl -d DISTRO` reads
+the same handlers with nothing written anywhere.
+
+⚠ **`--require N` is what turns it from a report into an assertion.** Without
+it, zero handlers is reported and exits 0, because a machine that never wanted
+cross-architecture execution is not broken.
+
 ### `common/check-changelog.sh`
 
 Does `CHANGELOG.md` still obey the four rules a machine can hold: newest first,
@@ -243,6 +315,29 @@ being maintained, once on a CRLF file whose LF search string matched nothing.
 is the reason this is a helper a project may decline rather than a check every
 project inherits. [`../docs/conventions/shell.md`](../docs/conventions/shell.md)
 section 1 is the reasoning, measured.
+
+### `common/set-record.mjs`
+
+Move an entry's status and re-derive every count from the rows.
+[`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) calls the
+counts the model's one mechanical hazard and says to automate **both** halves;
+`check-record` is the reader and this is the writer it names.
+
+```bash
+node scripts/common/set-record.mjs status WSL-06 done
+```
+
+Closing one entry moves seven numbers: the index count line, the priority
+table's four figures for that priority, that table's **all** row, and the
+record's own count line.
+
+⛔ **It does not run `check-record` and report green.** A writer that grades its
+own work is one bug away from hiding the bug, and the reader has to assert
+independently. It prints the command; `check-gate` runs it.
+
+⚠ **It needs `node`, and has no PowerShell twin for the same reason
+`write-file.mjs` has none.** A second implementation of table arithmetic is a
+second place for that arithmetic to be wrong.
 
 ### `common/git-sync.sh`
 

@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 15  open 10  blocked 0  done 5
+total 16  open 8  blocked 0  done 8
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 1 | 1 |
-| P1 | 2 | 0 | 3 | 5 |
-| P2 | 4 | 0 | 1 | 5 |
+| P1 | 1 | 0 | 5 | 6 |
+| P2 | 3 | 0 | 2 | 5 |
 | P3 | 4 | 0 | 0 | 4 |
-| **all** | **10** | **0** | **5** | **15** |
+| **all** | **8** | **0** | **8** | **16** |
 
 ---
 
@@ -32,8 +32,9 @@ total 15  open 10  blocked 0  done 5
 | --- | --- | --- | --- | --- | --- |
 | BSD-01 | P1 | M | open | Run a BSD userland from Windows, with the least friction that works | [`bsd.md`](bsd.md) |
 | BSD-02 | P3 | S | open | Whether the other three BSDs can be run, not merely built | [`bsd.md`](bsd.md) |
-| DOC-01 | P2 | S | open | A `binfmt_misc` check for the podman machine on WSL2 | [`tooling.md`](tooling.md) |
-| TOOL-01 | P1 | M | open | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
+| DOC-01 | P2 | S | done | A `binfmt_misc` check for the podman machine on WSL2 | [`tooling.md`](tooling.md) |
+| TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
+| TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

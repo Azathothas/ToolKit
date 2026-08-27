@@ -16,7 +16,7 @@ and the entries themselves. Do not add a "previous sessions" section.
 ```text
 session started 2026-08-27T04:33:44Z
 baseline        ci green on both hosts, all three jobs
-entries         total 15  open 10  blocked 0  done 5
+entries         total 16  open 8  blocked 0  done 8
 ```
 
 ⚠ The counts above are checked against
