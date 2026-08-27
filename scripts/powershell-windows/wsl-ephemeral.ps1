@@ -45,6 +45,11 @@
 .PARAMETER Ephemeral
     With -Action New: run -Command then immediately destroy the distro.
 
+.PARAMETER OciEnv
+    With -Action New -Image: carry the image's OCI environment into the distro,
+    as /etc/profile.d/10-oci-env.sh. Off by default, because turning it on
+    changes PATH for every caller of a shape they already depend on.
+
 .PARAMETER Force
     Required for destructive actions when non-interactive. Skips confirmation.
 
@@ -78,6 +83,12 @@
 
     A caller that relied on New never failing now sees the real code. That is a
     deliberate break: see docs/consumers.md.
+
+    OCI CONFIG -- -OciEnv carries the image's ENV and WORKDIR into the distro
+    as /etc/profile.d/10-oci-env.sh, which a login shell sources. It is OFF by
+    default: turning it on changes PATH, and every existing caller depends on
+    the shape they have. USER and ENTRYPOINT are deliberately NOT carried; the
+    reasons are in New-OciEnvScript.
 
     PLATFORM -- every pull and every create names linux/ARCH explicitly, where
     ARCH is this host's own, read from the engine. Naming it is not politeness:
@@ -117,6 +128,7 @@ param(
     [string]$Command,
     [string]$User = 'root',
     [switch]$Ephemeral,
+    [switch]$OciEnv,
     [switch]$Force
 )
 
@@ -507,6 +519,135 @@ function Export-ImageRootfs {
 }
 
 # --------------------------------------------------------------------------------------
+# Getting bytes into a distro
+# --------------------------------------------------------------------------------------
+function ConvertTo-ShellSingleQuoted {
+    <#
+      POSIX single-quoting. The only character a single-quoted string cannot
+      contain is a single quote, so it is written by closing, escaping and
+      reopening. Used for values that end up INSIDE a file in the guest, never
+      for the command that carries them there: see Write-DistroFile for why
+      quoting does not survive the trip.
+    #>
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Raw)
+    return "'" + ($Raw -replace "'", "'\''") + "'"
+}
+
+function Write-DistroFile {
+    <#
+      Put bytes inside a distro without a shell touching them.
+
+      THE PAYLOAD GOES AS BASE64 AND THAT IS NOT DECORATION. Measured on this
+      host on 2026-08-27, under BOTH Windows PowerShell 5.1 and PowerShell
+      7.6.5: a command string handed to 'wsl.exe -- /bin/sh -lc' does not keep
+      its quoting. A dollar sign expands and a backtick opens a command
+      substitution EVEN WHEN THE TEXT IS INSIDE POSIX SINGLE QUOTES, and on 5.1
+      a double quote produces "unterminated quoted string". Base64 is
+      [A-Za-z0-9+/=], which contains none of those, so it is the one channel
+      that arrives intact. docs/conventions/shell.md section 1.
+
+      The PATH is not quotable either, for the same reason, so it is restricted
+      to characters no shell treats specially and refused otherwise. Refusing is
+      the point: a path this cannot carry safely must not be carried unsafely.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$DistroName,
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Content,
+        [string]$Mode = '0644'
+    )
+    if ($Path -notmatch '^/[A-Za-z0-9_.\-]+(/[A-Za-z0-9_.\-]+)*$') {
+        throw ("Refusing to write '$Path' inside the distro. The path travels through a shell " +
+               "that cannot be quoted safely on this transport, so it is restricted to an " +
+               "absolute path of letters, digits, dot, dash and underscore.")
+    }
+    if ($Mode -notmatch '^[0-7]{3,4}$') { throw "Mode '$Mode' is not an octal file mode." }
+
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Content))
+    $slash = $Path.LastIndexOf('/')
+    $dir = if ($slash -gt 0) { $Path.Substring(0, $slash) } else { '/' }
+
+    # Every character here is one the measurement above cleared: letters,
+    # digits, and & | > / - . _ and space. No quote, no dollar, no backtick.
+    $script = "mkdir -p $dir && echo $b64|base64 -d>$Path && chmod $Mode $Path"
+
+    $rc = 0
+    Invoke-InDistro -DistroName $DistroName -RunAs 'root' -ShellCommand $script -ExitCode ([ref]$rc)
+    if ($rc -ne 0) {
+        throw ("Could not write $Path inside '$DistroName' (exit $rc). The likeliest cause is an " +
+               "image with no base64: busybox has one and coreutils has one, but a rootfs built " +
+               "from scratch may have neither.")
+    }
+}
+
+function Get-ImageOciConfig {
+    <#
+      The image's OCI configuration. 'podman export' writes a FILESYSTEM and no
+      configuration by definition, so ENV, WORKDIR, USER and ENTRYPOINT are not
+      in the rootfs and have to be read from the image separately.
+
+      '{{json .Config}}' is the one spelling both engines share. Their arch
+      fields are not: see ConvertTo-OciArch.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$EnginePath,
+        [Parameter(Mandatory = $true)][string]$ImageRef
+    )
+    $raw = Invoke-Native -FilePath $EnginePath -Arguments @('image', 'inspect', $ImageRef, '--format', '{{json .Config}}')
+    $text = ($raw | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($text) -or $text -eq 'null') {
+        throw "Could not read the OCI configuration of '$ImageRef'; the engine answered '$text'."
+    }
+    return ($text | ConvertFrom-Json)
+}
+
+function New-OciEnvScript {
+    <#
+      Turns an image config into a /etc/profile.d snippet.
+
+      ENV and WORKDIR are carried. USER and ENTRYPOINT ARE NOT, and that is a
+      decision rather than an omission: WSL fixes the login user at import time
+      and -User selects it per call, and a login shell has no entrypoint to run.
+      Writing either into profile.d would be a setting that looks like it works.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)][string]$ImageRef
+    )
+    $lines = @(
+        '# Written by wsl-ephemeral.ps1 -OciEnv, from the OCI config of:',
+        "#   $ImageRef",
+        '# The rootfs came from a filesystem export, which carries no config, so',
+        '# without this file the environment here is WSL default and not the',
+        '# image environment.'
+    )
+    $names = @($Config.PSObject.Properties.Name)
+
+    if ($names -contains 'Env' -and $Config.Env) {
+        foreach ($e in @($Config.Env)) {
+            $i = "$e".IndexOf('=')
+            if ($i -lt 1) { Write-Warn "skipping malformed image env entry: $e"; continue }
+            $k = "$e".Substring(0, $i)
+            $v = "$e".Substring($i + 1)
+            if ($k -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+                Write-Warn "skipping image env name that is not a shell identifier: $k"
+                continue
+            }
+            $lines += ('export {0}={1}' -f $k, (ConvertTo-ShellSingleQuoted -Raw $v))
+        }
+    }
+
+    if ($names -contains 'WorkingDir' -and $Config.WorkingDir -and $Config.WorkingDir -ne '/') {
+        # ':' rather than 'true': it is a shell built-in everywhere, and the
+        # guard is there so a WORKDIR the image creates at runtime does not make
+        # every login shell fail.
+        $lines += ('cd {0} 2>/dev/null || :' -f (ConvertTo-ShellSingleQuoted -Raw $Config.WorkingDir))
+    }
+
+    return (($lines -join "`n") + "`n")
+}
+
+# --------------------------------------------------------------------------------------
 # Actions
 # --------------------------------------------------------------------------------------
 function Remove-EphemeralDistro {
@@ -609,6 +750,21 @@ function Invoke-ActionNew {
         foreach ($l in ($probeText -split "`r?`n")) {
             $t = $l.Trim()
             if ($t -and $t -ne '__WSL_OK__') { Write-Host "    $t" -ForegroundColor DarkGray }
+        }
+
+        if ($OciEnv) {
+            if ($Tarball) {
+                Write-Warn "-OciEnv ignored: a rootfs tarball carries no OCI configuration."
+            }
+            else {
+                Write-Step "Carrying the image's OCI configuration into the distro"
+                $cfgEngine = Get-ContainerEngine
+                if (-not $cfgEngine) { throw "-OciEnv needs the container engine that built this rootfs, and none is on PATH now." }
+                $cfg = Get-ImageOciConfig -EnginePath $cfgEngine.Path -ImageRef $Image
+                $ociBody = New-OciEnvScript -Config $cfg -ImageRef $Image
+                Write-DistroFile -DistroName $distro -Path '/etc/profile.d/10-oci-env.sh' -Content $ociBody
+                Write-Ok "wrote /etc/profile.d/10-oci-env.sh"
+            }
         }
 
         if ($Command) {

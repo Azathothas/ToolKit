@@ -67,6 +67,7 @@ with a message rather than silently when there is no network.
 | `-Command` | `New` `Run` | shell command, run through `/bin/sh -lc` |
 | `-User` | `New` `Run` | user inside the distro. Default `root`. |
 | `-Ephemeral` | `New` | run `-Command`, then destroy the distro |
+| `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
 | `-Force` | destructive actions | required when the session is non-interactive. Skips the confirmation. |
 
 ⛔ `-Image` and `-Tarball` are mutually exclusive, and `New` requires one of
@@ -111,6 +112,40 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-alpine-3.22-a1b2 -
 ```powershell
 pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 ```
+
+---
+
+## The image's configuration, with `-OciEnv`
+
+⛔ **A rootfs is a filesystem and not a configuration.** `podman export` writes
+the container's files; `ENV`, `WORKDIR`, `ENTRYPOINT` and `USER` live in the
+image's OCI config and are not in it. So by default the distro's `PATH` is
+WSL's, not the image's, and a distro built from a toolchain image does not have
+that toolchain on `PATH`.
+
+`-OciEnv` reads the config and writes `/etc/profile.d/10-oci-env.sh`, which a
+login shell sources. `-Command` runs through `/bin/sh -lc`, so it gets it.
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action New -Image python:3.13-alpine -OciEnv -Command 'echo $PATH'
+```
+
+⚠ **It is off by default and it stays off by default.** Turning it on changes
+`PATH` inside every distro this script makes, and every existing caller is
+written against the shape they have. Changing that under them buys them
+something they did not ask for.
+
+⛔ **`USER` and `ENTRYPOINT` are not carried, and that is a decision.** WSL
+fixes the login user when the distro is imported and `-User` selects it per
+call, so writing `USER` into a profile script would be a setting nothing reads.
+A login shell has no entrypoint to run. Both would look like they worked.
+
+⚠ **The switch does nothing with `-Tarball`** and says so: a tarball has no
+image to inspect.
+
+⚠ **With `-OciEnv` the image's `PATH` replaces the inherited one**, which
+includes the Windows directories WSL appends. If you need `explorer.exe` on
+`PATH` inside the distro, do not use the switch, or add them back yourself.
 
 ---
 
@@ -225,7 +260,7 @@ in [`../../TODO/INDEX.md`](../../TODO/INDEX.md).
 
 | limit | what it means for you |
 | --- | --- |
-| ⭐ the image's OCI config is dropped | `podman export` writes a filesystem, not a configuration. `ENV`, `WORKDIR`, `ENTRYPOINT` and `USER` are lost, so `PATH` inside the distro is not the image's `PATH`. |
+| ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
 | ⚠ an interrupted `New` can orphan a tarball | the rootfs `.tar` is cleaned in a `finally`, which a hard interrupt does not always run. Neither `List` nor `Purge` looks for `*.tar`. |
 | ⚠ no disk-space preflight | export plus import needs roughly twice the rootfs size on the `%LOCALAPPDATA%` volume. Running out midway leaves a partial VHDX and a registered distro that does not work. |
 | ⚠ no systemd | an imported distro has no `/etc/wsl.conf`, so `systemctl` is unavailable and units, timers and services cannot be tested. |

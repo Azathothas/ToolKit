@@ -129,7 +129,7 @@ against as a whole.
 ## WSL-02. Carry the image's OCI configuration into the distro
 
 **Source** issue 3, part 3.2.
-**Category** wsl-ephemeral · **Priority** P1 · **Effort** M · **Status** open
+**Category** wsl-ephemeral · **Priority** P1 · **Effort** M · **Status** done
 
 **Problem.** The distro's environment is not the image's environment. `PATH`,
 `WORKDIR`, `ENTRYPOINT` and `USER` are all absent, which makes the distro a
@@ -154,6 +154,91 @@ they did not ask for. The alternative, on by default, loses on that alone.
 **Prove.** A distro built from an image with a non-default `PATH` reports that
 `PATH` from `wsl -d DISTRO -- /bin/sh -lc 'echo $PATH'` with the switch, and the
 old value without it.
+
+### ⚠ The prove command does not work, and finding out why is a separate finding
+
+⛔ **`echo $PATH` is exactly the command that cannot be sent.** Measured on
+2026-08-27 against a real distro:
+
+```text
+wsl -d eph-w02-on -u root -- /bin/sh -lc 'echo $PATH'
+/bin/sh: syntax error: unexpected "("
+```
+
+The single quotes do not survive the trip, so `$PATH` expands, and the value it
+expands to contains `/mnt/c/Program Files (x86)/...` because WSL appends the
+Windows path. The `(` then reaches the shell as syntax. ⭐ **That is `WSL-08`,
+seen in the most ordinary command anybody would type**, and it is why the
+acceptance below uses `printenv PATH`, which needs no `$`.
+
+### ⚠ The premise's suggested check is misleading, and it was measured
+
+The premise says to confirm by comparing against
+`podman run IMAGE sh -lc 'echo $PATH'`. ⛔ **That comparison answers the wrong
+question**, because `sh -l` runs `/etc/profile` inside the container too, and
+Alpine's resets `PATH`. Measured, same image, same machine:
+
+| where | `PATH` |
+| --- | --- |
+| `podman run --rm python:3.13-alpine sh -c 'printenv PATH'` | `/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` |
+| `podman run --rm python:3.13-alpine sh -lc 'printenv PATH'` | ⚠ `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` |
+
+⭐ The first is the image's `PATH`; the second is `/etc/profile`'s. The
+authority is `podman image inspect --format '{{json .Config}}'`, which is what
+the code reads.
+
+### Closed 2026-08-27
+
+**What changed.** `-OciEnv`, defaulting off, as the entry decided. It reads
+`{{json .Config}}` from the image and writes `/etc/profile.d/10-oci-env.sh`
+into the distro, which a login shell sources, and `-Command` runs through
+`/bin/sh -lc`.
+
+⭐ **`Write-DistroFile` is the seam, and it exists because of the measurement
+above.** It carries the body as base64, because base64 is the only alphabet that
+survives `wsl.exe`. ⚠ It also **refuses a path** it cannot carry safely rather
+than carrying it unsafely, since the path is not quotable either. `WSL-08`
+reuses it.
+
+⛔ **`USER` and `ENTRYPOINT` are not carried, and will not be.** The entry's
+Problem statement names all four. WSL fixes the login user at import and
+`-User` selects it per call, so a `USER` line in a profile script is a setting
+nothing reads; a login shell has no entrypoint to run. Both would be a value
+the engine reads that nobody can set, from the other direction. That is written
+into `wsl-ephemeral.md` rather than left as an omission.
+
+**Acceptance.** Two distros from `python:3.13-alpine`, whose image `PATH` is
+non-default, one built with the switch and one without.
+
+```powershell
+wsl -d eph-w02-off -u root -- /bin/sh -lc 'printenv PATH'
+```
+
+| | `PATH` | `PYTHON_VERSION` |
+| --- | --- | --- |
+| without `-OciEnv` | `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` | unset |
+| with `-OciEnv` | ⭐ `/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` | `3.13.15` |
+| the image itself | `/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin` | `3.13.15` |
+
+⭐ The with-switch row equals the image row exactly. The file arrived with mode
+`0644` and the values single-quoted:
+
+```text
+export PATH='/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+export GPG_KEY='7169605F62C751356D054A26A821E680E5FA6305'
+export PYTHON_VERSION='3.13.15'
+export PYTHON_SHA256='1e66a794...eea4a76'
+```
+
+⚠ **What the acceptance does NOT show.** `command -v python3` resolves in both
+distros, because `/usr/local/bin` is on Alpine's default profile `PATH` anyway.
+A reader could mistake that for the switch not mattering. It matters for the
+order of `PATH` and for every other variable, which is what the table shows.
+
+**Mutation proof.** Not a guard, so there is nothing to plant. The negative case
+is the without-switch column above, run from the same tree in the same minute:
+it reports the old value, so the switch is what moves it. ⛔ If the switch were
+a no-op both rows would read the same, and they do not.
 
 ---
 
@@ -340,7 +425,7 @@ with the same handle held:
 
 ```text
   ! eph-w04 was not registered
-  * deleted C:\Users\AjamX\AppData\Local\wsl-ephemeral\eph-w04
+  * deleted C:\...\wsl-ephemeral\eph-w04
 EXITCODE=0
 still there: True
 ```
