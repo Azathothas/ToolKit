@@ -860,13 +860,23 @@ function Write-DistroFile {
         "chmod $Mode $qPath || exit 1"
     ) -join "`n"
 
+    # ⛔ Get-DistroOutput, NOT Invoke-InDistro, and the difference is the point.
+    # This is a question the SCRIPT asks, so it is bounded by -TimeoutSeconds
+    # like every other one; Invoke-InDistro is for the CALLER'S command, which
+    # is deliberately not. A door sweep found this on the wrong side of that
+    # line: a distro that wedged after the smoke probe hung here forever, and
+    # -Systemd reaches this before its own bounded check.
+    #
+    # Capturing rather than streaming also puts the guest's own complaint into
+    # the error below instead of leaving it loose on the console above it.
     $rc = 0
-    Invoke-InDistro -DistroName $DistroName -RunAs 'root' `
-        -ScriptBytes (ConvertTo-Utf8Bytes -Text $payload) -ExitCode ([ref]$rc)
+    $said = Get-DistroOutput -DistroName $DistroName -RunAs 'root' `
+        -ScriptBytes (ConvertTo-Utf8Bytes -Text $payload) -ExitCode ([ref]$rc) `
+        -What "the write of $Path"
     if ($rc -ne 0) {
         throw ("Could not write $Path inside '$DistroName' (exit $rc). The likeliest cause is an " +
                "image with no base64: busybox has one and coreutils has one, but a rootfs built " +
-               "from scratch may have neither.")
+               "from scratch may have neither. The guest said: $($said.Trim())")
     }
 }
 
@@ -1356,6 +1366,15 @@ function Invoke-ActionNew {
         try {
             if ((Get-WslDistroNames) -contains $distro) {
                 Assert-Removable -DistroName $distro
+                # ⛔ --terminate FIRST, exactly as Remove-EphemeralDistro does.
+                # A door sweep found the two paths disagreeing: this one went
+                # straight to --unregister, which releases the disk
+                # asynchronously and is the race Remove-PathWithRetry below
+                # exists to survive. ⚠ That race has still never been
+                # reproduced on this machine, so this is the two paths agreeing
+                # rather than a measured bug fix. Two ways of doing one thing is
+                # how one of them ends up wrong.
+                Invoke-Native -FilePath (Get-WslExe) -Arguments @('--terminate', $distro) -IgnoreExitCode | Out-Null
                 Invoke-Native -FilePath (Get-WslExe) -Arguments @('--unregister', $distro) -IgnoreExitCode | Out-Null
             }
             if (Test-Path -LiteralPath $target) {

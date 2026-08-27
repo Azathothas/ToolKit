@@ -21,6 +21,31 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T12:05:00Z: the door sweep, and the two things it found
+
+**Record:** notes written under `WSL-09` and `WSL-04` in
+[`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), each below its closure rather
+than edited into it.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⭐ **Part (c) of the gate, asking which paths reach one operation.** Both
+findings are the same shape and it is the one this repository keeps meeting: a
+guard on one of several doors.
+
+- ⛔ **The file write was the one unbounded question the script asks.**
+  `-OciEnv` and `-Systemd` both write through `Write-DistroFile`, which used
+  `Invoke-InDistro` and therefore had no time limit, while the two probes either
+  side of it did. A distro that wedged after the smoke probe hung there forever.
+- ⛔ **The rollback did not `--terminate` before `--unregister`**, while
+  `Remove-EphemeralDistro` did. The rollback was the more exposed of the two,
+  and it is the path that runs when something has already gone wrong. ⚠ The
+  race is still unreproduced, so this is two paths agreeing, not a measured fix.
+
+⚠ **What the sweep did NOT find, said so it is not read as untested:** no leak.
+After a session of deliberate failures, timeouts, space refusals and rejected
+switches, the base directory held exactly the eight directories matching the
+eight registered distros.
+
 ### 2026-08-27T11:45:00Z: an Enter action, so the interactive path is first class
 
 **Record:** `WSL-11` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed

@@ -518,6 +518,27 @@ pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action Remov
 | handle held | 1 | `FAILED to delete the disk for 'eph-w04' at 'C:\...\eph-w04'. It is STILL THERE after 5 attempts.` and the path is still there |
 | handle released | 0 | `* deleted C:\...\eph-w04`, and the path is gone |
 
+### ⚠ 2026-08-27, later the same day: the two removal paths did not agree
+
+⛔ **Written under the closure rather than edited into it.** A door sweep for
+the `WSL-06` to `WSL-11` batch asked which paths reach one operation. Both
+removals go through `Remove-PathWithRetry`, which this entry made the only
+deletion, but they did not agree on what happens first:
+
+| path | before |
+| --- | --- |
+| `Remove-EphemeralDistro` | `--terminate`, then `--unregister`, then delete |
+| ⛔ the rollback in `Invoke-ActionNew`'s catch | `--unregister`, then delete |
+
+⭐ The rollback was the one MORE exposed to the async release this entry is
+about, and it is the path that runs when something has already gone wrong. It
+now terminates first, like the other one.
+
+⚠ **This is not a measured bug fix and it is not presented as one.** The race
+this entry describes has still never been reproduced on this machine, exactly as
+the closure above says. What is fixed is two ways of doing one thing, which is
+how one of them ends up wrong.
+
 ⚠ **This is a behaviour change for `Remove`, `Purge` and `New -Ephemeral`:**
 they can now exit non-zero where they used to exit 0. They were not succeeding
 before; they were reporting. Not a consumer break in the
@@ -1189,6 +1210,32 @@ rolled back by the normal path.
 
 **Consumers.** Adding a parameter with a default. Not a break. ⚠ `New` can now
 exit 1 where it used to hang, which is the point.
+
+### ⛔ The door sweep found the bound on one of two identical calls
+
+⛔ **Written under the closure, in the same session, because it is this entry's
+scope and it was wrong.** Part (c) of the gate asked "which paths reach the same
+operation, and is the guard on all of them". `Write-DistroFile` was on the wrong
+side of the line:
+
+| the call | before the sweep | after |
+| --- | --- | --- |
+| the smoke probe | bounded | bounded |
+| the `-Systemd` check | bounded | bounded |
+| ⛔ the file write `-OciEnv` and `-Systemd` both use | **unbounded** | bounded |
+| the caller's `-Command` | unbounded, deliberately | unchanged |
+
+⭐ **It is a question the SCRIPT asks**, so by this entry's own rule it should
+always have been bounded. And it is reached BEFORE the `-Systemd` check that is
+bounded, so a distro that wedged after the smoke probe hung there forever.
+`Write-DistroFile` now uses `Get-DistroOutput`, which also puts the guest's own
+complaint into the error message instead of leaving it loose on the console.
+
+⚠ **What is still not bounded, named rather than implied:** `--import`,
+`--terminate` and `--unregister`. They are host-side calls to the WSL service
+rather than execution inside a guest, none was observed to hang in this session,
+and bounding `--import` would be wrong outright: a five-minute import of a large
+rootfs is legitimate.
 
 ---
 
