@@ -1,0 +1,203 @@
+# The gates, in CI. Part (a) of the three-part gate: docs/methodology/gate.md
+#
+# This runs the SAME checks the local gate runs. It is a second place they run,
+# not a second set of rules. When they diverge, the local one is what a session
+# actually experiences and this one is the defect.
+#
+# ⛔ Two hosts, on purpose. This repository's scripts are POSIX sh AND Windows
+# PowerShell, and a check that only ever runs on ubuntu proves nothing about the
+# host half of them are written for.
+#
+# ⛔ Third-party actions are pinned to a COMMIT, not a tag. A tag moves, and a
+# moved tag runs code nobody reviewed with the permissions granted here:
+#
+#   gh api repos/actions/checkout/git/ref/tags/v7 --jq .object.sha
+#
+# ⚠ AND CHECK WHAT RUNTIME THE TAG DECLARES, not merely that it resolves.
+# ⭐ The durable fix is .github/dependabot.yml. Pinning without an updater is
+# how a pin becomes a fossil.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege. No job here needs more than reading the tree.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # ── the POSIX half ────────────────────────────────────────────────────────
+  checks:
+    name: checks (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⚠ THE EXIT CODE IS CAPTURED, NOT ECHOED AFTER THE FACT. GitHub runs
+      # `run:` under `bash -e`, so a non-zero probe aborts the step before any
+      # echo, and an echo could therefore only ever print 0. That reads like a
+      # verification and asserts nothing.
+      - name: the probe runs and exits 0
+        run: |
+          set +e
+          sh scripts/doctor/doctor.sh --fast >/dev/null
+          rc=$?
+          set -e
+          echo "probe exit=$rc"
+          [ "$rc" = 0 ]
+
+      - name: every shell script parses
+        run: |
+          fail=0
+          for f in $(git ls-files '*.sh'); do
+            if sh -n "$f"; then echo "ok   $f"; else echo "FAIL $f"; fail=1; fi
+          done
+          exit $fail
+
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          fail=0
+          for f in $(git ls-files '*.sh'); do
+            if shellcheck -s sh "$f"; then echo "clean $f"; else fail=1; fi
+          done
+          exit $fail
+
+      - name: documents resolve and match the prose rule
+        run: sh scripts/common/check-docs.sh
+
+      - name: no template placeholder survived into a real file
+        run: sh scripts/common/check-placeholders.sh
+
+      - name: no literal control byte in any text file
+        run: sh scripts/common/check-control-bytes.sh
+
+      # ⚠ Exit 2 means "could not run", which is the honest answer before this
+      # repository has a CHANGELOG.md. ⛔ `|| true` would hide a genuine exit 1
+      # as well, and `set +e` is required because GitHub runs this under
+      # `bash -e`: without it the shell aborts on the exit 2 this step exists to
+      # tolerate, before the assignment is ever reached.
+      - name: the changelog rules, where there is a changelog
+        run: |
+          set +e
+          sh scripts/common/check-changelog.sh
+          rc=$?
+          set -e
+          if [ "$rc" = 0 ] || [ "$rc" = 2 ]; then echo "ok (exit $rc)"; exit 0; fi
+          exit "$rc"
+
+      - name: nothing publishable carries a secret or a fingerprint
+        run: sh scripts/common/check-no-secrets.sh --public
+
+      - name: line endings match .gitattributes
+        run: |
+          bad=$(git ls-files --eol | grep -v 'i/lf' | grep -v 'i/-text' || true)
+          if [ -n "$bad" ]; then echo "$bad"; exit 1; fi
+          echo "clean"
+
+      - name: yaml parses
+        run: |
+          python3 -c "
+          import sys, glob
+          try:
+              import yaml
+          except ImportError:
+              sys.exit('pyyaml missing')
+          bad = 0
+          for f in glob.glob('**/*.yml', recursive=True):
+              try:
+                  yaml.safe_load(open(f, encoding='utf-8'))
+                  print('ok  ', f)
+              except Exception as e:
+                  print('FAIL', f, e); bad = 1
+          sys.exit(bad)
+          "
+
+  # ── the Windows half: where the PowerShell in this repository actually runs ─
+  windows:
+    name: powershell (windows)
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⛔ EVERY tracked .ps1, not a hardcoded list. A list is a thing somebody
+      # forgets to extend, and the script they forgot is the one that breaks.
+      - name: every PowerShell script parses
+        shell: pwsh
+        run: |
+          $fail = 0
+          foreach ($f in (& git ls-files '*.ps1')) {
+            $errs = $null; $tokens = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $f).Path, [ref]$tokens, [ref]$errs)
+            if ($errs.Count -gt 0) {
+              $errs | ForEach-Object { Write-Output ("FAIL $f line " + $_.Extent.StartLineNumber + ": " + $_.Message) }
+              $fail = 1
+            } else { Write-Output "ok   $f" }
+          }
+          exit $fail
+
+      - name: the probe runs and emits valid json
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File scripts\doctor\doctor.ps1 -Json > ps.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $d = Get-Content ps.json -Raw | ConvertFrom-Json
+          if ($d.schema -ne 'agent-doctor/1') { Write-Output "wrong schema: $($d.schema)"; exit 1 }
+          Write-Output ("schema " + $d.schema + ", " + $d.tools.Count + " tools")
+
+      # ⭐ THE POINT OF THIS JOB. Each check has a PowerShell twin because the
+      # sh one cannot be assumed to run on Windows: a native PowerShell session
+      # may have no `sed`, and its `sort` is an alias for Sort-Object, which
+      # succeeds and answers differently. ⛔ Running them on ubuntu under pwsh
+      # would prove nothing about that.
+      - name: every check's PowerShell twin runs on Windows
+        shell: pwsh
+        run: |
+          $fail = 0
+          $checks = @(
+            @{ f = 'check-docs.ps1';           a = @() },
+            @{ f = 'check-placeholders.ps1';   a = @() },
+            @{ f = 'check-control-bytes.ps1';  a = @() },
+            @{ f = 'check-no-secrets.ps1';     a = @('-Public') }
+          )
+          foreach ($c in $checks) {
+            & pwsh -NoProfile -File ".\scripts\common\$($c.f)" @($c.a)
+            if ($LASTEXITCODE -ne 0) { Write-Output "FAIL $($c.f) exit $LASTEXITCODE"; $fail = 1 }
+            else { Write-Output "ok   $($c.f)" }
+          }
+          # ⚠ 2 is "could not run" and is expected before there is a changelog.
+          & pwsh -NoProfile -File .\scripts\common\check-changelog.ps1
+          if ($LASTEXITCODE -notin 0, 2) { Write-Output "FAIL check-changelog.ps1"; $fail = 1 }
+          else { Write-Output "ok   check-changelog.ps1 (exit $LASTEXITCODE)" }
+          exit $fail
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          $r = Invoke-ScriptAnalyzer -Path .\scripts -Recurse -Severity Error, Warning
+          if ($r) { $r | Format-Table -AutoSize | Out-String | Write-Output; exit 1 }
+          Write-Output "clean"
+
+  # ── the two probes must agree. The drift rule, with a machine behind it ────
+  twins:
+    name: the two probes agree
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: both probes, same machine, compared field by field
+        shell: bash
+        run: sh scripts/common/check-twins.sh
