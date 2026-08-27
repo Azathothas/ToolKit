@@ -21,6 +21,31 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T12:35:00Z: git-sync.ps1 bound a gate string to the author identity
+
+**Record:** `TOOL-03` in [`TODO/tooling.md`](TODO/tooling.md), filed and closed
+in place.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⛔ **The one script whose job is enforcing the identity rule invented an
+identity and printed `identity verified` one line under it.** Found by using it,
+not reported by anything.
+
+- ⛔ **`-File` does not take PowerShell expressions.** `-Gate "a","b","c","d"`
+  reaches the child as four separate arguments; the first bound to `-Gate` and
+  the rest bound **positionally** onto `-Name`, `-Email` and `-Branch`. It
+  committed with an author of `sh scripts/common/check-control-bytes.sh` and
+  tried to push a branch named after another gate.
+- ⚠ **The push failing is what stopped it reaching a remote.** That is luck, not
+  a guard. The commit was reset and remade; nothing published was rewritten.
+- ⭐ **The fix is `[CmdletBinding(PositionalBinding = $false)]`**, so a stray
+  positional argument does not bind at all and nothing runs.
+- ⚠ **`git-sync.sh` does not share the defect**, checked rather than assumed: it
+  reads `--gate` in a `case`, where a bare argument is an explicit error.
+- ⚠ **`Azathothas/TEMPLATE` carries its own copy of this script and its own copy
+  of this defect.** Not fixed there in this session, and named in the entry so
+  the next session in that tree has it written down.
+
 ### 2026-08-27T12:05:00Z: the door sweep, and the two things it found
 
 **Record:** notes written under `WSL-09` and `WSL-04` in

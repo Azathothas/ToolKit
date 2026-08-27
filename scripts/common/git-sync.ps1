@@ -59,7 +59,17 @@
     Justification = 'Gate and SkipGates are read by Invoke-Gates through script scope rather than as arguments. The analyzer does not follow that, and threading them through the call to satisfy it would make the code worse.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
     Justification = 'Invoke-Gates runs every gate, plural, and Invoke-GitAs is a verb plus the preposition "as" rather than a plural noun. Renaming either to satisfy the rule would make the name describe the thing less accurately.')]
-[CmdletBinding()]
+# ⛔ PositionalBinding OFF, and it is not tidiness. Called through -File, the
+# CALLING shell evaluates an array and hands the child separate command-line
+# arguments, so `-Gate "a","b","c","d"` gave the child four of them: one bound
+# to -Gate and the other three bound POSITIONALLY, in declaration order, to
+# -Name, -Email and -Branch. This script then made a commit whose author and
+# committer were a shell command, printed "identity verified" one line under
+# it, and tried to push a branch called `sh scripts/common/check-changelog.sh`.
+# The push failing is what stopped it reaching a remote, which is luck rather
+# than a guard. With this off, a stray positional argument does not bind at all
+# and nothing runs. TOOL-03.
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [string]$Message = '',
     [string]$BodyFile = '',

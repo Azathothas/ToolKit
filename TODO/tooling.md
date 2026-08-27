@@ -348,3 +348,148 @@ record check failed, 7 problem(s):
 ⚠ **The writer's refusals were tested and are not decoration:** an id with no
 row exits 1 naming it, and a status outside `open|blocked|done` exits 1 listing
 the three. Neither wrote anything.
+
+---
+
+## TOOL-03. `git-sync.ps1` bound a gate string to the author identity
+
+**Source** ⭐ **Found by using it**, while bumping the `Azathothas/TEMPLATE` pin
+at the end of the `WSL-06` to `WSL-11` batch. Not reported by anything.
+**Category** tooling · **Priority** P0 · **Effort** S · **Status** done
+
+**Problem.** `git-sync.ps1` made a commit whose author and committer were
+`sh scripts/common/check-control-bytes.sh <sh scripts/common/check-no-secrets.sh --public>`,
+and then printed `identity verified: ... author and committer`. ⛔ **The one
+script whose stated job is enforcing the identity rule invented an identity and
+called it verified.**
+
+**Premise.** ⭐ **Measured, by reproducing it.** The call was:
+
+```powershell
+pwsh -NoProfile -File scripts/common/git-sync.ps1 -Message "..." -BodyFile msg.txt -Gate "a","b","c","d"
+```
+
+⛔ **`-File` does not take PowerShell expressions.** The calling shell evaluates
+`"a","b","c","d"` and hands the child **four separate command-line arguments**.
+The child binds the first to `-Gate` and the remaining three **positionally**,
+onto whichever parameters are still free **in declaration order**. `-Message`
+and `-BodyFile` were already given by name in that call, so the three landed on
+`-Name`, `-Email` and `-Branch`. One gate ran, two gates became a person, and
+one became a branch.
+
+⚠ **Which parameters absorb the overflow depends on which were named**, so the
+damage moves with the call. Given `-Message` alone, the same four strings put
+one in `-BodyFile` and the other two in `-Name` and `-Email`. That is the
+argument against fixing this by reordering the parameter block.
+
+The push is what failed, with `fatal: invalid refspec 'sh scripts/common/check-changelog.sh'`.
+⚠ **The push failing is luck, not a guard.** Had the fourth string been absent,
+the commit would have gone to the remote under a fabricated author.
+
+⚠ **The identity check could not catch it.** It asserts that author equals
+committer, which was true: both were the same wrong string. Nothing asserts
+that an identity is a person, and nothing can.
+
+**Approach.** `[CmdletBinding(PositionalBinding = $false)]` on the parameter
+block. A stray positional argument then fails to bind and the script refuses to
+run at all, which is the loud version of what happened silently.
+
+⛔ Not a validation pattern on `-Name`. An identity is not a shape a regex
+knows, and a rule that rejects unusual names would be wrong in the other
+direction.
+
+**Decision.** Turn positional binding off rather than reordering the parameters
+so the harmless ones absorb the overflow. Reordering makes the misbinding land
+somewhere less damaging, which is a way of surviving the bug rather than
+removing it. ⚠ **`-Message` positionally is a loss**, and it is a small one: no
+caller in this tree uses it, and every documented example names the parameter.
+
+**Prove.** ⛔ Read the exit code from the process that produced it, unpiped.
+
+```powershell
+pwsh -NoProfile -File scripts/common/git-sync.ps1 -Message x -NoPush -Gate "a","b","c","d"
+```
+
+It refuses to bind, exits non-zero, and no commit is made.
+
+⚠ **Not `-Check`.** `-Check` returns before the gates run and never reads
+`-Name` or `-Email`, so it exits 0 whether the binding is right or wrong. See
+the mis-verification below.
+
+### Closed 2026-08-27
+
+**What changed.** One attribute, `[CmdletBinding(PositionalBinding = $false)]`,
+and a comment above it naming the incident.
+
+⚠ **`git-sync.sh` does not share the defect and was checked rather than
+assumed.** It reads `--gate` with a `case` in a `while` loop, so a bare argument
+is an explicit error branch and there is no positional binding to abuse.
+
+**Mutation proof.** ⛔ The defect was measured on the shipped code, which is the
+strongest form: not a simulated revert, the real thing, in a real repository.
+
+```text
+2026-08-27T11:13:53Z git-sync: committed f5e8afa wsl-ephemeral: bump the ToolKit pin to ea5d483
+2026-08-27T11:13:53Z git-sync: identity verified: sh scripts/common/check-control-bytes.sh
+                               <sh scripts/common/check-no-secrets.sh --public>, author and committer
+2026-08-27T11:13:53Z git-sync: pushing sh scripts/common/check-changelog.sh to origin
+fatal: invalid refspec 'sh scripts/common/check-changelog.sh'
+git-sync: git push failed
+```
+
+```text
+author:    sh scripts/common/check-control-bytes.sh <sh scripts/common/check-no-secrets.sh --public>
+committer: sh scripts/common/check-control-bytes.sh <sh scripts/common/check-no-secrets.sh --public>
+```
+
+⭐ **`identity verified` is printed one line under the fabricated identity.** That
+is the sentence this entry exists to stop being printable.
+
+**Acceptance, after the fix.** Every code read from the process that produced it.
+
+A stand-in carrying `git-sync`'s exact parameter block, handed the four gate
+strings that caused the incident:
+
+| positional binding | what bound |
+| --- | --- |
+| ⛔ **on**, the shipped state | `Gate=[check-docs.sh]`, `Message=[subject]`, **`Name=[sh scripts/common/check-no-secrets.sh --public]`**, **`Email=[sh scripts/common/check-changelog.sh]`**, exit 0 |
+| ⭐ **off**, the fix | `A positional parameter cannot be found that accepts argument 'sh scripts/common/check-control-bytes.sh'`, **exit 1** |
+
+And the real script, with the same argv:
+
+| call | exit |
+| --- | --- |
+| `-Message x -NoPush -Gate "a","b","c","d"` | ⭐ 1, refused at binding, nothing ran |
+| `-Message "..." -BodyFile msg.txt -Gate "sh scripts/common/check-gate.sh --fast"` | 0, unchanged, and it is what every commit in this batch used |
+
+### ⚠ The first verification of this fix was wrong, and how it was wrong matters
+
+⛔ **`-Check -Gate "a","b","c","d"` exited 0 with the fix in place**, and was
+briefly read as the fix not working. Two mistakes, both in this repository's own
+rules:
+
+1. ⛔ **The exit code was read through a pipe.** The call ended in
+   `| Select-Object -First 4`, which can stop the upstream early and leave
+   `$LASTEXITCODE` holding the previous command's value.
+   [`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 2, and
+   the sixth absolute in [`../AGENTS.md`](../AGENTS.md).
+2. ⛔ **`-Check` cannot show this defect at all.** It returns before the gates
+   run and never reads `-Name` or `-Email`, so it exits 0 whether they were
+   bound from a gate string or not. A test whose name claims more than it
+   checks is its own row in
+   [`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md).
+
+⭐ Re-run unpiped, against a call that actually reaches the binding, the fix
+refuses on both hosts. Written down because a fix verified by the wrong command
+is indistinguishable from a fix that works, until it is not.
+
+**What was done about the commit it made.** ⚠ It never reached a remote: the
+push is what failed. It was reset with `git reset --soft HEAD~1` and remade,
+and the pin bump that eventually landed in `Azathothas/TEMPLATE` as `83f573c`
+carries the correct author. ⛔ **No history was rewritten anywhere published.**
+
+**Consumers.** ⚠ `Azathothas/TEMPLATE` carries its own copy of this script and
+therefore its own copy of this defect, because that is where this one came from.
+⛔ **Not fixed there in this session**: that repository is read-only to this one
+except for the pin, and a fix there is its own change with its own gate. It is
+named here so the next session working in that tree has it written down.

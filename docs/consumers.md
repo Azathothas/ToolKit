@@ -77,16 +77,37 @@ fact a consumer's owner needs.
 | 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New -Command` now exits with the inner command's code. It used to warn and exit 0. `WSL-01`. | `Azathothas/TEMPLATE`, the only consumer in the register. Its wrapper forwards arguments and propagates the inner code verbatim, so it needs no edit beyond the pin. | ⭐ **moved.** See the note below. |
 | 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New` was failing outright on Windows PowerShell 5.1 and now works. `WSL-12`. | the same single consumer. Its wrapper runs the fetched script on whichever host invoked it, so a 5.1 caller was getting the break. | ⭐ **moved**, in the same bump. |
 
-⭐ **The pin moved on 2026-08-27**, from the commit that first published this
-script to the head of the batch carrying `WSL-01` through `WSL-05`, `WSL-12`
-and the tooling work. ⚠ **It did not move for the two `WSL-01` reasons alone.**
-It moved because `WSL-12` means every 5.1 caller of the old pin has an
-`-Action New` that cannot work at all, and leaving them there to avoid a
-behaviour change is protecting them from the fix rather than from the break.
+⭐ **The pin moved twice on 2026-08-27.** First from the commit that first
+published this script to the head of the batch carrying `WSL-01` through
+`WSL-05`, `WSL-12` and the tooling work. ⚠ **That move was not for the two
+`WSL-01` reasons alone.** It moved because `WSL-12` means every 5.1 caller of
+the old pin has an `-Action New` that cannot work at all, and leaving them there
+to avoid a behaviour change is protecting them from the fix rather than from the
+break.
 
-⚠ **`WSL-06` through `WSL-11` are still open**, so the pin will move again.
-That is normal and is what pinning is for: each move is a version somebody
-reviewed.
+⭐ **Then to `ea5d483`**, the head of the batch carrying `WSL-06` through
+`WSL-11`, in `Azathothas/TEMPLATE` as `83f573c`. `WSL-08` is why it moved: a
+`-Command` value could not carry a `$`, a backtick or, on 5.1, a double quote,
+and now carries anything byte-exact.
+
+⚠ **Three behaviour changes ride along with it, and none is a break by the
+definition above.** Nothing was renamed and no exit code changed meaning.
+`New` can exit 1 where it used to start an import it could not finish, exit 1
+where it used to hang on a wedged distro, and exit 1 where `-Systemd` was asked
+for and could not be given. Each is the tool reporting a failure it used to
+paper over.
+
+⚠ **Both values were read from the API**, as the wrapper's own `.NOTES` says to.
+On this machine the working-tree file hashes to `0fc409a3` and the raw endpoint
+serves `3c901625`, because the tree is CRLF. A locally computed digest fails
+closed, which is safe and takes an hour to work out.
+
+⭐ **The pin was verified by running it**, not by assuming: the wrapper fetched
+`ea5d48310021`, matched the digest, and `-Action Enter`, which did not exist at
+the old pin, answered through it from Windows PowerShell 5.1.
+
+⚠ **`wsl-ephemeral.ps1` now has no open entry**, so the next pin move will be
+for something not yet written.
 
 ⚠ **A caller that was reading the false pass gets a red result the first time it
 runs after the pin moves, and the failure it reports is real.** That is the

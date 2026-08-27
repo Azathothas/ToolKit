@@ -14,15 +14,15 @@ and the entries themselves. Do not add a "previous sessions" section.
 ## State
 
 ```text
-session started 2026-08-27T07:24:43Z
-baseline        ci green on both hosts, all three jobs
-entries         total 17  open 2  blocked 0  done 15
+session started 2026-08-27T09:40:00Z
+baseline        ci green on both hosts, all three jobs, at ea5d483
+entries         total 18  open 2  blocked 0  done 16
 ```
 
 ⚠ The counts above are checked against
 [`INDEX.md`](INDEX.md)'s rows by `scripts/common/check-record.sh`, which runs as
 a gate. ⛔ Do not edit them by hand to make a check pass; fix whichever file is
-wrong. ⭐ `scripts/common/set-record.mjs` moves them for you now.
+wrong. ⭐ `scripts/common/set-record.mjs` moves them for you.
 
 | fact | value |
 | --- | --- |
@@ -36,8 +36,8 @@ wrong. ⭐ `scripts/common/set-record.mjs` moves them for you now.
 **Origin.** Bootstrapped from `Azathothas/TEMPLATE` on 2026-08-27. Its first
 content was `wsl-ephemeral.ps1`, decoupled from that template so the template
 keeps only what every project needs. That template carries a wrapper that
-fetches this copy by pinned commit and verified digest, and ⭐ **that pin moved
-in this session**. [`../docs/consumers.md`](../docs/consumers.md) is the state.
+fetches this copy by pinned commit and verified digest.
+[`../docs/consumers.md`](../docs/consumers.md) is the state.
 
 ---
 
@@ -48,77 +48,101 @@ Every gate below was run on this Windows 11 Pro 26200 machine, unpiped.
 | gate | result |
 | --- | --- |
 | `check-gate.sh`, full | ✅ 13 checks, 13 passed, 0 skipped |
-| `check-gate.ps1`, full | ✅ identical json to the sh half |
+| `check-gate.ps1` | ✅ agrees with the sh half |
 | `check-twins` | ✅ every pair agrees |
-| PSScriptAnalyzer over `scripts/`, Error and Warning | ✅ clean, 12 files |
-| `-Action New` end to end, PowerShell 7.6.5 | ✅ exit code propagates |
-| `-Action New` end to end, Windows PowerShell 5.1 | ✅ ⭐ fixed this session, `WSL-12` |
-| CI, all three jobs | ✅ success |
+| PSScriptAnalyzer over `scripts/`, Error and Warning | ✅ clean, 13 files |
+| `-Action New` end to end, PowerShell 7.6.5 | ✅ |
+| `-Action New` end to end, Windows PowerShell 5.1 | ✅ |
+| `-Command` byte-exactness, both hosts | ✅ ⭐ guest SHA-256 equals the Windows one |
+| `-Systemd` against `almalinux:9`, both hosts | ✅ PID 1 is `systemd` |
+| the timeout, against a rootfs whose `/bin/sh` sleeps | ✅ exits 1 within the bound |
+| CI, all three jobs | ✅ success at `ea5d483` |
 
 ---
 
 ## What the last session did
 
-**2026-08-27, the first implementation pass. Nine entries closed.**
+**2026-08-27, the second implementation pass. `wsl-ephemeral.ps1` is finished.**
 
-- ⭐ **`WSL-01`, `WSL-02`, `WSL-03`, `WSL-04`, `WSL-05`** closed with evidence,
-  each mutation-proven, each its own commit.
-- ⭐ **`WSL-12` filed and closed**, found by the door sweep rather than by any
-  issue: `-Action New` was failing outright on Windows PowerShell 5.1, on a host
-  `.NOTES` claimed to be tested on.
-- **`TOOL-01`, `TOOL-02`, `DOC-01`** closed. Four new scripts: `check-gate` and
-  its twin, `check-powershell.ps1`, `set-record.mjs`, `check-binfmt` and its
-  twin.
-- **The `Azathothas/TEMPLATE` pin moved**, and issues were opened there
-  proposing the backports.
+- ⭐ **`WSL-06` through `WSL-11` closed**, each with its evidence, each
+  mutation-proven, each its own commit. ⛔ **No `WSL-*` entry is open.**
+- ⭐ **`TOOL-03` filed and closed**, found by using `git-sync.ps1` rather than by
+  reading it. It is a P0 and the worst defect of the session.
+- **The `Azathothas/TEMPLATE` pin moved** to `ea5d483`, verified end to end from
+  both hosts against the live wrapper.
 
-⛔ **It did not finish.** `WSL-06` through `WSL-11` are untouched, and the
-`bsd.md` work the operator asked for has not started. See the work order.
-
-### ⚠ Three premises measurement disproved, all written under their entries
+### ⭐ Four premises measurement disproved, all written under their entries
 
 ⛔ **None was edited away.** A premise a measurement disproves keeps its title
 and gets the correction underneath.
 
-- **`WSL-03`.** An unqualified `podman pull` is **not** a no-op over a
-  foreign-architecture tag on podman 5.8.6; it re-pulls the host's. The trap is
-  real in `create`. ⭐ And the stated symptom was wrong in the dangerous
-  direction: this kernel carries 31 `qemu-*` `binfmt_misc` handlers with the `F`
-  flag, so a riscv64 rootfs **boots and runs emulated** rather than failing.
-- **`WSL-02`.** Its own prove command cannot be sent at all, and its suggested
-  comparison against a login shell in the container answers the wrong question.
-- **`WSL-08`.** The caller does not "own all quoting"; the quoting is destroyed
-  in transit. Measured per character, on both hosts.
+- **`WSL-06`.** "Roughly twice the rootfs size" is not the rule and is not a
+  multiple at all. An 8.2 MiB alpine rootfs costs **76 MiB** of VHDX; 74.3 and
+  76.9 MiB both cost 172. The cost is a fixed floor, so the entry's estimate was
+  wrong in the direction that fails: it would have permitted an import that
+  could not finish.
+- **`WSL-07`.** The entry described writing `/etc/wsl.conf` and terminating.
+  ⛔ Most OCI base images do not ship systemd, so that alone is a flag nothing
+  reads: `alpine:3.22`, `ubuntu:24.04` and `fedora:41` have no
+  `/usr/lib/systemd/systemd`, and written into ubuntu the flag did nothing and
+  said nothing. The switch now verifies `/proc/1/comm` and refuses.
+- **`WSL-08`.** The mechanism is expand-**then-re-parse**, not "as though double
+  quoted". `$HOME` is harmless and `$PATH` is fatal, because the hazard is what
+  the value contains. And a bracket and a single quote DO survive: `WSL-12` was
+  the double quote being dropped on 5.1, one character to the left of where it
+  was read.
+- **`WSL-12`, from the previous session.** Its fix removed brackets from the
+  probe. That was treating a symptom. The probe now carries that exact line
+  again, brackets and double quotes included, and works on 5.1.
+
+### ⚠ Two defects the work introduced and the gate caught
+
+Both are written into their entries. They are here because they are the shape a
+future session should expect to produce.
+
+- ⛔ **`-TimeoutSeconds 15` timed out after 120 seconds**, for one run. A script
+  parameter IS a script-scoped variable, so a `$script:TimeoutSeconds = 120` in
+  the constants block overwrote whatever the caller passed. ⭐ The refusal was
+  correct and the number was a lie, which is the shape a test asserting only
+  "it refused" passes over.
+- ⛔ **The first transport left an empty file behind whenever the decode
+  failed**, because a redirect creates the file before the decode runs. The
+  mutation that planted a missing decoder is what found it. Both orderings read
+  the same in a diff.
 
 ---
 
 ## ⭐ The work order
 
-**1. ⭐ `WSL-08` FIRST.** ⛔ **The operator ruled on this on 2026-08-27, against
-the earlier ordering.** It is the only remaining entry that is a correctness fix
-rather than a feature, and it is where the defect behind `WSL-12` actually
-lives. Every other open entry adds a payload that crosses the same broken
-transport, so doing `WSL-07`'s `/etc/wsl.conf` write or `WSL-11`'s interactive
-attach first means writing against a channel that is about to change, and risks
-repeating `WSL-12` in a new place.
+**1. `BSD-01` and `BSD-02`.** ⚠ **They are all that is left**, and they are a
+separate session with its own kickoff. ⛔ **Read the ruling at the top of
+[`bsd.md`](bsd.md) before anything else in that file.** The operator ruled twice
+on 2026-08-27: correct the nested-QEMU refusal and rank it honestly, **and**
+treat nesting as the floor rather than the target, because it is a well
+documented technique and what is wanted is a better one that avoids its limits.
+⛔ A session that opens by building the nested stack has skipped the ask.
 
-⭐ **Read its premise first.** The per-character measurement is already in the
-entry, `Write-DistroFile` already implements the channel that works, and
-⛔ **two payloads inside the script have to move to that channel in the same
-change**: the smoke probe in `Invoke-ActionNew`, and the script
-`Write-DistroFile` itself sends. Both are currently hand-written inside the safe
-alphabet, which is a constraint no check enforces.
+**2. ⚠ Nothing else is open.** `wsl-ephemeral.ps1` has no open entry. If the
+next session is not the BSD one, the honest options are to work an intake into
+new entries per
+[`../docs/methodology/authoring.md`](../docs/methodology/authoring.md), or to
+take one of the three suggestions below, none of which is filed.
 
-**2. `WSL-06`, `WSL-07`, `WSL-09`, `WSL-10`, `WSL-11`.** The tail, after the
-transport is sound. All S, all independent of each other.
+### ⚠ Three things worth an entry, none of them filed
 
-**3. `BSD-01` and `BSD-02`.** ⚠ A separate session with its own kickoff.
-⛔ **Read the ruling at the top of [`bsd.md`](bsd.md) before anything else in
-that file.** The operator ruled twice on 2026-08-27: correct the nested-QEMU
-refusal and rank it honestly, **and** treat nesting as the floor rather than the
-target, because it is a well documented technique and what is wanted is a better
-one that avoids its limits. ⛔ A session that opens by building the nested stack
-has skipped the ask.
+⛔ **Not filed, because filing an entry nobody asked for is how a backlog stops
+meaning anything.** Recorded so they are not re-derived.
+
+- ⭐ **`Azathothas/TEMPLATE` carries `git-sync.ps1` with `TOOL-03`'s defect**,
+  because that is where this copy came from. A commit made there can still be
+  authored by a gate string. It is that repository's change to make.
+- **The tooling this repository grew is not in the template**: `check-gate`,
+  `check-record`, `check-binfmt`, `set-record.mjs`, `check-powershell.ps1`.
+  Backporting is the template's decision, and issues proposing it were opened
+  there in the first session.
+- ⚠ **`-Command`, `-CommandFile`, `-OciEnv` and `-Systemd` are silently ignored
+  by the actions they do not apply to**, which the parameter table documents.
+  Refusing instead would be stricter and would be a break.
 
 ---
 
@@ -143,12 +167,13 @@ alongside the WSL2 podman machine, so the two coexist; and `/dev/kvm` is present
 inside the WSL2 utility VM with `kvm_intel.nested=Y`, so nesting there would be
 accelerated rather than emulated.
 
-### 2. Should `WSL-08` keep `-Command` working for simple commands?
+### 2. ⭐ RULED by the work, 2026-08-27. `WSL-08` kept `-Command`.
 
-⭐ **Recommendation: yes, and it is now more than a convenience.** The entry
-already decided to keep it. The measurement changes the reason: `-Command` is
-not merely awkward, it is wrong for any payload with a `$` or a backtick, so
-"keep it for simple commands" has to ship with the safe alphabet written down.
+It is closed. The answer the measurement forced is worth keeping: `-Command` is
+correct for anything now, not merely for simple commands, because the payload no
+longer crosses a shell that can reach into it. ⚠ **The residual is one layer
+up**: Windows PowerShell 5.1 drops a double quote when it builds a child
+process's argument list, so a scripted 5.1 caller wants `-CommandB64`.
 
 ### 3. Are `RULES.md`, `HUMAN.md` and `SECURITY.md` wanted?
 

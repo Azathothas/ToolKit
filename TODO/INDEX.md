@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 17  open 2  blocked 0  done 15
+total 18  open 2  blocked 0  done 16
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
-| P0 | 0 | 0 | 2 | 2 |
+| P0 | 0 | 0 | 3 | 3 |
 | P1 | 1 | 0 | 5 | 6 |
 | P2 | 0 | 0 | 5 | 5 |
 | P3 | 1 | 0 | 3 | 4 |
-| **all** | **2** | **0** | **15** | **17** |
+| **all** | **2** | **0** | **16** | **18** |
 
 ---
 
@@ -35,6 +35,7 @@ total 17  open 2  blocked 0  done 15
 | DOC-01 | P2 | S | done | A `binfmt_misc` check for the podman machine on WSL2 | [`tooling.md`](tooling.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
+| TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
