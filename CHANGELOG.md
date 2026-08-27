@@ -21,6 +21,28 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T11:45:00Z: an Enter action, so the interactive path is first class
+
+**Record:** `WSL-11` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed
+in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⭐ **`-Action Enter -Name eph-...` attaches a shell**, honouring `-User` and
+returning the shell's exit code. The summary `New` prints now names it instead
+of telling the reader to run `wsl -d ...` by hand.
+
+- ⛔ **It sends no command**, which is the whole feature: with one, everything
+  typed goes nowhere. Proven by planting the command back and watching stdin be
+  ignored.
+- ⛔ **`-TimeoutSeconds` does not apply.** A person in a shell is not a wedged
+  init.
+- ⚠ **It reaches only distros this script created**, because the name is
+  prefix-forced: `-Name podman-machine-default` asks for
+  `eph-podman-machine-default` and is refused.
+- ⚠ **A human TTY session was not driven**, because this harness has no
+  terminal to allocate. What was driven is everything under it: stdin belongs
+  to the guest shell, `-User` selects the account, and the exit code comes back.
+
 ### 2026-08-27T11:30:00Z: a generated name that collides is drawn again
 
 **Record:** `WSL-10` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed

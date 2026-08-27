@@ -1264,7 +1264,7 @@ fail on a one-in-1.68-million collision now succeeds. Not a break.
 **Source** issue 3, part 3.12. ⚠ Missed on the first pass through the issue and
 added on review; the fourteen findings map to eleven entries and three
 documentation notes, and this was briefly neither.
-**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** done
 
 **Problem.** The summary after `New` tells the user to run `wsl -d DISTRO` by
 hand, so the interactive path is the only one that is not first class.
@@ -1276,3 +1276,70 @@ further interactive handling later.
 
 **Prove.** `-Action Enter -Name eph-...` attaches an interactive shell as
 `-User`, and a name that is not registered is refused with a clear message.
+
+### Closed 2026-08-27
+
+**What changed.** `Enter` joins the `ValidateSet` and `Invoke-ActionEnter` hands
+`wsl.exe` the distro and the user **and nothing else**. The summary `New` prints
+now says `-Action Enter -Name ...` instead of `wsl -d ...`, which is the half of
+the Problem statement that was about the tool telling users to leave it.
+
+⛔ **Sending no command is the design, not an omission.** Routing this through
+`Invoke-InDistro` would produce a shell reading a script, and a shell reading a
+script ignores the terminal. `-TimeoutSeconds` does not apply either: a person
+sitting in a shell is not a wedged init.
+
+### ⚠ What the acceptance can and cannot reach
+
+⛔ **This harness has no terminal to allocate, so a human TTY session was not
+driven.** Said plainly rather than implied. What was driven is everything the
+TTY sits on top of: stdin belongs to the guest's shell, `-User` selects the
+account, and the shell's exit code comes back.
+
+⭐ **stdin came from a file, not a PowerShell pipe**, and the first attempt is
+worth recording because it failed for a reason this repository already
+documents. Piping `exit 9` from PowerShell produced:
+
+```text
+-sh: exit: line 1: Illegal number: 9
+```
+
+⚠ That is `docs/conventions/shell.md` section 1: PowerShell's native-command
+pipe is not byte-exact and appends CRLF, so the guest read `exit 9<CR>`. Not a
+defect in `Enter`; a defect in the first acceptance, and it would have been
+recorded as a mysterious exit 2 by anyone who did not know that rule.
+
+**Acceptance.** Both hosts, stdin from an LF file, each code read from the
+process that produced it.
+
+| what | pwsh 7.6.5 | Windows PowerShell 5.1 |
+| --- | --- | --- |
+| stdin reaches the shell: `id -un`, `cat /proc/1/comm`, `exit 9` | `root`, `init(eph-w10tak...)`, **exit 9** | identical |
+| `-User tester` honoured, `id -un` | `tester`, exit 0 | identical |
+| held 12s past a `-TimeoutSeconds 5` bound | ⭐ `still-here`, **exit 3 after 12s** | exit 3 after 13s |
+| `-Name eph-does-not-exist` | exit 1, message names `-Action List` and `-Action New` | |
+| `-Name podman-machine-default` | ⭐ exit 1: prefix-forced to `eph-podman-machine-default`, which is not registered | |
+| `-Name` omitted | exit 1, `Action Enter requires -Name.` | |
+
+⭐ The third row is the one that proves the timeout exclusion, and the fifth is
+the safety property: `Enter` cannot reach a distro this script did not create.
+
+**Mutation proof, both guards.**
+
+| planted | result |
+| --- | --- |
+| the registration check removed | ⛔ WSL's own `Wsl/Service/WSL_E_DISTRO_NOT_FOUND`, and **exit -1**, which is not one of this script's documented codes |
+| `Enter` sends `-- /bin/sh -lc :`, the shape `Run` has | ⛔ **stdin ignored entirely**: nothing printed, **exit 0** instead of 9 |
+
+⭐ The second row is the one worth keeping. "It sends no command" reads like a
+detail and it is the whole feature: with a command, everything the user types
+goes nowhere and the session exits immediately, successfully.
+
+⚠ **`-Ephemeral` was NOT added to `Enter`.** Attach-then-destroy is a plausible
+thing to want and nobody has asked for it. `WSL-03` set the precedent for
+machinery with no caller; it is one line to add when something needs it.
+
+**Consumers.** Adding an action to a `ValidateSet`. Nothing renamed, no exit
+code changed meaning. Not a break.
+
+---

@@ -21,6 +21,7 @@
 .PARAMETER Action
     New     Create an ephemeral distro (from -Image or -Tarball).
     Run     Run a command inside an existing ephemeral distro.
+    Enter   Attach an interactive shell to an existing ephemeral distro.
     List    List ephemeral distros, and show what else exists (never touched).
     Remove  Unregister one ephemeral distro and delete its disk.
     Purge   Remove ALL ephemeral distros (prefix-matched only).
@@ -172,7 +173,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('New', 'Run', 'List', 'Remove', 'Purge')]
+    [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge')]
     [string]$Action,
 
     [string]$Image,
@@ -1346,7 +1347,7 @@ function Invoke-ActionNew {
             Write-Host ""
             Write-Host "  Distro : $distro"        -ForegroundColor White
             Write-Host "  Disk   : $target"        -ForegroundColor White
-            Write-Host "  Enter  : wsl -d $distro" -ForegroundColor White
+            Write-Host "  Enter  : -Action Enter -Name $distro" -ForegroundColor White
             Write-Host "  Remove : -Action Remove -Name $distro -Force" -ForegroundColor White
         }
     }
@@ -1411,6 +1412,44 @@ function Invoke-ActionRun {
     }
     $rc = 0
     Invoke-InDistro -DistroName $distro -RunAs $User -ScriptBytes $script:CommandBytes -ExitCode ([ref]$rc)
+    exit $rc
+}
+
+function Invoke-ActionEnter {
+    <#
+      An interactive shell in an existing ephemeral distro.
+
+      ⛔ IT SENDS NO COMMAND, and that is the whole difference from Run. No
+      '--', no '/bin/sh -lc', and no base64 transport: wsl.exe is handed the
+      distro and the user and nothing else, so the guest's login shell owns the
+      terminal. Routing this through Invoke-InDistro would produce a shell
+      reading a script, which is not an interactive session.
+
+      ⛔ IT IS NOT BOUNDED BY -TimeoutSeconds either. A person sitting in a
+      shell is not a wedged init, and a tool that kills their session after two
+      minutes is broken.
+
+      ⚠ The name is prefix-forced like every other action, so -Name
+      podman-machine-default asks for 'eph-podman-machine-default' and is
+      refused as unregistered. This action cannot reach a distro the script did
+      not create.
+    #>
+    if (-not $Name) { throw "Action Enter requires -Name." }
+    $distro = Resolve-DistroName -Requested $Name -FromImage ''
+    if ((Get-WslDistroNames) -notcontains $distro) {
+        throw ("Distro '$distro' is not registered. '-Action List' shows the ones that are, " +
+               "and '-Action New' creates one.")
+    }
+
+    Write-Step "Attaching to '$distro' as '$User'. Leave it with exit, or Ctrl-D."
+    $rc = 1
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & (Get-WslExe) -d $distro -u $User
+        if ($null -ne $LASTEXITCODE) { $rc = [int]$LASTEXITCODE }
+    }
+    finally { $ErrorActionPreference = $prev }
     exit $rc
 }
 
@@ -1506,6 +1545,7 @@ try {
     switch ($Action) {
         'New'    { Invoke-ActionNew }
         'Run'    { Invoke-ActionRun }
+        'Enter'  { Invoke-ActionEnter }
         'List'   { Invoke-ActionList }
         'Remove' {
             if (-not $Name) { throw "Action Remove requires -Name." }

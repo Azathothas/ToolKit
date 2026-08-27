@@ -53,6 +53,7 @@ with a message rather than silently when there is no network.
 | --- | --- |
 | `New` | create a distro from `-Image` or `-Tarball`, optionally run `-Command`, optionally destroy it again with `-Ephemeral` |
 | `Run` | run `-Command` inside an existing ephemeral distro named by `-Name` |
+| `Enter` | attach an interactive shell to an existing ephemeral distro, as `-User` |
 | `List` | list ephemeral distros, every other distro, which it never touches, and any orphaned rootfs tarball |
 | `Remove` | unregister one ephemeral distro and delete its disk |
 | `Purge` | remove every ephemeral distro, prefix-matched only, and every orphaned rootfs tarball |
@@ -63,11 +64,11 @@ with a message rather than silently when there is no network.
 | --- | --- | --- |
 | `-Image` | `New` | OCI reference, for example `alpine:3.22` or `debian:bullseye-slim`. Needs podman or docker. |
 | `-Tarball` | `New` | path to a rootfs `.tar` to import instead. Needs no container engine. |
-| `-Name` | `New` `Run` `Remove` | distro name. Generated when omitted. The `eph-` prefix is added if missing. ⭐ A **generated** name that collides is drawn again, up to 8 times; a name **you** gave that collides is refused, because silently using a different one would be worse. |
+| `-Name` | `New` `Run` `Enter` `Remove` | distro name. Generated when omitted. The `eph-` prefix is added if missing. ⭐ A **generated** name that collides is drawn again, up to 8 times; a name **you** gave that collides is refused, because silently using a different one would be worse. |
 | `-Command` | `New` `Run` | shell command, run through `/bin/sh -lc`. Carried as base64 and sourced in the guest, so quotes, `$`, backticks and tabs arrive byte-exact. |
 | `-CommandFile` | `New` `Run` | path to a file **on this machine** whose bytes are the command. Read verbatim, so a multi-line script works. |
 | `-CommandB64` | `New` `Run` | the command as base64 of its UTF-8 bytes. ⭐ The one to use from a script, and the only one that survives Windows PowerShell 5.1 when this tool is launched as a child process. |
-| `-User` | `New` `Run` | user inside the distro. Default `root`. |
+| `-User` | `New` `Run` `Enter` | user inside the distro. Default `root`. |
 | `-Ephemeral` | `New` | run `-Command`, then destroy the distro |
 | `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
 | `-Systemd` | `New` | write `/etc/wsl.conf` enabling systemd, restart the distro, and ⛔ refuse if systemd did not become PID 1. Most base images do not ship systemd; see below. |
@@ -321,6 +322,35 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-x -CommandB64 $b64
 endings makes `/bin/sh` read the carriage return as part of the last word on
 each line. The tool warns and does not rewrite the file: silently editing
 somebody's payload is the failure this whole channel exists to remove.
+
+---
+
+## Attaching a shell, with `Enter`
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Enter -Name eph-alpine-3.22-a1b2
+```
+
+Leave it with `exit` or Ctrl-D. The shell's exit code is the script's.
+
+⛔ **`Enter` sends no command at all**, and that is the whole difference from
+`Run`. No `--`, no `/bin/sh -lc`, no base64 transport: `wsl.exe` is handed the
+distro and the user and nothing else, so the guest's login shell owns the
+terminal. ⚠ Route it through the command channel and it becomes a shell reading
+a script, which ignores anything you type.
+
+⛔ **`-TimeoutSeconds` does not apply to it.** A person sitting in a shell is not
+a wedged init.
+
+⚠ **It reaches only distros this script created.** The name is prefix-forced
+like everywhere else, so `-Action Enter -Name podman-machine-default` asks for
+`eph-podman-machine-default` and is refused as unregistered.
+
+| situation | what you get |
+| --- | --- |
+| the distro is registered | a login shell as `-User`, and its exit code |
+| the distro is not registered | exit 1, and the message names `-Action List` and `-Action New` |
+| `-Name` omitted | exit 1, `Action Enter requires -Name.` |
 
 ## Orphaned rootfs tarballs
 
