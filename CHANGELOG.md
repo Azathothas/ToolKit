@@ -21,6 +21,26 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T10:35:00Z: a disk-space preflight, against a measured floor
+
+**Record:** `WSL-06` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed
+in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⭐ **`New` now refuses an import the volume cannot hold**, before `--import`
+runs and before anything is registered. Running out midway left a partial VHDX
+and a broken registration.
+
+- ⛔ **The entry's own estimate was wrong and the measurement is in the closure.**
+  "Roughly twice the rootfs size" is not the rule: an 8.2 MiB alpine rootfs
+  costs **76 MiB** of VHDX and a 76.9 MiB ubuntu one costs 172 MiB. The cost is
+  a fixed floor plus a small multiple, so the requirement is `256 MiB + 2x the
+  tarball`, set above every measured row rather than fitted to them.
+- ⚠ **A volume whose free space cannot be read is imported anyway, and says
+  so.** That is a third answer and it is treated as one.
+- ⚠ **New behaviour for a caller:** `New` can now exit 1 where it used to start
+  an import. Nothing renamed, no exit code changed meaning.
+
 ### 2026-08-27T10:13:41Z: a command channel that survives both shells
 
 **Record:** `WSL-08` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed

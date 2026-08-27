@@ -119,6 +119,50 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 
 ---
 
+## The disk-space preflight
+
+`New` measures free space on the volume that will hold the disk, before
+`--import`, and **refuses** when there is not enough. Running out midway leaves
+a partial VHDX and a registered distro that does not work, and unpicking that is
+a job the user did not ask for.
+
+```text
+  * space: 272 MiB needed, 438,292 MiB free
+```
+
+⛔ **A refusal happens before anything is registered.** The message names what
+is needed, what is free, and which volume:
+
+```text
+ERROR: NOT ENOUGH DISK SPACE to import '...\eph-x'. Need about 1,000,015 MiB
+and 438,292 MiB is free on the volume holding C:\. Nothing has been imported
+and nothing is registered. Free some space, or point LOCALAPPDATA at a volume
+that has it, and run this again.
+```
+
+### ⚠ The requirement is a floor plus a multiple, and the floor is what matters
+
+⛔ **"Roughly twice the rootfs size" is wrong**, and it is what this was
+originally going to say. Measured on 2026-08-27 on this machine, VHDX size on
+disk against the rootfs tarball that produced it:
+
+| image | rootfs `.tar` | VHDX on disk | ratio |
+| --- | --- | --- | --- |
+| `alpine:3.22` | 8.2 MiB | 76.0 MiB | ⛔ 9.27x |
+| `python:3.13-alpine` | 45.4 MiB | 140.0 MiB | 3.08x |
+| `debian:bookworm-slim` | 74.3 MiB | 172.0 MiB | 2.31x |
+| `ubuntu:24.04` | 76.9 MiB | 172.0 MiB | 2.24x |
+
+⭐ **An 8 MiB rootfs costs 76 MiB**, so the cost is dominated by a fixed floor
+rather than by a multiple of the input. The check asks for **256 MiB plus twice
+the tarball**, which is above every row above with room to spare. ⚠ It is
+deliberately not fitted to them: a preflight that is tight refuses an import
+that would have worked, which is a worse failure than the one it prevents.
+
+⚠ **A volume whose free space cannot be read is imported anyway, and says so.**
+"I could not measure" is a third answer, and treating it as either of the other
+two would be a lie in one direction or a needless refusal in the other.
+
 ## The command channel
 
 ⭐ **A command is carried as base64 and sourced inside the distro.** Nothing is
@@ -376,7 +420,6 @@ being true the moment one of them was closed as a decision.
 | limit | what it means for you |
 | --- | --- |
 | ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
-| ⚠ no disk-space preflight | export plus import needs roughly twice the rootfs size on the `%LOCALAPPDATA%` volume. Running out midway leaves a partial VHDX and a registered distro that does not work. |
 | ⚠ no systemd | an imported distro has no `/etc/wsl.conf`, so `systemctl` is unavailable and units, timers and services cannot be tested. |
 | ⚠ on Windows PowerShell 5.1, a `-Command` value loses its double quotes when this tool is launched as a child process | 5.1 drops them building the child's argument list, before this script sees anything, so nothing here can recover them. ⭐ Use `-CommandB64`. Not an open item: it is 5.1's argument handling, one layer above this tool. See the command channel section. |
 | ⚠ the smoke probe has no timeout | a distro whose init wedges hangs the script with no output. |

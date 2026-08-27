@@ -135,6 +135,16 @@
     alpine:latest, and the next unqualified pull is a no-op that exports a
     rootfs nothing in it can execute.
 
+    SPACE -- New checks the target volume before --import and REFUSES rather
+    than warning, because running out midway leaves a partial VHDX and a
+    registered distro that does not work. The requirement is a floor plus a
+    multiple of the rootfs tarball, and the entry that asked for this was
+    wrong about the shape of it: measured here, an 8 MiB rootfs costs 76 MiB
+    and a 77 MiB one costs 172 MiB, so the FLOOR dominates and "roughly twice
+    the rootfs" is not the rule. The numbers are in Assert-EnoughDiskSpace.
+    A volume whose free space cannot be read is SAID SO and imported anyway;
+    a preflight that skipped is not a preflight that passed.
+
     Requires : Windows 10 2004+ / Windows 11 with WSL2.
     Optional : podman or docker (only for -Image).
     Tested on: Windows PowerShell 5.1 and PowerShell 7+.
@@ -180,6 +190,14 @@ $ErrorActionPreference = 'Stop'
 # --------------------------------------------------------------------------------------
 $script:Prefix  = 'eph-'
 $script:BaseDir = Join-Path $env:LOCALAPPDATA 'wsl-ephemeral'
+
+# What --import costs on the target volume, as a floor plus a multiple of the
+# rootfs tarball. ⛔ Both are set ABOVE every measurement in
+# Assert-EnoughDiskSpace rather than fitted to them: a tight preflight refuses
+# an import that would have worked, which is a worse failure than the one it
+# prevents. The floor is what matters, because an 8 MiB rootfs still costs 76.
+$script:ImportSpaceFactor = 2
+$script:ImportSpaceFloor  = 256MB
 
 # Names that must NEVER be unregistered, even if somebody prefixes them.
 $script:Protected = @(
@@ -851,6 +869,74 @@ function New-OciEnvScript {
 # --------------------------------------------------------------------------------------
 # Actions
 # --------------------------------------------------------------------------------------
+function Get-VolumeFreeBytes {
+    <#
+      Free bytes on the volume a path lives on, or $null when that cannot be
+      read. AvailableFreeSpace rather than TotalFreeSpace: a quota'd volume can
+      have plenty of the second and none of the first, and the import fails on
+      the first.
+
+      $null is a THIRD answer and the caller treats it as one. "I could not
+      measure" is not "there is room", and it is not a reason to refuse either.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Path)
+    try {
+        $root = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($Path))
+        if ([string]::IsNullOrWhiteSpace($root)) { return $null }
+        $drive = New-Object IO.DriveInfo $root
+        if (-not $drive.IsReady) { return $null }
+        return [int64]$drive.AvailableFreeSpace
+    }
+    catch { $null = $_; return $null }
+}
+
+function Assert-EnoughDiskSpace {
+    <#
+      Running out of space midway through --import leaves a partial VHDX and a
+      registered distro that does not work, which the user then has to unpick.
+      Refusing before the import is recoverable; that is the whole trade.
+
+      ⚠ THE FACTOR IS MEASURED, NOT ASSUMED. The entry that asked for this said
+      an import needs "roughly twice the rootfs size" and flagged the two as an
+      estimate. It is not a multiple at all. Measured on this machine on
+      2026-08-27, VHDX size on disk against the rootfs tarball that produced it:
+
+        alpine:3.22          8.2 MiB tar ->  76 MiB vhdx   9.27x
+        python:3.13-alpine  45.4 MiB tar -> 140 MiB vhdx   3.08x
+        debian:bookworm     74.3 MiB tar -> 172 MiB vhdx   2.31x
+        ubuntu:24.04        76.9 MiB tar -> 172 MiB vhdx   2.24x
+
+      The cost is dominated by a FIXED FLOOR, not by a multiple: an 8 MiB
+      rootfs still costs 76 MiB. So the requirement is a floor plus a multiple,
+      and both are set above every measurement rather than fitted to them. A
+      preflight that is tight is a preflight that refuses a working import.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$TarballPath,
+        [Parameter(Mandatory = $true)][string]$TargetDir
+    )
+    $tar  = (Get-Item -LiteralPath $TarballPath).Length
+    $need = ($tar * $script:ImportSpaceFactor) + $script:ImportSpaceFloor
+    $free = Get-VolumeFreeBytes -Path $TargetDir
+
+    if ($null -eq $free) {
+        # ⛔ Named, not silent. A preflight that skipped is not a preflight
+        # that passed, and the import is still worth attempting.
+        Write-Warn ("could not read free space for '$TargetDir'; importing without the preflight. " +
+                    "If the volume is full, the import will leave a partial disk.")
+        return
+    }
+
+    Write-Ok ("space: {0:N0} MiB needed, {1:N0} MiB free" -f ($need / 1MB), ($free / 1MB))
+    if ($free -ge $need) { return }
+
+    throw ("NOT ENOUGH DISK SPACE to import '$TargetDir'. " +
+           ("Need about {0:N0} MiB and {1:N0} MiB is free" -f ($need / 1MB), ($free / 1MB)) +
+           (" on the volume holding {0}." -f [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($TargetDir))) +
+           " Nothing has been imported and nothing is registered. Free some space, or point" +
+           " LOCALAPPDATA at a volume that has it, and run this again.")
+}
+
 function Remove-EphemeralDistro {
     param(
         [Parameter(Mandatory = $true)][string]$DistroName,
@@ -929,6 +1015,8 @@ function Invoke-ActionNew {
             $tempTar = $true
             Export-ImageRootfs -ImageRef $Image -OutFile $tarPath
         }
+
+        Assert-EnoughDiskSpace -TarballPath $tarPath -TargetDir $target
 
         Write-Step "Importing as WSL2 distro '$distro'"
         $wsl = Get-WslExe

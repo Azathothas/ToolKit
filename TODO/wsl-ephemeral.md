@@ -625,7 +625,7 @@ working purge red: `Purge -Force` with nothing to do exits 0 and says
 ## WSL-06. Disk-space preflight before import
 
 **Source** issue 3, part 3.8.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** done
 
 **Problem.** Running out of space midway leaves a partial VHDX and a registered
 distro that does not work.
@@ -642,6 +642,100 @@ VHDX and a broken registration is a state the user has to be told how to unpick.
 
 **Prove.** With a deliberately low threshold, the command refuses before
 `--import` runs and registers nothing. `wsl --list --quiet` is unchanged.
+
+### Closed 2026-08-27
+
+**What changed.** `Assert-EnoughDiskSpace` runs between the export and the
+`--import`, and throws when the volume is short. `Get-VolumeFreeBytes` reads
+`AvailableFreeSpace` rather than `TotalFreeSpace`, because a quota'd volume can
+have plenty of the second and none of the first, and it is the first the import
+spends.
+
+### ⛔ The premise's factor of two is wrong, and it is not a multiple at all
+
+⛔ **Written underneath, not edited in.** The entry said an import needs
+"roughly twice the rootfs size" and flagged the two as an estimate to be
+measured before it went into a message. Measured on this machine on
+2026-08-27, VHDX size **on disk** against the tarball that produced it:
+
+| image | rootfs `.tar` | VHDX on disk | ratio |
+| --- | --- | --- | --- |
+| `alpine:3.22` | 8.2 MiB | 76.0 MiB | ⛔ **9.27x** |
+| `python:3.13-alpine` | 45.4 MiB | 140.0 MiB | 3.08x |
+| `debian:bookworm-slim` | 74.3 MiB | 172.0 MiB | 2.31x |
+| `ubuntu:24.04` | 76.9 MiB | 172.0 MiB | 2.24x |
+
+⭐ **The cost is dominated by a fixed floor.** An 8 MiB rootfs costs 76 MiB,
+and the two 75-ish MiB rootfs images cost the same 172 MiB as each other. A
+rule written as "twice the rootfs" would have asked for 16 MiB where 76 was
+needed, which is the direction that fails: it would have let an import start
+that could not finish, which is the exact outcome this entry exists to prevent.
+
+⚠ **Two alpine imports measured 76.0 MiB each**, so the floor is reproducible
+rather than one sample. Sizes are read with `GetCompressedFileSizeW`, because a
+VHDX is sparse and its logical length is not what the volume loses. On these
+five files the two agreed exactly.
+
+**The requirement is `256 MiB + 2 x tarball`.** ⛔ Set above every row rather
+than fitted to them. A preflight that is tight refuses an import that would
+have worked, and that is a worse failure than the one being prevented.
+
+**Decision kept.** Refuse, not warn, as the entry decided. ⚠ **No parameter was
+added** to override the threshold. `WSL-03` set the precedent: a parameter with
+no caller is machinery with a maintenance cost and no benefit. The mutation
+below is how the refusal was driven instead.
+
+**Mutation proof.** The floor was raised above the volume's free space, which
+is the same arithmetic a full volume produces:
+
+```text
+  * rootfs: 8.2 MiB
+  * space: 1,000,015 MiB needed, 438,292 MiB free
+  ! creation failed; rolling back
+  * deleted C:\...\wsl-ephemeral\eph-w06full
+  * deleted C:\...\wsl-ephemeral\eph-w06full.tar
+ERROR: NOT ENOUGH DISK SPACE to import 'C:\...\eph-w06full'. Need about
+1,000,015 MiB and 438,292 MiB is free on the volume holding C:\. Nothing has
+been imported and nothing is registered. Free some space, or point LOCALAPPDATA
+at a volume that has it, and run this again.
+  exit=1
+```
+
+| asserted afterwards | |
+| --- | --- |
+| `wsl --list --quiet` | ⭐ byte-identical to before the run |
+| the distro directory | gone |
+| the rootfs tarball | gone |
+
+**The third branch is proven too.** `Get-VolumeFreeBytes` returning `$null` is
+"I could not measure", which is neither of the other two answers. Mutated to
+return `$null`:
+
+```text
+  ! could not read free space for 'C:\...\eph-alpine-3.22-x9gw'; importing
+    without the preflight. If the volume is full, the import will leave a
+    partial disk.
+ran-anyway
+  exit=0
+```
+
+⭐ It says so and imports anyway. A preflight that skipped is not a preflight
+that passed, and refusing on an unreadable volume would break the tool on a
+machine that was fine.
+
+**Acceptance, the happy path, both hosts.** Each code read from the process
+that produced it.
+
+| host | run | exit |
+| --- | --- | --- |
+| PowerShell 7.6.5 | `New -Image alpine:3.22 -Command 'echo ok' -Ephemeral -Force` | 0, `space: 272 MiB needed, 438,304 MiB free` |
+| Windows PowerShell 5.1 | the same | 0, `space: 272 MiB needed, 438,298 MiB free` |
+
+⚠ **What is NOT reproduced: a genuinely full volume.** The guard is proven to
+fire, to fire before `--import`, and to leave nothing behind. Whether a real
+out-of-space `--import` fails the way the Problem statement describes is still
+unmeasured here, and filling a 428 GiB volume to find out would be a poor
+trade. Same shape as `WSL-04`'s race, and it is said rather than implied.
 
 ---
 
