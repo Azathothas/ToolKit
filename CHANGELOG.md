@@ -21,6 +21,27 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T10:55:00Z: optional systemd, and a switch that checks its own effect
+
+**Record:** `WSL-07` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed
+in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⭐ **`-Systemd` writes `/etc/wsl.conf`, restarts the distro, and refuses if
+systemd did not become PID 1.** Units, timers and `systemctl` are testable in a
+throwaway distro now.
+
+- ⛔ **Most OCI base images do not ship systemd**, which is the catch and it is
+  measured: `alpine:3.22`, `ubuntu:24.04` and `fedora:41` have no
+  `/usr/lib/systemd/systemd`; `almalinux:9` has.
+- ⛔ **Writing the flag into an image without it does nothing and says
+  nothing.** `ubuntu:24.04` carried on with its own init silently. That is a
+  flag no code reads, so the switch verifies `/proc/1/comm` and fails loudly
+  instead of handing back a distro the caller believes has systemd.
+- ⚠ `wsl: Failed to start the systemd user session for 'root'` appears on a
+  WORKING systemd distro. It is not the failure signal.
+- ⚠ The restart costs about 11 seconds before the first command answers.
+
 ### 2026-08-27T10:35:00Z: a disk-space preflight, against a measured floor
 
 **Record:** `WSL-06` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed

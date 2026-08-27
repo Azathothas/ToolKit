@@ -61,6 +61,11 @@
     as /etc/profile.d/10-oci-env.sh. Off by default, because turning it on
     changes PATH for every caller of a shape they already depend on.
 
+.PARAMETER Systemd
+    With -Action New: write /etc/wsl.conf enabling systemd, restart the distro
+    so WSL reads it, and REFUSE if systemd did not become PID 1. Most OCI base
+    images do not ship systemd at all; see Enable-DistroSystemd.
+
 .PARAMETER Force
     Required for destructive actions when non-interactive. Skips confirmation.
 
@@ -159,7 +164,7 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
     Justification = 'This is an interactive console tool. Its entire output is progress and a summary for a human at a terminal, which is the documented case for Write-Host. Nothing here is a value another script consumes: Run exits with the inner command''s code and callers read that.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
-    Justification = 'Image, Tarball, Command, CommandFile, CommandB64, User, Ephemeral and Force are read by the Invoke-Action* functions through script scope rather than as arguments. The analyzer does not follow that, and threading eight parameters through every call to satisfy it would make the code worse.')]
+    Justification = 'Image, Tarball, Command, CommandFile, CommandB64, User, Ephemeral, OciEnv, Systemd and Force are read by the Invoke-Action* functions through script scope rather than as arguments. The analyzer does not follow that, and threading ten parameters through every call to satisfy it would make the code worse.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
     Justification = 'Get-WslDistroNames returns the whole list and Export-ImageRootfs writes one rootfs whose name simply ends in s. Renaming either to satisfy the rule would make the name describe the thing less accurately.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
@@ -179,6 +184,7 @@ param(
     [string]$User = 'root',
     [switch]$Ephemeral,
     [switch]$OciEnv,
+    [switch]$Systemd,
     [switch]$Force
 )
 
@@ -799,6 +805,86 @@ function Write-DistroFile {
     }
 }
 
+function Get-DistroOutput {
+    <#
+      Runs a payload inside a distro and RETURNS what it printed. Invoke-InDistro
+      is the other half of the same pair: it STREAMS, because a caller's command
+      has to be visible while it runs, and this one captures, because the script
+      itself needs to read an answer.
+
+      Two shapes, ONE transport: both build the command through
+      ConvertTo-DistroScriptCommand, so a payload the script asks a question
+      with cannot drift onto a channel the caller's payload is not using.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$DistroName,
+        [Parameter(Mandatory = $true)][string]$RunAs,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$ScriptBytes,
+        [Parameter(Mandatory = $true)][ref]$ExitCode
+    )
+    $ExitCode.Value = 1
+    $line = ConvertTo-DistroScriptCommand -ScriptBytes $ScriptBytes -GuestPath (New-GuestScratchPath)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & (Get-WslExe) -d $DistroName -u $RunAs -- /bin/sh -lc $line 2>&1
+        if ($null -ne $LASTEXITCODE) { $ExitCode.Value = [int]$LASTEXITCODE }
+    }
+    finally { $ErrorActionPreference = $prev }
+    return ($out | Out-String)
+}
+
+function Enable-DistroSystemd {
+    <#
+      Writes /etc/wsl.conf, restarts the distro so WSL reads it, and then
+      CHECKS THAT SYSTEMD IS ACTUALLY PID 1.
+
+      ⛔ THE CHECK IS THE POINT, not the write. A switch that writes a file
+      nothing acts on is the forbidden pattern in
+      docs/conventions/forbidden-patterns.md twice over: a flag no code reads,
+      and a step that exits 0 having done nothing it was asked to do. The
+      caller would come away believing they had systemd.
+
+      ⚠ Measured on 2026-08-27, and this is why the check is not optional: the
+      OCI base images of alpine:3.22, ubuntu:24.04 and fedora:41 do NOT ship
+      systemd. Written into ubuntu:24.04 the flag did nothing at all and said
+      nothing; written into alpine:3.22 it cost 20 seconds and then did
+      nothing. almalinux:9 does ship it, and there PID 1 became 'systemd' and
+      'systemctl is-system-running' answered 'running'.
+
+      --terminate is what makes wsl.conf take effect. A distro already running
+      keeps the init it started with, so without this the switch appears to
+      work and only the NEXT session gets it.
+    #>
+    param([Parameter(Mandatory = $true)][string]$DistroName)
+
+    Write-Step "Enabling systemd via /etc/wsl.conf"
+    Write-DistroFile -DistroName $DistroName -Path '/etc/wsl.conf' -Content "[boot]`nsystemd=true`n"
+
+    Invoke-Native -FilePath (Get-WslExe) -Arguments @('--terminate', $DistroName) -IgnoreExitCode | Out-Null
+
+    # Delimited on purpose. Windows PowerShell 5.1 wraps captured native stderr
+    # in an error record, so the answer is matched inside a marker rather than
+    # by comparing the whole captured text.
+    $rc = 0
+    $probe = 'printf "WSLEPH_PID1[%s]" "$(cat /proc/1/comm 2>/dev/null)"'
+    $text = Get-DistroOutput -DistroName $DistroName -RunAs 'root' `
+        -ScriptBytes (ConvertTo-Utf8Bytes -Text $probe) -ExitCode ([ref]$rc)
+
+    $match = [regex]::Match($text, 'WSLEPH_PID1\[([^\]]*)\]')
+    $pid1 = if ($match.Success) { $match.Groups[1].Value } else { '' }
+
+    if ($pid1 -eq 'systemd') {
+        Write-Ok "systemd is PID 1"
+        return
+    }
+    throw ("-Systemd was asked for and this distro is NOT running systemd: PID 1 is " +
+           "'$pid1'. The likeliest cause is an image that does not ship systemd, and most " +
+           "do not: measured on 2026-08-27, alpine:3.22, ubuntu:24.04 and fedora:41 have no " +
+           "/usr/lib/systemd/systemd, and almalinux:9 has. Nothing is left registered. " +
+           "Use an image that ships systemd, or drop -Systemd.")
+}
+
 function Get-ImageOciConfig {
     <#
       The image's OCI configuration. 'podman export' writes a FILESYSTEM and no
@@ -1031,49 +1117,47 @@ function Invoke-ActionNew {
         # same transport every -Command does. A guest with no base64, or no
         # /dev/fd, fails HERE, at creation, with a message naming it, instead
         # of at some later Run whose exit code would look like the command's.
-        $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-        try {
-            # NOT A HERE-STRING, ON PURPOSE. docs/conventions/shell.md: Windows
-            # PowerShell 5.1 mis-parses a here-string whose terminator arrives
-            # with a bare LF, and this template's defence is to write none in a
-            # .ps1 at all rather than to rely on .gitattributes reaching every
-            # checkout. An array joined with a newline carries the same script
-            # and no line ending can break it.
-            #
-            # ⭐ THE BRACKET AND THE DOUBLE QUOTE ON THE NOTE LINE ARE
-            # DELIBERATE. That exact line is what WSL-12 was: it reached the
-            # guest as syntax under Windows PowerShell 5.1, every -Action New
-            # failed, and the fix then was to rewrite the payload inside an
-            # alphabet nothing enforced. It is back, unchanged, because the
-            # transport now carries it. If it ever breaks again, this line is
-            # the one that says so, on the host it broke on.
-            $probeScript = @(
-                'echo __WSL_OK__',
-                'for _ in 1 2 3 4 5 6 7 8 9 10; do',
-                '    if [ -d /mnt/c ]; then break; fi',
-                '    sleep 1',
-                'done',
-                'if [ ! -d /mnt/c ]; then echo "note: no /mnt/c (Windows drives not mounted)"; fi',
-                'head -2 /etc/os-release 2>/dev/null || echo "os-release: n/a"'
-            ) -join "`n"
-            $probeLine = ConvertTo-DistroScriptCommand `
-                -ScriptBytes (ConvertTo-Utf8Bytes -Text $probeScript) `
-                -GuestPath (New-GuestScratchPath)
-            $probe = & $wsl -d $distro -u root -- /bin/sh -lc $probeLine 2>&1
-        }
-        finally { $ErrorActionPreference = $prev }
-
-        $probeText = ($probe | Out-String)
+        # NOT A HERE-STRING, ON PURPOSE. docs/conventions/shell.md: Windows
+        # PowerShell 5.1 mis-parses a here-string whose terminator arrives
+        # with a bare LF, and this template's defence is to write none in a
+        # .ps1 at all rather than to rely on .gitattributes reaching every
+        # checkout. An array joined with a newline carries the same script
+        # and no line ending can break it.
+        #
+        # ⭐ THE BRACKET AND THE DOUBLE QUOTE ON THE NOTE LINE ARE
+        # DELIBERATE. That exact line is what WSL-12 was: it reached the
+        # guest as syntax under Windows PowerShell 5.1, every -Action New
+        # failed, and the fix then was to rewrite the payload inside an
+        # alphabet nothing enforced. It is back, unchanged, because the
+        # transport now carries it. If it ever breaks again, this line is
+        # the one that says so, on the host it broke on.
+        $probeScript = @(
+            'echo __WSL_OK__',
+            'for _ in 1 2 3 4 5 6 7 8 9 10; do',
+            '    if [ -d /mnt/c ]; then break; fi',
+            '    sleep 1',
+            'done',
+            'if [ ! -d /mnt/c ]; then echo "note: no /mnt/c (Windows drives not mounted)"; fi',
+            'head -2 /etc/os-release 2>/dev/null || echo "os-release: n/a"'
+        ) -join "`n"
+        $probeRc = 0
+        $probeText = Get-DistroOutput -DistroName $distro -RunAs 'root' `
+            -ScriptBytes (ConvertTo-Utf8Bytes -Text $probeScript) -ExitCode ([ref]$probeRc)
         if ($probeText -notmatch '__WSL_OK__') {
             throw ("Distro imported but /bin/sh did not run, or this rootfs cannot carry a " +
                    "command: the channel needs base64 and /dev/fd inside the guest. " +
-                   "Output: $($probeText.Trim())")
+                   "The probe exited $probeRc. Output: $($probeText.Trim())")
         }
         Write-Ok "'$distro' is up"
         foreach ($l in ($probeText -split "`r?`n")) {
             $t = $l.Trim()
             if ($t -and $t -ne '__WSL_OK__') { Write-Host "    $t" -ForegroundColor DarkGray }
         }
+
+        # Before -OciEnv and before the command, so both run under systemd when
+        # it was asked for. The profile script is on disk and survives the
+        # restart either way.
+        if ($Systemd) { Enable-DistroSystemd -DistroName $distro }
 
         if ($OciEnv) {
             if ($Tarball) {

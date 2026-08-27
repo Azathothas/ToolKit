@@ -742,7 +742,7 @@ trade. Same shape as `WSL-04`'s race, and it is said rather than implied.
 ## WSL-07. Optional systemd via `/etc/wsl.conf`
 
 **Source** issue 3, part 3.9.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** done
 
 **Problem.** An imported distro has no `/etc/wsl.conf`, so systemd does not
 start and nothing involving units, timers or `systemctl` can be tested. That
@@ -756,6 +756,91 @@ the switch in the documentation rather than in a release note.
 
 **Prove.** With the switch, `systemctl is-system-running` answers from inside
 the distro. Without it, the behaviour is unchanged.
+
+### Closed 2026-08-27
+
+**What changed.** `-Systemd` writes `/etc/wsl.conf` through `Write-DistroFile`,
+runs `wsl --terminate` so WSL re-reads it, and then **checks that systemd is
+actually PID 1**. `Get-DistroOutput` is new: it runs a payload through the same
+transport as everything else and returns what it printed, which is what the
+check needs. ⭐ The smoke probe now uses it too, so the script has one capture
+path rather than a second hand-rolled `& $wsl ... 2>&1`.
+
+### ⛔ The switch that only writes the file would have been a lie
+
+⛔ **Measured before the check was written, and it is why the check exists.**
+The entry describes writing `[boot]` and `systemd=true` and terminating. Done
+exactly that and no more, on 2026-08-27:
+
+| image | after the write and `--terminate` |
+| --- | --- |
+| `ubuntu:24.04` | ⛔ PID 1 still `init(...)`. **No error, no delay, no message.** |
+| `alpine:3.22` | ⛔ 20 seconds, then `wsl: Failed to start the systemd user session`, PID 1 still `init` |
+| `almalinux:9` | ⭐ PID 1 `systemd`, `is-system-running` says `running` |
+
+⭐ **Most OCI base images do not ship systemd at all**, which the entry did not
+anticipate and which turns its Approach into a defect: `/usr/lib/systemd/systemd`
+is absent from `alpine:3.22`, `ubuntu:24.04` and `fedora:41`, and present in
+`almalinux:9`. A switch that writes the file into any of the first three is
+`forbidden-patterns.md`'s "a setting or flag that no code reads", and the
+caller comes away believing they have systemd.
+
+So the switch verifies its own effect and refuses when the effect is absent.
+
+**Mutation proof.** The verification was disabled and the same run repeated on
+`alpine:3.22`:
+
+```text
+  * systemd is PID 1
+init
+NO-SYSTEMCTL
+  C exit=0
+```
+
+⛔ **It printed `systemd is PID 1` over a distro whose PID 1 is `init` and
+which has no `systemctl` at all**, and exited 0. That is the synthetic status
+this guard removes, seen.
+
+Restored, the same command:
+
+```text
+==> Enabling systemd via /etc/wsl.conf
+  ! creation failed; rolling back
+ERROR: -Systemd was asked for and this distro is NOT running systemd: PID 1 is
+'init'. The likeliest cause is an image that does not ship systemd, and most do
+not: measured on 2026-08-27, alpine:3.22, ubuntu:24.04 and fedora:41 have no
+/usr/lib/systemd/systemd, and almalinux:9 has. Nothing is left registered. Use
+an image that ships systemd, or drop -Systemd.
+  B exit=1
+```
+
+⭐ `wsl --list --quiet` was byte-identical before and after that refusal.
+
+**Acceptance.** Both hosts, each code read from the process that produced it.
+
+| host | run | result |
+| --- | --- | --- |
+| pwsh 7.6.5 | `New -Image almalinux:9 -Systemd -Command 'systemctl is-system-running; cat /proc/1/comm; systemctl list-units ...'` | ⭐ exit 0, `running`, `systemd`, and real units listed: `dbus-broker.service`, `ldconfig.service` |
+| Windows PowerShell 5.1 | `New -Image almalinux:9 -Systemd -Command '...; exit 4' -Ephemeral` | ⭐ exit **4**, `running`, `systemd`, distro unregistered and the disk gone |
+| both | `New -Image alpine:3.22 -Systemd` | exit 1, refused, nothing registered |
+| both | `New -Image alpine:3.22` with no switch | unchanged, exit 0 |
+
+⚠ **The 5.1 row is doing double duty**: it shows the teardown of a distro
+running systemd works, and that `WSL-01`'s exit-code guarantee survives the
+restart the switch introduces.
+
+### ⚠ Two things the entry did not say, both measured
+
+- ⚠ **`wsl: Failed to start the systemd user session for 'root'` appears on a
+  WORKING systemd distro.** It is about the per-user session, not the system
+  manager, and treating it as the failure signal would have refused
+  `almalinux:9`. `/proc/1/comm` is the fact that decides.
+- ⚠ **The restart costs about 11 seconds** on this machine before the first
+  command answers, because systemd is booting. The entry said `--terminate`
+  "belongs next to the switch in the documentation rather than in a release
+  note", and it is there, with the price attached.
+
+**Consumers.** Adding a switch with a default of off. Not a break.
 
 ---
 

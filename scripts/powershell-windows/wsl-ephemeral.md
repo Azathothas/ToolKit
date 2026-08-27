@@ -70,6 +70,7 @@ with a message rather than silently when there is no network.
 | `-User` | `New` `Run` | user inside the distro. Default `root`. |
 | `-Ephemeral` | `New` | run `-Command`, then destroy the distro |
 | `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
+| `-Systemd` | `New` | write `/etc/wsl.conf` enabling systemd, restart the distro, and ⛔ refuse if systemd did not become PID 1. Most base images do not ship systemd; see below. |
 | `-Force` | destructive actions | required when the session is non-interactive. Skips the confirmation. |
 
 ⛔ `-Image` and `-Tarball` are mutually exclusive, and `New` requires one of
@@ -118,6 +119,56 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 ```
 
 ---
+
+## systemd, with `-Systemd`
+
+An imported distro has no `/etc/wsl.conf`, so WSL starts it with its own `init`
+and nothing involving units, timers or `systemctl` can be tested. `-Systemd`
+writes the file, restarts the distro so WSL reads it, and ⛔ **refuses if
+systemd did not actually become PID 1.**
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action New -Image almalinux:9 -Systemd -Command 'systemctl is-system-running'
+```
+
+```text
+==> Enabling systemd via /etc/wsl.conf
+  * systemd is PID 1
+==> Running command as 'root'
+running
+```
+
+### ⛔ Most OCI base images do not ship systemd, and that is the catch
+
+⚠ **This is the thing to know before reaching for the switch.** Measured on
+2026-08-27:
+
+| image | `/usr/lib/systemd/systemd` | what `-Systemd` does |
+| --- | --- | --- |
+| `almalinux:9` | ⭐ present | PID 1 becomes `systemd`, `is-system-running` says `running` |
+| `alpine:3.22` | absent | ⛔ refused, and nothing is left registered |
+| `ubuntu:24.04` | absent | ⛔ refused |
+| `fedora:41` | absent | ⛔ refused |
+
+⛔ **The refusal is the feature.** Written into an image with no systemd, the
+flag is a setting nothing reads: measured before the check existed, `ubuntu:24.04`
+carried on with its own init and said nothing at all, and `alpine:3.22` spent
+20 seconds failing and then also carried on. A caller would come away believing
+they had systemd. So the switch verifies its own effect by reading `/proc/1/comm`
+and fails loudly when the effect is absent.
+
+⚠ **`wsl: Failed to start the systemd user session for 'root'` is not the
+failure.** It appears on a working systemd distro too. It is about the per-user
+session, not the system manager, and `systemctl is-system-running` answering
+`running` is the fact that matters.
+
+⚠ **The restart is not optional and it is not free.** `--terminate` is what
+makes WSL re-read `wsl.conf`; without it the switch would appear to work and
+only the next session would get it. The first command afterwards waits for
+systemd to boot, measured at about 11 seconds on this machine.
+
+⚠ **It works with `-Tarball` too**, unlike `-OciEnv`: the file is written into
+the imported distro and needs no image to inspect.
 
 ## The disk-space preflight
 
@@ -420,7 +471,6 @@ being true the moment one of them was closed as a decision.
 | limit | what it means for you |
 | --- | --- |
 | ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
-| ⚠ no systemd | an imported distro has no `/etc/wsl.conf`, so `systemctl` is unavailable and units, timers and services cannot be tested. |
 | ⚠ on Windows PowerShell 5.1, a `-Command` value loses its double quotes when this tool is launched as a child process | 5.1 drops them building the child's argument list, before this script sees anything, so nothing here can recover them. ⭐ Use `-CommandB64`. Not an open item: it is 5.1's argument handling, one layer above this tool. See the command channel section. |
 | ⚠ the smoke probe has no timeout | a distro whose init wedges hangs the script with no output. |
 | ⚠ `Run` calls `exit` | correct when the script is invoked, fatal to the host session if it is dot-sourced. ⛔ Invoke it, never dot-source it. |
