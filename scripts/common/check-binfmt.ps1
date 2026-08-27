@@ -5,6 +5,14 @@
 # host this check is mostly for: it drives wsl.exe natively rather than through
 # an msys layer, and a native PowerShell session may have no POSIX shell at all.
 #
+# ⛔ IT LOOKS IN THE SAME PLACES AS THE SH TWIN, IN THE SAME ORDER: this host's
+# own /proc first, wsl.exe second, exit 2 third. That is not cosmetic. pwsh runs
+# on Linux, check-twins compares the two answers on ONE machine, and the first
+# version of this file knew only about wsl.exe. On an ubuntu runner it exited 1
+# with no output at all while the sh twin exited 0 with an answer, because
+# $env:WINDIR is null there and Join-Path throws on a null path under
+# Set-StrictMode. ⚠ Nothing running on Windows could have caught that.
+#
 # The defect this exists to catch is cross-architecture execution that has never
 # once worked while every visible signal says the machine is healthy. Measured
 # on the reporting machine on 2026-08-27: systemd-binfmt.service reported
@@ -72,9 +80,46 @@ function Get-WslExe {
     $cmd = Get-Command wsl.exe -CommandType Application -ErrorAction SilentlyContinue |
            Select-Object -First 1
     if ($cmd) { return $cmd.Source }
+    # ⚠ $env:WINDIR is null on Linux and macOS, and Join-Path THROWS on a null
+    # path under Set-StrictMode. This function is reached on those hosts because
+    # pwsh runs there, and the unhandled throw exited 1 with no output at all,
+    # while the sh twin exited 0 with an answer. check-twins caught it on an
+    # ubuntu runner; nothing on Windows could have.
+    if ([string]::IsNullOrEmpty($env:WINDIR)) { return $null }
     $fallback = Join-Path $env:WINDIR 'System32\wsl.exe'
     if (Test-Path -LiteralPath $fallback) { return $fallback }
     return $null
+}
+
+function Get-LocalListing {
+    <#
+      Read binfmt_misc on THIS host, for a pwsh running on Linux. The sh twin
+      does the same, and the two must agree: check-twins compares their json on
+      one machine, and an ubuntu runner is a machine where only this path can
+      answer.
+    #>
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        # ⛔ /bin/ls BY ABSOLUTE PATH, NOT `ls`. In PowerShell `ls` is an alias
+        # for Get-ChildItem, which takes no -1 and answers differently, and it
+        # is an alias on Linux too. This is the same class as `sort` resolving
+        # to Sort-Object, which scripts/README.md measured dropping two of four
+        # distinct values while reporting success. PSScriptAnalyzer caught it
+        # here, which is the check earning its place in the gate.
+        #
+        # ⚠ stderr merged on purpose. ELOOP is the whole diagnosis and it
+        # arrives there; reading stdout alone would report "no handlers" over
+        # the one state this check exists to name.
+        $out = & /bin/ls -1 $BinfmtDir 2>&1
+        $code = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $prev }
+    if ($null -eq $code) { $code = 1 }
+    return [pscustomobject]@{
+        Text = (($out | Out-String) -replace "`r", '').Trim()
+        Code = $code
+    }
 }
 
 function Invoke-InDistro {
@@ -99,20 +144,41 @@ function Invoke-InDistro {
     }
 }
 
-$script:Wsl = Get-WslExe
-if (-not $script:Wsl) {
-    Exit-With 2 ("no wsl.exe on this host, so there is no Linux kernel to read $BinfmtDir from. " +
-                 'Not applicable here, which is not a failure.')
-}
+# ⛔ SAME ORDER AS THE SH TWIN, and that is not cosmetic: check-twins compares
+# the two answers on one machine, so a host where one of them looks somewhere
+# else is a host where they disagree for no reason anybody can act on.
+#   1. this host's own /proc, when it has one;
+#   2. wsl.exe, when it does not;
+#   3. exit 2, because no Linux kernel is reachable from here.
+$source = ''
+$kernel = ''
+$listing = $null
 
-$probe = Invoke-InDistro -ShellCommand 'exit 0'
-if ($probe.Code -ne 0) {
-    Exit-With 2 ("distro '$Distro' is not registered or would not start. Start it, or name " +
-                 'another with -Distro. Could not run.')
+if (Test-Path -LiteralPath $BinfmtDir) {
+    $source = 'local'
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { $kernel = (& uname -r 2>$null | Out-String).Trim() } finally { $ErrorActionPreference = $prev }
+    if (-not $kernel) { $kernel = 'unknown' }
+    $listing = Get-LocalListing
 }
+else {
+    $script:Wsl = Get-WslExe
+    if (-not $script:Wsl) {
+        Exit-With 2 ("no $BinfmtDir on this host and no wsl.exe to reach one. Nothing to read, " +
+                     'which is not applicable rather than a failure.')
+    }
+    $source = "wsl:$Distro"
 
-$kernel = (Invoke-InDistro -ShellCommand 'uname -r').Text
-$listing = Invoke-InDistro -ShellCommand "ls -1 $BinfmtDir"
+    $probe = Invoke-InDistro -ShellCommand 'exit 0'
+    if ($probe.Code -ne 0) {
+        Exit-With 2 ("distro '$Distro' is not registered or would not start. Start it, or name " +
+                     'another with -Distro. Could not run.')
+    }
+
+    $kernel = (Invoke-InDistro -ShellCommand 'uname -r').Text
+    $listing = Invoke-InDistro -ShellCommand "ls -1 $BinfmtDir"
+}
 
 $readErr = ''
 $stacked = $false
@@ -139,7 +205,7 @@ if ($Json) {
     # ORDER and the types match check-binfmt.sh byte for byte. check-twins.sh
     # compares the two answers and a reordered object is a false disagreement.
     $s = if ($stacked) { 1 } else { 0 }
-    Write-Output ('{"schema":"check-binfmt/1","source":"wsl:' + $Distro + '","kernel":"' + $kernel +
+    Write-Output ('{"schema":"check-binfmt/1","source":"' + $source + '","kernel":"' + $kernel +
                   '","handlers":' + $count + ',"status_file":"' + $statusFile +
                   '","stacked":' + $s + ',"problem":"' + $problem + '"}')
     if ($problem) { exit 1 }
@@ -147,7 +213,7 @@ if ($Json) {
 }
 
 Write-Output 'check-binfmt'
-Write-Output "  read from      wsl:$Distro"
+Write-Output "  read from      $source"
 Write-Output "  kernel         $kernel"
 
 if ($stacked) {
