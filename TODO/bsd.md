@@ -486,3 +486,408 @@ three it is currently a container image with no container to run it in.
   documented spec coverage are the evidence; neither was compiled.
 - ⚠ **"None found" for OpenBSD and DragonFly is the state of one search.** It is
   a negative result over 28 references, not a proof that nothing exists.
+
+### ⭐ 2026-08-27, second session: a BSD userland runs on this Windows host
+
+⛔ **Nothing above is edited.** Every premise this section disproves keeps its
+wording and gets the correction underneath it, per
+[`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md).
+
+**What changed.** ⛔ **No code in this repository.** The work is seven
+experiments in `pkgforge-dev/docker-bsd` under `experiments/`, each committed
+with its result, and the corrections here and in
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md).
+
+---
+
+#### ⭐ The answer, and it is measured
+
+```text
+qemu-system-x86_64 -accel whpx -M q35 -cpu Icelake-Server-v7 -smp 2 -m 2048
+  -drive if=none,file=FreeBSD-15.1-RELEASE-amd64-BASIC-CI-ufs.raw,format=raw,id=root0
+  -device virtio-blk-pci,drive=root0 -nic none
+  -display none -no-reboot -serial stdio
+  -rtc base=utc,clock=host,driftfix=slew
+```
+
+Run on this machine, unelevated, with the WSL2 podman machine running
+throughout. What the guest answered, read back off its own console by running
+commands in it rather than by scraping a boot log:
+
+```text
+FreeBSD freebsd 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562 GENERIC amd64
+15.1-RELEASE
+Intel Xeon Processor (Icelake)
+hv
+BSD userland is running as root on FreeBSD
+```
+
+| the ask | delivered |
+| --- | --- |
+| a BSD userland from Windows | ⭐ FreeBSD 15.1-RELEASE, GENERIC |
+| least friction | one fetch script, one boot script. ⚠ 666 MB, verified against the published `CHECKSUM.SHA256` |
+| ⛔ **not** `wsl` inside `linux` inside `qemu` inside `bsd` | ⭐ **no nesting at all.** One hypervisor, the host's own, through WHPX |
+| ⚠ and unstated, but it turned out to matter | ⭐ **no elevation** |
+
+⭐ **That is the ruling's second half satisfied.** Nesting was to be the floor,
+not the target, and something better than nesting was wanted. This is one level
+deep on the machine's own hypervisor, which is strictly better than the nested
+design, and it needs no administrator.
+
+---
+
+#### ⭐ The order of work in the ruling was right, and the first step is why
+
+⚠ **The first experiment failed and it is the reason the third one worked.**
+The ruling said to try a smolBSD rescue image under `-accel whpx` first. It
+booted a NetBSD kernel and never found its disk, on every CPU model tried. The
+control run under `-accel tcg`, identical in every other respect, booted to a
+shell. That contrast located the cause, and the cause is one line of FreeBSD's
+own boot output:
+
+```text
+Hypervisor: Origin = "Microsoft Hv"
+```
+
+⛔ **Under WHPX the guest sees the HOST's hypervisor signature, not QEMU's.**
+NetBSD's paravirtual bus is looking for QEMU, does not find it, and concludes
+it is on bare metal, so `qemufwcfg` is never probed and virtio-mmio is never
+enumerated. FreeBSD has Hyper-V support and simply carries on.
+
+⭐ **So the failure was not "QEMU under WHPX does not work". It was "this
+guest reaches its disk only through a bus that WHPX does not present".** A
+kernel with ordinary PCI drivers has no such dependency, which is the whole
+change between the experiment that stopped short and the one that worked: same
+accelerator, same machine type, same CPU model, different guest.
+
+---
+
+#### ⛔ Correction: the WHPX CPU-model prediction was wrong for this machine
+
+Section 2 of the reference sweep above says `-cpu host` and `-cpu max` wedge
+QEMU under WHPX, that a named model newer than the host wedges it too, and that
+⛔ **"this machine reports model 154, so it falls into 'cannot place' and would
+be offered `GraniteRapids-v2`"**, which is the wedging direction. It labels
+that **derived, not measured**, and asks for the measurement.
+
+⭐ **Measured. Nothing wedged, including the two the advice forbids.**
+
+| accel | `-cpu` | verdict | qemu CPU seconds at a 35 s timeout |
+| --- | --- | --- | --- |
+| whpx | `Icelake-Server-v7` | kernel ran, no disk | 15.41 |
+| whpx | `kvm64-v1` | kernel ran, no disk | 15.73 |
+| whpx | `qemu64` | kernel ran, no disk | 14.52 |
+| whpx | ⛔ `host` | kernel ran, no disk | 15.34 |
+| whpx | ⛔ `max` | kernel ran, no disk | 15.44 |
+| tcg | `qemu64` | ⭐ booted to a shell | 3.98 |
+
+⚠ **This does not falsify the sources.** `R18` and `R7` measured QEMU 9.x, on a
+Zen 5 AMD part and on GitHub's Windows runner fleets. ⛔ **It falsifies the
+prediction this repository wrote about this host**, on QEMU 11.1.0 on an
+i7-12700H. No zero-byte serial log ever appeared.
+
+⭐ **Prefer a named model anyway.** It costs nothing, and the failure it avoids
+is a twelve-minute hang with no output. `Icelake-Server-v7` is what the working
+recipe uses.
+
+---
+
+#### ⛔ Correction: the untried avenue is now tried, and it is closed
+
+The sweep calls the Host Compute System **"the untried avenue with the lowest
+cost"** and says reaching it "needs no WSL patch at all". ⭐ **The API half is
+correct.** `computecore.dll` loads in an ordinary unelevated process and every
+HCS v2 entry point wanted resolves.
+
+⛔ **The privilege half closes it.** `HcsEnumerateComputeSystems`, which is a
+**read**, returns `0x8037011B`:
+
+> Insufficient privileges. Only administrators or users that are members of the
+> Hyper-V Administrators user group are permitted to access virtual machines or
+> containers.
+
+`Get-VM` is refused identically. If reading is privileged, creating is.
+
+⚠ **And even with elevation it is the worse option**, which the sweep could not
+have known. HCS yields a virtual machine with **no way to talk to it**: no
+serial pipe of its own, and WSL reaches its own guest over `AF_HYPERV` sockets
+whose guest half is the 819 lines of C this repository refused to adopt. QEMU,
+on the very same hypervisor, yields a serial console on an ordinary pipe and
+needs no elevation.
+
+---
+
+#### ⚠ Correction: the recommended option now has a cost the table does not show
+
+The Approach table above rates the **Hyper-V `.vhd` guest** as ⭐ lowest
+friction and rates `qemu -accel whpx` as ⚠ **"fallback. Worth it only if
+Hyper-V is unavailable or unwanted."**
+
+⛔ **On this machine the ranking inverts, and the reason is not performance.**
+Experiment 32 measured that Hyper-V and the Host Compute System both refuse an
+unelevated caller here. The WHPX route needs no elevation at all. ⚠ **So the
+`.vhd` route's true friction includes an administrator prompt, and the
+"fallback" is the only one of the two this session could run.**
+
+⚠ **The `.vhd` route was still not re-checked**, and this does not claim it
+fails. It claims its cost was understated and the fallback's overstated.
+
+---
+
+#### ⛔ Correction: "no BSD was booted" no longer holds
+
+[`SUMMARY.md`](SUMMARY.md) and the sweep both record, correctly at the time,
+that **no BSD was booted, on any host, and every boot time quoted was somebody
+else's.** ⭐ **Four BSD kernels have now been started here, three of them
+reaching a userland**, and the numbers below are this machine's own:
+
+| what | where | measured |
+| --- | --- | --- |
+| NetBSD 11.0, smolBSD rescue | QEMU `-accel tcg`, Windows | ⭐ a shell. 499 ms of kernel boot, by the kernel's own clock |
+| NetBSD 11.0, smolBSD rescue | QEMU `-accel whpx`, Windows | ⛔ **kernel only.** No disk, so no userland |
+| FreeBSD 15.1, ⚠ `acj`'s patched FIRECRACKER kernel | Firecracker on the nested KVM in the podman machine | ⭐ `login:` in **1.8 s**, shell over SSH at 32.3 s |
+| FreeBSD 15.1-RELEASE, ⭐ stock GENERIC | ⭐ QEMU `-accel whpx`, Windows, no nesting | `login:` at **117.7 s**, **117.4 s** and **113.6 s**, three independent boots |
+
+⚠ **The two FreeBSD rows are different kernels and different root filesystems**,
+so the times rank the whole stack rather than the two hypervisors. The
+correction below says what the phase table can and cannot support.
+
+---
+
+#### ⛔ Correction: the boot time was attributed to `growfs`, and that was a guess
+
+⚠ **This session's own first write-up said the 117 s was `growfs` on first
+boot. It is not**, and the correction is here rather than as an edit because
+the same rule applies to a premise this session wrote an hour ago. The console
+reports the root filesystem `FILE SYSTEM CLEAN; SKIPPING CHECKS`, carries no
+`growfs` line at all, and a second boot landed within 0.3 s of the first.
+
+⭐ **The experiment now stamps four boot phases, so the cost is located rather
+than attributed.** Measured with `-nic none`:
+
+| phase, from the QEMU process starting | at | cost of this phase |
+| --- | --- | --- |
+| loader hands off to the kernel | 4.3 s | 4.3 s |
+| kernel banner | 4.3 s | 0 s |
+| ⛔ **root mounted** | **112.5 s** | ⛔ **108.2 s** |
+| `rc` starts | 112.8 s | 0.3 s |
+| login prompt | 113.6 s | 0.8 s |
+
+⛔ **108 of the 114 seconds are between the kernel banner and mounting root**,
+which is device probing. ⚠ Not the loader, not `rc`, not the filesystem, and
+not the network: removing the NIC entirely changed the total by under four
+seconds.
+
+⚠ **What that costs, stated against the alternative, and stated carefully.**
+FreeBSD 15.1 under Firecracker on the nested KVM reaches a login prompt in
+**1.8 s**, against 113.6 s here. ⛔ **That is not a like-for-like comparison of
+two hypervisors and must not be quoted as one.** The Firecracker guest is
+`acj`'s **patched FIRECRACKER kernel** and a purpose-built root filesystem with
+almost no devices to probe; this one is stock **GENERIC** on an emulated q35
+with a full PCI and ISA bus behind it. ⚠ Two variables moved at once, and
+nothing here separates them.
+
+⭐ **What can be said from the phase table alone**, with no second guest
+involved: the cost is device probing, it is 108 s, and it is 95 percent of the
+boot. Whether a leaner guest under WHPX would pay it is the obvious next
+measurement and was not taken.
+
+⛔ **Steady-state performance was NOT measured.** A slow device probe suggests
+WHPX handles the exits behind port and memory-mapped IO expensively, and
+whether that follows the guest into ordinary work is a different question that
+nothing here answers. ⚠ Do not read the boot number as a throughput number.
+
+---
+
+#### ⭐ A container runs inside that guest, which is the gesture this entry opens with
+
+⛔ **The entry's `Problem` is one line**, and it is now runnable end to end on
+this machine. Inside the FreeBSD guest, on the Windows host's own hypervisor:
+
+```text
+$ podman run --rm ghcr.io/freebsd/freebsd-runtime:15.1 /bin/sh -c 'uname -sr; echo ...'
+rc=0
+Trying to pull ghcr.io/freebsd/freebsd-runtime:15.1...
+Getting image source signatures
+Copying blob sha256:78d645ce98ae...
+Writing manifest to image destination
+FreeBSD 15.1-RELEASE
+```
+
+⭐ **`podman info` reports `freebsd/amd64 runtime=ocijail`**, so the runtime
+underneath is jails, exactly as the handbook and `BSD-02` describe. ⚠ **The
+image is FreeBSD's own published one**, consumed rather than rebuilt, which is
+what `pkgforge-dev/docker-bsd`'s README requires.
+
+⚠ **Three corrections were needed and each looked like a different problem than
+it was.** Two are podman's own defaults; the third is the interesting one.
+
+---
+
+#### ⭐ The finding this session would keep if it could keep only one
+
+⛔ **Under WHPX, FreeBSD selects a clock that does not work, and every Go
+binary in the guest dies of it.**
+
+It follows directly from the `Microsoft Hv` result above. The guest sees the
+host's hypervisor signature, so FreeBSD offers and then trusts a paravirtual
+timecounter that QEMU is only pretending to provide:
+
+```text
+TSC-low(-100) i8254(0) ACPI-fast(900) HPET(950) Hyper-V-TSC(3000) Hyper-V(2000)
+was: Hyper-V-TSC
+```
+
+Go's garbage collector divides by a rate derived from the monotonic clock, so
+every Go binary, podman included, dies before it does any work:
+
+```text
+SIGFPE: floating-point exception
+runtime.deductSweepCredit(0x2000, 0x0)
+        /usr/local/go125/src/runtime/mgcsweep.go:948
+```
+
+⭐ **One sysctl, and nothing in that stack trace would ever point at a clock:**
+
+```bash
+sysctl kern.timecounter.hardware=ACPI-fast
+```
+
+⚠ **Honest limit, and it is the half that gets dropped when this is retold.**
+⛔ **This improved the failure; it did not abolish it.** With `ACPI-fast`
+selected, `podman run` pulls its image and runs a container correctly with
+`rc=0`. In the **same run**, a separate `podman pull` still died, with
+`fatal error: releasep: invalid p state` rather than `SIGFPE`. ⚠ So the Go
+runtime is still not entirely happy on this guest and the remaining fault is
+intermittent. Two datapoints are not a diagnosis, and this is recorded as an
+open behaviour rather than a solved one.
+
+⚠ **A second observation, one occurrence, cause unknown.** FreeBSD 15.1 GENERIC
+page-faulted **in the kernel** during `rc.shutdown`, in `vget_finish`, on the
+boot that had run podman. ⛔ The boots that did not run podman shut down
+cleanly. Recorded so it is not a surprise; not attributed to anything.
+
+---
+
+#### ⛔ Correction to the section immediately above, from a later measurement
+
+⚠ **The section above is this session's own, written an hour before this one,
+and it keeps its wording** because the rule applies to a premise however recently
+it was written. ⛔ **It said the clock was the cause. That is not supported.**
+
+⭐ **Everything it MEASURED still holds.** The guest does see `Microsoft Hv`.
+FreeBSD does select `Hyper-V-TSC` at quality 3000. Go binaries do die with
+`SIGFPE` in the garbage collector. Setting `ACPI-fast` did change `podman run`
+from failing to returning `rc=0`. All four were run.
+
+⛔ **What does not hold is the "therefore".** Two later measurements:
+
+1. ⭐ **With `ACPI-fast` selected the clock is demonstrably correct.** Two reads
+   of `date +%s%N` a second apart give `delta_ns=1002101384`, which is 1.0021
+   seconds for a 1 second sleep. ⛔ A clock that good does not make anything
+   divide by zero.
+2. ⛔ **A long-running Go daemon does something worse than `SIGFPE`: it takes
+   the guest KERNEL down.** `podman system service` panics FreeBSD, with
+   `ACPI-fast` already selected:
+
+```text
+Fatal trap 12: page fault while in kernel mode
+current process        = 1546 (podman)
+#5 0xffffffff80bade73 at do_wait+0x123
+#6 0xffffffff80bab814 at __umtx_op_wait_uint_private+0x54
+#7 0xffffffff80ba8f9e at sys__umtx_op+0x7e
+```
+
+`_umtx_op` is FreeBSD's userspace-mutex syscall, and it is what Go's scheduler
+parks threads on.
+
+⚠ **So the honest reading is that something about this guest under WHPX is
+wrong at a level below the timecounter.** The timecounter change moved the
+symptom, twice, reproducibly; it did not explain it. ⛔ **Calling it the cause
+would be a story rather than a measurement**, and this repository has a table
+row for a number on a report that was not measured.
+
+⚠ **And the shutdown page fault now has company.** FreeBSD page-faulted in the
+kernel at `vget_finish` during `rc.shutdown` on one boot, and at
+`do_wait`/`_umtx_op` on another. ⛔ **Both were boots that ran a multithreaded
+Go program; the boots that did not shut down cleanly.** Two kernel faults at
+different sites under the same condition is a pattern, and it is not diagnosed
+here.
+
+⭐ **What this changes for anyone acting on this entry.** A BSD userland on
+WHPX is real, reproducible and useful for interactive work. ⛔ **A long-running
+multithreaded Go service in that guest is not, today**, and that is the whole
+distance between this entry's purpose and its acceptance command.
+
+---
+
+### ⚠ Where this entry stands, 2026-08-27
+
+⛔ **The purpose is met and the acceptance is not, and those are different
+sentences.** Both are stated here so nobody has to infer which.
+
+**The `Problem` this entry opens with:**
+
+```bash
+podman run --rm -it "example.io/freebsd" -sh
+```
+
+> from Windows, into a real BSD, without `wsl` inside `linux` inside `qemu`
+> inside `bsd`.
+
+| the clause | state |
+| --- | --- |
+| a real BSD | ⭐ **met.** FreeBSD 15.1-RELEASE, stock GENERIC, answering commands |
+| from Windows | ⭐ **met.** On the host's own hypervisor through WHPX |
+| ⛔ without the nesting | ⭐ **met.** One hypervisor. And unelevated, which was not even asked for |
+| `podman run`, in the guest | ⭐ **met.** `rc=0`, `runtime=ocijail`, the container's own stdout read back |
+| `podman run`, **from the Windows client** | ⛔ **NOT met.** This is the `Prove` clause, and it is what keeps the entry open |
+
+**The `Prove` clause, unchanged:**
+
+```bash
+podman -c freebsd run --rm IMAGE /bin/sh -c 'uname -sr'
+```
+
+⚠ **Everything underneath that command works and the command does not.**
+`41-connect-podman-from-windows.ps1` in `pkgforge-dev/docker-bsd` gets further
+than the summary above suggests, and it is worth being precise about how far,
+because the next session should not redo it:
+
+| step | state |
+| --- | --- |
+| a throwaway key installed over the serial console | ⭐ works |
+| ⛔ empty-password ssh closed **before** the port is forwarded | ⭐ works. `PermitEmptyPasswords no`, `PasswordAuthentication no`, `PermitRootLogin prohibit-password`, read back from the file |
+| the port forwarded, bound to `127.0.0.1` only | ⭐ works |
+| ssh from Windows into the guest | ⭐ **works.** The client authenticates |
+| the podman API socket existing | ⭐ works, at `/var/run/podman/podman.sock` |
+| ⛔ **the podman API service staying up** | ⛔ **this is the blocker** |
+| `podman system connection add` | ⭐ works, exit 0 |
+| `podman -c freebsd run ...` | ⛔ `ssh: rejected: connect failed (open failed)`, because there is nothing behind the socket |
+
+⛔ **The blocker, stated exactly.** `podman system service` is a long-running Go
+daemon, and it dies of `SIGFPE` inside the Go runtime seconds after starting,
+leaving the socket file behind with nothing listening. ⭐ **It is the same fault
+as the clock finding above**, and the correction that is enough for a
+short-lived `podman run` is **not** enough for a daemon: more GC cycles, more
+chances to divide by zero.
+
+⚠ **So the honest shape of what is left is one question, not one command:**
+can a Go daemon be kept alive in a FreeBSD guest under WHPX? ⭐ Three things
+worth trying, in order, and none was tried here:
+
+1. **A different timecounter, chosen for the daemon rather than for a
+   command.** `HPET`, `TSC-low` and `i8254` all exist in the guest and only
+   `ACPI-fast` was used.
+2. **Set it at boot rather than at runtime**, through `/etc/sysctl.conf` or a
+   loader tunable, so no Go binary ever runs while `Hyper-V-TSC` is selected.
+3. ⚠ **Or sidestep it: the client does not need the daemon in that guest.**
+   A podman connection is only an SSH URI to a socket, so a `podman system
+   service` running anywhere reachable satisfies the acceptance. That is a
+   weaker result and it should be labelled as one if it is taken.
+
+⛔ **Status stays `open`.** ⚠ **Not because the work failed**: the goal the
+operator stated, a BSD that boots on this machine, is reached, measured and
+reproducible. It stays open because this entry's acceptance names a command
+that has not returned 0, and closing an entry on a command that was never run
+is exactly the "fake anything" class this repository has a table for.

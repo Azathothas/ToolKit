@@ -15,8 +15,8 @@ and the entries themselves. Do not add a "previous sessions" section.
 ## State
 
 ```text
-session started 2026-08-27T11:54:27Z
-baseline        ci green on all three jobs at 9503a23, tree clean
+session started 2026-08-27T12:54:52Z
+baseline        ci green on all three jobs at a9171be, tree clean
 entries         total 18  open 1  blocked 0  done 17
 ```
 
@@ -32,7 +32,7 @@ wrong. ⭐ `scripts/common/set-record.mjs` moves them for you.
 | push policy | commit and push, to this remote only |
 | CI | three jobs, ubuntu and windows. `.github/workflows/ci.yml` |
 | `main` | protected, admin bypass on. Force push and deletion refused. |
-| the local gate | ⭐ `sh scripts/common/check-gate.sh --fast`. ⚠ 41s and 208s were measured in a previous session and were **not** re-timed in this one. |
+| the local gate | ⭐ `sh scripts/common/check-gate.sh --fast`. **49.8s measured this session**, against the 41s carried since. |
 
 **Origin.** Bootstrapped from `Azathothas/TEMPLATE` on 2026-08-27. Its first
 content was `wsl-ephemeral.ps1`, decoupled from that template so the template
@@ -42,133 +42,197 @@ fetches this copy by pinned commit and verified digest.
 
 ---
 
-## The measured baseline
+## ⭐ The headline: a BSD userland runs on this machine, with no nesting
 
-⚠ **This session wrote documents and ran no code**, so the gate rows below are
-the ones it actually ran and the tool rows are inherited from the session that
-measured them.
+⛔ **Measured, not derived.** Unelevated, with the WSL2 podman machine running
+throughout:
 
-⛔ **Part (c) of the gate, the three deep reviews, was NOT run.** The session
-ended on the operator's instruction before them. ⚠ **Treat every claim sourced
-from another repository as one pass and re-derive it before acting**; the
-measurements taken on this machine are labelled as such and are real.
-[`SUMMARY.md`](SUMMARY.md) states the split.
+```text
+qemu-system-x86_64 -accel whpx -M q35 -cpu Icelake-Server-v7 -smp 2 -m 2048
+  -drive if=none,file=FreeBSD-15.1-RELEASE-amd64-BASIC-CI-ufs.raw,format=raw,id=root0
+  -device virtio-blk-pci,drive=root0 -nic none
+  -display none -no-reboot -serial stdio
+```
 
-| gate | result |
-| --- | --- |
-| `check-gate.sh --fast` | ✅ 12 passed, 1 skipped (`check-twins`), run twice |
-| `check-docs.sh` | ✅ 41 files, 246 relative links, 88 shell blocks |
-| `check-record.sh` | ✅ 18 entries, counts agree with rows |
-| `check-changelog.sh` | ✅ 14 entries, in order, each dated with a record and a deploy line |
-| CI, all three jobs | ✅ success at `796e40f` |
-| `pkgforge-dev/docker-bsd` CI | ✅ both jobs at `878e286` |
+```text
+FreeBSD freebsd 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562 GENERIC amd64
+BSD userland is running as root on FreeBSD
+```
 
-### ⭐ Measured on this machine this session, and each answers an open question
-
-| probe | result |
-| --- | --- |
-| `WHvGetCapability`, capability 0, through `WinHvPlatform.dll` | ⭐ `hr=0`, value `1`, **unelevated**. The Windows Hypervisor Platform is installed and the hypervisor is running |
-| host CPU | `Intel64 Family 6 Model 154 Stepping 3`, a 12th Gen Core i7-12700H |
-| `qemu-system-x86_64`, `qemu-img`, `oras` on Windows | ❌ all three absent, exit 1 read unpiped |
-| `/dev/kvm` inside `podman-machine-default` | ✅ present and **writable**, `kvm_intel.nested` is `Y`, kernel `7.2.0-WSL2-STABLE` |
-| `qemu-system-x86_64` inside that machine | ❌ absent |
+⭐ **One hypervisor, the host's own.** That is the operator's ruling satisfied:
+nesting was to be the floor, not the target, and this is better than the nested
+design and needs no administrator.
 
 ---
 
-## What the last session did
+## The measured baseline
 
-**2026-08-27, the reference sweep. No code changed.**
+⚠ **This session ran code on three hosts**: the Windows host, the WSL2 podman
+machine, and four BSD guests. Everything below was run in this session.
 
-- ⭐ **28 repositories mined**, from 23 rows the operator supplied, one of which
-  was an organisation query. Every one reached; none recorded as gone. Issues,
-  pull requests and discussions in both states, with comments.
-- ⭐ **`BSD-02` closed.** Its acceptance was a written answer per BSD, and that
-  is what the sweep produced.
-- **`BSD-01` corrected in six places**, all underneath the table rather than
-  edited into it.
-- **`pkgforge-dev/docker-bsd` prepared** for the session that follows: an
-  `experiments/` directory with a layout and two working probes, its own
-  ignored `.tmp/`, and `TOOLKIT.md` naming what it must carry to stand alone.
+| gate | result |
+| --- | --- |
+| `check-gate.sh --fast` | ✅ 12 passed, 1 skipped (`check-twins`), **49.8s** |
+| ⭐ `check-gate.sh`, the **full** gate | ✅ **all 13 checks passed**, `check-twins` included. ⚠ Run before this file's own last two edits, which are prose; no script in this repository changed at all this session |
+| `check-docs.sh` | ✅ 41 files, 269 relative links, 93 shell blocks |
+| `check-record.sh` | ✅ counts agree with rows |
+| `check-changelog.sh` | ✅ in order, each dated with a record and a deploy line |
+| CI, all three jobs | ✅ success at `a9171be`, the session baseline |
+| `pkgforge-dev/docker-bsd` CI | ✅ both jobs at `d7e6184` **and** `f2bd4a3` |
+| `docker-bsd` `sh tests/run.sh` | ✅ 27 passed, 0 failed |
 
-### ⭐ Three premises the sweep disproved
+### ⭐ Measured on this machine this session
 
-⛔ **None was edited away.** Each keeps its wording and carries the correction
-underneath, per
-[`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md).
+| probe | result |
+| --- | --- |
+| `qemu-system-x86_64` on Windows | ⭐ **installed**, 11.1.0, by `scoop install qemu`. It was absent at the start of this session |
+| `-accel help` | `tcg` and ⭐ `whpx`. `microvm` and `q35` both present |
+| FreeBSD 15.1 GENERIC under `-accel whpx` | ⭐ **a userland.** `login:` at 117.7s, 117.4s and 113.6s over three boots |
+| ⛔ where that time goes | ⛔ **108.2s of 113.6s is device probing**, between the kernel banner and mounting root. Not the loader, not `rc`, not the filesystem, not the network |
+| FreeBSD 15.1 under Firecracker, nested KVM | ⭐ `login:` in **1.8s**, shell over SSH at 32.3s |
+| ⛔ smolBSD NetBSD under `-accel whpx` | ⛔ **kernel only.** No paravirtual bus, so no disk |
+| ⭐ the same under `-accel tcg` | ⭐ **a shell**, 499ms kernel boot |
+| ⛔ `-cpu host` and `-cpu max` under WHPX | ⛔ **did NOT wedge.** All five models behaved identically. The published rule does not reproduce here |
+| Host Compute System, `computecore.dll` | ⭐ loads unelevated, all seven HCS v2 entry points resolve |
+| `HcsEnumerateComputeSystems`, a **read** | ⛔ `0x8037011B`, Hyper-V Administrators only |
 
-- **[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md).**
-  It said there is no counterpart presenting FreeBSD syscalls on a Linux kernel.
-  `AkihiroSuda/lsf` is one. ⚠ It is a 2022 proof of concept that crashes and has
-  one commit, so the conclusion holds and the reasoning was wrong. ⭐ It also
-  explains the **139**: the Linux kernel does not validate an ELF binary's OSABI
-  on `execve`, which is why the loader accepts a FreeBSD binary at all.
-- **`BSD-02`.** "Not yet runnable anywhere" conflated two questions. Three BSDs
-  have no jail-equivalent OCI runtime, which is what the entry meant; all four
-  are runnable as guests and two have been for years.
-- **`BSD-01`'s WHPX row**, rated a fallback worth taking only if Hyper-V is
-  unavailable. ⭐ Hyper-V and WHPX are both available here, measured, and the
-  caveat that said the feature list could not be read without elevation was
-  wrong about the method rather than the answer.
+---
 
-### ⚠ What the sweep found that nothing had asked for
+## What this session did
 
-- ⛔ **An unregistered consumer**, found while reading
-  `pkgforge-dev/cross-libc-dlopen` for its `experiments/` layout. It carries a
-  **vendored copy** of `wsl-ephemeral.ps1`, 536 lines against this tree's 1,579,
-  with no pin and no digest. ⭐ **It carries both P0s this repository has
-  closed**, verified by reading its source.
-  [`../docs/consumers.md`](../docs/consumers.md) has the row and the evidence.
-  ⚠ Not fixable from here; that repository is read-only to this one.
-- ⛔ **Two defects in the probes written for `docker-bsd`, both found by running
-  them on all three hosts rather than on one.** `grep -i microsoft /proc/version`
-  answers "not WSL" inside a machine running a custom WSL2 kernel, and
-  `Add-Type` on Windows PowerShell 5.1 fails outright when `LIB` holds a stale
-  directory, because it shells out to `csc.exe` and compiles
-  warnings-as-errors.
+**2026-08-27, the second BSD session. ⛔ No code changed in this repository.**
+
+The work is **eight experiments** in `pkgforge-dev/docker-bsd` under
+`experiments/`, each committed with its result, plus the corrections here.
+
+- ⭐ **A FreeBSD userland was reached on the Windows host's own hypervisor**,
+  with no nesting and no elevation, and it answers commands.
+- ⭐ **The ruling's order of work was right, and the experiment that FAILED is
+  why the one that worked, worked.** smolBSD under WHPX located the cause;
+  FreeBSD then printed it in one line: `Hypervisor: Origin = "Microsoft Hv"`.
+- ⛔ **Five premises corrected**, each with its wording kept and the correction
+  written underneath: the WHPX CPU-model prediction, the untried HCS avenue, the
+  relative friction of the Hyper-V route against the WHPX one, "no BSD was
+  booted", and a boot time attributed to `growfs`. ⚠ **A sixth correction is of
+  this session's own text**, written an hour earlier: the clock explanation.
+- ⛔ **Five rows added to
+  [`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md)**,
+  every one from a defect in this session's own scripts.
+
+### ⛔ The defects this session shipped and then caught
+
+⚠ **Recorded because the reviews caught what running did not.** Each is a class
+the repository already names, and one of them printed a false success.
+
+- ⛔ **An experiment reported "a container ran" over a `podman run` that had
+  errored.** Its success marker was matched against the guest's **echo of the
+  command line that mentioned the marker**, which survived the echo filter
+  because the tty had line-wrapped it. ⭐ Fixed twice over: the marker is now
+  split so it cannot appear literally in the command, and the echo filter
+  compares with whitespace removed.
+- ⛔ **`ssh` piped into `sed`, with `$?` read afterwards**, which reads `sed`'s
+  status. A failed `ssh` would have read as green.
+- ⛔ **`curl` and `xz` guarded by `cmd; rc=$?` under `set -e`**, where the shell
+  has already exited before the guard can run. Both guards were decoration.
+- ⛔ **A probe reporting `vmcompute.dll did not load` about a library that had
+  loaded** and exports 36 functions. A `try`/`catch` around a P/Invoke cannot
+  tell a missing library from a missing entry point.
+- ⛔ **`network NONE` printed while the guest ran `dhclient`.** QEMU attaches a
+  default NIC unless given `-nic none`, and `-display none` says nothing about
+  the network. No inbound door was opened, and the header was still false.
+- ⛔ **A boot time attributed to `growfs` that `growfs` had nothing to do with.**
+  Corrected by making the experiment stamp four boot phases instead.
 
 ---
 
 ## ⭐ The work order
 
-**1. `BSD-01`, and it is the only open entry.** ⛔ **Read the ruling at the top
-of [`bsd.md`](bsd.md) before anything else in that file**, then the six
-corrections underneath the table, then
-[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md).
+**1. `BSD-01`, still the only open entry, and the goal it was written around is
+met.** ⛔ **What is left is its acceptance command, not its purpose.**
 
-⭐ **The entry now names what to try and in what order**, and the order is not
-what it was:
+The entry's `Prove` names one command:
 
-1. a smolBSD rescue image under `qemu -accel whpx`, with a named CPU model;
-2. `acj`'s FreeBSD kernel and root filesystem under Firecracker, inside the
-   podman machine;
-3. the Host Compute System API directly, which is the untried avenue;
-4. ⚠ the Hyper-V `.vhd` guest, which stays the fallback that is known to work.
+```bash
+podman -c freebsd run --rm IMAGE /bin/sh -c 'uname -sr'
+```
 
-⛔ **A session that opens by building the nested stack has still skipped the
-ask**, and it now has three better things to try first.
+⚠ **That is the client half, and it has not returned 0.**
+`41-connect-podman-from-windows.ps1` in `pkgforge-dev/docker-bsd` was **written
+and run three times**, and it gets further than that sentence suggests. Every
+step below works:
+
+1. a throwaway key generated and installed over the serial console;
+2. ⛔ the empty-password ssh door closed **before** the port is forwarded, read
+   back from `sshd_config`, and the port bound to `127.0.0.1` only;
+3. ssh from Windows into the guest, authenticating;
+4. `podman system connection add`, exit 0;
+5. the connection removed again afterwards.
+
+⛔ **What does not work is the last hop**, and it is a guest fault rather than a
+client one.
+
+⛔ **And one blocker underneath it, which is the real finding.** It was run,
+four times, and the tidy explanation did not survive.
+
+`podman info` inside the guest answers `freebsd/amd64 runtime=ocijail`, and a
+one-shot `podman run` returns `rc=0` with the container's own stdout. ⛔ **A
+long-running `podman system service` panics the guest KERNEL:**
+
+```text
+Fatal trap 12: page fault while in kernel mode
+current process        = 1546 (podman)
+#5 do_wait+0x123   #6 __umtx_op_wait_uint_private+0x54   #7 sys__umtx_op+0x7e
+```
+
+`_umtx_op` is FreeBSD's userspace-mutex syscall, and it is what Go's scheduler
+parks threads on.
+
+⚠ **The clock was the hypothesis and it is NOT the answer.** Under WHPX the
+guest does see `Microsoft Hv` and does select its Hyper-V timecounter, and
+setting `kern.timecounter.hardware=ACPI-fast` did move `podman run` from failing
+to `rc=0`. ⛔ **But with `ACPI-fast` selected the clock measurably works**:
+`delta_ns=1002101384` across a one-second sleep. The timecounter change moved
+the symptom; it did not explain it, and
+[`bsd.md`](bsd.md) carries the correction under the section that claimed
+otherwise.
+
+⭐ **So what is left is one question rather than one command:** can a
+multithreaded Go daemon stay alive in a FreeBSD guest under WHPX. `bsd.md` lists
+three untried things, and a fourth is now obvious: FreeBSD's `podman_service` rc
+script exists beside `podman`, and only `podman` was ever started.
 
 **2. ⚠ The next session works across two directories**, `Azathothas/ToolKit`
-and `pkgforge-dev/docker-bsd`. ⛔ **Not `Azathothas/TEMPLATE`.** The operator
-authorised read and write on `docker-bsd` on 2026-08-27; every other remote
-stays read-only.
+and `pkgforge-dev/docker-bsd`. ⛔ **Not `Azathothas/TEMPLATE`.** Every other
+remote stays read-only.
 
-### ⚠ Four things worth an entry, none of them filed
+### ⚠ Worth an entry, none of them filed
 
 ⛔ **Not filed, because filing an entry nobody asked for is how a backlog stops
-meaning anything.** Recorded so they are not re-derived. The first three are
-unchanged; the fourth is new.
+meaning anything.** The first four are unchanged from the last session.
 
 - ⭐ **`Azathothas/TEMPLATE` carries `git-sync.ps1` with `TOOL-03`'s defect.**
-  It is that repository's change to make.
-- **The tooling this repository grew is not in the template**: `check-gate`,
-  `check-record`, `check-binfmt`, `set-record.mjs`, `check-powershell.ps1`.
+- **The tooling this repository grew is not in the template.**
 - ⚠ **`-Command`, `-CommandFile`, `-OciEnv` and `-Systemd` are silently ignored
-  by the actions they do not apply to.** Refusing would be stricter and a break.
-- ⭐ **New: `pkgforge-dev/cross-libc-dlopen`'s vendored copy of
-  `wsl-ephemeral.ps1` carries `WSL-01` and `WSL-12`.** ⛔ Not this repository's
-  change to make. Recorded in [`../docs/consumers.md`](../docs/consumers.md)
-  rather than filed here, because filing it would be filing work this repository
-  cannot do.
+  by the actions they do not apply to.**
+- ⭐ **`pkgforge-dev/cross-libc-dlopen`'s vendored copy of `wsl-ephemeral.ps1`
+  carries `WSL-01` and `WSL-12`.** In
+  [`../docs/consumers.md`](../docs/consumers.md).
+- ⚠ **New: FreeBSD 15.1 GENERIC page-faulted in the kernel during
+  `rc.shutdown`** under WHPX, in `vget_finish`, on the boot that had run
+  podman. ⛔ It did **not** happen on the boots that did not, which shut down
+  cleanly. One occurrence, cause unknown, recorded so it is not a surprise.
+- ⚠ **New: `check-no-secrets.sh --public` fires on an OCI content digest.**
+  `sha256:` followed by 64 hex characters is a published, public identifier and
+  can never be a credential, and this repository is about container images, so
+  it will recur. ⛔ **Not fixed inline, and the reason is the interesting part.**
+  The obvious fix, another `grep -vE` on the line, is itself a row in
+  [`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md):
+  `grep -v` drops **lines**, not matched items, so an allowlist for the digest
+  would hide a real credential that happened to sit on the same line. ⭐ The
+  correct fix is an item-level negative lookbehind in the detection pattern, the
+  way `check-docs.sh` already does it. ⚠ It is a change to a tool other
+  repositories fetch, so it wants its own entry rather than a drive-by edit.
+  This session elided the digest instead.
 
 ---
 
@@ -176,30 +240,22 @@ unchanged; the fourth is new.
 
 ⛔ These block work. Each carries a recommendation, so agreeing costs nothing.
 
-### 1. ⭐ RULED, 2026-08-27. Not open. Read it before touching `bsd.md`.
+### 1. ⭐ RULED, 2026-08-27, and now SATISFIED
 
-The ruling has two halves and the second is the one a reader skims past: nesting
-is the floor to fall back to, not the thing to build. ⛔ The full ruling is at
-the top of [`bsd.md`](bsd.md) and is not restated here, so the two cannot fork.
+Nesting was the floor, not the target, and something better was wanted. ⭐ **A
+FreeBSD userland on the host's own hypervisor, one level deep, unelevated, is
+that.** The full ruling is at the top of [`bsd.md`](bsd.md) and is not restated
+here so the two cannot fork.
 
-⭐ **The sweep has now given that ruling something to work with.** A BSD microvm
-on the host's own hypervisor is one level deep, boots in about 10 milliseconds
-for NetBSD and about 12 seconds for FreeBSD under Firecracker, and has published
-artefacts for both. That is a better answer than nesting rather than an argument
-against it.
+### 2. ⚠ Should `docker-bsd` publish something bootable?
 
-### 2. ⚠ NEW. Should `docker-bsd` publish something bootable?
-
-⛔ **Not a decision this session took.** `docker-bsd` publishes a root
-filesystem, and for three of its four BSDs nothing exists that can run one. The
-sweep found two projects solving the same distribution problem differently:
-smolBSD pushes a raw bootable disk to `ghcr.io` through `oras`, and `acj`
-publishes a kernel and a root filesystem as release assets.
-
-**Recommendation: not yet.** ⚠ It is a shape question that `BSD-01` will answer
-by finding out what actually boots on this machine. Deciding it now would be
-choosing a format before knowing what consumes it. Recorded in `BSD-02`'s
-closure so it is not lost.
+⭐ **Recommendation changed, and it is now answerable.** The previous session
+said "not yet, because `BSD-01` will tell us what actually boots". It has:
+**a raw disk image with a stock GENERIC kernel boots on the Windows host's own
+hypervisor with no installer.** ⛔ An OCI rootfs does not, on three of the four
+BSDs. **Recommend publishing a bootable raw image alongside the rootfs**, the
+way smolBSD does through `oras`. ⚠ Still the operator's call, and it is a
+`docker-bsd` decision rather than this repository's.
 
 ### 3. Are `RULES.md`, `HUMAN.md` and `SECURITY.md` wanted?
 

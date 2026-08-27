@@ -565,3 +565,242 @@ has is a **jail-equivalent runtime**, which is a narrower and still-true claim.
   report and has not been reproduced.
 - ⚠ **The FreeBSD `.vhd` route that `BSD-01` recommends was not re-checked this
   session.** Nothing found contradicts it, and nothing found confirms it either.
+
+---
+
+# ⭐ Measured 2026-08-27, second session: QEMU installed, and BSDs booted
+
+⛔ **Nothing above is edited.** Everything in this section was run on the same
+Windows 11 Pro 26200 machine, with **QEMU 11.1.0 installed** by
+`scoop install qemu`, which is the install the section above records as absent.
+The experiments are committed in `pkgforge-dev/docker-bsd` under
+`experiments/`, and each names what it measures.
+
+⚠ **Conditions, because a measurement carries them or it is not one.** QEMU
+11.1.0 (`v11.1.0-12130-ge470268ff4`), host CPU `Intel64 Family 6 Model 154
+Stepping 3`, a 12th Gen Core i7-12700H, unelevated, with the WSL2 podman
+machine running throughout.
+
+---
+
+## ⛔ Correction 1: the WHPX CPU-model prediction was wrong for this host
+
+The section **"The WHPX trap, and why it lands on THIS machine"** above says
+this machine's model 154 falls into `R18`'s "cannot place" branch, would be
+handed `GraniteRapids-v2`, and that this is the newer-than-host direction
+measured as wedging. It is careful to label that **derived, not measured**, and
+asks a later session to try `Icelake-Server-v7` or `kvm64-v1` first and record
+what happens.
+
+⭐ **It was run. Nothing wedged, including the two models the advice forbids.**
+
+| accel | `-cpu` | QEMU started | serial log | verdict | CPU seconds at 35 s |
+| --- | --- | --- | --- | --- | --- |
+| whpx | `Icelake-Server-v7` | ✅ | 3,315 B | kernel ran, no disk | 15.41 |
+| whpx | `kvm64-v1` | ✅ | 3,233 B | kernel ran, no disk | 15.73 |
+| whpx | `qemu64` | ✅ | 3,300 B | kernel ran, no disk | 14.52 |
+| whpx | ⛔ `host` | ✅ | 3,321 B | kernel ran, no disk | 15.34 |
+| whpx | ⛔ `max` | ✅ | 3,321 B | kernel ran, no disk | 15.44 |
+| tcg | `qemu64` | ✅ | 3,492 B | ⭐ **booted to a shell** | 3.98 |
+
+⚠ **This does not falsify `R18` or `R7`.** Their measurements were taken on
+QEMU 9.x, one on a Zen 5 AMD part and one on GitHub's Windows runner fleets.
+⛔ **What it falsifies is the prediction this repository wrote about this
+machine**, which said the published rule would hand it a wedging model. On
+QEMU 11.1.0 on an i7-12700H, no model in the set wedged, and a zero-byte serial
+log never appeared.
+
+⭐ **The advice to prefer a named model stands anyway**, and the reason is now
+cheaper to state: it costs nothing, and the failure it avoids is a twelve-minute
+hang with no output.
+
+---
+
+## ⭐ Correction 2: why smolBSD boots under TCG and not under WHPX
+
+The sweep treated the CPU model as the open question. ⛔ **It is not the CPU
+model.** Every `-cpu` above produced the same NetBSD boot and the same dead end,
+and the difference is the **accelerator**:
+
+```text
+tcg :  pv0 at mainbus0 -> qemufwcfg0 -> virtio0 (viommio @0xfeb00e00) -> ld0
+       -> dk0 at ld0: "rescueroot" -> root on dk0 -> a shell
+whpx:  mainbus0, cpu0, ioapic0, isa0, com0.  And nothing else, ever.
+```
+
+⛔ **NetBSD's paravirtual bus never attaches under WHPX.** With no `pv0` there
+is no `qemufwcfg`, with no firmware-config device there is no virtio-mmio
+enumeration, and with no virtio there is no disk. The kernel is healthy
+throughout: it prints its banner, sizes memory, attaches `com0` and then sits at
+`root device:` forever, once per second, until it is killed.
+
+⭐ **FreeBSD, booted under the same accelerator, prints the reason in one
+line:**
+
+```text
+Hypervisor: Origin = "Microsoft Hv"
+```
+
+and `sysctl -n kern.vm_guest` answers `hv`, where the same FreeBSD under
+Firecracker answers `kvm`.
+
+⛔ **Under WHPX the guest sees the HOST's hypervisor signature, not QEMU's.**
+FreeBSD has Hyper-V support and carries on; NetBSD's `pv` bus is looking for
+QEMU, does not find it, and concludes it is on bare metal.
+
+⚠ **So this is a guest-side limitation, specific to kernels that reach their
+disk only through a paravirtual bus.** A kernel with ordinary PCI drivers is
+unaffected, which is exactly why the FreeBSD result below works with the same
+accelerator, the same machine type and the same CPU model.
+
+⭐ **smolBSD is therefore not out of reach on Windows. It is out of reach
+accelerated.** Under `-accel tcg` it boots to a NetBSD shell with a **499 ms**
+kernel boot time, from a 4.2 MB compressed image.
+
+---
+
+## ⭐ Correction 3: the Host Compute System, costed
+
+The `future` lesson above says the Host Compute System "takes a JSON document
+naming a UEFI boot and an hvsocket, and is what WSL itself calls. A BSD guest
+through HCS or the Hyper-V module needs no patched service. **Untried.**"
+
+⭐ **Tried. Half of it holds and the half that matters does not.**
+
+| probe | result |
+| --- | --- |
+| `computecore.dll` loads unelevated | ✅ and all seven wanted HCS v2 entry points resolve |
+| `vmcompute.dll` loads unelevated | ✅ but it exports 36 `Hcs*` functions and **not** `HcsCreateOperation`; it is the older surface |
+| `HcsEnumerateComputeSystems`, a **read** | ⛔ `0x8037011B`, "Only administrators or users that are members of the Hyper-V Administrators user group" |
+| `Get-VM` | ⛔ refused, the same way |
+
+⭐ **The API is genuinely reachable with no patched service and no third
+party**, which is the finding the sweep extracted from `R6`, and it is correct.
+⛔ **Every useful call is privileged.** If enumeration is refused, creation
+certainly is, so this route is closed to an unelevated session however elegant
+the API is.
+
+⚠ **And the honest comparison is the damning part.** HCS yields a virtual
+machine with **no way to talk to it**: it has no serial pipe of its own, and
+WSL reaches its own guest over `AF_HYPERV` sockets whose guest half is the 819
+lines of C this repository refuses to adopt. QEMU, on the very same hypervisor,
+yields a serial console on an ordinary pipe and needs no elevation at all.
+
+---
+
+## ⭐ The recipe that works, on this machine, today
+
+⛔ **Two commands and a wait.** No installer, no ISO, no elevation, no nesting.
+
+```bash
+sh experiments/21-fetch-freebsd-ci.sh
+```
+
+```powershell
+pwsh -NoProfile -File experiments/33-boot-freebsd-whpx.ps1
+```
+
+The QEMU line underneath, stated so it does not have to be extracted from the
+script:
+
+```text
+qemu-system-x86_64 -accel whpx -M q35 -cpu Icelake-Server-v7 -smp 2 -m 2048
+  -drive if=none,file=FreeBSD-15.1-RELEASE-amd64-BASIC-CI-ufs.raw,format=raw,id=root0
+  -device virtio-blk-pci,drive=root0
+  -nic none
+  -display none -no-reboot -serial stdio
+  -rtc base=utc,clock=host,driftfix=slew
+```
+
+What it answers, read back off the console rather than scraped from a boot log:
+
+```text
+FreeBSD freebsd 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562 GENERIC amd64
+15.1-RELEASE
+Intel Xeon Processor (Icelake)
+hv
+/dev/gpt/rootfs    4.8G    2.5G    2.0G    56%    /
+BSD userland is running as root on FreeBSD
+```
+
+| number | value |
+| --- | --- |
+| image, compressed | 666,285,484 B, verified against the published `CHECKSUM.SHA256` |
+| image, expanded | 6.03 GiB |
+| login prompt | **117.7 s**, and **117.4 s** on a second, independent boot |
+| total, boot to shutdown | 133 s, and 142.6 s |
+| nesting | ⭐ **none** |
+| elevation | ⭐ **none** |
+
+⚠ **Three traps that cost real time here**, none of which is about
+virtualisation:
+
+- ⛔ **`Start-Process -ArgumentList` joins the array with spaces and quotes
+  nothing.** A QEMU `-append` value of `console=com root=NAME=rescueroot -z`
+  arrives as four separate arguments and QEMU dies on `-z: invalid option`.
+  Use `ProcessStartInfo.ArgumentList`, which escapes.
+- ⛔ **A serial console drops input typed faster than the tty accepts it.** A
+  marker of `TOOLKIT-READY-789f28b0` reached the shell as `TOO789f28b`. Type
+  one character at a time with a few milliseconds between, and wait for the
+  prompt rather than for elapsed time.
+- ⛔ **`-serial stdio`, not `-serial mon:stdio`.** The monitor multiplexed onto
+  the same pipe puts its own banner into the stream being parsed.
+- ⛔ **`-display none` does not mean no network, and QEMU attaches a DEFAULT
+  NIC unless told otherwise.** The first version of the experiment printed
+  `network NONE` in its own header while the guest brought up `em0`, ran
+  `dhclient` and took a lease on 10.0.2.15. ⚠ No inbound door was opened,
+  because user mode networking forwards nothing without `hostfwd`, but the
+  header was false and it was a header about a security property. `-nic none`
+  is what makes it true.
+
+---
+
+## ⭐ FreeBSD under Firecracker, on the nested KVM, measured
+
+The nested option is the floor rather than the target, and it is a good floor.
+Inside `podman-machine-default`, using `acj`'s published `v0.11.0` kernel and
+root filesystem:
+
+| number | value |
+| --- | --- |
+| console reaches `login:` | ⭐ **1.8 s** |
+| shell over SSH | 32.3 s |
+| `kern.vm_guest` | `kvm` |
+| root filesystem | `/dev/vtbd0`, 4.8G |
+
+⛔ **The 30-second gap is not FreeBSD booting.** `sshd` accepts the TCP
+connection immediately and stalls reverse-resolving the client, because this
+experiment deliberately sets up no NAT and the guest's DNS therefore goes
+nowhere. `acj`'s own CI never sees it, because it masquerades the guest onto
+the runner's network.
+
+⚠ **That distinction is worth more than the number.** The first version of the
+experiment asked only SSH, waited 60 s, and reported **"boot FAILED"** about a
+FreeBSD that had been up for 295 seconds. A probe that cannot tell "did not
+boot" from "booted, and the door was slow" sends the next reader after the
+wrong defect.
+
+---
+
+## ⚠ What this section still does not know
+
+⛔ Stated rather than left to be discovered.
+
+- ⚠ **Every number here is one machine.** The CPU-model result in particular
+  disagrees with two published reports taken on other hardware and older QEMU,
+  and one sample does not settle that.
+- ⛔ **`oras` is still absent**, so the zero-byte pull on Windows remains `R7`'s
+  report and is still not reproduced.
+- ⛔ **The FreeBSD `.vhd` and Hyper-V route is still not re-checked.**
+  ⭐ Experiment 32 does bound it: Hyper-V needs elevation this session did not
+  have, and the WHPX route needs none, so the `.vhd` route now has a cost the
+  recommended one does not.
+- ⛔ **The 117 s is NOT explained, and the first write-up of this guessed.**
+  It said the time was `growfs` on first boot. The console says otherwise:
+  there is no `growfs` line anywhere, the root filesystem comes up
+  `FILE SYSTEM CLEAN; SKIPPING CHECKS`, and a second boot took **117.4 s**,
+  within 0.3 s of the first, so it is not a one-time first-boot cost either.
+  ⭐ `33-boot-freebsd-whpx.ps1` now stamps the loader handoff, the kernel
+  banner, the root mount and the start of `rc`, so the next run reports where
+  the time goes instead of attributing it.
+- ⚠ **Nothing here tested arm64**, and the artefacts used are `amd64` only.

@@ -21,6 +21,89 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T14:30:00Z: a FreeBSD userland runs on this Windows host, with no nesting
+
+**Record:** `BSD-01` in [`TODO/bsd.md`](TODO/bsd.md) carries the result, the
+five corrections and the evidence; the experiments are in
+`pkgforge-dev/docker-bsd` under `experiments/`, each committed with its result.
+⚠ **`BSD-01` stays open**, on its own acceptance command rather than on its
+purpose. [`TODO/PROGRESS.md`](TODO/PROGRESS.md) says exactly what is left.
+**Deployed:** no deploy. ⛔ This repository publishes nothing. The experiments
+were pushed to `pkgforge-dev/docker-bsd`.
+
+⭐ **The result, measured on this machine and not derived from anything.**
+`qemu-system-x86_64 -accel whpx -M q35 -cpu Icelake-Server-v7` boots FreeBSD
+15.1-RELEASE from the published BASIC-CI image and answers commands on its
+serial console, unelevated, with the WSL2 podman machine running throughout.
+⛔ **One hypervisor, the host's own. No nesting anywhere**, which is what the
+operator's ruling asked for and what the previous plan called the fallback.
+
+- ⭐ **The ruling's order of work was right, and the experiment that FAILED is
+  why the one that worked, worked.** smolBSD under WHPX boots a NetBSD kernel
+  and never finds its disk. The identical command line under `-accel tcg`
+  boots to a shell. That contrast located the cause, and FreeBSD then printed
+  it: under WHPX the guest sees the **host's** hypervisor signature,
+  `Microsoft Hv`, not QEMU's. NetBSD's paravirtual bus is looking for QEMU,
+  does not find it, and never enumerates virtio-mmio. FreeBSD has Hyper-V
+  support and carries on.
+- ⛔ **The WHPX CPU-model prediction for this machine was wrong.** `BSD-01`
+  recorded, explicitly as derived and not measured, that this host's Model 154
+  CPU would be handed a newer model and wedge QEMU. Measured on QEMU 11.1.0:
+  five models including the two the advice forbids, `host` and `max`, all
+  behaved identically and none wedged. ⚠ The sources are not falsified; they
+  measured QEMU 9.x on other hardware. The prediction about this host is.
+- ⛔ **The untried avenue is now tried and it is closed.** `computecore.dll`
+  loads unelevated and every HCS v2 entry point resolves, so reaching the API
+  WSL is built on needs no patched service. But `HcsEnumerateComputeSystems`,
+  a **read**, returns `0x8037011B`: Hyper-V Administrators only. ⚠ That
+  inverts the Approach table's ranking on this host, and not on performance:
+  the recommended Hyper-V route needs elevation, and the row it called a
+  fallback needs none.
+- ⭐ **Four BSD boots, where the previous session could claim none.** NetBSD
+  under TCG to a shell in 499 ms of kernel time; FreeBSD under Firecracker on
+  the WSL2 nested KVM to a login prompt in **1.8 s**; FreeBSD under WHPX with
+  no nesting in **117 s**.
+
+- ⭐ **A container runs inside that guest**, `rc=0`, with `podman info`
+  reporting `freebsd/amd64 runtime=ocijail`, so the runtime underneath is jails.
+  ⛔ **A long-running `podman system service` panics the guest KERNEL**, in
+  `_umtx_op`, which is what Go's scheduler parks threads on. That is the whole
+  distance between `BSD-01`'s purpose and its acceptance command, and it is why
+  the entry stays open.
+- ⚠ **One explanation was published and then withdrawn, in the same session.**
+  Under WHPX FreeBSD selects a Hyper-V timecounter and Go binaries die of
+  `SIGFPE`; switching to `ACPI-fast` moves `podman run` to `rc=0`. ⛔ **The
+  clock is not the cause**: with `ACPI-fast` it measurably works, and the daemon
+  still takes the kernel down. The correction is written under the claim rather
+  than over it.
+
+⛔ **Three defects in this session's own scripts, each a class this repository
+already names, and one of them shipped a false success:**
+
+- an experiment printed ⭐ **"a container ran"** over a `podman run` that had
+  exited with an error, because it matched its success marker against the
+  guest's **echo of the command line** that mentioned the marker. The tty had
+  wrapped the echo, so the filter meant to remove it missed it;
+- `curl` and `xz` guarded by `cmd; rc=$?` under `set -e`, where the shell has
+  already exited before the guard can run;
+- a probe reporting `vmcompute.dll did not load` about a library that had
+  loaded and exports 36 functions, because a `try`/`catch` around a P/Invoke
+  cannot tell a missing library from a missing entry point.
+
+⭐ **Five rows added to
+[`docs/conventions/forbidden-patterns.md`](docs/conventions/forbidden-patterns.md)**,
+one per class plus the one that made a security claim false: `-display none`
+does not mean no network, and QEMU attaches a default NIC unless given
+`-nic none`. An experiment printed `network NONE` while its guest was running
+`dhclient`.
+
+⚠ **And one claim in this session's own first write-up was wrong and is
+corrected in place**: the 117 s boot was attributed to `growfs`. The console
+shows no `growfs`, reports the filesystem `CLEAN; SKIPPING CHECKS`, and a
+second boot landed within 0.3 s of the first. The experiment now stamps four
+boot phases so the next run reports where the time goes instead of attributing
+it.
+
 ### 2026-08-27T12:52:00Z: the BSD reference sweep, BSD-02 answered, and an unregistered consumer
 
 ⚠ **One entry for one session, covering two commits**, `796e40f` and the

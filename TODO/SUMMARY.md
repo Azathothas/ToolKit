@@ -9,86 +9,92 @@ fastest orientation into what the last session actually did.
 
 ---
 
-## 2026-08-27, the BSD reference sweep
+## 2026-08-27, the session that booted a BSD
 
 | row | before | after |
 | --- | --- | --- |
-| **Elapsed** | probe at 2026-08-27T11:54:27Z | 2026-08-27T12:37:50Z, **43m** |
-| **Commits** | `9503a23` | **2 here**, plus **1** in `pkgforge-dev/docker-bsd` (`878e286`) |
-| **Work** | 1 assigned: mine the references, correct the entries, prepare `docker-bsd` | ⭐ **completed, 0 deferred, 0 failed.** Plus `BSD-02` closed unassigned, and an unregistered consumer found and recorded |
-| **Changes** | | 8 files here, **+1,495 / -131**. 6 files in `docker-bsd`, **+627**. ⛔ No code changed in either |
-| **Size** | 18,090 lines, 75 files | 19,454 lines, 75 files, **+1,364**. ⚠ Measured before this table's own final edit, so both figures are short by a few lines. No file added or removed here |
-| **Checks** | `check-gate --fast`: 12 passed, 1 skipped | ⭐ same, run twice. ⚠ The **full** gate was not run in this session, so `check-twins` was skipped at both ends and this row has no 13-of-13 behind it |
-| **Cost** | | no money. ⚠ **No BSD was booted and nothing was built.** ⛔ The API call count is **not given**: the hourly limit reset mid-session, so nothing measured it |
-| **Health** | 18 entries, 2 open, 16 done | 18 entries, **1 open**, 17 done. Both trees clean. CI green: three jobs at `796e40f`, two jobs at `878e286` |
+| **Elapsed** | probe at 2026-08-27T12:54:52Z | 2026-08-27T14:25Z, about **90m** |
+| **Commits** | `a9171be` here, `878e286` in `pkgforge-dev/docker-bsd` | **1 here**, **2** in `docker-bsd` (`d7e6184`, `f2bd4a3`), both pushed |
+| **Work** | 1 assigned: reach a BSD userland from Windows, trying the ranked avenues in order | ⭐ **the goal is reached.** ⚠ `BSD-01` stays **open** on its own acceptance, and PROGRESS says exactly what is left |
+| **Changes** | | ⛔ **no code changed here.** 6 files, **+987 / -200**, docs and record only. 10 files in `docker-bsd`, **+2,382 / -26**, of which **8 are new experiments** and one a shared console library |
+| **Size** | 19,454 lines, 75 files | **20,241 lines**, 75 files, **+787**. ⚠ Measured before this table's own final edit, so it is short by a few lines. No file added or removed here |
+| **Checks** | `check-gate --fast` 12 passed 1 skipped, carried at 41s | ⭐ same, **re-timed at 49.8s**, plus the **full** gate with `check-twins`. `docker-bsd` `tests/run.sh` 27 passed 0 failed |
+| **Cost** | | no money. ⚠ **about 1.0 GB downloaded**: QEMU 197 MB, FreeBSD BASIC-CI 666 MB, `acj`'s Firecracker set about 130 MB, smolBSD 13.6 MB, plus `podman-suite` inside a guest, which was not measured separately. ⚠ **Disk left behind: 6.8 GB** on `C:` and **603 MB** inside the podman machine, both in ignored scratch |
+| **Health** | 18 entries, 1 open, 17 done | 18 entries, **1 open**, 17 done, unchanged. Both trees clean and pushed. ⚠ CI: three jobs green at `a9171be` and two at `d7e6184`; the runs for this session's own commits are named in the closing report rather than guessed at here |
 
-### ⛔ CAUTION: this session did not finish the gate
+### ⭐ What the session was for, and whether it did it
 
-⛔ **Part (c) of [`../docs/methodology/gate.md`](../docs/methodology/gate.md),
-the three deep reviews, was NOT run.** The session ran out of budget and the
-operator ended it deliberately. Parts (a) and (b) were run: the local gate
-twice, and both probes driven on all three hosts.
+⛔ **The ask was a BSD that boots on this machine, not a plan for one.**
 
-⚠ **So treat the sweep as one pass, not as reviewed work.** Specifically:
+```text
+FreeBSD freebsd 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562 GENERIC amd64
+BSD userland is running as root on FreeBSD
+```
 
-- ⭐ **The measurements taken on this machine are real** and are labelled as
-  such: the WHPX capability, the absent tooling, the host CPU identity, the
-  re-derived nested KVM facts, and the two probe defects found by running them.
-- ⛔ **Everything attributed to another repository is one reading of it.**
-  Verdicts, rankings, quoted numbers and the Pre/Post/Misc classification were
-  reviewed twice for classification only, not audited for accuracy. ⚠ Some of
-  it may be wrong. Re-derive any claim before building on it, which
-  [`../docs/security/remote-ops.md`](../docs/security/remote-ops.md) requires
-  anyway.
-- ⚠ **The per-BSD table that closed `BSD-02` is the same kind of claim.** It
-  closed because its acceptance was a written answer with its evidence, and the
-  evidence is cited. It did not close because anything was run.
+⭐ **On the Windows host's own hypervisor, through `qemu -accel whpx`, with no
+nesting and no elevation.** That is the operator's ruling satisfied: nesting was
+to be the floor rather than the target, and this is better than the nested
+design on both counts the ruling named.
 
-### What moved
-
-| | |
-| --- | --- |
-| ⭐ the sweep | **28 repositories** from the operator's 23 rows, one of which was an organisation query. Every one reached, none gone. `R6` to `R28`, classified, reviewed twice, and ranked |
-| ⭐ `BSD-02` | **closed.** Its acceptance was a written answer per BSD; that is what the sweep produced |
-| ⭐ `BSD-01` | six corrections underneath its table, and a changed order of work. It keeps every word it had |
-| ⭐ `docker-bsd` | an `experiments/` layout with two probes that were run, its own ignored `.tmp/`, and `TOOLKIT.md` |
-| ⛔ `consumers.md` | a **second consumer**, unregistered until now, carrying a vendored copy with both closed P0s in it |
+⭐ **And a container runs inside it**, `rc=0`, with `podman info` reporting
+`freebsd/amd64 runtime=ocijail`.
 
 ### ⭐ The five findings that change what the next session does
 
-1. ⛔ **`x86_64` GitHub runners have `/dev/kvm` and arm64 runners do not.** Four
-   references agree. `BSD-01` called this its single highest-value unknown.
-2. ⛔ **Under WHPX, `-cpu host` and `-cpu max` wedge QEMU**, and so does a named
-   model newer than the host. Two projects measured it independently.
-3. ⭐ **A BSD microvm is the option the table did not have**: about 10 ms for
-   NetBSD through PVH, about 12 s for FreeBSD under Firecracker, with published
-   kernels and root filesystems for both.
-4. ⭐ **WSL's own host will drive a non-Linux guest**, and the guest half is 819
-   lines of C over Hyper-V sockets. ⛔ Refused: the cost is a rebuilt
-   `wslservice.exe`, which runs this machine's podman machine. ⭐ What survives
-   is that the Host Compute System takes a JSON document and boots an arbitrary
-   UEFI disk, needing no patch at all.
-5. ⛔ **A reverse Linuxulator exists and this repository said it did not.**
+1. ⭐ **WHPX presents the HOST's hypervisor identity to the guest**, not QEMU's.
+   `Hypervisor: Origin = "Microsoft Hv"`. Everything else here follows from
+   that one line.
+2. ⛔ **Go binaries die in that guest, and the tidy explanation is wrong.**
+   FreeBSD picks its Hyper-V timecounter at quality 3000, every Go binary dies
+   of `SIGFPE` in the garbage collector, and
+   `sysctl kern.timecounter.hardware=ACPI-fast` moves `podman run` to `rc=0`.
+   ⛔ **But the clock then measurably works** (`delta_ns=1002101384` across a
+   one-second sleep) and a long-running Go daemon **panics the guest kernel** in
+   `_umtx_op`. ⚠ The timecounter change moved the symptom; it did not explain
+   it. This session published the tidy version first and corrected it.
+3. ⭐ **And NetBSD's paravirtual bus never attaches**, so smolBSD boots a kernel
+   under WHPX and never finds its disk. The same image under `-accel tcg` boots
+   to a shell in 499 ms of kernel time.
+4. ⛔ **`-cpu host` and `-cpu max` did NOT wedge QEMU here**, against published
+   advice and against this repository's own prediction for a Model 154 host.
+   All five models behaved identically on QEMU 11.1.0.
+5. ⛔ **The Host Compute System is reachable and closed.** `computecore.dll`
+   binds unelevated, and `HcsEnumerateComputeSystems`, a **read**, returns
+   `0x8037011B`: Hyper-V Administrators only.
 
-### Debts introduced, named rather than left
+### ⛔ Six defects this session shipped and then caught
 
-- ⛔ **`pkgforge-dev/cross-libc-dlopen` carries `wsl-ephemeral.ps1` with
-  `WSL-01` and `WSL-12` in it.** Not fixed: that tree is read-only to this one.
-  Recorded in [`../docs/consumers.md`](../docs/consumers.md).
-- ⚠ **`docker-bsd` publishes a root filesystem that three of its four BSDs have
-  nothing to run.** Whether it should publish something bootable instead is an
-  open question in [`PROGRESS.md`](PROGRESS.md), deliberately not decided here.
+⚠ **Every one is a class this repository already names, and the reviews caught
+what running did not.** Five new rows in
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md).
 
-### What was NOT measured, so it is not claimed
+- ⛔ **A false success.** An experiment printed "a container ran" over a
+  `podman run` that had exited with an error, because its marker matched the
+  guest's **echo of the command line that mentioned the marker**.
+- ⛔ `ssh` piped into `sed` with `$?` read after, which reads `sed`'s status.
+- ⛔ `curl` and `xz` guarded by `cmd; rc=$?` under `set -e`, where the shell has
+  already exited before the guard can run.
+- ⛔ A probe reporting `vmcompute.dll did not load` about a library that had
+  loaded, because a `try`/`catch` cannot tell a missing library from a missing
+  entry point.
+- ⛔ `network NONE` printed while the guest ran `dhclient`: QEMU attaches a
+  default NIC unless given `-nic none`.
+- ⛔ A boot time attributed to `growfs` that `growfs` had nothing to do with.
+  Replaced with four measured boot phases, which located it: **108 s of 114 s
+  is device probing**.
 
-- ⛔ **No BSD was booted.** Not one, on any host. Every boot time in the sweep
-  is somebody else's, attributed where it appears.
-- ⛔ **No QEMU exists on either side of this machine**, so the WHPX CPU-model
-  prediction for this host's Model 154 CPU is **derived** from another project's
-  rule and its measurements. It is not a measurement of this machine.
-- ⚠ **The `/dev/kvm` answer for CI runners is sourced, not measured.** This
-  session has no runner to probe.
-- ⚠ **`oras` is absent here**, so the zero-byte pull on Windows is a report from
-  smolBSD's tracker and was not reproduced.
-- ⚠ **The gate timings in [`PROGRESS.md`](PROGRESS.md), 41s and 208s, were not
-  re-timed** in this session and are carried from the one that measured them.
+### ⚠ What was NOT measured, so it is not claimed
+
+- ⛔ **Steady-state performance under WHPX.** Only boot time was measured. A
+  slow device probe hints that IO exits are expensive, and nothing here tested
+  whether that follows the guest into ordinary work.
+- ⛔ **The two FreeBSD boot times are not a hypervisor comparison.** 1.8 s under
+  Firecracker is a patched minimal kernel with almost nothing to probe; 113.6 s
+  under WHPX is stock GENERIC on an emulated q35. Two variables moved at once.
+- ⚠ **The Hyper-V `.vhd` route was still not built or re-checked.** What is now
+  known is that it needs elevation the WHPX route does not.
+- ⚠ **Every number is one machine.** The CPU-model result in particular
+  disagrees with two published reports taken on other hardware and older QEMU.
+- ⛔ **The clock fix improved the Go failure; it did not abolish it.** A
+  separate `podman pull` still died in the same run, with a different fatal
+  error. The remaining fault is intermittent and is not diagnosed.
