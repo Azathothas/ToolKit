@@ -21,6 +21,37 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T10:13:41Z: a command channel that survives both shells
+
+**Record:** `WSL-08` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed
+in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing. The
+`Azathothas/TEMPLATE` pin has NOT moved for this change yet.
+
+⭐ **`wsl-ephemeral.ps1` now carries a command as base64 and sources it inside
+the distro**, so a quote, a dollar sign, a backtick or a tab arrives byte-exact.
+`echo $PATH` works; it used to die with ``syntax error: unexpected "("``.
+
+- **New parameters, both additive:** `-CommandFile` reads a file on this machine
+  verbatim, so a multi-line script works; `-CommandB64` takes the command as
+  base64. `-Command` stays and is unchanged in spelling. The three are mutually
+  exclusive and passing two is refused.
+- ⛔ **All three payloads the script sends now go through one function**, which
+  **asserts** the transport stays inside the measured alphabet. Two of the three
+  used to be hand-written inside that alphabet with nothing enforcing it, which
+  is how `WSL-12` shipped.
+- ⚠ **One observable difference for an existing caller**, and it is a fix rather
+  than a break: `$VAR` in a `-Command` is now expanded by the guest's login
+  shell instead of in transit, so with `-OciEnv` it expands to the image's
+  value. Nothing renamed, no exit code changed meaning.
+- ⚠ **What is still not possible, and it is not this script:** Windows
+  PowerShell 5.1 drops a double quote when it builds a child process's argument
+  list, so a `-Command` value loses it before this script runs. `-CommandB64` is
+  immune and is the documented answer.
+- ⭐ **The smoke probe carries `WSL-12`'s exact line again**, brackets and double
+  quotes included, and `-Action New` works on 5.1. It is the first thing that
+  fails if the channel ever breaks again.
+
 ### 2026-08-27T09:20:00Z: the door sweep found New broken on PowerShell 5.1
 
 **Record:** `WSL-12` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), filed

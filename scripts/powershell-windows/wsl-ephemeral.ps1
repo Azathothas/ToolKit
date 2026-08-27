@@ -37,7 +37,18 @@
     Distro name. Auto-generated when omitted. The prefix is added if missing.
 
 .PARAMETER Command
-    Shell command to run, via /bin/sh -lc.
+    Shell command to run, via /bin/sh -lc. It travels as base64 and is sourced
+    inside the distro, so a quote, a dollar sign, a backtick or a tab arrives
+    byte-exact instead of being re-parsed in transit.
+
+.PARAMETER CommandFile
+    Path to a file ON THIS MACHINE whose bytes are the command. Read verbatim,
+    which is what makes a multi-line script possible at all.
+
+.PARAMETER CommandB64
+    The command as base64 of its UTF-8 bytes, for a caller that already holds
+    the text and wants no shell anywhere near it. Command, CommandFile and
+    CommandB64 are mutually exclusive.
 
 .PARAMETER User
     User to run as inside the distro. Default 'root'.
@@ -84,6 +95,28 @@
     A caller that relied on New never failing now sees the real code. That is a
     deliberate break: see docs/consumers.md.
 
+    COMMAND CHANNEL -- -Command, -CommandFile and -CommandB64 are three ways of
+    handing over the same thing: bytes. They are base64'd here, decoded to a
+    file inside the distro, and sourced by the login shell. NOTHING is quoted
+    for the guest, because quoting does not survive the trip and no caller can
+    make it. Measured on this host on 2026-08-27 under BOTH PowerShell hosts:
+    a payload handed to `wsl.exe -- /bin/sh -lc` has its $VAR expanded and the
+    RESULT re-parsed, even inside POSIX single quotes, which is why
+    `echo $PATH` died on the bracket in "Program Files (x86)" and why a
+    backtick opened a command substitution. Base64 is [A-Za-z0-9+/=] and
+    arrives intact on both hosts and in both busybox ash and dash.
+
+    ONE function builds that skeleton, ConvertTo-DistroScriptCommand, and it
+    ASSERTS the result stays inside the measured alphabet. Every payload this
+    script sends goes through it: the caller's command, the smoke probe, and
+    the script Write-DistroFile sends. Before this, two of those three were
+    hand-written inside that alphabet with nothing enforcing it, which is the
+    defect that made WSL-12 possible.
+
+    The transport file is written, opened, UNLINKED, and only then sourced from
+    its open descriptor. So a run leaves nothing behind inside the distro, and
+    a command carrying a credential does not persist as a file.
+
     ORPHANS -- List reports any rootfs .tar left loose in the base directory
     and Purge removes them, through the same deletion and the same containment
     guard as a distro disk. An interrupted New is what leaves one: the tarball
@@ -116,7 +149,7 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
     Justification = 'This is an interactive console tool. Its entire output is progress and a summary for a human at a terminal, which is the documented case for Write-Host. Nothing here is a value another script consumes: Run exits with the inner command''s code and callers read that.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
-    Justification = 'Image, Tarball, Command, User, Ephemeral and Force are read by the Invoke-Action* functions through script scope rather than as arguments. The analyzer does not follow that, and threading six parameters through every call to satisfy it would make the code worse.')]
+    Justification = 'Image, Tarball, Command, CommandFile, CommandB64, User, Ephemeral and Force are read by the Invoke-Action* functions through script scope rather than as arguments. The analyzer does not follow that, and threading eight parameters through every call to satisfy it would make the code worse.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
     Justification = 'Get-WslDistroNames returns the whole list and Export-ImageRootfs writes one rootfs whose name simply ends in s. Renaming either to satisfy the rule would make the name describe the thing less accurately.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
@@ -131,6 +164,8 @@ param(
     [string]$Tarball,
     [string]$Name,
     [string]$Command,
+    [string]$CommandFile,
+    [string]$CommandB64,
     [string]$User = 'root',
     [switch]$Ephemeral,
     [switch]$OciEnv,
@@ -243,12 +278,107 @@ function Get-WslDistroNames {
     return $names
 }
 
+function New-GuestScratchPath {
+    <#
+      A path for the transport file inside the guest. It is interpolated into
+      the skeleton RAW, so it is drawn from the cleared alphabet and nothing
+      else, and ConvertTo-DistroScriptCommand re-checks it rather than trusting
+      this function to have been the one that produced it.
+
+      It is random per call because two concurrent Run commands against one
+      distro must not write each other's file. The window is microseconds wide
+      and it costs four characters to close it.
+    #>
+    $suffix = -join ((48..57) + (97..122) | Get-Random -Count 8 | ForEach-Object { [char]$_ })
+    return "/tmp/.wsl-eph-$suffix"
+}
+
+function ConvertTo-DistroScriptCommand {
+    <#
+      THE ONE PLACE THE TRANSPORT SKELETON IS BUILT, and the reason there is
+      only one is that a payload hand-written inside the safe alphabet is a
+      constraint nothing enforces. That is exactly how WSL-12 shipped: the
+      smoke probe carried a bracket inside a double-quoted echo, and every
+      -Action New failed on Windows PowerShell 5.1.
+
+      WHAT DOES NOT SURVIVE, measured on this host on 2026-08-27 against real
+      Alpine and Debian distros, under BOTH PowerShell 7.6.5 and Windows
+      PowerShell 5.1, with every hazard ALREADY correctly single-quoted for sh
+      before it was passed:
+
+        $VAR       expanded in transit, and the RESULT is then re-parsed. That
+                   is why `echo $PATH` dies: the value carries the bracket in
+                   "Program Files (x86)".
+        backtick   opens a command substitution. Both hosts.
+        "          survives on 7.6.5 and does NOT on 5.1, where it gives
+                   "syntax error: unterminated quoted string".
+
+      The single quotes never reach the guest, so a caller cannot fix this by
+      quoting harder. WHAT DOES SURVIVE is base64: [A-Za-z0-9+/=], plus the
+      operators this skeleton needs. So the payload goes as base64 and every
+      character outside it is REFUSED here rather than mangled in transit.
+
+      THE SKELETON, and each link earns its place:
+
+        mkdir -p /tmp        a rootfs exported from a scratch image may have no
+                             /tmp at all, and the failure is otherwise a
+                             redirect error naming nothing.
+        base64 -d>PATH       the decode. && means a guest with no base64 STOPS
+                             here instead of sourcing an empty file and
+                             reporting success over a command that never ran.
+        exec 8>PATH          create it for writing...
+        exec 9<PATH          ...open a reader on it...
+        rm -f PATH           ...and UNLINK IT BEFORE ANY CONTENT EXISTS. Both
+                             descriptors keep the inode alive, so the command's
+                             text is never a file anybody can read, and no
+                             later failure can leave one behind.
+        base64 -d>&8         the decode, written through the descriptor. && is
+                             what makes a guest with no base64 STOP here
+                             instead of sourcing an empty file and reporting
+                             success over a command that never ran.
+        . /dev/fd/9          source it from the open descriptor. The login
+                             shell runs it, so /etc/profile and -OciEnv still
+                             apply, and its exit code becomes the shell's.
+
+      ⚠ THE ORDER OF THOSE FIVE IS THE POINT, and it was got wrong first.
+      Writing the file and then unlinking it reads the same and is not: a
+      redirect CREATES the file before the decode runs, so a guest with no
+      base64 was left holding an empty /tmp file that nothing removed. The
+      mutation that planted a missing decoder is what found it.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$ScriptBytes,
+        [Parameter(Mandatory = $true)][string]$GuestPath
+    )
+    if ($GuestPath -notmatch '^/[A-Za-z0-9_.\-]+(/[A-Za-z0-9_.\-]+)*$') {
+        throw "Transport path '$GuestPath' is outside the alphabet that survives the trip."
+    }
+    $b64  = [Convert]::ToBase64String($ScriptBytes)
+    $line = "mkdir -p /tmp&&exec 8>$GuestPath&&exec 9<$GuestPath&&rm -f $GuestPath&&echo $b64|base64 -d>&8&&. /dev/fd/9"
+
+    # ⛔ THE CHECK THAT DID NOT EXIST. Every payload now reaches the guest as
+    # base64, so nothing a caller writes can break the alphabet; this catches
+    # the OTHER direction, an edit to the skeleton above that adds a character
+    # the measurement never cleared. Plant a $ in that string and this fires.
+    $bad = [regex]::Match($line, '[^A-Za-z0-9+/=|<>&;. _-]')
+    if ($bad.Success) {
+        throw ("Transport skeleton carries '$($bad.Value)', which is outside the alphabet measured " +
+               "to survive PowerShell to wsl.exe to /bin/sh. Re-measure before widening it.")
+    }
+    return $line
+}
+
 function Invoke-InDistro {
     <#
       The ONE path that runs a caller's command inside a distro. New and Run both
       go through it, so an inner exit code cannot be propagated by one action and
       dropped by the other. It was dropped by New, which is what made -Command
       useless as a gate.
+
+      It takes BYTES rather than a string because -CommandFile is read verbatim
+      from disk: a file that is not UTF-8 would otherwise be re-encoded on its
+      way through a parameter typed as text, which is a mangling of exactly the
+      kind this whole entry exists to remove.
 
       The code comes back through -ExitCode rather than as the return value, on
       purpose. The command's own stdout flows out of this function's success
@@ -258,7 +388,7 @@ function Invoke-InDistro {
     param(
         [Parameter(Mandatory = $true)][string]$DistroName,
         [Parameter(Mandatory = $true)][string]$RunAs,
-        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ShellCommand,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$ScriptBytes,
         [Parameter(Mandatory = $true)][ref]$ExitCode
     )
     # Set before the try, and set non-zero. Under Set-StrictMode -Version Latest
@@ -266,13 +396,64 @@ function Invoke-InDistro {
     # has to leave a code behind; and "it never answered" is a failure, not a
     # pass, so the value it starts at has to be one that fails.
     $ExitCode.Value = 1
+    $line = ConvertTo-DistroScriptCommand -ScriptBytes $ScriptBytes -GuestPath (New-GuestScratchPath)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        & (Get-WslExe) -d $DistroName -u $RunAs -- /bin/sh -lc $ShellCommand
+        & (Get-WslExe) -d $DistroName -u $RunAs -- /bin/sh -lc $line
         if ($null -ne $LASTEXITCODE) { $ExitCode.Value = [int]$LASTEXITCODE }
     }
     finally { $ErrorActionPreference = $prev }
+}
+
+function ConvertTo-Utf8Bytes {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+    return ,[Text.Encoding]::UTF8.GetBytes($Text)
+}
+
+function Resolve-CommandBytes {
+    <#
+      The three ways of naming a command collapse to one thing here, so every
+      action downstream sees bytes and no action has to know which switch the
+      caller used.
+
+      $null means NO command was given, which is different from an empty one:
+      New with no -Command is a distro that gets created and kept.
+    #>
+    param(
+        [AllowEmptyString()][string]$Text,
+        [AllowEmptyString()][string]$FromFile,
+        [AllowEmptyString()][string]$FromB64
+    )
+    $given = @()
+    if ($Text)     { $given += '-Command' }
+    if ($FromFile) { $given += '-CommandFile' }
+    if ($FromB64)  { $given += '-CommandB64' }
+    if ($given.Count -gt 1) {
+        throw "Pass only one of $($given -join ', '). They are three spellings of the same argument."
+    }
+    if ($given.Count -eq 0) { return $null }
+
+    if ($Text) { return (ConvertTo-Utf8Bytes -Text $Text) }
+
+    if ($FromFile) {
+        if (-not (Test-Path -LiteralPath $FromFile -PathType Leaf)) {
+            throw "-CommandFile not found: $FromFile"
+        }
+        $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $FromFile).Path)
+        # ⚠ NOT rewritten. The file's bytes are the command, and silently
+        # editing somebody's payload is the failure this entry is about. A
+        # carriage return is legal in a POSIX script and means something, so
+        # this says what is about to happen rather than deciding for them.
+        if ($bytes -contains 13) {
+            Write-Warn "$FromFile has CRLF line endings. /bin/sh reads the CR as part of the last word on each line, so expect 'not found' errors. Convert it to LF if that is not what you meant."
+        }
+        return ,$bytes
+    }
+
+    try { $decoded = [Convert]::FromBase64String($FromB64) }
+    catch { throw "-CommandB64 is not valid base64: $($_.Exception.Message)" }
+    return ,$decoded
 }
 
 # --------------------------------------------------------------------------------------
@@ -542,18 +723,26 @@ function Write-DistroFile {
     <#
       Put bytes inside a distro without a shell touching them.
 
-      THE PAYLOAD GOES AS BASE64 AND THAT IS NOT DECORATION. Measured on this
-      host on 2026-08-27, under BOTH Windows PowerShell 5.1 and PowerShell
-      7.6.5: a command string handed to 'wsl.exe -- /bin/sh -lc' does not keep
-      its quoting. A dollar sign expands and a backtick opens a command
-      substitution EVEN WHEN THE TEXT IS INSIDE POSIX SINGLE QUOTES, and on 5.1
-      a double quote produces "unterminated quoted string". Base64 is
-      [A-Za-z0-9+/=], which contains none of those, so it is the one channel
-      that arrives intact. docs/conventions/shell.md section 1.
+      ⭐ THE SCRIPT THIS SENDS IS NOW A PAYLOAD LIKE ANY OTHER. It used to be
+      hand-written inside the alphabet that survives wsl.exe:
 
-      The PATH is not quotable either, for the same reason, so it is restricted
-      to characters no shell treats specially and refused otherwise. Refusing is
-      the point: a path this cannot carry safely must not be carried unsafely.
+        mkdir -p DIR && echo B64|base64 -d>PATH && chmod MODE PATH
+
+      which worked, and was a constraint nothing enforced. The next person to
+      add a quote to it would have shipped WSL-12 again in a new place. It now
+      goes through ConvertTo-DistroScriptCommand like every other payload, so
+      the alphabet rule is checked by a machine and the text below is free to
+      be quoted properly.
+
+      THE CONTENT STAYS BASE64 inside that payload. Single-quoting it would
+      work for text and would need a second escaping rule for anything else;
+      base64 needs none and has no failure mode a here-document has.
+
+      THE PATH is single-quoted now that it can be, AND still restricted to an
+      absolute path of letters, digits, dot, dash and underscore. ⚠ The
+      restriction is no longer load-bearing for the transport; it is kept as a
+      sanity guard, because every path this script writes is one it chose, and
+      a path arriving with a newline in it is a bug rather than an intention.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$DistroName,
@@ -562,22 +751,29 @@ function Write-DistroFile {
         [string]$Mode = '0644'
     )
     if ($Path -notmatch '^/[A-Za-z0-9_.\-]+(/[A-Za-z0-9_.\-]+)*$') {
-        throw ("Refusing to write '$Path' inside the distro. The path travels through a shell " +
-               "that cannot be quoted safely on this transport, so it is restricted to an " +
-               "absolute path of letters, digits, dot, dash and underscore.")
+        throw ("Refusing to write '$Path' inside the distro. Paths written by this script are " +
+               "restricted to an absolute path of letters, digits, dot, dash and underscore.")
     }
     if ($Mode -notmatch '^[0-7]{3,4}$') { throw "Mode '$Mode' is not an octal file mode." }
 
-    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Content))
+    $b64   = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Content))
     $slash = $Path.LastIndexOf('/')
-    $dir = if ($slash -gt 0) { $Path.Substring(0, $slash) } else { '/' }
+    $dir   = if ($slash -gt 0) { $Path.Substring(0, $slash) } else { '/' }
+    $qPath = ConvertTo-ShellSingleQuoted -Raw $Path
+    $qDir  = ConvertTo-ShellSingleQuoted -Raw $dir
 
-    # Every character here is one the measurement above cleared: letters,
-    # digits, and & | > / - . _ and space. No quote, no dollar, no backtick.
-    $script = "mkdir -p $dir && echo $b64|base64 -d>$Path && chmod $Mode $Path"
+    # Each step reports its own failure. Without the || exit lines a missing
+    # base64 leaves an empty file and a chmod that succeeds over it, and the
+    # whole thing returns 0 having written nothing.
+    $payload = @(
+        "mkdir -p $qDir || exit 1",
+        "echo $b64 | base64 -d > $qPath || exit 1",
+        "chmod $Mode $qPath || exit 1"
+    ) -join "`n"
 
     $rc = 0
-    Invoke-InDistro -DistroName $DistroName -RunAs 'root' -ShellCommand $script -ExitCode ([ref]$rc)
+    Invoke-InDistro -DistroName $DistroName -RunAs 'root' `
+        -ScriptBytes (ConvertTo-Utf8Bytes -Text $payload) -ExitCode ([ref]$rc)
     if ($rc -ne 0) {
         throw ("Could not write $Path inside '$DistroName' (exit $rc). The likeliest cause is an " +
                "image with no base64: busybox has one and coreutils has one, but a rootfs built " +
@@ -742,6 +938,11 @@ function Invoke-ActionNew {
         # The loop also absorbs a first-boot race: drvfs automount of /mnt/<drive> can lag
         # the first shell by a second or two, which otherwise makes the very first user
         # command fail on a path under /mnt/c for no visible reason.
+        #
+        # ⭐ IT ALSO PROVES THE COMMAND CHANNEL, because it goes through the
+        # same transport every -Command does. A guest with no base64, or no
+        # /dev/fd, fails HERE, at creation, with a message naming it, instead
+        # of at some later Run whose exit code would look like the command's.
         $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         try {
             # NOT A HERE-STRING, ON PURPOSE. docs/conventions/shell.md: Windows
@@ -751,34 +952,34 @@ function Invoke-ActionNew {
             # checkout. An array joined with a newline carries the same script
             # and no line ending can break it.
             #
-            # NO DOUBLE QUOTE, NO BRACKET, NO DOLLAR SIGN AND NO BACKTICK IN
-            # HERE, AND THAT IS NOT A STYLE PREFERENCE. Measured on 2026-08-27:
-            # the quoting of a command string handed to `wsl.exe -- /bin/sh -lc`
-            # does NOT survive the trip. This script carried
-            #   echo "note: no /mnt/c (Windows drives not mounted)"
-            # and under Windows PowerShell 5.1 the bracket reached the guest as
-            # syntax, so EVERY -Action New failed with
-            #   /bin/sh: syntax error: unexpected "("
-            # reported as "Distro imported but /bin/sh did not run", and rolled
-            # the distro back. On a host the .NOTES claimed to be tested on.
-            # WSL-08 replaces the transport; until then the payload stays inside
-            # the alphabet that arrives intact.
+            # ⭐ THE BRACKET AND THE DOUBLE QUOTE ON THE NOTE LINE ARE
+            # DELIBERATE. That exact line is what WSL-12 was: it reached the
+            # guest as syntax under Windows PowerShell 5.1, every -Action New
+            # failed, and the fix then was to rewrite the payload inside an
+            # alphabet nothing enforced. It is back, unchanged, because the
+            # transport now carries it. If it ever breaks again, this line is
+            # the one that says so, on the host it broke on.
             $probeScript = @(
                 'echo __WSL_OK__',
                 'for _ in 1 2 3 4 5 6 7 8 9 10; do',
                 '    if [ -d /mnt/c ]; then break; fi',
                 '    sleep 1',
                 'done',
-                'if [ ! -d /mnt/c ]; then echo note:-no-/mnt/c-windows-drives-not-mounted; fi',
-                'head -2 /etc/os-release 2>/dev/null || echo os-release:-n/a'
+                'if [ ! -d /mnt/c ]; then echo "note: no /mnt/c (Windows drives not mounted)"; fi',
+                'head -2 /etc/os-release 2>/dev/null || echo "os-release: n/a"'
             ) -join "`n"
-            $probe = & $wsl -d $distro -u root -- /bin/sh -lc $probeScript 2>&1
+            $probeLine = ConvertTo-DistroScriptCommand `
+                -ScriptBytes (ConvertTo-Utf8Bytes -Text $probeScript) `
+                -GuestPath (New-GuestScratchPath)
+            $probe = & $wsl -d $distro -u root -- /bin/sh -lc $probeLine 2>&1
         }
         finally { $ErrorActionPreference = $prev }
 
         $probeText = ($probe | Out-String)
         if ($probeText -notmatch '__WSL_OK__') {
-            throw "Distro imported but /bin/sh did not run. Output: $($probeText.Trim())"
+            throw ("Distro imported but /bin/sh did not run, or this rootfs cannot carry a " +
+                   "command: the channel needs base64 and /dev/fd inside the guest. " +
+                   "Output: $($probeText.Trim())")
         }
         Write-Ok "'$distro' is up"
         foreach ($l in ($probeText -split "`r?`n")) {
@@ -801,9 +1002,9 @@ function Invoke-ActionNew {
             }
         }
 
-        if ($Command) {
+        if ($null -ne $script:CommandBytes) {
             Write-Step "Running command as '$User'"
-            Invoke-InDistro -DistroName $distro -RunAs $User -ShellCommand $Command -ExitCode ([ref]$rc)
+            Invoke-InDistro -DistroName $distro -RunAs $User -ScriptBytes $script:CommandBytes -ExitCode ([ref]$rc)
             if ($rc -ne 0) { Write-Warn "command exited $rc" }
         }
 
@@ -866,14 +1067,16 @@ function Invoke-ActionNew {
 }
 
 function Invoke-ActionRun {
-    if (-not $Name)    { throw "Action Run requires -Name." }
-    if (-not $Command) { throw "Action Run requires -Command." }
+    if (-not $Name) { throw "Action Run requires -Name." }
+    if ($null -eq $script:CommandBytes) {
+        throw "Action Run requires -Command, -CommandFile or -CommandB64."
+    }
     $distro = Resolve-DistroName -Requested $Name -FromImage ''
     if ((Get-WslDistroNames) -notcontains $distro) {
         throw "Distro '$distro' is not registered. Create it with -Action New."
     }
     $rc = 0
-    Invoke-InDistro -DistroName $distro -RunAs $User -ShellCommand $Command -ExitCode ([ref]$rc)
+    Invoke-InDistro -DistroName $distro -RunAs $User -ScriptBytes $script:CommandBytes -ExitCode ([ref]$rc)
     exit $rc
 }
 
@@ -961,6 +1164,10 @@ function Invoke-ActionPurge {
 try {
     if ([string]::IsNullOrWhiteSpace($script:BaseDir)) { throw "LOCALAPPDATA is not set; cannot choose a base directory." }
     New-Item -ItemType Directory -Path $script:BaseDir -Force | Out-Null
+
+    # Resolved ONCE, here, so New and Run cannot disagree about which switch
+    # won and a bad -CommandFile is refused before a distro is built for it.
+    $script:CommandBytes = Resolve-CommandBytes -Text $Command -FromFile $CommandFile -FromB64 $CommandB64
 
     switch ($Action) {
         'New'    { Invoke-ActionNew }

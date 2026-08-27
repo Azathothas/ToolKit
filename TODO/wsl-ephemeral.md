@@ -668,7 +668,7 @@ the distro. Without it, the behaviour is unchanged.
 ## WSL-08. A `-Command` channel that survives two shells
 
 **Source** issue 3, part 3.11.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** M · **Status** open
+**Category** wsl-ephemeral · **Priority** P2 · **Effort** M · **Status** done
 
 **Problem.** `-Command` crosses PowerShell and then `/bin/sh -lc`, and the
 caller owns all quoting across both.
@@ -736,6 +736,180 @@ correct for simple commands.
 
 **Prove.** A command containing a single quote, a double quote, a backtick, a
 dollar sign and a tab arrives byte-exact inside the distro.
+
+### Closed 2026-08-27
+
+**What changed.** One function, `ConvertTo-DistroScriptCommand`, builds the
+transport, and **every** payload this script sends now goes through it: the
+caller's command, the smoke probe in `Invoke-ActionNew`, and the script
+`Write-DistroFile` sends. `Invoke-InDistro` takes **bytes** rather than a
+string, because `-CommandFile` is read verbatim from disk and a parameter typed
+as text would re-encode it. `-CommandFile` and `-CommandB64` are new;
+`-Command` stays, as the entry decided.
+
+```text
+mkdir -p /tmp&&exec 8>F&&exec 9<F&&rm -f F&&echo B64|base64 -d>&8&&. /dev/fd/9
+```
+
+⭐ **The alphabet constraint is now enforced by a machine.** The entry said the
+two internal payloads were "hand-written inside the safe alphabet, which is a
+constraint no check enforces". They are not hand-written any more, and the
+function asserts that the skeleton it built carries nothing outside the
+measured alphabet. That assertion is the third mutation below.
+
+### ⭐ The premise's measurement re-run, and two things it adds
+
+⛔ **Written underneath, not edited in.** Re-measured on 2026-08-27 against a
+real Alpine and a real Debian distro, from both hosts, because the whole design
+rests on it.
+
+**1. The mechanism is expand-then-re-parse, not "as though double-quoted".**
+The entry said the payload "is re-parsed on the far side as though it were
+inside double quotes". Measured, the distinction matters:
+
+| sent | result |
+| --- | --- |
+| `printf %s a$HOME` | `a/root`. Expanded, and the result is fine. |
+| `printf %s a$PATH` | ⛔ ``syntax error: unexpected "("`` |
+
+⭐ A double-quoted expansion does not re-parse its result; this does. `$HOME`
+is harmless because its value has no metacharacter in it, and `$PATH` is not
+because WSL appends `/mnt/c/Program Files (x86)/...`. So the hazard is not the
+`$`, it is **whatever the value happens to contain**, which is why no alphabet
+a caller keeps to can be safe.
+
+**2. A bracket and a single quote DO arrive.** The entry's table did not list
+them separately, and `WSL-12` was read here as "the bracket did not survive".
+It did:
+
+| POSIX-quoted for sh | 7.6.5 | 5.1 |
+| --- | --- | --- |
+| `'a(b'` | arrives | ⭐ arrives |
+| `'a"b'` | arrives | ⛔ `unterminated quoted string` |
+
+⚠ So `WSL-12` was the **double quote** being dropped on 5.1, which left the
+bracket bare and the shell then choked on it. The bracket was never the
+problem. That matters because the fix at the time removed brackets from the
+probe, which was treating a symptom one character to the left of the cause.
+
+### ⛔ Mutation proof, three of them, each read unpiped
+
+**M1, the defect this entry removes.** `Invoke-InDistro` reverted to sending
+the caller's bytes raw, which is the pre-fix transport:
+
+```text
+/bin/sh: syntax error: EOF in backquote substitution
+  M1 hazard  exit=2
+/bin/sh: syntax error: unexpected "("
+  M1 echo PATH exit=2
+```
+
+Restored, the same two commands give the matching SHA-256 and exit 0.
+
+**M2, the alphabet assertion.** A literal `$` planted in the skeleton:
+
+```text
+ERROR: Transport skeleton carries '$', which is outside the alphabet measured
+to survive PowerShell to wsl.exe to /bin/sh. Re-measure before widening it.
+  M2c exit=1
+```
+
+⚠ **And with the assertion disabled, the same mutation exits 0** having built a
+skeleton that silently did the wrong thing. That is the pair that makes it a
+guard rather than a comment.
+
+**M3, the `&&` after the decode.** Replaced with `;`, and the decoder renamed
+to one that does not exist:
+
+| skeleton | exit | what the command did |
+| --- | --- | --- |
+| `...\|nob64here -d>F;exec 9<F...` | ⛔ **0** | never ran. `THIS-NEVER-RAN` was not printed. |
+| `...\|nob64here -d>F&&exec 9<F...` | 127 | never ran, and said so |
+
+⭐ The first row is the forbidden pattern in one line: a step that exits 0
+having done nothing it was asked to do.
+
+### ⭐ The mutation found a defect in the fix itself, and it is fixed here
+
+⛔ **The first skeleton left an empty file behind whenever the decode failed.**
+M3 is what exposed it: with `echo B64|base64 -d>F&&exec 9<F&&rm -f F`, the
+redirect **creates F before the decode runs**, so a guest with no `base64`
+short-circuits at the `&&` and never reaches the `rm`. Three zero-byte
+`/tmp/.wsl-eph-*` files were sitting in the test distro, timestamped to the
+minutes the mutations ran.
+
+The order is now create, open, **unlink**, then decode through the open
+descriptor. Measured on both distros and both hosts, decoder present and
+decoder missing:
+
+| skeleton | decoder | exit | residue |
+| --- | --- | --- | --- |
+| unlink first | `base64` | 3 | GONE |
+| unlink first | missing | 127 | ⭐ GONE |
+| write first | `base64` | 3 | GONE |
+| write first | missing | 127 | ⛔ STILL-THERE |
+
+⚠ **Both orders read the same in a diff.** That is why this is written down
+rather than quietly corrected.
+
+**Acceptance.** Hazard string `a'b"c` + backtick + `$e` + TAB + `f(g)h`, whose
+SHA-256 on Windows is `0f090de5...df553c`. Every code read from the process
+that produced it.
+
+| what | pwsh 7.6.5 | Windows PowerShell 5.1 |
+| --- | --- | --- |
+| `-CommandB64` writes the hazards to a guest file, `sha256sum` in the guest | ⭐ `0f090de5...df553c`, exit 0 | ⭐ the same digest, exit 0 |
+| `-Command` carrying the hazards inline | same digest, exit 0 | ⚠ see the residual limit below |
+| `-Command 'echo $PATH'` | prints `PATH`, exit 0 | prints `PATH`, exit 0 |
+| `-Command 'exit 42'` | 42 | 42 |
+| `-CommandFile`, multi-line, quotes and tabs on every line | exit 7, output correct | exit 7, output correct |
+| two command switches at once | refused, exit 1 | refused, exit 1 |
+| `-CommandB64 'not!base64!'` | refused, exit 1 | refused, exit 1 |
+| `.wsl-eph-*` left in the guest `/tmp` afterwards | 0 | 0 |
+
+**End to end on a fresh distro**, which is the way a user reaches it: `New`
+with `-CommandB64`, then `-OciEnv` with `-Ephemeral`, then a failing command.
+
+| step | pwsh | 5.1 |
+| --- | --- | --- |
+| `New -Image alpine:3.22 -CommandB64 ...` | 0, guest digest matches | 0, guest digest matches |
+| `.wsl-eph-*` in that distro's `/tmp` | 0 | 0 |
+| `New -Image python:3.13-alpine -OciEnv -Ephemeral` | 0, `PYTHON_VERSION=3.13.15`, image `PATH` | the same |
+| `New -Command 'exit 33' -Ephemeral` | ⭐ 33 | ⭐ 33 |
+
+⭐ **The smoke probe carries `WSL-12`'s exact line again**, brackets, double
+quotes and all, and `New` works on 5.1. That is the strongest statement the
+transport can make about itself, and it is now the thing that fails first if
+the channel ever breaks again.
+
+### ⚠ What is NOT fixed, and it is one layer above this script
+
+⛔ **Windows PowerShell 5.1 drops a double quote when it builds a child
+process's argument list.** Measured with a probe script that reports the
+parameter it was handed, so the answer is about the argv boundary and not about
+`wsl.exe`:
+
+| how the script was invoked | `-Command` value received |
+| --- | --- |
+| `powershell -File probe.ps1 -Command a'b"c` + backtick + `d$e` | ⛔ ``a'bc`d$e`` |
+| `& .\probe.ps1 -Command $v`, in process | ``a'b"c`d$e`` |
+| `pwsh -File probe.ps1 ...` | ``a'b"c`d$e`` |
+
+The quote is gone before this script runs, so nothing in it can recover the
+value. ⭐ `-CommandB64` is immune and that is what it is for; it produced the
+matching digest from 5.1 in the table above. This is written into
+`wsl-ephemeral.md` as a limit of the host rather than an open item, because
+there is nothing here to fix.
+
+**Consumers.** ⚠ **Not a break** by
+[`../docs/consumers.md`](../docs/consumers.md)'s definition: no path, parameter
+or exit code changed meaning, and two parameters were added with defaults. What
+changed is that a command which used to be mangled now runs. ⚠ **One observable
+difference is worth naming**: `$VAR` in a `-Command` is now expanded by the
+guest's login shell rather than in transit, so with `-OciEnv` it expands to the
+image's value. That is the correct value and it was not reachable before.
+
+**Pin state.** Held in [`../docs/consumers.md`](../docs/consumers.md).
 
 ---
 

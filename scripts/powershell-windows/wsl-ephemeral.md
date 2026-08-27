@@ -64,14 +64,18 @@ with a message rather than silently when there is no network.
 | `-Image` | `New` | OCI reference, for example `alpine:3.22` or `debian:bullseye-slim`. Needs podman or docker. |
 | `-Tarball` | `New` | path to a rootfs `.tar` to import instead. Needs no container engine. |
 | `-Name` | `New` `Run` `Remove` | distro name. Generated when omitted. The `eph-` prefix is added if missing. |
-| `-Command` | `New` `Run` | shell command, run through `/bin/sh -lc` |
+| `-Command` | `New` `Run` | shell command, run through `/bin/sh -lc`. Carried as base64 and sourced in the guest, so quotes, `$`, backticks and tabs arrive byte-exact. |
+| `-CommandFile` | `New` `Run` | path to a file **on this machine** whose bytes are the command. Read verbatim, so a multi-line script works. |
+| `-CommandB64` | `New` `Run` | the command as base64 of its UTF-8 bytes. ⭐ The one to use from a script, and the only one that survives Windows PowerShell 5.1 when this tool is launched as a child process. |
 | `-User` | `New` `Run` | user inside the distro. Default `root`. |
 | `-Ephemeral` | `New` | run `-Command`, then destroy the distro |
 | `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
 | `-Force` | destructive actions | required when the session is non-interactive. Skips the confirmation. |
 
 ⛔ `-Image` and `-Tarball` are mutually exclusive, and `New` requires one of
-them.
+them. ⛔ `-Command`, `-CommandFile` and `-CommandB64` are mutually exclusive
+too: they are three spellings of one argument, and passing two is refused
+rather than resolved by a precedence nobody would remember.
 
 ## Exit codes
 
@@ -114,6 +118,79 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 ```
 
 ---
+
+## The command channel
+
+⭐ **A command is carried as base64 and sourced inside the distro.** Nothing is
+quoted for the guest, because quoting does not survive the trip and no caller
+can make it.
+
+⛔ **This is not a style choice.** Measured on 2026-08-27 against real Alpine and
+Debian distros, under **both** PowerShell 7.6.5 and Windows PowerShell 5.1, with
+every hazard already correctly single-quoted for `sh` before it was passed:
+
+| what was sent, POSIX-quoted for `sh` | PowerShell 7.6.5 | Windows PowerShell 5.1 |
+| --- | --- | --- |
+| `$VAR` | ⛔ expanded in transit, and the **result** is then re-parsed | ⛔ the same |
+| a backtick | ⛔ opens a command substitution | ⛔ the same |
+| a double quote | arrives | ⛔ `syntax error: unterminated quoted string` |
+| a single quote, a bracket, a tab, a space | arrives | arrives |
+
+The first row is the one that bites in ordinary use. `echo $PATH` used to die
+with ``syntax error: unexpected "("``, because the value it expands to carries
+the bracket in `Program Files (x86)` and that value is parsed again. It works
+now.
+
+### What the transport does
+
+```text
+mkdir -p /tmp && exec 8>F && exec 9<F && rm -f F && echo B64|base64 -d>&8 && . /dev/fd/9
+```
+
+⭐ **The file is unlinked before any content exists in it.** Two open
+descriptors keep the inode alive, so the command's text is never a file
+anything in the distro can open by name, and no failure can leave one behind.
+⚠ That ordering was got wrong first: writing the file and then unlinking it
+reads the same, but a redirect creates the file before the decode runs, so a
+guest with no `base64` was left holding an empty one.
+
+⛔ **Every payload this tool sends goes through that one function**, including
+the smoke probe and the file `-OciEnv` writes, and it **asserts** that the
+skeleton stays inside the alphabet the measurement cleared. Before, two of the
+three payloads were hand-written inside that alphabet with nothing enforcing
+it, which is how `-Action New` came to fail outright on 5.1.
+
+### The requirement this puts on an image
+
+⚠ **The guest needs `base64` and `/dev/fd`.** Measured present in both distros
+this was tested against: busybox supplies `base64` in Alpine 3.22, coreutils
+supplies it in Debian bookworm, and in both `/dev/fd` is a symlink to
+`/proc/self/fd` that WSL puts there at import. ⛔ Neither is asserted of every
+image, and a rootfs built from scratch may have neither. `New` finds out at
+creation, because the smoke probe uses the same channel, and says so rather
+than failing later inside somebody's command.
+
+### ⚠ The one thing 5.1 still cannot do, and it is not this script
+
+⛔ **Windows PowerShell 5.1 drops a double quote when it builds a child
+process's argument list.** Measured: a `-Command` value of ``a'b"c`d$e`` reaches
+a script spawned as `powershell -File script.ps1 -Command ...` as ``a'bc`d$e``.
+The quote is gone before this script runs, so nothing this script does can
+recover it. In-process, `& .\wsl-ephemeral.ps1 -Command $v`, it arrives intact,
+and PowerShell 7.6.5 is fine either way.
+
+⭐ **`-CommandB64` is immune, and that is what it is for.** Base64 has no
+character any shell or argument parser touches.
+
+```powershell
+$b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($script))
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-x -CommandB64 $b64
+```
+
+⚠ **`-CommandFile` is read verbatim, CRLF included.** A file with Windows line
+endings makes `/bin/sh` read the carriage return as part of the last word on
+each line. The tool warns and does not rewrite the file: silently editing
+somebody's payload is the failure this whole channel exists to remove.
 
 ## Orphaned rootfs tarballs
 
@@ -287,19 +364,21 @@ state of everything after it.
 ⛔ **These are real.** They are listed because a limit hidden is a defect filed
 against the user later.
 
-⚠ **Two different things are in this table and the difference matters.** Most
+⚠ **Three different things are in this table and the difference matters.** Some
 rows are tracked as **open** items in
-[`../../TODO/INDEX.md`](../../TODO/INDEX.md) and will go. The `-OciEnv` row is
-not: it is a **settled decision** about what that switch carries, and it stays.
-⛔ The intro used to claim every row was an open item, which stopped being true
-the moment one of them was closed as a decision.
+[`../../TODO/INDEX.md`](../../TODO/INDEX.md) and will go. The `-OciEnv` row is a
+**settled decision** about what that switch carries, and it stays. The 5.1
+quoting row is neither: it is a **limit of the host**, one layer above this
+tool, and it stays because a user hits it and needs to be told what to do
+instead. ⛔ The intro used to claim every row was an open item, which stopped
+being true the moment one of them was closed as a decision.
 
 | limit | what it means for you |
 | --- | --- |
 | ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
 | ⚠ no disk-space preflight | export plus import needs roughly twice the rootfs size on the `%LOCALAPPDATA%` volume. Running out midway leaves a partial VHDX and a registered distro that does not work. |
 | ⚠ no systemd | an imported distro has no `/etc/wsl.conf`, so `systemctl` is unavailable and units, timers and services cannot be tested. |
-| ⛔ `-Command` quoting does not survive the trip | ⚠ **This is worse than "the caller owns the quoting", which is what this row used to say.** The caller cannot fix it. Measured 2026-08-27 on both PowerShell hosts: a `$` expands and a backtick opens a command substitution **even inside POSIX single quotes**, and on 5.1 a double quote gives `unterminated quoted string`. `echo $PATH` is enough to break it. Keep `-Command` to letters, digits and `. / - _ ; \| > &` until `WSL-08` lands. |
+| ⚠ on Windows PowerShell 5.1, a `-Command` value loses its double quotes when this tool is launched as a child process | 5.1 drops them building the child's argument list, before this script sees anything, so nothing here can recover them. ⭐ Use `-CommandB64`. Not an open item: it is 5.1's argument handling, one layer above this tool. See the command channel section. |
 | ⚠ the smoke probe has no timeout | a distro whose init wedges hangs the script with no output. |
 | ⚠ `Run` calls `exit` | correct when the script is invoked, fatal to the host session if it is dot-sourced. ⛔ Invoke it, never dot-source it. |
 
