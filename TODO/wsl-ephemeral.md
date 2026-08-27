@@ -291,7 +291,7 @@ distro, so a check has something to assert rather than a gap to report.
 ## WSL-04. A failed delete must not report success
 
 **Source** issue 3, part 3.6.
-**Category** wsl-ephemeral · **Priority** P1 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P1 · **Effort** S · **Status** done
 
 **Problem.** `Remove-EphemeralDistro` prints `deleted DIR` whether or not the
 directory went, so a multi-gigabyte VHDX can be left behind and reported gone.
@@ -307,6 +307,63 @@ message and a non-zero exit on failure.
 
 **Prove.** With a handle held open on the distro directory, the command exits
 non-zero and the message names the path. With no handle, it exits 0.
+
+### Closed 2026-08-27
+
+**What changed.** `Remove-PathWithRetry` is now the only deletion in the
+script. It deletes, reads the state back, retries five times over about three
+seconds, and throws naming the path when the path is still there.
+
+⭐ **All three deletion paths go through it**, including the rollback after a
+failed create, which previously had its own `Remove-Item` and its own guard
+call. ⛔ **The containment guard moved inside the helper**, because a guard
+applied at three call sites is a guard that will one day be applied at two, and
+that is the most recurring hole in this whole methodology.
+
+⚠ **The `-Ephemeral` teardown moved out of `Invoke-ActionNew`'s `try`.** It
+had to. Inside the try, a teardown that could not delete the disk was caught by
+the rollback handler and announced as `creation failed; rolling back`, which is
+false and sends the reader to the wrong half of the function: the distro was
+created, the command ran, and the only thing wrong was several gigabytes still
+on disk. It still runs before the exit, so `WSL-01`'s requirement holds.
+
+**The premise's race was asserted, not reproduced. It still is.** ⚠ The entry
+says so and it was right to. What is reproduced below is the **guard**, against
+the fault it exists to catch, injected deliberately: a `FileShare::None` handle
+held on a file inside the directory, which is what a live VHDX looks like to
+`Remove-Item`. ⛔ Whether `--unregister`'s async release actually loses that
+race on this machine is still unmeasured, and no run in this session lost it.
+
+**Mutation proof.** The helper call was reverted to the original
+`Remove-Item -ErrorAction SilentlyContinue` plus an unconditional `Write-Ok`,
+with the same handle held:
+
+```text
+  ! eph-w04 was not registered
+  * deleted C:\Users\AjamX\AppData\Local\wsl-ephemeral\eph-w04
+EXITCODE=0
+still there: True
+```
+
+⛔ **Reported deleted, exit 0, still on disk.** That is the defect, seen.
+
+**Acceptance, after restoring the fix.**
+
+```powershell
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action Remove -Name eph-w04 -Force
+```
+
+| condition | exit | message |
+| --- | --- | --- |
+| handle held | 1 | `FAILED to delete the disk for 'eph-w04' at 'C:\...\eph-w04'. It is STILL THERE after 5 attempts.` and the path is still there |
+| handle released | 0 | `* deleted C:\...\eph-w04`, and the path is gone |
+
+⚠ **This is a behaviour change for `Remove`, `Purge` and `New -Ephemeral`:**
+they can now exit non-zero where they used to exit 0. They were not succeeding
+before; they were reporting. Not a consumer break in the
+[`../docs/consumers.md`](../docs/consumers.md) sense, because no caller can
+have been depending on a disk being left behind, but it is written into
+`wsl-ephemeral.md` beside the exit codes.
 
 ---
 

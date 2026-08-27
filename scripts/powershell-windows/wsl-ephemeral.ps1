@@ -302,6 +302,50 @@ function Assert-InsideBaseDir {
     }
 }
 
+function Remove-PathWithRetry {
+    <#
+      THE one deletion in this script. Every path that removes something on disk
+      goes through here, so the containment guard cannot be applied to one of
+      them and forgotten on another.
+
+      It deletes, then READS THE STATE BACK, and reports what is true rather
+      than what was attempted. The predecessor printed "deleted DIR" beside a
+      Remove-Item -ErrorAction SilentlyContinue, so a multi-gigabyte VHDX left
+      behind read as a disk that had gone.
+
+      The retry is not decoration. 'wsl --unregister' releases the VHDX
+      asynchronously, so the delete immediately after it can lose the race
+      against a handle that is about to be closed anyway.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$What,
+        [string]$Remedy = '',
+        [int]$Attempts = 5
+    )
+    Assert-InsideBaseDir -Path $Path          # ⛔ inside the helper, not beside it
+
+    for ($i = 1; $i -le $Attempts; $i++) {
+        # The read-back below is the verdict. This catch exists so a failed
+        # attempt does not abort the retry loop; it is not where success is
+        # decided, which is why it discards rather than reports.
+        try { Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction Stop }
+        catch { $null = $_ }
+
+        if (-not (Test-Path -LiteralPath $Path)) {
+            Write-Ok "deleted $Path"
+            return
+        }
+        if ($i -lt $Attempts) { Start-Sleep -Milliseconds (200 * $i) }
+    }
+
+    $msg = "FAILED to delete the $What at '$Path'. It is STILL THERE after $Attempts attempts."
+    if ($Remedy) { $msg = "$msg $Remedy" }
+    throw ($msg + " Something is holding it open: WSL releases the disk asynchronously, and an " +
+           "explorer window, a shell whose working directory is inside it, or an indexer will " +
+           "each do it too.")
+}
+
 function ConvertTo-SafeName {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Raw)
     $s = $Raw.ToLowerInvariant() -replace '[^a-z0-9._-]', '-'
@@ -491,9 +535,8 @@ function Remove-EphemeralDistro {
 
     $dir = Join-Path $script:BaseDir $DistroName
     if (Test-Path -LiteralPath $dir) {
-        Assert-InsideBaseDir -Path $dir               # containment guard
-        Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
-        Write-Ok "deleted $dir"
+        $remedy = "Close it and re-run: -Action Remove -Name $DistroName -Force."
+        Remove-PathWithRetry -Path $dir -What "disk for '$DistroName'" -Remedy $remedy
     }
 }
 
@@ -574,14 +617,7 @@ function Invoke-ActionNew {
             if ($rc -ne 0) { Write-Warn "command exited $rc" }
         }
 
-        if ($Ephemeral) {
-            # The teardown happens HERE, inside the try, so that the exit at the
-            # bottom of this function cannot be reached with a distro still
-            # registered. Exiting before this point leaks a distro and a VHDX.
-            Write-Step "-Ephemeral set: tearing down '$distro'"
-            Remove-EphemeralDistro -DistroName $distro -SkipConfirm
-        }
-        else {
+        if (-not $Ephemeral) {
             Write-Host ""
             Write-Host "  Distro : $distro"        -ForegroundColor White
             Write-Host "  Disk   : $target"        -ForegroundColor White
@@ -597,8 +633,10 @@ function Invoke-ActionNew {
                 Invoke-Native -FilePath (Get-WslExe) -Arguments @('--unregister', $distro) -IgnoreExitCode | Out-Null
             }
             if (Test-Path -LiteralPath $target) {
-                Assert-InsideBaseDir -Path $target
-                Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction SilentlyContinue
+                # Through the same helper as every other deletion. If it cannot
+                # delete, it throws, the catch below reports the rollback as
+                # incomplete, and the ORIGINAL error is still what gets rethrown.
+                Remove-PathWithRetry -Path $target -What "partial disk for '$distro'"
             }
         }
         catch { Write-Warn "rollback incomplete: $($_.Exception.Message)" }
@@ -608,6 +646,17 @@ function Invoke-ActionNew {
         if ($tempTar -and $tarPath -and (Test-Path -LiteralPath $tarPath)) {
             Remove-Item -LiteralPath $tarPath -Force -ErrorAction SilentlyContinue
         }
+    }
+
+    # ⛔ The teardown is OUTSIDE the try on purpose. Inside it, a teardown that
+    # could not delete the disk was reported as "creation failed; rolling back",
+    # which is false in a way that sends the reader looking in the wrong place:
+    # the distro was created, the command ran, and the only thing wrong is that
+    # several gigabytes are still on disk. Out here, that failure arrives as
+    # itself and the script exits 1 naming the path.
+    if ($Ephemeral) {
+        Write-Step "-Ephemeral set: tearing down '$distro'"
+        Remove-EphemeralDistro -DistroName $distro -SkipConfirm
     }
 
     # After the teardown above, and after the finally has removed the temp

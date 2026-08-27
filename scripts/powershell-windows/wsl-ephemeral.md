@@ -87,6 +87,11 @@ dropped.
 ⚠ **With `-Ephemeral` the distro is destroyed before the code is returned**, so
 a failing command still leaves nothing registered.
 
+⚠ **A destructive action exits 1 when the disk is still there afterwards.**
+`Remove`, `Purge` and `New -Ephemeral` read the directory back and report what
+they find, so they can fail where they used to print success. See the safety
+model below.
+
 ⛔ **`New -Command` used to exit 0 over a failing command.** A caller written
 against that is now told the truth, which is a break.
 [`../../docs/consumers.md`](../../docs/consumers.md) records it.
@@ -151,6 +156,21 @@ constrained four ways and every destructive path goes through all of them.
 `Assert-InsideBaseDir` for 4. ⭐ **One gate per action.** A new destructive path
 calls both or it does not ship.
 
+⭐ **There is one deletion in the script and every path reaches it**, including
+the rollback after a failed create. It runs the containment guard itself rather
+than trusting each caller to, because a guard applied at four call sites is a
+guard that will one day be applied at three.
+
+### A delete that did not happen is reported as a delete that did not happen
+
+⛔ **The script reads the state back after deleting and reports what it finds.**
+`wsl --unregister` releases the disk asynchronously, so a delete immediately
+afterwards can lose the race. It retries five times over about three seconds,
+and if the path is still there it exits non-zero with a message naming it.
+
+⚠ **This means `Remove`, `Purge` and `New -Ephemeral` can now fail where they
+used to print success.** They were not succeeding before; they were reporting.
+
 ### ⚠ Two things about WSL that this script cannot protect you from
 
 - ⛔ **`wsl --shutdown` is machine-wide.** It is the command a person reaches
@@ -206,7 +226,6 @@ in [`../../TODO/INDEX.md`](../../TODO/INDEX.md).
 | limit | what it means for you |
 | --- | --- |
 | ⭐ the image's OCI config is dropped | `podman export` writes a filesystem, not a configuration. `ENV`, `WORKDIR`, `ENTRYPOINT` and `USER` are lost, so `PATH` inside the distro is not the image's `PATH`. |
-| ⚠ a failed delete reports success | `--unregister` releases the VHDX asynchronously, so a delete immediately after can lose the race and leave a multi-gigabyte disk behind while printing that it is gone. |
 | ⚠ an interrupted `New` can orphan a tarball | the rootfs `.tar` is cleaned in a `finally`, which a hard interrupt does not always run. Neither `List` nor `Purge` looks for `*.tar`. |
 | ⚠ no disk-space preflight | export plus import needs roughly twice the rootfs size on the `%LOCALAPPDATA%` volume. Running out midway leaves a partial VHDX and a registered distro that does not work. |
 | ⚠ no systemd | an imported distro has no `/etc/wsl.conf`, so `systemctl` is unavailable and units, timers and services cannot be tested. |
