@@ -21,6 +21,57 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T14:05:00Z: the BSD reference sweep, and BSD-02 answered
+
+**Record:** [`docs/reference-sweeps/findings.md`](docs/reference-sweeps/findings.md)
+carries `R6` to `R28` with the ranking;
+[`docs/reference-sweeps/usable.md`](docs/reference-sweeps/usable.md) carries the
+commands; `BSD-01` and `BSD-02` in [`TODO/bsd.md`](TODO/bsd.md) carry the
+corrections.
+**Deployed:** no deploy. ⛔ This repository publishes nothing, and no code
+changed.
+
+23 references supplied by the operator, expanded to **28 repositories** because
+one row was an organisation query. Every one was reached; none is recorded as
+gone. Issues, pull requests and discussions were pulled in both states with
+their comments, which is where nearly everything below came from.
+
+- ⭐ **`BSD-02` closed**, and its premise was wrong by conflating two questions.
+  "Runnable" as an OCI container and "runnable" as a booted guest have different
+  answers per BSD. Three BSDs have no jail-equivalent runtime, which is what the
+  entry meant; all four are runnable as guests, and two have been for years.
+- ⛔ **A claim this repository published twice is false as stated.**
+  [`docs/reference-sweeps/usable.md`](docs/reference-sweeps/usable.md) said there
+  is no counterpart presenting FreeBSD syscalls on a Linux kernel.
+  `AkihiroSuda/lsf` is one. It is a 2022 proof of concept that crashes, so the
+  conclusion holds and the reasoning had to change. ⭐ It also explains the
+  exit code 139: the Linux kernel does not validate an ELF binary's OSABI on
+  `execve`.
+- ⭐ **The Windows Hypervisor Platform is measurable without elevation.**
+  `WHvGetCapability` through `WinHvPlatform.dll` returns `HypervisorPresent` as
+  `1` on this machine. That closes a caveat `BSD-01` recorded as unreadable
+  because `Get-WindowsOptionalFeature` needs elevation.
+- ⛔ **Under WHPX, `-cpu host` and `-cpu max` wedge QEMU**, measured
+  independently by two projects, and a named CPU model newer than the host wedges
+  it too. This machine's CPU falls on the wrong side of the published rule.
+  Derived rather than measured here: no QEMU is installed.
+- ⭐ **The highest-value unknown in `BSD-01` is answered.** `x86_64`
+  GitHub-hosted runners expose `/dev/kvm` and need a `udev` rule to make it
+  writable; arm64 runners do not have it at all. Four references agree.
+- ⭐ **Three options `BSD-01`'s table did not contain**, ranked underneath it
+  rather than edited into it: a BSD microvm through smolBSD or Firecracker, the
+  Host Compute System API driven directly, and `libkrun`.
+- ⚠ **`gronke/freebsd-ci` and `no-pictures/freebsd-ci` are the same tree**,
+  sharing a commit byte for byte. Recorded so the second is not mined again.
+- ⚠ **The operator asked whether `XaeroVincent/FreeBSD-Gaming-Kernel` carries a
+  performance fix that applies. It does not**, and the whole repository is 690
+  bytes of README over 14 blobs.
+
+⚠ **No BSD was booted and nothing was run.** Every boot time and failure quoted
+is somebody else's measurement, attributed where it appears. The four local
+measurements are the WHPX capability, the absent tooling, the host CPU identity,
+and a re-derivation of the nested KVM facts already on record.
+
 ### 2026-08-27T12:35:00Z: git-sync.ps1 bound a gate string to the author identity
 
 **Record:** `TOOL-03` in [`TODO/tooling.md`](TODO/tooling.md), filed and closed

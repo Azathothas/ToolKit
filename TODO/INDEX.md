@@ -13,7 +13,7 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 18  open 2  blocked 0  done 16
+total 18  open 1  blocked 0  done 17
 ```
 
 | priority | open | blocked | done | total |
@@ -21,8 +21,8 @@ total 18  open 2  blocked 0  done 16
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 1 | 0 | 5 | 6 |
 | P2 | 0 | 0 | 5 | 5 |
-| P3 | 1 | 0 | 3 | 4 |
-| **all** | **2** | **0** | **16** | **18** |
+| P3 | 0 | 0 | 4 | 4 |
+| **all** | **1** | **0** | **17** | **18** |
 
 ---
 
@@ -31,7 +31,7 @@ total 18  open 2  blocked 0  done 16
 | id | pri | eff | status | title | file |
 | --- | --- | --- | --- | --- | --- |
 | BSD-01 | P1 | M | open | Run a BSD userland from Windows, with the least friction that works | [`bsd.md`](bsd.md) |
-| BSD-02 | P3 | S | open | Whether the other three BSDs can be run, not merely built | [`bsd.md`](bsd.md) |
+| BSD-02 | P3 | S | done | Whether the other three BSDs can be run, not merely built | [`bsd.md`](bsd.md) |
 | DOC-01 | P2 | S | done | A `binfmt_misc` check for the podman machine on WSL2 | [`tooling.md`](tooling.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |

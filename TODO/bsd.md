@@ -284,12 +284,137 @@ PowerShell. And `Get-WindowsOptionalFeature` needs elevation, so the definitive
 feature list was not read. ⛔ Neither changes the finding: a running `vmms` is
 stronger evidence than a feature flag.
 
+### ⭐ The reference sweep of 2026-08-27 corrected four things and added three options
+
+⛔ **Nothing above was edited.** The table keeps its wording and its verdicts;
+this section is what 28 references say about them. The evidence is
+[`../docs/reference-sweeps/findings.md`](../docs/reference-sweeps/findings.md),
+ranked, and the commands are in
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md).
+
+#### 1. ⭐ The `-accel whpx` row is no longer a fallback resting on an assumption
+
+The table calls it "⚠ **fallback.** Worth it only if Hyper-V is unavailable or
+unwanted", and rates its friction medium because it needs a QEMU install and a
+boot script. ⭐ **Measured 2026-08-27, unelevated**: `WinHvPlatform.dll` loads
+and `WHvGetCapability` reports `HypervisorPresent` as `1`. The Windows
+Hypervisor Platform feature is installed on this machine and the hypervisor is
+running.
+
+⭐ **That also closes the caveat under `Prove` below**, which recorded that
+`Microsoft-Hyper-V-All` was invisible in the unelevated registry view and that
+`Get-WindowsOptionalFeature` needs elevation. It never needed elevation; it
+needed the right call.
+
+⚠ **The friction estimate stands and gets a number.** `qemu-system-x86_64`,
+`qemu-img` and `oras` are all absent here, and so is QEMU inside the podman
+machine. Every option below starts with an install.
+
+#### 2. ⛔ Under WHPX, `-cpu host` and `-cpu max` wedge QEMU
+
+⚠ **A trap nothing in this file anticipated, and the row that recommends WHPX
+would have walked into it.** Two projects measured it independently on different
+hardware: `-cpu max` gives a fatal privileged instruction, and `-cpu host` can
+hang the whole QEMU process with a zero-byte serial log and an unresponsive
+monitor. The fix is a named CPU model, and the model must be **no newer than the
+host**, because that direction wedges too.
+
+⛔ **This machine is `Intel64 Family 6 Model 154`, an i7-12700H**, which the
+published rule cannot place and would therefore hand the newest model. ⚠ That
+is the wedging direction. Derived, not measured, and
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) says
+which model to try first and asks for the result.
+
+#### 3. ⭐ Three options the table does not contain
+
+| option | friction | performance | interop | verdict |
+| --- | --- | --- | --- | --- |
+| ⭐ **A BSD microvm: smolBSD for NetBSD, or `acj`'s Firecracker kernel and rootfs for either** | ⭐ low. Upstream publishes a kernel and a root filesystem that boot; nothing is built. | ⭐ best measured here. About **10 ms** for smolBSD through PVH, about **12 s** for FreeBSD under Firecracker in CI. | ⚠ not podman. SSH, or a Docker-shaped wrapper the project ships. | ⭐ **the strongest new candidate.** It is what the ask wanted: better than nesting, and not a full VM. |
+| **The Host Compute System API, or the Hyper-V module, driven directly** | ⚠ unknown. Nobody here has tried it. | native. It is the hypervisor WSL2 already runs on. | none until something is built on top. | ⚠ **untried, and the cheapest untried thing.** See below. |
+| **`libkrun`, through `bsdkrun`** | medium on Linux, ⛔ **unavailable on Windows** | native under KVM. A VM as a process, no daemon. | ⭐ **boots an OCI image directly**, which is the gesture `BSD-01` opens with | ⚠ **the best shape, on the wrong host.** Inside the WSL2 machine it is nesting, so it is the floor rather than the target. |
+
+⭐ **The microvm row is the answer to the operator's second ruling**, which asked
+for something better than nesting rather than the nested design itself. A
+microvm on the host's own hypervisor is one level deep, boots in milliseconds
+rather than seconds, and has published artefacts for both FreeBSD and NetBSD.
+
+#### 4. ⭐ WSL itself will drive a non-Linux guest, and the cost is too high
+
+`BalajeS/WSL-For-FreeBSD` boots FreeBSD as the WSL2 utility VM. The guest half
+is 819 lines of C speaking WSL's own protocol over `AF_HYPERV` sockets, and
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) has
+the full message sequence.
+
+⛔ **Refused, and the reason is specific.** The host half is a patch to four
+files in `src/windows/service/exe/`, which is `wslservice.exe`. Adopting it
+means running an experimental build of the Windows service that also runs this
+machine's podman machine, and the whole recommendation above rests on those two
+coexisting.
+
+⭐ **What survives is the finding underneath it.** The patch replaces WSL's
+generated configuration with a literal document handed to
+`CreateComputeSystem()`, naming a UEFI boot from a SCSI disk and an hvsocket
+configuration. ⛔ **So the Host Compute System takes a JSON document and boots
+an arbitrary UEFI disk, and reaching it needs no WSL patch at all.** That is the
+"host's own hypervisor, addressed directly" avenue in the list below, and it is
+now the cheapest one nobody has tried.
+
+#### 5. ⭐ The highest-value unknown is answered
+
+The list below calls "Does a CI Linux runner have `/dev/kvm`?" the single
+highest-value unknown, because it decides whether the universal option can
+exist. ⚠ **Not measured here, and answered by four references that run on those
+runners:**
+
+| runner | `/dev/kvm` |
+| --- | --- |
+| `x86_64`, GitHub-hosted | ✅ present. A `udev` rule is applied to make it **writable**, which is what QEMU tests for |
+| arm64, GitHub-hosted | ❌ absent. One maintainer's words: "low performance, and kvm disabled" |
+
+⭐ **The universal option is possible on `x86_64` and impossible on arm64.** It
+does not invert the argument, it bounds it. ⚠ And the unaccelerated fallback has
+a cost on record: a FreeBSD first boot under TCG overran a ten-minute budget.
+
+#### 6. ⚠ A second reason nesting stays the floor, and it is not performance
+
+The correction above this one showed nested KVM is available and accelerated
+here, which removed the table's stated reason for refusing it. ⛔ **A different
+reason has now been measured by somebody else**: nested AMD-V mishandles the L2
+guest's AVX512 XSAVE state, so a guest whose libc picks the AVX512 string
+routines takes random SIGSEGVs across nearly every dynamically linked binary
+while its kernel stays up.
+
+⚠ **It does not apply to this machine**, which is Intel. It is recorded because
+it is a **correctness** fault of nesting rather than a speed one, and this file
+had ranked nesting on speed alone.
+
+#### ⭐ What this changes about the Approach
+
+⛔ **The recommendation is not overturned and the order of work is.** The
+Hyper-V `.vhd` guest is still the lowest-friction thing that certainly works,
+and nothing found contradicts it. ⚠ It was also not re-checked this session.
+
+⭐ **What the next session should do first, and why it is not the `.vhd`:**
+
+1. **Install QEMU and boot a smolBSD rescue image under `-accel whpx`**, with a
+   named CPU model rather than `host`. It is about 10 MB, it is published, and
+   it is the shortest path from nothing to a BSD kernel running on this
+   machine's own hypervisor. Record which CPU model worked.
+2. **Then `acj`'s FreeBSD kernel and rootfs**, which is the same question for
+   the BSD that matters most and has a runtime story.
+3. **Then the Host Compute System directly**, because it is the only untried
+   avenue with a native path and no third-party dependency.
+4. ⚠ **The `.vhd` guest stays the fallback that is known to work**, and it is
+   what gets built if the three above fail.
+
+⛔ **A session that opens by building the nested stack has still skipped the
+ask**, and it now has three better things to try before it gets there.
 ---
 
 ## BSD-02. Whether the other three BSDs can be *run*, not merely built
 
 **Source** Derived from BSD-01 and the `docker-bsd` work.
-**Category** bsd · **Priority** P3 · **Effort** S · **Status** open
+**Category** bsd · **Priority** P3 · **Effort** S · **Status** done
 
 **Problem.** `docker-bsd` builds images for all four. Only FreeBSD has a
 documented OCI runtime to run them on.
@@ -307,3 +432,57 @@ when the answer is that there is no route.
 [`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md)
 naming, per BSD, the runtime and its state, or stating that none exists with
 what was checked.
+
+### Closed 2026-08-27
+
+**What changed.** No code. The answer, which is what this entry asked for: a
+per-BSD table in
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md)
+naming the runtime and its state, backed by 28 references read in
+[`../docs/reference-sweeps/findings.md`](../docs/reference-sweeps/findings.md).
+
+### ⛔ The premise was wrong, and it was wrong by conflating two questions
+
+⛔ **Kept above, uncorrected, per
+[`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md).** The
+premise says the other three are "publishable and, as far as is known, not yet
+runnable anywhere". ⚠ **"Runnable" is two questions and the answer differs
+between them.**
+
+| BSD | runnable as an OCI container | runnable as a booted guest |
+| --- | --- | --- |
+| FreeBSD | ✅ `ocijail` `v0.6.0`, behind the handbook's `podman-suite`; `runj` as a proof of concept. Needs a FreeBSD host. | ✅ Firecracker, QEMU, bhyve, `libkrun`, and upstream `.vhd` and BASIC-CI images |
+| NetBSD | ⚠ no jail-equivalent runtime. ⭐ CBSD manages NetBSD from 15.0.6 | ✅ ⭐ smolBSD as a 10 ms microvm, Firecracker, QEMU, `libkrun` |
+| OpenBSD | ❌ none found | ✅ QEMU, through `vmactions` and `anyvm` |
+| DragonFly | ❌ none found | ✅ QEMU, through `vmactions` and `anyvm` |
+
+⭐ **So the narrow claim holds and the broad one does not.** Three BSDs have no
+jail-equivalent OCI runtime, which is what the entry meant. All four are
+runnable as guests, and two of them have been for years. ⛔ The sentence as
+written would have told a future session that a NetBSD image cannot be run,
+which is false.
+
+### ⭐ What this changes for `pkgforge-dev/docker-bsd`
+
+⚠ **Not this repository's change to make**, and recorded because that repository
+is where it lands. `docker-bsd` publishes a root filesystem for four BSDs.
+⭐ **For three of them, nothing can run what it publishes**, and the sweep found
+two projects that solve the same distribution problem differently:
+
+- `smolBSD` pushes a **raw bootable disk image** to `ghcr.io` through `oras`,
+  so the registry carries something that boots;
+- `acj`'s Firecracker repositories publish a **kernel and a root filesystem**
+  as release assets, which is what a microvm consumes.
+
+⛔ **That is a shape question for `docker-bsd`, not a defect in it.** An OCI
+rootfs is the right artefact for FreeBSD, where a runtime exists. For the other
+three it is currently a container image with no container to run it in.
+
+### What was NOT done
+
+- ⛔ **No BSD was run.** Not one. Every runtime above was established from its
+  own repository, its releases and its tracker, and none was executed here.
+- ⚠ **`ocijail` and `runj` were read, not built.** Their release tags and their
+  documented spec coverage are the evidence; neither was compiled.
+- ⚠ **"None found" for OpenBSD and DragonFly is the state of one search.** It is
+  a negative result over 28 references, not a proof that nothing exists.

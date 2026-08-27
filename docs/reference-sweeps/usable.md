@@ -178,3 +178,390 @@ has a row for.
   depends on their internals.
 - **`github.com/orgs/freebsd/packages` was not reachable** with this token's
   scopes. The registry was queried anonymously instead.
+
+---
+
+# The BSD reference batch, 2026-08-27
+
+⭐ **The commands and recipes from the `R6` to `R28` sweep.**
+[`findings.md`](findings.md) carries the verdicts, the ranking and the argument.
+This half is what a later session runs.
+
+⚠ **Same machine as everything above**: Windows 11 Pro 26200, podman 5.8.6,
+PowerShell 7.6.5, a WSL2 Fedora podman machine, Git Bash. New this session:
+the host CPU is a **12th Gen Intel Core i7-12700H**, reported by the registry as
+`Intel64 Family 6 Model 154 Stepping 3`. That number matters below.
+
+---
+
+## ⭐ Measured here, and it closes an open caveat
+
+[`../../TODO/bsd.md`](../../TODO/bsd.md) recorded that
+`Get-WindowsOptionalFeature` needs elevation, so the definitive feature list was
+never read, and that `Microsoft-Hyper-V-All` did not appear in the unelevated
+registry view. ⭐ **There is an unelevated runtime check, taken from `R18`, and
+it answers the question outright.**
+
+```powershell
+$sig = @"
+using System;
+using System.Runtime.InteropServices;
+public static class Whp {
+  [DllImport("WinHvPlatform.dll")]
+  public static extern int WHvGetCapability(uint code, out int buf, uint bufSize, out uint written);
+}
+"@
+Add-Type -TypeDefinition $sig
+$val = 0; $written = 0
+$hr = [Whp]::WHvGetCapability(0, [ref]$val, 4, [ref]$written)
+"hr=0x{0:X8} value={1} written={2}" -f $hr, $val, $written
+```
+
+```text
+hr=0x00000000 value=1 written=4
+```
+
+⭐ **Two facts in one call, and neither needed elevation.**
+`WinHvPlatform.dll` loads only when the optional **Windows Hypervisor Platform**
+feature is installed, so the P/Invoke resolving at all proves the feature is
+present. Capability code 0 is `WHvCapabilityCodeHypervisorPresent`, and the
+32-bit result is `1`, so the Microsoft hypervisor is running.
+
+⛔ **So `qemu -accel whpx` is available on this machine**, and the
+`qemu-system on Windows with -accel whpx` row in `BSD-01`'s table is no longer
+resting on an assumption.
+
+⚠ **What is still absent**, checked the same session:
+
+```bash
+command -v qemu-system-x86_64 qemu-img oras
+```
+
+⭐ **No output, exit code 1, read unpiped.** All three absent on the Windows
+host. The WHPX row's friction is an install, not a capability.
+
+## Re-derived, and it agrees with what was recorded
+
+```bash
+wsl -d podman-machine-default -u root -- /bin/sh -lc 'ls -l /dev/kvm; cat /sys/module/kvm_intel/parameters/nested; uname -r'
+```
+
+```text
+crw-rw-rw- 1 root kvm 10, 232 Aug 27 13:12 /dev/kvm
+Y
+7.2.0-WSL2-STABLE
+```
+
+40 threads report `vmx`, and `qemu-system-x86_64` is **absent inside the podman
+machine too**, so the nested option is also an install rather than a rebuild.
+
+⚠ **That command fails from Git Bash without the guard**, and the error names
+neither the path nor the cause:
+
+```text
+/bin/bash: line 1: C:/Program Files/Git/usr/bin/sh: No such file or directory
+```
+
+⭐ Git Bash rewrote the guest's `/bin/sh` into a Windows path.
+[`../conventions/shell.md`](../conventions/shell.md) section 7 has the rule;
+prefix with `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'`, or drive `wsl.exe`
+from PowerShell.
+
+---
+
+## ⛔ The WHPX trap, and why it lands on THIS machine
+
+From `R18`'s source and `R7`'s issue `#81`, reached independently by two people
+on different hardware: **do not hand QEMU `-cpu host` or `-cpu max` under
+WHPX.** It can wedge the whole process before the guest runs an instruction.
+`R7` reports a fatal privileged instruction with `max` and uses `kvm64-v1`;
+`R18` reports a zero-byte serial log and an unresponsive monitor after 12
+minutes, and uses named models.
+
+⚠ **`R18` also measured the opposite direction: a named model NEWER than the
+host wedges QEMU too.** Its rule keys off the host CPU: Intel family 6 with
+model **106 or below** starts at `Icelake-Server-v7`, and anything it cannot
+place keeps the newest entry, `GraniteRapids-v2`.
+
+⛔ **This machine reports model 154, so it falls into "cannot place" and would
+be offered `GraniteRapids-v2`.** Granite Rapids is a 2024 server part and this
+is a 2021 client part, which is the newer-than-host direction `R18` measured as
+wedging.
+
+⚠ **That is derived, not measured.** No QEMU is installed here, so nothing was
+run to confirm it. `R18` recovers with a dead-VM fast fail in about 2 minutes
+and falls back through the list, so the predicted cost is a slow first boot
+rather than a failure. ⭐ **A session that installs QEMU here should try
+`-cpu Icelake-Server-v7` or `-cpu kvm64-v1` first and record what happens.**
+That single measurement is worth taking early.
+
+---
+
+## Boot a BSD without building one
+
+⭐ **Four sources publish artefacts that already boot. None of them is
+`pkgforge-dev/docker-bsd`, which publishes a root filesystem nothing can run.**
+
+| source | artefact | for |
+| --- | --- | --- |
+| `R11` `acj/freebsd-firecracker` | `freebsd-kern.bin`, `freebsd-rootfs.bin.xz`, a `firecracker` binary, an SSH key pair | Firecracker, FreeBSD 15.1 |
+| `R13` `acj/netbsd-firecracker` | the same four names, NetBSD 11 | Firecracker |
+| `R19` `anyvm-org/freebsd-builder` | `freebsd-15.1.qcow2.zst` plus a `.profile.json`, a `.qemu` file and a key pair, per release and architecture | QEMU |
+| `R7` `NetBSDfr/smolBSD` | `rescue-amd64.img.xz` at about 10 MB, `build-amd64.img.xz`, both `amd64` and `evbarm-aarch64` | QEMU microvm, Firecracker |
+
+⚠ **`R19` covers FreeBSD 12.4 through 15.1 across `x86_64`, `aarch64`,
+`riscv64` and `powerpc64`**, which is wider than anything this project would
+build. Its README footnotes what is missing and why, including an upstream
+`13.4` `riscv64` image that is a broken 32-byte stub rather than a disk.
+
+### The lowest-friction FreeBSD guest, from `R17`
+
+⭐ FreeBSD release engineering publishes **BASIC-CI** images that need no
+installer and no custom build. They boot with a serial console, DHCP and
+`growfs`, and their `sshd` accepts root with an **empty password on first
+boot**, so provisioning is plain SSH.
+
+⛔ **Close that door in the same step that opens it.** `R17` installs a per-run
+key and disables empty-password login before anything else runs, and binds the
+forwarded port to `127.0.0.1` only.
+
+⚠ **Pipe scripts into `sh -s` on a FreeBSD guest.** Root's login shell is
+`csh`, so a command string passed as an SSH argument is parsed by `csh` rather
+than by `sh`. Same class as
+[`../conventions/shell.md`](../conventions/shell.md) section 7, different shell.
+
+---
+
+## `R7`, smolBSD: a NetBSD microvm with a Docker-shaped front end
+
+```bash
+git clone --depth 1 https://github.com/NetBSDfr/smolBSD.git smolBSD
+```
+
+```bash
+bmake SERVICE=rescue build
+```
+
+```bash
+./startnb.sh -k kernels/netbsd-SMOL -i images/rescue-amd64.img
+```
+
+Boots through the **PVH entry point** into QEMU's `microvm` machine or into
+Firecracker in about 10 milliseconds. `bmake kernfetch` downloads the kernel, or
+take it directly from `https://smolbsd.org/assets/netbsd-SMOL`.
+
+The Docker-shaped half builds from a file that reads like a `Dockerfile`, where
+`FROM` names NetBSD sets rather than an image:
+
+```bash
+./smoler.sh build smolerfiles/Dockerfile.caddy
+```
+
+```bash
+./smoler.sh run bsdshell-amd64:latest -P -m 1024 -c 2
+```
+
+⚠ `-P` allocates a real pty instead of QEMU's `stdio`, which anything
+full-screen needs.
+
+### ⭐ Images distributed through an OCI registry, as raw bootable disks
+
+```bash
+./smoler.sh push myimage-amd64:latest
+```
+
+```bash
+./smoler.sh pull myimage-amd64:latest
+```
+
+Default repository `ghcr.io/netbsdfr/smolbsd`, overridable with `SMOLREPO`. The
+transport is [`oras`](https://oras.land).
+
+⛔ **The Windows trap, from `#81`: `oras` pull writes a zero-byte file.** A tag
+contains a colon, `name:latest`, and that is not a legal NTFS filename. `oras`
+neither errors nor sanitises. The reporter pulled inside a container and
+renamed. ⚠ **This is the same family as the reserved-device-name rule already in
+this repository's `.gitignore`**, and it will bite `docker-bsd` the moment it
+distributes anything by `oras` on Windows.
+
+⚠ **Two more from `#81`, both open.** Building needs `bmake` and disk tooling,
+so the reporter built under WSL2 and copied the image out, and `startnb.sh` has
+no flag to disable acceleration, which forces nested virtualisation for a build
+that does not need it. The WSL2-built image then panicked on Windows with
+`ffs_newvnode: dup alloc`. ⛔ **Building on Linux and running on Windows is not
+known to work.** Nothing here has reproduced it either way.
+
+### Why smolBSD is NetBSD only
+
+⭐ The maintainer's own costing, `#66`: `bhyve` and `vmm` have **no QEMU
+bindings**, and QEMU is what provides the `microvm` machine type and
+VirtIO-MMIO. Support for FreeBSD and OpenBSD is planned rather than refused, and
+a commenter names an in-progress FreeBSD branch adding bhyve QEMU bindings.
+
+---
+
+## `R26`, bsdkrun: an OCI image booted as a microVM
+
+⭐ **The closest thing anyone has built to what `BSD-01` describes.**
+
+```bash
+bsdkrun freebsd -- uname -a
+```
+
+```bash
+bsdkrun linux alpine
+```
+
+The second pulls an OCI image from any registry with no daemon, extracts the
+root filesystem, and boots it as a microVM. Built on `libkrun`, so a VM is a
+process rather than a service.
+
+⛔ **macOS on Apple Silicon and Linux on amd64 or arm64 only. No Windows.** On
+this host it lives inside the WSL2 machine, which is nesting. ⚠ Under the
+measured nested KVM above that is the floor rather than the target, and it is a
+good floor: it would behave the same there as on a native Linux runner, which is
+what the operator's universal ask wanted.
+
+⚠ FreeBSD on Linux amd64 needs their **PVH-enabled `libkrun` fork**, so this is
+not a plain `cargo install`. NetBSD direct-boots its kernel everywhere.
+
+---
+
+## `R6`: what WSL's host expects from a guest, if anyone ever writes one
+
+⛔ **Do not adopt the patch.** It rebuilds `wslservice.exe`, which is the service
+running this machine's podman machine. The protocol is the part worth keeping,
+and it is small enough to restate.
+
+| step | port | message |
+| --- | --- | --- |
+| 1 | guest connects out to **50000** | `LX_INIT_GUEST_CAPABILITIES`, type 1, with a kernel version string |
+| 2 | two more connects to **50000** | the notify and init sockets |
+| 3 | guest sends | `LX_MINI_INIT_CREATE_INSTANCE_RESULT`, type 33, `Pid` 1, naming its callback port |
+| 4 | guest answers | `LX_INIT_CONFIGURATION_INFORMATION_RESPONSE`, type 6 |
+| 5 | guest answers | `LX_INIT_CREATE_SESSION_RESPONSE`, type 3 |
+| 6 | guest **listens** on **60000** | accepts init, initial, then five more sockets |
+| 7 | guest reads | `LX_INIT_CREATE_PROCESS_UTILITY_VM`: rows, columns, then byte offsets for filename, working directory, command line and environment |
+| 8 | sockets 0 to 2 | standard input, output and error. `forkpty`, then `/bin/sh` |
+
+⭐ **The socket family is `AF_HYPERV` with a `sockaddr_hvs` carrying
+`sa_len`, `sa_family` and `hvs_port`.** FreeBSD has that already through its
+Hyper-V support; nothing in the guest half needed a kernel change.
+
+⭐ **The more useful half is what the host patch revealed.** WSL creates its own
+VM by calling `CreateComputeSystem()` with a JSON document naming a UEFI boot
+from a SCSI attachment and an `HvSocket` configuration. ⚠ **Reaching the Host
+Compute System directly, or Hyper-V's own PowerShell module, requires no WSL
+patch at all.** That is the untried avenue with the lowest cost of the ones
+`BSD-01` lists, and nothing here has attempted it.
+
+---
+
+## ⛔ The `/dev/kvm` question on CI runners, answered
+
+⚠ **Not measured here.** This session has no runner to probe. Four references
+that do run on them agree, which is a sourced claim rather than an assumption.
+
+| runner | `/dev/kvm` | source |
+| --- | --- | --- |
+| `x86_64`, GitHub-hosted | ✅ present, and a `udev` rule is applied to make it **writable** | `R17` |
+| `arm64`, GitHub-hosted | ❌ absent. "low performance, and kvm disabled" | `R8`, `R26`, `R11` |
+
+⭐ **So a universal Linux path is possible on `x86_64` and impossible on
+arm64.** `BSD-01` called this the single highest-value unknown because it
+decides whether the uniform option can exist. It can, on one architecture.
+
+⚠ **The unaccelerated fallback has a measured cost**: `R17` records a full
+FreeBSD first boot under TCG overrunning a ten-minute budget.
+
+---
+
+## ⛔ A correction to this file
+
+The section at the top of this document says `qemu-user` cannot help because it
+emulates a foreign architecture presenting Linux syscalls, and that **"there is
+no counterpart presenting FreeBSD syscalls on a Linux kernel"**.
+
+⛔ **A counterpart was built.** `R28`, `AkihiroSuda/lsf`, traps syscalls with
+`PTRACE_SYSCALL`, rewrites the syscall number in `RAX`, translates the
+structures that differ, and sets the carry flag on error because FreeBSD
+processes expect it.
+
+Its README's own route, quoted rather than adapted, and ⚠ **not run here**:
+this Windows host has no `docker`, and `lsf` needs a Linux kernel of 5.6 or
+newer, so it would have to run inside the podman machine.
+
+```bash
+docker build -t lsf .
+```
+
+```bash
+docker run -it --rm --security-opt seccomp=unconfined lsf
+```
+
+Its README shows `uname -a` inside that container reporting
+`FreeBSD 13.1-RELEASE-p1` while the kernel underneath is Linux.
+
+⚠ **The conclusion does not move and the reason does.** One commit, dated
+2022-08-29, never touched since. Its own status section says proof of concept,
+crashes very frequently, many syscalls unimplemented, amd64 only. ⭐ **The
+honest statement is that a reverse Linuxulator was attempted and abandoned, not
+that none can exist.**
+
+⭐ **It also explains the 139 at the top of this file.** In its own words, the
+Linux kernel does not validate the OSABI of an ELF binary on `execve`. That is
+why the loader **accepts** a FreeBSD binary and it dies at its first syscall,
+rather than being refused with `Exec format error`.
+
+---
+
+## `BSD-02`, answered per BSD
+
+⛔ The entry asks for a written answer per BSD, with the evidence, and it does
+not close as out of scope. Here is what the sweep found. ⚠ **"Runnable" is
+split**, because the entry's premise conflated two questions.
+
+| BSD | as an OCI container | as a bootable guest |
+| --- | --- | --- |
+| FreeBSD | ✅ `ocijail` (`R25`, `v0.6.0`, behind `podman-suite`) and `runj` (`R10`, proof of concept, refuses production use). Needs a FreeBSD host. | ✅ Firecracker (`R11`), QEMU (`R8`, `R18`, `R19`), bhyve, `libkrun` (`R26`), and upstream BASIC-CI and `.vhd` images |
+| NetBSD | ⚠ no jail-equivalent OCI runtime. ⭐ CBSD (`R9`) manages NetBSD from 15.0.6 and is OCI-aware on FreeBSD | ✅ ⭐ smolBSD (`R7`) as a 10 ms microvm, Firecracker (`R13`), QEMU (`R8`), `libkrun` (`R26`) |
+| OpenBSD | ❌ none found | ✅ QEMU through `R8` and `R18` |
+| DragonFly | ❌ none found | ✅ QEMU through `R8` and `R18` |
+
+⭐ **The premise that needed correcting**: `BSD-02` says the other three are
+"publishable and, as far as is known, not yet runnable anywhere". They are all
+runnable as guests, and two of them have been for years. What none of the three
+has is a **jail-equivalent runtime**, which is a narrower and still-true claim.
+
+---
+
+## Lessons
+
+| tag | lesson |
+| --- | --- |
+| `adopt` | ⭐ Read the tracker. Again. The `/dev/kvm` answer, the WHPX wedge, the psshfs corruption and the smolBSD Windows report are all in trackers and none is in a README. This is the second sweep in a row where the tracker outweighed the code. |
+| `adopt` | ⛔ Under WHPX, never `-cpu host` and never `-cpu max`. Two independent projects measured it wedging QEMU. Use a named model no newer than the host. |
+| `adopt` | ⭐ `WHvGetCapability` through `WinHvPlatform.dll` answers "can this Windows run a VM" unelevated, in one call. Prefer it to a feature query that needs elevation. |
+| `adopt` | Publish artefacts somebody can boot. Four references publish a kernel and a root filesystem; the thing that made them useful was not the image format. |
+| `adopt` | ⭐ An OCI registry will carry a raw bootable disk as an artefact, through `oras`. The registry is a distribution channel, not only a container format. |
+| `avoid` | ⛔ Do not patch `wslservice.exe`. It runs the podman machine that everything else here depends on. |
+| `avoid` | Do not build FreeBSD guest images. `R19` publishes twelve releases across four architectures already. |
+| `avoid` | ⚠ Do not read `R6`'s roadmap ticks as a working product. Its two open issues ask how to build it and how to test it, and both are unanswered since 2025-10-19. |
+| `honest-limit` | ⛔ arm64 CI runners have no `/dev/kvm`. Any uniform-across-hosts design is `x86_64` only, or it is emulated in exactly the place uniformity was meant to help. |
+| `honest-limit` | ⚠ NetBSD's `mount_psshfs` caches attributes for 30 seconds over the page cache and serves short reads under a parallel build. Object files came back `file too short` ten seconds after being compiled. Use NFS or a local disk with copy-back. |
+| `honest-limit` | ⚠ Nested AMD-V mishandles the L2 guest's AVX512 XSAVE state, so a modern guest takes random SIGSEGVs while its kernel stays up. Intel hosts are unaffected, this one included. |
+| `future` | The Host Compute System API takes a JSON document naming a UEFI boot and an hvsocket, and is what WSL itself calls. A BSD guest through HCS or the Hyper-V module needs no patched service. Untried. |
+
+---
+
+## ⛔ What this half does not know
+
+- **No BSD was booted.** Not here, not anywhere in this sweep. Every boot time
+  quoted is somebody else's, attributed where it appears.
+- **No QEMU is installed on either side**, so the WHPX prediction for this
+  machine's Model 154 CPU is derived from `R18`'s rule and its measurements, and
+  is explicitly not a measurement of this host.
+- ⚠ **`oras` is absent here**, so the zero-byte pull on Windows is `R7`'s
+  report and has not been reproduced.
+- ⚠ **The FreeBSD `.vhd` route that `BSD-01` recommends was not re-checked this
+  session.** Nothing found contradicts it, and nothing found confirms it either.
