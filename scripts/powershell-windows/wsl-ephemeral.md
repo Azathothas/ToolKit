@@ -284,16 +284,22 @@ state of everything after it.
 
 ## Known limits
 
-⛔ **These are real and they are not fixed.** They are listed because a limit
-hidden is a defect filed against the user later. Each is tracked as an open item
-in [`../../TODO/INDEX.md`](../../TODO/INDEX.md).
+⛔ **These are real.** They are listed because a limit hidden is a defect filed
+against the user later.
+
+⚠ **Two different things are in this table and the difference matters.** Most
+rows are tracked as **open** items in
+[`../../TODO/INDEX.md`](../../TODO/INDEX.md) and will go. The `-OciEnv` row is
+not: it is a **settled decision** about what that switch carries, and it stays.
+⛔ The intro used to claim every row was an open item, which stopped being true
+the moment one of them was closed as a decision.
 
 | limit | what it means for you |
 | --- | --- |
 | ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
 | ⚠ no disk-space preflight | export plus import needs roughly twice the rootfs size on the `%LOCALAPPDATA%` volume. Running out midway leaves a partial VHDX and a registered distro that does not work. |
 | ⚠ no systemd | an imported distro has no `/etc/wsl.conf`, so `systemctl` is unavailable and units, timers and services cannot be tested. |
-| ⚠ `-Command` has no escaping story | the string crosses PowerShell and then `/bin/sh -lc`, and the caller owns all quoting across both. |
+| ⛔ `-Command` quoting does not survive the trip | ⚠ **This is worse than "the caller owns the quoting", which is what this row used to say.** The caller cannot fix it. Measured 2026-08-27 on both PowerShell hosts: a `$` expands and a backtick opens a command substitution **even inside POSIX single quotes**, and on 5.1 a double quote gives `unterminated quoted string`. `echo $PATH` is enough to break it. Keep `-Command` to letters, digits and `. / - _ ; \| > &` until `WSL-08` lands. |
 | ⚠ the smoke probe has no timeout | a distro whose init wedges hangs the script with no output. |
 | ⚠ `Run` calls `exit` | correct when the script is invoked, fatal to the host session if it is dot-sourced. ⛔ Invoke it, never dot-source it. |
 

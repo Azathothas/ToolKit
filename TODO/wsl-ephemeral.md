@@ -126,6 +126,81 @@ against as a whole.
 
 ---
 
+## WSL-12. `-Action New` fails outright on Windows PowerShell 5.1
+
+**Source** ⭐ **This repository's own door sweep**, part (c) of the gate, run
+against the `WSL-01` to `WSL-05` batch. It was not in issue 3 and nobody had
+reported it.
+**Category** wsl-ephemeral · **Priority** P0 · **Effort** S · **Status** done
+
+**Problem.** Every `-Action New` run from Windows PowerShell 5.1 failed. The
+distro imported, the smoke probe was refused by the guest shell, the script
+reported `Distro imported but /bin/sh did not run`, rolled the distro back and
+exited 1. ⛔ **On a host `.NOTES` claimed to be tested on.**
+
+**Premise.** ⭐ **Measured, not read.** The smoke probe carried this line:
+
+```text
+if [ ! -d /mnt/c ]; then echo "note: no /mnt/c (Windows drives not mounted)"; fi
+```
+
+The quoting does not survive `wsl.exe`, so the bracket reached the guest as
+syntax:
+
+```text
+/bin/sh: syntax error: unexpected "("
+```
+
+⚠ **It is host-specific, which is why it survived.** Under PowerShell 7.6.5 the
+double quote does arrive and the probe runs; under 5.1 it does not. Every
+measurement in this repository until this session had been taken with `pwsh`.
+
+**Approach.** Rewrite the probe payload inside the alphabet that arrives intact:
+no double quote, no bracket, no dollar sign, no backtick. ⛔ Not a fix for the
+transport, which is `WSL-08`. A payload change is what makes the tool work
+today; the transport is what stops the next payload doing this again.
+
+**Decision.** Fix the payload now rather than waiting for `WSL-08`. The
+alternative loses badly: `WSL-08` is an M behind three other entries, and until
+it lands the tool does not run at all on one of its two documented hosts.
+
+**Prove.** `-Action New` from **both** hosts, each exit code read from the
+process that produced it.
+
+### Closed 2026-08-27
+
+**Mutation proof.** The defect was measured on the shipped code before the fix,
+which is the strongest form of it: not a simulated revert, the real thing.
+
+```text
+==> Importing as WSL2 distro 'eph-51'
+  ! creation failed; rolling back
+ERROR: Distro imported but /bin/sh did not run. Output: /bin/sh: syntax error: unexpected "("
+5.1 EXITCODE=1
+```
+
+**Acceptance, after the fix.**
+
+| host | command | exit |
+| --- | --- | --- |
+| Windows PowerShell 5.1 | `-Action New -Image alpine:3.22 -Command "uname -m" -Ephemeral -Force` | 0, and `x86_64` printed |
+| PowerShell 7.6.5 | `-Action New -Image alpine:3.22 -Command "exit 5" -Ephemeral -Force` | 5 |
+
+⭐ `wsl --list --quiet` afterwards shows only `podman-machine-default`, and the
+base directory is empty, so neither run leaked.
+
+⚠ **What this does NOT fix.** `-Command` still cannot carry a `$`, a backtick
+or, on 5.1, a double quote. That is `WSL-08` and it is still open. The limits
+table in `wsl-ephemeral.md` now says so in those terms rather than the
+"the caller owns all quoting" it said before, which measurement disproved.
+
+**Consumers.** ⛔ This is the reason the `Azathothas/TEMPLATE` pin moved in this
+session. Its wrapper runs the fetched script on whichever host invoked it, so
+every 5.1 caller pinned to the old commit had an `-Action New` that could not
+work. [`../docs/consumers.md`](../docs/consumers.md) carries the pin state.
+
+---
+
 ## WSL-02. Carry the image's OCI configuration into the distro
 
 **Source** issue 3, part 3.2.
@@ -602,6 +677,55 @@ caller owns all quoting across both.
 [`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 1 is
 emphatic that this is where payloads lose their meaning, and names base64 as the
 one channel no shell interprets.
+
+### ⭐ Measured on 2026-08-27, and it is worse than the entry assumed
+
+⛔ **The premise says the caller owns all quoting across both shells. The caller
+cannot own it, because the quoting is destroyed in transit.** Measured on this
+machine against a real Alpine distro, each hazard already correctly
+single-quoted for `sh` before being passed:
+
+| character, POSIX-quoted for sh | PowerShell 7.6.5 | Windows PowerShell 5.1 |
+| --- | --- | --- |
+| plain `abc` | ok | ok |
+| double quote | ok | ⛔ `syntax error: unterminated quoted string` |
+| backtick | ⛔ `syntax error: EOF in backquote substitution` | ⛔ same |
+| dollar sign | ⛔ expanded: `a$b` arrived as 1 byte, not 3 | ⛔ same |
+| tab, backslash, single quote, caret, percent | ok | ok |
+
+⭐ **The single quotes are not reaching the guest.** That is why `$` expands and
+a backtick opens a substitution: the payload is re-parsed on the far side as
+though it were inside double quotes.
+
+⚠ **The ordinary case is broken, not an exotic one.**
+`wsl -d D -u root -- /bin/sh -lc 'echo $PATH'` fails with
+`syntax error: unexpected "("`, because `$PATH` expands to a value containing
+`/mnt/c/Program Files (x86)/...`.
+
+### ⭐ The channel that does work, measured end to end
+
+An alphabet of letters, digits and `+ / = | > ; . -` survives both hosts
+intact. A payload base64-encoded on the Windows side, written to a file in the
+guest and sourced there, arrived **byte-exact**: the SHA-256 of the string on
+Windows equalled the SHA-256 of the decoded file in the guest, with a single
+quote, a double quote, a backtick, a dollar sign and a tab all present.
+
+```text
+d305a338...10321970  (the string on Windows)
+d305a338...10321970  /tmp/.c   (the decoded file in the guest)
+```
+
+⭐ **`Write-DistroFile` already exists and already does this**, added by
+`WSL-02`. It carries a body as base64 and refuses a path it cannot carry
+safely. ⚠ **The transport half of this entry is therefore mostly written**; what
+is left is routing `Invoke-InDistro` through it and adding `-CommandFile` and
+`-CommandB64`.
+
+⛔ **Two payloads inside this script must move to that channel at the same
+time**, and a reader who fixes only `-Command` will miss them: the smoke probe
+in `Invoke-ActionNew` (see `WSL-12`, which is exactly this defect firing) and
+the script `Write-DistroFile` itself sends. ⚠ Both are currently written inside
+the safe alphabet by hand, which is a constraint no check enforces.
 
 **Approach.** `-CommandFile PATH` or `-CommandB64 STRING`, consistent with the
 answer the tree already ships in `scripts/common/write-file.mjs`.

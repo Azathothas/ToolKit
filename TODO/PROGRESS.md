@@ -14,15 +14,15 @@ and the entries themselves. Do not add a "previous sessions" section.
 ## State
 
 ```text
-session started 2026-08-27T04:33:44Z
+session started 2026-08-27T07:24:43Z
 baseline        ci green on both hosts, all three jobs
-entries         total 16  open 8  blocked 0  done 8
+entries         total 17  open 8  blocked 0  done 9
 ```
 
 ⚠ The counts above are checked against
 [`INDEX.md`](INDEX.md)'s rows by `scripts/common/check-record.sh`, which runs as
 a gate. ⛔ Do not edit them by hand to make a check pass; fix whichever file is
-wrong.
+wrong. ⭐ `scripts/common/set-record.mjs` moves them for you now.
 
 | fact | value |
 | --- | --- |
@@ -31,66 +31,83 @@ wrong.
 | push policy | commit and push, to this remote only |
 | CI | three jobs, ubuntu and windows. `.github/workflows/ci.yml` |
 | `main` | protected, admin bypass on. Force push and deletion refused. |
+| the local gate | ⭐ `sh scripts/common/check-gate.sh --fast`, 41s. Full run 208s. |
 
 **Origin.** Bootstrapped from `Azathothas/TEMPLATE` on 2026-08-27. Its first
 content was `wsl-ephemeral.ps1`, decoupled from that template so the template
-keeps only what every project needs. The template now carries a wrapper that
-fetches this copy by pinned commit and verified digest.
+keeps only what every project needs. That template carries a wrapper that
+fetches this copy by pinned commit and verified digest, and ⭐ **that pin moved
+in this session**. [`../docs/consumers.md`](../docs/consumers.md) is the state.
 
 ---
 
 ## The measured baseline
 
-Every gate below was run on this Windows 11 Pro 26200 machine, unpiped, and CI
-ran the same set on ubuntu and windows runners.
+Every gate below was run on this Windows 11 Pro 26200 machine, unpiped.
 
 | gate | result |
 | --- | --- |
-| `check-docs`, `check-placeholders`, `check-control-bytes` | ✅ exit 0, both twins |
-| `check-record` | ✅ exit 0, both twins, JSON identical |
-| `check-changelog` | ✅ exit 0 |
-| `check-no-secrets --public` | ✅ exit 0, both twins |
-| `check-twins` | ✅ exit 0, 30 pairs agree |
-| PSScriptAnalyzer over `scripts/`, Error and Warning | ✅ clean |
+| `check-gate.sh`, full | ✅ 13 checks, 13 passed, 0 skipped |
+| `check-gate.ps1`, full | ✅ identical json to the sh half |
+| `check-twins` | ✅ every pair agrees |
+| PSScriptAnalyzer over `scripts/`, Error and Warning | ✅ clean, 12 files |
+| `-Action New` end to end, PowerShell 7.6.5 | ✅ exit code propagates |
+| `-Action New` end to end, Windows PowerShell 5.1 | ✅ ⭐ fixed this session, `WSL-12` |
 | CI, all three jobs | ✅ success |
 
 ---
 
 ## What the last session did
 
-**2026-08-27, bootstrap and the first research pass.**
+**2026-08-27, the first implementation pass. Nine entries closed.**
 
-- Bootstrapped this repository and moved `wsl-ephemeral.ps1` here byte-for-byte
-  from the template, leaving a verified wrapper behind.
-- Filed the eleven `WSL-*` entries from `Azathothas/TEMPLATE` issue 3, and
-  `DOC-01` from issue 2.
-- ⭐ **Did the `BSD-01` reference sweep**, which changed the shape of that work.
-  See below.
-- Wrote `check-record.sh` and its twin, and wired both into the gate.
-  ⚠ It caught a real count error in `INDEX.md` on its first run.
+- ⭐ **`WSL-01`, `WSL-02`, `WSL-03`, `WSL-04`, `WSL-05`** closed with evidence,
+  each mutation-proven, each its own commit.
+- ⭐ **`WSL-12` filed and closed**, found by the door sweep rather than by any
+  issue: `-Action New` was failing outright on Windows PowerShell 5.1, on a host
+  `.NOTES` claimed to be tested on.
+- **`TOOL-01`, `TOOL-02`, `DOC-01`** closed. Four new scripts: `check-gate` and
+  its twin, `check-powershell.ps1`, `set-record.mjs`, `check-binfmt` and its
+  twin.
+- **The `Azathothas/TEMPLATE` pin moved**, and issues were opened there
+  proposing the backports.
 
-⛔ **Nothing was implemented.** No entry has been worked.
+⛔ **It did not finish.** `WSL-06` through `WSL-11` are untouched, and the
+`bsd.md` work the operator asked for has not started. See the work order.
+
+### ⚠ Three premises measurement disproved, all written under their entries
+
+⛔ **None was edited away.** A premise a measurement disproves keeps its title
+and gets the correction underneath.
+
+- **`WSL-03`.** An unqualified `podman pull` is **not** a no-op over a
+  foreign-architecture tag on podman 5.8.6; it re-pulls the host's. The trap is
+  real in `create`. ⭐ And the stated symptom was wrong in the dangerous
+  direction: this kernel carries 31 `qemu-*` `binfmt_misc` handlers with the `F`
+  flag, so a riscv64 rootfs **boots and runs emulated** rather than failing.
+- **`WSL-02`.** Its own prove command cannot be sent at all, and its suggested
+  comparison against a login shell in the container answers the wrong question.
+- **`WSL-08`.** The caller does not "own all quoting"; the quoting is destroyed
+  in transit. Measured per character, on both hosts.
 
 ---
 
 ## ⭐ The work order
 
-**1. `WSL-01`.** The only entry where the software reports success over a
-failure, so it outranks everything regardless of size. ⚠ A copy of its kickoff
-was left at `.tmp/PROMPT.md`, which is **gitignored and local to one machine**.
-The entry in [`wsl-ephemeral.md`](wsl-ephemeral.md) is the authority; the prompt
-is rebuilt from it.
+**1. `WSL-06`, `WSL-07`, `WSL-09`, `WSL-10`, `WSL-11`.** The straightforward
+tail. All S, all independent of each other.
 
-**2. `TOOL-01`.** Finish the record checker by writing the writer. The reader
-exists and is a gate; the writer is what stops the arithmetic being manual.
+**2. `WSL-08`, last of the batch and the one that matters most.** It is an M and
+it is where the transport defect behind `WSL-12` actually gets fixed.
+⭐ **Read its premise first**: the measurement is already there,
+`Write-DistroFile` already implements the working channel, and ⛔ **two payloads
+inside the script have to move to that channel in the same change** or the next
+one repeats `WSL-12`.
 
-**3. `WSL-03`, then `WSL-04`, then `WSL-02`.** Reasoning in
-[`INDEX.md`](INDEX.md) under the ordering argument.
-
-⚠ **`BSD-01` sits after those.** Its images half is done and lives in
-`pkgforge-dev/docker-bsd`; what is left here is one scripted VM guest, and its
-first step is a measurement, not a build. It carries a decision for the
-operator, below.
+**3. `BSD-01` and `BSD-02`.** ⚠ A separate session with its own kickoff. The
+operator has asked for [`bsd.md`](bsd.md) to be extended with a native path and
+a universal nested-VM fallback, and reconciled with what it already ranks,
+**before** any of it is built.
 
 ---
 
@@ -101,36 +118,32 @@ operator, below.
 ### 1. `BSD-01`: which workaround for the missing BSD kernel?
 
 ⭐ **The constraint, measured:** a FreeBSD image on this machine's Linux podman
-machine exits **139**, a SIGSEGV, not `Exec format error`. A BSD userland needs
-a BSD kernel and no `binfmt_misc` or `qemu-user` work changes that. It is a
-constraint to route around, and every option is ranked on friction, performance
-and interop in [`bsd.md`](bsd.md).
+machine exits **139**, a SIGSEGV. A BSD userland needs a BSD kernel.
 
-**Recommendation:** a Hyper-V guest built from FreeBSD's **published `.vhd`**,
-addressed with `podman system connection add`. The `.vhd` is the point: it is
-Hyper-V's native disk format, so there is no installer and no ISO, which makes
-this the lowest-friction option as well as the fastest and the most
-interoperable. `podman -c freebsd run ...` then works with the real client.
+⚠ **This question is being reopened deliberately.** The operator has asked for
+two more approaches to be written up and reconciled with the existing ranking: a
+native path per host, and a universal nested one. ⛔ **Do not rule on it from
+the old text alone**; that is the next `bsd.md` session's first task.
 
-⚠ The honest cost is a VM the operator keeps.
+⭐ **What is settled and does not need re-deriving:** Hyper-V's `vmms` is
+Running on this machine alongside the WSL2 podman machine, so the two coexist.
+[`bsd.md`](bsd.md) carries the probes.
 
-⭐ **The step that was going to block it is done.** Hyper-V's `vmms` service is
-Running on this machine alongside the WSL2 podman machine, so the coexistence
-the recommendation depends on is measured. `bsd.md` carries the probes.
+### 2. Should `WSL-08` keep `-Command` working for simple commands?
 
-### 2. Do the `WSL-*` fixes land as one change or one per entry?
+⭐ **Recommendation: yes, and it is now more than a convenience.** The entry
+already decided to keep it. The measurement changes the reason: `-Command` is
+not merely awkward, it is wrong for any payload with a `$` or a backtick, so
+"keep it for simple commands" has to ship with the safe alphabet written down.
 
-**Recommendation:** one change per entry, grouped into at most three pushes.
-Eleven fixes in one commit is unreviewable; eleven pushes is eleven CI runs.
+### 3. Are `RULES.md`, `HUMAN.md` and `SECURITY.md` wanted?
 
-### 3. Should `WSL-02` change behaviour or only document it?
+Not written. **Recommendation:** leave them until there is something to put in
+them. An empty skeleton is honest; a fabricated one outlives the session that
+wrote it.
 
-**Recommendation:** carry the OCI config, behind a switch defaulting to off, so
-no existing caller moves under them.
+### 4. Should `check-binfmt` join the gate?
 
-### 4. Are `RULES.md`, `HUMAN.md` and `SECURITY.md` wanted?
-
-Not written. ⚠ `RULES.md` is named in the todo model's shape and is a stub
-pointing at the conventions; the other two have nothing true in them yet.
-**Recommendation:** leave them until there is something to put in them. An empty
-skeleton is honest; a fabricated one outlives the session that wrote it.
+**Recommendation: no.** It needs a running podman machine, so on a machine
+without one it would be a permanent SKIP, and a check that is always skipped is
+one nobody reads. It is a diagnostic, run on request.

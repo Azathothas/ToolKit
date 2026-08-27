@@ -21,6 +21,36 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T09:20:00Z: the door sweep found New broken on PowerShell 5.1
+
+**Record:** `WSL-12` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), filed
+and closed in place.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing. The
+`Azathothas/TEMPLATE` pin DID move, which is the closest thing to one.
+
+⛔ **`-Action New` was failing outright under Windows PowerShell 5.1**, on a
+host `.NOTES` claimed to be tested on. The smoke probe carried a bracket inside
+a double-quoted `echo`, the quoting did not survive `wsl.exe`, and every run
+reported `Distro imported but /bin/sh did not run` and rolled back.
+
+- Nobody reported it. It came out of part (c) of the gate, the door sweep, run
+  against the `WSL-01` to `WSL-05` batch.
+- ⚠ **It is host-specific**, which is why it survived: under PowerShell 7.6.5
+  the probe runs, and every measurement in this repository until now had been
+  taken with `pwsh`.
+- The same sweep found a fourth deletion path that did not go through the one
+  helper, while `wsl-ephemeral.md` claimed there was one and every path reached
+  it. The claim was false for one commit and is true again.
+- The claim audit corrected two more published sentences: a limits row saying
+  the caller owns `-Command` quoting, which measurement disproved, and a
+  pin-state cell and an entry closure that pointed at each other and stated
+  nothing.
+
+⭐ **The `Azathothas/TEMPLATE` pin moved** to the head of this batch.
+[`docs/consumers.md`](docs/consumers.md) says why: leaving a 5.1 caller pinned
+to the old commit protects them from the fix rather than from the break.
+
+
 ### 2026-08-27T08:45:00Z: one command for the gate, a record writer, and a binfmt check
 
 **Record:** `TOOL-02`, `TOOL-01` and `DOC-01` in

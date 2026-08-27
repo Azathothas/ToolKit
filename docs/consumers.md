@@ -74,7 +74,19 @@ fact a consumer's owner needs.
 
 | date | what broke | consumers checked | pin state |
 | --- | --- | --- | --- |
-| 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New -Command` now exits with the inner command's code. It used to warn and exit 0. `WSL-01`. | `Azathothas/TEMPLATE`, the only consumer in the register. Its wrapper forwards arguments and propagates the inner code verbatim, so it needs no edit beyond the pin. | see the entry's closure in [`../TODO/wsl-ephemeral.md`](../TODO/wsl-ephemeral.md) |
+| 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New -Command` now exits with the inner command's code. It used to warn and exit 0. `WSL-01`. | `Azathothas/TEMPLATE`, the only consumer in the register. Its wrapper forwards arguments and propagates the inner code verbatim, so it needs no edit beyond the pin. | ⭐ **moved.** See the note below. |
+| 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New` was failing outright on Windows PowerShell 5.1 and now works. `WSL-12`. | the same single consumer. Its wrapper runs the fetched script on whichever host invoked it, so a 5.1 caller was getting the break. | ⭐ **moved**, in the same bump. |
+
+⭐ **The pin moved on 2026-08-27**, from the commit that first published this
+script to the head of the batch carrying `WSL-01` through `WSL-05`, `WSL-12`
+and the tooling work. ⚠ **It did not move for the two `WSL-01` reasons alone.**
+It moved because `WSL-12` means every 5.1 caller of the old pin has an
+`-Action New` that cannot work at all, and leaving them there to avoid a
+behaviour change is protecting them from the fix rather than from the break.
+
+⚠ **`WSL-06` through `WSL-11` are still open**, so the pin will move again.
+That is normal and is what pinning is for: each move is a version somebody
+reviewed.
 
 ⚠ **A caller that was reading the false pass gets a red result the first time it
 runs after the pin moves, and the failure it reports is real.** That is the

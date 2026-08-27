@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 16  open 8  blocked 0  done 8
+total 17  open 8  blocked 0  done 9
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
-| P0 | 0 | 0 | 1 | 1 |
+| P0 | 0 | 0 | 2 | 2 |
 | P1 | 1 | 0 | 5 | 6 |
 | P2 | 3 | 0 | 2 | 5 |
 | P3 | 4 | 0 | 0 | 4 |
-| **all** | **8** | **0** | **8** | **16** |
+| **all** | **8** | **0** | **9** | **17** |
 
 ---
 
@@ -46,6 +46,7 @@ total 16  open 8  blocked 0  done 8
 | WSL-09 | P3 | S | open | Bound the smoke probe with a timeout | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-10 | P3 | S | open | Retry a generated name on collision | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-11 | P3 | S | open | An `Enter` action | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-12 | P0 | S | done | `-Action New` fails outright on Windows PowerShell 5.1 | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 
 ---
 

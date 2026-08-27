@@ -750,14 +750,27 @@ function Invoke-ActionNew {
             # .ps1 at all rather than to rely on .gitattributes reaching every
             # checkout. An array joined with a newline carries the same script
             # and no line ending can break it.
+            #
+            # NO DOUBLE QUOTE, NO BRACKET, NO DOLLAR SIGN AND NO BACKTICK IN
+            # HERE, AND THAT IS NOT A STYLE PREFERENCE. Measured on 2026-08-27:
+            # the quoting of a command string handed to `wsl.exe -- /bin/sh -lc`
+            # does NOT survive the trip. This script carried
+            #   echo "note: no /mnt/c (Windows drives not mounted)"
+            # and under Windows PowerShell 5.1 the bracket reached the guest as
+            # syntax, so EVERY -Action New failed with
+            #   /bin/sh: syntax error: unexpected "("
+            # reported as "Distro imported but /bin/sh did not run", and rolled
+            # the distro back. On a host the .NOTES claimed to be tested on.
+            # WSL-08 replaces the transport; until then the payload stays inside
+            # the alphabet that arrives intact.
             $probeScript = @(
                 'echo __WSL_OK__',
                 'for _ in 1 2 3 4 5 6 7 8 9 10; do',
                 '    if [ -d /mnt/c ]; then break; fi',
                 '    sleep 1',
                 'done',
-                'if [ ! -d /mnt/c ]; then echo "note: no /mnt/c (Windows drives not mounted)"; fi',
-                'head -2 /etc/os-release 2>/dev/null || echo "os-release: n/a"'
+                'if [ ! -d /mnt/c ]; then echo note:-no-/mnt/c-windows-drives-not-mounted; fi',
+                'head -2 /etc/os-release 2>/dev/null || echo os-release:-n/a'
             ) -join "`n"
             $probe = & $wsl -d $distro -u root -- /bin/sh -lc $probeScript 2>&1
         }
@@ -821,7 +834,17 @@ function Invoke-ActionNew {
     }
     finally {
         if ($tempTar -and $tarPath -and (Test-Path -LiteralPath $tarPath)) {
-            Remove-Item -LiteralPath $tarPath -Force -ErrorAction SilentlyContinue
+            # ⛔ THROUGH THE SAME DELETION AS EVERYTHING ELSE. This was the
+            # fourth deletion path and it had its own Remove-Item, no
+            # containment guard and no read-back, while wsl-ephemeral.md
+            # claimed there was one deletion and every path reached it. A door
+            # sweep found it; the claim was false for one commit.
+            #
+            # ⚠ Caught, not propagated. This runs in a finally, and a failure
+            # here must not replace the real outcome of the action: a tarball
+            # left behind is an orphan, which List reports and Purge removes.
+            try { Remove-PathWithRetry -Path $tarPath -What 'temporary rootfs tarball' }
+            catch { Write-Warn "could not remove the temp tarball: $($_.Exception.Message)" }
         }
     }
 
