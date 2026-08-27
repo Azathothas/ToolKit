@@ -32,8 +32,8 @@ every project needs.
 
 - `scripts/powershell-windows/wsl-ephemeral.ps1` moved here byte-for-byte from
   the template. ⛔ **No behaviour changed in the move**, so the diff is
-  reviewable as a move. Its ten known defects came with it, unfixed, and are
-  tracked as `WSL-01` through `WSL-10` in [`INDEX.md`](INDEX.md).
+  reviewable as a move. Its eleven known defects came with it, unfixed, and are
+  tracked as `WSL-01` through `WSL-11` in [`INDEX.md`](INDEX.md).
 - `scripts/powershell-windows/wsl-ephemeral.md` written, including an explicit
   list of those limits. A limit hidden is a defect filed against the user later.
 - ⚠ **`Azathothas/TEMPLATE` now carries a wrapper at the same path**, which

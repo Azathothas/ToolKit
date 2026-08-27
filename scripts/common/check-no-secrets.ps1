@@ -147,8 +147,17 @@ if ($Public) {
     # for: a tag moves and a moved tag runs unreviewed code. A rule that fires
     # on correct hardening is a rule somebody disables, so the uses: form is
     # excluded by shape rather than the whole hex rule being dropped.
+    #
+    # ⚠ A DECLARED PIN is the second such shape. It arrived when
+    # scripts/powershell-windows/wsl-ephemeral.ps1 became a wrapper that fetches
+    # a commit and verifies a SHA-256 before executing it: 40 hex and 64 hex,
+    # both public by construction, both the SAFE practice.
+    # ⛔ Excluded by NAME, narrowly. The hex has to be assigned to an identifier
+    # that says it is a pin, because a credential is not assigned to something
+    # called PinnedSha256. ⛔ Keep this identical to the sh twin.
     $hex = @(Find-Pattern '\b[0-9a-f]{24,}\b' |
-        Where-Object { $_ -notmatch 'uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}' })
+        Where-Object { $_ -notmatch 'uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}' } |
+        Where-Object { $_ -cnotmatch '[Pp]inned(Ref|Sha256|Commit|Digest)|PINNED_(REF|SHA256)' })
     Add-Hit 'a long hex identifier' $hex
 
     # ⚠ Narrowed rather than switched off. These are well-known generic paths,

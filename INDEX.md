@@ -25,6 +25,7 @@ Priority: `P0` blocks something, `P1` next, `P2` wanted, `P3` someday.
 | `WSL-08` | P2 | a `-Command` channel that survives two shells | open |
 | `WSL-09` | P3 | bound the smoke probe with a timeout | open |
 | `WSL-10` | P3 | retry a generated name on collision | open |
+| `WSL-11` | P3 | an `Enter` action, to make the interactive path first class | open |
 | `DOC-01` | P2 | a `binfmt_misc` check for the podman machine on WSL2 | open |
 | `BSD-01` | P1 | run BSD under podman on Windows without nested qemu | research |
 
@@ -159,6 +160,15 @@ output. [`docs/conventions/shell.md`](docs/conventions/shell.md) section 9.
 `New-DistroName` adds a four-character suffix and `Invoke-ActionNew` throws if
 the name exists. For a caller-supplied `-Name` that is correct. For a generated
 one, failing on a 1-in-1,679,616 collision is worse than drawing again.
+
+### `WSL-11` P3. An `Enter` action, to make the interactive path first class
+
+The summary printed after `New` tells the user to run `wsl -d DISTRO` by hand.
+An `-Action Enter` would be symmetric with the others and would give one place
+to add `-u` handling later, instead of every caller re-deriving the invocation.
+
+**Acceptance.** `-Action Enter -Name eph-...` attaches an interactive shell, and
+`-User` is honoured.
 
 ### `DOC-01` P2. A `binfmt_misc` check for the podman machine on WSL2
 

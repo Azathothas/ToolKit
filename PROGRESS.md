@@ -32,15 +32,20 @@ carries a wrapper that fetches this copy by pinned commit and digest.
 
 | thing | state |
 | --- | --- |
-| `scripts/powershell-windows/wsl-ephemeral.ps1` | moved here unchanged from the template. ⛔ It carries ten known defects, none fixed. `wsl-ephemeral.md` lists them and `INDEX.md` tracks them. |
+| `scripts/powershell-windows/wsl-ephemeral.ps1` | moved here unchanged from the template. ⛔ It carries eleven known defects, none fixed. `wsl-ephemeral.md` lists them and `INDEX.md` tracks them. |
 | `scripts/doctor/`, `scripts/common/` | inherited from the template, working, gates green |
 | the documents | conventions, methodology and security inherited; `docs/consumers.md` is this repository's own |
 
-⚠ **Nothing here has been through a full gate run on this machine yet beyond
-the document and control-byte checks.** The Windows half of CI has not run
-against this tree at the time of writing, because the first push is what
-triggers it. The first session to work an item confirms CI is green before
-opening anything new.
+**CI is green.** The first push ran all three jobs and all three passed:
+`checks (ubuntu)`, `powershell (windows)` and `the two probes agree`, at commit
+`77596be`. Locally, every check in `scripts/common/` was run unpiped on this
+machine, both twins each, plus PSScriptAnalyzer over `scripts/` at Error and
+Warning, plus `check-twins`, which compares 29 pairs and agrees on this tree.
+
+⚠ **`main` is protected**, with admin bypass left on so the operator can push
+directly. Force pushes and deletions are refused, the three CI jobs are
+required, and the branch requires linear history. ⛔ A pull request from anyone
+without admin needs one approving review and all three checks.
 
 ---
 
@@ -53,7 +58,7 @@ opening anything new.
 - Moved `wsl-ephemeral.ps1` here byte-for-byte, so the move is reviewable as a
   move rather than as a rewrite.
 - Wrote `wsl-ephemeral.md`, `docs/consumers.md`, and this record.
-- Left the script's ten known defects unfixed on purpose. A bootstrap session
+- Left the script's eleven known defects unfixed on purpose. A bootstrap session
   plans; it does not implement.
 
 ---

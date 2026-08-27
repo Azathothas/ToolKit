@@ -124,9 +124,18 @@ if [ "$PUBLIC" = "1" ]; then
   # for: a tag moves and a moved tag runs unreviewed code. A rule that fires on
   # correct hardening is a rule somebody disables, so the `uses:` form is
   # excluded by shape rather than the whole hex rule being dropped.
+  #
+  # ⚠ A DECLARED PIN is the second such shape. It arrived when
+  # scripts/powershell-windows/wsl-ephemeral.ps1 became a wrapper that fetches a
+  # commit and verifies a SHA-256 before executing it: 40 hex and 64 hex, both
+  # public by construction, both the SAFE practice.
+  # ⛔ Excluded by NAME, narrowly. The hex has to be assigned to an identifier
+  # that says it is a pin, because a credential is not assigned to something
+  # called PinnedSha256. Widening this to all hex would remove the rule.
   _hex_out=$(list_files | tr '\n' '\0' \
     | xargs -0 grep -nIE '\b[0-9a-f]{24,}\b' 2>/dev/null \
-    | grep -vE 'uses:[[:space:]]*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}' || true)
+    | grep -vE 'uses:[[:space:]]*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}' \
+    | grep -vE '[Pp]inned(Ref|Sha256|Commit|Digest)|PINNED_(REF|SHA256)' || true)
   [ -n "$_hex_out" ] && hit "a long hex identifier" "$_hex_out"
   # ⚠ Narrowed rather than switched off. `/home/linuxbrew/` and `/home/runner/`
   # are well-known generic paths, not a fingerprint of anybody's machine, and a
