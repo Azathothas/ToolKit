@@ -455,7 +455,7 @@ have been depending on a disk being left behind, but it is written into
 ## WSL-05. Report and purge orphaned rootfs tarballs
 
 **Source** issue 3, part 3.7.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** done
 
 **Problem.** An interrupted `New` can leave a rootfs `.tar` of several hundred
 MiB in `%LOCALAPPDATA%`, and nothing reports it.
@@ -474,6 +474,76 @@ one write path.
 
 **Prove.** Place a `.tar` in the base directory; `List` names it and `Purge
 -Force` removes it. A `.tar` outside the base directory is refused.
+
+### Closed 2026-08-27
+
+**What changed.** `Get-OrphanTarball` scans the base directory for `*.tar`.
+`List` reports each with its size and last-written time; `Purge` removes them
+through `Remove-PathWithRetry`, which is the same deletion and the same
+containment guard `WSL-04` made the only one. The two classes share **one**
+confirmation rather than prompting twice: two prompts over one `-Force` is how
+somebody learns to pass `-Force` without reading either.
+
+⚠ **`List` prints a time, not a verdict.** A `New` that is executing right now
+has its tarball in exactly that directory, and nothing can tell that apart from
+an orphan. Claiming to would be a synthetic status. The warning says to read the
+time.
+
+**Acceptance.** A 2 MiB `.tar` planted in the base directory, and a 1 MiB decoy
+planted outside it.
+
+```text
+==> Orphaned rootfs tarballs in C:\...\wsl-ephemeral
+  eph-orphan-w05.tar   2.0 MiB   written 2026-08-27 08:04:15Z
+  ! 2.0 MiB total. Remove them with -Action Purge.
+  ! a New running right now also has a .tar here: check the time before purging.
+```
+
+| after `-Action Purge -Force` | |
+| --- | --- |
+| exit | 0 |
+| the orphan inside the base directory | gone |
+| the decoy outside it | ⭐ still there, and never named |
+
+### ⭐ The mutation found a second defect, and it is fixed here
+
+⛔ **`Purge` was exiting 0 over a deletion it had refused.** The scan was
+mutated to read the base directory's **parent**, a file called
+`DO-NOT-DELETE-w05.tar` was planted there, and `Purge -Force` was run:
+
+```text
+  ! skip DO-NOT-DELETE-w05.tar: REFUSING to delete '...': outside ...\wsl-ephemeral.
+EXITCODE=0
+```
+
+⭐ The containment guard fired and the file survived, which is the result the
+mutation was looking for. **The exit code is the defect.** `Purge` caught the
+refusal, warned, and returned success, which is the exact shape `WSL-04` had
+just removed from the single delete, reappearing one level up in the loop that
+calls it. ⚠ It was pre-existing: the original `Purge` did the same for distros.
+
+⛔ **It also made a sentence written in `WSL-04`'s change false**, and that
+sentence was already in `wsl-ephemeral.md`: "Remove, Purge and New -Ephemeral
+read the directory back and report what they find, so they can fail where they
+used to print success". `Purge` could not.
+
+`Invoke-ActionPurge` now counts failures and throws at the end. ⭐ It counts
+rather than throwing on the first, so one stuck item does not hide the state of
+everything after it. Re-run against the same mutation:
+
+```text
+  ! skip DO-NOT-DELETE-w05.tar: REFUSING to delete '...': outside ...\wsl-ephemeral.
+ERROR: 1 of 1 item(s) were NOT removed. Each is named in a warning above.
+EXITCODE=1
+```
+
+⚠ **This is a second behaviour change to `Purge`,** on top of it now removing
+tarballs. It can exit non-zero where it used to exit 0. Same reasoning as
+`WSL-04`: it was not succeeding, it was reporting.
+
+**Both happy paths re-run after the fix**, to confirm the tally did not turn a
+working purge red: `Purge -Force` with nothing to do exits 0 and says
+`nothing to purge`; with a real orphan it exits 0 and the orphan is gone.
 
 ---
 

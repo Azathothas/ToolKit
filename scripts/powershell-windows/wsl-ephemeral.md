@@ -53,9 +53,9 @@ with a message rather than silently when there is no network.
 | --- | --- |
 | `New` | create a distro from `-Image` or `-Tarball`, optionally run `-Command`, optionally destroy it again with `-Ephemeral` |
 | `Run` | run `-Command` inside an existing ephemeral distro named by `-Name` |
-| `List` | list ephemeral distros, and separately list every other distro, which it never touches |
+| `List` | list ephemeral distros, every other distro, which it never touches, and any orphaned rootfs tarball |
 | `Remove` | unregister one ephemeral distro and delete its disk |
-| `Purge` | remove every ephemeral distro, prefix-matched only |
+| `Purge` | remove every ephemeral distro, prefix-matched only, and every orphaned rootfs tarball |
 
 ## Parameters
 
@@ -112,6 +112,31 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-alpine-3.22-a1b2 -
 ```powershell
 pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 ```
+
+---
+
+## Orphaned rootfs tarballs
+
+`New -Image` writes a rootfs `.tar` into `%LOCALAPPDATA%\wsl-ephemeral\` and
+removes it in a `finally`. ⚠ **A `finally` does not run on every hard
+interrupt**, so a cancelled run can leave several hundred MiB behind.
+
+`List` reports each one with its size and the time it was last written.
+`Purge` removes them, in the same confirmation as the distros and through the
+same deletion and the same containment guard.
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action List
+```
+
+⛔ **A `New` that is running right now has its tarball in that directory too**,
+and nothing can tell that apart from an orphan. That is why `List` prints the
+time rather than a verdict, and why the warning says to read it. Purging while
+a `New` is mid-export takes that run's rootfs out from under it.
+
+⚠ **Only the base directory is scanned.** A `.tar` anywhere else is neither
+reported nor removed, and the deletion refuses a path outside that directory
+even if something managed to hand it one.
 
 ---
 
@@ -206,6 +231,11 @@ and if the path is still there it exits non-zero with a message naming it.
 ⚠ **This means `Remove`, `Purge` and `New -Ephemeral` can now fail where they
 used to print success.** They were not succeeding before; they were reporting.
 
+⭐ **`Purge` finishes both loops before it reports.** One item it cannot remove
+does not stop it removing the rest; it warns per item, names each one, and then
+exits non-zero with the count. Stopping at the first failure would hide the
+state of everything after it.
+
 ### ⚠ Two things about WSL that this script cannot protect you from
 
 - ⛔ **`wsl --shutdown` is machine-wide.** It is the command a person reaches
@@ -261,7 +291,6 @@ in [`../../TODO/INDEX.md`](../../TODO/INDEX.md).
 | limit | what it means for you |
 | --- | --- |
 | ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
-| ⚠ an interrupted `New` can orphan a tarball | the rootfs `.tar` is cleaned in a `finally`, which a hard interrupt does not always run. Neither `List` nor `Purge` looks for `*.tar`. |
 | ⚠ no disk-space preflight | export plus import needs roughly twice the rootfs size on the `%LOCALAPPDATA%` volume. Running out midway leaves a partial VHDX and a registered distro that does not work. |
 | ⚠ no systemd | an imported distro has no `/etc/wsl.conf`, so `systemctl` is unavailable and units, timers and services cannot be tested. |
 | ⚠ `-Command` has no escaping story | the string crosses PowerShell and then `/bin/sh -lc`, and the caller owns all quoting across both. |

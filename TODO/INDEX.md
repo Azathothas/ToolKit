@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 15  open 11  blocked 0  done 4
+total 15  open 10  blocked 0  done 5
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 1 | 1 |
 | P1 | 2 | 0 | 3 | 5 |
-| P2 | 5 | 0 | 0 | 5 |
+| P2 | 4 | 0 | 1 | 5 |
 | P3 | 4 | 0 | 0 | 4 |
-| **all** | **11** | **0** | **4** | **15** |
+| **all** | **10** | **0** | **5** | **15** |
 
 ---
 
@@ -38,7 +38,7 @@ total 15  open 11  blocked 0  done 4
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-04 | P1 | S | done | A failed delete must not report success | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-05 | P2 | S | open | Report and purge orphaned rootfs tarballs | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-05 | P2 | S | done | Report and purge orphaned rootfs tarballs | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-06 | P2 | S | open | Disk-space preflight before import | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-07 | P2 | S | open | Optional systemd via `/etc/wsl.conf` | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-08 | P2 | M | open | A `-Command` channel that survives two shells | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

@@ -84,6 +84,11 @@
     A caller that relied on New never failing now sees the real code. That is a
     deliberate break: see docs/consumers.md.
 
+    ORPHANS -- List reports any rootfs .tar left loose in the base directory
+    and Purge removes them, through the same deletion and the same containment
+    guard as a distro disk. An interrupted New is what leaves one: the tarball
+    is cleaned in a finally, and a hard interrupt does not always run one.
+
     OCI CONFIG -- -OciEnv carries the image's ENV and WORKDIR into the distro
     as /etc/profile.d/10-oci-env.sh, which a login shell sources. It is OFF by
     default: turning it on changes PATH, and every existing caller depends on
@@ -681,6 +686,22 @@ function Remove-EphemeralDistro {
     }
 }
 
+function Get-OrphanTarball {
+    <#
+      Rootfs tarballs sitting loose in the base directory. New writes one there
+      and removes it in a finally, and a finally does not run on every hard
+      interrupt, so an interrupted run can leave several hundred MiB that
+      nothing reported.
+
+      IT CANNOT TELL AN ORPHAN FROM A RUNNING NEW, and it does not pretend to:
+      a New that is executing right now has its tarball in exactly this place.
+      That is why the report carries the last-written time instead of a verdict.
+    #>
+    if (-not (Test-Path -LiteralPath $script:BaseDir)) { return @() }
+    return @(Get-ChildItem -LiteralPath $script:BaseDir -Filter '*.tar' -File -ErrorAction SilentlyContinue |
+             Sort-Object -Property Name)
+}
+
 function Invoke-ActionNew {
     if (-not $Image -and -not $Tarball) { throw "Action New requires -Image (e.g. alpine:3.22) or -Tarball <path>." }
     if ($Image -and $Tarball)           { throw "Pass either -Image or -Tarball, not both." }
@@ -850,16 +871,64 @@ function Invoke-ActionList {
             Write-Host ("  {0}{1}" -f $o, $tag) -ForegroundColor DarkGray
         }
     }
+
+    Write-Step "Orphaned rootfs tarballs in $($script:BaseDir)"
+    $orphans = @(Get-OrphanTarball)
+    if ($orphans.Count -eq 0) { Write-Host "  (none)" -ForegroundColor DarkGray }
+    else {
+        foreach ($t in $orphans) {
+            $line = "  {0}   {1:N1} MiB   written {2:yyyy-MM-dd HH:mm:ss}Z"
+            Write-Host ($line -f $t.Name, ($t.Length / 1MB), $t.LastWriteTimeUtc)
+        }
+        $sum = ($orphans | Measure-Object -Property Length -Sum).Sum
+        Write-Warn ("{0:N1} MiB total. Remove them with -Action Purge." -f ($sum / 1MB))
+        Write-Warn "a New running right now also has a .tar here: check the time before purging."
+    }
 }
 
 function Invoke-ActionPurge {
-    $mine = @(Get-WslDistroNames | Where-Object { $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
-    if ($mine.Count -eq 0) { Write-Ok "nothing to purge"; return }
-    Write-Step "Purging $($mine.Count) ephemeral distro(s): $($mine -join ', ')"
-    if (-not (Confirm-Destructive -Target "$($mine.Count) distro(s)" -Operation 'Purge ephemeral distros')) { return }
+    $mine    = @(Get-WslDistroNames | Where-Object { $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
+    $orphans = @(Get-OrphanTarball)
+
+    if ($mine.Count -eq 0 -and $orphans.Count -eq 0) { Write-Ok "nothing to purge"; return }
+
+    $what = @()
+    if ($mine.Count -gt 0) {
+        Write-Step "Ephemeral distro(s): $($mine -join ', ')"
+        $what += "$($mine.Count) distro(s)"
+    }
+    if ($orphans.Count -gt 0) {
+        $sum = ($orphans | Measure-Object -Property Length -Sum).Sum
+        Write-Step ("Orphaned rootfs tarball(s), {0:N1} MiB: {1}" -f ($sum / 1MB), (($orphans | ForEach-Object { $_.Name }) -join ', '))
+        $what += ("{0} tarball(s)" -f $orphans.Count)
+    }
+
+    # ONE confirmation covering both classes. Two prompts over one -Force is how
+    # somebody learns to pass -Force without reading either of them.
+    if (-not (Confirm-Destructive -Target ($what -join ' and ') -Operation 'Purge')) { return }
+
+    # Counted, not thrown on at the first failure. One stuck item must not hide
+    # the state of the rest, so both loops finish and the tally decides the exit
+    # code.
+    $failed = 0
     foreach ($d in $mine) {
         try { Remove-EphemeralDistro -DistroName $d -SkipConfirm }
-        catch { Write-Warn "skip ${d}: $($_.Exception.Message)" }
+        catch { Write-Warn "skip ${d}: $($_.Exception.Message)"; $failed++ }
+    }
+    foreach ($t in $orphans) {
+        # Through the SAME deletion as a distro disk, so the containment guard
+        # covers both. A second removal path with its own checks is how one of
+        # them ends up without any.
+        try { Remove-PathWithRetry -Path $t.FullName -What 'orphaned rootfs tarball' }
+        catch { Write-Warn "skip $($t.Name): $($_.Exception.Message)"; $failed++ }
+    }
+
+    # A Purge that could not remove something must NOT exit 0. Warning and
+    # returning success is the defect WSL-04 took out of the single delete,
+    # reappearing one level up in the loop that calls it.
+    if ($failed -gt 0) {
+        throw ("$failed of " + ($mine.Count + $orphans.Count) +
+               " item(s) were NOT removed. Each is named in a warning above.")
     }
 }
 
