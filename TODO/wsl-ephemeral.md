@@ -13,7 +13,7 @@ title and gets the correction written below it.
 
 **Source** `Azathothas/TEMPLATE` issue 3, part 3.1. The reporter called it the
 one to do first.
-**Category** wsl-ephemeral · **Priority** P0 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P0 · **Effort** S · **Status** done
 
 **Problem.** A failing command run through `-Action New -Command` reports
 success. The script exits 0.
@@ -63,6 +63,66 @@ Exit code is 0.
 
 ⚠ **Mutation-prove it.** Revert the fix, confirm the first command reports 0,
 restore it. A guard nobody has seen fail is theatre.
+
+### Closed 2026-08-27
+
+**What changed.** `Invoke-InDistro` is now the one function that runs a
+caller's command inside a distro, and `Invoke-ActionNew` and `Invoke-ActionRun`
+both call it. `Invoke-ActionNew` ends in `exit $rc`, placed after the
+`-Ephemeral` teardown and after the `finally` that removes the temp tarball.
+
+⚠ **The approach was widened, deliberately, and here is the reason.** The entry
+asked for the two behaviours to be documented together so they could not drift
+apart again. Documenting them together leaves two copies of the code that has to
+agree. Extracting the one path makes the agreement structural instead, which is
+[`../docs/conventions/code.md`](../docs/conventions/code.md), one write path.
+The cost is fifteen lines and one indirection.
+
+⭐ **The exit code comes back through a `[ref]` parameter, not as a return
+value.** The inner command's stdout flows out of the function's success stream
+so the caller can see it, so `$rc = Invoke-InDistro ...` would capture that
+output into `$rc` instead of the code. That is the trap this shape avoids, and
+it is why the obvious signature is the wrong one.
+
+**Mutation proof.** ⛔ Run against the unmodified script, before the fix, on
+this Windows 11 Pro 26200 machine with `podman-machine-default` running. Not a
+simulated revert: the shipped code.
+
+```powershell
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action New -Image alpine:3.22 -Command "exit 7" -Ephemeral -Force
+```
+
+```text
+==> Running command as 'root'
+  ! command exited 7
+==> -Ephemeral set: tearing down 'eph-alpine-3.22-6ytu'
+  * unregistered eph-alpine-3.22-6ytu
+EXITCODE=0
+```
+
+**Acceptance, after the fix.** Every code read from the process that produced
+it, unpiped.
+
+| command | exit | also asserted |
+| --- | --- | --- |
+| `-Action New -Image alpine:3.22 -Command "exit 7" -Ephemeral -Force` | 7 | `wsl --list --quiet` lists only `podman-machine-default` afterwards |
+| `-Action New -Image alpine:3.22 -Command "true" -Ephemeral -Force` | 0 | |
+| `-Action New -Image alpine:3.22 -Name eph-w01 -Force` | 0 | the summary prints and the distro stays registered |
+| `-Action Run -Name eph-w01 -Command "exit 42"` | 42 | `Run` still propagates, through the shared path now |
+| `-Action Run -Name eph-w01 -Command "echo hello; exit 0"` | 0 | `hello` reached the console, so the `[ref]` shape did not swallow stdout |
+
+**Consumers checked.** `Azathothas/TEMPLATE` is the only row in
+[`../docs/consumers.md`](../docs/consumers.md). Its wrapper declares no
+parameters and forwards `@args`, then exits with `$LASTEXITCODE` from the
+inner script, so the new code reaches a caller unchanged and no wrapper edit is
+needed. ⚠ The break is recorded in that file and in
+[`../CHANGELOG.md`](../CHANGELOG.md).
+
+**Pin state.** ⭐ Held in [`../docs/consumers.md`](../docs/consumers.md), which
+is the one home for that fact. ⛔ The pin is not bumped to this commit: it would
+name a tree that does not yet carry the rest of the `WSL-*` batch, and a
+consumer stepping onto a mid-batch commit gets a version nobody ran the gate
+against as a whole.
 
 ---
 

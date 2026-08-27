@@ -64,6 +64,25 @@ a break so the caller is told, then fix it.
 
 ---
 
+## Breaks that have shipped, and where each pin stands
+
+⛔ **A break gets a row here the moment it is made, not when somebody notices.**
+The register above says who could be affected; this says who actually was, and
+whether the fix has reached them yet. [`../CHANGELOG.md`](../CHANGELOG.md)
+carries the story of each change; this carries only the pin state, which is the
+fact a consumer's owner needs.
+
+| date | what broke | consumers checked | pin state |
+| --- | --- | --- | --- |
+| 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New -Command` now exits with the inner command's code. It used to warn and exit 0. `WSL-01`. | `Azathothas/TEMPLATE`, the only consumer in the register. Its wrapper forwards arguments and propagates the inner code verbatim, so it needs no edit beyond the pin. | see the entry's closure in [`../TODO/wsl-ephemeral.md`](../TODO/wsl-ephemeral.md) |
+
+⚠ **A caller that was reading the false pass gets a red result the first time it
+runs after the pin moves, and the failure it reports is real.** That is the
+point of the change, and it is also why the row above exists: the alternative is
+somebody debugging a step that started failing with no record of why.
+
+---
+
 ## ⚠ A pinned consumer does not get your fix
 
 This is the trap, and it runs in the opposite direction from the one people

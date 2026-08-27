@@ -74,15 +74,22 @@ them.
 
 ## Exit codes
 
+⭐ **`New` and `Run` answer the same way.** Both run `-Command` through one
+function inside the script, so there is no second place for a code to be
+dropped.
+
 | code | meaning |
 | --- | --- |
-| 0 | the action completed |
-| non-zero from `Run` | the inner command's own exit code, propagated |
+| 0 | the action completed, and `-Command`, if given, exited 0 |
+| the inner command's code | from `New -Command` and from `Run -Command` alike |
 | 1 | the script failed. The message names what. |
 
-⚠ **`New -Command` does not propagate the inner command's exit code today.**
-It prints a warning and the script still exits 0. See the limits below before
-using `New -Command` as a test gate.
+⚠ **With `-Ephemeral` the distro is destroyed before the code is returned**, so
+a failing command still leaves nothing registered.
+
+⛔ **`New -Command` used to exit 0 over a failing command.** A caller written
+against that is now told the truth, which is a break.
+[`../../docs/consumers.md`](../../docs/consumers.md) records it.
 
 ---
 
@@ -151,7 +158,6 @@ in [`../../TODO/INDEX.md`](../../TODO/INDEX.md).
 
 | limit | what it means for you |
 | --- | --- |
-| ⛔ `New -Command` swallows the exit code | a failing command reports success. `Run` propagates correctly; `New` warns and exits 0. Do not use `New -Command` as a CI gate until this is fixed. |
 | ⭐ the image's OCI config is dropped | `podman export` writes a filesystem, not a configuration. `ENV`, `WORKDIR`, `ENTRYPOINT` and `USER` are lost, so `PATH` inside the distro is not the image's `PATH`. |
 | ⚠ no `--platform` on pull or create | the exported architecture is whatever the local store happened to hold. A previous `--platform` pull retags the shared local tag, so this can silently produce a rootfs that cannot execute. |
 | ⚠ a failed delete reports success | `--unregister` releases the VHDX asynchronously, so a delete immediately after can lose the race and leave a multi-gigabyte disk behind while printing that it is gone. |

@@ -61,6 +61,24 @@
     .\wsl-ephemeral.ps1 -Action Purge -Force
 
 .NOTES
+    EXIT CODES -- New and Run behave the SAME way. They are written here
+    together because they drifted apart once and nothing noticed: New warned
+    over a failing command and still exited 0, so every green result downstream
+    of it meant nothing.
+
+      -Action Run -Command ...             exits with the inner command's code
+      -Action New -Command ...             exits with the inner command's code
+      -Action New -Command ... -Ephemeral  tears the distro down FIRST, then
+                                           exits with the inner command's code
+      New with no -Command                 exits 0 when the distro came up
+      any action, script failure           exits 1, with a message naming what
+
+    Both actions run the caller's command through ONE function, Invoke-InDistro,
+    so there is no second place for the code to be dropped.
+
+    A caller that relied on New never failing now sees the real code. That is a
+    deliberate break: see docs/consumers.md.
+
     Requires : Windows 10 2004+ / Windows 11 with WSL2.
     Optional : podman or docker (only for -Image).
     Tested on: Windows PowerShell 5.1 and PowerShell 7+.
@@ -199,6 +217,38 @@ function Get-WslDistroNames {
         if ($clean) { $names += $clean }
     }
     return $names
+}
+
+function Invoke-InDistro {
+    <#
+      The ONE path that runs a caller's command inside a distro. New and Run both
+      go through it, so an inner exit code cannot be propagated by one action and
+      dropped by the other. It was dropped by New, which is what made -Command
+      useless as a gate.
+
+      The code comes back through -ExitCode rather than as the return value, on
+      purpose. The command's own stdout flows out of this function's success
+      stream so the caller can see it, and `$rc = Invoke-InDistro ...` would
+      therefore capture that OUTPUT into $rc instead of the code.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$DistroName,
+        [Parameter(Mandatory = $true)][string]$RunAs,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ShellCommand,
+        [Parameter(Mandatory = $true)][ref]$ExitCode
+    )
+    # Set before the try, and set non-zero. Under Set-StrictMode -Version Latest
+    # an unassigned variable throws when it is READ, so every path out of here
+    # has to leave a code behind; and "it never answered" is a failure, not a
+    # pass, so the value it starts at has to be one that fails.
+    $ExitCode.Value = 1
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        & (Get-WslExe) -d $DistroName -u $RunAs -- /bin/sh -lc $ShellCommand
+        if ($null -ne $LASTEXITCODE) { $ExitCode.Value = [int]$LASTEXITCODE }
+    }
+    finally { $ErrorActionPreference = $prev }
 }
 
 # --------------------------------------------------------------------------------------
@@ -396,6 +446,10 @@ function Invoke-ActionNew {
     Assert-InsideBaseDir -Path $target               # validate before we ever create it
     $tarPath = $null
     $tempTar = $false
+    # 0 means "nothing ran, nothing failed": with no -Command there is no inner
+    # code to carry. Declared here so [ref]$rc has a variable to bind to, and so
+    # the exit at the bottom of this function can read it whatever happened.
+    $rc      = 0
 
     try {
         New-Item -ItemType Directory -Path $target -Force | Out-Null
@@ -451,23 +505,24 @@ function Invoke-ActionNew {
 
         if ($Command) {
             Write-Step "Running command as '$User'"
-            $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-            try { & $wsl -d $distro -u $User -- /bin/sh -lc $Command; $rc = $LASTEXITCODE }
-            finally { $ErrorActionPreference = $prev }
+            Invoke-InDistro -DistroName $distro -RunAs $User -ShellCommand $Command -ExitCode ([ref]$rc)
             if ($rc -ne 0) { Write-Warn "command exited $rc" }
         }
 
         if ($Ephemeral) {
+            # The teardown happens HERE, inside the try, so that the exit at the
+            # bottom of this function cannot be reached with a distro still
+            # registered. Exiting before this point leaks a distro and a VHDX.
             Write-Step "-Ephemeral set: tearing down '$distro'"
             Remove-EphemeralDistro -DistroName $distro -SkipConfirm
-            return
         }
-
-        Write-Host ""
-        Write-Host "  Distro : $distro"        -ForegroundColor White
-        Write-Host "  Disk   : $target"        -ForegroundColor White
-        Write-Host "  Enter  : wsl -d $distro" -ForegroundColor White
-        Write-Host "  Remove : -Action Remove -Name $distro -Force" -ForegroundColor White
+        else {
+            Write-Host ""
+            Write-Host "  Distro : $distro"        -ForegroundColor White
+            Write-Host "  Disk   : $target"        -ForegroundColor White
+            Write-Host "  Enter  : wsl -d $distro" -ForegroundColor White
+            Write-Host "  Remove : -Action Remove -Name $distro -Force" -ForegroundColor White
+        }
     }
     catch {
         Write-Warn "creation failed; rolling back"
@@ -489,6 +544,11 @@ function Invoke-ActionNew {
             Remove-Item -LiteralPath $tarPath -Force -ErrorAction SilentlyContinue
         }
     }
+
+    # After the teardown above, and after the finally has removed the temp
+    # tarball. Both of those are the reason this is at the bottom of the
+    # function rather than beside the command that produced the code.
+    exit $rc
 }
 
 function Invoke-ActionRun {
@@ -498,9 +558,8 @@ function Invoke-ActionRun {
     if ((Get-WslDistroNames) -notcontains $distro) {
         throw "Distro '$distro' is not registered. Create it with -Action New."
     }
-    $prev = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-    try { & (Get-WslExe) -d $distro -u $User -- /bin/sh -lc $Command; $rc = $LASTEXITCODE }
-    finally { $ErrorActionPreference = $prev }
+    $rc = 0
+    Invoke-InDistro -DistroName $distro -RunAs $User -ShellCommand $Command -ExitCode ([ref]$rc)
     exit $rc
 }
 

@@ -21,6 +21,32 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T07:32:10Z: `New -Command` propagates the inner exit code
+
+**Record:** `WSL-01` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md),
+closed in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⛔ **This is a breaking change and it is the point of the change.**
+`wsl-ephemeral.ps1 -Action New -Command` used to print a warning over a failing
+command and exit 0. It now exits with the command's own code, the same way
+`-Action Run` always has.
+
+- **Who it breaks.** Anything reading `New -Command` as a gate and getting a
+  pass because it could not fail. The failure such a caller now sees is real,
+  and it was there before: the step was reporting green over it.
+- **Who was checked.** `Azathothas/TEMPLATE`, the only consumer in the
+  register. Its wrapper forwards arguments and propagates the inner code, so it
+  needs no edit beyond its pin.
+  [`docs/consumers.md`](docs/consumers.md) carries the pin state.
+- ⚠ **A pinned consumer does not get this until its pin moves**, which is a
+  separate change in that repository.
+
+The asymmetry is gone structurally rather than by convention: both actions run
+the caller's command through one function, so there is no second place for a
+code to be dropped.
+
+
 ### 2026-08-27T06:24:28Z: the BSD research, and the record moved into TODO
 
 **Record:** [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
