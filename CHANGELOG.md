@@ -21,6 +21,30 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T16:30:00Z: the BSD work moved out, and this ledger is closed
+
+**Record:** [`TODO/bsd.md`](TODO/bsd.md) carries the closure and says where each
+part went; [`TODO/PROGRESS.md`](TODO/PROGRESS.md) is the empty work order.
+**Deployed:** ⛔ **no deploy.** This repository publishes nothing.
+
+⭐ **`pkgforge-dev/docker-bsd` is standalone.** It had been borrowing this
+tree's checks, conventions and methodology while it was written. Those are now
+copies living there, adapted, so a clone of it reproduces every measurement with
+nothing else checked out. ⚠ One reference back remains, pinned, and that
+repository records it.
+
+- ⛔ **`BSD-01` and `BSD-02` are marked done here and `BSD-01` is not done.**
+  It is open in its new home with its acceptance command unchanged. This
+  repository has no "moved" status, and leaving an entry open that nobody here
+  will work is worse than a closure that says plainly where the work went.
+- ⭐ **What was reached before it moved**, recorded in
+  [`TODO/bsd.md`](TODO/bsd.md) rather than only in the other repository: a
+  FreeBSD userland on this Windows host's own hypervisor with no nesting, and a
+  BSD shell reachable on any host with only a container engine.
+- ⚠ **This repository has no open entries.** That is a state, not an
+  achievement, and `PROGRESS.md` names five things worth doing while filing none
+  of them.
+
 ### 2026-08-27T14:30:00Z: a FreeBSD userland runs on this Windows host, with no nesting
 
 **Record:** `BSD-01` in [`TODO/bsd.md`](TODO/bsd.md) carries the result, the

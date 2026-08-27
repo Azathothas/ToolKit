@@ -20,7 +20,7 @@ that needs an image consumes one from there.
 
 **Source** The operator, 2026-08-27, with five references supplied, plus a
 follow-up naming all four BSDs and `pkgforge-dev/docker-bsd`.
-**Category** bsd · **Priority** P1 · **Effort** M · **Status** open
+**Category** bsd · **Priority** P1 · **Effort** M · **Status** done
 
 ### Problem
 
@@ -891,3 +891,46 @@ operator stated, a BSD that boots on this machine, is reached, measured and
 reproducible. It stays open because this entry's acceptance names a command
 that has not returned 0, and closing an entry on a command that was never run
 is exactly the "fake anything" class this repository has a table for.
+
+---
+
+## ⛔ Both entries moved out on 2026-08-27. This file is now a pointer.
+
+⛔ **The BSD work left this repository.** It lives in
+[`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd), which
+became standalone on 2026-08-27 and carries its own gate, conventions,
+methodology and record.
+
+⚠ **Nothing above is edited.** It is kept whole, corrections and all, because
+this is where the reasoning happened and a reader who follows a link from
+elsewhere should find it rather than a redirect.
+
+### ⛔ Where each part went
+
+| what | where it is now |
+| --- | --- |
+| `BSD-01`, and it is still **open** | `TODO/bsd.md` in that repository, with its acceptance command unchanged |
+| `BSD-02`, closed | the same file |
+| the 28-reference sweep | `HISTORY/references/` there. It was `docs/reference-sweeps/` here |
+| the experiments | `experiments/` there, nine of them, each with its result |
+| ⭐ what actually works, with numbers | `docs/LIMITS.md` there. ⛔ **That is the only page carrying those measurements** |
+
+### ⭐ What was reached before it moved
+
+⛔ **Recorded here rather than only there**, because this repository paid for it
+and a reader of this file should not have to leave to find out how it ended.
+
+- ⭐ **A FreeBSD 15.1 userland runs on this Windows host's own hypervisor**,
+  unelevated, with no nesting, and a container runs inside it on `ocijail`.
+- ⭐ **A BSD shell is reachable on any host with only a container engine**, with
+  no privilege and no emulator installed, because the emulator ships inside the
+  image.
+- ⛔ **`BSD-01` did not close.** Its acceptance command has not returned 0: a
+  long-running Go daemon panics the FreeBSD guest's kernel in `_umtx_op`.
+
+### ⚠ Why both are marked done HERE
+
+⛔ **They are done as far as this repository is concerned, and `BSD-01` is not
+done.** This repository has no "moved" status, and leaving an entry open here
+that nobody here will ever work is worse than a closure that says plainly where
+the work went. ⭐ **The open one is open in its new home.**

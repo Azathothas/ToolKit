@@ -9,7 +9,7 @@ fastest orientation into what the last session actually did.
 
 ---
 
-## 2026-08-27, the session that booted a BSD
+## 2026-08-27, the session that booted a BSD and then handed it over
 
 | row | before | after |
 | --- | --- | --- |
@@ -20,7 +20,25 @@ fastest orientation into what the last session actually did.
 | **Size** | 19,454 lines, 75 files | **20,241 lines**, 75 files, **+787**. ⚠ Measured before this table's own final edit, so it is short by a few lines. No file added or removed here |
 | **Checks** | `check-gate --fast` 12 passed 1 skipped, carried at 41s | ⭐ same, **re-timed at 49.8s**, plus the **full** gate with `check-twins`. `docker-bsd` `tests/run.sh` 27 passed 0 failed |
 | **Cost** | | no money. ⚠ **about 1.0 GB downloaded**: QEMU 197 MB, FreeBSD BASIC-CI 666 MB, `acj`'s Firecracker set about 130 MB, smolBSD 13.6 MB, plus `podman-suite` inside a guest, which was not measured separately. ⚠ **Disk left behind: 6.8 GB** on `C:` and **603 MB** inside the podman machine, both in ignored scratch |
-| **Health** | 18 entries, 1 open, 17 done | 18 entries, **1 open**, 17 done, unchanged. Both trees clean and pushed. ⚠ CI: three jobs green at `a9171be` and two at `d7e6184`; the runs for this session's own commits are named in the closing report rather than guessed at here |
+| **Health** | 18 entries, 1 open, 17 done | ⭐ **18 entries, 0 open, 18 done.** The BSD work moved to `pkgforge-dev/docker-bsd`, which is now standalone. Both trees clean and pushed. ⚠ CI: three jobs green at `a9171be` and two at `d7e6184`; the runs for this session's own commits are named in the closing report rather than guessed at here |
+
+### ⛔ And then it left
+
+⭐ **`BSD-01` and `BSD-02` moved to
+[`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd).** That
+repository became standalone: it carries its own gate, conventions, methodology
+and record, vendored from here and adapted, so a clone of it reproduces every
+measurement with nothing else checked out.
+
+⚠ **`BSD-01` is still open. It is open there.** ⛔ This repository has no
+open entries, which is a state rather than an achievement, and
+[`PROGRESS.md`](PROGRESS.md) names what is worth doing without filing any of it.
+
+⛔ **A change to a BSD experiment, measurement or image is a change there**,
+made by somebody with that repository in front of them. [`bsd.md`](bsd.md) is
+now a pointer and keeps every word it had.
+
+---
 
 ### ⭐ What the session was for, and whether it did it
 
