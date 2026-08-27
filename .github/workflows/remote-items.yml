@@ -26,7 +26,6 @@ on:
     # when a pin changes and exactly when nobody looks at it twice.
     paths:
       - ".github/workflows/**"
-      - "dotfiles/github/workflows/**"
 
 permissions:
   contents: read

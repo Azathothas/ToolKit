@@ -147,7 +147,7 @@ calls both or it does not ship.
 
 ⛔ **These are real and they are not fixed.** They are listed because a limit
 hidden is a defect filed against the user later. Each is tracked as an open item
-in [`../../INDEX.md`](../../INDEX.md).
+in [`../../TODO/INDEX.md`](../../TODO/INDEX.md).
 
 | limit | what it means for you |
 | --- | --- |

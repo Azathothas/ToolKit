@@ -31,9 +31,11 @@ rule: these summaries exist to route, not to substitute.
 | ⭐ [`forbidden-patterns.md`](conventions/forbidden-patterns.md) | the table to grep yourself against before declaring a gate green. |
 | ⭐ [`shell.md`](conventions/shell.md) | quoting, heredocs, exit codes, streams, line endings, and the platform traps. |
 
-⚠ The entry points that live at the repository root rather than under `docs/`:
-[`AGENTS.md`](../AGENTS.md), the router, and [`PROGRESS.md`](../PROGRESS.md),
-the record every session reads first.
+⚠ The entry points that live outside `docs/`: [`AGENTS.md`](../AGENTS.md), the
+router, and [`TODO/PROGRESS.md`](../TODO/PROGRESS.md), the record every session
+reads first. [`reference-sweeps/findings.md`](reference-sweeps/findings.md) and
+[`reference-sweeps/usable.md`](reference-sweeps/usable.md) are what external reference
+sweeps owe, per [`methodology/references.md`](methodology/references.md).
 
 ## security
 

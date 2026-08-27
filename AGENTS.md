@@ -8,6 +8,10 @@ every tool here is expected to say which hosts it runs on and to fail with a
 clear message on the ones it does not. Consumers fetch a tool from here by URL;
 nothing here assumes it is being run from a clone.
 
+⛔ **This repository publishes no artefacts.** It holds scripts and their
+documentation. Container images live in `pkgforge-dev/docker-bsd`; a tool here
+that needs one consumes it from there.
+
 **This file is a router.** It restates nothing that is written elsewhere, so
 the two cannot fork. Everything binding is linked, and the link is the
 authority. Reading a row in a table here is not reading the rule.
@@ -16,9 +20,9 @@ authority. Reading a row in a table here is not reading the rule.
 
 ## Start here, every session
 
-⭐ **Read [`PROGRESS.md`](PROGRESS.md) first.** It is the only file that always
+⭐ **Read [`TODO/PROGRESS.md`](TODO/PROGRESS.md) first.** It is the only file that always
 carries what changed since last time: the baseline, what the last session did,
-what is in progress, and the work order. [`INDEX.md`](INDEX.md) is the sortable
+what is in progress, and the work order. [`TODO/INDEX.md`](TODO/INDEX.md) is the sortable
 list of open items. Nothing else carries a work order.
 
 Then run the probe, because a different machine or a moved tool changes what
@@ -43,8 +47,8 @@ front of you and read what it names, in full.
 
 | the task | read, in this order |
 | --- | --- |
-| **Any session, before anything else** | [`PROGRESS.md`](PROGRESS.md) · [`docs/methodology/sessions.md`](docs/methodology/sessions.md) |
-| **Working an open item** | the entry in [`INDEX.md`](INDEX.md) · [`docs/methodology/work-todo.md`](docs/methodology/work-todo.md) · [`docs/methodology/gate.md`](docs/methodology/gate.md) · [`docs/conventions/code.md`](docs/conventions/code.md) · [`docs/conventions/forbidden-patterns.md`](docs/conventions/forbidden-patterns.md) |
+| **Any session, before anything else** | [`TODO/PROGRESS.md`](TODO/PROGRESS.md) · [`docs/methodology/sessions.md`](docs/methodology/sessions.md) |
+| **Working an open item** | the entry in [`TODO/INDEX.md`](TODO/INDEX.md) · [`docs/methodology/work-todo.md`](docs/methodology/work-todo.md) · [`docs/methodology/gate.md`](docs/methodology/gate.md) · [`docs/conventions/code.md`](docs/conventions/code.md) · [`docs/conventions/forbidden-patterns.md`](docs/conventions/forbidden-patterns.md) |
 | **Authoring a new item from an intake** | [`docs/methodology/authoring.md`](docs/methodology/authoring.md) · [`docs/templates/todo-entry.md`](docs/templates/todo-entry.md) · ⛔ do not implement |
 | **Fixing a defect** | [`docs/methodology/authoring.md`](docs/methodology/authoring.md) · the code the defect is in · [`docs/conventions/forbidden-patterns.md`](docs/conventions/forbidden-patterns.md) |
 | ⭐ **Changing a tool that other repositories fetch** | [`docs/consumers.md`](docs/consumers.md) · the tool's own `.md` beside it · ⛔ a pinned consumer does not move on its own |

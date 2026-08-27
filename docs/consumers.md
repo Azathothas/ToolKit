@@ -18,6 +18,12 @@ wrote down is a consumer nobody checks before a rename.
 | --- | --- | --- | --- |
 | `Azathothas/TEMPLATE`, at `scripts/powershell-windows/wsl-ephemeral.ps1` | `scripts/powershell-windows/wsl-ephemeral.ps1` | a commit SHA and a SHA-256 of the file, both hardcoded in the wrapper | the path moves, a parameter is renamed, or an exit code changes meaning |
 
+⚠ **The dependency also runs the other way, and it is not a consumer row.**
+`pkgforge-dev/docker-bsd` publishes the BSD images that `BSD-01` consumes.
+Nothing there fetches from here, so a rename here cannot break it; a rename or
+a retag **there** breaks anything here that names an image. Tags are pinned by
+name in the entry that uses them, never by `latest`.
+
 ⚠ The register above is what is known on 2026-08-27. The operator runs these
 tools from other machines and other scripts by hand, and those callers are not
 listed because they cannot be enumerated from here. Treat the register as the

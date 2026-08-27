@@ -1,4 +1,4 @@
-# The template's own dependency updates.
+# This repository's own dependency updates.
 #
 # ⛔ THIS FILE EXISTS BECAUSE ITS ABSENCE WAS A REAL DEFECT. The workflows here
 # pin every action to a commit, which is the right practice and is exactly what
@@ -7,9 +7,9 @@
 # with a warning in a log nobody reads. Pinning without an updater is not
 # hardening, it is deferral.
 #
-# ⚠ The template SHIPS a dependabot scaffold in dotfiles/github/ and did not use
-# one itself. A template that does not practise what it hands out teaches the
-# omission along with the rule.
+# ⚠ Inherited from Azathothas/TEMPLATE, where its absence was the defect. The
+# tools in this repository are fetched by pinned commit from other projects, so
+# a fossilised pin here propagates outward rather than staying local.
 #
 # ⭐ Dependabot rewrites the pinned SHA and the `# v5` comment together, so the
 # comment cannot drift from the pin.

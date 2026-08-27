@@ -65,6 +65,13 @@ reference/
 references/
 reference_attachments/
 temp/
+# ⛔ THE DERIVED WRITE-UP IS TRACKED AND MUST NOT LIVE UNDER ONE OF THOSE NAMES.
+# The rules above match a directory of that name ANYWHERE, not only at the root,
+# so a sweep written to docs/references/ is silently never staged. That happened:
+# two write-up files were absent from `git add -A` with no error, and the only
+# reason it was caught was reading the staged list. They live in
+# docs/reference-sweeps/ instead. ⚠ Do not "fix" this by weakening the rules
+# above; their failure mode is publishing somebody's private material.
 
 # ⛔ WINDOWS RESERVED DEVICE NAMES. Two different things create one as a real
 # file, and only the first is something you wrote:

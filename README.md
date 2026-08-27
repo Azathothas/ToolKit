@@ -8,6 +8,10 @@ says which hosts it runs on, and fails with a message on the ones it does not.
 
 **Licence:** 0BSD. Use it however you like.
 
+⛔ **Nothing is published from here.** No images, no packages. This repository
+is scripts and their documentation. The BSD OCI images referred to below are
+built and published by `pkgforge-dev/docker-bsd`.
+
 ---
 
 ## What is here
@@ -45,7 +49,7 @@ and what a rename here breaks out there.
 ## Working on this repository
 
 Read [`AGENTS.md`](AGENTS.md). It routes each kind of task to the files that
-task needs, and [`PROGRESS.md`](PROGRESS.md) carries the current state and the
+task needs, and [`TODO/PROGRESS.md`](TODO/PROGRESS.md) carries the current state and the
 work order.
 
 Run the probe first, on any machine:

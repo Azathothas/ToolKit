@@ -81,6 +81,12 @@ jobs:
       - name: no literal control byte in any text file
         run: sh scripts/common/check-control-bytes.sh
 
+      # ⭐ The record's counts cannot disagree with its rows. work-todo.md calls
+      # this the model's one mechanical hazard, and the incident behind it is a
+      # published record saying entries were open beside entries saying done.
+      - name: the record agrees with itself
+        run: sh scripts/common/check-record.sh
+
       # ⚠ Exit 2 means "could not run", which is the honest answer before this
       # repository has a CHANGELOG.md. ⛔ `|| true` would hide a genuine exit 1
       # as well, and `set +e` is required because GitHub runs this under
@@ -169,6 +175,7 @@ jobs:
             @{ f = 'check-docs.ps1';           a = @() },
             @{ f = 'check-placeholders.ps1';   a = @() },
             @{ f = 'check-control-bytes.ps1';  a = @() },
+            @{ f = 'check-record.ps1';         a = @() },
             @{ f = 'check-no-secrets.ps1';     a = @('-Public') }
           )
           foreach ($c in $checks) {
