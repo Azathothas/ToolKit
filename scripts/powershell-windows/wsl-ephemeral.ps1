@@ -79,6 +79,13 @@
     A caller that relied on New never failing now sees the real code. That is a
     deliberate break: see docs/consumers.md.
 
+    PLATFORM -- every pull and every create names linux/ARCH explicitly, where
+    ARCH is this host's own, read from the engine. Naming it is not politeness:
+    the local image store is keyed by tag and NOT by architecture, so a single
+    earlier 'pull --platform linux/riscv64 alpine' repoints the shared
+    alpine:latest, and the next unqualified pull is a no-op that exports a
+    rootfs nothing in it can execute.
+
     Requires : Windows 10 2004+ / Windows 11 with WSL2.
     Optional : podman or docker (only for -Image).
     Tested on: Windows PowerShell 5.1 and PowerShell 7+.
@@ -341,6 +348,37 @@ function Get-ContainerEngine {
     return $null
 }
 
+function ConvertTo-OciArch {
+    <#
+      Maps whatever a container engine calls the host architecture onto the name
+      --platform wants. The two engines disagree with each other AND with the
+      OCI names: podman info says 'amd64', docker info says 'x86_64', and
+      --platform accepts only the first.
+
+      An unrecognised value passes through lowercased rather than being rejected
+      here. A riscv64 or ppc64le host is a legitimate answer this table has not
+      been taught, and the caller validates the shape before using it; guessing
+      a substitute would be worse than handing the engine a name it can refuse.
+    #>
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Raw)
+    $v = $Raw.Trim().ToLowerInvariant()
+    switch ($v) {
+        'x86_64'  { return 'amd64' }
+        'x86-64'  { return 'amd64' }
+        'aarch64' { return 'arm64' }
+        'armv8l'  { return 'arm64' }
+        'armv7l'  { return 'arm' }
+        'armhf'   { return 'arm' }
+        'armv6l'  { return 'arm' }
+        'i386'    { return '386' }
+        'i486'    { return '386' }
+        'i586'    { return '386' }
+        'i686'    { return '386' }
+        'x86'     { return '386' }
+        default   { return $v }
+    }
+}
+
 function Export-ImageRootfs {
     <# Pull an OCI image and flatten it to a rootfs tarball. #>
     param(
@@ -354,27 +392,54 @@ function Export-ImageRootfs {
     }
     Write-Step "Engine: $($engine.Name) ($($engine.Path))"
 
-    # Readiness probe: a stopped podman machine otherwise yields a cryptic pull error.
-    try { Invoke-Native -FilePath $engine.Path -Arguments @('info', '--format', '{{.Host.Arch}}') | Out-Null }
+    # Readiness probe, and ITS ANSWER IS USED: it is what pins --platform below.
+    # A stopped podman machine otherwise yields a cryptic pull error.
+    #
+    # The two engines spell the field differently. podman has .Host.Arch and
+    # docker has .Architecture, and asking docker for .Host.Arch fails the whole
+    # probe, which reads as "docker is not responding" on a machine where docker
+    # is fine.
+    $archField = '{{.Host.Arch}}'
+    if ($engine.Name -eq 'docker') { $archField = '{{.Architecture}}' }
+
+    $rawArch = ''
+    try {
+        $probe = Invoke-Native -FilePath $engine.Path -Arguments @('info', '--format', $archField)
+        if ($probe) { $rawArch = ($probe | Select-Object -Last 1).ToString().Trim() }
+    }
     catch {
         throw ("$($engine.Name) is installed but not responding. If you use podman on Windows, " +
                "start its VM with:  podman machine start`nUnderlying error: $($_.Exception.Message)")
     }
 
+    # Refusing here rather than pulling unqualified. An unqualified pull takes
+    # whatever the shared local tag currently points at, and one earlier
+    # --platform pull is enough to have repointed it: the rootfs then imports
+    # and every binary in it fails to execute, which surfaces only as the smoke
+    # test's "/bin/sh did not run" with no hint of the cause.
+    $arch = ConvertTo-OciArch -Raw $rawArch
+    if ($arch -notmatch '^[a-z0-9_]+$') {
+        throw ("Could not read the host architecture from '$($engine.Name) info --format " +
+               "$archField'; it answered '$rawArch'. Refusing to pull without --platform, " +
+               "because an unqualified pull can silently export the wrong architecture.")
+    }
+    $platform = "linux/$arch"
+    Write-Step "Platform: $platform"
+
     Write-Step "Pulling $ImageRef"
-    Invoke-Native -FilePath $engine.Path -Arguments @('pull', $ImageRef) | Out-Null
+    Invoke-Native -FilePath $engine.Path -Arguments @('pull', '--platform', $platform, $ImageRef) | Out-Null
 
     $cid = $null
     try {
         # 'create' materialises a container without running it; its filesystem is the rootfs.
         # Images with no CMD/ENTRYPOINT reject a bare create, so fall back to naming one.
         try {
-            $cid = (Invoke-Native -FilePath $engine.Path -Arguments @('create', $ImageRef) |
+            $cid = (Invoke-Native -FilePath $engine.Path -Arguments @('create', '--platform', $platform, $ImageRef) |
                     Select-Object -Last 1).ToString().Trim()
         }
         catch {
             Write-Warn "bare create failed; retrying with an explicit command"
-            $cid = (Invoke-Native -FilePath $engine.Path -Arguments @('create', $ImageRef, '/bin/sh') |
+            $cid = (Invoke-Native -FilePath $engine.Path -Arguments @('create', '--platform', $platform, $ImageRef, '/bin/sh') |
                     Select-Object -Last 1).ToString().Trim()
         }
         if ([string]::IsNullOrWhiteSpace($cid)) { throw "Container id was empty." }

@@ -109,6 +109,30 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 
 ---
 
+## The architecture is named, not inherited
+
+⭐ **Every `pull` and every `create` passes `--platform linux/ARCH`**, where
+`ARCH` is this host's own architecture read from the engine.
+
+The reason is a trap in the engine rather than in this script. ⛔ **The local
+image store is keyed by tag and not by architecture.** One
+`podman pull --platform linux/riscv64 alpine` repoints the shared local
+`alpine:latest` at the riscv64 image, and every later unqualified
+`pull alpine` is a no-op that hands back the riscv64 one. Imported into WSL,
+that rootfs registers cleanly and then nothing in it executes.
+
+⚠ **There is no `-Platform` parameter.** Building a distro whose architecture
+this host cannot run is not a thing anybody has asked for, and a parameter with
+no caller is machinery with a maintenance cost and no benefit. Add it when
+something asks.
+
+⚠ **The engines disagree on the spelling.** `podman info` answers `amd64` and
+`docker info` answers `x86_64`, and only the first is a name `--platform`
+accepts, so the script normalises. A value it does not recognise is passed
+through rather than guessed at, and the engine refuses it by name.
+
+---
+
 ## The safety model
 
 This script unregisters WSL distros and deletes directories, so removal is
@@ -147,6 +171,29 @@ calls both or it does not ship.
   ⛔ **Only `wsl --shutdown` gives a fresh kernel.** Anyone using an ephemeral
   distro to reproduce a kernel-level condition is reading stale state otherwise,
   and will get a wrong answer confidently.
+- ⛔ **A foreign-architecture rootfs may run rather than fail, and that is the
+  worse outcome.** The shared kernel above carries whatever `binfmt_misc`
+  handlers anything on the machine has registered, and an imported distro sees
+  all of them. Measured on 2026-08-27, kernel `7.2.0-WSL2-STABLE`: 31
+  `qemu-*` handlers were registered and visible from a freshly imported Alpine
+  distro that contains no emulator of its own.
+
+  ```bash
+  wsl -d DISTRO -u root -- /bin/sh -lc 'cat /proc/sys/fs/binfmt_misc/qemu-riscv64'
+  ```
+
+  ```text
+  enabled
+  interpreter /usr/bin/qemu-riscv64-static
+  flags: POCF
+  ```
+
+  ⚠ The `F` flag is why the emulator does not need to exist inside the distro:
+  the kernel opens the interpreter at registration time and holds it open. So a
+  riscv64 rootfs on this x86_64 host boots, passes the smoke test and answers
+  `riscv64` to `uname -m`. ⭐ That is why the architecture is named on every
+  pull and create rather than checked afterwards: there is no afterwards to
+  check in.
 
 ---
 
@@ -159,7 +206,6 @@ in [`../../TODO/INDEX.md`](../../TODO/INDEX.md).
 | limit | what it means for you |
 | --- | --- |
 | ⭐ the image's OCI config is dropped | `podman export` writes a filesystem, not a configuration. `ENV`, `WORKDIR`, `ENTRYPOINT` and `USER` are lost, so `PATH` inside the distro is not the image's `PATH`. |
-| ⚠ no `--platform` on pull or create | the exported architecture is whatever the local store happened to hold. A previous `--platform` pull retags the shared local tag, so this can silently produce a rootfs that cannot execute. |
 | ⚠ a failed delete reports success | `--unregister` releases the VHDX asynchronously, so a delete immediately after can lose the race and leave a multi-gigabyte disk behind while printing that it is gone. |
 | ⚠ an interrupted `New` can orphan a tarball | the rootfs `.tar` is cleaned in a `finally`, which a hard interrupt does not always run. Neither `List` nor `Purge` looks for `*.tar`. |
 | ⚠ no disk-space preflight | export plus import needs roughly twice the rootfs size on the `%LOCALAPPDATA%` volume. Running out midway leaves a partial VHDX and a registered distro that does not work. |

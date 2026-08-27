@@ -160,7 +160,7 @@ old value without it.
 ## WSL-03. Pass `--platform` to pull and create
 
 **Source** issue 3, part 3.3, and issue 2's tag-overwrite trap.
-**Category** wsl-ephemeral · **Priority** P1 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P1 · **Effort** S · **Status** done
 
 **Problem.** The exported architecture is whatever the local store happened to
 hold, so the import can silently produce a rootfs that cannot execute. It
@@ -187,6 +187,104 @@ podman pull --platform linux/riscv64 alpine
 
 Then `-Action New -Image alpine` on this x86_64 host still produces a distro
 whose `uname -m` is `x86_64`.
+
+### ⛔ The premise was half wrong, and the correction matters more than the fix
+
+⛔ **Written underneath rather than edited into the premise above.** Measured on
+podman 5.8.6, Windows 11 Pro 26200, kernel 7.2.0-WSL2-STABLE, 2026-08-27.
+
+**1. An unqualified `pull` is NOT a no-op on this engine.** The premise says a
+later unqualified pull is a no-op, so the wrong architecture is exported. It is
+not:
+
+| step | `podman image inspect alpine:3.22 --format '{{.Architecture}}'` |
+| --- | --- |
+| after `podman rmi alpine:3.22` | absent |
+| after `podman pull --platform linux/riscv64 alpine:3.22` | `riscv64` |
+| after an unqualified `podman pull alpine:3.22` | ⭐ `amd64` |
+
+podman re-pulls the host-architecture image and repoints the tag. ⚠ Do not read
+that as "the trap is not real": it says the trap does not fire through `pull`
+on **this** version, which is a narrower claim than the entry made.
+
+**2. The trap is real, and it lives in `create`.** With the tag left pointing
+at riscv64 and no pull in between, an unqualified `podman create alpine:3.22`
+exits 0 and produces a container whose image is the riscv64 one. That is the
+operation this script uses to materialise a rootfs, and it was the unqualified
+one.
+
+**3. ⛔ The stated symptom is wrong on this machine, in the dangerous
+direction.** The entry says a wrong-architecture rootfs "surfaces only as the
+`/bin/sh did not run` smoke failure". It does not surface at all. With
+`create` mutated to ask for `linux/riscv64`, the distro imported, the smoke
+test passed, and:
+
+```text
+==> Running command as 'root'
+riscv64
+EXITCODE=0
+```
+
+⭐ **The cause is the shared kernel.** 31 `qemu-*` handlers are registered in
+this WSL2 kernel's `binfmt_misc`, and an imported distro sees every one of
+them because `--import` gives it a new userspace and not a new kernel:
+
+```bash
+wsl -d eph-w01 -u root -- /bin/sh -lc 'cat /proc/sys/fs/binfmt_misc/qemu-riscv64'
+```
+
+```text
+enabled
+interpreter /usr/bin/qemu-riscv64-static
+flags: POCF
+```
+
+⚠ The `F` flag is what makes it reach a distro that has no emulator installed:
+the kernel opens the interpreter when the handler is registered and holds that
+file open, so the binary does not have to exist inside the mount namespace that
+runs. ⛔ **So the failure this entry was written against is not a failure here.
+It is a distro that is silently the wrong architecture and runs emulated**,
+which is the worse of the two outcomes and the one no smoke test can catch.
+
+### Closed 2026-08-27
+
+**What changed.** The readiness probe's answer is used instead of discarded, and
+`--platform linux/ARCH` is passed to `pull` and to both `create` calls.
+`ConvertTo-OciArch` normalises what the engines report onto the names
+`--platform` accepts.
+
+⚠ **Two things the entry did not anticipate, both found by writing it:**
+
+- **The engines spell the field differently.** `podman info` has `.Host.Arch`
+  and answers `amd64`; `docker info` has `.Architecture` and answers
+  `x86_64`. The probe asked both engines for `{{.Host.Arch}}`, so on a docker
+  machine it was failing and being reported as "docker is installed but not
+  responding". That is fixed here because this entry is the one that made the
+  value load-bearing.
+- **`x86_64` is not a name `--platform` accepts.** Reading the engine's answer
+  and passing it straight through would have produced `linux/x86_64` on docker.
+
+**Mutation proof.** `create` was changed to ask for `linux/riscv64` and the
+run above is the result: a riscv64 distro, reported as up, exit 0. Restored, and
+with the local tag deliberately left pointing at riscv64:
+
+```powershell
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action New -Image alpine:3.22 -Command "uname -m" -Ephemeral -Force
+```
+
+```text
+==> Platform: linux/amd64
+==> Running command as 'root'
+x86_64
+EXITCODE=0
+```
+
+⭐ The local tag read `riscv64` before the run and `amd64` after it, so the
+named pull is doing the work rather than the tag happening to be right.
+
+**Follow-on.** ⚠ The binfmt finding above is what `DOC-01` is about, and it
+changes that entry's shape: handlers are registered here and reach an ephemeral
+distro, so a check has something to assert rather than a gap to report.
 
 ---
 

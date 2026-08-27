@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 15  open 14  blocked 0  done 1
+total 15  open 13  blocked 0  done 2
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 1 | 1 |
-| P1 | 5 | 0 | 0 | 5 |
+| P1 | 4 | 0 | 1 | 5 |
 | P2 | 5 | 0 | 0 | 5 |
 | P3 | 4 | 0 | 0 | 4 |
-| **all** | **14** | **0** | **1** | **15** |
+| **all** | **13** | **0** | **2** | **15** |
 
 ---
 
@@ -36,7 +36,7 @@ total 15  open 14  blocked 0  done 1
 | TOOL-01 | P1 | M | open | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | open | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-03 | P1 | S | open | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-04 | P1 | S | open | A failed delete must not report success | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-05 | P2 | S | open | Report and purge orphaned rootfs tarballs | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-06 | P2 | S | open | Disk-space preflight before import | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
