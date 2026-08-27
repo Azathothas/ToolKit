@@ -94,20 +94,31 @@ and gets the correction underneath.
 
 ## ⭐ The work order
 
-**1. `WSL-06`, `WSL-07`, `WSL-09`, `WSL-10`, `WSL-11`.** The straightforward
-tail. All S, all independent of each other.
+**1. ⭐ `WSL-08` FIRST.** ⛔ **The operator ruled on this on 2026-08-27, against
+the earlier ordering.** It is the only remaining entry that is a correctness fix
+rather than a feature, and it is where the defect behind `WSL-12` actually
+lives. Every other open entry adds a payload that crosses the same broken
+transport, so doing `WSL-07`'s `/etc/wsl.conf` write or `WSL-11`'s interactive
+attach first means writing against a channel that is about to change, and risks
+repeating `WSL-12` in a new place.
 
-**2. `WSL-08`, last of the batch and the one that matters most.** It is an M and
-it is where the transport defect behind `WSL-12` actually gets fixed.
-⭐ **Read its premise first**: the measurement is already there,
-`Write-DistroFile` already implements the working channel, and ⛔ **two payloads
-inside the script have to move to that channel in the same change** or the next
-one repeats `WSL-12`.
+⭐ **Read its premise first.** The per-character measurement is already in the
+entry, `Write-DistroFile` already implements the channel that works, and
+⛔ **two payloads inside the script have to move to that channel in the same
+change**: the smoke probe in `Invoke-ActionNew`, and the script
+`Write-DistroFile` itself sends. Both are currently hand-written inside the safe
+alphabet, which is a constraint no check enforces.
 
-**3. `BSD-01` and `BSD-02`.** ⚠ A separate session with its own kickoff. The
-operator has asked for [`bsd.md`](bsd.md) to be extended with a native path and
-a universal nested-VM fallback, and reconciled with what it already ranks,
-**before** any of it is built.
+**2. `WSL-06`, `WSL-07`, `WSL-09`, `WSL-10`, `WSL-11`.** The tail, after the
+transport is sound. All S, all independent of each other.
+
+**3. `BSD-01` and `BSD-02`.** ⚠ A separate session with its own kickoff.
+⛔ **Read the ruling at the top of [`bsd.md`](bsd.md) before anything else in
+that file.** The operator ruled twice on 2026-08-27: correct the nested-QEMU
+refusal and rank it honestly, **and** treat nesting as the floor rather than the
+target, because it is a well documented technique and what is wanted is a better
+one that avoids its limits. ⛔ A session that opens by building the nested stack
+has skipped the ask.
 
 ---
 
@@ -115,19 +126,22 @@ a universal nested-VM fallback, and reconciled with what it already ranks,
 
 ⛔ These block work. Each carries a recommendation, so agreeing costs nothing.
 
-### 1. `BSD-01`: which workaround for the missing BSD kernel?
+### 1. ⭐ RULED, 2026-08-27. Not open. Read it before touching `bsd.md`.
 
-⭐ **The constraint, measured:** a FreeBSD image on this machine's Linux podman
-machine exits **139**, a SIGSEGV. A BSD userland needs a BSD kernel.
+The operator ruled on the nested-QEMU question and the ruling has two halves.
+⛔ **The second half is the one a reader skims past**: nesting is the floor to
+fall back to, not the thing to build. It is a well documented technique, and
+what is wanted is a better approach that avoids its limits. A session that opens
+by building the nested stack has skipped the ask.
 
-⚠ **This question is being reopened deliberately.** The operator has asked for
-two more approaches to be written up and reconciled with the existing ranking: a
-native path per host, and a universal nested one. ⛔ **Do not rule on it from
-the old text alone**; that is the next `bsd.md` session's first task.
+⛔ The full ruling, with what "exhaust everything" means concretely, is at the
+top of [`bsd.md`](bsd.md). It is not restated here, so the two cannot fork.
 
-⭐ **What is settled and does not need re-deriving:** Hyper-V's `vmms` is
-Running on this machine alongside the WSL2 podman machine, so the two coexist.
-[`bsd.md`](bsd.md) carries the probes.
+⭐ **What is measured and does not need re-deriving:** a FreeBSD userland on
+this machine's Linux podman machine exits **139**; Hyper-V's `vmms` runs
+alongside the WSL2 podman machine, so the two coexist; and `/dev/kvm` is present
+inside the WSL2 utility VM with `kvm_intel.nested=Y`, so nesting there would be
+accelerated rather than emulated.
 
 ### 2. Should `WSL-08` keep `-Command` working for simple commands?
 

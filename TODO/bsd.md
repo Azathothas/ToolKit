@@ -96,6 +96,162 @@ version that survives moving machines, which the intake says happens often.
 **Recommend scripted**, and the script belongs in this repository, which is
 what this repository is for.
 
+### ⛔ The operator has reopened this, and one of the asks contradicts the table
+
+⚠ **Recorded on 2026-08-27 by the session that closed `WSL-01` to `WSL-05`.**
+It did not rule on any of it. This section exists so the next session works from
+the ask rather than from a summary of it, and so the contradiction is impossible
+to walk past.
+
+**What was asked for, in the operator's terms:**
+
+1. ⭐ **A native path per host.** Hyper-V on Windows, which the table above
+   already recommends, **and QEMU on Linux, which the table does not mention at
+   all.** ⚠ Every row above is written from a Windows host. The file is
+   currently silent on what a Linux machine or a CI runner does, and that is a
+   gap rather than a decision.
+2. ⭐ **A universal fallback that is identical on both platforms.** The most
+   stripped-down Linux kernel and image that can run nothing but a VM layer,
+   which then boots the BSD inside it. Deeper nesting, accepted deliberately, in
+   exchange for one code path that behaves the same under podman-on-WSL and on a
+   native Linux runner, so a user cannot tell which they are on.
+3. **Reconcile both with what this file already ranks**, with no contradictions
+   left standing.
+
+### ⭐ The operator ruled on this, 2026-08-27. Read this before the table.
+
+⛔ **The ruling has two halves and the second one is the one that gets missed.**
+
+**Half one: correct the refusal and rank both.** The nested row keeps its
+wording and gets the measurement written underneath it, and nested-QEMU is then
+ranked against Hyper-V on numbers rather than dismissed. That is what the rest
+of this section sets up.
+
+⛔ **Half two: nesting is the FLOOR, not the target.** In the operator's words,
+nested virtualisation is "a well known well documented technique"; what is
+wanted is ⭐ **a novel approach that is better, and that avoids the drawbacks and
+limitations** of the nested one. The nested design is what you fall back to
+having failed to find one.
+
+⛔ **So the next session does NOT start by building the nested stack.** It
+starts by exhausting the alternatives, and it may only reach for nesting once it
+can say, in writing, what it tried and why each one failed. A session that opens
+by writing a QEMU wrapper has skipped the entire ask.
+
+⚠ **This is a search with a deadline, not an open-ended one.** The nested option
+is known to work and is written down, so the search has a floor and cannot fail
+to produce something shippable. What it must not do is stop early and call the
+known answer a conclusion.
+
+**What "exhaust everything" means concretely.** ⛔ Not a licence to speculate.
+Each of these is a claim to be measured or a body of prior art to be read, and
+each is recorded with its result whether it wins or loses:
+
+- **A BSD kernel that runs as a Linux process.** Does any usermode or rump-style
+  BSD kernel exist that would give a BSD userland a real BSD kernel without a
+  VM at all? NetBSD's rump kernels are the obvious prior art and the obvious
+  first read.
+- **A hypervisor lighter than a full VM.** Firecracker, cloud-hypervisor and
+  `bhyve` are not qemu, and boot times differ by an order of magnitude. Does
+  any of them take a BSD guest and run under WSL2's nested KVM?
+- **The host's own hypervisor, addressed directly.** Windows has WHPX and
+  Hyper-V; a Linux host has KVM. ⚠ The universal ask is for one behaviour, not
+  necessarily one implementation. A thin layer that presents the same interface
+  over two native backends may satisfy it with no nesting anywhere.
+- **Whether the WSL2 VM can host the BSD directly**, rather than a VM inside it.
+  ⛔ Measured on 2026-08-27 and it cannot: WSL2 runs one Linux kernel and a BSD
+  userland on it exits 139. Recorded so nobody re-derives it.
+- **What `pkgforge-dev/docker-bsd` already produces.** It builds all four BSDs.
+  ⚠ Whether any of those artefacts is bootable rather than merely an image is
+  `BSD-02`, and the answer changes what any of this has to build.
+
+⛔ **A negative result is a result.** Each avenue that fails gets a row in this
+file with what was tried and what it returned, so the next session does not
+repeat it. That is the whole reason the search is being asked for rather than
+the answer.
+
+### ⛔ The contradiction, stated plainly
+
+**The table above refuses ask 2 by name.** Its last row is
+"Nested qemu inside the WSL machine", verdict ⛔ **refused**, with the reason
+"it is the thing the ask was written to avoid". The new ask asks for exactly
+that, and for a reason the table never weighed: **uniformity across hosts**, not
+performance.
+
+⚠ **Both positions are defensible and they are optimising different things.**
+
+| | the table's position | the new ask's position |
+| --- | --- | --- |
+| optimises | performance and simplicity on the one host measured | one behaviour on every host, including CI |
+| costs | a second, different path for Linux and for CI, which nobody has written yet | emulation inside a VM, and a kernel image to build and keep |
+| fails when | the operator moves to a Linux machine, or CI needs to run a BSD | the workload is slow enough that emulation matters |
+
+⛔ **Do not resolve this by rewriting the table's refusal into an acceptance
+without saying so.** The refusal was written against a measured constraint and
+it keeps its wording; if the new ask wins, the row gets a correction underneath
+it in the way [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md)
+requires of any premise a decision overturns.
+
+### ⭐ Measured 2026-08-27: nested KVM is available inside WSL2, and that
+### disproves the table's stated reason for refusing nesting
+
+⛔ **The refusal row says "⛔ worst. Emulation inside a VM." On this machine it
+would not be emulation.** Read from inside `podman-machine-default`, kernel
+`7.2.0-WSL2-STABLE`:
+
+```bash
+wsl -d podman-machine-default -u root -- /bin/sh -lc 'ls -l /dev/kvm; grep -c vmx /proc/cpuinfo; cat /sys/module/kvm_intel/parameters/nested'
+```
+
+```text
+crw-rw-rw- 1 root kvm 10, 232 /dev/kvm
+40
+Y
+```
+
+| fact | value |
+| --- | --- |
+| `/dev/kvm` inside the WSL2 VM | ⭐ present, mode `crw-rw-rw-` |
+| CPU threads reporting `vmx` | 40 |
+| `kvm_intel.nested` | `Y` |
+| `qemu-system-x86_64` inside that VM | absent, so it is an install and not a rebuild |
+
+⭐ **A BSD guest under QEMU inside the podman machine would run KVM-accelerated,
+not emulated.** ⛔ The refusal's premise is therefore false on this host, and the
+row keeps its wording with this correction underneath it rather than being
+quietly rewritten.
+
+⚠ **What this does NOT settle.** Nested KVM being *available* is not the same as
+it being *fast enough*, and none of the following is measured:
+
+- BSD boot time under nested KVM against the Hyper-V guest, which is the
+  comparison the table's performance column claims to rank on;
+- whether a GitHub-hosted Linux runner exposes `/dev/kvm` at all. ⛔ **Do not
+  assume it does.** If it does not, the universal option is emulated in exactly
+  the place it was meant to make uniform, and the whole argument inverts.
+- whether `podman machine` survives a second hypervisor running inside its own
+  VM under load.
+
+### ⚠ What is NOT yet measured, and must be before either is ranked
+
+⛔ Nothing below is a claim. It is the list of things the next session has to
+turn into numbers, because the current table ranks on friction, performance and
+interop and neither new option has any of the three measured.
+
+- **What does a BSD boot cost under nested KVM, against the Hyper-V guest?**
+  ⭐ This is now the deciding number, and the nesting measurement above is what
+  makes it worth taking.
+- **Does a CI Linux runner have `/dev/kvm`?** ⛔ The single highest-value
+  unknown, because the universal option exists to make CI and the laptop behave
+  the same, and the answer decides whether it can.
+- **What is the smallest kernel and initramfs that boots and runs qemu?** The
+  ask floats jemalloc; ⚠ that is an allocator, not a kernel or an image, so the
+  intent needs restating before it can be measured.
+- **What does a Linux host do today?** `BSD-02` already measured that a BSD
+  userland on a Linux kernel exits 139. The native-Linux answer is therefore
+  QEMU or nothing, and its friction has never been compared against the Hyper-V
+  row.
+
 ### Prove
 
 ⛔ **Written after the ruling**, because the acceptance depends on which option
