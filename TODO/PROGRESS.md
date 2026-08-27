@@ -2,7 +2,8 @@
 
 ⭐ **The one file every session reads first.** Where the work is, what is next,
 and why. [`INDEX.md`](INDEX.md) is the list of entries; the **order lives here
-and nowhere else**.
+and nowhere else**. [`SUMMARY.md`](SUMMARY.md) is the last session's table, and
+it is a snapshot rather than an authority.
 
 ⛔ Rewritten every session. It carries no history: the history is the git log
 and the entries themselves. Do not add a "previous sessions" section.
