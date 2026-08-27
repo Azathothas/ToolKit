@@ -601,6 +601,55 @@ function New-DistroName {
     return "$($script:Prefix)$stem-$suffix"
 }
 
+function Resolve-NewDistroName {
+    <#
+      The name for a distro about to be created, and the ONE place that decides
+      whether a collision is an error or a retry. The two cases are genuinely
+      different and conflating them was the defect:
+
+        a name the CALLER gave      a collision is their answer being wrong,
+                                    and silently using a different name would
+                                    be worse than refusing. It throws, as before.
+        a name this script DREW     a collision is a coin landing badly. Drawing
+                                    again is the whole answer, and throwing made
+                                    the user re-run a command that was correct.
+
+      The space is 36^4 = 1,679,616, so this loop is expected to run once. That
+      is exactly why it is worth having: a path that fires once in a million
+      runs is a path nobody will debug when it does.
+
+      ⚠ The registered list is read ONCE. Re-reading per attempt would cost a
+      wsl.exe call per draw to defend against a distro appearing in the
+      microseconds between two draws, and if that happens --import refuses
+      anyway.
+    #>
+    param(
+        [AllowEmptyString()][string]$Requested,
+        [AllowEmptyString()][string]$FromImage,
+        [int]$Attempts = 8
+    )
+    $existing = @(Get-WslDistroNames)
+
+    if (-not [string]::IsNullOrWhiteSpace($Requested)) {
+        $named = Resolve-DistroName -Requested $Requested -FromImage ''
+        if ($existing -contains $named) {
+            throw "Distro '$named' already exists. Choose another -Name or remove it first."
+        }
+        return $named
+    }
+
+    for ($i = 1; $i -le $Attempts; $i++) {
+        $drawn = New-DistroName -FromImage $FromImage
+        if ($existing -notcontains $drawn) { return $drawn }
+        Write-Warn "generated name '$drawn' is already taken; drawing again ($i of $Attempts)"
+    }
+
+    throw ("Could not draw an unused distro name in $Attempts attempts. The suffix is four " +
+           "characters from a 36-symbol alphabet, so this should not happen with fewer than " +
+           "a few hundred thousand 'eph-' distros registered. Check 'wsl --list --quiet', or " +
+           "pass -Name yourself.")
+}
+
 function Resolve-DistroName {
     param([AllowEmptyString()][string]$Requested, [AllowEmptyString()][string]$FromImage)
     if ([string]::IsNullOrWhiteSpace($Requested)) { return (New-DistroName -FromImage $FromImage) }
@@ -1187,11 +1236,10 @@ function Invoke-ActionNew {
     if (-not $Image -and -not $Tarball) { throw "Action New requires -Image (e.g. alpine:3.22) or -Tarball <path>." }
     if ($Image -and $Tarball)           { throw "Pass either -Image or -Tarball, not both." }
 
-    $distro = Resolve-DistroName -Requested $Name -FromImage $Image
+    # Resolve-NewDistroName owns the collision: it retries a name this script
+    # drew and refuses a name the caller gave. Both used to throw here.
+    $distro = Resolve-NewDistroName -Requested $Name -FromImage $Image
     if (Test-ProtectedName -DistroName $distro) { throw "Refusing to create a distro named '$distro' (protected)." }
-    if ((Get-WslDistroNames) -contains $distro) {
-        throw "Distro '$distro' already exists. Choose another -Name or remove it first."
-    }
 
     $target  = Join-Path $script:BaseDir $distro
     Assert-InsideBaseDir -Path $target               # validate before we ever create it

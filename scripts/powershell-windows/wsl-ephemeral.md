@@ -63,7 +63,7 @@ with a message rather than silently when there is no network.
 | --- | --- | --- |
 | `-Image` | `New` | OCI reference, for example `alpine:3.22` or `debian:bullseye-slim`. Needs podman or docker. |
 | `-Tarball` | `New` | path to a rootfs `.tar` to import instead. Needs no container engine. |
-| `-Name` | `New` `Run` `Remove` | distro name. Generated when omitted. The `eph-` prefix is added if missing. |
+| `-Name` | `New` `Run` `Remove` | distro name. Generated when omitted. The `eph-` prefix is added if missing. ⭐ A **generated** name that collides is drawn again, up to 8 times; a name **you** gave that collides is refused, because silently using a different one would be worse. |
 | `-Command` | `New` `Run` | shell command, run through `/bin/sh -lc`. Carried as base64 and sourced in the guest, so quotes, `$`, backticks and tabs arrive byte-exact. |
 | `-CommandFile` | `New` `Run` | path to a file **on this machine** whose bytes are the command. Read verbatim, so a multi-line script works. |
 | `-CommandB64` | `New` `Run` | the command as base64 of its UTF-8 bytes. ⭐ The one to use from a script, and the only one that survives Windows PowerShell 5.1 when this tool is launched as a child process. |

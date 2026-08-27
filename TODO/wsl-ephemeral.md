@@ -1195,7 +1195,7 @@ exit 1 where it used to hang, which is the point.
 ## WSL-10. Retry a generated name on collision
 
 **Source** issue 3, part 3.10.
-**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** open
+**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** done
 
 **Problem.** A generated name that collides throws instead of drawing again.
 
@@ -1208,6 +1208,54 @@ throwing is correct behaviour and stays.
 **Prove.** With the generator stubbed to a constant, the first call succeeds and
 the second draws again rather than throwing; after the retry bound it throws
 with a message saying so.
+
+### Closed 2026-08-27
+
+**What changed.** `Resolve-NewDistroName` is the one place that decides what a
+collision means, and the two cases are genuinely different: a name the **caller**
+gave still throws, and a name the **script** drew is drawn again, up to 8 times.
+
+⭐ **The existence check moved into it.** `Invoke-ActionNew` used to resolve a
+name and then test it against the registered list itself, which is why the two
+cases could not be told apart: by the time the check ran, the information about
+where the name came from was gone.
+
+**Acceptance.** The generator stubbed, as the entry asks. Each code read from
+the process that produced it, with `eph-w10taken` registered throughout.
+
+| stub | result |
+| --- | --- |
+| draws `eph-w10taken`, then `eph-w10free` | ⭐ `! generated name 'eph-w10taken' is already taken; drawing again (1 of 8)`, then `* 'eph-w10free' is up`, command ran, **exit 0** |
+| draws the constant `eph-w10taken` | 8 warnings, then `ERROR: Could not draw an unused distro name in 8 attempts.`, **exit 1** |
+
+**Mutation proof.** The retry bound was set to 1, which is the pre-fix
+behaviour of drawing once and giving up, against the same sequence stub that
+succeeds with the retry:
+
+```text
+  ! generated name 'eph-w10taken' is already taken; drawing again (1 of 1)
+ERROR: Could not draw an unused distro name in 1 attempts. ...
+  mutation exit=1
+```
+
+⭐ The identical scenario exits 0 with the retry in place and 1 without it, so
+the retry is what moves it.
+
+**The caller-supplied case is unchanged, and that was checked rather than
+assumed.** Both hosts:
+
+| host | `New -Image alpine:3.22 -Name eph-w10taken` | exit |
+| --- | --- | --- |
+| pwsh 7.6.5 | `ERROR: Distro 'eph-w10taken' already exists. Choose another -Name or remove it first.` | 1 |
+| Windows PowerShell 5.1 | the same message | 1 |
+| Windows PowerShell 5.1 | a normal generated name, `New -Command 'echo generated-ok' -Ephemeral` | 0 |
+
+⚠ **The registered list is read once, not once per draw.** Re-reading would
+cost a `wsl.exe` call per attempt to defend against a distro appearing in the
+microseconds between two draws, and `--import` refuses that case anyway.
+
+**Consumers.** No parameter, path or exit code changed. A command that used to
+fail on a one-in-1.68-million collision now succeeds. Not a break.
 
 ---
 

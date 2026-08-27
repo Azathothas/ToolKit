@@ -21,6 +21,21 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-08-27
 
+### 2026-08-27T11:30:00Z: a generated name that collides is drawn again
+
+**Record:** `WSL-10` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed
+in place with its evidence.
+**Deployed:** no deploy from here. ⛔ This repository publishes nothing.
+
+⭐ **A name this script drew and that happens to be taken is drawn again**, up
+to 8 times, instead of failing a command that was correct. ⛔ **A name the
+caller gave is still refused**, because silently substituting a different one
+would be worse than saying no.
+
+- ⚠ The space is 36^4, so the retry is expected to run zero times. That is why
+  it is worth having: a path that fires once in a million runs is one nobody
+  will debug when it does.
+
 ### 2026-08-27T11:15:00Z: a hard bound on the script's own questions
 
 **Record:** `WSL-09` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), closed
