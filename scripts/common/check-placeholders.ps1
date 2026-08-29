@@ -1,7 +1,7 @@
 ﻿# check-placeholders.ps1 - did a template placeholder survive into a real file?
 #
 # ⭐ THE TWIN OF check-placeholders.sh. Same schema, same exit codes, same
-# exemptions. check-twins.ps1 is what stops the two drifting.
+# exemptions. check-twins.sh is what stops the two drifting.
 #
 # The defect this exists to catch is a document that reads as finished and is
 # not. A leftover double-brace marker in a router, a record or a licence is a
@@ -39,12 +39,14 @@ if ($LASTEXITCODE -ne 0 -or -not $root) {
 }
 $root = ($root | Select-Object -First 1).Trim()
 
-# ⚠ THE TEMPLATE DIRECTORY IS EXEMPT AND MUST BE. Its whole job is to hold
-# placeholders, so a check that failed on it would fail on a correct tree, and
-# a check that fails on a correct tree gets switched off within a week.
+# ⚠ THE ONE FILL-IN FORM IS EXEMPT AND MUST BE. TODO/ENTRY.md is the shape an
+# entry is written from, so holding placeholders is its whole job, and a check
+# that failed on it would fail on a correct tree.
+# ⛔ IT NAMES ONE FILE, NOT A DIRECTORY. It used to exempt three directories
+# inherited from a template repository, none of which exist here now.
 # ⛔ BOTH implementations of this check are exempt, because each one contains
 # the patterns it looks for. Exempting only one is how the twins disagree.
-$exempt = '^(docs/templates/|dotfiles/|bootstrap/|scripts/common/check-placeholders\.(sh|ps1))'
+$exempt = '^(TODO/ENTRY\.md$|scripts/common/check-placeholders\.(sh|ps1))'
 
 Push-Location $root
 try {
@@ -174,5 +176,5 @@ if ($categories -gt 0) {
     exit 1
 }
 
-Write-Output ("no placeholders survived in {0} files (docs/templates, dotfiles and bootstrap are exempt)" -f $files.Count)
+Write-Output ("no placeholders survived in {0} files (TODO/ENTRY.md is exempt)" -f $files.Count)
 exit 0

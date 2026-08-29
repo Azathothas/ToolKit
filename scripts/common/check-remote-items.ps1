@@ -19,7 +19,7 @@
 #      already existed. A tag resolving cleanly says nothing about whether it
 #      is current.
 #
-# ── WHAT IT VERIFIES, AND IT DOES NOT TAKE THE ITEM'S WORD ──────────────────
+# -- WHAT IT VERIFIES, AND IT DOES NOT TAKE THE ITEM'S WORD ------------------
 # For every pinned action a pull request proposes:
 #   the commit exists AND belongs to the repository the ref names, so a
 #   lookalike SHA cannot ride in; the tag in the trailing comment really
@@ -37,9 +37,20 @@
 #   pwsh -NoProfile -File scripts/common/check-remote-items.ps1 -Json
 #   pwsh -NoProfile -File scripts/common/check-remote-items.ps1 -Repo OWNER/NAME
 #
-# Exit codes: 0 nothing open, or everything open verified;
-#             1 something open did not verify, or needs a human;
+# Exit codes: 0 nothing open, or nothing open failed a check;
+#             1 an item's claim did not survive checking;
 #             2 could not run.
+#
+# ⚠ AN UNREAD ITEM IS NOT A FAILED CHECK, and this used to exit 1 for one. Any
+# repository with an open issue was then permanently red, which is how a check
+# stops being read: the one state it cannot report is the one it exists for.
+# An item needing a reading is counted, named, and exits 0. Only a claim that
+# was checked and did not hold exits 1.
+#
+# ⛔ `-Json` PUTS THE JSON DOCUMENT ON STDOUT AND NOTHING ELSE. It used to
+# print the whole human report there first, so piping into a JSON parser failed
+# and every other check in this directory was machine-readable while this one
+# was not. The report still goes out, on stderr.
 #
 # ⛔ Read the exit code from this process, unpiped.
 
@@ -69,9 +80,18 @@ if ($Repo) { $ghArgs = @('--repo', $Repo) }
 
 $script:problems = 0
 $script:needsHuman = 0
-function Write-Note([string]$T)  { Write-Output ('  ' + $T) }
-function Write-Bad([string]$T)   { Write-Output ('  ⛔ ' + $T); $script:problems++ }
-function Write-Human([string]$T) { Write-Output ('  ⚠ ' + $T); $script:needsHuman++ }
+
+# ⛔ IN JSON MODE, STDOUT IS RESERVED FOR THE DOCUMENT. Every line the body
+# writes for a person goes through here, so the choice of stream is made once
+# rather than at fourteen call sites. The report still reaches a terminal; a
+# gate runner reading stdout gets the document alone.
+function Write-Report([string]$T) {
+    if ($Json) { [Console]::Error.WriteLine($T) } else { Write-Output $T }
+}
+
+function Write-Note([string]$T)  { Write-Report ('  ' + $T) }
+function Write-Bad([string]$T)   { Write-Report ('  ⛔ ' + $T); $script:problems++ }
+function Write-Human([string]$T) { Write-Report ('  ⚠ ' + $T); $script:needsHuman++ }
 
 # ⚠ gh on Windows emits CRLF, and a carriage return riding on a value is
 # invisible until something types it. Every value read out of gh is stripped.
@@ -80,11 +100,11 @@ function Get-Clean($V) {
     return (($V | Out-String) -replace "`r", '').Trim()
 }
 
-# ── open issues ─────────────────────────────────────────────────────────────
+# -- open issues -------------------------------------------------------------
 # ⚠ Reported, not judged. An issue is a person's account of a problem and
 # nothing here can verify it. What this can do is stop one going unnoticed.
-Write-Output ''
-Write-Output 'OPEN ISSUES'
+Write-Report ''
+Write-Report 'OPEN ISSUES'
 $issuesRaw = & gh issue list @ghArgs --state open --limit 50 --json number,title,author,createdAt 2>$null
 if ($LASTEXITCODE -ne 0) {
     [Console]::Error.WriteLine('check-remote-items: could not list issues')
@@ -95,13 +115,13 @@ $t = Get-Clean $issuesRaw
 if ($t) { $issues = @($t | ConvertFrom-Json) }
 if ($issues.Count -eq 0) { Write-Note 'none' }
 else {
-    foreach ($i in $issues) { Write-Output ('  #' + $i.number + ' [' + $i.author.login + '] ' + $i.title) }
+    foreach ($i in $issues) { Write-Report ('  #' + $i.number + ' [' + $i.author.login + '] ' + $i.title) }
     Write-Human ($issues.Count.ToString() + ' open issue(s). Read them; nothing here can verify a report.')
 }
 
-# ── open pull requests ──────────────────────────────────────────────────────
-Write-Output ''
-Write-Output 'OPEN PULL REQUESTS'
+# -- open pull requests ------------------------------------------------------
+Write-Report ''
+Write-Report 'OPEN PULL REQUESTS'
 $prsRaw = & gh pr list @ghArgs --state open --limit 50 --json number,title,author,headRefName,files 2>$null
 if ($LASTEXITCODE -ne 0) {
     [Console]::Error.WriteLine('check-remote-items: could not list pull requests')
@@ -115,8 +135,8 @@ if ($prs.Count -eq 0) { Write-Note 'none' }
 else {
     foreach ($pr in $prs) {
         $n = $pr.number
-        Write-Output ''
-        Write-Output ('  #' + $n + ' [' + $pr.author.login + '] ' + $pr.title)
+        Write-Report ''
+        Write-Report ('  #' + $n + ' [' + $pr.author.login + '] ' + $pr.title)
 
         $diff = & gh pr diff @ghArgs $n 2>$null
         if ($LASTEXITCODE -ne 0) { Write-Human ('#' + $n + ': could not read the diff'); continue }
@@ -150,7 +170,7 @@ else {
             $tag = $pin.Tag
             $label = 'no label'
             if ($tag) { $label = $tag }
-            Write-Output ('    ' + $action + '@' + $sha.Substring(0, 12) + '  (labelled ' + $label + ')')
+            Write-Report ('    ' + $action + '@' + $sha.Substring(0, 12) + '  (labelled ' + $label + ')')
 
             # 1. does the commit exist, and in THAT repository?
             & gh api ("repos/$action/commits/$sha") --jq '.sha' *> $null
@@ -214,21 +234,27 @@ else {
     }
 }
 
-Write-Output ''
-if ($Json) {
-    Write-Output ('{"schema":"check-remote-items/1","problems":' + $script:problems + ',"needs_human":' + $script:needsHuman + ',"open_prs":' + $prs.Count + '}')
-    if ($script:problems -gt 0) { exit 1 }
-    exit 0
+# ⛔ THE TWO MODES REPORT THE SAME VERDICT. They differed once: text exited 1
+# whenever anything needed a reading and -Json exited 0 over the same tree, so
+# a gate runner saw green where a person saw red. Both twins carried it, so
+# check-twins compared them and passed. One exit expression, computed here, is
+# what stops that returning.
+Write-Report ''
+if ($script:problems -gt 0) {
+    Write-Report ('⛔ ' + $script:problems + ' claim(s) did not survive checking. Do not merge on the description.')
+    $rc = 1
+}
+elseif ($script:needsHuman -gt 0) {
+    Write-Report ('⚠ ' + $script:needsHuman + ' item(s) need a reading. Nothing failed a check; nothing was verified either.')
+    $rc = 0
+}
+else {
+    Write-Report '✅ every mechanically checkable claim held.'
+    Write-Report '⚠ That is not approval. Whether you want a change is a reading, not a check.'
+    $rc = 0
 }
 
-if ($script:problems -gt 0) {
-    Write-Output ('⛔ ' + $script:problems + ' claim(s) did not survive checking. Do not merge on the description.')
-    exit 1
+if ($Json) {
+    Write-Output ('{"schema":"check-remote-items/1","problems":' + $script:problems + ',"needs_human":' + $script:needsHuman + ',"open_prs":' + $prs.Count + '}')
 }
-if ($script:needsHuman -gt 0) {
-    Write-Output ('⚠ ' + $script:needsHuman + ' item(s) need a reading. Nothing failed a check; nothing was verified either.')
-    exit 1
-}
-Write-Output '✓ every mechanically checkable claim held.'
-Write-Output '⚠ That is not approval. Whether you want a change is a reading, not a check.'
-exit 0
+exit $rc

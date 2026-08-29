@@ -13,7 +13,7 @@
 # entries landing mid-file, one section ascending while the rest descended, and
 # headings with no date to order by.
 #
-# ── WHAT IT CHECKS ──────────────────────────────────────────────────────────
+# -- WHAT IT CHECKS ----------------------------------------------------------
 #   1. ⛔ NEWEST FIRST. Dates inside a section descend. This is the rule that
 #      breaks most often, because appending is what an editor does by default.
 #   2. ⛔ Every entry heading carries a date, ISO 8601. Several entries sharing
@@ -32,9 +32,10 @@
 # has not broken these rules and has not satisfied them either, and reporting
 # green over an absent file is how a check quietly stops applying. Exit 2.
 #
-# ⚠ THE TEMPLATE SKELETON IS EXEMPT. docs/templates/CHANGELOG.md is a file of
-# placeholders by design, and a check that fails on a correct tree gets
-# switched off within a week.
+# ⚠ IT READS ONE FILE, THE REPOSITORY'S OWN, and `--file` is how another one is
+# named. It used to carry an exemption for a template skeleton full of
+# placeholders; this repository has no such file, and an exemption for a path
+# that does not exist is dead configuration.
 #
 # Usage:
 #   sh scripts/common/check-changelog.sh

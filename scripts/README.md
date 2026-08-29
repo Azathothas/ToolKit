@@ -6,7 +6,8 @@ The probe, the checks, and the helpers a project inherits.
 | --- | --- |
 | [`doctor/`](doctor/) | ⭐ the environment probe. Two implementations, one schema. Every project keeps this. |
 | [`common/`](common/) | the checks and the helpers. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin. |
-| [`powershell-windows/`](powershell-windows/) | tools for a job that only exists on Windows. ⛔ Not a twin of anything. |
+| [`powershell-windows/`](powershell-windows/) | tools for a job that only exists on Windows. ⛔ Not a twin of anything. Each `.ps1` has a `.md` beside it that stands alone. |
+| [`../LICENSES/`](../LICENSES/README.md) | the SPDX texts [`common/fill-license.sh`](common/) reads. ⛔ Not scripts, and four of them must never be edited. |
 
 ⚠ **`powershell-windows/` exists because a job in it has no POSIX form, not
 because a script was easier to write in PowerShell.** The distinction is the
@@ -64,7 +65,7 @@ from one twin's extension list changed no number here, because this repository
 has no `.py` file. Dropping `.md` was caught instantly. ⭐ Prove a scope rule
 with a fixture, not by trusting the comparison to notice.
 
-### The four things that do NOT have twins, and why
+### The five things that do NOT have twins, and why
 
 | | |
 | --- | --- |
@@ -72,6 +73,7 @@ with a fixture, not by trusting the comparison to notice.
 | [`common/write-file.mjs`](common/) | ⛔ **It does not need one.** It is node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. The reason the sh checks needed twins does not apply to it. ⚠ What it needs instead is node itself, which is the one dependency anything under `scripts/` has, and the reason a project may decline this helper rather than inherit it. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. It is a maintainer's tool and it runs where both implementations do: this machine, and the CI job that has `pwsh` on an Ubuntu runner. |
 | [`powershell-windows/wsl-ephemeral.ps1`](powershell-windows/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
+| [`powershell-windows/wsl-ephemeral-launcher.ps1`](powershell-windows/) | ⛔ **No twin, for the same reason and one more.** It exists to make the file above runnable on Windows: it clears a Windows file attribute, and a POSIX half would have nothing to launch. |
 
 ⭐ **The question to ask is whether the JOB exists on the other platform, not
 whether the language does.** `wsl-ephemeral` fails that test. Every check in
@@ -119,9 +121,8 @@ reports the **last** command's status, so a check that failed reads as green.
 
 ### `doctor/`
 
-What host is this, what is installed, and what is this repo. Read
-[`doctor/README.md`](doctor/README.md) for the schema and the measured
-runtimes.
+The environment probe. Read [`doctor/README.md`](doctor/README.md) for what it
+answers, the schema, and the measured runtimes.
 
 ⭐ It is a **probe, not a gate**: a missing tool is data, so it exits 0 whether
 or not anything is missing. Nothing here belongs in a gate chain.
@@ -157,6 +158,43 @@ defined markers.
 ⚠ The template directories are exempt from the **link** check only: their
 links are written relative to where the file will live in a project. The
 prose rules still apply to them.
+
+### `common/check-markers.sh`
+
+Are the only characters outside ASCII in this tree the five this repository
+defines, and does any one page carry so many of them that they have stopped
+meaning anything.
+
+⛔ **It covers every tracked text file, not markdown alone**, which is the whole
+reason it exists beside `check-docs.sh` rather than inside it. ⚠ Measured here
+on 2026-08-29, before it was armed: **164 characters across 28 files**, every
+one of them in a script's comment banner, with `check-docs.sh` reporting the
+tree clean throughout.
+
+⭐ **The density ceiling is 30 markers per 100 non-blank lines**, and it is a
+constant rather than a flag: a ceiling anybody can raise from a command line is
+a ceiling that gets raised instead of met. Three files here were over it.
+
+⚠ **A specimen inside a code span or a fenced block is permitted in markdown.**
+Without that, a page that bans a character cannot show a reader which one.
+
+### `common/check-one-home.sh`
+
+Does any sentence of twelve words or more appear in two documents.
+
+⭐ [`../docs/conventions/prose.md`](../docs/conventions/prose.md) has always said
+one fact lives in one document, and nothing checked it. ⚠ Measured here on
+2026-08-29, before it was armed: **17 sentences with two homes**, seven of them
+involving a skeleton this repository had copied from a template and never
+filled in.
+
+⛔ **The two entry-point routers are exempt from each other and only from each
+other.** `AGENTS.md` and `docs/AGENTS.md` each state the absolutes in full on
+purpose, because a session may be handed exactly one of them. A sentence shared
+between a router and any other file is still refused.
+
+⚠ **It compares sentences**, so a fact restated in different words passes here
+and fails a review instead. That is the same split every other prose rule has.
 
 ### `common/check-twins.sh`
 
@@ -295,8 +333,14 @@ absent file is how a check quietly stops applying.
 ## The helpers, which are not checks
 
 ⚠ **A helper writes; a check reports.** The five-point contract above is for
-checks. These three are held to the header rule and the exit-code rule, and
+checks. The ones below are held to the header rule and the exit-code rule, and
 deliberately not to "read only": writing is what they are for.
+
+⚠ **`deslop` and `fill-license` are documented above, among the checks, because
+that is where a reader looking for them will be.** Neither is a check by this
+contract: `deslop` writes under `--apply` and `fill-license` writes a licence.
+⛔ Both refuse rather than writing when they are unsure, which is the property
+that matters more than which list they appear in.
 
 ### `common/write-file.mjs`
 
@@ -361,6 +405,35 @@ around it.
 ⚠ **It knows nothing about who you are.** Identity comes from the flags or from
 git config, and if neither has one it refuses rather than guessing.
 
+### `common/deslop.sh`
+
+Which files in a tree address a reader as an agent.
+
+⭐ **An inventory, not a gate**, and it exits 0 whether it finds twenty such
+files or none. ⛔ **It is aimed at ANOTHER tree.** Run with `--apply` here it
+would remove this repository's own router and methodology, which are content it
+wants rather than content it regrets.
+
+⛔ **It never touches history, never deletes without `--apply`, and `--apply`
+refuses on a dirty tree.** ⭐ It reads the state back after removing and reports
+what is actually gone: the version this repository inherited printed the number
+it had planned to remove, which is a delete reporting success it never checked.
+
+### `common/fill-license.sh`
+
+Write `LICENSE` from one of the texts in [`../LICENSES/`](../LICENSES/), with
+the holder filled in.
+
+⛔ **Four of the twelve are refused rather than filled**, and that refusal is
+the feature. The GPL, AGPL and LGPL texts open with the Free Software
+Foundation's copyright on the licence document itself; SPDX's ISC text is a
+licence instance carrying Internet Systems Consortium's own notice. Rewriting
+any of those attributes your software to somebody else.
+
+⚠ **Compared on its OUTPUT by `check-twins.sh`, not on a status line**, because
+a corrupted licence exits 0. The over-replacement that produced that rule wrote
+a valid-looking file with a mangled warranty clause.
+
 ### `powershell-windows/wsl-ephemeral.ps1`
 
 Create, use and destroy throwaway WSL2 distros, from an OCI image or a local
@@ -379,6 +452,26 @@ path. Destructive actions require `-Force` when non-interactive.
 name is prefix-forced first, so `-Action Remove -Name podman-machine-default
 -Force` targets `eph-podman-machine-default`, which does not exist. Verified on
 a machine that had the real one registered; it survived.
+
+⭐ **Two of its actions are read-only reports and neither creates a distro.**
+`-Action Resources` says what WSL and the container engine are holding and
+prints the cleanup commands without running one of them; `-Action HostAddress`
+answers what a distro would reach this host at, which a caller previously had to
+build a throwaway VM to find out.
+
+### `powershell-windows/wsl-ephemeral-launcher.ps1`
+
+Resolve the script above, verify it as far as the caller allows, make it
+runnable on Windows, and run it with everything else forwarded unchanged.
+
+⭐ **It prefers the copy beside it**, so from a clone it touches no network and
+keeps no pin. ⛔ **With no sibling it refuses a moving ref by shape** and refuses
+to guess a default, because a branch moves and a moved reference runs code
+nobody reviewed.
+
+⚠ **Every line it prints goes to stderr and it writes nothing to stdout.** A
+wrapper that writes to the wrapped program's stdout corrupts it, and
+`-Action HostAddress` puts one address there and nothing else.
 
 ---
 

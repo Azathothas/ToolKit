@@ -63,7 +63,7 @@ if (-not (Test-Path -LiteralPath $indexFull -PathType Leaf)) {
 $problems = New-Object System.Collections.ArrayList
 function Add-Problem([string]$Text) { [void]$problems.Add('  ' + $Text) }
 
-# ── the index rows ──────────────────────────────────────────────────────────
+# -- the index rows ----------------------------------------------------------
 # A row is: | ID | PRI | EFF | STATUS | title | [`file`](file) |
 # ⚠ Selected on an id shaped like LETTERS-DIGITS, not on position: the header
 # and the separator both begin with a pipe.
@@ -87,7 +87,7 @@ if ($rows.Count -eq 0) {
     exit 2
 }
 
-# ── the entry headings, from every category file in the directory ───────────
+# -- the entry headings, from every category file in the directory -----------
 $entries = New-Object System.Collections.ArrayList
 $dirFull = Join-Path $root $Dir
 foreach ($f in (Get-ChildItem -LiteralPath $dirFull -Filter '*.md' -File)) {
@@ -109,7 +109,7 @@ foreach ($f in (Get-ChildItem -LiteralPath $dirFull -Filter '*.md' -File)) {
     }
 }
 
-# ── every row has an entry, in the file the row names ───────────────────────
+# -- every row has an entry, in the file the row names -----------------------
 foreach ($r in $rows) {
     $hit = @($entries | Where-Object { $_.Id -ceq $r.Id })
     if ($hit.Count -eq 0) {
@@ -125,14 +125,14 @@ foreach ($r in $rows) {
     }
 }
 
-# ── every entry has a row ───────────────────────────────────────────────────
+# -- every entry has a row ---------------------------------------------------
 foreach ($e in $entries) {
     if (-not @($rows | Where-Object { $_.Id -ceq $e.Id })) {
         Add-Problem "$($e.File): entry '$($e.Id)' has no row in $indexRel"
     }
 }
 
-# ── the declared counts agree with the rows ─────────────────────────────────
+# -- the declared counts agree with the rows ---------------------------------
 $aTotal   = $rows.Count
 $aOpen    = @($rows | Where-Object { $_.Status -ceq 'open' }).Count
 $aBlocked = @($rows | Where-Object { $_.Status -ceq 'blocked' }).Count
@@ -151,7 +151,7 @@ else {
     Add-Problem "${indexRel}: no 'total N open N blocked N done N' line. Nothing can be checked against the rows."
 }
 
-# ── the priority table agrees with the rows ─────────────────────────────────
+# -- the priority table agrees with the rows ---------------------------------
 foreach ($p in 'P0', 'P1', 'P2', 'P3') {
     $aP = @($rows | Where-Object { $_.Pri -ceq $p })
     $pOpen = @($aP | Where-Object { $_.Status -ceq 'open' }).Count
@@ -175,7 +175,7 @@ foreach ($p in 'P0', 'P1', 'P2', 'P3') {
     if (-not $found) { Add-Problem "${indexRel}: priority table has no row for $p" }
 }
 
-# ── the RECORD's own count line agrees too ─────────────────────────────────
+# -- the RECORD's own count line agrees too ---------------------------------
 # ⛔ THIS WAS THE GAP AND A REVIEW FOUND IT, NOT THE CHECK. The first version
 # compared the index against the entries and stopped, so PROGRESS.md sat
 # declaring "open 14 blocked 1" beside an index saying "open 15 blocked 0" and
@@ -196,7 +196,7 @@ if (Test-Path -LiteralPath $recordFull -PathType Leaf) {
     # ⚠ No count line is not an error. Not every project states one.
 }
 
-# ── report ──────────────────────────────────────────────────────────────────
+# -- report ------------------------------------------------------------------
 if ($Json) {
     Write-Output ('{"schema":"check-record/1","problems":' + $problems.Count +
                   ',"entries":' + $aTotal + ',"open":' + $aOpen +

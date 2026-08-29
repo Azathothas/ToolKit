@@ -7,27 +7,38 @@ what makes them true.
 
 ---
 
-## The set
+## The set this repository actually has
 
-Adapt the names. Keep the roles. Create what the project has a use for and
-nothing else: a file nobody selected is a file a future session reads,
-believes, and follows into a rule that was never meant to apply.
+⛔ **Every row names a file that exists.** This table used to list thirteen
+documents, seven of which have never existed here, and one of those seven was
+named as the authority a conflict between two documents is settled against. A
+file nobody selected is a file a future session reads, believes, and follows
+into a rule that was never meant to apply, and a file that does not exist at all
+is worse: there is nothing to read and the rule pointing at it cannot be
+followed.
 
 | file | owns |
 | --- | --- |
-| `AGENTS.md` | ⭐ the router. What to read for which task. Restates nothing, links everything. |
-| `README.md` | what this is, for a competent stranger. What, why, how to start, where the docs are. |
-| the record | ⭐ the one file every session reads first. The baseline, what the last session did, and the work order. Nothing else carries a work order. |
-| `RULES.md` | how this repository is worked on, rule by rule, with what each cost to learn |
-| `HUMAN.md` | the operator's side: machine setup, validation, the runbooks, the division of labour, the prompts they paste |
-| `SECURITY.md` | the threat model, who holds what, the blast radius of each leak. Writing it is the audit. |
-| `CHANGELOG.md` | what shipped, when, and where the evidence is |
-| `docs/architecture.md` | ⭐ the technical reference. Schema, state machines, algorithms, limits. When any document conflicts with this one, this one wins and the other is the defect. |
-| `docs/code-map.md` | where things live and why. The layer rule and what enforces it. |
-| `docs/limits.md` | what is true and not going to change, and why |
-| `docs/lessons.md` | what was learned, tagged, with the source |
-| the work plans | one per unit, plus the template they are authored from |
-| the handoffs | in stage mode. The durable memory between sessions. |
+| [`../../AGENTS.md`](../../AGENTS.md) | the door. It says to read the router in full and states the absolutes, because a session may be handed it and nothing else. |
+| ⭐ [`../AGENTS.md`](../AGENTS.md) | the router, read end to end. Where you are, the absolutes, the start of a session, what to read for which task, and which tool already exists. |
+| [`../../README.md`](../../README.md) | what this is, for a competent stranger, and the map of everything else |
+| ⭐ [`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) | the record. What changed since last time and what is next. Nothing else carries a work order. |
+| [`../../TODO/RULES.md`](../../TODO/RULES.md) | the half of the record that does not change between sessions: the standing facts, and the rules that are this repository's own |
+| [`../../TODO/INDEX.md`](../../TODO/INDEX.md) | every entry, one line each, with the counts a check holds |
+| [`../../TODO/ENTRY.md`](../../TODO/ENTRY.md) | the form an entry is written from |
+| [`../../CHANGELOG.md`](../../CHANGELOG.md) | what shipped, when, and where the evidence is |
+| ⭐ [`../consumers.md`](../consumers.md) | the technical reference for the thing that makes this repository different: who fetches from it and what breaks them. **When a document conflicts with it about a consumer, it wins and the other is the defect.** |
+| a tool's `.md`, beside the tool | what that tool does, in full, for a reader who has opened nothing else |
+
+⚠ **Two roles this set deliberately leaves empty.** An operator-facing runbook
+and a threat model are both worth having and neither has content yet, so neither
+exists. [`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) carries that as an
+open question rather than shipping an empty skeleton for each.
+
+⛔ **There is no architecture document, and nothing here should claim one.**
+This repository is a set of independent tools, each with its own page; there is
+no shared schema, state machine or layer rule for such a page to describe. The
+per-tool page is the technical reference for its tool.
 
 ---
 
@@ -47,9 +58,15 @@ It sits correct for a year and drifts the first time it moves.
 
 ### The technical reference wins
 
-When any document conflicts with `architecture.md`, the reference is right and
-the other document is the defect. Fix it in the same change and note the
-conflict in the handoff.
+⛔ **Every fact has a document that owns it, and when two disagree the owner is
+right and the other is the defect.** Fix it in the same change and say so in the
+record rather than leaving the reader to work out which is live.
+
+⚠ **Which document owns a fact is answered by the table above**, not by which
+one a reader found first. For a tool's behaviour it is that tool's own page; for
+who fetches a file and what breaks them it is
+[`../consumers.md`](../consumers.md); for what changed last session it is the
+record.
 
 ### Documentation ships with the code it describes
 
@@ -90,25 +107,23 @@ it looks. This has a known gap. This estimate excludes something unmeasurable.
 
 ---
 
-## Lessons, and how they are tagged
+## Lessons, and where they go instead of a lessons file
 
-`docs/lessons.md` is the running log of what worked and what bit. Every entry
-carries its source and one tag:
+⛔ **There is no `lessons.md` here, and that is a decision rather than an
+omission.** A running log of what worked and what bit is real institutional
+memory, and this repository already keeps it in three places that are each
+better at one part of the job:
 
-| tag | meaning |
-| --- | --- |
-| `adopt` | do this. It was measured or it was paid for. |
-| `avoid` | rejected, with the reason, so nobody re-derives it |
-| `future` | a good idea, not now, with what would make it now |
-| `honest-limit` | a truth to keep documented where a user will see it |
+| a lesson that is | goes to | because |
+| --- | --- | --- |
+| grep-able, and cost something | [`forbidden-patterns.md`](forbidden-patterns.md) | a reader greps themselves against it before calling a gate green, which a log does not get read for |
+| mechanical | ⭐ a check, and a row pointing at it | a rule enforced by a script is a rule nobody has to remember |
+| a measurement, or a rejected approach | the entry that produced it, in `TODO/` | it keeps the conditions and the acceptance command beside it, which a log strips |
+| about somebody else's project | [`../reference-sweeps/usable.md`](../reference-sweeps/usable.md) | that page exists to say which findings this repository can act on |
 
-⭐ It is the institutional memory that stops the project re-learning the same
-lesson. Seed it from any prior art studied; append after every review that
-surfaces something.
-
-⚠ A lesson that is grep-able belongs in
-[`forbidden-patterns.md`](forbidden-patterns.md) as well, and a lesson that is
-mechanical belongs in a check instead.
+⚠ **The cost of not having one** is that there is no single page to read for
+orientation. ⭐ The record's own summary is what covers that instead, and it is
+rewritten every session rather than appended to.
 
 ---
 

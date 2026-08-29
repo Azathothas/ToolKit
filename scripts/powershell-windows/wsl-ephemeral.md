@@ -40,10 +40,17 @@ Invoke-WebRequest -Uri $uri -OutFile "$env:TEMP\wsl-ephemeral.ps1" -UseBasicPars
 pwsh -NoProfile -File "$env:TEMP\wsl-ephemeral.ps1" -Action List
 ```
 
-⭐ **A caller that wants this done for it should use the wrapper** in
-`Azathothas/TEMPLATE` at `scripts/powershell-windows/wsl-ephemeral.ps1`. It
-pins the commit, verifies a SHA-256 before executing, caches by ref, and fails
-with a message rather than silently when there is no network.
+⭐ **A caller that wants all of that done for it should use the launcher**,
+[`wsl-ephemeral-launcher.ps1`](wsl-ephemeral-launcher.md), which sits beside
+this file. It refuses a moving ref by shape, verifies a digest, parses the file
+as PowerShell before running it, clears the download mark Windows attaches, and
+forwards every other argument here unchanged.
+
+⚠ `Azathothas/TEMPLATE` also carries a wrapper at
+`scripts/powershell-windows/wsl-ephemeral.ps1`, pinned to a commit and a digest
+of this file. It is that repository's, and
+[`../../docs/consumers.md`](../../docs/consumers.md) is where its pin state is
+recorded.
 
 ---
 
@@ -57,6 +64,8 @@ with a message rather than silently when there is no network.
 | `List` | list ephemeral distros, every other distro, which it never touches, and any orphaned rootfs tarball |
 | `Remove` | unregister one ephemeral distro and delete its disk |
 | `Purge` | remove every ephemeral distro, prefix-matched only, and every orphaned rootfs tarball |
+| `Resources` | report what WSL and the container engine are holding on this machine, and print the cleanup commands. ⛔ It runs none of them. |
+| `HostAddress` | print the address a distro reaches this host at, for the current networking mode. ⭐ It does not create a distro to find out. |
 
 ## Parameters
 
@@ -92,6 +101,13 @@ dropped.
 | the inner command's code | from `New -Command` and from `Run -Command` alike |
 | 1 | the script failed. The message names what. |
 
+⚠ **The failure message goes to stderr**, not stdout. An error is not a result,
+and `HostAddress` makes that concrete: a caller assigning this script's stdout
+to a variable would otherwise get the string `ERROR: ...` where an address goes.
+Nothing about the exit code changed and the exit code is what every existing
+caller reads. [`../../docs/consumers.md`](../../docs/consumers.md) records the
+move.
+
 ⚠ **With `-Ephemeral` the distro is destroyed before the code is returned**, so
 a failing command still leaves nothing registered.
 
@@ -119,6 +135,121 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-alpine-3.22-a1b2 -
 ```powershell
 pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 ```
+
+---
+
+## What this machine is holding, with `Resources`
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Resources
+```
+
+⛔ **It offers and it does not do.** Every cleanup command is printed and none
+is run, including the one for the distros this script created. Reclaiming
+somebody's disk is their decision, and an agent's job here is to hand them the
+numbers and ask.
+
+⚠ **Most of what it reports is not this script's.** The container engine is
+shared with everything else on the machine, and the situation that asked for
+this action was an agent finding hundreds of images on a host where this script
+had never run. So the report is in three parts and says on every line which it
+is:
+
+| part | what it covers |
+| --- | --- |
+| what this script made | each `eph-` distro with the size of its disk, plus any orphaned rootfs tarball. ⭐ The only things `-Action Purge` will ever remove. |
+| what else WSL has registered | named, never touched. Their disks are wherever they were imported to, which this script does not know. |
+| what the engine is holding | `system df` by type, the dangling image count, and the unused volume count. ⛔ None of it this script's to remove. |
+
+```text
+==> What this script made, under %LOCALAPPDATA%\wsl-ephemeral
+  eph-toolkit-probe                              76.0 MiB
+  * 76.0 MiB held by this script, across 1 distro(s) and 0 tarball(s)
+```
+
+⚠ The real output names the expanded path. It is written here in its
+environment-variable form because this repository is public and an absolute home
+path carries a username. [`../../docs/public/README.md`](../../docs/public/README.md)
+is the rule, and `check-no-secrets.sh --public` is what caught it.
+
+⚠ **A directory it cannot measure is named and the total is withheld.** A total
+that silently counts an unreadable directory as zero is a number somebody acts
+on.
+
+⚠ **It cannot tell a leftover from something in use.** A named volume with no
+container attached is not garbage: it is how somebody keeps data between runs.
+That is why the output is a count and a size rather than a recommendation.
+
+⛔ **`podman system prune -a --volumes` removes every image no *running*
+container uses**, which is not the same as unused. The report says so beside the
+command rather than in a footnote.
+
+⚠ **Its questions to the engine are bounded by `-TimeoutSeconds`** like every
+other question this script asks. On Windows podman talks to a VM, and a machine
+that is starting or wedged leaves the client waiting with nothing on either
+stream. A timed-out engine is reported and the WSL half of the report still
+prints.
+
+---
+
+## Talking to the host from inside a distro, with `HostAddress`
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action HostAddress
+```
+
+```text
+172.23.96.1
+```
+
+⭐ **The address is the only thing on stdout.** Every explanatory line goes to
+stderr, so a caller can take the value directly:
+
+```powershell
+$addr = pwsh -NoProfile -File wsl-ephemeral.ps1 -Action HostAddress 2>$null
+```
+
+⛔ **It does not create a distro.** The alternative a caller had was to build a
+throwaway VM, read `/proc/net/route` inside it and decode little-endian hex, to
+answer a question the host already knows.
+
+| the mode in `%USERPROFILE%\.wslconfig` | the answer |
+| --- | --- |
+| `mirrored` | `127.0.0.1`. The distro and the host share the loopback address, and a caller's branch disappears. |
+| `nat`, which is WSL's default | the host's address on its WSL adapter, read from the interface. |
+| `bridged`, or anything else | ⛔ refused, exit 1. The distro is on the LAN and reaches this host at whichever host address is on that switch, which is a choice rather than a lookup. |
+
+⛔ **In NAT mode a host service on `127.0.0.1` is not reachable from the
+distro.** This is the trap the action exists for, and it is silent: a fixture
+bound to loopback simply never receives a connection, and nothing on either side
+says why. Bind it to the address this prints, or to `0.0.0.0` if you accept the
+LAN as well.
+
+⚠ **Read the address, never record it.** WSL assigns it and it changes.
+
+⚠ **A commented setting is not a setting.** Real `.wslconfig` files carry the
+alternatives commented out above the live one. A parser that grepped for the key
+would find `#networkingMode=mirrored` and answer `mirrored` on a host running
+NAT, which is wrong in the expensive direction: `127.0.0.1` is a plausible
+address that never connects. Only an uncommented key under `[wsl2]` is read, and
+the last one wins.
+
+⚠ **In NAT mode the WSL adapter exists only once the utility VM has started.**
+Before that, this exits 1 and says so rather than inventing an address.
+
+### ⭐ Measured, on this machine, on 2026-08-29
+
+| | |
+| --- | --- |
+| mode, from `.wslconfig` | `nat` |
+| adapter | `vEthernet (WSL (Hyper-V firewall))` |
+| `-Action HostAddress` | `172.23.96.1` |
+| `/proc/net/route` inside a real `alpine:3.22` distro | `016017AC`, which is `172.23.96.1` |
+
+⭐ **The two agree**, which is the point: the action answers what the distro
+would have said, without the distro. ⚠ The adapter has also been called
+`vEthernet (WSL)` on other builds, so it is matched on that prefix rather than
+on an exact name.
 
 ---
 
@@ -307,8 +438,10 @@ than failing later inside somebody's command.
 process's argument list.** Measured: a `-Command` value of ``a'b"c`d$e`` reaches
 a script spawned as `powershell -File script.ps1 -Command ...` as ``a'bc`d$e``.
 The quote is gone before this script runs, so nothing this script does can
-recover it. In-process, `& .\wsl-ephemeral.ps1 -Command $v`, it arrives intact,
-and PowerShell 7.6.5 is fine either way.
+recover it. ⚠ It survives `& .\wsl-ephemeral.ps1 -Command $v` in the same
+process, and PowerShell 7 does not have the fault at all;
+[`../../docs/conventions/shell.md`](../../docs/conventions/shell.md) section 8
+carries the measurement.
 
 ⭐ **`-CommandB64` is immune, and that is what it is for.** Base64 has no
 character any shell or argument parser touches.
@@ -538,6 +671,7 @@ being true the moment one of them was closed as a decision.
 | ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
 | ⚠ on Windows PowerShell 5.1, a `-Command` value loses its double quotes when this tool is launched as a child process | 5.1 drops them building the child's argument list, before this script sees anything, so nothing here can recover them. ⭐ Use `-CommandB64`. Not an open item: it is 5.1's argument handling, one layer above this tool. See the command channel section. |
 | ⚠ `Run` calls `exit` | correct when the script is invoked, fatal to the host session if it is dot-sourced. ⛔ Invoke it, never dot-source it. |
+| ⛔ there is no `-PortForward` | asked for, and refused. Forwarding a port on Windows means `netsh interface portproxy`, which needs an elevated session and leaves a rule on the machine after the tool exits. This tool creates nothing it cannot remove and asks for no elevation. ⭐ `HostAddress` answers the question the port forward was wanted for: bind the host service to that address instead of to loopback. |
 
 ---
 

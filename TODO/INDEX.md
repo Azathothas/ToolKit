@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 18  open 0  blocked 0  done 18
+total 30  open 0  blocked 0  done 30
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 6 | 6 |
-| P2 | 0 | 0 | 5 | 5 |
+| P1 | 0 | 0 | 12 | 12 |
+| P2 | 0 | 0 | 11 | 11 |
 | P3 | 0 | 0 | 4 | 4 |
-| **all** | **0** | **0** | **18** | **18** |
+| **all** | **0** | **0** | **30** | **30** |
 
 ---
 
@@ -33,9 +33,18 @@ total 18  open 0  blocked 0  done 18
 | BSD-01 | P1 | M | done | Run a BSD userland from Windows, with the least friction that works | [`bsd.md`](bsd.md) |
 | BSD-02 | P3 | S | done | Whether the other three BSDs can be run, not merely built | [`bsd.md`](bsd.md) |
 | DOC-01 | P2 | S | done | A `binfmt_misc` check for the podman machine on WSL2 | [`tooling.md`](tooling.md) |
+| DOC-02 | P2 | S | done | The tree broke its own character rule in 164 places | [`docs.md`](docs.md) |
+| DOC-03 | P2 | S | done | Seventeen sentences had two homes | [`docs.md`](docs.md) |
+| DOC-04 | P1 | S | done | The template skeletons go, and TODO/ becomes the shape the model names | [`docs.md`](docs.md) |
+| DOC-05 | P1 | M | done | `docs/AGENTS.md`, and what `README.md` is for | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
+| TOOL-04 | P1 | M | done | Two rules the conventions state and nothing checked | [`tooling.md`](tooling.md) |
+| TOOL-05 | P1 | S | done | `check-remote-items` reported red for an item that only needed reading | [`tooling.md`](tooling.md) |
+| TOOL-06 | P1 | S | done | `check-gate.ps1` skipped six checks on the host it exists for | [`tooling.md`](tooling.md) |
+| TOOL-07 | P2 | M | done | The helpers `Azathothas/TEMPLATE` is dropping move here | [`tooling.md`](tooling.md) |
+| TOOL-08 | P1 | S | done | The CI step that parses the workflows had never parsed one | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -48,6 +57,9 @@ total 18  open 0  blocked 0  done 18
 | WSL-10 | P3 | S | done | Retry a generated name on collision | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-11 | P3 | S | done | An `Enter` action | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-12 | P0 | S | done | `-Action New` fails outright on Windows PowerShell 5.1 | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-13 | P2 | M | done | Report what the machine is holding, and offer rather than act | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-14 | P2 | M | done | Answer what a distro reaches the host at, without creating a distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-15 | P2 | M | done | A launcher, so one fetch is enough | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 
 ---
 
@@ -71,34 +83,56 @@ Defined once, here, and meant.
 
 ---
 
-## ⭐ The argument behind the current ordering
+## ⭐ The argument behind the order these were worked in
 
 Written down so a later session can re-derive it rather than re-argue it.
+⚠ **This is a record of an ordering, not a live work order.** Every entry is
+closed, and [`PROGRESS.md`](PROGRESS.md) is where the next one will be.
 
-**`WSL-01` outranks everything regardless of size.** It is the only entry where
-the software reports success over a failure. Every other entry costs someone
-time; this one costs them a wrong belief, and the documented CI example is the
-affected path. It is an S.
+### The 2026-08-29 batch, ordered by what unlocked what
 
-**`TOOL-01` is next despite being infrastructure**, because it protects the
+⭐ **`TOOL-04` first, and it is not the most important entry.** It arms the two
+checks that MEASURE the defects `DOC-02` and `DOC-03` are about. Working those
+two first would have meant fixing what could be seen by reading, declaring it
+done, and leaving whatever a reading missed. The instrument comes before the
+count.
+
+**`TOOL-05` next because it is small and it was making a whole workflow lie.**
+An unread issue was reported as a failed check, so the weekly pass had been red
+since the first issue was filed. It is unrelated to everything else in the
+batch, which is exactly why it goes early rather than being carried.
+
+**Then `DOC-02`, `DOC-04`, `DOC-03`, in that order.** `DOC-02` is mechanical and
+touches every file, so it goes before anything that would have to be written
+twice. `DOC-04` removes nine files, and seven of `DOC-03`'s seventeen findings
+were in them, so removing first makes the remaining ten the real list rather
+than a list of things about to be deleted.
+
+**`TOOL-06`, `TOOL-07` and `TOOL-08` are where they are because each was found
+by doing the one before it.** `TOOL-06` came out of wiring `TOOL-04`'s checks
+into both halves of the gate; `TOOL-07` restored a twin comparison that had been
+removed with the files it compared; `TOOL-08` came out of validating a change to
+the workflow `TOOL-04` had just edited. ⚠ None of the three was in the plan, and
+each is a P1 or a P2 the plan would not have found.
+
+**`WSL-13`, `WSL-14` and `WSL-15` last**, because they change a file other
+repositories fetch. Everything before them is internal, so a mistake there
+costs this tree a commit; a mistake here costs a caller nobody can reach.
+⭐ `WSL-15` is last of the three: it wraps the script the other two change, and
+wrapping a moving target is how a wrapper drifts.
+
+### The 2026-08-27 batch, kept because the reasoning still holds
+
+**`WSL-01` outranked everything regardless of size.** It was the only entry
+where the software reported success over a failure. Every other entry costs
+someone time; that one cost them a wrong belief, and the documented CI example
+was the affected path.
+
+**`TOOL-01` came next despite being infrastructure**, because it protects the
 record every other entry is tracked in, and the failure it prevents is the one
-`work-todo.md` says was actually paid for: a published record saying entries
-were open beside entries saying done.
+`work-todo.md` says was actually paid for.
 
-**Then `WSL-03`, `WSL-04`, `WSL-02`**, in that order rather than by priority
-alone. `WSL-03` and `WSL-04` are both S and both remove a silent wrong answer.
-`WSL-02` is the same priority and an M, and it changes behaviour, so it wants a
-ruling recorded before it starts.
-
-**`BSD-01` is P1 and sits behind the `WSL-*` work**, not because it is
-blocked but because the half of it that was going to be built here turned out
-to belong elsewhere: `pkgforge-dev/docker-bsd` publishes the images, and what
-is left here is one scripted VM guest. ⚠ It carries an operator decision with a
-recommendation attached, and the first step is a measurement, not a build.
-
-⚠ **`BSD-02` is P3 and could be done any time.** It is small, it is written, and
-it exists so nobody re-derives the same negative answer in six months.
-
-**The `WSL-05` through `WSL-11` tail is ordered by effort, not by value.** They
-are close enough in value that ordering them any other way would be inventing a
-distinction.
+**`BSD-01` was P1 and sat behind the `WSL-*` work**, not because it was blocked
+but because the half of it that was going to be built here belonged elsewhere.
+⚠ **`BSD-02` was P3 and small**, written so nobody re-derives the same negative
+answer in six months.

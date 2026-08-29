@@ -19,12 +19,18 @@
     Destructive actions require -Force when running non-interactively.
 
 .PARAMETER Action
-    New     Create an ephemeral distro (from -Image or -Tarball).
-    Run     Run a command inside an existing ephemeral distro.
-    Enter   Attach an interactive shell to an existing ephemeral distro.
-    List    List ephemeral distros, and show what else exists (never touched).
-    Remove  Unregister one ephemeral distro and delete its disk.
-    Purge   Remove ALL ephemeral distros (prefix-matched only).
+    New          Create an ephemeral distro (from -Image or -Tarball).
+    Run          Run a command inside an existing ephemeral distro.
+    Enter        Attach an interactive shell to an existing ephemeral distro.
+    List         List ephemeral distros, and show what else exists (never touched).
+    Remove       Unregister one ephemeral distro and delete its disk.
+    Purge        Remove ALL ephemeral distros (prefix-matched only).
+    Resources    Report what WSL and the container engine are holding on this
+                 machine, and PRINT the cleanup commands without running any of
+                 them. Read-only. Nothing it reports is this script's to remove.
+    HostAddress  Print the address a distro reaches THIS host at, for the
+                 current WSL networking mode. Read-only, and it does not create
+                 a distro to find out.
 
 .PARAMETER Image
     OCI image reference, e.g. 'alpine:3.22', 'debian:bullseye-slim', 'fedora:44',
@@ -155,7 +161,7 @@
     Optional : podman or docker (only for -Image).
     Tested on: Windows PowerShell 5.1 and PowerShell 7+.
 #>
-# ── PSScriptAnalyzer, suppressed per rule with the reason ────────────────────
+# -- PSScriptAnalyzer, suppressed per rule with the reason --------------------
 # CI runs Invoke-ScriptAnalyzer over scripts/ at Error and Warning, so a
 # suppression here is the difference between a red gate and a green one. Each
 # is scoped to ONE rule and carries its justification. ⛔ Do not replace these
@@ -163,7 +169,7 @@
 # gate for every future script to spare this one, which is how a check stops
 # checking.
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
-    Justification = 'This is an interactive console tool. Its entire output is progress and a summary for a human at a terminal, which is the documented case for Write-Host. Nothing here is a value another script consumes: Run exits with the inner command''s code and callers read that.')]
+    Justification = 'This is an interactive console tool and its progress output is for a human at a terminal, which is the documented case for Write-Host. The ONE value another script consumes is the address -Action HostAddress prints, and that goes through Write-Output precisely so it is the only thing on stdout; Write-Host would put it on the information stream, where a caller assigning the result gets nothing. Every other action reports through the exit code.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
     Justification = 'Image, Tarball, Command, CommandFile, CommandB64, User, Ephemeral, OciEnv, Systemd and Force are read by the Invoke-Action* functions through script scope rather than as arguments. The analyzer does not follow that, and threading ten parameters through every call to satisfy it would make the code worse.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
@@ -173,7 +179,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge')]
+    [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress')]
     [string]$Action,
 
     [string]$Image,
@@ -239,6 +245,26 @@ $env:WSL_UTF8 = '1'
 function Write-Step { param([string]$Message) Write-Host "==> $Message" -ForegroundColor Cyan }
 function Write-Ok   { param([string]$Message) Write-Host "  * $Message" -ForegroundColor Green }
 function Write-Warn { param([string]$Message) Write-Host "  ! $Message" -ForegroundColor Yellow }
+
+function Write-Note {
+    <#
+      A line for a person, on STDERR, so stdout can carry a value.
+
+      ⛔ Write-Host IS NOT ENOUGH FOR THAT AND THE REASON IS NOT OBVIOUS.
+      In-process it writes to the information stream and a caller assigning the
+      result sees only Write-Output, which is what makes it look correct. Run as
+      a CHILD PROCESS, which is how this script is documented to be called, the
+      host writes it to the real stdout and it merges with the value. Measured
+      on 2026-08-29: `-Action HostAddress` captured in-process gave one address
+      and the same call through `pwsh -File` gave nine lines with the address
+      last. stderr is the only channel that behaves the same both ways.
+
+      ⚠ Used by -Action HostAddress alone. Every other action's output IS the
+      report, so moving it would only make it harder to read.
+    #>
+    param([string]$Message)
+    [Console]::Error.WriteLine($Message)
+}
 
 # --------------------------------------------------------------------------------------
 # Process helpers
@@ -316,6 +342,55 @@ function Get-WslDistroNames {
         if ($clean) { $names += $clean }
     }
     return $names
+}
+
+function Get-WslNetworkingMode {
+    <#
+      Which networking mode WSL is configured for, read from
+      %USERPROFILE%\.wslconfig without starting anything.
+
+      ⛔ A COMMENTED SETTING IS NOT A SETTING. Real .wslconfig files carry the
+      alternatives commented out above the live one, which is how they are
+      written and how Microsoft's own example is written. A parser that grepped
+      for the key would find `#networkingMode=mirrored` and answer mirrored on a
+      host running NAT, which is the wrong answer in the direction that costs an
+      hour: 127.0.0.1 is a plausible address that never connects.
+
+      ⚠ THE SECTION MATTERS. `[experimental]` carries keys with related names,
+      and only `[wsl2]` sets this one.
+
+      ⚠ LAST ONE WINS, because that is what an ini parser does and what WSL
+      does. A file that sets the key twice has one live value and it is the
+      second.
+
+      With no file, or no key in it, the answer is `nat`: that is WSL's
+      documented default, and `Source` says which of the two this was so a
+      caller can tell a measured answer from an assumed one.
+    #>
+    $path = $null
+    if (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+        $candidate = Join-Path $env:USERPROFILE '.wslconfig'
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { $path = $candidate }
+    }
+    if (-not $path) {
+        return [pscustomobject]@{ Mode = 'nat'; Source = 'the WSL default, no .wslconfig'; Path = $null }
+    }
+
+    $section = ''
+    $mode = ''
+    foreach ($raw in @(Get-Content -LiteralPath $path -ErrorAction SilentlyContinue)) {
+        $line = "$raw".Trim()
+        if (-not $line) { continue }
+        if ($line.StartsWith('#') -or $line.StartsWith(';')) { continue }
+        if ($line -match '^\[(.+)\]$') { $section = $Matches[1].Trim().ToLowerInvariant(); continue }
+        if ($section -ne 'wsl2') { continue }
+        if ($line -match '^networkingMode\s*=\s*([^\s#;]+)') { $mode = $Matches[1].Trim().ToLowerInvariant() }
+    }
+
+    if (-not $mode) {
+        return [pscustomobject]@{ Mode = 'nat'; Source = 'the WSL default, no key in .wslconfig'; Path = $path }
+    }
+    return [pscustomobject]@{ Mode = $mode; Source = '.wslconfig'; Path = $path }
 }
 
 function New-GuestScratchPath {
@@ -907,14 +982,24 @@ function ConvertTo-NativeArgumentString {
     return ($parts -join ' ')
 }
 
-function Invoke-WslBounded {
+function Invoke-BoundedProcess {
     <#
-      Runs wsl.exe with a HARD TIME LIMIT and returns what it printed.
+      Runs a native program with a HARD TIME LIMIT and returns what it printed.
+      With no -FilePath it runs wsl.exe, which is what every caller wanted when
+      it was written.
 
       The defect: a distro whose init wedges hangs the script forever with no
       output. There is a bounded sleep loop INSIDE the guest for the drvfs
       race, but the outer call had no limit at all, so anything that never
       answers never returns.
+
+      ⭐ IT TAKES A -FilePath BECAUSE A SECOND PROGRAM CAN HANG THE SAME WAY.
+      `podman` on Windows talks to a VM over ssh, and a machine that is starting,
+      stopping or wedged leaves the client waiting with nothing on either
+      stream. -Action Resources asks it several questions and none of them is
+      worth hanging a session for. ⛔ One bounded runner rather than two: a
+      second implementation of the read-before-wait ordering below is a second
+      place to get it wrong.
 
       ⛔ "IT NEVER ANSWERED" IS A DIFFERENT FACT FROM "IT IS NOT INSTALLED",
       and docs/conventions/shell.md section 9 says so in as many words. They
@@ -930,13 +1015,14 @@ function Invoke-WslBounded {
         [Parameter(Mandatory = $true)][string[]]$Arguments,
         [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
         [Parameter(Mandatory = $true)][ref]$ExitCode,
-        [Parameter(Mandatory = $true)][ref]$TimedOut
+        [Parameter(Mandatory = $true)][ref]$TimedOut,
+        [string]$FilePath = ''
     )
     $ExitCode.Value = 1
     $TimedOut.Value = $false
 
     $psi = New-Object Diagnostics.ProcessStartInfo
-    $psi.FileName               = Get-WslExe
+    $psi.FileName               = if ($FilePath) { $FilePath } else { Get-WslExe }
     $psi.Arguments              = ConvertTo-NativeArgumentString -Arguments $Arguments
     $psi.UseShellExecute        = $false
     $psi.CreateNoWindow         = $true
@@ -990,7 +1076,7 @@ function Get-DistroOutput {
     $line = ConvertTo-DistroScriptCommand -ScriptBytes $ScriptBytes -GuestPath (New-GuestScratchPath)
 
     $timedOut = $false
-    $text = Invoke-WslBounded -Arguments @('-d', $DistroName, '-u', $RunAs, '--', '/bin/sh', '-lc', $line) `
+    $text = Invoke-BoundedProcess -Arguments @('-d', $DistroName, '-u', $RunAs, '--', '/bin/sh', '-lc', $line) `
         -TimeoutSeconds $script:TimeoutSeconds -ExitCode $ExitCode -TimedOut ([ref]$timedOut)
 
     if ($timedOut) {
@@ -1504,6 +1590,308 @@ function Invoke-ActionList {
     }
 }
 
+function Get-DirectorySizeBytes {
+    <#
+      Bytes under a directory, or $null when it cannot be measured.
+
+      $null is a THIRD answer and every caller treats it as one, the same way
+      Get-VolumeFreeBytes does. A VHDX that is open, a path that vanished
+      between the listing and the walk, and a permission refusal all land here,
+      and none of them means "zero".
+    #>
+    param([Parameter(Mandatory = $true)][string]$Path)
+    try {
+        # ⛔ THE CONTAINMENT GUARD, ON A READ. It is not here to protect a
+        # deletion; nothing here deletes. It is here because the path is built
+        # from a distro name `wsl.exe` reported, and a name carrying a traversal
+        # would send a recursive walk somewhere it has no business being. A door
+        # sweep found this path had no guard while every writing path had two.
+        Assert-InsideBaseDir -Path $Path
+        if (-not (Test-Path -LiteralPath $Path)) { return $null }
+        $sum = (Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue |
+                Measure-Object -Property Length -Sum).Sum
+        if ($null -eq $sum) { return [int64]0 }
+        return [int64]$sum
+    }
+    catch { $null = $_; return $null }
+}
+
+function Get-EngineAnswer {
+    <#
+      Ask the container engine one read-only question, bounded, and return what
+      it printed. An empty string means it had nothing to say OR that it failed;
+      -ExitCode is how the caller tells those apart.
+
+      ⛔ NOTHING HERE WRITES. Every argument list this is called with is a
+      report: `system df`, `images`, `ps -a`, `volume ls`. -Action Resources
+      prints removal commands and runs none of them, and this function is why
+      that is a property of the code rather than a promise in a comment.
+
+      ⚠ podman on Windows talks to a VM. A machine that is starting, stopping or
+      wedged leaves the client waiting with nothing on either stream, so the
+      call is bounded like every other question this script asks.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$EnginePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][ref]$ExitCode
+    )
+    $ExitCode.Value = 1
+    $timedOut = $false
+    $text = Invoke-BoundedProcess -FilePath $EnginePath -Arguments $Arguments `
+        -TimeoutSeconds $script:TimeoutSeconds -ExitCode $ExitCode -TimedOut ([ref]$timedOut)
+    if ($timedOut) {
+        # ⛔ Reported, not thrown. A wedged engine must not stop the WSL half of
+        # the report, which is the half this script actually owns.
+        $ExitCode.Value = 124
+        return ''
+    }
+    return $text
+}
+
+function Get-EngineUsage {
+    <#
+      What the container engine is holding, read only.
+
+      ⚠ THE FIELD SEPARATOR IS A PIPE AND NOT A TAB, and that is not a style
+      choice. ConvertTo-NativeArgumentString REFUSES an argument carrying a
+      backslash, so a Go template written as `{{.Type}}\t{{.Size}}` cannot be
+      passed at all. A pipe needs no escape and no shell sees it: this builds a
+      ProcessStartInfo argument string, not a command line for a shell.
+    #>
+    param([Parameter(Mandatory = $true)]$Engine)
+
+    $rc = 0
+    $df = Get-EngineAnswer -EnginePath $Engine.Path -ExitCode ([ref]$rc) -Arguments @(
+        'system', 'df', '--format', '{{.Type}}|{{.Total}}|{{.Active}}|{{.Size}}|{{.Reclaimable}}')
+    if ($rc -ne 0) {
+        return [pscustomobject]@{ Reachable = $false; Reason = $df.Trim(); Rows = @(); Dangling = -1; Unused = -1 }
+    }
+
+    $rows = @()
+    foreach ($line in ($df -split "`r?`n")) {
+        $t = $line.Trim()
+        if (-not $t) { continue }
+        $p = $t -split '\|'
+        if ($p.Count -lt 5) { continue }      # a warning on stderr is not a row
+        $rows += [pscustomobject]@{
+            Type = $p[0]; Total = $p[1]; Active = $p[2]; Size = $p[3]; Reclaimable = $p[4]
+        }
+    }
+
+    # Counted separately, because `system df` reports a size and not a count of
+    # the things nothing is using.
+    $dRc = 0
+    $dang = Get-EngineAnswer -EnginePath $Engine.Path -ExitCode ([ref]$dRc) -Arguments @(
+        'images', '--filter', 'dangling=true', '--format', '{{.ID}}')
+    $dangling = if ($dRc -eq 0) { @($dang -split "`r?`n" | Where-Object { $_.Trim() }).Count } else { -1 }
+
+    $vRc = 0
+    $vol = Get-EngineAnswer -EnginePath $Engine.Path -ExitCode ([ref]$vRc) -Arguments @(
+        'volume', 'ls', '--filter', 'dangling=true', '--format', '{{.Name}}')
+    $unused = if ($vRc -eq 0) { @($vol -split "`r?`n" | Where-Object { $_.Trim() }).Count } else { -1 }
+
+    return [pscustomobject]@{ Reachable = $true; Reason = ''; Rows = $rows; Dangling = $dangling; Unused = $unused }
+}
+
+function Invoke-ActionResources {
+    <#
+      What this machine is holding, and the commands that would free it.
+
+      ⛔ IT OFFERS AND IT DOES NOT DO. Nothing here removes anything, and the
+      cleanup commands are PRINTED rather than run, including the ones for
+      distros this script created. The report is for an agent to hand to a
+      person, and deciding to reclaim somebody's 30 GB of images is that
+      person's call rather than a tool's.
+
+      ⚠ MOST OF WHAT IT REPORTS IS NOT THIS SCRIPT'S. The story that asked for
+      it is an agent finding hundreds of images and several orphaned volumes on
+      a machine where this script had never been run: the engine is shared with
+      everything else on the host. So the report separates what this script made
+      from what it merely found, and says which is which on every line.
+
+      ⚠ It cannot tell a leftover from something in use. A named volume with no
+      container attached is not garbage: it is how somebody keeps data between
+      runs. That is why the verdict is a count and a size rather than a
+      recommendation.
+    #>
+    $all  = @(Get-WslDistroNames)
+    $mine = @($all | Where-Object { $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
+
+    Write-Step "What this script made, under $($script:BaseDir)"
+    $mineBytes = 0
+    $unmeasured = 0
+    if ($mine.Count -eq 0) {
+        Write-Host "  (no ephemeral distros)" -ForegroundColor DarkGray
+    }
+    foreach ($d in $mine) {
+        $size = Get-DirectorySizeBytes -Path (Join-Path $script:BaseDir $d)
+        if ($null -eq $size) {
+            $unmeasured++
+            Write-Host ("  {0,-40} size could not be read" -f $d) -ForegroundColor Yellow
+        }
+        else {
+            $mineBytes += $size
+            Write-Host ("  {0,-40} {1,10:N1} MiB" -f $d, ($size / 1MB))
+        }
+    }
+
+    $orphans = @(Get-OrphanTarball)
+    $orphanBytes = 0
+    if ($orphans.Count -gt 0) {
+        $orphanBytes = ($orphans | Measure-Object -Property Length -Sum).Sum
+        foreach ($t in $orphans) {
+            Write-Host ("  {0,-40} {1,10:N1} MiB   rootfs tarball, written {2:yyyy-MM-dd HH:mm:ss}Z" -f `
+                $t.Name, ($t.Length / 1MB), $t.LastWriteTimeUtc)
+        }
+        Write-Warn "a New running right now also has a .tar here: check the time before purging."
+    }
+
+    # ⛔ A dash rather than a number when something could not be measured. A
+    # total that silently counts an unreadable directory as zero is a number
+    # somebody acts on.
+    if ($unmeasured -gt 0) {
+        Write-Warn ("total not stated: $unmeasured director(y/ies) could not be measured. " +
+                    "Measured so far: {0:N1} MiB" -f (($mineBytes + $orphanBytes) / 1MB))
+    }
+    else {
+        Write-Ok ("{0:N1} MiB held by this script, across {1} distro(s) and {2} tarball(s)" -f `
+            (($mineBytes + $orphanBytes) / 1MB), $mine.Count, $orphans.Count)
+    }
+
+    Write-Step "What else is registered with WSL, which this script never touches"
+    $others = @($all | Where-Object { -not $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
+    if ($others.Count -eq 0) { Write-Host "  (none)" -ForegroundColor DarkGray }
+    foreach ($o in $others) {
+        $tag = if (Test-ProtectedName -DistroName $o) { '   [PROTECTED]' } else { '' }
+        Write-Host ("  {0}{1}" -f $o, $tag) -ForegroundColor DarkGray
+    }
+    Write-Host "  their disks are wherever they were imported to, which this script does not know." -ForegroundColor DarkGray
+
+    Write-Step "What the container engine is holding, which this script never made"
+    $engine = Get-ContainerEngine
+    if (-not $engine) {
+        Write-Host "  (no podman or docker on this host)" -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "  engine: $($engine.Name) ($($engine.Path))" -ForegroundColor DarkGray
+        $usage = Get-EngineUsage -Engine $engine
+        if (-not $usage.Reachable) {
+            Write-Warn "the engine did not answer, so nothing about it is reported."
+            Write-Warn "on Windows podman runs in its own VM: try  podman machine start"
+            if ($usage.Reason) { Write-Host "    $($usage.Reason)" -ForegroundColor DarkGray }
+        }
+        else {
+            Write-Host ("  {0,-15} {1,6} {2,7} {3,12}  {4}" -f 'TYPE', 'TOTAL', 'ACTIVE', 'SIZE', 'RECLAIMABLE')
+            foreach ($r in $usage.Rows) {
+                Write-Host ("  {0,-15} {1,6} {2,7} {3,12}  {4}" -f $r.Type, $r.Total, $r.Active, $r.Size, $r.Reclaimable)
+            }
+            if ($usage.Dangling -ge 0) { Write-Host ("  dangling images: {0}" -f $usage.Dangling) }
+            if ($usage.Unused -ge 0)   { Write-Host ("  unused volumes:  {0}" -f $usage.Unused) }
+            Write-Warn ("RECLAIMABLE is not the whole prize. This engine reports three rows " +
+                        "from system df, Images, Containers and Local Volumes, and no build cache " +
+                        "row, so a prune can free considerably more than the figure above.")
+        }
+    }
+
+    Write-Step "The commands that would free it. NONE of them was run."
+    Write-Host ""
+    Write-Host "  # this script's own, and the only ones it will ever remove:" -ForegroundColor DarkGray
+    Write-Host "  pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force"
+    Write-Host ""
+    Write-Host "  # the engine's, and NOT this script's to run. Read them before pasting one:" -ForegroundColor DarkGray
+    Write-Host "  podman system df                      # the numbers above, again"
+    Write-Host "  podman image prune --force            # dangling images only"
+    Write-Host "  podman volume prune --force           # volumes nothing references"
+    Write-Host "  podman system prune -a --volumes --force"
+    Write-Host ""
+    Write-Warn "the last one removes every image no RUNNING container uses, which is not the"
+    Write-Warn "same as unused: an image you pulled this morning goes too, and so does every"
+    Write-Warn "named volume holding data somebody kept on purpose."
+}
+
+function Invoke-ActionHostAddress {
+    <#
+      The address a distro reaches THIS host at, printed without creating a
+      distro to find out.
+
+      ⭐ THE VALUE IS THE ONLY THING ON STDOUT. Every explanatory line goes
+      through Write-Note, which is stderr, so both of these assign one address:
+
+          $addr = & .\wsl-ephemeral.ps1 -Action HostAddress
+          $addr = pwsh -NoProfile -File .\wsl-ephemeral.ps1 -Action HostAddress 2>$null
+
+      ⚠ The two differ in what the OPERATOR sees, not in what the caller gets.
+      In-process the notes reach the console directly and PowerShell's `2>`
+      cannot suppress them; out of process they are ordinary stderr and it can.
+      Measured both ways on 2026-08-29, and both gave `172.23.96.1`.
+
+      ⛔ Write-Host WOULD NOT DO. See Write-Note: it is invisible in-process and
+      lands on stdout out of process, so the two calls above would disagree.
+      ⛔ Do not add a second Write-Output to this path.
+
+      WHY IT EXISTS. A caller that wanted this had to create a distro, read
+      /proc/net/route inside it and decode little-endian hex, which is a
+      throwaway VM built to answer a question the host already knows. In
+      mirrored mode the answer is 127.0.0.1 and the caller's branch disappears.
+
+      ⛔ IT REFUSES RATHER THAN GUESSING. A mode it cannot resolve to one
+      address exits 1 with the candidates named. An address invented here is
+      one a caller binds a fixture to and then debugs for an hour.
+    #>
+    $net = Get-WslNetworkingMode
+    Write-Note "==> WSL networking mode: $($net.Mode) (from $($net.Source))"
+    if ($net.Path) { Write-Note "    $($net.Path)" }
+
+    if ($net.Mode -eq 'mirrored') {
+        Write-Note "  * mirrored mode: the distro and this host share the loopback address."
+        Write-Note "    A host service on 127.0.0.1 is reachable from inside the distro."
+        Write-Output '127.0.0.1'
+        return
+    }
+
+    if ($net.Mode -ne 'nat') {
+        # bridged, or something a later WSL adds. Both have more than one right
+        # answer and this script has no way to choose between them.
+        throw ("Networking mode is '$($net.Mode)', and this script can only answer for 'nat' " +
+               "and 'mirrored'. In bridged mode the distro is on the LAN and reaches this host " +
+               "at whichever host address is on that switch, which is a choice rather than a " +
+               "lookup. Read it from inside a distro instead: " +
+               "awk '`$2 == 00000000 { print `$3 }' /proc/net/route, little-endian hex.")
+    }
+
+    $addr = $null
+    $ifname = ''
+    foreach ($n in [Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+        # ⚠ MATCHED ON A PREFIX, NOT ON AN EXACT NAME. Windows has called this
+        # adapter both 'vEthernet (WSL)' and 'vEthernet (WSL (Hyper-V
+        # firewall))'; measured on 2026-08-29 this host has the second.
+        if ($n.Name -notlike 'vEthernet (WSL*') { continue }
+        if ($n.OperationalStatus -ne [Net.NetworkInformation.OperationalStatus]::Up) { continue }
+        foreach ($u in $n.GetIPProperties().UnicastAddresses) {
+            if ($u.Address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork) { continue }
+            $addr = $u.Address.IPAddressToString
+            $ifname = $n.Name
+            break
+        }
+        if ($addr) { break }
+    }
+
+    if (-not $addr) {
+        throw ("NAT mode, and no WSL network adapter is up on this host. It is created when the " +
+               "WSL utility VM first starts, so this is what an answer looks like before anything " +
+               "has run: start a distro and ask again. Nothing was created to find that out.")
+    }
+
+    Write-Note "  * NAT mode: the distro reaches this host at $addr, on '$ifname'."
+    Write-Note "  ! A HOST SERVICE ON 127.0.0.1 IS NOT REACHABLE FROM THE DISTRO IN THIS MODE."
+    Write-Note "    Bind it to $addr, or to 0.0.0.0 if you accept the LAN as well."
+    Write-Note "    The failure is silent: a fixture on loopback simply never receives a"
+    Write-Note "    connection, and nothing on either side says why."
+    Write-Note "    This address is assigned by WSL and changes. Read it, never record it."
+    Write-Output $addr
+}
+
 function Invoke-ActionPurge {
     $mine    = @(Get-WslDistroNames | Where-Object { $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
     $orphans = @(Get-OrphanTarball)
@@ -1566,6 +1954,13 @@ try {
         'Run'    { Invoke-ActionRun }
         'Enter'  { Invoke-ActionEnter }
         'List'   { Invoke-ActionList }
+        # ⛔ Both of these are read-only and neither creates a distro. They sit
+        # beside List rather than under it because a caller asking "what is on
+        # this machine" and a caller asking "what do I bind to" want different
+        # answers, and folding either into List would make the one line a script
+        # consumes arrive in the middle of a page of prose.
+        'Resources'   { Invoke-ActionResources }
+        'HostAddress' { Invoke-ActionHostAddress }
         'Remove' {
             if (-not $Name) { throw "Action Remove requires -Name." }
             Remove-EphemeralDistro -DistroName (Resolve-DistroName -Requested $Name -FromImage '')
@@ -1574,6 +1969,12 @@ try {
     }
 }
 catch {
-    Write-Host "ERROR: $($_.Exception.Message)" -ForegroundColor Red
+    # ⛔ STDERR, NOT STDOUT. An error is not a result, and -Action HostAddress
+    # makes that concrete: a caller assigning this script's stdout to a variable
+    # would otherwise get the string "ERROR: ..." where an IP address goes, and
+    # act on it. Every check under scripts/common/ already reports this way.
+    # ⚠ Nothing about the exit code changed, and the exit code is what every
+    # existing caller reads. docs/consumers.md records the move.
+    [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
     exit 1
 }

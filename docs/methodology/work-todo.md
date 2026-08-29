@@ -54,9 +54,9 @@ Authored per [`authoring.md`](authoring.md). Its fields are not decoration:
 An entry closes **in place**, with its acceptance command actually run and the
 output recorded.
 
-⛔ **A premise a measurement disproves keeps its title and gets the correction
-written underneath.** Never a silent edit of the premise. The title is how the
-entry has always been referred to.
+⛔ **A disproved premise is corrected underneath and the entry keeps its
+title.** [`authoring.md`](authoring.md) section 2 is where that rule lives and
+says why.
 
 ---
 

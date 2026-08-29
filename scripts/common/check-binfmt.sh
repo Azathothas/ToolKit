@@ -14,7 +14,7 @@
 # ⭐ It reads the KERNEL, not a unit's exit code. That is the whole point: the
 # unit is the thing that lied.
 #
-# ── ⚠ WHERE IT LOOKS, AND WHY NOT `podman machine ssh` ──────────────────────
+# -- ⚠ WHERE IT LOOKS, AND WHY NOT `podman machine ssh` ----------------------
 #
 # The issue that asked for this assumed `podman machine ssh`. It is not used,
 # and the reason is measured: on Windows that command passes
@@ -144,7 +144,7 @@ else
   esac
 fi
 
-# ── the verdict ────────────────────────────────────────────────────────────
+# -- the verdict ------------------------------------------------------------
 PROBLEM=""
 if [ -n "$READ_ERR" ]; then
   if [ "$STACKED" = 1 ]; then

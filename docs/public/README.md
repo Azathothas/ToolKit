@@ -87,8 +87,14 @@ either clear answer.
 to wait.** Without it, a finder's options are a public issue or silence, and
 both are bad.
 
-`SECURITY.md` carries it. Keep it short: where to send it, what to include,
-what happens next. Do not promise a timeline you will not meet.
+A `SECURITY.md` at the root is where a finder looks and where the platform
+points them. Keep it short: where to send it, what to include, what happens
+next. Do not promise a timeline you will not meet.
+
+⚠ **This repository has none**, and that is an open question in
+[`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) rather than an oversight this
+page can settle. ⛔ Saying so here is the point: a rule naming a file that does
+not exist reads as a rule that is being followed.
 
 ---
 

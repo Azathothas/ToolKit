@@ -17,16 +17,16 @@
 #      already existed. A tag resolving cleanly says nothing about whether it
 #      is current.
 #
-# ── WHAT IT VERIFIES, AND IT DOES NOT TAKE THE ITEM'S WORD ──────────────────
+# -- WHAT IT VERIFIES, AND IT DOES NOT TAKE THE ITEM'S WORD ------------------
 # For every pinned action a pull request proposes:
-#   • the commit exists AND belongs to the repository the ref names, so a
+#   - the commit exists AND belongs to the repository the ref names, so a
 #     lookalike SHA cannot ride in;
-#   • the tag in the trailing comment really resolves to that commit, so the
+#   - the tag in the trailing comment really resolves to that commit, so the
 #     comment cannot drift from the pin it labels;
-#   • the tag is a published release, not a draft, a prerelease, or a tag
+#   - the tag is a published release, not a draft, a prerelease, or a tag
 #     somebody pushed over;
-#   • ⭐ the runtime it DECLARES is not one the platform has deprecated;
-#   • whether a NEWER major exists than the one being proposed.
+#   - ⭐ the runtime it DECLARES is not one the platform has deprecated;
+#   - whether a NEWER major exists than the one being proposed.
 #
 # ⛔ IT IS READ ONLY. It never merges, never closes, never comments, never
 # approves. Deciding is the operator's. docs/security/remote-ops.md.
@@ -39,9 +39,21 @@
 #   sh scripts/common/check-remote-items.sh --json
 #   sh scripts/common/check-remote-items.sh --repo OWNER/NAME
 #
-# Exit codes: 0 nothing open, or everything open verified;
-#             1 something open did not verify, or needs a human;
+# Exit codes: 0 nothing open, or nothing open failed a check;
+#             1 an item's claim did not survive checking;
 #             2 could not run.
+#
+# ⚠ AN UNREAD ITEM IS NOT A FAILED CHECK, and this used to exit 1 for one. Any
+# repository with an open issue was then permanently red, which is how a check
+# stops being read: the one state it cannot report is the one it exists for.
+# An item needing a reading is counted, named, and exits 0. Only a claim that
+# was checked and did not hold exits 1.
+#
+# ⛔ `--json` PUTS THE JSON DOCUMENT ON STDOUT AND NOTHING ELSE. It used to
+# print the whole human report there first, so `check | jq` failed to parse and
+# every other check in this directory was machine-readable while this one was
+# not. The report still goes out, on stderr, where a human reading a terminal
+# sees it and a gate runner reading stdout does not.
 #
 # ⛔ Read the exit code from this process, unpiped.
 
@@ -64,6 +76,15 @@ command -v gh >/dev/null 2>&1 || { printf 'check-remote-items: gh not found\n' >
 command -v jq >/dev/null 2>&1 || { printf 'check-remote-items: jq not found\n' >&2; exit 2; }
 gh auth status >/dev/null 2>&1 || { printf 'check-remote-items: gh is not authenticated\n' >&2; exit 2; }
 
+# ⛔ IN JSON MODE, STDOUT IS RESERVED FOR THE DOCUMENT. Everything the body
+# prints for a person is moved to stderr here, in one place, and fd 3 holds the
+# real stdout until the document is written. Doing it once at the top is what
+# keeps the reporting code below identical in both modes: a second set of
+# printf calls guarded by a flag is a second thing to keep in step.
+if [ "$JSON" = "1" ]; then
+  exec 3>&1 1>&2
+fi
+
 GH_ARGS=""
 [ -n "$REPO" ] && GH_ARGS="--repo $REPO"
 
@@ -83,7 +104,7 @@ note()  { printf '  %s\n' "$1"; }
 bad()   { printf '  ⛔ %s\n' "$1"; PROBLEMS=$((PROBLEMS + 1)); }
 human() { printf '  ⚠ %s\n' "$1"; NEEDS_HUMAN=$((NEEDS_HUMAN + 1)); }
 
-# ── open issues ─────────────────────────────────────────────────────────────
+# -- open issues -------------------------------------------------------------
 # ⚠ Reported, not judged. An issue is a person's account of a problem and
 # nothing here can verify it. What this can do is stop one going unnoticed.
 printf '\nOPEN ISSUES\n'
@@ -101,7 +122,7 @@ else
   human "$(jq 'length' "$TMP/issues.json") open issue(s). Read them; nothing here can verify a report."
 fi
 
-# ── open pull requests ──────────────────────────────────────────────────────
+# -- open pull requests ------------------------------------------------------
 printf '\nOPEN PULL REQUESTS\n'
 # shellcheck disable=SC2086
 if ! gh pr list $GH_ARGS --state open --limit 50 \
@@ -206,23 +227,28 @@ else
   done < "$TMP/prnums"
 fi
 
-# ── report ──────────────────────────────────────────────────────────────────
+# -- report ------------------------------------------------------------------
+# ⛔ THE TWO MODES REPORT THE SAME VERDICT. They differed once: text exited 1
+# whenever anything needed a reading and json exited 0 over the same tree, so a
+# gate runner saw green where a person saw red. Both twins carried it, so
+# check-twins compared them and passed. One exit expression, computed here,
+# is what stops that returning.
 printf '\n'
-if [ "$JSON" = "1" ]; then
-  printf '{"schema":"check-remote-items/1","problems":%s,"needs_human":%s,"open_prs":%s}\n' \
-    "$PROBLEMS" "$NEEDS_HUMAN" "$PRCOUNT"
-  [ "$PROBLEMS" -gt 0 ] && exit 1
-  exit 0
-fi
-
 if [ "$PROBLEMS" -gt 0 ]; then
   printf '⛔ %s claim(s) did not survive checking. Do not merge on the description.\n' "$PROBLEMS"
-  exit 1
-fi
-if [ "$NEEDS_HUMAN" -gt 0 ]; then
+  RC=1
+elif [ "$NEEDS_HUMAN" -gt 0 ]; then
   printf '⚠ %s item(s) need a reading. Nothing failed a check; nothing was verified either.\n' "$NEEDS_HUMAN"
-  exit 1
+  RC=0
+else
+  printf '✅ every mechanically checkable claim held.\n'
+  printf '⚠ That is not approval. Whether you want a change is a reading, not a check.\n'
+  RC=0
 fi
-printf '✓ every mechanically checkable claim held.\n'
-printf '⚠ That is not approval. Whether you want a change is a reading, not a check.\n'
-exit 0
+
+if [ "$JSON" = "1" ]; then
+  exec 1>&3 3>&-
+  printf '{"schema":"check-remote-items/1","problems":%s,"needs_human":%s,"open_prs":%s}\n' \
+    "$PROBLEMS" "$NEEDS_HUMAN" "$PRCOUNT"
+fi
+exit "$RC"

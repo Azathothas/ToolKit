@@ -34,7 +34,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # ── the POSIX half ────────────────────────────────────────────────────────
+  # -- the POSIX half --------------------------------------------------------
   checks:
     name: checks (ubuntu)
     runs-on: ubuntu-latest
@@ -75,6 +75,17 @@ jobs:
       - name: documents resolve and match the prose rule
         run: sh scripts/common/check-docs.sh
 
+      # ⛔ BOTH OF THESE, and neither is covered by the step above. check-docs
+      # reads markdown; check-markers owns the character rule over every tracked
+      # text file, and check-one-home reads the documents against each other.
+      # check-docs reported this tree clean while there were 164 characters
+      # outside the five, all of them in scripts.
+      - name: only the five defined characters, and not too many of them
+        run: sh scripts/common/check-markers.sh
+
+      - name: no sentence has two homes
+        run: sh scripts/common/check-one-home.sh
+
       - name: no template placeholder survived into a real file
         run: sh scripts/common/check-placeholders.sh
 
@@ -110,25 +121,41 @@ jobs:
           if [ -n "$bad" ]; then echo "$bad"; exit 1; fi
           echo "clean"
 
+      # ⛔ ENUMERATED BY git, NOT BY glob, AND THE COUNT IS ASSERTED.
+      # `glob.glob('**/*.yml', recursive=True)` SKIPS DOT-DIRECTORIES, and every
+      # yaml file in this repository lives under `.github/`. So this step
+      # iterated zero files, printed nothing and exited 0 for as long as it
+      # existed: a workflow edit could not have been caught by it. That is the
+      # "step that exits 0 having done nothing it was asked to do" row in
+      # docs/conventions/forbidden-patterns.md, in this repository's own CI.
+      # ⭐ A step that can only pass verifies its own effect, which here means
+      # refusing an empty scope rather than reporting green over it.
+      # ⚠ chr(0) rather than a backslash escape: the payload crosses a shell.
       - name: yaml parses
         run: |
           python3 -c "
-          import sys, glob
+          import subprocess, sys
           try:
               import yaml
           except ImportError:
               sys.exit('pyyaml missing')
+          out = subprocess.run(['git', 'ls-files', '-z', '*.yml', '*.yaml'],
+                               capture_output=True, text=True, check=True).stdout
+          names = [n for n in out.split(chr(0)) if n]
+          if not names:
+              sys.exit('no yaml file in scope, so this step cannot report a pass')
           bad = 0
-          for f in glob.glob('**/*.yml', recursive=True):
+          for f in names:
               try:
                   yaml.safe_load(open(f, encoding='utf-8'))
                   print('ok  ', f)
               except Exception as e:
                   print('FAIL', f, e); bad = 1
+          print(str(len(names)) + ' file(s) parsed')
           sys.exit(bad)
           "
 
-  # ── the Windows half: where the PowerShell in this repository actually runs ─
+  # -- the Windows half: where the PowerShell in this repository actually runs -
   windows:
     name: powershell (windows)
     runs-on: windows-latest
@@ -173,6 +200,8 @@ jobs:
           $fail = 0
           $checks = @(
             @{ f = 'check-docs.ps1';           a = @() },
+            @{ f = 'check-markers.ps1';        a = @() },
+            @{ f = 'check-one-home.ps1';       a = @() },
             @{ f = 'check-placeholders.ps1';   a = @() },
             @{ f = 'check-control-bytes.ps1';  a = @() },
             @{ f = 'check-record.ps1';         a = @() },
@@ -205,7 +234,7 @@ jobs:
           if ($j.analyzerSkipped) { Write-Output "PSScriptAnalyzer was SKIPPED in CI"; exit 1 }
           Write-Output ("clean over " + $j.files + " file(s)")
 
-  # ── the two probes must agree. The drift rule, with a machine behind it ────
+  # -- the two probes must agree. The drift rule, with a machine behind it ----
   twins:
     name: the two probes agree
     runs-on: ubuntu-latest

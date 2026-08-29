@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/common/set-record.mjs - move an entry's status and re-derive every count from the rows.
 //
-// ── WHAT IT IS FOR ───────────────────────────────────────────────────────────────────────────
+// -- WHAT IT IS FOR ---------------------------------------------------------------------------
 // docs/methodology/work-todo.md calls the counts "the model's one mechanical hazard" and says to
 // automate BOTH halves. check-record.sh is the reader and it has been a gate since it was written;
 // this is the writer it names, and until this existed the arithmetic was done by hand.
@@ -11,12 +11,12 @@
 // record's own count line. Doing that by hand eleven times in one session is how a published record
 // ends up saying an entry is open beside an entry saying done.
 //
-// ── ⛔ IT IS NOT ITS OWN VERIFIER ─────────────────────────────────────────────────────────────
+// -- ⛔ IT IS NOT ITS OWN VERIFIER -------------------------------------------------------------
 // It does not run check-record and report green. A writer that grades its own work is one bug away
 // from hiding the bug, and work-todo.md is explicit that the reader must assert INDEPENDENTLY.
 // It prints the command instead, and check-gate runs it.
 //
-// ── WHY NODE, WITH NO POWERSHELL TWIN ────────────────────────────────────────────────────────
+// -- WHY NODE, WITH NO POWERSHELL TWIN --------------------------------------------------------
 // The same reason write-file.mjs has none, and scripts/README.md carries it: node is the same
 // program on every host. No sed, no sort-that-is-really-Sort-Object, no shell built-ins, no
 // aliases. The reason the sh checks needed twins does not apply here, and a second implementation
@@ -31,11 +31,11 @@
 // `recount` changes no status; it re-derives every count from whatever the rows currently say. That
 // is the repair path when a status was edited by hand.
 //
-// ── ⚠ WHAT IT REFUSES ────────────────────────────────────────────────────────────────────────
-//  • an id with no row, or a row whose entry heading is missing;
-//  • a status outside open/blocked/done;
-//  • a counts block or priority table it cannot find, rather than appending a new one;
-//  • ⛔ a priority table row for a priority no entry uses is LEFT ALONE, not deleted. The table is
+// -- ⚠ WHAT IT REFUSES ------------------------------------------------------------------------
+//  - an id with no row, or a row whose entry heading is missing;
+//  - a status outside open/blocked/done;
+//  - a counts block or priority table it cannot find, rather than appending a new one;
+//  - ⛔ a priority table row for a priority no entry uses is LEFT ALONE, not deleted. The table is
 //    the project's declared shape and a priority with zero entries today is still a priority.
 //
 // Exit codes: 0 written (or already correct), 1 refused, 2 could not run.
@@ -72,7 +72,7 @@ if (!['status', 'recount'].includes(MODE ?? '')) {
 const JSON_OUT = has('json');
 const DIR = flag('dir') ?? 'TODO';
 
-// ── the repository root, so the scope does not depend on who called it ───────────────────────
+// -- the repository root, so the scope does not depend on who called it -----------------------
 let ROOT;
 try {
   ROOT = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim();
@@ -86,9 +86,9 @@ if (!existsSync(INDEX)) die(2, `no index at ${DIR}/INDEX.md`);
 
 const STATUSES = ['open', 'blocked', 'done'];
 
-// ── atomic write: temp file in the SAME directory, then rename. A killed process leaves the old
+// -- atomic write: temp file in the SAME directory, then rename. A killed process leaves the old
 // file intact rather than a truncated one, and same-directory matters because a rename across
-// volumes is a copy and loses the guarantee. Same rule as write-file.mjs. ─────────────────────
+// volumes is a copy and loses the guarantee. Same rule as write-file.mjs. ---------------------
 const writeAtomic = (path, text) => {
   const tmp = join(dirname(path), `.set-record.${randomBytes(8).toString('hex')}.tmp`);
   try {
@@ -105,7 +105,7 @@ const writeAtomic = (path, text) => {
   }
 };
 
-// ── read the entry rows out of the index ────────────────────────────────────────────────────
+// -- read the entry rows out of the index ----------------------------------------------------
 // A row is: | ID | PRI | EFF | STATUS | title | [`file`](file) |
 // ⚠ Selected on an id shaped like LETTERS-DIGITS rather than on line position, because the header
 // and the separator both start with a pipe. check-record.sh selects the same way on purpose.
@@ -124,7 +124,7 @@ if (rows.length === 0) die(2, `no entry rows found in ${DIR}/INDEX.md`);
 
 const changed = [];
 
-// ── mode: status ────────────────────────────────────────────────────────────────────────────
+// -- mode: status ----------------------------------------------------------------------------
 if (MODE === 'status') {
   const id = argv[1];
   const want = argv[2];
@@ -136,7 +136,7 @@ if (MODE === 'status') {
   const row = rows.find((r) => r.id === id);
   if (!row) die(1, `${id} has no row in ${DIR}/INDEX.md. Nothing was written.`);
 
-  // ── the entry's own status line, in whichever category file holds it ──────────────────────
+  // -- the entry's own status line, in whichever category file holds it ----------------------
   // ⛔ Both files move or neither does. A row that says done beside an entry that says open is
   // exactly the disagreement check-record exists to catch, and writing one without the other
   // would be this tool manufacturing it.
@@ -186,7 +186,7 @@ if (MODE === 'status') {
   }
 }
 
-// ── re-derive every count from the rows ─────────────────────────────────────────────────────
+// -- re-derive every count from the rows -----------------------------------------------------
 const total = rows.length;
 const tally = (st) => rows.filter((r) => r.status === st).length;
 const open = tally('open');
@@ -244,7 +244,7 @@ if (nextIndex !== indexText) {
   if (touchedTable) changed.push(`${DIR}/INDEX.md: priority table, ${touchedTable} row(s)`);
 }
 
-// ── the record's own count line ─────────────────────────────────────────────────────────────
+// -- the record's own count line -------------------------------------------------------------
 // ⚠ A record with no count line is not an error. Not every project states one, and inventing the
 // requirement here would refuse a correct tree. check-record.sh takes the same position.
 if (existsSync(RECORD)) {
@@ -267,7 +267,7 @@ if (existsSync(RECORD)) {
   }
 }
 
-// ── report ──────────────────────────────────────────────────────────────────────────────────
+// -- report ----------------------------------------------------------------------------------
 if (JSON_OUT) {
   console.log(
     JSON.stringify({

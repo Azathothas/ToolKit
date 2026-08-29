@@ -17,7 +17,12 @@
 # .github/workflows/ci.yml disagree about what runs, CI is the one that gates a
 # push and this one is the defect.
 #
-# ── ⚠ A SKIPPED CHECK IS NOT A PASSED CHECK ─────────────────────────────────
+# ⛔ IT RUNS EACH CHECK'S POWERSHELL TWIN, NOT ITS sh HALF. It used to run the
+# sh half of all six twinned checks and skip every one of them when no POSIX
+# shell was found, which is the host this file exists for. What still needs sh
+# is what has no twin: `sh -n`, `shellcheck`, and check-twins itself.
+#
+# -- ⚠ A SKIPPED CHECK IS NOT A PASSED CHECK ---------------------------------
 #
 # Some of these need a tool that is not everywhere: sh, jq, shellcheck,
 # PSScriptAnalyzer. A gate that silently dropped one and still printed green
@@ -25,13 +30,21 @@
 # docs/conventions/forbidden-patterns.md. So a missing tool is SKIP, counted
 # separately, named in the summary and carried in -Json as `skipped`.
 #
-# ── ⚠ -Fast, AND WHY IT IS A FLAG RATHER THAN THE DEFAULT ───────────────────
+# -- ⚠ -Fast, AND WHY IT IS A FLAG RATHER THAN THE DEFAULT -------------------
 #
-# Measured on one Windows 11 machine, 2026-08-27: the full run took 208s and
-# check-twins was 171s of it, because that check runs both halves of every pair
-# and there are ten pairs. That is the right price before a push and the wrong
-# one before each of eleven commits, and a gate too slow to run is a gate that
-# gets run once at the end.
+# Measured on one Windows 11 Pro 26200 machine, 2026-08-29, with 13 twin pairs:
+# the full run took 379s and check-twins ALONE took 270s, because that check
+# runs both halves of every pair. Without it the sh half is 66s and the
+# PowerShell half 41s. That is the right price before a push and the wrong one
+# before each of a dozen commits, and a gate too slow to run is a gate that gets
+# run once at the end.
+#
+# ⚠ The three numbers are separate runs on a machine doing other things, so
+# they do not add up and are not meant to. Each carries its own conditions,
+# which is what makes any of them comparable to a later one.
+# ⚠ The figures carried before this were 208s and 171s over TEN pairs, taken
+# on 2026-08-27. Two pairs were added on 2026-08-29 and the old numbers stopped
+# describing this tree, which is why they were re-taken rather than adjusted.
 #
 # ⛔ -Fast SKIPS check-twins. It does not weaken anything else, it is reported
 # as a SKIP like every other, and the summary says so. The full run is what a
@@ -49,7 +62,7 @@
 #
 # ⛔ Read the exit code from this process, unpiped.
 
-# ── PSScriptAnalyzer, suppressed per rule with the reason ────────────────────
+# -- PSScriptAnalyzer, suppressed per rule with the reason --------------------
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
     Justification = 'Not used here. Declared so a future edit that reaches for Write-Host has to delete this line and think about it; every line of output below goes through Write-Output so -Json stays parseable.')]
 [CmdletBinding()]
@@ -129,6 +142,38 @@ function Invoke-Check {
     }
 }
 
+function Invoke-PsCheck {
+    <#
+      Run a check's POWERSHELL TWIN, through this same host.
+
+      ⛔ THE TWIN IS PREFERRED HERE, NOT THE sh HALF, and getting that wrong is
+      what this function exists to stop. This file used to shell out to the .sh
+      half of every check and SKIP six of them outright when no POSIX shell was
+      found, on precisely the machine the twins were written for. Its own header
+      says it earns a twin because a native PowerShell session may have no sh;
+      scripts/README.md says to run the .ps1 half on Windows. The runner was the
+      one place not doing it.
+
+      ⚠ THE HOST IS RE-ENTERED BY PATH, never by the name `pwsh`. A Windows
+      PowerShell 5.1 session may have no `pwsh` on PATH at all, and a 5.1 caller
+      has to get 5.1 back rather than whichever host happens to answer.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Script,
+        [string[]]$Arguments = @(),
+        [int[]]$PassCodes = @(0)
+    )
+    $full = Join-Path $root $Script
+    if (-not (Test-Path -LiteralPath $full)) {
+        # ⛔ Named, not dropped. A check whose file is gone is a finding.
+        Add-Skip $Name "$Script is missing"
+        return
+    }
+    Invoke-Check -Name $Name -FilePath (Get-Process -Id $PID).Path `
+        -Arguments (@('-NoProfile', '-File', $full) + $Arguments) -PassCodes $PassCodes
+}
+
 function Get-PosixShell {
     # ⚠ Get-Command finds cmdlets, functions and aliases too, so it is filtered
     # to a real executable. docs/conventions/shell.md section 8.
@@ -150,7 +195,7 @@ Write-Line ''
 $sh = Get-PosixShell
 $common = 'scripts/common'
 
-# ── the PowerShell half runs first, because it needs no sh ─────────────────
+# -- the PowerShell half runs first, because it needs no sh -----------------
 # ⛔ SCORED AS TWO ENTRIES, because they can have different answers. The parse
 # either ran or it did not; the analyzer is a module that may be absent, and
 # check-powershell exits 0 either way. One verdict for both is how a skipped
@@ -189,36 +234,43 @@ else {
     else { Add-Skip 'PSScriptAnalyzer' 'check-powershell printed no analyzer status line' }
 }
 
+# -- every check that has a twin, run through the twin -----------------------
+# ⛔ BOTH check-docs AND check-markers. The first reads markdown; the second
+# owns the character rule over every tracked text file. check-docs was green on
+# this tree while check-markers had 164 findings, all of them in scripts.
+Invoke-PsCheck -Name 'check-docs'          -Script 'scripts/common/check-docs.ps1'
+Invoke-PsCheck -Name 'check-markers'       -Script 'scripts/common/check-markers.ps1'
+Invoke-PsCheck -Name 'check-one-home'      -Script 'scripts/common/check-one-home.ps1'
+Invoke-PsCheck -Name 'check-placeholders'  -Script 'scripts/common/check-placeholders.ps1'
+Invoke-PsCheck -Name 'check-control-bytes' -Script 'scripts/common/check-control-bytes.ps1'
+Invoke-PsCheck -Name 'check-record'        -Script 'scripts/common/check-record.ps1'
+Invoke-PsCheck -Name 'check-no-secrets'    -Script 'scripts/common/check-no-secrets.ps1' -Arguments @('-Public')
+Invoke-PsCheck -Name 'check-changelog'     -Script 'scripts/common/check-changelog.ps1' -PassCodes @(0, 2)
+
+# -- line endings, from git's own answer rather than a second table ----------
+# ⛔ IT USED TO LIVE INSIDE THE sh BRANCH AND NEEDS NO SHELL. On a host without
+# one it was neither run nor skipped, so it left the report entirely: the counts
+# still added up, the name was simply absent, and nothing said so. That is the
+# quietest way a gate loses a check.
+$eol = @(& git ls-files --eol | Where-Object { $_ -notmatch 'i/lf' -and $_ -notmatch 'i/-text' })
+if ($eol.Count -eq 0) { Add-Pass 'line-endings' }
+else {
+    Add-Fail 'line-endings' 1
+    if (-not $Json) { foreach ($l in $eol) { Write-Output "  | $l" } }
+}
+
+# -- the probe, through its own twin -----------------------------------------
+Invoke-PsCheck -Name 'doctor probe' -Script 'scripts/doctor/doctor.ps1' -Arguments @('-Fast')
+
 if (-not $sh) {
-    # ⛔ Not a silent degrade. Everything below is a POSIX sh check, and saying
-    # which ones did not run is the difference between a gate and a green badge.
-    Add-Skip 'check-docs'          'no POSIX shell on this host'
-    Add-Skip 'check-placeholders'  'no POSIX shell on this host'
-    Add-Skip 'check-control-bytes' 'no POSIX shell on this host'
-    Add-Skip 'check-record'        'no POSIX shell on this host'
-    Add-Skip 'check-changelog'     'no POSIX shell on this host'
-    Add-Skip 'check-no-secrets'    'no POSIX shell on this host'
+    # ⛔ Not a silent degrade. What is left below genuinely needs a POSIX shell,
+    # and saying which ones did not run is the difference between a gate and a
+    # green badge.
     Add-Skip 'sh -n'               'no POSIX shell on this host'
     Add-Skip 'shellcheck'          'no POSIX shell on this host'
-    Add-Skip 'doctor probe'        'no POSIX shell on this host'
     Add-Skip 'check-twins'         'no POSIX shell on this host; it runs both halves of every pair'
 }
 else {
-    Invoke-Check -Name 'check-docs'          -FilePath $sh -Arguments @("$common/check-docs.sh")
-    Invoke-Check -Name 'check-placeholders'  -FilePath $sh -Arguments @("$common/check-placeholders.sh")
-    Invoke-Check -Name 'check-control-bytes' -FilePath $sh -Arguments @("$common/check-control-bytes.sh")
-    Invoke-Check -Name 'check-record'        -FilePath $sh -Arguments @("$common/check-record.sh")
-    Invoke-Check -Name 'check-no-secrets'    -FilePath $sh -Arguments @("$common/check-no-secrets.sh", '--public')
-    Invoke-Check -Name 'check-changelog'     -FilePath $sh -Arguments @("$common/check-changelog.sh") -PassCodes @(0, 2)
-
-    # Line endings, read from git's own answer rather than a second table.
-    $eol = @(& git ls-files --eol | Where-Object { $_ -notmatch 'i/lf' -and $_ -notmatch 'i/-text' })
-    if ($eol.Count -eq 0) { Add-Pass 'line-endings' }
-    else {
-        Add-Fail 'line-endings' 1
-        if (-not $Json) { foreach ($l in $eol) { Write-Output "  | $l" } }
-    }
-
     # Every tracked .sh parses.
     $shFiles = @(& git ls-files '*.sh' | Where-Object { $_ })
     $bad = @()
@@ -251,8 +303,6 @@ else {
         }
     }
 
-    Invoke-Check -Name 'doctor probe' -FilePath $sh -Arguments @('scripts/doctor/doctor.sh', '--fast')
-
     # ⛔ THIS PAIR RUNS THIS SCRIPT. check-twins.sh compares both halves of
     # every twin and check-gate is one of them, so an unguarded call here is an
     # infinite recursion: gate runs twins runs gate runs twins. It hung for ten
@@ -261,7 +311,7 @@ else {
     # there gets a gate one level deep rather than three.
     $jq = Get-Command jq -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($Fast) {
-        Add-Skip 'check-twins' '-Fast was passed; it is 171s of a 208s run'
+        Add-Skip 'check-twins' '-Fast was passed; check-twins alone is 270s, measured 2026-08-29'
     }
     elseif ($env:CHECK_GATE_INNER -eq '1') {
         Add-Skip 'check-twins' 'already running inside check-twins; calling it here would recurse'
@@ -274,7 +324,7 @@ else {
     }
 }
 
-# ── report ────────────────────────────────────────────────────────────────
+# -- report ----------------------------------------------------------------
 $total = $script:Passed + $script:Failed + $script:Skipped
 
 if ($Json) {

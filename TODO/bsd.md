@@ -20,7 +20,7 @@ that needs an image consumes one from there.
 
 **Source** The operator, 2026-08-27, with five references supplied, plus a
 follow-up naming all four BSDs and `pkgforge-dev/docker-bsd`.
-**Category** bsd · **Priority** P1 · **Effort** M · **Status** done
+**Category** bsd, **Priority** P1, **Effort** M, **Status** done
 
 ### Problem
 
@@ -59,12 +59,12 @@ level deep.
 
 | option | friction | performance | interop | verdict |
 | --- | --- | --- | --- | --- |
-| ⭐ **Hyper-V guest from FreeBSD's published `.vhd`, plus `podman system connection add`** | ⭐ lowest. Upstream ships `FreeBSD-15.1-RELEASE-amd64-ufs.vhd.xz`, which is Hyper-V's native disk format, so there is **no installer and no ISO**. | native. Type 1 hypervisor, no emulation. | ⭐ full. `podman -c freebsd run ...` with the real client, no wrapper, no patch. | **recommended** |
-| qemu-system on Windows with `-accel whpx` | medium. A qemu install and a boot script. | near native. WHPX is the same Windows hypervisor. | same as above once podman is inside. | ⚠ **fallback.** Worth it only if Hyper-V is unavailable or unwanted. |
-| `podman machine init --image` with a FreeBSD machine image | high. Needs Ignition, which FreeBSD does not have. | native. | full, if it ever worked. | ⛔ **refused.** This is `baude`'s suggestion and it starts with porting a CoreOS provisioning system. |
-| Wait for `containers/podman#19939` | none, and it never arrives. | n/a | n/a | ⛔ **refused.** Open, unmerged, maintainer refused twice. |
-| A `podman` wrapper script | low, and pointless. | n/a | ⚠ worse: it shadows a real binary. | ⛔ **refused.** `podman -c` and `podman system connection default` already do this. |
-| Nested qemu inside the WSL machine | low | ⛔ worst. Emulation inside a VM. | fine | ⛔ **refused**, and it is the thing the ask was written to avoid. |
+| ⭐ **Hyper-V guest from FreeBSD's published `.vhd`, plus `podman system connection add`** | lowest. Upstream ships `FreeBSD-15.1-RELEASE-amd64-ufs.vhd.xz`, which is Hyper-V's native disk format, so there is **no installer and no ISO**. | native. Type 1 hypervisor, no emulation. | full. `podman -c freebsd run ...` with the real client, no wrapper, no patch. | **recommended** |
+| qemu-system on Windows with `-accel whpx` | medium. A qemu install and a boot script. | near native. WHPX is the same Windows hypervisor. | same as above once podman is inside. | **fallback.** Worth it only if Hyper-V is unavailable or unwanted. |
+| `podman machine init --image` with a FreeBSD machine image | high. Needs Ignition, which FreeBSD does not have. | native. | full, if it ever worked. | **refused.** This is `baude`'s suggestion and it starts with porting a CoreOS provisioning system. |
+| Wait for `containers/podman#19939` | none, and it never arrives. | n/a | n/a | **refused.** Open, unmerged, maintainer refused twice. |
+| A `podman` wrapper script | low, and pointless. | n/a | worse: it shadows a real binary. | **refused.** `podman -c` and `podman system connection default` already do this. |
+| Nested qemu inside the WSL machine | low | worst. Emulation inside a VM. | fine | **refused**, and it is the thing the ask was written to avoid. |
 
 ⭐ **The `.vhd` is what makes the recommendation the low-friction one**, and it
 was found after the first pass had already concluded otherwise. Without it the
@@ -211,7 +211,7 @@ Y
 
 | fact | value |
 | --- | --- |
-| `/dev/kvm` inside the WSL2 VM | ⭐ present, mode `crw-rw-rw-` |
+| `/dev/kvm` inside the WSL2 VM | present, mode `crw-rw-rw-` |
 | CPU threads reporting `vmx` | 40 |
 | `kvm_intel.nested` | `Y` |
 | `qemu-system-x86_64` inside that VM | absent, so it is an install and not a rebuild |
@@ -270,7 +270,7 @@ On 2026-08-27, with the WSL2 podman machine running:
 | probe | result |
 | --- | --- |
 | `(Get-CimInstance Win32_ComputerSystem).HypervisorPresent` | `True` |
-| `Get-Service vmms` | ⭐ **Running**, startup `Auto` |
+| `Get-Service vmms` | **Running**, startup `Auto` |
 | `Get-Module -ListAvailable Hyper-V` | present, v2.0.0.0 |
 
 `vmms` is Hyper-V's virtual machine management service. It is running on this
@@ -329,9 +329,9 @@ which model to try first and asks for the result.
 
 | option | friction | performance | interop | verdict |
 | --- | --- | --- | --- | --- |
-| ⭐ **A BSD microvm: smolBSD for NetBSD, or `acj`'s Firecracker kernel and rootfs for either** | ⭐ low. Upstream publishes a kernel and a root filesystem that boot; nothing is built. | ⭐ best measured here. About **10 ms** for smolBSD through PVH, about **12 s** for FreeBSD under Firecracker in CI. | ⚠ not podman. SSH, or a Docker-shaped wrapper the project ships. | ⭐ **the strongest new candidate.** It is what the ask wanted: better than nesting, and not a full VM. |
-| **The Host Compute System API, or the Hyper-V module, driven directly** | ⚠ unknown. Nobody here has tried it. | native. It is the hypervisor WSL2 already runs on. | none until something is built on top. | ⚠ **untried, and the cheapest untried thing.** See below. |
-| **`libkrun`, through `bsdkrun`** | medium on Linux, ⛔ **unavailable on Windows** | native under KVM. A VM as a process, no daemon. | ⭐ **boots an OCI image directly**, which is the gesture `BSD-01` opens with | ⚠ **the best shape, on the wrong host.** Inside the WSL2 machine it is nesting, so it is the floor rather than the target. |
+| ⭐ **A BSD microvm: smolBSD for NetBSD, or `acj`'s Firecracker kernel and rootfs for either** | low. Upstream publishes a kernel and a root filesystem that boot; nothing is built. | best measured here. About **10 ms** for smolBSD through PVH, about **12 s** for FreeBSD under Firecracker in CI. | not podman. SSH, or a Docker-shaped wrapper the project ships. | **the strongest new candidate.** It is what the ask wanted: better than nesting, and not a full VM. |
+| **The Host Compute System API, or the Hyper-V module, driven directly** | unknown. Nobody here has tried it. | native. It is the hypervisor WSL2 already runs on. | none until something is built on top. | **untried, and the cheapest untried thing.** See below. |
+| **`libkrun`, through `bsdkrun`** | medium on Linux, **unavailable on Windows** | native under KVM. A VM as a process, no daemon. | **boots an OCI image directly**, which is the gesture `BSD-01` opens with | **the best shape, on the wrong host.** Inside the WSL2 machine it is nesting, so it is the floor rather than the target. |
 
 ⭐ **The microvm row is the answer to the operator's second ruling**, which asked
 for something better than nesting rather than the nested design itself. A
@@ -414,7 +414,7 @@ ask**, and it now has three better things to try before it gets there.
 ## BSD-02. Whether the other three BSDs can be *run*, not merely built
 
 **Source** Derived from BSD-01 and the `docker-bsd` work.
-**Category** bsd · **Priority** P3 · **Effort** S · **Status** done
+**Category** bsd, **Priority** P3, **Effort** S, **Status** done
 
 **Problem.** `docker-bsd` builds images for all four. Only FreeBSD has a
 documented OCI runtime to run them on.
@@ -452,7 +452,7 @@ between them.**
 | BSD | runnable as an OCI container | runnable as a booted guest |
 | --- | --- | --- |
 | FreeBSD | ✅ `ocijail` `v0.6.0`, behind the handbook's `podman-suite`; `runj` as a proof of concept. Needs a FreeBSD host. | ✅ Firecracker, QEMU, bhyve, `libkrun`, and upstream `.vhd` and BASIC-CI images |
-| NetBSD | ⚠ no jail-equivalent runtime. ⭐ CBSD manages NetBSD from 15.0.6 | ✅ ⭐ smolBSD as a 10 ms microvm, Firecracker, QEMU, `libkrun` |
+| NetBSD | no jail-equivalent runtime. CBSD manages NetBSD from 15.0.6 | ✅ smolBSD as a 10 ms microvm, Firecracker, QEMU, `libkrun` |
 | OpenBSD | ❌ none found | ✅ QEMU, through `vmactions` and `anyvm` |
 | DragonFly | ❌ none found | ✅ QEMU, through `vmactions` and `anyvm` |
 
@@ -524,10 +524,10 @@ BSD userland is running as root on FreeBSD
 
 | the ask | delivered |
 | --- | --- |
-| a BSD userland from Windows | ⭐ FreeBSD 15.1-RELEASE, GENERIC |
-| least friction | one fetch script, one boot script. ⚠ 666 MB, verified against the published `CHECKSUM.SHA256` |
-| ⛔ **not** `wsl` inside `linux` inside `qemu` inside `bsd` | ⭐ **no nesting at all.** One hypervisor, the host's own, through WHPX |
-| ⚠ and unstated, but it turned out to matter | ⭐ **no elevation** |
+| a BSD userland from Windows | FreeBSD 15.1-RELEASE, GENERIC |
+| least friction | one fetch script, one boot script. 666 MB, verified against the published `CHECKSUM.SHA256` |
+| ⛔ **not** `wsl` inside `linux` inside `qemu` inside `bsd` | **no nesting at all.** One hypervisor, the host's own, through WHPX |
+| ⚠ and unstated, but it turned out to matter | **no elevation** |
 
 ⭐ **That is the ruling's second half satisfied.** Nesting was to be the floor,
 not the target, and something better than nesting was wanted. This is one level
@@ -577,9 +577,9 @@ that **derived, not measured**, and asks for the measurement.
 | whpx | `Icelake-Server-v7` | kernel ran, no disk | 15.41 |
 | whpx | `kvm64-v1` | kernel ran, no disk | 15.73 |
 | whpx | `qemu64` | kernel ran, no disk | 14.52 |
-| whpx | ⛔ `host` | kernel ran, no disk | 15.34 |
-| whpx | ⛔ `max` | kernel ran, no disk | 15.44 |
-| tcg | `qemu64` | ⭐ booted to a shell | 3.98 |
+| whpx | `host` | kernel ran, no disk | 15.34 |
+| whpx | `max` | kernel ran, no disk | 15.44 |
+| tcg | `qemu64` | booted to a shell | 3.98 |
 
 ⚠ **This does not falsify the sources.** `R18` and `R7` measured QEMU 9.x, on a
 Zen 5 AMD part and on GitHub's Windows runner fleets. ⛔ **It falsifies the
@@ -643,10 +643,10 @@ reaching a userland**, and the numbers below are this machine's own:
 
 | what | where | measured |
 | --- | --- | --- |
-| NetBSD 11.0, smolBSD rescue | QEMU `-accel tcg`, Windows | ⭐ a shell. 499 ms of kernel boot, by the kernel's own clock |
-| NetBSD 11.0, smolBSD rescue | QEMU `-accel whpx`, Windows | ⛔ **kernel only.** No disk, so no userland |
-| FreeBSD 15.1, ⚠ `acj`'s patched FIRECRACKER kernel | Firecracker on the nested KVM in the podman machine | ⭐ `login:` in **1.8 s**, shell over SSH at 32.3 s |
-| FreeBSD 15.1-RELEASE, ⭐ stock GENERIC | ⭐ QEMU `-accel whpx`, Windows, no nesting | `login:` at **117.7 s**, **117.4 s** and **113.6 s**, three independent boots |
+| NetBSD 11.0, smolBSD rescue | QEMU `-accel tcg`, Windows | a shell. 499 ms of kernel boot, by the kernel's own clock |
+| NetBSD 11.0, smolBSD rescue | QEMU `-accel whpx`, Windows | **kernel only.** No disk, so no userland |
+| FreeBSD 15.1, ⚠ `acj`'s patched FIRECRACKER kernel | Firecracker on the nested KVM in the podman machine | `login:` in **1.8 s**, shell over SSH at 32.3 s |
+| FreeBSD 15.1-RELEASE, ⭐ stock GENERIC | QEMU `-accel whpx`, Windows, no nesting | `login:` at **117.7 s**, **117.4 s** and **113.6 s**, three independent boots |
 
 ⚠ **The two FreeBSD rows are different kernels and different root filesystems**,
 so the times rank the whole stack rather than the two hypervisors. The
@@ -669,7 +669,7 @@ than attributed.** Measured with `-nic none`:
 | --- | --- | --- |
 | loader hands off to the kernel | 4.3 s | 4.3 s |
 | kernel banner | 4.3 s | 0 s |
-| ⛔ **root mounted** | **112.5 s** | ⛔ **108.2 s** |
+| ⛔ **root mounted** | **112.5 s** | **108.2 s** |
 | `rc` starts | 112.8 s | 0.3 s |
 | login prompt | 113.6 s | 0.8 s |
 
@@ -837,11 +837,11 @@ podman run --rm -it "example.io/freebsd" -sh
 
 | the clause | state |
 | --- | --- |
-| a real BSD | ⭐ **met.** FreeBSD 15.1-RELEASE, stock GENERIC, answering commands |
-| from Windows | ⭐ **met.** On the host's own hypervisor through WHPX |
-| ⛔ without the nesting | ⭐ **met.** One hypervisor. And unelevated, which was not even asked for |
-| `podman run`, in the guest | ⭐ **met.** `rc=0`, `runtime=ocijail`, the container's own stdout read back |
-| `podman run`, **from the Windows client** | ⛔ **NOT met.** This is the `Prove` clause, and it is what keeps the entry open |
+| a real BSD | **met.** FreeBSD 15.1-RELEASE, stock GENERIC, answering commands |
+| from Windows | **met.** On the host's own hypervisor through WHPX |
+| ⛔ without the nesting | **met.** One hypervisor. And unelevated, which was not even asked for |
+| `podman run`, in the guest | **met.** `rc=0`, `runtime=ocijail`, the container's own stdout read back |
+| `podman run`, **from the Windows client** | **NOT met.** This is the `Prove` clause, and it is what keeps the entry open |
 
 **The `Prove` clause, unchanged:**
 
@@ -856,14 +856,14 @@ because the next session should not redo it:
 
 | step | state |
 | --- | --- |
-| a throwaway key installed over the serial console | ⭐ works |
-| ⛔ empty-password ssh closed **before** the port is forwarded | ⭐ works. `PermitEmptyPasswords no`, `PasswordAuthentication no`, `PermitRootLogin prohibit-password`, read back from the file |
-| the port forwarded, bound to `127.0.0.1` only | ⭐ works |
-| ssh from Windows into the guest | ⭐ **works.** The client authenticates |
-| the podman API socket existing | ⭐ works, at `/var/run/podman/podman.sock` |
-| ⛔ **the podman API service staying up** | ⛔ **this is the blocker** |
-| `podman system connection add` | ⭐ works, exit 0 |
-| `podman -c freebsd run ...` | ⛔ `ssh: rejected: connect failed (open failed)`, because there is nothing behind the socket |
+| a throwaway key installed over the serial console | works |
+| ⛔ empty-password ssh closed **before** the port is forwarded | works. `PermitEmptyPasswords no`, `PasswordAuthentication no`, `PermitRootLogin prohibit-password`, read back from the file |
+| the port forwarded, bound to `127.0.0.1` only | works |
+| ssh from Windows into the guest | **works.** The client authenticates |
+| the podman API socket existing | works, at `/var/run/podman/podman.sock` |
+| ⛔ **the podman API service staying up** | **this is the blocker** |
+| `podman system connection add` | works, exit 0 |
+| `podman -c freebsd run ...` | `ssh: rejected: connect failed (open failed)`, because there is nothing behind the socket |
 
 ⛔ **The blocker, stated exactly.** `podman system service` is a long-running Go
 daemon, and it dies of `SIGFPE` inside the Go runtime seconds after starting,
@@ -913,7 +913,7 @@ elsewhere should find it rather than a redirect.
 | `BSD-02`, closed | the same file |
 | the 28-reference sweep | `HISTORY/references/` there. It was `docs/reference-sweeps/` here |
 | the experiments | `experiments/` there, nine of them, each with its result |
-| ⭐ what actually works, with numbers | `docs/LIMITS.md` there. ⛔ **That is the only page carrying those measurements** |
+| ⭐ what actually works, with numbers | `docs/LIMITS.md` there. **That is the only page carrying those measurements** |
 
 ### ⭐ What was reached before it moved
 

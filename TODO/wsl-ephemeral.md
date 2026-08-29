@@ -13,7 +13,7 @@ title and gets the correction written below it.
 
 **Source** `Azathothas/TEMPLATE` issue 3, part 3.1. The reporter called it the
 one to do first.
-**Category** wsl-ephemeral · **Priority** P0 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P0, **Effort** S, **Status** done
 
 **Problem.** A failing command run through `-Action New -Command` reports
 success. The script exits 0.
@@ -131,7 +131,7 @@ against as a whole.
 **Source** ⭐ **This repository's own door sweep**, part (c) of the gate, run
 against the `WSL-01` to `WSL-05` batch. It was not in issue 3 and nobody had
 reported it.
-**Category** wsl-ephemeral · **Priority** P0 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P0, **Effort** S, **Status** done
 
 **Problem.** Every `-Action New` run from Windows PowerShell 5.1 failed. The
 distro imported, the smoke probe was refused by the guest shell, the script
@@ -204,7 +204,7 @@ work. [`../docs/consumers.md`](../docs/consumers.md) carries the pin state.
 ## WSL-02. Carry the image's OCI configuration into the distro
 
 **Source** issue 3, part 3.2.
-**Category** wsl-ephemeral · **Priority** P1 · **Effort** M · **Status** done
+**Category** wsl-ephemeral, **Priority** P1, **Effort** M, **Status** done
 
 **Problem.** The distro's environment is not the image's environment. `PATH`,
 `WORKDIR`, `ENTRYPOINT` and `USER` are all absent, which makes the distro a
@@ -320,7 +320,7 @@ a no-op both rows would read the same, and they do not.
 ## WSL-03. Pass `--platform` to pull and create
 
 **Source** issue 3, part 3.3, and issue 2's tag-overwrite trap.
-**Category** wsl-ephemeral · **Priority** P1 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P1, **Effort** S, **Status** done
 
 **Problem.** The exported architecture is whatever the local store happened to
 hold, so the import can silently produce a rootfs that cannot execute. It
@@ -451,7 +451,7 @@ distro, so a check has something to assert rather than a gap to report.
 ## WSL-04. A failed delete must not report success
 
 **Source** issue 3, part 3.6.
-**Category** wsl-ephemeral · **Priority** P1 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P1, **Effort** S, **Status** done
 
 **Problem.** `Remove-EphemeralDistro` prints `deleted DIR` whether or not the
 directory went, so a multi-gigabyte VHDX can be left behind and reported gone.
@@ -551,7 +551,7 @@ have been depending on a disk being left behind, but it is written into
 ## WSL-05. Report and purge orphaned rootfs tarballs
 
 **Source** issue 3, part 3.7.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** done
 
 **Problem.** An interrupted `New` can leave a rootfs `.tar` of several hundred
 MiB in `%LOCALAPPDATA%`, and nothing reports it.
@@ -646,7 +646,7 @@ working purge red: `Purge -Force` with nothing to do exits 0 and says
 ## WSL-06. Disk-space preflight before import
 
 **Source** issue 3, part 3.8.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** done
 
 **Problem.** Running out of space midway leaves a partial VHDX and a registered
 distro that does not work.
@@ -763,7 +763,7 @@ trade. Same shape as `WSL-04`'s race, and it is said rather than implied.
 ## WSL-07. Optional systemd via `/etc/wsl.conf`
 
 **Source** issue 3, part 3.9.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** done
 
 **Problem.** An imported distro has no `/etc/wsl.conf`, so systemd does not
 start and nothing involving units, timers or `systemctl` can be tested. That
@@ -868,7 +868,7 @@ restart the switch introduces.
 ## WSL-08. A `-Command` channel that survives two shells
 
 **Source** issue 3, part 3.11.
-**Category** wsl-ephemeral · **Priority** P2 · **Effort** M · **Status** done
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
 
 **Problem.** `-Command` crosses PowerShell and then `/bin/sh -lc`, and the
 caller owns all quoting across both.
@@ -1116,7 +1116,7 @@ image's value. That is the correct value and it was not reachable before.
 ## WSL-09. Bound the smoke probe with a timeout
 
 **Source** issue 3, part 3.13.
-**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** done
 
 **Problem.** A distro whose init wedges hangs the script with no output.
 
@@ -1136,6 +1136,10 @@ the bound with a message naming the timeout.
 **What changed.** `Invoke-WslBounded` runs `wsl.exe` with a hard limit and
 returns what it printed; `Get-DistroOutput` uses it, so **every question this
 script asks a distro** is bounded. `-TimeoutSeconds` defaults to 120.
+
+⚠ **That function is called `Invoke-BoundedProcess` now.** `WSL-13` gave it a
+`-FilePath` so the container engine could be asked bounded questions through the
+same code, and the name stopped being true. Nothing else about it changed.
 
 ⚠ **The scope was widened from "the smoke probe" to "the script's own
 questions", deliberately.** `WSL-07` added a second capture-style probe in the
@@ -1242,7 +1246,7 @@ rootfs is legitimate.
 ## WSL-10. Retry a generated name on collision
 
 **Source** issue 3, part 3.10.
-**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** done
 
 **Problem.** A generated name that collides throws instead of drawing again.
 
@@ -1311,7 +1315,7 @@ fail on a one-in-1.68-million collision now succeeds. Not a break.
 **Source** issue 3, part 3.12. ⚠ Missed on the first pass through the issue and
 added on review; the fourteen findings map to eleven entries and three
 documentation notes, and this was briefly neither.
-**Category** wsl-ephemeral · **Priority** P3 · **Effort** S · **Status** done
+**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** done
 
 **Problem.** The summary after `New` tells the user to run `wsl -d DISTRO` by
 hand, so the interactive path is the only one that is not first class.
@@ -1390,3 +1394,298 @@ machinery with no caller; it is one line to add when something needs it.
 code changed meaning. Not a break.
 
 ---
+
+## WSL-13. Report what the machine is holding, and offer rather than act
+
+**Source** Issue 1, request 1. An agent found 554 images at 31.35 GB, an exited
+container holding 5.08 GB and five orphaned volumes on a machine where it had
+not run a container, and had to assemble that picture from six podman commands
+by hand.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
+
+**Problem.** The tool reports on the distros it made and nothing else. The
+resources an agent actually trips over are the container engine's, and the
+engine is shared with everything else on the machine. There was no one command
+that said what is here, so every agent that wondered wrote its own sequence.
+
+**Premise.** ⛔ **The numbers in the request are not re-derived and are not
+claimed here.** They describe that machine on the day it was written, and this
+one had been pruned before this session started: `podman system df` answered
+zero on every row. What was verified is that every command the action runs works
+on this host and that the report is correct on a machine with one distro
+registered.
+
+⚠ **The mechanism behind the request's larger claim is checkable and was
+checked.** This engine's `system df` prints exactly three rows, Images,
+Containers and Local Volumes, and no build-cache row, so a prune can free more
+than the figure it reports. That is stated; the specific gigabytes are not.
+
+**Approach.** `-Action Resources`, read-only, in three parts that say on every
+line which is which: what this script made, with the size of each distro's disk;
+what else WSL has registered, named and never touched; and what the engine is
+holding, from `system df` plus a dangling-image count and an unused-volume
+count.
+
+⛔ **It offers and it does not do.** Every cleanup command is printed and none is
+run, including this script's own `-Action Purge`. Reclaiming somebody's disk is
+their decision and an agent's job is to hand them the numbers and ask.
+
+⛔ **The engine calls are bounded.** `Invoke-WslBounded` becomes
+`Invoke-BoundedProcess` and takes a `-FilePath`, because podman on Windows talks
+to a VM and a machine that is starting or wedged leaves the client waiting with
+nothing on either stream. One bounded runner rather than two: a second
+implementation of the read-before-wait ordering is a second place to get it
+wrong. A wedged engine cannot stop the half of the
+report this script actually owns.
+
+⚠ **An unreadable directory produces a dash rather than a zero**, and the total
+is withheld with the count of what could not be read beside it. The tool page
+says why.
+
+**Decision.** No `--json`. This tool has no machine-readable surface anywhere,
+and adding one for a single action is a half-surface that reads as a promise.
+⭐ The action that a caller does consume a value from is `WSL-14`, and it emits
+one line rather than a document.
+
+**Consumers.** Adding an action to a validate-set. Nothing renamed and no exit
+code changed meaning. Not a break.
+
+**Prove.**
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action Resources
+```
+
+Exit 0, three sections, and a distro's disk size that agrees with what this
+tool's own page measured for the same image.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.** Driven against a real `alpine:3.22` distro
+created for the purpose and removed afterwards.
+
+```text
+==> What this script made, under %LOCALAPPDATA%\wsl-ephemeral
+  eph-toolkit-probe                              76.0 MiB
+  * 76.0 MiB held by this script, across 1 distro(s) and 0 tarball(s)
+```
+
+⭐ **76.0 MiB is the figure `wsl-ephemeral.md` already carried** for an
+`alpine:3.22` VHDX, measured independently on 2026-08-27 for the disk-space
+preflight. Two measurements taken for different reasons agreeing is what makes
+this one evidence rather than an echo.
+
+⛔ **A format-string defect was caught by the code refusing rather than
+printing.** The first version wrote alignment as `{1,>6}`, which .NET does not
+accept, and the action exited 1 naming the offset instead of printing a wrong
+table.
+
+⚠ **Teardown verified by counting.** The probe distro was removed and the image
+this session pulled was removed with it; `podman system df` returned to zero
+across all three rows.
+
+---
+
+## WSL-14. Answer what a distro reaches the host at, without creating a distro
+
+**Source** Issue 1, request 2, raised by a consumer whose page is
+`Azathothas/bit-cli` at `docs/containers.md`.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
+
+**Problem.** A caller that needs to talk from a distro back to the host has to
+build a throwaway VM, read `/proc/net/route` inside it and decode little-endian
+hex, to answer a question the host already knows. In mirrored mode the answer is
+the loopback address and every caller's branch disappears.
+
+⛔ **And the failure it guards against is silent.** In NAT mode a host service
+bound to `127.0.0.1` is not reachable from the distro. A fixture on loopback
+simply never receives a connection, and nothing on either side says why.
+
+**Premise.** ⭐ **Measured on this machine on 2026-08-29.** `.wslconfig` sets
+`networkingMode=NAT`; the host has one WSL adapter, `vEthernet (WSL (Hyper-V
+firewall))`, at `172.23.96.1`; and a real `alpine:3.22` distro read `016017AC`
+from `/proc/net/route`, which is that address.
+
+⚠ **The consumer's page recorded the same address on its own machine**, which is
+the same machine, so the two agree rather than corroborate.
+
+**Approach.** `-Action HostAddress`. Read the mode from `%USERPROFILE%\.wslconfig`
+and answer from it: loopback for mirrored, the WSL adapter's IPv4 address for
+NAT, and a refusal for bridged.
+
+⛔ **The parse refuses a commented line, checks the section, and takes the last
+key.** Getting any of those wrong answers `mirrored` on this host, which runs
+NAT, and the wrong answer here is the expensive one: loopback is plausible and
+never connects. The tool page carries the shape of a real configuration file
+that makes each of the three necessary.
+
+⛔ **Bridged is refused rather than guessed.** The distro is on the LAN and
+reaches the host at whichever host address is on that switch, which is a choice
+rather than a lookup.
+
+⭐ **The address is the only thing on stdout**, so a caller can assign it.
+⚠ Getting that right needed two changes that look like style and are not. Write-Host
+is invisible in-process and lands on stdout out of process, so the explanatory
+lines go to stderr through a helper; and the script's final error line moved to
+stderr too, because a caller assigning stdout would otherwise get the string
+beginning `ERROR:` where an address goes.
+
+**Decision.** ⛔ **No `-PortForward`, and the request offered documentation as
+the alternative.** Forwarding a port on Windows means `netsh interface
+portproxy`, which needs an elevated session and leaves a rule on the machine
+after the tool exits. This tool creates nothing it cannot remove and asks for no
+elevation. ⭐ `HostAddress` answers the question the port forward was wanted for:
+bind the host service to that address instead of to loopback, which the action
+says in as many words every time it runs in NAT mode.
+
+**Consumers.** Adding an action, plus the error line moving to stderr. Neither
+is a break by the definition in
+[`../docs/consumers.md`](../docs/consumers.md); the stderr move is recorded
+there because it is the one change a caller could observe.
+
+**Prove.**
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action HostAddress
+```
+
+Exit 0, and stdout is one address that equals what a real distro reads from
+`/proc/net/route`.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.** Verified against a real distro rather than
+against the host alone.
+
+```text
+guest /proc/net/route -> 172.23.96.1 (016017AC)
+HostAddress          -> 172.23.96.1
+MATCH
+```
+
+⭐ **The stdout property was verified both ways**, because the two disagree by
+default: captured in-process and captured through `pwsh -File`, both gave
+`172.23.96.1` and nothing else.
+
+⭐ **All four parse branches were exercised, by pointing the script at fixture
+profiles rather than by reconfiguring this machine.** Switching a host's WSL
+networking mode restarts every distro on it, including the podman machine, which
+is not a thing to do to somebody's session to test a branch. The parse reads
+`%USERPROFILE%\.wslconfig`, so a scratch `USERPROFILE` exercises it end to
+end. ⛔ Exit codes read unpiped:
+
+```text
+live NAT under two commented alternatives   nat        172.23.96.1   rc=0
+live mirrored under a commented NAT         mirrored   127.0.0.1     rc=0
+live bridged                                bridged    (refused)     rc=1
+the key under [experimental] only           nat        172.23.96.1   rc=0
+```
+
+⭐ **The third row is the guard doing its job** and the fourth is the section
+check: a key in the wrong section is not read, and the answer falls back to the
+documented default with `Source` saying so.
+
+⚠ **What is still NOT measured is WSL's own behaviour under mirrored mode**, that
+a host service on loopback is reachable from a distro there. That is a claim
+about WSL rather than about this script, it is what Microsoft documents, and
+this machine cannot be put into that mode to check it without restarting every
+distro on it.
+
+---
+
+## WSL-15. A launcher, so one fetch is enough
+
+**Source** Issue 1, request 3, which asks whether the wrapper in
+`Azathothas/TEMPLATE` should be copied here and improved to justify existing
+beside the real script.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
+
+**Problem.** Running this tool from another project takes five steps that are
+easy to get subtly wrong: resolve a commit, fetch that exact revision to a file,
+do not pipe it into a shell, clear the mark Windows puts on a downloaded file,
+and then run it. The page said all of that and a reader had to do all of it.
+
+**Premise.** Read in a clone of `Azathothas/TEMPLATE` at `6eaf4b5`. Its wrapper
+pins a commit and a digest of this repository's script, verifies before
+executing, caches by ref, parses the file as PowerShell first, and forwards
+every argument.
+
+⛔ **Copying it verbatim is wrong here and the reason is structural.** A pin
+inside the repository that owns the file can only ever name one of its own
+ancestors, so it is stale the moment the file it points at changes, and the file
+sitting next to it is the newer one.
+
+**Approach.** A launcher that resolves in three steps and takes the first hit:
+an explicit local file, the sibling beside it, then a revision the caller named.
+⛔ There is no default revision: with no sibling and no ref it refuses and prints
+the command that resolves one.
+
+What it adds over a download and a `pwsh`: a moving ref refused by shape, a
+digest mismatch as a hard stop rather than a warning, the file parsed as
+PowerShell before it can run, the `Zone.Identifier` stream cleared, a cache keyed
+by ref, and an implausibly small download refused.
+
+⭐ **`-LauncherAddToPath` is the request's third item and it needs dot-sourcing.**
+A child process cannot change the environment of the session that ran it, so run
+normally the launcher installs and prints the line; dot-sourced, it does the
+assignment in the caller's session. Claiming to have changed PATH from a child
+process would be reporting a result it never read. ⛔ Dot-sourcing is refused for
+every other use, because the wrapped script calls `exit`, which would end the
+host session.
+
+**Decision.** ⛔ **Every option it understands is prefixed `-Launcher`.** A
+wrapper that took `-Install` would break the day the wrapped script grew an
+`-Install`, and this one must never restate that script's parameter list.
+
+**Consumers.** ⚠ It does not replace the wrapper in `Azathothas/TEMPLATE` and
+does not move any pin. Which of the two that repository keeps is its decision.
+
+**Prove.**
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral-launcher.ps1 -Action HostAddress
+```
+
+Exit 0, forwarding a named parameter to the sibling, with stdout carrying the
+address and nothing else.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.** Driven on all four paths: sibling, fetch with a
+matching digest, fetch with a wrong digest, and no sibling with no ref.
+
+```text
+sibling, -Action HostAddress        stdout = 172.23.96.1            rc=0
+fetch 7127ff707be9 + digest         digest matches, -Action List    rc=0
+fetch with a wrong digest           DIGEST MISMATCH, copy deleted   rc=1
+a branch as the ref                 refused by shape                rc=1
+no sibling and no ref               refused, prints the gh command  rc=1
+```
+
+⛔ **Two defects were found by driving it and neither was visible in review.**
+
+1. **Splatting the forward list passed every argument positionally.** `-Action`
+   bound as the VALUE of `-Action` and the script refused it against its own
+   validate-set. Measured across five ways of building the array: an ordinary
+   array with `+=`, a `Where-Object` filter, a range slice and an `[object[]]`
+   parameter all forward parameter NAMES; an `ArrayList.ToArray()` does not.
+   Every element is a string in all five, so nothing about the values explains
+   it. The measurement is in the launcher's own page.
+2. **The launcher's progress lines corrupted the value.** Write-Host from a child
+   process reaches the caller's stdout, so capturing
+   `-Action HostAddress` through the launcher returned a progress line ahead of
+   the address. Every line the launcher prints now goes to stderr and it writes
+   nothing to stdout at all.
+
+⚠ **The download mark was not observed on this host.** `Invoke-WebRequest` did
+not attach a `Zone.Identifier` stream to the fetched file, so the clearing path
+reported nothing to clear, which is what it is written to do. ⭐ What would have
+had to be true for it to fire: a copy fetched by a browser, by
+`Start-BitsTransfer`, or unpacked from a downloaded archive, pointed at with
+`-LauncherLocal`.

@@ -20,7 +20,7 @@
 # writing about it. A rule that a careful person breaks while documenting it is
 # a rule that needs a check.
 #
-# ── THE THREE BLIND SPOTS THIS SCOPE WAS PAID FOR ───────────────────────────
+# -- THE THREE BLIND SPOTS THIS SCOPE WAS PAID FOR ---------------------------
 #
 # 1. ⛔ TRACKED ALONE IS NOT ENOUGH. `git ls-files` cannot see a file that has
 #    never been staged, which is exactly when a new file is most likely to

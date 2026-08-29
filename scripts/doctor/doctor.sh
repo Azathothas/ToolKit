@@ -67,7 +67,7 @@ done
 # Escape a value for a JSON string, into the global ESC.
 #
 # ⛔ IT SETS A GLOBAL RATHER THAN PRINTING, AND THAT IS A MEASURED DECISION, NOT
-# A STYLE ONE. The first version was `jstr() { printf '"%s"' "$(json_escape …)"; }`
+# A STYLE ONE. The first version was `jstr() { printf '"%s"' "$(json_escape ...)"; }`
 # with json_escape piping through sed and two trs. That is six process spawns
 # per value, four values per tool, eighty-two tools: about two thousand spawns,
 # and it took 67 s on Windows where a fork is expensive. The rewrite runs the

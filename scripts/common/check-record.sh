@@ -14,12 +14,12 @@
 # and never pushed again. The published state said those entries were open,
 # beside entries saying done, for the whole of the next session.
 #
-# ── WHAT IT ASSERTS ─────────────────────────────────────────────────────────
-#   • every id in the index table has an entry heading in the named file;
-#   • every entry heading has a row in the index;
-#   • the status in the index equals the status in the entry;
-#   • the `total N open N blocked N done N` line agrees with the rows;
-#   • the priority table's per-row and total figures agree with the rows.
+# -- WHAT IT ASSERTS ---------------------------------------------------------
+#   - every id in the index table has an entry heading in the named file;
+#   - every entry heading has a row in the index;
+#   - the status in the index equals the status in the entry;
+#   - the `total N open N blocked N done N` line agrees with the rows;
+#   - the priority table's per-row and total figures agree with the rows.
 #
 # ⛔ IT CANNOT CHECK THAT AN ENTRY IS TRUE. That is a reading and it belongs to
 # the review pass. It checks that the bookkeeping is consistent, which is the
@@ -72,7 +72,7 @@ COUNT=0
 report() { PROBLEMS="$PROBLEMS  $1
 "; COUNT=$((COUNT + 1)); }
 
-# ── the index rows ──────────────────────────────────────────────────────────
+# -- the index rows ----------------------------------------------------------
 # A row is: | ID | PRI | EFF | STATUS | title | [`file`](file) |
 # ⚠ The header and the separator both start with `|`, so rows are selected on
 # an id shaped like LETTERS-DIGITS rather than on position.
@@ -93,7 +93,7 @@ awk -F'|' '
 ROWS=$(wc -l < "$TMP/rows" | tr -d ' ')
 [ "$ROWS" -gt 0 ] || { printf 'check-record: no entry rows found in %s\n' "$INDEX" >&2; exit 2; }
 
-# ── the entry headings, from every category file in the directory ───────────
+# -- the entry headings, from every category file in the directory -----------
 # A heading is: ## ID. Title
 for f in "$DIR"/*.md; do
   case "$f" in
@@ -112,7 +112,7 @@ for f in "$DIR"/*.md; do
 done
 [ -f "$TMP/entries" ] || : > "$TMP/entries"
 
-# ── every row has an entry, in the file the row names ───────────────────────
+# -- every row has an entry, in the file the row names -----------------------
 # ⚠ Fed by redirect, not by a pipe. A `while read` on the right of a pipe runs
 # in a subshell and every count it increments is discarded on exit.
 # docs/conventions/shell.md section 4.
@@ -147,7 +147,7 @@ while IFS="$(printf '\t')" read -r id pri eff st file; do
   fi
 done < "$TMP/rows"
 
-# ── every entry has a row ───────────────────────────────────────────────────
+# -- every entry has a row ---------------------------------------------------
 while IFS="$(printf '\t')" read -r id file; do
   [ -n "${id:-}" ] || continue
   if ! awk -F'\t' -v I="$id" '$1 == I { found = 1 } END { exit !found }' "$TMP/rows"; then
@@ -155,7 +155,7 @@ while IFS="$(printf '\t')" read -r id file; do
   fi
 done < "$TMP/entries"
 
-# ── the declared counts agree with the rows ─────────────────────────────────
+# -- the declared counts agree with the rows ---------------------------------
 D_TOTAL=$(awk '/^total[[:space:]]+[0-9]/ { print $2; exit }' "$INDEX")
 D_OPEN=$(awk '/^total[[:space:]]+[0-9]/ { for (i = 1; i < NF; i++) if ($i == "open") print $(i+1); exit }' "$INDEX")
 D_BLOCKED=$(awk '/^total[[:space:]]+[0-9]/ { for (i = 1; i < NF; i++) if ($i == "blocked") print $(i+1); exit }' "$INDEX")
@@ -175,7 +175,7 @@ else
   [ "${D_DONE:-}" = "$A_DONE" ]   || report "$INDEX: declares done ${D_DONE:-none}, rows say $A_DONE"
 fi
 
-# ── the priority table agrees with the rows ─────────────────────────────────
+# -- the priority table agrees with the rows ---------------------------------
 for p in P0 P1 P2 P3; do
   a_open=$(awk -F'\t' -v P="$p" '$2 == P && $4 == "open"' "$TMP/rows" | wc -l | tr -d ' ')
   a_blk=$(awk -F'\t' -v P="$p" '$2 == P && $4 == "blocked"' "$TMP/rows" | wc -l | tr -d ' ')
@@ -197,7 +197,7 @@ for p in P0 P1 P2 P3; do
   [ "$d_tot"  = "$a_tot"  ] || report "$INDEX: $p declares total $d_tot, rows say $a_tot"
 done
 
-# ── the RECORD's own count line agrees too ─────────────────────────────────
+# -- the RECORD's own count line agrees too ---------------------------------
 # ⛔ THIS WAS THE GAP AND IT WAS FOUND BY A REVIEW, NOT BY THE CHECK. The first
 # version compared the index against the entries and stopped there, so
 # PROGRESS.md sat declaring "open 14 blocked 1" beside an index saying
@@ -222,7 +222,7 @@ if [ -f "$RECORD" ]; then
   # and inventing a requirement here would fail a correct tree.
 fi
 
-# ── report ──────────────────────────────────────────────────────────────────
+# -- report ------------------------------------------------------------------
 if [ "$JSON" = "1" ]; then
   printf '{"schema":"check-record/1","problems":%s,"entries":%s,"open":%s,"blocked":%s,"done":%s}\n' \
     "$COUNT" "$A_TOTAL" "$A_OPEN" "$A_BLOCKED" "$A_DONE"

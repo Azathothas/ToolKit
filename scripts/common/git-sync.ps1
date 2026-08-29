@@ -49,7 +49,7 @@
 #
 # ⛔ Read the exit code from this process, unpiped.
 
-# ── PSScriptAnalyzer, suppressed per rule with the reason ────────────────────
+# -- PSScriptAnalyzer, suppressed per rule with the reason --------------------
 # CI runs Invoke-ScriptAnalyzer over scripts/ at Error and Warning, so a
 # suppression here is the difference between a red gate and a green one. Each
 # is scoped to ONE rule and carries its justification. ⛔ Do not replace these
@@ -142,7 +142,7 @@ if (-not $Branch) {
     $Branch = ($Branch | Select-Object -First 1).Trim()
 }
 
-# ── rule 1: no tool is credited in a commit ─────────────────────────────────
+# -- rule 1: no tool is credited in a commit ---------------------------------
 # ⛔ REFUSED, NOT STRIPPED. Rewriting a message to make it pass is how the
 # author never finds out, and the same line arrives again next time.
 #
@@ -167,7 +167,7 @@ $attribution = @(
     'noreply@anthropic[.]com'
 ) -join '|'
 
-# ── rule 2: a CI skip is deliberate or it is not there ──────────────────────
+# -- rule 2: a CI skip is deliberate or it is not there ----------------------
 # Every marker the platform honours, matched the way it matches them:
 # case-insensitively and anywhere in the message. That is why a sentence ABOUT
 # one is one.
@@ -189,7 +189,7 @@ function Find-Match([string]$Text, [string]$Pattern) {
     return @($hits | Where-Object { $_ })
 }
 
-# ── the message ─────────────────────────────────────────────────────────────
+# -- the message -------------------------------------------------------------
 # ⛔ THE BODY COMES FROM A FILE. docs/conventions/shell.md section 1: a body
 # passed as a shell string loses its quoting, and the way it fails is worse
 # than an error. Nothing errors, and a fragment of the body is executed or
@@ -205,7 +205,7 @@ if ($Message) {
     }
 }
 
-# ── -Check: the read-only half ──────────────────────────────────────────────
+# -- -Check: the read-only half ----------------------------------------------
 if ($Check) {
     $problems = 0
 
@@ -246,7 +246,7 @@ if ($Check) {
     exit 0
 }
 
-# ── the gates, BEFORE the commit ────────────────────────────────────────────
+# -- the gates, BEFORE the commit --------------------------------------------
 # ⛔ IT SETS A FLAG; IT DOES NOT RETURN ONE. A PowerShell function returns
 # EVERYTHING written to its output stream, so `return $true` after a gate that
 # printed anything hands the caller an ARRAY, and a non-empty array is truthy.
@@ -281,7 +281,7 @@ function Invoke-Gates {
     }
 }
 
-# ── commit ──────────────────────────────────────────────────────────────────
+# -- commit ------------------------------------------------------------------
 if (-not $PushOnly) {
     if (-not $msgText) { Exit-With 2 '-Message is required unless -PushOnly or -Check.' }
 
@@ -363,7 +363,7 @@ else {
     if (-not $script:gatesOk) { Exit-With 1 'a gate failed. Nothing has been pushed.' }
 }
 
-# ── push ────────────────────────────────────────────────────────────────────
+# -- push --------------------------------------------------------------------
 if ($NoPush) {
     Write-Step '-NoPush, stopping before the push'
     exit 0

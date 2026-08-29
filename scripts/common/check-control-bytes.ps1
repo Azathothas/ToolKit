@@ -2,7 +2,7 @@
 #
 # ⭐ THE TWIN OF check-control-bytes.sh. Same schema, same exit codes, same
 # scope. scripts/README.md says why every check here has two implementations,
-# and check-twins.ps1 is what stops them drifting.
+# and check-twins.sh is what stops them drifting.
 #
 # The defect this exists to catch is a file that is invisible to review. A
 # literal control byte makes a file unreadable to BOTH review tools at once:
@@ -13,7 +13,7 @@
 # ⭐ The runtime value is identical either way. Write the escape, not the byte.
 # Because correctness never depends on it, this survives a long time unnoticed.
 #
-# ── THE THREE BLIND SPOTS THIS SCOPE WAS PAID FOR ───────────────────────────
+# -- THE THREE BLIND SPOTS THIS SCOPE WAS PAID FOR ---------------------------
 #
 # 1. ⛔ TRACKED ALONE IS NOT ENOUGH. `git ls-files` cannot see a file that has
 #    never been staged, which is exactly when a new file is most likely to

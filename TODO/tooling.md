@@ -11,7 +11,7 @@ Entries for this repository's own checks and helpers.
 **Source** `Azathothas/TEMPLATE` issue 2, suggestion 1. ⚠ The issue proposed it
 for `scripts/doctor/`; that placement is refused below and this is where it
 landed instead.
-**Category** tooling · **Priority** P2 · **Effort** S · **Status** done
+**Category** tooling, **Priority** P2, **Effort** S, **Status** done
 
 **Problem.** On Windows with a podman machine, cross-architecture containers
 fail with `Exec format error` while every visible signal says the machine is
@@ -148,7 +148,7 @@ session re-type the same nine checks before each of five commits.
 against. The warning is about barrelling into code from an intake without
 checking the premise; the premise here was measured in the session that asked
 for it, and the instruction was direct. Recorded rather than glossed.
-**Category** tooling · **Priority** P1 · **Effort** S · **Status** done
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
 
 **Problem.** Part (a) of [`../docs/methodology/gate.md`](../docs/methodology/gate.md)
 is a list of nine things. A list run by hand is run in the order somebody
@@ -251,7 +251,7 @@ checks with their own mutation proofs, and the delegation is what was tested.
 
 **Source** [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md),
 which calls this the model's one mechanical hazard and says to automate it.
-**Category** tooling · **Priority** P1 · **Effort** M · **Status** done
+**Category** tooling, **Priority** P1, **Effort** M, **Status** done
 
 ⚠ **Half done.** The reader exists as `scripts/common/check-record.sh`; the
 writer does not, so the arithmetic is still manual and the reader is what
@@ -355,7 +355,7 @@ the three. Neither wrote anything.
 
 **Source** ⭐ **Found by using it**, while bumping the `Azathothas/TEMPLATE` pin
 at the end of the `WSL-06` to `WSL-11` batch. Not reported by anything.
-**Category** tooling · **Priority** P0 · **Effort** S · **Status** done
+**Category** tooling, **Priority** P0, **Effort** S, **Status** done
 
 **Problem.** `git-sync.ps1` made a commit whose author and committer were
 `sh scripts/common/check-control-bytes.sh <sh scripts/common/check-no-secrets.sh --public>`,
@@ -493,3 +493,332 @@ therefore its own copy of this defect, because that is where this one came from.
 ⛔ **Not fixed there in this session**: that repository is read-only to this one
 except for the pin, and a fix there is its own change with its own gate. It is
 named here so the next session working in that tree has it written down.
+
+---
+
+## TOOL-04. Two rules the conventions state and nothing checked
+
+**Source** Issue 4, which asks for the scripts copied from
+`Azathothas/TEMPLATE` to be iterated on, and for that template's non-essential
+scripts to move here. `check-markers` and `check-one-home` exist there and did
+not exist here.
+**Category** tooling, **Priority** P1, **Effort** M, **Status** done
+
+**Problem.** [`../docs/conventions/prose.md`](../docs/conventions/prose.md)
+states two rules a machine can hold and nothing held either: that the only
+characters outside ASCII are the five it defines, used sparingly, and that every
+fact lives in exactly one document. ⛔ `check-docs.sh` enforced the character
+half over markdown alone, which is how every script in the tree went unchecked
+for it.
+
+**Premise.** ⭐ **Measured by running the two checks from a clone of
+`Azathothas/TEMPLATE` against this tree, before importing either.** 167 marker
+problems and 17 two-home sentences. Both numbers are in `DOC-02` and `DOC-03`,
+which are the entries that cleared them.
+
+**Approach.** Copy both pairs, adapt what names a file only that template has,
+and wire them into the gate, into `check-twins.sh` and into CI on both hosts.
+
+⛔ **The adaptation is the work, not the copy.** `check-one-home` exempts the
+entry-point routers from each other and named three files, two of which do not
+exist here; it now names `AGENTS.md` and `docs/AGENTS.md` and nothing else. Both
+headers carried measurements taken in that template's tree and now carry this
+one's beside them.
+
+⚠ **`check-docs` loses the character rule in the same change.** Two checks
+enforcing one rule is two places for it to be wrong, and they would have been
+wrong differently: `check-docs` strips fenced blocks before it looks and a
+whole-tree scan that did not would refuse the page naming the character it bans.
+
+**Consumers.** None. New checks, and no existing interface moved.
+
+**Prove.**
+
+```bash
+sh scripts/common/check-gate.sh --fast
+```
+
+Both names appear in the run and both pass.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.** Four files imported, adapted, and wired into
+`check-gate.sh`, `check-gate.ps1`, `check-twins.sh` and both CI jobs. The gate
+went from thirteen entries to fifteen.
+
+⚠ **The two new pairs take `check-twins` from ten comparisons to twelve**, and
+the `fill-license` row restored by `TOOL-07` makes thirteen. The 208-second
+full-run figure both gate headers carried stopped describing this tree, so it
+was re-taken rather than adjusted: 379s full, 270s for `check-twins` alone,
+measured 2026-08-29.
+
+---
+
+## TOOL-05. `check-remote-items` reported red for an item that only needed reading
+
+**Source** Found while running the gate against this tree on 2026-08-29, with
+four issues open.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+**Problem.** Two defects in one file, and `Azathothas/TEMPLATE` had already
+fixed both in its copy.
+
+1. ⛔ **An unread item was treated as a failed check.** Any repository with an
+   open issue was permanently red, which is how a check stops being read: the
+   one state it cannot report is the state it exists for.
+2. ⛔ **The two modes disagreed about the same tree.** Text exited 1 and
+   `--json` exited 0, so a gate runner saw green where a person saw red. And
+   `--json` printed the whole human report on stdout first, so piping it into a
+   parser failed while every other check here was machine-readable.
+
+**Premise.** ⭐ **Both reproduced here before the fix**, on this tree with its
+four open issues:
+
+```text
+text mode  rc=1
+json mode  rc=0
+json stdout begins with the human report, so it does not parse
+```
+
+**Approach.** Take that template's version of both halves. ⛔ Not a rewrite: the
+fix is one exit expression computed once and shared by both modes, plus a
+file-descriptor swap at the top so the human report goes to stderr under
+`--json`. Re-deriving it here would be a second implementation of a fix that
+already exists.
+
+**Consumers.** None. The script is not fetched by anything; it is run by
+`.github/workflows/remote-items.yml` in this repository.
+
+**Prove.**
+
+```bash
+sh scripts/common/check-remote-items.sh --json
+```
+
+Exit 0 with four issues open, and stdout parses as one JSON document.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.**
+
+```text
+{"schema":"check-remote-items/1","problems":0,"needs_human":1,"open_prs":0}
+```
+
+⭐ **All four combinations agree**: both halves, both modes, exit 0, and the
+`.ps1` twin printed the same document.
+
+⚠ **The weekly workflow was red for as long as an issue was open**, which is
+every week since the first one was filed. Nothing was wrong with the tree it was
+reporting on.
+
+---
+
+## TOOL-06. `check-gate.ps1` skipped six checks on the host it exists for
+
+**Source** Found while wiring `TOOL-04`'s two new checks into both halves of the
+gate runner.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+**Problem.** ⛔ **The PowerShell gate runner shelled out to the `.sh` half of
+every twinned check, and skipped all six when no POSIX shell was found.** Its own
+header says it earns a twin because a native PowerShell session may have no `sh`
+at all, and [`../scripts/README.md`](../scripts/README.md) says to run the `.ps1`
+half on Windows. It was the one place not doing either.
+
+⚠ On a machine with Git Bash the defect is invisible: everything runs and
+everything passes. It fires only on the machine the twins were written for, and
+there it reports six skips and a green exit.
+
+**Premise.** Read at `7127ff7`, in the branch taken when no shell is found: six
+skip calls naming `check-docs`, `check-placeholders`, `check-control-bytes`,
+`check-record`, `check-changelog` and `check-no-secrets`, each with the reason
+`no POSIX shell on this host`, beside an else branch running the `.sh` half of
+each.
+
+⛔ **And the line-endings check was worse than skipped.** It sat inside the shell
+branch and needs no shell of either kind, so on a host without one it was neither
+run nor reported. The counts still added up and the name was simply absent.
+
+**Approach.** One helper, `Invoke-PsCheck`, that runs a check's PowerShell twin
+through this same host, found by path rather than by the name `pwsh` because a
+5.1 caller must get 5.1 back. Every twinned check goes through it. The
+line-endings check and the probe move out of the shell branch. What still needs
+`sh` is what has no twin: `sh -n`, `shellcheck`, and `check-twins.sh` itself.
+
+⭐ **This also makes the `check-gate` row in `check-twins.sh` worth more than it
+was.** The two halves now run different implementations of every twinned check
+to reach the same counts, so that one comparison exercises both.
+
+**Consumers.** None. A gate runner is not fetched by anything.
+
+**Prove.**
+
+```bash
+sh scripts/common/check-twins.sh
+```
+
+The `check-gate` pair agrees, which it can only do if both halves ran the same
+number of checks and got the same answers.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.**
+
+⚠ **The no-shell path is reasoned, not measured.** This machine has Git Bash and
+removing it to prove the branch was not worth the disruption, so what was
+verified is that every check now runs through its twin here and that the two gate
+halves agree. ⭐ What would have had to be true for a measurement: a Windows
+session with no `sh`, no `bash` and no Git for Windows on `PATH`, and nothing at
+the two fallback paths `Get-PosixShell` probes.
+
+---
+
+## TOOL-07. The helpers `Azathothas/TEMPLATE` is dropping move here
+
+**Source** Issue 4, and `Azathothas/TEMPLATE` issue 9, which proposes removing
+its non-essential scripts and pointing at this repository instead. Ruled by the
+operator on 2026-08-29.
+**Category** tooling, **Priority** P2, **Effort** M, **Status** done
+
+**Problem.** Two general-purpose helpers live only in a template repository,
+where every project that starts from it gets a copy and none of the copies gets
+a fix. This repository exists so a tool has one home.
+
+**Premise.** Read in a clone of `Azathothas/TEMPLATE` at `6eaf4b5`. `deslop` is
+an inventory of the files in a tree that address a reader as an agent, with an
+apply mode that removes them; `fill-license` writes a `LICENSE` from one of
+twelve SPDX texts and refuses four of them, because rewriting the notice in the
+GPL family or in SPDX's ISC instance attributes the software to somebody else.
+
+⛔ **`mine-repo` stays there**, on the operator's ruling in that repository's
+issue 6: it encodes a methodology rather than a general job.
+
+**Approach.** Copy both pairs and the `LICENSES/` texts `fill-license` reads,
+adapt what names a file only that template has, and restore the `fill-license`
+comparison in `check-twins.sh`, which had been removed along with the licences.
+
+⛔ **Fix the defect both `deslop` halves carried while copying them.** They
+removed files in a loop and then printed the count they had planned to remove:
+an unconditional fallback in the sh half, and an unconditional count beside a
+suppressed `Remove-Item` in the PowerShell one. Both now read the state back and
+report what actually went, and exit 1 naming whatever survived. That is a row in
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md),
+and it is the same shape `WSL-04` took out of this repository's other deleter.
+
+⚠ **`deslop` is aimed at another tree.** Run here with its apply mode it removes
+this repository's own router and methodology, which are content it wants. Both
+headers say so now.
+
+**Consumers.** None yet. ⭐ If `Azathothas/TEMPLATE` acts on its issue 9, it
+becomes one, and that is a change in that repository.
+
+**Prove.**
+
+```bash
+sh scripts/common/check-twins.sh
+```
+
+The eight fillable licences are byte-identical between the two implementations
+and all four refusals hold in both.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.**
+
+⭐ **`fill-license` reproduces this repository's own `LICENSE` byte for byte**
+from `--id 0BSD --holder Azathothas`, which is a stronger check than the twin
+comparison: it says the tool agrees with a file nobody generated with it.
+
+⚠ **`GPL-3.0-only` exits 1 and writes nothing**, verified unpiped. A version
+that stopped refusing would corrupt an attribution and exit 0 doing it.
+
+---
+
+## TOOL-08. The CI step that parses the workflows had never parsed one
+
+**Source** Found on 2026-08-29 while validating a change to
+`.github/workflows/ci.yml`, by running that step's own payload on this machine
+before pushing it.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+**Problem.** ⛔ **The `yaml parses` step iterated zero files, printed nothing and
+exited 0**, for as long as it had existed. Every workflow edit in this
+repository's history went through a CI job that reported success over a file it
+had not opened.
+
+⚠ **The failure is the quiet one.** Nothing errored, the step was green, and its
+output was an empty block that nobody scrolls to. A broken workflow would have
+been caught by the workflow failing to run, which is a worse and later signal
+than the check that existed to prevent it.
+
+**Premise.** ⭐ **Reproduced on this machine on 2026-08-29** before anything was
+changed:
+
+```text
+glob.glob('**/*.yml', recursive=True)  ->  []
+pathlib.Path('.').rglob('*.yml')       ->  3 files, all under .github/
+```
+
+Python's `glob` does not descend into a directory whose name begins with a dot,
+and every yaml file in this repository is under `.github/`. ⚠ The expression is
+correct in a tree whose yaml sits anywhere else, which is why it survived review:
+it is wrong about this tree specifically.
+
+**Approach.** Enumerate with `git ls-files -z` rather than with `glob`, which is
+what every check under `scripts/common/` already does and which cannot have this
+class of blind spot. ⭐ **And assert the count before the verdict**, so the step
+refuses an empty scope instead of reporting green over it. `check-one-home.sh`
+carries the same rule for the same reason: a guard that cannot tell "nothing
+wrong" from "nothing examined" is not a guard.
+
+⚠ **`chr(0)` rather than a backslash escape** for the separator. The payload
+crosses a shell on its way into `python3 -c`, and
+[`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 1 is the
+measurement behind not writing one there.
+
+**Consumers.** None. A workflow is not fetched by anything.
+
+**Prove.**
+
+```bash
+uv run --with pyyaml python -c "import subprocess, sys, yaml"
+```
+
+⚠ That line only establishes the interpreter. The acceptance is the step's own
+payload, run on this machine, reporting a non-zero file count and exit 0, and
+the same payload with a pattern that matches nothing exiting non-zero.
+
+---
+
+### Closing
+
+**Closed 2026-08-29T15:18:27Z.**
+
+```text
+ok   .github/dependabot.yml
+ok   .github/workflows/ci.yml
+ok   .github/workflows/remote-items.yml
+3 file(s) parsed
+rc=0
+```
+
+⭐ **The guard was mutation-proven**, which is what separates this from the
+version it replaces:
+
+```text
+no yaml file in scope, so this step cannot report a pass
+rc=1
+```
+
+⚠ **Three files where the step had been reporting on none.** The CI logs that
+would show the empty output are past their retention, so what is recorded here
+is the local reproduction of the expression rather than a log line.

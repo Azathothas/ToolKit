@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // scripts/common/write-file.mjs - write, append to, or patch a file without the shell touching the payload.
 //
-// ── WHAT IT IS FOR ───────────────────────────────────────────────────────────────────────────
+// -- WHAT IT IS FOR ---------------------------------------------------------------------------
 // Heredocs, PowerShell here-strings and `echo`/`printf` all put the FILE CONTENT on the command
 // line, where a backtick, a `$`, an unbalanced quote, an emoji or an indented terminator changes it
 // or eats the rest of the session. This project runs two shells with different rules for all of
@@ -11,7 +11,7 @@
 //   append   <path>   add to the end, creating the file if absent
 //   replace  <path>   substitute one exact string for another, with a required count
 //
-// ── HOW THE PAYLOAD GETS IN - pick by what your shell makes easy ─────────────────────────────
+// -- HOW THE PAYLOAD GETS IN - pick by what your shell makes easy -----------------------------
 //   --b64 <BASE64>    ⭐ the bulletproof one. Base64 is [A-Za-z0-9+/=] and needs no quoting in ANY
 //                     shell. Use it whenever the content has quotes, backticks, `$`, `%` or emoji.
 //   --from <file>     copy the bytes of another file (no re-encoding)
@@ -22,35 +22,35 @@
 // different number of times is REFUSED and the file is untouched: a silent no-op that reports
 // success is the failure this mode exists to remove.
 //
-// ── GOTCHAS, EACH ONE LOAD-BEARING ───────────────────────────────────────────────────────────
-//  • ⛔ IT REFUSES TO WRITE OUTSIDE THE REPO. The path is resolved (symlinks included) and must sit
+// -- GOTCHAS, EACH ONE LOAD-BEARING -----------------------------------------------------------
+//  - ⛔ IT REFUSES TO WRITE OUTSIDE THE REPO. The path is resolved (symlinks included) and must sit
 //    under the git toplevel. `../../etc/hosts` exits 2.
-//  • ⛔ IT REFUSES A PATH THE SHELL WOULD FIGHT YOU OVER - a shell metacharacter, a space, a
+//  - ⛔ IT REFUSES A PATH THE SHELL WOULD FIGHT YOU OVER - a shell metacharacter, a space, a
 //    root-level redirect spill, a credential-shaped name. You cannot use this tool to create the
 //    junk the other guard exists to catch.
-//  • ⭐ THE WRITE IS ATOMIC: a temp file in the SAME directory, then rename. A killed process leaves
+//  - ⭐ THE WRITE IS ATOMIC: a temp file in the SAME directory, then rename. A killed process leaves
 //    the old file intact, never a truncated one. Same directory matters - rename across volumes is
 //    a copy, and loses the guarantee.
-//  • ⚠ IT WRITES BYTES EXACTLY. No newline is added, no CRLF conversion is done. Git applies
+//  - ⚠ IT WRITES BYTES EXACTLY. No newline is added, no CRLF conversion is done. Git applies
 //    .gitattributes on commit; this tool does not second-guess it.
-//  • ⚠ `--b64` REJECTS input that is not valid base64 rather than writing mojibake - the common
+//  - ⚠ `--b64` REJECTS input that is not valid base64 rather than writing mojibake - the common
 //    cause is a shell having wrapped a long value across lines.
-//  • ⚠ `append` on a file with no trailing newline joins the last line. Pass --nl to insert one.
-//  • ⛔ POWERSHELL'S STDIN IS NOT BYTE-EXACT AND GIT BASH'S IS. Measured on one 59-byte fixture:
-//    `Get-Content x -Raw | node …` wrote 61 bytes - PowerShell's native-command pipe APPENDS a
-//    trailing CRLF (tail `… 3e 20 3c 0a` became `… 3c 0a 0d 0a`). The same file through `cat x |`
+//  - ⚠ `append` on a file with no trailing newline joins the last line. Pass --nl to insert one.
+//  - ⛔ POWERSHELL'S STDIN IS NOT BYTE-EXACT AND GIT BASH'S IS. Measured on one 59-byte fixture:
+//    `Get-Content x -Raw | node ...` wrote 61 bytes - PowerShell's native-command pipe APPENDS a
+//    trailing CRLF (tail `... 3e 20 3c 0a` became `... 3c 0a 0d 0a`). The same file through `cat x |`
 //    in Git Bash was byte-identical, as were `--b64` and `--from` from BOTH shells. The tool cannot
 //    tell an intended trailing newline from an added one, so it does not guess.
 //    ⭐ FROM POWERSHELL, USE `--b64` OR `--from`. Reserve stdin for pipes in Git Bash.
 //
-// ── EXAMPLES - both shells, same command ─────────────────────────────────────────────────────
+// -- EXAMPLES - both shells, same command -----------------------------------------------------
 //   node scripts/common/write-file.mjs write docs/note.md --b64 SGVsbG8gJ3dvcmxkJyBgJFBBVEhgCg==
 //   node scripts/common/write-file.mjs append docs/note.md --nl --b64 dHJhaWxpbmcgbGluZQo=
 //   node scripts/common/write-file.mjs replace src/a.ts --find-b64 Zm9v --replace-b64 YmFy --expect 3
 //   Get-Content in.md -Raw | node scripts/common/write-file.mjs write docs/note.md      # PowerShell
 //   cat in.md          | node scripts/common/write-file.mjs write docs/note.md          # Git Bash
 //
-// Exit codes: 0 ok · 1 refused (count mismatch, bad base64, missing input) · 2 path refused.
+// Exit codes: 0 ok, 1 refused (count mismatch, bad base64, missing input), 2 path refused.
 
 import { execFileSync } from 'node:child_process';
 import {
@@ -89,7 +89,7 @@ if (!['write', 'append', 'replace'].includes(MODE) || !TARGET || TARGET.startsWi
   );
 }
 
-// ── the repo boundary ────────────────────────────────────────────────────────────────────────
+// -- the repo boundary ------------------------------------------------------------------------
 const ROOT = realpathSync(
   execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim(),
 );
@@ -111,7 +111,7 @@ if (norm(realAbs) !== norm(ROOT) && !norm(realAbs).startsWith(norm(ROOT) + sep))
 }
 const rel = relative(ROOT, realAbs);
 
-// ── the path predicate, so this tool cannot create a name that needs quoting ever after ──
+// -- the path predicate, so this tool cannot create a name that needs quoting ever after --
 const SHELL_CHARS = new Set([...'()&|;<>$`\'"*?[]!%#\\: \t']);
 const relPosix = rel.split(sep).join('/');
 const base = basename(relPosix);
@@ -138,7 +138,7 @@ if (SECRET_NAME.test(base) && !SECRET_EXEMPT.test(base)) {
   );
 }
 
-// ── payload channels ─────────────────────────────────────────────────────────────────────────
+// -- payload channels -------------------------------------------------------------------------
 const decodeB64 = (s, what) => {
   const cleaned = s.replace(/\s+/g, '');
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(cleaned) || cleaned.length % 4 !== 0) {
@@ -179,7 +179,7 @@ const payloadFor = (b64Flag, fromFlag, label) => {
   die(1, `REFUSED: ${label} not supplied - pass --${b64Flag} or --${fromFlag}.`);
 };
 
-// ── the atomic write ─────────────────────────────────────────────────────────────────────────
+// -- the atomic write -------------------------------------------------------------------------
 const atomicWrite = (target, buf) => {
   mkdirSync(dirname(target), { recursive: true });
   // Same directory, so the rename is a metadata operation on one volume rather than a copy.

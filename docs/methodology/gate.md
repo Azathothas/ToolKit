@@ -85,10 +85,9 @@ At least three, each asking a **different** question. The full specification,
 including the three lenses and what makes a pass real, is
 [`reviews.md`](reviews.md).
 
-⭐ **A pass that reports nothing means that pass was too shallow.** Three passes
-reporting nothing is a weaker result than one pass reporting a real defect. Say
-what each one swept, and if a pass genuinely found nothing, say what would have
-had to be true for it to fire.
+⭐ **Silence from a pass is a result about the pass, not about the code.**
+[`reviews.md`](reviews.md) says what that means and what a pass with no findings
+owes instead.
 
 ---
 

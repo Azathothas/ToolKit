@@ -19,6 +19,72 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-08-29
+
+### 2026-08-29T15:18:27Z: the four open issues, and six defects found doing them
+
+**Record:** [`TODO/docs.md`](TODO/docs.md), [`TODO/tooling.md`](TODO/tooling.md)
+and [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md) carry the twelve entries
+this session filed and closed; [`TODO/PROGRESS.md`](TODO/PROGRESS.md) is the
+state.
+**Deployed:** ⛔ **no deploy.** This repository publishes nothing.
+
+⭐ **What was asked for.** The four issues open against this repository: a list
+of feature requests for `wsl-ephemeral.ps1`, the template skeletons still
+carrying placeholders, a missing `docs/AGENTS.md`, and the scripts copied from
+`Azathothas/TEMPLATE` needing to be iterated on and completed.
+
+⭐ **What the tooling half found that nobody had asked about.** Six defects, and
+four of them were reporting success:
+
+- ⛔ **A CI step named `yaml parses` had never parsed a file.** Python's `glob`
+  does not descend into a dot-directory and every yaml file here is under
+  `.github/`, so it iterated nothing and exited 0 for its whole life. `TOOL-08`.
+- ⛔ **`check-remote-items` exited 1 for an item that only needed reading**, so
+  the weekly workflow was red for as long as any issue was open, and its two
+  modes disagreed about the same tree: text 1, json 0. `TOOL-05`.
+- ⛔ **`check-gate.ps1` skipped six checks on the host it exists for**, running
+  the `sh` half of every twin and reporting green when no shell was found.
+  `TOOL-06`.
+- ⛔ **Both halves of `deslop` printed the number of files they had planned to
+  remove**, never reading the state back. Fixed while importing them. `TOOL-07`.
+- ⛔ **The tree broke its own character rule in 164 places**, in 28 files, every
+  one a comment banner in a script, while `check-docs.sh` reported it clean
+  because it reads markdown alone. `DOC-02`.
+- ⛔ **Seventeen sentences had two homes.** `DOC-03`.
+
+**What changed, by issue.**
+
+- **Issue 1.** `wsl-ephemeral.ps1` gains `-Action Resources`, which reports what
+  WSL and the container engine are holding and **prints** the cleanup commands
+  without running one, and `-Action HostAddress`, which answers what a distro
+  reaches this host at without creating a distro to find out. A launcher,
+  `wsl-ephemeral-launcher.ps1`, resolves the script, verifies it, clears the
+  download mark and forwards the rest. ⛔ `-PortForward` was refused: it needs
+  elevation and leaves a rule on the machine. `WSL-13`, `WSL-14`, `WSL-15`.
+- **Issue 2.** `docs/templates/` is gone. The one form this repository authors
+  from is `TODO/ENTRY.md`, and `TODO/RULES.md` is written for real. Two checks
+  now hold the prose rules that produced the issue. `DOC-02`, `DOC-03`,
+  `DOC-04`.
+- **Issue 3.** `docs/README.md` becomes `docs/AGENTS.md`, the document an agent
+  reads in full. `README.md` takes the map and is written for a person, and the
+  root `AGENTS.md` is a door. `DOC-05`.
+- **Issue 4.** `check-markers`, `check-one-home`, `deslop` and `fill-license`
+  moved here with the `LICENSES/` texts, `check-remote-items` and `check-docs`
+  were refreshed from the newer upstream copies, and `mine-repo` deliberately
+  stayed where it is. `TOOL-04` through `TOOL-08`.
+
+⚠ **One behaviour change a caller could observe**, recorded in
+[`docs/consumers.md`](docs/consumers.md): `wsl-ephemeral.ps1` now writes its
+final `ERROR:` line to stderr. Nothing was renamed and no exit code changed
+meaning, so it is not a break by that file's definition; it is written down
+because it is the only thing in this batch that is visible from outside.
+
+⚠ **A consumer nobody had written down was found again.**
+`Azathothas/bit-cli` fetches this script by raw URL from its own
+`docs/containers.md`. That is the second time reading one unrelated page has
+turned up a consumer the register did not have.
+
 ## 2026-08-27
 
 ### 2026-08-27T16:30:00Z: the BSD work moved out, and this ledger is closed
@@ -143,10 +209,11 @@ corrections.
 **Deployed:** no deploy. ⛔ This repository publishes nothing, and no code
 changed.
 
-23 references supplied by the operator, expanded to **28 repositories** because
-one row was an organisation query. Every one was reached; none is recorded as
-gone. Issues, pull requests and discussions were pulled in both states with
-their comments, which is where nearly everything below came from.
+A sweep of the operator's reference list, every repository reached and none
+recorded as gone, with issues, pull requests and discussions pulled in both
+states. ⭐ The scope, the counts and what was found are in
+[`docs/reference-sweeps/findings.md`](docs/reference-sweeps/findings.md), which
+is where nearly everything below came from.
 
 - ⭐ **`BSD-02` closed**, and its premise was wrong by conflating two questions.
   "Runnable" as an OCI container and "runnable" as a booted guest have different

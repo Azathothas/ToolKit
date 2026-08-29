@@ -17,7 +17,24 @@ wrote down is a consumer nobody checks before a rename.
 | consumer | fetches | how it is pinned | breaks if |
 | --- | --- | --- | --- |
 | `Azathothas/TEMPLATE`, at `scripts/powershell-windows/wsl-ephemeral.ps1` | `scripts/powershell-windows/wsl-ephemeral.ps1` | a commit SHA and a SHA-256 of the file, both hardcoded in the wrapper | the path moves, a parameter is renamed, or an exit code changes meaning |
-| `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | ⛔ **nothing. It carries a vendored COPY**, 536 lines against this tree's 1,579 | ⛔ not pinned, not fetched, no digest, no reference to this repository | ⚠ nothing here can break it, and nothing here can fix it either |
+| `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | ⛔ **nothing. It carries a vendored COPY**, 536 lines against this tree's 1,579 on the day it was found, and 1,980 now | ⛔ not pinned, not fetched, no digest, no reference to this repository | ⚠ nothing here can break it, and nothing here can fix it either |
+| `Azathothas/bit-cli`, at `docs/containers.md` | `scripts/powershell-windows/wsl-ephemeral.ps1`, by `curl` into `.tmp/` | a commit SHA the page tells its reader to resolve, and nothing hardcoded | the path moves, a parameter is renamed, or an exit code changes meaning. ⚠ Its procedure is written out by hand rather than run from a wrapper, so a change to the invocation shape reaches it as prose that is now wrong. |
+
+### ⚠ `Azathothas/bit-cli` was found the same way the vendored copy was
+
+⭐ **Found on 2026-08-29 while reading that repository's `docs/containers.md`**,
+which was cited in an issue about this tool for an unrelated reason. It was not
+in this register. That is twice now that reading one unrelated page found a
+consumer the register did not have, which is the argument for the closing line
+of this section rather than a note against it.
+
+⚠ **It is a documentation consumer rather than a code one**, and that is a
+different hazard from a pin. Nothing there executes on a schedule, so nothing
+there breaks; what happens instead is that a person follows a page whose
+commands no longer match the tool, and the page cannot tell them so. ⭐ Its own
+measurements agree with this repository's: it records the NAT gateway its distro
+saw as `172.23.96.1`, and `-Action HostAddress` on this machine answers the
+same.
 
 ### ⛔ The vendored copy in `pkgforge-dev/cross-libc-dlopen`
 
@@ -62,10 +79,15 @@ Nothing there fetches from here, so a rename here cannot break it; a rename or
 a retag **there** breaks anything here that names an image. Tags are pinned by
 name in the entry that uses them, never by `latest`.
 
-⚠ The register above is what is known on 2026-08-27. The operator runs these
+⚠ The register above is what is known on 2026-08-29. The operator runs these
 tools from other machines and other scripts by hand, and those callers are not
 listed because they cannot be enumerated from here. Treat the register as the
 lower bound on who is affected, never as the complete set.
+
+⛔ **Two of the three rows were added by finding a consumer, not by being told
+about one**, on two different days, both while reading something else. That is
+the strongest evidence this file has that its lower-bound framing is the correct
+one and that a session changing a fetched file should look rather than assume.
 
 ---
 
@@ -112,6 +134,7 @@ fact a consumer's owner needs.
 
 | date | what broke | consumers checked | pin state |
 | --- | --- | --- | --- |
+| 2026-08-29 | `wsl-ephemeral.ps1`: the final `ERROR: ...` line moved from stdout to **stderr**. ⚠ Not a break by the definition above: nothing was renamed and no exit code changed meaning. It is here because it is the one change this session made that a caller could observe. | all three rows. `Azathothas/TEMPLATE`'s wrapper forwards the inner code and reads no stream; `bit-cli`'s page reads exit codes and the command's own output; the vendored copy fetches nothing. | ⚠ **not moved.** Nothing in this batch fixes a defect a consumer is carrying, so there is no reason to ask anyone to move. |
 | 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New -Command` now exits with the inner command's code. It used to warn and exit 0. `WSL-01`. | `Azathothas/TEMPLATE`, the only consumer in the register. Its wrapper forwards arguments and propagates the inner code verbatim, so it needs no edit beyond the pin. | ⭐ **moved.** See the note below. |
 | 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New` was failing outright on Windows PowerShell 5.1 and now works. `WSL-12`. | the same single consumer. Its wrapper runs the fetched script on whichever host invoked it, so a 5.1 caller was getting the break. | ⭐ **moved**, in the same bump. |
 
@@ -144,8 +167,16 @@ closed, which is safe and takes an hour to work out.
 `ea5d48310021`, matched the digest, and `-Action Enter`, which did not exist at
 the old pin, answered through it from Windows PowerShell 5.1.
 
-⚠ **`wsl-ephemeral.ps1` now has no open entry**, so the next pin move will be
-for something not yet written.
+⭐ **A launcher now lives here too**,
+[`../scripts/powershell-windows/wsl-ephemeral-launcher.md`](../scripts/powershell-windows/wsl-ephemeral-launcher.md),
+and it is **not** a second copy of the wrapper in `Azathothas/TEMPLATE`. That
+one pins a commit and a digest because it lives in another repository and has
+to. This one sits beside the file it runs, so it prefers the sibling and needs
+no pin at all; a pin inside the repository that owns the file can only ever name
+one of its own ancestors.
+
+⚠ **Adding it does not retire the wrapper and does not move any pin.** Which of
+the two `Azathothas/TEMPLATE` keeps is that repository's decision.
 
 ⚠ **A caller that was reading the false pass gets a red result the first time it
 runs after the pin moves, and the failure it reports is real.** That is the

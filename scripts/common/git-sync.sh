@@ -109,7 +109,7 @@ trap 'rm -rf "$TMP"' EXIT INT TERM
 say() { printf '%s git-sync: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1"; }
 die() { printf 'git-sync: %s\n' "$2" >&2; exit "$1"; }
 
-# ── the identity ────────────────────────────────────────────────────────────
+# -- the identity ------------------------------------------------------------
 # ⛔ NOTHING IS INVENTED. If neither the flags nor git config name a person,
 # the script refuses. Guessing an identity onto somebody's commit is worse
 # than not committing, because it is a claim about who wrote something.
@@ -132,7 +132,7 @@ git_as() {
 
 [ -n "$BRANCH" ] || BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
 
-# ── rule 1: no tool is credited in a commit ─────────────────────────────────
+# -- rule 1: no tool is credited in a commit ---------------------------------
 # ⛔ REFUSED, NOT STRIPPED. Rewriting a message to make it pass is how the
 # author never finds out, and the same line arrives again next time.
 #
@@ -150,7 +150,7 @@ find_attribution() {
   grep -niE "$ATTRIBUTION" "$1" 2>/dev/null || true
 }
 
-# ── rule 2: a CI skip is deliberate or it is not there ──────────────────────
+# -- rule 2: a CI skip is deliberate or it is not there ----------------------
 # Every marker GitHub Actions honours, matched the way GitHub matches them:
 # case-insensitively and anywhere in the message. That is why a sentence ABOUT
 # one is one.
@@ -160,7 +160,7 @@ find_ci_skip() {
   grep -niE "$CI_SKIP" "$1" 2>/dev/null || true
 }
 
-# ── the message ─────────────────────────────────────────────────────────────
+# -- the message -------------------------------------------------------------
 # ⛔ THE BODY COMES FROM A FILE. docs/conventions/shell.md section 1: a body
 # passed as a shell string loses its quoting, and the way it fails is worse
 # than an error. Nothing errors, and a fragment of the body is executed or
@@ -176,7 +176,7 @@ if [ -n "$MESSAGE" ]; then
   fi
 fi
 
-# ── --check: the read-only half ─────────────────────────────────────────────
+# -- --check: the read-only half ---------------------------------------------
 if [ "$CHECK" = "1" ]; then
   PROBLEMS=0
 
@@ -214,7 +214,7 @@ if [ "$CHECK" = "1" ]; then
   exit 0
 fi
 
-# ── the gates, BEFORE the push ──────────────────────────────────────────────
+# -- the gates, BEFORE the push ----------------------------------------------
 run_gates() {
   if [ "$SKIP_GATES" = "1" ]; then
     say "GATES SKIPPED by --skip-gates. This push carries no proof the tree is green."
@@ -229,7 +229,7 @@ run_gates() {
   done
 }
 
-# ── commit ──────────────────────────────────────────────────────────────────
+# -- commit ------------------------------------------------------------------
 if [ "$PUSH_ONLY" != "1" ]; then
   [ -s "$MSG_FILE" ] || die 2 "--message is required unless --push-only or --check."
 
@@ -290,7 +290,7 @@ else
   run_gates || die 1 "a gate failed. Nothing has been pushed."
 fi
 
-# ── push ────────────────────────────────────────────────────────────────────
+# -- push --------------------------------------------------------------------
 if [ "$NO_PUSH" = "1" ]; then
   say "--no-push, stopping before the push"
   exit 0

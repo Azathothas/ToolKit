@@ -59,16 +59,21 @@ list_files() {
 }
 
 
-# ⚠ THE TEMPLATE DIRECTORY IS EXEMPT AND MUST BE. Its whole job is to hold
-# placeholders, so a check that failed on it would fail on a correct tree, and
-# a check that fails on a correct tree gets switched off within a week.
+# ⚠ THE ONE FILL-IN FORM IS EXEMPT AND MUST BE. TODO/ENTRY.md is the shape an
+# entry is written from, so holding placeholders is its whole job, and a check
+# that failed on it would fail on a correct tree. A check that fails on a
+# correct tree gets switched off within a week.
 # The exemption is by path rather than by content: a file with placeholders
 # ANYWHERE ELSE is the defect.
+# ⛔ IT NAMES ONE FILE, NOT A DIRECTORY. It used to exempt three whole
+# directories inherited from a template repository, two of which have never
+# existed here and one of which has been deleted. A directory-shaped exemption
+# grants itself to whatever lands there next.
 # ⛔ BOTH implementations are exempt, because each one contains the patterns
 # it looks for. Exempting only one is how the twins disagree, and it did: the
 # sh side scanned the new ps1 twin and reported four categories the ps1 side
 # did not.
-EXEMPT='^(docs/templates/|dotfiles/|bootstrap/|scripts/common/check-placeholders\.(sh|ps1))'
+EXEMPT='^(TODO/ENTRY\.md$|scripts/common/check-placeholders\.(sh|ps1))'
 
 if [ -n "$SCOPE" ]; then
   FILES=$(list_files "$SCOPE" | grep -Ev "$EXEMPT" || true)
@@ -172,6 +177,6 @@ if [ "$COUNT" -gt 0 ]; then
   exit 1
 fi
 
-printf 'no placeholders survived in %s files (docs/templates, dotfiles and bootstrap are exempt)\n' \
+printf 'no placeholders survived in %s files (TODO/ENTRY.md is exempt)\n' \
   "$(printf '%s\n' "$FILES" | wc -l | tr -d ' ')"
 exit 0

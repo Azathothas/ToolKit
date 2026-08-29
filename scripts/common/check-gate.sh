@@ -13,7 +13,7 @@
 # .github/workflows/ci.yml disagree about what runs, CI is the one that gates a
 # push and this one is the defect.
 #
-# ── ⚠ A SKIPPED CHECK IS NOT A PASSED CHECK ─────────────────────────────────
+# -- ⚠ A SKIPPED CHECK IS NOT A PASSED CHECK ---------------------------------
 #
 # Some of these need a tool that is not everywhere: shellcheck, jq, pwsh,
 # PSScriptAnalyzer. A gate that silently dropped one of them and still printed
@@ -27,13 +27,21 @@
 # hosts that between them have every tool, which is where the coverage comes
 # from.
 #
-# ── ⚠ --fast, AND WHY IT IS A FLAG RATHER THAN THE DEFAULT ──────────────────
+# -- ⚠ --fast, AND WHY IT IS A FLAG RATHER THAN THE DEFAULT ------------------
 #
-# Measured on one Windows 11 machine, 2026-08-27: the full run took 208s and
-# check-twins was 171s of it, because that check runs both halves of every pair
-# and there are ten pairs. That is the right price before a push and the wrong
-# one before each of eleven commits, and a gate too slow to run is a gate that
-# gets run once at the end.
+# Measured on one Windows 11 Pro 26200 machine, 2026-08-29, with 13 twin pairs:
+# the full run took 379s and check-twins ALONE took 270s, because that check
+# runs both halves of every pair. Without it the sh half is 66s and the
+# PowerShell half 41s. That is the right price before a push and the wrong one
+# before each of a dozen commits, and a gate too slow to run is a gate that gets
+# run once at the end.
+#
+# ⚠ The three numbers are separate runs on a machine doing other things, so
+# they do not add up and are not meant to. Each carries its own conditions,
+# which is what makes any of them comparable to a later one.
+# ⚠ The figures carried before this were 208s and 171s over TEN pairs, taken
+# on 2026-08-27. Two pairs were added on 2026-08-29 and the old numbers stopped
+# describing this tree, which is why they were re-taken rather than adjusted.
 #
 # ⛔ --fast SKIPS check-twins. It does not weaken anything else, it is reported
 # as a SKIP like every other, and the summary says so. The full run is what a
@@ -112,8 +120,15 @@ check_simple() {
 
 [ "$JSON" = 1 ] || printf 'check-gate: %s\n\n' "$REPO_ROOT"
 
-# ── the checks that are pure sh and always available ────────────────────────
+# -- the checks that are pure sh and always available ------------------------
 check_simple 'check-docs'            sh "$HERE/check-docs.sh"
+# ⛔ BOTH OF THESE, NOT ONE. check-docs reads markdown; check-markers reads
+# every tracked text file and owns the character rule; check-one-home reads the
+# documents against each other. The first was green on this tree while the
+# second had 164 findings and the third 17, which is what "run both" costs when
+# it is advice rather than a line in the runner.
+check_simple 'check-markers'         sh "$HERE/check-markers.sh"
+check_simple 'check-one-home'        sh "$HERE/check-one-home.sh"
 check_simple 'check-placeholders'    sh "$HERE/check-placeholders.sh"
 check_simple 'check-control-bytes'   sh "$HERE/check-control-bytes.sh"
 check_simple 'check-record'          sh "$HERE/check-record.sh"
@@ -131,7 +146,7 @@ else
   [ "$JSON" = 1 ] || printf '%s\n' "$cl_out" | sed 's/^/  | /'
 fi
 
-# ── line endings, against git's own answer rather than a second table ───────
+# -- line endings, against git's own answer rather than a second table -------
 bad=$(git ls-files --eol | grep -v 'i/lf' | grep -v 'i/-text')
 if [ -z "$bad" ]; then
   record_pass 'line-endings'
@@ -140,7 +155,7 @@ else
   [ "$JSON" = 1 ] || printf '%s\n' "$bad" | sed 's/^/  | /'
 fi
 
-# ── every tracked shell script parses ───────────────────────────────────────
+# -- every tracked shell script parses ---------------------------------------
 # ⛔ Every tracked file, not a hardcoded list. A list is a thing somebody
 # forgets to extend, and the script they forgot is the one that breaks.
 fail=0
@@ -149,7 +164,7 @@ for f in $(git ls-files '*.sh'); do
 done
 if [ "$fail" = 0 ]; then record_pass 'sh -n'; else record_fail 'sh -n' 1; fi
 
-# ── shellcheck, when it is here ─────────────────────────────────────────────
+# -- shellcheck, when it is here ---------------------------------------------
 if command -v shellcheck >/dev/null 2>&1; then
   fail=0
   for f in $(git ls-files '*.sh'); do
@@ -163,7 +178,7 @@ else
   record_skip 'shellcheck' 'shellcheck is not on PATH'
 fi
 
-# ── the PowerShell half, which needs a PowerShell ───────────────────────────
+# -- the PowerShell half, which needs a PowerShell ---------------------------
 PWSH=""
 for c in pwsh pwsh.exe powershell.exe; do
   if command -v "$c" >/dev/null 2>&1; then PWSH=$c; break; fi
@@ -199,10 +214,10 @@ else
   record_skip 'PSScriptAnalyzer' 'no pwsh, pwsh.exe or powershell.exe on PATH'
 fi
 
-# ── the probe is not a gate, but it exiting non-zero is a real failure ──────
+# -- the probe is not a gate, but it exiting non-zero is a real failure ------
 check_simple 'doctor probe' sh scripts/doctor/doctor.sh --fast
 
-# ── the twins, which need jq and a PowerShell ──────────────────────────────
+# -- the twins, which need jq and a PowerShell ------------------------------
 #
 # ⛔ THIS PAIR RUNS THIS SCRIPT. check-twins.sh compares both halves of every
 # twin and check-gate is one of them, so an unguarded call here is an infinite
@@ -215,7 +230,7 @@ check_simple 'doctor probe' sh scripts/doctor/doctor.sh --fast
 # session that runs check-twins directly gets a gate one level deep rather than
 # three. ⚠ It is an internal recursion guard and nothing else reads it.
 if [ "$FAST" = 1 ]; then
-  record_skip 'check-twins' '--fast was passed; it is 171s of a 208s run'
+  record_skip 'check-twins' '--fast was passed; check-twins alone is 270s, measured 2026-08-29'
 elif [ "${CHECK_GATE_INNER:-}" = "1" ]; then
   record_skip 'check-twins' 'already inside check-twins; calling it here would recurse'
 elif [ -z "$PWSH" ]; then
@@ -226,7 +241,7 @@ else
   CHECK_GATE_INNER=1 check_simple 'check-twins' sh "$HERE/check-twins.sh"
 fi
 
-# ── report ─────────────────────────────────────────────────────────────────
+# -- report -----------------------------------------------------------------
 TOTAL=$((PASSED + FAILED + SKIPPED))
 
 if [ "$JSON" = 1 ]; then

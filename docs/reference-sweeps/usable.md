@@ -482,10 +482,8 @@ The section at the top of this document says `qemu-user` cannot help because it
 emulates a foreign architecture presenting Linux syscalls, and that **"there is
 no counterpart presenting FreeBSD syscalls on a Linux kernel"**.
 
-⛔ **A counterpart was built.** `R28`, `AkihiroSuda/lsf`, traps syscalls with
-`PTRACE_SYSCALL`, rewrites the syscall number in `RAX`, translates the
-structures that differ, and sets the carry flag on error because FreeBSD
-processes expect it.
+⛔ **A counterpart was built.** `R28`, `AkihiroSuda/lsf`, does exactly that job
+with `PTRACE_SYSCALL`; [`findings.md`](findings.md) carries how.
 
 Its README's own route, quoted rather than adapted, and ⚠ **not run here**:
 this Windows host has no `docker`, and `lsf` needs a Linux kernel of 5.6 or

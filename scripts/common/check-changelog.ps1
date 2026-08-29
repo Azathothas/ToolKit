@@ -10,7 +10,7 @@
 # is a preference, and a preference stated as a rule is what makes an agent stop
 # believing the rules that matter.
 #
-# ── WHAT IT CHECKS ──────────────────────────────────────────────────────────
+# -- WHAT IT CHECKS ----------------------------------------------------------
 #   1. ⛔ NEWEST FIRST. Dates inside a section descend. This is the rule that
 #      breaks most often, because appending is what an editor does by default.
 #   2. ⛔ Every entry heading carries a date, ISO 8601.

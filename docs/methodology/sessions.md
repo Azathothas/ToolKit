@@ -215,10 +215,9 @@ have had capabilities this one lacks, or the reverse.
 
 ## Do not idle
 
-⚠ **Do not end a turn to wait for something.** The conversation idles, the
-harness times out, and the session dies mid-operation with state half-changed.
+⚠ **A turn is never ended in order to wait**, and the cost of doing it is a
+session that dies with state half-changed.
 
-Hold in the foreground with a loop that ticks and prints progress, and keep the
-tick short enough that nothing looks hung. A background job and a hold loop are
-not alternatives; use both. See
-[`../conventions/shell.md`](../conventions/shell.md) section 10 for the shape.
+⭐ [`../conventions/shell.md`](../conventions/shell.md) section 10 owns this
+rule: what goes wrong, the hold loop that avoids it, and the ceiling on a tick.
+Read it there rather than a second version of it here.

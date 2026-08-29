@@ -7,7 +7,7 @@
 # noticed had fallen behind. The failure is silent, because each one works fine
 # on its own host and nobody runs both.
 #
-# ── ⭐ WHY ONLY THE PROBE HAS A TWIN, AND WHY THAT IS NOT AN OVERSIGHT ───────
+# -- ⭐ WHY ONLY THE PROBE HAS A TWIN, AND WHY THAT IS NOT AN OVERSIGHT -------
 #
 # Every other check here is POSIX sh alone, deliberately. Two implementations
 # of one rule is two places for that rule to be wrong, so a twin has to earn
@@ -38,7 +38,7 @@
 # run, and wherever a twin exists, THIS CHECK covers it. Adding a twin without
 # adding it here is how drift starts.
 #
-# ── WHAT DIFFERENCE IS CORRECT ──────────────────────────────────────────────
+# -- WHAT DIFFERENCE IS CORRECT ----------------------------------------------
 #
 # ⚠ Some disagreement is honest and must not be flattened away. Each twin
 # reports what ITS OWN host can reach, and on a Windows machine with msys
@@ -299,6 +299,8 @@ compare_pair() {
 }
 
 compare_pair "check-docs"           check-docs.sh           "--json"          check-docs.ps1           "-Json"
+compare_pair "check-markers"        check-markers.sh        "--json"          check-markers.ps1        "-Json"
+compare_pair "check-one-home"       check-one-home.sh       "--json"          check-one-home.ps1       "-Json"
 compare_pair "check-placeholders"   check-placeholders.sh   "--json"          check-placeholders.ps1   "-Json"
 compare_pair "check-control-bytes"  check-control-bytes.sh  "--json"          check-control-bytes.ps1  "-Json"
 compare_pair "check-changelog"      check-changelog.sh      "--json"          check-changelog.ps1      "-Json"
@@ -308,11 +310,12 @@ compare_pair "check-no-secrets pub" check-no-secrets.sh     "--public --json" ch
 
 # ⚠ THE GATE RUNNER'S TWO HALVES RUN DIFFERENT PROGRAMS TO REACH THE SAME
 # ANSWER, which is exactly the drift this file exists to catch. The sh half
-# spawns a PowerShell for the analyzer; the ps half spawns an sh for everything
-# POSIX. On a machine that has both they must produce the same counts, and a
-# machine that has only one reports the other's checks as SKIPPED in the same
-# number. ⛔ If this row ever fails because one half quietly stopped running
-# something, fix the half, never the comparison.
+# runs every check's sh implementation and spawns a PowerShell for the
+# analyzer; the ps half runs every check's PowerShell twin and spawns an sh
+# only for what has none. ⭐ So this row is the one comparison in the file that
+# exercises BOTH implementations of every twinned check at once. ⛔ If it ever
+# fails because one half quietly stopped running something, fix the half, never
+# the comparison.
 compare_pair "check-gate"           check-gate.sh           "--json"          check-gate.ps1           "-Json"
 
 # ⚠ THIS PAIR NEEDS A RUNNING WSL DISTRO and both twins exit 2 without one. Two
@@ -331,13 +334,39 @@ compare_pair "git-sync --check"     git-sync.sh             "--check --json"  gi
 # comparison skipped for convenience is a comparison that stops happening.
 compare_pair "check-remote-items"   check-remote-items.sh   "--json"          check-remote-items.ps1   "-Json"
 
-# ⚠ fill-license USED TO BE COMPARED HERE, on its output rather than on a
-# status line, because a corrupted licence exits 0. It was removed from this
-# repository along with LICENSES/: the licence is chosen and written, so a
-# bootstrap-time filler with no texts to read is dead code whose twin test
-# compared two error paths and called them equal. ⛔ If a licence filler ever
-# comes back, its OUTPUT comparison comes back with it. Azathothas/TEMPLATE
-# still carries both.
+# ⭐ fill-license IS COMPARED ON ITS OUTPUT, not on a status line, because its
+# output IS the artefact and a corrupted licence exits 0. The over-replacement
+# that produced this rule wrote a valid-looking file with a mangled warranty
+# clause.
+#
+# ⚠ THE COMPARISON WAS ABSENT FOR A WHILE AND THE FILLER WAS ABSENT WITH IT.
+# It came back on 2026-08-29 when the tool moved here, and the rule it
+# demonstrates is that a twin test comparing two ERROR paths passes vacuously:
+# with no LICENSES/ to read, both halves failed identically and agreed.
+printf '\n  licence texts, byte-for-byte:\n'
+LIC_DIFFS=0
+for id in MIT Apache-2.0 BSD-2-Clause BSD-3-Clause 0BSD Unlicense CC0-1.0 MPL-2.0; do
+  ( cd "$REPO_ROOT" && sh scripts/common/fill-license.sh --id "$id" --holder "Twin Check" --year 2026 --out "$TMP/lic.sh.$id" >/dev/null 2>&1 )
+  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File scripts/common/fill-license.ps1 -Id "$id" -Holder "Twin Check" -Year 2026 -Out "$TMP/lic.ps.$id" >/dev/null 2>&1 )
+  if cmp -s "$TMP/lic.sh.$id" "$TMP/lic.ps.$id"; then :; else
+    note "fill-license $id: the two implementations wrote different bytes"
+    LIC_DIFFS=$((LIC_DIFFS + 1))
+  fi
+done
+[ "$LIC_DIFFS" = "0" ] && ok "all 8 fillable licences byte-identical"
+
+# ⛔ And the four refusals, in both. A version that stopped refusing would
+# silently corrupt an attribution, and exit 0 while doing it.
+REF_BAD=0
+for id in GPL-3.0-only AGPL-3.0-only LGPL-3.0-only ISC; do
+  ( cd "$REPO_ROOT" && sh scripts/common/fill-license.sh --id "$id" --holder "Twin Check" --out "$TMP/r.sh" >/dev/null 2>&1 ); ra=$?
+  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File scripts/common/fill-license.ps1 -Id "$id" -Holder "Twin Check" -Out "$TMP/r.ps" >/dev/null 2>&1 ); rb=$?
+  if [ "$ra" = "1" ] && [ "$rb" = "1" ]; then :; else
+    note "fill-license $id: not refused by both (sh=$ra ps=$rb)"
+    REF_BAD=$((REF_BAD + 1))
+  fi
+done
+[ "$REF_BAD" = "0" ] && ok "all 4 refusals hold in both implementations"
 
 # --- 8. per-tool verdicts, on request ----------------------------------------
 if [ "$VERBOSE" = "1" ]; then
@@ -364,5 +393,5 @@ if [ "$DRIFT" -gt 0 ]; then
   printf 'how the check stops checking.\n'
   exit 1
 fi
-printf '✓ every twin pair agrees on this tree.\n'
+printf '✅ every twin pair agrees on this tree.\n'
 exit 0

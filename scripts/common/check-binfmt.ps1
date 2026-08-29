@@ -24,7 +24,7 @@
 #
 # ⭐ It reads the KERNEL, not a unit's exit code. The unit is the thing that lied.
 #
-# ── ⚠ WHY NOT `podman machine ssh` ─────────────────────────────────────────
+# -- ⚠ WHY NOT `podman machine ssh` -----------------------------------------
 #
 # The issue that asked for this assumed it. Measured on 2026-08-27: on Windows
 # that command passes -o UserKnownHostsFile=NUL to its own ssh, and under Git

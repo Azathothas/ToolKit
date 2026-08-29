@@ -8,7 +8,7 @@
 # whoever ran it next. CI has had both halves of this since the beginning; this
 # is the same two assertions in one command a session can run locally.
 #
-# ── ⚠ THE ANALYZER IS OPTIONAL AND SAYING SO IS THE POINT ───────────────────
+# -- ⚠ THE ANALYZER IS OPTIONAL AND SAYING SO IS THE POINT -------------------
 #
 # PSScriptAnalyzer is a module, not part of PowerShell. On a machine without it
 # this reports SKIPPED and exits 0, because "this host cannot run that one" is
@@ -55,7 +55,7 @@ Set-Location -LiteralPath $root
 $files = @(& git ls-files '*.ps1' | Where-Object { $_ })
 if ($files.Count -eq 0) { Exit-With 2 'no tracked .ps1 files; nothing to check' }
 
-# ── every tracked .ps1 parses ──────────────────────────────────────────────
+# -- every tracked .ps1 parses ----------------------------------------------
 # ⛔ Every tracked file, not a hardcoded list. A list is a thing somebody
 # forgets to extend, and the script they forgot is the one that breaks.
 $parseErrors = @()
@@ -71,7 +71,7 @@ foreach ($f in $files) {
     }
 }
 
-# ── PSScriptAnalyzer, if this machine has it ───────────────────────────────
+# -- PSScriptAnalyzer, if this machine has it -------------------------------
 $analyzerSkipped = $true
 $analyzerReason = 'PSScriptAnalyzer is not installed on this host'
 $findings = @()

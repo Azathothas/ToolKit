@@ -2,7 +2,7 @@
 # not be published?
 #
 # ⭐ THE TWIN OF check-no-secrets.sh. Same schema, same categories, same exit
-# codes. check-twins.ps1 is what stops the two drifting.
+# codes. check-twins.sh is what stops the two drifting.
 #
 # ⚠ THE SCOPE IS TRACKED PLUS UNTRACKED-BUT-NOT-IGNORED, not tracked alone.
 # `git ls-files` cannot see a file that has never been staged, which is exactly
