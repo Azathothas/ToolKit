@@ -31,11 +31,12 @@
 #
 # -- THE EXEMPTIONS ----------------------------------------------------------
 #
-# ⛔ THE TWO ENTRY-POINT ROUTERS ARE EXEMPT FROM EACH OTHER, AND ONLY FROM EACH
-# OTHER. AGENTS.md and docs/AGENTS.md each state the absolutes in full on
-# purpose, because a session may be handed exactly one of them. ⚠ A sentence
-# shared between a router and any OTHER file is still refused, so the exemption
-# cannot seed a copy into the tree. Verified by planting exactly that.
+# ⛔ THERE IS NO ROUTER EXEMPTION ANY MORE, AND ITS REMOVAL IS THE POINT.
+# AGENTS.md and docs/AGENTS.md each stated the absolutes in full, and this check
+# exempted the pair from each other by name. DOC-07 deleted the root file on
+# 2026-08-30, so there is one router and nothing is duplicated. ⭐ An exemption
+# for a file that no longer exists grants itself to whatever lands at that path
+# next, so it is deleted rather than emptied.
 #
 # ⛔ docs/HISTORY/ IS EXEMPT ENTIRELY: a retired page states things the live
 # pages now state differently, or no longer state at all, which is the point of
@@ -99,7 +100,7 @@ if ($files.Count -lt 2) {
     exit 2
 }
 
-$routers = @{ 'AGENTS.md' = $true; 'docs/AGENTS.md' = $true }
+$routers = @{ 'docs/AGENTS.md' = $true }
 
 function Get-SentenceList([string]$Text) {
     $sb = New-Object System.Text.StringBuilder

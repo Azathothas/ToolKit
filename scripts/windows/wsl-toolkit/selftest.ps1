@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    Run wsl-ephemeral.ps1's pure functions against a table of cases, on any
+    Run wsl-toolkit.ps1's pure functions against a table of cases, on any
     Windows host, without WSL and without creating anything.
 
 .DESCRIPTION
-    THE DEFECT IT EXISTS TO CATCH. Most of wsl-ephemeral.ps1 can only be proved
+    THE DEFECT IT EXISTS TO CATCH. Most of wsl-toolkit.ps1 can only be proved
     by driving a real distro, which needs WSL, a container engine, several
     hundred megabytes and a minute. The parts that decide what a caller SEES do
     not: the timestamp renderer, the line splitter that makes a progress bar
@@ -19,7 +19,7 @@
     still satisfies that contract: exit 0 pass, 1 fail, 2 could not run, a -Json
     switch, no dependence on the working directory, and it writes nothing.
 
-    HOW IT LOADS THE FUNCTIONS. wsl-ephemeral.ps1 cannot be dot-sourced: its top
+    HOW IT LOADS THE FUNCTIONS. wsl-toolkit.ps1 cannot be dot-sourced: its top
     level dispatches an action and calls exit, which would end this session. So
     this parses the file, takes the function definitions it names, and defines
     those alone. THE NUMBER IT FOUND IS ASSERTED against the number it asked
@@ -37,7 +37,7 @@
     failed. For a gate runner rather than for a person.
 
 .EXAMPLE
-    pwsh -NoProfile -File scripts\powershell-windows\wsl-ephemeral-selftest.ps1
+    pwsh -NoProfile -File scripts\windows\wsl-toolkit\selftest.ps1
 
 .NOTES
     ASCII-ONLY ON PURPOSE, like the launcher beside it.
@@ -48,15 +48,17 @@
     Requires : Windows PowerShell 5.1 or PowerShell 7+. No WSL, no engine.
 #>
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+    Justification = 'Get-TestSettings builds the whole settings object the stream log reads, and the real function it stands in for is Resolve-StreamLogSettings. Renaming it to a singular would make it describe something it does not return.')]
 [CmdletBinding(PositionalBinding = $false)]
 param([switch]$Json)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$Target = Join-Path (Split-Path -Parent $PSCommandPath) 'wsl-ephemeral.ps1'
+$Target = Join-Path (Split-Path -Parent $PSCommandPath) 'wsl-toolkit.ps1'
 if (-not (Test-Path -LiteralPath $Target -PathType Leaf)) {
-    [Console]::Error.WriteLine("wsl-ephemeral-selftest: $Target is not there, so there is nothing to test.")
+    [Console]::Error.WriteLine("selftest: $Target is not there, so there is nothing to test.")
     exit 2
 }
 
@@ -77,6 +79,21 @@ $Wanted = @(
     'Resolve-CommandBytes'
     'New-StreamLogState'
     'Write-StreamLogLine'
+    'Resolve-StampColumns'
+    'Format-StampColumn'
+    'Get-ColumnFormat'
+    'Test-ColumnTakesFormat'
+    'Resolve-StreamLogSettings'
+    'Format-StreamLogPrefix'
+    'New-RedactionSet'
+    'Invoke-Redaction'
+    'Limit-LineBytes'
+    'Get-ExitCodeDiagnosis'
+    'Get-ParameterApplicability'
+    'Assert-ParametersApplyToAction'
+    'Split-DelimitedArgument'
+    'Get-ScriptArgPairs'
+    'Assert-SinkPathIsUsable'
 )
 
 $parseErrors = $null
@@ -84,7 +101,7 @@ $tokens = $null
 $ast = [System.Management.Automation.Language.Parser]::ParseFile(
     (Resolve-Path -LiteralPath $Target).Path, [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors -and $parseErrors.Count -gt 0) {
-    [Console]::Error.WriteLine("wsl-ephemeral-selftest: $Target does not parse; check-powershell.ps1 owns that verdict.")
+    [Console]::Error.WriteLine("selftest: $Target does not parse; check-powershell.ps1 owns that verdict.")
     exit 1
 }
 
@@ -95,7 +112,7 @@ foreach ($fn in $ast.FindAll({ $args[0] -is [System.Management.Automation.Langua
 
 $missing = @($Wanted | Where-Object { -not $found.ContainsKey($_) })
 if ($missing.Count -gt 0) {
-    [Console]::Error.WriteLine("wsl-ephemeral-selftest: these functions are named here and are not in $Target : " + ($missing -join ', '))
+    [Console]::Error.WriteLine("selftest: these functions are named here and are not in $Target : " + ($missing -join ', '))
     [Console]::Error.WriteLine("  A rename is not a failure of the tool, it is a failure of this file to follow it. Fix the list, do not delete the cases.")
     exit 1
 }
@@ -105,6 +122,29 @@ foreach ($name in $Wanted) {
     # the same effect, and it does not reach for the cmdlet whose every other
     # use is a defect.
     . ([ScriptBlock]::Create($found[$name]))
+}
+
+# -- the constants those functions read, taken from the same file -------------
+# THE DEFECT THIS EXISTS FOR IS A TEST THAT PASSES FOR THE WRONG REASON. The
+# reserved-device cases were written before this, so Assert-SinkPathIsUsable
+# threw on an unset $script:ReservedDeviceNames rather than on the device name,
+# and every case expecting a refusal was green over a function that had never
+# reached its own guard. The two cases expecting SUCCESS are what exposed it.
+#
+# It is loaded rather than copied for the reason a copy is always wrong: a
+# second list here is a second place for the set to be right, and one of them
+# would go stale.
+$WantedConstant = @('ReservedDeviceNames')
+foreach ($cname in $WantedConstant) {
+    $hit = @($ast.FindAll({
+        $args[0] -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+        $args[0].Left.Extent.Text -eq ('$script:' + $cname)
+    }, $false))
+    if ($hit.Count -ne 1) {
+        [Console]::Error.WriteLine("selftest: expected exactly one assignment to `$script:$cname in $Target, found $($hit.Count).")
+        exit 1
+    }
+    . ([ScriptBlock]::Create($hit[0].Extent.Text))
 }
 
 # -- the doubles, and what each one stands in for ----------------------------
@@ -122,7 +162,7 @@ function Resolve-HostAddress {
     return [pscustomobject]@{ Address = '172.23.96.1'; Mode = 'nat'; Source = 'a double'; Path = $null; Interface = 'vEthernet (WSL)' }
 }
 
-# Script-scoped parameters the loaded functions read. In wsl-ephemeral.ps1 these
+# Script-scoped parameters the loaded functions read. In wsl-toolkit.ps1 these
 # are its own param() block; here a case sets them before it runs.
 $script:Verbatim = $false
 $script:ScriptArg = @()
@@ -377,27 +417,27 @@ Test-Case 'the host address token is expanded inside a value' "U='https://172.23
 
 # -- Resolve-CommandBytes, where the three spellings meet --------------------
 Test-Case 'the prologue is prepended to a command given as text' "X='1'`nexport X`ntrue" {
-    $script:ScriptArg = @('X=1')
-    try { [Text.Encoding]::UTF8.GetString((Resolve-CommandBytes -Text 'true' -FromFile '' -FromB64 '')) }
-    finally { $script:ScriptArg = @() }
+    # -Pairs is an ARGUMENT now, not a script-scoped read: -ScriptArg cannot be
+    # repeated through -File, so Main resolves the file and the flag into one list.
+    [Text.Encoding]::UTF8.GetString((Resolve-CommandBytes -Text 'true' -FromFile '' -FromB64 '' -Pairs @('X=1')))
+
 }
 Test-Case 'the prologue is prepended to a command given as base64, identically' "X='1'`nexport X`ntrue" {
-    $script:ScriptArg = @('X=1')
-    try {
-        $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('true'))
-        [Text.Encoding]::UTF8.GetString((Resolve-CommandBytes -Text '' -FromFile '' -FromB64 $b64))
-    }
-    finally { $script:ScriptArg = @() }
+    # -Pairs is an ARGUMENT now, not a script-scoped read: -ScriptArg cannot be
+    # repeated through -File, so Main resolves the file and the flag into one list.
+    $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('true'))
+    [Text.Encoding]::UTF8.GetString((Resolve-CommandBytes -Text '' -FromFile '' -FromB64 $b64 -Pairs @('X=1')))
 }
 Test-Case 'no command at all is null, not an empty command' 'null' {
     $r = Resolve-CommandBytes -Text '' -FromFile '' -FromB64 ''
     if ($null -eq $r) { 'null' } else { 'not null' }
 }
 Test-Case '-ScriptArg with no command to carry is refused, never ignored' 'threw' {
-    $script:ScriptArg = @('X=1')
-    try { $null = Resolve-CommandBytes -Text '' -FromFile '' -FromB64 ''; 'no throw' }
+    # -Pairs is an ARGUMENT now, not a script-scoped read: -ScriptArg cannot be
+    # repeated through -File, so Main resolves the file and the flag into one list.
+    try { $null = Resolve-CommandBytes -Text '' -FromFile '' -FromB64 '' -Pairs @('X=1'); 'no throw' }
     catch { 'threw' }
-    finally { $script:ScriptArg = @() }
+
 }
 Test-Case 'two spellings of the command are refused' 'threw' {
     try { $null = Resolve-CommandBytes -Text 'a' -FromFile '' -FromB64 'YQ=='; 'no throw' } catch { 'threw' }
@@ -416,11 +456,22 @@ Test-Case 'base64 that is not base64 is refused' 'threw' {
 # The state carries a Stopwatch, which cannot be made to say a chosen time. A
 # stand-in with an Elapsed property is all Write-StreamLogLine reads, so these
 # cases assert an exact rendering rather than a plausible-looking one.
+function Get-TestSettings {
+    # NOTE: THE REAL RESOLVER, not a hand-built object. A settings shape assembled
+    # here would drift from the one Main builds, and the drift would be
+    # invisible: every case would still pass against the wrong object.
+    param([string]$Mode = 'Relative', [string[]]$Columns, [string]$Format = '',
+          [string]$Separator = ' ', [switch]$PrefixOnly, [int]$MaxBytes = 0,
+          [string[]]$Redact, [string]$Preset = '', [string[]]$Explicit = @())
+    return Resolve-StreamLogSettings -Mode $Mode -Columns $Columns -Format $Format `
+        -Separator $Separator -PrefixOnly:$PrefixOnly -Color 'never' -Preset $Preset `
+        -RedactPatterns $Redact -MaxBytes $MaxBytes -TickSeconds 30 -Escalate @() `
+        -Explicit $Explicit
+}
 function Get-TestLogState {
-    param([string]$Mode)
-    $script:TimestampMode = $Mode
-    $script:TimestampFormat = ''
-    $st = New-StreamLogState -DistroName 'eph-test'
+    param([string]$Mode = 'Relative', $Settings)
+    if (-not $Settings) { $Settings = Get-TestSettings -Mode $Mode }
+    $st = New-StreamLogState -DistroName 'eph-test' -Settings $Settings
     $st.Clock = [pscustomobject]@{ Elapsed = [timespan]::Zero }
     $st.Out = [IO.StringWriter]::new()
     $st.Err = [IO.StringWriter]::new()
@@ -479,18 +530,277 @@ Test-Case 'relative mode stamps a line from the elapsed clock' '00:01:05.500 out
 }
 $script:TimestampMode = 'Relative'
 
+# -- composed columns, the separator, and prefix-only ------------------------
+# The single-valued -TimestampMode cannot express 'rel,delta', and that pair is
+# what makes a stall findable: every delta is sub-second and then one is not.
+Test-Case 'rel and delta compose into one prefix' '00:00:06.000 +5.000 out  two' {
+    $st = Get-TestLogState -Settings (Get-TestSettings -Columns @('rel', 'delta'))
+    $st.Clock.Elapsed = [timespan]::FromSeconds(1)
+    Write-StreamLogLine -State $st -Tag 'out' -Text 'one'
+    $st.Clock.Elapsed = [timespan]::FromSeconds(6)
+    Write-StreamLogLine -State $st -Tag 'out' -Text 'two'
+    @($st.Out.ToString() -split "`r?`n" | Where-Object { $_ })[1]
+}
+Test-Case 'a comma-separated single argument is the same as several' 'rel|delta' {
+    (Resolve-StampColumns -Columns @('rel,delta') -Mode 'Relative' -ModeWasPassed $false) -join '|'
+}
+Test-Case 'an unknown column is refused rather than dropped' 'threw' {
+    try { $null = Resolve-StampColumns -Columns @('rel', 'moon') -Mode 'Relative' -ModeWasPassed $false; 'no throw' } catch { 'threw' }
+}
+Test-Case 'a column named twice is refused' 'threw' {
+    try { $null = Resolve-StampColumns -Columns @('rel', 'rel') -Mode 'Relative' -ModeWasPassed $false; 'no throw' } catch { 'threw' }
+}
+# Two spellings of one decision. A precedence between them would be a rule a
+# caller has to remember in order to predict their own output.
+Test-Case 'TimestampColumns with TimestampMode is refused' 'threw' {
+    try { $null = Resolve-StampColumns -Columns @('rel') -Mode 'Delta' -ModeWasPassed $true; 'no throw' } catch { 'threw' }
+}
+Test-Case 'no columns and no mode falls back to relative' 'rel' {
+    (Resolve-StampColumns -Columns @() -Mode 'Relative' -ModeWasPassed $false) -join '|'
+}
+Test-Case 'the separator sits between the stamp and the tag' '00:00:01.000|out ' {
+    $st = Get-TestLogState -Settings (Get-TestSettings -Separator '|')
+    $st.Clock.Elapsed = [timespan]::FromSeconds(1)
+    Write-StreamLogLine -State $st -Tag 'out' -Text 'x'
+    @($st.Out.ToString() -split "`r?`n")[0].Substring(0, 17)
+}
+Test-Case 'prefix-only drops the guest text and keeps the prefix' '00:00:01.000 out ' {
+    $st = Get-TestLogState -Settings (Get-TestSettings -PrefixOnly)
+    $st.Clock.Elapsed = [timespan]::FromSeconds(1)
+    Write-StreamLogLine -State $st -Tag 'out' -Text 'a secret nobody should see'
+    @($st.Out.ToString() -split "`r?`n")[0]
+}
+# The tick and the note are the watcher's lines, so neither may advance the
+# clock the delta column reads. The tick case above covers 'tick'; this covers
+# the tag added for one-off watcher lines.
+Test-Case 'a note does not advance the delta clock either' '+5.000' {
+    $st = Get-TestLogState -Settings (Get-TestSettings -Columns @('delta'))
+    $st.Clock.Elapsed = [timespan]::FromSeconds(1)
+    Write-StreamLogLine -State $st -Tag 'out' -Text 'one'
+    $st.Clock.Elapsed = [timespan]::FromSeconds(3)
+    Write-StreamLogLine -State $st -Tag 'note' -Text 'watcher'
+    $st.Clock.Elapsed = [timespan]::FromSeconds(6)
+    Write-StreamLogLine -State $st -Tag 'out' -Text 'two'
+    @($st.Out.ToString() -split "`r?`n" | Where-Object { $_ })[1].Split(' ')[0]
+}
+Test-Case 'the note tag pads to the same four characters as the others' 'note' {
+    $st = Get-TestLogState
+    Write-StreamLogLine -State $st -Tag 'note' -Text 'x'
+    @($st.Err.ToString() -split "`r?`n")[0].Substring(13, 4)
+}
+
+# -- the profiles ------------------------------------------------------------
+Test-Case 'the ci profile composes rel and delta' 'rel|delta' {
+    (Get-TestSettings -Preset 'ci').Columns -join '|'
+}
+Test-Case 'the wall profile is tss defaults' 'wall|%Y-%m-%d %H:%M:%S' {
+    $s = Get-TestSettings -Preset 'wall'
+    ($s.Columns -join '|') + '|' + $s.Format
+}
+# A profile is a starting point, not a mode: what the caller actually typed wins
+# over it. Without the -Explicit list a default is indistinguishable from a
+# choice, and the profile would silently overrule a flag they passed.
+Test-Case 'an explicit column list beats the profile it sits beside' 'epoch' {
+    (Get-TestSettings -Preset 'ci' -Columns @('epoch') -Explicit @('TimestampColumns')).Columns -join '|'
+}
+Test-Case 'a format with no column that takes one is refused' 'threw' {
+    try { $null = Get-TestSettings -Columns @('epoch') -Format '%H'; 'no throw' } catch { 'threw' }
+}
+Test-Case 'rel and wall are the two columns a format applies to' 'True|True|False|False|False' {
+    (@('rel', 'wall', 'delta', 'iso', 'epoch') | ForEach-Object { Test-ColumnTakesFormat -Column $_ }) -join '|'
+}
+
+# -- redaction and the byte bound --------------------------------------------
+Test-Case 'a matching pattern is replaced before any sink sees it' 'token=***' {
+    Invoke-Redaction -Set (New-RedactionSet -Patterns @('ghp_[A-Za-z0-9]+')) -Text 'token=ghp_abc123'
+}
+Test-Case 'no patterns leaves the text exactly as it was' 'token=ghp_abc123' {
+    Invoke-Redaction -Set (New-RedactionSet -Patterns @()) -Text 'token=ghp_abc123'
+}
+# In a .NET replacement STRING, a dollar sign followed by an apostrophe means
+# everything after the match. A literal replacement carrying one would paste the
+# rest of the line back in. The delegate is what makes that impossible.
+Test-Case 'text around the match is not pasted back in by the replacement' 'a***b' {
+    Invoke-Redaction -Set (New-RedactionSet -Patterns @('SECRET')) -Text 'aSECRETb'
+}
+Test-Case 'a pattern that cannot compile is refused when it is passed' 'threw' {
+    try { $null = New-RedactionSet -Patterns @('(unclosed'); 'no throw' } catch { 'threw' }
+}
+Test-Case 'redaction runs on the line the sink is given' '***' {
+    $st = Get-TestLogState -Settings (Get-TestSettings -Redact @('hunter2'))
+    Write-StreamLogLine -State $st -Tag 'out' -Text 'hunter2'
+    # 12 stamp + 1 separator + 4 tag + 1 = the first byte of the guest's text.
+    @($st.Out.ToString() -split "`r?`n")[0].Substring(18)
+}
+Test-Case 'a line inside the bound is untouched' 'abcde' {
+    Limit-LineBytes -Text 'abcde' -MaxBytes 10
+}
+Test-Case 'a bound of zero never truncates' 'abcde' {
+    Limit-LineBytes -Text 'abcde' -MaxBytes 0
+}
+Test-Case 'a line past the bound says how much went' 'abc...(+2 bytes cut)' {
+    Limit-LineBytes -Text 'abcde' -MaxBytes 3
+}
+# Counting bytes and cutting characters are different jobs. Cutting a byte array
+# at an index splits a multi-byte character and produces a replacement character
+# that was never in the guest's output.
+Test-Case 'a multi-byte character is never cut in half' 'ab...(+2 bytes cut)' {
+    Limit-LineBytes -Text ('ab' + [char]0x00E9) -MaxBytes 3
+}
+
+# -- the exit-code reading ---------------------------------------------------
+Test-Case 'a zero exit gets no diagnosis at all' '' {
+    [string](Get-ExitCodeDiagnosis -ExitCode 0 -DistroState 'Running')
+}
+Test-Case '137 is named as 128 plus nine rather than left as a number' 'True' {
+    ((Get-ExitCodeDiagnosis -ExitCode 137 -DistroState 'Running') -like '*128+9*SIGKILL*').ToString()
+}
+# The one thing this process can actually rule on: its own timeout reports 124,
+# so a 137 is never it.
+Test-Case 'the diagnosis rules out this script as the sender of a signal' 'True' {
+    ((Get-ExitCodeDiagnosis -ExitCode 137 -DistroState 'Running') -like '*did not send it*').ToString()
+}
+Test-Case '124 is named as this script own timeout' 'True' {
+    ((Get-ExitCodeDiagnosis -ExitCode 124 -DistroState 'Stopped') -like '*CommandTimeoutSeconds*').ToString()
+}
+Test-Case 'an ordinary code is passed through without invention' 'True' {
+    ((Get-ExitCodeDiagnosis -ExitCode 3 -DistroState 'Running') -like '*passed through unchanged*').ToString()
+}
+
+# -- which parameter applies to which action ---------------------------------
+# THE TABLE IS ASSERTED AGAINST THE PARAMETER BLOCK, both ways. A parameter added
+# without a row would be refused on every action, and a row naming a parameter
+# that no longer exists would refuse nothing while looking correct.
+Test-Case 'every parameter in the block has a row, and every row a parameter' 'in sync' {
+    $errs = $null; $toks = $null
+    $a = [System.Management.Automation.Language.Parser]::ParseFile(
+        (Resolve-Path -LiteralPath $Target).Path, [ref]$toks, [ref]$errs)
+    $params = @($a.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath } |
+                Where-Object { $_ -ne 'Action' })
+    $table = Get-ParameterApplicability
+    $noRow = @($params | Where-Object { -not $table.Contains($_) })
+    $noParam = @($table.Keys | Where-Object { $params -notcontains $_ })
+    if ($noRow.Count -eq 0 -and $noParam.Count -eq 0) { 'in sync' }
+    else { 'no row: ' + ($noRow -join ',') + ' | no parameter: ' + ($noParam -join ',') }
+}
+Test-Case 'a parameter the action does not read is refused' 'threw' {
+    try { Assert-ParametersApplyToAction -Action 'List' -Passed @('Image'); 'no throw' } catch { 'threw' }
+}
+Test-Case 'the refusal names the actions that DO read it' 'True' {
+    try { Assert-ParametersApplyToAction -Action 'List' -Passed @('Image'); 'no throw' }
+    catch { ($_.Exception.Message -like '*read by -Action New*').ToString() }
+}
+# -TimeoutSeconds bounds the questions this script asks for itself, and on Run it
+# asks none. The refusal points at the parameter the caller actually wanted.
+Test-Case 'TimeoutSeconds on Run points at CommandTimeoutSeconds' 'True' {
+    try { Assert-ParametersApplyToAction -Action 'Run' -Passed @('TimeoutSeconds'); 'no throw' }
+    catch { ($_.Exception.Message -like '*-CommandTimeoutSeconds*').ToString() }
+}
+Test-Case 'a parameter the action does read is accepted' 'ok' {
+    Assert-ParametersApplyToAction -Action 'New' -Passed @('Image', 'Ephemeral', 'Force'); 'ok'
+}
+Test-Case 'the common parameters PowerShell adds are never judged' 'ok' {
+    Assert-ParametersApplyToAction -Action 'List' -Passed @('Verbose', 'ErrorAction'); 'ok'
+}
+
+# -- a list parameter a -File caller can actually pass -----------------------
+# HARD RULE: THE MEASUREMENT BEHIND THESE CASES. Through `pwsh -File`, which is how every
+# consumer runs this script: `-X 5,9` arrives as the ONE string "5,9"; `-X a -X b`
+# is refused as "specified more than once"; `-X 5 9` is refused as positional.
+# So a list parameter splits its own value, and an [int[]] parameter is worse
+# than useless: PowerShell converts "5,9" to an int with the culture's number
+# style, where a comma is the thousands separator, and binds 59.
+Test-Case 'one comma-separated value becomes several' '5|9' {
+    (Split-DelimitedArgument -Values @('5,9')) -join '|'
+}
+Test-Case 'a real array from an in-process caller still gets every element' 'a|b' {
+    (Split-DelimitedArgument -Values @('a', 'b')) -join '|'
+}
+Test-Case 'whitespace around a piece is dropped and an empty piece is skipped' 'a|b' {
+    (Split-DelimitedArgument -Values @(' a , , b ')) -join '|'
+}
+Test-Case 'escalation thresholds arrive as numbers, not as one fused number' '5|9' {
+    (Get-TestSettings).PSObject.Properties | Out-Null
+    (Resolve-StreamLogSettings -Escalate @('5,9') -Color 'never' -TickSeconds 3).Escalate -join '|'
+}
+Test-Case 'a threshold that is not a whole number is refused, never coerced' 'threw' {
+    try { $null = Resolve-StreamLogSettings -Escalate @('5,soon') -Color 'never'; 'no throw' } catch { 'threw' }
+}
+Test-Case 'thresholds are sorted and de-duplicated' '5|9|12' {
+    (Resolve-StreamLogSettings -Escalate @('12,5,9,5') -Color 'never').Escalate -join '|'
+}
+
+# -- -ScriptArgFile, which exists because -ScriptArg cannot be repeated -------
+Test-Case 'a file of pairs and the flag land in one list, file first' 'A=1|B=2|C=3' {
+    $f = Join-Path ([IO.Path]::GetTempPath()) ('wt-args-' + [guid]::NewGuid().ToString('N') + '.env')
+    try {
+        # CRLF on purpose: the file gets the same repair -CommandFile gets.
+        [IO.File]::WriteAllText($f, "# a comment`r`n`r`nA=1`r`nB=2`r`n")
+        (Get-ScriptArgPairs -FromFile $f -Pairs @('C=3')) -join '|'
+    }
+    finally { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+}
+Test-Case 'a line in the file that is not NAME=VALUE is refused with its number' 'threw' {
+    $f = Join-Path ([IO.Path]::GetTempPath()) ('wt-args-' + [guid]::NewGuid().ToString('N') + '.env')
+    try {
+        [IO.File]::WriteAllText($f, "A=1`nNOTAPAIR`n")
+        $null = Get-ScriptArgPairs -FromFile $f -Pairs @(); 'no throw'
+    }
+    catch { 'threw' }
+    finally { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+}
+Test-Case 'a missing pairs file is refused rather than treated as empty' 'threw' {
+    try { $null = Get-ScriptArgPairs -FromFile 'C:\no\such\pairs.env' -Pairs @(); 'no throw' } catch { 'threw' }
+}
+Test-Case 'no file and no flag is an empty list, not a failure' '0' {
+    [string](@(Get-ScriptArgPairs -FromFile '' -Pairs @()).Count)
+}
+
+# -- the sink paths, refused before anything is created ----------------------
+# THE DEFECT THESE EXIST FOR. The refusal used to live inside the sink openers,
+# which a run reaches only after it has pulled, exported and imported. -DryRun
+# returned before them, so a dry run reported a plan that the real run would
+# have refused. Found by planting -StreamLogPath nul.
+# EACH REFUSAL ASSERTS THE REASON, not merely that something threw. Written the
+# other way first, and all three were green because the function was dying on an
+# unset constant before it reached the guard they are named for.
+Test-Case 'a reserved device name is refused, and the message names the device' 'named nul' {
+    try { Assert-SinkPathIsUsable -Path 'nul' -Parameter '-StreamLogPath'; 'no throw' }
+    catch { if ($_.Exception.Message -like "*reserved device 'nul'*") { 'named nul' } else { 'threw for another reason: ' + $_.Exception.Message } }
+}
+Test-Case 'the extension is stripped before the name is compared' 'named CON' {
+    try { Assert-SinkPathIsUsable -Path 'logs\CON.jsonl' -Parameter '-EventLog'; 'no throw' }
+    catch { if ($_.Exception.Message -like "*reserved device 'CON'*") { 'named CON' } else { 'threw for another reason: ' + $_.Exception.Message } }
+}
+Test-Case 'the comparison ignores case, because the device does' 'named Lpt3' {
+    try { Assert-SinkPathIsUsable -Path 'Lpt3.log' -Parameter '-StreamLogPath'; 'no throw' }
+    catch { if ($_.Exception.Message -like "*reserved device 'Lpt3'*") { 'named Lpt3' } else { 'threw for another reason: ' + $_.Exception.Message } }
+}
+Test-Case 'the device list comes from the bundle, not from a copy here' 'True' {
+    ([bool]($script:ReservedDeviceNames -contains 'NUL' -and $script:ReservedDeviceNames.Count -ge 22)).ToString()
+}
+Test-Case 'an ordinary path is accepted' 'ok' {
+    Assert-SinkPathIsUsable -Path 'logs\run.jsonl' -Parameter '-EventLog'; 'ok'
+}
+Test-Case 'a name that merely starts with a device name is not one' 'ok' {
+    Assert-SinkPathIsUsable -Path 'console.log' -Parameter '-StreamLogPath'; 'ok'
+}
+Test-Case 'an empty path is not a path and is not judged' 'ok' {
+    Assert-SinkPathIsUsable -Path '' -Parameter '-StreamLogPath'; 'ok'
+}
+
 # -- report ------------------------------------------------------------------
 $failed = @($Results | Where-Object { -not $_.Pass })
 
 # A suite that examined nothing reports the same green as one that examined
 # everything, so the count is asserted rather than printed.
 if ($Results.Count -lt 40) {
-    [Console]::Error.WriteLine("wsl-ephemeral-selftest: only $($Results.Count) case(s) ran, and this file carries more than that. Something stopped the table early.")
+    [Console]::Error.WriteLine("selftest: only $($Results.Count) case(s) ran, and this file carries more than that. Something stopped the table early.")
     exit 1
 }
 
 if ($Json) {
-    Write-Output ('{"schema":"wsl-ephemeral-selftest/1","cases":' + $Results.Count +
+    Write-Output ('{"schema":"wsl-toolkit-selftest/1","cases":' + $Results.Count +
                   ',"failed":' + $failed.Count + ',"functions":' + $Wanted.Count + '}')
     exit ([int]($failed.Count -gt 0))
 }
@@ -505,8 +815,8 @@ foreach ($r in $Results) {
 }
 Write-Output ''
 if ($failed.Count -gt 0) {
-    Write-Output ("wsl-ephemeral-selftest: " + $failed.Count + " of " + $Results.Count + " case(s) FAILED over " + $Wanted.Count + " function(s).")
+    Write-Output ("selftest: " + $failed.Count + " of " + $Results.Count + " case(s) FAILED over " + $Wanted.Count + " function(s).")
     exit 1
 }
-Write-Output ("wsl-ephemeral-selftest: " + $Results.Count + " case(s) passed over " + $Wanted.Count + " function(s) loaded from wsl-ephemeral.ps1.")
+Write-Output ("selftest: " + $Results.Count + " case(s) passed over " + $Wanted.Count + " function(s) loaded from wsl-toolkit.ps1.")
 exit 0

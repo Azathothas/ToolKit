@@ -8,10 +8,14 @@ says which hosts it runs on, and fails with a message on the ones it does not.
 
 **Licence:** 0BSD. Use it however you like.
 
-**Nothing is published from here.** No images, no packages, no releases. This
-repository is scripts and their documentation. The BSD container images some of
-its history refers to are built by
-[`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd).
+**One thing is published from here.**
+[`wsl-toolkit.ps1`](scripts/windows/wsl-toolkit/wsl-toolkit.md) and its launcher
+are cut as a
+[GitHub release](https://github.com/Azathothas/ToolKit/releases), with a
+`SHA256SUMS` computed in CI over the bytes that are uploaded. Everything else
+here is scripts and their documentation: no images, no packages, no second
+release train. The BSD container images some of its history refers to are built
+by [`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd).
 
 ---
 
@@ -19,9 +23,10 @@ its history refers to are built by
 
 | path | what it is |
 | --- | --- |
-| [`scripts/powershell-windows/wsl-ephemeral.ps1`](scripts/powershell-windows/wsl-ephemeral.md) | create, use and destroy throwaway WSL2 distros on Windows, from an OCI image or a rootfs tarball. Reports what WSL and the container engine are holding, and what address a distro reaches the host at. |
-| [`scripts/powershell-windows/wsl-ephemeral-launcher.ps1`](scripts/powershell-windows/wsl-ephemeral-launcher.md) | fetch that script, verify it, make it runnable on Windows, and run it |
-| [`scripts/powershell-windows/wsl-ephemeral-selftest.ps1`](scripts/powershell-windows/wsl-ephemeral-selftest.md) | run that script's pure functions against a table of cases. No WSL, no engine, nothing created. |
+| [`scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](scripts/windows/wsl-toolkit/wsl-toolkit.md) | create, use and destroy throwaway WSL2 distros on Windows, from an OCI image or a rootfs tarball. Reports what WSL and the container engine are holding, and what address a distro reaches the host at. |
+| [`scripts/windows/wsl-toolkit/launcher.ps1`](scripts/windows/wsl-toolkit/launcher.md) | fetch that script, verify it, make it runnable on Windows, and run it |
+| [`scripts/windows/wsl-toolkit/selftest.ps1`](scripts/windows/wsl-toolkit/selftest.md) | run that script's pure functions against a table of cases. No WSL, no engine, nothing created. |
+| [`scripts/windows/wsl-toolkit/`](scripts/windows/wsl-toolkit/README.md) | ⭐ how that tool is built, tested and released. `wsl-toolkit.ps1` is GENERATED from the parts under `src/`, `core/` and `libs/`, and must not be edited. |
 | [`scripts/doctor/`](scripts/doctor/README.md) | one read-only pass reporting the host, the shell, the installed tools with versions, and the repository state |
 | [`scripts/common/`](scripts/README.md) | the checks that hold this repository's gate, plus the helpers that write files, move the record, commit and fill a licence. Each check is an `sh` and PowerShell pair. |
 | [`LICENSES/`](LICENSES/README.md) | the SPDX texts `scripts/common/fill-license.sh` reads |
@@ -33,7 +38,6 @@ not this one**, before using it.
 
 | path | what is in it |
 | --- | --- |
-| `AGENTS.md` | the entry point for an agent. It points at `docs/AGENTS.md` and says almost nothing else. |
 | `README.md` | this page |
 | `CHANGELOG.md` | what shipped, when, and where the evidence is |
 | `TODO/` | the work: the record, the entry list, the entries themselves, and the standing rules |
@@ -84,11 +88,11 @@ gh api repos/Azathothas/ToolKit/commits/main --jq .sha
 **Download to a file, then run the file.** Piping a download into a shell
 executes the prefix of a truncated transfer and leaves nothing to inspect.
 
-For `wsl-ephemeral.ps1` the launcher does all of that, verifies a digest, and
+For `wsl-toolkit.ps1` the launcher does all of that, verifies a digest, and
 forwards the rest of your arguments unchanged:
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral-launcher.ps1 -LauncherRef THE_COMMIT_SHA -Action List
+pwsh -NoProfile -File launcher.ps1 -LauncherRef THE_COMMIT_SHA -Action List
 ```
 
 [`docs/consumers.md`](docs/consumers.md) is the register of who fetches what,
@@ -98,8 +102,8 @@ and what a rename here breaks out there.
 
 ## Working on this repository
 
-Read [`AGENTS.md`](AGENTS.md), which points at
-[`docs/AGENTS.md`](docs/AGENTS.md). [`TODO/PROGRESS.md`](TODO/PROGRESS.md)
+⭐ **Read [`docs/AGENTS.md`](docs/AGENTS.md) in full.** It is the one router,
+and it is written to be read end to end. [`TODO/PROGRESS.md`](TODO/PROGRESS.md)
 carries the current state and the work order, and
 [`TODO/RULES.md`](TODO/RULES.md) the part of it that does not change.
 

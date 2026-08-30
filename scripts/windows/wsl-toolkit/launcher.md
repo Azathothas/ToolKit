@@ -1,7 +1,7 @@
-# wsl-ephemeral-launcher.ps1
+# launcher.ps1
 
 One file to fetch. It finds
-[`wsl-ephemeral.ps1`](wsl-ephemeral.md), verifies it as far as you allow, makes
+[`wsl-toolkit.ps1`](wsl-toolkit.md), verifies it as far as you allow, makes
 it runnable on Windows, and runs it with the arguments you gave.
 
 This page stands alone. An agent that has read only this file can use the
@@ -18,7 +18,7 @@ drives `wsl.exe`. On any other host neither applies.
 ### From a clone, which needs no network at all
 
 ```powershell
-pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral-launcher.ps1 -Action List
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/launcher.ps1 -Action List
 ```
 
 The copy beside the launcher is used. Nothing is fetched and nothing is cached.
@@ -29,7 +29,7 @@ The copy beside the launcher is used. Nothing is fetched and nothing is cached.
 records both.**
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral-launcher.ps1 -LauncherRef auto -LauncherLock toolkit.lock.json -Action List
+pwsh -NoProfile -File launcher.ps1 -LauncherRef auto -LauncherLock toolkit.lock.json -Action List
 ```
 
 Every later run reads that lock and asks GitHub nothing. Commit it.
@@ -37,7 +37,7 @@ Every later run reads that lock and asks GitHub nothing. Commit it.
 ⭐ **The explicit way, when you have reviewed a revision and want that one.**
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral-launcher.ps1 -LauncherRef THE_COMMIT_SHA -LauncherSha256 auto -Action List
+pwsh -NoProfile -File launcher.ps1 -LauncherRef THE_COMMIT_SHA -LauncherSha256 auto -Action List
 ```
 
 ⛔ **There is no default ref and a branch is refused.** `auto` and `latest`
@@ -60,13 +60,13 @@ The first hit wins.
 | --- | --- | --- |
 | 1 | `-LauncherLocal PATH`, or `WSL_EPHEMERAL_LOCAL` | you already have a copy and want that one |
 | 2 | `-LauncherRef`, or `WSL_EPHEMERAL_REF` | ⭐ a revision you named. `auto` and `latest` are two of the spellings. |
-| 3 | `wsl-ephemeral.ps1` **beside the launcher** | a clone. No network, no cache, no digest to keep in step. |
+| 3 | `wsl-toolkit.ps1` **beside the launcher** | a clone. No network, no cache, no digest to keep in step. |
 
 ⛔ **An explicit ref wins over the sibling, and it used to be the other way
 round.** A caller passing a commit and a digest could get `Using the copy beside
 this launcher`, run a stale file and verify nothing. The sibling is what "you
 did not say" resolves to, not something that overrides what you did say. This is
-a break; [`../../docs/consumers.md`](../../docs/consumers.md) records it.
+a break; [`../../../docs/consumers.md`](../../../docs/consumers.md) records it.
 
 ⛔ **There is no default ref.** With no sibling and no ref it exits 1 and says
 what to pass. Falling back to a branch would be running code nobody reviewed.
@@ -86,7 +86,7 @@ either moved. Every one of those steps is a place to paste the wrong string, and
 a wrong digest fails closed in a way that takes an hour to work out.
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral-launcher.ps1 -LauncherRef auto -LauncherLock .\toolkit.lock.json -Action List
+pwsh -NoProfile -File launcher.ps1 -LauncherRef auto -LauncherLock .\toolkit.lock.json -Action List
 ```
 
 | `-LauncherRef` | resolves | records | warns |
@@ -113,9 +113,9 @@ digest, and a second one can only agree or contradict.
 
 ```json
 {
-  "schema": "wsl-ephemeral-lock/1",
+  "schema": "wsl-toolkit-lock/1",
   "repository": "Azathothas/ToolKit",
-  "path": "scripts/powershell-windows/wsl-ephemeral.ps1",
+  "path": "scripts/windows/wsl-toolkit/wsl-toolkit.ps1",
   "branch": "main",
   "ref": "8efe6e02b1ce",
   "sha256": "ab4f6bd6c040bb9d...",
@@ -173,7 +173,7 @@ than in place of them.
 ## Options
 
 ⛔ **Every argument that is not one of these is forwarded to
-[`wsl-ephemeral.ps1`](wsl-ephemeral.md) unchanged**, and this page does not
+[`wsl-toolkit.ps1`](wsl-toolkit.md) unchanged**, and this page does not
 restate that script's parameters. Restating them is how a wrapper drifts from
 the thing it wraps.
 
@@ -206,10 +206,10 @@ does not have, and you would go looking in the wrong file.
 
 ⭐ **Everything the launcher prints goes to stderr, and it writes nothing to
 stdout.** A wrapper that writes to the wrapped program's stdout corrupts it, and
-`wsl-ephemeral.ps1 -Action HostAddress` puts one address there and nothing else:
+`wsl-toolkit.ps1 -Action HostAddress` puts one address there and nothing else:
 
 ```powershell
-$addr = pwsh -NoProfile -File wsl-ephemeral-launcher.ps1 -Action HostAddress 2>$null
+$addr = pwsh -NoProfile -File launcher.ps1 -Action HostAddress 2>$null
 ```
 
 ⚠ Measured on 2026-08-29: with the progress lines on stdout, that assignment
@@ -228,7 +228,7 @@ it, because it has not.
 you wanted:
 
 ```powershell
-. .\wsl-ephemeral-launcher.ps1 -LauncherAddToPath
+. .\launcher.ps1 -LauncherAddToPath
 ```
 
 ```text
@@ -239,7 +239,7 @@ you wanted:
 profile, or to the registry.
 
 ⛔ **Dot-sourcing is refused for every other use, and that is not tidiness.**
-`wsl-ephemeral.ps1` calls `exit`, which ends the **host session** when it is
+`wsl-toolkit.ps1` calls `exit`, which ends the **host session** when it is
 reached through a dot-source rather than an invocation. The launcher refuses
 with a message instead of taking your shell down.
 
@@ -296,15 +296,15 @@ argument reached the wrapped script correctly.
 | Windows PowerShell 5.1 or PowerShell 7+ | everything |
 | network access to `raw.githubusercontent.com` | resolution order 3 only |
 
-Everything [`wsl-ephemeral.md`](wsl-ephemeral.md) requires applies once the
+Everything [`wsl-toolkit.md`](wsl-toolkit.md) requires applies once the
 wrapped script starts running.
 
 ---
 
 ## Related
 
-- [`wsl-ephemeral.md`](wsl-ephemeral.md), the tool this launches.
-- [`wsl-ephemeral-selftest.md`](wsl-ephemeral-selftest.md), the test over that
+- [`wsl-toolkit.md`](wsl-toolkit.md), the tool this launches.
+- [`selftest.md`](selftest.md), the test over that
   tool's pure functions.
-- [`../../docs/consumers.md`](../../docs/consumers.md), for who fetches what
+- [`../../../docs/consumers.md`](../../../docs/consumers.md), for who fetches what
   from this repository and what a rename here breaks out there.

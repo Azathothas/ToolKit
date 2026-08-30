@@ -32,16 +32,13 @@
 #
 # -- THE EXEMPTIONS, AND WHY EACH IS NOT A LOOPHOLE --------------------------
 #
-# ⛔ THE TWO ENTRY-POINT ROUTERS ARE EXEMPT FROM EACH OTHER, AND ONLY FROM EACH
-# OTHER. AGENTS.md and docs/AGENTS.md each state the absolutes in full, on
-# purpose: a session may be handed exactly one of them and nothing else, and a
-# rule it has to follow a link to read is a rule it will not read. ⚠ A sentence
-# shared between a router and any OTHER file is still refused, so the exemption
-# cannot be used to seed a copy into the tree.
-#
-# ⚠ THE SET IS TWO NAMES AND IT IS NOT A CATEGORY. Adding a third file to it is
-# a decision somebody reviews, not a convenience: every name in this list is a
-# document allowed to say what another document already says.
+# ⛔ THERE IS NO ROUTER EXEMPTION ANY MORE, AND ITS REMOVAL IS THE POINT.
+# AGENTS.md and docs/AGENTS.md each stated the absolutes in full, on the
+# reasoning that a session may be handed exactly one of them, and this check
+# exempted the pair from each other by name. DOC-07 deleted the root file on
+# 2026-08-30, so there is one router, nothing is duplicated, and an exemption
+# for a file that no longer exists would grant itself to whatever landed at that
+# path next. ⭐ An exemption is deleted, never emptied.
 #
 # ⛔ docs/HISTORY/ IS EXEMPT ENTIRELY. A retired page states things the live
 # pages now state differently, or no longer state at all, which is the whole
@@ -161,7 +158,7 @@ fi
 # verdict was right and every number beside it was wrong.
 sort -u "$TMP/pairs" | awk -F'\t' '
   BEGIN {
-    R["AGENTS.md"] = 1; R["docs/AGENTS.md"] = 1
+    R["docs/AGENTS.md"] = 1
   }
   { key = $1; files[key] = files[key] " " $2; count[key]++ }
   END {

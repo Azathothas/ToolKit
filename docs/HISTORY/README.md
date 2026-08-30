@@ -48,7 +48,7 @@ sentences the live pages used to carry.
 
 | file | what it holds |
 | --- | --- |
-| [`wsl-ephemeral.md`](wsl-ephemeral.md) | the defects `wsl-ephemeral.ps1` shipped and closed, and the shapes its behaviour used to have |
+| [`wsl-toolkit.md`](wsl-toolkit.md) | the defects `wsl-toolkit.ps1` shipped and closed, and the shapes its behaviour used to have |
 
 ⚠ **One page, and the directory is not finished.** `scripts/README.md`,
 [`../consumers.md`](../consumers.md), [`../conventions/docs.md`](../conventions/docs.md)

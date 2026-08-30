@@ -2031,7 +2031,7 @@ compatibility token beside the tool's real name.
 ## WSL-21. `wsl-ephemeral.ps1` is 2,792 lines in one file
 
 **Source** the operator, 2026-08-30: is PowerShell still the right language, and should the file be split?
-**Category** wsl-ephemeral, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -2074,17 +2074,131 @@ shared module has two callers instead of one and stops being speculative.
 
 ## Prove
 
-⛔ **A comparative claim needs a benchmark, and the acceptance for this entry is
-to produce the numbers rather than to make the change.** Line count per
-responsibility, and the count of functions with no caller outside their own
-section.
+---
+
+## Closing
+
+**Closed 2026-08-30T08:40:00Z.** ⭐ **The operator ruled on 2026-08-30: stay in
+PowerShell, and DO split the file.** Half the recommendation was accepted and
+half was overruled, and the half that was overruled is the interesting one.
+
+**What was built.** The 2,792-line file is now 27 parts under
+`scripts/windows/wsl-toolkit/{src,core,libs}`, joined by `build.ps1` in the order
+`bundle.manifest` names, into a tracked product at
+`scripts/windows/wsl-toolkit/wsl-toolkit.ps1`. The tool was renamed from
+`wsl-ephemeral` in the same change, at the operator's instruction.
+
+⭐ **The split was proved byte-identical before anything else changed**, which is
+what made everything after it a normal diff rather than a rewrite nobody could
+review:
+
+```text
+rejoined 139470  original 139470
+BYTE-IDENTICAL: the 23 parts rejoin to the original exactly
+```
+
+```text
+bundle minus BOM and banner: 139467   original minus BOM: 139467
+PROVED: the built bundle is the original file, plus a 14-line generated banner and nothing else
+```
+
+**And it was proved behaviourally too**, before the rename, by running both
+files:
+
+```text
+List         exit 0/0  stdout same  stderr same
+HostAddress  exit 0/0  stdout same  stderr same
+Resources    exit 0/0  stdout same  stderr same
+```
+
+### The acceptance: lines per responsibility
+
+⛔ **The entry's acceptance was to produce the numbers rather than to make the
+change, and the numbers are what the ruling changed.** They are here because the
+entry asked for them and because they are the evidence the split was worth doing.
+
+| | before | after |
+| --- | --- | --- |
+| files | 1 | 27 parts, plus the product |
+| lines in the largest thing a reader opens | 2,792 | 592 (`core/stream-log.ps1`) |
+| median file | 2,792 | 133 |
+| lines total | 2,792 | 4,170 across the parts, 4,184 built |
+
+```text
+src/                          core/                          libs/
+  229  00-help.ps1              109  action-address.ps1         72  bounded-process.ps1
+  186  10-parameters.ps1        133  action-doctor.ps1          27  console.ps1
+   63  20-prelude.ps1           204  action-new.ps1            146  events.ps1
+  101  99-main.ps1               57  action-purge.ps1           27  native-args.ps1
+                                220  action-resources.ps1       52  process.ps1
+                                 95  action-run.ps1            125  redact.ps1
+                                152  applicability.ps1         224  stamp.ps1
+                                246  command-channel.ps1
+                                118  disk.ps1
+                                141  distro-exec.ps1
+                                 87  distro-file.ps1
+                                339  distro-run.ps1
+                                149  rootfs.ps1
+                                164  safety.ps1
+                                592  stream-log.ps1
+                                 75  wsl-host.ps1
+```
+
+⚠ **The total grew by 48 percent and that is not the split's cost.** This session
+also added thirteen parameters, an action, an event log, a redaction layer and an
+applicability table. The split itself added the manifest, the builder and the
+banner.
+
+### ⛔ What was WRONG in the recommendation above, corrected here
+
+The Decision section argued that splitting was impossible because a single file
+is what makes the launcher's contract possible: one URL, one digest, one thing to
+verify. ⭐ **That premise was right about the CONSTRAINT and wrong about the
+CONCLUSION.** The constraint holds completely; what does not follow is that the
+sources have to be the artefact. A build step separates them, and the product is
+tracked so a consumer fetching one raw URL still needs no build.
+
+⛔ **The second half of the argument was also wrong, and it was wrong about this
+repository rather than about PowerShell:** "this repository publishes no
+artefacts, so a compiled tool would be the first thing it had to publish". It now
+publishes one, the release pipeline took an afternoon rather than a project, and
+the thing published is a script rather than a binary. ⚠ That does not reopen the
+language question: PowerShell is still right for the reasons the Decision gives,
+which are about what the tool talks to, and none of those changed.
+
+### What makes the split safe rather than merely tidy
+
+| the failure | what stops it |
+| --- | --- |
+| a part edited and never rebuilt | `check-gate`'s `wsl-toolkit bundle`, in both halves and in CI: it rebuilds and compares bytes |
+| the product edited by hand | the same check, from the other direction |
+| a part added and never listed | the build enumerates the three directories and refuses a set that disagrees with the manifest, both ways |
+| a part moved above `param()` | the build asserts the result parses and has a param block |
+| a renamed parameter reaching a consumer | `surface.lock`, compared on every `-Test` |
+| a fragment losing the suppressions that live in the param block | the analyzer runs over the PRODUCT, and the bundle check is what makes that cover every part |
+
+```text
+wsl-toolkit build: <the tool directory; the absolute path is elided, this repository is public>
+  ok    wrote wsl-toolkit.ps1 (209,382 bytes, 27 parts)
+  parts parse: ok
+  no case-shadowed parameter: ok
+  surface: ok (33 entries)
+  selftest: ok
+  analyzer: clean
+build ok
+```
+
+⭐ **The split immediately paid for itself in a way the entry did not predict.**
+`build.ps1 -Test` grew a check for a local whose name differs from a parameter's
+only by case, because one of those shipped in this very session and only driving
+a real distro found it. That check exists because there was a place to put it.
 
 ---
 
 ## WSL-22. the stream log has no sink, no colour and no prefix-only mode
 
 **Source** deferred from `WSL-18`, 2026-08-30.
-**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -2111,10 +2225,71 @@ The command that asked for it, in a session transcript or an issue.
 
 ---
 
+## Closing
+
+**Closed 2026-08-30T08:45:00Z.** ⭐ **The thing that asked for it is the
+operator, on 2026-08-30**, instructing this session to adopt as many useful ideas
+and quality-of-life improvements as possible from the issue's comments and its
+references. That is the command this entry was waiting for, and the entry's own
+rule was followed: five of the six were built, one was refused, and the refusal
+carries its reason.
+
+| `tss` flag | what it became |
+| --- | --- |
+| `-o FILE` | `-StreamLogPath` |
+| `--force-overwrite` | `-StreamLogOverwrite` |
+| `--color` | `-Color auto\|always\|never`. ⛔ A file sink never gets colour whatever it says: escape sequences in a log make a later grep answer wrongly. |
+| `--prefix-only` | `-PrefixOnly` |
+| `--separator` | `-TimestampSeparator` |
+| `--buffered` | ⛔ **refused, and this is the reason.** Buffering trades latency for throughput on a finished log, and latency is the entire point here: a tick stuck in a buffer is worse than no tick, because it is late AND authoritative. A caller who wants a buffered log has one already, by redirecting. |
+
+**And more than the six**, because the mockup the issue cited carries ideas the
+six do not: `-TimestampColumns` composing `rel,delta`, `-TimestampProfile` with
+`human`, `ci`, `forensic`, `wall` and `raw`, `-Redact`, `-MaxLineBytes`,
+`-EventLog` writing one JSON object per line, `-TickEscalateSeconds`, a
+silence-ended line, an exit-code reading, `-DryRun`, and `-Action Doctor`.
+
+```text
+selftest: 115 case(s) passed over 30 function(s) loaded from wsl-toolkit.ps1.
+```
+
+### ⛔ A defect this entry's own work shipped, and the class behind it
+
+⚠ **`-TickEscalateSeconds` was declared `[int[]]` and it silently bound the wrong
+number.** A `.ps1` run through `pwsh -File` receives every argument as a STRING,
+so `-TickEscalateSeconds 5,9` arrives as the one string `"5,9"`, and PowerShell
+converts a string to an int with the current culture's number style, where a
+comma is the THOUSANDS separator. It bound the single value **59**. The
+escalation never fired and nothing said so; it was found by instrumenting the
+function, not by reading it.
+
+Measured the same day, under PowerShell 7.6.5 and Windows PowerShell 5.1, both
+identical:
+
+```text
+=== pwsh -File, comma form ===
+Ints  count=1  values=[59]
+Strs  count=1  values=[a,b]
+=== pwsh -File, repeated parameter ===
+Cannot bind parameter because parameter 'Strs' is specified more than once.
+=== pwsh -File, space-separated ===
+A positional parameter cannot be found that accepts argument '9'.
+=== in-process call (a real array) ===
+Ints  count=2  values=[5|9]
+```
+
+⭐ **So every list parameter here takes `[string[]]` and splits its own value**,
+which turns a non-number into a refusal instead of a plausible wrong answer.
+`docs/conventions/shell.md` section 8 and
+`docs/conventions/forbidden-patterns.md` both carry it, and `WSL-24` carries the
+second half of the same discovery.
+
+---
+
 ## WSL-23. parameters are silently ignored by the actions they do not apply to
 
 **Source** carried from the 2026-08-29 record, extended 2026-08-30.
-**Category** wsl-ephemeral, **Priority** P3, **Effort** M, **Status** open
+**Category** wsl-ephemeral, **Priority** P3, **Effort** M, **Status** done
 
 ---
 
@@ -2142,7 +2317,152 @@ nothing believes something is happening.
 ## Prove
 
 ```bash
-pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action List -Image alpine:3.22
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action List -Image alpine:3.22
 ```
 
 Exit 1, naming both the parameter and the action.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T08:50:00Z.** A table in `core/applicability.ps1` says which
+parameters each action reads, checked once in `Main` before anything else runs.
+
+```text
+ERROR: -Action List ignores parameters you passed, so it would have done something other than what you asked: -Image is read by -Action New and not by -Action List.
+exit=1
+```
+
+⭐ **The table is derived from where each variable is READ, not from what the
+help says**, and one row is worth naming: `-TimeoutSeconds` reaches
+`Get-DistroOutput` and `Get-EngineAnswer` and nothing else, so it belongs to
+`New` and `Resources` and is refused on `Run`. The refusal names the parameter
+the caller actually wanted:
+
+```text
+-TimeoutSeconds bounds the questions this script asks a distro for itself. The
+bound on YOUR command is -CommandTimeoutSeconds.
+```
+
+⛔ **A parameter with no row is refused on every action rather than allowed on
+every action.** Forgetting to add a row then fails loudly on first use instead of
+quietly reinstating the exact defect this closes. ⭐ And the selftest asserts the
+table against the parameter block in BOTH directions, so a parameter without a
+row and a row without a parameter each fail a gate:
+
+```text
+ok    every parameter in the block has a row, and every row a parameter
+```
+
+**Consumers.** ⛔ This is a break by `docs/consumers.md`'s definition and the row
+is there. It is the right kind: a caller passing a parameter that did nothing was
+not getting what they asked for, and nothing told them.
+
+---
+
+## WSL-24. a list parameter cannot be repeated, and an int list binds a wrong number
+
+**Source** found on 2026-08-30 while driving `WSL-22`'s escalation, which never fired.
+**Category** wsl-ephemeral, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+Two documented capabilities did not work, and neither said so.
+
+`-ScriptArg NAME=VALUE` was documented as repeatable, and the issue comment that
+closed `WSL-16` shows the two-argument form as the replacement for a consumer's
+`sed` passes. It is refused:
+
+```text
+ERROR: Cannot bind parameter because parameter 'ScriptArg' is specified more than once.
+```
+
+`-TickEscalateSeconds 5,9` was declared `[int[]]` and bound the single value
+`59`, so the escalation configured by it never fired and the run looked normal.
+
+## Premise
+
+⭐ **Measured, not read, and on both hosts.** A `.ps1` run through `pwsh -File`,
+which is how every consumer runs this one, cannot be handed an array:
+
+| what a caller types | what binds |
+| --- | --- |
+| `-Strs a,b` | one value, the literal string `a,b` |
+| `-Ints 5,9` | ⛔ one value, `59` |
+| `-Strs a -Strs b` | ⛔ refused: specified more than once |
+| `-Ints 5 9` | ⛔ refused: positional |
+| in-process `& .\s.ps1 -Ints @(5,9)` | two values, correctly |
+
+⛔ **A wrapper does not rescue it.** The launcher splats the same argument list
+into the inner script, and the inner binding is identical. Verified by running
+the documented example through both entry points.
+
+⚠ **Row two is the dangerous one and it is not obvious from the type.** Every
+argument arrives as a string; PowerShell converts a string to an int with the
+CURRENT CULTURE's number style, where a comma is the thousands separator.
+
+## Approach
+
+Two different answers, because the values are different kinds of thing.
+
+**Where a comma cannot occur inside a value**, the parameter takes `[string[]]`
+and splits its own value: `-TimestampColumns`, `-TickEscalateSeconds`, and
+`-Redact`, where a pattern needing a literal comma writes the character class
+`[,]`, which matches the same thing. `Split-DelimitedArgument` in
+`libs/redact.ps1` is the one implementation, and an in-process caller passing a
+real array lands there too.
+
+⛔ **Where the value is arbitrary text there is no safe delimiter**, and
+`-ScriptArg` is exactly that: a URL query string carries commas, and splitting on
+one would corrupt the value it was passing, which is the failure `-ScriptArg`
+exists to remove. So it takes a FILE: `-ScriptArgFile`, one `NAME=VALUE` per
+line, through the same byte repair `-CommandFile` gets.
+
+## Consumers
+
+⛔ **A break, and it is in `docs/consumers.md`.** Nobody could have been using the
+repeated form, because it never bound; a caller passing one `-ScriptArg` is
+unaffected.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/selftest.ps1
+```
+
+Exit 0, with cases asserting that a comma-separated value becomes several, that a
+real array still works, that a non-integer threshold is refused, and that a pairs
+file and the flag land in one list.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T08:55:00Z.** Driven against a real distro with two pairs that
+both carry commas in their values, which is the case a delimiter would have
+corrupted:
+
+```text
+00:00:00.156 +0.156 out  URL is https://172.23.96.1:8443/a,b,c
+00:00:00.205 +0.048 out  CFT is https://example.invalid/x.zip?a=1,2
+```
+
+and with the escalation that never fired now firing:
+
+```text
+00:00:06.648 +6.441 tick 6s silent | ... | distro Running | disk 76.0 MiB (unchanged)
+00:00:06.653 +6.446 note after 6s of silence: NOTHING is ruled out. because: the distro disk did not grow between the last two ticks
+00:00:08.365 +8.158 note output resumed after 8s of silence
+```
+
+```text
+selftest: 115 case(s) passed over 30 function(s) loaded from wsl-toolkit.ps1.
+```
+
+⚠ **What this did not fix, said rather than left to be found.** An in-process
+caller can still pass a real array to `-ScriptArg` and get every element, and
+that path is not reachable through `-File`. The help says so instead of pretending
+the two are the same.

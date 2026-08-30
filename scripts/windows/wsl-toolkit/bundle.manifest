@@ -1,0 +1,62 @@
+# bundle.manifest - the parts of wsl-toolkit.ps1, in the order they are joined.
+#
+# The defect this file exists to catch is a part that is added and never
+# bundled. build.ps1 reads this list AND enumerates every .ps1 under src/,
+# core/ and libs/, then refuses when the two disagree in either direction: a
+# listed part that does not exist, or an existing part that is not listed. A
+# builder that silently skipped a file would produce a script missing a
+# function, and the first caller to reach that function is what would report it.
+#
+# ORDER IS THE WHOLE POINT AND IT IS NOT ALPHABETICAL. PowerShell requires
+# param() to be the first statement in a script file, and comment-based help to
+# come before it, so src/00-help.ps1 and src/10-parameters.ps1 lead and nothing
+# may be moved above them. Everything after is function definitions, which
+# PowerShell hoists within a script, so their order is for a reader rather than
+# for the parser. src/99-main.ps1 is last because it is the only part that
+# EXECUTES rather than declares.
+#
+# A blank line and a line beginning with # are ignored.
+
+# -- the entry point: help, the parameter surface, and the prelude ----------
+src/00-help.ps1
+src/10-parameters.ps1
+src/20-prelude.ps1
+
+# -- libs: nothing here knows what WSL is ----------------------------------
+libs/console.ps1
+libs/process.ps1
+
+# -- core: the distro, the command channel, and the safety model -----------
+core/wsl-host.ps1
+core/distro-exec.ps1
+core/command-channel.ps1
+core/safety.ps1
+core/rootfs.ps1
+core/distro-file.ps1
+
+# -- libs again, and the position is deliberate: these are generic, and they
+#    sit here because the join order is also the file's reading order -------
+libs/native-args.ps1
+libs/bounded-process.ps1
+libs/stamp.ps1
+libs/redact.ps1
+libs/events.ps1
+
+# -- core: the stream log, and everything that runs a command --------------
+core/stream-log.ps1
+core/distro-run.ps1
+core/disk.ps1
+
+# -- core: which parameter each action reads, and the dry-run plan ---------
+core/applicability.ps1
+
+# -- core: one file per action ---------------------------------------------
+core/action-new.ps1
+core/action-run.ps1
+core/action-resources.ps1
+core/action-address.ps1
+core/action-purge.ps1
+core/action-doctor.ps1
+
+# -- the dispatch, and the only part that executes -------------------------
+src/99-main.ps1

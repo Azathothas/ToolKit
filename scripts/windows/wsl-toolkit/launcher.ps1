@@ -2,11 +2,11 @@
 
 <#
 .SYNOPSIS
-    Resolve wsl-ephemeral.ps1, make it safe to run, and run it with the
+    Resolve wsl-toolkit.ps1, make it safe to run, and run it with the
     arguments given here.
 
 .DESCRIPTION
-    ONE FILE A CALLER FETCHES. Everything wsl-ephemeral.ps1 needs before it can
+    ONE FILE A CALLER FETCHES. Everything wsl-toolkit.ps1 needs before it can
     run on a Windows host is here: finding a copy, verifying it, clearing the
     download mark Windows puts on it, and putting it somewhere a session can
     reach by name. Then it runs it and propagates its exit code.
@@ -22,8 +22,22 @@
     So this resolves in order, and the first hit wins:
 
       1. -LauncherLocal PATH, or WSL_EPHEMERAL_LOCAL. An explicit file.
-      2. -LauncherRef, or WSL_EPHEMERAL_REF. A revision you named.
-      3. wsl-ephemeral.ps1 BESIDE THIS FILE. The clone case, and no network.
+      2. -LauncherRelease TAG|latest, or WSL_TOOLKIT_RELEASE. A published
+         release, verified against the SHA256SUMS published in it.
+      3. -LauncherRef, or WSL_EPHEMERAL_REF. A revision you named.
+      4. wsl-toolkit.ps1 BESIDE THIS FILE. The clone case, and no network.
+
+    A RELEASE IS THE ONE TO REACH FOR, and the difference from a commit is not
+    convenience. A commit names a TREE, and the file at a path in it is whatever
+    happened to be there. A release names an ARTEFACT that was built from its
+    sources, tested, and published on purpose, and it carries a SHA256SUMS of
+    its own. A tag does not move either, so the shape check that refuses a
+    branch has nothing to complain about.
+
+    TRAP: WHAT THE RELEASE DIGEST PROVES. The SHA256SUMS comes from the same release
+    as the asset, so checking one against the other proves the bytes arrived
+    intact. It does not prove who published them. -LauncherSha256 with a digest
+    the CALLER holds is the check that proves that, and it applies on top.
 
     AN EXPLICIT REF NOW WINS OVER THE SIBLING, and it used to be the other way
     round. A caller passing a commit AND a digest could get the line "Using the
@@ -68,7 +82,7 @@
 
 .PARAMETER LauncherHelp
     Not declared, and neither is anything else. Every argument is forwarded to
-    wsl-ephemeral.ps1 verbatim EXCEPT the -Launcher* switches listed below,
+    wsl-toolkit.ps1 verbatim EXCEPT the -Launcher* switches listed below,
     which are removed first.
 
     Restating the inner script's parameter list here is how a wrapper drifts
@@ -77,6 +91,11 @@
     one of these, whatever it adds.
 
       -LauncherLocal PATH        run this file. No network.
+      -LauncherRelease TAG|latest
+                                 fetch a published release's wsl-toolkit.ps1 and
+                                 verify it against that release's SHA256SUMS.
+                                 'latest' warns, every run, and names the tag it
+                                 resolved so the run is reproducible from a log.
       -LauncherRef SHA|auto|latest
                                  fetch this revision from Azathothas/ToolKit,
                                  or resolve main once (auto) or every run
@@ -84,7 +103,7 @@
       -LauncherSha256 HEX|auto   expect this SHA-256 of the fetched bytes, or
                                  read it from the API for the resolved ref.
       -LauncherLock PATH         where -LauncherRef auto keeps what it resolved.
-                                 Default: <install dir>\wsl-ephemeral.lock.json.
+                                 Default: <install dir>\wsl-toolkit.lock.json.
       -LauncherAllowMovingRef    permit a branch or a tag. Prints a warning.
       -LauncherInstallDir DIR    where a fetched copy is kept.
       -LauncherAddToPath         put the directory on PATH and DO NOT RUN.
@@ -93,21 +112,24 @@
     The environment equivalents, for a caller that would rather not touch the
     argument list at all:
 
-      WSL_EPHEMERAL_LOCAL, WSL_EPHEMERAL_REF, WSL_EPHEMERAL_SHA256,
-      WSL_EPHEMERAL_ALLOW_MOVING_REF=1, WSL_EPHEMERAL_CACHE,
-      WSL_EPHEMERAL_LOCK
+      WSL_EPHEMERAL_LOCAL, WSL_TOOLKIT_RELEASE, WSL_EPHEMERAL_REF,
+      WSL_EPHEMERAL_SHA256, WSL_EPHEMERAL_ALLOW_MOVING_REF=1,
+      WSL_EPHEMERAL_CACHE, WSL_EPHEMERAL_LOCK
 
 .EXAMPLE
-    .\wsl-ephemeral-launcher.ps1 -Action List
+    .\launcher.ps1 -Action List
 
 .EXAMPLE
-    .\wsl-ephemeral-launcher.ps1 -LauncherRef 7127ff7... -Action New -Image alpine:3.22 -Ephemeral -Force
+    .\launcher.ps1 -LauncherRelease wsl-toolkit-v1.0.0 -Action Doctor
 
 .EXAMPLE
-    .\wsl-ephemeral-launcher.ps1 -LauncherRef auto -LauncherLock .\toolkit.lock.json -Action List
+    .\launcher.ps1 -LauncherRef 7127ff7... -Action New -Image alpine:3.22 -Ephemeral -Force
 
 .EXAMPLE
-    . .\wsl-ephemeral-launcher.ps1 -LauncherAddToPath
+    .\launcher.ps1 -LauncherRef auto -LauncherLock .\toolkit.lock.json -Action List
+
+.EXAMPLE
+    . .\launcher.ps1 -LauncherAddToPath
 
 .NOTES
     -LauncherAddToPath AND DOT-SOURCING, WHICH IS THE ONE THING TO READ HERE.
@@ -117,13 +139,13 @@
     cannot put it there. DOT-SOURCE it and the assignment happens in the calling
     session, which is what the caller actually wanted:
 
-        . .\wsl-ephemeral-launcher.ps1 -LauncherAddToPath
+        . .\launcher.ps1 -LauncherAddToPath
 
     A launcher that claimed to have changed PATH from a child process would be
     reporting a result it never read, so it does not claim it.
 
     DOT-SOURCING IS REFUSED FOR EVERY OTHER USE, and that is not tidiness.
-    wsl-ephemeral.ps1 calls `exit`, which ends the HOST SESSION when it is
+    wsl-toolkit.ps1 calls `exit`, which ends the HOST SESSION when it is
     reached through a dot-source rather than an invocation.
 
     Requires : Windows PowerShell 5.1 or PowerShell 7+.
@@ -139,8 +161,8 @@ $ErrorActionPreference = 'Stop'
 
 $UpstreamOwner = 'Azathothas'
 $UpstreamRepo  = 'ToolKit'
-$UpstreamPath  = 'scripts/powershell-windows/wsl-ephemeral.ps1'
-$ScriptLeaf    = 'wsl-ephemeral.ps1'
+$UpstreamPath  = 'scripts/windows/wsl-toolkit/wsl-toolkit.ps1'
+$ScriptLeaf    = 'wsl-toolkit.ps1'
 # The branch -LauncherRef auto and -LauncherRef latest resolve. It is a constant
 # rather than a parameter because it is a property of the repository this
 # launcher is written against, not a choice a caller makes: a different branch
@@ -155,7 +177,7 @@ $ApiHosts = @('api.github.com', 'api.gh.pkgforge.dev')
 
 # EVERY LINE THIS FILE PRINTS GOES TO STDERR, and there is no Write-Host in it
 # at all. A wrapper that writes to the wrapped program's stdout corrupts it:
-# `wsl-ephemeral.ps1 -Action HostAddress` puts one address there and nothing
+# `wsl-toolkit.ps1 -Action HostAddress` puts one address there and nothing
 # else, and a progress line from out here arrives in the same stream. Measured
 # on 2026-08-29: with Write-Host, a caller capturing this launcher's stdout got
 # "==> Using the copy beside this launcher" ahead of the address.
@@ -203,8 +225,12 @@ function Split-LauncherArgument {
     #>
     param([Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Argument)
 
+    # HARD RULE: EVERY KEY IS DECLARED HERE EVEN WHEN IT IS EMPTY. Set-StrictMode Latest
+    # throws on a property that was never set, so a key added to $takesValue and
+    # not to this table turns the first read of it into "the property cannot be
+    # found on this object" from a caller who passed nothing unusual at all.
     $opt = @{
-        Local = ''; Ref = ''; Sha256 = ''; InstallDir = ''; Lock = ''
+        Local = ''; Release = ''; Ref = ''; Sha256 = ''; InstallDir = ''; Lock = ''
         AllowMovingRef = $false; AddToPath = $false; Help = $false
     }
     # An ordinary array with +=, NOT an ArrayList. See the note above: this is
@@ -213,7 +239,7 @@ function Split-LauncherArgument {
     $takesValue = @{
         '-launcherlocal' = 'Local'; '-launcherref' = 'Ref'
         '-launchersha256' = 'Sha256'; '-launcherinstalldir' = 'InstallDir'
-        '-launcherlock' = 'Lock'
+        '-launcherlock' = 'Lock'; '-launcherrelease' = 'Release'
     }
     $flags = @{
         '-launcherallowmovingref' = 'AllowMovingRef'
@@ -232,8 +258,8 @@ function Split-LauncherArgument {
         }
         if ($flags.ContainsKey($k)) { $opt[$flags[$k]] = $true; continue }
         if ($k.StartsWith('-launcher')) {
-            throw ("$a is not a launcher option. The set is -LauncherLocal, -LauncherRef, " +
-                   "-LauncherSha256, -LauncherAllowMovingRef, -LauncherInstallDir, " +
+            throw ("$a is not a launcher option. The set is -LauncherLocal, -LauncherRelease, " +
+                   "-LauncherRef, -LauncherSha256, -LauncherAllowMovingRef, -LauncherInstallDir, " +
                    "-LauncherLock, -LauncherAddToPath and -LauncherHelp.")
         }
         $rest += $Argument[$i]
@@ -293,7 +319,7 @@ function Clear-DownloadMark {
 
 function Save-Upstream {
     <#
-      Download wsl-ephemeral.ps1 at one commit, trying every source in order,
+      Download wsl-toolkit.ps1 at one commit, trying every source in order,
       to a temp file in the destination directory, then rename.
 
       THREE SOURCES, AND ALL THREE SERVE THE SAME BYTES. Measured on
@@ -397,17 +423,22 @@ function Get-UpstreamUserAgent {
       Measured on 2026-08-30 against api.gh.pkgforge.dev, same URL and same
       Accept header, varying only this:
 
-        'wsl-ephemeral-launcher'  -> HTTP 420, refused
+        'wsl-toolkit-launcher/1'  -> HTTP 420, refused
         'Mozilla/5.0'             -> HTTP 420, refused
         'curl/8.21.0'             -> HTTP 200
         none at all               -> HTTP 200
+
+      RE-MEASURED ON 2026-08-30 AFTER THE TOOL WAS RENAMED, because a rename is
+      exactly the change that would have broken this without saying so: the
+      agent below answered HTTP 200 and the same string without its
+      compatibility token answered 420.
 
       Its allowlist is a substring match on curl, wget, pkgforge or soar. So the
       token is here, beside the tool's real name and its home, rather than in
       place of them: this is not a claim to be curl, and a reader of a log
       should be able to tell exactly what made the request.
     #>
-    return 'wsl-ephemeral-launcher/1 (curl-compatible; +https://github.com/Azathothas/ToolKit)'
+    return 'wsl-toolkit-launcher/1 (curl-compatible; +https://github.com/Azathothas/ToolKit)'
 }
 
 function Invoke-UpstreamRequest {
@@ -542,7 +573,7 @@ function Get-UpstreamDigest {
       IT DOWNLOADS TO A FILE AND HASHES THE FILE. The obvious version reads the
       response as a STRING and hashes its UTF-8 bytes, and that is wrong in a
       way that would arrive as a digest mismatch nobody could explain:
-      wsl-ephemeral.ps1 begins with a UTF-8 byte order mark, and a response
+      wsl-toolkit.ps1 begins with a UTF-8 byte order mark, and a response
       decoded to text and re-encoded does not reliably carry one back. Bytes to
       disk, then Get-FileHash, has no encoding step in it at all.
     #>
@@ -576,7 +607,7 @@ function Get-LockPath {
     # directory it was run from has written into somebody's repository without
     # being asked. The cache directory is this tool's own, and a caller who
     # wants the lock committed beside their project names it with -LauncherLock.
-    return (Join-Path $CacheDir 'wsl-ephemeral.lock.json')
+    return (Join-Path $CacheDir 'wsl-toolkit.lock.json')
 }
 
 function Read-LauncherLock {
@@ -598,8 +629,8 @@ function Read-LauncherLock {
             return $null
         }
     }
-    if ($lock.schema -ne 'wsl-ephemeral-lock/1') {
-        throw "The lock at $Path says schema '$($lock.schema)' and this launcher writes 'wsl-ephemeral-lock/1'. Delete it, or point -LauncherLock somewhere else."
+    if ($lock.schema -ne 'wsl-toolkit-lock/1') {
+        throw "The lock at $Path says schema '$($lock.schema)' and this launcher writes 'wsl-toolkit-lock/1'. Delete it, or point -LauncherLock somewhere else."
     }
     if ($lock.repository -ne "$UpstreamOwner/$UpstreamRepo" -or $lock.path -ne $UpstreamPath) {
         throw ("The lock at $Path is for $($lock.repository) at $($lock.path), and this launcher " +
@@ -621,7 +652,7 @@ function Write-LauncherLock {
     $dir = Split-Path -Parent $Path
     if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $lock = [ordered]@{
-        schema     = 'wsl-ephemeral-lock/1'
+        schema     = 'wsl-toolkit-lock/1'
         repository = "$UpstreamOwner/$UpstreamRepo"
         path       = $UpstreamPath
         branch     = $Branch
@@ -634,6 +665,181 @@ function Write-LauncherLock {
     $temp = "$Path.$([Guid]::NewGuid().ToString('N')).tmp"
     Set-Content -LiteralPath $temp -Value ($lock | ConvertTo-Json -Depth 5) -Encoding UTF8
     Move-Item -LiteralPath $temp -Destination $Path -Force
+}
+
+function Get-ReleaseJson {
+    <#
+      One release, by tag or 'latest', from the first API host that answers.
+
+      NOTE: THE API RATHER THAN THE browser_download_url. An asset's browser URL is
+      on github.com, which neither of the fallback hosts proxies, so a network
+      that can only reach the proxy could resolve a release and then fail to
+      download it. The assets endpoint answers on every host in $ApiHosts.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Tag)
+    $path = if ($Tag -ieq 'latest') {
+        "repos/$UpstreamOwner/$UpstreamRepo/releases/latest"
+    }
+    else {
+        "repos/$UpstreamOwner/$UpstreamRepo/releases/tags/$Tag"
+    }
+    $problems = @()
+    foreach ($apiHost in $ApiHosts) {
+        try {
+            $body = Invoke-UpstreamRequest -Uri (Get-ApiUri -ApiHost $apiHost -Path $path) -Accept 'application/vnd.github+json'
+            $json = $body | ConvertFrom-Json
+            # HARD RULE: THE SHAPE IS CHECKED BEFORE IT IS TRUSTED. A proxy returning a
+            # login page, an error document or an empty object all arrive with
+            # HTTP 200, and reading .assets off one of those throws a message
+            # about a property rather than about the fetch.
+            if (-not $json.tag_name) { throw 'the response carries no tag_name, so it is not a release' }
+            if (-not $json.assets)   { throw "release $($json.tag_name) has no assets" }
+            if ($apiHost -ne $ApiHosts[0]) { Write-Warn "$($ApiHosts[0]) did not answer; this release came from $apiHost instead." }
+            return $json
+        }
+        catch { $problems += "$apiHost : $($_.Exception.Message.Trim())" }
+    }
+    throw ("no host served release '$Tag':`n  " + ($problems -join "`n  "))
+}
+
+function Save-ReleaseAsset {
+    <#
+      One asset of one release, to a file, from the first host that answers.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$Release,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+    $asset = @($Release.assets | Where-Object { $_.name -eq $Name })
+    if ($asset.Count -eq 0) {
+        $have = (@($Release.assets | ForEach-Object { $_.name }) -join ', ')
+        throw "release $($Release.tag_name) has no asset named '$Name'. It has: $have"
+    }
+    $id = $asset[0].id
+    $problems = @()
+    foreach ($apiHost in $ApiHosts) {
+        try {
+            $null = Invoke-UpstreamRequest -Uri (Get-ApiUri -ApiHost $apiHost -Path "repos/$UpstreamOwner/$UpstreamRepo/releases/assets/$id") `
+                -Accept 'application/octet-stream' -OutFile $Destination
+            if (-not (Test-Path -LiteralPath $Destination)) { throw 'the download produced no file' }
+            return
+        }
+        catch { $problems += "$apiHost : $($_.Exception.Message.Trim())" }
+    }
+    throw ("no host served asset '$Name' of release $($Release.tag_name):`n  " + ($problems -join "`n  "))
+}
+
+function Get-Sha256SumsEntry {
+    <#
+      The digest one SHA256SUMS file records for one name.
+
+      TRAP: WHAT THIS PROVES AND WHAT IT DOES NOT, said here rather than left to be
+      assumed. The sums file comes from the SAME release as the asset, so
+      checking one against the other proves the bytes arrived intact. It does
+      NOT prove who published them: anyone who could replace the asset could
+      replace the sums beside it. NOTE: -LauncherSha256 with a digest the CALLER
+      holds is the check that proves that, and it still applies on top of this.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Text,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+    foreach ($line in ($Text -split "`r?`n")) {
+        $t = "$line".Trim()
+        if (-not $t) { continue }
+        # 'HEX  name' or 'HEX *name', which is what sha256sum writes in text and
+        # in binary mode. Both are accepted; neither is guessed at.
+        if ($t -match '^([0-9a-fA-F]{64})\s+\*?(.+)$') {
+            if ($Matches[2].Trim() -eq $Name) { return $Matches[1].ToLowerInvariant() }
+        }
+    }
+    throw "SHA256SUMS carries no line for '$Name'."
+}
+
+function Resolve-FromRelease {
+    <#
+      Download one release's wsl-toolkit.ps1, verify it against that release's
+      own SHA256SUMS, and against -LauncherSha256 when the caller holds one.
+
+      HARD RULE: THE CACHE IS KEYED BY TAG. Serving a previously downloaded copy for a
+      different tag is the "fetching a variant into a cache keyed without the
+      variant" row in docs/conventions/forbidden-patterns.md, and it would mean
+      changing the tag ran the old file.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Tag,
+        [Parameter(Mandatory = $true)]$Options
+    )
+    $cacheDir = $Options.InstallDir
+    if (-not $cacheDir) { $cacheDir = Get-EnvOrDefault 'WSL_EPHEMERAL_CACHE' }
+    if (-not $cacheDir) {
+        if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+            throw 'LOCALAPPDATA is not set and no -LauncherInstallDir was given; nowhere to keep it.'
+        }
+        $cacheDir = Join-Path $env:LOCALAPPDATA 'wsl-ephemeral\bin'
+    }
+    if (-not (Test-Path -LiteralPath $cacheDir)) { $null = New-Item -ItemType Directory -Path $cacheDir -Force }
+
+    if ($Tag -ieq 'latest') {
+        Write-Warn "-LauncherRelease latest asks GitHub for the newest release on EVERY run."
+        Write-Warn "  What executes can change between one call and the next. The tag it resolved is named below; pass that tag to pin it."
+    }
+    $rel = Get-ReleaseJson -Tag $Tag
+    $realTag = [string]$rel.tag_name
+    Write-Ok "release $realTag"
+
+    $safeTag = ($realTag -replace '[^0-9A-Za-z._-]', '_')
+    $cached  = Join-Path $cacheDir ("wsl-toolkit-$safeTag.ps1")
+
+    $expected = $Options.Sha256
+    if (-not $expected) { $expected = Get-EnvOrDefault 'WSL_EPHEMERAL_SHA256' }
+    $expected = $expected.ToLowerInvariant()
+    if ($expected -eq 'auto') {
+        throw ('-LauncherSha256 auto reads a digest from the contents API for a REF. A release ' +
+               'already publishes SHA256SUMS and this verifies against it, so drop the switch, ' +
+               'or pass a digest you hold yourself.')
+    }
+
+    if (Test-Path -LiteralPath $cached) {
+        Write-Ok "already downloaded: $cached"
+    }
+    else {
+        $sums = Join-Path $cacheDir (".sums." + [Guid]::NewGuid().ToString('N') + '.tmp')
+        $temp = Join-Path $cacheDir (".download." + [Guid]::NewGuid().ToString('N') + '.tmp')
+        try {
+            Save-ReleaseAsset -Release $rel -Name 'SHA256SUMS' -Destination $sums
+            Save-ReleaseAsset -Release $rel -Name $ScriptLeaf -Destination $temp
+            $want = Get-Sha256SumsEntry -Text ([IO.File]::ReadAllText($sums)) -Name $ScriptLeaf
+            $got  = Get-Sha256 -LiteralFile $temp
+            if ($got -ne $want) {
+                throw ("the release asset does not match the SHA256SUMS published beside it.`n" +
+                       "  expected $want`n  got      $got`n" +
+                       '  Nothing was installed. This is a transport failure or a tampered asset; either way it is not runnable.')
+            }
+            Write-Ok "digest matches the SHA256SUMS in release $realTag"
+            Write-Warn "that proves the bytes arrived intact, not who published them. -LauncherSha256 with a digest you hold yourself is the check that proves that."
+            Move-Item -LiteralPath $temp -Destination $cached -Force
+        }
+        finally {
+            foreach ($f in @($sums, $temp)) {
+                if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+            }
+        }
+    }
+
+    if ($expected) {
+        $got = Get-Sha256 -LiteralFile $cached
+        if ($got -ne $expected) {
+            throw ("-LauncherSha256 does not match what release $realTag serves.`n" +
+                   "  expected $expected`n  got      $got")
+        }
+        Write-Ok '-LauncherSha256 matches too'
+    }
+
+    $null = Clear-DownloadMark -LiteralFile $cached
+    Assert-PowerShellSyntax -LiteralFile $cached
+    return $cached
 }
 
 function Resolve-Upstream {
@@ -655,6 +861,28 @@ function Resolve-Upstream {
 
     $ref = $Options.Ref
     if (-not $ref) { $ref = Get-EnvOrDefault 'WSL_EPHEMERAL_REF' }
+
+    # 2. a published release, which is the shape a consumer should reach for.
+    #
+    # NOTE: WHY A RELEASE IS BETTER THAN A COMMIT FOR A CONSUMER. A commit names a
+    # tree, and the file at that path in that tree is whatever was there; a
+    # release names an ARTEFACT that was built, tested and published on purpose,
+    # and it carries its own SHA256SUMS. A tag also does not move, so the shape
+    # check that refuses a branch has nothing to complain about.
+    #
+    # HARD RULE: 'latest' HERE IS NOT 'latest' ON -LauncherRef. This one resolves to a
+    # specific published tag and then names it in the lock and in the output, so
+    # what ran is recoverable from the log. It is still a standing trust
+    # decision, and it says so once.
+    $release = $Options.Release
+    if (-not $release) { $release = Get-EnvOrDefault 'WSL_TOOLKIT_RELEASE' }
+    if ($release) {
+        if ($ref) {
+            throw ('-LauncherRelease and -LauncherRef are two answers to the same question. ' +
+                   'Pass one: a release tag names a published artefact, a commit names a tree.')
+        }
+        return (Resolve-FromRelease -Tag $release -Options $Options)
+    }
 
     # 2. the sibling, which is the clone case and needs no network at all.
     #
@@ -770,7 +998,7 @@ function Resolve-Upstream {
     # previous answer, which is the shape this repository's forbidden-patterns
     # table records under a fetched variant landing on a shared tag.
     $safeRef = ($ref -replace '[^A-Za-z0-9._-]', '-')
-    $cached  = Join-Path $cacheDir ("wsl-ephemeral-$safeRef.ps1")
+    $cached  = Join-Path $cacheDir ("wsl-toolkit-$safeRef.ps1")
 
     $useCache = $false
     if ($expected -and (Test-Path -LiteralPath $cached -PathType Leaf)) {
@@ -839,7 +1067,7 @@ try {
                    "Got: $($split.Forward -join ' ')")
         }
         $dir = Split-Path -Parent $resolved
-        Write-Ok "wsl-ephemeral.ps1 is at $resolved"
+        Write-Ok "wsl-toolkit.ps1 is at $resolved"
         if ($dotSourced) {
             if (($env:PATH -split ';') -notcontains $dir) { $env:PATH = "$dir;$env:PATH" }
             Write-Ok "added '$dir' to PATH for THIS session only"
@@ -859,7 +1087,7 @@ try {
     }
 
     if ($dotSourced) {
-        throw ("Refusing to run wsl-ephemeral.ps1 from a dot-source. It calls exit, which " +
+        throw ("Refusing to run wsl-toolkit.ps1 from a dot-source. It calls exit, which " +
                "would end this session rather than the script. Invoke this launcher instead, " +
                "and dot-source it only for -LauncherAddToPath.")
     }
@@ -872,7 +1100,7 @@ try {
     exit ([int]$innerCode)
 }
 catch {
-    # stderr, for the same reason wsl-ephemeral.ps1 reports there: an error is
+    # stderr, for the same reason wsl-toolkit.ps1 reports there: an error is
     # not a result, and -Action HostAddress puts a value on stdout.
     [Console]::Error.WriteLine("ERROR: $($_.Exception.Message)")
     exit 1

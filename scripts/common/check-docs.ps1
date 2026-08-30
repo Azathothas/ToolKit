@@ -163,12 +163,27 @@ foreach ($rel in $files) {
         if (-not $bare) { continue }
         # Normalise to a repo-relative path so a link from a subdirectory and
         # one from the root name the same file.
+        #
+        # ⛔ THE FRAMEWORK RESOLVES THE '..', NOT A REGEX. The hand-rolled
+        # collapse this replaces was `[^/]+/\.\./`, and `[^/]+` MATCHES '..'
+        # ITSELF, so a link going up three levels ate its own segments:
+        # `scripts/windows/wsl-toolkit/../../../docs/x` collapsed to
+        # `scripts/windows/docs/x` and every correct link from a directory three
+        # deep was reported broken. ⚠ It was invisible for as long as nothing in
+        # this tree was three deep, which is the "a scope difference with
+        # nothing to exercise it is invisible" lesson in scripts/README.md,
+        # arriving in the check rather than in the thing being checked.
+        # ⭐ The sh twin never had it: it asks the filesystem, with
+        # `[ -e "$dir/$target" ]`. This now does the same thing.
         $joined = if ($dir -eq '.') { $bare } else { $dir + '/' + $bare }
-        $norm = $joined -replace '/\./', '/'
-        while ($norm -match '[^/]+/\.\./') { $norm = $norm -replace '[^/]+/\.\./', '' }
-        $norm = $norm -replace '^\./', ''
-        [void]$linked.Add($norm)
-        if (-not (Test-Path -LiteralPath (Join-Path $root $norm))) {
+        $abs = ''
+        try { $abs = [IO.Path]::GetFullPath((Join-Path $root ($joined -replace '/', [IO.Path]::DirectorySeparatorChar))) }
+        catch { $abs = '' }
+        $rootFull = [IO.Path]::GetFullPath($root).TrimEnd([char]92, [char]47) + [IO.Path]::DirectorySeparatorChar
+        if ($abs -and $abs.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
+            [void]$linked.Add(($abs.Substring($rootFull.Length) -replace '\\', '/'))
+        }
+        if (-not $abs -or -not (Test-Path -LiteralPath $abs)) {
             Add-Problem ($rel + ':' + $t.Line + ' broken link -> ' + $target)
         }
     }

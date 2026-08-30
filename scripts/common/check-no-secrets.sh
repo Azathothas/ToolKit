@@ -126,7 +126,7 @@ if [ "$PUBLIC" = "1" ]; then
   # excluded by shape rather than the whole hex rule being dropped.
   #
   # ⚠ A DECLARED PIN is the second such shape. It arrived when
-  # scripts/powershell-windows/wsl-ephemeral.ps1 became a wrapper that fetches a
+  # scripts/windows/wsl-toolkit/wsl-toolkit.ps1 became a wrapper that fetches a
   # commit and verifies a SHA-256 before executing it: 40 hex and 64 hex, both
   # public by construction, both the SAFE practice.
   # ⛔ Excluded by NAME, narrowly. The hex has to be assigned to an identifier

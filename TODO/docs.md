@@ -273,7 +273,7 @@ gained a row for it.
 ## DOC-06. the documents carry the story of their own fixes
 
 **Source** the operator, 2026-08-30.
-**Category** docs, **Priority** P1, **Effort** M, **Status** partial
+**Category** docs, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -331,17 +331,53 @@ check exemption in both halves, and `HISTORY/wsl-ephemeral.md` shipped on
   were stated and enforced by nothing;
 - `prose.md` and `docs.md` were not amended to name `docs/HISTORY/` as the
   destination, so the rule still points at a generic "history file".
+---
 
-The session ran out of budget with the code half of its assignment finished, and
-stopping with a coherent tree was chosen over a half-applied purge across nine
-files.
+## Closing
+
+⚠ **PARTIAL on 2026-08-30, and closed the same day.** The first attempt shipped
+the directory, its `README.md`, the check exemption in both halves, and
+`HISTORY/wsl-toolkit.md`, and ran out of budget with four files unpurged. This
+records both halves rather than rewriting the first.
+
+**What the second pass did**, which is exactly the list the partial closing
+named:
+
+| file | what moved, and where |
+| --- | --- |
+| `scripts/README.md` | the two armed-run counts, 164 characters in 28 files and 17 sentences with two homes, to [`../docs/HISTORY/scripts.md`](../docs/HISTORY/scripts.md) |
+| `docs/consumers.md` | the whole pin-move narrative, to [`../docs/HISTORY/consumers.md`](../docs/HISTORY/consumers.md) |
+| `docs/conventions/docs.md` | the "stated here and enforced by nothing" clause, deleted: the four rules are enforced now and the sentence described a state that no longer exists |
+| `docs/conventions/prose.md` | amended to name `docs/HISTORY/` as the destination, which it previously called "a history file" with nowhere to point |
+| `docs/conventions/docs.md` | gained a row sending retired wording to `docs/HISTORY/`, so the lessons table names it |
+
+⭐ **THE LINE THIS DREW, because it is the part a later session will have to
+apply rather than copy.** A measurement stays on a live page when a reader who
+does not know it will undo the rule; it moves when it is a count from a tree that
+has since been fixed.
+
+- ⭐ **Stayed:** `Sort-Object -u` dropping two of four distinct values. A reader
+  who does not know that will remove the twins rule as redundant.
+- ⛔ **Moved:** "before it was armed, 164 characters across 28 files". The
+  characters are gone, the check is armed, and there is nothing to act on.
+
+```text
+docs ok: 42 files, 454 relative links, 116 shell blocks. Links and prose clean.
+one fact one home: 38 documents, no sentence of 12+ words in two of them
+```
+
+⚠ **`check-one-home` earned its keep during this pass**, which is the strongest
+thing that can be said for a check. Two sentences written into
+`scripts/windows/wsl-toolkit/README.md` were also in `scripts/README.md`, and it
+named both files and both sentences. The tool's own page kept them and
+`scripts/README.md` became a pointer.
 
 ---
 
 ## DOC-07. there are two AGENTS.md files
 
 **Source** the operator, 2026-08-30, asking a second time.
-**Category** docs, **Priority** P2, **Effort** S, **Status** open
+**Category** docs, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -379,8 +415,41 @@ sh scripts/common/check-gate.sh --fast
 
 Exit 0, with `check-docs` reporting no dead link and `check-one-home` green with
 no exemption in it.
-
 ⚠ Started and reverted on 2026-08-30: the check change was made and backed out
 when the session pivoted, because a check exempting a file that no longer exists
 and a file whose sentences are duplicated are two different broken states and
 neither is worth leaving behind.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T09:05:00Z.** ⚠ **Ruled by the operator in this session, and
+the question was put to them first**, because their own kickoff opened with
+"read ./AGENTS.md & then ./docs/AGENTS.md", which is evidence they still use the
+root file. They chose to delete it anyway.
+
+Three changes, which is what the premise said it would be:
+
+1. `AGENTS.md` deleted.
+2. The router exemption removed from both halves of `check-one-home`, from the
+   table AND from the header comment that explains it.
+3. Five references repointed: `README.md` twice, `docs/AGENTS.md`'s own header,
+   `docs/conventions/docs.md`'s document table, `scripts/README.md`'s
+   explanation of the exemption, and `TODO/tooling.md`.
+
+```text
+docs ok: 42 files, 454 relative links, 116 shell blocks. Links and prose clean.
+one fact one home: 38 documents, no sentence of 12+ words in two of them
+```
+
+⛔ **The exemption was deleted rather than emptied**, and that is the part worth
+keeping. An exemption written for a path that no longer holds anything grants
+itself to whatever lands there next, which is the `DOC-04` row in
+`docs/conventions/forbidden-patterns.md`. Both halves now name one router.
+
+⚠ **THE COST IS REAL AND IT IS NOT HYPOTHETICAL.** A harness that opens
+`AGENTS.md` on its own now finds nothing, and `docs/AGENTS.md` says so in its own
+first paragraph so a session that arrives some other way is told. A session
+pointed at nothing has to be pointed at `docs/AGENTS.md` by whoever starts it.
+That is now a line in the next-session prompt rather than a property of the tree.

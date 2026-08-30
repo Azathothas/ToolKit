@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 40  open 4  blocked 0  done 35
+total 43  open 0  blocked 0  done 43
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 15 | 16 |
-| P2 | 2 | 0 | 13 | 15 |
-| P3 | 2 | 0 | 4 | 6 |
-| **all** | **4** | **0** | **35** | **40** |
+| P1 | 0 | 0 | 19 | 19 |
+| P2 | 0 | 0 | 15 | 15 |
+| P3 | 0 | 0 | 6 | 6 |
+| **all** | **0** | **0** | **43** | **43** |
 
 ---
 
@@ -37,8 +37,8 @@ total 40  open 4  blocked 0  done 35
 | DOC-03 | P2 | S | done | Seventeen sentences had two homes | [`docs.md`](docs.md) |
 | DOC-04 | P1 | S | done | The template skeletons go, and TODO/ becomes the shape the model names | [`docs.md`](docs.md) |
 | DOC-05 | P1 | M | done | `docs/AGENTS.md`, and what `README.md` is for | [`docs.md`](docs.md) |
-| DOC-06 | P1 | M | partial | The documents carry the story of their own fixes | [`docs.md`](docs.md) |
-| DOC-07 | P2 | S | open | There are two AGENTS.md files | [`docs.md`](docs.md) |
+| DOC-06 | P1 | M | done | The documents carry the story of their own fixes | [`docs.md`](docs.md) |
+| DOC-07 | P2 | S | done | There are two AGENTS.md files | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
@@ -47,6 +47,8 @@ total 40  open 4  blocked 0  done 35
 | TOOL-06 | P1 | S | done | `check-gate.ps1` skipped six checks on the host it exists for | [`tooling.md`](tooling.md) |
 | TOOL-07 | P2 | M | done | The helpers `Azathothas/TEMPLATE` is dropping move here | [`tooling.md`](tooling.md) |
 | TOOL-08 | P1 | S | done | The CI step that parses the workflows had never parsed one | [`tooling.md`](tooling.md) |
+| TOOL-09 | P1 | S | done | `check-docs.ps1` collapsed `..` with a regex that matches `..` | [`tooling.md`](tooling.md) |
+| TOOL-10 | P1 | S | done | `check-no-secrets.ps1` could not match a Windows home path at all | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -67,9 +69,10 @@ total 40  open 4  blocked 0  done 35
 | WSL-18 | P1 | L | done | A command that prints nothing is indistinguishable from one that has died | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-19 | P2 | S | done | Nothing bounds the caller's command, so a hung run ends in a kill | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-20 | P2 | S | done | One API host is a single point of failure | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-21 | P2 | L | open | `wsl-ephemeral.ps1` is 2,792 lines in one file | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-22 | P3 | S | open | The stream log has no sink, no colour and no prefix-only mode | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-23 | P3 | M | open | Parameters are silently ignored by the actions they do not apply to | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-21 | P2 | L | done | `wsl-ephemeral.ps1` is 2,792 lines in one file | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-22 | P3 | S | done | The stream log has no sink, no colour and no prefix-only mode | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-23 | P3 | M | done | Parameters are silently ignored by the actions they do not apply to | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-24 | P1 | S | done | A list parameter cannot be repeated, and an int list binds a wrong number | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 
 ---
 

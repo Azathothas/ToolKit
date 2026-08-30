@@ -264,10 +264,17 @@ Invoke-PsCheck -Name 'doctor probe' -Script 'scripts/doctor/doctor.ps1' -Argumen
 
 # ⭐ THE ONE TEST IN THIS TREE, and it is in the gate because part (a) of
 # docs/methodology/gate.md is the suite as well as the checks. It needs no WSL
-# and no container engine: it runs wsl-ephemeral.ps1's pure functions against a
+# and no container engine: it runs wsl-toolkit.ps1's pure functions against a
 # table of cases, which is where the timestamp renderer, the line splitter and
 # the file channel decide what a caller sees.
-Invoke-PsCheck -Name 'wsl-ephemeral selftest' -Script 'scripts/powershell-windows/wsl-ephemeral-selftest.ps1'
+Invoke-PsCheck -Name 'wsl-toolkit selftest' -Script 'scripts/windows/wsl-toolkit/selftest.ps1'
+
+# ⛔ THE PRODUCT AGREES WITH ITS SOURCES. wsl-toolkit.ps1 is BUILT from the parts
+# under scripts/windows/wsl-toolkit/{src,core,libs}, and it is tracked because a
+# consumer fetching one raw URL cannot run a build step. That makes it the one
+# file here that can silently stop matching what anybody wrote: an edit to a part
+# that was never rebuilt, or an edit to the product that no part carries.
+Invoke-PsCheck -Name 'wsl-toolkit bundle' -Script 'scripts/windows/wsl-toolkit/build.ps1' -Arguments @('-Check')
 
 if (-not $sh) {
     # ⛔ Not a silent degrade. What is left below genuinely needs a POSIX shell,

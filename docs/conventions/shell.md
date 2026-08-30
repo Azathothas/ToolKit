@@ -294,7 +294,7 @@ rather than warns, over every tracked text file.
   ⭐ **The fix is section 1's fix**, reached from a different direction: send the
   payload as base64 and decode it in the guest. A worked implementation is
   `ConvertTo-DistroScriptCommand` in
-  [`../../scripts/powershell-windows/wsl-ephemeral.ps1`](../../scripts/powershell-windows/wsl-ephemeral.ps1),
+  [`../../scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](../../scripts/windows/wsl-toolkit/wsl-toolkit.ps1),
   which also **asserts** that the skeleton it builds stays inside the measured
   alphabet, because a payload hand-written inside a safe alphabet is a
   constraint nothing enforces.
@@ -397,6 +397,50 @@ rather than warns, over every tracked text file.
   caught this repository's own probe.
   ⚠ The alternative is to keep every `.ps1` ASCII-only. That is also defensible;
   what is not defensible is non-ASCII with no BOM and a claim of 5.1 support.
+- ⛔ **PowerShell's `2>` on a native command is NOT byte-faithful, and it will
+  make you diagnose a defect that is not there.** It captures the child's stderr
+  as error records and re-renders them, so escape sequences are dropped.
+  Measured on 2026-08-30, running one script that writes an ANSI-coloured line
+  to each stream:
+
+  | how stderr was captured | escape bytes on stdout | escape bytes on stderr |
+  | --- | --- | --- |
+  | `pwsh -File s.ps1 > out 2> err` | 3 | ⛔ **0** |
+  | `cmd /c "pwsh -File s.ps1 > out 2> err"` | 3 | 4 |
+
+  ⚠ **The first row reads exactly like a bug in the program**: stdout is
+  coloured, stderr is not, and the code that writes them is one function. An
+  hour went into the wrong file before the same line was captured a second way.
+  ⭐ To check what a child actually put on stderr, redirect with `cmd /c`, or
+  have the child write the file itself. Section 3's rule about the two streams
+  being different is about which one to READ; this is about the capture
+  changing what is there.
+- ⛔ **A `.ps1` run through `-File` CANNOT be handed an array, and the failure
+  modes differ by type.** Measured on 2026-08-30 under PowerShell 7.6.5 and
+  Windows PowerShell 5.1, both identical, against a script declaring
+  `[int[]]$Ints` and `[string[]]$Strs`:
+
+  | what the caller types | what binds |
+  | --- | --- |
+  | `-Strs a,b` | one value, the literal string `a,b` |
+  | `-Ints 5,9` | ⛔ **one value, `59`** |
+  | `-Strs a -Strs b` | ⛔ refused: `parameter 'Strs' is specified more than once` |
+  | `-Ints 5 9` | ⛔ refused: `a positional parameter cannot be found` |
+  | in-process `& .\s.ps1 -Ints @(5,9)` | two values, correctly |
+
+  ⭐ **Row two is the dangerous one and it is not obvious.** Every argument
+  arrives as a string, and PowerShell converts a string to an int with the
+  CURRENT CULTURE's number style, where a comma is the thousands separator. So
+  the parameter binds a plausible number that is not the one anybody typed, and
+  nothing warns.
+
+  ⚠ **A wrapper does not rescue it.** `wsl-toolkit`'s launcher splats the same
+  argument list into the inner script, and the inner binding is identical.
+
+  ⭐ **So a list parameter takes `[string[]]` and splits its own value**, which
+  makes a bad element a refusal. ⛔ Where the values are arbitrary text there is
+  no safe delimiter either, and the channel is a FILE: a URL query string carries
+  commas, and splitting on one corrupts the value it was passing.
 - ⚠ **An empty `catch {}` is refused by PSScriptAnalyzer**, and it should be:
   it is indistinguishable from an accidentally swallowed error. Where swallowing
   is genuinely the design, say so in code rather than by omission. `$null = $_`

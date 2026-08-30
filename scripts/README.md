@@ -6,10 +6,10 @@ The probe, the checks, and the helpers a project inherits.
 | --- | --- |
 | [`doctor/`](doctor/) | ⭐ the environment probe. Two implementations, one schema. Every project keeps this. |
 | [`common/`](common/) | the checks and the helpers. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin. |
-| [`powershell-windows/`](powershell-windows/) | tools for a job that only exists on Windows. ⛔ Not a twin of anything. Each `.ps1` has a `.md` beside it that stands alone. |
+| [`windows/wsl-toolkit/`](windows/wsl-toolkit/README.md) | tools for a job that only exists on Windows. ⛔ Not a twin of anything. ⭐ It is a tool DIRECTORY rather than a loose script: its own [`README.md`](windows/wsl-toolkit/README.md) says how to build, test and release it, and the three published `.ps1` files each keep a `.md` beside them that stands alone. |
 | [`../LICENSES/`](../LICENSES/README.md) | the SPDX texts [`common/fill-license.sh`](common/) reads. ⛔ Not scripts, and four of them must never be edited. |
 
-⚠ **`powershell-windows/` exists because a job in it has no POSIX form, not
+⚠ **`windows/wsl-toolkit/` exists because a job in it has no POSIX form, not
 because a script was easier to write in PowerShell.** The distinction is the
 whole point of the directory. `bash-posix/` does not exist and shipping it
 empty would be shipping a phantom: git does not track an empty directory, so a
@@ -65,19 +65,21 @@ from one twin's extension list changed no number here, because this repository
 has no `.py` file. Dropping `.md` was caught instantly. ⭐ Prove a scope rule
 with a fixture, not by trusting the comparison to notice.
 
-### The five things that do NOT have twins, and why
+### The things that do NOT have twins, and why
 
 | | |
 | --- | --- |
 | [`common/set-record.mjs`](common/) | ⛔ **It does not need one**, and for the same reason as `write-file.mjs` below: it is node. ⚠ What it would cost to give it one is the thing to notice: a twin here means a second implementation of table arithmetic, which is a second place for that arithmetic to be wrong, in the one file whose whole job is that the arithmetic is right. |
 | [`common/write-file.mjs`](common/) | ⛔ **It does not need one.** It is node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. The reason the sh checks needed twins does not apply to it. ⚠ What it needs instead is node itself, which is the one dependency anything under `scripts/` has, and the reason a project may decline this helper rather than inherit it. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. It is a maintainer's tool and it runs where both implementations do: this machine, and the CI job that has `pwsh` on an Ubuntu runner. |
-| [`powershell-windows/wsl-ephemeral.ps1`](powershell-windows/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
-| [`powershell-windows/wsl-ephemeral-launcher.ps1`](powershell-windows/) | ⛔ **No twin, for the same reason and one more.** It exists to make the file above runnable on Windows: it clears a Windows file attribute, and a POSIX half would have nothing to launch. |
-| [`powershell-windows/wsl-ephemeral-selftest.ps1`](powershell-windows/) | ⛔ **No twin, and it is not a check.** It is the test over the file above, so a POSIX half would be a second implementation of the assertions rather than a second implementation of a job. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell, which is where its coverage comes from. |
+| [`windows/wsl-toolkit/wsl-toolkit.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
+| [`windows/wsl-toolkit/launcher.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, for the same reason and one more.** It exists to make the file above runnable on Windows: it clears a Windows file attribute, and a POSIX half would have nothing to launch. |
+| [`windows/wsl-toolkit/selftest.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it is not a check.** It is the test over the file above, so a POSIX half would be a second implementation of the assertions rather than a second implementation of a job. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell, which is where its coverage comes from. |
+| [`windows/wsl-toolkit/build.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it cannot have one.** It joins PowerShell fragments and asserts the result parses as PowerShell, which needs a PowerShell parser. A POSIX half could concatenate the bytes and would be unable to say whether the result is a script. |
+| [`windows/wsl-toolkit/release.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** It reads a version out of a PowerShell file, runs the build, and pushes a tag. ⚠ It runs on the ubuntu CI job too, under `pwsh`, which is the reason it is PowerShell rather than `sh`: one implementation that runs on both hosts beats two that agree on neither. |
 
 ⭐ **The question to ask is whether the JOB exists on the other platform, not
-whether the language does.** `wsl-ephemeral` fails that test. Every check in
+whether the language does.** `wsl-toolkit` fails that test. Every check in
 `common/` passes it, which is why every one of them has two halves.
 ## The check contract
 
@@ -167,10 +169,10 @@ defines, and does any one page carry so many of them that they have stopped
 meaning anything.
 
 ⛔ **It covers every tracked text file, not markdown alone**, which is the whole
-reason it exists beside `check-docs.sh` rather than inside it. ⚠ Measured here
-on 2026-08-29, before it was armed: **164 characters across 28 files**, every
-one of them in a script's comment banner, with `check-docs.sh` reporting the
-tree clean throughout.
+reason it exists beside `check-docs.sh` rather than inside it: that one reads
+markdown, and every finding the first armed run produced was in a `.ps1` or a
+`.sh`. The count is in
+[`../docs/HISTORY/scripts.md`](../docs/HISTORY/scripts.md).
 
 ⭐ **The density ceiling is 30 markers per 100 non-blank lines**, and it is a
 constant rather than a flag: a ceiling anybody can raise from a command line is
@@ -183,16 +185,16 @@ Without that, a page that bans a character cannot show a reader which one.
 
 Does any sentence of twelve words or more appear in two documents.
 
-⭐ [`../docs/conventions/prose.md`](../docs/conventions/prose.md) has always said
-one fact lives in one document, and nothing checked it. ⚠ Measured here on
-2026-08-29, before it was armed: **17 sentences with two homes**, seven of them
-involving a skeleton this repository had copied from a template and never
-filled in.
+⭐ [`../docs/conventions/prose.md`](../docs/conventions/prose.md) owns the rule
+that one fact lives in one document; this is what enforces it. What the first
+armed run found is in
+[`../docs/HISTORY/scripts.md`](../docs/HISTORY/scripts.md).
 
-⛔ **The two entry-point routers are exempt from each other and only from each
-other.** `AGENTS.md` and `docs/AGENTS.md` each state the absolutes in full on
-purpose, because a session may be handed exactly one of them. A sentence shared
-between a router and any other file is still refused.
+⛔ **It carries no router exemption, and it used to.** `AGENTS.md` and
+`docs/AGENTS.md` each stated the absolutes in full, so the pair was exempt from
+each other by name; the root file was deleted on 2026-08-30 and the exemption
+went with it. ⭐ An exemption for a file that no longer exists grants itself to
+whatever lands at that path next, so it is deleted rather than emptied.
 
 ⚠ **It compares sentences**, so a fact restated in different words passes here
 and fails a review instead. That is the same split every other prose rule has.
@@ -435,7 +437,7 @@ any of those attributes your software to somebody else.
 a corrupted licence exits 0. The over-replacement that produced that rule wrote
 a valid-looking file with a mangled warranty clause.
 
-### `powershell-windows/wsl-ephemeral.ps1`
+### `windows/wsl-toolkit/wsl-toolkit.ps1`
 
 Create, use and destroy throwaway WSL2 distros, from an OCI image or a local
 rootfs tarball.
@@ -454,15 +456,55 @@ name is prefix-forced first, so `-Action Remove -Name podman-machine-default
 -Force` targets `eph-podman-machine-default`, which does not exist. Verified on
 a machine that had the real one registered; it survived.
 
-⭐ **Two of its actions are read-only reports and neither creates a distro.**
+⭐ **Three of its actions are read-only reports and none creates a distro.**
 `-Action Resources` says what WSL and the container engine are holding and
 prints the cleanup commands without running one of them; `-Action HostAddress`
 answers what a distro would reach this host at, which a caller previously had to
-build a throwaway VM to find out.
+build a throwaway VM to find out; `-Action Doctor` says what this host can and
+cannot do before anything is created, with every row tagged by how it was
+obtained.
 
-### `powershell-windows/wsl-ephemeral-selftest.ps1`
+⛔ **IT IS THE ONE GENERATED FILE IN THIS TREE, and it must not be edited.** Its
+source is the parts under `windows/wsl-toolkit/{src,core,libs}` and
+`build.ps1` joins them. It is tracked because a consumer fetching one raw URL
+cannot run a build step, and the gate's `wsl-toolkit bundle` check is what makes
+"the product is what its parts build" true rather than assumed.
+[`windows/wsl-toolkit/README.md`](windows/wsl-toolkit/README.md) is how to work
+on it.
 
-Run [`wsl-ephemeral.ps1`](powershell-windows/wsl-ephemeral.md)'s pure functions
+### `windows/wsl-toolkit/build.ps1`
+
+Join the parts into `wsl-toolkit.ps1`, and prove the result.
+
+⭐ **The refusals are the point, not the joining.** A part listed in the manifest
+that does not exist, a part on disk that the manifest does not list, a build that
+does not parse, a `param()` that is not first, and a tracked bundle that
+disagrees with its parts are each a stop with a name.
+
+⚠ **`-Check` is in the gate and `-Test` is in CI.** The first compares bytes; the
+second adds the selftest, the CLI surface lock, the analyzer over the product,
+and a scan for a local whose name differs from a parameter's only by case. That
+last one exists because such a local IS the parameter, PowerShell ignoring case,
+and one of them shipped: a state object became the string `Running` mid-run, on
+the code path whose whole job is to keep reporting when everything else is quiet.
+
+### `windows/wsl-toolkit/release.ps1`
+
+Verify the tool is releasable, then tag it.
+
+⛔ **It does not publish.** `.github/workflows/release.yml` does, from a clean
+checkout of the tag, after re-running the same verification.
+[`windows/wsl-toolkit/README.md`](windows/wsl-toolkit/README.md) owns why the two
+halves are separate and what each refuses.
+
+⚠ **The digests belong to the workflow, not to this script.** A `.ps1` is CRLF in
+a working tree and LF in the index, so a digest taken here is of different bytes
+from the one a consumer downloads. It prints them with a line saying not to copy
+them anywhere.
+
+### `windows/wsl-toolkit/selftest.ps1`
+
+Run [`wsl-toolkit.ps1`](windows/wsl-toolkit/wsl-toolkit.md)'s pure functions
 against a table of cases, on any host with a PowerShell.
 
 ⭐ **The one test in this tree, and it is in the gate**, because part (a) of
@@ -471,11 +513,10 @@ well as the checks. It holds the timestamp renderer, the line splitter, the file
 channel, the argument prologue and the transport alphabet: the parts that decide
 what a caller sees and that a real distro is not needed to prove.
 
-⛔ **It asserts the number of cases it ran.** A table that stopped early exits 0
-over a smaller suite, which is the shape a check takes on its way to reporting
-nothing.
+⛔ **It asserts how many cases it ran**, so a table that stopped early cannot
+report green over a smaller suite.
 
-### `powershell-windows/wsl-ephemeral-launcher.ps1`
+### `windows/wsl-toolkit/launcher.ps1`
 
 Resolve the script above, verify it as far as the caller allows, make it
 runnable on Windows, and run it with everything else forwarded unchanged.

@@ -121,10 +121,10 @@ jobs:
       # culture-dependent placeholder. A second host, with a different default
       # culture and a different PowerShell build, is exactly the second sample
       # that claim needs.
-      - name: the wsl-ephemeral selftest, on this host too
+      - name: the wsl-toolkit selftest, on this host too
         shell: pwsh
         run: |
-          pwsh -NoProfile -File ./scripts/powershell-windows/wsl-ephemeral-selftest.ps1
+          pwsh -NoProfile -File ./scripts/windows/wsl-toolkit/selftest.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: line endings match .gitattributes
@@ -237,22 +237,36 @@ jobs:
       # over an unanalysed tree. The assertion below is what makes the skip
       # impossible to reach here.
       # ⭐ THE ONE TEST IN THIS TREE, and it runs on BOTH jobs. It needs no WSL
-      # and no container engine: it runs wsl-ephemeral.ps1's pure functions
+      # and no container engine: it runs wsl-toolkit.ps1's pure functions
       # against a table of cases, so it proves the parts that decide what a
       # caller sees on any host with a PowerShell.
       # ⛔ THE CASE COUNT IS ASSERTED FROM ITS OWN JSON, not inferred from a
       # green exit. A table that stopped early exits 0 over a smaller suite,
       # which is the "step that exits 0 having done nothing" row in
       # docs/conventions/forbidden-patterns.md.
-      - name: the wsl-ephemeral selftest
+      - name: the wsl-toolkit selftest
         shell: pwsh
         run: |
-          pwsh -NoProfile -File .\scripts\powershell-windows\wsl-ephemeral-selftest.ps1
+          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          $j = pwsh -NoProfile -File .\scripts\powershell-windows\wsl-ephemeral-selftest.ps1 -Json | ConvertFrom-Json
+          $j = pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1 -Json | ConvertFrom-Json
           if ($j.failed -ne 0) { Write-Output "the json reports $($j.failed) failed case(s)"; exit 1 }
-          if ($j.cases -lt 40) { Write-Output "only $($j.cases) case(s) ran, and this file carries more"; exit 1 }
+          if ($j.cases -lt 90) { Write-Output "only $($j.cases) case(s) ran, and this file carries more"; exit 1 }
           Write-Output "$($j.cases) case(s) over $($j.functions) function(s)"
+
+      # ⛔ THE PRODUCT AGREES WITH ITS SOURCES, and CI is where that matters
+      # most: wsl-toolkit.ps1 is BUILT from the parts beside it and TRACKED,
+      # because a consumer fetching one raw URL cannot run a build step. A part
+      # edited without a rebuild, or the product edited by hand, is invisible in
+      # every other check here. -Test also runs the surface lock, which is what
+      # turns a renamed parameter into a failed gate rather than a failed caller.
+      - name: the wsl-toolkit bundle is what its parts build
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Check
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Test
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: PSScriptAnalyzer, and every .ps1 parses
         shell: pwsh

@@ -1,4 +1,4 @@
-# wsl-ephemeral.ps1
+# wsl-toolkit.ps1
 
 Create, use and destroy throwaway WSL2 distros on a Windows host. A distro is
 built from an OCI image or a rootfs tarball, a command runs inside it, and it is
@@ -10,6 +10,25 @@ correctly, from a clone or over the network, without opening the source.
 ⚠ **Windows only.** It calls `wsl.exe`. On any other host it is not applicable,
 and there is no fallback.
 
+⛔ **This file is BUILT and it must not be edited.** The source is the parts
+under [`src/`](src/), [`core/`](core/) and [`libs/`](libs/), joined in the order
+[`bundle.manifest`](bundle.manifest) names. Edit a part and run the build; the
+gate refuses a bundle that disagrees with its parts, so an edit made here is
+lost loudly rather than quietly. [`README.md`](README.md) is how to work on it.
+
+⚠ **It was `wsl-ephemeral.ps1` at `scripts/powershell-windows/` until
+2026-08-30, and that path is gone rather than redirected.** A raw fetch of the
+old URL now returns 404, which is loud. The alternative was a git symlink, and
+that was measured and rejected: `raw.githubusercontent.com` serves a symlink's
+own target string with HTTP 200, so the old URL would have answered a
+successful-looking 34 bytes of text.
+[`../../../docs/consumers.md`](../../../docs/consumers.md) carries the row.
+
+⚠ **Two names did NOT move with the tool**, and that is deliberate: the `eph-`
+distro prefix and the `%LOCALAPPDATA%\wsl-ephemeral` state directory. Both name
+state that exists on machines right now, and renaming either would make `List`
+and `Purge` blind to every distro and tarball created before the rename.
+
 ---
 
 ## Run it
@@ -17,7 +36,7 @@ and there is no fallback.
 ### From a clone
 
 ```powershell
-pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action List
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action List
 ```
 
 ### From this repository, over the network
@@ -35,21 +54,21 @@ there is nothing left to inspect afterwards.
 
 ```powershell
 $ref = 'THE_COMMIT_SHA'
-$uri = "https://raw.githubusercontent.com/Azathothas/ToolKit/$ref/scripts/powershell-windows/wsl-ephemeral.ps1"
-Invoke-WebRequest -Uri $uri -OutFile "$env:TEMP\wsl-ephemeral.ps1" -UseBasicParsing
-pwsh -NoProfile -File "$env:TEMP\wsl-ephemeral.ps1" -Action List
+$uri = "https://raw.githubusercontent.com/Azathothas/ToolKit/$ref/scripts/windows/wsl-toolkit/wsl-toolkit.ps1"
+Invoke-WebRequest -Uri $uri -OutFile "$env:TEMP\wsl-toolkit.ps1" -UseBasicParsing
+pwsh -NoProfile -File "$env:TEMP\wsl-toolkit.ps1" -Action List
 ```
 
 ⭐ **A caller that wants all of that done for it should use the launcher**,
-[`wsl-ephemeral-launcher.ps1`](wsl-ephemeral-launcher.md), which sits beside
+[`launcher.ps1`](launcher.md), which sits beside
 this file. It refuses a moving ref by shape, verifies a digest, parses the file
 as PowerShell before running it, clears the download mark Windows attaches, and
 forwards every other argument here unchanged.
 
 ⚠ `Azathothas/TEMPLATE` also carries a wrapper at
-`scripts/powershell-windows/wsl-ephemeral.ps1`, pinned to a commit and a digest
+`scripts/windows/wsl-toolkit/wsl-toolkit.ps1`, pinned to a commit and a digest
 of this file. It is that repository's, and
-[`../../docs/consumers.md`](../../docs/consumers.md) is where its pin state is
+[`../../../docs/consumers.md`](../../../docs/consumers.md) is where its pin state is
 recorded.
 
 ---
@@ -66,6 +85,44 @@ recorded.
 | `Purge` | remove every ephemeral distro, prefix-matched only, and every orphaned rootfs tarball |
 | `Resources` | report what WSL and the container engine are holding on this machine, and print the cleanup commands. ⛔ It runs none of them. |
 | `HostAddress` | print the address a distro reaches this host at, for the current networking mode. ⭐ It does not create a distro to find out. |
+| `Doctor` | ⭐ what this host can and cannot do, before anything is created. Read-only, and every row says how it was obtained. |
+
+## ⭐ `Doctor`, which answers before a failure has to
+
+The defect it exists for is a cryptic failure halfway in. Without it, "the
+podman machine is not running" arrives as a pull error, "WSL is in mirrored
+mode" arrives as a guest that cannot reach the host, and a console that cannot
+print UTF-8 arrives as mojibake in somebody's log. Each is knowable in under a
+second and none of them was said.
+
+```powershell
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action Doctor
+```
+
+⭐ **Every row carries how it was obtained**, and the vocabulary is three words:
+
+| tag | means |
+| --- | --- |
+| `obs` | read from an interface that reports it directly |
+| `der` | computed from readings, by arithmetic |
+| `abs` | ⛔ this machine cannot answer at all |
+
+⛔ **An `abs` row is the tool refusing to fabricate, not the tool failing.** A
+machine with no container engine answers `abs` for the engine and the platform,
+and `-Tarball` still works there; saying so is the point.
+
+⚠ **The clock-resolution row is measured on the spot, and the two PowerShell
+hosts differ by a factor of five thousand.** Measured on one Windows 11 Pro
+26200 machine on 2026-08-30, sampling `DateTime.UtcNow` for 40 ms:
+
+| host | smallest gap between distinct readings |
+| --- | --- |
+| PowerShell 7.6.5 | 100 ns, over 55,490 distinct readings |
+| Windows PowerShell 5.1 | 513,600 ns, over 37 distinct readings |
+
+⭐ That is why `-TimestampFormat %9f` is documented as padding rather than
+measuring: on 5.1 the last six digits it prints are always zeros this script
+wrote.
 
 ## Parameters
 
@@ -82,19 +139,79 @@ recorded.
 | `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
 | `-Systemd` | `New` | write `/etc/wsl.conf` enabling systemd, restart the distro, and ⛔ refuse if systemd did not become PID 1. Most base images do not ship systemd; see below. |
 | `-Verbatim` | `New` `Run` with `-CommandFile` | send the file's bytes exactly as they are. Off by default, and the default repairs the **copy in transit**. ⛔ The file on disk is never written to either way. |
-| `-ScriptArg` | `New` `Run` | `NAME=VALUE`, repeatable. Prepended as POSIX-quoted shell assignments, so nothing runs `sed` over a payload. `@hostaddress` in a VALUE expands to what `-Action HostAddress` prints. |
+| `-ScriptArg` | `New` `Run` | `NAME=VALUE`. Prepended as POSIX-quoted shell assignments, so nothing runs `sed` over a payload. `@hostaddress` in a VALUE expands to what `-Action HostAddress` prints. ⛔ **One pair, not repeatable**, when this script is run through `-File`; see below. |
+| `-ScriptArgFile` | `New` `Run` | ⭐ a file of `NAME=VALUE` lines, one per line, for more than one pair. Blank lines and `#` lines are skipped, and its bytes get the same repair `-CommandFile` gets. |
 | `-TimeoutSeconds` | `New` | how long the script's own questions to a distro may take. Default 120. ⛔ It does not bound `-Command`. |
 | `-CommandTimeoutSeconds` | `New` `Run` | a bound on **your** command, in seconds. ⛔ No default. On expiry the distro is terminated and the exit code is 124. |
 | `-NoTimestamps` | `New` `Run` | ⭐ the one switch that turns the whole stream log off. Byte-exact passthrough. |
 | `-TimestampMode` | `New` `Run` | `Relative` (default), `Delta`, `Wall`, `Iso` or `Epoch`. |
 | `-TimestampFormat` | `New` `Run` | a strftime string, with `tss`'s specifiers, for `Relative` and `Wall`. ⛔ Refused with the other three. |
+| `-TimestampColumns` | `New` `Run` | ⭐ one or more of `rel,delta,wall,iso,epoch`, comma-separated. Composes, which `-TimestampMode` cannot. ⛔ Passing both is refused. |
+| `-TimestampSeparator` | `New` `Run` | what goes between the stamp and the tag. Default one space. |
+| `-TimestampProfile` | `New` `Run` | `human` (the default), `ci`, `forensic`, `wall` or `raw`. A starting point: anything passed beside it wins. |
+| `-PrefixOnly` | `New` `Run` | the prefix and nothing else, for output that is enormous or must not reach a log. |
+| `-Color` | `New` `Run` | `auto` (default), `always` or `never`. ⛔ A file sink never gets colour whatever this says. |
+| `-StreamLogPath` | `New` `Run` | append a copy of the rendered log to this file. ⛔ A Windows reserved device name is refused by name. |
+| `-StreamLogOverwrite` | `New` `Run` | truncate that file instead of appending. |
+| `-EventLog` | `New` `Run` | ⭐ one JSON object per line, one per event, for a caller that is a program. ⛔ Refused with `-NoTimestamps`: with no relay there are no events. |
+| `-Redact` | `New` `Run` | a regex, or several comma-separated, replaced with `***` before any sink. A pattern needing a literal comma writes `[,]`. |
+| `-MaxLineBytes` | `New` `Run` | truncate the guest's text at this many bytes and say how many went. `0`, the default, never truncates. |
 | `-TickSeconds` | `New` `Run` | seconds of **silence** before a heartbeat line. Default 30. `0` turns the heartbeat off and keeps the timestamps. |
-| `-Force` | destructive actions | required when the session is non-interactive. Skips the confirmation. |
+| `-TickEscalateSeconds` | `New` `Run` | comma-separated silence thresholds at which the tick says more rather than the same thing again. Default `120,300,900`. |
+| `-DryRun` | `New` `Run` `Enter` `Remove` `Purge` | ⭐ print the exact `wsl.exe` command line and the state that would change, then stop. ⛔ Nothing is created, imported, written or removed. Goes to **stdout**, so it can be captured and audited. |
+| `-Force` | `New` `Remove` `Purge` | required when the session is non-interactive. Skips the confirmation. |
 
 ⛔ `-Image` and `-Tarball` are mutually exclusive, and `New` requires one of
 them. ⛔ `-Command`, `-CommandFile` and `-CommandB64` are mutually exclusive
 too: they are three spellings of one argument, and passing two is refused
 rather than resolved by a precedence nobody would remember.
+
+### ⛔ A parameter the action does not read is refused
+
+The **applies to** column is enforced, not documentation. `-Action List -Image
+alpine:3.22` used to do nothing and say nothing, so a caller who typed it
+believed something was happening:
+
+```powershell
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action List -Image alpine:3.22
+```
+
+```text
+ERROR: -Action List ignores parameters you passed, so it would have done
+something other than what you asked: -Image is read by -Action New and not by
+-Action List.
+```
+
+⚠ **This is a break by [`../../../docs/consumers.md`](../../../docs/consumers.md)'s
+definition**, and it should be: a caller who was passing a parameter that did
+nothing was not getting what they asked for, and nothing told them.
+
+⭐ **`-TimeoutSeconds` on `Run` is the one worth knowing about.** It bounds the
+questions this script asks a distro for itself, and `Run` asks none, so it is
+refused there with the parameter you actually wanted named:
+`-CommandTimeoutSeconds`.
+
+### ⛔ A list parameter takes ONE comma-separated value, and it is not a choice
+
+Measured under PowerShell 7.6.5 and Windows PowerShell 5.1 on 2026-08-30. A
+`.ps1` run through `pwsh -File`, which is how every consumer runs this one,
+cannot be handed a real array:
+
+| what a caller types | what the script receives |
+| --- | --- |
+| `-TimestampColumns rel,delta` | ⭐ the one string `rel,delta`, which the script splits itself |
+| `-ScriptArg A=1 -ScriptArg B=2` | ⛔ refused: `parameter 'ScriptArg' is specified more than once` |
+| `-TickEscalateSeconds 5 9` | ⛔ refused: `a positional parameter cannot be found` |
+
+⛔ **An `[int[]]` parameter is worse than refused, it is silently wrong.**
+PowerShell converts a string to an int with the current culture's number style,
+where a comma is the **thousands** separator, so `-TickEscalateSeconds 5,9` bound
+to the single value `59`. That shipped, the escalation never fired, and nothing
+said so. Every list parameter here now takes strings and parses them itself.
+
+⚠ **`-ScriptArg` is the exception and it takes a FILE instead**, because there
+is no safe delimiter for it: a VALUE is arbitrary, and a URL query string
+carries commas. `-ScriptArgFile` has nothing to be ambiguous about.
 
 ## Exit codes
 
@@ -125,15 +242,15 @@ they find. See the safety model below.
 ## Examples
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action New -Image alpine:3.22
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action New -Image alpine:3.22
 ```
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-alpine-3.22-a1b2 -Command "apk add gcc && gcc --version"
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action Run -Name eph-alpine-3.22-a1b2 -Command "apk add gcc && gcc --version"
 ```
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action Purge -Force
 ```
 
 ---
@@ -141,7 +258,7 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Purge -Force
 ## What this machine is holding, with `Resources`
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Resources
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action Resources
 ```
 
 ⛔ **It offers and it does not do.** Every cleanup command is printed and none
@@ -169,7 +286,7 @@ is:
 
 ⚠ The real output names the expanded path. It is written here in its
 environment-variable form because this repository is public and an absolute home
-path carries a username. [`../../docs/public/README.md`](../../docs/public/README.md)
+path carries a username. [`../../../docs/public/README.md`](../../../docs/public/README.md)
 is the rule, and `check-no-secrets.sh --public` is what caught it.
 
 ⚠ **A directory it cannot measure is named and the total is withheld.** A total
@@ -195,7 +312,7 @@ prints.
 ## Talking to the host from inside a distro, with `HostAddress`
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action HostAddress
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action HostAddress
 ```
 
 ```text
@@ -206,7 +323,7 @@ pwsh -NoProfile -File wsl-ephemeral.ps1 -Action HostAddress
 stderr, so a caller can take the value directly:
 
 ```powershell
-$addr = pwsh -NoProfile -File wsl-ephemeral.ps1 -Action HostAddress 2>$null
+$addr = pwsh -NoProfile -File wsl-toolkit.ps1 -Action HostAddress 2>$null
 ```
 
 ⛔ **It does not create a distro.** The alternative a caller had was to build a
@@ -295,7 +412,7 @@ writes the file, restarts the distro so WSL reads it, and ⛔ **refuses if
 systemd did not actually become PID 1.**
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action New -Image almalinux:9 -Systemd -Command 'systemctl is-system-running'
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action New -Image almalinux:9 -Systemd -Command 'systemctl is-system-running'
 ```
 
 ```text
@@ -434,9 +551,9 @@ than failing later inside somebody's command.
 process's argument list.** Measured: a `-Command` value of ``a'b"c`d$e`` reaches
 a script spawned as `powershell -File script.ps1 -Command ...` as ``a'bc`d$e``.
 The quote is gone before this script runs, so nothing this script does can
-recover it. ⚠ It survives `& .\wsl-ephemeral.ps1 -Command $v` in the same
+recover it. ⚠ It survives `& .\wsl-toolkit.ps1 -Command $v` in the same
 process, and PowerShell 7 does not have the fault at all;
-[`../../docs/conventions/shell.md`](../../docs/conventions/shell.md) section 8
+[`../../../docs/conventions/shell.md`](../../../docs/conventions/shell.md) section 8
 carries the measurement.
 
 ⭐ **`-CommandB64` is immune, and that is what it is for.** Base64 has no
@@ -444,7 +561,7 @@ character any shell or argument parser touches.
 
 ```powershell
 $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($script))
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-x -CommandB64 $b64
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action Run -Name eph-x -CommandB64 $b64
 ```
 
 ⚠ **`-CommandFile` repairs the copy it sends and never the file.** The file
@@ -481,6 +598,7 @@ downstream `awk` can cut on it.
 | `out ` | the guest's stdout | stdout |
 | `err ` | the guest's stderr | stderr |
 | `tick` | the watcher's heartbeat | ⭐ stderr, because it is not the command's output |
+| `note` | the watcher saying something once: silence ending, what the readings are consistent with, what an exit code could mean | stderr, for the same reason |
 | `out~` `err~` | ⚠ the line had **not ended** when it was printed | as above |
 
 ⛔ **The guest's bytes are never touched.** Everything added is to the left of
@@ -560,14 +678,94 @@ handle.** Three consequences, and all three are absent under `-NoTimestamps`:
 | --- | --- |
 | an application that block-buffers when it is not on a terminal **will** buffer | its lines then carry the time this script received them, which can be much later than when they were written. `stdbuf -oL` and `PYTHONUNBUFFERED=1` are the guest's fix; this script cannot do it for you. |
 | lines are terminated with the **host's** newline | a guest line that was LF-terminated arrives CRLF-terminated |
-| ⛔ **stdout now carries a prefix** | a break. A caller parsing `Run -Command` output passes `-NoTimestamps` or cuts the prefix. [`../../docs/consumers.md`](../../docs/consumers.md) records it. |
+| ⛔ **stdout now carries a prefix** | a break. A caller parsing `Run -Command` output passes `-NoTimestamps` or cuts the prefix. [`../../../docs/consumers.md`](../../../docs/consumers.md) records it. |
 
 ---
+
+## ⭐ What the tick says as the silence grows
+
+A line repeated forty times is a line a reader stops reading, so the tick says
+**more** at each threshold in `-TickEscalateSeconds` rather than the same thing
+again. A real run, with the thresholds pulled in to seconds so they fire:
+
+```text
+00:00:00.206 +0.001 out  going quiet
+00:00:03.433 +3.226 tick 3s silent | elapsed 3s | out 3 lines 93 B | err 0 lines 0 B | distro Running | disk 76.0 MiB
+00:00:06.648 +6.441 tick 6s silent | elapsed 6s | out 3 lines 93 B | err 0 lines 0 B | distro Running | disk 76.0 MiB (unchanged)
+00:00:06.651 +6.444 note this process relays the guest through a pipe rather than a terminal, so an application that block-buffers off a tty is buffering
+00:00:06.653 +6.446 note after 6s of silence: NOTHING is ruled out. because: the distro disk did not grow between the last two ticks
+00:00:08.365 +8.158 note output resumed after 8s of silence
+```
+
+⭐ **"Output resumed" is a line because its absence is ambiguous.** A run that
+recovered at four minutes and a run that never recovered are the same picture in
+a log that reports only the alarm.
+
+### ⚠ The disk figure, and what three measurements showed it is worth
+
+⛔ **Nothing is injected into the guest to produce any of this.** Every figure is
+one this process already holds, plus one read-only `wsl --list --verbose` and
+one file length on this host's own disk. Four candidate signals were sampled on
+one Windows 11 Pro 26200 machine on 2026-08-30, every two seconds, while a guest
+wrote 480 MiB:
+
+| candidate | result |
+| --- | --- |
+| `vmmemWSL` `TotalProcessorTime` | ⛔ `0.00` throughout. Not a signal at all. |
+| `vmmemWSL` `WorkingSet64` | 1228 to 1822 to 1582 MiB. ⛔ Machine-wide: every distro shares one utility VM, and it tracks page cache rather than work. |
+| `ext4.vhdx` `LastWriteTimeUtc` | ⛔ **useless, and it looked useful.** It advanced every one to three seconds while the guest wrote AND while the guest sat in `sleep 14`. WSL touches the disk on its own. |
+| `ext4.vhdx` `Length` | ⭐ 79,691,776 to 583,008,256 while the guest allocated, flat while it did not. ⚠ Coarse: a second run writing 120 MiB showed no change six seconds later. |
+
+⭐ **So growth is evidence and flatness is not**, and the escalation says exactly
+that. A computation that writes no files, a lock, a prompt waiting on stdin, and
+a guest writing hard whose disk has not been extended yet all read identically
+from out here. ⛔ The strongest thing this tool will say about a quiet command is
+what the readings are consistent with, tagged as an inference, with the readings
+it was drawn from named on the same line.
+
+### A non-zero exit gets a reading, not just a number
+
+`exit 137` is the code from the report this whole layer was built for, and on
+its own it means "killed by signal 9" and stops:
+
+```text
+00:03:42.201 note exit 137 is 128+9, which is SIGKILL and nothing more. It is
+             produced by: the kernel out-of-memory killer inside the utility VM,
+             which every WSL distro shares; something outside this run sending a
+             signal; wsl --shutdown, or the utility VM going away, which takes
+             every distro at once. What can be ruled on here: the distro is still
+             Running, so the whole utility VM did not go away. ⛔ This script did
+             not send it: its own timeout reports 124.
+```
+
+## ⭐ The event log, with `-EventLog`
+
+One JSON object per line, one per event. ⭐ **The rendered log is a view over
+this**: anything the terminal shows that this does not carry would be a renderer
+knowing something the record does not.
+
+```powershell
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action Run -Name eph-x -Command 'make' -EventLog run.jsonl
+```
+
+| field | always | notes |
+| --- | --- | --- |
+| `schema` | yes | `wsl-toolkit-event/1`. ⛔ Versioned, because the reader is a program. |
+| `seq` | yes | ⭐ monotonic and gapless. A gap means records were dropped, which is itself a finding. |
+| `t_rel`, `t_wall` | yes | seconds since the command started, and the wall clock |
+| `kind` | yes | `LOG`, `TICK`, `TICK_FACTS`, `NOTE`, `EXIT` |
+| `prov` | yes | `obs` read from an interface, `der` computed, `inf` a judgement that can be wrong |
+| `stream` | on a line | `stdout`, `stderr` or `watcher` |
+| `text`, `partial` | on a line | the guest's bytes, and whether the line had ended |
+
+⛔ **Refused with `-NoTimestamps`.** That switch turns the relay off entirely, so
+there are no events to record, and writing an empty file would be the quietest
+possible lie.
 
 ## ⭐ Bounding your own command, with `-CommandTimeoutSeconds`
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-x -CommandTimeoutSeconds 900 -Command 'make'
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action Run -Name eph-x -CommandTimeoutSeconds 900 -Command 'make'
 ```
 
 ⛔ **No default, and there will not be one.** `-TimeoutSeconds` bounds the
@@ -587,7 +785,7 @@ silently ignored.
 ## ⭐ Passing values in, with `-ScriptArg`
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action New -Image alpine:3.22 -CommandFile probe.sh -ScriptArg "URL=https://@hostaddress:8443/"
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action New -Image alpine:3.22 -CommandFile probe.sh -ScriptArg "URL=https://@hostaddress:8443/"
 ```
 
 ⭐ **Values are assigned and exported ahead of your script, never substituted
@@ -603,6 +801,39 @@ the edit and the corruption lands in the middle of a script nobody reads again.
 | ⚠ the first line of your file | is no longer the first line the shell sees. That costs nothing: the body is **sourced**, so a leading shebang was already a comment. |
 
 ⛔ **`-ScriptArg` with no command is refused**, not ignored.
+
+### ⛔ More than one pair needs `-ScriptArgFile`
+
+This was documented as repeatable and it never was. Measured under both
+PowerShell hosts on 2026-08-30, directly and through the launcher, which splats
+the same argument list:
+
+```powershell
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action New -Image alpine:3.22 -Command 'echo $A $B' -ScriptArg 'A=1' -ScriptArg 'B=2'
+```
+
+```text
+ERROR: Cannot bind parameter because parameter 'ScriptArg' is specified more
+than once.
+```
+
+⭐ **A file has no delimiter to be ambiguous about**, which a comma-separated
+list would: a VALUE is arbitrary and a URL query string carries commas.
+
+```text
+# args.env -- blank lines and # lines are skipped
+URL=https://@hostaddress:8443/a,b,c
+CFT=https://example.invalid/x.zip?a=1,2
+```
+
+```powershell
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action New -Image alpine:3.22 -CommandFile probe.sh -ScriptArgFile args.env
+```
+
+⚠ **The file's bytes get the same repair `-CommandFile` gets**: CRLF becomes LF
+in the copy, a byte order mark is dropped, UTF-16 is refused by name. ⛔ The file
+on disk is never written to. The pairs from the file are applied first, then
+`-ScriptArg` if one was also given.
 
 ---
 
@@ -634,7 +865,7 @@ transit**, which is this script's to make correct.
 ## Attaching a shell, with `Enter`
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Enter -Name eph-alpine-3.22-a1b2
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action Enter -Name eph-alpine-3.22-a1b2
 ```
 
 Leave it with `exit` or Ctrl-D. The shell's exit code is the script's.
@@ -669,7 +900,7 @@ interrupt**, so a cancelled run can leave several hundred MiB behind.
 same deletion and the same containment guard.
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action List
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action List
 ```
 
 ⛔ **A `New` that is running right now has its tarball in that directory too**,
@@ -695,7 +926,7 @@ that toolchain on `PATH`.
 login shell sources. `-Command` runs through `/bin/sh -lc`, so it gets it.
 
 ```powershell
-pwsh -NoProfile -File wsl-ephemeral.ps1 -Action New -Image python:3.13-alpine -OciEnv -Command 'echo $PATH'
+pwsh -NoProfile -File wsl-toolkit.ps1 -Action New -Image python:3.13-alpine -OciEnv -Command 'echo $PATH'
 ```
 
 ⚠ **It is off by default and it stays off by default.** Turning it on changes
@@ -829,7 +1060,7 @@ against the user later.
 
 ⚠ **Three different things are in this table and the difference matters.** Some
 rows are tracked as **open** items in
-[`../../TODO/INDEX.md`](../../TODO/INDEX.md) and will go. The `-OciEnv` row is a
+[`../../../TODO/INDEX.md`](../../../TODO/INDEX.md) and will go. The `-OciEnv` row is a
 **settled decision** about what that switch carries, and it stays. The 5.1
 quoting row is neither: it is a **limit of the host**, one layer above this
 tool, and it stays because a user hits it and needs to be told what to do
@@ -861,13 +1092,13 @@ failing on a cryptic pull error.
 
 ## Related
 
-- [`../../docs/conventions/shell.md`](../../docs/conventions/shell.md) section 7,
+- [`../../../docs/conventions/shell.md`](../../../docs/conventions/shell.md) section 7,
   for the Windows traps this script is written against: `wsl.exe` emitting
   UTF-16LE, reserved device names, and Git Bash path conversion.
-- [`wsl-ephemeral-selftest.md`](wsl-ephemeral-selftest.md), the test that holds
+- [`selftest.md`](selftest.md), the test that holds
   the parts of this script deciding what a caller sees.
-- [`../../docs/consumers.md`](../../docs/consumers.md), for what changing this
+- [`../../../docs/consumers.md`](../../../docs/consumers.md), for what changing this
   file breaks outside this repository.
-- [`../../docs/HISTORY/wsl-ephemeral.md`](../../docs/HISTORY/wsl-ephemeral.md),
+- [`../../../docs/HISTORY/wsl-toolkit.md`](../../../docs/HISTORY/wsl-toolkit.md),
   for the defects this script shipped and closed. ⛔ Nothing there is needed to
   use it.

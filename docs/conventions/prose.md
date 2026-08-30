@@ -87,13 +87,15 @@ about publishing, and the incident report is the reason this section exists.
 What to do instead:
 
 1. **Rewrite the rule to what it is now.** The current text is the only text.
-2. **Move the superseded wording to a history file**, with the date and why it
-   changed. A separate file, not a box on the live page.
+2. ⭐ **Move the superseded wording to [`../HISTORY/`](../HISTORY/README.md)**,
+   one page per subject, with the date and why it changed. A separate file, not
+   a box on the live page.
 3. **Link to it once**, from the rule, in a sentence.
 
-The story of a change belongs in the changelog or the history file. The
-document says what is true now. A reader reaching for a rule needs one answer,
-and a page that offers two makes them guess which is live.
+The story of a change belongs in [`../../CHANGELOG.md`](../../CHANGELOG.md) or
+in [`../HISTORY/`](../HISTORY/README.md). The document says what is true now. A
+reader reaching for a rule needs one answer, and a page that offers two makes
+them guess which is live.
 
 ⚠ This is not licence to delete. A superseded rule is moved, never dropped, so
 a future session that wonders why the rule is what it is can find out instead of

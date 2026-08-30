@@ -19,8 +19,7 @@ followed.
 
 | file | owns |
 | --- | --- |
-| [`../../AGENTS.md`](../../AGENTS.md) | the door. It says to read the router in full and states the absolutes, because a session may be handed it and nothing else. |
-| ⭐ [`../AGENTS.md`](../AGENTS.md) | the router, read end to end. Where you are, the absolutes, the start of a session, what to read for which task, and which tool already exists. |
+| ⭐ [`../AGENTS.md`](../AGENTS.md) | the router, and the ONLY one, read end to end. Where you are, the absolutes, the start of a session, what to read for which task, and which tool already exists. ⚠ A root `AGENTS.md` restating the absolutes existed until 2026-08-30 and was deleted under `DOC-07`. |
 | [`../../README.md`](../../README.md) | what this is, for a competent stranger, and the map of everything else |
 | ⭐ [`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) | the record. What changed since last time and what is next. Nothing else carries a work order. |
 | [`../../TODO/RULES.md`](../../TODO/RULES.md) | the half of the record that does not change between sessions: the standing facts, and the rules that are this repository's own |
@@ -119,6 +118,7 @@ better at one part of the job:
 | grep-able, and cost something | [`forbidden-patterns.md`](forbidden-patterns.md) | a reader greps themselves against it before calling a gate green, which a log does not get read for |
 | mechanical | ⭐ a check, and a row pointing at it | a rule enforced by a script is a rule nobody has to remember |
 | a measurement, or a rejected approach | the entry that produced it, in `TODO/` | it keeps the conditions and the acceptance command beside it, which a log strips |
+| ⭐ the wording a live page used to carry | [`../HISTORY/`](../HISTORY/README.md), one page per subject | a reference page that is also a diary stops being read as either. [`prose.md`](prose.md) is the rule; that directory is its destination. |
 | about somebody else's project | [`../reference-sweeps/usable.md`](../reference-sweeps/usable.md) | that page exists to say which findings this repository can act on |
 
 ⚠ **The cost of not having one** is that there is no single page to read for
@@ -145,9 +145,7 @@ not a defect.
 | the full detail of one session's work | ⛔ the handoff. Here goes a pointer to it. |
 
 Four rules, and [`scripts/common/check-changelog.sh`](../../scripts/common/check-changelog.sh)
-holds all four. ⭐ They were stated here and enforced by nothing for as long as
-this document existed, which is the shape a rule takes on its way to becoming
-a preference:
+holds all four:
 
 1. ⛔ **Newest first, always.** A new entry goes at the top of its section,
    never appended to the bottom.

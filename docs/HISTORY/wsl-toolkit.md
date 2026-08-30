@@ -1,13 +1,21 @@
-# HISTORY: wsl-ephemeral.ps1
+# HISTORY: wsl-toolkit.ps1
 
 ⛔ **Superseded. Nothing here is needed to use the tool.**
-[`../../scripts/powershell-windows/wsl-ephemeral.md`](../../scripts/powershell-windows/wsl-ephemeral.md)
+[`../../scripts/windows/wsl-toolkit/wsl-toolkit.md`](../../scripts/windows/wsl-toolkit/wsl-toolkit.md)
 is the live page and says what the tool does now.
 
 This holds the defects it shipped, the shapes its behaviour used to have, and
 the measurements that produced the current design. Each was on the live page and
 was moved here on 2026-08-30, because a reader using the tool cannot act on any
 of it: the code no longer has the defect and there is nothing to do about it.
+
+⚠ **The tool was called `wsl-ephemeral.ps1` and lived at
+`scripts/powershell-windows/` until 2026-08-30.** Everything below happened under
+that name, and the names in it were updated to the current ones when it moved, so
+a reader following a path finds a file rather than a 404. ⛔ The two names that
+did NOT move are the `eph-` distro prefix and the `%LOCALAPPDATA%\wsl-ephemeral`
+state directory, because renaming either would make `List` and `Purge` blind to
+everything created before the rename.
 
 ---
 
@@ -64,7 +72,7 @@ reads the directory back and exits non-zero when the path is still there.
 **There were four deletion paths and the page claimed there was one.** The
 temporary rootfs tarball had its own `Remove-Item`, no containment guard and no
 read-back, while
-[`../../scripts/powershell-windows/wsl-ephemeral.md`](../../scripts/powershell-windows/wsl-ephemeral.md)
+[`../../scripts/windows/wsl-toolkit/wsl-toolkit.md`](../../scripts/windows/wsl-toolkit/wsl-toolkit.md)
 said every path reached one deletion. A door sweep found it; the claim was false
 for one commit.
 

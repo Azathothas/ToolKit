@@ -5,8 +5,11 @@ the one document that is written to be read end to end rather than routed
 around, and it is short enough that doing so costs less than the first mistake
 it prevents.
 
-[`../AGENTS.md`](../AGENTS.md) is the door a harness opens on its own and says
-almost nothing. This is what it sends you to.
+⭐ **This is the only router, and there is no door in front of it.** A root
+`AGENTS.md` restating the absolutes existed until 2026-08-30 and was deleted
+under `DOC-07`: two files stating the same rules is two places for them to
+disagree. ⚠ A harness that opens `AGENTS.md` on its own now finds nothing, so a
+session that was not pointed here has to be told this path.
 [`../README.md`](../README.md) is the same tree explained to a person.
 
 ---
@@ -19,8 +22,20 @@ repository that needs it. It is worked on by one operator across many hosts and
 shells, so a tool states which hosts it runs on and fails with a message on the
 ones it does not.
 
-⛔ **Nothing is published from here.** No image, no package, no release. The BSD
+⭐ **One thing is published from here, and exactly one.** `wsl-toolkit.ps1` and
+its launcher are cut as a GitHub release, with a `SHA256SUMS` computed in CI over
+the bytes that are uploaded, on a `wsl-toolkit-v*` tag.
+[`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
+is the pipeline.
+
+⛔ **Nothing else is.** No image, no package, no second release train. The BSD
 container images this tree once referred to are built by `pkgforge-dev/docker-bsd`.
+
+⚠ **This changed on 2026-08-30 and it used to read "nothing is published from
+here".** The reason it changed is the one that made the split possible at all: a
+consumer fetching one raw URL cannot run a build step, so the single file has to
+exist as an artefact somewhere, and a release is a better one than a path in a
+tree because it names something built and tested on purpose.
 
 ⭐ **What makes this different from an ordinary project is one thing.** A file
 here is fetched by URL from outside this tree. Nothing in this repository fails
@@ -111,7 +126,7 @@ second may change how the first is applied.
 | **Authoring a new entry from an intake** | [`methodology/authoring.md`](methodology/authoring.md), [`../TODO/ENTRY.md`](../TODO/ENTRY.md). ⛔ Authoring does not implement. |
 | **Fixing a defect** | [`methodology/authoring.md`](methodology/authoring.md), the code the defect is in, [`conventions/forbidden-patterns.md`](conventions/forbidden-patterns.md) |
 | ⭐ **Changing a tool other repositories fetch** | [`consumers.md`](consumers.md), the tool's own `.md` beside it. ⛔ A pinned caller does not get your fix by your merging it. |
-| **Anything touching WSL, podman or a container image** | [`../scripts/powershell-windows/wsl-ephemeral.md`](../scripts/powershell-windows/wsl-ephemeral.md), [`conventions/shell.md`](conventions/shell.md) section 7. ⛔ Not [`HISTORY/wsl-ephemeral.md`](HISTORY/wsl-ephemeral.md), which is closed defects. |
+| **Anything touching WSL, podman or a container image** | [`../scripts/windows/wsl-toolkit/wsl-toolkit.md`](../scripts/windows/wsl-toolkit/wsl-toolkit.md), [`conventions/shell.md`](conventions/shell.md) section 7. ⛔ Not [`HISTORY/wsl-toolkit.md`](HISTORY/wsl-toolkit.md), which is closed defects. |
 | **Writing or changing a script** | [`../scripts/README.md`](../scripts/README.md), [`conventions/shell.md`](conventions/shell.md), [`conventions/code.md`](conventions/code.md) |
 | **Writing or editing a document** | [`conventions/prose.md`](conventions/prose.md), [`conventions/docs.md`](conventions/docs.md) |
 | **Committing** | [`conventions/git.md`](conventions/git.md) |
@@ -167,14 +182,14 @@ these is held to.
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |
 | run any check on Windows | ⭐ the `.ps1` half of the pair | the `.sh` half. ⚠ Native PowerShell may have no `sed`, and its `sort` is an alias that answers differently. |
-| prove a change to `wsl-ephemeral.ps1` without building a distro | ⭐ `scripts/powershell-windows/wsl-ephemeral-selftest.ps1` | reading it. It runs in a second and needs no WSL. |
+| prove a change to `wsl-toolkit.ps1` without building a distro | ⭐ `scripts/windows/wsl-toolkit/selftest.ps1` | reading it. It runs in a second and needs no WSL. |
 | close an entry and move its counts | `scripts/common/set-record.mjs` | editing several numbers by hand across three files |
 | check that no page says what another page says | `scripts/common/check-one-home.sh` | reading for it |
 | check the character set and the marker density | `scripts/common/check-markers.sh` | `check-docs.sh`, which reads markdown alone |
-| run something on Linux from a Windows host | `scripts/powershell-windows/wsl-ephemeral.ps1` | installing a distro by hand and leaving it there |
-| find out what a distro would reach this host at | ⭐ `wsl-ephemeral.ps1 -Action HostAddress` | creating a distro and decoding `/proc/net/route` |
-| find out what podman and WSL are holding | `wsl-ephemeral.ps1 -Action Resources` | a hand-rolled sequence of `podman` reports |
-| fetch and run that tool from another project | `wsl-ephemeral-launcher.ps1` | a download piped into a shell |
+| run something on Linux from a Windows host | `scripts/windows/wsl-toolkit/wsl-toolkit.ps1` | installing a distro by hand and leaving it there |
+| find out what a distro would reach this host at | ⭐ `wsl-toolkit.ps1 -Action HostAddress` | creating a distro and decoding `/proc/net/route` |
+| find out what podman and WSL are holding | `wsl-toolkit.ps1 -Action Resources` | a hand-rolled sequence of `podman` reports |
+| fetch and run that tool from another project | `launcher.ps1` | a download piped into a shell |
 | find out why a cross-architecture container will not run | `scripts/common/check-binfmt.sh` | `systemctl status systemd-binfmt`, which reports success over zero handlers |
 | write a licence file | `scripts/common/fill-license.sh` | copying a text and editing the notice, which corrupts four of the twelve |
 | see what a tree ships that addresses an agent | `scripts/common/deslop.sh` | a grep |

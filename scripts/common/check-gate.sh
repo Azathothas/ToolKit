@@ -210,15 +210,24 @@ if [ -n "$PWSH" ]; then
     *) record_skip 'PSScriptAnalyzer' 'check-powershell printed no analyzer status line' ;;
   esac
   # ⭐ THE ONE TEST IN THIS TREE. Part (a) of docs/methodology/gate.md is the
-  # suite as well as the checks, and this is the suite: wsl-ephemeral.ps1's
+  # suite as well as the checks, and this is the suite: wsl-toolkit.ps1's
   # pure functions against a table of cases. It needs no WSL and no container
   # engine, so it runs wherever a PowerShell does, including the ubuntu job.
-  check_simple 'wsl-ephemeral selftest' \
-    "$PWSH" -NoProfile -File scripts/powershell-windows/wsl-ephemeral-selftest.ps1
+  check_simple 'wsl-toolkit selftest' \
+    "$PWSH" -NoProfile -File scripts/windows/wsl-toolkit/selftest.ps1
+  # ⛔ THE PRODUCT AGREES WITH ITS SOURCES. wsl-toolkit.ps1 is BUILT from the
+  # parts under scripts/windows/wsl-toolkit/{src,core,libs}, and it is tracked
+  # because a consumer fetching one raw URL cannot run a build step. That makes
+  # it the one file here that can silently stop matching what anybody wrote: an
+  # edit to a part that was never rebuilt, or an edit to the product that no
+  # part carries. Both are invisible without this.
+  check_simple 'wsl-toolkit bundle' \
+    "$PWSH" -NoProfile -File scripts/windows/wsl-toolkit/build.ps1 -Check
 else
   record_skip 'powershell parse' 'no pwsh, pwsh.exe or powershell.exe on PATH'
   record_skip 'PSScriptAnalyzer' 'no pwsh, pwsh.exe or powershell.exe on PATH'
-  record_skip 'wsl-ephemeral selftest' 'no pwsh, pwsh.exe or powershell.exe on PATH'
+  record_skip 'wsl-toolkit selftest' 'no pwsh, pwsh.exe or powershell.exe on PATH'
+  record_skip 'wsl-toolkit bundle' 'no pwsh, pwsh.exe or powershell.exe on PATH'
 fi
 
 # -- the probe is not a gate, but it exiting non-zero is a real failure ------

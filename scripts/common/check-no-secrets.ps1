@@ -149,7 +149,7 @@ if ($Public) {
     # excluded by shape rather than the whole hex rule being dropped.
     #
     # ⚠ A DECLARED PIN is the second such shape. It arrived when
-    # scripts/powershell-windows/wsl-ephemeral.ps1 became a wrapper that fetches
+    # scripts/windows/wsl-toolkit/wsl-toolkit.ps1 became a wrapper that fetches
     # a commit and verifies a SHA-256 before executing it: 40 hex and 64 hex,
     # both public by construction, both the SAFE practice.
     # ⛔ Excluded by NAME, narrowly. The hex has to be assigned to an identifier
@@ -164,7 +164,15 @@ if ($Public) {
     # not a fingerprint of anybody's machine, and a check that fires on them is
     # one somebody disables. Whenever this produces a false positive, add the
     # generic path here; do not widen the exclusion to the whole rule.
-    $homes = @(Find-Pattern '([A-Za-z]:[\/]Users[\/]|/home/|/Users/)[A-Za-z0-9._-]+' |
+    # ⛔ [\\/] AND NOT [\/]. Inside a .NET character class `\/` is just `/`: the
+    # backslash escapes a character that was never special, so the class matched
+    # a forward slash alone, so a drive-letter path with BACKSLASH separators,
+    # which is what a Windows home directory looks like, could not match. This
+    # twin was therefore BLIND to the one shape the host it exists for produces,
+    # while its sh half, whose class is `[\\/]`, caught it. Found on 2026-08-30
+    # when the two halves disagreed over a build transcript pasted into an entry.
+    # ⚠ It is the check that keeps a username out of a public repository.
+    $homes = @(Find-Pattern '([A-Za-z]:[\\/]Users[\\/]|/home/|/Users/)[A-Za-z0-9._-]+' |
         Where-Object { $_ -notmatch '/home/(linuxbrew|runner|user|vagrant|ubuntu|node)/' } |
         Where-Object { $_ -notmatch '/Users/(runner|user)/' })
     Add-Hit 'an absolute home path' $homes

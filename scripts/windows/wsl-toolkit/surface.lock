@@ -1,0 +1,48 @@
+# surface.lock - the CLI surface wsl-toolkit.ps1 promises, one line per parameter.
+#
+# docs/consumers.md calls a renamed parameter, a changed type and a changed exit
+# code the three things that break a caller who did nothing wrong. This file is
+# what turns the first two into a failed gate instead of a failed caller.
+#
+# It is derived from the built bundle AST, so a parameter cannot be added
+# without appearing here. Refresh it deliberately, and only when the change is
+# intended, with:
+#
+#   pwsh -NoProfile -File scripts/windows/wsl-toolkit/build.ps1 -Test -UpdateSurface
+#
+# A refresh in the same commit as a rename is the record that the rename was a
+# decision. A refresh on its own is the record that nobody looked.
+
+param Action type=String default= valid=New|Run|Enter|List|Remove|Purge|Resources|HostAddress|Doctor
+param Color type=String default='auto' valid=auto|always|never
+param Command type=String default= valid=
+param CommandB64 type=String default= valid=
+param CommandFile type=String default= valid=
+param CommandTimeoutSeconds type=Int32 default=0 valid=range:0..604800
+param DryRun type=SwitchParameter default= valid=
+param Ephemeral type=SwitchParameter default= valid=
+param EventLog type=String default= valid=
+param Force type=SwitchParameter default= valid=
+param Image type=String default= valid=
+param MaxLineBytes type=Int32 default=0 valid=range:0..1048576
+param Name type=String default= valid=
+param NoTimestamps type=SwitchParameter default= valid=
+param OciEnv type=SwitchParameter default= valid=
+param PrefixOnly type=SwitchParameter default= valid=
+param Redact type=String[] default= valid=
+param ScriptArg type=String[] default= valid=
+param ScriptArgFile type=String default= valid=
+param StreamLogOverwrite type=SwitchParameter default= valid=
+param StreamLogPath type=String default= valid=
+param Systemd type=SwitchParameter default= valid=
+param Tarball type=String default= valid=
+param TickEscalateSeconds type=String[] default=@('120', '300', '900') valid=
+param TickSeconds type=Int32 default=30 valid=range:0..86400
+param TimeoutSeconds type=Int32 default=120 valid=range:5..3600
+param TimestampColumns type=String[] default= valid=
+param TimestampFormat type=String default= valid=
+param TimestampMode type=String default='Relative' valid=Relative|Delta|Wall|Iso|Epoch
+param TimestampProfile type=String default= valid=human|ci|forensic|wall|raw
+param TimestampSeparator type=String default=' ' valid=
+param User type=String default='root' valid=
+param Verbatim type=SwitchParameter default= valid=

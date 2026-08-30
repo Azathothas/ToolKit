@@ -16,9 +16,9 @@ wrote down is a consumer nobody checks before a rename.
 
 | consumer | fetches | how it is pinned | breaks if |
 | --- | --- | --- | --- |
-| `Azathothas/TEMPLATE`, at `scripts/powershell-windows/wsl-ephemeral.ps1` | `scripts/powershell-windows/wsl-ephemeral.ps1` | a commit SHA and a SHA-256 of the file, both hardcoded in the wrapper | the path moves, a parameter is renamed, or an exit code changes meaning |
-| `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | ⛔ **nothing. It carries a vendored COPY**, 536 lines against this tree's 1,579 on the day it was found, and 2,792 now | ⛔ not pinned, not fetched, no digest, no reference to this repository | ⚠ nothing here can break it, and nothing here can fix it either |
-| `Azathothas/bit-cli`, at `docs/containers.md` | `scripts/powershell-windows/wsl-ephemeral.ps1`, by `curl` into `.tmp/` | a commit SHA the page tells its reader to resolve, and nothing hardcoded | the path moves, a parameter is renamed, or an exit code changes meaning. ⚠ Its procedure is written out by hand rather than run from a wrapper, so a change to the invocation shape reaches it as prose that is now wrong. |
+| `Azathothas/TEMPLATE`, at `scripts/windows/wsl-toolkit/wsl-toolkit.ps1` | `scripts/windows/wsl-toolkit/wsl-toolkit.ps1` | a commit SHA and a SHA-256 of the file, both hardcoded in the wrapper | the path moves, a parameter is renamed, or an exit code changes meaning |
+| `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | ⛔ **nothing. It carries a vendored COPY**, 536 lines against this tree's 1,579 on the day it was found, and 4,184 now | ⛔ not pinned, not fetched, no digest, no reference to this repository | ⚠ nothing here can break it, and nothing here can fix it either |
+| `Azathothas/bit-cli`, at `docs/containers.md` | `scripts/windows/wsl-toolkit/wsl-toolkit.ps1`, by `curl` into `.tmp/` | a commit SHA the page tells its reader to resolve, and nothing hardcoded | the path moves, a parameter is renamed, or an exit code changes meaning. ⚠ Its procedure is written out by hand rather than run from a wrapper, so a change to the invocation shape reaches it as prose that is now wrong. |
 
 ### ⚠ `Azathothas/bit-cli` was found the same way the vendored copy was
 
@@ -112,10 +112,40 @@ a break so the caller is told, then fix it.
 
 ---
 
+## ⭐ There is now a release, and it is the thing to pin
+
+⛔ **This register was written when nothing was published from here, and that
+changed on 2026-08-30.** `wsl-toolkit.ps1` and its launcher are cut as a GitHub
+release on a `wsl-toolkit-v*` tag, with a `SHA256SUMS` computed in CI over the
+bytes that are uploaded.
+
+**A release is a better pin than a commit for every row above.** A commit names
+a TREE, and the file at a path in it is whatever happened to be there. A release
+names an ARTEFACT that was built from its sources, tested and published on
+purpose, and it carries its own digests. A tag does not move either.
+
+```powershell
+pwsh -NoProfile -File launcher.ps1 -LauncherRelease wsl-toolkit-v1.0.0 -Action Doctor
+```
+
+⚠ **What the release `SHA256SUMS` proves is transport, not authorship.** It comes
+from the same release as the asset, so anyone who could replace one could replace
+the other. `-LauncherSha256` with a digest the caller holds is the check that
+proves authorship, and it still applies on top.
+
+**The path move above is the reason to do this now rather than later.** A
+consumer that moves to a release tag stops caring where in the tree the file
+lives, which is the thing that broke them this time.
+
+---
+
 ## The rule for a breaking change
 
 1. **Keep the old spelling working** where that is possible at all. An alias for
    a renamed parameter costs one line and removes the whole problem.
+   **This session did not manage it for the path move**, and the alternative is
+   recorded rather than glossed: a symlink at the old path was measured to serve
+   its own target string over a raw fetch, which is a worse failure than a 404.
 2. **Where it is not possible**, the change lands with a row in
    [`../CHANGELOG.md`](../CHANGELOG.md) naming what broke, and the item's
    closure says which consumers were checked.
@@ -134,55 +164,23 @@ fact a consumer's owner needs.
 
 | date | what broke | consumers checked | pin state |
 | --- | --- | --- | --- |
-| 2026-08-30 | `wsl-ephemeral-launcher.ps1`: an explicit `-LauncherRef` now wins over a `wsl-ephemeral.ps1` sitting beside the launcher. It used to be the other way round, so a caller passing a commit and a digest could run a stale sibling and verify nothing. A break by the definition above: a caller who did nothing wrong now behaves differently. | all three rows. `Azathothas/bit-cli` is the one it changes, and it changes in that repository's favour: its `scripts/wsl-tool.ps1` deletes any sibling before every call for exactly this reason, and that workaround is now unnecessary. `Azathothas/TEMPLATE`'s wrapper fetches into a directory with no sibling. The vendored copy fetches nothing. | not moved. Nothing here requires a consumer to move; `bit-cli` may remove its workaround when it chooses. |
-| 2026-08-30 | `wsl-ephemeral.ps1`: stdout from `New -Command` and `Run -Command` now carries a prefix. The stream log is on by default and stamps every line with a time and a stream tag. A break: a caller parsing that stdout gets different bytes. `-NoTimestamps` restores the previous shape exactly, byte for byte. | all three rows. `Azathothas/TEMPLATE`'s wrapper forwards arguments and reads no stream. `Azathothas/bit-cli`'s `docs/containers.md` tells a reader that results go to stdout and shows values being taken straight off a command, so that page's examples are affected and its own author decides whether to pass `-NoTimestamps` or cut the prefix. The vendored copy fetches nothing. | not moved. Recorded here the day it was made rather than when somebody notices. |
-| 2026-08-29 | `wsl-ephemeral.ps1`: the final `ERROR: ...` line moved from stdout to **stderr**. ⚠ Not a break by the definition above: nothing was renamed and no exit code changed meaning. It is here because it is the one change this session made that a caller could observe. | all three rows. `Azathothas/TEMPLATE`'s wrapper forwards the inner code and reads no stream; `bit-cli`'s page reads exit codes and the command's own output; the vendored copy fetches nothing. | ⚠ **not moved.** Nothing in this batch fixes a defect a consumer is carrying, so there is no reason to ask anyone to move. |
-| 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New -Command` now exits with the inner command's code. It used to warn and exit 0. `WSL-01`. | `Azathothas/TEMPLATE`, the only consumer in the register. Its wrapper forwards arguments and propagates the inner code verbatim, so it needs no edit beyond the pin. | ⭐ **moved.** See the note below. |
-| 2026-08-27 | `wsl-ephemeral.ps1`: `-Action New` was failing outright on Windows PowerShell 5.1 and now works. `WSL-12`. | the same single consumer. Its wrapper runs the fetched script on whichever host invoked it, so a 5.1 caller was getting the break. | ⭐ **moved**, in the same bump. |
+| 2026-08-30 | ⛔ **THE FILE MOVED AND THE OLD PATH IS GONE.** `scripts/powershell-windows/wsl-ephemeral.ps1` is now `scripts/windows/wsl-toolkit/wsl-toolkit.ps1`, and the launcher moved with it. A raw fetch of either old URL returns **404**. A git symlink at the old path was considered and REJECTED on a measurement: `raw.githubusercontent.com` serves a symlink's own target string with HTTP 200, so the old URL would have answered a successful-looking 34 bytes of text that no `pwsh` can run and no digest check would explain. A 404 is loud; that is not. | all three rows. `Azathothas/TEMPLATE` and `Azathothas/bit-cli` both name the old path and both stop working on their next run after their pin moves past this commit; the vendored copy fetches nothing. | ⛔ **not moved, and moving it is a rewrite rather than a bump.** The operator holds this: they said consumers migrate at their own pace. Until each does, its existing pin keeps working, because a pinned commit still has the old path in its tree. |
+| 2026-08-30 | ⛔ **A parameter an action does not read is now REFUSED.** `-Action List -Image alpine:3.22` used to do nothing and say nothing; it now exits 1 naming the parameter and the actions that do read it. `-TimeoutSeconds` on `Run` is the one most likely to bite: it bounds the script's own questions, `Run` asks none, and the refusal names `-CommandTimeoutSeconds` instead. `WSL-23`. | all three rows. `Azathothas/bit-cli`'s `docs/containers.md` shows `-Action New` and `-Action Run` invocations with parameters those actions do read, so nothing on that page is refused. `Azathothas/TEMPLATE`'s wrapper forwards whatever it is given. | not moved. |
+| 2026-08-30 | ⛔ **`-ScriptArg` was documented as repeatable and never was.** Measured under both PowerShell hosts, directly and through the launcher: a second `-ScriptArg` is refused with "specified more than once", because a `.ps1` run through `-File` cannot have a parameter repeated. `-ScriptArgFile` is the fix and takes a file of `NAME=VALUE` lines. Fixing a documented capability that did not work is a break by the definition above, and it is here for that reason. | all three rows. Nobody could have been using the repeated form, because it never bound; a caller passing ONE `-ScriptArg` is unaffected. | not moved. |
+| 2026-08-30 | `launcher.ps1`: an explicit `-LauncherRef` now wins over a `wsl-toolkit.ps1` sitting beside the launcher. It used to be the other way round, so a caller passing a commit and a digest could run a stale sibling and verify nothing. A break by the definition above: a caller who did nothing wrong now behaves differently. | all three rows. `Azathothas/bit-cli` is the one it changes, and it changes in that repository's favour: its `scripts/wsl-tool.ps1` deletes any sibling before every call for exactly this reason, and that workaround is now unnecessary. `Azathothas/TEMPLATE`'s wrapper fetches into a directory with no sibling. The vendored copy fetches nothing. | not moved. Nothing here requires a consumer to move; `bit-cli` may remove its workaround when it chooses. |
+| 2026-08-30 | `wsl-toolkit.ps1`: stdout from `New -Command` and `Run -Command` now carries a prefix. The stream log is on by default and stamps every line with a time and a stream tag. A break: a caller parsing that stdout gets different bytes. `-NoTimestamps` restores the previous shape exactly, byte for byte. | all three rows. `Azathothas/TEMPLATE`'s wrapper forwards arguments and reads no stream. `Azathothas/bit-cli`'s `docs/containers.md` tells a reader that results go to stdout and shows values being taken straight off a command, so that page's examples are affected and its own author decides whether to pass `-NoTimestamps` or cut the prefix. The vendored copy fetches nothing. | not moved. Recorded here the day it was made rather than when somebody notices. |
+| 2026-08-29 | `wsl-toolkit.ps1`: the final `ERROR: ...` line moved from stdout to **stderr**. ⚠ Not a break by the definition above: nothing was renamed and no exit code changed meaning. It is here because it is the one change this session made that a caller could observe. | all three rows. `Azathothas/TEMPLATE`'s wrapper forwards the inner code and reads no stream; `bit-cli`'s page reads exit codes and the command's own output; the vendored copy fetches nothing. | ⚠ **not moved.** Nothing in this batch fixes a defect a consumer is carrying, so there is no reason to ask anyone to move. |
+| 2026-08-27 | `wsl-toolkit.ps1`: `-Action New -Command` now exits with the inner command's code. It used to warn and exit 0. `WSL-01`. | `Azathothas/TEMPLATE`, the only consumer in the register. Its wrapper forwards arguments and propagates the inner code verbatim, so it needs no edit beyond the pin. | ⭐ **moved.** See the note below. |
+| 2026-08-27 | `wsl-toolkit.ps1`: `-Action New` was failing outright on Windows PowerShell 5.1 and now works. `WSL-12`. | the same single consumer. Its wrapper runs the fetched script on whichever host invoked it, so a 5.1 caller was getting the break. | ⭐ **moved**, in the same bump. |
 
-⭐ **The pin moved twice on 2026-08-27.** First from the commit that first
-published this script to the head of the batch carrying `WSL-01` through
-`WSL-05`, `WSL-12` and the tooling work. ⚠ **That move was not for the two
-`WSL-01` reasons alone.** It moved because `WSL-12` means every 5.1 caller of
-the old pin has an `-Action New` that cannot work at all, and leaving them there
-to avoid a behaviour change is protecting them from the fix rather than from the
-break.
+**How each of those pins came to move, and what was measured while moving it,
+is in [`HISTORY/consumers.md`](HISTORY/consumers.md).** This page carries the pin
+STATE, which is the fact a consumer's owner needs; the story of how it got there
+is not something anybody can act on.
 
-⭐ **Then to `ea5d483`**, the head of the batch carrying `WSL-06` through
-`WSL-11`, in `Azathothas/TEMPLATE` as `83f573c`. `WSL-08` is why it moved: a
-`-Command` value could not carry a `$`, a backtick or, on 5.1, a double quote,
-and now carries anything byte-exact.
-
-⚠ **Three behaviour changes ride along with it, and none is a break by the
-definition above.** Nothing was renamed and no exit code changed meaning.
-`New` can exit 1 where it used to start an import it could not finish, exit 1
-where it used to hang on a wedged distro, and exit 1 where `-Systemd` was asked
-for and could not be given. Each is the tool reporting a failure it used to
-paper over.
-
-⚠ **Both values were read from the API**, as the wrapper's own `.NOTES` says to.
-On this machine the working-tree file hashes to `0fc409a3` and the raw endpoint
-serves `3c901625`, because the tree is CRLF. A locally computed digest fails
-closed, which is safe and takes an hour to work out.
-
-⭐ **The pin was verified by running it**, not by assuming: the wrapper fetched
-`ea5d48310021`, matched the digest, and `-Action Enter`, which did not exist at
-the old pin, answered through it from Windows PowerShell 5.1.
-
-⭐ **A launcher now lives here too**,
-[`../scripts/powershell-windows/wsl-ephemeral-launcher.md`](../scripts/powershell-windows/wsl-ephemeral-launcher.md),
-and it is **not** a second copy of the wrapper in `Azathothas/TEMPLATE`. That
-one pins a commit and a digest because it lives in another repository and has
-to. This one sits beside the file it runs, so it prefers the sibling and needs
-no pin at all; a pin inside the repository that owns the file can only ever name
-one of its own ancestors.
-
-⚠ **Adding it does not retire the wrapper and does not move any pin.** Which of
-the two `Azathothas/TEMPLATE` keeps is that repository's decision.
-
-⚠ **A caller that was reading the false pass gets a red result the first time it
-runs after the pin moves, and the failure it reports is real.** That is the
-point of the change, and it is also why the row above exists: the alternative is
+⚠ **A caller that was reading a false pass gets a red result the first time it
+runs after a pin moves, and the failure it reports is real.** That is the point
+of such a change, and it is why the table above exists: the alternative is
 somebody debugging a step that started failing with no record of why.
 
 ---

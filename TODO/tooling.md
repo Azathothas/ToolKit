@@ -472,7 +472,7 @@ rules:
    `| Select-Object -First 4`, which can stop the upstream early and leave
    `$LASTEXITCODE` holding the previous command's value.
    [`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 2, and
-   the sixth absolute in [`../AGENTS.md`](../AGENTS.md).
+   the fifth absolute in [`../docs/AGENTS.md`](../docs/AGENTS.md).
 2. ⛔ **`-Check` cannot show this defect at all.** It returns before the gates
    run and never reads `-Name` or `-Email`, so it exits 0 whether they were
    bound from a gate string or not. A test whose name claims more than it
@@ -822,3 +822,208 @@ rc=1
 ⚠ **Three files where the step had been reporting on none.** The CI logs that
 would show the empty output are past their retention, so what is recorded here
 is the local reproduction of the expression rather than a log line.
+
+---
+
+## TOOL-09. `check-docs.ps1` collapsed `..` with a regex that matches `..`
+
+**Source** found on 2026-08-30, when the two halves of the twin disagreed about a tree neither had seen before.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`check-docs.ps1` reported seven correct links as broken, and its `sh` twin
+reported the same tree clean. Every one of the seven was in a file three
+directories deep, which nothing in this repository was until this session put
+the WSL tool under `scripts/windows/wsl-toolkit/`.
+
+```text
+scripts/windows/wsl-toolkit/wsl-toolkit.md:172 broken link -> ../../../docs/public/README.md
+```
+
+That file exists. A gate that reports a defect which is not there is worse than
+one that misses a defect: it sends a reader after nothing, and the reader's only
+way out is to distrust the check.
+
+## Premise
+
+⭐ **Measured by reading both halves, after the disagreement made it obvious
+which one to doubt.** The `sh` half asks the filesystem, `[ -e "$dir/$target" ]`,
+which is correct by construction. The PowerShell half hand-rolled a normaliser:
+
+```text
+while ($norm -match '[^/]+/\.\./') { $norm = $norm -replace '[^/]+/\.\./', '' }
+```
+
+⛔ **`[^/]+` matches `..` itself.** On
+`scripts/windows/wsl-toolkit/../../../docs/x` the global replace consumes
+`wsl-toolkit/../` and then, continuing from where it stopped, consumes `../../`
+as one more segment-and-parent pair. The result is
+`scripts/windows/docs/x`, which does not exist.
+
+⚠ **It was invisible for as long as nothing in the tree was three deep**, which
+is exactly the shape `scripts/README.md` already warns about for the twins: a
+scope difference with nothing to exercise it is a difference nothing reports.
+
+## Approach
+
+Let the framework resolve the path. `[IO.Path]::GetFullPath` on the joined path,
+tested with `Test-Path`, and the repo-relative form derived by trimming the root
+prefix off the absolute answer. That is the same thing the `sh` half does, by the
+same authority.
+
+⛔ **Do not fix the regex.** A correct one is writable, with a negative
+lookahead, and it would be a second implementation of path resolution living
+beside a correct one that is already free.
+
+## Consumers
+
+None. This is a check, and no other repository fetches it.
+
+## Prove
+
+```bash
+sh scripts/common/check-docs.sh --json
+```
+
+```bash
+pwsh -NoProfile -File scripts/common/check-docs.ps1 -Json
+```
+
+Byte-identical JSON from both, which is what `check-twins.sh` compares, and a
+planted three-deep broken link refused by both.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T09:10:00Z.** Both halves now agree exactly:
+
+```text
+{"schema":"check-docs/1","problems":0,"files":42,"links":460,"shell_blocks":120}
+{"schema":"check-docs/1","problems":0,"files":42,"links":460,"shell_blocks":120}
+```
+
+⭐ **Mutation-proved, because a fix to a guard is a guard nobody has watched
+refuse.** A broken link three levels up was planted and both halves named it:
+
+```text
+scripts/windows/wsl-toolkit/selftest.md:86 broken link -> ../../../docs/nope/nothing.md
+ps exit=1
+```
+
+⚠ **What found this was the twin comparison, not a reading**, and neither half
+was run against a three-deep file before this session created one. ⭐ The lesson
+already in `scripts/README.md` is the right one and it now has a second incident:
+prove a scope rule with a fixture rather than trusting the comparison to notice.
+`docs/conventions/forbidden-patterns.md` carries the regex as a row.
+
+---
+
+## TOOL-10. `check-no-secrets.ps1` could not match a Windows home path at all
+
+**Source** found on 2026-08-30 by the full gate, when the two halves disagreed about a build transcript pasted into an entry.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+A build transcript pasted into `TODO/wsl-ephemeral.md` carried an absolute path
+with the operator's username in it. This repository is public, and
+`docs/public/README.md` names exactly that as a thing that must not be
+published: it is not a credential, it is a map.
+
+⛔ **The `sh` half caught it. The PowerShell twin reported the tree clean.** The
+twin is the half that runs on the host that produces such paths, so the check
+that keeps a username out of a public repository was blind on the only machine
+that could put one there.
+
+## Premise
+
+⭐ **Measured by reading the two expressions side by side, after the gate's two
+halves gave different answers on one tree.**
+
+```text
+sh   ([A-Za-z]:[\\/]Users[\\/]|/home/|/Users/)[A-Za-z0-9._-]+
+ps   ([A-Za-z]:[\/]Users[\/]|/home/|/Users/)[A-Za-z0-9._-]+
+```
+
+⛔ **Inside a .NET character class `\/` is just `/`.** The backslash escapes a
+character that was never special, so the class matched a forward slash alone and
+a drive-letter path with backslash separators could not match. The `sh` half's
+`[\\/]` is a two-character class and matches both.
+
+⚠ **Nothing about the two lines looks different at a glance**, which is why this
+survived: the twin was written from the sh half and the escape was dropped in
+transcription.
+
+## Approach
+
+One character class, in the twin: `[\\/]` in both positions.
+
+⛔ **Do not narrow the sh half to agree.** The sh half is right, and making two
+implementations agree by breaking the correct one is the failure mode a twin
+exists to prevent.
+
+## Consumers
+
+None. This is a check, and no other repository fetches it.
+
+## Prove
+
+```bash
+sh scripts/common/check-no-secrets.sh --public --json
+```
+
+```bash
+pwsh -NoProfile -File scripts/common/check-no-secrets.ps1 -Public -Json
+```
+
+The same `findings` count from both, and a planted Windows home path named by
+both.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T09:35:00Z.** The twin's class is `[\\/]`, and the pasted
+path was elided from the entry rather than left with the check narrowed around
+it.
+
+```text
+{"schema":"check-no-secrets/1","findings":0,"public_rules":true,"history_scanned":false}
+{"schema":"check-no-secrets/1","findings":0,"public_rules":true,"history_scanned":false}
+```
+
+⭐ **Mutation-proved on both halves**, because agreement on a clean tree is also
+what two broken checks produce:
+
+A drive-letter home path with backslash separators was appended to
+`TODO/SUMMARY.md`, and **both halves named the same file and the same line
+number**, which neither had done before the fix:
+
+```text
+=== sh half ===
+TODO/SUMMARY.md:37:A planted path: (the path, not reproduced here)
+=== ps twin ===
+TODO/SUMMARY.md:37:A planted path: (the path, not reproduced here)
+```
+
+⚠ **The planted path is not reproduced above, and that is the check working on
+its own record.** It was pasted verbatim first, and the next run of the fixed
+check reported this entry as the finding. A mutation's evidence is the file and
+the line it was found at; the string itself is the thing the rule exists to keep
+out of a public tree.
+
+⚠ **What found this was `--fast`, by not running.** The local gate skips
+`check-twins`, and `check-no-secrets` passed its PowerShell twin all session. The
+full run is what surfaced it, which is the argument for running the full gate
+before a push rather than only `--fast`, exactly as `check-gate.sh`'s own header
+says.
+
+⛔ **Second twin divergence this session**, after `TOOL-09`. Both were in a check
+rather than in the code being checked, both were invisible until a tree existed
+that exercised them, and both were found by comparison rather than by reading.

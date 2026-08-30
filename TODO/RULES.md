@@ -20,11 +20,11 @@ where it is checked.
 | fact | value | where it is read from |
 | --- | --- | --- |
 | repository | `Azathothas/ToolKit`, public, 0BSD | `gh api repos/Azathothas/ToolKit` |
-| what it publishes | nothing. No image, no package, no release. | [`../README.md`](../README.md) |
+| what it publishes | `wsl-toolkit.ps1` and its launcher, as a GitHub release on a `wsl-toolkit-v*` tag, with `SHA256SUMS`. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
 | work model | todo | [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) |
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |
-| CI | three jobs, ubuntu and windows | [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml) |
+| CI | three jobs on every push, ubuntu and windows, plus one release job that runs only on a `wsl-toolkit-v*` tag | [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`../.github/workflows/release.yml`](../.github/workflows/release.yml) |
 | the local gate | `sh scripts/common/check-gate.sh --fast`, or its `.ps1` twin | [`../scripts/README.md`](../scripts/README.md) |
 | the identity a commit carries | the machine's `git config`, per invocation | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 1 |
 
@@ -45,9 +45,9 @@ nobody is watching.
 [`../docs/consumers.md`](../docs/consumers.md) is the register, the definition
 of a break, and what a breaking change owes.
 
-**What it cost.** A copy of `wsl-ephemeral.ps1` was found in
-`pkgforge-dev/cross-libc-dlopen` on 2026-08-27, during a reading of that
-repository for an unrelated reason. It was not in the register, it fetches
+**What it cost.** A copy of this tool, under its old name `wsl-ephemeral.ps1`,
+was found in `pkgforge-dev/cross-libc-dlopen` on 2026-08-27, during a reading of
+that repository for an unrelated reason. It was not in the register, it fetches
 nothing, and it carries both P0 defects this repository has since closed. The
 register cannot reach it and neither can a fix.
 
@@ -73,7 +73,7 @@ without adding its row there is how drift starts.
 ## 3. A destructive tool has one deletion, and it reads the state back
 
 ⛔ Applies to anything here that removes something on a machine, which today is
-[`../scripts/powershell-windows/wsl-ephemeral.ps1`](../scripts/powershell-windows/wsl-ephemeral.ps1).
+[`../scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](../scripts/windows/wsl-toolkit/wsl-toolkit.ps1).
 Its own page carries the four-part safety model.
 
 **What it cost.** `WSL-04`. The predecessor printed that it had deleted a disk
@@ -84,7 +84,28 @@ files left behind read as disks that had gone.
 at three.** The containment check runs inside the deletion helper rather than
 beside each caller, and every path reaches that helper.
 
-## 4. The record moves in the same change as the work
+## 4. One file here is GENERATED, and the tree holds both halves
+
+⛔ **`scripts/windows/wsl-toolkit/wsl-toolkit.ps1` is built** from the parts under
+`src/`, `core/` and `libs/` beside it, and it is **tracked** because a consumer
+fetching one raw URL cannot run a build step. So this repository carries a source
+and a product for the same thing, which is a shape it has nowhere else.
+
+⭐ **The check is what makes that safe.** `check-gate`'s `wsl-toolkit bundle`
+rebuilds from the parts and compares bytes, in both halves and in CI. Without it
+the product could silently stop being what anybody wrote, in two directions at
+once: a part edited and never rebuilt, or the product edited by hand.
+
+⚠ **The parts are excluded from PSScriptAnalyzer and that is not a hole.** A
+script-scoped suppression covers only its own file and the tool's all live in its
+parameter block, so analysing a fragment reports every rule those suppressions
+exist to answer. The analyzer runs over the product, which is every line of every
+part.
+
+[`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
+is the build, the surface lock and the release pipeline.
+
+## 5. The record moves in the same change as the work
 
 Specified in
 [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md), which
@@ -103,7 +124,7 @@ sh scripts/common/check-record.sh
 prints the reader's command; `check-record.sh` asserts independently and runs as
 a gate.
 
-## 5. An entry closes on a command, not on a paragraph
+## 6. An entry closes on a command, not on a paragraph
 
 An entry is authored from [`ENTRY.md`](ENTRY.md) and closes in place, with the
 acceptance command actually run and its real output pasted underneath.
@@ -113,7 +134,7 @@ entry stays open with the blocker named. `BSD-01` is the worked example: the
 work left for `pkgforge-dev/docker-bsd` and [`bsd.md`](bsd.md) says where each
 part went rather than pretending it finished here.
 
-## 6. What a session owes at its end
+## 7. What a session owes at its end
 
 Specified in
 [`../docs/methodology/sessions.md`](../docs/methodology/sessions.md). What is

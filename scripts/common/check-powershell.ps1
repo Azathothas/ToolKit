@@ -81,6 +81,34 @@ if ($module) {
     try {
         Import-Module PSScriptAnalyzer -ErrorAction Stop
         $findings = @(Invoke-ScriptAnalyzer -Path (Join-Path $root 'scripts') -Recurse -Severity Error, Warning)
+        # ⛔ THE PARTS OF wsl-toolkit.ps1 ARE NOT ANALYSED SEPARATELY, AND THAT
+        # LOSES NO COVERAGE. They are fragments joined into one script, not
+        # scripts: a script-scoped SuppressMessageAttribute covers only the file
+        # it is in, and all of that tool's suppressions live in its param block,
+        # so analysing a fragment reports every rule those suppressions exist to
+        # answer, against code that was never a script.
+        #
+        # ⭐ WHAT COVERS THEM INSTEAD IS STRONGER, not weaker: the analyzer runs
+        # over the BUILT bundle, which is every line of every part, and
+        # check-gate's `wsl-toolkit bundle` asserts the bundle is exactly what
+        # those parts build. A part cannot be analysed-clean while the product
+        # is not, because the product is the parts.
+        #
+        # ⚠ THE PATHS ARE NAMED, NOT THE DIRECTORY THEY SIT IN. An exemption
+        # written as a prefix for a directory grants itself to whatever lands
+        # there next, which is the DOC-04 row in
+        # docs/conventions/forbidden-patterns.md.
+        $bundleParts = @(
+            'scripts/windows/wsl-toolkit/src',
+            'scripts/windows/wsl-toolkit/core',
+            'scripts/windows/wsl-toolkit/libs'
+        )
+        $findings = @($findings | Where-Object {
+            $rel = ($_.ScriptPath -replace '\\', '/')
+            $inPart = $false
+            foreach ($d in $bundleParts) { if ($rel -like "*/$d/*") { $inPart = $true } }
+            -not $inPart
+        })
         $analyzerSkipped = $false
         $analyzerReason = ''
     }

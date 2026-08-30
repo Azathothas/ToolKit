@@ -1,0 +1,109 @@
+# Publish wsl-toolkit.ps1 as a GitHub release, from the tag that triggered this.
+#
+# ⭐ THE PUBLISHER IS HERE AND NOWHERE ELSE. scripts/windows/wsl-toolkit/release.ps1
+# verifies and pushes the tag; this checks that tag out CLEAN and re-runs the same
+# verification before anything is published. A release cut from a developer's
+# machine could come from a dirty tree, an unpushed commit or a bundle that
+# disagrees with its sources, and none of those is visible in the artefact
+# afterwards.
+#
+# ⛔ THE BUNDLE IS RE-VERIFIED, NOT TRUSTED. build.ps1 -Check rebuilds from the
+# parts and compares bytes, so a hand-edited wsl-toolkit.ps1 cannot be released.
+#
+# ⛔ Third-party actions are pinned to a COMMIT, not a tag, for the reason
+# .github/workflows/ci.yml states: a moved tag runs code nobody reviewed with the
+# permissions granted here.
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'wsl-toolkit-v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: the existing tag to publish
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: publish wsl-toolkit
+    runs-on: windows-latest
+    timeout-minutes: 20
+    # ⛔ Raised for this job alone. Every other job in this repository reads.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped. A guard on the left of
+      # a pipe reports the pipeline's status, so one that failed reads as green.
+      - name: the bundle is what its parts build
+        shell: pwsh
+        run: |
+          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Check
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: PSScriptAnalyzer, the selftest and the surface lock
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
+          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Test
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # ⛔ THE TAG AND THE FILE MUST AGREE. A tag naming a version the published
+      # asset does not carry is the worst kind of release: every later report
+      # about it is about a different file.
+      - name: the tag names the version inside the file
+        shell: pwsh
+        run: |
+          $tag = '${{ github.event.inputs.tag || github.ref_name }}'
+          $text = [IO.File]::ReadAllText('.\scripts\windows\wsl-toolkit\wsl-toolkit.ps1')
+          $m = [regex]::Matches($text, "(?m)^\s*\`$script:ToolkitVersion\s*=\s*'([0-9]+\.[0-9]+\.[0-9]+)'\s*$")
+          if ($m.Count -ne 1) { Write-Output "the bundle carries $($m.Count) version assignments"; exit 1 }
+          $want = 'wsl-toolkit-v' + $m[0].Groups[1].Value
+          if ($tag -ne $want) { Write-Output "tag is '$tag' and the file says '$want'"; exit 1 }
+          Write-Output "tag and file agree: $tag"
+
+      # ⭐ THE DIGESTS ARE COMPUTED OVER THE BYTES THAT ARE UPLOADED, in this
+      # checkout, so a consumer verifying a download against SHA256SUMS is
+      # checking the same object. A digest computed anywhere else would be a
+      # digest of a different line ending.
+      - name: stage the assets and write SHA256SUMS
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          Copy-Item .\scripts\windows\wsl-toolkit\wsl-toolkit.ps1 dist\ -Force
+          Copy-Item .\scripts\windows\wsl-toolkit\launcher.ps1     dist\ -Force
+          $lines = @()
+          foreach ($f in (Get-ChildItem dist -File | Sort-Object Name)) {
+            $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $lines += ($h + '  ' + $f.Name)
+            Write-Output ($h + '  ' + $f.Name + '  (' + $f.Length + ' bytes)')
+          }
+          if ($lines.Count -lt 2) { Write-Output 'fewer assets than expected'; exit 1 }
+          [IO.File]::WriteAllText('dist\SHA256SUMS', (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
+
+      # --generate-notes writes the body from the commits since the previous tag.
+      # ⛔ No hand-written body: one that is typed here goes stale the first time
+      # somebody forgets to edit it, and the commits cannot.
+      - name: publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.event.inputs.tag || github.ref_name }}'
+          gh release create $tag `
+            (Get-ChildItem dist -File | ForEach-Object { $_.FullName }) `
+            --title $tag `
+            --generate-notes `
+            --verify-tag
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Write-Output "published $tag"
