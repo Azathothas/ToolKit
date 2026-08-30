@@ -128,11 +128,18 @@ purpose, and it carries its own digests. A tag does not move either.
 pwsh -NoProfile -File launcher.ps1 -LauncherRelease wsl-toolkit-v1.0.0 -Action Doctor
 ```
 
-⭐ **`wsl-toolkit-v1.0.0` is the first one, published 2026-08-30**, and the path
+⭐ **`wsl-toolkit-v1.0.0` was the first one, published 2026-08-30**, and the path
 above was driven from an empty directory holding nothing but `launcher.ps1`: it
 resolved the release, downloaded both assets, verified the script against the
 published `SHA256SUMS`, created and destroyed a real distro, and returned the
 inner command's exit code through both layers.
+
+⚠ **`wsl-toolkit-v1.0.1` supersedes it the same day**, and the reason is worth
+naming rather than hiding in a version number: `v1.0.0` carries a guard that
+splits a path with the RUNNING host's separators. ⛔ It cannot misbehave on
+Windows, which is the only platform this tool supports, so `v1.0.0` is not
+withdrawn and a consumer pinned to it is not at risk. It was found by CI's ubuntu
+job, which runs the suite on a host the tool never runs on.
 
 ⚠ **What the release `SHA256SUMS` proves is transport, not authorship.** It comes
 from the same release as the asset, so anyone who could replace one could replace
