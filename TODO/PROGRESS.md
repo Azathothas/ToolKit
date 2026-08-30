@@ -157,9 +157,14 @@ skeleton outlives the session that wrote it. ⚠ The argument for `SECURITY.md`
 got slightly stronger: `docs/public/README.md` names it as where a finder looks,
 and this repository now publishes a runnable artefact rather than only a tree.
 
-### 4. ⭐ The release pipeline ran, and it is no longer a reasoned claim
+### 4. ⭐ The release pipeline ran twice, and it is no longer a reasoned claim
 
 `wsl-toolkit-v1.0.0` was tagged and the workflow published it on its first run.
+⭐ **`v1.0.1` followed the same afternoon** because the product was rebuilt, and
+the rule this session was given is that a rebuild owes a release. ⚠ `v1.0.0` is
+not withdrawn: what it carries cannot misbehave on the only platform this tool
+supports, and `docs/consumers.md` says so rather than leaving a version number to
+imply it.
 The whole path was then driven the way a consumer meets it: a bare `launcher.ps1`
 in an empty directory, no sibling, pointed at the release.
 

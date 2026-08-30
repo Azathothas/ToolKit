@@ -11,14 +11,15 @@ on what was true last time.
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-08-30T07:17:24Z | 2026-08-30T09:20Z, about 2h03m |
-| Commits | `2ffa680` | 2 on `main`, plus the tag `wsl-toolkit-v1.0.0` |
-| Work | 4 open entries assigned | **7 completed, 0 deferred, 0 failed.** `WSL-21` `WSL-22` `WSL-23` `WSL-24` `TOOL-09` `TOOL-10` `DOC-06` `DOC-07`. 8 new entries filed from a list the operator accepted item by item. |
-| Changes | 96 tracked files | 130 tracked files; 76 changed, +9,554 / -615 lines across both commits |
-| Size | 28,228 tracked lines | 37,167 tracked lines, +8,939 |
+| Elapsed | started 2026-08-30T07:17:24Z | 2026-08-30T09:35Z, about 2h18m |
+| Commits | `2ffa680` | 4 on `main`, and two tags: `wsl-toolkit-v1.0.0` and `v1.0.1` |
+| Work | 4 open entries assigned | **8 completed, 0 deferred, 0 failed.** `WSL-21` `WSL-22` `WSL-23` `WSL-24` `TOOL-09` `TOOL-10` `DOC-06` `DOC-07`. 8 new entries filed from a list the operator accepted item by item. |
+| Changes | 96 tracked files | 130 tracked files; 69 changed, +9,607 / -614 lines across four commits |
+| Size | 28,228 tracked lines | 37,221 tracked lines, +8,993 |
 | Checks | 15 passing, `check-twins` skipped by `--fast` | ⭐ **17 of 17 passing on the full run**, `check-twins` included. Two new: `wsl-toolkit bundle` and, inside `build.ps1 -Test`, a case-shadowed-parameter scan. |
 | Suite | 63 cases over 15 functions | 117 cases over 30 functions, green on both PowerShell hosts |
-| Published | ⛔ nothing, ever | ⭐ `wsl-toolkit-v1.0.0`: `wsl-toolkit.ps1`, `launcher.ps1` and a `SHA256SUMS` computed in CI. The workflow succeeded on its first run. |
+| Published | ⛔ nothing, ever | ⭐ two releases, `wsl-toolkit-v1.0.0` and `v1.0.1`, each carrying `wsl-toolkit.ps1`, `launcher.ps1` and a `SHA256SUMS` computed in CI. The workflow succeeded on its first run and on its second. |
+| CI | green at `2ffa680` | green at `89397c1`. ⚠ It went red once in between, on the ubuntu job, over a defect the local gate structurally cannot see. |
 | Cost | no money, no bandwidth beyond fetches | ~15 distro create-and-destroy cycles, `alpine:3.22` at 8.2 MiB each, all torn down |
 | Health | 4 open, 0 blocked, 35 done | 8 open, 0 blocked, 43 done. Tree clean, gate green, `wsl-toolkit-v1.0.0` deployed and driven end to end. |
 
