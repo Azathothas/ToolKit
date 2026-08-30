@@ -182,7 +182,10 @@ these is held to.
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |
 | run any check on Windows | ⭐ the `.ps1` half of the pair | the `.sh` half. ⚠ Native PowerShell may have no `sed`, and its `sort` is an alias that answers differently. |
+| ⭐ change anything in `wsl-toolkit.ps1` | the PART under `scripts/windows/wsl-toolkit/{src,core,libs}`, then `build.ps1` | ⛔ editing `wsl-toolkit.ps1`. It is GENERATED, and the gate refuses a bundle that disagrees with its parts. |
+| prove a change to `wsl-toolkit.ps1` before committing it | ⭐ `scripts/windows/wsl-toolkit/build.ps1 -Test` | running the selftest alone. `-Test` is that plus the surface lock, the analyzer and the shadowed-parameter scan. |
 | prove a change to `wsl-toolkit.ps1` without building a distro | ⭐ `scripts/windows/wsl-toolkit/selftest.ps1` | reading it. It runs in a second and needs no WSL. |
+| publish `wsl-toolkit.ps1` | `scripts/windows/wsl-toolkit/release.ps1`, then the workflow it triggers | `gh release create` by hand, which skips every refusal that stops a release from a dirty tree or a stale bundle |
 | close an entry and move its counts | `scripts/common/set-record.mjs` | editing several numbers by hand across three files |
 | check that no page says what another page says | `scripts/common/check-one-home.sh` | reading for it |
 | check the character set and the marker density | `scripts/common/check-markers.sh` | `check-docs.sh`, which reads markdown alone |

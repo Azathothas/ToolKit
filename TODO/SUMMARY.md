@@ -1,9 +1,9 @@
 # SUMMARY.md
 
 ⚠ **A snapshot of one session, not an authority.**
-[`PROGRESS.md`](PROGRESS.md) is what a session reads first, and it is the file
-that carries the work order. This is the table the last session printed, kept so
-it survives the chat scrolling away.
+[`PROGRESS.md`](PROGRESS.md) is what is true now; this is what the session that
+wrote it measured on the day. A session that reads this and acts on it is acting
+on what was true last time.
 
 ---
 
@@ -11,25 +11,41 @@ it survives the chat scrolling away.
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-08-30T04:56:24Z | 1h11m to `c3e0359`, read from the commit's own timestamp |
-| Commits | `8efe6e0` | two. `c3e0359` is the work, squashed as asked. A second carries what the closing review pass corrected, because [`../docs/conventions/git.md`](../docs/conventions/git.md) section 5 forbids amending a commit that has left the machine and no force push was needed. |
-| Work | 4 assigned areas | **2 done, 2 partial.** Issue 5 is closed in full with five entries; the gate, the reviews and CI are done. The documentation purge is `partial` and the second `AGENTS.md` was not started; the future task list was filed as entries rather than presented interactively. All three gaps are open entries or open questions. |
-| Changes | | 24 files, 4 of them new. 3,328 insertions, 449 deletions. `wsl-ephemeral.ps1` 1,980 to 2,792 lines. |
-| Size | 30 entries | 40 entries: 5 closed, 5 filed open or partial |
-| Checks | 14 passed, 1 skipped | ⭐ **16 entries in the gate**, 15 passed and `check-twins` skipped by `--fast`. Both halves run it. |
-| Cost | | 2 distros created and removed, one `alpine:3.22` image pulled and removed. ⚠ The engine and WSL are as they were found. |
-| Health | tree clean | tree clean, gate green in both halves, ⛔ **the stream log is unmeasured under Windows PowerShell 5.1** and `PROGRESS.md` question 4 says so |
+| Elapsed | started 2026-08-30T07:17:24Z | 2026-08-30T09:20Z, about 2h03m |
+| Commits | `2ffa680` | 2 on `main`, plus the tag `wsl-toolkit-v1.0.0` |
+| Work | 4 open entries assigned | **7 completed, 0 deferred, 0 failed.** `WSL-21` `WSL-22` `WSL-23` `WSL-24` `TOOL-09` `TOOL-10` `DOC-06` `DOC-07`. 8 new entries filed from a list the operator accepted item by item. |
+| Changes | 96 tracked files | 130 tracked files; 76 changed, +9,554 / -615 lines across both commits |
+| Size | 28,228 tracked lines | 37,167 tracked lines, +8,939 |
+| Checks | 15 passing, `check-twins` skipped by `--fast` | ⭐ **17 of 17 passing on the full run**, `check-twins` included. Two new: `wsl-toolkit bundle` and, inside `build.ps1 -Test`, a case-shadowed-parameter scan. |
+| Suite | 63 cases over 15 functions | 115 cases over 30 functions, green on both PowerShell hosts |
+| Published | ⛔ nothing, ever | ⭐ `wsl-toolkit-v1.0.0`: `wsl-toolkit.ps1`, `launcher.ps1` and a `SHA256SUMS` computed in CI. The workflow succeeded on its first run. |
+| Cost | no money, no bandwidth beyond fetches | ~15 distro create-and-destroy cycles, `alpine:3.22` at 8.2 MiB each, all torn down |
+| Health | 4 open, 0 blocked, 35 done | 8 open, 0 blocked, 43 done. Tree clean, gate green, `wsl-toolkit-v1.0.0` deployed and driven end to end. |
 
-### What the four review passes found
+### ⭐ Defects found, and by which pass
 
-| lens | what it looked at that the others did not | finding |
-| --- | --- | --- |
-| door sweep | every caller of the nine changed functions, and every reference to the four that were renamed or removed | none. `Invoke-InDistro` has exactly two callers and one branch; `Enter` bypasses it deliberately; no dangling reference survived. |
-| guard mutation | seven planted defects, each read unpiped | ⛔ **one guard was theatre.** A case named for the transport alphabet was satisfied by an earlier pattern check, so disabling the assert it was named for left the suite green. Renamed, and the real guard proved by mutating the skeleton instead. |
-| claim audit | every number about to be published, against the artefact that produced it | ⛔ **a wrong line count.** `WSL-21` said 2,300 lines; the file is 2,792. Corrected in the entry, the index row and `consumers.md`. |
-| the closing re-audit | this table itself, and the CI logs, after the push | ⛔ **two more wrong numbers, both mine, both in this file.** Elapsed said 2h30m against a commit stamp of 1h11m, and the change count said 21 files against 24. The pass that audits the audit is the one that found them. |
+Ten, and nine of them by driving, measuring or comparing rather than by reading.
+Three were in the checks themselves rather than in the code being checked.
 
-⚠ **A fourth thing was found by neither**, and by the tooling instead: a
-JavaScript `String.replace` expanded a dollar sign inside a replacement string
-and duplicated a 500-line script. It has a row in
-[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md).
+| what | the pass that found it |
+| --- | --- |
+| a `$state` local shadowing a `$State` parameter, killing the tick mid-run | driving a real distro |
+| `-ScriptArg` documented as repeatable and never bindable through `-File` | driving the documented example from the issue comment |
+| `[int[]] -TickEscalateSeconds 5,9` binding the single value `59` | instrumenting an escalation that silently never fired |
+| `check-no-secrets.ps1` unable to match a Windows home path at all | the FULL gate; `check-twins` named the drift |
+| `check-docs.ps1` calling correct three-deep links broken | the two halves of that twin disagreeing |
+| `-TimestampProfile raw` reading settings its own branch never built | the door sweep |
+| a sink-path refusal that `-DryRun` returned before reaching | the guard-mutation pass |
+| a new check reporting one blank finding over a clean tree | reading the finding, not the exit code |
+| three of the session's own test cases passing for the wrong reason | the two cases beside them that expected success |
+| the vhdx write time advancing while a guest slept | sampling it against a guaranteed-idle guest |
+
+### ⚠ What was NOT done, said rather than left to be found
+
+- **The consumer pins have not moved**, and all three rows are broken by the path
+  change. That is a change in three other repositories and this one cannot make
+  it. `PROGRESS.md` open question 1.
+- **The eight new entries are filed and unstarted.** None is a defect; every
+  defect found this session was fixed in it.
+- **`HUMAN.md` and `SECURITY.md` are still absent**, and publishing an artefact
+  strengthens the case for the second one slightly.

@@ -128,6 +128,12 @@ purpose, and it carries its own digests. A tag does not move either.
 pwsh -NoProfile -File launcher.ps1 -LauncherRelease wsl-toolkit-v1.0.0 -Action Doctor
 ```
 
+⭐ **`wsl-toolkit-v1.0.0` is the first one, published 2026-08-30**, and the path
+above was driven from an empty directory holding nothing but `launcher.ps1`: it
+resolved the release, downloaded both assets, verified the script against the
+published `SHA256SUMS`, created and destroyed a real distro, and returned the
+inner command's exit code through both layers.
+
 ⚠ **What the release `SHA256SUMS` proves is transport, not authorship.** It comes
 from the same release as the asset, so anyone who could replace one could replace
 the other. `-LauncherSha256` with a digest the caller holds is the check that

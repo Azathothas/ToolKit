@@ -48,13 +48,18 @@ sentences the live pages used to carry.
 
 | file | what it holds |
 | --- | --- |
-| [`wsl-toolkit.md`](wsl-toolkit.md) | the defects `wsl-toolkit.ps1` shipped and closed, and the shapes its behaviour used to have |
+| [`wsl-toolkit.md`](wsl-toolkit.md) | the defects `wsl-toolkit.ps1` shipped and closed, and the shapes its behaviour used to have. ⚠ The tool was `wsl-ephemeral.ps1` until 2026-08-30; that page says so at the top. |
+| [`consumers.md`](consumers.md) | how each consumer pin came to move, and what was measured while moving it. The live page keeps the pin STATE, which is the part a consumer's owner acts on. |
+| [`scripts.md`](scripts.md) | what `check-markers` and `check-one-home` counted the day each was first armed |
 
-⚠ **One page, and the directory is not finished.** `scripts/README.md`,
-[`../consumers.md`](../consumers.md), [`../conventions/docs.md`](../conventions/docs.md)
-and [`../conventions/prose.md`](../conventions/prose.md) still carry the story of
-their own fixes on the live page. `DOC-06` in [`../../TODO/docs.md`](../../TODO/docs.md)
-is that work, it is open, and it names the four files.
+⭐ **`DOC-06` closed on 2026-08-30 and the purge is applied**, so the four files
+it named carry constraints and no longer carry diaries.
+
+⚠ **The line it drew is the part worth keeping**, because a later session has to
+apply it rather than copy it: a measurement STAYS on a live page when a reader
+who does not know it will undo the rule, and MOVES here when it is a count from
+a tree that has since been fixed. `Sort-Object -u` dropping two of four distinct
+values stayed; "before it was armed, 164 characters across 28 files" moved.
 
 ⭐ **Prior art.** The shape is `pkgforge-dev/docker-archlinux`'s `HISTORY/`,
 recorded in

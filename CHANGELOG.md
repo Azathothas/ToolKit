@@ -27,9 +27,11 @@ entry. A superseded one is amended in place with a dated note.
 through `WSL-24`; [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-09` and
 `TOOL-10`; [`TODO/docs.md`](TODO/docs.md) carries `DOC-06` and `DOC-07`;
 [`TODO/PROGRESS.md`](TODO/PROGRESS.md) is the state.
-**Deployed:** ⭐ **yes, and it is the first time.** `wsl-toolkit.ps1` and its
-launcher are published as a GitHub release on a `wsl-toolkit-v*` tag, with a
-`SHA256SUMS` computed in CI over the bytes that are uploaded.
+**Deployed:** ⭐ **yes, and it is the first time.** `wsl-toolkit-v1.0.0` is
+published, with `wsl-toolkit.ps1`, `launcher.ps1` and a `SHA256SUMS` computed in
+CI over the bytes that were uploaded. The workflow succeeded on its first run,
+and the whole path was then driven from an empty directory holding only the
+launcher.
 
 ⛔ **This entry amends every "this repository publishes nothing" line above it.**
 Each of those was true when it was written and none is now. The live pages,

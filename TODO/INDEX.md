@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 43  open 0  blocked 0  done 43
+total 51  open 8  blocked 0  done 43
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 19 | 19 |
-| P2 | 0 | 0 | 15 | 15 |
-| P3 | 0 | 0 | 6 | 6 |
-| **all** | **0** | **0** | **43** | **43** |
+| P1 | 1 | 0 | 19 | 20 |
+| P2 | 6 | 0 | 15 | 21 |
+| P3 | 1 | 0 | 6 | 7 |
+| **all** | **8** | **0** | **43** | **51** |
 
 ---
 
@@ -49,6 +49,8 @@ total 43  open 0  blocked 0  done 43
 | TOOL-08 | P1 | S | done | The CI step that parses the workflows had never parsed one | [`tooling.md`](tooling.md) |
 | TOOL-09 | P1 | S | done | `check-docs.ps1` collapsed `..` with a regex that matches `..` | [`tooling.md`](tooling.md) |
 | TOOL-10 | P1 | S | done | `check-no-secrets.ps1` could not match a Windows home path at all | [`tooling.md`](tooling.md) |
+| TOOL-11 | P1 | S | open | CI does not run Windows PowerShell 5.1, which is where every P0 has been | [`tooling.md`](tooling.md) |
+| TOOL-12 | P2 | S | open | Nothing checks that a published release can be consumed | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -73,6 +75,12 @@ total 43  open 0  blocked 0  done 43
 | WSL-22 | P3 | S | done | The stream log has no sink, no colour and no prefix-only mode | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-23 | P3 | M | done | Parameters are silently ignored by the actions they do not apply to | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-24 | P1 | S | done | A list parameter cannot be repeated, and an int list binds a wrong number | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-25 | P2 | M | open | The release digest proves transport, not authorship | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-26 | P2 | M | open | A prepared rootfs is thrown away and paid for again | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-27 | P2 | M | open | The tick can say nothing is happening and never that something is | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-28 | P2 | M | open | A recorded run cannot be re-read or compared | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-29 | P3 | S | open | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-30 | P2 | XL | open | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 
 ---
 

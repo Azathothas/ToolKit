@@ -1027,3 +1027,117 @@ says.
 ⛔ **Second twin divergence this session**, after `TOOL-09`. Both were in a check
 rather than in the code being checked, both were invisible until a tree existed
 that exercised them, and both were found by comparison rather than by reading.
+
+---
+
+## TOOL-11. CI does not run Windows PowerShell 5.1, which is where every P0 has been
+
+**Source** the operator, 2026-08-30. It was on the list this session put to them and they took it; the gap it names had been an open question for a week.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+CI's Windows job runs PowerShell 7 only. Both P0 defects this tool has ever had
+lived in Windows PowerShell 5.1, and neither was visible on 7:
+
+- `WSL-12`, `-Action New` failing outright on 5.1;
+- the double quote 5.1 drops when it builds a child process's argument list.
+
+⚠ **This session had to check 5.1 by hand**, twice, and the last session carried
+"the stream log has not been run under 5.1" as an open question for a week
+because nothing automatic could answer it.
+
+## Premise
+
+⭐ **Measured on 2026-08-30**: the selftest passes under both hosts on this
+machine, 115 cases each, and `windows-latest` ships `powershell.exe` as standard,
+so the job needs nothing installed.
+
+⚠ **The two hosts genuinely differ where this tool is sensitive.**
+`-Action Doctor` measures the clock granularity and answers 100 ns on 7.6.5
+against 513,600 ns on 5.1, on one machine, the same minute. A suite that runs on
+one of them is a suite that has not been run.
+
+## Approach
+
+One step in the existing Windows job, beside the pwsh 7 one: the selftest under
+`powershell.exe`, with the exit code read from the process.
+
+⛔ **Beside, not instead.** Two hosts is the point; replacing one with the other
+trades a blind spot for a different blind spot.
+
+⚠ **Assert the case count there too**, as the pwsh step already does. A suite
+that stopped early exits 0 over a smaller suite on either host.
+
+## Consumers
+
+None. This is CI.
+
+## Prove
+
+```bash
+gh run list --repo Azathothas/ToolKit --workflow ci.yml --limit 1
+```
+
+A green run whose Windows job shows both selftest steps, and a red one when a
+5.1-only defect is planted.
+
+---
+
+## TOOL-12. nothing checks that a published release can be consumed
+
+**Source** the operator, 2026-08-30, accepting it and asking for the weekly re-check as well.
+**Category** tooling, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`release.yml` verifies the tree, builds, tests and publishes. Nothing then checks
+that the thing it published can be fetched and run. A release with a missing
+asset, a wrong name in `SHA256SUMS` or an unrunnable file would be reported as a
+successful publish.
+
+⚠ **This session verified the first release by hand, once**, from an empty
+directory holding only the launcher. That proves the path worked on 2026-08-30
+and says nothing about the next one.
+
+## Premise
+
+⭐ **Measured, by doing it**: a bare `launcher.ps1` with
+`-LauncherRelease wsl-toolkit-v1.0.0` resolved the release, downloaded both
+assets, matched the published digest and ran `-Action Doctor`, exit 0.
+
+⭐ **`-Action Doctor` needs no WSL for most of its rows**, which is what makes
+this cheap on a runner: it reports what is absent rather than failing.
+
+## Approach
+
+Two things, and the second is the one the operator added.
+
+1. A job in `release.yml` after publish: fetch with the launcher into a scratch
+   directory, verify, run `-Action Doctor`, read the exit code.
+2. A scheduled workflow that does the same against the latest release weekly, so
+   a release that STOPS being fetchable is reported rather than discovered by a
+   consumer. ⚠ The realistic causes are not a bad publish: a moved asset, a
+   changed proxy allowlist, an API shape change. None of those is visible at
+   publish time.
+
+⛔ **The smoke must fetch over the network, not use the tree it just built.**
+Using the local file would test everything except the thing that can break.
+
+## Consumers
+
+None directly. ⭐ It is the only automatic check that any consumer path works at
+all, which is why it is worth more than its size.
+
+## Prove
+
+```bash
+gh run list --repo Azathothas/ToolKit --workflow release.yml --limit 1
+```
+
+A publish whose smoke job is green, and a red one when the run is pointed at a
+tag whose assets were removed.

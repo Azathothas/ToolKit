@@ -19,7 +19,7 @@ and the entries themselves. Do not add a "previous sessions" section.
 session started 2026-08-30T07:17:24Z
 baseline        gate green at 2ffa680, tree clean, 15 checks passing and
                 check-twins skipped by --fast
-entries         total 43  open 0  blocked 0  done 43
+entries         total 51  open 8  blocked 0  done 43
 ```
 
 ⚠ The counts above are checked against [`INDEX.md`](INDEX.md)'s rows by
@@ -27,9 +27,10 @@ entries         total 43  open 0  blocked 0  done 43
 hand to make a check pass; fix whichever file is wrong.
 ⭐ `scripts/common/set-record.mjs recount` moves them for you.
 
-⭐ **The backlog is empty for the first time.** Every entry is closed. That is a
-statement about the entry list and not about the tool: what a next session should
-do is below, and it is a list the operator rules on rather than a work order.
+⚠ **The eight open entries were all filed at the END of this session**, from a
+list put to the operator interactively and accepted item by item. ⛔ None of them
+has been started, and none is a defect: every defect this session found was fixed
+in it.
 
 ---
 
@@ -98,13 +99,31 @@ died before reaching it.
 
 ## ⭐ The work order
 
-⛔ **There is none, because there are no open entries.** The next session's first
-job is to agree one.
+⭐ **Eight open entries. Take them in this order and the reason is written down.**
 
-⭐ **A candidate list was put to the operator interactively at the end of this
-session.** Whatever they accepted is filed as entries and appears in
-[`INDEX.md`](INDEX.md); if the index shows none open, nothing was accepted and
-the next session asks rather than inventing work.
+1. ⭐ **`TOOL-11`**, Windows PowerShell 5.1 in CI, first and it is the smallest.
+   Both P0 defects this tool has ever had lived on 5.1, this session and the last
+   one both had to check it by hand, and every entry below ships code that 5.1
+   has to run. ⛔ Doing it first means the rest are covered as they land rather
+   than checked afterwards.
+2. **`TOOL-12`**, the release smoke and its weekly re-check. Second because the
+   release path now has exactly one proof, taken by hand on one day, and three of
+   the entries below change what a release contains.
+3. **`WSL-25`**, signing. Third because it is the last thing standing between a
+   consumer and a pin they can trust without holding a digest, and because
+   `TOOL-12` is what will prove the signed release is still consumable.
+4. ⭐ **`WSL-28`**, replay and compare. It is pure functions over a file the tool
+   already writes, the suite can cover all of it with no WSL, and it is the
+   cheapest of the four feature entries.
+5. **`WSL-27`**, the progress protocol, then **`WSL-26`**, the rootfs cache. Both
+   change what a long quiet run looks like, and `WSL-27` is the one that makes
+   `WSL-26`'s saving measurable rather than asserted.
+6. **`WSL-29`**, `-Reuse`, is small and last of the feature work because it
+   overlaps `WSL-26`: if the cache lands first, reuse may be the wrong shape.
+7. ⚠ **`WSL-30`, the podman adapter, is XL and is genuinely two entries.** Its
+   first step is the mockup's validation matrix, sixteen unmeasured claims, and
+   the entry says in as many words that more than a couple of absent feeds should
+   split it rather than push it through.
 
 ---
 
@@ -137,14 +156,26 @@ skeleton outlives the session that wrote it. ⚠ The argument for `SECURITY.md`
 got slightly stronger: `docs/public/README.md` names it as where a finder looks,
 and this repository now publishes a runnable artefact rather than only a tree.
 
-### 4. ⚠ One path shipped this session is reasoned rather than measured
+### 4. ⭐ The release pipeline ran, and it is no longer a reasoned claim
 
-⛔ **The release workflow had never run end to end when it was written.** Its
-YAML parses, and every command in it was run by hand in some form, but a
-workflow is proved by a run. ⚠ The first release is therefore the test of the
-release pipeline. **Recommendation:** cut the first tag and watch it, which is
-what this session does last; whatever that run reports is recorded here by the
-session that reads it.
+`wsl-toolkit-v1.0.0` was tagged and the workflow published it on its first run.
+The whole path was then driven the way a consumer meets it: a bare `launcher.ps1`
+in an empty directory, no sibling, pointed at the release.
+
+```text
+  * release wsl-toolkit-v1.0.0
+  * digest matches the SHA256SUMS in release wsl-toolkit-v1.0.0
+  ! that proves the bytes arrived intact, not who published them.
+```
+
+A real distro was created, run and destroyed through it, and the inner command's
+exit code reached the caller through both layers.
+
+⚠ **One thing is worth knowing before the next release.** The published
+`launcher.ps1` is 55,185 bytes and the working tree's is 54,078: the workflow
+uploads what it checks out, which is CRLF, and the tree here is what an editor
+last wrote. That is why `release.ps1` prints its own digests with a line saying
+not to copy them anywhere, and why `SHA256SUMS` is computed in CI.
 
 ### 5. The no-POSIX-shell branch of `check-gate.ps1` is still reasoned
 

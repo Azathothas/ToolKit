@@ -2466,3 +2466,357 @@ selftest: 115 case(s) passed over 30 function(s) loaded from wsl-toolkit.ps1.
 caller can still pass a real array to `-ScriptArg` and get every element, and
 that path is not reachable through `-File`. The help says so instead of pretending
 the two are the same.
+
+---
+
+## WSL-25. the release digest proves transport, not authorship
+
+**Source** the operator, 2026-08-30, accepting it from a list put to them at the end of that session. The gap was written down by the work that created it.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`SHA256SUMS` ships in the same release as the asset it describes, so anyone who
+could replace one could replace the other. The launcher says exactly that, out
+loud, on every release fetch:
+
+```text
+  ! that proves the bytes arrived intact, not who published them.
+```
+
+⚠ **Saying it is better than not saying it and is not a fix.** A consumer who
+reads that line and wants authorship has one answer today, `-LauncherSha256`
+with a digest they hold, and holding a digest per release is the manual work the
+release was supposed to remove.
+
+## Premise
+
+⭐ **Measured on 2026-08-30**, by publishing `wsl-toolkit-v1.0.0` and fetching it
+from an empty directory: the launcher verifies the asset against the sums file
+from the same release and reports a match. Nothing in that chain is signed, and
+nothing in it is tied to the workflow that produced it.
+
+## Approach
+
+Sigstore keyless, ruled by the operator over minisign.
+
+- `release.yml` signs each asset with `cosign sign-blob --yes`, producing a
+  bundle beside it. ⛔ The job needs `id-token: write`, which is a permission
+  raise and belongs to that job alone, exactly as `contents: write` already does.
+- The launcher gains an OPTIONAL verify step: when `cosign` is present and a
+  bundle asset exists, verify it against the workflow identity and say so; when
+  it is not, say that too rather than skipping silently.
+
+⛔ **Verification must not become mandatory in the same change.** A launcher that
+suddenly requires a tool nobody has installed breaks every consumer to close a
+gap none of them asked about. Make it report, then decide.
+
+## Decision
+
+⭐ **Ruled 2026-08-30: sigstore keyless, not minisign.** Keyless ties the
+signature to the workflow identity, so there is no key for the operator to hold
+or lose, which is the failure mode that actually ends signing schemes. ⚠ What it
+costs is a dependency on the public transparency log at verify time, and an
+offline verifier cannot check it. Minisign has the opposite trade and lost on the
+key-custody half.
+
+## Consumers
+
+All three rows of [`../docs/consumers.md`](../docs/consumers.md). ⛔ Not breaking
+while verification is optional; it becomes breaking on the day it is required,
+and that day is its own entry.
+
+## Prove
+
+```bash
+gh release view TAG --repo Azathothas/ToolKit --json assets --jq '[.assets[].name]'
+```
+
+The bundle assets present, and a launcher run reporting a verified signature
+naming the workflow, plus a run on a host with no `cosign` reporting that it
+could not verify rather than reporting success.
+
+---
+
+## WSL-26. a prepared rootfs is thrown away and paid for again
+
+**Source** the operator, 2026-08-30. The workload behind issue 5 is the worked example.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`-Action New` always pulls, exports and imports. The incident that produced the
+whole stream log was a 14-minute silent `apt` install; the second and third runs
+of that workload pay for it again, and the tool offers nothing between "throw
+everything away" and "manage a long-lived distro by hand".
+
+## Premise
+
+⚠ **Read, not measured**, and the measurement is cheap: nothing in this tree has
+timed a repeated run of the same prepared workload. ⭐ What IS measured is the
+import cost this session saw repeatedly, around 8 to 12 seconds for an 8 MiB
+Alpine rootfs, which is the floor rather than the interesting number. The
+interesting number is the guest-side preparation, and that is the caller's.
+
+## Approach
+
+`-Action Snapshot -Name <distro> -As <tag>` exports a registered distro back to a
+rootfs tarball under the existing base directory, and `-Action New -Tarball <tag>`
+takes it. The seam already exists: `Export-ImageRootfs` writes a tarball and
+`Invoke-ActionNew` imports one, and this is the third caller of the same path.
+
+⛔ **Nothing about the safety model changes.** The tarball lands under the one
+base directory, `List` and `Purge` already report and remove loose tarballs
+there, and a snapshot must not become a thing those two are blind to.
+
+⚠ **A snapshot carries whatever the last command left in it**, including a
+credential a caller passed with `-ScriptArg`. Say so where the tag is named, not
+only on this page.
+
+## Consumers
+
+None break: this adds an action and a switch. ⚠ `Purge` starts removing
+snapshots as orphans unless they are distinguished, and a caller who thought a
+snapshot was durable would lose it. That is the one design question this entry
+must answer before it writes anything.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action Snapshot -Name eph-x -As probe-ready
+```
+
+A second `New -Tarball probe-ready` that reaches the prepared state, timed
+against the same preparation done from the image, both numbers recorded with the
+machine and the date.
+
+---
+
+## WSL-27. the tick can say nothing is happening and never that something is
+
+**Source** the operator, 2026-08-30, accepting it from the list. The idea is the mockup's section 48, question 4.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+The tick reports silence, the distro's state and whether its disk grew. It cannot
+report that a command is 60 percent through, because nothing inside the guest can
+tell it anything, and the three host-side signals that were measured say only
+whether something is happening rather than how much is left.
+
+## Premise
+
+⭐ **The mockup argues a stdout prefix is the right channel precisely because it
+needs nothing**: no injection, no mount, no named pipe, no agent in the image.
+⚠ Its own caveat is that a prefix can collide with application output, which is
+why the token has to be the caller's choice rather than a constant.
+
+## Approach
+
+`-ProgressPrefix TOKEN`, off by default. A relayed line whose text begins with
+the token is CONSUMED rather than relayed, parsed as a percentage and an optional
+label, and reported by the tick and in the event log. The seam is
+`Write-StreamLogLine`'s caller in `Invoke-InDistroLogged`, where a line is
+already classified before it is written.
+
+⛔ **Off by default and the token is never a default.** A tool that silently
+swallows a line beginning with some chosen string is a tool that eats somebody's
+output.
+
+⛔ **The tick reports the last progress and when it arrived. It does not compute
+an estimate.** A remaining-time figure from one sample is the fabricated number
+`prose.md` forbids.
+
+## Consumers
+
+None break: a caller who never passes `-ProgressPrefix` sees exactly what they
+see now, and that is the property to assert in the suite.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/selftest.ps1
+```
+
+Cases proving a prefixed line is consumed, an unprefixed one is relayed
+unchanged, a malformed prefixed line is relayed rather than swallowed, and that
+with no `-ProgressPrefix` every line is relayed byte for byte.
+
+---
+
+## WSL-28. a recorded run cannot be re-read or compared
+
+**Source** the operator, 2026-08-30, accepting it from the list. Possible only because `-EventLog` now exists.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`-EventLog` writes every event as JSON, and nothing reads it. A caller who
+recorded a run cannot re-render it in another timestamp shape without running it
+again, and cannot compare two runs at all.
+
+## Premise
+
+⭐ **The schema is versioned and the renderer is already a pure function of the
+event fields**, which is what makes this small: `Format-StreamLogPrefix` needs a
+clock reading and a tag, and both are in every record.
+
+⚠ **What is NOT in the records is the settings the run used.** A replay in a
+different shape is the point, so that is fine; a replay claiming to reproduce the
+original bytes is not, and this entry must not claim it.
+
+## Approach
+
+Two actions, both pure functions over a file, so the suite covers all of it with
+no WSL and no engine.
+
+- `-Action Replay -EventLog FILE` re-renders with any `-Timestamp*` settings.
+- `-Action Compare -EventLog A -Against B` diffs duration, longest silence, time
+  to first output, line and byte counts per stream, and the exit code.
+
+⭐ **Longest silence is the figure that earns this.** A run whose result stayed
+green while its longest gap grew fifteen times has a regression that no exit code
+reports.
+
+⛔ **A gap in `seq` is reported, not smoothed over.** The field is documented as
+gapless, so a gap means records were dropped and that is a finding about the
+recording rather than about the run.
+
+## Consumers
+
+None. Two new actions, and `WSL-23`'s applicability table gains rows for them.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/selftest.ps1
+```
+
+Cases over a fixture event log: a replay in three timestamp shapes, a comparison
+naming the longer silence, and a refusal on a log with a gap in `seq`.
+
+---
+
+## WSL-29. every run imports, even when a distro from the same image is registered
+
+**Source** the operator, 2026-08-30, accepting it from the list.
+**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A caller running ten commands against one image either pays the pull, export and
+import ten times, or manages a distro name by hand across ten invocations.
+
+## Premise
+
+⚠ **Read, not measured.** The import cost seen repeatedly this session is 8 to 12
+seconds for an 8 MiB Alpine rootfs on one machine, which bounds what this saves
+for a small image and says nothing about a large one.
+
+## Approach
+
+`-Reuse` on `New`: if a registered ephemeral distro was created from the same
+image reference, run in it rather than importing. It must SAY which it did.
+
+⛔ **It cannot be the default and it cannot be silent.** A reused distro carries
+whatever the last command left in it, including files a previous caller wrote,
+and a caller who did not ask for that is owed the warning every time.
+
+⚠ **The image reference has to be recorded somewhere the tool can read back.**
+Deriving it from the generated distro name is a value re-parsed out of a mutable
+name, which `conventions/code.md` names as the wrong answer.
+
+## Consumers
+
+None break: a caller who never passes `-Reuse` gets today's behaviour exactly.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action New -Image alpine:3.22 -Reuse -Command 'true'
+```
+
+Twice in a row: the first imports, the second names the distro it reused and its
+age, and both exit 0.
+
+---
+
+## WSL-30. the mockup's other two thirds: a podman adapter
+
+**Source** the operator, 2026-08-30, choosing to build the adapter over measuring the feeds first.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** XL, **Status** open
+
+---
+
+## Problem
+
+The timestamp layer, the tick, the event log and the exit-code reading are all
+container-agnostic, and none of them can watch a container. A caller running a
+podman workload gets none of it, which is the two thirds of the mockup this
+repository deliberately did not build.
+
+## Premise
+
+⛔ **EVERY FEED THIS NEEDS IS UNMEASURED**, and the mockup says so about itself:
+its section 47 is sixteen claims, each marked as a hypothesis, over a document
+whose own banner says nothing in it has been run.
+
+⚠ **This tool's WSL signals, by contrast, are all measured, and three of the four
+candidates were REJECTED by measurement.** That ratio is the reason this entry
+starts where it does.
+
+## Approach
+
+⭐ **Step one is the validation matrix, and nothing is designed before it
+answers.** Run the mockup's sixteen claims against real podman on this host and
+record which feeds exist, which are absent, and which answer differently from
+what it assumed. That produces sixteen facts and makes every later decision
+cheap.
+
+Then, and only then, an adapter behind the existing rendering layer: lifecycle
+from `podman events`, output from `podman logs`, resources from `podman stats`,
+and the exit code from `podman wait`. ⛔ The observation layer must not name a
+command; the adapter decides, and a feed that does not exist reports absent
+rather than zero.
+
+⛔ **A distro and a container are not the same kind of thing.** The mockup is
+explicit about it and refuses to pretend otherwise, and so must this: they share
+a kernel and nothing else, and one tool that blurs them produces nonsense about
+both.
+
+## Decision
+
+⭐ **Ruled 2026-08-30: build the adapter**, over the smaller option of measuring
+the feeds and stopping.
+
+⚠ **The effort is XL, and the index says an XL is almost always two entries
+pretending to be one. It is.** The ruling is recorded as given; the honest note is
+that if the validation matrix comes back with more than a couple of absent feeds,
+the right response is to split this rather than to push through, and the split is
+already drawn: the matrix is one entry and the adapter is the other.
+
+## Consumers
+
+None today. ⚠ If it lands as new actions on this script rather than as a second
+tool, every consumer's parameter surface grows, and `surface.lock` is what will
+say so.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action Doctor
+```
+
+First, a capability table with a measured answer for each of the mockup's sixteen
+claims. Then a container run whose output carries the same stamps, whose silence
+produces the same tick, and whose exit code passes through unchanged.
