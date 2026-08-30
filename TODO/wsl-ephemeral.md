@@ -1689,3 +1689,460 @@ reported nothing to clear, which is what it is written to do. ⭐ What would hav
 had to be true for it to fire: a copy fetched by a browser, by
 `Start-BitsTransfer`, or unpacked from a downloaded archive, pointed at with
 `-LauncherLocal`.
+
+---
+
+## WSL-16. the file channel makes a consumer normalise and encode by hand
+
+**Source** [issue 5](https://github.com/Azathothas/ToolKit/issues/5), complaint 1.
+**Category** wsl-ephemeral, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+A consumer wanting to run a script in a distro had to write it to a file, check
+its line endings, convert it with `base64 -w0`, and pass the result as
+`-CommandB64`. The issue's own transcript shows all four steps, plus two `sed`
+passes to inject a URL into the script and an `od -c | grep -c` to count
+carriage returns.
+
+## Premise
+
+⭐ **Measured, not read.** `-CommandFile` already existed and already read a file
+verbatim, so three of those four steps were already unnecessary and nobody knew.
+What it did with CRLF was warn and send the bytes anyway, so the one step that
+actually mattered was the one it did not do.
+
+## Approach
+
+`Resolve-CommandBytes` gains `ConvertFrom-CommandFileBytes`, which repairs the
+**copy in transit** and never the file: CRLF to LF, a UTF-8 byte order mark
+removed, and UTF-16 refused by name because `/bin/sh` stops at the first NUL.
+`-Verbatim` turns all three off. `-ScriptArg NAME=VALUE` prepends POSIX-quoted
+assignments so nothing runs `sed` over a payload, and `@hostaddress` in a value
+resolves through the same function `-Action HostAddress` uses.
+
+⛔ It must not rewrite the file on disk. That distinction is the whole design.
+
+## Consumers
+
+`Azathothas/bit-cli`'s `docs/containers.md` tells its reader to do the base64
+step by hand. Nothing breaks: `-CommandB64` is unchanged. The page is now longer
+than it needs to be, which is that repository's to decide.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral-selftest.ps1
+```
+
+Exit 0, with the eight `ConvertFrom-CommandFileBytes` cases and the eight
+`ConvertTo-ScriptArgPrologue` cases passing.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T06:00:00Z.** Both parameters shipped, with sixteen cases in
+the selftest and one end-to-end run against a real `alpine:3.22` distro using a
+15-CRLF file and `-ScriptArg "URL=https://@hostaddress:8443/"`.
+
+```text
+  * .tmp/guest-drive.sh has 15 CRLF line ending(s); the copy being sent uses LF.
+  * the file on disk was NOT modified. Pass -Verbatim to send its bytes exactly.
+  * -ScriptArg URL : @hostaddress resolved to 172.23.96.1.
+00:00:06.123 out  SCRIPTARG URL=https://172.23.96.1:8443/
+```
+
+---
+
+## WSL-17. the launcher makes every consumer resolve a commit and a digest by hand
+
+**Source** [issue 5](https://github.com/Azathothas/ToolKit/issues/5), complaint 2.
+**Category** wsl-ephemeral, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+`-LauncherRef` and `-LauncherSha256` both had to be resolved by the caller, with
+`gh` and `sha256sum`, and re-resolved every time either moved. The issue asks
+why a consumer cannot choose to trust the launcher instead.
+
+## Premise
+
+⚠ **The pin rule is right and the cost of it was real.** "Pin a commit, never a
+branch" prevents running code nobody reviewed. What it does not require is that
+the CALLER be the one who types the commit.
+
+## Approach
+
+`-LauncherRef auto` resolves the branch to a commit once, records the commit and
+its digest in a lock file, and reads the lock forever after. `-LauncherRef
+latest` re-resolves every run and warns every run. `-LauncherSha256 auto` reads
+a digest from the API for whatever ref is in play.
+
+⛔ Neither keyword may fetch a branch. Both resolve to a commit first, so the URL
+downloaded always names an immutable object.
+
+⛔ No `gh`. `Invoke-WebRequest` ships with every supported PowerShell, and a
+convenience path needing another tool installed replaces one setup step with
+another.
+
+## Decision
+
+**An explicit `-LauncherRef` now wins over the sibling beside the launcher.**
+Ruled 2026-08-30. The alternative was leaving the order alone and documenting
+the trap, which is what `Azathothas/bit-cli` had to do: it deletes the sibling
+before every call and wrote the workaround into its own page. A caller who names
+a revision means that revision. Recorded as a break in `../docs/consumers.md`.
+
+## Consumers
+
+All three rows checked. `bit-cli`'s workaround becomes unnecessary;
+`Azathothas/TEMPLATE`'s wrapper fetches into a directory with no sibling; the
+vendored copy fetches nothing.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral-launcher.ps1 -LauncherRef auto -LauncherInstallDir DIR -Action HostAddress
+```
+
+Exit 0, a lock written at `DIR`, and the address on stdout. A second run reads
+the lock and resolves nothing.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T06:00:00Z.** Run against `main` on this machine. The digest
+`auto` computed is `ab4f6bd6c040bb9d...`,
+⭐ which is the same value the issue's own transcript shows a consumer having
+pasted by hand.
+
+```text
+  * Azathothas/ToolKit@main is 8efe6e02b1ce
+  * recorded in ...\wsl-ephemeral.lock.json. Later runs read it and ask GitHub nothing.
+  ! you have just trusted whatever 'main' pointed at. Nobody reviewed it on your behalf.
+==> Fetching Azathothas/ToolKit@8efe6e02b1ce
+  * digest matches
+```
+
+Both guards were mutation-proved: a lock with a zeroed digest produced
+`DIGEST MISMATCH` and exit 1, and a lock naming another repository was refused
+by name.
+
+---
+
+## WSL-18. a command that prints nothing is indistinguishable from one that has died
+
+**Source** [issue 5](https://github.com/Azathothas/ToolKit/issues/5), complaint 3, and the mockup it links.
+**Category** wsl-ephemeral, **Priority** P1, **Effort** L, **Status** done
+
+---
+
+## Problem
+
+⭐ **The expensive one.** A consumer ran a script in a distro, it produced no
+output for a long time, an agent waited on a matcher that never fired, and the
+run ended in `Exit code 137` and a manual kill. Nothing in the output
+distinguished a slow download, a progress bar redrawing with a carriage return,
+a deadlock, a dead distro, or a prompt waiting on stdin that would never arrive.
+
+## Premise
+
+The issue proposes a `ts`-style timestamp on every line and a tick, emitted by
+the watcher, with nothing injected into the guest. ⚠ **The mockup it links is
+explicitly a mockup**: it says in its own banner that no code exists and every
+transcript in it is hand-written. So it was read as a design to select from
+rather than a specification to implement.
+
+## Approach
+
+`Invoke-InDistro` gains one branch. With the log on, the child's streams are
+relayed rather than inherited, each line is stamped and tagged, a carriage
+return terminates a line, an unterminated line is flushed after two seconds, and
+`-TickSeconds` of silence produces a heartbeat. `-NoTimestamps` restores the
+inherited-handle path byte for byte.
+
+⛔ It must not design a ceiling: `-TimestampMode` and `-TimestampFormat` cover
+`tss`'s surface rather than inventing one.
+⛔ It must not build the rest of the mockup. No JSONL, no dashboard, no
+capability probe, no `podman` adapter. Those are a different tool.
+
+## Consumers
+
+⛔ **A break.** stdout now carries a prefix. Recorded in `../docs/consumers.md`
+with `-NoTimestamps` named as the restore.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action New -Image alpine:3.22 -Name eph-tk-drive -Ephemeral -Force -CommandFile .tmp/guest-drive.sh -TickSeconds 3
+```
+
+Exit 3, the command's own code. Ticks on stderr during the quiet stretch, and
+`out~` lines for the carriage-return progress meter and the unterminated prompt.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T06:00:00Z.** Driven against a real `alpine:3.22` distro.
+
+```text
+00:00:00.145 out  hello from stdout
+00:00:02.300 out~ Continue? [y/N]
+00:00:05.121 out~ 10%
+00:00:06.123 out  100%
+00:00:09.339 tick 3s silent | elapsed 9s | out 7 lines 89 B | err 1 lines 18 B | distro Running
+00:00:13.122 out  after the quiet
+EXIT=3
+```
+
+⛔ **Two defects were found while building this and both are in
+`../docs/HISTORY/wsl-ephemeral.md`:** a byte-array concatenation that threw, and
+a tick advancing the delta clock so a five-second gap read as `+0.619`. The
+first was found by the selftest on its first run; the second only by driving a
+real distro, which is why part (b) of the gate exists.
+
+⚠ **What was deliberately not built** is in `WSL-22`.
+
+---
+
+## WSL-19. nothing bounds the caller's command, so a hung run ends in a kill
+
+**Source** [issue 5](https://github.com/Azathothas/ToolKit/issues/5), the transcript's `Exit code 137`.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`-TimeoutSeconds` bounds the questions the script asks a distro for itself and
+deliberately not `-Command`. That is right as a default and it left the caller
+with no bound at all, so step 6 of the reported failure is a person killing the
+session by hand.
+
+## Approach
+
+`-CommandTimeoutSeconds`, opt-in, no default. On expiry the child is killed, the
+distro is terminated so the work in the guest stops too, and the exit code is
+124.
+
+⛔ It must not acquire a default. A build that runs for an hour is a legitimate
+command.
+
+## Consumers
+
+None: a new parameter with no default cannot change an existing call.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action Run -Name eph-tk-modes -CommandTimeoutSeconds 5 -TickSeconds 2 -Command 'echo starting; sleep 600; echo never'
+```
+
+Exit 124, in about five seconds rather than ten minutes.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T06:00:00Z.**
+
+```text
+rc=124
+elapsed=5s
+00:00:05.031 tick TIMED OUT after 5s: -CommandTimeoutSeconds 5 was reached.
+             Terminating 'eph-tk-modes'. The exit code is 124, which is what
+             coreutils' timeout reports.
+```
+
+---
+
+## WSL-20. one API host is a single point of failure
+
+**Source** the operator, 2026-08-30, while `WSL-17` was being built.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`WSL-17`'s convenience path asks api.github.com two questions. Unauthenticated
+that endpoint allows 60 requests an hour per address, and on some networks it or
+`raw.githubusercontent.com` is not reachable at all. A convenience that fails
+closed on a rate limit is a convenience nobody relies on.
+
+## Premise
+
+⭐ **Measured on 2026-08-30**, not assumed. `raw.githubusercontent.com`,
+`api.github.com` and `api.gh.pkgforge.dev` each served 96,170 bytes for commit
+`8efe6e02`, all hashing to the same SHA-256. The proxy's own `rate_limit`
+reported 5000 core requests remaining against the anonymous 60.
+
+## Approach
+
+Every API question and the file download try each host in order and stop at the
+first that answers. The host that answered is named on stderr when it is not the
+first.
+
+⛔ A bad answer is not tried past: the caller checks the shape of what came back,
+so a proxy returning a login page fails the same way the source would.
+
+## Consumers
+
+None. The URL a caller passes has not changed; only what happens when it cannot
+be reached.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File LAUNCHER_WITH_A_DEAD_FIRST_HOST -LauncherRef auto -LauncherInstallDir DIR -Action HostAddress
+```
+
+Exit 0, with the fallback named, and the same commit and digest the healthy path
+produces.
+
+---
+
+## Closing
+
+**Closed 2026-08-30T06:00:00Z.** Mutation-proved: a copy of the launcher with
+`api.github.invalid` as the first host resolved through the proxy and produced
+an identical lock.
+
+```text
+  ! api.github.invalid did not answer; this came from api.gh.pkgforge.dev instead.
+  * Azathothas/ToolKit@main is 8efe6e02b1ce
+  * digest matches
+```
+
+⚠ **The proxy enforces a user-agent allowlist**, which was found by measuring
+rather than by reading its page: `wsl-ephemeral-launcher` and `Mozilla/5.0` both
+answered HTTP 420 while `curl/8.21.0` answered 200. The agent sent now carries a
+compatibility token beside the tool's real name.
+
+---
+
+## WSL-21. `wsl-ephemeral.ps1` is 2,792 lines in one file
+
+**Source** the operator, 2026-08-30: is PowerShell still the right language, and should the file be split?
+**Category** wsl-ephemeral, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+The script is one file of 2,792 lines, counted on 2026-08-30. It was 1,980 on
+2026-08-29, so this session grew it by 41 percent. A reader looking for the
+stream log reads past the safety model, the OCI config and the disk preflight to
+reach it.
+
+## Premise
+
+⚠ **Read rather than measured.** Nothing has been shown to be slower, harder to
+change or more defect-prone because of the length. The two defects this session
+found were both logic, not structure.
+
+## Decision
+
+⭐ **Recommendation: stay in PowerShell, and do NOT split the file yet.**
+
+**On the language.** It is the right one and the reasons are not preference.
+`wsl.exe` is a Windows binary; the script reads `.wslconfig`, enumerates network
+interfaces through .NET, clears an alternate data stream, and drives a process
+with two redirected pipes. A Rust or Go rewrite buys a single binary and pays
+for it with a build step, a release pipeline, a platform matrix and a download
+before anything runs. ⛔ This repository publishes no artefacts, so a compiled
+tool would be the first thing it had to publish, and that is a much larger
+change than the one being considered.
+
+**On splitting.** A single file is what makes the launcher's whole contract
+possible: one URL, one digest, one thing to verify. Splitting into modules means
+a consumer fetches N files and verifies N digests, or this repository starts
+publishing a concatenated release, which is the artefact it does not publish.
+⚠ **The honest reading is that the file is long and not yet unmanageable**, and
+the cost of the split lands entirely on consumers.
+
+⭐ **What would change the answer**, so this is re-derivable rather than
+re-arguable: a second Windows tool needing the same helpers, at which point a
+shared module has two callers instead of one and stops being speculative.
+
+## Prove
+
+⛔ **A comparative claim needs a benchmark, and the acceptance for this entry is
+to produce the numbers rather than to make the change.** Line count per
+responsibility, and the count of functions with no caller outside their own
+section.
+
+---
+
+## WSL-22. the stream log has no sink, no colour and no prefix-only mode
+
+**Source** deferred from `WSL-18`, 2026-08-30.
+**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`tss` has `-o FILE`, `--force-overwrite`, `--color`, `--prefix-only`,
+`--separator` and `--buffered`. The stream log implements the timestamp modes
+and the format string and none of those six.
+
+## Premise
+
+⭐ **Deliberate, and recorded so it is not read as an oversight.** A caller
+redirects to get a file, and none of the six was asked for by the issue. A knob
+with no caller is machinery with a maintenance cost and no benefit.
+
+## Approach
+
+⛔ **Do not implement these because the list exists.** Add one when something
+asks for it, and say in the entry what asked.
+
+## Prove
+
+The command that asked for it, in a session transcript or an issue.
+
+---
+
+## WSL-23. parameters are silently ignored by the actions they do not apply to
+
+**Source** carried from the 2026-08-29 record, extended 2026-08-30.
+**Category** wsl-ephemeral, **Priority** P3, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`-Image`, `-Tarball`, `-OciEnv` and `-Systemd` are read only by `New`, and
+passing them to `List` or `Purge` does nothing and says nothing. This session
+added seven more parameters with the same property.
+
+## Premise
+
+⚠ **Partly addressed and not closed, which is why this stays open.** The
+combinations that are wrong *among the new parameters* are refused by name:
+`-NoTimestamps` with any of the four it disables, `-TimestampFormat` with a mode
+that has no format, `-Verbatim` without `-CommandFile`, `-ScriptArg` with no
+command. What is not refused is a parameter passed to an action that ignores it.
+
+## Approach
+
+A table of which parameter applies to which action, checked once in `Main`.
+
+⛔ **This is a break**, and it should be: a caller passing a parameter that does
+nothing believes something is happening.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/powershell-windows/wsl-ephemeral.ps1 -Action List -Image alpine:3.22
+```
+
+Exit 1, naming both the parameter and the action.

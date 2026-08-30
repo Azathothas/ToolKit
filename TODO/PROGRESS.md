@@ -16,10 +16,10 @@ and the entries themselves. Do not add a "previous sessions" section.
 ## State
 
 ```text
-session started 2026-08-29T14:26:11Z
-baseline        ci green on all three jobs at 7127ff7, tree clean, and the
-                gate was 13 checks passing in 49.8s
-entries         total 30  open 0  blocked 0  done 30
+session started 2026-08-30T04:56:24Z
+baseline        gate green at 8efe6e0, tree clean, 14 checks passing and
+                check-twins skipped by --fast
+entries         total 40  open 4  blocked 0  done 35
 ```
 
 ⚠ The counts above are checked against [`INDEX.md`](INDEX.md)'s rows by
@@ -27,98 +27,89 @@ entries         total 30  open 0  blocked 0  done 30
 hand to make a check pass; fix whichever file is wrong.
 ⭐ `scripts/common/set-record.mjs recount` moves them for you.
 
-⛔ **The baseline was green and two of its checks did not exist.** The gate this
-session started from ran thirteen entries and it now runs fifteen. The two that
-were added found **167 marker problems and 17 two-home sentences** in the tree
-that baseline called clean. A green baseline is a statement about the checks
-that ran and nothing more.
-
-⭐ **Re-measured on this machine on 2026-08-29**, because two more twin pairs
-made the figures the scripts carried stop describing this tree. ⚠ These are
-separate runs on a machine doing other things, so they do not add up.
-
-| measurement | this session | before, 2026-08-27 |
-| --- | --- | --- |
-| the fast gate, sh half | 66s, 15 checks | 49.8s, 13 checks |
-| the fast gate, PowerShell half | 41s, 15 checks | not comparable: it skipped six |
-| the full gate | 379s | 208s |
-| `check-twins` alone | 270s | 171s |
-| twin pairs it compares | 13 | 10 |
+⚠ **The gate grew a sixteenth entry this session**, `wsl-ephemeral selftest`,
+in both halves and in both CI jobs. It is the first test in this tree as
+distinct from a check, and it found a defect on its first run.
 
 ---
 
 ## What this session did
 
-**2026-08-29. The four open issues, and six defects found while doing them.**
+**2026-08-30. Issue 5, in full, and the three things a consumer had to do by
+hand.**
 
-⭐ **Every issue open against this repository is answered.** Twelve entries
-filed and closed: `DOC-02` through `DOC-05`, `TOOL-04` through `TOOL-08`, and
-`WSL-13` through `WSL-15`.
+⭐ **`WSL-16` through `WSL-20` are closed.** Every complaint in the issue is
+answered, and two of them are answered more completely than they were asked.
 
-### The half that was asked for
+- **The stream log**, on by default. A timestamp on every line a command
+  produces, a stream tag, a heartbeat while there are none, and a carriage
+  return treated as a line terminator so a progress meter is visible instead of
+  being twenty minutes of nothing. `-NoTimestamps` turns all of it off and is
+  byte-exact.
+- **`-CommandFile` repairs the copy it sends**, rather than warning and sending
+  it anyway: CRLF to LF, a byte order mark removed, UTF-16 refused by name.
+  `-ScriptArg NAME=VALUE` passes values in without anybody running `sed` over a
+  payload, and `@hostaddress` resolves through the same code `-Action
+  HostAddress` uses.
+- **`-CommandTimeoutSeconds`**, opt-in with no default, exit 124.
+- **`-LauncherRef auto` and `latest`, `-LauncherSha256 auto`, and a lock file.**
+  A consumer never pastes a commit or a digest again, and neither keyword ever
+  fetches a branch: both resolve to a commit first.
+- **Three hosts are tried for the bytes**, with `api.gh.pkgforge.dev` behind
+  `api.github.com`. ⛔ No `gh`, no `curl`, no external tool at all.
+- **A test**, `wsl-ephemeral-selftest.ps1`, 63 cases over 15 functions, wired
+  into both halves of the gate and both CI jobs.
 
-- **`wsl-ephemeral.ps1` gains two read-only actions.** `-Action Resources` says
-  what WSL and the container engine are holding and prints the cleanup commands
-  without running one of them. `-Action HostAddress` answers what a distro
-  reaches this host at, which previously took building a throwaway VM to find
-  out. `-PortForward` was refused, with the reason recorded in the entry.
-- **A launcher**, `wsl-ephemeral-launcher.ps1`, so fetching and running this
-  tool from another project is one command rather than five careful steps.
-- **`docs/templates/` is gone**, and `TODO/` is the shape
-  [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) names:
-  a record, an index, the entries, [`RULES.md`](RULES.md), and one form at
-  [`ENTRY.md`](ENTRY.md).
-- **`docs/AGENTS.md` exists** and is written to be read end to end. `README.md`
-  is for a person and carries the map; the root `AGENTS.md` is a door.
-- **Four helpers moved here from `Azathothas/TEMPLATE`** with the licence texts
-  one of them reads, and two drifted checks were refreshed from it.
+### ⚠ What was found while doing it
 
-### ⭐ The half nobody asked about, and it is the more useful half
-
-⛔ **Six defects, four of them reporting success over a failure.** Each is an
-entry, and each has a row in
-[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md).
-
-| what | how long it had been true |
+| what | how it was found |
 | --- | --- |
-| a CI step named `yaml parses` iterated zero files and exited 0 | since it was written. Python's `glob` skips dot-directories and every yaml file here is under `.github/` |
-| `check-remote-items` exited 1 for an item that only needed reading | since the first issue was filed. The weekly workflow was red the whole time |
-| its two modes disagreed on the same tree, text 1 and json 0 | the same |
-| `check-gate.ps1` skipped six checks on the host it exists for | since it grew a twin. Invisible on any machine with Git Bash |
-| both halves of `deslop` printed the count they had planned to remove | in the repository it was imported from |
-| 164 characters outside the five, in 28 files, all in scripts | since `check-docs.sh` was written to read markdown alone |
+| a byte-array concatenation that threw on every `-ScriptArg` | the selftest, on its first run, before any distro existed to hit it |
+| a tick advancing the delta clock, so a five-second gap read as `+0.619` | ⭐ driving a real distro. The suite could not have seen it. |
+| a PowerShell hashtable folding `%m` into `%M` | the parser refused it, which is the loud version |
+| `Invoke-WebRequest`'s `.Content` arriving as a byte array | the shape check on the resolved commit |
+| the proxy enforcing a user-agent allowlist | measuring it rather than reading its page |
+
+Each is in
+[`../docs/HISTORY/wsl-ephemeral.md`](../docs/HISTORY/wsl-ephemeral.md), which is
+where that kind of text goes from now on.
+
+### ⛔ What was NOT done, and it was assigned
+
+The session pivoted at the operator's instruction with about a third of its
+budget left, to finish the issue rather than half-finish everything.
+
+- **`DOC-06` is `partial`, not done.** `docs/HISTORY/` exists, the check exempts
+  it in both halves, and the WSL tool page was purged. `scripts/README.md`,
+  `docs/consumers.md`, `docs/conventions/docs.md` and `prose.md` were not.
+- **`DOC-07` was not started.** Both `AGENTS.md` files are still there. The
+  entry records what was measured about removing the root one, including the
+  check exemption that has to move with it.
+- **The interactive task list was not presented.** The entries below were
+  written from the session's own findings instead, and `WSL-21` carries the
+  language and file-splitting question with a recommendation rather than a
+  ruling.
 
 ---
 
 ## ⭐ The work order
 
-⭐ **Empty. Every entry is closed and nothing is outstanding from the issues.**
+⭐ **Four open entries. Take them in this order and the reason is written down.**
 
-⛔ **That is a state rather than an achievement**, and it is the moment a
-backlog is most likely to be refilled with invented work. The items below are
-recorded as worth doing and are deliberately **not filed**.
+1. ⭐ **`DOC-06`**, the documentation purge, because it is half applied and a
+   half-applied convention is worse than an unapplied one: a reader cannot tell
+   which pages follow it. Four files, named in the entry's closing section.
+2. **`DOC-07`**, the second `AGENTS.md`, because it is small, it is the second
+   time it has been asked for, and `DOC-06` will have touched the same pages.
+3. **`WSL-23`**, parameters ignored by the actions they do not apply to. It is a
+   break and it is the last honest gap in the surface this session doubled.
+4. ⚠ **`WSL-21` needs a ruling, not work.** Its recommendation is to stay in
+   PowerShell and not split the file, and the acceptance is to produce the
+   numbers rather than to make the change.
 
-### ⚠ Worth an entry, none of them filed
-
-- **`Azathothas/TEMPLATE` carries `git-sync.ps1` with `TOOL-03`'s defect.** It
-  is that repository's change to make, and it has been told in a comment on its
-  issue 9.
-- **The tooling this repository grew is still not in that template**:
-  `check-gate`, `check-record`, `check-binfmt`, `set-record.mjs`,
-  `check-powershell.ps1`, and now the way `check-gate.ps1` runs a twin.
-- **Four parameters are silently ignored by the actions they do not apply to.**
-  Refusing would be stricter and a break. ⚠ The two new actions join that list:
-  they ignore every parameter.
-- **`pkgforge-dev/cross-libc-dlopen` carries a vendored `wsl-ephemeral.ps1`**
-  with `WSL-01` and `WSL-12` in it. ⛔ Not this repository's change to make.
-- **`check-no-secrets.sh --public` fires on an OCI content digest.** `sha256:`
-  and 64 hex characters is a published identifier and can never be a credential.
-  ⛔ The obvious fix is itself a forbidden pattern: a line-level `grep -v` drops
-  the whole line and hides a real credential beside the digest. The correct fix
-  is an item-level negative lookbehind in the detection pattern.
-- **`Azathothas/bit-cli`'s `docs/containers.md` predates the two new actions.**
-  It tells a reader to create a distro and decode `/proc/net/route`, which is
-  now one command. ⛔ That repository's change, not this one's.
+⚠ **`WSL-22` is deliberately last and may never be done.** It records six `tss`
+flags that were not implemented, so nobody implements them because the list
+exists.
 
 ---
 
@@ -126,30 +117,37 @@ recorded as worth doing and are deliberately **not filed**.
 
 Each carries a recommendation, so agreeing costs nothing. None blocks work.
 
-### 1. Should `check-binfmt` join the gate?
+### 1. ⭐ Is PowerShell still the right language, and should the file be split?
 
-**Recommendation: no**, unchanged from last session. It needs a running podman
-machine, so on a machine without one it is a permanent skip, and a check that is
-always skipped is one nobody reads. It is a diagnostic, run on request.
+**Recommendation: stay in PowerShell, and do not split yet.** The full argument,
+including what would change the answer, is in `WSL-21`. The short form: the
+script drives a Windows binary and reads Windows state, so a compiled rewrite
+buys a single binary and pays for it with a release pipeline this repository
+does not have and does not want. And a single file is what makes the launcher's
+contract possible: one URL, one digest, one thing to verify.
 
-### 2. `HUMAN.md` and `SECURITY.md` are still not written
+⚠ **This is the one question this session was asked to put to the operator and
+did not get to interactively.** It is here rather than in chat because the
+session ended before that exchange.
 
-⭐ **`RULES.md` was the third of that set and it now exists**, because the work
-model names it and there was something to put in it. The other two are not part
-of that shape. **Recommendation:** leave them until there is. An empty skeleton
-outlives the session that wrote it, which is nine instances of what `DOC-04`
-removed.
+### 2. Should `check-binfmt` join the gate?
 
-### 3. One path shipped this session is reasoned rather than measured
+**Recommendation: no**, unchanged. It needs a running podman machine, so on a
+machine without one it is a permanent skip, and a check that is always skipped
+is one nobody reads.
 
-⚠ **Written down because a reasoned path and a measured one are different
-things.** The no-POSIX-shell branch of `check-gate.ps1`. It needs a Windows
-session with no `sh`, no `bash` and no Git for Windows anywhere `Get-PosixShell`
-looks, and producing one on this machine costs more than the branch is worth.
-**Recommendation:** leave it, and measure the first time a machine that already
-has that shape is in front of somebody. `TOOL-06` says what would have had to be
-true.
+### 3. `HUMAN.md` and `SECURITY.md` are still not written
 
-⭐ **The two `-Action HostAddress` branches that started this question are now
-measured**, against fixture `.wslconfig` profiles rather than by reconfiguring
-this machine. `WSL-14` carries the four rows.
+**Recommendation:** leave them until there is something to put in them. An empty
+skeleton outlives the session that wrote it.
+
+### 4. ⚠ Two paths shipped this session are reasoned rather than measured
+
+- The no-POSIX-shell branch of `check-gate.ps1`, carried from last session.
+- ⛔ **The stream log has not been run under Windows PowerShell 5.1.** It uses
+  `Task.WaitAny`, `StreamReader.ReadAsync` and `[string]::new(char[],int,int)`,
+  all of which exist on .NET Framework 4.5, and it parses and analyses clean
+  under both hosts. **That is a reasoned claim and not a measured one**, and
+  5.1 is exactly the host `WSL-12` shipped a P0 against. **Recommendation:**
+  run one `-Action Run -Command` under `powershell.exe` early next session and
+  record the result here.

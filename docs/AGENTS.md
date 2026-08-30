@@ -111,7 +111,7 @@ second may change how the first is applied.
 | **Authoring a new entry from an intake** | [`methodology/authoring.md`](methodology/authoring.md), [`../TODO/ENTRY.md`](../TODO/ENTRY.md). ⛔ Authoring does not implement. |
 | **Fixing a defect** | [`methodology/authoring.md`](methodology/authoring.md), the code the defect is in, [`conventions/forbidden-patterns.md`](conventions/forbidden-patterns.md) |
 | ⭐ **Changing a tool other repositories fetch** | [`consumers.md`](consumers.md), the tool's own `.md` beside it. ⛔ A pinned caller does not get your fix by your merging it. |
-| **Anything touching WSL, podman or a container image** | [`../scripts/powershell-windows/wsl-ephemeral.md`](../scripts/powershell-windows/wsl-ephemeral.md), [`conventions/shell.md`](conventions/shell.md) section 7 |
+| **Anything touching WSL, podman or a container image** | [`../scripts/powershell-windows/wsl-ephemeral.md`](../scripts/powershell-windows/wsl-ephemeral.md), [`conventions/shell.md`](conventions/shell.md) section 7. ⛔ Not [`HISTORY/wsl-ephemeral.md`](HISTORY/wsl-ephemeral.md), which is closed defects. |
 | **Writing or changing a script** | [`../scripts/README.md`](../scripts/README.md), [`conventions/shell.md`](conventions/shell.md), [`conventions/code.md`](conventions/code.md) |
 | **Writing or editing a document** | [`conventions/prose.md`](conventions/prose.md), [`conventions/docs.md`](conventions/docs.md) |
 | **Committing** | [`conventions/git.md`](conventions/git.md) |
@@ -146,6 +146,7 @@ second may change how the first is applied.
 | [`security/remote-ops.md`](security/remote-ops.md) | the three tiers governing action on anything outside this machine |
 | [`public/README.md`](public/README.md) | what changes because this repository is public |
 | ⭐ [`consumers.md`](consumers.md) | who fetches from here, what they pin, and what breaks them |
+| ⛔ [`HISTORY/README.md`](HISTORY/README.md) | superseded wording and the story of fixes that have shipped. **Nothing there is read to do work**, and a session that opens it is reading what was true once. |
 | [`reference-sweeps/findings.md`](reference-sweeps/findings.md) | what external repositories were read, and what was true in them |
 | [`reference-sweeps/usable.md`](reference-sweeps/usable.md) | which of those findings this repository can actually use |
 
@@ -166,6 +167,7 @@ these is held to.
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |
 | run any check on Windows | ⭐ the `.ps1` half of the pair | the `.sh` half. ⚠ Native PowerShell may have no `sed`, and its `sort` is an alias that answers differently. |
+| prove a change to `wsl-ephemeral.ps1` without building a distro | ⭐ `scripts/powershell-windows/wsl-ephemeral-selftest.ps1` | reading it. It runs in a second and needs no WSL. |
 | close an entry and move its counts | `scripts/common/set-record.mjs` | editing several numbers by hand across three files |
 | check that no page says what another page says | `scripts/common/check-one-home.sh` | reading for it |
 | check the character set and the marker density | `scripts/common/check-markers.sh` | `check-docs.sh`, which reads markdown alone |

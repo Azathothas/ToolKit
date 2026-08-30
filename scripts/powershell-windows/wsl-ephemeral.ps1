@@ -73,6 +73,40 @@
     so WSL reads it, and REFUSE if systemd did not become PID 1. Most OCI base
     images do not ship systemd at all; see Enable-DistroSystemd.
 
+.PARAMETER Verbatim
+    With -CommandFile: send the file's bytes exactly as they are. Off by
+    default, which means the COPY IN TRANSIT gets its CRLF turned into LF and a
+    UTF-8 byte order mark removed, with a line saying what changed. THE FILE ON
+    DISK IS NEVER WRITTEN TO EITHER WAY.
+
+.PARAMETER ScriptArg
+    NAME=VALUE, repeatable. Prepended to the command as POSIX-quoted shell
+    assignments, so a caller stops running sed over their own script to inject
+    a value. The literal token @hostaddress inside a VALUE is replaced with what
+    -Action HostAddress would print.
+
+.PARAMETER NoTimestamps
+    Turn the whole stream log off: no timestamps, no heartbeat, no bound on the
+    command. The child inherits this process's handles and its bytes reach the
+    terminal untouched, which is what this script did before the log existed.
+
+.PARAMETER TimestampMode
+    Which clock the prefix carries: Relative (the default, elapsed since the
+    command started), Delta (since the previous line), Wall, Iso or Epoch.
+
+.PARAMETER TimestampFormat
+    A strftime format, with tss's specifier set, for Relative and Wall. Passing
+    it with Delta, Iso or Epoch is refused rather than ignored.
+
+.PARAMETER TickSeconds
+    Seconds of SILENCE before a heartbeat line. Default 30. 0 turns the
+    heartbeat off and leaves the timestamps on.
+
+.PARAMETER CommandTimeoutSeconds
+    A bound on the caller's own command, in seconds. No default. On expiry the
+    distro is terminated and the exit code is 124, as coreutils' timeout
+    reports it.
+
 .PARAMETER Force
     Required for destructive actions when non-interactive. Skips confirmation.
 
@@ -99,7 +133,39 @@
       -Action New -Command ... -Ephemeral  tears the distro down FIRST, then
                                            exits with the inner command's code
       New with no -Command                 exits 0 when the distro came up
+      -CommandTimeoutSeconds N reached     exits 124, as coreutils' timeout does
       any action, script failure           exits 1, with a message naming what
+
+    THE STREAM LOG -- on by default, and -NoTimestamps turns all of it off.
+
+    The failure it exists for: a command prints nothing for twenty minutes and
+    a caller reading a pipe cannot tell that from a command that has died. An
+    agent waits on a matcher that never fires, a person eventually kills it, and
+    the only evidence left is exit 137. Silence has to be a line, or it says
+    nothing at all.
+
+    So every line the command produces gets a stamp and a stream tag, and
+    -TickSeconds of SILENCE produces a heartbeat carrying how long it has been
+    quiet, how much has come out, and what WSL says about the distro. NOTHING IS
+    INJECTED INTO THE GUEST to make that work: every figure is one this process
+    already holds, so an image with no shell ticks as well as a full userspace.
+
+    A CARRIAGE RETURN ENDS A LINE, which is what makes a curl or apt progress
+    meter visible at all: they redraw one line and emit no newline for minutes,
+    and a line-oriented reader shows nothing the whole time. An unterminated
+    line that has sat still is shown early. Both are marked with a trailing '~'
+    on the tag, meaning the line had not ended when it was printed.
+
+    WHAT IT COSTS, and why the off switch is not decoration. Relaying means the
+    guest's stdout is a pipe rather than an inherited handle, so an application
+    that block-buffers when it is not on a terminal will buffer, and its lines
+    then carry the time THIS process received them. Lines are also terminated
+    with the host's newline rather than the guest's. -NoTimestamps is byte-exact
+    and has none of that.
+
+    GUEST STDOUT GOES TO STDOUT AND GUEST STDERR TO STDERR, tagged. The tick is
+    the watcher's line rather than the command's, so it goes to stderr: a caller
+    capturing stdout to read a result must not find a heartbeat in it.
 
     Both actions run the caller's command through ONE function, Invoke-InDistro,
     so there is no second place for the code to be dropped.
@@ -171,7 +237,7 @@
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
     Justification = 'This is an interactive console tool and its progress output is for a human at a terminal, which is the documented case for Write-Host. The ONE value another script consumes is the address -Action HostAddress prints, and that goes through Write-Output precisely so it is the only thing on stdout; Write-Host would put it on the information stream, where a caller assigning the result gets nothing. Every other action reports through the exit code.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
-    Justification = 'Image, Tarball, Command, CommandFile, CommandB64, User, Ephemeral, OciEnv, Systemd and Force are read by the Invoke-Action* functions through script scope rather than as arguments. The analyzer does not follow that, and threading ten parameters through every call to satisfy it would make the code worse.')]
+    Justification = 'Image, Tarball, Command, CommandFile, CommandB64, User, Ephemeral, OciEnv, Systemd, Verbatim, ScriptArg, NoTimestamps, TimestampMode, TimestampFormat, TickSeconds, CommandTimeoutSeconds and Force are read by the Invoke-Action* and stream-log functions through script scope rather than as arguments. The analyzer does not follow that, and threading seventeen parameters through every call to satisfy it would make the code worse.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
     Justification = 'Get-WslDistroNames returns the whole list and Export-ImageRootfs writes one rootfs whose name simply ends in s. Renaming either to satisfy the rule would make the name describe the thing less accurately.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
@@ -207,6 +273,50 @@ param(
     # refusal.
     [ValidateRange(5, 3600)]
     [int]$TimeoutSeconds = 120,
+
+    # THE STREAM LOG, WHICH IS ON BY DEFAULT. A command that prints nothing for
+    # twenty minutes and a command that has died look identical to a caller
+    # reading a pipe, and there is no way to tell them apart after the fact.
+    # With the log on, silence is itself a line: the tick says the distro is
+    # still there, how long it has been quiet, and how much has come out so far.
+    #
+    # -NoTimestamps IS THE ONE SWITCH THAT TURNS ALL OF IT OFF, and it restores
+    # the previous behaviour exactly: the child inherits this process's handles
+    # and its bytes reach the terminal untouched. Nothing is relayed, so nothing
+    # can be re-encoded, re-ordered or buffered by this script.
+    [switch]$NoTimestamps,
+    [ValidateSet('Relative', 'Delta', 'Wall', 'Iso', 'Epoch')]
+    [string]$TimestampMode = 'Relative',
+    # strftime, with tss's specifier set. It applies to Relative and Wall, which
+    # are the two modes that have a format; passing it with Delta, Iso or Epoch
+    # is REFUSED rather than ignored, because a parameter silently doing nothing
+    # is a caller believing they asked for something.
+    [string]$TimestampFormat,
+    # Seconds of SILENCE before a heartbeat line. 0 turns the heartbeat off and
+    # leaves the timestamps on.
+    [ValidateRange(0, 86400)]
+    [int]$TickSeconds = 30,
+    # A bound on the caller's own command. NO DEFAULT, and that is deliberate:
+    # -TimeoutSeconds above bounds the questions this script asks for itself,
+    # and a build that runs for an hour is a legitimate command. This exists
+    # because the caller sometimes knows a bound the script cannot, and without
+    # one the only way out of a wedged command is killing the session. Exit 124,
+    # as coreutils' timeout reports it.
+    [ValidateRange(0, 604800)]
+    [int]$CommandTimeoutSeconds = 0,
+
+    # -CommandFile carries a file's bytes. By default the COPY IN TRANSIT has
+    # its CRLF line endings turned into LF and a UTF-8 byte order mark removed,
+    # and it says what it changed. -Verbatim sends the bytes exactly as they
+    # are. THE FILE ON DISK IS NEVER WRITTEN TO IN EITHER CASE.
+    [switch]$Verbatim,
+    # NAME=VALUE, repeatable, prepended to the command as POSIX-quoted shell
+    # assignments. It exists so a caller stops running sed over their own script
+    # to inject a value, which is a string edit that can corrupt the payload it
+    # is editing. The literal token @hostaddress in a VALUE is replaced with
+    # what -Action HostAddress would print.
+    [string[]]$ScriptArg,
+
     [switch]$Force
 )
 
@@ -226,6 +336,14 @@ $script:BaseDir = Join-Path $env:LOCALAPPDATA 'wsl-ephemeral'
 # prevents. The floor is what matters, because an 8 MiB rootfs still costs 76.
 $script:ImportSpaceFactor = 2
 $script:ImportSpaceFloor  = 256MB
+
+# How long an UNTERMINATED line may sit in the relay before the stream log
+# shows it early, marked as unterminated. A constant rather than a flag: a
+# prompt reading stdin that will never arrive is the case it exists for, and a
+# caller who has hit that case is not in a position to know they should have
+# raised a bound. 2000ms is comfortably longer than a progress bar's redraw
+# interval, so an ordinary '\r' meter is never split by it.
+$script:StreamFlushMs = 2000
 
 # Names that must NEVER be unregistered, even if somebody prefixes them.
 $script:Protected = @(
@@ -511,6 +629,19 @@ function Invoke-InDistro {
     # has to leave a code behind; and "it never answered" is a failure, not a
     # pass, so the value it starts at has to be one that fails.
     $ExitCode.Value = 1
+
+    # ⭐ ONE BRANCH, AND IT IS THE ONLY PLACE THE STREAM LOG IS TURNED ON OR
+    # OFF. New and Run both arrive here, so the log cannot be on for one action
+    # and off for the other, which is the shape WSL-01 was.
+    if (-not $NoTimestamps) {
+        Invoke-InDistroLogged -DistroName $DistroName -RunAs $RunAs -ScriptBytes $ScriptBytes -ExitCode $ExitCode
+        return
+    }
+
+    # -NoTimestamps: the child inherits this process's handles, so the guest's
+    # bytes reach the terminal without passing through this script at all.
+    # Nothing here can re-encode, re-order or buffer them, which is the point of
+    # having the switch rather than a relay that promises not to.
     $line = ConvertTo-DistroScriptCommand -ScriptBytes $ScriptBytes -GuestPath (New-GuestScratchPath)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -526,6 +657,132 @@ function ConvertTo-Utf8Bytes {
     return ,[Text.Encoding]::UTF8.GetBytes($Text)
 }
 
+function ConvertFrom-CommandFileBytes {
+    <#
+      A file's bytes, made into something /bin/sh can read, with every change
+      named on the way past.
+
+      ⛔ THE FILE ON DISK IS NEVER WRITTEN TO. The distinction this function
+      draws, and it is the whole design, is between THE FILE, which is the
+      caller's and is never touched, and THE COPY IN TRANSIT, which is this
+      script's to make correct. Rewriting somebody's script is the failure the
+      base64 channel exists to remove; refusing to fix a copy of it is not the
+      same rule, it is that rule applied where it does not belong.
+
+      WHAT IT DOES, AND WHY EACH ONE IS A DEFECT WITHOUT IT:
+
+        UTF-16          REFUSED by name. Its bytes are NUL-interleaved, so
+                        base64 carries them intact to a guest whose /bin/sh
+                        reads the first NUL and stops. The failure arrives as a
+                        command that did nothing and said nothing.
+        UTF-8 BOM       removed. It is three bytes ahead of the first line, so
+                        a leading `#!/bin/sh` is not a comment any more and a
+                        leading `set -e` is not a command.
+        CRLF            turned into LF. /bin/sh reads the carriage return as
+                        part of the last word on every line, so every command
+                        in the file is not found and no message says why.
+
+      ⚠ -Verbatim TURNS ALL THREE OFF and sends the bytes exactly as they are,
+      for a caller who means it. The UTF-16 refusal becomes a warning there,
+      because refusing bytes somebody explicitly asked to send verbatim would be
+      this function overriding them.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$Bytes,
+        [Parameter(Mandatory = $true)][string]$Source
+    )
+    $utf16 = ($Bytes.Length -ge 2 -and (
+        ($Bytes[0] -eq 0xFF -and $Bytes[1] -eq 0xFE) -or ($Bytes[0] -eq 0xFE -and $Bytes[1] -eq 0xFF)))
+
+    if ($Verbatim) {
+        if ($utf16) { Write-Warn "$Source starts with a UTF-16 byte order mark and -Verbatim was passed, so it is sent as-is. /bin/sh will stop at the first NUL byte." }
+        if ($Bytes -contains 13) { Write-Warn "$Source has carriage returns and -Verbatim was passed, so they are sent as-is. /bin/sh reads a CR as part of the last word on the line." }
+        return ,$Bytes
+    }
+
+    if ($utf16) {
+        throw ("$Source is UTF-16: its bytes carry a NUL after nearly every character, and " +
+               "/bin/sh stops at the first one, so the command would do nothing and say nothing. " +
+               "Save it as UTF-8, or pass -Verbatim if sending it unchanged is what you meant.")
+    }
+
+    $out = $Bytes
+    $bom = $false
+    if ($out.Length -ge 3 -and $out[0] -eq 0xEF -and $out[1] -eq 0xBB -and $out[2] -eq 0xBF) {
+        $out = $out[3..($out.Length - 1)]
+        $bom = $true
+    }
+
+    # ⛔ CRLF ONLY, never a lone CR. A carriage return that is not followed by a
+    # newline is a deliberate one: a progress meter, or a literal in a here-doc
+    # the script writes out. Turning that into a newline would edit the payload
+    # rather than repair it, which is exactly the line this function does not
+    # cross.
+    $crlf = 0
+    $keep = [byte[]]::new($out.Length)
+    $n = 0
+    for ($i = 0; $i -lt $out.Length; $i++) {
+        if ($out[$i] -eq 13 -and $i + 1 -lt $out.Length -and $out[$i + 1] -eq 10) { $crlf++; continue }
+        $keep[$n] = $out[$i]
+        $n++
+    }
+    if ($crlf -gt 0) { $out = $keep[0..($n - 1)] }
+
+    if ($bom)       { Write-Ok "$Source carried a UTF-8 byte order mark; it was left out of the copy being sent." }
+    if ($crlf -gt 0) {
+        Write-Ok "$Source has $crlf CRLF line ending(s); the copy being sent uses LF."
+        Write-Ok "the file on disk was NOT modified. Pass -Verbatim to send its bytes exactly."
+    }
+    return ,$out
+}
+
+function ConvertTo-ScriptArgPrologue {
+    <#
+      -ScriptArg NAME=VALUE, as POSIX shell assignments ahead of the command.
+
+      ⭐ VALUES ARE ASSIGNED, NEVER SUBSTITUTED INTO THE SCRIPT. The alternative,
+      and the thing this replaces, is a caller running sed over their own file
+      to inject a URL. A value carrying a slash, an ampersand or a quote breaks
+      that edit, and the corruption lands in the middle of a script nobody reads
+      again. Nothing in the caller's bytes is rewritten here: text is added in
+      front of them, single-quoted, so a value can contain anything at all.
+
+      ⚠ THE FIRST LINE OF THE FILE IS NO LONGER THE FIRST LINE THE SHELL SEES.
+      That costs nothing: the body is SOURCED by /bin/sh, so a leading
+      `#!/bin/sh` was already a comment rather than an interpreter line.
+
+      @hostaddress IS EXPANDED, and it is the one substitution that happens.
+      A caller wiring a guest at a fixture on this host needs the NAT address,
+      which is a second command and a value that changes; -Action HostAddress
+      already answers it without creating a distro, so this reuses that answer
+      rather than making the caller pass it in.
+    #>
+    param([Parameter(Mandatory = $true)][AllowEmptyCollection()][string[]]$Pairs)
+    $lines = @()
+    $addr = $null
+    foreach ($pair in $Pairs) {
+        $eq = "$pair".IndexOf('=')
+        if ($eq -lt 1) {
+            throw "-ScriptArg '$pair' is not NAME=VALUE. The name comes first, then one equals sign, then the value, which may be empty."
+        }
+        $name  = $pair.Substring(0, $eq)
+        $value = $pair.Substring($eq + 1)
+        if ($name -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+            throw ("-ScriptArg name '$name' is not a POSIX shell variable name. It must start with " +
+                   "a letter or an underscore and carry only letters, digits and underscores.")
+        }
+        if ($value.Contains('@hostaddress')) {
+            if (-not $addr) { $addr = (Resolve-HostAddress).Address }
+            $value = $value.Replace('@hostaddress', $addr)
+            Write-Ok "-ScriptArg $name : @hostaddress resolved to $addr. WSL assigns it and it changes; it is read here and not recorded."
+        }
+        $lines += ($name + '=' + (ConvertTo-ShellSingleQuoted -Raw $value))
+        $lines += ('export ' + $name)
+    }
+    if ($lines.Count -eq 0) { return '' }
+    return (($lines -join "`n") + "`n")
+}
+
 function Resolve-CommandBytes {
     <#
       The three ways of naming a command collapse to one thing here, so every
@@ -534,6 +791,11 @@ function Resolve-CommandBytes {
 
       $null means NO command was given, which is different from an empty one:
       New with no -Command is a distro that gets created and kept.
+
+      -ScriptArg IS PREPENDED HERE, in this one place, so a value reaches a
+      command written as text, as a file and as base64 identically. Three
+      spellings that behave differently under a fourth parameter is three
+      behaviours.
     #>
     param(
         [AllowEmptyString()][string]$Text,
@@ -547,28 +809,45 @@ function Resolve-CommandBytes {
     if ($given.Count -gt 1) {
         throw "Pass only one of $($given -join ', '). They are three spellings of the same argument."
     }
-    if ($given.Count -eq 0) { return $null }
+    if ($given.Count -eq 0) {
+        # ⛔ REFUSED RATHER THAN IGNORED. A caller who passed -ScriptArg and no
+        # command has made a mistake this script can see, and a value silently
+        # going nowhere is the shape of a flag nothing reads.
+        if ($ScriptArg -and $ScriptArg.Count -gt 0) {
+            throw "-ScriptArg was given with no command to pass it to. Add -Command, -CommandFile or -CommandB64."
+        }
+        return $null
+    }
+    if ($Verbatim -and -not $FromFile) {
+        throw "-Verbatim applies to -CommandFile, which is the only spelling whose bytes come off disk. $($given[0]) is already exactly what you passed."
+    }
 
-    if ($Text) { return (ConvertTo-Utf8Bytes -Text $Text) }
-
-    if ($FromFile) {
+    if ($Text)   { $body = ConvertTo-Utf8Bytes -Text $Text }
+    elseif ($FromB64) {
+        try { $body = [Convert]::FromBase64String($FromB64) }
+        catch { throw "-CommandB64 is not valid base64: $($_.Exception.Message)" }
+    }
+    else {
         if (-not (Test-Path -LiteralPath $FromFile -PathType Leaf)) {
             throw "-CommandFile not found: $FromFile"
         }
-        $bytes = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $FromFile).Path)
-        # ⚠ NOT rewritten. The file's bytes are the command, and silently
-        # editing somebody's payload is the failure this entry is about. A
-        # carriage return is legal in a POSIX script and means something, so
-        # this says what is about to happen rather than deciding for them.
-        if ($bytes -contains 13) {
-            Write-Warn "$FromFile has CRLF line endings. /bin/sh reads the CR as part of the last word on each line, so expect 'not found' errors. Convert it to LF if that is not what you meant."
-        }
-        return ,$bytes
+        $raw  = [IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $FromFile).Path)
+        $body = ConvertFrom-CommandFileBytes -Bytes $raw -Source $FromFile
     }
 
-    try { $decoded = [Convert]::FromBase64String($FromB64) }
-    catch { throw "-CommandB64 is not valid base64: $($_.Exception.Message)" }
-    return ,$decoded
+    if ($ScriptArg -and $ScriptArg.Count -gt 0) {
+        # ⛔ Array::Copy, NOT `@($a) + @($b)`. PowerShell's + on two byte arrays
+        # UNROLLS them into an [object[]] of mixed byte[] and byte, and the cast
+        # back to [byte[]] then fails with a message about System.Byte[] that
+        # names neither array. The selftest beside this script is what found it,
+        # on the first run, before any distro existed to hit it.
+        $pre    = ConvertTo-Utf8Bytes -Text (ConvertTo-ScriptArgPrologue -Pairs $ScriptArg)
+        $merged = [byte[]]::new($pre.Length + $body.Length)
+        [Array]::Copy($pre, 0, $merged, 0, $pre.Length)
+        [Array]::Copy($body, 0, $merged, $pre.Length, $body.Length)
+        $body = $merged
+    }
+    return ,([byte[]]$body)
 }
 
 # --------------------------------------------------------------------------------------
@@ -1052,6 +1331,486 @@ function Invoke-BoundedProcess {
     try { $text = [string]$outTask.Result + [string]$errTask.Result } catch { $null = $_ }
     $proc.Dispose()
     return $text
+}
+
+# --------------------------------------------------------------------------------------
+# The stream log: a timestamp on every line, and a heartbeat when there are none
+# --------------------------------------------------------------------------------------
+function Format-StrftimeStamp {
+    <#
+      Render a strftime format string. It is the surface `tss` has, because a
+      caller who already timestamps a pipeline with that tool should not have to
+      learn a second spelling to timestamp this one.
+
+      IT DOES NOT BUILD A .NET CUSTOM FORMAT STRING, and that is the trap this
+      function exists to avoid rather than a style choice. In a .NET custom
+      format, ':' and '/' are CULTURE-DEPENDENT PLACEHOLDERS and not literals,
+      so 'HH:mm:ss' renders with whatever separator the host culture names and a
+      machine in another locale writes a log nothing greps. Every value here is
+      formatted with the invariant culture and substituted directly, so a
+      literal character in the format stays that character.
+
+      AN UNKNOWN SPECIFIER IS REFUSED. A format that silently renders '%q' as
+      'q' is a caller believing they asked for something.
+
+      A SPECIFIER WITH NO MEANING IN THIS MODE IS REFUSED TOO. Relative mode
+      measures a duration, so '%Y' has no value to render; answering 1970 would
+      put an invented number on a log line.
+
+      %9f CANNOT BE MEASURED HERE AND IT PADS. .NET's tick is 100ns, so the
+      ninth digit is a zero this function wrote; on Windows the clock's own
+      resolution is coarser still. The page beside this script says so, rather
+      than leaving nine digits to be read as nine digits of measurement.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Format,
+        [Parameter(Mandatory = $true)][datetimeoffset]$Wall,
+        [Parameter(Mandatory = $true)][timespan]$Elapsed,
+        [Parameter(Mandatory = $true)][ValidateSet('Relative', 'Wall')][string]$Mode
+    )
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    # ⛔ AN ORDINAL DICTIONARY, NOT A HASHTABLE. PowerShell hashtable keys are
+    # CASE-INSENSITIVE, so '%m' and '%M' are one key and '%z' and '%Z' are
+    # another. A literal @{} here does not merely lose the distinction at
+    # lookup time: it refuses to parse, which is the loud version of this
+    # mistake and the one that found it. strftime distinguishes month from
+    # minute by case alone, so the comparer has to as well.
+    $values = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+    if ($Mode -eq 'Wall') {
+        $sub  = $Wall.Ticks % 10000000
+        $off  = $Wall.Offset
+        $sign = if ($off.Ticks -lt 0) { '-' } else { '+' }
+        $values['Y'] = $Wall.Year.ToString('D4', $inv)
+        $values['m'] = $Wall.Month.ToString('D2', $inv)
+        $values['d'] = $Wall.Day.ToString('D2', $inv)
+        $values['H'] = $Wall.Hour.ToString('D2', $inv)
+        $values['M'] = $Wall.Minute.ToString('D2', $inv)
+        $values['S'] = $Wall.Second.ToString('D2', $inv)
+        $values['z'] = ($sign + [Math]::Abs($off.Hours).ToString('D2', $inv) + ':' + [Math]::Abs($off.Minutes).ToString('D2', $inv))
+        $values['Z'] = [TimeZoneInfo]::Local.Id
+    }
+    else {
+        $sub = $Elapsed.Ticks % 10000000
+        # TOTAL hours, not hours-within-a-day. A run that passes 24 hours reads
+        # 24:00:01 rather than starting again at zero: a relative stamp that
+        # wraps is a stamp that lies about a long build.
+        $values['H'] = ([long][Math]::Floor($Elapsed.TotalHours)).ToString('00', $inv)
+        $values['M'] = $Elapsed.Minutes.ToString('D2', $inv)
+        $values['S'] = $Elapsed.Seconds.ToString('D2', $inv)
+    }
+    $values['3f'] = ([long][Math]::Floor($sub / 10000)).ToString('D3', $inv)
+    $values['6f'] = ([long][Math]::Floor($sub / 10)).ToString('D6', $inv)
+    $values['9f'] = ([long]$sub * 100).ToString('D9', $inv)
+    $values['%']  = '%'
+
+    $out = New-Object Text.StringBuilder
+    $i = 0
+    while ($i -lt $Format.Length) {
+        $c = $Format[$i]
+        if ($c -ne '%') { $null = $out.Append($c); $i++; continue }
+        if ($i + 1 -ge $Format.Length) { throw "-TimestampFormat ends with a bare '%'." }
+        $key   = [string]$Format[$i + 1]
+        $width = 2
+        if (($key -eq '3' -or $key -eq '6' -or $key -eq '9') -and
+            $i + 2 -lt $Format.Length -and $Format[$i + 2] -eq 'f') {
+            $key   = $key + 'f'
+            $width = 3
+        }
+        if (-not $values.ContainsKey($key)) {
+            throw ("-TimestampFormat carries '%$key', which is not a specifier this script renders " +
+                   "in $Mode mode. The set here is: " + (($values.Keys | Sort-Object) -join ' ') +
+                   ", each written with a leading percent sign.")
+        }
+        $null = $out.Append($values[$key])
+        $i += $width
+    }
+    return $out.ToString()
+}
+
+function Get-StampDefaultFormat {
+    # tss's own default for a wall clock, and milliseconds for a relative one: a
+    # distro's lifecycle is interesting at that resolution, and a date repeated
+    # on every line of one run is a column nobody reads.
+    param([Parameter(Mandatory = $true)][string]$Mode)
+    if ($Mode -eq 'Wall') { return '%Y-%m-%d %H:%M:%S' }
+    return '%H:%M:%S.%3f'
+}
+
+function Format-ByteCount {
+    param([Parameter(Mandatory = $true)][long]$Bytes)
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    if ($Bytes -lt 1024)    { return ($Bytes.ToString($inv) + ' B') }
+    if ($Bytes -lt 1048576) { return (($Bytes / 1024.0).ToString('0.0', $inv) + ' KiB') }
+    return (($Bytes / 1048576.0).ToString('0.0', $inv) + ' MiB')
+}
+
+function Format-Duration {
+    param([Parameter(Mandatory = $true)][timespan]$Span)
+    $inv   = [Globalization.CultureInfo]::InvariantCulture
+    $total = [long][Math]::Floor($Span.TotalSeconds)
+    if ($total -lt 60)   { return ($total.ToString($inv) + 's') }
+    if ($total -lt 3600) { return (([long][Math]::Floor($total / 60)).ToString($inv) + 'm' + ($total % 60).ToString('D2', $inv) + 's') }
+    return (([long][Math]::Floor($total / 3600)).ToString($inv) + 'h' +
+            ([long][Math]::Floor(($total % 3600) / 60)).ToString('D2', $inv) + 'm')
+}
+
+function Get-DistroRunState {
+    <#
+      What WSL says about one distro, for the heartbeat line.
+
+      WHY IT IS ON THE TICK AT ALL. A command that prints nothing and a distro
+      that has gone away look identical to a caller reading a pipe, and telling
+      those two apart is the reason the tick exists. wsl.exe exiting covers the
+      case where the utility VM went down underneath everything; this covers the
+      case where the distro stopped and the relay has not noticed yet.
+
+      IT NEVER THROWS. A heartbeat that can fail is one that stops beating at
+      the moment it matters, so an unreadable answer is the word 'unknown' and
+      the tick still prints.
+    #>
+    param([Parameter(Mandatory = $true)][string]$DistroName)
+    try {
+        $rc = 0
+        $timedOut = $false
+        $text = Invoke-BoundedProcess -Arguments @('--list', '--verbose') -TimeoutSeconds 10 `
+            -ExitCode ([ref]$rc) -TimedOut ([ref]$timedOut)
+        if ($timedOut) { return 'unknown (wsl --list did not answer)' }
+        foreach ($raw in ($text -split "`r?`n")) {
+            $line = "$raw".Trim()
+            if (-not $line) { continue }
+            if ($line.StartsWith('*')) { $line = $line.Substring(1).Trim() }
+            $fields = @($line -split '\s+' | Where-Object { $_ })
+            if ($fields.Count -lt 2) { continue }
+            if ($fields[0] -cne $DistroName) { continue }
+            return $fields[1]
+        }
+        return 'not registered'
+    }
+    catch { $null = $_; return 'unknown' }
+}
+
+function New-StreamLogState {
+    <#
+      Everything the log line and the heartbeat need, in one object, so the
+      emitter is a function of state rather than of nine script-scoped
+      variables.
+
+      ELAPSED IS A STOPWATCH AND NOT A DIFFERENCE OF TWO CLOCK READINGS. A
+      stopwatch is monotonic, so a host that steps its clock mid-run, which a
+      laptop resuming from sleep does, cannot produce a relative stamp that goes
+      backwards.
+    #>
+    param([Parameter(Mandatory = $true)][string]$DistroName)
+    $fmt = $script:TimestampFormat
+    if (-not $fmt) { $fmt = Get-StampDefaultFormat -Mode $script:TimestampMode }
+    return [pscustomobject]@{
+        Distro    = $DistroName
+        Mode      = $script:TimestampMode
+        Format    = $fmt
+        Clock     = [Diagnostics.Stopwatch]::StartNew()
+        LastStamp = [timespan]::Zero
+        LastLine  = [timespan]::Zero
+        LastTick  = [timespan]::Zero
+        Counts    = @{ out = @{ Lines = 0; Bytes = [long]0 }; err = @{ Lines = 0; Bytes = [long]0 } }
+        Out       = $null
+        Err       = $null
+    }
+}
+
+function Open-StreamLogWriter {
+    <#
+      A BOM-less UTF-8 writer straight onto a standard handle.
+
+      IT DOES NOT SET [Console]::OutputEncoding, which is the obvious
+      alternative and is a change to the MACHINE rather than to this process:
+      that property calls SetConsoleOutputCP, which is per-console and outlives
+      the script that set it. Writing through our own encoder leaves the
+      console's code page exactly as it was found, and a redirected caller gets
+      UTF-8 either way, which is the case that matters.
+    #>
+    param([Parameter(Mandatory = $true)][ValidateSet('Out', 'Err')][string]$Which)
+    $handle = if ($Which -eq 'Out') { [Console]::OpenStandardOutput() } else { [Console]::OpenStandardError() }
+    $writer = [IO.StreamWriter]::new($handle, [Text.UTF8Encoding]::new($false))
+    $writer.AutoFlush = $true
+    return $writer
+}
+
+function Write-StreamLogLine {
+    <#
+      One line out, with the stamp and the tag ahead of it.
+
+      THE GUEST'S BYTES ARE NEVER TOUCHED. Everything added is to the LEFT of
+      the text: nothing is re-wrapped, re-quoted, truncated or coloured, so a
+      caller recovers the original by cutting the prefix off.
+
+      THREE TAGS, TWO STREAMS. Guest stdout is written to stdout and guest
+      stderr to stderr, because merging them would destroy the fact the tag
+      reports. The tick is the WATCHER'S line rather than the command's, so it
+      goes to stderr: a caller capturing stdout to read a result must not find a
+      heartbeat in it.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$State,
+        [Parameter(Mandatory = $true)][ValidateSet('out', 'err', 'tick')][string]$Tag,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [switch]$Partial
+    )
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    $now = $State.Clock.Elapsed
+    switch ($State.Mode) {
+        'Delta' {
+            $d = $now - $State.LastStamp
+            $stamp = '+' + ([long][Math]::Floor($d.TotalSeconds)).ToString($inv) + '.' +
+                     ([long][Math]::Floor(($d.Ticks % 10000000) / 10000)).ToString('D3', $inv)
+        }
+        'Epoch' { $stamp = [DateTimeOffset]::Now.ToUnixTimeSeconds().ToString($inv) }
+        'Iso'   { $stamp = Format-StrftimeStamp -Format '%Y-%m-%dT%H:%M:%S.%3f%z' -Wall ([DateTimeOffset]::Now) -Elapsed $now -Mode 'Wall' }
+        'Wall'  { $stamp = Format-StrftimeStamp -Format $State.Format -Wall ([DateTimeOffset]::Now) -Elapsed $now -Mode 'Wall' }
+        default { $stamp = Format-StrftimeStamp -Format $State.Format -Wall ([DateTimeOffset]::Now) -Elapsed $now -Mode 'Relative' }
+    }
+    # ⛔ A TICK DOES NOT ADVANCE THE DELTA CLOCK, and this is a defect that was
+    # shipped for one run. Delta means "since the previous line", and a tick is
+    # the ABSENCE of a line rather than one. With ticks advancing it, a command
+    # that went quiet for five seconds and then printed showed '+0.619' against
+    # the last tick, on stdout, where the ticks the reader would need to add up
+    # are not even present: they go to stderr. A number that small over a gap
+    # that large is worse than no number.
+    if ($Tag -ne 'tick') { $State.LastStamp = $now }
+
+    # ONE MARKER, ONE MEANING. A trailing '~' says the line had not ended when
+    # it was printed, and both causes are the same fact to a reader: a carriage
+    # return redrew it, or it sat unterminated past the flush bound and was
+    # shown early. Without the marker a log would carry lines that never
+    # existed.
+    $field = if ($Partial) { $Tag.PadRight(3) + '~' } else { $Tag.PadRight(4) }
+    $line  = $stamp + ' ' + $field + ' ' + $Text
+    if ($Tag -eq 'out') { $State.Out.WriteLine($line) } else { $State.Err.WriteLine($line) }
+}
+
+function Write-StreamLogTick {
+    <#
+      The heartbeat, and the reason this layer exists at all.
+
+      NOTHING IS INJECTED INTO THE GUEST TO PRODUCE IT. Every figure on the line
+      is one this process already holds: its own stopwatch, the counts it kept
+      while relaying, and one read-only question to wsl.exe. An image with no
+      shell, no coreutils and no clock ticks exactly as well as a full
+      userspace.
+
+      IT FIRES ON SILENCE, NOT ON A TIMER. A command printing a line a second
+      produces no ticks at all. A heartbeat that beats through a conversation is
+      one people filter out, and a filtered heartbeat is not a heartbeat.
+    #>
+    param([Parameter(Mandatory = $true)]$State)
+    $now    = $State.Clock.Elapsed
+    $silent = $now - $State.LastLine
+    $text = ((Format-Duration -Span $silent) + ' silent | elapsed ' + (Format-Duration -Span $now) +
+             ' | out ' + $State.Counts.out.Lines + ' lines ' + (Format-ByteCount -Bytes $State.Counts.out.Bytes) +
+             ' | err ' + $State.Counts.err.Lines + ' lines ' + (Format-ByteCount -Bytes $State.Counts.err.Bytes) +
+             ' | distro ' + (Get-DistroRunState -DistroName $State.Distro))
+    Write-StreamLogLine -State $State -Tag 'tick' -Text $text
+    $State.LastTick = $now
+}
+
+function Split-StreamChunk {
+    <#
+      Cut a stream's pending text into the lines that are ready to print, and
+      hand back what is not.
+
+      A CARRIAGE RETURN TERMINATES A LINE HERE, and that is the difference
+      between this and every line-oriented timestamper. curl, apt and every
+      layer-progress bar redraw one line with a carriage return and emit no
+      newline for minutes, so a reader that waits for a newline shows NOTHING
+      while a 200 MB download is visibly working. That silence is
+      indistinguishable from a deadlock, which is the failure this layer was
+      asked for.
+
+      A TRAILING CARRIAGE RETURN IS HELD, NEVER EMITTED. It may be the first
+      half of a CRLF split across two reads, and printing it would turn one line
+      into two. The next read resolves it, and the flush bound covers the case
+      where there is no next read.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Pending,
+        [Parameter(Mandatory = $true)][ref]$Remainder
+    )
+    $lines = @()
+    $start = 0
+    $i = 0
+    while ($i -lt $Pending.Length) {
+        $c = $Pending[$i]
+        if ($c -eq "`n") {
+            $lines += [pscustomobject]@{ Text = $Pending.Substring($start, $i - $start); Partial = $false }
+            $i++
+            $start = $i
+            continue
+        }
+        if ($c -eq "`r") {
+            if ($i + 1 -ge $Pending.Length) { break }
+            if ($Pending[$i + 1] -eq "`n") {
+                $lines += [pscustomobject]@{ Text = $Pending.Substring($start, $i - $start); Partial = $false }
+                $i += 2
+                $start = $i
+                continue
+            }
+            $lines += [pscustomobject]@{ Text = $Pending.Substring($start, $i - $start); Partial = $true }
+            $i++
+            $start = $i
+            continue
+        }
+        $i++
+    }
+    $Remainder.Value = $Pending.Substring($start)
+    return , $lines
+}
+
+function Invoke-InDistroLogged {
+    <#
+      Run the caller's command with the stream log on: a stamp on every line, a
+      heartbeat while there are none, and an optional bound on the whole thing.
+
+      THE COST OF DOING THIS AT ALL, stated here because it is the one thing a
+      caller can be surprised by. Relaying means the guest's stdout is a PIPE
+      rather than whatever this process inherited, so an application that
+      block-buffers when it is not writing to a terminal will buffer. Its lines
+      then arrive late and carry the time THIS process received them.
+      -NoTimestamps hands the handles straight through and is byte-exact.
+
+      THE EXIT CODE IS THE COMMAND'S, unchanged. Nothing here decides it except
+      -CommandTimeoutSeconds, which is opt-in, has no default, and reports 124
+      the way coreutils' timeout does.
+
+      THE STREAMS ARE READ BEFORE THE PROCESS IS WAITED ON. Waiting first
+      deadlocks any child that fills a pipe buffer: the child blocks writing and
+      the parent blocks waiting. Same ordering as Invoke-BoundedProcess, for the
+      same reason.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$DistroName,
+        [Parameter(Mandatory = $true)][string]$RunAs,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$ScriptBytes,
+        [Parameter(Mandatory = $true)][ref]$ExitCode
+    )
+    $ExitCode.Value = 1
+    $line = ConvertTo-DistroScriptCommand -ScriptBytes $ScriptBytes -GuestPath (New-GuestScratchPath)
+
+    $psi = New-Object Diagnostics.ProcessStartInfo
+    $psi.FileName               = Get-WslExe
+    $psi.Arguments              = ConvertTo-NativeArgumentString -Arguments @('-d', $DistroName, '-u', $RunAs, '--', '/bin/sh', '-lc', $line)
+    $psi.UseShellExecute        = $false
+    $psi.CreateNoWindow         = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError  = $true
+    $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding  = [Text.Encoding]::UTF8
+
+    $st = New-StreamLogState -DistroName $DistroName
+    $st.Out = Open-StreamLogWriter -Which 'Out'
+    $st.Err = Open-StreamLogWriter -Which 'Err'
+
+    $proc = [Diagnostics.Process]::Start($psi)
+    $hitDeadline = $false
+    try {
+        $streams = @(
+            [pscustomobject]@{ Tag = 'out'; Reader = $proc.StandardOutput; Buffer = [char[]]::new(8192); Task = $null; Pending = ''; Since = [timespan]::Zero; Done = $false },
+            [pscustomobject]@{ Tag = 'err'; Reader = $proc.StandardError;  Buffer = [char[]]::new(8192); Task = $null; Pending = ''; Since = [timespan]::Zero; Done = $false }
+        )
+        $pollMs   = 250
+        $flush    = [timespan]::FromMilliseconds($script:StreamFlushMs)
+        $tick     = if ($script:TickSeconds -gt 0) { [timespan]::FromSeconds($script:TickSeconds) } else { [timespan]::Zero }
+        $deadline = if ($script:CommandTimeoutSeconds -gt 0) { [timespan]::FromSeconds($script:CommandTimeoutSeconds) } else { [timespan]::Zero }
+
+        while ($true) {
+            $now = $st.Clock.Elapsed
+
+            if ($deadline -ne [timespan]::Zero -and $now -ge $deadline) { $hitDeadline = $true; break }
+
+            # An unterminated line that has sat this long is shown early, marked
+            # as unterminated. A prompt waiting on stdin that will never arrive
+            # is exactly this shape, and it is the one case where showing
+            # nothing means waiting forever.
+            foreach ($s in $streams) {
+                if ($s.Done -or -not $s.Pending) { continue }
+                if (($now - $s.Since) -lt $flush) { continue }
+                Write-StreamLogLine -State $st -Tag $s.Tag -Text $s.Pending -Partial
+                $st.Counts[$s.Tag].Lines++
+                $s.Pending  = ''
+                $st.LastLine = $now
+                $st.LastTick = $now
+            }
+
+            if ($tick -ne [timespan]::Zero -and ($now - $st.LastLine) -ge $tick -and ($now - $st.LastTick) -ge $tick) {
+                Write-StreamLogTick -State $st
+            }
+
+            $waiting = @()
+            $map     = @()
+            foreach ($s in $streams) {
+                if ($s.Done) { continue }
+                if ($null -eq $s.Task) { $s.Task = $s.Reader.ReadAsync($s.Buffer, 0, $s.Buffer.Length) }
+                $waiting += $s.Task
+                $map     += $s
+            }
+            if ($waiting.Count -eq 0) { break }
+
+            $idx = [Threading.Tasks.Task]::WaitAny([Threading.Tasks.Task[]]$waiting, $pollMs)
+            if ($idx -lt 0) { continue }
+
+            $s = $map[$idx]
+            $read = 0
+            try { $read = $s.Task.Result } catch { $null = $_; $read = 0 }
+            $s.Task = $null
+            if ($read -le 0) {
+                $s.Done = $true
+                if ($s.Pending) {
+                    Write-StreamLogLine -State $st -Tag $s.Tag -Text $s.Pending -Partial
+                    $st.Counts[$s.Tag].Lines++
+                    $s.Pending = ''
+                }
+                continue
+            }
+
+            $chunk = [string]::new($s.Buffer, 0, $read)
+            $st.Counts[$s.Tag].Bytes += [Text.Encoding]::UTF8.GetByteCount($chunk)
+            $had   = [bool]$s.Pending
+            $rest  = ''
+            $ready = Split-StreamChunk -Pending ($s.Pending + $chunk) -Remainder ([ref]$rest)
+            foreach ($l in $ready) {
+                Write-StreamLogLine -State $st -Tag $s.Tag -Text $l.Text -Partial:$l.Partial
+                $st.Counts[$s.Tag].Lines++
+            }
+            $s.Pending = $rest
+            if ($s.Pending -and (-not $had -or $ready.Count -gt 0)) { $s.Since = $st.Clock.Elapsed }
+            $st.LastLine = $st.Clock.Elapsed
+            $st.LastTick = $st.LastLine
+        }
+
+        if ($hitDeadline) {
+            # THE DISTRO IS TERMINATED, NOT LEFT RUNNING. Killing wsl.exe on
+            # this side ends the wait and not the process in the guest, which
+            # would carry on holding the disk and the CPU with nobody reading
+            # it. Get-DistroOutput does the same thing for the same reason.
+            Write-StreamLogLine -State $st -Tag 'tick' -Text (
+                'TIMED OUT after ' + (Format-Duration -Span $st.Clock.Elapsed) +
+                ': -CommandTimeoutSeconds ' + $script:CommandTimeoutSeconds + ' was reached. ' +
+                "Terminating '$DistroName'. The exit code is 124, which is what coreutils' " +
+                'timeout reports.')
+            try { $proc.Kill() } catch { $null = $_ }
+            try { $null = $proc.WaitForExit(5000) } catch { $null = $_ }
+            try { Invoke-Native -FilePath (Get-WslExe) -Arguments @('--terminate', $DistroName) -IgnoreExitCode | Out-Null }
+            catch { $null = $_ }
+            $ExitCode.Value = 124
+        }
+        else {
+            $proc.WaitForExit()
+            $ExitCode.Value = [int]$proc.ExitCode
+        }
+    }
+    finally {
+        try { $st.Out.Flush() } catch { $null = $_ }
+        try { $st.Err.Flush() } catch { $null = $_ }
+        $proc.Dispose()
+    }
 }
 
 function Get-DistroOutput {
@@ -1810,46 +2569,28 @@ function Invoke-ActionResources {
     Write-Warn "named volume holding data somebody kept on purpose."
 }
 
-function Invoke-ActionHostAddress {
+function Resolve-HostAddress {
     <#
-      The address a distro reaches THIS host at, printed without creating a
-      distro to find out.
+      The address a distro reaches THIS host at, as a value, with nothing
+      printed.
 
-      ⭐ THE VALUE IS THE ONLY THING ON STDOUT. Every explanatory line goes
-      through Write-Note, which is stderr, so both of these assign one address:
-
-          $addr = & .\wsl-ephemeral.ps1 -Action HostAddress
-          $addr = pwsh -NoProfile -File .\wsl-ephemeral.ps1 -Action HostAddress 2>$null
-
-      ⚠ The two differ in what the OPERATOR sees, not in what the caller gets.
-      In-process the notes reach the console directly and PowerShell's `2>`
-      cannot suppress them; out of process they are ordinary stderr and it can.
-      Measured both ways on 2026-08-29, and both gave `172.23.96.1`.
-
-      ⛔ Write-Host WOULD NOT DO. See Write-Note: it is invisible in-process and
-      lands on stdout out of process, so the two calls above would disagree.
-      ⛔ Do not add a second Write-Output to this path.
-
-      WHY IT EXISTS. A caller that wanted this had to create a distro, read
-      /proc/net/route inside it and decode little-endian hex, which is a
-      throwaway VM built to answer a question the host already knows. In
-      mirrored mode the answer is 127.0.0.1 and the caller's branch disappears.
+      ⭐ ONE RESOLUTION, TWO CALLERS. -Action HostAddress prints it and
+      -ScriptArg expands @hostaddress with it. Splitting the lookup from the
+      report is what keeps those two from drifting: a second copy of the mode
+      table would be a second place for the mirrored branch to be wrong, and
+      the wrong answer there is 127.0.0.1, which is a plausible address that
+      never connects.
 
       ⛔ IT REFUSES RATHER THAN GUESSING. A mode it cannot resolve to one
-      address exits 1 with the candidates named. An address invented here is
-      one a caller binds a fixture to and then debugs for an hour.
+      address throws with the candidates named. An address invented here is one
+      a caller binds a fixture to and then debugs for an hour.
     #>
     $net = Get-WslNetworkingMode
-    Write-Note "==> WSL networking mode: $($net.Mode) (from $($net.Source))"
-    if ($net.Path) { Write-Note "    $($net.Path)" }
-
     if ($net.Mode -eq 'mirrored') {
-        Write-Note "  * mirrored mode: the distro and this host share the loopback address."
-        Write-Note "    A host service on 127.0.0.1 is reachable from inside the distro."
-        Write-Output '127.0.0.1'
-        return
+        return [pscustomobject]@{
+            Address = '127.0.0.1'; Mode = $net.Mode; Source = $net.Source; Path = $net.Path; Interface = 'loopback'
+        }
     }
-
     if ($net.Mode -ne 'nat') {
         # bridged, or something a later WSL adds. Both have more than one right
         # answer and this script has no way to choose between them.
@@ -1883,13 +2624,58 @@ function Invoke-ActionHostAddress {
                "has run: start a distro and ask again. Nothing was created to find that out.")
     }
 
-    Write-Note "  * NAT mode: the distro reaches this host at $addr, on '$ifname'."
+    return [pscustomobject]@{
+        Address = $addr; Mode = $net.Mode; Source = $net.Source; Path = $net.Path; Interface = $ifname
+    }
+}
+
+function Invoke-ActionHostAddress {
+    <#
+      The address a distro reaches THIS host at, printed without creating a
+      distro to find out.
+
+      ⭐ THE VALUE IS THE ONLY THING ON STDOUT. Every explanatory line goes
+      through Write-Note, which is stderr, so both of these assign one address:
+
+          $addr = & .\wsl-ephemeral.ps1 -Action HostAddress
+          $addr = pwsh -NoProfile -File .\wsl-ephemeral.ps1 -Action HostAddress 2>$null
+
+      ⚠ The two differ in what the OPERATOR sees, not in what the caller gets.
+      In-process the notes reach the console directly and PowerShell's `2>`
+      cannot suppress them; out of process they are ordinary stderr and it can.
+      Measured both ways on 2026-08-29, and both gave `172.23.96.1`.
+
+      ⛔ Write-Host WOULD NOT DO. See Write-Note: it is invisible in-process and
+      lands on stdout out of process, so the two calls above would disagree.
+      ⛔ Do not add a second Write-Output to this path.
+
+      WHY IT EXISTS. A caller that wanted this had to create a distro, read
+      /proc/net/route inside it and decode little-endian hex, which is a
+      throwaway VM built to answer a question the host already knows. In
+      mirrored mode the answer is 127.0.0.1 and the caller's branch disappears.
+
+      ⛔ IT REFUSES RATHER THAN GUESSING. A mode it cannot resolve to one
+      address exits 1 with the candidates named. An address invented here is
+      one a caller binds a fixture to and then debugs for an hour.
+    #>
+    $net = Resolve-HostAddress
+    Write-Note "==> WSL networking mode: $($net.Mode) (from $($net.Source))"
+    if ($net.Path) { Write-Note "    $($net.Path)" }
+
+    if ($net.Mode -eq 'mirrored') {
+        Write-Note "  * mirrored mode: the distro and this host share the loopback address."
+        Write-Note "    A host service on 127.0.0.1 is reachable from inside the distro."
+        Write-Output $net.Address
+        return
+    }
+
+    Write-Note "  * NAT mode: the distro reaches this host at $($net.Address), on '$($net.Interface)'."
     Write-Note "  ! A HOST SERVICE ON 127.0.0.1 IS NOT REACHABLE FROM THE DISTRO IN THIS MODE."
-    Write-Note "    Bind it to $addr, or to 0.0.0.0 if you accept the LAN as well."
+    Write-Note "    Bind it to $($net.Address), or to 0.0.0.0 if you accept the LAN as well."
     Write-Note "    The failure is silent: a fixture on loopback simply never receives a"
     Write-Note "    connection, and nothing on either side says why."
     Write-Note "    This address is assigned by WSL and changes. Read it, never record it."
-    Write-Output $addr
+    Write-Output $net.Address
 }
 
 function Invoke-ActionPurge {
@@ -1944,6 +2730,32 @@ function Invoke-ActionPurge {
 try {
     if ([string]::IsNullOrWhiteSpace($script:BaseDir)) { throw "LOCALAPPDATA is not set; cannot choose a base directory." }
     New-Item -ItemType Directory -Path $script:BaseDir -Force | Out-Null
+
+    # ⛔ REFUSED, NEVER IGNORED. Every combination below is one where a
+    # parameter the caller typed would have no effect at all, and "a setting or
+    # flag that no code reads" is a row in
+    # docs/conventions/forbidden-patterns.md. The refusal names both halves, so
+    # the message says which one to drop rather than that something is wrong.
+    if ($NoTimestamps) {
+        $dead = @('TimestampMode', 'TimestampFormat', 'TickSeconds', 'CommandTimeoutSeconds') |
+            Where-Object { $PSBoundParameters.ContainsKey($_) }
+        if ($dead) {
+            throw ("-NoTimestamps turns the stream log off, so -" + ($dead -join ' and -') +
+                   " would do nothing. Drop -NoTimestamps to use them, or drop them.")
+        }
+    }
+    elseif ($PSBoundParameters.ContainsKey('TimestampFormat') -and $TimestampMode -notin @('Relative', 'Wall')) {
+        throw ("-TimestampFormat is a strftime string and -TimestampMode $TimestampMode renders a " +
+               "fixed shape that has no format to apply. Use Relative or Wall, or drop the format.")
+    }
+    elseif ($TimestampFormat) {
+        # ⭐ RENDERED ONCE, HERE, AND THROWN AWAY. A typo in the format is
+        # otherwise found by the first line of output, which on -Action New is
+        # after a pull, an export and an import: forty seconds and several
+        # hundred megabytes spent to learn that '%q' is not a specifier.
+        $null = Format-StrftimeStamp -Format $TimestampFormat -Wall ([DateTimeOffset]::Now) `
+            -Elapsed ([timespan]::Zero) -Mode $(if ($TimestampMode -eq 'Wall') { 'Wall' } else { 'Relative' })
+    }
 
     # Resolved ONCE, here, so New and Run cannot disagree about which switch
     # won and a bad -CommandFile is refused before a distro is built for it.

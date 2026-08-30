@@ -22,21 +22,41 @@
     So this resolves in order, and the first hit wins:
 
       1. -LauncherLocal PATH, or WSL_EPHEMERAL_LOCAL. An explicit file.
-      2. wsl-ephemeral.ps1 BESIDE THIS FILE. The clone case, and no network.
-      3. -LauncherRef SHA, or WSL_EPHEMERAL_REF. Fetched from this repository
-         at that exact revision.
+      2. -LauncherRef, or WSL_EPHEMERAL_REF. A revision you named.
+      3. wsl-ephemeral.ps1 BESIDE THIS FILE. The clone case, and no network.
+
+    AN EXPLICIT REF NOW WINS OVER THE SIBLING, and it used to be the other way
+    round. A caller passing a commit AND a digest could get the line "Using the
+    copy beside this launcher", run a stale file, and verify nothing. A consumer
+    hit that, worked around it by deleting the sibling before every call, and
+    wrote the workaround into their own documentation. The sibling is what "you
+    did not say" resolves to, not something that overrides what you did say.
 
     THERE IS NO DEFAULT REF, ON PURPOSE. With no sibling and no ref it refuses
-    and prints the command that resolves one. Falling back to a branch would be
-    running code nobody reviewed, which is the rule this repository states first
-    and everywhere.
+    and prints what to pass. Falling back to a branch would be running code
+    nobody reviewed, which is the rule this repository states first and
+    everywhere. What it offers instead of a default is two ways of resolving one:
+
+      -LauncherRef auto     resolve main to a commit ONCE, record the commit AND
+                            its digest in a lock file, and use that record on
+                            every later run. One trust decision, written down.
+      -LauncherRef latest   resolve main on EVERY run, warning every time. A
+                            standing trust decision, and it says so.
+      -LauncherSha256 auto  read the digest from api.github.com for whatever ref
+                            is in play, and verify the raw download against it.
+
+    NEITHER KEYWORD EVER FETCHES A BRANCH. Both resolve one to a commit first,
+    so the URL downloaded always names an immutable object. The pin rule is
+    kept; what is removed is the caller having to paste two long strings.
 
     WHAT IT DOES THAT A curl AND A pwsh DO NOT
 
-      - REFUSES A MOVING REF by shape. A 40-character commit, or an explicit
-        -LauncherAllowMovingRef, and nothing in between.
+      - REFUSES A MOVING REF by shape. A 40-character commit, one of the two
+        keywords above, or an explicit -LauncherAllowMovingRef.
       - VERIFIES A DIGEST when one is given, and refuses on a mismatch rather
         than warning.
+      - REFUSES A DIGEST THAT IS NOT 64 HEX CHARACTERS by name, rather than
+        letting a typo arrive later as a mismatch nobody can explain.
       - PARSES THE FILE AS POWERSHELL BEFORE RUNNING IT, so a captive portal or
         a 404 body arriving with HTTP 200 cannot reach the execution path.
       - CLEARS THE MARK OF THE WEB. A file downloaded on Windows carries a
@@ -57,8 +77,14 @@
     one of these, whatever it adds.
 
       -LauncherLocal PATH        run this file. No network.
-      -LauncherRef SHA           fetch this revision from Azathothas/ToolKit.
-      -LauncherSha256 HEX        expect this SHA-256 of the fetched bytes.
+      -LauncherRef SHA|auto|latest
+                                 fetch this revision from Azathothas/ToolKit,
+                                 or resolve main once (auto) or every run
+                                 (latest).
+      -LauncherSha256 HEX|auto   expect this SHA-256 of the fetched bytes, or
+                                 read it from the API for the resolved ref.
+      -LauncherLock PATH         where -LauncherRef auto keeps what it resolved.
+                                 Default: <install dir>\wsl-ephemeral.lock.json.
       -LauncherAllowMovingRef    permit a branch or a tag. Prints a warning.
       -LauncherInstallDir DIR    where a fetched copy is kept.
       -LauncherAddToPath         put the directory on PATH and DO NOT RUN.
@@ -68,13 +94,17 @@
     argument list at all:
 
       WSL_EPHEMERAL_LOCAL, WSL_EPHEMERAL_REF, WSL_EPHEMERAL_SHA256,
-      WSL_EPHEMERAL_ALLOW_MOVING_REF=1, WSL_EPHEMERAL_CACHE
+      WSL_EPHEMERAL_ALLOW_MOVING_REF=1, WSL_EPHEMERAL_CACHE,
+      WSL_EPHEMERAL_LOCK
 
 .EXAMPLE
     .\wsl-ephemeral-launcher.ps1 -Action List
 
 .EXAMPLE
     .\wsl-ephemeral-launcher.ps1 -LauncherRef 7127ff7... -Action New -Image alpine:3.22 -Ephemeral -Force
+
+.EXAMPLE
+    .\wsl-ephemeral-launcher.ps1 -LauncherRef auto -LauncherLock .\toolkit.lock.json -Action List
 
 .EXAMPLE
     . .\wsl-ephemeral-launcher.ps1 -LauncherAddToPath
@@ -111,6 +141,17 @@ $UpstreamOwner = 'Azathothas'
 $UpstreamRepo  = 'ToolKit'
 $UpstreamPath  = 'scripts/powershell-windows/wsl-ephemeral.ps1'
 $ScriptLeaf    = 'wsl-ephemeral.ps1'
+# The branch -LauncherRef auto and -LauncherRef latest resolve. It is a constant
+# rather than a parameter because it is a property of the repository this
+# launcher is written against, not a choice a caller makes: a different branch
+# is a different -LauncherRef, spelled as the commit it points at.
+$UpstreamBranch = 'main'
+# The API hosts, tried in order. The first is the source. The second is
+# pkgforge-dev/reverse-proxies' read-only mirror of it, and it is here for the
+# two cases that make the first unusable: the anonymous rate limit of 60
+# requests an hour per address, and a network that cannot reach api.github.com
+# at all. See Get-ApiUri for what was measured across the two.
+$ApiHosts = @('api.github.com', 'api.gh.pkgforge.dev')
 
 # EVERY LINE THIS FILE PRINTS GOES TO STDERR, and there is no Write-Host in it
 # at all. A wrapper that writes to the wrapped program's stdout corrupts it:
@@ -163,7 +204,7 @@ function Split-LauncherArgument {
     param([Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Argument)
 
     $opt = @{
-        Local = ''; Ref = ''; Sha256 = ''; InstallDir = ''
+        Local = ''; Ref = ''; Sha256 = ''; InstallDir = ''; Lock = ''
         AllowMovingRef = $false; AddToPath = $false; Help = $false
     }
     # An ordinary array with +=, NOT an ArrayList. See the note above: this is
@@ -172,6 +213,7 @@ function Split-LauncherArgument {
     $takesValue = @{
         '-launcherlocal' = 'Local'; '-launcherref' = 'Ref'
         '-launchersha256' = 'Sha256'; '-launcherinstalldir' = 'InstallDir'
+        '-launcherlock' = 'Lock'
     }
     $flags = @{
         '-launcherallowmovingref' = 'AllowMovingRef'
@@ -192,7 +234,7 @@ function Split-LauncherArgument {
         if ($k.StartsWith('-launcher')) {
             throw ("$a is not a launcher option. The set is -LauncherLocal, -LauncherRef, " +
                    "-LauncherSha256, -LauncherAllowMovingRef, -LauncherInstallDir, " +
-                   "-LauncherAddToPath and -LauncherHelp.")
+                   "-LauncherLock, -LauncherAddToPath and -LauncherHelp.")
         }
         $rest += $Argument[$i]
     }
@@ -250,41 +292,348 @@ function Clear-DownloadMark {
 }
 
 function Save-Upstream {
-    <# Download to a temp file in the destination directory, then rename. #>
+    <#
+      Download wsl-ephemeral.ps1 at one commit, trying every source in order,
+      to a temp file in the destination directory, then rename.
+
+      THREE SOURCES, AND ALL THREE SERVE THE SAME BYTES. Measured on
+      2026-08-30 at commit 8efe6e02: raw.githubusercontent.com, api.github.com
+      and api.gh.pkgforge.dev each returned 96,170 bytes hashing to
+      ab4f6bd6c040bb9d.... So a
+      fallback is not a lesser copy; it is the same object over another route,
+      and the digest check downstream holds it to that whichever one answered.
+
+      WHY MORE THAN ONE. raw.githubusercontent.com is blocked on some corporate
+      networks while api.github.com is not, and api.github.com's anonymous rate
+      limit is 60 requests an hour per address while the proxy in front of it
+      reports 5000. Each of those makes exactly one of the three unusable, and
+      none of them makes the file unavailable.
+
+      THE TEMP FILE IS IN THE DESTINATION DIRECTORY. A rename across volumes
+      is a copy, and loses the property that a killed process leaves the old
+      file intact rather than a truncated one.
+    #>
     param(
-        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Ref,
         [Parameter(Mandatory = $true)][string]$Destination
     )
     $dir = Split-Path -Parent $Destination
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $temp = Join-Path $dir ('.download.' + [Guid]::NewGuid().ToString('N') + '.tmp')
 
-    # Windows PowerShell 5.1 negotiates TLS 1.0 on some machines and GitHub
-    # refuses it, which surfaces as "The request was aborted: Could not create
-    # SSL/TLS secure channel" and reads like an outage. PowerShell 7 already
-    # defaults correctly; setting it is harmless there.
+    $sources = @(
+        @{ Name = 'raw.githubusercontent.com'
+           Uri  = "https://raw.githubusercontent.com/$UpstreamOwner/$UpstreamRepo/$Ref/$UpstreamPath"
+           Accept = '*/*' }
+    )
+    foreach ($apiHost in $ApiHosts) {
+        $sources += @{ Name = $apiHost
+                       Uri  = (Get-ApiUri -ApiHost $apiHost -Path ("repos/$UpstreamOwner/$UpstreamRepo/contents/$UpstreamPath" + "?ref=$Ref"))
+                       Accept = 'application/vnd.github.raw' }
+    }
+
+    $problems = @()
+    try {
+        foreach ($src in $sources) {
+            try {
+                $null = Invoke-UpstreamRequest -Uri $src.Uri -Accept $src.Accept -OutFile $temp
+                if (-not (Test-Path -LiteralPath $temp)) { throw 'the download produced no file' }
+                $size = (Get-Item -LiteralPath $temp).Length
+                # AN IMPLAUSIBLY SMALL FILE IS A FAILURE OF THIS SOURCE, not
+                # of the fetch. A redirect page, a captive portal and an error
+                # body all arrive with HTTP 200 and a few hundred bytes, and the
+                # next source is exactly what should be tried.
+                if ($size -lt 1KB) { throw "the downloaded file is implausibly small ($size bytes)" }
+                if ($src.Name -ne $sources[0].Name) { Write-Warn "$($sources[0].Name) did not answer; this came from $($src.Name) instead." }
+                Move-Item -LiteralPath $temp -Destination $Destination -Force
+                return
+            }
+            catch {
+                $problems += "$($src.Name) : $($_.Exception.Message.Trim())"
+                if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+            }
+        }
+        throw ("no source served $ScriptLeaf at $Ref :`n  " + ($problems -join "`n  "))
+    }
+    finally {
+        if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Get-ApiUri {
+    <#
+      The URL for one API question against one host.
+
+      TWO HOSTS ANSWER THE SAME QUESTIONS. api.github.com is first because it is
+      the source; api.gh.pkgforge.dev is a reverse proxy in front of it, and it
+      exists here for the two cases that make the first one unusable: the
+      anonymous rate limit, which is 60 requests an hour per address, and a
+      network where api.github.com is simply not reachable.
+      https://github.com/pkgforge-dev/reverse-proxies is what it is.
+
+      MEASURED ON 2026-08-30, and this is the claim the fallback rests on: the
+      contents endpoint through the proxy returned 96,170 bytes hashing to
+      ab4f6bd6c040bb9d..., which is
+      byte-identical to what raw.githubusercontent.com and api.github.com serve
+      for the same commit. Its own rate limit reported 5000 core requests
+      remaining against the anonymous 60.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$ApiHost,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+    return "https://$ApiHost/$Path"
+}
+
+function Get-UpstreamUserAgent {
+    <#
+      ONE USER AGENT, AND ITS SHAPE IS LOAD-BEARING.
+
+      api.github.com answers 403 to a request carrying none, and the body says
+      so in a sentence that never reaches the caller because the exception only
+      names the status.
+
+      THE PROXY IS STRICTER AND IT IS NOT DOCUMENTATION, IT IS ENFORCED.
+      Measured on 2026-08-30 against api.gh.pkgforge.dev, same URL and same
+      Accept header, varying only this:
+
+        'wsl-ephemeral-launcher'  -> HTTP 420, refused
+        'Mozilla/5.0'             -> HTTP 420, refused
+        'curl/8.21.0'             -> HTTP 200
+        none at all               -> HTTP 200
+
+      Its allowlist is a substring match on curl, wget, pkgforge or soar. So the
+      token is here, beside the tool's real name and its home, rather than in
+      place of them: this is not a claim to be curl, and a reader of a log
+      should be able to tell exactly what made the request.
+    #>
+    return 'wsl-ephemeral-launcher/1 (curl-compatible; +https://github.com/Azathothas/ToolKit)'
+}
+
+function Invoke-UpstreamRequest {
+    <#
+      One GET, to a file or to a string, with the TLS floor and the progress bar
+      dealt with once.
+
+      Windows PowerShell 5.1 negotiates TLS 1.0 on some machines and GitHub
+      refuses it, which surfaces as "The request was aborted: Could not create
+      SSL/TLS secure channel" and reads like an outage. PowerShell 7 already
+      defaults correctly and setting it is harmless there.
+
+      The progress bar makes Invoke-WebRequest an order of magnitude slower on
+      5.1 and writes nothing a caller needs.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Accept,
+        [string]$OutFile = ''
+    )
     try {
         [Net.ServicePointManager]::SecurityProtocol =
             [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     }
     catch { $null = $_ }
-
-    # The progress bar makes Invoke-WebRequest an order of magnitude slower on
-    # 5.1 and writes nothing a caller needs.
+    $headers = @{ 'Accept' = $Accept; 'User-Agent' = Get-UpstreamUserAgent }
     $prevProgress = $ProgressPreference
     $ProgressPreference = 'SilentlyContinue'
     try {
-        Invoke-WebRequest -Uri $Uri -OutFile $temp -UseBasicParsing -TimeoutSec 30
-        if (-not (Test-Path -LiteralPath $temp)) { throw "download produced no file" }
-        if ((Get-Item -LiteralPath $temp).Length -lt 1KB) {
-            throw "downloaded file is implausibly small ($((Get-Item -LiteralPath $temp).Length) bytes)"
+        if ($OutFile) {
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $headers -UseBasicParsing -TimeoutSec 30
+            return ''
         }
-        Move-Item -LiteralPath $temp -Destination $Destination -Force
+        $resp = Invoke-WebRequest -Uri $Uri -Headers $headers -UseBasicParsing -TimeoutSec 30
+        # .Content IS NOT ALWAYS A STRING, and casting it as though it were
+        # produces something that looks like data. Invoke-WebRequest decides by
+        # the response's content type, and 'application/vnd.github.sha' is not
+        # one it treats as text, so Content arrives as a byte[]. `[string]` on a
+        # byte array joins the DECIMAL BYTE VALUES with spaces: the commit
+        # 8efe6e02 came back as "56 101 102 101 54 101 48 50 ...", forty numbers
+        # that are the right answer in the wrong alphabet.
+        if ($resp.Content -is [byte[]]) { return [Text.Encoding]::UTF8.GetString($resp.Content) }
+        return [string]$resp.Content
+    }
+    finally { $ProgressPreference = $prevProgress }
+}
+
+function Invoke-ApiWithFallback {
+    <#
+      Ask one API question, trying each host in order and stopping at the first
+      that answers.
+
+      EVERY FAILURE IS TRIED PAST, not only a rate limit. A 403, a 5xx, a DNS
+      failure and a timeout are four different reasons the first host is no use
+      right now, and a fallback that only handles the one it was written for is
+      a fallback that is absent on the day it is needed. What is NOT tried past
+      is a bad answer: the caller checks the shape of what came back, so a proxy
+      returning a login page fails the same way the source would.
+
+      THE HOST THAT ANSWERED IS NAMED. A fallback nobody can see is a fallback
+      nobody knows fired, and "it worked" through a proxy is a different fact
+      from "it worked".
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Accept,
+        [string]$OutFile = ''
+    )
+    $problems = @()
+    foreach ($apiHost in $ApiHosts) {
+        $uri = Get-ApiUri -ApiHost $apiHost -Path $Path
+        try {
+            $text = Invoke-UpstreamRequest -Uri $uri -Accept $Accept -OutFile $OutFile
+            if ($apiHost -ne $ApiHosts[0]) { Write-Warn "$($ApiHosts[0]) did not answer; this came from $apiHost instead." }
+            return $text
+        }
+        catch {
+            $problems += "$apiHost : $($_.Exception.Message.Trim())"
+        }
+    }
+    throw ("No API host answered for $Path :`n  " + ($problems -join "`n  "))
+}
+
+function Resolve-UpstreamRef {
+    <#
+      Turn the branch name into the commit it points at RIGHT NOW.
+
+      THE POINT OF DOING THIS AT ALL. The rule everywhere in this repository is
+      to pin a commit and never a branch, and the rule is right: a moved
+      reference runs code nobody reviewed. But making every caller run a gh
+      command and paste a 40-character string is what the rule cost them, and a
+      rule that expensive gets worked around rather than followed.
+
+      NO gh, AND NO EXTERNAL TOOL AT ALL. Invoke-WebRequest ships with every
+      PowerShell this script supports. A launcher whose convenience path needed
+      the GitHub CLI installed would have replaced one setup step with another.
+
+      SO THE BRANCH IS NEVER FETCHED. It is resolved to a commit here, and the
+      URL that is actually downloaded always names that commit. What runs is
+      always an immutable object; the only question 'auto' and 'latest' answer
+      differently is HOW OFTEN the resolution happens.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Branch)
+    $path = "repos/$UpstreamOwner/$UpstreamRepo/commits/$Branch"
+    $text = ''
+    try { $text = (Invoke-ApiWithFallback -Path $path -Accept 'application/vnd.github.sha').Trim() }
+    catch {
+        throw ("Could not resolve $UpstreamOwner/$UpstreamRepo@$Branch to a commit.`n" +
+               "  $($_.Exception.Message.Trim())`n" +
+               "  Offline? Pass a 40-character -LauncherRef, or point -LauncherLocal at a copy.")
+    }
+    if ($text -notmatch '^[0-9a-f]{40}$') {
+        throw ("The API answered something that is not a commit for $path. First 120 characters: " +
+               $text.Substring(0, [Math]::Min(120, $text.Length)))
+    }
+    return $text
+}
+
+function Get-UpstreamDigest {
+    <#
+      The SHA-256 of the file at one commit, read from the API rather than from
+      the raw endpoint the download comes from.
+
+      WHAT THIS IS AND IS NOT, because the difference matters and is easy to
+      overstate. It is a TRANSPORT check: these bytes come from an API host and
+      the download comes from raw.githubusercontent.com, so a truncated
+      transfer, a captive portal or a proxy that rewrote one of the two is
+      caught. It is NOT a provenance check. A digest a person obtained out of
+      band and reviewed is a different and stronger thing, and passing one as
+      -LauncherSha256 remains the strongest option here.
+
+      IT DOWNLOADS TO A FILE AND HASHES THE FILE. The obvious version reads the
+      response as a STRING and hashes its UTF-8 bytes, and that is wrong in a
+      way that would arrive as a digest mismatch nobody could explain:
+      wsl-ephemeral.ps1 begins with a UTF-8 byte order mark, and a response
+      decoded to text and re-encoded does not reliably carry one back. Bytes to
+      disk, then Get-FileHash, has no encoding step in it at all.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Ref, [Parameter(Mandatory = $true)][string]$WorkDir)
+    if (-not (Test-Path -LiteralPath $WorkDir)) { New-Item -ItemType Directory -Path $WorkDir -Force | Out-Null }
+    $temp = Join-Path $WorkDir ('.digest.' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        try {
+            $null = Invoke-ApiWithFallback -Path ("repos/$UpstreamOwner/$UpstreamRepo/contents/$UpstreamPath" + "?ref=$Ref") `
+                -Accept 'application/vnd.github.raw' -OutFile $temp
+        }
+        catch { throw "Could not read the digest for $UpstreamPath at $Ref : $($_.Exception.Message.Trim())" }
+        if (-not (Test-Path -LiteralPath $temp)) { throw "the digest request produced no file for $UpstreamPath at $Ref" }
+        if ((Get-Item -LiteralPath $temp).Length -lt 1KB) {
+            throw ("the digest request returned $((Get-Item -LiteralPath $temp).Length) bytes, which is too " +
+                   "small to be $ScriptLeaf. A file over a megabyte comes back empty from that endpoint, and so " +
+                   "does an error page.")
+        }
+        return (Get-Sha256 -LiteralFile $temp)
     }
     finally {
-        $ProgressPreference = $prevProgress
         if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
     }
+}
+function Get-LockPath {
+    param([Parameter(Mandatory = $true)]$Options, [Parameter(Mandatory = $true)][string]$CacheDir)
+    $p = $Options.Lock
+    if (-not $p) { $p = Get-EnvOrDefault 'WSL_EPHEMERAL_LOCK' }
+    if ($p) { return $p }
+    # NOT THE WORKING DIRECTORY. A launcher that writes a file into whatever
+    # directory it was run from has written into somebody's repository without
+    # being asked. The cache directory is this tool's own, and a caller who
+    # wants the lock committed beside their project names it with -LauncherLock.
+    return (Join-Path $CacheDir 'wsl-ephemeral.lock.json')
+}
+
+function Read-LauncherLock {
+    <#
+      The recorded resolution, or nothing.
+
+      IT VALIDATES WHAT IT IS FOR. A lock naming another repository or another
+      path is not this launcher's, and using its commit would fetch a file whose
+      digest could never match. Refusing by name is a one-line message; the
+      alternative is a digest mismatch that reads like an attack.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return $null }
+    try { $lock = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
+    catch { Write-Warn "the lock at $Path is not JSON, so it is being resolved again: $($_.Exception.Message.Trim())"; return $null }
+    foreach ($field in @('schema', 'repository', 'path', 'ref', 'sha256')) {
+        if (-not ($lock.PSObject.Properties.Name -contains $field)) {
+            Write-Warn "the lock at $Path carries no '$field', so it is being resolved again."
+            return $null
+        }
+    }
+    if ($lock.schema -ne 'wsl-ephemeral-lock/1') {
+        throw "The lock at $Path says schema '$($lock.schema)' and this launcher writes 'wsl-ephemeral-lock/1'. Delete it, or point -LauncherLock somewhere else."
+    }
+    if ($lock.repository -ne "$UpstreamOwner/$UpstreamRepo" -or $lock.path -ne $UpstreamPath) {
+        throw ("The lock at $Path is for $($lock.repository) at $($lock.path), and this launcher " +
+               "fetches $UpstreamOwner/$UpstreamRepo at $UpstreamPath. It is somebody else's lock.")
+    }
+    if ($lock.ref -notmatch '^[0-9a-f]{40}$' -or $lock.sha256 -notmatch '^[0-9a-f]{64}$') {
+        throw "The lock at $Path holds a ref or a digest that is not the right shape. Delete it to resolve again."
+    }
+    return $lock
+}
+
+function Write-LauncherLock {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Ref,
+        [Parameter(Mandatory = $true)][string]$Sha256,
+        [Parameter(Mandatory = $true)][string]$Branch
+    )
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+    $lock = [ordered]@{
+        schema     = 'wsl-ephemeral-lock/1'
+        repository = "$UpstreamOwner/$UpstreamRepo"
+        path       = $UpstreamPath
+        branch     = $Branch
+        ref        = $Ref
+        sha256     = $Sha256
+        resolved   = [DateTimeOffset]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
+    }
+    # Written to a temp file in the SAME directory and renamed, so a killed run
+    # leaves the old lock rather than a truncated one.
+    $temp = "$Path.$([Guid]::NewGuid().ToString('N')).tmp"
+    Set-Content -LiteralPath $temp -Value ($lock | ConvertTo-Json -Depth 5) -Encoding UTF8
+    Move-Item -LiteralPath $temp -Destination $Path -Force
 }
 
 function Resolve-Upstream {
@@ -304,33 +653,33 @@ function Resolve-Upstream {
         return (Resolve-Path -LiteralPath $local).Path
     }
 
-    # 2. the sibling, which is the clone case and needs no network at all
-    $here = Split-Path -Parent $PSCommandPath
-    if ($here) {
-        $sibling = Join-Path $here $ScriptLeaf
-        if (Test-Path -LiteralPath $sibling -PathType Leaf) {
-            Write-Step "Using the copy beside this launcher"
-            return (Resolve-Path -LiteralPath $sibling).Path
-        }
-    }
-
-    # 3. fetch, at a revision the caller named
     $ref = $Options.Ref
     if (-not $ref) { $ref = Get-EnvOrDefault 'WSL_EPHEMERAL_REF' }
+
+    # 2. the sibling, which is the clone case and needs no network at all.
+    #
+    # AN EXPLICIT REF NOW WINS OVER IT, and that is a change. The sibling used
+    # to win over everything short of -LauncherLocal, so a run passing both a
+    # commit and a digest could print "Using the copy beside this launcher", run
+    # a stale file and verify nothing. A consumer hit exactly that, worked
+    # around it by deleting the sibling before every call, and wrote the
+    # workaround into their own documentation. A caller who names a revision
+    # means that revision; the sibling is what "you did not say" resolves to.
     if (-not $ref) {
+        $here = Split-Path -Parent $PSCommandPath
+        if ($here) {
+            $sibling = Join-Path $here $ScriptLeaf
+            if (Test-Path -LiteralPath $sibling -PathType Leaf) {
+                Write-Step "Using the copy beside this launcher"
+                return (Resolve-Path -LiteralPath $sibling).Path
+            }
+        }
         throw ("No copy of $ScriptLeaf beside this launcher, and no revision to fetch. " +
                "There is no default: a branch moves, and a moved reference runs code nobody " +
-               "reviewed. Resolve one and pass it as -LauncherRef:`n" +
-               "    gh api repos/$UpstreamOwner/$UpstreamRepo/commits/main --jq .sha")
-    }
-
-    $allowMoving = $Options.AllowMovingRef -or ((Get-EnvOrDefault 'WSL_EPHEMERAL_ALLOW_MOVING_REF') -eq '1')
-    if ($ref -notmatch '^[0-9a-fA-F]{40}$') {
-        if (-not $allowMoving) {
-            throw ("'$ref' is not a 40-character commit. A branch or a tag moves and is refused. " +
-                   "Pass -LauncherAllowMovingRef to accept one anyway.")
-        }
-        Write-Warn "'$ref' is not a commit. It can move, and what runs may change under you."
+               "reviewed. Name one of these as -LauncherRef:`n" +
+               "    auto     resolve $UpstreamBranch to a commit ONCE, record it, and use the record after that`n" +
+               "    latest   resolve $UpstreamBranch on every run, which is a standing trust decision`n" +
+               "    a 40-character commit, which 'auto' would have read for you")
     }
 
     $expected = $Options.Sha256
@@ -346,12 +695,82 @@ function Resolve-Upstream {
         $cacheDir = Join-Path $env:LOCALAPPDATA 'wsl-ephemeral\bin'
     }
 
+    # -- auto and latest, which is where the pin rule meets the caller -------
+    #
+    # THE COMPLAINT THIS ANSWERS: a consumer had to run a gh command, paste a
+    # 40-character commit, run a second command, paste a 64-character digest,
+    # and do it again every time either moved. Every one of those steps is a
+    # place to paste the wrong string, and a wrong digest fails closed in a way
+    # that takes an hour to work out.
+    #
+    # WHAT IS NOT GIVEN UP. Neither keyword ever fetches a branch. Both resolve
+    # one to a commit FIRST, so the URL downloaded below always names an
+    # immutable object and what runs is always a reviewable revision. The
+    # difference between them is how often that resolution happens, which is the
+    # difference between a one-time trust decision and a standing one.
+    $lockPath = Get-LockPath -Options $Options -CacheDir $cacheDir
+    $keyword  = $ref.ToLowerInvariant()
+    if ($keyword -eq 'auto' -or $keyword -eq 'latest') {
+        if ($keyword -eq 'auto' -and $expected -and $expected -ne 'auto') {
+            throw ("-LauncherRef auto records the digest it resolved, in $lockPath, so a " +
+                   "-LauncherSha256 given here can only ever agree with it or contradict it. " +
+                   "Pass a commit as -LauncherRef if you want to pin the digest yourself.")
+        }
+        $lock = $null
+        if ($keyword -eq 'auto') { $lock = Read-LauncherLock -Path $lockPath }
+        if ($lock) {
+            $ref = $lock.ref
+            $expected = $lock.sha256
+            Write-Ok "lock: $lockPath resolved to $($ref.Substring(0, 12)) with a recorded digest"
+        }
+        else {
+            if ($keyword -eq 'latest') {
+                Write-Warn "-LauncherRef latest re-resolves '$UpstreamBranch' on EVERY run."
+                Write-Warn "  What executes can change between one call and the next, and nobody reviews it on your behalf."
+                Write-Warn "  Use -LauncherRef auto once and keep the lock it writes."
+            }
+            else {
+                Write-Warn "-LauncherRef auto: no usable lock at $lockPath, so '$UpstreamBranch' is being resolved now."
+            }
+            $ref = Resolve-UpstreamRef -Branch $UpstreamBranch
+            Write-Ok "$UpstreamOwner/$UpstreamRepo@$UpstreamBranch is $ref"
+            if (-not $expected -or $expected -eq 'auto') { $expected = Get-UpstreamDigest -Ref $ref -WorkDir $cacheDir }
+            if ($keyword -eq 'auto') {
+                Write-LauncherLock -Path $lockPath -Ref $ref -Sha256 $expected -Branch $UpstreamBranch
+                Write-Ok "recorded in $lockPath. Later runs read it and ask GitHub nothing."
+                Write-Warn "you have just trusted whatever '$UpstreamBranch' pointed at. Nobody reviewed it on your behalf."
+                Write-Warn "  Keep that file, and put it under review with the rest of your project."
+            }
+        }
+    }
+    elseif ($expected -eq 'auto') {
+        $expected = Get-UpstreamDigest -Ref $ref -WorkDir $cacheDir
+        Write-Ok "-LauncherSha256 auto: the API answers $expected for this ref"
+    }
+
+    # THE SHAPE CHECK RUNS AFTER THE KEYWORDS, not before. A branch or a tag
+    # is still refused; 'auto' and 'latest' reach this line already resolved to
+    # a commit, which is the property that lets them exist at all.
+    $allowMoving = $Options.AllowMovingRef -or ((Get-EnvOrDefault 'WSL_EPHEMERAL_ALLOW_MOVING_REF') -eq '1')
+    if ($ref -notmatch '^[0-9a-fA-F]{40}$') {
+        if (-not $allowMoving) {
+            throw ("'$ref' is not a 40-character commit. A branch or a tag moves and is refused. " +
+                   "Pass -LauncherRef auto to resolve one ONCE and record it, -LauncherRef latest " +
+                   "to resolve it on every run, or -LauncherAllowMovingRef to fetch this ref as it is.")
+        }
+        Write-Warn "'$ref' is not a commit. It can move, and what runs may change under you."
+    }
+    if ($expected -and $expected -notmatch '^[0-9a-f]{64}$') {
+        throw ("-LauncherSha256 '$expected' is not 64 hexadecimal characters, so it can never match " +
+               "anything. A digest that is merely wrong fails closed later with a mismatch nobody " +
+               "can explain; this says which string is the problem.")
+    }
+
     # KEYED BY REF. A cache keyed without the thing that varies hands back the
     # previous answer, which is the shape this repository's forbidden-patterns
     # table records under a fetched variant landing on a shared tag.
     $safeRef = ($ref -replace '[^A-Za-z0-9._-]', '-')
     $cached  = Join-Path $cacheDir ("wsl-ephemeral-$safeRef.ps1")
-    $uri = "https://raw.githubusercontent.com/$UpstreamOwner/$UpstreamRepo/$ref/$UpstreamPath"
 
     $useCache = $false
     if ($expected -and (Test-Path -LiteralPath $cached -PathType Leaf)) {
@@ -361,15 +780,15 @@ function Resolve-Upstream {
 
     if (-not $useCache) {
         Write-Step "Fetching $UpstreamOwner/$UpstreamRepo@$($ref.Substring(0, [Math]::Min(12, $ref.Length)))"
-        try { Save-Upstream -Uri $uri -Destination $cached }
+        try { Save-Upstream -Ref $ref -Destination $cached }
         catch {
             if ($expected -and (Test-Path -LiteralPath $cached -PathType Leaf) -and
                 (Get-Sha256 -LiteralFile $cached) -eq $expected) {
                 Write-Warn "fetch failed ($($_.Exception.Message.Trim())); using the verified cached copy."
             }
             else {
-                throw ("Could not fetch $uri and no verified cached copy exists.`n" +
-                       "  Underlying error: $($_.Exception.Message.Trim())`n" +
+                throw ("Could not fetch $ScriptLeaf at $ref and no verified cached copy exists.`n" +
+                       "  $($_.Exception.Message.Trim())`n" +
                        "  Offline? Point -LauncherLocal at a copy on this machine.")
             }
         }
@@ -379,7 +798,7 @@ function Resolve-Upstream {
         $actual = Get-Sha256 -LiteralFile $cached
         if ($actual -ne $expected) {
             Remove-Item -LiteralPath $cached -Force -ErrorAction SilentlyContinue
-            throw ("DIGEST MISMATCH for $uri`n" +
+            throw ("DIGEST MISMATCH for $ScriptLeaf at $ref`n" +
                    "  expected $expected`n" +
                    "  actual   $actual`n" +
                    "  Refusing to run it. The fetched copy has been deleted.")
@@ -390,9 +809,8 @@ function Resolve-Upstream {
         # SAID OUT LOUD. A commit cannot be pushed over, so a pinned ref with no
         # digest is far from nothing; it is still not the same as verified bytes,
         # and a caller who thinks it is will not notice a proxy.
-        Write-Warn "no -LauncherSha256 given, so the bytes were not verified. Read one with:"
-        Write-Warn ("  gh api repos/$UpstreamOwner/$UpstreamRepo/contents/$UpstreamPath" +
-                    "?ref=REF --jq .content | base64 -d | sha256sum")
+        Write-Warn "no -LauncherSha256 given, so the bytes were not verified."
+        Write-Warn "  -LauncherSha256 auto reads one from the API and checks against it, with no other tool installed."
     }
 
     return $cached

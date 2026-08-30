@@ -21,6 +21,7 @@ its history refers to are built by
 | --- | --- |
 | [`scripts/powershell-windows/wsl-ephemeral.ps1`](scripts/powershell-windows/wsl-ephemeral.md) | create, use and destroy throwaway WSL2 distros on Windows, from an OCI image or a rootfs tarball. Reports what WSL and the container engine are holding, and what address a distro reaches the host at. |
 | [`scripts/powershell-windows/wsl-ephemeral-launcher.ps1`](scripts/powershell-windows/wsl-ephemeral-launcher.md) | fetch that script, verify it, make it runnable on Windows, and run it |
+| [`scripts/powershell-windows/wsl-ephemeral-selftest.ps1`](scripts/powershell-windows/wsl-ephemeral-selftest.md) | run that script's pure functions against a table of cases. No WSL, no engine, nothing created. |
 | [`scripts/doctor/`](scripts/doctor/README.md) | one read-only pass reporting the host, the shell, the installed tools with versions, and the repository state |
 | [`scripts/common/`](scripts/README.md) | the checks that hold this repository's gate, plus the helpers that write files, move the record, commit and fill a licence. Each check is an `sh` and PowerShell pair. |
 | [`LICENSES/`](LICENSES/README.md) | the SPDX texts `scripts/common/fill-license.sh` reads |
@@ -65,6 +66,7 @@ not this one**, before using it.
 | [`docs/public/README.md`](docs/public/README.md) | what changes because this repository is public |
 | [`docs/reference-sweeps/findings.md`](docs/reference-sweeps/findings.md) | what external repositories were read, and what was true in them |
 | [`docs/reference-sweeps/usable.md`](docs/reference-sweeps/usable.md) | which of those findings this repository can use |
+| [`docs/HISTORY/README.md`](docs/HISTORY/README.md) | superseded wording and the story of fixes that have shipped. Nothing there is read to do work. |
 
 ---
 

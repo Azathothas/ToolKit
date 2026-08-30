@@ -81,7 +81,14 @@ recorded.
 | `-Ephemeral` | `New` | run `-Command`, then destroy the distro |
 | `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
 | `-Systemd` | `New` | write `/etc/wsl.conf` enabling systemd, restart the distro, and ⛔ refuse if systemd did not become PID 1. Most base images do not ship systemd; see below. |
+| `-Verbatim` | `New` `Run` with `-CommandFile` | send the file's bytes exactly as they are. Off by default, and the default repairs the **copy in transit**. ⛔ The file on disk is never written to either way. |
+| `-ScriptArg` | `New` `Run` | `NAME=VALUE`, repeatable. Prepended as POSIX-quoted shell assignments, so nothing runs `sed` over a payload. `@hostaddress` in a VALUE expands to what `-Action HostAddress` prints. |
 | `-TimeoutSeconds` | `New` | how long the script's own questions to a distro may take. Default 120. ⛔ It does not bound `-Command`. |
+| `-CommandTimeoutSeconds` | `New` `Run` | a bound on **your** command, in seconds. ⛔ No default. On expiry the distro is terminated and the exit code is 124. |
+| `-NoTimestamps` | `New` `Run` | ⭐ the one switch that turns the whole stream log off. Byte-exact passthrough. |
+| `-TimestampMode` | `New` `Run` | `Relative` (default), `Delta`, `Wall`, `Iso` or `Epoch`. |
+| `-TimestampFormat` | `New` `Run` | a strftime string, with `tss`'s specifiers, for `Relative` and `Wall`. ⛔ Refused with the other three. |
+| `-TickSeconds` | `New` `Run` | seconds of **silence** before a heartbeat line. Default 30. `0` turns the heartbeat off and keeps the timestamps. |
 | `-Force` | destructive actions | required when the session is non-interactive. Skips the confirmation. |
 
 ⛔ `-Image` and `-Tarball` are mutually exclusive, and `New` requires one of
@@ -99,26 +106,19 @@ dropped.
 | --- | --- |
 | 0 | the action completed, and `-Command`, if given, exited 0 |
 | the inner command's code | from `New -Command` and from `Run -Command` alike |
+| 124 | `-CommandTimeoutSeconds` was reached. The same code coreutils' `timeout` uses. |
 | 1 | the script failed. The message names what. |
 
 ⚠ **The failure message goes to stderr**, not stdout. An error is not a result,
 and `HostAddress` makes that concrete: a caller assigning this script's stdout
 to a variable would otherwise get the string `ERROR: ...` where an address goes.
-Nothing about the exit code changed and the exit code is what every existing
-caller reads. [`../../docs/consumers.md`](../../docs/consumers.md) records the
-move.
 
 ⚠ **With `-Ephemeral` the distro is destroyed before the code is returned**, so
 a failing command still leaves nothing registered.
 
 ⚠ **A destructive action exits 1 when the disk is still there afterwards.**
 `Remove`, `Purge` and `New -Ephemeral` read the directory back and report what
-they find, so they can fail where they used to print success. See the safety
-model below.
-
-⛔ **`New -Command` used to exit 0 over a failing command.** A caller written
-against that is now told the truth, which is a break.
-[`../../docs/consumers.md`](../../docs/consumers.md) records it.
+they find. See the safety model below.
 
 ---
 
@@ -317,12 +317,10 @@ running
 | `ubuntu:24.04` | absent | ⛔ refused |
 | `fedora:41` | absent | ⛔ refused |
 
-⛔ **The refusal is the feature.** Written into an image with no systemd, the
-flag is a setting nothing reads: measured before the check existed, `ubuntu:24.04`
-carried on with its own init and said nothing at all, and `alpine:3.22` spent
-20 seconds failing and then also carried on. A caller would come away believing
-they had systemd. So the switch verifies its own effect by reading `/proc/1/comm`
-and fails loudly when the effect is absent.
+⛔ **The refusal is the feature.** Written into an image with no systemd the
+flag would be a setting nothing reads, and a caller would come away believing
+they had systemd. So the switch verifies its own effect by reading
+`/proc/1/comm` and fails loudly when the effect is absent.
 
 ⚠ **`wsl: Failed to start the systemd user session for 'root'` is not the
 failure.** It appears on a working systemd distro too. It is about the per-user
@@ -360,9 +358,8 @@ that has it, and run this again.
 
 ### ⚠ The requirement is a floor plus a multiple, and the floor is what matters
 
-⛔ **"Roughly twice the rootfs size" is wrong**, and it is what this was
-originally going to say. Measured on 2026-08-27 on this machine, VHDX size on
-disk against the rootfs tarball that produced it:
+⛔ **"Roughly twice the rootfs size" is not the rule.** Measured on 2026-08-27
+on this machine, VHDX size on disk against the rootfs tarball that produced it:
 
 | image | rootfs `.tar` | VHDX on disk | ratio |
 | --- | --- | --- | --- |
@@ -412,15 +409,14 @@ mkdir -p /tmp && exec 8>F && exec 9<F && rm -f F && echo B64|base64 -d>&8 && . /
 ⭐ **The file is unlinked before any content exists in it.** Two open
 descriptors keep the inode alive, so the command's text is never a file
 anything in the distro can open by name, and no failure can leave one behind.
-⚠ That ordering was got wrong first: writing the file and then unlinking it
-reads the same, but a redirect creates the file before the decode runs, so a
-guest with no `base64` was left holding an empty one.
+⚠ The order of those five is the point, and reversing any of it is a silent
+change: a redirect creates the file before the decode runs, so a guest with no
+`base64` would be left holding an empty one.
 
 ⛔ **Every payload this tool sends goes through that one function**, including
 the smoke probe and the file `-OciEnv` writes, and it **asserts** that the
-skeleton stays inside the alphabet the measurement cleared. Before, two of the
-three payloads were hand-written inside that alphabet with nothing enforcing
-it, which is how `-Action New` came to fail outright on 5.1.
+skeleton stays inside the alphabet the measurement cleared. ⛔ A payload
+hand-written inside that alphabet is a constraint nothing enforces.
 
 ### The requirement this puts on an image
 
@@ -451,10 +447,187 @@ $b64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($script))
 pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-x -CommandB64 $b64
 ```
 
-⚠ **`-CommandFile` is read verbatim, CRLF included.** A file with Windows line
-endings makes `/bin/sh` read the carriage return as part of the last word on
-each line. The tool warns and does not rewrite the file: silently editing
-somebody's payload is the failure this whole channel exists to remove.
+⚠ **`-CommandFile` repairs the copy it sends and never the file.** The file
+channel section below is what it does and what `-Verbatim` turns off.
+
+---
+
+## ⭐ The stream log: a timestamp on every line, and a heartbeat when there are none
+
+⛔ **On by default. `-NoTimestamps` turns all of it off.**
+
+The failure it exists for: a command prints nothing for twenty minutes, and a
+caller reading a pipe cannot tell that from a command that has died. An agent
+waits on a matcher that never fires, somebody eventually kills the run, and the
+only evidence left is `exit 137`. **Silence has to be a line, or it says nothing
+at all.**
+
+```text
+00:00:00.145 out  hello from stdout
+00:00:02.300 out~ Continue? [y/N]
+00:00:05.121 out~ 10%
+00:00:06.123 out  100%
+00:00:09.339 tick 3s silent | elapsed 9s | out 7 lines 89 B | err 1 lines 18 B | distro Running
+00:00:13.122 out  after the quiet
+```
+
+### The line
+
+`<stamp> <tag> <detail>`, and the tag is a **fixed four-character field** so a
+downstream `awk` can cut on it.
+
+| tag | what it is | which stream it is written to |
+| --- | --- | --- |
+| `out ` | the guest's stdout | stdout |
+| `err ` | the guest's stderr | stderr |
+| `tick` | the watcher's heartbeat | ⭐ stderr, because it is not the command's output |
+| `out~` `err~` | ⚠ the line had **not ended** when it was printed | as above |
+
+⛔ **The guest's bytes are never touched.** Everything added is to the left of
+`<detail>`: nothing is re-wrapped, re-quoted, truncated or coloured.
+
+⭐ **The tick goes to stderr on purpose.** A caller capturing stdout to read a
+result must not find a heartbeat in it.
+
+### ⭐ A carriage return ends a line, which is what makes a progress bar visible
+
+`curl`, `apt` and every layer-progress meter redraw **one** line with a carriage
+return and emit no newline for minutes. A line-oriented reader shows nothing the
+whole time, and that silence is indistinguishable from a deadlock.
+
+⚠ **An unterminated line that has sat still for two seconds is shown early**,
+marked with the trailing character above. A prompt waiting on stdin that will
+never arrive is exactly that shape, and it is the one case where showing nothing
+means waiting forever.
+
+⚠ **A trailing carriage return is held, never emitted.** It may be the first
+half of a CRLF split across two reads. The consequence is worth knowing: a guest
+that emits a carriage return and then a newline is indistinguishable from a CRLF
+line ending, so CRLF damage in a payload is **less** visible in the log than it
+is in the guest.
+
+### The heartbeat
+
+⚠ **It fires on silence, not on a timer.** A command printing a line a second
+produces no ticks at all. A heartbeat that beats through a conversation is one
+people filter out.
+
+⛔ **Nothing is injected into the guest to produce it.** Every figure is one the
+host already holds, plus one read-only `wsl --list --verbose`. An image with no
+shell and no coreutils ticks exactly as well as a full userspace.
+
+| the tick says | why it is on the line |
+| --- | --- |
+| how long it has been silent | the number the caller is actually waiting on |
+| elapsed | how far into the run this is |
+| lines and bytes per stream | busy-but-quiet and idle-and-quiet are different |
+| ⭐ the distro's state | the distro being gone and the command being quiet look identical otherwise |
+
+### Timestamps
+
+| `-TimestampMode` | example | default format |
+| --- | --- | --- |
+| `Relative` ⭐ default | `00:01:04.882` | `%H:%M:%S.%3f` |
+| `Delta` | `+64.001` | fixed |
+| `Wall` | `2026-08-30 11:04:18` | `%Y-%m-%d %H:%M:%S`, which is `tss`'s |
+| `Iso` | `2026-08-30T11:04:19.464+05:45` | fixed |
+| `Epoch` | `1788067160` | fixed |
+
+⛔ **`Delta` measures since the previous LINE, and a tick is not a line.** A tick
+advancing that clock made a five-second gap read as `+0.619` against the last
+tick, on a stream where the ticks are not even present.
+
+`-TimestampFormat` takes `tss`'s specifiers, which are `%Y %m %d %H %M %S %3f
+%6f %9f %z %Z` and a doubled percent sign. ⛔ An unknown one is refused by name,
+and so is one with no meaning in the mode: a year is not a thing a duration has.
+The format is rendered once at startup and thrown away, so a typo is refused
+before a distro is built rather than after.
+
+⚠ **`%9f` pads and does not measure.** The .NET tick is 100ns, so the ninth
+digit is a zero this script wrote, and the Windows clock's own resolution is
+coarser still.
+
+⚠ **A literal colon survives a host whose culture would replace it.** The
+specifiers are substituted directly rather than through a .NET custom format
+string, where a colon and a slash are culture-dependent placeholders.
+
+### ⚠ What the log costs, and why the off switch is not decoration
+
+⛔ **Relaying means the guest's stdout is a pipe rather than an inherited
+handle.** Three consequences, and all three are absent under `-NoTimestamps`:
+
+| | |
+| --- | --- |
+| an application that block-buffers when it is not on a terminal **will** buffer | its lines then carry the time this script received them, which can be much later than when they were written. `stdbuf -oL` and `PYTHONUNBUFFERED=1` are the guest's fix; this script cannot do it for you. |
+| lines are terminated with the **host's** newline | a guest line that was LF-terminated arrives CRLF-terminated |
+| ⛔ **stdout now carries a prefix** | a break. A caller parsing `Run -Command` output passes `-NoTimestamps` or cuts the prefix. [`../../docs/consumers.md`](../../docs/consumers.md) records it. |
+
+---
+
+## ⭐ Bounding your own command, with `-CommandTimeoutSeconds`
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action Run -Name eph-x -CommandTimeoutSeconds 900 -Command 'make'
+```
+
+⛔ **No default, and there will not be one.** `-TimeoutSeconds` bounds the
+questions this script asks for itself; a build that runs for an hour is a
+legitimate command and a tool that kills it at two minutes is broken. This
+exists because the caller sometimes knows a bound the script cannot.
+
+On expiry the child is killed, the distro is terminated so the work in the guest
+stops too, and the exit code is **124**, which is what coreutils' `timeout`
+reports.
+
+⚠ **It needs the stream log**, so it is refused with `-NoTimestamps` rather than
+silently ignored.
+
+---
+
+## ⭐ Passing values in, with `-ScriptArg`
+
+```powershell
+pwsh -NoProfile -File wsl-ephemeral.ps1 -Action New -Image alpine:3.22 -CommandFile probe.sh -ScriptArg "URL=https://@hostaddress:8443/"
+```
+
+⭐ **Values are assigned and exported ahead of your script, never substituted
+into it.** The thing this replaces is a caller running `sed` over their own file
+to inject a URL, where a value carrying a slash, an ampersand or a quote breaks
+the edit and the corruption lands in the middle of a script nobody reads again.
+
+| | |
+| --- | --- |
+| the name | must be a POSIX shell variable name. ⛔ Anything else is refused. |
+| the value | single-quoted, so it can contain anything at all |
+| `@hostaddress` | replaced with what `-Action HostAddress` prints, resolved without creating a distro |
+| ⚠ the first line of your file | is no longer the first line the shell sees. That costs nothing: the body is **sourced**, so a leading shebang was already a comment. |
+
+⛔ **`-ScriptArg` with no command is refused**, not ignored.
+
+---
+
+## The file channel, with `-CommandFile`
+
+⭐ **`-CommandFile` is the spelling to reach for**, and it now does the whole
+chain a caller used to do by hand. Write the file, pass the path.
+
+| what the file has | what happens |
+| --- | --- |
+| CRLF line endings | ⭐ turned into LF **in the copy being sent**, with a line saying how many |
+| a UTF-8 byte order mark | left out of the copy |
+| UTF-16 | ⛔ refused by name. Its bytes carry a NUL after nearly every character and `/bin/sh` stops at the first one, so the command would do nothing and say nothing. |
+| a lone carriage return | ⚠ kept. It is a deliberate byte, and turning it into a newline would edit the payload rather than repair it. |
+
+⛔ **The file on disk is never written to.** The distinction, and it is the whole
+design, is between **the file**, which is the caller's, and **the copy in
+transit**, which is this script's to make correct.
+
+⚠ **`-Verbatim` turns all three off** and warns about what it is about to send.
+
+```text
+  * guest.sh has 15 CRLF line ending(s); the copy being sent uses LF.
+  * the file on disk was NOT modified. Pass -Verbatim to send its bytes exactly.
+```
 
 ---
 
@@ -598,9 +771,6 @@ guard that will one day be applied at three.
 afterwards can lose the race. It retries five times over about three seconds,
 and if the path is still there it exits non-zero with a message naming it.
 
-⚠ **This means `Remove`, `Purge` and `New -Ephemeral` can now fail where they
-used to print success.** They were not succeeding before; they were reporting.
-
 ⭐ **`Purge` finishes both loops before it reports.** One item it cannot remove
 does not stop it removing the rest; it warns per item, names each one, and then
 exits non-zero with the count. Stopping at the first failure would hide the
@@ -694,5 +864,10 @@ failing on a cryptic pull error.
 - [`../../docs/conventions/shell.md`](../../docs/conventions/shell.md) section 7,
   for the Windows traps this script is written against: `wsl.exe` emitting
   UTF-16LE, reserved device names, and Git Bash path conversion.
+- [`wsl-ephemeral-selftest.md`](wsl-ephemeral-selftest.md), the test that holds
+  the parts of this script deciding what a caller sees.
 - [`../../docs/consumers.md`](../../docs/consumers.md), for what changing this
   file breaks outside this repository.
+- [`../../docs/HISTORY/wsl-ephemeral.md`](../../docs/HISTORY/wsl-ephemeral.md),
+  for the defects this script shipped and closed. ⛔ Nothing there is needed to
+  use it.

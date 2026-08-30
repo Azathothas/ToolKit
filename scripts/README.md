@@ -74,6 +74,7 @@ with a fixture, not by trusting the comparison to notice.
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. It is a maintainer's tool and it runs where both implementations do: this machine, and the CI job that has `pwsh` on an Ubuntu runner. |
 | [`powershell-windows/wsl-ephemeral.ps1`](powershell-windows/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
 | [`powershell-windows/wsl-ephemeral-launcher.ps1`](powershell-windows/) | ⛔ **No twin, for the same reason and one more.** It exists to make the file above runnable on Windows: it clears a Windows file attribute, and a POSIX half would have nothing to launch. |
+| [`powershell-windows/wsl-ephemeral-selftest.ps1`](powershell-windows/) | ⛔ **No twin, and it is not a check.** It is the test over the file above, so a POSIX half would be a second implementation of the assertions rather than a second implementation of a job. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell, which is where its coverage comes from. |
 
 ⭐ **The question to ask is whether the JOB exists on the other platform, not
 whether the language does.** `wsl-ephemeral` fails that test. Every check in
@@ -458,6 +459,21 @@ a machine that had the real one registered; it survived.
 prints the cleanup commands without running one of them; `-Action HostAddress`
 answers what a distro would reach this host at, which a caller previously had to
 build a throwaway VM to find out.
+
+### `powershell-windows/wsl-ephemeral-selftest.ps1`
+
+Run [`wsl-ephemeral.ps1`](powershell-windows/wsl-ephemeral.md)'s pure functions
+against a table of cases, on any host with a PowerShell.
+
+⭐ **The one test in this tree, and it is in the gate**, because part (a) of
+[`../docs/methodology/gate.md`](../docs/methodology/gate.md) is the suite as
+well as the checks. It holds the timestamp renderer, the line splitter, the file
+channel, the argument prologue and the transport alphabet: the parts that decide
+what a caller sees and that a real distro is not needed to prove.
+
+⛔ **It asserts the number of cases it ran.** A table that stopped early exits 0
+over a smaller suite, which is the shape a check takes on its way to reporting
+nothing.
 
 ### `powershell-windows/wsl-ephemeral-launcher.ps1`
 

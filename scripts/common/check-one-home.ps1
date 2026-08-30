@@ -37,9 +37,9 @@
 # shared between a router and any OTHER file is still refused, so the exemption
 # cannot seed a copy into the tree. Verified by planting exactly that.
 #
-# ⛔ docs/history/ IS EXEMPT ENTIRELY: a superseded page states things the live
-# pages now state differently, which is the point of it. ⚠ This tree has no
-# such directory yet; docs/conventions/prose.md provides for one.
+# ⛔ docs/HISTORY/ IS EXEMPT ENTIRELY: a retired page states things the live
+# pages now state differently, or no longer state at all, which is the point of
+# it. docs/conventions/prose.md is the rule that sends wording there.
 #
 # ⚠ WHAT IT CANNOT SEE: a fact restated in different words. That is a reading.
 # Verbatim duplication is what copy-and-paste actually produces, and that is
@@ -91,7 +91,7 @@ finally { Pop-Location }
 # trap has already made an exclusion in a sibling check swallow every finding.
 $files = @($tracked + $untracked |
     ForEach-Object { $_.Trim() } |
-    Where-Object { $_ -and $_ -cmatch '\.md$' -and $_ -cnotmatch '^docs/history/' } |
+    Where-Object { $_ -and $_ -cmatch '\.md$' -and $_ -cnotmatch '^docs/HISTORY/' } |
     Sort-Object -Unique)
 
 if ($files.Count -lt 2) {

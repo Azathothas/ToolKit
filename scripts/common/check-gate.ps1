@@ -262,6 +262,13 @@ else {
 # -- the probe, through its own twin -----------------------------------------
 Invoke-PsCheck -Name 'doctor probe' -Script 'scripts/doctor/doctor.ps1' -Arguments @('-Fast')
 
+# ⭐ THE ONE TEST IN THIS TREE, and it is in the gate because part (a) of
+# docs/methodology/gate.md is the suite as well as the checks. It needs no WSL
+# and no container engine: it runs wsl-ephemeral.ps1's pure functions against a
+# table of cases, which is where the timestamp renderer, the line splitter and
+# the file channel decide what a caller sees.
+Invoke-PsCheck -Name 'wsl-ephemeral selftest' -Script 'scripts/powershell-windows/wsl-ephemeral-selftest.ps1'
+
 if (-not $sh) {
     # ⛔ Not a silent degrade. What is left below genuinely needs a POSIX shell,
     # and saying which ones did not run is the difference between a gate and a

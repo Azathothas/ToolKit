@@ -43,12 +43,10 @@
 # a decision somebody reviews, not a convenience: every name in this list is a
 # document allowed to say what another document already says.
 #
-# ⛔ docs/history/ IS EXEMPT ENTIRELY. A superseded page states things the live
-# pages now state differently, which is the whole point of it.
-# docs/conventions/prose.md is the rule that sends superseded wording there.
-# ⚠ This tree has no such directory yet. The exclusion is here because the rule
-# provides for one, and a check that only learns about it afterwards is a check
-# that refuses the first history page somebody writes.
+# ⛔ docs/HISTORY/ IS EXEMPT ENTIRELY. A retired page states things the live
+# pages now state differently, or no longer state at all, which is the whole
+# point of it. docs/conventions/prose.md is the rule that sends superseded
+# wording there, and docs/HISTORY/README.md is what the directory holds.
 #
 # -- ⚠ WHAT IT CANNOT SEE ----------------------------------------------------
 #
@@ -103,7 +101,7 @@ FILES=$(
   {
     git ls-files 2>/dev/null
     git ls-files --others --exclude-standard 2>/dev/null
-  } | sort -u | grep '\.md$' | grep -v '^docs/history/' || true
+  } | sort -u | grep '\.md$' | grep -v '^docs/HISTORY/' || true
 )
 if [ -z "$FILES" ]; then
   printf 'check-one-home: no markdown files in scope\n' >&2

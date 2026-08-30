@@ -39,13 +39,14 @@ will add.
 | Comparing a secret, token or signature with an equality operator | a timing attack |
 | A general-purpose hash used as a password hash | brute-forceable credentials |
 | A guard whose test has never been seen to fail | theatre. Plant the defect and read the exit code. |
-| A test whose name claims more than it checks | a green suite over a defect it was written to catch |
+| A test whose name claims more than it checks | a green suite over a defect it was written to catch. Measured here: a case named "a guest path outside the alphabet is refused" was satisfied by an earlier pattern check, so disabling the alphabet assert it was named for left the suite green. The mutation is what found it; the fix was to rename the case to what it reaches and record how the other guard was proved. |
 
 ## Fake anything
 
 | forbidden | what it caused |
 | --- | --- |
 | A hardcoded or synthetic status, progress or metric | a display that lies, masking a missing feature |
+| A watcher whose only output is the thing it is watching, so silence renders as nothing at all | a reader cannot tell a working download from a deadlock, and waits for a matcher that is never coming. The reported failure is twenty minutes of no output ending in `exit 137` and a manual kill; the four candidate causes are a slow transfer, a progress bar redrawing with a carriage return, a process blocked on stdin, and a dead container, and none of them looks different from the others. Never emit nothing: render silence, with a time on it, and say what is still alive. `WSL-18`. |
 | A mock or stub fallback inside a production code path | mock data served to real users |
 | A number on a report that was not measured | worse than a blank, because a blank gets checked |
 | A "sort" or "total" that covers only the current page while claiming to be global | a wrong answer that looks authoritative |
@@ -93,6 +94,7 @@ will add.
 | forbidden | what it caused |
 | --- | --- |
 | A literal control byte in a tracked text file | the file becomes invisible to review. Grep calls it binary and skips it, and a diff says only that the files differ. |
+| A payload containing a dollar sign next to a quote, passed as the REPLACEMENT STRING of a JavaScript `String.replace` | the rest of the file is pasted in and nothing errors. `$&`, `` $` `` and `$'` are expanded inside a replacement STRING: `$'` means "everything after the match". One comment carrying a quoted dollar sign duplicated a 500-line script from the anchor down, and the parse error that followed named a brace 200 lines away. Pass a function, `replace(find, () => replacement)`, which is not interpreted at all. Same class as the shell-payload rule below, in a language nobody expects it in. |
 | Reading an exit code through a pipe | the pipeline's status, not the check's. A guard that failed reads as green. |
 | A PowerShell script with positional binding left on, called through `-File` | ⛔ **an argument list overflowing into whatever parameter is next in declaration order.** `-Gate "a","b","c","d"` reaches the child as four arguments: one bound to `-Gate` and the rest positionally to `-Name`, `-Email` and `-Branch`, so `git-sync.ps1` committed under an author of `sh scripts/common/check-control-bytes.sh` and printed `identity verified` one line under it. ⭐ The check is the code: `[CmdletBinding(PositionalBinding = $false)]` turns a silent misbinding into a refusal. `TOOL-03`. |
 | A prose payload passed inline to a shell | backticks executed inside the text, even in a quoted heredoc |

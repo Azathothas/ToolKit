@@ -267,3 +267,120 @@ docs ok: 37 files, 379 relative links, 105 shell blocks. Links and prose clean.
 and every one of its links was re-pointed; a page left behind would have been
 reported as linked from nowhere, and `TODO/RULES.md` was, until the router
 gained a row for it.
+
+---
+
+## DOC-06. the documents carry the story of their own fixes
+
+**Source** the operator, 2026-08-30.
+**Category** docs, **Priority** P1, **Effort** M, **Status** partial
+
+---
+
+## Problem
+
+⭐ **Stated by the operator in the words that matter:** an agent does not need to
+know that xyz was fixed on abc. It will never hit the defect, because it is
+fixed, and the sentence costs it context to read. Several pages here are a
+reference and a diary at the same time.
+
+## Premise
+
+⚠ **The rule already existed and had no destination.**
+[`../docs/conventions/prose.md`](../docs/conventions/prose.md) says superseded
+wording moves to a history file rather than staying as a box on the live page,
+and `check-one-home` already carried an exemption for a `docs/history/`
+directory that did not exist.
+
+## Approach
+
+`docs/HISTORY/`, with a `README.md` that says what belongs there and what does
+not, and one page per subject. The live page keeps the constraint and loses the
+story. `check-one-home` exempts the directory in both halves, so a retired page
+may hold sentences the live pages used to carry.
+
+⛔ It must not delete. A superseded rule is moved so a future session can find
+out why the rule is what it is instead of re-deriving it wrongly.
+⛔ `forbidden-patterns.md` stays live. That table is deliberately a list of
+incidents and it is read before a gate is called green.
+
+## Prove
+
+```bash
+sh scripts/common/check-gate.sh --fast
+```
+
+Exit 0, with `check-one-home` and `check-docs` green over the new directory, and
+no live page carrying a sentence about what something used to do.
+
+---
+
+## Closing
+
+⚠ **PARTIAL, and this entry stays open.** The directory, its `README.md`, the
+check exemption in both halves, and `HISTORY/wsl-ephemeral.md` shipped on
+2026-08-30, and ten passages were moved off
+`scripts/powershell-windows/wsl-ephemeral.md`.
+
+⛔ **What was NOT done**, named rather than left to be discovered:
+
+- `scripts/README.md` still carries "here is what that cost" sections and the
+  164-characters-in-28-files measurement;
+- `docs/consumers.md` still carries the whole pin-move narrative;
+- `docs/conventions/docs.md` and `prose.md` still carry the story of rules that
+  were stated and enforced by nothing;
+- `prose.md` and `docs.md` were not amended to name `docs/HISTORY/` as the
+  destination, so the rule still points at a generic "history file".
+
+The session ran out of budget with the code half of its assignment finished, and
+stopping with a coherent tree was chosen over a half-applied purge across nine
+files.
+
+---
+
+## DOC-07. there are two AGENTS.md files
+
+**Source** the operator, 2026-08-30, asking a second time.
+**Category** docs, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`AGENTS.md` at the root and `docs/AGENTS.md` both exist. The root one is a door
+that restates the seven absolutes; the other is the router. The operator wants
+one, and it is `docs/AGENTS.md`.
+
+## Premise
+
+⚠ **Measured while attempting it.** `check-one-home` exempts the two from each
+other **by name**, because each states the absolutes in full. Removing the root
+file is therefore three changes and not one: delete it, remove the exemption
+from both halves of the check, and repoint every reference. `README.md`,
+`docs/AGENTS.md`, `docs/conventions/docs.md` and `TODO/RULES.md` link to it.
+
+⚠ **The cost of keeping it is not zero either.** A harness that opens `AGENTS.md`
+on its own finds the door; with only `docs/AGENTS.md` it finds nothing, and
+whether that matters is a question about the harness rather than about this
+tree.
+
+## Approach
+
+Delete `AGENTS.md`. Move whatever a cold session genuinely needs into
+`docs/AGENTS.md`, which already carries all of it. Remove the router exemption
+from both halves of `check-one-home` and from its header comment. Repoint the
+four references.
+
+## Prove
+
+```bash
+sh scripts/common/check-gate.sh --fast
+```
+
+Exit 0, with `check-docs` reporting no dead link and `check-one-home` green with
+no exemption in it.
+
+⚠ Started and reverted on 2026-08-30: the check change was made and backed out
+when the session pivoted, because a check exempting a file that no longer exists
+and a file whose sentences are duplicated are two different broken states and
+neither is worth leaving behind.

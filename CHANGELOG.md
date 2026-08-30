@@ -19,6 +19,38 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-08-30
+
+### 2026-08-30T06:10:00Z: issue 5, and the three things a consumer had to do by hand
+
+**Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md) carries `WSL-16`
+through `WSL-20`; [`TODO/PROGRESS.md`](TODO/PROGRESS.md) is the state and says
+what was deferred.
+**Deployed:** ⛔ **no deploy.** This repository publishes nothing.
+
+**What shipped.** `wsl-ephemeral.ps1` grew a stream log that is on by default: a
+timestamp on every line of a command's output, a heartbeat while there are none,
+and a carriage return treated as a line terminator so a progress meter is
+visible instead of being twenty minutes of nothing. `-NoTimestamps` turns all of
+it off and is byte-exact. `-CommandFile` now repairs the copy it sends rather
+than warning about it, `-ScriptArg` passes values in without anybody running
+`sed` over a payload, and `-CommandTimeoutSeconds` bounds a command that would
+otherwise be killed by hand. The launcher grew `-LauncherRef auto` and `latest`,
+`-LauncherSha256 auto` and a lock file, so a consumer never pastes a commit or a
+digest again, and three hosts are tried for the bytes rather than one.
+
+**What broke.** Two consumer-visible changes, both recorded in
+[`docs/consumers.md`](docs/consumers.md): stdout from `New -Command` and
+`Run -Command` now carries a prefix unless `-NoTimestamps` is passed, and an
+explicit `-LauncherRef` now wins over a `wsl-ephemeral.ps1` sitting beside the
+launcher.
+
+**The story of each defect this batch found and fixed** is in
+[`docs/HISTORY/wsl-ephemeral.md`](docs/HISTORY/wsl-ephemeral.md), which is where
+that kind of text goes from now on rather than onto the live page.
+
+---
+
 ## 2026-08-29
 
 ### 2026-08-29T15:18:27Z: the four open issues, and six defects found doing them
