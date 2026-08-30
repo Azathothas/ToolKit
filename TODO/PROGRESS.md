@@ -61,7 +61,7 @@ closed.**
   `-TimestampProfile`, `-PrefixOnly`, `-Color`, `-StreamLogPath`, `-EventLog`,
   `-Redact`, `-MaxLineBytes`, `-TickEscalateSeconds`, `-ScriptArgFile` and the
   rest.
-- **Two new gate checks** and a suite that went from 63 cases to 115.
+- **Two new gate checks** and a suite that went from 63 cases to 117.
 
 ### ⚠ What was found while doing it, and by which pass
 
@@ -78,11 +78,12 @@ closed.**
 | ⛔ `-TimestampProfile raw` reading settings its own branch never built | the door sweep, on "what other door reaches this code" |
 | a sink-path refusal a `-DryRun` returned before ever reaching | the guard-mutation pass, planting `-StreamLogPath nul` |
 | three of my own new test cases passing for the wrong reason | the two cases in the same block that expected SUCCESS |
+| ⛔ a Windows-semantics guard answering differently on Linux, because `[IO.Path]` splits on the RUNNING host's separators | CI's ubuntu job, on the first push. The local gate is Windows and could not have. |
 
-⭐ **Nine of those ten were found by driving, measuring or comparing rather than
+⭐ **Ten of those eleven were found by driving, measuring or comparing rather than
 by reading**, which is parts (b) and (c) of the gate restated with this
-session's own evidence. ⚠ The tenth, the last row, is the one that matters most
-about the suite: three cases named for a guard were green because the function
+session's own evidence. ⚠ The one that matters most is the tenth row, and it is
+about the SUITE: three cases named for a guard were green because the function
 died before reaching it.
 
 ### ⭐ Two questions the last session left open are now answered

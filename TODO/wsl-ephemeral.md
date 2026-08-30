@@ -2179,7 +2179,7 @@ which are about what the tool talks to, and none of those changed.
 
 ```text
 wsl-toolkit build: <the tool directory; the absolute path is elided, this repository is public>
-  ok    wrote wsl-toolkit.ps1 (209,382 bytes, 27 parts)
+  ok    wrote wsl-toolkit.ps1 (209,922 bytes, 27 parts)
   parts parse: ok
   no case-shadowed parameter: ok
   surface: ok (33 entries)
@@ -2250,7 +2250,7 @@ six do not: `-TimestampColumns` composing `rel,delta`, `-TimestampProfile` with
 silence-ended line, an exit-code reading, `-DryRun`, and `-Action Doctor`.
 
 ```text
-selftest: 115 case(s) passed over 30 function(s) loaded from wsl-toolkit.ps1.
+selftest: 117 case(s) passed over 30 function(s) loaded from wsl-toolkit.ps1.
 ```
 
 ### ⛔ A defect this entry's own work shipped, and the class behind it
@@ -2459,7 +2459,7 @@ and with the escalation that never fired now firing:
 ```
 
 ```text
-selftest: 115 case(s) passed over 30 function(s) loaded from wsl-toolkit.ps1.
+selftest: 117 case(s) passed over 30 function(s) loaded from wsl-toolkit.ps1.
 ```
 
 ⚠ **What this did not fix, said rather than left to be found.** An in-process

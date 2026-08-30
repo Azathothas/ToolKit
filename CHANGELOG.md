@@ -64,7 +64,7 @@ left alone because they are the record of what shipped on the day they name.
   and a non-zero exit gets a reading instead of a number.
 - **Two new gate checks**, `wsl-toolkit bundle` in both halves and in CI, and a
   case-shadowed-parameter scan inside `build.ps1 -Test`. The suite went from 63
-  cases to 115.
+  cases to 117.
 
 **What was found while doing it**, each by a different pass:
 

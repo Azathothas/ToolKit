@@ -1912,7 +1912,15 @@ function Assert-SinkPathIsUsable {
         [Parameter(Mandatory = $true)][string]$Parameter
     )
     if (-not $Path) { return }
-    $leaf = [IO.Path]::GetFileNameWithoutExtension($Path)
+    # ⛔ THE SEPARATORS ARE SPLIT HERE, NOT BY [IO.Path]. That method uses the
+    # HOST's separators, so on Linux a backslash is an ordinary character and
+    # 'logs\CON.jsonl' has a file name of 'logs\CON', which is not on the list.
+    # The rule is about Windows semantics whatever host is asking, and the
+    # selftest runs on Linux in CI, which is where this was caught: the case
+    # passed on Windows and failed on the ubuntu job, on the same commit.
+    $leaf = ($Path -split '[\\/]')[-1]
+    $dot = $leaf.IndexOf('.')
+    if ($dot -ge 0) { $leaf = $leaf.Substring(0, $dot) }
     if ($script:ReservedDeviceNames -contains $leaf.ToUpperInvariant()) {
         throw ("$Parameter '$Path' names the Windows reserved device '$leaf'. Writing to it " +
                'discards everything and reports success, so the run would end with no log and ' +

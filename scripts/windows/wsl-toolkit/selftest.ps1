@@ -772,6 +772,17 @@ Test-Case 'the extension is stripped before the name is compared' 'named CON' {
     try { Assert-SinkPathIsUsable -Path 'logs\CON.jsonl' -Parameter '-EventLog'; 'no throw' }
     catch { if ($_.Exception.Message -like "*reserved device 'CON'*") { 'named CON' } else { 'threw for another reason: ' + $_.Exception.Message } }
 }
+# THE SEPARATOR CASES RUN ON BOTH HOSTS AND THE BACKSLASH ONE FAILED ON LINUX,
+# because [IO.Path] uses the HOST's separators. The rule is about Windows
+# semantics whatever host is asking, so the function splits on both itself.
+Test-Case 'a forward-slash path is judged on its last segment' 'named PRN' {
+    try { Assert-SinkPathIsUsable -Path 'logs/PRN.txt' -Parameter '-EventLog'; 'no throw' }
+    catch { if ($_.Exception.Message -like "*reserved device 'PRN'*") { 'named PRN' } else { 'threw for another reason: ' + $_.Exception.Message } }
+}
+Test-Case 'a device name with two dots is still the device' 'named AUX' {
+    try { Assert-SinkPathIsUsable -Path 'AUX.log.1' -Parameter '-StreamLogPath'; 'no throw' }
+    catch { if ($_.Exception.Message -like "*reserved device 'AUX'*") { 'named AUX' } else { 'threw for another reason: ' + $_.Exception.Message } }
+}
 Test-Case 'the comparison ignores case, because the device does' 'named Lpt3' {
     try { Assert-SinkPathIsUsable -Path 'Lpt3.log' -Parameter '-StreamLogPath'; 'no throw' }
     catch { if ($_.Exception.Message -like "*reserved device 'Lpt3'*") { 'named Lpt3' } else { 'threw for another reason: ' + $_.Exception.Message } }

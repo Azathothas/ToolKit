@@ -1052,7 +1052,7 @@ because nothing automatic could answer it.
 ## Premise
 
 ⭐ **Measured on 2026-08-30**: the selftest passes under both hosts on this
-machine, 115 cases each, and `windows-latest` ships `powershell.exe` as standard,
+machine, 117 cases each, and `windows-latest` ships `powershell.exe` as standard,
 so the job needs nothing installed.
 
 ⚠ **The two hosts genuinely differ where this tool is sensitive.**

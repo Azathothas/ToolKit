@@ -17,15 +17,16 @@ on what was true last time.
 | Changes | 96 tracked files | 130 tracked files; 76 changed, +9,554 / -615 lines across both commits |
 | Size | 28,228 tracked lines | 37,167 tracked lines, +8,939 |
 | Checks | 15 passing, `check-twins` skipped by `--fast` | ⭐ **17 of 17 passing on the full run**, `check-twins` included. Two new: `wsl-toolkit bundle` and, inside `build.ps1 -Test`, a case-shadowed-parameter scan. |
-| Suite | 63 cases over 15 functions | 115 cases over 30 functions, green on both PowerShell hosts |
+| Suite | 63 cases over 15 functions | 117 cases over 30 functions, green on both PowerShell hosts |
 | Published | ⛔ nothing, ever | ⭐ `wsl-toolkit-v1.0.0`: `wsl-toolkit.ps1`, `launcher.ps1` and a `SHA256SUMS` computed in CI. The workflow succeeded on its first run. |
 | Cost | no money, no bandwidth beyond fetches | ~15 distro create-and-destroy cycles, `alpine:3.22` at 8.2 MiB each, all torn down |
 | Health | 4 open, 0 blocked, 35 done | 8 open, 0 blocked, 43 done. Tree clean, gate green, `wsl-toolkit-v1.0.0` deployed and driven end to end. |
 
 ### ⭐ Defects found, and by which pass
 
-Ten, and nine of them by driving, measuring or comparing rather than by reading.
-Three were in the checks themselves rather than in the code being checked.
+Eleven, and ten of them by driving, measuring or comparing rather than by reading.
+Three were in the checks themselves rather than in the code being checked, and
+one was found only by CI, on a host the local gate cannot be.
 
 | what | the pass that found it |
 | --- | --- |
@@ -39,6 +40,7 @@ Three were in the checks themselves rather than in the code being checked.
 | a new check reporting one blank finding over a clean tree | reading the finding, not the exit code |
 | three of the session's own test cases passing for the wrong reason | the two cases beside them that expected success |
 | the vhdx write time advancing while a guest slept | sampling it against a guaranteed-idle guest |
+| a Windows-semantics guard answering differently on Linux | CI's ubuntu job, which the local gate cannot be |
 
 ### ⚠ What was NOT done, said rather than left to be found
 
