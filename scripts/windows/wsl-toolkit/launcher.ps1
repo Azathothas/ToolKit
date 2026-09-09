@@ -163,6 +163,9 @@ $UpstreamOwner = 'Azathothas'
 $UpstreamRepo  = 'ToolKit'
 $UpstreamPath  = 'scripts/windows/wsl-toolkit/wsl-toolkit.ps1'
 $ScriptLeaf    = 'wsl-toolkit.ps1'
+# The executable this launcher prefers. It carries the script above inside it,
+# so a caller who gets the binary has the script too and needs no second fetch.
+$BinaryLeaf    = 'wsl-toolkit.exe'
 # The branch -LauncherRef auto and -LauncherRef latest resolve. It is a constant
 # rather than a parameter because it is a property of the repository this
 # launcher is written against, not a choice a caller makes: a different branch
@@ -231,6 +234,7 @@ function Split-LauncherArgument {
     # found on this object" from a caller who passed nothing unusual at all.
     $opt = @{
         Local = ''; Release = ''; Ref = ''; Sha256 = ''; InstallDir = ''; Lock = ''
+        Kind = ''; Binary = ''
         AllowMovingRef = $false; AddToPath = $false; Help = $false
     }
     # An ordinary array with +=, NOT an ArrayList. See the note above: this is
@@ -240,6 +244,7 @@ function Split-LauncherArgument {
         '-launcherlocal' = 'Local'; '-launcherref' = 'Ref'
         '-launchersha256' = 'Sha256'; '-launcherinstalldir' = 'InstallDir'
         '-launcherlock' = 'Lock'; '-launcherrelease' = 'Release'
+        '-launcherkind' = 'Kind'; '-launcherbinary' = 'Binary'
     }
     $flags = @{
         '-launcherallowmovingref' = 'AllowMovingRef'
@@ -258,9 +263,10 @@ function Split-LauncherArgument {
         }
         if ($flags.ContainsKey($k)) { $opt[$flags[$k]] = $true; continue }
         if ($k.StartsWith('-launcher')) {
-            throw ("$a is not a launcher option. The set is -LauncherLocal, -LauncherRelease, " +
-                   "-LauncherRef, -LauncherSha256, -LauncherAllowMovingRef, -LauncherInstallDir, " +
-                   "-LauncherLock, -LauncherAddToPath and -LauncherHelp.")
+            throw ("$a is not a launcher option. The set is -LauncherKind, -LauncherBinary, " +
+                   "-LauncherLocal, -LauncherRelease, -LauncherRef, -LauncherSha256, " +
+                   "-LauncherAllowMovingRef, -LauncherInstallDir, -LauncherLock, " +
+                   "-LauncherAddToPath and -LauncherHelp.")
         }
         $rest += $Argument[$i]
     }
@@ -813,9 +819,9 @@ function Resolve-FromRelease {
             $want = Get-Sha256SumsEntry -Text ([IO.File]::ReadAllText($sums)) -Name $ScriptLeaf
             $got  = Get-Sha256 -LiteralFile $temp
             if ($got -ne $want) {
-                throw ("the release asset does not match the SHA256SUMS published beside it.`n" +
+                throw (New-HardStop -Message ("the release asset does not match the SHA256SUMS published beside it.`n" +
                        "  expected $want`n  got      $got`n" +
-                       '  Nothing was installed. This is a transport failure or a tampered asset; either way it is not runnable.')
+                       '  Nothing was installed. This is a transport failure or a tampered asset; either way it is not runnable.'))
             }
             Write-Ok "digest matches the SHA256SUMS in release $realTag"
             Write-Warn "that proves the bytes arrived intact, not who published them. -LauncherSha256 with a digest you hold yourself is the check that proves that."
@@ -831,8 +837,8 @@ function Resolve-FromRelease {
     if ($expected) {
         $got = Get-Sha256 -LiteralFile $cached
         if ($got -ne $expected) {
-            throw ("-LauncherSha256 does not match what release $realTag serves.`n" +
-                   "  expected $expected`n  got      $got")
+            throw (New-HardStop -Message ("-LauncherSha256 does not match what release $realTag serves.`n" +
+                   "  expected $expected`n  got      $got"))
         }
         Write-Ok '-LauncherSha256 matches too'
     }
@@ -840,6 +846,228 @@ function Resolve-FromRelease {
     $null = Clear-DownloadMark -LiteralFile $cached
     Assert-PowerShellSyntax -LiteralFile $cached
     return $cached
+}
+
+function New-HardStop {
+    <#
+      An error that must NEVER be turned into a fallback, carried as a TYPE.
+
+      HARD RULE: THE CALLER CLASSIFIES BY TYPE, NOT BY WORDING. Resolve-Binary
+      falls back to the PowerShell product when an executable could not be
+      obtained, and must not fall back when one was obtained and refused. That
+      decision was made by matching the message text, so any throw site whose
+      wording changed, or any new one, would have fallen back after a check that
+      had just said no. The message is still what a reader sees; only the
+      classification moved off it.
+    #>
+    # HARD RULE: SCOPED TO ONE RULE AND ONE FUNCTION. The verb reads as
+    # state changing and nothing here changes any: it returns an object for the
+    # caller to throw. A file-wide suppression would answer this one case by
+    # weakening the rule for every function in the launcher.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'It creates nothing on this machine. It returns an exception object, and the caller decides whether to throw it.')]
+    param([Parameter(Mandatory = $true)][string]$Message)
+    return [Security.SecurityException]::new($Message)
+}
+
+function Assert-NamedDigest {
+    <#
+      Check a file the CALLER named against a digest the CALLER gave.
+
+      HARD RULE: A DIGEST GIVEN IS A DIGEST CHECKED. -LauncherLocal, -LauncherBinary
+      and the sibling name a file rather than fetching one, so nothing on those
+      paths had a digest to compare against until here. launcher.md promises
+      "verified means verified against what you gave it"; passing one and having
+      it ignored is that promise not kept, and the caller cannot tell.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)]$Options,
+        [Parameter(Mandatory = $true)][string]$Option
+    )
+    $expected = $Options.Sha256
+    if (-not $expected) { return }
+    $expected = $expected.ToLowerInvariant()
+    if ($expected -eq 'auto') {
+        throw (New-HardStop -Message ("-LauncherSha256 auto reads a digest from the contents API for a REF, and $Option " +
+               'names a file on this machine. Pass a digest you hold yourself, or drop the switch.'))
+    }
+    $got = Get-Sha256 -LiteralFile $Path
+    if ($got -ne $expected) {
+        throw (New-HardStop -Message ("-LauncherSha256 does not match $Option.`n" +
+               "  expected $expected`n  got      $got"))
+    }
+    Write-Ok "-LauncherSha256 matches $Option"
+}
+
+function Get-BinaryAssetName {
+    <#
+      Which release asset this host can actually run.
+
+      HARD RULE: THE ARCHITECTURE IS READ, NOT ASSUMED. An arm64 Windows machine
+      runs an amd64 binary under emulation and would work, slowly and silently;
+      naming the architecture means the right one is fetched and an unknown one
+      is a refusal rather than a guess.
+
+      PROCESSOR_ARCHITECTURE reports the architecture of THIS PROCESS, so a
+      32-bit PowerShell on a 64-bit machine says x86. PROCESSOR_ARCHITEW6432 is
+      set only in that case and carries the machine's own, so it is read first.
+    #>
+    $arch = Get-EnvOrDefault 'PROCESSOR_ARCHITEW6432'
+    if (-not $arch) { $arch = Get-EnvOrDefault 'PROCESSOR_ARCHITECTURE' }
+    switch ($arch.ToUpperInvariant()) {
+        'AMD64' { return 'wsl-toolkit-windows-amd64.exe' }
+        'ARM64' { return 'wsl-toolkit-windows-arm64.exe' }
+        default {
+            throw (New-HardStop -Message ("This host reports the architecture '$arch', and the release publishes " +
+                   "windows-amd64 and windows-arm64. Pass -LauncherKind script to use the " +
+                   "PowerShell product instead, which runs anywhere PowerShell does."))
+        }
+    }
+}
+
+function Resolve-BinaryFromRelease {
+    <#
+      Download one release's executable for this architecture and verify it
+      against that release's own SHA256SUMS.
+
+      HARD RULE: THE CACHE IS KEYED BY TAG AND BY ASSET NAME. Keying it by tag alone
+      would serve an amd64 binary to an arm64 host after an architecture change,
+      which is the "fetching a variant into a cache keyed without the variant"
+      row in docs/conventions/forbidden-patterns.md.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Tag,
+        [Parameter(Mandatory = $true)]$Options,
+        [Parameter(Mandatory = $true)][string]$CacheDir
+    )
+    $asset = Get-BinaryAssetName
+    if ($Tag -ieq 'latest') {
+        Write-Warn "-LauncherRelease latest asks GitHub for the newest release on EVERY run."
+        Write-Warn "  What executes can change between one call and the next. The tag it resolved is named below; pass that tag to pin it."
+    }
+    $rel = Get-ReleaseJson -Tag $Tag
+    $realTag = [string]$rel.tag_name
+    Write-Ok "release $realTag, asset $asset"
+
+    $safeTag = ($realTag -replace '[^0-9A-Za-z._-]', '_')
+    $cached  = Join-Path $CacheDir ("wsl-toolkit-$safeTag-" + $asset)
+
+    if (Test-Path -LiteralPath $cached) {
+        Write-Ok "already downloaded: $cached"
+    }
+    else {
+        $sums = Join-Path $CacheDir (".sums." + [Guid]::NewGuid().ToString('N') + '.tmp')
+        $temp = Join-Path $CacheDir (".download." + [Guid]::NewGuid().ToString('N') + '.tmp')
+        try {
+            Save-ReleaseAsset -Release $rel -Name 'SHA256SUMS' -Destination $sums
+            Save-ReleaseAsset -Release $rel -Name $asset -Destination $temp
+            $want = Get-Sha256SumsEntry -Text ([IO.File]::ReadAllText($sums)) -Name $asset
+            $got  = Get-Sha256 -LiteralFile $temp
+            if ($got -ne $want) {
+                throw (New-HardStop -Message ("the release asset does not match the SHA256SUMS published beside it.`n" +
+                       "  expected $want`n  got      $got`n" +
+                       '  Nothing was installed. This is a transport failure or a tampered asset; either way it is not runnable.'))
+            }
+            Write-Ok "digest matches the SHA256SUMS in release $realTag"
+            Move-Item -LiteralPath $temp -Destination $cached -Force
+        }
+        finally {
+            foreach ($f in @($sums, $temp)) {
+                if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue }
+            }
+        }
+    }
+
+    $expected = $Options.Sha256
+    if ($expected) {
+        $expected = $expected.ToLowerInvariant()
+        if ($expected -eq 'auto') {
+            throw (New-HardStop -Message ('-LauncherSha256 auto reads a digest from the contents API for a REF, and a ' +
+                   'release already publishes SHA256SUMS. Drop the switch, or pass a digest you hold yourself.'))
+        }
+        $got = Get-Sha256 -LiteralFile $cached
+        if ($got -ne $expected) {
+            throw (New-HardStop -Message ("-LauncherSha256 does not match what release $realTag serves.`n" +
+                   "  expected $expected`n  got      $got"))
+        }
+        Write-Ok '-LauncherSha256 matches too'
+    }
+
+    # A file fetched on Windows can carry a Zone.Identifier stream, and an
+    # execution policy that would run a local file refuses the same bytes with
+    # that stream on them. The error names the policy, not the stream.
+    $null = Clear-DownloadMark -LiteralFile $cached
+    return $cached
+}
+
+function Resolve-Binary {
+    <#
+      Find the executable, in the documented order, and return its path, or an
+      empty string when this host cannot get one.
+
+      AN EMPTY ANSWER IS NOT A FAILURE, AND A REFUSAL IS. "There is no binary
+      here and no network to fetch one" falls back to the PowerShell product,
+      which is what a clone with no release has always used. A digest that did
+      not match, or an architecture with no asset, is a hard stop: falling back
+      after a verification failure would run something on the strength of the
+      check that just refused it.
+    #>
+    param([Parameter(Mandatory = $true)]$Options, [Parameter(Mandatory = $true)][string]$CacheDir)
+
+    # 1. an explicit binary
+    $bin = $Options.Binary
+    if (-not $bin) { $bin = Get-EnvOrDefault 'WSL_TOOLKIT_BINARY' }
+    if ($bin) {
+        if (-not (Test-Path -LiteralPath $bin -PathType Leaf)) {
+            throw "-LauncherBinary points at '$bin', which is not a file."
+        }
+        $named = (Resolve-Path -LiteralPath $bin).Path
+        Assert-NamedDigest -Path $named -Options $Options -Option '-LauncherBinary'
+        return $named
+    }
+
+    $release = $Options.Release
+    if (-not $release) { $release = Get-EnvOrDefault 'WSL_TOOLKIT_RELEASE' }
+
+    # 2. one beside this launcher, which is the clone case and needs no network.
+    #
+    # A NAMED RELEASE WINS OVER IT, for the reason the script half already
+    # carries: a caller passing a release and a digest would otherwise get
+    # "Using the executable beside this launcher", run a stale file and verify
+    # nothing against the thing they named. The sibling is what "you did not
+    # say" resolves to. A DIGEST does not move which file is chosen, because it
+    # says which bytes rather than which source, so it is checked against the
+    # sibling instead.
+    if (-not $release) {
+        $here = Split-Path -Parent $PSCommandPath
+        if ($here) {
+            $sibling = Join-Path $here $BinaryLeaf
+            if (Test-Path -LiteralPath $sibling -PathType Leaf) {
+                Write-Step "Using the executable beside this launcher"
+                $siblingPath = (Resolve-Path -LiteralPath $sibling).Path
+                Assert-NamedDigest -Path $siblingPath -Options $Options -Option 'the executable beside this launcher'
+                return $siblingPath
+            }
+        }
+    }
+
+    # 3. a published release. 'latest' unless the caller named a tag.
+    if (-not $release) { $release = 'latest' }
+    try {
+        return (Resolve-BinaryFromRelease -Tag $release -Options $Options -CacheDir $CacheDir)
+    }
+    catch {
+        # A DIGEST FAILURE IS NEVER A FALLBACK, and which one this is comes from
+        # the exception's TYPE. New-HardStop carries that; everything else here
+        # is "there is no executable to be had", which the PowerShell product
+        # answers. A release with no binary asset is that case on purpose: it is
+        # how a caller pinned to a tag older than the executable still works.
+        if ($_.Exception -is [Security.SecurityException]) { throw }
+        $message = $_.Exception.Message
+        Write-Warn "could not fetch the executable: $($message.Trim())"
+        return ''
+    }
 }
 
 function Resolve-Upstream {
@@ -856,7 +1084,9 @@ function Resolve-Upstream {
         if (-not (Test-Path -LiteralPath $local -PathType Leaf)) {
             throw "-LauncherLocal points at '$local', which is not a file."
         }
-        return (Resolve-Path -LiteralPath $local).Path
+        $named = (Resolve-Path -LiteralPath $local).Path
+        Assert-NamedDigest -Path $named -Options $Options -Option '-LauncherLocal'
+        return $named
     }
 
     $ref = $Options.Ref
@@ -899,7 +1129,9 @@ function Resolve-Upstream {
             $sibling = Join-Path $here $ScriptLeaf
             if (Test-Path -LiteralPath $sibling -PathType Leaf) {
                 Write-Step "Using the copy beside this launcher"
-                return (Resolve-Path -LiteralPath $sibling).Path
+                $siblingPath = (Resolve-Path -LiteralPath $sibling).Path
+                Assert-NamedDigest -Path $siblingPath -Options $Options -Option 'the copy beside this launcher'
+                return $siblingPath
             }
         }
         throw ("No copy of $ScriptLeaf beside this launcher, and no revision to fetch. " +
@@ -1054,6 +1286,104 @@ try {
     }
 
     $dotSourced = ($MyInvocation.InvocationName -eq '.')
+
+    # -- BINARY FIRST, AND THIS IS THE CHANGED DEFAULT ----------------------
+    #
+    # WHAT CHANGED AND WHY. This launcher used to resolve wsl-toolkit.ps1 and
+    # nothing else. It now prefers the EXECUTABLE, which carries that script
+    # inside it and adds the things PowerShell cannot do from here: a survey
+    # that resolves what would really run rather than the shim in front of it,
+    # one owned WSL distribution with a rootless engine in it, container jobs
+    # that get a COPY of a workspace instead of a mount, and a fleet runner.
+    #
+    # A CALLER WHO DID NOTHING WRONG NOW BEHAVES DIFFERENTLY, which is a break by
+    # docs/consumers.md's own definition, and it is recorded there. -LauncherKind
+    # script restores the previous behaviour exactly.
+    #
+    # WHAT IS NOT GIVEN UP. A clone with a sibling script and no network still
+    # works: the binary is looked for, not found, not fetchable, and the script
+    # path runs with a line saying so. Only a verification FAILURE is a stop.
+    $kind = $opt.Kind
+    if (-not $kind) { $kind = Get-EnvOrDefault 'WSL_TOOLKIT_KIND' }
+    $explicitKind = [bool]$kind
+    if (-not $kind) { $kind = 'auto' }
+    $kind = $kind.ToLowerInvariant()
+    if ($kind -notin @('auto', 'binary', 'script')) {
+        throw "-LauncherKind '$kind' is not one of: auto, binary, script."
+    }
+
+    # NAMING A SCRIPT SOURCE IS ASKING FOR THE SCRIPT. -LauncherLocal and
+    # -LauncherRef both name a wsl-toolkit.ps1 and nothing else; a default that
+    # went looking for an executable first would go to the network for a call
+    # that documents itself as needing none, and would then compare the caller's
+    # -LauncherSha256 -- which is the digest of THEIR script -- against a
+    # downloaded binary and refuse. A consumer passing a commit and a digest was
+    # doing exactly that, and this is what keeps that call working.
+    $namedScript = @()
+    if ($opt.Local -or (Get-EnvOrDefault 'WSL_EPHEMERAL_LOCAL')) { $namedScript += '-LauncherLocal' }
+    if ($opt.Ref   -or (Get-EnvOrDefault 'WSL_EPHEMERAL_REF'))   { $namedScript += '-LauncherRef' }
+    if ($namedScript.Count -gt 0) {
+        if ($explicitKind -and $kind -eq 'binary') {
+            # HARD RULE: REFUSED RATHER THAN RESOLVED. One has to be ignored,
+            # and silently picking either is how a caller ends up running
+            # something other than what they named.
+            throw ("-LauncherKind binary and $($namedScript -join ' and ') are two answers to the same " +
+                   'question. One names the executable and the other names a script.')
+        }
+        $kind = 'script'
+    }
+
+    $binary = ''
+    if ($kind -ne 'script') {
+        $cacheDir = $opt.InstallDir
+        if (-not $cacheDir) { $cacheDir = Get-EnvOrDefault 'WSL_EPHEMERAL_CACHE' }
+        if (-not $cacheDir) {
+            if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
+                throw 'LOCALAPPDATA is not set and no -LauncherInstallDir was given; nowhere to keep a download.'
+            }
+            $cacheDir = Join-Path $env:LOCALAPPDATA 'wsl-ephemeral\bin'
+        }
+        if (-not (Test-Path -LiteralPath $cacheDir)) { $null = New-Item -ItemType Directory -Path $cacheDir -Force }
+        $binary = Resolve-Binary -Options $opt -CacheDir $cacheDir
+        if (-not $binary -and $kind -eq 'binary') {
+            throw ('-LauncherKind binary was asked for and no executable could be obtained. ' +
+                   'Pass -LauncherBinary with a path, or -LauncherKind script to use the PowerShell product.')
+        }
+        if (-not $binary) { Write-Warn "no executable available, so the PowerShell product is being used instead." }
+    }
+
+    if ($binary) {
+        if ($dotSourced) {
+            throw ('Refusing to run the executable from a dot-source. Invoke this launcher instead, ' +
+                   'and dot-source it only for -LauncherAddToPath.')
+        }
+        if ($opt.AddToPath) {
+            $dir = Split-Path -Parent $binary
+            Write-Ok "wsl-toolkit is at $binary"
+            Write-Warn "PATH was NOT changed: a child process cannot change the session that ran it."
+            Write-Note "  Dot-source this launcher with -LauncherKind script for the PATH form, or set it yourself:"
+            Write-Note "    `$env:PATH = '$dir;' + `$env:PATH"
+            return
+        }
+        $forward = $split.Forward
+        # WHICH SURFACE THE ARGUMENTS BELONG TO, decided by one rule a reader can
+        # apply. The executable's own commands are bare words; the script's
+        # parameters all begin with a dash. So a leading dash means "these are
+        # the script's" and they go through the executable's `script` command,
+        # which forwards them unchanged. That is what keeps every existing
+        # caller of this launcher working against the new default.
+        if ($forward.Count -eq 0) {
+            & $binary
+        }
+        elseif (([string]$forward[0]).StartsWith('-')) {
+            & $binary script @forward
+        }
+        else {
+            & $binary @forward
+        }
+        $innerCode = if (Test-Path variable:LASTEXITCODE) { $LASTEXITCODE } else { 0 }
+        exit ([int]$innerCode)
+    }
 
     $resolved = Resolve-Upstream -Options $opt
     Assert-PowerShellSyntax -LiteralFile $resolved

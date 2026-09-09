@@ -8,14 +8,22 @@ says which hosts it runs on, and fails with a message on the ones it does not.
 
 **Licence:** 0BSD. Use it however you like.
 
-**One thing is published from here.**
-[`wsl-toolkit.ps1`](scripts/windows/wsl-toolkit/wsl-toolkit.md) and its launcher
-are cut as a
+**One thing is published from here.** The
+[`wsl-toolkit`](tools/windows/wsl-toolkit/wsl-toolkit.md) tool is cut as a
 [GitHub release](https://github.com/Azathothas/ToolKit/releases), with a
-`SHA256SUMS` computed in CI over the bytes that are uploaded. Everything else
-here is scripts and their documentation: no images, no packages, no second
-release train. The BSD container images some of its history refers to are built
-by [`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd).
+`SHA256SUMS` computed in CI over the bytes that are uploaded. It is one tool in
+four assets: the executable for two Windows architectures, the
+[PowerShell product](scripts/windows/wsl-toolkit/wsl-toolkit.md) the executable
+carries inside itself, and the launcher that fetches either.
+
+Everything else here is scripts and their documentation: no images, no packages,
+no second release train. The BSD container images some of its history refers to
+are built by
+[`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd).
+
+⭐ **On a Windows machine and want Linux?**
+[`tools/windows/wsl-toolkit/wsl-toolkit.md`](tools/windows/wsl-toolkit/wsl-toolkit.md)
+is the one page to read.
 
 ---
 
@@ -23,6 +31,7 @@ by [`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd).
 
 | path | what it is |
 | --- | --- |
+| ⭐ [`tools/windows/wsl-toolkit/`](tools/windows/wsl-toolkit/wsl-toolkit.md) | one executable: a host survey that resolves past every shim, one owned WSL distribution running a rootless engine, container jobs that get a COPY of a workspace and never a mount, a fleet runner over twelve fully qualified images, and a cleanup that removes only what it made |
 | [`scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](scripts/windows/wsl-toolkit/wsl-toolkit.md) | create, use and destroy throwaway WSL2 distros on Windows, from an OCI image or a rootfs tarball. Reports what WSL and the container engine are holding, and what address a distro reaches the host at. |
 | [`scripts/windows/wsl-toolkit/launcher.ps1`](scripts/windows/wsl-toolkit/launcher.md) | fetch that script, verify it, make it runnable on Windows, and run it |
 | [`scripts/windows/wsl-toolkit/selftest.ps1`](scripts/windows/wsl-toolkit/selftest.md) | run that script's pure functions against a table of cases. No WSL, no engine, nothing created. |
@@ -43,6 +52,7 @@ not this one**, before using it.
 | `TODO/` | the work: the record, the entry list, the entries themselves, and the standing rules |
 | `docs/` | how this repository is worked on. The map is below. |
 | `scripts/` | the tools and the checks |
+| `tools/` | the compiled half of `wsl-toolkit`, in Go |
 | `LICENSES/` | licence texts, not code |
 | `.github/workflows/` | CI. Three jobs on `ci.yml`, across ubuntu and windows, plus a weekly pass over open issues. |
 

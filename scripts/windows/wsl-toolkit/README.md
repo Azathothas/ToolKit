@@ -28,9 +28,24 @@ rather than built on demand because a consumer fetching one raw URL cannot run a
 build step, and that one-URL contract is the whole reason the launcher can verify
 anything: one URL, one digest, one thing to check.
 
-⛔ **Do not edit `wsl-toolkit.ps1`.** An edit there is lost the next time anything
-runs the build, and the gate refuses a bundle that disagrees with its parts, so
-it is lost loudly rather than quietly.
+⛔ **THE BUILD WRITES TWO PRODUCTS AND `-Check` COMPARES BOTH.** The second is
+`tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1`, which the Go
+executable embeds; Go's `embed` directive cannot reach outside its own package
+directory, so the file lives there rather than being referenced. A rebuild that
+refreshed only this one would ship a binary running the previous script.
+[`../../../tools/windows/wsl-toolkit/README.md`](../../../tools/windows/wsl-toolkit/README.md)
+is the compiled half.
+
+⚠ **The embedded copy is stored with LF and this one with CRLF**, so the two
+differ by line endings and nothing else. git rewrites a `text eol=crlf` file on
+checkout, which would make an ubuntu build and a windows build of one commit
+embed different bytes. The build leaves no lone carriage return, so the
+executable turns each LF back into CRLF and reconstructs this file exactly; a Go
+test asserts that against this file rather than claiming it.
+
+⛔ **Do not edit `wsl-toolkit.ps1`, or the copy under `tools/`.** An edit to
+either is lost the next time anything runs the build, and the gate refuses a
+product that disagrees with its parts, so it is lost loudly rather than quietly.
 
 ⚠ **The join order is not alphabetical and cannot be.** PowerShell requires
 `param()` to be the first statement in a script and comment-based help to come
@@ -137,8 +152,15 @@ tree may hold a copy of it.
 | asset | what it is |
 | --- | --- |
 | `wsl-toolkit.ps1` | the product, byte for byte as this tree holds it |
-| `launcher.ps1` | the wrapper that fetches and verifies it |
+| `launcher.ps1` | the wrapper that fetches and verifies either product |
+| `wsl-toolkit-windows-amd64.exe` | the compiled tool, which carries the script |
+| `wsl-toolkit-windows-arm64.exe` | the same, for an arm64 Windows host |
 | `SHA256SUMS` | ⭐ computed in CI over the bytes that are uploaded |
+
+⛔ **The workflow asserts the asset COUNT before it writes `SHA256SUMS`**, and
+runs the staged binary and compares its version to the tag. A staging step that
+produced fewer assets and exited 0 would publish a release missing the thing a
+consumer came for, and it would look complete.
 
 ⚠ **The digests are computed in the workflow, not here**, and that is not
 bureaucracy. A `.ps1` is CRLF in a working tree and LF in the git index, so a

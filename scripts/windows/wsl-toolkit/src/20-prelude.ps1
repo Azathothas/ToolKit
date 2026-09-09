@@ -14,7 +14,11 @@ $ErrorActionPreference = 'Stop'
 # thing docs/conventions/forbidden-patterns.md calls out about deletion, from the
 # other direction: it has made the leftovers invisible instead of deleting them.
 $script:Prefix  = 'eph-'
-$script:BaseDir = Join-Path $env:LOCALAPPDATA 'wsl-ephemeral'
+$script:BaseDir = if (-not [string]::IsNullOrWhiteSpace($StateDir)) {
+    [IO.Path]::GetFullPath($StateDir)
+} elseif ($env:LOCALAPPDATA) {
+    Join-Path $env:LOCALAPPDATA 'wsl-ephemeral'
+} else { '' }
 
 # What --import costs on the target volume, as a floor plus a multiple of the
 # rootfs tarball. ⛔ Both are set ABOVE every measurement in
@@ -38,14 +42,20 @@ $script:Protected = @(
     'docker-desktop',
     'docker-desktop-data',
     'rancher-desktop',
-    'rancher-desktop-data'
+    'rancher-desktop-data',
+    # ⭐ The base distro the wsl-toolkit EXECUTABLE owns. It has no `eph-`
+    # prefix, so this script already refuses to remove it; naming it here as
+    # well is the second guard and the place a reader finds out the two tools
+    # share a machine. Its lifecycle belongs to the executable's `base` command,
+    # which carries its own protected list for the same names.
+    'wsl-toolkit'
 )
 
 # ⭐ ONE HOME FOR THE VERSION, and it is here. -Action Doctor prints it and
 # release.ps1 reads it out of the built bundle to form the tag, so a release
 # whose tag disagrees with the file inside it cannot be produced by accident.
 # ⛔ Nothing else in this tree may carry a copy of it.
-$script:ToolkitVersion = '1.0.1'
+$script:ToolkitVersion = '1.1.0'
 
 # ⛔ The Windows reserved device names, in any case and with any extension. A
 # path check against this list is why -StreamLogPath nul is refused rather than

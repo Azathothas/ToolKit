@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 51  open 8  blocked 0  done 43
+total 52  open 8  blocked 0  done 44
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 19 | 20 |
+| P1 | 1 | 0 | 20 | 21 |
 | P2 | 6 | 0 | 15 | 21 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **8** | **0** | **43** | **51** |
+| **all** | **8** | **0** | **44** | **52** |
 
 ---
 
@@ -81,6 +81,7 @@ total 51  open 8  blocked 0  done 43
 | WSL-28 | P2 | M | open | A recorded run cannot be re-read or compared | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-29 | P3 | S | open | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-30 | P2 | XL | open | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-31 | P1 | XL | done | A portable entry point for isolated Linux jobs on Windows | [`issue-6.md`](issue-6.md) |
 
 ---
 

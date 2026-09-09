@@ -47,6 +47,16 @@
 *.psm1          text eol=crlf
 *.psd1          text eol=crlf
 
+# ⛔ THE EXECUTABLE'S EMBEDDED COPY IS THE ONE .ps1 STORED WITH LF, and the
+# exception is what makes the Go binary reproducible. Go compiles those bytes
+# in, so under the `eol=crlf` rule above an ubuntu runner and a windows runner
+# would embed different bytes and produce two different binaries from one
+# commit. ⭐ Nothing is lost by it: the file carries no lone carriage return, so
+# the executable turns every LF back into CRLF on the way out and reconstructs
+# the released artefact byte for byte, which is a property it asserts rather
+# than claims. scripts/windows/wsl-toolkit/build.ps1 writes both halves.
+tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1 text eol=lf
+
 # Batch files are read by cmd.exe, which wants CRLF.
 *.bat           text eol=crlf
 *.cmd           text eol=crlf

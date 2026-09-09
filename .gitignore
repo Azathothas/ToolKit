@@ -27,8 +27,17 @@ service-account*.json
 .*_token
 .*-token
 
+# ── build output of the wsl-toolkit executable ─────────────────────────────
+# The Go module under tools/windows/wsl-toolkit builds a binary named after its
+# own directory, and a release build writes into dist/. Neither is tracked: the
+# SOURCE is, and the release workflow is what produces the published artefact.
+tools/windows/wsl-toolkit/wsl-toolkit
+tools/windows/wsl-toolkit/wsl-toolkit.exe
+dist/
+
 # ── scratch and temporary work ─────────────────────────────────────────────
 .tmp/
+.wsl-toolkit/
 tmp/
 scratch/
 .scratch/

@@ -1,0 +1,387 @@
+package toolkit
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"time"
+)
+
+// ProtectedDistros must never be unregistered, whatever this executable is
+// asked. Destroying one takes the machine's container engine down with it.
+//
+// ⚠ The list is not the guard. AssertOwnedDistro refuses everything that is not
+// the base by exact name, so a name absent here is already refused. This exists
+// so a plausible name's refusal says WHY.
+var ProtectedDistros = []string{
+	"podman-machine-default",
+	"docker-desktop",
+	"docker-desktop-data",
+	"rancher-desktop",
+	"rancher-desktop-data",
+}
+
+// ErrWslDenied is returned when wsl.exe is present and this process may not
+// talk to it. ⛔ A different fact from wsl.exe being absent: one is a sandbox,
+// the other is a missing feature, and they need different next moves.
+var ErrWslDenied = errors.New("this process is not permitted to call wsl.exe")
+
+// ErrWslMissing is returned when there is no wsl.exe to call at all.
+var ErrWslMissing = errors.New("wsl.exe was not found on this host")
+
+// deniedMarkers are what a blocked wsl.exe says. ⚠ Matched on the child's own
+// output rather than on an exit code, because the codes differ by what denied
+// it.
+var deniedMarkers = []string{
+	"e_accessdenied",
+	"access is denied",
+	"0x80070005",
+	"operation not permitted",
+	"the requested operation requires elevation",
+}
+
+// Wsl is the handle to this host's wsl.exe.
+type Wsl struct {
+	Path string
+}
+
+// FindWsl resolves wsl.exe once. Every question goes through the returned
+// handle, so there is one place that knows how to talk to it and one place a
+// denial is recognised.
+func FindWsl() (*Wsl, error) {
+	if runtime.GOOS != "windows" {
+		return nil, fmt.Errorf("%w: this host is %s", ErrWslMissing, runtime.GOOS)
+	}
+	exe, err := ResolveExecutable("wsl.exe")
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrWslMissing, err)
+	}
+	return &Wsl{Path: exe.Resolved}, nil
+}
+
+func classifyWslFailure(out, stderr string, err error) error {
+	joined := strings.ToLower(out + " " + stderr)
+	for _, marker := range deniedMarkers {
+		if strings.Contains(joined, marker) {
+			return fmt.Errorf("%w: %s", ErrWslDenied, strings.TrimSpace(firstLine(out+stderr)))
+		}
+	}
+	return err
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexAny(s, "\r\n"); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// Distro is one registered WSL distribution.
+type Distro struct {
+	Name    string `json:"name"`
+	Running bool   `json:"running"`
+	Owned   bool   `json:"owned"`
+}
+
+// List enumerates registered distributions.
+//
+// ⭐ --list --quiet, never --verbose. The verbose form prints a LOCALISED header
+// and state word, so a parser keyed to "NAME" or "Running" answers differently
+// on a machine whose Windows is not in English. --running --quiet is the same
+// list filtered, so neither fact carries a language.
+func (w *Wsl) List(ctx context.Context, baseName string) ([]Distro, error) {
+	names, err := w.listNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	runningNames, err := w.listRunningNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	running := map[string]bool{}
+	for _, n := range runningNames {
+		running[strings.ToLower(n)] = true
+	}
+	out := make([]Distro, 0, len(names))
+	for _, n := range names {
+		out = append(out, Distro{
+			Name:    n,
+			Running: running[strings.ToLower(n)],
+			Owned:   strings.EqualFold(n, baseName),
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+func (w *Wsl) listNames(ctx context.Context) ([]string, error) {
+	return w.nameQuery(ctx, "--list", "--quiet")
+}
+
+func (w *Wsl) listRunningNames(ctx context.Context) ([]string, error) {
+	return w.nameQuery(ctx, "--list", "--running", "--quiet")
+}
+
+func (w *Wsl) nameQuery(ctx context.Context, args ...string) ([]string, error) {
+	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out, stderr, err := Output(bounded, w.Path, args...)
+	if err != nil {
+		// ⚠ "no installed distributions" is an ANSWER, not a failure: an empty
+		// machine and a machine this process cannot ask are different facts.
+		if strings.Contains(strings.ToLower(out+stderr), "no installed distributions") {
+			return nil, nil
+		}
+		return nil, classifyWslFailure(out, stderr, err)
+	}
+	var names []string
+	for _, line := range strings.Split(out, "\n") {
+		name := strings.TrimSpace(strings.Trim(line, "\r\x00"))
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names, nil
+}
+
+// Exists reports whether a distribution is registered under this exact name.
+func (w *Wsl) Exists(ctx context.Context, name string) (bool, error) {
+	names, err := w.listNames(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, n := range names {
+		if strings.EqualFold(n, name) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// AssertOwnedDistro is the single choke point in front of every destructive WSL
+// call this executable can make.
+//
+// ⛔ An allow-list of exactly one name. This executable owns one distribution,
+// so the narrowest guard is available and it is the one used.
+func AssertOwnedDistro(name, baseName string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("refusing to act on an empty distribution name")
+	}
+	for _, p := range ProtectedDistros {
+		if strings.EqualFold(name, p) {
+			return fmt.Errorf("REFUSING to touch %q: it is a container runtime's own distribution and this tool never removes one", name)
+		}
+	}
+	if !strings.EqualFold(name, baseName) {
+		return fmt.Errorf("REFUSING to touch %q: this tool owns %q and nothing else. Use wsl-toolkit script -Action Remove for a throwaway distro", name, baseName)
+	}
+	return nil
+}
+
+// Import registers a distribution from a rootfs archive.
+func (w *Wsl) Import(ctx context.Context, name, dir, tarball string, baseName string) error {
+	if err := AssertOwnedDistro(name, baseName); err != nil {
+		return err
+	}
+	bounded, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	defer cancel()
+	out, stderr, err := Output(bounded, w.Path, "--import", name, dir, tarball, "--version", "2")
+	if err != nil {
+		return fmt.Errorf("wsl --import failed: %w: %s", classifyWslFailure(out, stderr, err), firstLine(out+stderr))
+	}
+	return nil
+}
+
+// Terminate stops a distribution. It is not destructive: the disk stays.
+//
+// ⛔ There is no `wsl --shutdown` anywhere in this executable. It is
+// machine-wide and takes every distribution down, including somebody else's.
+func (w *Wsl) Terminate(ctx context.Context, name, baseName string) error {
+	if err := AssertOwnedDistro(name, baseName); err != nil {
+		return err
+	}
+	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	out, stderr, err := Output(bounded, w.Path, "--terminate", name)
+	if err != nil {
+		return fmt.Errorf("wsl --terminate %s: %w", name, classifyWslFailure(out, stderr, err))
+	}
+	return nil
+}
+
+// Unregister removes a distribution and its disk.
+func (w *Wsl) Unregister(ctx context.Context, name, baseName string) error {
+	if err := AssertOwnedDistro(name, baseName); err != nil {
+		return err
+	}
+	bounded, cancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer cancel()
+	out, stderr, err := Output(bounded, w.Path, "--unregister", name)
+	if err != nil {
+		return fmt.Errorf("wsl --unregister %s: %w", name, classifyWslFailure(out, stderr, err))
+	}
+	return nil
+}
+
+// ExecRequest is one command sent into a distribution.
+type ExecRequest struct {
+	Distro  string
+	User    string
+	Script  []byte
+	Dir     string // working directory inside the guest, optional
+	Env     map[string]string
+	Timeout time.Duration
+	Stdout  io.Writer
+	Stderr  io.Writer
+}
+
+// Exec runs a shell script inside a distribution and returns its exit code.
+//
+// ⛔ THE SCRIPT TRAVELS ON STDIN AND NEVER AS AN ARGUMENT. Measured 2026-09-09
+// against a real Alpine distro with one payload carrying a dollar sign, a
+// backtick, both quotes, a tab and a parenthesis: on stdin every character
+// arrived and exit 7 propagated; as an argument to /bin/sh -lc the dollar name
+// expanded to nothing, the backtick was EXECUTED, and the command reported
+// exit 0 over that failure. docs/conventions/shell.md section 7 carries the same
+// measurement from PowerShell.
+//
+// ⚠ A script that reads its own stdin consumes the rest of itself. A caller's
+// job is delivered as a FILE instead, which leaves stdin free.
+func (w *Wsl) Exec(ctx context.Context, req ExecRequest) (int, error) {
+	if strings.TrimSpace(req.Distro) == "" {
+		return 2, errors.New("Exec needs a distribution name")
+	}
+	user := req.User
+	if user == "" {
+		user = "root"
+	}
+	args := []string{"-d", req.Distro, "-u", user}
+	if req.Dir != "" {
+		args = append(args, "--cd", req.Dir)
+	}
+	args = append(args, "--", "/bin/sh")
+
+	bounded := ctx
+	var cancel context.CancelFunc
+	if req.Timeout > 0 {
+		bounded, cancel = context.WithTimeout(ctx, req.Timeout)
+		defer cancel()
+	}
+
+	script := req.Script
+	if len(req.Env) > 0 {
+		script = append(shellAssignments(req.Env), script...)
+	}
+
+	cmd := newCommand(bounded, w.Path, args...)
+	stdout := req.Stdout
+	if stdout == nil {
+		stdout = io.Discard
+	}
+	stderr := req.Stderr
+	if stderr == nil {
+		stderr = io.Discard
+	}
+	err := runCommand(bounded, cmd, strings.NewReader(string(script)), stdout, stderr)
+	if err == nil {
+		return 0, nil
+	}
+	return ExitCode(err), err
+}
+
+// Capture runs a script and returns its streams, for a question this tool asks
+// for itself rather than a caller's job.
+func (w *Wsl) Capture(ctx context.Context, distro, user string, script []byte, timeout time.Duration) (string, string, int, error) {
+	out := &boundedBuffer{max: 4 << 20}
+	errBuf := &boundedBuffer{max: 256 << 10}
+	code, err := w.Exec(ctx, ExecRequest{
+		Distro: distro, User: user, Script: script, Timeout: timeout,
+		Stdout: out, Stderr: errBuf,
+	})
+	if err != nil {
+		err = classifyWslFailure(out.String(), errBuf.String(), err)
+	}
+	return out.String(), errBuf.String(), code, err
+}
+
+// shellAssignments renders environment as POSIX assignments the guest evaluates
+// before the caller's script.
+//
+// ⛔ Values are single-quoted, never substituted into the caller's script. A
+// text replacement into somebody's script is the defect -ScriptArg removes one
+// layer down.
+func shellAssignments(env map[string]string) []byte {
+	keys := make([]string, 0, len(env))
+	for k := range env {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for _, k := range keys {
+		if !isShellName(k) {
+			continue
+		}
+		b.WriteString(k)
+		b.WriteString("=")
+		b.WriteString(shellQuote(env[k]))
+		b.WriteString("; export ")
+		b.WriteString(k)
+		b.WriteString("\n")
+	}
+	return []byte(b.String())
+}
+
+func isShellName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r == '_':
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// WindowsPathToGuest converts a Windows path to the drvfs path a distribution
+// sees. ⛔ Reporting only: nothing running in a container is given a host path.
+func WindowsPathToGuest(p string) (string, error) {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return "", err
+	}
+	if len(abs) < 2 || abs[1] != ':' {
+		return "", fmt.Errorf("%q has no drive letter, so it has no /mnt path", p)
+	}
+	drive := strings.ToLower(abs[:1])
+	rest := strings.ReplaceAll(abs[2:], `\`, "/")
+	return "/mnt/" + drive + rest, nil
+}
+
+// FileSize is the size of a file, and whether it could be read. ⚠ A total that
+// counts an unreadable file as zero is a number somebody acts on, so callers
+// name what they could not measure and withhold the total.
+func FileSize(path string) (int64, bool) {
+	st, err := os.Stat(path)
+	if err != nil {
+		return 0, false
+	}
+	return st.Size(), true
+}

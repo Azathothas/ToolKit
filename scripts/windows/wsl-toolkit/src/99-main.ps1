@@ -2,8 +2,7 @@
 # Main
 # --------------------------------------------------------------------------------------
 try {
-    if ([string]::IsNullOrWhiteSpace($script:BaseDir)) { throw "LOCALAPPDATA is not set; cannot choose a base directory." }
-    New-Item -ItemType Directory -Path $script:BaseDir -Force | Out-Null
+    if ([string]::IsNullOrWhiteSpace($script:BaseDir)) { throw "Pass -StateDir or set LOCALAPPDATA to choose a state directory." }
 
     # ⛔ EVERY PARAMETER IS CHECKED AGAINST THE ACTION IT WAS PASSED TO, and one
     # that the action does not read is REFUSED. A caller who passes -Image to
@@ -72,6 +71,9 @@ try {
     # won and a bad -CommandFile is refused before a distro is built for it.
     $pairs = Get-ScriptArgPairs -FromFile $ScriptArgFile -Pairs $ScriptArg
     $script:CommandBytes = Resolve-CommandBytes -Text $Command -FromFile $CommandFile -FromB64 $CommandB64 -Pairs $pairs
+    if ($UserEnv -and $null -ne $script:CommandBytes) {
+        $script:CommandBytes = Add-GuestUserEnvironment -ScriptBytes $script:CommandBytes
+    }
 
     switch ($Action) {
         'New'    { Invoke-ActionNew }

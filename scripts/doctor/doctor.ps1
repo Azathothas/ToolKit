@@ -191,7 +191,9 @@ if ($os -eq 'windows') {
 }
 $fallbackDirs = @()
 foreach ($d in $candidateDirs) {
-    if ($d -and (Test-Path -LiteralPath $d -PathType Container)) { $fallbackDirs += $d }
+    try {
+        if ($d -and (Test-Path -LiteralPath $d -PathType Container -ErrorAction Stop)) { $fallbackDirs += $d }
+    } catch { Add-Note ('tool directory inaccessible: ' + $d) }
 }
 
 $writableTmp = ''
@@ -228,7 +230,12 @@ function Resolve-Tool([string]$Name) {
     foreach ($dir in $fallbackDirs) {
         foreach ($ext in $exeExts) {
             $candidate = Join-Path $dir ($Name + $ext)
-            if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+            try {
+                if (Test-Path -LiteralPath $candidate -PathType Leaf -ErrorAction Stop) { return $candidate }
+            } catch {
+                # Denied app-execution aliases must not abort a host survey.
+                Add-Note ('tool candidate inaccessible: ' + $candidate)
+            }
         }
     }
     return $null

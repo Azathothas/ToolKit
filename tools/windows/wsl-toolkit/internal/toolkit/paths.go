@@ -1,0 +1,156 @@
+package toolkit
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+)
+
+// Home is where everything this executable owns lives on the host.
+//
+// ⛔ NOT the script's directory. wsl-toolkit.ps1's Purge removes every distro
+// under %LOCALAPPDATA%\wsl-ephemeral, and the base has to survive that.
+//
+//	<home>/config.json     the image catalog and base settings
+//	<home>/base/           the base distro's disk, the wsl --import target
+//	<home>/jobs/<id>/      one job's scratch, archive and transcript
+//	<home>/ledger.jsonl    what this executable created, so cleanup can find it
+//	<home>/helper.json     the local helper's endpoint and token
+func Home() (string, error) {
+	if v := strings.TrimSpace(os.Getenv("WSL_TOOLKIT_HOME")); v != "" {
+		return filepath.Abs(v)
+	}
+	if runtime.GOOS == "windows" {
+		if v := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); v != "" {
+			return filepath.Join(v, "wsl-toolkit"), nil
+		}
+		return "", errors.New("LOCALAPPDATA is not set; pass --home or set WSL_TOOLKIT_HOME")
+	}
+	if v := strings.TrimSpace(os.Getenv("XDG_STATE_HOME")); v != "" {
+		return filepath.Join(v, "wsl-toolkit"), nil
+	}
+	h, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("no home directory and WSL_TOOLKIT_HOME is not set: %w", err)
+	}
+	return filepath.Join(h, ".local", "state", "wsl-toolkit"), nil
+}
+
+// EnsureHome creates the state directory. Read-only commands must not call it:
+// a report that creates a directory on a machine it is only describing has
+// changed the thing it was asked to measure.
+func EnsureHome() (string, error) {
+	h, err := Home()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(h, 0o700); err != nil {
+		return "", err
+	}
+	return h, nil
+}
+
+// ErrOutsideRoot is what every containment refusal wraps, so a caller can tell
+// a refusal from an ordinary IO failure without reading a message.
+var ErrOutsideRoot = errors.New("outside the directory this tool owns")
+
+// ResolveInside answers where a path is, and refuses anything that is not a
+// strict descendant of root.
+//
+// ⛔ Links are resolved on BOTH sides before comparing. A prefix test over
+// unresolved paths passes for a link inside root that points anywhere at all.
+// Where the target does not exist yet, the nearest existing ancestor is
+// resolved, because that is the directory a create would happen in.
+func ResolveInside(root, path string) (string, error) {
+	realRoot, err := resolveExisting(root)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve %s: %w", root, err)
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	real, err := resolveExisting(abs)
+	if err != nil {
+		return "", fmt.Errorf("cannot resolve %s: %w", path, err)
+	}
+	if pathEqual(real, realRoot) {
+		return "", fmt.Errorf("%q is the root itself, which is %w", path, ErrOutsideRoot)
+	}
+	if !hasPathPrefix(real, realRoot) {
+		return "", fmt.Errorf("%q resolves to %q, which is %w %q", path, real, ErrOutsideRoot, realRoot)
+	}
+	return real, nil
+}
+
+// resolveExisting follows symlinks as far as the path exists, then re-appends
+// the parts that do not exist yet.
+func resolveExisting(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	var tail []string
+	cur := abs
+	for {
+		resolved, err := RealPath(cur)
+		if err == nil {
+			return filepath.Join(append([]string{resolved}, tail...)...), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Reached the volume root without finding anything that exists.
+			return filepath.Join(append([]string{cur}, tail...)...), nil
+		}
+		tail = append([]string{filepath.Base(cur)}, tail...)
+		cur = parent
+	}
+}
+
+func pathEqual(a, b string) bool {
+	a = strings.TrimRight(a, `\/`)
+	b = strings.TrimRight(b, `\/`)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func hasPathPrefix(path, prefix string) bool {
+	prefix = strings.TrimRight(prefix, `\/`) + string(filepath.Separator)
+	if runtime.GOOS == "windows" {
+		return strings.HasPrefix(strings.ToLower(path), strings.ToLower(prefix))
+	}
+	return strings.HasPrefix(path, prefix)
+}
+
+// RemoveInside is THE deletion in this executable, and every host removal goes
+// through it.
+//
+// ⛔ The containment guard runs INSIDE it rather than beside each caller: a
+// guard applied at four call sites is a guard that will one day be applied at
+// three. TODO/RULES.md section 3.
+//
+// It reads the state back and reports what is true rather than what was
+// attempted.
+func RemoveInside(root, path string) error {
+	target, err := ResolveInside(root, path)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(target); err != nil {
+		return err
+	}
+	if _, err := os.Lstat(target); err == nil {
+		return fmt.Errorf("%s is still on disk after the removal", target)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("cannot tell whether %s was removed: %w", target, err)
+	}
+	return nil
+}

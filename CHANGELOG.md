@@ -19,6 +19,87 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-09
+
+### 2026-09-09T09:00:00Z: an executable joins the script, and it owns a Linux host
+
+**Record:** [`TODO/issue-6.md`](TODO/issue-6.md) carries `WSL-31`;
+[`TODO/PROGRESS.md`](TODO/PROGRESS.md) is the state.
+**Deployed:** yes. `wsl-toolkit-v1.1.0`, with `wsl-toolkit.ps1`, `launcher.ps1`,
+`wsl-toolkit-windows-amd64.exe`, `wsl-toolkit-windows-arm64.exe` and a
+`SHA256SUMS` computed in CI over the bytes that were uploaded.
+
+Resolves [issue 6](https://github.com/Azathothas/ToolKit/issues/6). The five
+things it asked for and what each became:
+
+**A better user and root mode.** `-UserEnv` prepares a per-uid
+`XDG_RUNTIME_DIR`, which is what rootless podman needs and what `runuser` leaves
+unset; without it a build dies at `cannot create state directory for
+buildah-...`, which reads as a broken image. It also puts every `PATH` entry
+through one function that tests for a duplicate, so a nested call no longer grows
+the variable by a dozen entries per layer, and it separates a guest with no
+`stat` from a runtime directory another uid owns.
+
+**A single-file executable.** `tools/windows/wsl-toolkit` carries
+`wsl-toolkit.ps1` inside itself and forwards to it, so there is one
+implementation of the throwaway-distro behaviour rather than two. The embedded
+copy is written by the same `build.ps1` that writes the tracked bundle, and
+`build.ps1 -Check` compares both against the parts.
+
+**A fleet runner.** `matrix` commissions a container per image and decommissions
+all of them, with the workspace sent once and copied per row. Three counts
+rather than one, because "the image could not be pulled" and "the subject is
+broken" need different next moves, and a run where nothing ran exits 2.
+
+**A default container catalog.** Twelve fully qualified references, and a
+dedicated `wsl-toolkit` WSL distribution with a rootless engine in it, so
+`podman-machine-default` is never touched. The base is meant to be wrecked:
+`base ensure` re-provisions a registered-but-unusable one in place and rebuilds
+only what will not provision.
+
+**A host survey that answers.** `doctor` resolves past every shim and reports
+what would actually run. It found four wrong answers in its own first version,
+each a wrong answer rather than a crash: a scoop junction that `EvalSymlinks`
+cannot follow made node, ruby and java read as absent; resolving a multiplexer
+and then executing the target reported rustup's version as rustc's; one version
+pattern read `v4.35.1` as `35.1` and `go1.27.0` as nothing; and a command script
+assembled as an argument list exited 1 where the same script by hand exits 0.
+
+⛔ **What the deep review changed, and it was four things.** The door sweep
+asked which surfaces reach each new affordance and found the two job routes
+disagreeing: `--user` was accepted on the helper route and dropped, so a caller
+asking for uid 1000 got root with nothing said. The same sweep found the launcher
+deciding "verification failed" from the wording of an error, and a named release
+losing to a stale executable beside the launcher. `-LauncherSha256` was ignored
+outright on the three paths that name a file rather than fetching one. The guard
+mutation found one of its own: deleting the protected-distribution list left the
+suite green, because the exact-name rule refuses those names anyway and nothing
+asserted the reason the list exists to give. Each is fixed, and each has a case
+that fails without the fix.
+
+⛔ **The incident the isolation answers.** A script running in a guest ended with
+a recursive removal of a path that pointed at a Windows drive mount. A removal on
+a drive mount does not go through the recycle bin, and 29,339 files went in one
+call. No host directory is mounted into a container here: a job gets a copy, and
+getting anything back is a second act with per-entry validation. Driven on this
+machine: a container ran `rm -rf /work/*` and the host workspace was
+byte-identical afterwards.
+
+⛔ **Three breaks, and [`docs/consumers.md`](docs/consumers.md) carries the
+rows.** The launcher runs the executable by default, a release carries four
+assets rather than two, and a read-only script action no longer creates the state
+directory. `-LauncherKind script` restores the launcher's previous behaviour
+exactly.
+
+**Measured on one Windows 11 Pro 26200 host, 2026-09-09.** The transport: a
+script on `wsl.exe` stdin arrives byte-exact and its exit code propagates, while
+the same payload as an argument had its dollar name expanded, its backtick
+executed, and still reported exit 0. The base: arch 31s and 940 MiB, alpine 28s
+and 204 MiB, debian 37s and 556 MiB, each to a rootless container returning a
+marker. The fleet: 12 of 12 catalog images ran, 0 failed, 0 unreached, 52.1s with
+cold pulls, artifacts returned from every row.
+
+
 ## 2026-08-30
 
 ### 2026-08-30T08:31:12Z: the tool becomes a project, and this repository publishes something

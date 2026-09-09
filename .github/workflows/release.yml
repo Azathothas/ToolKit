@@ -72,24 +72,85 @@ jobs:
           if ($tag -ne $want) { Write-Output "tag is '$tag' and the file says '$want'"; exit 1 }
           Write-Output "tag and file agree: $tag"
 
+      # ⚠ THE RUNTIME THIS TAG DECLARES WAS CHECKED, not only that the tag
+      # resolves. Resolved on 2026-09-09, and the commit it answered is the one
+      # pinned on the line below rather than repeated here:
+      #   gh api repos/actions/setup-go/git/ref/tags/v6 --jq .object.sha
+      # It declares node24, which is current.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: tools/windows/wsl-toolkit/go.mod
+          cache: false
+
+      # ⛔ THE COMPILED PRODUCT IS PROVED BEFORE IT IS PUBLISHED, with the same
+      # check the local gate and CI run. A release is the one place where "it
+      # built on somebody's machine" is not an answer.
+      - name: gofmt, vet, build and test
+        shell: bash
+        run: sh scripts/common/check-go.sh
+
+      # ⛔ THE EXECUTABLE MUST CARRY THE SCRIPT THIS RELEASE PUBLISHES. The two
+      # copies differ by line endings alone and the executable reconstructs the
+      # tracked bytes exactly. Without this, a release could ship a binary
+      # running a script that is not the one beside it in the same release.
+      - name: the executable carries the published script
+        shell: bash
+        run: |
+          cd tools/windows/wsl-toolkit
+          go test ./internal/script/ -run TestStoredCopyReconstructsTheProduct -v
+
       # ⭐ THE DIGESTS ARE COMPUTED OVER THE BYTES THAT ARE UPLOADED, in this
       # checkout, so a consumer verifying a download against SHA256SUMS is
       # checking the same object. A digest computed anywhere else would be a
       # digest of a different line ending.
+      #
+      # ⛔ -trimpath, AND NO BUILD STAMP. Two builds of one commit produce
+      # identical bytes, so a consumer can rebuild and compare rather than
+      # trusting the publisher. A path or a timestamp compiled in would make
+      # every build unique and that property unavailable.
       - name: stage the assets and write SHA256SUMS
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           Copy-Item .\scripts\windows\wsl-toolkit\wsl-toolkit.ps1 dist\ -Force
           Copy-Item .\scripts\windows\wsl-toolkit\launcher.ps1     dist\ -Force
+          Push-Location tools\windows\wsl-toolkit
+          foreach ($arch in @('amd64', 'arm64')) {
+            $env:GOOS = 'windows'; $env:GOARCH = $arch; $env:CGO_ENABLED = '0'
+            $out = "..\..\..\dist\wsl-toolkit-windows-$arch.exe"
+            & go build -trimpath -o $out .
+            if ($LASTEXITCODE -ne 0) { Write-Output "the $arch build failed"; exit 1 }
+          }
+          Pop-Location
+          # ⛔ THE COUNT IS ASSERTED. A staging step that produced fewer assets
+          # than expected and exited 0 would publish a release missing the thing
+          # a consumer came for, and the release would look complete.
+          $expected = @('wsl-toolkit.ps1', 'launcher.ps1', 'wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
+          foreach ($name in $expected) {
+            if (-not (Test-Path -LiteralPath "dist\$name")) { Write-Output "dist\$name was not staged"; exit 1 }
+          }
           $lines = @()
           foreach ($f in (Get-ChildItem dist -File | Sort-Object Name)) {
             $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             $lines += ($h + '  ' + $f.Name)
             Write-Output ($h + '  ' + $f.Name + '  (' + $f.Length + ' bytes)')
           }
-          if ($lines.Count -lt 2) { Write-Output 'fewer assets than expected'; exit 1 }
+          if ($lines.Count -ne $expected.Count) { Write-Output "staged $($lines.Count) assets and expected $($expected.Count)"; exit 1 }
           [IO.File]::WriteAllText('dist\SHA256SUMS', (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
+
+      # ⛔ THE PUBLISHED BINARY IS RUN BEFORE IT IS PUBLISHED, and it is asked
+      # the one question whose answer proves it carries the right script: its
+      # version, which it reads out of the embedded copy rather than declaring.
+      # A binary that builds and cannot start is a release nobody can use.
+      - name: the staged binary runs and agrees with the tag
+        shell: pwsh
+        run: |
+          $tag = '${{ github.event.inputs.tag || github.ref_name }}'
+          $out = & .\dist\wsl-toolkit-windows-amd64.exe version
+          if ($LASTEXITCODE -ne 0) { Write-Output "the staged binary exited $LASTEXITCODE"; exit 1 }
+          $want = 'wsl-toolkit-v' + ($out | Select-Object -First 1).Trim()
+          if ($tag -ne $want) { Write-Output "tag is '$tag' and the binary says '$want'"; exit 1 }
+          Write-Output "the staged binary reports $out, which matches $tag"
 
       # --generate-notes writes the body from the commits since the previous tag.
       # ⛔ No hand-written body: one that is typed here goes stale the first time

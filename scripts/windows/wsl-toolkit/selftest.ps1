@@ -71,6 +71,8 @@ $Wanted = @(
     'Split-StreamChunk'
     'ConvertTo-ShellSingleQuoted'
     'ConvertTo-DistroScriptCommand'
+    'Get-GuestUserEnvironmentPrelude'
+    'Add-GuestUserEnvironment'
     'New-GuestScratchPath'
     'ConvertTo-NativeArgumentString'
     'ConvertFrom-CommandFileBytes'
@@ -800,6 +802,44 @@ Test-Case 'an empty path is not a path and is not judged' 'ok' {
     Assert-SinkPathIsUsable -Path '' -Parameter '-StreamLogPath'; 'ok'
 }
 
+# -- -UserEnv's guest prologue -----------------------------------------------
+# WHAT THESE CASES CAN AND CANNOT PROVE. The prologue is shell, and this
+# suite runs on a host with no guarantee of one, so what is asserted here is
+# the SHAPE of the text: that the caller's bytes are untouched, that it goes
+# through the checked transport, and that the two properties a reader would
+# have to re-derive by eye are structural rather than incidental. Whether the
+# shell it produces actually deduplicates a PATH is proved by running it in a
+# real distro, which is part (b) of docs/methodology/gate.md.
+Test-Case 'the caller bytes are the exact suffix of a prepared command' 'True' {
+    $inputBytes = [Text.Encoding]::UTF8.GetBytes('printf "%s" "$HOME"')
+    $prepared = Add-GuestUserEnvironment -ScriptBytes $inputBytes
+    $tail = [byte[]]$prepared[($prepared.Length - $inputBytes.Length)..($prepared.Length - 1)]
+    ([Convert]::ToBase64String($tail) -ceq [Convert]::ToBase64String($inputBytes)).ToString()
+}
+Test-Case 'a prepared command still travels through the checked transport' 'True' {
+    $prepared = Add-GuestUserEnvironment -ScriptBytes ([byte[]]@())
+    $line = ConvertTo-DistroScriptCommand -ScriptBytes $prepared -GuestPath '/tmp/wsl-toolkit-test'
+    ($line.Contains([Convert]::ToBase64String($prepared))).ToString()
+}
+Test-Case 'the prologue exports the runtime directory rootless podman needs' 'True' {
+    $t = Get-GuestUserEnvironmentPrelude
+    ($t.Contains('export XDG_RUNTIME_DIR') -and $t.Contains('chmod 700')).ToString()
+}
+Test-Case 'every PATH entry is added through the one function that tests for a duplicate' '1' {
+    # A second `_wtk_path=` assignment outside _wtk_add would be a directory
+    # appended without the duplicate test, which is how a nested call grows a
+    # PATH by a dozen entries per layer. The count is the guard.
+    $t = Get-GuestUserEnvironmentPrelude
+    ([regex]::Matches($t, '_wtk_path=\$\{_wtk_path').Count).ToString()
+}
+Test-Case 'a directory this user owns is searched before the system copy' 'True' {
+    $t = Get-GuestUserEnvironmentPrelude
+    ($t.IndexOf('$HOME/.local/bin') -lt $t.IndexOf('/usr/bin')).ToString()
+}
+Test-Case 'a guest with no stat is a different message from a directory somebody else owns' 'True' {
+    $t = Get-GuestUserEnvironmentPrelude
+    ($t.Contains('stat cannot read') -and $t.Contains('belongs to uid')).ToString()
+}
 # -- report ------------------------------------------------------------------
 $failed = @($Results | Where-Object { -not $_.Pass })
 

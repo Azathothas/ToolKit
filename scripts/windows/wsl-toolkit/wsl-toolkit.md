@@ -10,6 +10,39 @@ correctly, from a clone or over the network, without opening the source.
 ⚠ **Windows only.** It calls `wsl.exe`. On any other host it is not applicable,
 and there is no fallback.
 
+---
+
+## ⭐ If you are an agent and you were sent here to get at Linux, read this first
+
+⭐ **There is an executable now, and it is the one to reach for.**
+[`../../../tools/windows/wsl-toolkit/wsl-toolkit.md`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md)
+is its page. It carries this script inside itself, so everything below is still
+available through it, and it adds the things this script cannot do from
+PowerShell:
+
+| you want to | the executable |
+| --- | --- |
+| know what is really installed, past every shim | `wsl-toolkit doctor` |
+| run something in a container, safely | `wsl-toolkit run --image alpine -c '...'` |
+| run one command across twelve userlands | `wsl-toolkit matrix --images all -c '...'` |
+| keep one Linux host with an engine in it | `wsl-toolkit base ensure` |
+| everything on this page | `wsl-toolkit script -Action ...` |
+
+⛔ **Do not hand-roll a wrapper around `wsl.exe`, and do not call it directly.**
+A command handed to `wsl.exe` as an ARGUMENT is expanded before the guest sees it
+and the result is parsed again: measured on 2026-09-09, a payload's backtick was
+EXECUTED and the command still reported exit 0 over the failure. Both products
+here carry a transport that does not have that property, and writing a third one
+is how a session spends twenty minutes rediscovering it.
+
+⚠ **This script and the executable's `base` are different tools for different
+jobs.** This one builds a throwaway distribution from any image and destroys it,
+which is what you want to test what a distribution does. The executable keeps one
+that persists and holds a container engine, which is what you want to run
+containers. Neither can remove the other's.
+
+---
+
 ⛔ **This file is BUILT and it must not be edited.** The source is the parts
 under [`src/`](src/), [`core/`](core/) and [`libs/`](libs/), joined in the order
 [`bundle.manifest`](bundle.manifest) names. Edit a part and run the build; the
@@ -135,6 +168,8 @@ wrote.
 | `-CommandFile` | `New` `Run` | path to a file **on this machine** whose bytes are the command. Read verbatim, so a multi-line script works. |
 | `-CommandB64` | `New` `Run` | the command as base64 of its UTF-8 bytes. ⭐ The one to use from a script, and the only one that survives Windows PowerShell 5.1 when this tool is launched as a child process. |
 | `-User` | `New` `Run` `Enter` | user inside the distro. Default `root`. |
+| `-UserEnv` | `New` `Run` | prepare an owned per-uid runtime directory and prepend installed tool directories to PATH. Opt-in for existing script callers. |
+| `-StateDir` | all actions | choose the directory holding ephemeral distro disks and tarballs. Also reads `WSL_TOOLKIT_STATE_DIR`; an omitted value retains the existing default. Read-only actions and dry runs do not create it. |
 | `-Ephemeral` | `New` | run `-Command`, then destroy the distro |
 | `-OciEnv` | `New` with `-Image` | carry the image's `ENV` and `WORKDIR` into the distro. Off by default. |
 | `-Systemd` | `New` | write `/etc/wsl.conf` enabling systemd, restart the distro, and ⛔ refuse if systemd did not become PID 1. Most base images do not ship systemd; see below. |

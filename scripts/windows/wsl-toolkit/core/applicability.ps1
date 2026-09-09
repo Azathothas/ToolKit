@@ -29,6 +29,8 @@ function Get-ParameterApplicability {
         CommandFile           = $relay
         CommandB64            = $relay
         User                  = @('New', 'Run', 'Enter')
+        StateDir              = @('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor')
+        UserEnv               = $relay
         Ephemeral             = @('New')
         OciEnv                = @('New')
         Systemd               = @('New')

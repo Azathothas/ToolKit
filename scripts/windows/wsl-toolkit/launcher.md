@@ -1,8 +1,7 @@
 # launcher.ps1
 
-One file to fetch. It finds
-[`wsl-toolkit.ps1`](wsl-toolkit.md), verifies it as far as you allow, makes
-it runnable on Windows, and runs it with the arguments you gave.
+One file to fetch. It finds the tool, verifies it as far as you allow, makes it
+runnable on Windows, and runs it with the arguments you gave.
 
 This page stands alone. An agent that has read only this file can use the
 launcher correctly, from a clone or over the network, without opening the
@@ -10,6 +9,40 @@ source.
 
 ⚠ **Windows only.** It clears a Windows file attribute and it runs a tool that
 drives `wsl.exe`. On any other host neither applies.
+
+---
+
+## ⭐ It looks for the EXECUTABLE first, and that is a change
+
+⛔ **A caller who did nothing wrong now behaves differently.** Until 2026-09-09
+it resolved [`wsl-toolkit.ps1`](wsl-toolkit.md) and nothing else. It now prefers
+[`wsl-toolkit`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md), which carries
+that script inside itself and adds a host survey, an owned WSL distribution with
+a container engine, isolated container jobs and a fleet runner.
+
+[`../../../docs/consumers.md`](../../../docs/consumers.md) defines that as a
+break, and it is recorded there. `-LauncherKind script` restores the previous
+behaviour exactly.
+
+⚠ **What is not given up.** A clone with a sibling script and no network still
+works: the executable is looked for, not found, not fetchable, and the script
+runs with a line saying so. Only a verification FAILURE is a stop, because
+falling back after one would run something on the strength of the check that just
+refused it.
+
+### Which arguments go where
+
+⭐ **One rule, and a reader can apply it.** The executable's own commands are
+bare words and the script's parameters all begin with a dash:
+
+```powershell
+pwsh -NoProfile -File launcher.ps1 -Action List     # -> wsl-toolkit script -Action List
+pwsh -NoProfile -File launcher.ps1 doctor           # -> wsl-toolkit doctor
+pwsh -NoProfile -File launcher.ps1 matrix --images all -c 'uname -a'
+```
+
+That is what keeps every existing caller of this launcher working against the new
+default.
 
 ---
 
@@ -54,7 +87,37 @@ That fails closed, which is safe and takes an hour to work out. ⭐
 
 ## What it resolves, and in what order
 
-The first hit wins.
+The first hit wins. ⭐ **The executable is tried first, as a whole**, and only
+when none can be had does the script list below apply.
+
+| order | source | when |
+| --- | --- | --- |
+| 1 | `-LauncherBinary PATH`, or `WSL_TOOLKIT_BINARY` | you already have an executable and want that one |
+| 2 | the release named by `-LauncherRelease`, or `WSL_TOOLKIT_RELEASE` | ⭐ a release you named. Verified against that release's own `SHA256SUMS`. |
+| 3 | `wsl-toolkit.exe` **beside the launcher** | a clone or a release directory. No network. |
+| 4 | the `latest` release | what "you did not say" resolves to |
+
+⛔ **Naming a SCRIPT source selects the script, with no `-LauncherKind` needed.**
+`-LauncherLocal` and `-LauncherRef` each name a `wsl-toolkit.ps1` and nothing
+else, so the executable is not looked for at all: no network for a call that
+documents itself as needing none, and no `-LauncherSha256` of a script compared
+against a downloaded binary. ⚠ `-LauncherKind binary` together with either is
+refused by name rather than resolved, because one of the two would have to be
+ignored. `-LauncherRelease` names a release, which carries both, so the
+executable is still preferred there.
+
+⛔ **A named release wins over the sibling**, for the reason the script half
+below carries: a caller passing a release and a digest would otherwise run a
+stale file beside the launcher and verify nothing against the thing they named.
+A digest does NOT move which file is chosen, because it says which bytes rather
+than which source; it is checked against whichever file was.
+
+⚠ **The asset is chosen by this host's architecture**, read from the machine
+rather than assumed: `wsl-toolkit-windows-amd64.exe` or
+`wsl-toolkit-windows-arm64.exe`. An architecture with no asset is a refusal
+naming `-LauncherKind script`, not a silent emulated download.
+
+Then, for the script:
 
 | order | source | when |
 | --- | --- | --- |
@@ -182,7 +245,9 @@ cannot grow a parameter that collides with one of these, whatever it adds later.
 
 | option | environment | meaning |
 | --- | --- | --- |
-| `-LauncherLocal PATH` | `WSL_EPHEMERAL_LOCAL` | run this file. No network. |
+| ⭐ `-LauncherKind` `auto` `binary` `script` | `WSL_TOOLKIT_KIND` | which product to run. `auto` is the default: the executable when one can be had, the script otherwise. `binary` refuses rather than falling back. `script` is what this launcher did before 2026-09-09. |
+| `-LauncherBinary PATH` | `WSL_TOOLKIT_BINARY` | run this executable. No network. |
+| `-LauncherLocal PATH` | `WSL_EPHEMERAL_LOCAL` | run this script file. No network. |
 | `-LauncherRef SHA` `auto` `latest` | `WSL_EPHEMERAL_REF` | fetch this revision, or resolve `main` once, or resolve it every run |
 | `-LauncherSha256 HEX` `auto` | `WSL_EPHEMERAL_SHA256` | expect this SHA-256, or read one from the API |
 | `-LauncherLock PATH` | `WSL_EPHEMERAL_LOCK` | where `auto` keeps what it resolved. Default: the install directory. |
@@ -265,6 +330,13 @@ Each of these is a refusal or a repair that a hand-rolled fetch does not have.
 `-LauncherSha256` the launcher says out loud that the bytes were not checked. A
 commit cannot be pushed over, so a pinned ref alone is far from nothing; it is
 still not the same as verified bytes.
+
+⛔ **A digest given is a digest checked, including on a file you named.**
+`-LauncherLocal`, `-LauncherBinary` and a sibling return a file rather than
+fetching one, and each is now compared against `-LauncherSha256` when one was
+passed. It used to be dropped on those three paths, which is the sentence above
+not being kept.
+[`../../../docs/consumers.md`](../../../docs/consumers.md) carries the row.
 
 ---
 

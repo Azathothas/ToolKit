@@ -13,7 +13,7 @@
     Justification = 'Get-WslDistroNames returns the whole list and Export-ImageRootfs writes one rootfs whose name simply ends in s. Renaming either to satisfy the rule would make the name describe the thing less accurately.')]
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
     Justification = 'Removal already goes through Confirm-Destructive, which refuses non-interactively unless -Force was passed. Adding ShouldProcess would give a second, differently spelled confirmation path over the same guard, and two confirmation mechanisms is how one of them gets bypassed.')]
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory = $true)]
     [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor')]
@@ -26,6 +26,10 @@ param(
     [string]$CommandFile,
     [string]$CommandB64,
     [string]$User = 'root',
+    # A restricted caller can keep all distro state in an allowed directory.
+    [string]$StateDir = $env:WSL_TOOLKIT_STATE_DIR,
+    # Opt-in for compatibility with existing script consumers.
+    [switch]$UserEnv,
     [switch]$Ephemeral,
     [switch]$OciEnv,
     [switch]$Systemd,

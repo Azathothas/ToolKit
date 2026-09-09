@@ -112,6 +112,24 @@ a break so the caller is told, then fix it.
 
 ---
 
+## ⭐ There is now an executable, and the launcher prefers it
+
+⛔ **From 2026-09-09 a release carries four assets and the launcher runs the
+executable by default.** The row above records it as a break. What a consumer
+needs to decide is one thing: whether it wants the compiled tool or the script.
+
+| you want | pass |
+| --- | --- |
+| ⭐ the executable, which carries the script and adds to it | nothing. It is the default. |
+| the script exactly as before | `-LauncherKind script`, or `WSL_TOOLKIT_KIND=script` |
+| an executable you already hold | `-LauncherBinary PATH` |
+
+⚠ **A consumer that fetches `wsl-toolkit.ps1` by raw URL is unaffected**, because
+it never goes through the launcher. The path, the parameters and the exit codes
+of that file are unchanged.
+
+---
+
 ## ⭐ There is now a release, and it is the thing to pin
 
 ⛔ **This register was written when nothing was published from here, and that
@@ -177,6 +195,12 @@ fact a consumer's owner needs.
 
 | date | what broke | consumers checked | pin state |
 | --- | --- | --- | --- |
+| 2026-09-09 | ⛔ **`launcher.ps1` NOW RUNS THE EXECUTABLE BY DEFAULT.** It used to resolve `wsl-toolkit.ps1` and nothing else; it now looks for `wsl-toolkit.exe` beside itself, then the release asset for this architecture, and falls back to the script only when none can be had. A caller passing `-Action ...` still works: an argument list beginning with a dash is forwarded through the executable's `script` command unchanged. `-LauncherKind script` restores the previous behaviour exactly, and `WSL_TOOLKIT_KIND=script` does the same from the environment. | all three rows. `Azathothas/TEMPLATE`'s wrapper forwards whatever it is given, so it reaches the executable and the arguments still bind. `Azathothas/bit-cli`'s `docs/containers.md` fetches `wsl-toolkit.ps1` by raw URL and runs it directly, so it does not go through this launcher at all and is unaffected. The vendored copy fetches nothing. | not moved. Nothing here requires a consumer to move; a caller that wants the old behaviour passes one flag. |
+| 2026-09-09 | ⚠ **A release now carries four assets rather than two.** `wsl-toolkit-windows-amd64.exe` and `-arm64.exe` join `wsl-toolkit.ps1` and `launcher.ps1`, and `SHA256SUMS` covers all four. Not a break: a consumer reading the `SHA256SUMS` line for a name it already fetched finds the same shape. ⛔ A consumer that parsed the file expecting exactly two lines would see four. | all three rows. None parses `SHA256SUMS` by line count; the launcher looks a name up in it. | not moved. |
+| 2026-09-09 | **`-LauncherLocal` and `-LauncherRef` select the script, so the new default does not reach a caller who named one.** Without this, a call passing a commit and a digest would have gone to the network for an executable, compared the caller's digest -- which is their SCRIPT's -- against the downloaded binary, and refused. Driven from an empty directory before this release: `-LauncherRef <sha> -LauncherSha256 auto` fetches and verifies the script and never asks for a binary. `-LauncherKind binary` together with either is refused by name rather than resolved. | all three rows. `Azathothas/bit-cli` is the one this protects: its `scripts/wsl-tool.ps1` passes a ref and a digest. | not moved, and no move is needed. |
+| 2026-09-09 | **`-LauncherSha256` IS NOW CHECKED AGAINST A FILE YOU NAMED.** `-LauncherLocal`, `-LauncherBinary` and a copy sitting beside the launcher return a file rather than fetching one, and the digest was ignored on all three: a caller passing one was told nothing and verified nothing. It now compares, and a mismatch is a refusal that prints both digests. `-LauncherSha256 auto` with a named file is refused by name, because `auto` reads a digest for a REF. A break by the definition above: a caller passing a digest that never matched used to run. | all three rows. None passes `-LauncherSha256` with `-LauncherLocal`; `Azathothas/bit-cli` passes a digest with `-LauncherRef`, which was already checked and is unchanged. | not moved. A caller whose digest is right sees one extra line saying so. |
+| 2026-09-09 | **A named release now wins over an executable beside the launcher.** The script half already worked this way; the binary half did not, so a caller passing `-LauncherRelease` with a stale `wsl-toolkit.exe` beside the launcher would have run the stale one. Not a break against any published version, because the binary half ships for the first time in `wsl-toolkit-v1.1.0`. | all three rows, none of which has an executable beside a launcher today. | not moved. |
+| 2026-09-09 | ⚠ **`wsl-toolkit.ps1` gained `-StateDir` and `-UserEnv`, and neither changes an existing call.** Both default to what the script did before: `-StateDir` reads `WSL_TOOLKIT_STATE_DIR` and falls back to `%LOCALAPPDATA%\wsl-ephemeral`, and `-UserEnv` is off. ⛔ One behaviour did change with no flag: a read-only action no longer CREATES the state directory, and `New` refuses an existing per-distro state directory rather than importing over it. | all three rows. A caller running `-Action List` on a machine where the directory did not exist used to leave one behind and now does not, which no row depends on. | not moved. |
 | 2026-08-30 | ⛔ **THE FILE MOVED AND THE OLD PATH IS GONE.** `scripts/powershell-windows/wsl-ephemeral.ps1` is now `scripts/windows/wsl-toolkit/wsl-toolkit.ps1`, and the launcher moved with it. A raw fetch of either old URL returns **404**. A git symlink at the old path was considered and REJECTED on a measurement: `raw.githubusercontent.com` serves a symlink's own target string with HTTP 200, so the old URL would have answered a successful-looking 34 bytes of text that no `pwsh` can run and no digest check would explain. A 404 is loud; that is not. | all three rows. `Azathothas/TEMPLATE` and `Azathothas/bit-cli` both name the old path and both stop working on their next run after their pin moves past this commit; the vendored copy fetches nothing. | ⛔ **not moved, and moving it is a rewrite rather than a bump.** The operator holds this: they said consumers migrate at their own pace. Until each does, its existing pin keeps working, because a pinned commit still has the old path in its tree. |
 | 2026-08-30 | ⛔ **A parameter an action does not read is now REFUSED.** `-Action List -Image alpine:3.22` used to do nothing and say nothing; it now exits 1 naming the parameter and the actions that do read it. `-TimeoutSeconds` on `Run` is the one most likely to bite: it bounds the script's own questions, `Run` asks none, and the refusal names `-CommandTimeoutSeconds` instead. `WSL-23`. | all three rows. `Azathothas/bit-cli`'s `docs/containers.md` shows `-Action New` and `-Action Run` invocations with parameters those actions do read, so nothing on that page is refused. `Azathothas/TEMPLATE`'s wrapper forwards whatever it is given. | not moved. |
 | 2026-08-30 | ⛔ **`-ScriptArg` was documented as repeatable and never was.** Measured under both PowerShell hosts, directly and through the launcher: a second `-ScriptArg` is refused with "specified more than once", because a `.ps1` run through `-File` cannot have a parameter repeated. `-ScriptArgFile` is the fix and takes a file of `NAME=VALUE` lines. Fixing a documented capability that did not work is a break by the definition above, and it is here for that reason. | all three rows. Nobody could have been using the repeated form, because it never bound; a caller passing ONE `-ScriptArg` is unaffected. | not moved. |

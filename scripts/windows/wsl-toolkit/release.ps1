@@ -110,6 +110,21 @@ try {
     & $ps -NoProfile -File (Join-Path $script:ToolRoot 'build.ps1') -Test | Out-Null
     if ($LASTEXITCODE -ne 0) { Add-Problem 'build.ps1 -Test did not pass' }
 
+    # ⛔ THE RELEASE NOW CARRIES A COMPILED PRODUCT TOO, so a tag cut over a
+    # tree whose executable does not build would produce a release the workflow
+    # cannot finish. Refusing here costs a minute; refusing in the workflow
+    # costs a tag that has to be deleted, and a moved tag is exactly what the
+    # launcher is built to refuse.
+    # ⚠ Exit 2 is "could not run", which is the honest answer on a machine with
+    # no Go toolchain, and it is not a reason to refuse a tag.
+    $goCheck = Join-Path (Split-Path -Parent (Split-Path -Parent $script:ToolRoot)) 'common\check-go.ps1'
+    if (Test-Path -LiteralPath $goCheck) {
+        & $ps -NoProfile -File $goCheck | Out-Null
+        if ($LASTEXITCODE -eq 1) { Add-Problem 'check-go.ps1 reported a problem in the executable' }
+        elseif ($LASTEXITCODE -eq 2) { Write-Output '  * check-go could not run on this host, so the executable was not proved here' }
+    }
+    else { Add-Problem 'scripts/common/check-go.ps1 is missing, so the executable is unproved' }
+
     $version = Get-BundleVersion
     $tag = "wsl-toolkit-v$version"
     Write-Output "wsl-toolkit $version  ->  tag $tag"
@@ -138,6 +153,10 @@ try {
     }
 
     # -- what the release will carry, and its digests -------------------------
+    # ⚠ THE EXECUTABLES ARE NOT LISTED HERE, and that is deliberate rather than
+    # an omission. They are cross compiled by the workflow from this tag's own
+    # checkout, so there is nothing on this machine to digest; a figure printed
+    # here would be for a binary no consumer will ever download.
     $assets = @($script:Bundle, (Join-Path $script:ToolRoot 'launcher.ps1'))
     foreach ($a in $assets) {
         if (-not (Test-Path -LiteralPath $a)) { Add-Problem "asset missing: $a"; continue }
@@ -147,6 +166,8 @@ try {
     Write-Output '  ⚠ those are the WORKING TREE digests, which are CRLF here. CI publishes what it'
     Write-Output '    checks out and computes SHA256SUMS there, so the published digests are the ones'
     Write-Output '    a consumer can verify. Do not copy these into anything.'
+    Write-Output '  * the release will also carry wsl-toolkit-windows-amd64.exe and -arm64.exe,'
+    Write-Output '    cross compiled by the workflow from this tag and digested there.'
 
     if ($script:Problems.Count -gt 0) {
         foreach ($p in $script:Problems) { [Console]::Error.WriteLine("  ! $p") }

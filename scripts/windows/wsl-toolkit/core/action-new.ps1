@@ -9,6 +9,9 @@
 
     $target  = Join-Path $script:BaseDir $distro
     Assert-InsideBaseDir -Path $target               # validate before we ever create it
+    if (Test-Path -LiteralPath $target) {
+        throw "Refusing to overwrite existing state at '$target'. Inspect the owned state first."
+    }
 
     # ⛔ THE DRY RUN RETURNS BEFORE THE FIRST New-Item, which is the first thing
     # on this path that changes the machine. The name it prints carries a random

@@ -20,7 +20,7 @@ where it is checked.
 | fact | value | where it is read from |
 | --- | --- | --- |
 | repository | `Azathothas/ToolKit`, public, 0BSD | `gh api repos/Azathothas/ToolKit` |
-| what it publishes | `wsl-toolkit.ps1` and its launcher, as a GitHub release on a `wsl-toolkit-v*` tag, with `SHA256SUMS`. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
+| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: the executable for two Windows architectures, `wsl-toolkit.ps1`, `launcher.ps1` and `SHA256SUMS`. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
 | work model | todo | [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) |
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |
@@ -84,17 +84,28 @@ files left behind read as disks that had gone.
 at three.** The containment check runs inside the deletion helper rather than
 beside each caller, and every path reaches that helper.
 
-## 4. One file here is GENERATED, and the tree holds both halves
+## 4. TWO files here are GENERATED, and the tree holds every half
 
 ⛔ **`scripts/windows/wsl-toolkit/wsl-toolkit.ps1` is built** from the parts under
 `src/`, `core/` and `libs/` beside it, and it is **tracked** because a consumer
 fetching one raw URL cannot run a build step. So this repository carries a source
 and a product for the same thing, which is a shape it has nowhere else.
 
+⛔ **`tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1` is the second**,
+written by the same build. The Go executable compiles it in, and Go's `embed`
+directive cannot reach outside its own package directory, so the file lives there
+rather than being referenced.
+
 ⭐ **The check is what makes that safe.** `check-gate`'s `wsl-toolkit bundle`
-rebuilds from the parts and compares bytes, in both halves and in CI. Without it
-the product could silently stop being what anybody wrote, in two directions at
-once: a part edited and never rebuilt, or the product edited by hand.
+rebuilds from the parts and compares BOTH products byte for byte, in both halves
+and in CI. Without it either could silently stop being what anybody wrote: a part
+edited and never rebuilt, a product edited by hand, or a rebuild that refreshed
+one copy and not the other.
+
+⚠ **The two differ by line endings and nothing else**, because git rewrites a
+`text eol=crlf` file on checkout and the binary must embed the same bytes from
+any host. The executable reconstructs the tracked file exactly, and a Go test
+asserts that against the tracked file rather than claiming it.
 
 ⚠ **The parts are excluded from PSScriptAnalyzer and that is not a hole.** A
 script-scoped suppression covers only its own file and the tool's all live in its

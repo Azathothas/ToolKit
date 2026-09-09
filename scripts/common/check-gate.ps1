@@ -276,6 +276,13 @@ Invoke-PsCheck -Name 'wsl-toolkit selftest' -Script 'scripts/windows/wsl-toolkit
 # that was never rebuilt, or an edit to the product that no part carries.
 Invoke-PsCheck -Name 'wsl-toolkit bundle' -Script 'scripts/windows/wsl-toolkit/build.ps1' -Arguments @('-Check')
 
+# ⛔ THE COMPILED HALF OF THE TOOL, and it is in the gate for the same reason
+# the bundle is: it is a product this repository publishes, and a change that
+# does not build is invisible to every other check here. gofmt, vet, build and
+# test are scored as one row because check-go reports them as one exit code and
+# names the step that failed.
+Invoke-PsCheck -Name 'wsl-toolkit go' -Script 'scripts/common/check-go.ps1'
+
 if (-not $sh) {
     # ⛔ Not a silent degrade. What is left below genuinely needs a POSIX shell,
     # and saying which ones did not run is the difference between a gate and a

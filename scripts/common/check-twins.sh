@@ -305,6 +305,7 @@ compare_pair "check-placeholders"   check-placeholders.sh   "--json"          ch
 compare_pair "check-control-bytes"  check-control-bytes.sh  "--json"          check-control-bytes.ps1  "-Json"
 compare_pair "check-changelog"      check-changelog.sh      "--json"          check-changelog.ps1      "-Json"
 compare_pair "check-record"         check-record.sh         "--json"          check-record.ps1         "-Json"
+compare_pair "check-go"             check-go.sh             "--json"          check-go.ps1             "-Json"
 compare_pair "check-no-secrets"     check-no-secrets.sh     "--json"          check-no-secrets.ps1     "-Json"
 compare_pair "check-no-secrets pub" check-no-secrets.sh     "--public --json" check-no-secrets.ps1     "-Public -Json"
 

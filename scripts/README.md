@@ -7,6 +7,7 @@ The probe, the checks, and the helpers a project inherits.
 | [`doctor/`](doctor/) | ⭐ the environment probe. Two implementations, one schema. Every project keeps this. |
 | [`common/`](common/) | the checks and the helpers. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin. |
 | [`windows/wsl-toolkit/`](windows/wsl-toolkit/README.md) | tools for a job that only exists on Windows. ⛔ Not a twin of anything. ⭐ It is a tool DIRECTORY rather than a loose script: its own [`README.md`](windows/wsl-toolkit/README.md) says how to build, test and release it, and the three published `.ps1` files each keep a `.md` beside them that stands alone. |
+| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⭐ the COMPILED half of the same tool, in Go. It carries the script above inside itself and adds what PowerShell cannot do from here. ⛔ Not a script, so nothing in this file's check contract applies to it; [`common/check-go.sh`](common/) is what the gate runs over it. |
 | [`../LICENSES/`](../LICENSES/README.md) | the SPDX texts [`common/fill-license.sh`](common/) reads. ⛔ Not scripts, and four of them must never be edited. |
 
 ⚠ **`windows/wsl-toolkit/` exists because a job in it has no POSIX form, not
@@ -75,6 +76,7 @@ with a fixture, not by trusting the comparison to notice.
 | [`windows/wsl-toolkit/wsl-toolkit.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
 | [`windows/wsl-toolkit/launcher.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, for the same reason and one more.** It exists to make the file above runnable on Windows: it clears a Windows file attribute, and a POSIX half would have nothing to launch. |
 | [`windows/wsl-toolkit/selftest.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it is not a check.** It is the test over the file above, so a POSIX half would be a second implementation of the assertions rather than a second implementation of a job. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell, which is where its coverage comes from. |
+| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and `common/check-go.sh` is the check OVER it. That one has a twin, because running a Go toolchain is a job both platforms have. |
 | [`windows/wsl-toolkit/build.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it cannot have one.** It joins PowerShell fragments and asserts the result parses as PowerShell, which needs a PowerShell parser. A POSIX half could concatenate the bytes and would be unable to say whether the result is a script. |
 | [`windows/wsl-toolkit/release.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** It reads a version out of a PowerShell file, runs the build, and pushes a tag. ⚠ It runs on the ubuntu CI job too, under `pwsh`, which is the reason it is PowerShell rather than `sh`: one implementation that runs on both hosts beats two that agree on neither. |
 
@@ -245,6 +247,22 @@ prints "Binary files differ" so a code review shows no diff at all.
 
 ⚠ The runtime value is identical either way, so only reviewability is ever at
 stake. That is exactly why it survives unnoticed.
+
+### `common/check-go.sh`
+
+Does the `wsl-toolkit` executable still build, vet and pass its own tests.
+
+⭐ **Four steps, one exit code**, and the failing one is named: gofmt, `go vet`,
+`go build`, `go test`. ⛔ It is one check rather than four inlined commands in two
+gate runners, so both halves run the same thing and `check-twins.sh` compares
+their answers.
+
+⚠ **No `go` on PATH is exit 2, not exit 0.** A machine without a toolchain has
+not proved this tree builds.
+
+⛔ **The module is not at the repository root** and this resolves it. `go build
+./...` from the root finds no module and exits 1, which reads as a broken build
+and is a wrong directory.
 
 ### `common/check-gate.sh`
 

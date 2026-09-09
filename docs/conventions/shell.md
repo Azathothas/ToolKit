@@ -383,6 +383,11 @@ rather than warns, over every tracked text file.
 - ⚠ **`Get-Command` finds cmdlets, functions and aliases too.** Filter to
   `Application` and `ExternalScript` when you mean an executable. A cmdlet
   looked for on PATH reports as missing on every machine that has it.
+- ⛔ **`Start-Process -ArgumentList` re-quotes what you hand it**, so an array
+  is not passed through as an array. `-c 'exit 37'` reached the child as `-c`
+  and `37`, and the case asserting an exit code is not flattened read 0 against
+  a tool that was right. `[Diagnostics.ProcessStartInfo]::new().ArgumentList` is
+  exact, and it is PowerShell 7 only.
 - ⚠ **Read the child's streams before waiting on it.** Calling `WaitForExit`
   first deadlocks any child that fills the pipe buffer: the child blocks on
   write, the parent blocks on the wait, and neither moves until the timeout.

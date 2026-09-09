@@ -32,6 +32,7 @@ param PrefixOnly type=SwitchParameter default= valid=
 param Redact type=String[] default= valid=
 param ScriptArg type=String[] default= valid=
 param ScriptArgFile type=String default= valid=
+param StateDir type=String default=$env:WSL_TOOLKIT_STATE_DIR valid=
 param StreamLogOverwrite type=SwitchParameter default= valid=
 param StreamLogPath type=String default= valid=
 param Systemd type=SwitchParameter default= valid=
@@ -45,4 +46,5 @@ param TimestampMode type=String default='Relative' valid=Relative|Delta|Wall|Iso
 param TimestampProfile type=String default= valid=human|ci|forensic|wall|raw
 param TimestampSeparator type=String default=' ' valid=
 param User type=String default='root' valid=
+param UserEnv type=SwitchParameter default= valid=
 param Verbatim type=SwitchParameter default= valid=

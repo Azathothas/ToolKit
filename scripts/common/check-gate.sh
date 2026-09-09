@@ -230,6 +230,13 @@ else
   record_skip 'wsl-toolkit bundle' 'no pwsh, pwsh.exe or powershell.exe on PATH'
 fi
 
+# ⛔ THE COMPILED HALF OF THE TOOL, and it is in the gate for the same reason
+# the bundle is: it is a product this repository publishes, and a change that
+# does not build is invisible to every other check here. It runs outside the
+# PowerShell branch above because it needs a Go toolchain rather than a
+# PowerShell one, and it reports "could not run" when there is none.
+check_simple 'wsl-toolkit go' sh scripts/common/check-go.sh
+
 # -- the probe is not a gate, but it exiting non-zero is a real failure ------
 check_simple 'doctor probe' sh scripts/doctor/doctor.sh --fast
 

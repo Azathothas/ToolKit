@@ -139,12 +139,14 @@ if [ "$PUBLIC" = "1" ]; then
   [ -n "$_hex_out" ] && hit "a long hex identifier" "$_hex_out"
   # ⚠ Narrowed rather than switched off. `/home/linuxbrew/` and `/home/runner/`
   # are well-known generic paths, not a fingerprint of anybody's machine, and a
-  # check that fires on them is one somebody disables. Whenever this produces a
-  # false positive, add the generic path here; do not widen the exclusion to
-  # the whole rule.
+  # check that fires on them is one somebody disables. `/home/toolkit/` is the
+  # same shape from this repository's own side: the account wsl-toolkit creates
+  # inside the distribution it owns, identical on every machine it runs on.
+  # Whenever this produces a false positive, add the generic path here; do not
+  # widen the exclusion to the whole rule.
   _home_out=$(list_files | tr '\n' '\0' \
     | xargs -0 grep -nIE '([A-Za-z]:[\\/]Users[\\/]|/home/|/Users/)[A-Za-z0-9._-]+' 2>/dev/null \
-    | grep -vE '/home/(linuxbrew|runner|user|vagrant|ubuntu|node)/' \
+    | grep -vE '/home/(linuxbrew|runner|user|vagrant|ubuntu|node|toolkit)/' \
     | grep -vE '/Users/(runner|user)/' || true)
   [ -n "$_home_out" ] && hit "an absolute home path" "$_home_out"
 fi

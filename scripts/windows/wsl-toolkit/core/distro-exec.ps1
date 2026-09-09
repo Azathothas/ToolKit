@@ -13,6 +13,103 @@
     return "/tmp/.wsl-eph-$suffix"
 }
 
+function Get-GuestUserEnvironmentPrelude {
+    <#
+      The shell prologue -UserEnv prepends to a command, as ONE home for both
+      of the defects it answers.
+
+      1. ⛔ ROOTLESS PODMAN NEEDS XDG_RUNTIME_DIR AND runuser LEAVES IT UNSET.
+         A build then dies at `cannot create state directory for buildah-...`,
+         which reads as a broken image and is a missing directory. The reported
+         case is in the issue this was written for.
+      2. ⚠ A GUEST'S PATH IS NOT THE PATH ITS TOOLS WERE INSTALLED ONTO. A login
+         shell in an imported distro carries WSL's PATH, not the image's, so an
+         agent that installed something under $HOME/.local/bin does not find it,
+         installs a second copy somewhere else, and the next session finds two.
+
+      ⭐ THE DEDUPLICATION IS THE HALF THAT IS EASY TO DROP AND SHOULD NOT BE.
+      Without it a nested invocation prepends the same directories again, so a
+      PATH grows by a dozen entries every layer and eventually stops fitting in
+      whatever reads it. Every entry is put through one function, which is also
+      what keeps the inherited PATH's own duplicates out.
+
+      ⛔ It installs nothing, sources no account rc file and creates exactly one
+      directory. Preparing an environment is not the same act as provisioning a
+      machine, and a command that quietly installed a package would make the
+      switch impossible to reason about.
+    #>
+    # ⚠ THE DIRECTORY ORDER IS THE CONTRACT. A tool a user installed for
+    # themselves wins over a system copy of the same name, which is the case an
+    # agent hits: it installs into $HOME/.local/bin and then runs the distro's
+    # older one. sbin comes after bin so an unprivileged caller reaches the
+    # ordinary tool first.
+    $dirs = @(
+        '$HOME/.local/bin', '$HOME/bin', '$HOME/.cargo/bin', '$HOME/go/bin',
+        '$HOME/.bun/bin', '$HOME/.deno/bin', '$HOME/.nix-profile/bin',
+        '/nix/var/nix/profiles/default/bin',
+        '/usr/local/go/bin', '/usr/local/cargo/bin',
+        '/usr/local/bin', '/usr/bin', '/bin',
+        '/usr/local/sbin', '/usr/sbin', '/sbin'
+    )
+    return @(
+        '_wtk_uid=$(id -u) 2>/dev/null || { echo "wsl-toolkit: this guest has no id command" >&2; exit 2; }',
+        '_wtk_run=/tmp/wsl-toolkit-run-$_wtk_uid',
+        # umask rather than a chmod afterwards: a directory created 0755 and
+        # narrowed a moment later is world-readable for that moment.
+        '(umask 077; mkdir "$_wtk_run") 2>/dev/null || :',
+        'if [ -L "$_wtk_run" ]; then echo "wsl-toolkit: $_wtk_run is a symlink and will not be used" >&2; exit 2; fi',
+        'if [ ! -d "$_wtk_run" ]; then echo "wsl-toolkit: could not create $_wtk_run" >&2; exit 2; fi',
+        # ⛔ THREE OUTCOMES, NOT TWO. A guest with no `stat` and a directory
+        # owned by somebody else are different facts, and reporting the first as
+        # the second sends a reader after an attacker who is not there.
+        'if command -v stat >/dev/null 2>&1; then',
+        '    _wtk_own=$(stat -c %u "$_wtk_run" 2>/dev/null) || _wtk_own=',
+        '    if [ -z "$_wtk_own" ]; then echo "wsl-toolkit: stat cannot read $_wtk_run" >&2; exit 2; fi',
+        '    if [ "$_wtk_own" != "$_wtk_uid" ]; then echo "wsl-toolkit: $_wtk_run belongs to uid $_wtk_own, not $_wtk_uid" >&2; exit 2; fi',
+        'fi',
+        'chmod 700 "$_wtk_run" || exit 2',
+        'XDG_RUNTIME_DIR=$_wtk_run; export XDG_RUNTIME_DIR',
+        # A per-uid TMPDIR under the runtime directory, so what a job leaves
+        # behind is one directory the host can measure and remove rather than
+        # loose files mixed into /tmp with everybody else's.
+        '(umask 077; mkdir "$_wtk_run/tmp") 2>/dev/null || :',
+        'if [ -d "$_wtk_run/tmp" ] && [ ! -L "$_wtk_run/tmp" ]; then TMPDIR=$_wtk_run/tmp; export TMPDIR; fi',
+        '_wtk_path=',
+        '_wtk_add() {',
+        '    case ":$_wtk_path:" in *":$1:"*) return 0 ;; esac',
+        '    [ -d "$1" ] || return 0',
+        '    _wtk_path=${_wtk_path:+$_wtk_path:}$1',
+        '}',
+        ('for _wtk_dir in ' + ($dirs -join ' ') + '; do _wtk_add "$_wtk_dir"; done'),
+        # The inherited PATH goes through the same function, which both keeps
+        # its entries and removes the copies this prologue has already added.
+        '_wtk_old=$PATH',
+        'while [ -n "$_wtk_old" ]; do',
+        '    case "$_wtk_old" in *:*) _wtk_one=${_wtk_old%%:*}; _wtk_old=${_wtk_old#*:} ;; *) _wtk_one=$_wtk_old; _wtk_old= ;; esac',
+        '    [ -n "$_wtk_one" ] && _wtk_add "$_wtk_one"',
+        'done',
+        'PATH=$_wtk_path; export PATH',
+        'unset -f _wtk_add 2>/dev/null || :',
+        'unset _wtk_uid _wtk_run _wtk_own _wtk_path _wtk_dir _wtk_old _wtk_one'
+    ) -join "`n"
+}
+
+function Add-GuestUserEnvironment {
+    <#
+      The prologue above, then the caller's bytes, unchanged.
+
+      ⛔ THE CALLER'S BYTES ARE THE SUFFIX AND NOTHING IS SUBSTITUTED INTO THEM.
+      A prologue that edited the payload would be the sed-over-a-script defect
+      -ScriptArg exists to remove, one layer down.
+    #>
+    param([Parameter(Mandatory = $true)][AllowEmptyCollection()][byte[]]$ScriptBytes)
+    $prefixBytes = [Text.Encoding]::UTF8.GetBytes((Get-GuestUserEnvironmentPrelude) + "`n")
+    $combined = New-Object byte[] ($prefixBytes.Length + $ScriptBytes.Length)
+    [Array]::Copy($prefixBytes, 0, $combined, 0, $prefixBytes.Length)
+    [Array]::Copy($ScriptBytes, 0, $combined, $prefixBytes.Length, $ScriptBytes.Length)
+    return , $combined
+}
+
 function ConvertTo-DistroScriptCommand {
     <#
       THE ONE PLACE THE TRANSPORT SKELETON IS BUILT, and the reason there is
