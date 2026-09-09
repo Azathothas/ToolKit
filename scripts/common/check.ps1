@@ -11,7 +11,7 @@
     sh and in PowerShell, because the default host here is Windows and a POSIX
     check cannot be assumed to run on it. Keeping the two in step needed a third
     check that ran both halves of every pair, and that was most of a gate taking
-    13m20s. One implementation that runs natively on either host has no halves
+    about twelve minutes. One implementation that runs natively on either host
     to compare.
 
     THIS FILE AND ITS sh TWIN ARE THE ONE REMAINING PAIR, and they are three

@@ -67,7 +67,7 @@ why: a POSIX check cannot be assumed to run on Windows. What went away is the
 need for TWO implementations to answer it. A Go program is the same program on
 either host, the way node is, and it needs neither `sh` nor an aliased `sort`.
 
-⛔ **What that bought.** The gate ran in 13m20s on this machine and most of it
+⛔ **What that bought.** The gate ran in about twelve minutes here and most of it
 was `check-twins`, which ran both halves of every pair and compared them. The
 same gate is about 30 seconds now, and it no longer has a `--fast` mode because
 there is nothing worth skipping.
@@ -314,7 +314,8 @@ because "this host cannot run that one" is not a failure of the tree.
 ⛔ **`--fast` IS GONE, AND A CALLER PASSING IT IS TOLD SO.** It skipped
 `check-twins` and nothing else. The rules are one program now, so there are no
 halves to compare and nothing worth skipping: the whole run is about 30 seconds
-against 13m20s before. Silently accepting the flag and doing something different
+against about twelve minutes before. Silently accepting the flag and doing
+something different
 is how a caller comes to believe they ran less than they did.
 
 ### `common/check-powershell.ps1`

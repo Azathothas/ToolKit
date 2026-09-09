@@ -28,7 +28,8 @@ entry. A superseded one is amended in place with a dated note.
 is published; this changes what a session and CI run, not what a consumer
 fetches.
 
-The gate took 13m20s on this machine, and `check-twins` was 5m35s of it. That
+The gate took about twelve minutes on this machine: the `--fast` run measured
+6m20s and `check-twins`, which `--fast` skips, measured 5m35s on its own. That
 check existed because every rule was written twice, in sh and in PowerShell, so
 a third check had to run both halves of every pair and compare their answers.
 The twin requirement was not wrong -- a POSIX check cannot be assumed to run on

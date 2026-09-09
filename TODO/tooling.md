@@ -1152,7 +1152,8 @@ which hit the same wall and answered it the same way.
 
 ## Problem
 
-`sh scripts/common/check-gate.sh` took 13m20s on this machine. A session ran
+`sh scripts/common/check-gate.sh` took about twelve minutes on this machine. A
+session ran
 `--fast` instead, which skipped `check-twins` and therefore skipped the one
 check that compares the two implementations of every rule. So the expensive
 half was never run by the people it was written for, and the cheap half was
@@ -1160,7 +1161,7 @@ running eighteen separate processes over the same tree.
 
 ## Premise
 
-Measured on this host on 2026-09-09: the full gate, 13m20s. `check-twins`
+Measured on this host on 2026-09-09: the `--fast` gate, 6m20s. `check-twins`
 alone, 5m35s, because it runs the whole gate twice and then every other pair.
 The remaining time is per-check process startup and re-reading the same files:
 `check-markers` spawns one `awk` per file, and every check calls `git ls-files`
@@ -1247,6 +1248,14 @@ a file that has never been staged, which is exactly when a new file is most
 likely to carry a credential. A planted AWS key went unreported until the second
 list was put back, which is what a verbatim copy costs and why each rule was
 then read against its own predecessor rather than trusted.
+
+⛔ **A correction, and the title above keeps the number it was written with.**
+"Thirteen minutes" was never measured. What was measured on this host on
+2026-09-09 is the `--fast` gate at 6m20s and `check-twins` at 5m35s on its own,
+which `--fast` skips; the full run is their sum, about twelve minutes, and no
+complete run was ever timed end to end. The premise holds and the figure was
+loose, which is the difference this note exists to record. Found by auditing the
+re-orientation prompt written at the end of the same session.
 
 ⚠ **`check-twins` survives and left the gate.** The pairs that are genuinely two
 implementations are the doctor probe, `git-sync`, `check-binfmt`,

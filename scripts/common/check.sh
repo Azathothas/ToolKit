@@ -10,7 +10,7 @@
 # in sh and in PowerShell, because the default host here is Windows and a POSIX
 # check cannot be assumed to run on it. Keeping the two in step needed a third
 # check that ran both halves of every pair and compared their answers, and that
-# check was most of a gate that took 13m20s. One implementation that runs
+# check was most of a gate taking about twelve minutes. One implementation that
 # natively on either host has no halves to compare, and the whole gate now
 # takes about 30 seconds.
 #

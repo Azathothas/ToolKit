@@ -71,8 +71,8 @@ A missing tool announces itself; an aliased one answers differently and reports
 success.
 
 ⚠ **But keeping two implementations in step needed a third check that ran both
-halves of every pair**, and that check was most of a gate taking 13m20s on this
-machine. A gate that takes thirteen minutes is a gate a session skips, and
+halves of every pair**, and that check was most of a gate taking about twelve
+minutes on this machine. A gate that long is a gate a session skips, and
 `--fast` existed to skip exactly it. One implementation has no halves to
 compare and nothing to skip.
 

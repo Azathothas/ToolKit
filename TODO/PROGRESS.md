@@ -18,7 +18,7 @@ None. [WSL-31](issue-6.md) closed on 2026-09-09 with its acceptance output and
 its release evidence pasted underneath it, which resolves
 [issue 6](https://github.com/Azathothas/ToolKit/issues/6) in full.
 [TOOL-13](tooling.md) closed the same day: the gate is one Go binary and runs in
-about 30 seconds rather than 13m20s.
+about 30 seconds rather than about twelve minutes.
 
 ## What this session shipped
 
@@ -53,7 +53,8 @@ acceptance  23 of 23 cases pass against the real base, both routes, both
             accounts, every catalog image.
 gate        17 checks, one binary, 31s on this host, including shellcheck,
             PSScriptAnalyzer, a rebuild of both generated products and the Go
-            suite. It was 13m20s as eighteen shell checks with a twin comparison.
+            suite. It was about twelve minutes as eighteen shell checks with a
+            twin comparison.
 release     wsl-toolkit-v1.1.0 published by the workflow, five assets, and
             driven from an empty directory in both launcher modes.
 ```

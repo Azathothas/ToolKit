@@ -15,7 +15,7 @@ on what was true last time.
 | Commits | `bf11930` | 5 on `main`, and one tag: `wsl-toolkit-v1.1.0` |
 | Work | issue 6, unstarted | **2 entries closed, 0 deferred, 0 failed.** `WSL-31` resolves the issue in full; `TOOL-13` was filed and closed inside the session |
 | Changes | 130 tracked files | 201 tracked files; 124 changed, +19,310 / -4,441 lines |
-| Checks | 18, as sh and PowerShell pairs, 13m20s | ⭐ **17 in one Go binary, 31s**, all passing. The twin comparison left the gate and stayed in CI |
+| Checks | 18, as sh and PowerShell pairs, about 12 minutes | ⭐ **17 in one Go binary, 31s**, all passing. The twin comparison left the gate and stayed in CI |
 | Suite | 123 PowerShell cases | 123 PowerShell cases, plus 34 Go cases and a 23-case acceptance runner against a real machine |
 | Published | `wsl-toolkit-v1.0.1`, two assets | ⭐ `wsl-toolkit-v1.1.0`, five assets, including the executable for two Windows architectures. The workflow succeeded on its first run |
 | CI | green at `bf11930` | green at `87b7775`. ⚠ It went red once, on three jobs, over three defects the local gate structurally cannot see |
