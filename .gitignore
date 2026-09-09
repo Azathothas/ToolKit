@@ -166,3 +166,8 @@ $RECYCLE.BIN/
 .fleet/
 \#*\#
 .\#*
+
+# CodeGraph's index, which is local to each machine. It ships its own ignore
+# file covering the database inside it; this covers the directory, so a tree
+# with one is still clean and a release can be cut from it.
+.codegraph/
