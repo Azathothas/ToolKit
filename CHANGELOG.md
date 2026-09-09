@@ -21,6 +21,39 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-09
 
+### 2026-09-09T16:05:00Z: the gate is one binary, and it runs in 30 seconds
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-13`.
+**Deployed:** ⛔ **no deploy.** Nothing under `scripts/common/` or `tools/check/`
+is published; this changes what a session and CI run, not what a consumer
+fetches.
+
+The gate took 13m20s on this machine, and `check-twins` was 5m35s of it. That
+check existed because every rule was written twice, in sh and in PowerShell, so
+a third check had to run both halves of every pair and compare their answers.
+The twin requirement was not wrong -- a POSIX check cannot be assumed to run on
+Windows, which is the default host here -- but answering it with a second
+implementation is what made the third check necessary.
+
+[`tools/check/`](tools/check/) is one Go program holding all seventeen rules,
+copied from `Azathothas/pg-toolkit`'s `cmd/check` and adapted rule by rule to
+what this repository already enforced. One tree walk shared by every check, and
+about 30 seconds for the lot, including shellcheck, PSScriptAnalyzer, a rebuild
+of both generated products and the full Go suite. Every documented command still
+works: the per-check scripts are wrappers around one named check now, and
+`--fast` is refused by name rather than silently meaning nothing.
+
+⭐ **A rule this repository states about its own prose had nothing enforcing
+it.** [`docs/conventions/prose.md`](docs/conventions/prose.md) lists adjectives
+that assert quality instead of demonstrating it; two of them were in live pages
+and are now gone. `TOOL-13` names which.
+
+⛔ **The copy dropped a scope, and a planted key proved it.** pg-toolkit's tree
+loader reads tracked files only; every check here scans tracked plus
+untracked-but-not-ignored, because a file that has never been staged is exactly
+when a new one is most likely to carry a credential. An AWS key dropped into the
+working tree went unreported until the second list was put back.
+
 ### 2026-09-09T09:00:00Z: an executable joins the script, and it owns a Linux host
 
 **Record:** [`TODO/issue-6.md`](TODO/issue-6.md) carries `WSL-31`;

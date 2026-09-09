@@ -104,11 +104,11 @@ parallel; this cannot, because each step changes what the next one means.
 3. **Re-measure the baseline** rather than trusting the recorded one.
 
    ```bash
-   sh scripts/common/check-gate.sh --fast
+   sh scripts/common/check-gate.sh
    ```
 
    ```bash
-   pwsh -NoProfile -File scripts/common/check-gate.ps1 -Fast
+   pwsh -NoProfile -File scripts/common/check-gate.ps1
    ```
 
 4. **Read what section 4 routes this task to**, and restate the plan in a few
@@ -186,7 +186,7 @@ these is held to.
 | you want to | use | not |
 | --- | --- | --- |
 | know what host this is and what is installed | `scripts/doctor/` | assuming |
-| run every local gate in one command | ⭐ `scripts/common/check-gate.sh --fast`, or its `.ps1` twin | remembering the list. ⚠ The one you forget is the one added last. |
+| run every local gate in one command | ⭐ `scripts/common/check-gate.sh`, or its `.ps1` twin. About 30s. | remembering the list. ⚠ The one you forget is the one added last. |
 | write a file whose content has quotes, backticks or a dollar sign | `scripts/common/write-file.mjs` | a heredoc. ⚠ It is not reliably literal; [`conventions/shell.md`](conventions/shell.md) section 1. |
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |

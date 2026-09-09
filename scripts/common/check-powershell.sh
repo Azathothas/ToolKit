@@ -1,5 +1,5 @@
 #!/bin/sh
-# check-changelog.sh - is every changelog entry dated, in order, with a record and a deploy line?
+# check-powershell.sh - does every tracked .ps1 parse, and is PSScriptAnalyzer clean?
 #
 # ⭐ A WRAPPER, and the rule lives in tools/check. Every rule this repository
 # enforces over its own tree is one Go program now: it runs natively on either
@@ -8,8 +8,8 @@
 # to one named check of it.
 #
 # Usage:
-#   sh scripts/common/check-changelog.sh
-#   sh scripts/common/check-changelog.sh --json
+#   sh scripts/common/check-powershell.sh
+#   sh scripts/common/check-powershell.sh --json
 #
 # Exit codes: 0 agreed, 1 disagreed, 2 could not run.
 #
@@ -19,4 +19,4 @@ set -u
 CDPATH=''
 export CDPATH
 HERE=$(cd -- "$(dirname -- "$0")" && pwd)
-exec sh "$HERE/check.sh" changelog "$@"
+exec sh "$HERE/check.sh" powershell "$@"

@@ -130,11 +130,11 @@ pwsh -NoProfile -File scripts/doctor/doctor.ps1
 Then the gate, which is every local check in one command:
 
 ```bash
-sh scripts/common/check-gate.sh --fast
+sh scripts/common/check-gate.sh
 ```
 
 ```bash
-pwsh -NoProfile -File scripts/common/check-gate.ps1 -Fast
+pwsh -NoProfile -File scripts/common/check-gate.ps1
 ```
 
 [`docs/methodology/gate.md`](docs/methodology/gate.md) is the rule the gate

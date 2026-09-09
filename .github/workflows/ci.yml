@@ -55,65 +55,22 @@ jobs:
           echo "probe exit=$rc"
           [ "$rc" = 0 ]
 
-      - name: every shell script parses
-        run: |
-          fail=0
-          for f in $(git ls-files '*.sh'); do
-            if sh -n "$f"; then echo "ok   $f"; else echo "FAIL $f"; fail=1; fi
-          done
-          exit $fail
+      # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: tools/check/go.mod
+          cache: false
 
-      - name: shellcheck
-        run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          fail=0
-          for f in $(git ls-files '*.sh'); do
-            if shellcheck -s sh "$f"; then echo "clean $f"; else fail=1; fi
-          done
-          exit $fail
+      - name: shellcheck, which the gate runs and this host has a different one of
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
 
-      - name: documents resolve and match the prose rule
-        run: sh scripts/common/check-docs.sh
-
-      # ⛔ BOTH OF THESE, and neither is covered by the step above. check-docs
-      # reads markdown; check-markers owns the character rule over every tracked
-      # text file, and check-one-home reads the documents against each other.
-      # check-docs reported this tree clean while there were 164 characters
-      # outside the five, all of them in scripts.
-      - name: only the five defined characters, and not too many of them
-        run: sh scripts/common/check-markers.sh
-
-      - name: no sentence has two homes
-        run: sh scripts/common/check-one-home.sh
-
-      - name: no template placeholder survived into a real file
-        run: sh scripts/common/check-placeholders.sh
-
-      - name: no literal control byte in any text file
-        run: sh scripts/common/check-control-bytes.sh
-
-      # ⭐ The record's counts cannot disagree with its rows. work-todo.md calls
-      # this the model's one mechanical hazard, and the incident behind it is a
-      # published record saying entries were open beside entries saying done.
-      - name: the record agrees with itself
-        run: sh scripts/common/check-record.sh
-
-      # ⚠ Exit 2 means "could not run", which is the honest answer before this
-      # repository has a CHANGELOG.md. ⛔ `|| true` would hide a genuine exit 1
-      # as well, and `set +e` is required because GitHub runs this under
-      # `bash -e`: without it the shell aborts on the exit 2 this step exists to
-      # tolerate, before the assignment is ever reached.
-      - name: the changelog rules, where there is a changelog
-        run: |
-          set +e
-          sh scripts/common/check-changelog.sh
-          rc=$?
-          set -e
-          if [ "$rc" = 0 ] || [ "$rc" = 2 ]; then echo "ok (exit $rc)"; exit 0; fi
-          exit "$rc"
-
-      - name: nothing publishable carries a secret or a fingerprint
-        run: sh scripts/common/check-no-secrets.sh --public
+      # ⭐ ONE STEP, AND IT IS THE COMMAND A SESSION RUNS. Every rule this
+      # repository enforces over its own tree lives in tools/check, so a list of
+      # steps here would be a second list to fall out of step with that one.
+      # ⚠ The shellcheck it finds is this host's, which is not the one on a
+      # development machine: docs/methodology/gate.md carries what that costs.
+      - name: the gate
+        run: sh scripts/common/check-gate.sh
 
       # ⭐ THE SELFTEST RUNS ON BOTH JOBS, and this half is not redundant with
       # the Windows one. The renderer it tests reads the host's culture, and one
@@ -126,12 +83,6 @@ jobs:
         run: |
           pwsh -NoProfile -File ./scripts/windows/wsl-toolkit/selftest.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      - name: line endings match .gitattributes
-        run: |
-          bad=$(git ls-files --eol | grep -v 'i/lf' | grep -v 'i/-text' || true)
-          if [ -n "$bad" ]; then echo "$bad"; exit 1; fi
-          echo "clean"
 
       # ⛔ ENUMERATED BY git, NOT BY glob, AND THE COUNT IS ASSERTED.
       # `glob.glob('**/*.yml', recursive=True)` SKIPS DOT-DIRECTORIES, and every
@@ -177,20 +128,11 @@ jobs:
 
       # ⛔ EVERY tracked .ps1, not a hardcoded list. A list is a thing somebody
       # forgets to extend, and the script they forgot is the one that breaks.
-      - name: every PowerShell script parses
-        shell: pwsh
-        run: |
-          $fail = 0
-          foreach ($f in (& git ls-files '*.ps1')) {
-            $errs = $null; $tokens = $null
-            $null = [System.Management.Automation.Language.Parser]::ParseFile(
-              (Resolve-Path $f).Path, [ref]$tokens, [ref]$errs)
-            if ($errs.Count -gt 0) {
-              $errs | ForEach-Object { Write-Output ("FAIL $f line " + $_.Extent.StartLineNumber + ": " + $_.Message) }
-              $fail = 1
-            } else { Write-Output "ok   $f" }
-          }
-          exit $fail
+      # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: tools/check/go.mod
+          cache: false
 
       - name: the probe runs and emits valid json
         shell: pwsh
@@ -206,77 +148,17 @@ jobs:
       # may have no `sed`, and its `sort` is an alias for Sort-Object, which
       # succeeds and answers differently. ⛔ Running them on ubuntu under pwsh
       # would prove nothing about that.
-      - name: every check's PowerShell twin runs on Windows
+      # ⭐ THE SAME GATE, ON THE HOST THIS REPOSITORY IS DEVELOPED ON. It used to
+      # be a second set of steps running each check's PowerShell twin, which is
+      # what the twin rule existed to keep honest. There is one implementation
+      # now, and this runs it through the PowerShell entry point so that path is
+      # exercised rather than assumed.
+      - name: the gate, through the PowerShell entry point
         shell: pwsh
         run: |
-          $fail = 0
-          $checks = @(
-            @{ f = 'check-docs.ps1';           a = @() },
-            @{ f = 'check-markers.ps1';        a = @() },
-            @{ f = 'check-one-home.ps1';       a = @() },
-            @{ f = 'check-placeholders.ps1';   a = @() },
-            @{ f = 'check-control-bytes.ps1';  a = @() },
-            @{ f = 'check-record.ps1';         a = @() },
-            @{ f = 'check-no-secrets.ps1';     a = @('-Public') }
-          )
-          foreach ($c in $checks) {
-            & pwsh -NoProfile -File ".\scripts\common\$($c.f)" @($c.a)
-            if ($LASTEXITCODE -ne 0) { Write-Output "FAIL $($c.f) exit $LASTEXITCODE"; $fail = 1 }
-            else { Write-Output "ok   $($c.f)" }
-          }
-          # ⚠ 2 is "could not run" and is expected before there is a changelog.
-          & pwsh -NoProfile -File .\scripts\common\check-changelog.ps1
-          if ($LASTEXITCODE -notin 0, 2) { Write-Output "FAIL check-changelog.ps1"; $fail = 1 }
-          else { Write-Output "ok   check-changelog.ps1 (exit $LASTEXITCODE)" }
-          exit $fail
-
-      # ⛔ The module is installed EXPLICITLY here and the check is told to
-      # expect it. check-powershell.ps1 treats a missing analyzer as SKIPPED and
-      # exits 0, which is right on a developer's machine and wrong in CI: a
-      # runner that silently stopped installing it would turn this job green
-      # over an unanalysed tree. The assertion below is what makes the skip
-      # impossible to reach here.
-      # ⭐ THE ONE TEST IN THIS TREE, and it runs on BOTH jobs. It needs no WSL
-      # and no container engine: it runs wsl-toolkit.ps1's pure functions
-      # against a table of cases, so it proves the parts that decide what a
-      # caller sees on any host with a PowerShell.
-      # ⛔ THE CASE COUNT IS ASSERTED FROM ITS OWN JSON, not inferred from a
-      # green exit. A table that stopped early exits 0 over a smaller suite,
-      # which is the "step that exits 0 having done nothing" row in
-      # docs/conventions/forbidden-patterns.md.
-      - name: the wsl-toolkit selftest
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          $j = pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1 -Json | ConvertFrom-Json
-          if ($j.failed -ne 0) { Write-Output "the json reports $($j.failed) failed case(s)"; exit 1 }
-          if ($j.cases -lt 90) { Write-Output "only $($j.cases) case(s) ran, and this file carries more"; exit 1 }
-          Write-Output "$($j.cases) case(s) over $($j.functions) function(s)"
-
-      # ⛔ THE PRODUCT AGREES WITH ITS SOURCES, and CI is where that matters
-      # most: wsl-toolkit.ps1 is BUILT from the parts beside it and TRACKED,
-      # because a consumer fetching one raw URL cannot run a build step. A part
-      # edited without a rebuild, or the product edited by hand, is invisible in
-      # every other check here. -Test also runs the surface lock, which is what
-      # turns a renamed parameter into a failed gate rather than a failed caller.
-      - name: the wsl-toolkit bundle is what its parts build
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Check
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Test
+          pwsh -NoProfile -File ./scripts/common/check-gate.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      - name: PSScriptAnalyzer, and every .ps1 parses
-        shell: pwsh
-        run: |
-          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
-          pwsh -NoProfile -File .\scripts\common\check-powershell.ps1
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          $j = pwsh -NoProfile -File .\scripts\common\check-powershell.ps1 -Json | ConvertFrom-Json
-          if ($j.analyzerSkipped) { Write-Output "PSScriptAnalyzer was SKIPPED in CI"; exit 1 }
-          Write-Output ("clean over " + $j.files + " file(s)")
 
   # -- the compiled half. Two hosts, because it is written for one and has to
   #    keep building on the other: the ubuntu job is what caught a guard that

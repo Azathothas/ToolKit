@@ -114,7 +114,12 @@ func Docs(t *Tree) Result {
 					if ln.Fence {
 						continue
 					}
-					if strings.Contains(strings.ToLower(ln.Text), w) {
+					// ⛔ A SPECIMEN IN A CODE SPAN IS PERMITTED, for the same
+					// reason the marker rule permits one: a page that bans a
+					// word cannot otherwise name it, and the entry recording
+					// that a word was FOUND has to be able to say which. The
+					// same exemption the character rule already makes.
+					if strings.Contains(strings.ToLower(stripCode(ln.Text)), w) {
 						r.bad("%s:%d: banned vocabulary %q; replace the adjective with the measurement, or delete it", f, ln.N, w)
 						break
 					}

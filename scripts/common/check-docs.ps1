@@ -1,289 +1,36 @@
-﻿# check-docs.ps1 - do the documents still resolve, and are they written the way
-# this repository writes documents?
-#
-# ⭐ THE TWIN OF check-docs.sh. Same schema, same exit codes, same exemptions.
-# check-twins.sh is what stops the two drifting.
-#
-# The defect this exists to catch is a document that was true when it was
-# written. Three shapes of it, and every one is invisible to every other check:
-#
-#   - a link or a path that stopped resolving when something was renamed;
-#   - a fenced shell block that does not parse, which is a block nobody can
-#     copy and paste;
-#   - an angle-bracket placeholder inside a shell block: a human reads it as
-#     "fill this in" and bash reads it as a redirect, so the reader gets a
-#     cryptic syntax error instead of an obvious instruction.
-#
-# ⚠ CONTROL BYTES ARE NOT CHECKED HERE. That rule scanned markdown only while
-# every .ts, .py, .rs and .sh in the tree went unchecked, so it moved to
-# check-control-bytes.ps1, which reads every text file. Run both.
-#
-# ⚠ THE CHARACTER HALF OF THE PROSE RULE IS NOT HERE. No em dash and no
-# character outside the five belong to check-markers.ps1, which reads every
-# tracked text file rather than markdown alone. Run both. What stays here is
-# what is specific to a document: links, fenced blocks, placeholders, banned
-# vocabulary and orphan pages.
-#
-# ⛔ WHAT IT DOES NOT CHECK IS WHETHER A CLAIM IS TRUE. That is a reading, and
-# it belongs to the review pass. A guard that tried to verify prose would
-# either pass vacuously or refuse legitimate writing, and both are worse than
-# an honest scope.
-#
-# ⚠ THE SHELL-BLOCK PARSE NEEDS A POSIX SHELL, AND THIS HOST MAY NOT HAVE ONE.
-# When no `sh` is on PATH the blocks are still COUNTED, so the schema matches
-# the sh twin, and the parse rule is reported as SKIPPED on stderr rather than
-# silently passing. ⛔ A rule that cannot run must say so: reporting green for
-# a check that never executed is the failure this whole repository is built to
-# avoid.
-#
-# Usage:
-#   pwsh -NoProfile -File scripts/common/check-docs.ps1
-#   pwsh -NoProfile -File scripts/common/check-docs.ps1 -Json
-#   pwsh -NoProfile -File scripts/common/check-docs.ps1 -Path docs
-#
-# Exit codes: 0 clean, 1 something is wrong, 2 could not run.
-#
-# ⛔ Read the exit code from this process, unpiped.
+<#
+.SYNOPSIS
+    do the documents link to things that exist, and do their shell blocks parse?
 
-[CmdletBinding()]
-param(
-    [switch]$Json,
-    [string]$Path = ''
-)
+.DESCRIPTION
+    A WRAPPER, and the rule lives in tools/check. Every rule this repository
+    enforces over its own tree is one Go program now: it runs natively on either
+    host, so there is no second implementation to keep in step and no third
+    check comparing them. scripts/common/check.ps1 is the entry point and this
+    forwards to one named check of it.
+
+.NOTES
+    Exit codes: 0 agreed, 1 disagreed, 2 could not run.
+    Read the exit code from this process, unpiped.
+#>
+[CmdletBinding(PositionalBinding = $false)]
+param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Rest)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    [Console]::Error.WriteLine('check-docs: git not found')
-    exit 2
-}
-$root = (& git rev-parse --show-toplevel 2>$null)
-if ($LASTEXITCODE -ne 0 -or -not $root) {
-    [Console]::Error.WriteLine('check-docs: not a git repository')
-    exit 2
-}
-$root = ($root | Select-Object -First 1).Trim()
-
-Push-Location $root
-try {
-    $tracked = @(& git ls-files 2>$null)
-    $untracked = @(& git ls-files --others --exclude-standard 2>$null)
-}
-finally { Pop-Location }
-
-$all = @($tracked + $untracked | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique)
-$files = @($all | Where-Object { $_ -match '\.md$' })
-if ($Path) {
-    $prefix = $Path.TrimEnd('/', '\').Replace('\', '/')
-    $files = @($files | Where-Object { $_ -like "$prefix/*" -or $_ -eq $prefix })
-}
-if ($files.Count -eq 0) {
-    [Console]::Error.WriteLine('check-docs: no markdown files in scope')
-    exit 2
-}
-
-$problems = New-Object System.Collections.ArrayList
-$count = 0
-$nlinks = 0
-$nblocks = 0
-function Add-Problem([string]$Text) {
-    [void]$script:problems.Add('  ' + $Text)
-    $script:count++
-}
-$script:problems = $problems
-$script:count = 0
-
-# A POSIX shell, if this host has one. See the header: absence is reported,
-# never silently treated as a pass.
-$shell = $null
-foreach ($c in 'sh', 'bash') {
-    $g = Get-Command $c -ErrorAction SilentlyContinue
-    if ($g -and $g.CommandType -in 'Application', 'ExternalScript') { $shell = $g.Source; break }
-}
-$skippedParse = 0
-
-# ⛔ NO FILE IS EXEMPT FROM THE LINK CHECK, and the exemption that used to be
-# here was removed rather than emptied. It covered a template directory whose
-# links are written relative to where the file will live in a PROJECT rather
-# than where it sits in the tree. This repository is not a template and has no
-# such directory: the one fill-in form it keeps, TODO/ENTRY.md, is written from
-# where it lives, so its links resolve here. ⚠ An exemption for a path that
-# does not exist is dead configuration, and the next file to land under that
-# path would have inherited it silently.
-
-$linked = New-Object System.Collections.Generic.HashSet[string]
-
-function Get-LinkTarget([string]$Text) {
-    # Strip fenced blocks, then code spans, then take every ](...) target.
-    # ⚠ Stripping code spans is why a backticked expression is not reported as
-    # a broken link. Markdown does not linkify a code span, and an earlier
-    # version of this check reported exactly that as broken.
-    $out = New-Object System.Collections.ArrayList
-    $fence = $false
-    $n = 0
-    foreach ($line in ($Text -split "`r?`n")) {
-        $n++
-        if ($line -match '^[ \t]*```') { $fence = -not $fence; continue }
-        if ($fence) { continue }
-        $clean = [regex]::Replace($line, '`[^`]*`', '')
-        foreach ($m in [regex]::Matches($clean, '\]\(([^)\s]+)')) {
-            [void]$out.Add([pscustomobject]@{ Line = $n; Target = $m.Groups[1].Value })
-        }
-    }
-    return $out
-}
-
-foreach ($rel in $files) {
-    $full = Join-Path $root $rel
-    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { continue }
-    $text = [System.IO.File]::ReadAllText($full)
-    # ⛔ FORWARD SLASHES, ALWAYS. Split-Path returns a WINDOWS separator, so
-    # `docs\conventions` has no `/` in it, and the `..` collapse below then
-    # treats the whole thing as ONE segment: `docs\conventions/../../x`
-    # collapsed to `../x`, which resolves outside the repository and reported
-    # thirty-one correct links as broken. git speaks forward slashes and so
-    # does every link in a markdown file; the only thing that did not was this
-    # one call.
-    $dir = (Split-Path -Parent $rel).Replace([char]92, '/')
-    if (-not $dir) { $dir = '.' }
-
-    # -- links ---------------------------------------------------------------
-    foreach ($t in (Get-LinkTarget $text)) {
-        $target = $t.Target
-        if ($target -match '^(https?:|mailto:)' -or -not $target) { continue }
-        # ⚠ COUNTED BEFORE THE EMPTY TEST, to match the sh twin exactly. A
-        # pure-anchor link like the section links in this repository's own
-        # documents has no path part, so it is counted as examined and then
-        # skipped. Counting it after instead put the two implementations one
-        # apart on a clean tree, which check-twins reports as drift and which
-        # is a real disagreement about what the number means.
-        $bare = ($target -split '#')[0]
-        $script:nlinks++
-        if (-not $bare) { continue }
-        # Normalise to a repo-relative path so a link from a subdirectory and
-        # one from the root name the same file.
-        #
-        # ⛔ THE FRAMEWORK RESOLVES THE '..', NOT A REGEX. The hand-rolled
-        # collapse this replaces was `[^/]+/\.\./`, and `[^/]+` MATCHES '..'
-        # ITSELF, so a link going up three levels ate its own segments:
-        # `scripts/windows/wsl-toolkit/../../../docs/x` collapsed to
-        # `scripts/windows/docs/x` and every correct link from a directory three
-        # deep was reported broken. ⚠ It was invisible for as long as nothing in
-        # this tree was three deep, which is the "a scope difference with
-        # nothing to exercise it is invisible" lesson in scripts/README.md,
-        # arriving in the check rather than in the thing being checked.
-        # ⭐ The sh twin never had it: it asks the filesystem, with
-        # `[ -e "$dir/$target" ]`. This now does the same thing.
-        $joined = if ($dir -eq '.') { $bare } else { $dir + '/' + $bare }
-        $abs = ''
-        try { $abs = [IO.Path]::GetFullPath((Join-Path $root ($joined -replace '/', [IO.Path]::DirectorySeparatorChar))) }
-        catch { $abs = '' }
-        $rootFull = [IO.Path]::GetFullPath($root).TrimEnd([char]92, [char]47) + [IO.Path]::DirectorySeparatorChar
-        if ($abs -and $abs.StartsWith($rootFull, [StringComparison]::OrdinalIgnoreCase)) {
-            [void]$linked.Add(($abs.Substring($rootFull.Length) -replace '\\', '/'))
-        }
-        if (-not $abs -or -not (Test-Path -LiteralPath $abs)) {
-            Add-Problem ($rel + ':' + $t.Line + ' broken link -> ' + $target)
-        }
+# The binary takes POSIX flags. A caller writing -Json here is writing what
+# every other PowerShell entry point in this repository takes, so it is
+# translated rather than refused.
+$forward = @('docs')
+foreach ($a in $Rest) {
+    switch -Regex ($a) {
+        '^-{1,2}[Jj]son$'   { $forward += '--json'; continue }
+        '^-{1,2}[Pp]ublic$' { continue }
+        default             { $forward += $a }
     }
 }
 
-# -- fenced shell blocks -----------------------------------------------------
-foreach ($rel in $files) {
-    $full = Join-Path $root $rel
-    if (-not (Test-Path -LiteralPath $full -PathType Leaf)) { continue }
-    $lines = [System.IO.File]::ReadAllText($full) -split "`r?`n"
-    $inBlock = $false
-    $start = 0
-    $buf = New-Object System.Collections.ArrayList
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        $line = $lines[$i]
-        if (-not $inBlock -and $line -match '^[ \t]*```(bash|sh)[ \t]*$') {
-            $inBlock = $true; $start = $i + 1; [void]$buf.Clear(); continue
-        }
-        if ($inBlock -and $line -match '^[ \t]*```') {
-            $inBlock = $false
-            $nblocks++
-            $body = ($buf -join "`n")
-
-            if ($body -match '<[a-z][a-z0-9-]*>') {
-                Add-Problem ($rel + ':' + $start + ' shell-unsafe placeholder. bash reads it as a redirect; use UPPER_SNAKE')
-            }
-
-            if ($shell) {
-                # ⛔ A TEMP FILE, NOT stdin. docs/conventions/shell.md: from
-                # PowerShell a native command's stdin is not byte-exact, and a
-                # trailing CRLF gets appended. For a syntax check that is the
-                # difference between a real answer and a fabricated one.
-                $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ('checkdocs-' + [guid]::NewGuid().ToString('N') + '.sh')
-                try {
-                    [System.IO.File]::WriteAllText($tmp, ($body -replace "`r", '') + "`n")
-                    $prev = $ErrorActionPreference
-                    $ErrorActionPreference = 'Continue'
-                    try { & $shell -n $tmp 2>$null | Out-Null } finally { $ErrorActionPreference = $prev }
-                    if ($LASTEXITCODE -ne 0) {
-                        Add-Problem ($rel + ':' + $start + ' shell block does not parse')
-                    }
-                }
-                finally { Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue }
-            }
-            else { $skippedParse++ }
-            continue
-        }
-        if ($inBlock) { [void]$buf.Add($line) }
-    }
-}
-
-# -- a page nothing links to -------------------------------------------------
-# ⛔ AN UNLINKED PAGE IS NOT READ, SO IT IS NOT CORRECTED, and that is the state
-# every stale document passes through on the way to being wrong.
-# Roots are exempt: a README is an entry point, and the files at the repository
-# root are what a reader or a raw URL arrives at directly.
-foreach ($rel in $files) {
-    if ($rel -match '(^|/)README\.md$') { continue }
-    if ($rel -notmatch '/') { continue }
-    if (-not $linked.Contains($rel)) {
-        Add-Problem ($rel + ' is linked from nowhere. An unlinked page is not read, so it is not corrected.')
-    }
-}
-
-# -- the character rule moved, it was NOT dropped -------------------------
-# ⛔ THE FIVE-CHARACTER ALLOWLIST AND THE EM-DASH RULE NOW LIVE IN
-# check-markers.ps1, over EVERY tracked text file rather than over markdown
-# alone. Two checks enforcing one rule is two places for it to be wrong, and
-# these two would have been wrong differently: this one strips fenced blocks
-# and code spans before it looks and a whole-tree scan that did not would
-# refuse the page that names the character it bans.
-#
-# ⚠ It is the same move the control-byte rule made out of this file, for
-# the same reason. ⛔ Run both: this one for documents, that one for the
-# whole tree.
-
-$count = $script:count
-
-if ($Json) {
-    Write-Output ('{"schema":"check-docs/1","problems":' + $count + ',"files":' + $files.Count + ',"links":' + $nlinks + ',"shell_blocks":' + $nblocks + '}')
-    if ($skippedParse -gt 0) {
-        [Console]::Error.WriteLine('⚠ no POSIX shell on PATH: ' + $skippedParse + ' shell block(s) counted but NOT parsed')
-    }
-    if ($count -gt 0) { exit 1 }
-    exit 0
-}
-
-if ($count -gt 0) {
-    Write-Output ('documentation check failed, ' + $count + ' problem(s):')
-    Write-Output ''
-    $problems | ForEach-Object { Write-Output $_ }
-    Write-Output ''
-    if ($skippedParse -gt 0) {
-        Write-Output ('⚠ no POSIX shell on PATH: ' + $skippedParse + ' shell block(s) counted but NOT parsed')
-    }
-    exit 1
-}
-
-Write-Output ('docs ok: ' + $files.Count + ' files, ' + $nlinks + ' relative links, ' + $nblocks + ' shell blocks. Links and prose clean.')
-if ($skippedParse -gt 0) {
-    Write-Output ('⚠ no POSIX shell on PATH: ' + $skippedParse + ' shell block(s) counted but NOT parsed')
-}
-exit 0
+$entry = Join-Path $PSScriptRoot 'check.ps1'
+& $entry @forward
+exit $LASTEXITCODE

@@ -25,7 +25,7 @@ where it is checked.
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |
 | CI | three jobs on every push, ubuntu and windows, plus one release job that runs only on a `wsl-toolkit-v*` tag | [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`../.github/workflows/release.yml`](../.github/workflows/release.yml) |
-| the local gate | `sh scripts/common/check-gate.sh --fast`, or its `.ps1` twin | [`../scripts/README.md`](../scripts/README.md) |
+| the local gate | `sh scripts/common/check-gate.sh`, or its `.ps1` twin. About 30s. | [`../scripts/README.md`](../scripts/README.md) |
 | the identity a commit carries | the machine's `git config`, per invocation | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 1 |
 
 ⛔ **The gate's measured cost belongs in [`PROGRESS.md`](PROGRESS.md), not
@@ -55,20 +55,32 @@ register cannot reach it and neither can a fix.
 set**, and an entry that changes a fetched file says which consumers were
 checked rather than assuming the answer.
 
-## 2. Every check has two halves, and one machine runs both
+## 2. The rules are ONE program, and it is not shell
 
-⛔ **A POSIX `sh` check cannot be assumed to run on Windows**, which is the
-default host here. [`../scripts/README.md`](../scripts/README.md) carries the
-measurement and the exceptions.
+⛔ **Every rule this repository enforces over its own tree lives in
+[`../tools/check/`](../tools/check/).** One binary, one tree walk, and it runs
+natively on either host. `scripts/common/check-*.sh` and their `.ps1` twins are
+wrappers around one named check of it.
 
-**What it cost.** A native PowerShell session resolves `sort` to `Sort-Object`,
-which accepts `-u`, compares case-insensitively, and returned two of four
-distinct values without erroring. A missing tool announces itself; an aliased
-one answers differently and reports success.
+**What it cost to learn.** Each rule used to be written twice, in sh and in
+PowerShell, because the default host here is Windows and a POSIX check cannot
+be assumed to run on it. That is a real hazard: a native PowerShell session
+resolves `sort` to `Sort-Object`, which accepts `-u`, compares
+case-insensitively, and returned two of four distinct values without erroring.
+A missing tool announces itself; an aliased one answers differently and reports
+success.
 
-⚠ **A twin that is written and not compared is two behaviours.**
-`check-twins.sh` runs both halves of every pair on one tree. Adding a twin
-without adding its row there is how drift starts.
+⚠ **But keeping two implementations in step needed a third check that ran both
+halves of every pair**, and that check was most of a gate taking 13m20s on this
+machine. A gate that takes thirteen minutes is a gate a session skips, and
+`--fast` existed to skip exactly it. One implementation has no halves to
+compare and nothing to skip.
+
+⛔ **`check-twins.sh` still exists and still matters**, for the pairs that are
+genuinely two implementations: the doctor probe, `git-sync`, `check-binfmt`,
+`check-remote-items`, `deslop` and `fill-license`. It is no longer in the gate;
+[`../scripts/README.md`](../scripts/README.md) says why and where it runs
+instead.
 
 ## 3. A destructive tool has one deletion, and it reads the state back
 

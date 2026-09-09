@@ -54,11 +54,35 @@ system config, same authenticated `gh`. So the argument for twins here is the
 TOOLCHAIN, not credential scoping. A machine that installs git differently per
 shell would add a second reason; this one did not have it.
 
-### ⛔ Wherever a twin exists, `check-twins.sh` covers it
+### ⛔ The rules are ONE program now, and it is not shell
+
+⭐ **[`../tools/check/`](../tools/check/) holds every rule this repository
+enforces over its own tree.** One binary, one tree walk, and it runs natively on
+either host. `common/check-*.sh` and their `.ps1` twins are wrappers around one
+named check of it, so there is nothing left for a pair of them to disagree
+about.
+
+⚠ **The reason twins existed has not gone away**, and the measurement above is
+why: a POSIX check cannot be assumed to run on Windows. What went away is the
+need for TWO implementations to answer it. A Go program is the same program on
+either host, the way node is, and it needs neither `sh` nor an aliased `sort`.
+
+⛔ **What that bought.** The gate ran in 13m20s on this machine and most of it
+was `check-twins`, which ran both halves of every pair and compared them. The
+same gate is about 30 seconds now, and it no longer has a `--fast` mode because
+there is nothing worth skipping.
+
+### ⛔ Wherever a twin still exists, `check-twins.sh` covers it
 
 That is not advice, it is the rule that keeps two implementations from becoming
 two behaviours. [`common/check-twins.sh`](common/) runs BOTH halves of every
-pair on one tree and compares the `--json` answer and the exit code.
+remaining pair on one tree and compares the `--json` answer and the exit code:
+the doctor probe, `git-sync`, `check-binfmt`, `check-remote-items`, `deslop`
+and `fill-license`.
+
+⚠ **It is no longer part of the gate**, because it costs minutes and catches
+drift that only arrives when somebody edits one of those halves. ⭐ CI runs it
+on every push, which is where a check with that shape belongs.
 
 ⚠ **It compares ANSWERS on the tree it is run against, not the rules.** A scope
 difference with nothing in the tree to exercise it is invisible: dropping `.py`
@@ -70,19 +94,20 @@ with a fixture, not by trusting the comparison to notice.
 
 | | |
 | --- | --- |
+| [`../tools/check/`](../tools/check/) | ⛔ **It cannot have one and must not.** It IS the answer to why twins existed: one implementation that runs natively on both hosts. A second one would recreate the drift it removed. |
 | [`common/set-record.mjs`](common/) | ⛔ **It does not need one**, and for the same reason as `write-file.mjs` below: it is node. ⚠ What it would cost to give it one is the thing to notice: a twin here means a second implementation of table arithmetic, which is a second place for that arithmetic to be wrong, in the one file whose whole job is that the arithmetic is right. |
 | [`common/write-file.mjs`](common/) | ⛔ **It does not need one.** It is node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. The reason the sh checks needed twins does not apply to it. ⚠ What it needs instead is node itself, which is the one dependency anything under `scripts/` has, and the reason a project may decline this helper rather than inherit it. |
-| [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. It is a maintainer's tool and it runs where both implementations do: this machine, and the CI job that has `pwsh` on an Ubuntu runner. |
+| [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. |
 | [`windows/wsl-toolkit/wsl-toolkit.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
 | [`windows/wsl-toolkit/launcher.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, for the same reason and one more.** It exists to make the file above runnable on Windows: it clears a Windows file attribute, and a POSIX half would have nothing to launch. |
 | [`windows/wsl-toolkit/selftest.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it is not a check.** It is the test over the file above, so a POSIX half would be a second implementation of the assertions rather than a second implementation of a job. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell, which is where its coverage comes from. |
-| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and `common/check-go.sh` is the check OVER it. That one has a twin, because running a Go toolchain is a job both platforms have. |
+| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and the gate's `go` check is the check OVER it. |
 | [`windows/wsl-toolkit/build.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it cannot have one.** It joins PowerShell fragments and asserts the result parses as PowerShell, which needs a PowerShell parser. A POSIX half could concatenate the bytes and would be unable to say whether the result is a script. |
 | [`windows/wsl-toolkit/release.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** It reads a version out of a PowerShell file, runs the build, and pushes a tag. ⚠ It runs on the ubuntu CI job too, under `pwsh`, which is the reason it is PowerShell rather than `sh`: one implementation that runs on both hosts beats two that agree on neither. |
 
 ⭐ **The question to ask is whether the JOB exists on the other platform, not
-whether the language does.** `wsl-toolkit` fails that test. Every check in
-`common/` passes it, which is why every one of them has two halves.
+whether the language does.** `wsl-toolkit` fails that test.
+
 ## The check contract
 
 ⛔ **Every check in this repository, and every check a project inherits from it,
@@ -272,33 +297,25 @@ list run by hand is run in the order somebody recalls it, missing whichever
 entry was added last.
 
 ```bash
-sh scripts/common/check-gate.sh --fast
+sh scripts/common/check-gate.sh
 ```
 
-⛔ **It is not a second set of rules.** Every line delegates to a check that
-already exists and reads that check's own exit code. When it and
+⛔ **It is not a second set of rules.** It builds
+[`../tools/check/`](../tools/check/) and runs it, so there is no list of checks
+here to fall out of step with the list there. When it and
 `.github/workflows/ci.yml` disagree about what runs, CI gates the push and this
 one is the defect.
 
-⚠ **A skipped check is not a passed check.** `shellcheck`, `jq`, `pwsh` and
-PSScriptAnalyzer are not on every machine. A missing one is reported as `SKIP`,
-counted separately, named in the summary and carried in `--json` as
-`skipped`. The exit code is still 0, because "this host cannot run that one" is
-not a failure of the tree.
+⚠ **A skipped check is not a passed check.** `shellcheck`, `pwsh` and
+PSScriptAnalyzer are not on every machine. A missing one is reported with what
+was missing rather than counted as agreement, and the exit code is still 0,
+because "this host cannot run that one" is not a failure of the tree.
 
-⛔ **The analyzer and the parse are scored separately**, because they can have
-different answers and `check-powershell` exits 0 either way. One verdict for
-both is how a skipped analyzer reads as a passed check, which is what it did
-here once.
-
-⚠ **`--fast` skips `check-twins` and nothing else.** Measured on one Windows 11
-machine, 2026-08-27: the full run took 208s and `check-twins` was 171s of it.
-That is the right price before a push and the wrong one before each of eleven
-commits.
-
-⛔ **It runs `check-twins`, which runs it.** A recursion guard breaks the cycle;
-without it the pair hung for ten minutes and left twenty stray shells holding
-their own files open.
+⛔ **`--fast` IS GONE, AND A CALLER PASSING IT IS TOLD SO.** It skipped
+`check-twins` and nothing else. The rules are one program now, so there are no
+halves to compare and nothing worth skipping: the whole run is about 30 seconds
+against 13m20s before. Silently accepting the flag and doing something different
+is how a caller comes to believe they ran less than they did.
 
 ### `common/check-powershell.ps1`
 

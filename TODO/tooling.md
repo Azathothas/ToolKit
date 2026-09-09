@@ -1141,3 +1141,115 @@ gh run list --repo Azathothas/ToolKit --workflow release.yml --limit 1
 
 A publish whose smoke job is green, and a red one when the run is pointed at a
 tag whose assets were removed.
+
+---
+
+## TOOL-13. The gate took thirteen minutes, and half of it was comparing two copies of every rule
+
+**Source** the operator, on 2026-09-09, pointing at `Azathothas/pg-toolkit`,
+which hit the same wall and answered it the same way.
+**Category** tooling, **Priority** P1, **Effort** L, **Status** done
+
+## Problem
+
+`sh scripts/common/check-gate.sh` took 13m20s on this machine. A session ran
+`--fast` instead, which skipped `check-twins` and therefore skipped the one
+check that compares the two implementations of every rule. So the expensive
+half was never run by the people it was written for, and the cheap half was
+running eighteen separate processes over the same tree.
+
+## Premise
+
+Measured on this host on 2026-09-09: the full gate, 13m20s. `check-twins`
+alone, 5m35s, because it runs the whole gate twice and then every other pair.
+The remaining time is per-check process startup and re-reading the same files:
+`check-markers` spawns one `awk` per file, and every check calls `git ls-files`
+again.
+
+⚠ The twin requirement is not the defect and was not wrong. A POSIX check
+cannot be assumed to run on Windows, which is the default host here, and
+[`../scripts/README.md`](../scripts/README.md) carries the measurement that
+proved it: a native PowerShell session resolves `sort` to `Sort-Object` and
+returns two of four distinct values without erroring. The defect is that
+answering it with a SECOND implementation makes a third check necessary.
+
+## Approach
+
+Copy `pg-toolkit`'s `cmd/check` and `internal/checks` verbatim, then adapt each
+rule to the semantics this repository already enforces. One binary, one tree
+walk shared by every check, running natively on either host.
+
+⛔ **A port is not the place to tighten a rule.** Every ported check keeps this
+repository's own semantics, not the ones it was copied from: integer marker
+density, the placeholder rule's Go-template and Actions exclusions, one-home's
+table-row and heading skips and its router exemption, and this repository's own
+index, priority table and state line for the record.
+
+⛔ **Every documented command keeps working.** `scripts/common/check-*.sh` and
+their `.ps1` twins become wrappers around one named check, so nothing a page or
+a session already says has to be rewritten to keep running.
+
+## Consumers
+
+None. Nothing under `scripts/common/` is fetched by URL;
+[`../docs/consumers.md`](../docs/consumers.md) has no row for a check.
+
+## Prove
+
+The whole gate green in under a minute, the same rules, with each ported check
+shown to still refuse what it existed to refuse. `check-twins` green over the
+pairs that remain.
+
+## Closing
+
+**Closed 2026-09-09T16:05:00Z.** `tools/check` is 17 checks in one binary. The
+gate is about 30 seconds, including shellcheck, PSScriptAnalyzer, a rebuild of
+both generated products and the full Go suite.
+
+```text
+$ time sh scripts/common/check-gate.sh
+  ok     docs
+  ok     markers
+  ok     record
+  ok     one-home
+  ok     control-bytes
+  ok     placeholders
+  ok     shell
+  ok     removals
+  ok     line-endings
+  ok     size
+  ok     changelog
+  ok     secrets
+  ok     shellcheck
+  ok     powershell
+  ok     bundle
+  ok     go
+  ok     commits
+
+VERDICT: the tree agrees with itself.
+
+real    0m31.292s
+```
+
+⭐ **Two rules were written down here and enforced nowhere.**
+[`../docs/conventions/prose.md`](../docs/conventions/prose.md) bans a list of
+adjectives that assert quality instead of demonstrating it, and no check had
+ever read a file for them. There were two live uses, `bulletproof` in
+`shell.md` describing a transport and `elegant` in a sweep describing a closed
+route. Both are gone, and the rule now has something enforcing it. ⚠ A word
+inside a code span is a specimen rather than a use, which is the same exemption
+the character rule makes and the reason this paragraph can name them.
+
+⛔ **Copying the tree loader verbatim dropped a scope this repository had
+chosen.** `pg-toolkit`'s `Load` reads tracked files only; every check here scans
+tracked PLUS untracked-but-not-ignored, because `git ls-files` alone cannot see
+a file that has never been staged, which is exactly when a new file is most
+likely to carry a credential. A planted AWS key went unreported until the second
+list was put back, which is what a verbatim copy costs and why each rule was
+then read against its own predecessor rather than trusted.
+
+⚠ **`check-twins` survives and left the gate.** The pairs that are genuinely two
+implementations are the doctor probe, `git-sync`, `check-binfmt`,
+`check-remote-items`, `deslop` and `fill-license`. Comparing them costs minutes
+and catches drift that only arrives when somebody edits one half, so CI runs it
+on every push and the gate does not.
