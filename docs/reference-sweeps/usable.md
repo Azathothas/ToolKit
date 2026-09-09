@@ -675,7 +675,7 @@ through HCS or the Hyper-V module needs no patched service. **Untried.**"
 ⭐ **The API is genuinely reachable with no patched service and no third
 party**, which is the finding the sweep extracted from `R6`, and it is correct.
 ⛔ **Every useful call is privileged.** If enumeration is refused, creation
-certainly is, so this route is closed to an unelevated session however elegant
+certainly is, so this route is closed to an unelevated session whatever else
 the API is.
 
 ⚠ **And the honest comparison is the damning part.** HCS yields a virtual

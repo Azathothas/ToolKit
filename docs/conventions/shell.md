@@ -69,7 +69,7 @@ That makes it the right transport for a helper that writes files:
 
 | channel | when |
 | --- | --- |
-| ⭐ **base64 argument** | anything with quoting hazards. The bulletproof one. |
+| ⭐ **base64 argument** | anything with quoting hazards. Nothing in the payload reaches a shell as syntax. |
 | **copy from another file** | the payload already exists on disk |
 | **stdin** | ⚠ only behind a pipe, and only from a POSIX shell. See below. |
 
