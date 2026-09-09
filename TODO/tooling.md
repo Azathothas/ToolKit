@@ -1262,3 +1262,79 @@ implementations are the doctor probe, `git-sync`, `check-binfmt`,
 `check-remote-items`, `deslop` and `fill-license`. Comparing them costs minutes
 and catches drift that only arrives when somebody edits one half, so CI runs it
 on every push and the gate does not.
+
+---
+
+## TOOL-14. The last six shell pairs become one program, and `check-twins` goes
+
+**Source** The operator's priority order on 2026-09-09, and
+[`TOOL-13`](#tool-13-the-gate-took-thirteen-minutes-and-half-of-it-was-comparing-two-copies-of-every-rule),
+which removed eighteen of the pairs and named the six it left.
+**Category** tooling, **Priority** P2, **Effort** L, **Status** open
+
+## Problem
+
+Six tools in this tree are still written twice, in sh and in PowerShell:
+`scripts/doctor/doctor`, `git-sync`, `check-binfmt`, `check-remote-items`,
+`deslop` and `fill-license`. That is about 1,870 lines of shell and about the
+same again of PowerShell saying the same things, and `check-twins.sh` exists
+only to run both halves of each pair and compare their answers. It is measured
+at 5m35s and it is no longer in the gate, so nothing runs it on a schedule.
+
+⚠ **The twin requirement was never wrong.** A native PowerShell session resolves
+`sort` to `Sort-Object`, which accepts `-u`, compares case-insensitively, and
+returned two of four distinct values without erroring. A POSIX check cannot be
+assumed to run on the default host here. Answering that with a second
+implementation is what makes a third check necessary.
+
+## Premise
+
+Measured: `wc -l` over the six pairs gives 646, 302, 212, 254, 220 and 236 lines
+on the sh side. `check-twins.sh` is 398 lines and its own header names exactly
+these six as what is left for it to compare.
+
+⭐ **The doctor's inventory already has one home in Go.**
+`internal/toolkit/ToolCatalog()` carries it, and
+`TestNativeInventoryCoversStandaloneProbe` parses `scripts/doctor/doctor.ps1`
+and asserts the two agree row for row. So the largest of the six is already
+half ported, and the test proving it is the thing that would be deleted.
+
+## Approach
+
+One Go module at `tools/repo`, subcommand per tool, the same shape
+[`../tools/check/`](../tools/check/) already has. Each `scripts/**` script
+becomes a wrapper that builds the binary into `.tmp/` and execs it, exactly as
+[`../scripts/common/check.sh`](../scripts/common/check.sh) does.
+
+⛔ **Not a second gate.** `tools/check` holds the rules this repository enforces
+over its own tree. These six are host probes, a commit path, a licence writer
+and two remote readers; folding them into the gate would make `check-gate` do
+things that are not checks.
+
+⛔ **The behaviour is ported, not redesigned.** Each script's header records what
+it cost to learn, and every one of those refusals moves across: `fill-license`'s
+table rather than a regex, `check-binfmt` reading the kernel rather than a unit's
+exit code, `git-sync` refusing an attribution line rather than stripping it,
+`doctor` exiting 0 over a missing tool because it is a probe.
+
+⚠ **`check-twins.sh` disappears when the last pair does**, and
+[`RULES.md`](RULES.md) section 2 and
+[`../scripts/README.md`](../scripts/README.md) move in the same change.
+
+## Consumers
+
+⭐ **`Azathothas/TEMPLATE` ships these scripts**, so a consumer fetching one raw
+URL gets a shell script today. [`../docs/consumers.md`](../docs/consumers.md)
+says which rows are affected and whether a wrapper keeps each contract; a
+consumer that fetches `deslop.sh` and runs it with no Go toolchain is a break,
+and the wrapper says so by name rather than failing at a missing binary.
+
+## Prove
+
+```bash
+sh scripts/common/check-gate.sh
+```
+
+Green, plus each ported tool's own acceptance: the same command run through the
+old script and the new wrapper answering identically on this machine, recorded
+per tool as it lands.
