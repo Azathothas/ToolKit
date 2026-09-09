@@ -141,6 +141,31 @@ that did not compile read the same way. Both now report the case count and the
 build separately, which is the only reason the theatre was found rather than
 recorded as a pass.
 
+**A fourth pass, and CI ran it.** The first push went red on three jobs, and
+every one of them was a defect this machine structurally cannot see:
+
+- ⛔ **A workspace symlink pointing out of the tree was PACKED, not refused.**
+  An absolute link target was joined onto the link's own directory, so `/work`
+  plus `/etc/passwd` became `/work/etc/passwd`, which is inside the workspace by
+  every containment test there is. The case that covers it skips on Windows,
+  where creating a symlink needs a privilege this process may not have, so the
+  ubuntu job was the only place it could fire. Fixed, and a second case now
+  covers the join itself and runs on every host, which immediately found the
+  wider version: on Windows a leading separator with no drive is DRIVE-relative,
+  so `filepath.IsAbs` answers false for a target that still names a place
+  outside the tree.
+- ⚠ **`WindowsPathToGuest` answered differently on Linux**, because
+  `filepath.Abs` resolves in the running host's grammar and read a drive-rooted
+  path as a relative name. It parses the Windows form itself now.
+- ⚠ **A CI runner's temporary directory is the 8.3 short form**, and it failed
+  a string comparison against a resolver that was right. The case compares
+  canonical paths now.
+- ⚠ **shellcheck 0.11.0 here and an older one on `ubuntu-latest` disagree**
+  about `cd "$D" && cmd || true`, so the same command over the same files
+  answered differently in the two places.
+  [`../docs/methodology/gate.md`](../docs/methodology/gate.md) owns what that
+  costs and the rule it produced.
+
 **Lens 3, the claim audit.** Every documented flag against the binary's own
 help, the preset table against `base presets`, the catalog table against
 `images --json`, the release assets against the workflow that stages them. Two

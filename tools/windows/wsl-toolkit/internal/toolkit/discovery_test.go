@@ -71,9 +71,19 @@ func TestScoopDescriptorResolvesRealExecutable(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "tool.shim"), []byte("path = \""+actual+"\"\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	// ⚠ COMPARED AS CANONICAL PATHS. A CI runner's temporary directory is
+	// the 8.3 short form of its account name and the resolver answers the long
+	// one, so a string comparison of the two failed over a tool that was right.
+	wantResolved, err := RealPath(actual)
+	if err != nil {
+		wantResolved = actual
+	}
 	got, err := ResolveExecutable(shim)
-	if err != nil || got.Resolved != actual || got.Kind != "scoop-target" {
+	if err != nil || got.Kind != "scoop-target" {
 		t.Fatalf("%+v: %v", got, err)
+	}
+	if !pathEqual(got.Resolved, wantResolved) {
+		t.Fatalf("resolved %q, expected %q", got.Resolved, wantResolved)
 	}
 }
 

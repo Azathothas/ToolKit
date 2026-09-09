@@ -178,6 +178,23 @@ func TestAnArchiveOverTheSizeLimitIsRefusedRatherThanTruncated(t *testing.T) {
 	}
 }
 
+func TestAnAbsoluteLinkTargetIsNotJoinedOntoTheLinksOwnDirectory(t *testing.T) {
+	// ⛔ THIS RUNS EVERYWHERE, and that is the point. The case below it needs
+	// a symlink, which Windows will not let this process create, so the defect
+	// it covers reached CI. Joining an absolute target onto the link's
+	// directory produces a path inside the workspace by every containment test
+	// there is, so the link that pointed out of the tree was packed.
+	link := filepath.Join("root", "sub", "leak")
+	outside := filepath.Join(string(filepath.Separator)+"elsewhere", "secret")
+	if got := LinkTargetPath(link, outside); got != outside {
+		t.Fatalf("an absolute target became %q, which is under the link's own directory", got)
+	}
+	rel := LinkTargetPath(link, filepath.Join("..", "sibling"))
+	if want := filepath.Join("root", "sibling"); rel != want {
+		t.Fatalf("a relative target resolved to %q, expected %q", rel, want)
+	}
+}
+
 func TestAWorkspaceSymlinkPointingOutOfTheTreeIsRefused(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// Creating a symlink on Windows needs either developer mode or an
@@ -632,6 +649,18 @@ func TestExcludesAreDeduplicatedAndSplit(t *testing.T) {
 }
 
 func TestAGuestPathIsNeverAWindowsPath(t *testing.T) {
+	// ⚠ THE ANSWER MUST NOT DEPEND ON THE HOST ASKING. This read a
+	// drive-rooted path as a relative name on Linux and prepended a working
+	// directory, which the ubuntu CI job caught and this machine could not.
+	for _, in := range []string{`C:\projects\subject`, "C:/projects/subject"} {
+		got, err := WindowsPathToGuest(in)
+		if err != nil {
+			t.Fatalf("%s: %v", in, err)
+		}
+		if got != "/mnt/c/projects/subject" {
+			t.Fatalf("%s became %q", in, got)
+		}
+	}
 	got, err := WindowsPathToGuest(`C:\projects\subject`)
 	if err != nil {
 		t.Fatal(err)

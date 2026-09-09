@@ -94,7 +94,11 @@ fi
 # ⛔ EVERY EXIT CODE IS READ FROM THE PROCESS THAT PRODUCED IT. `if ! cmd; then`
 # rather than `cmd; rc=$?`, because under `set -e` the second form's guard is
 # unreachable: a failing command exits the shell before the test runs.
-UNFORMATTED=$(cd "$MODULE_DIR" && gofmt -l . 2>/dev/null || true)
+# The `|| true` belongs to gofmt alone, in a group. Written as
+# `cd ... && gofmt ... || true` it belongs to the whole chain, so a cd that
+# failed would run `true`, leave this empty and report the tree formatted.
+# That is SC2015, and CI is where it was read.
+UNFORMATTED=$(cd "$MODULE_DIR" && { gofmt -l . 2>/dev/null || true; })
 if [ -n "$UNFORMATTED" ]; then
   record 'gofmt' 'FAIL' " -- $(printf '%s' "$UNFORMATTED" | tr '\n' ' ')"
 else

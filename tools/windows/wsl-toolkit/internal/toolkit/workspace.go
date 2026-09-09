@@ -207,7 +207,7 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 			// ⛔ A link out of the workspace is the hole this file removes,
 			// arriving by another route. Refused rather than skipped: a
 			// workspace silently missing one fails for an invisible reason.
-			resolved, err := resolveExisting(filepath.Join(filepath.Dir(p), target))
+			resolved, err := resolveExisting(LinkTargetPath(p, target))
 			if err != nil {
 				return err
 			}
@@ -264,6 +264,40 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 		return entries, total, err
 	}
 	return entries, total, nil
+}
+
+// LinkTargetPath is where a symbolic link actually points.
+//
+// ⛔ AN ABSOLUTE TARGET STANDS ALONE, and joining one onto the link's own
+// directory is what this exists to stop. filepath.Join("/work", "/etc/passwd")
+// is "/work/etc/passwd", which is inside the workspace by every containment
+// test there is, so a link that pointed out of the tree was PACKED and the
+// refusal the manual promises never happened. Found by the ubuntu CI job on
+// 2026-09-09: the case that covers it cannot run on Windows, where making a
+// symlink needs a privilege this process may not have.
+func LinkTargetPath(linkPath, target string) string {
+	if isRootedTarget(target) {
+		return target
+	}
+	return filepath.Join(filepath.Dir(linkPath), target)
+}
+
+// isRootedTarget reports whether a link target names a place on its own.
+//
+// ⚠ filepath.IsAbs IS NOT THE TEST ON WINDOWS. There, a leading separator
+// with no drive is DRIVE-RELATIVE rather than absolute, so IsAbs answers false
+// for a target that still names a place outside this tree, and joining it on
+// buries it under the link's own directory where every containment test says
+// it is inside. Anything that looks rooted is left alone and judged on its
+// own; the containment test is what decides, not this.
+func isRootedTarget(target string) bool {
+	if target == "" {
+		return false
+	}
+	if target[0] == '/' || target[0] == '\\' {
+		return true
+	}
+	return filepath.IsAbs(target) || isWindowsAbsolute(target)
 }
 
 func matchesAny(rel string, patterns []string) bool {

@@ -132,6 +132,15 @@ of work while the feature returned a server error in production the whole time.
 Anything platform-shaped or security-shaped gets a real-environment checkpoint,
 and that checkpoint is part of (b).
 
+⚠ **The same check is not the same tool.** A local gate and CI can run the
+identical command over the identical files and disagree, because the binary
+underneath is a different version. Measured on 2026-09-09: shellcheck 0.11.0 on
+the development host reports nothing for `cd "$D" && cmd || true`, and the
+version on `ubuntu-latest` reports SC2015 and fails the job. The local gate was
+green on that line for a whole session. ⛔ A green local run is evidence the
+tree is right, never evidence that CI will agree; the CI result is the one that
+gates a merge, so read it rather than predicting it.
+
 ---
 
 ## What "done" means

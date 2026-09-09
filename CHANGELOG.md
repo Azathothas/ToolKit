@@ -77,6 +77,15 @@ suite green, because the exact-name rule refuses those names anyway and nothing
 asserted the reason the list exists to give. Each is fixed, and each has a case
 that fails without the fix.
 
+⛔ **CI then found three more, and none of them could have been found here.**
+A workspace symlink pointing out of the tree was packed rather than refused,
+because an absolute target was joined onto the link's own directory and landed
+inside the workspace by every containment test there is; the case that covers it
+cannot run on Windows. A path converter answered differently on Linux. A runner's
+short-form temporary directory failed a comparison against a resolver that was
+right. The ubuntu job is the second host every check in this repository earns,
+and this is the second session in which it earned it.
+
 ⛔ **The incident the isolation answers.** A script running in a guest ended with
 a recursive removal of a path that pointed at a Windows drive mount. A removal on
 a drive mount does not go through the recycle bin, and 29,339 files went in one

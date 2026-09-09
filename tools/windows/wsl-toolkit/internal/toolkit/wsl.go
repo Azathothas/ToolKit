@@ -363,16 +363,39 @@ func shellQuote(s string) string {
 // WindowsPathToGuest converts a Windows path to the drvfs path a distribution
 // sees. ⛔ Reporting only: nothing running in a container is given a host path.
 func WindowsPathToGuest(p string) (string, error) {
-	abs, err := filepath.Abs(p)
-	if err != nil {
-		return "", err
+	// ⛔ A WINDOWS PATH IS PARSED AS ONE, WHATEVER HOST IS ASKING.
+	// filepath.Abs answers in the RUNNING host's grammar, so on Linux it read
+	// a drive-rooted path as a relative name and prepended a working directory.
+	// The tool runs on Windows and its suite runs on both, which is the second
+	// host every check here earns; a function whose answer depends on where it
+	// is asked cannot be checked there. Found by the ubuntu CI job, 2026-09-09.
+	abs := p
+	if !isWindowsAbsolute(abs) {
+		resolved, err := filepath.Abs(p)
+		if err != nil {
+			return "", err
+		}
+		abs = resolved
 	}
-	if len(abs) < 2 || abs[1] != ':' {
+	if !isWindowsAbsolute(abs) {
 		return "", fmt.Errorf("%q has no drive letter, so it has no /mnt path", p)
 	}
 	drive := strings.ToLower(abs[:1])
 	rest := strings.ReplaceAll(abs[2:], `\`, "/")
 	return "/mnt/" + drive + rest, nil
+}
+
+// isWindowsAbsolute reports whether a string is a drive-rooted Windows path,
+// by its own grammar rather than the running host's.
+func isWindowsAbsolute(p string) bool {
+	if len(p) < 3 || p[1] != ':' {
+		return false
+	}
+	if p[2] != '\\' && p[2] != '/' {
+		return false
+	}
+	c := p[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // FileSize is the size of a file, and whether it could be read. ⚠ A total that
