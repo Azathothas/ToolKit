@@ -76,9 +76,23 @@ there is nothing worth skipping.
 
 That is not advice, it is the rule that keeps two implementations from becoming
 two behaviours. [`common/check-twins.sh`](common/) runs BOTH halves of every
-remaining pair on one tree and compares the `--json` answer and the exit code:
-the doctor probe, `git-sync`, `check-binfmt`, `check-remote-items`, `deslop`
-and `fill-license`.
+remaining pair on one tree and compares the `--json` answer and the exit code.
+
+⭐ **ONE PAIR IS AN IMPLEMENTATION, AND THE REST ARE WRAPPERS.** The probe
+under [`doctor/`](doctor/) is genuinely written twice; `git-sync`,
+`check-binfmt`, `check-remote-items`, `deslop` and `fill-license` are entry
+points onto one Go subcommand each, under
+[`../tools/repo/`](../tools/repo/). What a wrapper row proves is narrower: not
+that two implementations of a rule agree, but that two entry points FORWARD the
+same thing. ⚠ That is a real class. After the gate was ported, a `.ps1`
+wrapper passed `-Json` straight through to a binary that takes `--json`, and
+this check is what reported it.
+
+⛔ **THE PROBE CANNOT FOLLOW THEM, and that is the end state rather than a
+step towards one.** It RUNS BEFORE YOU KNOW WHAT IS INSTALLED, which is its
+whole job, and "is there a Go toolchain" is one of the questions it answers. A
+wrapper that had to build one first could not report that it was missing.
+`TOOL-14` records the measurement and the refusal.
 
 ⚠ **It is no longer part of the gate**, because it costs minutes and catches
 drift that only arrives when somebody edits one of those halves. ⭐ CI runs it
@@ -95,6 +109,7 @@ with a fixture, not by trusting the comparison to notice.
 | | |
 | --- | --- |
 | [`../tools/check/`](../tools/check/) | ⛔ **It cannot have one and must not.** It IS the answer to why twins existed: one implementation that runs natively on both hosts. A second one would recreate the drift it removed. |
+| [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items` and `git-sync` live here as subcommands; the scripts named after them are wrappers. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules, and folding them in would make the gate do things that are not checks. |
 | [`common/set-record.mjs`](common/) | ⛔ **It does not need one**, and for the same reason as `write-file.mjs` below: it is node. ⚠ What it would cost to give it one is the thing to notice: a twin here means a second implementation of table arithmetic, which is a second place for that arithmetic to be wrong, in the one file whose whole job is that the arithmetic is right. |
 | [`common/write-file.mjs`](common/) | ⛔ **It does not need one.** It is node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. The reason the sh checks needed twins does not apply to it. ⚠ What it needs instead is node itself, which is the one dependency anything under `scripts/` has, and the reason a project may decline this helper rather than inherit it. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. |

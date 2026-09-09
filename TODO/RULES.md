@@ -76,9 +76,17 @@ minutes on this machine. A gate that long is a gate a session skips, and
 `--fast` existed to skip exactly it. One implementation has no halves to
 compare and nothing to skip.
 
-⛔ **`check-twins.sh` still exists and still matters**, for the pairs that are
-genuinely two implementations: the doctor probe, `git-sync`, `check-binfmt`,
-`check-remote-items`, `deslop` and `fill-license`. It is no longer in the gate;
+⛔ **ONE PAIR IS GENUINELY TWO IMPLEMENTATIONS, and it is the doctor probe.**
+It RUNS BEFORE YOU KNOW WHAT IS INSTALLED, which is its whole job, so it cannot
+require a POSIX layer and cannot require a Go toolchain either: "is there a Go
+toolchain" is one of the questions it answers. Everything else that was a pair
+is a wrapper now, over [`../tools/check/`](../tools/check/) for the rules and
+[`../tools/repo/`](../tools/repo/) for the tools that are not rules.
+
+⛔ **`check-twins.sh` still exists and still matters.** It covers the earned
+pair, and it covers the wrapper pairs for a narrower reason: a wrapper that
+stops forwarding is drift a schema comparison cannot see, and that has happened
+once already. It is no longer in the gate;
 [`../scripts/README.md`](../scripts/README.md) says why and where it runs
 instead.
 

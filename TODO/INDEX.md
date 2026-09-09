@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 62  open 9  blocked 0  done 53
+total 62  open 8  blocked 0  done 54
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 1 | 0 | 26 | 27 |
-| P2 | 7 | 0 | 18 | 25 |
+| P2 | 6 | 0 | 19 | 25 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **9** | **0** | **53** | **62** |
+| **all** | **8** | **0** | **54** | **62** |
 
 ---
 
@@ -52,7 +52,7 @@ total 62  open 9  blocked 0  done 53
 | TOOL-11 | P1 | S | open | CI does not run Windows PowerShell 5.1, which is where every P0 has been | [`tooling.md`](tooling.md) |
 | TOOL-12 | P2 | S | open | Nothing checks that a published release can be consumed | [`tooling.md`](tooling.md) |
 | TOOL-13 | P1 | L | done | The gate took thirteen minutes, and half of it was comparing two copies of every rule | [`tooling.md`](tooling.md) |
-| TOOL-14 | P2 | L | open | The last six shell pairs become one program, and `check-twins` goes | [`tooling.md`](tooling.md) |
+| TOOL-14 | P2 | L | done | The last six shell pairs become one program, and `check-twins` goes | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

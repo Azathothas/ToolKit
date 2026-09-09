@@ -35,6 +35,7 @@ import (
 
 	"github.com/Azathothas/ToolKit/tools/repo/internal/binfmt"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/deslop"
+	"github.com/Azathothas/ToolKit/tools/repo/internal/gitsync"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/license"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/remote"
 )
@@ -49,6 +50,7 @@ func commands() []command {
 	return []command{
 		{"binfmt", "are binfmt_misc handlers registered in the kernel containers run against", runBinfmt},
 		{"deslop", "which files in this tree address a reader as an agent", runDeslop},
+		{"git-sync", "commit and push, with the identity and attribution rules enforced", runGitSync},
 		{"license", "write LICENSE from a template, with the holder filled in", runLicense},
 		{"remote-items", "what is open against this repository, and does it survive checking", runRemote},
 	}
@@ -183,4 +185,38 @@ func runRemote(args []string) int {
 		return code
 	}
 	return remote.Run(opts, os.Stdout, os.Stderr)
+}
+
+// stringList is a flag that may be repeated.
+//
+// ⚠ REPEATABLE RATHER THAN COMMA-SEPARATED. A comma is a legal character in a
+// path, and splitting on one turns a correct pathspec into a set of pathspecs
+// that match nothing.
+type stringList []string
+
+func (s *stringList) String() string     { return strings.Join(*s, ",") }
+func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
+
+func runGitSync(args []string) int {
+	fs := newFlagSet("git-sync")
+	var opts gitsync.Options
+	var paths, gates stringList
+	fs.StringVar(&opts.Message, "message", "", "the commit subject")
+	fs.StringVar(&opts.BodyFile, "body-file", "", "a file whose bytes become the commit body")
+	fs.StringVar(&opts.Name, "name", "", "the author and committer name. Empty reads git config")
+	fs.StringVar(&opts.Email, "email", "", "the author and committer email. Empty reads git config")
+	fs.StringVar(&opts.Branch, "branch", "", "the branch to push. Empty is the current one")
+	fs.Var(&paths, "path", "a pathspec to stage instead of everything. Repeatable")
+	fs.Var(&gates, "gate", "a command to run before the push. Repeatable")
+	fs.BoolVar(&opts.NoPush, "no-push", false, "commit and stop")
+	fs.BoolVar(&opts.PushOnly, "push-only", false, "push what is already committed")
+	fs.BoolVar(&opts.Check, "check", false, "the read-only half: check the message and HEAD, change nothing")
+	fs.BoolVar(&opts.SkipGates, "skip-gates", false, "push with no proof the tree is green")
+	fs.BoolVar(&opts.NoCI, "no-ci", false, "add a CI skip marker deliberately")
+	fs.BoolVar(&opts.JSON, "json", false, "write a structured answer")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	opts.Paths, opts.Gates = paths, gates
+	return gitsync.Run(opts, os.Stdout, os.Stderr)
 }

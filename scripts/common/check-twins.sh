@@ -34,6 +34,18 @@
 #                    second implementation would add a drift surface and buy
 #                    nothing.
 #
+# ⭐ THE PROBE IS NOW THE ONLY EARNED TWIN, and that is the end state rather
+# than a step towards one. Every other pair in this tree became a WRAPPER around
+# one Go binary: the rules under tools/check, and the tools under tools/repo.
+# The probe cannot follow them, and the reason is the row above. It runs before
+# you know what is installed, and "is there a Go toolchain" is one of the
+# questions it answers; a probe that had to build one first could not report
+# that it was missing. TOOL-14 records the measurement and the refusal.
+#
+# ⚠ SO WHAT THE WRAPPER ROWS BELOW PROVE IS NARROWER: not that two
+# implementations of a rule agree, but that two entry points FORWARD the same
+# thing. That is a real class and it has bitten once.
+#
 # ⛔ So the rule is: a twin exists only where a single implementation cannot
 # run, and wherever a twin exists, THIS CHECK covers it. Adding a twin without
 # adding it here is how drift starts.
@@ -284,8 +296,12 @@ compare_pair() {
   _a_raw=$( cd "$REPO_ROOT" && sh "$REPO_ROOT/scripts/common/$_p_sh" $_p_shargs 2>/dev/null ); ra=$?
   # shellcheck disable=SC2086
   _b_raw=$( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File "$REPO_ROOT/scripts/common/$_p_ps" $_p_psargs 2>/dev/null ); rb=$?
-  a=$(printf '%s\n' "$_a_raw" | grep '^{' || true)
-  b=$(printf '%s\n' "$_b_raw" | grep '^{' || true)
+  # ⚠ THE WHOLE DOCUMENT, not its first line. The shell checks printed
+  # compact JSON, so `grep '^{'` captured all of it by accident; the Go tools
+  # print an indented document and the same grep captured a single `{`, which
+  # compares equal to every other `{` and proves nothing.
+  a=$(printf '%s\n' "$_a_raw" | sed -n '/^{/,/^}/p')
+  b=$(printf '%s\n' "$_b_raw" | sed -n '/^{/,/^}/p')
 
   if [ "$a" = "$b" ] && [ "$ra" = "$rb" ]; then
     ok "$_p_name: both say $( [ -n "$a" ] && printf '%s' "$a" || printf 'nothing' ), exit $ra"
@@ -318,6 +334,19 @@ compare_pair "check-no-secrets pub" check-no-secrets.sh     "--public --json" ch
 # fails because one half quietly stopped running something, fix the half, never
 # the comparison.
 compare_pair "check-gate"           check-gate.sh           "--json"          check-gate.ps1           "-Json"
+
+# ⚠ deslop IS A WRAPPER PAIR, and what it proves is narrower than a rule.
+# Both halves run the same Go subcommand, so they cannot disagree about the
+# rule; what they CAN disagree about is the FORWARDING, and that has already
+# happened once. After the gate was ported, a `.ps1` wrapper passed `-Json`
+# straight through to a binary that takes `--json`, and this file is what
+# reported it. A row here costs a second and catches that class.
+#
+# ⛔ THE OTHER FOUR ALREADY HAVE ROWS BELOW, and adding a second one for each
+# was a duplicate this file's own run caught: check-binfmt, git-sync and
+# check-remote-items were compared twice in one pass. fill-license has
+# something better than a row, in the licence-text section further down.
+compare_pair "deslop"               deslop.sh               "--json"          deslop.ps1               "-Json"
 
 # ⚠ THIS PAIR NEEDS A RUNNING WSL DISTRO and both twins exit 2 without one. Two
 # 2s is agreement: it says the pair could not run, not that it passed. ⛔ Do not

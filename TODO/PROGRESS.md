@@ -8,7 +8,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-09T21:00:00Z
 baseline        450b380, clean main; gate 17 checks, all passing, 31s.
-entries         total 62  open 9  blocked 0  done 53
+entries         total 62  open 8  blocked 0  done 54
 gate            17 checks, one binary, 41s, all passing
 ```
 

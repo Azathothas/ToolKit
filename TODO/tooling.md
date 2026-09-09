@@ -1270,7 +1270,7 @@ on every push and the gate does not.
 **Source** The operator's priority order on 2026-09-09, and
 [`TOOL-13`](#tool-13-the-gate-took-thirteen-minutes-and-half-of-it-was-comparing-two-copies-of-every-rule),
 which removed eighteen of the pairs and named the six it left.
-**Category** tooling, **Priority** P2, **Effort** L, **Status** open
+**Category** tooling, **Priority** P2, **Effort** L, **Status** done
 
 ## Problem
 
@@ -1338,3 +1338,83 @@ sh scripts/common/check-gate.sh
 Green, plus each ported tool's own acceptance: the same command run through the
 old script and the new wrapper answering identically on this machine, recorded
 per tool as it lands.
+
+## Closing
+
+**Closed 2026-09-10.** Five of the six moved into
+[`../tools/repo/`](../tools/repo/), one Go module with a subcommand each:
+`deslop`, `license`, `binfmt`, `remote-items` and `git-sync`. Each script and
+its PowerShell twin is a wrapper now, so the documented commands and the raw-URL
+fetch both keep working.
+
+Each port was checked against the implementation it replaces rather than against
+a reading of it:
+
+```text
+deslop              8 agent-facing files and the same reference count from all
+                    three implementations on this tree.
+fill-license        byte-identical output for the nine licences it fills, the
+                    same three refusals, the same exit codes, and ISC under
+                    --force matching too.
+binfmt              31 handlers, kernel 7.2.0-WSL2-STABLE, read through
+                    wsl:podman-machine-default. ⚠ The shell half did not
+                    finish inside a ten-minute budget on the same host; the Go
+                    one answered in seconds.
+remote-items        both report problems 0, needs_human 0, open_prs 0.
+git-sync            --check produces the same three lines and exit 0.
+```
+
+`check-twins.sh` compares four of the five as wrapper pairs, which proves the
+FORWARDING rather than the rule, and that is a class this repository has already
+been bitten by: after the gate was ported, a `.ps1` wrapper passed `-Json` to a
+binary that takes `--json`.
+
+### ⛔ The premise was wrong about the sixth, and the correction is the entry
+
+**What was believed:** six pairs, `check-twins.sh` disappearing when the last one
+does, and `RULES.md` section 2 with `scripts/README.md` moving in that change.
+
+**What was measured:** `scripts/doctor/` cannot be ported, and
+`check-twins.sh`'s own header already said so before this entry was written.
+Its rule is that a twin exists only where a single implementation cannot run,
+and the probe earns one because it RUNS BEFORE YOU KNOW WHAT IS INSTALLED. A
+wrapper that builds a Go binary cannot be the first thing a session runs to find
+out whether a Go toolchain is there: the probe would have to build the answer to
+one of its own questions.
+
+**What that changes:** the doctor pair stays, `check-twins.sh` stays for it, and
+`RULES.md` section 2 narrows rather than going. Five of six is the end state,
+not five of six so far.
+
+⭐ **The entry was authored from a count rather than from the rule**, and the
+rule was already written down in the file the entry proposed deleting. Reading
+`check-twins.sh` before writing the approach would have caught it; reading it
+before writing the CODE is what did.
+
+### What the ports changed on purpose, and where each is stated
+
+- `deslop`'s structured answer gains the file list and moves to `deslop/2`. The
+  human output always listed them and the structured one made a caller run it
+  twice.
+- `fill-license` runs its over-replacement guard BEFORE it writes. The shell
+  version wrote the file and then checked it, so a corrupted licence existed on
+  disk for the length of the check.
+- `git-sync --check --json` puts the document on stdout and its progress on
+  stderr. Both went to stdout, so piping it into a parser failed;
+  `check-remote-items` had the same defect and its header records it, and fixing
+  one and not the other would leave two answers to one question in one directory.
+- `binfmt` drops the `MSYS_NO_PATHCONV` and `MSYS2_ARG_CONV_EXCL` workaround,
+  because `exec.Command` passes its argument list to `CreateProcess` untouched.
+  `WSL_UTF8` stays: without it `wsl.exe` emits UTF-16LE.
+- `remote-items` drops `jq` and `curl`. The second matters beyond tidiness: the
+  shell version fetched `action.yml` from `raw.githubusercontent.com` with no
+  credential, so a private action or a rate-limited runner read as "runtime
+  unverified" rather than as what it declares. `gh` already holds the token.
+- `remote-items` resolves an annotated tag in two hops. A tag object is not a
+  commit, and most released actions use annotated tags.
+
+⚠ **`deslop`'s reference count was left as it was.** Matching base names as well
+as full paths took it from 23 to 30 on this tree, which is arguably the better
+answer and is not what the shell did. A port that quietly changes a number its
+caller reads is a port nobody can check, so it is a decision to make on its own.
+
