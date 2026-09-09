@@ -33,8 +33,10 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Azathothas/ToolKit/tools/repo/internal/binfmt"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/deslop"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/license"
+	"github.com/Azathothas/ToolKit/tools/repo/internal/remote"
 )
 
 type command struct {
@@ -45,8 +47,10 @@ type command struct {
 
 func commands() []command {
 	return []command{
+		{"binfmt", "are binfmt_misc handlers registered in the kernel containers run against", runBinfmt},
 		{"deslop", "which files in this tree address a reader as an agent", runDeslop},
 		{"license", "write LICENSE from a template, with the holder filled in", runLicense},
+		{"remote-items", "what is open against this repository, and does it survive checking", runRemote},
 	}
 }
 
@@ -156,4 +160,27 @@ func runLicense(args []string) int {
 		return code
 	}
 	return license.Run(opts, os.Stdout, os.Stderr)
+}
+
+func runBinfmt(args []string) int {
+	fs := newFlagSet("binfmt")
+	var opts binfmt.Options
+	fs.BoolVar(&opts.JSON, "json", false, "write a structured answer")
+	fs.StringVar(&opts.Distro, "distro", "podman-machine-default", "the WSL distribution to read the kernel through, on a host with no binfmt_misc of its own")
+	fs.IntVar(&opts.Require, "require", 0, "fail below this many handlers. Zero reports and does not judge")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	return binfmt.Run(opts, os.Stdout, os.Stderr)
+}
+
+func runRemote(args []string) int {
+	fs := newFlagSet("remote-items")
+	var opts remote.Options
+	fs.BoolVar(&opts.JSON, "json", false, "write a structured answer. The document goes to stdout and the report to stderr")
+	fs.StringVar(&opts.Repo, "repo", "", "OWNER/NAME. Empty means the repository this checkout belongs to")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	return remote.Run(opts, os.Stdout, os.Stderr)
 }
