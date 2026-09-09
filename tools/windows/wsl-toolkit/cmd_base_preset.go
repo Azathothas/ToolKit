@@ -46,7 +46,7 @@ func applyPreset(ctx context.Context, cfg *toolkit.Config, preset string, save b
 func cmdPresets(args []string) (int, error) {
 	fs := newFlagSet("base presets")
 	asJSON := fs.Bool("json", false, "write a structured answer")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()

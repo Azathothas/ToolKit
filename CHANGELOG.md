@@ -21,6 +21,41 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-09
 
+### 2026-09-09T21:30:00Z: eight defects a consumer found in the published binary
+
+**Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-32`
+through `WSL-39`, one per issue.
+**Deployed:** ⭐ **yes, as `wsl-toolkit-v1.2.0`.** Every consumer of the release
+is affected; `launcher.ps1` fetches whatever is named, so a caller pinned to
+`wsl-toolkit-v1.1.0` keeps the defects until they move.
+
+A consumer agent tested the published `wsl-toolkit-v1.1.0` from outside this tree
+and filed eight issues before running out of budget. The tree's own gate was
+green, its acceptance runner passed 23 of 23, and it had been through three
+review lenses. None of that found any of these.
+
+Five were P1. Automatic helper routing decided on `wsl.exe` RESOLVING rather than
+answering, so the one caller the helper exists for never reached it. A failed
+artifact transfer left the exit code alone, so a build could lose its deliverables
+at exit 0 and then have the recoverable guest copy torn down. Artifact names that
+collide on NTFS -- a case pair, or `name:stream` -- overwrote each other and
+reported success. `run` cut stdout at 8 MiB and stderr at 2 MiB with no signal,
+and replayed everything only after the job ended. And `gc --apply --older-than
+24h` force-removed every labelled container BEFORE evaluating any age, which
+killed a job that had been running for seconds.
+
+⛔ **Two behaviour changes a caller can see.** A job whose requested artifacts do
+not arrive now exits 1 rather than 0, and counts as a failed fleet row; a
+pipeline that was passing over a lost transfer will start failing, which is the
+point. And the helper's `run` and `matrix` answer with a stream of events rather
+than one object, so the protocol version moved to 2 and a client refuses a helper
+of a different build before sending it work.
+
+⭐ **What is new rather than fixed.** `wsl-toolkit logs` reads a job's complete
+transcript back, `--max-output` sets what the answer keeps, `gc --include-live`
+is the only way to remove running work, `gc` now reports what it KEPT and why,
+and a fleet announces each row as it finishes on both routes.
+
 ### 2026-09-09T16:05:00Z: the gate is one binary, and it runs in 30 seconds
 
 **Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-13`.

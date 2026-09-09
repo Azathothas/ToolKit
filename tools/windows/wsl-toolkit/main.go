@@ -19,6 +19,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/script"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -74,6 +75,7 @@ func usage() string {
 		"  matrix      one command across a set of images, commissioned and decommissioned together",
 		"  resources   what this tool is holding, and what the machine is holding that is not its",
 		"  gc          remove what this tool made. Reports first; --apply acts",
+		"  logs        the complete output a job produced, past whatever the answer kept",
 		"  helper      the opt-in local helper, for a caller that cannot reach wsl.exe itself",
 		"  config      where the configuration is, and what it currently says",
 		"  version     the product version, which is the embedded script's",
@@ -148,6 +150,8 @@ func run(ctx context.Context, args []string) int {
 		code, err = cmdResources(ctx, cmdArgs)
 	case "gc":
 		code, err = cmdGC(ctx, cmdArgs)
+	case "logs":
+		code, err = cmdLogs(cmdArgs)
 	case "helper":
 		code, err = cmdHelper(ctx, cmdArgs)
 	case "config":
@@ -155,6 +159,13 @@ func run(ctx context.Context, args []string) int {
 	default:
 		fmt.Fprintf(os.Stderr, "wsl-toolkit: %q is not a command\n\n%s\n", cmd, usage())
 		return exitCannot
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		// ⭐ ASKING FOR HELP IS NOT A FAILURE. The flag package has already
+		// printed the defaults by the time it returns this, so repeating it as
+		// "wsl-toolkit: flag: help requested" beside exit 2 tells a reader their
+		// correct command was wrong.
+		return exitOK
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
@@ -182,10 +193,54 @@ const deniedAdvice = `
        Later commands find it automatically and need no further approval.
        wsl-toolkit helper status says whether one is listening.`
 
+// flagSets records every flag set this process built, so a test can ask what the
+// surface actually is rather than restating it.
+//
+// ⭐ IT EXISTS TO STOP THE MANUAL DRIFTING FROM THE BINARY. A claim audit
+// found `--user` in the code and in neither manual once already; a check that
+// reads the real flag sets cannot be got wrong by anybody adding a flag, because
+// the flag registers itself here by being created.
+var flagSets = struct {
+	sync.Mutex
+	byName map[string]*flag.FlagSet
+}{byName: map[string]*flag.FlagSet{}}
+
 func newFlagSet(name string) *flag.FlagSet {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
+	flagSets.Lock()
+	flagSets.byName[name] = fs
+	flagSets.Unlock()
 	return fs
+}
+
+// parseArgs parses one subcommand's flags and refuses what flag.Parse tolerates.
+//
+// ⛔ GO'S FLAG PACKAGE STOPS AT THE FIRST ARGUMENT THAT IS NOT A FLAG and leaves
+// everything after it in Args(). So `run --image alpine -c 'echo hi' stray
+// --via-helper` ran the command, ignored the stray word, and ignored the routing
+// flag written after it, all at exit 0. A caller who put a flag last got a job
+// on a route they did not choose and nothing said so.
+//
+// ⭐ Every subcommand parses through here, so one added later cannot forget the
+// check. `doctor` had it and the other seven did not, which is exactly the shape
+// a guard applied per call site produces.
+func parseArgs(fs *flag.FlagSet, args []string) error {
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	extra := fs.Args()
+	if len(extra) == 0 {
+		return nil
+	}
+	// ⚠ The stray word is what STOPPED the parse, so nothing after it was
+	// looked at either. Naming only the first would have a caller fix a
+	// three-word mistake one word per run.
+	msg := fmt.Sprintf("%s takes flags, not positional arguments, and %q is one", fs.Name(), extra[0])
+	if len(extra) > 1 {
+		msg += fmt.Sprintf(". Everything after it was never parsed, starting with %q", extra[1])
+	}
+	return errors.New(msg)
 }
 
 // writeJSON puts a structured answer on stdout. It is the only thing in this
@@ -199,7 +254,7 @@ func writeJSON(v any) error {
 func cmdVersion(args []string) (int, error) {
 	fs := newFlagSet("version")
 	asJSON := fs.Bool("json", false, "write a structured answer")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	v, err := script.Version()

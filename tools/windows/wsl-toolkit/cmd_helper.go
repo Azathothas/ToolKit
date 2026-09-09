@@ -35,7 +35,7 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("helper " + sub)
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	detach := fs.Bool("detach", false, "start a background copy and return once it answers")
-	if err := fs.Parse(rest); err != nil {
+	if err := parseArgs(fs, rest); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()
@@ -179,6 +179,41 @@ func helperDetach(ctx context.Context, asJSON bool) (int, error) {
 	return exitCannot, fmt.Errorf("a background helper was started and did not answer within 30s: %w", lastErr)
 }
 
+// route is which of the two paths a command takes.
+type route int
+
+const (
+	routeDirect route = iota // this process calls wsl.exe itself
+	routeHelper              // the helper calls it on this process's behalf
+	routeRefuse              // neither: report what went wrong
+)
+
+// decideRoute is the whole routing rule, with nothing in it that touches the
+// machine, so every branch has a test.
+//
+// ⛔ THE INPUT IS THE PROBE'S ANSWER, NOT A PATH LOOKUP. Deciding on
+// FindWsl succeeding meant deciding on "a wsl.exe exists", so a process that was
+// refused by WSL took the direct route, failed, and was advised to start the
+// helper it already had.
+func decideRoute(probeErr error, helperReachable bool) route {
+	switch {
+	case probeErr == nil:
+		return routeDirect
+	case !errors.Is(probeErr, toolkit.ErrWslDenied) && !errors.Is(probeErr, toolkit.ErrWslMissing):
+		// Not a refusal and not an absence. Whatever it is, a helper does not
+		// fix it, and hiding it behind a route change is how a broken install
+		// reads as a sandbox.
+		return routeRefuse
+	case helperReachable:
+		return routeHelper
+	default:
+		// ⭐ No helper to reach, so the direct path runs and reports its own
+		// refusal. That message names both ways forward; a refusal invented here
+		// would name neither.
+		return routeDirect
+	}
+}
+
 // useHelper decides whether a command should go through the helper.
 //
 // ⭐ THE RULE IS: THIS PROCESS FIRST, THE HELPER WHEN THIS PROCESS IS REFUSED.
@@ -189,15 +224,19 @@ func useHelper(ctx context.Context, forced bool) (*toolkit.HelperClient, error) 
 	if forced {
 		return toolkit.DialHelper(ctx)
 	}
-	if _, err := toolkit.FindWsl(); err == nil {
+	probeErr := toolkit.ProbeWsl(ctx)
+	if probeErr == nil {
 		return nil, nil
-	} else if !errors.Is(err, toolkit.ErrWslDenied) && !errors.Is(err, toolkit.ErrWslMissing) {
-		return nil, err
 	}
-	c, err := toolkit.DialHelper(ctx)
-	if err != nil {
-		return nil, nil // no helper: the direct path reports its own refusal
+	c, dialErr := toolkit.DialHelper(ctx)
+	switch decideRoute(probeErr, dialErr == nil) {
+	case routeHelper:
+		note("this process cannot reach wsl.exe: " + probeErr.Error())
+		note("using the helper on " + c.Endpoint().Address)
+		return c, nil
+	case routeRefuse:
+		return nil, probeErr
+	default:
+		return nil, nil
 	}
-	note("this process cannot reach wsl.exe; using the helper on " + c.Endpoint().Address)
-	return c, nil
 }

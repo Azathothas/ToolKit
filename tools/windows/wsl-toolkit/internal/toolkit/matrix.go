@@ -23,6 +23,15 @@ type MatrixSpec struct {
 	Limits      WorkspaceLimits
 	Transcripts string
 	User        string
+	MaxOutput   int64
+	// OnRow is called once per row, THE MOMENT IT FINISHES rather than when the
+	// fleet does.
+	//
+	// ⛔ A twelve-image fleet printed nothing for its whole duration and then
+	// printed a table. A caller could not tell a slow pull from a hung one, and
+	// over the helper it could not even see the row labels. It is called from
+	// several goroutines, so an implementation locks.
+	OnRow func(JobResult)
 }
 
 // MatrixReport is what a fleet run produced.
@@ -62,6 +71,34 @@ func (m MatrixReport) Verdict() int {
 		return 1
 	}
 	return 0
+}
+
+// Recount derives the four counts from the rows.
+//
+// ⛔ THE ONLY PLACE THEY ARE COMPUTED. A caller that changes a row after the
+// fleet returned - the helper route marking every row when one download failed -
+// calls this rather than adjusting a number, because a count edited beside the
+// row it describes is a count that stops matching it.
+func (m *MatrixReport) Recount() {
+	m.Ran, m.Failed, m.Unreached, m.TimedOut = 0, 0, 0, 0
+	for _, row := range m.Rows {
+		switch {
+		case row.Unreached:
+			m.Unreached++
+		case row.TimedOut:
+			m.Ran++
+			m.TimedOut++
+			m.Failed++
+		case row.Failed():
+			// Failed(), not Exit. A row whose container succeeded and whose
+			// artifacts could not be fetched delivered nothing, and counting it
+			// under a green fleet is what let a build lose its output silently.
+			m.Ran++
+			m.Failed++
+		default:
+			m.Ran++
+		}
+	}
 }
 
 // RunMatrix commissions a container per image, runs one command in each, and
@@ -139,33 +176,22 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 				Image: img.Ref, Script: spec.Script, StagedFrom: staged,
 				Workspace: "", ArtifactDir: artifacts, Env: spec.Env,
 				Timeout: spec.Timeout, Network: spec.Network, Limits: limits,
-				Label: img.ID, User: spec.User,
+				Label: img.ID, User: spec.User, MaxOutput: spec.MaxOutput,
 			})
 			if spec.Transcripts != "" {
 				if err := r.WriteTranscript(spec.Transcripts, &rows[i]); err != nil {
 					r.log("could not write the transcript for " + img.ID + ": " + err.Error())
 				}
 			}
+			if spec.OnRow != nil {
+				spec.OnRow(rows[i])
+			}
 		}(i, img)
 	}
 	wg.Wait()
 
 	report.Rows = rows
-	for _, row := range rows {
-		switch {
-		case row.Unreached:
-			report.Unreached++
-		case row.TimedOut:
-			report.Ran++
-			report.TimedOut++
-			report.Failed++
-		case row.Exit != 0:
-			report.Ran++
-			report.Failed++
-		default:
-			report.Ran++
-		}
-	}
+	report.Recount()
 	report.Duration = time.Since(started)
 	sort.SliceStable(report.Rows, func(i, j int) bool { return report.Rows[i].Label < report.Rows[j].Label })
 	return report, nil

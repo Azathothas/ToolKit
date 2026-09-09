@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -63,6 +64,60 @@ func FindWsl() (*Wsl, error) {
 		return nil, fmt.Errorf("%w: %v", ErrWslMissing, err)
 	}
 	return &Wsl{Path: exe.Resolved}, nil
+}
+
+// probeOnce holds the access answer for the life of the process.
+//
+// ⚠ A fleet asks this once, not once per row. The probe costs one wsl.exe
+// invocation, and a twelve-row matrix paying for twelve of them would be a
+// second's latency bought for an answer that cannot change mid-run.
+var probeOnce struct {
+	sync.Once
+	err error
+}
+
+// ProbeWsl answers whether THIS PROCESS may talk to wsl.exe, by talking to it.
+//
+// ⛔ FindWsl RESOLVES A PATH AND NOTHING ELSE. It answers "there is a
+// wsl.exe" and was being read as "this process can use it", so a sandboxed
+// caller with a live helper took the direct route, met
+// Wsl/EnumerateDistros/Service/E_ACCESSDENIED, and was then advised to start the
+// helper that was already running and answering. The routing decision has to
+// make the call whose refusal it is trying to detect.
+//
+// ⭐ The probe is READ ONLY and creates nothing. --list --quiet enumerates,
+// which is the exact call a sandbox refuses, so the probe fails in the same
+// place the work would.
+//
+// ⚠ An empty machine is not a denial. `wsl --list --quiet` exits nonzero
+// with "no installed distributions" where WSL works perfectly, and a probe that
+// read any failure as a refusal would route every fresh host to a helper that is
+// not there.
+func ProbeWsl(ctx context.Context) error {
+	probeOnce.Do(func() { probeOnce.err = probeWsl(ctx) })
+	return probeOnce.err
+}
+
+func probeWsl(ctx context.Context) error {
+	w, err := FindWsl()
+	if err != nil {
+		return err
+	}
+	bounded, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	out, stderr, err := Output(bounded, w.Path, "--list", "--quiet")
+	if err == nil {
+		return nil
+	}
+	if classified := classifyWslFailure(out, stderr, err); errors.Is(classified, ErrWslDenied) {
+		return classified
+	}
+	// ⛔ ANYTHING ELSE IS NOT AN ANSWER THIS MAY ACT ON. A timeout, an empty
+	// machine, a broken install: none of them says this process is refused, and
+	// routing on a guess would send work to a helper for reasons the helper does
+	// not fix. The direct path runs and reports its own refusal, which is the
+	// behaviour that was correct before this probe existed.
+	return nil
 }
 
 func classifyWslFailure(out, stderr string, err error) error {
@@ -338,6 +393,15 @@ func shellAssignments(env map[string]string) []byte {
 	}
 	return []byte(b.String())
 }
+
+// ValidEnvName is the rule the container invocation applies to an environment
+// name, exported so a caller can be REFUSED at the point they typed it.
+//
+// ⛔ The check used to live only at the point of use, where the loop building
+// `--env` arguments dropped a name it did not like and said nothing. A job then
+// ran without a variable the caller passed, and the only way to find out was to
+// read the container's own environment.
+func ValidEnvName(s string) bool { return isShellName(s) }
 
 func isShellName(s string) bool {
 	if s == "" {

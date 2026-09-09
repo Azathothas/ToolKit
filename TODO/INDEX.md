@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 53  open 8  blocked 0  done 45
+total 61  open 8  blocked 0  done 53
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 21 | 22 |
-| P2 | 6 | 0 | 15 | 21 |
+| P1 | 1 | 0 | 26 | 27 |
+| P2 | 6 | 0 | 18 | 24 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **8** | **0** | **45** | **53** |
+| **all** | **8** | **0** | **53** | **61** |
 
 ---
 
@@ -83,6 +83,14 @@ total 53  open 8  blocked 0  done 45
 | WSL-29 | P3 | S | open | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-30 | P2 | XL | open | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-31 | P1 | XL | done | A portable entry point for isolated Linux jobs on Windows | [`issue-6.md`](issue-6.md) |
+| WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-35 | P1 | L | done | Output is bounded without saying so and arrives only at the end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-36 | P1 | M | done | `gc` removes every container before it checks any age | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-37 | P2 | M | done | The helper never releases an upload or an artifact set | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-38 | P2 | S | done | The CLI accepts a trailing word and silently drops what follows it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-39 | P2 | M | done | An image that could not be pulled counts as a job that ran and failed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

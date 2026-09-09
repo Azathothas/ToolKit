@@ -170,7 +170,37 @@ func (c *HelperClient) DownloadArtifacts(ctx context.Context, id, hostDir string
 		return 0, err
 	}
 	entries, _, err := extractInto(resp.Body, dest, limits)
-	return entries, err
+	if err != nil {
+		// ⛔ NOT ACKNOWLEDGED. The helper keeps the set so a caller can go
+		// back for it, which is the same rule the guest directory follows when
+		// its transfer fails.
+		return entries, err
+	}
+	if relErr := c.ReleaseArtifacts(ctx, id); relErr != nil {
+		// A set that could not be released is a leak, not a failed job. Cleanup
+		// collects it by age, so this is reported and not raised.
+		return entries, nil
+	}
+	return entries, nil
+}
+
+// ReleaseArtifacts tells the helper the set arrived and may go.
+func (c *HelperClient) ReleaseArtifacts(ctx context.Context, id string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete,
+		"http://"+c.endpoint.Address+"/v1/artifacts?id="+id, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.endpoint.Token)
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+		return fmt.Errorf("the helper answered %s when releasing the artifacts", resp.Status)
+	}
+	return nil
 }
 
 // Status asks what the helper is.
@@ -215,23 +245,17 @@ func (c *HelperClient) BaseEnsure(ctx context.Context, force bool) (BaseState, e
 
 // Run asks the helper to execute one job.
 func (c *HelperClient) Run(ctx context.Context, req HelperRunRequest) (JobResult, string, error) {
-	var out struct {
-		Result      JobResult `json:"result"`
-		ArtifactsID string    `json:"artifacts_id"`
-	}
-	err := c.call(ctx, http.MethodPost, "/v1/run", req, &out)
-	return out.Result, out.ArtifactsID, err
+	return c.RunStream(ctx, req, HelperSinks{})
 }
 
 // Matrix asks the helper to execute a fleet.
 func (c *HelperClient) Matrix(ctx context.Context, req HelperMatrixRequest) (MatrixReport, string, error) {
-	var out struct {
-		Report      MatrixReport `json:"report"`
-		ArtifactsID string       `json:"artifacts_id"`
-	}
-	err := c.call(ctx, http.MethodPost, "/v1/matrix", req, &out)
-	return out.Report, out.ArtifactsID, err
+	return c.MatrixStream(ctx, req, HelperSinks{})
 }
+
+// bytesReader is bytes.NewReader, named here so the streaming file does not need
+// its own import of the package for one call.
+func bytesReader(b []byte) io.Reader { return bytes.NewReader(b) }
 
 // Resources asks what the machine is holding.
 func (c *HelperClient) Resources(ctx context.Context) (ResourceReport, error) {
@@ -243,12 +267,15 @@ func (c *HelperClient) Resources(ctx context.Context) (ResourceReport, error) {
 }
 
 // Cleanup asks the helper to remove what this tool made.
-func (c *HelperClient) Cleanup(ctx context.Context, apply bool, olderThan time.Duration, images bool) (CleanupPlan, error) {
+func (c *HelperClient) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, images bool) (CleanupPlan, error) {
 	var out struct {
 		Plan  CleanupPlan `json:"plan"`
 		Error string      `json:"error"`
 	}
-	body := map[string]any{"apply": apply, "older_than_ms": olderThan.Milliseconds(), "images": images}
+	body := map[string]any{
+		"apply": apply, "older_than_ms": policy.OlderThan.Milliseconds(),
+		"images": images, "include_live": policy.IncludeLive,
+	}
 	if err := c.call(ctx, http.MethodPost, "/v1/gc", body, &out); err != nil {
 		return out.Plan, err
 	}

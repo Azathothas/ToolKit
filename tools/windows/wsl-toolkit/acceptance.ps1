@@ -334,6 +334,203 @@ try {
         ($r.Out.Trim() -match '^(\d{1,3}\.){3}\d{1,3}$').ToString()
     }
 
+    # -- the eight defects a consumer found in wsl-toolkit-v1.1.0 ------------
+    # Each of these fails against v1.1.0 and passes here. They are grouped so a
+    # reader can see which issue a red case belongs to.
+
+    # issue 9: two names that are one file on the destination.
+    Test-Case 'artifact names that collide on this host are refused, not merged' 'True' {
+        $art = Join-Path $script:Scratch 'art-case'
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--artifacts', $art,
+            '-c', 'printf upper > /out/Result; printf lower > /out/result')
+        $said = (($r.Err + $r.Out) -match 'name one file')
+        # v1.1.0 exited 0 here and delivered a single five-byte file.
+        (($r.Code -ne 0) -and $said).ToString()
+    }
+
+    # issue 9: an NTFS alternate data stream is not a file name.
+    Test-Case 'an artifact naming an alternate data stream is refused' 'True' {
+        $art = Join-Path $script:Scratch 'art-ads'
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--artifacts', $art,
+            '-c', 'printf hidden > /out/normal.txt:stream')
+        $said = (($r.Err + $r.Out) -match 'alternate data stream')
+        $empty = -not (Test-Path -LiteralPath (Join-Path $art 'normal.txt'))
+        (($r.Code -ne 0) -and $said -and $empty).ToString()
+    }
+
+    # issue 8: a transfer that failed is not a job that passed, and its output
+    # survives.
+    Test-Case 'a job whose artifacts are refused exits nonzero and keeps the guest copy' 'True' {
+        $art = Join-Path $script:Scratch 'art-refused'
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--artifacts', $art, '--json',
+            '-c', 'printf real > /out/good.txt; printf forbidden > /out/NUL.txt')
+        $d = $r.Out | ConvertFrom-Json
+        $kept = ($null -ne $d.guest_dir) -and ($d.guest_dir -ne '')
+        $named = ($null -ne $d.artifact_error) -and ($d.artifact_error -ne '')
+        # v1.1.0 exited 0 with artifacts: 0 and then removed the guest copy.
+        (($r.Code -eq 1) -and $named -and $kept).ToString()
+    }
+
+    # issue 8: the container's own code still wins.
+    Test-Case 'a container that failed AND lost its artifacts reports the container code' '37' {
+        $art = Join-Path $script:Scratch 'art-both'
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--artifacts', $art,
+            '-c', 'printf forbidden > /out/NUL.txt; exit 37')
+        ([string]$r.Code)
+    }
+
+    # issue 14: an image that was never pulled did not run.
+    Test-Case 'an image the registry does not have is unreached, not a failed job' 'True' {
+        $r = Invoke-Tool @('run', '--json', '--image',
+            'docker.io/library/alpine:wsl-toolkit-no-such-tag-20260909', '-c', 'echo must-not-run')
+        $d = $r.Out | ConvertFrom-Json
+        $ranAnyway = ($r.Out -match 'must-not-run')
+        # v1.1.0 answered exit 125 with unreached false.
+        (($r.Code -eq 2) -and ($d.unreached -eq $true) -and (-not $ranAnyway)).ToString()
+    }
+
+    # issue 14: and a payload that itself exits 125 is NOT unreached.
+    Test-Case 'a payload that exits 125 is a job that ran' 'True' {
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'exit 125')
+        $d = $r.Out | ConvertFrom-Json
+        (($r.Code -eq 125) -and ($d.unreached -eq $false)).ToString()
+    }
+
+    # issue 10: output is complete, and the answer says when its copy is not.
+    Test-Case 'output past the capture limit keeps its last byte in the transcript' 'True' {
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '--max-output', '4096',
+            '-c', 'head -c 20000 /dev/zero | tr "\000" x; printf END-MARKER')
+        $d = $r.Out | ConvertFrom-Json
+        $cut = ($d.stdout_truncated -eq $true)
+        $counted = ($d.stdout_bytes -ge 20010)
+        $whole = $false
+        if ($null -ne $d.transcript -and $d.transcript -ne '') {
+            $log = Join-Path $d.transcript 'stdout.log'
+            if (Test-Path -LiteralPath $log) {
+                $whole = ([IO.File]::ReadAllText($log)).EndsWith('END-MARKER')
+            }
+        }
+        # v1.1.0 cut at 8 MiB with no field and no transcript.
+        (($r.Code -eq 0) -and $cut -and $counted -and $whole).ToString()
+    }
+
+    # issue 10: and logs reads it back.
+    Test-Case 'logs writes a job transcript back, complete' 'True' {
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'printf READ-ME-BACK')
+        $d = $r.Out | ConvertFrom-Json
+        $l = Invoke-Tool @('logs', $d.id)
+        (($l.Code -eq 0) -and ($l.Out -match 'READ-ME-BACK')).ToString()
+    }
+
+    # issue 13: the refusals the CLI was not making.
+    Test-Case 'a stray word and the options after it are refused, not ignored' 'True' {
+        $r = Invoke-Tool @('run', '--image', 'alpine', '-c', 'echo SHOULD-NOT-RUN', 'stray', '--no-such-option')
+        $ran = ($r.Out -match 'SHOULD-NOT-RUN')
+        $said = (($r.Err + $r.Out) -match 'positional')
+        # v1.1.0 printed SHOULD-NOT-RUN and exited 0.
+        (($r.Code -eq 2) -and (-not $ran) -and $said).ToString()
+    }
+
+    Test-Case 'an unusable environment name is refused where it was typed' 'True' {
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--env', 'BAD-NAME=must-not-drop', '-c', 'env')
+        (($r.Code -eq 2) -and (($r.Err + $r.Out) -match 'BAD-NAME')).ToString()
+    }
+
+    Test-Case 'a negative timeout is refused rather than meaning unlimited' 'True' {
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--timeout', '-1s', '-c', 'echo ran-unbounded')
+        $ran = ($r.Out -match 'ran-unbounded')
+        (($r.Code -eq 2) -and (-not $ran) -and (($r.Err + $r.Out) -match 'negative')).ToString()
+    }
+
+    # issue 11: cleanup does not kill work that is running.
+    Test-Case 'gc --apply leaves a job that is running right now alone' 'True' {
+        # A real job, started in the background, and a real gc beside it. The
+        # wait is on the CONDITION - the container appearing in resources - and
+        # never on a duration, because a sleep long enough here is a race there.
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $script:Binary
+        foreach ($a in @('run', '--image', 'alpine', '--json', '-c', 'echo live-job-started; sleep 45; echo live-job-finished')) {
+            $null = $psi.ArgumentList.Add($a)
+        }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $live = [Diagnostics.Process]::Start($psi)
+        $liveOut = $live.StandardOutput.ReadToEndAsync()
+        $liveErr = $live.StandardError.ReadToEndAsync()
+        try {
+            $seen = $false
+            $deadline = (Get-Date).AddMinutes(3)
+            while ((Get-Date) -lt $deadline) {
+                $res = Invoke-Tool @('resources', '--json')
+                if ($res.Code -eq 0) {
+                    $rd = $res.Out | ConvertFrom-Json
+                    if ($null -ne $rd.owned.containers -and @($rd.owned.containers).Count -gt 0) { $seen = $true; break }
+                }
+                if ($live.HasExited) { break }
+                Start-Sleep -Milliseconds 500
+            }
+            if (-not $seen) { return 'the live job never showed a container, so this case proved nothing' }
+            $plan = Invoke-Tool @('gc', '--json', '--older-than', '24h')
+            $apply = Invoke-Tool @('gc', '--apply', '--json', '--older-than', '24h')
+            $live.WaitForExit()
+            $out = $liveOut.Result
+            $finished = ($out -match 'live-job-finished')
+            $pd = $plan.Out | ConvertFrom-Json
+            $spared = $false
+            if ($null -ne $pd.kept) { $spared = (@($pd.kept) | Where-Object { $_ -match 'in use' }).Count -gt 0 }
+            # v1.1.0 killed it: exit 137, no live-job-finished, gc exit 0.
+            (($live.ExitCode -eq 0) -and $finished -and ($apply.Code -eq 0) -and $spared).ToString()
+        }
+        finally {
+            if (-not $live.HasExited) { $live.Kill() }
+            $null = $liveErr.Result
+        }
+    }
+
+    # issue 12: the helper releases what it staged.
+    Test-Case 'a helper job leaves no uploaded workspace or artifact set behind' 'True' {
+        $home3 = Join-Path $script:Scratch 'home-helper-life'
+        $null = New-Item -ItemType Directory -Path $home3 -Force
+        $null = Invoke-Tool @('--home', $home3, 'helper', 'serve', '--detach')
+        try {
+            $ws = Join-Path $script:Scratch 'ws-life'
+            $null = New-Item -ItemType Directory -Path $ws -Force
+            [IO.File]::WriteAllText((Join-Path $ws 'input.txt'), 'LIFECYCLE')
+            $art = Join-Path $script:Scratch 'art-life'
+            $r = Invoke-Tool @('--home', $home3, 'run', '--via-helper', '--image', 'alpine',
+                '--workspace', $ws, '--artifacts', $art, '-c', 'cp /work/input.txt /out/result.txt')
+            $delivered = $false
+            if (Test-Path -LiteralPath (Join-Path $art 'result.txt')) {
+                $delivered = ([IO.File]::ReadAllText((Join-Path $art 'result.txt')) -eq 'LIFECYCLE')
+            }
+            $uploads = @()
+            $artifacts = @()
+            if (Test-Path -LiteralPath (Join-Path $home3 'uploads')) {
+                $uploads = @(Get-ChildItem -LiteralPath (Join-Path $home3 'uploads') -Directory -ErrorAction SilentlyContinue)
+            }
+            if (Test-Path -LiteralPath (Join-Path $home3 'artifacts')) {
+                $artifacts = @(Get-ChildItem -LiteralPath (Join-Path $home3 'artifacts') -Directory -ErrorAction SilentlyContinue)
+            }
+            # v1.1.0 left both behind and gc could not see either.
+            (($r.Code -eq 0) -and $delivered -and ($uploads.Count -eq 0) -and ($artifacts.Count -eq 0)).ToString()
+        }
+        finally {
+            $null = Invoke-Tool @('--home', $home3, 'helper', 'stop')
+        }
+    }
+
+    # issue 7: the route is decided by asking WSL, not by finding wsl.exe.
+    Test-Case 'a process that can reach wsl.exe keeps the direct route' 'True' {
+        # The positive half of the routing rule, which is the half a machine
+        # with working WSL can prove. The denial half needs a restricted
+        # process and is covered by TestRouting in the Go suite.
+        $r = Invoke-Tool @('run', '--image', 'alpine', '-c', 'true')
+        $usedHelper = (($r.Err + $r.Out) -match 'using the helper')
+        (($r.Code -eq 0) -and (-not $usedHelper)).ToString()
+    }
+
     # -- cleanup, counted rather than remembered -----------------------------
     Test-Case 'cleanup removes what this tool made and the counts return to zero' 'True' {
         $g = Invoke-Tool @('gc', '--apply', '--json')
@@ -346,10 +543,20 @@ try {
         if ($jobs.Count -ne 0 -or $open.Count -ne 0 -or $containers.Count -ne 0) {
             # NAMES, not counts. A count says cleanup missed something; a name
             # says which command made the thing it missed.
-            return ("left behind -- jobs: [{0}] records: [{1}] containers: [{2}] gc removed {3}, gc failed [{4}]" -f `
+            # NOTE: the plan omits an empty list, and Set-StrictMode makes
+            # reading an absent property THROW. A diagnostic that throws
+            # reports its own bug instead of the failure it was written for,
+            # which is what happened the first time this case went red.
+            $plan = $g.Out | ConvertFrom-Json
+            $gcRemoved = 0
+            $gcFailed = ''
+            $gcKept = ''
+            if ($plan.PSObject.Properties.Name -contains 'removed') { $gcRemoved = @($plan.removed).Count }
+            if ($plan.PSObject.Properties.Name -contains 'failed') { $gcFailed = (@($plan.failed) -join ',') }
+            if ($plan.PSObject.Properties.Name -contains 'kept') { $gcKept = (@($plan.kept) -join ',') }
+            return ("left behind -- jobs: [{0}] records: [{1}] containers: [{2}] gc removed {3}, gc failed [{4}], gc kept [{5}]" -f `
                 ($jobs -join ','), ($open -join ','), ($containers -join ','), `
-                @($g.Out | ConvertFrom-Json | ForEach-Object { $_.removed }).Count, `
-                (@($g.Out | ConvertFrom-Json | ForEach-Object { $_.failed }) -join ','))
+                $gcRemoved, $gcFailed, $gcKept)
         }
         'True'
     }
@@ -375,7 +582,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 22 } else { 23 }
+$expected = if ($Quick) { 36 } else { 37 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

@@ -39,6 +39,7 @@ payload on stdin or as a file, and never as an argument.
 | `matrix` | one command across a set of images |
 | `resources` | what this tool holds, and what the machine holds that is not its |
 | `gc` | remove what this tool made. Reports first; `--apply` acts. |
+| `logs` | the complete output a job produced, past whatever its answer kept |
 | `helper` | the opt-in local helper, for a caller that cannot reach `wsl.exe` |
 | `config` | where the configuration is and what it says |
 | `version` | the product version, read from the embedded script |
@@ -58,7 +59,7 @@ $addr = wsl-toolkit script -Action HostAddress 2>$null
 | code | meaning |
 | --- | --- |
 | 0 | it ran and it agreed |
-| 1 | it ran and it disagreed: a job failed, a fleet row failed |
+| 1 | it ran and it disagreed: a job failed, a fleet row failed, or requested output did not arrive |
 | 2 | it could not run: bad usage, a missing base, a refusal |
 | 124 | a deadline was reached, as coreutils' `timeout` reports it |
 | the container's own code | from `run`, forwarded verbatim |
@@ -125,6 +126,7 @@ wsl-toolkit base ensure --preset alpine --save
 wsl-toolkit base recreate
 wsl-toolkit base remove --yes
 wsl-toolkit base shell
+wsl-toolkit base shell --root
 ```
 
 One WSL distribution called `wsl-toolkit`, holding a rootless podman and one
@@ -143,6 +145,16 @@ nothing. The base is meant to be wrecked.
 configuration and then fails at the first run. `--probe` runs a real container
 and reads back a marker the command could not have echoed; without it, `status`
 says the check was not made rather than implying it passed.
+
+| flag | meaning |
+| --- | --- |
+| `--probe` | run a real container to decide whether the base is usable |
+| `--preset` | build from this preset id or fully qualified reference |
+| `--save` | make that choice the stored default |
+| `--root` | `base shell` attaches as root instead of the `toolkit` account. ⚠ It is inside the distribution this tool owns, so it is root THERE and not on this machine, but it can break the base. |
+| `--yes` | `base remove` does not ask first |
+| `--json` | a structured answer |
+| `--via-helper` | force the local helper route |
 
 ### Presets
 
@@ -186,9 +198,20 @@ its workspace, and what it does to that copy cannot reach this machine.
 | `/out` | empty. Whatever is left there is fetched to `--artifacts`. |
 | `/job.sh` | the command, read-only |
 
-⛔ **Every archive entry is validated before it is written**, in both directions.
-Four things are refused by name: an absolute path, a name containing `..`, a link
-leaving the tree, and a Windows reserved device name.
+⛔ **Every archive entry is validated before it is written**, in both
+directions, against the grammar of the machine it is delivered to rather than the
+one checking. Refused by name: an absolute path, a name containing `..`, a link
+leaving the tree, a Windows reserved device name, any of `< > : " | ? *`, a
+control character, a trailing dot or space, and a second entry whose name differs
+from an earlier one only in case.
+
+⚠ **The colon and the case rule are about data loss, not escape.**
+`out.txt:stream` is valid NTFS syntax naming an alternate data stream, so it
+creates an empty `out.txt` and puts the payload where nothing reads it;
+`Result` and `result` are one file on NTFS, so the second silently replaces the
+first. Both are refused with the two names in the message, because a container
+knows what it called its files and a tool that renamed them would produce output
+a caller cannot predict.
 
 | flag | meaning |
 | --- | --- |
@@ -203,10 +226,51 @@ leaving the tree, and a Windows reserved device name.
 | `--no-network` | run with no network at all |
 | `--user` | what the container runs as: a name, a uid, or `uid:gid`. Empty is the image's default, which for most is root. ⚠ Naming one makes podman re-own the mounts for it, which costs a walk of the copy. |
 | `--max-bytes` `--max-entries` | ceilings for a workspace and an artifact set. Default 1 GiB and 200000. |
+| `--max-output` | how many bytes of the command's output the ANSWER keeps. Default 8 MiB for stdout and 2 MiB for stderr; 0 uses the default. It does NOT bound the transcript. |
 | `--ensure-base` | build the base first when it is missing. On by default. |
 | `--via-helper` | force the local helper route |
 
 ⚠ **A workspace or an artifact set over a ceiling is refused, never truncated.**
+
+### What a caller sees while a job runs
+
+⭐ **The container's bytes reach this process's own streams as they are
+written**, not when the job ends, and that holds on the helper route as well: the
+helper answers with a stream of events rather than one object at the end. So a
+build that prints for ten minutes prints for ten minutes here.
+
+⛔ **Under `--json` there is no live stdout, and that is deliberate.** This
+process's stdout carries the structured answer, so a container writing there too
+would produce a document nothing can parse. Live stderr still flows.
+
+⛔ **Nothing is silently shortened.** The complete output of every job is
+written to a transcript beside the job's own state, whatever its size. What
+`--max-output` bounds is the copy the ANSWER carries, and when that copy is
+shorter than the output the result says so:
+
+| field | meaning |
+| --- | --- |
+| `stdout_bytes` `stderr_bytes` | what the command WROTE, whatever any copy kept |
+| `stdout_truncated` `stderr_truncated` | the copy in this answer is shorter than that |
+| `transcript` | the directory holding the complete text. `wsl-toolkit logs ID` writes it. |
+
+### When output cannot be delivered
+
+⛔ **A job whose requested artifacts do not arrive does not exit 0.** The
+command's own exit code wins when it is nonzero; a command that succeeded and
+whose output could not be fetched exits 1, and a fleet counts that row as failed.
+
+⭐ **The guest directory is kept when a transfer fails**, and its path is
+printed and put on the result as `guest_dir`. `gc` collects it later under its
+own age policy, so the output is recoverable rather than destroyed on the way
+out.
+
+⛔ **An image that could not be acquired is `unreached`, not a job that
+failed.** The payload is entered through a wrapper that announces itself from
+inside the container, so a pull that failed, a container that could not be
+created and a `--user` that does not exist are all distinguishable from a program
+that itself exited 125. The classification is never inferred from an exit
+status.
 
 ---
 
@@ -307,7 +371,8 @@ refusal, not a fall back to the defaults.**
 wsl-toolkit resources
 wsl-toolkit gc
 wsl-toolkit gc --apply --older-than 24h
-wsl-toolkit gc --apply --images     # also prune images in the base
+wsl-toolkit gc --apply --images       # also prune images in the base
+wsl-toolkit gc --apply --include-live # also remove work that is running now
 ```
 
 ⛔ **The report is in two parts and says on every line which it is:** what this
@@ -322,6 +387,58 @@ reports, so one item it cannot remove does not stop it removing the rest.
 ⭐ **A killed run still leaves a record.** Every resource is written to
 `ledger.jsonl` before it exists, so an interrupted run leaves an open record with
 no close, and that is what `gc` looks for.
+
+⛔ **`gc` does not touch work that is running.** A container the engine
+reports as running, and anything belonging to a job whose record is still open,
+is spared and listed under `Kept` with the reason. `--include-live` is the only
+way to remove it, and it has to be typed.
+
+⛔ **`--older-than` applies to containers as well as directories.** A
+container's age is its job directory's, because both are named for the same job
+and made in the same moment. One whose directory is already gone has no age to
+read and is not running, which is what abandoned means, so it is collected.
+
+⭐ **The plan and the apply consume one filtered set.** What a dry run
+lists is exactly what `--apply` removes; they were computed separately, and only
+one of them applied the age.
+
+⚠ **The helper's own directories are part of what is held.** An uploaded
+workspace is released by the job that named it and an artifact set when the
+client says it arrived; anything nobody acknowledged appears in `resources` and
+is collected by age like everything else.
+
+---
+
+## `logs`
+
+```powershell
+wsl-toolkit logs                      # what is still here, newest first
+wsl-toolkit logs 8fa39b8bb07a0154     # that job's output
+wsl-toolkit logs 8fa39b8bb07a0154 --both --tail 50
+```
+
+| flag | meaning |
+| --- | --- |
+| `--stderr` | write the error stream instead of the output stream |
+| `--both` | write both, the output first |
+| `--tail N` | only the last N lines |
+| `--json` | list as structured data |
+
+⭐ **It is the other half of the truncation rule.** An answer carries a
+bounded copy and says when it is bounded; this is how the complete text is read
+back. `--tail` reads a window from the end rather than the whole file, so a
+transcript larger than memory costs one small read.
+
+⛔ **A job id is the FIRST argument or there is none.** `logs --tail 5`
+asks for the last five lines of nothing, not for a job called `5`.
+
+⭐ **It answers on both routes.** A job run through the helper has its
+transcript written by the helper, under the helper's own state directory; the
+client writes the same bytes as they arrive, so the path on the result is one
+this machine can open whether or not the two share a state directory.
+
+⚠ **A transcript is removed by `gc` under the same age policy as
+everything else**, so an id that ran long enough ago will not be here.
 
 ---
 
@@ -356,9 +473,22 @@ For a process that is refused when it calls `wsl.exe`. Start it once through the
 approval path the session offers; it holds the access and later commands hand it
 job data.
 
-⭐ **Nothing has to know it is there.** A command that can reach `wsl.exe` uses it
-directly. One that cannot finds the helper and says so once. `--via-helper`
+⭐ **Nothing has to know it is there.** A command that can reach `wsl.exe` uses
+it directly. One that cannot finds the helper and says so once. `--via-helper`
 forces the route.
+
+⛔ **The route is chosen by ASKING WSL, not by finding `wsl.exe` on the
+path.** A resolvable executable says nothing about whether this process may talk
+to it, and deciding on the path meant a sandboxed caller took the direct route,
+met `E_ACCESSDENIED`, and was then advised to start the helper that was already
+listening. The decision now runs one read-only enumeration, which is the same
+call the work would have failed on, and the answer is cached for the life of the
+process so a fleet pays for it once.
+
+⚠ **A probe that fails for any other reason does not route.** A timeout, a
+machine with no distributions and a refusal are three different answers, and only
+the third is what a helper fixes. Anything else takes the direct path, which
+reports the real reason itself.
 
 ⛔ **It is a lifetime boundary, not a privilege boundary.** It listens on
 loopback, runs as whoever started it, and its token lives in that user's own
@@ -374,10 +504,19 @@ permission anybody did not already have.
 | a raw engine option | podman's flags are not reachable, so a mount cannot be asked for |
 | a WSL lifecycle call | it builds and repairs the base and can unregister nothing. `base remove` and `base shell` are not on the protocol. |
 
-⭐ **What it does carry is every job flag the direct path has**, `--user`
-included. A flag one route honours and the other drops is a job that ran as
-somebody else with nothing said; the acceptance runner asks both routes the same
-question and compares the answers.
+⭐ **What it does carry is every job flag the direct path has**, `--user` and
+`--include-live` included. A flag one route honours and the other drops is a job
+that ran as somebody else with nothing said; the acceptance runner asks both
+routes the same question and compares the answers.
+
+⭐ **`run` and `matrix` answer with a stream, not with one object at the
+end.** Each line is a JSON event: a chunk of the command's stdout or stderr, a
+fleet row that has just finished, or the final result. So the restricted route
+shows a build as it happens, which is the route with no alternative to it.
+
+⚠ **A stream that ends without a final event is an error, not an empty
+answer.** That is a helper that died mid-job, and a client that returned what
+had arrived so far would report a killed run as a finished one.
 
 ⚠ The token is compared in constant time and the endpoint file is written `0600`.
 On Windows those mode bits are not an access control list; what protects the file
@@ -427,7 +566,9 @@ the same release as the asset.
 | --- | --- |
 | ⛔ a job's stdin is not the caller's | the command travels as a file, so nothing reads this process's stdin. An interactive container is `base shell` plus `podman run -it` inside it. |
 | ⚠ the fleet's rows share one utility VM | memory and disk are one machine's |
-| ⚠ a link in an artifact set is recorded, not recreated | a `.link.txt` beside where it would have been |
+| ⚠ a link in an artifact set is recorded, not recreated | a `.link.txt` beside where it would have been, whose own name goes through the same collision check |
+| ⚠ an artifact name a Windows path cannot hold is refused | including `< > : " | ? *`, a trailing dot or space, and a case-only duplicate. Rename it in the container. |
+| ⚠ a fleet does not forward each row's own output live | twelve containers interleaved on one stream is unreadable. Rows are announced as they finish and each row's complete text is in its transcript. |
 | ⚠ `base status` without `--probe` cannot say a base is usable | running a container is the only thing that answers it |
 | ⛔ there is no `--platform` | a container runs this host's architecture. A foreign rootfs on this kernel may RUN rather than fail, through a `binfmt_misc` handler something else registered. |
 | ⚠ a musl base runs glibc containers | the base's libc bounds what is installed IN THE BASE only |

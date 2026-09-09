@@ -44,7 +44,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	if sub == "presets" {
 		return cmdPresets(rest)
 	}
-	if err := fs.Parse(rest); err != nil {
+	if err := parseArgs(fs, rest); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()

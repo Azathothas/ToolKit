@@ -6,88 +6,85 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-09T05:51:14Z
-baseline        bf119301, clean main; fast gate: 14 pass, 1 fail, 2 skipped.
-entries         total 53  open 8  blocked 0  done 45
-gate            17 checks, one binary, 31s, all passing
+session started 2026-09-09T21:00:00Z
+baseline        450b380, clean main; gate 17 checks, all passing, 31s.
+entries         total 61  open 8  blocked 0  done 53
+gate            17 checks, one binary, 41s, all passing
 ```
 
 ## Active work
 
-None. [WSL-31](issue-6.md) closed on 2026-09-09 with its acceptance output and
-its release evidence pasted underneath it, which resolves
-[issue 6](https://github.com/Azathothas/ToolKit/issues/6) in full.
-[TOOL-13](tooling.md) closed the same day: the gate is one Go binary and runs in
-about 30 seconds rather than about twelve minutes.
+None. [WSL-32](wsl-toolkit-go.md) through `WSL-39` closed on 2026-09-10, one per
+issue, each with its acceptance output pasted underneath it. That resolves
+[issues 7 to 14](https://github.com/Azathothas/ToolKit/issues) in full.
 
 ## What this session shipped
 
-`tools/windows/wsl-toolkit`, a Go module with no dependencies that carries
-`scripts/windows/wsl-toolkit/wsl-toolkit.ps1` inside itself. It owns exactly one
-WSL distribution, runs rootless podman in it, executes container jobs against a
-COPY of a workspace, runs the twelve-image fleet, surveys the host, and removes
-only what it made. `helper serve` is the second permission path, for a caller
-that is refused when it calls `wsl.exe` itself.
+Eight defects a consumer agent found by testing the published
+`wsl-toolkit-v1.1.0` from outside this tree, five of them P1.
+[`../CHANGELOG.md`](../CHANGELOG.md) is the shipped record and says what each
+one was; [`wsl-toolkit-go.md`](wsl-toolkit-go.md) carries one entry per issue
+with its evidence.
 
-The PowerShell half gained the per-uid user environment and a second build
-product; `build.ps1` writes both and `-Check` compares both against the parts.
-`launcher.ps1` runs the executable by default and keeps the previous behaviour
-under `-LauncherKind script`. The release train cross compiles both Windows
-targets, asserts the asset count and runs the staged binary before publishing.
+⭐ **The finding worth keeping is not any of the eight.** This tree's own
+gate was green when they were filed, its acceptance runner passed 23 of 23, and
+it had been through three review lenses. A short test from outside found what
+none of that did, and the operator's framing was that the eight are therefore a
+floor rather than a list.
 
 ## Measurements
 
-Read from the machine, on Windows 11 Pro 26200, on 2026-09-09:
+Read from the machine, on Windows 11 Pro 26200, on 2026-09-10:
 
 ```text
-transport   a script on wsl.exe stdin arrives byte exact and its exit code
-            propagates. The same payload as an ARGUMENT had its dollar name
-            expanded, its backtick EXECUTED, and still reported exit 0.
-base build  arch 31s / 940 MiB, alpine 28s / 204 MiB, debian 37s / 556 MiB,
-            each to a rootless container answering a marker it could not echo.
-fleet       12 of 12 catalog images ran, 0 failed, 0 unreached, in 52.1s with
-            cold pulls, artifacts returned from every row.
-isolation   a container ran `rm -rf /work/*` and the host workspace is
-            byte identical afterwards.
-acceptance  23 of 23 cases pass against the real base, both routes, both
-            accounts, every catalog image.
-gate        17 checks, one binary, 31s on this host, including shellcheck,
-            PSScriptAnalyzer, a rebuild of both generated products and the Go
-            suite. It was about twelve minutes as eighteen shell checks with a
-            twin comparison.
-release     wsl-toolkit-v1.1.0 published by the workflow, five assets, and
-            driven from an empty directory in both launcher modes.
+acceptance  37 of 37 cases pass against the real base, both routes, both
+            accounts, every catalog image. It was 23 before this session; the
+            14 new cases each fail against wsl-toolkit-v1.1.0.
+mutation    23 of 23 guards proved: each one deleted, the named case run, and
+            the case count and the build status reported separately.
+linux       both Go modules vet and test clean inside
+            docker.io/library/golang:1.25, driven by this tool.
+race        the whole Go suite passes under -race.
+gate        17 checks, one binary, 41s on this host.
+surface     71 flags across 12 commands, every one of them named in the manual,
+            asserted by a test rather than by a reading.
 ```
-
-Sandbox facts that shaped the work, and that a later session should not have to
-rediscover:
-
-- WSL enumeration returns `E_ACCESSDENIED` under a sandbox and succeeds through
-  the normal approval path. That difference is why the helper exists.
-- PowerShell must be started with `-NoProfile`; profile startup costs seconds
-  per invocation.
-- Admin bypass is enabled on `main`. No branch protection was changed.
 
 ## Decisions
 
-The operator chose BOTH permission paths: direct invocation through normal
-agent approval, and an opt-in authenticated local helper. ⛔ The two must carry
-the same job flags; a flag one honours and the other drops is a job that ran as
-somebody else with nothing said, and that defect was found and fixed in review.
+The operator ruled on four forks on 2026-09-09, and each is recorded in the
+entry it belongs to:
 
-Jobs receive workspace copies and never writable host mounts. Artifact export is
-a second, explicit act with per-entry validation. The base is `arch` by default
-because it is glibc; `alpine`, `debian` and `fedora` are presets and any fully
-qualified reference works where a preset id does.
+- both routes stream, which costs a helper protocol version ([WSL-35](wsl-toolkit-go.md));
+- a failed transfer exits 1 and the guest copy is KEPT ([WSL-33](wsl-toolkit-go.md));
+- `gc` spares live work and `--include-live` is the only way past it ([WSL-36](wsl-toolkit-go.md));
+- the eight fixes ship as `wsl-toolkit-v1.2.0` before anything else is started.
 
 ## Work order
 
-Nothing is queued. The eight open entries in [INDEX.md](INDEX.md) are unrelated
-to this one and none of them blocks anything here.
+⭐ **The two bodies of work this session did not start**, in the operator's own
+priority order:
+
+1. **Port the rest of the slow shell to Go.** `scripts/doctor/doctor.sh` and its
+   twin (646 lines), `git-sync` (302), `check-binfmt` (212),
+   `check-remote-items` (254), `deslop` (220) and `fill-license` (236). ⚠ When
+   the last pair goes, `check-twins.sh` goes with it, and
+   [RULES.md](RULES.md) section 2 and `scripts/README.md` move in the same
+   change.
+2. **Iterate on the core WSL behaviour**: the transport, the base lifecycle, the
+   job model and the fleet.
 
 ⚠ **What a later session should know before touching this tool.** The two
-generated products are the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1`
+generated products remain the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1`
 and `tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1` are BOTH built
 from the parts, and editing either by hand is lost at the next build.
-[RULES.md](RULES.md) section 4 owns that. The acceptance runner needs a real
-machine and PowerShell 7; `go test ./...` needs neither and covers the guards.
+[RULES.md](RULES.md) section 4 owns that.
+
+⭐ **Three guards added this session exist to stop a CLASS coming back**, and a
+session that finds one inconvenient should read why before changing it:
+
+| guard | what it refuses |
+| --- | --- |
+| `TestEveryJobFlagCrossesTheWire` | a job flag the direct path honours and the helper drops. That has now happened twice. |
+| `TestManualNamesEveryFlag` | a flag the binary has and the manual does not. It reads the real flag sets, so a flag added tomorrow is covered without the test being touched. |
+| `TestEveryFlagSetRefusesPositionals` | a subcommand that tolerates a stray word, and therefore ignores every option after it. |

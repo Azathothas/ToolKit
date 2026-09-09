@@ -379,6 +379,61 @@ var windowsDeviceNames = map[string]bool{
 	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
 }
 
+// windowsBadChars cannot appear in an NTFS file name. ⛔ EVERY ONE OF THEM IS
+// LEGAL ON LINUX, which is the whole difficulty: a container is free to write
+// `report<1>.txt`, and the host this tool delivers to cannot hold that name. The
+// colon is the one that lost data rather than failing: `normal.txt:stream` is
+// valid NTFS syntax naming an ALTERNATE DATA STREAM, so the create succeeded, a
+// zero-byte `normal.txt` appeared, and the payload went into a stream the caller
+// never asked for and does not see.
+const windowsBadChars = `<>:"|?*`
+
+// checkWindowsComponent applies the destination's own name grammar to one path
+// component.
+//
+// ⛔ IT RUNS ON EVERY HOST, not only on Windows. The artifacts are for a Windows
+// caller whatever machine validated them, and a rule that fired only on Windows
+// is a rule the Linux job in CI could never test. SafeArchiveName already splits
+// on both separators for exactly this reason.
+func checkWindowsComponent(name, part string) error {
+	if i := strings.IndexAny(part, windowsBadChars); i >= 0 {
+		if part[i] == ':' {
+			return fmt.Errorf("%w: %q names an NTFS alternate data stream. The file would be created empty and the bytes would go into a stream nothing reads", ErrWorkspaceRefused, name)
+		}
+		return fmt.Errorf("%w: %q contains %q, which cannot appear in a name on the host this is delivered to", ErrWorkspaceRefused, name, string(part[i]))
+	}
+	for _, r := range part {
+		if r < 0x20 {
+			return fmt.Errorf("%w: %q contains a control character (0x%02x), which cannot appear in a name on the host this is delivered to", ErrWorkspaceRefused, name, r)
+		}
+	}
+	// ⚠ Windows STRIPS a trailing dot or space rather than refusing it, so
+	// `report.` and `report` are one file and the second silently replaces the
+	// first. Refusing is the only answer that does not lose one of them.
+	if last := part[len(part)-1]; last == '.' || last == ' ' {
+		return fmt.Errorf("%w: %q ends in %q, which the destination strips, so it would collide with the same name without it", ErrWorkspaceRefused, name, string(last))
+	}
+	stem := strings.ToLower(part)
+	if i := strings.IndexByte(stem, '.'); i >= 0 {
+		stem = stem[:i]
+	}
+	if windowsDeviceNames[stem] {
+		return fmt.Errorf("%w: %q names the Windows device %q, and writing to one discards what is written and reports success", ErrWorkspaceRefused, name, stem)
+	}
+	return nil
+}
+
+// destinationKey is how two archive entries are judged to name one file.
+//
+// ⚠ IT IS AN APPROXIMATION OF NTFS'S OWN TABLE and errs toward refusing.
+// NTFS compares with an uppercase table fixed when the volume was created, which
+// this cannot read; lowercasing agrees with it for every name a build produces
+// and disagrees only where it would refuse a pair the volume would have kept
+// apart.
+func destinationKey(rel string) string {
+	return strings.ToLower(filepath.ToSlash(rel))
+}
+
 // SafeArchiveName validates one archive entry name and returns the relative
 // path it may be written to.
 //
@@ -409,12 +464,8 @@ func SafeArchiveName(name string) (string, error) {
 		if part == ".." {
 			return "", fmt.Errorf("%w: %q climbs out of the destination", ErrWorkspaceRefused, name)
 		}
-		stem := strings.ToLower(part)
-		if i := strings.IndexByte(stem, '.'); i >= 0 {
-			stem = stem[:i]
-		}
-		if windowsDeviceNames[stem] {
-			return "", fmt.Errorf("%w: %q names the Windows device %q, and writing to one discards what is written and reports success", ErrWorkspaceRefused, name, stem)
+		if err := checkWindowsComponent(name, part); err != nil {
+			return "", err
 		}
 		kept = append(kept, part)
 	}
@@ -428,6 +479,19 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (int, int64, 
 	tr := tar.NewReader(r)
 	entries := 0
 	var total int64
+	// ⛔ THE SET IS WHY TWO NAMES CANNOT BECOME ONE FILE. The per-name grammar
+	// above cannot see a collision, because a collision is a property of a PAIR.
+	// A container writing /out/Result and /out/result returned one five-byte file
+	// on NTFS and exit 0, because the second open with O_TRUNC replaced the first.
+	written := map[string]string{}
+	claim := func(rel, name string) error {
+		key := destinationKey(rel)
+		if first, ok := written[key]; ok {
+			return fmt.Errorf("%w: %q and %q name one file on the host this is delivered to, so writing the second would discard the first", ErrWorkspaceRefused, first, name)
+		}
+		written[key] = name
+		return nil
+	}
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
@@ -460,6 +524,9 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (int, int64, 
 				return entries, total, err
 			}
 		case tar.TypeReg:
+			if err := claim(rel, hdr.Name); err != nil {
+				return entries, total, err
+			}
 			total += hdr.Size
 			if total > limits.MaxBytes {
 				return entries, total, fmt.Errorf("%w: the guest returned more than %s", ErrWorkspaceRefused, HumanBytes(limits.MaxBytes))
@@ -486,6 +553,12 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (int, int64, 
 			// ⛔ Not recreated. The entry after a link writes THROUGH it.
 			// Recording it keeps the information and removes the mechanism.
 			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+				return entries, total, err
+			}
+			// ⚠ The sidecar's name is an entry name too, and a real file called
+			// x.link.txt would otherwise be overwritten by the record of a link
+			// called x. It goes through the same claim.
+			if err := claim(rel+".link.txt", hdr.Name+".link.txt"); err != nil {
 				return entries, total, err
 			}
 			note := fmt.Sprintf("wsl-toolkit: the guest returned a link here, pointing at %q. "+

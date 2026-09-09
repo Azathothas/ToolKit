@@ -42,6 +42,20 @@ type OwnedResources struct {
 	Containers     []OwnedThing  `json:"containers"`
 	Images         []OwnedThing  `json:"images"`
 	OpenRecords    []LedgerEntry `json:"open_records"`
+	// HostStaging is what the helper is holding on THIS machine: workspaces
+	// clients uploaded and artifact sets waiting to be collected. ⛔ They
+	// were invisible here and to cleanup, so a helper that stayed up grew
+	// without any command being able to say by how much.
+	HostStaging []HostStage `json:"host_staging,omitempty"`
+}
+
+// HostStage is one directory the helper is keeping for a client.
+type HostStage struct {
+	Kind    string    `json:"kind"` // upload or artifacts
+	Path    string    `json:"path"`
+	Bytes   int64     `json:"bytes"`
+	Known   bool      `json:"known"`
+	ModTime time.Time `json:"mod_time"`
 }
 
 // GuestJob is one job directory still inside the distribution.
@@ -49,6 +63,10 @@ type GuestJob struct {
 	Path  string `json:"path"`
 	Bytes int64  `json:"bytes"`
 	Age   string `json:"age"`
+	// ModTime is when the guest last touched it. ⚠ READ IN THE GUEST, not
+	// inferred here: the directory lives inside the distribution and this host
+	// has no path to it.
+	ModTime time.Time `json:"mod_time,omitempty"`
 }
 
 // OwnedThing is a container or an image the engine is holding.
@@ -98,6 +116,7 @@ func (r *Runner) Resources(ctx context.Context) ResourceReport {
 		rep.Owned.BaseDiskBytes, rep.Owned.BaseDiskKnown = size, true
 	}
 
+	rep.Owned.HostStaging = r.hostStaging()
 	if open, err := r.ledger.Open(); err == nil {
 		rep.Owned.OpenRecords = open
 	} else {
@@ -135,7 +154,9 @@ for d in "$root"/jobs/* "$root"/staging/*; do
   [ -d "$d" ] || continue
   size=$(du -sk "$d" 2>/dev/null | cut -f1) || size=
   [ -n "$size" ] || size=-1
-  printf '%%s\t%%s\n' "$size" "$d"
+  mtime=$(stat -c %%Y "$d" 2>/dev/null) || mtime=
+  [ -n "$mtime" ] || mtime=-1
+  printf '%%s\t%%s\t%%s\n' "$size" "$mtime" "$d"
 done
 `, shellQuote(root))
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 3*time.Minute)
@@ -150,9 +171,21 @@ done
 		if line == "" {
 			continue
 		}
-		sizeStr, path, ok := strings.Cut(line, "\t")
+		sizeStr, rest, ok := strings.Cut(line, "\t")
 		if !ok {
 			continue
+		}
+		mtimeStr, path, ok := strings.Cut(rest, "\t")
+		if !ok {
+			continue
+		}
+		// ⚠ An unreadable timestamp stays the ZERO TIME rather than becoming
+		// now. Cleanup reads a zero as "no age to check", and reading it as the
+		// present would spare an abandoned directory forever.
+		var mod time.Time
+		var epoch int64
+		if _, err := fmt.Sscanf(mtimeStr, "%d", &epoch); err == nil && epoch > 0 {
+			mod = time.Unix(epoch, 0)
 		}
 		var kb int64
 		if _, err := fmt.Sscanf(sizeStr, "%d", &kb); err != nil || kb < 0 {
@@ -160,10 +193,10 @@ done
 			// is withheld. A total that silently counts an unreadable directory
 			// as zero is a number somebody acts on.
 			known = false
-			jobs = append(jobs, GuestJob{Path: path, Bytes: -1})
+			jobs = append(jobs, GuestJob{Path: path, Bytes: -1, ModTime: mod})
 			continue
 		}
-		jobs = append(jobs, GuestJob{Path: path, Bytes: kb * 1024})
+		jobs = append(jobs, GuestJob{Path: path, Bytes: kb * 1024, ModTime: mod})
 		total += kb * 1024
 	}
 	return jobs, total, known, nil
@@ -221,161 +254,14 @@ type CleanupPlan struct {
 	Images     []string `json:"images,omitempty"`
 	Removed    []string `json:"removed,omitempty"`
 	Failed     []string `json:"failed,omitempty"`
+	// Kept is what was spared and why. ⛔ A DRY RUN THAT ONLY LISTS WHAT IT
+	// WOULD REMOVE cannot be checked: the caller sees an empty plan and cannot
+	// tell "nothing is here" from "everything here is in use".
+	Kept []string `json:"kept,omitempty"`
 }
 
 // CleanupSchema versions the plan.
 const CleanupSchema = "wsl-toolkit-cleanup/1"
-
-// Cleanup removes what this executable owns and nothing else.
-//
-// ⛔ DRY RUN IS THE DEFAULT and the caller opts into acting. A tool that removed
-// things by default the first time somebody ran it to see what it would do is a
-// tool nobody runs a second time.
-//
-// ⭐ It finishes both loops before it reports. One item it cannot remove does
-// not stop it removing the rest; stopping at the first failure would hide the
-// state of everything after it.
-func (r *Runner) Cleanup(ctx context.Context, apply bool, olderThan time.Duration, includeImages bool) (CleanupPlan, error) {
-	plan := CleanupPlan{Schema: CleanupSchema, DryRun: !apply}
-	guestHome, err := r.guestHome(ctx)
-	if err != nil {
-		return plan, err
-	}
-	root := guestHome + "/" + GuestRoot
-
-	// Containers first: a directory a running container has open cannot be
-	// removed, and the error would name the directory rather than the container.
-	containers, images, _, err := r.engineHolding(ctx)
-	if err != nil {
-		return plan, err
-	}
-	for _, c := range containers {
-		plan.Containers = append(plan.Containers, c.Name+" ("+c.ID+")")
-	}
-	if includeImages {
-		for _, i := range images {
-			plan.Images = append(plan.Images, i.Name)
-		}
-	}
-
-	jobs, _, _, err := r.guestJobs(ctx)
-	if err != nil {
-		return plan, err
-	}
-	minutes := int64(olderThan / time.Minute)
-	for _, j := range jobs {
-		plan.GuestDirs = append(plan.GuestDirs, j.Path)
-	}
-
-	hostJobs := filepath.Join(r.home, "jobs")
-	if entries, err := os.ReadDir(hostJobs); err == nil {
-		cutoff := time.Now().Add(-olderThan)
-		for _, e := range entries {
-			info, err := e.Info()
-			if err != nil {
-				continue
-			}
-			if olderThan > 0 && info.ModTime().After(cutoff) {
-				continue
-			}
-			plan.HostDirs = append(plan.HostDirs, filepath.Join(hostJobs, e.Name()))
-		}
-	}
-
-	if !apply {
-		return plan, nil
-	}
-
-	script := fmt.Sprintf(`root=%s
-minutes=%d
-removed=0
-for c in $(podman ps -a --filter label=%s --format '{{.ID}}' 2>/dev/null); do
-  if podman rm -f "$c" >/dev/null 2>&1; then printf 'removed container %%s\n' "$c"; else printf 'FAILED container %%s\n' "$c"; fi
-done
-for d in "$root"/jobs/* "$root"/staging/*; do
-  [ -d "$d" ] || continue
-  case "$d" in "$root"/jobs/*|"$root"/staging/*) : ;; *) printf 'FAILED refused %%s\n' "$d"; continue ;; esac
-  case "$d" in *..*) printf 'FAILED refused %%s\n' "$d"; continue ;; esac
-  if [ "$minutes" -gt 0 ]; then
-    if [ -z "$(find "$d" -maxdepth 0 -mmin +"$minutes" 2>/dev/null)" ]; then continue; fi
-  fi
-  rm -rf "$d" 2>/dev/null || :
-  # A job that ran with --user had its mounts re-owned into this account's
-  # subuid range, and only the user namespace can unlink what is inside them.
-  if [ -e "$d" ]; then podman unshare rm -rf "$d" >/dev/null 2>&1 || :; fi
-  if [ -e "$d" ]; then printf 'FAILED directory %%s\n' "$d"; else printf 'removed directory %%s\n' "$d"; removed=$((removed+1)); fi
-done
-printf 'cleanup-complete %%s\n' "$removed"
-`, shellQuote(root), minutes, JobLabel)
-	if includeImages {
-		script = "podman image prune -a -f >/dev/null 2>&1 || :\n" + script
-	}
-	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 20*time.Minute)
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(line, "removed "):
-			plan.Removed = append(plan.Removed, strings.TrimPrefix(line, "removed "))
-		case strings.HasPrefix(line, "FAILED "):
-			plan.Failed = append(plan.Failed, strings.TrimPrefix(line, "FAILED "))
-		}
-	}
-	if err != nil || code != 0 {
-		return plan, fmt.Errorf("cleanup in the guest exited %d: %s", code, firstLine(stderr+out))
-	}
-	if !strings.Contains(out, "cleanup-complete") {
-		return plan, fmt.Errorf("cleanup exited 0 without reaching its last line")
-	}
-
-	for _, d := range plan.HostDirs {
-		if err := RemoveInside(r.home, d); err != nil {
-			plan.Failed = append(plan.Failed, "host directory "+d+": "+err.Error())
-			continue
-		}
-		plan.Removed = append(plan.Removed, "host directory "+d)
-	}
-
-	// ⛔ A RECORD WHOSE RESOURCE IS GONE GETS CLOSED. Without this the ledger
-	// keeps an open record for something nothing can find, `resources` says a
-	// run was interrupted forever, and the one signal cleanup relies on stops
-	// meaning anything.
-	//
-	// ⭐ It asks the guest what is still there rather than assuming this run
-	// removed it. A record left open by an earlier cleanup, or by a directory a
-	// person removed by hand, is closed by the same sweep.
-	remaining := map[string]bool{}
-	if after, _, _, err := r.guestJobs(ctx); err == nil {
-		for _, j := range after {
-			remaining[j.Path] = true
-		}
-	} else {
-		plan.Failed = append(plan.Failed, "could not re-read the guest, so no record was closed: "+err.Error())
-		remaining = nil
-	}
-	if remaining != nil {
-		open, err := r.ledger.Open()
-		if err != nil {
-			plan.Failed = append(plan.Failed, "the ledger could not be read: "+err.Error())
-		}
-		for _, e := range open {
-			if e.GuestDir == "" || remaining[e.GuestDir] {
-				continue
-			}
-			if err := r.ledger.Append(LedgerEntry{Event: "close", Kind: e.Kind, ID: e.ID, Note: "closed by gc: its directory is gone"}); err != nil {
-				plan.Failed = append(plan.Failed, "could not close the record for "+e.ID+": "+err.Error())
-				continue
-			}
-			plan.Removed = append(plan.Removed, "record "+e.Kind+"/"+e.ID)
-		}
-	}
-	if n, err := r.ledger.Compact(); err == nil {
-		plan.Removed = append(plan.Removed, fmt.Sprintf("ledger compacted to %d open record(s)", n))
-	}
-	if len(plan.Failed) > 0 {
-		return plan, fmt.Errorf("%d item(s) could not be removed", len(plan.Failed))
-	}
-	return plan, nil
-}
 
 // dirSize walks a directory and reports its total, and whether every part of it
 // could be read.
@@ -432,6 +318,18 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 	}
 	if err := p("  base distro       %-12s %s (%s)\n", disk, rep.Owned.BaseName, base); err != nil {
 		return err
+	}
+	// ⛔ THE HELPER'S OWN DIRECTORIES ARE PART OF WHAT IS HELD. They were on
+	// disk and in nothing's report, so a helper that stayed up grew and no
+	// command could say by how much.
+	for _, st := range rep.Owned.HostStaging {
+		size := "not measured"
+		if st.Known {
+			size = HumanBytes(st.Bytes)
+		}
+		if err := p("  host %-9s    %-12s %s\n", st.Kind, size, st.Path); err != nil {
+			return err
+		}
 	}
 	if len(rep.Owned.GuestJobs) == 0 {
 		if err := p("  guest job dirs    none\n"); err != nil {

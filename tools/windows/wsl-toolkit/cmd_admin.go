@@ -15,11 +15,8 @@ func cmdDoctor(ctx context.Context, args []string) (int, error) {
 	fs.BoolVar(&opts.Fast, "fast", false, "find the tools without asking each one its version")
 	fs.BoolVar(&opts.Net, "net", false, "probe outbound HTTPS")
 	fs.StringVar(&opts.Group, "group", "", "one tool group")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
-	}
-	if fs.NArg() != 0 {
-		return exitCannot, fmt.Errorf("doctor takes flags, not positional arguments")
 	}
 	if cfg, cfgErr := loadConfig(); cfgErr == nil {
 		opts.Config = cfg
@@ -46,7 +43,7 @@ func cmdImages(args []string) (int, error) {
 	fs := newFlagSet("images")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	selector := fs.String("select", "", "resolve a selector the way matrix would, and print what it chose")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()
@@ -81,7 +78,7 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("resources")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()
@@ -116,21 +113,26 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 func cmdGC(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("gc")
 	apply := fs.Bool("apply", false, "actually remove. Without it this reports what it would remove and changes nothing")
-	olderThan := fs.Duration("older-than", 0, "only remove a job directory untouched for at least this long")
+	olderThan := fs.Duration("older-than", 0, "only remove something untouched for at least this long. It applies to containers as well as directories")
+	includeLive := fs.Bool("include-live", false, "also remove work that is running right now. Without it a live job is listed as kept and left alone")
 	images := fs.Bool("images", false, "also prune images the engine in the base is holding")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
 	}
+	if *olderThan < 0 {
+		return exitCannot, fmt.Errorf("--older-than %s is negative. Pass 0 for no age limit, or a positive duration", *olderThan)
+	}
+	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive}
 	if c, err := useHelper(ctx, *viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
-		plan, err := c.Cleanup(ctx, *apply, *olderThan, *images)
+		plan, err := c.Cleanup(ctx, *apply, policy, *images)
 		if *asJSON {
 			if writeErr := writeJSON(plan); writeErr != nil {
 				return exitCannot, writeErr
@@ -155,7 +157,7 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 		}
 		return exitOK, nil
 	}
-	plan, err := runner.Cleanup(ctx, *apply, *olderThan, *images)
+	plan, err := runner.Cleanup(ctx, *apply, policy, *images)
 	if *asJSON {
 		if writeErr := writeJSON(plan); writeErr != nil {
 			return exitCannot, writeErr
@@ -213,13 +215,22 @@ func renderCleanup(plan toolkit.CleanupPlan) {
 	if plan.DryRun && len(plan.Containers)+len(plan.GuestDirs)+len(plan.HostDirs)+len(plan.Images) == 0 {
 		fmt.Fprintln(out, "  nothing")
 	}
+	// ⭐ WHAT WAS SPARED, AND WHY. Without it an empty plan reads the same
+	// whether the machine is clean or every job on it is running, and a caller
+	// who meant to reclaim space has no way to tell which.
+	if len(plan.Kept) > 0 {
+		fmt.Fprintln(out, "==> Kept")
+		for _, k := range plan.Kept {
+			fmt.Fprintf(out, "  kept           %s\n", k)
+		}
+	}
 }
 
 func cmdConfig(args []string) (int, error) {
 	fs := newFlagSet("config")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	write := fs.Bool("write", false, "write the effective configuration to disk, so it can be edited")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()

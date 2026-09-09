@@ -59,6 +59,16 @@ func (b *boundedBuffer) String() string {
 	return b.b.String()
 }
 
+// Truncated reports whether anything was dropped. ⚠ UNDER THE LOCK, like
+// every other read of this type. The field is written by whichever goroutine is
+// draining the child's pipe, and reading it bare is a data race even where the
+// answer would usually be right.
+func (b *boundedBuffer) Truncated() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.truncated
+}
+
 func newCommand(ctx context.Context, file string, args ...string) *exec.Cmd {
 	c := exec.CommandContext(ctx, file, args...)
 	c.Env = append(os.Environ(), "WSL_UTF8=1")
@@ -92,7 +102,7 @@ func Output(ctx context.Context, file string, args ...string) (string, string, e
 	out := &boundedBuffer{max: 2 << 20}
 	stderr := &boundedBuffer{max: 64 << 10}
 	err := runCommand(ctx, newCommand(ctx, file, args...), nil, out, stderr)
-	if err == nil && (out.truncated || stderr.truncated) {
+	if err == nil && (out.Truncated() || stderr.Truncated()) {
 		err = errors.New("process output exceeded the capture limit")
 	}
 	return out.String(), stderr.String(), err
@@ -145,7 +155,7 @@ func outputRaw(ctx context.Context, raw rawCommandLine, file string, args ...str
 		setRawCommandLine(cmd, string(raw))
 	}
 	err := runCommand(ctx, cmd, nil, out, stderr)
-	if err == nil && (out.truncated || stderr.truncated) {
+	if err == nil && (out.Truncated() || stderr.Truncated()) {
 		err = errors.New("process output exceeded the capture limit")
 	}
 	return out.String(), stderr.String(), err

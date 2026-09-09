@@ -51,23 +51,65 @@ type JobSpec struct {
 	// uid, or uid:gid. Empty means the image's own default, which is usually
 	// root INSIDE the container and is not root on this machine.
 	User string
+	// Stdout and Stderr receive the container's bytes AS THEY ARRIVE.
+	//
+	// ⛔ Nil means nothing is written live, which is what a caller wants when
+	// its own stdout carries a structured answer. It does not mean the output is
+	// lost: the bounded copy and the transcript on disk are written either way.
+	Stdout io.Writer
+	Stderr io.Writer
+	// MaxOutput is how many bytes of stdout the in-memory copy keeps, with
+	// stderr getting a quarter of it. Zero means the defaults.
+	//
+	// ⚠ IT DOES NOT BOUND THE TRANSCRIPT, which is complete whatever this
+	// says. It bounds the string a structured answer carries, because an answer
+	// holding a gigabyte of output is a document nothing can parse.
+	MaxOutput int64
 }
 
 // JobResult is what one unit of work produced.
 type JobResult struct {
-	Label      string        `json:"label"`
-	Image      string        `json:"image"`
-	ID         string        `json:"id"`
-	Exit       int           `json:"exit"`
-	Duration   time.Duration `json:"duration_ns"`
-	Started    time.Time     `json:"started"`
-	Stdout     string        `json:"stdout,omitempty"`
-	Stderr     string        `json:"stderr,omitempty"`
-	Artifacts  int           `json:"artifacts"`
-	Error      string        `json:"error,omitempty"`
-	TimedOut   bool          `json:"timed_out"`
-	Unreached  bool          `json:"unreached"`
-	Transcript string        `json:"transcript,omitempty"`
+	Label     string        `json:"label"`
+	Image     string        `json:"image"`
+	ID        string        `json:"id"`
+	Exit      int           `json:"exit"`
+	Duration  time.Duration `json:"duration_ns"`
+	Started   time.Time     `json:"started"`
+	Stdout    string        `json:"stdout,omitempty"`
+	Stderr    string        `json:"stderr,omitempty"`
+	Artifacts int           `json:"artifacts"`
+	Error     string        `json:"error,omitempty"`
+	// ArtifactError is the OUTPUT TRANSFER's outcome, separate from the
+	// command's. ⛔ The two were one field, and the verdict read the
+	// command's exit code alone, so a job that succeeded and could not deliver
+	// what it was asked for exited 0.
+	ArtifactError string `json:"artifact_error,omitempty"`
+	// GuestDir is set only when something is still in it worth fetching by
+	// hand. An empty value means the job was torn down and there is nothing to
+	// go back for.
+	GuestDir   string `json:"guest_dir,omitempty"`
+	TimedOut   bool   `json:"timed_out"`
+	Unreached  bool   `json:"unreached"`
+	Transcript string `json:"transcript,omitempty"`
+	// StdoutBytes is what the command WROTE, which is not always what Stdout
+	// holds. ⛔ The pair exists because the difference used to be invisible: a
+	// 9 MiB stdout came back as 8 MiB with exit 0 and no field said so.
+	StdoutBytes int64 `json:"stdout_bytes"`
+	StderrBytes int64 `json:"stderr_bytes"`
+	// StdoutTruncated says the copy above is shorter than the command's output.
+	// The complete text is under Transcript.
+	StdoutTruncated bool `json:"stdout_truncated,omitempty"`
+	StderrTruncated bool `json:"stderr_truncated,omitempty"`
+}
+
+// Failed says whether this row counts against the run: the command's own
+// exit code, a deadline, or requested output that did not arrive.
+//
+// ⛔ ONE DEFINITION, read by the single-job verdict and by the fleet's
+// counts. There were two, they read different fields, and they disagreed
+// about a transfer that failed: the job exited 0 and the fleet counted a pass.
+func (j JobResult) Failed() bool {
+	return j.Exit != 0 || j.TimedOut || j.ArtifactError != ""
 }
 
 // Runner executes jobs in the owned distribution.
@@ -193,7 +235,27 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 		return res
 	}
 
+	// ⛔ keepGuest IS THE ONE REASON THE JOB DIRECTORY SURVIVES. A transfer
+	// that failed leaves the only copy of the output inside the guest, and a
+	// teardown that ran anyway made the failure unrecoverable rather than merely
+	// reported.
+	keepGuest := false
 	defer func() {
+		if keepGuest {
+			r.log("the job directory is kept because its artifacts could not be fetched: " + guestJob)
+			r.log("fetch them by hand, then: wsl-toolkit gc --apply")
+			// ⛔ THE RECORD STILL CLOSES. The directory is kept on purpose and
+			// the job is over, and cleanup reads an open record as work in
+			// flight. Leaving it open would mean gc spares this directory
+			// forever, which turns a deliberate hold into a permanent leak.
+			if err := r.ledger.Append(LedgerEntry{
+				Event: "close", Kind: "job", ID: id,
+				Note: "the job finished and its directory was kept: its artifacts could not be fetched",
+			}); err != nil {
+				r.log("could not close the ledger record for job " + id + ": " + err.Error())
+			}
+			return
+		}
 		// Teardown runs whatever happened, including a cancelled context, so it
 		// gets its own budget rather than inheriting a dead one.
 		tctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
@@ -243,10 +305,16 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 	}
 
 	container := "wtk-" + id
-	runScript := r.containerScript(spec, container, guestWork, guestOut, guestScript)
+	token, err := newMarkerToken()
+	if err != nil {
+		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+		return res
+	}
+	runScript := r.containerScript(spec, container, guestWork, guestOut, guestScript, token)
 
-	out := &boundedBuffer{max: 8 << 20}
-	errBuf := &boundedBuffer{max: 2 << 20}
+	streams := newJobStreams(r.home, id, spec.Stdout, spec.Stderr, spec.MaxOutput, r.log)
+	defer streams.Close()
+	marker := newMarkerStripper(streams.Err, token)
 	runCtx := ctx
 	if spec.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -256,36 +324,75 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 	code, execErr := r.wsl.Exec(runCtx, ExecRequest{
 		Distro: r.cfg.Base.Name, User: user,
 		Script: append(guestRuntimePrologue(), runScript...),
-		Stdout: out, Stderr: errBuf,
+		Stdout: streams.Out, Stderr: marker,
 	})
+	if err := marker.Flush(); err != nil {
+		r.log("could not flush the job's error stream: " + err.Error())
+	}
+	streams.Close()
 	res.Duration = time.Since(started)
-	res.Stdout, res.Stderr = out.String(), errBuf.String()
+	streams.Apply(&res)
 	res.Exit = code
 
-	if runCtx.Err() != nil && ctx.Err() == nil {
+	switch {
+	case runCtx.Err() != nil && ctx.Err() == nil:
 		// ⭐ 124, as coreutils' timeout and -CommandTimeoutSeconds both report.
 		res.TimedOut, res.Exit = true, 124
 		res.Error = fmt.Sprintf("the job passed its %s deadline", spec.Timeout)
 		r.killContainer(context.WithoutCancel(ctx), container)
-	} else if execErr != nil && code == 0 {
+	case !marker.Seen() && (code != 0 || execErr != nil):
+		// ⛔ NOTHING RAN, so this is not the payload's exit code. The engine
+		// could not acquire the image, could not create the container, or could
+		// not become what --user named, and every one of those has a status a
+		// real payload could also return.
+		res.Unreached, res.Exit = true, 2
+		res.Error = "the container never started: " + engineFailure(res.Stderr, execErr)
+	case execErr != nil && code == 0:
 		res.Exit, res.Error = 2, execErr.Error()
 	}
 
-	if spec.ArtifactDir != "" {
+	if spec.ArtifactDir != "" && !res.Unreached {
 		n, _, err := r.wsl.FetchArtifacts(ctx, r.cfg.Base.Name, user, guestOut, spec.ArtifactDir, limits, nil)
 		res.Artifacts = n
-		if err != nil && res.Error == "" {
-			res.Error = "artifacts: " + err.Error()
+		if err != nil {
+			// ⛔ A FAILED TRANSFER IS ITS OWN FIELD. Folding it into Error left
+			// the verdict reading Exit alone, so a container that succeeded and
+			// could not deliver its output exited 0 and a fleet counted the row
+			// as a pass.
+			res.ArtifactError = err.Error()
+			// ⚠ AND THE GUEST DIRECTORY STAYS. It is what the output can still
+			// be recovered from, and the teardown below is the half of that
+			// defect nothing could undo afterwards. gc collects it later under
+			// its own age policy.
+			res.GuestDir = guestJob
+			keepGuest = true
 		}
 	}
 	return res
+}
+
+// engineFailure picks the line worth reporting out of the engine's own noise.
+// ⚠ podman writes PROGRESS to stderr as well as errors, so the last
+// non-empty line is the one that says why; the first is usually a pull that
+// started. TrimSpace also removes the carriage return a Windows-side pipe adds.
+func engineFailure(stderr string, execErr error) string {
+	lines := strings.Split(stderr, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if t := strings.TrimSpace(lines[i]); t != "" {
+			return t
+		}
+	}
+	if execErr != nil {
+		return execErr.Error()
+	}
+	return "the engine gave no reason"
 }
 
 // containerScript builds the engine invocation.
 //
 // ⛔ Every value is POSIX-quoted and nothing is substituted into the caller's
 // script, which is a file the container reads. This text never contains it.
-func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, guestScript string) []byte {
+func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, guestScript, token string) []byte {
 	// ⚠ :Z is not SELinux theatre on a host that has none: podman ignores it
 	// where there is no policy and it is required where there is one.
 	//
@@ -330,7 +437,14 @@ func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, g
 	for _, k := range envKeys {
 		args = append(args, "--env", k+"="+spec.Env[k])
 	}
-	args = append(args, spec.Image, "/bin/sh", "/job.sh")
+	// ⛔ THE PAYLOAD IS ENTERED THROUGH A WRAPPER THAT ANNOUNCES ITSELF.
+	// Everything before this point can fail with a status a real payload could
+	// also return: resolving the reference, pulling it, creating the container,
+	// becoming --user, finding /bin/sh. The marker is written from INSIDE the
+	// container, so its presence is the one fact that separates an image that
+	// never ran from a program that exited 125.
+	wrapper := "printf '\\n%s\\n' '" + token + "' >&2\nexec /bin/sh /job.sh\n"
+	args = append(args, spec.Image, "/bin/sh", "-c", wrapper)
 
 	var b strings.Builder
 	b.WriteString("set -u\n")

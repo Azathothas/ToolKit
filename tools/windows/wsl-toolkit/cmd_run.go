@@ -5,9 +5,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -27,6 +29,7 @@ type jobFlags struct {
 	user        string
 	maxBytes    int64
 	maxEntries  int
+	maxOutput   int64
 	asJSON      bool
 	ensure      bool
 	viaHelper   bool
@@ -49,6 +52,7 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&j.user, "user", "", "what the container runs as: a name, a uid, or uid:gid. Empty means the image's default")
 	fs.Int64Var(&j.maxBytes, "max-bytes", toolkit.DefaultWorkspaceLimits().MaxBytes, "refuse a workspace or an artifact set larger than this")
 	fs.IntVar(&j.maxEntries, "max-entries", toolkit.DefaultWorkspaceLimits().MaxEntries, "refuse a workspace or an artifact set with more entries than this")
+	fs.Int64Var(&j.maxOutput, "max-output", 0, "how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says")
 	fs.BoolVar(&j.asJSON, "json", false, "write a structured answer")
 	fs.BoolVar(&j.ensure, "ensure-base", true, "build the base first when it is missing or unusable")
 	fs.BoolVar(&j.viaHelper, "via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
@@ -85,13 +89,52 @@ func (j *jobFlags) envMap() (map[string]string, error) {
 		if !ok {
 			return nil, fmt.Errorf("--env %q is not NAME=VALUE", pair)
 		}
+		// ⛔ Refused HERE, where the caller's own spelling is still available.
+		// The container invocation silently skipped a name it could not use, so
+		// `--env BAD-NAME=x` was accepted, dropped, and the job ran without it.
+		if !toolkit.ValidEnvName(name) {
+			return nil, fmt.Errorf("--env %q: %q is not a usable environment name. A name is letters, digits and underscores, and does not start with a digit", pair, name)
+		}
 		out[name] = value
 	}
 	return out, nil
 }
 
+// check refuses the values that were accepted and then quietly meant something
+// else. ⚠ A NEGATIVE TIMEOUT DISABLED THE DEADLINE: the code applied one only
+// when the duration was positive, so `--timeout -1s` ran unbounded, which is the
+// opposite of what a caller writing a negative number could possibly want.
+func (j *jobFlags) check() error {
+	if j.timeout < 0 {
+		return fmt.Errorf("--timeout %s is negative. Pass 0 for no deadline, or a positive duration", j.timeout)
+	}
+	if j.maxBytes <= 0 {
+		return fmt.Errorf("--max-bytes %d is not a size. Pass a positive number of bytes", j.maxBytes)
+	}
+	if j.maxEntries <= 0 {
+		return fmt.Errorf("--max-entries %d is not a count. Pass a positive number of entries", j.maxEntries)
+	}
+	if j.maxOutput < 0 {
+		return fmt.Errorf("--max-output %d is negative. Pass 0 for the default, or a positive number of bytes", j.maxOutput)
+	}
+	return nil
+}
+
 func (j *jobFlags) limits() toolkit.WorkspaceLimits {
 	return toolkit.WorkspaceLimits{MaxBytes: j.maxBytes, MaxEntries: j.maxEntries}
+}
+
+// sinks are where the container's own bytes go WHILE IT RUNS.
+//
+// ⛔ UNDER --json THERE IS NO LIVE STDOUT, and that is not an oversight.
+// This process's stdout carries the structured answer, so a container writing to
+// it as well would produce a document nothing can parse. The complete output is
+// on the result and, whatever its size, in the transcript the result names.
+func (j *jobFlags) sinks() (out, errw io.Writer) {
+	if j.asJSON {
+		return nil, os.Stderr
+	}
+	return os.Stdout, os.Stderr
 }
 
 func cmdRun(ctx context.Context, args []string) (int, error) {
@@ -99,11 +142,14 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	var j jobFlags
 	j.bind(fs)
 	image := fs.String("image", "", "a catalog id or a fully qualified reference")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	if *image == "" {
 		return exitCannot, errors.New("--image is required. wsl-toolkit images lists the catalog")
+	}
+	if err := j.check(); err != nil {
+		return exitCannot, err
 	}
 	payload, err := j.script()
 	if err != nil {
@@ -147,10 +193,12 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err := ensureBase(ctx, runner, j.ensure); err != nil {
 		return exitCannot, err
 	}
+	liveOut, liveErr := j.sinks()
 	res := runner.Run(ctx, toolkit.JobSpec{
 		Image: ref, Script: payload, Workspace: j.workspace, Excludes: toolkit.SortedExcludes(j.excludes),
 		ArtifactDir: j.artifactDir, Env: env, Timeout: j.timeout, Network: !j.noNetwork,
 		Limits: j.limits(), Label: *image, User: j.user,
+		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 	})
 	return reportJob(res, j.asJSON)
 }
@@ -161,12 +209,24 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 	if asJSON {
 		return jobVerdict(res), writeJSON(res)
 	}
-	// ⛔ THE CONTAINER'S OWN OUTPUT GOES TO STDOUT AND NOTHING ELSE DOES, so a
-	// caller can read a value off it.
-	os.Stdout.WriteString(res.Stdout)
-	os.Stderr.WriteString(res.Stderr)
+	// ⛔ NOTHING IS REPLAYED HERE. The container's bytes went to this
+	// process's own streams as they were written, so printing them again would
+	// double every line. stdout still carries the container's output and nothing
+	// else, which is what lets a caller read a value off it.
+	if res.StdoutTruncated || res.StderrTruncated {
+		// ⚠ SAID OUT LOUD. The in-memory copy is bounded and the transcript
+		// is not, and a caller who never learns which one they are reading is
+		// the caller this defect was filed by.
+		logf("  ! the recorded copy of this job's output was cut at the capture limit; the complete text is under %s", res.Transcript)
+	}
 	if res.Error != "" {
 		logf("  ! %s", res.Error)
+	}
+	if res.ArtifactError != "" {
+		logf("  ! artifacts: %s", res.ArtifactError)
+		if res.GuestDir != "" {
+			logf("  ! the output is still in the guest at %s", res.GuestDir)
+		}
 	}
 	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
 	return jobVerdict(res), nil
@@ -178,11 +238,19 @@ func jobVerdict(res toolkit.JobResult) int {
 		return exitCannot
 	case res.TimedOut:
 		return exitTimeout
-	default:
+	case res.Exit != 0:
 		// ⭐ The container's own exit code is forwarded verbatim, which is the
 		// whole point of running one. A wrapper that flattened it to 1 would
-		// make every downstream test read the same.
+		// make every downstream test read the same. It also WINS over a failed
+		// transfer: a job that exited 7 and delivered nothing exited 7, and that
+		// is the more specific fact.
 		return res.Exit
+	case res.ArtifactError != "":
+		// ⛔ The command succeeded and what it was asked to deliver did not
+		// arrive. Exiting 0 here is how a green pipeline lost its build output.
+		return exitFailed
+	default:
+		return exitOK
 	}
 }
 
@@ -193,8 +261,14 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	images := fs.String("images", "", "catalog ids, libc:musl, kind:legacy or all. Comma separated. Empty means the configured default")
 	parallel := fs.Int("parallel", toolkit.DefaultParallel, "how many rows run at once")
 	transcripts := fs.String("transcripts", "", "a directory to write one transcript per row into")
-	if err := fs.Parse(args); err != nil {
+	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
+	}
+	if err := j.check(); err != nil {
+		return exitCannot, err
+	}
+	if *parallel < 1 {
+		return exitCannot, fmt.Errorf("--parallel %d would run no rows at all. Pass 1 or more", *parallel)
 	}
 	payload, err := j.script()
 	if err != nil {
@@ -252,6 +326,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		Excludes: toolkit.SortedExcludes(j.excludes), ArtifactDir: j.artifactDir,
 		Env: env, Timeout: j.timeout, Network: !j.noNetwork, Parallel: *parallel,
 		Limits: j.limits(), Transcripts: *transcripts, User: j.user,
+		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
 	})
 	if err != nil {
 		return exitCannot, err
@@ -268,6 +343,32 @@ func reportMatrix(report toolkit.MatrixReport, asJSON bool) (int, error) {
 		return exitCannot, err
 	}
 	return report.Verdict(), nil
+}
+
+// rowPrinter reports a fleet row as it finishes.
+//
+// ⭐ It is the difference between a fleet that says nothing for seventy
+// seconds and one a caller can watch. The table still prints at the end; this is
+// what happens before it.
+//
+// ⚠ Rows finish on several goroutines at once, so the writer is locked. Two
+// rows finishing in the same instant would otherwise interleave inside one line.
+func rowPrinter() func(toolkit.JobResult) {
+	var mu sync.Mutex
+	done := 0
+	return func(row toolkit.JobResult) {
+		mu.Lock()
+		defer mu.Unlock()
+		done++
+		mark := "ok"
+		switch {
+		case row.Unreached:
+			mark = "unreached"
+		case row.Failed():
+			mark = "FAILED"
+		}
+		logf("  %-9s %-14s exit %-3d %s", mark, row.Label, row.Exit, row.Duration.Round(time.Millisecond))
+	}
 }
 
 func ensureBase(ctx context.Context, runner *toolkit.Runner, allowed bool) error {

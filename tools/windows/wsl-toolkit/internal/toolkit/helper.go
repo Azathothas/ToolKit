@@ -38,7 +38,12 @@ import (
 //	a WSL lifecycle call it builds and repairs the base and unregisters nothing
 
 // HelperSchema versions the endpoint file and every response.
-const HelperSchema = "wsl-toolkit-helper/1"
+// ⚠ VERSION 2 CHANGED THE SHAPE OF TWO ROUTES. /v1/run and /v1/matrix used to
+// answer with one JSON object once the work was over and now answer with a
+// stream of newline-framed events. A client of version 1 reading a version 2
+// answer sees the first event and no result, which is why the version is checked
+// before a job is sent rather than after one comes back.
+const HelperSchema = "wsl-toolkit-helper/2"
 
 // HelperEndpoint is what a client reads to find a listening helper.
 type HelperEndpoint struct {
@@ -296,6 +301,13 @@ func (h *HelperServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.stage[id] = dir
 	h.mu.Unlock()
+	// ⛔ RECORDED, so cleanup can see it without this process. The map is a
+	// convenience for the running helper; the ledger is what survives it being
+	// killed, and what stops a concurrent `gc --apply` removing an upload that a
+	// job is about to use.
+	if err := h.runner.ledger.Append(LedgerEntry{Event: "open", Kind: "upload", ID: id, HostDir: dir}); err != nil {
+		h.log("could not record the uploaded workspace " + id + ": " + err.Error())
+	}
 	writeHelperJSON(w, http.StatusOK, map[string]any{
 		"schema": HelperSchema, "id": id, "entries": entries, "bytes": total,
 	})
@@ -330,6 +342,10 @@ type HelperRunRequest struct {
 	Artifacts  bool   `json:"artifacts,omitempty"`
 	MaxBytes   int64  `json:"max_bytes,omitempty"`
 	MaxEntries int    `json:"max_entries,omitempty"`
+	// MaxOutput is here for the same reason User is: the direct path has it. A
+	// door sweep found it missing before this shipped, which is the SECOND time
+	// a job flag has been dropped between the two routes.
+	MaxOutput int64 `json:"max_output,omitempty"`
 }
 
 // HelperMatrixRequest is the wire shape of a fleet run.
@@ -354,7 +370,14 @@ func (h *HelperServer) artifactDir(id string, want bool) string {
 	if !want {
 		return ""
 	}
-	return filepath.Join(h.runner.home, "artifacts", id)
+	dir := filepath.Join(h.runner.home, "artifacts", id)
+	// Recorded BEFORE the job fills it, for the reason every other record here
+	// is: a set written by a run that was killed is only findable if the record
+	// went in first.
+	if err := h.runner.ledger.Append(LedgerEntry{Event: "open", Kind: "artifacts", ID: id, HostDir: dir}); err != nil {
+		h.log("could not record the artifact set " + id + ": " + err.Error())
+	}
+	return dir
 }
 
 func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -378,15 +401,25 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	// ⛔ THE UPLOAD IS CONSUMED BY THE JOB THAT NAMED IT. One upload, one
+	// job: nothing in the protocol reuses a staging id, and a helper that kept
+	// them accumulated every workspace any client had ever sent, none of which
+	// cleanup could see.
+	defer h.releaseStaging(req.StagingID)
+
+	// ⭐ THE HEADER GOES OUT BEFORE THE JOB STARTS. Once it has, the client
+	// is reading, and every byte the container writes reaches it as it is
+	// written rather than when the job is over.
+	events := newEventWriter(w)
 	res := h.runner.Run(r.Context(), JobSpec{
 		Image: req.Image, Script: payload, Workspace: staged, Env: req.Env,
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
 		Limits: req.limits(), ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
-		User: req.User,
+		User: req.User, MaxOutput: req.MaxOutput,
+		Stdout: &chunkWriter{out: events, kind: "stdout"},
+		Stderr: &chunkWriter{out: events, kind: "stderr"},
 	})
-	writeHelperJSON(w, http.StatusOK, map[string]any{
-		"schema": HelperSchema, "result": res, "artifacts_id": artifactID,
-	})
+	events.send(HelperEvent{Kind: "result", Result: &res, ArtifactsID: artifactID})
 }
 
 func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
@@ -415,23 +448,43 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	defer h.releaseStaging(req.StagingID)
+
+	events := newEventWriter(w)
 	report, err := h.runner.RunMatrix(r.Context(), MatrixSpec{
 		Images: selected, Script: payload, Workspace: staged, Env: req.Env,
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
 		Parallel: req.Parallel, Limits: req.limits(),
 		ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
 		User:        req.User,
+		MaxOutput:   req.MaxOutput,
+		// ⛔ A ROW IS SENT WHEN IT FINISHES, not when the fleet does. A
+		// caller watching twelve images can see eleven succeed while the
+		// twelfth is still pulling, which is the difference between a fleet
+		// that is working and one that is stuck.
+		OnRow: func(row JobResult) {
+			// The row's own streams are not forwarded: twelve containers
+			// interleaved on one stdout is unreadable, and the transcripts hold
+			// the complete text of each.
+			row.Stdout, row.Stderr = "", ""
+			events.send(HelperEvent{Kind: "row", Row: &row})
+		},
 	})
 	if err != nil {
-		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		events.send(HelperEvent{Kind: "error", Text: err.Error()})
 		return
 	}
-	writeHelperJSON(w, http.StatusOK, map[string]any{
-		"schema": HelperSchema, "report": report, "artifacts_id": artifactID,
-	})
+	events.send(HelperEvent{Kind: "report", Report: &report, ArtifactsID: artifactID})
 }
 
-// handleArtifacts streams one job's artifact directory back as an archive.
+// handleArtifacts streams one job's artifact directory back as an archive, and
+// releases it when the client says it arrived.
+//
+// ⛔ THE HELPER DOES NOT DELETE ON A SUCCESSFUL WRITE TO THE SOCKET. Bytes
+// leaving here is not the same fact as bytes landing on the client's disk, and
+// deleting on the first is the same shape as the defect where a job's guest
+// output was torn down after a transfer that had failed. The client sends DELETE
+// once it has extracted; anything nobody acknowledges is collected by age.
 func (h *HelperServer) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 	id := r.URL.Query().Get("id")
 	if _, err := hex.DecodeString(id); err != nil || len(id) != 16 {
@@ -446,12 +499,56 @@ func (h *HelperServer) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := os.Stat(dir); err != nil {
+		if r.Method == http.MethodDelete {
+			// ⚠ RELEASING SOMETHING ALREADY GONE IS A SUCCESS. A client that
+			// retried, or one whose set cleanup collected first, would otherwise
+			// get an error for a state it was asking for.
+			writeHelperJSON(w, http.StatusOK, map[string]any{"schema": HelperSchema, "released": id})
+			return
+		}
 		http.Error(w, "no artifacts under that id", http.StatusNotFound)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		if err := RemoveInside(h.runner.home, dir); err != nil {
+			writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		if err := h.runner.ledger.Append(LedgerEntry{Event: "close", Kind: "artifacts", ID: id}); err != nil {
+			h.log("could not close the record for the artifact set " + id + ": " + err.Error())
+		}
+		writeHelperJSON(w, http.StatusOK, map[string]any{"schema": HelperSchema, "released": id})
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-tar")
 	if _, _, err := writeWorkspaceTar(w, dir, DefaultWorkspaceLimits(), nil); err != nil {
 		h.log("streaming artifacts " + id + ": " + err.Error())
+	}
+}
+
+// releaseStaging removes one uploaded workspace and forgets it.
+//
+// ⚠ THE MAP IS NOT THE RECORD. It is removed from both, and the directory
+// is what cleanup reads, so a helper that was killed between the upload and the
+// job still leaves something collectable rather than something only a lost map
+// could have named.
+func (h *HelperServer) releaseStaging(id string) {
+	if id == "" {
+		return
+	}
+	h.mu.Lock()
+	dir, ok := h.stage[id]
+	delete(h.stage, id)
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+	if err := RemoveInside(h.runner.home, dir); err != nil {
+		h.log("could not release the uploaded workspace " + id + ": " + err.Error())
+		return
+	}
+	if err := h.runner.ledger.Append(LedgerEntry{Event: "close", Kind: "upload", ID: id}); err != nil {
+		h.log("could not close the record for the uploaded workspace " + id + ": " + err.Error())
 	}
 }
 
@@ -494,6 +591,10 @@ func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
 		Apply       bool  `json:"apply"`
 		OlderThanMS int64 `json:"older_than_ms"`
 		Images      bool  `json:"images"`
+		// IncludeLive is on the wire because the direct path has it. ⛔ A
+		// flag one route honours and the other drops is the defect this
+		// protocol has already had once.
+		IncludeLive bool `json:"include_live,omitempty"`
 	}
 	if r.ContentLength > 0 {
 		if err := decodeHelperBody(r, &req); err != nil {
@@ -501,7 +602,11 @@ func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	plan, err := h.runner.Cleanup(r.Context(), req.Apply, time.Duration(req.OlderThanMS)*time.Millisecond, req.Images)
+	policy := CleanupPolicy{
+		OlderThan:   time.Duration(req.OlderThanMS) * time.Millisecond,
+		IncludeLive: req.IncludeLive,
+	}
+	plan, err := h.runner.Cleanup(r.Context(), req.Apply, policy, req.Images)
 	payload := map[string]any{"schema": HelperSchema, "plan": plan}
 	if err != nil {
 		payload["error"] = err.Error()

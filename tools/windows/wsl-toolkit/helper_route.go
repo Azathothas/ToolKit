@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -21,7 +20,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 		Image: ref, ScriptB64: toolkit.EncodeScript(payload), Env: env,
 		TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
 		Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
-		User: j.user,
+		User: j.user, MaxOutput: j.maxOutput,
 	}
 	if j.workspace != "" {
 		note("uploading the workspace to the helper")
@@ -31,15 +30,32 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 		}
 		req.StagingID = id
 	}
-	res, artifactsID, err := c.Run(ctx, req)
+	liveOut, liveErr := j.sinks()
+	// ⭐ The bytes are arriving anyway, so they are written to this machine
+	// as well. Without it `wsl-toolkit logs` on the helper route named a
+	// directory that exists only under the helper's own state, which is a
+	// different path whenever the two do not share WSL_TOOLKIT_HOME.
+	spool := newClientSpool()
+	res, artifactsID, err := c.RunStream(ctx, req, toolkit.HelperSinks{
+		Stdout: spool.Tee(liveOut, false), Stderr: spool.Tee(liveErr, true), Log: note,
+	})
 	if err != nil {
+		spool.Discard()
 		return res, err
 	}
+	if local := spool.Finish(res.ID); local != "" {
+		res.Transcript = local
+	}
 	res.Label = label
-	if j.artifactDir != "" && artifactsID != "" {
+	if j.artifactDir != "" && artifactsID != "" && res.ArtifactError == "" {
 		n, err := c.DownloadArtifacts(ctx, artifactsID, j.artifactDir, j.limits())
 		if err != nil {
-			return res, fmt.Errorf("the job ran and its artifacts could not be fetched: %w", err)
+			// ⛔ A FIELD ON THE RESULT, NOT AN ERROR RETURNED PAST IT. Returning
+			// an error here made the caller report exit 2 for a job that ran and
+			// discarded the container's own exit code. The verdict reads this
+			// field, so both routes reach the same number the same way.
+			res.ArtifactError = err.Error()
+			return res, nil
 		}
 		res.Artifacts = n
 	}
@@ -52,7 +68,7 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 			ScriptB64: toolkit.EncodeScript(payload), Env: env,
 			TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
 			Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
-			User: j.user,
+			User: j.user, MaxOutput: j.maxOutput,
 		},
 		Images: images, Parallel: parallel,
 	}
@@ -64,13 +80,22 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 		}
 		req.StagingID = id
 	}
-	report, artifactsID, err := c.Matrix(ctx, req)
+	report, artifactsID, err := c.MatrixStream(ctx, req, toolkit.HelperSinks{
+		Log: note, Row: rowPrinter(),
+	})
 	if err != nil {
 		return report, err
 	}
 	if j.artifactDir != "" && artifactsID != "" {
 		if _, err := c.DownloadArtifacts(ctx, artifactsID, j.artifactDir, j.limits()); err != nil {
-			return report, fmt.Errorf("the fleet ran and its artifacts could not be fetched: %w", err)
+			// Every row asked for output and none of it arrived, so every row
+			// carries the failure and the fleet's counts move with them.
+			for i := range report.Rows {
+				if report.Rows[i].ArtifactError == "" {
+					report.Rows[i].ArtifactError = err.Error()
+				}
+			}
+			report.Recount()
 		}
 	}
 	if transcripts != "" {
@@ -85,6 +110,20 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 		}
 	}
 	return report, nil
+}
+
+// newClientSpool opens one, tolerating a machine with no writable state
+// directory: a nil spool writes nothing and every method accepts it.
+func newClientSpool() *toolkit.ClientSpool {
+	home, err := toolkit.EnsureHome()
+	if err != nil {
+		return nil
+	}
+	led, err := toolkit.OpenLedger()
+	if err != nil {
+		led = nil
+	}
+	return toolkit.NewClientSpool(home, led)
 }
 
 // transcriptWriter writes a helper-run row the same way the direct path does, so
