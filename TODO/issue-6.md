@@ -174,3 +174,39 @@ reported the wrong LINE for every disagreement in the embedded copy, because it
 split on newline and left the CRLF product's carriage returns on, so line 1
 always differed and the two values printed underneath looked identical. Both
 fixed; the differ now names line 2150 for an edit at line 2150.
+
+### The release, driven as a consumer
+
+`wsl-toolkit-v1.1.0` published by the workflow on 2026-09-09, five assets, with
+`SHA256SUMS` computed in CI over the bytes that were uploaded. Then, from an
+empty directory holding nothing but `launcher.ps1` fetched from that release:
+
+```text
+$ pwsh -NoProfile -File ./launcher.ps1 -LauncherRelease wsl-toolkit-v1.1.0 -LauncherInstallDir . version
+  * release wsl-toolkit-v1.1.0, asset wsl-toolkit-windows-amd64.exe
+  * digest matches the SHA256SUMS in release wsl-toolkit-v1.1.0
+1.1.0
+
+$ pwsh -NoProfile -File ./launcher.ps1 -LauncherKind script -LauncherRelease wsl-toolkit-v1.1.0 -LauncherInstallDir . -Action List
+  * release wsl-toolkit-v1.1.0
+  * digest matches the SHA256SUMS in release wsl-toolkit-v1.1.0
+==> Other distros on this system -- never touched by this script
+  podman-machine-default   [PROTECTED]
+  wsl-toolkit   [PROTECTED]
+
+$ ./wsl-toolkit-windows-amd64.exe run --image alpine --workspace ws --artifacts out -c '...'
+  workspace: 1 entries, 17 B copied to /home/toolkit/.wsl-toolkit/jobs/8fa39b8bb07a0154/work
+uid=0 ok  alpine exited 0 in 1.776s
+  artifact: from-the-release
+```
+
+⭐ **The digests were recomputed here and compared against the published
+`SHA256SUMS`**, rather than trusting the launcher's own report: all three
+downloadable-on-this-host assets match. `-LauncherSha256` with a digest held by
+the caller passes on top of that, which is the check that proves authorship
+rather than transport.
+
+⚠ **`wsl-toolkit` reads as `[PROTECTED]` to the script now**, which is the
+`20-prelude.ps1` change doing its job: the throwaway-distro tool refuses to
+touch the distribution the executable owns, and the two tools cannot destroy
+each other's.

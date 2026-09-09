@@ -9,14 +9,16 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-09T05:51:14Z
 baseline        bf119301, clean main; fast gate: 14 pass, 1 fail, 2 skipped.
 entries         total 53  open 8  blocked 0  done 45
-gate            full run on this host: all 18 checks passed, check-twins included
+gate            17 checks, one binary, 31s, all passing
 ```
 
 ## Active work
 
-None. [WSL-31](issue-6.md) closed on 2026-09-09 with its acceptance output
-pasted underneath it, which resolves
+None. [WSL-31](issue-6.md) closed on 2026-09-09 with its acceptance output and
+its release evidence pasted underneath it, which resolves
 [issue 6](https://github.com/Azathothas/ToolKit/issues/6) in full.
+[TOOL-13](tooling.md) closed the same day: the gate is one Go binary and runs in
+about 30 seconds rather than 13m20s.
 
 ## What this session shipped
 
@@ -49,9 +51,11 @@ isolation   a container ran `rm -rf /work/*` and the host workspace is
             byte identical afterwards.
 acceptance  23 of 23 cases pass against the real base, both routes, both
             accounts, every catalog image.
-gate        all 18 checks pass, check-twins included. The fast gate is 6m20s
-            on this host; check-twins alone is why the full run is a separate
-            act.
+gate        17 checks, one binary, 31s on this host, including shellcheck,
+            PSScriptAnalyzer, a rebuild of both generated products and the Go
+            suite. It was 13m20s as eighteen shell checks with a twin comparison.
+release     wsl-toolkit-v1.1.0 published by the workflow, five assets, and
+            driven from an empty directory in both launcher modes.
 ```
 
 Sandbox facts that shaped the work, and that a later session should not have to

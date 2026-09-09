@@ -7,48 +7,53 @@ on what was true last time.
 
 ---
 
-## 2026-08-30
+## 2026-09-09
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-08-30T07:17:24Z | 2026-08-30T09:35Z, about 2h18m |
-| Commits | `2ffa680` | 4 on `main`, and two tags: `wsl-toolkit-v1.0.0` and `v1.0.1` |
-| Work | 4 open entries assigned | **8 completed, 0 deferred, 0 failed.** `WSL-21` `WSL-22` `WSL-23` `WSL-24` `TOOL-09` `TOOL-10` `DOC-06` `DOC-07`. 8 new entries filed from a list the operator accepted item by item. |
-| Changes | 96 tracked files | 130 tracked files; 69 changed, +9,607 / -614 lines across four commits |
-| Size | 28,228 tracked lines | 37,221 tracked lines, +8,993 |
-| Checks | 15 passing, `check-twins` skipped by `--fast` | ⭐ **17 of 17 passing on the full run**, `check-twins` included. Two new: `wsl-toolkit bundle` and, inside `build.ps1 -Test`, a case-shadowed-parameter scan. |
-| Suite | 63 cases over 15 functions | 117 cases over 30 functions, green on both PowerShell hosts |
-| Published | ⛔ nothing, ever | ⭐ two releases, `wsl-toolkit-v1.0.0` and `v1.0.1`, each carrying `wsl-toolkit.ps1`, `launcher.ps1` and a `SHA256SUMS` computed in CI. The workflow succeeded on its first run and on its second. |
-| CI | green at `2ffa680` | green at `89397c1`. ⚠ It went red once in between, on the ubuntu job, over a defect the local gate structurally cannot see. |
-| Cost | no money, no bandwidth beyond fetches | ~15 distro create-and-destroy cycles, `alpine:3.22` at 8.2 MiB each, all torn down |
-| Health | 4 open, 0 blocked, 35 done | 8 open, 0 blocked, 43 done. Tree clean, gate green, `wsl-toolkit-v1.0.0` deployed and driven end to end. |
+| Elapsed | started 2026-09-09T05:51:14Z | about 16 hours, across one resumed context |
+| Commits | `bf11930` | 5 on `main`, and one tag: `wsl-toolkit-v1.1.0` |
+| Work | issue 6, unstarted | **2 entries closed, 0 deferred, 0 failed.** `WSL-31` resolves the issue in full; `TOOL-13` was filed and closed inside the session |
+| Changes | 130 tracked files | 201 tracked files; 124 changed, +19,310 / -4,441 lines |
+| Checks | 18, as sh and PowerShell pairs, 13m20s | ⭐ **17 in one Go binary, 31s**, all passing. The twin comparison left the gate and stayed in CI |
+| Suite | 123 PowerShell cases | 123 PowerShell cases, plus 34 Go cases and a 23-case acceptance runner against a real machine |
+| Published | `wsl-toolkit-v1.0.1`, two assets | ⭐ `wsl-toolkit-v1.1.0`, five assets, including the executable for two Windows architectures. The workflow succeeded on its first run |
+| CI | green at `bf11930` | green at `87b7775`. ⚠ It went red once, on three jobs, over three defects the local gate structurally cannot see |
+| Cost | no money | 12 catalog images pulled, one 4 GiB WSL distribution built and kept, ~20 containers commissioned and destroyed |
+| Health | 52 entries: 9 open, 0 blocked, 43 done | 53 entries: 8 open, 0 blocked, 45 done. Tree clean, gate green, release driven end to end |
 
 ### ⭐ Defects found, and by which pass
 
-Eleven, and ten of them by driving, measuring or comparing rather than by reading.
-Three were in the checks themselves rather than in the code being checked, and
-one was found only by CI, on a host the local gate cannot be.
+Sixteen. ⛔ **Four were found by CI or by a driven run and could not have been
+found by reading**, and three were in the checks rather than in the code.
 
 | what | the pass that found it |
 | --- | --- |
-| a `$state` local shadowing a `$State` parameter, killing the tick mid-run | driving a real distro |
-| `-ScriptArg` documented as repeatable and never bindable through `-File` | driving the documented example from the issue comment |
-| `[int[]] -TickEscalateSeconds 5,9` binding the single value `59` | instrumenting an escalation that silently never fired |
-| `check-no-secrets.ps1` unable to match a Windows home path at all | the FULL gate; `check-twins` named the drift |
-| `check-docs.ps1` calling correct three-deep links broken | the two halves of that twin disagreeing |
-| `-TimestampProfile raw` reading settings its own branch never built | the door sweep |
-| a sink-path refusal that `-DryRun` returned before reaching | the guard-mutation pass |
-| a new check reporting one blank finding over a clean tree | reading the finding, not the exit code |
-| three of the session's own test cases passing for the wrong reason | the two cases beside them that expected success |
-| the vhdx write time advancing while a guest slept | sampling it against a guaranteed-idle guest |
-| a Windows-semantics guard answering differently on Linux | CI's ubuntu job, which the local gate cannot be |
+| the helper route accepted `--user` and ran the job as root | the door sweep |
+| the launcher decided "verification failed" from the wording of an error | the door sweep |
+| a named release lost to a stale executable beside the launcher | the door sweep |
+| `-LauncherSha256` ignored on every path that names a file | the door sweep |
+| `-LauncherLocal` and `-LauncherRef` still went to the network for a binary | driving the launcher from an empty directory |
+| the protected-distribution list could be deleted with the suite still green | the guard mutation |
+| `--user` was in the code and in neither manual | the claim audit |
+| `build.ps1 -Check` named line 1 for every difference in the embedded copy | the claim audit |
+| `gc` exited 0 over a list of things it could not remove | reading the gc path after a leftover |
+| a workspace symlink pointing out of the tree was packed, not refused | ⛔ CI's ubuntu job; the case cannot run on Windows |
+| `WindowsPathToGuest` answered differently on Linux | ⛔ CI's ubuntu job |
+| a runner's short-form temporary directory failed a path comparison | ⛔ CI's windows job |
+| shellcheck 0.11.0 and 0.8.0 disagree about one line | ⛔ CI, and reproduced in a container afterwards |
+| two banned adjectives in live pages, with nothing enforcing the rule | the Go port reading a rule nothing had read |
+| the ported tree loader dropped untracked files from every check's scope | planting a credential and watching nothing report it |
+| eight acceptance cases failing over `Start-Process -ArgumentList` | running the acceptance runner for the first time |
 
 ### ⚠ What was NOT done, said rather than left to be found
 
-- **The consumer pins have not moved**, and all three rows are broken by the path
-  change. That is a change in three other repositories and this one cannot make
-  it. `PROGRESS.md` open question 1.
-- **The eight new entries are filed and unstarted.** None is a defect; every
-  defect found this session was fixed in it.
-- **`HUMAN.md` and `SECURITY.md` are still absent**, and publishing an artefact
-  strengthens the case for the second one slightly.
+- **`check-twins` still takes 5m35s** and now runs outside the gate. The six
+  pairs left are genuinely two implementations; porting the doctor probe would
+  remove most of that, and nothing here depends on it.
+- **The `go` and `checks` CI jobs are not required status checks.** `main`
+  requires three, and the compiled half is not one of them. Adding it is a
+  branch-protection change and the operator's to make.
+- **The consumer pins have not moved**, and this release breaks three things
+  they may rely on. [`../docs/consumers.md`](../docs/consumers.md) carries a row
+  for each; moving a pin is a change in another repository.
