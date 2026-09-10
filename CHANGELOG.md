@@ -21,6 +21,67 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T14:05:00Z: wsl-toolkit 2.0.1, and the first release that is signed
+
+**Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), entry `WSL-25`,
+closed against the published release rather than against the workflow that
+would produce it.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v2.0.1`, ten assets: the script, the
+launcher, the executable for two Windows architectures, `SHA256SUMS`, and one
+`.cosign.bundle` per file.
+
+⭐ **The signing path had never run.** `WSL-25` landed in the previous session
+with every branch of the launcher's verify path driven against
+`wsl-toolkit-v2.0.0`, which carries no bundles: what was proved was that `auto`
+reports, `require` refuses, `off` says nothing was checked, and a bad mode is
+refused before any network. Whether `cosign sign-blob --bundle` and
+`cosign verify-blob --bundle` agree in a real run was unproved until this tag.
+
+⚠ **Nothing in the product changed with the version.** 2.0.1 carries the same
+surface as 2.0.0, forty entries in `surface.lock`; the bump exists because
+`release.yml` refuses a tag that disagrees with the version inside the file, and
+because the release is the artefact `WSL-25` closes against.
+
+### 2026-09-10T13:55:00Z: the runtime check that never ran, and sixteen claims measured
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md) entry `TOOL-22`, and
+[`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md) entry `WSL-30`, with `WSL-59`,
+`WSL-60` and `WSL-61` authored from what the matrix found.
+**Deployed:** ⛔ **no deploy.** Nothing here reaches a published asset; the
+workflow comments, the record and one Go helper are all internal.
+
+⛔ **A guard that had never once been able to speak.** `check-remote-items`
+reports what runtime a pinned commit declares, and that column exists because a
+deprecated Node runtime got past a session that only resolved the tag. It read
+`action.yml` through a helper that passed the ref as a parameter, and `gh` picks
+its method from its arguments: GET normally, POST the moment one is added. Every
+pin it has ever seen printed `runtime unverified`, as a note rather than as a
+failure. `TOOL-22`.
+
+⭐ **Ten of the mockup's sixteen podman claims hold, three are absent, and the
+three share one cause.** The base runs rootless podman under `init(wsl-toolkit)`
+with no cgroup delegation, so no cgroup exists per container:
+`/proc/<pid>/cgroup` reads `0::/`, `podman stats` reports `0B`, and `--memory` is
+accepted and not enforced. `podman-machine-default`, rootful on the same kernel
+with a read-write cgroup tree, answers all three. `WSL-30`, and `WSL-60` carries
+the defect.
+
+⚠ **The document those claims came from is 404 now**, and was never archived.
+The claims are copied into the entry, which is what
+[`docs/methodology/references.md`](docs/methodology/references.md) asks for and
+what nobody had done.
+
+### 2026-09-10T13:45:00Z: actions/setup-go moves to v7.0.0
+
+**Record:** commit `295151a`, and the pull request it squashed.
+**Deployed:** ⛔ **no deploy.** A workflow pin change takes effect on the next
+run and reaches no published asset.
+
+⚠ **The bump's own claims were re-derived rather than read.** The commit is what
+`refs/tags/v7.0.0` resolves to, and `action.yml` at it declares `node24`. The
+comments above two of the five pins still cited the `v6` ref they were resolved
+against; both now name `v7.0.0` and the date they were re-resolved.
+
 ### 2026-09-10T13:40:00Z: the 2026-08-30 script backlog, re-derived and closed
 
 **Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), entries `WSL-26`,
