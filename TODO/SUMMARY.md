@@ -12,7 +12,7 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-09T21:00:00Z | about 9 hours, across two resumed contexts |
-| Commits | `450b380` | 11 on `main`, and two tags: `wsl-toolkit-v1.2.0` and `wsl-toolkit-v1.3.0` |
+| Commits | `450b380` | 13 on `main`, counting the one that carries this number, and two tags: `wsl-toolkit-v1.2.0` and `wsl-toolkit-v1.3.0` |
 | Work | 8 issues filed against the published `v1.1.0`, none started | **14 entries closed, 11 filed and not started, 0 deferred, 0 failed.** `WSL-32` to `WSL-39` resolve issues 7 to 14; `TOOL-14` ports five shell pairs; `WSL-40` and `WSL-41` are the core pass and the review after it; `TOOL-15` and `TOOL-16` are what the operator's question produced |
 | Changes | 201 tracked files | 234 tracked files; 78 changed, +10,885 / -2,789 lines |
 | Go modules | 2, `tools/check` and `tools/windows/wsl-toolkit` | 3. `tools/repo` is the tool box for what is NOT a gate check, and `check-gate` still runs only rules |
@@ -21,7 +21,7 @@ on what was true last time.
 | Mutation | 23 guards proved, by a script under `.tmp/` | ⭐ **48 proved**, by `repo mutate` in the tree. Each one deleted, the named case run, the case count and the build status reported separately |
 | Published | `wsl-toolkit-v1.1.0` | `wsl-toolkit-v1.3.0`, five assets, digests recomputed from the downloaded files |
 | Checks | 17 in one Go binary, 31s | 18, 43s. Five shell pairs became a Go program and none of them became a gate check; the one that was added is `hooks`, for the reason below |
-| Health | 53 entries: 8 open, 0 blocked, 45 done | 77 entries: 19 open, 0 blocked, 58 done. Tree clean, gate green, CI green, release verified as a consumer |
+| Health | 53 entries: 8 open, 0 blocked, 45 done | 78 entries: 20 open, 0 blocked, 58 done. Tree clean, gate green, CI green, release verified as a consumer |
 
 ### ⭐ Defects found, and by which pass
 
@@ -76,6 +76,31 @@ red in 6 of 10 plain runs and 10 of 10 under `-race`, so the detector buys
 determinism and not visibility. The comment, the record and the harness all carry
 the numbers now. ⚠ The lesson is the cheaper one: the measurement took four
 minutes and the claim would have stood for as long as the file did.
+
+### ⛔ A closed entry was carrying a false claim
+
+The sixth review read the twelve filed entries as a session with no memory of
+writing them would, and checked every reference rather than every sentence. Six
+`file:line` seams all resolved to the line they name. Every cross-reference
+resolved to an entry that exists. Two citations of PRIOR entries did not.
+
+`WSL-44` credited a probe cache to `WSL-19`, which is the timeout entry; it is
+`WSL-32`. `WSL-46` credited the marker framing to `WSL-38`, which is the
+positional-arguments entry; it is `WSL-39`. ⭐ **Both survived the gate,
+because its link check proves a linked FILE exists and cannot know whether the
+entry inside it is the one meant.**
+
+Following the second one found the thing worth keeping. `WSL-39`, closed and
+shipped, says the marker is stripped before any sink sees it. It is not: the
+newline in front of it is written back, which is
+[issue 23](https://github.com/Azathothas/ToolKit/issues/23), filed against a
+release this repository cut believing that sentence. The entry is amended in
+place rather than corrected, because a test named for a property the code does
+not have is the more useful half of that record.
+
+⚠ **A third citation was missing rather than wrong.** `WSL-19` bounded a
+hung run by bounding the CHILD. `WSL-45` is the discovery that bounding the child
+does not bound the caller, and it did not mention the entry it supersedes.
 
 ### ⚠ One test was theatre and is now labelled
 

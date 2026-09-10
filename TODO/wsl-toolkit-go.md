@@ -718,6 +718,16 @@ filter that holds back at most the marker's own length so a token split across
 two writes is still matched. `TestMarkerStripperFindsASplitToken` runs every one
 of the 47 possible split points.
 
+⛔ **AMENDED 2026-09-10: THE SENTENCE ABOVE IS NOT TRUE.** The marker is
+stripped and the newline in front of it is NOT. The wrapper emits
+`printf '\n%s\n'`, and the stripper writes that leading newline back to the
+destination, so every job with no stderr returns one byte of it. A consumer agent
+found it against `wsl-toolkit-v1.3.0` and filed
+[issue 23](https://github.com/Azathothas/ToolKit/issues/23);
+[WSL-46](wsl-toolkit-go.md) carries the fix. The sentence stays because the
+correction belongs underneath it, and because a test named for a property the
+code does not have is the more useful half of this record.
+
 ```text
 $ go test ./... -run 'TestMarker|TestNewMarkerToken|TestPartialSuffix|TestUnreached'
 --- PASS: TestMarkerStripperFindsASplitToken (0.00s)
@@ -1238,7 +1248,7 @@ the lifecycle operations that change the answer clear it.
 
 ⛔ **A negative result is never cached anywhere in this tool.** It is worth
 stating as a rule rather than fixing one instance of it, because
-[WSL-19](wsl-toolkit-go.md) is a probe cache and this is a second one.
+[WSL-32](wsl-toolkit-go.md) is a probe cache and this is a second one.
 
 ## Consumers
 
@@ -1284,6 +1294,11 @@ The reporter's source note is careful and this entry keeps its caution:
 cancellation does run `taskkill /PID /T /F` with a one second `WaitDelay`, so the
 remaining delay is likely the WSL side or the stream relay outliving the killed
 host process, and that is a hypothesis rather than a finding.
+
+⭐ **[WSL-19](wsl-toolkit-go.md) is the entry that put this deadline in**,
+for a hung run that otherwise ended in a kill. It bounded the CHILD, which was
+the problem it was given. This entry is the discovery that bounding the child
+does not bound the caller, so the two are one subject read twice.
 
 ## Approach
 
@@ -1342,8 +1357,10 @@ artifact count that means entries encountered rather than delivered, and on the
 helper route it names no recoverable copy at all.
 
 ⭐ **The invented byte is this repository's own, introduced in v1.2.0** by
-`WSL-38`'s marker framing. Protocol framing altering the payload is exactly what
-that entry set out to avoid.
+[WSL-39](wsl-toolkit-go.md)'s marker framing. Protocol framing altering the
+payload is exactly what that entry set out to avoid, and its own text claims the
+marker is stripped before any sink sees it. ⛔ **That claim is false and this
+entry disproves it**; WSL-39 carries a dated note saying so.
 
 ## Premise
 
