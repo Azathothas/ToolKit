@@ -10,6 +10,7 @@ session started 2026-09-10T10:30:00Z
 baseline        0fb74d9, clean main; gate 19 checks, all passing.
 entries         total 88  open 2  blocked 0  done 86
 gate            19 checks, one binary, 27s on this host
+head            e55dd3f, pushed, all six CI jobs green
 ```
 
 ## Active work
@@ -94,9 +95,9 @@ consumer    14 of 14 against the published wsl-toolkit-v2.0.0, 0 failed,
             v2.0.0, which carries no bundles; nothing has yet run them green.
 selftest    157 cases over 40 functions, and the same numbers under PowerShell
             7.6.5 and Windows PowerShell 5.1. It was 131 over 36.
-mutation    76 rows. The two added this session were proved individually; the
-            whole table was NOT re-run here, and the ubuntu job is what
-            answers for it.
+mutation    76 rows, all proved on ubuntu at e55dd3f. The two added this
+            session were also proved individually on this host. ⚠ This host
+            cannot prove one row, which is why the ubuntu job is the answer.
 snapshot    1.82s and 1.79s from a snapshot against 10.04s and 10.85s preparing
             from the image, Alpine 3.22 with jq. First cold snapshot run 4.60s.
             ⛔ Two runs each, one machine, one small preparation.

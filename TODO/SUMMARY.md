@@ -12,7 +12,7 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-10T10:30:00Z | one context, ended at its limit |
-| Commits | `0fb74d9`, clean `main` | 3 more on `main`, all pushed. No tag. |
+| Commits | `0fb74d9`, clean `main` | 3 more on `main`, pushed, `e55dd3f` green on all six CI jobs. No tag. |
 | Work | 86 entries: 7 open, 0 blocked, 79 done | 88 entries: **2 open**, 0 blocked, 86 done. **7 closed, 2 filed, both closed** |
 | Changes | 249 tracked files | 251; 24 changed, +2,961 / -213 lines |
 | Gate | 19 checks, 42s | 19 checks, 27s over two runs, which is not a controlled comparison |
