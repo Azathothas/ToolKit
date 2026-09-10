@@ -21,6 +21,136 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T13:40:00Z: the 2026-08-30 script backlog, re-derived and closed
+
+**Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), entries `WSL-26`,
+`WSL-27`, `WSL-28` and `WSL-29`, each closed in place with the output of its own
+acceptance command.
+**Deployed:** ⛔ **no deploy.** Nothing is published until the next release tag;
+`scripts/windows/wsl-toolkit/wsl-toolkit.ps1` is fetched by raw URL from `main`
+by two consumers, both of which pin a commit, so neither sees this until they
+move their pin.
+
+⭐ **They were re-derived against the tree first**, which the record asked for
+and which nothing had done since they were written. All four seams the entries
+named still existed at the files and lines they named.
+
+| entry | what shipped |
+| --- | --- |
+| `WSL-26` | `-Action Snapshot -Name D -As TAG`, and `New -Tarball TAG` reading a tag back. ⛔ `Purge` never removes a snapshot. |
+| `WSL-27` | `-ProgressPrefix TOKEN`. A prefixed line is consumed and the tick reports the last progress and its AGE. |
+| `WSL-28` | `-Action Replay -From LOG` and `-Action Compare -From A -Against B`. |
+| `WSL-29` | `-Reuse` on `New`, with the image reference read from an `origin.json` rather than out of the distro name. |
+
+⭐ **`WSL-26`'s one design question is answered by structure, not by a name.**
+Snapshots live in a subdirectory the orphan sweep does not enumerate, so `Purge`
+cannot see one. A `snap-*.tar` convention was rejected: it is one rename away
+from making every existing snapshot an orphan again.
+
+⛔ **The `WSL-28` premise was right about the renderer and wrong about the
+schema, and that is the story worth keeping.** The reader was first written
+against `kind: LINE` with streams `out` and `err`; `Write-StreamLogLine` writes
+`kind: LOG` with `stdout`, `stderr` or `watcher`. It rendered nothing and
+reported a real run as having produced no output at all. The same guess was in
+the selftest fixtures, so four cases went red the moment the reader was
+corrected, and there is a case pinning the spelling now.
+
+⚠ **The measurement `WSL-26` asked for, with its conditions.** Windows 11 Pro
+26200, PowerShell 7.6.5, Alpine 3.22 with `jq` as the preparation: 1.82s and
+1.79s from a snapshot against 10.04s and 10.85s preparing from the image each
+time, with the first cold snapshot run at 4.60s. ⛔ Two runs each on one machine
+with a small preparation. They do not support a ratio for a workload whose
+preparation is minutes.
+
+The surface lock is refreshed in the same commit, which is the record that the
+six new parameters and the three new actions were a decision.
+
+### 2026-09-10T13:10:00Z: `inspect` goes through the helper, and the protocol is 4
+
+**Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), entry `WSL-58`,
+closed with the acceptance run.
+**Deployed:** ⛔ **no deploy.** It ships in the next release tag.
+
+`inspect` was the one report the helper route could not serve, so a restricted
+client got the host half of the answer and not the machine half while its
+sibling report `resources` had the door. That is the one-gated-door class in the
+tool that keeps finding it.
+
+⛔ **Adding a method is a break, and it is the whole cost.** The protocol moves
+to `wsl-toolkit-helper/4`, and a client and a helper that disagree about the
+version refuse each other by design, so a helper left running from
+`wsl-toolkit-v2.0.0` refuses a newer client until `helper stop` and
+`helper serve --detach` restart it. The manual owns what a consumer does about
+that.
+
+⭐ **Both routes turn a report into an exit code in one function**, and the
+unknown-job refusal survives the wire as the same typed error, so the two routes
+cannot answer one question with two exit codes.
+
+### 2026-09-10T12:20:00Z: every release asset is signed, and the launcher checks it
+
+**Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), entry `WSL-25`,
+⚠ **still open**: it closes against a signed release, and none exists yet.
+**Deployed:** ⛔ **no deploy.** The signing runs on the next `wsl-toolkit-v*`
+tag.
+
+`SHA256SUMS` ships in the same release as the asset it describes, so anyone who
+could replace one could replace the other. The launcher has said exactly that on
+every release fetch since it existed, and saying it is better than not saying it
+and is not a fix.
+
+`release.yml` signs every staged asset, `SHA256SUMS` included, with a keyless
+sigstore signature tied to this workflow's OIDC identity, and ⛔ **verifies every
+bundle it wrote before anything is uploaded**: a bundle that exists and does not
+verify is a claim of authorship that fails the first time somebody checks it, on
+a release that has already shipped.
+
+`launcher.ps1` gains `-LauncherVerify auto|require|off`. ⛔ **Four outcomes and
+never silence**: verified, no bundle in that release, no `cosign` on this
+machine, or refused. Only ABSENCE is tolerated by `auto`; a bundle that fails is
+a hard stop under every mode. Verification does not become mandatory in the
+change that adds it, which is what the entry rules.
+
+⚠ **The identity is anchored on the repository and the workflow, deliberately
+not on the ref**, because `release.yml` also runs on `workflow_dispatch` and
+pinning the ref would refuse such a release while telling the caller their asset
+was unsigned.
+
+[`docs/consumers.md`](docs/consumers.md) carries the row: a release now carries
+ten assets rather than five, which is additive, and `-LauncherVerify require` is
+the one thing here that can turn a working call into a refusal, only when a
+caller asks for it.
+
+### 2026-09-10T11:58:00Z: two guards that could not fail
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md), entries `TOOL-20` and
+`TOOL-21`, both closed with their mutation and driven evidence.
+**Deployed:** ⛔ **no deploy.** Both are internal tooling.
+
+⛔ **`check line-endings` could not fail on any text file in the tree.** Two
+defects, and the first hid the second. `git ls-files --eol` writes its attribute
+column as `attr/text eol=crlf`, with a space in it, so splitting the row on
+whitespace put `eol=crlf` in a field of its own and the parse kept only `text`.
+The comparison then read the INDEX column, and git normalises a text file to LF
+in the index by definition, so what it asserted was a tautology.
+
+⚠ **Twenty-three of fifty-four tracked `.ps1` files were sitting in the working
+tree with LF under an `eol=crlf` attribute while it reported green**, which
+`git status` cannot show and a fresh clone would not reproduce. Measured by
+planting five CRLF into a file declared `eol=lf`: git reported `w/mixed`, the
+loudest thing it can say about a file, and the check exited 0.
+
+⛔ **`git-sync.ps1` could not stage a named set of files**, which is what
+`docs/AGENTS.md` section 5 names as the way to commit on Windows. A `.ps1`
+reached through `-File` cannot have a parameter repeated and its comma form
+binds one string, so the failure named a path and read as the caller's typo.
+`-Path` splits its own value now, and an empty element is refused rather than
+forwarded: an empty pathspec means EVERYTHING to `git add --`.
+
+⚠ **Both are the class [`docs/conventions/forbidden-patterns.md`](docs/conventions/forbidden-patterns.md)
+already carried**, in files the rule had not been applied to. A rule recorded
+against one file does not reach the next one on its own.
+
 ### 2026-09-10T11:20:00Z: the documents say what is true now
 
 **Record:** [`TODO/SUMMARY.md`](TODO/SUMMARY.md) carries the pass; there is no

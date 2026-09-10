@@ -86,6 +86,9 @@ try {
         # can this host even do" want different answers, and folding any of them
         # into List would make the one line a script consumes arrive in the
         # middle of a page of prose.
+        'Snapshot'    { Invoke-ActionSnapshot }
+        'Replay'      { Invoke-ActionReplay }
+        'Compare'     { Invoke-ActionCompare }
         'Resources'   { Invoke-ActionResources }
         'HostAddress' { Invoke-ActionHostAddress }
         'Doctor'      { Invoke-ActionDoctor }

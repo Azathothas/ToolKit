@@ -128,6 +128,24 @@
             $rest  = ''
             $ready = Split-StreamChunk -Pending ($s.Pending + $chunk) -Remainder ([ref]$rest)
             foreach ($l in $ready) {
+                # WSL-27. ⛔ CONSUMED, NOT RELAYED, and only when the caller
+                # named a token. A partial line is never a progress report: it
+                # has no terminator yet, so the label could still be arriving,
+                # and parsing one would consume half a line the guest is midway
+                # through writing.
+                if ($script:ProgressPrefix -and -not $l.Partial) {
+                    $prog = Read-ProgressLine -Text $l.Text -Token $script:ProgressPrefix
+                    if ($null -ne $prog) {
+                        $st.Progress = @{ Percent = $prog.Percent; Label = $prog.Label; At = $st.Clock.Elapsed }
+                        if ($st.Events) {
+                            $data = @{ progress_percent = $prog.Percent; stream = $s.Tag }
+                            if ($prog.Label) { $data['progress_label'] = $prog.Label }
+                            Write-EventRecord -Sink $st.Events -Kind 'PROGRESS' `
+                                -RelativeSeconds $st.Clock.Elapsed.TotalSeconds -Data $data
+                        }
+                        continue
+                    }
+                }
                 Write-StreamLogLine -State $st -Tag $s.Tag -Text $l.Text -Partial:$l.Partial
                 $st.Counts[$s.Tag].Lines++
             }

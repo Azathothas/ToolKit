@@ -3138,7 +3138,7 @@ the ubuntu half of it is now reproducible locally, in a container, in seconds.
 ## WSL-58. `inspect` is the one report the helper route cannot serve
 
 **Source** The door sweep on 2026-09-10, immediately after `WSL-56` shipped `inspect`. It was not in the task list and the task list has never once contained them all.
-**Category** wsl, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -3199,3 +3199,38 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
 A case that starts a helper, runs a job through it, and asserts
 `inspect --via-helper` on that job id names the engine version and the
 container's last exit, against the same job's direct answer.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T13:40:00Z.** `/v1/inspect` on the helper, `--via-helper` on
+the command, and the protocol at `wsl-toolkit-helper/4`.
+
+⭐ **The two routes turn a report into an exit code in ONE function.**
+`renderInspectResult` is called by both, because a second copy on the helper
+path is how `gc` came to honour a flag on one route and drop it on the other.
+
+⛔ **The unknown-job refusal survives the wire as the same typed error.** The
+helper sets a flag the client rebuilds `ErrUnknownJob` from; a generic "the
+helper refused" would have landed in exit 2 where the direct path answers exit
+1, giving two exit codes for one question.
+
+```text
+$ pwsh -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary wsl-toolkit.exe
+  ok    inspect through the helper names the engine and the container exit
+  ok    an unknown id is the same refusal down both routes
+
+acceptance: 71 case(s) passed against a real machine.
+```
+
+The first case runs a job through the helper that exits 37, then asks both
+routes about it and compares: the engine version has to be non-empty and equal
+across the two, and the container's own last exit has to be 37 on both. ⚠ A
+case asserting only that the helper ANSWERS would have passed over a second
+implementation that answered something else.
+
+⚠ **The protocol bump is a real cost and it is a consumer-visible one.** A
+helper left running from `wsl-toolkit-v2.0.0` refuses a newer client until it is
+restarted with `helper stop` then `helper serve --detach`. That is correct
+behaviour by design and it is still a thing somebody has to do.

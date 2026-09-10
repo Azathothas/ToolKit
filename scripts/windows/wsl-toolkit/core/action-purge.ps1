@@ -1,8 +1,25 @@
 ﻿function Invoke-ActionPurge {
     $mine    = @(Get-WslDistroNames | Where-Object { $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
     $orphans = @(Get-OrphanTarball)
+    # ⛔ SNAPSHOTS ARE REPORTED AND NEVER REMOVED, and that is WSL-26's one
+    # design question answered. Purge exists to collect what was LEFT BEHIND: an
+    # interrupted New's rootfs, a distro nobody unregistered. A snapshot is the
+    # one durable thing this tool makes on purpose, and a caller who believed it
+    # was durable losing it to a routine cleanup is the worse failure by far.
+    # They are named here, with the directory, so removing one is deliberate.
+    $snaps = @(Get-Snapshot)
+    $snapLine = {
+        if ($snaps.Count -eq 0) { return }
+        $ssum = ($snaps | Measure-Object -Property Length -Sum).Sum
+        Write-Note ("  {0} snapshot(s), {1:N1} MiB, KEPT in {2}" -f $snaps.Count, ($ssum / 1MB), (Get-SnapshotDir))
+        Write-Note '  Purge never removes those. Delete the file to remove one.'
+    }
 
-    if ($mine.Count -eq 0 -and $orphans.Count -eq 0) { Write-Ok "nothing to purge"; return }
+    if ($mine.Count -eq 0 -and $orphans.Count -eq 0) {
+        Write-Ok "nothing to purge"
+        & $snapLine
+        return
+    }
 
     $what = @()
     if ($mine.Count -gt 0) {
@@ -25,6 +42,8 @@
         Write-DryRunPlan -Action 'Purge' -Steps $steps
         return
     }
+
+    & $snapLine
 
     # ONE confirmation covering both classes. Two prompts over one -Force is how
     # somebody learns to pass -Force without reading either of them.

@@ -612,6 +612,7 @@ wsl-toolkit inspect 4c21ea7f6fb89b2a --json --since 72h
 | --- | --- |
 | `--since D` | how far back to read the engine's event journal. Default `24h` |
 | `--json` | write a structured answer |
+| `--via-helper` | force the local helper route |
 
 ⭐ **It answers the question a failed job leaves.** The exit code and the
 transcript say what the payload did; this says what it did it ON. The engine and
@@ -657,10 +658,29 @@ transcript and the ledger record are on this machine's own disk; the engine, the
 storage, the container's last exit and the guest's disk are not, and the report
 names the engine as unreached rather than leaving the rows out.
 
-⛔ **It has no `--via-helper` and the other reports do.** A caller that reaches
-the machine only through the helper gets the host half of this answer and not
-the machine half. `WSL-58` is the entry; the cost is a helper protocol version,
-which is why it did not land with the command.
+⭐ **It goes through the helper like every other report.** A caller that reaches
+the machine only through the helper used to get the host half of this answer and
+not the machine half, which is the one-gated-door class in the tool that keeps
+finding it. `--via-helper` forces the route and, as everywhere else, a client
+that cannot reach `wsl.exe` takes it without being told to. `WSL-58`.
+
+⚠ **What it cost is a helper protocol version, and that is a real cost.**
+Adding a method moved the protocol to `wsl-toolkit-helper/4`, and a client and a
+helper that disagree about the version refuse each other by design. ⛔ **A
+helper left running from `wsl-toolkit-v2.0.0` therefore refuses a newer client
+until it is restarted**, which is correct behaviour and is still a thing a
+consumer has to do:
+
+```powershell
+wsl-toolkit helper stop
+wsl-toolkit helper serve --detach
+```
+
+⚠ **An unknown id is the same refusal on both routes**, with the same exit code.
+The helper sets a flag the client rebuilds the typed error from, rather than
+flattening it into a generic refusal, because two routes that answer one
+question with two exit codes is the defect `gc` and `resources` were both fixed
+for.
 
 ## `script`
 

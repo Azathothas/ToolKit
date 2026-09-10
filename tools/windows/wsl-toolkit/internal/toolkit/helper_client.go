@@ -298,6 +298,49 @@ func (c *HelperClient) Resources(ctx context.Context) (ResourceReport, error) {
 	return out.Report, err
 }
 
+// Inspect asks what one job was, and what the machine was doing when it ran.
+//
+// ⛔ THE UNKNOWN-JOB REFUSAL IS REBUILT AS THE SAME TYPED ERROR the direct path
+// returns, from the flag the helper sets. Without it the two routes would give
+// different exit codes for the same question: `inspect` reports an unknown id
+// as exitFailed and everything else as exitCannot, and a generic "the helper
+// refused" would land in the second. WSL-58.
+func (c *HelperClient) Inspect(ctx context.Context, id string, since time.Duration) (InspectReport, error) {
+	var out struct {
+		Report     InspectReport `json:"report"`
+		UnknownJob bool          `json:"unknown_job"`
+		Error      string        `json:"error"`
+	}
+	q := url.Values{}
+	if id != "" {
+		q.Set("id", id)
+	}
+	if since > 0 {
+		q.Set("since_ms", strconv.FormatInt(since.Milliseconds(), 10))
+	}
+	// The configuration travels base64 in the query, as base/status does: a GET
+	// with a body is something an intermediary is free to drop.
+	cfg, err := json.Marshal(c.cfg)
+	if err != nil {
+		return out.Report, err
+	}
+	q.Set("config_b64", base64.StdEncoding.EncodeToString(cfg))
+	if err := c.call(ctx, http.MethodGet, "/v1/inspect?"+q.Encode(), nil, &out); err != nil {
+		return out.Report, err
+	}
+	if out.UnknownJob {
+		message := out.Error
+		if message == "" {
+			message = id
+		}
+		return out.Report, fmt.Errorf("%w: %s", ErrUnknownJob, message)
+	}
+	if out.Error != "" {
+		return out.Report, errors.New(out.Error)
+	}
+	return out.Report, nil
+}
+
 // Cleanup asks the helper to remove what this tool made.
 func (c *HelperClient) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, images bool) (CleanupPlan, error) {
 	var out struct {

@@ -13,7 +13,9 @@
 # A refresh in the same commit as a rename is the record that the rename was a
 # decision. A refresh on its own is the record that nobody looked.
 
-param Action type=String default= valid=New|Run|Enter|List|Remove|Purge|Resources|HostAddress|Doctor
+param Action type=String default= valid=New|Run|Enter|List|Remove|Purge|Resources|HostAddress|Doctor|Snapshot|Replay|Compare
+param Against type=String default= valid=
+param As type=String default= valid=
 param Color type=String default='auto' valid=auto|always|never
 param Command type=String default= valid=
 param CommandB64 type=String default= valid=
@@ -23,13 +25,16 @@ param DryRun type=SwitchParameter default= valid=
 param Ephemeral type=SwitchParameter default= valid=
 param EventLog type=String default= valid=
 param Force type=SwitchParameter default= valid=
+param From type=String default= valid=
 param Image type=String default= valid=
 param MaxLineBytes type=Int32 default=0 valid=range:0..1048576
 param Name type=String default= valid=
 param NoTimestamps type=SwitchParameter default= valid=
 param OciEnv type=SwitchParameter default= valid=
 param PrefixOnly type=SwitchParameter default= valid=
+param ProgressPrefix type=String default= valid=
 param Redact type=String[] default= valid=
+param Reuse type=SwitchParameter default= valid=
 param ScriptArg type=String[] default= valid=
 param ScriptArgFile type=String default= valid=
 param StateDir type=String default=$env:WSL_TOOLKIT_STATE_DIR valid=

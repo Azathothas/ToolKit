@@ -7,91 +7,51 @@ on what was true last time.
 
 ---
 
-## 2026-09-10, the afternoon
+## 2026-09-10, the second sitting
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-09-10T08:30:00Z | one context |
-| Commits | `af3de74`, four of them unpushed | 6 on `main`, and one tag: `wsl-toolkit-v2.0.0` |
-| Work | 85 entries: 8 open, 0 blocked, 77 done | 86 entries: 7 open, 0 blocked, 79 done. **5 closed, 3 filed, 1 of those filed and left open** |
-| Changes | 245 tracked files | 249; 40 changed, +2,700 / -320 lines |
-| Open issues | 13, every one against the published `v1.3.0` | ⭐ **0** |
-| Published | `wsl-toolkit-v1.3.0`, carrying thirteen known defects | `wsl-toolkit-v2.0.0`, driven as a consumer at 12 of 12 |
-| Checks | 18 in one Go binary | 19. The new one is `mutations` |
-| Acceptance | 67 cases | 69 |
-| Mutation table | 61 rows, 58 proved, 2 broken, 1 misreported | 66 rows, all 66 proved on ubuntu |
-| CI | 5 jobs, none of which had seen the 2.0.0 commits | 6 jobs, all green, plus a release smoke that runs after a publish and weekly |
+| Elapsed | started 2026-09-10T10:30:00Z | one context, ended at its limit |
+| Commits | `0fb74d9`, clean `main` | 3 more on `main`, pushed, `e55dd3f` green on all six CI jobs. No tag. |
+| Work | 86 entries: 7 open, 0 blocked, 79 done | 88 entries: **2 open**, 0 blocked, 86 done. **7 closed, 2 filed, both closed** |
+| Changes | 249 tracked files | 251; 24 changed, +2,961 / -213 lines |
+| Gate | 19 checks, 42s | 19 checks, 27s over two runs, which is not a controlled comparison |
+| Selftest | 131 cases over 36 functions | 157 over 40, same on 7.6.5 and 5.1 |
+| Acceptance | 69 cases | **71 of 71** against the real base |
+| Consumer suite | 12 cases | 14. Both new ones skip on an unsigned release |
+| Mutation table | 74 rows | 76. Only the two new rows were re-proved here |
+| Script surface | 34 parameters, 9 actions | 40 parameters, 12 actions. Lock refreshed in the same commit |
+| Helper protocol | `wsl-toolkit-helper/3` | `wsl-toolkit-helper/4`. A v2.0.0 helper refuses a newer client until restarted |
+| Published | `wsl-toolkit-v2.0.0`, unsigned | ⛔ **unchanged. `v2.0.1` was not cut.** |
+| Open PRs | 1, dependabot, behind `main` | **1, still behind, further behind now** |
 
-### ⭐ What each of the three review lenses found
+### ⭐ What the session actually found
 
-⛔ **Three passes reporting nothing is a weaker result than one pass reporting a
-defect**, so each is written up by what it looked at that the others did not.
+⛔ **Two guards that could not fail, both found by trying to use them, neither
+planned.** `check line-endings` split `attr/text eol=crlf` on whitespace and
+kept `text`, then compared the index column that git normalises by definition:
+23 of 54 tracked `.ps1` files had the wrong working-tree endings while it
+reported green. `git-sync.ps1 -Path a,b` bound one string, so the tool
+`AGENTS.md` names as the way to commit on Windows could not name two files.
 
-**The door sweep** enumerated every affordance this session added, then grepped
-for the ones the enumeration missed. Four findings, three fixed:
+⛔ **A schema guessed rather than read, twice in one entry.** `WSL-28`'s reader
+looked for `kind: LINE` with streams `out`/`err`; the writer emits `kind: LOG`
+with `stdout`/`stderr`/`watcher`. It reported a real run as producing no output.
+The same guess was in the selftest fixtures.
 
-- ⛔ **`inspect --json` was not in the sweep that checks every `--json`
-  surface.** `TOOL-17` built that sweep because commands were being added with
-  that defect faster than cases were written, and the very next `--json` surface
-  was not in its hand-typed list. The list is walked from the binary's real flag
-  sets now, and an omission has to be written down as an exemption with a reason.
-- ⛔ **`inspect` gave no answer at all on a host with no `wsl.exe`**, including
-  for the transcript and the ledger record, which sit on this machine's own disk
-  and which `logs` reads with no runner whatever. Split and tested.
-- **`cmd_reach.go` contained no `reach` command** and never had. Renamed.
-- ⚠ **`inspect` has no `--via-helper` and every other report does.** Not fixed:
-  it is a helper protocol version. `WSL-58`.
+**Two guards fired on the day they were reached.** The build's AST scan
+refused a `$wall` local that IS the `$Wall` parameter, and the selftest's own
+count assertion refused a suite that had grown by two cases.
 
-**The guard mutation** planted the defect each new guard exists to catch and read
-the exit code unpiped. One finding, and it is about the harness rather than the
-code:
+### ⛔ What was asked for and not done
 
-- ⛔ **Nothing stopped a mutation row from mutating the TEST instead of the
-  code.** Breaking an assertion makes the named case go red, the harness prints
-  `ok`, and the guard the row claims to prove was never touched. That is theatre
-  with the harness's own seal on it, which is worse than an unproved guard
-  because it reads as proof. Refused now, planted, and the refusal is itself a
-  mutation row.
-- Every other new guard was seen to refuse: `check mutations` against the real
-  stale row, the sweep guard against `inspect` taken back out, the 5.1 CI step
-  against a planted ternary, and six new rows in the table.
+Three things, and the session ended before them rather than rushing them:
 
-**The claim audit** re-read what was about to be published against the artefacts.
-Three findings:
+| asked | state |
+| --- | --- |
+| merge the dependabot PR | not merged. Branch still behind `main`. |
+| cut `wsl-toolkit-v2.0.1` | not cut. The version inside the file still reads `2.0.0`. |
+| `WSL-30` | not started. Its validation matrix has not been run. |
 
-- ⛔ **A false claim that had ALREADY BEEN PUBLISHED.** The comment closing
-  issue 19 said the mutation table proved a guard. There was no row for it. The
-  row exists and was run; the issue carries a correction rather than a quiet
-  edit.
-- ⚠ **"The cost did not move" over two uncontrolled runs.** The gate was 43s at
-  18 checks last session and 42s at 19 now, on the same host, which supports
-  "inside the noise" and not what was written. Both places now carry the numbers
-  and their conditions.
-- ⚠ **`docs/conventions/docs.md` said `PROGRESS.md` carried the runbook and
-  threat-model roles as an open question, and it did not.** Made true rather
-  than deleted.
-- ⛔ **AND THE PASS CAUGHT ITSELF.** `PROGRESS.md` was written with the
-  acceptance count typed as 71 while the run was still going, and the run
-  reported 69. The line carries both the number and that sentence, because a
-  figure written before its measurement is a fabrication whichever way it lands.
-
-### ⛔ What the second host found that this one could not
-
-Four commits were made on 2026-09-10 and none was pushed, so the ubuntu job had
-not run since `f7eabfe`. The first run that saw them went red there and stayed
-green here: two selftest cases composed a path from `$env:TEMP` and
-`$env:WINDIR`, which are null under PowerShell on Linux.
-
-⭐ **The durable half is that the ubuntu answer is now available from this
-Windows host in about ten seconds**, in a container, so the same class does not
-have to be found by pushing and waiting.
-
-### ⚠ One entry's premise was disproved by measuring it
-
-`WSL-56` said `run --rm` removes the container before anything can read its last
-state, named that as the obstacle, and asked whoever took it to measure first.
-The measurement says otherwise: podman's event journal outlives the container
-and the `died` and `remove` events both carry `ContainerExitCode`. ⭐ So `--rm`
-stays, and the entry's fallback options were not needed. Two of its requirements
-described things that do not exist here, and both are written into the closing
-rather than dropped.
+⚠ **Nothing is half-applied.** Everything committed is gate-green and pushed;
+the three above were never begun.

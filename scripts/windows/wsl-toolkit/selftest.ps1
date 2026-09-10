@@ -100,6 +100,10 @@ $Wanted = @(
     'ConvertTo-OciArch'
     'Get-EnginePlatform'
     'Invoke-Native'
+    'Read-ProgressLine'
+    'Format-Percent'
+    'Get-EventLogSummary'
+    'Get-SnapshotTag'
 )
 
 $parseErrors = $null
@@ -933,6 +937,175 @@ Test-Case 'an engine that answered nonzero is reported with its own code' 'True'
 # mapping a real engine's reply goes through is asserted too.
 Test-Case 'an architecture an engine reports maps onto what --platform accepts' 'amd64|arm64|arm|386' {
     (@('x86_64', 'aarch64', 'armv7l', 'i686') | ForEach-Object { ConvertTo-OciArch -Raw $_ }) -join '|'
+}
+
+# -- Read-ProgressLine, WSL-27 -----------------------------------------------
+# THE PROPERTY THAT MATTERS MOST IS THE ONE ABOUT NOT CONSUMING. A tool that
+# silently swallows a line beginning with some chosen string is a tool that eats
+# somebody's output, so every case below that expects $null is a case about a
+# line REACHING the caller.
+Test-Case 'no token means nothing is ever a progress line' 'null' {
+    $r = Read-ProgressLine -Text 'WTK 42 unpacking' -Token ''
+    if ($null -eq $r) { 'null' } else { 'consumed' }
+}
+Test-Case 'a prefixed line carries the percentage' '42' {
+    $r = Read-ProgressLine -Text 'WTK 42' -Token 'WTK'
+    if ($null -eq $r) { 'null' } else { [string][int]$r.Percent }
+}
+Test-Case 'a percent sign is accepted and so is its absence' '42|42' {
+    $a = Read-ProgressLine -Text 'WTK 42%' -Token 'WTK'
+    $b = Read-ProgressLine -Text 'WTK 42' -Token 'WTK'
+    ([string][int]$a.Percent) + '|' + ([string][int]$b.Percent)
+}
+Test-Case 'the label is everything after the number' 'installing the toolchain' {
+    $r = Read-ProgressLine -Text 'WTK 7 installing the toolchain' -Token 'WTK'
+    $r.Label
+}
+Test-Case 'a line with no label reports an empty one rather than throwing' '' {
+    $r = Read-ProgressLine -Text 'WTK 100' -Token 'WTK'
+    $r.Label
+}
+Test-Case 'a malformed prefixed line is RELAYED, not swallowed' 'null' {
+    $r = Read-ProgressLine -Text 'WTK almost done' -Token 'WTK'
+    if ($null -eq $r) { 'null' } else { 'consumed' }
+}
+Test-Case 'a percentage out of range is somebody else output' 'null' {
+    $r = Read-ProgressLine -Text 'WTK 420 files' -Token 'WTK'
+    if ($null -eq $r) { 'null' } else { 'consumed' }
+}
+# The token has to end at a boundary, or a caller who chose a short token loses
+# output they would never connect to this switch.
+Test-Case 'a token that is only a prefix of the word does not match' 'null' {
+    $r = Read-ProgressLine -Text 'WTKINSTALL 42' -Token 'WTK'
+    if ($null -eq $r) { 'null' } else { 'consumed' }
+}
+Test-Case 'an unprefixed line is never consumed' 'null' {
+    $r = Read-ProgressLine -Text 'ordinary output 42' -Token 'WTK'
+    if ($null -eq $r) { 'null' } else { 'consumed' }
+}
+Test-Case 'one decimal place survives' '42.5' {
+    $r = Read-ProgressLine -Text 'WTK 42.5 linking' -Token 'WTK'
+    $r.Percent.ToString('0.#', [Globalization.CultureInfo]::InvariantCulture)
+}
+
+# -- Format-Percent ----------------------------------------------------------
+Test-Case 'a whole percentage renders without a decimal point' '42%' {
+    Format-Percent -Value 42
+}
+Test-Case 'a fractional percentage keeps one place, invariant' '42.5%' {
+    Format-Percent -Value 42.5
+}
+
+# -- Get-EventLogSummary, WSL-28 ---------------------------------------------
+# The fixture is built here rather than read from disk: this file is documented
+# to touch nothing, and the summary is a pure function of the records.
+function New-EventFixture {
+    param([Parameter(Mandatory = $true)][object[]]$Rows)
+    $seq = 0
+    return @($Rows | ForEach-Object {
+        $seq++
+        $o = [ordered]@{ schema = 'wsl-toolkit-event/1'; seq = $seq; distro = 'eph-x' }
+        foreach ($k in $_.Keys) { $o[$k] = $_[$k] }
+        [pscustomobject]$o
+    })
+}
+
+Test-Case 'the longest silence is the biggest gap between lines' '5' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'LOG'; t_rel = 1.0; stream = 'stdout'; text = 'a' },
+        @{ kind = 'LOG'; t_rel = 6.0; stream = 'stdout'; text = 'b' },
+        @{ kind = 'LOG'; t_rel = 7.0; stream = 'stdout'; text = 'c' },
+        @{ kind = 'EXIT'; t_rel = 7.0; exit_code = 0 }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    [string][int]$s.LongestGap
+}
+# THE TAIL COUNTS. A run whose last line arrived early and which ended much
+# later was silent for the rest, and a summary measuring only the gaps BETWEEN
+# lines reports the quietest part of the run as not having happened.
+Test-Case 'the silence after the last line counts as silence' '20' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'LOG'; t_rel = 1.0; stream = 'stdout'; text = 'a' },
+        @{ kind = 'EXIT'; t_rel = 21.0; exit_code = 0 }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    [string][int]$s.LongestGap
+}
+Test-Case 'lines and bytes are counted per stream' 'out=2/2 err=1/5' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'LOG'; t_rel = 1.0; stream = 'stdout'; text = 'a' },
+        @{ kind = 'LOG'; t_rel = 2.0; stream = 'stderr'; text = 'oops!' },
+        @{ kind = 'LOG'; t_rel = 3.0; stream = 'stdout'; text = 'b' }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    'out=' + $s.OutLines + '/' + $s.OutBytes + ' err=' + $s.ErrLines + '/' + $s.ErrBytes
+}
+Test-Case 'time to first output is the first line and not the first record' '3' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'TICK'; t_rel = 1.0; text = 'quiet' },
+        @{ kind = 'LOG'; t_rel = 3.0; stream = 'stdout'; text = 'a' }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    [string][int]$s.FirstOutput
+}
+# A DASH WHERE THE VALUE IS UNKNOWN, never a zero. A run that produced nothing
+# has no time to first output, and reporting 0 would say it answered instantly.
+Test-Case 'a run with no output reports no first output rather than zero' 'none' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'EXIT'; t_rel = 4.0; exit_code = 3 }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    if ($null -eq $s.FirstOutput) { 'none' } else { [string]$s.FirstOutput }
+}
+Test-Case 'the exit code and the timeout flag come off the EXIT record' '37 True' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'EXIT'; t_rel = 4.0; exit_code = 37; timed_out = $true }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    [string]$s.ExitCode + ' ' + [string]$s.TimedOut
+}
+Test-Case 'a run that recorded no exit reports none rather than zero' 'none' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'LOG'; t_rel = 1.0; stream = 'stdout'; text = 'a' }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    if ($null -eq $s.ExitCode) { 'none' } else { [string]$s.ExitCode }
+}
+
+# ⛔ THE KIND AND THE STREAM NAMES ARE THE WRITER'S. This case exists because
+# four of the cases above were first written against an imagined LINE/out
+# schema and asserted over records the summary never counted. It pins the
+# spelling, so a fixture drifting back cannot pass by accident.
+Test-Case 'a record spelled the wrong way is counted as nothing' 'ignored' {
+    $recs = New-EventFixture -Rows @(
+        @{ kind = 'LINE'; t_rel = 1.0; stream = 'out'; text = 'a' }
+    )
+    $s = Get-EventLogSummary -Records $recs
+    if ($s.OutLines -eq 0 -and $s.ErrLines -eq 0) { 'ignored' } else { 'counted' }
+}
+
+# -- Get-SnapshotTag, WSL-26 -------------------------------------------------
+# VALIDATED BEFORE IT IS JOINED TO A PATH. A caller-supplied path component is
+# how a tag becomes a write anywhere on the disk.
+Test-Case 'an ordinary tag is accepted' 'probe-ready' {
+    Get-SnapshotTag -Tag 'probe-ready'
+}
+Test-Case 'a tag with a separator in it is refused' 'refused' {
+    try { $null = Get-SnapshotTag -Tag 'a/b'; 'accepted' } catch { 'refused' }
+}
+Test-Case 'a traversal is refused' 'refused' {
+    try { $null = Get-SnapshotTag -Tag '..'; 'accepted' } catch { 'refused' }
+}
+Test-Case 'an empty tag is refused by name' 'refused' {
+    try { $null = Get-SnapshotTag -Tag ''; 'accepted' } catch { 'refused' }
+}
+# A Windows reserved device name is not a file: 'nul' silently discards
+# everything written to it, so a caller would believe they had a snapshot.
+Test-Case 'a reserved device name is refused' 'refused' {
+    try { $null = Get-SnapshotTag -Tag 'nul'; 'accepted' } catch { 'refused' }
+}
+Test-Case 'a reserved device name in another case is refused too' 'refused' {
+    try { $null = Get-SnapshotTag -Tag 'CON'; 'accepted' } catch { 'refused' }
 }
 
 # -- report ------------------------------------------------------------------

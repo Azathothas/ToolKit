@@ -50,9 +50,14 @@ core/disk.ps1
 # -- core: which parameter each action reads, and the dry-run plan ---------
 core/applicability.ps1
 
+# -- core: what -Reuse reads back, and it comes before the action that uses it
+core/reuse.ps1
+
 # -- core: one file per action ---------------------------------------------
 core/action-new.ps1
 core/action-run.ps1
+core/action-snapshot.ps1
+core/action-replay.ps1
 core/action-resources.ps1
 core/action-address.ps1
 core/action-purge.ps1

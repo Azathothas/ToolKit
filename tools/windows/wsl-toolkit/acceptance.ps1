@@ -452,6 +452,59 @@ try {
         finally { $null = Invoke-Tool @('helper', 'stop') }
     }
 
+    # WSL-58. THE SAME QUESTION DOWN BOTH ROUTES, COMPARED. `inspect` was the one
+    # report the helper could not serve, so a restricted client got the host half
+    # of the answer and not the machine half while its sibling report had the
+    # door. Asserting that the helper answers is not enough: it has to answer the
+    # SAME thing, which is what a second implementation would quietly stop doing.
+    Test-Case 'inspect through the helper names the engine and the container exit' 'True' {
+        $start = Invoke-Tool @('helper', 'serve', '--detach', '--json')
+        if ($start.Code -ne 0) { return "helper would not start: $($start.Err)" }
+        try {
+            $r = Invoke-Tool @('run', '--via-helper', '--image', 'alpine', '--json', '-c', 'exit 37')
+            $job = Read-ToolJson -Stdout $r.Out -What 'run --via-helper --json'
+            if (-not $job.id) { return 'the job carried no id' }
+
+            $viaHelper = Invoke-Tool @('inspect', $job.id, '--via-helper', '--json')
+            if ($viaHelper.Code -ne 0) { return "inspect --via-helper exited $($viaHelper.Code): $($viaHelper.Err)" }
+            $h = Read-ToolJson -Stdout $viaHelper.Out -What 'inspect --via-helper --json'
+
+            $direct = Invoke-Tool @('inspect', $job.id, '--json')
+            if ($direct.Code -ne 0) { return "inspect exited $($direct.Code): $($direct.Err)" }
+            $d = Read-ToolJson -Stdout $direct.Out -What 'inspect --json'
+
+            # The machine half is what the helper route could not reach before.
+            if (-not $h.engine.reached) { return "the helper route did not reach the engine: $($h.engine.reason)" }
+            if (-not $h.engine.version) { return 'the helper route named no engine version' }
+            if ($h.engine.version -ne $d.engine.version) {
+                return "engine version: helper says $($h.engine.version) and direct says $($d.engine.version)"
+            }
+            if ($h.job.exit_code -ne 37) { return "the helper route reports last exit $($h.job.exit_code) and the payload exited 37" }
+            if ($h.job.exit_code -ne $d.job.exit_code) {
+                return "last exit: helper says $($h.job.exit_code) and direct says $($d.job.exit_code)"
+            }
+            'True'
+        }
+        finally { $null = Invoke-Tool @('helper', 'stop') }
+    }
+
+    # AN UNKNOWN ID IS A REFUSAL ON BOTH ROUTES, WITH THE SAME CODE. A helper
+    # that flattened the typed error into a generic refusal would answer exit 2
+    # where the direct path answers exit 1, for one question.
+    Test-Case 'an unknown id is the same refusal down both routes' 'direct=1 helper=1' {
+        $start = Invoke-Tool @('helper', 'serve', '--detach', '--json')
+        if ($start.Code -ne 0) { return "helper would not start: $($start.Err)" }
+        try {
+            $missing = 'ffffffffffffffff'
+            $direct = Invoke-Tool @('inspect', $missing)
+            $viaHelper = Invoke-Tool @('inspect', $missing, '--via-helper')
+            if (($direct.Err + $direct.Out) -notmatch 'no such job') { return "the direct refusal did not name it: $($direct.Err)" }
+            if (($viaHelper.Err + $viaHelper.Out) -notmatch 'no such job') { return "the helper refusal did not name it: $($viaHelper.Err)" }
+            "direct=$($direct.Code) helper=$($viaHelper.Code)"
+        }
+        finally { $null = Invoke-Tool @('helper', 'stop') }
+    }
+
     Test-Case 'the helper is gone once it is stopped' 'True' {
         $r = Invoke-Tool @('helper', 'status', '--json')
         $d = $r.Out | ConvertFrom-Json
@@ -1352,7 +1405,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 67 } else { 69 }
+$expected = if ($Quick) { 69 } else { 71 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

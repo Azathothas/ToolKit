@@ -222,6 +222,10 @@ function New-StreamLogState {
         Fired     = @()
         Quiet     = $false
         LastDisk  = $null
+        # WSL-27. The last progress the GUEST reported, and when. Null until a
+        # line arrives, because a run that has reported nothing has not reported
+        # zero.
+        Progress  = $null
     }
 }
 
@@ -259,16 +263,79 @@ function Format-StreamLogPrefix {
         [Parameter(Mandatory = $true)][string]$Tag,
         [Parameter(Mandatory = $true)][timespan]$Now,
         [Parameter(Mandatory = $true)][timespan]$Delta,
-        [switch]$Partial
+        [switch]$Partial,
+        # ⭐ THE WALL READING, WHERE THE CALLER HAS ONE. A live run reads the
+        # clock; a Replay has the reading the record already carries, and
+        # rendering it against THIS machine's clock would stamp a run from last
+        # week with today's date. WSL-28. One renderer either way: a second copy
+        # for replay is how the file and the terminal come to disagree.
+        [Nullable[DateTimeOffset]]$Wall = $null
     )
     $cfg  = $State.Settings
-    $wall = [DateTimeOffset]::Now
+    # ⛔ NOT $wall. That name IS the $Wall parameter, because PowerShell ignores
+    # case in variable names, so assigning to it would overwrite what the caller
+    # passed with this machine's clock and a replay would stamp last week's run
+    # with today. build.ps1 -Test walks the AST for exactly this and refused the
+    # first version of this line.
+    $reading = if ($null -ne $Wall) { [DateTimeOffset]$Wall } else { [DateTimeOffset]::Now }
     $parts = @()
     foreach ($c in $cfg.Columns) {
-        $parts += (Format-StampColumn -Column $c -Format $cfg.Format -Wall $wall -Elapsed $Now -Delta $Delta)
+        $parts += (Format-StampColumn -Column $c -Format $cfg.Format -Wall $reading -Elapsed $Now -Delta $Delta)
     }
     $field = if ($Partial) { $Tag.PadRight(3) + '~' } else { $Tag.PadRight(4) }
     return (($parts -join ' ') + $cfg.Separator + $field)
+}
+
+function Read-ProgressLine {
+    <#
+      Whether one relayed line is a progress report, and what it says.
+
+      ⭐ WHY A STDOUT PREFIX IS THE CHANNEL. The three host-side signals this
+      tool measures say whether something is happening and never how much is
+      left, because nothing inside the guest can tell the host anything. A
+      prefix needs no injection, no mount, no named pipe and no agent in the
+      image: the payload already has a stdout and the caller already chose what
+      to run.
+
+      ⛔ THE TOKEN IS THE CALLER'S AND THERE IS NO DEFAULT. A tool that silently
+      swallowed every line beginning with some chosen string would be a tool that
+      eats somebody's output, and the caller would have no way to know which line
+      went missing.
+
+      ⛔ A MALFORMED PREFIXED LINE IS RELAYED, NEVER SWALLOWED. Returning null
+      here is what puts it back in the stream. Consuming a line the parse did not
+      understand is the same defect as consuming one nobody opted into, arrived
+      at by a different route.
+
+      The shape is the token, whitespace, a percentage, and an optional label:
+
+          TOKEN 42 unpacking
+          TOKEN 42% unpacking
+          TOKEN 100
+
+      Returns a hashtable with Percent and Label, or $null when this is not one.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Token
+    )
+    if (-not $Token) { return $null }
+    if (-not $Text.StartsWith($Token, [StringComparison]::Ordinal)) { return $null }
+    $rest = $Text.Substring($Token.Length)
+    # ⚠ THE TOKEN HAS TO END AT A BOUNDARY. Without this, a token of `P` would
+    # consume every line beginning with the letter P, and the caller who chose a
+    # short token would lose output they never connected to this switch.
+    if ($rest -and -not [char]::IsWhiteSpace($rest[0])) { return $null }
+    $rest = $rest.Trim()
+    if (-not ($rest -match '^([0-9]+(?:\.[0-9])?)\s*%?(?:\s+(.*))?$')) { return $null }
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    $pct = [double]::Parse($Matches[1], $inv)
+    # A number outside the range is not a percentage, so the line is somebody
+    # else's and goes back to the stream.
+    if ($pct -lt 0 -or $pct -gt 100) { return $null }
+    $label = ''
+    if ($Matches.Count -gt 2 -and $Matches[2]) { $label = ([string]$Matches[2]).Trim() }
+    return @{ Percent = $pct; Label = $label }
 }
 
 function Write-StreamLogLine {
@@ -392,12 +459,29 @@ function Write-StreamLogTick {
              ' | out ' + $State.Counts.out.Lines + ' lines ' + (Format-ByteCount -Bytes $State.Counts.out.Bytes) +
              ' | err ' + $State.Counts.err.Lines + ' lines ' + (Format-ByteCount -Bytes $State.Counts.err.Bytes) +
              ' | distro ' + $runState + ' | ' + $diskText)
+    # ⛔ THE LAST PROGRESS AND WHEN IT ARRIVED. NOT AN ESTIMATE. A
+    # remaining-time figure derived from one sample is the fabricated number
+    # docs/conventions/prose.md forbids, and the age is the part that carries
+    # the warning: 40 percent reported twelve minutes ago is a different picture
+    # from 40 percent reported four seconds ago, and the percentage alone cannot
+    # tell them apart. WSL-27.
+    if ($State.Progress) {
+        $age = $now - $State.Progress.At
+        $shown = 'progress ' + (Format-Percent -Value $State.Progress.Percent)
+        if ($State.Progress.Label) { $shown += ' ' + $State.Progress.Label }
+        $text += ' | ' + $shown + ' (' + (Format-Duration -Span $age) + ' ago)'
+    }
     Write-StreamLogLine -State $State -Tag 'tick' -Text $text
     if ($State.Events) {
         $data = @{ silence_s = [Math]::Round($silent.TotalSeconds, 1); distro_state = $runState
                    out_lines = $State.Counts.out.Lines; err_lines = $State.Counts.err.Lines }
         if ($null -ne $disk) { $data['disk_bytes'] = $disk.Bytes }
         if ($null -ne $grew) { $data['disk_grew_bytes'] = $grew }
+        if ($State.Progress) {
+            $data['progress_percent'] = $State.Progress.Percent
+            $data['progress_age_s'] = [Math]::Round(($now - $State.Progress.At).TotalSeconds, 1)
+            if ($State.Progress.Label) { $data['progress_label'] = $State.Progress.Label }
+        }
         Write-EventRecord -Sink $State.Events -Kind 'TICK_FACTS' -RelativeSeconds $now.TotalSeconds -Data $data
     }
     Write-StreamLogEscalation -State $State -Silent $silent -DiskGrew $grew -DistroState $runState
