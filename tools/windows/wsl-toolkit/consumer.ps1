@@ -134,6 +134,25 @@ function Invoke-Released {
     return [pscustomobject]@{ Code = $p.ExitCode; Out = $outTask.Result; Err = $errTask.Result }
 }
 
+function Get-Field {
+    <#
+      One property read that a MISSING field does not turn into an exception.
+
+      ⛔ Set-StrictMode -Version Latest makes `$obj.absent` THROW, including
+      inside a `$null -ne $obj.absent` test, so the guard written to tolerate a
+      missing field is the line that dies on it. This file reads documents
+      produced on a machine it knows nothing about: a host with no WSL answers
+      `doctor --json` without the field a host with WSL carries, and the case
+      that allowed for that threw on the ubuntu-side runner instead of passing.
+      Found by putting this suite in CI, which is what TOOL-12 was for.
+    #>
+    param($Object, [Parameter(Mandatory = $true)][string]$Name)
+    if ($null -eq $Object) { return $null }
+    $p = $Object.PSObject.Properties[$Name]
+    if ($null -eq $p) { return $null }
+    return $p.Value
+}
+
 function Read-ToolJson {
     param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Stdout, [string]$What = 'the command')
     if ($null -eq $Stdout -or $Stdout.Trim() -eq '') { throw "$What advertises --json and put nothing on stdout" }
@@ -318,8 +337,11 @@ try {
         if ($r.Code -ne 0) { return "doctor exited $($r.Code): $($r.Err)" }
         $d = Read-ToolJson -Stdout $r.Out -What 'doctor --json'
         if ($d.schema -ne 'agent-doctor/1') { return "schema is $($d.schema)" }
-        if ($null -ne $d.wsl -and $null -ne $d.wsl.distros) {
-            $before = @($d.wsl.distros | Where-Object { $_.owned } | ForEach-Object { $_.name })
+        # Every hop through Get-Field, because a host with no WSL answers this
+        # document without the fields a host with WSL carries.
+        $list = Get-Field (Get-Field $d 'wsl') 'distros'
+        if ($null -ne $list) {
+            $before = @(@($list) | Where-Object { Get-Field $_ 'owned' } | ForEach-Object { Get-Field $_ 'name' })
         }
         # doctor is a report. A report that registers a distribution has changed
         # the thing it was asked to measure.
@@ -356,7 +378,7 @@ try {
         $text = $r.Out + $r.Err
         $missing = @()
         foreach ($c in @('doctor', 'script', 'base', 'images', 'run', 'matrix',
-                'resources', 'gc', 'logs', 'helper', 'config', 'version')) {
+                'resources', 'gc', 'logs', 'inspect', 'helper', 'config', 'version')) {
             if ($text -notmatch ("(?m)^\s+" + [regex]::Escape($c) + "\s")) { $missing += $c }
         }
         if ($missing.Count -gt 0) { return "not in the usage text: $($missing -join ',')" }
@@ -364,11 +386,27 @@ try {
     }
 
     # -- can this machine go further? -----------------------------------------
-
-    $probe = Invoke-Released @('base', 'status', '--json')
-    if ($probe.Code -eq 2) {
+    #
+    # ⛔ THE TOOL HAS A COMMAND FOR THIS QUESTION AND THIS FILE USED TO HAND-ROLL
+    # ONE. It read `base status --json` and treated anything but exit 2 as "jobs
+    # can run here", which is true on a machine with WSL2 and wrong on one
+    # without: a GitHub windows runner has docker and no WSL, so `base status`
+    # answered, five job cases ran, and every one of them FAILED over a host
+    # that was never going to be able to run them. A suite that fails where it
+    # should skip is a suite whose red means nothing.
+    #
+    # `ready` is the command WSL-49 built to answer exactly this, and
+    # `route.wsl_callable` is the half that decides it: not whether wsl.exe
+    # resolves, but whether it ANSWERS. WSL-32 is the entry that drew that
+    # distinction and this is the same question asked from outside.
+    $probe = Invoke-Released @('ready', '--json')
+    $ready = $null
+    try { $ready = Read-ToolJson -Stdout $probe.Out -What 'ready --json' }
+    catch { $ready = $null }
+    $callable = [bool](Get-Field (Get-Field $ready 'route') 'wsl_callable')
+    if (-not $callable) {
         Write-Line ''
-        Write-Line "  this process cannot reach a distribution, so the job cases are skipped"
+        Write-Line "  wsl.exe does not answer on this host, so the job cases are skipped"
         Write-Line ''
     }
     else {
