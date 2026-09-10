@@ -14,8 +14,8 @@ on what was true last time.
 | Elapsed | started 2026-09-10T12:00:00Z | one context |
 | Commits | `0c9c1f8`, clean `main`, no tag | 4 on `main`, pushed, CI green, and `wsl-toolkit-v2.0.1` published |
 | Work | 88 entries: 2 open, 0 blocked, 86 done | 93 entries: 3 open, 0 blocked, 90 done. 4 closed, 5 filed, 1 of those closed |
-| Changes | 251 tracked files | 254; 27 changed, +1,124 / -303 lines |
-| Size | 76,414 tracked lines | 76,414 at the end. The doc pass took 26 lines out of `scripts/README.md` and moved them to `docs/HISTORY/` rather than deleting them |
+| Changes | 251 tracked files | 254; 24 changed, +1,168 / -333 lines |
+| Size | 76,414 tracked lines | 76,418 at the end, +4. ⚠ The doc pass took 26 lines out of `scripts/README.md` and put 21 of them in `docs/HISTORY/scripts.md`; the record grew by more than the manuals shrank. |
 | Gate | 19 checks, 28.8s, green | 19 checks, 28s, green |
 | Selftest | 157 over 40 functions | 157 over 40, same on 7.6.5 and 5.1. Unchanged: nothing in the script moved but its version. |
 | Mutation | 76 rows, 75 proved on this host | 78 rows, both new ones proved individually, 4.31 min for the sweep |
