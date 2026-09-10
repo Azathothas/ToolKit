@@ -13,14 +13,14 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 77  open 19  blocked 0  done 58
+total 78  open 20  blocked 0  done 58
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 12 | 0 | 29 | 41 |
-| P2 | 6 | 0 | 20 | 26 |
+| P2 | 7 | 0 | 20 | 27 |
 | P3 | 1 | 0 | 6 | 7 |
 | **all** | **9** | **0** | **54** | **63** |
 
@@ -107,6 +107,7 @@ total 77  open 19  blocked 0  done 58
 | WSL-49 | P1 | L | open | One command to readiness | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-50 | P1 | L | open | Diagnostics and a heartbeat for the base and what runs inside it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-51 | P1 | L | open | A config the agent does not have to write | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-52 | P2 | L | open | The six commands that make an answer actionable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

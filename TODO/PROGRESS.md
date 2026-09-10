@@ -8,16 +8,17 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-09T21:00:00Z
 baseline        450b380, clean main; gate 17 checks, all passing, 31s.
-entries         total 77  open 19  blocked 0  done 58
+entries         total 78  open 20  blocked 0  done 58
 gate            18 checks, one binary, 43s, all passing
 ```
 
 ## Active work
 
 None in flight. Eleven entries were FILED at the end of this session and none is
-started: `WSL-42` to `WSL-51` and `TOOL-17`. They come from thirteen defects a
-consumer agent filed against the published `wsl-toolkit-v1.3.0`, plus three
-requirements the operator added.
+started: `WSL-42` to `WSL-52` and `TOOL-17`, twelve in all. They come from thirteen
+defects a consumer agent filed against the published `wsl-toolkit-v1.3.0`, plus
+three requirements the operator added. ⭐ **Every fork in them is ruled**,
+so none needs an answer before it can be started.
 
 ⛔ **Read the work order below before picking one.** Three of the eleven
 are ruled together or not at all, and five cannot be PROVED until a sixth is
@@ -123,7 +124,27 @@ helpers and transcripts. `WSL-43` records the exact commands and why they work.
 Then, in rough order of what unblocks the most: `WSL-44` (a helper that caches
 nothing whose truth can change), `WSL-46` (the answer is what happened),
 `WSL-45` (a deadline that bounds waiting), `WSL-47` and `WSL-48` (the manual's
-claims made true), `WSL-49` (one command to readiness), `WSL-50` (a heartbeat).
+claims made true), `WSL-49` (one command to readiness), `WSL-52` (the six
+commands that make its answer actionable), `WSL-50` (a heartbeat).
+
+## How this ships
+
+**RULED 2026-09-10: one `wsl-toolkit-v2.0.0` when the breaking work is done.**
+
+Five entries are breaking: `WSL-42` refuses configs that were accepted, `WSL-45`
+changes what a reported duration means, `WSL-46` shrinks `stderr_bytes` by one,
+`WSL-47` refuses artifact links that used to be transformed, and `WSL-48` changes
+an exit code from 0. A consumer absorbs that once rather than five times, and the
+changelog tells one story instead of five partial ones.
+
+⛔ **Nothing ships in between, and that is the cost that was accepted.**
+Thirteen defects sit unreleased while the work happens. A session that finds the
+gap intolerable should say so and ask, rather than cutting a minor to relieve the
+pressure and leaving a consumer with two breaking upgrades instead of one.
+
+⚠ `TOOL-17` and its consumer harness are NOT part of that release, because
+nothing in `tools/` is published. They land whenever they are ready, which is
+first.
 
 Still open from before, and not urgent:
 

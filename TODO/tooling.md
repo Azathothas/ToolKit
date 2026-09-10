@@ -1752,13 +1752,19 @@ one nobody asked for.
 
 ## Decision
 
-The fork is whether the consumer harness runs in CI. Running it there means CI
-depends on a published release and on a network, and a red CI caused by a
-registry outage teaches people to ignore CI.
+**SETTLED 2026-09-10: not in CI. It runs after each release, from the release
+checklist.**
 
-**Recommendation: not in CI, and run deliberately after each release**, as part
-of the release checklist rather than the commit checklist. The release is the
-event it is about.
+Running it in CI means every commit depends on a published release and on a
+network, and a red CI caused by a registry outage teaches people to ignore CI,
+which costs more than the harness is worth. The release is the event this harness
+is about, so the release is where it runs.
+
+⚠ **The checklist is the instrument, and a checklist is a preference.**
+This repository has now twice learned what an uninstrumented rule is worth, so
+the honest version is that `release.ps1` runs the harness against the tag it just
+pushed, once CI has published the assets, and refuses to report success until it
+has. Whoever builds this decides whether that is one command or two.
 
 ## Consumers
 

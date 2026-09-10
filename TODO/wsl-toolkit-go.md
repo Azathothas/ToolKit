@@ -1061,15 +1061,30 @@ expected fix is "reject any `base.name` other than the one hard-owned name". The
 operator's requirement is several isolated instances so that agents do not step
 on each other.
 
-**Recommendation: keep a fixed PREFIX, not a fixed name.** A distribution is
+**RULED 2026-09-10: a fixed PREFIX plus a guest-side marker.** A distribution is
 owned when its name matches `wsl-toolkit` or `wsl-toolkit-<suffix>` AND it
-carries this tool's identity marker. That satisfies the reporter, because a name
-outside the prefix is still structurally refused and an unmarked distribution
-inside the prefix is refused too, and it satisfies the operator, because the
-suffix is what makes instances independent.
+carries this tool's identity marker. A name outside the prefix is structurally
+refused, which is what the reporter asked for; an unmarked distribution inside
+the prefix is refused too, which is what the reporter did NOT ask for and is the
+half that actually closes the hole; and the suffix is what makes instances
+independent, which is what the operator asked for.
 
-⛔ **The two entries are ruled together or not at all.** Fixing this one as
-filed makes WSL-43 impossible, and building WSL-43 first reopens this one.
+The alternatives and why they lost: a fixed single name closes
+[issue 16](https://github.com/Azathothas/ToolKit/issues/16) exactly as filed and
+makes [WSL-43](wsl-toolkit-go.md) impossible. A marker with no name rule leaves a
+mistyped name creating a real distribution that simply cannot be removed, which
+trades one surprise for another.
+
+Two things follow and neither is optional:
+
+- ⛔ **A base built before the marker existed has no marker**, so the
+  upgrade path is part of this entry: `ensure` recognises an unmarked
+  distribution whose name matches the prefix and whose record this tool wrote,
+  writes the marker, and says it did. Anything else is refused with the exact
+  command that rebuilds it.
+- ⚠ **The marker lives in the guest and the record lives on the host**, so
+  they can disagree. The marker wins, because the host file is the one an editor
+  can reach.
 
 ## Consumers
 
@@ -1149,8 +1164,13 @@ same base, and that is correct.
 
 ## Decision
 
-Ruled together with [WSL-42](wsl-toolkit-go.md): ownership is a fixed prefix
-plus a guest-side identity marker.
+**RULED 2026-09-10, together with [WSL-42](wsl-toolkit-go.md):** ownership is a
+fixed prefix plus a guest-side identity marker, so `wsl-toolkit-<suffix>` is a
+name this tool may own and everything outside the prefix is refused.
+
+**RULED 2026-09-10, together with [WSL-51](wsl-toolkit-go.md):** an instance's
+state lives under ONE state home per instance. A directory in a working tree
+points at an instance; it does not hold one.
 
 ⚠ **The default instance keeps the bare name `wsl-toolkit`**, so every
 existing caller, manual line and acceptance case keeps working unchanged.
@@ -1344,6 +1364,11 @@ names the retained copy wherever it lives, guest or helper.
 ⛔ **`exit` keeps meaning the container's own code.** The fix is a second,
 clearly named field, not a redefinition of the one a caller already reads.
 
+**SETTLED 2026-09-10:** the new field is `effective_exit`, the name the reporter
+used, and it carries what the process returned. `artifacts` keeps meaning entries
+DELIVERED and a new `artifacts_attempted` carries what was encountered, because a
+count that silently changed meaning is worse than a count that gained a sibling.
+
 ## Consumers
 
 Additive fields, one breaking change: `stderr_bytes` stops being one byte larger
@@ -1406,11 +1431,19 @@ what is changed is visible.
 becomes explicit, and the root warning states plainly which Windows drives are
 mounted and writable whenever any are.
 
-For links, pick ONE policy and write it down. ⚠ Recommendation: refuse an
-artifact link whose target leaves the tree, since that is what the manual already
-says, and report an omitted workspace entry as a counted, named result rather
-than as silence. A transformation nobody is told about is the same defect as a
-truncation nobody is told about.
+**SETTLED 2026-09-10: refuse on the way out, count on the way in.**
+
+An artifact link whose target leaves the tree is REFUSED and fails the job, which
+is what the manual already promises. A workspace entry omitted because it leaves
+the tree is COUNTED and named in the result, not refused, because a junction
+somewhere in a large tree is a normal thing to have and failing the job over one
+would make the workspace feature unusable.
+
+⚠ The asymmetry is deliberate and it is the reason this is written down: a
+caller CHOOSES what it puts in `/out`, so a refusal there is actionable, while a
+caller often does not control every entry under a workspace it points at. A
+transformation nobody is told about is the same defect as a truncation nobody is
+told about, and both halves here are told.
 
 ⛔ **It must not start following links to make them work.** The safety
 here is real; only the reporting is wrong.
@@ -1540,13 +1573,23 @@ locations, and the exact remediation when not ready.
 
 ## Decision
 
-The issue also lists nine supporting improvements. ⚠ **Two of them belong to
-other entries and are not duplicated here**: helper restart or reload with a
-non-racy wait is [WSL-44](wsl-toolkit-go.md)'s, and route plus versions in
-run and matrix JSON is [WSL-46](wsl-toolkit-go.md)'s. The rest, config validate
-and effective view, artifact retry, job-scoped resources and gc, images warm, and
-a quickstart, are QOL that should be ruled on separately rather than smuggled in
-under one heading.
+**RULED 2026-09-10: build all of them.**
+
+⚠ **The issue lists EIGHT supporting improvements, not nine.** An earlier
+draft of this entry said nine and then seven; both were miscounts, and the number
+matters because it decides what "all of them" covers. Counted from the issue
+body: eight bullets under its own QOL heading.
+
+Two belong to other entries and are not duplicated: helper restart or reload with
+a non-racy wait is [WSL-44](wsl-toolkit-go.md)'s, because it is the same subject
+as a helper that froze its config; route plus client and helper versions in run
+and matrix JSON is [WSL-46](wsl-toolkit-go.md)'s, because it is the same subject
+as a result that does not say what happened.
+
+The remaining SIX are [WSL-52](wsl-toolkit-go.md), split out rather than folded
+in. ⭐ **This entry stays one command and one JSON schema**; six new
+commands under the same heading would be an entry nobody can close, and each of
+the six has its own acceptance.
 
 ## Consumers
 
@@ -1604,9 +1647,15 @@ payload where podman is not the engine.
 machine-readable event with a timestamp; whatever renders it belongs to the
 caller.
 
-⚠ It must also not become a poll loop against the engine per second. The
-interval is stated, configurable and defaulted to something a matrix of twelve
-can carry without adding measurable load, and the entry says what it measured.
+⚠ It must also not become a poll loop against the engine per second.
+
+**SETTLED 2026-09-10: five seconds by default, configurable, and never below one.**
+Five is chosen so a twelve-row matrix produces about two and a half ticks per
+second in total, which is under the rate at which the event stream already
+carries output. ⛔ **That number is a starting point and not a measurement.**
+Whoever builds this measures the added load of a twelve-row matrix with ticks
+against one without, and writes the result here; if five is wrong the number
+changes and this sentence stays.
 
 ## Consumers
 
@@ -1666,28 +1715,33 @@ things, in a tool whose whole difficulty is which side of the boundary something
 is on. Pick a different host name or rename the guest root, and say which in this
 entry before any code moves.
 
-⛔ **THIS CONTRADICTS [WSL-43](wsl-toolkit-go.md) AND THE CONTRADICTION WAS
-NEARLY WRITTEN AWAY.** That entry puts an instance's state under the state home,
-in a subdirectory named for the instance. This one puts it beside the code. Both
-are defensible and they are not the same place, and an earlier draft of this
-paragraph claimed they "resolve to the same mechanism", which is the sentence a
-reviewer should be most suspicious of.
+This CONTRADICTED [WSL-43](wsl-toolkit-go.md), which puts an instance's state
+under the state home. An earlier draft of this paragraph claimed the two "resolve
+to the same mechanism", which was the sentence a reviewer should have been most
+suspicious of.
 
-**Recommendation: the state home stays the single store, and `.wsl-toolkit/` is a
-POINTER, not a store.** It holds the config and the instance name; the
-transcripts, artifacts and ledger stay under one home per instance. A checkout
-deleted mid-job then loses a pointer rather than a running job's ledger, and `gc`
-keeps one place to look. ⚠ Ruled together with WSL-43, or one of them will
-be built on the other's assumption.
+**RULED 2026-09-10: the state home is the single store and `.wsl-toolkit/` is a
+POINTER.** It holds the config and the instance name. Transcripts, artifacts and
+the ledger stay under one home per instance. A checkout deleted mid-job loses a
+pointer rather than a running job's ledger, and `gc` keeps one place to look.
+
+⭐ **The name collision dissolves with the ruling.** A pointer directory and
+the guest job root are not two stores with one name; one is a file naming an
+instance and the other is where a job's work lives inside the distribution.
+`GuestRoot` keeps its name, and `config` prints the resolved instance so nobody
+has to infer which of the two they are looking at.
 
 Running `wsl-toolkit` with no arguments in a directory that has a config brings
 the machine to the state that config describes, which is
 [WSL-49](wsl-toolkit-go.md)'s `ready` with the config as its input.
 
-⚠ **TOML was asked about and JSON is the recommendation.** The tool already
-reads and writes JSON, has no dependencies, and Go's standard library has no TOML
-parser, so accepting TOML means vendoring one into a tree whose whole build story
-is that it has nothing to vendor.
+**SETTLED 2026-09-10: JSON only, and the file is `wsl-toolkit.json`.** TOML was
+asked about. The tool already reads and writes JSON, has no dependencies, and
+Go's standard library has no TOML parser, so accepting TOML means vendoring one
+into a tree whose whole build story is that it has nothing to vendor. ⛔ A
+`wsl-toolkit.toml` found during the search is REFUSED by name rather than
+ignored, because silently skipping a file somebody wrote as configuration is how
+this tool would lie about which config won.
 
 ## Consumers
 
@@ -1705,3 +1759,78 @@ A case with configs at two levels asserting the nearer one wins whole; a case
 asserting `config` names the file it resolved and the order; a case asserting a
 bare invocation in a configured directory reaches the described state and is a
 fast no-op the second time.
+
+---
+
+## WSL-52. The six commands that make an answer actionable
+
+**Source** The supporting improvements in
+[issue 28](https://github.com/Azathothas/ToolKit/issues/28), split out of
+[WSL-49](wsl-toolkit-go.md) so each can be closed on its own. The operator ruled
+on 2026-09-10 to build all of them.
+**Category** wsl, **Priority** P2, **Effort** L, **Status** open
+
+## Problem
+
+`ready` can tell an agent it is not ready. Six things it might have to say have
+no command behind them, so the answer names a subsystem instead of a next step.
+
+1. A helper's config identity is invisible, so a client cannot tell whether the
+   helper it found is running the config the client just read.
+2. There is no way to validate a config, or to see the one that would be used,
+   without writing a file.
+3. A retained artifact copy is named and cannot be retrieved.
+4. `resources` and `gc` operate on the whole state store, so an agent cannot
+   inspect or clean one job.
+5. An image is pulled when a job needs it, so a twelve-row matrix on a slow link
+   fails slowly rather than failing first.
+6. The canonical command patterns live only in the manual.
+
+## Premise
+
+Read: each is a surface over data the tool already holds. `helper status` already
+answers, `Config` already validates on load, the ledger already records every
+retained copy with its job id, `resources` already enumerates per job, and the
+catalog already knows every reference.
+
+⭐ **None of the six needs a new concept.** That is why they are one entry
+and why they are P2: they are reach, not depth.
+
+## Approach
+
+Six commands, each with its own `--json` and its own acceptance case:
+
+- `helper status --json` gains a config fingerprint and whether it matches the
+  invoking client.
+- `config validate` and `config --effective`, neither of which writes.
+- `artifacts retry JOB|SET-ID --to DIR`, named in any result that retained a copy.
+- `resources --job ID` and `gc --job ID`.
+- `images pull` and `images warm`, reporting per-image reachability and cache
+  state.
+- `examples`, holding the canonical command, script file, workspace and artifact,
+  matrix, no-network and non-root patterns.
+
+⛔ **`artifacts retry` must not re-run the job.** It retrieves what was
+retained, and when nothing was retained it says so rather than offering to
+produce it again.
+
+⚠ **`gc --job ID` obeys the same liveness rule as `gc`.** A job id that is
+still running is spared unless `--include-live` is passed, exactly as
+[WSL-36](wsl-toolkit-go.md) settled for the whole store.
+
+## Consumers
+
+Additive: six new commands and one new field on an existing JSON schema.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+One case per command, each asserting the structured answer rather than the exit
+code alone: a helper started with one config and queried by a client holding
+another reports a mismatch; `config validate` refuses a config the loader refuses
+and writes nothing; a job whose artifacts failed is retrieved by
+`artifacts retry`; `gc --job` on a running job spares it; `images warm` reports a
+reachable and an unreachable reference differently.
