@@ -23,7 +23,7 @@
       "label": "the destination collision set",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/workspace.go",
-      "find": "\t\t\tif err := claim(rel, hdr.Name); err != nil {\n\t\t\t\treturn entries, total, err\n\t\t\t}\n",
+      "find": "\t\t\tif err := claim(rel, hdr.Name); err != nil {\n\t\t\t\treturn got, err\n\t\t\t}\n",
       "replace": "",
       "run": "TestExtractRefusesCaseCollision",
       "args": []
@@ -40,8 +40,8 @@
     {
       "label": "the transfer branch of the verdict",
       "module": "tools/windows/wsl-toolkit",
-      "file": "cmd_run.go",
-      "find": "\tcase res.ArtifactError != \"\":",
+      "file": "internal/toolkit/job.go",
+      "find": "\tcase j.ArtifactError != \"\":",
       "replace": "\tcase false:",
       "run": "TestJobVerdict",
       "args": []
@@ -405,7 +405,7 @@
       "file": "internal/mutate/mutate.go",
       "find": "\tcase v.Cases == 0:",
       "replace": "\tcase false:",
-      "run": "TestRunTellsTheThreeOutcomesApart",
+      "run": "TestRunTellsTheFourOutcomesApart",
       "args": []
     },
     {
@@ -414,7 +414,7 @@
       "file": "internal/mutate/mutate.go",
       "find": "\tif n := strings.Count(string(body), m.Find); n != 1 {",
       "replace": "\tif n := 1; n != 1 {",
-      "run": "TestRunTellsTheThreeOutcomesApart",
+      "run": "TestRunTellsTheFourOutcomesApart",
       "args": []
     },
     {
@@ -430,9 +430,171 @@
       "label": "the harness failing when a row is theatre",
       "module": "tools/repo",
       "file": "internal/mutate/mutate.go",
-      "find": "\tif proved != len(verdicts) {",
+      "find": "\tif len(theatre) > 0 || len(broken) > 0 {",
       "replace": "\tif false {",
-      "run": "TestReportFailsUnlessEveryRowIsProved",
+      "run": "TestReportFailsOnEveryRowThatDisagrees",
+      "args": []
+    },
+    {
+      "label": "telling a case that skipped from a case that stayed green",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase v.Skipped >= v.Cases:",
+      "replace": "\tcase false:",
+      "run": "TestRunTellsTheFourOutcomesApart",
+      "args": []
+    },
+    {
+      "label": "a row this host could not prove staying out of the proved count",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\t\tcase \"SKIPPED\":\n\t\t\tskipped = append(skipped, v)\n",
+      "replace": "",
+      "run": "TestReportFailsOnEveryRowThatDisagrees",
+      "args": []
+    },
+    {
+      "label": "the exactly-once rule that catches a row whose code moved",
+      "module": "tools/check",
+      "file": "internal/checks/mutations.go",
+      "find": "\t\tif n := strings.Count(string(t.Read(path)), m.Find); n != 1 {",
+      "replace": "\t\tif n := 1; n != 1 {",
+      "run": "TestMutationsRefusesARowThatPointsAtNothing",
+      "args": []
+    },
+    {
+      "label": "the case a row names having to exist",
+      "module": "tools/check",
+      "file": "internal/checks/mutations.go",
+      "find": "\t\t\tif !funcs[want] {",
+      "replace": "\t\t\tif false {",
+      "run": "TestMutationsRefusesARowThatPointsAtNothing",
+      "args": []
+    },
+    {
+      "label": "a mutation table holding no rows being a finding",
+      "module": "tools/check",
+      "file": "internal/checks/mutations.go",
+      "find": "\tif len(table.Mutations) == 0 {",
+      "replace": "\tif false {",
+      "run": "TestMutationsRefusesATableThatProvesNothing",
+      "args": []
+    },
+    {
+      "label": "the framing newline that is only put back when there is a line to end",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/marker.go",
+      "find": "\t\tcase i > 0:\n\t\t\tkeepNewline = m.buf[i-1] != '\\n'",
+      "replace": "\t\tcase i > 0:\n\t\t\tkeepNewline = true",
+      "run": "TestMarkerStripperInventsNoByte",
+      "args": []
+    },
+    {
+      "label": "delivered counted separately from attempted",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\tgot.Delivered++\n\t\tcase tar.TypeSymlink, tar.TypeLink:",
+      "replace": "\t\tcase tar.TypeSymlink, tar.TypeLink:",
+      "run": "TestExtractSeparatesAttemptedFromDelivered",
+      "args": []
+    },
+    {
+      "label": "an archive link that leaves the tree is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\tif err := assertLinkStaysInside(dest, rel, hdr.Linkname); err != nil {\n\t\t\t\treturn got, err\n\t\t\t}",
+      "replace": "\t\t\tif err := error(nil); err != nil {\n\t\t\t\treturn got, err\n\t\t\t}",
+      "run": "TestAnArchiveLinkThatLeavesTheTreeIsRefused",
+      "args": []
+    },
+    {
+      "label": "a workspace entry that cannot travel is named rather than dropped",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\t\tup.note(slashRel, \"it links to \"+target+\", which is outside the workspace\")",
+      "replace": "\t\t\t\t_ = target",
+      "run": "TestAWorkspaceSymlinkPointingOutOfTheTreeIsLeftOutAndNamed",
+      "args": []
+    },
+    {
+      "label": "the name rule that decides what this tool may touch",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "\tif !IsOwnedName(name) {",
+      "replace": "\tif false {",
+      "run": "TestOnlyTheOwnedDistributionCanBeTouched",
+      "args": []
+    },
+    {
+      "label": "a configured base name outside the prefix is refused when it is read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif err := ValidateOwnedName(c.Base.Name); err != nil {",
+      "replace": "\tif err := error(nil); err != nil {",
+      "run": "TestAConfiguredNameOutsideThePrefixIsRefused",
+      "args": []
+    },
+    {
+      "label": "an instance moves its state directory as well as its distribution",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/instance.go",
+      "find": "\treturn filepath.Join(base, \"instances\", name), nil",
+      "replace": "\treturn base, nil",
+      "run": "TestAnInstanceIsANameAndADirectoryTogether",
+      "args": []
+    },
+    {
+      "label": "the nearest configuration wins whole",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\t\tif _, err := os.Stat(candidate); err == nil {\n\t\t\t\tsrc.Path, src.From = candidate, \"the working directory or a parent\"\n\t\t\t\treturn src, nil\n\t\t\t}",
+      "replace": "\t\t\tif false {\n\t\t\t\treturn src, nil\n\t\t\t}",
+      "run": "TestTheNearestConfigurationWinsWhole",
+      "args": []
+    },
+    {
+      "label": "a configuration spelling this tool does not read is refused by name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\t\tif _, err := os.Stat(refused); err == nil {",
+      "replace": "\t\t\tif false {",
+      "run": "TestAConfigurationThisToolDoesNotReadIsRefused",
+      "args": []
+    },
+    {
+      "label": "a build ahead of the newest release is not offered an update",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/release.go",
+      "find": "\t\tif av != bv {\n\t\t\tif av > bv {\n\t\t\t\treturn 1\n\t\t\t}\n\t\t\treturn -1\n\t\t}",
+      "replace": "\t\tif av != bv {\n\t\t\treturn 1\n\t\t}",
+      "run": "TestABuildAheadOfTheReleaseIsNotAnUpdate",
+      "args": []
+    },
+    {
+      "label": "a digest SHA256SUMS does not carry is an error",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/release.go",
+      "find": "\treturn \"\", fmt.Errorf(\"SHA256SUMS names no digest for %s, so nothing could be verified\", name)",
+      "replace": "\treturn \"\", nil",
+      "run": "TestADigestThatIsNotPublishedIsAnError",
+      "args": []
+    },
+    {
+      "label": "the verdict a caller reads is the code the process returns",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\tcase j.ArtifactError != \"\":\n\t\t// ⛔ The command succeeded and what it was asked to deliver did not\n\t\t// arrive. Exiting 0 here is how a green pipeline lost its build output.\n\t\treturn ExitFailed",
+      "replace": "\tcase false:\n\t\treturn ExitFailed",
+      "run": "TestVerdictCarriesWhatTheProcessReturns",
+      "args": []
+    },
+    {
+      "label": "a configuration fingerprint tracks what changes behaviour",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t}{Base: c.Base, Images: c.Catalog(), Matrix: c.MatrixDefault()}",
+      "replace": "\t}{Base: BaseConfig{}, Images: nil, Matrix: nil}",
+      "run": "TestConfigFingerprintTracksWhatChangesBehaviour",
       "args": []
     }
   ]

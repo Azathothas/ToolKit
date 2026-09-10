@@ -51,6 +51,7 @@ var all = []check{
 	{"powershell", "check-powershell/1", checks.PowerShell, "every tracked .ps1 parses and PSScriptAnalyzer is clean over scripts/"},
 	{"bundle", "check-bundle/1", checks.Bundle, "the two generated products still match the parts that build them"},
 	{"go", "check-go/1", checks.GoModules, "gofmt, vet, build and test over every Go module here"},
+	{"mutations", "check-mutations/1", checks.Mutations, "every row of the mutation table still reaches the guard it names"},
 	{"commits", "check-commits/1", checks.Commits, "no commit credits a tool: no trailer, no generated-with line, no tool name, no emoji"},
 	{"hooks", "check-hooks/1", checks.Hooks, "the commit-msg hook is tracked and this checkout is running it"},
 }

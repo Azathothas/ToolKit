@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -302,16 +303,30 @@ func SelfUpdate(ctx context.Context, running, tag string, log func(string)) (Upd
 	if err := os.WriteFile(staged, body, 0o755); err != nil {
 		return res, fmt.Errorf("could not write the replacement beside %s: %w", self, err)
 	}
+	// The staged file is this function's own and is removed on every path out
+	// of it, so it goes through the same helper as everything else.
+	removeStaged := func() {
+		if err := RemoveInside(dir, staged); err != nil && !errors.Is(err, os.ErrNotExist) {
+			log("the staged replacement is still on disk: " + staged)
+		}
+	}
 	previous := filepath.Join(dir, previousPrefix+running+".exe")
-	_ = os.Remove(previous)
+	// ⛔ THROUGH THE ONE DELETION, which contains the target and reads the
+	// state back. TODO/RULES.md section 3: the guard runs INSIDE the helper
+	// rather than beside each caller, because a guard applied at four call
+	// sites is one that will be applied at three. A leftover from an earlier
+	// run at this exact path is the only thing this can reach.
+	if err := RemoveInside(dir, previous); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return res, fmt.Errorf("a copy from an earlier update is in the way and could not be removed: %w", err)
+	}
 	if err := os.Rename(self, previous); err != nil {
-		_ = os.Remove(staged)
+		removeStaged()
 		return res, fmt.Errorf("could not move the running executable aside: %w", err)
 	}
 	if err := os.Rename(staged, self); err != nil {
 		// Put it back rather than leaving the caller with no executable at all.
 		_ = os.Rename(previous, self)
-		_ = os.Remove(staged)
+		removeStaged()
 		return res, fmt.Errorf("could not put the new executable in place: %w", err)
 	}
 	res.Replaced, res.PreviousAt = true, previous
@@ -355,7 +370,13 @@ func sweepPreviousExecutables(dir string, log func(string)) {
 			continue
 		}
 		p := filepath.Join(dir, e.Name())
-		if err := os.Remove(p); err != nil {
+		// ⛔ Through the one deletion, for the same reason as above. It is also
+		// what reads the state back, so "removed" is a fact rather than the
+		// absence of an error.
+		if err := RemoveInside(dir, p); err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
 			log("a previous copy is still here and could not be removed: " + p)
 			continue
 		}

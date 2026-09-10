@@ -21,6 +21,43 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T08:58:08Z: three of the guards were not being proved, and nothing said so
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-19`.
+**Deployed:** ⛔ **no deploy.** It changes what a gate refuses and what CI runs,
+not anything a consumer fetches.
+
+The mutation table is the instrument that says a guard is real. Running it in
+full, for the first time since the code under it moved, reported 58 of 61:
+
+- two rows matched nothing, because `Extract`'s signature changed and the
+  verdict rule moved out of `cmd_run.go`. Both still parsed and had been
+  proving nothing since the day the code moved;
+- one row was called THEATRE against a case that had never run. It calls
+  `t.Skip` on Windows, and ⚠ **a skipped case prints `=== RUN` and leaves
+  `go test` exiting 0**, which from outside the process is byte for byte a case
+  that stayed green.
+
+⭐ **The second is the harness's own defect class, in the harness.** Its header
+says three outcomes and not two because a previous version collapsed three
+answers into one. It then collapsed a fourth.
+
+What changed: a nineteenth gate check, `mutations`, asserting every row still
+reaches its subject - exactly one match, a tracked file, a real replacement, a
+case that exists; a `SKIPPED` outcome in the harness, which is not counted as
+proved and does not fail the run; and a CI job on ubuntu running the whole
+table, where nothing skips. ⚠ The gate is 42s over 19 checks, unchanged,
+because the new one reads files the tree walk had already read.
+
+⭐ **It caught a fourth stale row while it was being written**, when two harness
+tests were renamed and three rows still named the old names.
+
+Beside it, the compiled tool's base record now goes through `RemoveInside` like
+every other removal of state, and [`TODO/RULES.md`](TODO/RULES.md) section 3
+draws the line the code actually holds: state that outlives the call goes
+through the one deletion, and the rollback half of a write does not, because the
+only root such a call could pass is the file's own directory and a containment
+check that cannot refuse anything is theatre.
 ### 2026-09-10T07:13:31Z: `wsl-toolkit-v2.0.0`, and it is breaking on purpose
 
 **Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-42`

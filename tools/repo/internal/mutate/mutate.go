@@ -5,7 +5,7 @@
 // two: a guard whose case never exercised it, and a ledger stress case that went
 // red in 0 of 10 runs against the defect it was written for.
 //
-// ⭐ THREE OUTCOMES, NOT TWO, and that is the whole design. A previous harness
+// ⭐ FOUR OUTCOMES, NOT TWO, and that is the whole design. A previous harness
 // reported "green with the guard gone" for three different things: a test that
 // really did not cover its subject, a `-run` pattern that matched NO test, and a
 // mutation that did not COMPILE. The last two prove nothing and must not read as
@@ -13,7 +13,23 @@
 //
 //	ok       the guard is real: the mutation built, cases ran, and they went red
 //	THEATRE  it built, cases ran, and they stayed green
+//	SKIPPED  it built, and every case it names skipped itself on this host
 //	BROKEN   it did not build, or matched no case, or the find was not unique
+//
+// ⚠ SKIPPED IS THE FOURTH, AND IT WAS ADDED BECAUSE THIS HARNESS MADE EXACTLY
+// THE MISTAKE IT EXISTS TO CATCH. A case that calls t.Skip prints `=== RUN` and
+// leaves `go test` exiting 0, which is byte for byte what a case that stayed
+// green looks like from out here. So the row for the workspace symlink guard,
+// whose case needs a privilege Windows does not hand an ordinary process, was
+// reported as THEATRE on the operator's own host: a true statement about the
+// host printed as a false accusation against the test.
+//
+// ⛔ A SKIPPED ROW IS NOT PROVED AND IS NOT COUNTED AS PROVED. It does not fail
+// the run either, and that is a deliberate amendment to the older rule that
+// anything short of every row proved is a failure. A row that no host in the
+// world can prove is a defect; a row THIS host cannot prove is the doctor's
+// shape, which is to report absent rather than zero. ⭐ What makes that safe is
+// that the ubuntu CI job runs this table too, and nothing skips there.
 //
 // ⚠ THE TABLE IS DATA, in mutations.json beside this module. A mutation is a
 // claim about one guard, and claims belong where they can be read without
@@ -61,10 +77,16 @@ const TableSchema = "repo-mutations/1"
 
 // Verdict is what one row produced.
 type Verdict struct {
-	Label  string
-	State  string // "ok", "THEATRE" or "BROKEN"
-	Cases  int
-	Reason string
+	Label string
+	// State is "ok", "THEATRE", "SKIPPED" or "BROKEN". ⛔ Never a boolean:
+	// collapsing these is the defect this file was written to remove.
+	State string
+	// Cases is how many cases ran, and Skipped how many of those skipped
+	// themselves. ⚠ Both, because "1 case ran" and "1 case ran and skipped"
+	// are the same string to `go test`'s exit code and mean opposite things.
+	Cases   int
+	Skipped int
+	Reason  string
 }
 
 // Load reads the table from a path.
@@ -90,6 +112,10 @@ func Load(path string) (*Table, error) {
 
 var runLine = regexp.MustCompile(`(?m)^=== RUN\s+Test`)
 
+// skipLine counts the cases that excused themselves. ⚠ `--- SKIP:` is indented
+// for a subtest, so the anchor is the marker rather than the start of the line.
+var skipLine = regexp.MustCompile(`(?m)^\s*--- SKIP:\s+Test`)
+
 // Run applies every mutation and reports one verdict each. Progress is written
 // to w as it goes, because a full pass takes minutes and a silent one reads as
 // a hang.
@@ -112,6 +138,8 @@ func Run(root string, t *Table, only string, w io.Writer) ([]Verdict, error) {
 			fmt.Fprintf(w, "  ok       %-*s  %d case(s), went red\n", width, v.Label, v.Cases)
 		case "THEATRE":
 			fmt.Fprintf(w, "  THEATRE  %-*s  %d case(s), still green\n", width, v.Label, v.Cases)
+		case "SKIPPED":
+			fmt.Fprintf(w, "  SKIPPED  %-*s  %d case(s), all skipped here\n", width, v.Label, v.Cases)
 		default:
 			fmt.Fprintf(w, "  BROKEN   %-*s  (%s)\n", width, v.Label, v.Reason)
 		}
@@ -166,13 +194,20 @@ func one(root string, m Mutation) Verdict {
 	args := append([]string{"test", "./...", "-run", m.Run, "-count=1", "-v"}, m.Args...)
 	out, testErr := run(dest, "go", args...)
 	v.Cases = len(runLine.FindAllString(out, -1))
+	v.Skipped = len(skipLine.FindAllString(out, -1))
 	switch {
 	case v.Cases == 0:
 		v.Reason = fmt.Sprintf("0 cases matched %q", m.Run)
-	case testErr == nil:
-		v.State = "THEATRE"
-	default:
+	case testErr != nil:
 		v.State = "ok"
+	case v.Skipped >= v.Cases:
+		// ⛔ BEFORE THE THEATRE BRANCH, because from here the two are the same
+		// output: cases ran and the process exited 0. A skip proves nothing
+		// about the guard and says nothing against the test.
+		v.State = "SKIPPED"
+		v.Reason = "every case it names skipped itself on this host"
+	default:
+		v.State = "THEATRE"
 	}
 	return v
 }
@@ -212,18 +247,23 @@ func copyTree(src, dest string) error {
 	})
 }
 
-// Report writes the tally and returns the exit code. ⛔ Anything other than
-// every row proved is a failure: a THEATRE row is a test to fix and a BROKEN row
-// is a claim nobody is checking.
+// Report writes the tally and returns the exit code.
+//
+// ⛔ A THEATRE ROW IS A TEST TO FIX AND A BROKEN ROW IS A CLAIM NOBODY IS
+// CHECKING, and either one fails the run. ⚠ A SKIPPED row does not: it is a
+// claim THIS host could not check, it is listed by name so it cannot be
+// mistaken for a proved one, and the ubuntu CI job is where it gets answered.
 func Report(w io.Writer, verdicts []Verdict) int {
 	proved := 0
-	var theatre, broken []Verdict
+	var theatre, skipped, broken []Verdict
 	for _, v := range verdicts {
 		switch v.State {
 		case "ok":
 			proved++
 		case "THEATRE":
 			theatre = append(theatre, v)
+		case "SKIPPED":
+			skipped = append(skipped, v)
 		default:
 			broken = append(broken, v)
 		}
@@ -232,10 +272,13 @@ func Report(w io.Writer, verdicts []Verdict) int {
 	for _, v := range theatre {
 		fmt.Fprintf(w, "  THEATRE: %s: %d case(s) ran and stayed green with the guard removed\n", v.Label, v.Cases)
 	}
+	for _, v := range skipped {
+		fmt.Fprintf(w, "  SKIPPED: %s: %s, so it is unproved rather than proved or theatre\n", v.Label, v.Reason)
+	}
 	for _, v := range broken {
 		fmt.Fprintf(w, "  BROKEN:  %s: %s\n", v.Label, v.Reason)
 	}
-	if proved != len(verdicts) {
+	if len(theatre) > 0 || len(broken) > 0 {
 		return 1
 	}
 	return 0

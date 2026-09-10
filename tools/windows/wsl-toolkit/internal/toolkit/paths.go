@@ -130,8 +130,8 @@ func hasPathPrefix(path, prefix string) bool {
 	return strings.HasPrefix(path, prefix)
 }
 
-// RemoveInside is THE deletion in this executable, and every host removal goes
-// through it.
+// RemoveInside is THE deletion in this executable, and every removal of state
+// this tool owns goes through it.
 //
 // ⛔ The containment guard runs INSIDE it rather than beside each caller: a
 // guard applied at four call sites is a guard that will one day be applied at
@@ -139,6 +139,19 @@ func hasPathPrefix(path, prefix string) bool {
 //
 // It reads the state back and reports what is true rather than what was
 // attempted.
+//
+// ⚠ WHERE THE LINE IS, because the tree does hold a handful of plain
+// os.Remove calls and reading them as violations would be wrong. This helper
+// answers "is the path a caller reached me with inside the tree I own". The
+// rollback half of a write is a different operation: `os.Rename(tmp, path)`
+// fails and the same function removes the exact `tmp` it created two lines
+// above. There is no caller-supplied path to contain, and the only root such a
+// call could pass is the file's own directory, which makes the check
+// vacuous - a guard that cannot refuse anything is theatre, and theatre is what
+// this file exists to avoid rather than to spread.
+//
+// So: state that outlives the call goes through here. A temporary this
+// function created, and removes on the failure path of creating it, does not.
 func RemoveInside(root, path string) error {
 	target, err := ResolveInside(root, path)
 	if err != nil {

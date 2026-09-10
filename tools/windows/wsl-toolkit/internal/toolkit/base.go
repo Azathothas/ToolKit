@@ -596,7 +596,9 @@ func (b *Base) Remove(ctx context.Context) error {
 			return fmt.Errorf("the disk is still on disk after five attempts: %w", lastErr)
 		}
 	}
-	if err := os.Remove(b.recordPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+	// ⛔ Through the one deletion. The record outlives the call that wrote it,
+	// which is the line RemoveInside's own comment draws.
+	if err := RemoveInside(b.home, b.recordPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
 	return nil

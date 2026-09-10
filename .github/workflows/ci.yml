@@ -170,6 +170,38 @@ jobs:
           pwsh -NoProfile -File ./scripts/common/check-gate.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
+      # ⭐ BOTH POWERSHELL HOSTS, AND THAT IS THE WHOLE POINT OF THIS STEP.
+      # Every P0 this tool has ever had lived in Windows PowerShell 5.1 and was
+      # invisible on 7: WSL-12, where -Action New failed outright, and the double
+      # quote 5.1 drops when it builds a child process argument list. Until now
+      # 5.1 was checked by hand, twice, and an open question about it was carried
+      # for a week because nothing automatic could answer it. TOOL-11.
+      #
+      # ⛔ BESIDE, NOT INSTEAD. Two hosts is the point; replacing one with the
+      # other trades a blind spot for a different blind spot.
+      #
+      # ⛔ THE CASE COUNTS ARE COMPARED RATHER THAN TYPED. A suite that stopped
+      # early exits 0 over a smaller suite on either host, and a number written
+      # here would be a number to update on every case added. The two hosts
+      # running the same file must reach the same count, and if they do not, one
+      # of them stopped somewhere.
+      - name: the selftest on both PowerShell hosts, with the counts compared
+        shell: pwsh
+        run: |
+          $seven = pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1 -Json
+          if ($LASTEXITCODE -ne 0) { Write-Output "pwsh 7: $seven"; exit 1 }
+          $five = powershell.exe -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1 -Json
+          if ($LASTEXITCODE -ne 0) { Write-Output "Windows PowerShell 5.1: $five"; exit 1 }
+          $a = $seven | ConvertFrom-Json
+          $b = $five  | ConvertFrom-Json
+          Write-Output ("pwsh 7: $($a.cases) case(s) over $($a.functions) function(s)")
+          Write-Output ("5.1   : $($b.cases) case(s) over $($b.functions) function(s)")
+          if ($a.cases -lt 1) { Write-Output "the suite ran no cases at all"; exit 1 }
+          if ($a.cases -ne $b.cases -or $a.functions -ne $b.functions) {
+            Write-Output "the two hosts ran different suites, so one of them stopped early"
+            exit 1
+          }
+
 
   # -- the compiled half. Two hosts, because it is written for one and has to
   #    keep building on the other: the ubuntu job is what caught a guard that
@@ -231,6 +263,42 @@ jobs:
             GOOS=windows GOARCH=$arch go build -trimpath -o "/tmp/wsl-toolkit-$arch.exe" .
             ls -l "/tmp/wsl-toolkit-$arch.exe"
           done
+
+  # -- the guards are guards. The instrument nobody was running -------------
+  #
+  # ⛔ WHY THIS IS A JOB AND NOT A GATE CHECK. `repo mutate` deletes each guard
+  # in tools/repo/mutations.json and runs the case named for it, one copied
+  # module and one `go test` per row. That takes minutes, and a gate that takes
+  # minutes is a gate a session skips. The gate carries the cheap half instead,
+  # `check mutations`, which asserts every row still POINTS at something; this
+  # job carries the half that asks whether the case actually goes red.
+  #
+  # ⭐ ON UBUNTU BECAUSE OF WHAT SKIPS ON WINDOWS. Creating a symbolic link there
+  # needs developer mode or an elevated process, so the case for the workspace
+  # link guard excuses itself and the row is unproved on the operator machine.
+  # It runs here. ⚠ The harness reports such a row as SKIPPED rather than as
+  # theatre, and it used to conflate the two.
+  mutations:
+    name: the guards go red when the guard is gone
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version-file: tools/repo/go.mod
+          cache: false
+
+      # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped. The harness exits 1
+      # on a theatre row and on a broken one, and 0 when the only unproved rows
+      # are ones this host could not reach - which here should be none.
+      - name: every row of the mutation table
+        shell: bash
+        run: |
+          cd tools/repo
+          go run . mutate
 
   # -- the two probes must agree. The drift rule, with a machine behind it ----
   twins:

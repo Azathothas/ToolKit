@@ -24,8 +24,9 @@ where it is checked.
 | work model | todo | [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) |
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |
-| CI | three jobs on every push, ubuntu and windows, plus one release job that runs only on a `wsl-toolkit-v*` tag | [`../.github/workflows/ci.yml`](../.github/workflows/ci.yml), [`../.github/workflows/release.yml`](../.github/workflows/release.yml) |
-| the local gate | `sh scripts/common/check-gate.sh`, or its `.ps1` twin. About 30s. | [`../scripts/README.md`](../scripts/README.md) |
+| CI | `ci.yml` on every push: five jobs, one of which is a two-host matrix, so six runs. `release.yml` on a `wsl-toolkit-v*` tag, and it calls `release-smoke.yml`, which also runs weekly. `remote-items.yml` weekly. | [`../.github/workflows/`](../.github/workflows/) |
+| ⚠ what `main` actually REQUIRES | three of those six: `checks (ubuntu)`, `powershell (windows)`, `the two probes agree`. The `go` matrix and the mutation job are not required, so a red one does not block a merge. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |
+| the local gate | `sh scripts/common/check-gate.sh`, or its `.ps1` twin | [`../scripts/README.md`](../scripts/README.md) |
 | the identity a commit carries | the machine's `git config`, per invocation | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 1 |
 
 ⛔ **The gate's measured cost belongs in [`PROGRESS.md`](PROGRESS.md), not
@@ -92,9 +93,11 @@ instead.
 
 ## 3. A destructive tool has one deletion, and it reads the state back
 
-⛔ Applies to anything here that removes something on a machine, which today is
-[`../scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](../scripts/windows/wsl-toolkit/wsl-toolkit.ps1).
-Its own page carries the four-part safety model.
+⛔ Applies to anything here that removes something on a machine. Two things do:
+[`../scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](../scripts/windows/wsl-toolkit/wsl-toolkit.ps1),
+whose own page carries the four-part safety model, and the compiled
+`wsl-toolkit`, whose one deletion is `RemoveInside` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/paths.go`](../tools/windows/wsl-toolkit/internal/toolkit/paths.go).
 
 **What it cost.** `WSL-04`. The predecessor printed that it had deleted a disk
 beside a `Remove-Item -ErrorAction SilentlyContinue`, so multi-gigabyte VHDX
@@ -102,7 +105,15 @@ files left behind read as disks that had gone.
 
 ⚠ **A guard applied at four call sites is a guard that will one day be applied
 at three.** The containment check runs inside the deletion helper rather than
-beside each caller, and every path reaches that helper.
+beside each caller, and every removal of state reaches that helper.
+
+⚠ **THE LINE IS AROUND STATE, NOT AROUND THE WORD "REMOVE", and it is drawn
+where it is for a reason.** The rollback half of a write - `os.Rename` fails and
+the same function removes the exact temporary it created two lines above - has
+no caller-supplied path to contain, and the only root it could pass is the
+file's own directory, which makes the containment check vacuous. A guard that
+cannot refuse anything is theatre. `RemoveInside`'s own comment carries the
+same sentence, which is where a reader of the code will look.
 
 ## 4. TWO files here are GENERATED, and the tree holds every half
 

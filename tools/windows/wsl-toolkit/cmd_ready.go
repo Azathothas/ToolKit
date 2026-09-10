@@ -345,8 +345,17 @@ func runReadySmoke(ctx context.Context, cfg toolkit.Config, healthy bool) *ready
 		return s
 	}
 	art := filepath.Join(home, "ready-smoke")
-	_ = os.RemoveAll(art)
-	defer os.RemoveAll(art)
+	// ⛔ THROUGH THE ONE DELETION, which contains the target and reads the state
+	// back. TODO/RULES.md section 3, and this is a path this command builds
+	// rather than one a caller named, which is exactly the case where a bare
+	// RemoveAll looks harmless and sets the precedent.
+	clear := func() {
+		if err := toolkit.RemoveInside(home, art); err != nil && !errors.Is(err, os.ErrNotExist) {
+			note("the smoke directory is still on disk: " + art)
+		}
+	}
+	clear()
+	defer clear()
 
 	res := runner.Run(ctx, toolkit.JobSpec{
 		Image: toolkit.VerifyImage, Script: []byte(readySmokeScript),

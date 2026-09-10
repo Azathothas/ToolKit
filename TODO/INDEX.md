@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 83  open 9  blocked 0  done 74
+total 84  open 9  blocked 0  done 75
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 42 | 43 |
+| P1 | 1 | 0 | 43 | 44 |
 | P2 | 7 | 0 | 23 | 30 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **9** | **0** | **74** | **83** |
+| **all** | **9** | **0** | **75** | **84** |
 
 ---
 
@@ -57,6 +57,7 @@ total 83  open 9  blocked 0  done 74
 | TOOL-16 | P2 | M | done | Evidence that evaporates with the session | [`tooling.md`](tooling.md) |
 | TOOL-17 | P1 | L | done | The suite that could not have caught any of them | [`tooling.md`](tooling.md) |
 | TOOL-18 | P1 | S | done | The row of the counts that was typed | [`tooling.md`](tooling.md) |
+| TOOL-19 | P1 | M | done | The instrument that proves the guards had stopped proving three of them | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

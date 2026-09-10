@@ -7,6 +7,10 @@
 // first is a finding. The other two prove nothing, and reading them as a pass is
 // how a session concludes its guards are real when three of them are not.
 //
+// ⚠ AND A FOURTH, ADDED ON 2026-09-10 AFTER IT MISFIRED THE OTHER WAY: a case
+// that skips itself was reported as THEATRE, which accuses a good test of being
+// empty because the host could not run it.
+//
 // SPDX-License-Identifier: 0BSD
 
 package mutate
@@ -82,6 +86,10 @@ func fixture(t *testing.T) string {
 		"go.mod":        "module example.test\n\ngo 1.25.0\n",
 		"guard.go":      "package guard\n\nfunc Allowed(s string) bool {\n\tif s == \"\" {\n\t\treturn false\n\t}\n\treturn true\n}\n",
 		"guard_test.go": "package guard\n\nimport \"testing\"\n\nfunc TestEmptyIsRefused(t *testing.T) {\n\tif Allowed(\"\") {\n\t\tt.Fatal(\"the empty string was allowed\")\n\t}\n}\n",
+		// A case that excuses itself, which is what a platform-bound guard
+		// does on the host that cannot run it. ⛔ From outside the process it
+		// is byte for byte a case that ran and passed.
+		"skip_test.go": "package guard\n\nimport \"testing\"\n\nfunc TestSkipsHere(t *testing.T) {\n\tt.Skip(\"this host cannot run it\")\n}\n",
 	}
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
@@ -91,8 +99,12 @@ func fixture(t *testing.T) string {
 	return root
 }
 
-// TestRunTellsTheThreeOutcomesApart is the case for the whole design.
-func TestRunTellsTheThreeOutcomesApart(t *testing.T) {
+// TestRunTellsTheFourOutcomesApart is the case for the whole design.
+//
+// ⚠ IT WAS THREE UNTIL 2026-09-10. The skipped row is the fourth, and it was
+// added after a real row was reported as THEATRE on a host that could not run
+// its case at all.
+func TestRunTellsTheFourOutcomesApart(t *testing.T) {
 	root := fixture(t)
 	base := Mutation{Module: "mod", File: "guard.go", Run: "TestEmptyIsRefused"}
 
@@ -122,13 +134,23 @@ func TestRunTellsTheThreeOutcomesApart(t *testing.T) {
 	noCase.Replace = "if false {"
 	noCase.Run = "TestNoSuchCaseAnywhere"
 
-	tb := &Table{Schema: TableSchema, Mutations: []Mutation{real, theatre, broken, missing, noCase}}
+	// ⛔ THE ROW THAT LOOKS EXACTLY LIKE THEATRE FROM OUTSIDE. The mutation
+	// compiles, a case runs, and the process exits 0. The only thing telling
+	// the two apart is the SKIP line, and this is the case that proves the
+	// harness reads it.
+	skipped := base
+	skipped.Label = "a guard whose case this host cannot run"
+	skipped.Find = "return true\n"
+	skipped.Replace = "return true // nothing asserts on this\n"
+	skipped.Run = "TestSkipsHere"
+
+	tb := &Table{Schema: TableSchema, Mutations: []Mutation{real, theatre, broken, missing, noCase, skipped}}
 	var log bytes.Buffer
 	got, err := Run(root, tb, "", &log)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"ok", "THEATRE", "BROKEN", "BROKEN", "BROKEN"}
+	want := []string{"ok", "THEATRE", "BROKEN", "BROKEN", "BROKEN", "SKIPPED"}
 	if len(got) != len(want) {
 		t.Fatalf("got %d verdicts, want %d", len(got), len(want))
 	}
@@ -149,11 +171,21 @@ func TestRunTellsTheThreeOutcomesApart(t *testing.T) {
 			t.Errorf("no BROKEN row says %q: %s", want, reasons)
 		}
 	}
+	// ⛔ AND THE SKIPPED ROW COUNTED ITS SKIP. A state of "SKIPPED" reached by
+	// any other route would satisfy the table above and prove nothing.
+	if got[5].Skipped != 1 || got[5].Cases != 1 {
+		t.Errorf("the skipped row counted %d case(s) and %d skip(s), want 1 and 1", got[5].Cases, got[5].Skipped)
+	}
 }
 
-// TestReportFailsUnlessEveryRowIsProved. ⚠ A THEATRE row is a test to fix and a
-// BROKEN row is a claim nobody is checking. Neither is a pass.
-func TestReportFailsUnlessEveryRowIsProved(t *testing.T) {
+// TestReportFailsOnEveryRowThatDisagrees. ⚠ A THEATRE row is a test to fix and
+// a BROKEN row is a claim nobody is checking. Neither is a pass.
+//
+// ⛔ AND A SKIPPED ROW IS NEITHER, which is the case worth having. It is not
+// proved, so it must not be counted as proved; it is not wrong, so it must not
+// fail the run. A harness that failed on it would be red on the operator's host
+// forever, and a harness that is always red is one nobody reads.
+func TestReportFailsOnEveryRowThatDisagrees(t *testing.T) {
 	// ⚠ BOUND TO VARIABLES rather than written inline. A Go composite
 	// literal of slice-of-struct opens with `{{`, which this tree's placeholder
 	// check reads as an unfilled template. Binding is the fix; widening that
@@ -167,12 +199,25 @@ func TestReportFailsUnlessEveryRowIsProved(t *testing.T) {
 		{"everything proved", []Verdict{proved}, 0},
 		{"one theatre", []Verdict{proved, {Label: "b", State: "THEATRE"}}, 1},
 		{"one broken", []Verdict{proved, {Label: "b", State: "BROKEN", Reason: "why"}}, 1},
+		{"one skipped", []Verdict{proved, {Label: "b", State: "SKIPPED", Reason: "not on this host"}}, 0},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			var out bytes.Buffer
-			if got := Report(&out, c.verdicts); got != c.want {
+			got := Report(&out, c.verdicts)
+			if got != c.want {
 				t.Fatalf("Report returned %d, want %d:\n%s", got, c.want, out.String())
+			}
+			// ⛔ EXIT 0 IS NOT ENOUGH FOR THE SKIPPED ROW. A run that passes it
+			// over in silence has told the reader every guard was proved, which
+			// is the false green this file exists to refuse.
+			if c.name == "one skipped" {
+				if !strings.Contains(out.String(), "SKIPPED: b") {
+					t.Fatalf("the tally does not name the unproved row:\n%s", out.String())
+				}
+				if !strings.Contains(out.String(), "1 of 2 guards proved") {
+					t.Fatalf("the skipped row was counted as proved:\n%s", out.String())
+				}
 			}
 		})
 	}

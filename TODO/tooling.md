@@ -1950,3 +1950,128 @@ exit-restored=0
 rows said `0`, so one of the four numbers agreed and the other three did not.
 That is worth noting because a check written to compare one column would have
 passed too.
+
+---
+
+## TOOL-19. The instrument that proves the guards had stopped proving three of them
+
+**Source** Found on 2026-09-10, running the full mutation table for the first time since the code under it moved. Two rows matched nothing and a third was reported as theatre against a case that had never run.
+**Category** tooling, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+[`../tools/repo/mutations.json`](../tools/repo/mutations.json) is a table of
+claims: delete this line, and the case named beside it goes red. `repo mutate`
+proves them by copying the module, applying the change and running the case.
+⛔ **Nothing runs it.** It is not in the gate, it is not in CI, and it takes
+about ten minutes, so between two runs the table rots with nobody told.
+
+Three of its rows were wrong, and each was wrong in a different way:
+
+- **Two matched nothing.** `Extract`'s signature changed, so the row for the
+  destination collision set no longer found its `find` string. The verdict rule
+  moved out of `cmd_run.go` into `internal/toolkit/job.go`, so the row for the
+  transfer branch no longer found its. Both rows still parsed, still read
+  correctly, and had been proving nothing since the day the code moved.
+- **One was reported as THEATRE and is not.**
+  `TestAWorkspaceSymlinkPointingOutOfTheTreeIsLeftOutAndNamed` calls `t.Skip` on
+  Windows, because creating a symbolic link there needs developer mode or an
+  elevated process. ⚠ A skipped case prints `=== RUN` and leaves `go test`
+  exiting 0, which is byte for byte what a case that stayed green looks like from
+  outside the process. So the harness accused a good test of being empty.
+
+⭐ **The second is this harness's own defect class, in this harness.** Its file
+header says three outcomes and not two, because collapsing "the test is empty",
+"the pattern matched nothing" and "it did not compile" into one answer is what
+the previous harness did. It then collapsed a fourth.
+
+## Premise
+
+Measured, by running it. `repo mutate` over all 61 rows on this host:
+
+```text
+58 of 61 guards proved.
+  THEATRE: a workspace entry that cannot travel is named rather than dropped: 1 case(s) ran and stayed green with the guard removed
+  BROKEN:  the destination collision set: matched 0 times, not once
+  BROKEN:  the transfer branch of the verdict: matched 0 times, not once
+```
+
+⚠ **The run cost about ten minutes**, which is the number that decides the shape
+of the fix: whatever goes into the gate cannot be this.
+
+## Approach
+
+Three parts, and the split between the first two is the whole design.
+
+1. ⭐ **A gate check, `check mutations`**, over the table as data: the module has
+   a tracked `go.mod`, the file is tracked, the `find` string appears **exactly
+   once**, the replacement is a real change, every alternative of the `run`
+   pattern names a test function some `_test.go` in that module defines, and no
+   two rows share a label. It reads files the tree walk has already read and adds
+   no measurable time. ⛔ **It does not prove a guard and must not be read as
+   doing so**: whether a case goes red is `repo mutate`'s answer.
+2. **A fourth outcome in the harness**, `SKIPPED`, counted from `--- SKIP:`
+   lines against `=== RUN` ones. ⛔ Not proved, so it is not counted as proved;
+   not wrong, so it does not fail the run. ⚠ That is a deliberate amendment to
+   the older rule that anything short of every row proved is a failure: a
+   harness that went red on the operator's own host every time would be one
+   nobody reads.
+3. **A CI job on ubuntu** running the whole table, which is what makes part 2
+   safe: nothing skips there, so a row this host cannot answer is answered.
+
+⛔ **The two stale rows are repointed, not deleted.** A row removed because it
+stopped matching is a guard quietly dropped from the set.
+
+## Consumers
+
+None. The mutation table, the gate and CI are this repository's own and nothing
+fetches any of them.
+
+## Prove
+
+```bash
+sh scripts/common/check-gate.sh
+```
+
+Passing means `check mutations` goes RED with a row whose code has moved and
+green with it repointed, demonstrated by planting the exact row that was there
+rather than by reading the code, and `repo mutate` reporting the skipped row as
+SKIPPED rather than as theatre.
+
+## Closing
+
+**Closed 2026-09-10.** The check was proved by putting the real stale row back:
+
+```text
+  FAIL   tools/repo/mutations.json: "the destination collision set" matches tools/windows/wsl-toolkit/internal/toolkit/workspace.go 0 times, not once, so `repo mutate` cannot apply it
+
+mutations: 1 problems
+exit-with-the-stale-row=1
+```
+
+and green once it points at the line the code has now:
+
+```text
+  ok     mutations
+exit-restored=0
+```
+
+The three rows, after the change:
+
+```text
+  ok       the destination collision set                                          1 case(s), went red
+  ok       the transfer branch of the verdict                                     1 case(s), went red
+  SKIPPED  a workspace entry that cannot travel is named rather than dropped      1 case(s), all skipped here
+```
+
+⭐ **The check found a fourth stale row while it was being written.** Renaming
+`TestRunTellsTheThreeOutcomesApart` to `TestRunTellsTheFourOutcomesApart` and
+`TestReportFailsUnlessEveryRowIsProved` to
+`TestReportFailsOnEveryRowThatDisagrees` broke three rows that named them, and
+the gate said so in under a second. That is the class this entry is about,
+caught on the day it was created rather than a session later.
+
+⚠ **The gate is 19 checks and the cost did not move**, because this one reads
+files the tree walk had already read.

@@ -168,3 +168,15 @@ jobs:
             --verify-tag
           if ($LASTEXITCODE -ne 0) { exit 1 }
           Write-Output "published $tag"
+
+  # ⛔ THE PUBLISH IS NOT THE LAST WORD. Everything above runs against the tree
+  # and the staging directory; this fetches what was actually uploaded and
+  # drives it from a temp directory with no repository present. TOOL-12.
+  # ⭐ One definition, called from here and run weekly on its own schedule:
+  # .github/workflows/release-smoke.yml.
+  smoke:
+    name: the published release can be consumed
+    needs: publish
+    uses: ./.github/workflows/release-smoke.yml
+    with:
+      tag: ${{ github.event.inputs.tag || github.ref_name }}

@@ -1,0 +1,81 @@
+# Can what was published actually be fetched and run?
+#
+# ⛔ NOTHING ELSE ASKS THIS. release.yml verifies the tree, builds, tests and
+# publishes, and then stops. A release with a missing asset, a wrong name in
+# SHA256SUMS or an unrunnable executable would be reported as a successful
+# publish, and the first report would come from a consumer on a machine nobody
+# is watching. TOOL-12.
+#
+# ⛔ IT FETCHES OVER THE NETWORK, never the tree it was built from. Using the
+# local file would test everything except the thing that can break.
+#
+# ⭐ TWO TRIGGERS, AND THE SECOND IS THE ONE THAT PAYS. Immediately after a
+# publish, and weekly against whatever the latest release is then, because a
+# release that STOPS being fetchable - a moved asset, a changed proxy
+# allowlist, an API shape change - is invisible at publish time.
+#
+# ⚠ WHAT IT CANNOT PROVE HERE. A GitHub runner has no WSL2 and no container
+# engine, so every case that needs a distribution is SKIPPED and counted as
+# skipped. What runs is the half a consumer hits first: the digests, that the
+# executable and the published script are one product, and that the tool
+# surveys a host from an empty state directory without building anything.
+
+name: release-smoke
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: the published tag to fetch
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: the tag to fetch. Empty means the latest release
+        required: false
+        type: string
+  schedule:
+    # Weekly, on the remote-items cadence. ⚠ Checking more often than things
+    # change produces noise, and noise is what stops a report being read.
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  consume:
+    name: fetch the release and drive it
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped, and the JSON is
+      # parsed rather than eyeballed: the suite reports how many cases ran and
+      # how many were skipped, and a run where EVERYTHING skipped would exit 0
+      # having proved nothing.
+      - name: the published release, downloaded and driven from a temp directory
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ inputs.tag }}'
+          $consumerArgs = @('-NoProfile', '-File', '.\tools\windows\wsl-toolkit\consumer.ps1', '-Json')
+          if ($tag) { $consumerArgs += @('-Tag', $tag) }
+          $out = & pwsh @consumerArgs
+          $code = $LASTEXITCODE
+          $text = (@($out) -join '')
+          if ($code -eq 2) { Write-Output "the suite could not run: $text"; exit 1 }
+          $r = $text | ConvertFrom-Json
+          Write-Output ("tag $($r.tag): $($r.cases) case(s), $($r.failed) failed, $($r.skipped) skipped")
+          foreach ($c in $r.detail) {
+            if ($c.skipped) { Write-Output ("  skip  " + $c.name) }
+            elseif ($c.pass) { Write-Output ("  ok    " + $c.name) }
+            else { Write-Output ("  FAIL  " + $c.name + " | expected: " + $c.expected + " | actual: " + $c.actual) }
+          }
+          if ($r.cases -le $r.skipped) {
+            Write-Output "every case skipped, so this run proved nothing about the release"
+            exit 1
+          }
+          if ($code -ne 0) { exit 1 }
