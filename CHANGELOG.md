@@ -21,6 +21,24 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T07:45:00Z: the mutation harness joins the tree
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-16`.
+**Deployed:** ⛔ **no deploy.** Nothing here is published.
+
+The harness that proves this tree's guards are real was a Python script under
+`.tmp/`, which is gitignored, and three records had just been written citing it
+as the command that closed them. Those commands could not be run by anyone
+reading the record afterwards, including the next session here.
+
+It is `repo mutate` now, with its table in `tools/repo/mutations.json`,
+generated from the script rather than retyped. It reproduces the script's answer
+over both modules with no row changed, and it has five cases of its own.
+
+⚠ **It is not a gate check and that is deliberate.** One pass copies every
+module and runs a suite per row; a gate somebody waits minutes for is a gate they
+skip. It belongs beside the other tools that are not rules.
+
 ### 2026-09-10T06:30:00Z: the commit rule gets an instrument that can say no
 
 **Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-15`.

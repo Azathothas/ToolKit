@@ -18,7 +18,7 @@ on what was true last time.
 | Go modules | 2, `tools/check` and `tools/windows/wsl-toolkit` | 3. `tools/repo` is the tool box for what is NOT a gate check, and `check-gate` still runs only rules |
 | Suite | 39 Go cases | 119 Go cases, all three modules clean under `-race` |
 | Acceptance | 23 cases against a real machine | ⭐ **39 cases.** The 14 issue cases each fail against `v1.1.0`; the two newest cover the helper route's own transcript and the job id |
-| Mutation | 23 guards proved | ⭐ **39 proved**, each one deleted, the named case run, the case count and the build status reported separately |
+| Mutation | 23 guards proved, by a script under `.tmp/` | ⭐ **48 proved**, by `repo mutate` in the tree. Each one deleted, the named case run, the case count and the build status reported separately |
 | Published | `wsl-toolkit-v1.1.0` | `wsl-toolkit-v1.3.0`, five assets, digests recomputed from the downloaded files |
 | Checks | 17 in one Go binary, 31s | 18, 43s. Five shell pairs became a Go program and none of them became a gate check; the one that was added is `hooks`, for the reason below |
 | Health | 53 entries: 8 open, 0 blocked, 45 done | 64 entries: 8 open, 0 blocked, 56 done. Tree clean, gate green |

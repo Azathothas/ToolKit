@@ -1526,7 +1526,7 @@ The commit was refused and nothing was written.
 refusal is not a warning printed beside a commit that happened anyway.
 
 ```text
-$ python .tmp/mutate.py
+$ sh scripts/common/repo.sh mutate
   ok       the commit-msg rule being applied at all                    6 case(s), went red
   ok       git's own comment lines being stripped first                6 case(s), went red
   ok       a message that could not be read being a refusal            1 case(s), went red
@@ -1541,8 +1541,110 @@ no cases at all, so the gate's own `go` check was vacuously green about it. Five
 cases is not coverage of eighteen checks; it is the first five, and the hole is
 named here rather than quietly filled.
 
+⛔ **The mutation harness moved into the tree in the same session**, for a
+related reason of its own. `TOOL-16` owns it.
+
 ⚠ **What this does not fix.** `git commit --no-verify` bypasses the hook,
 and nothing in a local repository can stop that. The remaining defence is CI,
 which is where both incidents were actually caught. The difference is that the
 hook makes the bypass a DECISION rather than an accident, and the accident is
 what happened twice.
+
+---
+
+## TOOL-16. Evidence that evaporates with the session
+
+**Source** Found while closing `TOOL-15`: three records had just been written
+citing a command that cannot be run.
+**Category** tooling, **Priority** P2, **Effort** M, **Status** done
+
+## Problem
+
+The mutation harness was a Python script under `.tmp/`, which is gitignored.
+
+`WSL-40`, `WSL-41` and `TOOL-15` each close with a pasted run of it, under the
+heading that says what proved them. ⛔ **None of those commands could be run
+by anyone reading the record afterwards**, including the next session in this
+same repository. The output was real when it was pasted and unreproducible by
+the time anybody read it.
+
+⚠ **That is the same defect this repository keeps finding in its own
+checks, one level up.** A rule with no instrument is a preference; an instrument
+nobody else can run is a claim. The harness was proving 44 guards and was itself
+the least durable thing in the tree.
+
+## Premise
+
+- ⭐ **The discipline is not one session's.** The harness was rebuilt from
+  scratch in at least two sessions, each time to answer the same question, and
+  each time the rows were retyped.
+- ⭐ **It has caught real theatre twice.** A guard whose case never
+  exercised it, and a ledger stress case that went red in 0 of 10 runs against
+  the defect it was written for.
+- ⛔ **Its own failure mode has bitten.** An earlier version reported "green
+  with the guard gone" for three different things: a case that really did not
+  cover its subject, a `-run` pattern matching NO test, and a mutation that did
+  not COMPILE. Only the first is a finding.
+
+## Approach
+
+`repo mutate`, in the tool box that already holds what is not a gate check. The
+table is `tools/repo/mutations.json`, generated from the script rather than
+retyped, because 44 rows of Go fragments carrying tabs, newlines and quotes is
+exactly the transcription nobody should do by hand.
+
+⚠ **It is NOT a gate check, and that is the closest call in this entry.**
+It proves the tests guarding this tree are real, which is a thing to run
+deliberately when guards change. One pass copies every module and runs a suite
+per row, and a gate somebody waits minutes for is a gate they skip.
+
+The three outcomes stay three: `ok`, `THEATRE`, and `BROKEN` with the reason
+named, because "did not compile", "matched 0 times" and "0 cases matched" are
+different mistakes with different fixes.
+
+## Consumers
+
+Nothing published changes. The three records that cited `python .tmp/mutate.py`
+now cite `sh scripts/common/repo.sh mutate`, which produces the same output
+because it is the same table.
+
+## Prove
+
+```bash
+sh scripts/common/repo.sh mutate
+```
+
+## Closing
+
+**Closed 2026-09-10.** The port reproduces the script's answer exactly, over
+both modules, with no row changed:
+
+```text
+$ sh scripts/common/repo.sh mutate
+  ...
+  ok       the harness refusing a table that would prove nothing       3 case(s), went red
+  ok       the harness failing when a row is theatre                   4 case(s), went red
+
+48 of 48 guards proved.
+```
+
+⭐ **44 rows came over unchanged and four are new**, and the four are the
+harness's own guards, proved by the harness. That is not circular: a mutation is
+applied to a COPY of the module and the case that fails is the one built from the
+mutated source, so a harness that had stopped telling its three outcomes apart
+would report those four rows green and be caught by them.
+
+```text
+$ sh scripts/common/repo.sh mutate --only leading-dot
+  ok       the leading-dot refusal for an image id                     2 case(s), went red
+  ok       the leading-dot refusal for a distribution name             1 case(s), went red
+
+2 of 2 guards proved.
+```
+
+⭐ **The harness has cases of its own now**, and the one that matters builds
+a throwaway module with one guard and asks for all five answers at once: a real
+guard, a change no case looks at, a mutation that does not compile, a find that
+is not there, and a `-run` pattern matching no test. Three of those are BROKEN
+for three different reasons, and the case asserts the reasons are distinguishable
+rather than merely that all three failed.

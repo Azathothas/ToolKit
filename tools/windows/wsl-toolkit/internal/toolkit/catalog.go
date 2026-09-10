@@ -211,7 +211,12 @@ func (c Config) Validate() error {
 // Validate refuses an image entry that could not be pulled or named.
 func (i Image) Validate() error {
 	if !isImageID(i.ID) {
-		return fmt.Errorf("image id %q must be letters, digits, dot, dash or underscore", i.ID)
+		// ⚠ THE MESSAGE NAMES BOTH HALVES OF THE RULE. It used to describe
+		// the character set alone, so a caller with `.hidden` was told the id
+		// must be letters, digits, dot, dash or underscore, which `.hidden`
+		// already is. A refusal that describes a rule the input satisfies is a
+		// refusal nobody can act on.
+		return fmt.Errorf("image id %q must be letters, digits, dot, dash or underscore, and must not start with a dot", i.ID)
 	}
 	if err := ValidateImageRef(i.Ref); err != nil {
 		return fmt.Errorf("image %s: %w", i.ID, err)

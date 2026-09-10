@@ -1,0 +1,439 @@
+{
+  "schema": "repo-mutations/1",
+  "mutations": [
+    {
+      "label": "the colon rule that catches an NTFS stream",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "if i := strings.IndexAny(part, windowsBadChars); i >= 0 {",
+      "replace": "if i := -1; i >= 0 {",
+      "run": "TestSafeArchiveNameRefusesWindowsGrammar",
+      "args": []
+    },
+    {
+      "label": "the trailing dot and space rule",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "if last := part[len(part)-1]; last == '.' || last == ' ' {",
+      "replace": "if last := part[len(part)-1]; false && (last == '.' || last == ' ') {",
+      "run": "TestSafeArchiveNameRefusesWindowsGrammar",
+      "args": []
+    },
+    {
+      "label": "the destination collision set",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\tif err := claim(rel, hdr.Name); err != nil {\n\t\t\t\treturn entries, total, err\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestExtractRefusesCaseCollision",
+      "args": []
+    },
+    {
+      "label": "the transfer outcome in Failed()",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "return j.Exit != 0 || j.TimedOut || j.ArtifactError != \"\"",
+      "replace": "return j.Exit != 0 || j.TimedOut",
+      "run": "TestFailedReadsTheTransfer|TestMatrixCountsAFailedTransfer",
+      "args": []
+    },
+    {
+      "label": "the transfer branch of the verdict",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\tcase res.ArtifactError != \"\":",
+      "replace": "\tcase false:",
+      "run": "TestJobVerdict",
+      "args": []
+    },
+    {
+      "label": "routing on the probe rather than on nothing",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_helper.go",
+      "find": "case probeErr == nil:\n\t\treturn routeDirect",
+      "replace": "case true:\n\t\treturn routeDirect",
+      "run": "TestRouting",
+      "args": []
+    },
+    {
+      "label": "the liveness rule in the cleanup policy",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "case t.Live && !p.IncludeLive:",
+      "replace": "case false:",
+      "run": "TestCleanupPlanSparesLiveWork|TestCleanupPlanIncludeLive",
+      "args": []
+    },
+    {
+      "label": "the age rule in the cleanup policy",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "case p.OlderThan > 0 && !t.ModTime.IsZero() && now.Sub(t.ModTime) < p.OlderThan:",
+      "replace": "case false:",
+      "run": "TestCleanupPlanAgeBoundary",
+      "args": []
+    },
+    {
+      "label": "containers-before-directories ordering",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\tcase \"container\":\n\t\treturn 0",
+      "replace": "\tcase \"container\":\n\t\treturn 9",
+      "run": "TestCleanupOrderPutsContainersFirst",
+      "args": []
+    },
+    {
+      "label": "the positional refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "main.go",
+      "find": "\textra := fs.Args()\n\tif len(extra) == 0 {\n\t\treturn nil\n\t}",
+      "replace": "\textra := fs.Args()\n\tif len(extra) >= 0 {\n\t\treturn nil\n\t}",
+      "run": "TestFlagRefusalsRejectPositionals|TestEveryFlagSetRefusesPositionals",
+      "args": []
+    },
+    {
+      "label": "the environment name refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "if !toolkit.ValidEnvName(name) {",
+      "replace": "if false {",
+      "run": "TestEnvNamesAreRefusedWhereTheyAreTyped",
+      "args": []
+    },
+    {
+      "label": "the negative timeout refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\tif j.timeout < 0 {",
+      "replace": "\tif false {",
+      "run": "TestJobFlagsRefuseValuesThatMeanSomethingElse",
+      "args": []
+    },
+    {
+      "label": "the transcript spool",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/stream.go",
+      "find": "\ts.Out.spool = openSpool(dir, \"stdout.log\", log)",
+      "replace": "\ts.Out.spool = nil",
+      "run": "TestJobStreamsSpoolTheCompleteOutput",
+      "args": []
+    },
+    {
+      "label": "the truncation flags",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/stream.go",
+      "find": "res.StdoutTruncated = s.Out.buf.Truncated()",
+      "replace": "res.StdoutTruncated = false",
+      "run": "TestJobStreamsSpoolTheCompleteOutput",
+      "args": []
+    },
+    {
+      "label": "the caller-set capture ceiling",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/stream.go",
+      "find": "outMax, errMax = maxOutput, maxOutput/4+1",
+      "replace": "_ = maxOutput",
+      "run": "TestMaxOutputRaisesWhatTheAnswerKeeps",
+      "args": []
+    },
+    {
+      "label": "the held-back partial marker",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/marker.go",
+      "find": "\tkeep := partialSuffix(m.buf, m.tok)",
+      "replace": "\tkeep := 0",
+      "run": "TestMarkerStripperFindsASplitToken",
+      "args": []
+    },
+    {
+      "label": "the requirement that a stream ends with a result",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper_stream.go",
+      "find": "\tif !seenFinal {",
+      "replace": "\tif !seenFinal && false {",
+      "run": "TestReadHelperEventsRequiresAFinalResult",
+      "args": []
+    },
+    {
+      "label": "a flag losing its documentation",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "wsl-toolkit.md",
+      "find": "--no-network",
+      "replace": "--no-networking",
+      "run": "TestManualNamesEveryFlag",
+      "args": []
+    },
+    {
+      "label": "a job flag added and never put on the wire",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\tmaxOutput   int64\n",
+      "replace": "\tmaxOutput   int64\n\tnewFlagNobodySent string\n",
+      "run": "TestEveryJobFlagCrossesTheWire",
+      "args": []
+    },
+    {
+      "label": "a stale open record stops meaning live work",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "\treturn now.Sub(e.At) < StaleAfter",
+      "replace": "\treturn true",
+      "run": "TestStillRunning",
+      "args": []
+    },
+    {
+      "label": "the deadline half of the liveness rule",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "\t\treturn now.Before(e.Deadline.Add(5 * time.Minute))",
+      "replace": "\t\treturn true",
+      "run": "TestStillRunning",
+      "args": []
+    },
+    {
+      "label": "the logs id comes off the front only",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_logs.go",
+      "find": "\tif len(args) > 0 && !strings.HasPrefix(args[0], \"-\") {\n\t\treturn args[0], args[1:]\n\t}",
+      "replace": "\tfor i, a := range args {\n\t\tif !strings.HasPrefix(a, \"-\") {\n\t\t\treturn a, append(append([]string{}, args[:i]...), args[i+1:]...)\n\t\t}\n\t}",
+      "run": "TestLogsTakesTheIdOnlyFromTheFront",
+      "args": []
+    },
+    {
+      "label": "the tail window that grows",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_logs.go",
+      "find": "\t\tif len(lines) > n {",
+      "replace": "\t\tif n = min(n, len(lines)); true {",
+      "run": "TestLastLines",
+      "args": []
+    },
+    {
+      "label": "the lock that makes one writer safe for two streams",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "type prefixWriter struct {\n\tmu      sync.Mutex",
+      "replace": "type noLock struct{}\n\nfunc (noLock) Lock()   {}\nfunc (noLock) Unlock() {}\n\nvar _ sync.Mutex\n\ntype prefixWriter struct {\n\tmu      noLock",
+      "run": "TestPrefixWriterIsSafeFromTwoStreams",
+      "args": [
+        "-race"
+      ]
+    },
+    {
+      "label": "the flush of a final line with no terminator",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif rest != \"\" {",
+      "replace": "\tif false {",
+      "run": "TestPrefixWriterFlushesAnUnterminatedLine",
+      "args": []
+    },
+    {
+      "label": "the ceiling on output that never sends a newline",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "if len(w.partial) > maxPartialLine {",
+      "replace": "if false && len(w.partial) > maxPartialLine {",
+      "run": "TestPrefixWriterBoundsAnUnterminatedLine",
+      "args": []
+    },
+    {
+      "label": "the leading-dot refusal for an image id",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "func isImageID(s string) bool {\n\tif s == \"\" || len(s) > 64 {\n\t\treturn false\n\t}\n\tif strings.HasPrefix(s, \".\") {\n\t\treturn false\n\t}\n",
+      "replace": "func isImageID(s string) bool {\n\tif s == \"\" || len(s) > 64 {\n\t\treturn false\n\t}\n",
+      "run": "TestANameOfDotsIsNotAName|TestAConfigWithADotIdIsRefusedWhenItIsRead",
+      "args": []
+    },
+    {
+      "label": "the leading-dot refusal for a distribution name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "func isDistroName(s string) bool {\n\tif s == \"\" || len(s) > 64 {\n\t\treturn false\n\t}\n\tif strings.HasPrefix(s, \".\") {\n\t\treturn false\n\t}\n",
+      "replace": "func isDistroName(s string) bool {\n\tif s == \"\" || len(s) > 64 {\n\t\treturn false\n\t}\n",
+      "run": "TestANameOfDotsIsNotAName",
+      "args": []
+    },
+    {
+      "label": "the order Open returns records in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\tsort.Slice(out, func(i, j int) bool {\n\t\tif !out[i].At.Equal(out[j].At) {\n\t\t\treturn out[i].At.Before(out[j].At)\n\t\t}\n\t\treturn out[i].Kind+\"/\"+out[i].ID < out[j].Kind+\"/\"+out[j].ID\n\t})\n",
+      "replace": "\tsort.Slice(out, func(i, j int) bool {\n\t\treturn out[i].ID > out[j].ID\n\t})\n",
+      "run": "TestLedgerOpenIsOrdered",
+      "args": []
+    },
+    {
+      "label": "the line that says this machine has no state directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/client_spool.go",
+      "find": "\t\tlog(\"no local transcript for this job: this machine has no state directory\")\n",
+      "replace": "",
+      "run": "TestClientSpoolSaysWhyItHasNoTranscript",
+      "args": []
+    },
+    {
+      "label": "the line that names the step the spool gave up on",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/client_spool.go",
+      "find": "\t\t\tlog(\"no local transcript for this job: \" + why + \": \" + err.Error())\n",
+      "replace": "\t\t\t_ = why\n",
+      "run": "TestClientSpoolSaysWhyItHasNoTranscript",
+      "args": []
+    },
+    {
+      "label": "the tee that a failing spool cannot abort",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/client_spool.go",
+      "find": "\treturn &teeToSpool{live: live, spool: f}",
+      "replace": "\treturn io.MultiWriter(live, f)",
+      "run": "TestClientSpoolKeepsTheLiveStreamWhenTheSpoolFails",
+      "args": []
+    },
+    {
+      "label": "the staging removal for a result that carried no id",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/client_spool.go",
+      "find": "\t\t\t_ = RemoveInside(s.home, s.dir)\n\t\t\ts.dir = \"\"\n",
+      "replace": "",
+      "run": "TestClientSpoolFinishWithoutAnIdLeavesNothingBehind",
+      "args": []
+    },
+    {
+      "label": "yielding to a transcript that is already complete",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/client_spool.go",
+      "find": "\tif _, err := os.Stat(dest); err == nil {",
+      "replace": "\tif _, err := os.Stat(dest); err != nil && false {",
+      "run": "TestClientSpoolFinishYieldsToAnExistingTranscript",
+      "args": []
+    },
+    {
+      "label": "the path Finish returns for a transcript it could not file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/client_spool.go",
+      "find": "\t\treturn s.unfiled(\"the jobs directory could not be made\", err)",
+      "replace": "\t\treturn \"\"",
+      "run": "TestClientSpoolFinishReturnsTheTranscriptItCouldNotFile",
+      "args": []
+    },
+    {
+      "label": "the line between an empty machine and an unreadable one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_logs.go",
+      "find": "\tif err != nil && os.IsNotExist(err) {",
+      "replace": "\tif err != nil {",
+      "run": "TestListTranscriptsSeparatesAnEmptyMachineFromAnUnreadableOne",
+      "args": []
+    },
+    {
+      "label": "the job id on a run that kept its output",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\treturn \"the complete output is kept: wsl-toolkit logs \" + res.ID",
+      "replace": "\treturn \"\"",
+      "run": "TestTranscriptHintMakesLogsReachable",
+      "args": []
+    },
+    {
+      "label": "not saying the same thing twice after a truncated run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_run.go",
+      "find": "\tif res.StdoutTruncated || res.StderrTruncated {\n\t\t// Already said, with the path, by the line about the capture limit.\n\t\treturn \"\"\n\t}\n",
+      "replace": "",
+      "run": "TestTranscriptHintMakesLogsReachable",
+      "args": []
+    },
+    {
+      "label": "the fleet offering a transcript only when one exists",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/matrix.go",
+      "find": "\tif TranscriptsKept(report) {",
+      "replace": "\tif true {",
+      "run": "TestMatrixTablePointsAtLogsOnce",
+      "args": []
+    },
+    {
+      "label": "the commit-msg rule being applied at all",
+      "module": "tools/check",
+      "file": "internal/checks/commits.go",
+      "find": "\tr.checkMessage(\"pending\", subject, body)",
+      "replace": "\t_, _ = subject, body",
+      "run": "TestMessageRefusesTheTrailerThatGotThrough",
+      "args": []
+    },
+    {
+      "label": "git's own comment lines being stripped first",
+      "module": "tools/check",
+      "file": "internal/checks/commits.go",
+      "find": "\t\tif strings.HasPrefix(line, \"#\") {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestMessageRefusesTheTrailerThatGotThrough",
+      "args": []
+    },
+    {
+      "label": "a message that could not be read being a refusal",
+      "module": "tools/check",
+      "file": "internal/checks/commits.go",
+      "find": "\t\tr.bad(\"the message file could not be read: %v\", err)\n",
+      "replace": "",
+      "run": "TestMessageSaysSoWhenItCannotRead",
+      "args": []
+    },
+    {
+      "label": "the hook path comparison",
+      "module": "tools/check",
+      "file": "internal/checks/hooks.go",
+      "find": "\treturn strings.EqualFold(filepath.Clean(want), filepath.Clean(have))",
+      "replace": "\treturn true || strings.EqualFold(filepath.Clean(want), filepath.Clean(have))",
+      "run": "TestSameHookPathRefusesSomebodyElsesHooks",
+      "args": []
+    },
+    {
+      "label": "a tree that ships no commit-msg hook being a finding",
+      "module": "tools/check",
+      "file": "internal/checks/hooks.go",
+      "find": "\t\tr.bad(\"%s is not tracked, so there is nothing for a checkout to install\", rel)\n",
+      "replace": "",
+      "run": "TestHooksRefusesATreeWithNoHook",
+      "args": []
+    },
+    {
+      "label": "the harness telling a missing case from a real failure",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase v.Cases == 0:",
+      "replace": "\tcase false:",
+      "run": "TestRunTellsTheThreeOutcomesApart",
+      "args": []
+    },
+    {
+      "label": "the harness refusing a find that is not unique",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tif n := strings.Count(string(body), m.Find); n != 1 {",
+      "replace": "\tif n := 1; n != 1 {",
+      "run": "TestRunTellsTheThreeOutcomesApart",
+      "args": []
+    },
+    {
+      "label": "the harness refusing a table that would prove nothing",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tif len(t.Mutations) == 0 {",
+      "replace": "\tif false {",
+      "run": "TestLoadRefusesATableThatWouldProveNothing",
+      "args": []
+    },
+    {
+      "label": "the harness failing when a row is theatre",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tif proved != len(verdicts) {",
+      "replace": "\tif false {",
+      "run": "TestReportFailsUnlessEveryRowIsProved",
+      "args": []
+    }
+  ]
+}

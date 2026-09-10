@@ -8,7 +8,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-09T21:00:00Z
 baseline        450b380, clean main; gate 17 checks, all passing, 31s.
-entries         total 65  open 8  blocked 0  done 57
+entries         total 66  open 8  blocked 0  done 58
 gate            18 checks, one binary, 43s, all passing
 ```
 
@@ -56,10 +56,11 @@ acceptance  39 of 39 cases pass against the real base, both routes, both
             14 issue cases each fail against wsl-toolkit-v1.1.0, and the two
             newest cover the helper route's own transcript and the line that
             names the job id.
-mutation    39 of 39 guards proved: each one deleted, the named case run, and
+mutation    48 of 48 guards proved: each one deleted, the named case run, and
             the case count and the build status reported separately. One row
             asks for -race, because without it that guard goes red in only 6
-            runs of 10.
+            runs of 10. It is `repo mutate` now, in the tree, so the number is
+            one anybody can reproduce.
 linux       all three Go modules vet and test clean inside
             docker.io/library/golang:1.25, driven by this tool.
 race        the whole Go suite passes under -race.

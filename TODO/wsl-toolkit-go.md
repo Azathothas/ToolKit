@@ -836,7 +836,7 @@ ok  	github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit	3.
 ```
 
 ```text
-$ python .tmp/mutate.py
+$ sh scripts/common/repo.sh mutate
   ok       the lock that makes one writer safe for two streams  1 case(s), went red
   ok       the flush of a final line with no terminator         1 case(s), went red
   ok       the ceiling on output that never sends a newline     1 case(s), went red
@@ -943,7 +943,7 @@ returned where the empty string used to be.
 
 ```bash
 go test -race ./...
-python .tmp/mutate.py
+sh scripts/common/repo.sh mutate
 pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
 ```
 
@@ -954,7 +954,7 @@ written, six of them for `ClientSpool`, which had none; ten guards were proved b
 mutation; two acceptance cases were added against a real machine.
 
 ```text
-$ python .tmp/mutate.py
+$ sh scripts/common/repo.sh mutate
   ok       the line that says this machine has no state directory      3 case(s), went red
   ok       the line that names the step the spool gave up on           3 case(s), went red
   ok       the tee that a failing spool cannot abort                   1 case(s), went red

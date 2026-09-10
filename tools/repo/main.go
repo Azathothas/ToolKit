@@ -10,9 +10,15 @@
 //
 // ⛔ WHY IT IS NOT tools/check. That binary holds the rules this repository
 // enforces over its OWN tree, and `check-gate` runs all of them. These are a
-// host probe, a commit path, a licence writer and two remote readers; folding
-// them in would make the gate do things that are not checks, and a gate whose
-// scope drifts is one nobody can say the meaning of.
+// host probe, a commit path, a licence writer, two remote readers and a
+// mutation harness; folding them in would make the gate do things that are not
+// checks, and a gate whose scope drifts is one nobody can say the meaning of.
+//
+// ⚠ `mutate` IS THE CLOSEST CALL and it stays out for the same reason. It
+// proves that the tests guarding this tree are real, which is a thing to run
+// deliberately when guards change, not a rule to enforce over every commit: one
+// pass copies every module and runs a test suite per row, and a gate somebody
+// waits minutes for is a gate they skip.
 //
 // Exit codes are the contract every caller reads:
 //
@@ -30,13 +36,16 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/repo/internal/binfmt"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/deslop"
+	"github.com/Azathothas/ToolKit/tools/repo/internal/gitrepo"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/gitsync"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/license"
+	"github.com/Azathothas/ToolKit/tools/repo/internal/mutate"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/remote"
 )
 
@@ -52,6 +61,7 @@ func commands() []command {
 		{"deslop", "which files in this tree address a reader as an agent", runDeslop},
 		{"git-sync", "commit and push, with the identity and attribution rules enforced", runGitSync},
 		{"license", "write LICENSE from a template, with the holder filled in", runLicense},
+		{"mutate", "delete each guard in the table and confirm the test named for it goes red", runMutate},
 		{"remote-items", "what is open against this repository, and does it survive checking", runRemote},
 	}
 }
@@ -146,6 +156,41 @@ func runDeslop(args []string) int {
 		opts.Apply = false
 	}
 	return deslop.Run(opts, os.Stdout, os.Stderr)
+}
+
+// runMutate proves the guards rather than counting them.
+//
+// ⛔ THIS USED TO BE A SESSION-LOCAL SCRIPT under .tmp/, which is
+// gitignored. Three records cited it as the command that closed them, and none
+// of those commands could be run by anyone reading the record afterwards.
+// Evidence that evaporates with the session is not evidence.
+func runMutate(args []string) int {
+	fs := newFlagSet("mutate")
+	table := fs.String("table", "", "the mutation table. Empty reads tools/repo/mutations.json from the repository root")
+	only := fs.String("only", "", "run just the mutations whose label contains this")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	repo, err := gitrepo.Open()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
+		return 2
+	}
+	path := *table
+	if path == "" {
+		path = filepath.Join(repo.Root, "tools", "repo", "mutations.json")
+	}
+	t, err := mutate.Load(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
+		return 2
+	}
+	verdicts, err := mutate.Run(repo.Root, t, *only, os.Stdout)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
+		return 2
+	}
+	return mutate.Report(os.Stdout, verdicts)
 }
 
 func runLicense(args []string) int {

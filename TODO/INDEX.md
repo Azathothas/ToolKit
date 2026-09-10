@@ -13,14 +13,14 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 65  open 8  blocked 0  done 57
+total 66  open 8  blocked 0  done 58
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 1 | 0 | 29 | 30 |
-| P2 | 6 | 0 | 19 | 25 |
+| P2 | 6 | 0 | 20 | 26 |
 | P3 | 1 | 0 | 6 | 7 |
 | **all** | **9** | **0** | **54** | **63** |
 
@@ -54,6 +54,7 @@ total 65  open 8  blocked 0  done 57
 | TOOL-13 | P1 | L | done | The gate took thirteen minutes, and half of it was comparing two copies of every rule | [`tooling.md`](tooling.md) |
 | TOOL-14 | P2 | L | done | The last six shell pairs become one program, and `check-twins` goes | [`tooling.md`](tooling.md) |
 | TOOL-15 | P1 | M | done | The rule that could only ever speak after the fact | [`tooling.md`](tooling.md) |
+| TOOL-16 | P2 | M | done | Evidence that evaporates with the session | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
