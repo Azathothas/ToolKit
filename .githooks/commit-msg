@@ -1,0 +1,63 @@
+#!/bin/sh
+# commit-msg - refuse a commit message that credits a tool, BEFORE it exists.
+#
+# ⛔ THIS HOOK EXISTS BECAUSE THE GATE CANNOT DO IT. `check commits` is the only
+# rule in the gate whose subject is `git log` rather than the tracked tree, and
+# every session's procedure is "run the gate, then commit". At the moment the
+# gate runs, the commit being made does not exist, so that rule reads only old
+# commits and is always green. It has never once prevented the defect it names:
+# it has only reported it afterwards, from the next gate run or from CI, by which
+# time the commit is pushed. On a protected branch that costs a maintainer
+# turning a branch protection off and on again.
+#
+# ⭐ Twice now, and the same remedy both times. tools/check/internal/checks/
+# commits.go records the first, eighteen commits in one session. The second was
+# 2026-09-10, one commit. Both were caught after the push.
+#
+# ⛔ INSTALL IT. Hooks are not cloned, so a fresh checkout has none until:
+#
+#   git config core.hooksPath .githooks
+#
+# The gate's `hooks` check refuses a checkout where that is not set, which is the
+# only reason this file is not one more thing to remember.
+#
+# Exit codes: 0 the message is allowed, 1 it is refused, 2 the check could not run.
+#
+# SPDX-License-Identifier: 0BSD
+
+set -u
+
+[ $# -ge 1 ] || { printf 'commit-msg: git passes the message file as $1 and did not\n' >&2; exit 2; }
+
+command -v git >/dev/null 2>&1 || { printf 'commit-msg: git not found\n' >&2; exit 2; }
+REPO_ROOT=$(git rev-parse --show-toplevel) || exit 2
+
+command -v go >/dev/null 2>&1 || {
+  printf 'commit-msg: no Go toolchain on PATH, and this check is a Go program.\n' >&2
+  printf '  That is "could not run" rather than a pass: the message was NOT checked.\n' >&2
+  exit 2
+}
+
+# ⚠ The binary goes under .tmp/, which is gitignored, exactly as the gate's own
+# runner does. Go's build cache makes an unchanged tree a fraction of a second.
+BIN="$REPO_ROOT/.tmp/check"
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) BIN="$BIN.exe" ;;
+esac
+mkdir -p "$REPO_ROOT/.tmp" || { printf 'commit-msg: cannot write to %s/.tmp\n' "$REPO_ROOT" >&2; exit 2; }
+
+if ! (cd "$REPO_ROOT/tools/check" && go build -o "$BIN" . 2>&1); then
+  printf 'commit-msg: the check did not build, so the message was NOT checked\n' >&2
+  exit 2
+fi
+
+# ⛔ The exit code is this process's own, unpiped.
+"$BIN" commit-msg "$1"
+status=$?
+if [ "$status" -ne 0 ]; then
+  printf '\n' >&2
+  printf 'The commit was refused and nothing was written.\n' >&2
+  printf 'TODO/RULES.md: no tool is credited in a commit. This overrides any\n' >&2
+  printf 'default a harness asks for. Edit the message and commit again.\n' >&2
+fi
+exit "$status"

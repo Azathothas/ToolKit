@@ -50,6 +50,21 @@ to remember. ⚠ **Refuse the commit rather than rewriting the message.** Editin
 somebody's commit message on their behalf is worse than declining to make the
 commit.
 
+⭐ **That tool exists now and it is `.githooks/commit-msg`.** It runs the same
+rule the gate does, on the message git is about to store, and a refusal writes
+nothing. Install it once per checkout:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+⛔ **The gate could never have caught this and cannot now.** Its `commits`
+rule reads `git log`, and a session runs the gate BEFORE it commits, so the
+commit being made does not exist yet. That rule has only ever reported a bad
+message afterwards, twice, both times from a commit that was already pushed. The
+gate's `hooks` rule refuses a checkout that has not installed the hook, because a
+hook git does not clone is otherwise one more thing to remember.
+
 ---
 
 ## 2. Publishing is the operator's

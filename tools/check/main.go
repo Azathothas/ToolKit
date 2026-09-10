@@ -52,12 +52,13 @@ var all = []check{
 	{"bundle", "check-bundle/1", checks.Bundle, "the two generated products still match the parts that build them"},
 	{"go", "check-go/1", checks.GoModules, "gofmt, vet, build and test over every Go module here"},
 	{"commits", "check-commits/1", checks.Commits, "no commit credits a tool: no trailer, no generated-with line, no tool name, no emoji"},
+	{"hooks", "check-hooks/1", checks.Hooks, "the commit-msg hook is tracked and this checkout is running it"},
 }
 
 func main() {
 	args := os.Args[1:]
 	asJSON := false
-	var name string
+	var name, msgPath string
 	for _, a := range args {
 		switch {
 		case a == "--json":
@@ -68,9 +69,34 @@ func main() {
 		case strings.HasPrefix(a, "-"):
 			fmt.Fprintf(os.Stderr, "check: unknown argument: %s\n", a)
 			os.Exit(2)
-		default:
+		case name == "":
 			name = a
+		case msgPath == "":
+			msgPath = a
+		default:
+			fmt.Fprintf(os.Stderr, "check: unexpected argument: %s\n", a)
+			os.Exit(2)
 		}
+	}
+
+	// ⛔ BEFORE THE TREE IS LOADED, because a commit-msg hook runs in the
+	// middle of `git commit` and has no business walking 200 files to decide
+	// whether one string carries a co-author trailer.
+	if name == "commit-msg" {
+		if msgPath == "" {
+			fmt.Fprint(os.Stderr, "check: commit-msg needs the path of the message file\n")
+			os.Exit(2)
+		}
+		res := checks.Message(msgPath)
+		if asJSON {
+			emit("check-commits/1", res)
+		} else {
+			report("commit-msg", res)
+		}
+		if res.Problems > 0 {
+			os.Exit(1)
+		}
+		os.Exit(0)
 	}
 
 	tree, err := checks.Load(".")
@@ -103,10 +129,11 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, "usage: check [CHECK] [--json]\n\nWith no CHECK, runs every one and prints a verdict.\n\n")
+	fmt.Fprint(os.Stderr, "usage: check [CHECK] [--json]\n       check commit-msg FILE\n\nWith no CHECK, runs every one and prints a verdict.\n\n")
 	for _, c := range all {
 		fmt.Fprintf(os.Stderr, "  %-15s %s\n", c.name, c.what)
 	}
+	fmt.Fprint(os.Stderr, "\n  commit-msg      the commits rule, applied to a message that is not a commit yet\n")
 	fmt.Fprint(os.Stderr, "\nexit: 0 agreed, 1 disagreed, 2 could not run\n")
 }
 

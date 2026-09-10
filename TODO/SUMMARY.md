@@ -20,7 +20,7 @@ on what was true last time.
 | Acceptance | 23 cases against a real machine | ⭐ **39 cases.** The 14 issue cases each fail against `v1.1.0`; the two newest cover the helper route's own transcript and the job id |
 | Mutation | 23 guards proved | ⭐ **39 proved**, each one deleted, the named case run, the case count and the build status reported separately |
 | Published | `wsl-toolkit-v1.1.0` | `wsl-toolkit-v1.3.0`, five assets, digests recomputed from the downloaded files |
-| Checks | 17 in one Go binary, 31s | 17, 41s. Unchanged on purpose: five shell pairs became a Go program and NONE of them became a gate check |
+| Checks | 17 in one Go binary, 31s | 18, 43s. Five shell pairs became a Go program and none of them became a gate check; the one that was added is `hooks`, for the reason below |
 | Health | 53 entries: 8 open, 0 blocked, 45 done | 64 entries: 8 open, 0 blocked, 56 done. Tree clean, gate green |
 
 ### ⭐ Defects found, and by which pass

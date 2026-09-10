@@ -8,8 +8,8 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-09T21:00:00Z
 baseline        450b380, clean main; gate 17 checks, all passing, 31s.
-entries         total 64  open 8  blocked 0  done 56
-gate            17 checks, one binary, 41s, all passing
+entries         total 65  open 8  blocked 0  done 57
+gate            18 checks, one binary, 43s, all passing
 ```
 
 ## Active work
@@ -63,7 +63,9 @@ mutation    39 of 39 guards proved: each one deleted, the named case run, and
 linux       all three Go modules vet and test clean inside
             docker.io/library/golang:1.25, driven by this tool.
 race        the whole Go suite passes under -race.
-gate        17 checks, one binary, 41s on this host.
+gate        18 checks, one binary, 43s on this host. The eighteenth is
+            `hooks`, and it is the one that stops `commits` being a rule
+            with no instrument.
 surface     71 flags across 12 commands, every one of them named in the manual,
             asserted by a test rather than by a reading.
 ```

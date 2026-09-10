@@ -69,6 +69,14 @@ jobs:
       # steps here would be a second list to fall out of step with that one.
       # ⚠ The shellcheck it finds is this host's, which is not the one on a
       # development machine: docs/methodology/gate.md carries what that costs.
+      # ⛔ A CHECKOUT IS A CHECKOUT, and the gate's `hooks` rule has no
+      # exemption for this one. Hooks are not cloned, so every checkout has to
+      # opt in, and CI opting in the same way a laptop does is what keeps that
+      # rule from growing an "unless it is CI" branch. It also means this job
+      # would catch a hook that stopped working.
+      - name: install the tracked hooks, like any other checkout
+        run: git config core.hooksPath .githooks
+
       - name: the gate
         run: sh scripts/common/check-gate.sh
 
@@ -153,6 +161,9 @@ jobs:
       # what the twin rule existed to keep honest. There is one implementation
       # now, and this runs it through the PowerShell entry point so that path is
       # exercised rather than assumed.
+      - name: install the tracked hooks, like any other checkout
+        run: git config core.hooksPath .githooks
+
       - name: the gate, through the PowerShell entry point
         shell: pwsh
         run: |

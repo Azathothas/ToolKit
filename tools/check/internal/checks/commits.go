@@ -21,6 +21,7 @@
 package checks
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -102,6 +103,55 @@ func Commits(t *Tree) Result {
 		r.bad("this check read nothing and agreed with it: git log printed no commit")
 	}
 	r.Extra["commits"] = checked
+	return r
+}
+
+// Message applies the same four rules to a message that is not a commit yet.
+//
+// ⛔ THIS EXISTS BECAUSE THE GATE STRUCTURALLY CANNOT CATCH THE THING IT WAS
+// BUILT FOR. Commits is the only check whose subject is `git log` rather than
+// the tracked tree, and every session's procedure is "run the gate, then
+// commit". At the moment the gate runs, the commit being made DOES NOT EXIST,
+// so this rule reads only old commits and is always green. It has never once
+// prevented the defect it names. It has only ever reported it afterwards, from
+// the next gate run or from CI, by which time the commit is pushed, and on a
+// protected branch that costs a maintainer turning off a branch protection.
+//
+// ⭐ Twice now. The doc at the top of this file records the first, eighteen
+// commits in one session. The second was 2026-09-10, one commit, remedied the
+// same way. Both were caught AFTER the push. A rule whose instrument can only
+// speak after the fact is an instrument for the record, not for the tree.
+//
+// ⚠ The path is a FILE, because that is what git hands a commit-msg hook.
+// Its first line is the subject and the whole file is the body, which is how
+// checkMessage is fed from git log too.
+func Message(path string) Result {
+	r := Result{Extra: map[string]any{}}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		r.bad("the message file could not be read: %v", err)
+		return r
+	}
+	// ⛔ COMMENT LINES ARE STRIPPED, and only comment lines. git's own
+	// template puts the branch name and the file list behind `#`, none of which
+	// reaches the stored message, and refusing a message over git's own
+	// scaffolding would make the hook something people disable.
+	var kept []string
+	for _, line := range strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n") {
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	body := strings.Join(kept, "\n")
+	subject := ""
+	if i := strings.IndexByte(strings.TrimLeft(body, "\n"), '\n'); i >= 0 {
+		subject = strings.TrimLeft(body, "\n")[:i]
+	} else {
+		subject = strings.TrimSpace(body)
+	}
+	r.checkMessage("pending", subject, body)
+	r.Extra["commits"] = 1
 	return r
 }
 

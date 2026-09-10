@@ -21,6 +21,36 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T06:30:00Z: the commit rule gets an instrument that can say no
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-15`.
+**Deployed:** ⛔ **no deploy.** Nothing here is published; it changes what a
+session can commit, not what a consumer fetches. ⚠ **Every existing checkout
+will fail the gate until it runs `git config core.hooksPath .githooks`**, and the
+finding names that command.
+
+`check commits` is the only rule in the gate whose subject is `git log` rather
+than the tracked tree, and a session runs the gate BEFORE it commits. At that
+moment the commit being made does not exist, so the rule reads old commits and
+reports green. It has never once prevented the defect it names. It has reported
+it afterwards, twice, both times from a commit that was already pushed, and both
+times the remedy was rewriting published history.
+
+`check commit-msg FILE` applies the same four rules to a message that is not a
+commit yet, and `.githooks/commit-msg` calls it with the file git hands it. A
+refusal writes nothing. The hook calls the check rather than restating it, so
+there is one copy of the rule.
+
+A hook git does not clone is a preference again, so the gate gains an eighteenth
+check, `hooks`, which refuses a tree with no tracked hook and a checkout not
+running it. CI installs the hooks in one line per gate job, so that rule needs no
+exception for CI.
+
+⭐ **`tools/check` had no tests at all before this.** `go test` over the gate
+ran zero cases, so its own `go` check was vacuously green about it. Five cases now
+cover the new mode and the new check, which is the first five rather than coverage
+of eighteen.
+
 ### 2026-09-10T05:40:00Z: wsl-toolkit v1.3.0, what two readings found with nothing reported
 
 **Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-40`

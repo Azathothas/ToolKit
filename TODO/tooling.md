@@ -1418,3 +1418,131 @@ as full paths took it from 23 to 30 on this tree, which is arguably the better
 answer and is not what the shell did. A port that quietly changes a number its
 caller reads is a port nobody can check, so it is a decision to make on its own.
 
+---
+
+## TOOL-15. The rule that could only ever speak after the fact
+
+**Source** The operator, on 2026-09-10, after a commit crediting a tool reached
+a protected `main`: "despite all the rules and conventions and checks, why does
+this keep happening".
+**Category** tooling, **Priority** P1, **Effort** M, **Status** done
+
+## Problem
+
+It keeps happening because the instrument cannot fire in time.
+
+`check commits` is the only rule in the gate whose subject is `git log` rather
+than the tracked tree. Every session's procedure, written down in
+[`RULES.md`](RULES.md) and followed here, is **run the gate, then commit**. At
+the moment the gate runs, the commit being made DOES NOT EXIST. The rule reads
+old commits, agrees with them, and reports green.
+
+⛔ **It has never once prevented the defect it names.** It has reported it
+afterwards, twice:
+
+1. A session added a co-author trailer to eighteen commits. Recorded in the
+   header of `tools/check/internal/checks/commits.go`, and the reason that file
+   exists at all.
+2. 2026-09-10, one commit, this session. The gate was run and was green, because
+   the commit did not exist yet. CI caught it eleven minutes later, by which
+   time it was pushed to a branch whose protection forbids a force push, and
+   undoing it cost the operator's own intervention.
+
+Both times the remedy was rewriting published history. That is the most
+expensive remedy this repository has, and it was reached twice by a rule that
+was never able to say no.
+
+## Premise
+
+Measured, not read:
+
+- ⭐ **The gate is green over the tree at the moment the bad commit is
+  made.** Reproduced deliberately: 17 checks, all ok, verdict "the tree agrees
+  with itself", then a commit whose message carried the trailer. Nothing in the
+  procedure was skipped.
+- ⭐ **CI's checkout is shallow, so it reads exactly one commit.** `git log`
+  in that checkout printed the tip alone, which is why CI reported four problems
+  attributed to one hash rather than to the history.
+- ⚠ **The counter-instruction is live and the rule is not.** A harness
+  reminder asking for the trailer is re-asserted in context continuously; the
+  repository's rule is read once, at orientation. That asymmetry is the mechanism
+  and no amount of care changes it, which is why the fix has to be mechanical.
+
+## Approach
+
+Move the instrument to the moment the message is written.
+
+`check commit-msg FILE` applies the same four rules to a message that is not a
+commit yet. `.githooks/commit-msg` calls it with the file git hands it, and a
+refusal writes nothing: git discards the message and the commit does not happen.
+⛔ The hook CALLS the check rather than restating it, so there is one copy
+of the rule and no drift.
+
+A hook is not cloned, so a repository that merely ships one has a preference
+again. The gate gains an eighteenth check, `hooks`, which refuses a tree with no
+tracked hook and a checkout whose `core.hooksPath` does not resolve to it, and
+quotes the one command that fixes it. CI installs the hooks the same way a laptop
+does, in one line per gate job, so that rule has no "unless it is CI" branch.
+
+⚠ **The executable bit is deliberately not checked.** git on Windows runs a
+hook through its bundled sh whatever the mode says, so reading the working copy's
+mode would report a problem that does not exist for half the people who run it.
+
+## Consumers
+
+⚠ **Every existing checkout of this repository will fail the gate until it
+runs one command**, and the finding names it. That is the intended cost: a
+checkout not running the hook is one where this rule is a preference.
+
+```bash
+git config core.hooksPath .githooks
+```
+
+## Prove
+
+```bash
+git config core.hooksPath .githooks
+git commit -F a-message-that-credits-a-tool.txt
+```
+
+## Closing
+
+**Closed 2026-09-10.** Driven, not read: the exact message that reached `main`
+was written to a file and committed, and git refused it.
+
+```text
+$ git commit -F .tmp/try-msg.txt
+  FAIL   pending (a message the hook must refuse) carries "co-authored-by: claude opus 5 <noreply@anthropic"; TODO/RULES.md: no tool is credited in a commit
+  FAIL   pending (a message the hook must refuse) names "anthropic" in its message; TODO/RULES.md: no tool name in the body
+  FAIL   pending (a message the hook must refuse) names "claude" in its message; TODO/RULES.md: no tool name in the body
+  FAIL   pending (a message the hook must refuse) names "opus" in its message; TODO/RULES.md: no tool name in the body
+
+commit-msg: 4 problems
+
+The commit was refused and nothing was written.
+```
+
+`git log -1` was unchanged afterwards, which is the half that matters: the
+refusal is not a warning printed beside a commit that happened anyway.
+
+```text
+$ python .tmp/mutate.py
+  ok       the commit-msg rule being applied at all                    6 case(s), went red
+  ok       git's own comment lines being stripped first                6 case(s), went red
+  ok       a message that could not be read being a refusal            1 case(s), went red
+  ok       the hook path comparison                                    1 case(s), went red
+  ok       a tree that ships no commit-msg hook being a finding        1 case(s), went red
+
+44 of 44 guards proved.
+```
+
+⭐ **`tools/check` had ZERO tests before this.** `go test` over the gate ran
+no cases at all, so the gate's own `go` check was vacuously green about it. Five
+cases is not coverage of eighteen checks; it is the first five, and the hole is
+named here rather than quietly filled.
+
+⚠ **What this does not fix.** `git commit --no-verify` bypasses the hook,
+and nothing in a local repository can stop that. The remaining defence is CI,
+which is where both incidents were actually caught. The difference is that the
+hook makes the bypass a DECISION rather than an accident, and the accident is
+what happened twice.
