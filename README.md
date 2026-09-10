@@ -37,7 +37,9 @@ is the one page to read.
 | [`scripts/windows/wsl-toolkit/selftest.ps1`](scripts/windows/wsl-toolkit/selftest.md) | run that script's pure functions against a table of cases. No WSL, no engine, nothing created. |
 | [`scripts/windows/wsl-toolkit/`](scripts/windows/wsl-toolkit/README.md) | ⭐ how that tool is built, tested and released. `wsl-toolkit.ps1` is GENERATED from the parts under `src/`, `core/` and `libs/`, and must not be edited. |
 | [`scripts/doctor/`](scripts/doctor/README.md) | one read-only pass reporting the host, the shell, the installed tools with versions, and the repository state |
-| [`scripts/common/`](scripts/README.md) | the checks that hold this repository's gate, plus the helpers that write files, move the record, commit and fill a licence. Each check is an `sh` and PowerShell pair. |
+| [`scripts/common/`](scripts/README.md) | the entry points to the gate and the helpers that write files, move the record, commit and fill a licence. ⚠ Each is a thin `sh` and PowerShell pair over one Go subcommand; the rules themselves are not written twice. |
+| ⭐ [`tools/check/`](tools/check/) | every rule this repository enforces over its own tree. One binary, one tree walk. ⚠ The count moves; the gate prints it and [`TODO/PROGRESS.md`](TODO/PROGRESS.md) records the measurement |
+| [`tools/repo/`](tools/repo/) | the tools that are NOT gate rules: the mutation harness, the open-items reader, `git-sync`, the binfmt probe, `deslop`, the licence filler |
 | [`LICENSES/`](LICENSES/README.md) | the SPDX texts `scripts/common/fill-license.sh` reads |
 
 Every tool has a `.md` beside it that stands alone. **Read the tool's own page,
@@ -52,9 +54,9 @@ not this one**, before using it.
 | `TODO/` | the work: the record, the entry list, the entries themselves, and the standing rules |
 | `docs/` | how this repository is worked on. The map is below. |
 | `scripts/` | the tools and the checks |
-| `tools/` | the compiled half of `wsl-toolkit`, in Go |
+| `tools/` | the Go modules: `check` holds every gate rule, `repo` the tools that are not rules, and `windows/wsl-toolkit` the compiled tool |
 | `LICENSES/` | licence texts, not code |
-| `.github/workflows/` | CI. Three jobs on `ci.yml`, across ubuntu and windows, plus a weekly pass over open issues. |
+| `.github/workflows/` | CI. `ci.yml` on every push, across ubuntu and windows; `release.yml` on a version tag; `release-smoke.yml` and `remote-items.yml` weekly. [`TODO/RULES.md`](TODO/RULES.md) has the counts and which of them `main` requires. |
 
 ## The documents
 

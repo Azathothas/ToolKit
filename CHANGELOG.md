@@ -21,6 +21,36 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T11:20:00Z: the documents say what is true now
+
+**Record:** [`TODO/SUMMARY.md`](TODO/SUMMARY.md) carries the pass; there is no
+entry, because this is the claim audit applied to the documents rather than a
+unit of work.
+**Deployed:** ⛔ **no deploy.** Nothing a consumer fetches changed.
+
+Six contradictions and eight stale facts, each fixed in the page that owns it.
+
+| page | what it said | what is true |
+| --- | --- | --- |
+| [`README.md`](README.md) | each check is an `sh` and PowerShell pair | ⛔ the rules are one Go program and the scripts are thin wrappers. It contradicted `TODO/RULES.md` section 2 directly |
+| [`README.md`](README.md) | `tools/` is the compiled half of `wsl-toolkit` | three modules: `check`, `repo`, and the tool |
+| [`README.md`](README.md) | CI is three jobs plus a weekly pass | four workflows, and `RULES.md` carries the counts |
+| [`docs/security/remote-ops.md`](docs/security/remote-ops.md) | an API call is read-only, no POST or PATCH, full stop | ⛔ that forbade this project's own release procedure. The carve-out is written and it is narrow: this repository's remote, under the push policy, for an action the operator asked for in the session |
+| [`TODO/RULES.md`](TODO/RULES.md) | the gate takes about 30s, in the file whose own rule says a measured cost belongs in the record | the row carries no number now |
+| [`TODO/RULES.md`](TODO/RULES.md) | the deletion rule applies to the PowerShell script | both products remove things. The line is drawn around STATE rather than around the word "remove", and `RemoveInside`'s own comment carries the same sentence |
+| [`docs/conventions/docs.md`](docs/conventions/docs.md) | `PROGRESS.md` carries the runbook and threat-model roles as an open question | it did not. The open question is written rather than the sentence deleted |
+| [`scripts/windows/wsl-toolkit/selftest.md`](scripts/windows/wsl-toolkit/selftest.md) | 63 cases over 15 functions, run by the gate "as `wsl-toolkit selftest`" | 131 over 36, on three hosts, and that command has not existed for a while |
+
+[`docs/consumers.md`](docs/consumers.md) loses two discovery narratives and a
+release story to [`docs/HISTORY/consumers.md`](docs/HISTORY/consumers.md), which
+is where [`docs/conventions/prose.md`](docs/conventions/prose.md) says the story
+of a fix goes. The register, the break definition, the pin state and the trap
+stay; nothing was dropped.
+
+⭐ **[`docs/conventions/forbidden-patterns.md`](docs/conventions/forbidden-patterns.md)
+gains the four classes this session found**, and loses twelve stacked markers.
+Its own prose rule says a page where every paragraph carries one has no markers
+at all, and adding four rows had put it over the density ceiling the gate holds.
 ### 2026-09-10T10:55:00Z: `wsl-toolkit-v2.0.0` is published, and what three review lenses found after it
 
 **Record:** [`TODO/PROGRESS.md`](TODO/PROGRESS.md) and

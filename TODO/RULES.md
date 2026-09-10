@@ -127,9 +127,10 @@ written by the same build. The Go executable compiles it in, and Go's `embed`
 directive cannot reach outside its own package directory, so the file lives there
 rather than being referenced.
 
-⭐ **The check is what makes that safe.** `check-gate`'s `wsl-toolkit bundle`
-rebuilds from the parts and compares BOTH products byte for byte, in both halves
-and in CI. Without it either could silently stop being what anybody wrote: a part
+⭐ **The check is what makes that safe.** The gate's `bundle` rule rebuilds from
+the parts and compares BOTH products byte for byte, on either host and in CI.
+⚠ It was called `wsl-toolkit bundle` when the rules were shell scripts; the
+rules are one binary now and the name is `bundle`. Without it either could silently stop being what anybody wrote: a part
 edited and never rebuilt, a product edited by hand, or a rebuild that refreshed
 one copy and not the other.
 

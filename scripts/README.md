@@ -518,7 +518,7 @@ obtained.
 ⛔ **IT IS THE ONE GENERATED FILE IN THIS TREE, and it must not be edited.** Its
 source is the parts under `windows/wsl-toolkit/{src,core,libs}` and
 `build.ps1` joins them. It is tracked because a consumer fetching one raw URL
-cannot run a build step, and the gate's `wsl-toolkit bundle` check is what makes
+cannot run a build step, and the gate's `bundle` check is what makes
 "the product is what its parts build" true rather than assumed.
 [`windows/wsl-toolkit/README.md`](windows/wsl-toolkit/README.md) is how to work
 on it.

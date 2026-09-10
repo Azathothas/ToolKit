@@ -7,15 +7,20 @@ what makes them true.
 
 ---
 
-## The set this repository actually has
+## Who owns what, for the documents a conflict is settled against
 
-⛔ **Every row names a file that exists.** This table used to list thirteen
-documents, seven of which have never existed here, and one of those seven was
-named as the authority a conflict between two documents is settled against. A
-file nobody selected is a file a future session reads, believes, and follows
-into a rule that was never meant to apply, and a file that does not exist at all
-is worse: there is nothing to read and the rule pointing at it cannot be
-followed.
+⚠ **THIS IS NOT THE MAP AND DOES NOT TRY TO BE.** Two pages already are:
+[`../../README.md`](../../README.md) lists every document for a person, and
+[`../AGENTS.md`](../AGENTS.md) section 4 lists what each one under `docs/`
+answers. This table is the shorter question: when two pages disagree, which one
+is right.
+
+⛔ **Every row names a file that exists.** It used to list thirteen documents,
+seven of which have never existed here, and one of those seven was named as the
+authority a conflict is settled against. A file nobody selected is a file a
+future session reads, believes, and follows into a rule that was never meant to
+apply; a file that does not exist at all is worse, because there is nothing to
+read and the rule pointing at it cannot be followed.
 
 | file | owns |
 | --- | --- |
@@ -29,10 +34,13 @@ followed.
 | ⭐ [`../consumers.md`](../consumers.md) | the technical reference for the thing that makes this repository different: who fetches from it and what breaks them. **When a document conflicts with it about a consumer, it wins and the other is the defect.** |
 | a tool's `.md`, beside the tool | what that tool does, in full, for a reader who has opened nothing else |
 
-⚠ **Two roles this set deliberately leaves empty.** An operator-facing runbook
-and a threat model are both worth having and neither has content yet, so neither
-exists. [`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) carries that as an
-open question rather than shipping an empty skeleton for each.
+⚠ **Two roles are deliberately left empty.** An operator-facing runbook and a
+threat model are both worth having and neither has content yet, so neither
+exists rather than shipping an empty skeleton for each.
+[`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) carries both under its open
+questions. ⛔ That sentence was here before the line it names was, which the
+claim audit found on 2026-09-10; the fix was to write the open question rather
+than to delete the sentence.
 
 ⛔ **There is no architecture document, and nothing here should claim one.**
 This repository is a set of independent tools, each with its own page; there is
