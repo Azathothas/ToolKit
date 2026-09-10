@@ -1,3 +1,16 @@
+// cmd_actionable.go - the commands that turn an answer into a next step.
+//
+// `artifacts retry`, `examples`, `images pull` and `warm`, `config validate`
+// and `--effective`, and the `--job` narrowing `resources` and `gc` share.
+// WSL-52 filed them together for one reason: each closes a loop where the tool
+// already knew something and the caller had to go and do the rest by hand.
+//
+// ⚠ IT WAS `cmd_reach.go` UNTIL 2026-09-10, and there has never been a `reach`
+// command. A file name that names nothing in it costs a reader one grep and
+// costs a review its attention.
+//
+// SPDX-License-Identifier: 0BSD
+
 package main
 
 import (
@@ -169,6 +182,7 @@ var examples = []struct{ What, Command string }{
 	{"no network for the container", `wsl-toolkit run --image alpine --no-network -c 'wget -T2 example.com'`},
 	{"as an account that is not root", `wsl-toolkit run --image alpine --user 1000:1000 -c 'id -u'`},
 	{"read a job's complete output back", "wsl-toolkit logs JOB-ID"},
+	{"why a job failed, after the container is gone", "wsl-toolkit inspect JOB-ID"},
 	{"two agents, isolated from each other", "wsl-toolkit --instance two ready --ensure"},
 	{"what this tool is holding, and release it", "wsl-toolkit resources ; wsl-toolkit gc --apply"},
 	{"a caller that cannot reach wsl.exe", "wsl-toolkit helper serve --detach"},

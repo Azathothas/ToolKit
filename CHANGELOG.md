@@ -21,6 +21,33 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T10:55:00Z: `wsl-toolkit-v2.0.0` is published, and what three review lenses found after it
+
+**Record:** [`TODO/PROGRESS.md`](TODO/PROGRESS.md) and
+[`TODO/SUMMARY.md`](TODO/SUMMARY.md); [`TODO/tooling.md`](TODO/tooling.md)
+carries `TOOL-12`, [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries
+`WSL-58`.
+**Deployed:** ⭐ **yes.** `wsl-toolkit-v2.0.0`, five assets, digests computed in
+CI over the bytes that were uploaded. Driven as a consumer at 12 of 12 from a
+temp directory with no repository present, and again on a GitHub runner.
+
+⭐ **The thirteen issues a consumer agent filed against `v1.3.0` are closed
+against the published `v2.0.0`**, each re-derived against that binary rather
+than against the tree that fixes it. Nothing is open on the remote except one
+dependency bump, which needs an approving review.
+
+**What the three review passes found, after the release:**
+
+| lens | the finding it fired on |
+| --- | --- |
+| the door sweep | ⛔ `inspect --json` was not in the sweep that checks every `--json` surface, which is the guard `TOOL-17` built for exactly that class. The list is walked from the binary's flag sets now. |
+| the door sweep | `inspect` gave no answer at all where `wsl.exe` is absent, including for the transcript and the ledger record, which are on this machine's own disk |
+| the guard mutation | ⛔ nothing stopped a mutation row from mutating the TEST instead of the code, which turns the case red and prints `ok` over a guard nobody touched |
+| the claim audit | ⛔ a false claim that had already been published, in a comment closing an issue. Corrected in place, on the issue. |
+
+⚠ **`WSL-58` is filed and left open.** `inspect` has no `--via-helper` and every
+other report does; the cost is a helper protocol version, which is not a thing
+to bump inside the change that added the command.
 ### 2026-09-10T10:30:00Z: what a failed job ran on, and the obstacle that was not there
 
 **Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-56`.
@@ -67,9 +94,8 @@ two this entry adds.
 **Deployed:** ⛔ **no deploy.** The selftest is not published and no consumer
 fetches it.
 
-Four commits were made on 2026-09-10 and none was pushed, so the ubuntu job had
-not run since `f7eabfe`. On the first run that saw them, `bundle` went red on
-ubuntu and green on Windows. Two selftest cases built a path from `$env:TEMP`
+On the first CI run that saw the 2.0.0 commits, `bundle` went red on ubuntu and
+green on Windows. ⚠ Why it took that long is in the record rather than here. Two selftest cases built a path from `$env:TEMP`
 and `$env:WINDIR`, ⛔ **both null under PowerShell on Linux**, where `Join-Path`
 refuses a null path. They resolve `whoami` and ask the runtime for a temp
 directory now, which is the rule this tree already states applied to a test.
@@ -114,8 +140,12 @@ What changed: a nineteenth gate check, `mutations`, asserting every row still
 reaches its subject - exactly one match, a tracked file, a real replacement, a
 case that exists; a `SKIPPED` outcome in the harness, which is not counted as
 proved and does not fail the run; and a CI job on ubuntu running the whole
-table, where nothing skips. ⚠ The gate is 42s over 19 checks, unchanged,
-because the new one reads files the tree walk had already read.
+table, where nothing skips.
+
+⚠ **What the new check costs is measured in the entry, with its conditions**,
+rather than summarised here. ⛔ The first draft of this paragraph said the cost
+"did not move", which two uncontrolled runs do not support; the claim audit read
+it before it shipped.
 
 ⭐ **It caught a fourth stale row while it was being written**, when two harness
 tests were renamed and three rows still named the old names.

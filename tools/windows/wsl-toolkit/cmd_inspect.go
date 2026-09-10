@@ -55,11 +55,19 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	runner, err := toolkit.NewRunner(cfg, note)
-	if err != nil {
-		return exitCannot, err
+	// ⛔ A RUNNER IS NOT REQUIRED TO ANSWER THE HOST HALF. Building one calls
+	// FindWsl, so on a machine with no wsl.exe this command used to exit 2 with
+	// no answer at all - including for the transcript and the ledger record,
+	// which are on this machine's own disk and which `logs` reads with no
+	// runner whatever. Found by the door sweep. What cannot be reached is named
+	// as unreachable and the rest is still reported.
+	var rep toolkit.InspectReport
+	runner, rErr := toolkit.NewRunner(cfg, note)
+	if rErr != nil {
+		rep, err = toolkit.InspectHostOnly(id, rErr.Error())
+	} else {
+		rep, err = runner.Inspect(ctx, id, *since)
 	}
-	rep, err := runner.Inspect(ctx, id, *since)
 	if err != nil {
 		// ⛔ AN UNKNOWN ID IS A REFUSAL WITH ITS OWN CODE. Reporting it as
 		// exitCannot beside a printed empty document is the shape this command

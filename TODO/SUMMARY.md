@@ -7,110 +7,91 @@ on what was true last time.
 
 ---
 
-## 2026-09-10
+## 2026-09-10, the afternoon
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-09-09T21:00:00Z | about 9 hours, across two resumed contexts |
-| Commits | `450b380` | 13 on `main`, counting the one that carries this number, and two tags: `wsl-toolkit-v1.2.0` and `wsl-toolkit-v1.3.0` |
-| Work | 8 issues filed against the published `v1.1.0`, none started | **14 entries closed, 11 filed and not started, 0 deferred, 0 failed.** `WSL-32` to `WSL-39` resolve issues 7 to 14; `TOOL-14` ports five shell pairs; `WSL-40` and `WSL-41` are the core pass and the review after it; `TOOL-15` and `TOOL-16` are what the operator's question produced |
-| Changes | 201 tracked files | 234 tracked files; 78 changed, +10,885 / -2,789 lines |
-| Go modules | 2, `tools/check` and `tools/windows/wsl-toolkit` | 3. `tools/repo` is the tool box for what is NOT a gate check, and `check-gate` still runs only rules |
-| Suite | 39 Go cases | 129 Go cases, all three modules clean under `-race`. ⚠ `tools/check` had **zero** before this session and has 5 |
-| Acceptance | 23 cases against a real machine | ⭐ **39 cases.** The 14 issue cases each fail against `v1.1.0`; the two newest cover the helper route's own transcript and the job id |
-| Mutation | 23 guards proved, by a script under `.tmp/` | ⭐ **48 proved**, by `repo mutate` in the tree. Each one deleted, the named case run, the case count and the build status reported separately |
-| Published | `wsl-toolkit-v1.1.0` | `wsl-toolkit-v1.3.0`, five assets, digests recomputed from the downloaded files |
-| Checks | 17 in one Go binary, 31s | 18, 43s. Five shell pairs became a Go program and none of them became a gate check; the one that was added is `hooks`, for the reason below |
-| Health | 53 entries: 8 open, 0 blocked, 45 done | 78 entries: 20 open, 0 blocked, 58 done. Tree clean, gate green, CI green, release verified as a consumer |
+| Elapsed | started 2026-09-10T08:30:00Z | one context |
+| Commits | `af3de74`, four of them unpushed | 6 on `main`, and one tag: `wsl-toolkit-v2.0.0` |
+| Work | 85 entries: 8 open, 0 blocked, 77 done | 86 entries: 7 open, 0 blocked, 79 done. **5 closed, 3 filed, 1 of those filed and left open** |
+| Changes | 245 tracked files | 249; 40 changed, +2,700 / -320 lines |
+| Open issues | 13, every one against the published `v1.3.0` | ⭐ **0** |
+| Published | `wsl-toolkit-v1.3.0`, carrying thirteen known defects | `wsl-toolkit-v2.0.0`, driven as a consumer at 12 of 12 |
+| Checks | 18 in one Go binary | 19. The new one is `mutations` |
+| Acceptance | 67 cases | 69 |
+| Mutation table | 61 rows, 58 proved, 2 broken, 1 misreported | 66 rows, all 66 proved on ubuntu |
+| CI | 5 jobs, none of which had seen the 2.0.0 commits | 6 jobs, all green, plus a release smoke that runs after a publish and weekly |
 
-### ⭐ Defects found, and by which pass
+### ⭐ What each of the three review lenses found
 
-Sixteen, and ⛔ **eight of them were found with nothing reported broken**, in a
-tree that had just closed eight consumer-filed issues and passed 37 acceptance
-cases.
+⛔ **Three passes reporting nothing is a weaker result than one pass reporting a
+defect**, so each is written up by what it looked at that the others did not.
 
-| what | the pass that found it |
-| --- | --- |
-| `--max-output` honoured on the direct route and dropped by the helper | the door sweep. ⚠ Second time a job flag has drifted |
-| `base --root` in the code and in no manual | the claim audit |
-| `io.MultiWriter` in the client spool would abort a helper job over a local disk | reading the sink before writing the test |
-| `ClientSpool.Finish("")` leaked one staging directory per job with no id | the same reading |
-| `boundedBuffer.truncated` read without the lock | the same reading |
-| `logs --tail 5` read `5` as the job id | writing the case for the flag |
-| a kept guest directory was spared by gc FOREVER, because its ledger record stayed open | the acceptance run, on a real failure |
-| `closeStaleRecords` looked at `GuestDir` only, so helper records never closed | reading why the above happened |
-| `prefixWriter` raced: one instance, two copiers, one unlocked slice | the core pass |
-| a catalog id of `..` passed `isImageID`, and `matrix --artifacts` writes `out/<id>` | the core pass |
-| `Ledger.Compact` read with no lock and then took the lock to write | the core pass |
-| `NewClientSpool` had four silent returns where the direct route logs | the fifth review |
-| `Finish` returned nothing while holding a complete transcript | the fifth review |
-| `logs` reported every read failure as "no transcripts yet" at exit 0 | the fifth review |
-| `helper stop` discarded the reason nothing answered | the fifth review |
-| the job id was nowhere in the human output, so `logs ID` was untypeable | the fifth review |
-| the refusal for a bad image id described a rule the input satisfied | driving the PUBLISHED v1.3.0 binary as a consumer |
+**The door sweep** enumerated every affordance this session added, then grepped
+for the ones the enumeration missed. Four findings, three fixed:
 
-### ⛔ Three process failures worth keeping
+- ⛔ **`inspect --json` was not in the sweep that checks every `--json`
+  surface.** `TOOL-17` built that sweep because commands were being added with
+  that defect faster than cases were written, and the very next `--json` surface
+  was not in its hand-typed list. The list is walked from the binary's real flag
+  sets now, and an omission has to be written down as an exemption with a reason.
+- ⛔ **`inspect` gave no answer at all on a host with no `wsl.exe`**, including
+  for the transcript and the ledger record, which sit on this machine's own disk
+  and which `logs` reads with no runner whatever. Split and tested.
+- **`cmd_reach.go` contained no `reach` command** and never had. Renamed.
+- ⚠ **`inspect` has no `--via-helper` and every other report does.** Not fixed:
+  it is a helper protocol version. `WSL-58`.
 
-**I committed over a red gate.** I chained `&&` off `tail -8` rather than reading
-the gate's own exit code, which is this repository's own oldest rule and the one
-written down in [RULES.md](RULES.md). The commit had not been pushed, so the
-finding was fixed and the commit amended; the broken form never left the machine.
-Every gate run since reads `$?` from the gate with no pipe in front of it.
+**The guard mutation** planted the defect each new guard exists to catch and read
+the exit code unpiped. One finding, and it is about the harness rather than the
+code:
 
-**I put a tool credit in a commit message, and it reached a protected `main`.**
-The harness asks for that trailer and re-asserts the request continuously; the
-repository's rule against it is read once, at orientation. That asymmetry is the
-mechanism, and it had already produced eighteen such commits in an earlier
-session. ⛔ **The gate could not have caught it and still cannot.** Its
-`commits` rule reads `git log`, and the written procedure is run the gate, then
-commit, so at the moment the gate runs the commit does not exist. CI caught it
-eleven minutes after the push, on a branch whose protection forbids a force push,
-and undoing it cost the operator turning that protection off and on again.
-`TOOL-15` is the fix: the rule now runs from a `commit-msg` hook, on the message,
-before the commit exists, and an eighteenth gate check refuses a checkout that is
-not running the hook.
+- ⛔ **Nothing stopped a mutation row from mutating the TEST instead of the
+  code.** Breaking an assertion makes the named case go red, the harness prints
+  `ok`, and the guard the row claims to prove was never touched. That is theatre
+  with the harness's own seal on it, which is worse than an unproved guard
+  because it reads as proof. Refused now, planted, and the refusal is itself a
+  mutation row.
+- Every other new guard was seen to refuse: `check mutations` against the real
+  stale row, the sweep guard against `inspect` taken back out, the 5.1 CI step
+  against a planted ternary, and six new rows in the table.
 
-**I wrote a claim I had not measured.** A comment said the race detector was what
-made a lock's removal VISIBLE. Measured ten runs each way, the broken version went
-red in 6 of 10 plain runs and 10 of 10 under `-race`, so the detector buys
-determinism and not visibility. The comment, the record and the harness all carry
-the numbers now. ⚠ The lesson is the cheaper one: the measurement took four
-minutes and the claim would have stood for as long as the file did.
+**The claim audit** re-read what was about to be published against the artefacts.
+Three findings:
 
-### ⛔ A closed entry was carrying a false claim
+- ⛔ **A false claim that had ALREADY BEEN PUBLISHED.** The comment closing
+  issue 19 said the mutation table proved a guard. There was no row for it. The
+  row exists and was run; the issue carries a correction rather than a quiet
+  edit.
+- ⚠ **"The cost did not move" over two uncontrolled runs.** The gate was 43s at
+  18 checks last session and 42s at 19 now, on the same host, which supports
+  "inside the noise" and not what was written. Both places now carry the numbers
+  and their conditions.
+- ⚠ **`docs/conventions/docs.md` said `PROGRESS.md` carried the runbook and
+  threat-model roles as an open question, and it did not.** Made true rather
+  than deleted.
+- ⛔ **AND THE PASS CAUGHT ITSELF.** `PROGRESS.md` was written with the
+  acceptance count typed as 71 while the run was still going, and the run
+  reported 69. The line carries both the number and that sentence, because a
+  figure written before its measurement is a fabrication whichever way it lands.
 
-The sixth review read the twelve filed entries as a session with no memory of
-writing them would, and checked every reference rather than every sentence. Six
-`file:line` seams all resolved to the line they name. Every cross-reference
-resolved to an entry that exists. Two citations of PRIOR entries did not.
+### ⛔ What the second host found that this one could not
 
-`WSL-44` credited a probe cache to `WSL-19`, which is the timeout entry; it is
-`WSL-32`. `WSL-46` credited the marker framing to `WSL-38`, which is the
-positional-arguments entry; it is `WSL-39`. ⭐ **Both survived the gate,
-because its link check proves a linked FILE exists and cannot know whether the
-entry inside it is the one meant.**
+Four commits were made on 2026-09-10 and none was pushed, so the ubuntu job had
+not run since `f7eabfe`. The first run that saw them went red there and stayed
+green here: two selftest cases composed a path from `$env:TEMP` and
+`$env:WINDIR`, which are null under PowerShell on Linux.
 
-Following the second one found the thing worth keeping. `WSL-39`, closed and
-shipped, says the marker is stripped before any sink sees it. It is not: the
-newline in front of it is written back, which is
-[issue 23](https://github.com/Azathothas/ToolKit/issues/23), filed against a
-release this repository cut believing that sentence. The entry is amended in
-place rather than corrected, because a test named for a property the code does
-not have is the more useful half of that record.
+⭐ **The durable half is that the ubuntu answer is now available from this
+Windows host in about ten seconds**, in a container, so the same class does not
+have to be found by pushing and waiting.
 
-⚠ **A third citation was missing rather than wrong.** `WSL-19` bounded a
-hung run by bounding the CHILD. `WSL-45` is the discovery that bounding the child
-does not bound the caller, and it did not mention the entry it supersedes.
+### ⚠ One entry's premise was disproved by measuring it
 
-### ⚠ One test was theatre and is now labelled
-
-`TestLedgerCompactDoesNotLoseAConcurrentAppend` went red in **0 of 10 runs**
-against the defect it was written for, because `Open` took the lock too and an
-append almost never lands in the gap. It was renamed to
-`TestLedgerSurvivesConcurrentUse` and its comment states what it proves and what
-it does not. The invariant is held by structure: `Compact` takes the lock once and
-calls `openLocked`, which is checkable by reading nine lines.
-
-⛔ **A test that passes ten times out of ten against the defect is worse than
-no test**, because it is read as coverage. The mutation harness carries a comment
-where that row would go, saying why there is no row.
+`WSL-56` said `run --rm` removes the container before anything can read its last
+state, named that as the obstacle, and asked whoever took it to measure first.
+The measurement says otherwise: podman's event journal outlives the container
+and the `died` and `remove` events both carry `ContainerExitCode`. ⭐ So `--rm`
+stays, and the entry's fallback options were not needed. Two of its requirements
+described things that do not exist here, and both are written into the closing
+rather than dropped.

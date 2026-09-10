@@ -1126,7 +1126,7 @@ than papered over.
 ## TOOL-12. nothing checks that a published release can be consumed
 
 **Source** the operator, 2026-08-30, accepting it and asking for the weekly re-check as well.
-**Category** tooling, **Priority** P2, **Effort** S, **Status** open
+**Category** tooling, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -1178,6 +1178,63 @@ gh run list --repo Azathothas/ToolKit --workflow release.yml --limit 1
 
 A publish whose smoke job is green, and a red one when the run is pointed at a
 tag whose assets were removed.
+
+## Closing
+
+**Closed 2026-09-10.** Both halves, and the weekly one is the same definition
+called on a schedule rather than a second copy.
+
+`.github/workflows/release-smoke.yml` fetches a published release, verifies
+every digest and drives the binary from a temp directory with no repository
+present. `release.yml` calls it after `publish`; it also runs weekly against
+whatever the latest release is then, because a release that STOPS being
+fetchable is invisible at publish time.
+
+Against `wsl-toolkit-v2.0.0`, from this host:
+
+```text
+consumer: 12 case(s) passed against wsl-toolkit-v2.0.0, 0 skipped.
+CONSUMER_EXIT=0
+```
+
+and on a GitHub windows runner, where `wsl.exe` answers and no distribution can
+be built:
+
+```text
+tag wsl-toolkit-v2.0.0: 12 case(s), 0 failed, 6 skipped
+```
+
+⭐ **PUTTING IT IN CI FOUND TWO DEFECTS IN IT, WHICH IS THE ARGUMENT FOR THE
+ENTRY.** The suite had only ever run on a machine that can do everything, so
+both were invisible.
+
+1. **A property read on a missing field.** `Set-StrictMode -Version Latest`
+   makes `$obj.absent` throw, including inside the `$null -ne $obj.absent` test
+   written to tolerate it. A host with no WSL answers `doctor --json` without
+   the field a host with WSL carries, so the case that allowed for that was the
+   line that died on it.
+2. ⛔ **A hand-rolled readiness probe, twice, and both were wrong.** It read
+   `base status --json` and took anything but exit 2 as "jobs can run here".
+   That is true on a machine with WSL and false on a runner with docker and
+   none, so five job cases ran and every one FAILED over a host that was never
+   going to work. ⚠ The second attempt read `ready --json` and gated on
+   `route.wsl_callable`, which is a better question and still the wrong one:
+   **wsl.exe IS callable on a GitHub windows runner** and a distribution still
+   cannot be built there.
+
+⭐ **The probe is `base ensure` now, which is the thing itself rather than a
+signal that correlates with it.** It costs nothing extra because the first job
+case had to run it anyway, and a host that cannot build a base skips the job
+cases with the engine's own words attached. ⛔ A suite that fails where it
+should skip is a suite whose red means nothing.
+
+⚠ **What this still does not prove** is that a job runs on a runner, because a
+GitHub windows runner cannot build a WSL2 distribution. Six of the twelve cases skip there and are counted as
+skipped; the six that run are the ones a consumer meets first: the digests, that
+the executable and the published script are one product, and that the tool
+surveys a host from an empty state directory without building anything. The
+other six are proved on the operator's machine, which is named rather than
+implied.
 
 ---
 
@@ -2110,5 +2167,12 @@ The three rows, after the change:
 the gate said so in under a second. That is the class this entry is about,
 caught on the day it was created rather than a session later.
 
-⚠ **The gate is 19 checks and the cost did not move**, because this one reads
-files the tree walk had already read.
+⚠ **What it costs, with its conditions.** On its own on this host: 556 ms,
+560 ms and 390 ms over three runs, and most of that is loading the tracked file
+list, which the gate has already loaded and shares. The whole gate measured 42s
+over 19 checks here on 2026-09-10, against the 43s over 18 the previous session
+recorded on the same machine.
+
+⛔ **Those are two runs and not a controlled comparison**, so what they support
+is that the difference is inside the noise. They do not support "the cost did
+not move", which is what this paragraph said until the claim audit read it.

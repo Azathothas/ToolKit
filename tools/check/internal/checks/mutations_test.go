@@ -92,6 +92,14 @@ func TestMutationsRefusesARowThatPointsAtNothing(t *testing.T) {
 			good + "," + good,
 			"labelled",
 		},
+		{
+			// ⛔ THE ONE THAT LOOKS LIKE A PASS. Mutating the assertion makes
+			// the named case go red and the harness prints `ok`, so the row
+			// reads as a proved guard over a guard nothing touched.
+			"the row mutates the test rather than the code",
+			`{"label":"a","module":"tools/x","file":"x_test.go","find":"func TestEmptyIsRefused","replace":"func TestEmptyWasRefused","run":"TestEmptyIsRefused"}`,
+			"which is a test",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

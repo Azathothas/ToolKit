@@ -134,6 +134,46 @@ type DiskUse struct {
 // ErrUnknownJob is what an id nothing on this machine has heard of produces.
 var ErrUnknownJob = fmt.Errorf("no such job")
 
+// InspectHostOnly answers the half of the question that needs nothing from the
+// machine: what this HOST remembers about a job.
+//
+// ⛔ IT EXISTS BECAUSE OF A DOOR SWEEP. `inspect` builds a Runner, a Runner
+// needs FindWsl, and a host with no wsl.exe therefore got exit 2 and no answer
+// at all - including for the transcript and the ledger record, which sit on
+// this machine's own disk and which `logs` reads with no Runner whatever. A
+// report that can answer half a question and answers none of it is the same
+// class as one that answers an empty document.
+//
+// ⚠ IT IS NOT A SECOND IMPLEMENTATION. Runner.Inspect calls the same reader,
+// so the host half of both answers is produced by one function.
+func InspectHostOnly(id, reason string) (InspectReport, error) {
+	rep := InspectReport{Schema: InspectSchema}
+	rep.Engine.Reason = reason
+	if id == "" {
+		return rep, nil
+	}
+	if err := AssertArgvSafe([]string{id}); err != nil {
+		return rep, err
+	}
+	home, err := Home()
+	if err != nil {
+		return rep, err
+	}
+	led, err := OpenLedger()
+	if err != nil {
+		return rep, err
+	}
+	job, err := inspectJobRecord(home, led, id)
+	if err != nil {
+		return rep, err
+	}
+	rep.Job = job
+	if len(job.Known) == 0 {
+		return rep, fmt.Errorf("%w: %s. `wsl-toolkit logs` lists the jobs this machine still has", ErrUnknownJob, id)
+	}
+	return rep, nil
+}
+
 // Inspect answers for one job id, or for the machine alone when id is empty.
 //
 // ⛔ IT CREATES NOTHING. Like `resources` and `logs` it is a reading, and a
@@ -147,7 +187,7 @@ func (r *Runner) Inspect(ctx context.Context, id string, since time.Duration) (I
 		if err := AssertArgvSafe([]string{id}); err != nil {
 			return rep, err
 		}
-		job, err := r.inspectJobRecord(id)
+		job, err := inspectJobRecord(r.home, r.ledger, id)
 		if err != nil {
 			return rep, err
 		}
@@ -180,11 +220,11 @@ func (r *Runner) Inspect(ctx context.Context, id string, since time.Duration) (I
 }
 
 // inspectJobRecord reads what the HOST remembers: the transcript and the ledger.
-func (r *Runner) inspectJobRecord(id string) (*InspectedJob, error) {
+func inspectJobRecord(home string, led *Ledger, id string) (*InspectedJob, error) {
 	job := &InspectedJob{ID: id, Container: "wtk-" + id}
 
-	dir := filepath.Join(r.home, "jobs", id)
-	if _, err := ResolveInside(r.home, dir); err != nil {
+	dir := filepath.Join(home, "jobs", id)
+	if _, err := ResolveInside(home, dir); err != nil {
 		// ⛔ A caller-supplied path component is how a report becomes a file
 		// reader. It is resolved and contained before anything is opened.
 		return nil, err
@@ -197,7 +237,7 @@ func (r *Runner) inspectJobRecord(id string) (*InspectedJob, error) {
 		job.Known = append(job.Known, "a transcript on this host")
 	}
 
-	all, err := r.ledger.All()
+	all, err := led.All()
 	if err != nil {
 		return nil, err
 	}

@@ -499,12 +499,48 @@
       "args": []
     },
     {
+      "label": "the host half refusing an id nothing on this machine has heard of",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/inspect.go",
+      "find": "\tif len(job.Known) == 0 {\n\t\treturn rep, fmt.Errorf(\"%w: %s. `wsl-toolkit logs` lists the jobs this machine still has\", ErrUnknownJob, id)\n\t}",
+      "replace": "\tif false {\n\t\treturn rep, nil\n\t}",
+      "run": "TestTheHostHalfStillRefusesAnIdItHasNeverHeardOf",
+      "args": []
+    },
+    {
+      "label": "the transcript and the ledger both placing a job id",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/inspect.go",
+      "find": "\t\tjob.Known = append(job.Known, \"a record in the ledger\")",
+      "replace": "\t\t_ = opened",
+      "run": "TestTheHostHalfIsAnsweredWithNoMachineAtAll",
+      "args": []
+    },
+    {
       "label": "the exit code coming off the died event and no other",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/inspect.go",
       "find": "\t\t\tif e.ExitCode != nil && e.Status == \"died\" {",
       "replace": "\t\t\tif false {",
       "run": "TestTheContainersLastExitOutlivesTheContainer",
+      "args": []
+    },
+    {
+      "label": "a rebuild forgetting what it knew about the guest home",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "func (r *Runner) ForgetGuestHome() {\n\tr.homeMu.Lock()\n\tdefer r.homeMu.Unlock()\n\tr.homeDir = \"\"\n}",
+      "replace": "func (r *Runner) ForgetGuestHome() {\n\tr.homeMu.Lock()\n\tdefer r.homeMu.Unlock()\n}",
+      "run": "TestGuestHomeDoesNotCacheAFailure",
+      "args": []
+    },
+    {
+      "label": "a row that mutates the case instead of the guard",
+      "module": "tools/check",
+      "file": "internal/checks/mutations.go",
+      "find": "\t\tif strings.HasSuffix(m.File, \"_test.go\") {",
+      "replace": "\t\tif false {",
+      "run": "TestMutationsRefusesARowThatPointsAtNothing",
       "args": []
     },
     {

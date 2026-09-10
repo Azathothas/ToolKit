@@ -9,7 +9,12 @@
 
 package toolkit
 
-import "testing"
+import (
+	"errors"
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 // realEvents is `podman events --since 1h --stream=false --filter container=... --format json`,
 // verbatim, for a job that ran and exited 37 under `--rm`.
@@ -151,5 +156,61 @@ func TestADfLineThatCannotBeTrustedIsNotANumber(t *testing.T) {
 		if got := parseDiskLine(bad); got != nil {
 			t.Errorf("parseDiskLine(%q) invented %+v", bad, got)
 		}
+	}
+}
+
+// TestTheHostHalfIsAnsweredWithNoMachineAtAll.
+//
+// ⛔ THE DOOR SWEEP THAT PRODUCED THIS. `inspect` built a Runner, a Runner
+// calls FindWsl, and a host with no wsl.exe therefore got exit 2 and no answer
+// at all - including for the transcript and the ledger record, which are on
+// this machine's own disk. `logs` reads the same transcript with no Runner
+// whatever, so the command that says more was the one that could say nothing.
+func TestTheHostHalfIsAnsweredWithNoMachineAtAll(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, "jobs", "abc123"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "jobs", "abc123", "stdout.log"), []byte("hello\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	led, err := OpenLedger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := led.Append(LedgerEntry{Event: "open", Kind: "job", ID: "abc123", Image: "docker.io/library/alpine:latest"}); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := InspectHostOnly("abc123", "no wsl.exe on this host")
+	if err != nil {
+		t.Fatalf("the host half refused an id this host remembers: %v", err)
+	}
+	if rep.Job == nil {
+		t.Fatal("no job in the report")
+	}
+	if rep.Job.Transcript == "" || rep.Job.TranscriptBytes == 0 {
+		t.Errorf("the transcript was not reported: %+v", rep.Job)
+	}
+	if rep.Job.Image != "docker.io/library/alpine:latest" {
+		t.Errorf("the ledger record was not read: image %q", rep.Job.Image)
+	}
+	if len(rep.Job.Known) != 2 {
+		t.Errorf("known = %v, want the transcript and the ledger", rep.Job.Known)
+	}
+	// ⛔ AND THE UNREACHABLE HALF IS NAMED AS UNREACHABLE. A report that simply
+	// omitted the engine would read as a machine with no engine.
+	if rep.Engine.Reached || rep.Engine.Reason == "" {
+		t.Errorf("the engine is reported as %+v, and it was never asked", rep.Engine)
+	}
+}
+
+// TestTheHostHalfStillRefusesAnIdItHasNeverHeardOf. ⛔ Answering less must not
+// become answering anything: the refusal is the same one the full path gives.
+func TestTheHostHalfStillRefusesAnIdItHasNeverHeardOf(t *testing.T) {
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	if _, err := InspectHostOnly("nothinghasheardofthis", "no wsl.exe"); !errors.Is(err, ErrUnknownJob) {
+		t.Fatalf("an unknown id produced %v, want ErrUnknownJob", err)
 	}
 }

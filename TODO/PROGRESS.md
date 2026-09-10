@@ -6,143 +6,150 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-10T04:15:00Z
-baseline        f7eabfe, clean main; gate 18 checks, all passing, 43s.
-entries         total 85  open 7  blocked 0  done 78
-gate            18 checks, one binary, all passing
+session started 2026-09-10T08:30:00Z
+baseline        af3de74, clean main; gate 18 checks, all passing.
+entries         total 86  open 7  blocked 0  done 79
+gate            19 checks, one binary, 42s on this host
 ```
 
 ## Active work
 
-None in flight. **Every entry the last session filed is closed**, and so are the
-two the operator added and the four this session found while closing them.
-
-`wsl-toolkit` is at **2.0.0 in the tree and the tag is not pushed.** That is the
-one thing left and it is the operator's:
-
-```bash
-pwsh -NoProfile -File scripts/windows/wsl-toolkit/release.ps1 -Publish
-```
-
-⛔ **Nothing here pushed a tag.**
-[`../docs/security/remote-ops.md`](../docs/security/remote-ops.md) puts any push
-behind the project's push policy, and this repository's policy names commits to
-`main` rather than tags. `release.ps1` without `-Publish` verifies and prints
-what it would do.
+None in flight. ⭐ **`wsl-toolkit-v2.0.0` is published**, the thirteen issues a
+consumer filed against `v1.3.0` are closed against it, and nothing is open on
+the remote except one dependency bump the operator has to approve.
 
 ## What this session closed
 
-Sixteen entries. Twelve were the ones the last session filed from a consumer
-agent's thirteen defects against the published `v1.3.0`; two the operator added
-mid-session; four came out of doing the work.
+Six entries, and two of them were found by the work rather than planned.
 
 | entry | what it was |
 | --- | --- |
-| [TOOL-17](tooling.md) | the suite could not have caught any of the thirteen. Four capabilities and a consumer harness |
-| [TOOL-18](tooling.md) | one row of the index's counts was typed, and the gate was green over it |
-| [WSL-42](wsl-toolkit-go.md) | what this tool owns, and how it proves it |
-| [WSL-43](wsl-toolkit-go.md) | many agents, many bases |
-| [WSL-44](wsl-toolkit-go.md) | what a long-lived helper freezes |
-| [WSL-45](wsl-toolkit-go.md) | a deadline that bounds the caller's wall time |
-| [WSL-46](wsl-toolkit-go.md) | the answer is exactly what happened |
-| [WSL-47](wsl-toolkit-go.md) | the boundary the manual promises |
-| [WSL-48](wsl-toolkit-go.md) | the embedded script tells the truth |
-| [WSL-49](wsl-toolkit-go.md) | one command to readiness |
-| [WSL-50](wsl-toolkit-go.md) | a heartbeat for a job that is running |
-| [WSL-51](wsl-toolkit-go.md) | a config the agent does not have to write |
-| [WSL-52](wsl-toolkit-go.md) | the six commands that make an answer actionable |
-| [WSL-53](wsl-toolkit-go.md) | `selfupdate`, and readiness says whether it should |
-| [WSL-54](wsl-toolkit-go.md) | the three answers a diagnostic has to tell apart |
-| [WSL-55](wsl-toolkit-go.md) | a report that creates the thing it is describing |
+| [TOOL-11](tooling.md) | CI runs both PowerShell hosts now, and compares the counts |
+| [TOOL-12](tooling.md) | a published release is fetched and driven, after every publish and weekly |
+| [TOOL-19](tooling.md) | three of the guards had stopped being proved and nothing said so |
+| [WSL-56](wsl-toolkit-go.md) | `inspect`: what a failed job ran on |
+| [WSL-57](wsl-toolkit-go.md) | two selftest cases were written against one host's environment |
+| [WSL-58](wsl-toolkit-go.md) | ⚠ FILED, NOT CLOSED. `inspect` is the one report the helper cannot serve |
 
 ## ⭐ The findings worth keeping
 
-**A guard built this session caught a defect written this session.** `TOOL-17`
-added a sweep asserting every `--json` surface emits exactly one parsable object.
-Hours later it caught `artifacts retry` putting nothing on stdout, in a command
-written after the same defect had been fixed in `base ensure`. ⭐ That is the
-strongest evidence this tree has that a named guard beats another pass of care.
+**Four commits sat unpushed, so the second host had not looked at any of them.**
+The first CI run that saw them went red on ubuntu and stayed green here: two
+selftest cases built a path out of `$env:TEMP` and `$env:WINDIR`, which are null
+under PowerShell on Linux. ⭐ **The finding worth more than the fix is that the
+ubuntu half is reachable from this Windows host in about ten seconds**, in a
+container, so that class no longer has to be found by pushing and waiting.
 
-**The mutation pass caught a NEW test being theatre.** A `WSL-54` case asserted
-that an engine which answered nonzero was reported with its own code. Collapsing
-the three branches back into one left it GREEN, because the fallback message
-APPENDS the underlying error and the substring appears in both. It asserts the
-negative now.
+**The instrument that proves the guards had stopped proving three of them.**
+`repo mutate` reported 58 of 61. Two rows matched nothing because the code moved
+under them; a third was called theatre against a case that had never run,
+because a skipped case is byte for byte a passing one from outside the process.
+⛔ **That is the harness's own defect class, in the harness**: its header says
+three outcomes and not two because a previous version collapsed three answers
+into one, and it had then collapsed a fourth.
 
-**Three defects came from DRIVING rather than reading**, and none was visible in
-the code: a missing identity marker read as "could not read the marker", one
-disagreement was reported twice under two names, and `selfupdate --check` on a
-build ahead of the newest release offered a downgrade.
+**Putting the consumer suite in CI found two defects in the suite, immediately.**
+A strict-mode property read that threw on the host it was written to tolerate,
+and a hand-rolled readiness probe that was wrong twice: `base status` was wrong
+on a runner, and `ready`'s `route.wsl_callable` was also wrong, because
+`wsl.exe` answers there and a distribution still cannot be built. ⭐ The probe is
+`base ensure` now, which is the thing itself rather than a signal that
+correlates with it.
 
-⚠ **One reported cause did not reproduce.**
-[Issue 27](https://github.com/Azathothas/ToolKit/issues/27) says
-`-Action Doctor` fails with a `StandardOutputEncoding` exception. Measured three
-ways on this host and it does not; both places this tree sets that property set
-redirection first. The half that IS this tool's defect was fixed, and the
-non-reproduction is written under `WSL-48` rather than into it.
+**WSL-56's stated obstacle did not hold, and measuring it first was the ruling
+that paid.** The entry said `run --rm` removes the container before anything can
+read its last state. podman's event journal outlives the container and carries
+`ContainerExitCode`, so `--rm` stays and the fallbacks the entry offered were
+not needed.
+
+⛔ **The claim audit caught a false claim that had already been published.** A
+comment closing issue 19 asserted that the mutation table proved a guard. It did
+not; there was no row. The row exists now, it was run, and the comment carries a
+correction rather than a quiet edit.
 
 ## Measurements
 
 Read from the machine, on Windows 11 Pro 26200, on 2026-09-10:
 
 ```text
-acceptance  67 of 67 cases pass against the real base, both routes, both
-            accounts, every catalog image, and two instances built in one run.
-            It was 39 at the start of this session.
-consumer    12 cases against the published wsl-toolkit-v1.3.0, downloaded and
-            digest-verified, run from a temp directory with no repository
-            present. 11 pass and 1 fails, which is correct: it tests a
-            published artifact and that artifact has the defect WSL-45 fixes.
-selftest    131 cases over 36 functions of the built bundle.
-gate        18 checks, one binary, all passing.
-deadline    a 2s timeout over a 60s payload returns in 5.3s and no longer grows
-            with the payload. It was 15.2s, reported as 4.4s.
-tick        a twelve-row matrix with 5s ticks: 95.9s wall and 72 events,
-            against 97.2s and 0 without. The estimate in WSL-50 was high by
-            about three times.
-podman rm   10.63s on a running container, 0.56s with -t 0. That difference is
-            where WSL-45's missing seconds were.
+gate        19 checks, 42s. `check mutations` alone is 556, 560 and 390 ms over
+            three runs, most of it loading the tracked file list the gate
+            already shares.
+acceptance  69 of 69 cases against the real base, both routes, both accounts,
+            every catalog image. It was 67 at the start of this session.
+            ⚠ This line read 71 until the run finished and was compared
+            against it. A number written before the measurement is a
+            fabrication whatever it turns out to be.
+consumer    12 of 12 against the published wsl-toolkit-v2.0.0, downloaded and
+            digest-verified, from a temp directory with no repository present.
+            On a GitHub windows runner the same suite is 12 cases, 0 failed,
+            6 skipped.
+selftest    131 cases over 36 functions, and the same numbers under PowerShell 7
+            on Windows, Windows PowerShell 5.1, and PowerShell 7 on Linux.
+mutation    66 rows, all proved on ubuntu. On this host one is SKIPPED, because
+            creating a symbolic link here needs a privilege this process may
+            not have.
+podman      the guest engine is 6.1.1, crun, overlay on extfs, cgroups v2,
+            rootless, event logger `file`.
 ```
 
 ## What is left, and none of it is urgent
 
-Nine entries, none of them from this session's subject:
+Seven entries, and the shape of the list is worth naming rather than leaving to
+be inferred.
 
-- **[WSL-56](wsl-toolkit-go.md)** is the half of `WSL-50` that was not built: a
-  deeper inspection surface for a job that has already failed. ⚠ It has an
-  obstacle worth measuring first, which the entry names: `run --rm` removes the
-  container before anything can read its last state.
-- **[TOOL-11](tooling.md)**: CI does not run Windows PowerShell 5.1, which is
-  where every P0 has been. **[TOOL-12](tooling.md)** is now half answered:
-  `consumer.ps1` exists and nothing runs it after a release.
-- **[WSL-25](wsl-ephemeral.md)** through **[WSL-30](wsl-ephemeral.md)**, the
-  older `wsl-toolkit.ps1` backlog.
-- **The doctor pair is still the last shell twin**, 646 lines across two files
-  asking DIFFERENT questions of different hosts, so porting it is a behaviour
-  decision. [TOOL-14](tooling.md) says why it was left, and when it goes
-  `check-twins.sh` goes with it.
+- ⚠ **[WSL-25](wsl-ephemeral.md) through [WSL-30](wsl-ephemeral.md) are the
+  2026-08-30 `wsl-toolkit.ps1` backlog, and NOTHING HAS RE-DERIVED THEM AGAINST
+  THE TREE SINCE.** They were written when that script was the only product
+  here. The compiled tool has since taken over the same ground from a different
+  direction: `base ensure` keeps one long-lived Linux host, `--tick` is a
+  heartbeat, `run` is podman-native, and `inspect` reads a job back. ⛔ **That
+  does not close any of them** - the script is still what a consumer fetching
+  one raw URL gets, and `RULES.md` section 6 refuses a "won't fix" - but the
+  next session to pick one up should measure whether the problem it names is
+  still the problem, and write the answer into the entry either way.
+- **[WSL-25](wsl-ephemeral.md)** is the one that is certainly still real and is
+  not about the script at all: the release digest proves transport and not
+  authorship, and the launcher says so out loud on every fetch. It is ruled:
+  sigstore keyless, verification optional in the change that adds it.
+- **[WSL-58](wsl-toolkit-go.md)** is this session's own door sweep: `inspect`
+  has no `--via-helper` and every other report does. Its cost is a helper
+  protocol version, which is why it did not land with the command.
 
 ## Work order
 
-⭐ **Cut the release first**, because everything below is measured against a
-published artifact and the published one now carries thirteen known defects. The
-command is at the top of this file.
+1. ⭐ **[WSL-25](wsl-ephemeral.md)**, signing. It is the only open entry that
+   changes what a consumer can verify, and the release it applies to is now
+   published and unsigned.
+2. **[WSL-58](wsl-toolkit-go.md)**, the helper's `inspect`. It is a protocol
+   bump, so it wants to travel with any other protocol change rather than alone.
+3. **Re-derive [WSL-26](wsl-ephemeral.md) to [WSL-30](wsl-ephemeral.md) against
+   the tree**, oldest first, writing the answer into each entry. ⚠ `WSL-30` is
+   XL and its own decision section pre-authorises the split: the validation
+   matrix is one entry and the adapter is the other.
 
-Then, in rough order of what unblocks the most:
+## ⛔ Open questions for the operator
 
-1. **[TOOL-12](tooling.md)**, which is now one line of `release.ps1` rather than
-   a project: run `consumer.ps1` against the tag CI just published, and refuse
-   to report success until it has. `TOOL-17` settled that it is not in CI.
-2. **[WSL-56](wsl-toolkit-go.md)**, the inspection surface.
-3. **[TOOL-11](tooling.md)**, the 5.1 job.
-4. The `wsl-ephemeral` backlog, oldest first.
+⚠ **These are questions, not work.** Each is here because a session cannot rule
+on it.
 
-⚠ **A SIXTH REVIEW LENS IS STILL OWED, and concurrency is still the candidate.**
-The last session named it and this one did not run it, which is worth saying
-plainly rather than leaving to be inferred. What two of this tool running at once
-do to one state directory is now a LARGER question than it was: instances give
-two agents separate stores, and nothing yet proves two processes sharing ONE
-store behave.
+- ⛔ **[Pull request 15](https://github.com/Azathothas/ToolKit/pull/15) is ready
+  and needs an approving review, which is the operator's.** `actions/setup-go`
+  6.5.0 to 7.0.0. Verified on 2026-09-10: the pinned commit
+  `b7ad1dad31e0` belongs to `actions/setup-go`, the tag `v7.0.0` resolves to it,
+  and its `action.yml` declares `node24`, which is current. ⚠ Its `checks
+  (ubuntu)` is red on a stale base: the branch is BEHIND `main` and predates the
+  `WSL-57` fix. Updating the branch is expected to make it green.
+- **An operator-facing runbook and a threat model are both empty roles**, named
+  in [`../docs/conventions/docs.md`](../docs/conventions/docs.md) as
+  deliberately unfilled. ⚠ That page said this file carried them as an open
+  question and it did not, which the claim audit found; this line is that
+  sentence being made true rather than deleted.
+- ⚠ **A SIXTH REVIEW LENS IS STILL OWED AND CONCURRENCY IS STILL THE
+  CANDIDATE.** Two sessions have now named it and neither has run it. What two
+  of this tool running at once do to ONE state directory is unproven: instances
+  give two agents separate stores, and nothing yet proves two processes sharing
+  one store behave.
 
 ⚠ **What a later session should know before touching this tool** is unchanged
 and still the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1` and
@@ -156,10 +163,11 @@ A session that finds one inconvenient should read why before changing it.
 
 | guard | what it refuses |
 | --- | --- |
-| the `--json` sweep in `acceptance.ps1` | a surface that advertises `--json` and puts nothing, or two documents, on stdout. It has already caught one command written after it. |
-| `Test-Case -MaxSeconds` | a wall-time claim nothing compares. Every case was timed and none asserted on it. |
-| `Show-Bytes` | a substring test over an invented byte. `stderr_bytes` was one too many for two releases. |
-| `New-StateHome` and `Set-StateConfig` | a suite that can only build state before the first invocation, so nothing a long-lived process caches can be reached. |
-| the `Resolve-DistroListing` cases | a refusal rendered as an empty machine. Mutation-proved: deleting the exit-code branch turns two of them red. |
-| `TestABuildAheadOfTheReleaseIsNotAnUpdate` | a version check that compares strings for inequality and offers a downgrade. |
-| the read-only state case | a report that creates the directory it is describing. Four commands had it. |
+| `check mutations` | a mutation row that no longer reaches its subject. It found three the day it was written, one of them created by a rename made while writing it. |
+| the `_test.go` refusal inside it | a row that mutates the CASE rather than the guard. Breaking an assertion turns the case red and the harness prints `ok`, which is theatre with the harness's own seal on it. |
+| `SKIPPED` in `repo mutate` | a skipped case counted as proved, or accused of being theatre. Neither is what a skip means. |
+| the ubuntu `mutations` job | a row this host cannot prove going unproved anywhere. Nothing skips there. |
+| the 5.1 selftest step | a construct Windows PowerShell 5.1 cannot parse reaching a release with every check green. Planted and measured. |
+| `TestEveryJSONSurfaceReachesTheSweep` | a `--json` surface that never reaches the sweep built to check them. It refused `inspect` the moment it existed, and refused an exemption naming a surface that does not exist. |
+| the dispatch table `manual_test.go` walks | a whole new command arriving with undocumented flags. The hand-written list it replaced had exactly that hole. |
+| `release-smoke.yml` | a release that publishes and cannot be fetched or run. It has already been red twice, both times about the suite rather than the release. |

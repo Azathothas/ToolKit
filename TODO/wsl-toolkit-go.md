@@ -3132,3 +3132,70 @@ run at all since `f7eabfe`. A local gate that is green on one host is evidence
 about that host. [`../docs/methodology/gate.md`](../docs/methodology/gate.md)
 already says the CI result is the one that gates a merge; what this adds is that
 the ubuntu half of it is now reproducible locally, in a container, in seconds.
+
+---
+
+## WSL-58. `inspect` is the one report the helper route cannot serve
+
+**Source** The door sweep on 2026-09-10, immediately after `WSL-56` shipped `inspect`. It was not in the task list and the task list has never once contained them all.
+**Category** wsl, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+The helper exists for a caller that cannot reach `wsl.exe` itself. `run`,
+`matrix`, `base`, `resources` and `gc` all take `--via-helper` and go through it.
+⛔ **`inspect` does not.** It builds a `Runner` and talks to the guest directly,
+so on a restricted client the half of its answer that needs the machine - the
+engine, the storage, the container's own last exit, the guest's disk - is
+unreachable.
+
+⚠ **This is the one-gated-door class**, from
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md):
+`resources` is the sibling report and it has the door.
+
+## Premise
+
+Measured by reading, on 2026-09-10: `useHelper(` appears in `cmd_admin.go`
+twice, `cmd_base.go` once and `cmd_run.go` twice, and nowhere in
+`cmd_inspect.go`.
+
+⭐ **The host half is already answered without a runner**, which is the other
+finding from the same sweep and is fixed:
+`toolkit.InspectHostOnly` reports the transcript and the ledger record on a
+machine with no `wsl.exe` at all, and names the engine as unreached rather than
+omitting it. So a restricted client gets a partial answer today rather than
+exit 2. What is missing is the machine half.
+
+## Approach
+
+An `inspect` method on the helper protocol, and `--via-helper` on the command,
+exactly as `resources` has them.
+
+⛔ **IT IS A PROTOCOL CHANGE AND THAT IS THE WHOLE COST.** The helper protocol
+is at version 3 and `wsl-toolkit-v2.0.0` shipped with it. A client and a helper
+that disagree about the version already refuse each other by design, so adding a
+method means version 4, and a caller running a v2.0.0 helper against a newer
+client gets a refusal until they restart it. That is correct behaviour and it is
+still a thing a consumer has to do.
+
+⚠ **Which is why this is not folded into `WSL-56`.** Bumping the protocol in the
+same change that added the command would have put a release-visible break behind
+a feature nobody had asked for on that route.
+
+## Consumers
+
+None today: no row in [`../docs/consumers.md`](../docs/consumers.md) runs the
+helper. ⚠ The protocol bump is what a consumer would see, and it belongs in the
+changelog as a break when it lands.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case that starts a helper, runs a job through it, and asserts
+`inspect --via-helper` on that job id names the engine version and the
+container's last exit, against the same job's direct answer.

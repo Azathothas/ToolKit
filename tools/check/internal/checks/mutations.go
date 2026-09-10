@@ -108,6 +108,16 @@ func Mutations(t *Tree) Result {
 			r.bad("%s: %q names %s, which is not tracked", MutationTable, m.Label, path)
 			continue
 		}
+		// ⛔ A ROW MUST MUTATE THE CODE, NEVER THE CASE. Nothing else in this
+		// harness stops a row pointing at a _test.go: breaking an assertion
+		// makes the named case go red, the run reports `ok`, and the guard the
+		// row claims to prove was never touched. That is theatre with the
+		// harness's own seal on it, which is worse than an unproved guard
+		// because it reads as proof.
+		if strings.HasSuffix(m.File, "_test.go") {
+			r.bad("%s: %q mutates %s, which is a test. A row must delete the GUARD and watch the case fail, not edit the case", MutationTable, m.Label, path)
+			continue
+		}
 		// ⛔ EXACTLY ONE, which is the harness's own rule. Zero means the code
 		// moved and this row has been proving nothing since; two means the
 		// mutation lands somewhere it was not aimed.

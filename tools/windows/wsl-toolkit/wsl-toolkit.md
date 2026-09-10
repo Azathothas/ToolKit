@@ -652,6 +652,16 @@ journal, and the reverse is true once the journal ages out.
 reach back to the job reports no events rather than reporting that the job did
 not run, and the line says so in those words.
 
+⚠ **On a host with no `wsl.exe` it answers the host half and says so.** The
+transcript and the ledger record are on this machine's own disk; the engine, the
+storage, the container's last exit and the guest's disk are not, and the report
+names the engine as unreached rather than leaving the rows out.
+
+⛔ **It has no `--via-helper` and the other reports do.** A caller that reaches
+the machine only through the helper gets the host half of this answer and not
+the machine half. `WSL-58` is the entry; the cost is a helper protocol version,
+which is why it did not land with the command.
+
 ## `script`
 
 ```powershell
