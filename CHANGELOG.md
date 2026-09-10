@@ -21,6 +21,35 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T09:30:00Z: the second host had not looked at four commits, and two cases were waiting
+
+**Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-57`;
+[`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-11`.
+**Deployed:** ⛔ **no deploy.** The selftest is not published and no consumer
+fetches it.
+
+Four commits were made on 2026-09-10 and none was pushed, so the ubuntu job had
+not run since `f7eabfe`. On the first run that saw them, `bundle` went red on
+ubuntu and green on Windows. Two selftest cases built a path from `$env:TEMP`
+and `$env:WINDIR`, ⛔ **both null under PowerShell on Linux**, where `Join-Path`
+refuses a null path. They resolve `whoami` and ask the runtime for a temp
+directory now, which is the rule this tree already states applied to a test.
+
+⭐ **The finding worth more than the fix is that the ubuntu half is reachable
+from this Windows host in about ten seconds**, so the same class no longer has to
+be found by pushing:
+
+```powershell
+podman run --rm -v "${PWD}:/repo:ro" mcr.microsoft.com/powershell:latest pwsh -NoProfile -File /repo/scripts/windows/wsl-toolkit/selftest.ps1
+```
+
+Three hosts now report the same `131 case(s) over 36 function(s)`.
+
+Beside it, `TOOL-11` closes: the Windows job runs the selftest under `pwsh` and
+under `powershell.exe` and compares the two counts rather than asserting a typed
+one. ⛔ **The old job ran 7 alone**, and a construct 5.1 cannot parse reached a
+release with every check green. Planted and measured: pwsh 7 exits 0 over 131
+cases and 5.1 refuses to parse the file at all.
 ### 2026-09-10T08:58:08Z: three of the guards were not being proved, and nothing said so
 
 **Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-19`.

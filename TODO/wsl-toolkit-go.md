@@ -2955,3 +2955,119 @@ asserting `inspect` on an id that never existed is a refusal rather than an empt
 object. ⛔ The second one matters: an inspection surface that answers an empty
 document for an unknown id is the "refusal rendered as a successful empty result"
 class this tool has now paid for three times.
+
+---
+
+## WSL-57. Two selftest cases were written against one host's environment
+
+**Source** The ubuntu CI job, on the first run that saw the 2.0.0 commits. Four commits had been made and not pushed, so the second host had not looked at them.
+**Category** wsl, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`bundle` went red in CI on ubuntu and green on Windows, with one line:
+
+```text
+  FAIL   bundle          1
+           bundle: selftest: FAIL
+```
+
+Two cases threw rather than failed:
+
+```text
+  FAIL  an engine that was never reached does not claim the engine is broken
+        actual   <UNEXPECTED THROW: Cannot bind argument to parameter 'Path' because it is null.>
+  FAIL  an engine that answered nonzero is reported with its own code
+```
+
+Both reach for a Windows environment variable to build a path: `$env:TEMP` for
+an executable that is not there, and `$env:WINDIR` for one that refuses an
+unknown option. ⛔ **Both are null under PowerShell on Linux**, and `Join-Path`
+refuses a null `Path` rather than returning one.
+
+⚠ **The tool is Windows-only and its SUITE is not**, which is the distinction
+that was missed. `selftest.ps1` tests pure functions, touches no WSL and no
+engine, and therefore runs on the ubuntu job - where it is the second sample for
+every claim about a renderer that reads the host's culture.
+
+## Premise
+
+Measured three ways on 2026-09-10, after the fix:
+
+```text
+pwsh 7 on Windows      {"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}
+Windows PowerShell 5.1 {"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}
+pwsh 7 on Linux        {"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}
+```
+
+⭐ **The third one was measured on this Windows host in about ten seconds**, in a
+container, which is the finding worth more than the fix:
+
+```powershell
+podman run --rm -v "${PWD}:/repo:ro" mcr.microsoft.com/powershell:latest pwsh -NoProfile -File /repo/scripts/windows/wsl-toolkit/selftest.ps1
+```
+
+⚠ **Before that was known, the only way to see the Linux answer was to push and
+wait**, which is why four commits' worth of this defect sat unseen.
+
+## Approach
+
+The rule this tree already states, applied to a test: **resolve rather than
+spell**.
+
+- `[IO.Path]::GetTempPath()` in place of `$env:TEMP`, which answers on every
+  host the runtime supports.
+- `Get-Command whoami -CommandType Application` in place of a composed
+  `System32\whoami.exe`. ⚠ The program is the same kind of thing on both:
+  Windows answers `ERROR: Invalid argument/option` and GNU coreutils answers
+  `extra operand`, and the case only needs a nonzero exit with a message.
+
+⛔ **Not a skip on Linux.** A case that excuses itself on the host CI runs is a
+case that has been deleted with extra steps, and the `SKIPPED` work in `TOOL-19`
+exists precisely because a skip is not a pass.
+
+## Consumers
+
+None. `selftest.ps1` is not published; it is not in the release and no consumer
+fetches it.
+
+## Prove
+
+```bash
+sh scripts/common/check-gate.sh
+```
+
+Green on Windows, and the same file green under PowerShell on Linux with the
+same case count, both read from the process unpiped.
+
+## Closing
+
+**Closed 2026-09-10.** Two lines, and the counts agree across three hosts:
+
+```text
+{"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}
+PWSH7=0
+{"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}
+PS51=0
+```
+
+```text
+{"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}
+LINUX_EXIT=0
+```
+
+⚠ **The count is identical on all three, which is itself the assertion.** Before
+`af3de74` the ubuntu job ran 123 cases over 32 functions against Windows's 131
+over 36, and nothing compared the two numbers. `TOOL-11`'s CI step now compares
+the two PowerShell hosts on Windows; ⛔ **nothing compares the ubuntu count to
+the Windows one**, and that is left open rather than claimed: the two jobs run
+on different machines and there is no artefact between them.
+
+⭐ **The reason this was found late is not the defect and is worth more.** Four
+commits were made on 2026-09-10 and none was pushed, so the second host had not
+run at all since `f7eabfe`. A local gate that is green on one host is evidence
+about that host. [`../docs/methodology/gate.md`](../docs/methodology/gate.md)
+already says the CI result is the one that gates a merge; what this adds is that
+the ubuntu half of it is now reproducible locally, in a container, in seconds.

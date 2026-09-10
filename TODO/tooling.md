@@ -1033,7 +1033,7 @@ that exercised them, and both were found by comparison rather than by reading.
 ## TOOL-11. CI does not run Windows PowerShell 5.1, which is where every P0 has been
 
 **Source** the operator, 2026-08-30. It was on the list this session put to them and they took it; the gap it names had been an open question for a week.
-**Category** tooling, **Priority** P1, **Effort** S, **Status** open
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -1083,6 +1083,43 @@ gh run list --repo Azathothas/ToolKit --workflow ci.yml --limit 1
 
 A green run whose Windows job shows both selftest steps, and a red one when a
 5.1-only defect is planted.
+
+## Closing
+
+**Closed 2026-09-10.** One step in the Windows job, running the selftest under
+`pwsh` and under `powershell.exe` and comparing what the two report. From the
+run on `0f711db`:
+
+```text
+pwsh 7: 131 case(s) over 36 function(s)
+5.1   : 131 case(s) over 36 function(s)
+```
+
+⭐ **THE COUNTS ARE COMPARED, NOT TYPED.** A number written into the workflow
+would be a number to update on every case added, and a suite that stopped early
+exits 0 over a smaller suite on either host. Two hosts running one file must
+reach one count.
+
+And the planted half, in a copy of the tree with a PowerShell 7 ternary appended
+to the bundle:
+
+```text
+--- pwsh 7 ---
+{"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}
+pwsh7-exit=0
+--- Windows PowerShell 5.1 ---
+selftest: ...\wsl-toolkit.ps1 does not parse; check-powershell.ps1 owns that verdict.
+ps51-exit=1
+```
+
+⛔ **The old job was green over exactly that.** It ran `pwsh` alone, so a
+construct 5.1 cannot parse reached a release without one red check.
+
+⚠ **What this still does not cover** is a defect that needs a real distribution
+to show itself. `windows-latest` has no WSL2, so the 5.1 evidence is over the
+pure functions; `WSL-12`, the P0 this entry cites, was in a path only a real
+`-Action New` reaches. That gap is the operator's host and it is named rather
+than papered over.
 
 ---
 

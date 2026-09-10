@@ -8,7 +8,7 @@ pwsh -NoProfile -File scripts/windows/wsl-toolkit/selftest.ps1
 ```
 
 ```text
-selftest: 63 case(s) passed over 15 function(s) loaded from wsl-toolkit.ps1.
+selftest: 131 case(s) passed over 36 function(s) loaded from wsl-toolkit.ps1.
 ```
 
 ---
@@ -62,7 +62,7 @@ rather than a check:
 | | |
 | --- | --- |
 | exit codes | 0 pass, 1 fail, ⚠ 2 only when `wsl-toolkit.ps1` is not beside it |
-| `-Json` | `{"schema":"wsl-toolkit-selftest/1","cases":63,"failed":0,"functions":15}` |
+| `-Json` | `{"schema":"wsl-toolkit-selftest/1","cases":131,"failed":0,"functions":36}` |
 | working directory | resolved from the script's own location |
 | writes | none |
 
@@ -70,8 +70,25 @@ rather than a check:
 
 | | |
 | --- | --- |
-| the local gate | ⭐ both halves, as `wsl-toolkit selftest` |
-| CI | both jobs. ⚠ The ubuntu one is not redundant: one case asserts that a literal colon survives a host whose culture would replace it, and a second host with a different default culture is the second sample that claim needs. |
+| the local gate | inside the `bundle` check, which runs `build.ps1 -Test` |
+| CI, ubuntu | the gate, plus a second run of its own |
+| ⭐ CI, windows | the gate, plus a run under **each** PowerShell host with the two case counts compared. Every P0 this tool has had lived in 5.1 and was invisible on 7. `TOOL-11`. |
+
+⚠ **Three hosts, and the third is not decoration.** Measured on 2026-09-10, the
+same file reports `131 case(s) over 36 function(s)` under PowerShell 7 on
+Windows, under Windows PowerShell 5.1, and under PowerShell 7 on Linux.
+
+⛔ **TWO CASES USED TO FAIL ON THE THIRD**, because they reached for `$env:TEMP`
+and `$env:WINDIR`, which are null there, and `Join-Path` refuses a null path.
+`WSL-57`. The rule the fix follows is this tree's own: resolve a program rather
+than spell its path.
+
+⭐ **The Linux half is reachable from the Windows host in seconds**, so a
+failure there does not have to be found by CI and fixed by pushing again:
+
+```powershell
+podman run --rm -v "${PWD}:/repo:ro" mcr.microsoft.com/powershell:latest pwsh -NoProfile -File /repo/scripts/windows/wsl-toolkit/selftest.ps1
+```
 
 ⚠ **Windows PowerShell 5.1 and PowerShell 7 both run it.** It is ASCII-only, so
 it needs no byte order mark.

@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 84  open 9  blocked 0  done 75
+total 85  open 8  blocked 0  done 77
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 43 | 44 |
+| P1 | 0 | 0 | 45 | 45 |
 | P2 | 7 | 0 | 23 | 30 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **9** | **0** | **75** | **84** |
+| **all** | **8** | **0** | **77** | **85** |
 
 ---
 
@@ -49,7 +49,7 @@ total 84  open 9  blocked 0  done 75
 | TOOL-08 | P1 | S | done | The CI step that parses the workflows had never parsed one | [`tooling.md`](tooling.md) |
 | TOOL-09 | P1 | S | done | `check-docs.ps1` collapsed `..` with a regex that matches `..` | [`tooling.md`](tooling.md) |
 | TOOL-10 | P1 | S | done | `check-no-secrets.ps1` could not match a Windows home path at all | [`tooling.md`](tooling.md) |
-| TOOL-11 | P1 | S | open | CI does not run Windows PowerShell 5.1, which is where every P0 has been | [`tooling.md`](tooling.md) |
+| TOOL-11 | P1 | S | done | CI does not run Windows PowerShell 5.1, which is where every P0 has been | [`tooling.md`](tooling.md) |
 | TOOL-12 | P2 | S | open | Nothing checks that a published release can be consumed | [`tooling.md`](tooling.md) |
 | TOOL-13 | P1 | L | done | The gate took thirteen minutes, and half of it was comparing two copies of every rule | [`tooling.md`](tooling.md) |
 | TOOL-14 | P2 | L | done | The last six shell pairs become one program, and `check-twins` goes | [`tooling.md`](tooling.md) |
@@ -114,6 +114,7 @@ total 84  open 9  blocked 0  done 75
 | WSL-54 | P2 | S | done | The three answers a diagnostic has to tell apart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-55 | P2 | S | done | A report that creates the thing it is describing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-56 | P2 | M | open | What a failed job leaves a reader to ask the machine by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-57 | P1 | S | done | Two selftest cases were written against one host's environment | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

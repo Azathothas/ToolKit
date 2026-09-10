@@ -890,7 +890,11 @@ Test-Case 'output on stderr beside a zero exit is not a refusal' '1' {
 # writes.
 
 Test-Case 'an engine that was never reached does not claim the engine is broken' 'True' {
-    $absent = [pscustomobject]@{ Name = 'podman'; Path = (Join-Path $env:TEMP 'wsl-toolkit-no-such-engine.exe') }
+    # [IO.Path]::GetTempPath(), not $env:TEMP. ⛔ TEMP IS NULL ON LINUX and
+    # Join-Path then refuses a null Path, so this case threw on the ubuntu job
+    # while passing on Windows. The tool runs on Windows; its SUITE runs on both,
+    # which is the whole reason the second host is there.
+    $absent = [pscustomobject]@{ Name = 'podman'; Path = (Join-Path ([IO.Path]::GetTempPath()) 'wsl-toolkit-no-such-engine.exe') }
     $said = ''
     try { $null = Get-EnginePlatform -Engine $absent }
     catch { $said = $_.Exception.Message }
@@ -903,8 +907,16 @@ Test-Case 'an engine that answered nonzero is reported with its own code' 'True'
     # ⛔ NOT cmd.exe. Invoke-Native passes a FIXED argument list, and cmd.exe
     # handed arguments it does not recognise opens an INTERACTIVE shell and waits
     # on stdin, which hangs this suite rather than failing it. Measured the hard
-    # way on 2026-09-10. whoami.exe refuses an unknown option, says so, and exits.
-    $unwell = [pscustomobject]@{ Name = 'podman'; Path = (Join-Path $env:WINDIR 'System32\whoami.exe') }
+    # way on 2026-09-10. whoami refuses an unknown option, says so, and exits, on
+    # both hosts: Windows answers 'ERROR: Invalid argument/option' and GNU
+    # coreutils answers 'extra operand'.
+    #
+    # ⛔ RESOLVED, NOT SPELLED. It was `Join-Path $env:WINDIR 'System32\whoami.exe'`,
+    # and WINDIR is null on Linux, so this threw on the ubuntu job.
+    $refuser = (@(Get-Command 'whoami' -CommandType Application -ErrorAction SilentlyContinue) |
+        Select-Object -First 1).Source
+    if (-not $refuser) { return 'no whoami on this host, so nothing here refuses an unknown option' }
+    $unwell = [pscustomobject]@{ Name = 'podman'; Path = $refuser }
     $said = ''
     try { $null = Get-EnginePlatform -Engine $unwell }
     catch { $said = $_.Exception.Message }
