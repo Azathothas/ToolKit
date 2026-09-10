@@ -2935,7 +2935,7 @@ for a small preparation on one machine.
 ## WSL-30. the mockup's other two thirds: a podman adapter
 
 **Source** the operator, 2026-08-30, choosing to build the adapter over measuring the feeds first.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** XL, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** XL, **Status** done
 
 ---
 
@@ -3001,3 +3001,278 @@ pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action Doctor
 First, a capability table with a measured answer for each of the mockup's sixteen
 claims. Then a container run whose output carries the same stamps, whose silence
 produces the same tick, and whose exit code passes through unchanged.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T13:05:00Z, as the matrix and not as the adapter.** Its own
+decision section pre-authorised that split and the matrix triggered it: three
+feeds are absent and a fourth answers uselessly, which is more than the couple
+the ruling named. The adapter is `WSL-59`.
+
+⛔ **THE SOURCE DOCUMENT NO LONGER EXISTS.** `Aseem0xff/mockup` answers 404 and
+is not in the Wayback Machine; the operator supplied a local copy on the day this
+ran. ⚠ Nothing in this tree had ever copied its claims, which is the failure
+[`../docs/methodology/references.md`](../docs/methodology/references.md) exists
+to prevent: the citation was tracked and the content was not. The sixteen claims
+are below in full, so this entry no longer depends on a document that has already
+vanished once.
+
+### The sixteen claims, measured
+
+⚠ **Two vantages, and telling them apart is the result.** `base` is this
+repository's own distribution, rootless podman 6.1.1 under `init(wsl-toolkit)`.
+`pmd` is `podman-machine-default`, rootful podman 5.8.6, which is somebody
+else's and is here as a control.
+
+| # | claim | verdict | what was measured |
+| --- | --- | --- | --- |
+| 1 | `podman events --format json` gives create, start and die with the exit code, live | ⭐ **holds** | statuses `create,pull,init,start,attach,died,remove` and `"ContainerExitCode":3` for a container that exited 3 |
+| 2 | `podman logs --timestamps --follow` separates stdout from stderr | ⚠ **holds, conditionally** | with `--log-driver k8s-file`, fd1 carries `OUTLINE` and fd2 `ERRLINE`, both with RFC3339 nanosecond stamps. ⛔ Under the base's DEFAULT driver, `journald`, `podman logs` prints NOTHING and exits 0 |
+| 3 | `podman top` works against `FROM scratch` | ⭐ **holds** | exit 0, two rows, command `/busybox sleep 40` |
+| 4 | `podman top` does not exec into the container | ⭐ **holds** | the image is `/busybox` and `/lib/ld-musl-x86_64.so.1` and nothing else: no `ps`, no shell, and `top` answered |
+| 5 | `/proc/<pid>/cgroup` maps a pid to a container id, rootless | ⛔ **absent on base**, holds on pmd | base: `0::/`, `.State.CgroupPath` is `/`, nothing under `/sys/fs/cgroup` named for the container. pmd: `0::/libpod_parent/libpod-b703dd0df01f...` |
+| 6 | the above holds inside `podman-machine-default` | ⭐ **holds** | the pmd half of row 5 |
+| 7 | `podman stats` reports on rootless and cgroup v2 | ⛔ **answers, and the answer is unusable on base** | base: `37384.41% / 0B of 33.44GB / 0.00%`, then `19344.70%` two seconds later. pmd: `0.08% / 598kB of 67.11MB` |
+| 8 | `.State.OOMKilled` tells an OOM apart from another 137 | ⛔ **absent on base, and the limit is not enforced either** | base: `--memory 64m` accepted, `HostConfig.Memory=67108864`, 300 MB allocated anyway, exit 0, `OOMKilled=false`, in-container `memory.max` empty. pmd: the same limit gives `memory.max=67108864` |
+| 9 | host-to-engine clock skew is small and stable on WSL | ⚠ **partial** | 8 samples over about 2s: min -3.421 ms, max 3.625 ms, mean -0.919 ms, spread 7.046 ms. ⛔ NOT the hour across a sleep and resume the claim asks for, so stability is unmeasured |
+| 10 | Windows timer resolution as measured | ⭐ **holds** | PowerShell 7.6.5, 23,011 distinct readings in 40 ms, smallest gap 600 ns. ⚠ Loop-bound rather than timer-bound; the 100 ns already in `wsl-toolkit.md` came from a tighter loop and stands |
+| 11 | carriage-return-only progress can be read incrementally | ⭐ **holds** | 14 bytes mid-run with both carriage returns preserved |
+| 12 | a partial line is readable before its newline | ⭐ **holds** | `PARTIAL-NO-NEWLINE` visible at 32 bytes, five seconds before its newline arrived |
+| 13 | `podman logs --follow` survives an engine restart, or errors cleanly | ⚠ **holds, and only half** | 0.05s after `wsl --terminate`, exit 1, 8 lines before and 8 after, nothing lost or repeated. ⛔ **stderr was EMPTY**: it errors and does not say why |
+| 14 | `wsl.exe` output is UTF-16LE in this configuration | ⭐ **holds** | `wsl -l -v`: 32 NUL bytes in the first 64, first sixteen `20 00 20 00 4e 00 41 00 4d 00 45 00 20 00 20 00` |
+| 15 | exit codes pass through as documented | ⭐ **holds** | `-Ephemeral` with a command exiting 3 gave 3 |
+| 16 | Windows containers expose anything usable | ⛔ **absent** | the `Containers` feature IS enabled, `InstallState 1`, and `hns` and `vmcompute` are running, and NOTHING can drive them: no docker, and podman on Windows serves the Linux machine |
+
+### ⭐ The finding, and it is one sentence
+
+**Rows 5, 7 and 8 are absent on the base and present on `podman-machine-default`,
+and they have ONE cause.** PID 1 in the base is `init(wsl-toolkit)` rather than
+systemd, so there is no `user@.service`, so uid 1000 gets no cgroup delegation:
+`/sys/fs/cgroup` is `dr-xr-xr-x root root` and the shell's own cgroup is `0::/`.
+Rootless podman therefore creates no cgroup per container. In
+`podman-machine-default` the same kernel serves `cgroup2 ... rw,nsdelegate` to a
+rootful engine and all three answer.
+
+⛔ **So three of the sixteen are not facts about podman. They are facts about how
+this repository provisions its base**, which is a thing this repository controls.
+`WSL-60` carries it.
+
+⚠ **What was disproved, and it was this entry's own framing.** The premise said
+every feed this needs is unmeasured, and that the ratio of rejections would be
+the reason to start here. Ten of sixteen hold outright. The three that do not are
+absent for a reason the mockup never considered, because it assumed one podman
+and there are two on this host that disagree.
+
+⛔ **A defect this matrix found that is larger than this entry.** Row 8 is not
+only a missing signal: `--memory` is ACCEPTED and SILENTLY NOT ENFORCED on the
+base, so a caller who bounds a job is not bounded. This tool exposes no memory
+flag today, so nothing documented is broken, and `matrix.go` already reasons
+about exit 137 arriving from the utility VM's out-of-memory killer, which is
+exactly the case row 8 says cannot be identified. `WSL-60`.
+
+---
+
+## WSL-59. the podman adapter, on what the matrix says it can be built
+
+**Source** the split `WSL-30` pre-authorised, executed 2026-09-10 when its matrix answered.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+Unchanged from `WSL-30`: the timestamp layer, the tick, the event log and the
+exit-code reading are container-agnostic and none of them can watch a container.
+A caller running a podman workload gets none of it.
+
+## Premise
+
+⭐ **Measured, not assumed, and the table is in `WSL-30`'s closing.** Of the four
+feeds the design named:
+
+| feed | the matrix says |
+| --- | --- |
+| lifecycle, `podman events` | ⭐ present and complete, including the exit code |
+| output, `podman logs` | ⚠ present ONLY under `--log-driver k8s-file`. ⛔ The base's default is `journald`, under which it prints nothing and exits 0 |
+| resources, `podman stats` | ⛔ answers with a nonsense CPU figure and `0B` of memory on this base |
+| exit code, `podman wait` | ⭐ available, and `podman events` already carries it |
+
+⚠ **Two of the four are usable today and the third waits on `WSL-60`.**
+
+## Approach
+
+An adapter behind the existing rendering layer, and ⛔ **the observation layer
+must not name a command**: the adapter decides, and a feed that does not exist
+reports absent rather than zero. `Invoke-InDistro`'s relay is the seam.
+
+⛔ **The log driver is named by the adapter and never defaulted.** The base's
+default makes `podman logs` a silent zero, which is the defect class this
+repository exists to refuse, and a caller must not have to know that.
+
+⛔ **A distro and a container are not the same kind of thing.** They share a
+kernel and nothing else, and one tool that blurs them produces nonsense about
+both.
+
+## Consumers
+
+None today. ⚠ If it lands as new actions on this script rather than as a second
+tool, every consumer's parameter surface grows, and `surface.lock` is what will
+say so.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/selftest.ps1
+```
+
+Then a container run whose output carries the same stamps, whose silence produces
+the same tick, and whose exit code passes through unchanged, with the resource
+column reporting absent rather than zero while `WSL-60` is open.
+
+---
+
+## WSL-60. the base accepts a memory limit and does not enforce it
+
+**Source** found by `WSL-30`'s validation matrix, 2026-09-10, row 8.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`podman run --memory 64m` inside this repository's base is accepted, recorded in
+`HostConfig.Memory`, and does nothing. Measured: a container under that limit
+allocated 300 MB and exited 0, with `OOMKilled=false` and no `memory.max` inside
+it at all.
+
+⛔ **Three observation feeds are absent for the same reason**, and `inspect`
+already reports `cgroup_version` and `cgroup_manager` for a tree the base has no
+delegation in, which reads as a working cgroup setup to anyone who does not
+check.
+
+## Premise
+
+⭐ **Measured on 2026-09-10, against both engines on this host.**
+
+| | base, `wsl-toolkit` | `podman-machine-default` |
+| --- | --- | --- |
+| PID 1 | `init(wsl-toolkit)` | `init(podman-mac...)` |
+| `/sys/fs/cgroup` | `dr-xr-xr-x root root` | `cgroup2 ... rw,nsdelegate` |
+| engine | rootless | rootful |
+| the shell's own cgroup | `0::/` | not applicable |
+| `.State.CgroupPath` | `/` | `/libpod_parent/libpod-<id>` |
+| `--memory 64m` | not enforced | `memory.max=67108864` |
+| `podman stats` memory | `0B` | `598kB of 67.11MB` |
+
+⚠ **The kernel is the same one.** What differs is that no delegation is set up
+for uid 1000 in the base, because nothing there does what systemd's
+`user@.service` does.
+
+## Approach
+
+Two candidate seams, and this entry does not pick between them.
+
+- **Delegate at provisioning time.** `base ensure` creates a cgroup subtree for
+  the account and hands it over, so rootless podman can make its own. ⚠ That is a
+  write into a root-owned tree during provisioning, which is the kind of thing
+  [`RULES.md`](RULES.md) section 3 is careful about.
+- **Report it, and refuse to pretend.** `doctor` and `inspect` gain a delegation
+  row, `stats` reports absent rather than `0B`, and any future limit flag is
+  refused by name on a base that cannot honour it.
+
+⛔ **The second is not optional whichever way the first is ruled.** A figure of
+`0B` presented as a measurement is worse than no figure.
+
+## Decision
+
+⚠ **Unruled, and it is the operator's.** The recommendation is to do the
+reporting half now and rule on delegation separately: a tool that reports what it
+cannot do is correct today, and a tool that writes into the host's cgroup tree to
+make a probe pass is the shape `RULES.md` section 3 warns about.
+
+## Consumers
+
+None reach it. No row of [`../docs/consumers.md`](../docs/consumers.md) runs the
+executable's base, and the script half has no resource surface at all.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action Doctor
+```
+
+A delegation row with a measured answer, and `--memory` on a base without
+delegation refused by name rather than accepted.
+
+---
+
+## WSL-61. `base ensure` cannot recover a base whose engine has stale run state
+
+**Source** the operator's open questions in the record, carried since 2026-09-10 with no entry. Authored 2026-09-10.
+**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+After a host reboot, podman inside the base refuses every container with
+`current system boot ID differs from cached boot ID` and NAMES the two
+directories to delete. `base ensure` re-provisions, reports honestly that it
+still cannot run a container, and stops. The operator clears it by hand.
+
+⚠ **`ensure` is the command whose whole promise is that one call reaches
+readiness**, so the one failure it cannot clear is the one that costs most.
+
+## Premise
+
+⭐ **Observed on this host, twice**, most recently on 2026-09-10 after a reboot.
+The directories podman names are `/tmp/wsl-toolkit-run-1000/containers` and
+`.../libpod/tmp`. ⚠ **Read from podman's own message rather than derived**: it
+prescribes the remedy, which is what makes the case unusual.
+
+⛔ **Not reproduced on demand.** It needs a real host reboot, so no case in the
+suite covers it and the evidence is two occurrences rather than a measurement.
+Reproducing it by writing a stale boot id into the cached file is the first step
+of doing this, and it is cheap.
+
+## Approach
+
+`base ensure`'s health probe already tells "cannot run a container" apart from
+"not registered". It gains one more answer: the engine's run state disagrees with
+this boot, recognised by podman's own message rather than by guessing at file
+contents.
+
+⛔ **What it must not do is delete anything a caller named.** The two paths are
+inside this tool's own state directory for its own account, and the deletion goes
+through `RemoveInside`, which is the one deletion helper and carries the
+containment check.
+
+## Decision
+
+⚠ **Unruled, and the operator has already named both sides.** For: podman
+prescribes the action, on state this tool owns, and `ensure` exists to reach
+readiness. Against: a tool that deletes engine state to make a probe pass is one
+deletion away from deleting something else.
+
+⭐ **A third option neither side named, offered as the recommendation.** Do it
+only under an explicit `--repair`, and have the unflagged `ensure` print the
+exact command rather than take it. That keeps `ensure` free of a deletion nobody
+asked for, and removes the part the operator actually pays: remembering which two
+directories.
+
+## Consumers
+
+None. No row of [`../docs/consumers.md`](../docs/consumers.md) reaches
+`base ensure`; both script consumers run the script half, which has no base.
+
+## Prove
+
+```bash
+wsl-toolkit base ensure --probe
+```
+
+Against a base whose cached boot id has been made stale on purpose: the
+unflagged run names the state and the exact remedy and exits non-zero, and
+`--repair` clears it and reaches a container that runs.

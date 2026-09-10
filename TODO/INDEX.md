@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 88  open 2  blocked 0  done 86
+total 92  open 4  blocked 0  done 88
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 46 | 46 |
-| P2 | 2 | 0 | 30 | 32 |
+| P1 | 0 | 0 | 47 | 47 |
+| P2 | 4 | 0 | 31 | 35 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **2** | **0** | **86** | **88** |
+| **all** | **4** | **0** | **88** | **92** |
 
 ---
 
@@ -60,6 +60,7 @@ total 88  open 2  blocked 0  done 86
 | TOOL-19 | P1 | M | done | The instrument that proves the guards had stopped proving three of them | [`tooling.md`](tooling.md) |
 | TOOL-20 | P1 | S | done | The check for the endings could never once have failed | [`tooling.md`](tooling.md) |
 | TOOL-21 | P2 | S | done | The sanctioned way to commit on Windows could not name two files | [`tooling.md`](tooling.md) |
+| TOOL-22 | P1 | S | done | the runtime column had never once produced an answer | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -89,8 +90,11 @@ total 88  open 2  blocked 0  done 86
 | WSL-27 | P2 | M | done | The tick can say nothing is happening and never that something is | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-28 | P2 | M | done | A recorded run cannot be re-read or compared | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-29 | P3 | S | done | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-30 | P2 | XL | open | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-30 | P2 | XL | done | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-31 | P1 | XL | done | A portable entry point for isolated Linux jobs on Windows | [`issue-6.md`](issue-6.md) |
+| WSL-59 | P2 | L | open | the podman adapter, on what the matrix says it can be built | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-60 | P2 | M | open | the base accepts a memory limit and does not enforce it | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-61 | P2 | S | open | `base ensure` cannot recover a base whose engine has stale run state | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

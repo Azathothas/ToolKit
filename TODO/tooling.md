@@ -2392,3 +2392,118 @@ recorded against one file does not reach the next one on its own; the check that
 would have caught this does not exist, and writing it means walking every
 tracked `.ps1` for a list parameter, which is its own entry rather than a line
 here.
+
+---
+
+## TOOL-22. the runtime column had never once produced an answer
+
+**Source** found while re-deriving what pull request 15 asserts, 2026-09-10.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`check-remote-items` reports four things about an action pin. The third is the
+one it exists for: what runtime the PINNED COMMIT declares, written because a
+session pinned `actions/checkout` to a tag that targeted a deprecated Node and
+resolving the tag had said nothing about it.
+
+⛔ **That column had never produced an answer.** Every pin it has ever read
+printed the same line:
+
+```text
+  ⚠     could not read action.yml at that commit; runtime unverified
+```
+
+⚠ **And it is a note, not a failure**, so the check stayed green while the one
+question it was built to ask went unanswered.
+
+## Premise
+
+⭐ **Measured on 2026-09-10** against `actions/setup-go@b7ad1dad`, by running
+the two commands rather than reading the code:
+
+| command | answer |
+| --- | --- |
+| `gh api PATH -H 'Accept: ...raw' -f ref=SHA` | ⛔ HTTP 404 |
+| `gh api PATH -H 'Accept: ...raw' -X GET -f ref=SHA` | the manifest |
+
+⛔ **`gh api` picks its method from its arguments.** It is GET normally and POST
+the moment any parameter is added, so `-f ref=SHA` turned reading a file at a
+commit into a POST to the contents endpoint. `DeclaredRuntime` was correct and
+tested; nothing ever handed it bytes.
+
+⚠ **It is also the rule [`../docs/security/remote-ops.md`](../docs/security/remote-ops.md)
+states as "treat an API call as read-only".** The helper could issue a write
+because a caller added a parameter, which is not a thing a caller should have to
+remember.
+
+## Approach
+
+`api` in `tools/repo/internal/remote/remote.go` pins `-X GET` before the path,
+once, for every caller. ⛔ Not in `file` alone: the hazard is the helper, and a
+fix at one call site is a fix that the next call site does not get.
+
+The argv is split into `apiArgs`, so a case can assert the method without a
+network. ⛔ A test needing `gh` and a token proves nothing on the machine where
+this went wrong.
+
+## Consumers
+
+None. No row of [`../docs/consumers.md`](../docs/consumers.md) fetches this
+tool; it reads this repository's own open items.
+
+## Prove
+
+```bash
+sh scripts/common/check-remote-items.sh --repo pkgforge-dev/EasyEffects-AppImage
+```
+
+A `runtime:` line under each pin, and `go test ./internal/remote/` green with a
+case that fails when `-X GET` is taken back out.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T12:35:00Z.** `-X GET` is pinned in `api`, the argv is
+`apiArgs`, and two cases hold it.
+
+⚠ **Driven against another repository's open items**, because merging pull
+request 15 left this one with none, and a check with nothing to read cannot show
+that it reads. Read-only, on a public repository:
+
+```text
+  #2 [app/renovate] Update actions/checkout action to v7
+    actions/checkout@3d3c42e5aac5  (labelled v7.0.1)
+      commit exists in actions/checkout
+      label v7.0.1 matches the pin
+      runtime: node24
+      v7.0.1 is the latest release
+
+  #1 [app/renovate] Update actions/checkout action to v6.1.0
+    actions/checkout@d23441a48e51  (labelled v6.1.0)
+      commit exists in actions/checkout
+      label v6.1.0 matches the pin
+      runtime: node24
+  ⚠     v7.0.1 is already released; this proposes v6.1.0
+```
+
+⭐ **The guard was proved by planting the defect**, and both cases went red:
+
+```text
+--- FAIL: TestApiArgsAlwaysAsksForGET (0.00s)
+    remote_test.go:160: apiArgs gave 6 arguments, want 8: ["api" "repos/o/r/contents/action.yml" ...]
+FAIL
+```
+
+⚠ **The second case was weaker than its name**, and the mutation is what showed
+it: it asserted the path at a fixed index, so it failed on the index shift
+rather than on aliasing. It scans for the path now.
+
+⛔ **What this did not fix.** The runtime line is still a note rather than a
+failure when it genuinely cannot be read, which is right for a rate-limited or
+private action and wrong for one that simply has no manifest. Telling those two
+apart needs the HTTP status, which `gh api` does not hand back through this
+helper, and that is its own entry rather than a line here.

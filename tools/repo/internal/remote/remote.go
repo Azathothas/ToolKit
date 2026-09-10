@@ -367,11 +367,33 @@ func (c *client) list(into any, kind, fields string) error {
 	return json.Unmarshal([]byte(out), into)
 }
 
+// api reads one endpoint.
+//
+// ⛔ -X GET IS EXPLICIT, AND IT IS THE WHOLE POINT OF THIS FUNCTION. `gh api`
+// chooses the method from the arguments: it is GET normally and POST the
+// moment any parameter is added. So `-f ref=SHA`, which reads a file at a
+// commit, silently became a POST to the contents endpoint, and GitHub answered
+// 404. This is also the rule docs/security/remote-ops.md states as "treat an
+// API call as read-only": stating it here, once, is what makes it structural
+// rather than a thing each caller has to remember.
+//
+// ⚠ WHAT IT COST. The runtime column below is the check written because the
+// Node 20 deprecation got past a session that only resolved the tag. It read
+// action.yml through this helper with `-f ref=`, so it had answered "runtime
+// unverified" for every pin since it was ported to gh, and it reported that as
+// a note rather than as a failure. Measured on 2026-09-10 against
+// actions/setup-go@b7ad1dad: 404 without -X GET, the manifest with it.
 func (c *client) api(path string, extra ...string) (string, error) {
-	args := append([]string{"api", path}, extra...)
-	cmd := exec.CommandContext(c.ctx, c.gh, args...)
+	cmd := exec.CommandContext(c.ctx, c.gh, apiArgs(path, extra)...)
 	out, err := cmd.Output()
 	return strings.ReplaceAll(string(out), "\r", ""), err
+}
+
+// apiArgs is the argv api runs, split out so a test can assert the method
+// without a network. ⛔ A test that needs gh and a token proves nothing on the
+// machine where this went wrong.
+func apiArgs(path string, extra []string) []string {
+	return append([]string{"api", "-X", "GET", path}, extra...)
 }
 
 // tagSHA resolves a tag to the commit it names.

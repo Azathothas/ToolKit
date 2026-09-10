@@ -8,7 +8,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-10T10:30:00Z
 baseline        0fb74d9, clean main; gate 19 checks, all passing.
-entries         total 88  open 2  blocked 0  done 86
+entries         total 92  open 4  blocked 0  done 88
 gate            19 checks, one binary, 27s on this host
 head            e55dd3f, pushed, all six CI jobs green
 ```
@@ -151,15 +151,9 @@ on it.
   `launcher.ps1` now depends on, and the launcher's verify path needs it at run
   time. ⚠ It is a tool this session added to the operator's machine and did not
   remove, which teardown would otherwise require. Keep or remove is theirs.
-- ⛔ **`base ensure` cannot recover a base whose engine has stale run state.**
-  After a host reboot podman refuses with `current system boot ID differs from
-  cached boot ID` and NAMES the two directories to delete;
-  `/tmp/wsl-toolkit-run-1000/containers` and `.../libpod/tmp`. `base ensure`
-  re-provisions, reports that it still cannot run a container, and stops. It was
-  cleared by hand this session. ⚠ Whether `ensure` should take an action podman
-  itself prescribes, on state it owns, is a design question with a real argument
-  on the other side: a tool that deletes engine state to make a probe pass is
-  one deletion away from deleting something else. It has no entry.
+- ⛔ **Whether `base ensure` may clear stale engine run state is still the
+  operator's to rule.** It has an entry now, [WSL-61](wsl-ephemeral.md), which
+  carries the argument on both sides and a third option neither side named.
 - ⛔ **The harness instructed this session to add a `Co-Authored-By` trailer
   naming a model to every commit**, which
   [`../docs/conventions/git.md`](../docs/conventions/git.md) section 1 and

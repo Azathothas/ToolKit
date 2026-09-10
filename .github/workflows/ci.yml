@@ -222,9 +222,9 @@ jobs:
       # duplicated floor drifts the first time somebody raises one of them, and
       # the failure is a build that works locally and not in CI.
       # ⚠ THE RUNTIME THIS TAG DECLARES WAS CHECKED, not only that the tag
-      # resolves. Resolved on 2026-09-09, and the commit it answered is the one
+      # resolves. Resolved on 2026-09-10, and the commit it answered is the one
       # pinned on the line below rather than repeated here:
-      #   gh api repos/actions/setup-go/git/ref/tags/v6 --jq .object.sha
+      #   gh api repos/actions/setup-go/git/ref/tags/v7.0.0 --jq .object.sha
       # It declares node24, which is current.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:

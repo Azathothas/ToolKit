@@ -140,3 +140,54 @@ func TestShort(t *testing.T) {
 		t.Errorf("a short value was truncated: %q", got)
 	}
 }
+
+// TestApiArgsAlwaysAsksForGET is the case for the defect this check spent its
+// whole life carrying: `gh api` picks its method from the arguments, and it is
+// POST the moment one is added. `-f ref=SHA` therefore turned reading a file at
+// a commit into a POST, GitHub answered 404, and the runtime column said
+// "unverified" for every pin without ever failing.
+//
+// ⛔ IT ASSERTS THE METHOD IS PINNED BEFORE THE PATH, which is where gh needs
+// it. Asserting only that "-X" and "GET" appear somewhere would pass over an
+// argv that puts them after a parameter.
+func TestApiArgsAlwaysAsksForGET(t *testing.T) {
+	got := apiArgs("repos/o/r/contents/action.yml", []string{"-H", "Accept: application/vnd.github.raw", "-f", "ref=abc"})
+	want := []string{
+		"api", "-X", "GET", "repos/o/r/contents/action.yml",
+		"-H", "Accept: application/vnd.github.raw", "-f", "ref=abc",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("apiArgs gave %d arguments, want %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("apiArgs[%d] = %q, want %q (full: %q)", i, got[i], want[i], got)
+		}
+	}
+}
+
+// TestApiArgsDoesNotShareItsBackingArray catches the append aliasing that turns
+// two calls into one corrupted argv. A literal slice grown by append can share
+// storage with the next caller's, and the symptom is a request to somebody
+// else's path.
+func TestApiArgsDoesNotShareItsBackingArray(t *testing.T) {
+	// ⚠ THE PATH IS FOUND, NOT INDEXED. An index would move the moment the
+	// method arguments change, so this case would fail for the wrong reason and
+	// its name would be claiming more than it checks.
+	find := func(argv []string, want string) bool {
+		for _, a := range argv {
+			if a == want {
+				return true
+			}
+		}
+		return false
+	}
+	a := apiArgs("repos/a", []string{"-f", "x=1"})
+	b := apiArgs("repos/b", []string{"-f", "y=2"})
+	if !find(a, "repos/a") || find(a, "repos/b") {
+		t.Fatalf("the second call reached back into the first: a=%q", a)
+	}
+	if !find(b, "repos/b") || find(b, "repos/a") {
+		t.Fatalf("the first call reached into the second: b=%q", b)
+	}
+}
