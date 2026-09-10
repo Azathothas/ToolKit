@@ -56,7 +56,7 @@ jobs:
           [ "$rc" = 0 ]
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/check/go.mod
           cache: false
@@ -137,7 +137,7 @@ jobs:
       # ⛔ EVERY tracked .ps1, not a hardcoded list. A list is a thing somebody
       # forgets to extend, and the script they forgot is the one that breaks.
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/check/go.mod
           cache: false
@@ -226,7 +226,7 @@ jobs:
       # pinned on the line below rather than repeated here:
       #   gh api repos/actions/setup-go/git/ref/tags/v6 --jq .object.sha
       # It declares node24, which is current.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/windows/wsl-toolkit/go.mod
           # ⛔ CACHING IS OFF. This module has no dependencies at all, so there
@@ -286,7 +286,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
-      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: tools/repo/go.mod
           cache: false
