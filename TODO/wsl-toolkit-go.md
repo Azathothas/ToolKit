@@ -986,3 +986,722 @@ touches `ClientSpool` end to end.
 that needs `DialHelper` to fail in a specific way, and the existing acceptance
 case covers the outcome that matters, that the helper is gone once it is stopped.
 Saying so is better than a case that asserts a string.
+
+---
+
+## WSL-42. What this tool owns, and how it proves it
+
+**Source** [Issue 16](https://github.com/Azathothas/ToolKit/issues/16) and
+[issue 18](https://github.com/Azathothas/ToolKit/issues/18), filed by a consumer
+agent against the published `wsl-toolkit-v1.3.0` on 2026-09-10.
+**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+
+## Problem
+
+Two defects, and they are one subject: the tool cannot say which distribution is
+its own, and it destroys the evidence of which one it built.
+
+`base.name` is editable in `config.json`. `AssertOwnedDistro(name, baseName)`
+then compares a configured value against itself, so the check proves only that
+a name equals itself. `base ensure` will create any syntactically valid name and
+`base remove --yes` will unregister it. The manual teaches an agent that every
+name other than `wsl-toolkit` is structurally refused, which is the opposite of
+what the binary does.
+
+`base ensure` also calls `writeRecord()` unconditionally on the
+registered-and-healthy path, using `b.cfg.Base.Image`. A distribution built from
+Arch, with the config since changed to Alpine, is relabelled as Alpine because a
+health probe ran an Alpine CONTAINER successfully. The probe proves the engine
+works. It does not identify the rootfs.
+
+## Premise
+
+Read from the reporter:
+
+- The reporter created and removed a uniquely named disposable distribution and
+  confirmed nothing pre-existing was touched.
+- After the relabel, `/etc/os-release` still said Arch and the installed Podman
+  version matched the Arch build, while `base status` reported no drift.
+
+Verified here against the code on 2026-09-10, both seams exactly as reported:
+`AssertOwnedDistro` at `internal/toolkit/wsl.go:238` compares `name` against
+`baseName` with `EqualFold`, and every caller passes `cfg.Base.Name` for both.
+`Base.Ensure` at `internal/toolkit/base.go:177` calls `writeRecord()` on the
+registered-and-healthy branch with no comparison of any kind.
+
+⭐ **THE SECOND ONE ARGUES FOR ITSELF, three lines above the defect.** The
+comment at `base.go:175` reads: "Refreshed on every path that leaves a usable
+base. A record written once describes the first build forever." Somebody reasoned
+about this and reached a conclusion that is half right. A record refreshed on
+every healthy path follows the CONFIG, and the thing it claims to describe is the
+GUEST. Whoever fixes this should replace that comment rather than delete it,
+because the next reader will have the same thought.
+
+## Approach
+
+Ownership stops being a string comparison and becomes a PROOF the guest carries.
+
+Write an identity marker inside the distribution at build time, holding the name
+this tool built it under, the image reference, the preset id and the build stamp.
+`AssertOwnedDistro` reads that marker rather than comparing config to config, so
+a distribution this tool did not build cannot be adopted by editing a file.
+
+`Ensure` compares the record, the config and the marker. A mismatch is reported
+and left visible; it never writes a record it did not earn.
+
+⛔ **It must not resolve the mismatch by rebuilding automatically.** A
+rebuild destroys the thing the operator needs to look at, and `recreate` already
+exists for the case where they want one.
+
+## Decision
+
+The fork is whether the owned name stays fixed at all, and it is the SAME
+question [WSL-43](wsl-toolkit-go.md) asks from the other side. The reporter's
+expected fix is "reject any `base.name` other than the one hard-owned name". The
+operator's requirement is several isolated instances so that agents do not step
+on each other.
+
+**Recommendation: keep a fixed PREFIX, not a fixed name.** A distribution is
+owned when its name matches `wsl-toolkit` or `wsl-toolkit-<suffix>` AND it
+carries this tool's identity marker. That satisfies the reporter, because a name
+outside the prefix is still structurally refused and an unmarked distribution
+inside the prefix is refused too, and it satisfies the operator, because the
+suffix is what makes instances independent.
+
+⛔ **The two entries are ruled together or not at all.** Fixing this one as
+filed makes WSL-43 impossible, and building WSL-43 first reopens this one.
+
+## Consumers
+
+Breaking, twice. A config carrying an arbitrary `base.name` stops being accepted,
+and a base whose provenance does not match its config stops reporting clean. Both
+are the point. `docs/consumers.md` rows for the published binary and the manual
+both move.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case that writes a foreign name into `base.name` and asserts `base ensure`
+refuses by name; a case that builds from one preset, changes the configured image
+without a rebuild, runs `ensure`, and asserts the record still names the image
+the guest actually carries.
+
+---
+
+## WSL-43. Many agents, many bases
+
+**Source** The operator on 2026-09-10: several agents should work at once, each
+isolated, and all of them still able to use this tooling.
+**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+
+## Problem
+
+There is exactly one base, named `wsl-toolkit`, and one state directory. Two
+agents on one host share the distribution, the engine, the ledger and the helper
+endpoint. Either they collide, or one of them stops using the tool.
+
+## Premise
+
+Verified against the code on 2026-09-10, and the answer is not what the request
+assumes.
+
+⛔ **THIS IS ALREADY POSSIBLE TODAY, AND THAT IS EXACTLY WHY IT IS FILED AS A
+P1 DEFECT.** `catalog.go:155` lets a stored `base.name` override the constant,
+and `--home` or `WSL_TOOLKIT_HOME` already moves the whole state directory,
+helper endpoint included. Two agents can be fully isolated right now:
+
+```bash
+wsl-toolkit --home C:\agents\one   base ensure   # base.name: wsl-toolkit-one
+wsl-toolkit --home C:\agents\two   base ensure   # base.name: wsl-toolkit-two
+```
+
+It works because `AssertOwnedDistro` compares a configured name against itself,
+which is [issue 16](https://github.com/Azathothas/ToolKit/issues/16). The
+isolation is real; the guard behind it is not.
+
+So this entry is NOT "build multi-instance support". It is: keep the isolation
+that already works, put a real ownership proof under it, and remove the two
+things that still make it manual, which are the naming and the pairing of a
+distribution with its state directory.
+
+⚠ **An operator who needs isolation before this entry is built can have it
+today** with the two flags above, accepting that the ownership guard is the one
+`WSL-42` describes.
+
+## Approach
+
+An instance is a name and a state directory together.
+
+`--instance NAME` (and `WSL_TOOLKIT_INSTANCE`) selects both: distribution
+`wsl-toolkit-<name>` and state under a matching subdirectory, so one flag makes
+two agents independent. With no name, allocate the lowest free
+`wsl-toolkit-<N>` and record the choice, so an agent that does not care never
+has to think about it.
+
+The helper is per instance, because it holds a config and a runner for one base.
+
+⛔ **It must not become a scheduler.** No shared lock, no pool, no
+allocation service. Two agents that both ask for the same instance name get the
+same base, and that is correct.
+
+## Decision
+
+Ruled together with [WSL-42](wsl-toolkit-go.md): ownership is a fixed prefix
+plus a guest-side identity marker.
+
+⚠ **The default instance keeps the bare name `wsl-toolkit`**, so every
+existing caller, manual line and acceptance case keeps working unchanged.
+
+## Consumers
+
+Additive for a caller that names nothing. `docs/consumers.md` gains the instance
+concept, and the manual grows one section.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+Two instances built in one run, each running a job that writes its instance name
+into an artifact, asserting neither sees the other's distribution, state
+directory, helper or transcripts, and that `gc --apply` on one leaves the other
+whole.
+
+---
+
+## WSL-44. What a long-lived helper freezes
+
+**Source** [Issue 17](https://github.com/Azathothas/ToolKit/issues/17) and
+[issue 19](https://github.com/Azathothas/ToolKit/issues/19), filed by a consumer
+agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
+**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+
+## Problem
+
+A detached helper freezes two things at startup and never lets go of either.
+
+It freezes the CONFIG. `NewHelperServer(cfg, ...)` stores one config and builds
+one `Runner` for the process lifetime. `run` resolves a catalog id client side
+and sends a full reference, so it sees config edits; `matrix` sends the id and
+the helper resolves it against its startup catalog, so it does not. Worse,
+`base ensure --preset X` sends only `{force}`: the client announces X, saves X to
+config, and the helper rebuilds whatever its startup config said. The reporter
+watched a client announce Alpine while the guest stayed Arch.
+
+It freezes a FAILURE. `Runner.guestHome` wraps the value and the error in one
+`sync.Once`. One lookup while the base is absent poisons the helper for its
+lifetime: the base is rebuilt, `base status --probe` reports healthy, and every
+later job still returns "There is no distribution with the supplied name" until
+the helper is restarted.
+
+## Premise
+
+Read from the reporter, and both causes are named at the seam. ⚠ Measure the
+`sync.Once` one first: it is the cheaper of the two and its blast radius is every
+helper-routed command.
+
+## Approach
+
+Two rules, one theme: a helper caches nothing whose truth can change.
+
+Config travels WITH the request. Every helper endpoint that depends on
+configuration carries the effective config the client already validated, and the
+helper uses that rather than its own. `run` and `matrix` then resolve a catalog
+the same way, and a preset reaches the base that is rebuilt.
+
+`guestHome` caches only success. A failure is returned and not remembered, and
+the lifecycle operations that change the answer clear it.
+
+⛔ **A negative result is never cached anywhere in this tool.** It is worth
+stating as a rule rather than fixing one instance of it, because
+[WSL-19](wsl-toolkit-go.md) is a probe cache and this is a second one.
+
+## Consumers
+
+The helper protocol version moves again, and a client refuses a helper that is
+older, which it already does. `docs/consumers.md` row for the helper protocol.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case that edits the catalog after helper startup and asserts `run` and `matrix`
+agree; a case that switches preset through a running helper and reads
+`/etc/os-release` from the rebuilt guest; a case that removes the base, fails one
+job, rebuilds through an ordinary run, and asserts the NEXT job runs without a
+helper restart.
+
+---
+
+## WSL-45. A deadline that bounds the caller's wall time
+
+**Source** [Issue 20](https://github.com/Azathothas/ToolKit/issues/20), filed by
+a consumer agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
+**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+
+## Problem
+
+`--timeout 2s` against a payload that sleeps 8 seconds returns exit 124 after
+about 12 seconds of caller wall time, and reports the job took 4.4 seconds. The
+exit code is right and the number beside it is not, and neither is the wait.
+
+A deadline that does not bound waiting is not a deadline. An agent that sets one
+to keep a pipeline moving still waits for the payload.
+
+## Premise
+
+Measured by the reporter with a stopwatch around the process: exit 124, reported
+4.422 s, actual 11.981 s. The matrix path reported `in 9s` for 11.514 s of
+waiting. A `sleep 20` with `--timeout 2s` kept the caller about 20 seconds.
+
+The reporter's source note is careful and this entry keeps its caution:
+cancellation does run `taskkill /PID /T /F` with a one second `WaitDelay`, so the
+remaining delay is likely the WSL side or the stream relay outliving the killed
+host process, and that is a hypothesis rather than a finding.
+
+## Approach
+
+Find where the time actually goes before changing anything: instrument the
+cancellation path and print the interval between the deadline firing, `wsl.exe`
+returning, the relay closing, and the container cleanup finishing. ⚠ One of
+those four owns the missing seconds and the fix is different for each.
+
+Then bound the whole operation rather than the child: the deadline covers
+cleanup too, with a stated grace, and the duration reported is the interval the
+caller experienced.
+
+⛔ **It must not report a duration measured from a different clock than the
+one the caller sees.** Two numbers that disagree are worse than one that is
+approximate.
+
+## Consumers
+
+`duration_ms` in the job and matrix JSON changes meaning, and that is breaking
+for anything comparing it against a previous run.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case that wraps a stopwatch around the process, runs a payload sleeping ten
+times its timeout, and asserts wall time is under the deadline plus a documented
+grace, on both routes, with a child that inherits stdout and stderr.
+
+---
+
+## WSL-46. The answer is exactly what happened
+
+**Source** [Issue 22](https://github.com/Azathothas/ToolKit/issues/22),
+[issue 23](https://github.com/Azathothas/ToolKit/issues/23) and
+[issue 24](https://github.com/Azathothas/ToolKit/issues/24), filed by a consumer
+agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
+**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+
+## Problem
+
+Three ways the structured answer is not the truth.
+
+`base ensure --json` and `base recreate --json` accept the flag, write human
+progress to stderr, exit 0, and put NOTHING on stdout. `cmdBase` reads `asJSON`
+only in the status branches.
+
+Every job invents a byte. The container wrapper prints its completion token as
+`printf '\n%s\n'`, and `markerStripper` writes the leading newline back. A
+payload that writes no stderr returns `"stderr":"\n"` with `stderr_bytes: 1`.
+
+An artifact failure exits 1 while the JSON still says `exit: 0` with a positive
+artifact count that means entries encountered rather than delivered, and on the
+helper route it names no recoverable copy at all.
+
+⭐ **The invented byte is this repository's own, introduced in v1.2.0** by
+`WSL-38`'s marker framing. Protocol framing altering the payload is exactly what
+that entry set out to avoid.
+
+## Premise
+
+Read from the reporter, with exact observed values for all three. The byte count
+claim is checkable in one command and should be measured first.
+
+## Approach
+
+One rule covers all three: framing does not touch payload bytes, and every
+surface that accepts `--json` emits one parsable object on stdout.
+
+The wrapper emits its token in a way that carries no payload byte, and the
+stripper holds back an unterminated tail rather than manufacturing a terminator.
+`cmdBase` renders JSON on every branch that advertises it. `JobResult` gains the
+effective verdict as a field, separates artifacts attempted from delivered, and
+names the retained copy wherever it lives, guest or helper.
+
+⛔ **`exit` keeps meaning the container's own code.** The fix is a second,
+clearly named field, not a redefinition of the one a caller already reads.
+
+## Consumers
+
+Additive fields, one breaking change: `stderr_bytes` stops being one byte larger
+than the payload wrote. Anything golden-comparing a transcript sees a diff, and
+that diff is the fix.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+Byte-exact cases for empty, terminated and unterminated stderr, and for payload
+text that looks like the marker; a case asserting nonempty parsable stdout from
+`ensure --json` and `recreate --json` on both routes; a case asserting the JSON
+of a failed transfer carries the effective verdict and a path that exists.
+
+---
+
+## WSL-47. The boundary the manual promises
+
+**Source** [Issue 21](https://github.com/Azathothas/ToolKit/issues/21) and
+[issue 26](https://github.com/Azathothas/ToolKit/issues/26), filed by a consumer
+agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
+**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+
+## Problem
+
+The manual describes a boundary the binary does not hold, in two places.
+
+`base shell` and `base shell --root` start in the caller's Windows working
+directory, mounted writable under `/mnt/c`. The reporter opened a root shell from
+a checkout, ran `test -w .`, and got zero. The manual's warning says root is
+"inside the distribution" and "not on this machine", which reads as the opposite.
+`wsl.exe -d NAME -u USER` inherits the host directory; nothing passes `--cd`.
+
+The manual says archive links that leave the tree are refused. They are not. An
+artifact symlink pointing at `../../etc/passwd` is silently converted to an inert
+`escape.link.txt` holding its target, and the job exits 0. A Windows junction in
+a workspace pointing outside is silently omitted from the upload, and the job
+exits 0 having never seen it.
+
+⭐ **Neither is a traversal hole and the reporter says so plainly.** Nothing
+escaped and nothing was overwritten. The defect is that the manual promises a
+refusal and the binary performs a silent transformation, so a caller cannot tell
+its input or its deliverables were incomplete.
+
+## Premise
+
+Read from the reporter, who did not mutate the repository and who explicitly did
+not claim the Windows file-symlink variant, having been unable to create one
+without developer mode.
+
+## Approach
+
+Two separate fixes, one principle: what the manual promises is what happens, and
+what is changed is visible.
+
+`base shell` starts in the guest user's home. Attaching to the host directory
+becomes explicit, and the root warning states plainly which Windows drives are
+mounted and writable whenever any are.
+
+For links, pick ONE policy and write it down. ⚠ Recommendation: refuse an
+artifact link whose target leaves the tree, since that is what the manual already
+says, and report an omitted workspace entry as a counted, named result rather
+than as silence. A transformation nobody is told about is the same defect as a
+truncation nobody is told about.
+
+⛔ **It must not start following links to make them work.** The safety
+here is real; only the reporting is wrong.
+
+## Consumers
+
+Breaking twice, deliberately: a shell starting somewhere else, and a job that
+used to exit 0 with a transformed link now refusing. The manual moves with both.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case asserting a shell launched from a checkout does not begin in it; cases for
+internal links, escaping relative links, absolute links, hardlinks and Windows
+junctions, on both routes, each asserting the documented outcome rather than an
+exit code alone.
+
+---
+
+## WSL-48. The embedded script tells the truth
+
+**Source** [Issue 25](https://github.com/Azathothas/ToolKit/issues/25) and
+[issue 27](https://github.com/Azathothas/ToolKit/issues/27), filed by a consumer
+agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
+**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+
+## Problem
+
+The embedded PowerShell surface, forwarded unchanged, gives two confidently wrong
+answers.
+
+`script -Action List` from a process that cannot reach WSL prints the protected
+names, prints `Wsl/EnumerateDistros/Service/E_ACCESSDENIED`, omits a distribution
+that exists, and exits 0. An agent reading that answer concludes the machine is
+empty. ⛔ **That is the exact defect class of
+[issue 10](https://github.com/Azathothas/ToolKit/issues/10)**, a refusal rendered
+as a successful empty result, in the one surface this session's fixes did not
+reach.
+
+`script -Action Doctor` reports a working host Podman as "installed but not
+responding", because its own probe throws first:
+`StandardOutputEncoding is only supported when standard output is redirected`.
+The engine is fine and the diagnostic is broken. The released binary was using
+that same Podman successfully at the time.
+
+## Premise
+
+Read from the reporter, who ran `podman.exe version` in the same process and
+compared, and who verified `script -Action HostAddress` and an approved
+`-Action New -Ephemeral` both work. The claim is narrow and specific.
+
+## Approach
+
+Enumeration that was refused exits nonzero and says "could not list". A partial
+inventory is never presented as complete, which is the same rule
+[WSL-41](wsl-toolkit-go.md) applied to `logs`.
+
+The Doctor probe sets its redirection and its encoding consistently, runs the
+engine, and reports the child's exit code and output.
+
+⚠ **These live in `scripts/windows/wsl-toolkit/src/`, not in the two
+GENERATED products.** `build.ps1` rebuilds both, and editing either directly is
+lost at the next build.
+
+## Consumers
+
+`script -Action List` starts exiting nonzero where it exited 0. Anything treating
+its exit code as "WSL is fine" learns otherwise, which is the point.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case run from a genuinely access-denied process with a known ephemeral
+distribution present, asserting nonzero and an explicit refusal; Doctor cases for
+a working engine, a missing binary and a real nonzero engine response, so the
+diagnostic stays discriminating rather than merely stopping being wrong.
+
+---
+
+## WSL-49. One command to readiness
+
+**Source** [Issue 28](https://github.com/Azathothas/ToolKit/issues/28), a feature
+request from the consumer agent that filed the other twelve.
+**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+
+## Problem
+
+A first-run agent has to assemble readiness from separate concepts: read the
+manual, diagnose WSL access, start or find a helper, ensure and probe the base,
+work out which route it got, run a representative container, and find where
+output went. An experienced operator can compose that. An agent pointed at the
+manual should not have to infer it, especially when its own process cannot call
+WSL while an approved helper can.
+
+## Premise
+
+The pieces all exist: `doctor`, `helper status`, `base status --probe`, `run`,
+`logs`. ⭐ **Nothing new has to be measured**; what is missing is one command that
+runs them in order and reports one answer.
+
+## Approach
+
+`wsl-toolkit ready`, idempotent, with `--json` and `--smoke`.
+
+It validates the effective config without changing it, names the executable,
+version, state directory, configured base and catalog size, probes direct WSL
+access and reports the route it selected with the reason, finds and version
+checks a helper, ensures and probes the base when asked, and under `--smoke` runs
+one tiny container proving kernel access, uid, a writable `/work`, an artifact
+returned from `/out`, a transcript that reads back, and no host mount.
+
+⛔ **When it cannot proceed it prints ONE exact command and does not
+pretend it can self-elevate.** A restricted process that cannot start a helper
+says so and names the approval command, which is the whole reason this product
+exists.
+
+The `--json` form is one stable object: `ready`, effective verdict, route and
+reason, client and helper versions and compatibility, base registered and healthy
+and which image, engine version, smoke results, state and transcript and recovery
+locations, and the exact remediation when not ready.
+
+## Decision
+
+The issue also lists nine supporting improvements. ⚠ **Two of them belong to
+other entries and are not duplicated here**: helper restart or reload with a
+non-racy wait is [WSL-44](wsl-toolkit-go.md)'s, and route plus versions in
+run and matrix JSON is [WSL-46](wsl-toolkit-go.md)'s. The rest, config validate
+and effective view, artifact retry, job-scoped resources and gc, images warm, and
+a quickstart, are QOL that should be ruled on separately rather than smuggled in
+under one heading.
+
+## Consumers
+
+Purely additive: a new command and one new JSON schema.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+From a state directory that does not exist yet: one `ready --smoke --json` run
+truthfully establishes the agent can run isolated Linux jobs, or returns a
+non-ready object with one exact remediation. Rerunning it is fast, green and
+changes nothing. Separate cases force a stale helper, a config mismatch, an
+unhealthy base, an absent engine and a failed artifact round trip, and assert
+each is reported as not ready with the right next command.
+
+---
+
+## WSL-50. Diagnostics and a heartbeat for the base and what runs inside it
+
+**Source** The operator on 2026-09-10, asking for better diagnostics and debug
+for the base machine and every container inside it, by either engine, with the
+heartbeat called essential.
+**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+
+## Problem
+
+A job that is running tells the caller almost nothing. `resources` reports what
+exists when asked and there is no periodic signal, so an agent watching a long
+matrix cannot distinguish work in progress from a hang, and after a failure it
+has the exit code and the transcript and little else about the machine that
+produced them.
+
+## Premise
+
+Read: `resources` already enumerates the engine's images, containers and volumes
+and the guest job directories, and `WSL-35`'s event stream already carries
+per-row progress on both routes. ⭐ **The transport for a heartbeat exists**;
+what does not exist is anything periodic to put on it.
+
+## Approach
+
+A tick on the existing event stream: at a stated interval, one event per running
+job carrying elapsed time against its deadline, the container id and state, and
+the bytes seen on each stream. Silence then means a stall rather than an unknown.
+
+Beside it, a deeper inspection surface for the base and its containers: engine
+version and storage driver, cgroup and namespace facts, the container's own
+state and last exit, disk pressure in the guest, and the same for a chroot
+payload where podman is not the engine.
+
+⛔ **The tick is not a progress bar and must not become one.** It is a
+machine-readable event with a timestamp; whatever renders it belongs to the
+caller.
+
+⚠ It must also not become a poll loop against the engine per second. The
+interval is stated, configurable and defaulted to something a matrix of twelve
+can carry without adding measurable load, and the entry says what it measured.
+
+## Consumers
+
+The helper protocol gains an event kind, so its version moves. A client that
+ignores unknown event kinds is unaffected, and one that does not is the reason
+the version moves.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A job that sleeps well past the tick interval, asserting ticks arrive at roughly
+that interval on both routes, carry the elapsed time and container id, and stop
+when the job ends. A case asserting a killed container's last state is still
+reportable afterwards.
+
+---
+
+## WSL-51. A config the agent does not have to write
+
+**Source** The operator on 2026-09-10: an agent should run `wsl-toolkit` and have
+the machine brought to the state it expects, from a config in the working
+directory or from stored dotfiles.
+**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+
+## Problem
+
+Configuration lives in one place, the state directory, and an agent has to write
+it there before it can rely on anything. A repository that wants a particular
+base image, catalog and limits cannot carry that with it, so every agent that
+clones it repeats the setup by hand and they drift.
+
+## Premise
+
+Read: `config` already names where configuration lives and what it says, and
+`EnsureHome` already resolves the state directory. ⚠ There is currently ONE
+source and no notion of precedence, so this entry is mostly about ordering rather
+than about parsing.
+
+## Approach
+
+A search order, stated once and printed by `config`: an explicit `--config` path,
+then `wsl-toolkit.json` in the working directory or the nearest parent that has
+one, then the state directory's own file, then defaults. ⛔ **The nearest
+file wins outright rather than being merged**, because a partially merged config
+is one nobody can reason about from any single file.
+
+`.wsl-toolkit/` in the working directory is that instance's state, gitignored, so
+a repository holds its own job history and two checkouts do not share one.
+
+⚠ **THAT NAME IS ALREADY TAKEN.** `job.go:32` defines
+`GuestRoot = ".wsl-toolkit"`, the directory every job's workspace and output live
+under INSIDE the guest. Reusing it on the host means one name for two unrelated
+things, in a tool whose whole difficulty is which side of the boundary something
+is on. Pick a different host name or rename the guest root, and say which in this
+entry before any code moves.
+
+⛔ **THIS CONTRADICTS [WSL-43](wsl-toolkit-go.md) AND THE CONTRADICTION WAS
+NEARLY WRITTEN AWAY.** That entry puts an instance's state under the state home,
+in a subdirectory named for the instance. This one puts it beside the code. Both
+are defensible and they are not the same place, and an earlier draft of this
+paragraph claimed they "resolve to the same mechanism", which is the sentence a
+reviewer should be most suspicious of.
+
+**Recommendation: the state home stays the single store, and `.wsl-toolkit/` is a
+POINTER, not a store.** It holds the config and the instance name; the
+transcripts, artifacts and ledger stay under one home per instance. A checkout
+deleted mid-job then loses a pointer rather than a running job's ledger, and `gc`
+keeps one place to look. ⚠ Ruled together with WSL-43, or one of them will
+be built on the other's assumption.
+
+Running `wsl-toolkit` with no arguments in a directory that has a config brings
+the machine to the state that config describes, which is
+[WSL-49](wsl-toolkit-go.md)'s `ready` with the config as its input.
+
+⚠ **TOML was asked about and JSON is the recommendation.** The tool already
+reads and writes JSON, has no dependencies, and Go's standard library has no TOML
+parser, so accepting TOML means vendoring one into a tree whose whole build story
+is that it has nothing to vendor.
+
+## Consumers
+
+A caller with a `wsl-toolkit.json` in the working directory silently changes
+which config is used, which is why `config` prints the resolved source and the
+order it searched.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case with configs at two levels asserting the nearer one wins whole; a case
+asserting `config` names the file it resolved and the order; a case asserting a
+bare invocation in a configured directory reaches the described state and is a
+fast no-op the second time.

@@ -1648,3 +1648,130 @@ guard, a change no case looks at, a mutation that does not compile, a find that
 is not there, and a `-run` pattern matching no test. Three of those are BROKEN
 for three different reasons, and the case asserts the reasons are distinguishable
 rather than merely that all three failed.
+
+---
+
+## TOOL-17. The suite that could not have caught any of them
+
+**Source** Found by counting, on 2026-09-10: a consumer agent filed thirteen
+defects against `wsl-toolkit-v1.3.0` on a day when this tree's own suite passed
+39 acceptance cases, 129 Go cases and 48 proved mutations.
+**Category** tooling, **Priority** P1, **Effort** L, **Status** open
+
+## Problem
+
+Thirteen defects, zero of them reachable by the suite that was green when they
+were filed. That is the second time in two sessions, and the ratio is the finding
+rather than any individual case.
+
+The suite has four structural blind spots, and every one of the thirteen lands in
+at least one of them.
+
+1. **It never changes anything mid-flight.** Each case builds state, acts, and
+   asserts. One case writes a `config.json`, in a fresh state home, BEFORE its
+   first invocation; none mutates a config that a running process has already
+   read. So the frozen config in
+   [issue 17](https://github.com/Azathothas/ToolKit/issues/17) could not appear,
+   and nothing removes the base under a live helper, so the cached failure in
+   [issue 19](https://github.com/Azathothas/ToolKit/issues/19) could not either.
+2. **It measures elapsed time for every case and asserts on it in none.**
+   `Test-Case` records `seconds` at `acceptance.ps1:67` and puts it in the report.
+   Nothing compares it to anything, so
+   [issue 20](https://github.com/Azathothas/ToolKit/issues/20)'s twelve second
+   wait for a two second deadline reads as a pass. ⭐ **The number is
+   already there**, which makes this the cheapest of the four to fix: a case needs
+   a way to declare an expected ceiling, not a way to measure.
+3. **It matches substrings, never exact bytes.** Cases ask whether output
+   CONTAINS a marker. The invented newline in
+   [issue 23](https://github.com/Azathothas/ToolKit/issues/23) survives every one
+   of them, and this repository INTRODUCED that byte in v1.2.0.
+4. **It reads the process exit and rarely the object.** `--json` is exercised
+   where the assertion needs a field, so a command that accepts `--json` and
+   prints nothing, [issue 22](https://github.com/Azathothas/ToolKit/issues/22),
+   passes by never being asked.
+
+⛔ **A fifth blind spot is not the suite's shape but its subject.** Every
+case runs a binary built from the working tree, against state the case just
+created. The reporter ran the PUBLISHED artifact, from a fresh state directory,
+as an outside process with no knowledge of the tree. Four defects last session
+and thirteen this session came from that vantage point, and nothing in this
+repository occupies it.
+
+## Premise
+
+Counted, not estimated. Thirteen issues, mapped one by one to the blind spot that
+hid them, with two landing in more than one.
+
+Two of the four claims were checked against the file on 2026-09-10 and both
+needed narrowing, which is recorded above rather than quietly corrected: the
+suite does time every case, and it does write one config. Neither ASSERTS the
+thing the defect needed asserted, so both blind spots stand, but the first
+drafting of this entry overstated them.
+
+⚠ The other two claims, substring matching and unparsed JSON, are still a
+reading. The honest version of this entry begins by taking three of the thirteen
+and confirming a case really cannot be written for them in the suite's current
+shape.
+
+## Approach
+
+Four capabilities the suite does not have, added as capabilities rather than as
+thirteen cases:
+
+- a case may mutate config, state or the base BETWEEN steps, and assert on what a
+  long-lived helper does afterwards;
+- a case may assert wall time, with the clock around the process rather than
+  inside it;
+- a case may assert an exact byte sequence and an exact count, not a substring;
+- a case may assert on the parsed JSON object, and there is one shared assertion
+  that every `--json` surface emits exactly one parsable object on stdout.
+
+Then a fifth thing, which is a different program: a CONSUMER harness that fetches
+a published release by tag, verifies its digests, runs it from an empty state
+directory with no repository present, and asserts the manual's own claims. It is
+the vantage point that found seventeen defects in two sessions.
+
+⛔ **It must not become a second acceptance suite that drifts from the
+first.** The consumer harness asserts the MANUAL's claims, which is a different
+subject from the acceptance suite's, and if it starts asserting internals it has
+become a copy.
+
+## Order
+
+⛔ **FIVE ENTRIES CANNOT BE PROVED UNTIL THIS ONE IS BUILT.** The `Prove`
+sections of [WSL-44](wsl-toolkit-go.md), [WSL-45](wsl-toolkit-go.md),
+[WSL-46](wsl-toolkit-go.md), [WSL-49](wsl-toolkit-go.md) and
+[WSL-50](wsl-toolkit-go.md) each require one of the four capabilities named here:
+mutation between steps, a wall-time ceiling, byte-exact comparison, or an
+assertion on a parsed object. Writing those fixes first means closing them on
+cases that do not exist, which is how the thirteen got shipped in the first
+place.
+
+That makes this entry a prerequisite rather than a follow-up, despite being the
+one nobody asked for.
+
+## Decision
+
+The fork is whether the consumer harness runs in CI. Running it there means CI
+depends on a published release and on a network, and a red CI caused by a
+registry outage teaches people to ignore CI.
+
+**Recommendation: not in CI, and run deliberately after each release**, as part
+of the release checklist rather than the commit checklist. The release is the
+event it is about.
+
+## Consumers
+
+None: this is a test surface and nothing fetches it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+Passing means the four capabilities exist and are used by at least one case each,
+demonstrated by taking three of the thirteen reported defects, writing a case for
+each against the CURRENT binary, and watching all three fail. ⭐ A capability
+that cannot reproduce a known defect is not a capability, and a case written
+against an already fixed binary proves only that it passes.

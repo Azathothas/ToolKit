@@ -8,13 +8,22 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-09T21:00:00Z
 baseline        450b380, clean main; gate 17 checks, all passing, 31s.
-entries         total 66  open 8  blocked 0  done 58
+entries         total 77  open 19  blocked 0  done 58
 gate            18 checks, one binary, 43s, all passing
 ```
 
 ## Active work
 
-None. All three bodies of work the operator named are closed.
+None in flight. Eleven entries were FILED at the end of this session and none is
+started: `WSL-42` to `WSL-51` and `TOOL-17`. They come from thirteen defects a
+consumer agent filed against the published `wsl-toolkit-v1.3.0`, plus three
+requirements the operator added.
+
+⛔ **Read the work order below before picking one.** Three of the eleven
+are ruled together or not at all, and five cannot be PROVED until a sixth is
+built.
+
+Everything the session set out to do is closed.
 [WSL-32](wsl-toolkit-go.md) through `WSL-39` resolve
 [issues 7 to 14](https://github.com/Azathothas/ToolKit/issues) in full;
 [TOOL-14](tooling.md) ports five of the last six shell pairs;
@@ -95,19 +104,39 @@ entry it belongs to:
 
 ## Work order
 
-Nothing is queued. What a next session would pick up, in the order it is worth
-picking up:
+⛔ **[TOOL-17](tooling.md) IS FIRST, and it is the one nobody asked for.**
+The `Prove` sections of `WSL-44`, `WSL-45`, `WSL-46`, `WSL-49` and `WSL-50` each
+need one of the four capabilities that entry says the acceptance suite lacks.
+Building those five first means closing them on cases that cannot be written,
+which is how thirteen defects shipped in a tree with a green suite.
 
-1. **The doctor pair is the last shell twin**, `scripts/doctor/doctor.sh` and its
-   PowerShell twin, 646 lines between them. [TOOL-14](tooling.md) says why it was
-   left: it is the only pair whose two halves ask DIFFERENT questions of
-   different hosts, so porting it is a behaviour decision and not a translation.
-   ⚠ When it goes, `check-twins.sh` goes with it, and
-   [RULES.md](RULES.md) section 2 and `scripts/README.md` move in the same change.
-2. **A sixth lens.** The fifth was "what a failure is allowed to hide" and it
-   found five things. An obvious next one is concurrency: what two of this tool
-   running at once do to one state directory, which the ledger work touched and
-   did not finish.
+⛔ **[WSL-42](wsl-toolkit-go.md) and [WSL-43](wsl-toolkit-go.md) are one
+ruling.** The reporter's fix for the ownership boundary is a fixed name; the
+operator's requirement is many isolated instances. Fixing either as written makes
+the other impossible. [WSL-51](wsl-toolkit-go.md) joins that ruling, because it
+puts instance state somewhere `WSL-43` does not.
+
+⭐ **Isolation is available today without any of them.** `--home` plus a
+stored `base.name` already gives two agents separate distributions, state,
+helpers and transcripts. `WSL-43` records the exact commands and why they work.
+
+Then, in rough order of what unblocks the most: `WSL-44` (a helper that caches
+nothing whose truth can change), `WSL-46` (the answer is what happened),
+`WSL-45` (a deadline that bounds waiting), `WSL-47` and `WSL-48` (the manual's
+claims made true), `WSL-49` (one command to readiness), `WSL-50` (a heartbeat).
+
+Still open from before, and not urgent:
+
+- **The doctor pair is the last shell twin**, `scripts/doctor/doctor.sh` and its
+  PowerShell twin, 646 lines between them. [TOOL-14](tooling.md) says why it was
+  left: it is the only pair whose two halves ask DIFFERENT questions of different
+  hosts, so porting it is a behaviour decision and not a translation.
+  ⚠ When it goes, `check-twins.sh` goes with it, and
+  [RULES.md](RULES.md) section 2 and `scripts/README.md` move in the same change.
+- **A sixth lens.** The fifth was "what a failure is allowed to hide" and it found
+  five things. Concurrency is the obvious next one: what two of this tool running
+  at once do to one state directory, which the ledger work touched and did not
+  finish.
 
 ⚠ **What a later session should know before touching this tool.** The two
 generated products remain the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1`

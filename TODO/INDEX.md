@@ -13,13 +13,13 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 66  open 8  blocked 0  done 58
+total 77  open 19  blocked 0  done 58
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 29 | 30 |
+| P1 | 12 | 0 | 29 | 41 |
 | P2 | 6 | 0 | 20 | 26 |
 | P3 | 1 | 0 | 6 | 7 |
 | **all** | **9** | **0** | **54** | **63** |
@@ -55,6 +55,7 @@ total 66  open 8  blocked 0  done 58
 | TOOL-14 | P2 | L | done | The last six shell pairs become one program, and `check-twins` goes | [`tooling.md`](tooling.md) |
 | TOOL-15 | P1 | M | done | The rule that could only ever speak after the fact | [`tooling.md`](tooling.md) |
 | TOOL-16 | P2 | M | done | Evidence that evaporates with the session | [`tooling.md`](tooling.md) |
+| TOOL-17 | P1 | L | open | The suite that could not have caught any of them | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -96,6 +97,16 @@ total 66  open 8  blocked 0  done 58
 | WSL-39 | P2 | M | done | An image that could not be pulled counts as a job that ran and failed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-40 | P1 | M | done | What a second reading of the core found | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-41 | P1 | M | done | What a failure is allowed to hide | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-42 | P1 | L | open | What this tool owns, and how it proves it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-43 | P1 | L | open | Many agents, many bases | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-44 | P1 | L | open | What a long-lived helper freezes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-45 | P1 | M | open | A deadline that bounds the caller's wall time | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-46 | P1 | M | open | The answer is exactly what happened | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-47 | P1 | M | open | The boundary the manual promises | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-48 | P1 | M | open | The embedded script tells the truth | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-49 | P1 | L | open | One command to readiness | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-50 | P1 | L | open | Diagnostics and a heartbeat for the base and what runs inside it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-51 | P1 | L | open | A config the agent does not have to write | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 
