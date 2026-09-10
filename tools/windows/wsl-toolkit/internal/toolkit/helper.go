@@ -99,7 +99,25 @@ type HelperServer struct {
 	server *http.Server
 	stop   chan struct{}
 	once   sync.Once
+	// runners holds one Runner per effective configuration, keyed by that
+	// configuration's fingerprint.
+	//
+	// ⭐ IT IS A CACHE OF SOMETHING WHOSE TRUTH CANNOT CHANGE. A Runner is a
+	// pure function of a config, so keying by the config is safe in the way
+	// keying by "the config at startup" was not. Rebuilding one per request
+	// would be correct too and costs a wsl.exe round trip per job, because it
+	// throws away the guest home lookup with it.
+	runners map[string]*Runner
 }
+
+// maxHelperRunners bounds the map above.
+//
+// ⚠ A CACHE WITH NO CEILING IS A MEMORY CEILING REACHED IN PRODUCTION. One
+// operator runs a handful of configurations; a client looping over generated
+// ones would otherwise grow this without limit. Past the cap the map is emptied
+// rather than evicted one by one: the next few requests pay a lookup each, and
+// the alternative is a recency list nothing here needs.
+const maxHelperRunners = 8
 
 // maxRequestBytes bounds a JSON body. ⛔ A body with no ceiling is a memory
 // ceiling reached in production. The archive endpoint streams and is bounded
@@ -118,12 +136,69 @@ func NewHelperServer(cfg Config, log func(string)) (*HelperServer, error) {
 		// not a token.
 		return nil, fmt.Errorf("no cryptographic randomness for a helper token: %w", err)
 	}
-	return &HelperServer{
+	h := &HelperServer{
 		cfg: cfg, runner: runner, log: log,
-		token: hex.EncodeToString(raw[:]),
-		stage: map[string]string{},
-		stop:  make(chan struct{}),
-	}, nil
+		token:   hex.EncodeToString(raw[:]),
+		stage:   map[string]string{},
+		stop:    make(chan struct{}),
+		runners: map[string]*Runner{},
+	}
+	h.runners[cfg.Fingerprint()] = runner
+	return h, nil
+}
+
+// runnerFor is the ONE way a handler reaches a Runner, and it is the fix for
+// WSL-44: the configuration comes from the REQUEST where the client sent one.
+//
+// ⛔ The client has already validated it, and it is validated again here. A
+// helper that trusted a config off the wire because a client said it was fine
+// would be taking a caller's word for a distribution name.
+func (h *HelperServer) runnerFor(cfg *Config) (*Runner, Config, error) {
+	if cfg == nil {
+		return h.runner, h.cfg, nil
+	}
+	effective := *cfg
+	if err := effective.Validate(); err != nil {
+		return nil, effective, fmt.Errorf("the configuration sent with this request is not usable: %w", err)
+	}
+	key := effective.Fingerprint()
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if r, ok := h.runners[key]; ok {
+		return r, effective, nil
+	}
+	r, err := NewRunner(effective, h.log)
+	if err != nil {
+		return nil, effective, err
+	}
+	if len(h.runners) >= maxHelperRunners {
+		h.runners = map[string]*Runner{}
+	}
+	h.runners[key] = r
+	return r, effective, nil
+}
+
+// runnerForBody reads an optional configuration from a GET's query string,
+// where a body would be unusual, and falls back to the helper's own.
+//
+// ⚠ base/status is a GET, and a GET with a body is something intermediaries
+// are free to drop. The config travels base64 in the query so the route keeps
+// its shape.
+func (h *HelperServer) runnerForBody(r *http.Request) (*Runner, error) {
+	raw := r.URL.Query().Get("config_b64")
+	if raw == "" {
+		return h.runner, nil
+	}
+	data, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, fmt.Errorf("config_b64 is not base64: %w", err)
+	}
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("config_b64 does not parse: %w", err)
+	}
+	runner, _, err := h.runnerFor(&cfg)
+	return runner, err
 }
 
 // Serve listens on the loopback interface and blocks until stopped.
@@ -295,7 +370,7 @@ func (h *HelperServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 			limits.MaxEntries = n
 		}
 	}
-	entries, total, err := extractInto(io.LimitReader(r.Body, limits.MaxBytes+1<<20), dir, limits)
+	got, err := extractInto(io.LimitReader(r.Body, limits.MaxBytes+1<<20), dir, limits)
 	if err != nil {
 		if rmErr := RemoveInside(h.runner.home, dir); rmErr != nil {
 			h.log("could not remove a refused upload: " + rmErr.Error())
@@ -314,7 +389,7 @@ func (h *HelperServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 		h.log("could not record the uploaded workspace " + id + ": " + err.Error())
 	}
 	writeHelperJSON(w, http.StatusOK, map[string]any{
-		"schema": HelperSchema, "id": id, "entries": entries, "bytes": total,
+		"schema": HelperSchema, "id": id, "entries": got.Delivered, "bytes": got.Bytes,
 	})
 }
 
@@ -351,6 +426,17 @@ type HelperRunRequest struct {
 	// door sweep found it missing before this shipped, which is the SECOND time
 	// a job flag has been dropped between the two routes.
 	MaxOutput int64 `json:"max_output,omitempty"`
+	// Config is the EFFECTIVE configuration the client already read and
+	// validated, and it is what the helper acts on.
+	//
+	// ⛔ A HELPER CACHES NOTHING WHOSE TRUTH CAN CHANGE. It used to build one
+	// Runner from the config it read at startup and keep it for its lifetime, so
+	// a client that edited its catalog and asked for a fleet got the OLD
+	// catalog, and `base ensure --preset alpine` announced Alpine, saved Alpine
+	// and rebuilt whatever the helper's startup config had said. WSL-44,
+	// issue 17. A request that omits this is served from the helper's own
+	// config, which is what an older client sends.
+	Config *Config `json:"config,omitempty"`
 }
 
 // HelperMatrixRequest is the wire shape of a fleet run.
@@ -412,11 +498,17 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	// cleanup could see.
 	defer h.releaseStaging(req.StagingID)
 
+	runner, _, err := h.runnerFor(req.Config)
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+
 	// ⭐ THE HEADER GOES OUT BEFORE THE JOB STARTS. Once it has, the client
 	// is reading, and every byte the container writes reaches it as it is
 	// written rather than when the job is over.
 	events := newEventWriter(w)
-	res := h.runner.Run(r.Context(), JobSpec{
+	res := runner.Run(r.Context(), JobSpec{
 		Image: req.Image, Script: payload, Workspace: staged, Env: req.Env,
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
 		Limits: req.limits(), ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
@@ -438,7 +530,17 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": "script_b64 is not base64: " + err.Error()})
 		return
 	}
-	selected, err := h.cfg.SelectImages(req.Images)
+	runner, effective, err := h.runnerFor(req.Config)
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	// ⛔ RESOLVED AGAINST THE CONFIG THAT CAME WITH THE REQUEST. `run` resolves
+	// a catalog id on the client and sends a full reference, so it always saw a
+	// config edit; `matrix` sends ids and resolves them here, so it saw the
+	// catalog this process read at startup and answered "not a catalog image"
+	// about a row the client had just added. WSL-44, issue 17.
+	selected, err := effective.SelectImages(req.Images)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -456,7 +558,7 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 	defer h.releaseStaging(req.StagingID)
 
 	events := newEventWriter(w)
-	report, err := h.runner.RunMatrix(r.Context(), MatrixSpec{
+	report, err := runner.RunMatrix(r.Context(), MatrixSpec{
 		Images: selected, Script: payload, Workspace: staged, Env: req.Env,
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
 		Parallel: req.Parallel, Limits: req.limits(),
@@ -559,7 +661,12 @@ func (h *HelperServer) releaseStaging(id string) {
 
 func (h *HelperServer) handleBaseStatus(w http.ResponseWriter, r *http.Request) {
 	probe := r.URL.Query().Get("probe") == "1"
-	st, err := h.runner.Base().Status(r.Context(), probe)
+	runner, err := h.runnerForBody(r)
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	st, err := runner.Base().Status(r.Context(), probe)
 	if err != nil {
 		writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
@@ -568,8 +675,14 @@ func (h *HelperServer) handleBaseStatus(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) {
+	// ⛔ THE CONFIG IS ON THIS REQUEST TOO, and its absence was the worst of
+	// WSL-44's three symptoms. `base ensure --preset alpine` used to send only
+	// {force}: the client announced Alpine, saved Alpine to its own config, and
+	// the helper rebuilt from whatever image ITS startup config named. A
+	// reporter watched a client say Alpine while the guest stayed Arch.
 	var req struct {
-		Force bool `json:"force"`
+		Force  bool    `json:"force"`
+		Config *Config `json:"config,omitempty"`
 	}
 	if r.ContentLength > 0 {
 		if err := decodeHelperBody(r, &req); err != nil {
@@ -577,7 +690,12 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	st, err := h.runner.Base().Ensure(r.Context(), req.Force)
+	runner, _, err := h.runnerFor(req.Config)
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	st, err := runner.EnsureBase(r.Context(), req.Force)
 	if err != nil {
 		writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "state": ""})
 		return

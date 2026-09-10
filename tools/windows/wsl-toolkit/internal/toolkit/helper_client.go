@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -22,6 +23,14 @@ import (
 type HelperClient struct {
 	endpoint HelperEndpoint
 	http     *http.Client
+	// cfg is the EFFECTIVE configuration this client read, and it travels with
+	// every request that depends on one.
+	//
+	// ⛔ IT IS LOADED HERE RATHER THAN PASSED IN BY EACH CALLER. A helper that
+	// acts on its own startup config is WSL-44, and "every call site remembers
+	// to attach the config" is the shape of guard that will one day be applied
+	// at three of four call sites. One door.
+	cfg Config
 }
 
 // DialHelper connects to a helper that is actually answering.
@@ -35,8 +44,13 @@ func DialHelper(ctx context.Context) (*HelperClient, error) {
 	if err != nil {
 		return nil, err
 	}
+	cfg, err := LoadConfig()
+	if err != nil {
+		return nil, err
+	}
 	c := &HelperClient{
 		endpoint: ep,
+		cfg:      cfg,
 		// No overall timeout: a matrix legitimately runs for an hour. The
 		// per-job deadline is where a runaway is bounded, and a client timeout
 		// here would report a network failure over a job that was working.
@@ -60,6 +74,10 @@ func DialHelper(ctx context.Context) (*HelperClient, error) {
 
 // Endpoint is what this client is talking to, for a report that names it.
 func (c *HelperClient) Endpoint() HelperEndpoint { return c.endpoint }
+
+// Config is the effective configuration this client will send, so a caller can
+// report which one a helper is being asked to act on.
+func (c *HelperClient) Config() Config { return c.cfg }
 
 func (c *HelperClient) call(ctx context.Context, method, path string, body any, out any) error {
 	var reader io.Reader
@@ -144,44 +162,45 @@ func (c *HelperClient) UploadWorkspace(ctx context.Context, hostDir string, limi
 
 // DownloadArtifacts pulls one run's artifacts and extracts them, with the same
 // per-entry validation the direct path uses.
-func (c *HelperClient) DownloadArtifacts(ctx context.Context, id, hostDir string, limits WorkspaceLimits) (int, error) {
+func (c *HelperClient) DownloadArtifacts(ctx context.Context, id, hostDir string, limits WorkspaceLimits) (ArtifactTransfer, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
 		"http://"+c.endpoint.Address+"/v1/artifacts?id="+id, nil)
 	if err != nil {
-		return 0, err
+		return ArtifactTransfer{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.endpoint.Token)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return 0, err
+		return ArtifactTransfer{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		return 0, nil
+		return ArtifactTransfer{}, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("the helper answered %s for the artifacts", resp.Status)
+		return ArtifactTransfer{}, fmt.Errorf("the helper answered %s for the artifacts", resp.Status)
 	}
 	if err := os.MkdirAll(hostDir, 0o700); err != nil {
-		return 0, err
+		return ArtifactTransfer{}, err
 	}
 	dest, err := resolveExisting(hostDir)
 	if err != nil {
-		return 0, err
+		return ArtifactTransfer{}, err
 	}
-	entries, _, err := extractInto(resp.Body, dest, limits)
+	got, err := extractInto(resp.Body, dest, limits)
 	if err != nil {
 		// ⛔ NOT ACKNOWLEDGED. The helper keeps the set so a caller can go
 		// back for it, which is the same rule the guest directory follows when
-		// its transfer fails.
-		return entries, err
+		// its transfer fails. What was missing is the caller being TOLD: the
+		// set id travels back on the result now. WSL-46, issue 24.
+		return got, err
 	}
 	if relErr := c.ReleaseArtifacts(ctx, id); relErr != nil {
 		// A set that could not be released is a leak, not a failed job. Cleanup
 		// collects it by age, so this is reported and not raised.
-		return entries, nil
+		return got, nil
 	}
-	return entries, nil
+	return got, nil
 }
 
 // ReleaseArtifacts tells the helper the set arrived and may go.
@@ -221,20 +240,33 @@ func (c *HelperClient) BaseStatus(ctx context.Context, probe bool) (BaseState, e
 		State BaseState `json:"state"`
 	}
 	path := "/v1/base/status"
+	sep := "?"
 	if probe {
 		path += "?probe=1"
+		sep = "&"
+	}
+	// The config travels base64 in the query because this route is a GET, and a
+	// GET carrying a body is something an intermediary may drop.
+	if raw, err := json.Marshal(c.cfg); err == nil {
+		path += sep + "config_b64=" + url.QueryEscape(base64.StdEncoding.EncodeToString(raw))
 	}
 	err := c.call(ctx, http.MethodGet, path, nil, &out)
 	return out.State, err
 }
 
 // BaseEnsure asks the helper to build or repair the base.
+//
+// ⛔ THE CONFIG GOES WITH IT. This request used to carry {force} alone, so
+// `base ensure --preset alpine` announced Alpine, wrote Alpine to the client's
+// config, and had the helper rebuild from the image ITS startup config named.
+// WSL-44, issue 17.
 func (c *HelperClient) BaseEnsure(ctx context.Context, force bool) (BaseState, error) {
 	var out struct {
 		State BaseState `json:"state"`
 		Error string    `json:"error"`
 	}
-	if err := c.call(ctx, http.MethodPost, "/v1/base/ensure", map[string]bool{"force": force}, &out); err != nil {
+	body := map[string]any{"force": force, "config": c.cfg}
+	if err := c.call(ctx, http.MethodPost, "/v1/base/ensure", body, &out); err != nil {
 		return out.State, err
 	}
 	if out.Error != "" {

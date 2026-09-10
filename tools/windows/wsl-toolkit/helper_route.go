@@ -48,16 +48,20 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 	}
 	res.Label = label
 	if j.artifactDir != "" && artifactsID != "" && res.ArtifactError == "" {
-		n, err := c.DownloadArtifacts(ctx, artifactsID, j.artifactDir, j.limits())
+		got, err := c.DownloadArtifacts(ctx, artifactsID, j.artifactDir, j.limits())
+		res.Artifacts, res.ArtifactsAttempted = got.Delivered, got.Attempted
 		if err != nil {
 			// ⛔ A FIELD ON THE RESULT, NOT AN ERROR RETURNED PAST IT. Returning
 			// an error here made the caller report exit 2 for a job that ran and
 			// discarded the container's own exit code. The verdict reads this
 			// field, so both routes reach the same number the same way.
 			res.ArtifactError = err.Error()
+			// ⭐ AND THE HELPER STILL HAS THE SET. It is not acknowledged when
+			// the download fails, so naming it here is what makes the copy
+			// recoverable rather than merely existing. WSL-46, issue 24.
+			res.RetainedKind, res.Retained = "helper", artifactsID
 			return res, nil
 		}
-		res.Artifacts = n
 	}
 	return res, nil
 }
@@ -89,10 +93,12 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 	if j.artifactDir != "" && artifactsID != "" {
 		if _, err := c.DownloadArtifacts(ctx, artifactsID, j.artifactDir, j.limits()); err != nil {
 			// Every row asked for output and none of it arrived, so every row
-			// carries the failure and the fleet's counts move with them.
+			// carries the failure and the fleet's counts move with them, and
+			// every row names the set the helper still holds.
 			for i := range report.Rows {
 				if report.Rows[i].ArtifactError == "" {
 					report.Rows[i].ArtifactError = err.Error()
+					report.Rows[i].RetainedKind, report.Rows[i].Retained = "helper", artifactsID
 				}
 			}
 			report.Recount()

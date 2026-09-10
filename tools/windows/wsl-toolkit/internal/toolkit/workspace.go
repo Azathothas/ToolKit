@@ -327,32 +327,47 @@ func matchesAny(rel string, patterns []string) bool {
 //	a name with .. in it       climbs out of the destination
 //	a symlink leaving the tree the next entry writes THROUGH it, outside
 //	a Windows device name      a file called NUL swallows what is written to it
-func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, log func(string)) (int, int64, error) {
+//
+// ArtifactTransfer is what one fetch produced.
+//
+// ⛔ ATTEMPTED AND DELIVERED ARE TWO NUMBERS, and reporting one of them under
+// the other's name is WSL-46, issue 24. The count was incremented as each entry
+// was READ, so a transfer that refused its third entry answered "3 artifacts"
+// beside the failure that stopped it, and a caller reading the number believed
+// three files had arrived. Delivered is incremented only once an entry exists
+// at the destination.
+type ArtifactTransfer struct {
+	Attempted int   `json:"attempted"`
+	Delivered int   `json:"delivered"`
+	Bytes     int64 `json:"bytes"`
+}
+
+func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, log func(string)) (ArtifactTransfer, error) {
+	var zero ArtifactTransfer
 	if err := AssertArgvSafe([]string{guestDir}); err != nil {
-		return 0, 0, err
+		return zero, err
 	}
 	if err := os.MkdirAll(hostDir, 0o700); err != nil {
-		return 0, 0, err
+		return zero, err
 	}
 	realDest, err := resolveExisting(hostDir)
 	if err != nil {
-		return 0, 0, err
+		return zero, err
 	}
 
 	pr, pw := io.Pipe()
 	type result struct {
-		entries int
-		bytes   int64
-		err     error
+		got ArtifactTransfer
+		err error
 	}
 	done := make(chan result, 1)
 	go func() {
-		entries, total, err := extractInto(pr, realDest, limits)
+		got, err := extractInto(pr, realDest, limits)
 		// Drain the rest so the guest's tar is never blocked writing into a
 		// pipe nobody reads, which would hang the run rather than end it.
 		_, _ = io.Copy(io.Discard, pr)
 		_ = pr.CloseWithError(err)
-		done <- result{entries, total, err}
+		done <- result{got, err}
 	}()
 
 	errBuf := &boundedBuffer{max: 64 << 10}
@@ -360,15 +375,15 @@ func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDi
 	_ = pw.Close()
 	res := <-done
 	if res.err != nil {
-		return res.entries, res.bytes, res.err
+		return res.got, res.err
 	}
 	if execErr != nil || code != 0 {
-		return res.entries, res.bytes, fmt.Errorf("packing %s in the guest exited %d: %s", guestDir, code, firstLine(errBuf.String()))
+		return res.got, fmt.Errorf("packing %s in the guest exited %d: %s", guestDir, code, firstLine(errBuf.String()))
 	}
 	if log != nil {
-		log(fmt.Sprintf("artifacts: %d entries, %s written to %s", res.entries, HumanBytes(res.bytes), hostDir))
+		log(fmt.Sprintf("artifacts: %d entries, %s written to %s", res.got.Delivered, HumanBytes(res.got.Bytes), hostDir))
 	}
-	return res.entries, res.bytes, nil
+	return res.got, nil
 }
 
 var windowsDeviceNames = map[string]bool{
@@ -475,10 +490,9 @@ func SafeArchiveName(name string) (string, error) {
 	return filepath.Join(kept...), nil
 }
 
-func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (int, int64, error) {
+func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTransfer, error) {
 	tr := tar.NewReader(r)
-	entries := 0
-	var total int64
+	var got ArtifactTransfer
 	// ⛔ THE SET IS WHY TWO NAMES CANNOT BECOME ONE FILE. The per-name grammar
 	// above cannot see a collision, because a collision is a property of a PAIR.
 	// A container writing /out/Result and /out/result returned one five-byte file
@@ -495,14 +509,14 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (int, int64, 
 	for {
 		hdr, err := tr.Next()
 		if errors.Is(err, io.EOF) {
-			return entries, total, nil
+			return got, nil
 		}
 		if err != nil {
-			return entries, total, err
+			return got, err
 		}
 		rel, err := SafeArchiveName(hdr.Name)
 		if err != nil {
-			return entries, total, err
+			return got, err
 		}
 		if rel == "" {
 			continue
@@ -512,60 +526,63 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (int, int64, 
 		// asks the filesystem. A link written by an earlier entry is only
 		// visible to the second.
 		if _, err := ResolveInside(dest, target); err != nil {
-			return entries, total, fmt.Errorf("%w: %s", ErrWorkspaceRefused, err)
+			return got, fmt.Errorf("%w: %s", ErrWorkspaceRefused, err)
 		}
-		entries++
-		if entries > limits.MaxEntries {
-			return entries, total, fmt.Errorf("%w: the guest returned more than %d entries", ErrWorkspaceRefused, limits.MaxEntries)
+		got.Attempted++
+		if got.Attempted > limits.MaxEntries {
+			return got, fmt.Errorf("%w: the guest returned more than %d entries", ErrWorkspaceRefused, limits.MaxEntries)
 		}
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o700); err != nil {
-				return entries, total, err
+				return got, err
 			}
+			got.Delivered++
 		case tar.TypeReg:
 			if err := claim(rel, hdr.Name); err != nil {
-				return entries, total, err
+				return got, err
 			}
-			total += hdr.Size
-			if total > limits.MaxBytes {
-				return entries, total, fmt.Errorf("%w: the guest returned more than %s", ErrWorkspaceRefused, HumanBytes(limits.MaxBytes))
+			got.Bytes += hdr.Size
+			if got.Bytes > limits.MaxBytes {
+				return got, fmt.Errorf("%w: the guest returned more than %s", ErrWorkspaceRefused, HumanBytes(limits.MaxBytes))
 			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return entries, total, err
+				return got, err
 			}
 			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 			if err != nil {
-				return entries, total, err
+				return got, err
 			}
 			written, err := io.Copy(f, tr)
 			closeErr := f.Close()
 			if err != nil {
-				return entries, total, err
+				return got, err
 			}
 			if closeErr != nil {
-				return entries, total, closeErr
+				return got, closeErr
 			}
 			if written != hdr.Size {
-				return entries, total, fmt.Errorf("%w: %s declared %d bytes and %d arrived", ErrWorkspaceRefused, rel, hdr.Size, written)
+				return got, fmt.Errorf("%w: %s declared %d bytes and %d arrived", ErrWorkspaceRefused, rel, hdr.Size, written)
 			}
+			got.Delivered++
 		case tar.TypeSymlink, tar.TypeLink:
 			// ⛔ Not recreated. The entry after a link writes THROUGH it.
 			// Recording it keeps the information and removes the mechanism.
 			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return entries, total, err
+				return got, err
 			}
 			// ⚠ The sidecar's name is an entry name too, and a real file called
 			// x.link.txt would otherwise be overwritten by the record of a link
 			// called x. It goes through the same claim.
 			if err := claim(rel+".link.txt", hdr.Name+".link.txt"); err != nil {
-				return entries, total, err
+				return got, err
 			}
 			note := fmt.Sprintf("wsl-toolkit: the guest returned a link here, pointing at %q. "+
 				"Links are recorded rather than recreated, because the entry after one writes through it.\n", hdr.Linkname)
 			if err := os.WriteFile(target+".link.txt", []byte(note), 0o600); err != nil {
-				return entries, total, err
+				return got, err
 			}
+			got.Delivered++
 		default:
 			// A device, a socket or a fifo is not an artifact.
 			continue

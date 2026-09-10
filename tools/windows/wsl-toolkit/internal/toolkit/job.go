@@ -16,6 +16,72 @@ import (
 	"time"
 )
 
+// StopGraceFlag is what every removal of a container this tool started carries.
+//
+// ⛔ IT IS WHERE WSL-45's MISSING SECONDS WERE, and it is a measurement rather
+// than a theory. `podman rm -f` sends SIGTERM and waits out podman's default
+// ten second stop timeout before SIGKILL, so removing a container whose payload
+// is still running cost 10.63s on the development host on 2026-09-10. The same
+// removal with `-t 0` cost 0.56s, of which 0.46s is the wsl.exe round trip
+// itself. That is the whole difference between a 2s deadline returning in about
+// sixteen seconds and returning in about five.
+//
+// ⚠ IT IS CORRECT AND NOT MERELY FAST. Every container removed through this has
+// finished, has passed a deadline the caller set, or has been named by a caller
+// asking for it to go. A payload already told its time is up does not get
+// another ten seconds to ignore a signal.
+const StopGraceFlag = "-t 0"
+
+// CleanupGrace is how long a job that passed its deadline may spend stopping.
+//
+// ⛔ A DEADLINE BOUNDS THE CALLER, NOT ONLY THE CHILD. WSL-19 put the deadline
+// in and bounded the child, which was the problem it was given; WSL-45 is the
+// discovery that a caller who asked for two seconds still waited fifteen,
+// because killing the container and removing the guest directory each cost a
+// fresh wsl.exe invocation with a ceiling measured in minutes. A caller's wall
+// time is now the deadline plus this and no more, and the manual says so.
+//
+// ⚠ TEN SECONDS IS A CEILING, NOT A BUDGET ANYTHING SPENDS. With StopGraceFlag
+// the kill and the teardown after a timed-out job cost about 0.6s and 0.5s on
+// the development host, so this is roughly nine times the measured cost and
+// exists for a machine under load. A machine where it is still not enough
+// leaves the container for `gc`, which is the outcome that was always available
+// and is now the bounded one.
+const CleanupGrace = 10 * time.Second
+
+// cleanupBudget is ONE allowance shared by everything a timed-out job still has
+// to do, rather than a fresh ceiling per step.
+//
+// ⚠ IT IS A TYPE RATHER THAN A PAIR OF LOCALS because the two are used in
+// different scopes: the kill starts the budget and a deferred teardown spends
+// the rest of it. A bare context and cancel split across those two reads to
+// `go vet` as a cancel that is not called on every path, which is a warning
+// worth not teaching anybody to ignore.
+type cleanupBudget struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func newCleanupBudget(parent context.Context, d time.Duration) *cleanupBudget {
+	ctx, cancel := context.WithTimeout(parent, d)
+	return &cleanupBudget{ctx: ctx, cancel: cancel}
+}
+
+// Context is the budget, or the fallback where no deadline ever fired. A nil
+// receiver is the ordinary case and answers the fallback.
+func (b *cleanupBudget) Context(fallback context.Context) context.Context {
+	if b == nil {
+		return fallback
+	}
+	return b.ctx
+}
+
+func (b *cleanupBudget) Release() {
+	if b != nil {
+		b.cancel()
+	}
+}
+
 // JobLabel is stamped on every container this executable starts, so cleanup can
 // find one whose run was killed.
 //
@@ -69,16 +135,26 @@ type JobSpec struct {
 
 // JobResult is what one unit of work produced.
 type JobResult struct {
-	Label     string        `json:"label"`
-	Image     string        `json:"image"`
-	ID        string        `json:"id"`
-	Exit      int           `json:"exit"`
-	Duration  time.Duration `json:"duration_ns"`
-	Started   time.Time     `json:"started"`
-	Stdout    string        `json:"stdout,omitempty"`
-	Stderr    string        `json:"stderr,omitempty"`
-	Artifacts int           `json:"artifacts"`
-	Error     string        `json:"error,omitempty"`
+	Label    string        `json:"label"`
+	Image    string        `json:"image"`
+	ID       string        `json:"id"`
+	Exit     int           `json:"exit"`
+	Duration time.Duration `json:"duration_ns"`
+	Started  time.Time     `json:"started"`
+	Stdout   string        `json:"stdout,omitempty"`
+	Stderr   string        `json:"stderr,omitempty"`
+	// Artifacts is what was DELIVERED to the directory the caller named.
+	//
+	// ⛔ IT USED TO BE WHAT WAS ENCOUNTERED. The extractor incremented as each
+	// entry was read, so a transfer refused at its third entry answered
+	// "artifacts: 3" beside the failure that stopped it, and a caller reading
+	// the number believed three files had arrived. WSL-46, issue 24. The count
+	// that changed meaning would have been worse than a count that gained a
+	// sibling, so the sibling is what this is.
+	Artifacts int `json:"artifacts"`
+	// ArtifactsAttempted is what the guest offered, delivered or not.
+	ArtifactsAttempted int    `json:"artifacts_attempted"`
+	Error              string `json:"error,omitempty"`
 	// ArtifactError is the OUTPUT TRANSFER's outcome, separate from the
 	// command's. ⛔ The two were one field, and the verdict read the
 	// command's exit code alone, so a job that succeeded and could not deliver
@@ -87,10 +163,30 @@ type JobResult struct {
 	// GuestDir is set only when something is still in it worth fetching by
 	// hand. An empty value means the job was torn down and there is nothing to
 	// go back for.
-	GuestDir   string `json:"guest_dir,omitempty"`
-	TimedOut   bool   `json:"timed_out"`
-	Unreached  bool   `json:"unreached"`
-	Transcript string `json:"transcript,omitempty"`
+	GuestDir string `json:"guest_dir,omitempty"`
+	// RetainedKind and Retained name a copy of the output that could not be
+	// delivered and was KEPT, wherever it lives.
+	//
+	// ⛔ THE HELPER ROUTE NAMED NOTHING. The helper deliberately does not
+	// acknowledge an artifact set whose download failed, so the set is still
+	// there and a caller can go back for it - and the result said only that the
+	// transfer had failed, so nobody could. WSL-46, issue 24. Kind is "guest"
+	// or "helper"; Retained is a guest path for the first and an artifact set
+	// id for the second, and both are what `artifacts retry` takes.
+	RetainedKind string `json:"retained_kind,omitempty"`
+	Retained     string `json:"retained,omitempty"`
+	TimedOut     bool   `json:"timed_out"`
+	Unreached    bool   `json:"unreached"`
+	Transcript   string `json:"transcript,omitempty"`
+	// EffectiveExit is what THIS PROCESS returns for this job, which is not
+	// always the container's own code.
+	//
+	// ⛔ `exit` KEEPS MEANING THE CONTAINER'S CODE. A caller already reads it
+	// and redefining it would break them silently, so the verdict is a second,
+	// clearly named field rather than a new meaning for an old one. WSL-46,
+	// issue 24: a failed transfer exited 1 while the JSON said exit 0, and
+	// nothing in the object carried the 1.
+	EffectiveExit int `json:"effective_exit"`
 	// StdoutBytes is what the command WROTE, which is not always what Stdout
 	// holds. ⛔ The pair exists because the difference used to be invisible: a
 	// 9 MiB stdout came back as 8 MiB with exit 0 and no field said so.
@@ -112,17 +208,71 @@ func (j JobResult) Failed() bool {
 	return j.Exit != 0 || j.TimedOut || j.ArtifactError != ""
 }
 
+// The exit codes this tool answers with, and they mean four different things.
+//
+//	0    it ran and it agreed
+//	1    it ran and it disagreed
+//	2    it could not run: bad usage, a missing base, a refusal
+//	124  a deadline was reached, as coreutils' timeout reports it
+//
+// ⛔ ONE HOME. They were named constants in main and bare literals in here,
+// which is a value in two places with nothing checking that they agree.
+const (
+	ExitOK      = 0
+	ExitFailed  = 1
+	ExitCannot  = 2
+	ExitTimeout = 124
+)
+
+// Verdict is the code the process returns for this job.
+//
+// ⛔ ONE DEFINITION, for the same reason Failed has one: the rule lived in the
+// command layer, so nothing inside a result could state its own verdict and the
+// structured answer could not carry it.
+func (j JobResult) Verdict() int {
+	switch {
+	case j.Unreached:
+		return ExitCannot
+	case j.TimedOut:
+		return ExitTimeout
+	case j.Exit != 0:
+		// ⭐ The container's own exit code is forwarded verbatim, which is the
+		// whole point of running one. A wrapper that flattened it to 1 would
+		// make every downstream test read the same. It also WINS over a failed
+		// transfer: a job that exited 7 and delivered nothing exited 7, and
+		// that is the more specific fact.
+		return j.Exit
+	case j.ArtifactError != "":
+		// ⛔ The command succeeded and what it was asked to deliver did not
+		// arrive. Exiting 0 here is how a green pipeline lost its build output.
+		return ExitFailed
+	default:
+		return ExitOK
+	}
+}
+
+// Seal fills in the fields derived from the rest, immediately before the result
+// is written out.
+//
+// ⛔ IT IS CALLED AT THE POINT OF RENDERING, not at the point of production. A
+// helper-run result is produced on one machine and then AMENDED on another when
+// the artifact download fails, so a verdict computed where the job ran would be
+// stale in exactly the case the field exists for.
+func (j *JobResult) Seal() { j.EffectiveExit = j.Verdict() }
+
 // Runner executes jobs in the owned distribution.
 type Runner struct {
-	cfg      Config
-	base     *Base
-	wsl      *Wsl
-	home     string
-	ledger   *Ledger
-	log      func(string)
-	homeOnce sync.Once
-	homeDir  string
-	homeErr  error
+	cfg    Config
+	base   *Base
+	wsl    *Wsl
+	home   string
+	ledger *Ledger
+	log    func(string)
+	homeMu sync.Mutex
+	// homeDir is the guest account's home once it has been read. ⛔ Empty
+	// means "not known yet", and there is deliberately no cached error beside
+	// it: see guestHome.
+	homeDir string
 }
 
 // NewRunner binds a runner to this host. It does not create the base; a caller
@@ -147,31 +297,62 @@ func NewRunner(cfg Config, log func(string)) (*Runner, error) {
 	return &Runner{cfg: cfg, base: base, wsl: base.wsl, home: home, ledger: led, log: log}, nil
 }
 
-// guestHome asks the distribution where the account's home is, once.
+// guestHome asks the distribution where the account's home is, and remembers
+// the answer.
 //
 // ⚠ Read, never assumed. /home/<user> is a convention: an image whose useradd
 // defaults differ puts it elsewhere, and a path built from the convention then
 // resolves to a directory nobody owns.
+//
+// ⛔ IT CACHES SUCCESS AND NEVER FAILURE, and that is a rule this tool holds
+// everywhere rather than a fix to one function. It was a sync.Once wrapping BOTH
+// the value and the error, so one lookup made while the base was absent poisoned
+// the helper for its whole lifetime: the base was rebuilt, `base status --probe`
+// reported healthy, and every later job still answered "There is no distribution
+// with the supplied name" until somebody restarted the helper. WSL-44, issue 19.
+// WSL-32 was a probe cache with the same shape, which is why this is written as
+// a rule: A NEGATIVE RESULT IS NEVER CACHED ANYWHERE IN THIS TOOL.
 func (r *Runner) guestHome(ctx context.Context) (string, error) {
-	r.homeOnce.Do(func() {
-		out, stderr, code, err := r.wsl.Capture(ctx, r.cfg.Base.Name, r.cfg.Base.User,
-			[]byte("printf '%s\\n' \"$HOME\"\n"), 2*time.Minute)
-		if err != nil || code != 0 {
-			r.homeErr = fmt.Errorf("could not read the guest home directory (exit %d): %s", code, firstLine(stderr+out))
-			return
-		}
-		h := strings.TrimSpace(firstLine(out))
-		if !strings.HasPrefix(h, "/") {
-			r.homeErr = fmt.Errorf("the guest reported a home directory of %q, which is not an absolute path", h)
-			return
-		}
-		if err := AssertArgvSafe([]string{h}); err != nil {
-			r.homeErr = err
-			return
-		}
-		r.homeDir = h
-	})
-	return r.homeDir, r.homeErr
+	r.homeMu.Lock()
+	defer r.homeMu.Unlock()
+	if r.homeDir != "" {
+		return r.homeDir, nil
+	}
+	out, stderr, code, err := r.wsl.Capture(ctx, r.cfg.Base.Name, r.cfg.Base.User,
+		[]byte("printf '%s\\n' \"$HOME\"\n"), 2*time.Minute)
+	if err != nil || code != 0 {
+		return "", fmt.Errorf("could not read the guest home directory (exit %d): %s", code, firstLine(stderr+out))
+	}
+	h := strings.TrimSpace(firstLine(out))
+	if !strings.HasPrefix(h, "/") {
+		return "", fmt.Errorf("the guest reported a home directory of %q, which is not an absolute path", h)
+	}
+	if err := AssertArgvSafe([]string{h}); err != nil {
+		return "", err
+	}
+	r.homeDir = h
+	return r.homeDir, nil
+}
+
+// ForgetGuestHome drops the remembered answer, for the operations that can
+// change it.
+//
+// ⚠ Caching only success is not enough on its own: a base rebuilt from another
+// rootfs can put the account's home somewhere else, and a remembered value would
+// then be a stale SUCCESS rather than a stale failure. Rebuilding the base
+// clears it.
+func (r *Runner) ForgetGuestHome() {
+	r.homeMu.Lock()
+	defer r.homeMu.Unlock()
+	r.homeDir = ""
+}
+
+// EnsureBase is the ONE way a caller brings the base up through a Runner, so
+// the remembered guest home cannot outlive the distribution it describes.
+func (r *Runner) EnsureBase(ctx context.Context, force bool) (BaseState, error) {
+	st, err := r.base.Ensure(ctx, force)
+	r.ForgetGuestHome()
+	return st, err
 }
 
 // Base exposes the lifecycle, so a caller can ensure it before running.
@@ -192,9 +373,27 @@ func newJobID() (string, error) {
 // ⛔ NO HOST PATH REACHES THE CONTAINER. It gets two directories, both inside
 // the distribution's own filesystem: a copy of the workspace, and an empty one
 // to hand things back in.
-func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
+func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	started := time.Now()
-	res := JobResult{Label: spec.Label, Image: spec.Image, Started: started.UTC()}
+	trace := newJobTrace()
+	res = JobResult{Label: spec.Label, Image: spec.Image, Started: started.UTC()}
+	// ⛔ REGISTERED FIRST, SO IT RUNS LAST. Defers run in reverse, and the
+	// teardown below is a defer too: a duration assigned before it ran was the
+	// interval up to the point the container stopped, not the interval the
+	// caller waited. WSL-45 measured 3.9s reported against 15.2s waited, and
+	// the eleven second difference was entirely inside the teardown this now
+	// runs after.
+	// budget is non-nil only once a deadline has fired, and it is what makes the
+	// grace ONE allowance rather than one per step. It is declared here so the
+	// teardown defer below can spend what the kill starts.
+	var budget *cleanupBudget
+	defer func() {
+		budget.Release()
+		res.Duration = time.Since(started)
+		if res.TimedOut || TraceEnabled() {
+			r.log("timing: " + trace.Render())
+		}
+	}()
 	if res.Label == "" {
 		res.Label = spec.Image
 	}
@@ -258,9 +457,17 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 		}
 		// Teardown runs whatever happened, including a cancelled context, so it
 		// gets its own budget rather than inheriting a dead one.
-		tctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+		//
+		// ⛔ EXCEPT WHERE A DEADLINE FIRED, in which case it SHARES the one the
+		// kill above already started. Five minutes is the right ceiling for an
+		// ordinary job whose caller is not waiting on a clock; it is the wrong
+		// one for a caller who asked for two seconds, and the two ceilings added
+		// together are where WSL-45's missing eleven seconds were.
+		ordinary, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
 		defer cancel()
-		if err := r.teardown(tctx, id, jobsRoot, guestJob); err != nil {
+		err := r.teardown(budget.Context(ordinary), id, jobsRoot, guestJob)
+		trace.Mark("teardown")
+		if err != nil {
 			r.log("cleanup after job " + id + ": " + err.Error())
 			return
 		}
@@ -326,11 +533,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 		Script: append(guestRuntimePrologue(), runScript...),
 		Stdout: streams.Out, Stderr: marker,
 	})
+	trace.Mark("exec")
 	if err := marker.Flush(); err != nil {
 		r.log("could not flush the job's error stream: " + err.Error())
 	}
 	streams.Close()
-	res.Duration = time.Since(started)
+	trace.Mark("streams")
 	streams.Apply(&res)
 	res.Exit = code
 
@@ -339,7 +547,14 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 		// ⭐ 124, as coreutils' timeout and -CommandTimeoutSeconds both report.
 		res.TimedOut, res.Exit = true, 124
 		res.Error = fmt.Sprintf("the job passed its %s deadline", spec.Timeout)
-		r.killContainer(context.WithoutCancel(ctx), container)
+		// ⛔ ONE BUDGET FOR EVERYTHING THAT REMAINS. The kill had two minutes of
+		// its own and the teardown had five, which are ceilings and not budgets:
+		// a caller who asked for two seconds waited for the sum of whatever they
+		// each cost. This context is shared with the teardown defer below, so
+		// the caller's wall time past the deadline is bounded once.
+		budget = newCleanupBudget(context.WithoutCancel(ctx), CleanupGrace)
+		r.killContainer(budget.Context(ctx), container)
+		trace.Mark("kill")
 	case !marker.Seen() && (code != 0 || execErr != nil):
 		// ⛔ NOTHING RAN, so this is not the payload's exit code. The engine
 		// could not acquire the image, could not create the container, or could
@@ -352,8 +567,8 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 	}
 
 	if spec.ArtifactDir != "" && !res.Unreached {
-		n, _, err := r.wsl.FetchArtifacts(ctx, r.cfg.Base.Name, user, guestOut, spec.ArtifactDir, limits, nil)
-		res.Artifacts = n
+		got, err := r.wsl.FetchArtifacts(ctx, r.cfg.Base.Name, user, guestOut, spec.ArtifactDir, limits, nil)
+		res.Artifacts, res.ArtifactsAttempted = got.Delivered, got.Attempted
 		if err != nil {
 			// ⛔ A FAILED TRANSFER IS ITS OWN FIELD. Folding it into Error left
 			// the verdict reading Exit alone, so a container that succeeded and
@@ -365,6 +580,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) JobResult {
 			// defect nothing could undo afterwards. gc collects it later under
 			// its own age policy.
 			res.GuestDir = guestJob
+			res.RetainedKind, res.Retained = "guest", guestJob
 			keepGuest = true
 		}
 	}
@@ -501,7 +717,7 @@ func (r *Runner) copyStaged(ctx context.Context, from, to string) error {
 func (r *Runner) killContainer(ctx context.Context, name string) {
 	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-	script := []byte("podman rm -f " + shellQuote(name) + " >/dev/null 2>&1 || :\n")
+	script := []byte("podman rm -f " + StopGraceFlag + " " + shellQuote(name) + " >/dev/null 2>&1 || :\n")
 	if _, err := r.wsl.Exec(bounded, ExecRequest{
 		Distro: r.cfg.Base.Name, User: r.cfg.Base.User,
 		Script: append(guestRuntimePrologue(), script...), Timeout: 2 * time.Minute,
@@ -513,7 +729,7 @@ func (r *Runner) killContainer(ctx context.Context, name string) {
 // teardown removes the job's guest directory and any container holding its
 // name. It reads the state back rather than reporting what it attempted.
 func (r *Runner) teardown(ctx context.Context, id, jobsRoot, guestJob string) error {
-	script := "podman rm -f " + shellQuote("wtk-"+id) + " >/dev/null 2>&1 || :\n" +
+	script := "podman rm -f " + StopGraceFlag + " " + shellQuote("wtk-"+id) + " >/dev/null 2>&1 || :\n" +
 		GuestRemoveScript(jobsRoot, guestJob)
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 5*time.Minute)
 	if err != nil || code != 0 {

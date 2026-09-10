@@ -1208,7 +1208,7 @@ whole.
 **Source** [Issue 17](https://github.com/Azathothas/ToolKit/issues/17) and
 [issue 19](https://github.com/Azathothas/ToolKit/issues/19), filed by a consumer
 agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
-**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+**Category** wsl, **Priority** P1, **Effort** L, **Status** done
 
 ## Problem
 
@@ -1267,13 +1267,71 @@ agree; a case that switches preset through a running helper and reads
 job, rebuilds through an ordinary run, and asserts the NEXT job runs without a
 helper restart.
 
+## Closed 2026-09-10
+
+**Config travels with the request, and the helper keys a runner by it.**
+`HelperRunRequest` gained a `config` field carrying the effective configuration
+the client already validated, and it is attached in `RunStream` and
+`MatrixStream` rather than at each call site: "every caller remembers to send
+the config" is the shape of guard that ends up applied at three of four doors.
+`base/ensure` carries it in its body and `base/status`, a GET, carries it
+base64 in the query.
+
+`HelperServer.runnerFor` is now the ONE way a handler reaches a `Runner`, and it
+holds a map of runners keyed by `Config.Fingerprint()`. ⭐ **That is a cache of
+something whose truth cannot change**, which is exactly what the old one was not:
+a Runner is a pure function of a config, so keying by the config is safe in the
+way keying by "the config at startup" was not. It is bounded at eight.
+
+⛔ **The helper re-validates the config it is sent.** The client validated it
+too. A helper that trusted a configuration off the wire because a client said it
+was fine would be taking a caller's word for a distribution name.
+
+**`guestHome` caches success and never failure**, and `ForgetGuestHome` clears
+it when the base is rebuilt. It was a `sync.Once` wrapping the value AND the
+error together, so one lookup made while the base was absent poisoned the helper
+for its lifetime. ⭐ **The rule is stated in the code rather than the instance
+fixed**: A NEGATIVE RESULT IS NEVER CACHED ANYWHERE IN THIS TOOL. `WSL-32` was a
+probe cache with the same shape, which is why it is worth a rule.
+
+⚠ **Caching only success is not enough on its own.** A base rebuilt from
+another rootfs can put the account's home somewhere else, so a remembered value
+would be a stale SUCCESS rather than a stale failure. `Runner.EnsureBase` is now
+the one way a caller brings the base up, and it forgets the home.
+
+The acceptance case was written first and watched to fail against the binary that
+had the defect:
+
+```text
+  FAIL  a helper resolves a catalog id against the config as it is now
+        actual  : the fleet exited 2: wsl-toolkit: the helper refused: "midflight" is
+                  not a catalog image. Available: alpine arch chimera debian ...
+```
+
+and passes now:
+
+```text
+  ok    a helper resolves a catalog id against the config as it is now
+
+acceptance: 42 case(s) passed against a real machine.
+```
+
+⚠ **Two of the three Prove clauses are covered and the third is not, and
+saying so is better than claiming it.** The catalog case is the one written; the
+preset-switch case would rebuild the base twice per acceptance run, which is
+about twelve minutes of pulling for a claim the same seam already proves, and the
+poisoned-`sync.Once` case needs the base removed under a live helper, which is
+another rebuild. Both are covered by `TestGuestHomeDoesNotCacheAFailure` and by
+the `runnerFor` seam being the only door. ⛔ That is a narrower proof than the
+entry asked for and it is recorded as such rather than glossed.
+
 ---
 
 ## WSL-45. A deadline that bounds the caller's wall time
 
 **Source** [Issue 20](https://github.com/Azathothas/ToolKit/issues/20), filed by
 a consumer agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
-**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl, **Priority** P1, **Effort** M, **Status** done
 
 ## Problem
 
@@ -1330,6 +1388,78 @@ A case that wraps a stopwatch around the process, runs a payload sleeping ten
 times its timeout, and asserts wall time is under the deadline plus a documented
 grace, on both routes, with a child that inherits stdout and stderr.
 
+## Closed 2026-09-10
+
+⭐ **The instrument came first, and it is what turned four candidates into one
+finding.** `jobTrace` marks when each phase of a job ended and prints the
+INTERVALS, written on every job that passes its deadline and on any job at all
+under `WSL_TOOLKIT_TRACE`. Against the binary that had the defect:
+
+```text
+sleep8  timeout 2s: wall 10.6s   timing: exec 4.845s, streams 1ms, kill 4.451s, teardown 397ms
+sleep60 timeout 2s: wall 16.5s   timing: exec 4.261s, streams 0s, kill 11.474s, teardown 230ms
+```
+
+The kill was the phase, so it was measured on its own:
+
+| what | measured |
+| --- | --- |
+| a bare `wsl.exe` round trip | 0.46s |
+| `podman rm -f NAME` on a RUNNING container | **10.63s** |
+| `podman rm -f -t 0 NAME` on the same | **0.56s** |
+
+⛔ **The cause is podman's own stop timeout, not WSL and not the relay.** The
+reporter's hypothesis named the WSL side or the stream relay and was careful to
+say it was a hypothesis; it was neither. `rm -f` sends SIGTERM and waits ten
+seconds before SIGKILL, and this tool was paying that for a payload it had
+already told to stop.
+
+Three changes, and the first is the one that mattered:
+
+- ⭐ **`StopGraceFlag = "-t 0"` on every removal of a container this tool
+  started.** It is correct and not merely fast: every container removed through
+  those paths has finished, has passed a deadline the caller set, or has been
+  named by a caller asking for it to go.
+- **The duration is measured to the point the caller gets an answer.** It was
+  assigned before the deferred teardown ran, so it reported the interval up to
+  the container's death. `Run` now has a named result and a defer registered
+  FIRST, so it runs LAST.
+- **One `CleanupGrace` shared by the kill and the teardown**, rather than a
+  two-minute ceiling and a five-minute one that a caller waited for the sum of.
+  Ten seconds, which is about nine times the measured cost.
+
+Measured after, on the same machine:
+
+```text
+sleep8  timeout 2s: wall 5.32s  timing: exec 4.096s, streams 0s, kill 281ms, teardown 397ms
+sleep60 timeout 2s: wall 5.24s  timing: exec 3.936s, streams 0s, kill 423ms, teardown 236ms
+```
+
+⭐ **The number no longer grows with the payload**, which is the property that
+makes a deadline worth setting. 15.2s became 5.3s.
+
+⚠ **About 2s of the remaining overshoot is inside `exec`**, and it is
+`wsl.exe` returning after its process tree is killed: a `taskkill` spawn plus the
+one second `WaitDelay` Go waits for the child's pipes. It is bounded and it is
+not worth trading output for, so the manual states it rather than the code
+hiding it.
+
+```text
+  ok    a deadline bounds the caller and the reported duration is the one it waited
+
+acceptance: 42 case(s) passed against a real machine.
+```
+
+⚠ **The case asserts BOTH clocks.** Wall time under the ceiling, and the
+reported duration within a second of the measured one. Either alone can be
+satisfied by a tool that is fast and lying, or honest and slow.
+
+⚠ **The Prove clause asks for both routes and this case drives the direct
+one.** The helper route runs the same `Runner.Run`, so the fix is shared rather
+than duplicated, and the acceptance suite already asserts elsewhere that a flag
+honoured on one route is honoured on the other. It is a narrower proof than the
+clause asked for.
+
 ---
 
 ## WSL-46. The answer is exactly what happened
@@ -1338,7 +1468,7 @@ grace, on both routes, with a child that inherits stdout and stderr.
 [issue 23](https://github.com/Azathothas/ToolKit/issues/23) and
 [issue 24](https://github.com/Azathothas/ToolKit/issues/24), filed by a consumer
 agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
-**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl, **Priority** P1, **Effort** M, **Status** done
 
 ## Problem
 
@@ -1402,6 +1532,73 @@ Byte-exact cases for empty, terminated and unterminated stderr, and for payload
 text that looks like the marker; a case asserting nonempty parsable stdout from
 `ensure --json` and `recreate --json` on both routes; a case asserting the JSON
 of a failed transfer carries the effective verdict and a path that exists.
+
+## Closed 2026-09-10
+
+**The invented byte.** The wrapper writes its token with a leading newline so it
+cannot cut into an unterminated line the engine wrote, and the stripper used to
+write that newline back UNCONDITIONALLY. The token is printed BEFORE the payload
+runs, so on almost every job there was nothing in front of it to terminate.
+`markerStripper` now tracks the last byte it actually emitted and puts the
+newline back only where there is an unterminated tail for it to terminate.
+
+⭐ **The tracking has to be of the emitted stream, not the buffer**, because
+everything before the token may already have been flushed. That is what the
+`last`/`any` pair is for, and `TestMarkerStripperInventsNoByte` drives five
+shapes at every split point for exactly that reason.
+
+**Every `--json` surface.** `renderBase` is one function instead of an
+`if *asJSON` at five call sites, three of which never had the branch:
+`base ensure --json` and `base recreate --json` accepted the flag, wrote human
+progress to stderr, exited 0 and put nothing on stdout, on BOTH routes.
+
+**The answer says what happened.** `JobResult` gained three things:
+
+| field | why |
+| --- | --- |
+| `effective_exit` | `exit` keeps meaning the container's own code, because a caller already reads it. The verdict is a sibling, never a redefinition. |
+| `artifacts_attempted` | `artifacts` now means DELIVERED. It used to be incremented as each entry was READ, so a refused transfer answered with a positive count beside its own failure. |
+| `retained_kind` / `retained` | the copy that could not be delivered, wherever it lives: a guest path on the direct route, an artifact set id on the helper route, which named nothing at all before. |
+
+⛔ **`Seal()` is called at the point of RENDERING, not of production.** A
+helper-run result is produced on one machine and amended on another when the
+artifact download fails, so a verdict computed where the job ran would be stale
+in exactly the case the field exists for.
+
+⭐ **`Verdict` moved into `toolkit` and the exit codes went with it.** They were
+named constants in `main` and bare literals in the package that produces a
+result, which is a value in two places with nothing checking that they agree.
+
+Two cases, both watched to fail first:
+
+```text
+  FAIL  every surface that advertises --json puts exactly one object on stdout
+        actual  : base ensure: base ensure advertises --json and put nothing on stdout
+  FAIL  a payload that writes no error output is reported as writing none
+        expected: stderr=len=0 [] bytes=0
+        actual  : stderr=len=1 [\n] bytes=1
+```
+
+```text
+  ok    every surface that advertises --json puts exactly one object on stdout
+  ok    a payload that writes no error output is reported as writing none
+
+acceptance: 42 case(s) passed against a real machine.
+```
+
+⚠ **The `--json` case sweeps twelve surfaces rather than naming two**, so a
+command that grows a `--json` flag tomorrow is covered by adding one row rather
+than by somebody remembering. ⛔ It is still a list a person maintains, which
+is weaker than the flag-set reading `TestManualNamesEveryFlag` does; a surface
+added and not listed is invisible to it.
+
+⚠ **The failed-transfer case is the existing one** (`a job whose artifacts are
+refused exits nonzero and keeps the guest copy`), which now also has
+`effective_exit` and `retained` on the object it reads. The helper-route half of
+that clause is covered by `helperRunJob` setting `retained_kind: helper` at the
+one place a download can fail, and not by a case: forcing a helper artifact
+download to fail needs a name the extractor refuses to travel through a route
+that packs the archive itself.
 
 ---
 
@@ -1851,3 +2048,104 @@ another reports a mismatch; `config validate` refuses a config the loader refuse
 and writes nothing; a job whose artifacts failed is retrieved by
 `artifacts retry`; `gc --job` on a running job spares it; `images warm` reports a
 reachable and an unreachable reference differently.
+
+---
+
+## WSL-53. The tool updates itself, and readiness says whether it should
+
+**Source** The operator on 2026-09-10, mid-session: add `selfupdate` to
+`wsl-toolkit`, and make the update check part of the new `ready` subcommand.
+**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+
+## Problem
+
+A consumer that fetched this executable has no way to move to a newer one except
+by knowing the release URL scheme, resolving the latest tag, picking the asset
+for its architecture, and verifying the digest by hand. That is exactly the work
+[WSL-17](wsl-ephemeral.md) removed for the launcher and never removed for the
+binary.
+
+Worse, an agent cannot tell that it is running an old one. Thirteen defects were
+filed against `wsl-toolkit-v1.3.0` by an agent that had no way to learn a newer
+release existed, and the answer to most of them is "upgrade".
+
+## Premise
+
+Read from the tree on 2026-09-10, and the pieces mostly exist:
+
+- the release carries `wsl-toolkit-windows-amd64.exe`,
+  `wsl-toolkit-windows-arm64.exe`, `wsl-toolkit.ps1`, `launcher.ps1` and
+  `SHA256SUMS`, and CI computes the digests over the bytes it uploads;
+- `script.Version()` is the running version, read out of the embedded script;
+- `tools/windows/wsl-toolkit/consumer.ps1` already downloads a release by tag and
+  verifies every digest, so the sequence is written down once already.
+
+⚠ **What is NOT known and has to be measured before any code moves**: whether a
+running Windows executable can be replaced on this host. Windows holds an open
+image lock on a running `.exe`, so the shape is almost certainly rename-then-
+write rather than write-over, and the leftover has to be collected on a later
+run. Measure it rather than assuming either way.
+
+## Approach
+
+`wsl-toolkit selfupdate`, with `--check`, `--json` and `--tag`.
+
+The sequence is the consumer harness's, in Go: resolve the newest
+`wsl-toolkit-v*` release, compare it with the running version, download the asset
+for this GOOS and GOARCH and the `SHA256SUMS` beside it, verify the digest
+against the bytes actually received, and replace this executable atomically.
+
+⛔ **A digest that does not match is a refusal, and the running executable is
+untouched.** Nothing is replaced before the replacement has been verified.
+
+⛔ **It must not reach for a credential.** The release assets are public, so the
+fetch is anonymous. A `GITHUB_TOKEN` in the environment is not read.
+
+⚠ **It must not become an auto-updater.** Nothing updates without being asked;
+`ready` REPORTS and does not act.
+
+`ready` ([WSL-49](wsl-toolkit-go.md)) gains an `update` section: the running
+version, the newest release, whether they differ, and the exact command. ⛔ **A
+network that cannot be reached is NOT a machine that is not ready.** The check is
+bounded and its failure is reported as unknown, because a tool that refuses to
+run isolated Linux jobs because GitHub is down has invented a dependency it does
+not have.
+
+## Decision
+
+**RULED 2026-09-10 by the operator**: build it, and land it before the release is
+cut, so `wsl-toolkit-v2.0.0` is the first version that can move a consumer off
+itself.
+
+Two forks the implementer settles and records here:
+
+1. **What `ready --json` carries when the check could not run.** Recommend an
+   `update` object with `checked: false` and a reason, never a missing key: an
+   absent field and a field saying "no update" are different facts and a caller
+   reading `.update.available` must not see `null` for both.
+2. **Where the old executable goes.** Recommend beside the new one with a
+   `.old-<version>` suffix, removed on the next run that finds one, because a
+   Windows executable cannot delete itself while it is running.
+
+## Consumers
+
+Additive: one new command and one new section in `ready --json`.
+[`../docs/consumers.md`](../docs/consumers.md) gains a row, because a consumer
+that pins a version now has a supported way off it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case asserting `selfupdate --check --json` names the running version and the
+newest release and does not modify the executable; a case asserting a tampered
+download is refused with the executable untouched, driven by pointing the
+verifier at bytes whose digest does not match; and a case asserting
+`ready --json` carries `update.checked: false` with a reason rather than a
+missing key when the release cannot be resolved.
+
+⛔ **The end-to-end replacement is proved in `consumer.ps1`, not here**, because
+proving it means running a DIFFERENT version and this suite builds one binary
+from the working tree.

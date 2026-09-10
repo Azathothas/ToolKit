@@ -101,7 +101,7 @@ func TestExtractingAHostileArchiveWritesNothingOutsideTheDestination(t *testing.
 		t.Fatal(err)
 	}
 
-	if _, _, err := extractInto(&buf, dest, DefaultWorkspaceLimits()); err == nil {
+	if _, err := extractInto(&buf, dest, DefaultWorkspaceLimits()); err == nil {
 		t.Fatal("an archive whose first entry climbs out of the destination was accepted")
 	}
 	if _, err := os.Stat(outside); err == nil {
@@ -136,7 +136,7 @@ func TestALinkInAnArchiveBecomesANoteRatherThanALink(t *testing.T) {
 		if err := tw.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err := extractInto(&buf, dest, DefaultWorkspaceLimits()); err != nil {
+		if _, err := extractInto(&buf, dest, DefaultWorkspaceLimits()); err != nil {
 			t.Fatalf("%s link: %v", kind.name, err)
 		}
 		if info, err := os.Lstat(filepath.Join(dest, "escape")); err == nil {
@@ -169,7 +169,7 @@ func TestAnArchiveOverTheSizeLimitIsRefusedRatherThanTruncated(t *testing.T) {
 	if err := tw.Close(); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := extractInto(&buf, dest, WorkspaceLimits{MaxBytes: 1024, MaxEntries: 10})
+	_, err := extractInto(&buf, dest, WorkspaceLimits{MaxBytes: 1024, MaxEntries: 10})
 	if err == nil {
 		t.Fatal("an archive over the byte ceiling was accepted")
 	}

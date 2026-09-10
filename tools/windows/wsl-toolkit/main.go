@@ -25,19 +25,17 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-// Exit codes, and they mean three different things.
+// Exit codes, and they mean four different things. `script` and `run` forward
+// somebody else's code instead.
 //
-//	0    it ran and it agreed
-//	1    it ran and it disagreed
-//	2    it could not run: bad usage, a missing base, a refusal
-//	124  a deadline was reached, as coreutils' timeout reports it
-//
-// `script` and `run` forward somebody else's code instead.
+// ⛔ ONE HOME, and it is toolkit, where the meanings are written down. They
+// were literals in the package that produces a result and named constants here,
+// which is a value in two places with nothing checking that they agree.
 const (
-	exitOK      = 0
-	exitFailed  = 1
-	exitCannot  = 2
-	exitTimeout = 124
+	exitOK      = toolkit.ExitOK
+	exitFailed  = toolkit.ExitFailed
+	exitCannot  = toolkit.ExitCannot
+	exitTimeout = toolkit.ExitTimeout
 )
 
 var quiet bool

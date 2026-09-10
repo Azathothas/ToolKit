@@ -1,6 +1,8 @@
 package toolkit
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -296,6 +298,37 @@ func isDistroName(s string) bool {
 		}
 	}
 	return true
+}
+
+// Fingerprint is a stable digest of everything in a configuration that changes
+// what this tool does.
+//
+// ⛔ IT COVERS THE EFFECTIVE VALUES, not the stored ones. Two machines, one with
+// a file naming the built-in catalog and one with no file at all, behave
+// identically and fingerprint identically; a fingerprint over the raw file would
+// call them different and send a caller looking for a difference that is not
+// there.
+//
+// ⚠ The state directory is deliberately NOT in it. Where the configuration
+// lives is not what the configuration says, and two homes holding the same
+// settings are the same settings.
+func (c Config) Fingerprint() string {
+	// A canonical rendering rather than the struct's own JSON: the effective
+	// catalog and matrix are what a reader means by "the config", and they are
+	// computed rather than stored.
+	payload := struct {
+		Base   BaseConfig `json:"base"`
+		Images []Image    `json:"images"`
+		Matrix []string   `json:"matrix"`
+	}{Base: c.Base, Images: c.Catalog(), Matrix: c.MatrixDefault()}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		// A configuration that cannot be rendered cannot be compared, and
+		// answering with a constant would make every config look identical.
+		return "unfingerprintable"
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:8])
 }
 
 // Catalog is the effective image list: the stored one when it has entries, the

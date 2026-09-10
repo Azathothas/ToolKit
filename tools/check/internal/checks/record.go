@@ -155,7 +155,19 @@ func Record(t *Tree) Result {
 	}
 
 	// The per-priority table.
-	for _, p := range []string{"P0", "P1", "P2", "P3"} {
+	//
+	// ⛔ INCLUDING ITS `all` ROW, which was not checked for as long as this
+	// check existed. Measured on 2026-09-10: the row read `9 0 54 63` while the
+	// four rows above it summed to `16 0 62 78` and the state line agreed with
+	// the rows, and `check-record` reported ok. The index's own header says
+	// "the counts below are checked, not typed", and one row of them was typed.
+	// It is the exact defect class this check was built for, in this check.
+	// `TOOL-18`.
+	perPri["all"] = map[string]int{
+		"open": counts["open"], "blocked": counts["blocked"],
+		"done": counts["done"], "total": total,
+	}
+	for _, p := range []string{"P0", "P1", "P2", "P3", "all"} {
 		want := perPri[p]
 		if want == nil {
 			want = map[string]int{}

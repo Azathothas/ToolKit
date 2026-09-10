@@ -206,8 +206,13 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 // reportJob is the one renderer, so a job run through the helper and a job run
 // directly are reported identically.
 func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
+	// ⛔ SEALED HERE, at the point of rendering. A helper-run result is
+	// produced on one machine and amended on this one when the artifact
+	// download fails, so a verdict computed where the job ran would be stale in
+	// exactly the case the field exists for.
+	res.Seal()
 	if asJSON {
-		return jobVerdict(res), writeJSON(res)
+		return res.EffectiveExit, writeJSON(res)
 	}
 	// ⛔ NOTHING IS REPLAYED HERE. The container's bytes went to this
 	// process's own streams as they were written, so printing them again would
@@ -224,8 +229,11 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 	}
 	if res.ArtifactError != "" {
 		logf("  ! artifacts: %s", res.ArtifactError)
-		if res.GuestDir != "" {
-			logf("  ! the output is still in the guest at %s", res.GuestDir)
+		switch res.RetainedKind {
+		case "guest":
+			logf("  ! the output is still in the guest at %s", res.Retained)
+		case "helper":
+			logf("  ! the helper is still holding artifact set %s", res.Retained)
 		}
 	}
 	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
@@ -258,27 +266,10 @@ func transcriptHint(res toolkit.JobResult) string {
 	return "the complete output is kept: wsl-toolkit logs " + res.ID
 }
 
-func jobVerdict(res toolkit.JobResult) int {
-	switch {
-	case res.Unreached:
-		return exitCannot
-	case res.TimedOut:
-		return exitTimeout
-	case res.Exit != 0:
-		// ⭐ The container's own exit code is forwarded verbatim, which is the
-		// whole point of running one. A wrapper that flattened it to 1 would
-		// make every downstream test read the same. It also WINS over a failed
-		// transfer: a job that exited 7 and delivered nothing exited 7, and that
-		// is the more specific fact.
-		return res.Exit
-	case res.ArtifactError != "":
-		// ⛔ The command succeeded and what it was asked to deliver did not
-		// arrive. Exiting 0 here is how a green pipeline lost its build output.
-		return exitFailed
-	default:
-		return exitOK
-	}
-}
+// jobVerdict is toolkit.JobResult.Verdict, kept as a name this file already
+// uses. ⛔ The rule itself moved into the result, because a structured answer
+// that cannot state its own verdict is the defect WSL-46 is about.
+func jobVerdict(res toolkit.JobResult) int { return res.Verdict() }
 
 func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("matrix")
@@ -362,6 +353,11 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 
 // reportMatrix is the one renderer, for the same reason reportJob is.
 func reportMatrix(report toolkit.MatrixReport, asJSON bool) (int, error) {
+	// Every row is sealed for the same reason one job's result is: the fleet's
+	// rows are amended on this machine after a helper download fails.
+	for i := range report.Rows {
+		report.Rows[i].Seal()
+	}
 	if asJSON {
 		return report.Verdict(), writeJSON(report)
 	}
@@ -409,7 +405,7 @@ func ensureBase(ctx context.Context, runner *toolkit.Runner, allowed bool) error
 		return fmt.Errorf("%s is not registered and --ensure-base is off. Build it with: wsl-toolkit base ensure", st.Name)
 	}
 	logf("==> %s is not registered; building it first", st.Name)
-	if _, err := runner.Base().Ensure(ctx, false); err != nil {
+	if _, err := runner.EnsureBase(ctx, false); err != nil {
 		return err
 	}
 	return nil

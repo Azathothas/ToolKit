@@ -8,34 +8,35 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-09T21:00:00Z
 baseline        450b380, clean main; gate 17 checks, all passing, 31s.
-entries         total 78  open 20  blocked 0  done 58
+entries         total 80  open 17  blocked 0  done 63
 gate            18 checks, one binary, 43s, all passing
 ```
 
 ## Active work
 
-None in flight. Eleven entries were FILED at the end of this session and none is
-started: `WSL-42` to `WSL-52` and `TOOL-17`, twelve in all. They come from thirteen
-defects a consumer agent filed against the published `wsl-toolkit-v1.3.0`, plus
-three requirements the operator added. ⭐ **Every fork in them is ruled**,
-so none needs an answer before it can be started.
+Five entries closed this session: [TOOL-17](tooling.md), [TOOL-18](tooling.md),
+[WSL-44](wsl-toolkit-go.md), [WSL-45](wsl-toolkit-go.md) and
+[WSL-46](wsl-toolkit-go.md). Four of the twelve that came out of the reporter's
+thirteen defects; `TOOL-18` is one found here while closing them.
 
-⛔ **Read the work order below before picking one.** Three of the eleven
-are ruled together or not at all, and five cannot be PROVED until a sixth is
-built.
+**Eight of the twelve remain**: `WSL-42`, `WSL-43`, `WSL-47`, `WSL-48`,
+`WSL-49`, `WSL-50`, `WSL-51` and `WSL-52`. ⭐ **And one the operator added
+mid-session**, [WSL-53](wsl-toolkit-go.md): `selfupdate`, with the update check
+inside `ready`. It lands BEFORE the release is cut.
 
-Everything the session set out to do is closed.
-[WSL-32](wsl-toolkit-go.md) through `WSL-39` resolve
-[issues 7 to 14](https://github.com/Azathothas/ToolKit/issues) in full;
-[TOOL-14](tooling.md) ports five of the last six shell pairs;
-[WSL-40](wsl-toolkit-go.md) and [WSL-41](wsl-toolkit-go.md) are the core pass and
-the review that followed it. [TOOL-15](tooling.md) and [TOOL-16](tooling.md) came
-out of the operator asking why a rule with a check behind it kept being broken.
-Each entry carries the command that closed it and its real output.
+⭐ **The acceptance suite can now reach the class of defect that shipped.**
+`TOOL-17` added a wall-time ceiling, a byte-exact expectation, an assertion on a
+parsed object, and mutation of state a running process has already read. Each was
+written against the binary that HAD the defect and watched to fail; that red run
+is in the entry.
 
-⭐ **`wsl-toolkit-v1.3.0` is published and was verified as a consumer**: five
-assets downloaded, every digest in `SHA256SUMS` recomputed from the downloaded
-file, and the binary driven to confirm the behaviour the release claims.
+⭐ **And there is a consumer harness now.**
+`tools/windows/wsl-toolkit/consumer.ps1` downloads a published release by tag,
+verifies every digest, and runs it from a temp state directory with no repository
+present. It found `WSL-45` on its own.
+
+⛔ **Read the work order below before picking one.** Three of the remaining
+entries are ruled together or not at all.
 
 ## What this session shipped
 
@@ -105,27 +106,27 @@ entry it belongs to:
 
 ## Work order
 
-⛔ **[TOOL-17](tooling.md) IS FIRST, and it is the one nobody asked for.**
-The `Prove` sections of `WSL-44`, `WSL-45`, `WSL-46`, `WSL-49` and `WSL-50` each
-need one of the four capabilities that entry says the acceptance suite lacks.
-Building those five first means closing them on cases that cannot be written,
-which is how thirteen defects shipped in a tree with a green suite.
-
 ⛔ **[WSL-42](wsl-toolkit-go.md) and [WSL-43](wsl-toolkit-go.md) are one
-ruling.** The reporter's fix for the ownership boundary is a fixed name; the
-operator's requirement is many isolated instances. Fixing either as written makes
-the other impossible. [WSL-51](wsl-toolkit-go.md) joins that ruling, because it
-puts instance state somewhere `WSL-43` does not.
+ruling**, and [WSL-51](wsl-toolkit-go.md) joins it. The reporter's fix for the
+ownership boundary is a fixed name; the operator's requirement is many isolated
+instances. Fixing either as written makes the other impossible, and `WSL-51` puts
+instance state somewhere `WSL-43` does not.
 
-⭐ **Isolation is available today without any of them.** `--home` plus a
-stored `base.name` already gives two agents separate distributions, state,
-helpers and transcripts. `WSL-43` records the exact commands and why they work.
+⭐ **`TOOL-17` proved they are worth doing in that order.** The consumer harness
+nearly unregistered the operator's own base, because a separate state directory
+is not isolation: the distribution name comes from the config and defaults to
+`wsl-toolkit` whatever `WSL_TOOLKIT_HOME` says. That file now sets a name by
+hand, which is the convention `WSL-43` replaces with a mechanism.
 
-Then, in rough order of what unblocks the most: `WSL-44` (a helper that caches
-nothing whose truth can change), `WSL-46` (the answer is what happened),
-`WSL-45` (a deadline that bounds waiting), `WSL-47` and `WSL-48` (the manual's
-claims made true), `WSL-49` (one command to readiness), `WSL-52` (the six
-commands that make its answer actionable), `WSL-50` (a heartbeat).
+Then, in rough order of what unblocks the most: `WSL-47` and `WSL-48` (the
+manual's claims made true), `WSL-49` (one command to readiness),
+[WSL-53](wsl-toolkit-go.md) (`selfupdate`, whose check lives inside `ready`),
+`WSL-52` (the six commands that make its answer actionable), `WSL-50` (a
+heartbeat).
+
+⚠ **`WSL-53` is after `WSL-49` and not before it**, because its check is a
+section of `ready`'s JSON schema and building the section before the schema is
+building it twice.
 
 ## How this ships
 

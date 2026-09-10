@@ -1656,7 +1656,7 @@ rather than merely that all three failed.
 **Source** Found by counting, on 2026-09-10: a consumer agent filed thirteen
 defects against `wsl-toolkit-v1.3.0` on a day when this tree's own suite passed
 39 acceptance cases, 129 Go cases and 48 proved mutations.
-**Category** tooling, **Priority** P1, **Effort** L, **Status** open
+**Category** tooling, **Priority** P1, **Effort** L, **Status** done
 
 ## Problem
 
@@ -1781,3 +1781,172 @@ demonstrated by taking three of the thirteen reported defects, writing a case fo
 each against the CURRENT binary, and watching all three fail. ⭐ A capability
 that cannot reproduce a known defect is not a capability, and a case written
 against an already fixed binary proves only that it passes.
+
+## Closed 2026-09-10
+
+FOUR capabilities, FOUR reproductions, and each was watched to fail against the
+binary that had the defect BEFORE any fix was written. That run is the evidence,
+because a case written after the fix proves only that it passes:
+
+```text
+  FAIL  every surface that advertises --json puts exactly one object on stdout
+        expected: True
+        actual  : base ensure: base ensure advertises --json and put nothing on stdout
+  FAIL  a payload that writes no error output is reported as writing none
+        expected: stderr=len=0 [] bytes=0
+        actual  : stderr=len=1 [\n] bytes=1
+  FAIL  a deadline bounds the caller and the reported duration is the one it waited
+        wall time: 15.57s, and this case allows 10s
+        expected: True
+        actual  : it waited 15.56s and reported 4.57s
+  FAIL  a helper resolves a catalog id against the config as it is now
+        expected: True
+        actual  : the fleet exited 2: wsl-toolkit: the helper refused: "midflight" is
+                  not a catalog image. Available: alpine arch chimera debian debian12
+                  fedora gentoo photon rocky8 ubuntu2204 void-musl wolfi
+
+acceptance FAILED: 4 of 42 case(s).
+```
+
+The other 38 cases passed in that same run, which is the second half of the
+demonstration: the capabilities did not break anything that already worked, and
+none of those 38 could see any of the four defects.
+
+| capability | where it lives | the defect it reaches |
+| --- | --- | --- |
+| a wall-time ceiling | `Test-Case -MaxSeconds`, and `Measure-Tool` puts the clock AROUND the process | [WSL-45](wsl-toolkit-go.md), issue 20 |
+| a byte-exact expectation | `Show-Bytes` renders a string as `len=N [...]` with escapes, so an expectation is safe to write down | [WSL-46](wsl-toolkit-go.md), issue 23 |
+| an assertion on the parsed object | `Read-ToolJson` THROWS on empty, unparsable or two documents | [WSL-46](wsl-toolkit-go.md), issue 22 |
+| mutation between steps | `New-StateHome` and `Set-StateConfig` change state a running helper has already read | [WSL-44](wsl-toolkit-go.md), issue 17 |
+
+⚠ **The wall-time capability had to be `Measure-Tool` and not the case
+timer alone.** A duration the tool reports about itself cannot catch a tool that
+returns late, because both numbers come from the same run and the one that lies
+is the one being read. The case asserts the two clocks agree to within a second
+AND that the wall time is under the ceiling, so neither can be satisfied alone.
+
+**And the fifth thing, which is a different program.**
+`tools/windows/wsl-toolkit/consumer.ps1` occupies the vantage point that found
+seventeen defects in two sessions: it downloads a published release by tag,
+verifies every digest in `SHA256SUMS` against the bytes it received, and runs the
+binary from a temp state directory with a working directory that is not this
+repository. Driven against the real `wsl-toolkit-v1.3.0` on 2026-09-10:
+
+```text
+consumer: Azathothas/ToolKit wsl-toolkit-v1.3.0
+  ok    every digest in SHA256SUMS matches the file it names
+  ok    the executable and the published script are the same product
+  ok    the survey runs from an empty state directory and creates no distribution
+  ok    the catalog is fully qualified, which is what the manual says it is
+  ok    the state directory it names is the one it was told to use
+  ok    the usage text names the commands the manual documents
+  ok    a released binary runs a container job from an empty state directory
+  ok    a container gets a copy of a workspace and never the host directory
+  ok    a failing payload returns its own exit code
+  ok    what a job writes to /out comes back to the directory named
+  FAIL  a job past its deadline returns 124 and the caller is not held past it
+        wall time: 15.28s, and this case allows 12s
+  ok    gc --apply removes what this run made
+```
+
+⭐ **It found WSL-45 on its own, from outside**, which is the whole argument
+for it existing: the same defect, measured independently of the acceptance
+suite's version of the same case.
+
+⛔ **IT NEARLY REMOVED THE OPERATOR'S OWN BASE, and that is worth recording
+rather than quietly fixing.** A separate state directory is NOT isolation: the
+distribution name comes from the configuration and defaults to `wsl-toolkit`
+whatever `WSL_TOOLKIT_HOME` says, so the first draft would have adopted the real
+base and unregistered it in its own teardown. The file now writes
+`base.name = wsl-toolkit-consumer` before its first invocation.
+[WSL-43](wsl-toolkit-go.md) is the entry that makes an instance a first-class
+thing instead of a convention this file has to remember.
+
+⚠ **It is red against `wsl-toolkit-v1.3.0` and that is correct.** It tests a
+PUBLISHED artifact, and the published artifact has the defect [WSL-45](wsl-toolkit-go.md)
+is open for. It goes green when a release carrying the fix exists, which is what
+a post-release check is supposed to do.
+
+---
+
+## TOOL-18. The row of the counts that was typed
+
+**Source** Found on 2026-09-10 while closing four entries: the index's `all` row
+read `9 0 54 63` while the four rows above it summed to `20 0 58 78`, and the
+gate had been green over that disagreement for at least a session.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+## Problem
+
+[`INDEX.md`](INDEX.md)'s own header says the counts below it are checked and not
+typed. One row of them was typed.
+
+`check-record` reads the state line, both files' state lines, and the `P0` to
+`P3` rows of the priority table. It never read the `**all**` row, so that row
+could say anything at all and the gate stayed green. It did say something else:
+every number in it was wrong, and it disagreed with the state line two lines
+above it as well as with the rows below.
+
+⛔ **It is this check's own defect class, in this check.** The incident
+[`work-todo.md`](../docs/methodology/work-todo.md) records is a file declaring a
+count nothing compared against another file, and this check exists because of it.
+
+## Premise
+
+Measured, not read. The wrong row was planted into a corrected index and the
+check was run unpiped:
+
+```text
+  ok     record
+check-record exit=0
+```
+
+## Approach
+
+`tools/check/internal/checks/record.go` already has `priorityRow`, which trims
+the bold markers, so it can read the `all` row as it stands. The loop over
+`P0 P1 P2 P3` gains `all`, whose wanted values are the totals the check has
+already derived from the rows.
+
+⛔ **Not a second derivation.** The numbers compared against are the ones the
+state-line check already computed, so the two cannot disagree about what the
+rows say.
+
+## Consumers
+
+None: this is a check over this repository's own record and nothing fetches it.
+
+## Prove
+
+```bash
+sh scripts/common/check-record.sh
+```
+
+Passing means the check goes RED with a wrong `all` row and green with a correct
+one, demonstrated by planting one rather than by reading the code.
+
+## Closing
+
+**Closed 2026-09-10.** One line in the loop, and the guard was proved by
+planting the exact row that was there:
+
+```text
+  FAIL   TODO/INDEX.md: all declares done 54, the rows say 62
+  FAIL   TODO/INDEX.md: all declares open 9, the rows say 16
+  FAIL   TODO/INDEX.md: all declares total 63, the rows say 78
+
+record: 3 problems
+exit-with-defect=1
+```
+
+and green once the row is right:
+
+```text
+  ok     record
+exit-restored=0
+```
+
+⚠ **The blocked column was right by accident.** Both the typed row and the
+rows said `0`, so one of the four numbers agreed and the other three did not.
+That is worth noting because a check written to compare one column would have
+passed too.

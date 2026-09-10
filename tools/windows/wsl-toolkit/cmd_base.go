@@ -75,18 +75,13 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			if err != nil {
 				return exitCannot, err
 			}
-			if *asJSON {
-				return verdictFor(st), writeJSON(st)
-			}
-			renderBaseState(st, *probe)
-			return verdictFor(st), nil
+			return verdictFor(st), renderBase(st, *asJSON, *probe)
 		case "ensure", "recreate":
 			st, err := c.BaseEnsure(ctx, sub == "recreate")
 			if err != nil {
 				return exitCannot, err
 			}
-			renderBaseState(st, true)
-			return verdictFor(st), nil
+			return verdictFor(st), renderBase(st, *asJSON, true)
 		default:
 			return exitCannot, fmt.Errorf("this process cannot reach wsl.exe and %q is not something the helper accepts. Removing a distribution and attaching a terminal are not job data", sub)
 		}
@@ -103,27 +98,21 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		if err != nil {
 			return exitCannot, err
 		}
-		if *asJSON {
-			return verdictFor(st), writeJSON(st)
-		}
-		renderBaseState(st, *probe)
-		return verdictFor(st), nil
+		return verdictFor(st), renderBase(st, *asJSON, *probe)
 
 	case "ensure":
 		st, err := base.Ensure(ctx, false)
 		if err != nil {
 			return exitCannot, err
 		}
-		renderBaseState(st, true)
-		return verdictFor(st), nil
+		return verdictFor(st), renderBase(st, *asJSON, true)
 
 	case "recreate":
 		st, err := base.Ensure(ctx, true)
 		if err != nil {
 			return exitCannot, err
 		}
-		renderBaseState(st, true)
-		return verdictFor(st), nil
+		return verdictFor(st), renderBase(st, *asJSON, true)
 
 	case "remove":
 		// ⛔ A DESTRUCTIVE ACTION ASKS, AND REFUSES WHEN NOBODY CAN ANSWER. The
@@ -177,6 +166,20 @@ func verdictFor(st toolkit.BaseState) int {
 		return exitFailed
 	}
 	return exitOK
+}
+
+// renderBase is the ONE place a base state leaves this command, and it is one
+// function rather than an `if *asJSON` at five call sites for the reason
+// WSL-46 measured: three of those five call sites never had the branch at all.
+// `base ensure --json` and `base recreate --json` accepted the flag, wrote
+// human progress to stderr, exited 0 and put NOTHING on stdout, on both routes.
+// A caller assigning the answer got an empty string and a zero status.
+func renderBase(st toolkit.BaseState, asJSON, probed bool) error {
+	if asJSON {
+		return writeJSON(st)
+	}
+	renderBaseState(st, probed)
+	return nil
 }
 
 func renderBaseState(st toolkit.BaseState, probed bool) {

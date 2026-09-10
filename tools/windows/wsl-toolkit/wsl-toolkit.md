@@ -222,7 +222,7 @@ a caller cannot predict.
 | `--artifacts` | a directory on this machine to receive `/out` |
 | `--exclude` | a glob to leave out of the copy. Repeatable. |
 | `--env` | `NAME=VALUE`. Repeatable. |
-| `--timeout` | default 30m. On expiry the container is killed and the code is 124. |
+| `--timeout` | default 30m. On expiry the container is killed and the code is 124. ⭐ It bounds THE CALLER, not only the container: see below. |
 | `--no-network` | run with no network at all |
 | `--user` | what the container runs as: a name, a uid, or `uid:gid`. Empty is the image's default, which for most is root. ⚠ Naming one makes podman re-own the mounts for it, which costs a walk of the copy. |
 | `--max-bytes` `--max-entries` | ceilings for a workspace and an artifact set. Default 1 GiB and 200000. |
@@ -254,16 +254,67 @@ shorter than the output the result says so:
 | `stdout_truncated` `stderr_truncated` | the copy in this answer is shorter than that |
 | `transcript` | the directory holding the complete text. `wsl-toolkit logs ID` writes it. |
 
+⛔ **These are the payload's own bytes and nothing else.** The wrapper that
+announces the container writes a framing line, and that line is removed without
+leaving a byte behind: a command writing nothing to stderr answers
+`"stderr_bytes": 0`. ⚠ It answered 1 up to and including `wsl-toolkit-v1.3.0`,
+because the framing's own newline was written back whether or not there was a
+line for it to end.
+
+### What a deadline actually bounds
+
+⭐ **`--timeout` bounds the caller's waiting, not only the container's running.**
+An agent that sets one to keep a pipeline moving gets its answer back inside the
+deadline plus a bounded grace, and the `duration_ns` it reads is the interval it
+actually waited.
+
+| what the grace covers | ceiling |
+| --- | --- |
+| `wsl.exe` returning after its process tree is killed | about 2s measured; the process wait is bounded at 1s past the kill |
+| stopping the container and removing the job's guest directory | 10s, shared between the two rather than one ceiling each |
+
+Measured on the development host on 2026-09-10: a `--timeout 2s` over a payload
+sleeping 8 seconds returned in **5.3s**, and over one sleeping 60 seconds in
+**5.2s**. ⭐ **The number does not grow with the payload**, which is the property
+that makes a deadline worth setting.
+
+⚠ **It answered in about 15 seconds up to and including `wsl-toolkit-v1.3.0`,
+and reported about 4.** Two things caused it and both are fixed: the reported
+duration stopped at the point the container died rather than at the point the
+caller got an answer, and `podman rm -f` was waiting out podman's own ten second
+SIGTERM grace for a payload that had already been told its time was up.
+
+### What the answer says happened
+
+⛔ **`exit` is the CONTAINER's own code and `effective_exit` is what this
+process returned.** They differ whenever the container succeeded and something
+around it did not, and a caller that wants "did this work" reads the second:
+
+| field | meaning |
+| --- | --- |
+| `exit` | the payload's own status, forwarded verbatim |
+| `effective_exit` | what the process exited with: the payload's code, 124 for a deadline, 2 for a container that never started, 1 for output that did not arrive |
+| `artifacts` | entries DELIVERED to the directory named |
+| `artifacts_attempted` | entries the guest offered, delivered or not |
+| `retained_kind` `retained` | where a copy that could not be delivered still is: `guest` with a path inside the distribution, or `helper` with the artifact set id the helper is still holding |
+
+⚠ **`artifacts` used to mean entries encountered**, so a refused transfer
+answered with a positive count beside its own failure. It means delivered from
+`wsl-toolkit-v2.0.0`, and `artifacts_attempted` carries the old number under a
+name that says what it is.
+
 ### When output cannot be delivered
 
 ⛔ **A job whose requested artifacts do not arrive does not exit 0.** The
 command's own exit code wins when it is nonzero; a command that succeeded and
 whose output could not be fetched exits 1, and a fleet counts that row as failed.
 
-⭐ **The guest directory is kept when a transfer fails**, and its path is
-printed and put on the result as `guest_dir`. `gc` collects it later under its
-own age policy, so the output is recoverable rather than destroyed on the way
-out.
+⭐ **The copy that could not be delivered is kept, and the answer names it.**
+On the direct route the guest job directory stays, as `guest_dir` and as
+`retained`; on the helper route the helper does not acknowledge the artifact
+set, so it is still there and `retained` carries its id. `gc` collects either
+later under its own age policy, so the output is recoverable rather than
+destroyed on the way out.
 
 ⛔ **An image that could not be acquired is `unreached`, not a job that
 failed.** The payload is entered through a wrapper that announces itself from

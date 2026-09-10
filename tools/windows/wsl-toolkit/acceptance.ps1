@@ -54,11 +54,18 @@ function Exit-Cannot {
 # Every case is a name, an expectation and a scriptblock returning what actually
 # happened. The comparison is here so no case can decide for itself whether it
 # passed.
+#
+# -MaxSeconds is A WALL-TIME CEILING and it is part of the verdict. Every case
+# has always been timed and nothing ever compared the number to anything, so a
+# twelve second wait for a two second deadline read as a pass for as long as the
+# deadline existed. TOOL-17. A case that names no ceiling is unbounded, which is
+# the old behaviour and is right for one that pulls twelve images.
 function Test-Case {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
         [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Expected,
-        [Parameter(Mandatory = $true)][scriptblock]$Body
+        [Parameter(Mandatory = $true)][scriptblock]$Body,
+        [double]$MaxSeconds = 0
     )
     $actual = ''
     # NOTE: not $error. That is an automatic variable, and a local of the same
@@ -67,17 +74,27 @@ function Test-Case {
     $started = Get-Date
     try { $actual = [string](& $Body) }
     catch { $caught = $_.Exception.Message; $actual = "THREW: $($_.Exception.Message)" }
+    $seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 2)
     $pass = ($actual -eq $Expected)
-    $script:Cases += [ordered]@{
+    $overrun = ($MaxSeconds -gt 0 -and $seconds -gt $MaxSeconds)
+    if ($overrun) { $pass = $false }
+    $entry = [ordered]@{
         name = $Name; expected = $Expected; actual = $actual
-        pass = $pass; seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 2)
+        pass = $pass; seconds = $seconds
     }
+    if ($MaxSeconds -gt 0) { $entry['max_seconds'] = $MaxSeconds }
+    $script:Cases += $entry
     if ($pass) { Write-Line ("  ok    {0}" -f $Name) }
     else {
         $script:Failed++
         Write-Line ("  FAIL  {0}" -f $Name)
-        Write-Line ("        expected: {0}" -f $Expected)
-        Write-Line ("        actual  : {0}" -f $actual)
+        if ($overrun) {
+            Write-Line ("        wall time: {0}s, and this case allows {1}s" -f $seconds, $MaxSeconds)
+        }
+        if ($actual -ne $Expected) {
+            Write-Line ("        expected: {0}" -f $Expected)
+            Write-Line ("        actual  : {0}" -f $actual)
+        }
         if ($caught) { Write-Line ("        error   : {0}" -f $caught) }
     }
 }
@@ -108,6 +125,105 @@ function Invoke-Tool {
     $errTask = $p.StandardError.ReadToEndAsync()
     $p.WaitForExit()
     return [pscustomobject]@{ Code = $p.ExitCode; Out = $outTask.Result; Err = $errTask.Result }
+}
+
+# -- the four capabilities the thirteen defects needed -----------------------
+# TOOL-17. Each of these exists because a shipped defect was unreachable without
+# it, and each is named at the entry that measured it.
+
+# Measure-Tool is Invoke-Tool with THE CLOCK AROUND THE PROCESS. A duration the
+# tool reports about itself cannot catch a tool that returns late, because both
+# numbers come from the same run and the one that lies is the one being read.
+# WSL-45: exit 124 after 12 seconds, reported as 4.4.
+function Measure-Tool {
+    param([Parameter(Mandatory = $true)][string[]]$ToolArgs)
+    $started = [Diagnostics.Stopwatch]::StartNew()
+    $r = Invoke-Tool $ToolArgs
+    $started.Stop()
+    return [pscustomobject]@{
+        Code = $r.Code; Out = $r.Out; Err = $r.Err
+        Seconds = [math]::Round($started.Elapsed.TotalSeconds, 2)
+    }
+}
+
+# Show-Bytes renders a string so an EXPECTATION CAN BE WRITTEN BYTE FOR BYTE.
+# Every case here asks whether output CONTAINS a marker, and a substring test
+# cannot see an invented byte: WSL-46's stray newline survived all 39 of them,
+# and this repository is what introduced it. The rendering is reversible by eye
+# and safe to put in an -Expected string, which a raw control byte is not.
+#
+# NOTE: it counts CHARACTERS of a .NET string, which for the ASCII this tool
+# emits is the byte count. Non-ASCII is rendered as \uXXXX so a case comparing
+# it still compares something exact rather than something that looks equal.
+# NOTE: if/elseif rather than a switch. PowerShell's switch IS a loop, so
+# `break` and `continue` inside one mean something different from what they mean
+# inside the foreach around it, and a renderer that silently skipped a branch
+# would produce a plausible wrong answer, which is the class this whole file
+# exists to catch.
+function Show-Bytes {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+    $sb = [Text.StringBuilder]::new()
+    foreach ($ch in $Text.ToCharArray()) {
+        $code = [int]$ch
+        if ($code -eq 10) { $null = $sb.Append('\n') }
+        elseif ($code -eq 13) { $null = $sb.Append('\r') }
+        elseif ($code -eq 9) { $null = $sb.Append('\t') }
+        elseif ($code -eq 92) { $null = $sb.Append('\\') }
+        elseif ($code -ge 32 -and $code -le 126) { $null = $sb.Append($ch) }
+        else { $null = $sb.Append(('\u{0:x4}' -f $code)) }
+    }
+    return ("len={0} [{1}]" -f $Text.Length, $sb.ToString())
+}
+
+# Read-ToolJson parses stdout and REFUSES anything that is not exactly one
+# object. WSL-46: `base ensure --json` accepts the flag, writes progress to
+# stderr, exits 0 and puts nothing on stdout, and every case that took a
+# ConvertFrom-Json result and read one field off it passed by never asking.
+#
+# It throws rather than returning $null, so a case that forgets to check is
+# still a red case. A silent $null is how this blind spot survives a second time.
+function Read-ToolJson {
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Stdout, [string]$What = 'the command')
+    if ($null -eq $Stdout -or $Stdout.Trim() -eq '') {
+        throw "$What advertises --json and put nothing on stdout"
+    }
+    $obj = $null
+    try { $obj = $Stdout | ConvertFrom-Json }
+    catch { throw "$What put something on stdout that is not JSON: $(Show-Bytes ($Stdout.Substring(0, [math]::Min(200, $Stdout.Length))))" }
+    # ConvertFrom-Json turns a stream of two objects into an ARRAY, so a
+    # command emitting two documents is caught here rather than reading as one.
+    if ($obj -is [Array]) { throw "$What put $($obj.Count) JSON documents on stdout and an answer is one" }
+    if ($null -eq $obj) { throw "$What put a JSON null on stdout" }
+    return $obj
+}
+
+# New-StateHome and Set-StateConfig are the mid-flight mutation capability.
+# WSL-44: a detached helper reads its config once at startup and never again, so
+# the defect only appears when something changes AFTER the process is up. Every
+# case here built its state before the first invocation, so no case could reach
+# it. These make "start it, change it underneath, ask again" a three-line case.
+function New-StateHome {
+    param([Parameter(Mandatory = $true)][string]$Name)
+    $dir = Join-Path $script:Scratch $Name
+    $null = New-Item -ItemType Directory -Path $dir -Force
+    return $dir
+}
+
+# NOTE: the parameter is StateHome and not Home. $Home is an automatic variable
+# and PowerShell ignores case in variable names, so a parameter called Home IS
+# the user's home directory. docs/conventions/forbidden-patterns.md carries the
+# same collision in the tool's own source.
+function Set-StateConfig {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateHome,
+        [Parameter(Mandatory = $true)][hashtable]$Config
+    )
+    if (-not $Config.ContainsKey('schema')) { $Config['schema'] = 'wsl-toolkit-config/1' }
+    $json = $Config | ConvertTo-Json -Depth 8
+    # WriteAllText with an explicit UTF8 encoding that carries no BOM.
+    # Set-Content would write the host's default, and the tool decodes bytes.
+    [IO.File]::WriteAllText((Join-Path $StateHome 'config.json'), $json, [Text.UTF8Encoding]::new($false))
+    return (Join-Path $StateHome 'config.json')
 }
 
 # -- setup -------------------------------------------------------------------
@@ -422,7 +538,7 @@ try {
         (($l.Code -eq 0) -and ($l.Out -match 'READ-ME-BACK')).ToString()
     }
 
-    # ⭐ THE CLIENT'S OWN COPY, which the case above does not reach. A job run
+    # THE CLIENT'S OWN COPY, which the case above does not reach. A job run
     # through the helper has its transcript written by the HELPER, under the
     # helper's state directory, so where the two do not share WSL_TOOLKIT_HOME the
     # result named a path that did not exist on the machine the caller was sitting
@@ -441,7 +557,7 @@ try {
         finally { $null = Invoke-Tool @('helper', 'stop') }
     }
 
-    # ⛔ A FEATURE NOBODY CAN FIND IS ONE THAT WAS NOT SHIPPED. v1.2.0 printed
+    # A FEATURE NOBODY CAN FIND IS ONE THAT WAS NOT SHIPPED. v1.2.0 printed
     # the image label and the exit code and nothing else, so the id `logs` takes
     # could not be typed without first running `logs` bare to go hunting for it.
     Test-Case 'a run says the command that reads its output back' 'True' {
@@ -559,6 +675,109 @@ try {
         (($r.Code -eq 0) -and (-not $usedHelper)).ToString()
     }
 
+    # -- the four capabilities, each proving a defect the suite could not see -
+    # TOOL-17. A capability that cannot reproduce a known defect is not a
+    # capability, so each of these was written against the binary that HAS the
+    # defect and watched to fail before the fix existed. The entry carries that
+    # output.
+
+    # WSL-46, issue 22. Every surface that advertises --json, asked the same
+    # question by one assertion rather than by fifteen cases. The old shape read
+    # one field off a ConvertFrom-Json result, so a command that printed NOTHING
+    # passed by never being asked.
+    Test-Case 'every surface that advertises --json puts exactly one object on stdout' 'True' {
+        # Each row is a name and the arguments. Read-only where it can be:
+        # `base ensure` is here because it is idempotent and the base is already
+        # up by this point, and `gc` without --apply only plans.
+        $surfaces = @(
+            @{ n = 'version';       a = @('version', '--json') }
+            @{ n = 'doctor';        a = @('doctor', '--json', '--fast') }
+            @{ n = 'images';        a = @('images', '--json') }
+            @{ n = 'config';        a = @('config', '--json') }
+            @{ n = 'base status';   a = @('base', 'status', '--json') }
+            @{ n = 'base presets';  a = @('base', 'presets', '--json') }
+            @{ n = 'base ensure';   a = @('base', 'ensure', '--json') }
+            @{ n = 'resources';     a = @('resources', '--json') }
+            @{ n = 'gc';            a = @('gc', '--json') }
+            @{ n = 'logs';          a = @('logs', '--json') }
+            @{ n = 'helper status'; a = @('helper', 'status', '--json') }
+            @{ n = 'run';           a = @('run', '--json', '--image', 'alpine', '-c', 'true') }
+        )
+        $bad = @()
+        foreach ($s in $surfaces) {
+            $r = Invoke-Tool $s.a
+            try { $null = Read-ToolJson -Stdout $r.Out -What $s.n }
+            catch { $bad += ("{0}: {1}" -f $s.n, $_.Exception.Message) }
+        }
+        if ($bad.Count -gt 0) { return ($bad -join ' | ') }
+        'True'
+    }
+
+    # WSL-46, issue 23. THE BYTE THIS REPOSITORY INVENTED. The container wrapper
+    # prints its completion token as printf '\n%s\n' and the stripper writes the
+    # leading newline back, so a payload that writes no stderr is reported as
+    # having written one byte. Every case above asks whether output CONTAINS
+    # something, and none of them can see an extra byte.
+    Test-Case 'a payload that writes no error output is reported as writing none' 'stderr=len=0 [] bytes=0' {
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'true')
+        $d = Read-ToolJson -Stdout $r.Out -What 'run --json'
+        $stderr = ''
+        if ($d.PSObject.Properties.Name -contains 'stderr') { $stderr = [string]$d.stderr }
+        ("stderr={0} bytes={1}" -f (Show-Bytes $stderr), $d.stderr_bytes)
+    }
+
+    # WSL-45, issue 20. A DEADLINE THAT DOES NOT BOUND WAITING IS NOT A DEADLINE.
+    # Measured on this machine on 2026-09-10 against the binary that has the
+    # defect: a 2s deadline over sleep 8 returned after 10.6s, over sleep 20
+    # after 16.0s and over sleep 30 after 15.8s, each reporting about 4.4s.
+    # The ceiling is the deadline plus the grace the manual states, and the
+    # clock is around the process because the number inside it is the one that
+    # was wrong.
+    Test-Case 'a deadline bounds the caller and the reported duration is the one it waited' 'True' -MaxSeconds 10 {
+        $m = Measure-Tool @('run', '--json', '--image', 'alpine', '--timeout', '2s', '-c', 'sleep 60')
+        $d = Read-ToolJson -Stdout $m.Out -What 'run --json'
+        $reported = [math]::Round($d.duration_ns / 1e9, 2)
+        if ($m.Code -ne 124) { return "exited $($m.Code) rather than 124" }
+        # The two clocks must agree to within a second. A duration measured from
+        # a different clock than the caller's is two numbers that disagree,
+        # which is worse than one that is approximate.
+        if ([math]::Abs($reported - $m.Seconds) -gt 1.0) {
+            return ("it waited {0}s and reported {1}s" -f $m.Seconds, $reported)
+        }
+        'True'
+    }
+
+    # WSL-44, issue 17. A HELPER FREEZES ITS CONFIG AT STARTUP. Nothing here has
+    # ever changed state a running process had already read: every case builds,
+    # acts and asserts. This one starts a helper against a catalog, replaces the
+    # catalog underneath it, and asks the helper to resolve an id only the new
+    # one has.
+    Test-Case 'a helper resolves a catalog id against the config as it is now' 'True' {
+        $h = New-StateHome 'home-midflight'
+        $null = Invoke-Tool @('--home', $h, 'helper', 'serve', '--detach')
+        try {
+            $null = Set-StateConfig -StateHome $h -Config @{
+                images = @(
+                    @{ id = 'midflight'; ref = 'docker.io/library/alpine:latest'
+                       libc = 'musl'; family = 'apk'; kind = 'musl' }
+                )
+            }
+            # The CLIENT resolves this against the file just written, so it is a
+            # valid selection; the helper resolves the id it is sent against the
+            # catalog it read at startup, which has no such row.
+            $r = Invoke-Tool @('--home', $h, 'matrix', '--via-helper', '--json',
+                '--images', 'midflight', '--timeout', '2m', '-c', 'printf MIDFLIGHT')
+            if ($r.Code -ne 0) {
+                $why = @(($r.Err + $r.Out).Split("`n") | Where-Object { $_.Trim() -ne '' })
+                $last = if ($why.Count -gt 0) { $why[-1].Trim() } else { 'it said nothing' }
+                return "the fleet exited $($r.Code): $last"
+            }
+            $d = Read-ToolJson -Stdout $r.Out -What 'matrix --json'
+            (($d.ran -eq 1) -and ($d.failed -eq 0) -and ($d.unreached -eq 0)).ToString()
+        }
+        finally { $null = Invoke-Tool @('--home', $h, 'helper', 'stop') }
+    }
+
     # -- cleanup, counted rather than remembered -----------------------------
     Test-Case 'cleanup removes what this tool made and the counts return to zero' 'True' {
         $g = Invoke-Tool @('gc', '--apply', '--json')
@@ -610,7 +829,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 38 } else { 39 }
+$expected = if ($Quick) { 42 } else { 43 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

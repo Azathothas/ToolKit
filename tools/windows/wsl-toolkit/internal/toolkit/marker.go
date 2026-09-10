@@ -44,12 +44,27 @@ func newMarkerToken() (string, error) {
 // through and never match. The held-back tail is at most the marker's own
 // length, so a stream that never carries one is delayed by that many bytes and
 // no more. Flush releases it when the stream ends.
+//
+// ⛔ FRAMING DOES NOT ADD A BYTE TO THE PAYLOAD. The token is written with a
+// leading newline so it cannot cut into an unterminated line the engine wrote,
+// and this filter used to put that newline back unconditionally. The token is
+// written BEFORE the payload runs, so on almost every job there was nothing in
+// front of it to terminate: a payload writing no stderr at all came back as
+// `"stderr":"\n"` with `stderr_bytes: 1`, and `matrix` reported one byte of
+// error output for twelve rows that wrote none. WSL-46, issue 23. The newline
+// is now put back only where there is an unterminated tail for it to terminate.
 type markerStripper struct {
 	mu   sync.Mutex
 	dst  io.Writer
 	tok  []byte
 	buf  []byte
 	seen bool
+	// last is the last byte handed to dst, and any says whether there has been
+	// one. Together they answer "was the stream mid-line when the token
+	// arrived", which the buffer alone cannot: everything before the token may
+	// already have been flushed.
+	last byte
+	any  bool
 }
 
 func newMarkerStripper(dst io.Writer, token string) *markerStripper {
@@ -69,15 +84,27 @@ func (m *markerStripper) Write(p []byte) (int, error) {
 			break
 		}
 		m.seen = true
-		// ⚠ The token carries a leading newline that ENDS the payload's own
-		// previous line, so it is put back. Dropping it would join two lines the
-		// payload wrote separately.
-		m.buf = append(m.buf[:i+1], m.buf[i+len(m.tok):]...)
+		// Whatever sits immediately in front of the token in the WHOLE stream,
+		// which is the pending buffer where there is one and the last byte
+		// already written where there is not.
+		keepNewline := false
+		switch {
+		case i > 0:
+			keepNewline = m.buf[i-1] != '\n'
+		case m.any:
+			keepNewline = m.last != '\n'
+		}
+		cut := i
+		if keepNewline {
+			cut = i + 1
+		}
+		m.buf = append(m.buf[:cut], m.buf[i+len(m.tok):]...)
 	}
 	keep := partialSuffix(m.buf, m.tok)
 	flush := m.buf[:len(m.buf)-keep]
 	var err error
 	if len(flush) > 0 {
+		m.last, m.any = flush[len(flush)-1], true
 		_, err = m.dst.Write(flush)
 	}
 	m.buf = append(m.buf[:0], m.buf[len(m.buf)-keep:]...)
@@ -92,6 +119,7 @@ func (m *markerStripper) Flush() error {
 	if len(m.buf) == 0 {
 		return nil
 	}
+	m.last, m.any = m.buf[len(m.buf)-1], true
 	_, err := m.dst.Write(m.buf)
 	m.buf = m.buf[:0]
 	return err

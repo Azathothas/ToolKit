@@ -5,6 +5,7 @@ package toolkit
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -80,7 +81,7 @@ func TestSafeArchiveNameRefusesWindowsGrammar(t *testing.T) {
 func TestExtractRefusesCaseCollision(t *testing.T) {
 	dest := t.TempDir()
 	archive := tarOf(t, map[string]string{"Result": "upper", "result": "lower"})
-	_, _, err := extractInto(bytes.NewReader(archive), dest, DefaultWorkspaceLimits())
+	_, err := extractInto(bytes.NewReader(archive), dest, DefaultWorkspaceLimits())
 	if err == nil {
 		t.Fatal("two names that differ only in case were accepted; on the destination they are one file and the second silently replaces the first")
 	}
@@ -97,12 +98,15 @@ func TestExtractRefusesCaseCollision(t *testing.T) {
 func TestExtractAcceptsDistinctNames(t *testing.T) {
 	dest := t.TempDir()
 	archive := tarOf(t, map[string]string{"one.txt": "a", "two.txt": "bb", "d/three.txt": "ccc"})
-	n, _, err := extractInto(bytes.NewReader(archive), dest, DefaultWorkspaceLimits())
+	transfer, err := extractInto(bytes.NewReader(archive), dest, DefaultWorkspaceLimits())
 	if err != nil {
 		t.Fatalf("three distinct names were refused: %v", err)
 	}
-	if n != 3 {
-		t.Fatalf("extracted %d entries, want 3", n)
+	// Three file entries, no directory entry of its own: `d/three.txt` creates
+	// its parent on the way past. Nothing was refused, so the two counts agree,
+	// which is the case that made the old single count look correct.
+	if transfer.Attempted != 3 || transfer.Delivered != 3 {
+		t.Fatalf("attempted %d and delivered %d, want 3 and 3", transfer.Attempted, transfer.Delivered)
 	}
 	for name, want := range map[string]string{"one.txt": "a", "two.txt": "bb", filepath.Join("d", "three.txt"): "ccc"} {
 		got, err := os.ReadFile(filepath.Join(dest, name))
@@ -113,6 +117,66 @@ func TestExtractAcceptsDistinctNames(t *testing.T) {
 		if string(got) != want {
 			t.Errorf("%s holds %q, want %q", name, got, want)
 		}
+	}
+}
+
+// -- WSL-46, issue 24: attempted and delivered are two numbers ---------------
+
+// TestExtractSeparatesAttemptedFromDelivered is the defect as the consumer met
+// it: a failed transfer answering with a positive artifact count, which reads
+// as files that arrived and is a count of files that were looked at.
+func TestExtractSeparatesAttemptedFromDelivered(t *testing.T) {
+	dest := t.TempDir()
+	// The third entry collides with the second on the destination, so the
+	// transfer is refused there. Two entries are on disk by then.
+	archive := tarOf(t, map[string]string{"a.txt": "one", "b.txt": "two", "B.txt": "three"})
+	transfer, err := extractInto(bytes.NewReader(archive), dest, DefaultWorkspaceLimits())
+	if err == nil {
+		t.Fatal("a colliding pair was accepted")
+	}
+	if transfer.Attempted != 3 {
+		t.Fatalf("attempted %d, want 3: every entry the guest offered was read", transfer.Attempted)
+	}
+	if transfer.Delivered != 2 {
+		// v1.3.0 reported 3 here, under the name `artifacts`, beside the
+		// failure that stopped it.
+		t.Fatalf("delivered %d, want 2: only two entries reached the destination", transfer.Delivered)
+	}
+}
+
+// TestVerdictCarriesWhatTheProcessReturns pins the field a caller reads instead
+// of re-deriving the verdict from four others.
+func TestVerdictCarriesWhatTheProcessReturns(t *testing.T) {
+	cases := []struct {
+		name string
+		res  JobResult
+		want int
+	}{
+		{"a clean run", JobResult{Exit: 0}, ExitOK},
+		{"the container's own code wins", JobResult{Exit: 37}, 37},
+		{"a deadline", JobResult{Exit: 124, TimedOut: true}, ExitTimeout},
+		{"nothing ran", JobResult{Exit: 2, Unreached: true}, ExitCannot},
+		{"the command passed and its output did not arrive",
+			JobResult{Exit: 0, ArtifactError: "refused"}, ExitFailed},
+		{"a container that failed AND lost its artifacts reports the container",
+			JobResult{Exit: 37, ArtifactError: "refused"}, 37},
+	}
+	for _, c := range cases {
+		res := c.res
+		res.Seal()
+		if res.EffectiveExit != c.want {
+			t.Errorf("%s: effective_exit = %d, want %d", c.name, res.EffectiveExit, c.want)
+		}
+		if res.EffectiveExit != res.Verdict() {
+			t.Errorf("%s: the sealed field and the rule disagree", c.name)
+		}
+	}
+	// ⛔ `exit` KEEPS ITS MEANING. A caller already reads it, so the new field
+	// is a sibling and never a redefinition.
+	res := JobResult{Exit: 0, ArtifactError: "refused"}
+	res.Seal()
+	if res.Exit != 0 {
+		t.Fatal("sealing changed the container's own exit code, which a caller already reads")
 	}
 }
 
@@ -203,9 +267,82 @@ func TestMarkerStripperFindsASplitToken(t *testing.T) {
 		if !m.Seen() {
 			t.Fatalf("cut %d: the marker was not seen, so a job that ran would be reported as unreached", cut)
 		}
-		if want := "before\n\nafter\n"; got.String() != want {
+		// "before\n" is already terminated, so the token's own leading newline
+		// has nothing to terminate and is removed with the rest of the framing.
+		// It used to be written back, which is WSL-46's invented byte.
+		if want := "before\nafter\n"; got.String() != want {
 			t.Fatalf("cut %d: stream is %q, want %q", cut, got.String(), want)
 		}
+	}
+}
+
+// -- WSL-46, issue 23: framing does not add a byte to the payload -------------
+
+// TestMarkerStripperInventsNoByte is the defect as the consumer met it: a
+// payload that writes nothing to stderr, reported as having written one byte.
+func TestMarkerStripperInventsNoByte(t *testing.T) {
+	token := "wtk-started-00112233445566"
+	cases := []struct {
+		name   string
+		stream string
+		want   string
+	}{
+		{
+			// What every job that writes no stderr actually produces: the
+			// wrapper's framing and nothing else.
+			name:   "a stream that is only the marker",
+			stream: "\n" + token + "\n",
+			want:   "",
+		},
+		{
+			name:   "the marker followed by payload output",
+			stream: "\n" + token + "\nreal stderr\n",
+			want:   "real stderr\n",
+		},
+		{
+			// The case the leading newline exists for. Something wrote an
+			// unterminated line before the marker, so the terminator is real
+			// and is kept, or two lines nobody wrote separately become one.
+			name:   "an unterminated line before the marker keeps its terminator",
+			stream: "pulling" + "\n" + token + "\nreal stderr\n",
+			want:   "pulling\nreal stderr\n",
+		},
+		{
+			// A blank line the producer wrote is not framing and survives.
+			name:   "a blank line the producer wrote is not the framing",
+			stream: "done\n\n" + "\n" + token + "\n",
+			want:   "done\n\n",
+		},
+		{
+			name:   "output with no terminator at all is passed through whole",
+			stream: "\n" + token + "\nno newline at the end",
+			want:   "no newline at the end",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Every split point, because which side of a write boundary the
+			// preceding byte lands on is exactly what this fix reasons about.
+			for cut := 0; cut <= len(tc.stream); cut++ {
+				var got bytes.Buffer
+				m := newMarkerStripper(&got, token)
+				if _, err := m.Write([]byte(tc.stream[:cut])); err != nil {
+					t.Fatalf("cut %d: %v", cut, err)
+				}
+				if _, err := m.Write([]byte(tc.stream[cut:])); err != nil {
+					t.Fatalf("cut %d: %v", cut, err)
+				}
+				if err := m.Flush(); err != nil {
+					t.Fatalf("cut %d: %v", cut, err)
+				}
+				if got.String() != tc.want {
+					t.Fatalf("cut %d: stream is %q, want %q", cut, got.String(), tc.want)
+				}
+				if !m.Seen() {
+					t.Fatalf("cut %d: the marker was not seen", cut)
+				}
+			}
+		})
 	}
 }
 
@@ -1134,4 +1271,71 @@ func TestMatrixTablePointsAtLogsOnce(t *testing.T) {
 			t.Fatalf("the table offered a transcript nothing wrote:\n%s", out.String())
 		}
 	})
+}
+
+// -- WSL-44, issues 17 and 19: a helper caches nothing whose truth can change --
+
+// TestConfigFingerprintTracksWhatChangesBehaviour is what the helper keys its
+// runners by, so a fingerprint that missed a field would hand a request the
+// runner for somebody else's configuration.
+func TestConfigFingerprintTracksWhatChangesBehaviour(t *testing.T) {
+	base := DefaultConfig()
+	same := DefaultConfig()
+	if base.Fingerprint() != same.Fingerprint() {
+		t.Fatal("two identical configurations fingerprint differently")
+	}
+
+	// A file that spells out the built-in catalog behaves exactly like no file
+	// at all, and must fingerprint the same. ⭐ This is the case a digest over
+	// the raw file would get wrong.
+	spelled := DefaultConfig()
+	spelled.Images = append([]Image(nil), BuiltinImages...)
+	spelled.Matrix = base.MatrixDefault()
+	if spelled.Fingerprint() != base.Fingerprint() {
+		t.Fatal("a configuration naming the built-in catalog fingerprints differently from one that omits it")
+	}
+
+	for _, c := range []struct {
+		name string
+		with func(*Config)
+	}{
+		{"the base name", func(c *Config) { c.Base.Name = "wsl-toolkit-two" }},
+		{"the base image", func(c *Config) { c.Base.Image = "docker.io/library/alpine:latest" }},
+		{"the base user", func(c *Config) { c.Base.User = "other" }},
+		{"an added catalog entry", func(c *Config) {
+			c.Images = append(append([]Image(nil), BuiltinImages...), Image{
+				ID: "extra", Ref: "docker.io/library/busybox:latest", Libc: "musl", Family: "apk", Kind: "musl",
+			})
+		}},
+		{"a narrowed matrix", func(c *Config) { c.Matrix = []string{"alpine"} }},
+	} {
+		changed := DefaultConfig()
+		c.with(&changed)
+		if changed.Fingerprint() == base.Fingerprint() {
+			t.Errorf("changing %s did not change the fingerprint, so a helper would reuse the wrong runner", c.name)
+		}
+	}
+}
+
+// TestGuestHomeDoesNotCacheAFailure is issue 19 in one test: one lookup made
+// while the base was absent used to poison the process for its lifetime.
+func TestGuestHomeDoesNotCacheAFailure(t *testing.T) {
+	r := &Runner{}
+	// A runner whose wsl is nil cannot look anything up, which is this test's
+	// stand-in for a base that is not registered.
+	if r.homeDir != "" {
+		t.Fatal("a fresh runner already believes it knows the guest home")
+	}
+	// The success path is what IS remembered, and forgetting is what a rebuild
+	// does. Both halves matter: caching only success is not enough on its own if
+	// nothing ever clears a stale success.
+	r.homeDir = "/home/toolkit"
+	got, err := r.guestHome(context.Background())
+	if err != nil || got != "/home/toolkit" {
+		t.Fatalf("a remembered home was not returned: %q %v", got, err)
+	}
+	r.ForgetGuestHome()
+	if r.homeDir != "" {
+		t.Fatal("ForgetGuestHome left the remembered value in place, so a rebuilt base keeps the old answer")
+	}
 }
