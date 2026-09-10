@@ -19,8 +19,13 @@ None. All three bodies of work the operator named are closed.
 [issues 7 to 14](https://github.com/Azathothas/ToolKit/issues) in full;
 [TOOL-14](tooling.md) ports five of the last six shell pairs;
 [WSL-40](wsl-toolkit-go.md) and [WSL-41](wsl-toolkit-go.md) are the core pass and
-the review that followed it. Each entry carries the command that closed it and
-its real output.
+the review that followed it. [TOOL-15](tooling.md) and [TOOL-16](tooling.md) came
+out of the operator asking why a rule with a check behind it kept being broken.
+Each entry carries the command that closed it and its real output.
+
+⭐ **`wsl-toolkit-v1.3.0` is published and was verified as a consumer**: five
+assets downloaded, every digest in `SHA256SUMS` recomputed from the downloaded
+file, and the binary driven to confirm the behaviour the release claims.
 
 ## What this session shipped
 

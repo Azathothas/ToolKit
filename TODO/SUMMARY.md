@@ -12,16 +12,16 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-09T21:00:00Z | about 9 hours, across two resumed contexts |
-| Commits | `450b380` | 6 on `main`, and two tags: `wsl-toolkit-v1.2.0` and `wsl-toolkit-v1.3.0` |
-| Work | 8 issues filed against the published `v1.1.0`, none started | **12 entries closed, 0 deferred, 0 failed.** `WSL-32` to `WSL-39` resolve issues 7 to 14; `TOOL-14` ports five shell pairs; `WSL-40` and `WSL-41` are the core pass and the review after it |
-| Changes | 201 tracked files | 227 tracked files; 66 changed, +9,172 / -2,744 lines |
+| Commits | `450b380` | 9 on `main`, and two tags: `wsl-toolkit-v1.2.0` and `wsl-toolkit-v1.3.0` |
+| Work | 8 issues filed against the published `v1.1.0`, none started | **14 entries closed, 0 deferred, 0 failed.** `WSL-32` to `WSL-39` resolve issues 7 to 14; `TOOL-14` ports five shell pairs; `WSL-40` and `WSL-41` are the core pass and the review after it; `TOOL-15` and `TOOL-16` are what the operator's question produced |
+| Changes | 201 tracked files | 234 tracked files; 78 changed, +10,885 / -2,789 lines |
 | Go modules | 2, `tools/check` and `tools/windows/wsl-toolkit` | 3. `tools/repo` is the tool box for what is NOT a gate check, and `check-gate` still runs only rules |
-| Suite | 39 Go cases | 119 Go cases, all three modules clean under `-race` |
+| Suite | 39 Go cases | 129 Go cases, all three modules clean under `-race`. ⚠ `tools/check` had **zero** before this session and has 5 |
 | Acceptance | 23 cases against a real machine | ⭐ **39 cases.** The 14 issue cases each fail against `v1.1.0`; the two newest cover the helper route's own transcript and the job id |
 | Mutation | 23 guards proved, by a script under `.tmp/` | ⭐ **48 proved**, by `repo mutate` in the tree. Each one deleted, the named case run, the case count and the build status reported separately |
 | Published | `wsl-toolkit-v1.1.0` | `wsl-toolkit-v1.3.0`, five assets, digests recomputed from the downloaded files |
 | Checks | 17 in one Go binary, 31s | 18, 43s. Five shell pairs became a Go program and none of them became a gate check; the one that was added is `hooks`, for the reason below |
-| Health | 53 entries: 8 open, 0 blocked, 45 done | 64 entries: 8 open, 0 blocked, 56 done. Tree clean, gate green |
+| Health | 53 entries: 8 open, 0 blocked, 45 done | 66 entries: 8 open, 0 blocked, 58 done. Tree clean, gate green, CI green, release verified as a consumer |
 
 ### ⭐ Defects found, and by which pass
 
@@ -47,6 +47,7 @@ cases.
 | `logs` reported every read failure as "no transcripts yet" at exit 0 | the fifth review |
 | `helper stop` discarded the reason nothing answered | the fifth review |
 | the job id was nowhere in the human output, so `logs ID` was untypeable | the fifth review |
+| the refusal for a bad image id described a rule the input satisfied | driving the PUBLISHED v1.3.0 binary as a consumer |
 
 ### ⛔ Three process failures worth keeping
 
