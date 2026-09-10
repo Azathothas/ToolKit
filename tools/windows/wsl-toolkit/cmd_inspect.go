@@ -29,8 +29,9 @@ const inspectUsage = `wsl-toolkit inspect [JOB-ID]
   With no id, the machine half alone: the engine, its storage and the
   filesystem under it.
 
-  --since D   how far back to read the engine's event journal (default 24h)
-  --json      write a structured answer
+  --since D      how far back to read the engine's event journal (default 24h)
+  --json         write a structured answer
+  --via-helper   ask the local helper rather than calling wsl.exe here
 
   An id nothing on this machine has heard of is a refusal, not an empty
   answer. wsl-toolkit logs lists the jobs this machine still has.
@@ -40,6 +41,7 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("inspect")
 	since := fs.Duration("since", 24*time.Hour, "how far back to read the engine's event journal")
 	asJSON := fs.Bool("json", false, "write a structured answer")
+	viaHelper := fs.Bool("via-helper", false, "ask the local helper rather than calling wsl.exe here")
 	id, rest := splitLogsArgs(args)
 	if err := parseArgs(fs, rest); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -55,19 +57,44 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	// ⭐ THE HELPER IS THE FIRST ANSWER, and it is the one this command was
+	// missing. `run`, `matrix`, `base`, `resources` and `gc` all take
+	// --via-helper; this did not, so on a restricted client the half of the
+	// answer that needs the machine - the engine, its storage, the container's
+	// own last exit, the guest's disk - was unreachable while its sibling report
+	// had the door. That is the one-gated-door class, in the tool that keeps
+	// finding it. WSL-58.
+	var rep toolkit.InspectReport
+	if c, hErr := useHelper(ctx, *viaHelper); hErr != nil {
+		return exitCannot, hErr
+	} else if c != nil {
+		rep, err = c.Inspect(ctx, id, *since)
+		return renderInspectResult(rep, err, *asJSON)
+	}
+
 	// ⛔ A RUNNER IS NOT REQUIRED TO ANSWER THE HOST HALF. Building one calls
 	// FindWsl, so on a machine with no wsl.exe this command used to exit 2 with
 	// no answer at all - including for the transcript and the ledger record,
 	// which are on this machine's own disk and which `logs` reads with no
 	// runner whatever. Found by the door sweep. What cannot be reached is named
 	// as unreachable and the rest is still reported.
-	var rep toolkit.InspectReport
 	runner, rErr := toolkit.NewRunner(cfg, note)
 	if rErr != nil {
 		rep, err = toolkit.InspectHostOnly(id, rErr.Error())
 	} else {
 		rep, err = runner.Inspect(ctx, id, *since)
 	}
+	return renderInspectResult(rep, err, *asJSON)
+}
+
+// renderInspectResult is the ONE place the two routes turn a report and an
+// error into an exit code and output.
+//
+// ⛔ IT IS ONE FUNCTION BECAUSE THE ROUTES MUST NOT DISAGREE. A second copy on
+// the helper path is how `gc` came to honour a flag on one route and drop it on
+// the other, and how an unknown id would come back as exit 2 through the helper
+// and exit 1 directly.
+func renderInspectResult(rep toolkit.InspectReport, err error, asJSON bool) (int, error) {
 	if err != nil {
 		// ⛔ AN UNKNOWN ID IS A REFUSAL WITH ITS OWN CODE. Reporting it as
 		// exitCannot beside a printed empty document is the shape this command
@@ -77,7 +104,7 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 		}
 		return exitCannot, err
 	}
-	if *asJSON {
+	if asJSON {
 		return exitOK, writeJSON(rep)
 	}
 	return exitOK, renderInspect(os.Stdout, rep)

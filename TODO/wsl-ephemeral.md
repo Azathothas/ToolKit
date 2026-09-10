@@ -2543,7 +2543,7 @@ could not verify rather than reporting success.
 ## WSL-26. a prepared rootfs is thrown away and paid for again
 
 **Source** the operator, 2026-08-30. The workload behind issue 5 is the worked example.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -2596,10 +2596,59 @@ machine and the date.
 
 ---
 
+## Closing
+
+**Closed 2026-09-10T13:40:00Z.** `-Action Snapshot -Name <distro> -As <tag>`
+exports a registered distro to `<state>\snapshots\<tag>.tar`, and
+`New -Tarball <tag>` reads a tag back as well as a path. A real file always
+wins over a tag of the same name.
+
+⭐ **The design question this entry said had to be answered first is answered by
+STRUCTURE.** Snapshots live in a subdirectory, and the orphan sweep enumerates
+`*.tar` in the state directory itself and nowhere else, so `Purge` cannot see
+one. It reports them, with the directory, and never removes one. ⛔ A naming
+convention like `snap-*.tar` was rejected: it is one rename away from making
+every existing snapshot an orphan again, which is the failure the prelude's own
+comment describes for the base directory.
+
+```text
+$ pwsh -File wsl-toolkit.ps1 -Action Snapshot -Name eph-docker.io-library-alpine-3.22-mx9o -As probe-ready
+==> Exporting 'eph-docker.io-library-alpine-3.22-mx9o' as snapshot 'probe-ready'
+  * snapshot 'probe-ready': 9.1 MiB at C:\Users\...\wsl-ephemeral\snapshots\probe-ready.tar
+  ! it carries whatever that distribution held, including anything a previous -Command or -ScriptArg left in it.
+  reuse it with: -Action New -Tarball probe-ready
+
+$ pwsh -File wsl-toolkit.ps1 -Action New -Tarball probe-ready -Ephemeral -Force -NoTimestamps -Command 'jq --version'
+==> -Tarball 'probe-ready' names the snapshot at C:\Users\...\snapshots\probe-ready.tar
+  ! a snapshot carries whatever the distribution held when it was taken.
+==> Importing as WSL2 distro 'eph-rootfs-xa5q'
+jq-1.8.2
+EXIT=0
+```
+
+⭐ **The measurement the entry asked for, with its conditions.** Windows 11 Pro
+26200, PowerShell 7.6.5, 2026-09-10. Alpine 3.22 with `jq` installed as the
+preparation. Wall time for one run reaching the prepared state:
+
+| how | run 1 | run 2 |
+| --- | --- | --- |
+| `-Tarball probe-ready` | 1.82s | 1.79s |
+| `-Image alpine:3.22`, preparing each time | 10.04s | 10.85s |
+
+⚠ **Two runs each, one machine, one small preparation, and the first cold run
+from the snapshot was 4.60s.** They support the claim that the snapshot path is
+the shorter one here. ⛔ They do NOT support a ratio for a workload whose
+preparation is minutes rather than seconds, which is the case this entry was
+written for and which nothing here has measured. The premise said the
+interesting number is the guest-side preparation and is the caller's; that is
+still true and this did not measure it.
+
+---
+
 ## WSL-27. the tick can say nothing is happening and never that something is
 
 **Source** the operator, 2026-08-30, accepting it from the list. The idea is the mockup's section 48, question 4.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -2650,10 +2699,52 @@ with no `-ProgressPrefix` every line is relayed byte for byte.
 
 ---
 
+## Closing
+
+**Closed 2026-09-10T13:40:00Z.** `-ProgressPrefix TOKEN`, off by default, with
+the seam exactly where the entry named it: the line classification in
+`Invoke-InDistroLogged`, after `Split-StreamChunk` and before
+`Write-StreamLogLine`.
+
+⚠ **One thing the entry did not anticipate: a PARTIAL line is never a progress
+report.** It has no terminator yet, so the label could still be arriving, and
+parsing one would consume half a line the guest is midway through writing.
+
+```text
+$ ... -ProgressPrefix WTKP -TickSeconds 2 -Command 'echo "WTKP 10 fetching"; echo "ordinary line";
+  sleep 5; echo "WTKP 60% unpacking"; echo "WTKP not-a-number"; sleep 5; echo "WTKP 100 done"; echo "finished"'
+00:00:00.362 out  ordinary line
+00:00:02.558 tick 2s silent | elapsed 2s | out 1 lines 31 B | ... | progress 10% fetching (2s ago)
+00:00:04.670 tick 4s silent | elapsed 4s | out 1 lines 31 B | ... | progress 10% fetching (4s ago)
+00:00:05.286 out  WTKP not-a-number
+00:00:07.434 tick 2s silent | elapsed 7s | out 2 lines 68 B | ... | progress 60% unpacking (2s ago)
+00:00:10.284 out  finished
+EXIT=0
+```
+
+`WTKP 10 fetching`, `WTKP 60% unpacking` and `WTKP 100 done` were consumed;
+`ordinary line`, `WTKP not-a-number` and `finished` were relayed. The tick
+carries the last progress and its AGE and computes no estimate.
+
+⭐ **With no `-ProgressPrefix`, every line is relayed byte for byte**, which is
+the property this entry said to assert:
+
+```text
+$ ... -NoTimestamps -Command 'echo "WTKP 10 fetching"; echo "ordinary line"; echo "WTKP 100 done"'
+WTKP 10 fetching
+ordinary line
+WTKP 100 done
+```
+
+Eleven selftest cases over `Read-ProgressLine` and two over `Format-Percent`,
+green under PowerShell 7.6.5 and Windows PowerShell 5.1.
+
+---
+
 ## WSL-28. a recorded run cannot be re-read or compared
 
 **Source** the operator, 2026-08-30, accepting it from the list. Possible only because `-EventLog` now exists.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -2705,10 +2796,61 @@ naming the longer silence, and a refusal on a log with a gap in `seq`.
 
 ---
 
+## Closing
+
+**Closed 2026-09-10T13:40:00Z.** `-Action Replay -From LOG` and
+`-Action Compare -From A -Against B`. `Format-StreamLogPrefix` gained a `-Wall`
+override so the renderer stays one function: a replay renders the RECORD's wall
+reading rather than this machine's clock.
+
+```text
+$ ... -Action Replay -From run-a.jsonl -TimestampMode Relative
+00:00:00.129 out~ ONE
+$ ... -Action Replay -From run-a.jsonl -TimestampMode Iso
+2026-09-10T17:01:06.000+05:45 out~ ONE
+$ ... -Action Replay -From run-a.jsonl -TimestampMode Epoch
+1789038966 out~ ONE
+
+$ ... -Action Compare -From run-a.jsonl -Against run-p.jsonl
+  figure           A              B              B - A
+  elapsed          0s             10s            +10.121
+  to first output  0s             0s             +0.233
+  longest silence  0s             4s             +4.87
+  out lines        1              3              +2
+  exit code        0              0              0
+  ! B has the longer silence, 4s, ending at 10s into the run.
+
+$ ... -Action Replay -From run-gap.jsonl   # one record removed from the middle
+ERROR: Line 3 of 'run-gap.jsonl': seq jumps from 2 to 4. That field is gapless by
+construction, so records were dropped and this log is not the whole run. Nothing
+was rendered.
+EXIT=1
+```
+
+⛔ **THE PREMISE WAS RIGHT ABOUT THE RENDERER AND WRONG ABOUT THE SCHEMA, and
+the correction is the finding worth keeping.** It said the renderer is already a
+pure function of the event fields, which held. But the reader was first written
+against `kind: LINE` with streams `out` and `err`, and `Write-StreamLogLine`
+writes `kind: LOG` with `stdout`, `stderr` or `watcher`. It rendered nothing and
+reported a real run as having produced no output at all, which is the silent
+mis-read a version field exists to prevent, reached from the reader's side. The
+same guess was in the selftest fixtures, so four cases went red the moment the
+reader was corrected. ⭐ There is a case pinning the spelling now, so a fixture
+drifting back cannot pass by accident.
+
+⚠ **The tail counts as silence**, which the entry did not say. A run whose last
+line arrived at four seconds and which ended at four minutes was silent for the
+rest, and a measure that looked only at the gaps between lines would report the
+quietest part of the run as not having happened.
+
+Eight selftest cases over `Get-EventLogSummary`, green on both hosts.
+
+---
+
 ## WSL-29. every run imports, even when a distro from the same image is registered
 
 **Source** the operator, 2026-08-30, accepting it from the list.
-**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-ephemeral, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -2748,6 +2890,45 @@ pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action New -I
 
 Twice in a row: the first imports, the second names the distro it reused and its
 age, and both exit 0.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T13:40:00Z.** `-Reuse` on `New`, and the image reference is
+read from a file rather than out of the distro name, exactly as the premise
+required.
+
+```text
+$ ... -Action New -Image docker.io/library/alpine:3.22 -Reuse -Command 'printf ONE'
+==> Importing as WSL2 distro 'eph-docker.io-library-alpine-3.22-mx9o'
+00:00:00.128 out~ ONE
+EXIT=0
+
+$ cat <state>/eph-docker.io-library-alpine-3.22-mx9o/origin.json
+{ "schema": "wsl-toolkit-origin/1", "image": "docker.io/library/alpine:3.22", "created": "..." }
+
+$ ... -Action New -Image docker.io/library/alpine:3.22 -Reuse -Command 'printf TWO'
+==> Reusing 'eph-docker.io-library-alpine-3.22-mx9o', built from docker.io/library/alpine:3.22, 7s old
+  ! it carries whatever the previous run left in it. Drop -Reuse for a clean one.
+00:00:00.117 out~ TWO
+EXIT=0
+```
+
+⚠ **Two decisions the entry did not name.** A distro with NO record is never
+reused, because treating "no record" as "matches whatever you asked for" would
+run a command in a distribution built from something else. And `-Reuse` with
+`-Ephemeral` is refused by name: one keeps a distribution to run in again and
+the other destroys it when the command ends.
+
+⚠ **What the record can support is what the caller asked for, and no more.**
+Two runs naming `alpine:latest` a day apart may be two different images; nothing
+stored here distinguishes them, and the manual states the limit for a reader of
+the tool.
+
+⚠ **The premise said "read, not measured", and it still is for the case that
+matters.** `WSL-26`'s closing carries the only numbers taken here, and they are
+for a small preparation on one machine.
 
 ---
 

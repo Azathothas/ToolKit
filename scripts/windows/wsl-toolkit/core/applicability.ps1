@@ -21,15 +21,21 @@ function Get-ParameterApplicability {
       one. The failure mode of forgetting is a refusal, never a silent gap.
     #>
     $relay = @('New', 'Run')
+    # WSL-28. ⭐ Replay RENDERS, so every parameter that decides how a line is
+    # rendered applies to it, and the ones that decide what is CAPTURED do not.
+    # The split is what makes the refusal useful: -TickSeconds on a Replay would
+    # be a caller expecting a heartbeat over a file that has already been read,
+    # and -EventLog would be a Replay recording itself.
+    $render = $relay + @('Replay')
     return [ordered]@{
         Image                 = @('New')
         Tarball               = @('New')
-        Name                  = @('New', 'Run', 'Enter', 'Remove')
+        Name                  = @('New', 'Run', 'Enter', 'Remove', 'Snapshot')
         Command               = $relay
         CommandFile           = $relay
         CommandB64            = $relay
         User                  = @('New', 'Run', 'Enter')
-        StateDir              = @('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor')
+        StateDir              = @('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor', 'Snapshot')
         UserEnv               = $relay
         Ephemeral             = @('New')
         OciEnv                = @('New')
@@ -38,24 +44,32 @@ function Get-ParameterApplicability {
         Verbatim              = $relay
         ScriptArg             = $relay
         ScriptArgFile         = $relay
-        NoTimestamps          = $relay
-        TimestampMode         = $relay
-        TimestampFormat       = $relay
-        TimestampColumns      = $relay
-        TimestampSeparator    = $relay
-        TimestampProfile      = $relay
-        PrefixOnly            = $relay
-        Color                 = $relay
+        NoTimestamps          = $render
+        TimestampMode         = $render
+        TimestampFormat       = $render
+        TimestampColumns      = $render
+        TimestampSeparator    = $render
+        TimestampProfile      = $render
+        PrefixOnly            = $render
+        Color                 = $render
         StreamLogPath         = $relay
         StreamLogOverwrite    = $relay
         EventLog              = $relay
-        Redact                = $relay
-        MaxLineBytes          = $relay
+        Redact                = $render
+        MaxLineBytes          = $render
         TickSeconds           = $relay
         TickEscalateSeconds   = $relay
         CommandTimeoutSeconds = $relay
-        DryRun                = @('New', 'Run', 'Enter', 'Remove', 'Purge')
-        Force                 = @('New', 'Remove', 'Purge')
+        ProgressPrefix        = $relay
+        # WSL-26. Snapshot names the distro with -Name and the tag with -As;
+        # New reads a tag back through -Tarball, which already applies to it.
+        As                    = @('Snapshot')
+        # WSL-28. Replay renders one recorded run; Compare needs two.
+        From                  = @('Replay', 'Compare')
+        Against               = @('Compare')
+        Reuse                 = @('New')
+        DryRun                = @('New', 'Run', 'Enter', 'Remove', 'Purge', 'Snapshot')
+        Force                 = @('New', 'Remove', 'Purge', 'Snapshot')
     }
 }
 

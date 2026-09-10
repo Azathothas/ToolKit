@@ -16,7 +16,8 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor')]
+    [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor',
+        'Snapshot', 'Replay', 'Compare')]
     [string]$Action,
 
     [string]$Image,
@@ -184,6 +185,37 @@ param(
     # Print the wsl.exe command line that would run, and the state that would be
     # changed, then stop. ⛔ Nothing is created, imported, written or removed.
     [switch]$DryRun,
+
+    # WSL-27. ⭐ A token the GUEST prefixes a line with to report how far along
+    # it is. A line that begins with it, then a percentage and an optional
+    # label, is CONSUMED rather than relayed, and the tick reports the last one
+    # and how long ago it arrived.
+    #
+    # ⛔ OFF BY DEFAULT AND THE TOKEN IS NEVER A DEFAULT. A tool that silently
+    # swallowed every line beginning with some chosen string is a tool that eats
+    # somebody's output. The token has to collide with nothing in the payload's
+    # own output, which only the caller can know.
+    #
+    # ⛔ THE TICK REPORTS THE LAST PROGRESS AND WHEN. It does not compute a
+    # remaining time: a figure derived from one sample is the fabricated number
+    # docs/conventions/prose.md forbids.
+    [string]$ProgressPrefix,
+    # WSL-26. The tag a Snapshot is written under, and the tag New reads back.
+    # ⚠ A snapshot carries whatever the last command left in the distro,
+    # INCLUDING a credential a caller passed with -ScriptArg. It is a tarball on
+    # this machine's disk and nothing in it is encrypted.
+    [string]$As,
+    # WSL-28. The recorded run a Replay renders, and the LEFT side of a Compare.
+    [string]$From,
+    # WSL-28. The RIGHT side of a Compare.
+    [string]$Against,
+    # WSL-29. ⭐ Run in a registered ephemeral distro built from the same image
+    # rather than importing another one, and SAY which happened.
+    # ⛔ It cannot be the default and it cannot be silent. A reused distro
+    # carries whatever the last command left in it, including files a previous
+    # caller wrote, and a caller who did not ask for that is owed the warning
+    # every time.
+    [switch]$Reuse,
 
     [switch]$Force
 )

@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 88  open 7  blocked 0  done 81
+total 88  open 2  blocked 0  done 86
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 46 | 46 |
-| P2 | 6 | 0 | 26 | 32 |
-| P3 | 1 | 0 | 6 | 7 |
-| **all** | **7** | **0** | **81** | **88** |
+| P2 | 2 | 0 | 30 | 32 |
+| P3 | 0 | 0 | 7 | 7 |
+| **all** | **2** | **0** | **86** | **88** |
 
 ---
 
@@ -85,10 +85,10 @@ total 88  open 7  blocked 0  done 81
 | WSL-23 | P3 | M | done | Parameters are silently ignored by the actions they do not apply to | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-24 | P1 | S | done | A list parameter cannot be repeated, and an int list binds a wrong number | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-25 | P2 | M | open | The release digest proves transport, not authorship | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-26 | P2 | M | open | A prepared rootfs is thrown away and paid for again | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-27 | P2 | M | open | The tick can say nothing is happening and never that something is | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-28 | P2 | M | open | A recorded run cannot be re-read or compared | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-29 | P3 | S | open | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-26 | P2 | M | done | A prepared rootfs is thrown away and paid for again | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-27 | P2 | M | done | The tick can say nothing is happening and never that something is | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-28 | P2 | M | done | A recorded run cannot be re-read or compared | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-29 | P3 | S | done | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-30 | P2 | XL | open | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-31 | P1 | XL | done | A portable entry point for isolated Linux jobs on Windows | [`issue-6.md`](issue-6.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -117,7 +117,7 @@ total 88  open 7  blocked 0  done 81
 | WSL-55 | P2 | S | done | A report that creates the thing it is describing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-56 | P2 | M | done | What a failed job leaves a reader to ask the machine by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-57 | P1 | S | done | Two selftest cases were written against one host's environment | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-58 | P2 | M | open | `inspect` is the one report the helper route cannot serve | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-58 | P2 | M | done | `inspect` is the one report the helper route cannot serve | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

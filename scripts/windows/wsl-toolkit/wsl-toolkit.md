@@ -115,10 +115,13 @@ recorded.
 | `Enter` | attach an interactive shell to an existing ephemeral distro, as `-User` |
 | `List` | list ephemeral distros, every other distro, which it never touches, and any orphaned rootfs tarball |
 | `Remove` | unregister one ephemeral distro and delete its disk |
-| `Purge` | remove every ephemeral distro, prefix-matched only, and every orphaned rootfs tarball |
+| `Purge` | remove every ephemeral distro, prefix-matched only, and every orphaned rootfs tarball. ⛔ It never removes a snapshot; it reports them and names the directory. |
 | `Resources` | report what WSL and the container engine are holding on this machine, and print the cleanup commands. ⛔ It runs none of them. |
 | `HostAddress` | print the address a distro reaches this host at, for the current networking mode. ⭐ It does not create a distro to find out. |
 | `Doctor` | ⭐ what this host can and cannot do, before anything is created. Read-only, and every row says how it was obtained. |
+| `Snapshot` | ⭐ export a registered ephemeral distro to a rootfs tarball under `-As <tag>`, which `New -Tarball <tag>` reads back. ⛔ `Purge` never removes one. |
+| `Replay` | render a run recorded with `-EventLog` again, in any timestamp shape. ⛔ It creates nothing and runs nothing. |
+| `Compare` | diff two recorded runs: elapsed, time to first output, ⭐ longest silence, line and byte counts per stream, and the exit code. |
 
 ## ⭐ `Doctor`, which answers before a failure has to
 
@@ -193,8 +196,13 @@ wrote.
 | `-MaxLineBytes` | `New` `Run` | truncate the guest's text at this many bytes and say how many went. `0`, the default, never truncates. |
 | `-TickSeconds` | `New` `Run` | seconds of **silence** before a heartbeat line. Default 30. `0` turns the heartbeat off and keeps the timestamps. |
 | `-TickEscalateSeconds` | `New` `Run` | comma-separated silence thresholds at which the tick says more rather than the same thing again. Default `120,300,900`. |
-| `-DryRun` | `New` `Run` `Enter` `Remove` `Purge` | ⭐ print the exact `wsl.exe` command line and the state that would change, then stop. ⛔ Nothing is created, imported, written or removed. Goes to **stdout**, so it can be captured and audited. |
-| `-Force` | `New` `Remove` `Purge` | required when the session is non-interactive. Skips the confirmation. |
+| `-ProgressPrefix TOKEN` | `New` `Run` | ⭐ a token the guest prefixes a line with to report how far along it is. That line is CONSUMED and the tick reports the last one and its age. ⛔ Off by default; a malformed prefixed line is relayed, never swallowed. |
+| `-Reuse` | `New` | ⭐ run in a registered distro built from the same `-Image` rather than importing another, and SAY which happened. ⛔ Never the default and never silent. |
+| `-As TAG` | `Snapshot` | the tag the snapshot is written under. |
+| `-From PATH` | `Replay` `Compare` | the recorded run to render, or the left side of a comparison. |
+| `-Against PATH` | `Compare` | the right side of a comparison. |
+| `-DryRun` | `New` `Run` `Enter` `Remove` `Purge` `Snapshot` | ⭐ print the exact `wsl.exe` command line and the state that would change, then stop. ⛔ Nothing is created, imported, written or removed. Goes to **stdout**, so it can be captured and audited. |
+| `-Force` | `New` `Remove` `Purge` `Snapshot` | required when the session is non-interactive. Skips the confirmation. On `Snapshot` it replaces an existing tag. |
 
 ⛔ `-Image` and `-Tarball` are mutually exclusive, and `New` requires one of
 them. ⛔ `-Command`, `-CommandFile` and `-CommandB64` are mutually exclusive
@@ -923,6 +931,235 @@ like everywhere else, so `-Action Enter -Name podman-machine-default` asks for
 | the distro is registered | a login shell as `-User`, and its exit code |
 | the distro is not registered | exit 1, and the message names `-Action List` and `-Action New` |
 | `-Name` omitted | exit 1, `Action Enter requires -Name.` |
+
+---
+
+## ⭐ Reusing a prepared distro, with `-Reuse`
+
+A caller running ten commands against one image either paid the pull, export
+and import ten times, or managed a distro name by hand across ten invocations.
+
+```powershell
+pwsh -File wsl-toolkit.ps1 -Action New -Image alpine:3.22 -Reuse -Command 'true'
+```
+
+⭐ **It says which it did, every time.** The first run imports; the second names
+the distro it reused and how old it is.
+
+```text
+==> Reusing 'eph-docker.io-library-alpine-3.22-mx9o', built from docker.io/library/alpine:3.22, 7s old
+  ! it carries whatever the previous run left in it. Drop -Reuse for a clean one.
+```
+
+⛔ **It cannot be the default and it cannot be silent.** A reused distro carries
+whatever the last command left in it, including files a previous caller wrote,
+and a caller who did not ask for that is owed the warning rather than a silent
+speed-up.
+
+⭐ **The image reference is read from a file, not from the distro name.** Each
+distro this tool imports gets an `origin.json` beside its disk:
+
+```json
+{ "schema": "wsl-toolkit-origin/1", "image": "docker.io/library/alpine:3.22", "created": "..." }
+```
+
+⛔ **Deriving it from the generated name would be a value re-parsed out of a
+mutable label**, which [`../../../docs/conventions/code.md`](../../../docs/conventions/code.md)
+names as the wrong answer: `alpine:3.22` and `alpine:3.21` sanitise to names
+that differ by one character, and `-Name` lets a caller pick a name with no
+relation to the image at all.
+
+⚠ **A distro with no record is never reused.** One created before this file
+existed has none, and treating "no record" as "matches whatever you asked for"
+would run a command in a distribution built from something else.
+
+⚠ **The match is on the reference the caller typed, not on a resolved digest.**
+`alpine:latest` yesterday and `alpine:latest` today can be two different images
+and this cannot tell them apart. What it promises is that you asked for the same
+thing. A caller who needs the image itself re-pulled does not pass `-Reuse`.
+
+⛔ **`-Reuse` with `-Ephemeral` is refused by name.** One keeps a distribution to
+run in again and the other destroys it when the command ends.
+
+---
+
+## ⭐ Keeping a prepared rootfs, with `Snapshot`
+
+`New` always pulls, exports and imports. The incident that produced the whole
+stream log was a 14-minute silent `apk` install, and the second and third runs
+of that workload paid for it again.
+
+```powershell
+pwsh -File wsl-toolkit.ps1 -Action Snapshot -Name eph-x -As probe-ready
+pwsh -File wsl-toolkit.ps1 -Action New -Tarball probe-ready -Ephemeral -Command 'jq --version'
+```
+
+`-Tarball` takes a snapshot **tag** as well as a path. ⚠ A real file always
+wins, so a caller with `ready.tar` in the working directory gets that file and
+not a snapshot of the same name.
+
+### ⚠ Measured on this machine, on 2026-09-10
+
+Windows 11 Pro 26200, PowerShell 7.6.5, Alpine 3.22 with `jq` installed as the
+preparation. Wall time for one run reaching the prepared state:
+
+| how | run 1 | run 2 |
+| --- | --- | --- |
+| `-Tarball probe-ready` | 1.82s | 1.79s |
+| `-Image alpine:3.22`, preparing each time | 10.04s | 10.85s |
+
+⚠ **Two runs each, on one machine, with one small preparation.** They support
+the claim that the snapshot path is the shorter one here. They do not support a
+ratio for a workload whose preparation is minutes rather than seconds, which is
+the case the entry was written for and which nothing here has measured.
+
+⚠ **The first run from a cold snapshot was 4.60s**, and the two above are with
+the tarball in the page cache. A number without its conditions cannot be
+compared to anything.
+
+### ⛔ `Purge` never removes a snapshot
+
+This is the design question the entry had to answer before it wrote anything.
+
+`Purge` collects what was **left behind**: an interrupted `New`'s rootfs, a
+distro nobody unregistered. A snapshot is the one durable thing this tool makes
+on purpose, and a caller who believed it was durable losing it to a routine
+cleanup is the worse failure by far.
+
+⭐ **They are distinguished by structure, not by a name pattern.** Snapshots live
+in `<state directory>\snapshots\`, and the orphan sweep enumerates `*.tar` in
+the state directory itself and nowhere else. A convention like `snap-*.tar`
+would be one rename away from making every existing snapshot an orphan again.
+
+`Purge` names them, with the directory, so removing one is a deliberate act:
+
+```text
+  3 snapshot(s), 27.4 MiB, KEPT in C:\Users\...\wsl-ephemeral\snapshots
+  Purge never removes those. Delete the file to remove one.
+```
+
+⚠ **A snapshot carries whatever the distribution held when it was taken**,
+including a credential a caller passed with `-ScriptArg` or wrote to a file. It
+is a plain tarball on this machine's disk and nothing in it is encrypted. The
+tool says so on the line that names the tag.
+
+---
+
+## ⭐ Progress from inside the guest, with `-ProgressPrefix`
+
+The tick reports silence, the distro's state and whether its disk grew. It
+cannot report that a command is 60 percent through, because nothing inside the
+guest can tell it anything.
+
+⭐ **The channel is the stdout the payload already has.** Nothing is injected
+into the guest, nothing is mounted, and no image needs anything added to it: the
+caller chose what to run, and this reads what that program was already going to
+print. Every richer channel costs something the image has to carry.
+
+```powershell
+pwsh -File wsl-toolkit.ps1 -Action Run -Name eph-x -ProgressPrefix WTKP -Command '
+  echo "WTKP 10 fetching"; ...; echo "WTKP 60% unpacking"; ...; echo "WTKP 100 done"'
+```
+
+```text
+00:00:02.558 tick 2s silent | elapsed 2s | out 1 lines 31 B | ... | progress 10% fetching (2s ago)
+00:00:07.434 tick 2s silent | elapsed 7s | out 2 lines 68 B | ... | progress 60% unpacking (2s ago)
+```
+
+The shape is the token, whitespace, a percentage, and an optional label.
+`TOKEN 42`, `TOKEN 42%` and `TOKEN 42 unpacking` are all accepted.
+
+⛔ **Off by default, and the token is never a default.** A tool that silently
+swallowed every line beginning with some chosen string is a tool that eats
+somebody's output, and only the caller knows what collides with their payload.
+⭐ With no `-ProgressPrefix`, every line is relayed byte for byte.
+
+⛔ **A malformed prefixed line is RELAYED, never swallowed.** `WTKP almost done`
+and `WTKP 420 files` both reach the stream unchanged. Consuming a line the parse
+did not understand is the same defect as consuming one nobody opted into,
+reached from a different direction.
+
+⚠ **The token has to end at a boundary.** `WTKPINSTALL 42` is not a progress
+line, or a caller who chose a short token would lose output they would never
+connect to this switch.
+
+⛔ **The tick reports the last progress and when it arrived. It does not compute
+an estimate.** A remaining-time figure derived from one sample is the fabricated
+number [`../../../docs/conventions/prose.md`](../../../docs/conventions/prose.md)
+forbids. ⭐ The age is the part that carries the warning: 40 percent reported
+twelve minutes ago is a different picture from 40 percent reported four seconds
+ago, and the percentage alone cannot tell them apart.
+
+The event log records each one as a `PROGRESS` record, and each tick carries
+`progress_percent` and `progress_age_s`.
+
+---
+
+## ⭐ Reading a recorded run back, with `Replay` and `Compare`
+
+`-EventLog` writes every event as JSON and, until now, nothing read it. A caller
+who recorded a run could not re-render it in another timestamp shape without
+running it again, and could not compare two runs at all.
+
+```powershell
+pwsh -File wsl-toolkit.ps1 -Action Replay -From run.jsonl -TimestampMode Iso
+pwsh -File wsl-toolkit.ps1 -Action Compare -From before.jsonl -Against after.jsonl
+```
+
+⭐ **`Replay` reuses the renderer rather than growing a second one.** The
+timestamp prefix is already a pure function of a clock reading and a tag, and
+both are in every record. A second renderer is how a log file and a terminal
+come to show different runs.
+
+⚠ **It renders the record's own wall reading, not this machine's clock.** A
+replay of last week's run stamped with today's date is a document that says
+something false about when the work happened.
+
+```text
+00:00:00.129 out~ ONE                              -TimestampMode Relative
+2026-09-10T17:01:06.000+05:45 out~ ONE             -TimestampMode Iso
+1789038966 out~ ONE                                -TimestampMode Epoch
+```
+
+`Compare` diffs the figures a result cannot show:
+
+```text
+  figure           A              B              B - A
+  elapsed          0s             10s            +10.121
+  to first output  0s             0s             +0.233
+  longest silence  0s             4s             +4.87
+  out lines        1              3              +2
+  exit code        0              0              0
+  ! B has the longer silence, 4s, ending at 10s into the run.
+```
+
+⭐ **The longest silence is the figure that earns this.** A run whose result
+stayed green while its longest gap grew fifteen times has a regression no exit
+code reports.
+
+⚠ **The silence after the last line counts.** A run whose last output arrived at
+four seconds and which ended at four minutes was silent for the rest, and a
+measure that only looked at the gaps *between* lines would report the quietest
+part of the run as not having happened.
+
+⛔ **A gap in `seq` is a refusal, not a smoothed-over render.** That field is
+gapless by construction, so a gap means records were dropped, which is a finding
+about the recording rather than about the run:
+
+```text
+ERROR: Line 3 of 'run-gap.jsonl': seq jumps from 2 to 4. That field is gapless by
+construction, so records were dropped and this log is not the whole run. Nothing
+was rendered.
+```
+
+⛔ **`Compare` reports and does not judge.** There is no threshold at which it
+calls a difference a regression: a ratio that is a regression for one workload
+is noise for another, and a tool that ruled on it would be inventing a standard
+nobody set.
+
+⛔ **Both create nothing.** They read a file and write to the two streams.
+
+---
 
 ## Orphaned rootfs tarballs
 

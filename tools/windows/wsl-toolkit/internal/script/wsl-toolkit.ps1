@@ -259,7 +259,8 @@
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor')]
+    [ValidateSet('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor',
+        'Snapshot', 'Replay', 'Compare')]
     [string]$Action,
 
     [string]$Image,
@@ -427,6 +428,37 @@ param(
     # Print the wsl.exe command line that would run, and the state that would be
     # changed, then stop. ⛔ Nothing is created, imported, written or removed.
     [switch]$DryRun,
+
+    # WSL-27. ⭐ A token the GUEST prefixes a line with to report how far along
+    # it is. A line that begins with it, then a percentage and an optional
+    # label, is CONSUMED rather than relayed, and the tick reports the last one
+    # and how long ago it arrived.
+    #
+    # ⛔ OFF BY DEFAULT AND THE TOKEN IS NEVER A DEFAULT. A tool that silently
+    # swallowed every line beginning with some chosen string is a tool that eats
+    # somebody's output. The token has to collide with nothing in the payload's
+    # own output, which only the caller can know.
+    #
+    # ⛔ THE TICK REPORTS THE LAST PROGRESS AND WHEN. It does not compute a
+    # remaining time: a figure derived from one sample is the fabricated number
+    # docs/conventions/prose.md forbids.
+    [string]$ProgressPrefix,
+    # WSL-26. The tag a Snapshot is written under, and the tag New reads back.
+    # ⚠ A snapshot carries whatever the last command left in the distro,
+    # INCLUDING a credential a caller passed with -ScriptArg. It is a tarball on
+    # this machine's disk and nothing in it is encrypted.
+    [string]$As,
+    # WSL-28. The recorded run a Replay renders, and the LEFT side of a Compare.
+    [string]$From,
+    # WSL-28. The RIGHT side of a Compare.
+    [string]$Against,
+    # WSL-29. ⭐ Run in a registered ephemeral distro built from the same image
+    # rather than importing another one, and SAY which happened.
+    # ⛔ It cannot be the default and it cannot be silent. A reused distro
+    # carries whatever the last command left in it, including files a previous
+    # caller wrote, and a caller who did not ask for that is owed the warning
+    # every time.
+    [switch]$Reuse,
 
     [switch]$Force
 )
@@ -1936,6 +1968,20 @@ function Test-ColumnTakesFormat {
     return ($Column -eq 'rel' -or $Column -eq 'wall')
 }
 
+function Format-Percent {
+    <#
+      A percentage, rendered the same way everywhere it is shown.
+
+      ⚠ INVARIANT CULTURE, because a machine whose decimal separator is a comma
+      would otherwise render 42.5 as '42,5' in a log a script parses. The same
+      reason the rest of this file formats with it.
+    #>
+    param([Parameter(Mandatory = $true)][double]$Value)
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    if ($Value -eq [Math]::Floor($Value)) { return ([int]$Value).ToString($inv) + '%' }
+    return $Value.ToString('0.0', $inv) + '%'
+}
+
 function Format-Duration {
     param([Parameter(Mandatory = $true)][timespan]$Span)
     $inv   = [Globalization.CultureInfo]::InvariantCulture
@@ -2465,6 +2511,10 @@ function New-StreamLogState {
         Fired     = @()
         Quiet     = $false
         LastDisk  = $null
+        # WSL-27. The last progress the GUEST reported, and when. Null until a
+        # line arrives, because a run that has reported nothing has not reported
+        # zero.
+        Progress  = $null
     }
 }
 
@@ -2502,16 +2552,79 @@ function Format-StreamLogPrefix {
         [Parameter(Mandatory = $true)][string]$Tag,
         [Parameter(Mandatory = $true)][timespan]$Now,
         [Parameter(Mandatory = $true)][timespan]$Delta,
-        [switch]$Partial
+        [switch]$Partial,
+        # ⭐ THE WALL READING, WHERE THE CALLER HAS ONE. A live run reads the
+        # clock; a Replay has the reading the record already carries, and
+        # rendering it against THIS machine's clock would stamp a run from last
+        # week with today's date. WSL-28. One renderer either way: a second copy
+        # for replay is how the file and the terminal come to disagree.
+        [Nullable[DateTimeOffset]]$Wall = $null
     )
     $cfg  = $State.Settings
-    $wall = [DateTimeOffset]::Now
+    # ⛔ NOT $wall. That name IS the $Wall parameter, because PowerShell ignores
+    # case in variable names, so assigning to it would overwrite what the caller
+    # passed with this machine's clock and a replay would stamp last week's run
+    # with today. build.ps1 -Test walks the AST for exactly this and refused the
+    # first version of this line.
+    $reading = if ($null -ne $Wall) { [DateTimeOffset]$Wall } else { [DateTimeOffset]::Now }
     $parts = @()
     foreach ($c in $cfg.Columns) {
-        $parts += (Format-StampColumn -Column $c -Format $cfg.Format -Wall $wall -Elapsed $Now -Delta $Delta)
+        $parts += (Format-StampColumn -Column $c -Format $cfg.Format -Wall $reading -Elapsed $Now -Delta $Delta)
     }
     $field = if ($Partial) { $Tag.PadRight(3) + '~' } else { $Tag.PadRight(4) }
     return (($parts -join ' ') + $cfg.Separator + $field)
+}
+
+function Read-ProgressLine {
+    <#
+      Whether one relayed line is a progress report, and what it says.
+
+      ⭐ WHY A STDOUT PREFIX IS THE CHANNEL. The three host-side signals this
+      tool measures say whether something is happening and never how much is
+      left, because nothing inside the guest can tell the host anything. A
+      prefix needs no injection, no mount, no named pipe and no agent in the
+      image: the payload already has a stdout and the caller already chose what
+      to run.
+
+      ⛔ THE TOKEN IS THE CALLER'S AND THERE IS NO DEFAULT. A tool that silently
+      swallowed every line beginning with some chosen string would be a tool that
+      eats somebody's output, and the caller would have no way to know which line
+      went missing.
+
+      ⛔ A MALFORMED PREFIXED LINE IS RELAYED, NEVER SWALLOWED. Returning null
+      here is what puts it back in the stream. Consuming a line the parse did not
+      understand is the same defect as consuming one nobody opted into, arrived
+      at by a different route.
+
+      The shape is the token, whitespace, a percentage, and an optional label:
+
+          TOKEN 42 unpacking
+          TOKEN 42% unpacking
+          TOKEN 100
+
+      Returns a hashtable with Percent and Label, or $null when this is not one.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Token
+    )
+    if (-not $Token) { return $null }
+    if (-not $Text.StartsWith($Token, [StringComparison]::Ordinal)) { return $null }
+    $rest = $Text.Substring($Token.Length)
+    # ⚠ THE TOKEN HAS TO END AT A BOUNDARY. Without this, a token of `P` would
+    # consume every line beginning with the letter P, and the caller who chose a
+    # short token would lose output they never connected to this switch.
+    if ($rest -and -not [char]::IsWhiteSpace($rest[0])) { return $null }
+    $rest = $rest.Trim()
+    if (-not ($rest -match '^([0-9]+(?:\.[0-9])?)\s*%?(?:\s+(.*))?$')) { return $null }
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    $pct = [double]::Parse($Matches[1], $inv)
+    # A number outside the range is not a percentage, so the line is somebody
+    # else's and goes back to the stream.
+    if ($pct -lt 0 -or $pct -gt 100) { return $null }
+    $label = ''
+    if ($Matches.Count -gt 2 -and $Matches[2]) { $label = ([string]$Matches[2]).Trim() }
+    return @{ Percent = $pct; Label = $label }
 }
 
 function Write-StreamLogLine {
@@ -2635,12 +2748,29 @@ function Write-StreamLogTick {
              ' | out ' + $State.Counts.out.Lines + ' lines ' + (Format-ByteCount -Bytes $State.Counts.out.Bytes) +
              ' | err ' + $State.Counts.err.Lines + ' lines ' + (Format-ByteCount -Bytes $State.Counts.err.Bytes) +
              ' | distro ' + $runState + ' | ' + $diskText)
+    # ⛔ THE LAST PROGRESS AND WHEN IT ARRIVED. NOT AN ESTIMATE. A
+    # remaining-time figure derived from one sample is the fabricated number
+    # docs/conventions/prose.md forbids, and the age is the part that carries
+    # the warning: 40 percent reported twelve minutes ago is a different picture
+    # from 40 percent reported four seconds ago, and the percentage alone cannot
+    # tell them apart. WSL-27.
+    if ($State.Progress) {
+        $age = $now - $State.Progress.At
+        $shown = 'progress ' + (Format-Percent -Value $State.Progress.Percent)
+        if ($State.Progress.Label) { $shown += ' ' + $State.Progress.Label }
+        $text += ' | ' + $shown + ' (' + (Format-Duration -Span $age) + ' ago)'
+    }
     Write-StreamLogLine -State $State -Tag 'tick' -Text $text
     if ($State.Events) {
         $data = @{ silence_s = [Math]::Round($silent.TotalSeconds, 1); distro_state = $runState
                    out_lines = $State.Counts.out.Lines; err_lines = $State.Counts.err.Lines }
         if ($null -ne $disk) { $data['disk_bytes'] = $disk.Bytes }
         if ($null -ne $grew) { $data['disk_grew_bytes'] = $grew }
+        if ($State.Progress) {
+            $data['progress_percent'] = $State.Progress.Percent
+            $data['progress_age_s'] = [Math]::Round(($now - $State.Progress.At).TotalSeconds, 1)
+            if ($State.Progress.Label) { $data['progress_label'] = $State.Progress.Label }
+        }
         Write-EventRecord -Sink $State.Events -Kind 'TICK_FACTS' -RelativeSeconds $now.TotalSeconds -Data $data
     }
     Write-StreamLogEscalation -State $State -Silent $silent -DiskGrew $grew -DistroState $runState
@@ -2963,6 +3093,24 @@ function Invoke-InDistroLogged {
             $rest  = ''
             $ready = Split-StreamChunk -Pending ($s.Pending + $chunk) -Remainder ([ref]$rest)
             foreach ($l in $ready) {
+                # WSL-27. ⛔ CONSUMED, NOT RELAYED, and only when the caller
+                # named a token. A partial line is never a progress report: it
+                # has no terminator yet, so the label could still be arriving,
+                # and parsing one would consume half a line the guest is midway
+                # through writing.
+                if ($script:ProgressPrefix -and -not $l.Partial) {
+                    $prog = Read-ProgressLine -Text $l.Text -Token $script:ProgressPrefix
+                    if ($null -ne $prog) {
+                        $st.Progress = @{ Percent = $prog.Percent; Label = $prog.Label; At = $st.Clock.Elapsed }
+                        if ($st.Events) {
+                            $data = @{ progress_percent = $prog.Percent; stream = $s.Tag }
+                            if ($prog.Label) { $data['progress_label'] = $prog.Label }
+                            Write-EventRecord -Sink $st.Events -Kind 'PROGRESS' `
+                                -RelativeSeconds $st.Clock.Elapsed.TotalSeconds -Data $data
+                        }
+                        continue
+                    }
+                }
                 Write-StreamLogLine -State $st -Tag $s.Tag -Text $l.Text -Partial:$l.Partial
                 $st.Counts[$s.Tag].Lines++
             }
@@ -3313,15 +3461,21 @@ function Get-ParameterApplicability {
       one. The failure mode of forgetting is a refusal, never a silent gap.
     #>
     $relay = @('New', 'Run')
+    # WSL-28. ⭐ Replay RENDERS, so every parameter that decides how a line is
+    # rendered applies to it, and the ones that decide what is CAPTURED do not.
+    # The split is what makes the refusal useful: -TickSeconds on a Replay would
+    # be a caller expecting a heartbeat over a file that has already been read,
+    # and -EventLog would be a Replay recording itself.
+    $render = $relay + @('Replay')
     return [ordered]@{
         Image                 = @('New')
         Tarball               = @('New')
-        Name                  = @('New', 'Run', 'Enter', 'Remove')
+        Name                  = @('New', 'Run', 'Enter', 'Remove', 'Snapshot')
         Command               = $relay
         CommandFile           = $relay
         CommandB64            = $relay
         User                  = @('New', 'Run', 'Enter')
-        StateDir              = @('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor')
+        StateDir              = @('New', 'Run', 'Enter', 'List', 'Remove', 'Purge', 'Resources', 'HostAddress', 'Doctor', 'Snapshot')
         UserEnv               = $relay
         Ephemeral             = @('New')
         OciEnv                = @('New')
@@ -3330,24 +3484,32 @@ function Get-ParameterApplicability {
         Verbatim              = $relay
         ScriptArg             = $relay
         ScriptArgFile         = $relay
-        NoTimestamps          = $relay
-        TimestampMode         = $relay
-        TimestampFormat       = $relay
-        TimestampColumns      = $relay
-        TimestampSeparator    = $relay
-        TimestampProfile      = $relay
-        PrefixOnly            = $relay
-        Color                 = $relay
+        NoTimestamps          = $render
+        TimestampMode         = $render
+        TimestampFormat       = $render
+        TimestampColumns      = $render
+        TimestampSeparator    = $render
+        TimestampProfile      = $render
+        PrefixOnly            = $render
+        Color                 = $render
         StreamLogPath         = $relay
         StreamLogOverwrite    = $relay
         EventLog              = $relay
-        Redact                = $relay
-        MaxLineBytes          = $relay
+        Redact                = $render
+        MaxLineBytes          = $render
         TickSeconds           = $relay
         TickEscalateSeconds   = $relay
         CommandTimeoutSeconds = $relay
-        DryRun                = @('New', 'Run', 'Enter', 'Remove', 'Purge')
-        Force                 = @('New', 'Remove', 'Purge')
+        ProgressPrefix        = $relay
+        # WSL-26. Snapshot names the distro with -Name and the tag with -As;
+        # New reads a tag back through -Tarball, which already applies to it.
+        As                    = @('Snapshot')
+        # WSL-28. Replay renders one recorded run; Compare needs two.
+        From                  = @('Replay', 'Compare')
+        Against               = @('Compare')
+        Reuse                 = @('New')
+        DryRun                = @('New', 'Run', 'Enter', 'Remove', 'Purge', 'Snapshot')
+        Force                 = @('New', 'Remove', 'Purge', 'Snapshot')
     }
 }
 
@@ -3444,9 +3606,169 @@ function Get-CommandPlanLine {
     $argLine = ConvertTo-NativeArgumentString -Arguments @('-d', $DistroName, '-u', $RunAs, '--', '/bin/sh', '-lc', $line)
     return ((Get-WslExe) + ' ' + $argLine)
 }
+function Get-OriginPath {
+    <# Where a distro records the image it was built from. #>
+    param([Parameter(Mandatory = $true)][string]$DistroName)
+    return (Join-Path (Join-Path $script:BaseDir $DistroName) 'origin.json')
+}
+
+function Write-DistroOrigin {
+    <#
+      Record what a distro was made from, beside its disk.
+
+      ⛔ A FILE, NOT THE NAME. The generated distro name carries a sanitised
+      fragment of the image reference, and reading the image back out of it
+      would be a value re-parsed out of a mutable name, which
+      docs/conventions/code.md names as the wrong answer: a stored thing's
+      identity is a stable opaque token, never something recovered from a label
+      somebody can change. `alpine:3.22` and `alpine:3.21` sanitise to names that
+      differ by one character, and `-Name` lets a caller pick a name with no
+      relation to the image at all.
+
+      ⛔ VERSIONED AND SELF-DESCRIBING. A positional record that changes shape
+      mis-reads silently, and this one decides whether a caller's command runs in
+      a distribution built from a different image.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$DistroName,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$ImageRef
+    )
+    if (-not $ImageRef) { return }
+    $path = Get-OriginPath -DistroName $DistroName
+    Assert-InsideBaseDir -Path $path
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    $body = [ordered]@{
+        schema  = 'wsl-toolkit-origin/1'
+        image   = $ImageRef
+        created = [DateTimeOffset]::Now.ToString('o', $inv)
+    } | ConvertTo-Json -Depth 4
+    # ⚠ Written atomically, as a sibling then renamed. A killed write otherwise
+    # leaves a truncated JSON that -Reuse would refuse to parse, which reads as
+    # a broken tool rather than as an interrupted run.
+    $temp = $path + '.' + [Guid]::NewGuid().ToString('N') + '.tmp'
+    try {
+        [IO.File]::WriteAllText($temp, $body, [Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $temp -Destination $path -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Read-DistroOrigin {
+    <#
+      What one distro was built from, or $null.
+
+      ⚠ AN UNREADABLE OR UNKNOWN RECORD IS $null AND NEVER A GUESS. A distro
+      created before this file existed has none, and treating "no record" as
+      "matches whatever you asked for" would run a caller's command in a
+      distribution built from something else.
+    #>
+    param([Parameter(Mandatory = $true)][string]$DistroName)
+    $path = Get-OriginPath -DistroName $DistroName
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
+    try { $rec = [IO.File]::ReadAllText($path) | ConvertFrom-Json }
+    catch { $null = $_; return $null }
+    if (-not $rec.PSObject.Properties['schema'] -or $rec.schema -ne 'wsl-toolkit-origin/1') { return $null }
+    if (-not $rec.PSObject.Properties['image'] -or -not $rec.image) { return $null }
+    return $rec
+}
+
+function Find-ReusableDistro {
+    <#
+      A registered ephemeral distro built from this exact image reference, or
+      $null.
+
+      ⛔ AN EXACT MATCH ON THE REFERENCE, not a resolved digest and not a tag
+      prefix. `alpine:latest` yesterday and `alpine:latest` today can be two
+      different images, and this cannot tell them apart; what it promises is
+      that the caller ASKED for the same thing, which is the claim the record
+      actually supports. A caller who needs the image itself re-pulled does not
+      pass -Reuse.
+
+      ⚠ THE NEWEST ONE, so a caller who has several gets the one their last run
+      prepared rather than an arbitrary member of the set.
+    #>
+    param([Parameter(Mandatory = $true)][string]$ImageRef)
+    if (-not $script:BaseDir -or -not (Test-Path -LiteralPath $script:BaseDir)) { return $null }
+    $registered = @(Get-WslDistroNames)
+    $best = $null
+    foreach ($name in $registered) {
+        if (-not $name.StartsWith($script:Prefix, [StringComparison]::Ordinal)) { continue }
+        $rec = Read-DistroOrigin -DistroName $name
+        if ($null -eq $rec) { continue }
+        if ([string]$rec.image -cne $ImageRef) { continue }
+        $when = [DateTimeOffset]::MinValue
+        try { $when = [DateTimeOffset]::Parse([string]$rec.created, [Globalization.CultureInfo]::InvariantCulture) }
+        catch { $null = $_ }
+        if ($null -eq $best -or $when -gt $best.When) {
+            $best = [pscustomobject]@{ Name = $name; When = $when; Image = [string]$rec.image }
+        }
+    }
+    return $best
+}
+
+function Format-DistroAge {
+    <# How long ago a distro was prepared, for the line -Reuse must print. #>
+    param([Parameter(Mandatory = $true)]$Found)
+    if ($Found.When -eq [DateTimeOffset]::MinValue) { return 'age unknown' }
+    return (Format-Duration -Span ([DateTimeOffset]::Now - $Found.When)) + ' old'
+}
 function Invoke-ActionNew {
     if (-not $Image -and -not $Tarball) { throw "Action New requires -Image (e.g. alpine:3.22) or -Tarball <path>." }
     if ($Image -and $Tarball)           { throw "Pass either -Image or -Tarball, not both." }
+
+    # WSL-26. -Tarball takes a snapshot TAG as well as a path, so a caller who
+    # made one names it rather than spelling out where this tool keeps it. A
+    # real file always wins, so a caller with a tarball called `ready.tar` in
+    # the working directory gets that file and not a snapshot of the same name.
+    $tarballArg = $Tarball
+    if ($tarballArg -and -not (Test-Path -LiteralPath $tarballArg)) {
+        $asSnapshot = $null
+        try { $asSnapshot = Get-SnapshotPath -Tag $tarballArg } catch { $null = $_ }
+        if ($asSnapshot -and (Test-Path -LiteralPath $asSnapshot -PathType Leaf)) {
+            Write-Step "-Tarball '$tarballArg' names the snapshot at $asSnapshot"
+            Write-Warn 'a snapshot carries whatever the distribution held when it was taken.'
+            $tarballArg = $asSnapshot
+        }
+    }
+
+    # WSL-29. ⛔ BEFORE ANY NAME IS DRAWN AND BEFORE ANY DIRECTORY IS MADE. A
+    # reuse that had already created state would be a reuse that cost an import.
+    if ($Reuse) {
+        if ($Tarball) { throw '-Reuse selects a distribution built from an -Image and does not apply to -Tarball.' }
+        $found = Find-ReusableDistro -ImageRef $Image
+        if ($null -ne $found) {
+            # ⛔ IT SAYS WHICH IT DID, EVERY TIME. A reused distribution carries
+            # whatever the last command left in it, including files a previous
+            # caller wrote, and a caller who did not ask for that is owed the
+            # warning rather than a silent speed-up.
+            Write-Step ("Reusing '" + $found.Name + "', built from " + $found.Image + ', ' + (Format-DistroAge -Found $found))
+            Write-Warn 'it carries whatever the previous run left in it. Drop -Reuse for a clean one.'
+            if ($DryRun) {
+                Write-DryRunPlan -Action 'New' -DistroName $found.Name -Steps @(
+                    ('reuse      ' + $found.Name + ' rather than importing'),
+                    ('command    ' + (Get-CommandPlanLine -DistroName $found.Name -RunAs $User))
+                )
+                return
+            }
+            $rcReuse = 0
+            if ($null -ne $script:CommandBytes) {
+                Write-Step "Running command as '$User'"
+                Invoke-InDistro -DistroName $found.Name -RunAs $User -ScriptBytes $script:CommandBytes -ExitCode ([ref]$rcReuse)
+                if ($rcReuse -ne 0) { Write-Warn "command exited $rcReuse" }
+            }
+            # ⚠ -Ephemeral AND -Reuse TOGETHER WOULD DESTROY THE THING THAT WAS
+            # REUSED, which is the opposite of what the caller asked for on the
+            # next run. It is refused by name rather than silently ignored.
+            if ($Ephemeral) {
+                throw ('-Ephemeral removes the distribution when the command ends and -Reuse keeps ' +
+                       'one to run in again. Pass one.')
+            }
+            exit $rcReuse
+        }
+        Write-Step "-Reuse found no registered distribution built from $Image; importing one"
+    }
 
     # Resolve-NewDistroName owns the collision: it retries a name this script
     # drew and refuses a name the caller gave. Both used to throw here.
@@ -3465,7 +3787,7 @@ function Invoke-ActionNew {
     # on the line rather than covered up with a fake constant.
     if ($DryRun) {
         $steps = @()
-        if ($Tarball) { $steps += "import     $Tarball" }
+        if ($Tarball) { $steps += "import     $tarballArg" }
         else {
             $engine = Get-ContainerEngine
             $steps += ("engine     " + $(if ($engine) { $engine.Name + ' at ' + $engine.Path } else { 'NONE FOUND -- -Image would be refused' }))
@@ -3496,8 +3818,11 @@ function Invoke-ActionNew {
         New-Item -ItemType Directory -Path $target -Force | Out-Null
 
         if ($Tarball) {
-            if (-not (Test-Path -LiteralPath $Tarball)) { throw "Tarball not found: $Tarball" }
-            $tarPath = (Resolve-Path -LiteralPath $Tarball).Path
+            if (-not (Test-Path -LiteralPath $tarballArg)) {
+                throw ("Tarball not found: $Tarball. It is neither a file nor a snapshot tag; " +
+                       '-Action List names the snapshots this tool holds.')
+            }
+            $tarPath = (Resolve-Path -LiteralPath $tarballArg).Path
         }
         else {
             $tarPath = Join-Path $script:BaseDir ("{0}.tar" -f $distro)
@@ -3577,6 +3902,11 @@ function Invoke-ActionNew {
                 Write-Ok "wrote /etc/profile.d/10-oci-env.sh"
             }
         }
+
+        # WSL-29. Written before the caller's command runs, so a distro whose
+        # command failed is still reusable: the import is what this records, and
+        # the import succeeded.
+        if ($Image) { Write-DistroOrigin -DistroName $distro -ImageRef $Image }
 
         if ($null -ne $script:CommandBytes) {
             Write-Step "Running command as '$User'"
@@ -3760,6 +4090,411 @@ function Invoke-ActionList {
     }
 }
 
+function Get-SnapshotDir {
+    <#
+      Where a snapshot lives.
+
+      ⭐ A SUBDIRECTORY, AND THAT IS THE ANSWER TO WSL-26'S ONE DESIGN QUESTION.
+      Get-OrphanTarball enumerates `*.tar` in the base directory and nowhere
+      else, so a snapshot kept beside a distro's own rootfs would be reported as
+      an orphan and removed by the next Purge. A caller who thought a snapshot
+      was durable would lose it, and the loss would look like the tool working.
+
+      ⛔ DISTINGUISHED BY STRUCTURE, NOT BY A NAME PATTERN. A convention like
+      `snap-*.tar` is one rename away from making every existing snapshot an
+      orphan again, which is the failure the prelude's own comment describes for
+      the base directory itself.
+    #>
+    if (-not $script:BaseDir) { throw 'No state directory: LOCALAPPDATA is unset and no -StateDir was given.' }
+    return (Join-Path $script:BaseDir 'snapshots')
+}
+
+function Get-SnapshotTag {
+    <#
+      A tag that can be a file name, or a refusal saying why not.
+
+      ⛔ VALIDATED BEFORE IT IS JOINED TO A PATH. A caller-supplied path
+      component is how a tag becomes a write anywhere on the disk, and the
+      reserved device names are refused by name because 'nul' silently discards
+      everything written to it: a caller would believe they had a snapshot.
+      docs/conventions/shell.md section 7.
+    #>
+    param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Tag)
+    if ([string]::IsNullOrWhiteSpace($Tag)) { throw 'A snapshot tag is required. Pass -As <tag>.' }
+    $t = $Tag.Trim()
+    if ($t -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$') {
+        throw ("'$Tag' is not a usable snapshot tag. Use 1 to 64 characters of letters, digits, " +
+               'dot, dash or underscore, starting with a letter or a digit.')
+    }
+    $reserved = @('con', 'prn', 'aux', 'nul') + (1..9 | ForEach-Object { "com$_" }) + (1..9 | ForEach-Object { "lpt$_" })
+    if ($reserved -contains $t.ToLowerInvariant()) {
+        throw ("'$t' is a Windows reserved device name, so a file of that name is not a file. " +
+               'Pick another tag.')
+    }
+    return $t
+}
+
+function Get-SnapshotPath {
+    param([Parameter(Mandatory = $true)][string]$Tag)
+    return (Join-Path (Get-SnapshotDir) ((Get-SnapshotTag -Tag $Tag) + '.tar'))
+}
+
+function Get-Snapshot {
+    <#
+      Every snapshot on this machine, oldest name first. Reports rather than
+      judges: List, Doctor and Purge all read this one function.
+    #>
+    $dir = if ($script:BaseDir) { Join-Path $script:BaseDir 'snapshots' } else { '' }
+    if (-not $dir -or -not (Test-Path -LiteralPath $dir)) { return @() }
+    return @(Get-ChildItem -LiteralPath $dir -Filter '*.tar' -File -ErrorAction SilentlyContinue |
+             Sort-Object -Property Name)
+}
+
+function Invoke-ActionSnapshot {
+    <#
+      Export a registered distro back to a rootfs tarball that -Action New can
+      import.
+
+      ⭐ WHY THIS EXISTS. New always pulls, exports and imports, so a workload
+      that spent fourteen minutes in an `apt` install pays for it again on the
+      second run and on the third. Between "throw everything away" and "manage a
+      long-lived distro by hand" there was nothing.
+
+      ⭐ THE THIRD CALLER OF ONE PATH. Export-ImageRootfs writes a tarball and
+      Invoke-ActionNew imports one; this writes one from a distro rather than
+      from an image, and New reads it back through the -Tarball it already has.
+      Nothing about the import path is duplicated here.
+
+      ⚠ A SNAPSHOT CARRIES WHATEVER THE LAST COMMAND LEFT IN IT, including a
+      credential a caller passed with -ScriptArg or wrote to a file. It is a
+      plain tarball on this machine's disk and nothing in it is encrypted. Said
+      here as well as on the page, because this is where the tag is named.
+    #>
+    if (-not $Name) { throw 'Action Snapshot requires -Name <distro>.' }
+    $tag    = Get-SnapshotTag -Tag $As
+    $distro = Resolve-DistroName -Requested $Name -FromImage ''
+
+    # ⛔ THROUGH THE SAME OWNERSHIP CHECKS AS EVERY DESTRUCTIVE PATH, even though
+    # this removes nothing. An export READS a distribution whole and writes it to
+    # a file the caller keeps, so exporting one this tool did not create would be
+    # this tool copying somebody else's disk out. Assert-Removable is where the
+    # prefix rule and the protected-name list already live, and a second copy of
+    # either is how one of them stops being applied.
+    Assert-Removable -DistroName $distro
+
+    $known = @(Get-WslDistroNames)
+    if ($known -notcontains $distro) {
+        throw ("'$distro' is not a registered distribution. -Action List names the ones this tool made.")
+    }
+
+    $dir  = Get-SnapshotDir
+    $out  = Join-Path $dir ($tag + '.tar')
+    $wsl  = Get-WslExe
+
+    if ($DryRun) {
+        Write-DryRunPlan -Action 'Snapshot' -DistroName $distro -Steps @(
+            ("export     " + $distro + ' -> ' + $out)
+        )
+        return
+    }
+
+    if ((Test-Path -LiteralPath $out) -and -not $Force) {
+        throw ("A snapshot tagged '$tag' already exists at $out. Pass -Force to replace it.")
+    }
+
+    New-Item -ItemType Directory -Path $dir -Force | Out-Null
+
+    # ⚠ WRITTEN TO A TEMPORARY AND RENAMED, in the same directory. A killed
+    # export otherwise leaves a truncated tarball under the tag, and the next
+    # New -Tarball would import it: a rename across volumes is a copy and loses
+    # the guarantee, which is why the temporary is a sibling.
+    $temp = Join-Path $dir ('.' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    try {
+        Write-Step "Exporting '$distro' as snapshot '$tag'"
+        Invoke-Native -FilePath $wsl -Arguments @('--export', $distro, $temp) | Out-Null
+        if (-not (Test-Path -LiteralPath $temp)) { throw "The export produced no file at $temp" }
+        $size = (Get-Item -LiteralPath $temp).Length
+        # ⛔ THE EFFECT IS READ BACK. wsl.exe --export has been seen to exit 0
+        # over a file nobody could import; a size floor turns that into a
+        # refusal here rather than into a failed import days later.
+        if ($size -lt 1KB) { throw "The exported snapshot is implausibly small ($size bytes)." }
+        Move-Item -LiteralPath $temp -Destination $out -Force
+        Write-Ok ("snapshot '{0}': {1:N1} MiB at {2}" -f $tag, ($size / 1MB), $out)
+        Write-Warn ('it carries whatever that distribution held, including anything a previous ' +
+                    '-Command or -ScriptArg left in it.')
+        Write-Note ("  reuse it with: -Action New -Tarball $tag")
+    }
+    finally {
+        if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+    }
+}
+function Read-EventLogFile {
+    <#
+      One recorded run, as records, with the shape checked before it is trusted.
+
+      ⛔ A GAP IN `seq` IS REPORTED, NEVER SMOOTHED OVER. The field is documented
+      as monotonic and gapless, so a gap means records were dropped. That is a
+      finding about the RECORDING rather than about the run, and a reader handed
+      a quietly-renumbered log would draw conclusions about a run they were not
+      shown. It is a refusal here and it names the two sequence numbers.
+
+      ⛔ THE SCHEMA IS CHECKED, NOT ASSUMED. A positional or unversioned record
+      that changes shape mis-reads silently, and the reader is a program.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "No event log at '$Path'. -EventLog writes one; this reads it back."
+    }
+    $records = @()
+    $line = 0
+    $prev = $null
+    foreach ($text in [IO.File]::ReadLines($Path)) {
+        $line++
+        if ([string]::IsNullOrWhiteSpace($text)) { continue }
+        try { $rec = $text | ConvertFrom-Json }
+        catch { throw "Line $line of '$Path' is not JSON: $($_.Exception.Message)" }
+        if (-not $rec.PSObject.Properties['schema'] -or $rec.schema -ne 'wsl-toolkit-event/1') {
+            $saw = if ($rec.PSObject.Properties['schema']) { $rec.schema } else { '(none)' }
+            throw ("Line $line of '$Path' declares schema '$saw' and this build reads " +
+                   "'wsl-toolkit-event/1'.")
+        }
+        if ($null -ne $prev -and $rec.seq -ne ($prev + 1)) {
+            throw ("Line $line of '$Path': seq jumps from $prev to $($rec.seq). That field is " +
+                   'gapless by construction, so records were dropped and this log is not the ' +
+                   'whole run. Nothing was rendered.')
+        }
+        $prev = [long]$rec.seq
+        $records += $rec
+    }
+    if ($records.Count -eq 0) { throw "'$Path' holds no records." }
+    return $records
+}
+
+function Get-EventLogSummary {
+    <#
+      The figures a comparison is made of, derived once so Replay and Compare
+      cannot disagree about them.
+
+      ⭐ THE LONGEST SILENCE IS THE FIGURE THAT EARNS THIS. A run whose result
+      stayed green while its longest gap grew fifteen times has a regression no
+      exit code reports, and nothing else in the record surfaces it.
+    #>
+    param([Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]]$Records)
+
+    # ⚠ THE KINDS AND STREAM NAMES ARE THE WRITER'S, read from it rather than
+    # imagined. Write-StreamLogLine writes kind LOG with stream stdout, stderr
+    # or watcher; the first version of this reader looked for LINE with out and
+    # err, matched nothing, and reported a real run as having produced no
+    # output at all. A reader written against a schema nobody checked is the
+    # silent mis-read the version field exists to prevent, from the other side.
+    $out = @{ Lines = 0; Bytes = [long]0 }
+    $err = @{ Lines = 0; Bytes = [long]0 }
+    $firstOutput = $null
+    $longest = 0.0
+    $longestAt = 0.0
+    $lastOutput = 0.0
+    $exit = $null
+    $timedOut = $false
+    $duration = 0.0
+    $enc = [Text.Encoding]::UTF8
+
+    foreach ($r in $Records) {
+        $t = [double]$r.t_rel
+        if ($t -gt $duration) { $duration = $t }
+        if ($r.kind -eq 'LOG') {
+            $bucket = if ($r.PSObject.Properties['stream'] -and $r.stream -eq 'stderr') { $err } else { $out }
+            $bucket.Lines++
+            if ($r.PSObject.Properties['text']) { $bucket.Bytes += $enc.GetByteCount([string]$r.text) }
+            if ($null -eq $firstOutput) { $firstOutput = $t }
+            $gap = $t - $lastOutput
+            if ($gap -gt $longest) { $longest = $gap; $longestAt = $t }
+            $lastOutput = $t
+        }
+        elseif ($r.kind -eq 'EXIT') {
+            if ($r.PSObject.Properties['exit_code']) { $exit = [int]$r.exit_code }
+            if ($r.PSObject.Properties['timed_out']) { $timedOut = [bool]$r.timed_out }
+        }
+    }
+    # ⚠ THE TAIL COUNTS. A run whose last line arrived at four seconds and which
+    # ended at four minutes was silent for the rest, and a summary that measured
+    # only the gaps BETWEEN lines would report the quietest part of the run as
+    # not having happened at all.
+    $tail = $duration - $lastOutput
+    if ($tail -gt $longest) { $longest = $tail; $longestAt = $duration }
+
+    return [pscustomobject]@{
+        Records      = $Records.Count
+        Duration     = $duration
+        OutLines     = $out.Lines
+        OutBytes     = $out.Bytes
+        ErrLines     = $err.Lines
+        ErrBytes     = $err.Bytes
+        FirstOutput  = $firstOutput
+        LongestGap   = $longest
+        LongestGapAt = $longestAt
+        ExitCode     = $exit
+        TimedOut     = $timedOut
+    }
+}
+
+function Format-RunSummary {
+    <# The one-line reading of a recorded run, shared by Replay and Compare. #>
+    param([Parameter(Mandatory = $true)]$Summary)
+    $first = if ($null -eq $Summary.FirstOutput) { 'no output' }
+             else { (Format-Duration -Span ([timespan]::FromSeconds($Summary.FirstOutput))) + ' to first output' }
+    $code  = if ($null -eq $Summary.ExitCode) { 'no exit recorded' } else { 'exit ' + $Summary.ExitCode }
+    return ('elapsed ' + (Format-Duration -Span ([timespan]::FromSeconds($Summary.Duration))) +
+            ' | ' + $first +
+            ' | longest silence ' + (Format-Duration -Span ([timespan]::FromSeconds($Summary.LongestGap))) +
+            ' | out ' + $Summary.OutLines + ' lines ' + (Format-ByteCount -Bytes $Summary.OutBytes) +
+            ' | err ' + $Summary.ErrLines + ' lines ' + (Format-ByteCount -Bytes $Summary.ErrBytes) +
+            ' | ' + $code)
+}
+
+function Invoke-ActionReplay {
+    <#
+      Render a recorded run again, in whatever timestamp shape is asked for.
+
+      ⭐ IT IS POSSIBLE BECAUSE THE RENDERER IS ALREADY A PURE FUNCTION OF THE
+      RECORD. Format-StreamLogPrefix needs a clock reading and a tag, and both
+      are in every record, so this reuses the renderer rather than growing a
+      second one. A second renderer is how a log file and a terminal come to
+      show different runs.
+
+      ⛔ IT RUNS NOTHING AND CREATES NOTHING. It reads a file and writes to the
+      two streams. A report that made the state directory it was about to
+      describe is the defect WSL-55 closed in the other product.
+    #>
+    if (-not $From) { throw 'Action Replay requires -From <event log>.' }
+    $records = Read-EventLogFile -Path $From
+
+    # ⭐ THE SETTINGS MAIN ALREADY RESOLVED, not a second resolution. Resolving
+    # them again here would be a second place where a profile is expanded and an
+    # explicit flag is applied over it, and the two would drift: a Replay would
+    # render a line one way and a live run the other, from one set of flags.
+    # ⛔ -NoTimestamps and -TimestampProfile raw turn the relay off entirely, so
+    # main builds no settings for them; on a Replay that means the plain text.
+    $settings = if ($script:RelayOff) { $null } else { $script:LogSettings }
+    if ($null -eq $settings) {
+        foreach ($r in $records) {
+            if (@('LOG', 'TICK', 'NOTE') -notcontains $r.kind) { continue }
+            $text = if ($r.PSObject.Properties['text']) { [string]$r.text } else { '' }
+            $isErr = ($r.kind -ne 'LOG') -or ($r.PSObject.Properties['stream'] -and $r.stream -eq 'stderr')
+            if ($isErr) { [Console]::Error.WriteLine($text) } else { [Console]::Out.WriteLine($text) }
+        }
+        $plain = Get-EventLogSummary -Records $records
+        Write-Step ("replayed {0} record(s) from {1}, with no prefix" -f $plain.Records, $From)
+        Write-Ok (Format-RunSummary -Summary $plain)
+        return
+    }
+
+    $distro = if ($records[0].PSObject.Properties['distro']) { [string]$records[0].distro } else { '(unknown)' }
+    $state = New-StreamLogState -DistroName $distro -Settings $settings
+    $state.Out = Open-StreamLogWriter -Which 'Out'
+    $state.Err = Open-StreamLogWriter -Which 'Err'
+    try {
+        $last = [timespan]::Zero
+        foreach ($r in $records) {
+            if (@('LOG', 'TICK', 'NOTE') -notcontains $r.kind) { continue }
+            $now = [timespan]::FromSeconds([double]$r.t_rel)
+            $tag = switch ($r.kind) {
+                'LOG'   { if ($r.PSObject.Properties['stream'] -and $r.stream -eq 'stderr') { 'err' } else { 'out' } }
+                'TICK'  { 'tick' }
+                default { 'note' }
+            }
+            $text = if ($r.PSObject.Properties['text']) { [string]$r.text } else { '' }
+            $partial = [bool]($r.PSObject.Properties['partial'] -and $r.partial)
+            # ⚠ THE RECORD'S OWN WALL READING, not this machine's clock. A
+            # replay of last week's run stamped with today's date is a document
+            # that says something false about when the work happened.
+            $wall = $null
+            if ($r.PSObject.Properties['t_wall']) {
+                try {
+                    $wall = [DateTimeOffset]::Parse([string]$r.t_wall,
+                        [Globalization.CultureInfo]::InvariantCulture)
+                }
+                catch { $null = $_ }
+            }
+            $prefix = Format-StreamLogPrefix -State $state -Tag $tag -Now $now -Delta ($now - $last) `
+                -Partial:$partial -Wall $wall
+            $body = if ($settings.PrefixOnly) { '' } else { ' ' + $text }
+            $sink = if ($tag -eq 'out') { $state.Out } else { $state.Err }
+            $sink.WriteLine($prefix + $body)
+            $last = $now
+        }
+    }
+    finally {
+        try { $state.Out.Flush() } catch { $null = $_ }
+        try { $state.Err.Flush() } catch { $null = $_ }
+    }
+
+    $s = Get-EventLogSummary -Records $records
+    Write-Step ("replayed {0} record(s) from {1}" -f $s.Records, $From)
+    Write-Ok (Format-RunSummary -Summary $s)
+}
+
+function Invoke-ActionCompare {
+    <#
+      Two recorded runs, and what moved between them.
+
+      ⭐ THE LONGEST SILENCE IS WHY THIS EXISTS. Two runs that both exited 0 are
+      the same result and can be very different runs, and the figure that says so
+      is not in the exit code.
+
+      ⛔ IT REPORTS AND DOES NOT JUDGE. There is no threshold at which it calls a
+      difference a regression: a ratio that is a regression for one workload is
+      noise for another, and a tool that ruled on it would be inventing a
+      standard nobody set.
+    #>
+    if (-not $From)    { throw 'Action Compare requires -From <event log>.' }
+    if (-not $Against) { throw 'Action Compare requires -Against <event log>.' }
+
+    $a = Get-EventLogSummary -Records (Read-EventLogFile -Path $From)
+    $b = Get-EventLogSummary -Records (Read-EventLogFile -Path $Against)
+
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    $span = { param($v) if ($null -eq $v) { '-' } else { Format-Duration -Span ([timespan]::FromSeconds([double]$v)) } }
+    $num  = { param($v) if ($null -eq $v) { '-' } else { ([string]$v) } }
+    # ⛔ A DASH WHERE THE VALUE IS UNKNOWN, never a zero. A fabricated number on
+    # a report is worse than a blank, because a blank gets checked and a number
+    # gets used. docs/conventions/prose.md.
+    $delta = {
+        param($x, $y)
+        if ($null -eq $x -or $null -eq $y) { return '-' }
+        $d = [double]$y - [double]$x
+        $sign = if ($d -gt 0) { '+' } else { '' }
+        return $sign + $d.ToString('0.###', $inv)
+    }
+
+    Write-Step "A: $From"
+    Write-Step "B: $Against"
+    $rows = @(
+        @('elapsed',         (& $span $a.Duration),    (& $span $b.Duration),    (& $delta $a.Duration $b.Duration)),
+        @('to first output', (& $span $a.FirstOutput), (& $span $b.FirstOutput), (& $delta $a.FirstOutput $b.FirstOutput)),
+        @('longest silence', (& $span $a.LongestGap),  (& $span $b.LongestGap),  (& $delta $a.LongestGap $b.LongestGap)),
+        @('out lines',       (& $num $a.OutLines),     (& $num $b.OutLines),     (& $delta $a.OutLines $b.OutLines)),
+        @('out bytes',       (& $num $a.OutBytes),     (& $num $b.OutBytes),     (& $delta $a.OutBytes $b.OutBytes)),
+        @('err lines',       (& $num $a.ErrLines),     (& $num $b.ErrLines),     (& $delta $a.ErrLines $b.ErrLines)),
+        @('err bytes',       (& $num $a.ErrBytes),     (& $num $b.ErrBytes),     (& $delta $a.ErrBytes $b.ErrBytes)),
+        @('exit code',       (& $num $a.ExitCode),     (& $num $b.ExitCode),     (& $delta $a.ExitCode $b.ExitCode))
+    )
+    Write-Note ("  {0,-16} {1,-14} {2,-14} {3}" -f 'figure', 'A', 'B', 'B - A')
+    foreach ($r in $rows) {
+        Write-Note ("  {0,-16} {1,-14} {2,-14} {3}" -f $r[0], $r[1], $r[2], $r[3])
+    }
+    if ($a.LongestGap -ne $b.LongestGap) {
+        $longer = if ($b.LongestGap -gt $a.LongestGap) { 'B' } else { 'A' }
+        $at = if ($longer -eq 'B') { $b.LongestGapAt } else { $a.LongestGapAt }
+        Write-Warn ("$longer has the longer silence, " +
+                    (Format-Duration -Span ([timespan]::FromSeconds([Math]::Max($a.LongestGap, $b.LongestGap)))) +
+                    ', ending at ' + (Format-Duration -Span ([timespan]::FromSeconds($at))) + ' into the run.')
+    }
+    if ($a.ExitCode -ne $b.ExitCode) {
+        Write-Warn ('the two runs did not end the same way: A ' + (& $num $a.ExitCode) +
+                    ', B ' + (& $num $b.ExitCode))
+    }
+}
 function Get-DirectorySizeBytes {
     <#
       Bytes under a directory, or $null when it cannot be measured.
@@ -4092,8 +4827,25 @@ function Invoke-ActionHostAddress {
 function Invoke-ActionPurge {
     $mine    = @(Get-WslDistroNames | Where-Object { $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
     $orphans = @(Get-OrphanTarball)
+    # ⛔ SNAPSHOTS ARE REPORTED AND NEVER REMOVED, and that is WSL-26's one
+    # design question answered. Purge exists to collect what was LEFT BEHIND: an
+    # interrupted New's rootfs, a distro nobody unregistered. A snapshot is the
+    # one durable thing this tool makes on purpose, and a caller who believed it
+    # was durable losing it to a routine cleanup is the worse failure by far.
+    # They are named here, with the directory, so removing one is deliberate.
+    $snaps = @(Get-Snapshot)
+    $snapLine = {
+        if ($snaps.Count -eq 0) { return }
+        $ssum = ($snaps | Measure-Object -Property Length -Sum).Sum
+        Write-Note ("  {0} snapshot(s), {1:N1} MiB, KEPT in {2}" -f $snaps.Count, ($ssum / 1MB), (Get-SnapshotDir))
+        Write-Note '  Purge never removes those. Delete the file to remove one.'
+    }
 
-    if ($mine.Count -eq 0 -and $orphans.Count -eq 0) { Write-Ok "nothing to purge"; return }
+    if ($mine.Count -eq 0 -and $orphans.Count -eq 0) {
+        Write-Ok "nothing to purge"
+        & $snapLine
+        return
+    }
 
     $what = @()
     if ($mine.Count -gt 0) {
@@ -4116,6 +4868,8 @@ function Invoke-ActionPurge {
         Write-DryRunPlan -Action 'Purge' -Steps $steps
         return
     }
+
+    & $snapLine
 
     # ONE confirmation covering both classes. Two prompts over one -Force is how
     # somebody learns to pass -Force without reading either of them.
@@ -4367,6 +5121,9 @@ try {
         # can this host even do" want different answers, and folding any of them
         # into List would make the one line a script consumes arrive in the
         # middle of a page of prose.
+        'Snapshot'    { Invoke-ActionSnapshot }
+        'Replay'      { Invoke-ActionReplay }
+        'Compare'     { Invoke-ActionCompare }
         'Resources'   { Invoke-ActionResources }
         'HostAddress' { Invoke-ActionHostAddress }
         'Doctor'      { Invoke-ActionDoctor }

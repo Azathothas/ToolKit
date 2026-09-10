@@ -212,6 +212,20 @@ function Test-ColumnTakesFormat {
     return ($Column -eq 'rel' -or $Column -eq 'wall')
 }
 
+function Format-Percent {
+    <#
+      A percentage, rendered the same way everywhere it is shown.
+
+      ⚠ INVARIANT CULTURE, because a machine whose decimal separator is a comma
+      would otherwise render 42.5 as '42,5' in a log a script parses. The same
+      reason the rest of this file formats with it.
+    #>
+    param([Parameter(Mandatory = $true)][double]$Value)
+    $inv = [Globalization.CultureInfo]::InvariantCulture
+    if ($Value -eq [Math]::Floor($Value)) { return ([int]$Value).ToString($inv) + '%' }
+    return $Value.ToString('0.0', $inv) + '%'
+}
+
 function Format-Duration {
     param([Parameter(Mandatory = $true)][timespan]$Span)
     $inv   = [Globalization.CultureInfo]::InvariantCulture

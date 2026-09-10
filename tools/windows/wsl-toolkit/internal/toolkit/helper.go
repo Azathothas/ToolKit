@@ -48,7 +48,15 @@ import (
 // configuration. A client that ignores an unknown event kind is unaffected by
 // the first; one that does not is the reason this moved. The second is not
 // optional: a version 2 helper acts on its OWN startup config, which is WSL-44.
-const HelperSchema = "wsl-toolkit-helper/3"
+// ⚠ VERSION 4 ADDS A ROUTE. /v1/inspect answers what `inspect` answers, so the
+// last report that could only be reached by calling wsl.exe directly can be
+// reached by a client that cannot. ⛔ ADDING A METHOD IS STILL A BREAK, and that
+// is the whole cost of WSL-58: a client and a helper that disagree about the
+// version refuse each other by design, so a v2.0.0 helper left running against a
+// newer client is a refusal until somebody restarts it. That is correct
+// behaviour and it is still a thing a consumer has to do, which is why it did
+// not travel with the command it completes.
+const HelperSchema = "wsl-toolkit-helper/4"
 
 // HelperEndpoint is what a client reads to find a listening helper.
 type HelperEndpoint struct {
@@ -223,6 +231,7 @@ func (h *HelperServer) Serve(ctx context.Context) error {
 	mux.HandleFunc("/v1/matrix", h.guard(h.handleMatrix))
 	mux.HandleFunc("/v1/artifacts", h.guard(h.handleArtifacts))
 	mux.HandleFunc("/v1/resources", h.guard(h.handleResources))
+	mux.HandleFunc("/v1/inspect", h.guard(h.handleInspect))
 	mux.HandleFunc("/v1/gc", h.guard(h.handleGC))
 	mux.HandleFunc("/v1/stop", h.guard(h.handleStop))
 
@@ -739,6 +748,58 @@ func (h *HelperServer) handleResources(w http.ResponseWriter, r *http.Request) {
 	writeHelperJSON(w, http.StatusOK, map[string]any{
 		"schema": HelperSchema, "report": h.runner.Resources(r.Context()),
 	})
+}
+
+// handleInspect answers for one job and the machine under it.
+//
+// ⛔ IT IS A GET WITH THE CONFIG IN THE QUERY, exactly as base/status is. A GET
+// with a body is something an intermediary is free to drop, and this route is a
+// reading: it creates nothing, which is the property WSL-55 closed for the
+// direct path and which a second implementation here would be free to break.
+//
+// ⚠ AN UNKNOWN ID IS A REFUSAL AND IT HAS TO SURVIVE THE WIRE. The direct path
+// returns ErrUnknownJob and the command turns that into its own exit code; a
+// helper that flattened it into a generic refusal would give the two routes
+// different exit codes for the same question, which is the shape `resources`
+// and `gc` were both fixed for. The client rebuilds the typed error from this
+// field.
+func (h *HelperServer) handleInspect(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id != "" {
+		if err := AssertArgvSafe([]string{id}); err != nil {
+			writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+	}
+	since := 24 * time.Hour
+	if raw := r.URL.Query().Get("since_ms"); raw != "" {
+		ms, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || ms <= 0 {
+			writeHelperJSON(w, http.StatusBadRequest, map[string]string{
+				"error": "since_ms is a positive whole number of milliseconds",
+			})
+			return
+		}
+		since = time.Duration(ms) * time.Millisecond
+	}
+	runner, err := h.runnerForBody(r)
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	rep, err := runner.Inspect(r.Context(), id, since)
+	payload := map[string]any{"schema": HelperSchema, "report": rep}
+	if err != nil {
+		if errors.Is(err, ErrUnknownJob) {
+			payload["unknown_job"] = true
+			payload["error"] = err.Error()
+			writeHelperJSON(w, http.StatusOK, payload)
+			return
+		}
+		writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeHelperJSON(w, http.StatusOK, payload)
 }
 
 func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {

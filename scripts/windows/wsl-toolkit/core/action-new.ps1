@@ -2,6 +2,58 @@
     if (-not $Image -and -not $Tarball) { throw "Action New requires -Image (e.g. alpine:3.22) or -Tarball <path>." }
     if ($Image -and $Tarball)           { throw "Pass either -Image or -Tarball, not both." }
 
+    # WSL-26. -Tarball takes a snapshot TAG as well as a path, so a caller who
+    # made one names it rather than spelling out where this tool keeps it. A
+    # real file always wins, so a caller with a tarball called `ready.tar` in
+    # the working directory gets that file and not a snapshot of the same name.
+    $tarballArg = $Tarball
+    if ($tarballArg -and -not (Test-Path -LiteralPath $tarballArg)) {
+        $asSnapshot = $null
+        try { $asSnapshot = Get-SnapshotPath -Tag $tarballArg } catch { $null = $_ }
+        if ($asSnapshot -and (Test-Path -LiteralPath $asSnapshot -PathType Leaf)) {
+            Write-Step "-Tarball '$tarballArg' names the snapshot at $asSnapshot"
+            Write-Warn 'a snapshot carries whatever the distribution held when it was taken.'
+            $tarballArg = $asSnapshot
+        }
+    }
+
+    # WSL-29. ⛔ BEFORE ANY NAME IS DRAWN AND BEFORE ANY DIRECTORY IS MADE. A
+    # reuse that had already created state would be a reuse that cost an import.
+    if ($Reuse) {
+        if ($Tarball) { throw '-Reuse selects a distribution built from an -Image and does not apply to -Tarball.' }
+        $found = Find-ReusableDistro -ImageRef $Image
+        if ($null -ne $found) {
+            # ⛔ IT SAYS WHICH IT DID, EVERY TIME. A reused distribution carries
+            # whatever the last command left in it, including files a previous
+            # caller wrote, and a caller who did not ask for that is owed the
+            # warning rather than a silent speed-up.
+            Write-Step ("Reusing '" + $found.Name + "', built from " + $found.Image + ', ' + (Format-DistroAge -Found $found))
+            Write-Warn 'it carries whatever the previous run left in it. Drop -Reuse for a clean one.'
+            if ($DryRun) {
+                Write-DryRunPlan -Action 'New' -DistroName $found.Name -Steps @(
+                    ('reuse      ' + $found.Name + ' rather than importing'),
+                    ('command    ' + (Get-CommandPlanLine -DistroName $found.Name -RunAs $User))
+                )
+                return
+            }
+            $rcReuse = 0
+            if ($null -ne $script:CommandBytes) {
+                Write-Step "Running command as '$User'"
+                Invoke-InDistro -DistroName $found.Name -RunAs $User -ScriptBytes $script:CommandBytes -ExitCode ([ref]$rcReuse)
+                if ($rcReuse -ne 0) { Write-Warn "command exited $rcReuse" }
+            }
+            # ⚠ -Ephemeral AND -Reuse TOGETHER WOULD DESTROY THE THING THAT WAS
+            # REUSED, which is the opposite of what the caller asked for on the
+            # next run. It is refused by name rather than silently ignored.
+            if ($Ephemeral) {
+                throw ('-Ephemeral removes the distribution when the command ends and -Reuse keeps ' +
+                       'one to run in again. Pass one.')
+            }
+            exit $rcReuse
+        }
+        Write-Step "-Reuse found no registered distribution built from $Image; importing one"
+    }
+
     # Resolve-NewDistroName owns the collision: it retries a name this script
     # drew and refuses a name the caller gave. Both used to throw here.
     $distro = Resolve-NewDistroName -Requested $Name -FromImage $Image
@@ -19,7 +71,7 @@
     # on the line rather than covered up with a fake constant.
     if ($DryRun) {
         $steps = @()
-        if ($Tarball) { $steps += "import     $Tarball" }
+        if ($Tarball) { $steps += "import     $tarballArg" }
         else {
             $engine = Get-ContainerEngine
             $steps += ("engine     " + $(if ($engine) { $engine.Name + ' at ' + $engine.Path } else { 'NONE FOUND -- -Image would be refused' }))
@@ -50,8 +102,11 @@
         New-Item -ItemType Directory -Path $target -Force | Out-Null
 
         if ($Tarball) {
-            if (-not (Test-Path -LiteralPath $Tarball)) { throw "Tarball not found: $Tarball" }
-            $tarPath = (Resolve-Path -LiteralPath $Tarball).Path
+            if (-not (Test-Path -LiteralPath $tarballArg)) {
+                throw ("Tarball not found: $Tarball. It is neither a file nor a snapshot tag; " +
+                       '-Action List names the snapshots this tool holds.')
+            }
+            $tarPath = (Resolve-Path -LiteralPath $tarballArg).Path
         }
         else {
             $tarPath = Join-Path $script:BaseDir ("{0}.tar" -f $distro)
@@ -131,6 +186,11 @@
                 Write-Ok "wrote /etc/profile.d/10-oci-env.sh"
             }
         }
+
+        # WSL-29. Written before the caller's command runs, so a distro whose
+        # command failed is still reusable: the import is what this records, and
+        # the import succeeded.
+        if ($Image) { Write-DistroOrigin -DistroName $distro -ImageRef $Image }
 
         if ($null -ne $script:CommandBytes) {
             Write-Step "Running command as '$User'"
