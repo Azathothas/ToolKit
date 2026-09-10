@@ -395,18 +395,23 @@ try {
     # that was never going to be able to run them. A suite that fails where it
     # should skip is a suite whose red means nothing.
     #
-    # `ready` is the command WSL-49 built to answer exactly this, and
-    # `route.wsl_callable` is the half that decides it: not whether wsl.exe
-    # resolves, but whether it ANSWERS. WSL-32 is the entry that drew that
-    # distinction and this is the same question asked from outside.
-    $probe = Invoke-Released @('ready', '--json')
-    $ready = $null
-    try { $ready = Read-ToolJson -Stdout $probe.Out -What 'ready --json' }
-    catch { $ready = $null }
-    $callable = [bool](Get-Field (Get-Field $ready 'route') 'wsl_callable')
-    if (-not $callable) {
+    # ⛔ AND THE PROBE IS THE THING ITSELF, not a signal that correlates with it.
+    # The second attempt read `ready --json` and gated on `route.wsl_callable`,
+    # which is a better question than the first one asked and still the wrong
+    # one: wsl.exe IS callable on a GitHub windows runner, and a distribution
+    # still cannot be built there. Every proxy for "can this host run a job"
+    # eventually meets a host where the proxy and the answer disagree.
+    #
+    # ⭐ `base ensure` is the answer, and it costs nothing extra: the first job
+    # case had to run it anyway. A host that cannot build a base skips the job
+    # cases with the engine's own words attached, which is a SKIP that carries
+    # its reason rather than a red over a machine that was never going to work.
+    Write-Line '  probing: base ensure, which is the only honest answer to whether jobs can run here'
+    $probe = Invoke-Released @('base', 'ensure')
+    if ($probe.Code -ne 0) {
+        $why = (@($probe.Err -split "`n") | Where-Object { $_.Trim() } | Select-Object -Last 1)
         Write-Line ''
-        Write-Line "  wsl.exe does not answer on this host, so the job cases are skipped"
+        Write-Line ("  no distribution can be built on this host, so the job cases are skipped: " + $why)
         Write-Line ''
     }
     else {
@@ -416,9 +421,9 @@ try {
     if ($script:CanRunJobs) {
         # The manual's central claim: one command runs one command in one
         # container and returns its output.
+        # The base is already up: the probe above built it, which is what made
+        # skipping possible on a host that cannot.
         Test-Case 'a released binary runs a container job from an empty state directory' 'uid=0' {
-            $e = Invoke-Released @('base', 'ensure')
-            if ($e.Code -ne 0) { return "base ensure exited $($e.Code): $($e.Err)" }
             $r = Invoke-Released @('run', '--image', 'alpine', '-c', 'printf "uid=%s" "$(id -u)"')
             if ($r.Code -ne 0) { return "run exited $($r.Code): $($r.Err)" }
             $r.Out.Trim()
