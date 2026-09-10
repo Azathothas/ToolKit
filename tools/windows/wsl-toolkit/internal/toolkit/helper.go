@@ -43,7 +43,12 @@ import (
 // stream of newline-framed events. A client of version 1 reading a version 2
 // answer sees the first event and no result, which is why the version is checked
 // before a job is sent rather than after one comes back.
-const HelperSchema = "wsl-toolkit-helper/2"
+// ⚠ VERSION 3 ADDS AN EVENT KIND. /v1/run and /v1/matrix now emit `tick` events
+// while a job runs, and every request carries the client's effective
+// configuration. A client that ignores an unknown event kind is unaffected by
+// the first; one that does not is the reason this moved. The second is not
+// optional: a version 2 helper acts on its OWN startup config, which is WSL-44.
+const HelperSchema = "wsl-toolkit-helper/3"
 
 // HelperEndpoint is what a client reads to find a listening helper.
 type HelperEndpoint struct {
@@ -329,6 +334,12 @@ func (h *HelperServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeHelperJSON(w, http.StatusOK, map[string]any{
 		"schema": HelperSchema, "version": version, "pid": os.Getpid(),
 		"base": h.cfg.Base.Name, "user": h.cfg.Base.User,
+		// ⭐ THE CONFIG THIS HELPER STARTED WITH, as a fingerprint. A client
+		// cannot otherwise tell whether the helper it found is the one its own
+		// configuration describes, and since WSL-44 the config travels with each
+		// request anyway - so a difference here is information rather than a
+		// fault, and saying which is the point. WSL-52.
+		"config_fingerprint": h.cfg.Fingerprint(),
 	})
 }
 
@@ -426,6 +437,12 @@ type HelperRunRequest struct {
 	// door sweep found it missing before this shipped, which is the SECOND time
 	// a job flag has been dropped between the two routes.
 	MaxOutput int64 `json:"max_output,omitempty"`
+	// TickMS asks for a heartbeat at this interval. Zero means none.
+	//
+	// ⛔ ON THE WIRE because the direct path has it. A job flag one route
+	// honours and the other drops has now happened twice in this tool, which is
+	// why TestEveryJobFlagCrossesTheWire exists.
+	TickMS int64 `json:"tick_ms,omitempty"`
 	// Config is the EFFECTIVE configuration the client already read and
 	// validated, and it is what the helper acts on.
 	//
@@ -444,6 +461,15 @@ type HelperMatrixRequest struct {
 	HelperRunRequest
 	Images   []string `json:"images,omitempty"`
 	Parallel int      `json:"parallel,omitempty"`
+}
+
+// tickSink is nil when the client did not ask for a heartbeat, so the helper
+// starts no ticker rather than starting one whose events nobody wants.
+func (req HelperRunRequest) tickSink(events *eventWriter) func(TickEvent) {
+	if req.TickMS <= 0 {
+		return nil
+	}
+	return func(t TickEvent) { events.send(HelperEvent{Kind: "tick", Tick: &t}) }
 }
 
 func (req HelperRunRequest) limits() WorkspaceLimits {
@@ -513,8 +539,10 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
 		Limits: req.limits(), ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
 		User: req.User, MaxOutput: req.MaxOutput,
-		Stdout: &chunkWriter{out: events, kind: "stdout"},
-		Stderr: &chunkWriter{out: events, kind: "stderr"},
+		Stdout:    &chunkWriter{out: events, kind: "stdout"},
+		Stderr:    &chunkWriter{out: events, kind: "stderr"},
+		TickEvery: time.Duration(req.TickMS) * time.Millisecond,
+		OnTick:    req.tickSink(events),
 	})
 	events.send(HelperEvent{Kind: "result", Result: &res, ArtifactsID: artifactID})
 }
@@ -576,6 +604,10 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 			row.Stdout, row.Stderr = "", ""
 			events.send(HelperEvent{Kind: "row", Row: &row})
 		},
+		// ⚠ eventWriter LOCKS, which is what makes this safe from twelve
+		// goroutines at once. The rule OnRow already carries.
+		TickEvery: time.Duration(req.TickMS) * time.Millisecond,
+		OnTick:    req.tickSink(events),
 	})
 	if err != nil {
 		events.send(HelperEvent{Kind: "error", Text: err.Error()})

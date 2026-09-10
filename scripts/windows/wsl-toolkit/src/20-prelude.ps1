@@ -55,7 +55,7 @@ $script:Protected = @(
 # release.ps1 reads it out of the built bundle to form the tag, so a release
 # whose tag disagrees with the file inside it cannot be produced by accident.
 # ⛔ Nothing else in this tree may carry a copy of it.
-$script:ToolkitVersion = '1.3.0'
+$script:ToolkitVersion = '2.0.0'
 
 # ⛔ The Windows reserved device names, in any case and with any extension. A
 # path check against this list is why -StreamLogPath nul is refused rather than

@@ -20,7 +20,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 		Image: ref, ScriptB64: toolkit.EncodeScript(payload), Env: env,
 		TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
 		Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
-		User: j.user, MaxOutput: j.maxOutput,
+		User: j.user, MaxOutput: j.maxOutput, TickMS: j.tick.Milliseconds(),
 	}
 	if j.workspace != "" {
 		note("uploading the workspace to the helper")
@@ -38,6 +38,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 	spool := newClientSpool(note)
 	res, artifactsID, err := c.RunStream(ctx, req, toolkit.HelperSinks{
 		Stdout: spool.Tee(liveOut, false), Stderr: spool.Tee(liveErr, true), Log: note,
+		Tick: tickPrinter(j),
 	})
 	if err != nil {
 		spool.Discard()
@@ -72,7 +73,7 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 			ScriptB64: toolkit.EncodeScript(payload), Env: env,
 			TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
 			Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
-			User: j.user, MaxOutput: j.maxOutput,
+			User: j.user, MaxOutput: j.maxOutput, TickMS: j.tick.Milliseconds(),
 		},
 		Images: images, Parallel: parallel,
 	}
@@ -85,7 +86,7 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 		req.StagingID = id
 	}
 	report, artifactsID, err := c.MatrixStream(ctx, req, toolkit.HelperSinks{
-		Log: note, Row: rowPrinter(),
+		Log: note, Row: rowPrinter(), Tick: tickPrinter(j),
 	})
 	if err != nil {
 		return report, err

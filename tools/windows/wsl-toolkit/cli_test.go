@@ -246,6 +246,7 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 		"maxBytes":    "MaxBytes",
 		"maxEntries":  "MaxEntries",
 		"maxOutput":   "MaxOutput",
+		"tick":        "TickMS",
 	}
 	// Fields that are the CLIENT's own business and correctly never sent.
 	local := map[string]string{

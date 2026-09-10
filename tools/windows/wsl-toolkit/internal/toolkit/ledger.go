@@ -49,8 +49,12 @@ type LedgerEntry struct {
 }
 
 // OpenLedger binds to the state directory's ledger file.
+//
+// ⚠ BINDING IS NOT CREATING. It used to create the state directory, so every
+// command that opened a ledger to READ it created one. Append is what writes and
+// Append is what ensures. WSL-55.
 func OpenLedger() (*Ledger, error) {
-	home, err := EnsureHome()
+	home, err := Home()
 	if err != nil {
 		return nil, err
 	}

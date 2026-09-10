@@ -21,23 +21,54 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
-### 2026-09-10T07:45:00Z: the mutation harness joins the tree
+### 2026-09-10T07:13:31Z: `wsl-toolkit-v2.0.0`, and it is breaking on purpose
 
-**Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-16`.
-**Deployed:** ⛔ **no deploy.** Nothing here is published.
+**Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-42`
+through `WSL-56`; [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-17` and
+`TOOL-18`.
+**Deployed:** ⚠ **not yet.** The version in the tree is `2.0.0` and the tag is
+the operator's to push:
+`pwsh -NoProfile -File scripts/windows/wsl-toolkit/release.ps1 -Publish`.
 
-The harness that proves this tree's guards are real was a Python script under
-`.tmp/`, which is gitignored, and three records had just been written citing it
-as the command that closed them. Those commands could not be run by anyone
-reading the record afterwards, including the next session here.
+Thirteen defects a consumer agent filed against the published `v1.3.0`, plus
+three things the operator asked for. ⭐ **The finding worth keeping is the same
+one as last time**: none of the thirteen was reachable by the 39 acceptance cases
+that were green on the day they were filed.
 
-It is `repo mutate` now, with its table in `tools/repo/mutations.json`,
-generated from the script rather than retyped. It reproduces the script's answer
-over both modules with no row changed, and it has five cases of its own.
+**So the suite came first.** `TOOL-17` gave it a wall-time ceiling, a byte-exact
+expectation, an assertion that a `--json` surface emitted exactly one parsable
+object, and the ability to change state a running process has already read. Each
+was written against the binary that HAD a defect and watched to fail before any
+fix existed. Beside it, `consumer.ps1` downloads a published release, verifies
+every digest, and drives it from a temp directory with no repository present.
 
-⚠ **It is not a gate check and that is deliberate.** One pass copies every
-module and runs a suite per row; a gate somebody waits minutes for is a gate they
-skip. It belongs beside the other tools that are not rules.
+**What is breaking, and each is deliberate:**
+
+| change | what a caller sees |
+| --- | --- |
+| ownership is a prefix plus a marker the guest carries | a `base.name` outside `wsl-toolkit`/`wsl-toolkit-<instance>` is refused when the configuration is READ |
+| `base ensure` no longer relabels what it cannot identify | it exits 1 over a base that disagrees with its configuration, rather than 0 over one it renamed |
+| `stderr_bytes` is one smaller | framing no longer writes a newline into the payload's stream |
+| `artifacts` means DELIVERED | `artifacts_attempted` carries what it used to mean |
+| `duration_ns` is the interval the CALLER waited | it stopped at the container's death before |
+| an artifact link out of the tree fails the job | it was silently converted to an inert `.link.txt` beside exit 0 |
+| `script -Action List` exits nonzero when it was refused | it printed a partial inventory and exited 0 |
+| `base shell` starts in the guest account's home | `--here` is the old behaviour |
+
+**And what is additive:** `ready`, `selfupdate`, `artifacts retry`, `examples`,
+`images pull`/`warm`, `config validate`/`--effective`, `resources --job`,
+`gc --job`, `--instance`, `--config`, `--tick`, and a helper protocol at
+version 3.
+
+⭐ **Two defects were caught by guards this session had just built.** The
+`--json` sweep found `artifacts retry` putting nothing on stdout, in a command
+written hours after the same defect was fixed in `base ensure`. And the mutation
+pass found a new selftest case that stayed green with the guard it covers
+deleted, because the message it matched appears in both branches.
+
+⚠ **`TOOL-17`'s consumer harness is red against `v1.3.0` and that is correct.**
+It tests a published artifact, and the published artifact has the defects this
+release fixes.
 
 ### 2026-09-10T06:30:00Z: the commit rule gets an instrument that can say no
 
@@ -158,6 +189,38 @@ as what it declares. And `binfmt` no longer needs `MSYS_NO_PATHCONV`, because
 `exec.Command` passes its argument list to `CreateProcess` untouched.
 
 ## 2026-09-09
+
+### 2026-09-10T01:48:14Z: the mutation harness joins the tree
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-16`.
+**Deployed:** ⛔ **no deploy.** Nothing here is published.
+
+⚠ **Amended 2026-09-10: this heading said `07:45:00Z`, this entry has MOVED
+DOWN to match, and that stamp was typed rather than read.** The commit that added this entry, `d7f7136`, is
+`2026-09-10T07:33:14+05:45`, which is `01:48:14Z`: the machine runs at UTC+05:45,
+so the original was nearly six hours ahead of the work and rounded to the minute.
+It is corrected to the commit's own instant rather than left, because a later
+entry carrying a TRUE stamp then sorts below it and the file's newest-first rule
+reports the honest entry as the wrong one.
+
+⚠ **The other stamps above it are rounded to the minute and were typed too**,
+and they are NOT retro-corrected: they are ordered correctly relative to each
+other, nobody recorded their real hour, and inventing one is fabricating
+evidence. This one is corrected because its value collided with a measured one.
+⛔ Read it from the machine.
+
+The harness that proves this tree's guards are real was a Python script under
+`.tmp/`, which is gitignored, and three records had just been written citing it
+as the command that closed them. Those commands could not be run by anyone
+reading the record afterwards, including the next session here.
+
+It is `repo mutate` now, with its table in `tools/repo/mutations.json`,
+generated from the script rather than retyped. It reproduces the script's answer
+over both modules with no row changed, and it has five cases of its own.
+
+⚠ **It is not a gate check and that is deliberate.** One pass copies every
+module and runs a suite per row; a gate somebody waits minutes for is a gate they
+skip. It belongs beside the other tools that are not rules.
 
 ### 2026-09-09T21:30:00Z: eight defects a consumer found in the published binary
 

@@ -32,7 +32,7 @@ const HelperEventSchema = "wsl-toolkit-helper-event/1"
 // HelperEvent is one line of a streamed response.
 type HelperEvent struct {
 	Schema string `json:"schema"`
-	// Kind is one of: log, stdout, stderr, row, result, error.
+	// Kind is one of: log, stdout, stderr, row, tick, result, error.
 	Kind string `json:"kind"`
 	// Text carries a log line or an error message.
 	Text string `json:"text,omitempty"`
@@ -43,6 +43,12 @@ type HelperEvent struct {
 	B64 string `json:"b64,omitempty"`
 	// Row is one finished fleet row, sent as it finishes.
 	Row *JobResult `json:"row,omitempty"`
+	// Tick is a heartbeat for a job that is still running.
+	//
+	// ⚠ A CLIENT THAT DOES NOT KNOW THIS KIND IGNORES IT, which is why the
+	// protocol version moves: one that treats an unknown kind as an error is
+	// the reason the version exists. WSL-50.
+	Tick *TickEvent `json:"tick,omitempty"`
 	// Result and Report are the last event, and only one of them appears.
 	Result      *JobResult    `json:"result,omitempty"`
 	Report      *MatrixReport `json:"report,omitempty"`
@@ -189,6 +195,9 @@ type HelperSinks struct {
 	Stderr io.Writer
 	Log    func(string)
 	Row    func(JobResult)
+	// Tick receives a heartbeat for a job that is still running. Nil discards
+	// it, which is what a caller that did not ask for one passes.
+	Tick func(TickEvent)
 }
 
 func (s HelperSinks) apply(ev HelperEvent) error {
@@ -215,7 +224,14 @@ func (s HelperSinks) apply(ev HelperEvent) error {
 		if s.Row != nil && ev.Row != nil {
 			s.Row(*ev.Row)
 		}
+	case "tick":
+		if s.Tick != nil && ev.Tick != nil {
+			s.Tick(*ev.Tick)
+		}
 	}
+	// ⚠ AN UNKNOWN KIND IS IGNORED AND NEVER AN ERROR. A helper one version
+	// ahead sends a kind this build has no case for, and refusing the whole
+	// stream over it would turn a forward-compatible addition into an outage.
 	return nil
 }
 

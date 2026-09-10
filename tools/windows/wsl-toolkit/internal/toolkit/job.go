@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -131,6 +132,16 @@ type JobSpec struct {
 	// says. It bounds the string a structured answer carries, because an answer
 	// holding a gigabyte of output is a document nothing can parse.
 	MaxOutput int64
+	// OnTick receives a heartbeat while this job runs. Nil means none, which is
+	// what a caller that did not ask for one passes.
+	//
+	// ⛔ IT IS AN EVENT AND NOT A RENDERING. Whatever draws it belongs to the
+	// caller; this side emits a machine-readable fact with a timestamp on it.
+	// WSL-50.
+	OnTick func(TickEvent)
+	// TickInterval overrides the default. Zero means TickInterval, and anything
+	// under MinTickInterval is raised to it.
+	TickEvery time.Duration
 }
 
 // JobResult is what one unit of work produced.
@@ -301,7 +312,9 @@ func NewRunner(cfg Config, log func(string)) (*Runner, error) {
 	if err != nil {
 		return nil, err
 	}
-	home, err := EnsureHome()
+	// ⛔ Home, not EnsureHome. A Runner is built by `resources` and by `ready`,
+	// both of which only read. WSL-55.
+	home, err := Home()
 	if err != nil {
 		return nil, err
 	}
@@ -538,6 +551,24 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	streams := newJobStreams(r.home, id, spec.Stdout, spec.Stderr, spec.MaxOutput, r.log)
 	defer streams.Close()
 	marker := newMarkerStripper(streams.Err, token)
+
+	// ⭐ THE HEARTBEAT COUNTS THE BYTES THE STREAMS CARRY, which is what makes a
+	// tick the difference between work and a stall. It holds a number and never
+	// a copy: the bounded buffer and the transcript already hold the bytes.
+	var outCount, errCount atomic.Int64
+	interval := spec.TickEvery
+	if interval == 0 {
+		interval = TickInterval
+	}
+	tick := startTicker(ctx, interval,
+		TickEvent{ID: id, Label: res.Label, Container: container},
+		deadline, &outCount, &errCount, spec.OnTick)
+	// ⛔ STOPPED BEFORE THE RESULT IS BUILT, and Stop waits: a tick serialised
+	// after the result would tell a caller reading events in order that a job
+	// finished and is still running.
+	defer tick.Stop()
+	jobOut := &countingWriter{to: streams.Out, count: &outCount}
+	jobErr := &countingWriter{to: marker, count: &errCount}
 	runCtx := ctx
 	if spec.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -547,9 +578,10 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	code, execErr := r.wsl.Exec(runCtx, ExecRequest{
 		Distro: r.cfg.Base.Name, User: user,
 		Script: append(guestRuntimePrologue(), runScript...),
-		Stdout: streams.Out, Stderr: marker,
+		Stdout: jobOut, Stderr: jobErr,
 	})
 	trace.Mark("exec")
+	tick.Stop()
 	if err := marker.Flush(); err != nil {
 		r.log("could not flush the job's error stream: " + err.Error())
 	}
@@ -843,4 +875,87 @@ fi
 if [ -e "$tk_dir" ]; then echo "still-present: $tk_dir" >&2; exit 1; fi
 printf 'removed\n'
 `, shellQuote(dir), shellQuote(root))
+}
+
+// -- WSL-52: reaching what the tool already holds -----------------------------
+
+// RetainedGuestDir answers where a job's kept output is, or why there is none.
+//
+// ⛔ IT READS THE LEDGER RATHER THAN GUESSING A PATH. A guest directory built
+// from a convention would name somewhere plausible for a job that never ran, and
+// the answer to "was anything retained" would then be "something is missing
+// there", which is not the same fact.
+func (r *Runner) RetainedGuestDir(id string) (string, string) {
+	entries, err := r.ledger.All()
+	if err != nil {
+		return "", "the ledger could not be read: " + err.Error()
+	}
+	guestDir, closed, kept := "", false, false
+	for _, e := range entries {
+		if e.ID != id || e.Kind != "job" {
+			continue
+		}
+		if e.Event == "open" && e.GuestDir != "" {
+			guestDir = e.GuestDir
+		}
+		if e.Event == "close" {
+			closed = true
+			// ⭐ THE NOTE IS WHAT SEPARATES A KEPT DIRECTORY FROM A TORN-DOWN
+			// ONE, and both close the record. Run writes that note precisely so
+			// a later reader can tell them apart without asking the guest.
+			kept = strings.Contains(e.Note, "could not be fetched")
+		}
+	}
+	switch {
+	case guestDir == "":
+		return "", "no job with that id was recorded here"
+	case closed && !kept:
+		return "", "that job was torn down, so nothing was retained. Its transcript is still readable with: wsl-toolkit logs " + id
+	default:
+		return guestDir, ""
+	}
+}
+
+// FetchRetained copies a retained guest directory to the host.
+//
+// ⛔ IT DOES NOT REMOVE THE GUEST COPY AFTERWARDS. `gc` collects it under its
+// own age policy, and a retrieval that deleted the only remaining copy on a
+// partial success would be the defect WSL-33 was filed for.
+func (r *Runner) FetchRetained(ctx context.Context, guestDir, hostDir string) (ArtifactTransfer, error) {
+	out := guestDir
+	if !strings.HasSuffix(out, "/out") {
+		out += "/out"
+	}
+	return r.wsl.FetchArtifacts(ctx, r.cfg.Base.Name, r.cfg.Base.User, out, hostDir, DefaultWorkspaceLimits(), r.log)
+}
+
+// ReachImage answers whether a reference is here, and optionally puts it here.
+//
+// ⛔ THREE ANSWERS, NOT TWO. Cached, pulled and unreachable are different facts,
+// and folding "already here" into "reachable" would make a warm run on a machine
+// with no network look identical to one that fetched everything.
+func (r *Runner) ReachImage(ctx context.Context, ref string, pull bool) (cached, pulled bool, reason string) {
+	if err := ValidateImageRef(ref); err != nil {
+		return false, false, err.Error()
+	}
+	script := "podman image exists " + shellQuote(ref) + " && printf 'cached\n' || printf 'absent\n'\n"
+	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 2*time.Minute)
+	if err != nil || code != 0 {
+		return false, false, "the engine could not be asked: " + firstLine(stderr+out)
+	}
+	if strings.Contains(out, "cached") {
+		return true, false, ""
+	}
+	if !pull {
+		// ⚠ NOT CACHED IS NOT UNREACHABLE. Without --pull this reports what is
+		// here and does not go to a registry to find out about the rest, because
+		// a report that quietly downloaded a gigabyte is not a report.
+		return false, false, ""
+	}
+	pullScript := "podman pull " + shellQuote(ref) + " >/dev/null\n"
+	out, stderr, code, err = r.baseCapture(ctx, []byte(pullScript), 30*time.Minute)
+	if err != nil || code != 0 {
+		return false, false, engineFailure(stderr+out, err)
+	}
+	return false, true, ""
 }

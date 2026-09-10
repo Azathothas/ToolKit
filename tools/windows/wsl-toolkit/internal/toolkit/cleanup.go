@@ -25,7 +25,17 @@ type CleanupPolicy struct {
 	// there is no way to reach it by accident: killing another agent's build is
 	// something a caller says out loud.
 	IncludeLive bool
+	// Job narrows everything to one job id. Empty means the whole store.
+	//
+	// ⛔ IT NARROWS AND IT DOES NOT WIDEN. A job id that is still running is
+	// spared exactly as it would be without this, because `--include-live` is
+	// the only way past that and naming one job is not a way of saying it.
+	// WSL-52, and WSL-36 is the ruling it obeys.
+	Job string
 }
+
+// ForJob narrows a policy to one job.
+func (p CleanupPolicy) ForJob(id string) CleanupPolicy { p.Job = id; return p }
 
 // CleanupTarget is one thing cleanup could remove, carrying the two facts that
 // decide whether it may.
@@ -59,6 +69,12 @@ type Spared struct {
 func (p CleanupPolicy) Select(targets []CleanupTarget, now time.Time) (remove []CleanupTarget, spared []Spared) {
 	for _, t := range targets {
 		switch {
+		case p.Job != "" && t.JobID != p.Job:
+			// ⚠ NOT "spared", and the difference matters to a reader: a target
+			// belonging to another job was never a candidate, and listing it as
+			// something this run declined to remove would make one job's cleanup
+			// report look like a refusal to clean the rest.
+			continue
 		case t.Live && !p.IncludeLive:
 			spared = append(spared, Spared{Target: t, Reason: "in use right now. Pass --include-live to remove it anyway"})
 		case p.OlderThan > 0 && !t.ModTime.IsZero() && now.Sub(t.ModTime) < p.OlderThan:

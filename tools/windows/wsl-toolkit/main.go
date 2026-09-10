@@ -68,7 +68,7 @@ func usage() string {
 		"  doctor      what this host is and what is really installed, resolved rather than guessed",
 		"  script      run the embedded wsl-toolkit.ps1, forwarding every argument unchanged",
 		"  base        the one WSL distribution this tool owns, which hosts a rootless engine",
-		"  images      the container catalog, fully qualified",
+		"  images      the container catalog. `pull` and `warm` reach it ahead of a job",
 		"  run         one command in one container, with a COPY of a workspace and no host mount",
 		"  matrix      one command across a set of images, commissioned and decommissioned together",
 		"  resources   what this tool is holding, and what the machine is holding that is not its",
@@ -78,6 +78,8 @@ func usage() string {
 		"  config      where the configuration is, and what it currently says",
 		"  ready       one answer to whether this agent can run isolated Linux jobs here",
 		"  selfupdate  move this executable to a published release, verifying it first",
+		"  artifacts   retrieve a copy a failed transfer retained. It never re-runs a job",
+		"  examples    the canonical command patterns, in the binary rather than only the manual",
 		"  version     the product version, which is the embedded script's",
 		"",
 		"Global: --instance N  one isolated instance: distribution wsl-toolkit-N and",
@@ -172,7 +174,7 @@ func run(ctx context.Context, args []string) int {
 	case "base":
 		code, err = cmdBase(ctx, cmdArgs)
 	case "images":
-		code, err = cmdImages(cmdArgs)
+		code, err = cmdImages(ctx, cmdArgs)
 	case "run":
 		code, err = cmdRun(ctx, cmdArgs)
 	case "matrix":
@@ -191,6 +193,10 @@ func run(ctx context.Context, args []string) int {
 		code, err = cmdReady(ctx, cmdArgs)
 	case "selfupdate":
 		code, err = cmdSelfUpdate(ctx, cmdArgs)
+	case "artifacts":
+		code, err = cmdArtifacts(ctx, cmdArgs)
+	case "examples":
+		code, err = cmdExamples(cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "wsl-toolkit: %q is not a command\n\n%s\n", cmd, usage())
 		return exitCannot

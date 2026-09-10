@@ -61,10 +61,17 @@ type Base struct {
 	unmarked bool
 }
 
-// NewBase binds the lifecycle to this host. It creates the state directory,
-// because every operation on it writes.
+// NewBase binds the lifecycle to this host.
+//
+// ⛔ IT DOES NOT CREATE THE STATE DIRECTORY, and it used to. `paths.go` states
+// the rule in the function it is about - "a report that creates a directory on a
+// machine it is only describing has changed the thing it was asked to measure" -
+// and `base status`, a read-only report, reached EnsureHome through here. So did
+// `ready`, which is the command an agent runs FIRST, on a machine it has not
+// touched. WSL-55. The paths that WRITE ensure; reading a record from a
+// directory that does not exist is already "no record".
 func NewBase(cfg Config, log func(string)) (*Base, error) {
-	home, err := EnsureHome()
+	home, err := Home()
 	if err != nil {
 		return nil, err
 	}
@@ -194,6 +201,9 @@ func (b *Base) readRecord() (baseRecord, error) {
 }
 
 func (b *Base) writeRecord() error {
+	if _, err := EnsureHome(); err != nil {
+		return err
+	}
 	rec := baseRecord{
 		Schema: "wsl-toolkit-base/1", Name: b.cfg.Base.Name,
 		Image: b.cfg.Base.Image, User: b.cfg.Base.User, Created: time.Now().UTC(),
@@ -347,6 +357,9 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 // writeRecordFrom writes the host record from what the GUEST said, so the two
 // cannot drift apart by the record following the configuration.
 func (b *Base) writeRecordFrom(id Identity) error {
+	if _, err := EnsureHome(); err != nil {
+		return err
+	}
 	rec := baseRecord{
 		Schema: "wsl-toolkit-base/1", Name: b.cfg.Base.Name,
 		Image: id.Image, User: id.User, Created: id.Built,
@@ -374,6 +387,11 @@ func toolVersion() string {
 }
 
 func (b *Base) create(ctx context.Context) error {
+	// ⭐ THE FIRST THING THAT WRITES, so this is where the state directory is
+	// brought into existence. Everything above it reads.
+	if _, err := EnsureHome(); err != nil {
+		return err
+	}
 	dir := b.Dir()
 	if _, err := os.Stat(dir); err == nil {
 		// ⛔ Never import over a leftover directory: wsl --import into one that

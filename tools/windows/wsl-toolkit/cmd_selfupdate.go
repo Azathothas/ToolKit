@@ -59,6 +59,12 @@ func cmdSelfUpdate(ctx context.Context, args []string) (int, error) {
 			logf("  could not ask whether a newer release exists: %s", st.Reason)
 		case st.Available:
 			logf("  %s is published and this is %s. Run: %s", st.Latest, st.Running, st.Command)
+		case st.Reason != "":
+			// ⚠ A build AHEAD of the newest release. Printing "this is the
+			// newest published release" here would name a version that is not
+			// published, which is a confidently wrong answer about the one fact
+			// this command exists to give.
+			logf("  no update: %s", st.Reason)
 		default:
 			logf("  %s is the newest published release", st.Running)
 		}

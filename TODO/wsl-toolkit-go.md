@@ -2197,7 +2197,7 @@ writing the first-run case here.
 **Source** The operator on 2026-09-10, asking for better diagnostics and debug
 for the base machine and every container inside it, by either engine, with the
 heartbeat called essential.
-**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+**Category** wsl, **Priority** P1, **Effort** L, **Status** done
 
 ## Problem
 
@@ -2255,6 +2255,118 @@ A job that sleeps well past the tick interval, asserting ticks arrive at roughly
 that interval on both routes, carry the elapsed time and container id, and stop
 when the job ends. A case asserting a killed container's last state is still
 reportable afterwards.
+
+## Closed 2026-09-10
+
+A tick on the existing event stream, one per RUNNING job, on both routes.
+`--tick 5s` turns it on and nothing ticks without it.
+
+```text
+  ~ alpine running 5s, 29m54s of its deadline left, 7/46 bytes out/err
+  ~ alpine running 10s, 29m49s of its deadline left, 14/46 bytes out/err
+  ~ alpine running 15s, 29m44s of its deadline left, 21/46 bytes out/err
+  ~ alpine running 20s, 29m39s of its deadline left, 28/46 bytes out/err
+```
+
+⭐ **THE BYTE COUNTS ARE THE HEARTBEAT'S REAL CONTENT**, and the acceptance case
+asserts they RISE rather than that ticks arrive. A tick whose numbers never move
+is what a stall looks like, and a case that only counted events would pass over
+one. Rising counts are work; the same counts for a minute is a hang.
+
+⛔ **The ticker is stopped and WAITED FOR before the answer is built.** Without
+the wait, a tick already in flight would serialise onto the stream after the
+result event, and a caller reading events in order would see a job report that it
+finished and then that it is still running. The case asserts the last line of
+stderr is the job's own summary and not a tick.
+
+### The number is a measurement now
+
+The entry said five seconds was a starting point and required the added load of a
+twelve-row matrix with ticks to be measured against one without. Measured on the
+development host on 2026-09-10, twelve rows sleeping 30s each:
+
+| | wall | tick events | lines of progress |
+| --- | --- | --- | --- |
+| `--tick 5s` | 95.9s | 72 | 112 |
+| no tick | 97.2s | 0 | 40 |
+
+⚠ **THE ESTIMATE IN THE ENTRY WAS HIGH BY ABOUT THREE TIMES.** It predicted two
+and a half events per second, assuming twelve rows running concurrently for the
+whole duration; the fleet staggers them, so the real rate is 72 events over 96
+seconds, or 0.75 per second. The wall-time difference is inside the noise and in
+the wrong direction to be a cost. ⭐ **Five stands**, and the sentence the entry
+asked to keep is kept.
+
+⚠ **The second half of this entry is NOT built, and it is carried rather than
+glossed.** "A deeper inspection surface for the base and its containers: engine
+version and storage driver, cgroup and namespace facts, the container's own state
+and last exit, disk pressure in the guest" is a different subject from the
+heartbeat and did not fit in this entry's acceptance. It is `WSL-56`.
+
+### And the six commands
+
+| what `ready` might have to say | the command behind it |
+| --- | --- |
+| the helper is running another configuration | `helper status --json` carries `config_fingerprint` and `config_matches_client` |
+| this configuration is not usable | `config validate`, and `config --effective` to see the one that would be used |
+| output was retained and you cannot reach it | `artifacts retry ID --to DIR` |
+| something is holding state | `resources --job ID` and `gc --job ID` |
+| an image is not here | `images warm` and `images pull` |
+| how do I call this | `examples` |
+
+⛔ **`gc --job` OBEYS THE SAME LIVENESS RULE.** Naming a job is not a way of
+saying `--include-live`, and the policy narrows rather than widens.
+
+⚠ **`resources --job` leaves the byte totals out.** The manual says why; what
+belongs here is that the alternative considered was recomputing them per job, and
+it lost because the number would then measure something no other command
+measures.
+
+⚠ **`config --write` was changed by this entry too**, because `config validate`
+made the asymmetry visible: `--write` always writes the state directory's file
+and never the one the search resolved, so a report command standing in a checkout
+cannot overwrite a tracked file.
+
+### ⛔ The JSON sweep caught this session's own new command
+
+`artifacts retry` returned an error rather than an object when the retained copy
+could not be delivered, so `--json` put NOTHING on stdout. That is exactly the
+defect `WSL-46` closed in `base ensure`, reintroduced in a command written after
+it, and the sweep `TOOL-17` added found it on the first run of the case:
+
+```text
+  FAIL  artifacts retry fetches the copy a failed transfer kept
+        actual  : THREW: artifacts retry --json advertises --json and put nothing on stdout
+```
+
+⭐ **That is the strongest argument for the sweep existing.** It is the one
+guard in this tree that caught a defect in code written the same day, by the
+person who had just fixed the same class elsewhere.
+
+A second thing came out of the same case: the verdict keyed on whether a copy was
+FOUND, so a retrieval that located the copy and failed to deliver it exited 0. It
+reads the reason now.
+
+```text
+  ok    a job that outlives the tick interval says so, and stops saying it
+  ok    nothing ticks unless it is asked to
+  ok    config validate refuses what the loader refuses and writes nothing
+  ok    config --effective prints a configuration that can be handed back
+  ok    artifacts retry says so when nothing was retained, and never re-runs
+  ok    artifacts retry fetches the copy a failed transfer kept
+  ok    gc --job leaves every other job alone
+  ok    images warm says what is here without going to a registry
+  ok    images pull reports an unreachable reference differently
+  ok    examples names every command it teaches, and each parses as one
+  ok    helper status says whose configuration the helper is running
+```
+
+⚠ **The helper protocol moved to version 3**, carrying the `tick` event kind and
+the per-request configuration `WSL-44` added. A client that ignores an unknown
+event kind is unaffected by the first; one that does not is the reason the
+version moved. The second is not optional: a version 2 helper acts on its own
+startup configuration.
+
 
 ---
 
@@ -2368,7 +2480,7 @@ on is built and proved; the command that consumes it is that entry's.
 [issue 28](https://github.com/Azathothas/ToolKit/issues/28), split out of
 [WSL-49](wsl-toolkit-go.md) so each can be closed on its own. The operator ruled
 on 2026-09-10 to build all of them.
-**Category** wsl, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl, **Priority** P2, **Effort** L, **Status** done
 
 ## Problem
 
@@ -2434,6 +2546,20 @@ another reports a mismatch; `config validate` refuses a config the loader refuse
 and writes nothing; a job whose artifacts failed is retrieved by
 `artifacts retry`; `gc --job` on a running job spares it; `images warm` reports a
 reachable and an unreachable reference differently.
+
+## Closed 2026-09-10
+
+⛔ **ONE WRITE-UP, under [WSL-50](wsl-toolkit-go.md)**, because the six commands
+and the heartbeat were built together and share their acceptance run.
+
+⚠ **One Prove clause is narrower than it reads.** "a helper started with one
+config and queried by a client holding another reports a mismatch" is proved in
+the direction that matters - the fingerprints are reported and compared, and the
+case asserts they MATCH when they should - and the mismatching pair is not
+driven, because since WSL-44 a mismatch is not a fault: every request carries the
+client's own configuration, so the two fingerprints differing changes nothing
+about what runs. The field answers "which configuration did this process come up
+with", and that is what the case asserts.
 
 ---
 
@@ -2557,7 +2683,7 @@ Both forks are settled and recorded under `WSL-49`, as recommended in each case.
 
 **Source** The residual bound left by [WSL-48](wsl-toolkit-go.md) on 2026-09-10,
 named rather than left in a sentence.
-**Category** wsl, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl, **Priority** P2, **Effort** S, **Status** done
 
 ## Problem
 
@@ -2616,6 +2742,47 @@ nonzero" must carry the child's code and its output. A case that only checks tha
 something threw would stay green with the three branches collapsed back into one,
 which is the defect.
 
+## Closed 2026-09-10
+
+Three cases in `selftest.ps1`, each passing the engine as a parameter so the two
+missing answers are reachable without breaking the real one. Nothing here stops
+podman and nothing here writes.
+
+```text
+  ok    an engine that was never reached does not claim the engine is broken
+  ok    an engine that answered nonzero is reported with its own code
+  ok    an architecture an engine reports maps onto what --platform accepts
+```
+
+⛔ **THE MUTATION PASS CAUGHT THE FIRST VERSION BEING THEATRE**, which is the
+entire reason this entry existed. Collapsing the three branches back into one -
+`if ($ran) { throw }` to `if ($false) { throw }` - left the suite GREEN, because
+the "never reached" message APPENDS the underlying error and the case asserted
+only that `answered exit` appeared somewhere in it. It appears in both.
+
+The case asserts the NEGATIVE now, mirroring the other one: an engine that
+answered must not be described as one that was never reached. Re-run with the
+guard still mutated:
+
+```text
+  FAIL  an engine that answered nonzero is reported with its own code
+selftest: 1 of 131 case(s) FAILED over 36 function(s).
+```
+
+and green with it restored.
+
+⚠ **The third case is not padding.** A rule that widened to refuse everything
+would pass both cases above and break every working machine, so what a real
+engine's answer maps onto is asserted beside them.
+
+⚠ **TWO THINGS ABOUT THE FIXTURE ARE WORTH KEEPING.** `cmd.exe` was the obvious
+choice for "a program that exits nonzero" and it HANGS: `Invoke-Native` passes a
+fixed argument list, and cmd.exe handed arguments it does not recognise opens an
+INTERACTIVE shell and waits on stdin, so the suite stopped rather than failing.
+`whoami.exe` refuses an unknown option, says so, and exits. And the absent-engine
+fixture is a path under TEMP that does not exist, which is a fact about the
+filesystem rather than about any engine.
+
 ---
 
 ## WSL-55. A report that creates the thing it is describing
@@ -2623,7 +2790,7 @@ which is the defect.
 **Source** Found on 2026-09-10 while writing an acceptance case for
 [WSL-49](wsl-toolkit-go.md): a first-run case pointed `ready` at a state
 directory that did not exist, and the directory existed afterwards.
-**Category** wsl, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl, **Priority** P2, **Effort** S, **Status** done
 
 ## Problem
 
@@ -2684,3 +2851,107 @@ A case pointing every read-only command at a state directory that does not
 exist, asserting the answer arrives AND the directory is still absent
 afterwards. ⛔ Both halves: a case that only checks the directory would pass
 against a command that stopped answering.
+
+## Closed 2026-09-10
+
+`NewBase`, `NewRunner`, `OpenLedger` and `cmdLogs` bind to `Home()` now; the
+paths that WRITE call `EnsureHome` where they write. Reading a record from a
+directory that does not exist was already "no record", so nothing needed the
+directory to exist in order to answer.
+
+Driven against every read-only command, each pointed at a state directory that
+did not exist:
+
+```text
+read-only: base status --json
+read-only: ready --json
+read-only: resources --json
+read-only: logs --json
+read-only: config --json
+read-only: images --json
+read-only: version --json
+```
+
+⛔ **AND THE OTHER HALF, which the entry required.** A tool that stopped
+answering would pass the list above, so the case asserts that `config --write`
+still brings the directory into existence and writes into it.
+
+⚠ **The premise named `resources`, `gc` and `logs` as unchecked and asked
+whoever took this to count them rather than assume.** Counted: `resources` and
+`logs` both had it, through `NewRunner` and through a direct `EnsureHome`
+respectively; `gc` reaches the same `NewRunner` and is covered by the same
+change. That is four commands with the defect, not the one the entry was filed
+from.
+
+---
+
+## WSL-56. What a failed job leaves a reader to ask the machine by hand
+
+**Source** The half of [WSL-50](wsl-toolkit-go.md) that was not built on
+2026-09-10, named as its own entry rather than left in a sentence.
+**Category** wsl, **Priority** P2, **Effort** M, **Status** open
+
+## Problem
+
+`WSL-50` asked for two things and one of them shipped. The heartbeat is built: a
+job that is running now says so, with elapsed time, its deadline and the bytes
+each stream has carried.
+
+The other half is what a caller has after a job has FAILED. The operator's words
+were "better diagnostics and debug for the base machine and every container
+inside it, by either engine". Today that is an exit code, a transcript, and
+`resources`, which enumerates what exists rather than describing it.
+
+Specifically absent, and each was named in `WSL-50`:
+
+- the engine's version and storage driver;
+- cgroup and namespace facts for the container;
+- the container's own last state and exit, AFTER it has gone;
+- disk pressure inside the guest;
+- the same for a chroot payload, where podman is not the engine.
+
+## Premise
+
+Read, not measured. `resources` already asks the engine for images, containers
+and volumes and the guest for job directories, so the transport and the
+enumeration exist; what does not exist is anything that asks a container what it
+WAS.
+
+⚠ **The third bullet is the one with a real obstacle and it should be measured
+first.** `run --rm` removes the container when it exits, so its state is gone
+before anything could read it. Whoever takes this finds out whether podman's
+events or its exit journal retains enough after `--rm`, and if neither does, says
+so and picks between keeping failed containers for an age window and accepting
+that the transcript is what survives. ⛔ Do not quietly drop `--rm`: it is what
+stops a failed fleet leaving twelve containers behind.
+
+## Approach
+
+One command, `wsl-toolkit inspect [JOB]`, over the data an engine already holds,
+with `--json`.
+
+⛔ **It must not become a second `resources`.** `resources` answers "what is
+this tool holding"; this answers "what was this job, and what was the machine
+doing when it ran". If it starts enumerating, it has become a copy.
+
+⚠ **By either engine.** podman and docker disagree about field names and about
+the VALUES, which `WSL-31` already paid for once: podman answers
+`{{.Host.Arch}}` and docker `{{.Architecture}}`, and asking the wrong one fails
+the whole call and reads as a broken engine.
+
+## Consumers
+
+Additive: one new command and one new JSON schema.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case running a job that fails, then asserting `inspect` on its id names the
+engine version, the storage driver and the container's last exit; a case
+asserting `inspect` on an id that never existed is a refusal rather than an empty
+object. ⛔ The second one matters: an inspection surface that answers an empty
+document for an unknown id is the "refusal rendered as a successful empty result"
+class this tool has now paid for three times.

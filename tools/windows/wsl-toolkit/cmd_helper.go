@@ -81,15 +81,31 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 		if err != nil {
 			return exitFailed, err
 		}
+		// ⭐ WHETHER THE HELPER'S CONFIG IS THIS CLIENT'S. A client could not
+		// tell before, and since WSL-44 the config travels with every request,
+		// so a difference is information rather than a fault. WSL-52.
+		mine := c.Config().Fingerprint()
+		theirs, _ := st["config_fingerprint"].(string)
 		if *asJSON {
 			st["listening"] = true
 			st["address"] = c.Endpoint().Address
+			st["client_config_fingerprint"] = mine
+			st["config_matches_client"] = theirs != "" && theirs == mine
 			return exitOK, writeJSON(st)
 		}
 		fmt.Fprintf(os.Stderr, "  listening   %s\n", c.Endpoint().Address)
 		fmt.Fprintf(os.Stderr, "  pid         %v\n", st["pid"])
 		fmt.Fprintf(os.Stderr, "  version     %v\n", st["version"])
 		fmt.Fprintf(os.Stderr, "  base        %v as %v\n", st["base"], st["user"])
+		switch {
+		case theirs == "":
+			fmt.Fprintf(os.Stderr, "  config      this helper does not report one, so it predates the field\n")
+		case theirs == mine:
+			fmt.Fprintf(os.Stderr, "  config      %s, the same one this client read\n", theirs)
+		default:
+			fmt.Fprintf(os.Stderr, "  config      it started with %s and this client reads %s.\n", theirs, mine)
+			fmt.Fprintf(os.Stderr, "              Not a fault: every request carries this client's config\n")
+		}
 		if v, ok := st["version"].(string); ok && v != versionString() {
 			// ⛔ A version mismatch is reported rather than tolerated. The
 			// helper carries its OWN embedded script, so a client and a helper

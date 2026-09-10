@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
@@ -39,8 +41,18 @@ func cmdDoctor(ctx context.Context, args []string) (int, error) {
 	return exitOK, toolkit.WriteDoctor(os.Stdout, report, false)
 }
 
-func cmdImages(args []string) (int, error) {
+func cmdImages(ctx context.Context, args []string) (int, error) {
+	// `pull` and `warm` are subcommands rather than flags, because both ACT and
+	// the bare command is a report. A report and an action behind one name,
+	// separated by a flag, is how somebody pulls twelve images by accident.
+	sub := ""
+	if len(args) > 0 && (args[0] == "pull" || args[0] == "warm") {
+		sub, args = args[0], args[1:]
+	}
 	fs := newFlagSet("images")
+	if sub != "" {
+		fs = newFlagSet("images " + sub)
+	}
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	selector := fs.String("select", "", "resolve a selector the way matrix would, and print what it chose")
 	if err := parseArgs(fs, args); err != nil {
@@ -49,6 +61,16 @@ func cmdImages(args []string) (int, error) {
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
+	}
+	if sub != "" {
+		var selectors []string
+		if *selector != "" {
+			selectors = strings.Split(*selector, ",")
+		}
+		// ⭐ `warm` REPORTS AND `pull` ACTS. Warm says which references this
+		// machine already holds and which it does not; pull fetches the ones it
+		// does not, so a twelve-row matrix fails FIRST rather than slowly.
+		return runImagesWarm(ctx, cfg, selectors, sub == "pull", *asJSON)
 	}
 	list := cfg.Catalog()
 	if *selector != "" {
@@ -78,12 +100,24 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("resources")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
+	job := fs.String("job", "", "narrow every row to one job id")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
+	}
+	if *job != "" {
+		if err := toolkit.AssertArgvSafe([]string{*job}); err != nil {
+			return exitCannot, err
+		}
+	}
+	narrow := func(rep toolkit.ResourceReport) toolkit.ResourceReport {
+		if *job == "" {
+			return rep
+		}
+		return narrowResourcesToJob(rep, *job)
 	}
 	if c, err := useHelper(ctx, *viaHelper); err != nil {
 		return exitCannot, err
@@ -92,6 +126,7 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 		if err != nil {
 			return exitCannot, err
 		}
+		rep = narrow(rep)
 		if *asJSON {
 			return exitOK, writeJSON(rep)
 		}
@@ -101,7 +136,7 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	rep := runner.Resources(ctx)
+	rep := narrow(runner.Resources(ctx))
 	if *asJSON {
 		return exitOK, writeJSON(rep)
 	}
@@ -118,6 +153,7 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	images := fs.Bool("images", false, "also prune images the engine in the base is holding")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
+	job := fs.String("job", "", "clean up one job id and leave the rest of the store alone")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -128,7 +164,15 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	if *olderThan < 0 {
 		return exitCannot, fmt.Errorf("--older-than %s is negative. Pass 0 for no age limit, or a positive duration", *olderThan)
 	}
-	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive}
+	if *job != "" {
+		if err := toolkit.AssertArgvSafe([]string{*job}); err != nil {
+			return exitCannot, err
+		}
+	}
+	// ⚠ NAMING A JOB IS NOT A WAY OF SAYING --include-live. A job that is still
+	// running is spared exactly as it would be without --job, which is what
+	// WSL-36 settled for the whole store and applies unchanged to one row of it.
+	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive, Job: *job}
 	if c, err := useHelper(ctx, *viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
@@ -227,11 +271,30 @@ func renderCleanup(plan toolkit.CleanupPlan) {
 }
 
 func cmdConfig(args []string) (int, error) {
-	fs := newFlagSet("config")
+	// `validate` is a subcommand and `--effective` is a flag, because the first
+	// answers a question about a file and the second changes what this command
+	// prints about the one it already resolved.
+	sub := ""
+	if len(args) > 0 && args[0] == "validate" {
+		sub, args = args[0], args[1:]
+	}
+	name := "config"
+	if sub != "" {
+		name = "config " + sub
+	}
+	fs := newFlagSet(name)
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	write := fs.Bool("write", false, "write the effective configuration to disk, so it can be edited")
+	effective := fs.Bool("effective", false, "print the configuration that WOULD be used, as JSON, without writing it")
+	path := fs.String("path", "", "validate this file instead of the one the search resolves")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
+	}
+	if sub == "validate" {
+		if *write {
+			return exitCannot, errors.New("config validate does not write. Drop --write, or run config --write on its own")
+		}
+		return runConfigValidate(*asJSON, *path)
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -241,14 +304,14 @@ func cmdConfig(args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	path := src.Path
+	resolved := src.Path
 	if *write {
 		// ⛔ --write ALWAYS writes the STATE DIRECTORY's file, never the one the
 		// search resolved. A caller standing in a checkout that carries a
 		// wsl-toolkit.json would otherwise have `config --write` overwrite a
 		// TRACKED file with the whole built-in catalog, which is a report
 		// command editing somebody's repository. WSL-51.
-		if path, err = toolkit.ConfigPath(); err != nil {
+		if resolved, err = toolkit.ConfigPath(); err != nil {
 			return exitCannot, err
 		}
 		// ⚠ The written file carries the CURRENT catalog, so an edit starts
@@ -259,17 +322,26 @@ func cmdConfig(args []string) (int, error) {
 		if err := cfg.Write(); err != nil {
 			return exitCannot, err
 		}
-		logf("  wrote %s", path)
+		logf("  wrote %s", resolved)
 	}
 	home, err := toolkit.Home()
 	if err != nil {
 		return exitCannot, err
 	}
+	if *effective {
+		// ⛔ THE EFFECTIVE CONFIGURATION AND NOTHING ELSE, so a caller can pipe
+		// it into a file, edit it and pass it back with --config. `config
+		// --json` carries the report AROUND the configuration; this is the
+		// configuration.
+		cfg.Images = cfg.Catalog()
+		cfg.Matrix = cfg.MatrixDefault()
+		return exitOK, writeJSON(cfg)
+	}
 	if *asJSON {
 		return exitOK, writeJSON(map[string]any{
 			"schema":      "wsl-toolkit-config-report/1",
-			"path":        path,
-			"exists":      fileExists(path),
+			"path":        resolved,
+			"exists":      fileExists(resolved),
 			"from":        src.From,
 			"searched":    src.Searched,
 			"home":        home,
@@ -281,8 +353,8 @@ func cmdConfig(args []string) (int, error) {
 			"fingerprint": cfg.Fingerprint(),
 		})
 	}
-	fmt.Println(path)
-	fmt.Fprintf(os.Stderr, "  exists      %v\n", fileExists(path))
+	fmt.Println(resolved)
+	fmt.Fprintf(os.Stderr, "  exists      %v\n", fileExists(resolved))
 	fmt.Fprintf(os.Stderr, "  resolved    from %s\n", src.From)
 	// ⭐ THE ORDER IS PRINTED, not only the winner. A caller with a
 	// wsl-toolkit.json in a parent directory silently changes which

@@ -6,174 +6,160 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-09T21:00:00Z
-baseline        450b380, clean main; gate 17 checks, all passing, 31s.
-entries         total 82  open 12  blocked 0  done 70
-gate            18 checks, one binary, 43s, all passing
+session started 2026-09-10T04:15:00Z
+baseline        f7eabfe, clean main; gate 18 checks, all passing, 43s.
+entries         total 83  open 9  blocked 0  done 74
+gate            18 checks, one binary, all passing
 ```
 
 ## Active work
 
-Five entries closed this session: [TOOL-17](tooling.md), [TOOL-18](tooling.md),
-[WSL-44](wsl-toolkit-go.md), [WSL-45](wsl-toolkit-go.md) and
-[WSL-46](wsl-toolkit-go.md). Four of the twelve that came out of the reporter's
-thirteen defects; `TOOL-18` is one found here while closing them.
+None in flight. **Every entry the last session filed is closed**, and so are the
+two the operator added and the four this session found while closing them.
 
-**Eight of the twelve remain**: `WSL-42`, `WSL-43`, `WSL-47`, `WSL-48`,
-`WSL-49`, `WSL-50`, `WSL-51` and `WSL-52`. ⭐ **And one the operator added
-mid-session**, [WSL-53](wsl-toolkit-go.md): `selfupdate`, with the update check
-inside `ready`. It lands BEFORE the release is cut.
+`wsl-toolkit` is at **2.0.0 in the tree and the tag is not pushed.** That is the
+one thing left and it is the operator's:
 
-⭐ **The acceptance suite can now reach the class of defect that shipped.**
-`TOOL-17` added a wall-time ceiling, a byte-exact expectation, an assertion on a
-parsed object, and mutation of state a running process has already read. Each was
-written against the binary that HAD the defect and watched to fail; that red run
-is in the entry.
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/release.ps1 -Publish
+```
 
-⭐ **And there is a consumer harness now.**
-`tools/windows/wsl-toolkit/consumer.ps1` downloads a published release by tag,
-verifies every digest, and runs it from a temp state directory with no repository
-present. It found `WSL-45` on its own.
+⛔ **Nothing here pushed a tag.**
+[`../docs/security/remote-ops.md`](../docs/security/remote-ops.md) puts any push
+behind the project's push policy, and this repository's policy names commits to
+`main` rather than tags. `release.ps1` without `-Publish` verifies and prints
+what it would do.
 
-⛔ **Read the work order below before picking one.** Three of the remaining
-entries are ruled together or not at all.
+## What this session closed
 
-## What this session shipped
+Sixteen entries. Twelve were the ones the last session filed from a consumer
+agent's thirteen defects against the published `v1.3.0`; two the operator added
+mid-session; four came out of doing the work.
 
-Two releases. `wsl-toolkit-v1.2.0` carries the eight defects a consumer agent
-found by testing the published `v1.1.0` from outside this tree, five of them P1.
-`wsl-toolkit-v1.3.0` carries the core pass and the review after it: three defects
-nobody reported, five more in the class of "a failure reported as a benign
-outcome", and the two lines that make `logs` reachable at all.
-[`../CHANGELOG.md`](../CHANGELOG.md) is the shipped record;
-[`wsl-toolkit-go.md`](wsl-toolkit-go.md) carries one entry per unit of work with
-its evidence. Between them, `tools/repo/` became this repository's tool box.
+| entry | what it was |
+| --- | --- |
+| [TOOL-17](tooling.md) | the suite could not have caught any of the thirteen. Four capabilities and a consumer harness |
+| [TOOL-18](tooling.md) | one row of the index's counts was typed, and the gate was green over it |
+| [WSL-42](wsl-toolkit-go.md) | what this tool owns, and how it proves it |
+| [WSL-43](wsl-toolkit-go.md) | many agents, many bases |
+| [WSL-44](wsl-toolkit-go.md) | what a long-lived helper freezes |
+| [WSL-45](wsl-toolkit-go.md) | a deadline that bounds the caller's wall time |
+| [WSL-46](wsl-toolkit-go.md) | the answer is exactly what happened |
+| [WSL-47](wsl-toolkit-go.md) | the boundary the manual promises |
+| [WSL-48](wsl-toolkit-go.md) | the embedded script tells the truth |
+| [WSL-49](wsl-toolkit-go.md) | one command to readiness |
+| [WSL-50](wsl-toolkit-go.md) | a heartbeat for a job that is running |
+| [WSL-51](wsl-toolkit-go.md) | a config the agent does not have to write |
+| [WSL-52](wsl-toolkit-go.md) | the six commands that make an answer actionable |
+| [WSL-53](wsl-toolkit-go.md) | `selfupdate`, and readiness says whether it should |
+| [WSL-54](wsl-toolkit-go.md) | the three answers a diagnostic has to tell apart |
+| [WSL-55](wsl-toolkit-go.md) | a report that creates the thing it is describing |
 
-⭐ **The finding worth keeping is not any of the eight.** This tree's own
-gate was green when they were filed, its acceptance runner passed 23 of 23, and
-it had been through three review lenses. A short test from outside found what
-none of that did, and the operator's framing was that the eight are therefore a
-floor rather than a list.
+## ⭐ The findings worth keeping
 
-⭐ **The second finding worth keeping is what a NAMED LENS gets that a sweep
-does not.** The fifth review took one defect class, a failure reported as a
-benign outcome, and read every discarded error and every `return exitOK` with a
-failure above it. That produced five findings in a tree that had just passed 37
-acceptance cases and 29 proved mutations. A lens with a name finds things; another
-pass of general care does not.
+**A guard built this session caught a defect written this session.** `TOOL-17`
+added a sweep asserting every `--json` surface emits exactly one parsable object.
+Hours later it caught `artifacts retry` putting nothing on stdout, in a command
+written after the same defect had been fixed in `base ensure`. ⭐ That is the
+strongest evidence this tree has that a named guard beats another pass of care.
+
+**The mutation pass caught a NEW test being theatre.** A `WSL-54` case asserted
+that an engine which answered nonzero was reported with its own code. Collapsing
+the three branches back into one left it GREEN, because the fallback message
+APPENDS the underlying error and the substring appears in both. It asserts the
+negative now.
+
+**Three defects came from DRIVING rather than reading**, and none was visible in
+the code: a missing identity marker read as "could not read the marker", one
+disagreement was reported twice under two names, and `selfupdate --check` on a
+build ahead of the newest release offered a downgrade.
+
+⚠ **One reported cause did not reproduce.**
+[Issue 27](https://github.com/Azathothas/ToolKit/issues/27) says
+`-Action Doctor` fails with a `StandardOutputEncoding` exception. Measured three
+ways on this host and it does not; both places this tree sets that property set
+redirection first. The half that IS this tool's defect was fixed, and the
+non-reproduction is written under `WSL-48` rather than into it.
 
 ## Measurements
 
 Read from the machine, on Windows 11 Pro 26200, on 2026-09-10:
 
 ```text
-acceptance  39 of 39 cases pass against the real base, both routes, both
-            accounts, every catalog image. It was 23 before this session; the
-            14 issue cases each fail against wsl-toolkit-v1.1.0, and the two
-            newest cover the helper route's own transcript and the line that
-            names the job id.
-mutation    48 of 48 guards proved: each one deleted, the named case run, and
-            the case count and the build status reported separately. One row
-            asks for -race, because without it that guard goes red in only 6
-            runs of 10. It is `repo mutate` now, in the tree, so the number is
-            one anybody can reproduce.
-linux       all three Go modules vet and test clean inside
-            docker.io/library/golang:1.25, driven by this tool.
-race        the whole Go suite passes under -race.
-gate        18 checks, one binary, 43s on this host. The eighteenth is
-            `hooks`, and it is the one that stops `commits` being a rule
-            with no instrument.
-surface     71 flags across 12 commands, every one of them named in the manual,
-            asserted by a test rather than by a reading.
+acceptance  67 of 67 cases pass against the real base, both routes, both
+            accounts, every catalog image, and two instances built in one run.
+            It was 39 at the start of this session.
+consumer    12 cases against the published wsl-toolkit-v1.3.0, downloaded and
+            digest-verified, run from a temp directory with no repository
+            present. 11 pass and 1 fails, which is correct: it tests a
+            published artifact and that artifact has the defect WSL-45 fixes.
+selftest    131 cases over 36 functions of the built bundle.
+gate        18 checks, one binary, all passing.
+deadline    a 2s timeout over a 60s payload returns in 5.3s and no longer grows
+            with the payload. It was 15.2s, reported as 4.4s.
+tick        a twelve-row matrix with 5s ticks: 95.9s wall and 72 events,
+            against 97.2s and 0 without. The estimate in WSL-50 was high by
+            about three times.
+podman rm   10.63s on a running container, 0.56s with -t 0. That difference is
+            where WSL-45's missing seconds were.
 ```
 
-⚠ **One guard is deliberately absent and the harness says so in place of it.**
-`Ledger.Compact`'s lost-append window is too narrow to hit: the broken version
-was run against a 50-append, 20-compaction stress case ten times and went red in
-NONE of them. A row reporting theatre every run would be noise and a row
-reporting ok would be a lie, so the invariant is held by structure and the test
-written for it states what it does not prove.
+## What is left, and none of it is urgent
 
-## Decisions
+Nine entries, none of them from this session's subject:
 
-The operator ruled on four forks on 2026-09-09, and each is recorded in the
-entry it belongs to:
-
-- both routes stream, which costs a helper protocol version ([WSL-35](wsl-toolkit-go.md));
-- a failed transfer exits 1 and the guest copy is KEPT ([WSL-33](wsl-toolkit-go.md));
-- `gc` spares live work and `--include-live` is the only way past it ([WSL-36](wsl-toolkit-go.md));
-- the eight fixes ship as `wsl-toolkit-v1.2.0` before anything else is started.
+- **[WSL-56](wsl-toolkit-go.md)** is the half of `WSL-50` that was not built: a
+  deeper inspection surface for a job that has already failed. ⚠ It has an
+  obstacle worth measuring first, which the entry names: `run --rm` removes the
+  container before anything can read its last state.
+- **[TOOL-11](tooling.md)**: CI does not run Windows PowerShell 5.1, which is
+  where every P0 has been. **[TOOL-12](tooling.md)** is now half answered:
+  `consumer.ps1` exists and nothing runs it after a release.
+- **[WSL-25](wsl-ephemeral.md)** through **[WSL-30](wsl-ephemeral.md)**, the
+  older `wsl-toolkit.ps1` backlog.
+- **The doctor pair is still the last shell twin**, 646 lines across two files
+  asking DIFFERENT questions of different hosts, so porting it is a behaviour
+  decision. [TOOL-14](tooling.md) says why it was left, and when it goes
+  `check-twins.sh` goes with it.
 
 ## Work order
 
-⛔ **[WSL-42](wsl-toolkit-go.md) and [WSL-43](wsl-toolkit-go.md) are one
-ruling**, and [WSL-51](wsl-toolkit-go.md) joins it. The reporter's fix for the
-ownership boundary is a fixed name; the operator's requirement is many isolated
-instances. Fixing either as written makes the other impossible, and `WSL-51` puts
-instance state somewhere `WSL-43` does not.
+⭐ **Cut the release first**, because everything below is measured against a
+published artifact and the published one now carries thirteen known defects. The
+command is at the top of this file.
 
-⭐ **`TOOL-17` proved they are worth doing in that order.** The consumer harness
-nearly unregistered the operator's own base, because a separate state directory
-is not isolation: the distribution name comes from the config and defaults to
-`wsl-toolkit` whatever `WSL_TOOLKIT_HOME` says. That file now sets a name by
-hand, which is the convention `WSL-43` replaces with a mechanism.
+Then, in rough order of what unblocks the most:
 
-Then, in rough order of what unblocks the most: `WSL-47` and `WSL-48` (the
-manual's claims made true), `WSL-49` (one command to readiness),
-[WSL-53](wsl-toolkit-go.md) (`selfupdate`, whose check lives inside `ready`),
-`WSL-52` (the six commands that make its answer actionable), `WSL-50` (a
-heartbeat).
+1. **[TOOL-12](tooling.md)**, which is now one line of `release.ps1` rather than
+   a project: run `consumer.ps1` against the tag CI just published, and refuse
+   to report success until it has. `TOOL-17` settled that it is not in CI.
+2. **[WSL-56](wsl-toolkit-go.md)**, the inspection surface.
+3. **[TOOL-11](tooling.md)**, the 5.1 job.
+4. The `wsl-ephemeral` backlog, oldest first.
 
-⚠ **`WSL-53` is after `WSL-49` and not before it**, because its check is a
-section of `ready`'s JSON schema and building the section before the schema is
-building it twice.
+⚠ **A SIXTH REVIEW LENS IS STILL OWED, and concurrency is still the candidate.**
+The last session named it and this one did not run it, which is worth saying
+plainly rather than leaving to be inferred. What two of this tool running at once
+do to one state directory is now a LARGER question than it was: instances give
+two agents separate stores, and nothing yet proves two processes sharing ONE
+store behave.
 
-## How this ships
-
-**RULED 2026-09-10: one `wsl-toolkit-v2.0.0` when the breaking work is done.**
-
-Five entries are breaking: `WSL-42` refuses configs that were accepted, `WSL-45`
-changes what a reported duration means, `WSL-46` shrinks `stderr_bytes` by one,
-`WSL-47` refuses artifact links that used to be transformed, and `WSL-48` changes
-an exit code from 0. A consumer absorbs that once rather than five times, and the
-changelog tells one story instead of five partial ones.
-
-⛔ **Nothing ships in between, and that is the cost that was accepted.**
-Thirteen defects sit unreleased while the work happens. A session that finds the
-gap intolerable should say so and ask, rather than cutting a minor to relieve the
-pressure and leaving a consumer with two breaking upgrades instead of one.
-
-⚠ `TOOL-17` and its consumer harness are NOT part of that release, because
-nothing in `tools/` is published. They land whenever they are ready, which is
-first.
-
-Still open from before, and not urgent:
-
-- **The doctor pair is the last shell twin**, `scripts/doctor/doctor.sh` and its
-  PowerShell twin, 646 lines between them. [TOOL-14](tooling.md) says why it was
-  left: it is the only pair whose two halves ask DIFFERENT questions of different
-  hosts, so porting it is a behaviour decision and not a translation.
-  ⚠ When it goes, `check-twins.sh` goes with it, and
-  [RULES.md](RULES.md) section 2 and `scripts/README.md` move in the same change.
-- **A sixth lens.** The fifth was "what a failure is allowed to hide" and it found
-  five things. Concurrency is the obvious next one: what two of this tool running
-  at once do to one state directory, which the ledger work touched and did not
-  finish.
-
-⚠ **What a later session should know before touching this tool.** The two
-generated products remain the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1`
-and `tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1` are BOTH built
+⚠ **What a later session should know before touching this tool** is unchanged
+and still the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1` and
+`tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1` are BOTH generated
 from the parts, and editing either by hand is lost at the next build.
 [RULES.md](RULES.md) section 4 owns that.
 
-⭐ **Three guards added this session exist to stop a CLASS coming back**, and a
-session that finds one inconvenient should read why before changing it:
+## Guards added this session, and why each exists
+
+A session that finds one inconvenient should read why before changing it.
 
 | guard | what it refuses |
 | --- | --- |
-| `TestEveryJobFlagCrossesTheWire` | a job flag the direct path honours and the helper drops. That has now happened twice. |
-| `TestManualNamesEveryFlag` | a flag the binary has and the manual does not. It reads the real flag sets, so a flag added tomorrow is covered without the test being touched. |
-| `TestEveryFlagSetRefusesPositionals` | a subcommand that tolerates a stray word, and therefore ignores every option after it. |
-| `TestPrefixWriterIsSafeFromTwoStreams` | a shared writer losing a provisioning line. ⚠ Run it under `-race`: without the detector it catches the corruption in 6 runs of 10. |
-| `TestClientSpoolSaysWhyItHasNoTranscript` | a helper-route job that quietly keeps no local transcript. The direct route has always said so; this is the half that did not. |
-| `TestListTranscriptsSeparatesAnEmptyMachineFromAnUnreadableOne` | a read failure reported as a machine that has simply not run a job yet. |
+| the `--json` sweep in `acceptance.ps1` | a surface that advertises `--json` and puts nothing, or two documents, on stdout. It has already caught one command written after it. |
+| `Test-Case -MaxSeconds` | a wall-time claim nothing compares. Every case was timed and none asserted on it. |
+| `Show-Bytes` | a substring test over an invented byte. `stderr_bytes` was one too many for two releases. |
+| `New-StateHome` and `Set-StateConfig` | a suite that can only build state before the first invocation, so nothing a long-lived process caches can be reached. |
+| the `Resolve-DistroListing` cases | a refusal rendered as an empty machine. Mutation-proved: deleting the exit-code branch turns two of them red. |
+| `TestABuildAheadOfTheReleaseIsNotAnUpdate` | a version check that compares strings for inequality and offers a downgrade. |
+| the read-only state case | a report that creates the directory it is describing. Four commands had it. |

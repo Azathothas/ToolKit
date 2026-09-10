@@ -44,6 +44,8 @@ payload on stdin or as a file, and never as an argument.
 | `config` | where the configuration is and what it says |
 | `ready` | one answer to whether this agent can run isolated Linux jobs here, and the one command that fixes it if not |
 | `selfupdate` | move this executable to a published release, verifying it against `SHA256SUMS` first |
+| `artifacts` | retrieve a copy a failed transfer retained. It never re-runs a job |
+| `examples` | the canonical command patterns, in the binary rather than only here |
 | `version` | the product version, read from the embedded script |
 
 Global flags: `--instance NAME` (also `WSL_TOOLKIT_INSTANCE`), `--home DIR`
@@ -282,6 +284,7 @@ a caller cannot predict.
 | `--exclude` | a glob to leave out of the copy. Repeatable. |
 | `--env` | `NAME=VALUE`. Repeatable. |
 | `--timeout` | default 30m. On expiry the container is killed and the code is 124. ⭐ It bounds THE CALLER, not only the container: see below. |
+| `--tick` | emit a heartbeat for each running job at this interval. 0 is off; anything under 1s is raised to it |
 | `--no-network` | run with no network at all |
 | `--user` | what the container runs as: a name, a uid, or `uid:gid`. Empty is the image's default, which for most is root. ⚠ Naming one makes podman re-own the mounts for it, which costs a walk of the copy. |
 | `--max-bytes` `--max-entries` | ceilings for a workspace and an artifact set. Default 1 GiB and 200000. |
@@ -319,6 +322,39 @@ leaving a byte behind: a command writing nothing to stderr answers
 `"stderr_bytes": 0`. ⚠ It answered 1 up to and including `wsl-toolkit-v1.3.0`,
 because the framing's own newline was written back whether or not there was a
 line for it to end.
+
+### The heartbeat
+
+```powershell
+wsl-toolkit run --tick 5s --image alpine -c 'sleep 60'
+wsl-toolkit matrix --tick 5s --images all -c 'make'
+```
+
+⭐ **A job that is running used to tell a caller almost nothing.** `resources`
+reports what exists when asked, and there was no periodic signal, so an agent
+watching a long fleet could not tell work in progress from a hang.
+
+`--tick` emits one event per RUNNING job at that interval, on both routes:
+
+| field | why it is there |
+| --- | --- |
+| `id` `label` `container` | which job, and the engine's name for it so a caller can go and look |
+| `elapsed_ms` | how long it has been running |
+| `remaining_ms` | what is left of its deadline. ⚠ ABSENT rather than zero where there is no deadline: zero means out of time |
+| `stdout_bytes` `stderr_bytes` | ⭐ the heartbeat's real content. Rising counts are work; the same counts for a minute is a stall, and the two are indistinguishable without them |
+
+⛔ **It is not a progress bar and must not become one.** It is a
+machine-readable event with a timestamp; whatever renders it belongs to the
+caller. Under `--json` it goes to stderr like everything else this program says.
+
+⛔ **It is not a poll loop against the engine.** Everything a tick carries is
+already in this process, so the cost is bounded by rows times duration over
+interval and does not grow with what the containers are doing.
+
+⚠ **Nothing ticks unless it is asked to**, and a tick can never arrive after the
+result: the ticker is stopped and waited for before the answer is built, so a
+caller reading events in order never sees a job report that it finished and then
+that it is still running.
 
 ### What a deadline actually bounds
 
@@ -762,6 +798,115 @@ jobs because GitHub was down would have invented a dependency it does not have.
 
 ⚠ **`update.checked` is always present**, so a caller reading
 `update.available` can tell "there is no newer release" from "nobody looked".
+
+---
+
+## The six commands that make an answer actionable
+
+⭐ **`ready` can tell an agent it is not ready.** These are the commands behind
+the six things it might have to say, so the answer names a next step rather than
+a subsystem. None of them needs a concept this tool did not already have.
+
+### `helper status` says whose configuration it is running
+
+`helper status --json` carries `config_fingerprint`, the fingerprint of the
+configuration the helper started with, beside `client_config_fingerprint` and
+`config_matches_client`.
+
+⚠ **A difference is information rather than a fault.** Every request has carried
+the client's own configuration since `wsl-toolkit-v2.0.0`, so a helper that
+started with another one still acts on yours; what the fingerprint answers is
+"which configuration did this process come up with", which was previously
+invisible.
+
+### `config validate` and `config --effective`
+
+```powershell
+wsl-toolkit config validate
+wsl-toolkit config validate --path .\wsl-toolkit.json
+wsl-toolkit config --effective > wsl-toolkit.json
+```
+
+| | |
+| --- | --- |
+| `config validate` | refuses a configuration the loader refuses, and WRITES NOTHING |
+| `--path` | validate that file instead of the one the search resolves |
+| `--effective` | print the configuration that WOULD be used, as JSON, and write nothing |
+
+⛔ **Neither writes.** A caller checking a configuration before using it must not
+have the check create the file it was asking about. `config --write` is the one
+that writes, and it always writes the state directory's own file.
+
+⭐ **`--effective` is the whole configuration and nothing around it**, so it can
+be piped to a file, edited, and passed back with `--config`. `config --json`
+carries the report AROUND the configuration; this is the configuration.
+
+Exit 0 valid, 1 not.
+
+### `artifacts retry`
+
+```powershell
+wsl-toolkit artifacts retry JOB-ID --to .\recovered
+```
+
+Fetches a copy that was RETAINED because its transfer failed. The id is a job id
+for a copy kept in the guest, or an artifact set id for one the helper is still
+holding; any result that retained a copy names it in `retained`.
+
+⛔ **It does not re-run the job.** Producing the output again is a different act
+with a different cost. When nothing was retained it says so.
+
+⛔ **It does not remove the guest copy afterwards.** `gc` collects it under its
+own age policy, so a partial retrieval has not destroyed the only remaining copy.
+
+### `resources --job` and `gc --job`
+
+```powershell
+wsl-toolkit resources --job JOB-ID
+wsl-toolkit gc --job JOB-ID --apply
+```
+
+One job instead of the whole store.
+
+⚠ **Naming a job is not a way of saying `--include-live`.** A job that is still
+running is spared exactly as it would be without `--job`.
+
+⚠ **`resources --job` withholds the byte totals rather than recomputing them.**
+They measure the whole state directory, and a total printed beside one job's rows
+would look like it belonged to the job.
+
+### `images warm` and `images pull`
+
+```powershell
+wsl-toolkit images warm
+wsl-toolkit images pull --select libc:musl
+```
+
+| | |
+| --- | --- |
+| `warm` | which references this machine already holds, and which it does not |
+| `pull` | fetch the ones it does not |
+
+⛔ **It exists so a fleet fails FIRST rather than slowly.** An image is pulled
+when a job needs it, so a twelve-row matrix on a slow link discovers an
+unreachable reference on row nine, an hour in.
+
+⚠ **`warm` does not go to a registry.** Not cached is not unreachable, and a
+report that quietly downloaded a gigabyte would not be a report. `pull` is the
+one that reaches out.
+
+Exit 1 when any reference could not be reached.
+
+### `examples`
+
+```powershell
+wsl-toolkit examples
+wsl-toolkit examples --json
+```
+
+The canonical command patterns, in the binary rather than only here. ⚠ It is a
+deliberate copy of what this page shows: an agent holding the executable and no
+manual can still be told the shape of a correct call.
 
 ---
 

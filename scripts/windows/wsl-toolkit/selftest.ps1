@@ -97,6 +97,9 @@ $Wanted = @(
     'Get-ScriptArgPairs'
     'Assert-SinkPathIsUsable'
     'Resolve-DistroListing'
+    'ConvertTo-OciArch'
+    'Get-EnginePlatform'
+    'Invoke-Native'
 )
 
 $parseErrors = $null
@@ -877,6 +880,47 @@ Test-Case 'the names come back trimmed and free of the NUL bytes wsl writes' 'Ub
 # rule keyed to "did it say anything on stderr" would refuse a working machine.
 Test-Case 'output on stderr beside a zero exit is not a refusal' '1' {
     ([string]@(Resolve-DistroListing -ExitCode 0 -Lines @('Ubuntu') -ErrorText 'a notice').Count)
+}
+
+# -- WSL-54: three answers a diagnostic has to tell apart ---------------------
+# Get-EnginePlatform reported "installed but not responding" for EVERY failure,
+# so a probe that threw for its own reasons was credited to the engine. These
+# three take the engine as a parameter, which is what makes them reachable
+# without breaking the real one: nothing here stops podman, and nothing here
+# writes.
+
+Test-Case 'an engine that was never reached does not claim the engine is broken' 'True' {
+    $absent = [pscustomobject]@{ Name = 'podman'; Path = (Join-Path $env:TEMP 'wsl-toolkit-no-such-engine.exe') }
+    $said = ''
+    try { $null = Get-EnginePlatform -Engine $absent }
+    catch { $said = $_.Exception.Message }
+    # It must NOT say "not responding", which is a claim about a program it
+    # never started.
+    (($said -match 'never reached') -and ($said -notmatch 'not responding')).ToString()
+}
+
+Test-Case 'an engine that answered nonzero is reported with its own code' 'True' {
+    # ⛔ NOT cmd.exe. Invoke-Native passes a FIXED argument list, and cmd.exe
+    # handed arguments it does not recognise opens an INTERACTIVE shell and waits
+    # on stdin, which hangs this suite rather than failing it. Measured the hard
+    # way on 2026-09-10. whoami.exe refuses an unknown option, says so, and exits.
+    $unwell = [pscustomobject]@{ Name = 'podman'; Path = (Join-Path $env:WINDIR 'System32\whoami.exe') }
+    $said = ''
+    try { $null = Get-EnginePlatform -Engine $unwell }
+    catch { $said = $_.Exception.Message }
+    # ⛔ THE NEGATIVE IS WHAT SEPARATES THE TWO BRANCHES. The "never reached"
+    # message APPENDS the underlying error, so `answered exit` appears in both
+    # and a case asserting only that passed with the two branches collapsed into
+    # one. Found by the mutation pass, which is exactly what it is for.
+    (($said -match 'answered exit') -and ($said -match 'podman machine start') -and
+     ($said -notmatch 'never reached')).ToString()
+}
+
+# ⚠ AND THE THIRD ANSWER IS STILL AN ANSWER. A rule that widened to refuse
+# everything would pass both cases above and break every working machine, so the
+# mapping a real engine's reply goes through is asserted too.
+Test-Case 'an architecture an engine reports maps onto what --platform accepts' 'amd64|arm64|arm|386' {
+    (@('x86_64', 'aarch64', 'armv7l', 'i686') | ForEach-Object { ConvertTo-OciArch -Raw $_ }) -join '|'
 }
 
 # -- report ------------------------------------------------------------------

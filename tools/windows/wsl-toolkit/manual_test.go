@@ -56,7 +56,7 @@ func TestManualNamesEveryFlag(t *testing.T) {
 		func() { _, _ = cmdMatrix(ctx, []string{"-h"}) },
 		func() { _, _ = cmdGC(ctx, []string{"-h"}) },
 		func() { _, _ = cmdResources(ctx, []string{"-h"}) },
-		func() { _, _ = cmdImages([]string{"-h"}) },
+		func() { _, _ = cmdImages(ctx, []string{"-h"}) },
 		func() { _, _ = cmdDoctor(ctx, []string{"-h"}) },
 		func() { _, _ = cmdLogs([]string{"-h"}) },
 		func() { _, _ = cmdConfig([]string{"-h"}) },
@@ -66,6 +66,10 @@ func TestManualNamesEveryFlag(t *testing.T) {
 		func() { _, _ = cmdHelper(ctx, []string{"serve", "-h"}) },
 		func() { _, _ = cmdReady(ctx, []string{"-h"}) },
 		func() { _, _ = cmdSelfUpdate(ctx, []string{"-h"}) },
+		func() { _, _ = cmdImages(ctx, []string{"warm", "-h"}) },
+		func() { _, _ = cmdConfig([]string{"validate", "-h"}) },
+		func() { _, _ = cmdArtifacts(ctx, []string{"retry", "-h"}) },
+		func() { _, _ = cmdExamples([]string{"-h"}) },
 	} {
 		call()
 	}

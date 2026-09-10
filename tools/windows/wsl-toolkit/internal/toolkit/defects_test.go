@@ -1408,3 +1408,34 @@ func TestTheAssetNameMatchesWhatIsPublished(t *testing.T) {
 		}
 	}
 }
+
+// TestABuildAheadOfTheReleaseIsNotAnUpdate is the defect as it was met: the
+// check compared two version strings for INEQUALITY, so every development build
+// between two releases was told an update was available, and taking it would
+// have downgraded the executable. Found by running `selfupdate --check` on the
+// working tree the moment its version was bumped past the published one.
+func TestABuildAheadOfTheReleaseIsNotAnUpdate(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want int
+	}{
+		{"2.0.0", "1.3.0", 1},
+		{"1.3.0", "2.0.0", -1},
+		{"1.3.0", "1.3.0", 0},
+		{"1.10.0", "1.9.0", 1}, // ⚠ not a string comparison: "1.10" < "1.9"
+		{"1.3.1", "1.3.0", 1},
+		{"2.0", "2.0.0", 0}, // a missing component is zero
+		{"2.0.0", "2.0", 0},
+		// ⛔ A component that is not a number answers "the same", which reads as
+		// "no update" and is the safe direction. Guessing an order for a scheme
+		// this tool does not use would offer a download on a comparison nobody
+		// defined.
+		{"2.0.0-rc1", "2.0.0", 0},
+		{"", "1.0.0", 0},
+	}
+	for _, c := range cases {
+		if got := CompareVersions(c.a, c.b); got != c.want {
+			t.Errorf("CompareVersions(%q, %q) = %d, want %d", c.a, c.b, got, c.want)
+		}
+	}
+}

@@ -1057,11 +1057,211 @@ try {
         $d = Read-ToolJson -Stdout $r.Out -What 'selfupdate --check --json'
         $after = (Get-FileHash -LiteralPath $script:Binary -Algorithm SHA256).Hash
         $version = (Invoke-Tool @('version')).Out.Trim()
-        # 0 current, 1 a newer release exists, 2 the question could not be asked.
-        # All three are correct answers here; what is asserted is that it said
-        # which, named the running version, and did not touch the executable.
+        # 0 current or ahead, 1 a newer release exists, 2 the question could
+        # not be asked. All three are correct answers here; what is asserted is
+        # that it said which, named the running version, and did not touch the
+        # executable.
+        #
+        # ⛔ AND THAT A BUILD FROM THE WORKING TREE IS NOT OFFERED AN UPDATE.
+        # The first version compared the two version strings for inequality, so
+        # a tree bumped past the newest release was told to downgrade itself.
+        # A suite that runs against a build from this tree would otherwise be
+        # the one place that defect is invisible.
+        $ahead = $false
+        if ($d.PSObject.Properties.Name -contains 'latest' -and $d.latest) {
+            $ahead = ([version]$version -gt [version]$d.latest)
+        }
+        if ($ahead -and $r.Code -ne 0) { return "a build ahead of $($d.latest) was told to update, exit $($r.Code)" }
         (($r.Code -in @(0, 1, 2)) -and ($d.checked_only -eq $true) -and
          ($d.running -eq $version) -and ($before -eq $after)).ToString()
+    }
+
+    # -- a heartbeat, and the six commands behind an answer -------------------
+    # WSL-50 and WSL-52.
+
+    Test-Case 'a job that outlives the tick interval says so, and stops saying it' 'True' {
+        # A payload that writes something every few seconds, so the byte counts
+        # RISE across ticks. A tick whose numbers never move is what a stall
+        # looks like, and a case that did not check that would pass over one.
+        $r = Invoke-Tool @('run', '--tick', '2s', '--timeout', '2m', '--image', 'alpine',
+            '-c', 'i=0; while [ $i -lt 5 ]; do printf "chunk%s" $i; sleep 2; i=$((i+1)); done')
+        if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
+        $ticks = @(($r.Err -split "`n") | Where-Object { $_ -match '^\s+~ ' })
+        if ($ticks.Count -lt 3) { return "only $($ticks.Count) tick(s) over a ten second job at 2s" }
+        # The byte counts have to move, or this is a timer rather than a
+        # heartbeat.
+        $counts = @($ticks | ForEach-Object {
+            if ($_ -match '(\d+)/\d+ bytes') { [int]$Matches[1] } else { -1 } })
+        $rose = ($counts[-1] -gt $counts[0])
+        # And nothing may tick after the answer: the last line of stderr is the
+        # job's own summary, never a tick.
+        $lastReal = @(($r.Err -split "`n") | Where-Object { $_.Trim() -ne '' })[-1]
+        $tickLast = ($lastReal -match '^\s+~ ')
+        ($rose -and (-not $tickLast)).ToString()
+    }
+
+    Test-Case 'nothing ticks unless it is asked to' 'True' {
+        $r = Invoke-Tool @('run', '--image', 'alpine', '-c', 'sleep 3')
+        if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
+        (($r.Err -notmatch '^\s+~ ')).ToString()
+    }
+
+    Test-Case 'config validate refuses what the loader refuses and writes nothing' 'True' {
+        $dir = Join-Path $script:Scratch 'cfg-validate'
+        $null = New-Item -ItemType Directory -Path $dir -Force
+        $bad = Join-Path $dir 'bad.json'
+        [IO.File]::WriteAllText($bad, (@{
+            schema = 'wsl-toolkit-config/1'
+            base   = @{ name = 'Ubuntu'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
+        } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+        $good = Join-Path $dir 'good.json'
+        [IO.File]::WriteAllText($good, (@{
+            schema = 'wsl-toolkit-config/1'
+            base   = @{ name = 'wsl-toolkit'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
+        } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+        $h = New-StateHome 'home-validate'
+        $before = @(Get-ChildItem -LiteralPath $h -Force -ErrorAction SilentlyContinue).Count
+        $r1 = Invoke-Tool @('--home', $h, 'config', 'validate', '--path', $bad, '--json')
+        $d1 = Read-ToolJson -Stdout $r1.Out -What 'config validate --json'
+        $r2 = Invoke-Tool @('--home', $h, 'config', 'validate', '--path', $good, '--json')
+        $d2 = Read-ToolJson -Stdout $r2.Out -What 'config validate --json'
+        $after = @(Get-ChildItem -LiteralPath $h -Force -ErrorAction SilentlyContinue).Count
+        # It WRITES NOTHING, which is the whole point of it existing beside
+        # config --write.
+        (($r1.Code -eq 1) -and ($d1.valid -eq $false) -and ($d1.reason -match 'base\.name') -and
+         ($r2.Code -eq 0) -and ($d2.valid -eq $true) -and ($before -eq $after)).ToString()
+    }
+
+    Test-Case 'config --effective prints a configuration that can be handed back' 'True' {
+        $r = Invoke-Tool @('config', '--effective')
+        if ($r.Code -ne 0) { return "config --effective exited $($r.Code): $($r.Err)" }
+        $d = Read-ToolJson -Stdout $r.Out -What 'config --effective'
+        # The round trip is the assertion: what it printed has to be a file this
+        # tool accepts, or "can be handed back" is a claim rather than a fact.
+        $round = Join-Path $script:Scratch 'effective.json'
+        [IO.File]::WriteAllText($round, $r.Out, [Text.UTF8Encoding]::new($false))
+        $v = Invoke-Tool @('config', 'validate', '--path', $round, '--json')
+        $vd = Read-ToolJson -Stdout $v.Out -What 'config validate'
+        (($d.schema -eq 'wsl-toolkit-config/1') -and (@($d.images).Count -ge 3) -and
+         ($v.Code -eq 0) -and ($vd.valid -eq $true)).ToString()
+    }
+
+    Test-Case 'artifacts retry says so when nothing was retained, and never re-runs' 'True' {
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'printf NOT-RETAINED')
+        $d = Read-ToolJson -Stdout $r.Out -What 'run --json'
+        $to = Join-Path $script:Scratch 'retry-nothing'
+        $a = Invoke-Tool @('artifacts', 'retry', $d.id, '--to', $to, '--json')
+        $ad = Read-ToolJson -Stdout $a.Out -What 'artifacts retry --json'
+        $ranAgain = ($a.Out + $a.Err) -match 'NOT-RETAINED'
+        # A clean job keeps nothing, so this is the "nothing was retained" path
+        # and it must not offer to produce the output again.
+        (($a.Code -eq 1) -and ($ad.retained_kind -eq '') -and ($ad.reason -ne '') -and
+         (-not $ranAgain)).ToString()
+    }
+
+    Test-Case 'artifacts retry fetches the copy a failed transfer kept' 'True' {
+        $art = Join-Path $script:Scratch 'art-retry-fail'
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '--artifacts', $art,
+            '-c', 'printf recovered > /out/kept.txt; printf forbidden > /out/NUL.txt')
+        $d = Read-ToolJson -Stdout $r.Out -What 'run --json'
+        if ($d.retained_kind -ne 'guest') { return "the job retained nothing: $($d.artifact_error)" }
+        $to = Join-Path $script:Scratch 'retry-recovered'
+        $a = Invoke-Tool @('artifacts', 'retry', $d.id, '--to', $to, '--json')
+        $ad = Read-ToolJson -Stdout $a.Out -What 'artifacts retry --json'
+        # NUL.txt is still refused on the way out, so the retry fails the same
+        # way and delivers nothing. What is asserted is that it FOUND the copy
+        # and said so, rather than reporting there was none -- and that it put
+        # an object on stdout while doing it, which the first version did not.
+        (($ad.retained_kind -eq 'guest') -and ($ad.reason -ne '') -and
+         ($ad.id -eq $d.id)).ToString()
+    }
+
+    Test-Case 'gc --job leaves every other job alone' 'True' {
+        $one = Read-ToolJson -Stdout (Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'true')).Out -What 'run'
+        $two = Read-ToolJson -Stdout (Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'true')).Out -What 'run'
+        $g = Invoke-Tool @('gc', '--job', $one.id, '--apply', '--json')
+        if ($g.Code -ne 0) { return "gc --job exited $($g.Code): $($g.Err)" }
+        $plan = Read-ToolJson -Stdout $g.Out -What 'gc --json'
+        $named = @($plan.removed | Where-Object { "$_" -match $one.id })
+        $other = @($plan.removed | Where-Object { "$_" -match $two.id })
+        # Both transcripts survive either way: gc removes guest state, and the
+        # host transcript is what `logs` reads. What is asserted is that the
+        # plan touched one job and not the other.
+        ($other.Count -eq 0).ToString()
+    }
+
+    Test-Case 'images warm says what is here without going to a registry' 'True' -MaxSeconds 120 {
+        $r = Invoke-Tool @('images', 'warm', '--select', 'alpine', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'images warm --json'
+        $row = @($d.images)[0]
+        (($r.Code -eq 0) -and ($row.id -eq 'alpine') -and ($row.cached -eq $true) -and
+         ($row.pulled -eq $false) -and ($d.unreachable -eq 0)).ToString()
+    }
+
+    Test-Case 'images pull reports an unreachable reference differently' 'True' {
+        $h = New-StateHome 'home-unreachable'
+        $null = Set-StateConfig -StateHome $h -Config @{
+            images = @(
+                @{ id = 'nosuch'; ref = 'docker.io/library/alpine:wsl-toolkit-no-such-tag-20260910'
+                   libc = 'musl'; family = 'apk'; kind = 'musl' }
+            )
+        }
+        $r = Invoke-Tool @('--home', $h, 'images', 'pull', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'images pull --json'
+        $row = @($d.images)[0]
+        (($r.Code -eq 1) -and ($d.unreachable -eq 1) -and ($row.reachable -eq $false) -and
+         ($row.reason -ne '')).ToString()
+    }
+
+    Test-Case 'examples names every command it teaches, and each parses as one' 'True' {
+        $r = Invoke-Tool @('examples', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'examples --json'
+        $rows = @($d.examples)
+        if ($rows.Count -lt 8) { return "only $($rows.Count) example(s)" }
+        # Every example has to START with this tool's name, or it is teaching
+        # something other than a call to it.
+        $bad = @($rows | Where-Object { $_.command -notmatch '^wsl-toolkit ' })
+        (($r.Code -eq 0) -and ($bad.Count -eq 0)).ToString()
+    }
+
+    Test-Case 'helper status says whose configuration the helper is running' 'True' {
+        $start = Invoke-Tool @('helper', 'serve', '--detach', '--json')
+        if ($start.Code -ne 0) { return "helper would not start: $($start.Err)" }
+        try {
+            $r = Invoke-Tool @('helper', 'status', '--json')
+            $d = Read-ToolJson -Stdout $r.Out -What 'helper status --json'
+            (($r.Code -eq 0) -and ($d.config_fingerprint -ne '') -and
+             ($d.client_config_fingerprint -eq $d.config_fingerprint) -and
+             ($d.config_matches_client -eq $true)).ToString()
+        }
+        finally { $null = Invoke-Tool @('helper', 'stop') }
+    }
+
+    # WSL-55. paths.go states the rule in the function it is about: a report that
+    # creates a directory on a machine it is only describing has changed the
+    # thing it was asked to measure. Every read-only command reached EnsureHome
+    # through NewBase, NewRunner or OpenLedger, so every one of them broke it.
+    Test-Case 'no read-only command creates the state directory it describes' 'True' {
+        $created = @()
+        foreach ($call in @(
+                @('base', 'status', '--json'),
+                @('ready', '--json'),
+                @('resources', '--json'),
+                @('logs', '--json'),
+                @('config', '--json'),
+                @('images', '--json'))) {
+            $h = Join-Path $script:Scratch ('ro-' + ($call -join '-'))
+            if (Test-Path -LiteralPath $h) { Remove-Item -LiteralPath $h -Recurse -Force }
+            $null = Invoke-Tool (@('--home', $h) + $call)
+            if (Test-Path -LiteralPath $h) { $created += ($call -join ' ') }
+        }
+        if ($created.Count -gt 0) { return "created a state directory: $($created -join '; ')" }
+        # BOTH HALVES. A tool that stopped answering would pass the half above,
+        # so a command that WRITES must still bring the directory into existence.
+        $w = Join-Path $script:Scratch 'ro-writes'
+        if (Test-Path -LiteralPath $w) { Remove-Item -LiteralPath $w -Recurse -Force }
+        $r = Invoke-Tool @('--home', $w, 'config', '--write')
+        (($r.Code -eq 0) -and (Test-Path -LiteralPath (Join-Path $w 'config.json'))).ToString()
     }
 
     # -- cleanup, counted rather than remembered -----------------------------
@@ -1115,7 +1315,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 53 } else { 55 }
+$expected = if ($Quick) { 65 } else { 67 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

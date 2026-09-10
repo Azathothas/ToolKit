@@ -33,6 +33,7 @@ type jobFlags struct {
 	asJSON      bool
 	ensure      bool
 	viaHelper   bool
+	tick        time.Duration
 }
 
 type stringList []string
@@ -48,6 +49,7 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.Var(&j.excludes, "exclude", "a glob to leave out of the workspace copy. Repeatable")
 	fs.Var(&j.env, "env", "NAME=VALUE passed to the container. Repeatable")
 	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before it is killed and the row reports 124")
+	fs.DurationVar(&j.tick, "tick", 0, "emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it")
 	fs.BoolVar(&j.noNetwork, "no-network", false, "run with no network at all")
 	fs.StringVar(&j.user, "user", "", "what the container runs as: a name, a uid, or uid:gid. Empty means the image's default")
 	fs.Int64Var(&j.maxBytes, "max-bytes", toolkit.DefaultWorkspaceLimits().MaxBytes, "refuse a workspace or an artifact set larger than this")
@@ -199,6 +201,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		ArtifactDir: j.artifactDir, Env: env, Timeout: j.timeout, Network: !j.noNetwork,
 		Limits: j.limits(), Label: *image, User: j.user,
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
+		OnTick: tickPrinter(j), TickEvery: j.tick,
 	})
 	return reportJob(res, j.asJSON)
 }
@@ -344,6 +347,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		Env: env, Timeout: j.timeout, Network: !j.noNetwork, Parallel: *parallel,
 		Limits: j.limits(), Transcripts: *transcripts, User: j.user,
 		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
+		OnTick: tickPrinter(j), TickEvery: j.tick,
 	})
 	if err != nil {
 		return exitCannot, err
@@ -365,6 +369,34 @@ func reportMatrix(report toolkit.MatrixReport, asJSON bool) (int, error) {
 		return exitCannot, err
 	}
 	return report.Verdict(), nil
+}
+
+// tickPrinter renders a heartbeat, or returns nil when nobody asked for one.
+//
+// ⛔ NIL WHEN --tick IS 0, so the ticker is never started rather than started
+// and discarded. A goroutine per row whose output goes nowhere is a cost with
+// no reader.
+//
+// ⚠ UNDER --json IT GOES TO STDERR LIKE EVERYTHING ELSE THIS PROGRAM SAYS.
+// stdout carries the answer alone, and a heartbeat interleaved with a JSON
+// document would produce something nothing can parse.
+func tickPrinter(j jobFlags) func(toolkit.TickEvent) {
+	if j.tick <= 0 {
+		return nil
+	}
+	var mu sync.Mutex
+	return func(t toolkit.TickEvent) {
+		mu.Lock()
+		defer mu.Unlock()
+		left := ""
+		if t.RemainingMS != nil {
+			left = fmt.Sprintf(", %s of its deadline left",
+				(time.Duration(*t.RemainingMS) * time.Millisecond).Round(time.Second))
+		}
+		logf("  ~ %s running %s%s, %d/%d bytes out/err",
+			t.Label, (time.Duration(t.ElapsedMS) * time.Millisecond).Round(time.Second), left,
+			t.StdoutBytes, t.StderrBytes)
+	}
 }
 
 // rowPrinter reports a fleet row as it finishes.

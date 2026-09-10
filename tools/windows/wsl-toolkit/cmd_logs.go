@@ -49,7 +49,10 @@ func cmdLogs(args []string) (int, error) {
 		}
 		return exitCannot, err
 	}
-	home, err := toolkit.EnsureHome()
+	// ⛔ Home, not EnsureHome. `logs` READS transcripts, and a reader that
+	// created the directory it was about to say was empty has changed the thing
+	// it was asked to measure. WSL-55.
+	home, err := toolkit.Home()
 	if err != nil {
 		return exitCannot, err
 	}

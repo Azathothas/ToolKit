@@ -32,6 +32,14 @@ type MatrixSpec struct {
 	// over the helper it could not even see the row labels. It is called from
 	// several goroutines, so an implementation locks.
 	OnRow func(JobResult)
+	// OnTick receives a heartbeat per RUNNING row, at TickInterval.
+	//
+	// ⛔ It is called from several goroutines at once, one per row, so an
+	// implementation locks. That is the same rule OnRow already carries and for
+	// the same reason. WSL-50.
+	OnTick func(TickEvent)
+	// TickEvery overrides the interval. Zero means the default.
+	TickEvery time.Duration
 }
 
 // MatrixReport is what a fleet run produced.
@@ -177,6 +185,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 				Workspace: "", ArtifactDir: artifacts, Env: spec.Env,
 				Timeout: spec.Timeout, Network: spec.Network, Limits: limits,
 				Label: img.ID, User: spec.User, MaxOutput: spec.MaxOutput,
+				OnTick: spec.OnTick, TickEvery: spec.TickEvery,
 			})
 			if spec.Transcripts != "" {
 				if err := r.WriteTranscript(spec.Transcripts, &rows[i]); err != nil {

@@ -136,11 +136,69 @@ func CheckUpdate(ctx context.Context, running string) UpdateStatus {
 	}
 	st.Checked = true
 	st.Latest = rel.Version
-	if rel.Version != "" && rel.Version != running {
+	// ⛔ NEWER, NOT MERELY DIFFERENT. The first version compared the two strings
+	// for inequality, so a build AHEAD of the newest release - which is every
+	// development build between two releases - was told an update was available,
+	// and running it would have DOWNGRADED the executable. Found by running it
+	// on the working tree the moment the version was bumped to 2.0.0 against a
+	// published 1.3.0.
+	switch CompareVersions(rel.Version, running) {
+	case 1:
 		st.Available = true
 		st.Command = "wsl-toolkit selfupdate"
+	case 0:
+		// The newest release is what is running.
+	default:
+		// ⚠ AHEAD OF THE NEWEST RELEASE IS NOT AN ERROR AND NOT AN UPDATE. It is
+		// what a development build looks like, and saying so beats both silence
+		// and a wrong offer.
+		st.Reason = "this build is ahead of the newest published release, " + rel.Version
 	}
 	return st
+}
+
+// CompareVersions orders two dotted numeric versions: 1 when a is newer than b,
+// -1 when it is older, 0 when they are the same.
+//
+// ⛔ A COMPONENT THAT IS NOT A NUMBER MAKES THE ANSWER "the same", which reads
+// as "no update" and is the safe direction. Guessing an order for a version
+// scheme this tool does not use would offer a caller a download on a comparison
+// nobody defined; refusing to guess costs one manual upgrade.
+func CompareVersions(a, b string) int {
+	if a == b {
+		return 0
+	}
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	n := len(as)
+	if len(bs) > n {
+		n = len(bs)
+	}
+	for i := 0; i < n; i++ {
+		av, aok := versionPart(as, i)
+		bv, bok := versionPart(bs, i)
+		if !aok || !bok {
+			return 0
+		}
+		if av != bv {
+			if av > bv {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
+}
+
+func versionPart(parts []string, i int) (int, bool) {
+	if i >= len(parts) {
+		// A missing component is zero: 2.0 and 2.0.0 are the same version.
+		return 0, true
+	}
+	v, err := strconv.Atoi(strings.TrimSpace(parts[i]))
+	if err != nil {
+		return 0, false
+	}
+	return v, true
 }
 
 // AssetName is what this host's executable is called in a release.

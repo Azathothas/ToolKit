@@ -428,6 +428,10 @@ func renderReady(r ReadyReport) {
 	switch {
 	case r.Update.Checked && r.Update.Available:
 		fmt.Fprintf(out, "  update      %s is published and this is %s. Run: %s\n", r.Update.Latest, r.Update.Running, r.Update.Command)
+	case r.Update.Checked && r.Update.Reason != "":
+		// ⚠ A build AHEAD of the newest release. Saying "this is the newest
+		// published release" here would name a version that is not published.
+		fmt.Fprintf(out, "  update      none: %s\n", r.Update.Reason)
 	case r.Update.Checked:
 		fmt.Fprintf(out, "  update      none: %s is the newest published release\n", r.Update.Running)
 	default:
