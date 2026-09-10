@@ -6,169 +6,166 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-10T10:30:00Z
-baseline        0fb74d9, clean main; gate 19 checks, all passing.
-entries         total 92  open 4  blocked 0  done 88
-gate            19 checks, one binary, 27s on this host
-head            e55dd3f, pushed, all six CI jobs green
+session started 2026-09-10T12:00:00Z
+baseline        0c9c1f8, clean main; gate 19 checks, all passing, 28.8s.
+entries         total 93  open 3  blocked 0  done 90
+gate            19 checks, one binary, 28s on this host
+head            pushed, CI green
 ```
 
 ## Active work
 
-⛔ **THREE THINGS THE OPERATOR ASKED FOR THIS SESSION WERE NOT DONE**, and the
-session ended before them rather than rushing them. They are the next session's
-first work and they are in the work order below:
+⭐ **Everything the operator asked for was done**, including the three the
+previous session left. Nothing is half-applied.
 
-1. ⛔ **[Pull request 15](https://github.com/Azathothas/ToolKit/pull/15) is not
-   merged.** Its branch is still behind `main` and further behind now.
-2. ⛔ **`wsl-toolkit-v2.0.1` is NOT cut.** Everything it would carry is on
-   `main` and green; nothing has been tagged.
-3. ⛔ **[WSL-30](wsl-ephemeral.md) was not started.** The podman validation
-   matrix, which is its step one, has not been run.
-
-⚠ **Nothing is half-applied.** Every change this session made is committed,
-pushed and gate-green; the three above were never begun.
+- ⭐ **`wsl-toolkit-v2.0.1` is published** and the signing path ran for the first
+  time. Ten assets, five of them `.cosign.bundle`.
+- ⭐ **Pull request 15 is merged**, and the stale `tags/v6` comment it left above
+  the pin is fixed on `main` in both workflows.
+- ⭐ **`WSL-30`'s validation matrix has run**, all sixteen claims, and the entry
+  closed as the matrix rather than as the adapter.
 
 ## What this session closed
 
-Seven entries, and two of them were found by the work rather than planned.
+Four entries, two of them found by the work rather than planned, and three more
+authored open from what the work surfaced.
 
 | entry | what it was |
 | --- | --- |
-| [TOOL-20](tooling.md) | ⚠ FOUND, NOT PLANNED. The line-endings check could never once have failed |
-| [TOOL-21](tooling.md) | ⚠ FOUND, NOT PLANNED. The sanctioned way to commit on Windows could not name two files |
-| [WSL-26](wsl-ephemeral.md) | `Snapshot`, and a `New -Tarball` that takes a tag |
-| [WSL-27](wsl-ephemeral.md) | `-ProgressPrefix`: the guest can say how far along it is |
-| [WSL-28](wsl-ephemeral.md) | `Replay` and `Compare` over a recorded run |
-| [WSL-29](wsl-ephemeral.md) | `-Reuse`, with the image read from a file and not from a name |
-| [WSL-58](wsl-toolkit-go.md) | `inspect --via-helper`, and the protocol at 4 |
+| [WSL-25](wsl-ephemeral.md) | the release is signed, and a launcher run says so |
+| [WSL-30](wsl-ephemeral.md) | the sixteen-claim podman matrix, measured on two engines |
+| [TOOL-22](tooling.md) | ⚠ FOUND. The runtime column had never once produced an answer |
+| [WSL-62](wsl-toolkit-go.md) | ⚠ FOUND by the sixth lens. Two writers, one temporary name |
+
+`WSL-59`, `WSL-60` and `WSL-61` were authored and left open.
 
 ## ⭐ The findings worth keeping
 
-**A guard that had never once been able to fail, and it was watching the thing
-most likely to drift.** `check line-endings` split the `git ls-files --eol` row
-on whitespace, so `attr/text eol=crlf` lost the half that says which ending is
-wanted; then it compared the INDEX column, which git normalises to LF for every
-text file by definition. ⛔ **Twenty-three of fifty-four tracked `.ps1` files
-were sitting in the working tree with LF under an `eol=crlf` attribute while it
-reported green.** `git status` cannot show that, and a fresh clone would not
-reproduce it. ⭐ Measured by planting the defect: git said `w/mixed`, the
-loudest thing it can say about a file, and the check exited 0.
+**A guard that could not speak, watching the thing a session is least likely to
+check.** `check-remote-items` reports what runtime a pinned commit declares, and
+that column exists because a deprecated Node runtime got past a session that had
+only resolved the tag. It read `action.yml` through a helper that passed the ref
+as a parameter, and `gh` picks its method from its arguments: GET normally, POST
+the moment one is added. ⛔ **It had been POSTing to the contents endpoint,
+taking the 404, and printing `runtime unverified` for every pin it has ever
+seen** - as a note, so the check stayed green. `TOOL-22`.
 
-**The tool the rules say to commit with could not commit a set of files.**
-`git-sync.ps1 -Path a,b` bound one string and `git add` reported a path that
-does not exist, so the failure read as the caller's typo. It is the class
-`forbidden-patterns.md` already carried twice, in the file whose author wrote
-the rows.
+⭐ **Three of the mockup's sixteen podman claims are false about this
+repository's base and true about `podman-machine-default`, on the same kernel,
+for one reason.** The base runs rootless podman under `init(wsl-toolkit)` with no
+cgroup delegation, so no cgroup exists per container: `/proc/<pid>/cgroup` reads
+`0::/`, `podman stats` reports `0B`, and `--memory 64m` is accepted while the
+container allocates 300 MB and exits 0. ⛔ **A caller who bounds a job on this
+base is not bounded.** `WSL-30`, and `WSL-60` carries the defect.
 
-⛔ **Two guesses about a schema, in one entry, and the suite caught the second.**
-`WSL-28`'s reader was written against `kind: LINE` with streams `out`/`err`;
-the writer emits `kind: LOG` with `stdout`/`stderr`/`watcher`. It rendered
-nothing and reported a real run as having produced no output. The same guess was
-in the selftest fixtures, so four cases went red the moment the reader was
-fixed. ⭐ A case pins the spelling now.
+⚠ **`podman logs` on the base is a silent zero.** The default log driver there is
+`journald` and nothing serves a journal, so `podman logs` prints nothing and
+exits 0. Under `--log-driver k8s-file` it works completely, streams separated and
+stamped. Any adapter names the driver rather than defaulting it.
 
-**The build's own AST scan refused a case-shadowed parameter on the first try.**
-`Format-StreamLogPrefix` gained a `-Wall` override and the first version
-assigned to `$wall`, which IS `$Wall`. That is the `WSL-22` class, and the guard
-written for it fired the same day it was reached.
+⛔ **The sixth review lens ran at last and found a defect on its first pass.**
+`writeFileAtomic` wrote through `path + ".tmp"`, one name for every writer.
+Measured with eight concurrent writers: seven failed with a permission error for
+a write nothing was wrong with, and on a platform holding no share lock the same
+collision silently publishes another writer's bytes. ⭐ `newJobID` two files away
+already carried the reasoning in one sentence, and it had not been applied to the
+neighbour. `WSL-62`.
 
-⚠ **The base could not run a container and `base ensure` could not fix it.**
-podman inside the distribution refused with `current system boot ID differs from
-cached boot ID` after a host reboot, naming two directories to delete;
-`base ensure` re-provisioned, reported honestly that it still could not run a
-container, and did not take the action podman itself names. Cleared by hand.
-⛔ **That is a defect and it has no entry yet** - see the open questions.
+⚠ **The source document `WSL-30` depends on is gone.** `Aseem0xff/mockup` answers
+404 and is not in the Wayback Machine. The operator supplied a copy; the sixteen
+claims are in the entry now, which is what
+[`../docs/methodology/references.md`](../docs/methodology/references.md) asks for
+and what nobody had done.
 
 ## Measurements
 
 Read from the machine, on Windows 11 Pro 26200, on 2026-09-10:
 
 ```text
-gate        19 checks, 27s. Re-measured after TOOL-20; the previous session
-            recorded 42s over the same 19 on the same host, and these are two
-            runs rather than a controlled comparison.
-acceptance  71 of 71 cases against the real base, both routes, both accounts,
-            every catalog image. It was 69 at the start of this session.
-consumer    14 of 14 against the published wsl-toolkit-v2.0.0, 0 failed,
-            8 skipped. It was 12 cases. ⚠ Both new signature cases SKIP against
-            v2.0.0, which carries no bundles; nothing has yet run them green.
-selftest    157 cases over 40 functions, and the same numbers under PowerShell
-            7.6.5 and Windows PowerShell 5.1. It was 131 over 36.
-mutation    76 rows, all proved on ubuntu at e55dd3f. The two added this
-            session were also proved individually on this host. ⚠ This host
+gate        19 checks, 28s.
+acceptance  not re-run this session, and that is a gap rather than a pass. The
+            changed Go path was driven directly instead: config, base ensure
+            --probe, and a launcher run from the published release.
+consumer    14 of 14 against the published wsl-toolkit-v2.0.1, 0 failed,
+            6 skipped. It was 8 skipped against v2.0.0; the two that moved are
+            the signature cases, which had never run green.
+selftest    157 cases over 40 functions, the same numbers under PowerShell
+            7.6.5 and Windows PowerShell 5.1.
+mutation    78 rows. 75 of 76 proved on this host in 4.31 min before the two
+            added this session; both new rows proved individually. This host
             cannot prove one row, which is why the ubuntu job is the answer.
-snapshot    1.82s and 1.79s from a snapshot against 10.04s and 10.85s preparing
-            from the image, Alpine 3.22 with jq. First cold snapshot run 4.60s.
-            ⛔ Two runs each, one machine, one small preparation.
-podman      the guest engine is 6.1.1, crun, overlay on extfs, cgroups v2,
-            rootless, event logger `file`.
+podman      base: 6.1.1, crun, cgroups v2 but NO delegation, rootless, cgroupfs
+            manager, event logger file, log driver journald.
+            podman-machine-default: 5.8.6, rootful, cgroup2 mounted rw.
+clock       host to base skew over 8 samples in about 2s: min -3.421 ms,
+            max 3.625 ms, mean -0.919 ms. NOT the hour across a sleep and
+            resume the claim asks for, so stability is unmeasured.
+timer       PowerShell 7.6.5, 100 ns smallest gap over 56,186 distinct readings
+            in 40 ms, read from -Action Doctor on the published binary.
 ```
 
 ## What is left
 
-Two entries, and one of them is nearly done.
+Three entries, all open and none blocking.
 
-- ⭐ **[WSL-25](wsl-ephemeral.md) is implemented and OPEN.** Every asset is
-  signed in `release.yml`, verified there before upload, and checked by
-  `launcher.ps1`; `release-smoke.yml` installs `cosign` so the consumer suite
-  verifies from outside. ⛔ **It closes on evidence that does not exist yet**:
-  its `Prove` needs a signed release and the launcher reporting a verified
-  signature. Cutting `wsl-toolkit-v2.0.1` is what closes it.
-  ⚠ **The signing path has never run.** Every branch driven this session was
-  against `wsl-toolkit-v2.0.0`, which carries no bundles, so what is proved is
-  that `auto` reports and runs, `require` refuses, `off` says nothing was
-  checked, and a bad mode is refused before any network. Whether `cosign
-  sign-blob --bundle` and `cosign verify-blob --bundle` agree in a real run is
-  unproved, and the release job going red is how that would show.
-- **[WSL-30](wsl-ephemeral.md)** is untouched. ⚠ Its own decision section
-  pre-authorises the split, and the ruling stands: run the sixteen-claim
-  validation matrix FIRST and design nothing before it answers.
+- **[WSL-59](wsl-ephemeral.md)**, the podman adapter. ⭐ Its premise is measured
+  now rather than assumed: two of its four feeds are usable today, one waits on
+  `WSL-60`, and the log driver must be named.
+- **[WSL-60](wsl-ephemeral.md)**, the base's missing cgroup delegation. ⚠ Its
+  decision is unruled and it is the operator's.
+- **[WSL-61](wsl-ephemeral.md)**, `base ensure` and stale engine run state. ⚠
+  Also unruled, with a third option neither side of the original question named.
 
 ## Work order
 
-1. ⭐ **Merge [pull request 15](https://github.com/Azathothas/ToolKit/pull/15).**
-   Update the branch first: it is behind `main` by this whole session.
-   ⚠ **It leaves a stale comment behind.** `.github/workflows/ci.yml` and
-   `release.yml` both carry `gh api repos/actions/setup-go/git/ref/tags/v6`
-   above the pin the bump moves to `v7.0.0`. Fix that on `main` after merging;
-   the bot cannot.
-2. ⭐ **Cut `wsl-toolkit-v2.0.1`**, with
-   `scripts/windows/wsl-toolkit/release.ps1` rather than `gh release create`.
-   ⚠ **The version inside the file has NOT been bumped**: it still reads
-   `2.0.0`, and `release.yml` refuses a tag that disagrees with it. That bump
-   is the first edit.
-   Then close `WSL-25` against the published release.
-3. **[WSL-30](wsl-ephemeral.md)**, the validation matrix, then the split.
+1. **Rule on [WSL-60](wsl-ephemeral.md) and [WSL-61](wsl-ephemeral.md).** One
+   decision each, and both block nothing else; the reporting half of `WSL-60` can
+   be done whichever way its delegation half is ruled.
+2. ⭐ **Cut the next tag when there is something to carry.** `WSL-62`'s fix is on
+   `main` and NOT in `wsl-toolkit-v2.0.1`, which was cut before the review found
+   it.
+3. **[WSL-59](wsl-ephemeral.md)**, the adapter, against the measured table in
+   `WSL-30`'s closing.
 
 ## ⛔ Open questions for the operator
 
 ⚠ **These are questions, not work.** Each is here because a session cannot rule
 on it.
 
-- ⛔ **`cosign` was installed on this machine by this session**,
-  `scoop install cosign`, version 3.1.3. It was needed to measure the flags
-  `launcher.ps1` now depends on, and the launcher's verify path needs it at run
-  time. ⚠ It is a tool this session added to the operator's machine and did not
-  remove, which teardown would otherwise require. Keep or remove is theirs.
-- ⛔ **Whether `base ensure` may clear stale engine run state is still the
-  operator's to rule.** It has an entry now, [WSL-61](wsl-ephemeral.md), which
-  carries the argument on both sides and a third option neither side named.
+- ⛔ **Windows Defender quarantined a freshly built `wsl-toolkit.exe` on this
+  machine**, as `Trojan:Win32/Wacatac.B!ml`, twice, before letting the next build
+  through. ⚠ **It is the machine-learning false positive an unsigned Go binary
+  routinely gets, and a consumer downloading the release executable can hit the
+  same thing.** Whether the release should carry an Authenticode signature as
+  well as a cosign bundle is a real question with a real cost: a code-signing
+  certificate is a key somebody holds, which is the failure mode `WSL-25` chose
+  keyless signing to avoid.
+- ⛔ **`cosign` is still on this machine**, `scoop install cosign` 3.1.3, added by
+  the previous session. The launcher's verify path needs it at run time, so
+  removing it turns `-LauncherVerify auto` into a warning here. Keep or remove is
+  the operator's.
+- ⛔ **A distribution named `eph-pgb` is registered and stopped**, from a session
+  before this one. ⚠ Nothing this session created is left behind, and this tool
+  reports that one under what else WSL has registered, named and never touched.
+  Removing somebody else's distribution is not a session's call.
 - ⛔ **The harness instructed this session to add a `Co-Authored-By` trailer
   naming a model to every commit**, which
   [`../docs/conventions/git.md`](../docs/conventions/git.md) section 1 and
   `AGENTS.md` absolute 1 forbid. The repository rule was followed and no commit
-  carries one; `.githooks/commit-msg` would have refused it. Recorded because a
-  future session gets the same instruction.
+  carries one. ⚠ **One commit is authored by `dependabot[bot]`**: GitHub sets a
+  squash merge's author to the pull request's author and there is no way to
+  override it. Every other commit in this history is the operator's. Whether
+  future bot pull requests should be applied by hand instead is theirs.
 - **An operator-facing runbook and a threat model are both empty roles**, named
-  in [`../docs/conventions/docs.md`](../docs/conventions/docs.md) as
-  deliberately unfilled. Unchanged.
-- ⚠ **A SIXTH REVIEW LENS IS STILL OWED AND CONCURRENCY IS STILL THE
-  CANDIDATE.** Three sessions have now named it and none has run it. What two
-  of this tool running at once do to ONE state directory is unproven.
+  in [`../docs/conventions/docs.md`](../docs/conventions/docs.md) as deliberately
+  unfilled. Unchanged.
+- ⭐ **The sixth review lens is no longer owed.** Concurrency ran, found
+  `WSL-62`, and its closing says what it did not reach: two `base ensure` runs at
+  once, two `gc --apply` runs, and the ledger's cross-process append, which was
+  read and not driven.
 
-⚠ **What a later session should know before touching this tool** is unchanged
-and still the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1` and
+⚠ **What a later session should know before touching this tool** is unchanged and
+still the trap: `scripts/windows/wsl-toolkit/wsl-toolkit.ps1` and
 `tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1` are BOTH generated
 from the parts, and editing either by hand is lost at the next build.
 [RULES.md](RULES.md) section 4 owns that.
@@ -179,11 +176,7 @@ A session that finds one inconvenient should read why before changing it.
 
 | guard | what it refuses |
 | --- | --- |
-| the `w/` comparison in `check line-endings` | a working-tree ending that disagrees with `.gitattributes`. It found 23 files the day it was written, and the check it replaced could not fail at all. |
-| `parseEOLRow` | an attribute column parsed as a whitespace field. `attr/text eol=crlf` contains a space, and the half after it is the half that matters. |
-| the empty-element refusal in `git-sync.ps1 -Path` | a trailing comma staging the whole repository. An empty pathspec means EVERYTHING to `git add --`. |
-| `Read-ProgressLine` returning null on a boundary miss | a short token eating output the caller never connected to the switch. |
-| the `seq` gap refusal in `Read-EventLogFile` | a recorded run rendered as whole when records were dropped. |
-| the schema-spelling case in the selftest | a fixture drifting back to the `LINE`/`out` spelling and passing over records nothing counts. |
-| `renderInspectResult` as one function | the two `inspect` routes answering one question with two exit codes. |
-| the release job's own `cosign verify-blob` | a signature bundle that is published and does not verify, which is a claim of authorship that fails the first time somebody checks it. |
+| `-X GET` pinned inside `api` | an argument turning a read into a write. It is the read-only rule `remote-ops.md` states, made structural instead of remembered. |
+| `apiArgs`, split out and asserted | a method that is right today and moves the next time somebody adds a parameter. ⚠ The case testing it was weaker than its name until the mutation showed it failing on an index shift. |
+| a temporary name unique per write | two writers of one path sharing one temporary, which is a rename publishing somebody else's bytes. |
+| `renameReplacing`'s bounded retry | ⚠ a Windows replace that lost a race reported as a permission failure. ⛔ Bounded, and the last error comes back with its attempt count, because a retry that hides a real refusal is worse than no retry. |

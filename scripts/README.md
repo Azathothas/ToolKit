@@ -18,111 +18,85 @@ fresh clone would not have what this table described.
 
 ---
 
-## ⭐ Everything in `common/` has two implementations, and here is what that cost
+## ⭐ The rules are ONE program, and it is not shell
 
-⛔ **A POSIX sh check cannot be assumed to run on Windows.** This was the
-template's original position and it was wrong. The reasoning was that `sh`
-would be present because Git Bash ships with git, so one implementation was
-enough. Measured on one Windows 11 machine, 2026-08-25, from a native
-PowerShell session with Git Bash NOT on `PATH`:
+⭐ **[`../tools/check/`](../tools/check/) holds every rule this repository
+enforces over its own tree.** One binary, one tree walk, native on either host.
+`common/check-*.sh` and their `.ps1` twins are wrappers around one named check of
+it.
 
-| tool the checks need | native PowerShell resolves it to |
+⛔ **A POSIX sh check cannot be assumed to run on Windows**, which is why the
+rules are not shell. Measured on one Windows 11 machine, 2026-08-25, from a
+native PowerShell session with Git Bash NOT on `PATH`:
+
+| tool a shell check needs | native PowerShell resolves it to |
 | --- | --- |
 | `sed` | ⛔ nothing. Not installed. |
 | `sort` | ⚠ PowerShell's own `Sort-Object` alias, not the coreutils binary |
-| `awk`, `grep`, `tr`, `comm`, `xargs` | present here only because scoop and a coreutils package happen to be installed |
+| `awk`, `grep`, `tr`, `comm`, `xargs` | present only because scoop and a coreutils package happen to be installed |
 
-⚠ **The second row is the dangerous one.** A missing tool fails loudly and
-somebody fixes it. An ALIASED one succeeds and returns a DIFFERENT ANSWER.
-`Sort-Object` even accepts `-u`, which is what makes it convincing. Measured on
-the same machine, same day, over the five values `b A a B a`:
+⚠ **The second row is the dangerous one, and this is the measurement to keep.** A
+missing tool fails loudly and somebody fixes it. An ALIASED one succeeds and
+returns a different answer. Over the five values `b A a B a`:
 
 | | result |
 | --- | --- |
 | `LC_ALL=C sort -u` | `A B a b` |
 | `Sort-Object -u` | ⛔ `A b` |
 
-⛔ **It dropped two of the four distinct values**, because it compares
-case-insensitively and keeps whichever it saw first. A check that deduplicates
-a file list that way does not crash and does not warn. It reports on a smaller
-set than it was asked about, and reports success.
+⛔ **It drops two of the four distinct values**, comparing case-insensitively and
+keeping whichever it saw first. A check that deduplicates a file list that way
+does not crash, does not warn, reports on a smaller set than it was asked about,
+and reports success.
 
-⭐ **What did NOT reproduce, and is worth writing down so nobody re-derives
-it:** git and `gh` behaved identically from both shells on this machine. Same
-`git.exe` 2.55.0.windows.3, same `credential.helper manager` from the same
-system config, same authenticated `gh`. So the argument for twins here is the
-TOOLCHAIN, not credential scoping. A machine that installs git differently per
-shell would add a second reason; this one did not have it.
-
-### ⛔ The rules are ONE program now, and it is not shell
-
-⭐ **[`../tools/check/`](../tools/check/) holds every rule this repository
-enforces over its own tree.** One binary, one tree walk, and it runs natively on
-either host. `common/check-*.sh` and their `.ps1` twins are wrappers around one
-named check of it, so there is nothing left for a pair of them to disagree
-about.
-
-⚠ **The reason twins existed has not gone away**, and the measurement above is
-why: a POSIX check cannot be assumed to run on Windows. What went away is the
-need for TWO implementations to answer it. A Go program is the same program on
-either host, the way node is, and it needs neither `sh` nor an aliased `sort`.
-
-⛔ **What that bought.** The gate ran in about twelve minutes here and most of it
-was `check-twins`, which ran both halves of every pair and compared them. It is
-under a minute now, and it no longer has a `--fast` mode because there is
-nothing worth skipping. [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) carries the
-measured figure and the host it was taken on, because that number moves.
+[`../docs/HISTORY/scripts.md`](../docs/HISTORY/scripts.md) carries how the tree
+got here, including what the twin gate cost before the port.
 
 ### ⛔ Wherever a twin still exists, `check-twins.sh` covers it
 
-That is not advice, it is the rule that keeps two implementations from becoming
-two behaviours. [`common/check-twins.sh`](common/) runs BOTH halves of every
-remaining pair on one tree and compares the `--json` answer and the exit code.
+[`common/check-twins.sh`](common/) runs BOTH halves of every remaining pair on
+one tree and compares the `--json` answer and the exit code.
 
-⭐ **ONE PAIR IS AN IMPLEMENTATION, AND THE REST ARE WRAPPERS.** The probe
-under [`doctor/`](doctor/) is genuinely written twice; `git-sync`,
-`check-binfmt`, `check-remote-items`, `deslop` and `fill-license` are entry
-points onto one Go subcommand each, under
-[`../tools/repo/`](../tools/repo/). What a wrapper row proves is narrower: not
-that two implementations of a rule agree, but that two entry points FORWARD the
-same thing. ⚠ That is a real class. After the gate was ported, a `.ps1`
-wrapper passed `-Json` straight through to a binary that takes `--json`, and
-this check is what reported it.
+⭐ **ONE PAIR IS AN IMPLEMENTATION, AND THE REST ARE WRAPPERS.** The probe under
+[`doctor/`](doctor/) is genuinely written twice; `git-sync`, `check-binfmt`,
+`check-remote-items`, `deslop` and `fill-license` are entry points onto one Go
+subcommand each, under [`../tools/repo/`](../tools/repo/). What a wrapper row
+proves is narrower: not that two implementations of a rule agree, but that two
+entry points FORWARD the same thing. ⚠ That is a real class. A `.ps1` wrapper
+once passed `-Json` straight through to a binary that takes `--json`, and this
+check is what reported it.
 
-⛔ **THE PROBE CANNOT FOLLOW THEM, and that is the end state rather than a
-step towards one.** It RUNS BEFORE YOU KNOW WHAT IS INSTALLED, which is its
-whole job, and "is there a Go toolchain" is one of the questions it answers. A
-wrapper that had to build one first could not report that it was missing.
-`TOOL-14` records the measurement and the refusal.
+⛔ **THE PROBE CANNOT BECOME A WRAPPER.** It RUNS BEFORE YOU KNOW WHAT IS
+INSTALLED, which is its whole job, and "is there a Go toolchain" is one of the
+questions it answers. A wrapper that had to build one first could not report that
+it was missing.
 
-⚠ **It is no longer part of the gate**, because it costs minutes and catches
-drift that only arrives when somebody edits one of those halves. ⭐ CI runs it
-on every push, which is where a check with that shape belongs.
+⚠ **It is not part of the gate.** It costs minutes and catches drift that only
+arrives when somebody edits one of those halves; CI runs it on every push.
 
 ⚠ **It compares ANSWERS on the tree it is run against, not the rules.** A scope
 difference with nothing in the tree to exercise it is invisible: dropping `.py`
-from one twin's extension list changed no number here, because this repository
-has no `.py` file. Dropping `.md` was caught instantly. ⭐ Prove a scope rule
-with a fixture, not by trusting the comparison to notice.
+from one twin's extension list changes no number here, because this repository
+has no `.py` file. ⭐ Prove a scope rule with a fixture, not by trusting the
+comparison to notice.
 
 ### The things that do NOT have twins, and why
+
+⭐ **The question is whether the JOB exists on the other platform, not whether
+the language does.**
 
 | | |
 | --- | --- |
 | [`../tools/check/`](../tools/check/) | ⛔ **It cannot have one and must not.** It IS the answer to why twins existed: one implementation that runs natively on both hosts. A second one would recreate the drift it removed. |
-| [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync` and `mutate` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` has no wrapper and needs none**: it was never a shell script, and `repo.sh mutate` reaches it. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules, and folding them in would make the gate do things that are not checks. |
-| [`common/set-record.mjs`](common/) | ⛔ **It does not need one**, and for the same reason as `write-file.mjs` below: it is node. ⚠ What it would cost to give it one is the thing to notice: a twin here means a second implementation of table arithmetic, which is a second place for that arithmetic to be wrong, in the one file whose whole job is that the arithmetic is right. |
-| [`common/write-file.mjs`](common/) | ⛔ **It does not need one.** It is node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. The reason the sh checks needed twins does not apply to it. ⚠ What it needs instead is node itself, which is the one dependency anything under `scripts/` has, and the reason a project may decline this helper rather than inherit it. |
-| [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell to run the sh half no matter what language it is written in. A PowerShell twin would still require `sh`, which is the exact dependency a twin exists to remove. |
-| [`windows/wsl-toolkit/wsl-toolkit.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, which is a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. Calling those two a twin would put `check-twins.sh` in the position of comparing two unrelated programs, and the only way to make that pass is to compare nothing. |
-| [`windows/wsl-toolkit/launcher.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, for the same reason and one more.** It exists to make the file above runnable on Windows: it clears a Windows file attribute, and a POSIX half would have nothing to launch. |
-| [`windows/wsl-toolkit/selftest.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it is not a check.** It is the test over the file above, so a POSIX half would be a second implementation of the assertions rather than a second implementation of a job. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell, which is where its coverage comes from. |
+| [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync` and `mutate` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` has no wrapper and needs none**: `repo.sh mutate` reaches it. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules. |
+| [`common/set-record.mjs`](common/) and [`common/write-file.mjs`](common/) | ⛔ **Neither needs one.** They are node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. ⚠ A twin for `set-record` would be a second implementation of table arithmetic, in the one file whose whole job is that the arithmetic is right. ⚠ What they need instead is node, which is the one dependency anything under `scripts/` has. |
+| [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell no matter what language it is written in. |
+| [`windows/wsl-toolkit/wsl-toolkit.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. |
+| [`windows/wsl-toolkit/launcher.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** It exists to make the file above runnable on Windows, and a POSIX half would have nothing to launch. |
+| [`windows/wsl-toolkit/selftest.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it is not a check.** It is the test over that file. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell. |
 | [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and the gate's `go` check is the check OVER it. |
-| [`windows/wsl-toolkit/build.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it cannot have one.** It joins PowerShell fragments and asserts the result parses as PowerShell, which needs a PowerShell parser. A POSIX half could concatenate the bytes and would be unable to say whether the result is a script. |
-| [`windows/wsl-toolkit/release.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** It reads a version out of a PowerShell file, runs the build, and pushes a tag. ⚠ It runs on the ubuntu CI job too, under `pwsh`, which is the reason it is PowerShell rather than `sh`: one implementation that runs on both hosts beats two that agree on neither. |
-
-⭐ **The question to ask is whether the JOB exists on the other platform, not
-whether the language does.** `wsl-toolkit` fails that test.
+| [`windows/wsl-toolkit/build.ps1`](windows/wsl-toolkit/) | ⛔ **It cannot have one.** It asserts the joined result parses as PowerShell, which needs a PowerShell parser. A POSIX half could concatenate the bytes and could not say whether the result is a script. |
+| [`windows/wsl-toolkit/release.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** ⚠ It runs on the ubuntu CI job too, under `pwsh`, which is why it is PowerShell rather than `sh`: one implementation that runs on both hosts beats two that agree on neither. |
 
 ## The check contract
 

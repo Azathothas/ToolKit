@@ -1439,3 +1439,86 @@ func TestABuildAheadOfTheReleaseIsNotAnUpdate(t *testing.T) {
 		}
 	}
 }
+
+// TestWriteFileAtomicSurvivesConcurrentWriters is the sixth review lens, run at
+// last: what two of this tool do to one state directory.
+//
+// ⛔ THE TEMP NAME USED TO BE `path + ".tmp"`, ONE NAME FOR EVERY WRITER. Two
+// processes saving a base record or a configuration therefore wrote the same
+// temporary. The failures are both silent: one writer renames the OTHER's bytes
+// into place under its own name, or a rename lands on a file the other writer
+// already moved and the loser reports a failure for a write nothing was wrong
+// with. `newJobID` two files away already carries this exact reasoning about
+// ids, and it was not applied to the neighbour.
+//
+// ⚠ WHAT THIS CASE CAN AND CANNOT SEE. Goroutines in one process reach the same
+// collision a second process would, because the name is a constant and not
+// per-process. What it does not cover is a killed writer, which is the case the
+// helper was originally written for and which still holds.
+func TestWriteFileAtomicSurvivesConcurrentWriters(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	const writers = 8
+	const rounds = 40
+	// Each writer's payload is long enough that a torn write is visible rather
+	// than fitting in one buffer by luck.
+	payload := func(i int) []byte {
+		return []byte(strings.Repeat(string(rune('a'+i)), 4096))
+	}
+
+	var wg sync.WaitGroup
+	errs := make(chan error, writers*rounds)
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			for r := 0; r < rounds; r++ {
+				if err := writeFileAtomic(path, payload(i), 0o600); err != nil {
+					errs <- fmt.Errorf("writer %d round %d: %w", i, r, err)
+					return
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	close(errs)
+
+	var failed []error
+	for err := range errs {
+		failed = append(failed, err)
+	}
+	if len(failed) > 0 {
+		t.Fatalf("%d writer(s) failed on a write nothing was wrong with; first: %v", len(failed), failed[0])
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading back what was written: %v", err)
+	}
+	// ⛔ THE FILE MUST BE EXACTLY ONE WRITER'S PAYLOAD. A mixture is the defect,
+	// and so is a short file: both mean a reader would parse something nobody
+	// wrote.
+	ok := false
+	for i := 0; i < writers; i++ {
+		if bytes.Equal(got, payload(i)) {
+			ok = true
+			break
+		}
+	}
+	if !ok {
+		t.Fatalf("the file is not any single writer's payload: %d bytes, first 16 %q", len(got), got[:min(16, len(got))])
+	}
+
+	// ⛔ NO TEMPORARY IS LEFT BEHIND. A crashed writer leaving one is tolerable;
+	// a completed run leaving one means the name is being reused.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("listing the directory: %v", err)
+	}
+	for _, e := range entries {
+		if e.Name() != "config.json" {
+			t.Fatalf("a temporary survived a clean run: %s", e.Name())
+		}
+	}
+}

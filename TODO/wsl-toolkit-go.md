@@ -3234,3 +3234,100 @@ implementation that answered something else.
 helper left running from `wsl-toolkit-v2.0.0` refuses a newer client until it is
 restarted with `helper stop` then `helper serve --detach`. That is correct
 behaviour by design and it is still a thing somebody has to do.
+
+---
+
+## WSL-62. two of this tool sharing one state directory corrupt each other's writes
+
+**Source** the sixth review lens, run for the first time on 2026-09-10 after three sessions named it and none ran it.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+Every stored file this tool owns goes through one helper, `writeFileAtomic`.
+It wrote through a temporary named `path + ".tmp"`, which is ONE name for every
+writer, so two processes saving a base record or a configuration to the same
+state directory wrote the same temporary.
+
+⛔ **Both failure shapes are silent about what actually went wrong.** On Windows
+the loser reports a permission error for a write nothing was wrong with. On a
+platform that holds no share lock the collision is quieter and worse: one writer
+renames ANOTHER's bytes into place under its own name, and every later reader
+gets a file nobody wrote.
+
+## Premise
+
+⭐ **Measured on 2026-09-10 rather than reasoned about**, with eight writers of
+one path, forty rounds each, 4 KiB payloads:
+
+| the helper | result |
+| --- | --- |
+| the shipped version, one shared `.tmp` | ⛔ 7 of 8 writers failed: `The process cannot access the file because it is being used by another process` |
+| a temporary unique per write | ⛔ 7 of 8 still failed: `Access is denied` on the rename itself |
+| unique temporary plus a bounded rename retry | ⭐ all 8 clean, and the file is exactly one writer's payload |
+
+⚠ **The second row is the one worth keeping.** Windows refuses a replace while
+another replace of the same target is in flight, so a unique temporary is
+necessary and not sufficient. That is transient contention, and the message it
+produces is indistinguishable from a real permission failure.
+
+⚠ **The reasoning already existed two files away and was not applied here.**
+`newJobID` in `internal/toolkit/job.go` carries it in one sentence: an identifier
+two concurrent runs can produce is two runs writing into one place.
+
+## Approach
+
+`writeFileAtomic` in `internal/toolkit/catalog.go`, which is the single write
+path for all seven callers: the base record, the configuration, the helper
+endpoint, the instance pointer and the ledger compaction. The temporary carries
+eight random bytes, and the rename goes through `renameReplacing`.
+
+⛔ **The retry is bounded and returns the last error with its attempt count.** A
+retry that hides a real refusal is worse than no retry, because a file nobody can
+write then looks like a file that was written.
+
+⛔ **This is not a lock and must not grow into one.** Two writers still race and
+the last one wins; what is fixed is that the winner's bytes are its own and the
+loser is told the truth. Whether the state directory needs an exclusive lock is a
+larger question and `--instance` is the answer today.
+
+## Consumers
+
+None. No row of [`../docs/consumers.md`](../docs/consumers.md) reaches the
+executable's state directory.
+
+⚠ **The fix is on `main` and is NOT in `wsl-toolkit-v2.0.1`**, which was cut
+before the review found it. The next tag carries it.
+
+## Prove
+
+```bash
+sh scripts/common/check-go.sh
+```
+
+`TestWriteFileAtomicSurvivesConcurrentWriters` green, and the mutation row
+`a temporary name that two concurrent writers cannot share` going red when the
+shared name is put back.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T14:45:00Z.** Unique temporary, bounded rename retry, one case
+and one mutation row.
+
+```text
+ok  	github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit	0.763s
+
+  ok       a temporary name that two concurrent writers cannot share               1 case(s), went red
+1 of 1 guards proved.
+```
+
+⛔ **What the lens did not reach, said rather than left to be found.** This is
+one helper. Two processes running `base ensure` at once still both provision, two
+`gc --apply` runs still both enumerate, and the ledger's cross-process append was
+read and not driven: `O_APPEND` with one `Write` per record should interleave
+whole lines, and nothing here measured it. ⚠ That is the honest scope of a first
+concurrency pass, and it is smaller than the question the record has been asking.

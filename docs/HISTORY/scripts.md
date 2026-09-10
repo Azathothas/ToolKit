@@ -33,3 +33,25 @@ lives in one document, and nothing checked it. That gap is the shape a rule take
 on its way to becoming a preference, and it is why
 [`../conventions/docs.md`](../conventions/docs.md) prefers a form a check can
 assert.
+
+## How the rules stopped being shell, 2026-08-30
+
+⛔ **The template's original position was that one implementation was enough**,
+on the reasoning that `sh` would be present because Git Bash ships with git. It
+was wrong, and the measurement that disproved it is on the live page because a
+reader who does not know it will undo the rule.
+
+⭐ **What did NOT reproduce, and is here so nobody re-derives it.** git and `gh`
+behaved identically from both shells on that machine: same `git.exe`
+2.55.0.windows.3, same `credential.helper manager` from the same system config,
+same authenticated `gh`. So the argument for twins was the TOOLCHAIN and not
+credential scoping. A machine that installs git differently per shell would add
+a second reason; that one did not have it.
+
+⛔ **What the twin gate cost before the port.** About twelve minutes on the
+development host, most of it `check-twins` running both halves of every pair and
+comparing them. A gate that long is a gate a session skips, and `--fast` existed
+to skip exactly it. After the port it is under a minute and has no `--fast`,
+because there is nothing left worth skipping.
+[`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) carries the current figure and
+the host it was taken on, because that number moves. `TOOL-13`, `TOOL-14`.

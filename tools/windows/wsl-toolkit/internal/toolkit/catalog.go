@@ -1,6 +1,7 @@
 package toolkit
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ConfigSchema is the version every stored configuration carries. ⛔ A stored
@@ -569,14 +571,60 @@ func (c Config) Write() error {
 // writeFileAtomic writes through a temp file in the SAME directory, then a
 // rename, so a killed process leaves the old file intact. Same directory
 // matters: a rename across volumes is a copy and loses the guarantee.
+//
+// ⛔ THE TEMPORARY'S NAME IS UNIQUE PER WRITE, and that is not tidiness. It was
+// `path + ".tmp"`, one name for every writer, so two of this tool saving a base
+// record or a configuration at once wrote the same temporary. Measured on
+// Windows with eight concurrent writers: seven failed with `The process cannot
+// access the file because it is being used by another process`, reporting a
+// failure for a write nothing was wrong with. On a platform that does not hold
+// a share lock the same collision is quieter and worse: one writer renames
+// ANOTHER's bytes into place under its own name.
+//
+// ⚠ `newJobID` in job.go already carries this reasoning, in one sentence: an
+// identifier two concurrent runs can produce is two runs writing into one place.
+// It was not applied here until the concurrency review went looking.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return fmt.Errorf("no randomness for a temporary file name: %w", err)
+	}
+	tmp := path + "." + hex.EncodeToString(raw[:]) + ".tmp"
 	if err := os.WriteFile(tmp, data, perm); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	if err := renameReplacing(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return err
 	}
 	return nil
+}
+
+// renameReplacing is os.Rename with a bounded retry, for one Windows behaviour
+// and nothing else.
+//
+// ⛔ WINDOWS REFUSES A REPLACE WHILE ANOTHER REPLACE OF THE SAME TARGET IS IN
+// FLIGHT, with `Access is denied`. Measured with eight concurrent writers of one
+// path, each with its own temporary: seven still failed, and the write they were
+// reporting on had nothing wrong with it. That is transient contention, not a
+// permission problem, and the two are indistinguishable from the message.
+//
+// ⚠ THE RETRY IS BOUNDED AND THE LAST ERROR IS RETURNED WITH ITS ATTEMPT COUNT.
+// A retry that hides a real refusal is worse than no retry: a file nobody can
+// write would then look like a file that was written. The count is in the
+// message so a reader can tell a busy directory from a locked one.
+func renameReplacing(from, to string) error {
+	const attempts = 20
+	delay := 2 * time.Millisecond
+	var err error
+	for i := 0; i < attempts; i++ {
+		if err = os.Rename(from, to); err == nil {
+			return nil
+		}
+		time.Sleep(delay)
+		if delay < 40*time.Millisecond {
+			delay *= 2
+		}
+	}
+	return fmt.Errorf("renaming %s into place after %d attempts: %w", filepath.Base(from), attempts, err)
 }

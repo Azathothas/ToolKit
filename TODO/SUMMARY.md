@@ -7,51 +7,42 @@ on what was true last time.
 
 ---
 
-## 2026-09-10, the second sitting
+## 2026-09-10, the third sitting
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-09-10T10:30:00Z | one context, ended at its limit |
-| Commits | `0fb74d9`, clean `main` | 3 more on `main`, pushed, `e55dd3f` green on all six CI jobs. No tag. |
-| Work | 86 entries: 7 open, 0 blocked, 79 done | 88 entries: **2 open**, 0 blocked, 86 done. **7 closed, 2 filed, both closed** |
-| Changes | 249 tracked files | 251; 24 changed, +2,961 / -213 lines |
-| Gate | 19 checks, 42s | 19 checks, 27s over two runs, which is not a controlled comparison |
-| Selftest | 131 cases over 36 functions | 157 over 40, same on 7.6.5 and 5.1 |
-| Acceptance | 69 cases | **71 of 71** against the real base |
-| Consumer suite | 12 cases | 14. Both new ones skip on an unsigned release |
-| Mutation table | 74 rows | 76. Only the two new rows were re-proved here |
-| Script surface | 34 parameters, 9 actions | 40 parameters, 12 actions. Lock refreshed in the same commit |
-| Helper protocol | `wsl-toolkit-helper/3` | `wsl-toolkit-helper/4`. A v2.0.0 helper refuses a newer client until restarted |
-| Published | `wsl-toolkit-v2.0.0`, unsigned | ⛔ **unchanged. `v2.0.1` was not cut.** |
-| Open PRs | 1, dependabot, behind `main` | **1, still behind, further behind now** |
+| Elapsed | started 2026-09-10T12:00:00Z | one context |
+| Commits | `0c9c1f8`, clean `main`, no tag | 4 on `main`, pushed, CI green, and `wsl-toolkit-v2.0.1` published |
+| Work | 88 entries: 2 open, 0 blocked, 86 done | 93 entries: 3 open, 0 blocked, 90 done. 4 closed, 5 filed, 1 of those closed |
+| Changes | 251 tracked files | 254; 27 changed, +1,124 / -303 lines |
+| Size | 76,414 tracked lines | 76,414 at the end. The doc pass took 26 lines out of `scripts/README.md` and moved them to `docs/HISTORY/` rather than deleting them |
+| Gate | 19 checks, 28.8s, green | 19 checks, 28s, green |
+| Selftest | 157 over 40 functions | 157 over 40, same on 7.6.5 and 5.1. Unchanged: nothing in the script moved but its version. |
+| Mutation | 76 rows, 75 proved on this host | 78 rows, both new ones proved individually, 4.31 min for the sweep |
+| Consumer | 14 cases, 8 skipped against v2.0.0 | 14 cases, 0 failed, 6 skipped against v2.0.1. The two that moved are the signature cases, which had never run green. |
+| Acceptance | 71 of 71, last session | ⛔ **not re-run.** The changed Go path was driven directly instead. That is a gap, named rather than counted as a pass. |
+| Release | `wsl-toolkit-v2.0.0`, five assets, none signed | `wsl-toolkit-v2.0.1`, ten assets, five signature bundles, verified in the release job and from outside by the consumer suite |
+| Health | 3 debts owed: PR 15, the tag, `WSL-30` | all three cleared. 3 new debts filed, `WSL-59`, `WSL-60` and `WSL-61`, two of them unruled decisions. Tree clean. |
 
-### ⭐ What the session actually found
+## What was asked, and what happened
 
-⛔ **Two guards that could not fail, both found by trying to use them, neither
-planned.** `check line-endings` split `attr/text eol=crlf` on whitespace and
-kept `text`, then compared the index column that git normalises by definition:
-23 of 54 tracked `.ps1` files had the wrong working-tree endings while it
-reported green. `git-sync.ps1 -Path a,b` bound one string, so the tool
-`AGENTS.md` names as the way to commit on Windows could not name two files.
-
-⛔ **A schema guessed rather than read, twice in one entry.** `WSL-28`'s reader
-looked for `kind: LINE` with streams `out`/`err`; the writer emits `kind: LOG`
-with `stdout`/`stderr`/`watcher`. It reported a real run as producing no output.
-The same guess was in the selftest fixtures.
-
-**Two guards fired on the day they were reached.** The build's AST scan
-refused a `$wall` local that IS the `$Wall` parameter, and the selftest's own
-count assertion refused a suite that had grown by two cases.
-
-### ⛔ What was asked for and not done
-
-Three things, and the session ended before them rather than rushing them:
-
-| asked | state |
+| asked | outcome |
 | --- | --- |
-| merge the dependabot PR | not merged. Branch still behind `main`. |
-| cut `wsl-toolkit-v2.0.1` | not cut. The version inside the file still reads `2.0.0`. |
-| `WSL-30` | not started. Its validation matrix has not been run. |
+| finish the remaining TODO work, including debts only alluded to | done. `WSL-25` and `WSL-30` closed; `TOOL-22` and `WSL-62` found and closed; `WSL-61` gave a two-session-old open question its entry at last |
+| update and merge pull request 15, then fix the stale `tags/v6` comment | done. Squashed with a clean message, and both comments now name `v7.0.0` and the date they were re-resolved |
+| three deep reviews, then cut the fat from the docs | done, and a fourth. The door sweep, the guard mutation and the claim audit each found something; the concurrency lens three sessions had owed found `WSL-62` |
+| start `WSL-30` by running its matrix, designing nothing first | done. Sixteen claims measured on two engines, nothing designed, and the split its own decision pre-authorised was taken |
+| bump to 2.0.1, rebuild, cut the release, close `WSL-25` | done. The signing path ran for the first time and did not go red |
+| end with the release, lean docs, clean repo, green CI | done |
 
-⚠ **Nothing is half-applied.** Everything committed is gate-green and pushed;
-the three above were never begun.
+## What each review pass found
+
+⛔ **Three headings over one sweep is not three passes.** Each of these names
+what it looked at that the others did not.
+
+| lens | looked at | found |
+| --- | --- | --- |
+| door sweep | every caller of the changed helper, then every other outbound HTTP door in the tree | the fix reaches all five callers, and nothing else in the tree can silently become a write. It also found a pin example still naming the unsigned release, on the page that says signing exists |
+| guard mutation | the new guards, by removing what each protects | both went red. One case was weaker than its name, failing on an index shift rather than on aliasing, and was rewritten |
+| claim audit | every standing fact and count in the live pages, against the API and the machine | `repo mutate` carried a duration with no conditions, off by more than half; a README claimed "the ten already here" against 60 rows; the router said four assets against a release of ten |
+| concurrency, the sixth | what two of this tool do to one state directory | `WSL-62`, on the first pass, measured rather than argued |

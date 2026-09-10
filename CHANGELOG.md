@@ -21,6 +21,27 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T14:50:00Z: four review lenses, and the sixth one that was owed
+
+**Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) entry `WSL-62`,
+and [`TODO/SUMMARY.md`](TODO/SUMMARY.md) for what each pass looked at.
+**Deployed:** ⛔ **no deploy.** `WSL-62`'s fix is on `main` and is NOT in
+`wsl-toolkit-v2.0.1`, which was cut before the review found it. The next tag
+carries it.
+
+⭐ **The concurrency lens ran for the first time after three sessions named it,
+and found a defect on its first pass.** `writeFileAtomic` wrote through
+`path + ".tmp"`, one name for every writer, so two of this tool sharing one state
+directory collided on it. Eight concurrent writers, forty rounds: seven failed
+with a permission error for a write nothing was wrong with, and a unique
+temporary alone was not enough because Windows refuses a replace while another
+replace of the same target is in flight. `WSL-62`.
+
+⚠ **The claim audit found three numbers that had drifted**, all of them the kind
+a check cannot hold: a duration with no conditions that was off by more than
+half, a count of guards that had grown six-fold, and an asset count from before
+the release was signed.
+
 ### 2026-09-10T14:05:00Z: wsl-toolkit 2.0.1, and the first release that is signed
 
 **Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), entry `WSL-25`,
@@ -42,6 +63,8 @@ surface as 2.0.0, forty entries in `surface.lock`; the bump exists because
 `release.yml` refuses a tag that disagrees with the version inside the file, and
 because the release is the artefact `WSL-25` closes against.
 
+
+
 ### 2026-09-10T13:55:00Z: the runtime check that never ran, and sixteen claims measured
 
 **Record:** [`TODO/tooling.md`](TODO/tooling.md) entry `TOOL-22`, and
@@ -51,12 +74,9 @@ because the release is the artefact `WSL-25` closes against.
 workflow comments, the record and one Go helper are all internal.
 
 ⛔ **A guard that had never once been able to speak.** `check-remote-items`
-reports what runtime a pinned commit declares, and that column exists because a
-deprecated Node runtime got past a session that only resolved the tag. It read
-`action.yml` through a helper that passed the ref as a parameter, and `gh` picks
-its method from its arguments: GET normally, POST the moment one is added. Every
-pin it has ever seen printed `runtime unverified`, as a note rather than as a
-failure. `TOOL-22`.
+reports what runtime a pinned commit declares, and every pin it has ever seen
+printed `runtime unverified` instead, as a note rather than as a failure. The
+cause and the measurement are in `TOOL-22`.
 
 ⭐ **Ten of the mockup's sixteen podman claims hold, three are absent, and the
 three share one cause.** The base runs rootless podman under `init(wsl-toolkit)`

@@ -257,12 +257,10 @@ over one stray link would make the workspace feature unusable.
 | a workspace link whose target leaves the tree | left out, COUNTED, and named in `workspace_omission` |
 | a Windows junction in a workspace | the same: left out, counted and named |
 
-⚠ **Both halves used to be silent.** An escaping artifact link was converted to
-an inert `escape.link.txt` and the job exited 0; a junction was skipped by the
-walker and the job exited 0 having never seen it. Neither was a traversal hole
-and nothing was ever overwritten. The defect was that a caller could not tell its
-input or its deliverables were incomplete, which is the same class as a
-truncation nobody is told about.
+⛔ **None of these is silent.** Neither shape was ever a traversal hole and
+nothing is overwritten either way; what a caller needs is to be told that its
+input or its deliverables are incomplete, which is the same class as a
+truncation nobody reports.
 
 ⚠ **`workspace_omitted` is an exact count and `workspace_omission` is the first
 twenty**, so a tree full of links does not put thousands of rows in an answer.
@@ -331,11 +329,10 @@ wsl-toolkit run --tick 5s --image alpine -c 'sleep 60'
 wsl-toolkit matrix --tick 5s --images all -c 'make'
 ```
 
-⭐ **A job that is running used to tell a caller almost nothing.** `resources`
-reports what exists when asked, and there was no periodic signal, so an agent
-watching a long fleet could not tell work in progress from a hang.
-
-`--tick` emits one event per RUNNING job at that interval, on both routes:
+⭐ **`--tick` is the only periodic signal.** `resources` reports what exists when
+asked, so without a tick an agent watching a long fleet cannot tell work in
+progress from a hang. It emits one event per RUNNING job at that interval, on
+both routes:
 
 | field | why it is there |
 | --- | --- |
@@ -394,10 +391,10 @@ around it did not, and a caller that wants "did this work" reads the second:
 | `artifacts_attempted` | entries the guest offered, delivered or not |
 | `retained_kind` `retained` | where a copy that could not be delivered still is: `guest` with a path inside the distribution, or `helper` with the artifact set id the helper is still holding |
 
-⚠ **`artifacts` used to mean entries encountered**, so a refused transfer
-answered with a positive count beside its own failure. It means delivered from
-`wsl-toolkit-v2.0.0`, and `artifacts_attempted` carries the old number under a
-name that says what it is.
+⚠ **`artifacts` means DELIVERED, from `wsl-toolkit-v2.0.0` onwards.** Before that
+tag it counted entries encountered, so a refused transfer answered with a
+positive count beside its own failure. `artifacts_attempted` carries that older
+number under a name that says what it is.
 
 ### When output cannot be delivered
 
@@ -835,7 +832,7 @@ Exit 0 when ready, 1 otherwise.
 ```powershell
 wsl-toolkit selfupdate --check
 wsl-toolkit selfupdate
-wsl-toolkit selfupdate --tag wsl-toolkit-v2.0.0
+wsl-toolkit selfupdate --tag wsl-toolkit-v2.0.1
 ```
 
 ⭐ **It resolves the newest release, verifies the download against the published

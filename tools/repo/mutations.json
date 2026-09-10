@@ -686,6 +686,24 @@
       "replace": "\t}{Base: BaseConfig{}, Images: nil, Matrix: nil}",
       "run": "TestConfigFingerprintTracksWhatChangesBehaviour",
       "args": []
+    },
+    {
+      "label": "an api call that asks for GET rather than letting a parameter choose",
+      "module": "tools/repo",
+      "file": "internal/remote/remote.go",
+      "find": "\treturn append([]string{\"api\", \"-X\", \"GET\", path}, extra...)",
+      "replace": "\treturn append([]string{\"api\", path}, extra...)",
+      "run": "TestApiArgsAlwaysAsksForGET",
+      "args": []
+    },
+    {
+      "label": "a temporary name that two concurrent writers cannot share",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\ttmp := path + \".\" + hex.EncodeToString(raw[:]) + \".tmp\"",
+      "replace": "\ttmp := path + \".tmp\"",
+      "run": "TestWriteFileAtomicSurvivesConcurrentWriters",
+      "args": []
     }
   ]
 }

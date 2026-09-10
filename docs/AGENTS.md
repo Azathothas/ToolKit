@@ -5,11 +5,9 @@ the one document that is written to be read end to end rather than routed
 around, and it is short enough that doing so costs less than the first mistake
 it prevents.
 
-⭐ **This is the only router, and there is no door in front of it.** A root
-`AGENTS.md` restating the absolutes existed until 2026-08-30 and was deleted
-under `DOC-07`: two files stating the same rules is two places for them to
-disagree. ⚠ A harness that opens `AGENTS.md` on its own now finds nothing, so a
-session that was not pointed here has to be told this path.
+⭐ **This is the only router, and there is no door in front of it.** ⚠ A harness
+that opens a root `AGENTS.md` on its own finds nothing, so a session that was not
+pointed at this path has to be told it.
 [`../README.md`](../README.md) is the same tree explained to a person.
 
 ---
@@ -28,22 +26,18 @@ computed in CI over the bytes that are uploaded.
 [`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
 is the pipeline.
 
-⚠ **It is one tool in four assets and that is not four things.** The release
+⚠ **It is one tool in four products and that is not four things.** The release
 carries `wsl-toolkit.ps1`, `launcher.ps1` and the `wsl-toolkit` executable for
 two Windows architectures. The executable CARRIES the script, reads its version
 out of it and forwards to it, so the two cannot be different products; CI proves
 that by reconstructing the tracked file from the embedded copy byte for byte.
+⚠ **Ten files, not four**: those four, `SHA256SUMS`, and one `.cosign.bundle` per
+file since `wsl-toolkit-v2.0.1`.
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
 is how the compiled half is built.
 
 ⛔ **Nothing else is.** No image, no package, no second release train. The BSD
 container images this tree once referred to are built by `pkgforge-dev/docker-bsd`.
-
-⚠ **This changed on 2026-08-30 and it used to read "nothing is published from
-here".** The reason it changed is the one that made the split possible at all: a
-consumer fetching one raw URL cannot run a build step, so the single file has to
-exist as an artefact somewhere, and a release is a better one than a path in a
-tree because it names something built and tested on purpose.
 
 ⭐ **What makes this different from an ordinary project is one thing.** A file
 here is fetched by URL from outside this tree. Nothing in this repository fails
@@ -205,7 +199,7 @@ these is held to.
 | keep one Linux host with a container engine in it | `wsl-toolkit base ensure` | using `podman-machine-default`, which is somebody else's |
 | find out what this tool is holding, or remove it | `wsl-toolkit resources`, then `wsl-toolkit gc --apply` | `podman system prune`, which removes what no RUNNING container uses |
 | find out why a job failed, after the container is gone | ⭐ `wsl-toolkit inspect JOB` | reading the transcript alone. ⚠ It says what the payload did and not what it ran on. |
-| prove every guard in the mutation table is real | `repo mutate` in `tools/repo`, about ten minutes | the gate's `mutations` check, which asserts the table still POINTS at code and proves no guard |
+| prove every guard in the mutation table is real | `repo mutate` in `tools/repo`. Minutes, not seconds; [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) has the measurement | the gate's `mutations` check, which asserts the table still POINTS at code and proves no guard |
 | find out what a distro would reach this host at | ⭐ `wsl-toolkit.ps1 -Action HostAddress` | creating a distro and decoding `/proc/net/route` |
 | find out what podman and WSL are holding | `wsl-toolkit.ps1 -Action Resources` | a hand-rolled sequence of `podman` reports |
 | fetch and run that tool from another project | `launcher.ps1` | a download piped into a shell |

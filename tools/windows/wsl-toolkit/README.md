@@ -94,12 +94,13 @@ machine: the archive-entry rules, the containment test, the argument alphabet,
 the exact-name distribution rule, the image-reference rule and the three-count
 fleet verdict.
 
-⛔ **Add a guard, mutation-prove it.** Remove what it protects, run the case named
-for it, and read the exit code from the process that produced it. The rule and
-what it cost are in
+⛔ **Add a guard, mutation-prove it, and add its row to
+[`../../repo/mutations.json`](../../repo/mutations.json).** `repo mutate` removes
+what the guard protects, runs the case named for it, and reads the exit code from
+the process that produced it. A guard with no row is a guard nobody has seen
+refuse.
 [`../../../docs/methodology/reviews.md`](../../../docs/methodology/reviews.md)
-lens 2. The ten already here were proved that way, and one was theatre until it
-was.
+lens 2 is the rule and what it cost.
 
 ⚠ **A composite literal whose element opens immediately after the slice's own
 brace trips `check-placeholders`.** Two braces with an uppercase letter after

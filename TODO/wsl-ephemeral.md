@@ -2472,7 +2472,7 @@ the two are the same.
 ## WSL-25. the release digest proves transport, not authorship
 
 **Source** the operator, 2026-08-30, accepting it from a list put to them at the end of that session. The gap was written down by the work that created it.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -2537,6 +2537,82 @@ gh release view TAG --repo Azathothas/ToolKit --json assets --jq '[.assets[].nam
 The bundle assets present, and a launcher run reporting a verified signature
 naming the workflow, plus a run on a host with no `cosign` reporting that it
 could not verify rather than reporting success.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T14:20:00Z, against the published `wsl-toolkit-v2.0.1`.** The
+implementation landed in the previous session; what was missing was the one thing
+this entry closes on, and it did not exist until a release carried bundles.
+
+⭐ **The release carries ten assets, five of them signatures:**
+
+```text
+launcher.ps1, launcher.ps1.cosign.bundle, SHA256SUMS, SHA256SUMS.cosign.bundle,
+wsl-toolkit-windows-amd64.exe, wsl-toolkit-windows-amd64.exe.cosign.bundle,
+wsl-toolkit-windows-arm64.exe, wsl-toolkit-windows-arm64.exe.cosign.bundle,
+wsl-toolkit.ps1, wsl-toolkit.ps1.cosign.bundle
+```
+
+⭐ **A launcher run reporting a verified signature**, under
+`-LauncherVerify require`, from an empty directory with no repository present:
+
+```text
+  * release wsl-toolkit-v2.0.1, asset wsl-toolkit-windows-amd64.exe
+  * digest matches the SHA256SUMS in release wsl-toolkit-v2.0.1
+  * signature verified: wsl-toolkit-windows-amd64.exe.cosign.bundle, signed by this repository's release workflow
+  running the embedded script 2.0.1 through pwsh.exe
+```
+
+⭐ **And the other half the acceptance asked for**, on a host with no `cosign`,
+which was produced by stripping the shim directory off `PATH`:
+
+```text
+require:  ERROR: -LauncherVerify require, and cosign is not on PATH, so the signature
+          published beside this asset was NOT checked.
+          REQUIRE_EXIT=1
+
+auto:     ! cosign is not on PATH, so the signature published beside this asset was
+          NOT checked. Install it (scoop install cosign, or from sigstore/cosign)
+          to verify who published this.
+          * every question this host was asked, it answered
+          AUTO_EXIT=0
+```
+
+⛔ **`AUTO_EXIT` was read from the process, unpiped, and the first reading was
+wrong.** A `Select-Object -First 6` on the launcher's output stopped the pipeline
+and `$LASTEXITCODE` came back 1 for a run that succeeded. That is
+[`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 2 arriving
+in the middle of collecting evidence FOR an entry about not trusting what a step
+reports.
+
+⭐ **Verified from outside, by the consumer suite, in CI**, which is the reading
+that does not depend on this machine:
+
+```text
+tag wsl-toolkit-v2.0.1: 14 case(s), 0 failed, 6 skipped
+  ok    every published asset carries a signature bundle
+  ok    the signature verifies against this repository release workflow
+```
+
+⚠ **Those two cases had never run green.** Against `wsl-toolkit-v2.0.0` the same
+suite reported 14 cases and 8 skipped, because that release carries no bundles.
+Six skip now, and the two that moved are these.
+
+⚠ **What the premise said and what the run showed.** The entry was written
+believing the risk was that `cosign sign-blob --bundle` and
+`cosign verify-blob --bundle` might disagree about the bundle format between
+major versions. They agreed on the first run, with the version pinned at v3.1.3
+on both sides. ⛔ The pin is what makes that a result rather than a coincidence,
+and it is why the release job names a version instead of taking the installer's
+default.
+
+⛔ **What is still true and is not fixed by this.** Verification is OPTIONAL.
+`auto` reports and runs, so a consumer who never passes `-LauncherVerify require`
+gets a warning line and the same behaviour as before. Making it mandatory breaks
+every consumer without `cosign` installed, and that day is its own entry rather
+than a change smuggled into this one.
 
 ---
 

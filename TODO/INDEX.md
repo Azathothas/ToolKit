@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 92  open 4  blocked 0  done 88
+total 93  open 3  blocked 0  done 90
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 47 | 47 |
-| P2 | 4 | 0 | 31 | 35 |
+| P2 | 3 | 0 | 33 | 36 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **4** | **0** | **88** | **92** |
+| **all** | **3** | **0** | **90** | **93** |
 
 ---
 
@@ -85,7 +85,7 @@ total 92  open 4  blocked 0  done 88
 | WSL-22 | P3 | S | done | The stream log has no sink, no colour and no prefix-only mode | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-23 | P3 | M | done | Parameters are silently ignored by the actions they do not apply to | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-24 | P1 | S | done | A list parameter cannot be repeated, and an int list binds a wrong number | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
-| WSL-25 | P2 | M | open | The release digest proves transport, not authorship | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-25 | P2 | M | done | The release digest proves transport, not authorship | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-26 | P2 | M | done | A prepared rootfs is thrown away and paid for again | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-27 | P2 | M | done | The tick can say nothing is happening and never that something is | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-28 | P2 | M | done | A recorded run cannot be re-read or compared | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -95,6 +95,7 @@ total 92  open 4  blocked 0  done 88
 | WSL-59 | P2 | L | open | the podman adapter, on what the matrix says it can be built | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-60 | P2 | M | open | the base accepts a memory limit and does not enforce it | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-61 | P2 | S | open | `base ensure` cannot recover a base whose engine has stale run state | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-62 | P2 | S | done | two of this tool sharing one state directory corrupt each other's writes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

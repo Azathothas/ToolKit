@@ -1330,21 +1330,19 @@ state of everything after it.
 ⛔ **These are real.** They are listed because a limit hidden is a defect filed
 against the user later.
 
-⚠ **Three different things are in this table and the difference matters.** Some
-rows are tracked as **open** items in
-[`../../../TODO/INDEX.md`](../../../TODO/INDEX.md) and will go. The `-OciEnv` row is a
-**settled decision** about what that switch carries, and it stays. The 5.1
-quoting row is neither: it is a **limit of the host**, one layer above this
-tool, and it stays because a user hits it and needs to be told what to do
-instead. ⛔ The intro used to claim every row was an open item, which stopped
-being true the moment one of them was closed as a decision.
+⚠ **The `kind` column is not decoration.** An open item will go; a decision and
+a host limit will not, and reading a decision as a bug is how somebody spends a
+day removing it.
 
-| limit | what it means for you |
-| --- | --- |
-| ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
-| ⚠ on Windows PowerShell 5.1, a `-Command` value loses its double quotes when this tool is launched as a child process | 5.1 drops them building the child's argument list, before this script sees anything, so nothing here can recover them. ⭐ Use `-CommandB64`. Not an open item: it is 5.1's argument handling, one layer above this tool. See the command channel section. |
-| ⚠ `Run` calls `exit` | correct when the script is invoked, fatal to the host session if it is dot-sourced. ⛔ Invoke it, never dot-source it. |
-| ⛔ there is no `-PortForward` | asked for, and refused. Forwarding a port on Windows means `netsh interface portproxy`, which needs an elevated session and leaves a rule on the machine after the tool exits. This tool creates nothing it cannot remove and asks for no elevation. ⭐ `HostAddress` answers the question the port forward was wanted for: bind the host service to that address instead of to loopback. |
+| limit | kind | what it means for you |
+| --- | --- | --- |
+| ⚠ `-OciEnv` carries `ENV` and `WORKDIR` only | decision | `USER` and `ENTRYPOINT` are not carried and will not be. See the section on it above for why. |
+| ⚠ on Windows PowerShell 5.1, a `-Command` value loses its double quotes when this tool is launched as a child process | host | 5.1 drops them building the child's argument list, before this script sees anything, so nothing here can recover them. ⭐ Use `-CommandB64`. See the command channel section. |
+| ⚠ `Run` calls `exit` | decision | correct when the script is invoked, fatal to the host session if it is dot-sourced. ⛔ Invoke it, never dot-source it. |
+| ⛔ there is no `-PortForward` | decision | asked for, and refused. Forwarding a port on Windows means `netsh interface portproxy`, which needs an elevated session and leaves a rule on the machine after the tool exits. This tool creates nothing it cannot remove and asks for no elevation. ⭐ `HostAddress` answers the question the port forward was wanted for: bind the host service to that address instead of to loopback. |
+
+⚠ **An open item, if one appears here, is tracked in
+[`../../../TODO/INDEX.md`](../../../TODO/INDEX.md).** There are none today.
 
 ---
 

@@ -65,7 +65,7 @@ from its sources, tested and published on purpose, and it carries its own
 digests. A tag does not move either.
 
 ```powershell
-pwsh -NoProfile -File launcher.ps1 -LauncherRelease wsl-toolkit-v2.0.0 -Action Doctor
+pwsh -NoProfile -File launcher.ps1 -LauncherRelease wsl-toolkit-v2.0.1 -Action Doctor
 ```
 
 A release carries `wsl-toolkit.ps1`, `launcher.ps1`, the `wsl-toolkit`
