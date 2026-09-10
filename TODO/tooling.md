@@ -2176,3 +2176,219 @@ recorded on the same machine.
 ⛔ **Those are two runs and not a controlled comparison**, so what they support
 is that the difference is inside the noise. They do not support "the cost did
 not move", which is what this paragraph said until the claim audit read it.
+
+---
+
+## TOOL-20. The check for the endings could never once have failed
+
+**Source** Found on 2026-09-10 while writing a CRLF file for `WSL-25`, when the tree turned out to hold two answers about how a `.ps1` is stored and nothing had noticed.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`check line-endings` exists to catch one class:
+[`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 5 states
+that a carriage return in a file `.gitattributes` says is LF is invisible to
+`git diff` and visible to everything else. Its own header names the incident
+that produced it, 182 files rewritten across four commits with nothing watching.
+
+⛔ **It could not fail on any text file in the tree, and 23 of 54 tracked `.ps1`
+files were sitting in the working tree with LF under an `eol=crlf` attribute
+while it reported green.**
+
+Two defects, and the first hid the second:
+
+- ⛔ **The attribute column contains a space, and the parse split on
+  whitespace.** `git ls-files --eol` writes a row as
+  `i/lf  w/crlf  attr/text eol=crlf`, so `strings.Fields` produced four tokens
+  and the loop that kept the one beginning `attr/` kept `text`. The half that
+  says WHICH ending is wanted was dropped on every row, so every file resolved
+  as "expected LF".
+- ⛔ **It read the INDEX column, and git normalises a `text` file to LF in the
+  index by definition.** `eol=` governs CHECKOUT, not storage. So even with the
+  attribute parsed, `i/lf` against an expectation of `i/lf` is a tautology; the
+  column that can disagree is the working tree, which is also the one every
+  other tool reads.
+
+## Premise
+
+⭐ **Measured, by planting the defect the check is named for and reading the
+exit code unpiped**, on 2026-09-10 on Windows 11 Pro 26200:
+
+```text
+$ python -c "...replace 5 LF with CRLF in docs/consumers.md..."
+$ git ls-files --eol docs/consumers.md
+i/lf    w/mixed attr/text eol=lf         docs/consumers.md
+$ sh scripts/common/check.sh line-endings
+  ok     line-endings
+CHECK EXIT=0
+```
+
+⚠ **`w/mixed` is the loudest thing git can say about a file** and the check
+reported `ok` over it.
+
+## Approach
+
+`parseEOLRow` takes the attribute as everything after `attr/` rather than as a
+field, and `wantedWorktreeEnding` holds the LF-except-PowerShell rule in one
+place so the check and its test cannot disagree about it. The comparison moves
+to the `w/` column, and the `i/` column keeps an assertion of its own, because a
+file committed with normalisation off is a different defect and the two are
+worth telling apart.
+
+⛔ **`w/none` is not a violation.** One line with no trailing newline reports it,
+and there is nothing in such a file for an attribute to resolve.
+
+⛔ **The 23 drifted files are renormalised from the index, not re-committed.**
+The index was already right; only the working tree had drifted, which is exactly
+why `git status` was clean and why nobody saw it. Deleting and checking them out
+again is what makes this machine agree with a fresh clone.
+
+## Consumers
+
+None. No row of [`../docs/consumers.md`](../docs/consumers.md) fetches a file
+this touches, and the tracked bytes of every published asset are unchanged:
+`build.ps1 -Check` reproduces both products byte for byte after the
+renormalisation.
+
+## Prove
+
+```bash
+sh scripts/common/repo.sh mutate -only eol
+```
+
+Both new rows proved, and `sh scripts/common/check.sh line-endings` exiting 0
+over a tree where every tracked file's working-tree ending agrees with its
+attribute.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T11:42:00Z.** The parse keeps the whole attribute, the
+comparison reads the working tree, 23 files were renormalised, and two mutation
+rows now hold the two halves.
+
+```text
+$ sh scripts/common/repo.sh mutate -only "eol"
+  ok       the eol attribute keeping the half that says which ending               6 case(s), went red
+
+1 of 1 guards proved.
+EXIT=0
+
+$ sh scripts/common/repo.sh mutate -only "working-tree ending"
+  ok       the working-tree ending following the attribute rather than a constant  1 case(s), went red
+
+1 of 1 guards proved.
+EXIT=0
+
+$ sh scripts/common/check.sh line-endings
+  ok     line-endings
+line-endings EXIT=0
+
+$ git ls-files --eol '*.ps1' | awk '{print $1, $2, $3, $4}' | sort | uniq -c
+     53 i/lf w/crlf attr/text eol=crlf
+      1 i/lf w/lf attr/text eol=lf
+```
+
+⚠ **What this says about the gate's other checks is the finding worth keeping.**
+This one had a test file and no mutation row, and its two defects were the kind
+a reading passes over: a `strings.Fields` on a column that happens to contain a
+space, and a comparison against the wrong one of two columns whose names differ
+by one letter. ⛔ **A check with no mutation row is a check nobody has seen
+fail**, and 74 rows covered none of the eleven tree-walking checks' actual
+comparisons before this one.
+
+---
+
+## TOOL-21. The sanctioned way to commit on Windows could not name two files
+
+**Source** Found on 2026-09-10 while committing `TOOL-20`, by trying to pass six paths to the wrapper AGENTS.md section 5 names as the way to commit on this host.
+**Category** tooling, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+[`../docs/AGENTS.md`](../docs/AGENTS.md) section 5 says: to commit and push, use
+`git-sync.sh`, or `git-sync.ps1` on Windows. ⛔ **The `.ps1` half could not stage
+a named set of files at all.**
+
+- `-Path a -Path b` is refused: `parameter 'Path' is specified more than once`.
+- `-Path a,b` binds the single string `a,b`, which is forwarded verbatim as one
+  pathspec, and `git add` then reports a path that does not exist.
+
+⚠ **The failure reads as the caller's mistake rather than the wrapper's.** The
+message names a path, so a reader goes looking for a typo in a path that is
+correct.
+
+## Premise
+
+⭐ **Measured on 2026-09-10 under PowerShell 7.6.5**, against a script declaring
+`[string[]]$Path`, which is what this wrapper declares:
+
+```text
+through -File, -Path "a/one.md,b/two.md"   count=1   [0] = 'a/one.md,b/two.md'
+through -File, -Path a -Path b             REFUSED: specified more than once
+in-process, -Path @('a/one.md','b/two.md') count=2   [0] = 'a/one.md' [1] = 'b/two.md'
+```
+
+⚠ **This is a class this repository had already documented and paid for twice**,
+in `WSL-22` and `WSL-24`, and
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md)
+carries both rows. It was not applied to the tool the rule's own author commits
+with, which is the shape worth naming: a rule written into a page about one file
+does not travel to the next file by itself.
+
+## Approach
+
+`-Path` splits its own value on commas, and an empty element is refused by name
+rather than forwarded. ⛔ **An empty pathspec means EVERYTHING to `git add --`**,
+so a trailing comma would have staged the whole repository under a message
+naming two files.
+
+⛔ **`-Gate` is deliberately NOT split.** Its values are commands and a command
+may contain a comma, which is the case `forbidden-patterns.md` calls "arbitrary
+text has no safe delimiter either". Through `-File` it takes one gate, and
+several go to `repo.ps1 git-sync --gate A --gate B`. Saying so is the fix for
+that half; splitting it would have been a silent corruption.
+
+## Consumers
+
+None. No row of [`../docs/consumers.md`](../docs/consumers.md) fetches
+`git-sync.ps1`; it is an internal helper.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/git-sync.ps1 -Message S -BodyFile B -Path "one,two"
+```
+
+Two files staged rather than one refusal, and `-Path "one,,two"` refused by name.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T11:58:00Z.** `-Path` splits on commas, an empty element is a
+refusal, and `-Gate` says why it does not split.
+
+```text
+$ pwsh -NoProfile -File scripts/common/git-sync.ps1 -Path "TODO/INDEX.md,,TODO/tooling.md" -Message x -BodyFile /tmp/b.txt
+git-sync.ps1: -Path has an empty element. It splits on commas, so 'TODO/INDEX.md,,TODO/tooling.md' is not a path.
+EXIT=2
+
+$ pwsh -NoProfile -File scripts/common/git-sync.ps1 -Message "..." -BodyFile ... -Path "tools/check/internal/checks/eol.go,tools/check/internal/checks/eol_test.go,tools/repo/mutations.json,TODO/tooling.md,TODO/INDEX.md,TODO/PROGRESS.md,scripts/common/git-sync.ps1"
+2026-09-10T11:58:00Z git-sync: staged the named path(s)
+2026-09-10T11:58:00Z git-sync: 7 file(s) staged
+```
+
+⚠ **The wrapper is what was wrong, and the rule it broke was already written
+down.** Both `WSL-22` and `WSL-24` are the same defect in a different file, and
+`forbidden-patterns.md` had the row before this wrapper was written. A rule
+recorded against one file does not reach the next one on its own; the check that
+would have caught this does not exist, and writing it means walking every
+tracked `.ps1` for a list parameter, which is its own entry rather than a line
+here.

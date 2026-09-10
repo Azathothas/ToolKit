@@ -7,9 +7,8 @@ import (
 	"strings"
 )
 
-// LineEndings compares what git holds against what .gitattributes resolves,
-// using git's own answer rather than a second table. The index column is the
-// half that decides what a commit contains.
+// LineEndings compares what is on disk against what .gitattributes resolves,
+// using git's own answer rather than a second table.
 //
 // The defect it exists to catch is invisible to review. A carriage return in a
 // file .gitattributes says is LF shows nothing in `git diff`, because the index
@@ -20,6 +19,23 @@ import (
 // to \r\n on Windows unless it is told not to, and a single pass over this
 // tree using it rewrote 182 files and reached four commits before anything
 // noticed. Nothing was watching, because this check did not exist.
+//
+// ⛔ AND FOR ITS FIRST LIFE IT STILL WAS NOT WATCHING, WHICH IS WORSE. Two
+// defects, and the first hid the second. `git ls-files --eol` writes the
+// attribute column as `attr/text eol=crlf`, with a SPACE in it, so splitting
+// the row on whitespace put `eol=crlf` in a field of its own and the parse kept
+// only `text`. Every file therefore resolved as "expected LF". Then the
+// comparison read the INDEX column, and git normalises a `text` file to LF in
+// the index BY DEFINITION, so "expected LF" was a tautology: the check could
+// not fail on any text file in the tree, and 23 of 54 tracked .ps1 files were
+// sitting in the working tree with LF under an `eol=crlf` attribute while it
+// reported green. Measured on 2026-09-10 by planting five CRLF into a file
+// declared `eol=lf` and reading the exit code, which was 0. TOOL-20.
+//
+// ⭐ THE WORKING TREE IS THE COLUMN THAT CAN DISAGREE, and it is the one every
+// other tool reads. The index is asserted too, because a file committed with
+// `-text` or with normalisation off is a different defect and the two are worth
+// telling apart.
 func LineEndings(t *Tree) Result {
 	r := Result{Extra: map[string]any{}}
 	// Scoped to the files this project writes. `--eol` stats every path it is
@@ -44,15 +60,9 @@ func LineEndings(t *Tree) Result {
 		if Vendored(file) || strings.HasPrefix(file, "evidence/") {
 			continue
 		}
-		fields := strings.Fields(head)
-		if len(fields) < 2 {
+		index, worktree, attr, ok := parseEOLRow(head)
+		if !ok {
 			continue
-		}
-		index, attr := fields[0], ""
-		for _, f := range fields {
-			if strings.HasPrefix(f, "attr/") {
-				attr = strings.TrimPrefix(f, "attr/")
-			}
 		}
 		if strings.Contains(attr, "-text") {
 			continue // declared binary; line endings are not this check's business
@@ -61,18 +71,55 @@ func LineEndings(t *Tree) Result {
 			continue // binary, or a file with no line endings at all
 		}
 		checked++
-		// The rule this repository states is LF everywhere except PowerShell,
-		// which keeps CRLF because 5.1 mis-parses a here-string terminated by
-		// a bare LF.
-		want := "i/lf"
-		if strings.Contains(attr, "eol=crlf") {
-			want = "i/crlf"
+		// ⛔ THE INDEX IS ALWAYS LF FOR A `text` FILE, whatever eol= says. That
+		// attribute governs CHECKOUT, not storage, and a row that is not i/lf
+		// here means normalisation is off rather than that the endings are
+		// wrong on disk.
+		if index != "i/lf" {
+			r.bad("%s: git holds %s in the index where a text file normalises to i/lf; `git add --renormalize` is what fixes it",
+				file, index)
 		}
-		if index != want {
-			r.bad("%s: git holds %s in the index where .gitattributes resolves %s; a carriage return here is invisible to git diff and visible to everything else",
-				file, index, want)
+		want := wantedWorktreeEnding(attr)
+		// ⚠ A FILE WITH NO LINE ENDING AT ALL IS NOT A VIOLATION. One line and
+		// no trailing newline reports w/none, and there is nothing in it for an
+		// attribute to resolve.
+		if worktree == "w/none" {
+			continue
+		}
+		if worktree != want {
+			r.bad("%s: the working tree holds %s where .gitattributes resolves %s; this is invisible to git diff and visible to everything that reads the file",
+				file, worktree, want)
 		}
 	}
 	r.Extra["files"] = checked
 	return r
+}
+
+// wantedWorktreeEnding is the rule this repository states, in one place so the
+// check and its test cannot disagree about it: LF everywhere except PowerShell,
+// which keeps CRLF because 5.1 mis-parses a here-string terminated by a bare LF.
+func wantedWorktreeEnding(attr string) string {
+	if strings.Contains(attr, "eol=crlf") {
+		return "w/crlf"
+	}
+	return "w/lf"
+}
+
+// parseEOLRow splits one `git ls-files --eol` row into its three columns.
+//
+// ⛔ THE ATTRIBUTE COLUMN CONTAINS SPACES and is therefore the last field
+// rather than a field. `i/lf w/crlf attr/text eol=crlf` splits on whitespace
+// into FOUR tokens, and a parse that took the one beginning `attr/` kept
+// `text` and silently dropped the half that says which ending is wanted.
+func parseEOLRow(head string) (index, worktree, attr string, ok bool) {
+	at := strings.Index(head, "attr/")
+	if at < 0 {
+		return "", "", "", false
+	}
+	attr = strings.TrimSpace(head[at+len("attr/"):])
+	fields := strings.Fields(head[:at])
+	if len(fields) < 2 {
+		return "", "", "", false
+	}
+	return fields[0], fields[1], attr, true
 }

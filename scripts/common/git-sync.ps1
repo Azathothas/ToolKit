@@ -28,6 +28,13 @@
     IT IS A HELPER, NOT A CHECK. It writes: that is its job. -Check is the
     read-only half.
 
+    -Path TAKES A COMMA-SEPARATED LIST, and that is not a style choice. A .ps1
+    reached through -File cannot have a parameter repeated, and its comma form
+    binds one string rather than a list, so this splits its own value. An empty
+    element is refused by name. -Gate does NOT split, because its values are
+    commands and a command may contain a comma; through -File it takes one, and
+    several need `repo.ps1 git-sync --gate A --gate B`.
+
 .NOTES
     Exit codes: 0 done, 1 a rule was broken or a gate failed, 2 could not run.
     Read the exit code from this process, unpiped.
@@ -58,7 +65,36 @@ if ($BodyFile) { $forward += @('--body-file', $BodyFile) }
 if ($Name)     { $forward += @('--name', $Name) }
 if ($Email)    { $forward += @('--email', $Email) }
 if ($Branch)   { $forward += @('--branch', $Branch) }
-foreach ($p in $Path) { $forward += @('--path', $p) }
+# ⛔ A LIST PARAMETER ON A .ps1 REACHED THROUGH -File CANNOT BE REPEATED, and
+# a comma form binds ONE string. Measured on 2026-09-10 under PowerShell 7.6.5:
+# `-Path a,b` arrives as the single value 'a,b', and `-Path a -Path b` is
+# refused with "specified more than once". This wrapper is the sanctioned way to
+# commit on Windows, and until this it could not name two files: the comma form
+# was forwarded verbatim as one pathspec and `git add` refused it, which reads as
+# a bad path rather than as a wrapper that cannot take a list.
+# docs/conventions/forbidden-patterns.md states the remedy: a [string[]] on such
+# a script SPLITS ITS OWN VALUE. TOOL-21.
+foreach ($p in $Path) {
+    foreach ($piece in ($p -split ',')) {
+        $piece = $piece.Trim()
+        # An empty element is a typo (a trailing comma, or two together), and
+        # forwarding it would stage the whole repository, because `git add --`
+        # with an empty pathspec means everything.
+        # ⚠ Reported and exited, never thrown. A throw from a script body
+        # renders as a PowerShell exception with a source extract, and this
+        # file's own contract says 2 means "could not run".
+        if (-not $piece) {
+            [Console]::Error.WriteLine("git-sync.ps1: -Path has an empty element. It splits on commas, so '$p' is not a path.")
+            exit 2
+        }
+        $forward += @('--path', $piece)
+    }
+}
+# ⛔ -Gate IS DELIBERATELY NOT SPLIT. Its values are COMMANDS, and a command can
+# contain a comma, so splitting one would corrupt it silently. That is the case
+# forbidden-patterns.md calls "arbitrary text has no safe delimiter either".
+# Through -File this therefore takes ONE gate; for several, call the tool
+# directly: pwsh -File scripts/common/repo.ps1 git-sync --gate A --gate B
 foreach ($g in $Gate) { $forward += @('--gate', $g) }
 if ($NoPush)    { $forward += '--no-push' }
 if ($PushOnly)  { $forward += '--push-only' }

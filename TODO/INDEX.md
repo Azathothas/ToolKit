@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 86  open 7  blocked 0  done 79
+total 88  open 7  blocked 0  done 81
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 45 | 45 |
-| P2 | 6 | 0 | 25 | 31 |
+| P1 | 0 | 0 | 46 | 46 |
+| P2 | 6 | 0 | 26 | 32 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **7** | **0** | **79** | **86** |
+| **all** | **7** | **0** | **81** | **88** |
 
 ---
 
@@ -58,6 +58,8 @@ total 86  open 7  blocked 0  done 79
 | TOOL-17 | P1 | L | done | The suite that could not have caught any of them | [`tooling.md`](tooling.md) |
 | TOOL-18 | P1 | S | done | The row of the counts that was typed | [`tooling.md`](tooling.md) |
 | TOOL-19 | P1 | M | done | The instrument that proves the guards had stopped proving three of them | [`tooling.md`](tooling.md) |
+| TOOL-20 | P1 | S | done | The check for the endings could never once have failed | [`tooling.md`](tooling.md) |
+| TOOL-21 | P2 | S | done | The sanctioned way to commit on Windows could not name two files | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

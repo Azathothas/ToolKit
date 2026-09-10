@@ -553,6 +553,24 @@
       "args": []
     },
     {
+      "label": "the eol attribute keeping the half that says which ending",
+      "module": "tools/check",
+      "file": "internal/checks/eol.go",
+      "find": "\tattr = strings.TrimSpace(head[at+len(\"attr/\"):])",
+      "replace": "\tattr = strings.Fields(head[at:])[0][len(\"attr/\"):]",
+      "run": "TestEOLRowKeepsTheWholeAttribute",
+      "args": []
+    },
+    {
+      "label": "the working-tree ending following the attribute rather than a constant",
+      "module": "tools/check",
+      "file": "internal/checks/eol.go",
+      "find": "\tif strings.Contains(attr, \"eol=crlf\") {\n\t\treturn \"w/crlf\"\n\t}",
+      "replace": "\tif false {\n\t\treturn \"w/crlf\"\n\t}",
+      "run": "TestWantedWorktreeEndingFollowsTheAttribute",
+      "args": []
+    },
+    {
       "label": "the framing newline that is only put back when there is a line to end",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/marker.go",
