@@ -76,6 +76,8 @@ func usage() string {
 		"  logs        the complete output a job produced, past whatever the answer kept",
 		"  helper      the opt-in local helper, for a caller that cannot reach wsl.exe itself",
 		"  config      where the configuration is, and what it currently says",
+		"  ready       one answer to whether this agent can run isolated Linux jobs here",
+		"  selfupdate  move this executable to a published release, verifying it first",
 		"  version     the product version, which is the embedded script's",
 		"",
 		"Global: --instance N  one isolated instance: distribution wsl-toolkit-N and",
@@ -185,6 +187,10 @@ func run(ctx context.Context, args []string) int {
 		code, err = cmdHelper(ctx, cmdArgs)
 	case "config":
 		code, err = cmdConfig(cmdArgs)
+	case "ready":
+		code, err = cmdReady(ctx, cmdArgs)
+	case "selfupdate":
+		code, err = cmdSelfUpdate(ctx, cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "wsl-toolkit: %q is not a command\n\n%s\n", cmd, usage())
 		return exitCannot

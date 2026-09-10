@@ -10,17 +10,71 @@ function Get-WslExe {
 }
 
 function Get-WslDistroNames {
+    <#
+      Every distribution registered on this machine.
+
+      ⛔ AN ENUMERATION THAT WAS REFUSED THROWS, and it used to return an empty
+      list. `2>$null` discarded the reason and `-not $raw` folded "WSL said no
+      distributions" together with "WSL would not answer me", so a process that
+      cannot reach WSL was told the machine was empty and the command exited 0.
+      An agent reading that answer concludes there is nothing here. WSL-48,
+      issue 25, and it is the same defect class as issue 10: a refusal rendered
+      as a successful empty result.
+
+      ⚠ A machine with genuinely no distributions is a real answer and stays
+      an empty list. The two are separated by the EXIT CODE and what came back
+      on stderr, not by the emptiness of the output.
+    #>
     $wsl  = Get-WslExe
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    try { $raw = & $wsl --list --quiet 2>$null } finally { $ErrorActionPreference = $prev }
-    if (-not $raw) { return @() }
+    try {
+        $err = $null
+        $raw = & $wsl --list --quiet 2>&1 |
+            ForEach-Object {
+                if ($_ -is [Management.Automation.ErrorRecord]) { $err = "$($err)$($_.ToString())"; }
+                else { $_ }
+            }
+        $code = $LASTEXITCODE
+    }
+    finally { $ErrorActionPreference = $prev }
+
+    return (Resolve-DistroListing -ExitCode $code -Lines @($raw) -ErrorText $err)
+}
+
+function Resolve-DistroListing {
+    <#
+      The DECISION half of Get-WslDistroNames, separated so it can be proved
+      without WSL.
+
+      ⭐ A PURE FUNCTION OF THREE FACTS: the child's exit code, what it wrote,
+      and what it wrote to stderr. It is split out because the defect lives
+      entirely in the decision and not in the process call, and a case for it
+      would otherwise need a fake wsl.exe on disk.
+
+      ⛔ AN EMPTY LIST AND A REFUSAL ARE DIFFERENT ANSWERS. `2>$null` discarded
+      the reason and `-not $raw` folded them together, so a process WSL refuses
+      was told the machine had no distributions and the caller exited 0.
+      WSL-48, issue 25.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][int]$ExitCode,
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][AllowNull()][object[]]$Lines,
+        [AllowEmptyString()][AllowNull()][string]$ErrorText = ''
+    )
+    if ($ExitCode -ne 0) {
+        $why = ("$ErrorText" -replace "`0", '').Trim()
+        if (-not $why) { $why = "it exited $ExitCode and said nothing" }
+        throw "could not list the distributions on this machine: $why"
+    }
     $names = @()
-    foreach ($line in $raw) {
+    foreach ($line in @($Lines)) {
         # Belt and braces: strip NULs in case WSL_UTF8 is unsupported on this build.
-        $clean = ($line -replace "`0", '').Trim()
+        $clean = ("$line" -replace "`0", '').Trim()
         if ($clean) { $names += $clean }
     }
+    # ⚠ A MACHINE WITH NO DISTRIBUTIONS IS A REAL ANSWER and stays an empty
+    # list. Only the exit code separates it from a refusal.
     return $names
 }
 

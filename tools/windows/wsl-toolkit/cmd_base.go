@@ -24,6 +24,8 @@ const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|presets
   --json        a structured answer
   --probe       status runs a real container to find out. Off by default
   --root        shell attaches as root instead
+  --here        shell starts in this Windows directory, mounted under /mnt.
+                Without it a shell starts in the guest account's home
   --yes         do not ask before removing
 `
 
@@ -37,6 +39,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	probe := fs.Bool("probe", false, "run a real container to decide whether the base is usable")
 	asRoot := fs.Bool("root", false, "attach as root")
+	here := fs.Bool("here", false, "base shell starts in this Windows directory instead of the guest account's home")
 	yes := fs.Bool("yes", false, "do not ask before removing")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
 	preset := fs.String("preset", "", "build from this preset id or fully qualified reference")
@@ -152,8 +155,36 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		if !exists {
 			return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
 		}
+		shellArgs := []string{"-d", cfg.Base.Name, "-u", user}
+		if *here {
+			// ⚠ EXPLICIT, AND IT SAYS WHAT IT DID. `wsl.exe` inherits the
+			// caller's Windows working directory, so this is the OLD default
+			// under a flag rather than a new capability.
+			note("starting in this Windows directory, mounted under /mnt")
+		} else {
+			// ⛔ THE MANUAL SAID ROOT WAS "INSIDE THE DISTRIBUTION" AND "NOT ON
+			// THIS MACHINE", and `wsl.exe -d NAME -u USER` inherits the caller's
+			// Windows directory, mounted WRITABLE under /mnt/c. A reporter
+			// opened a root shell from a checkout, ran `test -w .`, and got
+			// zero. Nothing escaped and nothing was overwritten; the manual
+			// promised one thing and the binary did another, which is the whole
+			// of WSL-47, issue 21. `--cd ~` starts in the guest account's home.
+			shellArgs = append(shellArgs, "--cd", "~")
+		}
 		note("attaching to " + cfg.Base.Name + " as " + user + ". Leave with exit or Ctrl-D")
-		return toolkit.RunForeground(ctx, w.Path, []string{"-d", cfg.Base.Name, "-u", user})
+		if *asRoot {
+			// ⭐ THE WARNING NAMES WHAT IS ACTUALLY REACHABLE, rather than
+			// asserting an isolation this shell does not have. Every Windows
+			// drive WSL has mounted is writable from here whatever directory the
+			// shell starts in, and saying so is the honest version of the
+			// sentence the manual used to carry.
+			if drives := toolkit.MountedWindowsDrives(ctx, w, cfg.Base.Name); len(drives) > 0 {
+				note("root here is root INSIDE " + cfg.Base.Name + " and not on this machine, AND these Windows drives are mounted and writable: " + strings.Join(drives, " "))
+			} else {
+				note("root here is root INSIDE " + cfg.Base.Name + " and not on this machine. No Windows drive is mounted")
+			}
+		}
+		return toolkit.RunForeground(ctx, w.Path, shellArgs)
 
 	default:
 		fmt.Fprint(os.Stderr, baseUsage)

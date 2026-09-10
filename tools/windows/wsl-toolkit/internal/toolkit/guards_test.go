@@ -129,8 +129,13 @@ func TestALinkInAnArchiveBecomesANoteRatherThanALink(t *testing.T) {
 		dest := t.TempDir()
 		var buf bytes.Buffer
 		tw := tar.NewWriter(&buf)
+		// ⚠ THE TARGET IS AN INTERNAL ONE, and it used to be `/etc`. WSL-47
+		// made a link out of the tree a REFUSAL, which is a different property
+		// with its own case; this one is about what happens to a link that is
+		// allowed through, and using an escaping target here would have made it
+		// assert the refusal by accident.
 		if err := tw.WriteHeader(&tar.Header{
-			Name: "escape", Typeflag: kind.flag, Linkname: "/etc", Mode: 0o777, ModTime: time.Now(),
+			Name: "escape", Typeflag: kind.flag, Linkname: "sibling.txt", Mode: 0o777, ModTime: time.Now(),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +152,7 @@ func TestALinkInAnArchiveBecomesANoteRatherThanALink(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s link: it was neither created nor recorded: %v", kind.name, err)
 		}
-		if !strings.Contains(string(note), "/etc") {
+		if !strings.Contains(string(note), "sibling.txt") {
 			t.Fatalf("%s link: the note does not say where it pointed: %q", kind.name, note)
 		}
 	}
@@ -196,7 +201,15 @@ func TestAnAbsoluteLinkTargetIsNotJoinedOntoTheLinksOwnDirectory(t *testing.T) {
 	}
 }
 
-func TestAWorkspaceSymlinkPointingOutOfTheTreeIsRefused(t *testing.T) {
+// TestAWorkspaceSymlinkPointingOutOfTheTreeIsLeftOutAndNamed
+//
+// ⛔ IT USED TO REFUSE, AND THE OUTCOME CHANGED ON PURPOSE. WSL-47 ruled the
+// asymmetry: a caller CHOOSES what it puts in /out, so a refusal there is
+// actionable, while a caller often does not control every entry under a
+// workspace it points at, and failing the job over one stray link makes the
+// feature unusable. The link is still NOT PACKED, which is the safety property;
+// what changed is that the caller is told rather than stopped.
+func TestAWorkspaceSymlinkPointingOutOfTheTreeIsLeftOutAndNamed(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// Creating a symlink on Windows needs either developer mode or an
 		// elevated process, and this asserts a property of the packer rather
@@ -212,12 +225,99 @@ func TestAWorkspaceSymlinkPointingOutOfTheTreeIsRefused(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "secret"), filepath.Join(root, "leak")); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := writeWorkspaceTar(io.Discard, root, DefaultWorkspaceLimits(), nil)
-	if err == nil {
-		t.Fatal("a workspace link pointing out of the tree was packed")
+	if err := os.WriteFile(filepath.Join(root, "real.txt"), []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if !errors.Is(err, ErrWorkspaceRefused) {
-		t.Fatalf("the refusal does not wrap ErrWorkspaceRefused: %v", err)
+	var buf bytes.Buffer
+	up, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), nil)
+	if err != nil {
+		t.Fatalf("one stray link failed the whole upload: %v", err)
+	}
+	if up.Omitted != 1 {
+		t.Fatalf("omitted %d entries, want 1", up.Omitted)
+	}
+	if len(up.Omission) != 1 || up.Omission[0].Path != "leak" {
+		t.Fatalf("the omission does not name the entry: %+v", up.Omission)
+	}
+	if !strings.Contains(up.Omission[0].Reason, "outside the workspace") {
+		t.Fatalf("the omission does not say why: %q", up.Omission[0].Reason)
+	}
+	// ⛔ AND IT IS STILL NOT IN THE ARCHIVE. Naming it is the new half; leaving
+	// it out is the half that was always right.
+	tr := tar.NewReader(&buf)
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if hdr.Name == "leak" {
+			t.Fatal("the link that leaves the tree was packed")
+		}
+	}
+	if up.Entries != 1 {
+		t.Fatalf("counted %d entries, and one real file was packed", up.Entries)
+	}
+}
+
+// TestAnArchiveLinkThatLeavesTheTreeIsRefused is the other half of the same
+// ruling, from the artifact side. It was silently converted to an inert
+// `x.link.txt` beside exit 0, so a caller could not tell its deliverables were
+// incomplete. WSL-47, issue 21.
+func TestAnArchiveLinkThatLeavesTheTreeIsRefused(t *testing.T) {
+	refused := map[string]string{
+		"/etc/passwd":      "an absolute target stands alone",
+		"../../etc/shadow": "a relative target that climbs out",
+		"..":               "the parent itself",
+		`C:\Windows`:       "a drive letter names another volume",
+	}
+	for target, why := range refused {
+		dest := t.TempDir()
+		var buf bytes.Buffer
+		tw := tar.NewWriter(&buf)
+		if err := tw.WriteHeader(&tar.Header{
+			Name: "escape", Typeflag: tar.TypeSymlink, Linkname: target, Mode: 0o777, ModTime: time.Now(),
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if err := tw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		_, err := extractInto(&buf, dest, DefaultWorkspaceLimits())
+		if err == nil {
+			t.Errorf("a link to %q was accepted: %s", target, why)
+			continue
+		}
+		if !errors.Is(err, ErrWorkspaceRefused) {
+			t.Errorf("refusing %q does not wrap ErrWorkspaceRefused: %v", target, err)
+		}
+		// ⛔ AND NOTHING WAS WRITTEN FOR IT. A refusal that still left the
+		// sidecar behind would be the transformation under another name.
+		if _, err := os.Stat(filepath.Join(dest, "escape.link.txt")); err == nil {
+			t.Errorf("a link to %q was refused AND recorded", target)
+		}
+	}
+
+	// ⚠ AND A LINK THAT STAYS INSIDE IS STILL RECORDED. A rule that widened to
+	// refuse every link would break the case the sidecar exists for.
+	dest := t.TempDir()
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "sub/inner", Typeflag: tar.TypeSymlink, Linkname: "../real.txt", Mode: 0o777, ModTime: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := extractInto(&buf, dest, DefaultWorkspaceLimits()); err != nil {
+		t.Fatalf("a link that stays inside the tree was refused: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, "sub", "inner.link.txt")); err != nil {
+		t.Fatalf("a link that stays inside was neither created nor recorded: %v", err)
 	}
 }
 

@@ -336,20 +336,40 @@ try {
         (($r.Code -eq 0) -and ($before -eq $after) -and ($kept -eq 'PRECIOUS') -and ($r.Out.Trim() -eq '0')).ToString()
     }
 
-    Test-Case 'a hostile artifact name is refused rather than written outside' 'True' {
+    # WSL-47, issue 21. The container writes a real file AND a link out of the
+    # tree. It used to be converted to an inert escape.link.txt beside exit 0,
+    # so a caller could not tell its deliverables were incomplete; the manual
+    # promised a refusal the whole time.
+    Test-Case 'an artifact link that leaves the tree fails the job' 'True' {
         $art = Join-Path $script:Scratch 'art-hostile'
         $sentinel = Join-Path $script:Scratch 'ESCAPED.txt'
         if (Test-Path -LiteralPath $sentinel) { Remove-Item -LiteralPath $sentinel -Force }
-        # The container writes a real file AND asks tar to carry a name that
-        # climbs out. The tool packs /out itself, so the escape is attempted
-        # through a link, which the extractor records rather than follows.
-        $r = Invoke-Tool @('run', '--image', 'alpine', '--artifacts', $art,
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--artifacts', $art, '--json',
             '-c', 'printf ok > /out/fine.txt; ln -s /etc/hostname /out/escape')
+        $d = Read-ToolJson -Stdout $r.Out -What 'run --json'
         $escaped = Test-Path -LiteralPath $sentinel
-        $recorded = Test-Path -LiteralPath (Join-Path $art 'escape.link.txt')
-        $isLink = $false
-        if (Test-Path -LiteralPath (Join-Path $art 'escape')) { $isLink = $true }
-        (($r.Code -eq 0) -and (-not $escaped) -and $recorded -and (-not $isLink)).ToString()
+        $isLink = Test-Path -LiteralPath (Join-Path $art 'escape')
+        $converted = Test-Path -LiteralPath (Join-Path $art 'escape.link.txt')
+        $said = ($d.artifact_error -match 'absolute path')
+        # v1.3.0 exited 0 here and wrote escape.link.txt.
+        (($r.Code -eq 1) -and $said -and (-not $escaped) -and (-not $isLink) -and (-not $converted) -and
+         ($d.effective_exit -eq 1) -and ($d.retained_kind -eq 'guest')).ToString()
+    }
+
+    # AND A LINK THAT STAYS INSIDE IS STILL DELIVERED AS A NOTE. A rule that
+    # widened to refuse every link would break the case the sidecar exists for,
+    # and a case that only drove the refusal would not notice.
+    Test-Case 'an artifact link that stays inside the tree is recorded, not refused' 'True' {
+        $art = Join-Path $script:Scratch 'art-internal-link'
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--artifacts', $art,
+            '-c', 'printf real > /out/real.txt; ln -s real.txt /out/alias')
+        if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
+        $note = Join-Path $art 'alias.link.txt'
+        $recorded = Test-Path -LiteralPath $note
+        $isLink = Test-Path -LiteralPath (Join-Path $art 'alias')
+        $names = $false
+        if ($recorded) { $names = ([IO.File]::ReadAllText($note) -match 'real\.txt') }
+        ($recorded -and $names -and (-not $isLink)).ToString()
     }
 
     Test-Case 'a workspace over its ceiling is refused rather than truncated' 'True' {
@@ -778,6 +798,38 @@ try {
         finally { $null = Invoke-Tool @('--home', $h, 'helper', 'stop') }
     }
 
+    # WSL-47, issue 26. A Windows junction pointing outside a workspace was
+    # skipped by the walker and the job exited 0 having never seen it, so a
+    # build ran against a tree missing something and reported on it as the real
+    # one. It is COUNTED and NAMED rather than refused: a junction somewhere in
+    # a large tree is a normal thing to have.
+    Test-Case 'a junction in a workspace is left out, counted and named' 'True' {
+        $ws = Join-Path $script:Scratch 'ws-junction'
+        $outside = Join-Path $script:Scratch 'outside-target'
+        $null = New-Item -ItemType Directory -Path $ws -Force
+        $null = New-Item -ItemType Directory -Path $outside -Force
+        [IO.File]::WriteAllText((Join-Path $outside 'secret.txt'), 'ELSEWHERE')
+        [IO.File]::WriteAllText((Join-Path $ws 'real.txt'), 'CARRIED')
+        # mklink /J needs no privilege, unlike a symlink, which is why the
+        # reporter could make one and could not make the other.
+        $mk = Start-Process -FilePath $env:ComSpec -ArgumentList @('/d', '/s', '/c',
+            ('mklink /J "{0}" "{1}"' -f (Join-Path $ws 'link'), $outside)) `
+            -Wait -PassThru -WindowStyle Hidden
+        if ($mk.ExitCode -ne 0) { return 'this host would not create a junction, so this case proved nothing' }
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '--workspace', $ws,
+            '-c', 'ls -A /work | while read -r n; do printf "[%s]" "$n"; done')
+        if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
+        $d = Read-ToolJson -Stdout $r.Out -What 'run --json'
+        $named = $false
+        if ($d.PSObject.Properties.Name -contains 'workspace_omission') {
+            $named = (@($d.workspace_omission | Where-Object { $_.path -eq 'link' }).Count -eq 1)
+        }
+        $carried = ($d.stdout -match 'real\.txt')
+        $didNotTravel = ($d.stdout -notmatch 'link')
+        # v1.3.0 answered omitted 0 and said nothing at all.
+        (($d.workspace_omitted -eq 1) -and $named -and $carried -and $didNotTravel).ToString()
+    }
+
     # -- what this tool owns, and how it proves it ---------------------------
     # WSL-42, issues 16 and 18. WSL-43 and WSL-51 are the same ruling read from
     # the other two sides.
@@ -948,6 +1000,70 @@ try {
         }
     }
 
+    # -- one command to readiness, and the one that moves off this version ---
+    # WSL-49 and WSL-53.
+
+    Test-Case 'ready proves the whole path with one command and one object' 'True' {
+        $r = Invoke-Tool @('ready', '--smoke', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'ready --json'
+        if ($r.Code -ne 0) { return "ready exited $($r.Code): verdict $($d.verdict), problems $((@($d.problems) -join '; '))" }
+        # Six facts, and the case asserts each rather than the verdict alone: a
+        # verdict computed from six booleans is satisfied by a bug in the
+        # computation as easily as by a machine that works.
+        $s = $d.smoke
+        $facts = @(
+            $s.ran, ($s.uid -ne ''), ($s.kernel -ne ''),
+            $s.work_writable, $s.artifact_returned, $s.transcript_readable, $s.no_host_mount)
+        if (@($facts | Where-Object { -not $_ }).Count -gt 0) { return "smoke: $($s | ConvertTo-Json -Compress)" }
+        (($d.ready -eq $true) -and ($d.verdict -eq 'ready') -and
+         ($d.route.selected -eq 'direct') -and ($d.base.healthy -eq $true) -and
+         ($d.base.identified -eq $true) -and ($d.catalog -ge 3)).ToString()
+    }
+
+    # A READINESS CHECK THAT BUILDS A DISTRIBUTION HAS CHANGED THE THING IT
+    # WAS ASKED TO MEASURE. Without --ensure it reports and creates nothing, and
+    # a second run is a fast no-op.
+    Test-Case 'ready reports without building, and rerunning it changes nothing' 'True' -MaxSeconds 90 {
+        $before = Read-ToolJson -Stdout (Invoke-Tool @('resources', '--json')).Out -What 'resources'
+        $a = Read-ToolJson -Stdout (Invoke-Tool @('ready', '--json')).Out -What 'ready --json'
+        $b = Read-ToolJson -Stdout (Invoke-Tool @('ready', '--json')).Out -What 'ready --json'
+        $after = Read-ToolJson -Stdout (Invoke-Tool @('resources', '--json')).Out -What 'resources'
+        $jobsBefore = @($before.owned.guest_jobs | Where-Object { $_ }).Count
+        $jobsAfter = @($after.owned.guest_jobs | Where-Object { $_ }).Count
+        (($a.verdict -eq $b.verdict) -and ($a.config.fingerprint -eq $b.config.fingerprint) -and
+         ($jobsBefore -eq $jobsAfter)).ToString()
+    }
+
+    # An instance with no base is the first-run case, and the one an agent
+    # actually meets.
+    #
+    # NOTE: an instance and NOT a bare --home. A fresh --home moves the STATE and
+    # leaves the distribution at the default, which is registered here, so that
+    # spelling answers `ready` and proves nothing. The first draft of this case
+    # did exactly that and passed for the wrong reason until it was run.
+    Test-Case 'ready answers for an instance whose base does not exist yet' 'True' {
+        $r = Invoke-Tool @('--instance', 'nobase', 'ready', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'ready --json'
+        # What matters is that it ANSWERED, and named one exact command rather
+        # than a subsystem.
+        (($r.Code -eq 1) -and ($d.ready -eq $false) -and ($d.verdict -eq 'no-base') -and
+         ($d.base.name -eq 'wsl-toolkit-nobase') -and
+         (@($d.remediation).Count -ge 1) -and (@($d.remediation)[0] -match 'base ensure')).ToString()
+    }
+
+    Test-Case 'selfupdate --check names the running version and changes nothing' 'True' {
+        $before = (Get-FileHash -LiteralPath $script:Binary -Algorithm SHA256).Hash
+        $r = Invoke-Tool @('selfupdate', '--check', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'selfupdate --check --json'
+        $after = (Get-FileHash -LiteralPath $script:Binary -Algorithm SHA256).Hash
+        $version = (Invoke-Tool @('version')).Out.Trim()
+        # 0 current, 1 a newer release exists, 2 the question could not be asked.
+        # All three are correct answers here; what is asserted is that it said
+        # which, named the running version, and did not touch the executable.
+        (($r.Code -in @(0, 1, 2)) -and ($d.checked_only -eq $true) -and
+         ($d.running -eq $version) -and ($before -eq $after)).ToString()
+    }
+
     # -- cleanup, counted rather than remembered -----------------------------
     Test-Case 'cleanup removes what this tool made and the counts return to zero' 'True' {
         $g = Invoke-Tool @('gc', '--apply', '--json')
@@ -999,7 +1115,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 47 } else { 49 }
+$expected = if ($Quick) { 53 } else { 55 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

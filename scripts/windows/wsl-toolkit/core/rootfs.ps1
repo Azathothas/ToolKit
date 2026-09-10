@@ -71,14 +71,32 @@ function Get-EnginePlatform {
     $archField = '{{.Host.Arch}}'
     if ($Engine.Name -eq 'docker') { $archField = '{{.Architecture}}' }
 
+    # ⛔ THREE OUTCOMES, NOT ONE. Every failure used to be reported as
+    # "installed but not responding", so a probe that threw for its OWN reasons
+    # was credited to the engine: a reporter saw a working podman described as
+    # not responding while the released binary was using that same podman
+    # successfully. WSL-48, issue 27. The child's exit code and output are what
+    # decide, and a failure that never reached the child says so.
     $rawArch = ''
+    $ran = $false
     try {
-        $probe = Invoke-Native -FilePath $Engine.Path -Arguments @('info', '--format', $archField)
+        $probe = Invoke-Native -FilePath $Engine.Path -Arguments @('info', '--format', $archField) -IgnoreExitCode
+        $ran = $true
+        $code = $LASTEXITCODE
+        $text = (@($probe) | Out-String).Trim()
+        if ($code -ne 0) {
+            throw ("$($Engine.Name) answered exit $code to 'info'. If you use podman on Windows, " +
+                   "start its VM with:  podman machine start`nIt said: $text")
+        }
         if ($probe) { $rawArch = ($probe | Select-Object -Last 1).ToString().Trim() }
     }
     catch {
-        throw ("$($Engine.Name) is installed but not responding. If you use podman on Windows, " +
-               "start its VM with:  podman machine start`nUnderlying error: $($_.Exception.Message)")
+        if ($ran) { throw }
+        # ⛔ THE PROBE ITSELF FAILED, and blaming the engine for that is the
+        # defect. The message names which of the two it is.
+        throw ("could not ask $($Engine.Name) at $($Engine.Path) what architecture this host is; " +
+               "the engine was never reached, so this says nothing about whether it works." +
+               "`nUnderlying error: $($_.Exception.Message)")
     }
 
     # Refusing here rather than pulling unqualified. An unqualified pull takes

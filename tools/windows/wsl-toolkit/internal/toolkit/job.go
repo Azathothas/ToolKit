@@ -178,6 +178,17 @@ type JobResult struct {
 	TimedOut     bool   `json:"timed_out"`
 	Unreached    bool   `json:"unreached"`
 	Transcript   string `json:"transcript,omitempty"`
+	// WorkspaceOmitted is how many entries the upload LEFT OUT, and
+	// WorkspaceOmission names the first few with the reason.
+	//
+	// ⛔ AN INCOMPLETE INPUT IS A FACT A CALLER NEEDS. A Windows junction
+	// pointing outside a workspace was skipped in silence and the job exited 0
+	// having never seen it, so a build ran against a tree that was missing
+	// something and reported on it as the real one. WSL-47, issue 26. It is
+	// counted rather than refused: a junction somewhere in a large tree is a
+	// normal thing to have.
+	WorkspaceOmitted  int                 `json:"workspace_omitted,omitempty"`
+	WorkspaceOmission []WorkspaceOmission `json:"workspace_omission,omitempty"`
 	// EffectiveExit is what THIS PROCESS returns for this job, which is not
 	// always the container's own code.
 	//
@@ -498,7 +509,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			return res
 		}
 	case spec.Workspace != "":
-		if _, _, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, user, guestWork, spec.Workspace, limits, spec.Excludes, r.log); err != nil {
+		up, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, user, guestWork, spec.Workspace, limits, spec.Excludes, r.log)
+		// ⛔ RECORDED BEFORE THE ERROR IS READ. A partial upload that then
+		// failed still left entries out, and a caller reading the result of a
+		// failed job is exactly who wants to know which ones.
+		res.WorkspaceOmitted, res.WorkspaceOmission = up.Omitted, up.Omission
+		if err != nil {
 			res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 			return res
 		}

@@ -42,6 +42,8 @@ payload on stdin or as a file, and never as an argument.
 | `logs` | the complete output a job produced, past whatever its answer kept |
 | `helper` | the opt-in local helper, for a caller that cannot reach `wsl.exe` |
 | `config` | where the configuration is and what it says |
+| `ready` | one answer to whether this agent can run isolated Linux jobs here, and the one command that fixes it if not |
+| `selfupdate` | move this executable to a published release, verifying it against `SHA256SUMS` first |
 | `version` | the product version, read from the embedded script |
 
 Global flags: `--instance NAME` (also `WSL_TOOLKIT_INSTANCE`), `--home DIR`
@@ -159,6 +161,17 @@ passed, so a distribution built from Arch was relabelled Alpine because an Alpin
 CONTAINER ran inside it. The probe proves the engine works and identifies
 nothing.
 
+⭐ **A shell starts in the guest account's home**, `/home/toolkit`, and
+`--here` is how a caller asks for the Windows directory it was launched from.
+⚠ It USED to start there by default: `wsl.exe -d NAME -u USER` inherits the
+caller's working directory, mounted WRITABLE under `/mnt/c`, so a root shell
+opened from a checkout could write to that checkout. The manual said root was
+"inside the distribution" and "not on this machine", which read as the opposite.
+
+⛔ **A Windows drive WSL has mounted is writable from that shell whatever
+directory it starts in**, and `--root` now names the drives rather than implying
+an isolation the shell does not have.
+
 ⭐ **`base ensure` is the recovery path as well as the create path.** A
 registered distribution that cannot run a container is re-provisioned in place;
 one that will not provision is removed and rebuilt. `base recreate` starts from
@@ -174,7 +187,8 @@ says the check was not made rather than implying it passed.
 | `--probe` | run a real container to decide whether the base is usable |
 | `--preset` | build from this preset id or fully qualified reference |
 | `--save` | make that choice the stored default |
-| `--root` | `base shell` attaches as root instead of the `toolkit` account. ⚠ It is inside the distribution this tool owns, so it is root THERE and not on this machine, but it can break the base. |
+| `--root` | `base shell` attaches as root instead of the `toolkit` account. It is root INSIDE the distribution and not on this machine, and the command prints which Windows drives are mounted and writable from it. |
+| `--here` | `base shell` starts in this Windows directory, mounted under `/mnt`, instead of the guest account's home |
 | `--yes` | `base remove` does not ask first |
 | `--json` | a structured answer |
 | `--via-helper` | force the local helper route |
@@ -227,6 +241,28 @@ one checking. Refused by name: an absolute path, a name containing `..`, a link
 leaving the tree, a Windows reserved device name, any of `< > : " | ? *`, a
 control character, a trailing dot or space, and a second entry whose name differs
 from an earlier one only in case.
+
+⭐ **A LINK OUT AND A LINK IN ARE HANDLED DIFFERENTLY, ON PURPOSE.** A caller
+CHOOSES what it puts in `/out`, so a refusal there is actionable; a caller often
+does not control every entry under a workspace it points at, so failing a job
+over one stray link would make the workspace feature unusable.
+
+| the entry | what happens |
+| --- | --- |
+| an artifact link whose target leaves the tree | ⛔ REFUSED, and the job fails |
+| an artifact link that stays inside the tree | recorded as a `.link.txt`, never recreated |
+| a workspace link whose target leaves the tree | left out, COUNTED, and named in `workspace_omission` |
+| a Windows junction in a workspace | the same: left out, counted and named |
+
+⚠ **Both halves used to be silent.** An escaping artifact link was converted to
+an inert `escape.link.txt` and the job exited 0; a junction was skipped by the
+walker and the job exited 0 having never seen it. Neither was a traversal hole
+and nothing was ever overwritten. The defect was that a caller could not tell its
+input or its deliverables were incomplete, which is the same class as a
+truncation nobody is told about.
+
+⚠ **`workspace_omitted` is an exact count and `workspace_omission` is the first
+twenty**, so a tree full of links does not put thousands of rows in an answer.
 
 ⚠ **The colon and the case rule are about data loss, not escape.**
 `out.txt:stream` is valid NTFS syntax naming an alternate data stream, so it
@@ -609,6 +645,126 @@ is that `%LOCALAPPDATA%` is that user's own directory.
 
 ---
 
+## `ready`
+
+```powershell
+wsl-toolkit ready
+wsl-toolkit ready --json
+wsl-toolkit ready --smoke --ensure
+```
+
+⭐ **One answer to "can this agent run isolated Linux jobs here, and if not,
+what is the one command that fixes it".** Everything it reports is something
+`doctor`, `helper status`, `base status --probe`, `run` and `logs` already
+answered; what was missing was a command that runs them in order and reports one
+verdict.
+
+| flag | meaning |
+| --- | --- |
+| `--smoke` | run one tiny container proving the whole path end to end |
+| `--ensure` | build or repair the base if it is not usable |
+| `--no-update` | do not ask whether a newer release exists |
+| `--json` | one stable object |
+
+⛔ **`--ensure` is OFF by default, and that is deliberate.** A readiness check
+that builds a distribution has changed the thing it was asked to measure, and a
+first run that silently spent four minutes pulling a rootfs is not an answer.
+
+⛔ **It never stops at the first problem.** An agent that learns three things are
+wrong in one pass fixes them in one pass, so every part runs and `problems`
+carries all of them.
+
+⛔ **When it cannot proceed it names ONE exact command and does not pretend it
+can self-elevate.** A restricted process that cannot start a helper says so and
+prints the approval command, which is the whole reason the helper exists.
+`remediation[0]` is the command to run now.
+
+### What `--smoke` proves
+
+Six facts, one container, and each is a separate line so a partial answer says
+which one was missing:
+
+| fact | why it is in the list |
+| --- | --- |
+| a uid | the container ran at all |
+| a kernel release | it reached the WSL kernel rather than something emulated |
+| `/work` is writable | a job can build |
+| an artifact came back from `/out` | a job can deliver |
+| the transcript reads back | `wsl-toolkit logs` will find it |
+| no host mount | ⛔ ASKED, not inferred from what was left off the command line |
+
+⚠ **The last one is a question rather than an assumption.** A header asserting a
+property the command line does not enforce is a claim that can simply be false,
+so the container is asked whether `/mnt/c` exists rather than being trusted not
+to have one.
+
+### The verdict
+
+| `verdict` | what it means |
+| --- | --- |
+| `ready` | a job can run here now |
+| `no-route` | this process cannot call `wsl.exe` and no helper is listening |
+| `no-base` | the route works and the distribution is not usable |
+| `not-ready` | something else is wrong, and `problems` says what |
+
+Exit 0 when ready, 1 otherwise.
+
+---
+
+## `selfupdate`
+
+```powershell
+wsl-toolkit selfupdate --check
+wsl-toolkit selfupdate
+wsl-toolkit selfupdate --tag wsl-toolkit-v2.0.0
+```
+
+⭐ **It resolves the newest release, verifies the download against the published
+`SHA256SUMS`, and replaces this executable.** A consumer that fetched this binary
+had no other way off it than knowing the URL scheme, resolving the latest tag,
+picking the asset for its architecture and checking a digest by hand.
+
+| flag | meaning |
+| --- | --- |
+| `--check` | report whether a newer release exists and change nothing |
+| `--tag` | a specific `wsl-toolkit-vX.Y.Z`, so a caller can move DOWN as well as up |
+| `--json` | a structured answer |
+
+⛔ **A digest that does not match is a refusal and the running executable is
+untouched.** Nothing is replaced before the replacement has been verified.
+
+⛔ **It reads no credential.** The release assets are public, so the fetch is
+anonymous and a `GITHUB_TOKEN` in the environment is deliberately not read.
+
+⛔ **Nothing updates without being asked.** `ready` reports; this acts. An
+auto-updater changes the binary under a running pipeline, which is the one thing
+an agent cannot recover from.
+
+⚠ **The previous executable is renamed aside, not deleted.** Windows will not
+let a running program delete itself, so the old copy becomes
+`.wsl-toolkit-previous-<version>.exe` beside the new one and the NEXT run removes
+it.
+
+`--check` exits 0 when this executable is current, 1 when a newer release exists,
+and 2 when the question could not be asked. ⛔ A network that could not be
+reached is not "up to date": answering 0 there would make a pipeline that gates
+on this stop updating the day GitHub was unreachable.
+
+### What `ready` says about it
+
+`ready` carries an `update` section, and it is a section rather than a separate
+command because an agent asking "am I ready" wants the same answer.
+
+⛔ **A network that cannot be reached is NOT a machine that is not ready.** The
+check is bounded at eight seconds and its failure is reported as
+`update.checked: false` with a reason; a tool that refused to run isolated Linux
+jobs because GitHub was down would have invented a dependency it does not have.
+
+⚠ **`update.checked` is always present**, so a caller reading
+`update.available` can tell "there is no newer release" from "nobody looked".
+
+---
+
 ## Instances: several agents on one machine
 
 ```powershell
@@ -723,7 +879,8 @@ the same release as the asset.
 | --- | --- |
 | ⛔ a job's stdin is not the caller's | the command travels as a file, so nothing reads this process's stdin. An interactive container is `base shell` plus `podman run -it` inside it. |
 | ⚠ the fleet's rows share one utility VM | memory and disk are one machine's |
-| ⚠ a link in an artifact set is recorded, not recreated | a `.link.txt` beside where it would have been, whose own name goes through the same collision check |
+| ⚠ a link in an artifact set is recorded, not recreated | a `.link.txt` beside where it would have been, whose own name goes through the same collision check. One whose target LEAVES the tree is refused instead. |
+| ⚠ a junction in a workspace does not travel | it is left out, counted and named, rather than refused or dropped in silence |
 | ⚠ an artifact name a Windows path cannot hold is refused | including `< > : " | ? *`, a trailing dot or space, and a case-only duplicate. Rename it in the container. |
 | ⚠ a fleet does not forward each row's own output live | twelve containers interleaved on one stream is unreadable. Rows are announced as they finish and each row's complete text is in its transcript. |
 | ⚠ `base status` without `--probe` cannot say a base is usable | running a container is the only thing that answers it |

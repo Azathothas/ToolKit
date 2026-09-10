@@ -153,7 +153,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 				r.log("could not close the staging record: " + err.Error())
 			}
 		}()
-		if _, _, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, r.cfg.Base.User, staged, spec.Workspace, limits, spec.Excludes, r.log); err != nil {
+		if _, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, r.cfg.Base.User, staged, spec.Workspace, limits, spec.Excludes, r.log); err != nil {
 			return report, err
 		}
 	}

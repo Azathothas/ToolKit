@@ -64,6 +64,8 @@ func TestManualNamesEveryFlag(t *testing.T) {
 		func() { _, _ = cmdBase(ctx, []string{"ensure", "-h"}) },
 		func() { _, _ = cmdBase(ctx, []string{"status", "-h"}) },
 		func() { _, _ = cmdHelper(ctx, []string{"serve", "-h"}) },
+		func() { _, _ = cmdReady(ctx, []string{"-h"}) },
+		func() { _, _ = cmdSelfUpdate(ctx, []string{"-h"}) },
 	} {
 		call()
 	}

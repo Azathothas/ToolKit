@@ -628,7 +628,7 @@ func (h *HelperServer) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-tar")
-	if _, _, err := writeWorkspaceTar(w, dir, DefaultWorkspaceLimits(), nil); err != nil {
+	if _, err := writeWorkspaceTar(w, dir, DefaultWorkspaceLimits(), nil); err != nil {
 		h.log("streaming artifacts " + id + ": " + err.Error())
 	}
 }

@@ -62,7 +62,21 @@ function Invoke-ActionEnter {
 }
 
 function Invoke-ActionList {
-    $all  = @(Get-WslDistroNames)
+    <#
+      ⛔ A PARTIAL INVENTORY IS NEVER PRESENTED AS COMPLETE. This used to print
+      the protected names, print WSL's own access-denied line, omit every
+      distribution that exists, and exit 0. WSL-48, issue 25.
+
+      The enumeration throws now, and this catches it to say "could not list"
+      and exit nonzero rather than describing a machine it could not see.
+    #>
+    try { $all = @(Get-WslDistroNames) }
+    catch {
+        Write-Note "could not list the distributions on this machine, so nothing below would be complete."
+        Write-Note $_.Exception.Message
+        Write-Note "This process may be refused where wsl.exe itself works. Try the approval path this session offers."
+        exit 2
+    }
     $mine = @($all | Where-Object { $_.StartsWith($script:Prefix, [StringComparison]::Ordinal) })
     Write-Step "Ephemeral distros (prefix '$($script:Prefix)')"
     if ($mine.Count -eq 0) { Write-Host "  (none)" -ForegroundColor DarkGray }

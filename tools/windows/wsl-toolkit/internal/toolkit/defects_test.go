@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -1337,5 +1338,73 @@ func TestGuestHomeDoesNotCacheAFailure(t *testing.T) {
 	r.ForgetGuestHome()
 	if r.homeDir != "" {
 		t.Fatal("ForgetGuestHome left the remembered value in place, so a rebuilt base keeps the old answer")
+	}
+}
+
+// -- WSL-53: the tool updates itself, and readiness says whether it should ----
+
+// TestADigestThatIsNotPublishedIsAnError is the guard that stops verification
+// becoming optional. Falling back to "no digest published, carry on" would make
+// the whole check disappear the day SHA256SUMS changed shape, which is a check
+// reporting success over a failure.
+func TestADigestThatIsNotPublishedIsAnError(t *testing.T) {
+	const sums = "" +
+		"aaaa  wsl-toolkit.ps1\n" +
+		"bbbb *wsl-toolkit-windows-arm64.exe\n" +
+		"\n"
+	got, err := digestFor(sums, "wsl-toolkit-windows-arm64.exe")
+	if err != nil {
+		t.Fatalf("a name that IS published was not found: %v", err)
+	}
+	if got != "bbbb" {
+		// ⚠ The leading asterisk marks a binary and is not part of the name.
+		t.Fatalf("digest is %q, want bbbb with the binary marker stripped", got)
+	}
+	if _, err := digestFor(sums, "wsl-toolkit-windows-amd64.exe"); err == nil {
+		t.Fatal("a name SHA256SUMS does not carry was accepted, so nothing would have been verified")
+	}
+	if _, err := digestFor("", "anything"); err == nil {
+		t.Fatal("an empty SHA256SUMS was accepted")
+	}
+}
+
+// TestAnUpdateCheckThatCouldNotRunIsNotUpToDate pins the distinction that makes
+// the field readable: an absent answer and "no newer release" are different
+// facts, and a caller reading .update.available must not see the same value for
+// both.
+func TestAnUpdateCheckThatCouldNotRunIsNotUpToDate(t *testing.T) {
+	unreachable := UpdateStatus{Running: "1.0.0", Reason: "no network"}
+	if unreachable.Checked {
+		t.Fatal("a check that did not run reported that it did")
+	}
+	if unreachable.Available {
+		t.Fatal("a check that did not run reported an update, which would send a caller to download nothing")
+	}
+	current := UpdateStatus{Checked: true, Running: "2.0.0", Latest: "2.0.0"}
+	if current.Available {
+		t.Fatal("the newest release was reported as an update to itself")
+	}
+	newer := UpdateStatus{Checked: true, Running: "1.3.0", Latest: "2.0.0", Available: true, Command: "wsl-toolkit selfupdate"}
+	if !newer.Available || newer.Command == "" {
+		t.Fatal("an available update carries no command, so the answer is not actionable")
+	}
+}
+
+func TestTheAssetNameMatchesWhatIsPublished(t *testing.T) {
+	name := AssetName()
+	if !strings.HasPrefix(name, "wsl-toolkit-") || !strings.HasSuffix(name, ".exe") {
+		t.Fatalf("asset name %q is not the shape a release publishes", name)
+	}
+	// ⛔ THE SHAPE IS ASSERTED AGAINST THE RELEASE, not against itself. The
+	// published assets are wsl-toolkit-windows-amd64.exe and -arm64.exe, so a
+	// name built from GOOS and GOARCH has to produce one of those on the hosts
+	// this tool ships for.
+	if runtime.GOOS == "windows" {
+		switch runtime.GOARCH {
+		case "amd64", "arm64":
+			if name != "wsl-toolkit-windows-"+runtime.GOARCH+".exe" {
+				t.Fatalf("asset name %q would not be found in a release", name)
+			}
+		}
 	}
 }

@@ -265,3 +265,39 @@ func (w *Wsl) WriteIdentity(ctx context.Context, name string, id Identity) error
 	}
 	return nil
 }
+
+// MountedWindowsDrives lists the Windows drives WSL has mounted inside a
+// distribution, so a warning can name what is actually reachable.
+//
+// ⛔ ASKED, NOT ASSUMED. `/etc/wsl.conf` says automount is enabled, and which
+// drives that produces depends on what Windows has mounted at the moment the
+// distribution started. A warning built from the configuration would be a claim
+// about a property the command line does not enforce, which is the class
+// docs/conventions/forbidden-patterns.md names.
+//
+// ⚠ An empty answer means "none found", including the case where the question
+// could not be asked. The caller's message says "no drive is mounted", which is
+// weaker than the truth in that one case and never stronger.
+func MountedWindowsDrives(ctx context.Context, w *Wsl, distro string) []string {
+	if err := AssertOwnedDistro(distro); err != nil {
+		return nil
+	}
+	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	out := &boundedBuffer{max: 64 << 10}
+	code, err := w.ExecDirect(bounded, distro, "root", "",
+		[]string{"/bin/ls", "-1", "/mnt"}, nil, out, nil, 30*time.Second)
+	if err != nil || code != 0 {
+		return nil
+	}
+	var drives []string
+	for _, line := range strings.Split(out.String(), "\n") {
+		name := strings.TrimSpace(strings.Trim(line, "\r\x00"))
+		// A drive is one letter. /mnt also holds wsl, wslg and whatever else
+		// somebody put there, and none of those is a Windows volume.
+		if len(name) == 1 && name[0] >= 'a' && name[0] <= 'z' {
+			drives = append(drives, "/mnt/"+name)
+		}
+	}
+	return drives
+}

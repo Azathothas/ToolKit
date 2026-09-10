@@ -96,6 +96,7 @@ $Wanted = @(
     'Split-DelimitedArgument'
     'Get-ScriptArgPairs'
     'Assert-SinkPathIsUsable'
+    'Resolve-DistroListing'
 )
 
 $parseErrors = $null
@@ -840,6 +841,44 @@ Test-Case 'a guest with no stat is a different message from a directory somebody
     $t = Get-GuestUserEnvironmentPrelude
     ($t.Contains('stat cannot read') -and $t.Contains('belongs to uid')).ToString()
 }
+# -- WSL-48, issue 25: a refusal is not an empty machine ----------------------
+# The DECISION half of Get-WslDistroNames. It is split out for exactly this: the
+# defect lives entirely in what the three facts mean, and a case for it would
+# otherwise need a fake wsl.exe on disk.
+
+Test-Case 'a listing that was refused throws rather than answering an empty machine' 'True' {
+    $threw = $false
+    try { $null = Resolve-DistroListing -ExitCode 1 -Lines @() -ErrorText 'Wsl/EnumerateDistros/Service/E_ACCESSDENIED' }
+    catch { $threw = $_.Exception.Message.Contains('could not list') -and $_.Exception.Message.Contains('E_ACCESSDENIED') }
+    $threw.ToString()
+}
+
+# ⚠ -1 rather than 4294967295. wsl.exe reports a failure as a negative int
+# here, and the larger spelling does not bind to [int] at all, so a case using
+# it would have been asserting a parameter binding error rather than this rule.
+Test-Case 'a listing that was refused and said nothing still throws, naming the code' 'True' {
+    $threw = $false
+    try { $null = Resolve-DistroListing -ExitCode -1 -Lines @() -ErrorText '' }
+    catch { $threw = $_.Exception.Message.Contains('could not list') -and $_.Exception.Message.Contains('-1') }
+    $threw.ToString()
+}
+
+# A machine with genuinely no distributions is a REAL answer, and a rule that
+# widened to refuse it would break every fresh machine.
+Test-Case 'a machine with no distributions is an empty list and not a refusal' '0' {
+    ([string]@(Resolve-DistroListing -ExitCode 0 -Lines @() -ErrorText '').Count)
+}
+
+Test-Case 'the names come back trimmed and free of the NUL bytes wsl writes' 'Ubuntu|eph-one' {
+    (@(Resolve-DistroListing -ExitCode 0 -Lines @("Ubuntu`0", '  ', "eph-one `0") -ErrorText '') -join '|')
+}
+
+# ⛔ stderr ON A ZERO EXIT IS NOT A FAILURE. wsl.exe writes notices there, and a
+# rule keyed to "did it say anything on stderr" would refuse a working machine.
+Test-Case 'output on stderr beside a zero exit is not a refusal' '1' {
+    ([string]@(Resolve-DistroListing -ExitCode 0 -Lines @('Ubuntu') -ErrorText 'a notice').Count)
+}
+
 # -- report ------------------------------------------------------------------
 $failed = @($Results | Where-Object { -not $_.Pass })
 

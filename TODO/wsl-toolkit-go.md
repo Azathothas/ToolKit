@@ -1719,7 +1719,7 @@ that packs the archive itself.
 **Source** [Issue 21](https://github.com/Azathothas/ToolKit/issues/21) and
 [issue 26](https://github.com/Azathothas/ToolKit/issues/26), filed by a consumer
 agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
-**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl, **Priority** P1, **Effort** M, **Status** done
 
 ## Problem
 
@@ -1790,6 +1790,69 @@ internal links, escaping relative links, absolute links, hardlinks and Windows
 junctions, on both routes, each asserting the documented outcome rather than an
 exit code alone.
 
+## Closed 2026-09-10
+
+**The shell starts where the manual says it does.** `base shell` passes
+`--cd ~`, so it opens in the guest account's home; `--here` is the old
+behaviour under a flag. Measured on this host before the change:
+
+```text
+wsl -d wsl-toolkit -u toolkit --cd ~ -- /bin/pwd   ->  /home/toolkit
+wsl -d wsl-toolkit -u toolkit      -- /bin/pwd     ->  /mnt/c/<the caller directory>
+wsl -d wsl-toolkit -u root -- sh -c 'test -w . && echo WRITABLE'  ->  WRITABLE
+```
+
+⭐ **The root warning names the drives instead of asserting an isolation.**
+`MountedWindowsDrives` asks the guest what is under `/mnt` and the message lists
+what it found, because a warning built from `/etc/wsl.conf` would be a claim
+about a property the command line does not enforce.
+
+**Refuse on the way out, count on the way in**, as ruled.
+
+| the entry | before | now |
+| --- | --- | --- |
+| an artifact link leaving the tree | converted to `escape.link.txt`, job exits 0 | REFUSED, job exits 1 |
+| an artifact link staying inside | recorded as a note | unchanged |
+| a workspace link leaving the tree | REFUSED, whole job fails | left out, counted, named |
+| a Windows junction in a workspace | dropped in silence | left out, counted, named |
+
+⛔ **`assertLinkStaysInside` reasons in SLASHES, not in the host's separators.**
+The archive comes from a Linux guest, so `../../etc/passwd` and `/etc/passwd` are
+what a link says; `filepath` on Windows would treat a forward slash and a
+backslash alike and `path` would not, and the rule is about the ARCHIVE's own
+grammar rather than the checking machine's.
+
+⛔ **The junction was in the walker's `default` branch**, beside sockets and
+devices. Go reports one as irregular rather than as a symlink, so the branch
+above it never saw one. It is named now and the others are still silent, because
+a socket is not workspace content and a junction is.
+
+⚠ **`workspace_omitted` is exact and `workspace_omission` is the first twenty.**
+A tree full of links would otherwise put thousands of rows in an answer, and a
+list that silently held a prefix would be the same defect in miniature.
+
+```text
+  ok    an artifact link that leaves the tree fails the job
+  ok    an artifact link that stays inside the tree is recorded, not refused
+  ok    a junction in a workspace is left out, counted and named
+```
+
+⚠ **One existing case changed its expectation and one existing test changed its
+fixture, and both are recorded rather than quietly adjusted.** The acceptance
+case `a hostile artifact name is refused rather than written outside` asserted
+exit 0 and the presence of `escape.link.txt`, which is the defect written down as
+a passing test; it is now `an artifact link that leaves the tree fails the job`.
+`TestALinkInAnArchiveBecomesANoteRatherThanALink` used `/etc` as its target,
+which the new rule refuses, so it would have asserted the refusal by accident
+rather than the note it is named for; its target is an internal one now.
+
+⚠ **The Prove clause asks for both routes and these drive the direct one.**
+Both routes reach the same `extractInto` and the same `writeWorkspaceTar` - the
+helper route packs and unpacks with the client's own copy of each, which is the
+property `helper_route.go` exists to hold - so the rule is shared rather than
+duplicated. It is a narrower proof than the clause asked for.
+
+
 ---
 
 ## WSL-48. The embedded script tells the truth
@@ -1797,7 +1860,7 @@ exit code alone.
 **Source** [Issue 25](https://github.com/Azathothas/ToolKit/issues/25) and
 [issue 27](https://github.com/Azathothas/ToolKit/issues/27), filed by a consumer
 agent against `wsl-toolkit-v1.3.0` on 2026-09-10.
-**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl, **Priority** P1, **Effort** M, **Status** done
 
 ## Problem
 
@@ -1853,13 +1916,93 @@ distribution present, asserting nonzero and an explicit refusal; Doctor cases fo
 a working engine, a missing binary and a real nonzero engine response, so the
 diagnostic stays discriminating rather than merely stopping being wrong.
 
+## Closed 2026-09-10
+
+**Issue 25 is closed and issue 27's cause did not reproduce here.** Both are
+below; the second is a corrected premise rather than a fix, which is why it is
+written underneath instead of edited into the entry above.
+
+### A refusal is not an empty machine
+
+`Get-WslDistroNames` discarded stderr with `2>$null` and answered `@()` whenever
+the output was empty, so "WSL said there are no distributions" and "WSL would not
+answer me" were one outcome. `-Action List` then printed the protected names,
+printed WSL's own access-denied line, omitted every distribution that exists, and
+exited 0.
+
+The decision is a function now, `Resolve-DistroListing`, taking the child's exit
+code, what it wrote and what it wrote to stderr.
+
+⭐ **IT IS SPLIT OUT SO IT CAN BE PROVED WITHOUT WSL.** The defect lives entirely
+in what those three facts mean, and a case for it would otherwise need a fake
+`wsl.exe` on disk in a suite whose contract says it writes nothing. Five cases in
+`selftest.ps1`, and the guard is mutation-proved: deleting the exit-code branch
+turns two of them red.
+
+```text
+  ok    a listing that was refused throws rather than answering an empty machine
+  ok    a listing that was refused and said nothing still throws, naming the code
+  ok    a machine with no distributions is an empty list and not a refusal
+  ok    the names come back trimmed and free of the NUL bytes wsl writes
+  ok    output on stderr beside a zero exit is not a refusal
+```
+
+⚠ **The last two cases are the ones that stop the fix overshooting.** A machine
+with genuinely no distributions is a real answer, and `wsl.exe` writes notices to
+stderr beside a zero exit, so a rule keyed to "was anything on stderr" would
+refuse a working machine.
+
+`Invoke-ActionList` catches the refusal, says "could not list", names the likely
+cause, and exits 2. A partial inventory is never presented as complete, which is
+the rule `WSL-41` applied to `logs`.
+
+### ⛔ Issue 27 DID NOT REPRODUCE, and the entry's premise is corrected here
+
+The entry says `-Action Doctor` reports a working host podman as "installed but
+not responding" because its own probe throws
+`StandardOutputEncoding is only supported when standard output is redirected`.
+
+Measured on this host on 2026-09-10, three ways:
+
+| how it was run | what the engine row said |
+| --- | --- |
+| `pwsh -File wsl-toolkit.ps1 -Action Doctor`, streams redirected | `obs podman (…\Podman\podman.exe)`, platform `linux/amd64` |
+| the executable's `script -Action Doctor` from a shell | the same |
+| the executable through `ProcessStartInfo`, both streams redirected, `CreateNoWindow` | the same |
+
+Both places this tree sets `StandardOutputEncoding` set `RedirectStandardOutput`
+FIRST, which is the ordering that property requires, and the engine probe does
+not use `ProcessStartInfo` at all: `Invoke-Native` uses the call operator.
+
+⚠ **So the reported symptom is real and its stated cause is not present in this
+tree**, at least on this host. Something in the reporter's environment produced
+that exception and this session could not recreate it.
+
+**What was fixed is the half that IS this tool's defect**, and it is the half
+that made the report confusing in the first place: the probe reported ONE cause
+for EVERY failure.
+
+⛔ **Three outcomes now, not one.** `Get-EnginePlatform` separates "the engine
+was never reached" from "the engine answered a nonzero exit" from "it answered",
+and reports the child's exit code and its output. A probe that threw for its own
+reasons was credited to the engine, which is exactly how a working podman came to
+be described as not responding whatever threw.
+
+⚠ **The entry's Prove asks for Doctor cases covering a working engine, a missing
+binary and a real nonzero response, and only the first is driven here.** The
+other two need an engine that is absent or broken on the machine running the
+suite, and this one has a working podman. That is a residual bound, it is
+measured rather than assumed, and it is carried as `WSL-54` rather than left in a
+sentence.
+
+
 ---
 
 ## WSL-49. One command to readiness
 
 **Source** [Issue 28](https://github.com/Azathothas/ToolKit/issues/28), a feature
 request from the consumer agent that filed the other twelve.
-**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+**Category** wsl, **Priority** P1, **Effort** L, **Status** done
 
 ## Problem
 
@@ -1933,6 +2076,119 @@ non-ready object with one exact remediation. Rerunning it is fast, green and
 changes nothing. Separate cases force a stale helper, a config mismatch, an
 unhealthy base, an absent engine and a failed artifact round trip, and assert
 each is reported as not ready with the right next command.
+
+## Closed 2026-09-10
+
+`wsl-toolkit ready` answers in one command what an agent used to assemble from
+`doctor`, `helper status`, `base status --probe`, `run` and `logs`. The premise
+was right: nothing new is measured, and what was missing is the order and one
+verdict.
+
+```text
+  verdict     ready
+  version     1.3.0
+  executable  C:\Users\AjamX\Downloads\ToolKit\.tmp\wsl-toolkit.exe
+  state       C:\Users\AjamX\AppData\Local\wsl-toolkit
+  config      ...\config.json (the state directory), fingerprint 3c8d1895acaa6d65
+  route       direct -- this process can call wsl.exe itself
+  helper      none listening
+  base        wsl-toolkit, registered true, usable true
+  built from  ghcr.io/pkgforge-dev/archlinux:latest
+  engine      podman version 6.1.1
+  catalog     12 image(s)
+  smoke       ran as uid 0 on kernel 7.2.0-WSL2-STABLE, /work writable,
+              artifact returned, transcript readable, no host mount
+  update      none: 1.3.0 is the newest published release
+```
+
+⛔ **EVERY PART RUNS EVEN AFTER ONE FAILS**, so `problems` carries the whole
+list rather than the first entry. The manual owns the reasoning.
+
+⛔ **`--ensure` IS OFF BY DEFAULT.** A readiness check that builds a
+distribution has changed the thing it was asked to measure.
+
+⛔ **`--smoke` ASKS whether a host mount is present rather than inferring it
+from what was left off the command line.** A header asserting a property the
+command line does not enforce is a claim that can simply be false, which
+`docs/conventions/forbidden-patterns.md` carries with a worked example.
+
+### And the operator's mid-session requirement, `WSL-53`
+
+`selfupdate` resolves the newest `wsl-toolkit-v*` release, downloads the asset
+for this GOOS and GOARCH, verifies it against the published `SHA256SUMS`, and
+replaces this executable. Driven end to end against the real release, on a COPY
+rather than the working binary:
+
+```text
+=== before ===  1.3.0
+  fetching wsl-toolkit-v1.2.0 wsl-toolkit-windows-amd64.exe
+  verified 47a4f5c0... the digest that release published
+  replaced <scratch>\wsl-toolkit.exe with 1.2.0
+  the previous copy is <scratch>\.wsl-toolkit-previous-1.3.0.exe and it is swept next run
+=== after ===   1.2.0
+```
+
+Both forks the entry left to the implementer, settled:
+
+1. **What `ready --json` carries when the check could not run.** An `update`
+   object with `checked: false` and a reason, never a missing key, as
+   recommended. A caller reading `.update.available` can tell "there is no newer
+   release" from "nobody looked".
+2. **Where the old executable goes.** Beside the new one as
+   `.wsl-toolkit-previous-<version>.exe`, removed by the next run, as
+   recommended. Windows will not let a running program delete itself.
+
+⛔ **A NETWORK THAT CANNOT BE REACHED IS NOT A MACHINE THAT IS NOT READY.** The
+check is bounded at eight seconds and reported as `checked: false`; a tool that
+refused to run isolated Linux jobs because GitHub was down would have invented a
+dependency it does not have. `selfupdate --check` answers 2 in that case rather
+than 0, because "up to date" is not what a failed question means.
+
+### Two things driving it found that reading it would not
+
+⛔ **`--check` NEVER SWEPT THE PREVIOUS COPY.** The sweep lived inside
+`SelfUpdate`, so a caller that only ever asked whether an update existed never
+collected what its last real update had left behind. Nothing failed; a file
+simply stayed. It runs on every `selfupdate` now, and the sequence was re-driven
+to watch the leftover disappear.
+
+⚠ **MOVING BACK PAST THE VERSION THAT INTRODUCED `selfupdate` IS ONE WAY.** A
+copy moved to `wsl-toolkit-v1.2.0` answers `"selfupdate" is not a command`, which
+is correct and is a fact a caller needs BEFORE they choose a tag. `--tag` now
+says so first.
+
+### And one acceptance case that passed for the wrong reason
+
+⚠ The first-run case pointed `ready` at a `--home` that did not exist and
+asserted `no-base`. It answered `ready`, because a fresh `--home` moves the STATE
+and leaves the DISTRIBUTION at the default, which is registered on this machine.
+The case uses `--instance` now, which moves both. ⛔ It is recorded because a
+case that asserts the right thing for the wrong reason is worse than no case, and
+this one would have gone green the moment the machine had no base at all.
+
+```text
+  ok    ready proves the whole path with one command and one object
+  ok    ready reports without building, and rerunning it changes nothing
+  ok    ready answers for an instance whose base does not exist yet
+  ok    selfupdate --check names the running version and changes nothing
+
+acceptance: 53 case(s) passed against a real machine.
+```
+
+⚠ **Two of `WSL-49`'s Prove clauses are NOT closed and are carried rather than
+glossed.** "Separate cases force a stale helper, a config mismatch, an unhealthy
+base, an absent engine and a failed artifact round trip" needs a machine broken
+in five specific ways; three of those five are covered elsewhere (a config
+mismatch by `WSL-42`'s drift case, a failed artifact round trip by `WSL-47`'s,
+an unhealthy base by the instance case's `no-base` verdict), and a stale helper
+and an absent engine are not. The absent engine is `WSL-54`'s subject and the
+stale helper is filed with it.
+
+⚠ **And one thing `ready` inherits rather than causes**: it creates the state
+directory it is describing, through `NewBase`, which contradicts the rule
+`paths.go` states in the function it is about. That is `WSL-55`, found while
+writing the first-run case here.
+
 
 ---
 
@@ -2185,7 +2441,7 @@ reachable and an unreachable reference differently.
 
 **Source** The operator on 2026-09-10, mid-session: add `selfupdate` to
 `wsl-toolkit`, and make the update check part of the new `ready` subcommand.
-**Category** wsl, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl, **Priority** P1, **Effort** M, **Status** done
 
 ## Problem
 
@@ -2225,8 +2481,9 @@ The sequence is the consumer harness's, in Go: resolve the newest
 for this GOOS and GOARCH and the `SHA256SUMS` beside it, verify the digest
 against the bytes actually received, and replace this executable atomically.
 
-⛔ **A digest that does not match is a refusal, and the running executable is
-untouched.** Nothing is replaced before the replacement has been verified.
+⛔ **Verify before replacing, and treat a mismatch as a refusal rather than a
+warning.** ⚠ The rule's home is the manual's `selfupdate` section, which states
+it for a consumer; this is the requirement that put it there.
 
 ⛔ **It must not reach for a credential.** The release assets are public, so the
 fetch is anonymous. A `GITHUB_TOKEN` in the environment is not read.
@@ -2279,3 +2536,151 @@ missing key when the release cannot be resolved.
 ⛔ **The end-to-end replacement is proved in `consumer.ps1`, not here**, because
 proving it means running a DIFFERENT version and this suite builds one binary
 from the working tree.
+
+## Closed 2026-09-10
+
+⛔ **ONE WRITE-UP.** The closure evidence for this entry is under
+[WSL-49](wsl-toolkit-go.md), because the update check is a section of `ready`'s
+schema and the two were built together rather than one after the other.
+
+⚠ **The end-to-end replacement was driven HERE rather than in `consumer.ps1`**,
+against the real published `wsl-toolkit-v1.2.0`, on a copy of the binary in a
+scratch directory. That is a better proof than the entry asked for: it is the
+running executable being replaced, verified against the digests GitHub actually
+published, rather than a simulation of one.
+
+Both forks are settled and recorded under `WSL-49`, as recommended in each case.
+
+---
+
+## WSL-54. The three answers a diagnostic has to tell apart
+
+**Source** The residual bound left by [WSL-48](wsl-toolkit-go.md) on 2026-09-10,
+named rather than left in a sentence.
+**Category** wsl, **Priority** P2, **Effort** S, **Status** open
+
+## Problem
+
+`Get-EnginePlatform` now separates three outcomes: the engine was never reached,
+the engine answered a nonzero exit, and it answered. Only the third is driven by
+any suite, because the machine that runs the acceptance suite has a working
+podman and neither of the other two can be produced on it by asking politely.
+
+⛔ **A branch nothing has ever been seen to take is a branch nobody has proved.**
+Two of the three answers this diagnostic exists to give are in exactly that
+state, and the defect it was written for was the diagnostic giving the WRONG one
+of the three.
+
+## Premise
+
+Measured on 2026-09-10: the acceptance suite drives `script -Action Doctor`
+against a host with podman 5.8.6 installed and answering, and asserts the engine
+row. No case makes the engine absent, and no case makes it answer nonzero.
+
+⚠ This is a bound on the SUITE, not a defect in the tool. The code was read and
+the three branches are distinct; what is missing is evidence that each is taken
+when it should be.
+
+## Approach
+
+The probe takes the engine as a parameter, so the two missing answers are
+reachable without breaking the machine:
+
+- an engine whose `Path` names a file that does not exist, which is "never
+  reached";
+- an engine whose `Path` names a program that exits nonzero and writes a line,
+  which is "answered a nonzero exit". A two-line `.cmd` in a temp directory is
+  enough, and `Get-ContainerEngine` is not involved.
+
+⛔ **It must not stop the real podman**, on this machine or on anybody's. A case
+that runs `podman machine stop` to produce an answer has broken the host the
+suite is standing on.
+
+⚠ **It belongs in `selftest.ps1` only if the decision can be separated from the
+process call**, the way `Resolve-DistroListing` was. If it cannot, it is an
+acceptance case with a fixture rather than a pure one.
+
+## Consumers
+
+None: this is a test surface.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/windows/wsl-toolkit/selftest.ps1
+```
+
+Three cases, one per outcome, each asserting the MESSAGE rather than the fact of
+an error: "never reached" must not claim the engine is broken, and "answered
+nonzero" must carry the child's code and its output. A case that only checks that
+something threw would stay green with the three branches collapsed back into one,
+which is the defect.
+
+---
+
+## WSL-55. A report that creates the thing it is describing
+
+**Source** Found on 2026-09-10 while writing an acceptance case for
+[WSL-49](wsl-toolkit-go.md): a first-run case pointed `ready` at a state
+directory that did not exist, and the directory existed afterwards.
+**Category** wsl, **Priority** P2, **Effort** S, **Status** open
+
+## Problem
+
+`internal/toolkit/paths.go` states the rule in its own words:
+
+> EnsureHome creates the state directory. Read-only commands must not call it: a
+> report that creates a directory on a machine it is only describing has changed
+> the thing it was asked to measure.
+
+`NewBase` calls `EnsureHome`, and `base status` calls `NewBase`. So a read-only
+report creates the state directory, and `ready` inherits it through the same
+path. Measured:
+
+```text
+rm -rf .tmp/probe1
+wsl-toolkit --home .tmp/probe1 base status --json
+ls .tmp/probe1        ->  the directory exists
+```
+
+⚠ **Nothing is corrupted and nothing is lost.** An empty directory appears where
+a caller asked a question. It matters because the rule is written down in this
+tree, in the function it is about, and the code does the opposite: a rule with a
+comment and no instrument is the shape `TOOL-15` was filed for.
+
+## Premise
+
+Measured on 2026-09-10 with the command above. ⚠ `resources`, `gc` and `logs`
+were NOT checked and may have the same shape; whoever takes this counts them
+rather than assuming.
+
+## Approach
+
+Split what `Base` needs from what it creates. `Status` reads a record and asks
+WSL; neither needs the directory to exist, and a missing record is already
+handled as "no record". The likely shape is a `Home()`-based constructor for the
+read paths and `EnsureHome` on the paths that write.
+
+⛔ **Not a flag.** "Read-only unless you pass --write" is a rule a caller has to
+remember, and the rule here is about what a command IS.
+
+⚠ **`ready` is the one with the most to lose.** It is the command an agent runs
+first, on a machine it has not touched, and creating state there is the one thing
+its own manual page says it does not do.
+
+## Consumers
+
+None directly: no consumer reads whether a directory exists. The manual's
+`ready` section claims it creates nothing, so that claim moves with the fix or
+the fix moves to match it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1
+```
+
+A case pointing every read-only command at a state directory that does not
+exist, asserting the answer arrives AND the directory is still absent
+afterwards. ⛔ Both halves: a case that only checks the directory would pass
+against a command that stopped answering.

@@ -38,6 +38,45 @@ func DefaultWorkspaceLimits() WorkspaceLimits {
 // ErrWorkspaceRefused wraps every containment and limit refusal.
 var ErrWorkspaceRefused = errors.New("workspace refused")
 
+// WorkspaceOmission is one entry left OUT of an upload, and why.
+//
+// ⛔ AN OMISSION IS REPORTED, NEVER SILENT. A Windows junction pointing outside
+// a workspace was skipped by the walker's default branch and the job exited 0
+// having never seen it, so a caller could not tell its input was incomplete.
+// WSL-47, issue 26.
+//
+// ⭐ COUNTED RATHER THAN REFUSED, and the asymmetry with an artifact link is
+// deliberate: a caller CHOOSES what it puts in /out, so a refusal there is
+// actionable, while a junction somewhere in a large tree is a normal thing to
+// have and failing the job over one would make the workspace feature unusable.
+type WorkspaceOmission struct {
+	Path   string `json:"path"`
+	Reason string `json:"reason"`
+}
+
+// maxReportedOmissions bounds what one result carries.
+//
+// ⚠ A TREE FULL OF LINKS WOULD OTHERWISE PUT THOUSANDS OF ROWS IN AN ANSWER.
+// The COUNT is always exact; the list is the first few, and the result says so
+// rather than quietly holding a prefix.
+const maxReportedOmissions = 20
+
+// WorkspaceUpload is what one upload produced.
+type WorkspaceUpload struct {
+	Entries  int                 `json:"entries"`
+	Bytes    int64               `json:"bytes"`
+	Omitted  int                 `json:"omitted"`
+	Omission []WorkspaceOmission `json:"omission,omitempty"`
+}
+
+// note records an omission, keeping every count and the first few reasons.
+func (u *WorkspaceUpload) note(rel, reason string) {
+	u.Omitted++
+	if len(u.Omission) < maxReportedOmissions {
+		u.Omission = append(u.Omission, WorkspaceOmission{Path: rel, Reason: reason})
+	}
+}
+
 // guestPathAlphabet is what a path handed to wsl.exe as an ARGUMENT may
 // contain. An argument reaching wsl.exe is expanded before the guest sees it,
 // so a dollar sign or a backtick in one is not data.
@@ -112,59 +151,68 @@ func (w *Wsl) ExecDirect(ctx context.Context, distro, user, cwd string, argv []s
 // SendWorkspace copies a host directory into a guest directory as an archive.
 // The guest directory is created empty first, so a job never runs against a
 // merge of its own workspace and somebody else's leftovers.
-func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, excludes []string, log func(string)) (int, int64, error) {
+func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, excludes []string, log func(string)) (WorkspaceUpload, error) {
+	var zero WorkspaceUpload
 	if err := AssertArgvSafe([]string{guestDir}); err != nil {
-		return 0, 0, err
+		return zero, err
 	}
 	info, err := os.Stat(hostDir)
 	if err != nil {
-		return 0, 0, fmt.Errorf("the workspace to copy: %w", err)
+		return zero, fmt.Errorf("the workspace to copy: %w", err)
 	}
 	if !info.IsDir() {
-		return 0, 0, fmt.Errorf("%s is not a directory", hostDir)
+		return zero, fmt.Errorf("%s is not a directory", hostDir)
 	}
 
 	errBuf := &boundedBuffer{max: 64 << 10}
 	if code, err := w.ExecDirect(ctx, distro, user, "", []string{"/bin/mkdir", "-p", guestDir}, nil, io.Discard, errBuf, 2*time.Minute); err != nil || code != 0 {
-		return 0, 0, fmt.Errorf("could not create %s in the guest (exit %d): %s", guestDir, code, firstLine(errBuf.String()))
+		return zero, fmt.Errorf("could not create %s in the guest (exit %d): %s", guestDir, code, firstLine(errBuf.String()))
 	}
 
 	pr, pw := io.Pipe()
 	type result struct {
-		entries int
-		bytes   int64
-		err     error
+		up  WorkspaceUpload
+		err error
 	}
 	done := make(chan result, 1)
 	go func() {
-		entries, total, err := writeWorkspaceTar(pw, hostDir, limits, excludes)
+		up, err := writeWorkspaceTar(pw, hostDir, limits, excludes)
 		// ⛔ CloseWithError, not Close. A writer that stopped at a limit must
 		// make the READER fail too, or the guest unpacks a truncated archive
 		// without complaint.
 		_ = pw.CloseWithError(err)
-		done <- result{entries, total, err}
+		done <- result{up, err}
 	}()
 
 	errBuf = &boundedBuffer{max: 64 << 10}
 	code, execErr := w.ExecDirect(ctx, distro, user, "", []string{"/bin/tar", "-xf", "-", "-C", guestDir}, pr, io.Discard, errBuf, 60*time.Minute)
 	res := <-done
 	if res.err != nil {
-		return res.entries, res.bytes, res.err
+		return res.up, res.err
 	}
 	if execErr != nil || code != 0 {
-		return res.entries, res.bytes, fmt.Errorf("unpacking the workspace in the guest exited %d: %s", code, firstLine(errBuf.String()))
+		return res.up, fmt.Errorf("unpacking the workspace in the guest exited %d: %s", code, firstLine(errBuf.String()))
 	}
 	if log != nil {
-		log(fmt.Sprintf("workspace: %d entries, %s copied to %s", res.entries, HumanBytes(res.bytes), guestDir))
+		log(fmt.Sprintf("workspace: %d entries, %s copied to %s", res.up.Entries, HumanBytes(res.up.Bytes), guestDir))
+		// ⭐ SAID OUT LOUD AT THE POINT IT HAPPENS, as well as carried on the
+		// result. A caller reading only the human output learns the same fact.
+		for _, o := range res.up.Omission {
+			log("workspace: left out " + o.Path + ": " + o.Reason)
+		}
+		if res.up.Omitted > len(res.up.Omission) {
+			log(fmt.Sprintf("workspace: and %d more entry(s) left out", res.up.Omitted-len(res.up.Omission)))
+		}
 	}
-	return res.entries, res.bytes, nil
+	return res.up, nil
 }
 
-func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, excludes []string) (int, int64, error) {
+func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, excludes []string) (WorkspaceUpload, error) {
+	var up WorkspaceUpload
 	tw := tar.NewWriter(w)
 	realRoot, err := resolveExisting(root)
 	if err != nil {
-		return 0, 0, err
+		return up, err
 	}
 	entries := 0
 	var total int64
@@ -204,15 +252,21 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 			if err != nil {
 				return err
 			}
-			// ⛔ A link out of the workspace is the hole this file removes,
-			// arriving by another route. Refused rather than skipped: a
-			// workspace silently missing one fails for an invisible reason.
+			// ⛔ A link out of the workspace is LEFT OUT AND NAMED, not
+			// refused and not silently dropped. It used to fail the whole job,
+			// which makes the workspace feature unusable on any tree that has a
+			// stray link in it; the reason a caller needs is which entry did not
+			// travel, and that is now on the result. WSL-47.
 			resolved, err := resolveExisting(LinkTargetPath(p, target))
 			if err != nil {
-				return err
+				up.note(slashRel, "its target could not be resolved: "+err.Error())
+				entries--
+				return nil
 			}
 			if !hasPathPrefix(resolved, realRoot) && !pathEqual(resolved, realRoot) {
-				return fmt.Errorf("%w: %s links to %s, which is outside the workspace", ErrWorkspaceRefused, slashRel, target)
+				up.note(slashRel, "it links to "+target+", which is outside the workspace")
+				entries--
+				return nil
 			}
 			return tw.WriteHeader(&tar.Header{
 				Name: slashRel, Typeflag: tar.TypeSymlink, Linkname: filepath.ToSlash(target),
@@ -252,18 +306,66 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 			}
 			return nil
 		default:
+			// ⛔ A WINDOWS JUNCTION LANDS HERE, and it used to be dropped in
+			// silence beside the sockets and devices. Go reports one as
+			// irregular rather than as a symlink, so the branch above never saw
+			// it: a workspace containing one was uploaded without it and the job
+			// exited 0 having never been told. WSL-47, issue 26.
+			if info.Mode()&fs.ModeIrregular != 0 {
+				up.note(slashRel, "it is a junction or another reparse point, which is not carried into a container")
+			}
 			// A socket, a device or a named pipe is not workspace content, and
 			// carrying one into a container would be handing it a channel.
+			entries--
 			return nil
 		}
 	})
 	if walkErr != nil {
-		return entries, total, walkErr
+		return up, walkErr
 	}
 	if err := tw.Close(); err != nil {
-		return entries, total, err
+		return up, err
 	}
-	return entries, total, nil
+	up.Entries, up.Bytes = entries, total
+	return up, nil
+}
+
+// assertLinkStaysInside refuses an archive link whose target leaves the
+// destination.
+//
+// ⛔ IT REASONS IN SLASHES, not in the host's separators. The archive comes from
+// a Linux guest, so `../../etc/passwd` and `/etc/passwd` are what a link says,
+// and `filepath` on Windows would treat a forward slash and a backslash alike
+// while `path` would not. The rule is about the ARCHIVE's own grammar.
+func assertLinkStaysInside(dest, rel, linkname string) error {
+	if linkname == "" {
+		return fmt.Errorf("%w: %s is a link with no target", ErrWorkspaceRefused, rel)
+	}
+	// An absolute target stands alone. Joining one onto the link's own
+	// directory produces a path inside the tree by every containment test there
+	// is, which is the mistake LinkTargetPath exists to name.
+	if strings.HasPrefix(linkname, "/") || strings.HasPrefix(linkname, `\`) || hasDriveLetter(linkname) {
+		return fmt.Errorf("%w: %s points at %q, which is an absolute path and leaves the directory this job delivered. "+
+			"A link out of the tree is refused rather than converted",
+			ErrWorkspaceRefused, rel, linkname)
+	}
+	joined := path.Join(path.Dir(filepath.ToSlash(rel)), filepath.ToSlash(linkname))
+	cleaned := path.Clean(joined)
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return fmt.Errorf("%w: %s points at %q, which resolves to %q and leaves the directory this job delivered. "+
+			"A link out of the tree is refused rather than converted",
+			ErrWorkspaceRefused, rel, linkname, cleaned)
+	}
+	return nil
+}
+
+// hasDriveLetter says whether a name starts `C:` in either separator style.
+func hasDriveLetter(s string) bool {
+	if len(s) < 2 || s[1] != ':' {
+		return false
+	}
+	c := s[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
 // LinkTargetPath is where a symbolic link actually points.
@@ -566,8 +668,28 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 			}
 			got.Delivered++
 		case tar.TypeSymlink, tar.TypeLink:
-			// ⛔ Not recreated. The entry after a link writes THROUGH it.
-			// Recording it keeps the information and removes the mechanism.
+			// ⛔ A LINK THAT LEAVES THE TREE IS REFUSED, which is what the
+			// manual has always promised and the code did not do. It was
+			// silently converted to an inert `x.link.txt` and the job exited 0,
+			// so a caller could not tell its deliverables were incomplete.
+			// WSL-47, issue 21.
+			//
+			// ⚠ NOT A TRAVERSAL HOLE, and the reporter said so plainly: nothing
+			// escaped and nothing was overwritten. The defect is that the manual
+			// promises a refusal and the binary performed a transformation
+			// nobody was told about, which is the same class as a truncation
+			// nobody is told about.
+			//
+			// ⭐ THE ASYMMETRY WITH A WORKSPACE IS DELIBERATE. A caller CHOOSES
+			// what it puts in /out, so a refusal here is actionable; a caller
+			// often does not control every entry under a workspace it points at,
+			// so an omission there is counted and named instead.
+			if err := assertLinkStaysInside(dest, rel, hdr.Linkname); err != nil {
+				return got, err
+			}
+			// ⛔ Not recreated even when it stays inside. The entry after a link
+			// writes THROUGH it. Recording it keeps the information and removes
+			// the mechanism.
 			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 				return got, err
 			}

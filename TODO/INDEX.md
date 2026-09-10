@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 80  open 14  blocked 0  done 66
+total 82  open 12  blocked 0  done 70
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 6 | 0 | 37 | 43 |
-| P2 | 7 | 0 | 20 | 27 |
+| P1 | 2 | 0 | 41 | 43 |
+| P2 | 9 | 0 | 20 | 29 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **14** | **0** | **66** | **80** |
+| **all** | **12** | **0** | **70** | **82** |
 
 ---
 
@@ -103,13 +103,15 @@ total 80  open 14  blocked 0  done 66
 | WSL-44 | P1 | L | done | What a long-lived helper freezes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-45 | P1 | M | done | A deadline that bounds the caller's wall time | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-46 | P1 | M | done | The answer is exactly what happened | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-47 | P1 | M | open | The boundary the manual promises | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-48 | P1 | M | open | The embedded script tells the truth | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-49 | P1 | L | open | One command to readiness | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-47 | P1 | M | done | The boundary the manual promises | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-48 | P1 | M | done | The embedded script tells the truth | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-49 | P1 | L | done | One command to readiness | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-50 | P1 | L | open | Diagnostics and a heartbeat for the base and what runs inside it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-51 | P1 | L | done | A config the agent does not have to write | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-52 | P2 | L | open | The six commands that make an answer actionable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-53 | P1 | M | open | The tool updates itself, and readiness says whether it should | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-53 | P1 | M | done | The tool updates itself, and readiness says whether it should | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-54 | P2 | S | open | The three answers a diagnostic has to tell apart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-55 | P2 | S | open | A report that creates the thing it is describing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

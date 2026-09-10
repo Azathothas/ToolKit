@@ -125,7 +125,7 @@ func (c *HelperClient) call(ctx context.Context, method, path string, body any, 
 func (c *HelperClient) UploadWorkspace(ctx context.Context, hostDir string, limits WorkspaceLimits, excludes []string) (string, error) {
 	pr, pw := io.Pipe()
 	go func() {
-		_, _, err := writeWorkspaceTar(pw, hostDir, limits, excludes)
+		_, err := writeWorkspaceTar(pw, hostDir, limits, excludes)
 		_ = pw.CloseWithError(err)
 	}()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+c.endpoint.Address+"/v1/workspace", pr)
