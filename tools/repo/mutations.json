@@ -767,6 +767,15 @@
       "replace": "\treturn fmt.Errorf(\"the engine's run state is stale and --repair was not given. Run: %s\", r.Command)",
       "run": "TestTheRefusalSurvivesItsOwnClassifier",
       "args": []
+    },
+    {
+      "label": "a sweep that removes only the copies this tool made",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/release.go",
+      "find": "\t\tif e.IsDir() || !strings.HasPrefix(e.Name(), previousPrefix) {",
+      "replace": "\t\tif e.IsDir() || !strings.Contains(e.Name(), \"previous\") {",
+      "run": "TestTheSupersededCopyMessageNamesTheCommandThatRemovesIt",
+      "args": []
     }
   ]
 }

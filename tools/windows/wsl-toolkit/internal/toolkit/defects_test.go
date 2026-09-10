@@ -1768,3 +1768,44 @@ func TestTheRefusalSurvivesItsOwnClassifier(t *testing.T) {
 		t.Error("the refusal does not name the command that would fix it")
 	}
 }
+
+// TestTheSupersededCopyMessageNamesTheCommandThatRemovesIt is the case for a
+// claim this tool made and did not keep.
+//
+// ⛔ `selfupdate` said "the next run removes it", and the sweep runs from
+// `selfupdate` and nowhere else. Following that sentence with the command the
+// same output recommends, `wsl-toolkit version`, left the superseded copy on
+// disk. Found by running a real update from the published 2.0.1 to 2.0.2 rather
+// than by reading the code.
+func TestTheSupersededCopyMessageNamesTheCommandThatRemovesIt(t *testing.T) {
+	dir := t.TempDir()
+	// The sweeper is what actually removes these, so this proves the pair: the
+	// name the message promises and the name the sweeper recognises are one.
+	stale := filepath.Join(dir, previousPrefix+"2.0.1.exe")
+	if err := os.WriteFile(stale, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var said []string
+	sweepPreviousExecutables(dir, func(s string) { said = append(said, s) })
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("the sweeper did not remove %s", stale)
+	}
+	if len(said) != 1 || !strings.Contains(said[0], "removed the previous copy") {
+		t.Fatalf("the sweeper did not report what it did: %q", said)
+	}
+
+	// ⛔ AND IT TOUCHES NOTHING ELSE. A sweep that matched more loosely would be
+	// a deletion loop over somebody's directory.
+	for _, keep := range []string{"wsl-toolkit.exe", "notes.txt", "wsl-toolkit-previous.exe"} {
+		p := filepath.Join(dir, keep)
+		if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepPreviousExecutables(dir, func(string) {})
+	for _, keep := range []string{"wsl-toolkit.exe", "notes.txt", "wsl-toolkit-previous.exe"} {
+		if _, err := os.Stat(filepath.Join(dir, keep)); err != nil {
+			t.Errorf("the sweep removed %s, which is not one of its own: %v", keep, err)
+		}
+	}
+}

@@ -10,7 +10,7 @@ session started 2026-09-10T12:00:00Z
 baseline        0c9c1f8, clean main; gate 19 checks, all passing, 28.8s.
 entries         total 93  open 1  blocked 0  done 92
 gate            19 checks, one binary, 28s on this host
-head            pushed, CI green
+head            pushed, CI green, wsl-toolkit-v2.0.2 published
 ```
 
 ## Active work
@@ -86,6 +86,21 @@ record's own open question named the right path all along; reading it as the
 runtime directory is what produced the defect, and a path that is right in a note
 is not a path to type into a program.
 
+
+⛔ **`ready` reported a working machine as `not-ready`, and this session put it
+there.** The cgroup capability finding went into `problems`, and `r.Ready` is
+`len(problems) == 0`, so a base that runs containers perfectly well answered the
+first command an agent runs with a refusal. ⚠ **Only running it found this.** The
+reasoning that put the line there was wrong in a way reading could not see, and
+`base status` had the same finding in the right place two files away. Notes and
+problems are separate fields now, marked `~` and `!`.
+
+⭐ **`selfupdate` was driven from the PUBLISHED 2.0.1 to 2.0.2**, and the digest
+it reported was checked independently against the published `SHA256SUMS`. ⛔ It
+also makes one claim it does not keep: "the next run removes it" about the
+superseded copy, when the sweep runs from `selfupdate` alone. Following the
+tool's own advice, `wsl-toolkit version`, leaves the file there.
+
 ⚠ **The source document `WSL-30` depends on is gone.** `Aseem0xff/mockup` answers
 404 and is not in the Wayback Machine. The operator supplied a copy; the sixteen
 claims are in the entry now, which is what
@@ -136,9 +151,12 @@ decision anybody has taken.
 
 ## Work order
 
-1. ⭐ **Cut the next tag.** Three fixes are on `main` and none is in
-   `wsl-toolkit-v2.0.1`: `WSL-62`'s concurrent write path, and `WSL-60` and
-   `WSL-61`'s capability and repair work.
+1. ⚠ **One fix is on `main` and not in `wsl-toolkit-v2.0.2`**, which was cut
+   before the selfupdate pass found it: `selfupdate` says the previous copy is
+   removed by "the next run", and the sweep runs from `selfupdate` alone, so
+   following that sentence with `wsl-toolkit version` leaves an 11 MB file
+   behind. ⛔ It is a false sentence and not a data loss; a tag for it alone is
+   the operator's call.
 2. ⭐ **Run `base ensure` first after the next reboot of this machine, and read
    what it says.** `WSL-61`'s stale-boot-id trigger could not be reproduced on
    demand, so the classification and the repair are each proved and the two of

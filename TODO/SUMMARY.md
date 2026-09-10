@@ -12,17 +12,18 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-10T12:00:00Z | one context |
-| Commits | `0c9c1f8`, clean `main`, no tag | 5 on `main`, pushed, CI green, and `wsl-toolkit-v2.0.1` published |
+| Commits | `0c9c1f8`, clean `main`, no tag | 7 on `main`, pushed, CI green, and **two** releases: `wsl-toolkit-v2.0.1` and `wsl-toolkit-v2.0.2` |
 | Work | 88 entries: 2 open, 0 blocked, 86 done | 93 entries: 1 open, 0 blocked, 92 done. 6 closed, 5 filed, 4 of those closed |
-| Changes | 251 tracked files | 255; 31 changed, +2,198 / -348 lines |
-| Size | 76,414 tracked lines | 77,433 at the end, +1,019. ⚠ The doc pass took 26 lines out of `scripts/README.md` and put 21 in `docs/HISTORY/scripts.md`; the record, the entries and two rulings' worth of code grew by far more than the manuals shrank. |
+| Changes | 251 tracked files | 255; 35 changed, +2,617 / -366 lines |
+| Size | 76,414 tracked lines | 77,914 at the end, +1,500. ⚠ The doc pass took 26 lines out of `scripts/README.md` and put 21 in `docs/HISTORY/scripts.md`; the record, the entries and two rulings' worth of code grew by far more than the manuals shrank. |
 | Gate | 19 checks, 28.8s, green | 19 checks, green |
 | Selftest | 157 over 40 functions | 157 over 40, same on 7.6.5 and 5.1. Unchanged: nothing in the script moved but its version. |
-| Mutation | 76 rows, 75 proved on this host | 82 rows, all six new ones proved individually, and 81 of 82 in a 4.21 min sweep |
+| Mutation | 76 rows, 75 proved on this host | 86 rows, every one of the ten new ones proved individually. ⚠ Two were THEATRE on the first attempt and the harness said so. |
+| Selfupdate | never driven this session | ⭐ driven from the PUBLISHED 2.0.1 to 2.0.2, digest checked independently against the published sums, `--check` changed nothing |
 | Consumer | 14 cases, 8 skipped against v2.0.0 | 14 cases, 0 failed, 6 skipped against v2.0.1. The two that moved are the signature cases, which had never run green. |
 | Acceptance | 71 of 71, last session | ⛔ **not re-run.** The changed Go path was driven directly instead. That is a gap, named rather than counted as a pass. |
 | Release | `wsl-toolkit-v2.0.0`, five assets, none signed | `wsl-toolkit-v2.0.1`, ten assets, five signature bundles, verified in the release job and from outside by the consumer suite |
-| Health | 3 debts owed: PR 15, the tag, `WSL-30` | all three cleared. 3 filed and 2 of them ruled by the operator and built the same session; `WSL-59` is the one left. Tree clean. |
+| Health | 3 debts owed: PR 15, the tag, `WSL-30` | all three cleared. 3 filed and 2 ruled by the operator and built the same session; `WSL-59` is the one entry left. ⚠ One fix is on `main` and not in `v2.0.2`. Tree clean. |
 
 ## What was asked, and what happened
 
@@ -49,3 +50,8 @@ what it looked at that the others did not.
 | claim audit | every standing fact and count in the live pages, against the API and the machine | `repo mutate` carried a duration with no conditions, off by more than half; a README claimed "the ten already here" against 60 rows; the router said four assets against a release of ten |
 | concurrency, the sixth | what two of this tool do to one state directory | `WSL-62`, on the first pass, measured rather than argued |
 | ⭐ the driven pass, on the rulings | the repair actually running in the guest | a defect INSIDE the fix: it read podman's run directories from `$XDG_RUNTIME_DIR`, which is WSLg's here, and would have removed nothing and reported success |
+| second source | every capability claim, re-derived by a different route than the one that produced it | all four held. ⚠ And a trap for later: the cgroup tree is mounted `rw,nsdelegate` and is still `root:root 555`, so both cheap reads say "delegated" and both are wrong |
+| failure paths | what happens when each new thing fails | the capability probe was an unbounded second container on the health path, and `ready` answered a failed `base ensure` with `base ensure` |
+| reachability | what was added that nothing reaches | every symbol has callers; what it found was a producer with no consumer, the helper dropping the state on an error on BOTH sides |
+| ⭐ running `ready` | the command an agent runs first | ⛔ a regression this session had just introduced: a working machine reported `not-ready` |
+| ⭐ running `selfupdate` | 2.0.1 to 2.0.2, for real | it works, and it makes one claim it does not keep about removing the superseded copy |

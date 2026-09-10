@@ -331,7 +331,19 @@ func SelfUpdate(ctx context.Context, running, tag string, log func(string)) (Upd
 	}
 	res.Replaced, res.PreviousAt = true, previous
 	log("replaced " + self + " with " + rel.Version)
-	log("the previous copy is " + previous + " and the next run removes it")
+	// ⛔ IT SAYS WHICH COMMAND, because only one of them does it. The sweep runs
+	// from `selfupdate` and nowhere else, so "the next run removes it" was false
+	// for every other command including `version`, which is the one this tool
+	// tells a caller to run next. Measured by following that advice: the copy
+	// was still there.
+	//
+	// ⚠ The sweep is NOT moved into every command on purpose. A read-only
+	// report that deletes something is the `WSL-55` shape, and `version` and
+	// `doctor` create and remove nothing by design. So the message names the
+	// command that acts and the file, and a caller who wants the space back now
+	// has both.
+	log("the previous copy is " + previous)
+	log("the next `wsl-toolkit selfupdate` removes it, or delete it yourself")
 	return res, nil
 }
 
