@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -295,6 +296,7 @@ func (b *Base) provision(ctx context.Context) error {
 		Stdout:  out,
 		Stderr:  out,
 	})
+	out.Flush()
 	if err != nil || code != 0 {
 		return fmt.Errorf("provisioning exited %d: %w", code, err)
 	}
@@ -425,12 +427,30 @@ func (b *Base) Remove(ctx context.Context) error {
 
 // prefixWriter relays a child's output through the logger and keeps a copy, so
 // a caller can assert on what was said rather than on the exit code.
+//
+// ⛔ IT IS WRITTEN TO FROM TWO GOROUTINES. provision passes the same
+// instance as both Stdout and Stderr, and os/exec runs one copier per stream
+// when the writer is not an *os.File. `seen` is a boundedBuffer and locks
+// itself; `partial` did not, so the two copiers raced on the same slice. The
+// symptom would be an interleaved or dropped provisioning line, in the one
+// place whose output decides whether the base is usable.
+//
+// ⚠ `partial` IS BOUNDED TOO. It holds whatever has arrived since the last
+// newline, and a child that writes megabytes without one would grow it without
+// limit. Past the ceiling the held text is flushed as its own line rather than
+// dropped: a long line is still information, and losing it silently is the
+// failure this whole type exists to avoid.
 type prefixWriter struct {
+	mu      sync.Mutex
 	prefix  string
 	to      func(string)
 	seen    boundedBuffer
 	partial []byte
 }
+
+// maxPartialLine is how much unterminated output is held before it is flushed
+// as a line of its own.
+const maxPartialLine = 64 << 10
 
 func (w *prefixWriter) logTo(s string) {
 	if w.to != nil {
@@ -439,13 +459,16 @@ func (w *prefixWriter) logTo(s string) {
 }
 
 func (w *prefixWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
 	if w.seen.max == 0 {
 		w.seen.max = 4 << 20
 	}
-	if _, err := w.seen.Write(p); err != nil {
-		return 0, err
-	}
+	// ⚠ The bounded copy cannot fail the write. Its whole job is to stop
+	// early, and telling the child its output could not be written because a
+	// diagnostic buffer is full would kill a provisioning run over nothing.
+	_, _ = w.seen.Write(p)
 	w.partial = append(w.partial, p...)
+	var lines []string
 	for {
 		i := indexByte(w.partial, '\n')
 		if i < 0 {
@@ -454,10 +477,36 @@ func (w *prefixWriter) Write(p []byte) (int, error) {
 		line := strings.TrimRight(string(w.partial[:i]), "\r")
 		w.partial = w.partial[i+1:]
 		if line != "" {
-			w.logTo(w.prefix + line)
+			lines = append(lines, line)
 		}
 	}
+	if len(w.partial) > maxPartialLine {
+		lines = append(lines, string(w.partial))
+		w.partial = w.partial[:0]
+	}
+	w.mu.Unlock()
+
+	// ⛔ THE LOGGER IS CALLED OUTSIDE THE LOCK. It is a caller-supplied
+	// function, and holding a lock across one is how an unrelated callback
+	// deadlocks a provisioning run.
+	for _, line := range lines {
+		w.logTo(w.prefix + line)
+	}
 	return len(p), nil
+}
+
+// Flush emits whatever arrived after the last newline.
+//
+// ⚠ A child whose final line has no terminator would otherwise have it held
+// forever, which is exactly the line a failing step tends to end on.
+func (w *prefixWriter) Flush() {
+	w.mu.Lock()
+	rest := strings.TrimRight(string(w.partial), "\r")
+	w.partial = w.partial[:0]
+	w.mu.Unlock()
+	if rest != "" {
+		w.logTo(w.prefix + rest)
+	}
 }
 
 func indexByte(b []byte, c byte) int {

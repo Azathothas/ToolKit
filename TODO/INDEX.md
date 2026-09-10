@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 62  open 8  blocked 0  done 54
+total 64  open 8  blocked 0  done 56
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 26 | 27 |
+| P1 | 1 | 0 | 28 | 29 |
 | P2 | 6 | 0 | 19 | 25 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **8** | **0** | **54** | **62** |
+| **all** | **9** | **0** | **54** | **63** |
 
 ---
 
@@ -92,6 +92,8 @@ total 62  open 8  blocked 0  done 54
 | WSL-37 | P2 | M | done | The helper never releases an upload or an artifact set | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-38 | P2 | S | done | The CLI accepts a trailing word and silently drops what follows it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-39 | P2 | M | done | An image that could not be pulled counts as a job that ran and failed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-40 | P1 | M | done | What a second reading of the core found | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-41 | P1 | M | done | What a failure is allowed to hide | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

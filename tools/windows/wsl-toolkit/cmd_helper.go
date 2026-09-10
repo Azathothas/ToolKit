@@ -103,7 +103,13 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 	case "stop":
 		c, err := toolkit.DialHelper(ctx)
 		if err != nil {
-			logf("  no helper is answering, so there is nothing to stop")
+			// ⚠ STILL EXIT 0, because stopping something that is not running is
+			// the outcome the caller asked for. The REASON is printed, though: it
+			// used to be discarded, and DialHelper fails for three different
+			// things. One of them is "something else is listening on that address
+			// and reports a different pid", which is worth knowing and reads
+			// nothing like "there is nothing to stop".
+			logf("  no helper is answering, so there is nothing to stop: %s", err.Error())
 			return exitOK, nil
 		}
 		if err := c.Stop(ctx); err != nil {

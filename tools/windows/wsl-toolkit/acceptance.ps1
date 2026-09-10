@@ -422,6 +422,34 @@ try {
         (($l.Code -eq 0) -and ($l.Out -match 'READ-ME-BACK')).ToString()
     }
 
+    # ⭐ THE CLIENT'S OWN COPY, which the case above does not reach. A job run
+    # through the helper has its transcript written by the HELPER, under the
+    # helper's state directory, so where the two do not share WSL_TOOLKIT_HOME the
+    # result named a path that did not exist on the machine the caller was sitting
+    # at. This asks for a job through the helper and reads it back with the CLIENT,
+    # which is what a restricted caller actually does.
+    Test-Case 'a helper job leaves its transcript on the machine that asked for it' 'True' {
+        $start = Invoke-Tool @('helper', 'serve', '--detach', '--json')
+        if ($start.Code -ne 0) { return "helper would not start: $($start.Err)" }
+        try {
+            $r = Invoke-Tool @('run', '--via-helper', '--json', '--image', 'alpine', '-c', 'printf HELPER-TRANSCRIPT')
+            if ($r.Code -ne 0) { return "the helper job exited $($r.Code): $($r.Err)" }
+            $d = $r.Out | ConvertFrom-Json
+            $l = Invoke-Tool @('logs', $d.id)
+            (($l.Code -eq 0) -and ($l.Out -match 'HELPER-TRANSCRIPT')).ToString()
+        }
+        finally { $null = Invoke-Tool @('helper', 'stop') }
+    }
+
+    # ⛔ A FEATURE NOBODY CAN FIND IS ONE THAT WAS NOT SHIPPED. v1.2.0 printed
+    # the image label and the exit code and nothing else, so the id `logs` takes
+    # could not be typed without first running `logs` bare to go hunting for it.
+    Test-Case 'a run says the command that reads its output back' 'True' {
+        $r = Invoke-Tool @('run', '--image', 'alpine', '-c', 'printf FIND-ME')
+        if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
+        (($r.Err + $r.Out) -match 'wsl-toolkit logs [0-9a-f]{16}').ToString()
+    }
+
     # issue 13: the refusals the CLI was not making.
     Test-Case 'a stray word and the options after it are refused, not ignored' 'True' {
         $r = Invoke-Tool @('run', '--image', 'alpine', '-c', 'echo SHOULD-NOT-RUN', 'stray', '--no-such-option')
@@ -582,7 +610,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 36 } else { 37 }
+$expected = if ($Quick) { 38 } else { 39 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

@@ -736,3 +736,253 @@ The two acceptance cases are the pair: a tag that does not exist reports
 `unreached: true` at exit 2, and `-c 'exit 125'` reports `unreached: false` at
 exit 125. A rule that read the status alone cannot pass both.
 
+---
+
+## WSL-40. What a second reading of the core found
+
+**Source** The operator's third priority on 2026-09-09: the transport, the base
+lifecycle, the job model and the fleet are one session old, and this is the pass
+that asks what a second reading finds.
+**Category** wsl, **Priority** P1, **Effort** M, **Status** done
+
+## Problem
+
+Nothing was reported broken. This is the pass that reads code nobody has read
+twice, and three things came out of it. All three are in the published
+`wsl-toolkit-v1.2.0` and in `v1.1.0` before it.
+
+1. `provision` passes ONE `prefixWriter` as both `Stdout` and `Stderr`, and
+   `os/exec` runs a copier per stream when the writer is not an `*os.File`. Its
+   `seen` buffer locks itself; its `partial` line buffer did not, so the two
+   copiers appended to the same slice.
+2. A catalog id of `..` passes `isImageID`, because a dot is a legal character
+   in `debian12` and in `ubuntu-24.04`. `matrix --artifacts out` writes each row
+   into `out/<id>`.
+3. `Ledger.Compact` read the file with no lock and then took the lock to write.
+
+## Premise
+
+Measured, not read:
+
+- ⭐ **The race is real and the detector is what makes it RELIABLE to see.**
+  With the lock removed, `go test -race` reports `WARNING: DATA RACE` and the
+  case goes red in 10 of 10 runs. Without `-race` the same broken version went
+  red in 6 of 10, because appending to a shared slice corrupts the output often
+  and not always. A guard proved six times in ten is a guard that passes on the
+  wrong day, which is why this suite runs under the detector. The symptom in
+  production is an interleaved or dropped provisioning line, in the one place
+  whose output decides whether the base is usable.
+- ⭐ **The id rule accepts every dot name.** A test printed `isImageID("..")`
+  and `isDistroName("..")` as true, along with `"."`, `"..."` and `".hidden"`.
+- ⚠ **The lost-append window is real and NOT reachable by a test.** Measured:
+  the broken `Compact` was run against a 50-append, 20-compaction stress case
+  ten times and went red in NONE of them, because `Open` took the lock too and
+  an append almost never lands in the gap between its release and `Compact`'s
+  acquire.
+
+## Approach
+
+Lock what is shared, bound what grows, and refuse a name that means something
+other than what it looks like.
+
+`prefixWriter` takes a mutex, holds it across the buffer work, and releases it
+BEFORE calling the caller-supplied logger, because holding a lock across a
+callback is how an unrelated function deadlocks a provisioning run. Its
+unterminated tail is bounded and FLUSHED rather than dropped past the ceiling: a
+long line is still information. `Flush` exists for the line a failing step ends
+on, which tends to have no terminator.
+
+`isImageID` and `isDistroName` refuse a leading dot, which removes `.`, `..`,
+`...` and `.hidden` while keeping `a..b` and `ubuntu-24.04`.
+
+`Compact` takes the lock once and calls an unlocked `openLocked`, so its read
+and its write cannot be separated. `Open` returns a sorted slice, because
+`Compact` writes what `Open` returns and a map's order is not one.
+
+⛔ **The third fix is held by STRUCTURE and it is not covered by a test.** A
+test that passes ten times out of ten against the defect is worse than no test,
+so the case written for it says what it does prove and what it does not.
+
+## Consumers
+
+⚠ **A caller whose configuration carries a dot-named image will start being
+refused.** Nothing plausible is in that set, and the refusal names the field. It
+is a behaviour change and belongs in the changelog.
+
+## Prove
+
+```bash
+go test -race ./...
+```
+
+Plus the mutation for each guard that can carry one: the lock removed from
+`prefixWriter` reports a data race, and the dot names are a table case.
+
+## Closing
+
+**Closed 2026-09-10.** All three are fixed and shipped in `wsl-toolkit-v1.3.0`.
+`prefixWriter` holds a mutex across the buffer work and releases it before
+calling the caller's logger; its unterminated tail is bounded at 64 KiB and
+FLUSHED rather than dropped, and `provision` calls `Flush` so the line a failing
+step ends on is not held forever. `isImageID` and `isDistroName` refuse a leading
+dot. `Compact` takes the lock once and calls an unlocked `openLocked`, and `Open`
+returns a sorted slice.
+
+```text
+$ go test -race ./...
+ok  	github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit	2.353s
+ok  	github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/script	1.338s
+ok  	github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit	3.617s
+```
+
+```text
+$ python .tmp/mutate.py
+  ok       the lock that makes one writer safe for two streams  1 case(s), went red
+  ok       the flush of a final line with no terminator         1 case(s), went red
+  ok       the ceiling on output that never sends a newline     1 case(s), went red
+  ok       the leading-dot refusal for an image id              2 case(s), went red
+  ok       the leading-dot refusal for a distribution name      1 case(s), went red
+  ok       the order Open returns records in                    1 case(s), went red
+```
+
+⚠ **One claim in this entry was wrong when it was written and is corrected
+here.** The premise said the detector is what makes the race VISIBLE. Measured
+ten runs each way against the broken version, it went red in 6 of 10 plain runs
+and 10 of 10 under `-race`, so the detector buys DETERMINISM, not visibility. The
+premise above now carries those numbers, and the mutation row asks for `-race`
+because a guard proved six times in ten is one that passes on the wrong day.
+
+⛔ **The ledger lock is still held by structure and still has no test, on
+purpose.** The mutation harness carries a comment saying so rather than a row
+that would report theatre every run.
+
+---
+
+## WSL-41. What a failure is allowed to hide
+
+**Source** The fifth review of this session, run as a deliberate lens rather
+than a sweep: take the defect class of [issue 10](https://github.com/Azathothas/ToolKit/issues/10)
+and [issue 8](https://github.com/Azathothas/ToolKit/issues/8), a failure reported
+as a benign or successful outcome, and go looking for the rest of it.
+**Category** wsl, **Priority** P1, **Effort** M, **Status** done
+
+## Problem
+
+Five things, found by reading every discarded error in the module and every
+`return exitOK` that had a failure above it.
+
+1. `NewClientSpool` had FOUR silent returns. A helper-route job ran, succeeded,
+   and `wsl-toolkit logs` found nothing, with no line anywhere naming the step
+   that gave up. The direct route's `openSpool` logged the same failure all
+   along, so one route told the operator and the other did not.
+2. `ClientSpool.Finish` returned the empty string when it could not file the
+   transcript under the job id, while a complete transcript sat in the staging
+   directory it was holding.
+3. `listTranscripts` treated EVERY `os.ReadDir` failure as "no transcripts on
+   this machine yet" at exit 0.
+4. `helper stop` discarded the reason nothing answered. `DialHelper` fails for
+   three different things, one of which is "something else is listening on that
+   address and reports a different pid".
+5. `writeHelperJSON` carried a comment saying an encoding failure "can only be
+   recorded", and nothing recorded it.
+
+⛔ **`ClientSpool` SHIPPED IN v1.2.0 WITH NO UNIT CASE AT ALL.** It is what
+makes `logs` work on the helper route, and the only thing covering it was one
+acceptance case that exercises the direct route. Three of the five findings are
+in that type.
+
+## Premise
+
+Measured, not read:
+
+- ⭐ **Two openers of the same file disagreed.** `openSpool` takes a `log` and
+  uses it; `NewClientSpool` opened the same two files and threw the error away.
+  The asymmetry is visible in four lines of diff, which is what makes it the kind
+  of thing a lens finds and a sweep does not.
+- ⚠ **On Windows, finding 3 cannot separate a file from an absence.**
+  Measured: `os.ReadDir` on a path that is a FILE returns ERROR_PATH_NOT_FOUND,
+  for which `os.IsNotExist` reports true. So a file named `jobs` still reads as
+  "not yet", which is a tolerable answer for a situation this tool did not
+  create. What the narrowing catches is every OTHER failure.
+- ⭐ **The job id was nowhere in the human output.** `run` printed the image
+  label and the exit code; `matrix` printed a table of labels. The id a transcript
+  is filed under appeared only under `--json`, so `wsl-toolkit logs ID` could not
+  be typed without first running `logs` bare to go hunting for it.
+
+## Approach
+
+A failure may be tolerated. It may not be hidden, and it may not be dressed as a
+different outcome.
+
+`NewClientSpool` takes the `log` its caller already had and names the step it
+gave up on, and it opens its files through the SAME `openSpool` the direct route
+uses, so the two cannot drift apart again. `Finish` returns the staging path when
+it cannot file the transcript, because the bytes are there, `logs` reads that
+path, and gc collects it by age like anything else. `listTranscripts` treats only
+a missing directory as "not yet" and refuses the rest by name. `helper stop`
+still exits 0, because stopping something that is not running is the outcome the
+caller asked for, and now prints the reason. `writeHelperJSON` says plainly that
+the error is dropped and why that is right.
+
+Two quality-of-life lines come out of the same reading, because a transcript
+nobody can find is the same defect as one that was never written: `run` prints
+the command that reads its output back, and the matrix table says once, after the
+table rather than per row, that each row's output is kept.
+
+## Consumers
+
+⚠ **`logs` on a machine whose `jobs` path cannot be read now exits 2 where
+it used to exit 0 with "no transcripts on this machine yet".** That is the point
+of the change and it is a behaviour change, so it belongs in the changelog. A
+machine that has simply not run a job still exits 0 and still says so.
+
+Everything else is additive: lines that were not printed before, and a path
+returned where the empty string used to be.
+
+## Prove
+
+```bash
+go test -race ./...
+python .tmp/mutate.py
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
+```
+
+## Closing
+
+**Closed 2026-09-10.** Shipped in `wsl-toolkit-v1.3.0`. Eight unit cases were
+written, six of them for `ClientSpool`, which had none; ten guards were proved by
+mutation; two acceptance cases were added against a real machine.
+
+```text
+$ python .tmp/mutate.py
+  ok       the line that says this machine has no state directory      3 case(s), went red
+  ok       the line that names the step the spool gave up on           3 case(s), went red
+  ok       the tee that a failing spool cannot abort                   1 case(s), went red
+  ok       the staging removal for a result that carried no id         1 case(s), went red
+  ok       yielding to a transcript that is already complete           1 case(s), went red
+  ok       the path Finish returns for a transcript it could not file  1 case(s), went red
+  ok       the line between an empty machine and an unreadable one     3 case(s), went red
+  ok       the job id on a run that kept its output                    5 case(s), went red
+  ok       not saying the same thing twice after a truncated run       5 case(s), went red
+  ok       the fleet offering a transcript only when one exists        3 case(s), went red
+
+39 of 39 guards proved.
+```
+
+```text
+  ok    a helper job leaves its transcript on the machine that asked for it
+  ok    a run says the command that reads its output back
+
+acceptance: 39 case(s) passed against a real machine.
+```
+
+⭐ **The first acceptance case is the one that was missing.** `logs writes a
+job transcript back, complete` has always run the DIRECT route. This one asks for
+a job through the helper and reads it back with the CLIENT, which is what a
+caller on a restricted machine actually does, and it is the only case that
+touches `ClientSpool` end to end.
+
+⚠ **Finding 4 has no test of its own.** It is one line of text on a path
+that needs `DialHelper` to fail in a specific way, and the existing acceptance
+case covers the outcome that matters, that the helper is gone once it is stopped.
+Saying so is better than a case that asserts a string.

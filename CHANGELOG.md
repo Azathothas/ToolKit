@@ -19,6 +19,96 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-10
+
+### 2026-09-10T05:40:00Z: wsl-toolkit v1.3.0, what two readings found with nothing reported
+
+**Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-40`
+and `WSL-41`.
+**Deployed:** ⭐ **published as `wsl-toolkit-v1.3.0`**, five assets, digests
+recomputed from the downloaded files rather than read from the build.
+
+Nothing was reported broken. `v1.2.0` had just closed eight consumer-filed
+issues, passed 37 acceptance cases against a real machine and 29 proved
+mutations. These are the eight defects that two deliberate readings found anyway,
+and they were all in `v1.2.0` and in `v1.1.0` before it.
+
+The core pass, `WSL-40`:
+
+- `prefixWriter` is written to from TWO goroutines, because `provision` passes one
+  instance as both `Stdout` and `Stderr` and `os/exec` runs a copier per stream.
+  Its `seen` buffer locked itself; its `partial` line buffer did not. It now takes
+  a mutex, bounds the unterminated tail at 64 KiB and FLUSHES it rather than
+  dropping it, and releases the lock before calling the caller's logger.
+- A catalog id of `..` passed `isImageID`, and `matrix --artifacts out` writes
+  each row into `out/<id>`. A leading dot is refused.
+- `Ledger.Compact` read the file with no lock and then took the lock to write, so
+  a record appended between those two steps was read by neither and discarded by
+  the write. It takes the lock once.
+
+The review after it, `WSL-41`, took one defect class, a failure reported as a
+benign outcome, and read every discarded error in the module:
+
+- `NewClientSpool` had four silent returns, so a helper-route job ran, succeeded,
+  and `logs` found nothing with no line saying why. The direct route had logged
+  the same failure all along.
+- `ClientSpool.Finish` returned nothing when it could not file a transcript it was
+  holding. It returns the path the bytes are actually at.
+- `logs` reported every read failure as "no transcripts on this machine yet" at
+  exit 0.
+- `helper stop` discarded the reason nothing answered, one of which is "something
+  else is listening on that address".
+- Two quality-of-life lines: `run` now prints the command that reads its output
+  back, and the matrix table says once that each row's output is kept. ⛔ The
+  job id was nowhere in the human output, so `logs ID` could not be typed without
+  first running `logs` bare to go hunting for it, which makes the whole feature
+  one nobody could find.
+
+⚠ **Two behaviour changes.** A configuration carrying a dot-named image or
+distribution is now refused at the point it is read, and the refusal names the
+field; nothing plausible is in that set. `logs` on a machine whose `jobs` path
+cannot be READ now exits 2 rather than 0, which is the point of the change.
+`WSL-41` owns the detail, including what this does and does not separate on
+Windows.
+
+
+### 2026-09-10T02:10:00Z: five of the last six shell pairs become one Go program
+
+**Record:** [`TODO/tooling.md`](TODO/tooling.md) carries `TOOL-14`.
+**Deployed:** ⛔ **no deploy.** Nothing under `scripts/common/` or `tools/repo/`
+is published as a release; this changes what a session runs, not what a consumer
+fetches. ⚠ `Azathothas/TEMPLATE` ships these scripts by raw URL, so a
+consumer keeps a working command and gains a Go toolchain requirement. Each
+wrapper says so by name rather than failing at a missing binary.
+
+[`tools/repo/`](tools/repo/) is this repository's tool box: the tools that are
+not gate checks. `deslop`, `license`, `binfmt`, `remote-items` and `git-sync`
+are subcommands of one binary, and the scripts named after them are wrappers,
+so the documented commands and the raw-URL fetch both keep working.
+
+⛔ **It is deliberately not `tools/check`.** That binary holds the rules this
+repository enforces over its own tree and `check-gate` runs all of them. A
+commit path and a licence writer are not rules; folding them in would make the
+gate do things that are not checks, and a gate whose scope drifts is one nobody
+can state the meaning of.
+
+Every port was measured against the thing it replaces rather than read against
+it, and `TOOL-14` carries the five comparisons.
+
+⛔ **The sixth is not ported, and the entry carries the correction under its
+premise rather than in place of it.** `scripts/doctor/` runs BEFORE you know
+what is installed, and "is there a Go toolchain" is one of the questions it
+answers; a wrapper that had to build one first could not report that it was
+missing. `check-twins.sh` stated that rule before `TOOL-14` was written, and the
+entry was authored from a count rather than from the rule.
+
+⭐ **Two dependencies go and one workaround with them.** `jq` and `curl` are
+replaced by the standard library and by `gh` itself, which matters beyond
+tidiness: the shell version fetched `action.yml` with no credential, so a
+private action or a rate-limited runner read as "runtime unverified" rather than
+as what it declares. And `binfmt` no longer needs `MSYS_NO_PATHCONV`, because
+`exec.Command` passes its argument list to `CreateProcess` untouched.
+
 ## 2026-09-09
 
 ### 2026-09-09T21:30:00Z: eight defects a consumer found in the published binary

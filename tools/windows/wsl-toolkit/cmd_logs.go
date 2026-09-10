@@ -169,12 +169,28 @@ type transcriptRow struct {
 func listTranscripts(home string, asJSON bool) (int, error) {
 	root := filepath.Join(home, "jobs")
 	entries, err := os.ReadDir(root)
-	if err != nil {
+	// ⛔ ONLY A MISSING DIRECTORY MEANS "NOT YET". Every error used to land
+	// here, so an unreadable `jobs` produced the sentence "no transcripts on this
+	// machine yet" and exit 0: a true-sounding answer to a question this process
+	// could not answer, which is issue #10's defect class in a place the issue did
+	// not name.
+	//
+	// ⚠ ON WINDOWS THIS DOES NOT SEPARATE A FILE FROM AN ABSENCE, and the
+	// narrowing is still worth having. Measured: `os.ReadDir` on a path that is a
+	// FILE returns ERROR_PATH_NOT_FOUND, for which `os.IsNotExist` reports true, so
+	// a file named `jobs` still reads as "not yet". That is a tolerable answer for
+	// a situation this tool did not create. What the narrowing does catch is every
+	// OTHER failure: a directory that cannot be opened, a path the OS refuses, a
+	// volume that went away.
+	if err != nil && os.IsNotExist(err) {
 		if asJSON {
 			return exitOK, writeJSON(map[string]any{"schema": "wsl-toolkit-logs/1", "transcripts": []transcriptRow{}})
 		}
 		logf("  no transcripts on this machine yet")
 		return exitOK, nil
+	}
+	if err != nil {
+		return exitCannot, fmt.Errorf("the transcripts in %s could not be listed: %w", root, err)
 	}
 	var rows []transcriptRow
 	for _, e := range entries {

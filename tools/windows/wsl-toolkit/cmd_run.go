@@ -229,7 +229,33 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 		}
 	}
 	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
+	if hint := transcriptHint(res); hint != "" {
+		logf("  %s", hint)
+	}
 	return jobVerdict(res), nil
+}
+
+// transcriptHint is the one line that makes `logs` reachable.
+//
+// ⛔ THE JOB ID WAS NOWHERE IN THE HUMAN OUTPUT. `run` printed the image
+// label and the exit code, `matrix` printed a table of labels, and the id a
+// transcript is filed under appeared only under --json. So `wsl-toolkit logs
+// JOB-...` could not be typed without first running `wsl-toolkit logs` with no
+// arguments to go looking for it, and a feature nobody can find is one that was
+// not shipped.
+//
+// ⚠ IT NAMES THE COMMAND, not the directory. A path is what this tool knows
+// and a command is what the reader wants next, and the path is one `logs` call
+// away for anyone who wants it.
+func transcriptHint(res toolkit.JobResult) string {
+	if res.Transcript == "" || res.ID == "" {
+		return ""
+	}
+	if res.StdoutTruncated || res.StderrTruncated {
+		// Already said, with the path, by the line about the capture limit.
+		return ""
+	}
+	return "the complete output is kept: wsl-toolkit logs " + res.ID
 }
 
 func jobVerdict(res toolkit.JobResult) int {

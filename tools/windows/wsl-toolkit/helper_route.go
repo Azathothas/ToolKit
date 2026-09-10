@@ -35,7 +35,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 	// as well. Without it `wsl-toolkit logs` on the helper route named a
 	// directory that exists only under the helper's own state, which is a
 	// different path whenever the two do not share WSL_TOOLKIT_HOME.
-	spool := newClientSpool()
+	spool := newClientSpool(note)
 	res, artifactsID, err := c.RunStream(ctx, req, toolkit.HelperSinks{
 		Stdout: spool.Tee(liveOut, false), Stderr: spool.Tee(liveErr, true), Log: note,
 	})
@@ -114,16 +114,22 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 
 // newClientSpool opens one, tolerating a machine with no writable state
 // directory: a nil spool writes nothing and every method accepts it.
-func newClientSpool() *toolkit.ClientSpool {
+//
+// ⚠ THE LOG IS PASSED IN, NOT OPTIONAL. Tolerating a failure and hiding it
+// are different things, and this function used to do both.
+func newClientSpool(log func(string)) *toolkit.ClientSpool {
 	home, err := toolkit.EnsureHome()
 	if err != nil {
+		if log != nil {
+			log("no local transcript for this job: " + err.Error())
+		}
 		return nil
 	}
 	led, err := toolkit.OpenLedger()
 	if err != nil {
 		led = nil
 	}
-	return toolkit.NewClientSpool(home, led)
+	return toolkit.NewClientSpool(home, led, log)
 }
 
 // transcriptWriter writes a helper-run row the same way the direct path does, so

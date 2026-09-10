@@ -243,7 +243,28 @@ func RenderMatrix(w io.Writer, report MatrixReport) error {
 			}
 		}
 	}
-	_, err := fmt.Fprintf(w, "\n  %d ran, %d failed, %d unreached, %d timed out, in %s\n",
-		report.Ran, report.Failed, report.Unreached, report.TimedOut, report.Duration.Round(time.Second))
-	return err
+	if _, err := fmt.Fprintf(w, "\n  %d ran, %d failed, %d unreached, %d timed out, in %s\n",
+		report.Ran, report.Failed, report.Unreached, report.TimedOut, report.Duration.Round(time.Second)); err != nil {
+		return err
+	}
+	// ⭐ ONE LINE FOR THE WHOLE FLEET, not one per row. A twelve-row table
+	// followed by twelve paths is a table nobody reads, and the id of each row is
+	// what `logs` with no arguments lists.
+	if TranscriptsKept(report) {
+		if _, err := fmt.Fprintf(w, "  each row's complete output is kept: wsl-toolkit logs\n"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// TranscriptsKept reports whether any row in this report left output behind to
+// read back, so a caller can say so once rather than per row.
+func TranscriptsKept(report MatrixReport) bool {
+	for _, row := range report.Rows {
+		if row.Transcript != "" {
+			return true
+		}
+	}
+	return false
 }

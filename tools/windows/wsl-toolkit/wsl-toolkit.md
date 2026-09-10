@@ -440,6 +440,17 @@ this machine can open whether or not the two share a state directory.
 ⚠ **A transcript is removed by `gc` under the same age policy as
 everything else**, so an id that ran long enough ago will not be here.
 
+⭐ **`run` tells you the id.** A job that kept its output ends with the
+command that reads it back, so the id does not have to be found by listing first.
+A run whose output was cut at the capture limit says that instead, with the path,
+because saying the same thing twice in two shapes reads as two facts.
+
+⛔ **An empty machine and an unreadable one are different answers.** A
+machine that has not run a job yet exits 0 and says so. A `jobs` path that cannot
+be READ is a refusal at exit 2 naming the path, because "no transcripts on this
+machine yet" is a true-sounding answer to a question this tool could not
+answer.
+
 ---
 
 ## `script`

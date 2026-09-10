@@ -28,6 +28,7 @@ type ClientSpool struct {
 	err    *os.File
 	ledger *Ledger
 	id     string
+	log    func(string)
 }
 
 // NewClientSpool opens a staging directory for one streamed job.
@@ -35,21 +36,38 @@ type ClientSpool struct {
 // ⚠ IT IS NEVER A REASON TO FAIL A JOB. A nil spool writes nothing and every
 // method tolerates it, so a caller with no writable state directory still runs
 // its job and simply has no local transcript.
-func NewClientSpool(home string, ledger *Ledger) *ClientSpool {
+//
+// ⛔ IT SAYS WHY, THOUGH. Every one of these four returns used to be silent,
+// so a job ran, succeeded, and `wsl-toolkit logs` found nothing, with no line
+// anywhere saying which step gave up. The direct route's openSpool has always
+// logged the same failure, so one route told the operator and the other did not.
+// A degradation nobody is told about is the defect reported as issue #10, in a
+// different place.
+func NewClientSpool(home string, ledger *Ledger, log func(string)) *ClientSpool {
+	gaveUp := func(why string, err error) *ClientSpool {
+		if log != nil {
+			log("no local transcript for this job: " + why + ": " + err.Error())
+		}
+		return nil
+	}
 	if home == "" {
+		if log != nil {
+			log("no local transcript for this job: this machine has no state directory")
+		}
 		return nil
 	}
 	id, err := newJobID()
 	if err != nil {
-		return nil
+		return gaveUp("a job id could not be generated", err)
 	}
 	dir := filepath.Join(home, "incoming", id)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return nil
+		return gaveUp("the staging directory could not be made", err)
 	}
-	s := &ClientSpool{home: home, dir: dir, ledger: ledger, id: id}
-	s.out, _ = os.OpenFile(filepath.Join(dir, "stdout.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-	s.err, _ = os.OpenFile(filepath.Join(dir, "stderr.log"), os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	s := &ClientSpool{home: home, dir: dir, ledger: ledger, id: id, log: log}
+	// ⭐ The SAME opener the direct route uses, so the two cannot drift again.
+	s.out = openSpool(dir, "stdout.log", log)
+	s.err = openSpool(dir, "stderr.log", log)
 	// ⛔ Recorded before it is written to, like every other resource here, so a
 	// client that was killed mid-job leaves something cleanup can find. The
 	// record also keeps a concurrent `gc --apply` from removing it underneath a
@@ -137,14 +155,31 @@ func (s *ClientSpool) Finish(jobID string) string {
 		}
 		return dest
 	}
+	// ⛔ A FAILURE TO FILE IT IS NOT A REASON TO DENY IT EXISTS. Both of these
+	// returned "" while a complete transcript sat in the staging directory, so
+	// the caller reported no transcript for a job whose output was on this disk.
+	// The staging path is returned instead: it is under the same state directory,
+	// `logs` reads it, and gc collects it by age like anything else. The reason is
+	// logged rather than swallowed, because a path in `incoming/` instead of
+	// `jobs/` is a surprise an operator should be able to explain.
 	if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-		return ""
+		return s.unfiled("the jobs directory could not be made", err)
 	}
 	if err := os.Rename(s.dir, dest); err != nil {
-		return ""
+		return s.unfiled("the transcript could not be filed under the job id", err)
 	}
 	s.dir = ""
 	return dest
+}
+
+// unfiled reports why a transcript stayed where it was written, and returns that
+// place. ⚠ s.dir is deliberately NOT cleared: the directory is still there and
+// the path being returned points at it.
+func (s *ClientSpool) unfiled(why string, err error) string {
+	if s.log != nil {
+		s.log("the transcript stayed in " + s.dir + ": " + why + ": " + err.Error())
+	}
+	return s.dir
 }
 
 // Discard throws the spool away, for a job that never produced a result.

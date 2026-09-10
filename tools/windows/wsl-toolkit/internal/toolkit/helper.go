@@ -233,7 +233,12 @@ func writeHelperJSON(w http.ResponseWriter, status int, v any) {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(v); err != nil {
-		// The response is already committed, so this can only be recorded.
+		// ⚠ DROPPED, and the comment used to say "recorded", which nothing
+		// here did. The header and status are already written, so there is no way
+		// left to tell this client anything. The client learns regardless: it gets
+		// a short body and fails to decode it. The common cause is a client that
+		// hung up, which is routine, so a line per occurrence would be noise in
+		// the one log an operator reads to find a real fault.
 		_ = err
 	}
 }

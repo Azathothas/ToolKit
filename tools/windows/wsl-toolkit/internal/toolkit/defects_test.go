@@ -8,10 +8,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -664,4 +666,472 @@ func TestAKeptJobIsNotLiveForever(t *testing.T) {
 	if len(remove) != 1 {
 		t.Fatal("a kept job directory with no live marker was spared by a cleanup with no age limit")
 	}
+}
+
+// -- the second reading of the core -----------------------------------------
+
+// TestPrefixWriterIsSafeFromTwoStreams is the case for a race a second reading
+// found.
+//
+// ⚠ RUN IT UNDER -race. Measured against the broken version ten times each
+// way, it went red in 6 of 10 plain runs and 10 of 10 with the detector. The
+// assertions below can catch the corruption on their own, just not dependably,
+// and a case that fails six times in ten is one somebody reruns until it is
+// green.
+//
+// ⛔ provision passes ONE prefixWriter as both Stdout and Stderr, and os/exec
+// runs a copier per stream when the writer is not an *os.File. `seen` locked
+// itself; `partial` did not, so the two copiers appended to the same slice. The
+// symptom would be an interleaved or dropped provisioning line, in the one place
+// whose output decides whether the base is usable.
+func TestPrefixWriterIsSafeFromTwoStreams(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	w := &prefixWriter{to: func(s string) {
+		mu.Lock()
+		defer mu.Unlock()
+		lines = append(lines, s)
+	}}
+
+	var wg sync.WaitGroup
+	for g := 0; g < 2; g++ {
+		wg.Add(1)
+		go func(g int) {
+			defer wg.Done()
+			for i := 0; i < 200; i++ {
+				fmt.Fprintf(w, "stream%d line%d\n", g, i)
+			}
+		}(g)
+	}
+	wg.Wait()
+	w.Flush()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 400 {
+		t.Fatalf("got %d line(s), want 400: two streams through one writer lost or split some", len(lines))
+	}
+	seen := map[string]bool{}
+	for _, l := range lines {
+		if seen[l] {
+			t.Fatalf("line %q arrived twice", l)
+		}
+		seen[l] = true
+	}
+	for g := 0; g < 2; g++ {
+		for i := 0; i < 200; i++ {
+			want := fmt.Sprintf("stream%d line%d", g, i)
+			if !seen[want] {
+				t.Fatalf("%q never arrived", want)
+			}
+		}
+	}
+}
+
+// TestPrefixWriterFlushesAnUnterminatedLine, which is exactly the line a failing
+// step tends to end on.
+func TestPrefixWriterFlushesAnUnterminatedLine(t *testing.T) {
+	var lines []string
+	w := &prefixWriter{prefix: "  ", to: func(s string) { lines = append(lines, s) }}
+	if _, err := w.Write([]byte("first\r\nno newline at the end")); err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 || lines[0] != "  first" {
+		t.Fatalf("before the flush: %v", lines)
+	}
+	w.Flush()
+	if len(lines) != 2 || lines[1] != "  no newline at the end" {
+		t.Fatalf("after the flush: %v", lines)
+	}
+	// ⚠ A second flush over nothing says nothing.
+	w.Flush()
+	if len(lines) != 2 {
+		t.Fatalf("an empty flush emitted something: %v", lines)
+	}
+}
+
+// TestPrefixWriterBoundsAnUnterminatedLine so a child that writes megabytes
+// without a newline cannot grow the held buffer without limit. The text is
+// flushed rather than dropped: a long line is still information.
+func TestPrefixWriterBoundsAnUnterminatedLine(t *testing.T) {
+	var lines []string
+	w := &prefixWriter{to: func(s string) { lines = append(lines, s) }}
+	if _, err := w.Write([]byte(strings.Repeat("x", maxPartialLine+10))); err != nil {
+		t.Fatal(err)
+	}
+	if len(lines) != 1 {
+		t.Fatalf("got %d line(s), want 1: the held text was neither flushed nor kept", len(lines))
+	}
+	if len(w.partial) != 0 {
+		t.Errorf("%d byte(s) are still held after the ceiling was passed", len(w.partial))
+	}
+}
+
+// TestANameOfDotsIsNotAName is the other second-reading finding.
+//
+// ⛔ `matrix --artifacts out` writes each row into `out/<id>`, so an id of `..`
+// put a fleet's output in the parent of the directory the caller named. Both
+// dot names passed the character rule, because a dot is legal in `debian12` and
+// in `ubuntu-24.04`.
+func TestANameOfDotsIsNotAName(t *testing.T) {
+	for _, bad := range []string{".", "..", "...", ".hidden", ".."} {
+		if isImageID(bad) {
+			t.Errorf("isImageID(%q) = true, and it is used as a path component", bad)
+		}
+		if isDistroName(bad) {
+			t.Errorf("isDistroName(%q) = true", bad)
+		}
+	}
+	// ⚠ And the rule must not widen. A dot inside a name is ordinary.
+	for _, ok := range []string{"alpine", "debian12", "ubuntu-24.04", "a..b", "void-musl", "rocky8", "x.y.z"} {
+		if !isImageID(ok) {
+			t.Errorf("isImageID(%q) = false, and it is an ordinary catalog id", ok)
+		}
+		if !isDistroName(ok) {
+			t.Errorf("isDistroName(%q) = false", ok)
+		}
+	}
+}
+
+// TestAConfigWithADotIdIsRefusedWhenItIsREAD, which is where this tree validates.
+func TestAConfigWithADotIdIsRefusedWhenItIsRead(t *testing.T) {
+	// ⚠ The element is BOUND TO A VARIABLE rather than written inline. A Go
+	// composite literal of slice-of-struct opens with `{{`, which the tree's
+	// placeholder check reads as an unfilled template. Binding it is the fix;
+	// widening that guard to allow `{{` would be the wrong half to change.
+	bad := Image{ID: "..", Ref: "docker.io/library/alpine:latest", Libc: "musl", Kind: "musl"}
+	good := Image{ID: "alpine", Ref: "docker.io/library/alpine:latest", Libc: "musl", Kind: "musl"}
+
+	cfg := DefaultConfig()
+	cfg.Images = []Image{bad}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("a catalog entry with the id \"..\" was accepted, and matrix --artifacts would write a row into the parent of the directory the caller named")
+	}
+	cfg.Images = []Image{good}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("an ordinary catalog entry was refused: %v", err)
+	}
+}
+
+// TestLedgerSurvivesConcurrentUse runs appends against compactions and asserts
+// the ledger stays coherent. Under -race it also proves there is no data race
+// on the file or the mutex.
+//
+// ⚠ IT DOES NOT PROVE THE FIX IT WAS WRITTEN FOR, and saying so is the
+// point. Compact used to read the file with no lock and then take the lock to
+// write, so a record appended between those two steps was read by neither and
+// discarded by the write: a lost OPEN record, which is what cleanup reads as
+// work in flight, in a helper that serves requests concurrently.
+//
+// ⛔ THAT WINDOW IS TOO NARROW TO HIT. Measured: the broken version was run
+// against this case ten times and went red in NONE of them, because Open took
+// the lock too and an append almost never lands in the gap between its release
+// and Compact's acquire. A test that passes ten times out of ten against the
+// defect is worse than no test, so this one does not claim to cover it.
+//
+// ⭐ The invariant is held by STRUCTURE instead: Compact takes the lock once
+// and calls openLocked, so its read and its write cannot be separated. That is
+// checkable by reading nine lines, and it is what a reviewer should check.
+func TestLedgerSurvivesConcurrentUse(t *testing.T) {
+	dir := t.TempDir()
+	l := &Ledger{path: filepath.Join(dir, "ledger.jsonl")}
+
+	for i := 0; i < 20; i++ {
+		id := fmt.Sprintf("old%02d", i)
+		if err := l.Append(LedgerEntry{Event: "open", Kind: "job", ID: id}); err != nil {
+			t.Fatal(err)
+		}
+		if err := l.Append(LedgerEntry{Event: "close", Kind: "job", ID: id}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := l.Append(LedgerEntry{Event: "open", Kind: "job", ID: "live"}); err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			_ = l.Append(LedgerEntry{Event: "open", Kind: "job", ID: fmt.Sprintf("new%02d", i)})
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 20; i++ {
+			if _, err := l.Compact(); err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	wg.Wait()
+
+	open, err := l.Open()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, e := range open {
+		got[e.ID] = true
+	}
+	if !got["live"] {
+		t.Error("the record open before any of this started was lost")
+	}
+	missing := 0
+	for i := 0; i < 50; i++ {
+		if !got[fmt.Sprintf("new%02d", i)] {
+			missing++
+		}
+	}
+	if missing > 0 {
+		t.Fatalf("%d of 50 records appended during a compaction were lost. Each one is a job cleanup would not see as live", missing)
+	}
+	if len(got) < 51 {
+		t.Fatalf("the ledger holds %d open record(s) and at least 51 were opened", len(got))
+	}
+	if got["old00"] {
+		t.Error("a closed record survived compaction")
+	}
+}
+
+// TestLedgerOpenIsOrdered, because Compact writes what Open returns and a map's
+// order is not one.
+func TestLedgerOpenIsOrdered(t *testing.T) {
+	dir := t.TempDir()
+	l := &Ledger{path: filepath.Join(dir, "ledger.jsonl")}
+	base := time.Date(2026, 9, 10, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 12; i++ {
+		if err := l.Append(LedgerEntry{
+			Event: "open", Kind: "job", ID: fmt.Sprintf("j%02d", i),
+			At: base.Add(time.Duration(i) * time.Minute),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var first []string
+	for run := 0; run < 5; run++ {
+		open, err := l.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var ids []string
+		for _, e := range open {
+			ids = append(ids, e.ID)
+		}
+		if run == 0 {
+			first = ids
+			continue
+		}
+		if strings.Join(ids, ",") != strings.Join(first, ",") {
+			t.Fatalf("two reads of one ledger returned different orders:\n  %v\n  %v", first, ids)
+		}
+	}
+	if len(first) != 12 || first[0] != "j00" || first[11] != "j11" {
+		t.Fatalf("the order is not by time: %v", first)
+	}
+}
+
+// -- the fifth review: what a failure is allowed to hide ----------------------
+
+// ⛔ THE WHOLE TYPE SHIPPED IN v1.2.0 WITH NO UNIT CASE. ClientSpool is what
+// makes `wsl-toolkit logs` work on the helper route, and the only thing covering
+// it was one acceptance case that exercises the direct route. These five are the
+// missing half, and three of them are for defects the fifth review found.
+
+// TestClientSpoolSaysWhyItHasNoTranscript is the finding itself.
+//
+// ⛔ EVERY ONE OF THESE RETURNS WAS SILENT. A job ran, succeeded, and `logs`
+// found nothing, with no line anywhere naming the step that gave up. The direct
+// route's openSpool logged the same failure all along, so one route told the
+// operator and the other did not. That is issue #10's defect class, silent
+// degradation, in a place the issue did not name.
+func TestClientSpoolSaysWhyItHasNoTranscript(t *testing.T) {
+	t.Run("no state directory at all", func(t *testing.T) {
+		var said []string
+		if got := NewClientSpool("", nil, func(s string) { said = append(said, s) }); got != nil {
+			t.Fatalf("a spool was returned for an empty home")
+		}
+		if len(said) != 1 {
+			t.Fatalf("said %d line(s), want 1: %v", len(said), said)
+		}
+	})
+
+	t.Run("the staging directory cannot be made", func(t *testing.T) {
+		home := t.TempDir()
+		// A FILE where the directory has to go. MkdirAll cannot win against it,
+		// on either platform, which is what makes this deterministic.
+		if err := os.WriteFile(filepath.Join(home, "incoming"), []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var said []string
+		if got := NewClientSpool(home, nil, func(s string) { said = append(said, s) }); got != nil {
+			t.Fatalf("a spool was returned although its directory could not be made")
+		}
+		if len(said) != 1 {
+			t.Fatalf("said %d line(s), want 1: %v", len(said), said)
+		}
+		if !strings.Contains(said[0], "staging directory") {
+			t.Fatalf("the line does not name the step that failed: %q", said[0])
+		}
+	})
+}
+
+// TestClientSpoolKeepsTheLiveStreamWhenTheSpoolFails guards the sink that must
+// not be io.MultiWriter.
+//
+// ⛔ MultiWriter STOPS AT THE FIRST SINK THAT ERRORS and returns that error.
+// The live writer here is the caller's own stdout and the spool is a local
+// convenience, so a full disk on this machine would have aborted a job running on
+// the helper and discarded a result that had already been produced.
+func TestClientSpoolKeepsTheLiveStreamWhenTheSpoolFails(t *testing.T) {
+	home := t.TempDir()
+	s := NewClientSpool(home, nil, nil)
+	if s == nil {
+		t.Fatal("no spool")
+	}
+	// The spool file is closed underneath it, which is the cheapest stand-in for
+	// a sink that has started refusing writes.
+	if err := s.out.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	var live bytes.Buffer
+	w := s.Tee(&live, false)
+	n, err := w.Write([]byte("the answer\n"))
+	if err != nil {
+		t.Fatalf("a failing spool failed the write: %v", err)
+	}
+	if n != len("the answer\n") {
+		t.Fatalf("wrote %d bytes, want %d", n, len("the answer\n"))
+	}
+	if live.String() != "the answer\n" {
+		t.Fatalf("the live stream got %q", live.String())
+	}
+	s.Discard()
+}
+
+// TestClientSpoolFinishWithoutAnIdLeavesNothingBehind covers a result that
+// carried no job id: there is nothing to file the transcript under, and waiting
+// for cleanup to notice would leak one directory per such job.
+func TestClientSpoolFinishWithoutAnIdLeavesNothingBehind(t *testing.T) {
+	home := t.TempDir()
+	s := NewClientSpool(home, nil, nil)
+	if s == nil {
+		t.Fatal("no spool")
+	}
+	dir := s.dir
+	if got := s.Finish(""); got != "" {
+		t.Fatalf("Finish returned %q for a job with no id", got)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatalf("the staging directory survived a job with no id: %v", err)
+	}
+}
+
+// TestClientSpoolFinishYieldsToAnExistingTranscript covers a client and a helper
+// that share one state directory. ⚠ The helper's copy is COMPLETE; this
+// client's starts wherever it began reading, so overwriting would trade a whole
+// transcript for part of one.
+func TestClientSpoolFinishYieldsToAnExistingTranscript(t *testing.T) {
+	home := t.TempDir()
+	s := NewClientSpool(home, nil, nil)
+	if s == nil {
+		t.Fatal("no spool")
+	}
+	staging := s.dir
+	dest := filepath.Join(home, "jobs", "JOB-1")
+	if err := os.MkdirAll(dest, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "stdout.log"), []byte("the helper's own"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := s.Finish("JOB-1"); got != dest {
+		t.Fatalf("Finish returned %q, want the existing %q", got, dest)
+	}
+	kept, err := os.ReadFile(filepath.Join(dest, "stdout.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(kept) != "the helper's own" {
+		t.Fatalf("the complete transcript was overwritten with %q", string(kept))
+	}
+	if _, err := os.Stat(staging); !os.IsNotExist(err) {
+		t.Fatalf("the staging directory survived: %v", err)
+	}
+}
+
+// TestClientSpoolFinishReturnsTheTranscriptItCouldNotFile is the third finding.
+//
+// ⛔ IT USED TO RETURN THE EMPTY STRING while a complete transcript sat on
+// this disk, so the caller reported no transcript for a job whose output it was
+// holding. Returning the staging path is strictly better: `logs` reads it, gc
+// collects it by age, and the operator is told why it is not under `jobs/`.
+func TestClientSpoolFinishReturnsTheTranscriptItCouldNotFile(t *testing.T) {
+	home := t.TempDir()
+	var said []string
+	s := NewClientSpool(home, nil, func(line string) { said = append(said, line) })
+	if s == nil {
+		t.Fatal("no spool")
+	}
+	if _, err := s.out.Write([]byte("output worth keeping\n")); err != nil {
+		t.Fatal(err)
+	}
+	// A FILE where `jobs` has to be a directory, so filing cannot succeed.
+	if err := os.WriteFile(filepath.Join(home, "jobs"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := s.Finish("JOB-2")
+	if got == "" {
+		t.Fatal("Finish denied having a transcript it was holding")
+	}
+	kept, err := os.ReadFile(filepath.Join(got, "stdout.log"))
+	if err != nil {
+		t.Fatalf("the path Finish returned does not hold the output: %v", err)
+	}
+	if string(kept) != "output worth keeping\n" {
+		t.Fatalf("the transcript holds %q", string(kept))
+	}
+	if len(said) != 1 || !strings.Contains(said[0], got) {
+		t.Fatalf("the operator was not told where it stayed: %v", said)
+	}
+}
+
+// TestMatrixTablePointsAtLogsOnce covers the fleet's half of the same gap.
+//
+// ⭐ ONCE, not once per row. A twelve-row table followed by twelve paths is a
+// table nobody reads, and `logs` with no arguments is what lists the ids.
+func TestMatrixTablePointsAtLogsOnce(t *testing.T) {
+	t.Run("rows that kept their output", func(t *testing.T) {
+		var out bytes.Buffer
+		report := MatrixReport{Rows: []JobResult{
+			{Label: "alpine", Transcript: "one"},
+			{Label: "debian12", Transcript: "two"},
+		}}
+		if err := RenderMatrix(&out, report); err != nil {
+			t.Fatal(err)
+		}
+		if n := strings.Count(out.String(), "wsl-toolkit logs"); n != 1 {
+			t.Fatalf("the table points at logs %d times, want exactly 1:\n%s", n, out.String())
+		}
+	})
+
+	t.Run("rows that kept nothing", func(t *testing.T) {
+		var out bytes.Buffer
+		// ⚠ BOUND TO A VARIABLE rather than written inline. A Go composite
+		// literal of slice-of-struct opens with `{{`, which this tree's
+		// placeholder check reads as an unfilled template. Binding it is the fix;
+		// widening that guard to allow `{{` would be the wrong half to change.
+		row := JobResult{Label: "alpine"}
+		report := MatrixReport{Rows: []JobResult{row}}
+		if err := RenderMatrix(&out, report); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String(), "wsl-toolkit logs") {
+			t.Fatalf("the table offered a transcript nothing wrote:\n%s", out.String())
+		}
+	})
 }

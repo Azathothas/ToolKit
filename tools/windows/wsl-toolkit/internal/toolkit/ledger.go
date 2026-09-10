@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -84,7 +85,22 @@ func (l *Ledger) Append(e LedgerEntry) error {
 
 // Open reports every resource with an open record and no close.
 func (l *Ledger) Open() ([]LedgerEntry, error) {
-	entries, err := l.All()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.openLocked()
+}
+
+// openLocked is Open with the lock already held.
+//
+// ⛔ COMPACT NEEDS THE READ AND THE WRITE UNDER ONE LOCK. It used to call
+// Open, which took no lock at all, and then take the lock to write. A record
+// appended between those two steps was read by neither and discarded by the
+// write. That is a lost OPEN record, and an open record is what cleanup reads
+// as work in flight, so the window was one where a concurrent `gc --apply`
+// could remove a running job's directory. The helper serves requests
+// concurrently, which is exactly where two of these meet.
+func (l *Ledger) openLocked() ([]LedgerEntry, error) {
+	entries, err := l.allLocked()
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +118,15 @@ func (l *Ledger) Open() ([]LedgerEntry, error) {
 	for _, e := range open {
 		out = append(out, e)
 	}
+	// ⚠ SORTED, because a map's order is not one. Compact writes what this
+	// returns, so without a fixed order the same set of records produces a
+	// different file every time and nothing about the ledger is diffable.
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].At.Equal(out[j].At) {
+			return out[i].At.Before(out[j].At)
+		}
+		return out[i].Kind+"/"+out[i].ID < out[j].Kind+"/"+out[j].ID
+	})
 	return out, nil
 }
 
@@ -112,6 +137,12 @@ func (l *Ledger) Open() ([]LedgerEntry, error) {
 // where most lines are unreadable is a different fact and a reader that
 // swallowed both would report an empty machine over a full one.
 func (l *Ledger) All() ([]LedgerEntry, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.allLocked()
+}
+
+func (l *Ledger) allLocked() ([]LedgerEntry, error) {
 	data, err := os.ReadFile(l.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -152,12 +183,12 @@ func (l *Ledger) Path() string { return l.path }
 // ⚠ It is not run automatically. A log that trims itself is a log that removed
 // the line somebody needed, and this one is a few hundred bytes per job.
 func (l *Ledger) Compact() (int, error) {
-	open, err := l.Open()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	open, err := l.openLocked()
 	if err != nil {
 		return 0, err
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	var b strings.Builder
 	for _, e := range open {
 		line, err := json.Marshal(e)

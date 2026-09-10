@@ -392,3 +392,77 @@ func min(a, b int) int {
 	}
 	return b
 }
+
+// TestListTranscriptsSeparatesAnEmptyMachineFromAnUnreadableOne is the fifth
+// review's fourth finding.
+//
+// ⛔ EVERY READ FAILURE USED TO BE REPORTED AS AN EMPTY MACHINE. A `jobs`
+// path that was unreadable, or that was a file rather than a directory, produced
+// the sentence "no transcripts on this machine yet" and exit 0: a true-sounding
+// answer to a question this process could not answer, which is the defect class
+// of issue #10 in a place the issue did not name. A missing directory really does
+// mean "not yet" and still says so.
+func TestListTranscriptsSeparatesAnEmptyMachineFromAnUnreadableOne(t *testing.T) {
+	t.Run("a machine that has not run a job yet", func(t *testing.T) {
+		code, err := listTranscripts(t.TempDir(), false)
+		if err != nil {
+			t.Fatalf("a machine with no jobs directory is not an error: %v", err)
+		}
+		if code != exitOK {
+			t.Fatalf("exit %d for a machine that has simply not run a job", code)
+		}
+	})
+
+	t.Run("a jobs path the operating system refuses", func(t *testing.T) {
+		// ⚠ A NUL IN THE PATH, and the reason is measured rather than chosen
+		// for convenience. The obvious case, a FILE where `jobs` has to be a
+		// directory, is NOT usable: on Windows ReadDir answers that with
+		// ERROR_PATH_NOT_FOUND, which os.IsNotExist reports as true, so it takes
+		// the "not yet" branch and proves nothing. A NUL is refused as
+		// `invalid argument` on both platforms, which is the shape of the failures
+		// this branch exists for: unreadable, not absent.
+		home := t.TempDir() + "\x00"
+		code, err := listTranscripts(home, false)
+		if err == nil {
+			t.Fatal("an unreadable jobs path was reported as a machine with no transcripts")
+		}
+		if code != exitCannot {
+			t.Fatalf("exit %d, want exitCannot (%d)", code, exitCannot)
+		}
+		if !strings.Contains(err.Error(), "jobs") {
+			t.Fatalf("the refusal does not name the path: %v", err)
+		}
+	})
+}
+
+// TestTranscriptHintMakesLogsReachable covers the line that carries the job id.
+//
+// ⛔ WITHOUT IT THE ID IS NOWHERE IN THE HUMAN OUTPUT. `run` printed the
+// image label and the exit code, so `wsl-toolkit logs JOB-...` could not be typed
+// without first running `wsl-toolkit logs` bare to go hunting for the id.
+func TestTranscriptHintMakesLogsReachable(t *testing.T) {
+	cases := []struct {
+		name string
+		res  toolkit.JobResult
+		want string
+	}{
+		{"a job with output kept",
+			toolkit.JobResult{ID: "JOB-7", Transcript: "C:" + string(filepath.Separator) + "state"},
+			"the complete output is kept: wsl-toolkit logs JOB-7"},
+		{"a job whose output was not kept",
+			toolkit.JobResult{ID: "JOB-7"}, ""},
+		{"a transcript with no id to name it",
+			toolkit.JobResult{Transcript: "somewhere"}, ""},
+		// ⚠ The truncation line already names the path, and saying it twice
+		// in two different shapes reads as two different facts.
+		{"output that was cut at the capture limit",
+			toolkit.JobResult{ID: "JOB-7", Transcript: "somewhere", StdoutTruncated: true}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := transcriptHint(c.res); got != c.want {
+				t.Fatalf("transcriptHint = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

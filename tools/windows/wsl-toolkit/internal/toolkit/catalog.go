@@ -242,8 +242,20 @@ func ValidateImageRef(ref string) error {
 	return nil
 }
 
+// isImageID is the rule for a name this tool uses as a PATH COMPONENT.
+//
+// ⛔ A NAME MADE ONLY OF DOTS IS NOT A NAME. `matrix --artifacts out` writes
+// each row into `out/<id>`, so an id of `..` put a fleet's output in the parent
+// of the directory the caller named, and `.` put every row in one place. Both
+// passed the character rule, because a dot is a legal character in `debian12`
+// and in `ubuntu-24.04`. The config is the caller's own file, so this is not a
+// privilege boundary; it is a name that means something other than what it
+// looks like, which this tree validates at the point it is READ.
 func isImageID(s string) bool {
 	if s == "" || len(s) > 64 {
+		return false
+	}
+	if strings.HasPrefix(s, ".") {
 		return false
 	}
 	for _, r := range s {
@@ -259,8 +271,13 @@ func isImageID(s string) bool {
 	return true
 }
 
+// isDistroName is the same rule for a distribution, and for the same reason:
+// the base's own state lives under a directory named for it.
 func isDistroName(s string) bool {
 	if s == "" || len(s) > 64 {
+		return false
+	}
+	if strings.HasPrefix(s, ".") {
 		return false
 	}
 	for _, r := range s {
