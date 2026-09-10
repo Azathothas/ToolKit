@@ -168,10 +168,10 @@ digest taken on a developer's machine is a digest of different bytes from the
 one a consumer downloads. `release.ps1` prints the working-tree digests with a
 line saying not to copy them anywhere.
 
-⚠ **The release SHA256SUMS proves transport, not authorship.** It comes from the
-same release as the asset, so anyone who could replace one could replace the
-other. `-LauncherSha256` with a digest the caller holds is the check that proves
-authorship, and it applies on top.
+⚠ **What those digests prove is transport and not authorship**, and what a
+consumer does about that is
+[`../../../docs/consumers.md`](../../../docs/consumers.md)'s to say rather than
+this page's.
 
 ---
 

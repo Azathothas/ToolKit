@@ -186,7 +186,7 @@ these is held to.
 | you want to | use | not |
 | --- | --- | --- |
 | know what host this is and what is installed | `scripts/doctor/` | assuming |
-| run every local gate in one command | ⭐ `scripts/common/check-gate.sh`, or its `.ps1` twin. About 30s. | remembering the list. ⚠ The one you forget is the one added last. |
+| run every local gate in one command | ⭐ `scripts/common/check-gate.sh`, or its `.ps1` twin. Under a minute; [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) has the measurement. | remembering the list. ⚠ The one you forget is the one added last. |
 | write a file whose content has quotes, backticks or a dollar sign | `scripts/common/write-file.mjs` | a heredoc. ⚠ It is not reliably literal; [`conventions/shell.md`](conventions/shell.md) section 1. |
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |
@@ -204,6 +204,8 @@ these is held to.
 | run one command across several userlands | `wsl-toolkit matrix --images all` | a loop that creates twelve distros |
 | keep one Linux host with a container engine in it | `wsl-toolkit base ensure` | using `podman-machine-default`, which is somebody else's |
 | find out what this tool is holding, or remove it | `wsl-toolkit resources`, then `wsl-toolkit gc --apply` | `podman system prune`, which removes what no RUNNING container uses |
+| find out why a job failed, after the container is gone | ⭐ `wsl-toolkit inspect JOB` | reading the transcript alone. ⚠ It says what the payload did and not what it ran on. |
+| prove every guard in the mutation table is real | `repo mutate` in `tools/repo`, about ten minutes | the gate's `mutations` check, which asserts the table still POINTS at code and proves no guard |
 | find out what a distro would reach this host at | ⭐ `wsl-toolkit.ps1 -Action HostAddress` | creating a distro and decoding `/proc/net/route` |
 | find out what podman and WSL are holding | `wsl-toolkit.ps1 -Action Resources` | a hand-rolled sequence of `podman` reports |
 | fetch and run that tool from another project | `launcher.ps1` | a download piped into a shell |

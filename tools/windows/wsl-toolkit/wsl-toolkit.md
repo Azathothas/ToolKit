@@ -40,6 +40,7 @@ payload on stdin or as a file, and never as an argument.
 | `resources` | what this tool holds, and what the machine holds that is not its |
 | `gc` | remove what this tool made. Reports first; `--apply` acts. |
 | `logs` | the complete output a job produced, past whatever its answer kept |
+| `inspect` | what one job was, and what the machine was doing when it ran |
 | `helper` | the opt-in local helper, for a caller that cannot reach `wsl.exe` |
 | `config` | where the configuration is and what it says |
 | `ready` | one answer to whether this agent can run isolated Linux jobs here, and the one command that fixes it if not |
@@ -598,6 +599,58 @@ machine yet" is a true-sounding answer to a question this tool could not
 answer.
 
 ---
+
+## `inspect`
+
+```powershell
+wsl-toolkit inspect                       # the machine half alone
+wsl-toolkit inspect 4c21ea7f6fb89b2a      # that job, and what it ran on
+wsl-toolkit inspect 4c21ea7f6fb89b2a --json --since 72h
+```
+
+| flag | meaning |
+| --- | --- |
+| `--since D` | how far back to read the engine's event journal. Default `24h` |
+| `--json` | write a structured answer |
+
+⭐ **It answers the question a failed job leaves.** The exit code and the
+transcript say what the payload did; this says what it did it ON. The engine and
+its version, the OCI runtime, the storage driver and the filesystem under it,
+the cgroup version and manager, whether the engine is rootless, and how much
+disk the distribution has left.
+
+⛔ **It is not a second `resources`.** That one enumerates what this tool is
+holding; this one describes one job and the machine it ran on. The two answer
+different questions and neither is a shorter version of the other.
+
+⭐ **The container's own last exit survives the container.** Jobs run under
+`podman run --rm`, so nothing is left to interrogate afterwards, but podman's
+event journal is not the container: measured on 2026-09-10, the `died` and
+`remove` events both carry `ContainerExitCode` long after the container is gone.
+So `inspect` reports the engine's own verdict, which is the number to compare
+against the one this tool reported.
+
+```text
+==> Job 4c21ea7f6fb89b2a
+    container   wtk-4c21ea7f6fb89b2a
+    image       docker.io/library/alpine:latest
+    last exit   37, from the engine's own journal
+    died        2026-09-10T09:01:10.819333184Z  exit 37
+```
+
+⛔ **An id nothing on this machine has heard of is a refusal.** It exits 1 and
+names the command that lists what is here. An inspection surface that answered
+an empty document for an unknown id would be the third time this tool rendered a
+refusal as a successful empty result.
+
+⚠ **Four places can place an id**, and the answer says which did: a transcript
+on this host, a record in the ledger, the engine's journal, and a directory left
+in the guest. A job whose transcript `gc` has removed can still be placed by the
+journal, and the reverse is true once the journal ages out.
+
+⚠ **`--since` bounds the journal read and nothing else.** A window that does not
+reach back to the job reports no events rather than reporting that the job did
+not run, and the line says so in those words.
 
 ## `script`
 

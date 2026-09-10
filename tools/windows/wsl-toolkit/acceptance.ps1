@@ -1264,7 +1264,43 @@ try {
         (($r.Code -eq 0) -and (Test-Path -LiteralPath (Join-Path $w 'config.json'))).ToString()
     }
 
-    # -- cleanup, counted rather than remembered -----------------------------
+    # WSL-56. What a failed job leaves a reader to ask the machine by hand. The
+    # obstacle the entry named -- `run --rm` removes the container before
+    # anything can read its last state -- was measured and does not hold: the
+    # engine's event journal outlives the container and carries its exit code.
+    Test-Case 'inspect answers what a failed job ran on, and the engine agrees about its exit' 'True' {
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'exit 37')
+        $job = Read-ToolJson -Stdout $r.Out -What 'run --json'
+        if ($r.Code -ne 37) { return "the run reported $($r.Code), and the payload exited 37" }
+        $i = Invoke-Tool @('inspect', $job.id, '--json')
+        if ($i.Code -ne 0) { return "inspect exited $($i.Code): $($i.Err)" }
+        $d = Read-ToolJson -Stdout $i.Out -What 'inspect --json'
+        if ($d.schema -ne 'wsl-toolkit-inspect/1') { return "schema is $($d.schema)" }
+        if (-not $d.engine.reached) { return "the engine was not reached: $($d.engine.reason)" }
+        # THE THREE THINGS THE ENTRY ASKS FOR BY NAME, plus the one that makes
+        # them worth having: the engine's own verdict on the container, read
+        # after the container was removed.
+        if (-not $d.engine.version) { return 'the engine version is missing' }
+        if (-not $d.engine.storage_driver) { return 'the storage driver is missing' }
+        if ($null -eq $d.job.exit_code) { return 'the container last exit is missing, which is the half --rm was supposed to have destroyed' }
+        if ($d.job.exit_code -ne 37) { return "the journal says $($d.job.exit_code) and the payload exited 37" }
+        # AND IT IS THIS JOB'S. podman's name filter is a substring match.
+        if ($d.job.container -ne ('wtk-' + $job.id)) { return "the report names container $($d.job.container)" }
+        (($d.job.id -eq $job.id) -and (@($d.job.known).Count -gt 0) -and
+         ($null -ne $d.guest.disk)).ToString()
+    }
+
+    # An inspection surface that answers an empty document for an unknown id is
+    # the "refusal rendered as a successful empty result" class this tool has
+    # now paid for three times.
+    Test-Case 'inspect refuses an id that never existed rather than answering an empty object' 'True' {
+        $i = Invoke-Tool @('inspect', 'deadbeefdeadbeef', '--json')
+        if ($i.Code -eq 0) { return "an id that never existed exited 0 with: $($i.Out)" }
+        # NOT exit 2 either: the command ran and reached the machine. It is a
+        # verdict about the id, and the message has to name the id.
+        (($i.Code -eq 1) -and ($i.Err -match 'deadbeefdeadbeef') -and
+         ($i.Out.Trim() -eq '')).ToString()
+    }    # -- cleanup, counted rather than remembered -----------------------------
     Test-Case 'cleanup removes what this tool made and the counts return to zero' 'True' {
         $g = Invoke-Tool @('gc', '--apply', '--json')
         if ($g.Code -ne 0) { return "gc exited $($g.Code): $($g.Err)" }
@@ -1315,7 +1351,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 65 } else { 67 }
+$expected = if ($Quick) { 67 } else { 69 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

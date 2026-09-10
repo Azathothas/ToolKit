@@ -74,6 +74,7 @@ func usage() string {
 		"  resources   what this tool is holding, and what the machine is holding that is not its",
 		"  gc          remove what this tool made. Reports first; --apply acts",
 		"  logs        the complete output a job produced, past whatever the answer kept",
+		"  inspect     what one job was, and what the machine was doing when it ran",
 		"  helper      the opt-in local helper, for a caller that cannot reach wsl.exe itself",
 		"  config      where the configuration is, and what it currently says",
 		"  ready       one answer to whether this agent can run isolated Linux jobs here",
@@ -100,6 +101,39 @@ func versionString() string {
 		return "(the embedded script's version could not be read)"
 	}
 	return v
+}
+
+// commands is the dispatch table, and it is a TABLE rather than a switch for
+// one reason: manual_test.go walks it.
+//
+// ⛔ THE HAND-WRITTEN LIST IT REPLACED WAS A HOLE, and the guard that reads it
+// was claiming otherwise. TestManualNamesEveryFlag says "a flag added tomorrow
+// is covered without this file being touched", which was true of a flag added
+// to a command already on its list and false of a whole new command: `inspect`
+// arrived with two flags and the case stayed green over both. A list nobody
+// has to remember to extend is the only kind that stays complete.
+//
+// ⚠ SUBCOMMANDS ARE STILL NAMED BY HAND over in that test, because their flag
+// sets are built inside their parent's dispatch and there is no table here to
+// walk. That is a smaller hole and it is named rather than papered over.
+var commands = map[string]func(context.Context, []string) (int, error){
+	"version":    func(_ context.Context, a []string) (int, error) { return cmdVersion(a) },
+	"doctor":     cmdDoctor,
+	"script":     cmdScript,
+	"base":       cmdBase,
+	"images":     cmdImages,
+	"run":        cmdRun,
+	"matrix":     cmdMatrix,
+	"resources":  cmdResources,
+	"gc":         cmdGC,
+	"logs":       func(_ context.Context, a []string) (int, error) { return cmdLogs(a) },
+	"inspect":    cmdInspect,
+	"helper":     cmdHelper,
+	"config":     func(_ context.Context, a []string) (int, error) { return cmdConfig(a) },
+	"ready":      cmdReady,
+	"selfupdate": cmdSelfUpdate,
+	"artifacts":  cmdArtifacts,
+	"examples":   func(_ context.Context, a []string) (int, error) { return cmdExamples(a) },
 }
 
 func run(ctx context.Context, args []string) int {
@@ -162,45 +196,15 @@ func run(ctx context.Context, args []string) int {
 		return code
 	}
 	cmd, cmdArgs := rest[0], rest[1:]
-	var err error
-	var code int
-	switch cmd {
-	case "version", "--version":
-		code, err = cmdVersion(cmdArgs)
-	case "doctor":
-		code, err = cmdDoctor(ctx, cmdArgs)
-	case "script":
-		code, err = cmdScript(ctx, cmdArgs)
-	case "base":
-		code, err = cmdBase(ctx, cmdArgs)
-	case "images":
-		code, err = cmdImages(ctx, cmdArgs)
-	case "run":
-		code, err = cmdRun(ctx, cmdArgs)
-	case "matrix":
-		code, err = cmdMatrix(ctx, cmdArgs)
-	case "resources":
-		code, err = cmdResources(ctx, cmdArgs)
-	case "gc":
-		code, err = cmdGC(ctx, cmdArgs)
-	case "logs":
-		code, err = cmdLogs(cmdArgs)
-	case "helper":
-		code, err = cmdHelper(ctx, cmdArgs)
-	case "config":
-		code, err = cmdConfig(cmdArgs)
-	case "ready":
-		code, err = cmdReady(ctx, cmdArgs)
-	case "selfupdate":
-		code, err = cmdSelfUpdate(ctx, cmdArgs)
-	case "artifacts":
-		code, err = cmdArtifacts(ctx, cmdArgs)
-	case "examples":
-		code, err = cmdExamples(cmdArgs)
-	default:
+	if cmd == "--version" {
+		cmd = "version"
+	}
+	entry, ok := commands[cmd]
+	if !ok {
 		fmt.Fprintf(os.Stderr, "wsl-toolkit: %q is not a command\n\n%s\n", cmd, usage())
 		return exitCannot
 	}
+	code, err := entry(ctx, cmdArgs)
 	if errors.Is(err, flag.ErrHelp) {
 		// ⭐ ASKING FOR HELP IS NOT A FAILURE. The flag package has already
 		// printed the defaults by the time it returns this, so repeating it as

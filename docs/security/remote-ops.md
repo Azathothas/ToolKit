@@ -145,6 +145,21 @@ The rules that follow from it:
   cannot reach a private resource or mutate anything is safer than a rule about
   a route that can.
 
+⚠ **THE FIRST RULE HAS ONE CARVE-OUT AND IT IS NARROW, because without it this
+page contradicts the project's own release procedure.** A write to THIS
+repository's remote is permitted when two things hold together: the project's
+push policy permits it, and the operator asked for that action in this session.
+Closing an issue this repository's own work has fixed, and pushing a release
+tag, are the two that come up.
+
+⛔ **Neither is implied by anything else.** A push policy is not a standing
+instruction to close issues, an instruction to close issues is not permission to
+push a tag, and permission for one release is not permission for the next. The
+default remains that an API call reads. ⛔ And the carve-out is for this
+repository alone: every other remote is read-only whatever the operator asks
+for in a session, because the reason there is not permission, it is that
+machine-generated contributions are closed unread.
+
 ---
 
 ## Unattended runs

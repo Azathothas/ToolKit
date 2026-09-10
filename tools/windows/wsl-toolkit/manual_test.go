@@ -19,6 +19,16 @@ import (
 //
 // ⭐ IT READS THE REAL FLAG SETS. Every flag registers itself simply by being
 // created, so a flag added tomorrow is covered without this file being touched.
+//
+// ⛔ THAT SENTENCE WAS ONCE TRUE OF FLAGS AND FALSE OF COMMANDS, and it took a
+// new command to notice. The list below used to name every command by hand, so
+// `inspect` arrived with two flags and this case stayed green over both while
+// claiming to cover them. The top level is walked from main.go's own dispatch
+// table now, and a command missing from it cannot reach a caller either.
+//
+// ⚠ SUBCOMMANDS ARE STILL BY HAND, because their flag sets are built inside
+// their parent's dispatch and there is no table to walk. That is the residue
+// of the same hole, it is smaller, and it is named rather than left implied.
 
 // manualPath is the page the binary's surface is checked against.
 const manualPath = "wsl-toolkit.md"
@@ -51,29 +61,38 @@ func TestManualNamesEveryFlag(t *testing.T) {
 	os.Stderr = devnull
 	defer func() { os.Stderr = realErr }()
 
+	// ⛔ EVERY TOP-LEVEL COMMAND, FROM THE TABLE THE PROGRAM DISPATCHES ON.
+	// `script` forwards its arguments to the embedded PowerShell verbatim, so
+	// -h there would start a process; it registers no flag set of its own and
+	// is skipped by name.
+	for name, call := range commands {
+		if name == "script" {
+			continue
+		}
+		_, _ = call(ctx, []string{"-h"})
+	}
+	// The subcommands, which have no table to walk.
 	for _, call := range []func(){
-		func() { _, _ = cmdRun(ctx, []string{"-h"}) },
-		func() { _, _ = cmdMatrix(ctx, []string{"-h"}) },
-		func() { _, _ = cmdGC(ctx, []string{"-h"}) },
-		func() { _, _ = cmdResources(ctx, []string{"-h"}) },
-		func() { _, _ = cmdImages(ctx, []string{"-h"}) },
-		func() { _, _ = cmdDoctor(ctx, []string{"-h"}) },
-		func() { _, _ = cmdLogs([]string{"-h"}) },
-		func() { _, _ = cmdConfig([]string{"-h"}) },
-		func() { _, _ = cmdVersion([]string{"-h"}) },
 		func() { _, _ = cmdBase(ctx, []string{"ensure", "-h"}) },
 		func() { _, _ = cmdBase(ctx, []string{"status", "-h"}) },
 		func() { _, _ = cmdHelper(ctx, []string{"serve", "-h"}) },
-		func() { _, _ = cmdReady(ctx, []string{"-h"}) },
-		func() { _, _ = cmdSelfUpdate(ctx, []string{"-h"}) },
 		func() { _, _ = cmdImages(ctx, []string{"warm", "-h"}) },
 		func() { _, _ = cmdConfig([]string{"validate", "-h"}) },
 		func() { _, _ = cmdArtifacts(ctx, []string{"retry", "-h"}) },
-		func() { _, _ = cmdExamples([]string{"-h"}) },
 	} {
 		call()
 	}
 	os.Stderr = realErr
+
+	// ⛔ AND THE TABLE ITSELF IS ASSERTED. A command whose -h path returns
+	// before newFlagSet runs would silently drop out of the walk above, which
+	// is the same hole one level down.
+	flagSets.Lock()
+	built := len(flagSets.byName)
+	flagSets.Unlock()
+	if want := len(commands) - 1; built < want {
+		t.Fatalf("%d command(s) dispatch and only %d built a flag set, so some were not reached", want, built)
+	}
 
 	flagSets.Lock()
 	sets := make(map[string]*flag.FlagSet, len(flagSets.byName))

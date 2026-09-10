@@ -46,21 +46,16 @@ type Tree struct {
 	cache map[string][]byte
 }
 
-// Vendored paths are not this project's to fix, and a gate that reports their
-// internal state teaches a reader to skip its output.
-//
-// docs/history/oracle/ is here for a different reason from the other two. It
-// holds the shell and Python implementations the Go port replaced, kept
-// because they are the oracle every byte-identical comparison was measured
-// against. Editing one to satisfy a character rule would destroy the property
-// that makes it worth keeping. The prose rules bind the history directory's
-// prose; they do not bind a preserved artefact.
 // notOurs are trees this repository carries but does not write. A gate that
 // reports their internal state teaches a reader to skip its output.
 //
 // LICENSES/ holds the SPDX texts verbatim. They carry curly quotes and a
 // copyright sign, and editing one to satisfy a character rule would make it a
 // licence text nobody published.
+//
+// ⚠ ONE ENTRY, AND ADDING A SECOND IS A DECISION. An exemption list is the
+// cheapest place for a real finding to hide, so a tree goes here only when
+// editing it would destroy the property that makes it worth carrying.
 var notOurs = []string{"LICENSES/"}
 
 // Vendored reports whether p belongs to a tree this repository does not write.

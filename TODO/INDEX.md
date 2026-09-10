@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 85  open 8  blocked 0  done 77
+total 85  open 7  blocked 0  done 78
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 45 | 45 |
-| P2 | 7 | 0 | 23 | 30 |
+| P2 | 6 | 0 | 24 | 30 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **8** | **0** | **77** | **85** |
+| **all** | **7** | **0** | **78** | **85** |
 
 ---
 
@@ -113,7 +113,7 @@ total 85  open 8  blocked 0  done 77
 | WSL-53 | P1 | M | done | The tool updates itself, and readiness says whether it should | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-54 | P2 | S | done | The three answers a diagnostic has to tell apart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-55 | P2 | S | done | A report that creates the thing it is describing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-56 | P2 | M | open | What a failed job leaves a reader to ask the machine by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-56 | P2 | M | done | What a failed job leaves a reader to ask the machine by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-57 | P1 | S | done | Two selftest cases were written against one host's environment | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---

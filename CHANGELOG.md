@@ -21,6 +21,45 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T10:30:00Z: what a failed job ran on, and the obstacle that was not there
+
+**Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-56`.
+**Deployed:** ⚠ **not yet.** It ships in the next release.
+
+`wsl-toolkit inspect [JOB]` answers what a failed job ran on: the engine and its
+version, the OCI runtime, the storage driver and the filesystem under it, the
+cgroup version and manager, whether the engine is rootless, how much disk the
+distribution has left, and the container's own lifecycle with its last exit.
+
+⭐ **The obstacle the entry named does not hold, and measuring it first was the
+right call.** It said `run --rm` removes the container before anything can read
+its last state, and asked whoever took it to find out whether podman retained
+enough afterwards. It does: the event logger is `file`, and the `died` and
+`remove` events both carry `ContainerExitCode` long after the container is gone.
+So `--rm` stays, which is what stops a failed fleet leaving twelve containers
+behind.
+
+Two measurements kept in the code because the next reader would re-derive them:
+`podman events --until 0s` answers nothing for events that are certainly there,
+and `podman events` exits 0 for a container that never existed. ⛔ An unknown id
+is therefore decided against four sources - a transcript, a ledger record, the
+journal and a guest directory - and refused with its own exit code rather than
+answered with an empty document.
+
+⚠ **Two of the entry's requirements described things that are not there**, and
+both are written down rather than quietly dropped: there is no chroot route in
+this tool, and the two-engine hazard it names belongs to the HOST engine rather
+than to the one jobs run in.
+
+⭐ **It found a defect in a different guard.** `TestManualNamesEveryFlag` claims
+a flag added tomorrow is covered without its file being touched. That was true
+of a flag on a command already on its hand-written list and false of a whole new
+command: `inspect` arrived with two flags and the case stayed green over both.
+`main.go` dispatches from a table now and the test walks it, and the first run
+after that change refused `--since` for not being in the manual.
+
+Measured against the real machine: **69 of 69 acceptance cases**, including the
+two this entry adds.
 ### 2026-09-10T09:30:00Z: the second host had not looked at four commits, and two cases were waiting
 
 **Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) carries `WSL-57`;

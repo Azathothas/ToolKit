@@ -2889,7 +2889,7 @@ from.
 
 **Source** The half of [WSL-50](wsl-toolkit-go.md) that was not built on
 2026-09-10, named as its own entry rather than left in a sentence.
-**Category** wsl, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl, **Priority** P2, **Effort** M, **Status** done
 
 ## Problem
 
@@ -2956,6 +2956,67 @@ object. ⛔ The second one matters: an inspection surface that answers an empty
 document for an unknown id is the "refusal rendered as a successful empty result"
 class this tool has now paid for three times.
 
+
+## Closing
+
+**Closed 2026-09-10.** `wsl-toolkit inspect [JOB]`, with `--json` and `--since`.
+
+⭐ **THE OBSTACLE THIS ENTRY NAMED DOES NOT HOLD, and measuring it first was the
+right call.** The premise said `run --rm` removes the container before anything
+can read its last state, and asked whoever took this to find out whether
+podman's events or its exit journal retained enough afterwards. They do.
+Measured against podman 6.1.1 inside the base, after a job that exited 37, with
+the container long gone:
+
+```text
+{"ContainerExitCode":37,"ID":"9adc7e38985000039...","Image":"docker.io/library/alpine:latest",
+ "Name":"wtk-4c21ea7f6fb89b2a","Status":"died","timeNano":1789030870819333184,"Type":"container"}
+```
+
+The event logger is `file`, and both the `died` and the `remove` events carry
+the exit code. ⛔ So `--rm` stays, which is what stops a failed fleet leaving
+twelve containers behind, and the entry's fallback options were not needed.
+
+**Two measurements that cost time and are kept in the code**, because either one
+would be re-derived by the next person:
+
+- `podman events --until 0s` answers NOTHING for events that are certainly
+  there. `--stream=false` with the same `--since` answers all of them.
+- `podman events` exits 0 for a container that never existed, so an empty
+  journal is not a refusal on its own. An unknown id is decided against four
+  sources rather than against the journal alone.
+
+The acceptance suite, against the real machine:
+
+```text
+  ok    inspect answers what a failed job ran on, and the engine agrees about its exit
+  ok    inspect refuses an id that never existed rather than answering an empty object
+
+acceptance: 69 case(s) passed against a real machine.
+ACCEPTANCE_EXIT=0
+```
+
+⚠ **ONE BULLET OF THE PROBLEM DESCRIBES SOMETHING THAT DOES NOT EXIST.** It asks
+for "the same for a chroot payload, where podman is not the engine". There is no
+chroot route in this tool: every job runs in a container in the guest engine, and
+`grep -rn chroot` over the module and the manual returns nothing. Written here
+rather than as an edit to the problem above, because an entry that quietly loses
+a requirement is one nobody can audit.
+
+⚠ **AND THE TWO-ENGINE HAZARD IT NAMES IS THE HOST ENGINE'S, NOT THIS ONE'S.**
+podman and docker do disagree about field names and values, which `WSL-31` paid
+for once. That applies to the engine that turns an image into a rootfs, which
+`doctor` reports. Jobs run in a rootless podman this tool installs inside the
+base, so `inspect` has one spelling to read rather than two, and saying so is
+cheaper than a compatibility layer nothing exercises.
+
+⭐ **The work found a defect in a different guard.** `TestManualNamesEveryFlag`
+says in its own header that a flag added tomorrow is covered without the file
+being touched. That was true of a flag added to a command already on its
+hand-written list and false of a whole new command: `inspect` arrived with two
+flags and the case stayed green over both. `main.go` dispatches from a table
+now, the test walks it, and the first run after that change refused
+`--since` for not being in the manual.
 ---
 
 ## WSL-57. Two selftest cases were written against one host's environment

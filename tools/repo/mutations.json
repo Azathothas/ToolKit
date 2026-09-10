@@ -472,6 +472,42 @@
       "args": []
     },
     {
+      "label": "the name check that stops one job's events becoming another's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/inspect.go",
+      "find": "\t\t\tif e.Name != job.Container {\n\t\t\t\tcontinue\n\t\t\t}",
+      "replace": "\t\t\tif false {\n\t\t\t\tcontinue\n\t\t\t}",
+      "run": "TestOneJobsEventsAreNotAnotherJobs",
+      "args": []
+    },
+    {
+      "label": "an engine that answered nothing not counting as reached",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/inspect.go",
+      "find": "\tfacts.Reached = facts.Version != \"\"",
+      "replace": "\tfacts.Reached = true",
+      "run": "TestAnEngineThatAnsweredNothingIsNotAReachedEngine",
+      "args": []
+    },
+    {
+      "label": "a df row that cannot be trusted producing no figure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/inspect.go",
+      "find": "\tif total < 0 || used < 0 || free < 0 {\n\t\treturn nil\n\t}",
+      "replace": "\tif false {\n\t\treturn nil\n\t}",
+      "run": "TestADfLineThatCannotBeTrustedIsNotANumber",
+      "args": []
+    },
+    {
+      "label": "the exit code coming off the died event and no other",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/inspect.go",
+      "find": "\t\t\tif e.ExitCode != nil && e.Status == \"died\" {",
+      "replace": "\t\t\tif false {",
+      "run": "TestTheContainersLastExitOutlivesTheContainer",
+      "args": []
+    },
+    {
       "label": "a mutation table holding no rows being a finding",
       "module": "tools/check",
       "file": "internal/checks/mutations.go",

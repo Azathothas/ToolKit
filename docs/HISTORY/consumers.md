@@ -65,3 +65,60 @@ ran after the pin moved, and the failure it reported was real.** That is the
 point of the change, and it is why the break table exists at all: the
 alternative is somebody debugging a step that started failing with no record of
 why.
+
+## How two of the three consumers were found
+
+⚠ **Neither was reported. Both were found while reading something else**, on two
+different days, which is the whole argument for the live page's lower-bound
+framing. Moved here on 2026-09-10, because a reader asking "am I affected"
+cannot act on any of it.
+
+**`pkgforge-dev/cross-libc-dlopen`, 2026-08-27.** Found while reading that
+repository for an unrelated reason, its `experiments/` layout. It carries a
+vendored COPY of this tool under its old name, 536 lines against this tree's
+1,579 on the day it was found. The drift was measured by reading its source:
+
+| checked at `scripts/wsl-ephemeral.ps1` | result |
+| --- | --- |
+| `-CommandB64`, `-CommandFile`, `-TimeoutSeconds`, `-Systemd` | absent, all four |
+| `ConvertTo-DistroScriptCommand`, `Assert-EnoughDiskSpace`, `Invoke-ActionEnter` | absent |
+| the base64 transport | absent. `-Command` is passed as an argument to `/bin/sh -lc` |
+
+It carries both P0 defects this repository has closed, verified by reading
+rather than inferred from its age. Its `-Action New` path runs the command and
+then warns without exiting with the code, which is `WSL-01`; its `-Action Run`
+path does `exit $rc` correctly, which is exactly the one-gated-door shape
+`WSL-01` was filed against. Its smoke probe is a here-string passed as an
+argument whose payload holds a bracket and a double quote, which is `WSL-12`.
+
+⛔ **Not fixed from here.** That repository is read-only to this one. It is that
+repository's change to make, and the honest options are to take the current file
+or to adopt the wrapper `Azathothas/TEMPLATE` already uses.
+
+**`Azathothas/bit-cli`, 2026-08-29.** Found while reading that repository's
+`docs/containers.md`, which was cited in an issue about this tool for an
+unrelated reason. It is a documentation consumer rather than a code one, which
+is a different hazard from a pin: nothing there executes on a schedule, so
+nothing there breaks; what happens instead is that a person follows a page whose
+commands no longer match the tool, and the page cannot tell them so. Its own
+measurements agreed with this repository's: it records the NAT gateway its
+distro saw as `172.23.96.1`, and `-Action HostAddress` answered the same here.
+
+## The first two releases, 2026-08-30
+
+⭐ **`wsl-toolkit-v1.0.0` was the first**, and the path was driven from an empty
+directory holding nothing but `launcher.ps1`: it resolved the release,
+downloaded both assets, verified the script against the published `SHA256SUMS`,
+created and destroyed a real distro, and returned the inner command's exit code
+through both layers.
+
+⚠ **`wsl-toolkit-v1.0.1` superseded it the same day**, and the reason is worth
+naming rather than hiding in a version number: `v1.0.0` carries a guard that
+splits a path with the RUNNING host's separators. It cannot misbehave on
+Windows, which is the only platform this tool supports, so `v1.0.0` was not
+withdrawn and a consumer pinned to it was not at risk. It was found by CI's
+ubuntu job, which runs the suite on a host the tool never runs on.
+
+⚠ **The register was written when nothing was published from here.** That
+changed on 2026-08-30, and the live page's advice to pin a release rather than a
+commit dates from then.
