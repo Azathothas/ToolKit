@@ -203,7 +203,7 @@ func renderInspect(w *os.File, rep toolkit.InspectReport) error {
 			{"runtime", rep.Engine.Runtime},
 			{"storage", rep.Engine.StorageDriver + " on " + rep.Engine.StorageBacked},
 			{"storage at", rep.Engine.StorageRoot},
-			{"cgroups", rep.Engine.CgroupVersion + ", " + rep.Engine.CgroupManager},
+			{"cgroups", cgroupLine(rep.Engine)},
 			{"rootless", rep.Engine.Rootless},
 			{"events", rep.Engine.EventLogger},
 			{"logs", rep.Engine.LogDriver},
@@ -237,4 +237,23 @@ func renderInspect(w *os.File, rep toolkit.InspectReport) error {
 		}
 	}
 	return nil
+}
+
+// cgroupLine says whether the engine's account can actually create a cgroup, not
+// only which version and manager it is configured with.
+//
+// ⛔ THE TWO CONFIGURED FIELDS READ LIKE A WORKING SETUP AND DO NOT MEAN ONE. A
+// base with no delegation reports `v2, cgroupfs` and creates no cgroup per
+// container, so an exit 137 there cannot be attributed to an out-of-memory kill
+// and this line is what says so. WSL-60.
+func cgroupLine(e toolkit.EngineFacts) string {
+	base := e.CgroupVersion + ", " + e.CgroupManager
+	switch e.CgroupDelegated {
+	case "yes":
+		return base + ", delegated"
+	case "no":
+		return base + ", NOT delegated: no cgroup per container, so no limits and no attribution"
+	default:
+		return base + ", delegation unknown"
+	}
 }

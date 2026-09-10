@@ -739,7 +739,14 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 	}
 	st, err := runner.EnsureBaseWith(r.Context(), req.Force, req.Repair)
 	if err != nil {
-		writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "state": ""})
+		// ⛔ THE STATE CROSSES WITH THE ERROR. It used to send `"state": ""`,
+		// so a refusal that carries the exact command to run next arrived over
+		// this route as an error string and nothing else, and the client then
+		// answered with the command that had just refused. A failure is when a
+		// caller most needs the structured answer. WSL-61.
+		writeHelperJSON(w, http.StatusInternalServerError, map[string]any{
+			"schema": HelperSchema, "error": err.Error(), "state": st,
+		})
 		return
 	}
 	writeHelperJSON(w, http.StatusOK, map[string]any{"schema": HelperSchema, "state": st})

@@ -65,6 +65,10 @@ type ReadyReport struct {
 	// machine forward. ⛔ Empty when ready; the first entry is the one to run.
 	Remediation []string `json:"remediation,omitempty"`
 	Problems    []string `json:"problems,omitempty"`
+	// Notes are true and do NOT change the verdict. ⛔ A limitation a caller
+	// should know about is not the same as a reason it cannot work, and
+	// `r.Ready` is computed from Problems: anything written there is a refusal.
+	Notes []string `json:"notes,omitempty"`
 }
 
 type readyConfig struct {
@@ -249,20 +253,7 @@ func assembleReady(ctx context.Context, smoke, ensure, wantUpdate bool) ReadyRep
 		r.Update = toolkit.UpdateStatus{Running: r.Version, Reason: "--no-update"}
 	}
 
-	r.Ready = len(r.Problems) == 0 && r.Base.Healthy
-	if r.Smoke != nil && !r.Smoke.Ran {
-		r.Ready = false
-	}
-	switch {
-	case r.Ready:
-		r.Verdict = "ready"
-	case r.Route.Selected == "none":
-		r.Verdict = "no-route"
-	case !r.Base.Healthy:
-		r.Verdict = "no-base"
-	default:
-		r.Verdict = "not-ready"
-	}
+	r.settleVerdict()
 	return r
 }
 
@@ -302,7 +293,12 @@ func (r *ReadyReport) fillBase(ctx context.Context, cfg toolkit.Config, client *
 		}
 		if err != nil {
 			r.Problems = append(r.Problems, err.Error())
-			r.Remediation = append(r.Remediation, "wsl-toolkit base ensure")
+			// ⛔ NOT `base ensure`, WHICH IS THE COMMAND THAT JUST FAILED. A
+			// base with stale engine run state refuses an unflagged ensure and
+			// names `--repair`; answering with the failing command sends the
+			// one reader who most needs the right answer round the same loop.
+			// `ready` is what an agent runs FIRST. WSL-61.
+			r.Remediation = append(r.Remediation, baseRemediationFor(st, err))
 			return
 		}
 	}
@@ -313,8 +309,61 @@ func (r *ReadyReport) fillBase(ctx context.Context, cfg toolkit.Config, client *
 		r.Problems = append(r.Problems, p)
 	}
 	if !st.Healthy {
-		r.Remediation = append(r.Remediation, "wsl-toolkit base ensure")
+		r.Remediation = append(r.Remediation, baseRemediationFor(st, nil))
 	}
+	// ⭐ A CAPABILITY FINDING REACHES THE FIRST COMMAND AN AGENT RUNS, AND IT
+	// GOES IN Notes AND NOT IN Problems.
+	//
+	// ⛔ THE FIRST VERSION OF THIS PUT IT IN Problems AND TURNED A WORKING
+	// MACHINE INTO `not-ready`, which would stop an agent from running anything
+	// over a limitation most jobs never reach. `r.Ready` is computed from
+	// `len(r.Problems)`, so a line added there is a verdict and not a note. It
+	// was caught by running the command, which is the only thing that could have
+	// caught it. WSL-60.
+	r.Notes = append(r.Notes, readyNotes(st.Remediations)...)
+}
+
+// readyNotes is the half of a base's findings that goes in Notes.
+//
+// ⛔ A REPAIRABLE FINDING IS NOT A NOTE. It is already the command in
+// `Remediation`, and repeating it as a note would say the same thing twice in
+// two registers, one of which reads as "nothing to do".
+//
+// ⛔ AND AN UNREPAIRABLE ONE IS NOT A PROBLEM. `r.Ready` is computed from
+// `len(r.Problems)`, so a line written there is a refusal: a base that runs
+// containers and cannot bound them would report `not-ready` and stop an agent
+// working at all. That is what the first version of this did, and only running
+// the command found it. WSL-60.
+func readyNotes(rems []toolkit.Remediation) []string {
+	var notes []string
+	for _, rem := range rems {
+		if rem.Repairable {
+			continue
+		}
+		notes = append(notes, rem.What+". "+rem.Costs)
+	}
+	return notes
+}
+
+// baseRemediationFor picks the command that actually moves this base forward.
+//
+// ⛔ THE STATE'S OWN REMEDIATION WINS. `base ensure` is the right answer for a
+// base that is missing or merely unprovisioned, and the wrong one for a base
+// whose engine has stale run state: that condition refuses an unflagged ensure
+// on purpose and names `--repair`. Answering with the command that just refused
+// is the failure this whole shape exists to remove.
+func baseRemediationFor(st toolkit.BaseState, err error) string {
+	for _, rem := range st.Remediations {
+		if rem.Repairable {
+			return rem.Command
+		}
+	}
+	if err != nil {
+		if rem, ok := toolkit.StaleRunStateRemediation(err.Error()); ok {
+			return rem.Command
+		}
+	}
+	return "wsl-toolkit base ensure"
 }
 
 // readySmokeScript is deliberately one line per fact, so a partial answer says
@@ -449,6 +498,12 @@ func renderReady(r ReadyReport) {
 	for _, p := range r.Problems {
 		fmt.Fprintf(out, "  ! %s\n", p)
 	}
+	// ⚠ MARKED DIFFERENTLY FROM A PROBLEM ON PURPOSE. These are true and they
+	// do not stop anything, and a reader who cannot tell them apart from a
+	// refusal treats a working machine as broken.
+	for _, n := range r.Notes {
+		fmt.Fprintf(out, "  ~ %s\n", n)
+	}
 	if len(r.Remediation) > 0 {
 		// ⛔ ONE COMMAND, NAMED FIRST. A list of six things to try is a list
 		// nobody runs; the first line is the one to run now.
@@ -456,5 +511,30 @@ func renderReady(r ReadyReport) {
 		for _, c := range r.Remediation[1:] {
 			fmt.Fprintf(out, "    then: %s\n", c)
 		}
+	}
+}
+
+// settleVerdict decides ready or not, and it is split out so a case can assert
+// the one rule that is easy to break from another file.
+//
+// ⛔ NOTES DO NOT CHANGE THE VERDICT AND PROBLEMS DO. That is the whole rule.
+// A capability finding written into Problems turns a machine that runs
+// containers perfectly well into `not-ready`, which stops an agent from doing
+// anything over a limitation most jobs never reach. It was written that way
+// first, and only running the command found it. WSL-60.
+func (r *ReadyReport) settleVerdict() {
+	r.Ready = len(r.Problems) == 0 && r.Base.Healthy
+	if r.Smoke != nil && !r.Smoke.Ran {
+		r.Ready = false
+	}
+	switch {
+	case r.Ready:
+		r.Verdict = "ready"
+	case r.Route.Selected == "none":
+		r.Verdict = "no-route"
+	case !r.Base.Healthy:
+		r.Verdict = "no-base"
+	default:
+		r.Verdict = "not-ready"
 	}
 }

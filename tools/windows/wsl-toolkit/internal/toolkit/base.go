@@ -303,7 +303,14 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 					b.log("   RUN THIS INSTEAD:  " + r.Command)
 					b.log("")
 					st.Remediations = append(st.Remediations, r)
-					return st, fmt.Errorf("the engine's run state is stale and --repair was not given. Run: %s", r.Command)
+					// ⛔ THE ENGINE'S OWN MESSAGE IS CARRIED, not replaced.
+					// A caller downstream classifies from the text, and a
+					// refusal that drops what podman said cannot be recognised
+					// as the condition it is refusing over: `ready` answered
+					// with `base ensure`, the command that had just refused.
+					// Caught by the case that asserts otherwise, before it
+					// shipped.
+					return st, StaleRefusalError(r, err)
 				}
 				b.log("clearing the engine run state this boot invalidated, as asked")
 				if out, err := b.repairRunState(ctx); err != nil {
@@ -939,6 +946,12 @@ func cgroupRemediation(cg *CgroupState) (Remediation, bool) {
 	}, true
 }
 
+// StaleRunStateRemediation is exported so the command layer can answer with the
+// right command when it holds an error and not a state. ⛔ `ready` needs it:
+// answering an ensure failure with `base ensure` sends a caller round the loop
+// that just refused them.
+func StaleRunStateRemediation(msg string) (Remediation, bool) { return staleRunStateRemediation(msg) }
+
 // staleRunStateRemediation classifies a failed health probe.
 //
 // ⭐ IT MATCHES WHAT THE ENGINE SAID, not a file this tool went looking for.
@@ -980,4 +993,20 @@ func (b *Base) repairRunState(ctx context.Context) (string, error) {
 		return out, fmt.Errorf("repair exited 0 without saying what it did: %s", firstLine(out+stderr))
 	}
 	return out, nil
+}
+
+// StaleRefusalError is the error Ensure returns when it will not repair.
+//
+// ⛔ IT WRAPS THE ENGINE'S OWN MESSAGE AND THAT IS THE POINT OF THE FUNCTION. A
+// caller downstream classifies this condition from the text: `ready` reads it to
+// decide whether to answer with `base ensure` or with `base ensure --repair`. A
+// refusal that states its own opinion and drops what podman said cannot be
+// recognised as the condition it is refusing over, so `ready` answered with the
+// command that had just refused. WSL-61.
+//
+// ⚠ It is a function rather than an inline Errorf so a case can send its output
+// back through the classifier and prove the round trip, which a hand-written
+// fixture cannot: the fixture does not move when the producer does.
+func StaleRefusalError(r Remediation, cause error) error {
+	return fmt.Errorf("the engine's run state is stale and --repair was not given. Run: %s (%w)", r.Command, cause)
 }

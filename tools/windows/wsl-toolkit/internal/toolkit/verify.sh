@@ -78,7 +78,11 @@ printf 'engine-rootless %s\n' "$(podman info --format '{{.Host.Security.Rootless
 # because it is sitting in the ROOT cgroup, which has no memory limit file by
 # definition. `missing` therefore means the limit was not applied; `nocgroupfs`
 # means nobody could look, and those are different answers.
-cg_limit=$(podman run --rm --pull=missing --memory 64m "$TK_IMAGE" /bin/sh -c '
+# ⛔ BOUNDED. This runs on the health path of every `base status --probe` and
+# every `base ensure`, which cost about a second before it existed. An engine
+# that wedges here would turn that into the script's whole 20 minute ceiling, so
+# the container carries its own kill.
+cg_limit=$(podman run --rm --pull=missing --timeout 30 --memory 64m "$TK_IMAGE" /bin/sh -c '
   if [ ! -d /sys/fs/cgroup ]; then echo nocgroupfs
   elif [ -r /sys/fs/cgroup/memory.max ]; then cat /sys/fs/cgroup/memory.max
   else echo missing; fi' 2>/dev/null || echo unreadable)

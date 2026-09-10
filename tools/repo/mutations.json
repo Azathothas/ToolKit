@@ -740,6 +740,33 @@
       "replace": "  if false; then\n    printf 'gone-quietly %s\\n' \"$d\"",
       "run": "TestRepairScriptRefusesARuntimeDirectoryThatIsNotOne",
       "args": []
+    },
+    {
+      "label": "a finding landing in the bucket that does not refuse",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\t\tnotes = append(notes, rem.What+\". \"+rem.Costs)",
+      "replace": "\t\tnotes = append(notes, \"\")",
+      "run": "TestAFindingGoesInTheBucketThatDoesNotRefuse",
+      "args": []
+    },
+    {
+      "label": "ready answering with the command that helps and not the one that refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\tfor _, rem := range st.Remediations {\n\t\tif rem.Repairable {\n\t\t\treturn rem.Command\n\t\t}\n\t}",
+      "replace": "\tfor _, rem := range st.Remediations {\n\t\tif false {\n\t\t\treturn rem.Command\n\t\t}\n\t}",
+      "run": "TestReadyAnswersWithTheCommandThatHelps",
+      "args": []
+    },
+    {
+      "label": "a refusal that carries the engine words a caller classifies from",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\treturn fmt.Errorf(\"the engine's run state is stale and --repair was not given. Run: %s (%w)\", r.Command, cause)",
+      "replace": "\treturn fmt.Errorf(\"the engine's run state is stale and --repair was not given. Run: %s\", r.Command)",
+      "run": "TestTheRefusalSurvivesItsOwnClassifier",
+      "args": []
     }
   ]
 }

@@ -21,6 +21,30 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T17:20:00Z: wsl-toolkit 2.0.2, and three more review lenses
+
+**Record:** [`TODO/PROGRESS.md`](TODO/PROGRESS.md), and
+[`TODO/SUMMARY.md`](TODO/SUMMARY.md) for what each pass looked at.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v2.0.2`, ten assets. It carries what
+`wsl-toolkit-v2.0.1` was cut before: `WSL-62`'s concurrent write path and
+`WSL-60` and `WSL-61`'s capability and repair work.
+
+⛔ **The three passes found three defects and one of them was a regression this
+session had just introduced.** `ready` reported a working machine as `not-ready`
+because a capability finding went into `problems`, and `r.Ready` is computed from
+`len(problems)`. Only running the command found it; the reasoning that put it
+there was wrong in a way reading could not see.
+
+⚠ **The other two are the same shape as each other.** `ready` answered a failed
+`base ensure` with `base ensure`, the command that had just refused; and the
+helper dropped the state on an error, on both sides, so a refusal carrying the
+exact command to run next crossed the protocol as a bare string.
+
+⭐ **Two cases were theatre and the mutation harness said so.** Both asserted a
+rule against a value written by hand, so removing the guard at the call site left
+them green. One is a call-site case now and the other is a round trip: what the
+refusal produces is sent back through the classifier that will read it.
+
 ### 2026-09-10T16:30:00Z: the base says what it can account for, and what to run
 
 **Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), entries `WSL-60`

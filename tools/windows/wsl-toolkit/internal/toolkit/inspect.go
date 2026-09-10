@@ -111,6 +111,17 @@ type EngineFacts struct {
 	Rootless      string `json:"rootless,omitempty"`
 	EventLogger   string `json:"event_logger,omitempty"`
 	LogDriver     string `json:"log_driver,omitempty"`
+	// CgroupDelegated is whether the engine's account can create a cgroup, which
+	// is a different question from the two Cgroup fields above and the one a
+	// reader of this report actually needs.
+	//
+	// ⛔ WITHOUT IT THIS BLOCK MISLEADS. `cgroup_version v2` and
+	// `cgroup_manager cgroupfs` describe the engine's CONFIGURATION and read
+	// like a working cgroup setup; a base with no delegation reports exactly
+	// those two and creates no cgroup per container. That is the difference
+	// between an exit 137 that can be attributed to an out-of-memory kill and
+	// one that cannot. WSL-60.
+	CgroupDelegated string `json:"cgroup_delegated,omitempty"` // yes, no, unknown
 }
 
 // GuestFacts is the distribution the engine runs in.
@@ -280,6 +291,16 @@ for f in '{{.Version.Version}}' '{{.Host.OCIRuntime.Name}}' '{{.Store.GraphDrive
          '{{.Host.EventLogger}}' '{{.Host.LogDriver}}'; do
   printf '%s\n' "$(podman info --format "$f" 2>/dev/null | head -1)"
 done
+# ⛔ PROVED BY CREATING A CGROUP, not by reading a mode bit or a mount option.
+# Measured on 2026-09-10: /sys/fs/cgroup here is mounted rw with nsdelegate and
+# is still root:root 555, so both of the cheap reads say "delegated" and both
+# are wrong. This costs one mkdir and it is the only answer that is true.
+cgrel=$(head -1 /proc/self/cgroup 2>/dev/null | sed 's/^0:://')
+case "$cgrel" in /*) ;; *) cgrel=/ ;; esac
+cgdir="/sys/fs/cgroup${cgrel%/}/wsl-toolkit-inspect-probe.$$"
+if mkdir "$cgdir" 2>/dev/null; then printf 'yes\n'; rmdir "$cgdir" 2>/dev/null || true
+elif [ -d /sys/fs/cgroup ]; then printf 'no\n'
+else printf 'unknown\n'; fi
 printf 'DISK\n'
 `
 
@@ -333,6 +354,7 @@ func parseMachineFacts(out string) (EngineFacts, *DiskUse) {
 		Version: at(0), Runtime: at(1), StorageDriver: at(2), StorageBacked: at(3),
 		StorageRoot: at(4), CgroupVersion: at(5), CgroupManager: at(6),
 		Rootless: at(7), EventLogger: at(8), LogDriver: at(9),
+		CgroupDelegated: at(10),
 	}
 	// ⛔ REACHED MEANS THE ENGINE ANSWERED, not that the script exited 0. The
 	// script exits 0 with ten blank lines when podman is missing, and reporting

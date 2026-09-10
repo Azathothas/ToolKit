@@ -106,6 +106,15 @@ func (c *HelperClient) call(ctx context.Context, method, path string, body any, 
 		return err
 	}
 	if resp.StatusCode != http.StatusOK {
+		// ⛔ THE STRUCTURED ANSWER IS READ EVEN ON A REFUSAL. A failure is when
+		// a caller most needs it: `base ensure` refusing a stale engine sends
+		// back a state carrying the exact command to run next, and this used to
+		// throw that away and hand the caller a string. The error is still what
+		// is returned; `out` is filled in first so a caller that looks at it
+		// finds what the server sent. WSL-61.
+		if out != nil {
+			_ = json.Unmarshal(data, out)
+		}
 		var problem struct {
 			Error string `json:"error"`
 		}

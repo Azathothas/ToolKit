@@ -1732,3 +1732,39 @@ func TestRepairScriptRefusesARuntimeDirectoryThatIsNotOne(t *testing.T) {
 		t.Error("repair.sh no longer removes exactly the two directories podman names")
 	}
 }
+
+// TestTheRefusalSurvivesItsOwnClassifier is the round trip: what Ensure produces
+// must still be recognisable by what ready consumes.
+//
+// ⚠ THE CASE THIS REPLACES WAS THEATRE and the mutation harness said so. It
+// asserted the classifier against a string written by hand, so removing the
+// wrap from the producer left it green. A fixture does not move when the code
+// that would have produced it moves.
+func TestTheRefusalSurvivesItsOwnClassifier(t *testing.T) {
+	podman := errors.New("a container did not run as toolkit (exit 125): Error: current system boot ID " +
+		"differs from cached boot ID; an unclean shutdown may have occurred")
+	rem, ok := staleRunStateRemediation(podman.Error())
+	if !ok {
+		t.Fatal("podman's own message was not classified, so the rest of this proves nothing")
+	}
+
+	refusal := StaleRefusalError(rem, podman)
+
+	// ⛔ THE ROUND TRIP. A caller holding only this error must reach the same
+	// remediation, which is what `ready` does.
+	back, ok := staleRunStateRemediation(refusal.Error())
+	if !ok {
+		t.Fatalf("the refusal cannot be classified by the thing that will read it: %q", refusal.Error())
+	}
+	if back.Command != rem.Command {
+		t.Errorf("the round trip changed the command: %q then %q", rem.Command, back.Command)
+	}
+	// ⛔ AND errors.Is STILL REACHES THE CAUSE, so a caller that unwraps rather
+	// than reads gets the engine's error rather than this tool's opinion of it.
+	if !errors.Is(refusal, podman) {
+		t.Error("the refusal does not wrap its cause, so unwrapping loses what the engine said")
+	}
+	if !strings.Contains(refusal.Error(), "--repair") {
+		t.Error("the refusal does not name the command that would fix it")
+	}
+}

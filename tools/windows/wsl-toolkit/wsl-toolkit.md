@@ -670,6 +670,13 @@ its version, the OCI runtime, the storage driver and the filesystem under it,
 the cgroup version and manager, whether the engine is rootless, and how much
 disk the distribution has left.
 
+⛔ **The cgroup row says whether it is DELEGATED, and without that the other two
+mislead.** `v2, cgroupfs` describes what the engine is configured with and reads
+like a working setup; a base with no delegation reports exactly that and creates
+no cgroup per container. That is the difference between an exit 137 that can be
+attributed to an out-of-memory kill and one that cannot, which is precisely the
+question this command exists to answer.
+
 ⛔ **It is not a second `resources`.** That one enumerates what this tool is
 holding; this one describes one job and the machine it ran on. The two answer
 different questions and neither is a shorter version of the other.
@@ -847,6 +854,25 @@ carries all of them.
 can self-elevate.** A restricted process that cannot start a helper says so and
 prints the approval command, which is the whole reason the helper exists.
 `remediation[0]` is the command to run now.
+
+⛔ **The command it names is the one that helps, not the one that just failed.**
+A base whose engine has stale run state refuses an unflagged `base ensure` on
+purpose; `ready` answers with `base ensure --repair`. Answering with the command
+that refused is a loop, and it is the one an agent is least able to get out of.
+
+### ⚠ `problems` refuses and `notes` does not
+
+| field | means | changes the verdict |
+| --- | --- | --- |
+| `problems` | this machine cannot do the thing | ⛔ yes. `ready` is false |
+| `notes` | true, and it stops nothing | no |
+| `remediation` | the exact commands, best first | no |
+
+⭐ **A base that cannot enforce a memory limit is a note.** It runs containers,
+so the machine IS ready; what it cannot do is bound or account for them. Writing
+that into `problems` would report a working machine as `not-ready` and stop an
+agent over a limitation most jobs never reach. In the terminal a note is marked
+`~` and a problem `!`.
 
 ### What `--smoke` proves
 
