@@ -8,7 +8,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-10T12:00:00Z
 baseline        0c9c1f8, clean main; gate 19 checks, all passing, 28.8s.
-entries         total 93  open 3  blocked 0  done 90
+entries         total 93  open 1  blocked 0  done 92
 gate            19 checks, one binary, 28s on this host
 head            pushed, CI green
 ```
@@ -27,17 +27,20 @@ previous session left. Nothing is half-applied.
 
 ## What this session closed
 
-Four entries, two of them found by the work rather than planned, and three more
-authored open from what the work surfaced.
+Six entries, two of them found by the work rather than planned, and two ruled by
+the operator mid-session and built the same day.
 
 | entry | what it was |
 | --- | --- |
 | [WSL-25](wsl-ephemeral.md) | the release is signed, and a launcher run says so |
 | [WSL-30](wsl-ephemeral.md) | the sixteen-claim podman matrix, measured on two engines |
+| [WSL-60](wsl-ephemeral.md) | cgroup delegation as a NAMED capability, so a systemd base or a KVM machine answers through the same row |
+| [WSL-61](wsl-ephemeral.md) | `base ensure --repair`, and a condition an agent can act on rather than read |
 | [TOOL-22](tooling.md) | ⚠ FOUND. The runtime column had never once produced an answer |
 | [WSL-62](wsl-toolkit-go.md) | ⚠ FOUND by the sixth lens. Two writers, one temporary name |
 
-`WSL-59`, `WSL-60` and `WSL-61` were authored and left open.
+`WSL-59` was authored and left open, and `WSL-60` and `WSL-61` were authored,
+ruled by the operator in the same session, and closed against what was built.
 
 ## ⭐ The findings worth keeping
 
@@ -70,6 +73,18 @@ a write nothing was wrong with, and on a platform holding no share lock the same
 collision silently publishes another writer's bytes. ⭐ `newJobID` two files away
 already carried the reasoning in one sentence, and it had not been applied to the
 neighbour. `WSL-62`.
+
+
+⛔ **A defect the driven pass found inside the fix for a defect.** `WSL-61`'s
+repair derived podman's run directories from `$XDG_RUNTIME_DIR`. Measured in the
+base: that is `/mnt/wslg/runtime-dir`, which WSLg owns, and podman's own run root
+is `/tmp/wsl-toolkit-run-1000/containers`. ⛔ **The first version would have
+removed two directories that do not exist, found nothing, and reported a
+successful repair** - which is the exact class this tool exists to refuse,
+shipped inside the fix for it. The root is asked of `podman info` now. ⚠ The
+record's own open question named the right path all along; reading it as the
+runtime directory is what produced the defect, and a path that is right in a note
+is not a path to type into a program.
 
 ⚠ **The source document `WSL-30` depends on is gone.** `Aseem0xff/mockup` answers
 404 and is not in the Wayback Machine. The operator supplied a copy; the sixteen
@@ -106,24 +121,28 @@ timer       PowerShell 7.6.5, 100 ns smallest gap over 56,186 distinct readings
 
 ## What is left
 
-Three entries, all open and none blocking.
+One entry.
 
 - **[WSL-59](wsl-ephemeral.md)**, the podman adapter. ⭐ Its premise is measured
-  now rather than assumed: two of its four feeds are usable today, one waits on
-  `WSL-60`, and the log driver must be named.
-- **[WSL-60](wsl-ephemeral.md)**, the base's missing cgroup delegation. ⚠ Its
-  decision is unruled and it is the operator's.
-- **[WSL-61](wsl-ephemeral.md)**, `base ensure` and stale engine run state. ⚠
-  Also unruled, with a third option neither side of the original question named.
+  now rather than assumed: two of its four feeds are usable today, the resources
+  feed reports absent through `WSL-60`'s capability row rather than reporting
+  zero, and the log driver must be named by the adapter.
+
+⛔ **`WSL-60` closed as the CAPABILITY and not as the delegation**, which is what
+the ruling asked for. Nothing yet creates a cgroup subtree for the account; a
+base that should delegate still does not, and what changed is that it says so
+with the mechanism named. That half is not on the work order because it is not a
+decision anybody has taken.
 
 ## Work order
 
-1. **Rule on [WSL-60](wsl-ephemeral.md) and [WSL-61](wsl-ephemeral.md).** One
-   decision each, and both block nothing else; the reporting half of `WSL-60` can
-   be done whichever way its delegation half is ruled.
-2. ⭐ **Cut the next tag when there is something to carry.** `WSL-62`'s fix is on
-   `main` and NOT in `wsl-toolkit-v2.0.1`, which was cut before the review found
-   it.
+1. ⭐ **Cut the next tag.** Three fixes are on `main` and none is in
+   `wsl-toolkit-v2.0.1`: `WSL-62`'s concurrent write path, and `WSL-60` and
+   `WSL-61`'s capability and repair work.
+2. ⭐ **Run `base ensure` first after the next reboot of this machine, and read
+   what it says.** `WSL-61`'s stale-boot-id trigger could not be reproduced on
+   demand, so the classification and the repair are each proved and the two of
+   them meeting is not.
 3. **[WSL-59](wsl-ephemeral.md)**, the adapter, against the measured table in
    `WSL-30`'s closing.
 

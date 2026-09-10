@@ -374,7 +374,15 @@ func (r *Runner) ForgetGuestHome() {
 // EnsureBase is the ONE way a caller brings the base up through a Runner, so
 // the remembered guest home cannot outlive the distribution it describes.
 func (r *Runner) EnsureBase(ctx context.Context, force bool) (BaseState, error) {
-	st, err := r.base.Ensure(ctx, force)
+	return r.EnsureBaseWith(ctx, force, false)
+}
+
+// EnsureBaseWith carries the repair switch through to the base. ⛔ It is a
+// separate entry point rather than a changed signature because the helper
+// protocol and every existing caller pass two arguments, and a third one that
+// defaults to true is exactly the shape a deletion nobody asked for arrives in.
+func (r *Runner) EnsureBaseWith(ctx context.Context, force, repair bool) (BaseState, error) {
+	st, err := r.base.EnsureWith(ctx, force, repair)
 	r.ForgetGuestHome()
 	return st, err
 }

@@ -1522,3 +1522,213 @@ func TestWriteFileAtomicSurvivesConcurrentWriters(t *testing.T) {
 		}
 	}
 }
+
+// -- WSL-60: what the cgroup tree can do, named rather than assumed ----------
+
+// TestCapabilitiesNameTheMechanismRatherThanTheHost is the case for the ruling
+// on 2026-09-10: the answer has to survive this base gaining systemd, a rootful
+// engine, or being replaced by a whole virtual machine. A boolean could not.
+func TestCapabilitiesNameTheMechanismRatherThanTheHost(t *testing.T) {
+	cases := []struct {
+		name      string
+		out       string
+		mechanism string
+		enforced  string
+		stats     string
+	}{
+		{
+			name: "the base as it is today: rootless, no delegation",
+			out: "engine podman version 6.1.1\ncgroup-version v2\ncgroup-controllers cpuset cpu io memory\n" +
+				"cgroup-self 0::/\ncgroup-delegated no\ncgroup-under none\nengine-rootless true\ncgroup-limit missing\n",
+			mechanism: "none", enforced: "no", stats: "no",
+		},
+		{
+			name: "a rootful engine, which is what podman-machine-default is",
+			out: "cgroup-version v2\ncgroup-self 0::/libpod_parent/libpod-abc\ncgroup-delegated yes\n" +
+				"cgroup-under none\nengine-rootless false\ncgroup-limit 67108864\n",
+			mechanism: "rootful", enforced: "yes", stats: "yes",
+		},
+		{
+			// ⚠ THE PATH IS SHORTENED ON PURPOSE. A real systemd cgroup path
+			// contains a per-uid service unit whose name has an at sign, a
+			// number and a dotted suffix, and the secrets check reads that
+			// shape as an email address. ⛔ Widening the check to let one
+			// through would weaken a guard for a cosmetic reason, and the check
+			// refused the first version of this comment too, which is the
+			// shortest demonstration that it reads what is written.
+			// Nothing is lost: this parser decides the mechanism from the
+			// `cgroup-under` row, and verify.sh's own `case` is what produces
+			// that row from the real path.
+			name: "a base that has gained systemd, which this one has not",
+			out: "cgroup-version v2\ncgroup-self 0::/user.slice/user-1000.slice/app.slice\n" +
+				"cgroup-delegated yes\ncgroup-under systemd\nengine-rootless true\ncgroup-limit 67108864\n",
+			mechanism: "systemd", enforced: "yes", stats: "yes",
+		},
+		{
+			name: "delegation handed over without systemd",
+			out: "cgroup-version v2\ncgroup-self 0::/wsl-toolkit\ncgroup-delegated yes\ncgroup-under none\n" +
+				"engine-rootless true\ncgroup-limit 67108864\n",
+			mechanism: "delegated", enforced: "yes", stats: "yes",
+		},
+		{
+			name: "the probe could not read the limit, which is not the same as no limit",
+			out: "cgroup-version v2\ncgroup-self 0::/\ncgroup-delegated no\ncgroup-under none\n" +
+				"engine-rootless true\ncgroup-limit unreadable\n",
+			mechanism: "none", enforced: "unknown", stats: "no",
+		},
+		{
+			// ⛔ THE DISTINCTION THIS PAIR EXISTS FOR. A container with no
+			// cgroup filesystem at all is unmeasured; one that HAS the
+			// filesystem and no memory.max in it asked for a limit and did not
+			// get one. Collapsing the two would report this repository's own
+			// base as "unknown" when it is a measured "no".
+			name: "no cgroup filesystem in the container at all",
+			out: "cgroup-version v2\ncgroup-self 0::/\ncgroup-delegated no\ncgroup-under none\n" +
+				"engine-rootless true\ncgroup-limit nocgroupfs\n",
+			mechanism: "none", enforced: "unknown", stats: "no",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cg := parseCapabilities(c.out)
+			if cg == nil {
+				t.Fatal("parseCapabilities returned nothing for output that carries rows")
+			}
+			if cg.Mechanism != c.mechanism {
+				t.Errorf("mechanism = %q, want %q", cg.Mechanism, c.mechanism)
+			}
+			if cg.Enforced != c.enforced {
+				t.Errorf("limits_enforced = %q, want %q", cg.Enforced, c.enforced)
+			}
+			if cg.StatsUsable != c.stats {
+				t.Errorf("stats_usable = %q, want %q", cg.StatsUsable, c.stats)
+			}
+		})
+	}
+}
+
+// TestCapabilitiesAreAbsentRatherThanZeroWhenNothingWasMeasured is the ⛔ half of
+// the ruling: `0B` presented as a measurement is worse than no figure, because a
+// blank gets checked and a number gets used. A guest older than this probe, or
+// one whose probe could not run, must produce nil and not a zero struct.
+func TestCapabilitiesAreAbsentRatherThanZeroWhenNothingWasMeasured(t *testing.T) {
+	if cg := parseCapabilities("engine podman version 6.1.1\nruntime-dir /tmp/x\nuser toolkit uid 1000\n"); cg != nil {
+		t.Fatalf("a guest that printed no capability rows produced %+v, want nil", cg)
+	}
+	if cg := parseCapabilities(""); cg != nil {
+		t.Fatalf("empty output produced %+v, want nil", cg)
+	}
+}
+
+// TestEngineRowDoesNotSwallowTheRootlessRow catches the prefix collision this
+// pair invites: `engine ` and `engine-rootless ` differ by one character, and a
+// prefix test written without the trailing space would read the version string
+// out of the wrong row.
+func TestEngineRowDoesNotSwallowTheRootlessRow(t *testing.T) {
+	out := "engine podman version 6.1.1\nengine-rootless false\ncgroup-version v2\ncgroup-delegated yes\ncgroup-limit 67108864\n"
+	cg := parseCapabilities(out)
+	if cg == nil || cg.Mechanism != "rootful" {
+		t.Fatalf("the rootless row was not read: %+v", cg)
+	}
+	engine := ""
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "engine ") {
+			engine = strings.TrimSpace(strings.TrimPrefix(line, "engine "))
+		}
+	}
+	if engine != "podman version 6.1.1" {
+		t.Fatalf("engine = %q, want the version row and not the rootless one", engine)
+	}
+}
+
+// TestCgroupFindingIsReportedAndNotRepairable holds the other half of the
+// ruling. Handing the account a cgroup subtree is a privileged write into a
+// root-owned tree and was deliberately NOT ruled; what this tool does today is
+// report, and a Command that offered to fix it would be a promise it does not
+// keep.
+func TestCgroupFindingIsReportedAndNotRepairable(t *testing.T) {
+	cg := parseCapabilities("cgroup-version v2\ncgroup-self 0::/\ncgroup-delegated no\ncgroup-under none\nengine-rootless true\ncgroup-limit max\n")
+	r, ok := cgroupRemediation(cg)
+	if !ok {
+		t.Fatal("a base with limits not enforced produced no finding")
+	}
+	if r.Repairable {
+		t.Fatal("the cgroup finding claims to be repairable, and nothing implements that")
+	}
+	if !strings.Contains(r.Costs, "NOT ENFORCED") {
+		t.Errorf("the cost does not say the limit is not enforced: %q", r.Costs)
+	}
+	// ⛔ A base that enforces limits earns no finding at all. A report that fires
+	// on every base is a report nobody reads.
+	good := parseCapabilities("cgroup-version v2\ncgroup-delegated yes\ncgroup-under systemd\nengine-rootless true\ncgroup-limit 67108864\n")
+	if _, ok := cgroupRemediation(good); ok {
+		t.Fatal("a base that enforces limits produced a finding")
+	}
+	if _, ok := cgroupRemediation(nil); ok {
+		t.Fatal("an unmeasured base produced a finding, which is a claim about something nobody looked at")
+	}
+}
+
+// -- WSL-61: the condition, and the command that takes it --------------------
+
+// TestStaleRunStateIsClassifiedFromWhatTheEngineSaid is the case for the ruling
+// that `--repair` exists at all. podman names the condition in its own message,
+// so the classification is a read of that message rather than a guess about
+// state this tool went looking for.
+func TestStaleRunStateIsClassifiedFromWhatTheEngineSaid(t *testing.T) {
+	real := "a container did not run as toolkit (exit 125): Error: current system boot ID differs from cached boot ID; " +
+		"an unclean shutdown may have occurred. Delete /tmp/wsl-toolkit-run-1000/containers and /tmp/wsl-toolkit-run-1000/libpod/tmp"
+	r, ok := staleRunStateRemediation(real)
+	if !ok {
+		t.Fatal("podman's own message was not recognised")
+	}
+	if !r.Repairable {
+		t.Error("the one condition --repair exists for is not marked repairable")
+	}
+	// ⭐ THE COMMAND IS THE FIELD AN AGENT ACTS ON, so it is asserted exactly
+	// rather than merely being non-empty.
+	if r.Command != "wsl-toolkit base ensure --repair" {
+		t.Errorf("command = %q, and an agent cannot act on anything else", r.Command)
+	}
+	// ⛔ An unrelated failure must NOT be classified. A remediation offered for a
+	// condition it does not fix sends a caller to run a deletion for nothing.
+	for _, other := range []string{
+		"a container did not run as toolkit (exit 125): Error: short-name resolution enforced but cannot prompt without a TTY",
+		"the container ran and did not return the marker: hello",
+		"",
+	} {
+		if _, ok := staleRunStateRemediation(other); ok {
+			t.Errorf("an unrelated failure was classified as stale run state: %q", other)
+		}
+	}
+}
+
+// TestRepairScriptRefusesARuntimeDirectoryThatIsNotOne reads the guest script
+// itself, because the deletion it performs is the one thing in this file that
+// cannot be undone. ⛔ RULES.md section 3: a destructive tool has one deletion
+// and it reads the state back.
+func TestRepairScriptRefusesARuntimeDirectoryThatIsNotOne(t *testing.T) {
+	src := string(repairScript)
+	for _, must := range []string{
+		// ⛔ THE ROOT IS ASKED OF PODMAN. Measured on 2026-09-10 in this
+		// distribution: $XDG_RUNTIME_DIR is /mnt/wslg/runtime-dir and podman's
+		// run root is /tmp/wsl-toolkit-run-1000/containers, so a script that
+		// asked the environment would have cleared two directories that do not
+		// exist and reported a repair.
+		`podman info --format '{{.Store.RunRoot}}'`,
+		`*..*)`,              // a traversal in the root is refused by name
+		`'/') echo`,          // the root cannot be /
+		`still-present`,      // every removal is read back
+		`"$removed" -eq 0`,   // and a run that removed nothing is not a repair
+		`repaired run-state`, // which is the token the caller asserts
+	} {
+		if !strings.Contains(src, must) {
+			t.Errorf("repair.sh no longer contains %q, so one of its three rules is gone", must)
+		}
+	}
+	// ⛔ ONLY TWO FIXED LEAF NAMES. A loop over anything a caller supplied would
+	// be a path to contain, and there is deliberately no such path.
+	if !strings.Contains(src, "for leaf in containers libpod/tmp; do") {
+		t.Error("repair.sh no longer removes exactly the two directories podman names")
+	}
+}

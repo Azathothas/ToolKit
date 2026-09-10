@@ -261,11 +261,22 @@ func (c *HelperClient) BaseStatus(ctx context.Context, probe bool) (BaseState, e
 // config, and had the helper rebuild from the image ITS startup config named.
 // WSL-44, issue 17.
 func (c *HelperClient) BaseEnsure(ctx context.Context, force bool) (BaseState, error) {
+	return c.BaseEnsureWith(ctx, force, false)
+}
+
+// BaseEnsureWith carries the repair switch over the protocol.
+//
+// ⚠ THE FIELD IS ADDITIVE AND THAT IS SAFE HERE FOR ONE REASON ONLY: the client
+// refuses an endpoint whose schema is not the one this build speaks, so a new client
+// cannot reach a helper that would ignore the field. Without that refusal an
+// omitted field would read as "do not repair" on one side and "was never asked"
+// on the other, which is the same answer for two different reasons.
+func (c *HelperClient) BaseEnsureWith(ctx context.Context, force, repair bool) (BaseState, error) {
 	var out struct {
 		State BaseState `json:"state"`
 		Error string    `json:"error"`
 	}
-	body := map[string]any{"force": force, "config": c.cfg}
+	body := map[string]any{"force": force, "repair": repair, "config": c.cfg}
 	if err := c.call(ctx, http.MethodPost, "/v1/base/ensure", body, &out); err != nil {
 		return out.State, err
 	}

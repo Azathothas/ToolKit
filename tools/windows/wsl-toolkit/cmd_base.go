@@ -23,6 +23,9 @@ const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|presets
   --save        also make that preset the stored default for later commands
   --json        a structured answer
   --probe       status runs a real container to find out. Off by default
+  --repair      ensure may clear engine run state a reboot invalidated.
+                Off by default: without it, a base needing repair is REFUSED
+                with the exact command printed rather than quietly fixed
   --root        shell attaches as root instead
   --here        shell starts in this Windows directory, mounted under /mnt.
                 Without it a shell starts in the guest account's home
@@ -38,6 +41,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("base " + sub)
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	probe := fs.Bool("probe", false, "run a real container to decide whether the base is usable")
+	repair := fs.Bool("repair", false, "ensure may clear engine run state a reboot invalidated. Off by default")
 	asRoot := fs.Bool("root", false, "attach as root")
 	here := fs.Bool("here", false, "base shell starts in this Windows directory instead of the guest account's home")
 	yes := fs.Bool("yes", false, "do not ask before removing")
@@ -80,7 +84,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			}
 			return verdictFor(st), renderBase(st, *asJSON, *probe)
 		case "ensure", "recreate":
-			st, err := c.BaseEnsure(ctx, sub == "recreate")
+			st, err := c.BaseEnsureWith(ctx, sub == "recreate", *repair)
 			if err != nil {
 				return exitCannot, err
 			}
@@ -104,14 +108,19 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		return verdictFor(st), renderBase(st, *asJSON, *probe)
 
 	case "ensure":
-		st, err := base.Ensure(ctx, false)
+		st, err := base.EnsureWith(ctx, false, *repair)
 		if err != nil {
+			// ⛔ THE STATE IS RENDERED BEFORE THE ERROR IS RETURNED. A refusal
+			// that carries a remediation is the one case where the answer is in
+			// the state and not in the message, and a caller reading --json got
+			// nothing at all here before.
+			_ = renderBase(st, *asJSON, true)
 			return exitCannot, err
 		}
 		return verdictFor(st), renderBase(st, *asJSON, true)
 
 	case "recreate":
-		st, err := base.Ensure(ctx, true)
+		st, err := base.EnsureWith(ctx, true, *repair)
 		if err != nil {
 			return exitCannot, err
 		}
@@ -240,8 +249,33 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	if st.Engine != "" {
 		fmt.Fprintf(out, "  engine      %s\n", st.Engine)
 	}
+	if cg := st.Cgroup; cg != nil {
+		// ⛔ THE MECHANISM IS PRINTED, not a yes or a no. A base that gains
+		// systemd, a rootful engine or a whole virtual machine later answers
+		// through this same row rather than needing a second one. WSL-60.
+		fmt.Fprintf(out, "  cgroup      %s via %s\n", cg.Version, cg.Mechanism)
+		fmt.Fprintf(out, "  limits      enforced: %s   stats usable: %s\n", cg.Enforced, cg.StatsUsable)
+	} else if probed {
+		// ⚠ NOT MEASURED IS NOT THE SAME AS NO, and this is the row that says
+		// which one this is.
+		fmt.Fprintf(out, "  cgroup      not measured by this guest\n")
+	}
 	for _, p := range st.Problems {
 		fmt.Fprintf(out, "  ! %s\n", p)
+	}
+	// ⭐ LAST, AND UNMISSABLE. The reader is usually an agent that has to decide
+	// what to run next, and a condition reported without its command is a
+	// condition the agent has to guess its way out of. WSL-61.
+	for _, r := range st.Remediations {
+		fmt.Fprintf(out, "\n  ⛔ %s\n", strings.ToUpper(r.ID))
+		fmt.Fprintf(out, "     what   %s\n", r.What)
+		fmt.Fprintf(out, "     costs  %s\n", r.Costs)
+		if r.Repairable {
+			fmt.Fprintf(out, "     RUN    %s\n", r.Command)
+		} else {
+			fmt.Fprintf(out, "     read   %s\n", r.Command)
+			fmt.Fprintf(out, "     ⚠ this tool cannot repair it, and says so rather than pretending\n")
+		}
 	}
 }
 

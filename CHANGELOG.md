@@ -21,6 +21,38 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-10
 
+### 2026-09-10T16:30:00Z: the base says what it can account for, and what to run
+
+**Record:** [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md), entries `WSL-60`
+and `WSL-61`, both ruled by the operator in the session that authored them.
+**Deployed:** ⛔ **no deploy.** On `main` and not in `wsl-toolkit-v2.0.1`. The
+next tag carries this and `WSL-62`.
+
+⭐ **The ruling on `WSL-60` was to take the answer that covers the most**, on the
+grounds that the base may later be a systemd container or a full virtual machine
+under KVM. That rules out both seams as written, because each answers "does THIS
+base delegate" and the base is the thing that changes. What ships instead is a
+measured CAPABILITY: `base status --probe` reports the mechanism by name, one of
+`systemd`, `delegated`, `rootful`, `none` or `unknown`, and derives whether
+limits are enforced from a container that asked for one.
+
+⛔ **`unknown` is a real answer and is not `none`.** A container on this base has
+`/sys/fs/cgroup` mounted and no `memory.max` in it, because it sits in the root
+cgroup, which has no limit file by definition. The first version of the probe
+called that unmeasured; it is the strongest evidence available that the limit was
+not applied.
+
+⭐ **`WSL-61` was ruled as the third option and extended**: `--repair` takes the
+deletion, the unflagged `ensure` prints the command, and every condition is now a
+`Remediation` an agent can act on rather than read - an id, what it costs, the
+exact command, and whether this tool can take it. `base ensure` against a
+registered distribution says ALREADY EXISTS before anything else.
+
+⛔ **Driving it found a defect inside the fix.** The repair derived podman's run
+directories from `$XDG_RUNTIME_DIR`, which in this base is WSLg's directory and
+not podman's run root. It would have removed two directories that do not exist
+and reported success. The root is asked of `podman info` now.
+
 ### 2026-09-10T14:50:00Z: four review lenses, and the sixth one that was owed
 
 **Record:** [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) entry `WSL-62`,

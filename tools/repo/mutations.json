@@ -704,6 +704,42 @@
       "replace": "\ttmp := path + \".tmp\"",
       "run": "TestWriteFileAtomicSurvivesConcurrentWriters",
       "args": []
+    },
+    {
+      "label": "a cgroup mechanism that is named rather than inferred from the host",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tcase cg.Delegated && rows[\"cgroup-under\"] == \"systemd\":\n\t\tcg.Mechanism = \"systemd\"",
+      "replace": "\tcase cg.Delegated && rows[\"cgroup-under\"] == \"never-happens\":\n\t\tcg.Mechanism = \"systemd\"",
+      "run": "TestCapabilitiesNameTheMechanismRatherThanTheHost",
+      "args": []
+    },
+    {
+      "label": "an unmeasured capability reported as absent rather than as zero",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif len(rows) == 0 {\n\t\treturn nil\n\t}",
+      "replace": "\tif false {\n\t\treturn nil\n\t}",
+      "run": "TestCapabilitiesAreAbsentRatherThanZeroWhenNothingWasMeasured",
+      "args": []
+    },
+    {
+      "label": "a stale run state classified from what the engine said and nothing else",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif !strings.Contains(strings.ToLower(msg), \"boot id\") {",
+      "replace": "\tif false {",
+      "run": "TestStaleRunStateIsClassifiedFromWhatTheEngineSaid",
+      "args": []
+    },
+    {
+      "label": "a repair that reads every removal back before it reports one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/repair.sh",
+      "find": "  if [ -e \"$d\" ]; then\n    printf 'still-present %s\\n' \"$d\"",
+      "replace": "  if false; then\n    printf 'gone-quietly %s\\n' \"$d\"",
+      "run": "TestRepairScriptRefusesARuntimeDirectoryThatIsNotOne",
+      "args": []
     }
   ]
 }

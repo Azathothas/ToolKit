@@ -723,6 +723,7 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 	// reporter watched a client say Alpine while the guest stayed Arch.
 	var req struct {
 		Force  bool    `json:"force"`
+		Repair bool    `json:"repair,omitempty"`
 		Config *Config `json:"config,omitempty"`
 	}
 	if r.ContentLength > 0 {
@@ -736,7 +737,7 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	st, err := runner.EnsureBase(r.Context(), req.Force)
+	st, err := runner.EnsureBaseWith(r.Context(), req.Force, req.Repair)
 	if err != nil {
 		writeHelperJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error(), "state": ""})
 		return

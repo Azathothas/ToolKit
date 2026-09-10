@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,9 @@ var provisionScript []byte
 
 //go:embed verify.sh
 var verifyScript []byte
+
+//go:embed repair.sh
+var repairScript []byte
 
 // BaseSpaceFloor is what the volume must have free before an import starts.
 //
@@ -46,6 +50,14 @@ type BaseState struct {
 	// editor can reach, and this comes from inside the distribution. WSL-42.
 	Identity *Identity `json:"identity,omitempty"`
 	Problems []string  `json:"problems,omitempty"`
+	// Cgroup is what the guest's cgroup tree can do for the engine's account,
+	// read under --probe. ⚠ Nil where the probe did not run or the guest is
+	// older than the probe, which is not the same as a tree that can do nothing.
+	Cgroup *CgroupState `json:"cgroup,omitempty"`
+	// Remediations are the conditions this tool found, each with what leaving it
+	// costs and the exact command that takes it. ⭐ A caller here is usually an
+	// agent, and the command is the field it acts on.
+	Remediations []Remediation `json:"remediations,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -153,13 +165,27 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	} else {
 		st.Problems = append(st.Problems, err.Error())
 	}
-	engine, verifyErr := b.verify(ctx)
+	engine, caps, verifyErr := b.verify(ctx)
 	st.Engine = engine
+	st.Cgroup = caps
 	if verifyErr != nil {
 		st.Problems = append(st.Problems, verifyErr.Error())
+		// ⭐ A FAILURE IS CLASSIFIED HERE AND NOT ONLY IN ensure, because
+		// `base status --probe` is what an agent runs to find out what is wrong.
+		// A report that names the condition and not the command is the half of
+		// this that was already there.
+		if r, ok := staleRunStateRemediation(verifyErr.Error()); ok {
+			st.Remediations = append(st.Remediations, r)
+		}
 		return st, nil
 	}
 	st.Healthy = true
+	// ⛔ A CAPABILITY FINDING IS NOT A HEALTH FAILURE. The base runs containers;
+	// what it cannot do is account for them, and reporting that as unusable would
+	// refuse work over a limitation most jobs never reach. WSL-60.
+	if r, ok := cgroupRemediation(caps); ok {
+		st.Remediations = append(st.Remediations, r)
+	}
 	return st, nil
 }
 
@@ -222,6 +248,16 @@ func (b *Base) writeRecord() error {
 // a registered-but-unusable distribution is re-provisioned in place, and only
 // one that will not provision is removed and rebuilt.
 func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
+	return b.EnsureWith(ctx, force, false)
+}
+
+// EnsureWith is Ensure with the repair switch.
+//
+// ⛔ REPAIR IS OPT IN AND IT ALWAYS WILL BE. Without it this names the condition
+// and the exact command and takes no deletion, because a tool that removes
+// engine state to make a probe pass is one deletion away from removing something
+// else. Ruled 2026-09-10. WSL-61.
+func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, error) {
 	st, err := b.Status(ctx, false)
 	if err != nil {
 		return st, err
@@ -234,7 +270,12 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 		st.Registered = false
 	}
 	if st.Registered {
-		b.log(b.cfg.Base.Name + " is registered; checking what it is")
+		// ⭐ SAID FIRST, AND SAID PLAINLY, because the reader is usually an
+		// agent that has just asked for a base and is about to be told it
+		// already has one. A line that reads like progress is a line an agent
+		// scrolls past; this one names the distribution and says nothing is
+		// being built. WSL-61.
+		b.log("this base ALREADY EXISTS: " + b.cfg.Base.Name + " is registered. Nothing will be created; checking what it is")
 		// ⛔ WHAT IT IS COMES BEFORE WHETHER IT WORKS. A health probe runs an
 		// Alpine CONTAINER successfully inside whatever the distribution is; it
 		// proves the engine works and identifies nothing. WSL-42, issue 18: a
@@ -244,11 +285,45 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 		if err := b.reconcileIdentity(ctx); err != nil {
 			return st, err
 		}
-		if engine, err := b.verify(ctx); err == nil {
+		if engine, _, err := b.verify(ctx); err == nil {
 			b.log("the engine answers: " + engine)
 			return b.Status(ctx, true)
 		} else {
 			b.log("it cannot: " + err.Error())
+			// ⛔ RE-PROVISIONING CANNOT CLEAR STATE THAT IS THE ENGINE'S, and
+			// this used to try anyway, report honestly that it still could not
+			// run a container, and stop. That left the operator to run by hand a
+			// deletion podman itself had already prescribed. WSL-61.
+			if r, ok := staleRunStateRemediation(err.Error()); ok {
+				if !repair {
+					b.log("")
+					b.log("⛔ THIS IS NOT FIXED BY REBUILDING, and this command will not fix it either.")
+					b.log("   " + r.What)
+					b.log("   " + r.Costs)
+					b.log("   RUN THIS INSTEAD:  " + r.Command)
+					b.log("")
+					st.Remediations = append(st.Remediations, r)
+					return st, fmt.Errorf("the engine's run state is stale and --repair was not given. Run: %s", r.Command)
+				}
+				b.log("clearing the engine run state this boot invalidated, as asked")
+				if out, err := b.repairRunState(ctx); err != nil {
+					return st, fmt.Errorf("--repair could not clear the engine run state: %w", err)
+				} else {
+					for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+						if line != "" {
+							b.log("  " + strings.TrimSpace(line))
+						}
+					}
+				}
+				// ⛔ THE STATE IS READ BACK, and the repair is not reported as a
+				// success until a container has actually run.
+				if engine, _, err := b.verify(ctx); err == nil {
+					b.log("the engine answers: " + engine)
+					return b.Status(ctx, true)
+				} else {
+					b.log("it still cannot after the repair: " + err.Error())
+				}
+			}
 			b.log("re-provisioning in place")
 		}
 		if err := b.provision(ctx); err != nil {
@@ -258,7 +333,7 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 				return st, err
 			}
 		} else {
-			if engine, err := b.verify(ctx); err != nil {
+			if engine, _, err := b.verify(ctx); err != nil {
 				return st, fmt.Errorf("re-provisioned and it still cannot run a container: %w", err)
 			} else {
 				b.log("the engine answers: " + engine)
@@ -284,7 +359,7 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 		return st, err
 	}
 	b.unmarked = false
-	engine, err := b.verify(ctx)
+	engine, _, err := b.verify(ctx)
 	if err != nil {
 		return st, fmt.Errorf("built and it cannot run a container: %w", err)
 	}
@@ -490,7 +565,13 @@ func (b *Base) provision(ctx context.Context) error {
 
 // verify runs a real container as the unprivileged account and returns the
 // engine's own version line.
-func (b *Base) verify(ctx context.Context) (string, error) {
+// verify runs a container as the unprivileged account and reads what came back.
+//
+// ⭐ IT RETURNS THREE THINGS AND THE THIRD IS NOT A HEALTH VERDICT. The engine
+// string and the error say whether this base works; the CgroupState says what it
+// can account for while it works, and a base with no delegation is healthy and
+// limited rather than broken. WSL-60.
+func (b *Base) verify(ctx context.Context) (string, *CgroupState, error) {
 	half := func() string {
 		var raw [6]byte
 		if _, err := rand.Read(raw[:]); err != nil {
@@ -507,13 +588,13 @@ func (b *Base) verify(ctx context.Context) (string, error) {
 		"TK_M2":    m2,
 	}, 20*time.Minute)
 	if err != nil || code != 0 {
-		return "", fmt.Errorf("a container did not run as %s (exit %d): %s", b.cfg.Base.User, code, firstLine(stderr+out))
+		return "", nil, fmt.Errorf("a container did not run as %s (exit %d): %s", b.cfg.Base.User, code, firstLine(stderr+out))
 	}
 	// ⛔ Compared with whitespace removed: a tty wraps a long line, so a marker
 	// that arrived correctly can fail an exact match.
 	flat := strings.Join(strings.Fields(out), "")
 	if !strings.Contains(flat, m1+m2) {
-		return "", fmt.Errorf("the container ran and did not return the marker: %s", firstLine(out+stderr))
+		return "", nil, fmt.Errorf("the container ran and did not return the marker: %s", firstLine(out+stderr))
 	}
 	engine := ""
 	for _, line := range strings.Split(out, "\n") {
@@ -521,7 +602,9 @@ func (b *Base) verify(ctx context.Context) (string, error) {
 			engine = strings.TrimSpace(strings.TrimPrefix(line, "engine "))
 		}
 	}
-	return engine, nil
+	// ⚠ `engine ` MATCHES BEFORE `engine-rootless ` DOES NOT, and it does not:
+	// the prefix compared carries a trailing space and that row's key does not.
+	return engine, parseCapabilities(out), nil
 }
 
 // VerifyImage is what the health check runs: small, in the catalog, and pulled
@@ -698,3 +781,203 @@ func indexByte(b []byte, c byte) int {
 }
 
 func (b *Base) logWriter() func(string) { return b.log }
+
+// CgroupState is what the guest's cgroup tree can actually do for the account
+// the engine runs as, read under `--probe`.
+//
+// ⛔ THE MECHANISM IS NAMED RATHER THAN INFERRED FROM THE HOST, and that is the
+// whole reason this is a struct and not a boolean. Delegation can arrive four
+// ways, and this repository may use any of them: systemd's `user@.service`, an
+// explicitly handed-over subtree, a rootful engine, or a full virtual machine
+// that simply has one. A field that said "WSL, so no" would be wrong the day the
+// base changes shape, and it would be wrong silently. WSL-60.
+//
+// ⚠ EVERY FIELD THAT COULD BE UNKNOWN IS A STRING AND CAN SAY SO. A boolean
+// cannot distinguish "no" from "not measured", and the difference is the whole
+// finding: `podman stats` reporting `0B` over a container using memory is worse
+// than reporting nothing, because a blank gets checked and a number gets used.
+type CgroupState struct {
+	Version     string `json:"version"`   // v2, v1, none
+	Mechanism   string `json:"mechanism"` // systemd, delegated, rootful, none, unknown
+	Delegated   bool   `json:"delegated"`
+	Controllers string `json:"controllers,omitempty"`
+	Self        string `json:"self,omitempty"`
+	// Limits is what a container actually got when one was asked for 64 MiB:
+	// the byte figure the guest read back, `unknown` where the container could
+	// not read it, or `unreadable` where the probe itself could not run.
+	Limits string `json:"limits,omitempty"`
+	// Enforced and StatsUsable are the two answers a caller acts on. ⭐ They are
+	// derived from the measurement above, never from the version number.
+	Enforced    string `json:"limits_enforced"` // yes, no, unknown
+	StatsUsable string `json:"stats_usable"`    // yes, no, unknown
+}
+
+// Remediation is one condition this tool found, what leaving it costs, and the
+// exact command that takes it.
+//
+// ⭐ IT CARRIES THE COMMAND, NOT A DESCRIPTION OF ONE. The reader here is
+// usually an agent, and an agent that is told "the run state is stale" has to
+// guess what to do next; one that is handed `wsl-toolkit base ensure --repair`
+// does not. WSL-61.
+//
+// ⛔ `Repairable` false is a real and common answer. A condition this tool
+// cannot fix is still reported, with the command that can, because the failure
+// this whole shape exists to prevent is a caller being told something is wrong
+// and not what to run.
+type Remediation struct {
+	ID         string `json:"id"`
+	What       string `json:"what"`
+	Costs      string `json:"costs"`
+	Command    string `json:"command"`
+	Repairable bool   `json:"repairable"`
+}
+
+// parseCapabilities reads the rows verify.sh prints after its marker.
+//
+// ⚠ EVERY ROW IS OPTIONAL. An older guest, or one whose probe could not run,
+// prints none of them, and the answer is then a nil CgroupState rather than a
+// struct full of zero values that reads like a measurement.
+func parseCapabilities(out string) *CgroupState {
+	rows := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		for _, key := range []string{
+			"cgroup-version", "cgroup-controllers", "cgroup-self",
+			"cgroup-delegated", "cgroup-under", "cgroup-limit", "engine-rootless",
+		} {
+			if strings.HasPrefix(line, key+" ") {
+				rows[key] = strings.TrimSpace(strings.TrimPrefix(line, key+" "))
+			}
+		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	cg := &CgroupState{
+		Version:     valueOr(rows["cgroup-version"], "unknown"),
+		Controllers: strings.TrimSpace(strings.TrimSuffix(rows["cgroup-controllers"], "-")),
+		Self:        rows["cgroup-self"],
+		Limits:      valueOr(rows["cgroup-limit"], "unknown"),
+		Delegated:   rows["cgroup-delegated"] == "yes",
+	}
+	rootless := rows["engine-rootless"]
+	switch {
+	case rootless == "false":
+		cg.Mechanism = "rootful"
+	case cg.Delegated && rows["cgroup-under"] == "systemd":
+		cg.Mechanism = "systemd"
+	case cg.Delegated:
+		cg.Mechanism = "delegated"
+	case rows["cgroup-delegated"] == "no":
+		cg.Mechanism = "none"
+	default:
+		cg.Mechanism = "unknown"
+	}
+	// ⭐ ENFORCEMENT IS READ FROM THE CONTAINER, not concluded from the
+	// mechanism. A limit that is accepted and not applied is the defect WSL-60
+	// exists for, and the only thing that can see it is a container that asked
+	// for one and reported what it got.
+	switch limit := cg.Limits; {
+	// ⚠ NOBODY COULD LOOK. Not the same as a limit that was ignored, and
+	// reporting it as one would be a claim about something unmeasured.
+	case limit == "" || limit == "unknown" || limit == "unreadable" || limit == "nocgroupfs":
+		cg.Enforced = "unknown"
+	// ⛔ THE CONTAINER ASKED FOR 64 MiB AND FOUND NO LIMIT FILE IN ITS OWN
+	// CGROUP, which is what a container sitting in the ROOT cgroup sees: root
+	// has no memory.max by definition. That is the measurement, and `missing` is
+	// the answer this repository's own base gives today. WSL-60.
+	case limit == "max" || limit == "missing":
+		cg.Enforced = "no"
+	default:
+		if _, err := strconv.ParseInt(limit, 10, 64); err == nil {
+			cg.Enforced = "yes"
+		} else {
+			cg.Enforced = "unknown"
+		}
+	}
+	// ⚠ STATS AND LIMITS STAND OR FALL TOGETHER, and that is a measurement
+	// rather than an assumption: both are read out of the container's own
+	// cgroup, so a tree with no cgroup per container has neither.
+	switch {
+	case cg.Mechanism == "unknown":
+		cg.StatsUsable = "unknown"
+	case cg.Delegated || cg.Mechanism == "rootful":
+		cg.StatsUsable = "yes"
+	default:
+		cg.StatsUsable = "no"
+	}
+	return cg
+}
+
+func valueOr(s, fallback string) string {
+	s = strings.TrimSpace(s)
+	if s == "" || s == "-" {
+		return fallback
+	}
+	return s
+}
+
+// cgroupRemediation is the finding a base without delegation earns.
+//
+// ⛔ IT IS NOT REPAIRABLE AND IT SAYS SO. Handing the account a cgroup subtree
+// means a privileged write into a root-owned tree, and the ruling on 2026-09-10
+// was to report first and decide that separately. What this returns is the
+// finding and what it costs; what it deliberately does not return is a command
+// that would take it.
+func cgroupRemediation(cg *CgroupState) (Remediation, bool) {
+	if cg == nil || cg.Enforced != "no" {
+		return Remediation{}, false
+	}
+	return Remediation{
+		ID: "cgroup-delegation",
+		What: "this base has no cgroup delegation for " + "the engine's account" +
+			", so podman creates no cgroup per container",
+		Costs: "a memory or cpu limit is ACCEPTED AND NOT ENFORCED, `podman stats` reports 0B, " +
+			"and an out-of-memory kill cannot be told apart from any other exit 137",
+		Command:    "wsl-toolkit base status --probe --json  # the cgroup block carries the mechanism",
+		Repairable: false,
+	}, true
+}
+
+// staleRunStateRemediation classifies a failed health probe.
+//
+// ⭐ IT MATCHES WHAT THE ENGINE SAID, not a file this tool went looking for.
+// podman names the condition and names the directories, so the classification is
+// a read of its own message rather than a guess about its state.
+func staleRunStateRemediation(msg string) (Remediation, bool) {
+	if !strings.Contains(strings.ToLower(msg), "boot id") {
+		return Remediation{}, false
+	}
+	return Remediation{
+		ID:         "stale-run-state",
+		What:       "the engine's cached boot id is not this boot's, so every container is refused before it starts",
+		Costs:      "nothing runs. Re-provisioning does not clear it, because the state is the engine's and not the distribution's",
+		Command:    "wsl-toolkit base ensure --repair",
+		Repairable: true,
+	}, true
+}
+
+// repairRunState clears the engine run state this boot invalidated, by running
+// repair.sh inside the distribution as the engine's own account.
+//
+// ⛔ THE PATHS ARE THE GUEST'S, NOT THIS PROCESS'S. repair.sh resolves them from
+// `$XDG_RUNTIME_DIR`, which is what podman itself resolves, so an account
+// configured differently is cleared correctly rather than confidently wrongly.
+// Nothing here takes a path from a caller, so there is no path to contain, and
+// TODO/RULES.md section 3 is the rule that says where that line is drawn.
+func (b *Base) repairRunState(ctx context.Context) (string, error) {
+	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, repairScript, nil, 2*time.Minute)
+	if err != nil {
+		return out, err
+	}
+	if code != 0 {
+		return out, fmt.Errorf("repair exited %d: %s", code, firstLine(stderr+out))
+	}
+	// ⛔ THE EFFECT IS ASSERTED, not inferred from the exit code. repair.sh
+	// reads every removal back and refuses to exit 0 over one that is still
+	// there, and this refuses to report a repair the script did not announce.
+	if !strings.Contains(out, "repaired run-state") {
+		return out, fmt.Errorf("repair exited 0 without saying what it did: %s", firstLine(out+stderr))
+	}
+	return out, nil
+}

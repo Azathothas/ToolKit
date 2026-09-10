@@ -3212,7 +3212,7 @@ column reporting absent rather than zero while `WSL-60` is open.
 ## WSL-60. the base accepts a memory limit and does not enforce it
 
 **Source** found by `WSL-30`'s validation matrix, 2026-09-10, row 8.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -3263,10 +3263,29 @@ Two candidate seams, and this entry does not pick between them.
 
 ## Decision
 
-⚠ **Unruled, and it is the operator's.** The recommendation is to do the
-reporting half now and rule on delegation separately: a tool that reports what it
-cannot do is correct today, and a tool that writes into the host's cgroup tree to
-make a probe pass is the shape `RULES.md` section 3 warns about.
+⭐ **Ruled 2026-09-10 by the operator: take the answer that covers the most,
+because the base may later be a systemd container or a full virtual machine
+under KVM.**
+
+That rules out both of the seams as written, and it is the right call. Either one
+answers the question "does THIS base delegate", and the base is the thing that is
+going to change. What survives that is a CAPABILITY: the mechanism is measured
+and named, so a tree that gains systemd, a rootful engine or a whole virtual
+machine answers through the same row instead of needing a second one.
+
+| mechanism | means |
+| --- | --- |
+| `systemd` | a per-uid user service delegated it, which is the usual Linux answer |
+| `delegated` | a subtree was handed to the account without systemd |
+| `rootful` | the engine runs as root and needs no delegation |
+| `none` | no cgroup is created per container |
+| `unknown` | ⚠ the probe could not answer, which is NOT the same as `none` |
+
+⛔ **The reporting half is done and the delegation half is still not ruled**, and
+that is deliberate rather than half-finished. Handing the account a subtree is a
+privileged write into a root-owned tree; what this ruling settles is that
+whatever does it later will be reported through this row rather than replacing
+it.
 
 ## Consumers
 
@@ -3279,15 +3298,74 @@ executable's base, and the script half has no resource surface at all.
 pwsh -NoProfile -File scripts/windows/wsl-toolkit/wsl-toolkit.ps1 -Action Doctor
 ```
 
-A delegation row with a measured answer, and `--memory` on a base without
-delegation refused by name rather than accepted.
+A delegation row with a measured answer, and the mechanism named rather than
+inferred from the host.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T16:10:00Z, as the capability and not as the delegation.**
+The ruling asked for the answer that covers the most, and what covers the most is
+a measured mechanism rather than a fix for one base shape.
+
+⭐ **Driven against the real base**, which is the vantage the whole entry is
+about:
+
+```text
+  usable      true
+  engine      podman version 6.1.1
+  cgroup      v2 via none
+  limits      enforced: no   stats usable: no
+
+  ⛔ CGROUP-DELEGATION
+     what   this base has no cgroup delegation for the engine's account, so podman creates no cgroup per container
+     costs  a memory or cpu limit is ACCEPTED AND NOT ENFORCED, `podman stats` reports 0B, and an out-of-memory kill cannot be told apart from any other exit 137
+     read   wsl-toolkit base status --probe --json  # the cgroup block carries the mechanism
+     ⚠ this tool cannot repair it, and says so rather than pretending
+```
+
+⛔ **A capability finding is not a health failure, and the exit code says so.**
+The base runs containers; what it cannot do is account for them. Reporting that
+as unusable would refuse work over a limitation most jobs never reach.
+
+### ⚠ What the driven pass changed about the design
+
+**The first version asked the container to read `memory.max` and called a
+missing file `unknown`.** Measured here: a container on this base HAS
+`/sys/fs/cgroup` mounted and has no `memory.max` in it, because it is sitting in
+the ROOT cgroup, which has no memory limit file by definition. ⛔ That is not an
+unmeasured answer, it is a measured `no`, and the first version reported the
+strongest evidence available as an absence.
+
+The probe answers three ways now:
+
+| the container reports | means |
+| --- | --- |
+| a byte figure | the limit was applied |
+| `missing`, with `/sys/fs/cgroup` present | ⛔ it asked for a limit and did not get one |
+| `nocgroupfs` or `unreadable` | ⚠ nobody could look |
+
+### What was verified against the control
+
+⭐ Every row was measured on both engines on this host, and
+[`WSL-30`](#wsl-30-the-mockups-other-two-thirds-a-podman-adapter)'s closing
+carries the table. `podman-machine-default`, rootful with a read-write cgroup
+tree, reports `rootful`, `enforced: yes` and a real memory figure; this base
+reports `none`, `enforced: no` and `0B`.
+
+⛔ **What is still open, and it is the half the ruling deliberately did not
+settle.** Nothing here creates a cgroup subtree for the account. A base that
+should delegate still does not, and the only thing that has changed is that it
+now says so with the mechanism named. Whichever way that is ruled later, it
+reports through this row.
 
 ---
 
 ## WSL-61. `base ensure` cannot recover a base whose engine has stale run state
 
 **Source** the operator's open questions in the record, carried since 2026-09-10 with no entry. Authored 2026-09-10.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -3320,23 +3398,32 @@ of doing this, and it is cheap.
 this boot, recognised by podman's own message rather than by guessing at file
 contents.
 
-⛔ **What it must not do is delete anything a caller named.** The two paths are
-inside this tool's own state directory for its own account, and the deletion goes
-through `RemoveInside`, which is the one deletion helper and carries the
-containment check.
+⛔ **What it must not do is delete anything a caller named.** Nothing here takes
+a path from a caller, so there is no path to contain: the root is asked of the
+engine and two fixed leaf names are appended to it.
 
 ## Decision
 
-⚠ **Unruled, and the operator has already named both sides.** For: podman
-prescribes the action, on state this tool owns, and `ensure` exists to reach
-readiness. Against: a tool that deletes engine state to make a probe pass is one
-deletion away from deleting something else.
+⭐ **Ruled 2026-09-10 by the operator: the third option, EXTENDED.** `--repair`
+takes the deletion and the unflagged `ensure` prints the command, and the ruling
+went further than the option as offered: an agent must be told LOUDLY that the
+thing it asked for already exists and what to run instead.
 
-⭐ **A third option neither side named, offered as the recommendation.** Do it
-only under an explicit `--repair`, and have the unflagged `ensure` print the
-exact command rather than take it. That keeps `ensure` free of a deletion nobody
-asked for, and removes the part the operator actually pays: remembering which two
-directories.
+⚠ **That extension is the larger half, and it changes what this entry is
+about.** A remediation that a human reads in a terminal and a remediation an
+agent can act on are not the same artefact. The second one has to carry the
+command as a field, not as a sentence, and it has to appear in the structured
+answer as well as the human one.
+
+So each condition is a `Remediation`, with:
+
+| field | why it is there |
+| --- | --- |
+| `id` | something a caller can branch on. `stale-run-state`, `cgroup-delegation` |
+| `what` | the condition, in one sentence |
+| `costs` | what leaving it costs, so a caller can decide it does not care |
+| ⭐ `command` | the exact command. Not a description of one |
+| `repairable` | ⛔ whether this tool can act. `false` is a real and common answer |
 
 ## Consumers
 
@@ -3352,3 +3439,76 @@ wsl-toolkit base ensure --probe
 Against a base whose cached boot id has been made stale on purpose: the
 unflagged run names the state and the exact remedy and exits non-zero, and
 `--repair` clears it and reaches a container that runs.
+
+---
+
+## Closing
+
+**Closed 2026-09-10T16:25:00Z.** `--repair` on `base ensure`, a `Remediation` on
+every condition in both the human and the `--json` answer, and an already-exists
+line an agent cannot scroll past.
+
+⭐ **What an agent sees now**, driven against the real base:
+
+```text
+  ⛔ CGROUP-DELEGATION
+     what   this base has no cgroup delegation for the engine's account, so podman creates no cgroup per container
+     costs  a memory or cpu limit is ACCEPTED AND NOT ENFORCED, `podman stats` reports 0B, ...
+     read   wsl-toolkit base status --probe --json  # the cgroup block carries the mechanism
+     ⚠ this tool cannot repair it, and says so rather than pretending
+```
+
+and in `--json`, which is what a program reads:
+
+```json
+"remediations": [
+  { "id": "cgroup-delegation", "repairable": false, "command": "wsl-toolkit base status --probe --json  # the cgroup block carries the mechanism" }
+]
+```
+
+⭐ **The already-exists line is the extension the ruling asked for.** `base
+ensure` against a registered distribution now opens with
+`this base ALREADY EXISTS: wsl-toolkit is registered. Nothing will be created`,
+because the previous wording read like progress and an agent that has just asked
+for a base scrolls past progress.
+
+### ⛔ A defect the driven pass found in this entry's own first implementation
+
+**The repair derived its paths from `$XDG_RUNTIME_DIR`, and that is the wrong
+tree on this machine.** Measured in the base on 2026-09-10:
+
+| | value |
+| --- | --- |
+| `$XDG_RUNTIME_DIR` | `/mnt/wslg/runtime-dir`, which WSLg owns |
+| podman's own run root | `/tmp/wsl-toolkit-run-1000/containers` |
+
+⛔ **The first version would have removed two directories that do not exist,
+found nothing, and reported a successful repair.** That is the exact class this
+tool exists to refuse, shipped inside the fix for it, and only running the thing
+found it. The root is asked of `podman info` now, and the environment is a named
+fallback rather than the source.
+
+⚠ **The record's own open question named `/tmp/wsl-toolkit-run-1000`**, which is
+correct, and reading it as the runtime directory is what produced the defect. A
+path that is right in a note is not a path to type into a program.
+
+### What was and was not driven
+
+⭐ **Run, and green:** the repair against the real base, removing both
+directories the engine named and reading each one back; the base healthy
+afterwards; a real job exiting 7 through the tool; and the guards, each proved by
+planting the defect it exists for.
+
+⛔ **NOT driven, and this is the honest limit.** The stale boot id could not be
+reproduced on demand. Writing `00000000-...` into the engine's own
+`libpod/tmp/boot_id` did not make podman 6.1.1 refuse, so the end-to-end trigger
+still needs a real host reboot. What is proved is the classification, against
+podman's verbatim message, and the repair's own behaviour; what is not is the two
+of them meeting. ⚠ The next session that reboots this machine should run
+`base ensure` before anything else and read what it says.
+
+⚠ **A second measurement worth keeping.** `podman info` RECREATES the run root,
+so a repair run immediately after another repair still finds directories to
+remove. `repaired run-state` therefore means a deletion happened and not that the
+base works, which is why `ensure` re-runs the health probe afterwards and reports
+that instead.

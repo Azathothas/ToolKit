@@ -185,9 +185,62 @@ configuration and then fails at the first run. `--probe` runs a real container
 and reads back a marker the command could not have echoed; without it, `status`
 says the check was not made rather than implying it passed.
 
+### ⭐ What the base can account for, and what it cannot
+
+`base status --probe` reports the cgroup tree the engine's account actually has,
+and the MECHANISM that provides it rather than a yes or a no:
+
+| mechanism | means |
+| --- | --- |
+| `systemd` | a per-uid user service delegated it, which is the usual Linux answer |
+| `delegated` | a subtree was handed to the account without systemd |
+| `rootful` | the engine runs as root and needs no delegation |
+| `none` | ⛔ no cgroup is created per container |
+| `unknown` | the probe could not answer, which is not the same as `none` |
+
+⛔ **On `none`, a memory or cpu limit is ACCEPTED AND NOT ENFORCED.** Measured in
+this base on 2026-09-10: a container asked for 64 MiB allocated 300 MB and exited
+0. `podman stats` reports `0B`, and an out-of-memory kill cannot be told apart
+from any other exit 137. The report says so and this tool does not repair it;
+`WSL-60` carries the decision.
+
+⚠ **The mechanism is named rather than derived from the host** so that a base
+which later gains systemd, a rootful engine or a whole virtual machine answers
+through the same row instead of needing a second one.
+
+### ⭐ Conditions, and the command that takes each one
+
+⛔ **A report that names a problem without naming the command is a problem a
+caller has to guess its way out of.** `base status --probe` and `base ensure`
+both end with a block per condition: what it is, what leaving it costs, and the
+exact command. `--json` carries the same under `remediations`, with `repairable`
+saying whether this tool can act.
+
+| condition | repairable | what to run |
+| --- | --- | --- |
+| `stale-run-state` | yes | `wsl-toolkit base ensure --repair` |
+| `cgroup-delegation` | ⛔ no | nothing yet. The report is the answer today |
+
+⛔ **`--repair` is opt in and always will be.** After a host reboot podman
+refuses every container with `current system boot ID differs from cached boot ID`
+and names the directories to delete. Re-provisioning does not clear it, because
+the state is the engine's and not the distribution's. Without `--repair`,
+`base ensure` REFUSES with that command printed; with it, the two directories
+podman names are removed and the health probe is re-run.
+
+⚠ **The paths are asked of podman, not taken from the environment.** Measured in
+this base: `XDG_RUNTIME_DIR` is WSLg's directory and podman's run root is
+somewhere else entirely, so a repair that trusted the environment would have
+removed nothing and reported success.
+
+⚠ **`base ensure` says ALREADY EXISTS, loudly, when the distribution is
+registered.** Nothing is created in that case, and a caller that asked for a base
+and got one it did not build should know which happened.
+
 | flag | meaning |
 | --- | --- |
 | `--probe` | run a real container to decide whether the base is usable |
+| `--repair` | ⛔ `base ensure` may clear engine run state a reboot invalidated. Off by default: without it a base needing repair is refused with the exact command printed |
 | `--preset` | build from this preset id or fully qualified reference |
 | `--save` | make that choice the stored default |
 | `--root` | `base shell` attaches as root instead of the `toolkit` account. It is root INSIDE the distribution and not on this machine, and the command prints which Windows drives are mounted and writable from it. |
