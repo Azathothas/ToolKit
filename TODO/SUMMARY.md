@@ -12,8 +12,8 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-09T21:00:00Z | about 9 hours, across two resumed contexts |
-| Commits | `450b380` | 5 on `main`, and two tags: `wsl-toolkit-v1.2.0` and `wsl-toolkit-v1.3.0` |
-| Work | 8 issues filed against the published `v1.1.0`, none started | **11 entries closed, 0 deferred, 0 failed.** `WSL-32` to `WSL-39` resolve issues 7 to 14; `TOOL-14` ports five shell pairs; `WSL-40` and `WSL-41` are the core pass and the review after it |
+| Commits | `450b380` | 6 on `main`, and two tags: `wsl-toolkit-v1.2.0` and `wsl-toolkit-v1.3.0` |
+| Work | 8 issues filed against the published `v1.1.0`, none started | **12 entries closed, 0 deferred, 0 failed.** `WSL-32` to `WSL-39` resolve issues 7 to 14; `TOOL-14` ports five shell pairs; `WSL-40` and `WSL-41` are the core pass and the review after it |
 | Changes | 201 tracked files | 227 tracked files; 66 changed, +9,172 / -2,744 lines |
 | Go modules | 2, `tools/check` and `tools/windows/wsl-toolkit` | 3. `tools/repo` is the tool box for what is NOT a gate check, and `check-gate` still runs only rules |
 | Suite | 39 Go cases | 119 Go cases, all three modules clean under `-race` |
@@ -48,13 +48,26 @@ cases.
 | `helper stop` discarded the reason nothing answered | the fifth review |
 | the job id was nowhere in the human output, so `logs ID` was untypeable | the fifth review |
 
-### ⛔ Two process failures worth keeping
+### ⛔ Three process failures worth keeping
 
 **I committed over a red gate.** I chained `&&` off `tail -8` rather than reading
 the gate's own exit code, which is this repository's own oldest rule and the one
 written down in [RULES.md](RULES.md). The commit had not been pushed, so the
 finding was fixed and the commit amended; the broken form never left the machine.
 Every gate run since reads `$?` from the gate with no pipe in front of it.
+
+**I put a tool credit in a commit message, and it reached a protected `main`.**
+The harness asks for that trailer and re-asserts the request continuously; the
+repository's rule against it is read once, at orientation. That asymmetry is the
+mechanism, and it had already produced eighteen such commits in an earlier
+session. ⛔ **The gate could not have caught it and still cannot.** Its
+`commits` rule reads `git log`, and the written procedure is run the gate, then
+commit, so at the moment the gate runs the commit does not exist. CI caught it
+eleven minutes after the push, on a branch whose protection forbids a force push,
+and undoing it cost the operator turning that protection off and on again.
+`TOOL-15` is the fix: the rule now runs from a `commit-msg` hook, on the message,
+before the commit exists, and an eighteenth gate check refuses a checkout that is
+not running the hook.
 
 **I wrote a claim I had not measured.** A comment said the race detector was what
 made a lock's removal VISIBLE. Measured ten runs each way, the broken version went
