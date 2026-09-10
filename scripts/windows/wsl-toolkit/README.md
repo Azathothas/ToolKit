@@ -156,6 +156,7 @@ tree may hold a copy of it.
 | `wsl-toolkit-windows-amd64.exe` | the compiled tool, which carries the script |
 | `wsl-toolkit-windows-arm64.exe` | the same, for an arm64 Windows host |
 | `SHA256SUMS` | ⭐ computed in CI over the bytes that are uploaded |
+| `<asset>.cosign.bundle` | ⭐ one per asset, `SHA256SUMS` included: a keyless signature made by this workflow's OIDC identity. Since `wsl-toolkit-v2.0.1`. |
 
 ⛔ **The workflow asserts the asset COUNT before it writes `SHA256SUMS`**, and
 runs the staged binary and compares its version to the tag. A staging step that
@@ -172,6 +173,22 @@ line saying not to copy them anywhere.
 consumer does about that is
 [`../../../docs/consumers.md`](../../../docs/consumers.md)'s to say rather than
 this page's.
+
+⭐ **The signatures are what closes that**, and the workflow does three things
+with them rather than one: it raises `id-token: write` for the publish job
+alone, signs each staged asset with `cosign sign-blob --yes --bundle`, and then
+VERIFIES every bundle it just wrote before anything is uploaded. ⛔ **A bundle
+that exists and does not verify is worse than none**: it is a claim of
+authorship that fails the first time somebody checks it, on a release that has
+already shipped.
+
+⚠ **The signer checking its own work is not the whole proof**, which is why
+`release-smoke.yml` installs `cosign` too and the consumer suite verifies the
+published bundles from outside the workflow that made them.
+
+⚠ **The cosign version is pinned rather than left to the installer's default**,
+because `--bundle` changed format between cosign 2 and 3, and a signer and a
+verifier that disagree about it produce a signature nobody can check.
 
 ---
 

@@ -69,13 +69,22 @@ pwsh -NoProfile -File launcher.ps1 -LauncherRelease wsl-toolkit-v2.0.0 -Action D
 ```
 
 A release carries `wsl-toolkit.ps1`, `launcher.ps1`, the `wsl-toolkit`
-executable for two Windows architectures, and a `SHA256SUMS` computed in CI over
-the bytes that are uploaded.
+executable for two Windows architectures, a `SHA256SUMS` computed in CI over the
+bytes that are uploaded, and one `.cosign.bundle` per asset.
 
 ⚠ **What that `SHA256SUMS` proves is transport, not authorship.** It comes from
 the same release as the asset, so anyone who could replace one could replace the
-other. `-LauncherSha256` with a digest the caller holds is the check that proves
-authorship, and it applies on top. `WSL-25` is the entry for closing that gap.
+other.
+
+⭐ **Since `wsl-toolkit-v2.0.1` every asset also carries a keyless signature
+bundle**, `<asset>.cosign.bundle`, made by this repository's release workflow and
+verifiable against that workflow's OIDC identity. `launcher.ps1` checks the one
+belonging to the file it fetched and reports four outcomes rather than going
+quiet; `-LauncherVerify require` turns an absent bundle or an absent `cosign`
+into a refusal too.
+[`../scripts/windows/wsl-toolkit/launcher.md`](../scripts/windows/wsl-toolkit/launcher.md)
+owns the table. `-LauncherSha256` with a digest the caller holds is the older
+answer and still applies on top of both. `WSL-25`.
 
 ### The launcher runs the executable by default
 
@@ -118,6 +127,7 @@ owner needs.
 
 | date | what broke | consumers checked | pin state |
 | --- | --- | --- | --- |
+| 2026-09-10 | ⚠ **A release now carries ten assets rather than five, and the five new ones are signatures.** Each published file gets a `<name>.cosign.bundle` beside it. Not a break: nothing is renamed, no exit code moves, and a consumer that fetches by name finds the same names. ⭐ `launcher.ps1` gains `-LauncherVerify`, defaulting to `auto`, which REPORTS rather than refuses when a release has no bundle or the machine has no `cosign`. A consumer pinned to any earlier release sees one extra warning line and nothing else. `WSL-25`. | all three rows. None parses the asset list by count; `Azathothas/TEMPLATE` and `Azathothas/bit-cli` both reach the script, and the vendored copy fetches nothing. ⚠ A consumer that wants the stricter reading opts in with `-LauncherVerify require`, which is the one thing here that can turn a working call into a refusal, and only when they ask for it. | not moved. |
 | 2026-09-10 | ⛔ **A `base.name` OUTSIDE THE PREFIX IS NOW REFUSED, and ownership is a proof the guest carries.** `base.name` was editable and the guard compared it against itself, so `base ensure` would create any syntactically valid distribution and `base remove --yes` would unregister it, while the manual said every other name was refused. A configuration is now accepted only for `wsl-toolkit` or `wsl-toolkit-<instance>`, and the irreversible call additionally reads an identity marker the tool wrote inside the distribution. A base built before the marker existed is ADOPTED on the next `base ensure` where this tool's own record describes it, and says so. `WSL-42`. | all three rows. None sets `base.name`: `Azathothas/TEMPLATE` and `Azathothas/bit-cli` both reach the script rather than the executable's configuration, and the vendored copy fetches nothing. | not moved. A caller that never named a base is unaffected. |
 | 2026-09-10 | ⛔ **`base ensure` NO LONGER RELABELS A BASE TO MATCH ITS CONFIGURATION.** It called `writeRecord()` on the registered-and-healthy path, so a distribution built from Arch with the config since changed to Alpine was recorded as Alpine because a health probe ran an Alpine CONTAINER successfully. The probe proves the engine works and identifies nothing. The record now follows the GUEST, the disagreement is reported, and `ensure` exits 1 over a base that does not match what was asked for rather than 0 over one it has renamed. `WSL-42`. | all three rows, none of which reads `base.json` or the `built_from` field. | not moved. |
 | 2026-09-10 | **`--instance`, `--config` and a `.wsl-toolkit/` pointer are additive**, and a caller naming none of them behaves exactly as before: distribution `wsl-toolkit`, the same state directory, the same configuration file. ONE thing changes with no flag: a `wsl-toolkit.json` in the working directory OR ANY PARENT is now read in preference to the state directory's file, and a `wsl-toolkit.toml` found in that search is REFUSED by name rather than ignored. `wsl-toolkit config` prints the file it resolved and every path it looked at. `WSL-43`, `WSL-51`. | all three rows. None ships a `wsl-toolkit.json`, and none runs the executable from a tree that has one. This is the row most likely to reach a consumer later: a repository that adds such a file changes which configuration its own calls use. | not moved. |

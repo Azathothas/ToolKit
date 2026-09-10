@@ -20,7 +20,7 @@ where it is checked.
 | fact | value | where it is read from |
 | --- | --- | --- |
 | repository | `Azathothas/ToolKit`, public, 0BSD | `gh api repos/Azathothas/ToolKit` |
-| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: the executable for two Windows architectures, `wsl-toolkit.ps1`, `launcher.ps1` and `SHA256SUMS`. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
+| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: the executable for two Windows architectures, `wsl-toolkit.ps1`, `launcher.ps1`, `SHA256SUMS`, and one `.cosign.bundle` per asset. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
 | work model | todo | [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) |
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |

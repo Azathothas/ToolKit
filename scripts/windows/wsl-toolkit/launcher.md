@@ -93,7 +93,7 @@ when none can be had does the script list below apply.
 | order | source | when |
 | --- | --- | --- |
 | 1 | `-LauncherBinary PATH`, or `WSL_TOOLKIT_BINARY` | you already have an executable and want that one |
-| 2 | the release named by `-LauncherRelease`, or `WSL_TOOLKIT_RELEASE` | ⭐ a release you named. Verified against that release's own `SHA256SUMS`. |
+| 2 | the release named by `-LauncherRelease`, or `WSL_TOOLKIT_RELEASE` | ⭐ a release you named. Verified against that release's own `SHA256SUMS`, and against the keyless signature published beside the asset. |
 | 3 | `wsl-toolkit.exe` **beside the launcher** | a clone or a release directory. No network. |
 | 4 | the `latest` release | what "you did not say" resolves to |
 
@@ -168,6 +168,45 @@ a provenance one**: it catches a truncated transfer, a captive portal or a proxy
 that rewrote one endpoint, because the digest and the bytes come from different
 hosts. A digest a person obtained out of band and reviewed is stronger, and
 passing one as `-LauncherSha256 HEX` is still available.
+
+### ⭐ What proves who published it, since `wsl-toolkit-v2.0.1`
+
+Every asset in a release carries a keyless signature bundle beside it, named
+`<asset>.cosign.bundle`, made by this repository's own release workflow. The
+launcher verifies the one belonging to the file it fetched, on the download and
+on every later run against the cached copy.
+
+⛔ **It reports four outcomes and never silence.** A step that could not verify
+and said nothing would be indistinguishable from one that verified, which is the
+defect class this repository keeps paying for.
+
+| what happened | `auto` | `require` |
+| --- | --- | --- |
+| verified | says so, naming the bundle | the same |
+| the release publishes no bundle | ⚠ warns and runs. Releases before `wsl-toolkit-v2.0.1` have none. | ⛔ refuses |
+| `cosign` is not on `PATH` | ⚠ warns and runs | ⛔ refuses |
+| the bundle exists and does NOT verify | ⛔ refuses | ⛔ refuses |
+
+⭐ **The identity is anchored on the repository and the workflow, deliberately
+not on the ref.** `release.yml` runs on a `wsl-toolkit-v*` tag push and on
+`workflow_dispatch`, and the OIDC identity carries the ref it ran from, so
+pinning the ref would refuse a release published by the second route while
+telling the caller their asset was unsigned. What the check proves is the claim
+worth making: the bytes were signed by this repository's release workflow, which
+nothing outside it can mint.
+
+⚠ **Verification is optional on purpose and this is the change that adds it.** A
+launcher that suddenly required a tool nobody has installed would break every
+consumer to close a gap none of them asked about. `WSL-25` rules it that way;
+making it mandatory is a separate decision with its own entry.
+
+⚠ **Keyless costs a dependency on the public transparency log at verify time**,
+so an offline verifier cannot check it. That was ruled against minisign on
+2026-08-30, which has the opposite trade and loses on key custody.
+
+```powershell
+pwsh -NoProfile -File launcher.ps1 -LauncherRelease wsl-toolkit-v2.0.1 -LauncherVerify require -Action Doctor
+```
 
 ⛔ **`auto` with an explicit `-LauncherSha256` is refused.** The lock owns the
 digest, and a second one can only agree or contradict.
@@ -250,6 +289,7 @@ cannot grow a parameter that collides with one of these, whatever it adds later.
 | `-LauncherLocal PATH` | `WSL_EPHEMERAL_LOCAL` | run this script file. No network. |
 | `-LauncherRef SHA` `auto` `latest` | `WSL_EPHEMERAL_REF` | fetch this revision, or resolve `main` once, or resolve it every run |
 | `-LauncherSha256 HEX` `auto` | `WSL_EPHEMERAL_SHA256` | expect this SHA-256, or read one from the API |
+| ⭐ `-LauncherVerify` `auto` `require` `off` | `WSL_TOOLKIT_VERIFY` | how hard to insist on the keyless signature published beside a release asset. `auto` is the default and reports rather than refuses when there is nothing to check against; `require` makes an absent bundle or an absent `cosign` a refusal too. ⚠ A bundle that FAILS is a hard stop under every mode. |
 | `-LauncherLock PATH` | `WSL_EPHEMERAL_LOCK` | where `auto` keeps what it resolved. Default: the install directory. |
 | `-LauncherAllowMovingRef` | `WSL_EPHEMERAL_ALLOW_MOVING_REF=1` | permit a branch or a tag. Warns every time. |
 | `-LauncherInstallDir DIR` | `WSL_EPHEMERAL_CACHE` | where a fetched copy is kept. Default `%LOCALAPPDATA%\wsl-ephemeral\bin`. |

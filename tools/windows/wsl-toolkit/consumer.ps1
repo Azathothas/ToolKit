@@ -190,6 +190,14 @@ function Get-ReleaseAssets {
     foreach ($name in @('SHA256SUMS', 'wsl-toolkit.ps1', 'launcher.ps1',
             'wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')) {
         Invoke-WebRequest -Uri "$base/$name" -OutFile (Join-Path $Into $name) -UseBasicParsing
+        # A release before wsl-toolkit-v2.0.1 carries no signature bundles, so
+        # their absence is a fact the signature cases report rather than a fetch
+        # failure here. `gh release download` with no --pattern already takes
+        # whatever is there.
+        try {
+            Invoke-WebRequest -Uri "$base/$name$script:SignatureSuffix" -OutFile (Join-Path $Into "$name$script:SignatureSuffix") -UseBasicParsing
+        }
+        catch { $null = $_ }
     }
 }
 
@@ -274,6 +282,13 @@ if (-not (Test-Path -LiteralPath $script:Exe -PathType Leaf)) {
 # a pass.
 $script:CanRunJobs = $false
 
+# What release.yml names each asset's signature bundle, and the five files it
+# signs. One spelling, read by the fallback downloader and by the two cases
+# below.
+$script:SignatureSuffix = '.cosign.bundle'
+$script:SignedAssets = @('SHA256SUMS', 'wsl-toolkit.ps1', 'launcher.ps1',
+    'wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
+
 try {
     # -- what the release itself claims --------------------------------------
 
@@ -305,6 +320,62 @@ try {
         if ($seen -lt 4) { return "SHA256SUMS covered $seen file(s), and the release carries four assets and the sums file" }
         if ($bad.Count -gt 0) { return ($bad -join ' | ') }
         'True'
+    }
+
+    # WHAT THE DIGESTS ABOVE CANNOT SAY. SHA256SUMS ships in the same release as
+    # the assets it covers, so anyone who could replace one could replace the
+    # other. The signature is what speaks to authorship. WSL-25.
+    $bundles = @($script:SignedAssets | Where-Object {
+        Test-Path -LiteralPath (Join-Path $script:Download ($_ + $script:SignatureSuffix))
+    })
+    if ($bundles.Count -eq 0) {
+        # NOT A FAILURE AND NOT A PASS. A release cut before signing existed
+        # genuinely has none, and the weekly run points at whatever is latest.
+        # Counting it as a pass would be the case answering itself.
+        Skip-Case 'every published asset carries a signature bundle' 'this release predates asset signing'
+        Skip-Case 'the signature verifies against this repository release workflow' 'this release predates asset signing'
+    }
+    else {
+        Test-Case 'every published asset carries a signature bundle' 'True' {
+            $missing = @($script:SignedAssets | Where-Object {
+                -not (Test-Path -LiteralPath (Join-Path $script:Download ($_ + $script:SignatureSuffix)))
+            })
+            if ($missing.Count -gt 0) {
+                return ('signed ' + $bundles.Count + ' of ' + $script:SignedAssets.Count + ', missing: ' + ($missing -join ', '))
+            }
+            'True'
+        }
+
+        $cosign = Get-Command cosign -CommandType Application -ErrorAction SilentlyContinue
+        if (-not $cosign) {
+            Skip-Case 'the signature verifies against this repository release workflow' 'cosign is not installed on this machine'
+        }
+        else {
+            # The claim the bundle makes, checked with the same command and the
+            # same identity a consumer uses, from outside the repository that
+            # made it. The identity is anchored on the repository and the
+            # workflow and NOT on the ref, for the reason launcher.ps1 states.
+            Test-Case 'the signature verifies against this repository release workflow' 'True' {
+                $identity = '^https://github\.com/' + [regex]::Escape($Repo) + '/\.github/workflows/release\.yml@'
+                $bad = @()
+                foreach ($name in $script:SignedAssets) {
+                    $file = Join-Path $script:Download $name
+                    $prev = $ErrorActionPreference
+                    $ErrorActionPreference = 'Continue'
+                    try {
+                        $out = & $cosign.Source verify-blob --bundle ($file + $script:SignatureSuffix) `
+                            --certificate-identity-regexp $identity `
+                            --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' `
+                            $file 2>&1
+                        $code = $LASTEXITCODE
+                    }
+                    finally { $ErrorActionPreference = $prev }
+                    if ($code -ne 0) { $bad += ($name + ': cosign exited ' + $code + ' ' + ((@($out) -join ' ').Trim())) }
+                }
+                if ($bad.Count -gt 0) { return ($bad -join ' | ') }
+                'True'
+            }
+        }
     }
 
     # The manual says the executable CARRIES the script and reads its version
@@ -518,7 +589,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # THE COUNT IS ASSERTED. A table that stopped early exits 0 over a smaller
 # suite, which is the shape a check takes on its way to reporting nothing.
-$expected = 12
+$expected = 14
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

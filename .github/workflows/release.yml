@@ -35,8 +35,14 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     # ⛔ Raised for this job alone. Every other job in this repository reads.
+    # ⛔ id-token IS A SECOND RAISE AND IT IS NOT THE SAME ONE. contents:write
+    # lets this job publish; id-token:write lets it mint the short-lived OIDC
+    # token `cosign sign-blob` exchanges for a signing certificate. Neither
+    # implies the other, and the signing step below is the only reason the
+    # second exists. WSL-25.
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -151,6 +157,70 @@ jobs:
           $want = 'wsl-toolkit-v' + ($out | Select-Object -First 1).Trim()
           if ($tag -ne $want) { Write-Output "tag is '$tag' and the binary says '$want'"; exit 1 }
           Write-Output "the staged binary reports $out, which matches $tag"
+
+      # ⭐ THE SIGNATURE IS WHAT SHA256SUMS CANNOT BE. That file ships in the
+      # same release as the asset it describes, so anyone who could replace one
+      # could replace the other, and the launcher has said so out loud on every
+      # fetch since it existed. A keyless signature is tied to THIS workflow's
+      # OIDC identity, which nothing outside this repository can mint. WSL-25.
+      #
+      # ⚠ KEYLESS MEANS THERE IS NO KEY TO LOSE, and what it costs is a
+      # dependency on the public transparency log at verify time. Ruled on
+      # 2026-08-30 over minisign, which has the opposite trade.
+      #
+      # ⛔ EVERY PUBLISHED ASSET IS SIGNED, SHA256SUMS INCLUDED. Signing the
+      # sums alone would be a shorter chain that is only as good as a consumer
+      # remembering to walk it; a consumer who fetched one asset can verify that
+      # asset. The list is captured BEFORE the loop, because writing bundles into
+      # the same directory the loop enumerates would sign the signatures.
+      # ⚠ THE COSIGN VERSION IS PINNED, not left to the installer's default. The
+      # bundle `--bundle` writes changed format between cosign 2 and 3, and a
+      # signer and a verifier that disagree about it produce a signature nobody
+      # can check. This is the version the launcher's verify path was measured
+      # against on 2026-09-10.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: sign every asset with a keyless signature
+        shell: pwsh
+        run: |
+          $assets = @(Get-ChildItem dist -File | Sort-Object Name | ForEach-Object { $_.Name })
+          if ($assets.Count -ne 5) { Write-Output "expected 5 assets to sign and found $($assets.Count)"; exit 1 }
+          foreach ($name in $assets) {
+            & cosign sign-blob --yes --bundle "dist\$name.cosign.bundle" "dist\$name"
+            if ($LASTEXITCODE -ne 0) { Write-Output "signing $name exited $LASTEXITCODE"; exit 1 }
+          }
+          # ⛔ THE EFFECT IS VERIFIED, not inferred from an exit code. A step
+          # that can only pass is the `exits 0 having done nothing` row in
+          # docs/conventions/forbidden-patterns.md.
+          foreach ($name in $assets) {
+            $bundle = "dist\$name.cosign.bundle"
+            if (-not (Test-Path -LiteralPath $bundle)) { Write-Output "$bundle was not written"; exit 1 }
+            if ((Get-Item -LiteralPath $bundle).Length -le 0) { Write-Output "$bundle is empty"; exit 1 }
+            Write-Output ("signed " + $name + " -> " + (Split-Path -Leaf $bundle))
+          }
+
+      # ⛔ THE SIGNATURES ARE VERIFIED BEFORE THEY ARE PUBLISHED, with the
+      # same command and the same identity a consumer uses. A bundle that cannot
+      # be verified is worse than none: it is a claim of authorship that fails
+      # the first time somebody checks it, on a release that has already shipped.
+      - name: the signatures verify against this workflow's identity
+        shell: pwsh
+        env:
+          IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
+        run: |
+          $assets = @(Get-ChildItem dist -File -Filter '*.cosign.bundle' | ForEach-Object { $_.Name -replace '\.cosign\.bundle$', '' })
+          if ($assets.Count -ne 5) { Write-Output "expected 5 bundles and found $($assets.Count)"; exit 1 }
+          foreach ($name in $assets) {
+            & cosign verify-blob `
+              --bundle "dist\$name.cosign.bundle" `
+              --certificate-identity $env:IDENTITY `
+              --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' `
+              "dist\$name"
+            if ($LASTEXITCODE -ne 0) { Write-Output "verifying $name exited $LASTEXITCODE"; exit 1 }
+            Write-Output "verified $name against $env:IDENTITY"
+          }
 
       # --generate-notes writes the body from the commits since the previous tag.
       # ⛔ No hand-written body: one that is typed here goes stale the first time

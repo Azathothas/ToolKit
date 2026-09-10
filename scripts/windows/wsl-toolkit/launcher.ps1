@@ -36,8 +36,26 @@
 
     TRAP: WHAT THE RELEASE DIGEST PROVES. The SHA256SUMS comes from the same release
     as the asset, so checking one against the other proves the bytes arrived
-    intact. It does not prove who published them. -LauncherSha256 with a digest
-    the CALLER holds is the check that proves that, and it applies on top.
+    intact. It does not prove who published them.
+
+    WHAT PROVES AUTHORSHIP, since wsl-toolkit-v2.0.1. Every asset in a release
+    carries a keyless signature bundle beside it, made by this repository's
+    release workflow, and this launcher verifies the one belonging to the file it
+    fetched. It reports FOUR outcomes and never silence: verified, no bundle in
+    that release, no cosign on this machine, or refused.
+
+      -LauncherVerify auto      the default. Verify when a bundle and cosign are
+                                both there; say which was missing when they are
+                                not. A bundle that FAILS is a hard stop even
+                                here, because a signature that does not verify is
+                                a claim of authorship that failed.
+      -LauncherVerify require   an absent bundle or an absent cosign is a
+                                refusal too.
+      -LauncherVerify off       check nothing, and say so.
+
+    Releases before wsl-toolkit-v2.0.1 carry no bundle, so auto reports that and
+    runs. -LauncherSha256 with a digest the CALLER holds is the older answer, it
+    still works, and it applies on top of both.
 
     AN EXPLICIT REF NOW WINS OVER THE SIBLING, and it used to be the other way
     round. A caller passing a commit AND a digest could get the line "Using the
@@ -69,6 +87,9 @@
         keywords above, or an explicit -LauncherAllowMovingRef.
       - VERIFIES A DIGEST when one is given, and refuses on a mismatch rather
         than warning.
+      - VERIFIES THE KEYLESS SIGNATURE published beside a release asset, against
+        this repository's own release workflow, and says which of four things
+        happened rather than going quiet when it cannot.
       - REFUSES A DIGEST THAT IS NOT 64 HEX CHARACTERS by name, rather than
         letting a typo arrive later as a mismatch nobody can explain.
       - PARSES THE FILE AS POWERSHELL BEFORE RUNNING IT, so a captive portal or
@@ -102,6 +123,11 @@
                                  (latest).
       -LauncherSha256 HEX|auto   expect this SHA-256 of the fetched bytes, or
                                  read it from the API for the resolved ref.
+      -LauncherVerify auto|require|off
+                                 how hard to insist on the keyless signature
+                                 published beside a release asset. Default auto,
+                                 which reports rather than refuses when there is
+                                 nothing to check against. Needs cosign on PATH.
       -LauncherLock PATH         where -LauncherRef auto keeps what it resolved.
                                  Default: <install dir>\wsl-toolkit.lock.json.
       -LauncherAllowMovingRef    permit a branch or a tag. Prints a warning.
@@ -114,7 +140,7 @@
 
       WSL_EPHEMERAL_LOCAL, WSL_TOOLKIT_RELEASE, WSL_EPHEMERAL_REF,
       WSL_EPHEMERAL_SHA256, WSL_EPHEMERAL_ALLOW_MOVING_REF=1,
-      WSL_EPHEMERAL_CACHE, WSL_EPHEMERAL_LOCK
+      WSL_EPHEMERAL_CACHE, WSL_EPHEMERAL_LOCK, WSL_TOOLKIT_VERIFY
 
 .EXAMPLE
     .\launcher.ps1 -Action List
@@ -177,6 +203,21 @@ $UpstreamBranch = 'main'
 # requests an hour per address, and a network that cannot reach api.github.com
 # at all. See Get-ApiUri for what was measured across the two.
 $ApiHosts = @('api.github.com', 'api.gh.pkgforge.dev')
+# The suffix release.yml gives each asset's signature bundle, and the identity
+# that signed it. Keyless signing ties a signature to the WORKFLOW that made it
+# rather than to a key somebody holds, so this is the whole trust root, and it is
+# a constant rather than a parameter: a caller who could choose the identity
+# could choose one they control, which is the check answering itself.
+$SignatureSuffix = '.cosign.bundle'
+# HARD RULE: ANCHORED ON THE REPOSITORY AND THE WORKFLOW, DELIBERATELY NOT ON THE
+# REF. release.yml runs on a wsl-toolkit-v* tag push and on workflow_dispatch,
+# and the OIDC identity carries the ref it ran from, so pinning the ref would
+# refuse a release published by the second route while telling the caller their
+# asset was unsigned. What this proves is the claim worth making: the bytes were
+# signed by THIS repository's release workflow, which nothing outside it can
+# mint.
+$SignatureIdentityPattern = '^https://github\.com/Azathothas/ToolKit/\.github/workflows/release\.yml@'
+$SignatureIssuer = 'https://token.actions.githubusercontent.com'
 
 # EVERY LINE THIS FILE PRINTS GOES TO STDERR, and there is no Write-Host in it
 # at all. A wrapper that writes to the wrapped program's stdout corrupts it:
@@ -234,7 +275,7 @@ function Split-LauncherArgument {
     # found on this object" from a caller who passed nothing unusual at all.
     $opt = @{
         Local = ''; Release = ''; Ref = ''; Sha256 = ''; InstallDir = ''; Lock = ''
-        Kind = ''; Binary = ''
+        Kind = ''; Binary = ''; Verify = ''
         AllowMovingRef = $false; AddToPath = $false; Help = $false
     }
     # An ordinary array with +=, NOT an ArrayList. See the note above: this is
@@ -245,6 +286,7 @@ function Split-LauncherArgument {
         '-launchersha256' = 'Sha256'; '-launcherinstalldir' = 'InstallDir'
         '-launcherlock' = 'Lock'; '-launcherrelease' = 'Release'
         '-launcherkind' = 'Kind'; '-launcherbinary' = 'Binary'
+        '-launcherverify' = 'Verify'
     }
     $flags = @{
         '-launcherallowmovingref' = 'AllowMovingRef'
@@ -265,10 +307,13 @@ function Split-LauncherArgument {
         if ($k.StartsWith('-launcher')) {
             throw ("$a is not a launcher option. The set is -LauncherKind, -LauncherBinary, " +
                    "-LauncherLocal, -LauncherRelease, -LauncherRef, -LauncherSha256, " +
-                   "-LauncherAllowMovingRef, -LauncherInstallDir, -LauncherLock, " +
-                   "-LauncherAddToPath and -LauncherHelp.")
+                   "-LauncherVerify, -LauncherAllowMovingRef, -LauncherInstallDir, " +
+                   "-LauncherLock, -LauncherAddToPath and -LauncherHelp.")
         }
         $rest += $Argument[$i]
+    }
+    if ($opt.Verify -and (@('auto', 'require', 'off') -notcontains $opt.Verify.ToLowerInvariant())) {
+        throw "-LauncherVerify takes auto, require or off. It was given '$($opt.Verify)'."
     }
     return [pscustomobject]@{ Options = $opt; Forward = $rest }
 }
@@ -763,6 +808,133 @@ function Get-Sha256SumsEntry {
     throw "SHA256SUMS carries no line for '$Name'."
 }
 
+function Get-CosignPath {
+    <#
+      Where cosign is on this machine, or an empty string.
+
+      TRAP: Get-Command FINDS CMDLETS, FUNCTIONS AND ALIASES TOO. Filtering to
+      Application and ExternalScript is what makes this answer about a program
+      on PATH rather than about anything that happens to be named cosign in the
+      caller's session. docs/conventions/shell.md section 8.
+    #>
+    try {
+        $c = @(Get-Command -Name 'cosign' -CommandType Application -ErrorAction Stop)
+        if ($c.Count -gt 0) { return [string]$c[0].Source }
+    }
+    catch { $null = $_ }
+    return ''
+}
+
+function Resolve-VerifyMode {
+    <#
+      What -LauncherVerify asked for, defaulted and validated.
+
+      HARD RULE: auto REPORTS AND NEVER REFUSES. WSL-25 rules that verification must
+      not become mandatory in the same change that adds it: a launcher that
+      suddenly requires a tool nobody has installed breaks every consumer to
+      close a gap none of them asked about. `require` is how a caller opts into
+      the strict reading for themselves.
+    #>
+    param([Parameter(Mandatory = $true)]$Options)
+    $mode = $Options.Verify
+    if (-not $mode) { $mode = Get-EnvOrDefault 'WSL_TOOLKIT_VERIFY' }
+    if (-not $mode) { return 'auto' }
+    $mode = $mode.ToLowerInvariant()
+    if (@('auto', 'require', 'off') -notcontains $mode) {
+        throw "-LauncherVerify takes auto, require or off. It was given '$mode'."
+    }
+    return $mode
+}
+
+function Test-ReleaseSignature {
+    <#
+      Verify one downloaded asset against the keyless signature published beside
+      it, when that is possible, and SAY which of the four things happened.
+
+      WHY THIS EXISTS. SHA256SUMS ships in the same release as the asset it
+      describes, so anyone who could replace one could replace the other. This
+      launcher has said exactly that on every release fetch since it existed,
+      and saying it is better than not saying it and is not a fix. WSL-25.
+
+      HARD RULE: FOUR OUTCOMES, NOT TWO, AND SILENCE IS NONE OF THEM. verified,
+      no bundle in the release, no cosign on this machine, and REFUSED. A step
+      that cannot verify and says nothing is indistinguishable from one that
+      verified, which is the whole defect class this repository keeps paying
+      for.
+
+      TRAP: A REFUSAL IS NOT AN ABSENCE. A bundle that exists and does not verify
+      is a hard stop under every mode including auto, because the release is then
+      making a claim of authorship that fails when checked. Only ABSENCE is
+      tolerated by auto.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]$Release,
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$CacheDir,
+        [Parameter(Mandatory = $true)][string]$Mode
+    )
+    if ($Mode -eq 'off') {
+        Write-Warn 'signature verification is off (-LauncherVerify off). Nothing was checked about who published this.'
+        return
+    }
+
+    $bundleName = $Name + $SignatureSuffix
+    $published = @($Release.assets | Where-Object { $_.name -eq $bundleName })
+    if ($published.Count -eq 0) {
+        $message = ("release $($Release.tag_name) publishes no $bundleName, so there is nothing to verify against. " +
+                    'Releases before wsl-toolkit-v2.0.1 were not signed.')
+        if ($Mode -eq 'require') {
+            throw (New-HardStop -Message ("-LauncherVerify require, and " + $message))
+        }
+        Write-Warn $message
+        return
+    }
+
+    $cosign = Get-CosignPath
+    if (-not $cosign) {
+        $message = ("cosign is not on PATH, so the signature published beside this asset was NOT checked. " +
+                    'Install it (scoop install cosign, or from sigstore/cosign) to verify who published this.')
+        if ($Mode -eq 'require') {
+            throw (New-HardStop -Message ("-LauncherVerify require, and " + $message))
+        }
+        Write-Warn $message
+        return
+    }
+
+    # Cached beside the asset it signs and keyed the same way, so a later run
+    # verifies without a fetch and a different tag cannot reuse this one.
+    $bundle = Join-Path $CacheDir ((Split-Path -Leaf $Path) + $SignatureSuffix)
+    if (-not (Test-Path -LiteralPath $bundle)) {
+        $temp = Join-Path $CacheDir ('.bundle.' + [Guid]::NewGuid().ToString('N') + '.tmp')
+        try {
+            Save-ReleaseAsset -Release $Release -Name $bundleName -Destination $temp
+            Move-Item -LiteralPath $temp -Destination $bundle -Force
+        }
+        finally {
+            if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue }
+        }
+    }
+
+    # TRAP: THE EXIT CODE IS READ FROM THE PROCESS, and its output is captured
+    # separately rather than piped. A guard on the left of a pipe reports the
+    # pipeline's status, so one that failed reads as green.
+    # docs/conventions/shell.md section 2.
+    $out = & $cosign verify-blob `
+        --bundle $bundle `
+        --certificate-identity-regexp $SignatureIdentityPattern `
+        --certificate-oidc-issuer $SignatureIssuer `
+        $Path 2>&1
+    $code = $LASTEXITCODE
+    if ($code -ne 0) {
+        throw (New-HardStop -Message ("the signature published beside $Name did not verify.`n" +
+               "  cosign exited $code`n  " + ((@($out) -join "`n  ").Trim()) + "`n" +
+               "  Expected an identity matching $SignatureIdentityPattern issued by $SignatureIssuer.`n" +
+               '  Nothing was installed. A bundle that exists and does not verify is a claim of authorship that failed.'))
+    }
+    Write-Ok "signature verified: $bundleName, signed by this repository's release workflow"
+}
+
 function Resolve-FromRelease {
     <#
       Download one release's wsl-toolkit.ps1, verify it against that release's
@@ -824,7 +996,6 @@ function Resolve-FromRelease {
                        '  Nothing was installed. This is a transport failure or a tampered asset; either way it is not runnable.'))
             }
             Write-Ok "digest matches the SHA256SUMS in release $realTag"
-            Write-Warn "that proves the bytes arrived intact, not who published them. -LauncherSha256 with a digest you hold yourself is the check that proves that."
             Move-Item -LiteralPath $temp -Destination $cached -Force
         }
         finally {
@@ -842,6 +1013,11 @@ function Resolve-FromRelease {
         }
         Write-Ok '-LauncherSha256 matches too'
     }
+
+    # WHAT THE DIGEST ABOVE PROVES IS TRANSPORT. This is the check that speaks
+    # to authorship, and it runs on EVERY call rather than only on the download,
+    # so a cached copy is not a copy nobody checks again. WSL-25.
+    Test-ReleaseSignature -Release $rel -Name $ScriptLeaf -Path $cached -CacheDir $cacheDir -Mode (Resolve-VerifyMode -Options $Options)
 
     $null = Clear-DownloadMark -LiteralFile $cached
     Assert-PowerShellSyntax -LiteralFile $cached
@@ -993,6 +1169,8 @@ function Resolve-BinaryFromRelease {
         }
         Write-Ok '-LauncherSha256 matches too'
     }
+
+    Test-ReleaseSignature -Release $rel -Name $asset -Path $cached -CacheDir $CacheDir -Mode (Resolve-VerifyMode -Options $Options)
 
     # A file fetched on Windows can carry a Zone.Identifier stream, and an
     # execution policy that would run a local file refuses the same bytes with

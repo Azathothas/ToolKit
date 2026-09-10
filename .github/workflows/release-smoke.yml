@@ -16,9 +16,10 @@
 #
 # ⚠ WHAT IT CANNOT PROVE HERE. A GitHub runner has no WSL2 and no container
 # engine, so every case that needs a distribution is SKIPPED and counted as
-# skipped. What runs is the half a consumer hits first: the digests, that the
-# executable and the published script are one product, and that the tool
-# surveys a host from an empty state directory without building anything.
+# skipped. What runs is the half a consumer hits first: the digests, the keyless
+# signature published beside each asset, that the executable and the published
+# script are one product, and that the tool surveys a host from an empty state
+# directory without building anything.
 
 name: release-smoke
 
@@ -50,6 +51,18 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⭐ COSIGN IS INSTALLED SO THE SIGNATURE CASE ACTUALLY RUNS. Without it
+      # the suite skips that case on every runner, and a skipped case proves
+      # nothing about the thing it is named for. This is the one place the
+      # published signature is checked from OUTSIDE the workflow that made it:
+      # release.yml verifies its own bundles before uploading them, which is a
+      # signer checking its own work. WSL-25.
+      # ⚠ Pinned to the version release.yml signs with, because `--bundle`
+      # changed format between cosign 2 and 3.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
 
       # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped, and the JSON is
       # parsed rather than eyeballed: the suite reports how many cases ran and
