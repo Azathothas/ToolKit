@@ -778,6 +778,176 @@ try {
         finally { $null = Invoke-Tool @('--home', $h, 'helper', 'stop') }
     }
 
+    # -- what this tool owns, and how it proves it ---------------------------
+    # WSL-42, issues 16 and 18. WSL-43 and WSL-51 are the same ruling read from
+    # the other two sides.
+
+    # issue 16: base.name was editable and the guard compared it against itself.
+    Test-Case 'a configured name outside the prefix is refused by name' 'True' {
+        $h = New-StateHome 'home-foreign'
+        $null = Set-StateConfig -StateHome $h -Config @{
+            base = @{ name = 'my-distro'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
+        }
+        $r = Invoke-Tool @('--home', $h, 'base', 'status', '--json')
+        # v1.3.0 accepted this, would have CREATED it on `base ensure`, and
+        # would have unregistered it on `base remove --yes`.
+        (($r.Code -eq 2) -and (($r.Err + $r.Out) -match 'base\.name')).ToString()
+    }
+
+    # WSL-43: and an instance name INSIDE the prefix is accepted, which is the
+    # half the reporter did not ask for and a fixed single name would forbid.
+    Test-Case 'an instance name inside the prefix is accepted' 'True' {
+        $h = New-StateHome 'home-instance-name'
+        $null = Set-StateConfig -StateHome $h -Config @{
+            base = @{ name = 'wsl-toolkit-two'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
+        }
+        $r = Invoke-Tool @('--home', $h, 'base', 'status', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'base status --json'
+        # Not registered, which is correct: nothing built it. What matters is
+        # that the NAME was not refused.
+        (($d.name -eq 'wsl-toolkit-two') -and ($d.registered -eq $false)).ToString()
+    }
+
+    # issue 18: a health probe identifies the ENGINE and not the rootfs, so
+    # `ensure` relabelled an Arch base as Alpine because an Alpine CONTAINER ran.
+    Test-Case 'the guest own marker decides what the base was built from' 'True' {
+        $probe = Invoke-Tool @('base', 'status', '--probe', '--json')
+        $before = Read-ToolJson -Stdout $probe.Out -What 'base status --probe --json'
+        if (-not $before.identity) { return 'the base carries no identity marker' }
+        $real = [string]$before.identity.image
+        $cfgPath = (Invoke-Tool @('config')).Out.Trim()
+        $saved = if (Test-Path -LiteralPath $cfgPath) { [IO.File]::ReadAllText($cfgPath) } else { $null }
+        try {
+            # Change the CONFIGURED image without rebuilding anything.
+            $lie = if ($real -match 'alpine') { 'ghcr.io/pkgforge-dev/archlinux:latest' } else { 'docker.io/library/alpine:latest' }
+            $null = New-Item -ItemType Directory -Path (Split-Path -Parent $cfgPath) -Force
+            [IO.File]::WriteAllText($cfgPath, (@{
+                schema = 'wsl-toolkit-config/1'
+                base   = @{ name = 'wsl-toolkit'; image = $lie; user = 'toolkit' }
+            } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+            $e = Invoke-Tool @('base', 'ensure')
+            # EXIT 1, AND THAT IS THE POINT. `ensure` was asked to bring the
+            # machine to the state the configuration describes and it could not,
+            # short of a rebuild it must not perform on its own. 1 means "it ran
+            # and it disagreed". v1.3.0 exited 0 here, because relabelling the
+            # record was what made the disagreement disappear.
+            if ($e.Code -ne 1) { return "base ensure exited $($e.Code) rather than 1 over a drifted base" }
+            $after = Read-ToolJson -Stdout (Invoke-Tool @('base', 'status', '--probe', '--json')).Out -What 'base status --probe --json'
+            $said = (($e.Err + $e.Out) -match 'was built from')
+            $rebuild = (($e.Err + $e.Out) -match 'base recreate')
+            # v1.3.0 rewrote the record to $lie here and reported no drift.
+            (($after.identity.image -eq $real) -and ($after.built_from -eq $real) -and $said -and $rebuild).ToString()
+        }
+        finally {
+            if ($null -ne $saved) { [IO.File]::WriteAllText($cfgPath, $saved) }
+            elseif (Test-Path -LiteralPath $cfgPath) { Remove-Item -LiteralPath $cfgPath -Force }
+        }
+    }
+
+    # WSL-51: the nearest configuration wins WHOLE, and `config` says which file
+    # it resolved and everything it looked at on the way.
+    Test-Case 'the nearer configuration wins whole and config names the order' 'True' {
+        $outer = Join-Path $script:Scratch 'cfg-outer'
+        $inner = Join-Path $outer 'inner'
+        $null = New-Item -ItemType Directory -Path $inner -Force
+        $write = {
+            param($dir, $image)
+            [IO.File]::WriteAllText((Join-Path $dir 'wsl-toolkit.json'), (@{
+                schema = 'wsl-toolkit-config/1'
+                base   = @{ name = 'wsl-toolkit'; image = $image; user = 'toolkit' }
+            } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
+        }
+        & $write $outer 'docker.io/library/debian:latest'
+        & $write $inner 'docker.io/library/alpine:latest'
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $script:Binary
+        foreach ($a in @('config', '--json')) { $null = $psi.ArgumentList.Add($a) }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.WorkingDirectory = $inner
+        $p = [Diagnostics.Process]::Start($psi)
+        $o = $p.StandardOutput.ReadToEndAsync(); $e = $p.StandardError.ReadToEndAsync()
+        $p.WaitForExit()
+        $null = $e.Result
+        $d = Read-ToolJson -Stdout $o.Result -What 'config --json'
+        $nearest = ($d.base.image -eq 'docker.io/library/alpine:latest')
+        $named = ($d.path -eq (Join-Path $inner 'wsl-toolkit.json'))
+        $ordered = (@($d.searched)[0] -eq (Join-Path $inner 'wsl-toolkit.json'))
+        (($p.ExitCode -eq 0) -and $nearest -and $named -and $ordered).ToString()
+    }
+
+    # WSL-51: a spelling this tool does not read is REFUSED rather than skipped.
+    Test-Case 'a configuration this tool does not read is refused by name' 'True' {
+        $dir = Join-Path $script:Scratch 'cfg-toml'
+        $null = New-Item -ItemType Directory -Path $dir -Force
+        [IO.File]::WriteAllText((Join-Path $dir 'wsl-toolkit.toml'), "[base]`nname = 'wsl-toolkit'`n")
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $script:Binary
+        foreach ($a in @('config', '--json')) { $null = $psi.ArgumentList.Add($a) }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.WorkingDirectory = $dir
+        $p = [Diagnostics.Process]::Start($psi)
+        $o = $p.StandardOutput.ReadToEndAsync(); $e = $p.StandardError.ReadToEndAsync()
+        $p.WaitForExit()
+        $said = (($e.Result + $o.Result) -match 'wsl-toolkit\.toml')
+        (($p.ExitCode -eq 2) -and $said).ToString()
+    }
+
+    # WSL-43: TWO INSTANCES, BUILT IN ONE RUN. It is behind -Quick because it
+    # builds a second distribution, which is minutes of pulling and importing.
+    if (-not $Quick) {
+        Test-Case 'two instances share no distribution, state, transcript or artifact' 'True' {
+            $art = Join-Path $script:Scratch 'art-instances'
+            try {
+                $e = Invoke-Tool @('--instance', 'acc', 'base', 'ensure')
+                if ($e.Code -ne 0) { return "the second instance would not build: $($e.Err)" }
+
+                # Each runs a job that writes its own instance name.
+                $one = Invoke-Tool @('run', '--json', '--image', 'alpine', '--artifacts', (Join-Path $art 'default'),
+                    '-c', 'printf default > /out/who.txt; printf default')
+                $two = Invoke-Tool @('--instance', 'acc', 'run', '--json', '--image', 'alpine', '--artifacts', (Join-Path $art 'acc'),
+                    '-c', 'printf acc > /out/who.txt; printf acc')
+                if ($one.Code -ne 0 -or $two.Code -ne 0) { return "a job failed: $($one.Code)/$($two.Code)" }
+                $d1 = Read-ToolJson -Stdout $one.Out -What 'run --json'
+                $d2 = Read-ToolJson -Stdout $two.Out -What 'run --json'
+
+                # The artifacts came back to the right place.
+                $w1 = [IO.File]::ReadAllText((Join-Path $art 'default\who.txt'))
+                $w2 = [IO.File]::ReadAllText((Join-Path $art 'acc\who.txt'))
+                if ($w1 -ne 'default' -or $w2 -ne 'acc') { return "artifacts crossed: $w1 / $w2" }
+
+                # Neither transcript is in the other's state directory.
+                if ($d1.transcript -eq $d2.transcript) { return 'both jobs wrote one transcript directory' }
+                if ($d2.transcript -notmatch 'instances') { return "the second instance wrote to $($d2.transcript)" }
+
+                # Each sees exactly its own distribution.
+                $s1 = Read-ToolJson -Stdout (Invoke-Tool @('base', 'status', '--json')).Out -What 'base status'
+                $s2 = Read-ToolJson -Stdout (Invoke-Tool @('--instance', 'acc', 'base', 'status', '--json')).Out -What 'base status'
+                if ($s1.name -ne 'wsl-toolkit' -or $s2.name -ne 'wsl-toolkit-acc') { return "names: $($s1.name) / $($s2.name)" }
+
+                # And gc on one leaves the other whole.
+                $g = Invoke-Tool @('--instance', 'acc', 'gc', '--apply', '--json')
+                if ($g.Code -ne 0) { return "gc on the second instance exited $($g.Code)" }
+                $stillThere = Read-ToolJson -Stdout (Invoke-Tool @('logs', '--json')).Out -What 'logs --json'
+                $kept = @($stillThere.transcripts | Where-Object { $_.id -eq $d1.id })
+                ($kept.Count -eq 1).ToString()
+            }
+            finally {
+                # TORN DOWN WHATEVER HAPPENED. A second distribution left
+                # registered is exactly what the last case in this file exists
+                # to catch, and leaving one would make this case fail that one
+                # rather than itself.
+                $null = Invoke-Tool @('--instance', 'acc', 'gc', '--apply')
+                $null = Invoke-Tool @('--instance', 'acc', 'base', 'remove', '--yes')
+            }
+        }
+    }
+
     # -- cleanup, counted rather than remembered -----------------------------
     Test-Case 'cleanup removes what this tool made and the counts return to zero' 'True' {
         $g = Invoke-Tool @('gc', '--apply', '--json')
@@ -829,7 +999,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 42 } else { 43 }
+$expected = if ($Quick) { 47 } else { 49 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

@@ -53,7 +53,14 @@ type Config struct {
 	// Matrix names the ids the fleet runner uses when the caller names none.
 	Matrix []string `json:"matrix,omitempty"`
 	path   string
+	source string
 }
+
+// Path is the file this configuration was read from, and Source is which step
+// of the search found it. ⚠ Path is set even where no file existed: it is the
+// file that WOULD be read, which is what `config --write` writes.
+func (c Config) Path() string   { return c.path }
+func (c Config) Source() string { return c.source }
 
 // DefaultBaseImage is the rootfs the owned distribution is built from when
 // nothing selects another. BasePresets carries the alternatives and their
@@ -112,14 +119,24 @@ var BuiltinImages = []Image{
 }
 
 // DefaultConfig is what a machine with no configuration file behaves as.
+//
+// ⚠ THE BASE NAME FOLLOWS THE SELECTED INSTANCE. Without that, `--instance two`
+// would move the state directory and leave the distribution at `wsl-toolkit`,
+// which is two agents sharing one distribution while each believes it is
+// isolated. WSL-43.
 func DefaultConfig() Config {
+	name := DefaultBaseName
+	if SelectedInstance.Distro != "" {
+		name = SelectedInstance.Distro
+	}
 	return Config{
 		Schema: ConfigSchema,
-		Base:   BaseConfig{Name: DefaultBaseName, Image: DefaultBaseImage, User: DefaultBaseUser},
+		Base:   BaseConfig{Name: name, Image: DefaultBaseImage, User: DefaultBaseUser},
 	}
 }
 
-// ConfigPath is where the configuration lives.
+// ConfigPath is where the state directory's own configuration lives. It is the
+// LAST place searched, not the only one; ResolveConfig is the search.
 func ConfigPath() (string, error) {
 	h, err := Home()
 	if err != nil {
@@ -128,16 +145,103 @@ func ConfigPath() (string, error) {
 	return filepath.Join(h, "config.json"), nil
 }
 
+// WorkingConfigName is the file a working tree may carry.
+const WorkingConfigName = "wsl-toolkit.json"
+
+// RefusedConfigName is a spelling this tool does NOT read and will not ignore.
+//
+// ⛔ SILENTLY SKIPPING A FILE SOMEBODY WROTE AS CONFIGURATION is how this tool
+// would lie about which config won, so a `wsl-toolkit.toml` found during the
+// search is refused BY NAME. TOML was asked about and lost: this tool reads and
+// writes JSON, has no dependencies, and Go's standard library has no TOML
+// parser, so accepting it means vendoring one into a tree whose whole build
+// story is that it has nothing to vendor. WSL-51.
+const RefusedConfigName = "wsl-toolkit.toml"
+
+// ExplicitConfigPath is an operator-named file that wins over every search step.
+// ⚠ Set from the --config flag by the command layer, once, before anything
+// loads a configuration.
+var ExplicitConfigPath string
+
+// ConfigSource is where a configuration came from and what was looked at on the
+// way. ⭐ It exists because a caller with a `wsl-toolkit.json` in the working
+// directory silently changes which config is used, so `config` prints the
+// resolved source and the order it searched.
+type ConfigSource struct {
+	Path     string   `json:"path"`
+	From     string   `json:"from"`
+	Searched []string `json:"searched"`
+}
+
+// ResolveConfig is the search order, stated once and printed by `config`.
+//
+//	1  --config PATH                       an explicit file, and a missing one is an error
+//	2  wsl-toolkit.json here or above      the nearest one wins
+//	3  <state home>/config.json            what this tool wrote for itself
+//	4  the compiled-in defaults
+//
+// ⛔ THE NEAREST FILE WINS OUTRIGHT rather than being merged. A partially merged
+// configuration is one nobody can reason about from any single file, which is
+// the property that makes "which config is in effect" answerable at all.
+func ResolveConfig() (ConfigSource, error) {
+	var src ConfigSource
+	if p := strings.TrimSpace(ExplicitConfigPath); p != "" {
+		abs, err := filepath.Abs(p)
+		if err != nil {
+			return src, err
+		}
+		src.Searched = append(src.Searched, abs)
+		if _, err := os.Stat(abs); err != nil {
+			// ⛔ A NAMED FILE THAT IS NOT THERE IS AN ERROR, never a silent
+			// fallback. A caller who passed --config asked for that file.
+			return src, fmt.Errorf("--config %s: %w", p, err)
+		}
+		src.Path, src.From = abs, "--config"
+		return src, nil
+	}
+	cwd, err := os.Getwd()
+	if err == nil {
+		dir := cwd
+		for {
+			refused := filepath.Join(dir, RefusedConfigName)
+			if _, err := os.Stat(refused); err == nil {
+				return src, fmt.Errorf("%s is a configuration this tool does not read. It reads %s. "+
+					"Rename it, or move it out of the search path", refused, WorkingConfigName)
+			}
+			candidate := filepath.Join(dir, WorkingConfigName)
+			src.Searched = append(src.Searched, candidate)
+			if _, err := os.Stat(candidate); err == nil {
+				src.Path, src.From = candidate, "the working directory or a parent"
+				return src, nil
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+	stored, err := ConfigPath()
+	if err != nil {
+		return src, err
+	}
+	src.Searched = append(src.Searched, stored)
+	src.Path, src.From = stored, "the state directory"
+	return src, nil
+}
+
 // LoadConfig reads the configuration, or returns the defaults when there is no
 // file. ⛔ A malformed file is a REFUSAL: silently ignoring somebody's
 // configuration is how a setting nobody can see takes effect.
 func LoadConfig() (Config, error) {
 	cfg := DefaultConfig()
-	path, err := ConfigPath()
+	src, err := ResolveConfig()
 	if err != nil {
 		return cfg, err
 	}
+	path := src.Path
 	cfg.path = path
+	cfg.source = src.From
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil
@@ -177,13 +281,27 @@ func (c Config) Validate() error {
 	if !isDistroName(c.Base.Name) {
 		return fmt.Errorf("base.name %q is not a usable distribution name", c.Base.Name)
 	}
+	// ⛔ THE PROTECTED CHECK COMES FIRST so the specific message wins. Both
+	// refuse `podman-machine-default`; only one says why it is special.
 	for _, p := range ProtectedDistros {
 		if strings.EqualFold(c.Base.Name, p) {
 			return fmt.Errorf("base.name %q names a container runtime's own distribution", c.Base.Name)
 		}
 	}
-	if strings.HasPrefix(strings.ToLower(c.Base.Name), "eph-") {
-		return fmt.Errorf("base.name %q starts with the prefix wsl-toolkit.ps1's Purge removes, so the base would not survive one", c.Base.Name)
+	// ⛔ A NAME OUTSIDE THE PREFIX IS STRUCTURALLY REFUSED, which is what the
+	// reporter of issue 16 asked for. It used to accept any syntactically valid
+	// name, so `base ensure` would create one and `base remove --yes` would
+	// unregister it, while the manual said the opposite. WSL-42.
+	//
+	// ⚠ The `eph-` check that used to be here is gone rather than kept: this
+	// rule is strictly narrower, so that one could never fire, and an unreachable
+	// branch is a rule nobody can see being enforced.
+	if err := ValidateOwnedName(c.Base.Name); err != nil {
+		// ⚠ NAMED AND WRAPPED, NOT RESTATED. The wrapped error already says
+		// what is wrong and what the rule is; adding the rule again here printed
+		// "This tool owns wsl-toolkit and wsl-toolkit-<instance>" twice in one
+		// line, which reads as two different rules to anybody skimming.
+		return fmt.Errorf("base.name: %w", err)
 	}
 	if !isShellName(c.Base.User) {
 		return fmt.Errorf("base.user %q is not a usable account name", c.Base.User)

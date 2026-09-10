@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 80  open 17  blocked 0  done 63
+total 80  open 14  blocked 0  done 66
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 9 | 0 | 34 | 43 |
+| P1 | 6 | 0 | 37 | 43 |
 | P2 | 7 | 0 | 20 | 27 |
 | P3 | 1 | 0 | 6 | 7 |
-| **all** | **17** | **0** | **63** | **80** |
+| **all** | **14** | **0** | **66** | **80** |
 
 ---
 
@@ -98,8 +98,8 @@ total 80  open 17  blocked 0  done 63
 | WSL-39 | P2 | M | done | An image that could not be pulled counts as a job that ran and failed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-40 | P1 | M | done | What a second reading of the core found | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-41 | P1 | M | done | What a failure is allowed to hide | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-42 | P1 | L | open | What this tool owns, and how it proves it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-43 | P1 | L | open | Many agents, many bases | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-42 | P1 | L | done | What this tool owns, and how it proves it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-43 | P1 | L | done | Many agents, many bases | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-44 | P1 | L | done | What a long-lived helper freezes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-45 | P1 | M | done | A deadline that bounds the caller's wall time | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-46 | P1 | M | done | The answer is exactly what happened | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -107,7 +107,7 @@ total 80  open 17  blocked 0  done 63
 | WSL-48 | P1 | M | open | The embedded script tells the truth | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-49 | P1 | L | open | One command to readiness | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-50 | P1 | L | open | Diagnostics and a heartbeat for the base and what runs inside it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-51 | P1 | L | open | A config the agent does not have to write | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-51 | P1 | L | done | A config the agent does not have to write | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-52 | P2 | L | open | The six commands that make an answer actionable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-53 | P1 | M | open | The tool updates itself, and readiness says whether it should | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 

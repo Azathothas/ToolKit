@@ -222,28 +222,13 @@ func (w *Wsl) Exists(ctx context.Context, name string) (bool, error) {
 }
 
 // AssertOwnedDistro is the single choke point in front of every destructive WSL
-// call this executable can make.
-//
-// ⛔ An allow-list of exactly one name. This executable owns one distribution,
-// so the narrowest guard is available and it is the one used.
-func AssertOwnedDistro(name, baseName string) error {
-	if strings.TrimSpace(name) == "" {
-		return errors.New("refusing to act on an empty distribution name")
-	}
-	for _, p := range ProtectedDistros {
-		if strings.EqualFold(name, p) {
-			return fmt.Errorf("REFUSING to touch %q: it is a container runtime's own distribution and this tool never removes one", name)
-		}
-	}
-	if !strings.EqualFold(name, baseName) {
-		return fmt.Errorf("REFUSING to touch %q: this tool owns %q and nothing else. Use wsl-toolkit script -Action Remove for a throwaway distro", name, baseName)
-	}
-	return nil
-}
+// call this executable can make, and it lives in identity.go with the rest of
+// what ownership means. AssertOwnedDistro is the structural half; Unregister
+// below is the one call that also demands the guest's own proof.
 
 // Import registers a distribution from a rootfs archive.
-func (w *Wsl) Import(ctx context.Context, name, dir, tarball string, baseName string) error {
-	if err := AssertOwnedDistro(name, baseName); err != nil {
+func (w *Wsl) Import(ctx context.Context, name, dir, tarball string) error {
+	if err := AssertOwnedDistro(name); err != nil {
 		return err
 	}
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Minute)
@@ -259,8 +244,8 @@ func (w *Wsl) Import(ctx context.Context, name, dir, tarball string, baseName st
 //
 // ⛔ There is no `wsl --shutdown` anywhere in this executable. It is
 // machine-wide and takes every distribution down, including somebody else's.
-func (w *Wsl) Terminate(ctx context.Context, name, baseName string) error {
-	if err := AssertOwnedDistro(name, baseName); err != nil {
+func (w *Wsl) Terminate(ctx context.Context, name string) error {
+	if err := AssertOwnedDistro(name); err != nil {
 		return err
 	}
 	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
@@ -273,9 +258,24 @@ func (w *Wsl) Terminate(ctx context.Context, name, baseName string) error {
 }
 
 // Unregister removes a distribution and its disk.
-func (w *Wsl) Unregister(ctx context.Context, name, baseName string) error {
-	if err := AssertOwnedDistro(name, baseName); err != nil {
+//
+// ⛔ THIS IS THE IRREVERSIBLE ONE, so it is the one that asks the GUEST rather
+// than trusting the name. The name rule stops a typo naming somebody else's
+// distribution; the marker stops a distribution this tool did not build being
+// adopted by editing a configuration file. WSL-42, issue 16.
+//
+// ⚠ `wantIdentity` is false for exactly one caller: a base whose provisioning
+// failed so early that no marker was written is still this tool's mess to clear
+// up, and refusing to remove it would leave a distribution nothing can touch.
+// Base.Remove passes true whenever the base was ever usable.
+func (w *Wsl) Unregister(ctx context.Context, name string, wantIdentity bool) error {
+	if err := AssertOwnedDistro(name); err != nil {
 		return err
+	}
+	if wantIdentity {
+		if _, err := w.ReadIdentity(ctx, name); err != nil {
+			return fmt.Errorf("refusing to unregister %s: %w", name, err)
+		}
 	}
 	bounded, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()

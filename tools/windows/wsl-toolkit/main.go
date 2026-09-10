@@ -78,8 +78,12 @@ func usage() string {
 		"  config      where the configuration is, and what it currently says",
 		"  version     the product version, which is the embedded script's",
 		"",
-		"Global: --home DIR   the state directory (also WSL_TOOLKIT_HOME)",
-		"        --quiet      progress off. Answers still go to stdout",
+		"Global: --instance N  one isolated instance: distribution wsl-toolkit-N and",
+		"                      its own state. `auto` picks the lowest free one.",
+		"                      Also WSL_TOOLKIT_INSTANCE.",
+		"        --home DIR    the state directory (also WSL_TOOLKIT_HOME)",
+		"        --config F    a configuration file, ahead of every search step",
+		"        --quiet       progress off. Answers still go to stdout",
 		"",
 		"Every command takes --json where an answer has structure.",
 		"Progress goes to stderr; stdout carries the answer alone.",
@@ -98,6 +102,7 @@ func run(ctx context.Context, args []string) int {
 	// The global flags are read before the subcommand so --home applies to the
 	// state directory every subcommand resolves at startup.
 	var rest []string
+	instance := ""
 	for i := 0; i < len(args); i++ {
 		switch {
 		case args[i] == "--quiet" || args[i] == "-q":
@@ -111,6 +116,24 @@ func run(ctx context.Context, args []string) int {
 			os.Setenv("WSL_TOOLKIT_HOME", args[i])
 		case strings.HasPrefix(args[i], "--home="):
 			os.Setenv("WSL_TOOLKIT_HOME", strings.TrimPrefix(args[i], "--home="))
+		case args[i] == "--instance":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "wsl-toolkit: --instance needs a name, or "+toolkit.InstanceAuto)
+				return exitCannot
+			}
+			i++
+			instance = args[i]
+		case strings.HasPrefix(args[i], "--instance="):
+			instance = strings.TrimPrefix(args[i], "--instance=")
+		case args[i] == "--config":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "wsl-toolkit: --config needs a file")
+				return exitCannot
+			}
+			i++
+			toolkit.ExplicitConfigPath = args[i]
+		case strings.HasPrefix(args[i], "--config="):
+			toolkit.ExplicitConfigPath = strings.TrimPrefix(args[i], "--config=")
 		default:
 			rest = append(rest, args[i])
 			// ⛔ Everything after the subcommand belongs to it. `script` forwards
@@ -125,6 +148,14 @@ func run(ctx context.Context, args []string) int {
 	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
 		fmt.Fprintln(os.Stderr, usage())
 		return exitOK
+	}
+	// ⛔ THE INSTANCE IS RESOLVED BEFORE THE SUBCOMMAND RUNS, because it decides
+	// the state directory every subcommand reads at startup and the distribution
+	// name the configuration defaults to. Resolving it inside a command would be
+	// resolving it after something had already read the wrong home. WSL-43.
+	if code, err := applyInstance(ctx, instance); err != nil {
+		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
+		return code
 	}
 	cmd, cmdArgs := rest[0], rest[1:]
 	var err error
@@ -175,6 +206,61 @@ func run(ctx context.Context, args []string) int {
 		}
 	}
 	return code
+}
+
+// applyInstance turns --instance, WSL_TOOLKIT_INSTANCE or a working tree's
+// pointer into the two things an instance IS: a state directory and a
+// distribution name.
+//
+// ⭐ IT SETS THE ENVIRONMENT RATHER THAN THREADING A VALUE. Everything below
+// resolves the state directory through toolkit.Home, and the configuration
+// defaults its distribution name from the same selection, so setting both here
+// is what makes it impossible for one to move without the other. WSL-43.
+//
+// ⚠ THE POINTER IS READ ONLY WHERE NOTHING ELSE SAID. A flag, then the
+// environment, then a `.wsl-toolkit/instance.json` in the working directory or a
+// parent, then the default. A pointer that overrode an explicit flag would be a
+// file in a checkout silently deciding which machine an agent talks to.
+func applyInstance(ctx context.Context, asked string) (int, error) {
+	if asked == "" && strings.TrimSpace(os.Getenv(toolkit.InstanceEnv)) == "" {
+		cwd, err := os.Getwd()
+		if err == nil {
+			named, at, err := toolkit.ReadPointer(cwd)
+			if err != nil {
+				return exitCannot, err
+			}
+			if at != "" {
+				asked = named
+				note("instance " + describeInstance(named) + ", from " + at)
+			}
+		}
+	}
+	if asked == "" && strings.TrimSpace(os.Getenv(toolkit.InstanceEnv)) == "" {
+		return exitOK, nil
+	}
+	inst, err := toolkit.ResolveInstance(ctx, asked)
+	if err != nil {
+		return exitCannot, err
+	}
+	if inst.Name == toolkit.DefaultInstance {
+		return exitOK, nil
+	}
+	os.Setenv("WSL_TOOLKIT_HOME", inst.Home)
+	os.Setenv(toolkit.InstanceEnv, inst.Name)
+	// ⛔ The DISTRIBUTION is set through the configuration's default rather than
+	// written to a file. An instance that rewrote somebody's config.json to
+	// record its own name would make the selection sticky, and a flag is not a
+	// setting.
+	toolkit.SelectedInstance = inst
+	note("instance " + inst.Name + ": distribution " + inst.Distro + ", state " + inst.Home)
+	return exitOK, nil
+}
+
+func describeInstance(name string) string {
+	if name == toolkit.DefaultInstance {
+		return "the default"
+	}
+	return name
 }
 
 // deniedAdvice names the two ways forward. A caller meeting E_ACCESSDENIED from

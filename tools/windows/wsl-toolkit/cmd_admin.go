@@ -237,11 +237,20 @@ func cmdConfig(args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	path, err := toolkit.ConfigPath()
+	src, err := toolkit.ResolveConfig()
 	if err != nil {
 		return exitCannot, err
 	}
+	path := src.Path
 	if *write {
+		// ⛔ --write ALWAYS writes the STATE DIRECTORY's file, never the one the
+		// search resolved. A caller standing in a checkout that carries a
+		// wsl-toolkit.json would otherwise have `config --write` overwrite a
+		// TRACKED file with the whole built-in catalog, which is a report
+		// command editing somebody's repository. WSL-51.
+		if path, err = toolkit.ConfigPath(); err != nil {
+			return exitCannot, err
+		}
 		// ⚠ The written file carries the CURRENT catalog, so an edit starts
 		// from what the tool is actually doing rather than from an empty
 		// skeleton somebody has to guess the shape of.
@@ -252,22 +261,44 @@ func cmdConfig(args []string) (int, error) {
 		}
 		logf("  wrote %s", path)
 	}
+	home, err := toolkit.Home()
+	if err != nil {
+		return exitCannot, err
+	}
 	if *asJSON {
 		return exitOK, writeJSON(map[string]any{
-			"schema":  "wsl-toolkit-config-report/1",
-			"path":    path,
-			"exists":  fileExists(path),
-			"base":    cfg.Base,
-			"images":  cfg.Catalog(),
-			"matrix":  cfg.MatrixDefault(),
-			"builtin": len(cfg.Images) == 0,
+			"schema":      "wsl-toolkit-config-report/1",
+			"path":        path,
+			"exists":      fileExists(path),
+			"from":        src.From,
+			"searched":    src.Searched,
+			"home":        home,
+			"instance":    toolkit.SelectedInstance.Name,
+			"base":        cfg.Base,
+			"images":      cfg.Catalog(),
+			"matrix":      cfg.MatrixDefault(),
+			"builtin":     len(cfg.Images) == 0,
+			"fingerprint": cfg.Fingerprint(),
 		})
 	}
 	fmt.Println(path)
 	fmt.Fprintf(os.Stderr, "  exists      %v\n", fileExists(path))
+	fmt.Fprintf(os.Stderr, "  resolved    from %s\n", src.From)
+	// ⭐ THE ORDER IS PRINTED, not only the winner. A caller with a
+	// wsl-toolkit.json in a parent directory silently changes which
+	// configuration is used, and the only honest answer to "why is it using
+	// that one" is the list of places that were looked at. WSL-51.
+	for i, cand := range src.Searched {
+		fmt.Fprintf(os.Stderr, "    %d. %s\n", i+1, cand)
+	}
+	fmt.Fprintf(os.Stderr, "  home        %s\n", home)
+	if toolkit.SelectedInstance.Name != toolkit.DefaultInstance {
+		fmt.Fprintf(os.Stderr, "  instance    %s\n", toolkit.SelectedInstance.Name)
+	}
 	fmt.Fprintf(os.Stderr, "  base        %s from %s as %s\n", cfg.Base.Name, cfg.Base.Image, cfg.Base.User)
 	fmt.Fprintf(os.Stderr, "  catalog     %d image(s), %s\n", len(cfg.Catalog()), builtinOrStored(cfg))
 	fmt.Fprintf(os.Stderr, "  matrix      %d image(s) by default\n", len(cfg.MatrixDefault()))
+	fmt.Fprintf(os.Stderr, "  fingerprint %s\n", cfg.Fingerprint())
 	fmt.Fprintf(os.Stderr, "\n  wsl-toolkit config --write puts the effective configuration on disk to edit.\n")
 	return exitOK, nil
 }

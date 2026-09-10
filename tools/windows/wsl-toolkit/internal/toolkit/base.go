@@ -41,7 +41,11 @@ type BaseState struct {
 	DiskBytes  int64     `json:"disk_bytes,omitempty"`
 	DiskKnown  bool      `json:"disk_known"`
 	Created    time.Time `json:"created,omitempty"`
-	Problems   []string  `json:"problems,omitempty"`
+	// Identity is what the GUEST says it is, read under --probe. ⛔ It is the
+	// authority: `built_from` above comes from a file on this machine that an
+	// editor can reach, and this comes from inside the distribution. WSL-42.
+	Identity *Identity `json:"identity,omitempty"`
+	Problems []string  `json:"problems,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -50,6 +54,11 @@ type Base struct {
 	home string
 	wsl  *Wsl
 	log  func(string)
+	// unmarked says this process built the distribution now registered and did
+	// not get as far as stamping it, so Remove may unregister it without the
+	// guest's proof. ⛔ It is set by the build path and by nothing else: a
+	// flag a caller could set would be a way past the guard.
+	unmarked bool
 }
 
 // NewBase binds the lifecycle to this host. It creates the state directory,
@@ -96,10 +105,15 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 		// for one fact, so they are compared. They drift the moment somebody
 		// runs `--preset alpine` without `--save`.
 		st.BuiltFrom = rec.Image
+		// ⚠ THIS IS THE RECORD, and the record is not the authority. Under
+		// --probe the guest's own marker replaces both this value and this
+		// problem below; without one, the record is the best answer available
+		// and the message says which it is.
 		if rec.Image != "" && rec.Image != st.Image {
 			st.Problems = append(st.Problems, fmt.Sprintf(
-				"it was built from %s and the configuration says %s. Run `base ensure --preset %s` to rebuild, or `--save` the one you meant",
-				rec.Image, st.Image, st.Image))
+				"this machine's record says it was built from %s and the configuration says %s. "+
+					"Run `base status --probe` to ask the guest, then `base recreate` to rebuild",
+				rec.Image, st.Image))
 		}
 	}
 	if !st.Registered {
@@ -108,6 +122,29 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	}
 	if !probe {
 		return st, nil
+	}
+	// ⭐ ASKED OF THE GUEST, and only under --probe because it costs a wsl.exe
+	// round trip. A status that reports the record alone reports what this
+	// machine believes, which is exactly what issue 18 showed to be wrong.
+	if id, err := b.wsl.ReadIdentity(ctx, b.cfg.Base.Name); err == nil {
+		st.Identity = &id
+		st.BuiltFrom = id.Image
+		// ⛔ THE RECORD-BASED PROBLEM IS DROPPED, not added to. The record and
+		// the marker say the same thing whenever `ensure` has run, so keeping
+		// both produced two lines about one disagreement and left a reader
+		// wondering which of the two the tool believed. The marker is the
+		// authority, so it is the one that speaks.
+		st.Problems = withoutRecordDrift(st.Problems)
+		if id.Image != st.Image {
+			st.Problems = append(st.Problems, fmt.Sprintf(
+				"the guest was built from %s and the configuration says %s. Run `base recreate` to rebuild it, or change the configuration back",
+				id.Image, st.Image))
+		}
+	} else if errors.Is(err, ErrNoIdentity) {
+		st.Problems = append(st.Problems, fmt.Sprintf(
+			"%s carries no identity marker, so this tool cannot confirm it built it. `base ensure` adopts one it has a record for", b.cfg.Base.Name))
+	} else {
+		st.Problems = append(st.Problems, err.Error())
 	}
 	engine, verifyErr := b.verify(ctx)
 	st.Engine = engine
@@ -118,6 +155,24 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	st.Healthy = true
 	return st, nil
 }
+
+// withoutRecordDrift removes the problem the host record raised, for the case
+// where the guest has since answered the same question with authority.
+func withoutRecordDrift(problems []string) []string {
+	out := problems[:0]
+	for _, p := range problems {
+		if strings.HasPrefix(p, recordDriftPrefix) {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// recordDriftPrefix is how that problem is recognised. ⚠ A prefix rather than
+// a whole-string match, because the message names two images and neither is
+// known here.
+const recordDriftPrefix = "this machine's record says it was built from "
 
 type baseRecord struct {
 	Schema  string    `json:"schema"`
@@ -169,14 +224,18 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 		st.Registered = false
 	}
 	if st.Registered {
-		b.log(b.cfg.Base.Name + " is registered; checking whether it can run a container")
+		b.log(b.cfg.Base.Name + " is registered; checking what it is")
+		// ⛔ WHAT IT IS COMES BEFORE WHETHER IT WORKS. A health probe runs an
+		// Alpine CONTAINER successfully inside whatever the distribution is; it
+		// proves the engine works and identifies nothing. WSL-42, issue 18: a
+		// base built from Arch, with the config since changed to Alpine, was
+		// RELABELLED Alpine because the probe passed, and `base status` then
+		// reported no drift over a guest whose /etc/os-release still said Arch.
+		if err := b.reconcileIdentity(ctx); err != nil {
+			return st, err
+		}
 		if engine, err := b.verify(ctx); err == nil {
 			b.log("the engine answers: " + engine)
-			// ⛔ Refreshed on every path that leaves a usable base. A record
-			// written once describes the first build forever.
-			if err := b.writeRecord(); err != nil {
-				return st, err
-			}
 			return b.Status(ctx, true)
 		} else {
 			b.log("it cannot: " + err.Error())
@@ -194,18 +253,27 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 			} else {
 				b.log("the engine answers: " + engine)
 			}
-			if err := b.writeRecord(); err != nil {
-				return st, err
-			}
 			return b.Status(ctx, true)
 		}
 	}
+	// ⛔ FROM HERE THIS PROCESS OWNS THE DISTRIBUTION IT IS BUILDING, marker or
+	// not, so a build that dies before stamping can still be cleared up.
+	b.unmarked = true
 	if err := b.create(ctx); err != nil {
 		return st, err
 	}
 	if err := b.provision(ctx); err != nil {
 		return st, err
 	}
+	// ⭐ STAMPED BEFORE IT IS VERIFIED. The marker says what this tool BUILT,
+	// which is a fact by the time provisioning has finished; whether it can run
+	// a container is a different question and the answer to it is not identity.
+	if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
+		Image: b.cfg.Base.Image, User: b.cfg.Base.User, Tool: toolVersion(),
+	}); err != nil {
+		return st, err
+	}
+	b.unmarked = false
 	engine, err := b.verify(ctx)
 	if err != nil {
 		return st, fmt.Errorf("built and it cannot run a container: %w", err)
@@ -215,6 +283,94 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 		return st, err
 	}
 	return b.Status(ctx, true)
+}
+
+// reconcileIdentity compares what the guest says it is against the record and
+// the configuration, and refuses rather than papering over a disagreement.
+//
+// ⭐ THE COMMENT THAT USED TO BE HERE ARGUED FOR ITSELF THREE LINES ABOVE THE
+// DEFECT. It read: "Refreshed on every path that leaves a usable base. A record
+// written once describes the first build forever." Somebody reasoned about this
+// and reached a conclusion that is half right. A record refreshed on every
+// healthy path follows the CONFIG, and the thing it claims to describe is the
+// GUEST. It is replaced rather than deleted, because the next reader will have
+// the same thought. WSL-42, issue 18.
+//
+// Three outcomes and no fourth:
+//
+//	the guest carries a marker      the record is rewritten from THE MARKER
+//	it carries none and we built it the marker is written and it is said out loud
+//	anything else                   a refusal naming the command that rebuilds
+func (b *Base) reconcileIdentity(ctx context.Context) error {
+	id, err := b.wsl.ReadIdentity(ctx, b.cfg.Base.Name)
+	switch {
+	case err == nil:
+		// ⛔ THE MARKER WINS. The record lives on the host where an editor can
+		// reach it; the marker is inside the distribution and was written by a
+		// provisioning run. They can disagree, and this is which one is true.
+		if err := b.writeRecordFrom(id); err != nil {
+			return err
+		}
+		if id.Image != b.cfg.Base.Image {
+			// ⛔ REPORTED AND LEFT VISIBLE. It does not rebuild: a rebuild
+			// destroys the thing the operator needs to look at, and `recreate`
+			// already exists for the case where they want one.
+			b.log(fmt.Sprintf("this distribution was built from %s and the configuration says %s",
+				id.Image, b.cfg.Base.Image))
+			b.log("run `wsl-toolkit base recreate` to rebuild it, or change the configuration back")
+		}
+		return nil
+
+	case errors.Is(err, ErrNoIdentity):
+		// The upgrade path, and it is part of this entry rather than a follow-up:
+		// a base built before markers existed has none.
+		rec, recErr := b.readRecord()
+		if recErr != nil {
+			return fmt.Errorf("%s is registered, carries no wsl-toolkit identity marker and has no record here either, "+
+				"so this tool cannot tell whether it built it. Remove it yourself, or run: wsl-toolkit base recreate",
+				b.cfg.Base.Name)
+		}
+		b.log(b.cfg.Base.Name + " predates the identity marker and this tool's own record describes it; stamping it")
+		if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
+			Image: rec.Image, User: rec.User, Built: rec.Created, Tool: toolVersion(),
+		}); err != nil {
+			return err
+		}
+		b.log("wrote " + IdentityPath)
+		return nil
+
+	default:
+		return err
+	}
+}
+
+// writeRecordFrom writes the host record from what the GUEST said, so the two
+// cannot drift apart by the record following the configuration.
+func (b *Base) writeRecordFrom(id Identity) error {
+	rec := baseRecord{
+		Schema: "wsl-toolkit-base/1", Name: b.cfg.Base.Name,
+		Image: id.Image, User: id.User, Created: id.Built,
+	}
+	data, err := jsonMarshalIndent(rec)
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(b.recordPath(), data, 0o600)
+}
+
+// toolVersion is the product version where it can be read, and an empty string
+// where it cannot. ⚠ A marker with no version is still a marker; refusing to
+// stamp a distribution because a version string could not be read would trade a
+// working base for a cosmetic field.
+func toolVersion() string {
+	if ScriptVersion == nil {
+		return ""
+	}
+	v, err := ScriptVersion()
+	if err != nil {
+		return ""
+	}
+	return v
 }
 
 func (b *Base) create(ctx context.Context) error {
@@ -249,7 +405,7 @@ func (b *Base) create(ctx context.Context) error {
 		return err
 	}
 	b.log("importing as WSL2 distribution " + b.cfg.Base.Name)
-	if err := b.wsl.Import(ctx, b.cfg.Base.Name, dir, tarPath, b.cfg.Base.Name); err != nil {
+	if err := b.wsl.Import(ctx, b.cfg.Base.Name, dir, tarPath); err != nil {
 		return err
 	}
 	return nil
@@ -308,7 +464,7 @@ func (b *Base) provision(ctx context.Context) error {
 	// WSL reads /etc/wsl.conf at start, so without this restart the settings
 	// just written appear to have been applied and are not.
 	b.log("restarting so WSL re-reads /etc/wsl.conf")
-	if err := b.wsl.Terminate(ctx, b.cfg.Base.Name, b.cfg.Base.Name); err != nil {
+	if err := b.wsl.Terminate(ctx, b.cfg.Base.Name); err != nil {
 		return err
 	}
 	return nil
@@ -399,7 +555,10 @@ func (b *Base) Remove(ctx context.Context) error {
 	}
 	if exists {
 		b.log("unregistering " + b.cfg.Base.Name)
-		if err := b.wsl.Unregister(ctx, b.cfg.Base.Name, b.cfg.Base.Name); err != nil {
+		// ⚠ The marker is DEMANDED unless this tool is clearing up a build of
+		// its own that never got far enough to write one. `b.unmarked` is set by
+		// the one path that knows that: a provisioning run that failed.
+		if err := b.wsl.Unregister(ctx, b.cfg.Base.Name, !b.unmarked); err != nil {
 			return err
 		}
 	}

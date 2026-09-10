@@ -3,6 +3,7 @@ package toolkit
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -273,32 +274,50 @@ func TestAnArgumentOutsideTheClearedAlphabetIsRefused(t *testing.T) {
 }
 
 func TestOnlyTheOwnedDistributionCanBeTouched(t *testing.T) {
-	const base = "wsl-toolkit"
-	for _, name := range append([]string{"", "eph-something", "Ubuntu", "wsl-toolkit-2"}, ProtectedDistros...) {
-		if err := AssertOwnedDistro(name, base); err == nil {
-			t.Errorf("AssertOwnedDistro allowed %q while the base is %q", name, base)
+	// ⛔ THE GUARD TAKES ONE NAME NOW. It used to take the name and the
+	// configured base name and compare them, and every caller in the program
+	// passed `cfg.Base.Name` for both, so it proved that a name equals itself
+	// while `base.name` was editable. WSL-42, issue 16.
+	refused := []string{
+		"", "eph-something", "Ubuntu",
+		// The prefix is a BOUNDARY, not a substring: these three have it and
+		// are somebody else's distribution.
+		"wsl-toolkitorama", "wsl-toolkit2", "wsl-toolkit.two",
+		// A suffix that is not a usable instance name.
+		"wsl-toolkit-", "wsl-toolkit-a b", "wsl-toolkit-a/b",
+	}
+	for _, name := range append(refused, ProtectedDistros...) {
+		if err := AssertOwnedDistro(name); err == nil {
+			t.Errorf("AssertOwnedDistro allowed %q", name)
+		} else if !errors.Is(err, ErrNotOwned) {
+			t.Errorf("refusing %q does not wrap ErrNotOwned: %v", name, err)
 		}
 	}
-	if err := AssertOwnedDistro("wsl-toolkit", base); err != nil {
-		t.Errorf("the base itself was refused: %v", err)
+	// ⭐ AN INSTANCE IS OWNED. This is the half WSL-43 needs and the reporter
+	// did not ask for: a fixed single name would have closed issue 16 exactly
+	// as filed and made isolated instances impossible.
+	for _, name := range []string{"wsl-toolkit", "wsl-toolkit-2", "wsl-toolkit-two", "wsl-toolkit-a_b-c"} {
+		if err := AssertOwnedDistro(name); err != nil {
+			t.Errorf("an owned name was refused: %q: %v", name, err)
+		}
 	}
 	// ⚠ WSL distribution names are compared case-insensitively by wsl.exe, so
-	// the guard is too. A guard that was case-sensitive would let
-	// WSL-TOOLKIT through as "not the base" and then act on the base.
-	if err := AssertOwnedDistro("WSL-TOOLKIT", base); err != nil {
+	// the guard is too. A guard that was case-sensitive would refuse to act on
+	// this tool's own base the day something spelled it back differently.
+	if err := AssertOwnedDistro("WSL-TOOLKIT"); err != nil {
 		t.Errorf("the base under another case was refused: %v", err)
 	}
-	if err := AssertOwnedDistro("PODMAN-MACHINE-DEFAULT", base); err == nil {
+	if err := AssertOwnedDistro("PODMAN-MACHINE-DEFAULT"); err == nil {
 		t.Error("a protected name under another case was allowed")
 	}
 	// ⛔ THE PROTECTED LIST IS ASSERTED BY ITS MESSAGE, because refusal alone is
-	// not what it adds. The exact-name rule below it already refuses every one
-	// of these names, so a case that only checks for an error stays green with
-	// the list deleted -- which is what this case did until the mutation pass
+	// not what it adds. The name rule below it already refuses every one of
+	// these names, so a case that only checks for an error stays green with the
+	// list deleted -- which is what this case did until the mutation pass
 	// planted that defect and read a pass. The list exists so a plausible name
 	// is refused with the reason, and the reason is the thing to test.
 	for _, name := range ProtectedDistros {
-		err := AssertOwnedDistro(name, base)
+		err := AssertOwnedDistro(name)
 		if err == nil {
 			t.Fatalf("%q was allowed", name)
 		}
@@ -307,10 +326,34 @@ func TestOnlyTheOwnedDistributionCanBeTouched(t *testing.T) {
 		}
 	}
 	// And the reason has to be specific to those names: an ordinary name that
-	// is merely not the base must NOT claim to be a runtime's own.
-	err := AssertOwnedDistro("Ubuntu", base)
+	// is merely outside the prefix must NOT claim to be a runtime's own.
+	err := AssertOwnedDistro("Ubuntu")
 	if err == nil || strings.Contains(err.Error(), "container runtime") {
 		t.Errorf("refusing an ordinary name says %v, which credits it to the protected list", err)
+	}
+}
+
+// TestAConfiguredNameOutsideThePrefixIsRefused is issue 16 from the other side:
+// the guard is only as good as what may reach it, and `base.name` was the door.
+func TestAConfiguredNameOutsideThePrefixIsRefused(t *testing.T) {
+	for _, name := range []string{"Ubuntu", "my-distro", "wsl-toolkitorama", "WSL-TOOLKIT"} {
+		cfg := DefaultConfig()
+		cfg.Base.Name = name
+		if err := cfg.Validate(); err == nil {
+			// v1.3.0 accepted every one of these, created a distribution for
+			// it on `base ensure`, and unregistered it on `base remove --yes`.
+			t.Errorf("base.name %q was accepted", name)
+		}
+	}
+	// ⚠ WSL-TOOLKIT is refused HERE and allowed by AssertOwnedDistro, and the
+	// two are not in conflict: creating a name is not the same permission as
+	// acting on a distribution that already carries one.
+	for _, name := range []string{"wsl-toolkit", "wsl-toolkit-two", "wsl-toolkit-2"} {
+		cfg := DefaultConfig()
+		cfg.Base.Name = name
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("base.name %q was refused and it is one this tool may own: %v", name, err)
+		}
 	}
 }
 
@@ -671,4 +714,156 @@ func TestAGuestPathIsNeverAWindowsPath(t *testing.T) {
 	if _, err := WindowsPathToGuest(`\\server\share\x`); err == nil {
 		t.Fatal("a UNC path was given a /mnt form, and it has none")
 	}
+}
+
+// -- WSL-43 and WSL-51: instances, and where a configuration comes from -------
+
+func TestAnInstanceIsANameAndADirectoryTogether(t *testing.T) {
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	t.Setenv(InstanceEnv, "")
+	for _, c := range []struct {
+		name   string
+		distro string
+	}{
+		{DefaultInstance, DefaultBaseName},
+		{"two", DefaultBaseName + "-two"},
+		{"2", DefaultBaseName + "-2"},
+	} {
+		inst, err := ResolveInstance(context.Background(), c.name)
+		if err != nil {
+			t.Fatalf("instance %q: %v", c.name, err)
+		}
+		if inst.Distro != c.distro {
+			t.Errorf("instance %q resolved to distribution %q, want %q", c.name, inst.Distro, c.distro)
+		}
+		// ⛔ THE TWO HALVES MOVE TOGETHER OR NOT AT ALL. A distribution that
+		// moved while the state directory did not is two agents sharing one
+		// ledger while each believes it is isolated, which is the defect this
+		// pairing exists to make impossible.
+		base, err := Home()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.name == DefaultInstance {
+			if inst.Home != base {
+				t.Errorf("the default instance moved its state to %q", inst.Home)
+			}
+		} else if inst.Home == base {
+			t.Errorf("instance %q kept the default state directory, so it shares a ledger", c.name)
+		}
+	}
+}
+
+func TestAnInstanceNameThatCannotBeADirectoryIsRefused(t *testing.T) {
+	for _, bad := range []string{"Two", "two words", "a/b", "..", ".", "-" + strings.Repeat("x", 40), "a$b"} {
+		if err := ValidateInstanceName(bad); err == nil {
+			t.Errorf("instance %q was accepted, and it is a distribution suffix AND a directory name", bad)
+		}
+	}
+	for _, good := range []string{"two", "2", "a-b", "a_b", strings.Repeat("x", 32)} {
+		if err := ValidateInstanceName(good); err != nil {
+			t.Errorf("instance %q was refused: %v", good, err)
+		}
+	}
+}
+
+func TestTheNearestConfigurationWinsWhole(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	tree := t.TempDir()
+	inner := filepath.Join(tree, "a", "b")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	write := func(dir, image string) {
+		body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit","image":"` + image + `","user":"toolkit"}}`
+		if err := os.WriteFile(filepath.Join(dir, WorkingConfigName), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(tree, "docker.io/library/debian:latest")
+	write(filepath.Join(tree, "a"), "docker.io/library/alpine:latest")
+
+	restore := chdir(t, inner)
+	defer restore()
+
+	src, err := ResolveConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(tree, "a", WorkingConfigName); src.Path != want {
+		t.Fatalf("resolved %q, want the NEAREST one %q", src.Path, want)
+	}
+	// ⛔ WHOLE, NOT MERGED. A partially merged configuration is one nobody can
+	// reason about from any single file.
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Base.Image != "docker.io/library/alpine:latest" {
+		t.Fatalf("the effective image is %q, so the further file contributed", cfg.Base.Image)
+	}
+	if len(src.Searched) == 0 || src.Searched[0] != filepath.Join(inner, WorkingConfigName) {
+		t.Fatalf("the search order does not start where the caller is standing: %v", src.Searched)
+	}
+}
+
+func TestAConfigurationThisToolDoesNotReadIsRefused(t *testing.T) {
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, RefusedConfigName), []byte("[base]\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	restore := chdir(t, dir)
+	defer restore()
+	// ⛔ REFUSED BY NAME, never skipped. Silently ignoring a file somebody wrote
+	// as configuration is how this tool would lie about which config won.
+	if _, err := ResolveConfig(); err == nil {
+		t.Fatal("a wsl-toolkit.toml in the search path was ignored")
+	} else if !strings.Contains(err.Error(), RefusedConfigName) {
+		t.Fatalf("the refusal does not name the file: %v", err)
+	}
+}
+
+func TestAPointerNamesAnInstanceAndHoldsNothingElse(t *testing.T) {
+	tree := t.TempDir()
+	if _, err := WritePointer(tree, "fromtree"); err != nil {
+		t.Fatal(err)
+	}
+	deep := filepath.Join(tree, "x", "y")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name, at, err := ReadPointer(deep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if name != "fromtree" {
+		t.Fatalf("the pointer resolved to %q", name)
+	}
+	if at == "" {
+		t.Fatal("the pointer was found and its path was not reported, so nothing can say where the instance came from")
+	}
+	// A tree with no pointer answers "nothing", not an error.
+	name, at, err = ReadPointer(t.TempDir())
+	if err != nil || name != "" || at != "" {
+		t.Fatalf("a tree with no pointer answered %q at %q: %v", name, at, err)
+	}
+}
+
+// chdir moves into a directory for one test and returns the undo.
+//
+// ⚠ NOT t.Chdir: the process working directory is global, and these tests must
+// restore it whatever happens or every later test resolves configuration
+// somewhere unexpected.
+func chdir(t *testing.T, dir string) func() {
+	t.Helper()
+	prev, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	return func() { _ = os.Chdir(prev) }
 }

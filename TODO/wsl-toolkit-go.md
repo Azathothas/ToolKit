@@ -1004,7 +1004,7 @@ Saying so is better than a case that asserts a string.
 **Source** [Issue 16](https://github.com/Azathothas/ToolKit/issues/16) and
 [issue 18](https://github.com/Azathothas/ToolKit/issues/18), filed by a consumer
 agent against the published `wsl-toolkit-v1.3.0` on 2026-09-10.
-**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+**Category** wsl, **Priority** P1, **Effort** L, **Status** done
 
 ## Problem
 
@@ -1114,13 +1114,106 @@ refuses by name; a case that builds from one preset, changes the configured imag
 without a rebuild, runs `ensure`, and asserts the record still names the image
 the guest actually carries.
 
+## Closed 2026-09-10
+
+Ownership is TWO facts and both are required: the NAME matches the prefix, and
+the GUEST carries a marker this tool wrote.
+
+| where | what |
+| --- | --- |
+| `internal/toolkit/identity.go` | `IsOwnedName`, `AssertOwnedDistro(name)`, `ValidateOwnedName`, and the read/write of `/etc/wsl-toolkit-identity.json` |
+| `Config.Validate` | a `base.name` outside the prefix is refused when the file is READ |
+| `Wsl.Unregister` | the one irreversible call, and the one that demands the marker |
+| `Base.reconcileIdentity` | the comparison that replaced the relabel |
+
+⛔ **`AssertOwnedDistro` takes ONE name now.** It took `(name, baseName)` and
+every caller in the program passed `cfg.Base.Name` for both, so it compared a
+value with itself at every call site there was.
+
+⭐ **The comment that argued for the defect is replaced rather than deleted**, as
+the entry asked. It read: "Refreshed on every path that leaves a usable base. A
+record written once describes the first build forever." Half right: a record
+refreshed on every healthy path follows the CONFIG, and the thing it claims to
+describe is the GUEST.
+
+⚠ **`base ensure` now exits 1 over a drifted base**, where it used to exit 0
+having relabelled its own record. 1 is "it ran and it disagreed", which is what
+happened: it was asked to bring the machine to the state a configuration
+describes and it could not, short of a rebuild it must not perform on its own.
+The acceptance case asserts the 1 rather than working around it.
+
+⚠ **Two refinements came from DRIVING it rather than from reading it.** A
+missing marker read as "could not read the marker" instead of "carries none",
+because `cat` on a missing file exits 1 and `ExecDirect` reports every nonzero
+exit as an error too; and the drift was reported twice, once from the record and
+once from the guest, over one disagreement. Both are this tree's own recurring
+class, and both were found by running the thing.
+
+### Two instances, and what nearly went wrong
+
+⛔ **A TEST WRITTEN FOR THE PAIRING CAUGHT A FOOTGUN BEFORE IT SHIPPED.** The
+first version let an explicit `--home` win outright over an instance's own
+directory, on the reasoning that a caller who names a directory means it. That is
+wrong in the one case this entry is about: `--home X --instance one` and
+`--home X --instance two` would have been two distributions sharing ONE ledger,
+one helper endpoint and one transcript directory, with each caller believing it
+was isolated. `--home` sets the ROOT and an instance still gets its own directory
+under it.
+
+⭐ **`TOOL-17`'s consumer harness is the second thing that argued for this
+entry.** It nearly unregistered the operator's own base, because a separate state
+directory is not isolation while the distribution name comes from the
+configuration. That file sets a name by hand; this entry is the mechanism that
+replaces the convention.
+
+### The configuration search
+
+⛔ **The nearest file wins WHOLE, and `config` prints the order.** `--config`,
+then `wsl-toolkit.json` in the working directory or the nearest parent, then the
+state directory's own file, then the defaults. A `wsl-toolkit.toml` in that
+search is REFUSED by name rather than skipped.
+
+⭐ **The name collision the entry raised dissolved with the ruling.**
+`.wsl-toolkit/` on the host holds a POINTER naming an instance; `GuestRoot` keeps
+its name, and the state itself stays under one home per instance.
+
+⚠ **`config --write` writes the STATE DIRECTORY's file and never the one the
+search resolved.** Without that, `config --write` run inside a checkout carrying
+a `wsl-toolkit.json` would overwrite a TRACKED file with the whole built-in
+catalog, which is a report command editing somebody's repository. That was not in
+the entry and it is the kind of thing the entry's own ruling implies.
+
+```text
+  ok    a configured name outside the prefix is refused by name
+  ok    an instance name inside the prefix is accepted
+  ok    the guest own marker decides what the base was built from
+  ok    the nearer configuration wins whole and config names the order
+  ok    a configuration this tool does not read is refused by name
+  ok    two instances share no distribution, state, transcript or artifact
+
+acceptance: 49 case(s) passed against a real machine.
+```
+
+The last case builds a SECOND distribution in one run, runs a job in each,
+asserts neither sees the other's distribution, state directory, transcript or
+artifacts, and that `gc --apply` on one leaves the other whole. It is behind the
+`-Quick` switch because it costs a base build. The machine was back to its three
+pre-existing distributions afterwards, which the final case asserts by name.
+
+⚠ **The helper endpoint is per instance by construction and has no case of its
+own.** It lives at `<state>/helper.json` and the state directory is what an
+instance moves, so a case would be asserting that a path built from a different
+root is a different path. The transcript assertion covers the same property with
+a fact a reader can check.
+
+
 ---
 
 ## WSL-43. Many agents, many bases
 
 **Source** The operator on 2026-09-10: several agents should work at once, each
 isolated, and all of them still able to use this tooling.
-**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+**Category** wsl, **Priority** P1, **Effort** L, **Status** done
 
 ## Problem
 
@@ -1200,6 +1293,25 @@ Two instances built in one run, each running a job that writes its instance name
 into an artifact, asserting neither sees the other's distribution, state
 directory, helper or transcripts, and that `gc --apply` on one leaves the other
 whole.
+
+## Closed 2026-09-10
+
+⛔ **ONE RULING, WRITTEN UP ONCE.** The closure evidence for this entry, for
+[WSL-42](wsl-toolkit-go.md) and for [WSL-51](wsl-toolkit-go.md) is under `WSL-42`
+above, because they were ruled together and implemented together; three write-ups
+of one ruling is three places for it to disagree with itself.
+
+What belongs to this entry specifically: `--instance NAME`, `WSL_TOOLKIT_INSTANCE`
+and `--instance auto`; `<state>/instances/<name>` as the state directory; the
+distribution name following the selection through `DefaultConfig`; and the
+acceptance case that builds two instances in one run and asserts they share
+nothing.
+
+⚠ **The premise said this was already possible and that was right.** `--home`
+plus a stored `base.name` did isolate two agents, and the guard under it did not
+hold. What this entry removed is the manual part: the pairing is now one flag,
+and the two halves cannot move independently.
+
 
 ---
 
@@ -1895,7 +2007,7 @@ reportable afterwards.
 **Source** The operator on 2026-09-10: an agent should run `wsl-toolkit` and have
 the machine brought to the state it expects, from a config in the working
 directory or from stored dotfiles.
-**Category** wsl, **Priority** P1, **Effort** L, **Status** open
+**Category** wsl, **Priority** P1, **Effort** L, **Status** done
 
 ## Problem
 
@@ -1973,6 +2085,24 @@ A case with configs at two levels asserting the nearer one wins whole; a case
 asserting `config` names the file it resolved and the order; a case asserting a
 bare invocation in a configured directory reaches the described state and is a
 fast no-op the second time.
+
+## Closed 2026-09-10
+
+⛔ **ONE RULING, WRITTEN UP ONCE.** The closure evidence is under
+[WSL-42](wsl-toolkit-go.md), with [WSL-43](wsl-toolkit-go.md).
+
+What belongs to this entry specifically: the search order and the refusal of a
+`wsl-toolkit.toml` by name; `config` printing the resolved file, the source and
+every path it looked at; `.wsl-toolkit/instance.json` as a POINTER; and
+`config --write` always writing the state directory's file so a report command
+cannot edit a tracked file in somebody's checkout.
+
+⚠ **The third Prove clause is NOT closed and is carried rather than glossed.**
+"a bare invocation in a configured directory reaches the described state and is a
+fast no-op the second time" is [WSL-49](wsl-toolkit-go.md)'s `ready` with the
+config as its input, and `ready` does not exist yet. The search order it depends
+on is built and proved; the command that consumes it is that entry's.
+
 
 ---
 

@@ -44,8 +44,9 @@ payload on stdin or as a file, and never as an argument.
 | `config` | where the configuration is and what it says |
 | `version` | the product version, read from the embedded script |
 
-Global flags: `--home DIR` (also `WSL_TOOLKIT_HOME`), `--quiet`, and `--json` on
-every command with a structured answer.
+Global flags: `--instance NAME` (also `WSL_TOOLKIT_INSTANCE`), `--home DIR`
+(also `WSL_TOOLKIT_HOME`), `--config FILE`, `--quiet`, and `--json` on every
+command with a structured answer.
 
 ⭐ **Progress goes to stderr. stdout carries the answer alone**, so a caller can
 assign it:
@@ -133,8 +134,30 @@ One WSL distribution called `wsl-toolkit`, holding a rootless podman and one
 unprivileged account called `toolkit`. Containers run inside it, so nothing a job
 does reaches `podman-machine-default` or the images somebody else put there.
 
-⛔ **This tool acts on exactly one distribution, by exact name.** Every other
-name is refused. `wsl --shutdown` is machine-wide and appears nowhere in it.
+⛔ **This tool acts on `wsl-toolkit` and `wsl-toolkit-<instance>`, and nothing
+else.** A configuration naming anything outside that prefix is refused when it is
+READ, so a mistyped name cannot become a real distribution. `wsl --shutdown` is
+machine-wide and appears nowhere in this tool.
+
+⭐ **Ownership is a proof the guest carries, not a name in a file.** The
+distribution holds `/etc/wsl-toolkit-identity.json`, written as root at the end
+of provisioning and readable by nothing a job runs as. `base remove` reads it
+before unregistering anything, so a distribution this tool did not build cannot
+be adopted by editing a configuration file.
+
+⚠ **A base built before that marker existed is ADOPTED, once, and says so.**
+`base ensure` recognises an unmarked distribution whose name matches the prefix
+and whose record this tool wrote, stamps it, and says which file it wrote.
+Anything else is refused with the command that rebuilds it.
+
+⛔ **The guest is the authority and the record on this machine is not.**
+`base status --probe` reads the marker and reports `built_from` from it; a
+configuration naming a different image is reported as a disagreement and left
+alone, and `base ensure` exits 1 rather than rebuilding on its own. ⚠ It USED
+to rewrite its own record to match the configuration whenever a health probe
+passed, so a distribution built from Arch was relabelled Alpine because an Alpine
+CONTAINER ran inside it. The probe proves the engine works and identifies
+nothing.
 
 ⭐ **`base ensure` is the recovery path as well as the create path.** A
 registered distribution that cannot run a container is re-provisioned in place;
@@ -586,20 +609,92 @@ is that `%LOCALAPPDATA%` is that user's own directory.
 
 ---
 
+## Instances: several agents on one machine
+
+```powershell
+wsl-toolkit --instance two base ensure
+wsl-toolkit --instance two run --image alpine -c 'id -u'
+wsl-toolkit --instance auto base ensure
+```
+
+⭐ **An instance is a distribution AND a state directory, together.** One flag
+moves both, and nothing moves one without the other. `--instance two` is the
+distribution `wsl-toolkit-two` with its state under `<state>\instances\two`: its
+own base disk, ledger, transcripts, artifacts and helper endpoint.
+
+| you pass | distribution | state |
+| --- | --- | --- |
+| nothing | `wsl-toolkit` | `<state>` |
+| `--instance two` | `wsl-toolkit-two` | `<state>\instances\two` |
+| `--instance auto` | the lowest free `wsl-toolkit-<N>` | `<state>\instances\<N>` |
+| `--home D --instance two` | `wsl-toolkit-two` | `D\instances\two` |
+
+⛔ **`--home` sets the ROOT and an instance still gets its own directory under
+it.** Two instances sharing one state directory would be two distributions
+sharing one ledger, one helper endpoint and one transcript directory, while each
+caller believed it was isolated.
+
+⛔ **It is not a scheduler.** No lock, no pool, no allocation service. Two
+agents that both ask for `--instance two` get the same base, and that is correct.
+`auto` picks the lowest free one, where free means BOTH no registered
+distribution and no state directory.
+
+⚠ **A name is 1 to 32 characters of lower-case letters, digits, dash or
+underscore.** Lower case is not tidiness: WSL compares distribution names
+case-insensitively and a Windows path preserves case, so `-A` and `-a` would be
+one distribution with two state directories.
+
+⭐ **A working tree can point at one.** `.wsl-toolkit/instance.json` beside a
+checkout, or in any parent, names the instance every call made from inside it
+uses. It holds a POINTER and never state: a checkout deleted mid-job loses a file
+naming an instance, not a running job's ledger.
+
+```json
+{ "schema": "wsl-toolkit-pointer/1", "instance": "two" }
+```
+
+⚠ **A flag and the environment both beat a pointer**, in that order, so a file
+in a checkout cannot silently decide which machine an agent talks to.
+
+---
+
+## Which configuration is in effect
+
+⭐ **`wsl-toolkit config` prints the file it resolved and every path it looked
+at.** The order:
+
+| | looked at | if found |
+| --- | --- | --- |
+| 1 | `--config PATH` | used. ⛔ A named file that is not there is an error, never a fallback. |
+| 2 | `wsl-toolkit.json` in the working directory, then each parent | ⛔ the NEAREST one wins WHOLE |
+| 3 | `<state>\config.json` | used |
+| 4 | nothing | the compiled-in defaults |
+
+⛔ **The nearest file wins outright rather than being merged.** A partially
+merged configuration is one nobody can reason about from any single file.
+
+⛔ **A `wsl-toolkit.toml` found during that search is REFUSED by name.** This
+tool reads JSON and has no dependencies, and silently skipping a file somebody
+wrote as configuration is how it would lie about which one won.
+
+⚠ **`config --write` always writes `<state>\config.json`**, never the file the
+search resolved, so it cannot overwrite a tracked file in somebody's checkout.
+
+---
+
 ## Where things live
 
 | | |
 | --- | --- |
 | state | `%LOCALAPPDATA%\wsl-toolkit`, or `WSL_TOOLKIT_HOME`, or `--home DIR` |
+| an instance's state | `<state>\instances\<name>` |
 | the base distribution's disk | `<state>\base\ext4.vhdx` |
-| the configuration | `<state>\config.json` |
+| the configuration | `<state>\config.json`, or the nearest `wsl-toolkit.json` |
 | the ownership record | `<state>\ledger.jsonl` |
+| the identity marker | `/etc/wsl-toolkit-identity.json`, INSIDE the distribution |
 | the helper's endpoint | `<state>\helper.json` |
 | the extracted script | `<state>\script\wsl-toolkit-<digest>.ps1` |
-
-⚠ **It is not the script's directory.** `wsl-toolkit.ps1` keeps ephemeral
-distributions under `%LOCALAPPDATA%\wsl-ephemeral` and its `Purge` removes every
-distribution it finds there. The base has to survive a purge.
+| a working tree's pointer | `.wsl-toolkit/instance.json`, beside a checkout |
 
 ---
 
