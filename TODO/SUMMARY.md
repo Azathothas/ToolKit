@@ -12,7 +12,7 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-12T14:40:00Z | one context |
-| Commits | `fcca2ba`, clean `main`, ⛔ CI RED on it in three jobs | 11 on `main`, pushed. ⭐ Every run that completed is green; ⚠ two were CANCELLED, which is GitHub dropping a PENDING run superseded by a newer push, not a failure |
+| Commits | `fcca2ba`, clean `main`, ⛔ CI RED on it in three jobs | `git log --oneline fcca2ba..HEAD | wc -l` read **12** at `bfb4c5a`, all pushed. ⚠ Stamped rather than current, for the reason in the row below: a record edit is itself a commit, so only a stamped count stays true. ⭐ Every run that completed is green; ⚠ two were CANCELLED, which is GitHub dropping a PENDING run superseded by a newer push, not a failure |
 | Work | 100 entries: 3 open, 0 blocked, 97 done | 104 entries: 7 open, 0 blocked, 97 done. ⭐ Issue 29 CLOSED on green CI; `WSL-67` amended, not closed; `WSL-69` to `WSL-72` AUTHORED from four operator rulings and ⛔ none of them implemented |
 | Changes | 270 tracked files | 270. Two files moved out of `examples/`, two added at the root; 18 files changed. ⚠ **A count of a session's own diff is stale the moment the record carrying it is committed**, so the command is the answer and the figure is stamped: `git diff --shortstat fcca2ba..HEAD` read +2,741 / -213 at `b524b00` |
 | Size | `examples/common/bootstrap.sh`, 88 lines, one package manager, three digests written in | `scripts/common/bootstrap.sh`, 1,311 lines, twelve package managers, no digest written in. `tmux.conf` 86 lines |
