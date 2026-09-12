@@ -91,6 +91,7 @@ the language does.**
 | [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync` and `mutate` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` has no wrapper and needs none**: `repo.sh mutate` reaches it. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules. |
 | [`common/set-record.mjs`](common/) and [`common/write-file.mjs`](common/) | ⛔ **Neither needs one.** They are node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. ⚠ A twin for `set-record` would be a second implementation of table arithmetic, in the one file whose whole job is that the arithmetic is right. ⚠ What they need instead is node, which is the one dependency anything under `scripts/` has. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell no matter what language it is written in. |
+| [`common/bootstrap.sh`](common/) and [`common/tmux.conf`](common/) | ⛔ **No twin, and the reason is the same one `wsl-toolkit.ps1` has in reverse.** The job is to drive a Unix package manager inside a Unix userland. A PowerShell half would have nothing to install and nowhere to install it, and neither file is a check. |
 | [`windows/wsl-toolkit/wsl-toolkit.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. |
 | [`windows/wsl-toolkit/launcher.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** It exists to make the file above runnable on Windows, and a POSIX half would have nothing to launch. |
 | [`windows/wsl-toolkit/selftest.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it is not a check.** It is the test over that file. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell. |
@@ -540,6 +541,79 @@ what a caller sees and that a real distro is not needed to prove.
 
 ⛔ **It asserts how many cases it ran**, so a table that stopped early cannot
 report green over a smaller suite.
+
+### `common/bootstrap.sh`
+
+Bring a Unix userland up to a named set of tools, and report what it actually
+resolved.
+
+⭐ **It is here rather than under one tool's `examples/` directory, and that move
+is the point of it.** It began as `tools/windows/wsl-toolkit/examples/common/`,
+where a caller had to know that a particular provider example existed before they
+could find a general-purpose bootstrap. Nothing in it is about `wsl-toolkit`: it
+runs in a container, in CI, on a laptop, in a WSL guest, and in a BSD guest.
+
+⭐ **Twelve package managers.** apk, apt, dnf, emerge, pacman, tdnf, xbps, yum and
+zypper on Linux; `pkg` on FreeBSD and DragonFly, `pkgin` on NetBSD, `pkg_add` on
+OpenBSD. `soar` and `nix` are used as user-level providers when an account has
+neither root nor passwordless sudo. ⛔ **It never installs one of those two**,
+because installing either means piping a remote script into a shell.
+
+⭐ **The package table is the feature, and adding a distribution changes no
+code.** One row per LOGICAL name, a default package name, then only the places
+that spell it differently. ⚠ An override key may be a package manager OR
+`os:<ID>`, and `os:` wins, because Alpine, Chimera and Wolfi all use `apk` and
+disagree about half the names.
+
+⛔ **IT DEPENDS ON THE SHELL AND THE PACKAGE MANAGER AND ALMOST NOTHING ELSE.**
+Not `awk`, `tr`, `find`, `grep`, `sed`, `install` or `dirname`. Measured over the
+image catalogue: Photon has neither `awk` nor `tr`, openSUSE has neither `awk` nor
+`find`, and Void and Rocky 8 have no `find`. ⚠ **A bootstrap whose job is to
+install the missing tools cannot require them to be there already**, and the first
+draft of this file did, and reported that it had no table row for ten names on
+Photon as a result.
+
+⚠ **NO DIGEST IS WRITTEN INTO IT, and that is weaker on purpose.** Where it
+verifies a download the expected value is read from the same registry as the bytes
+at run time, which proves transport rather than authorship. The version it
+replaced pinned CodeGraph 1.5.0 and three SHA-512 values, and the registry was on
+1.6.0 the following day. ⭐ `--expect-integrity` and `--expect-sha256` put the
+stronger check back for a caller who holds a value; the run prints every version
+and digest it resolved so that caller can.
+
+⛔ **The report is read from the machine.** A name that was asked for, whose
+install command exited 0, and that is not on `PATH` afterwards is a failure and
+exit 1. ⚠ **One transaction first, then one package at a time**: a bulk install
+that fails installs nothing and names nothing, and six of twelve images once
+failed over one absent package each while reporting all eighteen as missing.
+
+Exit codes: 0 done, 1 something asked for could not be installed, 2 could not run.
+
+```sh
+sh scripts/common/bootstrap.sh --toolset agent --dry-run
+```
+
+### `common/tmux.conf`
+
+A long-running session that survives its terminal closing and cannot be quit by
+one wrong key. `bootstrap.sh` installs it as `~/.tmux.conf` when it finds it
+beside itself.
+
+⭐ **Both `M-g` and `C-b` are the prefix**, so whichever one a reader remembers
+works. ⭐ **The three keys that matter are on the status line**, which is the whole
+answer to not wanting to learn a multiplexer.
+
+⛔ **`x` and `&` are unbound.** Both are one key away from keys used all day and
+both end something that took hours; the deliberate kill is a capital letter and
+still asks. ⚠ `remain-on-exit` keeps a pane whose command has ended, so `prefix R`
+respawns one.
+
+⚠ **Every option in it is one tmux 3.0 accepts, and window and server options are
+spelled `setw -g` and `set -s`.** A bare `set -g` over a window option is an error
+on an older tmux, and the configuration then loads PARTIALLY: tmux starts, that
+line did nothing, and the session looks configured.
+
+---
 
 ### `windows/wsl-toolkit/launcher.ps1`
 

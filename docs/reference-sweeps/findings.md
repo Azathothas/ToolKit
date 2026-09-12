@@ -826,3 +826,179 @@ says the universal option is possible on `x86_64` and impossible on arm64.
   more in it than one pass finds.
 - ⚠ **The 11 remaining `vmactions` BSD repositories were listed, not
   harvested.** They are the same generated shape as the six that were.
+
+---
+
+# Sweep 2: the shell scripts behind `WSL-67`, read 2026-09-12
+
+⭐ **A second sweep, with its own provenance and its own verdicts.** It is in this
+file rather than a new one because
+[`../conventions/docs.md`](../conventions/docs.md) names
+[`usable.md`](usable.md) as the one home for what is learned from somebody else's
+project, and a second file would fork that.
+
+The subject is different from sweep 1: not whether a thing can be built, but how
+the operator's own shell scripts are written, so that
+[`../../scripts/common/bootstrap.sh`](../../scripts/common/bootstrap.sh) and
+[`../../scripts/common/tmux.conf`](../../scripts/common/tmux.conf) are the same
+shape as the rest of their world rather than a stranger in it.
+
+## Provenance
+
+⚠ **Nothing was cloned.** Seven files were fetched over HTTPS on **2026-09-12**,
+each from the URL the operator named. There is no commit for a raw `refs/heads`
+URL, so ⭐ **the date is the only provenance and a later session re-fetches rather
+than trusting this**.
+
+| # | reference | bytes | depth reached |
+| --- | --- | --- | --- |
+| S1 | `paste.ajam.dev/raw/HI6Zgb`, the operator's own `.bashrc` | 19,433 | read in full |
+| S2 | `pkgforge/devscripts` `Linux/extraxtor.sh` | 25,059 | header, structure, and four functions read in full |
+| S3 | `pkgforge/devscripts` `Linux/install_nix.sh` | 3,458 | read in full |
+| S4 | `pkgforge/devscripts` `Linux/install_zig.sh` | 2,362 | read in full |
+| S5 | `Azathothas/Arsenal` `misc/WSL/Debian/.tmux.conf` | 2,111 | read in full |
+| S6 | `Azathothas/Arsenal` `misc/Linux/Debian/bootstrap.sh` | 1,666 | read in full |
+| S7 | `fnichol/bashrc` `bashrc` | 48,168 | header, structure, and two init functions read in full |
+
+⛔ **What this sweep did not do:**
+
+- **No tracker was read.** ⚠ This is the step
+  [`../methodology/references.md`](../methodology/references.md) says always gets
+  skipped, and here it is skipped on purpose with a reason: S1 and S5 are a paste
+  and a dotfile with no tracker of their own, and S2 to S4 live in one
+  `devscripts` repository whose tracker is about the several hundred scripts in it
+  rather than about these three. ⭐ That is a gap, not a defence: a later session
+  wanting to know why `install_nix.sh` special-cases `riscv64` has to go there.
+- **Nothing was run.** These are somebody else's scripts and none was executed.
+  Every behavioural claim below is read off the source.
+- **The four-pass reading was taken over S4 and S6 only.** Both are short enough
+  to read four times for four different questions. S1, S5 and S7 got the
+  what-is-this and the how-is-it-built passes; S2 and S7 are large and were read
+  for structure plus the functions that answer this work's hard question.
+
+## Verdicts
+
+### S4, `install_zig.sh`: adopt, and it is the reason the digests came out
+
+⭐ **The most valuable reference in the sweep, and it is the shortest.** It
+resolves the version and the download URL from upstream at run time, reading a
+published index rather than carrying a pin.
+
+⭐ **That is the answer to the maintainability half of the operator's complaint
+about hardcoded digests, and the file states it in four lines.** The previous
+`examples/common/bootstrap.sh` pinned CodeGraph 1.5.0 and three SHA-512 values;
+by the time it was read here the registry was on **1.6.0**, so the pin was one
+release stale the day after it was written.
+
+⚠ **It also shows the limit of the technique, and the adoption has to carry
+that.** The Zig index publishes a digest beside each tarball, so the expected
+value comes from the same host as the bytes. That proves transport, not
+authorship: whoever could replace one could replace the other. It is the same
+property [`../consumers.md`](../consumers.md) already records about this
+repository's own `SHA256SUMS`, and `bootstrap.sh` says so in its own header rather
+than implying the check is stronger than it is.
+
+Also adopted: the bounded retry loop, and the preflight over a named list of tools
+before any work starts.
+
+### S1, the operator's `.bashrc`: adopt, for what a Unix probe should answer
+
+Three mechanisms transferred into `bootstrap.sh`'s detection, each because this
+file does it and the first draft did not:
+
+| S1 does | what it became here |
+| --- | --- |
+| tests `WSLENV` and `/etc/wsl.conf` for WSL | `detect_wsl`, over `WSL_DISTRO_NAME`, `WSLENV` and `/proc/sys/kernel/osrelease` |
+| runs `sudo -n true` to ask whether sudo is passwordless | ⭐ `detect_privilege`, three-valued rather than a boolean. A sudo that wants a password is reported as NO privilege, because the alternative is an unattended run blocking on a prompt nothing will answer. |
+| guards one function against busybox `awk` | ⛔ the decision to depend on no `awk` at all. Measured after reading it: Photon has neither `awk` nor `tr`, openSUSE has neither `awk` nor `find`, and Void and Rocky 8 have no `find`. |
+
+⚠ **What did not transfer, and the reason matters more than the fact.** S1 puts a
+`soar` directory on `PATH`, which is how this sweep learned that `soar` is the
+operator's distribution-independent package manager. `bootstrap.sh` uses soar when
+it is present and ⛔ never installs it: installing it means piping a remote script
+into a shell, which [`../security/remote-ops.md`](../security/remote-ops.md)
+refuses for a script in this tree.
+
+### S5, the operator's tmux configuration: adopt the bindings, refuse the plugins
+
+The `M-g` prefix, `M-s` for the session chooser with no prefix, mouse on, vi mode
+keys, windows numbered from one, renumbering on close and a large history limit
+are all the operator's own habits, and all of them are now in
+[`../../scripts/common/tmux.conf`](../../scripts/common/tmux.conf). ⭐ `C-b` is
+kept as the second prefix beside `M-g`, so the key a reader remembers works
+whichever one that is.
+
+⛔ **The plugin-manager block is refused.** It needs a clone before the first
+session and a manual install key after it; on a machine where neither has happened
+tmux prints an error for every new session. ⚠ A configuration for an unattended
+base carries no step a human has to perform.
+
+### S6, `Arsenal` `bootstrap.sh`: anti-pattern exhibit, kept on purpose
+
+It is apt-only by design and says so, which is honest. Two shapes in it are
+exactly what the new file exists not to be:
+
+- ⛔ **the package install discards its own errors**, twice. A transaction that
+  failed is silent and the script continues, so a later step fails somewhere else
+  for a reason this one already knew.
+- ⚠ **sudo is used unconditionally** once it has decided sudo exists, with no
+  check that it is passwordless.
+
+⭐ **What did transfer is its first line**, which unsets a polluted build
+environment before anything else. That is a real hazard, and it is why
+`bootstrap.sh` reads what is on `PATH` after installing rather than trusting an
+installer's exit code.
+
+### S2, `extraxtor.sh`: confirms, and one mechanism adopted
+
+A well-built bash CLI: colour only when stdout is a terminal, five levelled log
+functions, a cleanup trap with distinct codes for interrupt and terminate, a
+dependency preflight that separates required from optional, and type detection
+from `file` output with an extension fallback.
+
+⭐ **The adopted mechanism is the required-versus-optional split in its dependency
+preflight.** `bootstrap.sh`'s equivalents are `sha256_of_file` and
+`decode_utf16`, each of which tries a list of candidates and reports which one
+answered rather than requiring the first.
+
+⛔ **Its architecture does not transfer and must not.** It is bash with global
+declarations, arrays and case-conversion expansions; every tracked `.sh` here is
+checked with `shellcheck -s sh`, which permits none of those.
+
+### S3, `install_nix.sh`: filed elsewhere
+
+Its subject is a nix installation for CI, which is not this work. Two things came
+out of reading it:
+
+- ⚠ `nix` is a distribution-independent package manager the operator already uses,
+  so it is `bootstrap.sh`'s second user-level provider beside `soar`, on the same
+  use-it-never-install-it rule.
+- ⛔ It begins with a recursive removal over nine paths as root, which this
+  repository's own [`../../TODO/RULES.md`](../../TODO/RULES.md) section 3 would
+  refuse. Not adopted, and recorded so no later session copies the shape.
+
+### S7, `fnichol/bashrc`: refused, with the reason
+
+A 48 KB bash framework with a real design: a double-load guard, an indirection for
+running a command as root, per-operating-system tool paths for SunOS and OpenBSD,
+and a `bashrc` command with check, init, update, reload and version subcommands.
+
+⛔ **Refused for this work, and the reason is not quality.** Its per-platform tool
+paths are the one thing that would have transferred, and `bootstrap.sh` reaches
+the same end by a stricter route: depend on no such tool at all, rather than
+knowing where each platform keeps its GNU build. Everything else in it is an
+interactive-shell framework, and this repository has none and should not grow one
+out of a sweep.
+
+⚠ **The one thing worth keeping is its local-override rule**: a site file is
+created once and never overwritten. `bootstrap.sh` follows it for `~/.profile`,
+which it appends to only when the exact line is absent.
+
+## ⛔ The open question this sweep produced
+
+**Whether a `bashrc` belongs in this tree at all.** The operator maintains one in
+`pkgforge/devscripts` and S1 re-fetches it in place. A copy here would be a second
+home for one file's worth of personal configuration, and
+[`../conventions/prose.md`](../conventions/prose.md)'s one-home rule is against
+it. ⭐ **Nothing was written, and the question is recorded for the operator rather
+than settled here.**

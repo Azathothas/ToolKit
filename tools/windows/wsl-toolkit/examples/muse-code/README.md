@@ -7,8 +7,12 @@ tmux, with exactly one Windows checkout writable by the ordinary base account.
 
 ## Prepare the checkout on Windows
 
-1. Copy [`../common`](../common/) into the target checkout as
-   `.wsl-toolkit/common`.
+1. Copy [`../../../../../scripts/common/bootstrap.sh`](../../../../../scripts/common/bootstrap.sh)
+   and [`../../../../../scripts/common/tmux.conf`](../../../../../scripts/common/tmux.conf)
+   into the target checkout as `.wsl-toolkit/common/`. ⚠ Both, and in the same
+   directory: the bootstrap installs the tmux configuration it finds BESIDE
+   itself, and reports that it found none rather than reaching the network for
+   one.
 2. Save the **One read/write checkout** JSON from
    [`access-profiles.md`](../common/access-profiles.md) as
    `wsl-toolkit.json` at that checkout's root.
@@ -38,12 +42,18 @@ Inside the base:
 
 ```sh
 cd /workspaces/project
-sh .wsl-toolkit/common/bootstrap.sh
+sh .wsl-toolkit/common/bootstrap.sh --toolset agent
 tmux new-session -A -s muse-code
 ```
 
-Detach without stopping the session with `Ctrl-b d`. Run the same
-`tmux new-session -A -s muse-code` command after reconnecting.
+Detach without stopping the session with `Ctrl-b d`, and run the same
+`tmux new-session -A -s muse-code` command after reconnecting. The status line
+carries the other two keys that matter.
+
+⚠ **`--toolset agent` is a long install on a fresh base**, because it carries
+Rust, Go, Nim, Python and PowerShell as well as the developer set. Drop what this
+provider does not need with `--without`, for example
+`--without nim,powershell`.
 
 ## Install and run Muse Code
 

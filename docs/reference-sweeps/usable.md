@@ -802,3 +802,199 @@ wrong defect.
   banner, the root mount and the start of `rc`, so the next run reports where
   the time goes instead of attributing it.
 - ⚠ **Nothing here tested arm64**, and the artefacts used are `amd64` only.
+
+---
+
+# Sweep 2: what the shell-script sweep is good for, 2026-09-12
+
+[`findings.md`](findings.md) carries the verdicts and the argument for the seven
+scripts read on 2026-09-12. This is the half a later session acts on: the
+mechanisms, and the measurements taken while adopting them.
+
+⚠ **The measurements below are this repository's own**, taken by running the new
+script across the image catalogue. The seven references were read, not run, so
+nothing here is attributed to them.
+
+---
+
+## 1. Resolve the version and the digest at run time, and say what that proves
+
+⭐ **The mechanism, from `install_zig.sh`.** Do not write a digest into a script.
+Read the version from the upstream index, then read that version's digest from the
+same index, then verify the bytes against it.
+
+```sh
+npm view '@colbymchenry/codegraph' dist-tags.latest
+npm view '@colbymchenry/codegraph@1.6.0' dist.integrity
+```
+
+Both answer one bare value, which is what makes them usable from `sh` with no JSON
+parser. ⚠ **The range form does not**: `npm view pkg@^1.5.0 version` prints a line
+per matching version, so `latest` goes through the dist-tag instead.
+
+⭐ **For a GitHub release, the tag comes from the redirect and needs no JSON
+either:**
+
+```sh
+curl -fsSL -o /dev/null -w '%{url_effective}' https://github.com/PowerShell/PowerShell/releases/latest
+```
+
+⛔ **What it proves is transport, not authorship**, because the digest and the
+bytes come from the same place. `bootstrap.sh` keeps
+`--expect-integrity` and `--expect-sha256` so a caller who holds a value from
+somewhere else gets the stronger check, and its header says which is which. ⚠ Do
+not let a later change quietly drop those two flags on the grounds that the
+registry check is already there.
+
+### The measurement that justifies it
+
+| | |
+| --- | --- |
+| what the previous script pinned | CodeGraph **1.5.0**, three SHA-512 values written into the file |
+| what the registry answered one day later | **1.6.0** |
+
+⭐ A pin that is stale on day two is a script that installs the wrong thing or
+refuses to run, and either outcome is worse than the weaker check.
+
+---
+
+## 2. ⛔ Do not depend on `awk`, `tr`, `find`, `install` or `dirname`
+
+⭐ **This is the finding with the widest reach, and it was measured rather than
+assumed.** A bootstrap whose job is to install the missing tools cannot require
+them to be there already.
+
+Measured across the catalogue on 2026-09-12:
+
+```text
+photon        MISSING awk, MISSING tr
+opensuse      MISSING awk, MISSING find
+void-musl     MISSING find
+rocky8        MISSING find
+freebsd       MISSING bash
+```
+
+⚠ **The first row is the one that breaks a naive script.** A table lookup written
+as `awk -v want="$1" '$1 == want'` returns the empty string on Photon for every
+row, so the script reports that it has no entry for `less`, `node`, `npm` and
+seven others, and exits 2 having installed nothing. That is what the first draft
+did.
+
+The POSIX-shell replacements now in `bootstrap.sh`, each usable elsewhere:
+
+| instead of | use |
+| --- | --- |
+| `awk '$1==k{...}'` over a table | `while read -r name rest` over a here-document |
+| `tr ',' ' '` | `split_on`, which walks the string with `${var%%[!x]*}` |
+| `head -1` | `{ read -r line; printf '%s' "$line"; }` |
+| `grep -Fqx LINE FILE` | a `while read` loop comparing with `=` |
+| `touch FILE` | `: >> FILE`, which creates without truncating |
+| `install -m 0644 A B` | `cp A B` then `chmod 0644 B` |
+| `dirname "$0"` | `${0%/*}` |
+| `find /lib -name 'ld-musl-*'` | a `for` loop over the glob with `[ -e ]` |
+
+⛔ **`uname` and `id` are the two exceptions**, and both are present on every
+image in the catalogue and in every BSD base system.
+
+---
+
+## 3. Key a package table on the distribution, not only on its package manager
+
+⭐ **The mechanism this repository had to invent, because no reference does it.**
+The table's override key is either a package manager or `os:<ID>` from
+`/etc/os-release`, and ⚠ **`os:` wins**, because three distributions here use
+`apk` and disagree about half the names.
+
+Measured, and each of these is a row that a manager-keyed table gets wrong:
+
+| distribution | manager | what it disagrees about |
+| --- | --- | --- |
+| Chimera | apk | `coreutils` is `chimerautils`, `build-base` is `base-devel`, no `ripgrep`, no `tar`, no `npm` |
+| Wolfi | apk | no `tar` package at all |
+| Alpine | apk | all of the above are the plain names |
+| Rocky 8 | dnf | no `ripgrep` and no `fd-find` without EPEL |
+| Fedora | dnf | both are there |
+| openSUSE | zypper | `nodejs-default` and `npm-default`, not `nodejs` and `npm` |
+| Void | xbps | no `npm` package; it comes with `nodejs` |
+
+---
+
+## 4. One bulk transaction, then one package at a time
+
+⛔ **A bulk install that fails installs nothing and names nothing.** Measured on
+the first full run: six of twelve images failed over one absent package each, and
+every one of them reported all eighteen requested names as missing.
+
+⭐ The shape that fixes it without giving up the bulk call:
+
+```sh
+if ! install_packages $SYSTEM_PACKAGES; then
+  for package in $SYSTEM_PACKAGES; do
+    if ! install_packages "$package"; then
+      fail "$PROVIDER could not install $package"
+    fi
+  done
+fi
+```
+
+⚠ **The bulk call has to come first on Arch**, where a per-package loop would be a
+sequence of partial upgrades. The refresh for `pacman` is `-Syu` for the same
+reason: a live run failed at exactly that point on 2026-09-12.
+
+---
+
+## 5. Two traps in verifying somebody's release artefact
+
+⭐ **Both were found by driving it, and neither is visible in the source.**
+
+1. ⚠ **PowerShell publishes `hashes.sha256` as UTF-16LE with a byte order
+   mark.** Read as bytes, every hex character is followed by a NUL, so a `read`
+   loop matches nothing and a `grep` for the digest finds nothing. The run then
+   reports that the release published no digest and refuses, having downloaded and
+   hashed the tarball correctly. `decode_utf16` tries `node`, then `iconv`, then
+   `tr`.
+2. ⚠ **That file is also CRLF.** After decoding, `read -r hex name` leaves a
+   carriage return on the end of `name`, so a `*"$file")` suffix pattern still
+   matches nothing. The decoder strips the carriage returns AND the pattern is a
+   substring match, so neither alone has to be right.
+
+---
+
+## 6. `--version` is not the flag for all of them
+
+⚠ **And the wrong one does not fail loudly.** Measured on Arch: the report printed
+four empty values beside tools it had just installed and confirmed were on `PATH`.
+
+| tool | the flag |
+| --- | --- |
+| `go` | `go version`, no dashes |
+| `tmux` | `-V` |
+| `unzip` | `-v` |
+| `ssh` | `-V`, and it writes to stderr |
+
+⭐ A report that reads the machine is the whole point of having one, so an empty
+value there is a defect in the report rather than a cosmetic gap.
+
+---
+
+## 7. What is driven, and what is written from the manual
+
+⛔ **Stated rather than left to be discovered.**
+
+| place | detection | installation |
+| --- | --- | --- |
+| apk on Alpine, Chimera, Wolfi | driven | driven |
+| apt on Debian, Debian 12, Ubuntu 22.04 | driven | driven |
+| pacman on Arch | driven | driven |
+| dnf on Fedora, Rocky 8 | driven | driven |
+| zypper on openSUSE Tumbleweed | driven | driven |
+| tdnf on Photon | driven | driven |
+| xbps on Void | driven | driven |
+| emerge on Gentoo stage3 | driven | ⛔ **not driven.** The image carries no portage tree, so an install needs a sync this script will not start on a caller's behalf. |
+| pkg on FreeBSD 15.1 | ⭐ driven, through `wsl-toolkit bsd run` | ⛔ **not driven.** The BSD guest in this environment has no working resolver, so `pkg` reaches no repository. The `os:freebsd` values come from the ports naming convention. |
+| pkgin on NetBSD, pkg_add on OpenBSD | ⛔ not driven | ⛔ not driven. No image for either. |
+| soar and nix as user-level providers | ⛔ not driven | ⛔ not driven. Neither is installed on any catalogue image, and this script may not install one. |
+
+⚠ **A later session that gains a BSD guest with working DNS should re-drive the
+`pkg` row first**, because it is the one with real values written from a manual
+rather than from a machine.

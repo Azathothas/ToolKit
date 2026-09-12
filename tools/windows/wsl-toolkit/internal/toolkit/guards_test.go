@@ -477,7 +477,12 @@ func TestAnUnqualifiedImageReferenceIsRefused(t *testing.T) {
 }
 
 func TestEveryBuiltinImageAndPresetIsFullyQualified(t *testing.T) {
-	if len(BuiltinImages) != 12 {
+	// ⚠ A FLOOR, NOT AN EQUALITY. This asserted exactly twelve because the
+	// issue that asked for the catalog named twelve, and the next session to add
+	// a row had to edit the assertion to add it. A floor still catches the defect
+	// the guard is for, which is a row disappearing without anybody deciding to
+	// remove it, and it does not have to be edited to grow the catalog.
+	if len(BuiltinImages) < 12 {
 		t.Fatalf("the catalog carries %d images and the issue that asked for it named twelve", len(BuiltinImages))
 	}
 	seen := map[string]bool{}

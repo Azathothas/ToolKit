@@ -3767,6 +3767,143 @@ documentation is login-gated, so the example deliberately leaves download,
 review and execution of that installer as an operator step rather than running
 an unpinned remote script.
 
+## Amendment, 2026-09-12: the scripts left this tool, and the package map was driven
+
+⭐ **The operator ruled three things after the first implementation**, and each
+changed the shape of this entry rather than adding to it.
+
+### 1. The common scripts were in the wrong place
+
+`examples/common/bootstrap.sh` and `examples/common/tmux.conf` are now
+[`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh) and
+[`../scripts/common/tmux.conf`](../scripts/common/tmux.conf).
+
+⚠ **Neither was ever about `wsl-toolkit`.** A general-purpose bootstrap under one
+provider example's directory can only be found by somebody who already knows that
+example exists. [`../docs/consumers.md`](../docs/consumers.md) carries the move as
+a break, with the exposure window: both files existed at the old path for one
+commit and were never in a release.
+
+### 2. The hardcoded digests came out
+
+The first version pinned CodeGraph **1.5.0** and three SHA-512 values written into
+the file. ⛔ **The registry was on 1.6.0 the following day.** A pin that goes
+stale in a day is a script that installs the wrong thing or refuses to run.
+
+⭐ **Version and digest are now resolved at run time** from the registry, through
+two calls that each answer one bare value so that `sh` needs no JSON parser:
+
+```sh
+npm view '@colbymchenry/codegraph' dist-tags.latest
+npm view '@colbymchenry/codegraph@1.6.0' dist.integrity
+```
+
+⚠ **THAT IS A WEAKER CHECK AND THE FILE SAYS SO.** The digest now comes from the
+same registry as the bytes, which proves transport and not authorship - the same
+property [`../docs/consumers.md`](../docs/consumers.md) already records about this
+repository's own `SHA256SUMS`. `--expect-integrity` and `--expect-sha256` put the
+stronger check back for a caller who holds a value, and every run prints what it
+resolved so a caller can become that.
+
+### 3. The operator added BSD and the language toolchains
+
+`bootstrap.sh` now knows **twelve** package managers rather than one: apk, apt,
+dnf, emerge, pacman, tdnf, xbps, yum and zypper on Linux; `pkg` on FreeBSD and
+DragonFly, `pkgin` on NetBSD, `pkg_add` on OpenBSD. `soar` and `nix` are used as
+user-level providers for an account with neither root nor passwordless sudo, and
+⛔ neither is ever installed, because installing either means piping a remote
+script into a shell.
+
+The `agent` toolset carries the languages the operator named: bash, Rust and
+cargo, Go, Nim, Python and PowerShell. ⚠ **PowerShell is in the repositories of
+three of thirteen images**, so it has an upstream route: the release tag comes
+from the `releases/latest` redirect, and the tarball is verified against the
+`hashes.sha256` the release publishes.
+
+## What the drive found, and none of it was visible in the source
+
+⭐ **Six defects, each found by running the thing rather than reading it.**
+
+| what | why it mattered |
+| --- | --- |
+| ⛔ `awk` is absent on Photon, and so is `tr` | the table lookup was `awk -v want=...`, so Photon reported no row for ten logical names and installed nothing. The file now depends on the shell and the package manager and almost nothing else. |
+| ⛔ `fail` inside `$( )` counts in a subshell | a run whose digest step never completed reported `failures=0` and exited 0. `fetch_verified_npm` answers through a global now. ⚠ This is the class the whole repository is built against: a guard that cannot make the process fail. |
+| ⛔ `set --` clobbered the function's own arguments | the registry was asked for the integrity of `@` and answered nothing, which is what produced the silent success above. |
+| ⚠ a bulk install that fails installs nothing and names nothing | six of twelve images failed over one absent package each and reported all eighteen as missing. One transaction first, then one package at a time, with the package manager's own message. |
+| ⚠ PowerShell publishes its digests as UTF-16LE, CRLF, with a byte order mark | the run downloaded and hashed the tarball correctly, found no digest in a file full of them, and refused. |
+| ⚠ `--version` is the wrong flag for `go`, `tmux`, `unzip` and `ssh` | the report printed four empty values beside tools it had just confirmed were on `PATH`. |
+
+## Prove
+
+⭐ **`wsl-toolkit matrix --images all`, the tool proving its own example.** The
+`agent` toolset, which is 25 logical names including all six languages:
+
+```text
+13 ran, 2 failed, 0 unreached, 0 timed out, in 5m45s
+alpine ok   arch ok       debian ok    debian12 ok  fedora ok
+opensuse ok photon ok     rocky8 ok    ubuntu2204 ok
+void-musl ok wolfi ok
+chimera exit 1            gentoo exit 1
+```
+
+⛔ **Both failures are outside this script, and neither is worked around.**
+
+- `gentoo`: the stage3 image carries no portage tree, so an install needs a sync
+  this script will not start on a caller's behalf.
+- `chimera`: its repository is momentarily inconsistent between
+  `openssl3-3.6.0-r0` and `openssl3-devel-3.6.4-r0`, so `openssh` cannot be
+  installed beside the build chain. ⭐ The run names that conflict now, which is
+  what the loud retry was added for.
+
+One image was driven to completion including the extra tool:
+
+```text
+alpine  requested=25  present=25  skipped=  absent=  codegraph=1.6.0  failures=0
+        bash 5.3.9  cc 15.2.0  cargo 1.96.1  go 1.26.8  nim 2.2.0
+        node v24.18.1  pwsh 7.6.1  python 3.14.7  rustc 1.96.1
+        rg 15.1.0  fd 10.2.0  tmux 3.7c
+```
+
+PowerShell from the upstream release, on a distribution with no package for it:
+
+```text
+debian  powershell resolves to 7.6.6, powershell-7.6.6-linux-x64.tar.gz
+        powershell tarball sha256 ddbc4a2d...adf103bc, abbreviated here because
+        the tree refuses a long hex identifier in a published file
+        powershell matches the digest its release publishes
+        version.pwsh=PowerShell 7.6.6
+```
+
+⭐ **CI's own shellcheck, not this host's.** `ubuntu:24.04` in a container reports
+**0.9.0**, which is the binary CI installs and two releases behind the 0.11.0 on
+this machine. All 24 tracked scripts are clean under it.
+
+## What is still open
+
+1. ⛔ **The FreeBSD install path is not driven.** `pkg` at `/usr/sbin/pkg`,
+   `ID=freebsd` from `/etc/os-release`, `sha256` and `openssl` present and no
+   `bash` were all read off FreeBSD 15.1 through `wsl-toolkit bsd run`, so
+   detection is proved. ⚠ **The `os:freebsd` package names are written from the
+   ports naming convention and not from the machine**, because `bsd run --script`
+   flattens a script into one `;`-joined console line and a 44 KB file does not
+   survive that, and `bsd run -c` is bounded by the console's line length. The
+   route that will work is `--network` plus a `fetch` of the raw URL once this is
+   pushed.
+2. `pkgin` on NetBSD and `pkg_add` on OpenBSD are written and not driven. There is
+   no image for either here.
+3. `soar` and `nix` as user-level providers are written and not driven. Neither is
+   on any catalogue image, and ⛔ this script may not install one.
+4. The provider-profile scenarios still are not in the main acceptance runner.
+5. The Muse installer and an authenticated smoke still need operator access.
+
+⚠ **`base.toolset = "developer"` in `provision.sh` is a SECOND package map**, in
+the Go-embedded provisioner, and it still knows six families rather than twelve.
+It is not merged with this one: the provisioner runs as root inside a distribution
+during `base ensure` and installs the engine, and this runs as the ordinary
+account afterwards. ⭐ **The duplication is real and is recorded here rather than
+resolved**, because merging them means the Go module embedding a file that
+consumers also fetch by URL, and that is a decision rather than a refactor.
+
 ---
 
 ## WSL-68. A base that can reach nothing on the host at all

@@ -6,128 +6,152 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-12T14:46:26Z
-baseline        fcca2ba, clean main; local gate 19 checks green, CI RED on that
-                same commit in three jobs
+session started 2026-09-12T14:40:00Z
+baseline        fcca2ba, clean main; local gate 19 checks green and CI RED on
+                that same commit in three jobs
 entries         total 100  open 3  blocked 0  done 97
-gate            19 checks green locally, and that was not enough: see the CI
-                finding below
-head            pushed
+gate            19 checks green; CI green on bf5c095, all six jobs
+head            bf5c095 pushed; the scripts work committed on top
 ```
 
 ## Active work
 
-⭐ **[Issue 29](https://github.com/Azathothas/ToolKit/issues/29) is complete in
-the tree.** All seven requested features were already represented at `d67c1e6`.
-The remaining Linux CI failure was a race in
-`TestAFileThatGrowsDoesNotKillTheCopy`: the production copy now writes exactly
-the size in the member header through `writeRegularMember`, and the regression
-passes an intentionally stale `FileInfo` instead of racing the scheduler. The
-full live acceptance runner passed **71 of 71**, cleanup returned to its
-baseline, and unrelated distributions were preserved.
+⭐ **[Issue 29](https://github.com/Azathothas/ToolKit/issues/29) is CLOSED**, on CI
+run [`34700281005`](https://github.com/Azathothas/ToolKit/actions/runs/34700281005)
+with all six jobs green. ⛔ **Neither of the two failures that had been blocking it
+belonged to it**; both were in the issue-30 files, and the record below says what
+they were.
 
-⛔ **CI WAS RED ON `fcca2ba` AND THE LOCAL GATE WAS GREEN THE WHOLE TIME, and
-neither failure belonged to issue 29.** Both came from the issue-30 files:
-
-- `TestBaseMountPayloadIsEncodedAndEscaped` compared a resolved mount source
-  against a raw `t.TempDir()`. The Windows CI runner has `TEMP` under
-  `C:\Users\RUNNER~1\`, an 8.3 short name that `filepath.EvalSymlinks` expands,
-  so the production canonicalization and the typed expectation disagreed there
-  and agreed on every long-name host. Reproduced locally by pointing `TEMP` at a
-  short-name directory: red before the fix, green after.
-- `shellcheck` refused `examples/common/bootstrap.sh` line 44 for SC2015, the
-  `[ ... ] && [ ... ] || die` shape. Local shellcheck is 0.11.0 and does not
-  report it; `ubuntu-latest` carries **0.9.0** and does.
-
-⭐ **The second one is now verifiable here rather than predicted.** `ubuntu:24.04`
-in a container reports shellcheck 0.9.0 and runs clean over all 24 tracked
-scripts, which is the same binary and version CI installs.
-
-⭐ **[Issue 30](https://github.com/Azathothas/ToolKit/issues/30) is substantially
-started, not complete.** `WSL-67` now has the provider-neutral base, explicit
-access grants, systemd/developer provisioning, common bootstrap, tmux policy,
-and live WSL evidence. `WSL-68` has a measured zero-grant mode for an
-unprivileged guest, but remains open because WSL root and network reachability
-mean this is not yet a security boundary.
+⭐ **[Issue 30](https://github.com/Azathothas/ToolKit/issues/30) part 1 is much
+further along and still open.** The operator ruled three changes mid-session and
+added two requirements; all five are done and driven. `WSL-68`, the sealed-base
+work, is untouched.
 
 ## What was built
 
-- `BaseConfig` gained `interop`, `systemd`, `toolset`, and explicit `mounts`.
-  Mount grants require automount and interop off, canonicalize host sources,
-  reject unsafe roots and duplicate sources/targets, and confine guest targets
-  below `/workspaces`.
-- Provisioning owns the grant block in `/etc/fstab`, supports systemd and a
-  portable `developer` toolset, and restarts WSL before effective verification.
-  A fresh Arch rootfs now uses a full `pacman -Syu`, avoiding partial-upgrade
-  failure.
-- Verification runs as the unprivileged user and checks effective automount,
-  interop, systemd, developer commands, live DrvFS type, requested ro/rw mode,
-  and the exact allowlist. WSL's internal read-only driver mount is recognized
-  separately.
-- `base shell --here` refuses when automount is off. A root shell states that
-  root can manually mount more host paths; the feature is not called a sandbox.
-- New-base failures before the identity marker now unregister and delete the
-  incomplete distro through a fresh bounded rollback context. This was found
-  live when the first Arch provisioning attempt failed.
-- `examples/common/` installs pinned CodeGraph 1.5.0 npm packages after SHA-512
-  verification and carries a tmux configuration; `examples/muse-code/` is the
-  end-to-end operator guide. The Muse installer remains an explicit reviewed
-  operator step because its official documentation is login-gated.
+### The two CI failures, and why a green local gate could not see either
+
+- `TestBaseMountPayloadIsEncodedAndEscaped` compared a resolved mount source
+  against a raw `t.TempDir()`. The Windows runner's `TEMP` is under
+  `C:\Users\RUNNER~1\`, an 8.3 short name that `filepath.EvalSymlinks` expands, so
+  the production canonicalization and the typed expectation disagreed there and
+  agreed on every long-name host. ⭐ Reproduced locally by pointing `TEMP` at a
+  short-name directory: red before the fix, green after.
+- `shellcheck` refused `[ ... ] && [ ... ] || die` for SC2015. This host carries
+  0.11.0, which permits it; `ubuntu-latest` carries **0.9.0**, which does not.
+
+⭐ **That second one is now measurable here rather than predicted.**
+`ubuntu:24.04` in a container is the same binary and version CI installs, so
+"will CI's shellcheck agree" is a command rather than a guess.
+
+### The common scripts left `wsl-toolkit`
+
+[`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh) and
+[`../scripts/common/tmux.conf`](../scripts/common/tmux.conf), moved out of
+`tools/windows/wsl-toolkit/examples/common/` on the operator's ruling. Neither was
+ever about that tool. [`../docs/consumers.md`](../docs/consumers.md) carries the
+move as a break with its exposure window, and
+[`../scripts/README.md`](../scripts/README.md) carries their contract.
+
+### The digests came out, and the replacement says what it proves
+
+The old file pinned CodeGraph 1.5.0 and three SHA-512 values, and the registry was
+on **1.6.0** the next day. Version and digest are read from the registry at run
+time now. ⚠ **That is weaker, deliberately**: the digest and the bytes come from
+one place, which proves transport and not authorship. `--expect-integrity` and
+`--expect-sha256` restore the stronger check for a caller who holds a value, and
+every run prints what it resolved so a caller can become that one.
+
+### Twelve package managers, three of them BSD, and six languages
+
+apk, apt, dnf, emerge, pacman, tdnf, xbps, yum and zypper; `pkg`, `pkgin` and
+`pkg_add`. `soar` and `nix` are user-level providers for an account with no root,
+and ⛔ neither is ever installed. The `agent` toolset carries bash, Rust and cargo,
+Go, Nim, Python and PowerShell, and PowerShell has an upstream route because only
+three of thirteen images package it.
+
+⭐ **The package table is the feature.** One row per logical name, a default, and
+only the places that spell it differently. ⚠ An override key is a package manager
+OR `os:<ID>`, and `os:` wins, because Alpine, Chimera and Wolfi all use apk and
+disagree about half the names.
+
+openSUSE Tumbleweed is the thirteenth catalogue image and the only zypper row. The
+guard asserting exactly twelve is a floor now.
 
 ## Measurements
 
 Read from Windows 11 Pro 26200 on 2026-09-12:
 
 ```text
-issue-29 acceptance  71/71 passed; cleanup clean; unrelated WSL distros kept
-go suites            green after every implementation slice
-mutation proof       14 planted cases across 4 new rows, all refused
-live provider base   systemd PID 1, Podman 6.1.1, 31 QEMU handlers,
-                     developer toolset present, exactly one rw grant
-zero-grant transition stale grant refused then removed; no user-directory
-                     DrvFS mount; C: mount refused to unprivileged user;
-                     interop absent; systemd retained
-common bootstrap     CodeGraph 1.5.0, tmux 3.7c; both npm SHA-512 digests
-                     verified; remain-on-exit on; exit-empty off
-teardown             disposable distro marker-verified and removed; remaining
-                     names: podman-machine-default, eph-pgb, wsl-toolkit,
-                     wsl-toolkit-podbox
+CI, bf5c095           all six jobs green; issue 29 closed on it
+matrix, agent toolset 13 ran, 2 failed, 0 unreached, 0 timed out, 5m45s
+  green               alpine arch debian debian12 fedora opensuse photon
+                      rocky8 ubuntu2204 void-musl wolfi
+  red, both external  gentoo stage3 carries no portage tree; chimera's
+                      repository is inconsistent between openssl3-3.6.0-r0 and
+                      openssl3-devel-3.6.4-r0
+alpine, full          requested 25, present 25, skipped 0, absent 0,
+                      codegraph 1.6.0, failures 0
+debian, upstream      powershell 7.6.6 from its GitHub release, sha256
+                      ddbc4a2d...103bc matched against the release's own file
+freebsd 15.1          pkg at /usr/sbin/pkg, ID=freebsd, sha256 and openssl
+                      present, no bash. Detection driven; install NOT driven
+shellcheck            ubuntu:24.04 reports 0.9.0, which is CI's; 24 of 24
+                      tracked scripts clean under it
+local gate            19 checks green
 ```
 
 ## What is left
 
-1. Run the final local gate after this record edit, commit through
-   `git-sync.ps1`, push `main`, and post this checkpoint to issues 29 and 30.
-2. Read the pushed CI. Close issue 29 only when the new Linux Go run confirms
-   the flaky regression fix.
-3. For `WSL-67`, add the provider-profile scenarios to the main acceptance
-   runner; drive the developer package mapping on non-Arch families; and run
-   the Muse installer/authenticated smoke when operator access is available.
-4. For `WSL-68`, design and drive the attacking sealed-base probe: network,
-   WSL service/init channels, guest root manual mounts, and any Podman/fuse
-   consequences. Publish a threat model before using security-boundary terms.
-5. Add a focused automated regression for pre-marker base rollback. The live
-   failure proved the repair, but it deserves a deterministic unit test.
-6. `WSL-59`, the low-level PowerShell adapter, remains unchanged and open.
+1. ⛔ **Drive the FreeBSD install path.** The `os:freebsd` package names are
+   written from the ports naming convention and not from a machine. ⚠ `bsd run
+   --script` flattens a script into one `;`-joined console line, so a 44 KB file
+   does not survive it, and `bsd run -c` is bounded by the console line length.
+   ⭐ **The route that will work is `bsd run --network` plus a `fetch` of the raw
+   URL now that this is pushed**, and that also exercises the consumer path.
+2. `pkgin` on NetBSD and `pkg_add` on OpenBSD are written and not driven. No image
+   for either here.
+3. `soar` and `nix` as user-level providers are written and not driven.
+4. ⚠ **`provision.sh` is a SECOND package map** and still knows six families
+   rather than twelve. Not merged: that one runs as root during `base ensure` and
+   installs the engine. ⭐ Merging means the Go module embedding a file consumers
+   also fetch by URL, which is a decision for the operator rather than a refactor.
+5. `WSL-67`'s own remaining list: the acceptance runner, and the Muse smoke.
+6. Add a deterministic regression for pre-marker base rollback.
+7. `WSL-68`: the attacking sealed-base probe and a published threat model.
+8. `WSL-59`, the low-level PowerShell adapter, remains open and untouched.
 
 ## Review findings
 
-- **Door sweep:** all new base-config doors converge on validation,
-  provisioning and effective verification. It found the pre-marker failure
-  path that left a registered disposable distro; rollback was added and the
-  leaked probe was removed.
-- **Guard mutation:** all four new policy rows were planted independently and
-  went red. An accidental broad replacement in unrelated mutation rows was
-  detected during the pass and restored before proof.
-- **Claim audit:** corrected the stale 23-case acceptance claim to 71, rejected
-  the phrase "sealed base", and records the internal WSL driver mount, network
-  gap, and root capability rather than claiming isolation.
+- **Door sweep over the new script.** Every path that can fail now reaches one of
+  `fail`, `warn` or `die`, and the difference between them is stated in the
+  header. It found the upstream-failure path reporting one absent tool twice, once
+  as skipped and again as not-on-PATH.
+- **Guard mutation, and it found the worst defect in the session.** `fail` inside
+  `$( )` increments a counter in a SUBSHELL, so a run whose digest step never
+  completed reported `failures=0` and exited 0. ⛔ A guard that cannot make the
+  process fail is not a guard. `fetch_verified_npm` answers through a global now.
+  The same read found `set --` clobbering that function's own `$2` and `$3`, which
+  is what made the digest step fail in the first place.
+- **Claim audit.** Three claims were cut for being unmeasured: FreeBSD package
+  names are labelled as taken from the ports convention rather than the machine,
+  `pkgin`/`pkg_add` and `soar`/`nix` are labelled written-and-not-driven, and the
+  two red matrix rows are attributed to the distributions rather than called
+  expected failures.
+- ⚠ **A pipe hid a red matrix.** The first full run put the script through
+  `| tail -40`, so every row reported `tail`'s exit code and twelve of twelve read
+  as green. Re-run unpiped: five of twelve. This is
+  [`../docs/AGENTS.md`](../docs/AGENTS.md) absolute 5, in the session that read it.
 
 ## Open questions for the operator
 
-None required to resume. Muse credentials/access are needed only for the final
-provider-specific smoke; all provider-neutral work can continue unattended.
+1. ⭐ **Does a `bashrc` belong in this tree?** The reference sweep read the
+   operator's own, which lives in `pkgforge/devscripts` and re-fetches itself in
+   place. A copy here would be a second home for one file of personal
+   configuration, which the one-home rule is against. ⛔ Nothing was written.
+2. **Should `provision.sh` and `bootstrap.sh` share one package map?** Item 4
+   above has the trade.
 
-The existing unrelated host state is untouched: `eph-pgb` and
-`wsl-toolkit-podbox` remain registered, as do `podman-machine-default` and the
-ordinary `wsl-toolkit` base.
+Unrelated host state is untouched: `eph-pgb`, `wsl-toolkit-podbox`,
+`podman-machine-default` and the ordinary `wsl-toolkit` base all remain
+registered. Every container this session ran was ephemeral and removed itself.

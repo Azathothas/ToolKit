@@ -21,6 +21,84 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-12
 
+### 2026-09-12T16:20:00Z: the bootstrap leaves one tool's examples directory, and learns twelve package managers
+
+**Record:** `WSL-67` in
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose amendment carries the
+matrix result and the six defects the drive found, and sweep 2 in
+[`docs/reference-sweeps/findings.md`](docs/reference-sweeps/findings.md) and
+[`docs/reference-sweeps/usable.md`](docs/reference-sweeps/usable.md) for the seven
+scripts read to get here.
+**Deployed:** no deploy. This is `main` only; no tag was cut, and nothing in a
+release changed.
+**Closes:** nothing. [Issue 30](https://github.com/Azathothas/ToolKit/issues/30)
+stays open: `WSL-68` and the provider-specific smoke are untouched by this.
+
+⛔ **TWO FILES MOVED AND THE OLD PATHS 404.**
+`tools/windows/wsl-toolkit/examples/common/bootstrap.sh` and `.../tmux.conf` are
+now [`scripts/common/bootstrap.sh`](scripts/common/bootstrap.sh) and
+[`scripts/common/tmux.conf`](scripts/common/tmux.conf).
+[`docs/consumers.md`](docs/consumers.md) carries the break, and the exposure
+window: both existed at the old path for one commit and neither has ever been in
+a release.
+
+⛔ **THE HARDCODED DIGESTS CAME OUT, AND THE REPLACEMENT IS WEAKER ON PURPOSE.**
+The old file pinned CodeGraph 1.5.0 and three SHA-512 values; the registry was on
+1.6.0 the next day. Version and digest are now read from the registry at run time,
+which proves transport rather than authorship - the same property this
+repository's own `SHA256SUMS` has. `--expect-integrity` and `--expect-sha256` put
+the stronger check back for a caller who holds a value, and every run prints what
+it resolved.
+
+⭐ **Twelve package managers rather than one**, and three of them are BSD: apk,
+apt, dnf, emerge, pacman, tdnf, xbps, yum, zypper, `pkg`, `pkgin`, `pkg_add`.
+`soar` and `nix` are used as user-level providers for an account with no root, and
+⛔ neither is ever installed. A new `agent` toolset carries bash, Rust and cargo,
+Go, Nim, Python and PowerShell; PowerShell has an upstream route because only
+three of thirteen images package it.
+
+⛔ **NO `awk`, `tr`, `find`, `grep`, `sed`, `install` OR `dirname`.** Photon
+carries neither of the first two; openSUSE carries neither the first nor the third.
+The first draft looked its table up with `awk`, and reported no row for ten logical
+names on Photon as a result. [`scripts/README.md`](scripts/README.md) has the rule.
+
+⚠ **`openSUSE` Tumbleweed joins the image catalogue**, which is the thirteenth row
+and the only `zypper` one. The guard that asserted the catalogue held exactly
+twelve images is a floor now: it still catches a row disappearing, and it no
+longer has to be edited to add one.
+
+**Driven:** `wsl-toolkit matrix --images all` with the 25-name `agent` toolset:
+**13 ran, 2 failed** in 5m45s. Both failures are outside the script and neither is
+worked around - Gentoo's stage3 has no portage tree, and Chimera's repository is
+momentarily inconsistent between `openssl3` and `openssl3-devel`. Alpine reached
+25 of 25 with CodeGraph 1.6.0 verified; Debian installed PowerShell 7.6.6 from
+upstream with its published digest checked. `ubuntu:24.04` in a container reports
+shellcheck **0.9.0**, which is CI's binary rather than this host's 0.11.0, and all
+24 tracked scripts are clean under it.
+
+### 2026-09-12T14:50:00Z: the two CI failures a green local gate could not see
+
+**Record:** [`TODO/PROGRESS.md`](TODO/PROGRESS.md) and commit `bf5c095`.
+**Deployed:** no deploy. `main` only.
+**Closes:** [issue 29](https://github.com/Azathothas/ToolKit/issues/29), on CI run
+`34700281005` with all six jobs green.
+
+⛔ **The local gate was green on `fcca2ba` and CI was red on it in three jobs**,
+and neither failure belonged to the issue being closed.
+
+- `TestBaseMountPayloadIsEncodedAndEscaped` compared a resolved mount source
+  against a raw `t.TempDir()`. The Windows runner puts `TEMP` under
+  `C:\Users\RUNNER~1\`, an 8.3 short name `filepath.EvalSymlinks` expands, so the
+  production canonicalization and the typed expectation disagreed there and agreed
+  on every long-name host. Reproduced by pointing `TEMP` at a short-name
+  directory: red before, green after.
+- `shellcheck` refused `[ ... ] && [ ... ] || die` for SC2015. A development host
+  carries 0.11.0, which does not report it; `ubuntu-latest` carries 0.9.0, which
+  does.
+
+⭐ **The second one is measurable here now rather than predicted**: `ubuntu:24.04`
+in a container is the same shellcheck CI installs.
+
 ### 2026-09-12T13:30:00Z: the consumer's wrapper becomes features, and a BSD userland gets a command
 
 **Record:** [`TODO/PROGRESS.md`](TODO/PROGRESS.md), and `WSL-63` to `WSL-66` in

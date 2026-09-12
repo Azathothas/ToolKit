@@ -242,6 +242,8 @@ var BuiltinImages = []Image{
 		Note: "apk over glibc, which no other row here is."},
 	{ID: "photon", Ref: "docker.io/library/photon:latest", Libc: "glibc", Family: "tdnf", Kind: "niche",
 		Note: "tdnf, and a kernel-adjacent userland tuned for hypervisors."},
+	{ID: "opensuse", Ref: "registry.opensuse.org/opensuse/tumbleweed:latest", Libc: "glibc", Family: "zypper", Kind: "niche",
+		Note: "the only zypper row, and the only one whose node and npm packages are named after a default rather than after the tool."},
 
 	// Older, still maintained. These answer whether something builds against an
 	// older libc, which a newer distribution cannot be asked.
