@@ -104,6 +104,18 @@ freebsd 15.1          driven through bsd run --network plus a fetch of the raw
                       7.5.5_1, which the first table did not know
 shellcheck            ubuntu:24.04 reports 0.9.0, which is CI's; 24 of 24
                       tracked scripts clean under it
+tmux.conf             loaded live on tmux 3.5a and 3.7c with no config error.
+                      Every option read back: prefix M-g AND prefix2 C-b, mouse
+                      on, history-limit 100000, detach-on-destroy off,
+                      remain-on-exit on, exit-empty off, escape-time 10,
+                      mode-keys vi, base-index 1, pane-base-index 1. `x` and
+                      `&` are unbound, `K` confirms before killing a session,
+                      and M-s is in the root table
+argument battery      11 cases under dash, which is stricter than bash:
+                      unknown name, unknown toolset, unknown provider, bad
+                      integrity value, unknown flag, flag with no value,
+                      relative prefix, prefix /, --provider override,
+                      --list-providers, and a --json object that parses
 local gate            19 checks green
 ```
 
@@ -127,6 +139,12 @@ local gate            19 checks green
 
 ## Review findings
 
+- **Driven pass over the two artifacts, not only the script.** The tmux
+  configuration was loaded on two tmux versions and every option read back from
+  the running server, because a configuration with one unsupported option loads
+  PARTIALLY: tmux starts, that line did nothing, and the session looks
+  configured. ⭐ It found nothing wrong, which is a result about the file and not
+  about the pass.
 - **Door sweep over the new script.** Every path that can fail now reaches one of
   `fail`, `warn` or `die`, and the difference between them is stated in the
   header. It found the upstream-failure path reporting one absent tool twice, once
