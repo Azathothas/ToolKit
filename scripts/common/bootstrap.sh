@@ -1035,6 +1035,18 @@ fi
 if [ -z "$PREFIX" ]; then
   PREFIX="$HOME/.local"
 fi
+# ⛔ THE PREFIX REACHES AN `rm -rf`, so it is constrained here rather than trusted
+# at each call site. Two places remove a directory below it: the npm work
+# directory and any previous unpacked PowerShell. A relative prefix would make
+# those depend on the working directory, and `/` would make them reach into the
+# system. RULES.md section 3: the containment check belongs in one place, because
+# a guard applied at several call sites is one that will one day be applied at
+# fewer.
+case "$PREFIX" in
+  /) die '--prefix / is refused: this removes directories below the prefix' ;;
+  /*) ;;
+  *) die "--prefix must be an absolute path, and $PREFIX is not" ;;
+esac
 if [ -z "$CODEGRAPH" ]; then
   case "$TOOLSET" in
     agent) CODEGRAPH=latest ;;
