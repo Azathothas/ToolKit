@@ -1080,6 +1080,15 @@ elif [ "$USER_PROVIDER" = none ]; then
   USER_PROVIDER=''
 elif ! in_list "$USER_PROVIDER" "$USER_PROVIDERS"; then
   die "--user-provider $USER_PROVIDER is not one of: $USER_PROVIDERS none"
+else
+  # ⚠ A NAMED PROVIDER IS CHECKED FOR HERE, ONCE. Without this, forcing one that
+  # is not installed reached the install loop and failed per package: measured on
+  # 2026-09-12, `--user-provider soar` on a box with no soar reported five
+  # failures for one missing program.
+  case "$USER_PROVIDER" in
+    nix) if ! have nix-env; then die "--user-provider nix was asked for and nix-env is not on PATH"; fi ;;
+    *)   if ! have "$USER_PROVIDER"; then die "--user-provider $USER_PROVIDER was asked for and is not on PATH"; fi ;;
+  esac
 fi
 
 say "$OS_ID on $KERNEL $ARCH, $LIBC, wsl=$IS_WSL, privilege=$PRIVILEGE"
