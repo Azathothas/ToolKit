@@ -14,11 +14,19 @@
 #
 # ⛔ IT DEPENDS ON THE SHELL AND THE PACKAGE MANAGER, AND ON ALMOST NOTHING
 # ELSE. Not awk, not sed, not grep, not tr, not find, not install, not dirname.
-# That is not minimalism for its own sake: measured across twelve images on
-# 2026-09-12, Photon carries neither `awk` nor `tr`, and Void and Rocky 8 carry
-# no `find`. A bootstrap whose job is to install the missing tools cannot require
-# them to already be there. `uname` and `id` are the exceptions, and both are in
-# every one of those images and in every BSD base system.
+# That is not minimalism for its own sake: measured across thirteen images on
+# 2026-09-12, Photon carries neither `awk` nor `tr`, openSUSE carries neither
+# `awk` nor `find`, and Void and Rocky 8 carry no `find`. A bootstrap whose job is
+# to install the missing tools cannot require them to already be there. `uname`
+# and `id` are the exceptions, and both are in every one of those images and in
+# every BSD base system.
+#
+# ⭐ MOST OF WHAT THIS INSTALLS NEEDS NO DIGEST LOGIC HERE AT ALL, and that is the
+# first answer rather than a fallback. A distribution package arrives through a
+# package manager that already checks a signature over its own index, so `pacman`,
+# `apt`, `dnf`, `apk` and the rest are trusted to do the job they exist for. The
+# verification below is for the two cases where nothing else would do it: an npm
+# package, and a tarball from a GitHub release.
 #
 # ⛔ IT IS POSIX sh AND IT IS CHECKED THAT WAY. This repository runs
 # `shellcheck -s sh` over every tracked `.sh`, so there is no `local`, no `[[`,

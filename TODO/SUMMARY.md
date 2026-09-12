@@ -12,10 +12,10 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-12T14:40:00Z | one context |
-| Commits | `fcca2ba`, clean `main`, ⛔ CI RED on it in three jobs | 4 on `main`, pushed; CI green on `bf5c095`, all six jobs |
+| Commits | `fcca2ba`, clean `main`, ⛔ CI RED on it in three jobs | 7 on `main`, pushed. CI green on every run that completed; ⚠ one was CANCELLED, which is GitHub dropping a PENDING run superseded by a newer push, not a failure |
 | Work | 100 entries: 3 open, 0 blocked, 97 done | 100 entries: 3 open, 0 blocked, 97 done. ⭐ Issue 29 CLOSED on green CI; `WSL-67` amended, not closed |
-| Changes | 270 tracked files | 270. Two files moved out of `examples/`, two added at the root; 21 files changed, +2,311 / -232 lines |
-| Size | `examples/common/bootstrap.sh`, 88 lines, one package manager, three digests written in | `scripts/common/bootstrap.sh`, 1,282 lines, twelve package managers, no digest written in. `tmux.conf` 86 lines |
+| Changes | 270 tracked files | 270. Two files moved out of `examples/`, two added at the root; 17 files changed, +2,355 / -205 lines |
+| Size | `examples/common/bootstrap.sh`, 88 lines, one package manager, three digests written in | `scripts/common/bootstrap.sh`, 1,303 lines, twelve package managers, no digest written in. `tmux.conf` 86 lines |
 | Checks | 19-check gate green and CI red, which is the finding | 19-check gate green, and ⭐ CI's own shellcheck 0.9.0 run in a container over all 24 scripts |
 | Cost | not measured | 4 full matrix runs and 6 FreeBSD sessions. The final matrix: 13 images, 5m45s. No paid operation; network bytes not measured and no number invented |
 | Health | tree clean, two CI failures unfixed | tree clean; every container ephemeral and self-removed; ⚠ the FreeBSD guest image was mutated and restored from 102% to 43% disk |

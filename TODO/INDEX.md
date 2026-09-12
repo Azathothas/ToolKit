@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 100  open 3  blocked 0  done 97
+total 104  open 7  blocked 0  done 97
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 51 | 51 |
-| P2 | 3 | 0 | 36 | 39 |
+| P1 | 1 | 0 | 51 | 52 |
+| P2 | 6 | 0 | 36 | 42 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **3** | **0** | **97** | **100** |
+| **all** | **7** | **0** | **97** | **104** |
 
 ---
 
@@ -103,6 +103,10 @@ total 100  open 3  blocked 0  done 97
 | WSL-66 | P1 | M | done | `--workspace .` resolved against a directory the caller could not see | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-67 | P2 | L | open | A provider's Linux-only CLI, run from Windows as if it were native | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-68 | P2 | M | open | A base that can reach nothing on the host at all | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-69 | P1 | M | open | Muse Code installed, authenticated and driven end to end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-70 | P2 | L | open | Two package maps become one, and the Go module embeds it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-71 | P2 | M | open | A portable shell profile this tree owns | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-72 | P2 | S | open | The BSD guest gets a 10 GiB disk, and the languages install on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

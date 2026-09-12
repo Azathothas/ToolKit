@@ -3995,3 +3995,346 @@ has not been enumerated. A `sealed` preset, an attacking probe that reports
 each door, and a precise threat model remain. Until then the documentation
 calls the implemented shape **zero grants**, never a sandbox or security
 boundary.
+
+---
+
+## WSL-69. Muse Code installed, authenticated and driven end to end
+
+**Source** the operator, 2026-09-12, ruling that this be a task of its own rather
+than a line inside `WSL-67`. [Issue 30](https://github.com/Azathothas/ToolKit/issues/30)
+part 1 is the ask it completes.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+⛔ **`examples/muse-code/README.md` documents an end-to-end procedure that nobody
+has ever run.** It tells a reader to create a named base, grant one checkout,
+bootstrap the tooling, install the provider CLI, authenticate, and work in the
+granted directory. Every step before the CLI is driven and proved; the three that
+are the point of the issue are not.
+
+What a user sees today: a guide whose last third is written from what the provider
+documents rather than from what happened.
+
+## Premise
+
+⭐ **Measured on 2026-09-12, so the gap is exactly three steps wide.** The base,
+the grant, the toolset and the multiplexer are all driven, in `WSL-67`'s Prove
+section. What has never run:
+
+1. the provider's own installer, inside the base;
+2. `muse login`, which needs a Meta subscription the repository does not hold;
+3. Muse editing, committing and pushing the granted Windows checkout.
+
+⚠ **Read rather than measured:** that the installer at the documented URL works on
+a base built by this tool. Its documentation is behind a Meta login, so nothing in
+this tree has seen it.
+
+## Approach
+
+1. ⭐ **Operator-assisted, and the entry says which parts need them.** The install
+   and the authenticated smoke need their credentials; everything around those two
+   is this session's.
+2. Build the base from the one-checkout profile in
+   [`../tools/windows/wsl-toolkit/examples/common/access-profiles.md`](../tools/windows/wsl-toolkit/examples/common/access-profiles.md),
+   with `--instance muse`, against a **throwaway** git checkout rather than a real
+   one, so the first write test cannot damage anything.
+3. Run [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh) with
+   `--toolset agent` as the ordinary account.
+4. ⛔ **The installer is downloaded, read, and then run from the file that was
+   read.** Never a URL piped into a shell from a script in this tree;
+   [`../docs/security/remote-ops.md`](../docs/security/remote-ops.md) and
+   [`../docs/consumers.md`](../docs/consumers.md) both refuse it. Record the
+   resolved version and a digest of the file that was actually run, so the guide
+   can name what it was proved against.
+5. Drive the three things the issue asks for, from inside a tmux session: Muse
+   reads the checkout, writes a file that appears on the Windows side, and `git
+   commit` plus `git push` succeed from the guest.
+6. ⛔ **Assert the negative in the same pass.** Muse must not reach any other
+   Windows directory. Name three paths outside the grant and show each is absent.
+7. Rewrite the guide's last third from what happened, and delete anything in it
+   that measurement contradicts.
+
+⛔ **Do not widen the grant to make a step work.** If Muse needs a second
+directory, that is a finding about the access model and belongs in `WSL-67`, not a
+second mount added quietly to get a green run.
+
+## Consumers
+
+None. `examples/` is read by people, not fetched by a script, and no row of
+[`../docs/consumers.md`](../docs/consumers.md) names it. ⚠ A change to
+`scripts/common/bootstrap.sh` discovered while doing this is a different matter and
+does reach that file's own unregistered callers.
+
+## Prove
+
+⛔ **The acceptance, and it is a command.** Run from the granted checkout inside
+the base, as the ordinary account:
+
+```bash
+sh -c 'muse --version && git -C /workspaces/project commit --allow-empty -m "muse smoke" && git -C /workspaces/project push && ls /mnt/c 2>&1; echo "rc=$?"'
+```
+
+Passing is all four of:
+
+- `muse --version` prints a version and exits 0;
+- the commit and the push both exit 0, and the commit is visible from Windows;
+- `ls /mnt/c` fails, because `automount` is off and interop is absent;
+- `wsl-toolkit --instance muse base status --probe --json` reports exactly one
+  grant, whose source is the throwaway checkout.
+
+⚠ **Read each exit code from the process that produced it, unpiped.** A `&&`
+chain reports the last one, which is the trap
+[`../docs/AGENTS.md`](../docs/AGENTS.md) absolute 5 names.
+
+---
+
+## WSL-70. Two package maps become one, and the Go module embeds it
+
+**Source** the operator, 2026-09-12, ruling **one shared table** on the fork
+recorded in `WSL-67`'s amendment.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+⚠ **The same knowledge is written twice and the two copies already disagree.**
+[`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh) knows twelve
+package managers and every distribution-specific spelling measured on 2026-09-12.
+`tools/windows/wsl-toolkit/internal/toolkit/provision.sh` knows six families and a
+`developer` toolset written by hand. A distribution whose package name changes has
+to be fixed in two places, and nothing fails if only one is.
+
+## Premise
+
+⭐ **Measured, not assumed:** the provisioner detects `apk`, `pacman`, `apt`,
+`dnf`, `tdnf` and `xbps` and nothing else, and its `developer` list is a literal
+per-family `case` arm. The bootstrap's table already carries every value those arms
+carry, plus `yum`, `zypper`, `emerge` and the three BSD managers, plus the
+`os:<ID>` overrides that the `case` form cannot express at all.
+
+⚠ **The two are not interchangeable, and that is why this is L rather than S.**
+The provisioner runs as root inside a distribution during `base ensure` and
+installs the container engine; the bootstrap runs as the ordinary account
+afterwards and installs a tool set. Merging the TABLE is the work. Merging the
+SCRIPTS is not, and must not be attempted.
+
+## Approach
+
+1. ⭐ **The table moves into one file and both readers read it.** The seam is
+   `package_table()` in `scripts/common/bootstrap.sh` and the per-family `case`
+   arms in `internal/toolkit/provision.sh`.
+2. ⚠ **`go:embed` cannot reach outside its own package directory.** This
+   repository already solved that shape once: `RULES.md` section 4 describes
+   `wsl-toolkit.ps1` being built into two tracked copies with a gate rule that
+   rebuilds and compares both byte for byte. ⭐ **Follow that precedent rather
+   than inventing a second one**: the embedded copy is GENERATED, and a `check`
+   rule refuses the two disagreeing.
+3. The provisioner keeps its own engine packages. Only the tool-set names come
+   from the shared table.
+4. Extend the provisioner's detection to the same twelve managers, and ⛔ **say in
+   its own header which of them have had a base built from them.** Four presets
+   exist; twelve managers do not mean twelve proved bases.
+
+⛔ **Do not make the provisioner fetch the bootstrap at run time.** A base build
+that needs the network for its own package map is a base that cannot be built
+offline, and it puts a consumer-facing URL on the critical path of the tool.
+
+## Decision
+
+**Ruled by the operator on 2026-09-12: one shared table.** The alternative,
+leaving both and recording the risk, was rejected. ⚠ **The cost the ruling
+accepts, written down so it is not rediscovered:** that file is fetched by URL
+from outside this tree, so a change to it now reaches the compiled tool AND those
+callers in one commit, and the gate has to hold both ends.
+
+## Consumers
+
+⭐ **This is the row that matters.**
+[`../docs/consumers.md`](../docs/consumers.md) records `scripts/common/bootstrap.sh`
+as meant to be fetched with no consumer row yet. After this entry the file is also
+a build input to the published executable. Not breaking by that page's definition:
+no path moves and no exit code changes meaning. ⚠ But it raises the cost of every
+later edit to the table, and the entry's closure says so.
+
+## Prove
+
+```bash
+sh scripts/common/check-gate.sh
+```
+
+Passing is:
+
+- a new gate rule that regenerates the embedded table and compares it byte for
+  byte, and that goes RED when one copy is edited alone. ⛔ Plant that edit and
+  read the exit code, unpiped: a guard never seen to refuse is a guard nobody
+  knows works;
+- `wsl-toolkit base ensure` still builds from all four presets;
+- `wsl-toolkit matrix --images all` with `--toolset agent` is no worse than the
+  13 ran / 2 failed measured on 2026-09-12.
+
+---
+
+## WSL-71. A portable shell profile this tree owns
+
+**Source** the operator, 2026-09-12: write a portable proper one here, as a task
+for a later session.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+A base built by this tool gives an interactive account a bare default shell.
+Everything the operator relies on daily is in a `.bashrc` that lives in another
+repository and re-fetches itself from the network, which a guest with `interop`
+off and no configured egress may not be able to reach, and which
+[`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh) is forbidden
+from pulling into a shell.
+
+## Premise
+
+⭐ **Read on 2026-09-12, and recorded in sweep 2 of
+[`../docs/reference-sweeps/findings.md`](../docs/reference-sweeps/findings.md).**
+The operator's own file is 19,433 bytes of prompt, colours, aliases, functions and
+a self-update path. Three of its mechanisms were already taken into the
+bootstrap's detection; the rest is interactive-shell configuration this tree has
+none of.
+
+⚠ **The one-home rule was the objection, and the ruling overrides it with a
+distinction:** a file this tree OWNS and can keep portable is not a second copy of
+the operator's file. So the thing to write is not a copy.
+
+## Approach
+
+1. ⭐ **Portable first, and that is the whole constraint.** It must work under
+   `bash`, and degrade rather than error under `dash`, `ash` and FreeBSD `sh`,
+   because those are what the thirteen catalogue images and the BSD guest actually
+   run. ⛔ `shellcheck -s sh` runs over every tracked `.sh` here, so a `.sh` file
+   cannot use arrays, `local` or `[[`. Decide the file's extension with that in
+   mind and say why in its header.
+2. ⭐ **The WSL guard is the one mechanism worth carrying over**, because it is
+   the one that is about this tree's own subject: a shell whose working directory
+   is under `/mnt/c` is slow and, in a base with `automount` off, wrong. Move to
+   the home directory and say so once.
+3. `PATH` for `~/.local/bin`, which the bootstrap already writes to `~/.profile`;
+   this file reads it rather than restating it.
+4. ⛔ **No self-update path.** A profile that fetches and overwrites itself is the
+   one thing in the reference this repository cannot have: it makes the file's
+   content untrackable and puts a network fetch in every shell start.
+5. ⛔ **No aliases for tools the toolsets do not install**, and no prompt colour
+   scheme. An alias to a missing program is an error on every shell start, and a
+   prompt is taste rather than a tool.
+6. `bootstrap.sh` installs it the way it installs `tmux.conf`: from beside itself,
+   and it says so when it cannot find it.
+
+## Decision
+
+**Ruled by the operator on 2026-09-12: write a portable one here.** The two
+alternatives, pointing at the `devscripts` URL and vendoring a copy, both lost -
+the first because a guest may not be able to reach it, the second because two
+homes for one file is how they drift.
+
+## Consumers
+
+Nothing fetches it yet. ⚠ It will be a fetched file on the day it exists, for the
+same reason `bootstrap.sh` is, so it gets the paragraph in
+[`../docs/consumers.md`](../docs/consumers.md) that that file has.
+
+## Prove
+
+```bash
+wsl-toolkit matrix --images all -c 'sh /work/bootstrap.sh --toolset minimal && for s in sh bash dash ash; do command -v $s >/dev/null 2>&1 && $s -lc "exit 0" || true; done'
+```
+
+Passing is:
+
+- every shell present on the image starts with the profile installed and writes
+  nothing to stderr. ⛔ **stderr is the assertion**, because a profile error does
+  not change the exit code: the shell starts anyway and the line that failed did
+  nothing;
+- the same on FreeBSD through `wsl-toolkit bsd run --network`;
+- in a base with `automount` off, a login shell whose working directory was under
+  `/mnt/c` starts in the home directory instead.
+
+---
+
+## WSL-72. The BSD guest gets a 10 GiB disk, and the languages install on it
+
+**Source** the operator, 2026-09-12: grow and allow 10GB. Found while driving
+`bootstrap.sh --toolset languages` on FreeBSD 15.1.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+⛔ **The FreeBSD guest runs out of disk part way through a toolchain install, and
+what it reports is a package failure.** Driving the `languages` toolset there
+installed `go` and `python3` and then failed on `rust` and `nim`, and the only
+sign of the real cause was a kernel line on the console:
+
+```text
+pid 1521 (pkg), uid 0 inumber 82881 on /: filesystem full
+```
+
+A reader of the run's own report sees `absent=nim rust` and nothing about disk.
+
+## Premise
+
+⭐ **Measured on 2026-09-12.** The cached image is
+`FreeBSD-15.1-RELEASE-amd64-BASIC-CI-ufs.raw`, 6.0 GiB, whose root filesystem is
+4.8 GiB. After the failed attempt `df -h /` reported `4.5G` used at **102%**, with
+`-111M` available. After the session removed what it had installed, 1.9 GiB used
+at 43%.
+
+⭐ **The two package names are correct and that is measured too**, by query rather
+than by install: `pkg rquery` answers `rust 1.96.1` and `nim 2.2.10`. ⚠ So this is
+an image-size limit, not a table defect, and the entry must not "fix" the table.
+
+## Approach
+
+1. The seam is `cmd_bsd.go`, which already has `--cpus` and `--memory` flags and
+   no disk flag. Add the third, defaulting to the 10 GiB the operator ruled.
+2. ⚠ **Growing the file is half of it.** UFS does not notice a larger backing
+   file on its own; the partition and the filesystem both have to be extended, and
+   FreeBSD's own `gpart resize` plus `growfs` are what do it. ⛔ Do this in the
+   guest on first boot after a grow, or on the host with a tool that understands
+   GPT - not by appending zeros and hoping.
+3. ⭐ **Report the disk in `bsd status`**, beside the release and the accelerator,
+   because a limit nobody can see is one that gets rediscovered.
+4. ⚠ **The guest image is shared state across sessions.** A grow must be
+   idempotent and must not silently discard a guest a previous session left
+   configured. Say what happens to an existing image, and refuse rather than
+   guess.
+
+⛔ **Do not make the default bigger than the ruling.** 10 GiB is what was asked
+for; a flag exists for anything else, and a default nobody chose is a ceiling
+somebody else pays for.
+
+## Consumers
+
+None. `wsl-toolkit bsd` ships in the published executable, and adding a flag with
+a default is explicitly not breaking by
+[`../docs/consumers.md`](../docs/consumers.md)'s definition. ⚠ The DEFAULT disk
+size changing is observable to a caller who measured the old one, and the
+changelog row says so.
+
+## Prove
+
+```bash
+wsl-toolkit bsd run --network --timeout 25m -c 'df -h / | tail -1; fetch -q -o /tmp/b.sh https://raw.githubusercontent.com/Azathothas/ToolKit/main/scripts/common/bootstrap.sh; sh /tmp/b.sh --toolset languages --no-tmux-config'
+```
+
+Passing is:
+
+- `df -h /` reports a root filesystem of at least 9 GiB, which is the grow having
+  reached the filesystem rather than only the file;
+- the run exits **0** with `absent=` empty, and the report carries
+  `version.rustc` and `version.nim`;
+- `wsl-toolkit bsd status` prints the disk size;
+- ⛔ the guest is left as it was found. Remove what the run installed and report
+  `df -h /` again, because this image outlives the session that touched it.

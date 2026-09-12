@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-12T14:40:00Z
 baseline        fcca2ba, clean main; local gate 19 checks green and CI RED on
                 that same commit in three jobs
-entries         total 100  open 3  blocked 0  done 97
+entries         total 104  open 7  blocked 0  done 97
 gate            19 checks green; CI green on bf5c095, all six jobs
 head            bf5c095 pushed; the scripts work committed on top
 ```
@@ -119,23 +119,32 @@ argument battery      11 cases under dash, which is stricter than bash:
 local gate            19 checks green
 ```
 
-## What is left
+## What is left, and four of it is now filed
 
-1. ⚠ **A guest with a bigger disk, for `rust` and `nim` on FreeBSD.** Everything
-   else about that row is driven; those two ran the 4.8 GiB root out of space and
-   their names are confirmed by query rather than by install.
-2. ⛔ **`pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never been
+⭐ **The operator ruled every open question on 2026-09-12 and each ruling became an
+entry**, so the next session picks up a filed unit of work rather than a decision.
+⛔ Authoring is not implementing: none of the four has any code written for it.
+
+| entry | the ruling behind it |
+| --- | --- |
+| ⭐ `WSL-69` Muse Code installed, authenticated and driven end to end | the operator asked for this as a task of its own. P1, because the guide's last third is written from what the provider documents rather than from what happened |
+| `WSL-70` two package maps become one, and the Go module embeds it | **one shared table**. The alternative, leaving both and recording the risk, lost |
+| `WSL-71` a portable shell profile this tree owns | **write a portable proper one here**. Pointing at the `devscripts` URL lost because a guest may not reach it; vendoring a copy lost because two homes drift |
+| `WSL-72` the BSD guest gets a 10 GiB disk | **grow and allow 10GB** |
+
+What is left and NOT filed:
+
+1. ⛔ **`pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never been
    run.** No image for either here, and the script header says so rather than
    letting the twelve-manager count imply otherwise.
-3. `soar` and `nix` as user-level providers are written and not driven.
-4. ⚠ **`provision.sh` is a SECOND package map** and still knows six families
-   rather than twelve. Not merged: that one runs as root during `base ensure` and
-   installs the engine. ⭐ Merging means the Go module embedding a file consumers
-   also fetch by URL, which is a decision for the operator rather than a refactor.
-5. `WSL-67`'s own remaining list: the acceptance runner, and the Muse smoke.
-6. Add a deterministic regression for pre-marker base rollback.
-7. `WSL-68`: the attacking sealed-base probe and a published threat model.
-8. `WSL-59`, the low-level PowerShell adapter, remains open and untouched.
+2. `soar` and `nix` as user-level providers are written and not driven. ⛔ This
+   script may not install either, so driving them needs a machine that has one.
+3. `WSL-67`'s own remaining list: the provider-profile scenarios in the main
+   acceptance runner.
+4. Add a deterministic regression for pre-marker base rollback.
+5. `WSL-68`: the attacking sealed-base probe and a published threat model.
+   ⚠ **Nothing was done to it this session.**
+6. `WSL-59`, the low-level PowerShell adapter, remains open and untouched.
 
 ## Review findings
 
@@ -148,32 +157,40 @@ local gate            19 checks green
 - **Door sweep over the new script.** Every path that can fail now reaches one of
   `fail`, `warn` or `die`, and the difference between them is stated in the
   header. It found the upstream-failure path reporting one absent tool twice, once
-  as skipped and again as not-on-PATH.
+  as skipped and again as not-on-PATH; a forced user provider that is absent being
+  attempted once per package instead of refused once; and `--prefix` reaching two
+  `rm -rf` calls without being constrained where it is read.
 - **Guard mutation, and it found the worst defect in the session.** `fail` inside
   `$( )` increments a counter in a SUBSHELL, so a run whose digest step never
   completed reported `failures=0` and exited 0. ⛔ A guard that cannot make the
   process fail is not a guard. `fetch_verified_npm` answers through a global now.
   The same read found `set --` clobbering that function's own `$2` and `$3`, which
   is what made the digest step fail in the first place.
-- **Claim audit.** Three claims were cut for being unmeasured: FreeBSD package
-  names are labelled as taken from the ports convention rather than the machine,
-  `pkgin`/`pkg_add` and `soar`/`nix` are labelled written-and-not-driven, and the
-  two red matrix rows are attributed to the distributions rather than called
-  expected failures.
+- **Claim audit, run twice.** The first pass cut three unmeasured claims. ⭐ The
+  second had to CORRECT one of its own: everything was labelled "FreeBSD
+  installation is not driven" on the strength of a guest with no resolver, and
+  `bsd run --network` made that false an hour later. The label is gone and the
+  measurement is in its place.
 - ⚠ **A pipe hid a red matrix.** The first full run put the script through
   `| tail -40`, so every row reported `tail`'s exit code and twelve of twelve read
   as green. Re-run unpiped: five of twelve. This is
   [`../docs/AGENTS.md`](../docs/AGENTS.md) absolute 5, in the session that read it.
+- ⚠ **And one claim made to the operator mid-session was wrong.** Eleven of
+  thirteen matrix rows had reported and chimera was read as one of the green ones;
+  it was still running and it failed. Corrected in the same conversation. ⛔ A
+  partial result table is not a result.
 
 ## Open questions for the operator
 
-1. ⭐ **Does a `bashrc` belong in this tree?** The reference sweep read the
-   operator's own, which lives in `pkgforge/devscripts` and re-fetches itself in
-   place. A copy here would be a second home for one file of personal
-   configuration, which the one-home rule is against. ⛔ Nothing was written.
-2. **Should `provision.sh` and `bootstrap.sh` share one package map?** Item 4
-   above has the trade.
+⭐ **None.** All three that were open were ruled on 2026-09-12 and each is now an
+entry; the table above says which ruling produced which. ⚠ `WSL-69` needs the
+operator's Meta credentials for two of its steps, and that is a dependency rather
+than a question.
 
 Unrelated host state is untouched: `eph-pgb`, `wsl-toolkit-podbox`,
 `podman-machine-default` and the ordinary `wsl-toolkit` base all remain
 registered. Every container this session ran was ephemeral and removed itself.
+⚠ **The FreeBSD guest image is shared state across sessions and this one mutated
+it.** What was installed was removed and the root went from 102% to 43%; `pkg info`
+counted 564 before and 321 after, so the removal was not total. `wsl-toolkit bsd
+fetch` re-downloads a pristine image if an exact baseline is wanted.
