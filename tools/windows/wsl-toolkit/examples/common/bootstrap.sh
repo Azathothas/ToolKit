@@ -41,7 +41,11 @@ fetch_verified_package() {
     die "npm could not fetch $package@$CODEGRAPH_VERSION"
   fi
   set -- "$package_dir"/*.tgz
-  [ "$#" -eq 1 ] && [ -f "$1" ] || die "npm did not write exactly one archive for $package"
+  # ⛔ NOT `[ ... ] && [ ... ] || die`. That is SC2015, which the shellcheck on
+  # ubuntu-latest reports and the newer one on a development host does not.
+  if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
+    die "npm did not write exactly one archive for $package"
+  fi
   archive=$1
   filename=$(basename "$archive")
   actual=$(node - "$archive" <<'NODE'

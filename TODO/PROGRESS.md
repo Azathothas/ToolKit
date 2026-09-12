@@ -6,12 +6,13 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-12T11:00:00Z
-baseline        d67c1e6, dirty main; gate 19 checks green against inherited
-                issue-29 work
+session started 2026-09-12T14:46:26Z
+baseline        fcca2ba, clean main; local gate 19 checks green, CI RED on that
+                same commit in three jobs
 entries         total 100  open 3  blocked 0  done 97
-gate            19 checks green after the checkpoint edit
-head            local changes not yet committed or pushed
+gate            19 checks green locally, and that was not enough: see the CI
+                finding below
+head            pushed
 ```
 
 ## Active work
@@ -23,8 +24,24 @@ The remaining Linux CI failure was a race in
 the size in the member header through `writeRegularMember`, and the regression
 passes an intentionally stale `FileInfo` instead of racing the scheduler. The
 full live acceptance runner passed **71 of 71**, cleanup returned to its
-baseline, and unrelated distributions were preserved. The remote issue remains
-open until this checkpoint is pushed and its CI result is read.
+baseline, and unrelated distributions were preserved.
+
+⛔ **CI WAS RED ON `fcca2ba` AND THE LOCAL GATE WAS GREEN THE WHOLE TIME, and
+neither failure belonged to issue 29.** Both came from the issue-30 files:
+
+- `TestBaseMountPayloadIsEncodedAndEscaped` compared a resolved mount source
+  against a raw `t.TempDir()`. The Windows CI runner has `TEMP` under
+  `C:\Users\RUNNER~1\`, an 8.3 short name that `filepath.EvalSymlinks` expands,
+  so the production canonicalization and the typed expectation disagreed there
+  and agreed on every long-name host. Reproduced locally by pointing `TEMP` at a
+  short-name directory: red before the fix, green after.
+- `shellcheck` refused `examples/common/bootstrap.sh` line 44 for SC2015, the
+  `[ ... ] && [ ... ] || die` shape. Local shellcheck is 0.11.0 and does not
+  report it; `ubuntu-latest` carries **0.9.0** and does.
+
+⭐ **The second one is now verifiable here rather than predicted.** `ubuntu:24.04`
+in a container reports shellcheck 0.9.0 and runs clean over all 24 tracked
+scripts, which is the same binary and version CI installs.
 
 ⭐ **[Issue 30](https://github.com/Azathothas/ToolKit/issues/30) is substantially
 started, not complete.** `WSL-67` now has the provider-neutral base, explicit

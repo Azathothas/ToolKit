@@ -170,8 +170,18 @@ func TestBaseMountPayloadIsEncodedAndEscaped(t *testing.T) {
 	if err != nil || string(target) != "/workspaces/provider" {
 		t.Fatalf("encoded mount target = %q, %v", target, err)
 	}
-	if len(mounts) != 1 || mounts[0].Source != filepath.Clean(project) {
-		t.Fatalf("resolved mounts = %+v", mounts)
+	// ⚠ The expectation is canonicalized rather than typed, because the
+	// production resolution canonicalizes and a temporary directory is not
+	// always already canonical. On the Windows CI runner TEMP is
+	// C:\Users\RUNNER~1\..., an 8.3 short name that EvalSymlinks expands, so a
+	// raw t.TempDir() expectation failed there and passed on every long-name
+	// host.
+	wantSource, err := filepath.EvalSymlinks(project)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mounts) != 1 || mounts[0].Source != filepath.Clean(wantSource) {
+		t.Fatalf("resolved mounts = %+v, want source %q", mounts, filepath.Clean(wantSource))
 	}
 }
 
