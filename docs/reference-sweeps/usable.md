@@ -991,7 +991,7 @@ value there is a defect in the report rather than a cosmetic gap.
 | tdnf on Photon | driven | driven |
 | xbps on Void | driven | driven |
 | emerge on Gentoo stage3 | driven | ⛔ **not driven.** The image carries no portage tree, so an install needs a sync this script will not start on a caller's behalf. |
-| pkg on FreeBSD 15.1 | ⭐ driven, through `wsl-toolkit bsd run` | ⛔ **not driven.** The BSD guest in this environment has no working resolver, so `pkg` reaches no repository. The `os:freebsd` values come from the ports naming convention. |
+| pkg on FreeBSD 15.1 | ⭐ driven, through `wsl-toolkit bsd run --network` | ⭐ **driven.** `pkg install -y bash ca_root_nss coreutils curl git jq node npm ripgrep tmux` succeeded and the report read every version back. ⚠ The first attempt reported no resolver, because `bsd run` gives a guest no network unless `--network` is passed. |
 | pkgin on NetBSD, pkg_add on OpenBSD | ⛔ not driven | ⛔ not driven. No image for either. |
 | soar and nix as user-level providers | ⛔ not driven | ⛔ not driven. Neither is installed on any catalogue image, and this script may not install one. |
 

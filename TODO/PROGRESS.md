@@ -94,8 +94,14 @@ alpine, full          requested 25, present 25, skipped 0, absent 0,
                       codegraph 1.6.0, failures 0
 debian, upstream      powershell 7.6.6 from its GitHub release, sha256
                       ddbc4a2d...103bc matched against the release's own file
-freebsd 15.1          pkg at /usr/sbin/pkg, ID=freebsd, sha256 and openssl
-                      present, no bash. Detection driven; install NOT driven
+freebsd 15.1          driven through bsd run --network plus a fetch of the raw
+                      URL. pkg installed bash ca_root_nss coreutils curl git
+                      jq node npm ripgrep tmux; requested 18, present 10,
+                      skipped 8, absent 0, failures 0. go 1.25.14 and
+                      python3 3.12.14 installed; rust and nim filled the
+                      4.8 GiB guest disk, and pkg rquery confirms both names
+                      (rust 1.96.1, nim 2.2.10). FreeBSD packages powershell
+                      7.5.5_1, which the first table did not know
 shellcheck            ubuntu:24.04 reports 0.9.0, which is CI's; 24 of 24
                       tracked scripts clean under it
 local gate            19 checks green
@@ -103,14 +109,12 @@ local gate            19 checks green
 
 ## What is left
 
-1. ⛔ **Drive the FreeBSD install path.** The `os:freebsd` package names are
-   written from the ports naming convention and not from a machine. ⚠ `bsd run
-   --script` flattens a script into one `;`-joined console line, so a 44 KB file
-   does not survive it, and `bsd run -c` is bounded by the console line length.
-   ⭐ **The route that will work is `bsd run --network` plus a `fetch` of the raw
-   URL now that this is pushed**, and that also exercises the consumer path.
-2. `pkgin` on NetBSD and `pkg_add` on OpenBSD are written and not driven. No image
-   for either here.
+1. ⚠ **A guest with a bigger disk, for `rust` and `nim` on FreeBSD.** Everything
+   else about that row is driven; those two ran the 4.8 GiB root out of space and
+   their names are confirmed by query rather than by install.
+2. ⛔ **`pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never been
+   run.** No image for either here, and the script header says so rather than
+   letting the twelve-manager count imply otherwise.
 3. `soar` and `nix` as user-level providers are written and not driven.
 4. ⚠ **`provision.sh` is a SECOND package map** and still knows six families
    rather than twelve. Not merged: that one runs as root during `base ensure` and

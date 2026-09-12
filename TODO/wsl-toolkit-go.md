@@ -3880,17 +3880,39 @@ this machine. All 24 tracked scripts are clean under it.
 
 ## What is still open
 
-1. ⛔ **The FreeBSD install path is not driven.** `pkg` at `/usr/sbin/pkg`,
-   `ID=freebsd` from `/etc/os-release`, `sha256` and `openssl` present and no
-   `bash` were all read off FreeBSD 15.1 through `wsl-toolkit bsd run`, so
-   detection is proved. ⚠ **The `os:freebsd` package names are written from the
-   ports naming convention and not from the machine**, because `bsd run --script`
-   flattens a script into one `;`-joined console line and a 44 KB file does not
-   survive that, and `bsd run -c` is bounded by the console's line length. The
-   route that will work is `--network` plus a `fetch` of the raw URL once this is
-   pushed.
-2. `pkgin` on NetBSD and `pkg_add` on OpenBSD are written and not driven. There is
-   no image for either here.
+⭐ **This list shrank after it was first written**, because the FreeBSD route was
+found rather than assumed. The item is kept, as a measurement.
+
+1. ⭐ **The FreeBSD path is driven, and the route that works is the consumer's
+   own.** `bsd run --network` plus `fetch` of the raw URL puts the file in the
+   guest; ⚠ `bsd run --script` flattens a script into one `;`-joined console line,
+   so a 45 KB file does not survive it, and `bsd run -c` is bounded by the
+   console's line length. Measured on FreeBSD 15.1:
+
+   ```text
+   freebsd on FreeBSD amd64, libc, privilege=root, provider=pkg
+   pkg install -y bash ca_root_nss coreutils curl git jq node npm ripgrep tmux
+   requested 18  present 10  skipped 8  absent 0  failures 0
+   bash 5.3.15  curl 8.21.0  git 2.54.0  jq 1.8.2  node v24.19.0
+   npm 11.18.0  ripgrep 15.2.0  tmux 3.7b
+   ```
+
+   The eight skipped names are the ones FreeBSD base already provides, and the
+   report proves each: clang 19.1.7, less 692, OpenSSH 10.0p2, bsdtar 3.8.7,
+   xz 5.8.3.
+
+   ⚠ **`--toolset languages` filled the guest disk.** `go 1.25.14` and
+   `python3 3.12.14` installed; `rust` and `nim` did not, and the kernel logged
+   `pid (pkg) ... on /: filesystem full` on a 4.8 GiB root. ⭐ Both names are
+   correct and were confirmed without installing: `pkg rquery` answers rust
+   1.96.1 and nim 2.2.10. ⛔ **This is an image-size limit and not a table
+   defect**, and a session that wants those two needs a larger guest disk.
+
+   ⭐ **FreeBSD PACKAGES POWERSHELL, 7.5.5_1**, which the first table did not
+   know. It is the fourth system that does, beside Alpine, Wolfi and Photon.
+2. ⛔ **`pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never
+   been run.** There is no image for either here, and the header says so rather
+   than letting the twelve-manager count imply otherwise.
 3. `soar` and `nix` as user-level providers are written and not driven. Neither is
    on any catalogue image, and ⛔ this script may not install one.
 4. The provider-profile scenarios still are not in the main acceptance runner.

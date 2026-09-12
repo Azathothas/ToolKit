@@ -7,7 +7,39 @@ on what was true last time.
 
 ---
 
-## 2026-09-12 checkpoint
+## 2026-09-12, the second sitting
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-12T14:40:00Z | one context |
+| Commits | `fcca2ba`, clean `main`, ⛔ CI RED on it in three jobs | 4 on `main`, pushed; CI green on `bf5c095`, all six jobs |
+| Work | 100 entries: 3 open, 0 blocked, 97 done | 100 entries: 3 open, 0 blocked, 97 done. ⭐ Issue 29 CLOSED on green CI; `WSL-67` amended, not closed |
+| Changes | 270 tracked files | 270. Two files moved out of `examples/`, two added at the root; 21 files changed, +2,311 / -232 lines |
+| Size | `examples/common/bootstrap.sh`, 88 lines, one package manager, three digests written in | `scripts/common/bootstrap.sh`, 1,282 lines, twelve package managers, no digest written in. `tmux.conf` 86 lines |
+| Checks | 19-check gate green and CI red, which is the finding | 19-check gate green, and ⭐ CI's own shellcheck 0.9.0 run in a container over all 24 scripts |
+| Cost | not measured | 4 full matrix runs and 6 FreeBSD sessions. The final matrix: 13 images, 5m45s. No paid operation; network bytes not measured and no number invented |
+| Health | tree clean, two CI failures unfixed | tree clean; every container ephemeral and self-removed; ⚠ the FreeBSD guest image was mutated and restored from 102% to 43% disk |
+
+### The one number worth keeping
+
+| | |
+| --- | --- |
+| `matrix --images all`, `agent` toolset, 25 logical names | **13 ran, 2 failed** in 5m45s |
+| the two red rows | Gentoo stage3 has no portage tree; Chimera's repository disagrees with itself about `openssl3`. ⛔ Neither is worked around |
+| Alpine, full | requested 25, present 25, absent 0, CodeGraph 1.6.0, failures 0 |
+| Debian, upstream route | PowerShell 7.6.6, digest matched against the release's own file |
+| FreeBSD 15.1 | `pkg` installed 10, skipped the 8 its base provides, failures 0 |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. ⭐ **Two questions are waiting on the
+operator and neither blocks anything:** whether a `bashrc` belongs in this tree,
+and whether `provision.sh` and `bootstrap.sh` should share one package map. The
+next unit of work is `WSL-68`, which has had nothing done to it this session.
+
+---
+
+## 2026-09-12 checkpoint, superseded by the sitting above
 
 | row | before | after |
 | --- | --- | --- |

@@ -112,11 +112,12 @@ USAGE
 # Rocky has no ripgrep without EPEL. A table keyed on the manager alone cannot
 # say either thing.
 #
-# ⚠ EVERY LINUX VALUE BELOW WAS READ OFF THE DISTRIBUTION ON 2026-09-12. The
-# `os:freebsd` values are written from the ports naming convention and are NOT
-# driven: the BSD guest in this environment has no working resolver, so `pkg`
-# cannot reach a repository here. Detection and planning on FreeBSD are driven;
-# installation is not.
+# ⚠ EVERY VALUE BELOW WAS READ OFF THE SYSTEM ON 2026-09-12, FreeBSD included.
+# The Linux rows came from the thirteen images in this repository own catalogue;
+# the `os:freebsd` rows came from FreeBSD 15.1 through `wsl-toolkit bsd run
+# --network`, which fetches this file by raw URL and then queries `pkg` for each
+# name. ⛔ NetBSD and OpenBSD are the exception and say so in the header: `pkgin`
+# and `pkg_add` are written and have never been run.
 package_table() {
   cat <<'TABLE'
 bash bash
@@ -144,7 +145,7 @@ nim nim apt=- dnf|yum=- tdnf=- os:wolfi=- os:chimera=- os:rocky=-
 python python3 pacman=python os:chimera=python emerge=dev-lang/python
 rust rust apt=rustc emerge=dev-lang/rust
 cargo cargo pacman=- tdnf=- emerge=- os:wolfi=- os:photon=- os:freebsd=-
-powershell - apk=powershell os:wolfi=powershell tdnf=powershell os:chimera=-
+powershell - apk=powershell os:wolfi=powershell tdnf=powershell os:chimera=- os:freebsd=powershell
 TABLE
 }
 

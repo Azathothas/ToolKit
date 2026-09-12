@@ -52,6 +52,11 @@ it resolved.
 
 ⭐ **Twelve package managers rather than one**, and three of them are BSD: apk,
 apt, dnf, emerge, pacman, tdnf, xbps, yum, zypper, `pkg`, `pkgin`, `pkg_add`.
+⭐ **FreeBSD 15.1 is driven**, through `bsd run --network` and a `fetch` of the raw
+URL, which is also the consumer path: `pkg` installed ten packages, the eight
+names its base already provides were skipped, and the report read every version
+back off the machine. ⛔ `pkgin` and `pkg_add` are written and have never been
+run, and the script header says so rather than letting the count imply otherwise.
 `soar` and `nix` are used as user-level providers for an account with no root, and
 ⛔ neither is ever installed. A new `agent` toolset carries bash, Rust and cargo,
 Go, Nim, Python and PowerShell; PowerShell has an upstream route because only
