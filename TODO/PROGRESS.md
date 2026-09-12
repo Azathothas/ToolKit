@@ -116,7 +116,8 @@ argument battery      11 cases under dash, which is stricter than bash:
                       integrity value, unknown flag, flag with no value,
                       relative prefix, prefix /, --provider override,
                       --list-providers, and a --json object that parses
-local gate            19 checks green
+local gate            19 checks green in 21s, timed on this host rather than
+                      estimated. RULES.md says the gate cost belongs here
 ```
 
 ## What is left, and four of it is now filed
