@@ -154,7 +154,9 @@ the operator's instruction and specified by
 [`../docs/methodology/reviews.md`](../docs/methodology/reviews.md). Each names what
 it looked at that the other two did not.
 
-**Change under review:** 18 files, +2,741 / -213 against `fcca2ba`. Two files added
+**Change under review:** 18 files against `fcca2ba`, +2,741 / -213 as read at
+`b524b00`. ⚠ **That figure counts the commit that records it, so it is stale by
+construction**; `git diff --shortstat fcca2ba..HEAD` is the live one. Two files added
 at the top of the tree, two removed from `examples/`, one catalogue row, one test
 assertion, and the record.
 
