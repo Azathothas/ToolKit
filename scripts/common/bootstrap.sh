@@ -721,9 +721,17 @@ install_upstream() {
   esac
 }
 
+# ⚠ A ROUTE THAT CANNOT EXIST HERE IS NOT A ROUTE THAT FAILED. PowerShell ships a
+# Linux tarball and no BSD one, so on FreeBSD the name is reported as skipped -
+# which is what it is - rather than as a delivery this run failed to make.
 has_upstream_route() {
   case "$1" in
-    powershell) return 0 ;;
+    powershell)
+      case "$KERNEL" in
+        Linux) return 0 ;;
+      esac
+      return 1
+      ;;
   esac
   return 1
 }
@@ -1256,7 +1264,13 @@ else
       ssh)           value=$(ssh -V 2>&1 | { read -r line || line=""; printf '%s' "$line"; }) ;;
       *)             value=$(first_line "$name" --version) ;;
     esac
-    printf 'version.%s=%s\n' "$name" "$value"
+    # ⚠ An empty value reads as a tool that reported nothing, and the reader
+    # cannot tell that from a tool this list asked the wrong question of.
+    # FreeBSD base `unzip -v` writes nothing to stdout, so the line is omitted
+    # rather than printed blank.
+    if [ -n "$value" ]; then
+      printf 'version.%s=%s\n' "$name" "$value"
+    fi
   done
   printf 'failures=%d\n'      "$FAILURES"
 fi
