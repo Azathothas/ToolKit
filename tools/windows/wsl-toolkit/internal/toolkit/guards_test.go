@@ -477,13 +477,19 @@ func TestAnUnqualifiedImageReferenceIsRefused(t *testing.T) {
 }
 
 func TestEveryBuiltinImageAndPresetIsFullyQualified(t *testing.T) {
-	// ⚠ A FLOOR, NOT AN EQUALITY. This asserted exactly twelve because the
-	// issue that asked for the catalog named twelve, and the next session to add
-	// a row had to edit the assertion to add it. A floor still catches the defect
-	// the guard is for, which is a row disappearing without anybody deciding to
-	// remove it, and it does not have to be edited to grow the catalog.
-	if len(BuiltinImages) < 12 {
-		t.Fatalf("the catalog carries %d images and the issue that asked for it named twelve", len(BuiltinImages))
+	// ⚠ A FLOOR, NOT AN EQUALITY, AND THE FLOOR IS THE CURRENT COUNT. It
+	// asserted exactly twelve, so the session that added openSUSE had to edit the
+	// assertion to add it. A floor does not need that edit to GROW the catalog.
+	//
+	// ⛔ BUT THE FLOOR MOVES UP WHEN A ROW IS ADDED, and the first version of this
+	// left it at twelve. Guard mutation on 2026-09-12 found the hole: with the
+	// floor one below the count, removing the newest row stayed GREEN, which is
+	// exactly the defect this guard exists to catch. Removing two fired. So the
+	// number below is the count, and adding a row means raising it by one --
+	// which is right, because adding a catalog row is a decision rather than an
+	// accident, and removing one is the accident.
+	if len(BuiltinImages) < 13 {
+		t.Fatalf("the catalog carries %d images and this guard was last raised at thirteen; a row has been removed, or this floor needs raising on purpose", len(BuiltinImages))
 	}
 	seen := map[string]bool{}
 	for _, img := range BuiltinImages {

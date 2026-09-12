@@ -149,38 +149,107 @@ What is left and NOT filed:
 
 ## Review findings
 
-- **Driven pass over the two artifacts, not only the script.** The tmux
-  configuration was loaded on two tmux versions and every option read back from
-  the running server, because a configuration with one unsupported option loads
-  PARTIALLY: tmux starts, that line did nothing, and the session looks
-  configured. ⭐ It found nothing wrong, which is a result about the file and not
-  about the pass.
-- **Door sweep over the new script.** Every path that can fail now reaches one of
-  `fail`, `warn` or `die`, and the difference between them is stated in the
-  header. It found the upstream-failure path reporting one absent tool twice, once
-  as skipped and again as not-on-PATH; a forced user provider that is absent being
-  attempted once per package instead of refused once; and `--prefix` reaching two
-  `rm -rf` calls without being constrained where it is read.
-- **Guard mutation, and it found the worst defect in the session.** `fail` inside
-  `$( )` increments a counter in a SUBSHELL, so a run whose digest step never
-  completed reported `failures=0` and exited 0. ⛔ A guard that cannot make the
-  process fail is not a guard. `fetch_verified_npm` answers through a global now.
-  The same read found `set --` clobbering that function's own `$2` and `$3`, which
-  is what made the digest step fail in the first place.
-- **Claim audit, run twice.** The first pass cut three unmeasured claims. ⭐ The
-  second had to CORRECT one of its own: everything was labelled "FreeBSD
-  installation is not driven" on the strength of a guest with no resolver, and
-  `bsd run --network` made that false an hour later. The label is gone and the
-  measurement is in its place.
-- ⚠ **A pipe hid a red matrix.** The first full run put the script through
-  `| tail -40`, so every row reported `tail`'s exit code and twelve of twelve read
-  as green. Re-run unpiped: five of twelve. This is
-  [`../docs/AGENTS.md`](../docs/AGENTS.md) absolute 5, in the session that read it.
-- ⚠ **And one claim made to the operator mid-session was wrong.** Eleven of
-  thirteen matrix rows had reported and chimera was read as one of the green ones;
-  it was still running and it failed. Corrected in the same conversation. ⛔ A
-  partial result table is not a result.
+⭐ **Three passes, three different questions**, run at the end of the session on
+the operator's instruction and specified by
+[`../docs/methodology/reviews.md`](../docs/methodology/reviews.md). Each names what
+it looked at that the other two did not.
 
+**Change under review:** 18 files, +2,741 / -213 against `fcca2ba`. Two files added
+at the top of the tree, two removed from `examples/`, one catalogue row, one test
+assertion, and the record.
+
+### Lens 1, the door sweep: what other door reaches this?
+
+**Looked at what the other two did not:** every surface that can reach the two
+moved files and the new catalogue row, enumerated from memory and then **grepped
+for the ones the enumeration missed**.
+
+- ⭐ **Found: [`../docs/consumers.md`](../docs/consumers.md) enumerated 11 of the
+  bootstrap's 17 flags.** `--no-upstream`, `--tmux-config`, `--no-tmux-config`,
+  `--list-providers`, `--list-names` and `--version` were absent, because the
+  sentence was written before six of them existed. ⛔ **Fixed by removing the
+  enumeration rather than completing it**: a flag list in a second document is a
+  list that goes stale, and `--help` is the authority.
+- **Found: `scripts/README.md`'s directory table** describes `common/` as checks
+  and helpers and gave a reader no way to know a configuration FILE now lives
+  there. Fixed.
+- ⭐ **Found, and it is why the gate stayed green:** the generated manual does not
+  enumerate the catalogue. `grep -c opensuse` over `wsl-toolkit.1` and
+  `wsl-toolkit.md` is **0**, so a row is addable without regenerating either, and
+  `TestGeneratedManPageIsCurrent` was never at risk. That was luck until it was
+  checked.
+- **Cleared, each by a grep rather than by reading:** no live reference to either
+  old `examples/` path survives - the seven hits are the changelog, the consumers
+  break row, the sweep, the README's own account of the move, and the record; the
+  PowerShell bundle and launcher reference neither `examples/` nor the scripts; no
+  test asserts a `Kind` count, so a `niche` row was safe; `libc:musl` still selects
+  three; and `deslop` reports only the four pre-existing methodology files.
+
+### Lens 2, the guard mutation: can the new guard actually fail?
+
+**Looked at what the other two did not:** every guard this session added, by
+**planting the defect it exists to catch** and reading the exit code unpiped.
+
+- ⛔ **Found the session's own regression, and it is the important finding.** The
+  catalogue count guard was changed from `!= 12` to `< 12` so that adding a row
+  would not require editing the assertion. Planting proved that **removing the row
+  this session had just added stayed GREEN** - 12 images, `ok` - and only removing
+  a second one fired. The old assertion would have caught the first. ⭐ Fixed by
+  raising the floor to the current count, 13, with the message saying that adding
+  a row means raising it on purpose. Re-proved: unmutated passes, removing the
+  newest row now fails at `guards_test.go:492`. The catalogue file was restored
+  and `git diff` over it is empty.
+- ⭐ **Four digest guards had never been seen to refuse, and all four now have.**
+  Each was driven in a container with the defect planted:
+
+  | planted | result |
+  | --- | --- |
+  | the computed npm digest is wrong, by hashing with sha256 under a sha512 label | exit **1**, "does not match the registry integrity value" |
+  | a well-formed but wrong `--expect-integrity` | exit **1**, "does not match the --expect-integrity value" |
+  | the computed PowerShell sha256 is wrong, by substituting md5sum | exit **1**, "does not match the digest its own release publishes" |
+  | a wrong `--expect-sha256` | exit **1**, "does not match the --expect-sha256 value" |
+
+  ⚠ **The baseline was driven in the same run each time**, because a guard that
+  refuses everything is not a guard either: unmutated, the same commands exit 0
+  and report two registry matches and one release match.
+- **Already driven earlier in the session, and not re-run here:** `--prefix`
+  relative and `/`, an absent forced `--user-provider`, a malformed
+  `--expect-integrity`, an unknown logical name, an unknown toolset, an unknown
+  provider, an unknown flag, and a flag with no value.
+
+### Lens 3, the claim audit: which published sentence has no artefact behind it?
+
+**Looked at what the other two did not:** the numbers in what is being published -
+the record, the snapshot, the changelog, the entries and the issue comment -
+recomputed from the tree rather than re-read.
+
+- ⭐ **Found four stale numbers in [`SUMMARY.md`](SUMMARY.md)**, every one of them
+  a figure that was true when written and was overtaken by later work in the same
+  session: the commit count, the files-changed and line counts, the bootstrap's
+  line count, and how many matrix and FreeBSD runs it took. All four corrected
+  against the tree.
+- ⭐ **Found: the run counts were both wrong in the same direction.** "5 full
+  matrix runs and 7 FreeBSD sessions" was written from memory; counting the
+  invocations gives **6** matrix runs - two `developer`, one tool-availability
+  probe, two `agent`, one regression - and **9** `bsd run` sessions plus one `bsd
+  status`. ⚠ This is the class `reviews.md` names as a number with the wrong
+  denominator, and memory was the denominator.
+- **Verified against the tree, not re-read:** 13 catalogue images, 24 tracked
+  shell scripts, 19 gate checks, 1,311 lines and 47,297 bytes of `bootstrap.sh`,
+  86 lines of `tmux.conf`, 270 tracked files, 7 open entries, and the four new
+  entries' priorities and efforts as the index declares them.
+- **Also corrected:** the issue comment's reading list said four open entries are
+  what the issue wants, which reads as though `WSL-67` were finished. It is open
+  too, and the comment now says so where a reader meets the list.
+
+### ⛔ What a pass with no findings would have owed
+
+Every pass fired, so none of the three has to answer that. ⚠ Recorded anyway,
+because it is the sentence that proves a pass happened: the door sweep would have
+fired had any of the seven surviving `examples/common` references been a live
+reference rather than a historical one; the mutation pass would have fired had a
+planted digest still exited 0; and the claim audit would have fired had every
+recomputed number matched the published one.
 ## Open questions for the operator
 
 ⭐ **None.** All three that were open were ruled on 2026-09-12 and each is now an

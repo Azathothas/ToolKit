@@ -12,12 +12,12 @@ on what was true last time.
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-12T14:40:00Z | one context |
-| Commits | `fcca2ba`, clean `main`, ⛔ CI RED on it in three jobs | 8 on `main`, pushed. CI green on every run that completed; ⚠ one was CANCELLED, which is GitHub dropping a PENDING run superseded by a newer push, not a failure |
+| Commits | `fcca2ba`, clean `main`, ⛔ CI RED on it in three jobs | 11 on `main`, pushed. ⭐ Every run that completed is green; ⚠ two were CANCELLED, which is GitHub dropping a PENDING run superseded by a newer push, not a failure |
 | Work | 100 entries: 3 open, 0 blocked, 97 done | 104 entries: 7 open, 0 blocked, 97 done. ⭐ Issue 29 CLOSED on green CI; `WSL-67` amended, not closed; `WSL-69` to `WSL-72` AUTHORED from four operator rulings and ⛔ none of them implemented |
-| Changes | 270 tracked files | 270. Two files moved out of `examples/`, two added at the root; 17 files changed, +2,355 / -205 lines |
-| Size | `examples/common/bootstrap.sh`, 88 lines, one package manager, three digests written in | `scripts/common/bootstrap.sh`, 1,303 lines, twelve package managers, no digest written in. `tmux.conf` 86 lines |
+| Changes | 270 tracked files | 270. Two files moved out of `examples/`, two added at the root; 18 files changed, +2,741 / -213 lines |
+| Size | `examples/common/bootstrap.sh`, 88 lines, one package manager, three digests written in | `scripts/common/bootstrap.sh`, 1,311 lines, twelve package managers, no digest written in. `tmux.conf` 86 lines |
 | Checks | 19-check gate green and CI red, which is the finding | 19-check gate green, and ⭐ CI's own shellcheck 0.9.0 run in a container over all 24 scripts |
-| Cost | not measured | 5 full matrix runs and 7 FreeBSD sessions. The final matrix: 13 images, 7m2s. No paid operation; network bytes not measured and no number invented |
+| Cost | not measured | ⭐ **6** full matrix runs and **9** `bsd run` sessions, counted from the invocations rather than recalled; the first figures here said 5 and 7. The final matrix: 13 images, 7m2s. The gate: 21s, timed. No paid operation; network bytes not measured and no number invented |
 | Health | tree clean, two CI failures unfixed | tree clean; every container ephemeral and self-removed; ⚠ the FreeBSD guest image was mutated and restored from 102% to 43% disk |
 
 ### The one number worth keeping

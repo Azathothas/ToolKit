@@ -5,7 +5,7 @@ The probe, the checks, and the helpers a project inherits.
 | directory | what is in it |
 | --- | --- |
 | [`doctor/`](doctor/) | ⭐ the environment probe. Two implementations, one schema. Every project keeps this. |
-| [`common/`](common/) | the checks and the helpers. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin. |
+| [`common/`](common/) | the checks and the helpers, and since 2026-09-12 one configuration file a helper installs. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin; a helper and a data file have neither and the twins table below says why. |
 | [`windows/wsl-toolkit/`](windows/wsl-toolkit/README.md) | tools for a job that only exists on Windows. ⛔ Not a twin of anything. ⭐ It is a tool DIRECTORY rather than a loose script: its own [`README.md`](windows/wsl-toolkit/README.md) says how to build, test and release it, and the three published `.ps1` files each keep a `.md` beside them that stands alone. |
 | [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⭐ the COMPILED half of the same tool, in Go. It carries the script above inside itself and adds what PowerShell cannot do from here. ⛔ Not a script, so nothing in this file's check contract applies to it; [`common/check-go.sh`](common/) is what the gate runs over it. |
 | [`../LICENSES/`](../LICENSES/README.md) | the SPDX texts [`common/fill-license.sh`](common/) reads. ⛔ Not scripts, and four of them must never be edited. |

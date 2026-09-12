@@ -72,6 +72,18 @@ and the only `zypper` one. The guard that asserted the catalogue held exactly
 twelve images is a floor now: it still catches a row disappearing, and it no
 longer has to be edited to add one.
 
+**2026-09-12T18:10:00Z amendment, from the three review passes.** ⛔ **The
+catalogue count guard had a hole this change put there.** Relaxing it from exactly
+twelve to a floor of twelve meant that removing the row this change ADDED stayed
+green; only removing a second fired. The floor is the current count now, 13, and
+the message says that adding a row means raising it deliberately. Planted and
+re-proved both ways. ⭐ **Four digest guards were also driven for the first time**,
+each with the defect planted: a wrong computed npm digest, a wrong
+`--expect-integrity`, a wrong computed PowerShell sha256, and a wrong
+`--expect-sha256`. All four exit 1 with the right message, and the unmutated
+baseline exits 0 in the same run. A flag enumeration in `docs/consumers.md` that
+had gone stale was removed rather than completed.
+
 **Driven:** `wsl-toolkit matrix --images all` with the 25-name `agent` toolset:
 **13 ran, 2 failed** in 5m45s. Both failures are outside the script and neither is
 worked around - Gentoo's stage3 has no portage tree, and Chimera's repository is
