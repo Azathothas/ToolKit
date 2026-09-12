@@ -407,7 +407,7 @@ func runReadySmoke(ctx context.Context, cfg toolkit.Config, healthy bool) *ready
 	defer clear()
 
 	res := runner.Run(ctx, toolkit.JobSpec{
-		Image: toolkit.VerifyImage, Script: []byte(readySmokeScript),
+		Image: toolkit.VerifyImage, Script: []byte(readySmokeScript), ContainerLifecycle: toolkit.ContainerEphemeral,
 		ArtifactDir: art, Timeout: 5 * time.Minute, Label: "ready --smoke",
 	})
 	s.JobID = res.ID

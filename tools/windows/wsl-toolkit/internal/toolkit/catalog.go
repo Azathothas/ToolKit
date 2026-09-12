@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -42,6 +43,51 @@ type BaseConfig struct {
 	Name  string `json:"name"`
 	Image string `json:"image"`
 	User  string `json:"user"`
+	// Automount is how the Windows drives appear inside the base: `ro`, `rw`
+	// or `off`.
+	//
+	// ⛔ THE DEFAULT IS `ro` AND IT USED TO BE `rw`. WSL mounts every fixed
+	// drive at /mnt/<letter> and a job inside the base could WRITE there, so a
+	// `rm -rf` with a wrong path in it destroys the real checkout on the
+	// Windows host - the one thing this tool's copy-never-mount rule exists to
+	// make impossible, reachable through a door nobody opened on purpose. A
+	// consumer's own page carries it as "read from it, never write to it",
+	// which is a rule a human keeps and a job does not.
+	//
+	// ⚠ Reading stays available, because a caller that reaches for /mnt/c to
+	// read one file is doing something ordinary and turning the mount off by
+	// default would break it with no warning.
+	Automount string `json:"automount,omitempty"`
+}
+
+const (
+	AutomountReadOnly  = "ro"
+	AutomountReadWrite = "rw"
+	AutomountOff       = "off"
+)
+
+// NormalizeAutomount validates the automount setting and supplies the default.
+func NormalizeAutomount(value string) (string, error) {
+	switch value {
+	case "":
+		return AutomountReadOnly, nil
+	case AutomountReadOnly, AutomountReadWrite, AutomountOff:
+		return value, nil
+	}
+	return "", fmt.Errorf("base.automount %q must be %q, %q or %q",
+		value, AutomountReadOnly, AutomountReadWrite, AutomountOff)
+}
+
+const (
+	ContainerPersistent = "persistent"
+	ContainerEphemeral  = "ephemeral"
+)
+
+// JobConfig contains the default values for run and matrix.
+type JobConfig struct {
+	ContainerLifecycle string `json:"container_lifecycle"`
+	Platform           string `json:"platform,omitempty"`
+	Workspace          string `json:"workspace,omitempty"`
 }
 
 // Config is the stored configuration. Every field has a compiled-in default, so
@@ -49,6 +95,7 @@ type BaseConfig struct {
 type Config struct {
 	Schema string     `json:"schema"`
 	Base   BaseConfig `json:"base"`
+	Jobs   JobConfig  `json:"jobs"`
 	// Images REPLACES the built-in catalog when it has entries. One knob: a
 	// list that both replaces and extends has to be read to be understood.
 	Images []Image `json:"images,omitempty"`
@@ -133,7 +180,8 @@ func DefaultConfig() Config {
 	}
 	return Config{
 		Schema: ConfigSchema,
-		Base:   BaseConfig{Name: name, Image: DefaultBaseImage, User: DefaultBaseUser},
+		Base:   BaseConfig{Name: name, Image: DefaultBaseImage, User: DefaultBaseUser, Automount: AutomountReadOnly},
+		Jobs:   JobConfig{ContainerLifecycle: ContainerPersistent},
 	}
 }
 
@@ -269,6 +317,18 @@ func LoadConfig() (Config, error) {
 	if stored.Base.User != "" {
 		cfg.Base.User = stored.Base.User
 	}
+	if stored.Base.Automount != "" {
+		cfg.Base.Automount = stored.Base.Automount
+	}
+	if stored.Jobs.ContainerLifecycle != "" {
+		cfg.Jobs.ContainerLifecycle = stored.Jobs.ContainerLifecycle
+	}
+	if stored.Jobs.Platform != "" {
+		cfg.Jobs.Platform = stored.Jobs.Platform
+	}
+	if stored.Jobs.Workspace != "" {
+		cfg.Jobs.Workspace = stored.Jobs.Workspace
+	}
 	cfg.Images = stored.Images
 	cfg.Matrix = stored.Matrix
 	if err := cfg.Validate(); err != nil {
@@ -307,6 +367,15 @@ func (c Config) Validate() error {
 	}
 	if !isShellName(c.Base.User) {
 		return fmt.Errorf("base.user %q is not a usable account name", c.Base.User)
+	}
+	if _, err := NormalizeAutomount(c.Base.Automount); err != nil {
+		return err
+	}
+	if c.Jobs.ContainerLifecycle != ContainerPersistent && c.Jobs.ContainerLifecycle != ContainerEphemeral {
+		return fmt.Errorf("jobs.container_lifecycle %q must be %q or %q", c.Jobs.ContainerLifecycle, ContainerPersistent, ContainerEphemeral)
+	}
+	if _, err := NormalizePlatform(c.Jobs.Platform); err != nil {
+		return fmt.Errorf("jobs.platform: %w", err)
 	}
 	seen := map[string]bool{}
 	for _, img := range c.Images {
@@ -367,6 +436,56 @@ func ValidateImageRef(ref string) error {
 		return fmt.Errorf("%q names a registry and no repository", ref)
 	}
 	return nil
+}
+
+// NormalizePlatform returns the Linux OCI platform spelling that Podman uses.
+// An empty value selects the engine's native platform.
+// NativePlatform is the OCI platform this host runs without emulation.
+//
+// ⛔ IT IS RESOLVED RATHER THAN LEFT EMPTY, and a measured defect is why. An
+// empty platform meant no `--platform` on the podman command line, so podman
+// selected whatever variant of the image was already in the local store. After
+// one `--platform linux/arm64` run of `alpine`, EVERY later run of `alpine` with
+// no platform asked for ran the arm64 image under emulation, and the only sign
+// was a WARNING on podman's stderr that a caller reading JSON never sees.
+// Measured on this host on 2026-09-12: `uname -m` answered `aarch64` for a job
+// that asked for nothing and had every right to expect the host's own
+// architecture.
+//
+// ⚠ A benchmark or an ABI check run that way measures a machine that is not
+// there. The cost of being wrong is a wrong answer that looks like a right one,
+// which is why this resolves instead of defaulting to silence.
+func NativePlatform() string {
+	switch runtime.GOARCH {
+	case "arm64":
+		return "linux/arm64"
+	case "386":
+		return "linux/386"
+	default:
+		// ⚠ The WSL guest's architecture follows the Windows host's, so the
+		// executable's own GOARCH is the honest proxy and needs no guest call.
+		return "linux/amd64"
+	}
+}
+
+func NormalizePlatform(value string) (string, error) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "", nil
+	}
+	if !strings.Contains(value, "/") {
+		value = "linux/" + value
+	}
+	allowed := map[string]bool{
+		"linux/386": true, "linux/amd64": true,
+		"linux/arm/v6": true, "linux/arm/v7": true, "linux/arm64": true,
+		"linux/loong64": true, "linux/mips64": true, "linux/mips64le": true,
+		"linux/ppc64le": true, "linux/riscv64": true, "linux/s390x": true,
+	}
+	if !allowed[value] {
+		return "", fmt.Errorf("%q is not a supported Linux OCI platform", value)
+	}
+	return value, nil
 }
 
 // isImageID is the rule for a name this tool uses as a PATH COMPONENT.
@@ -438,9 +557,10 @@ func (c Config) Fingerprint() string {
 	// computed rather than stored.
 	payload := struct {
 		Base   BaseConfig `json:"base"`
+		Jobs   JobConfig  `json:"jobs"`
 		Images []Image    `json:"images"`
 		Matrix []string   `json:"matrix"`
-	}{Base: c.Base, Images: c.Catalog(), Matrix: c.MatrixDefault()}
+	}{Base: c.Base, Jobs: c.Jobs, Images: c.Catalog(), Matrix: c.MatrixDefault()}
 	b, err := json.Marshal(payload)
 	if err != nil {
 		// A configuration that cannot be rendered cannot be compared, and

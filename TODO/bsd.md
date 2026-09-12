@@ -934,3 +934,159 @@ and a reader of this file should not have to leave to find out how it ended.
 done.** This repository has no "moved" status, and leaving an entry open here
 that nobody here will ever work is worse than a closure that says plainly where
 the work went. ⭐ **The open one is open in its new home.**
+
+---
+
+## BSD-03. A BSD userland an agent can actually reach, from the tool it already runs
+
+**Source** [Issue 29](https://github.com/Azathothas/ToolKit/issues/29), task 5:
+"until then, can we get the least friction approach to getting a usable bsd here
+via wsl-toolkit? even a rescue shell or netbsd is okay as long as agents can use
+it, for instance to install or run a script."
+**Category** bsd, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+⭐ **`BSD-01` ends with a working boot and no way for anybody to use it.** Its
+result lives in `pkgforge-dev/docker-bsd` under `experiments/`, as a pair of
+PowerShell scripts a reader has to find, clone and dot-source. An agent holding
+`wsl-toolkit` has no command that reaches a BSD at all, and the operator's ask
+is for one it can run a script in.
+
+## Premise
+
+⛔ **THE OPERATOR'S RULING WAS CHECKED BEFORE IT WAS RELAXED, and it did not need
+relaxing.** The ask offered nesting as an acceptable floor. `BSD-01` already
+records that the non-nested route WORKS on this machine, so nesting was not
+built:
+
+| what | where | measured |
+| --- | --- | --- |
+| FreeBSD 15.1-RELEASE, stock GENERIC | QEMU `-accel whpx`, Windows, no nesting | `login:` at 117.7 s, 117.4 s and 113.6 s, three independent boots |
+| a container inside that guest | `ocijail` | `rc=0`, `podman info` reporting `freebsd/amd64` |
+
+⚠ **The Approach table in `BSD-01` still ranks a Hyper-V `.vhd` guest above
+this, and on this host that ranking is inverted.** Hyper-V and the Host Compute
+System both refuse an unelevated caller here, measured as `0x8037011B` from
+`HcsEnumerateComputeSystems`, which is a READ. The row that table calls a
+fallback is the only one of the two that runs without an administrator.
+
+⭐ **QEMU 11.1.0 is already on this host** at the scoop path, and
+`WHvGetCapability` answers `present, hypervisor running` unelevated.
+
+## Approach
+
+`internal/toolkit/bsd.go` and `cmd_bsd.go`: `bsd status`, `bsd fetch`, `bsd run`.
+
+The console protocol is ported from the experiment rather than rewritten, and
+every trap it measured is carried with it:
+
+- the argument list is passed as a LIST, because a joined one arrives re-split;
+- typing is one character at a time, because a tty being reconfigured by
+  `login(1)` silently DROPS characters and a marker arrived as a fragment;
+- the write AND the flush are bounded, because a guest that stopped draining its
+  console parks an unbounded write in the kernel;
+- a prompt is waited for at a POSITION, never counted, because the prompt the
+  command was typed at matches otherwise and a running command reads as finished;
+- the echo is matched with whitespace REMOVED, because a tty wraps a long line
+  and a literal comparison misses the echo of the command that produced it;
+- `-serial stdio`, never `mon:stdio`, whose banner enters the parsed stream;
+- `-nic none`, because QEMU attaches a default NIC otherwise and a report saying
+  "no network" is then false.
+
+⭐ **The exit code is carried OUT of the guest, not inferred.** The payload is
+followed by a marker printed with `$?`. ⛔ The marker is ASSEMBLED INSIDE THE
+GUEST from two halves, so the tty's echo of the command cannot contain it;
+without that the parser matches the command line that mentions the marker and
+reports a success the guest never had.
+
+⚠ **The image is about 6 GB expanded and lives in the SHARED cache**, not in the
+instance's own state, so an agent under `--instance two` does not fetch it again.
+
+⛔ **Not a BSD container endpoint.** A long-running podman service panics the
+guest kernel in `_umtx_op`, which is what Go's scheduler parks threads on. That
+is `BSD-01`'s remaining distance and it is unchanged here.
+
+## Consumers
+
+None. `bsd` is a new command on the executable and no registered consumer
+fetches it.
+
+## Prove
+
+```powershell
+wsl-toolkit bsd status
+wsl-toolkit bsd fetch
+wsl-toolkit bsd run -c 'uname -a; freebsd-version'
+```
+
+---
+
+## Closing
+
+**Closed 2026-09-12T13:05:00Z.** Driven on this host, unelevated, with the WSL2
+podman machine registered throughout.
+
+```text
+wsl-toolkit bsd status
+  qemu        C:\Users\AjamX\scoop\apps\qemu\current\qemu-system-x86_64.exe
+              QEMU emulator version 11.1.0 (v11.1.0-12130-ge470268ff4)
+  whpx        present, hypervisor running
+```
+
+```text
+wsl-toolkit bsd fetch
+  635.4 MiB fetched in about 2 min, digest verified against the pinned value
+  6.0 GiB expanded into <state>/cache/bsd
+```
+
+```text
+wsl-toolkit bsd run -c 'uname -a; freebsd-version; id -un; echo ...'
+  login at 1m54s, session 1m58s, exit 0
+FreeBSD freebsd 15.1-RELEASE FreeBSD 15.1-RELEASE releng/15.1-n283562-96841ea08dcf GENERIC amd64
+15.1-RELEASE
+root
+a script can install or run things here
+```
+
+⭐ **The two-marker design was earned rather than designed.** The first version
+carried one marker and matched the echo by its own text, which is what the
+experiment did. Measured on the first live run: the console WRAPPED the echo
+inside a word, so no line held the whole command, the match failed, and the
+entire command line including the marker halves was reported as program output.
+Bracketing between a marker printed BEFORE the payload and one printed after
+removes the echo by POSITION, and no wrapping can defeat that.
+
+⛔ **A second defect the same way, and it was found by running a payload nobody
+would call unusual.** `wsl-toolkit bsd run -c 'echo before; exit 42'` hung until
+its whole budget ran out. `exit` at the login shell exits THAT shell, so the
+closing marker never printed and this waited for text the guest was never going
+to send. ⚠ **The symptom accuses the wrong thing**: a timeout reported over a
+command that did exactly what it was told. The payload runs inside parentheses
+now, and `$?` still carries the code the subshell exited with.
+
+⭐ **The exit code is proved end to end** rather than assumed from the plumbing:
+
+```text
+wsl-toolkit bsd run -c 'echo before the exit; exit 42'
+  login at 1m55s, session 1m59s, exit 42
+before the exit
+  the calling shell saw 42
+```
+
+⚠ **What this does not reach, said rather than left to be found.**
+
+- No BSD container endpoint. A long-running podman service panics the guest
+  kernel in `_umtx_op`, which is `BSD-01`'s remaining distance and is unchanged.
+- A boot costs about two minutes and is paid per call. Nothing keeps a guest
+  alive between calls, so ten commands cost ten boots. That is the obvious next
+  unit of work and it is not filed, because whether it is wanted is the
+  operator's.
+- NetBSD is not offered. `BSD-01` measured that smolBSD's kernel reaches its disk
+  only through NetBSD's paravirtual bus, which WHPX does not present, so it boots
+  and never starts a userland. FreeBSD's GENERIC kernel drives virtio-pci
+  directly and does not have that dependency.
+- Steady-state performance inside the guest was NOT measured here, and
+  `BSD-01`'s warning stands: a slow device probe is not a throughput number.

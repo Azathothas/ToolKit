@@ -1809,3 +1809,50 @@ func TestTheSupersededCopyMessageNamesTheCommandThatRemovesIt(t *testing.T) {
 		}
 	}
 }
+
+func TestPlatformAndLifecycleReachPodman(t *testing.T) {
+	runner := &Runner{}
+	persistent := string(runner.containerScript(JobSpec{
+		Image: "docker.io/library/alpine:latest", Platform: "linux/arm64",
+		ContainerLifecycle: ContainerPersistent,
+	}, "wtk-one", "/jobs/one/work", "/jobs/one/out", "/jobs/one/job.sh", "marker"))
+	if strings.Contains(persistent, "'--rm'") {
+		t.Fatal("a persistent job still has --rm")
+	}
+	if !strings.Contains(persistent, "'--platform' 'linux/arm64'") {
+		t.Fatalf("the platform is absent from the Podman command: %s", persistent)
+	}
+
+	ephemeral := string(runner.containerScript(JobSpec{
+		Image: "docker.io/library/alpine:latest", ContainerLifecycle: ContainerEphemeral,
+	}, "wtk-two", "/jobs/two/work", "/jobs/two/out", "/jobs/two/job.sh", "marker"))
+	if !strings.Contains(ephemeral, "'--rm'") {
+		t.Fatal("an ephemeral job does not have --rm")
+	}
+}
+
+func TestBinfmtCountIsMeasured(t *testing.T) {
+	got := parseBinfmt("engine podman version 6.1.1\nbinfmt-handlers 9\n")
+	if got == nil || got.Handlers != 9 || !got.Ready {
+		t.Fatalf("binfmt state = %+v", got)
+	}
+	if parseBinfmt("binfmt-handlers unknown\n") != nil {
+		t.Fatal("an unreadable handler count became a measurement")
+	}
+}
+
+func TestSupportedPlatformsUseOneSpelling(t *testing.T) {
+	for input, want := range map[string]string{
+		"arm64": "linux/arm64", "LINUX/AMD64": "linux/amd64", "linux/arm/v7": "linux/arm/v7",
+	} {
+		got, err := NormalizePlatform(input)
+		if err != nil || got != want {
+			t.Errorf("NormalizePlatform(%q) = %q, %v; want %q", input, got, err, want)
+		}
+	}
+	for _, input := range []string{"windows/amd64", "linux/not-real", "linux/arm/v8"} {
+		if _, err := NormalizePlatform(input); err == nil {
+			t.Errorf("unsupported platform %q was accepted", input)
+		}
+	}
+}

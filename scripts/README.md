@@ -529,7 +529,7 @@ them anywhere.
 
 ### `windows/wsl-toolkit/selftest.ps1`
 
-Run [`wsl-toolkit.ps1`](windows/wsl-toolkit/wsl-toolkit.md)'s pure functions
+Run [`wsl-toolkit.ps1`](windows/wsl-toolkit/README.md)'s pure functions
 against a table of cases, on any host with a PowerShell.
 
 ⭐ **The one test in this tree, and it is in the gate**, because part (a) of

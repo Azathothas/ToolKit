@@ -157,10 +157,10 @@
     {
       "label": "a flag losing its documentation",
       "module": "tools/windows/wsl-toolkit",
-      "file": "wsl-toolkit.md",
-      "find": "--no-network",
-      "replace": "--no-networking",
-      "run": "TestManualNamesEveryFlag",
+      "file": "wsl-toolkit.1",
+      "find": "no-pager",
+      "replace": "no-pagers",
+      "run": "TestGeneratedManPageIsCurrent",
       "args": []
     },
     {
@@ -682,8 +682,8 @@
       "label": "a configuration fingerprint tracks what changes behaviour",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/catalog.go",
-      "find": "\t}{Base: c.Base, Images: c.Catalog(), Matrix: c.MatrixDefault()}",
-      "replace": "\t}{Base: BaseConfig{}, Images: nil, Matrix: nil}",
+      "find": "\t}{Base: c.Base, Jobs: c.Jobs, Images: c.Catalog(), Matrix: c.MatrixDefault()}",
+      "replace": "\t}{Base: BaseConfig{}, Jobs: JobConfig{}, Images: nil, Matrix: nil}",
       "run": "TestConfigFingerprintTracksWhatChangesBehaviour",
       "args": []
     },

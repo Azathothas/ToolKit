@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 93  open 1  blocked 0  done 92
+total 100  open 3  blocked 0  done 97
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 47 | 47 |
-| P2 | 1 | 0 | 35 | 36 |
+| P1 | 0 | 0 | 51 | 51 |
+| P2 | 3 | 0 | 36 | 39 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **1** | **0** | **92** | **93** |
+| **all** | **3** | **0** | **97** | **100** |
 
 ---
 
@@ -32,6 +32,7 @@ total 93  open 1  blocked 0  done 92
 | --- | --- | --- | --- | --- | --- |
 | BSD-01 | P1 | M | done | Run a BSD userland from Windows, with the least friction that works | [`bsd.md`](bsd.md) |
 | BSD-02 | P3 | S | done | Whether the other three BSDs can be run, not merely built | [`bsd.md`](bsd.md) |
+| BSD-03 | P1 | M | done | A BSD userland an agent can actually reach, from the tool it already runs | [`bsd.md`](bsd.md) |
 | DOC-01 | P2 | S | done | A `binfmt_misc` check for the podman machine on WSL2 | [`tooling.md`](tooling.md) |
 | DOC-02 | P2 | S | done | The tree broke its own character rule in 164 places | [`docs.md`](docs.md) |
 | DOC-03 | P2 | S | done | Seventeen sentences had two homes | [`docs.md`](docs.md) |
@@ -96,6 +97,12 @@ total 93  open 1  blocked 0  done 92
 | WSL-60 | P2 | M | done | the base accepts a memory limit and does not enforce it | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-61 | P2 | S | done | `base ensure` cannot recover a base whose engine has stale run state | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-62 | P2 | S | done | two of this tool sharing one state directory corrupt each other's writes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-63 | P1 | M | done | A consumer wrote a wrapper for four things this tool should have done | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-64 | P1 | S | done | A native job ran whatever architecture the image store happened to hold | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-65 | P2 | S | done | The generated manual carried a control byte, and its drift check agreed with it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-66 | P1 | M | done | `--workspace .` resolved against a directory the caller could not see | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-67 | P2 | L | open | A provider's Linux-only CLI, run from Windows as if it were native | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-68 | P2 | M | open | A base that can reach nothing on the host at all | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

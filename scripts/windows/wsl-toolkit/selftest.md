@@ -1,6 +1,6 @@
 # selftest.ps1
 
-Run [`wsl-toolkit.ps1`](wsl-toolkit.md)'s pure functions against a table of
+Run [`wsl-toolkit.ps1`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md)'s pure functions against a table of
 cases. No WSL, no container engine, nothing created, nothing written.
 
 ```powershell
@@ -95,7 +95,7 @@ it needs no byte order mark.
 
 ## Related
 
-- [`wsl-toolkit.md`](wsl-toolkit.md), the tool under test.
+- [`tools/windows/wsl-toolkit/wsl-toolkit.md`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md), the tool under test.
 - [`../../../docs/methodology/reviews.md`](../../../docs/methodology/reviews.md), lens
   2: a guard that has never been seen to refuse is a guard nobody knows works.
   Ten of the cases here plant exactly the defect their guard exists to catch.

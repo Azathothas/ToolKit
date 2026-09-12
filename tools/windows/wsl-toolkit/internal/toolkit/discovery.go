@@ -21,6 +21,11 @@ type Executable struct {
 // It resolves filesystem links and Scoop descriptors, and keeps looking after
 // inaccessible app-execution aliases. It never installs a second tool.
 func ResolveExecutable(name string) (Executable, error) {
+	return resolveExecutable(name, nil)
+}
+
+// resolveExecutable can skip candidates that a caller already proved unusable.
+func resolveExecutable(name string, skip map[string]bool) (Executable, error) {
 	var candidates []string
 	if strings.ContainsAny(name, `/\`) {
 		candidates = append(candidates, name)
@@ -81,6 +86,9 @@ func ResolveExecutable(name string) (Executable, error) {
 			continue
 		}
 		seen[key] = true
+		if skip[key] {
+			continue
+		}
 		st, err := os.Stat(abs)
 		if err != nil {
 			if !errors.Is(err, os.ErrNotExist) {

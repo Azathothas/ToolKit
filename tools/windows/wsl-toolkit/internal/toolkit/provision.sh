@@ -15,6 +15,27 @@ die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 
 : "${TK_USER:?TK_USER is required}"
 : "${TK_UID:?TK_UID is required}"
+: "${TK_BINFMT_IMAGE:?TK_BINFMT_IMAGE is required}"
+: "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
+
+# -- how the Windows drives appear ---------------------------------------------
+# ⛔ READ ONLY BY DEFAULT. WSL mounts every fixed drive under /mnt, and a job that
+# can WRITE there can destroy the real checkout on the Windows host. That is the
+# one thing this tool's copy-never-mount rule exists to make impossible, and the
+# automount was leaving it open behind the rule.
+#
+# ⚠ The `ro` goes in the MOUNT OPTIONS, not in `enabled`. `enabled=false` is a
+# third setting with a different meaning, and conflating them would silently turn
+# a read-only request into no mount at all.
+case "$TK_AUTOMOUNT" in
+  ro)  AUTOMOUNT_BLOCK='enabled=true
+options="metadata,ro"' ;;
+  rw)  AUTOMOUNT_BLOCK='enabled=true
+options="metadata"' ;;
+  off) AUTOMOUNT_BLOCK='enabled=false' ;;
+  *)   die "TK_AUTOMOUNT is $TK_AUTOMOUNT; it must be ro, rw or off" ;;
+esac
+say "windows drives: $TK_AUTOMOUNT"
 
 # -- which userland is this ---------------------------------------------------
 # Read from what is installed rather than from /etc/os-release's ID, because a
@@ -87,6 +108,18 @@ say "podman: $(podman --version 2>&1 | head -1)"
 for tool in newuidmap newgidmap; do
   command -v "$tool" >/dev/null 2>&1 || die "$tool is missing, so a rootless engine cannot map more than one id"
 done
+
+# -- other Linux architectures ----------------------------------------------
+# The WSL kernel is common to its distributions. These handlers let the
+# rootless engine run a Linux image for another architecture. The installer
+# container is privileged because it writes the kernel's binfmt_misc table. It
+# is removed when registration is complete.
+say "registering QEMU binary formats from $TK_BINFMT_IMAGE"
+podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all >/dev/null || \
+  die "the QEMU binary-format installer did not complete"
+set -- /proc/sys/fs/binfmt_misc/qemu-*
+[ -e "$1" ] || die "the QEMU binary-format installer created no handlers"
+say "QEMU binary formats: $# handler(s)"
 
 # -- the unprivileged account -------------------------------------------------
 if id -u "$TK_USER" >/dev/null 2>&1; then
@@ -181,7 +214,7 @@ default=$TK_USER
 systemd=false
 
 [automount]
-enabled=true
+$AUTOMOUNT_BLOCK
 
 [interop]
 enabled=true

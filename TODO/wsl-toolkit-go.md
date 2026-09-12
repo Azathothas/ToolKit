@@ -3331,3 +3331,480 @@ one helper. Two processes running `base ensure` at once still both provision, tw
 read and not driven: `O_APPEND` with one `Write` per record should interleave
 whole lines, and nothing here measured it. ⚠ That is the honest scope of a first
 concurrency pass, and it is smaller than the question the record has been asking.
+
+---
+
+## WSL-63. A consumer wrote a wrapper for four things this tool should have done
+
+**Source** [Issue 29](https://github.com/Azathothas/ToolKit/issues/29), and the
+consumer's own pages: `Azathothas/podbox` at `docs/containers.md` and
+`scripts/windows/run-in-base.sh`, read 2026-09-12.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+⛔ **Issue 6 promised that a future agent would not need to write wrappers or
+work around gotchas, and the next consumer did both.** `run-in-base.sh` is 151
+lines, and four of the things in it are this tool's job:
+
+| what the wrapper carries | what the caller sees without it |
+| --- | --- |
+| `restore-modes.sh`, run inside every job | `./scripts/common/bootstrap-env.sh: Permission denied`, naming the script and not the transfer. 396 of 396 files needed repair |
+| `strip_cr`, over every payload | `/bin/sh` reads a carriage return as part of the last word, so a redirection names a file nobody wrote |
+| four `--exclude` names, found by bisection | `archive/tar: write too long` and the job dead in 475 ms, naming the archiver and not the file |
+| a written rule saying never to write to `/mnt/c` | a wrong path in a job destroys the real checkout on Windows |
+
+## Premise
+
+⭐ **Measured by the consumer, on this class of host, and re-derived here.**
+
+- NTFS holds no POSIX mode and `core.fileMode` is false there, so
+  `writeWorkspaceTar` set `0o755` from the host's own executable bit, which is
+  never set. Every file arrived at `0644`.
+- The copy was unbounded against a header whose size was already written, so a
+  file that GREW overran its own declared length. A tar member's size goes into
+  the header before its bytes are read.
+- `--script` already repaired CRLF and `-c` did not, which is the one-gated-door
+  shape: one channel enforcing what its sibling does not.
+- `/etc/wsl.conf` carried `automount enabled=true` with no options, so every
+  fixed drive mounted read-write inside the base.
+
+⚠ **The git index is not the whole answer, and the same consumer measured the
+gap three weeks later**: a new script that was written and not staged is in no
+index, so the repair reported 396 of 396 fixed in the run that failed
+`Permission denied`, rc 126.
+
+## Approach
+
+- `internal/toolkit/execbit.go`, read by `writeWorkspaceTar`: `git ls-files -s -z`
+  supplies the mode, a shebang covers a file in no index, and the host's own bit
+  still wins where the filesystem carries one.
+- The same walker bounds its copy by the size in the header.
+- `WorkspaceUpload` gains `Truncated` and `ExecRestored`, both reported.
+- `jobFlags.script` sends `-c` through `RepairGuestScript`, which `--script`
+  already used.
+- `base.automount` with `ro`, `rw` and `off`, defaulting to `ro`.
+
+⛔ **Not a recursive chmod.** That marks data executable and reports nothing. A
+file whose first two bytes are a shebang is a script by its own declaration, and
+the count is announced rather than applied in silence.
+
+⛔ **A truncation is NOT counted as an omission.** `Omitted` means an input did
+not arrive, which is what makes a job's conclusions wrong. A prefix of a file
+something is still writing is a snapshot. Folding them together makes the
+serious number go up for the ordinary case.
+
+## Consumers
+
+⛔ **`base.automount` is a BREAKING change by
+[`../docs/consumers.md`](../docs/consumers.md)'s definition** for any caller that
+WRITES to `/mnt/*` inside the base. Reading is unaffected. Neither registered
+consumer does: `Azathothas/TEMPLATE` and `Azathothas/bit-cli` fetch
+`wsl-toolkit.ps1`, which creates its own throwaway distributions and never reads
+this setting. `Azathothas/podbox` reaches the base through the executable, and
+its own page already forbids writing there.
+
+## Prove
+
+```powershell
+go test ./internal/toolkit/ -run 'ExecutableBit|Unstaged|Grows|Automount|Provisioner'
+```
+
+---
+
+## Closing
+
+**Closed 2026-09-12T11:54:00Z.** Five cases, and a live job against a workspace
+built to carry all three mode outcomes at once.
+
+```text
+--- PASS: TestTheExecutableBitSurvivesAFilesystemThatCannotHoldIt (0.28s)
+--- PASS: TestAnUnstagedScriptStillArrivesRunnable (0.01s)
+--- PASS: TestAFileThatGrowsDoesNotKillTheCopy (0.02s)
+--- PASS: TestAutomountDefaultsToReadOnly (0.00s)
+--- PASS: TestTheProvisionerReadsTheAutomountSetting (0.00s)
+```
+
+Driven on this host, against three files that are identical on NTFS:
+
+```text
+  workspace: 1 file carries the executable bit from the git index, and 1 file from a shebang
+-rw-r--r--    1 root     root            12 data.txt
+-rwxr-xr-x    1 root     root            25 staged.sh
+-rwxr-xr-x    1 root     root            27 unstaged.sh
+staged-ran
+unstaged-ran
+good-data-not-executable
+```
+
+⭐ **The automount ruling is proved on a base provisioned from this change**, not
+on the settings file it writes. A fresh instance, then the guest's own view:
+
+```text
+/etc/wsl.conf   [automount] enabled=true / options="metadata,ro"
+/proc/mounts    C:\134 /mnt/c 9p ro,noatime,aname=drvfs;path=C:\;...
+
+ls /mnt/c/Users                          AjamX / All Users / Default
+touch /mnt/c/wsl-toolkit-write-probe.txt Read-only file system, exit 1
+Test-Path C:\wsl-toolkit-write-probe.txt False
+```
+
+⚠ **Reading still works, and that is the point of `ro` over `off`.** A caller
+that reaches for one file on the Windows drive is doing something ordinary; the
+door that closes is the one that destroys a checkout.
+
+⚠ **What this does not reach, said rather than left to be found.** The
+consumer's seventh trap stands: killing the wrapper on the Windows side does not
+stop the job in the guest, because a killed process runs no handler. The
+persistent lifecycle makes the container findable afterwards through
+`resources`, which is a way to SEE it rather than a way to stop it. That remains
+open ground and is named in [`PROGRESS.md`](PROGRESS.md).
+
+---
+
+## WSL-64. A native job ran whatever architecture the image store happened to hold
+
+**Source** found on 2026-09-12 while driving `WSL-63`'s workspace case, one
+command after an unrelated foreign-architecture run.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+⛔ **A job that asked for no platform answered `aarch64` on an x86_64 host.**
+The only sign was one line on podman's stderr saying the image platform did not
+match the expected one. A caller reading the JSON answer never sees it, and a
+caller reading the console sees it beside a green exit code.
+
+## Premise
+
+⭐ **Measured, not reasoned about.** `NormalizePlatform` answered empty for an
+empty value, and the runner appended `--platform` only when the value was not
+empty. With no `--platform` on the command line podman selects whatever variant
+of the reference is already in the local store, so ONE foreign-architecture run
+of `alpine` changed the meaning of every later native run of `alpine` on that
+machine.
+
+⚠ **A green suite could not have seen this.** The defect lives in what the local
+image store happens to contain, not in the code's own logic. Every unit test
+passed over it, and so did the acceptance runner, because both run against a
+store that no foreign-architecture job had touched.
+
+⛔ **The cost is a wrong answer that looks like a right one.** A libc check, an
+ABI probe or a benchmark run this way measures a machine that is not there.
+
+## Approach
+
+`NativePlatform` in `internal/toolkit/catalog.go` maps the executable's own
+`GOARCH`, because a WSL guest's architecture follows its Windows host's.
+`jobFlags.applyConfig` resolves an empty value to it, so every job names a
+platform. `Base.EnsurePlatform` returns early for the native value, which keeps
+the common path free of the guest round trip it would otherwise now make.
+
+## Prove
+
+```powershell
+wsl-toolkit run --image alpine --platform arm64 -c 'uname -m'
+wsl-toolkit run --image alpine -c 'uname -m'
+```
+
+---
+
+## Closing
+
+**Closed 2026-09-12T12:10:00Z.** Driven in the order that produced the defect:
+the foreign-architecture run first, the native run second.
+
+```text
+  "stdout": "x86_64\n",
+  "platform": "linux/amd64"
+
+  "stdout": "aarch64\n",
+  "platform": "linux/arm64"
+```
+
+The resolved platform is on the result now, so a caller can check the claim
+rather than trust it.
+
+---
+
+## WSL-65. The generated manual carried a control byte, and its drift check agreed with it
+
+**Source** found on 2026-09-12 by reading the generated file's bytes, during
+issue 29's manual work.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`wsl-toolkit.1`'s SEE ALSO line shipped `0x0C`, a form feed, where it meant to
+change font. roff's font escape and Go's form feed are spelled identically
+inside an interpreted string literal.
+
+## Premise
+
+⛔ **`TestGeneratedManPageIsCurrent` COMPARES GENERATED OUTPUT WITH GENERATED
+OUTPUT.** It reads the tracked file and re-renders it from the CLI, so a
+generator that emits the wrong bytes agrees with itself and the gate stays green.
+The check is correct for what it is for, which is drift, and structurally blind
+to this.
+
+⚠ **The tree's own `control-bytes` rule did not catch it either**, because that
+rule walks the tracked set and the generated page was still untracked when the
+generator was written. A rule over the tracked set is blind for exactly as long
+as a new file stays untracked, which is the window a generator lands in.
+
+## Approach
+
+A raw string literal in `renderManPage`, and `TestGeneratedManPageIsText`, which
+asserts the property the drift check cannot: every byte is text or a newline.
+
+## Prove
+
+```powershell
+go test . -run TestGeneratedManPageIsText
+```
+
+---
+
+## Closing
+
+**Closed 2026-09-12T11:30:00Z.** The case fails against the old generator and
+passes against the new one, and `control-bytes` covers the file from here on
+because it is tracked now.
+
+---
+
+## WSL-66. `--workspace .` resolved against a directory the caller could not see
+
+**Source** [Issue 29](https://github.com/Azathothas/ToolKit/issues/29), task 7,
+in the operator's words: an agent "end up copying/modifying dirs/projects they
+shouldn't be able to".
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+The executable is installed under the home directory and is run from anywhere.
+A relative `--workspace`, `--script`, `--artifacts` or transcript path resolved
+against the process's working directory, which a sandbox can reset to the drive
+root or the home directory without the caller knowing.
+
+⛔ **Both directions are expensive.** A workspace copy walks whatever it was
+pointed at, and an artifact delivery WRITES into it.
+
+## Premise
+
+Read from the code and confirmed by running it: `run` and `matrix` called
+`filepath.Abs` on the caller's value before any configuration was loaded, so
+nothing but the working directory could have been the base.
+
+## Approach
+
+Two halves, because neither is enough alone.
+
+1. ⭐ **An anchor.** The configuration is loaded first, and a relative path
+   resolves against the directory holding the nearest or named project
+   configuration. A relative `jobs.workspace` always resolves against its own
+   file. With no project configuration there is nothing to anchor to, and the
+   working directory stays the base.
+2. ⭐ **A refusal.** `AssertProjectPath` in `internal/toolkit/anchor.go` refuses
+   a resolved filesystem root, home directory or system directory.
+
+⛔ **A refusal and not a correction.** Guessing which directory the caller meant
+is how a tool acts on the wrong tree and reports success.
+
+⚠ **The line is the home directory ITSELF, not everything under it.** The tool
+lives under the home directory on this host, so most real projects are below it
+and refusing the subtree would refuse the ordinary case.
+
+The resolved host path is printed when the workspace is copied, so a caller can
+see which tree actually travelled.
+
+## Prove
+
+```powershell
+go test ./internal/toolkit/ -run 'ProjectPath|HomeDirectory'
+go test . -run TestRelativePathsResolveAgainstTheProject
+```
+
+---
+
+## Closing
+
+**Closed 2026-09-12T12:20:00Z.** The anchor has a case that starts outside the
+project directory; the refusal has one for each shape it refuses and one for the
+ordinary trees it must not. The copy line now reads
+`workspace: N entries, X copied from HOST to GUEST`.
+
+---
+
+## WSL-67. A provider's Linux-only CLI, run from Windows as if it were native
+
+**Source** [Issue 30](https://github.com/Azathothas/ToolKit/issues/30), part 1,
+filed by the operator on 2026-09-12. ⛔ **Authored, not implemented.** Nothing in
+this entry has been built.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+Several AI providers ship a Linux-only CLI and support no other harness. Running
+one from Windows today needs glue nobody wants to own. The operator's case, in
+their own terms:
+
+- install a provider CLI into a named base, for example `wsl-toolkit-muse`;
+- that base carries the tooling the agent needs: `grep`, `ripgrep`, `codegraph`,
+  `podman`;
+- the agent works on ONE Windows checkout, for example
+  `C:\Users\AjamX\Downloads\some-repo`, which must look like a native Linux
+  directory and must be READ-WRITE, including `git commit` and `git push`;
+- ⛔ **it must reach no other directory on the Windows host** unless that is
+  granted explicitly;
+- the base runs systemd;
+- a terminal multiplexer is present, so a session can be detached and reattached
+  and cannot be quit by accident;
+- `tools/windows/wsl-toolkit/examples/` holds `muse-code/` and `common/`, with
+  bootstrap scripts, a multiplexer configuration, and an end-to-end guide.
+
+## Premise
+
+⚠ **Read from the tree on 2026-09-12, not measured against a built base.** A
+session picking this up measures before building.
+
+What already exists:
+
+| the ask | what is there today |
+| --- | --- |
+| a named, long-lived base | ⭐ `--instance NAME` gives an isolated distribution and state directory, and `base ensure` provisions it |
+| podman inside it | ⭐ the base is rootless podman, which is what it is for |
+| a Linux view of a Windows directory | ⚠ `/mnt/<letter>` exists, and `WSL-63` just made it READ-ONLY by default |
+| systemd | ⚠ `provision.sh` writes `systemd=false`. `WSL-07` carries the option on the script side |
+| arbitrary tooling in the base | ⚠ `base shell` reaches a root-capable shell, and nothing installs a named tool set |
+| a multiplexer | ⛔ nothing |
+| `examples/` | ⛔ the directory does not exist |
+
+⛔ **THIS ENTRY COLLIDES WITH `WSL-63` AND THE COLLISION IS THE INTERESTING
+PART.** `WSL-63` made `/mnt/*` read-only in the base, on the operator's ruling,
+because a job with a wrong path in it could destroy the real checkout. This ask
+needs ONE Windows directory to be writable and the rest to be unreachable. A
+global `base.automount` setting cannot express that: `ro` blocks the commit,
+`rw` grants the whole drive.
+
+⭐ **So the seam is per-path, not per-base**, and that is a design question this
+entry must answer before any of the rest of it is built.
+
+## Approach
+
+⚠ **Not settled. This is the authored shape, and the first task is to rule on
+the mount question.**
+
+1. ⭐ **Rule on the access model first.** The candidates, none measured:
+   - `automount off` plus ONE bind mount of the granted directory, set up in
+     `/etc/fstab` or by a systemd mount unit. Everything else is simply absent,
+     which is the strongest version and the one that matches "for all it cares,
+     it should feel like it is on a Linux host".
+   - `automount ro` plus a writable bind of the one directory over the top.
+     ⚠ Leaves every other drive readable, which the ask excludes.
+   - A copy in and a copy out, which is what `run --workspace` already does.
+     ⛔ Refused by the ask: `git push` from inside must move the real checkout.
+2. **A base preset that installs a named tool set**, extending
+   `cmd_base_preset.go` rather than forking a second provisioning path.
+3. **systemd as a per-base option**, which `provision.sh` already has the shape
+   for and currently pins off.
+4. **The multiplexer**, with a configuration whose detach and quit keys are
+   stated in the guide. The operator's constraint is that it must not quit by
+   accident, which is a configuration decision and not a package choice.
+5. **`tools/windows/wsl-toolkit/examples/`**, with `common/` and one provider
+   directory.
+
+⛔ **Do not install a provider's CLI by piping a URL into a shell inside this
+repository's own scripts.** `docs/security/remote-ops.md` and
+`docs/consumers.md` both carry the pinning rule. An example may SHOW the
+provider's documented command; a script in this tree that runs it must pin and
+verify.
+
+## Decision
+
+⛔ **Unruled.** Step 1 is the fork and it needs the operator. The recommendation
+is `automount off` plus one explicit bind, because it is the only candidate that
+satisfies "it must never be able to access any other dirs in windows" as
+written.
+
+## Consumers
+
+None directly. ⚠ A change to `base.automount`'s meaning would reach anything
+built on `WSL-63`, so a per-path model is added BESIDE that setting rather than
+replacing it.
+
+## Prove
+
+Not yet written. The acceptance must include a negative: a command inside the
+base that tries to read a Windows directory outside the grant, and fails.
+
+---
+
+## WSL-68. A base that can reach nothing on the host at all
+
+**Source** [Issue 30](https://github.com/Azathothas/ToolKit/issues/30), part 2.
+⛔ **Authored, not implemented.**
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+The operator wants a base to hand to other people, or to run an experiment in,
+where every action is confined to that base. No file on the Windows host is
+reachable. Features such as `fuse` and podman are available only if that
+containment can be guaranteed with them present.
+
+## Premise
+
+⚠ **Read, not measured.** `base.automount off` from `WSL-63` removes the
+filesystem path, and that is one door of several. The others have not been
+enumerated on this host, and enumerating them is the first task:
+
+- ⛔ **interop.** `/etc/wsl.conf` currently sets `interop.enabled=true`, so a
+  guest can EXECUTE Windows binaries. `appendWindowsPath` is already false,
+  which stops accidental resolution and not deliberate use.
+- ⛔ **the network.** The guest reaches the Windows host at its own address, and
+  `HostAddress` exists precisely to report it. A sealed base has to answer what
+  that means for anything listening on the host.
+- ⚠ **`/init` and the WSL service.** A distribution talks to the Windows side by
+  design, and how much of that survives `interop=false` was not measured.
+- ⚠ **podman and fuse inside a sealed base.** The ask makes these conditional on
+  the guarantee, so the guarantee is the deliverable and the features follow it.
+
+⛔ **A claim of containment that has not been attacked is not a claim.** This
+entry does not close on reading the settings. It closes on a probe that TRIES
+each door and reports what it found.
+
+## Approach
+
+1. Enumerate the doors above on this host, by running things rather than reading
+   about them.
+2. A `sealed` base preset that closes the ones that can be closed.
+3. ⭐ **A probe that attacks its own base** and reports each door as open or
+   closed, in the shape `ready` and `base status` already use, so the answer is
+   something an agent reads rather than something a page promises.
+4. Say in the manual what is NOT sealed, with the measurement beside it.
+
+⛔ **Do not describe this as a security boundary until the probe says so.** WSL
+is not a sandbox by design, and a page that claims isolation the kernel does not
+provide is worse than no page.
+
+## Consumers
+
+None. This is a new preset.
+
+## Prove
+
+The probe, run against a sealed base, with every door reported and each answer
+reproduced by hand once.

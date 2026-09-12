@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,6 +85,36 @@ func TestScoopDescriptorResolvesRealExecutable(t *testing.T) {
 	}
 	if !pathEqual(got.Resolved, wantResolved) {
 		t.Fatalf("resolved %q, expected %q", got.Resolved, wantResolved)
+	}
+}
+
+func TestToolProbeContinuesAfterAnUnusablePathEntry(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	name := "probe"
+	badBody, goodBody := "#!/bin/sh\nexit 7\n", "#!/bin/sh\necho probe 1.2.3\n"
+	if runtime.GOOS == "windows" {
+		name = "probe.cmd"
+		badBody, goodBody = "@exit /b 7\r\n", "@echo probe 1.2.3\r\n"
+	}
+	bad := filepath.Join(first, name)
+	good := filepath.Join(second, name)
+	if err := os.WriteFile(bad, []byte(badBody), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(good, []byte(goodBody), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", strings.Join([]string{first, second}, string(os.PathListSeparator)))
+
+	got := probeTool(context.Background(), ToolSpec{ID: "probe", Group: "test", Binary: "probe", Args: []string{"--version"}}, false)
+	if got.Status != "working" || got.Version != "1.2.3" {
+		t.Fatalf("the second executable was not used: %+v", got)
+	}
+	if !pathEqual(got.Path, good) {
+		t.Fatalf("path = %q, want %q", got.Path, good)
+	}
+	if !strings.Contains(strings.Join(got.Notes, "\n"), bad) {
+		t.Fatalf("the failed candidate is absent from the notes: %v", got.Notes)
 	}
 }
 

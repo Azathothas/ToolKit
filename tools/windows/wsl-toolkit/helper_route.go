@@ -19,6 +19,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 	req := toolkit.HelperRunRequest{
 		Image: ref, ScriptB64: toolkit.EncodeScript(payload), Env: env,
 		TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
+		Platform: j.platform, ContainerLifecycle: j.lifecycle,
 		Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
 		User: j.user, MaxOutput: j.maxOutput, TickMS: j.tick.Milliseconds(),
 	}
@@ -72,6 +73,7 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 		HelperRunRequest: toolkit.HelperRunRequest{
 			ScriptB64: toolkit.EncodeScript(payload), Env: env,
 			TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
+			Platform: j.platform, ContainerLifecycle: j.lifecycle,
 			Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
 			User: j.user, MaxOutput: j.maxOutput, TickMS: j.tick.Milliseconds(),
 		},

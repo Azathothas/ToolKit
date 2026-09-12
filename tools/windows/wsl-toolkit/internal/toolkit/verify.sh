@@ -68,6 +68,13 @@ case "$cg_self" in
 esac
 printf 'engine-rootless %s\n' "$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null || echo unknown)"
 
+binfmt_handlers=0
+for handler in /proc/sys/fs/binfmt_misc/qemu-*; do
+  [ -e "$handler" ] || continue
+  binfmt_handlers=$((binfmt_handlers + 1))
+done
+printf 'binfmt-handlers %s\n' "$binfmt_handlers"
+
 # ⭐ THE ENFORCEMENT CLAIM IS THE ONE A CALLER ACTS ON, so it is measured inside
 # a container and not derived from the rows above. A separate run from the
 # marker one on purpose: a base that runs a container is healthy, and a base

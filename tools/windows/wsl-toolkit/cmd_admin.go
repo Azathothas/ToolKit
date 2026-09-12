@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -347,6 +348,7 @@ func cmdConfig(args []string) (int, error) {
 			"home":        home,
 			"instance":    toolkit.SelectedInstance.Name,
 			"base":        cfg.Base,
+			"jobs":        cfg.Jobs,
 			"images":      cfg.Catalog(),
 			"matrix":      cfg.MatrixDefault(),
 			"builtin":     len(cfg.Images) == 0,
@@ -368,11 +370,30 @@ func cmdConfig(args []string) (int, error) {
 		fmt.Fprintf(os.Stderr, "  instance    %s\n", toolkit.SelectedInstance.Name)
 	}
 	fmt.Fprintf(os.Stderr, "  base        %s from %s as %s\n", cfg.Base.Name, cfg.Base.Image, cfg.Base.User)
+	// ⛔ THE DEFAULTS A JOB ACTUALLY RUNS UNDER WERE NOT ON THIS REPORT. `config`
+	// is where a caller looks to find out what the tool will do, and the
+	// container lifetime is the setting most likely to surprise one; issue 29
+	// reached this repository as "if a persistent option exists, the docs are
+	// lacking, why else would an agent not know about it".
+	fmt.Fprintf(os.Stderr, "  jobs        %s containers, platform %s\n",
+		cfg.Jobs.ContainerLifecycle, orNative(cfg.Jobs.Platform))
+	if cfg.Jobs.Workspace != "" {
+		fmt.Fprintf(os.Stderr, "  workspace   %s, relative to %s\n", cfg.Jobs.Workspace, filepath.Dir(resolved))
+	}
 	fmt.Fprintf(os.Stderr, "  catalog     %d image(s), %s\n", len(cfg.Catalog()), builtinOrStored(cfg))
 	fmt.Fprintf(os.Stderr, "  matrix      %d image(s) by default\n", len(cfg.MatrixDefault()))
 	fmt.Fprintf(os.Stderr, "  fingerprint %s\n", cfg.Fingerprint())
 	fmt.Fprintf(os.Stderr, "\n  wsl-toolkit config --write puts the effective configuration on disk to edit.\n")
 	return exitOK, nil
+}
+
+// orNative names the default platform in the words the flag uses, because an
+// empty string on a report reads as a missing value rather than as a choice.
+func orNative(platform string) string {
+	if platform == "" {
+		return "native"
+	}
+	return platform
 }
 
 func builtinOrStored(cfg toolkit.Config) string {

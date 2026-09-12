@@ -1,8 +1,11 @@
-# wsl-toolkit
+# wsl-toolkit PowerShell compatibility interface
 
-The tool, its sources, and how to change it.
+The compiled [`wsl-toolkit` executable](../../../tools/windows/wsl-toolkit/README.md)
+is the primary interface. This directory contains the stable low-level
+PowerShell interface for existing consumers and the source that the executable
+embeds.
 
-[`wsl-toolkit.md`](wsl-toolkit.md) is what the tool does, for somebody using it.
+[`tools/windows/wsl-toolkit/wsl-toolkit.md`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md) is what the tool does, for somebody using it.
 This is what it is made of, for somebody changing it.
 
 ---
@@ -221,7 +224,7 @@ have been found here.
 
 ## Related
 
-- [`wsl-toolkit.md`](wsl-toolkit.md), the tool itself
+- [`tools/windows/wsl-toolkit/wsl-toolkit.md`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md), the tool itself
 - [`launcher.md`](launcher.md), fetching and verifying it from another project
 - [`../../../docs/consumers.md`](../../../docs/consumers.md), who fetches this
   and what breaks them

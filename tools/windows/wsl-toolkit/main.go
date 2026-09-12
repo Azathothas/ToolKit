@@ -4,7 +4,7 @@
 // COPY of a workspace and never a mount, a fleet runner, and a cleanup that
 // removes only what this executable made.
 //
-// tools/windows/wsl-toolkit/wsl-toolkit.md is the manual.
+// Run `wsl-toolkit man` to generate the manual from this command surface.
 //
 // ⛔ EVERYTHING THIS PROGRAM SAYS GOES TO STDERR. stdout carries the answer
 // alone, so a caller can assign it.
@@ -43,7 +43,14 @@ var quiet bool
 // The helper package reads the product version through this hook rather than
 // importing the script package, which would make the two depend on each other
 // for one string.
-func init() { toolkit.ScriptVersion = script.Version }
+func init() {
+	toolkit.ScriptVersion = script.Version
+	commandSpecs = registeredCommandSpecs()
+	commands = make(map[string]func(context.Context, []string) (int, error), len(commandSpecs))
+	for _, spec := range commandSpecs {
+		commands[spec.Name] = spec.Run
+	}
+}
 
 // logf writes progress. ⛔ Never to stdout.
 func logf(format string, args ...any) {
@@ -62,26 +69,14 @@ func main() {
 }
 
 func usage() string {
-	return strings.Join([]string{
+	lines := []string{
 		"wsl-toolkit " + versionString(),
 		"",
-		"  doctor      what this host is and what is really installed, resolved rather than guessed",
-		"  script      run the embedded wsl-toolkit.ps1, forwarding every argument unchanged",
-		"  base        the one WSL distribution this tool owns, which hosts a rootless engine",
-		"  images      the container catalog. `pull` and `warm` reach it ahead of a job",
-		"  run         one command in one container, with a COPY of a workspace and no host mount",
-		"  matrix      one command across a set of images, commissioned and decommissioned together",
-		"  resources   what this tool is holding, and what the machine is holding that is not its",
-		"  gc          remove what this tool made. Reports first; --apply acts",
-		"  logs        the complete output a job produced, past whatever the answer kept",
-		"  inspect     what one job was, and what the machine was doing when it ran",
-		"  helper      the opt-in local helper, for a caller that cannot reach wsl.exe itself",
-		"  config      where the configuration is, and what it currently says",
-		"  ready       one answer to whether this agent can run isolated Linux jobs here",
-		"  selfupdate  move this executable to a published release, verifying it first",
-		"  artifacts   retrieve a copy a failed transfer retained. It never re-runs a job",
-		"  examples    the canonical command patterns, in the binary rather than only the manual",
-		"  version     the product version, which is the embedded script's",
+	}
+	for _, spec := range commandSpecs {
+		lines = append(lines, fmt.Sprintf("  %-11s %s", spec.Name, spec.Summary))
+	}
+	lines = append(lines,
 		"",
 		"Global: --instance N  one isolated instance: distribution wsl-toolkit-N and",
 		"                      its own state. `auto` picks the lowest free one.",
@@ -92,7 +87,8 @@ func usage() string {
 		"",
 		"Every command takes --json where an answer has structure.",
 		"Progress goes to stderr; stdout carries the answer alone.",
-	}, "\n")
+	)
+	return strings.Join(lines, "\n")
 }
 
 func versionString() string {
@@ -103,37 +99,43 @@ func versionString() string {
 	return v
 }
 
-// commands is the dispatch table, and it is a TABLE rather than a switch for
-// one reason: manual_test.go walks it.
-//
-// ⛔ THE HAND-WRITTEN LIST IT REPLACED WAS A HOLE, and the guard that reads it
-// was claiming otherwise. TestManualNamesEveryFlag says "a flag added tomorrow
-// is covered without this file being touched", which was true of a flag added
-// to a command already on its list and false of a whole new command: `inspect`
-// arrived with two flags and the case stayed green over both. A list nobody
-// has to remember to extend is the only kind that stays complete.
-//
-// ⚠ SUBCOMMANDS ARE STILL NAMED BY HAND over in that test, because their flag
-// sets are built inside their parent's dispatch and there is no table here to
-// walk. That is a smaller hole and it is named rather than papered over.
-var commands = map[string]func(context.Context, []string) (int, error){
-	"version":    func(_ context.Context, a []string) (int, error) { return cmdVersion(a) },
-	"doctor":     cmdDoctor,
-	"script":     cmdScript,
-	"base":       cmdBase,
-	"images":     cmdImages,
-	"run":        cmdRun,
-	"matrix":     cmdMatrix,
-	"resources":  cmdResources,
-	"gc":         cmdGC,
-	"logs":       func(_ context.Context, a []string) (int, error) { return cmdLogs(a) },
-	"inspect":    cmdInspect,
-	"helper":     cmdHelper,
-	"config":     func(_ context.Context, a []string) (int, error) { return cmdConfig(a) },
-	"ready":      cmdReady,
-	"selfupdate": cmdSelfUpdate,
-	"artifacts":  cmdArtifacts,
-	"examples":   func(_ context.Context, a []string) (int, error) { return cmdExamples(a) },
+type commandSpec struct {
+	Name      string
+	Summary   string
+	Run       func(context.Context, []string) (int, error)
+	HelpForms []string
+}
+
+var (
+	commandSpecs []commandSpec
+	commands     map[string]func(context.Context, []string) (int, error)
+)
+
+// registeredCommandSpecs is the public command source. Package initialization
+// uses it for dispatch. Top-level help and the generated manual use the same
+// records.
+func registeredCommandSpecs() []commandSpec {
+	return []commandSpec{
+		{Name: "doctor", Summary: "report the host and the tools that can run", Run: cmdDoctor, HelpForms: []string{"doctor"}},
+		{Name: "script", Summary: "run the embedded PowerShell compatibility interface", Run: cmdScript},
+		{Name: "base", Summary: "manage the WSL distribution that this tool owns", Run: cmdBase, HelpForms: []string{"base status", "base ensure", "base recreate", "base remove", "base shell", "base presets"}},
+		{Name: "images", Summary: "list, check, or pull catalog images", Run: cmdImages, HelpForms: []string{"images", "images warm", "images pull"}},
+		{Name: "run", Summary: "run one command in one container", Run: cmdRun, HelpForms: []string{"run"}},
+		{Name: "matrix", Summary: "run one command across a set of images", Run: cmdMatrix, HelpForms: []string{"matrix"}},
+		{Name: "resources", Summary: "report resources that this tool owns", Run: cmdResources, HelpForms: []string{"resources"}},
+		{Name: "gc", Summary: "report or remove resources that this tool owns", Run: cmdGC, HelpForms: []string{"gc"}},
+		{Name: "logs", Summary: "read the complete output from one job", Run: func(_ context.Context, a []string) (int, error) { return cmdLogs(a) }, HelpForms: []string{"logs"}},
+		{Name: "inspect", Summary: "inspect one job and its recorded host state", Run: cmdInspect, HelpForms: []string{"inspect"}},
+		{Name: "helper", Summary: "manage the optional local WSL helper", Run: cmdHelper, HelpForms: []string{"helper serve", "helper status", "helper stop"}},
+		{Name: "config", Summary: "report, validate, or write the configuration", Run: func(_ context.Context, a []string) (int, error) { return cmdConfig(a) }, HelpForms: []string{"config", "config validate"}},
+		{Name: "bsd", Summary: "run a command in a FreeBSD guest on this host's own hypervisor", Run: cmdBsd, HelpForms: []string{"bsd status", "bsd fetch", "bsd run"}},
+		{Name: "ready", Summary: "test whether this host can run an isolated Linux job", Run: cmdReady, HelpForms: []string{"ready"}},
+		{Name: "selfupdate", Summary: "verify and install a published release", Run: cmdSelfUpdate, HelpForms: []string{"selfupdate"}},
+		{Name: "artifacts", Summary: "retrieve an artifact copy that a failed transfer retained", Run: cmdArtifacts, HelpForms: []string{"artifacts retry"}},
+		{Name: "examples", Summary: "print the canonical command examples", Run: func(_ context.Context, a []string) (int, error) { return cmdExamples(a) }, HelpForms: []string{"examples"}},
+		{Name: "man", Summary: "open or print the manual generated from the registered CLI", Run: cmdMan, HelpForms: []string{"man"}},
+		{Name: "version", Summary: "print the embedded product version", Run: func(_ context.Context, a []string) (int, error) { return cmdVersion(a) }, HelpForms: []string{"version"}},
+	}
 }
 
 func run(ctx context.Context, args []string) int {

@@ -175,14 +175,16 @@ const examplesUsage = `wsl-toolkit examples [--json]
 // shape of a correct call. The manual is the explanation; this is the shape.
 var examples = []struct{ What, Command string }{
 	{"is this machine ready", "wsl-toolkit ready --smoke"},
-	{"one command in one container", `wsl-toolkit run --image alpine -c 'uname -a'`},
+	{"one persistent command in one container", `wsl-toolkit run --image alpine -c 'uname -a'`},
+	{"one ARM64 command with no retained container", `wsl-toolkit run --image alpine --platform linux/arm64 --container-lifecycle ephemeral -c 'uname -m'`},
 	{"a script file rather than a string", `wsl-toolkit run --image debian --script .\build.sh`},
 	{"a workspace copied in and artifacts back", `wsl-toolkit run --image debian --workspace . --artifacts .\out -c 'make && cp build/x /out/'`},
-	{"the same command across every catalog image", `wsl-toolkit matrix --images all -c 'cc --version'`},
+	{"the same command across every catalog image, with no retained containers", `wsl-toolkit matrix --images all --container-lifecycle ephemeral -c 'cc --version'`},
 	{"no network for the container", `wsl-toolkit run --image alpine --no-network -c 'wget -T2 example.com'`},
 	{"as an account that is not root", `wsl-toolkit run --image alpine --user 1000:1000 -c 'id -u'`},
 	{"read a job's complete output back", "wsl-toolkit logs JOB-ID"},
 	{"why a job failed, after the container is gone", "wsl-toolkit inspect JOB-ID"},
+	{"inspect and remove one retained job", "wsl-toolkit inspect JOB-ID ; wsl-toolkit gc --job JOB-ID --apply"},
 	{"two agents, isolated from each other", "wsl-toolkit --instance two ready --ensure"},
 	{"what this tool is holding, and release it", "wsl-toolkit resources ; wsl-toolkit gc --apply"},
 	{"a caller that cannot reach wsl.exe", "wsl-toolkit helper serve --detach"},

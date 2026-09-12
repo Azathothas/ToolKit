@@ -27,6 +27,8 @@ type jobFlags struct {
 	timeout     time.Duration
 	noNetwork   bool
 	user        string
+	platform    string
+	lifecycle   string
 	maxBytes    int64
 	maxEntries  int
 	maxOutput   int64
@@ -48,10 +50,12 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&j.artifactDir, "artifacts", "", "a directory on this machine to receive whatever the container leaves in /out")
 	fs.Var(&j.excludes, "exclude", "a glob to leave out of the workspace copy. Repeatable")
 	fs.Var(&j.env, "env", "NAME=VALUE passed to the container. Repeatable")
-	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before it is killed and the row reports 124")
+	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before lifecycle cleanup; the row reports 124")
 	fs.DurationVar(&j.tick, "tick", 0, "emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it")
 	fs.BoolVar(&j.noNetwork, "no-network", false, "run with no network at all")
 	fs.StringVar(&j.user, "user", "", "what the container runs as: a name, a uid, or uid:gid. Empty means the image's default")
+	fs.StringVar(&j.platform, "platform", "", "the Linux OCI platform. Empty uses jobs.platform, then the native platform")
+	fs.StringVar(&j.lifecycle, "container-lifecycle", "", "persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent")
 	fs.Int64Var(&j.maxBytes, "max-bytes", toolkit.DefaultWorkspaceLimits().MaxBytes, "refuse a workspace or an artifact set larger than this")
 	fs.IntVar(&j.maxEntries, "max-entries", toolkit.DefaultWorkspaceLimits().MaxEntries, "refuse a workspace or an artifact set with more entries than this")
 	fs.Int64Var(&j.maxOutput, "max-output", 0, "how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says")
@@ -72,7 +76,13 @@ func (j *jobFlags) script() ([]byte, error) {
 		return nil, errors.New("-c and --script are two spellings of one argument, so passing both is refused rather than resolved by a precedence nobody would remember")
 	}
 	if j.command != "" {
-		return []byte(j.command + "\n"), nil
+		// ⛔ -c GETS THE SAME REPAIR AS --script, and it did not. A multi-line
+		// command assembled in PowerShell carries CRLF, and /bin/sh reads the
+		// carriage return as part of the last word on the line: `2>/dev/null`
+		// becomes a file named `/dev/null` followed by an invisible byte, and
+		// the error names a file nobody wrote. One channel repairing its
+		// payload while its sibling does not is the one-gated-door shape.
+		return toolkit.RepairGuestScript([]byte(j.command + "\n"))
 	}
 	if j.scriptFile == "" {
 		return nil, errors.New("nothing to run: pass -c COMMAND or --script FILE")
@@ -119,7 +129,89 @@ func (j *jobFlags) check() error {
 	if j.maxOutput < 0 {
 		return fmt.Errorf("--max-output %d is negative. Pass 0 for the default, or a positive number of bytes", j.maxOutput)
 	}
+	if j.lifecycle != "" && j.lifecycle != toolkit.ContainerPersistent && j.lifecycle != toolkit.ContainerEphemeral {
+		return fmt.Errorf("--container-lifecycle %q must be %q or %q", j.lifecycle, toolkit.ContainerPersistent, toolkit.ContainerEphemeral)
+	}
 	return nil
+}
+
+// applyConfig selects job defaults and resolves host paths before a job starts.
+func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
+	workspaceFromConfig := false
+	if j.lifecycle == "" {
+		j.lifecycle = cfg.Jobs.ContainerLifecycle
+	}
+	if j.platform == "" {
+		j.platform = cfg.Jobs.Platform
+	}
+	if j.workspace == "" && cfg.Jobs.Workspace != "" {
+		j.workspace = cfg.Jobs.Workspace
+		workspaceFromConfig = true
+	}
+	platform, err := toolkit.NormalizePlatform(j.platform)
+	if err != nil {
+		return fmt.Errorf("--platform: %w", err)
+	}
+	if platform == "" {
+		// ⛔ RESOLVED, NEVER LEFT EMPTY. An empty platform meant no --platform on
+		// the podman command line, and podman then selected whatever variant of
+		// the image the local store already held. NativePlatform carries the
+		// measurement that found it.
+		platform = toolkit.NativePlatform()
+	}
+	j.platform = platform
+	if j.workspace != "" {
+		if workspaceFromConfig {
+			j.workspace, err = pathFromConfig(cfg, j.workspace)
+		} else {
+			j.workspace, err = pathFromProject(cfg, j.workspace)
+		}
+		if err != nil {
+			return fmt.Errorf("--workspace: %w", err)
+		}
+		// ⛔ CHECKED AFTER RESOLUTION, on the path that will actually be read.
+		// The argument a caller typed is `.`, and `.` is never the thing that is
+		// unsafe; what it resolved to is.
+		if err := toolkit.AssertProjectPath("--workspace resolved to", j.workspace); err != nil {
+			return err
+		}
+	}
+	if j.scriptFile != "" {
+		j.scriptFile, err = pathFromProject(cfg, j.scriptFile)
+		if err != nil {
+			return fmt.Errorf("--script: %w", err)
+		}
+	}
+	if j.artifactDir != "" {
+		j.artifactDir, err = pathFromProject(cfg, j.artifactDir)
+		if err != nil {
+			return fmt.Errorf("--artifacts: %w", err)
+		}
+		// ⚠ THE ARTIFACT DIRECTORY IS WRITTEN TO, which makes the same mistake
+		// worse here than on the workspace: one walks a drive and the other
+		// scatters a job's output across a home directory.
+		if err := toolkit.AssertProjectPath("--artifacts resolved to", j.artifactDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func pathFromConfig(cfg toolkit.Config, value string) (string, error) {
+	if filepath.IsAbs(value) {
+		return filepath.Clean(value), nil
+	}
+	return filepath.Abs(filepath.Join(filepath.Dir(cfg.Path()), value))
+}
+
+func pathFromProject(cfg toolkit.Config, value string) (string, error) {
+	if filepath.IsAbs(value) {
+		return filepath.Clean(value), nil
+	}
+	if cfg.Source() == "--config" || cfg.Source() == "the working directory or a parent" {
+		return pathFromConfig(cfg, value)
+	}
+	return filepath.Abs(value)
 }
 
 func (j *jobFlags) limits() toolkit.WorkspaceLimits {
@@ -150,6 +242,13 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if *image == "" {
 		return exitCannot, errors.New("--image is required. wsl-toolkit images lists the catalog")
 	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return exitCannot, err
+	}
+	if err := j.applyConfig(cfg); err != nil {
+		return exitCannot, err
+	}
 	if err := j.check(); err != nil {
 		return exitCannot, err
 	}
@@ -161,18 +260,9 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	cfg, err := loadConfig()
-	if err != nil {
-		return exitCannot, err
-	}
 	ref, err := resolveImage(cfg, *image)
 	if err != nil {
 		return exitCannot, err
-	}
-	if j.workspace != "" {
-		if j.workspace, err = filepath.Abs(j.workspace); err != nil {
-			return exitCannot, err
-		}
 	}
 	if c, err := useHelper(ctx, j.viaHelper); err != nil {
 		return exitCannot, err
@@ -195,10 +285,14 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err := ensureBase(ctx, runner, j.ensure); err != nil {
 		return exitCannot, err
 	}
+	if err := runner.Base().EnsurePlatform(ctx, j.platform); err != nil {
+		return exitCannot, err
+	}
 	liveOut, liveErr := j.sinks()
 	res := runner.Run(ctx, toolkit.JobSpec{
 		Image: ref, Script: payload, Workspace: j.workspace, Excludes: toolkit.SortedExcludes(j.excludes),
 		ArtifactDir: j.artifactDir, Env: env, Timeout: j.timeout, Network: !j.noNetwork,
+		Platform: j.platform, ContainerLifecycle: j.lifecycle,
 		Limits: j.limits(), Label: *image, User: j.user,
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 		OnTick: tickPrinter(j), TickEvery: j.tick,
@@ -238,6 +332,9 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 		case "helper":
 			logf("  ! the helper is still holding artifact set %s", res.Retained)
 		}
+	}
+	if res.Container != "" {
+		logf("  container %s is kept with its job directory. Remove it with: wsl-toolkit gc --job %s --apply", res.Container, res.ID)
 	}
 	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
 	if hint := transcriptHint(res); hint != "" {
@@ -284,6 +381,13 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
+	cfg, err := loadConfig()
+	if err != nil {
+		return exitCannot, err
+	}
+	if err := j.applyConfig(cfg); err != nil {
+		return exitCannot, err
+	}
 	if err := j.check(); err != nil {
 		return exitCannot, err
 	}
@@ -298,10 +402,6 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	cfg, err := loadConfig()
-	if err != nil {
-		return exitCannot, err
-	}
 	var selectors []string
 	if *images != "" {
 		selectors = strings.Split(*images, ",")
@@ -310,9 +410,9 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	if j.workspace != "" {
-		if j.workspace, err = filepath.Abs(j.workspace); err != nil {
-			return exitCannot, err
+	if *transcripts != "" {
+		if *transcripts, err = pathFromProject(cfg, *transcripts); err != nil {
+			return exitCannot, fmt.Errorf("--transcripts: %w", err)
 		}
 	}
 	if c, err := useHelper(ctx, j.viaHelper); err != nil {
@@ -340,11 +440,15 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if err := ensureBase(ctx, runner, j.ensure); err != nil {
 		return exitCannot, err
 	}
+	if err := runner.Base().EnsurePlatform(ctx, j.platform); err != nil {
+		return exitCannot, err
+	}
 	logf("  %d image(s), %d at a time, %s per row", len(selected), *parallel, j.timeout)
 	report, err := runner.RunMatrix(ctx, toolkit.MatrixSpec{
 		Images: selected, Script: payload, Workspace: j.workspace,
 		Excludes: toolkit.SortedExcludes(j.excludes), ArtifactDir: j.artifactDir,
 		Env: env, Timeout: j.timeout, Network: !j.noNetwork, Parallel: *parallel,
+		Platform: j.platform, ContainerLifecycle: j.lifecycle,
 		Limits: j.limits(), Transcripts: *transcripts, User: j.user,
 		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
 		OnTick: tickPrinter(j), TickEvery: j.tick,

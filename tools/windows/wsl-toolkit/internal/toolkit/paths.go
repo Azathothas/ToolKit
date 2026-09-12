@@ -167,3 +167,33 @@ func RemoveInside(root, path string) error {
 	}
 	return nil
 }
+
+// CacheDir is where a large download lives so it is fetched ONCE per user.
+//
+// ⛔ IT IS DELIBERATELY NOT PER-INSTANCE, and that is the whole point. `Home()`
+// moves to `<root>/instances/<name>` when `--instance` selects one, so an asset
+// stored under it is fetched again by every agent that runs under a different
+// instance. The BSD guest image is 635 MB compressed and about 6 GB expanded;
+// paying that per instance is the waste this exists to remove.
+//
+// ⚠ STILL UNDER THE STATE ROOT, so `resources` and `gc` walk one tree and
+// nothing here is state they cannot find. That is the same ruling instanceHome
+// carries, applied to a directory that is shared rather than isolated.
+//
+// ⭐ A caller who moved the state directory moves the cache with it, which is
+// what moving a state directory is normally for. `WSL_TOOLKIT_CACHE` overrides
+// both.
+func CacheDir() (string, error) {
+	if v := strings.TrimSpace(os.Getenv("WSL_TOOLKIT_CACHE")); v != "" {
+		return filepath.Abs(v)
+	}
+	h, err := Home()
+	if err != nil {
+		return "", err
+	}
+	// Climb out of `instances/<name>` when this process is running under one.
+	if filepath.Base(filepath.Dir(h)) == "instances" {
+		h = filepath.Dir(filepath.Dir(h))
+	}
+	return filepath.Join(h, "cache"), nil
+}

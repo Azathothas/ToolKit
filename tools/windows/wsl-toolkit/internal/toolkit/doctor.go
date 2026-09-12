@@ -166,32 +166,59 @@ func probeInvocation(exe Executable, args []string) (string, []string, rawComman
 }
 
 func probeTool(ctx context.Context, spec ToolSpec, fast bool) ToolProbe {
+	skipped := map[string]bool{}
+	var failed *ToolProbe
+	var priorNotes []string
+	for {
+		p, key, more := probeToolCandidate(ctx, spec, fast, skipped)
+		if !more {
+			p.Notes = append(priorNotes, p.Notes...)
+			if failed != nil && !p.Found {
+				failed.Notes = p.Notes
+				return *failed
+			}
+			return p
+		}
+		priorNotes = append(priorNotes, p.Notes...)
+		priorNotes = append(priorNotes, fmt.Sprintf("candidate %s was %s", p.Path, p.Status))
+		// ⚠ Not `copy`, which shadows the builtin inside this loop.
+		prior := p
+		failed = &prior
+		skipped[key] = true
+	}
+}
+
+func probeToolCandidate(ctx context.Context, spec ToolSpec, fast bool, skipped map[string]bool) (ToolProbe, string, bool) {
 	p := ToolProbe{ID: spec.ID, Group: spec.Group, Status: "absent"}
-	exe, err := ResolveExecutable(spec.Binary)
+	exe, err := resolveExecutable(spec.Binary, skipped)
 	p.Notes = exe.Notes
 	if err != nil {
 		if len(exe.Notes) > 0 {
 			p.Status = "inaccessible"
 		}
-		return p
+		return p, "", false
+	}
+	key := exe.Path
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
 	}
 	p.Found, p.Path, p.Resolved, p.Kind = true, exe.Path, exe.Resolved, exe.Kind
 	p.Status = "discovered"
 	if fast || len(spec.Args) == 0 {
-		return p
+		return p, key, false
 	}
 	file, args, raw, err := probeInvocation(exe, spec.Args)
 	if err != nil {
 		p.Status = "unusable"
 		p.Notes = append(p.Notes, err.Error())
-		return p
+		return p, key, true
 	}
 	bounded, cancel := context.WithTimeout(ctx, 6*time.Second)
 	defer cancel()
 	out, stderr, err := outputRaw(bounded, raw, file, args...)
 	if bounded.Err() != nil {
 		p.Status = "timeout"
-		return p
+		return p, key, true
 	}
 	if err != nil {
 		p.Status = "unusable"
@@ -204,7 +231,7 @@ func probeTool(ctx context.Context, spec ToolSpec, fast bool) ToolProbe {
 			// else goes looking for a corrupted install.
 			p.Notes = append(p.Notes, "this is a Windows app execution alias with no package behind it: it opens the Store rather than running anything")
 		}
-		return p
+		return p, key, true
 	}
 	// Java reports its version on stderr; version discovery intentionally reads
 	// both. Value-bearing commands elsewhere read stdout alone.
@@ -215,14 +242,14 @@ func probeTool(ctx context.Context, spec ToolSpec, fast bool) ToolProbe {
 	joined := out + " " + stderr
 	if m := versionToken.FindStringSubmatch(joined); m != nil {
 		p.Version, p.Status = m[1], "working"
-		return p
+		return p, key, false
 	}
 	if m := quotedVersion.FindStringSubmatch(joined); m != nil {
 		p.Version, p.Status = m[1], "working"
-		return p
+		return p, key, false
 	}
 	p.Status = "version-unknown"
-	return p
+	return p, key, false
 }
 
 func moduleProbe() ToolProbe {

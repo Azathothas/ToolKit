@@ -19,6 +19,99 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-12
+
+### 2026-09-12T13:30:00Z: the consumer's wrapper becomes features, and a BSD userland gets a command
+
+**Record:** [`TODO/PROGRESS.md`](TODO/PROGRESS.md), and `WSL-63` to `WSL-66` in
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md) and `BSD-03` in
+[`TODO/bsd.md`](TODO/bsd.md) for the measurements.
+**Deployed:** no deploy. This is `main` only; no tag was cut.
+**Closes:** [issue 29](https://github.com/Azathothas/ToolKit/issues/29), all
+seven tasks. [Issue 30](https://github.com/Azathothas/ToolKit/issues/30) is
+authored as `WSL-67` and `WSL-68` and deliberately not built.
+
+⛔ **BREAKING: `base.automount` defaults to `ro`.** WSL mounts every fixed drive
+under `/mnt` inside the base, and a job could WRITE there, so a wrong path in one
+destroyed the real checkout on the Windows host. That is the one thing this
+tool's copy-never-mount rule exists to make impossible, reachable through a door
+nobody opened on purpose. Reading still works. ⚠ **A caller that WRITES to
+`/mnt/*` inside the base breaks**, and sets `base.automount` to `rw` to keep the
+old behaviour, or `off` to remove the mount entirely. The three consumers in
+[`docs/consumers.md`](docs/consumers.md) were checked and none writes there.
+
+⭐ **Four repairs a consumer was carrying by hand are now the tool's.** Read from
+`Azathothas/podbox`, whose `run-in-base.sh` is 151 lines and whose
+`docs/containers.md` lists seven traps with the measurement beside each:
+
+- **the executable bit.** NTFS holds no POSIX mode, so 396 of 396 scripts in a
+  Windows checkout arrived unrunnable and the first to run failed
+  `Permission denied`, naming the script and not the transfer. The copy reads
+  the git index now, and a shebang covers a file that is in no index, which is
+  the gap the consumer hit three weeks after writing its own repair. ⛔ Data is
+  never marked executable, and the count is announced rather than applied in
+  silence.
+- **a file that grows while it copies.** The copy was unbounded against a header
+  whose size was already written, so a background index or log killed the whole
+  job with `archive/tar: write too long` in 475 ms. It is bounded now, the file
+  travels as the prefix that was declared, and the result names it.
+- **CRLF.** `--script` repaired it and `-c` did not, which is one gate on one
+  path and none on its sibling. Both repair the copy that is sent.
+- **`/mnt/c`.** Above.
+
+⛔ **A defect that had been shipping, found by driving the tool rather than by
+reading it.** A job that asked for no platform got no `--platform` on the podman
+command line, so podman ran whatever variant of the image the local store already
+held. After a single `--platform linux/arm64` job, `alpine` meant something else
+to every later job on that host that named no architecture: `uname -m` answered
+`aarch64` on an x86_64 machine, exit 0. ⚠ **The only sign was a line on podman's stderr**, which a
+caller reading the JSON answer never sees, and a green suite could not have seen
+it at all because it lives in what the image store contains. Every job names a
+platform now, and the resolved value is on the result. `WSL-64`.
+
+⛔ **The generated manual carried a control byte and its own drift check agreed
+with it.** roff's font escape and Go's form feed are spelled identically in an
+interpreted string literal, so `wsl-toolkit.1` shipped `0x0C`. A check that
+compares generated output with generated output cannot see a generator that is
+wrong, and the tree's `control-bytes` rule was blind for as long as the file
+stayed untracked. `WSL-65`.
+
+⭐ **`wsl-toolkit bsd` runs a command in a FreeBSD userland, with no nesting and
+no elevation.** `qemu-system-x86_64 -accel whpx` puts FreeBSD 15.1-RELEASE on the
+host's own hypervisor, beside the podman machine rather than inside it. Measured
+here: login at 1m54s, session 1m58s, exit 0, the guest answering on its serial
+console. The image is pinned and its digest verified before use, and it lives in
+a cache SHARED across instances so a second agent does not fetch 635 MiB again.
+⛔ **It reaches a BSD shell and not a BSD container endpoint**: a long-running
+podman service panics the guest kernel. `BSD-03`.
+
+⚠ **The nesting the ask offered was not needed.** The operator accepted nested
+virtualisation as a floor. The record already said the non-nested route works on
+this machine, so it was checked first and nothing nested was built.
+
+⭐ **`--workspace .` no longer resolves against a directory nobody chose.** A
+relative path resolves against the project configuration when there is one, the
+resolved host path is printed, and a filesystem root, home directory or system
+directory is refused outright. ⛔ Refused rather than corrected, because a tool
+that picks a tree for you can pick the wrong one and still report success.
+`WSL-66`.
+
+⛔ **`scripts/windows/wsl-toolkit/wsl-toolkit.md` is REMOVED**, and
+[`tools/windows/wsl-toolkit/wsl-toolkit.md`](tools/windows/wsl-toolkit/wsl-toolkit.md)
+is the only usage page for both products. It was 1,374 lines of hand-written
+parameter reference beside a script that carries complete comment-based help, and
+a page that restates a binary's flags is a page that goes stale without anybody
+touching it. ⚠ **The script itself is untouched**: its path, parameters and exit
+codes are what consumers fetch and none of them moved.
+[`scripts/windows/wsl-toolkit/README.md`](scripts/windows/wsl-toolkit/README.md)
+remains the build and release pipeline.
+
+⭐ **Other things a caller can now see:** `config` reports the job defaults it
+never showed, which is how a persistent-container setting can exist and no agent
+know about it; `bsd fetch` resumes a partial download and reports progress; and
+a large asset is cached per user rather than per instance.
+
+---
 ## 2026-09-10
 
 ### 2026-09-10T17:20:00Z: wsl-toolkit 2.0.2, and three more review lenses

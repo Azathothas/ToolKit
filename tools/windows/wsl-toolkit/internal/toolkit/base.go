@@ -31,6 +31,9 @@ var repairScript []byte
 // and a registered distribution that does not work.
 const BaseSpaceFloor = int64(6) << 30
 
+// BinfmtImage installs QEMU interpreters in the WSL kernel.
+const BinfmtImage = "docker.io/tonistiigi/binfmt:qemu-v10.2.3-68"
+
 // BaseState is what `base status` answers.
 type BaseState struct {
 	Name       string    `json:"name"`
@@ -54,6 +57,7 @@ type BaseState struct {
 	// read under --probe. ⚠ Nil where the probe did not run or the guest is
 	// older than the probe, which is not the same as a tree that can do nothing.
 	Cgroup *CgroupState `json:"cgroup,omitempty"`
+	Binfmt *BinfmtState `json:"binfmt,omitempty"`
 	// Remediations are the conditions this tool found, each with what leaving it
 	// costs and the exact command that takes it. ⭐ A caller here is usually an
 	// agent, and the command is the field it acts on.
@@ -165,9 +169,10 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	} else {
 		st.Problems = append(st.Problems, err.Error())
 	}
-	engine, caps, verifyErr := b.verify(ctx)
+	engine, caps, binfmt, verifyErr := b.verify(ctx)
 	st.Engine = engine
 	st.Cgroup = caps
+	st.Binfmt = binfmt
 	if verifyErr != nil {
 		st.Problems = append(st.Problems, verifyErr.Error())
 		// ⭐ A FAILURE IS CLASSIFIED HERE AND NOT ONLY IN ensure, because
@@ -285,7 +290,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 		if err := b.reconcileIdentity(ctx); err != nil {
 			return st, err
 		}
-		if engine, _, err := b.verify(ctx); err == nil {
+		if engine, _, _, err := b.verify(ctx); err == nil {
 			b.log("the engine answers: " + engine)
 			return b.Status(ctx, true)
 		} else {
@@ -324,7 +329,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 				}
 				// ⛔ THE STATE IS READ BACK, and the repair is not reported as a
 				// success until a container has actually run.
-				if engine, _, err := b.verify(ctx); err == nil {
+				if engine, _, _, err := b.verify(ctx); err == nil {
 					b.log("the engine answers: " + engine)
 					return b.Status(ctx, true)
 				} else {
@@ -340,7 +345,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 				return st, err
 			}
 		} else {
-			if engine, _, err := b.verify(ctx); err != nil {
+			if engine, _, _, err := b.verify(ctx); err != nil {
 				return st, fmt.Errorf("re-provisioned and it still cannot run a container: %w", err)
 			} else {
 				b.log("the engine answers: " + engine)
@@ -366,7 +371,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 		return st, err
 	}
 	b.unmarked = false
-	engine, _, err := b.verify(ctx)
+	engine, _, _, err := b.verify(ctx)
 	if err != nil {
 		return st, fmt.Errorf("built and it cannot run a container: %w", err)
 	}
@@ -539,14 +544,20 @@ func (b *Base) assertSpace(tarPath string) error {
 
 func (b *Base) provision(ctx context.Context) error {
 	b.log("provisioning: a rootless engine and the " + b.cfg.Base.User + " account")
+	automount, err := NormalizeAutomount(b.cfg.Base.Automount)
+	if err != nil {
+		return err
+	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
 	code, err := b.wsl.Exec(ctx, ExecRequest{
 		Distro: b.cfg.Base.Name,
 		User:   "root",
 		Script: provisionScript,
 		Env: map[string]string{
-			"TK_USER": b.cfg.Base.User,
-			"TK_UID":  "1000",
+			"TK_USER":         b.cfg.Base.User,
+			"TK_UID":          "1000",
+			"TK_BINFMT_IMAGE": BinfmtImage,
+			"TK_AUTOMOUNT":    automount,
 		},
 		Timeout: 30 * time.Minute,
 		Stdout:  out,
@@ -570,6 +581,83 @@ func (b *Base) provision(ctx context.Context) error {
 	return nil
 }
 
+// EnsurePlatform restores the QEMU handler for one non-native Linux platform.
+// WSL removes kernel registrations when its utility virtual machine stops.
+func (b *Base) EnsurePlatform(ctx context.Context, platform string) error {
+	normalized, err := NormalizePlatform(platform)
+	if err != nil || normalized == "" {
+		return err
+	}
+	// ⭐ THE NATIVE PLATFORM COSTS NOTHING TO PREPARE, and it is now the value a
+	// caller who asked for nothing gets, so this runs on every job. Answering it
+	// here keeps the common path free of a guest round trip.
+	if normalized == NativePlatform() {
+		return nil
+	}
+	target, handler, err := platformBinfmt(normalized)
+	if err != nil {
+		return err
+	}
+	out, stderr, code, runErr := b.captureAs(ctx, "root", []byte("uname -m\n"), nil, 2*time.Minute)
+	if runErr != nil || code != 0 {
+		return fmt.Errorf("could not read the base architecture (exit %d): %s", code, firstLine(stderr+out))
+	}
+	if nativePlatformArch(strings.TrimSpace(firstLine(out))) == target {
+		return nil
+	}
+	script := []byte(`set -eu
+handler=/proc/sys/fs/binfmt_misc/$TK_HANDLER
+if [ -e "$handler" ]; then
+  printf 'binfmt-ready %s\n' "$TK_HANDLER"
+  exit 0
+fi
+podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install "$TK_ARCH"
+[ -e "$handler" ] || { printf 'handler %s was not registered\n' "$TK_HANDLER" >&2; exit 3; }
+printf 'binfmt-ready %s\n' "$TK_HANDLER"
+`)
+	out, stderr, code, runErr = b.captureAs(ctx, "root", script, map[string]string{
+		"TK_ARCH": target, "TK_HANDLER": handler, "TK_BINFMT_IMAGE": BinfmtImage,
+	}, 20*time.Minute)
+	if runErr != nil || code != 0 {
+		return fmt.Errorf("could not prepare %s (exit %d): %s", normalized, code, firstLine(stderr+out))
+	}
+	if !strings.Contains(out, "binfmt-ready "+handler) {
+		return fmt.Errorf("the %s handler did not report that it is ready", handler)
+	}
+	return nil
+}
+
+func platformBinfmt(platform string) (arch, handler string, err error) {
+	parts := strings.Split(platform, "/")
+	arch = parts[1]
+	if arch == "arm" {
+		return "arm", "qemu-arm", nil
+	}
+	handlers := map[string]string{
+		"386": "qemu-i386", "amd64": "qemu-x86_64", "arm64": "qemu-aarch64",
+		"loong64": "qemu-loongarch64", "mips64": "qemu-mips64", "mips64le": "qemu-mips64el",
+		"ppc64le": "qemu-ppc64le", "riscv64": "qemu-riscv64", "s390x": "qemu-s390x",
+	}
+	handler = handlers[arch]
+	if handler == "" {
+		return "", "", fmt.Errorf("%s has no QEMU handler mapping", platform)
+	}
+	return arch, handler, nil
+}
+
+func nativePlatformArch(value string) string {
+	switch value {
+	case "x86_64":
+		return "amd64"
+	case "aarch64":
+		return "arm64"
+	case "i386", "i686":
+		return "386"
+	default:
+		return value
+	}
+}
+
 // verify runs a real container as the unprivileged account and returns the
 // engine's own version line.
 // verify runs a container as the unprivileged account and reads what came back.
@@ -578,7 +666,7 @@ func (b *Base) provision(ctx context.Context) error {
 // string and the error say whether this base works; the CgroupState says what it
 // can account for while it works, and a base with no delegation is healthy and
 // limited rather than broken. WSL-60.
-func (b *Base) verify(ctx context.Context) (string, *CgroupState, error) {
+func (b *Base) verify(ctx context.Context) (string, *CgroupState, *BinfmtState, error) {
 	half := func() string {
 		var raw [6]byte
 		if _, err := rand.Read(raw[:]); err != nil {
@@ -595,13 +683,13 @@ func (b *Base) verify(ctx context.Context) (string, *CgroupState, error) {
 		"TK_M2":    m2,
 	}, 20*time.Minute)
 	if err != nil || code != 0 {
-		return "", nil, fmt.Errorf("a container did not run as %s (exit %d): %s", b.cfg.Base.User, code, firstLine(stderr+out))
+		return "", nil, nil, fmt.Errorf("a container did not run as %s (exit %d): %s", b.cfg.Base.User, code, firstLine(stderr+out))
 	}
 	// ⛔ Compared with whitespace removed: a tty wraps a long line, so a marker
 	// that arrived correctly can fail an exact match.
 	flat := strings.Join(strings.Fields(out), "")
 	if !strings.Contains(flat, m1+m2) {
-		return "", nil, fmt.Errorf("the container ran and did not return the marker: %s", firstLine(out+stderr))
+		return "", nil, nil, fmt.Errorf("the container ran and did not return the marker: %s", firstLine(out+stderr))
 	}
 	engine := ""
 	for _, line := range strings.Split(out, "\n") {
@@ -611,7 +699,7 @@ func (b *Base) verify(ctx context.Context) (string, *CgroupState, error) {
 	}
 	// ⚠ `engine ` MATCHES BEFORE `engine-rootless ` DOES NOT, and it does not:
 	// the prefix compared carries a trailing space and that row's key does not.
-	return engine, parseCapabilities(out), nil
+	return engine, parseCapabilities(out), parseBinfmt(out), nil
 }
 
 // VerifyImage is what the health check runs: small, in the catalog, and pulled
@@ -817,6 +905,27 @@ type CgroupState struct {
 	// derived from the measurement above, never from the version number.
 	Enforced    string `json:"limits_enforced"` // yes, no, unknown
 	StatsUsable string `json:"stats_usable"`    // yes, no, unknown
+}
+
+// BinfmtState is the QEMU handler count in the current WSL kernel.
+type BinfmtState struct {
+	Handlers int  `json:"handlers"`
+	Ready    bool `json:"ready"`
+}
+
+func parseBinfmt(out string) *BinfmtState {
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "binfmt-handlers ") {
+			continue
+		}
+		var count int
+		if _, err := fmt.Sscanf(strings.TrimPrefix(line, "binfmt-handlers "), "%d", &count); err != nil {
+			return nil
+		}
+		return &BinfmtState{Handlers: count, Ready: count > 0}
+	}
+	return nil
 }
 
 // Remediation is one condition this tool found, what leaving it costs, and the

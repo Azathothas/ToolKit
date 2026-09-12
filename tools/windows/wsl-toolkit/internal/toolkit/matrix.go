@@ -11,19 +11,21 @@ import (
 
 // MatrixSpec is one command run across a set of images.
 type MatrixSpec struct {
-	Images      []Image
-	Script      []byte
-	Workspace   string
-	Excludes    []string
-	ArtifactDir string
-	Env         map[string]string
-	Timeout     time.Duration // per row
-	Network     bool
-	Parallel    int
-	Limits      WorkspaceLimits
-	Transcripts string
-	User        string
-	MaxOutput   int64
+	Images             []Image
+	Script             []byte
+	Workspace          string
+	Excludes           []string
+	ArtifactDir        string
+	Env                map[string]string
+	Timeout            time.Duration // per row
+	Network            bool
+	Platform           string
+	ContainerLifecycle string
+	Parallel           int
+	Limits             WorkspaceLimits
+	Transcripts        string
+	User               string
+	MaxOutput          int64
 	// OnRow is called once per row, THE MOMENT IT FINISHES rather than when the
 	// fleet does.
 	//
@@ -184,6 +186,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 				Image: img.Ref, Script: spec.Script, StagedFrom: staged,
 				Workspace: "", ArtifactDir: artifacts, Env: spec.Env,
 				Timeout: spec.Timeout, Network: spec.Network, Limits: limits,
+				Platform: spec.Platform, ContainerLifecycle: spec.ContainerLifecycle,
 				Label: img.ID, User: spec.User, MaxOutput: spec.MaxOutput,
 				OnTick: spec.OnTick, TickEvery: spec.TickEvery,
 			})

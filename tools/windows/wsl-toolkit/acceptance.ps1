@@ -776,6 +776,7 @@ try {
             @{ n = 'helper status'; a = @('helper', 'status', '--json') }
             @{ n = 'run';           a = @('run', '--json', '--image', 'alpine', '-c', 'true') }
             @{ n = 'inspect';       a = @('inspect', '--json') }
+            @{ n = 'bsd status';    a = @('bsd', 'status', '--json') }
         )
         $bad = @()
         foreach ($s in $surfaces) {

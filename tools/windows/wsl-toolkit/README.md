@@ -1,7 +1,11 @@
 # wsl-toolkit, the executable
 
-What it is made of, for somebody changing it.
-[`wsl-toolkit.md`](wsl-toolkit.md) is what it does, for somebody using it.
+This executable is the primary interface. Run `wsl-toolkit man` for a paged
+manual, `wsl-toolkit man --no-pager` for readable text, or `wsl-toolkit
+examples` for canonical commands. [`wsl-toolkit.md`](wsl-toolkit.md) is the
+short operator reference.
+
+This page describes the source and build process for a maintainer.
 
 ---
 
@@ -17,10 +21,10 @@ tools/windows/wsl-toolkit/
   internal/toolkit/         everything else: WSL, the engine, jobs, the fleet, the helper
 ```
 
-⭐ **It mirrors `scripts/windows/wsl-toolkit/` on purpose.** The two products are
-the same tool at different layers: the script owns throwaway distributions and
-the executable owns a persistent one, container jobs and the host survey. A
-reader who knows where one lives knows where the other does.
+⭐ **It mirrors `scripts/windows/wsl-toolkit/` on purpose.** The PowerShell
+bundle is the low-level compatibility interface for existing consumers. The
+executable embeds that interface and adds the persistent base, container jobs,
+the host survey, and the generated manual.
 
 ⛔ **No dependencies.** Every line is the standard library, so there is no
 `go.sum`, nothing to audit on a bump and nothing to fetch in CI. Keep it that

@@ -435,13 +435,15 @@ type HelperRunRequest struct {
 	// ⛔ User IS ON THE WIRE because the direct path has it. A field the
 	// client can set and this side ignores is a job that runs as root after a
 	// caller asked for another account, with nothing said either way.
-	User       string `json:"user,omitempty"`
-	TimeoutMS  int64  `json:"timeout_ms,omitempty"`
-	Network    bool   `json:"network"`
-	StagingID  string `json:"staging_id,omitempty"`
-	Artifacts  bool   `json:"artifacts,omitempty"`
-	MaxBytes   int64  `json:"max_bytes,omitempty"`
-	MaxEntries int    `json:"max_entries,omitempty"`
+	User               string `json:"user,omitempty"`
+	TimeoutMS          int64  `json:"timeout_ms,omitempty"`
+	Network            bool   `json:"network"`
+	Platform           string `json:"platform,omitempty"`
+	ContainerLifecycle string `json:"container_lifecycle,omitempty"`
+	StagingID          string `json:"staging_id,omitempty"`
+	Artifacts          bool   `json:"artifacts,omitempty"`
+	MaxBytes           int64  `json:"max_bytes,omitempty"`
+	MaxEntries         int    `json:"max_entries,omitempty"`
 	// MaxOutput is here for the same reason User is: the direct path has it. A
 	// door sweep found it missing before this shipped, which is the SECOND time
 	// a job flag has been dropped between the two routes.
@@ -533,8 +535,13 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	// cleanup could see.
 	defer h.releaseStaging(req.StagingID)
 
-	runner, _, err := h.runnerFor(req.Config)
+	runner, effective, err := h.runnerFor(req.Config)
 	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	platform := effectiveJobPlatform(req, effective)
+	if err := runner.Base().EnsurePlatform(r.Context(), platform); err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -546,7 +553,9 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	res := runner.Run(r.Context(), JobSpec{
 		Image: req.Image, Script: payload, Workspace: staged, Env: req.Env,
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
-		Limits: req.limits(), ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
+		Platform:           platform,
+		ContainerLifecycle: effectiveJobLifecycle(req, effective),
+		Limits:             req.limits(), ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
 		User: req.User, MaxOutput: req.MaxOutput,
 		Stdout:    &chunkWriter{out: events, kind: "stdout"},
 		Stderr:    &chunkWriter{out: events, kind: "stderr"},
@@ -554,6 +563,32 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		OnTick:    req.tickSink(events),
 	})
 	events.send(HelperEvent{Kind: "result", Result: &res, ArtifactsID: artifactID})
+}
+
+// effectiveJobPlatform resolves the platform for a helper request.
+//
+// ⛔ IT NEVER ANSWERS EMPTY, for the same reason the direct route does not. An
+// empty platform means no `--platform` on the podman command line, and podman
+// then runs whatever variant of the image the local store happens to hold. The
+// current client always sends one, so this fallback is reached only by a request
+// from an older client or from a caller writing the JSON by hand; leaving a door
+// open on one route and closed on the other is exactly the shape that produced
+// the defect.
+func effectiveJobPlatform(req HelperRunRequest, cfg Config) string {
+	if req.Platform != "" {
+		return req.Platform
+	}
+	if cfg.Jobs.Platform != "" {
+		return cfg.Jobs.Platform
+	}
+	return NativePlatform()
+}
+
+func effectiveJobLifecycle(req HelperRunRequest, cfg Config) string {
+	if req.ContainerLifecycle != "" {
+		return req.ContainerLifecycle
+	}
+	return cfg.Jobs.ContainerLifecycle
 }
 
 func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
@@ -569,6 +604,11 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 	}
 	runner, effective, err := h.runnerFor(req.Config)
 	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	platform := effectiveJobPlatform(req.HelperRunRequest, effective)
+	if err := runner.Base().EnsurePlatform(r.Context(), platform); err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -598,7 +638,9 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 	report, err := runner.RunMatrix(r.Context(), MatrixSpec{
 		Images: selected, Script: payload, Workspace: staged, Env: req.Env,
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
-		Parallel: req.Parallel, Limits: req.limits(),
+		Platform:           platform,
+		ContainerLifecycle: effectiveJobLifecycle(req.HelperRunRequest, effective),
+		Parallel:           req.Parallel, Limits: req.limits(),
 		ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
 		User:        req.User,
 		MaxOutput:   req.MaxOutput,

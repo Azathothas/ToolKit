@@ -106,14 +106,16 @@ type JobSpec struct {
 	// StagedFrom is a guest directory a fleet already unpacked the workspace
 	// into, copied locally instead of sent again. ⛔ It is a GUEST path and
 	// never a host one: a host path here would be a mount by another name.
-	StagedFrom  string
-	Excludes    []string
-	ArtifactDir string // a host directory to write /out back to. Empty means none.
-	Env         map[string]string
-	Timeout     time.Duration
-	Network     bool
-	Limits      WorkspaceLimits
-	Label       string // what a report calls this row
+	StagedFrom         string
+	Excludes           []string
+	ArtifactDir        string // a host directory to write /out back to. Empty means none.
+	Env                map[string]string
+	Timeout            time.Duration
+	Network            bool
+	Platform           string
+	ContainerLifecycle string
+	Limits             WorkspaceLimits
+	Label              string // what a report calls this row
 	// User is what the container runs as, in podman's own spelling: a name, a
 	// uid, or uid:gid. Empty means the image's own default, which is usually
 	// root INSIDE the container and is not root on this machine.
@@ -218,6 +220,11 @@ type JobResult struct {
 	// The complete text is under Transcript.
 	StdoutTruncated bool `json:"stdout_truncated,omitempty"`
 	StderrTruncated bool `json:"stderr_truncated,omitempty"`
+	// Container names the stopped container that a persistent job keeps.
+	Container          string `json:"container,omitempty"`
+	ContainerLifecycle string `json:"container_lifecycle"`
+	Platform           string `json:"platform,omitempty"`
+	Cancelled          bool   `json:"cancelled,omitempty"`
 }
 
 // Failed says whether this row counts against the run: the command's own
@@ -408,7 +415,8 @@ func newJobID() (string, error) {
 func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	started := time.Now()
 	trace := newJobTrace()
-	res = JobResult{Label: spec.Label, Image: spec.Image, Started: started.UTC()}
+	res = JobResult{Label: spec.Label, Image: spec.Image, Started: started.UTC(),
+		ContainerLifecycle: spec.ContainerLifecycle, Platform: spec.Platform}
 	// ⛔ REGISTERED FIRST, SO IT RUNS LAST. Defers run in reverse, and the
 	// teardown below is a defer too: a duration assigned before it ran was the
 	// interval up to the point the container stopped, not the interval the
@@ -433,6 +441,15 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 		return res
 	}
+	if _, err := NormalizePlatform(spec.Platform); err != nil {
+		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+		return res
+	}
+	if spec.ContainerLifecycle != ContainerPersistent && spec.ContainerLifecycle != ContainerEphemeral {
+		res.Exit, res.Error, res.Unreached = 2,
+			fmt.Sprintf("container lifecycle %q must be %q or %q", spec.ContainerLifecycle, ContainerPersistent, ContainerEphemeral), true
+		return res
+	}
 	id, err := newJobID()
 	if err != nil {
 		res.Exit, res.Error = 2, err.Error()
@@ -451,6 +468,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	guestWork := guestJob + "/work"
 	guestOut := guestJob + "/out"
 	guestScript := guestJob + "/job.sh"
+	container := "wtk-" + id
 	deadline := time.Time{}
 	if spec.Timeout > 0 {
 		deadline = time.Now().Add(spec.Timeout).UTC()
@@ -471,17 +489,26 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	// teardown that ran anyway made the failure unrecoverable rather than merely
 	// reported.
 	keepGuest := false
+	keepContainer := false
 	defer func() {
-		if keepGuest {
-			r.log("the job directory is kept because its artifacts could not be fetched: " + guestJob)
-			r.log("fetch them by hand, then: wsl-toolkit gc --apply")
+		if keepGuest || keepContainer {
+			note := "the job finished and its directory was kept"
+			if keepGuest {
+				r.log("the job directory is kept because its artifacts could not be fetched: " + guestJob)
+				r.log("fetch them by hand, then: wsl-toolkit gc --apply")
+				note += ": its artifacts could not be fetched"
+			}
+			if keepContainer {
+				r.log("the stopped container and its job directory are kept: " + container)
+				note += ": the container lifecycle is persistent"
+			}
 			// ⛔ THE RECORD STILL CLOSES. The directory is kept on purpose and
 			// the job is over, and cleanup reads an open record as work in
 			// flight. Leaving it open would mean gc spares this directory
 			// forever, which turns a deliberate hold into a permanent leak.
 			if err := r.ledger.Append(LedgerEntry{
 				Event: "close", Kind: "job", ID: id,
-				Note: "the job finished and its directory was kept: its artifacts could not be fetched",
+				Note: note,
 			}); err != nil {
 				r.log("could not close the ledger record for job " + id + ": " + err.Error())
 			}
@@ -548,7 +575,6 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		return res
 	}
 
-	container := "wtk-" + id
 	token, err := newMarkerToken()
 	if err != nil {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
@@ -597,6 +623,10 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	trace.Mark("streams")
 	streams.Apply(&res)
 	res.Exit = code
+	if marker.Seen() && spec.ContainerLifecycle == ContainerPersistent {
+		keepContainer = true
+		res.Container = container
+	}
 
 	switch {
 	case runCtx.Err() != nil && ctx.Err() == nil:
@@ -609,8 +639,22 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		// each cost. This context is shared with the teardown defer below, so
 		// the caller's wall time past the deadline is bounded once.
 		budget = newCleanupBudget(context.WithoutCancel(ctx), CleanupGrace)
-		r.killContainer(budget.Context(ctx), container)
+		if keepContainer {
+			r.stopContainer(budget.Context(ctx), container)
+		} else {
+			r.killContainer(budget.Context(ctx), container)
+		}
 		trace.Mark("kill")
+	case ctx.Err() != nil:
+		res.Cancelled, res.Exit = true, 130
+		res.Error = "the job was cancelled"
+		budget = newCleanupBudget(context.WithoutCancel(ctx), CleanupGrace)
+		if keepContainer {
+			r.stopContainer(budget.Context(ctx), container)
+		} else {
+			r.killContainer(budget.Context(ctx), container)
+		}
+		trace.Mark("cancel")
 	case !marker.Seen() && (code != 0 || execErr != nil):
 		// ⛔ NOTHING RAN, so this is not the payload's exit code. The engine
 		// could not acquire the image, could not create the container, or could
@@ -679,19 +723,26 @@ func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, g
 	if spec.User != "" {
 		opts = ":U,Z"
 	}
-	args := []string{
-		"run", "--rm", "--name", container,
+	args := []string{"run"}
+	if spec.ContainerLifecycle == ContainerEphemeral {
+		args = append(args, "--rm")
+	}
+	args = append(args,
+		"--name", container,
 		"--label", JobLabel,
-		"--label", "wsl-toolkit.image=" + spec.Image,
+		"--label", "wsl-toolkit.image="+spec.Image,
 		"--pull=missing",
-		"--volume", guestWork + ":/work" + opts,
-		"--volume", guestOut + ":/out" + opts,
+		"--volume", guestWork+":/work"+opts,
+		"--volume", guestOut+":/out"+opts,
 		// ⚠ The read-only option joins the same comma list rather than adding a
 		// second colon: podman reads `:ro:U,Z` as a directory name and refuses
 		// with "incorrect volume format", which reads as a bad path.
-		"--volume", guestScript + ":/job.sh:ro" + strings.Replace(opts, ":", ",", 1),
+		"--volume", guestScript+":/job.sh:ro"+strings.Replace(opts, ":", ",", 1),
 		"--workdir", "/work",
 		"--env", "WSL_TOOLKIT_JOB=1",
+	)
+	if spec.Platform != "" {
+		args = append(args, "--platform", spec.Platform)
 	}
 	if !spec.Network {
 		args = append(args, "--network", "none")
@@ -779,6 +830,19 @@ func (r *Runner) killContainer(ctx context.Context, name string) {
 		Script: append(guestRuntimePrologue(), script...), Timeout: 2 * time.Minute,
 	}); err != nil {
 		r.log("could not remove container " + name + ": " + err.Error())
+	}
+}
+
+// stopContainer stops a persistent container and keeps its filesystem.
+func (r *Runner) stopContainer(ctx context.Context, name string) {
+	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	script := []byte("podman stop " + StopGraceFlag + " " + shellQuote(name) + " >/dev/null 2>&1 || :\n")
+	if _, err := r.wsl.Exec(bounded, ExecRequest{
+		Distro: r.cfg.Base.Name, User: r.cfg.Base.User,
+		Script: append(guestRuntimePrologue(), script...), Timeout: 2 * time.Minute,
+	}); err != nil {
+		r.log("could not stop container " + name + ": " + err.Error())
 	}
 }
 

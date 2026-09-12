@@ -67,6 +67,20 @@ type WorkspaceUpload struct {
 	Bytes    int64               `json:"bytes"`
 	Omitted  int                 `json:"omitted"`
 	Omission []WorkspaceOmission `json:"omission,omitempty"`
+	// Truncated counts files that TRAVELLED but grew while they were read, so
+	// the copy holds a prefix of what is on disk now.
+	//
+	// ⛔ IT IS NOT AN OMISSION AND MUST NOT BE COUNTED AS ONE. `Omitted` means
+	// a caller's input did not arrive at all, which is the thing that makes a
+	// job's conclusions wrong; a truncated file is a consistent snapshot of a
+	// file something is still writing. Folding the two together would make the
+	// serious number go up for the ordinary case.
+	Truncated  int                 `json:"truncated,omitempty"`
+	Truncation []WorkspaceOmission `json:"truncation,omitempty"`
+	// ExecRestored names how many files got an executable bit the host
+	// filesystem could not carry, and where each one came from. Empty when
+	// nothing was restored.
+	ExecRestored string `json:"exec_restored,omitempty"`
 }
 
 // note records an omission, keeping every count and the first few reasons.
@@ -74,6 +88,14 @@ func (u *WorkspaceUpload) note(rel, reason string) {
 	u.Omitted++
 	if len(u.Omission) < maxReportedOmissions {
 		u.Omission = append(u.Omission, WorkspaceOmission{Path: rel, Reason: reason})
+	}
+}
+
+// truncate records a file that arrived as a prefix of itself.
+func (u *WorkspaceUpload) truncate(rel, reason string) {
+	u.Truncated++
+	if len(u.Truncation) < maxReportedOmissions {
+		u.Truncation = append(u.Truncation, WorkspaceOmission{Path: rel, Reason: reason})
 	}
 }
 
@@ -194,7 +216,11 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 		return res.up, fmt.Errorf("unpacking the workspace in the guest exited %d: %s", code, firstLine(errBuf.String()))
 	}
 	if log != nil {
-		log(fmt.Sprintf("workspace: %d entries, %s copied to %s", res.up.Entries, HumanBytes(res.up.Bytes), guestDir))
+		// ⭐ THE HOST DIRECTORY IS NAMED, not only the guest one. `--workspace .`
+		// resolves against whatever the working directory happens to be, and the
+		// only way a caller can tell which tree actually travelled is to be told
+		// which one it was.
+		log(fmt.Sprintf("workspace: %d entries, %s copied from %s to %s", res.up.Entries, HumanBytes(res.up.Bytes), hostDir, guestDir))
 		// ⭐ SAID OUT LOUD AT THE POINT IT HAPPENS, as well as carried on the
 		// result. A caller reading only the human output learns the same fact.
 		for _, o := range res.up.Omission {
@@ -202,6 +228,18 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 		}
 		if res.up.Omitted > len(res.up.Omission) {
 			log(fmt.Sprintf("workspace: and %d more entry(s) left out", res.up.Omitted-len(res.up.Omission)))
+		}
+		for _, t := range res.up.Truncation {
+			log("workspace: " + t.Path + ": " + t.Reason)
+		}
+		if res.up.Truncated > len(res.up.Truncation) {
+			log(fmt.Sprintf("workspace: and %d more file(s) grew while they were copied", res.up.Truncated-len(res.up.Truncation)))
+		}
+		// ⛔ A MODE THIS TOOL SUPPLIED IS ANNOUNCED. The alternative to saying it
+		// is `chmod -R +x`, which marks data executable and reports nothing, and
+		// the distance between the two is that a reader can check this one.
+		if res.up.ExecRestored != "" {
+			log("workspace: " + res.up.ExecRestored)
 		}
 	}
 	return res.up, nil
@@ -213,6 +251,10 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 	realRoot, err := resolveExisting(root)
 	if err != nil {
 		return up, err
+	}
+	bits := &execBits{index: map[string]bool{}}
+	if isGitWorkspace(root) {
+		bits = newExecBits(context.Background(), root)
 	}
 	entries := 0
 	var total int64
@@ -277,10 +319,7 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 			if total > limits.MaxBytes {
 				return fmt.Errorf("%w: the workspace passes %s at %s", ErrWorkspaceRefused, HumanBytes(limits.MaxBytes), slashRel)
 			}
-			mode := int64(0o644)
-			if info.Mode()&0o111 != 0 {
-				mode = 0o755
-			}
+			mode := bits.mode(info.Mode(), slashRel, p)
 			if err := tw.WriteHeader(&tar.Header{
 				Name: slashRel, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),
 			}); err != nil {
@@ -290,7 +329,16 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 			if err != nil {
 				return err
 			}
-			written, err := io.Copy(tw, f)
+			// ⛔ BOUNDED BY THE DECLARED SIZE, because a tar member's length goes
+			// into its header before its bytes are read and a file that GROWS in
+			// between overruns what was declared. Unbounded, the archiver
+			// refused with `archive/tar: write too long`, which names the
+			// archiver and not the file, and the whole job died in 475 ms:
+			// measured by a consumer on 2026-09-12 against a live CodeGraph
+			// index, and worked around there by excluding four sidecars by name.
+			// ⚠ A background daemon appending to a log is an ordinary thing for
+			// a tree to be doing, and it is not a reason to refuse a copy.
+			written, err := io.Copy(tw, io.LimitReader(f, info.Size()))
 			closeErr := f.Close()
 			if err != nil {
 				return err
@@ -299,10 +347,16 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 				return closeErr
 			}
 			// ⛔ Count what arrived rather than trusting the declared length. A
-			// file that changed between the stat and the read leaves a header
-			// disagreeing with its payload.
+			// file that SHRANK leaves a header disagreeing with its payload, and
+			// that is a broken archive rather than a stale snapshot, so it still
+			// refuses. ⚠ The two directions are not symmetric: the growing case
+			// is a truncation that is named, the shrinking case is a corruption
+			// that cannot be.
 			if written != info.Size() {
-				return fmt.Errorf("%w: %s changed while it was being read (%d of %d bytes)", ErrWorkspaceRefused, slashRel, written, info.Size())
+				return fmt.Errorf("%w: %s shrank while it was being read (%d of %d bytes)", ErrWorkspaceRefused, slashRel, written, info.Size())
+			}
+			if grew, err := os.Stat(p); err == nil && grew.Size() > info.Size() {
+				up.truncate(slashRel, fmt.Sprintf("it grew while it was copied; the copy holds the first %s", HumanBytes(info.Size())))
 			}
 			return nil
 		default:
@@ -327,6 +381,7 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 		return up, err
 	}
 	up.Entries, up.Bytes = entries, total
+	up.ExecRestored = bits.report()
 	return up, nil
 }
 

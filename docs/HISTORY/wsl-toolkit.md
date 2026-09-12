@@ -1,7 +1,7 @@
 # HISTORY: wsl-toolkit.ps1
 
 ⛔ **Superseded. Nothing here is needed to use the tool.**
-[`../../scripts/windows/wsl-toolkit/wsl-toolkit.md`](../../scripts/windows/wsl-toolkit/wsl-toolkit.md)
+[`../../tools/windows/wsl-toolkit/wsl-toolkit.md`](../../tools/windows/wsl-toolkit/wsl-toolkit.md)
 is the live page and says what the tool does now.
 
 This holds the defects it shipped, the shapes its behaviour used to have, and
@@ -72,7 +72,7 @@ reads the directory back and exits non-zero when the path is still there.
 **There were four deletion paths and the page claimed there was one.** The
 temporary rootfs tarball had its own `Remove-Item`, no containment guard and no
 read-back, while
-[`../../scripts/windows/wsl-toolkit/wsl-toolkit.md`](../../scripts/windows/wsl-toolkit/wsl-toolkit.md)
+[`../../tools/windows/wsl-toolkit/wsl-toolkit.md`](../../tools/windows/wsl-toolkit/wsl-toolkit.md)
 said every path reached one deletion. A door sweep found it; the claim was false
 for one commit.
 

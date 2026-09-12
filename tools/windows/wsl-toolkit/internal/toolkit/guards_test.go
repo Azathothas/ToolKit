@@ -908,6 +908,22 @@ func TestTheNearestConfigurationWinsWhole(t *testing.T) {
 	}
 }
 
+func TestOldConfigurationGetsPersistentJobDefaults(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit","image":"docker.io/library/alpine:latest","user":"toolkit"}}`
+	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Jobs.ContainerLifecycle != ContainerPersistent {
+		t.Fatalf("old configuration lifecycle = %q, want %q", cfg.Jobs.ContainerLifecycle, ContainerPersistent)
+	}
+}
+
 func TestAConfigurationThisToolDoesNotReadIsRefused(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	dir := t.TempDir()

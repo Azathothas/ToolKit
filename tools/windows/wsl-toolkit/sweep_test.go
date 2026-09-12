@@ -46,6 +46,8 @@ var sweptElsewhere = map[string]string{
 	"config validate": "its own case covers it, including the refusal",
 	"ready":           "its own case covers it, and it is the longest-running survey here",
 	"examples":        "its own case covers it, and asserts every example parses as one command",
+	"bsd fetch":       "it downloads 635 MB from a release mirror. `bsd status` reports whether the image arrived and is swept",
+	"bsd run":         "it boots a guest, which costs about two minutes per call before any command runs",
 }
 
 var sweepName = regexp.MustCompile(`(?m)^\s*@\{\s*n\s*=\s*'([^']+)'`)

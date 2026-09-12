@@ -260,6 +260,11 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		// which one this is.
 		fmt.Fprintf(out, "  cgroup      not measured by this guest\n")
 	}
+	if bf := st.Binfmt; bf != nil {
+		fmt.Fprintf(out, "  binfmt      %d QEMU handler(s), ready: %v\n", bf.Handlers, bf.Ready)
+	} else if probed {
+		fmt.Fprintf(out, "  binfmt      not measured by this guest\n")
+	}
 	for _, p := range st.Problems {
 		fmt.Fprintf(out, "  ! %s\n", p)
 	}

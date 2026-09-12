@@ -1,0 +1,664 @@
+.TH WSL-TOOLKIT 1 "" "wsl-toolkit 2.0.2" "User Commands"
+.SH NAME
+wsl-toolkit \- run isolated Linux container jobs from Windows
+.SH SYNOPSIS
+.nf
+wsl-toolkit 2.0.2
+
+  doctor      report the host and the tools that can run
+  script      run the embedded PowerShell compatibility interface
+  base        manage the WSL distribution that this tool owns
+  images      list, check, or pull catalog images
+  run         run one command in one container
+  matrix      run one command across a set of images
+  resources   report resources that this tool owns
+  gc          report or remove resources that this tool owns
+  logs        read the complete output from one job
+  inspect     inspect one job and its recorded host state
+  helper      manage the optional local WSL helper
+  config      report, validate, or write the configuration
+  bsd         run a command in a FreeBSD guest on this host's own hypervisor
+  ready       test whether this host can run an isolated Linux job
+  selfupdate  verify and install a published release
+  artifacts   retrieve an artifact copy that a failed transfer retained
+  examples    print the canonical command examples
+  man         open or print the manual generated from the registered CLI
+  version     print the embedded product version
+
+Global: --instance N  one isolated instance: distribution wsl-toolkit-N and
+                      its own state. `auto` picks the lowest free one.
+                      Also WSL_TOOLKIT_INSTANCE.
+        --home DIR    the state directory (also WSL_TOOLKIT_HOME)
+        --config F    a configuration file, ahead of every search step
+        --quiet       progress off. Answers still go to stdout
+
+Every command takes --json where an answer has structure.
+Progress goes to stderr; stdout carries the answer alone.
+.fi
+.SH COMMAND REFERENCE
+.SS doctor
+report the host and the tools that can run
+.TP
+.B wsl-toolkit doctor
+.TP
+\fB--fast\fR
+find the tools without asking each one its version
+.TP
+\fB--group\fR
+one tool group
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--net\fR
+probe outbound HTTPS
+.SS script
+run the embedded PowerShell compatibility interface
+.PP
+This command forwards its arguments to the embedded compatibility interface.
+.SS base
+manage the WSL distribution that this tool owns
+.TP
+.B wsl-toolkit base status
+.TP
+\fB--here\fR
+base shell starts in this Windows directory instead of the guest account's home
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--preset\fR
+build from this preset id or fully qualified reference
+.TP
+\fB--probe\fR
+run a real container to decide whether the base is usable
+.TP
+\fB--repair\fR
+ensure may clear engine run state a reboot invalidated. Off by default
+.TP
+\fB--root\fR
+attach as root
+.TP
+\fB--save\fR
+also store the preset as the default for later commands
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--yes\fR
+do not ask before removing
+.TP
+.B wsl-toolkit base ensure
+.TP
+\fB--here\fR
+base shell starts in this Windows directory instead of the guest account's home
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--preset\fR
+build from this preset id or fully qualified reference
+.TP
+\fB--probe\fR
+run a real container to decide whether the base is usable
+.TP
+\fB--repair\fR
+ensure may clear engine run state a reboot invalidated. Off by default
+.TP
+\fB--root\fR
+attach as root
+.TP
+\fB--save\fR
+also store the preset as the default for later commands
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--yes\fR
+do not ask before removing
+.TP
+.B wsl-toolkit base recreate
+.TP
+\fB--here\fR
+base shell starts in this Windows directory instead of the guest account's home
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--preset\fR
+build from this preset id or fully qualified reference
+.TP
+\fB--probe\fR
+run a real container to decide whether the base is usable
+.TP
+\fB--repair\fR
+ensure may clear engine run state a reboot invalidated. Off by default
+.TP
+\fB--root\fR
+attach as root
+.TP
+\fB--save\fR
+also store the preset as the default for later commands
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--yes\fR
+do not ask before removing
+.TP
+.B wsl-toolkit base remove
+.TP
+\fB--here\fR
+base shell starts in this Windows directory instead of the guest account's home
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--preset\fR
+build from this preset id or fully qualified reference
+.TP
+\fB--probe\fR
+run a real container to decide whether the base is usable
+.TP
+\fB--repair\fR
+ensure may clear engine run state a reboot invalidated. Off by default
+.TP
+\fB--root\fR
+attach as root
+.TP
+\fB--save\fR
+also store the preset as the default for later commands
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--yes\fR
+do not ask before removing
+.TP
+.B wsl-toolkit base shell
+.TP
+\fB--here\fR
+base shell starts in this Windows directory instead of the guest account's home
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--preset\fR
+build from this preset id or fully qualified reference
+.TP
+\fB--probe\fR
+run a real container to decide whether the base is usable
+.TP
+\fB--repair\fR
+ensure may clear engine run state a reboot invalidated. Off by default
+.TP
+\fB--root\fR
+attach as root
+.TP
+\fB--save\fR
+also store the preset as the default for later commands
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--yes\fR
+do not ask before removing
+.TP
+.B wsl-toolkit base presets
+.TP
+\fB--json\fR
+write a structured answer
+.SS images
+list, check, or pull catalog images
+.TP
+.B wsl-toolkit images
+This form has no options.
+.TP
+.B wsl-toolkit images warm
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--select\fR
+resolve a selector the way matrix would, and print what it chose
+.TP
+.B wsl-toolkit images pull
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--select\fR
+resolve a selector the way matrix would, and print what it chose
+.SS run
+run one command in one container
+.TP
+.B wsl-toolkit run
+.TP
+\fB--artifacts\fR
+a directory on this machine to receive whatever the container leaves in /out
+.TP
+\fB--c\fR
+the shell command to run in the container
+.TP
+\fB--container-lifecycle\fR
+persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--ensure-base\fR
+build the base first when it is missing or unusable. Default: true.
+.TP
+\fB--env\fR
+NAME=VALUE passed to the container. Repeatable
+.TP
+\fB--exclude\fR
+a glob to leave out of the workspace copy. Repeatable
+.TP
+\fB--image\fR
+a catalog id or a fully qualified reference
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--max-bytes\fR
+refuse a workspace or an artifact set larger than this. Default: 1073741824.
+.TP
+\fB--max-entries\fR
+refuse a workspace or an artifact set with more entries than this. Default: 200000.
+.TP
+\fB--max-output\fR
+how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says
+.TP
+\fB--no-network\fR
+run with no network at all
+.TP
+\fB--platform\fR
+the Linux OCI platform. Empty uses jobs.platform, then the native platform
+.TP
+\fB--script\fR
+a file on this machine whose bytes are the command
+.TP
+\fB--tick\fR
+emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it. Default: 0s.
+.TP
+\fB--timeout\fR
+how long one container may run before lifecycle cleanup; the row reports 124. Default: 30m0s.
+.TP
+\fB--user\fR
+what the container runs as: a name, a uid, or uid:gid. Empty means the image's default
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--workspace\fR
+a directory on this machine, COPIED into the container as /work
+.SS matrix
+run one command across a set of images
+.TP
+.B wsl-toolkit matrix
+.TP
+\fB--artifacts\fR
+a directory on this machine to receive whatever the container leaves in /out
+.TP
+\fB--c\fR
+the shell command to run in the container
+.TP
+\fB--container-lifecycle\fR
+persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--ensure-base\fR
+build the base first when it is missing or unusable. Default: true.
+.TP
+\fB--env\fR
+NAME=VALUE passed to the container. Repeatable
+.TP
+\fB--exclude\fR
+a glob to leave out of the workspace copy. Repeatable
+.TP
+\fB--images\fR
+catalog ids, libc:musl, kind:legacy or all. Comma separated. Empty means the configured default
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--max-bytes\fR
+refuse a workspace or an artifact set larger than this. Default: 1073741824.
+.TP
+\fB--max-entries\fR
+refuse a workspace or an artifact set with more entries than this. Default: 200000.
+.TP
+\fB--max-output\fR
+how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says
+.TP
+\fB--no-network\fR
+run with no network at all
+.TP
+\fB--parallel\fR
+how many rows run at once. Default: 4.
+.TP
+\fB--platform\fR
+the Linux OCI platform. Empty uses jobs.platform, then the native platform
+.TP
+\fB--script\fR
+a file on this machine whose bytes are the command
+.TP
+\fB--tick\fR
+emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it. Default: 0s.
+.TP
+\fB--timeout\fR
+how long one container may run before lifecycle cleanup; the row reports 124. Default: 30m0s.
+.TP
+\fB--transcripts\fR
+a directory to write one transcript per row into
+.TP
+\fB--user\fR
+what the container runs as: a name, a uid, or uid:gid. Empty means the image's default
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--workspace\fR
+a directory on this machine, COPIED into the container as /work
+.SS resources
+report resources that this tool owns
+.TP
+.B wsl-toolkit resources
+.TP
+\fB--job\fR
+narrow every row to one job id
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.SS gc
+report or remove resources that this tool owns
+.TP
+.B wsl-toolkit gc
+.TP
+\fB--apply\fR
+actually remove. Without it this reports what it would remove and changes nothing
+.TP
+\fB--images\fR
+also prune images the engine in the base is holding
+.TP
+\fB--include-live\fR
+also remove work that is running right now. Without it a live job is listed as kept and left alone
+.TP
+\fB--job\fR
+clean up one job id and leave the rest of the store alone
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--older-than\fR
+only remove something untouched for at least this long. It applies to containers as well as directories. Default: 0s.
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.SS logs
+read the complete output from one job
+.TP
+.B wsl-toolkit logs
+.TP
+\fB--both\fR
+write both streams, the output first
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--stderr\fR
+write the error stream instead of the output stream
+.TP
+\fB--tail\fR
+only the last N lines. 0 means all of it
+.SS inspect
+inspect one job and its recorded host state
+.TP
+.B wsl-toolkit inspect
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--since\fR
+how far back to read the engine's event journal. Default: 24h0m0s.
+.TP
+\fB--via-helper\fR
+ask the local helper rather than calling wsl.exe here
+.SS helper
+manage the optional local WSL helper
+.TP
+.B wsl-toolkit helper serve
+.TP
+\fB--detach\fR
+start a background copy and return once it answers
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+.B wsl-toolkit helper status
+.TP
+\fB--detach\fR
+start a background copy and return once it answers
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+.B wsl-toolkit helper stop
+.TP
+\fB--detach\fR
+start a background copy and return once it answers
+.TP
+\fB--json\fR
+write a structured answer
+.SS config
+report, validate, or write the configuration
+.TP
+.B wsl-toolkit config
+.TP
+\fB--effective\fR
+print the configuration that WOULD be used, as JSON, without writing it
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--path\fR
+validate this file instead of the one the search resolves
+.TP
+\fB--write\fR
+write the effective configuration to disk, so it can be edited
+.TP
+.B wsl-toolkit config validate
+.TP
+\fB--effective\fR
+print the configuration that WOULD be used, as JSON, without writing it
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--path\fR
+validate this file instead of the one the search resolves
+.TP
+\fB--write\fR
+write the effective configuration to disk, so it can be edited
+.SS bsd
+run a command in a FreeBSD guest on this host's own hypervisor
+.TP
+.B wsl-toolkit bsd status
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+.B wsl-toolkit bsd fetch
+.TP
+\fB--force\fR
+fetch again even when a verified image is already here
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+.B wsl-toolkit bsd run
+.TP
+\fB--c\fR
+the command to run at a root shell in the guest
+.TP
+\fB--cpus\fR
+guest processor count. Default: 2.
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--memory\fR
+guest memory in MiB. Default: 2048.
+.TP
+\fB--network\fR
+give the guest outbound user-mode networking. Nothing is forwarded inward
+.TP
+\fB--no-console\fR
+do not mirror the guest console while it boots
+.TP
+\fB--script\fR
+a file whose contents run at a root shell in the guest
+.TP
+\fB--timeout\fR
+the whole session, the boot included. Default: 15m0s.
+.SS ready
+test whether this host can run an isolated Linux job
+.TP
+.B wsl-toolkit ready
+.TP
+\fB--ensure\fR
+build or repair the base if it is not usable
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--no-update\fR
+do not ask whether a newer release exists
+.TP
+\fB--smoke\fR
+run one tiny container proving the whole path
+.SS selfupdate
+verify and install a published release
+.TP
+.B wsl-toolkit selfupdate
+.TP
+\fB--check\fR
+report whether a newer release exists and change nothing
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--tag\fR
+a specific release tag, so a caller can move down as well as up
+.SS artifacts
+retrieve an artifact copy that a failed transfer retained
+.TP
+.B wsl-toolkit artifacts retry
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--to\fR
+the directory to write the retained copy into
+.SS examples
+print the canonical command examples
+.TP
+.B wsl-toolkit examples
+.TP
+\fB--json\fR
+write a structured answer
+.SS man
+open or print the manual generated from the registered CLI
+.TP
+.B wsl-toolkit man
+.TP
+\fB--no-pager\fR
+write the complete readable manual to stdout
+.TP
+\fB--output\fR
+write the generated roff man page to this file
+.SS version
+print the embedded product version
+.TP
+.B wsl-toolkit version
+.TP
+\fB--json\fR
+write a structured answer
+.SH EXAMPLES
+.TP
+is this machine ready
+.nf
+wsl-toolkit ready --smoke
+.fi
+.TP
+one persistent command in one container
+.nf
+wsl-toolkit run --image alpine -c 'uname -a'
+.fi
+.TP
+one ARM64 command with no retained container
+.nf
+wsl-toolkit run --image alpine --platform linux/arm64 --container-lifecycle ephemeral -c 'uname -m'
+.fi
+.TP
+a script file rather than a string
+.nf
+wsl-toolkit run --image debian --script .\\build.sh
+.fi
+.TP
+a workspace copied in and artifacts back
+.nf
+wsl-toolkit run --image debian --workspace . --artifacts .\\out -c 'make && cp build/x /out/'
+.fi
+.TP
+the same command across every catalog image, with no retained containers
+.nf
+wsl-toolkit matrix --images all --container-lifecycle ephemeral -c 'cc --version'
+.fi
+.TP
+no network for the container
+.nf
+wsl-toolkit run --image alpine --no-network -c 'wget -T2 example.com'
+.fi
+.TP
+as an account that is not root
+.nf
+wsl-toolkit run --image alpine --user 1000:1000 -c 'id -u'
+.fi
+.TP
+read a job's complete output back
+.nf
+wsl-toolkit logs JOB-ID
+.fi
+.TP
+why a job failed, after the container is gone
+.nf
+wsl-toolkit inspect JOB-ID
+.fi
+.TP
+inspect and remove one retained job
+.nf
+wsl-toolkit inspect JOB-ID ; wsl-toolkit gc --job JOB-ID --apply
+.fi
+.TP
+two agents, isolated from each other
+.nf
+wsl-toolkit --instance two ready --ensure
+.fi
+.TP
+what this tool is holding, and release it
+.nf
+wsl-toolkit resources ; wsl-toolkit gc --apply
+.fi
+.TP
+a caller that cannot reach wsl.exe
+.nf
+wsl-toolkit helper serve --detach
+.fi
+.TP
+move to a newer release
+.nf
+wsl-toolkit selfupdate --check
+.fi
+.SH SEE ALSO
+Run \fBwsl-toolkit examples\fR for executable examples and \fBwsl-toolkit COMMAND --help\fR for direct help.

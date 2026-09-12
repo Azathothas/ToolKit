@@ -184,6 +184,48 @@ func TestEnvNamesAreRefusedWhereTheyAreTyped(t *testing.T) {
 	}
 }
 
+func TestProjectConfigurationAnchorsRelativeHostPaths(t *testing.T) {
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	root := t.TempDir()
+	inner := filepath.Join(root, "nested")
+	if err := os.MkdirAll(inner, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit","image":"docker.io/library/alpine:latest","user":"toolkit"},"jobs":{"container_lifecycle":"persistent","workspace":"."}}`
+	if err := os.WriteFile(filepath.Join(root, toolkit.WorkingConfigName), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(inner); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(previous) }()
+
+	cfg, err := toolkit.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var job jobFlags
+	if err := job.applyConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	if !sameHostPath(job.workspace, root) {
+		t.Fatalf("configured workspace = %q, want configuration root %q", job.workspace, root)
+	}
+	if got, err := pathFromProject(cfg, "."); err != nil || !sameHostPath(got, root) {
+		t.Fatalf("--workspace . = %q, %v; want project root %q", got, err, root)
+	}
+}
+
+func sameHostPath(a, b string) bool {
+	a, _ = filepath.Abs(a)
+	b, _ = filepath.Abs(b)
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+}
+
 // -- WSL-33, issue 8: the verdict reads the transfer -------------------------
 
 func TestJobVerdict(t *testing.T) {
@@ -243,6 +285,8 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 		"timeout":     "TimeoutMS",
 		"noNetwork":   "Network",
 		"user":        "User",
+		"platform":    "Platform",
+		"lifecycle":   "ContainerLifecycle",
 		"maxBytes":    "MaxBytes",
 		"maxEntries":  "MaxEntries",
 		"maxOutput":   "MaxOutput",
@@ -465,5 +509,26 @@ func TestTranscriptHintMakesLogsReachable(t *testing.T) {
 				t.Fatalf("transcriptHint = %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// TestAJobWithNoPlatformStillCarriesOne holds the fix at the seam a caller
+// reaches, because the resolution happens in applyConfig and a later edit there
+// would restore the empty value without any package test noticing.
+func TestAJobWithNoPlatformStillCarriesOne(t *testing.T) {
+	var j jobFlags
+	if err := j.applyConfig(toolkit.DefaultConfig()); err != nil {
+		t.Fatal(err)
+	}
+	if j.platform != toolkit.NativePlatform() {
+		t.Errorf("a job that asked for no platform carries %q, want the native %q", j.platform, toolkit.NativePlatform())
+	}
+	// A platform the caller DID ask for is never overwritten.
+	asked := jobFlags{platform: "arm64"}
+	if err := asked.applyConfig(toolkit.DefaultConfig()); err != nil {
+		t.Fatal(err)
+	}
+	if asked.platform != "linux/arm64" {
+		t.Errorf("--platform arm64 became %q", asked.platform)
 	}
 }

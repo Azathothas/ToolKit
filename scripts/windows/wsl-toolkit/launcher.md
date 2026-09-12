@@ -15,7 +15,7 @@ drives `wsl.exe`. On any other host neither applies.
 ## ⭐ It looks for the EXECUTABLE first, and that is a change
 
 ⛔ **A caller who did nothing wrong now behaves differently.** Until 2026-09-09
-it resolved [`wsl-toolkit.ps1`](wsl-toolkit.md) and nothing else. It now prefers
+it resolved [`wsl-toolkit.ps1`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md) and nothing else. It now prefers
 [`wsl-toolkit`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md), which carries
 that script inside itself and adds a host survey, an owned WSL distribution with
 a container engine, isolated container jobs and a fleet runner.
@@ -275,7 +275,7 @@ than in place of them.
 ## Options
 
 ⛔ **Every argument that is not one of these is forwarded to
-[`wsl-toolkit.ps1`](wsl-toolkit.md) unchanged**, and this page does not
+[`wsl-toolkit.ps1`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md) unchanged**, and this page does not
 restate that script's parameters. Restating them is how a wrapper drifts from
 the thing it wraps.
 
@@ -408,14 +408,14 @@ argument reached the wrapped script correctly.
 | Windows PowerShell 5.1 or PowerShell 7+ | everything |
 | network access to `raw.githubusercontent.com` | resolution order 3 only |
 
-Everything [`wsl-toolkit.md`](wsl-toolkit.md) requires applies once the
+Everything [`tools/windows/wsl-toolkit/wsl-toolkit.md`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md) requires applies once the
 wrapped script starts running.
 
 ---
 
 ## Related
 
-- [`wsl-toolkit.md`](wsl-toolkit.md), the tool this launches.
+- [`tools/windows/wsl-toolkit/wsl-toolkit.md`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md), the tool this launches.
 - [`selftest.md`](selftest.md), the test over that
   tool's pure functions.
 - [`../../../docs/consumers.md`](../../../docs/consumers.md), for who fetches what
