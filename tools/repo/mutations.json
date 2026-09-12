@@ -682,9 +682,45 @@
       "label": "a configuration fingerprint tracks what changes behaviour",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/catalog.go",
-      "find": "\t}{Base: c.Base, Jobs: c.Jobs, Images: c.Catalog(), Matrix: c.MatrixDefault()}",
+      "find": "\t}{Base: base, Jobs: c.Jobs, Images: c.Catalog(), Matrix: c.MatrixDefault()}",
       "replace": "\t}{Base: BaseConfig{}, Jobs: JobConfig{}, Images: nil, Matrix: nil}",
       "run": "TestConfigFingerprintTracksWhatChangesBehaviour",
+      "args": []
+    },
+    {
+      "label": "explicit base mounts require drive automount to be off",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif len(c.Base.Mounts) > 0 && automount != AutomountOff {",
+      "replace": "\t_ = automount\n\tif false {",
+      "run": "TestExplicitBaseMountsRequireClosedAmbientAccess",
+      "args": []
+    },
+    {
+      "label": "explicit base mounts require Windows interop to be off",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif len(c.Base.Mounts) > 0 && interop != BaseInteropOff {",
+      "replace": "\t_ = interop\n\tif false {",
+      "run": "TestExplicitBaseMountsRequireClosedAmbientAccess",
+      "args": []
+    },
+    {
+      "label": "an explicit base mount target stays below workspaces",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif clean == \"/workspaces\" || !strings.HasPrefix(clean, \"/workspaces/\") {",
+      "replace": "\tif false {",
+      "run": "TestExplicitBaseMountTargetsStayBelowWorkspaces",
+      "args": []
+    },
+    {
+      "label": "an explicit base mount source is a project and not a host root",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\tif err := AssertProjectPath(\"base.mounts source resolved to\", resolved); err != nil {\n\t\t\treturn nil, err\n\t\t}",
+      "replace": "\t\tif err := error(nil); err != nil {\n\t\t\treturn nil, err\n\t\t}",
+      "run": "TestExplicitBaseMountSourceRefusesAHostRoot",
       "args": []
     },
     {

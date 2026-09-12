@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	_ "embed"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -58,10 +59,22 @@ type BaseState struct {
 	// older than the probe, which is not the same as a tree that can do nothing.
 	Cgroup *CgroupState `json:"cgroup,omitempty"`
 	Binfmt *BinfmtState `json:"binfmt,omitempty"`
+	// Access is the configured Windows boundary. Under --probe a healthy result
+	// means the unprivileged account verified these settings after WSL restarted.
+	Access BaseAccessState `json:"access"`
 	// Remediations are the conditions this tool found, each with what leaving it
 	// costs and the exact command that takes it. ⭐ A caller here is usually an
 	// agent, and the command is the field it acts on.
 	Remediations []Remediation `json:"remediations,omitempty"`
+}
+
+// BaseAccessState is what the base is configured to reach on Windows.
+type BaseAccessState struct {
+	Automount string      `json:"automount"`
+	Interop   string      `json:"interop"`
+	Systemd   bool        `json:"systemd"`
+	Toolset   string      `json:"toolset"`
+	Mounts    []BaseMount `json:"mounts,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -108,7 +121,28 @@ func (b *Base) Dir() string { return filepath.Join(b.home, "base") }
 // a container: always would cost a pull on a cold machine, never could only
 // report that a distribution is registered, which is not the same as usable.
 func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
-	st := BaseState{Name: b.cfg.Base.Name, Image: b.cfg.Base.Image, User: b.cfg.Base.User}
+	automount, err := NormalizeAutomount(b.cfg.Base.Automount)
+	if err != nil {
+		return BaseState{}, err
+	}
+	interop, err := NormalizeBaseInterop(b.cfg.Base.Interop)
+	if err != nil {
+		return BaseState{}, err
+	}
+	toolset, err := NormalizeBaseToolset(b.cfg.Base.Toolset)
+	if err != nil {
+		return BaseState{}, err
+	}
+	mounts, err := b.cfg.ResolvedBaseMounts()
+	if err != nil {
+		return BaseState{}, err
+	}
+	st := BaseState{
+		Name: b.cfg.Base.Name, Image: b.cfg.Base.Image, User: b.cfg.Base.User,
+		Access: BaseAccessState{
+			Automount: automount, Interop: interop, Systemd: b.cfg.Base.Systemd, Toolset: toolset, Mounts: mounts,
+		},
+	}
 	distros, err := b.wsl.List(ctx, b.cfg.Base.Name)
 	if err != nil {
 		return st, err
@@ -357,10 +391,10 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 	// not, so a build that dies before stamping can still be cleared up.
 	b.unmarked = true
 	if err := b.create(ctx); err != nil {
-		return st, err
+		return st, b.rollbackUnmarked(err)
 	}
 	if err := b.provision(ctx); err != nil {
-		return st, err
+		return st, b.rollbackUnmarked(err)
 	}
 	// ⭐ STAMPED BEFORE IT IS VERIFIED. The marker says what this tool BUILT,
 	// which is a fact by the time provisioning has finished; whether it can run
@@ -368,7 +402,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 	if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
 		Image: b.cfg.Base.Image, User: b.cfg.Base.User, Tool: toolVersion(),
 	}); err != nil {
-		return st, err
+		return st, b.rollbackUnmarked(err)
 	}
 	b.unmarked = false
 	engine, _, _, err := b.verify(ctx)
@@ -380,6 +414,21 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 		return st, err
 	}
 	return b.Status(ctx, true)
+}
+
+// rollbackUnmarked removes a distribution this process imported but did not
+// stamp. A fresh context is deliberate: cancellation of the build must not
+// cancel the operation that prevents a nameless disk being stranded.
+func (b *Base) rollbackUnmarked(cause error) error {
+	b.log("the new base did not finish; removing the incomplete distribution")
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if err := b.Remove(cleanupCtx); err != nil {
+		return fmt.Errorf("%w; the incomplete distribution could not be removed: %v", cause, err)
+	}
+	b.unmarked = false
+	b.log("removed the incomplete distribution")
+	return cause
 }
 
 // reconcileIdentity compares what the guest says it is against the record and
@@ -548,6 +597,18 @@ func (b *Base) provision(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	interop, err := NormalizeBaseInterop(b.cfg.Base.Interop)
+	if err != nil {
+		return err
+	}
+	toolset, err := NormalizeBaseToolset(b.cfg.Base.Toolset)
+	if err != nil {
+		return err
+	}
+	fstab, checks, _, err := baseMountPayloads(b.cfg)
+	if err != nil {
+		return err
+	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
 	code, err := b.wsl.Exec(ctx, ExecRequest{
 		Distro: b.cfg.Base.Name,
@@ -558,6 +619,11 @@ func (b *Base) provision(ctx context.Context) error {
 			"TK_UID":          "1000",
 			"TK_BINFMT_IMAGE": BinfmtImage,
 			"TK_AUTOMOUNT":    automount,
+			"TK_INTEROP":      interop,
+			"TK_SYSTEMD":      strconv.FormatBool(b.cfg.Base.Systemd),
+			"TK_TOOLSET":      toolset,
+			"TK_FSTAB_B64":    fstab,
+			"TK_MOUNT_CHECKS": checks,
 		},
 		Timeout: 30 * time.Minute,
 		Stdout:  out,
@@ -579,6 +645,42 @@ func (b *Base) provision(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// baseMountPayloads renders explicit grants for /etc/fstab and for the
+// post-restart probe. Both are encoded before they cross into the guest, so a
+// Windows path never becomes shell source.
+func baseMountPayloads(cfg Config) (fstab64, checks string, mounts []BaseMount, err error) {
+	mounts, err = cfg.ResolvedBaseMounts()
+	if err != nil {
+		return "", "", nil, err
+	}
+	var fstab strings.Builder
+	var verify strings.Builder
+	for _, mount := range mounts {
+		source := filepath.ToSlash(mount.Source)
+		if runtimeVolume := filepath.VolumeName(mount.Source); runtimeVolume != "" && strings.HasPrefix(runtimeVolume, `\\`) {
+			return "", "", nil, fmt.Errorf("base.mounts source %q is a network path; this release grants local Windows directories only", mount.Source)
+		}
+		fmt.Fprintf(&fstab, "%s %s drvfs metadata,%s,uid=1000,gid=1000,umask=022,fmask=011,nofail 0 0\n",
+			fstabEscape(source), fstabEscape(mount.Target), mount.Mode)
+		fmt.Fprintf(&verify, "%s %s\n",
+			base64.StdEncoding.EncodeToString([]byte(mount.Target)), mount.Mode)
+	}
+	if fstab.Len() > 0 {
+		fstab64 = base64.StdEncoding.EncodeToString([]byte(fstab.String()))
+	}
+	return fstab64, strings.TrimSpace(verify.String()), mounts, nil
+}
+
+// fstabEscape uses the escape sequences fstab accepts for fields. Sources are
+// already canonical host paths and targets are confined to /workspaces.
+func fstabEscape(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\134`)
+	value = strings.ReplaceAll(value, " ", `\040`)
+	value = strings.ReplaceAll(value, "\t", `\011`)
+	value = strings.ReplaceAll(value, "#", `\043`)
+	return value
 }
 
 // EnsurePlatform restores the QEMU handler for one non-native Linux platform.
@@ -677,10 +779,31 @@ func (b *Base) verify(ctx context.Context) (string, *CgroupState, *BinfmtState, 
 		return hex.EncodeToString(raw[:])
 	}
 	m1, m2 := half(), half()
+	automount, err := NormalizeAutomount(b.cfg.Base.Automount)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	interop, err := NormalizeBaseInterop(b.cfg.Base.Interop)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	toolset, err := NormalizeBaseToolset(b.cfg.Base.Toolset)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	_, checks, _, err := baseMountPayloads(b.cfg)
+	if err != nil {
+		return "", nil, nil, err
+	}
 	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, map[string]string{
-		"TK_IMAGE": VerifyImage,
-		"TK_M1":    m1,
-		"TK_M2":    m2,
+		"TK_IMAGE":        VerifyImage,
+		"TK_M1":           m1,
+		"TK_M2":           m2,
+		"TK_AUTOMOUNT":    automount,
+		"TK_INTEROP":      interop,
+		"TK_SYSTEMD":      strconv.FormatBool(b.cfg.Base.Systemd),
+		"TK_TOOLSET":      toolset,
+		"TK_MOUNT_CHECKS": checks,
 	}, 20*time.Minute)
 	if err != nil || code != 0 {
 		return "", nil, nil, fmt.Errorf("a container did not run as %s (exit %d): %s", b.cfg.Base.User, code, firstLine(stderr+out))

@@ -29,7 +29,15 @@ entry. A superseded one is amended in place with a dated note.
 **Deployed:** no deploy. This is `main` only; no tag was cut.
 **Closes:** [issue 29](https://github.com/Azathothas/ToolKit/issues/29), all
 seven tasks. [Issue 30](https://github.com/Azathothas/ToolKit/issues/30) is
-authored as `WSL-67` and `WSL-68` and deliberately not built.
+tracked as `WSL-67` and `WSL-68`.
+
+**2026-09-12T14:18:33Z checkpoint correction:** issue 29's full acceptance
+runner subsequently passed 71 of 71. Its Linux CI failure was a flaky test that
+raced a growing file; the production writer and regression now share an
+explicit stale header size. Issue 30 is no longer merely authored: the
+provider-neutral base, explicit access grants, systemd/developer provisioning,
+common bootstrap and live one-grant/zero-grant evidence are implemented.
+Provider authentication and the security-boundary work remain open.
 
 ⛔ **BREAKING: `base.automount` defaults to `ro`.** WSL mounts every fixed drive
 under `/mnt` inside the base, and a job could WRITE there, so a wrong path in one

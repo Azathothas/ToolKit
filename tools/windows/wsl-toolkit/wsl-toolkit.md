@@ -43,7 +43,7 @@ feature here. ⛔ **You no longer need to write any of them.**
 | **A file that grew while the workspace copied** killed the whole copy with `archive/tar: write too long`, naming the archiver and not the file | the copy is bounded by the size in the header. The file travels as the prefix that was declared, and the result names it. A background index or log no longer fails a job |
 | **A payload written on Windows carries CRLF**, and `/bin/sh` reads the carriage return as part of the last word | `-c` and `--script` both repair the copy that is sent. The file on disk is never written to |
 | **`--workspace .` resolved against the working directory**, which a sandbox can reset, so a job copied a tree nobody meant | a relative path is resolved against the project configuration when there is one, the resolved host path is printed, and a filesystem root, a home directory or a system directory is refused outright |
-| **`/mnt/c` was writable inside the base**, so a wrong path in a job destroyed the real checkout on Windows | the Windows drives mount read only. `base.automount` takes `rw` or `off` where a caller wants something else |
+| **`/mnt/c` was writable inside the base**, so a wrong path in a job destroyed the real checkout on Windows | the Windows drives mount read only. `base.automount` takes `rw` or `off`; explicit `base.mounts` grants are available only with automount and Windows interop both off |
 
 ---
 
@@ -87,6 +87,26 @@ a machine or a project.
 
 A timeout stops a persistent container and removes an ephemeral one, and exits
 124. A user cancellation does the same and exits 130.
+
+---
+
+## Dedicated provider bases
+
+A named instance can be a persistent Linux home for a provider CLI. A project
+profile can enable systemd, select the `developer` toolset, disable ambient
+Windows drive mounts and executable interop, and grant exactly one checkout at
+`/workspaces/project`:
+
+```powershell
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base ensure
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base status --probe --json
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base shell
+```
+
+[`examples/muse-code/README.md`](examples/muse-code/README.md) is the complete
+worked example. [`examples/common/access-profiles.md`](examples/common/access-profiles.md)
+carries both the one-checkout profile and the zero-grant profile, including the
+boundary they do not claim against guest root or the network.
 
 ---
 

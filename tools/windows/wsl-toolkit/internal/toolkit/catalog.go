@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -58,12 +59,39 @@ type BaseConfig struct {
 	// read one file is doing something ordinary and turning the mount off by
 	// default would break it with no warning.
 	Automount string `json:"automount,omitempty"`
+	// Interop is whether a process in the distribution may launch Windows
+	// executables. `on` preserves WSL's ordinary behaviour; an explicit host
+	// mount requires `off`, because a Windows executable can reach paths that
+	// are not mounted in the guest.
+	Interop string `json:"interop,omitempty"`
+	// Systemd asks WSL to make systemd pid 1 for this distribution.
+	Systemd bool `json:"systemd,omitempty"`
+	// Toolset optionally installs a reproducible group of tools in the base.
+	// `developer` is the provider-CLI foundation: git, build tools and tmux.
+	Toolset string `json:"toolset,omitempty"`
+	// Mounts are the Windows directories explicitly granted to the base. They
+	// are mounted below /workspaces and are meaningful only with automount and
+	// interop both off.
+	Mounts []BaseMount `json:"mounts,omitempty"`
+}
+
+// BaseMount is one Windows directory made visible inside a base.
+type BaseMount struct {
+	Source string `json:"source"`
+	Target string `json:"target"`
+	Mode   string `json:"mode,omitempty"`
 }
 
 const (
-	AutomountReadOnly  = "ro"
-	AutomountReadWrite = "rw"
-	AutomountOff       = "off"
+	AutomountReadOnly    = "ro"
+	AutomountReadWrite   = "rw"
+	AutomountOff         = "off"
+	BaseInteropOn        = "on"
+	BaseInteropOff       = "off"
+	BaseMountReadOnly    = "ro"
+	BaseMountReadWrite   = "rw"
+	BaseToolsetNone      = "none"
+	BaseToolsetDeveloper = "developer"
 )
 
 // NormalizeAutomount validates the automount setting and supplies the default.
@@ -76,6 +104,64 @@ func NormalizeAutomount(value string) (string, error) {
 	}
 	return "", fmt.Errorf("base.automount %q must be %q, %q or %q",
 		value, AutomountReadOnly, AutomountReadWrite, AutomountOff)
+}
+
+// NormalizeBaseInterop validates whether Windows executables are available.
+func NormalizeBaseInterop(value string) (string, error) {
+	switch value {
+	case "", BaseInteropOn:
+		return BaseInteropOn, nil
+	case BaseInteropOff:
+		return BaseInteropOff, nil
+	}
+	return "", fmt.Errorf("base.interop %q must be %q or %q", value, BaseInteropOn, BaseInteropOff)
+}
+
+// NormalizeBaseMountMode supplies the safer default for an explicit grant.
+func NormalizeBaseMountMode(value string) (string, error) {
+	switch value {
+	case "", BaseMountReadOnly:
+		return BaseMountReadOnly, nil
+	case BaseMountReadWrite:
+		return BaseMountReadWrite, nil
+	}
+	return "", fmt.Errorf("base.mounts mode %q must be %q or %q", value, BaseMountReadOnly, BaseMountReadWrite)
+}
+
+// NormalizeBaseToolset validates the reproducible package group for the base.
+func NormalizeBaseToolset(value string) (string, error) {
+	switch value {
+	case "", BaseToolsetNone:
+		return BaseToolsetNone, nil
+	case BaseToolsetDeveloper:
+		return BaseToolsetDeveloper, nil
+	}
+	return "", fmt.Errorf("base.toolset %q must be %q or %q", value, BaseToolsetNone, BaseToolsetDeveloper)
+}
+
+// normalizeBaseMountTarget confines explicit host mounts to one guest subtree.
+func normalizeBaseMountTarget(value string) (string, error) {
+	if strings.TrimSpace(value) == "" {
+		return "", errors.New("base.mounts target cannot be empty")
+	}
+	if strings.ContainsAny(value, "\x00\r\n\t") {
+		return "", fmt.Errorf("base.mounts target %q contains a control character", value)
+	}
+	clean := path.Clean(value)
+	if clean == "/workspaces" || !strings.HasPrefix(clean, "/workspaces/") {
+		return "", fmt.Errorf("base.mounts target %q must be a strict child of /workspaces", value)
+	}
+	for _, r := range clean {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '/' || r == '-' || r == '_' || r == '.':
+		default:
+			return "", fmt.Errorf("base.mounts target %q must use letters, digits, slash, dot, dash or underscore", value)
+		}
+	}
+	return clean, nil
 }
 
 const (
@@ -180,8 +266,11 @@ func DefaultConfig() Config {
 	}
 	return Config{
 		Schema: ConfigSchema,
-		Base:   BaseConfig{Name: name, Image: DefaultBaseImage, User: DefaultBaseUser, Automount: AutomountReadOnly},
-		Jobs:   JobConfig{ContainerLifecycle: ContainerPersistent},
+		Base: BaseConfig{
+			Name: name, Image: DefaultBaseImage, User: DefaultBaseUser,
+			Automount: AutomountReadOnly, Interop: BaseInteropOn, Toolset: BaseToolsetNone,
+		},
+		Jobs: JobConfig{ContainerLifecycle: ContainerPersistent},
 	}
 }
 
@@ -320,6 +409,16 @@ func LoadConfig() (Config, error) {
 	if stored.Base.Automount != "" {
 		cfg.Base.Automount = stored.Base.Automount
 	}
+	if stored.Base.Interop != "" {
+		cfg.Base.Interop = stored.Base.Interop
+	}
+	cfg.Base.Systemd = stored.Base.Systemd
+	if stored.Base.Toolset != "" {
+		cfg.Base.Toolset = stored.Base.Toolset
+	}
+	if stored.Base.Mounts != nil {
+		cfg.Base.Mounts = stored.Base.Mounts
+	}
 	if stored.Jobs.ContainerLifecycle != "" {
 		cfg.Jobs.ContainerLifecycle = stored.Jobs.ContainerLifecycle
 	}
@@ -332,6 +431,9 @@ func LoadConfig() (Config, error) {
 	cfg.Images = stored.Images
 	cfg.Matrix = stored.Matrix
 	if err := cfg.Validate(); err != nil {
+		return cfg, fmt.Errorf("%s: %w", path, err)
+	}
+	if _, err := cfg.ResolvedBaseMounts(); err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
@@ -368,8 +470,39 @@ func (c Config) Validate() error {
 	if !isShellName(c.Base.User) {
 		return fmt.Errorf("base.user %q is not a usable account name", c.Base.User)
 	}
-	if _, err := NormalizeAutomount(c.Base.Automount); err != nil {
+	automount, err := NormalizeAutomount(c.Base.Automount)
+	if err != nil {
 		return err
+	}
+	interop, err := NormalizeBaseInterop(c.Base.Interop)
+	if err != nil {
+		return err
+	}
+	if len(c.Base.Mounts) > 0 && automount != AutomountOff {
+		return errors.New("base.mounts requires base.automount to be \"off\", so ungranted Windows drives are absent")
+	}
+	if len(c.Base.Mounts) > 0 && interop != BaseInteropOff {
+		return errors.New("base.mounts requires base.interop to be \"off\", so Windows executables cannot reach ungranted paths")
+	}
+	if _, err := NormalizeBaseToolset(c.Base.Toolset); err != nil {
+		return err
+	}
+	seenTargets := map[string]bool{}
+	for i, mount := range c.Base.Mounts {
+		if strings.TrimSpace(mount.Source) == "" {
+			return fmt.Errorf("base.mounts[%d].source cannot be empty", i)
+		}
+		target, err := normalizeBaseMountTarget(mount.Target)
+		if err != nil {
+			return fmt.Errorf("base.mounts[%d]: %w", i, err)
+		}
+		if seenTargets[target] {
+			return fmt.Errorf("base.mounts contains target %q more than once", target)
+		}
+		seenTargets[target] = true
+		if _, err := NormalizeBaseMountMode(mount.Mode); err != nil {
+			return fmt.Errorf("base.mounts[%d]: %w", i, err)
+		}
 	}
 	if c.Jobs.ContainerLifecycle != ContainerPersistent && c.Jobs.ContainerLifecycle != ContainerEphemeral {
 		return fmt.Errorf("jobs.container_lifecycle %q must be %q or %q", c.Jobs.ContainerLifecycle, ContainerPersistent, ContainerEphemeral)
@@ -397,6 +530,69 @@ func (c Config) Validate() error {
 		}
 	}
 	return nil
+}
+
+// ResolvedBaseMounts returns the exact host directories the base will mount.
+// Relative sources are anchored to the configuration file, never to the
+// process's working directory.
+func (c Config) ResolvedBaseMounts() ([]BaseMount, error) {
+	if len(c.Base.Mounts) == 0 {
+		return nil, nil
+	}
+	anchor := ""
+	if c.path != "" {
+		anchor = filepath.Dir(c.path)
+	} else {
+		var err error
+		anchor, err = os.Getwd()
+		if err != nil {
+			return nil, err
+		}
+	}
+	out := make([]BaseMount, 0, len(c.Base.Mounts))
+	seenSources := map[string]bool{}
+	for i, mount := range c.Base.Mounts {
+		source := mount.Source
+		if !filepath.IsAbs(source) {
+			source = filepath.Join(anchor, source)
+		}
+		abs, err := filepath.Abs(source)
+		if err != nil {
+			return nil, fmt.Errorf("base.mounts[%d].source: %w", i, err)
+		}
+		resolved, err := filepath.EvalSymlinks(abs)
+		if err != nil {
+			return nil, fmt.Errorf("base.mounts[%d].source %s is not accessible: %w", i, abs, err)
+		}
+		info, err := os.Stat(resolved)
+		if err != nil {
+			return nil, fmt.Errorf("base.mounts[%d].source %s: %w", i, resolved, err)
+		}
+		if !info.IsDir() {
+			return nil, fmt.Errorf("base.mounts[%d].source %s is not a directory", i, resolved)
+		}
+		if err := AssertProjectPath("base.mounts source resolved to", resolved); err != nil {
+			return nil, err
+		}
+		key := strings.ToLower(filepath.Clean(resolved))
+		if runtime.GOOS != "windows" {
+			key = filepath.Clean(resolved)
+		}
+		if seenSources[key] {
+			return nil, fmt.Errorf("base.mounts contains source %q more than once", resolved)
+		}
+		seenSources[key] = true
+		target, err := normalizeBaseMountTarget(mount.Target)
+		if err != nil {
+			return nil, fmt.Errorf("base.mounts[%d]: %w", i, err)
+		}
+		mode, err := NormalizeBaseMountMode(mount.Mode)
+		if err != nil {
+			return nil, fmt.Errorf("base.mounts[%d]: %w", i, err)
+		}
+		out = append(out, BaseMount{Source: filepath.Clean(resolved), Target: target, Mode: mode})
+	}
+	return out, nil
 }
 
 // Validate refuses an image entry that could not be pulled or named.
@@ -555,12 +751,18 @@ func (c Config) Fingerprint() string {
 	// A canonical rendering rather than the struct's own JSON: the effective
 	// catalog and matrix are what a reader means by "the config", and they are
 	// computed rather than stored.
+	base := c.Base
+	resolved, err := c.ResolvedBaseMounts()
+	if err != nil {
+		return "unfingerprintable"
+	}
+	base.Mounts = resolved
 	payload := struct {
 		Base   BaseConfig `json:"base"`
 		Jobs   JobConfig  `json:"jobs"`
 		Images []Image    `json:"images"`
 		Matrix []string   `json:"matrix"`
-	}{Base: c.Base, Jobs: c.Jobs, Images: c.Catalog(), Matrix: c.MatrixDefault()}
+	}{Base: base, Jobs: c.Jobs, Images: c.Catalog(), Matrix: c.MatrixDefault()}
 	b, err := json.Marshal(payload)
 	if err != nil {
 		// A configuration that cannot be rendered cannot be compared, and
@@ -681,6 +883,14 @@ func (c Config) Write() error {
 	}
 	path := filepath.Join(home, "config.json")
 	c.Schema = ConfigSchema
+	resolved, err := c.ResolvedBaseMounts()
+	if err != nil {
+		return err
+	}
+	// A relative source was relative to the file this configuration came from.
+	// The state file is elsewhere, so store the resolved path and preserve what
+	// the configuration means rather than only how it was spelled.
+	c.Base.Mounts = resolved
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err

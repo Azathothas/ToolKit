@@ -166,6 +166,13 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		}
 		shellArgs := []string{"-d", cfg.Base.Name, "-u", user}
 		if *here {
+			automount, err := toolkit.NormalizeAutomount(cfg.Base.Automount)
+			if err != nil {
+				return exitCannot, err
+			}
+			if automount == toolkit.AutomountOff {
+				return exitCannot, fmt.Errorf("--here cannot inherit a Windows working directory while base.automount is off. Start without --here, then use a configured /workspaces mount")
+			}
 			// ⚠ EXPLICIT, AND IT SAYS WHAT IT DID. `wsl.exe` inherits the
 			// caller's Windows working directory, so this is the OLD default
 			// under a flag rather than a new capability.
@@ -192,6 +199,14 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			} else {
 				note("root here is root INSIDE " + cfg.Base.Name + " and not on this machine. No Windows drive is mounted")
 			}
+			if mounts, mountErr := cfg.ResolvedBaseMounts(); mountErr == nil && len(mounts) > 0 {
+				targets := make([]string, 0, len(mounts))
+				for _, mount := range mounts {
+					targets = append(targets, mount.Target+" ("+mount.Mode+")")
+				}
+				note("configured Windows directory grants: " + strings.Join(targets, ", "))
+			}
+			note("--root is an administration escape hatch: guest root can manually mount additional Windows paths")
 		}
 		return toolkit.RunForeground(ctx, w.Path, shellArgs)
 
@@ -230,6 +245,13 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)
 	}
 	fmt.Fprintf(out, "  account     %s\n", st.User)
+	fmt.Fprintf(out, "  automount   %s\n", st.Access.Automount)
+	fmt.Fprintf(out, "  interop     %s\n", st.Access.Interop)
+	fmt.Fprintf(out, "  init        systemd %v\n", st.Access.Systemd)
+	fmt.Fprintf(out, "  toolset     %s\n", st.Access.Toolset)
+	for _, mount := range st.Access.Mounts {
+		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
+	}
 	fmt.Fprintf(out, "  registered  %v\n", st.Registered)
 	fmt.Fprintf(out, "  running     %v\n", st.Running)
 	if st.DiskKnown {

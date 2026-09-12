@@ -370,6 +370,27 @@ func cmdConfig(args []string) (int, error) {
 		fmt.Fprintf(os.Stderr, "  instance    %s\n", toolkit.SelectedInstance.Name)
 	}
 	fmt.Fprintf(os.Stderr, "  base        %s from %s as %s\n", cfg.Base.Name, cfg.Base.Image, cfg.Base.User)
+	automount, err := toolkit.NormalizeAutomount(cfg.Base.Automount)
+	if err != nil {
+		return exitCannot, err
+	}
+	interop, err := toolkit.NormalizeBaseInterop(cfg.Base.Interop)
+	if err != nil {
+		return exitCannot, err
+	}
+	toolset, err := toolkit.NormalizeBaseToolset(cfg.Base.Toolset)
+	if err != nil {
+		return exitCannot, err
+	}
+	fmt.Fprintf(os.Stderr, "  access      automount %s, interop %s, systemd %v, toolset %s\n",
+		automount, interop, cfg.Base.Systemd, toolset)
+	mounts, err := cfg.ResolvedBaseMounts()
+	if err != nil {
+		return exitCannot, err
+	}
+	for _, mount := range mounts {
+		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
+	}
 	// ⛔ THE DEFAULTS A JOB ACTUALLY RUNS UNDER WERE NOT ON THIS REPORT. `config`
 	// is where a caller looks to find out what the tool will do, and the
 	// container lifetime is the setting most likely to surprise one; issue 29

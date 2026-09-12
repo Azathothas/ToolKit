@@ -7,6 +7,29 @@ on what was true last time.
 
 ---
 
+## 2026-09-12 checkpoint
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-12T11:00:00Z | checkpoint recorded 2026-09-12T14:18:33Z; final commit time follows from git |
+| Commits | `d67c1e6`, dirty `main` with inherited issue-29 work | checkpoint changes still uncommitted when this snapshot was written |
+| Work | issue 29 at its final flaky Linux test; issue 30 authored only | issue 29 locally complete; issue 30 provider-neutral base substantially built; zero-grant containment partially measured |
+| Changes | inherited working tree | final file/line count measured after the record edit and reported in chat |
+| Size | not measured at session start | not measured; no number invented |
+| Checks | 19-check gate green at the inherited baseline | 19-check final gate green; live acceptance 71/71 and all Go suites green |
+| Cost | no paid operation measured | network bytes not measured; no cost number invented |
+| Health | dirty tree; issue 29 remotely open | disposable WSL instance removed; four unrelated distros preserved; tree awaits checkpoint commit/push |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. The code and live provider-base proof
+are complete through the one-grant, zero-grant and common-bootstrap transitions.
+The immediate remaining work is the final gate, commit/push, issue comments and
+CI confirmation. After that, continue `WSL-67` with acceptance automation and
+provider authentication, and `WSL-68` with an attacking threat-model probe.
+
+---
+
 ## 2026-09-10, the third sitting
 
 | row | before | after |

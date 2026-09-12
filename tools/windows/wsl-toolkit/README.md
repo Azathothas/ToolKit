@@ -126,10 +126,10 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-
 ```
 
 ⭐ **It drives a real machine**, which is the whole reason it exists: it registers
-nothing the suite above can reach. Twenty-three cases, covering both accounts, all
-twelve catalog images, direct and helper execution, hostile archive names, a
-workspace a container tried to destroy, a failing command, a deadline, and the
-counts returning to zero afterwards.
+nothing the suite above can reach. Seventy-one cases in the full run and 69 in
+the quick run cover both accounts, all twelve catalog images, direct and helper
+execution, hostile archive names, a workspace a container tried to destroy, a
+failing command, a deadline, and the counts returning to zero afterwards.
 
 ⭐ **One case asks both paths the same question and compares the answers.** That
 is what a difference between them looks like from outside, and it is how the

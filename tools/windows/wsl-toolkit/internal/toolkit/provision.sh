@@ -17,6 +17,11 @@ die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 : "${TK_UID:?TK_UID is required}"
 : "${TK_BINFMT_IMAGE:?TK_BINFMT_IMAGE is required}"
 : "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
+: "${TK_INTEROP:?TK_INTEROP is required}"
+: "${TK_SYSTEMD:?TK_SYSTEMD is required}"
+: "${TK_TOOLSET:?TK_TOOLSET is required}"
+: "${TK_FSTAB_B64?TK_FSTAB_B64 is required, and may be empty}"
+: "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
 
 # -- how the Windows drives appear ---------------------------------------------
 # ⛔ READ ONLY BY DEFAULT. WSL mounts every fixed drive under /mnt, and a job that
@@ -36,6 +41,19 @@ options="metadata"' ;;
   *)   die "TK_AUTOMOUNT is $TK_AUTOMOUNT; it must be ro, rw or off" ;;
 esac
 say "windows drives: $TK_AUTOMOUNT"
+
+case "$TK_INTEROP" in
+  on)  INTEROP_ENABLED=true ;;
+  off) INTEROP_ENABLED=false ;;
+  *)   die "TK_INTEROP is $TK_INTEROP; it must be on or off" ;;
+esac
+say "windows interop: $TK_INTEROP"
+
+case "$TK_SYSTEMD" in
+  true|false) SYSTEMD_ENABLED=$TK_SYSTEMD ;;
+  *)          die "TK_SYSTEMD is $TK_SYSTEMD; it must be true or false" ;;
+esac
+say "systemd: $SYSTEMD_ENABLED"
 
 # -- which userland is this ---------------------------------------------------
 # Read from what is installed rather than from /etc/os-release's ID, because a
@@ -73,7 +91,11 @@ case "$FAMILY" in
     apk add --no-cache passt >/dev/null 2>&1 || :
     ;;
   pacman)
-    pacman -Sy --noconfirm --needed podman crun fuse-overlayfs slirp4netns shadow \
+    # ⛔ ARCH DOES NOT SUPPORT PARTIAL UPGRADES. Refreshing the package database
+    # with -Sy and installing into an older rootfs produced an unsatisfiable
+    # dependency set on a fresh base on 2026-09-12. Upgrade the rootfs and
+    # install from one synchronized transaction.
+    pacman -Syu --noconfirm --needed podman crun fuse-overlayfs slirp4netns shadow \
       iptables-nft ca-certificates tar iproute2 >/dev/null
     pacman -S --noconfirm --needed passt >/dev/null 2>&1 || :
     ;;
@@ -99,6 +121,67 @@ case "$FAMILY" in
     xbps-install -Sy passt >/dev/null 2>&1 || :
     ;;
 esac
+
+# -- optional systemd ---------------------------------------------------------
+# WSL starts systemd only when both halves exist: wsl.conf asks for it and the
+# userland carries the manager. Refuse a userland this provisioner cannot make
+# true rather than writing a setting that boot will ignore.
+if [ "$SYSTEMD_ENABLED" = true ]; then
+  case "$FAMILY" in
+    apk|xbps)
+      die "systemd was requested, and this userland does not package it as its init system"
+      ;;
+    pacman)
+      pacman -S --noconfirm --needed systemd >/dev/null
+      ;;
+    apt)
+      apt-get install -y -qq --no-install-recommends systemd systemd-sysv >/dev/null
+      ;;
+    dnf)
+      dnf -y --setopt=install_weak_deps=False install systemd >/dev/null
+      ;;
+    tdnf)
+      tdnf install -y systemd >/dev/null
+      ;;
+  esac
+  command -v systemctl >/dev/null 2>&1 || die "systemd was requested and systemctl is still absent"
+fi
+
+# -- reproducible base tools --------------------------------------------------
+# Package names differ, but the commands promised by `developer` do not. Keep
+# this list small: provider-specific installers remain an explicit act by the
+# unprivileged account and are not fetched or executed as root here.
+case "$TK_TOOLSET" in
+  none)
+    ;;
+  developer)
+    case "$FAMILY" in
+      apk)
+        apk add --no-cache bash build-base curl git jq nodejs npm openssh-client ripgrep tmux unzip >/dev/null
+        ;;
+      pacman)
+        pacman -S --noconfirm --needed bash base-devel curl git jq nodejs npm openssh ripgrep tmux unzip >/dev/null
+        ;;
+      apt)
+        apt-get install -y -qq --no-install-recommends bash build-essential curl git jq nodejs npm openssh-client ripgrep tmux unzip >/dev/null
+        ;;
+      dnf)
+        dnf -y --setopt=install_weak_deps=False install bash gcc gcc-c++ make curl git jq nodejs npm openssh-clients ripgrep tmux unzip >/dev/null
+        ;;
+      tdnf)
+        tdnf install -y bash gcc gcc-c++ make curl git jq nodejs npm openssh-clients ripgrep tmux unzip >/dev/null
+        ;;
+      xbps)
+        xbps-install -Sy bash base-devel curl git jq nodejs npm openssh ripgrep tmux unzip >/dev/null
+        ;;
+    esac
+    for tool in bash cc c++ curl git jq make node npm rg ssh tmux unzip; do
+      command -v "$tool" >/dev/null 2>&1 || die "the developer toolset promised $tool and it is absent"
+    done
+    ;;
+  *) die "TK_TOOLSET is $TK_TOOLSET; it must be none or developer" ;;
+esac
+say "toolset: $TK_TOOLSET"
 
 # ⛔ THE EFFECT IS VERIFIED, NOT THE EXIT CODE TRUSTED. A package manager can
 # print an error from a hook and still exit 0, which measurement on this host
@@ -153,11 +236,9 @@ for f in /etc/subuid /etc/subgid; do
 done
 
 # -- engine configuration, for this account -----------------------------------
-# cgroup_manager: this distribution runs WSL's own init rather than systemd, so
-# there is no user slice for the systemd manager to place a container in. Left
-# on the default the engine reports "systemd cgroup flag passed, but systemd
-# support for managing cgroups is not available", which reads as a kernel
-# problem and is a manager setting.
+# cgroup_manager: cgroupfs works in both supported init modes. It is required
+# when systemd is off because there is no user slice, and avoids making rootless
+# containers depend on a lingering user manager when systemd is on.
 #
 # events_logger: journald is not running here either, and the default logger
 # fails closed rather than falling back, so every run ends in an error about a
@@ -165,7 +246,7 @@ done
 mkdir -p "$TK_HOME/.config/containers"
 CONF_PATH=$TK_HOME/.config/containers/containers.conf
 {
-  echo '# Written by wsl-toolkit. This distribution runs WSL init, not systemd.'
+  echo '# Written by wsl-toolkit. cgroupfs works with either configured init.'
   echo '[engine]'
   echo 'cgroup_manager = "cgroupfs"'
   echo 'events_logger = "file"'
@@ -200,6 +281,60 @@ short-name-mode = "enforcing"
 CONF
 chown -R "$TK_USER" "$TK_HOME/.config"
 
+# -- explicit Windows directory grants ---------------------------------------
+# One marked block is replaced as a unit, so changing the configuration removes
+# a stale grant on the next provision. The payload is base64 made by Go: no host
+# path becomes shell source, and base64 reads from a file so its exit code is not
+# hidden by a pipeline.
+FSTAB_BEGIN='# wsl-toolkit mounts begin'
+FSTAB_END='# wsl-toolkit mounts end'
+FSTAB_TMP="/etc/fstab.wsl-toolkit.$$"
+FSTAB_ENCODED="/tmp/wsl-toolkit-fstab.$$"
+: > "$FSTAB_TMP"
+if [ -f /etc/fstab ]; then
+  in_toolkit_block=false
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "$FSTAB_BEGIN") in_toolkit_block=true; continue ;;
+      "$FSTAB_END")   in_toolkit_block=false; continue ;;
+    esac
+    if [ "$in_toolkit_block" = false ]; then
+      printf '%s\n' "$line" >> "$FSTAB_TMP"
+    fi
+  done < /etc/fstab
+fi
+printf '%s\n' "$FSTAB_BEGIN" >> "$FSTAB_TMP"
+if [ -n "$TK_FSTAB_B64" ]; then
+  printf '%s' "$TK_FSTAB_B64" > "$FSTAB_ENCODED"
+  if ! base64 -d "$FSTAB_ENCODED" >> "$FSTAB_TMP"; then
+    rm -f "$FSTAB_TMP" "$FSTAB_ENCODED"
+    die "the explicit mount table could not be decoded"
+  fi
+  rm -f "$FSTAB_ENCODED"
+fi
+printf '%s\n' "$FSTAB_END" >> "$FSTAB_TMP"
+mv "$FSTAB_TMP" /etc/fstab
+
+mount_count=0
+# The payload is a validated sequence of base64-target/mode pairs.
+# shellcheck disable=SC2086
+set -- $TK_MOUNT_CHECKS
+while [ "$#" -gt 0 ]; do
+  [ "$#" -ge 2 ] || die "the explicit mount check table is incomplete"
+  target_b64=$1
+  shift 2
+  printf '%s' "$target_b64" > "$FSTAB_ENCODED"
+  if ! target=$(base64 -d "$FSTAB_ENCODED"); then
+    rm -f "$FSTAB_ENCODED"
+    die "an explicit mount target could not be decoded"
+  fi
+  rm -f "$FSTAB_ENCODED"
+  mkdir -p "$target"
+  chmod 755 "$target"
+  mount_count=$((mount_count + 1))
+done
+say "explicit Windows directories: $mount_count"
+
 # -- how WSL starts this distribution -----------------------------------------
 # appendWindowsPath=false is the half that answers the reported complaint. With
 # it left on, every Windows PATH entry is appended to the guest's, so a guest
@@ -211,13 +346,14 @@ cat > /etc/wsl.conf <<CONF
 default=$TK_USER
 
 [boot]
-systemd=false
+systemd=$SYSTEMD_ENABLED
 
 [automount]
 $AUTOMOUNT_BLOCK
+mountFsTab=true
 
 [interop]
-enabled=true
+enabled=$INTEROP_ENABLED
 appendWindowsPath=false
 CONF
 say "wrote /etc/wsl.conf"

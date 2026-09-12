@@ -127,55 +127,75 @@ func TestAnUnstagedScriptStillArrivesRunnable(t *testing.T) {
 // archiver refused with `archive/tar: write too long`. That names the archiver
 // and not the file, and the whole job exited 2 in 475 ms. The consumer worked
 // around it by excluding four sidecars by name.
+//
+// ⛔ NO WRITER RACES THE COPY HERE, AND THE FIRST VERSION OF THIS CASE DID.
+// It appended from a goroutine and asserted that the file had grown by the time
+// the copy finished. That passed on Windows and failed on Linux, where the walk
+// completed in under a millisecond and the goroutine was never scheduled in
+// between: the case asserted a truncation that had not happened, on a machine
+// that was behaving correctly. ⚠ A test whose subject is a gap between two
+// moments has to CONTROL both moments. Handing in the FileInfo from before the
+// growth is exactly the gap, with no timing in it.
 func TestAFileThatGrowsDoesNotKillTheCopy(t *testing.T) {
-	root := t.TempDir()
-	grower := filepath.Join(root, "daemon.log")
-	if err := os.WriteFile(grower, bytes.Repeat([]byte("a"), 64), 0o644); err != nil {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "daemon.log")
+	if err := os.WriteFile(p, bytes.Repeat([]byte("a"), 64), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Grow it after the walker has stat'ed nothing yet, which is the same
-	// ordering a background writer produces: the header is written from one
-	// stat and the bytes are read afterwards.
-	f, err := os.OpenFile(grower, os.O_APPEND|os.O_WRONLY, 0o644)
+	// The stat the walker would have taken.
+	info, err := os.Stat(p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	stop := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		for {
-			select {
-			case <-stop:
-				_ = f.Close()
-				return
-			default:
-				_, _ = f.Write(bytes.Repeat([]byte("b"), 4096))
-			}
-		}
-	}()
+	// The daemon appends, after the header's size is settled and before the
+	// bytes are read.
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write(bytes.Repeat([]byte("b"), 4096)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
 	var buf bytes.Buffer
-	up, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), nil)
-	close(stop)
-	<-done
-	if err != nil {
+	tw := tar.NewWriter(&buf)
+	var up WorkspaceUpload
+	if err := writeRegularMember(tw, &up, p, "daemon.log", info, 0o644); err != nil {
 		t.Fatalf("a growing file killed the copy: %v", err)
 	}
-	if up.Entries != 1 {
-		t.Errorf("entries = %d, want 1", up.Entries)
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
 	}
 	// ⛔ NOT COUNTED AS AN OMISSION. The file travelled; a prefix of a file
-	// something is still writing is a snapshot, not a missing input, and
-	// folding the two together makes the serious number go up for the ordinary
-	// case.
+	// something is still writing is a snapshot, not a missing input, and folding
+	// the two together makes the serious number go up for the ordinary case.
 	if up.Omitted != 0 {
 		t.Errorf("omitted = %d, want 0: the file arrived", up.Omitted)
 	}
 	if up.Truncated != 1 {
 		t.Errorf("truncated = %d, want 1", up.Truncated)
 	}
-	if _, err := tar.NewReader(bytes.NewReader(buf.Bytes())).Next(); err != nil {
-		t.Errorf("the archive is not readable: %v", err)
+	// The archive is whole, and it holds exactly what the header declared.
+	r := tar.NewReader(bytes.NewReader(buf.Bytes()))
+	h, err := r.Next()
+	if err != nil {
+		t.Fatalf("the archive is not readable: %v", err)
+	}
+	if h.Size != info.Size() {
+		t.Errorf("the member declares %d bytes, want the %d that were stat'ed", h.Size, info.Size())
+	}
+	body, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("the member is not readable: %v", err)
+	}
+	if int64(len(body)) != info.Size() {
+		t.Errorf("the member carries %d bytes, want %d", len(body), info.Size())
+	}
+	if bytes.ContainsRune(body, 'b') {
+		t.Error("the member carries bytes appended after its size was settled")
 	}
 }
 

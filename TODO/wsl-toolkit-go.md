@@ -3647,8 +3647,9 @@ ordinary trees it must not. The copy line now reads
 ## WSL-67. A provider's Linux-only CLI, run from Windows as if it were native
 
 **Source** [Issue 30](https://github.com/Azathothas/ToolKit/issues/30), part 1,
-filed by the operator on 2026-09-12. ⛔ **Authored, not implemented.** Nothing in
-this entry has been built.
+filed by the operator on 2026-09-12. **Implementation checkpointed
+2026-09-12T14:18:33Z.** The provider-neutral base is built and driven; the
+provider's own installer and authenticated smoke remain.
 **Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
 
 ---
@@ -3675,8 +3676,9 @@ their own terms:
 
 ## Premise
 
-⚠ **Read from the tree on 2026-09-12, not measured against a built base.** A
-session picking this up measures before building.
+⭐ **Measured against a disposable Arch base on 2026-09-12.** The base was
+created, transitioned through one grant, zero grants, and one grant again, and
+then removed through the marker-verified removal path.
 
 What already exists:
 
@@ -3684,11 +3686,11 @@ What already exists:
 | --- | --- |
 | a named, long-lived base | ⭐ `--instance NAME` gives an isolated distribution and state directory, and `base ensure` provisions it |
 | podman inside it | ⭐ the base is rootless podman, which is what it is for |
-| a Linux view of a Windows directory | ⚠ `/mnt/<letter>` exists, and `WSL-63` just made it READ-ONLY by default |
-| systemd | ⚠ `provision.sh` writes `systemd=false`. `WSL-07` carries the option on the script side |
-| arbitrary tooling in the base | ⚠ `base shell` reaches a root-capable shell, and nothing installs a named tool set |
-| a multiplexer | ⛔ nothing |
-| `examples/` | ⛔ the directory does not exist |
+| a Linux view of a Windows directory | ⭐ `base.mounts[]` grants an explicit directory below `/workspaces`, read-only by default and read-write only when requested |
+| systemd | ⭐ `base.systemd` installs it where the package family supports it and verifies PID 1 after restart |
+| arbitrary tooling in the base | ⭐ `base.toolset = "developer"` installs and verifies bash, a build chain, curl, git, jq, Node/npm, OpenSSH, ripgrep, tmux and unzip |
+| a multiplexer | ⭐ the common example installs tmux and a checked-in configuration that keeps sessions and panes alive |
+| `examples/` | ⭐ `common/` and `muse-code/` now exist with a pinned CodeGraph bootstrap and an end-to-end guide |
 
 ⛔ **THIS ENTRY COLLIDES WITH `WSL-63` AND THE COLLISION IS THE INTERESTING
 PART.** `WSL-63` made `/mnt/*` read-only in the base, on the operator's ruling,
@@ -3702,18 +3704,13 @@ entry must answer before any of the rest of it is built.
 
 ## Approach
 
-⚠ **Not settled. This is the authored shape, and the first task is to rule on
-the mount question.**
+The first candidate was selected and built:
 
-1. ⭐ **Rule on the access model first.** The candidates, none measured:
-   - `automount off` plus ONE bind mount of the granted directory, set up in
-     `/etc/fstab` or by a systemd mount unit. Everything else is simply absent,
-     which is the strongest version and the one that matches "for all it cares,
-     it should feel like it is on a Linux host".
-   - `automount ro` plus a writable bind of the one directory over the top.
-     ⚠ Leaves every other drive readable, which the ask excludes.
-   - A copy in and a copy out, which is what `run --workspace` already does.
-     ⛔ Refused by the ask: `git push` from inside must move the real checkout.
+1. ⭐ **`automount off`, `interop off`, and explicit DrvFS mounts in an owned
+   `/etc/fstab` block.** Everything else under the Windows drives is absent.
+   Config validation requires this pairing and confines guest targets below
+   `/workspaces`; host sources are canonicalized and pass the existing project
+   path safety boundary.
 2. **A base preset that installs a named tool set**, extending
    `cmd_base_preset.go` rather than forking a second provisioning path.
 3. **systemd as a per-base option**, which `provision.sh` already has the shape
@@ -3732,10 +3729,13 @@ verify.
 
 ## Decision
 
-⛔ **Unruled.** Step 1 is the fork and it needs the operator. The recommendation
-is `automount off` plus one explicit bind, because it is the only candidate that
-satisfies "it must never be able to access any other dirs in windows" as
-written.
+⭐ **Ruled by the operator's explicit requirement:** `automount off` plus only
+the explicit DrvFS grants, with Windows interop also off. A read-only global
+automount was rejected because it still exposes every drive; copying was
+rejected because the provider must operate on the real checkout. The guest
+runs provider work as the unprivileged base user. The root shell warns that
+root can mount more host paths manually; this is access minimisation, not a WSL
+security boundary.
 
 ## Consumers
 
@@ -3745,15 +3745,34 @@ replacing it.
 
 ## Prove
 
-Not yet written. The acceptance must include a negative: a command inside the
-base that tries to read a Windows directory outside the grant, and fails.
+Driven on a disposable base, not inferred from configuration:
+
+- with one read-write grant, the unprivileged user saw exactly that DrvFS
+  mount, read a sentinel and wrote a file that arrived in the Windows checkout;
+- Windows interop was absent, systemd was PID 1, Podman was 6.1.1, the
+  developer commands were present, and 31 QEMU handlers were registered;
+- changing the same instance to zero grants made verification refuse the stale
+  mount, reprovision removed it, and the unprivileged user could not mount C:;
+- changing back to the sole ToolKit checkout grant let the common bootstrap
+  verify both npm SHA-512 digests and install CodeGraph 1.5.0 and tmux 3.7c;
+  tmux reported `remain-on-exit on` and `exit-empty off`;
+- four new mutation rows were planted and proved individually: drive automount
+  (3 cases), Windows interop (3), guest target confinement (7), and host-source
+  root refusal (1).
+
+⚠ **Still open:** wire these provider-profile cases into the main acceptance
+runner; drive the `developer` package map on non-Arch package families; and run
+the provider's installer plus an authenticated Muse smoke. The official Muse
+documentation is login-gated, so the example deliberately leaves download,
+review and execution of that installer as an operator step rather than running
+an unpinned remote script.
 
 ---
 
 ## WSL-68. A base that can reach nothing on the host at all
 
 **Source** [Issue 30](https://github.com/Azathothas/ToolKit/issues/30), part 2.
-⛔ **Authored, not implemented.**
+**Partially implemented and measured 2026-09-12T14:18:33Z.**
 **Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
 
 ---
@@ -3767,13 +3786,11 @@ containment can be guaranteed with them present.
 
 ## Premise
 
-⚠ **Read, not measured.** `base.automount off` from `WSL-63` removes the
-filesystem path, and that is one door of several. The others have not been
-enumerated on this host, and enumerating them is the first task:
+⭐ **The filesystem and interop doors were measured on a live zero-grant base.**
+The others are intentionally still open work:
 
-- ⛔ **interop.** `/etc/wsl.conf` currently sets `interop.enabled=true`, so a
-  guest can EXECUTE Windows binaries. `appendWindowsPath` is already false,
-  which stops accidental resolution and not deliberate use.
+- ⭐ **interop.** `base.interop = "off"` writes both interop switches off and
+  verification checks the effective guest environment after restart.
 - ⛔ **the network.** The guest reaches the Windows host at its own address, and
   `HostAddress` exists precisely to report it. A sealed base has to answer what
   that means for anything listening on the host.
@@ -3806,5 +3823,16 @@ None. This is a new preset.
 
 ## Prove
 
-The probe, run against a sealed base, with every door reported and each answer
-reproduced by hand once.
+Partial live result: after the same base was changed to zero grants, the
+verifier caught and removed its stale project mount; the unprivileged account
+had no user-directory DrvFS mounts, could not mount C:, had no Windows interop,
+and retained working systemd. WSL's internal read-only
+`/usr/lib/wsl/drivers` mount remained and is explicitly excluded from the user
+grant allowlist.
+
+⛔ **This does not close the entry.** Network reachability was not attacked;
+guest root can manually request a host mount; and WSL's own service boundary
+has not been enumerated. A `sealed` preset, an attacking probe that reports
+each door, and a precise threat model remain. Until then the documentation
+calls the implemented shape **zero grants**, never a sandbox or security
+boundary.

@@ -319,46 +319,7 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 			if total > limits.MaxBytes {
 				return fmt.Errorf("%w: the workspace passes %s at %s", ErrWorkspaceRefused, HumanBytes(limits.MaxBytes), slashRel)
 			}
-			mode := bits.mode(info.Mode(), slashRel, p)
-			if err := tw.WriteHeader(&tar.Header{
-				Name: slashRel, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),
-			}); err != nil {
-				return err
-			}
-			f, err := os.Open(p)
-			if err != nil {
-				return err
-			}
-			// ⛔ BOUNDED BY THE DECLARED SIZE, because a tar member's length goes
-			// into its header before its bytes are read and a file that GROWS in
-			// between overruns what was declared. Unbounded, the archiver
-			// refused with `archive/tar: write too long`, which names the
-			// archiver and not the file, and the whole job died in 475 ms:
-			// measured by a consumer on 2026-09-12 against a live CodeGraph
-			// index, and worked around there by excluding four sidecars by name.
-			// ⚠ A background daemon appending to a log is an ordinary thing for
-			// a tree to be doing, and it is not a reason to refuse a copy.
-			written, err := io.Copy(tw, io.LimitReader(f, info.Size()))
-			closeErr := f.Close()
-			if err != nil {
-				return err
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-			// ⛔ Count what arrived rather than trusting the declared length. A
-			// file that SHRANK leaves a header disagreeing with its payload, and
-			// that is a broken archive rather than a stale snapshot, so it still
-			// refuses. ⚠ The two directions are not symmetric: the growing case
-			// is a truncation that is named, the shrinking case is a corruption
-			// that cannot be.
-			if written != info.Size() {
-				return fmt.Errorf("%w: %s shrank while it was being read (%d of %d bytes)", ErrWorkspaceRefused, slashRel, written, info.Size())
-			}
-			if grew, err := os.Stat(p); err == nil && grew.Size() > info.Size() {
-				up.truncate(slashRel, fmt.Sprintf("it grew while it was copied; the copy holds the first %s", HumanBytes(info.Size())))
-			}
-			return nil
+			return writeRegularMember(tw, &up, p, slashRel, info, bits.mode(info.Mode(), slashRel, p))
 		default:
 			// ⛔ A WINDOWS JUNCTION LANDS HERE, and it used to be dropped in
 			// silence beside the sockets and devices. Go reports one as
@@ -383,6 +344,58 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 	up.Entries, up.Bytes = entries, total
 	up.ExecRestored = bits.report()
 	return up, nil
+}
+
+// writeRegularMember puts one regular file into the archive.
+//
+// ⛔ IT TAKES THE FileInfo THE WALKER ALREADY READ, and that is the whole shape
+// of the hazard rather than an optimisation. A tar member's length goes into its
+// header BEFORE its bytes are read, so the size written and the bytes available
+// come from two different moments and a file being appended to differs between
+// them. Splitting this out is what lets a test hand in a deliberately stale
+// FileInfo and reproduce that gap with no timing in it.
+//
+// ⚠ THE FIRST VERSION OF THAT TEST RACED A WRITER AGAINST THE COPY, and it
+// passed on Windows and failed on Linux: the walk finished in under a
+// millisecond and the writing goroutine was never scheduled in between, so
+// nothing grew and the case asserted a truncation that had not happened.
+func writeRegularMember(tw *tar.Writer, up *WorkspaceUpload, p, slashRel string, info fs.FileInfo, mode int64) error {
+	if err := tw.WriteHeader(&tar.Header{
+		Name: slashRel, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),
+	}); err != nil {
+		return err
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return err
+	}
+	// ⛔ BOUNDED BY THE DECLARED SIZE. Unbounded, a file that grew overran what
+	// the header promised and the archiver refused with `archive/tar: write too
+	// long`, which names the archiver and not the file: measured by a consumer
+	// on 2026-09-12 against a live index daemon, whole job dead in 475 ms, and
+	// worked around there by excluding four sidecars by name. ⚠ A background
+	// daemon appending to a log is an ordinary thing for a tree to be doing and
+	// is not a reason to refuse a copy.
+	written, err := io.Copy(tw, io.LimitReader(f, info.Size()))
+	closeErr := f.Close()
+	if err != nil {
+		return err
+	}
+	if closeErr != nil {
+		return closeErr
+	}
+	// ⛔ Count what arrived rather than trusting the declared length. A file that
+	// SHRANK leaves a header disagreeing with its payload, which is a broken
+	// archive rather than a stale snapshot, so it still refuses. ⚠ The two
+	// directions are not symmetric: growing is a truncation that can be named,
+	// shrinking is a corruption that cannot.
+	if written != info.Size() {
+		return fmt.Errorf("%w: %s shrank while it was being read (%d of %d bytes)", ErrWorkspaceRefused, slashRel, written, info.Size())
+	}
+	if grew, err := os.Stat(p); err == nil && grew.Size() > info.Size() {
+		up.truncate(slashRel, fmt.Sprintf("it grew while it was copied; the copy holds the first %s", HumanBytes(info.Size())))
+	}
+	return nil
 }
 
 // assertLinkStaysInside refuses an archive link whose target leaves the

@@ -13,6 +13,138 @@ set -eu
 : "${TK_IMAGE:?TK_IMAGE is required}"
 : "${TK_M1:?TK_M1 is required}"
 : "${TK_M2:?TK_M2 is required}"
+: "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
+: "${TK_INTEROP:?TK_INTEROP is required}"
+: "${TK_SYSTEMD:?TK_SYSTEMD is required}"
+: "${TK_TOOLSET:?TK_TOOLSET is required}"
+: "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
+
+# The configuration files are intentions. These checks run after WSL has been
+# terminated and started again, so they answer whether WSL honored them.
+case "$TK_AUTOMOUNT" in
+  off)
+    if grep -Eq '[[:space:]]/mnt/[[:alpha:]]([[:space:]]|/)' /proc/mounts; then
+      printf 'verify: a Windows drive is mounted below /mnt even though automount is off\n' >&2
+      exit 3
+    fi
+    ;;
+  ro|rw) ;;
+  *) printf 'verify: unknown automount setting %s\n' "$TK_AUTOMOUNT" >&2; exit 3 ;;
+esac
+printf 'automount %s\n' "$TK_AUTOMOUNT"
+
+case "$TK_INTEROP" in
+  off)
+    if [ -n "${WSL_INTEROP:-}" ]; then
+      printf 'verify: WSL_INTEROP exists even though Windows interop is off\n' >&2
+      exit 3
+    fi
+    ;;
+  on) ;;
+  *) printf 'verify: unknown interop setting %s\n' "$TK_INTEROP" >&2; exit 3 ;;
+esac
+printf 'interop %s\n' "$TK_INTEROP"
+
+pid_one=$(cat /proc/1/comm 2>/dev/null || echo unknown)
+case "$TK_SYSTEMD:$pid_one" in
+  true:systemd|false:systemd-shutdown) ;;
+  true:*)
+    printf 'verify: systemd was requested but PID 1 is %s\n' "$pid_one" >&2
+    exit 3
+    ;;
+  false:systemd)
+    printf 'verify: systemd is PID 1 even though it was disabled\n' >&2
+    exit 3
+    ;;
+  false:*) ;;
+  *) printf 'verify: unknown systemd setting %s\n' "$TK_SYSTEMD" >&2; exit 3 ;;
+esac
+printf 'systemd %s pid-one %s\n' "$TK_SYSTEMD" "$pid_one"
+
+case "$TK_TOOLSET" in
+  none) ;;
+  developer)
+    for tool in bash cc c++ curl git jq make node npm rg ssh tmux unzip; do
+      command -v "$tool" >/dev/null 2>&1 || {
+        printf 'verify: the developer toolset is missing %s\n' "$tool" >&2
+        exit 3
+      }
+    done
+    ;;
+  *) printf 'verify: unknown toolset %s\n' "$TK_TOOLSET" >&2; exit 3 ;;
+esac
+printf 'toolset %s\n' "$TK_TOOLSET"
+
+mount_count=0
+mount_decode="${TMPDIR:-/tmp}/wsl-toolkit-mount-check.$$"
+mount_allowlist="${TMPDIR:-/tmp}/wsl-toolkit-mount-allowlist.$$"
+: > "$mount_allowlist"
+trap 'rm -f "$mount_decode" "$mount_allowlist"' 0 1 2 15
+# The payload is a validated sequence of base64-target/mode pairs.
+# shellcheck disable=SC2086
+set -- $TK_MOUNT_CHECKS
+while [ "$#" -gt 0 ]; do
+  [ "$#" -ge 2 ] || { printf 'verify: the explicit mount check table is incomplete\n' >&2; exit 3; }
+  target_b64=$1
+  mode=$2
+  shift 2
+  printf '%s' "$target_b64" > "$mount_decode"
+  if ! target=$(base64 -d "$mount_decode"); then
+    rm -f "$mount_decode"
+    printf 'verify: an explicit mount target could not be decoded\n' >&2
+    exit 3
+  fi
+  rm -f "$mount_decode"
+  printf '%s\n' "$target" >> "$mount_allowlist"
+  [ -d "$target" ] || { printf 'verify: explicit mount %s is absent\n' "$target" >&2; exit 3; }
+  if ! awk -v expected="$target" '
+    $2 == expected && ($3 == "drvfs" || ($3 == "9p" && $4 ~ /aname=drvfs/)) { found=1 }
+    END { exit !found }
+  ' /proc/mounts; then
+    printf 'verify: explicit target %s is a guest directory, not a live Windows mount\n' "$target" >&2
+    exit 3
+  fi
+  ls "$target" >/dev/null 2>&1 || { printf 'verify: explicit mount %s is unreadable\n' "$target" >&2; exit 3; }
+  write_probe="$target/.wsl-toolkit-write-probe.$$"
+  case "$mode" in
+    rw)
+      ( set -C; : > "$write_probe" ) 2>/dev/null || {
+        printf 'verify: explicit mount %s is not writable\n' "$target" >&2
+        exit 3
+      }
+      rm -f "$write_probe"
+      ;;
+    ro)
+      if ( set -C; : > "$write_probe" ) 2>/dev/null; then
+        rm -f "$write_probe"
+        printf 'verify: explicit mount %s is writable but configured read-only\n' "$target" >&2
+        exit 3
+      fi
+      ;;
+    *) printf 'verify: unknown explicit mount mode %s\n' "$mode" >&2; exit 3 ;;
+  esac
+  mount_count=$((mount_count + 1))
+  printf 'mount %s %s\n' "$mode" "$target"
+done
+printf 'mount-count %s\n' "$mount_count"
+
+# With drive automount disabled, every live DrvFS mount must be one of the
+# configured targets. This catches a grant removed from configuration but still
+# present in the running guest, forcing ensure to rewrite fstab and restart.
+if [ "$TK_AUTOMOUNT" = off ]; then
+  while read -r _source live_target live_type live_options _rest; do
+    case "$live_type:$live_options" in
+      drvfs:*|9p:*aname=drvfs*)
+        if ! grep -Fx "$live_target" "$mount_allowlist" >/dev/null 2>&1; then
+          rm -f "$mount_allowlist"
+          printf 'verify: unconfigured Windows directory is mounted at %s\n' "$live_target" >&2
+          exit 3
+        fi
+        ;;
+    esac
+  done < /proc/mounts
+fi
+rm -f "$mount_allowlist"
 
 printf 'engine %s\n' "$(podman --version 2>&1 | head -1)"
 printf 'runtime-dir %s\n' "${XDG_RUNTIME_DIR:-unset}"
