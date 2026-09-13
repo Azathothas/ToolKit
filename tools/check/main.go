@@ -20,6 +20,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -92,7 +93,7 @@ func main() {
 		if asJSON {
 			emit("check-commits/1", res)
 		} else {
-			report("commit-msg", res)
+			report(os.Stdout, "commit-msg", res)
 		}
 		if res.Problems > 0 {
 			os.Exit(1)
@@ -117,7 +118,7 @@ func main() {
 		if asJSON {
 			emit(c.schema, res)
 		} else {
-			report(c.name, res)
+			report(os.Stdout, c.name, res)
 		}
 		if res.Problems > 0 {
 			os.Exit(1)
@@ -147,64 +148,104 @@ func emit(schema string, r checks.Result) {
 	fmt.Println(string(b))
 }
 
-func report(name string, r checks.Result) {
+// skipReason is why a check ran nothing, when it ran nothing.
+//
+// ⛔ A SKIP IS NOT A PASS AND IS NEVER PRINTED AS ONE. Both of the gate's outputs
+// used to read only the problem count, so a host with no shellcheck and no Go
+// toolchain printed `ok shellcheck` and `ok go` and a JSON document saying 0 for
+// each, over two checks that had not looked at anything. TOOL-24.
+func skipReason(r checks.Result) (string, bool) {
+	why, ok := r.Extra["skipped"].(string)
+	return why, ok && why != "" && r.Problems == 0
+}
+
+func report(w io.Writer, name string, r checks.Result) {
+	if why, ok := skipReason(r); ok {
+		fmt.Fprintf(w, "  skip   %s: %s\n", name, why)
+		return
+	}
 	if r.Problems == 0 {
-		fmt.Printf("  ok     %s\n", name)
+		fmt.Fprintf(w, "  ok     %s\n", name)
 		return
 	}
 	sort.Strings(r.Detail)
 	for _, d := range r.Detail {
-		fmt.Printf("  FAIL   %s\n", d)
+		fmt.Fprintf(w, "  FAIL   %s\n", d)
 	}
-	fmt.Printf("\n%s: %d problems\n", name, r.Problems)
+	fmt.Fprintf(w, "\n%s: %d problems\n", name, r.Problems)
+}
+
+type gateRow struct {
+	name string
+	res  checks.Result
 }
 
 func gate(t *checks.Tree, asJSON bool) int {
-	type row struct {
-		name string
-		res  checks.Result
-	}
-	var rows []row
-	total := 0
+	var rows []gateRow
 	for _, c := range all {
-		res := c.run(t)
-		rows = append(rows, row{c.name, res})
-		total += res.Problems
+		rows = append(rows, gateRow{c.name, c.run(t)})
+	}
+	return renderGate(os.Stdout, rows, asJSON)
+}
+
+// renderGate writes the verdict and returns the exit code. A skip still exits 0,
+// because "this host cannot run that check" is not a defect in the tree, and it
+// is named in both outputs so nobody reads it as agreement.
+func renderGate(w io.Writer, rows []gateRow, asJSON bool) int {
+	total := 0
+	skipped := map[string]string{}
+	for _, r := range rows {
+		total += r.res.Problems
+		if why, ok := skipReason(r.res); ok {
+			skipped[r.name] = why
+		}
 	}
 	if asJSON {
 		out := map[string]any{"schema": "check-gate/1", "problems": total}
 		for _, r := range rows {
 			out[r.name] = r.res.Problems
 		}
+		if len(skipped) > 0 {
+			out["skipped"] = skipped
+		}
 		b, _ := json.Marshal(out)
-		fmt.Println(string(b))
+		fmt.Fprintln(w, string(b))
 		if total > 0 {
 			return 1
 		}
 		return 0
 	}
 	for _, r := range rows {
-		if r.res.Problems == 0 {
-			fmt.Printf("  ok     %-15s\n", r.name)
+		if why, ok := skipped[r.name]; ok {
+			fmt.Fprintf(w, "  skip   %-15s %s\n", r.name, why)
 			continue
 		}
-		fmt.Printf("  FAIL   %-15s %d\n", r.name, r.res.Problems)
+		if r.res.Problems == 0 {
+			fmt.Fprintf(w, "  ok     %-15s\n", r.name)
+			continue
+		}
+		fmt.Fprintf(w, "  FAIL   %-15s %d\n", r.name, r.res.Problems)
 		sort.Strings(r.res.Detail)
 		for i, d := range r.res.Detail {
 			if i == 12 {
-				fmt.Printf("           ... and %d more\n", len(r.res.Detail)-12)
+				fmt.Fprintf(w, "           ... and %d more\n", len(r.res.Detail)-12)
 				break
 			}
-			fmt.Printf("           %s\n", d)
+			fmt.Fprintf(w, "           %s\n", d)
 		}
 	}
-	fmt.Println()
+	fmt.Fprintln(w)
 	if total > 0 {
-		fmt.Printf("VERDICT: %d problems.\n", total)
+		fmt.Fprintf(w, "VERDICT: %d problems.\n", total)
 		return 1
 	}
-	fmt.Println("VERDICT: the tree agrees with itself.")
-	fmt.Println("A green gate is not the finish line. It catches mechanical regressions;")
-	fmt.Println("whether a claim is true is a reading, and that belongs to the review pass.")
+	if len(skipped) > 0 {
+		fmt.Fprintf(w, "VERDICT: the tree agrees with itself on %d of %d checks. %d could not run on this host and say nothing about it.\n",
+			len(rows)-len(skipped), len(rows), len(skipped))
+	} else {
+		fmt.Fprintln(w, "VERDICT: the tree agrees with itself.")
+	}
+	fmt.Fprintln(w, "A green gate is not the finish line. It catches mechanical regressions;")
+	fmt.Fprintln(w, "whether a claim is true is a reading, and that belongs to the review pass.")
 	return 0
 }

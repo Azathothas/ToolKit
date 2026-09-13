@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 104  open 7  blocked 0  done 97
+total 107  open 7  blocked 0  done 100
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 51 | 52 |
+| P1 | 1 | 0 | 54 | 55 |
 | P2 | 6 | 0 | 36 | 42 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **7** | **0** | **97** | **104** |
+| **all** | **7** | **0** | **100** | **107** |
 
 ---
 
@@ -62,6 +62,9 @@ total 104  open 7  blocked 0  done 97
 | TOOL-20 | P1 | S | done | The check for the endings could never once have failed | [`tooling.md`](tooling.md) |
 | TOOL-21 | P2 | S | done | The sanctioned way to commit on Windows could not name two files | [`tooling.md`](tooling.md) |
 | TOOL-22 | P1 | S | done | the runtime column had never once produced an answer | [`tooling.md`](tooling.md) |
+| TOOL-23 | P1 | S | done | The bundle rule rebuilt the products it was meant to compare | [`tooling.md`](tooling.md) |
+| TOOL-24 | P1 | S | done | The gate printed a check that could not run as a pass | [`tooling.md`](tooling.md) |
+| TOOL-25 | P1 | S | done | The secrets rule could not see a Windows home path | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

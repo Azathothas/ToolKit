@@ -41,7 +41,7 @@ func TestAProjectPathRefusesADirectoryThatIsNotAProject(t *testing.T) {
 func TestAProjectPathAcceptsAnOrdinaryTree(t *testing.T) {
 	ok := []string{t.TempDir(), filepath.Join(t.TempDir(), "nested", "project")}
 	if runtime.GOOS == "windows" {
-		ok = append(ok, `C:\Users\somebody\Downloads\project`, `C:\src`)
+		ok = append(ok, `C:\Users\user\Downloads\project`, `C:\src`)
 	} else {
 		ok = append(ok, "/home/runner/project", "/srv/src")
 	}

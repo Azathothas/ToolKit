@@ -893,6 +893,42 @@
       "replace": "\t\tif e.IsDir() || !strings.Contains(e.Name(), \"previous\") {",
       "run": "TestTheSupersededCopyMessageNamesTheCommandThatRemovesIt",
       "args": []
+    },
+    {
+      "label": "the bundle rule comparing before it tests",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "var bundleArgs = []string{\"-Check\", \"-Test\"}",
+      "replace": "var bundleArgs = []string{\"-Test\"}",
+      "run": "TestTheBundleRuleComparesRatherThanRebuilds",
+      "args": []
+    },
+    {
+      "label": "a gate skip printed as a skip",
+      "module": "tools/check",
+      "file": "main.go",
+      "find": "\t\tif why, ok := skipped[r.name]; ok {",
+      "replace": "\t\tif why, ok := skipped[r.name]; ok && why == \"never\" {",
+      "run": "TestAGateSkipIsReportedAsASkip",
+      "args": []
+    },
+    {
+      "label": "a single check skip printed as a skip",
+      "module": "tools/check",
+      "file": "main.go",
+      "find": "\tif why, ok := skipReason(r); ok {\n\t\tfmt.Fprintf(w, \"  skip   %s: %s\\n\", name, why)",
+      "replace": "\tif why, ok := skipReason(r); ok && why == \"never\" {\n\t\tfmt.Fprintf(w, \"  skip   %s: %s\\n\", name, why)",
+      "run": "TestASingleCheckSkipIsReportedAsASkip",
+      "args": []
+    },
+    {
+      "label": "a Windows home path found with either separator",
+      "module": "tools/check",
+      "file": "internal/checks/secrets.go",
+      "find": "[A-Za-z]:[\\\\/]+Users[\\\\/]+",
+      "replace": "[A-Za-z]:[\\/]+Users[\\/]+",
+      "run": "TestAWindowsHomePathIsFoundWithEitherSeparator",
+      "args": []
     }
   ]
 }

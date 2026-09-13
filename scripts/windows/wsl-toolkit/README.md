@@ -69,8 +69,11 @@ pwsh -NoProfile -File scripts/windows/wsl-toolkit/build.ps1
 pwsh -NoProfile -File scripts/windows/wsl-toolkit/build.ps1 -Test
 ```
 
-⭐ **Run `-Test` before every commit.** It is what the local gate and both CI
-jobs run, and it is five things rather than one:
+⭐ **Run `-Test` before every commit.** It rebuilds, and it is five things rather
+than one. ⚠ The local gate and both CI jobs run `-Check -Test` instead, which
+compares the tracked products with their parts before testing and writes
+nothing, so a product nobody rebuilt fails there rather than being quietly
+rewritten. `TOOL-23`.
 
 | what it proves | how it fails |
 | --- | --- |

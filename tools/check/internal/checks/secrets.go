@@ -100,7 +100,7 @@ var (
 	credentialFile   = regexp.MustCompile(`^(\.env(\..+)?|\.dev\.vars(\..+)?|.*\.(pem|key|p12|pfx|keystore|jks)|id_rsa|id_ed25519|id_ecdsa|credentials\.json|service-account.*\.json)$`)
 	credentialSample = regexp.MustCompile(`\.(example|sample|template)$`)
 	emailRe          = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
-	homePathRe       = regexp.MustCompile(`([A-Za-z]:[\/]Users[\/]|/home/|/Users/)[A-Za-z0-9._-]+`)
+	homePathRe       = regexp.MustCompile(`([A-Za-z]:[\\/]+Users[\\/]+|/home/|/Users/)[A-Za-z0-9_][A-Za-z0-9._-]*`)
 	longHexRe        = regexp.MustCompile(`\b[0-9a-f]{24,}\b`)
 	pinnedAction     = regexp.MustCompile(`uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}`)
 	declaredPinRe    = regexp.MustCompile(`[Pp]inned(Ref|Sha256|Commit|Digest)|PINNED_(REF|SHA256)`)
@@ -111,9 +111,20 @@ var (
 // somebody disables. `/home/toolkit/` is the same shape from this repository's
 // own side: the account wsl-toolkit creates inside the distribution it owns,
 // identical on every machine it runs on.
-var genericHomeRe = regexp.MustCompile(`/home/(linuxbrew|runner|user|vagrant|ubuntu|node|toolkit)/|/Users/(runner|user)/`)
+var genericHomeRe = regexp.MustCompile(`/home/(linuxbrew|runner|user|vagrant|ubuntu|node|toolkit)/|/users/(runner|runneradmin|user)/`)
 
-func genericHome(m string) bool { return genericHomeRe.MatchString(m + "/") }
+// ⛔ THE WINDOWS SPELLING IS COMPARED IN THE UNIX ONE. The rule above it wrote
+// `[\/]`, which in a Go character class is an escaped forward slash and nothing
+// else, so `C:` followed by a backslash-separated home path never matched at all:
+// the TOOL-10 defect, written again in the port that replaced the shell check.
+// A JSON-escaped path doubles each backslash, and Windows compares names without
+// case, so separators are collapsed and the match lower-cased before comparing.
+// TOOL-25.
+var separatorRun = regexp.MustCompile(`[\\/]+`)
+
+func genericHome(m string) bool {
+	return genericHomeRe.MatchString(strings.ToLower(separatorRun.ReplaceAllString(m, "/")) + "/")
+}
 
 // ⚠ A pinned GitHub Action is a 40-hex commit on a PUBLIC repository, and
 // pinning is the SAFE practice this repository asks for: a tag moves and a

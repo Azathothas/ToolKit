@@ -507,9 +507,12 @@ that does not exist, a part on disk that the manifest does not list, a build tha
 does not parse, a `param()` that is not first, and a tracked bundle that
 disagrees with its parts are each a stop with a name.
 
-⚠ **`-Check` is in the gate and `-Test` is in CI.** The first compares bytes; the
-second adds the selftest, the CLI surface lock, the analyzer over the product,
-and a scan for a local whose name differs from a parameter's only by case. That
+⚠ **The gate runs `-Check -Test`, and the order of work inside that matters.**
+`-Check` compares both products against the parts in memory and writes nothing;
+`-Test` then adds the selftest, the CLI surface lock, the analyzer over the
+product, and a scan for a local whose name differs from a parameter's only by
+case. ⛔ `-Test` on its own WRITES both products first, so a gate that passed it
+alone rewrote a stale or hand-edited product and exited 0 over it. `TOOL-23`. That
 last one exists because such a local IS the parameter, PowerShell ignoring case,
 and one of them shipped: a state object became the string `Running` mid-run, on
 the code path whose whole job is to keep reporting when everything else is quiet.

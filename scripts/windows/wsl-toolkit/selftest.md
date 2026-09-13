@@ -70,7 +70,7 @@ rather than a check:
 
 | | |
 | --- | --- |
-| the local gate | inside the `bundle` check, which runs `build.ps1 -Test` |
+| the local gate | inside the `bundle` check, which runs `build.ps1 -Check -Test` |
 | CI, ubuntu | the gate, plus a second run of its own |
 | ⭐ CI, windows | the gate, plus a run under **each** PowerShell host with the two case counts compared. Every P0 this tool has had lived in 5.1 and was invisible on 7. `TOOL-11`. |
 

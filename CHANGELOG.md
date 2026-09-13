@@ -19,6 +19,33 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-13
+
+### 2026-09-13T03:33:20Z: three gate rules that could not fail the way they were written
+
+**Record:** `TOOL-23`, `TOOL-24` and `TOOL-25` in
+[`TODO/tooling.md`](TODO/tooling.md), each closed with the planted defect and the
+driven output.
+**Deployed:** no deploy. This is `main` only; the rules check this repository's own
+tree and ship in no release.
+**Closes:** nothing on its own; found while finishing
+[issue 30](https://github.com/Azathothas/ToolKit/issues/30).
+
+⛔ **THE `bundle` RULE REBUILT THE PRODUCTS IT WAS MEANT TO COMPARE.** It ran
+`build.ps1 -Test`, which writes both products before testing them, so a stale part
+or a hand-edited product exited 0 with the tree rewritten underneath the gate. It
+runs `-Check -Test` now, and a planted stale part fails it in a clone of the tree.
+
+⚠ **A CHECK THAT COULD NOT RUN WAS PRINTED AS A PASS.** Both gate outputs read only
+the problem count, so a host with no shellcheck and no Go printed `ok` for both.
+The gate prints `skip` with the reason, the verdict says how many checks ran, and
+the JSON carries a `skipped` object. The exit code is unchanged.
+
+⛔ **THE SECRETS RULE COULD NOT SEE A WINDOWS HOME PATH.** Its separator class was
+`[\/]`, which in Go matches a forward slash alone, the `TOOL-10` defect written
+again in the port. The tree had published four home paths carrying a real
+username; they say `USER` now, and the history still holds them.
+
 ## 2026-09-12
 
 ### 2026-09-12T16:20:00Z: the bootstrap leaves one tool's examples directory, and learns twelve package managers

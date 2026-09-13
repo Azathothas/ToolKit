@@ -1031,7 +1031,7 @@ podman machine registered throughout.
 
 ```text
 wsl-toolkit bsd status
-  qemu        C:\Users\AjamX\scoop\apps\qemu\current\qemu-system-x86_64.exe
+  qemu        C:\Users\USER\scoop\apps\qemu\current\qemu-system-x86_64.exe
               QEMU emulator version 11.1.0 (v11.1.0-12130-ge470268ff4)
   whpx        present, hypervisor running
 ```

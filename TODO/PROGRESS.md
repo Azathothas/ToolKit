@@ -9,9 +9,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-13T02:36:12Z
 baseline        e9f0e08 with 19 uncommitted WSL-69 paths; local gate RED,
                 3 problems, 42.4s
-entries         total 104  open 7  blocked 0  done 97
-gate            in progress; see the WSL-69 checkpoint commit
-head            e9f0e08 plus this session's commits, not yet pushed
+entries         total 107  open 7  blocked 0  done 100
+gate            19 checks green before each commit; ShellCheck 0.9.0 and an
+                8.3 TEMP reproduced locally before each push
+head            622f46a pushed; the gate fixes committed on top
 ```
 
 ## Active work
@@ -27,6 +28,11 @@ built and driven; the three defects and the published fingerprint found in the
 uncommitted work are fixed and mutation-proved. The entry's 2026-09-13 amendment
 carries the measurements. What remains waits on the operator's Meta account for
 two steps, and this session polls for them rather than stopping.
+
+⭐ **`TOOL-23`, `TOOL-24` and `TOOL-25` are filed and closed.** Three gate rules
+could not fail the way they were written: `bundle` rebuilt what it should have
+compared, a skipped check printed as a pass, and `secrets` could not see a
+backslash home path. Each was planted, fixed, and driven.
 
 ## What was built
 

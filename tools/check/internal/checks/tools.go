@@ -107,15 +107,25 @@ if (Get-Module -ListAvailable PSScriptAnalyzer) {
 	return r
 }
 
-// Bundle rebuilds the PowerShell product from its parts and compares BOTH
-// tracked copies against the result.
+// Bundle rebuilds the PowerShell product from its parts in memory, compares BOTH
+// tracked copies against the result, and then runs the build's own tests.
 //
 // ⛔ WITHOUT THIS, EITHER COPY COULD SILENTLY STOP BEING WHAT ANYBODY WROTE: a
 // part edited and never rebuilt, a product edited by hand, or a rebuild that
 // refreshed one copy and not the other. TODO/RULES.md section 4.
+//
+// ⛔ AND IT WAS NOT DOING IT. It passed `-Test` alone, which WRITES both
+// products before testing them and compares nothing, so both of those defects
+// exited 0 with the tree rewritten underneath the gate. Planted and measured on
+// 2026-09-13. TOOL-23.
 func Bundle(t *Tree) Result {
-	return runPwshScript(t, "scripts/windows/wsl-toolkit/build.ps1", "bundle", "-Test")
+	return runPwshScript(t, bundleScript, "bundle", bundleArgs...)
 }
+
+const bundleScript = "scripts/windows/wsl-toolkit/build.ps1"
+
+// bundleArgs is a variable so a case can hold `-Check` in it with no PowerShell.
+var bundleArgs = []string{"-Check", "-Test"}
 
 // GoModules runs gofmt, vet, build and test over every Go module in the tree.
 func GoModules(t *Tree) Result {

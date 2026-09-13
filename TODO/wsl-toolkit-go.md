@@ -2087,8 +2087,8 @@ verdict.
 ```text
   verdict     ready
   version     1.3.0
-  executable  C:\Users\AjamX\Downloads\ToolKit\.tmp\wsl-toolkit.exe
-  state       C:\Users\AjamX\AppData\Local\wsl-toolkit
+  executable  C:\Users\USER\Downloads\ToolKit\.tmp\wsl-toolkit.exe
+  state       C:\Users\USER\AppData\Local\wsl-toolkit
   config      ...\config.json (the state directory), fingerprint 3c8d1895acaa6d65
   route       direct -- this process can call wsl.exe itself
   helper      none listening
@@ -3664,7 +3664,7 @@ their own terms:
 - that base carries the tooling the agent needs: `grep`, `ripgrep`, `codegraph`,
   `podman`;
 - the agent works on ONE Windows checkout, for example
-  `C:\Users\AjamX\Downloads\some-repo`, which must look like a native Linux
+  `C:\Users\USER\Downloads\some-repo`, which must look like a native Linux
   directory and must be READ-WRITE, including `git commit` and `git push`;
 - ⛔ **it must reach no other directory on the Windows host** unless that is
   granted explicitly;

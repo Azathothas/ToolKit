@@ -2507,3 +2507,253 @@ failure when it genuinely cannot be read, which is right for a rate-limited or
 private action and wrong for one that simply has no manifest. Telling those two
 apart needs the HTTP status, which `gh api` does not hand back through this
 helper, and that is its own entry rather than a line here.
+
+---
+
+## TOOL-23. The bundle rule rebuilt the products it was meant to compare
+
+**Source** found on 2026-09-13 while checking the gate was safe to run over
+uncommitted work, before running it. Fixed in the same session on the operator's
+instruction to finish every task unattended.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+[`RULES.md`](RULES.md) section 4 says the gate's `bundle` rule rebuilds from the
+parts and compares both products byte for byte. ⛔ **It compared nothing.**
+`tools/check/internal/checks/tools.go` ran `build.ps1 -Test`, and without `-Check`
+that script writes both products first and then tests what it wrote. So the two
+defects the rule exists for both passed, and took their evidence with them:
+
+- a part edited and never rebuilt exited 0, with the tracked product rewritten;
+- a product edited by hand exited 0, with the edit destroyed.
+
+⚠ **Both CI push jobs run only the gate**, so neither could fail a push. Only
+`release.yml` ran `-Check`, which is after the commit has been published.
+
+## Premise
+
+⭐ **Measured on 2026-09-13**, in copies of `scripts/windows/wsl-toolkit` and the
+embedded product rather than in the tree:
+
+| planted | `build.ps1 -Check` | `build.ps1 -Test`, what the gate ran |
+| --- | --- | --- |
+| a part edited, the product not rebuilt | exit 1 | exit 0, product rewritten |
+| the product edited by hand | exit 1 | exit 0, edit destroyed |
+| nothing | exit 0 | exit 0 |
+
+## Approach
+
+`Bundle` passes `-Check -Test`. With both, `build.ps1` compares in memory, writes
+nothing, and runs its tests only when the comparison found no difference, so the
+rule refuses a stale product and still proves the selftest, the surface lock, the
+case-shadow scan and the analyzer. The flags are `bundleArgs`, so a case holds
+`-Check` in them with no PowerShell. [`../scripts/README.md`](../scripts/README.md),
+[`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
+and [`../scripts/windows/wsl-toolkit/selftest.md`](../scripts/windows/wsl-toolkit/selftest.md)
+each named which flags run where, and each is corrected.
+
+⛔ **Not a second comparison written in Go.** `build.ps1 -Check` is the one
+implementation of "the products match their parts", and the release workflow
+already relies on it.
+
+## Consumers
+
+None. The rule reads this repository's own tree, and no row of
+[`../docs/consumers.md`](../docs/consumers.md) runs it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+A green gate, `TestTheBundleRuleComparesRatherThanRebuilds` red when `-Check` is
+taken out, and the rule refusing a planted stale part in a clone of the tree.
+
+---
+
+## Closing
+
+**Closed 2026-09-13T03:33:20Z.** Driven in a local clone at `622f46a`, with one
+part edited and never rebuilt, against the rule built from that commit and the
+rule built from this change:
+
+```text
+unplanted          old -Test         ok bundle, exit 0
+                   new -Check -Test  ok bundle, exit 0
+planted            new -Check -Test  FAIL bundle: ! the tracked bundle disagrees
+                                     with its parts at line 539, exit 1,
+                                     product untouched
+                   old -Test         ok bundle, exit 0, product rewritten
+```
+
+```text
+  ok       the bundle rule comparing before it tests      1 case(s), went red
+```
+
+---
+
+## TOOL-24. The gate printed a check that could not run as a pass
+
+**Source** found on 2026-09-13 while reading `tools/check/main.go` for `TOOL-23`,
+then measured. Fixed in the same session on the operator's instruction.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+[`../scripts/README.md`](../scripts/README.md) promises that a check whose tool is
+missing is reported with what was missing rather than counted as agreement.
+⛔ **The gate counted it as agreement.** `gate()` printed `ok` for every check with
+no problems and its JSON carried only problem counts, so a check's own
+`skipped` reason never reached either output. `check NAME` printed the same `ok`.
+
+## Premise
+
+⭐ **Measured on 2026-09-13**, with the scoop shims taken off `PATH` for one
+process so `shellcheck` and `go` were absent:
+
+```text
+check shellcheck --json   {"problems":0,"schema":"check-shellcheck/1","skipped":"shellcheck is not on PATH"}
+check go --json           {"problems":0,"schema":"check-go/1","skipped":"no Go toolchain on PATH"}
+check                     ok     shellcheck        ok     go
+check --json              "go":0 ... "shellcheck":0, and no skip anywhere
+```
+
+## Approach
+
+`skipReason` reads a result's own `skipped` field. `renderGate` and `report` take a
+writer, print `skip NAME REASON`, and the verdict says how many of the checks ran.
+The JSON gains a `skipped` object only when something was skipped. ⚠ **The exit
+code does not change**: a host that cannot run a check is not a defect in the
+tree, and the page that promises the report says so.
+
+## Consumers
+
+None. The `check-gate/1` document gains an optional field, which is additive, and
+nothing in this tree or in [`../docs/consumers.md`](../docs/consumers.md) parses it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+A green gate, two cases red when either skip branch is disabled, and the gate
+naming both skips on a host without the two tools.
+
+---
+
+## Closing
+
+**Closed 2026-09-13T03:33:20Z.** Driven with the same two tools off `PATH`:
+
+```text
+  skip   shellcheck      shellcheck is not on PATH
+  skip   go              no Go toolchain on PATH
+VERDICT: the tree agrees with itself on 17 of 19 checks. 2 could not run on this host and say nothing about it.
+gate exit=0
+"skipped":{"go":"no Go toolchain on PATH","shellcheck":"shellcheck is not on PATH"}
+  skip   shellcheck: shellcheck is not on PATH
+```
+
+```text
+  ok       a gate skip printed as a skip                  1 case(s), went red
+  ok       a single check skip printed as a skip          1 case(s), went red
+```
+
+---
+
+## TOOL-25. The secrets rule could not see a Windows home path
+
+**Source** found on 2026-09-13, when a hardcoded Windows home path in an example
+passed a gate whose rule names that shape. Fixed in the same session on the
+operator's instruction.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+[`../docs/public/README.md`](../docs/public/README.md) section 1 forbids an
+absolute home path carrying a username, and the gate's `secrets` rule is what holds
+it. ⛔ **It could not match the way Windows writes one.** Its pattern spelled the
+separator `[\/]`, which in a Go character class is an escaped forward slash and
+nothing else. A forward-slash path was found and a backslash path passed, green.
+
+⛔ **The tree had published four of them, with a real username**: one in
+[`bsd.md`](bsd.md) and three in [`wsl-toolkit-go.md`](wsl-toolkit-go.md). The
+uncommitted `WSL-69` work carried three more.
+
+⚠ **This is `TOOL-10` written again.** That entry fixed the same class in
+`check-no-secrets.ps1`; the Go program that replaced both shell halves spelled the
+class the same way, and no mutation row covered the rule.
+
+## Premise
+
+⭐ **Measured on 2026-09-13** by running the pattern exactly as it was written:
+
+```text
+C:\Users\...\AppData\Local\Zellij\zellij.EXE, backslashes   match=""
+C:/Users/.../AppData/Local/Zellij/zellij.EXE, slashes       match="C:/Users/..."
+/home/user/.bashrc                                          match="/home/user"
+```
+
+(The names are elided, or replaced with a generic one, because this page is scanned
+by the rule it describes. The run used a real username and a made-up one.)
+
+## Approach
+
+The separator is `[\\/]+`, which also reaches a JSON-escaped path, where every
+backslash is doubled. A name must start with a letter, a digit or an underscore,
+so an elided `...` is not taken for one. `genericHome` collapses the separators and
+compares in lower case, because Windows compares names that way, and the allowlist
+gains `runneradmin`, the GitHub runner account behind `RUNNER~1`. The four published
+paths say `USER`, and a test fixture that was a made-up name says `user`.
+
+⚠ **The history still carries the four paths.** A username is a fingerprint, not a
+credential, so there is nothing to rotate, and a rewrite of a published history is
+the operator's decision, per [`../docs/security/secrets.md`](../docs/security/secrets.md).
+The row for `[\/]` in
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md)
+now records that the port repeated it.
+
+## Consumers
+
+None. No row of [`../docs/consumers.md`](../docs/consumers.md) runs the gate.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+A green gate, both new cases red on the old class, and the corrected rule finding
+exactly the paths the old one missed.
+
+---
+
+## Closing
+
+**Closed 2026-09-13T03:33:20Z.** The corrected rule, over the tree before the
+redaction, found exactly the five it had been blind to, and nothing else:
+
+```text
+  FAIL   TODO/bsd.md:1034: an absolute home path
+  FAIL   TODO/wsl-toolkit-go.md:2090: an absolute home path
+  FAIL   TODO/wsl-toolkit-go.md:2091: an absolute home path
+  FAIL   TODO/wsl-toolkit-go.md:3667: an absolute home path
+  FAIL   tools/windows/wsl-toolkit/internal/toolkit/anchor_test.go:44: an absolute home path
+secrets: 5 problems
+```
+
+After the four redactions and the fixture change, `check secrets` is `ok`. The
+match text is left off the lines above for the same reason as in the premise.
+
+```text
+  ok       a Windows home path found with either separator      1 case(s), went red
+```
