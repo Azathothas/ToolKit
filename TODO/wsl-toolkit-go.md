@@ -4603,9 +4603,8 @@ the restored image's first boot: `Growing root partition to fill device`, then
 ⛔ **The 9 GiB threshold was written without the image's swap partition.** The
 image carries `freebsd-boot` 61K, `efi` 33M and `freebsd-swap` 1.0G ahead of
 root, so a 10 GiB disk leaves a 9.0G partition, and UFS reports 8.7G. The grow did
-reach the filesystem: the root went from 4.8G to 8.7G. Ruled 10 GiB, and the
-Approach forbids a larger default, so the threshold is what needs the ruling, and
-[`PROGRESS.md`](PROGRESS.md) asks it.
+reach the filesystem: the root went from 4.8G to 8.7G. The operator was asked, and
+raised the default instead of lowering the bar; the ruling is below.
 
 ⭐ **Rust installs now, so the disk was the limit.** The acceptance command, run B,
 287.2 s: `requested=8 present=5 skipped=build cargo absent=nim failures=1`, with
@@ -4671,12 +4670,32 @@ blank line the bootstrap appended. ⚠ **Residue, named rather than hidden:**
 `pkg`'s 72M catalogue under `/var/db/pkg/repos`, a cache that run B's network
 fetched, and savecore's 2-byte `/var/crash/bounds` counter.
 
+### Ruled by the operator, 2026-09-13: a true 10 GiB root
+
+Asked whether an 8.7 GiB root on the 10 GiB disk satisfies the first condition,
+the operator answered: "raise it to 12/13 however much necessary to provide true
+10GiB".
+
+- ⭐ **The first passing condition is now a root filesystem of at least 10 GiB.**
+  Read as the filesystem's size: `df -k /` reporting at least 10,485,760 KiB,
+  which is the number behind the run's own `root filesystem` summary line.
+- ⛔ **The default disk is the smallest whole number of GiB that gives it, and
+  that is measured, not computed.** ⚠ The prediction to measure first, from this
+  layout: 12 GiB leaves a `freebsd-ufs` partition of about 10.97 GiB, and at the
+  ratio UFS showed at 10 GiB, 8.7G of filesystem in a 9.0G partition, that is
+  about 10.6 GiB. 11 GiB predicts about 9.7 GiB and falls short. If 12 measures
+  short, the ruling says 13.
+- This supersedes the 10 GiB default and the Approach's "not larger than the
+  ruling". What moves with it: `BsdDefaultDiskGiB` and the ruling its comment
+  quotes, the manual's `--disk` default, and the BSD section of `wsl-toolkit.md`.
+
 ### Still open
 
 1. nim on `PATH` on FreeBSD, in
    [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh). ⚠ That
    file is fetched by URL, so the fix reaches its callers in the same commit.
-2. The operator's ruling on the root threshold.
+2. The default disk raised per the ruling above, and the root measured at 10 GiB
+   or more.
 3. The acceptance again: exit 0, `absent=` empty, and `version.nim`.
 4. The changelog row at closing, because the default disk changing is observable.
 

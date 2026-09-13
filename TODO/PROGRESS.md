@@ -95,7 +95,9 @@ tree          85,893 text lines in 279 files at 2656a0d, against 83,285 in 270
    FreeBSD guest: `sh -c 'echo joined-a; # a comment; echo joined-b'` printed only
    `joined-a` and exited 0. A blank line becomes `; ;`, which is a syntax error.
    `bsd.go` says the joined payload is "what a shell already understands".
-   Recommended: P1, because the answer is silently wrong.
+   ⭐ **On the operator's instruction it is
+   [a comment on issue 33](https://github.com/Azathothas/ToolKit/issues/33#issuecomment-5651331707)
+   rather than an entry**, so step 2 reconciles it with that issue.
 2. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 1 on
    debian 13, under HEAD and the refactor alike. The cause was not read.
 3. `pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never run.
@@ -160,7 +162,8 @@ artefact behind it.
   username's guard is `TOOL-25`'s row, and the sentence says so.
 - **Found:** `WSL-72` asks for a root of at least 9 GiB, which a 10 GiB disk
   cannot give on an image carrying a 1 GiB swap partition. Recorded as a
-  correction and asked below rather than quietly met.
+  correction and put to the operator rather than quietly met, and the operator
+  raised the default instead.
 - **Verified:** the damaged BSD image was not this session's grow. The first
   failing boot ran before any grow, on an image at the published size.
 - **Verified against the artefact:** 978 nim files; a 171,601,920-byte core; 500,
@@ -169,9 +172,12 @@ artefact behind it.
 
 ## Open questions for the operator
 
-1. `WSL-72`: accept an 8.7 GiB root on the ruled 10 GiB disk as the grow reaching
-   the filesystem? Recommended yes: the swap partition is the image's, and the
-   entry forbids a larger default.
+⭐ **None.** Both that this session raised were ruled on 2026-09-13:
+
+1. `WSL-72`'s root threshold: the default disk rises to the smallest whole GiB,
+   12 or 13, that gives a true 10 GiB root filesystem, measured rather than
+   computed. The entry carries the ruling and the prediction to measure first.
+2. The `bsd run` line join: a comment on issue 33, not an entry.
 
 ## Host state
 

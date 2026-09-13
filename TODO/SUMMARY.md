@@ -28,6 +28,7 @@ on what was true last time.
 | poll until the Muse CLI is authenticated, and give the operator exact commands | done. The operator installed and signed in; the agent drove everything else |
 | close the task in flight, update the record and amend the issue 30 comment in place | done: `WSL-69` closed on green CI, and the issue comment amended |
 | file pull request 31 for the next session, which reviews it trusting nothing, adopts what is useful, deletes the PowerShell product, closes the pull request, then reads issues 30, 32 and 33 and turns them into entries | filed as `WSL-73`, and [`PROGRESS.md`](PROGRESS.md)'s work order carries the rest in the operator's order |
+| ask the two open questions and record the answers | done. `WSL-72`: the default disk rises to whatever whole GiB, 12 or 13, gives a true 10 GiB root, measured. The `bsd run` line join: posted as a comment on issue 33 instead of an entry |
 
 ### Resume point
 
