@@ -1,19 +1,13 @@
 # Common provider-base setup
 
-⭐ **The scripts this page used to carry now live at the top of the tree**, in
-[`../../../../../scripts/common/`](../../../../../scripts/common/):
-[`bootstrap.sh`](../../../../../scripts/common/bootstrap.sh) and
-[`tmux.conf`](../../../../../scripts/common/tmux.conf).
-
-⚠ **They moved because neither is about this tool.** `bootstrap.sh` brings any
-Unix userland up to a named tool set, on twelve package managers including the
-three BSD ones, and `tmux.conf` is a multiplexer policy. Keeping them under one
-tool's `examples/` directory meant anybody who wanted either had to know that
-this provider example existed. [`../../../../../scripts/README.md`](../../../../../scripts/README.md)
-is their contract.
-
-This page is what remains: how those two are used from a provider base, and
-nothing that belongs to them.
+How a provider base uses two general-purpose files from
+[`../../../../../scripts/common/`](../../../../../scripts/common/).
+[`bootstrap.sh`](../../../../../scripts/common/bootstrap.sh) brings any Unix
+userland up to a named tool set, on twelve package managers including the three
+BSD ones, and [`tmux.conf`](../../../../../scripts/common/tmux.conf) is a
+multiplexer policy. Neither is about this tool, so neither lives here:
+[`../../../../../scripts/README.md`](../../../../../scripts/README.md) is their
+contract, and this page carries nothing that belongs to them.
 
 ---
 

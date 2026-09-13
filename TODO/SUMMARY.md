@@ -7,6 +7,35 @@ on what was true last time.
 
 ---
 
+## 2026-09-13, the third session
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-13T14:24:42Z | ended at the record commit's own time, about two and a half hours, one context and one summarised continuation. The operator ended it for budget |
+| Commits | `fc30c6c`, with 13 uncommitted paths inherited | `02ea58d`, pushed, CI run 34767124644 green on all six jobs; then the record commit |
+| Work | four steps assigned | **Completed 2:** step 1, `WSL-73` closed; step 2, `WSL-74` to `WSL-79` filed and `WSL-67` reconciled. **Cut short by the operator, 1:** step 3, two doc fixes of a full review. **Step 4:** this record. Failed: 0. Entries 108, 6 open, to 114, 12 open, 102 done |
+| Changes | `fc30c6c` | `git diff --shortstat fc30c6c 02ea58d` read 41 files, +2,280 / -343. The record commit's `git diff --shortstat`, before this row was written, read 6 files, +728 / -80. ⚠ Stamped |
+| Size | 73,594 text lines at `fc30c6c`, `git grep -I -c ''` | 75,531 at `02ea58d`, +1,937, before the record commit |
+| Checks | the gate exit 1, 2 problems over 19 checks, 40.88 s | the gate 19 of 19 in 26.5 s at 16:42:08Z on the record change, after one `one-home` fix. Go suites green with an 8.3 `TEMP`; ShellCheck 0.9.0 in `ubuntu:24.04` clean; acceptance 90 of 90 on a build of `02ea58d` |
+| Cost | not measured | no paid operation. Network bytes not measured: container images, herdr's documentation and Meta's two installer scripts read, nothing of either installed |
+| Health | pull request 31 closed with `WSL-73` checkpointed, and issues 30, 32 and 33 with no entries | ⭐ `WSL-73` closed and pull request 31's comments name the commits. Issues 32 and 33 amended in place, and each item mapped to an entry. `wsl -l -v` reads the same five distributions. ⛔ `wsl-toolkit-v3.0.0` not cut, the operator's call. Tree clean after the record commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| finish pull request 31's work as `WSL-73`: parity and better, suites green, docs lean, three deep reviews, CI green | done: four reviews, 27 findings fixed, 90 of 90 acceptance, CI green |
+| read issues 30, 32 and 33, reconcile the open entries and author the entries that resolve them, implementing none | done: six entries, and `WSL-67` reconciled. One defect found while grounding, `WSL-74`, was measured with a read-only command |
+| swap Zellij for herdr in issue 32 | recorded as a ruling in `WSL-76` and carried by `WSL-77` and `WSL-78`; ⚠ not implemented, as step 2 required |
+| amend issues 32 and 33, update the docs, and end the session | done, with step 3's review cut to two fixes |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. Its work order closes issues 30, 32 and
+33, and five of the new entries wait on a decision the operator has not ruled.
+
+---
+
 ## 2026-09-13, the second session
 
 | row | before | after |

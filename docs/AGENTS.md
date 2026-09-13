@@ -192,7 +192,7 @@ these is held to.
 | find out what podman and WSL are holding | `wsl-toolkit resources` | a hand-rolled sequence of `podman` reports |
 | fetch and run that tool from another project | download a versioned executable release asset, verify `SHA256SUMS` and its `.cosign.bundle`, then run the file | a download piped into a shell |
 | find out why a cross-architecture container will not run | `scripts/common/check-binfmt.sh` | `systemctl status systemd-binfmt`, which reports success over zero handlers |
-| write a licence file | `scripts/common/fill-license.sh` | copying a text and editing the notice, which corrupts four of the twelve |
+| write a licence file | `scripts/common/fill-license.sh` | copying a text and editing the notice, which corrupts five of the twelve |
 | see what a tree ships that addresses an agent | `scripts/common/deslop.sh` | a grep |
 | check what an open issue or pull request actually asserts | `scripts/common/check-remote-items.sh` | the item's own description |
 

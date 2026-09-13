@@ -3926,6 +3926,26 @@ account afterwards. ⭐ **The duplication is real and is recorded here rather th
 resolved**, because merging them means the Go module embedding a file that
 consumers also fetch by URL, and that is a decision rather than a refactor.
 
+## Amendment, 2026-09-13: reconciled against issues 30, 32 and 33
+
+| item above | where it stands |
+| --- | --- |
+| 1, the FreeBSD path | driven. The disk limit it found is `WSL-72` |
+| 2, `pkgin` and `pkg_add` never run | open |
+| 3, `soar` and `nix` not driven | open |
+| 4, the provider-profile scenarios outside the acceptance runner | open |
+| 5, the Muse installer and an authenticated smoke | closed by `WSL-69` |
+| the second package map | `WSL-70` |
+
+⚠ **Two premises of issue 30 moved.** The operator ruled on 2026-09-13 that
+herdr replaces Zellij as the agents' multiplexer, which is `WSL-76`; tmux keeps
+its generic configuration. And Muse is not Linux-only: Meta serves a Windows
+installer, which `WSL-78` records.
+
+Issue 30 is resolved by this entry and `WSL-68`. `WSL-70`, `WSL-71` and `WSL-72`
+came out of the work on it. Issue 32 is `WSL-74` to `WSL-78`, and issue 33 is
+`WSL-79`.
+
 ---
 
 ## WSL-68. A base that can reach nothing on the host at all
@@ -5245,7 +5265,7 @@ VERDICT: the tree agrees with itself.
 EXIT=0
 ```
 
-The runner, over the same build:
+The runner, over a build of `02ea58d` itself, from 16:05:11Z to 16:10:49Z:
 
 ```text
 acceptance: 90 case(s) passed against a real machine.
@@ -5269,3 +5289,578 @@ The pass conditions:
   `PROGRESS.md` records it;
 - four reviews recorded above, each naming what it looked at that the others did
   not.
+
+---
+
+## WSL-74. A named instance acts on whatever base the nearest project file names
+
+**Source** found on 2026-09-13 while grounding the entry for
+[issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 1.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`--instance NAME` promises a distribution and a state directory that belong
+together. A `wsl-toolkit.json` in the working directory or any parent replaces
+`base.name` and `base.user` outright, so a command run from inside a project that
+carries its own file acts on that file's distribution, as that file's account,
+while it writes to the named instance's state directory. Nothing refuses it, and
+the instance line on stderr still names the instance's own distribution.
+
+## Premise
+
+⭐ **Measured on 2026-09-13, read-only, with a 3.0.0 build.** From a directory
+holding `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"}}`,
+`wsl-toolkit --instance muse config --json` exited 0 and answered `"instance":
+"muse"`, a `"home"` under `instances\muse`, `base.name` `wsl-toolkit` and
+`base.user` `toolkit`. Its stderr said `instance muse: distribution
+wsl-toolkit-muse`.
+
+Read from the code: `DefaultConfig` at `internal/toolkit/catalog.go:273` takes the
+instance's distribution, and `LoadConfig` at `catalog.go:411` replaces it with any
+stored `base.name`. Nothing compares the two after `main.go:265` sets
+`SelectedInstance`.
+
+⚠ **Read and not driven:** `base remove --yes` from that directory would act on
+`wsl-toolkit`, and a file naming `wsl-toolkit-muse` read with no `--instance`
+pairs that distribution with the default state directory. The guides pass
+`--instance` and a profile naming the matching distribution, so they do not
+reach either.
+
+## Approach
+
+1. One check where the configuration is resolved, beside `Validate` in
+   `LoadConfig`, so every command inherits it: a `base.name` that is not the
+   selected instance's distribution is refused with exit 2. The message names the
+   file, both distributions, and the two ways out: the `--instance` the file
+   implies, or `--config` naming the instance's own file.
+2. The same refusal when a file names an instance's distribution and no instance
+   is selected.
+3. `config` still prints which file won and what it searched when it refuses.
+
+⛔ **Do not derive the instance from the file.** A file that silently selects a
+state directory is the defect this entry removes.
+
+## Consumers
+
+A configuration that was accepted is refused, so a caller relying on the
+mismatch gets exit 2 where it got 0. That is breaking for that one shape by
+[`../docs/consumers.md`](../docs/consumers.md), and the changelog row says so.
+
+## Prove
+
+```powershell
+wsl-toolkit --instance muse config --json
+```
+
+Run from the directory described in the premise. Passing is:
+
+- exit 2, read unpiped, with both distribution names and the file's path in the
+  message;
+- the one-checkout profile from `examples/common/access-profiles.md` with
+  `--instance muse` still exits 0;
+- the Go suites green, with a case for each direction;
+- a mutation row that removes the comparison goes red.
+
+---
+
+## WSL-75. One named base serves every project, and a grant changes without a restart
+
+**Source** [issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 1,
+filed by the operator on 2026-09-13.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+The Muse base is configured from a `wsl-toolkit.json` at the root of the one
+checkout it may edit. Using it for a second project needs a second file or an
+edited one, and a changed grant is applied by `base ensure`, which restarts the
+distribution and stops every agent running in it. The operator wants the base's
+configuration and home kept under their own account and usable for all of their
+projects.
+
+## Premise
+
+- ⭐ **The account's home already belongs to the base, not to a project.** It
+  persists with the distribution, measured by `WSL-69`.
+- ⭐ **The search already ends at the instance's own file**,
+  `%LOCALAPPDATA%\wsl-toolkit\instances\NAME\config.json`. `ResolveConfig` at
+  `catalog.go:336` tries `--config`, then the nearest `wsl-toolkit.json` here or
+  above, then that file. ⚠ So from inside any project that carries a file, the
+  project's file wins and the instance's never applies, and `WSL-74` is the
+  measurement of what that does.
+- ⚠ A relative mount source resolves against the file that names it, so a
+  state-directory file needs absolute sources.
+- ⛔ **A grant change restarts the base.** Read from `WSL-67`: verification
+  refused a stale mount and re-provisioning removed it across a restart. How much
+  running work a restart stops was not measured.
+- ⚠ **Read and not measured:** that root can add a DrvFS mount at run time with
+  automount off, which `access-profiles.md` gives as the reason passwordless sudo
+  is not a boundary.
+
+## Approach
+
+1. `WSL-74` first.
+2. **When an instance is named and its own `config.json` exists, that file is the
+   configuration**, ahead of the working directory. `--config` still wins over
+   both, and `config` prints which file won and why.
+3. **Grants that change live:** a verb pair beside `base ensure`, named after
+   reading `wsl-toolkit man`, that adds or removes one grant in the instance's
+   file, mounts or unmounts it as root without a restart, rewrites the tool-owned
+   `/etc/fstab` block, and verifies the live mount, so a later restart and
+   `base ensure` reach the same state.
+4. `base status --probe` lists every grant, and a live mount that no configuration
+   names stays a problem, as it is today.
+5. The one-checkout profile keeps working unchanged.
+
+⛔ **No merging of a project file with the instance's.** `ResolveConfig` refuses
+merging by design, `catalog.go:333`.
+
+## Decision
+
+How one base reaches every project:
+
+- **A. Live grants, one per project. Recommended.** The least access, no restart,
+  one command per new project.
+- **B. One grant of the directory that holds every project.** No new code, and
+  the agent reaches every project under it. It works today and stays documented
+  as the operator's option.
+- **C. Every project listed as a grant and applied by `base ensure`.** No new
+  verb, but each change restarts the base and stops the sessions issue 32 item 2
+  wants kept running.
+
+## Consumers
+
+⚠ Point 2 changes which file applies when `--instance` is combined with a
+working-directory file and the instance has its own. Breaking for that
+combination by [`../docs/consumers.md`](../docs/consumers.md); the changelog row
+says so. The verbs are additive.
+
+## Prove
+
+On a throwaway instance. ⛔ Never on `wsl-toolkit-muse`, which holds the
+operator's credential, without the operator.
+
+```powershell
+wsl-toolkit --instance NAME base status --probe --json
+wsl-toolkit --instance NAME base exec --dir /workspaces/SECOND -c 'git status --short'
+```
+
+Passing is:
+
+- a process started in the base before the grant is still running after it, read
+  by its PID;
+- the probe lists both grants and no problem, and the second command exits 0;
+- after `wsl --terminate` and `base ensure`, the same two grants verify;
+- removing a grant unmounts it live, and the probe lists one;
+- a mutation row per refusal goes red.
+
+---
+
+## WSL-76. herdr replaces Zellij, and the operator watches the agents from Windows
+
+**Source** [issue 32](https://github.com/Azathothas/ToolKit/issues/32) items 2
+and 3, filed by the operator on 2026-09-13, and their correction the same day:
+"there's a much better tooling available: https://herdr.dev/agent-guide.md We need
+to swap zellij for this".
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+Item 2: the agent runs Muse in a multiplexer window through `wsl-toolkit`, and the
+operator sees the same window from the multiplexer installed on Windows. Item 3:
+an agent drives Muse's screen today by writing characters, sending keys and
+reading the screen back, as `examples/muse-code/README.md` shows. That is
+scripting a terminal. The operator wants agents on Windows and in the base to
+hand work to each other, to oversee and interrupt both, and `wsl-toolkit` to
+print the exact command that attaches.
+
+## Premise
+
+⭐ **Ruled on 2026-09-13: herdr replaces Zellij.** This supersedes the ruling in
+`WSL-69`'s amendment that made Zellij 0.45.1 Muse's durable session. tmux keeps its
+generic configuration.
+
+⚠ **Read from herdr's v0.9.0 documentation on 2026-09-13, and none of it
+measured:**
+
+| what | read |
+| --- | --- |
+| the release | 0.9.0, stable, published 2026-09-07. `LICENSE` at the tag is Apache-2.0. Assets carry GitHub's SHA-256 digests, and `herdr-linux-x86_64` is 24,644,488 bytes. Not in Arch's repositories |
+| Muse | a supported `--kind`, detected from the screen, with no integration, so no native session restore. `pi` and `omp` have full integrations |
+| control | `herdr agent start NAME --kind muse --pane ID`, `agent prompt NAME TEXT --wait --timeout MS`, `agent wait --until STATE`, `agent read`, `agent send-keys`. Answers are JSON; a server error exits 1 and a usage error 2 |
+| watching | `herdr terminal session observe` streams a pane to any number of read-only observers |
+| Windows | a native Windows client reaches a Linux host only as `herdr --remote SSH-TARGET` over Windows OpenSSH. Windows cannot be the remote host, `agent attach` does not run on native Windows, and one window holding Local and an SSH machine is not supported on a Windows client |
+| accidents | detach is `prefix+q`. `prefix+x` closes the focused pane, and `ui.confirm_close` is documented for workspaces only |
+| the network | `update.version_check` and `update.manifest_check` default on. `--remote` offers to install herdr into `~/.local/bin` when the host has none |
+
+⚠ **Nothing sets the base up to run an SSH server**, so the one Windows client
+path herdr documents has nothing to reach.
+
+⭐ **Measured on 2026-09-13** from Muse Code 1.1.1's own `--help`, read-only
+through `base exec`: Muse has `session-message list|send` for messages between its
+sessions and `serve` for a session host over stdio. `base exec` gives a command
+`/dev/null` as stdin, `cmd_base_exec.go:18`, so a stdio protocol cannot pass
+through it.
+
+## Approach
+
+1. **Measure first, on a throwaway instance:** herdr 0.9.0 from the release asset,
+   its SHA-256 pinned in the tree and checked before use; a server as the base
+   account; `agent start --kind muse`, `agent prompt --wait`, `agent read`. Record
+   what the documentation said that did not hold.
+2. **The Windows path to the server**, per the decision.
+3. **herdr's configuration for the base as a tracked file**, so a stray key cannot
+   stop an agent: the close bindings confirmed or unbound, measured by pressing
+   them.
+4. **A command that prints how to attach**, with the values filled in: the Linux
+   client through `base shell`, and the Windows line for the chosen path. Named
+   after reading `wsl-toolkit man`.
+5. **The layer between agents is herdr's own `agent` commands**, reached through
+   `base exec`: an agent on Windows starts, prompts, waits on and reads Muse. For
+   one window holding both agents, the Windows agent runs in a local herdr on
+   Windows, and a pane beside it runs the Linux `herdr agent attach muse` through
+   the chosen path. ⚠ Read, not measured.
+6. **The guides:** `examples/common/zellij.md` becomes `examples/common/herdr.md`,
+   and `examples/muse-code/README.md` is rewritten from what was driven. No Zellij
+   page or link remains.
+
+⛔ **No wrapper that re-implements `agent prompt --wait`, no port beyond
+127.0.0.1**, and nothing installed on the base by `herdr --remote`.
+
+## Decision
+
+How the Windows herdr client reaches the server in the base:
+
+- **A. OpenSSH through `wsl.exe`. Recommended.** An SSH configuration entry on
+  Windows whose `ProxyCommand` starts `sshd -i` in the base through `wsl.exe`,
+  with key authentication only. No listening port. ⚠ Unmeasured, and the first
+  thing to measure.
+- **B. `sshd` bound to 127.0.0.1 in the base**, reached through WSL's localhost
+  forwarding, which carried Zellij's web client on port 8082. A port any local
+  process can reach.
+- **C. No Windows client.** Windows Terminal runs the Linux client through
+  `base shell`. Nothing to configure, and no local keybindings or clipboard
+  bridge.
+
+The recommendation is A, then B if A cannot attach, with C documented either way.
+
+A second, smaller fork: herdr's background checks in the base. Recommended:
+`version_check` off, because the tree pins the version; `manifest_check` on,
+because Muse's state detection is a remote manifest, and `herdr server
+agent-manifests --json` in the base status says which one is in effect.
+
+## Consumers
+
+None: `examples/` has no row in [`../docs/consumers.md`](../docs/consumers.md). ⚠
+If herdr joins a toolset in `scripts/common/bootstrap.sh`, that file is fetched by
+URL and the change reaches its callers.
+
+## Prove
+
+Against a throwaway checkout like `WSL-69`'s, whose `src/inventory.py` prints 47:
+
+```powershell
+wsl-toolkit --instance NAME base exec --dir /workspaces/project -c 'herdr agent prompt muse "Run python3 src/inventory.py and answer with only the number it prints." --wait --timeout 300000'
+wsl-toolkit --instance NAME base exec -c 'herdr agent read muse --source recent-unwrapped --lines 40'
+```
+
+Passing is:
+
+- the first exits 0 and the second's output carries `47`, each read unpiped;
+- the attach line the tool prints, run on Windows, reaches the same server: `herdr
+  agent read muse` through that path returns the same text;
+- the close bindings pressed in Muse's pane leave `herdr agent get muse` reporting
+  it alive;
+- `check docs` green with no Zellij page left.
+
+---
+
+## WSL-77. A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters
+
+**Source** [issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 4,
+filed by the operator on 2026-09-13. Their correction the same day puts herdr where
+the item says Zellij.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+The Muse base was built by hand, in the order `WSL-69` records: a profile, `base
+ensure`, the multiplexer from pacman, the bootstrap with a `--without` list, the
+Muse installer run by the operator, and `muse login`. Nothing rebuilds it. Another
+agent CLI, `pi` or `omp` for example, or several agents in one base, means writing
+that order again. The operator wants a clone of this repository and one command to
+rebuild the base, the login excepted, with the multiplexer and each agent CLI as a
+pluggable adapter.
+
+## Premise
+
+- ⭐ **Every step, its order and the two operator steps are measured**, in
+  `WSL-69`.
+- ⭐ **`base ensure` is already the reconciler and `base status --probe` the
+  proof.** `WSL-67` extended `cmd_base_preset.go` rather than fork a second
+  provisioning path.
+- ⛔ **The Muse installer is mutable**, and the launcher it fetches is checked
+  only when the server sends a digest. [`../docs/security/remote-ops.md`](../docs/security/remote-ops.md)
+  refuses running a fetched script unread, so an unattended rebuild cannot simply
+  run it.
+- ⚠ **Several agents in one base agrees with the ruling that agents with
+  different authority get separate instances**, when they share one authority:
+  one account and one herdr server. Agents that need different authority still
+  need instances of their own.
+
+## Approach
+
+1. **An adapter is a directory with a fixed contract:** what it installs and as
+   which account, what it pins and how it verifies it, what it depends on, the
+   command that proves it, and the steps only the operator can do.
+2. **Adapters are declared in the instance's configuration, applied by `base
+   ensure` after provisioning, and each one reports in `base status --probe`.**
+3. **herdr, from `WSL-76`, and Muse are the first two.** ⛔ Muse's adapter saves
+   the installer, prints its length and SHA-256, and runs it only when that digest
+   equals one the operator passed after reading the file, as the bootstrap's
+   `--expect-sha256` does. Otherwise it stops and prints the file's path and the
+   command that continues. `muse login` stays the operator's, printed at the end.
+4. **The one command:** an example profile under `examples/muse-code/` that names
+   the adapters, run with `base ensure` from a build of the clone.
+5. `pi` and `omp` are named as the next adapters and not built.
+
+⛔ **No adapter registry and no adapter fetched from outside the tree.**
+
+## Decision
+
+Where adapters live and what applies them:
+
+- **A. Declared in the configuration and applied by `base ensure`. Recommended.**
+  The definitions live in the tree, and the executable embeds a generated copy
+  that a gate rule compares byte for byte, the precedent `RULES.md` section 4 sets
+  for the package table. One reconcile path and one proof path.
+- **B. A script beside the tool that runs `base exec --script` per adapter.** Less
+  code, and a second provisioning path the probe cannot see.
+
+A second fork: how an adapter pins. Recommended: a digest in the tree where
+upstream publishes a release digest, as herdr does; a resolve-and-print where it
+does not, which proves transport only and says so; and never Muse's installer
+without the operator's digest.
+
+## Consumers
+
+None until an adapter reaches a fetched file. A new configuration key is
+additive.
+
+## Prove
+
+From a fresh clone, on a throwaway instance whose profile names that instance's
+distribution, never `wsl-toolkit-muse`:
+
+```powershell
+wsl-toolkit --instance NAME --config PROFILE base ensure
+wsl-toolkit --instance NAME --config PROFILE base status --probe --json
+```
+
+Passing is:
+
+- the first run stops at the Muse installer with exit 2, printing its digest;
+- run again with that digest, `base ensure` exits 0, and the probe reports each
+  adapter healthy with its version;
+- `herdr --version` and `muse --version` answer through `base exec`;
+- `base remove --yes` removes the instance afterwards.
+
+---
+
+## WSL-78. Muse from any Windows project, and a guide for someone who has never used a coding agent
+
+**Source** [issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 5,
+filed by the operator on 2026-09-13.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+Muse runs only inside its base, through `base exec`, against its one granted
+checkout. An agent on Windows working in another project cannot call it. And the
+operator has never used a terminal coding agent: they want every Muse option that
+matters, reasoning effort included, run and written down in ASD-STE100 Simplified
+Technical English.
+
+## Premise
+
+⭐ **Measured on 2026-09-13 from Muse Code 1.1.1's own help**, read-only through
+`base exec`:
+
+- `--reasoning-effort none|minimal|low|medium|high|xhigh|max|ultra`, default
+  `high`, on both `muse` and `muse exec`;
+- `--model`, `--preset native-basic|miniswe`, `--approval-mode
+  untrusted|on-request|never` with `on-request` the default, `--approval-judge`,
+  `--permission-profile` and `--worktree`;
+- the safety switches `--yolo`, `--trust-workspace`, `--disable-approval`,
+  `--disable-sandbox`, `--sandbox-network restricted|enabled|proxy-only`,
+  `--disable-write` and `--disable-shell`;
+- `muse exec` adds `--json`, `--prompt-file`, `--max-model-steps`, the
+  `--context-compaction-*` settings, `--session-id` and `--disable-web-tools`;
+- the subcommands `resume`, `exec`, `config`, `export`, `trace`, `skills`,
+  `sandbox`, `schema`, `serve`, `session-message`, `mcp`, `auth`, `login`,
+  `logout` and `init`.
+
+⛔ **Muse is not Linux-only, so issue 30's premise does not hold for it.** Meta
+serves `https://dev.meta.ai/install.ps1`, 8,367 bytes, read and not run. It puts
+`muse.cmd` and a launcher in `%LOCALAPPDATA%\Programs\muse`, or `MUSE_INSTALL_DIR`,
+adds that directory to the account's `PATH` unless `MUSE_NO_MODIFY_PATH` is set,
+and checks the launcher's SHA-256 only when the server sends one. Muse 1.1.1 in the
+base also carries `muse sandbox windows check|setup`. ⚠ Whether the Windows build
+works was not measured.
+
+⚠ **A native Windows Muse runs as the Windows account.** Issue 30's rule that it
+reach no directory it was not given would then rest on Muse's own sandbox, which
+nobody here has measured.
+
+## Approach
+
+1. The decision below first.
+2. **Under A, a `muse` entry point on Windows that runs Muse in the base for the
+   caller's project.** It maps the working directory to its grant from `WSL-75`,
+   refuses an ungranted directory and prints the command that grants it, passes
+   arguments through unchanged, and forwards the exit code. Headless `muse exec`
+   goes through `base exec`; the interactive screen goes through herdr, `WSL-76`.
+   ⛔ No second path into the guest.
+3. **The guide**, beside the Muse example: short sentences, one instruction each,
+   in the imperative, written to ASD-STE100's rules without copying its
+   specification. Every command in it is run and its output read before it is
+   written. It covers checking the install, signing in, the first session, the
+   workspace trust question, reasoning effort, the model, the approval modes, what
+   each safety switch allows, `exec --json`, `resume` and `export`, skills, the
+   herdr pane, and stopping without losing work.
+4. Each option names the Muse version it was measured on, because Meta changes
+   them.
+
+## Decision
+
+- **A. Muse stays in the base, and Windows gets an entry point. Recommended.**
+  Issue 30's boundary holds, and one install serves the operator and every agent
+  on Windows.
+- **B. Meta's Windows installer, run natively.** Simpler, and Muse reaches
+  whatever the Windows account can. herdr runs locally on Windows, and a Windows
+  host cannot be a `herdr --remote` target.
+
+## Consumers
+
+None: a Windows entry point and a guide. If the entry point ships inside the
+executable, it is additive.
+
+## Prove
+
+From a granted project directory on Windows:
+
+```powershell
+muse exec --json --reasoning-effort low --approval-mode never "Answer with only the number of files git tracks here."
+```
+
+Passing is:
+
+- exit 0, JSON events on stdout, and the number equal to what `git ls-files`
+  counts on Windows;
+- from an ungranted directory, exit 2 and the grant command printed;
+- a transcript of every command in the guide, run in the order the guide gives.
+
+---
+
+## WSL-79. A BSD run pays two minutes before its first command, and a comment line ends its script early
+
+**Source** [issue 33](https://github.com/Azathothas/ToolKit/issues/33), filed by
+the operator on 2026-09-13, and the comment the operator had posted on it the same
+day about the line join. By the operator's ruling the join belongs to that issue
+and is not an entry of its own, so it is a task here.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+1. **Issue 33:** every `bsd run` boots the FreeBSD guest from power-on, waits
+   about two minutes for a login prompt before its payload runs, and powers it off
+   afterwards, so the next run pays again. The operator asks why and whether it is
+   fixable. If it is not, the docs say so and tell people and agents to use the
+   guest only when nothing else will do.
+2. ⛔ **Its comment:** a payload's lines are joined with `; `, so a `#` comment
+   line swallows every command after it and the run still exits 0. A blank line or
+   a compound command split across lines is a syntax error.
+
+## Premise
+
+- ⭐ **Measured before this entry**, in `BSD-03` in [`bsd.md`](bsd.md): `login:`
+  at 113.6 s, 117.4 s and 117.7 s over three boots, 108 s of it between the kernel
+  banner and mounting root. `WSL-72`'s five sessions took 128.6 s to 287.2 s
+  each.
+- ⭐ **Read from the code:** each run starts `qemu-system-x86_64 -accel whpx -M
+  q35 -cpu Icelake-Server-v7 -smp 2 -m 2048`, the image on `virtio-blk-pci`,
+  `-serial stdio`, and no network device without `--network`, at
+  `internal/toolkit/bsd.go:334`. It waits for `login:` at `bsd.go:484`, grows the
+  root, runs the payload and powers off. Nothing survives between runs.
+- ⚠ **Not measured: which probe holds the 108 s.** The console is mirrored to
+  stderr without timestamps, `cmd_bsd.go:306`, so one timestamped boot answers it.
+- ⭐ **The join is `bsd.go:590` and `bsd.go:591`**, and the comment measured it:
+  `echo joined-a; # a comment; echo joined-b` printed only `joined-a` and exited
+  0 in the FreeBSD 15.1 guest.
+
+## Approach
+
+1. **Time a boot**, with each console line timestamped on the host, and name the
+   probe that stalls.
+2. **Change one thing per boot, three boots each, and keep only what measures
+   faster:** what the timeline implicates, among the loader's countdown, probes for
+   devices this guest does not have, the devices QEMU presents, and the CPU and
+   machine models.
+3. **The payload reaches the guest as bytes, not as a typed line.** The candidate
+   to measure first is a second raw disk holding a tar of the script, read in the
+   guest with `tar -xf /dev/vtbd1`, which also removes the console's line-length
+   limit. Typing it as bounded base64 lines is the fallback. ⛔ Never strip
+   comments or parse shell on the host.
+4. **The manual's BSD section** carries the boot measured after step 2, and says
+   to use the guest only when a BSD kernel is required if a run still pays more
+   than 30 seconds before its payload.
+5. The comment's three shapes become regression cases, each asserting that the
+   later command ran and that the exit code is the script's.
+
+⛔ **The guest image is shared, and it is a pkgbase system whose kernel is a
+package.** Take a package baseline first, remove only what was added, and never
+remove a `FreeBSD-*` package.
+
+## Decision
+
+Asked after step 2, not before: keep tuning, keep a guest running between runs, or
+document the cost. Recommendation: document the measured cost in every outcome, and
+build a guest that stays running only if tuning leaves more than 30 seconds before
+the payload.
+
+## Consumers
+
+`wsl-toolkit bsd run` ships in the executable. A payload whose comment line
+swallowed later commands now runs them, which is the fix of a silent failure, and
+the changelog row says so. A faster boot changes nothing a payload sees.
+
+## Prove
+
+A script file holding, one per line: `echo a`, `# note`, an empty line, `if true;
+then`, `echo b`, `fi`, `exit 3`.
+
+```powershell
+wsl-toolkit bsd run --script bsd-join.sh
+```
+
+Passing is:
+
+- stdout `a` then `b`, and exit 3, read unpiped;
+- `wsl-toolkit bsd run -c true` three times, with the `login at` figure recorded,
+  and the manual carrying it;
+- the regression cases green in the Go suites;
+- the image left as found: the package list compared with its baseline, no
+  `FreeBSD-*` package removed.
