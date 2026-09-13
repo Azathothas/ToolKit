@@ -51,6 +51,7 @@ var all = []check{
 	{"shellcheck", "check-shellcheck/1", checks.Shellcheck, "shellcheck is clean over every tracked shell script"},
 	{"powershell", "check-powershell/1", checks.PowerShell, "every tracked .ps1 parses and PSScriptAnalyzer is clean over scripts/"},
 	{"bundle", "check-bundle/1", checks.Bundle, "the two generated products still match the parts that build them"},
+	{"package-table", "check-package-table/1", checks.PackageTable, "the base provisioner's copy of the shared package table matches bootstrap.sh"},
 	{"go", "check-go/1", checks.GoModules, "gofmt, vet, build and test over every Go module here"},
 	{"mutations", "check-mutations/1", checks.Mutations, "every row of the mutation table still reaches the guard it names"},
 	{"commits", "check-commits/1", checks.Commits, "no commit credits a tool: no trailer, no generated-with line, no tool name, no emoji"},
@@ -60,11 +61,14 @@ var all = []check{
 func main() {
 	args := os.Args[1:]
 	asJSON := false
+	fix := false
 	var name, msgPath string
 	for _, a := range args {
 		switch {
 		case a == "--json":
 			asJSON = true
+		case a == "--fix":
+			fix = true
 		case a == "-h" || a == "--help":
 			usage()
 			os.Exit(0)
@@ -107,6 +111,28 @@ func main() {
 		os.Exit(2)
 	}
 
+	// ⛔ A CHECK IS READ ONLY UNLESS IT IS ASKED TO FIX, and only a check that has
+	// a fix accepts the flag. scripts/README.md's contract, point 5. A gate run
+	// never writes: `--fix` with no check named is refused rather than applied to
+	// whatever happens to support it.
+	if fix {
+		if name != "package-table" {
+			fmt.Fprintf(os.Stderr, "check: --fix applies to one check, package-table, and %q was named\n", name)
+			os.Exit(2)
+		}
+		dest, err := checks.WritePackageTable(tree.Root)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "check: the package table copy could not be written: %v\n", err)
+			os.Exit(2)
+		}
+		fmt.Fprintf(os.Stderr, "check: wrote %s\n", dest)
+		tree, err = checks.Load(".")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "check: not a git repository (%v)\n", err)
+			os.Exit(2)
+		}
+	}
+
 	if name == "" || name == "gate" {
 		os.Exit(gate(tree, asJSON))
 	}
@@ -131,7 +157,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, "usage: check [CHECK] [--json]\n       check commit-msg FILE\n\nWith no CHECK, runs every one and prints a verdict.\n\n")
+	fmt.Fprint(os.Stderr, "usage: check [CHECK] [--json]\n       check package-table --fix\n       check commit-msg FILE\n\nWith no CHECK, runs every one and prints a verdict.\n\n")
 	for _, c := range all {
 		fmt.Fprintf(os.Stderr, "  %-15s %s\n", c.name, c.what)
 	}

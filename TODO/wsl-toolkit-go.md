@@ -4368,6 +4368,50 @@ Passing is:
 
 ---
 
+## Amendment, 2026-09-13: one home and a checked copy, and nothing reads the copy yet
+
+⭐ **The first half is built: the table has one home, and a gate rule holds its
+copy.** In [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh), the
+block between `# >>> shared package table: begin` and `# <<< shared package table:
+end` carries `package_table`, `toolset_names`, `have`, `split_on`,
+`commas_to_spaces`, `in_list`, `package_row`, `package_for`, `PROVIDERS`,
+`detect_provider` and `detect_os_id`. `USER_PROVIDERS`, `detect_user_provider` and
+`first_line` moved below the end marker, because nothing inside needs them.
+
+`tools/check` gains `package-table`, the gate's twentieth check. It regenerates
+`tools/windows/wsl-toolkit/internal/toolkit/packages.sh` from the block under a
+generated-file banner and compares byte for byte. `check package-table --fix`
+rewrites the copy, and `--fix` is refused for any other check and for the gate.
+[`RULES.md`](RULES.md) section 4 names it as the third generated file.
+
+⚠ **The copy did not pass ShellCheck on its own at first.** The block reads the
+caller's `OS_ID` and `PROVIDER` and sets `PROVIDERS` for the caller, so alone it
+drew SC2153 and SC2034. Two targeted directives inside the block carry the reason.
+
+⭐ **Proved:**
+
+- a copy edited alone and a block edited alone each made `check package-table`
+  exit **1**, read unpiped, naming line 49; both restored to exit 0;
+- three mutation rows went red: the byte comparison, a doubled begin marker, and
+  an end marker before its begin;
+- ⭐ **the block move changes nothing a caller of the fetched file sees.** HEAD's
+  `bootstrap.sh` and the tree's gave byte-identical `--help`, `--list-names`,
+  `--list-providers`, `--dry-run --toolset agent --codegraph none --json` and
+  `--dry-run --toolset developer --codegraph none` output, with the same exit
+  codes, on alpine 3.22 and debian 13. ⚠ debian's JSON dry run exits 1 under both;
+  the cause was not read.
+
+⛔ **Not done, and this is most of the entry:**
+
+1. the provisioner does not read the copy. `base.go` does not embed
+   `packages.sh`, and `provision.sh` still carries its per-family `case` arms;
+2. the provisioner still detects six managers, and its header does not yet say
+   which have had a base built from them;
+3. `base ensure` from all four presets, and `matrix --images all --toolset agent`
+   against 13 ran and 2 failed. Neither was run.
+
+---
+
 ## WSL-71. A portable shell profile this tree owns
 
 **Source** the operator, 2026-09-12: write a portable proper one here, as a task
@@ -4528,3 +4572,110 @@ Passing is:
 - `wsl-toolkit bsd status` prints the disk size;
 - ⛔ the guest is left as it was found. Remove what the run installed and report
   `df -h /` again, because this image outlives the session that touched it.
+
+---
+
+## Amendment, 2026-09-13: the disk grows, and nim is the one name left
+
+⭐ **Built:** `bsd run --disk GIB`, 10 by default. The image file grows before
+the boot and never shrinks; a smaller request is refused with the file untouched,
+and zero or a negative number is refused before anything boots. After the login,
+and before the payload, the guest runs `gpart recover`, `gpart resize` on the last
+`freebsd-ufs` partition and `growfs /`, then reports the root's size. `bsd status`
+prints the disk, and a run's last line prints the disk and the root. Four mutation
+rows went red: the refusal to shrink, the `--disk` refusal, and the two boot
+failure rules below.
+
+⚠ **`growfs_enable` in the image does nothing for a grown disk.** Its rc script
+runs on a first boot only, and a shared image has had its first boot. Measured on
+the restored image's first boot: `Growing root partition to fill device`, then
+`growfs: requested size 5.0GB is equal to the current filesystem size 5.0GB`.
+
+### The four passing conditions, as measured
+
+| condition | measured | holds |
+| --- | --- | --- |
+| a root of at least 9 GiB | `df -h /` reads **8.7G**, on a 10.0 GiB disk whose `freebsd-ufs` partition is 9.0G | ⛔ no, see below |
+| exit 0, `absent=` empty, `version.rustc` and `version.nim` | exit **1**, `absent=nim`, `version.rustc=rustc 1.96.1`, no `version.nim` | ⛔ no |
+| `bsd status` prints the disk | `disk        10.0 GiB` | ⭐ yes |
+| the guest left as it was found | 500 packages before and after, crash dump and profile line removed | ⭐ yes, with residue named below |
+
+⛔ **The 9 GiB threshold was written without the image's swap partition.** The
+image carries `freebsd-boot` 61K, `efi` 33M and `freebsd-swap` 1.0G ahead of
+root, so a 10 GiB disk leaves a 9.0G partition, and UFS reports 8.7G. The grow did
+reach the filesystem: the root went from 4.8G to 8.7G. Ruled 10 GiB, and the
+Approach forbids a larger default, so the threshold is what needs the ruling, and
+[`PROGRESS.md`](PROGRESS.md) asks it.
+
+⭐ **Rust installs now, so the disk was the limit.** The acceptance command, run B,
+287.2 s: `requested=8 present=5 skipped=build cargo absent=nim failures=1`, with
+cargo and rustc 1.96.1, go 1.25.14, python3 3.12.14 and PowerShell 7.5.5, and the
+root still at 8.7G.
+
+⛔ **nim installs off `PATH`, and that is a bootstrap defect, not a table one.**
+The bootstrap said `asked for, installed without an error, and not on PATH
+afterwards: nim`. Installed on its own in run D: the package is 978 files, its
+binaries are `/usr/local/nim/bin/nim`, `nimgrep`, `nimpretty`, `nimsuggest` and
+`testament`, nothing lands in `/usr/local/bin`, and `command -v nim` exits 127.
+⚠ It also pulls `pcre`, which `pkg` reports as deprecated upstream in favour of
+`pcre2`.
+
+### ⛔ The image was already unbootable when this session started
+
+The first boot stopped at the loader with `can't load 'kernel'`, and the run
+waited its whole budget for a `login:` that was never coming, then named
+nothing. The image was the published size, 6,476,638,208 bytes, so no grow had
+touched it. `bsd fetch --force` restored it, on the second attempt: the first was
+refused with `Cannot remove: Permission denied` while a stuck QEMU still held the
+file.
+
+⚠ **The likeliest cause is the previous session's cleanup, and that is not
+measured**, because the damaged image was replaced before anyone examined it.
+What is measured, in run E on the restored image: it is a pkgbase system.
+`/boot/kernel/kernel was installed by package FreeBSD-kernel-generic-15.1`, 499
+of its 500 packages are base packages, and 492 of those are marked automatic.
+That cleanup took `pkg info` from 564 to 321.
+
+⛔ **So a cleanup here compares package names against a baseline taken first and
+deletes only the difference.** Runs C and D did exactly that and read back
+`left-over= 0 missing= 0`. `pkg autoremove -n` answered `Nothing to do` on the
+restored image, which stays true only while whatever holds those 492 automatic
+base packages stays installed.
+
+⭐ **A boot that cannot reach a login is named at once now.** The runner stops on
+`can't load 'kernel'`, `mountroot>`, the single-user shell question, or a line
+that starts `panic: `, and the error names the line.
+
+⚠ **The first version of that rule stopped a healthy boot, and a real kernel
+panic is why.** The restored image's first `poweroff` panicked, after `All
+buffers synced`, with `Fatal trap 12: page fault while in kernel mode` in
+`devfs_unmount` and `vflush`, before any grow. The next boot saved the core,
+171,601,920 bytes, and its console carried `savecore 880 - - reboot after panic:
+page fault`, which a `panic: ` matched anywhere. The rule is anchored to the start
+of a line, and that console line is a regression case in the test. Runs A to E
+all powered off cleanly afterwards.
+
+### The five sessions, and what the guest holds now
+
+| run | what | exit | wall |
+| --- | --- | --- | --- |
+| A | grow to 10 GiB, record the package baseline | 0 | 130.9 s |
+| B | the acceptance command | 1 | 287.2 s |
+| C | delete the 31 packages B added, compare against the baseline | 0 | 135 s |
+| D | install nim alone and list it, remove it, delete the core and the profile line | 0 | 150.3 s |
+| E | read-only: which package owns the kernel, and what autoremove would do | 0 | 128.6 s |
+
+The image is 10.0 GiB, with the published 500 packages and a root at 2.6G used of
+8.7G. The core is deleted, and `/root/.profile` has lost the two lines and the
+blank line the bootstrap appended. ⚠ **Residue, named rather than hidden:**
+`pkg`'s 72M catalogue under `/var/db/pkg/repos`, a cache that run B's network
+fetched, and savecore's 2-byte `/var/crash/bounds` counter.
+
+### Still open
+
+1. nim on `PATH` on FreeBSD, in
+   [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh). ⚠ That
+   file is fetched by URL, so the fix reaches its callers in the same commit.
+2. The operator's ruling on the root threshold.
+3. The acceptance again: exit 0, `absent=` empty, and `version.nim`.
+4. The changelog row at closing, because the default disk changing is observable.

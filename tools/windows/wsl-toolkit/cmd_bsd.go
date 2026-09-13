@@ -52,7 +52,12 @@ func cmdBsdStatus(ctx context.Context, args []string) (int, error) {
 	}
 	logf("  whpx        %s", st.WhpxDetail)
 	if st.Image != "" {
-		logf("  image       %s, %s", st.Image, toolkit.HumanBytes(st.ImageBytes))
+		logf("  image       %s", st.Image)
+		if st.ImageBytes < st.DiskDefaultBytes {
+			logf("  disk        %s now. The next run grows it to %s, and the root filesystem follows", toolkit.HumanBytes(st.ImageBytes), toolkit.HumanBytes(st.DiskDefaultBytes))
+		} else {
+			logf("  disk        %s", toolkit.HumanBytes(st.ImageBytes))
+		}
 	}
 	for _, p := range st.Problems {
 		logf("  ! %s", p)
@@ -248,6 +253,18 @@ func (p *downloadProgress) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
+// checkBsdDisk refuses a --disk that is not a size, before anything boots.
+//
+// ⚠ The library reads zero as "the default", which is right for a caller that
+// never set it and wrong for one who typed `--disk 0`: that caller gets a
+// refusal rather than a quiet 10 GiB.
+func checkBsdDisk(gib int) error {
+	if gib < 1 {
+		return fmt.Errorf("--disk %d is not a disk size. Pass a whole number of GiB, 1 or more", gib)
+	}
+	return nil
+}
+
 func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("bsd run")
 	command := fs.String("c", "", "the command to run at a root shell in the guest")
@@ -256,6 +273,7 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	network := fs.Bool("network", false, "give the guest outbound user-mode networking. Nothing is forwarded inward")
 	mem := fs.Int("memory", 2048, "guest memory in MiB")
 	vcpus := fs.Int("cpus", 2, "guest processor count")
+	disk := fs.Int("disk", toolkit.BsdDefaultDiskGiB, "guest disk in GiB. The image grows to it and never shrinks, and the root filesystem follows in the guest")
 	noConsole := fs.Bool("no-console", false, "do not mirror the guest console while it boots")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	if err := parseArgs(fs, args); err != nil {
@@ -263,6 +281,9 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	}
 	if *command != "" && *scriptFile != "" {
 		return exitCannot, errors.New("-c and --script are two spellings of one argument, so passing both is refused")
+	}
+	if err := checkBsdDisk(*disk); err != nil {
+		return exitCannot, err
 	}
 	var payload []byte
 	var err error
@@ -291,7 +312,7 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	logf("  booting FreeBSD %s under whpx. The first prompt takes about two minutes on this class of host.", toolkit.BsdRelease)
 	res, runErr := toolkit.BsdRun(ctx, toolkit.BsdRunSpec{
 		Script: payload, Timeout: *timeout,
-		Network: *network, MemMiB: *mem, VCpus: *vcpus, Stdout: console,
+		Network: *network, MemMiB: *mem, VCpus: *vcpus, DiskGiB: *disk, Stdout: console,
 	})
 	if *asJSON {
 		if err := writeJSON(res); err != nil {
@@ -303,7 +324,8 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	if runErr != nil {
 		return exitCannot, runErr
 	}
-	logf("  login at %s, session %s, exit %d",
-		res.BootTime.Round(time.Second), res.Duration.Round(time.Second), res.Exit)
+	logf("  login at %s, session %s, disk %s, root filesystem %s, exit %d",
+		res.BootTime.Round(time.Second), res.Duration.Round(time.Second),
+		toolkit.HumanBytes(res.DiskBytes), toolkit.HumanBytes(res.RootBytes), res.Exit)
 	return res.Exit, nil
 }

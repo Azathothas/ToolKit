@@ -72,19 +72,31 @@ const (
 	// prediction is false HERE. A named model is still what is passed, because
 	// it costs nothing and the failure it avoids is expensive.
 	BsdCPU = "Icelake-Server-v7"
+
+	// BsdDefaultDiskGiB is the guest disk a run grows the image to.
+	//
+	// ⭐ THE OPERATOR RULED 10 GiB, and the reason is measured. The published
+	// image is 6.0 GiB with a 4.8 GiB root, and `bootstrap.sh --toolset
+	// languages` installed go and python3 and then filled it before rust and nim.
+	// ⛔ Not larger than the ruling: a default nobody chose is a ceiling somebody
+	// else pays for, and `--disk` exists for anything else. WSL-72.
+	BsdDefaultDiskGiB = 10
 )
 
 // BsdStatus is what `bsd status` answers.
 type BsdStatus struct {
-	Schema      string   `json:"schema"`
-	Qemu        string   `json:"qemu,omitempty"`
-	QemuVersion string   `json:"qemu_version,omitempty"`
-	Whpx        bool     `json:"whpx"`
-	WhpxDetail  string   `json:"whpx_detail"`
-	Image       string   `json:"image,omitempty"`
-	ImageBytes  int64    `json:"image_bytes,omitempty"`
-	Ready       bool     `json:"ready"`
-	Problems    []string `json:"problems,omitempty"`
+	Schema      string `json:"schema"`
+	Qemu        string `json:"qemu,omitempty"`
+	QemuVersion string `json:"qemu_version,omitempty"`
+	Whpx        bool   `json:"whpx"`
+	WhpxDetail  string `json:"whpx_detail"`
+	Image       string `json:"image,omitempty"`
+	ImageBytes  int64  `json:"image_bytes,omitempty"`
+	// DiskDefaultBytes is what the next run grows a smaller image to. The image
+	// file IS the guest disk, so ImageBytes is the disk's current size.
+	DiskDefaultBytes int64    `json:"disk_default_bytes"`
+	Ready            bool     `json:"ready"`
+	Problems         []string `json:"problems,omitempty"`
 }
 
 // BsdDir is where the guest image lives.
@@ -134,7 +146,7 @@ func FindQemu() (string, error) {
 
 // BsdProbe reports whether this host can boot the guest.
 func BsdProbe(ctx context.Context) BsdStatus {
-	st := BsdStatus{Schema: "wsl-toolkit-bsd-status/1"}
+	st := BsdStatus{Schema: "wsl-toolkit-bsd-status/1", DiskDefaultBytes: int64(BsdDefaultDiskGiB) << 30}
 	if runtime.GOOS != "windows" {
 		st.Problems = append(st.Problems, "this interface runs on a Windows host, because the accelerator it uses is the Windows Hypervisor Platform")
 		return st
@@ -184,6 +196,7 @@ type BsdRunSpec struct {
 	Network bool          // outbound user-mode networking. Nothing is forwarded in
 	MemMiB  int
 	VCpus   int
+	DiskGiB int       // the guest disk; the image grows to it and never shrinks
 	Stdout  io.Writer // the guest console, as it arrives
 }
 
@@ -193,7 +206,89 @@ type BsdResult struct {
 	Output   string        `json:"output"`
 	BootTime time.Duration `json:"boot_ns"`
 	Duration time.Duration `json:"duration_ns"`
-	Error    string        `json:"error,omitempty"`
+	// DiskBytes is the guest disk and RootBytes the root filesystem ON it, read
+	// back in the guest. ⚠ Two numbers because growing the file is half the job:
+	// UFS does not notice a larger disk until the partition and the filesystem
+	// are both extended.
+	DiskBytes int64  `json:"disk_bytes"`
+	RootBytes int64  `json:"root_bytes"`
+	Error     string `json:"error,omitempty"`
+}
+
+// growBsdImage extends the guest disk to want bytes.
+//
+// ⛔ IT NEVER SHRINKS. The image is shared state that outlives the session that
+// touched it, and a shorter file cuts off the filesystem inside it, so a smaller
+// request is refused rather than honoured or silently ignored. An equal one is
+// nothing to do. ⚠ Growing keeps every byte a previous session left.
+func growBsdImage(path string, want int64) (int64, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return 0, err
+	}
+	have := info.Size()
+	if have > want {
+		return have, fmt.Errorf("the guest disk is already %s and this run asks for %s. It never shrinks, because a shorter file cuts off the filesystem inside it. Pass --disk %d or larger, or run `wsl-toolkit bsd fetch --force` to start again from the published image",
+			HumanBytes(have), HumanBytes(want), (have+(1<<30)-1)>>30)
+	}
+	if have == want {
+		return have, nil
+	}
+	// ⚠ A file another QEMU holds open cannot be extended on Windows, and that
+	// refusal is the right answer: growing a disk under a running guest is how
+	// a filesystem is damaged.
+	if err := os.Truncate(path, want); err != nil {
+		return have, fmt.Errorf("could not grow the guest disk to %s, and it is unchanged: %w. Is another `bsd run` using it?", HumanBytes(want), err)
+	}
+	after, err := os.Stat(path)
+	if err != nil {
+		return have, err
+	}
+	if after.Size() != want {
+		return after.Size(), fmt.Errorf("the guest disk was asked to grow to %s and is %s", HumanBytes(want), HumanBytes(after.Size()))
+	}
+	return after.Size(), nil
+}
+
+// bsdGrowRootScript extends the last UFS partition and its filesystem to the
+// end of the disk, and prints the root filesystem's size in KiB.
+//
+// ⭐ FreeBSD's own tools, in the guest, on every boot. The image enables
+// `growfs_enable` and it does nothing here: that rc script runs only on a first
+// boot, and a shared image has had its first boot. `gpart recover` moves the
+// backup GPT header to the new end, and nothing grows while it sits at the old
+// one. ⛔ ONE LINE, because the console runner joins lines with `; ` and a
+// `then` followed by `;` does not parse.
+const bsdGrowRootScript = `gpart recover vtbd0 >/dev/null 2>&1; tk_g=$(gpart show vtbd0 | awk 'NR==1 {e=$2+$3} $4=="freebsd-ufs" {i=$3; p=$1+$2} END {print i, e-p}'); set -- $tk_g; if [ -z "${1:-}" ]; then echo "no freebsd-ufs partition on vtbd0"; exit 3; fi; if [ "$2" -gt 2048 ]; then gpart resize -i "$1" vtbd0 >/dev/null || exit 3; growfs -y / >/dev/null || exit 3; fi; df -k / | awk 'NR==2 {print "tk-root-kib", $2}'`
+
+var bsdRootKiBRE = regexp.MustCompile(`tk-root-kib ([0-9]+)`)
+
+// bsdBootFailureRE is what a guest prints when it will never reach a login.
+//
+// ⛔ WAITING FOR `login:` ALONE CANNOT TELL A SLOW BOOT FROM A DEAD ONE. A
+// damaged image stopped at the loader with `can't load 'kernel'` and sat at its
+// `?` prompt, and the run spent its whole ten-minute budget before reporting
+// that the guest "did not reach a login prompt", naming nothing. Measured on
+// 2026-09-13. WSL-72.
+//
+// ⚠ A KERNEL PANIC STARTS ITS LINE, AND A REPORT OF AN OLD ONE DOES NOT. The first
+// version matched `panic: ` anywhere and stopped a healthy boot at `savecore 880 -
+// - reboot after panic: page fault`, which is rc noting the PREVIOUS boot's panic
+// on its way to a login prompt.
+var bsdBootFailureRE = regexp.MustCompile(`(?m)can't load 'kernel'|^mountroot>|^Enter full pathname of shell or RETURN|^panic: `)
+
+// bsdBootFailure answers the console line that says the boot is over, or "".
+func bsdBootFailure(console string) string {
+	loc := bsdBootFailureRE.FindStringIndex(console)
+	if loc == nil {
+		return ""
+	}
+	start := strings.LastIndexAny(console[:loc[0]], "\r\n") + 1
+	end := loc[1] + strings.IndexAny(console[loc[1]:], "\r\n")
+	if end < loc[1] {
+		end = len(console)
+	}
+	return strings.TrimSpace(console[start:end])
 }
 
 // bsdPromptRE is the shell prompt this image presents. ⚠ Unanchored on purpose;
@@ -225,6 +320,14 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 	if spec.VCpus <= 0 {
 		spec.VCpus = 2
 	}
+	if spec.DiskGiB <= 0 {
+		spec.DiskGiB = BsdDefaultDiskGiB
+	}
+	disk, err := growBsdImage(img, int64(spec.DiskGiB)<<30)
+	if err != nil {
+		return res, err
+	}
+	res.DiskBytes = disk
 	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
 
@@ -261,8 +364,12 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 	}
 	defer g.stop()
 
-	if !g.wait(ctx, regexp.MustCompile(`login:`)) {
+	if failure, ok := g.waitBoot(ctx); !ok {
 		res.Error = "the guest did not reach a login prompt within " + spec.Timeout.String()
+		if failure != "" {
+			res.Error = "the guest cannot boot, and stopped at: " + failure +
+				". If the image is damaged, `wsl-toolkit bsd fetch --force` restores the published one"
+		}
 		res.Duration = time.Since(started)
 		return res, errors.New(res.Error)
 	}
@@ -281,6 +388,21 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 		res.Error = "the guest did not present a root shell"
 		res.Duration = time.Since(started)
 		return res, errors.New(res.Error)
+	}
+
+	// ⭐ THE FILESYSTEM FOLLOWS THE DISK BEFORE THE PAYLOAD RUNS, so a payload
+	// never meets a grown file with the old root still inside it.
+	growExit, growOut, err := g.run(ctx, bsdGrowRootScript)
+	if err != nil || growExit != 0 {
+		res.Error = fmt.Sprintf("the root filesystem did not grow to the %s disk (exit %d): %s", HumanBytes(disk), growExit, firstLine(growOut))
+		res.Duration = time.Since(started)
+		g.graceful = err == nil
+		return res, errors.New(res.Error)
+	}
+	if m := bsdRootKiBRE.FindStringSubmatch(growOut); m != nil {
+		if kib, perr := strconv.ParseInt(m[1], 10, 64); perr == nil {
+			res.RootBytes = kib << 10
+		}
 	}
 
 	exit, out, err := g.run(ctx, string(spec.Script))
@@ -353,6 +475,29 @@ func (g *guest) seen() string {
 // wait pumps until a pattern matches anywhere, or the context ends.
 func (g *guest) wait(ctx context.Context, re *regexp.Regexp) bool {
 	return g.waitFrom(ctx, re, 0)
+}
+
+var bsdLoginRE = regexp.MustCompile(`login:`)
+
+// waitBoot waits for a login prompt, and gives up at once on a console line
+// that says there will never be one. It answers that line when it gave up.
+func (g *guest) waitBoot(ctx context.Context) (string, bool) {
+	tick := time.NewTicker(250 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		text := g.seen()
+		if bsdLoginRE.MatchString(text) {
+			return "", true
+		}
+		if failure := bsdBootFailure(text); failure != "" {
+			return failure, false
+		}
+		select {
+		case <-ctx.Done():
+			return "", false
+		case <-tick.C:
+		}
+	}
 }
 
 // waitFrom waits for a match at or after a position in the stream.

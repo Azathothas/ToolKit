@@ -11,13 +11,16 @@
 # check cannot be assumed to run on it. Keeping the two in step needed a third
 # check that ran both halves of every pair and compared their answers, and that
 # check was most of a gate taking about twelve minutes. One implementation that
-# natively on either host has no halves to compare, and the whole gate now
+# runs natively on either host has no halves to compare, and the whole gate now
 # takes about 30 seconds.
 #
 # Usage:
 #   sh scripts/common/check.sh              every check, with a verdict
 #   sh scripts/common/check.sh docs         one check
 #   sh scripts/common/check.sh docs --json  one check, as one object
+#   sh scripts/common/check.sh package-table --fix
+#                                           rewrite the one generated file a
+#                                           check can repair, then check it
 #
 # Exit codes: 0 it ran and agreed, 1 it ran and disagreed, 2 it could not run.
 #

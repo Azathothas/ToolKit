@@ -192,6 +192,17 @@ Linux kernel. A BSD userland needs a BSD kernel.
 113.6 s, 117.4 s and 117.7 s to a login prompt over three boots, of which 108 s
 is device probing between the kernel banner and mounting root.
 
+⭐ **The guest disk is 10 GiB, and the root filesystem follows it.** The published
+image is 6.0 GiB with a 4.8 GiB root, and a toolchain install fills that. `bsd run`
+grows the image file to `--disk` GiB, 10 by default, before it boots, then extends
+the partition and the filesystem with FreeBSD's own `gpart` and `growfs` before the
+payload runs. Measured on 2026-09-13: a 10.0 GiB disk with an 8.7 GiB root. `bsd
+status` prints the disk, and the run's last line prints both sizes.
+
+⛔ **It never shrinks.** Every session on this host shares the image, and a shorter
+file cuts off the filesystem inside it, so a `--disk` smaller than the image is
+refused. `bsd fetch --force` goes back to the published image.
+
 ⛔ **This reaches a BSD SHELL and not a BSD container endpoint.** A long-running
 `podman system service` inside the guest panics the guest kernel in `_umtx_op`.
 [`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd) carries

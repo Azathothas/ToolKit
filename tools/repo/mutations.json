@@ -956,6 +956,69 @@
       "replace": "[A-Za-z]:[\\/]+Users[\\/]+",
       "run": "TestAWindowsHomePathIsFoundWithEitherSeparator",
       "args": []
+    },
+    {
+      "label": "the guest disk refusing to shrink",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tif have > want {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheBsdGuestDiskGrowsAndNeverShrinks",
+      "args": []
+    },
+    {
+      "label": "a boot stopped at the loader named as over",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "`(?m)can't load 'kernel'|^mountroot>",
+      "replace": "`(?m)^mountroot>",
+      "run": "TestABootThatCannotReachLoginIsNamed",
+      "args": []
+    },
+    {
+      "label": "a kernel panic matched only where its line starts",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "|^panic: `)",
+      "replace": "|panic: `)",
+      "run": "TestABootThatCannotReachLoginIsNamed",
+      "args": []
+    },
+    {
+      "label": "a guest disk that is not a size refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_bsd.go",
+      "find": "\tif gib < 1 {\n",
+      "replace": "\tif gib < 0 {\n",
+      "run": "TestBsdRunRefusesADiskThatIsNotASize",
+      "args": []
+    },
+    {
+      "label": "the package table copy compared byte for byte",
+      "module": "tools/check",
+      "file": "internal/checks/packagetable.go",
+      "find": "\tif !bytes.Equal(want, got) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheProvisionerCopyOfThePackageTableIsRefusedWhenOneSideMoves",
+      "args": []
+    },
+    {
+      "label": "a doubled package table begin marker refused",
+      "module": "tools/check",
+      "file": "internal/checks/packagetable.go",
+      "find": "\t\t\tif begin >= 0 {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestAMissingOrDoubledPackageTableMarkerIsRefused",
+      "args": []
+    },
+    {
+      "label": "a package table end marker before its begin refused",
+      "module": "tools/check",
+      "file": "internal/checks/packagetable.go",
+      "find": "\tcase end < begin:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAMissingOrDoubledPackageTableMarkerIsRefused",
+      "args": []
     }
   ]
 }

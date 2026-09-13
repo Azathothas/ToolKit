@@ -166,6 +166,20 @@ func TestBaseExecSurfacesAFailureToStart(t *testing.T) {
 	}
 }
 
+// TestBsdRunRefusesADiskThatIsNotASize is WSL-72's flag. Zero and a negative
+// number are refused, because the library would read either as the default.
+func TestBsdRunRefusesADiskThatIsNotASize(t *testing.T) {
+	for _, gib := range []int{0, -3} {
+		err := checkBsdDisk(gib)
+		if err == nil || !strings.Contains(err.Error(), "not a disk size") {
+			t.Errorf("--disk %d answered %v; want a refusal that says why", gib, err)
+		}
+	}
+	if err := checkBsdDisk(1); err != nil {
+		t.Errorf("--disk 1 was refused: %v", err)
+	}
+}
+
 func TestJobFlagsRefuseValuesThatMeanSomethingElse(t *testing.T) {
 	base := func() jobFlags {
 		var j jobFlags

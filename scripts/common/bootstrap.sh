@@ -102,6 +102,20 @@ differently, or not carrying it at all.
 USAGE
 }
 
+# ⛔ THE BLOCK BETWEEN THE TWO MARKER LINES BELOW HAS A SECOND COPY. It is copied
+# byte for byte into tools/windows/wsl-toolkit/internal/toolkit/packages.sh, so
+# that the base provisioner of that tool can resolve its own `developer` names
+# from one table, one lookup and one detection, and a distribution that renames a
+# package is fixed once. ⚠ Nothing reads that copy yet: wiring the provisioner to
+# it is the rest of WSL-70. Edit the block HERE. The gate's `package-table` check
+# refuses the copy disagreeing, and this rewrites the copy:
+#
+#   sh scripts/common/check.sh package-table --fix
+#
+# ⚠ Everything inside it must stand alone: it may define functions and set
+# variables, and it may not call anything defined outside the markers.
+
+# >>> shared package table: begin
 # ------------------------------------------------------------- the packages --
 
 # ⭐ THE TABLE IS THE FEATURE. One row per logical name: the default package
@@ -211,17 +225,6 @@ in_list() {
   return 1
 }
 
-# first_line COMMAND... -> the command's first line of output, or nothing. This
-# is `head -1`'s job, done with the shell so that a userland with no coreutils
-# can still report its versions.
-first_line() {
-  "$@" 2>/dev/null | {
-    if read -r fl_line; then
-      printf '%s' "$fl_line"
-    fi
-  }
-}
-
 # package_row LOGICAL -> everything on its row after the name, or nothing.
 package_row() {
   package_table | {
@@ -251,6 +254,10 @@ package_for() {
     fi
     pf_key=${pf_field%%=*}
     pf_value=${pf_field#*=}
+    # ⚠ OS_ID AND PROVIDER BELONG TO THE CALLER, which sets both before its first
+    # lookup. Read alone, the copy of this block has neither, and PROVIDER looks
+    # like a misspelling of the list below.
+    # shellcheck disable=SC2153
     if in_list "os:$OS_ID" "$pf_key"; then
       pf_os=$pf_value
     elif in_list "$PROVIDER" "$pf_key"; then
@@ -276,8 +283,10 @@ package_for() {
 
 # ------------------------------------------------------ platform and rights --
 
+# The caller reads this list to validate a named provider; nothing inside the
+# block does.
+# shellcheck disable=SC2034
 PROVIDERS='apk apt dnf emerge pacman pkg pkg_add pkgin tdnf xbps yum zypper'
-USER_PROVIDERS='soar nix'
 
 # ⭐ THE KERNEL DECIDES THE FAMILY, then the family decides what to look for. A
 # bare search for `pkg` on PATH is wrong in both directions: pkgsrc puts one on
@@ -316,12 +325,6 @@ detect_provider() {
   printf ''
 }
 
-detect_user_provider() {
-  if have soar;    then printf 'soar'; return 0; fi
-  if have nix-env; then printf 'nix';  return 0; fi
-  printf ''
-}
-
 detect_os_id() {
   # ⚠ OpenBSD and NetBSD HAVE NO /etc/os-release, and FreeBSD does. Without the
   # kernel fallback the two that do not would both be `unknown`, and every
@@ -342,6 +345,26 @@ detect_os_id() {
     Darwin)    printf 'darwin' ;;
     *)         printf 'unknown' ;;
   esac
+}
+# <<< shared package table: end
+
+USER_PROVIDERS='soar nix'
+
+detect_user_provider() {
+  if have soar;    then printf 'soar'; return 0; fi
+  if have nix-env; then printf 'nix';  return 0; fi
+  printf ''
+}
+
+# first_line COMMAND... -> the command's first line of output, or nothing. This
+# is `head -1`'s job, done with the shell so that a userland with no coreutils
+# can still report its versions.
+first_line() {
+  "$@" 2>/dev/null | {
+    if read -r fl_line; then
+      printf '%s' "$fl_line"
+    fi
+  }
 }
 
 detect_libc() {

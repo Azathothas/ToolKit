@@ -115,7 +115,7 @@ file's own directory, which makes the containment check vacuous. A guard that
 cannot refuse anything is theatre. `RemoveInside`'s own comment carries the
 same sentence, which is where a reader of the code will look.
 
-## 4. TWO files here are GENERATED, and the tree holds every half
+## 4. THREE files here are GENERATED, and the tree holds every half
 
 ⛔ **`scripts/windows/wsl-toolkit/wsl-toolkit.ps1` is built** from the parts under
 `src/`, `core/` and `libs/` beside it, and it is **tracked** because a consumer
@@ -147,6 +147,14 @@ part.
 
 [`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
 is the build, the surface lock and the release pipeline.
+
+⛔ **`tools/windows/wsl-toolkit/internal/toolkit/packages.sh` is the third**, and a
+different build writes it. It is the block between the two `shared package table`
+marker lines of [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh)
+under a generated-file banner, and it lives in the Go package for the same `embed`
+reason. The gate's `package-table` rule regenerates it and compares it byte for
+byte, and `sh scripts/common/check.sh package-table --fix` rewrites it. ⚠ Nothing
+reads it yet: wiring the base provisioner to it is the rest of `WSL-70`.
 
 ## 5. The record moves in the same change as the work
 

@@ -12,7 +12,7 @@
     check cannot be assumed to run on it. Keeping the two in step needed a third
     check that ran both halves of every pair, and that was most of a gate taking
     about twelve minutes. One implementation that runs natively on either host
-    to compare.
+    has no halves to compare.
 
     THIS FILE AND ITS sh TWIN ARE THE ONE REMAINING PAIR, and they are three
     lines of the same errand rather than two implementations of a rule. There
