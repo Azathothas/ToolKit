@@ -7,6 +7,35 @@ on what was true last time.
 
 ---
 
+## 2026-09-13
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-13T02:36:12Z | ended at the record commit's own time; one context and one summarised continuation |
+| Commits | `e9f0e08`, with 19 uncommitted `WSL-69` paths inherited | `git log --oneline e9f0e08..HEAD` read **4** at `2656a0d`, all pushed and CI green on all six jobs each, then the record commit. ⚠ Stamped, because a record edit is itself a commit |
+| Work | 104 entries: 7 open, 0 blocked, 97 done | 108 entries: 7 open, 0 blocked, 101 done. **Completed 4:** `WSL-69`, `TOOL-23`, `TOOL-24`, `TOOL-25`, three of them found and filed this session. **Checkpointed 2 and still open:** `WSL-72`, `WSL-70`. **Filed 1:** `WSL-73`. **Not started, deferred by the operator's redirect:** `WSL-71`, `WSL-67`'s remaining list, `WSL-68`. `WSL-59` untouched. Failed: 0 |
+| Changes | 270 tracked files | 279. `git diff --shortstat e9f0e08 2656a0d` read 47 files, +2,795 / -187. ⚠ Stamped at `2656a0d`; the record commit adds to it |
+| Size | 83,285 text lines | 85,893 at `2656a0d`, +2,608, counted with `git grep -I -c ''` at each revision |
+| Checks | local gate RED: 3 problems over 19 checks, 42.4 s | 20 checks green in 31.6 s. CI's ShellCheck 0.9.0 in a container: 25 of 25 scripts clean. The Go suites green with an 8.3 `TEMP` on a clean clone. Mutation rows 90 to 113, each new row planted alone and red |
+| Cost | not measured | No paid operation by this repository. ⚠ Muse's two driven prompts ran on the operator's Meta account, and their cost was not measured. Downloads: Muse's installer reported 273 MB; FreeBSD packages, four container images and one BSD image restore were not measured in bytes. ⭐ **At least 8 `bsd run` sessions**, counted from the console logs saved, so a run with no saved log is missing from it |
+| Health | the Muse base built for `toolkit`, sudo not live, no Muse | ⭐ Muse installed, signed in and driven; the base healthy with no drive mount points and no Zellij session left. The FreeBSD image restored to its published 500 packages on a 10 GiB disk, residue named in `WSL-72`. ⭐ `wsl -l -v` reads the same five distributions in the same states as at 02:45:39Z, with `wsl-toolkit-muse` rebuilt in between. Tree clean after the record commit. ⛔ Issue 30 still open |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| read `docs/AGENTS.md` and issue 30 in full, then work unattended until every task is done | ⚠ **partly.** `WSL-69` closed and three gate defects closed; the operator then redirected the session to checkpoint and stop |
+| poll until the Muse CLI is authenticated, and give the operator exact commands | done. The operator installed and signed in; the agent drove everything else |
+| close the task in flight, update the record and amend the issue 30 comment in place | done: `WSL-69` closed on green CI, and the issue comment amended |
+| file pull request 31 for the next session, which reviews it trusting nothing, adopts what is useful, deletes the PowerShell product, closes the pull request, then reads issues 30, 32 and 33 and turns them into entries | filed as `WSL-73`, and [`PROGRESS.md`](PROGRESS.md)'s work order carries the rest in the operator's order |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. Its work order is the operator's, and it
+starts with pull request 31.
+
+---
+
 ## 2026-09-12, the second sitting
 
 | row | before | after |
