@@ -230,6 +230,94 @@ func TestTheProvisionerReadsTheAutomountSetting(t *testing.T) {
 	}
 }
 
+// TestPasswordlessSudoIsValidatedBeforeActivation holds the opt-in path to
+// validation before activation and to a live non-interactive privilege check.
+func TestPasswordlessSudoIsValidatedBeforeActivation(t *testing.T) {
+	for _, want := range []string{
+		"TK_PASSWORDLESS_SUDO",
+		`visudo -cf "$sudoers_tmp"`,
+		`rm -f "$sudoers_path"`,
+	} {
+		if !strings.Contains(string(provisionScript), want) {
+			t.Errorf("the provisioner does not carry %q", want)
+		}
+	}
+	if !strings.Contains(string(verifyScript), "sudo -n true") {
+		t.Error("the verifier does not exercise passwordless sudo as the configured account")
+	}
+}
+
+// TestTheProvisionerScopesEveryRestrictiveUmask is the case for a mask that
+// leaked. The sudoers candidate took `umask 077` at the top level of the script,
+// so every later step inherited it: a fresh build left /workspaces at 0700 and
+// /etc/fstab at 0600, and the configured account could not reach its own
+// checkout. Replayed on Arch with GNU mkdir on 2026-09-13.
+func TestTheProvisionerScopesEveryRestrictiveUmask(t *testing.T) {
+	setsItsOwn := false
+	for i, line := range strings.Split(string(provisionScript), "\n") {
+		code := strings.TrimSpace(line)
+		if strings.HasPrefix(code, "#") || !strings.Contains(code, "umask") {
+			continue
+		}
+		if code == "umask 022" {
+			setsItsOwn = true
+			continue
+		}
+		if !strings.HasPrefix(code, "( umask ") {
+			t.Errorf("provision.sh line %d changes the creation mask outside a subshell, so every later step inherits it: %s", i+1, code)
+		}
+	}
+	if !setsItsOwn {
+		t.Error("provision.sh does not set its own creation mask, so the modes it creates depend on whatever mask wsl.exe handed it")
+	}
+}
+
+// TestTheVerifierSeparatesAnUnreachableMountFromAnAbsentOne holds the order of
+// two checks. `[ -d ]` over a target whose parent this account cannot enter
+// fails exactly as a missing mount does, so the traversal check has to come
+// first or a present mount is still reported absent.
+func TestTheVerifierSeparatesAnUnreachableMountFromAnAbsentOne(t *testing.T) {
+	// ⚠ The printed messages, not the words: the comment above the check says
+	// "cannot enter" too, and matching that would pass with the check deleted.
+	script := string(verifyScript)
+	enter := strings.Index(script, "printf 'verify: this account cannot enter %s")
+	absent := strings.Index(script, "printf 'verify: explicit mount %s is absent")
+	if enter < 0 {
+		t.Fatal("the verifier does not name a directory above a mount that this account cannot enter")
+	}
+	if absent < 0 || enter > absent {
+		t.Fatal("the traversal check does not run before the absence check, so an unreachable mount is still reported absent")
+	}
+}
+
+// TestTheVerifierReadsTheEngineVersionFromStdoutAlone is the case for a report
+// that published a warning as a version. After a restart podman writes a stale
+// pause.pid notice to stderr, and the merged stream made `base status` answer
+// "pause.pid file refers to PID 47 ..." in its engine field.
+func TestTheVerifierReadsTheEngineVersionFromStdoutAlone(t *testing.T) {
+	script := string(verifyScript)
+	if strings.Contains(script, "podman --version 2>&1") {
+		t.Fatal("the verifier merges podman's stderr into the engine version it reports")
+	}
+	if !strings.Contains(script, "printf 'engine %s\\n' \"$(podman --version 2>/dev/null") {
+		t.Fatal("the verifier no longer reports the engine version from podman's stdout")
+	}
+}
+
+func TestManagedAccountGetsPrivateXDGDirectories(t *testing.T) {
+	for _, want := range []string{
+		`"$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state"`,
+		`chmod 0700 "$TK_HOME"`,
+	} {
+		if !strings.Contains(string(provisionScript), want) {
+			t.Errorf("the provisioner does not carry %q", want)
+		}
+	}
+	if !strings.Contains(string(verifyScript), "xdg-dirs ready") {
+		t.Error("the verifier does not report the managed account's XDG directories")
+	}
+}
+
 // TestANativeJobNamesItsPlatform is the case for a defect that only driving the
 // real thing could have found.
 //

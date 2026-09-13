@@ -4089,6 +4089,111 @@ Passing is all four of:
 chain reports the last one, which is the trap
 [`../docs/AGENTS.md`](../docs/AGENTS.md) absolute 5 names.
 
+## Amendment, 2026-09-13: the base the guide needs, and the mask that locked it out
+
+⭐ **The operator ruled six things on 2026-09-13**, first written down in an issue
+30 comment, and each changed what this entry builds rather than adding a step.
+This is their home in the tree.
+
+| ruling | what it became |
+| --- | --- |
+| Muse is a trusted agent with high authority | `base.passwordless_sudo`, off by default. The provisioner writes one tool-owned `/etc/sudoers.d/wsl-toolkit-<user>` rule, `USER ALL=(ALL:ALL) NOPASSWD: ALL`, validates the candidate with `visudo -cf` before an atomic move, and removes only that file when the setting goes off |
+| its account is `muse`, not `toolkit` | `base.user` is the one managed account of a named instance. It owns a 0700 home with persistent `~/.config`, `~/.cache`, `~/.local/share` and `~/.local/state`, and the verifier proves each is writable |
+| agents with different authority never share a distribution | changing `base.user` on an existing instance is refused with the command that does it, `wsl-toolkit base recreate`, rather than migrated in place |
+| a low-authority agent gets an instance of its own | the zero-grant profile in [`access-profiles.md`](../tools/windows/wsl-toolkit/examples/common/access-profiles.md) is named `malaria`, with no sudo and no configured Windows path |
+| Zellij 0.45.1 replaces tmux for Muse | tmux stays in the toolsets and keeps its generic configuration. Zellij was chosen for background sessions, stable pane ids, `list-panes --json`, targeted `write-chars` and `send-keys`, and `dump-screen` |
+| the agent reaches the base through one seam | `wsl-toolkit base exec`: exactly one of `-c` or `--script`, the configured account's home unless `--dir` names an absolute guest path, a 30 minute default deadline, `--root` as an explicit variant, the payload on stdin, and the guest's exit status forwarded |
+
+⚠ **Passwordless sudo is authority, not containment.** Guest root can mount a
+Windows path the configuration never granted, and both pages that name the
+setting say so.
+
+### ⛔ What the first live build would have hit
+
+The rulings were implemented and unit-tested in the first session of the day and
+never built live, because the exact sudoers line had not been approved yet.
+Reading that work in the second session found three defects and a published
+fingerprint:
+
+1. ⛔ **The mask taken for the sudoers candidate leaked into the rest of the
+   provisioner.** `umask 077` ran at the top level of `provision.sh`, so every
+   later file and directory inherited it. Replayed on Arch with GNU mkdir 9.11,
+   in an ephemeral container, in the order the provisioner runs:
+
+   | | sudo off | sudo on |
+   | --- | --- | --- |
+   | `/etc/fstab` | 644 | 600 |
+   | `/workspaces` | 755 | 700 |
+   | the unprivileged account reaches `/workspaces/project` | yes | no |
+
+   The rebuild the rulings require would have failed verification over a mount
+   that was present. Its unit test asserted only that strings exist in the
+   script, which is why it stayed green. ⭐ Fixed at both ends: the provisioner
+   sets `umask 022` itself, the candidate takes `umask 077` inside a subshell,
+   and `TestTheProvisionerScopesEveryRestrictiveUmask` refuses any other shape.
+2. ⚠ **The verifier called an unreachable mount absent.** `[ -d ]` over a target
+   whose parent the account cannot enter fails exactly as a missing mount does.
+   It now walks the path from the root and names the directory it cannot enter.
+3. ⚠ **`base exec` discarded a failure to start `wsl.exe`** and exited 2 with no
+   reason, which reads exactly like a guest script that ran `exit 2`. The guest's
+   own status is still forwarded silently; every other failure is returned.
+4. `examples/common/zellij.md` published an absolute Windows home path carrying a
+   username, three times. It names `%LOCALAPPDATA%` now. The gate did not see
+   it, and `TOOL-25` is why.
+5. ⚠ **The verifier reported a warning as the engine version.** Found while
+   re-provisioning the ordinary base: podman wrote a stale `pause.pid` notice to
+   stderr after the restart, `podman --version 2>&1` merged it, and the base's
+   engine field read `pause.pid file refers to PID 47 ...`. It reads stdout alone
+   now.
+
+⚠ **Verification now asks more of every base, so an older one reports unusable
+until it is re-provisioned.** Measured on the ordinary `wsl-toolkit` base built
+2026-09-10: `base status --probe` answered `does not own a writable XDG directory
+at /home/toolkit/.cache`, and `base ensure` re-provisioned it in place in 13 s
+and answered healthy. [`../docs/consumers.md`](../docs/consumers.md) carries it.
+
+### What is proved so far
+
+⭐ **Every guard this work added was planted and went red**, nine rows through
+`repo mutate --only`: the guest-home default, the account rebuild refusal, the XDG
+directories, the sudoers validation, the scoped umask, the provisioner's own
+mask, the unreachable-parent message, the start-failure error, and the engine
+version read from stdout alone.
+
+⭐ **Driven on the throwaway base `wsl-toolkit-muse`**, from the one-checkout
+profile with `user: muse` and `passwordless_sudo: true`:
+
+- against the base still built for `toolkit`, `base status --probe` exited 1 and
+  `base ensure` exited 2, both naming `wsl-toolkit base recreate`, and
+  `/etc/fstab`, `/etc/wsl.conf` and the account list were unchanged afterwards;
+- `base recreate --yes` rebuilt it in 71.7 s and verification passed as `muse`;
+- as `muse`: the account's own home, all four XDG directories under it writable,
+  `sudo -n true` exit 0, umask `0022`, `/workspaces` 755, `/etc/fstab` 644, `/etc/subuid` 644,
+  and the sudoers fragment 440 inside a 750 `/etc/sudoers.d`;
+- `base exec -c 'exit 7'` exited 7 with no error line, and a relative `--dir` was
+  refused with exit 2;
+- ⭐ the live plant: `chmod 700 /workspaces` made `base status --probe` report
+  `this account cannot enter /workspaces, so explicit mount /workspaces/project
+  is unreachable`, and `chmod 755` gave back a healthy base;
+- Zellij 0.45.1-1 from pacman, then `bootstrap.sh --toolset agent --without
+  nim,powershell,tmux --no-tmux-config` as `muse`: requested 22, present 21,
+  `cargo` skipped because `rust` provides it, absent none, CodeGraph 1.6.0,
+  failures 0;
+- a commit made from the guest and pushed to the checkout's local bare remote is
+  visible from Windows, and CodeGraph indexed the committed program: 1 file,
+  4 nodes, 5 edges.
+
+⚠ **Measured in the first session and not re-run in the second:** a native
+Windows Zellij 0.45.1 client completed an authenticated attach to the WSL 0.45.1
+server over `http://127.0.0.1:8082`, and its token was revoked afterwards. The
+same version refused `zellij web --create-token --token-name NAME` as a mutually
+exclusive pair.
+
+⛔ **Still open at this checkpoint:** the operator's two Meta steps, installing
+the CLI from a saved and inspected file and running `muse login`; the agent
+driving Muse to read, write, commit and push; the three negative paths; and the
+acceptance command above.
+
 ---
 
 ## WSL-70. Two package maps become one, and the Go module embeds it

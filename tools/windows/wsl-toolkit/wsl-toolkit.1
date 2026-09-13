@@ -204,6 +204,26 @@ go through the local helper even when this process could call wsl.exe itself
 \fB--yes\fR
 do not ask before removing
 .TP
+.B wsl-toolkit base exec
+.TP
+\fB--c\fR
+the POSIX shell command to run in the base
+.TP
+\fB--dir\fR
+working directory inside the guest. Default is its home. Default: ~.
+.TP
+\fB--root\fR
+run as root instead of the configured account
+.TP
+\fB--script\fR
+a file on this machine whose bytes are the command
+.TP
+\fB--timeout\fR
+how long the command may run. 0 means no deadline. Default: 30m0s.
+.TP
+\fB--via-helper\fR
+prove the helper refusal for arbitrary base commands
+.TP
 .B wsl-toolkit base presets
 .TP
 \fB--json\fR

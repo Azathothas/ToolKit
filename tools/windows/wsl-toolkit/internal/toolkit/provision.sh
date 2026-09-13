@@ -2,13 +2,22 @@
 # Provision the wsl-toolkit base distribution: a rootless container engine and
 # one unprivileged account to run it as.
 #
-# It is delivered on stdin by the executable and runs as root ONCE, at create or
-# repair time. Nothing afterwards runs as root.
+# It is delivered on stdin by the executable and runs as root at create or
+# repair time. Normal work runs as the configured account; an explicit profile
+# setting may let that account elevate without a password.
 #
 # TK_USER and TK_UID arrive as exported variables rather than being substituted
 # into this text. Substituting a value into a script is the defect the command
 # channel exists to remove, and doing it here would undo that one layer up.
 set -eu
+
+# ⛔ THE CREATION MASK IS SET HERE, NOT INHERITED. The unprivileged account reads
+# and traverses what this script creates: /etc/fstab, /etc/subuid and every
+# directory above a mount target. A restrictive mask taken for the sudoers
+# candidate once leaked into every later step, so a fresh build made /workspaces
+# 0700 and the account could not reach its own checkout. A step that needs a
+# tighter mask takes it inside a subshell, and a test holds that shape.
+umask 022
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
@@ -19,6 +28,7 @@ die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 : "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
 : "${TK_INTEROP:?TK_INTEROP is required}"
 : "${TK_SYSTEMD:?TK_SYSTEMD is required}"
+: "${TK_PASSWORDLESS_SUDO:?TK_PASSWORDLESS_SUDO is required}"
 : "${TK_TOOLSET:?TK_TOOLSET is required}"
 : "${TK_FSTAB_B64?TK_FSTAB_B64 is required, and may be empty}"
 : "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
@@ -54,6 +64,11 @@ case "$TK_SYSTEMD" in
   *)          die "TK_SYSTEMD is $TK_SYSTEMD; it must be true or false" ;;
 esac
 say "systemd: $SYSTEMD_ENABLED"
+
+case "$TK_PASSWORDLESS_SUDO" in
+  true|false) ;;
+  *) die "TK_PASSWORDLESS_SUDO is $TK_PASSWORDLESS_SUDO; it must be true or false" ;;
+esac
 
 # -- which userland is this ---------------------------------------------------
 # Read from what is installed rather than from /etc/os-release's ID, because a
@@ -220,6 +235,51 @@ fi
 TK_HOME=$(getent passwd "$TK_USER" 2>/dev/null | cut -d: -f6) || TK_HOME=
 [ -n "$TK_HOME" ] || TK_HOME=/home/$TK_USER
 [ -d "$TK_HOME" ] || { mkdir -p "$TK_HOME"; chown "$TK_USER" "$TK_HOME"; }
+TK_GROUP=$(id -gn "$TK_USER")
+chown "$TK_USER:$TK_GROUP" "$TK_HOME"
+chmod 0700 "$TK_HOME"
+for xdg_dir in "$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state"; do
+  mkdir -p "$xdg_dir"
+  chown "$TK_USER:$TK_GROUP" "$xdg_dir"
+  chmod 0700 "$xdg_dir"
+done
+say "account home: $TK_HOME; persistent XDG directories: ready"
+
+# -- optional agent privilege escalation -------------------------------------
+# This is deliberately a tool-owned drop-in: turning the profile setting off
+# removes only the authority this tool created. Validate the candidate before
+# its atomic move so a malformed rule never becomes active.
+sudoers_path=/etc/sudoers.d/wsl-toolkit-$TK_USER
+case "$TK_PASSWORDLESS_SUDO" in
+  true)
+    case "$FAMILY" in
+      apk)    apk add --no-cache sudo >/dev/null ;;
+      pacman) pacman -S --noconfirm --needed sudo >/dev/null ;;
+      apt)    apt-get install -y -qq --no-install-recommends sudo >/dev/null ;;
+      dnf)    dnf -y --setopt=install_weak_deps=False install sudo >/dev/null ;;
+      tdnf)   tdnf install -y sudo >/dev/null ;;
+      xbps)   xbps-install -Sy sudo >/dev/null ;;
+    esac
+    command -v sudo >/dev/null 2>&1 || die "passwordless sudo was requested and sudo is absent"
+    command -v visudo >/dev/null 2>&1 || die "passwordless sudo was requested and visudo is absent"
+    mkdir -p /etc/sudoers.d
+    chmod 0750 /etc/sudoers.d
+    sudoers_tmp=$sudoers_path.tmp.$$
+    ( umask 077; printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$TK_USER" > "$sudoers_tmp" ) ||
+      die "the passwordless sudo candidate could not be written"
+    chmod 0440 "$sudoers_tmp"
+    if ! visudo -cf "$sudoers_tmp" >/dev/null 2>&1; then
+      rm -f "$sudoers_tmp"
+      die "the passwordless sudo rule did not pass visudo"
+    fi
+    mv "$sudoers_tmp" "$sudoers_path"
+    say "passwordless sudo: true"
+    ;;
+  false)
+    rm -f "$sudoers_path"
+    say "passwordless sudo: false"
+    ;;
+esac
 
 # -- the id ranges a rootless engine maps -------------------------------------
 # One range each, well clear of any real uid. A user with no range gets

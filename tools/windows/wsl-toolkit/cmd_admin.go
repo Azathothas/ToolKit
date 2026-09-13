@@ -382,8 +382,8 @@ func cmdConfig(args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	fmt.Fprintf(os.Stderr, "  access      automount %s, interop %s, systemd %v, toolset %s\n",
-		automount, interop, cfg.Base.Systemd, toolset)
+	fmt.Fprintf(os.Stderr, "  access      automount %s, interop %s, systemd %v, passwordless sudo %v, toolset %s\n",
+		automount, interop, cfg.Base.Systemd, cfg.Base.PasswordlessSudo, toolset)
 	mounts, err := cfg.ResolvedBaseMounts()
 	if err != nil {
 		return exitCannot, err

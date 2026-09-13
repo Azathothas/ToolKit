@@ -188,10 +188,11 @@ func TestBaseMountPayloadIsEncodedAndEscaped(t *testing.T) {
 func TestConfigFingerprintTracksBaseAccess(t *testing.T) {
 	base := DefaultConfig()
 	changes := map[string]func(*Config){
-		"automount": func(c *Config) { c.Base.Automount = AutomountOff },
-		"interop":   func(c *Config) { c.Base.Interop = BaseInteropOff },
-		"systemd":   func(c *Config) { c.Base.Systemd = true },
-		"toolset":   func(c *Config) { c.Base.Toolset = BaseToolsetDeveloper },
+		"automount":         func(c *Config) { c.Base.Automount = AutomountOff },
+		"interop":           func(c *Config) { c.Base.Interop = BaseInteropOff },
+		"systemd":           func(c *Config) { c.Base.Systemd = true },
+		"passwordless sudo": func(c *Config) { c.Base.PasswordlessSudo = true },
+		"toolset":           func(c *Config) { c.Base.Toolset = BaseToolsetDeveloper },
 	}
 	for name, change := range changes {
 		t.Run(name, func(t *testing.T) {
@@ -214,5 +215,17 @@ func TestConfigFingerprintTracksBaseAccess(t *testing.T) {
 	}
 	if restricted.Fingerprint() == withoutMount {
 		t.Fatal("an explicit host mount did not change the configuration fingerprint")
+	}
+}
+
+func TestChangingManagedAccountRequiresRecreate(t *testing.T) {
+	if got := managedAccountDrift("toolkit", "toolkit"); got != "" {
+		t.Fatalf("an unchanged account was reported as drift: %s", got)
+	}
+	got := managedAccountDrift("toolkit", "muse")
+	for _, want := range []string{`"toolkit"`, `"muse"`, "wsl-toolkit base recreate"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("account drift %q does not carry %q", got, want)
+		}
 	}
 }

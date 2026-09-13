@@ -101,6 +101,15 @@
       "args": []
     },
     {
+      "label": "the guest-home default for base exec",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_exec.go",
+      "find": "fs.StringVar(&e.dir, \"dir\", \"~\", \"working directory inside the guest. Default is its home\")",
+      "replace": "fs.StringVar(&e.dir, \"dir\", \"\", \"working directory inside the guest. Default is its home\")",
+      "run": "TestBaseExecDefaultsToGuestHome",
+      "args": []
+    },
+    {
       "label": "the negative timeout refusal",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_run.go",
@@ -802,6 +811,78 @@
       "find": "\treturn fmt.Errorf(\"the engine's run state is stale and --repair was not given. Run: %s (%w)\", r.Command, cause)",
       "replace": "\treturn fmt.Errorf(\"the engine's run state is stale and --repair was not given. Run: %s\", r.Command)",
       "run": "TestTheRefusalSurvivesItsOwnClassifier",
+      "args": []
+    },
+    {
+      "label": "changing the managed account requires a rebuild",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif built == configured {\n\t\treturn \"\"\n\t}",
+      "replace": "\tif true {\n\t\treturn \"\"\n\t}",
+      "run": "TestChangingManagedAccountRequiresRecreate",
+      "args": []
+    },
+    {
+      "label": "a managed account receiving its private persistent XDG directories",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "for xdg_dir in \"$TK_HOME/.config\" \"$TK_HOME/.cache\" \"$TK_HOME/.local\" \"$TK_HOME/.local/share\" \"$TK_HOME/.local/state\"; do",
+      "replace": "for xdg_dir in \"$TK_HOME/.config\"; do",
+      "run": "TestManagedAccountGetsPrivateXDGDirectories",
+      "args": []
+    },
+    {
+      "label": "a passwordless sudo rule validated before it becomes active",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    if ! visudo -cf \"$sudoers_tmp\" >/dev/null 2>&1; then",
+      "replace": "    if false; then",
+      "run": "TestPasswordlessSudoIsValidatedBeforeActivation",
+      "args": []
+    },
+    {
+      "label": "a restrictive umask kept inside its subshell",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    ( umask 077; printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\\n' \"$TK_USER\" > \"$sudoers_tmp\" ) ||",
+      "replace": "    umask 077; printf '%s ALL=(ALL:ALL) NOPASSWD: ALL\\n' \"$TK_USER\" > \"$sudoers_tmp\" ||",
+      "run": "TestTheProvisionerScopesEveryRestrictiveUmask",
+      "args": []
+    },
+    {
+      "label": "the provisioner setting its own creation mask",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "umask 022\n\nsay() {",
+      "replace": ": no creation mask\n\nsay() {",
+      "run": "TestTheProvisionerScopesEveryRestrictiveUmask",
+      "args": []
+    },
+    {
+      "label": "an unreachable mount parent reported as unreachable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    [ -x \"$walk\" ] || { printf 'verify: this account cannot enter %s, so explicit mount %s is unreachable\\n' \"$walk\" \"$target\" >&2; exit 3; }",
+      "replace": "    :",
+      "run": "TestTheVerifierSeparatesAnUnreachableMountFromAnAbsentOne",
+      "args": []
+    },
+    {
+      "label": "base exec surfacing a failure to start",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_exec.go",
+      "find": "\tif code != exitTimeout && code != 130 && errors.As(runErr, &exited) {",
+      "replace": "\tif code != exitTimeout && code != 130 && (errors.As(runErr, &exited) || true) {",
+      "run": "TestBaseExecSurfacesAFailureToStart",
+      "args": []
+    },
+    {
+      "label": "the engine version read from stdout alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "printf 'engine %s\\n' \"$(podman --version 2>/dev/null | head -1)\"",
+      "replace": "printf 'engine %s\\n' \"$(podman --version 2>&1 | head -1)\"",
+      "run": "TestTheVerifierReadsTheEngineVersionFromStdoutAlone",
       "args": []
     },
     {

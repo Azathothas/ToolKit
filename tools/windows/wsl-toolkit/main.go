@@ -118,7 +118,7 @@ func registeredCommandSpecs() []commandSpec {
 	return []commandSpec{
 		{Name: "doctor", Summary: "report the host and the tools that can run", Run: cmdDoctor, HelpForms: []string{"doctor"}},
 		{Name: "script", Summary: "run the embedded PowerShell compatibility interface", Run: cmdScript},
-		{Name: "base", Summary: "manage the WSL distribution that this tool owns", Run: cmdBase, HelpForms: []string{"base status", "base ensure", "base recreate", "base remove", "base shell", "base presets"}},
+		{Name: "base", Summary: "manage the WSL distribution that this tool owns", Run: cmdBase, HelpForms: []string{"base status", "base ensure", "base recreate", "base remove", "base shell", "base exec", "base presets"}},
 		{Name: "images", Summary: "list, check, or pull catalog images", Run: cmdImages, HelpForms: []string{"images", "images warm", "images pull"}},
 		{Name: "run", Summary: "run one command in one container", Run: cmdRun, HelpForms: []string{"run"}},
 		{Name: "matrix", Summary: "run one command across a set of images", Run: cmdMatrix, HelpForms: []string{"matrix"}},

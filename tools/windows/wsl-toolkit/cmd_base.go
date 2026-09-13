@@ -9,13 +9,14 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|presets>
+const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|presets>
 
   status     is it registered, and can it actually run a container
   ensure     bring it to a usable state, doing the least that achieves it
   recreate   remove it and build it again from nothing
   remove     unregister it and delete its disk
   shell      attach an interactive shell to it, as the unprivileged account
+  exec       run a non-interactive POSIX script in it, as that account
   presets    the rootfs choices, what each one measured here, and which is live
 
   --preset ID   build from a preset, or from any fully qualified reference.
@@ -50,6 +51,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	save := fs.Bool("save", false, "also store the preset as the default for later commands")
 	if sub == "presets" {
 		return cmdPresets(rest)
+	}
+	if sub == "exec" {
+		return cmdBaseExec(ctx, rest)
 	}
 	if err := parseArgs(fs, rest); err != nil {
 		return exitCannot, err
@@ -248,6 +252,7 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	fmt.Fprintf(out, "  automount   %s\n", st.Access.Automount)
 	fmt.Fprintf(out, "  interop     %s\n", st.Access.Interop)
 	fmt.Fprintf(out, "  init        systemd %v\n", st.Access.Systemd)
+	fmt.Fprintf(out, "  sudo        passwordless %v\n", st.Access.PasswordlessSudo)
 	fmt.Fprintf(out, "  toolset     %s\n", st.Access.Toolset)
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)

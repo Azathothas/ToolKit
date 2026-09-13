@@ -93,20 +93,32 @@ A timeout stops a persistent container and removes an ephemeral one, and exits
 ## Dedicated provider bases
 
 A named instance can be a persistent Linux home for a provider CLI. A project
-profile can enable systemd, select the `developer` toolset, disable ambient
-Windows drive mounts and executable interop, and grant exactly one checkout at
-`/workspaces/project`:
+profile can enable systemd, select the `developer` toolset, opt a trusted agent
+into passwordless sudo, disable ambient Windows drive mounts and executable
+interop, and grant exactly one checkout at `/workspaces/project`:
 
 ```powershell
 wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base ensure
 wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base status --probe --json
 wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base shell
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec --dir /workspaces/project -c 'git status --short'
 ```
+
+`base exec` is the non-interactive host-to-guest seam. It starts as the
+configured account in that account's home unless `--dir` names an absolute
+guest path, sends the command or `--script` body on stdin, forwards output, and
+returns the guest exit status. `--root` is an explicit administrative variant.
+
+⚠ `passwordless_sudo: true` gives the configured account unrestricted guest
+root. Guest root can manually mount Windows paths, so this setting serves a
+trusted agent and is not a containment boundary.
 
 [`examples/muse-code/README.md`](examples/muse-code/README.md) is the complete
 worked example. [`examples/common/access-profiles.md`](examples/common/access-profiles.md)
 carries both the one-checkout profile and the zero-grant profile, including the
 boundary they do not claim against guest root or the network.
+[`examples/common/zellij.md`](examples/common/zellij.md) is the operator and
+agent guide for the same durable session, including native Windows attachment.
 
 ---
 

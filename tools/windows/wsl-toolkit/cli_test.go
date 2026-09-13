@@ -3,10 +3,12 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -111,11 +113,56 @@ func TestFlagRefusalsAcceptOrdinaryFlags(t *testing.T) {
 // this. ⛔ `doctor` had the check and the other seven did not, because it was
 // written at one call site instead of in the parse.
 func TestEveryFlagSetRefusesPositionals(t *testing.T) {
-	for _, name := range []string{"doctor", "images", "resources", "gc", "config", "run", "matrix", "base ensure", "helper serve", "version"} {
+	for _, name := range []string{"doctor", "images", "resources", "gc", "config", "run", "matrix", "base ensure", "base exec", "helper serve", "version"} {
 		fs := newFlagSet(name)
 		if err := parseArgs(fs, []string{"unexpected"}); err == nil {
 			t.Errorf("%s accepted a positional argument", name)
 		}
+	}
+}
+
+// TestBaseExecDefaultsToGuestHome is the guard against inheriting the Windows
+// working directory. WSL does that when --cd is absent, which silently grants a
+// base access to the caller's checkout whenever automount is enabled.
+func TestBaseExecDefaultsToGuestHome(t *testing.T) {
+	var opts baseExecFlags
+	fs := flag.NewFlagSet("base exec", flag.ContinueOnError)
+	opts.bind(fs)
+	if err := parseArgs(fs, []string{"-c", "pwd"}); err != nil {
+		t.Fatal(err)
+	}
+	cfg := toolkit.DefaultConfig()
+	req, err := opts.request(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.Dir != "~" {
+		t.Fatalf("base exec starts in %q, want the guest home; an empty directory inherits the Windows working directory", req.Dir)
+	}
+	if req.User != cfg.Base.User {
+		t.Fatalf("base exec runs as %q, want the configured account %q", req.User, cfg.Base.User)
+	}
+	opts.dir = "workspaces/project"
+	if _, err := opts.request(cfg); err == nil {
+		t.Fatal("a relative --dir was accepted, so its meaning depends on where WSL happened to start")
+	}
+}
+
+// TestBaseExecSurfacesAFailureToStart holds the line between a guest's answer
+// and a process that never ran. The guest's own exit status is forwarded
+// silently; a `wsl.exe` that could not be started used to exit 2 with its reason
+// dropped, which reads exactly like a guest script that ran `exit 2`.
+func TestBaseExecSurfacesAFailureToStart(t *testing.T) {
+	notStarted := &toolkit.ProcessError{Code: exitCannot, Op: "process", Err: exec.ErrNotFound}
+	if code, err := baseExecResult(exitCannot, notStarted); err == nil || code != exitCannot {
+		t.Fatalf("a wsl.exe that never started returned (%d, %v); want exit %d and its reason", code, err, exitCannot)
+	}
+	deadline := &toolkit.ProcessError{Code: exitTimeout, Op: "process", Err: context.DeadlineExceeded}
+	if code, err := baseExecResult(exitTimeout, deadline); err == nil || code != exitTimeout {
+		t.Fatalf("a deadline returned (%d, %v); want exit %d and its reason", code, err, exitTimeout)
+	}
+	if code, err := baseExecResult(exitOK, nil); err != nil || code != exitOK {
+		t.Fatalf("a clean run returned (%d, %v); want (%d, nil)", code, err, exitOK)
 	}
 }
 

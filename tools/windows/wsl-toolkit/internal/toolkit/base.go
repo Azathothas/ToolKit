@@ -59,8 +59,8 @@ type BaseState struct {
 	// older than the probe, which is not the same as a tree that can do nothing.
 	Cgroup *CgroupState `json:"cgroup,omitempty"`
 	Binfmt *BinfmtState `json:"binfmt,omitempty"`
-	// Access is the configured Windows boundary. Under --probe a healthy result
-	// means the unprivileged account verified these settings after WSL restarted.
+	// Access is the configured access state. Under --probe a healthy result
+	// means the configured account verified these settings after WSL restarted.
 	Access BaseAccessState `json:"access"`
 	// Remediations are the conditions this tool found, each with what leaving it
 	// costs and the exact command that takes it. ⭐ A caller here is usually an
@@ -70,11 +70,12 @@ type BaseState struct {
 
 // BaseAccessState is what the base is configured to reach on Windows.
 type BaseAccessState struct {
-	Automount string      `json:"automount"`
-	Interop   string      `json:"interop"`
-	Systemd   bool        `json:"systemd"`
-	Toolset   string      `json:"toolset"`
-	Mounts    []BaseMount `json:"mounts,omitempty"`
+	Automount        string      `json:"automount"`
+	Interop          string      `json:"interop"`
+	Systemd          bool        `json:"systemd"`
+	PasswordlessSudo bool        `json:"passwordless_sudo"`
+	Toolset          string      `json:"toolset"`
+	Mounts           []BaseMount `json:"mounts,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -140,7 +141,8 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	st := BaseState{
 		Name: b.cfg.Base.Name, Image: b.cfg.Base.Image, User: b.cfg.Base.User,
 		Access: BaseAccessState{
-			Automount: automount, Interop: interop, Systemd: b.cfg.Base.Systemd, Toolset: toolset, Mounts: mounts,
+			Automount: automount, Interop: interop, Systemd: b.cfg.Base.Systemd,
+			PasswordlessSudo: b.cfg.Base.PasswordlessSudo, Toolset: toolset, Mounts: mounts,
 		},
 	}
 	distros, err := b.wsl.List(ctx, b.cfg.Base.Name)
@@ -172,6 +174,12 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 					"Run `base status --probe` to ask the guest, then `base recreate` to rebuild",
 				rec.Image, st.Image))
 		}
+		if rec.User != "" && rec.User != st.User {
+			st.Problems = append(st.Problems, fmt.Sprintf(
+				"this machine's record says the managed account is %q and the configuration says %q. "+
+					"Run `base status --probe` to ask the guest, then `base recreate` to rebuild",
+				rec.User, st.User))
+		}
 	}
 	if !st.Registered {
 		st.Problems = append(st.Problems, "not registered. Create it with: wsl-toolkit base ensure")
@@ -196,6 +204,10 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 			st.Problems = append(st.Problems, fmt.Sprintf(
 				"the guest was built from %s and the configuration says %s. Run `base recreate` to rebuild it, or change the configuration back",
 				id.Image, st.Image))
+		}
+		if problem := managedAccountDrift(id.User, st.User); problem != "" {
+			st.Problems = append(st.Problems, problem)
+			return st, nil
 		}
 	} else if errors.Is(err, ErrNoIdentity) {
 		st.Problems = append(st.Problems, fmt.Sprintf(
@@ -233,7 +245,7 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 func withoutRecordDrift(problems []string) []string {
 	out := problems[:0]
 	for _, p := range problems {
-		if strings.HasPrefix(p, recordDriftPrefix) {
+		if strings.HasPrefix(p, recordDriftPrefix) || strings.HasPrefix(p, recordUserDriftPrefix) {
 			continue
 		}
 		out = append(out, p)
@@ -245,6 +257,17 @@ func withoutRecordDrift(problems []string) []string {
 // a whole-string match, because the message names two images and neither is
 // known here.
 const recordDriftPrefix = "this machine's record says it was built from "
+const recordUserDriftPrefix = "this machine's record says the managed account is "
+
+func managedAccountDrift(built, configured string) string {
+	if built == configured {
+		return ""
+	}
+	return fmt.Sprintf(
+		"this distribution was built for account %q and the configuration says %q. "+
+			"Changing the managed account requires: wsl-toolkit base recreate",
+		built, configured)
+}
 
 type baseRecord struct {
 	Schema  string    `json:"schema"`
@@ -457,6 +480,10 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 		if err := b.writeRecordFrom(id); err != nil {
 			return err
 		}
+		if problem := managedAccountDrift(id.User, b.cfg.Base.User); problem != "" {
+			b.log(problem)
+			return errors.New(problem)
+		}
 		if id.Image != b.cfg.Base.Image {
 			// ⛔ REPORTED AND LEFT VISIBLE. It does not rebuild: a rebuild
 			// destroys the thing the operator needs to look at, and `recreate`
@@ -615,15 +642,16 @@ func (b *Base) provision(ctx context.Context) error {
 		User:   "root",
 		Script: provisionScript,
 		Env: map[string]string{
-			"TK_USER":         b.cfg.Base.User,
-			"TK_UID":          "1000",
-			"TK_BINFMT_IMAGE": BinfmtImage,
-			"TK_AUTOMOUNT":    automount,
-			"TK_INTEROP":      interop,
-			"TK_SYSTEMD":      strconv.FormatBool(b.cfg.Base.Systemd),
-			"TK_TOOLSET":      toolset,
-			"TK_FSTAB_B64":    fstab,
-			"TK_MOUNT_CHECKS": checks,
+			"TK_USER":              b.cfg.Base.User,
+			"TK_UID":               "1000",
+			"TK_BINFMT_IMAGE":      BinfmtImage,
+			"TK_AUTOMOUNT":         automount,
+			"TK_INTEROP":           interop,
+			"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
+			"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
+			"TK_TOOLSET":           toolset,
+			"TK_FSTAB_B64":         fstab,
+			"TK_MOUNT_CHECKS":      checks,
 		},
 		Timeout: 30 * time.Minute,
 		Stdout:  out,
@@ -796,14 +824,15 @@ func (b *Base) verify(ctx context.Context) (string, *CgroupState, *BinfmtState, 
 		return "", nil, nil, err
 	}
 	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, map[string]string{
-		"TK_IMAGE":        VerifyImage,
-		"TK_M1":           m1,
-		"TK_M2":           m2,
-		"TK_AUTOMOUNT":    automount,
-		"TK_INTEROP":      interop,
-		"TK_SYSTEMD":      strconv.FormatBool(b.cfg.Base.Systemd),
-		"TK_TOOLSET":      toolset,
-		"TK_MOUNT_CHECKS": checks,
+		"TK_IMAGE":             VerifyImage,
+		"TK_M1":                m1,
+		"TK_M2":                m2,
+		"TK_AUTOMOUNT":         automount,
+		"TK_INTEROP":           interop,
+		"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
+		"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
+		"TK_TOOLSET":           toolset,
+		"TK_MOUNT_CHECKS":      checks,
 	}, 20*time.Minute)
 	if err != nil || code != 0 {
 		return "", nil, nil, fmt.Errorf("a container did not run as %s (exit %d): %s", b.cfg.Base.User, code, firstLine(stderr+out))

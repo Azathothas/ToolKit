@@ -6,26 +6,27 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-12T14:40:00Z
-baseline        fcca2ba, clean main; local gate 19 checks green and CI RED on
-                that same commit in three jobs
+session started 2026-09-13T02:36:12Z
+baseline        e9f0e08 with 19 uncommitted WSL-69 paths; local gate RED,
+                3 problems, 42.4s
 entries         total 104  open 7  blocked 0  done 97
-gate            19 checks green; CI green on bf5c095, all six jobs
-head            bf5c095 pushed; the scripts work committed on top
+gate            in progress; see the WSL-69 checkpoint commit
+head            e9f0e08 plus this session's commits, not yet pushed
 ```
 
 ## Active work
 
-⭐ **[Issue 29](https://github.com/Azathothas/ToolKit/issues/29) is CLOSED**, on CI
-run [`34700281005`](https://github.com/Azathothas/ToolKit/actions/runs/34700281005)
-with all six jobs green. ⛔ **Neither of the two failures that had been blocking it
-belonged to it**; both were in the issue-30 files, and the record below says what
-they were.
+⭐ **[Issue 30](https://github.com/Azathothas/ToolKit/issues/30) is being finished
+unattended**, on the operator's instruction of 2026-09-13 to complete every task
+and close the issue properly. The work order is `WSL-69`, then three defects this
+session found in the gate itself, then `WSL-72`, `WSL-70`, `WSL-71`, `WSL-67` and
+`WSL-68`.
 
-⭐ **[Issue 30](https://github.com/Azathothas/ToolKit/issues/30) part 1 is much
-further along and still open.** The operator ruled three changes mid-session and
-added two requirements; all five are done and driven. `WSL-68`, the sealed-base
-work, is untouched.
+⚠ **`WSL-69` is at a checkpoint and stays open.** The base the guide needs is
+built and driven; the three defects and the published fingerprint found in the
+uncommitted work are fixed and mutation-proved. The entry's 2026-09-13 amendment
+carries the measurements. What remains waits on the operator's Meta account for
+two steps, and this session polls for them rather than stopping.
 
 ## What was built
 

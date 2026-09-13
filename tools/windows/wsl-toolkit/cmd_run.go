@@ -72,22 +72,26 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 // by /bin/sh otherwise fails on its first line with a message about a character
 // nobody can see.
 func (j *jobFlags) script() ([]byte, error) {
-	if j.command != "" && j.scriptFile != "" {
+	return guestScript(j.command, j.scriptFile)
+}
+
+func guestScript(command, scriptFile string) ([]byte, error) {
+	if command != "" && scriptFile != "" {
 		return nil, errors.New("-c and --script are two spellings of one argument, so passing both is refused rather than resolved by a precedence nobody would remember")
 	}
-	if j.command != "" {
+	if command != "" {
 		// ⛔ -c GETS THE SAME REPAIR AS --script, and it did not. A multi-line
 		// command assembled in PowerShell carries CRLF, and /bin/sh reads the
 		// carriage return as part of the last word on the line: `2>/dev/null`
 		// becomes a file named `/dev/null` followed by an invisible byte, and
 		// the error names a file nobody wrote. One channel repairing its
 		// payload while its sibling does not is the one-gated-door shape.
-		return toolkit.RepairGuestScript([]byte(j.command + "\n"))
+		return toolkit.RepairGuestScript([]byte(command + "\n"))
 	}
-	if j.scriptFile == "" {
+	if scriptFile == "" {
 		return nil, errors.New("nothing to run: pass -c COMMAND or --script FILE")
 	}
-	raw, err := os.ReadFile(j.scriptFile)
+	raw, err := os.ReadFile(scriptFile)
 	if err != nil {
 		return nil, err
 	}

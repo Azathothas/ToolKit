@@ -43,7 +43,10 @@ type Image struct {
 type BaseConfig struct {
 	Name  string `json:"name"`
 	Image string `json:"image"`
-	User  string `json:"user"`
+	// User is the one managed workload account for this named instance. Each
+	// agent that needs a different home or authority belongs in another
+	// instance, not beside a sudo-capable account in the same distribution.
+	User string `json:"user"`
 	// Automount is how the Windows drives appear inside the base: `ro`, `rw`
 	// or `off`.
 	//
@@ -66,6 +69,10 @@ type BaseConfig struct {
 	Interop string `json:"interop,omitempty"`
 	// Systemd asks WSL to make systemd pid 1 for this distribution.
 	Systemd bool `json:"systemd,omitempty"`
+	// PasswordlessSudo lets the configured account elevate without an
+	// interactive password. It is intentionally opt-in because that account
+	// can then change anything inside the distribution, including mounts.
+	PasswordlessSudo bool `json:"passwordless_sudo,omitempty"`
 	// Toolset optionally installs a reproducible group of tools in the base.
 	// `developer` is the provider-CLI foundation: git, build tools and tmux.
 	Toolset string `json:"toolset,omitempty"`
@@ -415,6 +422,7 @@ func LoadConfig() (Config, error) {
 		cfg.Base.Interop = stored.Base.Interop
 	}
 	cfg.Base.Systemd = stored.Base.Systemd
+	cfg.Base.PasswordlessSudo = stored.Base.PasswordlessSudo
 	if stored.Base.Toolset != "" {
 		cfg.Base.Toolset = stored.Base.Toolset
 	}

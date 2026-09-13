@@ -1,6 +1,6 @@
 #!/bin/sh
 # Prove the base distribution can actually run a rootless container, as the
-# unprivileged account, right now.
+# configured account, right now.
 #
 # It runs as TK_USER inside the owned distribution and is delivered on stdin.
 #
@@ -16,6 +16,7 @@ set -eu
 : "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
 : "${TK_INTEROP:?TK_INTEROP is required}"
 : "${TK_SYSTEMD:?TK_SYSTEMD is required}"
+: "${TK_PASSWORDLESS_SUDO:?TK_PASSWORDLESS_SUDO is required}"
 : "${TK_TOOLSET:?TK_TOOLSET is required}"
 : "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
 
@@ -61,6 +62,31 @@ case "$TK_SYSTEMD:$pid_one" in
 esac
 printf 'systemd %s pid-one %s\n' "$TK_SYSTEMD" "$pid_one"
 
+case "$TK_PASSWORDLESS_SUDO" in
+  true)
+    command -v sudo >/dev/null 2>&1 || {
+      printf 'verify: passwordless sudo was requested and sudo is absent\n' >&2
+      exit 3
+    }
+    sudo -n true >/dev/null 2>&1 || {
+      printf 'verify: the configured account cannot use sudo without a password\n' >&2
+      exit 3
+    }
+    ;;
+  false) ;;
+  *) printf 'verify: unknown passwordless sudo setting %s\n' "$TK_PASSWORDLESS_SUDO" >&2; exit 3 ;;
+esac
+printf 'passwordless-sudo %s\n' "$TK_PASSWORDLESS_SUDO"
+
+for xdg_dir in "$HOME/.config" "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state"; do
+  if [ ! -d "$xdg_dir" ] || [ ! -w "$xdg_dir" ]; then
+    printf 'verify: the managed account does not own a writable XDG directory at %s\n' "$xdg_dir" >&2
+    exit 3
+  fi
+done
+printf 'home %s\n' "$HOME"
+printf 'xdg-dirs ready\n'
+
 case "$TK_TOOLSET" in
   none) ;;
   developer)
@@ -96,6 +122,20 @@ while [ "$#" -gt 0 ]; do
   fi
   rm -f "$mount_decode"
   printf '%s\n' "$target" >> "$mount_allowlist"
+  # ⛔ UNREACHABLE IS NOT ABSENT. A directory above the target that this account
+  # cannot enter makes `[ -d ]` fail exactly as a missing mount does, and a fresh
+  # build once reported a present mount as absent that way. Walked from the root
+  # down, so each step's parent is already known to be enterable.
+  walk=
+  rest=${target#/}
+  while [ -n "$rest" ]; do
+    part=${rest%%/*}
+    case "$rest" in */*) rest=${rest#*/} ;; *) rest= ;; esac
+    walk=$walk/$part
+    [ "$walk" = "$target" ] && break
+    [ -e "$walk" ] || break
+    [ -x "$walk" ] || { printf 'verify: this account cannot enter %s, so explicit mount %s is unreachable\n' "$walk" "$target" >&2; exit 3; }
+  done
   [ -d "$target" ] || { printf 'verify: explicit mount %s is absent\n' "$target" >&2; exit 3; }
   if ! awk -v expected="$target" '
     $2 == expected && ($3 == "drvfs" || ($3 == "9p" && $4 ~ /aname=drvfs/)) { found=1 }
@@ -146,7 +186,9 @@ if [ "$TK_AUTOMOUNT" = off ]; then
 fi
 rm -f "$mount_allowlist"
 
-printf 'engine %s\n' "$(podman --version 2>&1 | head -1)"
+# ⚠ STDOUT ALONE. podman warns on stderr about stale run state after a restart,
+# and a merged stream reported "pause.pid file refers to PID 47 ..." as the engine.
+printf 'engine %s\n' "$(podman --version 2>/dev/null | head -1)"
 printf 'runtime-dir %s\n' "${XDG_RUNTIME_DIR:-unset}"
 printf 'user %s uid %s\n' "$(id -un)" "$(id -u)"
 
