@@ -922,15 +922,6 @@
       "args": []
     },
     {
-      "label": "the bundle rule comparing before it tests",
-      "module": "tools/check",
-      "file": "internal/checks/tools.go",
-      "find": "var bundleArgs = []string{\"-Check\", \"-Test\"}",
-      "replace": "var bundleArgs = []string{\"-Test\"}",
-      "run": "TestTheBundleRuleComparesRatherThanRebuilds",
-      "args": []
-    },
-    {
       "label": "a gate skip printed as a skip",
       "module": "tools/check",
       "file": "main.go",
@@ -1117,6 +1108,321 @@
       "find": "\t\tif !a.Up || !strings.HasPrefix(strings.ToLower(a.Name), \"vethernet (wsl\") {\n",
       "replace": "\t\tif !strings.HasPrefix(strings.ToLower(a.Name), \"vethernet (wsl\") {\n",
       "run": "TestTheNatAdapterIsFoundByPrefixAndOnlyWhenUp",
+      "args": []
+    },
+    {
+      "label": "channel: a payload carrying NUL is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/payload.go",
+      "find": "\tif bytes.IndexByte(payload, 0) >= 0 {\n\t\treturn nil, ErrPayloadNUL\n",
+      "replace": "\tif false {\n\t\treturn nil, ErrPayloadNUL\n",
+      "run": "TestFramePayloadRefusesANulByte",
+      "args": []
+    },
+    {
+      "label": "channel: the framed command's stdin is /dev/null",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/payload.go",
+      "find": "\tb.WriteString(\"' </dev/null\\n\")\n",
+      "replace": "\tb.WriteString(\"'\\n\")\n",
+      "run": "TestTheFrameShapeGivesTheCommandDevNullAndEndsOnItsDelimiter",
+      "args": []
+    },
+    {
+      "label": "channel: a command reading stdin cannot eat the rest, run through a real shell",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/payload.go",
+      "find": "\tb.WriteString(\"' </dev/null\\n\")\n",
+      "replace": "\tb.WriteString(\"'\\n\")\n",
+      "run": "TestAFramedCommandThatReadsStdinCannotEatTheRestOfIt",
+      "args": []
+    },
+    {
+      "label": "channel: a delimiter the payload carries is drawn again",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/payload.go",
+      "find": "\t\tif !bytes.Contains(payload, []byte(delim)) {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestADelimiterThatOccursInThePayloadIsDrawnAgain",
+      "args": []
+    },
+    {
+      "label": "channel: Exec frames a caller's command",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/wsl.go",
+      "find": "\tif req.Payload {\n\t\treturn FramePayload(script)\n\t}\n",
+      "replace": "",
+      "run": "TestACallersCommandIsFramedOnTheWayToTheShellAndAToolQuestionIsNot",
+      "args": []
+    },
+    {
+      "label": "channel: base exec sends its command framed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_exec.go",
+      "find": "\t\tPayload: true,\n",
+      "replace": "\t\tPayload: false,\n",
+      "run": "TestBaseExecDefaultsToGuestHome",
+      "args": []
+    },
+    {
+      "label": "channel: the caller's environment is assigned after the user environment",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/payload.go",
+      "find": "\t\tb.WriteString(\"\\n\")\n\t}\n\tb.Write(command)\n",
+      "replace": "\t\tb.WriteString(\"\\n\")\n\t}\n\tif userEnv {\n\t\tb.WriteString(userEnvironmentPrelude)\n\t}\n\tb.Write(command)\n",
+      "run": "TestComposePayloadPutsThePrologueFirstAndTheCommandLastAndUnchanged",
+      "args": []
+    },
+    {
+      "label": "channel: an env file line that is not a pair is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/payload.go",
+      "find": "\t\t\treturn nil, fmt.Errorf(\"%s line %d: %w\", source, i+1, err)\n",
+      "replace": "\t\t\t_ = i\n\t\t\tcontinue\n",
+      "run": "TestAnEnvFileIsRepairedSkipsCommentsAndRefusesABadLineByNumber",
+      "args": []
+    },
+    {
+      "label": "relay: a tick does not advance the delta clock",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tif tag == \"out\" || tag == \"err\" {\n\t\tr.lastStamp = now\n\t}\n",
+      "replace": "\tr.lastStamp = now\n",
+      "run": "TestATickDoesNotAdvanceTheDeltaClock",
+      "args": []
+    },
+    {
+      "label": "relay: a partial line is never consumed as progress",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tif !partial {\n",
+      "replace": "\tif true {\n",
+      "run": "TestAConsumedProgressLineIsNotRenderedAndTheTickCarriesItsAge",
+      "args": []
+    },
+    {
+      "label": "relay: redaction runs before every sink",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tbody := LimitLineBytes(r.s.Redact(text), r.s.MaxLineBytes)\n",
+      "replace": "\tbody := LimitLineBytes(text, r.s.MaxLineBytes)\n",
+      "run": "TestRedactionReplacesTheMatchAloneBeforeEverySink",
+      "args": []
+    },
+    {
+      "label": "relay: an escalation step fires once per silence",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\t\tif silent < step || r.fired[step] {\n",
+      "replace": "\t\tif silent < step {\n",
+      "run": "TestTheHeartbeatReadsTheDiskAndEscalatesOncePerSilence",
+      "args": []
+    },
+    {
+      "label": "relay: a deadline is said as the deadline, not diagnosed as the command's 124",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tcase o.TimedOut:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestFinishRecordsTheEndAndSaysWhatANonzeroExitCanMean",
+      "args": []
+    },
+    {
+      "label": "relay: a sink opened for a command that never starts removes only what it created",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tif _, statErr := os.Lstat(path); errors.Is(statErr, os.ErrNotExist) {\n",
+      "replace": "\tif _, statErr := os.Lstat(path); errors.Is(statErr, os.ErrNotExist) || true {\n",
+      "run": "TestASinkForACommandThatNeverStartsRemovesTheFileItCreatedAndTruncatesNothing",
+      "args": []
+    },
+    {
+      "label": "relay: a replaced text log is not truncated when it is opened",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\treturn os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)\n",
+      "replace": "\treturn os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)\n",
+      "run": "TestASinkForACommandThatNeverStartsRemovesTheFileItCreatedAndTruncatesNothing",
+      "args": []
+    },
+    {
+      "label": "event log: a gap in seq is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\t\t} else if prev := runs[len(runs)-1].Events; e.Seq != prev[len(prev)-1].Seq+1 {\n",
+      "replace": "\t\t} else if prev := runs[len(runs)-1].Events; false && e.Seq != prev[len(prev)-1].Seq+1 {\n",
+      "run": "TestAnEventLogSplitsIntoRunsAndRefusesAGap",
+      "args": []
+    },
+    {
+      "label": "event log: a seq of 1 starts a run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\t\tif e.Seq == 1 {\n",
+      "replace": "\t\tif len(runs) == 0 {\n",
+      "run": "TestAnEventLogSplitsIntoRunsAndRefusesAGap",
+      "args": []
+    },
+    {
+      "label": "event log: the silence after the last line counts",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tif tail := s.Duration - last; tail > s.LongestSilence {\n",
+      "replace": "\tif tail := s.Duration - last; false && tail > s.LongestSilence {\n",
+      "run": "TestARunSummaryMeasuresSilenceIncludingTheTailAndSaysWhatIsUnknown",
+      "args": []
+    },
+    {
+      "label": "log settings: a mode beside a column is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\tif mode != \"\" && len(explicitCols) > 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestProfilesAreStartingPointsAndContradictionsAreRefused",
+      "args": []
+    },
+    {
+      "label": "log settings: raw beside a renderer flag is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\t\tif len(dead) > 0 {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestProfilesAreStartingPointsAndContradictionsAreRefused",
+      "args": []
+    },
+    {
+      "label": "log settings: an explicit colour beats the ci profile",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\t\ts.Columns = []string{\"rel\", \"delta\"}\n\t\tprofileTick = ProfileTick\n\t\tif !r.ColorSet {\n",
+      "replace": "\t\ts.Columns = []string{\"rel\", \"delta\"}\n\t\tprofileTick = ProfileTick\n\t\tif true {\n",
+      "run": "TestProfilesAreStartingPointsAndContradictionsAreRefused",
+      "args": []
+    },
+    {
+      "label": "log settings: every column's format is rendered before anything runs",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\t\tif _, err := renderColumn(c, s.formatFor(c), time.Now(), 0, 0); err != nil {\n",
+      "replace": "\t\tif _, err := renderColumn(c, s.formatFor(c), time.Now(), 0, 0); false && err != nil {\n",
+      "run": "TestProfilesAreStartingPointsAndContradictionsAreRefused",
+      "args": []
+    },
+    {
+      "label": "log settings: an unknown strftime specifier is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\t\tv, ok := values[key]\n\t\tif !ok {\n",
+      "replace": "\t\tv, ok := values[key]\n\t\tif false && !ok {\n",
+      "run": "TestTheStrftimeRendererAndItsRefusals",
+      "args": []
+    },
+    {
+      "label": "log settings: a line is cut at a whole character",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\t\tif cut+size > max {\n",
+      "replace": "\t\tif cut+1 > max {\n",
+      "run": "TestALineIsCutAtAWholeCharacterAndSaysHowMuchWent",
+      "args": []
+    },
+    {
+      "label": "log settings: a sink path naming a Windows device is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\tif windowsDeviceName(strings.ToUpper(strings.TrimSpace(leaf))) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestASinkPathNamingAWindowsDeviceIsRefused",
+      "args": []
+    },
+    {
+      "label": "log settings: a progress token ends at whitespace",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\tif rest == \"\" || (rest[0] != ' ' && rest[0] != '\\t') {\n",
+      "replace": "\tif rest == \"\" {\n",
+      "run": "TestAProgressLineIsParsedOnlyWhenItIsOne",
+      "args": []
+    },
+    {
+      "label": "log settings: a percentage past 100 is ordinary output",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\tif err != nil || v > 100 {\n",
+      "replace": "\tif err != nil {\n",
+      "run": "TestAProgressLineIsParsedOnlyWhenItIsOne",
+      "args": []
+    },
+    {
+      "label": "throwaway: logging with no command is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tcase s.Log != nil && s.Script == nil:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestSpecValidationRefusesEveryFlagThatWouldDoNothing",
+      "args": []
+    },
+    {
+      "label": "throwaway: a probe bound outside 5s to 1h is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tcase s.ProbeTimeout != 0 && (s.ProbeTimeout < 5*time.Second || s.ProbeTimeout > time.Hour):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestSpecValidationRefusesEveryFlagThatWouldDoNothing",
+      "args": []
+    },
+    {
+      "label": "distro: --verbatim refuses UTF-16 by name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "\t\tif toolkit.IsUTF16(raw) {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestVerbatimSendsTheBytesAndStillRefusesWhatTheChannelCannotCarry",
+      "args": []
+    },
+    {
+      "label": "distro: @hostaddress is resolved only when a value carries it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "\t\tif !strings.Contains(env[i].Value, \"@hostaddress\") {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestHostAddressExpandsOnlyInsideValuesAndIsResolvedOnce",
+      "args": []
+    },
+    {
+      "label": "distro: purge refuses --dry-run beside --apply",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "\tif *dryRun && *apply {\n",
+      "replace": "\tif *dryRun && *apply && false {\n",
+      "run": "TestPurgeRefusesDryRunBesideApply",
+      "args": []
+    },
+    {
+      "label": "throwaway: a distribution another run is creating is not handed to run, enter or snapshot",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\t\tif d.Creating != nil {\n",
+      "replace": "\t\t\tif d.Creating != nil && false {\n",
+      "run": "TestADistributionAnotherRunIsCreatingCannotBeRunEnteredOrSnapshotted",
+      "args": []
+    },
+    {
+      "label": "throwaway: a partial export inside the export's bound is live",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tif f.Kind == \"partial\" && now.Sub(f.ModTime) < snapshotExportTimeout {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAPartialExportIsALeftoverOnlyOnceNoExportCanBeWritingIt",
+      "args": []
+    },
+    {
+      "label": "throwaway: purge spares a partial export that may still be written",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tcase c.writing != nil && !includeLive:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestPurgeKeepsSnapshotsElsewhereRunningAndCreating",
       "args": []
     }
   ]

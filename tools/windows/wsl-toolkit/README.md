@@ -1,214 +1,138 @@
 # wsl-toolkit, the executable
 
-This executable is the primary interface. Run `wsl-toolkit man` for a paged
-manual, `wsl-toolkit man --no-pager` for readable text, or `wsl-toolkit
-examples` for canonical commands. [`wsl-toolkit.md`](wsl-toolkit.md) is the
-short operator reference.
+`wsl-toolkit` is the only product published from this repository. Run
+`wsl-toolkit man` for the generated manual, `wsl-toolkit man --no-pager` for
+plain text, or `wsl-toolkit examples` for canonical commands.
+[`wsl-toolkit.md`](wsl-toolkit.md) is the operator guide.
 
-This page describes the source and build process for a maintainer.
+This page is for maintainers.
 
----
-
-## The shape
+## Source shape
 
 ```text
 tools/windows/wsl-toolkit/
-  go.mod                    the module. ⛔ No dependencies, and that is a decision.
-  main.go                   the dispatch, the global flags, and the two output rules
-  cmd_*.go                  one file per command surface, all thin
-  helper_route.go           the one place a command decides between the two paths
-  internal/script/          the embedded PowerShell product, and its reconstruction
-  internal/toolkit/         everything else: WSL, the engine, jobs, the fleet, the helper
+  go.mod                    dependency-free module
+  main.go                   command registry, global flags and output contract
+  cmd_*.go                  thin command surfaces
+  helper_route.go           direct/helper routing decision
+  internal/toolkit/         WSL, distros, containers, the relay, state and safety
+  internal/toolkit/testdata a log the retired PowerShell product recorded
+  acceptance.ps1            real-Windows acceptance runner
+  consumer.ps1              published-release smoke runner
+  wsl-toolkit.1             generated man page
 ```
 
-⭐ **It mirrors `scripts/windows/wsl-toolkit/` on purpose.** The PowerShell
-bundle is the low-level compatibility interface for existing consumers. The
-executable embeds that interface and adds the persistent base, container jobs,
-the host survey, and the generated manual.
+⛔ Keep the module on the Go standard library. There is no `go.sum`, no
+dependency graph to audit, and no network fetch required to build it.
 
-⛔ **No dependencies.** Every line is the standard library, so there is no
-`go.sum`, nothing to audit on a bump and nothing to fetch in CI. Keep it that
-way: the two places that would want one, the helper's transport and the Windows
-path resolver, are a few lines of `syscall` each.
+The product version has one home:
+[`internal/toolkit/version.go`](internal/toolkit/version.go). Release tags,
+helper compatibility and both version outputs read that constant.
 
----
+## Build and local proof
 
-## ⛔ The embedded script is GENERATED, and this directory holds a copy
-
-`internal/script/wsl-toolkit.ps1` is written by
-[`../../../scripts/windows/wsl-toolkit/build.ps1`](../../../scripts/windows/wsl-toolkit/README.md)
-from the same parts that produce the tracked bundle. Go's `embed` directive
-cannot reach outside its own package directory, so the file is here rather than
-referenced.
-
-⭐ **`build.ps1 -Check` compares BOTH copies against what the parts build**, and
-that is what stops the two from ever being different scripts. A rebuild that
-refreshed only the tracked bundle would ship a binary running the previous script
-with nothing saying so.
-
-⚠ **It is the one `.ps1` in this tree stored with LF.** git rewrites a
-`text eol=crlf` file on checkout, so an ubuntu build and a windows build of one
-commit would otherwise embed different bytes. The build leaves no lone carriage
-return, so turning each LF back into CRLF reconstructs the released artefact
-exactly. `TestStoredCopyReconstructsTheProduct` asserts that against the tracked
-file, and CI and the release workflow both run it by name.
-
----
-
-## Changing it
-
-```bash
-sh scripts/common/check-go.sh
+```powershell
+Set-Location tools/windows/wsl-toolkit
+go build -trimpath -o ../../../.tmp/wsl-toolkit.exe .
+go test ./...
+go run . man --output wsl-toolkit.1
 ```
 
-That is gofmt, `go vet`, `go build` and `go test`, and it is what the local gate
-and both CI jobs run. ⛔ When it and `.github/workflows/ci.yml` disagree about
-what is checked, the check is what a session actually experiences and the
-workflow is the defect.
+The repository gate runs formatting, vet, build and tests on every Go module:
 
-```bash
-pwsh -NoProfile -File scripts/windows/wsl-toolkit/build.ps1
+```powershell
+pwsh -NoProfile -File scripts/common/check-go.ps1
 ```
 
-Run that after editing any part of the PowerShell product, because it writes the
-copy this module embeds.
+⚠ **On Windows, run the Go tests with `TEMP` and `TMP` at the 8.3 short form of
+a directory under `.tmp`.** From the repository root:
 
-### Building one to try
-
-```bash
-cd tools/windows/wsl-toolkit && go build -trimpath -o ../../../.tmp/wsl-toolkit.exe .
+```powershell
+New-Item -ItemType Directory -Force .tmp\go-tmp | Out-Null
+$env:TEMP = (New-Object -ComObject Scripting.FileSystemObject).GetFolder((Resolve-Path .tmp\go-tmp).Path).ShortPath
+$env:TMP = $env:TEMP
 ```
 
-⚠ `.tmp/` is gitignored, and so is a binary built in this directory. ⛔ Kill a
-stray copy before rebuilding: the Windows trap behind that is in
-[`../../../docs/conventions/shell.md`](../../../docs/conventions/shell.md)
-section 7, which owns it.
+⚠ **A green local run is not CI.** Before a push, run the Linux half of the
+suite and CI's ShellCheck in containers on the base, which carries the same
+images CI's jobs use:
 
----
-
-## What the suite covers, and what it cannot
-
-```bash
-cd tools/windows/wsl-toolkit && go test ./...
+```powershell
+.tmp/wsl-toolkit.exe run --image docker.io/library/golang:1.25 --container-lifecycle ephemeral --timeout 30m --workspace . --exclude .tmp --exclude .codegraph -c 'git config --global --add safe.directory "*" && cd /work && sh scripts/common/check-go.sh'
+.tmp/wsl-toolkit.exe run --image docker.io/library/ubuntu:24.04 --container-lifecycle ephemeral --timeout 30m --workspace . --exclude .tmp --exclude .codegraph -c 'apt-get update -qq && apt-get install -y -qq shellcheck git >/dev/null && git config --global --add safe.directory "*" && cd /work && shellcheck --version && git ls-files -z "*.sh" | xargs -0 shellcheck -s sh'
 ```
 
-⭐ **Cases are named for the behaviour they assert**, not for the function they
-call. The ones that matter are the guards that keep a container away from this
-machine: the archive-entry rules, the containment test, the argument alphabet,
-the exact-name distribution rule, the image-reference rule and the three-count
-fleet verdict.
+Both run from the repository root, with the executable built above rather than
+an installed release, which may not carry every flag they pass. The first is
+CI's `go` job on its Linux host, over every module, and the second is the
+ShellCheck CI's `checks` job installs.
 
-⛔ **Add a guard, mutation-prove it, and add its row to
-[`../../repo/mutations.json`](../../repo/mutations.json).** `repo mutate` removes
-what the guard protects, runs the case named for it, and reads the exit code from
-the process that produced it. A guard with no row is a guard nobody has seen
-refuse.
-[`../../../docs/methodology/reviews.md`](../../../docs/methodology/reviews.md)
-lens 2 is the rule and what it cost.
+Add a test for every refusal and a row in
+[`../../repo/mutations.json`](../../repo/mutations.json) for every new guard
+whose removal could make the suite pass falsely. `repo mutate` proves those
+rows by deleting one guard at a time in a copy; a row whose test skips on this
+host is reported as skipped, and CI's ubuntu job proves it.
 
-⚠ **A composite literal whose element opens immediately after the slice's own
-brace trips `check-placeholders`.** Two braces with an uppercase letter after
-them is the shape of an unfilled template, to a check that scans every file in
-the tree. Bind the element in a variable first; that is a two-line change,
-against widening a guard that protects every document here.
+## What needs a real host
 
-⛔ **What it does not cover:** anything that talks to `wsl.exe`, to a container
-engine or to a real distribution. Those are part (b) of
-[`../../../docs/methodology/gate.md`](../../../docs/methodology/gate.md), and
-`acceptance.ps1` is how this tool answers it.
+Unit tests cannot prove calls to `wsl.exe`, a real distribution, or the
+container engine. Build a temporary executable and run:
 
----
-
-## The acceptance runner
-
-```bash
+```powershell
 pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
 ```
 
-⭐ **It drives a real machine**, which is the whole reason it exists: it registers
-nothing the suite above can reach. Seventy-one cases in the full run and 69 in
-the quick run cover both accounts, all twelve catalog images, direct and helper
-execution, hostile archive names, a workspace a container tried to destroy, a
-failing command, a deadline, and the counts returning to zero afterwards.
+The runner inventories pre-existing distributions, uses isolated state, and
+checks the names again at teardown. Its throwaway-distribution cases import and
+remove their own distribution under a state directory of their own. Never
+point it at `wsl-toolkit-muse`, `podman-machine-default`, or another
+distribution it did not create.
 
-⭐ **One case asks both paths the same question and compares the answers.** That
-is what a difference between them looks like from outside, and it is how the
-helper was found to be dropping `--user`: it accepted the flag and ran the job
-as root.
+For a focused distro change, use a separately named `eph-*` distribution and an
+isolated `--home`. Exercise success, failure, deadline, ownership refusal,
+snapshot and reuse, and cleanup. When the command channel or the relay changes,
+also prove on a real distribution:
 
-| flag | what it changes |
-| --- | --- |
-| `-Binary <path>` | which executable is driven. Required |
-| `-Quick` | skips the twelve-image fleet row, which is the only slow one |
-| `-Json` | one object on stdout, for a caller that is not a person |
+- a command that reads stdin, and every quoting hazard through `--command-base64`;
+- raw and rendered live output, the stdout and stderr split, colour, and the
+  uncoloured stream log;
+- redaction before the live, text and event sinks;
+- progress consumption, heartbeats with the distribution's state and disk, and
+  the escalation notes;
+- replay and compare over `wsl-toolkit-event/1`, including the log in
+  `internal/toolkit/testdata`;
+- that `--dry-run` leaves the registration, the state directory and the sink
+  paths unchanged.
 
-⛔ **It asserts the number of cases it ran**, in both modes. A table that stopped
-early exits 0 over a smaller suite.
+## Release
 
-⛔ **It refuses to touch a distribution it did not make.** It reads the
-distribution list before it starts and asserts the same names are registered at
-the end, so a run that damaged `podman-machine-default` fails rather than being
-noticed later.
+```powershell
+pwsh -NoProfile -File scripts/common/repo.ps1 release
+pwsh -NoProfile -File scripts/common/repo.ps1 release --publish
+```
 
-⚠ **PowerShell 7 or newer.** It passes each argument through
-`ProcessStartInfo.ArgumentList`, which is .NET Core only.
-[`../../../docs/conventions/shell.md`](../../../docs/conventions/shell.md)
-section 8 owns why `Start-Process -ArgumentList` cannot be used here.
+The default is read-only. It refuses a failing gate, a dirty tree, a version
+declared other than exactly once, HEAD absent from every remote branch, or a
+tag that already exists locally or remotely. `--publish` creates and pushes the
+annotated tag only after those checks pass.
 
-⚠ **It leaves the machine where it found it, and that is asserted rather than
-assumed.** Its scratch is under `.tmp/`, removed in a `finally`; the base
-distribution stays, because building it is the expensive part and the next run
-reuses it. `gc --apply` removes what a run made.
+[`release.yml`](../../../.github/workflows/release.yml) checks the tag in a
+clean checkout, runs the shared Go proof, cross-compiles amd64 and arm64 Windows
+executables with `-trimpath`, runs the staged amd64 binary, writes
+`SHA256SUMS`, signs every published file, verifies every bundle, and publishes
+the release. [`release-smoke.yml`](../../../.github/workflows/release-smoke.yml)
+downloads that release into a temporary directory and drives it as a consumer,
+and does it again weekly against whichever release is the latest.
 
----
-
-## Releasing it
-
-⭐ **Two halves, on purpose**, and the same two the script has.
-[`../../../scripts/windows/wsl-toolkit/release.ps1`](../../../scripts/windows/wsl-toolkit/README.md)
-verifies and pushes a tag;
-[`../../../.github/workflows/release.yml`](../../../.github/workflows/release.yml)
-checks that tag out clean, re-runs the verification, cross compiles both targets
-and publishes.
-
-| asset | what it is |
-| --- | --- |
-| `wsl-toolkit.ps1` | the PowerShell product, byte for byte as the tree holds it |
-| `launcher.ps1` | the wrapper that fetches and verifies either one |
-| `wsl-toolkit-windows-amd64.exe` | this executable |
-| `wsl-toolkit-windows-arm64.exe` | the same, for an arm64 Windows host |
-| `SHA256SUMS` | ⭐ computed in CI over the bytes that are uploaded |
-
-⛔ **The workflow runs the staged binary before it publishes it**, and asks it
-the one question whose answer proves it carries the right script: its version,
-which it reads out of the embedded copy rather than declaring. A binary that
-builds and cannot start is a release nobody can use.
-
-⛔ **`-trimpath` and no build stamp.** Two builds of one commit produce identical
-bytes, so a consumer can rebuild and compare rather than trusting the publisher.
-A path or a timestamp compiled in would make every build unique and that property
-unavailable.
-
-⚠ **Only Windows targets are published**, because every command that is not a
-survey drives `wsl.exe`. The module builds and its suite passes on Linux, which
-is how CI catches a guard whose answer depends on the host it runs on.
-
----
-
-## The version has one home
-
-`$script:ToolkitVersion` in
-[`../../../scripts/windows/wsl-toolkit/src/20-prelude.ps1`](../../../scripts/windows/wsl-toolkit/src/20-prelude.ps1).
-This module READS it out of the embedded script and declares none of its own, so
-the executable and the script it carries cannot disagree about what they are.
-⛔ Nothing here may hold a copy of it.
-
----
+Only Windows binaries are published because the operational commands drive
+`wsl.exe`. The module still builds and tests on Linux so host-dependent path
+logic is caught before release.
 
 ## Related
 
-- [`wsl-toolkit.md`](wsl-toolkit.md), what the executable does
-- [`../../../scripts/windows/wsl-toolkit/README.md`](../../../scripts/windows/wsl-toolkit/README.md),
-  the same page for the PowerShell product
-- [`../../../scripts/README.md`](../../../scripts/README.md), the contract every
-  check in this repository is held to
+- [`wsl-toolkit.md`](wsl-toolkit.md): operator guide
+- [`../../../docs/consumers.md`](../../../docs/consumers.md): external contract
+- [`../../../docs/methodology/gate.md`](../../../docs/methodology/gate.md):
+  completion gate
+- [`../../../docs/methodology/reviews.md`](../../../docs/methodology/reviews.md):
+  three review lenses

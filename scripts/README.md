@@ -6,15 +6,8 @@ The probe, the checks, and the helpers a project inherits.
 | --- | --- |
 | [`doctor/`](doctor/) | ⭐ the environment probe. Two implementations, one schema. Every project keeps this. |
 | [`common/`](common/) | the checks and the helpers, and since 2026-09-12 one configuration file a helper installs. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin; a helper and a data file have neither and the twins table below says why. |
-| [`windows/wsl-toolkit/`](windows/wsl-toolkit/README.md) | tools for a job that only exists on Windows. ⛔ Not a twin of anything. ⭐ It is a tool DIRECTORY rather than a loose script: its own [`README.md`](windows/wsl-toolkit/README.md) says how to build, test and release it, and the three published `.ps1` files each keep a `.md` beside them that stands alone. |
-| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⭐ the COMPILED half of the same tool, in Go. It carries the script above inside itself and adds what PowerShell cannot do from here. ⛔ Not a script, so nothing in this file's check contract applies to it; [`common/check-go.sh`](common/) is what the gate runs over it. |
+| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | the native Windows product, in Go. ⛔ Not a script, so nothing in this file's check contract applies to it; [`common/check-go.sh`](common/) is what the gate runs over it. |
 | [`../LICENSES/`](../LICENSES/README.md) | the SPDX texts [`common/fill-license.sh`](common/) reads. ⛔ Not scripts, and four of them must never be edited. |
-
-⚠ **`windows/wsl-toolkit/` exists because a job in it has no POSIX form, not
-because a script was easier to write in PowerShell.** The distinction is the
-whole point of the directory. `bash-posix/` does not exist and shipping it
-empty would be shipping a phantom: git does not track an empty directory, so a
-fresh clone would not have what this table described.
 
 ---
 
@@ -88,16 +81,11 @@ the language does.**
 | | |
 | --- | --- |
 | [`../tools/check/`](../tools/check/) | ⛔ **It cannot have one and must not.** It IS the answer to why twins existed: one implementation that runs natively on both hosts. A second one would recreate the drift it removed. |
-| [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync` and `mutate` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` has no wrapper and needs none**: `repo.sh mutate` reaches it. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules. |
+| [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync`, `mutate` and `release` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` and `release` have no wrapper and need none**: `repo.sh mutate` and `repo.sh release` reach them. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules. |
 | [`common/set-record.mjs`](common/) and [`common/write-file.mjs`](common/) | ⛔ **Neither needs one.** They are node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. ⚠ A twin for `set-record` would be a second implementation of table arithmetic, in the one file whose whole job is that the arithmetic is right. ⚠ What they need instead is node, which is the one dependency anything under `scripts/` has. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell no matter what language it is written in. |
-| [`common/bootstrap.sh`](common/) and [`common/tmux.conf`](common/) | ⛔ **No twin, and the reason is the same one `wsl-toolkit.ps1` has in reverse.** The job is to drive a Unix package manager inside a Unix userland. A PowerShell half would have nothing to install and nowhere to install it, and neither file is a check. |
-| [`windows/wsl-toolkit/wsl-toolkit.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it must not get one.** It drives `wsl.exe`, a Windows feature. The POSIX "equivalent" would be a container or `systemd-nspawn`: a different tool solving a different problem, sharing no interface and no output. |
-| [`windows/wsl-toolkit/launcher.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** It exists to make the file above runnable on Windows, and a POSIX half would have nothing to launch. |
-| [`windows/wsl-toolkit/selftest.ps1`](windows/wsl-toolkit/) | ⛔ **No twin, and it is not a check.** It is the test over that file. ⭐ It needs no WSL and no engine, so it runs on every host with a PowerShell. |
-| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and the gate's `go` check is the check OVER it. |
-| [`windows/wsl-toolkit/build.ps1`](windows/wsl-toolkit/) | ⛔ **It cannot have one.** It asserts the joined result parses as PowerShell, which needs a PowerShell parser. A POSIX half could concatenate the bytes and could not say whether the result is a script. |
-| [`windows/wsl-toolkit/release.ps1`](windows/wsl-toolkit/) | ⛔ **No twin.** ⚠ It runs on the ubuntu CI job too, under `pwsh`, which is why it is PowerShell rather than `sh`: one implementation that runs on both hosts beats two that agree on neither. |
+| [`common/bootstrap.sh`](common/) and [`common/tmux.conf`](common/) | ⛔ **No twin.** The job is to drive a Unix package manager inside a Unix userland. A PowerShell half would have nothing to install and nowhere to install it, and neither file is a check. |
+| [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and the gate's `go` check is the check OVER it. Its release refusals are `repo release`, under [`../tools/repo/`](../tools/repo/). |
 
 ## The check contract
 
@@ -463,88 +451,6 @@ any of those attributes your software to somebody else.
 a corrupted licence exits 0. The over-replacement that produced that rule wrote
 a valid-looking file with a mangled warranty clause.
 
-### `windows/wsl-toolkit/wsl-toolkit.ps1`
-
-Create, use and destroy throwaway WSL2 distros, from an OCI image or a local
-rootfs tarball.
-
-⭐ **It exists because the default host here is Windows and agents constantly
-need a Linux userspace.** Without it, an agent that needs one improvises, asks,
-or gives up.
-
-⛔ **Removal is constrained four ways and all four are load-bearing**: a fixed
-name prefix; refusal to remove anything lacking it; an explicit protected list
-covering the container runtimes; and directory deletion confined to one base
-path. Destructive actions require `-Force` when non-interactive.
-
-⚠ **Asking it to remove a protected distro by name does not remove it.** The
-name is prefix-forced first, so `-Action Remove -Name podman-machine-default
--Force` targets `eph-podman-machine-default`, which does not exist. Verified on
-a machine that had the real one registered; it survived.
-
-⭐ **Three of its actions are read-only reports and none creates a distro.**
-`-Action Resources` says what WSL and the container engine are holding and
-prints the cleanup commands without running one of them; `-Action HostAddress`
-answers what a distro would reach this host at, which a caller previously had to
-build a throwaway VM to find out; `-Action Doctor` says what this host can and
-cannot do before anything is created, with every row tagged by how it was
-obtained.
-
-⛔ **IT IS THE ONE GENERATED FILE IN THIS TREE, and it must not be edited.** Its
-source is the parts under `windows/wsl-toolkit/{src,core,libs}` and
-`build.ps1` joins them. It is tracked because a consumer fetching one raw URL
-cannot run a build step, and the gate's `bundle` check is what makes
-"the product is what its parts build" true rather than assumed.
-[`windows/wsl-toolkit/README.md`](windows/wsl-toolkit/README.md) is how to work
-on it.
-
-### `windows/wsl-toolkit/build.ps1`
-
-Join the parts into `wsl-toolkit.ps1`, and prove the result.
-
-⭐ **The refusals are the point, not the joining.** A part listed in the manifest
-that does not exist, a part on disk that the manifest does not list, a build that
-does not parse, a `param()` that is not first, and a tracked bundle that
-disagrees with its parts are each a stop with a name.
-
-⚠ **The gate runs `-Check -Test`, and the order of work inside that matters.**
-`-Check` compares both products against the parts in memory and writes nothing;
-`-Test` then adds the selftest, the CLI surface lock, the analyzer over the
-product, and a scan for a local whose name differs from a parameter's only by
-case. ⛔ `-Test` on its own WRITES both products first, so a gate that passed it
-alone rewrote a stale or hand-edited product and exited 0 over it. `TOOL-23`. That
-last one exists because such a local IS the parameter, PowerShell ignoring case,
-and one of them shipped: a state object became the string `Running` mid-run, on
-the code path whose whole job is to keep reporting when everything else is quiet.
-
-### `windows/wsl-toolkit/release.ps1`
-
-Verify the tool is releasable, then tag it.
-
-⛔ **It does not publish.** `.github/workflows/release.yml` does, from a clean
-checkout of the tag, after re-running the same verification.
-[`windows/wsl-toolkit/README.md`](windows/wsl-toolkit/README.md) owns why the two
-halves are separate and what each refuses.
-
-⚠ **The digests belong to the workflow, not to this script.** A `.ps1` is CRLF in
-a working tree and LF in the index, so a digest taken here is of different bytes
-from the one a consumer downloads. It prints them with a line saying not to copy
-them anywhere.
-
-### `windows/wsl-toolkit/selftest.ps1`
-
-Run [`wsl-toolkit.ps1`](windows/wsl-toolkit/README.md)'s pure functions
-against a table of cases, on any host with a PowerShell.
-
-⭐ **The one test in this tree, and it is in the gate**, because part (a) of
-[`../docs/methodology/gate.md`](../docs/methodology/gate.md) is the suite as
-well as the checks. It holds the timestamp renderer, the line splitter, the file
-channel, the argument prologue and the transport alphabet: the parts that decide
-what a caller sees and that a real distro is not needed to prove.
-
-⛔ **It asserts how many cases it ran**, so a table that stopped early cannot
-report green over a smaller suite.
-
 ### `common/bootstrap.sh`
 
 Bring a Unix userland up to a named set of tools, and report what it actually
@@ -621,22 +527,6 @@ respawns one.
 spelled `setw -g` and `set -s`.** A bare `set -g` over a window option is an error
 on an older tmux, and the configuration then loads PARTIALLY: tmux starts, that
 line did nothing, and the session looks configured.
-
----
-
-### `windows/wsl-toolkit/launcher.ps1`
-
-Resolve the script above, verify it as far as the caller allows, make it
-runnable on Windows, and run it with everything else forwarded unchanged.
-
-⭐ **It prefers the copy beside it**, so from a clone it touches no network and
-keeps no pin. ⛔ **With no sibling it refuses a moving ref by shape** and refuses
-to guess a default, because a branch moves and a moved reference runs code
-nobody reviewed.
-
-⚠ **Every line it prints goes to stderr and it writes nothing to stdout.** A
-wrapper that writes to the wrapped program's stdout corrupts it, and
-`-Action HostAddress` puts one address there and nothing else.
 
 ---
 

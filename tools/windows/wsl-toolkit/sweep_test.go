@@ -49,6 +49,8 @@ var sweptElsewhere = map[string]string{
 	"bsd fetch":       "it downloads 635 MB from a release mirror. `bsd status` reports whether the image arrived and is swept",
 	"bsd run":         "it boots a guest, which costs about two minutes per call before any command runs",
 	"distro new":      "it imports a whole distribution. Its own case covers the document it produces",
+	"distro run":      "it runs a command in a distribution. Its own case covers the document, against one it made",
+	"distro enter":    "its only document is the --dry-run plan of an interactive shell, and its own case covers that plan",
 	"distro remove":   "it unregisters a distribution. Its own case covers the document, against one it made",
 	"distro snapshot": "it exports a whole distribution. Its own case covers the document",
 }
@@ -115,12 +117,7 @@ func jsonSurfaces(t *testing.T) []string {
 	os.Stderr = devnull
 	defer func() { os.Stderr = realErr }()
 
-	for name, call := range commands {
-		// `script` forwards its arguments to the embedded PowerShell verbatim,
-		// so -h there would start a process. It registers no flag set.
-		if name == "script" {
-			continue
-		}
+	for _, call := range commands {
 		_, _ = call(ctx, []string{"-h"})
 	}
 	for _, sub := range [][]string{
@@ -131,6 +128,7 @@ func jsonSurfaces(t *testing.T) []string {
 		{"artifacts", "retry"}, {"config", "validate"},
 		{"distro", "list"}, {"distro", "new"}, {"distro", "run"}, {"distro", "enter"},
 		{"distro", "remove"}, {"distro", "purge"}, {"distro", "snapshot"},
+		{"distro", "replay"}, {"distro", "compare"},
 	} {
 		args := append(append([]string{}, sub[1:]...), "-h")
 		switch sub[0] {

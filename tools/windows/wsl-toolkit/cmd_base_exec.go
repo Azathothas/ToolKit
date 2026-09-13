@@ -18,8 +18,9 @@ import (
 const baseExecUsage = `wsl-toolkit base exec (-c COMMAND | --script FILE)
 
   Run a non-interactive POSIX script directly in the configured base. The
-  script starts in the guest account's home unless --dir names a guest path.
-  Its stdout, stderr and exit code are forwarded unchanged.
+  script starts in the guest account's home unless --dir names a guest path,
+  and its stdin is /dev/null. Its stdout, stderr and exit code are forwarded
+  unchanged.
 `
 
 type baseExecFlags struct {
@@ -62,6 +63,8 @@ func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) 
 		Script:  payload,
 		Dir:     dir,
 		Timeout: e.timeout,
+		// ⛔ FRAMED, so a command that reads stdin cannot eat the lines after it.
+		Payload: true,
 	}, nil
 }
 

@@ -66,9 +66,9 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 
 // script reads the job payload, from -c or from a file.
 //
-// ⚠ THE FILE'S BYTES GET THE SAME REPAIR wsl-toolkit.ps1's -CommandFile GIVES
-// THEM: CRLF becomes LF in the COPY being sent, and a byte order mark is left
-// out. The file on disk is never written to. A script written on Windows and run
+// ⚠ THE FILE'S BYTES GET THE SAME REPAIR EVERY CALLER'S COMMAND GETS: CRLF
+// becomes LF in the COPY being sent, and a byte order mark is left out. The file
+// on disk is never written to. A script written on Windows and run
 // by /bin/sh otherwise fails on its first line with a message about a character
 // nobody can see.
 func (j *jobFlags) script() ([]byte, error) {

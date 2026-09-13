@@ -1,12 +1,11 @@
-.TH WSL-TOOLKIT 1 "" "wsl-toolkit 2.0.2" "User Commands"
+.TH WSL-TOOLKIT 1 "" "wsl-toolkit 3.0.0" "User Commands"
 .SH NAME
 wsl-toolkit \- run isolated Linux container jobs from Windows
 .SH SYNOPSIS
 .nf
-wsl-toolkit 2.0.2
+wsl-toolkit 3.0.0
 
   doctor      report the host and the tools that can run
-  script      run the embedded PowerShell compatibility interface
   base        manage the WSL distribution that this tool owns
   images      list, check, or pull catalog images
   run         run one command in one container
@@ -17,7 +16,7 @@ wsl-toolkit 2.0.2
   inspect     inspect one job and its recorded host state
   helper      manage the optional local WSL helper
   config      report, validate, or write the configuration
-  distro      create, use and remove throwaway WSL distributions built from an image or a rootfs
+  distro      create, use, observe and remove throwaway WSL distributions built from an image or a rootfs
   hostaddress print the address a WSL distribution reaches this host at
   bsd         run a command in a FreeBSD guest on this host's own hypervisor
   ready       test whether this host can run an isolated Linux job
@@ -25,7 +24,7 @@ wsl-toolkit 2.0.2
   artifacts   retrieve an artifact copy that a failed transfer retained
   examples    print the canonical command examples
   man         open or print the manual generated from the registered CLI
-  version     print the embedded product version
+  version     print the product version
 
 Global: --instance N  one isolated instance: distribution wsl-toolkit-N and
                       its own state. `auto` picks the lowest free one.
@@ -54,10 +53,6 @@ write a structured answer
 .TP
 \fB--net\fR
 probe outbound HTTPS
-.SS script
-run the embedded PowerShell compatibility interface
-.PP
-This command forwards its arguments to the embedded compatibility interface.
 .SS base
 manage the WSL distribution that this tool owns
 .TP
@@ -384,6 +379,9 @@ report resources that this tool owns
 .TP
 .B wsl-toolkit resources
 .TP
+\fB--host-engine\fR
+also report what the host's own container engine holds, which distro new --image pulls into, and print the commands that would free it without running any
+.TP
 \fB--job\fR
 narrow every row to one job id
 .TP
@@ -503,7 +501,7 @@ validate this file instead of the one the search resolves
 \fB--write\fR
 write the effective configuration to disk, so it can be edited
 .SS distro
-create, use and remove throwaway WSL distributions built from an image or a rootfs
+create, use, observe and remove throwaway WSL distributions built from an image or a rootfs
 .TP
 .B wsl-toolkit distro list
 .TP
@@ -513,13 +511,28 @@ write a structured answer
 .B wsl-toolkit distro new
 .TP
 \fB--c\fR
-the POSIX shell command to run, as a login shell
+the POSIX shell command to run, as a login shell whose stdin is /dev/null
+.TP
+\fB--color\fR
+colour the live prefix: auto, always or never. A file is never coloured. Default: auto.
+.TP
+\fB--command-base64\fR
+the command as base64 of its bytes, for a caller that must keep every shell away from it
+.TP
+\fB--dry-run\fR
+validate every option and print the plan, changing nothing in WSL and opening no log file
 .TP
 \fB--env\fR
-NAME=VALUE set for the command. Repeatable
+NAME=VALUE assigned before the command. Repeatable, applied after --env-file; @hostaddress in VALUE is resolved at run time
+.TP
+\fB--env-file\fR
+a file of NAME=VALUE lines assigned before the command. Blank lines and lines starting with # are skipped, and @hostaddress in VALUE is resolved as it is for --env
 .TP
 \fB--ephemeral\fR
 remove the distribution once the command ends
+.TP
+\fB--event-log\fR
+append one wsl-toolkit-event/1 JSON record per line, per event, to this file
 .TP
 \fB--image\fR
 a catalog id or a fully qualified reference to import
@@ -527,17 +540,41 @@ a catalog id or a fully qualified reference to import
 \fB--json\fR
 write a structured answer. The command's output then goes to stderr
 .TP
+\fB--log-profile\fR
+raw, human, ci, forensic or wall. Empty forwards the command's streams unchanged. Flags passed beside a profile win over it
+.TP
+\fB--max-line-bytes\fR
+cut a line after this many bytes, at a character boundary, and say how many went. 0 never cuts
+.TP
 \fB--name\fR
 the distribution's name. The eph- prefix is added when it is left off. Empty draws one
 .TP
 \fB--oci-env\fR
 carry the image's ENV and WORKDIR into /etc/profile.d, where a login shell reads them
 .TP
+\fB--prefix-only\fR
+write the timestamp prefix and not the line itself
+.TP
+\fB--probe-timeout\fR
+how long each question this tool asks the new distribution may take: the smoke probe, systemd and the image configuration. 5s to 1h. Default: 2m0s.
+.TP
+\fB--progress-prefix\fR
+consume a line that is this token, whitespace and a percentage with an optional label, and report the last one on the heartbeat
+.TP
+\fB--redact\fR
+a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
+.TP
 \fB--reuse\fR
 run in the newest distribution this state directory built from the same --image rather than importing another, and say so
 .TP
 \fB--script\fR
 a file on this machine whose bytes are the command
+.TP
+\fB--stream-log\fR
+append the rendered, uncoloured lines to this file
+.TP
+\fB--stream-log-overwrite\fR
+replace the --stream-log file when the command starts, rather than appending
 .TP
 \fB--systemd\fR
 boot it with systemd as PID 1, and refuse an image that cannot
@@ -546,52 +583,142 @@ boot it with systemd as PID 1, and refuse an image that cannot
 a rootfs archive on this machine, or the tag of a snapshot this state directory holds
 .TP
 \fB--tick\fR
-emit a heartbeat on stderr at this interval while the command runs. 0 is off, and anything under 1s is raised to it. Default: 0s.
+after this much silence, write a heartbeat reading the distribution's state and disk. 0 is off; a rendering --log-profile turns it on at 30s. Default: 0s.
+.TP
+\fB--tick-escalate\fR
+silence thresholds at which the heartbeat says more, comma separated, or none. Defaults to 2m,5m,15m whenever a heartbeat is on
 .TP
 \fB--timeout\fR
 how long the command may run before the distribution is terminated and the answer is 124. 0 means no deadline. Default: 30m0s.
 .TP
+\fB--timestamp-column\fR
+a timestamp column: rel, delta, wall, iso or epoch. Repeatable; a comma list is accepted
+.TP
+\fB--timestamp-format\fR
+a strftime format for the rel and wall columns: %Y %m %d %H %M %S %z %Z %3f %6f %9f %%
+.TP
+\fB--timestamp-mode\fR
+one timestamp column: rel, delta, wall, iso or epoch
+.TP
+\fB--timestamp-separator\fR
+the text between the timestamp columns and the tag. Default:  .
+.TP
 \fB--user\fR
 the account the command runs as. Default: root.
+.TP
+\fB--user-env\fR
+prepare a private runtime directory and a deduplicated PATH before the command, without sourcing an account's rc files
+.TP
+\fB--verbatim\fR
+send the command's bytes exactly, without turning CRLF into LF or dropping a byte order mark
 .TP
 .B wsl-toolkit distro run
 .TP
 \fB--c\fR
-the POSIX shell command to run, as a login shell
+the POSIX shell command to run, as a login shell whose stdin is /dev/null
+.TP
+\fB--color\fR
+colour the live prefix: auto, always or never. A file is never coloured. Default: auto.
+.TP
+\fB--command-base64\fR
+the command as base64 of its bytes, for a caller that must keep every shell away from it
+.TP
+\fB--dry-run\fR
+validate ownership and every option, and print the plan without running the command or opening a log file
 .TP
 \fB--env\fR
-NAME=VALUE set for the command. Repeatable
+NAME=VALUE assigned before the command. Repeatable, applied after --env-file; @hostaddress in VALUE is resolved at run time
+.TP
+\fB--env-file\fR
+a file of NAME=VALUE lines assigned before the command. Blank lines and lines starting with # are skipped, and @hostaddress in VALUE is resolved as it is for --env
+.TP
+\fB--event-log\fR
+append one wsl-toolkit-event/1 JSON record per line, per event, to this file
+.TP
+\fB--json\fR
+write a structured answer. The command's output then goes to stderr
+.TP
+\fB--log-profile\fR
+raw, human, ci, forensic or wall. Empty forwards the command's streams unchanged. Flags passed beside a profile win over it
+.TP
+\fB--max-line-bytes\fR
+cut a line after this many bytes, at a character boundary, and say how many went. 0 never cuts
 .TP
 \fB--name\fR
-the throwaway distribution to run in
+the throwaway distribution to run in. The eph- prefix is added when it is left off
+.TP
+\fB--prefix-only\fR
+write the timestamp prefix and not the line itself
+.TP
+\fB--progress-prefix\fR
+consume a line that is this token, whitespace and a percentage with an optional label, and report the last one on the heartbeat
+.TP
+\fB--redact\fR
+a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
 .TP
 \fB--script\fR
 a file on this machine whose bytes are the command
 .TP
+\fB--stream-log\fR
+append the rendered, uncoloured lines to this file
+.TP
+\fB--stream-log-overwrite\fR
+replace the --stream-log file when the command starts, rather than appending
+.TP
 \fB--tick\fR
-emit a heartbeat on stderr at this interval while the command runs. 0 is off, and anything under 1s is raised to it. Default: 0s.
+after this much silence, write a heartbeat reading the distribution's state and disk. 0 is off; a rendering --log-profile turns it on at 30s. Default: 0s.
+.TP
+\fB--tick-escalate\fR
+silence thresholds at which the heartbeat says more, comma separated, or none. Defaults to 2m,5m,15m whenever a heartbeat is on
 .TP
 \fB--timeout\fR
 how long the command may run before the distribution is terminated and the answer is 124. 0 means no deadline. Default: 30m0s.
 .TP
+\fB--timestamp-column\fR
+a timestamp column: rel, delta, wall, iso or epoch. Repeatable; a comma list is accepted
+.TP
+\fB--timestamp-format\fR
+a strftime format for the rel and wall columns: %Y %m %d %H %M %S %z %Z %3f %6f %9f %%
+.TP
+\fB--timestamp-mode\fR
+one timestamp column: rel, delta, wall, iso or epoch
+.TP
+\fB--timestamp-separator\fR
+the text between the timestamp columns and the tag. Default:  .
+.TP
 \fB--user\fR
 the account the command runs as. Default: root.
 .TP
+\fB--user-env\fR
+prepare a private runtime directory and a deduplicated PATH before the command, without sourcing an account's rc files
+.TP
+\fB--verbatim\fR
+send the command's bytes exactly, without turning CRLF into LF or dropping a byte order mark
+.TP
 .B wsl-toolkit distro enter
 .TP
+\fB--dry-run\fR
+validate ownership and print the attach plan without starting an interactive shell
+.TP
+\fB--json\fR
+write the --dry-run plan as a structured answer
+.TP
 \fB--name\fR
-the throwaway distribution to attach to
+the throwaway distribution to attach to. The eph- prefix is added when it is left off
 .TP
 \fB--user\fR
 the account the shell runs as. Default: root.
 .TP
 .B wsl-toolkit distro remove
 .TP
+\fB--dry-run\fR
+validate ownership and print the removal plan without unregistering or deleting
+.TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--name\fR
-the throwaway distribution to remove
+the throwaway distribution to remove. The eph- prefix is added when it is left off
 .TP
 \fB--yes\fR
 do not ask before removing
@@ -601,6 +728,9 @@ do not ask before removing
 \fB--apply\fR
 actually remove. Without it this reports what it would remove and changes nothing
 .TP
+\fB--dry-run\fR
+the default. Accepted so the non-mutating intent can be written out, and refused beside --apply
+.TP
 \fB--include-live\fR
 also remove a distribution that is running, or that another run is still creating
 .TP
@@ -609,6 +739,9 @@ write a structured answer
 .TP
 .B wsl-toolkit distro snapshot
 .TP
+\fB--dry-run\fR
+validate ownership and the tag, and print the export plan without writing an archive
+.TP
 \fB--force\fR
 replace a snapshot that already has this tag
 .TP
@@ -616,10 +749,62 @@ replace a snapshot that already has this tag
 write a structured answer
 .TP
 \fB--name\fR
-the throwaway distribution to export
+the throwaway distribution to export. The eph- prefix is added when it is left off
 .TP
 \fB--tag\fR
 what the snapshot is called. distro new --tarball TAG imports it
+.TP
+.B wsl-toolkit distro replay
+.TP
+\fB--color\fR
+colour the live prefix: auto, always or never. A file is never coloured. Default: auto.
+.TP
+\fB--from\fR
+the wsl-toolkit-event/1 file to render again
+.TP
+\fB--log-profile\fR
+raw, human, ci, forensic or wall. Empty forwards the command's streams unchanged. Flags passed beside a profile win over it
+.TP
+\fB--max-line-bytes\fR
+cut a line after this many bytes, at a character boundary, and say how many went. 0 never cuts
+.TP
+\fB--prefix-only\fR
+write the timestamp prefix and not the line itself
+.TP
+\fB--redact\fR
+a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
+.TP
+\fB--run\fR
+render only this run of an appended log, counting from 1. 0 renders every run
+.TP
+\fB--timestamp-column\fR
+a timestamp column: rel, delta, wall, iso or epoch. Repeatable; a comma list is accepted
+.TP
+\fB--timestamp-format\fR
+a strftime format for the rel and wall columns: %Y %m %d %H %M %S %z %Z %3f %6f %9f %%
+.TP
+\fB--timestamp-mode\fR
+one timestamp column: rel, delta, wall, iso or epoch
+.TP
+\fB--timestamp-separator\fR
+the text between the timestamp columns and the tag. Default:  .
+.TP
+.B wsl-toolkit distro compare
+.TP
+\fB--after\fR
+the later wsl-toolkit-event/1 file
+.TP
+\fB--after-run\fR
+the run of --after to compare, counting from 1. 0 is its last run
+.TP
+\fB--before\fR
+the earlier wsl-toolkit-event/1 file
+.TP
+\fB--before-run\fR
+the run of --before to compare, counting from 1. 0 is its last run
+.TP
+\fB--json\fR
+write the structured comparison
 .SS hostaddress
 print the address a WSL distribution reaches this host at
 .TP
@@ -728,7 +913,7 @@ write the complete readable manual to stdout
 \fB--output\fR
 write the generated roff man page to this file
 .SS version
-print the embedded product version
+print the product version
 .TP
 .B wsl-toolkit version
 .TP

@@ -54,8 +54,7 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 // THE WHOLE CALL. podman answers to {{.Host.Arch}} and docker to
 // {{.Architecture}}; asking podman for the lower-case spelling returns
 // "can't evaluate field host", which reads as a broken engine and is a wrong
-// template. wsl-toolkit.ps1's ConvertTo-OciArch already knew this, and the first
-// version of this function guessed instead of reading it.
+// template.
 //
 // ⚠ They also disagree on the VALUE. podman answers amd64 and docker answers
 // x86_64, and only the first is a token --platform accepts. A value neither

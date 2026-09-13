@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// The shared package table has ONE home and a generated copy, which is the shape
-// TODO/RULES.md section 4 already describes for wsl-toolkit.ps1.
+// The shared package table has ONE home and a generated copy. TODO/RULES.md
+// section 4 owns the rule.
 //
 // ⛔ WHY THE HOME IS bootstrap.sh. That file is fetched by raw URL and run on its
 // own, so it cannot read a sibling, and the table has to live inside it. The

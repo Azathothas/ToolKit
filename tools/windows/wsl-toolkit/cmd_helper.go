@@ -108,9 +108,9 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 		}
 		if v, ok := st["version"].(string); ok && v != versionString() {
 			// ⛔ A version mismatch is reported rather than tolerated. The
-			// helper carries its OWN embedded script, so a client and a helper
-			// from different builds are two different products, and a result
-			// from one attributed to the other is a wrong measurement.
+			// helper runs its OWN build's code, so a client and a helper from
+			// different builds are two different products, and a result from one
+			// attributed to the other is a wrong measurement.
 			fmt.Fprintf(os.Stderr, "  ! this build is %s and the helper is %s. Stop it and start it again from this binary\n", versionString(), v)
 			return exitFailed, nil
 		}

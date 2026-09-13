@@ -811,23 +811,37 @@ func SortedExcludes(in []string) []string {
 //	a lone carriage     ⚠ kept. It is a deliberate byte, and turning it into a
 //	return              newline would edit the payload rather than repair it
 func RepairGuestScript(raw []byte) ([]byte, error) {
-	if len(raw) >= 2 {
-		if (raw[0] == 0xFF && raw[1] == 0xFE) || (raw[0] == 0xFE && raw[1] == 0xFF) {
-			return nil, fmt.Errorf("%w: the script is UTF-16. /bin/sh stops at its first NUL byte, so it would do nothing and say nothing", ErrWorkspaceRefused)
-		}
+	out, _, err := RepairGuestScriptReport(raw)
+	return out, err
+}
+
+// RepairGuestScriptReport is RepairGuestScript, and says what it changed so a
+// caller can tell the person whose file it was.
+func RepairGuestScriptReport(raw []byte) ([]byte, RepairReport, error) {
+	var rep RepairReport
+	if IsUTF16(raw) {
+		return nil, rep, fmt.Errorf("%w: the script is UTF-16. /bin/sh stops at its first NUL byte, so it would do nothing and say nothing", ErrWorkspaceRefused)
 	}
 	if len(raw) >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF {
 		raw = raw[3:]
+		rep.BOMRemoved = true
 	}
 	out := make([]byte, 0, len(raw))
 	for i := 0; i < len(raw); i++ {
 		if raw[i] == '\r' && i+1 < len(raw) && raw[i+1] == '\n' {
+			rep.CRLF++
 			continue
 		}
 		out = append(out, raw[i])
 	}
 	if len(out) > 0 && out[len(out)-1] != '\n' {
 		out = append(out, '\n')
+		rep.NewlineAdd = true
 	}
-	return out, nil
+	return out, rep, nil
+}
+
+// IsUTF16 reports whether bytes open with a UTF-16 byte order mark.
+func IsUTF16(raw []byte) bool {
+	return len(raw) >= 2 && ((raw[0] == 0xFF && raw[1] == 0xFE) || (raw[0] == 0xFE && raw[1] == 0xFF))
 }

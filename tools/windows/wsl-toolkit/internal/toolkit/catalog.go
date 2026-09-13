@@ -21,8 +21,10 @@ import (
 const ConfigSchema = "wsl-toolkit-config/1"
 
 // DefaultBaseName is the WSL distribution this executable owns. ⚠ No `eph-`
-// prefix on purpose: wsl-toolkit.ps1's Purge removes every distribution with
-// one, and the base has to survive a purge.
+// prefix on purpose: that prefix names throwaway distributions, and a purge of
+// those must never reach the base. Copies of this tool's retired PowerShell
+// predecessor purge by that prefix alone, and they still run on machines this
+// tree cannot see.
 const DefaultBaseName = "wsl-toolkit"
 
 // DefaultBaseUser is the unprivileged account jobs run as inside the base.

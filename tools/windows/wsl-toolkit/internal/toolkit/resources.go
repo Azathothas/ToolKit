@@ -53,6 +53,9 @@ type OwnedResources struct {
 	// machine while claiming the whole. `distro purge` removes them; gc does not.
 	Throwaway          []ThrowawayDistro `json:"throwaway,omitempty"`
 	ThrowawayLeftovers []HeldFile        `json:"throwaway_leftovers,omitempty"`
+	// ThrowawaySnapshots are kept on purpose and never purged, and they are
+	// still bytes this tool holds.
+	ThrowawaySnapshots []HeldFile `json:"throwaway_snapshots,omitempty"`
 }
 
 // HostStage is one directory the helper is keeping for a client.
@@ -91,6 +94,77 @@ type MachineHolding struct {
 	Distros       []Distro `json:"distros"`
 	EngineName    string   `json:"engine_name,omitempty"`
 	EngineSummary []string `json:"engine_summary,omitempty"`
+	// HostEngine is the Windows host's own engine, which `distro new --image`
+	// pulls into, reported only when asked for.
+	HostEngine *HostEngineHolding `json:"host_engine,omitempty"`
+}
+
+// HostEngineHolding is what the host's container engine reports it holds.
+//
+// ⛔ NONE OF IT IS THIS TOOL'S TO REMOVE, including the images `distro new` pulled
+// into it: the engine is shared with everything else on the host and cannot say
+// who pulled what. So the commands that would free it are PRINTED, and a named
+// volume with no container is not garbage: it is how somebody keeps data.
+type HostEngineHolding struct {
+	Engine        string   `json:"engine,omitempty"`
+	Summary       []string `json:"summary,omitempty"`
+	Dangling      *int     `json:"dangling_images"`
+	UnusedVolumes *int     `json:"unused_volumes"`
+	Commands      []string `json:"commands,omitempty"`
+	Error         string   `json:"error,omitempty"`
+}
+
+// ReadHostEngineHolding asks the host engine three read-only questions, each
+// bounded, and runs nothing that removes.
+func ReadHostEngineHolding(ctx context.Context) *HostEngineHolding {
+	h := &HostEngineHolding{}
+	e, err := FindEngine(ctx)
+	if err != nil {
+		h.Error = err.Error()
+		return h
+	}
+	h.Engine = e.Name + " at " + e.Path
+	ask := func(args ...string) (string, error) {
+		bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		defer cancel()
+		out, stderr, err := Output(bounded, e.Path, args...)
+		if err != nil {
+			return "", fmt.Errorf("%s %s: %w: %s", e.Name, strings.Join(args[:2], " "), err, firstLine(stderr))
+		}
+		return out, nil
+	}
+	out, err := ask("system", "df", "--format", "{{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}")
+	if err != nil {
+		h.Error = err.Error()
+		return h
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if fields := strings.Split(strings.TrimSpace(line), "\t"); len(fields) == 5 {
+			h.Summary = append(h.Summary, strings.Join(fields, "  "))
+		}
+	}
+	count := func(out string) *int {
+		n := 0
+		for _, line := range strings.Split(out, "\n") {
+			if strings.TrimSpace(line) != "" {
+				n++
+			}
+		}
+		return &n
+	}
+	if out, err := ask("images", "--filter", "dangling=true", "--format", "{{.ID}}"); err == nil {
+		h.Dangling = count(out)
+	}
+	if out, err := ask("volume", "ls", "--filter", "dangling=true", "--format", "{{.Name}}"); err == nil {
+		h.UnusedVolumes = count(out)
+	}
+	h.Commands = []string{
+		e.Name + " system df",
+		e.Name + " image prune --force",
+		e.Name + " volume prune --force",
+		e.Name + " system prune -a --volumes --force",
+	}
+	return h
 }
 
 // ResourceSchema versions the report.
@@ -121,6 +195,7 @@ func (r *Runner) Resources(ctx context.Context) ResourceReport {
 	tw := &Throwaways{dir: ThrowawayDir(r.home), wsl: r.wsl, log: r.log, disks: registeredDisks, now: time.Now}
 	if throwaway, err := tw.List(ctx); err == nil {
 		rep.Owned.Throwaway, rep.Owned.ThrowawayLeftovers = throwaway.Owned, throwaway.Leftovers
+		rep.Owned.ThrowawaySnapshots = throwaway.Snapshots
 	} else {
 		rep.Warnings = append(rep.Warnings, "the throwaway distributions could not be listed: "+err.Error())
 	}
@@ -386,6 +461,11 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 			return err
 		}
 	}
+	for _, f := range rep.Owned.ThrowawaySnapshots {
+		if err := p("  distro snapshot   %-12s %s. Kept on purpose; purge never removes it\n", HumanBytes(f.Bytes), f.Path); err != nil {
+			return err
+		}
+	}
 	if len(rep.Owned.OpenRecords) > 0 {
 		if err := p("  open records      %d, so a run was interrupted. wsl-toolkit gc --apply clears them\n", len(rep.Owned.OpenRecords)); err != nil {
 			return err
@@ -424,8 +504,51 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 			}
 		}
 	}
+	if h := rep.Machine.HostEngine; h != nil {
+		if err := renderHostEngine(p, *h); err != nil {
+			return err
+		}
+	}
 	for _, warn := range rep.Warnings {
 		if err := p("\n  ! %s\n", warn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderHostEngine(p func(string, ...any) error, h HostEngineHolding) error {
+	if err := p("\n==> What the host's own engine is holding. None of it is this tool's, and nothing here removes it\n"); err != nil {
+		return err
+	}
+	if h.Error != "" {
+		return p("  not answered: %s\n", firstLine(h.Error))
+	}
+	if err := p("  engine            %s\n", h.Engine); err != nil {
+		return err
+	}
+	for _, line := range h.Summary {
+		if err := p("  %s\n", line); err != nil {
+			return err
+		}
+	}
+	for _, row := range []struct {
+		label string
+		v     *int
+	}{{"dangling images", h.Dangling}, {"unused volumes", h.UnusedVolumes}} {
+		shown := "not answered"
+		if row.v != nil {
+			shown = fmt.Sprint(*row.v)
+		}
+		if err := p("  %-17s %s\n", row.label, shown); err != nil {
+			return err
+		}
+	}
+	if err := p("  The commands that would free it. NONE of them was run, and the last removes every image no RUNNING container uses:\n"); err != nil {
+		return err
+	}
+	for _, c := range h.Commands {
+		if err := p("    %s\n", c); err != nil {
 			return err
 		}
 	}

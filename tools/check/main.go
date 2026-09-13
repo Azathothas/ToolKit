@@ -50,7 +50,6 @@ var all = []check{
 	{"secrets", "check-no-secrets/1", checks.Secrets, "no credential, and no fingerprint of a private system"},
 	{"shellcheck", "check-shellcheck/1", checks.Shellcheck, "shellcheck is clean over every tracked shell script"},
 	{"powershell", "check-powershell/1", checks.PowerShell, "every tracked .ps1 parses and PSScriptAnalyzer is clean over scripts/"},
-	{"bundle", "check-bundle/1", checks.Bundle, "the two generated products still match the parts that build them"},
 	{"package-table", "check-package-table/1", checks.PackageTable, "the base provisioner's copy of the shared package table matches bootstrap.sh"},
 	{"go", "check-go/1", checks.GoModules, "gofmt, vet, build and test over every Go module here"},
 	{"mutations", "check-mutations/1", checks.Mutations, "every row of the mutation table still reaches the guard it names"},

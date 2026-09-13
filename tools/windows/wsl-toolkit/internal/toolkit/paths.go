@@ -11,8 +11,9 @@ import (
 
 // Home is where everything this executable owns lives on the host.
 //
-// ⛔ NOT the script's directory. wsl-toolkit.ps1's Purge removes every distro
-// under %LOCALAPPDATA%\wsl-ephemeral, and the base has to survive that.
+// ⛔ NOT %LOCALAPPDATA%\wsl-ephemeral. Copies of this tool's retired PowerShell
+// predecessor purge every distribution under that directory, and the base has to
+// survive them.
 //
 //	<home>/config.json     the image catalog and base settings
 //	<home>/base/           the base distro's disk, the wsl --import target

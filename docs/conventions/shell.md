@@ -292,12 +292,11 @@ rather than warns, over every tracked text file.
   keeps to is safe.
 
   ⭐ **The fix is section 1's fix**, reached from a different direction: send the
-  payload as base64 and decode it in the guest. A worked implementation is
-  `ConvertTo-DistroScriptCommand` in
-  [`../../scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](../../scripts/windows/wsl-toolkit/wsl-toolkit.ps1),
-  which also **asserts** that the skeleton it builds stays inside the measured
-  alphabet, because a payload hand-written inside a safe alphabet is a
-  constraint nothing enforces.
+  payload as base64 and decode it in the guest. The native implementation is
+  `--command-base64` in
+  [`../../tools/windows/wsl-toolkit/cmd_distro.go`](../../tools/windows/wsl-toolkit/cmd_distro.go),
+  which rejects malformed base64 and is exclusive with the other command
+  channels.
 
   ⚠ **Create the file, open it, unlink it, and only then decode into it.**
   Writing it first and unlinking after reads the same in a diff and is not: a

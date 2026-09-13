@@ -102,6 +102,7 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
 	job := fs.String("job", "", "narrow every row to one job id")
+	hostEngine := fs.Bool("host-engine", false, "also report what the host's own container engine holds, which distro new --image pulls into, and print the commands that would free it without running any")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -113,8 +114,15 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 		if err := toolkit.AssertArgvSafe([]string{*job}); err != nil {
 			return exitCannot, err
 		}
+		if *hostEngine {
+			return exitCannot, errors.New("--job narrows the report to one job, and the host engine holds nothing a job made. Pass one")
+		}
 	}
 	narrow := func(rep toolkit.ResourceReport) toolkit.ResourceReport {
+		if *hostEngine {
+			// The host engine is this machine's whichever route the rest of the report took.
+			rep.Machine.HostEngine = toolkit.ReadHostEngineHolding(ctx)
+		}
 		if *job == "" {
 			return rep
 		}

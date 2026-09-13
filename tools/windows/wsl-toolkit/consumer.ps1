@@ -187,9 +187,17 @@ function Get-ReleaseAssets {
         return
     }
     $base = "https://github.com/$Repo/releases/download/$($script:Tag)"
-    foreach ($name in @('SHA256SUMS', 'wsl-toolkit.ps1', 'launcher.ps1',
-            'wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')) {
-        Invoke-WebRequest -Uri "$base/$name" -OutFile (Join-Path $Into $name) -UseBasicParsing
+    # SHA256SUMS first, because it names what else the release published.
+    Invoke-WebRequest -Uri "$base/SHA256SUMS" -OutFile (Join-Path $Into 'SHA256SUMS') -UseBasicParsing
+    $names = @('SHA256SUMS')
+    foreach ($line in [IO.File]::ReadAllLines((Join-Path $Into 'SHA256SUMS'))) {
+        $parts = $line.Trim() -split '\s+', 2
+        if ($parts.Count -eq 2) { $names += $parts[1].TrimStart('*') }
+    }
+    foreach ($name in $names) {
+        if ($name -ne 'SHA256SUMS') {
+            Invoke-WebRequest -Uri "$base/$name" -OutFile (Join-Path $Into $name) -UseBasicParsing
+        }
         # A release before wsl-toolkit-v2.0.1 carries no signature bundles, so
         # their absence is a fact the signature cases report rather than a fetch
         # failure here. `gh release download` with no --pattern already takes
@@ -226,6 +234,7 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
 if (-not $Tag) { $Tag = Resolve-LatestTag }
 if (-not $Tag) { Exit-Cannot 'no tag given and the latest could not be resolved. Pass -Tag wsl-toolkit-vX.Y.Z' }
 $script:Tag = $Tag
+$script:SignatureSuffix = '.cosign.bundle'
 
 $stamp = [Guid]::NewGuid().ToString('N').Substring(0, 8)
 $script:Root = Join-Path ([IO.Path]::GetTempPath()) ("wsl-toolkit-consumer." + $stamp)
@@ -282,12 +291,19 @@ if (-not (Test-Path -LiteralPath $script:Exe -PathType Leaf)) {
 # a pass.
 $script:CanRunJobs = $false
 
-# What release.yml names each asset's signature bundle, and the five files it
-# signs. One spelling, read by the fallback downloader and by the two cases
-# below.
-$script:SignatureSuffix = '.cosign.bundle'
-$script:SignedAssets = @('SHA256SUMS', 'wsl-toolkit.ps1', 'launcher.ps1',
-    'wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
+# What release.yml names each asset's signature bundle. The files it signs are
+# SHA256SUMS and every file SHA256SUMS names, read from the release itself, so
+# the weekly run verifies whatever the latest release published rather than a
+# list typed here for one version of it.
+$script:Executables = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
+$script:SignedAssets = @('SHA256SUMS')
+$sumsFile = Join-Path $script:Download 'SHA256SUMS'
+if (Test-Path -LiteralPath $sumsFile) {
+    foreach ($line in [IO.File]::ReadAllLines($sumsFile)) {
+        $parts = $line.Trim() -split '\s+', 2
+        if ($parts.Count -eq 2) { $script:SignedAssets += $parts[1].TrimStart('*') }
+    }
+}
 
 try {
     # -- what the release itself claims --------------------------------------
@@ -316,8 +332,11 @@ try {
             if ($got -ne $want) { $bad += "$name is $got and SHA256SUMS says $want" }
         }
         # A file that checked nothing and exited 0 is the failure this case is
-        # written against, so the count is asserted before the verdict.
-        if ($seen -lt 4) { return "SHA256SUMS covered $seen file(s), and the release carries four assets and the sums file" }
+        # written against, so what it covered is asserted before the verdict:
+        # both executables, whatever else the release also published.
+        $named = @($script:SignedAssets | Select-Object -Skip 1)
+        $absent = @($script:Executables | Where-Object { $named -notcontains $_ })
+        if ($absent.Count -gt 0) { return "SHA256SUMS covers $seen file(s) and does not name $($absent -join ', ')" }
         if ($bad.Count -gt 0) { return ($bad -join ' | ') }
         'True'
     }
@@ -354,7 +373,7 @@ try {
             # The claim the bundle makes, checked with the same command and the
             # same identity a consumer uses, from outside the repository that
             # made it. The identity is anchored on the repository and the
-            # workflow and NOT on the ref, for the reason launcher.ps1 states.
+            # workflow and NOT on the ref, so the same identity covers every release tag.
             Test-Case 'the signature verifies against this repository release workflow' 'True' {
                 $identity = '^https://github\.com/' + [regex]::Escape($Repo) + '/\.github/workflows/release\.yml@'
                 $bad = @()
@@ -378,9 +397,9 @@ try {
         }
     }
 
-    # The manual says the executable CARRIES the script and reads its version
-    # out of it, so the two cannot be different products.
-    Test-Case 'the executable and the published script are the same product' 'True' {
+    # The text and structured surfaces read the same native version, and both
+    # must agree with the immutable release tag.
+    Test-Case 'the executable reports the version named by the release tag' 'True' {
         $v = Invoke-Released @('version')
         if ($v.Code -ne 0) { return "version exited $($v.Code): $($v.Err)" }
         $reported = $v.Out.Trim()
@@ -388,15 +407,8 @@ try {
             return "the tag is $($script:Tag) and the binary reports $reported"
         }
         $j = Read-ToolJson -Stdout (Invoke-Released @('version', '--json')).Out -What 'version --json'
-        if (-not $j.script_reversible) { return 'the embedded script does not reconstruct the tracked file' }
-        # The digest the binary reports for its embedded copy has to be the
-        # digest of the .ps1 the same release published, or the release is two
-        # products under one tag.
-        $published = Join-Path $script:Download 'wsl-toolkit.ps1'
-        $onDisk = (Get-FileHash -LiteralPath $published -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($j.script_sha256 -ne $onDisk) {
-            return "the binary embeds $($j.script_sha256) and the release published $onDisk"
-        }
+        if ($j.schema -ne 'wsl-toolkit-version/1') { return "version schema is $($j.schema)" }
+        if ($j.version -ne $reported) { return "text reports $reported and JSON reports $($j.version)" }
         'True'
     }
 
@@ -448,8 +460,11 @@ try {
         $r = Invoke-Released @('help')
         $text = $r.Out + $r.Err
         $missing = @()
-        foreach ($c in @('doctor', 'script', 'base', 'images', 'run', 'matrix',
-                'resources', 'gc', 'logs', 'inspect', 'helper', 'config', 'version')) {
+        # The commands every release documents, and from 3.0.0 the throwaway
+        # distribution commands that replaced the PowerShell product.
+        $commandsNamed = @('doctor', 'base', 'images', 'run', 'matrix', 'resources', 'gc', 'logs', 'inspect', 'helper', 'config', 'version')
+        if ([int](($script:Tag -replace '^wsl-toolkit-v', '') -split '\.')[0] -ge 3) { $commandsNamed += @('distro', 'hostaddress') }
+        foreach ($c in $commandsNamed) {
             if ($text -notmatch ("(?m)^\s+" + [regex]::Escape($c) + "\s")) { $missing += $c }
         }
         if ($missing.Count -gt 0) { return "not in the usage text: $($missing -join ',')" }

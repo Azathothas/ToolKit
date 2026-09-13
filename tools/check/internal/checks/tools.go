@@ -107,26 +107,6 @@ if (Get-Module -ListAvailable PSScriptAnalyzer) {
 	return r
 }
 
-// Bundle rebuilds the PowerShell product from its parts in memory, compares BOTH
-// tracked copies against the result, and then runs the build's own tests.
-//
-// ⛔ WITHOUT THIS, EITHER COPY COULD SILENTLY STOP BEING WHAT ANYBODY WROTE: a
-// part edited and never rebuilt, a product edited by hand, or a rebuild that
-// refreshed one copy and not the other. TODO/RULES.md section 4.
-//
-// ⛔ AND IT WAS NOT DOING IT. It passed `-Test` alone, which WRITES both
-// products before testing them and compares nothing, so both of those defects
-// exited 0 with the tree rewritten underneath the gate. Planted and measured on
-// 2026-09-13. TOOL-23.
-func Bundle(t *Tree) Result {
-	return runPwshScript(t, bundleScript, "bundle", bundleArgs...)
-}
-
-const bundleScript = "scripts/windows/wsl-toolkit/build.ps1"
-
-// bundleArgs is a variable so a case can hold `-Check` in it with no PowerShell.
-var bundleArgs = []string{"-Check", "-Test"}
-
 // GoModules runs gofmt, vet, build and test over every Go module in the tree.
 func GoModules(t *Tree) Result {
 	r := Result{Extra: map[string]any{}}
@@ -170,27 +150,6 @@ func runIn(dir, bin string, args ...string) (string, error) {
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	return string(out), err
-}
-
-func runPwshScript(t *Tree, script, label string, args ...string) Result {
-	r := Result{Extra: map[string]any{}}
-	pwsh := findPwsh()
-	if pwsh == "" {
-		r.Extra["skipped"] = "no PowerShell on PATH"
-		return r
-	}
-	if len(t.Read(script)) == 0 {
-		r.bad("%s is missing", script)
-		return r
-	}
-	full := append([]string{"-NoProfile", "-NonInteractive", "-File", script}, args...)
-	cmd := exec.Command(pwsh, full...)
-	cmd.Dir = t.Root
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		r.bad("%s: %s", label, firstFinding(string(out)))
-	}
-	return r
 }
 
 func findPwsh() string {

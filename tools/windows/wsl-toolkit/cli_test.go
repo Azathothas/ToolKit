@@ -142,6 +142,11 @@ func TestBaseExecDefaultsToGuestHome(t *testing.T) {
 	if req.User != cfg.Base.User {
 		t.Fatalf("base exec runs as %q, want the configured account %q", req.User, cfg.Base.User)
 	}
+	// ⛔ THE SECOND DOOR TO THE CALLER'S-COMMAND CHANNEL. Unframed, a command
+	// reading stdin eats the lines of the script after it.
+	if !req.Payload {
+		t.Fatal("base exec sends the caller's command unframed")
+	}
 	opts.dir = "workspaces/project"
 	if _, err := opts.request(cfg); err == nil {
 		t.Fatal("a relative --dir was accepted, so its meaning depends on where WSL happened to start")

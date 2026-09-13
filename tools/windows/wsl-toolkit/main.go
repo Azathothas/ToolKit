@@ -1,5 +1,5 @@
 // Command wsl-toolkit is the single-file entry point for Linux work on a Windows
-// host. It carries wsl-toolkit.ps1 inside itself and adds a host survey, one
+// host. It carries a host survey, one
 // owned WSL distribution running a rootless engine, container jobs that get a
 // COPY of a workspace and never a mount, a fleet runner, and a cleanup that
 // removes only what this executable made.
@@ -21,7 +21,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/script"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -40,11 +39,7 @@ const (
 
 var quiet bool
 
-// The helper package reads the product version through this hook rather than
-// importing the script package, which would make the two depend on each other
-// for one string.
 func init() {
-	toolkit.ScriptVersion = script.Version
 	commandSpecs = registeredCommandSpecs()
 	commands = make(map[string]func(context.Context, []string) (int, error), len(commandSpecs))
 	for _, spec := range commandSpecs {
@@ -92,11 +87,7 @@ func usage() string {
 }
 
 func versionString() string {
-	v, err := script.Version()
-	if err != nil {
-		return "(the embedded script's version could not be read)"
-	}
-	return v
+	return toolkit.Version
 }
 
 type commandSpec struct {
@@ -117,7 +108,6 @@ var (
 func registeredCommandSpecs() []commandSpec {
 	return []commandSpec{
 		{Name: "doctor", Summary: "report the host and the tools that can run", Run: cmdDoctor, HelpForms: []string{"doctor"}},
-		{Name: "script", Summary: "run the embedded PowerShell compatibility interface", Run: cmdScript},
 		{Name: "base", Summary: "manage the WSL distribution that this tool owns", Run: cmdBase, HelpForms: []string{"base status", "base ensure", "base recreate", "base remove", "base shell", "base exec", "base presets"}},
 		{Name: "images", Summary: "list, check, or pull catalog images", Run: cmdImages, HelpForms: []string{"images", "images warm", "images pull"}},
 		{Name: "run", Summary: "run one command in one container", Run: cmdRun, HelpForms: []string{"run"}},
@@ -128,7 +118,7 @@ func registeredCommandSpecs() []commandSpec {
 		{Name: "inspect", Summary: "inspect one job and its recorded host state", Run: cmdInspect, HelpForms: []string{"inspect"}},
 		{Name: "helper", Summary: "manage the optional local WSL helper", Run: cmdHelper, HelpForms: []string{"helper serve", "helper status", "helper stop"}},
 		{Name: "config", Summary: "report, validate, or write the configuration", Run: func(_ context.Context, a []string) (int, error) { return cmdConfig(a) }, HelpForms: []string{"config", "config validate"}},
-		{Name: "distro", Summary: "create, use and remove throwaway WSL distributions built from an image or a rootfs", Run: cmdDistro, HelpForms: []string{"distro list", "distro new", "distro run", "distro enter", "distro remove", "distro purge", "distro snapshot"}},
+		{Name: "distro", Summary: "create, use, observe and remove throwaway WSL distributions built from an image or a rootfs", Run: cmdDistro, HelpForms: []string{"distro list", "distro new", "distro run", "distro enter", "distro remove", "distro purge", "distro snapshot", "distro replay", "distro compare"}},
 		{Name: "hostaddress", Summary: "print the address a WSL distribution reaches this host at", Run: cmdHostAddress, HelpForms: []string{"hostaddress"}},
 		{Name: "bsd", Summary: "run a command in a FreeBSD guest on this host's own hypervisor", Run: cmdBsd, HelpForms: []string{"bsd status", "bsd fetch", "bsd run"}},
 		{Name: "ready", Summary: "test whether this host can run an isolated Linux job", Run: cmdReady, HelpForms: []string{"ready"}},
@@ -136,7 +126,7 @@ func registeredCommandSpecs() []commandSpec {
 		{Name: "artifacts", Summary: "retrieve an artifact copy that a failed transfer retained", Run: cmdArtifacts, HelpForms: []string{"artifacts retry"}},
 		{Name: "examples", Summary: "print the canonical command examples", Run: func(_ context.Context, a []string) (int, error) { return cmdExamples(a) }, HelpForms: []string{"examples"}},
 		{Name: "man", Summary: "open or print the manual generated from the registered CLI", Run: cmdMan, HelpForms: []string{"man"}},
-		{Name: "version", Summary: "print the embedded product version", Run: func(_ context.Context, a []string) (int, error) { return cmdVersion(a) }, HelpForms: []string{"version"}},
+		{Name: "version", Summary: "print the product version", Run: func(_ context.Context, a []string) (int, error) { return cmdVersion(a) }, HelpForms: []string{"version"}},
 	}
 }
 
@@ -178,9 +168,9 @@ func run(ctx context.Context, args []string) int {
 			toolkit.ExplicitConfigPath = strings.TrimPrefix(args[i], "--config=")
 		default:
 			rest = append(rest, args[i])
-			// ⛔ Everything after the subcommand belongs to it. `script` forwards
-			// verbatim, and a scanner that kept reading would eat one of its
-			// arguments.
+			// ⛔ Everything after the subcommand belongs to it. A command's own
+			// value may spell a global flag, as `-c 'echo --home'` does, and a
+			// scanner that kept reading would eat it.
 			if !strings.HasPrefix(args[i], "-") {
 				rest = append(rest, args[i+1:]...)
 				i = len(args)
@@ -361,20 +351,13 @@ func cmdVersion(args []string) (int, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
-	v, err := script.Version()
-	if err != nil {
-		return exitCannot, err
-	}
 	if *asJSON {
 		return exitOK, writeJSON(map[string]any{
-			"schema":            "wsl-toolkit-version/1",
-			"version":           v,
-			"script_sha256":     script.Digest(),
-			"script_bytes":      script.Size(),
-			"script_reversible": script.StoredIsReversible(),
+			"schema":  "wsl-toolkit-version/1",
+			"version": toolkit.Version,
 		})
 	}
-	fmt.Println(v)
+	fmt.Println(toolkit.Version)
 	return exitOK, nil
 }
 

@@ -262,8 +262,7 @@ parameter reference beside a script that carries complete comment-based help, an
 a page that restates a binary's flags is a page that goes stale without anybody
 touching it. ⚠ **The script itself is untouched**: its path, parameters and exit
 codes are what consumers fetch and none of them moved.
-[`scripts/windows/wsl-toolkit/README.md`](scripts/windows/wsl-toolkit/README.md)
-remains the build and release pipeline.
+`scripts/windows/wsl-toolkit/README.md` remains the build and release pipeline.
 
 ⭐ **Other things a caller can now see:** `config` reports the job defaults it
 never showed, which is how a persistent-container setting can exist and no agent
@@ -558,7 +557,7 @@ Six contradictions and eight stale facts, each fixed in the page that owns it.
 | [`TODO/RULES.md`](TODO/RULES.md) | the gate takes about 30s, in the file whose own rule says a measured cost belongs in the record | the row carries no number now |
 | [`TODO/RULES.md`](TODO/RULES.md) | the deletion rule applies to the PowerShell script | both products remove things. The line is drawn around STATE rather than around the word "remove", and `RemoveInside`'s own comment carries the same sentence |
 | [`docs/conventions/docs.md`](docs/conventions/docs.md) | `PROGRESS.md` carries the runbook and threat-model roles as an open question | it did not. The open question is written rather than the sentence deleted |
-| [`scripts/windows/wsl-toolkit/selftest.md`](scripts/windows/wsl-toolkit/selftest.md) | 63 cases over 15 functions, run by the gate "as `wsl-toolkit selftest`" | 131 over 36, on three hosts, and that command has not existed for a while |
+| `scripts/windows/wsl-toolkit/selftest.md` | 63 cases over 15 functions, run by the gate "as `wsl-toolkit selftest`" | 131 over 36, on three hosts, and that command has not existed for a while |
 
 [`docs/consumers.md`](docs/consumers.md) loses two discovery narratives and a
 release story to [`docs/HISTORY/consumers.md`](docs/HISTORY/consumers.md), which

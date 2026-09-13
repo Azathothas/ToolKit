@@ -80,18 +80,6 @@ jobs:
       - name: the gate
         run: sh scripts/common/check-gate.sh
 
-      # ⭐ THE SELFTEST RUNS ON BOTH JOBS, and this half is not redundant with
-      # the Windows one. The renderer it tests reads the host's culture, and one
-      # of its cases exists because a .NET custom format string treats ':' as a
-      # culture-dependent placeholder. A second host, with a different default
-      # culture and a different PowerShell build, is exactly the second sample
-      # that claim needs.
-      - name: the wsl-toolkit selftest, on this host too
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File ./scripts/windows/wsl-toolkit/selftest.ps1
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-
       # ⛔ ENUMERATED BY git, NOT BY glob, AND THE COUNT IS ASSERTED.
       # `glob.glob('**/*.yml', recursive=True)` SKIPS DOT-DIRECTORIES, and every
       # yaml file in this repository lives under `.github/`. So this step
@@ -170,39 +158,6 @@ jobs:
           pwsh -NoProfile -File ./scripts/common/check-gate.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
-      # ⭐ BOTH POWERSHELL HOSTS, AND THAT IS THE WHOLE POINT OF THIS STEP.
-      # Every P0 this tool has ever had lived in Windows PowerShell 5.1 and was
-      # invisible on 7: WSL-12, where -Action New failed outright, and the double
-      # quote 5.1 drops when it builds a child process argument list. Until now
-      # 5.1 was checked by hand, twice, and an open question about it was carried
-      # for a week because nothing automatic could answer it. TOOL-11.
-      #
-      # ⛔ BESIDE, NOT INSTEAD. Two hosts is the point; replacing one with the
-      # other trades a blind spot for a different blind spot.
-      #
-      # ⛔ THE CASE COUNTS ARE COMPARED RATHER THAN TYPED. A suite that stopped
-      # early exits 0 over a smaller suite on either host, and a number written
-      # here would be a number to update on every case added. The two hosts
-      # running the same file must reach the same count, and if they do not, one
-      # of them stopped somewhere.
-      - name: the selftest on both PowerShell hosts, with the counts compared
-        shell: pwsh
-        run: |
-          $seven = pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1 -Json
-          if ($LASTEXITCODE -ne 0) { Write-Output "pwsh 7: $seven"; exit 1 }
-          $five = powershell.exe -NoProfile -File .\scripts\windows\wsl-toolkit\selftest.ps1 -Json
-          if ($LASTEXITCODE -ne 0) { Write-Output "Windows PowerShell 5.1: $five"; exit 1 }
-          $a = $seven | ConvertFrom-Json
-          $b = $five  | ConvertFrom-Json
-          Write-Output ("pwsh 7: $($a.cases) case(s) over $($a.functions) function(s)")
-          Write-Output ("5.1   : $($b.cases) case(s) over $($b.functions) function(s)")
-          if ($a.cases -lt 1) { Write-Output "the suite ran no cases at all"; exit 1 }
-          if ($a.cases -ne $b.cases -or $a.functions -ne $b.functions) {
-            Write-Output "the two hosts ran different suites, so one of them stopped early"
-            exit 1
-          }
-
-
   # -- the compiled half. Two hosts, because it is written for one and has to
   #    keep building on the other: the ubuntu job is what caught a guard that
   #    split a path with the RUNNING host's separators, on a tool that only ever
@@ -240,17 +195,6 @@ jobs:
       - name: gofmt, vet, build and test
         shell: bash
         run: sh scripts/common/check-go.sh
-
-      # ⛔ THE EMBEDDED SCRIPT IS THE TRACKED ONE, and this is where that is
-      # provable on a Linux checkout as well as a Windows one. The two copies
-      # differ by line endings alone and the executable reconstructs the
-      # tracked bytes exactly; a checkout that broke that would build a binary
-      # running a script nobody published.
-      - name: the executable carries the published script
-        shell: bash
-        run: |
-          cd tools/windows/wsl-toolkit
-          go test ./internal/script/ -run TestStoredCopyReconstructsTheProduct -v
 
       # ⭐ CROSS COMPILED HERE TOO, so a release cannot be the first time an
       # architecture is built. Nothing in this tool uses cgo, so both targets

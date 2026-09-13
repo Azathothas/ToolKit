@@ -59,6 +59,11 @@ const (
 // the creation it describes is assumed dead and purge collects what it left.
 const throwawayCreatingTTL = 2 * time.Hour
 
+// snapshotExportTimeout bounds one `wsl --export`. ⚠ It is also how long purge
+// treats a partial export as one that may still be written, because no export
+// outlives it.
+const snapshotExportTimeout = 30 * time.Minute
+
 // snapshotFloor is the smallest export accepted as a snapshot. A rootfs archive
 // is megabytes at the least, and a file under this is an export that failed
 // while reporting success.
@@ -277,8 +282,18 @@ type ThrowawayReport struct {
 	Dir       string            `json:"dir"`
 	Owned     []ThrowawayDistro `json:"owned"`
 	Elsewhere []ThrowawayDistro `json:"elsewhere"`
-	Leftovers []HeldFile        `json:"leftovers"`
-	Snapshots []HeldFile        `json:"snapshots"`
+	// Others is every registered distribution without the prefix, named so a
+	// reader sees the whole machine and knows none of it is this tool's.
+	Others    []OtherDistro `json:"others"`
+	Leftovers []HeldFile    `json:"leftovers"`
+	Snapshots []HeldFile    `json:"snapshots"`
+}
+
+// OtherDistro is a registered distribution this lifecycle never touches.
+type OtherDistro struct {
+	Name      string `json:"name"`
+	Running   bool   `json:"running"`
+	Protected bool   `json:"protected"`
 }
 
 // Throwaways is the lifecycle of the throwaway distributions one state
@@ -326,8 +341,8 @@ func (t *Throwaways) markerPath(name string) string {
 // List reads what this state directory's throwaway distributions are, and what
 // else carries the prefix. It creates and removes nothing.
 func (t *Throwaways) List(ctx context.Context) (ThrowawayReport, error) {
-	rep := ThrowawayReport{Schema: ThrowawayListSchema, Dir: t.dir,
-		Owned: []ThrowawayDistro{}, Elsewhere: []ThrowawayDistro{}, Leftovers: []HeldFile{}, Snapshots: []HeldFile{}}
+	rep := ThrowawayReport{Schema: ThrowawayListSchema, Dir: t.dir, Owned: []ThrowawayDistro{}, Elsewhere: []ThrowawayDistro{},
+		Others: []OtherDistro{}, Leftovers: []HeldFile{}, Snapshots: []HeldFile{}}
 	disks, err := t.disks()
 	if err != nil {
 		return rep, err
@@ -348,6 +363,13 @@ func (t *Throwaways) List(ctx context.Context) (ThrowawayReport, error) {
 	ownedDirs := map[string]bool{}
 	for _, name := range names {
 		if !strings.HasPrefix(strings.ToLower(name), ThrowawayPrefix) {
+			other := OtherDistro{Name: name, Running: live[strings.ToLower(name)]}
+			for _, p := range ProtectedDistros {
+				if strings.EqualFold(name, p) {
+					other.Protected = true
+				}
+			}
+			rep.Others = append(rep.Others, other)
 			continue
 		}
 		d := ThrowawayDistro{Name: name, Running: live[strings.ToLower(name)], Disk: disks[name]}
@@ -428,14 +450,28 @@ func (t *Throwaways) Owned(ctx context.Context, name string) (ThrowawayDistro, e
 	if err != nil {
 		return ThrowawayDistro{}, err
 	}
+	return ownedIn(rep, name, t.dir)
+}
+
+// ownedIn is Owned's answer from a report already read.
+//
+// ⛔ A DISTRIBUTION ANOTHER RUN IS STILL CREATING IS REFUSED, as removal refuses
+// it and --reuse skips it. That run may yet restart it for systemd, write its
+// image environment, or roll it back, so a command, a shell or a snapshot taken
+// now acts on something that is not finished being made.
+func ownedIn(rep ThrowawayReport, name, distrosDir string) (ThrowawayDistro, error) {
 	for _, d := range rep.Owned {
 		if strings.EqualFold(d.Name, name) {
+			if d.Creating != nil {
+				return ThrowawayDistro{}, fmt.Errorf("%s is being created by another run, started %s. Wait for that run to finish",
+					d.Name, d.Creating.Format(time.RFC3339))
+			}
 			return d, nil
 		}
 	}
 	for _, d := range rep.Elsewhere {
 		if strings.EqualFold(d.Name, name) {
-			return ThrowawayDistro{}, throwawayOwnership(d.Name, d.Disk, t.dir)
+			return ThrowawayDistro{}, throwawayOwnership(d.Name, d.Disk, distrosDir)
 		}
 	}
 	return ThrowawayDistro{}, fmt.Errorf("%s is not a registered throwaway distribution. wsl-toolkit distro list names the ones this tool made", name)
@@ -477,7 +513,7 @@ func (t *Throwaways) creating(name string) (time.Time, bool) {
 	return m.Started, t.now().Sub(m.Started) < throwawayCreatingTTL
 }
 
-// ThrowawaySpec is one `distro new`.
+// ThrowawaySpec is one `distro new`, or the command half of one `distro run`.
 type ThrowawaySpec struct {
 	// Image is a fully qualified reference and Tarball is a host path or a
 	// snapshot tag. Exactly one is set.
@@ -485,20 +521,33 @@ type ThrowawaySpec struct {
 	Tarball string
 	Name    string
 	User    string
-	// Script is nil when no command was asked for, which is different from an
-	// empty one.
+	// Script is the caller's command, repaired, and nil when no command was asked
+	// for, which is different from an empty one. Env and UserEnv are composed
+	// around it by ComposePayload when it runs.
 	Script    []byte
-	Env       map[string]string
+	Env       []EnvPair
+	UserEnv   bool
 	Timeout   time.Duration
 	Systemd   bool
 	OciEnv    bool
 	Reuse     bool
 	Ephemeral bool
-	Tick      time.Duration
-	OnTick    func(TickEvent)
-	Stdout    io.Writer
-	Stderr    io.Writer
+	// ProbeTimeout bounds each question this tool asks the new distribution for
+	// itself: the smoke probe, systemd's PID 1 and the image configuration. The
+	// caller's command is bounded by Timeout and never by this.
+	ProbeTimeout time.Duration
+	Tick         time.Duration
+	OnTick       func(TickEvent)
+	// Log, when set, relays the command and records it. It is opened by the
+	// caller before anything is created and begun when the command starts.
+	Log    *RunLog
+	Stdout io.Writer
+	Stderr io.Writer
 }
+
+// DefaultProbeTimeout is how long a question this tool asks a new distribution
+// may take before the distribution is treated as wedged.
+const DefaultProbeTimeout = 2 * time.Minute
 
 // Validate refuses every combination in which a flag the caller typed would do
 // nothing, before anything is created.
@@ -521,20 +570,33 @@ func (s ThrowawaySpec) Validate() error {
 		return errors.New("--ephemeral removes the distribution once its command ends, and no command was given")
 	case len(s.Env) > 0 && s.Script == nil:
 		return errors.New("--env sets variables for a command, and no command was given")
+	case s.UserEnv && s.Script == nil:
+		return errors.New("--user-env prepares an environment for a command, and no command was given")
+	case s.Log != nil && s.Script == nil:
+		return errors.New("the logging options observe a command, and no command was given")
 	case s.Timeout < 0:
 		return fmt.Errorf("--timeout %s is negative. Pass 0 for no deadline, or a positive duration", s.Timeout)
 	case s.Tick < 0:
 		return fmt.Errorf("--tick %s is negative. Pass 0 for no heartbeat, or a positive duration", s.Tick)
+	case s.ProbeTimeout != 0 && (s.ProbeTimeout < 5*time.Second || s.ProbeTimeout > time.Hour):
+		return fmt.Errorf("--probe-timeout %s is outside 5s to 1h", s.ProbeTimeout)
 	}
 	if err := assertGuestUser(s.User); err != nil {
 		return err
 	}
-	for k := range s.Env {
-		if !isShellName(k) {
-			return fmt.Errorf("--env %q is not a usable environment name", k)
+	for _, p := range s.Env {
+		if !isShellName(p.Name) {
+			return fmt.Errorf("--env %q is not a usable environment name", p.Name)
 		}
 	}
 	return nil
+}
+
+func (s ThrowawaySpec) probeTimeout() time.Duration {
+	if s.ProbeTimeout > 0 {
+		return s.ProbeTimeout
+	}
+	return DefaultProbeTimeout
 }
 
 func assertGuestUser(user string) error {
@@ -546,6 +608,8 @@ func assertGuestUser(user string) error {
 
 // CommandOutcome is what one command inside a throwaway distribution did.
 type CommandOutcome struct {
+	Schema      string `json:"schema,omitempty"`
+	Name        string `json:"name,omitempty"`
 	Exit        int    `json:"exit"`
 	TimedOut    bool   `json:"timed_out"`
 	Cancelled   bool   `json:"cancelled"`
@@ -553,7 +617,13 @@ type CommandOutcome struct {
 	StderrBytes int64  `json:"stderr_bytes"`
 	DurationMS  int64  `json:"duration_ms"`
 	Error       string `json:"error,omitempty"`
+	// LogError says the relay could not write a log the caller asked for. The
+	// command's own exit is still Exit; the log is incomplete.
+	LogError string `json:"log_error,omitempty"`
 }
+
+// ThrowawayRunSchema versions the answer `distro run --json` writes.
+const ThrowawayRunSchema = "wsl-toolkit-distro-run/1"
 
 // ThrowawayResult is what `distro new` answers.
 type ThrowawayResult struct {
@@ -588,7 +658,7 @@ func (t *Throwaways) Create(ctx context.Context, spec ThrowawaySpec) (ThrowawayR
 	}
 
 	if spec.Reuse {
-		found, err := t.findReusable(ctx, spec.Image)
+		found, err := t.FindReusable(ctx, spec.Image)
 		if err != nil {
 			return res, err
 		}
@@ -673,7 +743,7 @@ func (t *Throwaways) Create(ctx context.Context, spec ThrowawaySpec) (ThrowawayR
 		return fail(err)
 	}
 
-	osName, err := t.smoke(ctx, name)
+	osName, err := t.smoke(ctx, name, spec.probeTimeout())
 	if err != nil {
 		return fail(err)
 	}
@@ -681,13 +751,13 @@ func (t *Throwaways) Create(ctx context.Context, spec ThrowawaySpec) (ThrowawayR
 	t.log(name + " is up: " + osName)
 
 	if spec.Systemd {
-		if err := t.enableSystemd(ctx, name); err != nil {
+		if err := t.enableSystemd(ctx, name, spec.probeTimeout()); err != nil {
 			return fail(err)
 		}
 		res.Systemd = true
 	}
 	if spec.OciEnv {
-		carried, skipped, err := t.carryOciEnv(ctx, name, engine, spec.Image)
+		carried, skipped, err := t.carryOciEnv(ctx, name, engine, spec.Image, spec.probeTimeout())
 		if err != nil {
 			return fail(err)
 		}
@@ -840,12 +910,18 @@ var smokeScript = []byte(`printf '%s-%s\n' wsl-toolkit ready
 if [ -r /etc/os-release ]; then ( . /etc/os-release; printf 'os=%s\n' "${PRETTY_NAME:-${NAME:-unknown}}" ); fi
 `)
 
-// smoke proves the imported distribution can run a command at all.
-func (t *Throwaways) smoke(ctx context.Context, name string) (string, error) {
-	out, stderr, code, err := t.wsl.Capture(ctx, name, "root", smokeScript, 2*time.Minute)
+// smoke proves the imported distribution can run a command at all, through the
+// same framed channel a caller's command uses, so a guest that cannot carry a
+// command fails here, at creation, rather than at a later run whose exit code
+// would look like the command's own.
+func (t *Throwaways) smoke(ctx context.Context, name string, timeout time.Duration) (string, error) {
+	outBuf, errBuf := &boundedBuffer{max: 64 << 10}, &boundedBuffer{max: 64 << 10}
+	code, err := t.wsl.Exec(ctx, ExecRequest{Distro: name, User: "root", Script: smokeScript, Login: true, Payload: true,
+		Timeout: timeout, Stdout: outBuf, Stderr: errBuf})
+	out, stderr := outBuf.String(), errBuf.String()
 	if err != nil || code != 0 || !strings.Contains(out, smokeMarker) {
-		return "", fmt.Errorf("%s was imported and cannot run /bin/sh (exit %d): %s. The rootfs needs a POSIX shell at /bin/sh",
-			name, code, firstLine(stderr+out))
+		return "", fmt.Errorf("%s was imported and cannot run a command (exit %d): %s. The rootfs needs a POSIX shell at /bin/sh, and "+
+			"the command channel needs /dev/fd", name, code, firstLine(stderr+out))
 	}
 	osName := "unknown"
 	for _, line := range strings.Split(out, "\n") {
@@ -861,7 +937,7 @@ func (t *Throwaways) smoke(ctx context.Context, name string) (string, error) {
 //
 // ⛔ THE CHECK IS THE POINT. Most OCI images ship no systemd, and a switch that
 // wrote a file nothing acted on would be a flag that lies.
-func (t *Throwaways) enableSystemd(ctx context.Context, name string) error {
+func (t *Throwaways) enableSystemd(ctx context.Context, name string, timeout time.Duration) error {
 	t.log("enabling systemd through /etc/wsl.conf")
 	if err := t.wsl.writeGuestFile(ctx, name, "/etc/wsl.conf", []byte("[boot]\nsystemd=true\n"), 0o644); err != nil {
 		return err
@@ -869,7 +945,7 @@ func (t *Throwaways) enableSystemd(ctx context.Context, name string) error {
 	if err := t.wsl.terminateDistro(ctx, name); err != nil {
 		return err
 	}
-	out, stderr, code, err := t.wsl.Capture(ctx, name, "root", []byte("cat /proc/1/comm\n"), 2*time.Minute)
+	out, stderr, code, err := t.wsl.Capture(ctx, name, "root", []byte("cat /proc/1/comm\n"), timeout)
 	pid1 := strings.TrimSpace(out)
 	if err != nil || code != 0 {
 		return fmt.Errorf("%s restarted and PID 1 could not be read (exit %d): %s", name, code, firstLine(stderr+out))
@@ -893,8 +969,8 @@ type imageConfig struct {
 // throwaway distribution runs with WSL's environment rather than the image's.
 // USER and ENTRYPOINT are not carried: WSL fixes the login account per call and
 // a login shell has no entrypoint to run.
-func (t *Throwaways) carryOciEnv(ctx context.Context, name string, engine *Engine, ref string) ([]string, []string, error) {
-	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
+func (t *Throwaways) carryOciEnv(ctx context.Context, name string, engine *Engine, ref string, timeout time.Duration) ([]string, []string, error) {
+	bounded, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	out, stderr, err := Output(bounded, engine.Path, "image", "inspect", ref, "--format", "{{json .Config}}")
 	if err != nil {
@@ -959,39 +1035,95 @@ func (t *Throwaways) runIn(ctx context.Context, name string, spec ThrowawaySpec)
 	if spec.Timeout > 0 {
 		deadline = started.Add(spec.Timeout)
 	}
-	tk := startTicker(ctx, spec.Tick, TickEvent{ID: name, Label: name}, deadline, &outN, &errN, spec.OnTick)
+	stdout, stderr, onTick := spec.Stdout, spec.Stderr, spec.OnTick
+	facts := t.tickFacts(name)
+	if spec.Log != nil {
+		// The relay reports silence itself, so the periodic heartbeat is not
+		// started beside it.
+		spec.Log.Begin(name, facts)
+		stdout, stderr, onTick = spec.Log.Stdout(), spec.Log.Stderr(), nil
+	}
+	tk := startTicker(ctx, spec.Tick, TickEvent{ID: name, Label: name}, deadline, &outN, &errN, onTick)
 	code, err := t.wsl.Exec(ctx, ExecRequest{
-		Distro: name, User: spec.User, Script: spec.Script, Env: spec.Env, Timeout: spec.Timeout, Login: true,
-		Stdout: &countingWriter{to: spec.Stdout, count: &outN},
-		Stderr: &countingWriter{to: spec.Stderr, count: &errN},
+		Distro: name, User: spec.User, Script: ComposePayload(spec.Script, spec.Env, spec.UserEnv),
+		Timeout: spec.Timeout, Login: true, Payload: true,
+		Stdout: &countingWriter{to: stdout, count: &outN},
+		Stderr: &countingWriter{to: stderr, count: &errN},
 	})
 	tk.Stop()
 	elapsed := time.Since(started)
 	out := CommandOutcome{Exit: code, StdoutBytes: outN.Load(), StderrBytes: errN.Load(), DurationMS: elapsed.Milliseconds()}
-	if err == nil {
-		return out
+	if err != nil {
+		t.classifyRun(ctx, name, spec, elapsed, err, &out)
 	}
-	// ⚠ THE CODE ALONE CANNOT SAY WHICH HAPPENED. A killed wsl.exe also ends in
-	// an exit status, and a guest may exit 124 or 130 of its own accord, so the
-	// deadline and the caller's context are read rather than the number.
+	if spec.Log != nil {
+		if lerr := spec.Log.Finish(RunOutcome{Exit: out.Exit, TimedOut: out.TimedOut, Cancelled: out.Cancelled,
+			Timeout: spec.Timeout, StartError: out.Error}, facts); lerr != nil {
+			out.LogError = lerr.Error()
+		}
+	}
+	return out
+}
+
+// classifyRun reads what an Exec error means for one command.
+//
+// ⚠ THE CODE ALONE CANNOT SAY WHICH HAPPENED. A killed wsl.exe also ends in an
+// exit status, and a guest may exit 124 or 130 of its own accord, so the deadline
+// and the caller's context are read rather than the number.
+func (t *Throwaways) classifyRun(ctx context.Context, name string, spec ThrowawaySpec, elapsed time.Duration, err error, out *CommandOutcome) {
 	var exited *exec.ExitError
 	switch {
-	case code == ExitTimeout && spec.Timeout > 0 && elapsed >= spec.Timeout:
+	case out.Exit == ExitTimeout && spec.Timeout > 0 && elapsed >= spec.Timeout:
 		out.TimedOut = true
-	case code == 130 && ctx.Err() != nil:
+	case out.Exit == 130 && ctx.Err() != nil:
 		out.Cancelled = true
 	case errors.As(err, &exited):
-		return out
+		return
 	default:
 		out.Error = err.Error()
-		return out
+		return
 	}
 	stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
 	defer cancel()
 	if terr := t.wsl.terminateDistro(stop, name); terr != nil {
 		out.Error = "the command was stopped and " + name + " could not be terminated: " + terr.Error()
 	}
-	return out
+}
+
+// tickFacts reads what a heartbeat reports about one distribution.
+//
+// ⭐ --list --quiet and --running --quiet, never --verbose, whose state word is
+// localised. Each question is bounded, and an answer that could not be read is
+// the word unknown rather than a guess.
+func (t *Throwaways) tickFacts(name string) func() TickFacts {
+	return func() TickFacts {
+		f := TickFacts{State: "unknown"}
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if names, err := t.wsl.listNames(ctx); err == nil {
+			f.State = "not registered"
+			for _, n := range names {
+				if strings.EqualFold(n, name) {
+					f.State = "stopped"
+				}
+			}
+			if f.State == "stopped" {
+				running, err := t.wsl.listRunningNames(ctx)
+				if err != nil {
+					f.State = "unknown"
+				}
+				for _, n := range running {
+					if strings.EqualFold(n, name) {
+						f.State = "running"
+					}
+				}
+			}
+		}
+		if size, ok := FileSize(filepath.Join(t.distroDir(name), "ext4.vhdx")); ok {
+			f.DiskBytes = &size
+		}
+		return f
+	}
 }
 
 // Run runs a command in a registered throwaway distribution this tool owns.
@@ -1025,16 +1157,20 @@ type ThrowawayRemoval struct {
 // ⛔ A CREATION IN PROGRESS IS REFUSED unless ignoreCreating says otherwise:
 // removing a distribution another run is still building fails that run in a way
 // it cannot explain.
-func (t *Throwaways) Remove(ctx context.Context, name string, ignoreCreating bool) (ThrowawayRemoval, error) {
-	res := ThrowawayRemoval{Schema: ThrowawayRemoveSchema, Name: name}
+// removalTarget is what one removal acts on: the registration, when there is
+// one, and the directory.
+//
+// ⛔ THE PLAN AND THE REMOVAL READ THIS ONE SELECTION, so `remove --dry-run`
+// cannot refuse what the removal would delete, or describe what it would refuse.
+func (t *Throwaways) removalTarget(name string, ignoreCreating bool) (registered string, err error) {
 	if err := ValidThrowawayName(name); err != nil {
-		return res, err
+		return "", err
 	}
 	disks, err := t.disks()
 	if err != nil {
-		return res, err
+		return "", err
 	}
-	registered, disk := "", ""
+	disk := ""
 	for n, d := range disks {
 		if strings.EqualFold(n, name) {
 			registered, disk = n, d
@@ -1042,14 +1178,43 @@ func (t *Throwaways) Remove(ctx context.Context, name string, ignoreCreating boo
 	}
 	if registered != "" {
 		if err := throwawayOwnership(registered, disk, t.dir); err != nil {
-			return res, err
+			return "", err
 		}
 	} else if _, statErr := os.Lstat(t.distroDir(name)); errors.Is(statErr, os.ErrNotExist) {
-		return res, fmt.Errorf("%s is not registered and %s holds nothing for it", name, t.dir)
+		return "", fmt.Errorf("%s is not registered and %s holds nothing for it", name, t.dir)
 	}
 	if since, fresh := t.creating(name); fresh && !ignoreCreating {
-		return res, fmt.Errorf("%s is being created by another run, started %s. Wait for it, or remove it with distro purge --apply --include-live",
+		return "", fmt.Errorf("%s is being created by another run, started %s. Wait for it, or remove it with distro purge --apply --include-live",
 			name, since.Format(time.RFC3339))
+	}
+	return registered, nil
+}
+
+// PlanRemoval says what Remove would do, through the selection Remove reads.
+func (t *Throwaways) PlanRemoval(name string) ([]string, error) {
+	registered, err := t.removalTarget(name, false)
+	if err != nil {
+		return nil, err
+	}
+	var steps []string
+	if registered != "" {
+		steps = append(steps, "terminate and unregister it: wsl.exe --unregister "+registered, "read the registration back until it is gone")
+	} else {
+		steps = append(steps, name+" is not registered, so only what a failed creation left is removed")
+	}
+	return append(steps, "delete "+t.distroDir(name)+" through the one containment-checked deletion, and read it back"), nil
+}
+
+// SnapshotPath is where a validated tag's archive lives.
+func (t *Throwaways) SnapshotPath(tag string) string {
+	return filepath.Join(t.snapshotDir(), tag+".tar")
+}
+
+func (t *Throwaways) Remove(ctx context.Context, name string, ignoreCreating bool) (ThrowawayRemoval, error) {
+	res := ThrowawayRemoval{Schema: ThrowawayRemoveSchema, Name: name}
+	registered, err := t.removalTarget(name, ignoreCreating)
+	if err != nil {
+		return res, err
 	}
 	if registered != "" {
 		t.log("unregistering " + registered)
@@ -1110,6 +1275,38 @@ type purgeCandidate struct {
 	path     string
 	running  bool
 	creating *time.Time
+	// writing is when a partial export was last written, while an export could
+	// still be writing it.
+	writing *time.Time
+}
+
+// purgeCandidates is everything a report names, as purge weighs it.
+func purgeCandidates(rep ThrowawayReport, creating func(string) (time.Time, bool), now time.Time) []purgeCandidate {
+	var cands []purgeCandidate
+	for _, d := range rep.Owned {
+		cands = append(cands, purgeCandidate{kind: "distro", name: d.Name, path: d.Disk, running: d.Running, creating: d.Creating})
+	}
+	for _, d := range rep.Elsewhere {
+		cands = append(cands, purgeCandidate{kind: "elsewhere", name: d.Name, path: d.Disk})
+	}
+	for _, f := range rep.Leftovers {
+		c := purgeCandidate{kind: "leftover", name: f.Name, path: f.Path}
+		if since, fresh := creating(f.Name); fresh {
+			c.creating = &since
+		}
+		// ⛔ A PARTIAL EXPORT IS ONLY A LEFTOVER ONCE NO EXPORT CAN BE WRITING IT.
+		// It carries no creation marker, so without this a purge beside a running
+		// `distro snapshot` deleted the archive that export was writing.
+		if f.Kind == "partial" && now.Sub(f.ModTime) < snapshotExportTimeout {
+			at := f.ModTime
+			c.writing = &at
+		}
+		cands = append(cands, c)
+	}
+	for _, s := range rep.Snapshots {
+		cands = append(cands, purgeCandidate{kind: "snapshot", name: s.Name, path: s.Path})
+	}
+	return cands
 }
 
 // selectPurge decides what a purge removes and what it keeps, and why.
@@ -1123,6 +1320,9 @@ func selectPurge(cands []purgeCandidate, includeLive bool, now time.Time) (remov
 		case c.creating != nil && !includeLive:
 			kept = append(kept, fmt.Sprintf("%s: another run started creating it %s ago. Pass --include-live to remove it anyway",
 				c.name, now.Sub(*c.creating).Round(time.Second)))
+		case c.writing != nil && !includeLive:
+			kept = append(kept, fmt.Sprintf("%s: an export wrote to it %s ago and may still be writing it. Pass --include-live to remove it anyway",
+				c.path, now.Sub(*c.writing).Round(time.Second)))
 		case c.running && !includeLive:
 			kept = append(kept, c.name+": running right now. Pass --include-live to remove it anyway")
 		default:
@@ -1140,24 +1340,8 @@ func (t *Throwaways) Purge(ctx context.Context, apply, includeLive bool) (PurgeP
 	if err != nil {
 		return plan, err
 	}
-	var cands []purgeCandidate
-	for _, d := range rep.Owned {
-		cands = append(cands, purgeCandidate{kind: "distro", name: d.Name, path: d.Disk, running: d.Running, creating: d.Creating})
-	}
-	for _, d := range rep.Elsewhere {
-		cands = append(cands, purgeCandidate{kind: "elsewhere", name: d.Name, path: d.Disk})
-	}
-	for _, f := range rep.Leftovers {
-		c := purgeCandidate{kind: "leftover", name: f.Name, path: f.Path}
-		if since, fresh := t.creating(f.Name); fresh {
-			c.creating = &since
-		}
-		cands = append(cands, c)
-	}
-	for _, s := range rep.Snapshots {
-		cands = append(cands, purgeCandidate{kind: "snapshot", name: s.Name, path: s.Path})
-	}
-	remove, kept := selectPurge(cands, includeLive, t.now())
+	now := t.now()
+	remove, kept := selectPurge(purgeCandidates(rep, t.creating, now), includeLive, now)
 	plan.Kept = append(plan.Kept, kept...)
 	for _, c := range remove {
 		if c.kind == "distro" {
@@ -1234,7 +1418,7 @@ func (t *Throwaways) Snapshot(ctx context.Context, name, tag string, force bool)
 	// leaves a truncated archive under the tag, and the next import of it fails
 	// days later in a way nothing explains.
 	partial := filepath.Join(t.snapshotDir(), "."+tag+"."+suffix+".partial")
-	bounded, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	bounded, cancel := context.WithTimeout(ctx, snapshotExportTimeout)
 	defer cancel()
 	t.log("exporting " + name + " as snapshot " + tag)
 	if outText, stderr, err := Output(bounded, t.wsl.Path, "--export", name, partial); err != nil {
@@ -1267,7 +1451,7 @@ func (t *Throwaways) Snapshot(ctx context.Context, name, tag string, force bool)
 // ⛔ AN EXACT MATCH ON THE REFERENCE the caller asked for, not a resolved
 // digest: `alpine:latest` yesterday and today can be two images, and what the
 // record supports is that the same thing was ASKED for.
-func (t *Throwaways) findReusable(ctx context.Context, ref string) (*ThrowawayDistro, error) {
+func (t *Throwaways) FindReusable(ctx context.Context, ref string) (*ThrowawayDistro, error) {
 	rep, err := t.List(ctx)
 	if err != nil {
 		return nil, err

@@ -36,8 +36,7 @@ import (
 
 // OwnedPrefix is the name every distribution this tool may own starts with.
 //
-// ⚠ NO `eph-` PREFIX, deliberately: wsl-toolkit.ps1's Purge removes every
-// distribution carrying one, and the base has to survive a purge.
+// ⚠ NO `eph-` PREFIX, deliberately: DefaultBaseName carries the reason.
 const OwnedPrefix = DefaultBaseName
 
 // IdentityPath is where the marker lives inside the guest.
@@ -158,7 +157,7 @@ func AssertOwnedDistro(name string) error {
 	}
 	if !IsOwnedName(name) {
 		return fmt.Errorf("%w: REFUSING to touch %q. This tool owns %s and %s-<instance> and nothing else. "+
-			"Use wsl-toolkit script -Action Remove for a throwaway distro",
+			"A throwaway distribution is removed with wsl-toolkit distro remove",
 			ErrNotOwned, name, OwnedPrefix, OwnedPrefix)
 	}
 	return nil

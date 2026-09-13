@@ -132,7 +132,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 
 	case "remove":
 		// ⛔ A DESTRUCTIVE ACTION ASKS, AND REFUSES WHEN NOBODY CAN ANSWER. The
-		// same rule wsl-toolkit.ps1 holds: a non-interactive session passes the
+		// rule `distro remove` holds too: a non-interactive session passes the
 		// flag or gets a refusal, because a prompt nobody reads is a prompt that
 		// approves itself.
 		if !*yes && !isInteractive() {

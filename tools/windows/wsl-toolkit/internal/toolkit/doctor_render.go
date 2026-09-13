@@ -158,6 +158,12 @@ func WriteDoctorText(w io.Writer, r DoctorReport) error {
 		}
 	}
 
+	if r.Throwaway != nil {
+		if err := writeThrowawayFacts(p, *r.Throwaway); err != nil {
+			return err
+		}
+	}
+
 	if err := p("\nTOOLS  (%d found, %d missing)\n", r.Summary["tools_found"], r.Summary["tools_missing"]); err != nil {
 		return err
 	}
@@ -225,6 +231,54 @@ func WriteDoctorText(w io.Writer, r DoctorReport) error {
 	// ⭐ A PROBE IS NOT A GATE. A missing tool is data, so this exits 0 whether
 	// or not anything is missing, exactly like scripts/doctor/ does.
 	return p("\nThis is a probe, not a gate. A missing tool is data.\nMachine-readable: wsl-toolkit doctor --json\n")
+}
+
+// writeThrowawayFacts renders what a throwaway distribution would meet, with a
+// reason in place of every figure that could not be read.
+func writeThrowawayFacts(p func(string, ...any) error, f ThrowawayFacts) error {
+	rows := [][2]string{
+		{"state dir", f.Dir},
+	}
+	free := "not readable"
+	if f.FreeBytes != nil {
+		free = HumanBytes(*f.FreeBytes) + ", against a floor of " + HumanBytes(f.ImportFloorBytes) + " per import"
+	}
+	rows = append(rows, [2]string{"free space", free})
+	if f.ListError != "" {
+		rows = append(rows, [2]string{"held", "not listed: " + firstLine(f.ListError)})
+	} else if f.Owned != nil {
+		rows = append(rows, [2]string{"held", fmt.Sprintf("%d distribution(s), %d leftover(s) of %s, %d snapshot(s) of %s",
+			*f.Owned, *f.Leftovers, HumanBytes(*f.LeftoverBytes), *f.Snapshots, HumanBytes(*f.SnapshotBytes))})
+	}
+	if f.Network != nil {
+		rows = append(rows, [2]string{"networking", f.Network.Mode + ", from " + f.Network.Source})
+		reach := "a host service on 127.0.0.1 is NOT reachable from a distribution; bind it to this address"
+		if f.Network.Loopback {
+			reach = "a host service on 127.0.0.1 is reachable from a distribution"
+		}
+		rows = append(rows, [2]string{"host address", f.Network.Address + ": " + reach})
+	} else {
+		rows = append(rows, [2]string{"host address", "not answered: " + firstLine(f.NetworkError)})
+	}
+	if f.Engine != "" {
+		rows = append(rows, [2]string{"host engine", f.Engine + ", pulling for " + f.Platform})
+	} else {
+		rows = append(rows, [2]string{"host engine", "not usable for --image: " + firstLine(f.EngineError)})
+	}
+	clock := "not measured in the sampling window"
+	if f.ClockResolutionNS != nil {
+		clock = fmt.Sprintf("%d ns smallest step seen. A %%9f timestamp pads below it", *f.ClockResolutionNS)
+	}
+	rows = append(rows, [2]string{"clock", clock})
+	if err := p("\nTHROWAWAY DISTRIBUTIONS\n"); err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if err := p("  %-14s %s\n", r[0], r[1]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func registeredWord(b bool) string {

@@ -187,6 +187,7 @@ func TestPurgeKeepsSnapshotsElsewhereRunningAndCreating(t *testing.T) {
 		{kind: "distro", name: "eph-creating", path: "d3", creating: &started},
 		{kind: "leftover", name: "eph-orphan", path: "eph-orphan.tar"},
 		{kind: "leftover", name: "eph-building", path: "eph-building.tar", creating: &started},
+		{kind: "leftover", name: ".ready.abc.partial", path: "snapshots/.ready.abc.partial", writing: &started},
 		{kind: "snapshot", name: "ready", path: "snapshots/ready.tar"},
 		{kind: "elsewhere", name: "eph-pgb", path: `C:\elsewhere\eph-pgb`},
 	}
@@ -201,11 +202,11 @@ func TestPurgeKeepsSnapshotsElsewhereRunningAndCreating(t *testing.T) {
 	if got := names(remove); got != "eph-stopped,eph-orphan" {
 		t.Errorf("without --include-live the purge removes %q, want the stopped distribution and the orphan", got)
 	}
-	if len(kept) != 5 {
-		t.Errorf("kept %d item(s), want 5 each with a reason: %v", len(kept), kept)
+	if len(kept) != 6 {
+		t.Errorf("kept %d item(s), want 6 each with a reason: %v", len(kept), kept)
 	}
 	remove, kept = selectPurge(cands, true, now)
-	if got := names(remove); got != "eph-stopped,eph-running,eph-creating,eph-orphan,eph-building" {
+	if got := names(remove); got != "eph-stopped,eph-running,eph-creating,eph-orphan,eph-building,.ready.abc.partial" {
 		t.Errorf("with --include-live the purge removes %q", got)
 	}
 	// ⛔ NOTHING MOVES A SNAPSHOT OR A DISTRIBUTION MADE ELSEWHERE INTO A PURGE.
@@ -216,6 +217,52 @@ func TestPurgeKeepsSnapshotsElsewhereRunningAndCreating(t *testing.T) {
 	}
 	if len(kept) != 2 {
 		t.Errorf("with --include-live kept %v, want the snapshot and the distribution made elsewhere", kept)
+	}
+}
+
+func TestAPartialExportIsALeftoverOnlyOnceNoExportCanBeWritingIt(t *testing.T) {
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	rep := ThrowawayReport{Leftovers: []HeldFile{
+		{Kind: "partial", Name: ".fresh.a.partial", Path: "snapshots/.fresh.a.partial", ModTime: now.Add(-time.Minute)},
+		{Kind: "partial", Name: ".stale.b.partial", Path: "snapshots/.stale.b.partial", ModTime: now.Add(-snapshotExportTimeout - time.Second)},
+		{Kind: "rootfs", Name: "eph-orphan", Path: "eph-orphan.tar", ModTime: now.Add(-time.Minute)},
+	}}
+	noMarker := func(string) (time.Time, bool) { return time.Time{}, false }
+	writing := map[string]bool{}
+	for _, c := range purgeCandidates(rep, noMarker, now) {
+		writing[c.name] = c.writing != nil
+	}
+	if !writing[".fresh.a.partial"] {
+		t.Error("an export written a minute ago is purged as a leftover, under the export that may still be writing it")
+	}
+	if writing[".stale.b.partial"] || writing["eph-orphan"] {
+		t.Errorf("only a partial export inside the export's own bound is live: %v", writing)
+	}
+}
+
+func TestADistributionAnotherRunIsCreatingCannotBeRunEnteredOrSnapshotted(t *testing.T) {
+	distros, elsewhere := t.TempDir(), t.TempDir()
+	started := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	rep := ThrowawayReport{
+		Owned: []ThrowawayDistro{
+			{Name: "eph-ready", Disk: filepath.Join(distros, "eph-ready")},
+			{Name: "eph-building", Disk: filepath.Join(distros, "eph-building"), Creating: &started},
+		},
+		Elsewhere: []ThrowawayDistro{
+			{Name: "eph-pgb", Disk: filepath.Join(elsewhere, "eph-pgb")},
+		},
+	}
+	if d, err := ownedIn(rep, "eph-ready", distros); err != nil || d.Name != "eph-ready" {
+		t.Fatalf("a finished distribution this tool owns was refused: %v", err)
+	}
+	if _, err := ownedIn(rep, "EPH-BUILDING", distros); err == nil || !strings.Contains(err.Error(), "being created by another run") {
+		t.Errorf("a distribution another run is still creating was handed out: %v", err)
+	}
+	if _, err := ownedIn(rep, "eph-pgb", distros); !errors.Is(err, ErrNotOwned) {
+		t.Errorf("a distribution whose disk is elsewhere was not refused as not owned: %v", err)
+	}
+	if _, err := ownedIn(rep, "eph-missing", distros); err == nil {
+		t.Error("a name nothing registered was handed out")
 	}
 }
 
@@ -311,21 +358,30 @@ func TestHeldFilesSeparateLeftoversFromSnapshots(t *testing.T) {
 func TestSpecValidationRefusesEveryFlagThatWouldDoNothing(t *testing.T) {
 	script := []byte("true\n")
 	base := ThrowawaySpec{Image: "docker.io/library/alpine:3.22", User: "root"}
+	oneEnv := []EnvPair{
+		{Name: "A", Value: "1"},
+	}
+	badEnv := []EnvPair{
+		{Name: "BAD-NAME", Value: "1"},
+	}
 	cases := map[string]ThrowawaySpec{
-		"neither source":          {User: "root"},
-		"both sources":            {Image: base.Image, Tarball: "x.tar", User: "root"},
-		"reuse without an image":  {Tarball: "x.tar", Reuse: true, User: "root"},
-		"reuse and ephemeral":     {Image: base.Image, Reuse: true, Ephemeral: true, Script: script, User: "root"},
-		"reuse and systemd":       {Image: base.Image, Reuse: true, Systemd: true, User: "root"},
-		"reuse and a name":        {Image: base.Image, Reuse: true, Name: "eph-a", User: "root"},
-		"oci-env from an archive": {Tarball: "x.tar", OciEnv: true, User: "root"},
-		"ephemeral with nothing":  {Image: base.Image, Ephemeral: true, User: "root"},
-		"env with no command":     {Image: base.Image, Env: map[string]string{"A": "1"}, User: "root"},
-		"a negative timeout":      {Image: base.Image, Script: script, Timeout: -time.Second, User: "root"},
-		"a negative tick":         {Image: base.Image, Script: script, Tick: -time.Second, User: "root"},
-		"an empty user":           {Image: base.Image},
-		"a user outside argv":     {Image: base.Image, User: "root$(id)"},
-		"an unusable env name":    {Image: base.Image, Script: script, Env: map[string]string{"BAD-NAME": "1"}, User: "root"},
+		"neither source":           {User: "root"},
+		"both sources":             {Image: base.Image, Tarball: "x.tar", User: "root"},
+		"reuse without an image":   {Tarball: "x.tar", Reuse: true, User: "root"},
+		"reuse and ephemeral":      {Image: base.Image, Reuse: true, Ephemeral: true, Script: script, User: "root"},
+		"reuse and systemd":        {Image: base.Image, Reuse: true, Systemd: true, User: "root"},
+		"reuse and a name":         {Image: base.Image, Reuse: true, Name: "eph-a", User: "root"},
+		"oci-env from an archive":  {Tarball: "x.tar", OciEnv: true, User: "root"},
+		"ephemeral with nothing":   {Image: base.Image, Ephemeral: true, User: "root"},
+		"env with no command":      {Image: base.Image, Env: oneEnv, User: "root"},
+		"user-env with no command": {Image: base.Image, UserEnv: true, User: "root"},
+		"a log with no command":    {Image: base.Image, Log: &RunLog{}, User: "root"},
+		"a negative timeout":       {Image: base.Image, Script: script, Timeout: -time.Second, User: "root"},
+		"a negative tick":          {Image: base.Image, Script: script, Tick: -time.Second, User: "root"},
+		"a probe bound too short":  {Image: base.Image, ProbeTimeout: time.Second, User: "root"},
+		"an empty user":            {Image: base.Image},
+		"a user outside argv":      {Image: base.Image, User: "root$(id)"},
+		"an unusable env name":     {Image: base.Image, Script: script, Env: badEnv, User: "root"},
 	}
 	for label, spec := range cases {
 		if err := spec.Validate(); err == nil {

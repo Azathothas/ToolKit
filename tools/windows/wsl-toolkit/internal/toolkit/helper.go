@@ -242,10 +242,7 @@ func (h *HelperServer) Serve(ctx context.Context) error {
 		// deadline here would report a network failure over a working job. The
 		// per-job deadline is where a runaway is bounded.
 	}
-	version, err := ScriptVersion()
-	if err != nil {
-		return err
-	}
+	version := Version
 	ep := HelperEndpoint{
 		Schema: HelperSchema, Address: ln.Addr().String(), Token: h.token,
 		PID: os.Getpid(), Version: version, Started: time.Now().UTC(),
@@ -339,9 +336,8 @@ func decodeHelperBody(r *http.Request, v any) error {
 }
 
 func (h *HelperServer) handleStatus(w http.ResponseWriter, r *http.Request) {
-	version, _ := ScriptVersion()
 	writeHelperJSON(w, http.StatusOK, map[string]any{
-		"schema": HelperSchema, "version": version, "pid": os.Getpid(),
+		"schema": HelperSchema, "version": Version, "pid": os.Getpid(),
 		"base": h.cfg.Base.Name, "user": h.cfg.Base.User,
 		// ⭐ THE CONFIG THIS HELPER STARTED WITH, as a fingerprint. A client
 		// cannot otherwise tell whether the helper it found is the one its own
@@ -879,8 +875,3 @@ func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
 	}
 	writeHelperJSON(w, http.StatusOK, payload)
 }
-
-// ScriptVersion is the product version, read from the embedded script through
-// the one function that owns it. It is a hook so this package does not import
-// the script package directly and create a cycle with the command layer.
-var ScriptVersion = func() (string, error) { return "", nil }

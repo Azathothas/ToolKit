@@ -1,14 +1,11 @@
-# Publish wsl-toolkit.ps1 as a GitHub release, from the tag that triggered this.
+# Publish wsl-toolkit executables as a GitHub release, from the tag that triggered this.
 #
-# ⭐ THE PUBLISHER IS HERE AND NOWHERE ELSE. scripts/windows/wsl-toolkit/release.ps1
-# verifies and pushes the tag; this checks that tag out CLEAN and re-runs the same
+# ⭐ THE PUBLISHER IS HERE AND NOWHERE ELSE. `repo release --publish`
+# verifies and pushes the tag; this checks that tag out CLEAN and re-runs
 # verification before anything is published. A release cut from a developer's
 # machine could come from a dirty tree, an unpushed commit or a bundle that
-# disagrees with its sources, and none of those is visible in the artefact
+# disagrees with its source, and none of those is visible in the artefact
 # afterwards.
-#
-# ⛔ THE BUNDLE IS RE-VERIFIED, NOT TRUSTED. build.ps1 -Check rebuilds from the
-# parts and compares bytes, so a hand-edited wsl-toolkit.ps1 cannot be released.
 #
 # ⛔ Third-party actions are pinned to a COMMIT, not a tag, for the reason
 # .github/workflows/ci.yml states: a moved tag runs code nobody reviewed with the
@@ -49,34 +46,19 @@ jobs:
           ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
 
-      # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped. A guard on the left of
-      # a pipe reports the pipeline's status, so one that failed reads as green.
-      - name: the bundle is what its parts build
-        shell: pwsh
-        run: |
-          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Check
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      - name: PSScriptAnalyzer, the selftest and the surface lock
-        shell: pwsh
-        run: |
-          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser -ErrorAction Stop
-          pwsh -NoProfile -File .\scripts\windows\wsl-toolkit\build.ps1 -Test
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      # ⛔ THE TAG AND THE FILE MUST AGREE. A tag naming a version the published
+      # ⛔ THE TAG AND THE SOURCE MUST AGREE. A tag naming a version the published
       # asset does not carry is the worst kind of release: every later report
       # about it is about a different file.
-      - name: the tag names the version inside the file
+      - name: the tag names the executable's one version
         shell: pwsh
         run: |
           $tag = '${{ github.event.inputs.tag || github.ref_name }}'
-          $text = [IO.File]::ReadAllText('.\scripts\windows\wsl-toolkit\wsl-toolkit.ps1')
-          $m = [regex]::Matches($text, "(?m)^\s*\`$script:ToolkitVersion\s*=\s*'([0-9]+\.[0-9]+\.[0-9]+)'\s*$")
-          if ($m.Count -ne 1) { Write-Output "the bundle carries $($m.Count) version assignments"; exit 1 }
+          $text = [IO.File]::ReadAllText('.\tools\windows\wsl-toolkit\internal\toolkit\version.go')
+          $m = [regex]::Matches($text, '(?m)^const Version = "([0-9]+\.[0-9]+\.[0-9]+)"$')
+          if ($m.Count -ne 1) { Write-Output "version.go carries $($m.Count) product version declarations"; exit 1 }
           $want = 'wsl-toolkit-v' + $m[0].Groups[1].Value
           if ($tag -ne $want) { Write-Output "tag is '$tag' and the file says '$want'"; exit 1 }
-          Write-Output "tag and file agree: $tag"
+          Write-Output "tag and native version agree: $tag"
 
       # ⚠ THE RUNTIME THIS TAG DECLARES WAS CHECKED, not only that the tag
       # resolves. Resolved on 2026-09-10, and the commit it answered is the one
@@ -95,16 +77,6 @@ jobs:
         shell: bash
         run: sh scripts/common/check-go.sh
 
-      # ⛔ THE EXECUTABLE MUST CARRY THE SCRIPT THIS RELEASE PUBLISHES. The two
-      # copies differ by line endings alone and the executable reconstructs the
-      # tracked bytes exactly. Without this, a release could ship a binary
-      # running a script that is not the one beside it in the same release.
-      - name: the executable carries the published script
-        shell: bash
-        run: |
-          cd tools/windows/wsl-toolkit
-          go test ./internal/script/ -run TestStoredCopyReconstructsTheProduct -v
-
       # ⭐ THE DIGESTS ARE COMPUTED OVER THE BYTES THAT ARE UPLOADED, in this
       # checkout, so a consumer verifying a download against SHA256SUMS is
       # checking the same object. A digest computed anywhere else would be a
@@ -118,8 +90,6 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Copy-Item .\scripts\windows\wsl-toolkit\wsl-toolkit.ps1 dist\ -Force
-          Copy-Item .\scripts\windows\wsl-toolkit\launcher.ps1     dist\ -Force
           Push-Location tools\windows\wsl-toolkit
           foreach ($arch in @('amd64', 'arm64')) {
             $env:GOOS = 'windows'; $env:GOARCH = $arch; $env:CGO_ENABLED = '0'
@@ -131,7 +101,7 @@ jobs:
           # ⛔ THE COUNT IS ASSERTED. A staging step that produced fewer assets
           # than expected and exited 0 would publish a release missing the thing
           # a consumer came for, and the release would look complete.
-          $expected = @('wsl-toolkit.ps1', 'launcher.ps1', 'wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
+          $expected = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
           foreach ($name in $expected) {
             if (-not (Test-Path -LiteralPath "dist\$name")) { Write-Output "dist\$name was not staged"; exit 1 }
           }
@@ -145,8 +115,7 @@ jobs:
           [IO.File]::WriteAllText('dist\SHA256SUMS', (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
 
       # ⛔ THE PUBLISHED BINARY IS RUN BEFORE IT IS PUBLISHED, and it is asked
-      # the one question whose answer proves it carries the right script: its
-      # version, which it reads out of the embedded copy rather than declaring.
+      # the one question whose answer proves it carries the tag's version.
       # A binary that builds and cannot start is a release nobody can use.
       - name: the staged binary runs and agrees with the tag
         shell: pwsh
@@ -186,7 +155,7 @@ jobs:
         shell: pwsh
         run: |
           $assets = @(Get-ChildItem dist -File | Sort-Object Name | ForEach-Object { $_.Name })
-          if ($assets.Count -ne 5) { Write-Output "expected 5 assets to sign and found $($assets.Count)"; exit 1 }
+          if ($assets.Count -ne 3) { Write-Output "expected 3 assets to sign and found $($assets.Count)"; exit 1 }
           foreach ($name in $assets) {
             & cosign sign-blob --yes --bundle "dist\$name.cosign.bundle" "dist\$name"
             if ($LASTEXITCODE -ne 0) { Write-Output "signing $name exited $LASTEXITCODE"; exit 1 }
@@ -211,7 +180,7 @@ jobs:
           IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
         run: |
           $assets = @(Get-ChildItem dist -File -Filter '*.cosign.bundle' | ForEach-Object { $_.Name -replace '\.cosign\.bundle$', '' })
-          if ($assets.Count -ne 5) { Write-Output "expected 5 bundles and found $($assets.Count)"; exit 1 }
+          if ($assets.Count -ne 3) { Write-Output "expected 3 bundles and found $($assets.Count)"; exit 1 }
           foreach ($name in $assets) {
             & cosign verify-blob `
               --bundle "dist\$name.cosign.bundle" `

@@ -4860,12 +4860,13 @@ Then its suites and the gate were run from a detached worktree of `1132e00`.
    trusted the `eph-` prefix, and on this host that would have unregistered
    `eph-pgb`, which lives under `%LOCALAPPDATA%\wsl-ephemeral` and is not this
    tool's.
-4. **Not carried**, because the executable already answers them or a caller
-   parsing output is harmed by them: the stream log's timestamps, columns,
-   colours, sinks, redaction and progress token, `Replay` and `Compare`,
-   `-DryRun`, `-StateDir`, `-CommandB64`, `-ScriptArg` with `@hostaddress`, and
-   `-UserEnv`. `Doctor` and `Resources` are the executable's `doctor` and
-   `resources`, and `resources` now reports throwaway distributions.
+4. **Operator-overruled at the next checkpoint.** The stream log's timestamps,
+   columns, colours, sinks and redaction, the progress token, `Replay` and
+   `Compare`, `-DryRun`, `-StateDir`, `-CommandB64`, `-ScriptArg` with
+   `@hostaddress`, and `-UserEnv` must all have native equivalents. Removing
+   them lobotomizes a tool agents used extensively. `Doctor` and `Resources`
+   remain the executable's own `doctor` and `resources`, and `resources` reports
+   throwaway distributions.
 5. **The version gets one home in Go**, and removing `script` is breaking, so the
    next version is `3.0.0`. `release.ps1`'s refusals move to `tools/repo`.
 6. **The launcher goes with the script.** Signature verification is documented
@@ -4911,3 +4912,151 @@ script.
    the acceptance runner, CI green, and the three reviews recorded here.
 5. A second comment on the closed pull request 31, naming the commits that
    finish the work.
+
+## Checkpoint, 2026-09-13: native parity implemented, closing evidence still owed
+
+⛔ **Open.** The operator overruled the first checkpoint's fourth decision: every
+listed compatibility capability is required. This checkpoint implements the
+native equivalents and removes the PowerShell product, but it deliberately does
+not claim the three-part closing gate.
+
+### What is in the tree at this checkpoint
+
+- `internal/toolkit/runlog.go` owns one ordered stream/event pipeline: raw,
+  human, CI and forensic profiles; relative, delta, wall, ISO and epoch stamp
+  columns; colour policy; append/overwrite text sinks; JSONL event sinks;
+  redaction before every sink; UTF-8-safe line bounds; progress events and idle
+  ticks; replay; and comparison summaries.
+- Native `distro new|run|enter|remove|purge|snapshot` support `--dry-run` without
+  a WSL mutation. `distro run` supports strict `--command-base64`, repeatable
+  `--env` with `@hostaddress` expansion, and `--user-env`. Global `--home` is the
+  native state-directory control. `distro replay` and `distro compare` are
+  registered commands. `doctor` and `resources` remain native commands.
+- The version has one source, `internal/toolkit/version.go`, at `3.0.0`; the
+  embedded script command and package are gone.
+- All 40 files under `scripts/windows/wsl-toolkit/` are deleted after individual
+  classification, along with `cmd_script.go`, `internal/script`, the bundle gate,
+  script selftest CI, script/launcher release assets and their special line-ending
+  rules. The executable's `acceptance.ps1` and `consumer.ps1` remain.
+- `tools/repo release` owns the clean-tree, branch/remote, version and tag
+  refusals and the optional annotated-tag publish path. Release assets are the
+  two Windows executables plus `SHA256SUMS`, with signatures supplied by the
+  release workflow.
+- Root/router/consumer/release documentation has begun moving to the native-only
+  product. Consumers get no migration work and are told to read the latest
+  manual directly.
+
+### What was measured before stopping
+
+The initial native/script comparison covered New with a failing command and
+cleanup, New then Run, List ownership, a removal refusal, Snapshot/import,
+OCI environment, Systemd refusal on Alpine and success on Alma, Reuse, deadline,
+HostAddress and failure streams. It found one parity gap: `@hostaddress` remained
+literal in native `--env`; this checkpoint fixes it and adds a unit guard.
+
+After `gofmt` and regeneration of `wsl-toolkit.1`, all packages in
+`tools/windows/wsl-toolkit`, `tools/repo` and `tools/check` pass on Windows with
+`TEMP` and `TMP` at the repository's 8.3 short path. That is the checkpoint gate,
+not the entry's closing gate.
+
+### What is left, in order
+
+1. Use CodeGraph first, then the pinned/direct ripgrep fallback, to reconcile
+   every surviving reference to the deleted product, bundle, launcher and old
+   release assets. Finish `wsl-toolkit.md` as a concise native manual and
+   reconcile `WSL-59`. Review all edited workflow and PowerShell harness syntax
+   manually because the known PowerShell gate defect can conceal parse failures.
+2. Deep-review the new event engine and dry-run boundary before trusting them.
+   In particular inspect no-newline truncation, replay redaction/truncation and
+   colour, multi-session event sequence handling, sink-open failure residue,
+   exact dry-run no-write behavior, and release failure/rollback semantics.
+3. Build a fresh executable and drive every new parity feature on
+   `eph-wsl73n-main`, including CommandB64, UserEnv, `@hostaddress`, all stream
+   sinks, progress/ticks, redaction, replay/compare and dry-run. Prove `doctor`
+   and `resources`. Compare with the retained script baseline where needed.
+4. Remove only `eph-wsl73n-main`, `eph-wsl73s-main` and their two exact state
+   directories after final comparison. Never touch `eph-pgb`, `wsl-toolkit-muse`
+   or another baseline distribution.
+5. Add and mutation-prove guards for every new invariant, run the acceptance
+   harness, all Go suites with the short 8.3 TEMP, ShellCheck 0.9.0 inside the
+   same Ubuntu 24.04 image CI uses, and the full three-part gate.
+6. Record three distinct reviews, finish the changelog and record, push through
+   `scripts/common/git-sync.ps1`, wait for all CI jobs to turn green, and post a
+   final second comment on closed pull request 31 naming the completing commits.
+   The amended first comment must no longer say these features are omitted.
+
+## Checkpoint, 2026-09-13: the parity surface driven, two reviews still owed
+
+⛔ **Open.** The operator asked for a checkpoint here. The second checkpoint above
+was never committed: this session found its 84 changes staged on top of
+`97c80f2` and not pushed, while the record said the commit was pushed.
+
+### What reading and driving the second checkpoint found
+
+Each is fixed, and each fix has a guard that was planted and went red.
+
+| # | found | now |
+| --- | --- | --- |
+| 1 | ⛔ `distro new -c`, `distro run` and `base exec` sent the command on the shell's stdin, so a command that reads stdin consumed the lines after it. `cat >/dev/null`, 20 KB of comments, then `echo`: the echo never ran and the run exited 0 | the command is framed as `{ . /dev/fd/9; } 9<<'WTK_PAYLOAD_<32 hex>' </dev/null`: the shell reads the whole of it before running any of it, and the command's stdin is `/dev/null`. Driven on busybox ash, dash, bash and Chimera's `sh` across the 13 catalog images, and on a real Alpine distribution |
+| 2 | the relay advanced its delta clock on heartbeats and progress records | only an output line advances it |
+| 3 | events carried `exit`, `percent` and `label` under the retired product's schema id, which wrote `exit_code`, `progress_percent`, `progress_label` and the tick facts | one field set; a log that product recorded on this host replays from `internal/toolkit/testdata` |
+| 4 | a log two runs appended to replayed and compared as one run | a `seq` of 1 starts a run, a gap is refused, and `--run`, `--before-run` and `--after-run` pick one |
+| 5 | where a long line was cut depended on how the output arrived, and the cut did not say how much went | cut at a character boundary, with the bytes cut counted |
+| 6 | strftime kept an unknown specifier as text, and accepted a date specifier on a relative column | both refused before anything runs |
+| 7 | the `ci` and `forensic` profiles overrode an explicit `--color`, and columns silently beat `--timestamp-mode` | an explicit flag wins over a profile; a mode beside a column is refused |
+| 8 | a progress token needed no whitespace after it, took `NaN`, `+42` and `1e1`, and consumed a partial line | refused; a percentage past 100 is ordinary output |
+| 9 | not carried over from the retired product: `--env-file`, `--verbatim`, tick escalation, the silence-ended and deadline notes, exit diagnosis, early flush of a partial line, tick facts, the device-name refusal for sinks, prefix-forced names, other distributions in `list`, a bound on the tool's own probes, the doctor rows, and snapshots and the host engine in `resources` | all written and driven |
+| 10 | `--env` assignments came before `--user-env`'s preparation, which then replaced a caller's `PATH` and `TMPDIR` | the preparation comes first and the caller's values win |
+| 11 | `distro new --reuse` drew a name that the spec then refused, so reuse never ran | reuse runs, and was driven |
+| 12 | the acceptance runner asserted 71 cases and carried 70, and its legacy-schema case wrote the new field name | 18 throwaway cases; 87 in a full run and 85 under `-Quick` |
+| 13 | `consumer.ps1` required exactly two files in `SHA256SUMS`, so the weekly smoke against `v2.0.2` would go red, and its fallback downloader read the signature suffix before defining it | reads any release; 14 of 14 against `v2.0.2` |
+| 14 | the manual, `scripts/README.md`, a forbidden-patterns row, Go comments and one error message still sent readers to the deleted product, and the root README downloaded a release that does not exist | rewritten |
+| 15 | ⛔ the row proving `</dev/null` was THEATRE on Linux, because the frame alone stops a command consuming the script | a case asks the shell whether its stdin is a character device, and goes red without the redirect in `golang:1.25` |
+| 16 | the catalog gained openSUSE on 2026-09-12 and two acceptance cases still asserted twelve, so the full run failed 2 of 87 | the count is written in one case and the fleet case reads the catalog. The fleet command alone ran 13 of 13, each with its artifact |
+| 17 | door sweep: `distro run`, `enter` and `snapshot` acted on a distribution another run was still creating, which removal refuses and `--reuse` skips | refused the same way |
+| 18 | door sweep: `distro purge --apply` counted a snapshot export still being written as a leftover and deleted it | a partial export inside the export's own 30-minute bound is kept unless `--include-live` |
+
+⚠ **Found and not fixed here.** `repo mutate` never runs a row's cases before
+removing the guard, so a case that is already red reports "went red". A draft of
+finding 15's case did exactly that. It belongs to tooling and is filed in step 2.
+
+### Measured at this checkpoint
+
+```text
+probe         doctor.ps1 exit 0 in 41.86 s
+opening gate  the staged tree: exit 1, 3 problems (a stacked marker, and mixed
+              line endings in acceptance.ps1 and consumer.ps1)
+go, windows   every module green, TEMP at the 8.3 short path
+go, linux     golang:1.25, check-go.sh: 3 modules, 0 problems
+shellcheck    ubuntu:24.04, ShellCheck 0.9.0: 25 scripts clean
+mutation      35 rows added, each proved: the shell-backed rows in golang:1.25,
+              the rest on Windows. The whole table has not run
+acceptance    85 of 87 before finding 16; not re-run since
+consumer      v2.0.2: 14 of 14
+gate          19 of 19 checks green on the checkpoint tree, after it refused 11
+              problems in this session's own code: a non-ASCII byte in a test
+              and ten one-line slice literals that read as placeholders
+reviews       door sweep: findings 17 and 18. Guard mutation and claim audit:
+              not run
+```
+
+### What is left, in order
+
+1. The guard mutation and claim audit reviews over the whole change, recorded
+   here beside the door sweep, each naming what it looked at that the others
+   did not.
+2. A full acceptance run over a fresh build, and the whole `repo mutate` table.
+3. The changelog entry, then this entry closed through `set-record.mjs`, with
+   the acceptance output.
+4. Remove the two comparison distributions. `eph-wsl73n-main` with
+   `wsl-toolkit --home .tmp\wsl73-native-baseline distro remove --name
+   eph-wsl73n-main --yes`. `eph-wsl73s-main` belongs to no native state
+   directory: read its `BasePath` from
+   `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`, and only if it is
+   exactly `.tmp\wsl73-script-baseline\eph-wsl73s-main` under this checkout, run
+   `wsl.exe --unregister eph-wsl73s-main`. Then delete only those two state
+   directories. `eph-pgb` is not this tool's.
+5. The gate, ShellCheck in `ubuntu:24.04` and the Go suites in `golang:1.25`,
+   a push through `git-sync.ps1`, and CI green on the final commit.
+6. Pull request 31's comment amended in place again, and a second comment
+   naming the commits that finish the work.

@@ -1,7 +1,7 @@
 # acceptance.ps1 - drive the wsl-toolkit executable against a real machine.
 #
 # The defect this exists to catch is a green unit suite over a tool that cannot
-# do its job. selftest.ps1 and `go test` prove the pure parts; nothing there
+# do its job. `go test` proves the pure parts; nothing there
 # talks to wsl.exe, to a container engine or to a real distribution, and every
 # defect this tool has carried was found by running it. This is part (b) of
 # docs/methodology/gate.md, written down so it is a command rather than a memory.
@@ -59,7 +59,7 @@ function Exit-Cannot {
 # has always been timed and nothing ever compared the number to anything, so a
 # twelve second wait for a two second deadline read as a pass for as long as the
 # deadline existed. TOOL-17. A case that names no ceiling is unbounded, which is
-# the old behaviour and is right for one that pulls twelve images.
+# the old behaviour and is right for one that pulls every catalog image.
 function Test-Case {
     param(
         [Parameter(Mandatory = $true)][string]$Name,
@@ -260,10 +260,10 @@ try {
     Write-Line ''
 
     # -- the tool answers at all ---------------------------------------------
-    Test-Case 'the executable reports the version its embedded script declares' 'True' {
+    Test-Case 'the executable text and JSON surfaces report one native version' 'True' {
         $v = Invoke-Tool @('version')
         $j = (Invoke-Tool @('version', '--json')).Out | ConvertFrom-Json
-        (($v.Code -eq 0) -and ($v.Out.Trim() -eq $j.version) -and $j.script_reversible).ToString()
+        (($v.Code -eq 0) -and ($v.Out.Trim() -eq $j.version) -and ($j.schema -eq 'wsl-toolkit-version/1')).ToString()
     }
 
     Test-Case 'the survey runs, creates nothing, and separates installed from callable' 'True' {
@@ -272,7 +272,10 @@ try {
         (($r.Code -eq 0) -and ($d.schema -eq 'agent-doctor/1') -and ($null -ne $d.wsl) -and ($d.wsl.PSObject.Properties.Name -contains 'callable')).ToString()
     }
 
-    Test-Case 'the catalog is twelve fully qualified references' '12'  {
+    # THE COUNT IS WRITTEN ONCE, HERE. The fleet case reads the catalog rather
+    # than repeating the number, so adding a row is one edit and removing one is
+    # still a failure.
+    Test-Case 'the catalog is thirteen fully qualified references' '13'  {
         $r = Invoke-Tool @('images', '--json')
         $d = $r.Out | ConvertFrom-Json
         $bad = @($d.images | Where-Object { $_.ref -notmatch '^[a-z0-9.-]+\.[a-z]{2,}/' -and $_.ref -notmatch '^localhost/' })
@@ -401,13 +404,17 @@ try {
         Test-Case 'every catalog image runs the same command and returns an artifact' 'True' {
             $art = Join-Path $script:Scratch 'art-all'
             $tr = Join-Path $script:Scratch 'transcripts'
+            $catalog = @((Invoke-Tool @('images', '--json')).Out | ConvertFrom-Json | ForEach-Object { $_.images }).Count
+            if ($catalog -lt 1) { return 'the catalog could not be read' }
             $r = Invoke-Tool @('matrix', '--images', 'all', '--timeout', '20m', '--artifacts', $art,
                 '--transcripts', $tr, '--json', '-c', '. /etc/os-release 2>/dev/null || true; printf "%s" "${ID:-unknown}" > /out/id.txt')
             $d = $r.Out | ConvertFrom-Json
             $withArtifact = @(Get-ChildItem -LiteralPath $art -Directory -ErrorAction SilentlyContinue |
                 Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName 'id.txt') })
-            (($r.Code -eq 0) -and ($d.ran -eq 12) -and ($d.failed -eq 0) -and ($d.unreached -eq 0) -and
-             ($withArtifact.Count -eq 12)).ToString()
+            if (($r.Code -ne 0) -or ($d.ran -ne $catalog) -or ($d.failed -ne 0) -or ($d.unreached -ne 0) -or ($withArtifact.Count -ne $catalog)) {
+                return "exit $($r.Code), $($d.ran) of $catalog ran, $($d.failed) failed, $($d.unreached) unreached, $($withArtifact.Count) returned an artifact"
+            }
+            'True'
         }
     }
 
@@ -511,16 +518,206 @@ try {
         (($r.Code -eq 1) -and ($d.listening -eq $false)).ToString()
     }
 
-    # -- the embedded script -------------------------------------------------
-    Test-Case 'the embedded script runs and reports the distributions it may touch' 'True' {
-        $r = Invoke-Tool @('script', '-Action', 'List')
-        (($r.Code -eq 0) -and (($r.Out + $r.Err) -match 'PROTECTED')).ToString()
+    # -- throwaway distributions --------------------------------------------
+    # WSL-73. The PowerShell product these replace was deleted, so each case
+    # below is a capability it had, driven through the executable on a real
+    # distribution that this runner imports into its own state directory and
+    # removes again. The two case count lines at the end of this file include
+    # these cases.
+    $script:TwHome = New-StateHome 'throwaway'
+    $script:TwOther = New-StateHome 'throwaway-other'
+    $script:TwName = 'eph-acc-' + [Guid]::NewGuid().ToString('N').Substring(0, 6)
+    $script:TwLogs = New-StateHome 'throwaway-logs'
+    $script:CompareBefore = Join-Path $script:TwLogs 'events.jsonl'
+    $script:CompareAfter = Join-Path $script:TwLogs 'events-second.jsonl'
+
+    function Invoke-Throwaway {
+        param([Parameter(Mandatory = $true)][string[]]$ToolArgs)
+        return Invoke-Tool (@('--home', $script:TwHome, 'distro') + $ToolArgs)
     }
 
-    Test-Case 'the embedded script puts one address on stdout and nothing else' 'True' {
-        $r = Invoke-Tool @('script', '-Action', 'HostAddress')
+    function ConvertTo-B64 {
+        param([Parameter(Mandatory = $true)][AllowEmptyString()][string]$Text)
+        return [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text))
+    }
+
+    Test-Case 'a throwaway distribution is imported from an image and answers a command in one call' 'True' {
+        $r = Invoke-Throwaway @('new', '--image', 'alpine', '--name', $script:TwName, '--json',
+            '--command-base64', (ConvertTo-B64 ". /etc/os-release; printf 'id=%s\n' `"`$ID`"`n"))
+        $d = Read-ToolJson -Stdout $r.Out -What 'distro new --json'
+        if ($r.Code -ne 0) { return "distro new exited $($r.Code): $($r.Err)" }
+        (($d.name -eq $script:TwName) -and ($d.command.exit -eq 0) -and ($d.origin.image -eq 'docker.io/library/alpine:latest') -and
+         ($r.Err -match 'id=alpine')).ToString()
+    }
+
+    # The defect the framed channel removes: unframed, `cat` ate every line after
+    # it and the run exited 0 over commands that never ran.
+    Test-Case 'a command that reads stdin cannot eat the rest of its script' 'exit=7 ran=True' {
+        $script = Join-Path $script:TwLogs 'stdin-eater.sh'
+        $pad = ('# ' + ('x' * 97) + "`n") * 200
+        [IO.File]::WriteAllText($script, "cat >/dev/null`n" + $pad + "echo SECOND-LINE-RAN`nexit 7`n", [Text.UTF8Encoding]::new($false))
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--script', $script)
+        "exit=$($r.Code) ran=$($r.Out -match 'SECOND-LINE-RAN')"
+    }
+
+    Test-Case 'base exec frames its command the same way' 'exit=5 ran=True' {
+        $script = Join-Path $script:TwLogs 'stdin-eater-base.sh'
+        $pad = ('# ' + ('x' * 97) + "`n") * 200
+        [IO.File]::WriteAllText($script, "cat >/dev/null`n" + $pad + "echo BASE-SECOND-LINE-RAN`nexit 5`n", [Text.UTF8Encoding]::new($false))
+        $r = Invoke-Tool @('base', 'exec', '--script', $script)
+        "exit=$($r.Code) ran=$($r.Out -match 'BASE-SECOND-LINE-RAN')"
+    }
+
+    Test-Case 'every hazard in a base64 command arrives byte for byte' 'True' {
+        $text = 'printf ''%s|%s|%s|%s\n'' "$HOME" "`uname`" "it''s" "a' + "`t" + 'tab"' + "`n"
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--command-base64', (ConvertTo-B64 $text))
+        (($r.Code -eq 0) -and ($r.Out.Trim() -eq "/root|Linux|it's|a`ttab")).ToString()
+    }
+
+    # A value the caller set wins over what --user-env prepares, and the flags
+    # apply after the file, the way a shell would apply them.
+    Test-Case 'environment comes from the file then the flags, and the caller wins over --user-env' 'True' {
+        $pairs = Join-Path $script:TwLogs 'pairs.env'
+        [IO.File]::WriteAllText($pairs, "# a comment`r`nFIRST=from-file`r`nTMPDIR=/caller/tmp`r`nADDR=@hostaddress`r`n", [Text.UTF8Encoding]::new($false))
+        $addr = (Invoke-Tool @('hostaddress')).Out.Trim()
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--env-file', $pairs, '--env', 'FIRST=from-flag', '--user-env',
+            '--command-base64', (ConvertTo-B64 "printf '%s %s %s %s\n' `"`$FIRST`" `"`$TMPDIR`" `"`$ADDR`" `"`$XDG_RUNTIME_DIR`"`n"))
+        (($r.Code -eq 0) -and ($r.Out.Trim() -eq "from-flag /caller/tmp $addr /tmp/wsl-toolkit-run-0")).ToString()
+    }
+
+    Test-Case 'the relay renders, records, redacts and reads its own record back' 'True' {
+        $events = $script:CompareBefore
+        $text = Join-Path $script:TwLogs 'stream.log'
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--log-profile', 'ci', '--event-log', $events, '--stream-log', $text,
+            '--redact', 'hunter[0-9]', '--command-base64', (ConvertTo-B64 "echo secret=hunter2 visible`necho to-stderr >&2`nexit 3`n"))
+        if ($r.Code -ne 3) { return "exited $($r.Code): $($r.Err)" }
+        if (($r.Out + $r.Err + [IO.File]::ReadAllText($text) + [IO.File]::ReadAllText($events)) -match 'hunter2') { return 'a sink carried the secret' }
+        if ($r.Out -notmatch '(?m)^\d\d:\d\d:\d\d\.\d{3} \+\d+\.\d{3} out  secret=\*\*\* visible$') { return "stdout: $($r.Out)" }
+        if ($r.Err -notmatch 'err  to-stderr' -or $r.Err -notmatch 'note exit 3 is the command') { return "stderr: $($r.Err)" }
+        if ([IO.File]::ReadAllText($text) -match [char]27) { return 'the stream log carries an escape sequence' }
+        $c = Invoke-Tool @('distro', 'compare', '--before', $events, '--after', $events, '--json')
+        $d = Read-ToolJson -Stdout $c.Out -What 'distro compare --json'
+        (($d.before.exit_code -eq 3) -and ($d.before.stdout_lines -eq 1) -and ($d.before.stderr_lines -eq 1)).ToString()
+    }
+
+    Test-Case 'an unterminated line is shown early and a silence is reported with the distribution state' 'True' {
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--log-profile', 'ci', '--tick', '1s', '--tick-escalate', '3s',
+            '--command-base64', (ConvertTo-B64 "printf 'Password: '`nsleep 6`necho`necho done`n"))
         if ($r.Code -ne 0) { return "exited $($r.Code): $($r.Err)" }
-        ($r.Out.Trim() -match '^(\d{1,3}\.){3}\d{1,3}$').ToString()
+        (($r.Out -match 'out~ Password: ') -and ($r.Err -match 'tick \ds silent .*\| distro running \| disk') -and
+         ($r.Err -match 'after 3s of silence: ') -and ($r.Err -match 'output resumed after')).ToString()
+    }
+
+    Test-Case 'a consumed progress line is carried on the heartbeat and not relayed' 'True' {
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--log-profile', 'human', '--progress-prefix', 'WTK', '--tick', '1s',
+            '--command-base64', (ConvertTo-B64 "echo WTK 40 unpacking`nsleep 3`necho WTK 100`necho done`n"))
+        (($r.Code -eq 0) -and ($r.Out -notmatch 'WTK') -and ($r.Out -match 'out  done') -and
+         ($r.Err -match 'progress 40% unpacking \(\ds ago\)')).ToString()
+    }
+
+    Test-Case 'a deadline answers 124 inside its bound and leaves the distribution stopped' 'True' -MaxSeconds 25 {
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--timeout', '3s', '--log-profile', 'human', '-c', 'echo started; sleep 60')
+        $l = Invoke-Throwaway @('list', '--json')
+        $d = Read-ToolJson -Stdout $l.Out -What 'distro list --json'
+        $me = @($d.owned | Where-Object { $_.name -eq $script:TwName })
+        (($r.Code -eq 124) -and ($r.Err -match 'TIMED OUT after') -and ($me.Count -eq 1) -and (-not $me[0].running)).ToString()
+    }
+
+    # An appended event log holds one run per command, and a replay or a
+    # comparison that read them as one would measure a run that never happened.
+    Test-Case 'a second run appended to a log is a second run to replay and to compare' 'True' {
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--event-log', $script:CompareBefore, '-c', 'echo second; exit 0')
+        if ($r.Code -ne 0) { return "exited $($r.Code): $($r.Err)" }
+        Copy-Item -LiteralPath $script:CompareBefore -Destination $script:CompareAfter
+        $p = Invoke-Tool @('distro', 'replay', '--from', $script:CompareBefore, '--color', 'never')
+        if ($p.Code -ne 0 -or $p.Err -notmatch '==> run 2 of 2' -or $p.Out -notmatch 'out  second') { return "replay: $($p.Code) $($p.Err)" }
+        $c = Invoke-Tool @('distro', 'compare', '--before', $script:CompareBefore, '--before-run', '1', '--after', $script:CompareAfter, '--json')
+        $d = Read-ToolJson -Stdout $c.Out -What 'distro compare --json'
+        (($d.before.run -eq 1) -and ($d.after.run -eq 2) -and ($d.after.runs -eq 2) -and ($d.delta.exit_code -eq -3)).ToString()
+    }
+
+    Test-Case 'a dry run of every mutating distro command changes nothing and repeats no secret' 'True' {
+        # NOTE: what this state directory holds, and not the whole report. Another
+        # distribution on the machine may start or stop while the case runs.
+        $held = {
+            $o = (Invoke-Throwaway @('list', '--json')).Out | ConvertFrom-Json
+            (@($o.owned) + @($o.leftovers) + @($o.snapshots)) | ConvertTo-Json -Depth 6 -Compress
+        }
+        $before = & $held
+        $sink = Join-Path $script:TwLogs 'dry\never.jsonl'
+        $plans = @(
+            @('new', '--image', 'alpine', '--dry-run', '--json', '--env', 'TOKEN=hunter3', '-c', 'echo hunter3', '--event-log', $sink, '--ephemeral'),
+            @('run', '--name', $script:TwName, '--dry-run', '--json', '--env', 'TOKEN=hunter3', '-c', 'echo hunter3'),
+            @('remove', '--name', $script:TwName, '--dry-run', '--json'),
+            @('snapshot', '--name', $script:TwName, '--tag', 'acc-dry', '--dry-run', '--json'),
+            @('enter', '--name', $script:TwName, '--dry-run', '--json')
+        )
+        foreach ($p in $plans) {
+            $r = Invoke-Throwaway $p
+            if ($r.Code -ne 0) { return "$($p[0]) --dry-run exited $($r.Code): $($r.Err)" }
+            $d = Read-ToolJson -Stdout $r.Out -What "distro $($p[0]) --dry-run --json"
+            if (-not $d.dry_run -or $r.Out -match 'hunter3') { return "$($p[0]): the plan is not a dry run, or repeats a secret" }
+        }
+        $after = & $held
+        (($before -eq $after) -and -not (Test-Path -LiteralPath (Split-Path -Parent $sink))).ToString()
+    }
+
+    Test-Case 'distro run --json puts one document on stdout and the command output on stderr' 'True' {
+        $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--json', '-c', 'echo to-stderr-under-json; exit 4')
+        $d = Read-ToolJson -Stdout $r.Out -What 'distro run --json'
+        (($r.Code -eq 4) -and ($d.schema -eq 'wsl-toolkit-distro-run/1') -and ($d.exit -eq 4) -and ($r.Err -match 'to-stderr-under-json')).ToString()
+    }
+
+    Test-Case 'reuse runs in the distribution already built from the same image and says so' 'True' {
+        $r = Invoke-Throwaway @('new', '--image', 'alpine', '--reuse', '--json', '-c', 'echo reused-ok')
+        $d = Read-ToolJson -Stdout $r.Out -What 'distro new --reuse --json'
+        (($r.Code -eq 0) -and $d.reused -and ($d.name -eq $script:TwName) -and ($r.Err -match "reusing $($script:TwName)")).ToString()
+    }
+
+    Test-Case 'a snapshot imports again by its tag, and an ephemeral distribution leaves nothing' 'True' {
+        $s = Invoke-Throwaway @('snapshot', '--name', $script:TwName, '--tag', 'acc-snap', '--json')
+        $snap = Read-ToolJson -Stdout $s.Out -What 'distro snapshot --json'
+        if ($s.Code -ne 0 -or -not (Test-Path -LiteralPath $snap.path)) { return "snapshot exited $($s.Code): $($s.Err)" }
+        $n = Invoke-Throwaway @('new', '--tarball', 'acc-snap', '--ephemeral', '--json', '-c', 'cat /etc/alpine-release')
+        $d = Read-ToolJson -Stdout $n.Out -What 'distro new --tarball --json'
+        $l = Read-ToolJson -Stdout (Invoke-Throwaway @('list', '--json')).Out -What 'distro list --json'
+        $left = @($l.owned | Where-Object { $_.name -eq $d.name })
+        (($n.Code -eq 0) -and $d.removed -and ($d.origin.snapshot -eq 'acc-snap') -and ($left.Count -eq 0)).ToString()
+    }
+
+    Test-Case 'a distribution another state directory made is refused by every command that acts on it' 'True' {
+        $bad = @()
+        foreach ($p in @(@('run', '--name', $script:TwName, '-c', 'true'), @('remove', '--name', $script:TwName, '--yes'),
+                         @('snapshot', '--name', $script:TwName, '--tag', 'stolen'), @('remove', '--name', $script:TwName, '--dry-run'))) {
+            $r = Invoke-Tool (@('--home', $script:TwOther, 'distro') + $p)
+            if ($r.Code -ne 2 -or $r.Err -notmatch 'another run or another tool made it') { $bad += "$($p[0]): $($r.Code) $($r.Err)" }
+        }
+        if ($bad.Count -gt 0) { return ($bad -join ' | ') }
+        'True'
+    }
+
+    Test-Case 'distro enter --dry-run --json is the plan of an interactive shell' 'True' {
+        $r = Invoke-Throwaway @('enter', '--name', $script:TwName, '--dry-run', '--json')
+        $d = Read-ToolJson -Stdout $r.Out -What 'distro enter --dry-run --json'
+        $refused = Invoke-Throwaway @('enter', '--name', $script:TwName, '--json')
+        (($r.Code -eq 0) -and ($d.action -eq 'enter') -and ($refused.Code -eq 2)).ToString()
+    }
+
+    Test-Case 'doctor reports what a throwaway distribution would meet' 'True' {
+        $r = Invoke-Tool @('--home', $script:TwHome, 'doctor', '--json', '--fast')
+        $d = Read-ToolJson -Stdout $r.Out -What 'doctor --json'
+        (($null -ne $d.throwaway) -and ($d.throwaway.owned -eq 1) -and ($d.throwaway.snapshots -eq 1) -and
+         ($null -ne $d.throwaway.free_bytes) -and ($d.throwaway.engine_error -eq 'not asked under --fast')).ToString()
+    }
+
+    # NOTE: --include-live, because WSL keeps a distribution running for some
+    # seconds after its last process. Sparing a running one is a unit case.
+    Test-Case 'purge removes the distribution and keeps the snapshot, and the counts return to zero' 'True' {
+        $p = Invoke-Throwaway @('purge', '--apply', '--include-live', '--json')
+        $plan = Read-ToolJson -Stdout $p.Out -What 'distro purge --apply --json'
+        $l = Read-ToolJson -Stdout (Invoke-Throwaway @('list', '--json')).Out -What 'distro list --json'
+        (($p.Code -eq 0) -and (@($plan.removed) -contains $script:TwName) -and (@($l.owned).Count -eq 0) -and
+         (@($l.snapshots).Count -eq 1)).ToString()
     }
 
     # -- the eight defects a consumer found in wsl-toolkit-v1.1.0 ------------
@@ -779,6 +976,7 @@ try {
             @{ n = 'bsd status';    a = @('bsd', 'status', '--json') }
             @{ n = 'distro list';   a = @('distro', 'list', '--json') }
             @{ n = 'distro purge';  a = @('distro', 'purge', '--json') }
+            @{ n = 'distro compare'; a = @('distro', 'compare', '--before', $script:CompareBefore, '--after', $script:CompareAfter, '--json') }
             @{ n = 'hostaddress';   a = @('hostaddress', '--json') }
         )
         $bad = @()
@@ -1358,7 +1556,9 @@ try {
         # verdict about the id, and the message has to name the id.
         (($i.Code -eq 1) -and ($i.Err -match 'deadbeefdeadbeef') -and
          ($i.Out.Trim() -eq '')).ToString()
-    }    # -- cleanup, counted rather than remembered -----------------------------
+    }
+
+    # -- cleanup, counted rather than remembered -----------------------------
     Test-Case 'cleanup removes what this tool made and the counts return to zero' 'True' {
         $g = Invoke-Tool @('gc', '--apply', '--json')
         if ($g.Code -ne 0) { return "gc exited $($g.Code): $($g.Err)" }
@@ -1409,7 +1609,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 69 } else { 71 }
+$expected = if ($Quick) { 85 } else { 87 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

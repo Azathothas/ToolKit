@@ -20,7 +20,7 @@ where it is checked.
 | fact | value | where it is read from |
 | --- | --- | --- |
 | repository | `Azathothas/ToolKit`, public, 0BSD | `gh api repos/Azathothas/ToolKit` |
-| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: the executable for two Windows architectures, `wsl-toolkit.ps1`, `launcher.ps1`, `SHA256SUMS`, and one `.cosign.bundle` per asset. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
+| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: the executable for two Windows architectures, `SHA256SUMS`, and one `.cosign.bundle` per published file. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
 | work model | todo | [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) |
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |
@@ -93,10 +93,8 @@ instead.
 
 ## 3. A destructive tool has one deletion, and it reads the state back
 
-⛔ Applies to anything here that removes something on a machine. Two things do:
-[`../scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](../scripts/windows/wsl-toolkit/wsl-toolkit.ps1),
-whose own page carries the four-part safety model, and the compiled
-`wsl-toolkit`, whose one deletion is `RemoveInside` in
+⛔ Applies to anything here that removes something on a machine. The compiled
+`wsl-toolkit` has one deletion, `RemoveInside` in
 [`../tools/windows/wsl-toolkit/internal/toolkit/paths.go`](../tools/windows/wsl-toolkit/internal/toolkit/paths.go).
 
 **What it cost.** `WSL-04`. The predecessor printed that it had deleted a disk
@@ -115,40 +113,9 @@ file's own directory, which makes the containment check vacuous. A guard that
 cannot refuse anything is theatre. `RemoveInside`'s own comment carries the
 same sentence, which is where a reader of the code will look.
 
-## 4. THREE files here are GENERATED, and the tree holds every half
+## 4. ONE file here is GENERATED, and the tree holds both halves
 
-⛔ **`scripts/windows/wsl-toolkit/wsl-toolkit.ps1` is built** from the parts under
-`src/`, `core/` and `libs/` beside it, and it is **tracked** because a consumer
-fetching one raw URL cannot run a build step. So this repository carries a source
-and a product for the same thing, which is a shape it has nowhere else.
-
-⛔ **`tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1` is the second**,
-written by the same build. The Go executable compiles it in, and Go's `embed`
-directive cannot reach outside its own package directory, so the file lives there
-rather than being referenced.
-
-⭐ **The check is what makes that safe.** The gate's `bundle` rule rebuilds from
-the parts and compares BOTH products byte for byte, on either host and in CI.
-⚠ It was called `wsl-toolkit bundle` when the rules were shell scripts; the
-rules are one binary now and the name is `bundle`. Without it either could silently stop being what anybody wrote: a part
-edited and never rebuilt, a product edited by hand, or a rebuild that refreshed
-one copy and not the other.
-
-⚠ **The two differ by line endings and nothing else**, because git rewrites a
-`text eol=crlf` file on checkout and the binary must embed the same bytes from
-any host. The executable reconstructs the tracked file exactly, and a Go test
-asserts that against the tracked file rather than claiming it.
-
-⚠ **The parts are excluded from PSScriptAnalyzer and that is not a hole.** A
-script-scoped suppression covers only its own file and the tool's all live in its
-parameter block, so analysing a fragment reports every rule those suppressions
-exist to answer. The analyzer runs over the product, which is every line of every
-part.
-
-[`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
-is the build, the surface lock and the release pipeline.
-
-⛔ **`tools/windows/wsl-toolkit/internal/toolkit/packages.sh` is the third**, and a
+⛔ **`tools/windows/wsl-toolkit/internal/toolkit/packages.sh` is generated**, and a
 different build writes it. It is the block between the two `shared package table`
 marker lines of [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh)
 under a generated-file banner, and it lives in the Go package for the same `embed`

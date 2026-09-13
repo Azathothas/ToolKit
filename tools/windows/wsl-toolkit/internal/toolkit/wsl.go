@@ -319,6 +319,10 @@ type ExecRequest struct {
 	// sources apply before the script. ⚠ A throwaway distribution's image
 	// environment lives in /etc/profile.d, and a non-login shell never reads it.
 	Login bool
+	// Payload marks Script as a caller's command rather than a question this tool
+	// asks for itself. It is framed by FramePayload, so the shell reads the whole
+	// of it before running any of it and the command's stdin is /dev/null.
+	Payload bool
 }
 
 // Exec runs a shell script inside a distribution and returns its exit code.
@@ -331,8 +335,8 @@ type ExecRequest struct {
 // exit 0 over that failure. docs/conventions/shell.md section 7 carries the same
 // measurement from PowerShell.
 //
-// ⚠ A script that reads its own stdin consumes the rest of itself. A caller's
-// job is delivered as a FILE instead, which leaves stdin free.
+// ⚠ An unframed script that runs something reading stdin loses the rest of
+// itself to that command. Every caller's command is sent with Payload set.
 func (w *Wsl) Exec(ctx context.Context, req ExecRequest) (int, error) {
 	if strings.TrimSpace(req.Distro) == "" {
 		return 2, errors.New("Exec needs a distribution name")
@@ -357,9 +361,9 @@ func (w *Wsl) Exec(ctx context.Context, req ExecRequest) (int, error) {
 		defer cancel()
 	}
 
-	script := req.Script
-	if len(req.Env) > 0 {
-		script = append(shellAssignments(req.Env), script...)
+	script, err := req.stdin()
+	if err != nil {
+		return 2, err
 	}
 
 	cmd := newCommand(bounded, w.Path, args...)
@@ -371,11 +375,23 @@ func (w *Wsl) Exec(ctx context.Context, req ExecRequest) (int, error) {
 	if stderr == nil {
 		stderr = io.Discard
 	}
-	err := runCommand(bounded, cmd, strings.NewReader(string(script)), stdout, stderr)
-	if err == nil {
-		return 0, nil
+	if err := runCommand(bounded, cmd, strings.NewReader(string(script)), stdout, stderr); err != nil {
+		return ExitCode(err), err
 	}
-	return ExitCode(err), err
+	return 0, nil
+}
+
+// stdin is what Exec writes to the guest shell: the environment as assignments,
+// then the script, framed when it is a caller's command.
+func (req ExecRequest) stdin() ([]byte, error) {
+	script := req.Script
+	if len(req.Env) > 0 {
+		script = append(shellAssignments(req.Env), script...)
+	}
+	if req.Payload {
+		return FramePayload(script)
+	}
+	return script, nil
 }
 
 // Capture runs a script and returns its streams, for a question this tool asks

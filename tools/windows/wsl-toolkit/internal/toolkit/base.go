@@ -27,8 +27,8 @@ var repairScript []byte
 
 // BaseSpaceFloor is what the volume must have free before an import starts.
 //
-// ⚠ Far above wsl-toolkit.ps1's 256 MiB floor, because this distribution will
-// hold an engine and a dozen images. Running out midway leaves a partial disk
+// ⚠ Far above a throwaway distribution's 256 MiB floor, because this
+// distribution will hold an engine and a dozen images. Running out midway leaves a partial disk
 // and a registered distribution that does not work.
 const BaseSpaceFloor = int64(6) << 30
 
@@ -539,14 +539,7 @@ func (b *Base) writeRecordFrom(id Identity) error {
 // stamp a distribution because a version string could not be read would trade a
 // working base for a cosmetic field.
 func toolVersion() string {
-	if ScriptVersion == nil {
-		return ""
-	}
-	v, err := ScriptVersion()
-	if err != nil {
-		return ""
-	}
-	return v
+	return Version
 }
 
 func (b *Base) create(ctx context.Context) error {
@@ -885,7 +878,7 @@ func (b *Base) captureAs(ctx context.Context, user string, script []byte, env ma
 // guestRuntimePrologue gives the account the runtime directory rootless podman
 // needs, which neither WSL nor runuser sets.
 //
-// ⚠ Not a copy of wsl-toolkit.ps1's -UserEnv prologue. That one prepares an
+// ⚠ Not a copy of `distro run --user-env`'s prologue. That one prepares an
 // arbitrary imported distribution; this runs in one this executable provisioned,
 // where the account and the paths are known.
 func guestRuntimePrologue() []byte {

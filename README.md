@@ -11,10 +11,9 @@ says which hosts it runs on, and fails with a message on the ones it does not.
 **One thing is published from here.** The
 [`wsl-toolkit`](tools/windows/wsl-toolkit/wsl-toolkit.md) tool is cut as a
 [GitHub release](https://github.com/Azathothas/ToolKit/releases), with a
-`SHA256SUMS` computed in CI over the bytes that are uploaded. It is one tool in
-four assets: the executable for two Windows architectures, the
-[PowerShell product](scripts/windows/wsl-toolkit/README.md) the executable
-carries inside itself, and the launcher that fetches either.
+`SHA256SUMS` computed in CI over the bytes that are uploaded. The release holds
+the executable for two Windows architectures, the sums file, and one keyless
+signature bundle per published file.
 
 Everything else here is scripts and their documentation: no images, no packages,
 no second release train. The BSD container images some of its history refers to
@@ -31,15 +30,11 @@ is the one page to read.
 
 | path | what it is |
 | --- | --- |
-| ⭐ [`tools/windows/wsl-toolkit/`](tools/windows/wsl-toolkit/wsl-toolkit.md) | one executable: a host survey that resolves past every shim, one owned WSL distribution running a rootless engine, container jobs that get a COPY of a workspace and never a mount, a fleet runner over twelve fully qualified images, and a cleanup that removes only what it made |
-| [`scripts/windows/wsl-toolkit/wsl-toolkit.ps1`](scripts/windows/wsl-toolkit/README.md) | create, use and destroy throwaway WSL2 distros on Windows, from an OCI image or a rootfs tarball. Reports what WSL and the container engine are holding, and what address a distro reaches the host at. |
-| [`scripts/windows/wsl-toolkit/launcher.ps1`](scripts/windows/wsl-toolkit/launcher.md) | fetch that script, verify it, make it runnable on Windows, and run it |
-| [`scripts/windows/wsl-toolkit/selftest.ps1`](scripts/windows/wsl-toolkit/selftest.md) | run that script's pure functions against a table of cases. No WSL, no engine, nothing created. |
-| [`scripts/windows/wsl-toolkit/`](scripts/windows/wsl-toolkit/README.md) | ⭐ how that tool is built, tested and released. `wsl-toolkit.ps1` is GENERATED from the parts under `src/`, `core/` and `libs/`, and must not be edited. |
+| ⭐ [`tools/windows/wsl-toolkit/`](tools/windows/wsl-toolkit/wsl-toolkit.md) | one executable: a host survey that resolves past every shim, one owned WSL distribution running a rootless engine, container jobs that get a COPY of a workspace and never a mount, a fleet runner over a catalog of fully qualified images, and a cleanup that removes only what it made |
 | [`scripts/doctor/`](scripts/doctor/README.md) | one read-only pass reporting the host, the shell, the installed tools with versions, and the repository state |
 | [`scripts/common/`](scripts/README.md) | the entry points to the gate and the helpers that write files, move the record, commit and fill a licence. ⚠ Each is a thin `sh` and PowerShell pair over one Go subcommand; the rules themselves are not written twice. |
 | ⭐ [`tools/check/`](tools/check/) | every rule this repository enforces over its own tree. One binary, one tree walk. ⚠ The count moves; the gate prints it and [`TODO/PROGRESS.md`](TODO/PROGRESS.md) records the measurement |
-| [`tools/repo/`](tools/repo/) | the tools that are NOT gate rules: the mutation harness, the open-items reader, `git-sync`, the binfmt probe, `deslop`, the licence filler |
+| [`tools/repo/`](tools/repo/) | the tools that are NOT gate rules: the mutation harness, open-items reader, `git-sync`, release verifier/tagger, binfmt probe, `deslop`, and licence filler |
 | [`LICENSES/`](LICENSES/README.md) | the SPDX texts `scripts/common/fill-license.sh` reads |
 
 Every tool has a `.md` beside it that stands alone. **Read the tool's own page,
@@ -100,15 +95,17 @@ gh api repos/Azathothas/ToolKit/commits/main --jq .sha
 **Download to a file, then run the file.** Piping a download into a shell
 executes the prefix of a truncated transfer and leaves nothing to inspect.
 
-For `wsl-toolkit.ps1` the launcher does all of that, verifies a digest, and
-forwards the rest of your arguments unchanged:
+For `wsl-toolkit`, pick a release tag, download the executable for the host
+architecture with its `SHA256SUMS` and signature bundle, verify both, then run
+it from disk. `TAG` is a release such as the one `gh release list --repo
+Azathothas/ToolKit` names first:
 
 ```powershell
-pwsh -NoProfile -File launcher.ps1 -LauncherRef THE_COMMIT_SHA -Action List
+gh release download TAG --repo Azathothas/ToolKit --pattern 'wsl-toolkit-windows-amd64.exe*' --pattern SHA256SUMS
 ```
 
-[`docs/consumers.md`](docs/consumers.md) is the register of who fetches what,
-and what a rename here breaks out there.
+[`docs/consumers.md`](docs/consumers.md) carries the verification commands, the
+register of who fetches what, and what a rename here breaks out there.
 
 ---
 

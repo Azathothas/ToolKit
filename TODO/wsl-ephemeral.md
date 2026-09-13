@@ -3207,6 +3207,27 @@ Then a container run whose output carries the same stamps, whose silence produce
 the same tick, and whose exit code passes through unchanged, with the resource
 column reporting absent rather than zero while `WSL-60` is open.
 
+## Amendment, 2026-09-13: the script this was written against is deleted
+
+`WSL-73` deleted the PowerShell product. The problem and the premise stand,
+because the matrix measured podman rather than the script. Three things above
+name what no longer exists:
+
+| above | now |
+| --- | --- |
+| the seam, `Invoke-InDistro`'s relay | `RunLog` in [`../tools/windows/wsl-toolkit/internal/toolkit/runlog.go`](../tools/windows/wsl-toolkit/internal/toolkit/runlog.go). Only `distro new` and `distro run` feed it; `run` and `matrix` carry `--tick` alone |
+| `surface.lock`, as what says a surface grew | the generated manual `wsl-toolkit.1`, which `TestGeneratedManPageIsCurrent` holds to the registered flags |
+| the prove command, `selftest.ps1` | the one below |
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Then the same container run as above, through `wsl-toolkit run`, compared with
+`wsl-toolkit distro run` on the same command. `WSL-60` closed as a capability
+row, so where the base reports no cgroup delegation the resource column still
+reports absent rather than zero.
+
 ---
 
 ## WSL-60. the base accepts a memory limit and does not enforce it

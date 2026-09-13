@@ -17,8 +17,8 @@
 # ⚠ WHAT IT CANNOT PROVE HERE. A GitHub runner has no WSL2 and no container
 # engine, so every case that needs a distribution is SKIPPED and counted as
 # skipped. What runs is the half a consumer hits first: the digests, the keyless
-# signature published beside each asset, that the executable and the published
-# script are one product, and that the tool surveys a host from an empty state
+# signature published beside each asset, that the executable reports the tag's
+# version, and that the tool surveys a host from an empty state
 # directory without building anything.
 
 name: release-smoke

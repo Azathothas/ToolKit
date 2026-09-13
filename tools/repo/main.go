@@ -46,6 +46,7 @@ import (
 	"github.com/Azathothas/ToolKit/tools/repo/internal/gitsync"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/license"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/mutate"
+	toolrelease "github.com/Azathothas/ToolKit/tools/repo/internal/release"
 	"github.com/Azathothas/ToolKit/tools/repo/internal/remote"
 )
 
@@ -63,6 +64,7 @@ func commands() []command {
 		{"license", "write LICENSE from a template, with the holder filled in", runLicense},
 		{"mutate", "delete each guard in the table and confirm the test named for it goes red", runMutate},
 		{"remote-items", "what is open against this repository, and does it survive checking", runRemote},
+		{"release", "verify and optionally tag a native wsl-toolkit release", runRelease},
 	}
 }
 
@@ -230,6 +232,18 @@ func runRemote(args []string) int {
 		return code
 	}
 	return remote.Run(opts, os.Stdout, os.Stderr)
+}
+
+func runRelease(args []string) int {
+	fs := newFlagSet("release")
+	var opts toolrelease.Options
+	fs.BoolVar(&opts.Publish, "publish", false, "create and push the annotated tag after every refusal passes")
+	fs.StringVar(&opts.Remote, "remote", "origin", "the repository remote that must contain HEAD and receive the tag")
+	fs.BoolVar(&opts.JSON, "json", false, "write a structured readiness report")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	return toolrelease.Run(opts, os.Stdout, os.Stderr)
 }
 
 // stringList is a flag that may be repeated.

@@ -57,8 +57,7 @@ func renderManPage(ctx context.Context) (string, error) {
 		out.WriteString(".SS " + roffEscape(spec.Name) + "\n")
 		out.WriteString(roffEscape(spec.Summary) + "\n")
 		if len(spec.HelpForms) == 0 {
-			out.WriteString(".PP\nThis command forwards its arguments to the embedded compatibility interface.\n")
-			continue
+			return "", fmt.Errorf("the %q command registers no help form, so the manual cannot document its flags", spec.Name)
 		}
 		for _, form := range spec.HelpForms {
 			fs, ok := sets[form]
@@ -109,8 +108,7 @@ func renderManualText(ctx context.Context) (string, error) {
 		out.WriteString("\n" + strings.ToUpper(spec.Name) + "\n")
 		out.WriteString("  " + spec.Summary + "\n")
 		if len(spec.HelpForms) == 0 {
-			out.WriteString("  This command forwards its arguments to the embedded compatibility interface.\n")
-			continue
+			return "", fmt.Errorf("the %q command registers no help form, so the manual cannot document its flags", spec.Name)
 		}
 		for _, form := range spec.HelpForms {
 			fs, ok := sets[form]

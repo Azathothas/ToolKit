@@ -2,7 +2,8 @@
 
 Run an isolated Linux container job on a Windows host. The tool owns one WSL
 distribution, runs rootless Podman inside it, and gives a job a COPY of a
-workspace rather than a mount.
+workspace rather than a mount. It also makes, runs and removes throwaway WSL
+distributions, and boots a FreeBSD guest.
 
 ⭐ **This is the only page you need to use it, and it is deliberately short.**
 The flags live in the CLI, which generates its own manual, so nothing here can
@@ -17,8 +18,8 @@ with a message rather than half-working.
 ## Finding a flag
 
 ⛔ **Do not look for a flag reference on this page.** There is none, on purpose:
-a hand-written one was 1,217 lines, and a flag it did not mention was still a
-flag the binary accepted.
+a hand-written reference drifts, and a flag it does not mention is still a flag
+the binary accepts.
 
 ```powershell
 wsl-toolkit man --no-pager     # the complete manual, generated from the CLI
@@ -32,25 +33,23 @@ refuses it when it disagrees with the registered commands and flags.
 
 ---
 
-## ⭐ The five things a caller gets wrong
+## ⭐ Five hazards a caller does not have to handle
 
-Each of these was a real workaround in somebody's wrapper before it was a
-feature here. ⛔ **You no longer need to write any of them.**
-
-| what used to bite | what happens now |
+| the hazard | what the tool does |
 | --- | --- |
-| **NTFS carries no executable bit**, so every script in a Windows checkout arrived unrunnable and the first one to run failed `Permission denied` | the copy reads the git index, and a file the index marks `100755` arrives executable. A file that is in no index and starts with `#!` arrives executable too. The count is reported. Data is never marked executable |
-| **A file that grew while the workspace copied** killed the whole copy with `archive/tar: write too long`, naming the archiver and not the file | the copy is bounded by the size in the header. The file travels as the prefix that was declared, and the result names it. A background index or log no longer fails a job |
-| **A payload written on Windows carries CRLF**, and `/bin/sh` reads the carriage return as part of the last word | `-c` and `--script` both repair the copy that is sent. The file on disk is never written to |
-| **`--workspace .` resolved against the working directory**, which a sandbox can reset, so a job copied a tree nobody meant | a relative path is resolved against the project configuration when there is one, the resolved host path is printed, and a filesystem root, a home directory or a system directory is refused outright |
-| **`/mnt/c` was writable inside the base**, so a wrong path in a job destroyed the real checkout on Windows | the Windows drives mount read only. `base.automount` takes `rw` or `off`; explicit `base.mounts` grants are available only with automount and Windows interop both off |
+| **NTFS carries no executable bit**, so a script in a Windows checkout arrives unrunnable and fails `Permission denied` | the copy reads the git index, and a file the index marks `100755` arrives executable. A file that is in no index and starts with `#!` arrives executable too. The count is reported. Data is never marked executable |
+| **A file that grows while the workspace copies** would fail the copy with `archive/tar: write too long`, naming the archiver and not the file | the copy is bounded by the size in the header. The file travels as the prefix that was declared, and the result names it |
+| **A payload written on Windows carries CRLF**, and `/bin/sh` reads the carriage return as part of the last word | every spelling of a command has the copy that is sent repaired. The file on disk is never written to |
+| **`--workspace .` resolves against the working directory**, which a sandbox can reset | a relative path is resolved against the project configuration when there is one, the resolved host path is printed, and a filesystem root, a home directory or a system directory is refused outright |
+| **A writable `/mnt/c` inside the base** lets a wrong path in a job destroy the real checkout on Windows | the Windows drives mount read only. `base.automount` takes `rw` or `off`; explicit `base.mounts` grants are available only with automount and Windows interop both off |
 
 ---
 
 ## Operating model
 
-- The tool owns the `wsl-toolkit` distribution and its state directory, and
-  manages nothing else. `podman-machine-default` is somebody else's.
+- The tool owns the `wsl-toolkit` distribution, the throwaway distributions whose
+  disks are in its state directory, and that directory. It manages nothing else,
+  and `podman-machine-default` is somebody else's.
 - ⛔ **A job gets a copy of its workspace, never a mount.** Getting anything back
   out is a second explicit act, through `/out` and `--artifacts`.
 - Progress goes to stderr. The answer goes to stdout, alone. Every command that
@@ -106,8 +105,9 @@ wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base ex
 
 `base exec` is the non-interactive host-to-guest seam. It starts as the
 configured account in that account's home unless `--dir` names an absolute
-guest path, sends the command or `--script` body on stdin, forwards output, and
-returns the guest exit status. `--root` is an explicit administrative variant.
+guest path, sends the command or `--script` body framed on stdin with
+`/dev/null` as the command's own stdin, forwards output, and returns the guest
+exit status. `--root` is an explicit administrative variant.
 
 ⚠ `passwordless_sudo: true` gives the configured account unrestricted guest
 root. Guest root can manually mount Windows paths, so this setting serves a
@@ -132,10 +132,9 @@ Architecture shorthand such as `arm64` is accepted. The base registers QEMU
 binfmt handlers for a foreign architecture and restores a handler that WSL
 discarded when its VM stopped.
 
-⛔ **Every job names a platform, including one that asked for nothing.** An
-unnamed platform used to mean no `--platform` on the podman command line, and
-podman then ran whatever variant of the image the local store already held: after
-one `linux/arm64` run, a later native run of the same image answered `aarch64` on
+⛔ **Every job names a platform, including one that asked for nothing.** With no
+`--platform`, podman runs whatever variant of the image its local store holds:
+after one `linux/arm64` run, a native run of the same image answered `aarch64` on
 an x86_64 host, with nothing but a podman warning to say so. The resolved value
 is on the result.
 
@@ -224,33 +223,99 @@ other question.
 ```powershell
 wsl-toolkit distro new --image alpine -c 'cat /etc/os-release' --ephemeral
 wsl-toolkit distro new --image debian --name build-box
-wsl-toolkit distro run --name eph-build-box -c 'uname -a'
+wsl-toolkit distro run --name build-box -c 'uname -a'
 wsl-toolkit distro list
-wsl-toolkit distro remove --name eph-build-box --yes
+wsl-toolkit distro remove --name build-box --yes
 ```
 
-- Every name starts with `eph-`, and `--name` adds the prefix when it is left off.
-- The command runs as a login shell, on stdin, with its streams forwarded
-  unchanged and its exit code as the answer. `--timeout` terminates the
-  distribution and answers 124.
+- Every name starts with `eph-`, and every `--name` adds the prefix when it is
+  left off. A name in the wrong case is refused rather than lowered.
+- `distro new --image` needs a host engine, podman or docker, and pulls for this
+  host's platform. The import is refused before it starts when the volume lacks
+  256 MiB beyond twice the archive. `--probe-timeout` bounds each question the
+  tool asks the new distribution for itself.
 - `--systemd` refuses an image whose PID 1 is not systemd after the restart.
   `--oci-env` writes the image's `ENV` and `WORKDIR` to `/etc/profile.d`.
   `--reuse` runs in the newest distribution built from the same `--image` and
   says so.
 - `distro snapshot --name NAME --tag TAG` exports one, and `distro new --tarball
-  TAG` imports it again. A snapshot carries whatever the distribution held.
+  TAG` imports it again. ⚠ A snapshot is an unencrypted archive of whatever the
+  distribution held, a credential a command left behind included.
 
 ⛔ **The tool acts only on a distribution whose disk WSL registered inside this
-state directory's `distros` folder.** The prefix proves nothing, so a distribution
-another run or another tool made under the same prefix is listed as elsewhere
-and refused by `remove`, `run`, `snapshot` and `purge`.
+state directory's `distros` folder.** The prefix proves nothing, so a
+distribution another run or another tool made under it is listed as elsewhere and
+refused by `run`, `enter`, `remove` and `snapshot`. `distro purge` prints a plan,
+and `--apply` removes every owned distribution and what failed creations left. A
+running distribution, and one another run is still creating, is kept unless
+`--include-live` is passed. A snapshot is always kept.
 
-⚠ `distro purge` prints a plan, and `--apply` removes every owned distribution and
-what failed creations left. A running distribution, and one another run is still
-creating, is kept unless `--include-live` is passed. A snapshot is always kept.
+### The command
+
+- ⭐ **The command travels framed on stdin, and its own stdin is `/dev/null`.** A
+  command that reads stdin cannot consume the rest of its script, and a prompt
+  waiting for input reads end of file rather than waiting. `distro enter` is the
+  interactive path.
+- It runs as a login shell, as `--user`, and its exit code is the answer.
+  `--timeout` terminates the distribution and answers 124, and a cancellation
+  answers 130.
+- `-c`, `--command-base64` and `--script` are three spellings of one command.
+  The copy in transit has CRLF turned into LF and a byte order mark dropped, and
+  the tool says when it did; `--verbatim` sends the bytes exactly. UTF-16 and a
+  NUL byte are refused. From PowerShell, pass a command carrying quotes as
+  `--command-base64`.
+- `--env-file`, then `--env`, assign `NAME=VALUE` before the command, single
+  quoted and in that order. `@hostaddress` inside a value becomes what
+  `wsl-toolkit hostaddress` answers. `--user-env` first prepares a private
+  `XDG_RUNTIME_DIR`, a `TMPDIR` and a deduplicated `PATH`, so a value passed with
+  `--env` wins over it.
+- `--dry-run` validates every option and prints the plan from the same selections
+  the real run reads: the command's size and digest and the variables' names,
+  never their values. Nothing in WSL changes and no log file is opened.
+
+### Watching and recording a command
+
+⭐ **With no option below, the command's streams are forwarded unchanged.**
+
+| to get | pass |
+| --- | --- |
+| a timestamp and a stream tag on every line | `--log-profile human`, `ci` (rel and delta, no colour), `forensic` (wall and rel to the microsecond, and delta) or `wall`, or `--timestamp-column rel,delta`. A flag passed beside a profile wins over it |
+| a heartbeat while a command is silent | `--tick 30s`, which a rendering profile turns on. It reads the distribution's state and disk, and says more at each `--tick-escalate` threshold, 2m, 5m and 15m by default |
+| progress a command reports | `--progress-prefix TOKEN`. A line `TOKEN 42 unpacking` is consumed, and the heartbeat carries the last one and its age |
+| a copy of the rendered lines | `--stream-log FILE`, which is never coloured |
+| a record a program reads | `--event-log FILE`, one `wsl-toolkit-event/1` object per line, appended |
+| a secret kept out of every sink | `--redact REGEX`, whose matches become `***` before any sink sees a line |
+| a bound on a line | `--max-line-bytes N`, cut at a character boundary, saying how many bytes went |
+
+- A prefix is the timestamp columns, the separator, then a fixed four-character
+  tag: `out`, `err`, `tick` or `note`. A `~` in the tag marks a line that had not
+  ended: a carriage return redrew it, or it sat unterminated for two seconds and
+  was shown early.
+- The command's stdout stays on stdout. Its stderr, the heartbeat and the notes go
+  to stderr, and a nonzero exit gets a note on what the number can mean.
+- ⚠ **A rendered line is not the guest's bytes.** A prefix, a redaction, a line
+  bound or a progress token relays the live streams line by line, re-terminated
+  with a newline. A sink or a heartbeat alone leaves the live bytes exact. Either
+  way the command writes into a pipe, so a program that block-buffers off a
+  terminal shows its lines late.
+- ⚠ A redaction matches within one line, so a secret split across a
+  carriage-return redraw is two lines and matches neither.
+- `distro replay --from FILE` renders a recorded log again, stamped from each
+  record's own wall clock. `distro compare --before A --after B` sets two runs
+  side by side: elapsed time, time to first output, longest silence, lines,
+  bytes and exit code, with `-` where a run measured nothing. It reports and does
+  not judge. An appended log holds one run per command: `--run`, `--before-run`
+  and `--after-run` pick one, and `compare` takes each file's last by default.
 
 ⚠ The helper does not serve these commands. A process that may not call `wsl.exe`
 makes them through the path its session uses to approve it.
+
+`wsl-toolkit doctor` reports what a throwaway distribution would meet: free space
+against the import floor, what the state directory holds, the networking mode
+and host address, the host engine, and the clock's resolution. `resources` lists
+the owned distributions, leftovers and snapshots, and `resources --host-engine`
+adds what the host's own engine holds, printing the commands that would free it
+and running none.
 
 ## The address a distribution reaches this host at
 
@@ -263,54 +328,33 @@ this host's network adapters and starts nothing. ⛔ **In NAT mode a host servic
 bound to 127.0.0.1 is not reachable from a distribution**: bind it to the address
 printed. Mirrored mode answers 127.0.0.1, and any other mode is refused.
 
-## The low-level PowerShell interface
-
-`wsl-toolkit.ps1` creates and destroys THROWAWAY distributions from any image or
-rootfs tarball, which is what you want in order to test what a distribution
-itself does. The executable carries it and forwards to it:
-
-```powershell
-wsl-toolkit script -Action New -Image alpine:3.22 -Command 'uname -a'
-```
-
-⚠ **It is the low-level compatibility interface and it is not the route to
-reach for.** Other repositories fetch that file by raw URL, so its path,
-parameters and exit codes do not change.
-[`scripts/windows/wsl-toolkit/README.md`](../../../scripts/windows/wsl-toolkit/README.md)
-is how it is built and released, and the script's own comment-based help is its
-parameter reference:
-
-```powershell
-Get-Help .\scripts\windows\wsl-toolkit\wsl-toolkit.ps1 -Full
-```
-
 ---
 
 ## The safety model
 
-Both products here remove things, so removal is constrained and every
-destructive path goes through the same gate.
+Removal is constrained, and every destructive path goes through the same gate.
 
-1. Every throwaway distribution the script creates is named `eph-...`, and it
-   refuses to remove a name without that prefix.
-2. ⛔ **It refuses a name on the protected list, prefix or not**:
+1. The base is a distribution named `wsl-toolkit` or `wsl-toolkit-INSTANCE`, and
+   removing one that was ever usable also demands the identity marker its
+   provisioning wrote inside the guest.
+2. A throwaway distribution is this tool's only when its registered disk is
+   inside the state directory's `distros` folder.
+3. ⛔ **A container runtime's own distribution is refused by name**:
    `podman-machine-default`, `docker-desktop`, `docker-desktop-data`,
-   `rancher-desktop`, `rancher-desktop-data`. A mistake cannot destroy your
-   container runtime.
-3. Directory deletion is confined to the tool's own state directory.
-4. ⭐ **The containment check runs INSIDE the deletion helper**, not beside each
-   caller. A guard applied at four call sites is a guard that will one day be
-   applied at three.
+   `rancher-desktop`, `rancher-desktop-data`.
+4. ⭐ **Every removal of state goes through one deletion, and the containment
+   check runs INSIDE it**, not beside each caller. A guard applied at four call
+   sites is a guard that will one day be applied at three.
 
-⛔ **A delete that did not happen is reported as one.** `wsl --unregister`
+⛔ **A delete that did not happen is not reported as one.** `wsl --unregister`
 releases a disk asynchronously, so the state is read back after removal and a
 path that is still there exits non-zero naming it.
 
-### ⚠ Two things about WSL that neither product can protect you from
+### ⚠ Two things about WSL that this tool cannot protect you from
 
 - ⛔ **`wsl --shutdown` is machine-wide.** It is what a person reaches for after
   finishing with a throwaway distribution, and it stops every distribution on the
-  machine, including the podman machine. Neither product ever runs it.
+  machine, including the podman machine. This tool never runs it.
 - ⚠ **A distribution's lifetime is not the kernel's.** `--terminate` and
   `--unregister` restart or remove the userspace; the WSL2 kernel keeps running,
   so `binfmt_misc` registrations, loaded modules and pinned superblocks survive.
@@ -331,8 +375,9 @@ path that is still there exits non-zero naming it.
 | `podman logs` on the base is a silent zero | host | the default log driver is `journald` and nothing serves a journal. The tool names `k8s-file` on the runs it owns; a caller driving podman directly should too |
 | `bsd run` boots for about two minutes per call | host | device probing in the guest. `bsd` carries the measurement |
 | no BSD container endpoint | open | a long-running podman service panics the FreeBSD guest kernel. Tracked in [`../../../TODO/bsd.md`](../../../TODO/bsd.md) |
-| `-OciEnv` carries `ENV` and `WORKDIR` only | decision | `USER` and `ENTRYPOINT` are not carried and will not be |
-| there is no `-PortForward` | decision | forwarding a port on Windows needs an elevated session and leaves a rule behind. `HostAddress` answers the question it was wanted for: bind the host service to that address |
+| `--oci-env` carries `ENV` and `WORKDIR` only | decision | `USER` and `ENTRYPOINT` are not carried and will not be: WSL fixes the login account per call, and a login shell has no entrypoint |
+| a throwaway distribution's command gets no stdin | decision | its stdin is `/dev/null`, because a pipe that carries the script cannot also carry input. `distro enter` is interactive |
+| there is no port forwarding | decision | forwarding a port on Windows needs an elevated session and leaves a rule behind. `hostaddress` answers the question it was wanted for: bind the host service to that address |
 
 ---
 
@@ -341,8 +386,7 @@ path that is still there exits non-zero naming it.
 | thing | needed for |
 | --- | --- |
 | Windows 10 2004+ or Windows 11, with WSL2 | everything |
-| PowerShell 7+, or Windows PowerShell 5.1 for the script | everything |
-| a container engine on the host | `base ensure` only, to export the base rootfs once |
+| a container engine on the host | `base ensure`, once, to export the base rootfs, and `distro new --image` |
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 
@@ -369,10 +413,6 @@ wsl-toolkit helper serve --detach                  # when the calling process ca
 ## Related
 
 - [`README.md`](./README.md) is how the executable is built and tested.
-- [`scripts/windows/wsl-toolkit/README.md`](../../../scripts/windows/wsl-toolkit/README.md)
-  is the script's build, surface lock and release pipeline.
-- [`scripts/windows/wsl-toolkit/launcher.md`](../../../scripts/windows/wsl-toolkit/launcher.md)
-  is the one-fetch launcher and its verification table.
 - [`docs/consumers.md`](../../../docs/consumers.md) is who fetches from here and
   what breaks them.
 - [`docs/HISTORY/wsl-toolkit.md`](../../../docs/HISTORY/wsl-toolkit.md) is closed

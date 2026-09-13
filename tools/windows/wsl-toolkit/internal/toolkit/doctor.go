@@ -84,15 +84,16 @@ type DoctorOptions struct {
 	Config  Config
 }
 type DoctorReport struct {
-	Schema    string         `json:"schema"`
-	Generated string         `json:"generated"`
-	Probe     map[string]any `json:"probe"`
-	Host      map[string]any `json:"host"`
-	Repo      map[string]any `json:"repo"`
-	Summary   map[string]int `json:"summary"`
-	Tools     []ToolProbe    `json:"tools"`
-	Wsl       *WslFacts      `json:"wsl,omitempty"`
-	Notes     []string       `json:"notes"`
+	Schema    string          `json:"schema"`
+	Generated string          `json:"generated"`
+	Probe     map[string]any  `json:"probe"`
+	Host      map[string]any  `json:"host"`
+	Repo      map[string]any  `json:"repo"`
+	Summary   map[string]int  `json:"summary"`
+	Tools     []ToolProbe     `json:"tools"`
+	Wsl       *WslFacts       `json:"wsl,omitempty"`
+	Throwaway *ThrowawayFacts `json:"throwaway,omitempty"`
+	Notes     []string        `json:"notes"`
 }
 
 // versionToken finds a dotted version anywhere in a tool's own output.
@@ -399,6 +400,10 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 	if !o.SkipWsl && o.Group == "" {
 		facts := ReadWslFacts(ctx, o.Config)
 		report.Wsl = &facts
+		if runtime.GOOS == "windows" {
+			throwaway := ReadThrowawayFacts(ctx, o.Fast)
+			report.Throwaway = &throwaway
+		}
 	}
 	report.Host["shell"] = hostShell()
 	report.Notes = append(report.Notes,

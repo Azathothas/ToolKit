@@ -382,6 +382,6 @@ func (c *HelperClient) Cleanup(ctx context.Context, apply bool, policy CleanupPo
 
 // EncodeScript is how a payload crosses the protocol.
 //
-// ⭐ Base64 for the same reason the script's own command channel uses it: it is
+// ⭐ Base64 for the reason docs/conventions/shell.md section 1 measures: it is
 // the one encoding nothing between here and there interprets.
 func EncodeScript(b []byte) string { return base64.StdEncoding.EncodeToString(b) }

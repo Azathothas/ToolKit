@@ -2551,9 +2551,9 @@ nothing, and runs its tests only when the comparison found no difference, so the
 rule refuses a stale product and still proves the selftest, the surface lock, the
 case-shadow scan and the analyzer. The flags are `bundleArgs`, so a case holds
 `-Check` in them with no PowerShell. [`../scripts/README.md`](../scripts/README.md),
-[`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
-and [`../scripts/windows/wsl-toolkit/selftest.md`](../scripts/windows/wsl-toolkit/selftest.md)
-each named which flags run where, and each is corrected.
+the former `scripts/windows/wsl-toolkit/README.md` and the former
+`scripts/windows/wsl-toolkit/selftest.md` each named which flags run where, and
+each was corrected.
 
 ⛔ **Not a second comparison written in Go.** `build.ps1 -Check` is the one
 implementation of "the products match their parts", and the release workflow

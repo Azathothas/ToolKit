@@ -21,18 +21,9 @@ shells, so a tool states which hosts it runs on and fails with a message on the
 ones it does not.
 
 ⭐ **One thing is published from here, and exactly one.** The `wsl-toolkit` tool
-is cut as a GitHub release on a `wsl-toolkit-v*` tag, with a `SHA256SUMS`
-computed in CI over the bytes that are uploaded.
-[`../scripts/windows/wsl-toolkit/README.md`](../scripts/windows/wsl-toolkit/README.md)
-is the pipeline.
-
-⚠ **It is one tool in four products and that is not four things.** The release
-carries `wsl-toolkit.ps1`, `launcher.ps1` and the `wsl-toolkit` executable for
-two Windows architectures. The executable CARRIES the script, reads its version
-out of it and forwards to it, so the two cannot be different products; CI proves
-that by reconstructing the tracked file from the embedded copy byte for byte.
-⚠ **Ten files, not four**: those four, `SHA256SUMS`, and one `.cosign.bundle` per
-file since `wsl-toolkit-v2.0.1`.
+is cut as a GitHub release on a `wsl-toolkit-v*` tag. It carries the native
+executable for two Windows architectures, `SHA256SUMS`, and one
+`.cosign.bundle` per published file.
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
 is how the compiled half is built.
 
@@ -128,8 +119,8 @@ second may change how the first is applied.
 | **Authoring a new entry from an intake** | [`methodology/authoring.md`](methodology/authoring.md), [`../TODO/ENTRY.md`](../TODO/ENTRY.md). ⛔ Authoring does not implement. |
 | **Fixing a defect** | [`methodology/authoring.md`](methodology/authoring.md), the code the defect is in, [`conventions/forbidden-patterns.md`](conventions/forbidden-patterns.md) |
 | ⭐ **Changing a tool other repositories fetch** | [`consumers.md`](consumers.md), the tool's own `.md` beside it. ⛔ A pinned caller does not get your fix by your merging it. |
-| **Anything touching WSL, podman or a container image** | [`../tools/windows/wsl-toolkit/wsl-toolkit.md`](../tools/windows/wsl-toolkit/wsl-toolkit.md), which is now the ONLY usage page for both products, and [`conventions/shell.md`](conventions/shell.md) section 7. ⛔ Not [`HISTORY/wsl-toolkit.md`](HISTORY/wsl-toolkit.md), which is closed defects. |
-| **Changing the compiled tool** | [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md), [`conventions/code.md`](conventions/code.md). ⛔ The embedded script is GENERATED; `build.ps1` writes it. |
+| **Anything touching WSL, podman or a container image** | [`../tools/windows/wsl-toolkit/wsl-toolkit.md`](../tools/windows/wsl-toolkit/wsl-toolkit.md), the ONLY usage page, and [`conventions/shell.md`](conventions/shell.md) section 7. ⛔ Not [`HISTORY/wsl-toolkit.md`](HISTORY/wsl-toolkit.md), which is closed defects. |
+| **Changing the compiled tool** | [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md), [`conventions/code.md`](conventions/code.md) |
 | **Writing or changing a script** | [`../scripts/README.md`](../scripts/README.md), [`conventions/shell.md`](conventions/shell.md), [`conventions/code.md`](conventions/code.md) |
 | **Writing or editing a document** | [`conventions/prose.md`](conventions/prose.md), [`conventions/docs.md`](conventions/docs.md) |
 | **Committing** | [`conventions/git.md`](conventions/git.md) |
@@ -185,24 +176,21 @@ these is held to.
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |
 | run any check on Windows | ⭐ the `.ps1` half of the pair | the `.sh` half. ⚠ Native PowerShell may have no `sed`, and its `sort` is an alias that answers differently. |
-| ⭐ change anything in `wsl-toolkit.ps1` | the PART under `scripts/windows/wsl-toolkit/{src,core,libs}`, then `build.ps1` | ⛔ editing `wsl-toolkit.ps1`, or the copy under `tools/`. BOTH are GENERATED, and the gate refuses either one disagreeing with the parts. |
 | prove a change to the compiled tool | ⭐ `scripts/common/check-go.sh`, or its `.ps1` twin | `go build` alone, which is one of the four things it runs |
-| prove a change to `wsl-toolkit.ps1` before committing it | ⭐ `scripts/windows/wsl-toolkit/build.ps1 -Test` | running the selftest alone. `-Test` is that plus the surface lock, the analyzer and the shadowed-parameter scan. |
-| prove a change to `wsl-toolkit.ps1` without building a distro | ⭐ `scripts/windows/wsl-toolkit/selftest.ps1` | reading it. It runs in a second and needs no WSL. |
-| publish `wsl-toolkit.ps1` | `scripts/windows/wsl-toolkit/release.ps1`, then the workflow it triggers | `gh release create` by hand, which skips every refusal that stops a release from a dirty tree or a stale bundle |
+| publish `wsl-toolkit` | `repo release --publish`, then the workflow it triggers | `gh release create` by hand, which skips the clean-tree, version, remote-HEAD and unmoved-tag refusals |
 | close an entry and move its counts | `scripts/common/set-record.mjs` | editing several numbers by hand across three files |
 | check that no page says what another page says | `scripts/common/check-one-home.sh` | reading for it |
 | check the character set and the marker density | `scripts/common/check-markers.sh` | `check-docs.sh`, which reads markdown alone |
-| ⭐ run something on Linux from a Windows host | `wsl-toolkit run --image ID -c '...'`, or `wsl-toolkit script -Action New` for a throwaway distro | calling `wsl.exe` directly. ⚠ An argument to it is expanded before the guest sees it, and the result is parsed again. |
+| ⭐ run something on Linux from a Windows host | `wsl-toolkit run --image ID -c '...'`, or `wsl-toolkit distro new --image ID -c '...'` for a whole throwaway distro | calling `wsl.exe` directly. ⚠ An argument to it is expanded before the guest sees it, and the result is parsed again. |
 | know what is REALLY installed, past every shim | ⭐ `wsl-toolkit doctor` | `scripts/doctor/`, which answers what its own shell resolves. Both are right and they disagree. |
-| run one command across several userlands | `wsl-toolkit matrix --images all` | a loop that creates twelve distros |
+| run one command across several userlands | `wsl-toolkit matrix --images all` | a loop that creates one distro per userland |
 | keep one Linux host with a container engine in it | `wsl-toolkit base ensure` | using `podman-machine-default`, which is somebody else's |
 | find out what this tool is holding, or remove it | `wsl-toolkit resources`, then `wsl-toolkit gc --apply` | `podman system prune`, which removes what no RUNNING container uses |
 | find out why a job failed, after the container is gone | ⭐ `wsl-toolkit inspect JOB` | reading the transcript alone. ⚠ It says what the payload did and not what it ran on. |
 | prove every guard in the mutation table is real | `repo mutate` in `tools/repo`. Minutes, not seconds; [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) has the measurement | the gate's `mutations` check, which asserts the table still POINTS at code and proves no guard |
-| find out what a distro would reach this host at | ⭐ `wsl-toolkit.ps1 -Action HostAddress` | creating a distro and decoding `/proc/net/route` |
-| find out what podman and WSL are holding | `wsl-toolkit.ps1 -Action Resources` | a hand-rolled sequence of `podman` reports |
-| fetch and run that tool from another project | `launcher.ps1` | a download piped into a shell |
+| find out what a distro would reach this host at | ⭐ `wsl-toolkit hostaddress` | creating a distro and decoding `/proc/net/route` |
+| find out what podman and WSL are holding | `wsl-toolkit resources` | a hand-rolled sequence of `podman` reports |
+| fetch and run that tool from another project | download a versioned executable release asset, verify `SHA256SUMS` and its `.cosign.bundle`, then run the file | a download piped into a shell |
 | find out why a cross-architecture container will not run | `scripts/common/check-binfmt.sh` | `systemctl status systemd-binfmt`, which reports success over zero handlers |
 | write a licence file | `scripts/common/fill-license.sh` | copying a text and editing the notice, which corrupts four of the twelve |
 | see what a tree ships that addresses an agent | `scripts/common/deslop.sh` | a grep |
