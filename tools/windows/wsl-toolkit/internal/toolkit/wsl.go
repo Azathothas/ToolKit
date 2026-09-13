@@ -184,7 +184,57 @@ func (w *Wsl) listRunningNames(ctx context.Context) ([]string, error) {
 	return w.nameQuery(ctx, "--list", "--running", "--quiet")
 }
 
+// listRetryPause is how long a failed listing waits before it is asked once more.
+const listRetryPause = 500 * time.Millisecond
+
+// nameQuery asks wsl.exe for a list of names.
+//
+// ⚠ A LISTING THAT FAILS FOR NO STATED REASON IS ASKED ONCE MORE. Measured on
+// 2026-09-13: 2,169 `distro list` calls made while another run imported and
+// unregistered distributions, and one `wsl.exe --list --running --quiet` exited
+// 0xffffffff having printed nothing. It is a read, so asking again changes
+// nothing, and without it one transient answer refuses a whole command.
 func (w *Wsl) nameQuery(ctx context.Context, args ...string) ([]string, error) {
+	names, err := w.nameQueryOnce(ctx, args...)
+	if err == nil || !retryableListFailure(err) || ctx.Err() != nil {
+		return names, err
+	}
+	select {
+	case <-ctx.Done():
+		return nil, err
+	case <-time.After(listRetryPause):
+	}
+	return w.nameQueryOnce(ctx, args...)
+}
+
+// retryableListFailure is a failed listing worth asking once more: not a
+// refusal, which asking again does not change, and not a timeout, which would
+// double a wait the caller already paid for.
+func retryableListFailure(err error) bool {
+	if errors.Is(err, ErrWslDenied) {
+		return false
+	}
+	var pe *ProcessError
+	if errors.As(err, &pe) && pe.Code == ExitTimeout {
+		return false
+	}
+	return true
+}
+
+// listFailure names the query and what wsl.exe printed.
+//
+// ⛔ A BARE PROCESS ERROR NAMES NOTHING. The failure above surfaced as "process:
+// exit status 0xffffffff", which says neither which command failed nor what it
+// printed, so a reader could not tell a listing from an import.
+func listFailure(args []string, out, stderr string, err error) error {
+	said := "and printed nothing"
+	if line := firstLine(strings.TrimSpace(out + "\n" + stderr)); line != "" {
+		said = "and printed: " + line
+	}
+	return fmt.Errorf("wsl.exe %s failed %s: %w", strings.Join(args, " "), said, err)
+}
+
+func (w *Wsl) nameQueryOnce(ctx context.Context, args ...string) ([]string, error) {
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	out, stderr, err := Output(bounded, w.Path, args...)
@@ -194,7 +244,11 @@ func (w *Wsl) nameQuery(ctx context.Context, args ...string) ([]string, error) {
 		if strings.Contains(strings.ToLower(out+stderr), "no installed distributions") {
 			return nil, nil
 		}
-		return nil, classifyWslFailure(out, stderr, err)
+		classified := classifyWslFailure(out, stderr, err)
+		if errors.Is(classified, ErrWslDenied) {
+			return nil, classified
+		}
+		return nil, listFailure(args, out, stderr, classified)
 	}
 	var names []string
 	for _, line := range strings.Split(out, "\n") {
@@ -413,8 +467,8 @@ func (w *Wsl) Capture(ctx context.Context, distro, user string, script []byte, t
 // before the caller's script.
 //
 // ⛔ Values are single-quoted, never substituted into the caller's script. A
-// text replacement into somebody's script is the defect -ScriptArg removes one
-// layer down.
+// text replacement into somebody's script is the defect `distro run --env`
+// removes one layer down.
 func shellAssignments(env map[string]string) []byte {
 	keys := make([]string, 0, len(env))
 	for k := range env {

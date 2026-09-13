@@ -24,8 +24,9 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-// Exit codes, and they mean four different things. `script` and `run` forward
-// somebody else's code instead.
+// Exit codes, and they mean four different things. A command that runs somebody
+// else's code, `run`, `base exec`, `distro new -c` and `distro run`, forwards
+// that code instead.
 //
 // ⛔ ONE HOME, and it is toolkit, where the meanings are written down. They
 // were literals in the package that produces a result and named constants here,

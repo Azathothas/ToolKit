@@ -134,10 +134,7 @@ func renderManualText(ctx context.Context) (string, error) {
 	return out.String(), nil
 }
 
-func isTerminal(file *os.File) bool {
-	info, err := file.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
-}
+func isTerminal(file *os.File) bool { return isConsole(file) }
 
 func pageManual(text string) error {
 	for _, pager := range []struct {

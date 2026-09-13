@@ -22,7 +22,6 @@ import (
 // ⛔ WHY THIS EXISTS. A consumer that fetched this executable had no way to move
 // to a newer one except by knowing the release URL scheme, resolving the latest
 // tag, picking the asset for its architecture and verifying the digest by hand.
-// That is the work WSL-17 removed for the launcher and never removed here.
 // Thirteen defects were filed against v1.3.0 by an agent with no way to learn a
 // newer release existed, and the answer to most of them is "upgrade". WSL-53.
 //

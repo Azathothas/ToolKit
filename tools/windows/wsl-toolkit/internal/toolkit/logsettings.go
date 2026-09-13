@@ -204,6 +204,18 @@ func ResolveLogSettings(r LogRequest) (LogSettings, error) {
 		}
 		seen[c] = true
 	}
+	if len(s.Columns) == 0 {
+		var dead []string
+		if r.SeparatorSet {
+			dead = append(dead, "--timestamp-separator")
+		}
+		if r.ColorSet {
+			dead = append(dead, "--color")
+		}
+		if len(dead) > 0 {
+			return s, fmt.Errorf("no timestamp column is selected, so %s would do nothing", strings.Join(dead, " and "))
+		}
+	}
 	if r.Format != "" {
 		if !seen["rel"] && !seen["wall"] {
 			return s, fmt.Errorf("--timestamp-format renders a date or an elapsed time, and none of the column(s) selected takes one: %s. It applies to rel and wall", strings.Join(s.Columns, ", "))
@@ -242,9 +254,9 @@ func ResolveLogSettings(r LogRequest) (LogSettings, error) {
 	s.TextPath, s.TextOverwrite, s.EventPath = r.TextPath, r.TextOverwrite, r.EventPath
 
 	for _, raw := range r.Redact {
-		// ⚠ SPLIT ON COMMAS, so one flag can carry several patterns. A pattern
-		// that needs a literal comma writes it as the class [,].
-		for _, p := range strings.Split(raw, ",") {
+		// ⚠ SPLIT ONLY BETWEEN PATTERNS. A comma inside [,] is a literal, and one
+		// inside {1,3} is part of a repetition bound rather than a delimiter.
+		for _, p := range splitRegexList(raw) {
 			if p = strings.TrimSpace(p); p == "" {
 				continue
 			}
@@ -254,6 +266,9 @@ func ResolveLogSettings(r LogRequest) (LogSettings, error) {
 			}
 			s.redact = append(s.redact, re)
 		}
+	}
+	if len(r.Redact) > 0 && len(s.redact) == 0 {
+		return s, errors.New("--redact was passed with no regular expression in it")
 	}
 	s.RedactCount = len(s.redact)
 	if r.MaxLineBytes < 0 || r.MaxLineBytes > MaxLineBytesLimit {
@@ -290,6 +305,66 @@ func ResolveLogSettings(r LogRequest) (LogSettings, error) {
 		s.Escalate = steps
 	}
 	return s, nil
+}
+
+// splitRegexList separates the CLI's comma list without taking commas that are
+// regex syntax. An escape, a character class and a repetition bound are the
+// places a comma is part of a pattern in Go's regular-expression language.
+//
+// ⚠ The walk is by byte, which is safe because every structural character is
+// ASCII and no byte of a multi-byte UTF-8 character is.
+func splitRegexList(raw string) []string {
+	var out []string
+	start, repeatDepth := 0, 0
+	for i := 0; i < len(raw); i++ {
+		switch raw[i] {
+		case '\\':
+			i++
+		case '[':
+			i = classEnd(raw, i)
+		case '{':
+			repeatDepth++
+		case '}':
+			if repeatDepth > 0 {
+				repeatDepth--
+			}
+		case ',':
+			if repeatDepth == 0 {
+				out = append(out, raw[start:i])
+				start = i + 1
+			}
+		}
+	}
+	return append(out, raw[start:])
+}
+
+// classEnd is the index of the ] closing the character class opened at open.
+//
+// ⛔ A ] FIRST IN A CLASS IS A LITERAL, after an optional ^, and so is anything
+// inside a [:name:] class, so neither closes it. A class that never closes runs
+// to the end of the list, which hands it whole to the compiler, and the compiler
+// refuses it by name.
+func classEnd(raw string, open int) int {
+	i := open + 1
+	if i < len(raw) && raw[i] == '^' {
+		i++
+	}
+	if i < len(raw) && raw[i] == ']' {
+		i++
+	}
+	for ; i < len(raw); i++ {
+		switch {
+		case raw[i] == '\\':
+			i++
+		case raw[i] == '[' && i+1 < len(raw) && raw[i+1] == ':':
+			if end := strings.Index(raw[i+2:], ":]"); end >= 0 {
+				i += 2 + end + 1
+			}
+		case raw[i] == ']':
+			return i
+		}
+	}
+	return len(raw)
 }
 
 // ParseEscalation reads comma-separated silence thresholds, or none.

@@ -138,7 +138,7 @@ function Get-Field {
     <#
       One property read that a MISSING field does not turn into an exception.
 
-      ⛔ Set-StrictMode -Version Latest makes `$obj.absent` THROW, including
+      Set-StrictMode -Version Latest makes `$obj.absent` THROW, including
       inside a `$null -ne $obj.absent` test, so the guard written to tolerate a
       missing field is the line that dies on it. This file reads documents
       produced on a machine it knows nothing about: a host with no WSL answers
@@ -473,7 +473,7 @@ try {
 
     # -- can this machine go further? -----------------------------------------
     #
-    # ⛔ THE TOOL HAS A COMMAND FOR THIS QUESTION AND THIS FILE USED TO HAND-ROLL
+    # THE TOOL HAS A COMMAND FOR THIS QUESTION AND THIS FILE USED TO HAND-ROLL
     # ONE. It read `base status --json` and treated anything but exit 2 as "jobs
     # can run here", which is true on a machine with WSL2 and wrong on one
     # without: a GitHub windows runner has docker and no WSL, so `base status`
@@ -481,14 +481,14 @@ try {
     # that was never going to be able to run them. A suite that fails where it
     # should skip is a suite whose red means nothing.
     #
-    # ⛔ AND THE PROBE IS THE THING ITSELF, not a signal that correlates with it.
+    # AND THE PROBE IS THE THING ITSELF, not a signal that correlates with it.
     # The second attempt read `ready --json` and gated on `route.wsl_callable`,
     # which is a better question than the first one asked and still the wrong
     # one: wsl.exe IS callable on a GitHub windows runner, and a distribution
     # still cannot be built there. Every proxy for "can this host run a job"
     # eventually meets a host where the proxy and the answer disagree.
     #
-    # ⭐ `base ensure` is the answer, and it costs nothing extra: the first job
+    # `base ensure` is the answer, and it costs nothing extra: the first job
     # case had to run it anyway. A host that cannot build a base skips the job
     # cases with the engine's own words attached, which is a SKIP that carries
     # its reason rather than a red over a machine that was never going to work.

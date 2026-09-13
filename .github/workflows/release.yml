@@ -3,9 +3,8 @@
 # ⭐ THE PUBLISHER IS HERE AND NOWHERE ELSE. `repo release --publish`
 # verifies and pushes the tag; this checks that tag out CLEAN and re-runs
 # verification before anything is published. A release cut from a developer's
-# machine could come from a dirty tree, an unpushed commit or a bundle that
-# disagrees with its source, and none of those is visible in the artefact
-# afterwards.
+# machine could come from a dirty tree, an unpushed commit or a build of edits
+# nobody committed, and none of those is visible in the artefact afterwards.
 #
 # ⛔ Third-party actions are pinned to a COMMIT, not a tag, for the reason
 # .github/workflows/ci.yml states: a moved tag runs code nobody reviewed with the
@@ -129,8 +128,7 @@ jobs:
 
       # ⭐ THE SIGNATURE IS WHAT SHA256SUMS CANNOT BE. That file ships in the
       # same release as the asset it describes, so anyone who could replace one
-      # could replace the other, and the launcher has said so out loud on every
-      # fetch since it existed. A keyless signature is tied to THIS workflow's
+      # could replace the other. A keyless signature is tied to THIS workflow's
       # OIDC identity, which nothing outside this repository can mint. WSL-25.
       #
       # ⚠ KEYLESS MEANS THERE IS NO KEY TO LOSE, and what it costs is a
@@ -145,8 +143,8 @@ jobs:
       # ⚠ THE COSIGN VERSION IS PINNED, not left to the installer's default. The
       # bundle `--bundle` writes changed format between cosign 2 and 3, and a
       # signer and a verifier that disagree about it produce a signature nobody
-      # can check. This is the version the launcher's verify path was measured
-      # against on 2026-09-10.
+      # can check. release-smoke.yml verifies with the same version, from outside
+      # this workflow.
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
         with:
           cosign-release: v3.1.3

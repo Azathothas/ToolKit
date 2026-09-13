@@ -5,6 +5,7 @@ package toolkit
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,9 +24,6 @@ func (c *fakeClock) at(d time.Duration) {
 
 func settingsFor(t *testing.T, r LogRequest) LogSettings {
 	t.Helper()
-	if !r.ColorSet {
-		r.Color, r.ColorSet = "never", true
-	}
 	s, err := ResolveLogSettings(r)
 	if err != nil {
 		t.Fatal(err)
@@ -197,6 +195,8 @@ func TestProfilesAreStartingPointsAndContradictionsAreRefused(t *testing.T) {
 		"a date specifier on elapsed time": {Mode: "rel", Format: "%Y"},
 		"raw beside a renderer flag":       {Profile: "raw", Columns: []string{"rel"}},
 		"prefix-only with no column":       {PrefixOnly: true},
+		"colour with no column":            {Color: "always", ColorSet: true},
+		"a separator with no column":       {Separator: "|", SeparatorSet: true},
 		"an unknown profile":               {Profile: "loud"},
 		"a progress token with whitespace": {ProgressPrefix: "PROGRESS "},
 		"a line bound past the limit":      {MaxLineBytes: MaxLineBytesLimit + 1},
@@ -204,6 +204,7 @@ func TestProfilesAreStartingPointsAndContradictionsAreRefused(t *testing.T) {
 		"overwrite with no stream log":     {TextOverwrite: true},
 		"one file for both sinks":          {TextPath: "run.log", EventPath: "RUN.LOG"},
 		"a redaction that cannot compile":  {Redact: []string{"(unclosed"}},
+		"an empty redaction":               {Redact: []string{" , "}},
 	} {
 		if _, err := ResolveLogSettings(r); err == nil {
 			t.Errorf("%s was accepted", label)
@@ -246,6 +247,95 @@ func TestRedactionReplacesTheMatchAloneBeforeEverySink(t *testing.T) {
 		if strings.Contains(got, "SECRET") || !strings.Contains(got, "***") {
 			t.Errorf("the %s sink was not redacted: %q", name, got)
 		}
+	}
+}
+
+func TestARedactionCommaListKeepsRegexCommasInsideSyntax(t *testing.T) {
+	s := settingsFor(t, LogRequest{Redact: []string{`[,],z{1,3},SECRET`}})
+	if s.RedactCount != 3 {
+		t.Fatalf("compiled %d pattern(s), want the three expressions in the list", s.RedactCount)
+	}
+	if got := s.Redact("comma, zzz SECRET"); got != "comma*** *** ***" {
+		t.Fatalf("redacted = %q", got)
+	}
+	for raw, want := range map[string]string{
+		`[]a,b],x`:        `[]a,b]|x`,
+		`[^],]q,y`:        `[^],]q|y`,
+		`[[:alpha:],]+,z`: `[[:alpha:],]+|z`,
+		`\,x,y`:           `\,x|y`,
+		`a{2,}b,c`:        `a{2,}b|c`,
+		`(unclosed[,x`:    `(unclosed[,x`,
+	} {
+		if got := strings.Join(splitRegexList(raw), "|"); got != want {
+			t.Errorf("splitRegexList(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("the pipe is being closed") }
+
+// TestAClosedLiveStreamDoesNotStopTheRecord is the caller who stopped reading:
+// the event log and the stream log are still the caller's to keep, and a record
+// that ended at the closed pipe would read as a run with no exit.
+func TestAClosedLiveStreamDoesNotStopTheRecord(t *testing.T) {
+	dir := t.TempDir()
+	s := settingsFor(t, LogRequest{Mode: "rel", TextPath: filepath.Join(dir, "run.log"), EventPath: filepath.Join(dir, "events.jsonl")})
+	var stderr bytes.Buffer
+	log, err := OpenRunLog(s, failingWriter{}, &stderr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := &fakeClock{}
+	clock.at(0)
+	log.now, log.manual = clock.now, true
+	log.Begin("eph-test", nil)
+	_, _ = log.Stdout().Write([]byte("one\ntwo\n"))
+	_, _ = log.Stderr().Write([]byte("to-stderr\n"))
+	ferr := log.Finish(RunOutcome{Exit: 0}, nil)
+	if ferr == nil || !strings.Contains(ferr.Error(), "stdout") {
+		t.Fatalf("a closed stdout was not reported: %v", ferr)
+	}
+	if strings.Contains(ferr.Error(), "--event-log") || strings.Contains(ferr.Error(), "--stream-log") {
+		t.Fatalf("a closed live stream was reported as an unwritable log: %v", ferr)
+	}
+	runs, err := ReadEventRuns(s.EventPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := runs[0].Events
+	if last := events[len(events)-1]; last.Kind != "EXIT" {
+		t.Fatalf("the record stopped at the closed stream: its last record is %+v", last)
+	}
+	if sum := SummarizeRun(s.EventPath, runs[0], 1); sum.StdoutLines != 2 || sum.StderrLines != 1 {
+		t.Fatalf("the record lost lines written after the stream closed: %+v", sum)
+	}
+	if got := mustRead(t, s.TextPath); !strings.Contains(got, "out  two") || !strings.Contains(stderr.String(), "err  to-stderr") {
+		t.Fatalf("the stream log or the open stderr lost lines: %q / %q", got, stderr.String())
+	}
+}
+
+func TestAHeldCarriageReturnEndsTheLineAndIsNotPartOfItsText(t *testing.T) {
+	dir := t.TempDir()
+	s := settingsFor(t, LogRequest{Mode: "epoch", EventPath: filepath.Join(dir, "events.jsonl")})
+	h := newRelay(t, s)
+	_, _ = h.log.Stdout().Write([]byte("redrawn\r"))
+	h.clock.at(StreamFlushAfter)
+	h.log.check()
+	_, _ = h.log.Stdout().Write([]byte("last\r"))
+	if err := h.log.Finish(RunOutcome{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(h.out.String(), "\r") || strings.Contains(mustRead(t, s.EventPath), `\r`) {
+		t.Fatalf("a held carriage return was written as part of a line: %q", h.out.String())
+	}
+	var bodies []string
+	for _, l := range h.lines(&h.out) {
+		bodies = append(bodies, l[strings.Index(l, " ")+1:])
+	}
+	if strings.Join(bodies, "|") != "out~ redrawn|out~ last" {
+		t.Fatalf("lines = %q", bodies)
 	}
 }
 
@@ -497,6 +587,28 @@ func TestASinkForACommandThatNeverStartsRemovesTheFileItCreatedAndTruncatesNothi
 	}
 	if got := mustRead(t, kept); got != "the previous run\n" {
 		t.Errorf("a replaced log was truncated although its command never started: %q", got)
+	}
+}
+
+func TestASinkOpenFailureRemovesOnlyTheDirectoriesItCreated(t *testing.T) {
+	root := t.TempDir()
+	block := filepath.Join(root, "block")
+	if err := os.WriteFile(block, []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text := filepath.Join(root, "new", "deep", "run.log")
+	events := filepath.Join(block, "events.jsonl")
+	if _, err := OpenRunLog(LogSettings{TextPath: text, EventPath: events}, nil, nil); err == nil {
+		t.Fatal("two sinks were opened although the second sink's parent is a file")
+	}
+	if _, err := os.Stat(text); !os.IsNotExist(err) {
+		t.Errorf("the first sink was left behind: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "new")); !os.IsNotExist(err) {
+		t.Errorf("the empty directory made for the first sink was left behind: %v", err)
+	}
+	if got := mustRead(t, block); got != "kept" {
+		t.Errorf("the pre-existing blocker changed: %q", got)
 	}
 }
 

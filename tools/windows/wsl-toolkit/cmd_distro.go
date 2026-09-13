@@ -480,6 +480,19 @@ func cmdDistroNew(ctx context.Context, args []string) (int, error) {
 	return commandVerdict(res.Name, *res.Command)
 }
 
+// refusalOrFailure is the exit code for an error from an action that changes a
+// distribution.
+//
+// ⛔ A REFUSAL IS NOT A FAILED ATTEMPT. One says this tool will not act and
+// changed nothing, the other says it tried and did not finish, and the two codes
+// keep them apart for a caller that reads only the code.
+func refusalOrFailure(err error) (int, error) {
+	if toolkit.IsRefusal(err) {
+		return exitCannot, err
+	}
+	return exitFailed, err
+}
+
 // commandVerdict turns a command's outcome into this process's exit code.
 //
 // ⭐ THE GUEST'S CODE IS FORWARDED VERBATIM, and a deadline is 124 whatever
@@ -491,7 +504,7 @@ func commandVerdict(name string, out toolkit.CommandOutcome) (int, error) {
 		return exitCannot, errors.New(out.Error)
 	}
 	if out.LogError != "" {
-		return exitCannot, fmt.Errorf("the command in %s ended with exit %d, and the log it was relayed into could not be written: %s", name, out.Exit, out.LogError)
+		return exitCannot, fmt.Errorf("the command in %s ended with exit %d, and the relay could not write everything it was asked to: %s", name, out.Exit, out.LogError)
 	}
 	if out.TimedOut {
 		logf("  the command in %s reached its deadline and the distribution was terminated", name)
@@ -631,11 +644,15 @@ func cmdDistroRemove(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	// ⛔ THE REFUSALS ARE READ BEFORE ANYBODY IS ASKED. A prompt to confirm
+	// removing a distribution this tool would then refuse, because another run
+	// made it or nothing is registered under the name, asks a question whose
+	// answer changes nothing and hides the reason behind "not confirmed".
+	steps, err := t.PlanRemoval(name)
+	if err != nil {
+		return exitCannot, err
+	}
 	if *dryRun {
-		steps, err := t.PlanRemoval(name)
-		if err != nil {
-			return exitCannot, err
-		}
 		plan := newDistroPlan("remove", name)
 		for _, s := range steps {
 			plan.step(s)
@@ -657,12 +674,7 @@ func cmdDistroRemove(ctx context.Context, args []string) (int, error) {
 	}
 	res, err := t.Remove(ctx, name, false)
 	if err != nil {
-		// ⛔ A REFUSAL IS NOT A FAILED REMOVAL. One says this tool will not act
-		// and the other says it tried, and the two codes keep them apart.
-		if errors.Is(err, toolkit.ErrNotOwned) {
-			return exitCannot, err
-		}
-		return exitFailed, err
+		return refusalOrFailure(err)
 	}
 	if *asJSON {
 		return exitOK, writeJSON(res)
@@ -774,7 +786,7 @@ func cmdDistroSnapshot(ctx context.Context, args []string) (int, error) {
 	}
 	res, err := t.Snapshot(ctx, name, *tag, *force)
 	if err != nil {
-		return exitCannot, err
+		return refusalOrFailure(err)
 	}
 	if *asJSON {
 		return exitOK, writeJSON(res)

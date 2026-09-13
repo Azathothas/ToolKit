@@ -20,7 +20,7 @@ where it is checked.
 | fact | value | where it is read from |
 | --- | --- | --- |
 | repository | `Azathothas/ToolKit`, public, 0BSD | `gh api repos/Azathothas/ToolKit` |
-| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: the executable for two Windows architectures, `SHA256SUMS`, and one `.cosign.bundle` per published file. Nothing else. | `gh release list --repo Azathothas/ToolKit` |
+| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: from `wsl-toolkit-v3.0.0`, the executable for two Windows architectures, `SHA256SUMS`, and one `.cosign.bundle` per published file. Nothing else. ⚠ Every earlier release also carries `wsl-toolkit.ps1` and `launcher.ps1` | `gh release view TAG --repo Azathothas/ToolKit --json assets` |
 | work model | todo | [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) |
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |
@@ -113,15 +113,15 @@ file's own directory, which makes the containment check vacuous. A guard that
 cannot refuse anything is theatre. `RemoveInside`'s own comment carries the
 same sentence, which is where a reader of the code will look.
 
-## 4. ONE file here is GENERATED, and the tree holds both halves
+## 4. TWO files here are GENERATED, and the tree holds both halves
 
-⛔ **`tools/windows/wsl-toolkit/internal/toolkit/packages.sh` is generated**, and a
-different build writes it. It is the block between the two `shared package table`
-marker lines of [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh)
-under a generated-file banner, and it lives in the Go package for the same `embed`
-reason. The gate's `package-table` rule regenerates it and compares it byte for
-byte, and `sh scripts/common/check.sh package-table --fix` rewrites it. ⚠ Nothing
-reads it yet: wiring the base provisioner to it is the rest of `WSL-70`.
+| generated file | source and regeneration | drift proof |
+| --- | --- | --- |
+| `tools/windows/wsl-toolkit/internal/toolkit/packages.sh` | the block between the two `shared package table` markers in [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh); `sh scripts/common/check.sh package-table --fix` | the gate's `package-table` rule regenerates and compares it byte for byte |
+| `tools/windows/wsl-toolkit/wsl-toolkit.1` | the native command registry and flag bindings; from `tools/windows/wsl-toolkit`, `go run . man --output wsl-toolkit.1` | `TestGeneratedManPageIsCurrent` regenerates and compares it byte for byte |
+
+⚠ Nothing reads `packages.sh` yet: wiring the base provisioner to it is the rest
+of `WSL-70`.
 
 ## 5. The record moves in the same change as the work
 

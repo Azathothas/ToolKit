@@ -1285,8 +1285,8 @@
       "label": "log settings: raw beside a renderer flag is refused",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/logsettings.go",
-      "find": "\t\tif len(dead) > 0 {\n",
-      "replace": "\t\tif false {\n",
+      "find": "\t\tif len(dead) > 0 {\n\t\t\treturn s, fmt.Errorf(\"--log-profile raw renders no prefix, so %s would do nothing. Drop raw to use them, or drop them\", strings.Join(dead, \" and \"))\n",
+      "replace": "\t\tif false {\n\t\t\treturn s, fmt.Errorf(\"--log-profile raw renders no prefix, so %s would do nothing. Drop raw to use them, or drop them\", strings.Join(dead, \" and \"))\n",
       "run": "TestProfilesAreStartingPointsAndContradictionsAreRefused",
       "args": []
     },
@@ -1423,6 +1423,312 @@
       "find": "\t\tcase c.writing != nil && !includeLive:\n",
       "replace": "\t\tcase false:\n",
       "run": "TestPurgeKeepsSnapshotsElsewhereRunningAndCreating",
+      "args": []
+    },
+    {
+      "label": "log settings: a comma inside regular-expression syntax is not a list separator",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\t\tfor _, p := range splitRegexList(raw) {\n",
+      "replace": "\t\tfor _, p := range strings.Split(raw, \",\") {\n",
+      "run": "TestARedactionCommaListKeepsRegexCommasInsideSyntax",
+      "args": []
+    },
+    {
+      "label": "log settings: renderer flags need a timestamp column",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\tif len(s.Columns) == 0 {\n\t\tvar dead []string\n",
+      "replace": "\tif false {\n\t\tvar dead []string\n",
+      "run": "TestProfilesAreStartingPointsAndContradictionsAreRefused",
+      "args": []
+    },
+    {
+      "label": "log settings: an explicitly empty redaction is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\tif len(r.Redact) > 0 && len(s.redact) == 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestProfilesAreStartingPointsAndContradictionsAreRefused",
+      "args": []
+    },
+    {
+      "label": "relay: an aborted sink removes the directories it created",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\t\tr.createdDirs = append(r.createdDirs, path)\n",
+      "replace": "\t\tr.createdDirs = r.createdDirs\n",
+      "run": "TestASinkOpenFailureRemovesOnlyTheDirectoriesItCreated",
+      "args": []
+    },
+    {
+      "label": "throwaway: an unreadable state root is not an empty inventory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif err != nil {\n\t\treturn leftovers, snapshots, fmt.Errorf(\"read throwaway state %s: %w\", t.dir, err)\n\t}\n",
+      "replace": "\tif err != nil {\n\t\treturn leftovers, snapshots, nil\n\t}\n",
+      "run": "TestHeldFilesReportsAnUnreadableInventoryInsteadOfAnEmptyOne",
+      "args": []
+    },
+    {
+      "label": "throwaway: a failed forced snapshot replacement keeps the complete archive",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif force {\n\t\treturn exists, os.Rename(partial, out)\n\t}\n",
+      "replace": "\tif force {\n\t\t_ = os.Remove(out)\n\t\treturn exists, os.Rename(partial, out)\n\t}\n",
+      "run": "TestASnapshotIsPublishedWithoutReplacingAnArchiveUnlessForced",
+      "args": []
+    },
+    {
+      "label": "release: every fetch and push URL names this repository",
+      "module": "tools/repo",
+      "file": "internal/release/release.go",
+      "find": "\t\tif remoteRepository(line) != releaseRepository {\n",
+      "replace": "\t\tif remoteRepository(line) != releaseRepository && false {\n",
+      "run": "TestOnlyThisRepositoryCanBeAReleaseRemote",
+      "args": []
+    },
+    {
+      "label": "release: only main can publish",
+      "module": "tools/repo",
+      "file": "internal/release/release.go",
+      "find": "func isReleaseBranch(body string) bool { return strings.TrimSpace(body) == \"main\" }\n",
+      "replace": "func isReleaseBranch(body string) bool { return strings.TrimSpace(body) != \"\" }\n",
+      "run": "TestTheLiveRemoteMainMustBeExactlyHead",
+      "args": []
+    },
+    {
+      "label": "release: the live remote main resolves exactly to HEAD",
+      "module": "tools/repo",
+      "file": "internal/release/release.go",
+      "find": "\t\tif len(fields) == 2 && fields[1] == ref {\n",
+      "replace": "\t\tif len(fields) == 2 {\n",
+      "run": "TestTheLiveRemoteMainMustBeExactlyHead",
+      "args": []
+    },
+    {
+      "label": "release: a push error is reconciled against the remote before rollback",
+      "module": "tools/repo",
+      "file": "internal/release/release.go",
+      "find": "\tif target, exists := tagTarget(body, tag); exists {\n",
+      "replace": "\tif target, exists := tagTarget(body, tag); false && exists {\n",
+      "run": "TestAPushErrorIsReconciledAgainstTheRemoteBeforeRollback",
+      "args": []
+    },
+    {
+      "label": "throwaway: an entry another run removed mid-walk is skipped rather than failing the inventory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "func vanished(err error) bool { return errors.Is(err, os.ErrNotExist) }\n",
+      "replace": "func vanished(err error) bool { return false }\n",
+      "run": "TestAnEntryThatVanishesMidWalkIsSkippedAndAnyOtherErrorStopsIt",
+      "args": []
+    },
+    {
+      "label": "throwaway: only a vanished entry is skipped, and any other error stops the walk",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "func vanished(err error) bool { return errors.Is(err, os.ErrNotExist) }\n",
+      "replace": "func vanished(err error) bool { return err != nil }\n",
+      "run": "TestAnEntryThatVanishesMidWalkIsSkippedAndAnyOtherErrorStopsIt",
+      "args": []
+    },
+    {
+      "label": "throwaway: a refusal is told apart from a failed attempt",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\treturn errors.As(err, &r) || errors.Is(err, ErrNotOwned)\n",
+      "replace": "\treturn errors.As(err, &r) && false || errors.Is(err, ErrNotOwned)\n",
+      "run": "TestARefusalIsToldApartFromAFailedAttempt",
+      "args": []
+    },
+    {
+      "label": "throwaway: removal refuses a distribution another run is still creating",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif since, fresh := t.creating(name); fresh && !ignoreCreating {\n",
+      "replace": "\tif since, fresh := t.creating(name); false && fresh && !ignoreCreating {\n",
+      "run": "TestRemovalRefusesACreationInProgressAndANameNothingHolds",
+      "args": []
+    },
+    {
+      "label": "throwaway: removing a name nothing registers or holds is a refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\treturn \"\", refuse(\"%s is not registered and %s holds nothing for it\", name, t.dir)\n",
+      "replace": "\t\treturn \"\", fmt.Errorf(\"%s is not registered and %s holds nothing for it\", name, t.dir)\n",
+      "run": "TestRemovalRefusesACreationInProgressAndANameNothingHolds",
+      "args": []
+    },
+    {
+      "label": "throwaway: a removal reads the registration back before it reports it gone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tif gone {\n\t\t\treturn nil\n\t\t}\n",
+      "replace": "\t\tif gone || attempt > 0 {\n\t\t\treturn nil\n\t\t}\n",
+      "run": "TestARemovalReadsTheRegistrationBackBeforeItSaysItIsGone",
+      "args": []
+    },
+    {
+      "label": "throwaway: the preflight refuses a requested name that is registered",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tif strings.EqualFold(existing, name) {\n\t\t\treturn refuse(\"%s is already registered. Choose another --name, or remove it first\", name)\n",
+      "replace": "\t\tif strings.EqualFold(existing, name) && false {\n\t\t\treturn refuse(\"%s is already registered. Choose another --name, or remove it first\", name)\n",
+      "run": "TestARequestedNameThatIsTakenIsRefusedBeforeAnythingIsMade",
+      "args": []
+    },
+    {
+      "label": "throwaway: the preflight refuses a requested name that already has a directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif _, err := os.Lstat(t.distroDir(name)); err == nil {\n\t\treturn refuse(",
+      "replace": "\tif _, err := os.Lstat(t.distroDir(name)); err == nil && false {\n\t\treturn refuse(",
+      "run": "TestARequestedNameThatIsTakenIsRefusedBeforeAnythingIsMade",
+      "args": []
+    },
+    {
+      "label": "throwaway: the claim refuses a requested name that is taken rather than drawing another",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tif !drawn {\n\t\t\treturn \"\", refuse(",
+      "replace": "\t\tif !drawn && name == \"\" {\n\t\t\treturn \"\", refuse(",
+      "run": "TestARequestedNameThatIsTakenIsRefusedBeforeAnythingIsMade",
+      "args": []
+    },
+    {
+      "label": "throwaway: a bare --tarball word is never read from the working directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif filepath.IsAbs(value) || strings.ContainsAny(value, `/\\`) {\n",
+      "replace": "\tif true {\n",
+      "run": "TestATarballIsAPathOrAHeldTagAndABareWordIsNeverReadFromTheWorkingDirectory",
+      "args": []
+    },
+    {
+      "label": "throwaway: an export too small to be an archive is refused and removed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif !ok || size < snapshotFloor {\n",
+      "replace": "\tif !ok && size < 0 {\n",
+      "run": "TestAnExportTooSmallToBeAnArchiveIsRefusedAndRemoved",
+      "args": []
+    },
+    {
+      "label": "throwaway: an unforced snapshot never replaces an archive already under its tag",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif err := os.Link(partial, out); err == nil {\n",
+      "replace": "\tif err := os.Rename(partial, out); err == nil {\n",
+      "run": "TestASnapshotIsPublishedWithoutReplacingAnArchiveUnlessForced",
+      "args": []
+    },
+    {
+      "label": "registry: a registration removed mid-enumeration is skipped",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/registry.go",
+      "find": "\treturn errors.Is(err, registryFileNotFound) || errors.Is(err, registryKeyDeleted)\n",
+      "replace": "\treturn errors.Is(err, registryKeyDeleted)\n",
+      "run": "TestARegistrationRemovedMidEnumerationIsSkippedAndOtherFailuresRefuse",
+      "args": []
+    },
+    {
+      "label": "registry: only a registration that went away is skipped, and any other failure refuses",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/registry.go",
+      "find": "\treturn errors.Is(err, registryFileNotFound) || errors.Is(err, registryKeyDeleted)\n",
+      "replace": "\treturn err != nil || errors.Is(err, registryKeyDeleted)\n",
+      "run": "TestARegistrationRemovedMidEnumerationIsSkippedAndOtherFailuresRefuse",
+      "args": []
+    },
+    {
+      "label": "relay: a closed live stream does not stop the event record",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tif r.events == nil || r.eventErr != nil {\n",
+      "replace": "\tif r.events == nil || r.eventErr != nil || r.stdoutErr != nil {\n",
+      "run": "TestAClosedLiveStreamDoesNotStopTheRecord",
+      "args": []
+    },
+    {
+      "label": "relay: a held carriage return is not part of a flushed line",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "func pendingText(p []byte) string { return strings.TrimSuffix(string(p), \"\\r\") }\n",
+      "replace": "func pendingText(p []byte) string { return string(p) }\n",
+      "run": "TestAHeldCarriageReturnEndsTheLineAndIsNotPartOfItsText",
+      "args": []
+    },
+    {
+      "label": "log settings: a ] first in a character class is a literal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/logsettings.go",
+      "find": "\tif i < len(raw) && raw[i] == ']' {\n\t\ti++\n\t}\n",
+      "replace": "\tif false {\n\t\ti++\n\t}\n",
+      "run": "TestARedactionCommaListKeepsRegexCommasInsideSyntax",
+      "args": []
+    },
+    {
+      "label": "channel: a failed listing names its query and what wsl.exe printed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/wsl.go",
+      "find": "\treturn fmt.Errorf(\"wsl.exe %s failed %s: %w\", strings.Join(args, \" \"), said, err)\n",
+      "replace": "\treturn fmt.Errorf(\"%s%w\", said[:0], err)\n",
+      "run": "TestAFailedListingNamesItsQueryAndIsAskedAgainOnlyWhenThatCanHelp",
+      "args": []
+    },
+    {
+      "label": "channel: a refusal of this process is not asked again",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/wsl.go",
+      "find": "\tif errors.Is(err, ErrWslDenied) {\n\t\treturn false\n\t}\n\tvar pe *ProcessError\n",
+      "replace": "\tvar pe *ProcessError\n",
+      "run": "TestAFailedListingNamesItsQueryAndIsAskedAgainOnlyWhenThatCanHelp",
+      "args": []
+    },
+    {
+      "label": "user environment: a symlinked runtime directory is refused before the command",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/userenv.go",
+      "find": "if [ -L \"$_wtk_run\" ]; then echo \"wsl-toolkit: $_wtk_run is a symlink and will not be used\" >&2; exit 2; fi\n",
+      "replace": ":\n",
+      "run": "TestTheUserEnvironmentRefusesASymlinkedRunDirectoryAndDeduplicatesThePath",
+      "args": []
+    },
+    {
+      "label": "distro: a relay that could not write makes the verdict an error",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "\tif out.LogError != \"\" {\n",
+      "replace": "\tif false {\n",
+      "run": "TestACommandsVerdictIsItsOwnCodeUnlessTheToolCouldNotFinish",
+      "args": []
+    },
+    {
+      "label": "distro: a deadline this tool enforced answers 124",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "\tif out.TimedOut {\n",
+      "replace": "\tif false {\n",
+      "run": "TestACommandsVerdictIsItsOwnCodeUnlessTheToolCouldNotFinish",
+      "args": []
+    },
+    {
+      "label": "distro: a refusal and a failed attempt answer different codes",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "\tif toolkit.IsRefusal(err) {\n\t\treturn exitCannot, err\n\t}\n\treturn exitFailed, err\n",
+      "replace": "\treturn exitCannot, err\n",
+      "run": "TestARefusalAndAFailedAttemptAnswerDifferentCodes",
+      "args": []
+    },
+    {
+      "label": "distro: NUL is not a console, so a session on it is not asked a question",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "console_windows.go",
+      "find": "\treturn ok != 0\n",
+      "replace": "\treturn ok != 0 || f != nil\n",
+      "run": "TestNulIsNotAConsole",
       "args": []
     }
   ]

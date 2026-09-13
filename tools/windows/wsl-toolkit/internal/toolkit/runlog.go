@@ -98,28 +98,39 @@ type progressReading struct {
 // are all written by emit, after redaction and truncation, so no sink can be
 // reached by a line that skipped either.
 type RunLog struct {
-	mu        sync.Mutex
-	s         LogSettings
-	distro    string
-	liveOut   io.Writer
-	liveErr   io.Writer
-	text      *os.File
-	events    *os.File
-	created   []string
-	facts     func() TickFacts
-	now       func() time.Time
-	start     time.Time
-	begun     bool
-	seq       int64
-	out, err  relayStream
-	lastStamp time.Duration
-	lastLine  time.Duration
-	lastTick  time.Duration
-	quiet     bool
-	fired     map[time.Duration]bool
-	lastDisk  *int64
-	progress  *progressReading
-	sinkErr   error
+	mu          sync.Mutex
+	s           LogSettings
+	distro      string
+	liveOut     io.Writer
+	liveErr     io.Writer
+	text        *os.File
+	events      *os.File
+	created     []string
+	createdDirs []string
+	facts       func() TickFacts
+	now         func() time.Time
+	start       time.Time
+	begun       bool
+	seq         int64
+	out, err    relayStream
+	lastStamp   time.Duration
+	lastLine    time.Duration
+	lastTick    time.Duration
+	quiet       bool
+	fired       map[time.Duration]bool
+	lastDisk    *int64
+	progress    *progressReading
+	// stdoutErr, stderrErr, textErr and eventErr are the first failure writing
+	// each place a line goes.
+	//
+	// ⛔ KEPT APART. A caller that stopped reading this process's output has not
+	// made the event log unwritable, and the record of a run matters most when
+	// nobody was watching it live: folded into one error, the first closed pipe
+	// stopped the event log before its EXIT record.
+	stdoutErr error
+	stderrErr error
+	textErr   error
+	eventErr  error
 	closed    bool
 	stop      chan struct{}
 	done      chan struct{}
@@ -146,6 +157,7 @@ func OpenRunLog(s LogSettings, liveOut, liveErr io.Writer) (*RunLog, error) {
 	var err error
 	if s.TextPath != "" {
 		if r.text, err = r.openSink(s.TextPath); err != nil {
+			r.Abort()
 			return nil, fmt.Errorf("--stream-log: %w", err)
 		}
 	}
@@ -159,13 +171,48 @@ func OpenRunLog(s LogSettings, liveOut, liveErr io.Writer) (*RunLog, error) {
 }
 
 func (r *RunLog) openSink(path string) (*os.File, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := r.ensureSinkDir(filepath.Dir(path)); err != nil {
 		return nil, err
 	}
 	if _, statErr := os.Lstat(path); errors.Is(statErr, os.ErrNotExist) {
 		r.created = append(r.created, path)
 	}
 	return os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+}
+
+// ensureSinkDir makes only the missing directories and records only the ones
+// this call made, so an aborted command can remove its own empty scaffolding.
+func (r *RunLog) ensureSinkDir(dir string) error {
+	var missing []string
+	for {
+		info, err := os.Stat(dir)
+		if err == nil {
+			if !info.IsDir() {
+				return fmt.Errorf("%s is not a directory", dir)
+			}
+			break
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		missing = append(missing, dir)
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return fmt.Errorf("no existing parent directory contains %s", dir)
+		}
+		dir = parent
+	}
+	for i := len(missing) - 1; i >= 0; i-- {
+		path := missing[i]
+		if err := os.Mkdir(path, 0o755); err != nil {
+			if info, statErr := os.Stat(path); statErr == nil && info.IsDir() {
+				continue
+			}
+			return err
+		}
+		r.createdDirs = append(r.createdDirs, path)
+	}
+	return nil
 }
 
 // Begin starts the clock for one command in one distribution.
@@ -177,9 +224,10 @@ func (r *RunLog) Begin(distro string, facts func() TickFacts) {
 	}
 	r.begun, r.distro, r.facts, r.start = true, distro, facts, r.now()
 	r.created = nil
+	r.createdDirs = nil
 	if r.text != nil && r.s.TextOverwrite {
-		if err := r.text.Truncate(0); err != nil && r.sinkErr == nil {
-			r.sinkErr = err
+		if err := r.text.Truncate(0); err != nil && r.textErr == nil {
+			r.textErr = err
 		}
 	}
 	if !r.manual && r.s.Active() {
@@ -203,6 +251,9 @@ func (r *RunLog) Abort() {
 	}
 	for _, p := range r.created {
 		_ = os.Remove(p)
+	}
+	for i := len(r.createdDirs) - 1; i >= 0; i-- {
+		_ = os.Remove(r.createdDirs[i])
 	}
 }
 
@@ -250,9 +301,7 @@ func (r *RunLog) receive(tag string, p []byte) {
 		r.fired = map[time.Duration]bool{}
 	}
 	if !r.s.Renders() {
-		if _, err := live.Write(p); err != nil && r.sinkErr == nil {
-			r.sinkErr = err
-		}
+		r.writeLive(tag, p)
 	}
 	had := len(st.pending) > 0
 	buf := append(st.pending, p...)
@@ -343,17 +392,11 @@ func (r *RunLog) emit(tag, prov, text string, partial bool, now time.Duration) {
 		if r.s.Color && prefix != "" {
 			shown = joinLine(colorPrefix(prefix, tag), body, r.s.PrefixOnly)
 		}
-		w := r.liveErr
-		if tag == "out" {
-			w = r.liveOut
-		}
-		if _, err := fmt.Fprintln(w, shown); err != nil && r.sinkErr == nil {
-			r.sinkErr = err
-		}
+		r.writeLive(tag, []byte(shown+"\n"))
 	}
-	if r.text != nil {
-		if _, err := fmt.Fprintln(r.text, plain); err != nil && r.sinkErr == nil {
-			r.sinkErr = err
+	if r.text != nil && r.textErr == nil {
+		if _, err := fmt.Fprintln(r.text, plain); err != nil {
+			r.textErr = err
 		}
 	}
 	kind, stream := "LOG", "stdout"
@@ -368,6 +411,45 @@ func (r *RunLog) emit(tag, prov, text string, partial bool, now time.Duration) {
 	t, p := body, partial
 	r.record(Event{Kind: kind, Prov: prov, Stream: stream, Text: &t, Partial: &p}, now)
 }
+
+// writeLive writes to this process's stdout for the command's stdout, and to its
+// stderr for everything else. A stream that failed once is not written again, so
+// a closed pipe is one error rather than one per line.
+func (r *RunLog) writeLive(tag string, p []byte) {
+	w, failed := r.liveErr, &r.stderrErr
+	if tag == "out" {
+		w, failed = r.liveOut, &r.stdoutErr
+	}
+	if *failed != nil {
+		return
+	}
+	if _, err := w.Write(p); err != nil {
+		*failed = err
+	}
+}
+
+// relayError names every place a line could not be written, or nil.
+func (r *RunLog) relayError() error {
+	var failed []string
+	for _, f := range []struct {
+		where string
+		err   error
+	}{{"this process's stdout", r.stdoutErr}, {"this process's stderr", r.stderrErr}, {"--stream-log", r.textErr}, {"--event-log", r.eventErr}} {
+		if f.err != nil {
+			failed = append(failed, f.where+": "+f.err.Error())
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return errors.New(strings.Join(failed, "; "))
+}
+
+// pendingText is the text of a line that was held and never ended.
+//
+// ⚠ A CARRIAGE RETURN AT ITS END WAS HELD ONLY IN CASE A NEWLINE FOLLOWED IT,
+// and none did. It ended a redrawn line, so it is not part of what the line says.
+func pendingText(p []byte) string { return strings.TrimSuffix(string(p), "\r") }
 
 func joinLine(prefix, body string, prefixOnly bool) string {
 	switch {
@@ -417,7 +499,7 @@ func colorPrefix(prefix, tag string) string {
 }
 
 func (r *RunLog) record(e Event, now time.Duration) {
-	if r.events == nil || r.sinkErr != nil {
+	if r.events == nil || r.eventErr != nil {
 		return
 	}
 	r.seq++
@@ -429,7 +511,7 @@ func (r *RunLog) record(e Event, now time.Duration) {
 		_, err = r.events.Write(append(data, '\n'))
 	}
 	if err != nil {
-		r.sinkErr = err
+		r.eventErr = err
 	}
 }
 
@@ -463,7 +545,7 @@ func (r *RunLog) check() {
 		if len(st.pending) > 0 && now-st.since >= StreamFlushAfter {
 			// ⭐ A PROMPT WAITING ON INPUT IS EXACTLY THIS SHAPE, and it is the
 			// one case where showing nothing means waiting forever.
-			r.line(st, string(st.pending), true, now)
+			r.line(st, pendingText(st.pending), true, now)
 			st.pending = nil
 			r.lastLine, r.lastTick = now, now
 		}
@@ -613,12 +695,12 @@ func (r *RunLog) Finish(o RunOutcome, facts func() TickFacts) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.closed {
-		return r.sinkErr
+		return r.relayError()
 	}
 	now := r.elapsed()
 	for _, st := range []*relayStream{&r.out, &r.err} {
 		if len(st.pending) > 0 {
-			r.line(st, string(st.pending), true, now)
+			r.line(st, pendingText(st.pending), true, now)
 			st.pending = nil
 		}
 	}
@@ -638,14 +720,17 @@ func (r *RunLog) Finish(o RunOutcome, facts func() TickFacts) error {
 	code, timedOut := o.Exit, o.TimedOut
 	r.record(Event{Kind: "EXIT", Prov: "obs", ExitCode: &code, TimedOut: &timedOut}, now)
 	r.closed = true
-	for _, file := range []*os.File{r.text, r.events} {
-		if file != nil {
-			if err := file.Close(); err != nil && r.sinkErr == nil {
-				r.sinkErr = err
-			}
+	if r.text != nil {
+		if err := r.text.Close(); err != nil && r.textErr == nil {
+			r.textErr = err
 		}
 	}
-	return r.sinkErr
+	if r.events != nil {
+		if err := r.events.Close(); err != nil && r.eventErr == nil {
+			r.eventErr = err
+		}
+	}
+	return r.relayError()
 }
 
 // EventRun is one recorded run. An appended event log holds one per command.

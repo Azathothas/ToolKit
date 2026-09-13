@@ -57,6 +57,9 @@ func registeredDisks() (map[string]string, error) {
 		}
 		sub := syscall.UTF16ToString(buf[:n])
 		name, err := registryString(root, sub, "DistributionName")
+		if registrationGone(err) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -64,6 +67,9 @@ func registeredDisks() (map[string]string, error) {
 			continue
 		}
 		base, err := registryString(root, sub, "BasePath")
+		if registrationGone(err) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}

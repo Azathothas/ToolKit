@@ -311,10 +311,4 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	}
 }
 
-func isInteractive() bool {
-	info, err := os.Stdin.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
-}
+func isInteractive() bool { return isConsole(os.Stdin) }

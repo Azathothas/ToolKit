@@ -238,7 +238,7 @@ func runRelease(args []string) int {
 	fs := newFlagSet("release")
 	var opts toolrelease.Options
 	fs.BoolVar(&opts.Publish, "publish", false, "create and push the annotated tag after every refusal passes")
-	fs.StringVar(&opts.Remote, "remote", "origin", "the repository remote that must contain HEAD and receive the tag")
+	fs.StringVar(&opts.Remote, "remote", "origin", "the configured Azathothas/ToolKit remote whose live main must equal HEAD and receive the tag")
 	fs.BoolVar(&opts.JSON, "json", false, "write a structured readiness report")
 	if code, done := exitFor(parseArgs(fs, args)); done {
 		return code

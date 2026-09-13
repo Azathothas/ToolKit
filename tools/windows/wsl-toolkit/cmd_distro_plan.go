@@ -146,6 +146,13 @@ func planNew(ctx context.Context, t *toolkit.Throwaways, spec toolkit.ThrowawayS
 		}
 		plan.step("no owned distribution was built from " + spec.Image + ", so one is imported")
 	}
+	// ⛔ THE REAL RUN'S OWN REFUSALS: the archive or snapshot, the host engine,
+	// and a --name already taken. A plan that passed what the run refuses would
+	// be a dry run describing a different run.
+	pre, err := t.Preflight(ctx, spec)
+	if err != nil {
+		return nil, err
+	}
 	if plan.Name == "" {
 		builtFrom := firstNonEmpty(spec.Image, spec.Tarball)
 		drawn, _, err := toolkit.ThrowawayName("", builtFrom)
@@ -160,16 +167,14 @@ func planNew(ctx context.Context, t *toolkit.Throwaways, spec toolkit.ThrowawayS
 		plan.Name = name
 	}
 	dir := filepath.Join(t.Dir(), plan.Name)
-	if spec.Image != "" {
-		engine, err := toolkit.FindEngine(ctx)
-		if err != nil {
-			plan.step("no usable host engine, so --image would be refused: " + err.Error())
-		} else {
-			plan.step(fmt.Sprintf("pull %s with %s for %s, and export its filesystem to %s", spec.Image, engine.Name, engine.Platform(),
-				filepath.Join(t.Dir(), plan.Name+".tar")))
-		}
-	} else {
-		plan.step("import the rootfs archive " + spec.Tarball + ", a file or a snapshot tag this state directory holds")
+	switch {
+	case pre.Engine != nil:
+		plan.step(fmt.Sprintf("pull %s with %s for %s, and export its filesystem to %s", spec.Image, pre.Engine.Name, pre.Engine.Platform(),
+			filepath.Join(t.Dir(), plan.Name+".tar")))
+	case pre.Snapshot != "":
+		plan.step("import the snapshot " + pre.Snapshot + " at " + pre.Rootfs + ", which carries whatever that distribution held")
+	default:
+		plan.step("import the rootfs archive " + pre.Rootfs)
 	}
 	plan.step(fmt.Sprintf("refuse unless %s is free beside twice the archive on the volume holding %s", toolkit.HumanBytes(toolkit.ThrowawaySpaceFloor), dir))
 	plan.step("register it: wsl.exe --import " + plan.Name + " " + dir + " ROOTFS --version 2")

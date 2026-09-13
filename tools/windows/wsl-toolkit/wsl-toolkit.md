@@ -232,15 +232,21 @@ wsl-toolkit distro remove --name build-box --yes
   left off. A name in the wrong case is refused rather than lowered.
 - `distro new --image` needs a host engine, podman or docker, and pulls for this
   host's platform. The import is refused before it starts when the volume lacks
-  256 MiB beyond twice the archive. `--probe-timeout` bounds each question the
-  tool asks the new distribution for itself.
+  256 MiB beyond twice the archive. `--probe-timeout` bounds the questions the
+  tool asks the new distribution for itself: the smoke probe, whether PID 1 is
+  systemd, and the image configuration `--oci-env` carries. A file the tool writes
+  into the distribution has its own two-minute bound.
 - `--systemd` refuses an image whose PID 1 is not systemd after the restart.
   `--oci-env` writes the image's `ENV` and `WORKDIR` to `/etc/profile.d`.
   `--reuse` runs in the newest distribution built from the same `--image` and
   says so.
 - `distro snapshot --name NAME --tag TAG` exports one, and `distro new --tarball
-  TAG` imports it again. ⚠ A snapshot is an unencrypted archive of whatever the
-  distribution held, a credential a command left behind included.
+  TAG` imports it again. Without `--force` it never replaces an archive under the
+  tag, including one another run wrote while this export ran. ⚠ A snapshot is an
+  unencrypted archive of whatever the distribution held, a credential a command
+  left behind included.
+- A refusal answers 2 and changes nothing. A removal or an export that was
+  attempted and did not finish answers 1.
 
 ⛔ **The tool acts only on a distribution whose disk WSL registered inside this
 state directory's `distros` folder.** The prefix proves nothing, so a
@@ -269,9 +275,11 @@ running distribution, and one another run is still creating, is kept unless
   `wsl-toolkit hostaddress` answers. `--user-env` first prepares a private
   `XDG_RUNTIME_DIR`, a `TMPDIR` and a deduplicated `PATH`, so a value passed with
   `--env` wins over it.
-- `--dry-run` validates every option and prints the plan from the same selections
-  the real run reads: the command's size and digest and the variables' names,
-  never their values. Nothing in WSL changes and no log file is opened.
+- `--dry-run` refuses what the real run would refuse, a snapshot tag the state
+  directory does not hold, a taken `--name` and a missing host engine included,
+  and prints the plan from the same selections the real run reads: the command's
+  size and digest and the variables' names, never their values. Nothing in WSL
+  changes and no log file is opened.
 
 ### Watching and recording a command
 
@@ -284,7 +292,7 @@ running distribution, and one another run is still creating, is kept unless
 | progress a command reports | `--progress-prefix TOKEN`. A line `TOKEN 42 unpacking` is consumed, and the heartbeat carries the last one and its age |
 | a copy of the rendered lines | `--stream-log FILE`, which is never coloured |
 | a record a program reads | `--event-log FILE`, one `wsl-toolkit-event/1` object per line, appended |
-| a secret kept out of every sink | `--redact REGEX`, whose matches become `***` before any sink sees a line |
+| a secret kept out of every sink | `--redact REGEX`, whose matches become `***` before any sink sees a line. Repeat it or pass a comma list; `[,]` matches a literal comma |
 | a bound on a line | `--max-line-bytes N`, cut at a character boundary, saying how many bytes went |
 
 - A prefix is the timestamp columns, the separator, then a fixed four-character
@@ -302,8 +310,9 @@ running distribution, and one another run is still creating, is kept unless
   carriage-return redraw is two lines and matches neither.
 - `distro replay --from FILE` renders a recorded log again, stamped from each
   record's own wall clock. `distro compare --before A --after B` sets two runs
-  side by side: elapsed time, time to first output, longest silence, lines,
-  bytes and exit code, with `-` where a run measured nothing. It reports and does
+  side by side: elapsed time, time to first output, longest silence, the lines
+  and bytes the record holds, which are counted after redaction and the line
+  bound, and exit code, with `-` where a run measured nothing. It reports and does
   not judge. An appended log holds one run per command: `--run`, `--before-run`
   and `--after-run` pick one, and `compare` takes each file's last by default.
 

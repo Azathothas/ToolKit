@@ -36,12 +36,3 @@ PATH=$_wtk_path; export PATH
 unset -f _wtk_add 2>/dev/null || :
 unset _wtk_uid _wtk_run _wtk_own _wtk_path _wtk_dir _wtk_old _wtk_one
 `
-
-// WithUserEnvironment prepends the environment prologue and leaves the
-// caller's bytes as an unchanged suffix.
-func WithUserEnvironment(script []byte) []byte {
-	out := make([]byte, 0, len(userEnvironmentPrelude)+len(script))
-	out = append(out, userEnvironmentPrelude...)
-	out = append(out, script...)
-	return out
-}

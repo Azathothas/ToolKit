@@ -4709,7 +4709,7 @@ version goes entirely. The next session begins by reviewing the pull request,
 trusting nothing and validating everything first, then adopts what is useful,
 iterates, improves and does it properly. `wsl-toolkit.ps1` is deleted entirely,
 because "it lobotomizes agents". Consumers will migrate and read the latest docs.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** XL, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** XL, **Status** done
 
 ---
 
@@ -5060,3 +5060,212 @@ reviews       door sweep: findings 17 and 18. Guard mutation and claim audit:
    a push through `git-sync.ps1`, and CI green on the final commit.
 6. Pull request 31's comment amended in place again, and a second comment
    naming the commits that finish the work.
+
+## Closing
+
+**Closed 2026-09-13T15:53:39Z.** The session that closed it started 2026-09-13T14:24:42Z
+from `fc30c6c` with 13 uncommitted paths another session had left.
+
+### What was inherited, and what became of it
+
+The paths changed after the third checkpoint were a review pass no record
+described. Read whole, then proved: its Go suites green, and each of its 11
+mutation rows went red. Kept: a timestamp separator or a colour with no column
+refused, a comma list for `--redact` that keeps commas inside regex syntax, the
+directories a failed sink open made removed again, an unreadable inventory
+reported rather than read as empty, a forced snapshot replacement made one
+rename, and `repo release` refusing a checkout off `main`, a remote that is not
+this repository or carries a credential, and a HEAD that is not the live
+`main`, with a push reconciled against the remote before any rollback.
+⛔ **Two of its edits were defects of their own.** Its stricter inventory failed
+whenever another run removed its marker mid-walk, door sweep row 1 below, and the
+glyphs it took out of `acceptance.ps1` and `consumer.ps1` left eight bare-LF
+lines, which the opening gate refused.
+
+### The parity map
+
+Read from `wsl-toolkit man --no-pager` against the deleted script's
+`surface.lock` at `97c80f2`: every one of its 12 actions and 40 parameters.
+
+| the script | the executable |
+| --- | --- |
+| `New`, `Run`, `Enter`, `List`, `Remove`, `Purge`, `Snapshot` | `distro new`, `run`, `enter`, `list`, `remove`, `purge`, `snapshot` |
+| `Replay`, `Compare` with `-From`, `-Against` | `distro replay --from`, `distro compare --before --after`, and `--run`, `--before-run`, `--after-run` for an appended log |
+| `HostAddress`, `Doctor`, `Resources` | `hostaddress`, `doctor`, `resources`, which report throwaway distributions, and `resources --host-engine` |
+| `-Image`, `-Tarball`, `-Name`, `-User`, `-Ephemeral`, `-OciEnv`, `-Systemd`, `-Reuse`, `-Verbatim`, `-UserEnv` | the same words as flags |
+| `-Command`, `-CommandB64`, `-CommandFile` | `-c`, `--command-base64`, `--script` |
+| `-ScriptArg`, `-ScriptArgFile` | `--env`, repeatable, and `--env-file` |
+| `-CommandTimeoutSeconds`, `-TimeoutSeconds` | `--timeout`, `--probe-timeout` |
+| `-DryRun` | `--dry-run` on every mutating subcommand |
+| `-Force` | `remove --yes`, `snapshot --force`, `purge --apply` |
+| `-As` | `snapshot --tag` |
+| `-StateDir` | the global `--home`, or `WSL_TOOLKIT_HOME` |
+| `-NoTimestamps`, `-TimestampProfile`, `-TimestampMode`, `-TimestampColumns`, `-TimestampFormat`, `-TimestampSeparator`, `-PrefixOnly`, `-Color` | the default, `--log-profile`, `--timestamp-mode`, `--timestamp-column`, `--timestamp-format`, `--timestamp-separator`, `--prefix-only`, `--color` |
+| `-StreamLogPath`, `-StreamLogOverwrite`, `-EventLog`, `-Redact`, `-MaxLineBytes`, `-ProgressPrefix`, `-TickSeconds`, `-TickEscalateSeconds` | `--stream-log`, `--stream-log-overwrite`, `--event-log`, `--redact`, `--max-line-bytes`, `--progress-prefix`, `--tick`, `--tick-escalate` |
+
+⚠ **Four differences are decisions, not gaps.** With no option the command's
+streams are forwarded unchanged, where the script stamped them by default.
+`--timeout` defaults to 30m, as `run` and `base exec` do, where the script had
+no bound. A refusal answers 2 and an attempt that failed answers 1, where the
+script answered 1 for both. `WSL_TOOLKIT_STATE_DIR` is not read.
+
+⚠ **One behaviour of the script is not carried, and measuring it showed nothing
+to carry.** Its smoke probe waited up to ten seconds for `/mnt/c`, for a
+first-boot race a comment named and nothing had recorded. Four fresh imports on
+this host: `/mnt/c/Windows` was readable on the first command every time, and
+`ls /mnt/c` exited 1 identically at boot and five seconds later, on three locked
+system files.
+
+### The reviews
+
+Each names what it looked at that the others did not.
+
+#### 1. The door sweep: what else reaches this code
+
+It looked at every entry into the code the change added: the nine `distro`
+subcommands, `hostaddress`, `doctor` and `resources` by both routes, the dry run
+beside each mutation, the binary's `examples`, and `repo release`. Then at the
+callers nobody lists: a second run sharing the state directory, a caller whose
+stdin is `NUL`, and one that stops reading stdout.
+
+| # | found | now |
+| --- | --- | --- |
+| 1 | ⛔ the inventory walk the inherited pass made strict failed whenever another run removed its marker or its rootfs archive between listing a directory and reading the entry, so every command of a second run on one state directory could fail | a vanished entry is skipped, and any other error still stops the walk |
+| 2 | a distribution's registry key deleted by a concurrent unregister, between the enumeration and the open, failed the whole registration read, a removal's own read-back included | a key that went away is skipped, and any other registry failure still refuses |
+| 3 | `distro snapshot` without `--force` checked that the tag was free, exported for minutes, then renamed over whatever another run had written under the tag meanwhile | the export is published through a hard link, which succeeds only where nothing is, and refused otherwise |
+| 4 | `--tarball` was resolved twice: against the project by the command, then against the working directory by the lifecycle, which could name a different file | past the command layer a bare word is only a snapshot tag |
+| 5 | ⛔ `distro new --dry-run` exited 0 for a tag the state directory does not hold, a taken `--name` and a host with no engine, where the real run exits 2 for each, and its plan read "would no usable host engine" | one preflight, read by the plan and by the creation |
+| 6 | `distro remove` asked "Unregister ...? [y/N]" for a name nothing holds and for a distribution another run made, then answered "not confirmed" in place of the reason | the refusals are read before any prompt |
+| 7 | a refusal to remove, of a name nothing holds or of a distribution another run is creating, exited 1, the code for an attempt that failed; a snapshot export that failed exited 2 | a refusal answers 2 and a failed attempt 1, by one rule for both commands |
+| 8 | a session whose stdin is `NUL` counted as interactive, because `NUL` is a character device, so `distro remove` and `base remove` printed a prompt that read end of file | interactive means `GetConsoleMode` answers for the handle |
+| 9 | a caller that stopped reading stdout stopped the event log before its EXIT record, and the verdict said the log could not be written | the four places a line goes fail apart, and the verdict names the one that did |
+| 10 | a carriage return held in case a newline followed was written into the text of a line flushed without one | it ends the line and is not part of it |
+| 11 | a `]` first in a character class, or a `[:alpha:]` inside one, closed the class in `--redact`'s list splitter | both read as a class does |
+| 12 | `ThrowawaySpec.Tick` and `OnTick` were read by `runIn` and set by nothing, `Validate` refused a negative `--tick` no command could pass, and `WithUserEnvironment` had no caller but its own case | removed |
+| 13 | `wsl-toolkit examples`, the canonical commands inside the binary, named no `distro` or `hostaddress` command, so an agent holding only the executable was never shown what replaced the deleted product | four examples, and the manual regenerated |
+
+#### 2. The guard mutation: can each guard fail
+
+It looked at every mutation row the change adds, at each case's name against
+what the case checks, at the guards that had no case at all, and at the
+harness's own verdicts.
+
+| # | found | now |
+| --- | --- | --- |
+| 1 | six guards with no case: removal refusing a creation in progress, the unregister read-back, the claim refusing a taken name, the export size floor, the four outcomes of a command's verdict, and a refusal's code against a failure's | a case each, and a row each that went red |
+| 2 | the user environment's symlink and ownership refusals had never run: the only case read the prologue as text, through a function nothing else called | a case runs it through a real shell, as root in `golang:1.25` for the ownership half, where the symlink row went red |
+| 3 | one row written in this pass did not compile with its guard removed, which the harness reports as broken rather than proved | rewritten to compile, and red |
+| 4 | the acceptance case "the two pre-existing distributions are still registered and untouched" checks every distribution registered before the run, seven on this host, and checks registration alone | named for what it checks |
+| 5 | ⛔ not fixed here: `repo mutate` never runs a row's cases unmutated, so a case already red reads as "went red" | every suite ran green before each proof in this pass, and the harness gets an entry of its own in step 2 of the work order |
+
+#### 3. The claim audit: which published sentence is unbacked
+
+It looked at every sentence the change publishes about the tool and its release,
+against the binary, the tree, the GitHub API and this host.
+
+| # | the claim | measured | now |
+| --- | --- | --- | --- |
+| 1 | `RULES.md`: a release carries the executables and nothing else, read from `gh release list` | the latest release, `wsl-toolkit-v2.0.2`, carries `wsl-toolkit.ps1` and `launcher.ps1`, and no release has been cut from this tree | qualified from `wsl-toolkit-v3.0.0`, and `docs/consumers.md` says the manual on `main` describes `main` |
+| 2 | the maintainer README: `repo release` refuses "HEAD absent from every remote branch" | it refuses a checkout off `main`, a remote that is not this repository or carries a credential, and a HEAD that is not the live `main` | rewritten |
+| 3 | `shell.md` section 7: the native fix is `--command-base64`, decoded in the guest, beside a bullet on unlinking the decoded file | the host decodes it, the bytes travel framed on stdin, and nothing in the tree decodes in a guest | rewritten; the bullet's story was already in `docs/HISTORY/wsl-toolkit.md` |
+| 4 | `shell.md` section 8: `wsl-toolkit`'s launcher splats the same argument list | the launcher is deleted | the rule is stated without it |
+| 5 | `release.yml` comments name the launcher twice and a bundle that disagrees with its source | neither exists | rewritten |
+| 6 | Go comments name `-ScriptArg`, `-CommandTimeoutSeconds`, the launcher and `script` | deleted names | rewritten |
+| 7 | the manual: `--probe-timeout` bounds each question the tool asks the distribution | the `/etc/profile.d` step ran under a fixed minute, and a file written into the distribution runs under a fixed two | the step reads the bound, and the manual names what it covers and what keeps its own |
+| 8 | the manual: `compare` reports lines and bytes | the bytes are the recorded text, after redaction and the line bound | said so |
+| 9 | the manual: `--dry-run` validates every option | door sweep row 5: three refusals passed it | the manual says it refuses what the run refuses, which is true now |
+
+Verified and left alone: a raw fetch of `wsl-toolkit.ps1` and `launcher.ps1` at
+`main` answers 404 and at `97c80f2` answers 200; `main` requires three checks and
+one review, refuses force pushes and deletion, and exempts admins.
+
+#### 4. The driven pass: what the suite could not show
+
+It looked at the finished port on this host, before and after the fixes above.
+
+| # | found | now |
+| --- | --- | --- |
+| 1 | 2,169 `distro list` calls beside three ephemeral creations: one failed with "wsl-toolkit: process: exit status 0xffffffff", naming neither the call nor what it printed | a failed listing names its query and what `wsl.exe` printed, and one that failed for no stated reason is asked once more. 2,746 calls beside six creations then failed 0 times. ⚠ The transient is rare, so that result is consistent with the fix and does not show the retry firing |
+| 2 | door sweep rows 5, 6 and 8, and the removal half of row 7, each reproduced on this host before it was changed. ⚠ A failed export cannot be produced on demand, so row 7's snapshot half is a case and not a drive | each driven again after: exit 2 with the reason and no prompt, and `--yes` named where there is no console |
+| 3 | door sweep row 9, driven: a reader that closed stdout after one line | the verdict named the closed stdout, and the event log held all six stdout lines, the stderr line and exit 3 |
+
+### Measured
+
+On Windows 11 Pro 26200, go 1.27.0, on 2026-09-13.
+
+```text
+probe         doctor.ps1 exit 0 in 19.56 s
+opening gate  exit 1 in 40.88 s, 2 problems: mixed line endings in
+              acceptance.ps1 and consumer.ps1
+go, windows   TEMP at the 8.3 short path. tools/windows/wsl-toolkit 284
+              cases, 281 passed and 3 skipped on this host; tools/repo 39;
+              tools/check 35. Every module exit 0
+go, linux     golang:1.25, check-go.sh: ok. The three cases Windows skips
+              passed there, as uid 0
+shellcheck    ubuntu:24.04, ShellCheck 0.9.0: 25 scripts clean
+mutation      168 rows inherited, 24 added and 1 moved: 192. The whole table
+              on Windows, 15:32:09Z to 15:52:32Z: 189 proved, 3 skipped on
+              this host, 0 theatre, 0 broken. Two of the three skipped rows
+              went red in golang:1.25, and CI's ubuntu job runs all three
+acceptance    90 of 90 against this host, 15:24:28Z to 15:30:06Z
+concurrency   2,169 distro list calls beside 3 creations: 1 failure. After
+              the fix, 2,746 beside 6: 0
+gate          19 of 19 in 29.5 s
+teardown      eph-s1-probe, eph-wsl73n-main and eph-wsl73s-main removed and
+              read back gone, the last after its registered BasePath was read
+              and matched the checkout's baseline directory; the two
+              comparison state directories deleted
+```
+
+### The acceptance command
+
+```text
+run at 2026-09-13T15:53:39Z
+  ok     docs
+  ok     markers
+  ok     record
+  ok     one-home
+  ok     control-bytes
+  ok     placeholders
+  ok     shell
+  ok     removals
+  ok     line-endings
+  ok     size
+  ok     changelog
+  ok     secrets
+  ok     shellcheck
+  ok     powershell
+  ok     package-table
+  ok     go
+  ok     mutations
+  ok     commits
+  ok     hooks
+
+VERDICT: the tree agrees with itself.
+EXIT=0
+```
+
+The runner, over the same build:
+
+```text
+acceptance: 90 case(s) passed against a real machine.
+```
+
+The pass conditions:
+
+- ⭐ the port complete: the parity map above, beside the comparison with the
+  script on this host that the second and third checkpoints made before it was
+  deleted;
+- `wsl-toolkit.ps1` and the product around it gone from the tree, the release
+  workflow and CI. `scripts/windows/wsl-toolkit/` does not exist, and the two
+  `.ps1` files beside the executable are its real-host runner, `acceptance.ps1`,
+  and its published-release smoke, `consumer.ps1`;
+- pull request 31 closed. ⚠ The comment naming the commits that finish the work
+  can only follow the push, and `PROGRESS.md` records it;
+- every suite green, the gate green, and every row the work adds proved or, where
+  this host skips its case, proved in `golang:1.25` or by CI's ubuntu job;
+- the docs this change touched corrected, as the claim audit lists;
+- the tree clean at the closing commit. ⚠ CI on it is read after the push, and
+  `PROGRESS.md` records it;
+- four reviews recorded above, each naming what it looked at that the others did
+  not.

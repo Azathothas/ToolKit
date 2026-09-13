@@ -630,7 +630,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 
 	switch {
 	case runCtx.Err() != nil && ctx.Err() == nil:
-		// ⭐ 124, as coreutils' timeout and -CommandTimeoutSeconds both report.
+		// ⭐ 124, as coreutils' timeout and `distro run --timeout` both report.
 		res.TimedOut, res.Exit = true, 124
 		res.Error = fmt.Sprintf("the job passed its %s deadline", spec.Timeout)
 		// ⛔ ONE BUDGET FOR EVERYTHING THAT REMAINS. The kill had two minutes of

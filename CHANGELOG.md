@@ -21,6 +21,41 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-13
 
+### 2026-09-13T15:53:39Z: the PowerShell product is gone, and the executable does everything it did
+
+**Record:** `WSL-73` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md): its three
+checkpoints, and its closing, which carries the parity map, the reviews and the
+acceptance output.
+**Deployed:** no deploy. This is `main` only. The product version is `3.0.0` and no
+tag was cut, so the latest release is still `wsl-toolkit-v2.0.2`, which carries the
+PowerShell product.
+**Closes:** `WSL-73`. [Pull request 31](https://github.com/Azathothas/ToolKit/pull/31)
+was reviewed, nothing in it was merged, and it is closed with the review on it.
+
+⛔ **A BREAK THE OPERATOR RULED.** `wsl-toolkit.ps1`, its launcher, the copy the
+executable carried and `wsl-toolkit script` are deleted: a raw fetch of the script at
+`main` answers 404, and a commit before the deletion still serves it.
+[`docs/consumers.md`](docs/consumers.md) says so, and each consumer migrates on its
+own from the manual.
+
+⭐ **Every capability the script had is a native command.** Its 12 actions and 40
+parameters are `wsl-toolkit distro list|new|run|enter|remove|purge|snapshot|replay|compare`,
+`hostaddress`, `doctor` and `resources`, with `--json`, a generated manual and this
+tool's exit codes. A throwaway distribution is this tool's when WSL registered its
+disk inside the state directory, not when its name carries `eph-`.
+
+⛔ **A defect the script carried did not come across.** A command that read stdin
+consumed the lines of the script after it, and the run exited 0 over commands that
+never ran. Commands now travel framed, with `/dev/null` as their stdin, through
+`distro` and `base exec` alike.
+
+⚠ **Reviewing and driving the finished port changed more than it added.** A dry run
+passed three things the real run refuses; a removal asked for confirmation before
+refusing; a closed stdout ended the event log before its exit; a second run on one
+state directory could fail the first by removing its own marker; and a snapshot could
+replace one another run wrote under the same tag. Each is fixed with a case that went
+red when its guard was removed.
+
 ### 2026-09-13T04:19:42Z: Muse Code installed, signed in, and driven by an agent from Windows
 
 **Record:** `WSL-69` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

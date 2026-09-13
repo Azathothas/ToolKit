@@ -111,10 +111,14 @@ pwsh -NoProfile -File scripts/common/repo.ps1 release
 pwsh -NoProfile -File scripts/common/repo.ps1 release --publish
 ```
 
-The default is read-only. It refuses a failing gate, a dirty tree, a version
-declared other than exactly once, HEAD absent from every remote branch, or a
-tag that already exists locally or remotely. `--publish` creates and pushes the
-annotated tag only after those checks pass.
+The default is read-only. It refuses a failing gate, a dirty tree, a checkout
+not on `main`, a version declared other than exactly once, a remote whose fetch
+or push URL is not `github.com/Azathothas/ToolKit` or carries a credential, a
+HEAD that is not that remote's live `main`, and a tag that already exists
+locally or remotely. `--publish` creates and pushes the annotated tag only after
+those checks pass, then reads the tag back from the remote: a push that errored
+after the remote accepted it counts as published, and the local tag is removed
+only when the read-back proves the remote has none.
 
 [`release.yml`](../../../.github/workflows/release.yml) checks the tag in a
 clean checkout, runs the shared Go proof, cross-compiles amd64 and arm64 Windows

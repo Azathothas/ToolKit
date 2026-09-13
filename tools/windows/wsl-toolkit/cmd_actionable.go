@@ -187,6 +187,10 @@ var examples = []struct{ What, Command string }{
 	{"inspect and remove one retained job", "wsl-toolkit inspect JOB-ID ; wsl-toolkit gc --job JOB-ID --apply"},
 	{"two agents, isolated from each other", "wsl-toolkit --instance two ready --ensure"},
 	{"what this tool is holding, and release it", "wsl-toolkit resources ; wsl-toolkit gc --apply"},
+	{"a whole throwaway distribution, removed when its command ends", `wsl-toolkit distro new --image alpine --ephemeral -c 'cat /etc/os-release'`},
+	{"keep one, run in it again, then remove it", `wsl-toolkit distro new --image debian --name build-box ; wsl-toolkit distro run --name build-box -c 'uname -a' ; wsl-toolkit distro remove --name build-box --yes`},
+	{"a long command in one, watched, recorded and compared with an earlier run", `wsl-toolkit distro run --name build-box --log-profile ci --event-log .\run.jsonl -c 'make' ; wsl-toolkit distro compare --before .\earlier.jsonl --after .\run.jsonl`},
+	{"the address a distribution reaches this host at", "wsl-toolkit hostaddress"},
 	{"a caller that cannot reach wsl.exe", "wsl-toolkit helper serve --detach"},
 	{"move to a newer release", "wsl-toolkit selfupdate --check"},
 }

@@ -69,6 +69,22 @@ const snapshotExportTimeout = 30 * time.Minute
 // while reporting success.
 const snapshotFloor = int64(1) << 20
 
+// refusal marks an error as this tool declining to act before it changed
+// anything, which a command answers with exit 2, apart from an attempt that
+// failed partway, which it answers with exit 1.
+type refusal struct{ error }
+
+func (r refusal) Unwrap() error { return r.error }
+
+func refuse(format string, args ...any) error { return refusal{fmt.Errorf(format, args...)} }
+
+// IsRefusal reports whether an error is a refusal rather than a failed attempt.
+// A distribution this tool does not own is one.
+func IsRefusal(err error) bool {
+	var r refusal
+	return errors.As(err, &r) || errors.Is(err, ErrNotOwned)
+}
+
 var throwawayNameShape = regexp.MustCompile(`^eph-[a-z0-9]([a-z0-9._-]{0,54}[a-z0-9])?$`)
 
 // ValidThrowawayName is the rule for a name this tool may create or act on.
@@ -304,6 +320,11 @@ type Throwaways struct {
 	log   func(string)
 	disks func() (map[string]string, error)
 	now   func() time.Time
+	// readDir and sleep are os.ReadDir and time.Sleep when nil. A case replaces
+	// them to produce an entry that vanishes mid-walk, or a registration that
+	// outlives its unregister, neither of which a real machine does on demand.
+	readDir func(string) ([]os.DirEntry, error)
+	sleep   func(time.Duration)
 }
 
 // NewThrowaways binds the lifecycle to this host. ⛔ It creates nothing, so a
@@ -385,30 +406,71 @@ func (t *Throwaways) List(ctx context.Context) (ThrowawayReport, error) {
 		ownedDirs[strings.ToLower(name)] = true
 		rep.Owned = append(rep.Owned, d)
 	}
-	rep.Leftovers, rep.Snapshots = t.heldFiles(ownedDirs)
+	rep.Leftovers, rep.Snapshots, err = t.heldFiles(ownedDirs)
+	if err != nil {
+		return rep, err
+	}
 	return rep, nil
 }
 
+func (t *Throwaways) readDirectory(path string) ([]os.DirEntry, error) {
+	if t.readDir != nil {
+		return t.readDir(path)
+	}
+	return os.ReadDir(path)
+}
+
+// vanished reports an entry that was listed and was gone by the time it was
+// looked at.
+//
+// ⛔ ANOTHER RUN REMOVED IT, which is not an unreadable inventory. A creation
+// removes its marker and its rootfs archive, and an export renames its partial
+// into place, while this walk is between listing a directory and reading an
+// entry. Failing the whole walk for that would fail every command of a second
+// run sharing the state directory, so the entry is skipped and every other
+// error still stops the walk.
+func vanished(err error) bool { return errors.Is(err, os.ErrNotExist) }
+
 // heldFiles walks `<home>/distros` for what is not a registered disk.
-func (t *Throwaways) heldFiles(ownedDirs map[string]bool) (leftovers, snapshots []HeldFile) {
+func (t *Throwaways) heldFiles(ownedDirs map[string]bool) (leftovers, snapshots []HeldFile, err error) {
 	leftovers, snapshots = []HeldFile{}, []HeldFile{}
-	entries, err := os.ReadDir(t.dir)
+	entries, err := t.readDirectory(t.dir)
+	if errors.Is(err, os.ErrNotExist) {
+		if _, statErr := os.Lstat(t.dir); errors.Is(statErr, os.ErrNotExist) {
+			return leftovers, snapshots, nil
+		}
+	}
 	if err != nil {
-		return leftovers, snapshots
+		return leftovers, snapshots, fmt.Errorf("read throwaway state %s: %w", t.dir, err)
 	}
 	for _, e := range entries {
 		name := e.Name()
 		path := filepath.Join(t.dir, name)
 		info, err := e.Info()
-		if err != nil {
+		if vanished(err) {
 			continue
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("read throwaway state %s: %w", path, err)
 		}
 		switch {
 		case e.IsDir() && name == "snapshots":
-			snaps, _ := os.ReadDir(path)
+			snaps, err := t.readDirectory(path)
+			if vanished(err) {
+				continue
+			}
+			if err != nil {
+				return nil, nil, fmt.Errorf("read snapshot state %s: %w", path, err)
+			}
 			for _, s := range snaps {
 				si, err := s.Info()
-				if err != nil || s.IsDir() {
+				if vanished(err) {
+					continue
+				}
+				if err != nil {
+					return nil, nil, fmt.Errorf("read snapshot state %s: %w", filepath.Join(path, s.Name()), err)
+				}
+				if s.IsDir() {
 					continue
 				}
 				held := HeldFile{Path: filepath.Join(path, s.Name()), Bytes: si.Size(), Known: true, ModTime: si.ModTime().UTC()}
@@ -437,7 +499,7 @@ func (t *Throwaways) heldFiles(ownedDirs map[string]bool) (leftovers, snapshots 
 				Bytes: info.Size(), Known: true, ModTime: info.ModTime().UTC()})
 		}
 	}
-	return leftovers, snapshots
+	return leftovers, snapshots, nil
 }
 
 // Owned answers one name, and refuses it unless this tool owns it and WSL has
@@ -463,7 +525,7 @@ func ownedIn(rep ThrowawayReport, name, distrosDir string) (ThrowawayDistro, err
 	for _, d := range rep.Owned {
 		if strings.EqualFold(d.Name, name) {
 			if d.Creating != nil {
-				return ThrowawayDistro{}, fmt.Errorf("%s is being created by another run, started %s. Wait for that run to finish",
+				return ThrowawayDistro{}, refuse("%s is being created by another run, started %s. Wait for that run to finish",
 					d.Name, d.Creating.Format(time.RFC3339))
 			}
 			return d, nil
@@ -474,7 +536,7 @@ func ownedIn(rep ThrowawayReport, name, distrosDir string) (ThrowawayDistro, err
 			return ThrowawayDistro{}, throwawayOwnership(d.Name, d.Disk, distrosDir)
 		}
 	}
-	return ThrowawayDistro{}, fmt.Errorf("%s is not a registered throwaway distribution. wsl-toolkit distro list names the ones this tool made", name)
+	return ThrowawayDistro{}, refuse("%s is not a registered throwaway distribution. wsl-toolkit distro list names the ones this tool made", name)
 }
 
 func (t *Throwaways) readOrigin(name string) *ThrowawayOrigin {
@@ -536,10 +598,9 @@ type ThrowawaySpec struct {
 	// itself: the smoke probe, systemd's PID 1 and the image configuration. The
 	// caller's command is bounded by Timeout and never by this.
 	ProbeTimeout time.Duration
-	Tick         time.Duration
-	OnTick       func(TickEvent)
-	// Log, when set, relays the command and records it. It is opened by the
-	// caller before anything is created and begun when the command starts.
+	// Log, when set, relays the command and records it, and carries the
+	// heartbeat. It is opened by the caller before anything is created and begun
+	// when the command starts.
 	Log    *RunLog
 	Stdout io.Writer
 	Stderr io.Writer
@@ -576,8 +637,6 @@ func (s ThrowawaySpec) Validate() error {
 		return errors.New("the logging options observe a command, and no command was given")
 	case s.Timeout < 0:
 		return fmt.Errorf("--timeout %s is negative. Pass 0 for no deadline, or a positive duration", s.Timeout)
-	case s.Tick < 0:
-		return fmt.Errorf("--tick %s is negative. Pass 0 for no heartbeat, or a positive duration", s.Tick)
 	case s.ProbeTimeout != 0 && (s.ProbeTimeout < 5*time.Second || s.ProbeTimeout > time.Hour):
 		return fmt.Errorf("--probe-timeout %s is outside 5s to 1h", s.ProbeTimeout)
 	}
@@ -617,8 +676,8 @@ type CommandOutcome struct {
 	StderrBytes int64  `json:"stderr_bytes"`
 	DurationMS  int64  `json:"duration_ms"`
 	Error       string `json:"error,omitempty"`
-	// LogError says the relay could not write a log the caller asked for. The
-	// command's own exit is still Exit; the log is incomplete.
+	// LogError names where the relay could not write: this process's own
+	// streams, or a log the caller asked for. The command's own exit is still Exit.
 	LogError string `json:"log_error,omitempty"`
 }
 
@@ -678,16 +737,11 @@ func (t *Throwaways) Create(ctx context.Context, spec ThrowawaySpec) (ThrowawayR
 		t.log("no registered distribution was built from " + spec.Image + ", so one is imported")
 	}
 
-	rootfs, snapshot, err := t.resolveTarball(spec.Tarball)
+	pre, err := t.Preflight(ctx, spec)
 	if err != nil {
 		return res, err
 	}
-	var engine *Engine
-	if spec.Image != "" {
-		if engine, err = FindEngine(ctx); err != nil {
-			return res, fmt.Errorf("a distribution built from an image needs a host engine: %w", err)
-		}
-	}
+	rootfs, snapshot, engine := pre.Rootfs, pre.Snapshot, pre.Engine
 	builtFrom := spec.Image
 	if builtFrom == "" {
 		builtFrom = spec.Tarball
@@ -783,24 +837,93 @@ func (t *Throwaways) Create(ctx context.Context, spec ThrowawaySpec) (ThrowawayR
 	return res, nil
 }
 
-// resolveTarball answers the archive a `--tarball` value names: a file wins, and
-// a snapshot tag is looked for only when no such file exists.
+// NewPreflight is what a `distro new` resolves before it changes anything.
+type NewPreflight struct {
+	// Engine is the host engine an --image is pulled with, and nil for --tarball.
+	Engine *Engine
+	// Rootfs is the archive a --tarball names, and Snapshot the tag when it named
+	// a snapshot.
+	Rootfs   string
+	Snapshot string
+}
+
+// Preflight answers every refusal a `distro new` makes before it changes
+// anything: the archive or snapshot a --tarball names, a host engine for an
+// --image, and a --name that is already taken.
+//
+// ⛔ THE PLAN AND THE CREATION READ THIS ONE ANSWER, so a dry run cannot pass
+// what the real run refuses. Measured before it existed: a tag this state
+// directory does not hold, a taken name and a host with no engine each exited 0
+// under --dry-run, and 2 without it.
+func (t *Throwaways) Preflight(ctx context.Context, spec ThrowawaySpec) (NewPreflight, error) {
+	var pre NewPreflight
+	var err error
+	if pre.Rootfs, pre.Snapshot, err = t.resolveTarball(spec.Tarball); err != nil {
+		return pre, err
+	}
+	if spec.Image != "" {
+		if pre.Engine, err = FindEngine(ctx); err != nil {
+			return pre, refuse("a distribution built from an image needs a host engine: %w", err)
+		}
+	}
+	if strings.TrimSpace(spec.Name) != "" {
+		name, _, err := ThrowawayName(spec.Name, "")
+		if err != nil {
+			return pre, err
+		}
+		if err := t.nameFree(name); err != nil {
+			return pre, err
+		}
+	}
+	return pre, nil
+}
+
+// nameFree refuses a requested name that is registered or already has a
+// directory.
+//
+// ⚠ A CHECK AND NOT THE CLAIM. Another run can take the name after this
+// answers, which is why claim takes it with os.Mkdir.
+func (t *Throwaways) nameFree(name string) error {
+	disks, err := t.disks()
+	if err != nil {
+		return err
+	}
+	for existing := range disks {
+		if strings.EqualFold(existing, name) {
+			return refuse("%s is already registered. Choose another --name, or remove it first", name)
+		}
+	}
+	if _, err := os.Lstat(t.distroDir(name)); err == nil {
+		return refuse("%s already has a directory under %s. Choose another --name, or remove it first", name, t.dir)
+	}
+	return nil
+}
+
+// resolveTarball answers the archive a `--tarball` value names: a path names a
+// file, and a bare word names a snapshot this state directory holds.
+//
+// ⛔ ONLY A PATH IS LOOKED FOR ON DISK. The command layer resolves a relative
+// path against the project and hands over an absolute one, and hands a bare word
+// on only when no file of that name is there. Statting the word again here would
+// read it against whatever directory this process started in, which is a second
+// resolution of one value that can disagree with the first.
 func (t *Throwaways) resolveTarball(value string) (path, snapshot string, err error) {
 	if value == "" {
 		return "", "", nil
 	}
-	if st, statErr := os.Stat(value); statErr == nil && !st.IsDir() {
-		abs, err := filepath.Abs(value)
-		return abs, "", err
-	}
-	if tag, tagErr := SnapshotTag(value); tagErr == nil {
+	if filepath.IsAbs(value) || strings.ContainsAny(value, `/\`) {
+		if st, statErr := os.Stat(value); statErr == nil && !st.IsDir() {
+			abs, err := filepath.Abs(value)
+			return abs, "", err
+		}
+	} else if tag, tagErr := SnapshotTag(value); tagErr == nil {
 		p := filepath.Join(t.snapshotDir(), tag+".tar")
 		if st, statErr := os.Stat(p); statErr == nil && !st.IsDir() {
 			t.log("--tarball " + value + " names the snapshot " + p + ", which carries whatever that distribution held")
 			return p, tag, nil
 		}
 	}
-	return "", "", fmt.Errorf("--tarball %q is neither a file nor a snapshot tag this state directory holds. "+
+	return "", "", refuse("--tarball %q is neither a file nor a snapshot tag this state directory holds. "+
 		"wsl-toolkit distro list names the snapshots", value)
 }
 
@@ -840,7 +963,7 @@ func (t *Throwaways) claim(requested, builtFrom string) (string, error) {
 		// ⛔ A NAME THE CALLER GAVE is their answer being wrong, and using a
 		// different one would be worse than refusing. A DRAWN one is drawn again.
 		if !drawn {
-			return "", fmt.Errorf("%s is already registered or already has a directory under %s. Choose another --name, or remove it first", name, t.dir)
+			return "", refuse("%s is already registered or already has a directory under %s. Choose another --name, or remove it first", name, t.dir)
 		}
 	}
 	return "", errors.New("eight drawn names were all taken, which a four-character suffix makes implausible. Pass --name")
@@ -897,7 +1020,7 @@ func (t *Throwaways) removeDir(name string) error {
 		if lastErr = RemoveInside(t.dir, dir); lastErr == nil {
 			return nil
 		}
-		time.Sleep(time.Duration(attempt) * 300 * time.Millisecond)
+		t.pause(time.Duration(attempt) * 300 * time.Millisecond)
 	}
 	return lastErr
 }
@@ -984,7 +1107,7 @@ func (t *Throwaways) carryOciEnv(ctx context.Context, name string, engine *Engin
 	for _, s := range skipped {
 		t.log("--oci-env skipped " + s)
 	}
-	code, err := t.wsl.Exec(ctx, ExecRequest{Distro: name, User: "root", Script: []byte("mkdir -p /etc/profile.d\n"), Timeout: time.Minute})
+	code, err := t.wsl.Exec(ctx, ExecRequest{Distro: name, User: "root", Script: []byte("mkdir -p /etc/profile.d\n"), Timeout: timeout})
 	if err != nil || code != 0 {
 		return nil, nil, fmt.Errorf("could not create /etc/profile.d in %s (exit %d)", name, code)
 	}
@@ -1031,26 +1154,20 @@ func ociEnvProfile(cfg imageConfig, ref string) (profile string, carried, skippe
 func (t *Throwaways) runIn(ctx context.Context, name string, spec ThrowawaySpec) CommandOutcome {
 	var outN, errN atomic.Int64
 	started := time.Now()
-	var deadline time.Time
-	if spec.Timeout > 0 {
-		deadline = started.Add(spec.Timeout)
-	}
-	stdout, stderr, onTick := spec.Stdout, spec.Stderr, spec.OnTick
+	stdout, stderr := spec.Stdout, spec.Stderr
 	facts := t.tickFacts(name)
 	if spec.Log != nil {
-		// The relay reports silence itself, so the periodic heartbeat is not
-		// started beside it.
+		// ⭐ THE HEARTBEAT IS THE RELAY'S. It fires on silence rather than on a
+		// timer, and reads the distribution's state and disk when it does.
 		spec.Log.Begin(name, facts)
-		stdout, stderr, onTick = spec.Log.Stdout(), spec.Log.Stderr(), nil
+		stdout, stderr = spec.Log.Stdout(), spec.Log.Stderr()
 	}
-	tk := startTicker(ctx, spec.Tick, TickEvent{ID: name, Label: name}, deadline, &outN, &errN, onTick)
 	code, err := t.wsl.Exec(ctx, ExecRequest{
 		Distro: name, User: spec.User, Script: ComposePayload(spec.Script, spec.Env, spec.UserEnv),
 		Timeout: spec.Timeout, Login: true, Payload: true,
 		Stdout: &countingWriter{to: stdout, count: &outN},
 		Stderr: &countingWriter{to: stderr, count: &errN},
 	})
-	tk.Stop()
 	elapsed := time.Since(started)
 	out := CommandOutcome{Exit: code, StdoutBytes: outN.Load(), StderrBytes: errN.Load(), DurationMS: elapsed.Milliseconds()}
 	if err != nil {
@@ -1134,8 +1251,8 @@ func (t *Throwaways) Run(ctx context.Context, name string, spec ThrowawaySpec) (
 	if err := assertGuestUser(spec.User); err != nil {
 		return CommandOutcome{}, err
 	}
-	if spec.Timeout < 0 || spec.Tick < 0 {
-		return CommandOutcome{}, errors.New("--timeout and --tick take 0 or a positive duration")
+	if spec.Timeout < 0 {
+		return CommandOutcome{}, fmt.Errorf("--timeout %s is negative. Pass 0 for no deadline, or a positive duration", spec.Timeout)
 	}
 	if _, err := t.Owned(ctx, name); err != nil {
 		return CommandOutcome{}, err
@@ -1151,12 +1268,6 @@ type ThrowawayRemoval struct {
 	Deleted      string `json:"deleted,omitempty"`
 }
 
-// Remove unregisters one owned throwaway distribution and deletes its directory,
-// then reads both back.
-//
-// ⛔ A CREATION IN PROGRESS IS REFUSED unless ignoreCreating says otherwise:
-// removing a distribution another run is still building fails that run in a way
-// it cannot explain.
 // removalTarget is what one removal acts on: the registration, when there is
 // one, and the directory.
 //
@@ -1181,10 +1292,10 @@ func (t *Throwaways) removalTarget(name string, ignoreCreating bool) (registered
 			return "", err
 		}
 	} else if _, statErr := os.Lstat(t.distroDir(name)); errors.Is(statErr, os.ErrNotExist) {
-		return "", fmt.Errorf("%s is not registered and %s holds nothing for it", name, t.dir)
+		return "", refuse("%s is not registered and %s holds nothing for it", name, t.dir)
 	}
 	if since, fresh := t.creating(name); fresh && !ignoreCreating {
-		return "", fmt.Errorf("%s is being created by another run, started %s. Wait for it, or remove it with distro purge --apply --include-live",
+		return "", refuse("%s is being created by another run, started %s. Wait for it, or remove it with distro purge --apply --include-live",
 			name, since.Format(time.RFC3339))
 	}
 	return registered, nil
@@ -1210,6 +1321,12 @@ func (t *Throwaways) SnapshotPath(tag string) string {
 	return filepath.Join(t.snapshotDir(), tag+".tar")
 }
 
+// Remove unregisters one owned throwaway distribution and deletes its directory,
+// then reads both back.
+//
+// ⛔ A CREATION IN PROGRESS IS REFUSED unless ignoreCreating says otherwise:
+// removing a distribution another run is still building fails that run in a way
+// it cannot explain.
 func (t *Throwaways) Remove(ctx context.Context, name string, ignoreCreating bool) (ThrowawayRemoval, error) {
 	res := ThrowawayRemoval{Schema: ThrowawayRemoveSchema, Name: name}
 	registered, err := t.removalTarget(name, ignoreCreating)
@@ -1222,26 +1339,8 @@ func (t *Throwaways) Remove(ctx context.Context, name string, ignoreCreating boo
 		if err := t.wsl.unregisterDistro(ctx, registered); err != nil {
 			return res, err
 		}
-		// ⛔ READ BACK. `wsl --unregister` answering is not the same fact as the
-		// registration being gone.
-		gone := false
-		for attempt := 1; attempt <= 5 && !gone; attempt++ {
-			after, err := t.disks()
-			if err != nil {
-				return res, err
-			}
-			gone = true
-			for n := range after {
-				if strings.EqualFold(n, registered) {
-					gone = false
-				}
-			}
-			if !gone {
-				time.Sleep(time.Duration(attempt) * 300 * time.Millisecond)
-			}
-		}
-		if !gone {
-			return res, fmt.Errorf("wsl --unregister %s answered and the distribution is still registered", registered)
+		if err := t.waitUnregistered(registered); err != nil {
+			return res, err
 		}
 		res.Unregistered = true
 	}
@@ -1253,6 +1352,40 @@ func (t *Throwaways) Remove(ctx context.Context, name string, ignoreCreating boo
 		t.log("the creation marker is still on disk: " + err.Error())
 	}
 	return res, nil
+}
+
+// waitUnregistered reads WSL's registrations back until a name is gone.
+//
+// ⛔ `wsl --unregister` ANSWERING IS NOT THE SAME FACT AS THE REGISTRATION BEING
+// GONE, and a removal that reported one for the other is the delete this tool
+// reports without checking. WSL releases it asynchronously, so the read is
+// repeated with a growing pause before it is called a failure.
+func (t *Throwaways) waitUnregistered(name string) error {
+	for attempt := 1; attempt <= 5; attempt++ {
+		after, err := t.disks()
+		if err != nil {
+			return err
+		}
+		gone := true
+		for n := range after {
+			if strings.EqualFold(n, name) {
+				gone = false
+			}
+		}
+		if gone {
+			return nil
+		}
+		t.pause(time.Duration(attempt) * 300 * time.Millisecond)
+	}
+	return fmt.Errorf("wsl --unregister %s answered and the distribution is still registered", name)
+}
+
+func (t *Throwaways) pause(d time.Duration) {
+	if t.sleep != nil {
+		t.sleep(d)
+		return
+	}
+	time.Sleep(d)
 }
 
 // PurgePlan is what `distro purge` would remove, and what it did.
@@ -1393,7 +1526,7 @@ func (t *Throwaways) Snapshot(ctx context.Context, name, tag string, force bool)
 	res := SnapshotResult{Schema: ThrowawaySnapshotSchema, Name: name}
 	tag, err := SnapshotTag(tag)
 	if err != nil {
-		return res, err
+		return res, refusal{err}
 	}
 	res.Tag = tag
 	if _, err := t.Owned(ctx, name); err != nil {
@@ -1401,11 +1534,8 @@ func (t *Throwaways) Snapshot(ctx context.Context, name, tag string, force bool)
 	}
 	out := filepath.Join(t.snapshotDir(), tag+".tar")
 	res.Path = out
-	if _, err := os.Lstat(out); err == nil {
-		if !force {
-			return res, fmt.Errorf("a snapshot tagged %s already exists at %s. Pass --force to replace it", tag, out)
-		}
-		res.Replaced = true
+	if _, err := os.Lstat(out); err == nil && !force {
+		return res, refuse("a snapshot tagged %s already exists at %s. Pass --force to replace it", tag, out)
 	}
 	if err := os.MkdirAll(t.snapshotDir(), 0o700); err != nil {
 		return res, err
@@ -1425,24 +1555,58 @@ func (t *Throwaways) Snapshot(ctx context.Context, name, tag string, force bool)
 		_ = os.Remove(partial)
 		return res, fmt.Errorf("wsl --export %s: %w: %s", name, classifyWslFailure(outText, stderr, err), firstLine(outText+stderr))
 	}
-	size, ok := FileSize(partial)
-	if !ok || size < snapshotFloor {
-		_ = os.Remove(partial)
-		return res, fmt.Errorf("wsl --export %s answered and wrote %d bytes, which is not a rootfs archive", name, size)
+	size, err := acceptExport(name, partial)
+	if err != nil {
+		return res, err
 	}
-	if res.Replaced {
-		if err := RemoveInside(t.dir, out); err != nil {
-			_ = os.Remove(partial)
-			return res, fmt.Errorf("the snapshot being replaced could not be removed: %w", err)
-		}
-	}
-	if err := os.Rename(partial, out); err != nil {
+	if res.Replaced, err = publishSnapshot(partial, out, force); err != nil {
 		_ = os.Remove(partial)
 		return res, err
 	}
 	res.Bytes = size
 	t.log(fmt.Sprintf("snapshot %s: %s at %s. It carries whatever %s held", tag, HumanBytes(size), out, name))
 	return res, nil
+}
+
+// acceptExport refuses an export too small to be a rootfs archive, and removes
+// it, so an export that failed while answering success is not kept under a tag.
+func acceptExport(name, partial string) (int64, error) {
+	size, ok := FileSize(partial)
+	if !ok || size < snapshotFloor {
+		_ = os.Remove(partial)
+		return size, fmt.Errorf("wsl --export %s answered and wrote %d bytes, which is not a rootfs archive", name, size)
+	}
+	return size, nil
+}
+
+// publishSnapshot moves a finished export to its tag.
+//
+// ⛔ WITHOUT force IT NEVER REPLACES. The tag was free when the export began,
+// and an export takes minutes, so another run can write the same tag meanwhile.
+// A hard link is created only where nothing is, so the archive that got there
+// first is kept and this export is refused. A volume that cannot link is checked
+// and renamed, which is the same answer with a moment between the two.
+//
+// ⛔ WITH force IT IS ONE RENAME, so a failed replacement leaves the previous
+// complete archive in place rather than no archive at all.
+func publishSnapshot(partial, out string, force bool) (replaced bool, err error) {
+	_, statErr := os.Lstat(out)
+	exists := statErr == nil
+	if force {
+		return exists, os.Rename(partial, out)
+	}
+	if err := os.Link(partial, out); err == nil {
+		// The export is kept under its tag; a partial left behind by a failed
+		// removal here is a leftover purge collects, not a lost archive.
+		_ = os.Remove(partial)
+		return false, nil
+	} else if errors.Is(err, os.ErrExist) {
+		return false, refuse("a snapshot tagged %s appeared at %s while this export ran. It is kept, and this export is discarded. Pass --force to replace it", strings.TrimSuffix(filepath.Base(out), ".tar"), out)
+	}
+	if exists {
+		return false, refuse("a snapshot already exists at %s. It is kept, and this export is discarded. Pass --force to replace it", out)
+	}
+	return false, os.Rename(partial, out)
 }
 
 // findReusable is the newest owned distribution built from exactly this

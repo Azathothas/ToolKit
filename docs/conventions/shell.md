@@ -291,17 +291,15 @@ rather than warns, over every tracked text file.
   whatever the value happens to contain**, which is why no alphabet a caller
   keeps to is safe.
 
-  ⭐ **The fix is section 1's fix**, reached from a different direction: send the
-  payload as base64 and decode it in the guest. The native implementation is
-  `--command-base64` in
-  [`../../tools/windows/wsl-toolkit/cmd_distro.go`](../../tools/windows/wsl-toolkit/cmd_distro.go),
-  which rejects malformed base64 and is exclusive with the other command
-  channels.
-
-  ⚠ **Create the file, open it, unlink it, and only then decode into it.**
-  Writing it first and unlinking after reads the same in a diff and is not: a
-  redirect creates the file before the decode runs, so a guest with no `base64`
-  is left holding an empty one that nothing removes.
+  ⭐ **The fix is to keep the payload out of the argument list.** `wsl-toolkit`
+  never passes one as an argument: a container job's script travels as a file,
+  and a command for `distro` or `base exec` goes on the guest shell's stdin,
+  framed so the shell reads all of it before running any of it and the command's
+  own stdin is `/dev/null`: `FramePayload` in
+  [`../../tools/windows/wsl-toolkit/internal/toolkit/payload.go`](../../tools/windows/wsl-toolkit/internal/toolkit/payload.go).
+  A caller whose own shell would reach into the text first passes it as
+  `--command-base64`, which is section 1's channel, and the tool decodes it on
+  the host.
 - ⛔ **`wsl.exe` is one of the commands the path-conversion rule above applies
   to**, which is not obvious because `wsl.exe` is itself a Windows program.
   From Git Bash, `wsl -d D -- /bin/sh -lc ...` has `/bin/sh` rewritten to
@@ -438,8 +436,8 @@ rather than warns, over every tracked text file.
   the parameter binds a plausible number that is not the one anybody typed, and
   nothing warns.
 
-  ⚠ **A wrapper does not rescue it.** `wsl-toolkit`'s launcher splats the same
-  argument list into the inner script, and the inner binding is identical.
+  ⚠ **A wrapper does not rescue it.** A `.ps1` that splats the same argument
+  list into an inner script gets the identical binding there.
 
   ⭐ **So a list parameter takes `[string[]]` and splits its own value**, which
   makes a bad element a refusal. ⛔ Where the values are arbitrary text there is

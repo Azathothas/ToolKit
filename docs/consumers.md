@@ -92,6 +92,11 @@ cosign verify-blob --bundle wsl-toolkit-windows-amd64.exe.cosign.bundle --certif
 
 Never pipe a download into a shell. Save it, verify it, then run it.
 
+⚠ **The manual on `main` describes the executable built from `main`.**
+`wsl-toolkit version` names the release you hold, and `wsl-toolkit man --no-pager`
+is that release's own manual: a command the page names that your release does not
+register arrived in a later one.
+
 ⚠ **A pinned consumer does not get a fix by its being merged here.** Pinning
 protects a consumer from a change it did not review, which is exactly why it also
 withholds a fix it would have wanted.

@@ -5,6 +5,7 @@ package toolkit
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -337,7 +338,10 @@ func TestHeldFilesSeparateLeftoversFromSnapshots(t *testing.T) {
 	mk("snapshots/ready.tar", false)
 	mk("snapshots/.ready.abc.partial", false)
 	mk("unrelated.txt", false)
-	leftovers, snaps := tw.heldFiles(map[string]bool{"eph-registered": true})
+	leftovers, snaps, err := tw.heldFiles(map[string]bool{"eph-registered": true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	kinds := map[string]string{}
 	for _, f := range leftovers {
 		kinds[f.Kind+":"+f.Name] = f.Path
@@ -352,6 +356,263 @@ func TestHeldFilesSeparateLeftoversFromSnapshots(t *testing.T) {
 	}
 	if len(snaps) != 1 || snaps[0].Name != "ready" {
 		t.Errorf("snapshots = %+v, want the one complete archive", snaps)
+	}
+}
+
+func TestHeldFilesReportsAnUnreadableInventoryInsteadOfAnEmptyOne(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tw := &Throwaways{dir: path, now: time.Now}
+	if _, _, err := tw.heldFiles(nil); err == nil {
+		t.Fatal("an inventory root that is a file was reported as an empty inventory")
+	}
+}
+
+type fakeEntry struct {
+	name string
+	dir  bool
+	err  error
+}
+
+func (f fakeEntry) Name() string { return f.name }
+func (f fakeEntry) IsDir() bool  { return f.dir }
+func (f fakeEntry) Type() os.FileMode {
+	if f.dir {
+		return os.ModeDir
+	}
+	return 0
+}
+func (f fakeEntry) Info() (os.FileInfo, error) { return nil, f.err }
+
+func writeTestFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAnEntryThatVanishesMidWalkIsSkippedAndAnyOtherErrorStopsIt is the case for a
+// second run sharing the state directory: it removes its marker, its archive or
+// its snapshots directory between this walk listing a directory and reading the
+// entry.
+func TestAnEntryThatVanishesMidWalkIsSkippedAndAnyOtherErrorStopsIt(t *testing.T) {
+	dir := t.TempDir()
+	writeTestFile(t, filepath.Join(dir, "eph-orphan.tar"), "x")
+	adding := func(extra fakeEntry, gone string) func(string) ([]os.DirEntry, error) {
+		return func(path string) ([]os.DirEntry, error) {
+			if path == gone {
+				return nil, os.ErrNotExist
+			}
+			entries, err := os.ReadDir(path)
+			if path == dir {
+				entries = append(entries, extra)
+			}
+			return entries, err
+		}
+	}
+	tw := &Throwaways{dir: dir, now: time.Now}
+	for label, readDir := range map[string]func(string) ([]os.DirEntry, error){
+		"a marker removed after the listing":          adding(fakeEntry{name: "eph-other.creating", err: os.ErrNotExist}, ""),
+		"a snapshots directory removed after listing": adding(fakeEntry{name: "snapshots", dir: true}, filepath.Join(dir, "snapshots")),
+	} {
+		tw.readDir = readDir
+		leftovers, _, err := tw.heldFiles(nil)
+		if err != nil {
+			t.Errorf("%s failed the whole inventory: %v", label, err)
+			continue
+		}
+		if len(leftovers) != 1 || leftovers[0].Name != "eph-orphan" {
+			t.Errorf("%s: leftovers = %+v, want the one orphan archive", label, leftovers)
+		}
+	}
+	tw.readDir = adding(fakeEntry{name: "eph-locked.tar", err: os.ErrPermission}, "")
+	if _, _, err := tw.heldFiles(nil); err == nil {
+		t.Error("an entry that could not be read for another reason was skipped as if another run had removed it")
+	}
+}
+
+func TestARefusalIsToldApartFromAFailedAttempt(t *testing.T) {
+	for label, err := range map[string]error{
+		"a refusal":                refuse("%s is being created by another run", "eph-a"),
+		"a wrapped refusal":        fmt.Errorf("remove: %w", refuse("nothing holds eph-a")),
+		"a distribution not owned": fmt.Errorf("%w: eph-pgb keeps its disk elsewhere", ErrNotOwned),
+	} {
+		if !IsRefusal(err) {
+			t.Errorf("%s is not a refusal: %v", label, err)
+		}
+	}
+	for label, err := range map[string]error{
+		"a failed export": errors.New("wsl --export eph-a: exit status 1"),
+		"no error":        nil,
+	} {
+		if IsRefusal(err) {
+			t.Errorf("%s reads as a refusal", label)
+		}
+	}
+}
+
+func TestRemovalRefusesACreationInProgressAndANameNothingHolds(t *testing.T) {
+	dir := t.TempDir()
+	disk := filepath.Join(dir, "eph-building")
+	if err := os.MkdirAll(disk, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 9, 13, 12, 0, 0, 0, time.UTC)
+	tw := &Throwaways{dir: dir, now: func() time.Time { return now },
+		disks: func() (map[string]string, error) { return map[string]string{"eph-building": disk}, nil }}
+	if err := tw.writeMarker("eph-building"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.removalTarget("eph-building", false); !IsRefusal(err) || !strings.Contains(fmt.Sprint(err), "being created by another run") {
+		t.Errorf("a distribution another run is still creating was not refused: %v", err)
+	}
+	if got, err := tw.removalTarget("eph-building", true); err != nil || got != "eph-building" {
+		t.Errorf("purge --include-live could not reach a creation in progress: %q, %v", got, err)
+	}
+	if _, err := tw.removalTarget("eph-nothing", false); !IsRefusal(err) {
+		t.Errorf("a name nothing registers and nothing holds was not refused: %v", err)
+	}
+}
+
+func TestARemovalReadsTheRegistrationBackBeforeItSaysItIsGone(t *testing.T) {
+	pauses := 0
+	still := map[string]string{"EPH-STUCK": `C:\state\distros\eph-stuck`}
+	tw := &Throwaways{dir: t.TempDir(), now: time.Now, sleep: func(time.Duration) { pauses++ },
+		disks: func() (map[string]string, error) { return still, nil }}
+	if err := tw.waitUnregistered("eph-stuck"); err == nil || !strings.Contains(err.Error(), "still registered") {
+		t.Fatalf("a registration that outlived its unregister was reported gone: %v", err)
+	}
+	if pauses == 0 {
+		t.Error("the read-back gave up without waiting for WSL to release the registration")
+	}
+	reads := 0
+	tw.disks = func() (map[string]string, error) {
+		reads++
+		if reads < 3 {
+			return still, nil
+		}
+		return map[string]string{}, nil
+	}
+	if err := tw.waitUnregistered("eph-stuck"); err != nil || reads != 3 {
+		t.Fatalf("a registration released on the third read answered %v after %d read(s)", err, reads)
+	}
+}
+
+func TestARequestedNameThatIsTakenIsRefusedBeforeAnythingIsMade(t *testing.T) {
+	dir := t.TempDir()
+	tw := &Throwaways{dir: dir, now: time.Now, disks: func() (map[string]string, error) {
+		return map[string]string{"EPH-Registered": `C:\elsewhere\eph-registered`}, nil
+	}}
+	if err := os.MkdirAll(filepath.Join(dir, "eph-leftdir"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"eph-registered", "eph-leftdir"} {
+		if err := tw.nameFree(name); !IsRefusal(err) {
+			t.Errorf("the preflight passed %s, which the creation refuses: %v", name, err)
+		}
+		if _, err := tw.claim(name, ""); !IsRefusal(err) {
+			t.Errorf("%s was claimed although it is taken: %v", name, err)
+		}
+	}
+	if err := tw.nameFree("eph-free"); err != nil {
+		t.Fatalf("a free name was refused: %v", err)
+	}
+	if name, err := tw.claim("eph-free", ""); err != nil || name != "eph-free" {
+		t.Fatalf("a free name was not claimed: %q, %v", name, err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "eph-free")); err != nil {
+		t.Errorf("the claim did not make the directory, which is what makes it a claim: %v", err)
+	}
+}
+
+func TestATarballIsAPathOrAHeldTagAndABareWordIsNeverReadFromTheWorkingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	tw := &Throwaways{dir: filepath.Join(dir, "distros"), now: time.Now, log: func(string) {}}
+	archive := filepath.Join(dir, "rootfs.tar")
+	writeTestFile(t, archive, "x")
+	if p, snap, err := tw.resolveTarball(archive); err != nil || p != archive || snap != "" {
+		t.Fatalf("an absolute archive path resolved to %q %q, %v", p, snap, err)
+	}
+	work := t.TempDir()
+	t.Chdir(work)
+	writeTestFile(t, filepath.Join(work, "ready"), "a file in the directory this process started in")
+	if p, _, err := tw.resolveTarball("ready"); !IsRefusal(err) {
+		t.Fatalf("a bare word was read from the working directory as %q, %v", p, err)
+	}
+	held := filepath.Join(tw.dir, "snapshots", "ready.tar")
+	writeTestFile(t, held, "snapshot")
+	if p, snap, err := tw.resolveTarball("ready"); err != nil || snap != "ready" || p != held {
+		t.Fatalf("a held tag resolved to %q %q, %v", p, snap, err)
+	}
+	if _, _, err := tw.resolveTarball(filepath.Join(dir, "missing.tar")); !IsRefusal(err) {
+		t.Errorf("a path naming no file was not refused: %v", err)
+	}
+}
+
+func TestAnExportTooSmallToBeAnArchiveIsRefusedAndRemoved(t *testing.T) {
+	dir := t.TempDir()
+	small := filepath.Join(dir, ".ready.a.partial")
+	writeTestFile(t, small, strings.Repeat("x", 100))
+	_, err := acceptExport("eph-x", small)
+	if err == nil {
+		t.Fatal("a 100-byte export was accepted as a rootfs archive")
+	}
+	if IsRefusal(err) {
+		t.Error("an export that was attempted and failed reads as a refusal")
+	}
+	if _, err := os.Stat(small); !os.IsNotExist(err) {
+		t.Errorf("the too-small export was kept where the next import would find it: %v", err)
+	}
+	big := filepath.Join(dir, ".ready.b.partial")
+	writeTestFile(t, big, strings.Repeat("x", int(snapshotFloor)))
+	if size, err := acceptExport("eph-x", big); err != nil || size != snapshotFloor {
+		t.Fatalf("an export at the floor answered %d, %v", size, err)
+	}
+}
+
+// TestASnapshotIsPublishedWithoutReplacingAnArchiveUnlessForced holds both
+// halves: a forced replacement is one rename, so a failed one keeps the previous
+// archive, and an unforced one never replaces an archive another run wrote under
+// the same tag while this export ran.
+func TestASnapshotIsPublishedWithoutReplacingAnArchiveUnlessForced(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "ready.tar")
+	writeTestFile(t, out, "previous")
+	if _, err := publishSnapshot(filepath.Join(dir, "missing.partial"), out, true); err == nil {
+		t.Fatal("a missing partial archive replaced the snapshot")
+	}
+	if got := mustRead(t, out); got != "previous" {
+		t.Fatalf("the failed forced replacement lost the previous archive: %q", got)
+	}
+	partial := filepath.Join(dir, "ready.partial")
+	writeTestFile(t, partial, "next")
+	if _, err := publishSnapshot(partial, out, false); !IsRefusal(err) {
+		t.Fatalf("an unforced export replaced, or failed to refuse, an archive already under its tag: %v", err)
+	}
+	if got := mustRead(t, out); got != "previous" {
+		t.Fatalf("the archive that got there first was replaced: %q", got)
+	}
+	if replaced, err := publishSnapshot(partial, out, true); err != nil || !replaced {
+		t.Fatalf("a forced replacement answered replaced=%v, %v", replaced, err)
+	}
+	if got := mustRead(t, out); got != "next" {
+		t.Fatalf("the forced replacement did not land: %q", got)
+	}
+	fresh, freshPartial := filepath.Join(dir, "fresh.tar"), filepath.Join(dir, "fresh.partial")
+	writeTestFile(t, freshPartial, "first")
+	if replaced, err := publishSnapshot(freshPartial, fresh, false); err != nil || replaced {
+		t.Fatalf("a snapshot under a free tag answered replaced=%v, %v", replaced, err)
+	}
+	if got := mustRead(t, fresh); got != "first" {
+		t.Fatalf("the published snapshot reads %q", got)
+	}
+	if _, err := os.Stat(freshPartial); !os.IsNotExist(err) {
+		t.Errorf("the partial was left beside the snapshot it became: %v", err)
 	}
 }
 
@@ -377,7 +638,6 @@ func TestSpecValidationRefusesEveryFlagThatWouldDoNothing(t *testing.T) {
 		"user-env with no command": {Image: base.Image, UserEnv: true, User: "root"},
 		"a log with no command":    {Image: base.Image, Log: &RunLog{}, User: "root"},
 		"a negative timeout":       {Image: base.Image, Script: script, Timeout: -time.Second, User: "root"},
-		"a negative tick":          {Image: base.Image, Script: script, Tick: -time.Second, User: "root"},
 		"a probe bound too short":  {Image: base.Image, ProbeTimeout: time.Second, User: "root"},
 		"an empty user":            {Image: base.Image},
 		"a user outside argv":      {Image: base.Image, User: "root$(id)"},

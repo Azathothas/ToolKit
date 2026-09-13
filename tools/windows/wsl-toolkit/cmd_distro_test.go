@@ -7,8 +7,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -185,6 +187,53 @@ func TestADryRunPlanCarriesNoCommandTextAndNoEnvironmentValue(t *testing.T) {
 	}
 	if plan.Command.Bytes == 0 || len(plan.Command.SHA256) != 64 || plan.Command.EnvNames[0] != "TOKEN" || plan.Command.Stdin != "/dev/null" {
 		t.Fatalf("the plan does not identify what would run: %+v", plan.Command)
+	}
+}
+
+func TestACommandsVerdictIsItsOwnCodeUnlessTheToolCouldNotFinish(t *testing.T) {
+	for label, c := range map[string]struct {
+		out     toolkit.CommandOutcome
+		code    int
+		refused bool
+	}{
+		"its own code":                  {toolkit.CommandOutcome{Exit: 7}, 7, false},
+		"success":                       {toolkit.CommandOutcome{}, exitOK, false},
+		"a deadline this tool enforced": {toolkit.CommandOutcome{Exit: 1, TimedOut: true}, exitTimeout, false},
+		"a guest's own 124":             {toolkit.CommandOutcome{Exit: 124}, 124, false},
+		"a cancellation":                {toolkit.CommandOutcome{Exit: 1, Cancelled: true}, 130, false},
+		"a command that never started":  {toolkit.CommandOutcome{Exit: 2, Error: "wsl.exe could not be started"}, exitCannot, true},
+		"a relay that could not write":  {toolkit.CommandOutcome{Exit: 0, LogError: "--event-log: the disk is full"}, exitCannot, true},
+	} {
+		code, err := commandVerdict("eph-test", c.out)
+		if code != c.code || (err != nil) != c.refused {
+			t.Errorf("%s answered %d, %v; want %d with an error %v", label, code, err, c.code, c.refused)
+		}
+	}
+}
+
+func TestARefusalAndAFailedAttemptAnswerDifferentCodes(t *testing.T) {
+	if code, _ := refusalOrFailure(fmt.Errorf("remove: %w", toolkit.ErrNotOwned)); code != exitCannot {
+		t.Errorf("a distribution this tool does not own answered %d, want %d", code, exitCannot)
+	}
+	if code, _ := refusalOrFailure(errors.New("wsl --unregister eph-a answered and the distribution is still registered")); code != exitFailed {
+		t.Errorf("a removal that was attempted and did not finish answered %d, want %d", code, exitFailed)
+	}
+}
+
+// TestNulIsNotAConsole is the session an agent runs in: its stdin is the NUL
+// device, which is a character device, and a prompt printed there reads end of
+// file and answers for the caller.
+func TestNulIsNotAConsole(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("the console question is a Windows one, and this host answers it from the file mode")
+	}
+	nul, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer nul.Close()
+	if isConsole(nul) {
+		t.Fatal("NUL was read as a console, so a session whose stdin is NUL is asked a question it cannot answer")
 	}
 }
 

@@ -986,6 +986,26 @@ what this tool is holding, and release it
 wsl-toolkit resources ; wsl-toolkit gc --apply
 .fi
 .TP
+a whole throwaway distribution, removed when its command ends
+.nf
+wsl-toolkit distro new --image alpine --ephemeral -c 'cat /etc/os-release'
+.fi
+.TP
+keep one, run in it again, then remove it
+.nf
+wsl-toolkit distro new --image debian --name build-box ; wsl-toolkit distro run --name build-box -c 'uname -a' ; wsl-toolkit distro remove --name build-box --yes
+.fi
+.TP
+a long command in one, watched, recorded and compared with an earlier run
+.nf
+wsl-toolkit distro run --name build-box --log-profile ci --event-log .\\run.jsonl -c 'make' ; wsl-toolkit distro compare --before .\\earlier.jsonl --after .\\run.jsonl
+.fi
+.TP
+the address a distribution reaches this host at
+.nf
+wsl-toolkit hostaddress
+.fi
+.TP
 a caller that cannot reach wsl.exe
 .nf
 wsl-toolkit helper serve --detach

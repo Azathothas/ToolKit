@@ -550,6 +550,27 @@ try {
          ($r.Err -match 'id=alpine')).ToString()
     }
 
+    # A dry run that passed what the creation refuses described a different run:
+    # measured before the preflight existed, both of these exited 0.
+    Test-Case 'a dry run refuses what the creation refuses: a tag nothing holds and a name already taken' 'True' {
+        $bad = @()
+        foreach ($p in @(
+                @{ a = @('new', '--dry-run', '--tarball', 'acc-no-such-tag'); want = 'neither a file nor a snapshot tag' },
+                @{ a = @('new', '--dry-run', '--image', 'alpine', '--name', $script:TwName); want = 'already registered' })) {
+            $r = Invoke-Throwaway $p.a
+            if ($r.Code -ne 2 -or $r.Err -notmatch [regex]::Escape($p.want)) { $bad += "$($p.a -join ' '): exit $($r.Code) $($r.Err)" }
+        }
+        if ($bad.Count -gt 0) { return ($bad -join ' | ') }
+        'True'
+    }
+
+    # The refusal is read before anybody is asked, so a session with no console
+    # is told why rather than asked a question it cannot answer.
+    Test-Case 'removing a name nothing holds is refused before any prompt, with the refusal code' 'True' {
+        $r = Invoke-Throwaway @('remove', '--name', 'acc-nothing-here')
+        (($r.Code -eq 2) -and ($r.Err -match 'is not registered') -and ($r.Err -notmatch '\[y/N\]')).ToString()
+    }
+
     # The defect the framed channel removes: unframed, `cat` ate every line after
     # it and the run exited 0 over commands that never ran.
     Test-Case 'a command that reads stdin cannot eat the rest of its script' 'exit=7 ran=True' {
@@ -683,6 +704,17 @@ try {
         $l = Read-ToolJson -Stdout (Invoke-Throwaway @('list', '--json')).Out -What 'distro list --json'
         $left = @($l.owned | Where-Object { $_.name -eq $d.name })
         (($n.Code -eq 0) -and $d.removed -and ($d.origin.snapshot -eq 'acc-snap') -and ($left.Count -eq 0)).ToString()
+    }
+
+    Test-Case 'a snapshot under a tag already held is refused without --force and replaced with it' 'True' {
+        $path = Join-Path $script:TwHome 'distros\snapshots\acc-snap.tar'
+        $before = (Get-Item -LiteralPath $path).LastWriteTimeUtc
+        $r = Invoke-Throwaway @('snapshot', '--name', $script:TwName, '--tag', 'acc-snap')
+        if ($r.Code -ne 2 -or $r.Err -notmatch 'already exists') { return "without --force: exit $($r.Code) $($r.Err)" }
+        if ((Get-Item -LiteralPath $path).LastWriteTimeUtc -ne $before) { return 'the refused snapshot changed the archive under its tag' }
+        $f = Invoke-Throwaway @('snapshot', '--name', $script:TwName, '--tag', 'acc-snap', '--force', '--json')
+        $d = Read-ToolJson -Stdout $f.Out -What 'distro snapshot --force --json'
+        (($f.Code -eq 0) -and $d.replaced -and ((Get-Item -LiteralPath $path).LastWriteTimeUtc -ne $before)).ToString()
     }
 
     Test-Case 'a distribution another state directory made is refused by every command that acts on it' 'True' {
@@ -1318,7 +1350,7 @@ try {
         # that it said which, named the running version, and did not touch the
         # executable.
         #
-        # ⛔ AND THAT A BUILD FROM THE WORKING TREE IS NOT OFFERED AN UPDATE.
+        # AND A BUILD FROM THE WORKING TREE IS NOT OFFERED AN UPDATE.
         # The first version compared the two version strings for inequality, so
         # a tree bumped past the newest release was told to downgrade itself.
         # A suite that runs against a build from this tree would otherwise be
@@ -1588,7 +1620,7 @@ try {
         'True'
     }
 
-    Test-Case 'the two pre-existing distributions are still registered and untouched' 'True' {
+    Test-Case 'every distribution registered before the run is still registered' 'True' {
         $r = Invoke-Tool @('doctor', '--json', '--fast')
         $d = $r.Out | ConvertFrom-Json
         $names = @($d.wsl.distros | ForEach-Object { $_.name })
@@ -1609,7 +1641,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 85 } else { 87 }
+$expected = if ($Quick) { 88 } else { 90 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++
