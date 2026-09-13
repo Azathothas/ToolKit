@@ -4821,8 +4821,11 @@ Passing is all of:
 ## Checkpoint, 2026-09-13: the review, the decisions, and the native commands
 
 ⛔ **Open.** The operator stopped the session at this point and asked for pull
-request 31 to be closed with the decisions on it. The PowerShell product is still
-in the tree, and nothing below is driven on a real host.
+request 31 to be closed with the decisions on it. ⭐ It was closed unmerged at
+06:19:43Z, after
+[the review's findings and decisions](https://github.com/Azathothas/ToolKit/pull/31#issuecomment-5651629772)
+were posted on it naming checkpoint `37b1f89`. The PowerShell product is still in
+the tree, and nothing below is driven on a real host.
 
 ### What reviewing pull request 31 measured
 
@@ -4906,3 +4909,5 @@ script.
    [`../docs/consumers.md`](../docs/consumers.md), and the changelog.
 4. The gate, the Go suites with an 8.3 `TEMP`, CI's ShellCheck, `repo mutate`,
    the acceptance runner, CI green, and the three reviews recorded here.
+5. A second comment on the closed pull request 31, naming the commits that
+   finish the work.

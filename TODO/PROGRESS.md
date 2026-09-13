@@ -10,17 +10,19 @@ session started 2026-09-13T05:24:47Z; the record commit's own time is its end
 baseline        05c1703 clean; local gate green, 20 checks, 36.0s at 05:26:51Z
 entries         total 108  open 7  blocked 0  done 101
 gate            20 checks green in 39.2s on the staged checkpoint at 06:16:23Z
-head            the checkpoint commit on top of 05c1703
+head            37b1f89 pushed and CI green on all six jobs; the commit that
+                carries this record sits on top of it
 ```
 
 ## Active work
 
 ⛔ **`WSL-73` is OPEN at a checkpoint, and the operator stopped the session
-there.** Pull request 31 was reviewed trusting nothing and measured, and the
-operator asked for it to be closed with the review's findings and decisions on it,
-naming this checkpoint. The native replacement is written and unit-proved and has
-NOT run on a real host. The PowerShell product is still in the tree. The entry's
-checkpoint section is the resume point, in order.
+there.** Pull request 31 was reviewed trusting nothing, measured, and closed
+unmerged with
+[the review's findings and decisions](https://github.com/Azathothas/ToolKit/pull/31#issuecomment-5651629772)
+on it, naming checkpoint `37b1f89`. The native replacement is written and
+unit-proved and has NOT run on a real host. The PowerShell product is still in the
+tree. The entry's checkpoint section is the resume point, in order.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -34,7 +36,7 @@ re-measures it.
    the PowerShell product, give the version one home in Go, move the release
    refusals to `tools/repo`, update the docs with no narrative history, pass every
    gate, get CI green, record three reviews, and name the final commits in a
-   comment on the closed pull request 31.
+   second comment on the closed pull request 31.
 2. **File and fix the two gate defects found below.** The gate every later unit
    leans on has to be able to fail.
 3. **Read issues [30](https://github.com/Azathothas/ToolKit/issues/30),
@@ -53,7 +55,8 @@ re-measures it.
 
 | commit | what |
 | --- | --- |
-| the checkpoint commit | `WSL-73` checkpoint: the review of pull request 31 measured and recorded, the decisions, and the native `distro` and `hostaddress` commands with 15 unit cases and 11 mutation rows |
+| `37b1f89` | `WSL-73` checkpoint: the review of pull request 31 measured and recorded, the decisions, and the native `distro` and `hostaddress` commands with 15 unit cases and 11 mutation rows |
+| the record commit | pull request 31 closed unmerged with the review and decisions on it, and CI's answer on `37b1f89` recorded |
 
 ## Measurements
 
@@ -73,7 +76,10 @@ native go     Windows and Linux (golang:1.25): every package ok, gofmt and vet
               with TEMP and TMP at the 8.3 short form of a directory under .tmp
 shellcheck    ubuntu:24.04's 0.9.0, which is CI's: 25 of 25 scripts clean
 mutation      11 new rows, each red: mutate --only throwaway 9 of 9 and
-              --only hostaddress 2 of 2. The whole table was not re-run
+              --only hostaddress 2 of 2 on Windows. The whole table was not
+              re-run here; CI's mutation job on 37b1f89 read 124 of 124 guards
+              proved, the 11 new rows among them
+ci            37b1f89: all six jobs green, run finished 06:24:54Z
 tree          85,989 text lines in 279 files at 05c1703, git grep -I -c
 ```
 
@@ -122,3 +128,5 @@ going with the script.
   Linux test runs, which the next session needs again. Every container ran
   ephemeral and removed itself.
 - No throwaway distribution was created, and no BSD guest was booted.
+- The scratch worktree of pull request 31's head and the local ref fetched for it
+  were removed at the checkpoint.

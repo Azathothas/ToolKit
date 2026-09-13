@@ -11,21 +11,21 @@ on what was true last time.
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-09-13T05:24:47Z | checkpoint staged at 06:15:23Z, 50 minutes; the operator stopped the session there |
-| Commits | `05c1703`, clean `main` | the checkpoint commit, then a record commit once pull request 31 is closed and CI has answered |
+| Elapsed | started 2026-09-13T05:24:47Z | ended at the record commit's own time, about one hour; the operator stopped the session at the checkpoint |
+| Commits | `05c1703`, clean `main` | `37b1f89`, pushed, CI green on all six jobs with 124 of 124 mutation rows proved; then the record commit |
 | Work | step 1 of four assigned: `WSL-73` | **Completed 0. Checkpointed 1:** `WSL-73`, reviewed and measured, native commands written and unit-proved, not driven. **Deferred by the operator:** steps 2 to 4, to the next session. Failed: 0. Entries unchanged at 108: 7 open, 0 blocked, 101 done |
-| Changes | 279 tracked files | `git diff --cached --shortstat` read 19 files, +3,051 / -167 before this summary was written. ⚠ Stamped, because the record adds to it |
-| Size | 85,989 text lines in 279 files at `05c1703`, `git grep -I -c ''` | not re-counted at the checkpoint |
+| Changes | 279 tracked files | `git diff --shortstat 05c1703 37b1f89` read 20 files, +3,080 / -167. ⚠ Stamped at `37b1f89`; the record commit adds to it |
+| Size | 85,989 text lines in 279 files at `05c1703`, `git grep -I -c ''` | 88,902 in 286 files at `37b1f89`, +2,913 |
 | Checks | 20 checks green in 36.0 s | 20 checks green in 39.2 s at 06:16:23Z on the staged checkpoint. Go suites green on Windows with `TEMP` at an 8.3 path and on Linux in `golang:1.25`. CI's ShellCheck 0.9.0 in `ubuntu:24.04`: 25 of 25 clean. 11 new mutation rows red when planted. ⛔ The gate's `powershell` check was found unable to fail, so `acceptance.ps1` and `consumer.ps1` were parsed by hand: 0 errors |
 | Cost | not measured | no paid operation. `docker.io/library/golang:1.25` pulled into the base, bytes not measured |
-| Health | pull request 31 open and unreviewed | pull request 31 reviewed and measured; its closure is recorded by the commit after this one. Two gate defects found and not filed. ⛔ Native `distro` and `hostaddress` on `main` undriven. `wsl -l -v` as at the start; no distribution created |
+| Health | pull request 31 open and unreviewed | ⭐ pull request 31 closed unmerged at 06:19:43Z with the review and decisions in [a comment](https://github.com/Azathothas/ToolKit/pull/31#issuecomment-5651629772). Two gate defects found and not filed. ⛔ Native `distro` and `hostaddress` on `main` undriven. `wsl -l -v` as at the start; no distribution created; scratch worktree removed. Tree clean after the record commit |
 
 ### What was asked, and what happened
 
 | asked | outcome |
 | --- | --- |
 | review pull request 31 trusting nothing, adopt what survives, delete the PowerShell product, close the pull request | ⚠ **partly.** Reviewed and measured; nothing merged as written; the native replacement written on `internal/toolkit`; the deletion not started |
-| checkpoint here, close the pull request with the current decisions, and print a prompt for a session that continues and handles the rest of the issues | the checkpoint and the record carry it; the prompt is printed in chat |
+| checkpoint here, close the pull request with the current decisions, and print a prompt for a session that continues and handles the rest of the issues | done: `37b1f89` on green CI, the pull request closed with the decisions on it, and the resume prompt printed in chat |
 
 ### Resume point
 
