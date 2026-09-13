@@ -17,6 +17,8 @@ wsl-toolkit 2.0.2
   inspect     inspect one job and its recorded host state
   helper      manage the optional local WSL helper
   config      report, validate, or write the configuration
+  distro      create, use and remove throwaway WSL distributions built from an image or a rootfs
+  hostaddress print the address a WSL distribution reaches this host at
   bsd         run a command in a FreeBSD guest on this host's own hypervisor
   ready       test whether this host can run an isolated Linux job
   selfupdate  verify and install a published release
@@ -500,6 +502,131 @@ validate this file instead of the one the search resolves
 .TP
 \fB--write\fR
 write the effective configuration to disk, so it can be edited
+.SS distro
+create, use and remove throwaway WSL distributions built from an image or a rootfs
+.TP
+.B wsl-toolkit distro list
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+.B wsl-toolkit distro new
+.TP
+\fB--c\fR
+the POSIX shell command to run, as a login shell
+.TP
+\fB--env\fR
+NAME=VALUE set for the command. Repeatable
+.TP
+\fB--ephemeral\fR
+remove the distribution once the command ends
+.TP
+\fB--image\fR
+a catalog id or a fully qualified reference to import
+.TP
+\fB--json\fR
+write a structured answer. The command's output then goes to stderr
+.TP
+\fB--name\fR
+the distribution's name. The eph- prefix is added when it is left off. Empty draws one
+.TP
+\fB--oci-env\fR
+carry the image's ENV and WORKDIR into /etc/profile.d, where a login shell reads them
+.TP
+\fB--reuse\fR
+run in the newest distribution this state directory built from the same --image rather than importing another, and say so
+.TP
+\fB--script\fR
+a file on this machine whose bytes are the command
+.TP
+\fB--systemd\fR
+boot it with systemd as PID 1, and refuse an image that cannot
+.TP
+\fB--tarball\fR
+a rootfs archive on this machine, or the tag of a snapshot this state directory holds
+.TP
+\fB--tick\fR
+emit a heartbeat on stderr at this interval while the command runs. 0 is off, and anything under 1s is raised to it. Default: 0s.
+.TP
+\fB--timeout\fR
+how long the command may run before the distribution is terminated and the answer is 124. 0 means no deadline. Default: 30m0s.
+.TP
+\fB--user\fR
+the account the command runs as. Default: root.
+.TP
+.B wsl-toolkit distro run
+.TP
+\fB--c\fR
+the POSIX shell command to run, as a login shell
+.TP
+\fB--env\fR
+NAME=VALUE set for the command. Repeatable
+.TP
+\fB--name\fR
+the throwaway distribution to run in
+.TP
+\fB--script\fR
+a file on this machine whose bytes are the command
+.TP
+\fB--tick\fR
+emit a heartbeat on stderr at this interval while the command runs. 0 is off, and anything under 1s is raised to it. Default: 0s.
+.TP
+\fB--timeout\fR
+how long the command may run before the distribution is terminated and the answer is 124. 0 means no deadline. Default: 30m0s.
+.TP
+\fB--user\fR
+the account the command runs as. Default: root.
+.TP
+.B wsl-toolkit distro enter
+.TP
+\fB--name\fR
+the throwaway distribution to attach to
+.TP
+\fB--user\fR
+the account the shell runs as. Default: root.
+.TP
+.B wsl-toolkit distro remove
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--name\fR
+the throwaway distribution to remove
+.TP
+\fB--yes\fR
+do not ask before removing
+.TP
+.B wsl-toolkit distro purge
+.TP
+\fB--apply\fR
+actually remove. Without it this reports what it would remove and changes nothing
+.TP
+\fB--include-live\fR
+also remove a distribution that is running, or that another run is still creating
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+.B wsl-toolkit distro snapshot
+.TP
+\fB--force\fR
+replace a snapshot that already has this tag
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--name\fR
+the throwaway distribution to export
+.TP
+\fB--tag\fR
+what the snapshot is called. distro new --tarball TAG imports it
+.SS hostaddress
+print the address a WSL distribution reaches this host at
+.TP
+.B wsl-toolkit hostaddress
+.TP
+\fB--json\fR
+write a structured answer
 .SS bsd
 run a command in a FreeBSD guest on this host's own hypervisor
 .TP

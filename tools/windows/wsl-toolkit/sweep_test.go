@@ -48,6 +48,9 @@ var sweptElsewhere = map[string]string{
 	"examples":        "its own case covers it, and asserts every example parses as one command",
 	"bsd fetch":       "it downloads 635 MB from a release mirror. `bsd status` reports whether the image arrived and is swept",
 	"bsd run":         "it boots a guest, which costs about two minutes per call before any command runs",
+	"distro new":      "it imports a whole distribution. Its own case covers the document it produces",
+	"distro remove":   "it unregisters a distribution. Its own case covers the document, against one it made",
+	"distro snapshot": "it exports a whole distribution. Its own case covers the document",
 }
 
 var sweepName = regexp.MustCompile(`(?m)^\s*@\{\s*n\s*=\s*'([^']+)'`)
@@ -126,9 +129,13 @@ func jsonSurfaces(t *testing.T) []string {
 		{"helper", "serve"}, {"helper", "status"}, {"helper", "stop"},
 		{"images", "warm"}, {"images", "pull"},
 		{"artifacts", "retry"}, {"config", "validate"},
+		{"distro", "list"}, {"distro", "new"}, {"distro", "run"}, {"distro", "enter"},
+		{"distro", "remove"}, {"distro", "purge"}, {"distro", "snapshot"},
 	} {
 		args := append(append([]string{}, sub[1:]...), "-h")
 		switch sub[0] {
+		case "distro":
+			_, _ = cmdDistro(ctx, args)
 		case "base":
 			_, _ = cmdBase(ctx, args)
 		case "helper":

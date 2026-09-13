@@ -128,6 +128,8 @@ func registeredCommandSpecs() []commandSpec {
 		{Name: "inspect", Summary: "inspect one job and its recorded host state", Run: cmdInspect, HelpForms: []string{"inspect"}},
 		{Name: "helper", Summary: "manage the optional local WSL helper", Run: cmdHelper, HelpForms: []string{"helper serve", "helper status", "helper stop"}},
 		{Name: "config", Summary: "report, validate, or write the configuration", Run: func(_ context.Context, a []string) (int, error) { return cmdConfig(a) }, HelpForms: []string{"config", "config validate"}},
+		{Name: "distro", Summary: "create, use and remove throwaway WSL distributions built from an image or a rootfs", Run: cmdDistro, HelpForms: []string{"distro list", "distro new", "distro run", "distro enter", "distro remove", "distro purge", "distro snapshot"}},
+		{Name: "hostaddress", Summary: "print the address a WSL distribution reaches this host at", Run: cmdHostAddress, HelpForms: []string{"hostaddress"}},
 		{Name: "bsd", Summary: "run a command in a FreeBSD guest on this host's own hypervisor", Run: cmdBsd, HelpForms: []string{"bsd status", "bsd fetch", "bsd run"}},
 		{Name: "ready", Summary: "test whether this host can run an isolated Linux job", Run: cmdReady, HelpForms: []string{"ready"}},
 		{Name: "selfupdate", Summary: "verify and install a published release", Run: cmdSelfUpdate, HelpForms: []string{"selfupdate"}},

@@ -4817,3 +4817,92 @@ Passing is all of:
 - the tree clean, and CI green on the final commit;
 - three deep reviews recorded here, each naming what it looked at that the other
   two did not.
+
+## Checkpoint, 2026-09-13: the review, the decisions, and the native commands
+
+⛔ **Open.** The operator stopped the session at this point and asked for pull
+request 31 to be closed with the decisions on it. The PowerShell product is still
+in the tree, and nothing below is driven on a real host.
+
+### What reviewing pull request 31 measured
+
+Every added or modified file, 52 of them, was read before any of it was built.
+Then its suites and the gate were run from a detached worktree of `1132e00`.
+
+| claim or question | measured |
+| --- | --- |
+| its Go suites pass | ⛔ **not on Windows.** `internal/compat` fails 10 cases: 9 run a `#!/bin/sh` stub as `wsl.exe`, which Windows cannot execute, and one renders a record's time in the host's zone and passes only in UTC. One more passes on Windows for the wrong reason: the stub failed to start. On Linux, in `golang:1.25`, all three packages pass |
+| "the repository gates run clean" | ⛔ **red on Windows with 2 problems**: `secrets`, a 34-character run of one letter in `safety_test.go`, and `go` |
+| `release.ps1` refuses a tag while two versions disagree | ⛔ **false.** No commit in the pull request touches `release.ps1` |
+| what it keeps | `wsl-toolkit.ps1` and `launcher.ps1`, and a second version: `2.1.0` in Go beside `2.0.2` in the script |
+| the three read-only answers on this host | `List`, `HostAddress` and a refused parameter answered as the embedded script did |
+| how it is built | a line-for-line port of the script. It re-implements what `internal/toolkit` already has (WSL listing, the stdin command channel, `RemoveInside`, `FreeSpace`, `FindEngine`, `ExportRootfs`) and keeps the script's own defects: the command travels in `wsl.exe`'s argument list, a machine with no distributions reads as a refusal, and a failed import leaves its archive behind |
+| the interface it keeps | PowerShell parameter binding and PowerShell's own error text, decorated reports on stdout, timestamps on the command's stdout by default, and no `--json` or generated manual |
+
+### Decisions made in the review
+
+⚠ Recorded for the operator to overrule, and each follows from a ruling above.
+
+1. **Nothing is merged from the pull request.** What it shows is adopted as ideas
+   and rebuilt on `internal/toolkit`: the `.wslconfig` reading and the adapter
+   lookup, the snapshot tag rule, the image environment profile, the purge that
+   keeps snapshots, and the origin record.
+2. **The native form is the executable's own convention**, not the script's.
+   `wsl-toolkit distro list|new|run|enter|remove|purge|snapshot` and
+   `wsl-toolkit hostaddress`, with registered flags, `--json`, the answer alone
+   on stdout, and a command's output unmodified.
+3. ⛔ **Ownership is where the disk lives.** A throwaway distribution is this
+   tool's only when WSL registered its disk inside `<home>/distros`, read from
+   `HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss`. The script's purge
+   trusted the `eph-` prefix, and on this host that would have unregistered
+   `eph-pgb`, which lives under `%LOCALAPPDATA%\wsl-ephemeral` and is not this
+   tool's.
+4. **Not carried**, because the executable already answers them or a caller
+   parsing output is harmed by them: the stream log's timestamps, columns,
+   colours, sinks, redaction and progress token, `Replay` and `Compare`,
+   `-DryRun`, `-StateDir`, `-CommandB64`, `-ScriptArg` with `@hostaddress`, and
+   `-UserEnv`. `Doctor` and `Resources` are the executable's `doctor` and
+   `resources`, and `resources` now reports throwaway distributions.
+5. **The version gets one home in Go**, and removing `script` is breaking, so the
+   next version is `3.0.0`. `release.ps1`'s refusals move to `tools/repo`.
+6. **The launcher goes with the script.** Signature verification is documented
+   as commands for a consumer, and making `selfupdate` verify signatures is an
+   entry of its own.
+
+### What is in the tree at this checkpoint
+
+- `internal/toolkit/throwaway.go`, `hostaddr.go`, `registry_windows.go` and
+  `registry_other.go`, with `cmd_distro.go` and `cmd_hostaddress.go` on top.
+  `Import`, `Terminate` and `Unregister` split into the guarded call and the
+  unguarded one; the archive write `WriteIdentity` used is shared; the import
+  space preflight is one function for the base and a throwaway distribution.
+- 15 unit cases in `throwaway_test.go`, green on Windows and on Linux in
+  `golang:1.25`. 11 mutation rows, each planted and red under
+  `go run . mutate --only throwaway` and `--only hostaddress`.
+- The manual regenerated, the JSON sweep extended, and a section in
+  [`../tools/windows/wsl-toolkit/wsl-toolkit.md`](../tools/windows/wsl-toolkit/wsl-toolkit.md).
+
+⛔ **Not done:** no `distro` or `hostaddress` command has run on a real host, the
+acceptance runner has not run over them, and nothing has been compared with the
+script.
+
+### What is left, in order
+
+1. **Drive both, and compare them before the script goes.** One host, one
+   fully qualified image, separate state directories: `New` with a failing
+   command and `-Ephemeral`, `New` then `Run`, `List`, a refused removal,
+   `Snapshot` and an import from its tag, `-OciEnv`, `-Systemd` refused on
+   Alpine and accepted on an image that boots systemd, `-Reuse`, a deadline, and
+   `HostAddress`. ⛔ **Never run the script's `Purge`** while `eph-pgb` is
+   registered; its `-DryRun` plan is the comparison.
+2. **Delete the PowerShell product**: all of `scripts/windows/wsl-toolkit/`,
+   `internal/script/`, `cmd_script.go`, the gate's `bundle` rule and its test, the
+   selftest steps in `ci.yml`, the script and launcher assets and steps in
+   `release.yml`, the `.gitattributes` rows, `RULES.md` section 4's first two
+   files, and every document and router row that sends a reader to them.
+   `acceptance.ps1` and `consumer.ps1` stay as the executable's harnesses and
+   lose their script cases. `WSL-59` is reconciled with the deletion.
+3. The version, `tools/repo release`, the break row in
+   [`../docs/consumers.md`](../docs/consumers.md), and the changelog.
+4. The gate, the Go suites with an 8.3 `TEMP`, CI's ShellCheck, `repo mutate`,
+   the acceptance runner, CI green, and the three reviews recorded here.

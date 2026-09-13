@@ -777,6 +777,9 @@ try {
             @{ n = 'run';           a = @('run', '--json', '--image', 'alpine', '-c', 'true') }
             @{ n = 'inspect';       a = @('inspect', '--json') }
             @{ n = 'bsd status';    a = @('bsd', 'status', '--json') }
+            @{ n = 'distro list';   a = @('distro', 'list', '--json') }
+            @{ n = 'distro purge';  a = @('distro', 'purge', '--json') }
+            @{ n = 'hostaddress';   a = @('hostaddress', '--json') }
         )
         $bad = @()
         foreach ($s in $surfaces) {

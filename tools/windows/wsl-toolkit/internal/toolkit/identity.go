@@ -232,21 +232,36 @@ func (w *Wsl) WriteIdentity(ctx context.Context, name string, id Identity) error
 		return err
 	}
 	data = append(data, '\n')
+	return w.writeGuestFile(ctx, name, IdentityPath, data, 0o644)
+}
+
+// writeGuestFile puts bytes at an absolute path inside a distribution, as root.
+//
+// ⛔ THE CONTENT TRAVELS THROUGH THE ARCHIVE CHANNEL, which is the same one a
+// workspace and a job script use. It is not `sh -c "cat > path"`: an argument
+// to wsl.exe is expanded before the guest sees it and the result is parsed
+// again, so a shell redirect in an argument is the defect
+// docs/conventions/shell.md section 7 measures. AssertArgvSafe refuses that
+// spelling outright, which is the guard working rather than an obstacle.
+//
+// ⚠ IT CARRIES NO OWNERSHIP GUARD. Each caller applies the rule for the
+// distribution it writes into before it gets here.
+func (w *Wsl) writeGuestFile(ctx context.Context, distro, guestPath string, data []byte, mode int64) error {
+	slash := strings.LastIndex(guestPath, "/")
+	if !strings.HasPrefix(guestPath, "/") || slash < 0 || slash == len(guestPath)-1 {
+		return fmt.Errorf("%q is not an absolute guest file path", guestPath)
+	}
+	dir, base := guestPath[:slash], guestPath[slash+1:]
+	if dir == "" {
+		dir = "/"
+	}
 	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
-
-	// ⛔ THE CONTENT TRAVELS THROUGH THE ARCHIVE CHANNEL, which is the same one
-	// a workspace and a job script use. It is not `sh -c "cat > path"`: an
-	// argument to wsl.exe is expanded before the guest sees it and the result is
-	// parsed again, so a shell redirect in an argument is the defect
-	// docs/conventions/shell.md section 7 measures. AssertArgvSafe refuses that
-	// spelling outright, which is the guard working rather than an obstacle.
-	dir, base := IdentityPath[:strings.LastIndex(IdentityPath, "/")], IdentityPath[strings.LastIndex(IdentityPath, "/")+1:]
 	pr, pw := io.Pipe()
 	go func() {
 		tw := tar.NewWriter(pw)
 		err := tw.WriteHeader(&tar.Header{
-			Name: base, Typeflag: tar.TypeReg, Mode: 0o644,
+			Name: base, Typeflag: tar.TypeReg, Mode: mode,
 			Size: int64(len(data)), ModTime: time.Now(),
 		})
 		if err == nil {
@@ -258,10 +273,10 @@ func (w *Wsl) WriteIdentity(ctx context.Context, name string, id Identity) error
 		_ = pw.CloseWithError(err)
 	}()
 	errBuf := &boundedBuffer{max: 32 << 10}
-	code, err := w.ExecDirect(bounded, name, "root", "",
+	code, err := w.ExecDirect(bounded, distro, "root", "",
 		[]string{"/bin/tar", "-xf", "-", "-C", dir}, pr, io.Discard, errBuf, 2*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("could not write %s in %s (exit %d): %s", IdentityPath, name, code, firstLine(errBuf.String()))
+		return fmt.Errorf("could not write %s in %s (exit %d): %s", guestPath, distro, code, firstLine(errBuf.String()))
 	}
 	return nil
 }

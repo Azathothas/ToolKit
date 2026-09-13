@@ -47,6 +47,12 @@ type OwnedResources struct {
 	// were invisible here and to cleanup, so a helper that stayed up grew
 	// without any command being able to say by how much.
 	HostStaging []HostStage `json:"host_staging,omitempty"`
+	// Throwaway is every throwaway distribution this state directory made, and
+	// what failed creations left. ⛔ They are this tool's, so a report of what
+	// it holds that left them out would be a total that covers part of the
+	// machine while claiming the whole. `distro purge` removes them; gc does not.
+	Throwaway          []ThrowawayDistro `json:"throwaway,omitempty"`
+	ThrowawayLeftovers []HeldFile        `json:"throwaway_leftovers,omitempty"`
 }
 
 // HostStage is one directory the helper is keeping for a client.
@@ -111,6 +117,12 @@ func (r *Runner) Resources(ctx context.Context) ResourceReport {
 		}
 	} else {
 		rep.Warnings = append(rep.Warnings, "WSL could not be asked what is registered: "+err.Error())
+	}
+	tw := &Throwaways{dir: ThrowawayDir(r.home), wsl: r.wsl, log: r.log, disks: registeredDisks, now: time.Now}
+	if throwaway, err := tw.List(ctx); err == nil {
+		rep.Owned.Throwaway, rep.Owned.ThrowawayLeftovers = throwaway.Owned, throwaway.Leftovers
+	} else {
+		rep.Warnings = append(rep.Warnings, "the throwaway distributions could not be listed: "+err.Error())
 	}
 	if size, ok := FileSize(filepath.Join(r.base.Dir(), "ext4.vhdx")); ok {
 		rep.Owned.BaseDiskBytes, rep.Owned.BaseDiskKnown = size, true
@@ -360,6 +372,20 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 			return err
 		}
 	}
+	for _, d := range rep.Owned.Throwaway {
+		size := "not measured"
+		if d.DiskKnown {
+			size = HumanBytes(d.DiskBytes)
+		}
+		if err := p("  throwaway distro  %-12s %s. wsl-toolkit distro purge removes it\n", size, d.Name); err != nil {
+			return err
+		}
+	}
+	for _, f := range rep.Owned.ThrowawayLeftovers {
+		if err := p("  distro leftover   %-12s %s\n", HumanBytes(f.Bytes), f.Path); err != nil {
+			return err
+		}
+	}
 	if len(rep.Owned.OpenRecords) > 0 {
 		if err := p("  open records      %d, so a run was interrupted. wsl-toolkit gc --apply clears them\n", len(rep.Owned.OpenRecords)); err != nil {
 			return err
@@ -369,8 +395,14 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 	if err := p("\n==> What else WSL has registered. Named, never touched\n"); err != nil {
 		return err
 	}
+	throwaway := map[string]bool{}
+	for _, d := range rep.Owned.Throwaway {
+		throwaway[strings.ToLower(d.Name)] = true
+	}
 	for _, d := range rep.Machine.Distros {
-		if d.Owned {
+		// ⛔ A THROWAWAY DISTRIBUTION THIS TOOL MADE IS NOT "NEVER TOUCHED", and
+		// listing it under that heading would contradict the line above it.
+		if d.Owned || throwaway[strings.ToLower(d.Name)] {
 			continue
 		}
 		state := "stopped"

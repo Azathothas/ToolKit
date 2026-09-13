@@ -595,25 +595,32 @@ func (b *Base) create(ctx context.Context) error {
 // assertSpace refuses an import the volume cannot hold, BEFORE anything is
 // registered.
 func (b *Base) assertSpace(tarPath string) error {
+	return assertImportSpace(b.Dir(), tarPath, BaseSpaceFloor, b.log)
+}
+
+// assertImportSpace is the one preflight in front of every `wsl --import`: a
+// floor plus twice the rootfs archive, measured on the volume that will hold the
+// disk.
+func assertImportSpace(dir, tarPath string, floor int64, log func(string)) error {
 	size, ok := FileSize(tarPath)
 	if !ok {
 		return fmt.Errorf("cannot measure %s", tarPath)
 	}
-	need := BaseSpaceFloor + 2*size
-	free, ok, err := FreeSpace(b.Dir())
+	need := floor + 2*size
+	free, ok, err := FreeSpace(dir)
 	if err != nil {
 		return err
 	}
 	if !ok {
 		// ⚠ "could not measure" is a third answer, and treating it as either of
 		// the other two is a lie or a needless refusal.
-		b.log("free space on this volume could not be read; importing anyway")
+		log("free space on this volume could not be read; importing anyway")
 		return nil
 	}
-	b.log(fmt.Sprintf("space: %s wanted, %s free", HumanBytes(need), HumanBytes(free)))
+	log(fmt.Sprintf("space: %s wanted, %s free", HumanBytes(need), HumanBytes(free)))
 	if free < need {
 		return fmt.Errorf("NOT ENOUGH DISK SPACE for %s. About %s is wanted and %s is free on the volume holding it. "+
-			"Nothing has been imported and nothing is registered", b.Dir(), HumanBytes(need), HumanBytes(free))
+			"Nothing has been imported and nothing is registered", dir, HumanBytes(need), HumanBytes(free))
 	}
 	return nil
 }

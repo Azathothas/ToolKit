@@ -231,6 +231,13 @@ func (w *Wsl) Import(ctx context.Context, name, dir, tarball string) error {
 	if err := AssertOwnedDistro(name); err != nil {
 		return err
 	}
+	return w.importDistro(ctx, name, dir, tarball)
+}
+
+// importDistro is the wsl.exe call behind every import. ⛔ IT CARRIES NO GUARD
+// OF ITS OWN: each caller applies the ownership rule for what it creates, the
+// base's name rule or a throwaway distribution's, before it gets here.
+func (w *Wsl) importDistro(ctx context.Context, name, dir, tarball string) error {
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
 	out, stderr, err := Output(bounded, w.Path, "--import", name, dir, tarball, "--version", "2")
@@ -248,6 +255,12 @@ func (w *Wsl) Terminate(ctx context.Context, name string) error {
 	if err := AssertOwnedDistro(name); err != nil {
 		return err
 	}
+	return w.terminateDistro(ctx, name)
+}
+
+// terminateDistro is the wsl.exe call behind every terminate, with no guard of
+// its own for the reason importDistro gives.
+func (w *Wsl) terminateDistro(ctx context.Context, name string) error {
 	bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 	out, stderr, err := Output(bounded, w.Path, "--terminate", name)
@@ -277,6 +290,12 @@ func (w *Wsl) Unregister(ctx context.Context, name string, wantIdentity bool) er
 			return fmt.Errorf("refusing to unregister %s: %w", name, err)
 		}
 	}
+	return w.unregisterDistro(ctx, name)
+}
+
+// unregisterDistro is the wsl.exe call behind every unregister, with no guard of
+// its own for the reason importDistro gives.
+func (w *Wsl) unregisterDistro(ctx context.Context, name string) error {
 	bounded, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 	out, stderr, err := Output(bounded, w.Path, "--unregister", name)
@@ -296,6 +315,10 @@ type ExecRequest struct {
 	Timeout time.Duration
 	Stdout  io.Writer
 	Stderr  io.Writer
+	// Login runs the shell as a login shell, so /etc/profile and the files it
+	// sources apply before the script. ⚠ A throwaway distribution's image
+	// environment lives in /etc/profile.d, and a non-login shell never reads it.
+	Login bool
 }
 
 // Exec runs a shell script inside a distribution and returns its exit code.
@@ -323,6 +346,9 @@ func (w *Wsl) Exec(ctx context.Context, req ExecRequest) (int, error) {
 		args = append(args, "--cd", req.Dir)
 	}
 	args = append(args, "--", "/bin/sh")
+	if req.Login {
+		args = append(args, "-l")
+	}
 
 	bounded := ctx
 	var cancel context.CancelFunc

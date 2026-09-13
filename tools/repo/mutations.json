@@ -1019,6 +1019,105 @@
       "replace": "\tcase false:\n",
       "run": "TestAMissingOrDoubledPackageTableMarkerIsRefused",
       "args": []
+    },
+    {
+      "label": "throwaway: ownership reads where the disk lives",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif _, err := ResolveInside(distrosDir, registeredDisk); err != nil {\n",
+      "replace": "\tif _, err := ResolveInside(distrosDir, registeredDisk); false && err != nil {\n",
+      "run": "TestOwnershipIsWhereTheDiskLivesAndNotTheName",
+      "args": []
+    },
+    {
+      "label": "throwaway: the name rule",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif !throwawayNameShape.MatchString(name) || strings.Contains(name, \"..\") {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAThrowawayNameIsThePrefixAndTheNameAlphabet",
+      "args": []
+    },
+    {
+      "label": "throwaway: purge spares a running distribution",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tcase c.running && !includeLive:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestPurgeKeepsSnapshotsElsewhereRunningAndCreating",
+      "args": []
+    },
+    {
+      "label": "throwaway: purge spares a creation in progress",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tcase c.creating != nil && !includeLive:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestPurgeKeepsSnapshotsElsewhereRunningAndCreating",
+      "args": []
+    },
+    {
+      "label": "throwaway: purge never removes a snapshot",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\t\tcase c.kind == \"snapshot\":\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestPurgeKeepsSnapshotsElsewhereRunningAndCreating",
+      "args": []
+    },
+    {
+      "label": "throwaway: a snapshot tag naming a Windows device",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif windowsDeviceName(stem) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestASnapshotTagIsAFileNameOrARefusal",
+      "args": []
+    },
+    {
+      "label": "throwaway: a stale creation marker stops protecting",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\treturn m.Started, t.now().Sub(m.Started) < throwawayCreatingTTL\n",
+      "replace": "\treturn m.Started, true\n",
+      "run": "TestACreationMarkerProtectsForATimeAndThenDoesNot",
+      "args": []
+    },
+    {
+      "label": "throwaway: an origin record naming another distribution",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tif o.Schema != ThrowawayOriginSchema || !strings.EqualFold(o.Name, name) {\n",
+      "replace": "\tif o.Schema != ThrowawayOriginSchema {\n",
+      "run": "TestAnOriginRecordForAnotherNameIsACopyAndReadsAsNothing",
+      "args": []
+    },
+    {
+      "label": "throwaway: reuse together with ephemeral refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\tcase s.Reuse && s.Ephemeral:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestSpecValidationRefusesEveryFlagThatWouldDoNothing",
+      "args": []
+    },
+    {
+      "label": "hostaddress: a key outside the wsl2 section",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/hostaddr.go",
+      "find": "\t\tif section != \"wsl2\" {\n",
+      "replace": "\t\tif section != \"wsl2\" && false {\n",
+      "run": "TestTheWslConfigParserReadsOnlyTheLiveSetting",
+      "args": []
+    },
+    {
+      "label": "hostaddress: an adapter that is down",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/hostaddr.go",
+      "find": "\t\tif !a.Up || !strings.HasPrefix(strings.ToLower(a.Name), \"vethernet (wsl\") {\n",
+      "replace": "\t\tif !strings.HasPrefix(strings.ToLower(a.Name), \"vethernet (wsl\") {\n",
+      "run": "TestTheNatAdapterIsFoundByPrefixAndOnlyWhenUp",
+      "args": []
     }
   ]
 }

@@ -214,6 +214,55 @@ makes it usable with no installer, so the console stays this process's own pipe.
 
 ---
 
+## Throwaway distributions
+
+A throwaway distribution is a whole WSL distribution imported from an image or a
+rootfs archive, for a job whose subject is the distribution itself: its init, its
+`/etc/wsl.conf`, what a login shell sees. Containers in the base answer every
+other question.
+
+```powershell
+wsl-toolkit distro new --image alpine -c 'cat /etc/os-release' --ephemeral
+wsl-toolkit distro new --image debian --name build-box
+wsl-toolkit distro run --name eph-build-box -c 'uname -a'
+wsl-toolkit distro list
+wsl-toolkit distro remove --name eph-build-box --yes
+```
+
+- Every name starts with `eph-`, and `--name` adds the prefix when it is left off.
+- The command runs as a login shell, on stdin, with its streams forwarded
+  unchanged and its exit code as the answer. `--timeout` terminates the
+  distribution and answers 124.
+- `--systemd` refuses an image whose PID 1 is not systemd after the restart.
+  `--oci-env` writes the image's `ENV` and `WORKDIR` to `/etc/profile.d`.
+  `--reuse` runs in the newest distribution built from the same `--image` and
+  says so.
+- `distro snapshot --name NAME --tag TAG` exports one, and `distro new --tarball
+  TAG` imports it again. A snapshot carries whatever the distribution held.
+
+⛔ **The tool acts only on a distribution whose disk WSL registered inside this
+state directory's `distros` folder.** The prefix proves nothing, so a distribution
+another run or another tool made under the same prefix is listed as elsewhere
+and refused by `remove`, `run`, `snapshot` and `purge`.
+
+⚠ `distro purge` prints a plan, and `--apply` removes every owned distribution and
+what failed creations left. A running distribution, and one another run is still
+creating, is kept unless `--include-live` is passed. A snapshot is always kept.
+
+⚠ The helper does not serve these commands. A process that may not call `wsl.exe`
+makes them through the path its session uses to approve it.
+
+## The address a distribution reaches this host at
+
+```powershell
+$addr = wsl-toolkit hostaddress
+```
+
+The address is the only thing on stdout. It reads `%USERPROFILE%\.wslconfig` and
+this host's network adapters and starts nothing. ⛔ **In NAT mode a host service
+bound to 127.0.0.1 is not reachable from a distribution**: bind it to the address
+printed. Mirrored mode answers 127.0.0.1, and any other mode is refused.
+
 ## The low-level PowerShell interface
 
 `wsl-toolkit.ps1` creates and destroys THROWAWAY distributions from any image or

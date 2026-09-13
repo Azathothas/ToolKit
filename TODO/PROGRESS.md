@@ -6,23 +6,21 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-13T02:36:12Z; the record commit's own time is its end
-baseline        e9f0e08 with 19 uncommitted WSL-69 paths; local gate RED,
-                3 problems, 42.4s
+session started 2026-09-13T05:24:47Z; the record commit's own time is its end
+baseline        05c1703 clean; local gate green, 20 checks, 36.0s at 05:26:51Z
 entries         total 108  open 7  blocked 0  done 101
-gate            20 checks green in 31.6s on the working tree at 04:57:21Z
-head            2656a0d pushed and CI green on all six jobs; the commit that
-                carries this record sits on top of it
+gate            20 checks green in 39.2s on the staged checkpoint at 06:16:23Z
+head            the checkpoint commit on top of 05c1703
 ```
 
 ## Active work
 
-⛔ **[Issue 30](https://github.com/Azathothas/ToolKit/issues/30) is NOT finished,
-and this session stopped on the operator's instruction.** The operator first asked
-for the issue to be finished unattended, then redirected the same day: close the
-task in flight, checkpoint the rest, file
-[pull request 31](https://github.com/Azathothas/ToolKit/pull/31) as a task, and
-end the session. What follows is a resume point.
+⛔ **`WSL-73` is OPEN at a checkpoint, and the operator stopped the session
+there.** Pull request 31 was reviewed trusting nothing and measured, and the
+operator asked for it to be closed with the review's findings and decisions on it,
+naming this checkpoint. The native replacement is written and unit-proved and has
+NOT run on a real host. The PowerShell product is still in the tree. The entry's
+checkpoint section is the resume point, in order.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -30,166 +28,97 @@ end the session. What follows is a resume point.
 everything before building on it.** Every number below is a claim until a command
 re-measures it.
 
-1. ⭐ **`WSL-73`, and nothing else first.** Review pull request 31 as untrusted
-   input, adopt only what survives, iterate and improve it, delete the PowerShell
-   product entirely, and close the pull request. Consumers get no migration work
-   and are told to read the latest docs directly. That unit is done when the port
-   is complete, the pull request is closed, every suite and the gate pass, the
-   docs are updated and bloat-free with no narrative history, the tree is clean,
-   CI is green, and three deep reviews are recorded. The entry carries the
-   measured premise and the rulings.
-2. **Read issues [30](https://github.com/Azathothas/ToolKit/issues/30),
+1. ⭐ **Finish `WSL-73`**, from its checkpoint section in
+   [`wsl-toolkit-go.md`](wsl-toolkit-go.md): drive the native `distro` and
+   `hostaddress` commands and compare them with the script on this host, delete
+   the PowerShell product, give the version one home in Go, move the release
+   refusals to `tools/repo`, update the docs with no narrative history, pass every
+   gate, get CI green, record three reviews, and name the final commits in a
+   comment on the closed pull request 31.
+2. **File and fix the two gate defects found below.** The gate every later unit
+   leans on has to be able to fail.
+3. **Read issues [30](https://github.com/Azathothas/ToolKit/issues/30),
    [32](https://github.com/Azathothas/ToolKit/issues/32) and
-   [33](https://github.com/Azathothas/ToolKit/issues/33) in full, comments
-   included, for understanding only.** ⛔ Implement none of them. Then reconcile
-   the open entries against them: `WSL-59`, `WSL-67`, `WSL-68`, `WSL-70`, `WSL-71`
-   and `WSL-72`, and the unfiled findings below. Author the new entries that will
-   resolve the three issues, each with its `INDEX.md` row in the same change.
-3. **Review the docs, the repository and CI again**, after the two steps above
-   have changed them.
-4. **End with a kickoff prompt for the session after**: detailed, correct and
-   deep-reviewed, written for an agent with no prior context or memory, that will
-   close those issues properly.
+   [33](https://github.com/Azathothas/ToolKit/issues/33) in full**, comments
+   included. Reconcile `WSL-59`, `WSL-67`, `WSL-68`, `WSL-70`, `WSL-71`, `WSL-72`
+   and the unfiled findings against them, author the entries that resolve them,
+   each with its `INDEX.md` row, and then work those entries until the three
+   issues can be closed on evidence.
+4. **Review the docs, the repository and CI again**, including what the session
+   before this one added to the `wsl-toolkit` manual and the Muse guide.
+5. **End the way [`../docs/methodology/sessions.md`](../docs/methodology/sessions.md)
+   requires.**
 
 ## Done this session
 
 | commit | what |
 | --- | --- |
-| `622f46a` | `WSL-69` checkpoint: the previous session's uncommitted Muse base, with three defects and a published username path found in it and fixed |
-| `508b429` | `TOOL-23`, `TOOL-24`, `TOOL-25` filed and closed: three gate rules that could not fail the way they were written |
-| `e8948d5` | ⭐ `WSL-69` closed. The operator installed Muse and signed in; the agent drove it headless and through its interactive screen; the negative pass found a sixth defect, empty drive mount points under `automount off` |
-| `2656a0d` | `WSL-72` checkpoint: the BSD disk grows to 10 GiB and nim is the one name left. `WSL-70` checkpoint: the package table has one home and a checked copy that nothing reads yet |
-| the record commit | `WSL-73` filed for pull request 31, with the operator's rulings |
+| the checkpoint commit | `WSL-73` checkpoint: the review of pull request 31 measured and recorded, the decisions, and the native `distro` and `hostaddress` commands with 15 unit cases and 11 mutation rows |
 
 ## Measurements
 
 Read on Windows 11 Pro 26200 on 2026-09-13:
 
 ```text
-CI            622f46a, 508b429, e8948d5 and 2656a0d: all six jobs green
-clean clone   the gate green on a fresh clone of e8948d5 and of 2656a0d, once
-              core.hooksPath was set in it
-shellcheck    ubuntu:24.04's 0.9.0, which is CI's: 25 of 25 tracked scripts
-              clean at 2656a0d
-8.3 TEMP      tools/check, tools/repo and tools/windows/wsl-toolkit suites
-              green on the clean clone with TEMP at a short-name directory
-mutation      113 rows at 2656a0d against 90 at e9f0e08. Every row added or
-              re-anchored this session was planted alone and went red, and CI's
-              mutation job ran all of them green
-muse          Muse Code 1.1.1; headless smoke 52 s, exit 0; the interactive
-              answer on screen 10 s after ENTER; acceptance: version 0, push 0
-              with local and remote equal, /mnt/c /mnt/d and System32 exit 2,
-              cmd.exe not on PATH
-bsd           10.0 GiB disk, 8.7 GiB root. The languages toolset: exit 1 with
-              absent=nim alone. Five sessions of 128.6 s to 287.2 s
-bootstrap     HEAD and the refactored file gave identical output for five
-              invocations on alpine 3.22 and debian 13
-tree          85,893 text lines in 279 files at 2656a0d, against 83,285 in 270
-              at e9f0e08, counted with git grep -I -c
+probe         doctor.ps1 exit 0 in 16.5 s
+gate          20 checks green in 36.0 s on 05c1703
+pr 31 go      Windows: internal/compat FAIL, 10 cases. Linux, golang:1.25 with
+              go 1.25.14: all three packages ok
+pr 31 gate    run from its worktree on Windows: 2 problems, secrets and go
+pr 31 answers List, HostAddress and a refused parameter matched the embedded
+              script on this host
+native go     Windows and Linux (golang:1.25): every package ok, gofmt and vet
+              clean on both GOOS targets
+8.3 TEMP      tools/windows/wsl-toolkit, tools/check and tools/repo suites green
+              with TEMP and TMP at the 8.3 short form of a directory under .tmp
+shellcheck    ubuntu:24.04's 0.9.0, which is CI's: 25 of 25 scripts clean
+mutation      11 new rows, each red: mutate --only throwaway 9 of 9 and
+              --only hostaddress 2 of 2. The whole table was not re-run
+tree          85,989 text lines in 279 files at 05c1703, git grep -I -c
 ```
 
 ## Found, and not filed
 
-1. ⛔ **`bsd run` joins a payload's lines with `; `, so a comment line silently
-   drops every command after it and the run still exits 0.** Measured in the
-   FreeBSD guest: `sh -c 'echo joined-a; # a comment; echo joined-b'` printed only
-   `joined-a` and exited 0. A blank line becomes `; ;`, which is a syntax error.
-   `bsd.go` says the joined payload is "what a shell already understands".
-   ⭐ **On the operator's instruction it is
-   [a comment on issue 33](https://github.com/Azathothas/ToolKit/issues/33#issuecomment-5651331707)
-   rather than an entry**, so step 2 reconciles it with that issue.
-2. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 1 on
-   debian 13, under HEAD and the refactor alike. The cause was not read.
-3. `pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never run.
-4. `soar` and `nix` as user-level providers are written and not driven.
-5. A deterministic regression for pre-marker base rollback is still owed.
+1. ⛔ **The gate's `powershell` check cannot fail.** Its PowerShell snippet prints
+   `PARSE|file|message` and `LINT|file|message`, and the Go reader matches
+   `PARSE` and `LINT` followed by a TAB, so a parse error or an analyzer finding
+   is never reported. Planted: a `.ps1` with an unclosed brace added to the index
+   of a scratch worktree, `check powershell --json` exited 0 with `problems: 0`
+   over 58 scripts. ⚠ **Until it is fixed, parse every edited `.ps1` by hand.**
+2. ⛔ **`scripts/common/check.ps1` resolves the repository from the working
+   directory**, with `git rev-parse --show-toplevel`, rather than from its own
+   location, which the check contract's point 4 forbids. Running pull request 31's
+   worktree copy of `check-gate.ps1` from `main`'s directory checked `main` and
+   printed 20 greens. `check.sh` was not read for the same defect.
+3. `bsd run` joins a payload's lines with `; `. ⭐ **A comment on
+   [issue 33](https://github.com/Azathothas/ToolKit/issues/33#issuecomment-5651331707)**,
+   by the operator's ruling, and step 3 reconciles it.
+4. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 1 on
+   debian 13. The cause was not read.
+5. `pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never run.
+6. `soar` and `nix` as user-level providers are written and not driven.
+7. A deterministic regression for pre-marker base rollback is still owed.
 
 ## Review findings
 
-Three passes over `e9f0e08..2656a0d` and this record, per
-[`../docs/methodology/reviews.md`](../docs/methodology/reviews.md). Each names
-what it looked at that the other two did not.
-
-### Lens 1, the door sweep
-
-**Looked at:** every surface that reaches `bsd run --disk` and its JSON fields,
-`check package-table --fix`, the moved block of the fetched bootstrap, and what
-pull request 31 deletes.
-
-- **Found:** `scripts/README.md`'s bootstrap section gave someone editing the
-  table no sign that the block has a generated copy. It points at `RULES.md`
-  section 4 now.
-- **Found:** `RULES.md` section 4 said two generated files, and there are three.
-- **Found:** `--disk 0` was refused only after the boot banner printed. It is
-  refused before any output now, with a test.
-- **Found:** pull request 31 leaves `.gitattributes` line 58 and `RULES.md`
-  section 4 naming a file it deletes. Recorded in `WSL-73` rather than fixed,
-  because the file still exists on `main`.
-- **Found:** `check.sh` and `check.ps1` each carried a sentence with a word
-  missing. Fixed.
-- **Cleared:** the acceptance runner's JSON sweep parses `bsd status --json`, and
-  the drive parsed the new `disk_default_bytes` field; the manual carries
-  `--disk`; `check.ps1` passes `--fix` through unchanged.
-
-### Lens 2, the guard mutation
-
-**Looked at:** every guard this session added, by planting what it catches.
-
-- Twenty-three rows added, each planted alone and red: nine in the `WSL-69`
-  checkpoint, four for `TOOL-23` to `TOOL-25`, three for the drive mount points,
-  four for the BSD disk and boot rules, and three for the package table.
-- ⛔ **Found:** the umask row from the checkpoint stopped matching once `cd /` was
-  inserted beside its anchor, and the gate refused it. Re-anchored and re-proved.
-- The package table check driven against a planted edit to each side alone: exit
-  1 both times, naming line 49, and exit 0 once restored.
-- ⭐ **Found by driving rather than planting:** the first boot failure rule matched
-  `panic: ` anywhere, and a healthy boot stopped on a console line reporting an
-  EARLIER panic. It is anchored now, and that line is a regression case.
-
-### Lens 3, the claim audit
-
-**Looked at:** every sentence and number published this session, against the
-artefact behind it.
-
-- **Found:** the generated copy's banner, the bootstrap comment and the checker's
-  comment all said the provisioner RUNS the copy. Nothing reads it; all three say
-  so now.
-- **Found:** the boot failure error said "The image is damaged" for any match,
-  a panic included. It says "If the image is damaged" now.
-- **Found:** the `WSL-69` closing carried a full SHA-256 and two full commit ids,
-  which the tree refuses. Shortened, with the reason beside them.
-- **Found:** the changelog called every `WSL-69` defect mutation-proved; the
-  username's guard is `TOOL-25`'s row, and the sentence says so.
-- **Found:** `WSL-72` asks for a root of at least 9 GiB, which a 10 GiB disk
-  cannot give on an image carrying a 1 GiB swap partition. Recorded as a
-  correction and put to the operator rather than quietly met, and the operator
-  raised the default instead.
-- **Verified:** the damaged BSD image was not this session's grow. The first
-  failing boot ran before any grow, on an image at the published size.
-- **Verified against the artefact:** 978 nim files; a 171,601,920-byte core; 500,
-  499 and 492 packages; 31 new files and 11 tests in pull request 31, 55 files
-  at +9,204 / -5,610; 113 mutation rows; 20 checks.
+⛔ **No review pass has run over this checkpoint.** The three lenses are part of
+closing `WSL-73` and are owed there.
 
 ## Open questions for the operator
 
-⭐ **None.** Both that this session raised were ruled on 2026-09-13:
-
-1. `WSL-72`'s root threshold: the default disk rises to the smallest whole GiB,
-   12 or 13, that gives a true 10 GiB root filesystem, measured rather than
-   computed. The entry carries the ruling and the prediction to measure first.
-2. The `bsd run` line join: a comment on issue 33, not an entry.
+⭐ **None blocking.** The review's decisions in `WSL-73`'s checkpoint section are
+recorded for the operator to overrule: the native form, ownership by disk
+location, what is not carried from the script, version `3.0.0`, and the launcher
+going with the script.
 
 ## Host state
 
-- `wsl -l -v` reads what it read at 02:45:39Z: `podman-machine-default`,
-  `wsl-toolkit`, `wsl-toolkit-muse` and `wsl-toolkit-podbox` running, and
-  `eph-pgb` stopped. `wsl-toolkit-muse` was rebuilt in between for the `muse`
-  account. It holds the operator's Muse install and credential, whose file
-  was checked for existence and never read. No Zellij session is left and no
-  drive mount point.
-- The ordinary `wsl-toolkit` base was re-provisioned in place by `base ensure`.
-- The FreeBSD image is 10.0 GiB with the published 500 packages; `WSL-72` names
-  its residue.
-- Every container ran ephemeral and removed itself.
-- `.tmp/wsl69-e2e/project` is the throwaway checkout the Muse base's one grant
-  points at, and it stays while that base does.
+- `wsl -l -v` reads `podman-machine-default`, `wsl-toolkit`, `wsl-toolkit-muse`
+  and `wsl-toolkit-podbox` running, and `eph-pgb` stopped, as at the session's
+  start. ⛔ **`eph-pgb` is not this tool's**: its disk is under
+  `%LOCALAPPDATA%\wsl-ephemeral`, and the script's `Purge` would unregister it.
+- `wsl-toolkit-muse` holds the operator's Muse credential and was not touched.
+- The base's rootless engine holds `docker.io/library/golang:1.25`, pulled for the
+  Linux test runs, which the next session needs again. Every container ran
+  ephemeral and removed itself.
+- No throwaway distribution was created, and no BSD guest was booted.
