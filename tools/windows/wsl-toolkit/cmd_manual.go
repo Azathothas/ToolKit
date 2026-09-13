@@ -57,7 +57,7 @@ func renderManPage(ctx context.Context) (string, error) {
 		out.WriteString(".SS " + roffEscape(spec.Name) + "\n")
 		out.WriteString(roffEscape(spec.Summary) + "\n")
 		if len(spec.HelpForms) == 0 {
-			out.WriteString(".PP\nThis command forwards its arguments to the embedded compatibility interface.\n")
+			out.WriteString(".PP\nThis command forwards its arguments to the compatibility interface, which binds PowerShell-style parameters; `wsl-toolkit script -Action List` is the shape.\n")
 			continue
 		}
 		for _, form := range spec.HelpForms {
@@ -109,7 +109,7 @@ func renderManualText(ctx context.Context) (string, error) {
 		out.WriteString("\n" + strings.ToUpper(spec.Name) + "\n")
 		out.WriteString("  " + spec.Summary + "\n")
 		if len(spec.HelpForms) == 0 {
-			out.WriteString("  This command forwards its arguments to the embedded compatibility interface.\n")
+			out.WriteString("  This command forwards its arguments to the compatibility interface, which binds PowerShell-style parameters; `wsl-toolkit script -Action List` is the shape.\n")
 			continue
 		}
 		for _, form := range spec.HelpForms {

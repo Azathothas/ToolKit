@@ -19,6 +19,35 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-13
+
+### 2026-09-13T00:00:00Z: wsl-toolkit implements the PowerShell compatibility interface natively, and no longer embeds or launches a script
+
+**Record:** this change, in
+[`tools/windows/wsl-toolkit/README.md`](tools/windows/wsl-toolkit/README.md)
+(the port's contract and what is deliberately not changed), the five review
+passes in
+[`docs/reviews.md`](docs/reviews.md), and the package tests under
+`tools/windows/wsl-toolkit/internal/compat/`, which hold every guard decision
+the port kept: the parameter binder, the applicability table, the safety model,
+the stream log, the event schema and the exit codes.
+**Deployed:** no deploy. No tag was cut; the next release of the executable
+ships the native interface, and the PowerShell product keeps its own version in
+its own prelude.
+
+⛔ **A DEPENDENCY IS REMOVED, AND A BREAK IS POSSIBLE IN ONE PLACE.**
+`wsl-toolkit script` used to extract the embedded `wsl-toolkit.ps1` and run it
+through whatever PowerShell host it found, so a downloaded binary needed a host
+installed to answer the compatibility surface at all. The surface is now
+implemented in Go: the same twelve actions, the same parameters and bindings,
+the same refusals, the same streams, and the same exit codes, held by tests
+rather than by a shared file. The one behavioural difference a caller can meet:
+`wsl-toolkit version --json` no longer reports `script_sha256`,
+`script_bytes` or `script_reversible`, because there is no embedded script for
+those fields to describe.
+
+---
+
 ## 2026-09-12
 
 ### 2026-09-12T16:20:00Z: the bootstrap leaves one tool's examples directory, and learns twelve package managers

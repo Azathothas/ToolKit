@@ -260,10 +260,10 @@ try {
     Write-Line ''
 
     # -- the tool answers at all ---------------------------------------------
-    Test-Case 'the executable reports the version its embedded script declares' 'True' {
+    Test-Case 'the executable reports its own version and the json answer agrees' 'True' {
         $v = Invoke-Tool @('version')
         $j = (Invoke-Tool @('version', '--json')).Out | ConvertFrom-Json
-        (($v.Code -eq 0) -and ($v.Out.Trim() -eq $j.version) -and $j.script_reversible).ToString()
+        (($v.Code -eq 0) -and ($v.Out.Trim() -eq $j.version) -and ($null -eq $j.script_reversible)).ToString()
     }
 
     Test-Case 'the survey runs, creates nothing, and separates installed from callable' 'True' {
@@ -511,16 +511,21 @@ try {
         (($r.Code -eq 1) -and ($d.listening -eq $false)).ToString()
     }
 
-    # -- the embedded script -------------------------------------------------
-    Test-Case 'the embedded script runs and reports the distributions it may touch' 'True' {
+    # -- the compatibility interface, native now ------------------------------
+    Test-Case 'the compatibility interface runs and reports the distributions it may touch' 'True' {
         $r = Invoke-Tool @('script', '-Action', 'List')
         (($r.Code -eq 0) -and (($r.Out + $r.Err) -match 'PROTECTED')).ToString()
     }
 
-    Test-Case 'the embedded script puts one address on stdout and nothing else' 'True' {
+    Test-Case 'the compatibility interface puts one address on stdout and nothing else' 'True' {
         $r = Invoke-Tool @('script', '-Action', 'HostAddress')
         if ($r.Code -ne 0) { return "exited $($r.Code): $($r.Err)" }
         ($r.Out.Trim() -match '^(\d{1,3}\.){3}\d{1,3}$').ToString()
+    }
+
+    Test-Case 'the compatibility interface refuses a parameter its action does not read' 'True' {
+        $r = Invoke-Tool @('script', '-Action', 'List', '-Image', 'alpine:3.22')
+        (($r.Code -eq 1) -and ($r.Err -match 'read by -Action New')).ToString()
     }
 
     # -- the eight defects a consumer found in wsl-toolkit-v1.1.0 ------------
@@ -1406,7 +1411,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 69 } else { 71 }
+$expected = if ($Quick) { 70 } else { 72 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

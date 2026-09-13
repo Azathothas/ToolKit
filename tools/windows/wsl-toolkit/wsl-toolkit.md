@@ -191,22 +191,45 @@ makes it usable with no installer, so the console stays this process's own pipe.
 
 ---
 
-## The low-level PowerShell interface
+## The compatibility interface, for throwaway distributions
 
-`wsl-toolkit.ps1` creates and destroys THROWAWAY distributions from any image or
-rootfs tarball, which is what you want in order to test what a distribution
-itself does. The executable carries it and forwards to it:
+`script` creates and destroys THROWAWAY distributions from any image or rootfs
+tarball, which is what you want in order to test what a distribution itself
+does. It is the command line the PowerShell product defined, implemented
+natively here: no PowerShell host is installed or started, and one downloaded
+binary is enough.
 
 ```powershell
 wsl-toolkit script -Action New -Image alpine:3.22 -Command 'uname -a'
+wsl-toolkit script -Action List
+wsl-toolkit script -Action Remove -Name eph-alpine-3-22-a1b2 -Force
+wsl-toolkit script -Action New -Image alpine:3.22 -Command 'make' -Ephemeral -Force
 ```
 
+Parameters bind the way the script's host bound them: `-Name value`,
+`-Name:value`, `-Name=value`, case-insensitive, with unambiguous prefixes
+resolved and ambiguous ones refused. The twelve actions are `New`, `Run`,
+`Enter`, `List`, `Remove`, `Purge`, `Resources`, `HostAddress`, `Doctor`,
+`Snapshot`, `Replay` and `Compare`.
+
+⚠ **A parameter the action does not read is REFUSED, not ignored.** `-Image`
+beside `-Action List` exits 1 naming who reads `-Image`, so a caller who typed
+it learns it did nothing instead of believing it did.
+
+⚠ **The stream log is on by default.** Every line the command produces carries
+a stamp and a stream tag, `-TickSeconds` of silence produces a heartbeat, and
+`-NoTimestamps` hands the child's streams straight through byte for byte.
+
+⭐ **Exit codes are the script's.** `New` and `Run` forward the inner command's
+code; a deadline reports 124; a tool failure is 1; `List` over a WSL that
+refuses to answer is 2, never an empty inventory.
+
 ⚠ **It is the low-level compatibility interface and it is not the route to
-reach for.** Other repositories fetch that file by raw URL, so its path,
-parameters and exit codes do not change.
+reach for.** Other repositories fetch the PowerShell product by raw URL, so its
+path, parameters and exit codes do not change, and this command keeps them.
 [`scripts/windows/wsl-toolkit/README.md`](../../../scripts/windows/wsl-toolkit/README.md)
-is how it is built and released, and the script's own comment-based help is its
-parameter reference:
+is how that file is built and released, and its comment-based help is still the
+full parameter reference:
 
 ```powershell
 Get-Help .\scripts\windows\wsl-toolkit\wsl-toolkit.ps1 -Full
@@ -269,8 +292,7 @@ path that is still there exits non-zero naming it.
 | thing | needed for |
 | --- | --- |
 | Windows 10 2004+ or Windows 11, with WSL2 | everything |
-| PowerShell 7+, or Windows PowerShell 5.1 for the script | everything |
-| a container engine on the host | `base ensure` only, to export the base rootfs once |
+| a container engine on the host | `base ensure` only, to export the base rootfs once; `script -Image` pulls through it too |
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 
@@ -282,6 +304,7 @@ path that is still there exits non-zero naming it.
 wsl-toolkit ready --smoke                          # the whole route, including one container
 wsl-toolkit run --image alpine -c 'uname -a'       # one job, container retained
 wsl-toolkit gc --job JOB-ID --apply                # and removed again
+wsl-toolkit script -Action New -Image alpine:3.22 -Command 'uname -a' -Ephemeral -Force
 ```
 
 ```powershell

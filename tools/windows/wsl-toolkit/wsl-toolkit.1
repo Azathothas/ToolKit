@@ -1,12 +1,12 @@
-.TH WSL-TOOLKIT 1 "" "wsl-toolkit 2.0.2" "User Commands"
+.TH WSL-TOOLKIT 1 "" "wsl-toolkit 2.1.0" "User Commands"
 .SH NAME
 wsl-toolkit \- run isolated Linux container jobs from Windows
 .SH SYNOPSIS
 .nf
-wsl-toolkit 2.0.2
+wsl-toolkit 2.1.0
 
   doctor      report the host and the tools that can run
-  script      run the embedded PowerShell compatibility interface
+  script      run the compatibility interface the PowerShell product defines
   base        manage the WSL distribution that this tool owns
   images      list, check, or pull catalog images
   run         run one command in one container
@@ -23,7 +23,7 @@ wsl-toolkit 2.0.2
   artifacts   retrieve an artifact copy that a failed transfer retained
   examples    print the canonical command examples
   man         open or print the manual generated from the registered CLI
-  version     print the embedded product version
+  version     print the product version
 
 Global: --instance N  one isolated instance: distribution wsl-toolkit-N and
                       its own state. `auto` picks the lowest free one.
@@ -53,9 +53,9 @@ write a structured answer
 \fB--net\fR
 probe outbound HTTPS
 .SS script
-run the embedded PowerShell compatibility interface
+run the compatibility interface the PowerShell product defines
 .PP
-This command forwards its arguments to the embedded compatibility interface.
+This command forwards its arguments to the compatibility interface, which binds PowerShell-style parameters; `wsl-toolkit script -Action List` is the shape.
 .SS base
 manage the WSL distribution that this tool owns
 .TP
@@ -578,7 +578,7 @@ write the complete readable manual to stdout
 \fB--output\fR
 write the generated roff man page to this file
 .SS version
-print the embedded product version
+print the product version
 .TP
 .B wsl-toolkit version
 .TP

@@ -87,15 +87,12 @@ $ErrorActionPreference = 'Stop'
 $script:ToolRoot   = $PSScriptRoot
 $script:Manifest   = Join-Path $script:ToolRoot 'bundle.manifest'
 $script:BundlePath = Join-Path $script:ToolRoot 'wsl-toolkit.ps1'
-# ⭐ THE SECOND PRODUCT, and it is the same bytes. The Go executable at
-# tools/windows/wsl-toolkit carries the script inside itself, because a consumer
-# who downloads one binary has no second file to fetch. Go's embed directive
-# cannot reach outside its own package directory, so the copy lives beside that
-# package rather than being referenced, and this build writes it. -Check
-# compares BOTH against what the parts produce, which is what stops the two
-# copies from ever being different scripts.
+# ⛔ THE ONE PRODUCT. The Go executable at tools/windows/wsl-toolkit used to
+# carry a copy of this script inside itself and run it through a PowerShell
+# host; it now implements the same command line natively, so this build writes
+# ONE product and -Check compares ONE copy against what the parts produce. The
+# executable's version is its own, declared in its own tree.
 $script:RepoRoot   = (Resolve-Path (Join-Path $script:ToolRoot '../../..')).Path
-$script:EmbedPath  = Join-Path $script:RepoRoot ([IO.Path]::Combine('tools', 'windows', 'wsl-toolkit', 'internal', 'script', 'wsl-toolkit.ps1'))
 $script:PartDirs   = @('src', 'core', 'libs')
 
 # ⛔ Deterministic. No date, no machine name, no version read from anywhere that
@@ -282,13 +279,11 @@ function Get-FirstDifferingLine {
     <#
       Which line a reader should open. A byte offset is true and useless.
 
-      HARD RULE: THE TRAILING CARRIAGE RETURN IS STRIPPED BEFORE COMPARING. The
-      two products differ by line endings ON PURPOSE, so splitting on newline
-      alone leaves every built line ending in a CR that the LF copy does not
-      have, line 1 differs, and the two values printed underneath look
-      identical. That is what this reported for EVERY difference in the embedded
-      copy, whatever and wherever it was. The byte comparison above is what
-      decides agreement; this only says where to look.
+      HARD RULE: THE TRAILING CARRIAGE RETURN IS STRIPPED BEFORE COMPARING.
+      Splitting on newline alone leaves every line ending in a CR that the
+      first differing line then carries, so the two values printed underneath
+      can look identical while pointing at nothing. The byte comparison above
+      is what decides agreement; this only says where to look.
     #>
     param(
         [Parameter(Mandatory = $true)][string]$Built,
@@ -335,28 +330,6 @@ function Write-BundleAtomically {
     [IO.File]::WriteAllBytes($tmp, $Bytes)
     if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
     Move-Item -LiteralPath $tmp -Destination $Path -Force
-}
-
-function ConvertTo-LfBytes {
-    <#
-      The same product with LF endings, for the copy the Go executable embeds.
-
-      ⛔ THE EXCEPTION IS DELIBERATE AND IT IS REVERSIBLE. Every other .ps1 in
-      this tree is stored CRLF because Windows PowerShell 5.1 mis-parses a
-      here-string terminated by a bare LF. That copy is not stored as a script
-      for a host to run: it is a byte array a compiler puts inside a binary, and
-      a file git rewrites on checkout would make an ubuntu build and a windows
-      build of the same commit produce two different binaries.
-
-      ⭐ Read-PartText has already turned every lone carriage return into a
-      newline, so the product contains a carriage return only as the first half
-      of a CRLF pair. That makes this transformation exactly reversible, and the
-      executable reverses it to reconstruct the released artefact byte for byte
-      rather than to approximate it.
-    #>
-    param([Parameter(Mandatory = $true)][byte[]]$Bytes)
-    $text = [Text.Encoding]::UTF8.GetString($Bytes)
-    return , [Text.Encoding]::UTF8.GetBytes(($text -replace "`r`n", "`n"))
 }
 
 function Test-ProductMatches {
@@ -600,21 +573,18 @@ try {
             $exit = 1
         }
         elseif ($Check) {
-            # ⛔ BOTH PRODUCTS, and the second is not optional. The executable's
-            # copy is what a caller who downloaded one binary actually runs, so a
-            # rebuild that refreshed only the tracked bundle would ship a binary
-            # running the previous script with nothing saying so.
+            # ⛔ ONE PRODUCT. The executable's embedded copy is gone: it
+            # implements the same command line natively now, so a rebuild that
+            # refreshed the tracked bundle is the only thing to keep true.
             $okBundle = Test-ProductMatches -Path $script:BundlePath -Bytes $bytes -BuiltText $builtText -Label 'the tracked bundle'
-            $okEmbed  = Test-ProductMatches -Path $script:EmbedPath  -Bytes (ConvertTo-LfBytes -Bytes $bytes) -BuiltText $builtText -Label "the executable's embedded copy"
-            if ($okBundle -and $okEmbed) {
-                Write-Line "  ok    both products match their $((Get-ManifestParts).Count) parts"
+            if ($okBundle) {
+                Write-Line "  ok    the bundle matches its $((Get-ManifestParts).Count) parts"
             }
             else { $exit = 1 }
         }
         else {
             Write-BundleAtomically -Bytes $bytes -Path $script:BundlePath
-            Write-BundleAtomically -Bytes (ConvertTo-LfBytes -Bytes $bytes) -Path $script:EmbedPath
-            Write-Line ("  ok    wrote {0} and the embedded copy ({1:N0} bytes, {2} parts)" -f (Split-Path -Leaf $script:BundlePath), $bytes.Length, (Get-ManifestParts).Count)
+            Write-Line ("  ok    wrote {0} ({1:N0} bytes, {2} parts)" -f (Split-Path -Leaf $script:BundlePath), $bytes.Length, (Get-ManifestParts).Count)
         }
 
         if ($Test -and $script:Failures.Count -eq 0) {

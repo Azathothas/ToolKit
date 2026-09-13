@@ -30,7 +30,7 @@ is the pipeline.
 carries `wsl-toolkit.ps1`, `launcher.ps1` and the `wsl-toolkit` executable for
 two Windows architectures. The executable CARRIES the script, reads its version
 out of it and forwards to it, so the two cannot be different products; CI proves
-that by reconstructing the tracked file from the embedded copy byte for byte.
+that its version and its tag answer for the same bytes.
 ⚠ **Ten files, not four**: those four, `SHA256SUMS`, and one `.cosign.bundle` per
 file since `wsl-toolkit-v2.0.1`.
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
@@ -129,7 +129,7 @@ second may change how the first is applied.
 | **Fixing a defect** | [`methodology/authoring.md`](methodology/authoring.md), the code the defect is in, [`conventions/forbidden-patterns.md`](conventions/forbidden-patterns.md) |
 | ⭐ **Changing a tool other repositories fetch** | [`consumers.md`](consumers.md), the tool's own `.md` beside it. ⛔ A pinned caller does not get your fix by your merging it. |
 | **Anything touching WSL, podman or a container image** | [`../tools/windows/wsl-toolkit/wsl-toolkit.md`](../tools/windows/wsl-toolkit/wsl-toolkit.md), which is now the ONLY usage page for both products, and [`conventions/shell.md`](conventions/shell.md) section 7. ⛔ Not [`HISTORY/wsl-toolkit.md`](HISTORY/wsl-toolkit.md), which is closed defects. |
-| **Changing the compiled tool** | [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md), [`conventions/code.md`](conventions/code.md). ⛔ The embedded script is GENERATED; `build.ps1` writes it. |
+| **Changing the compiled tool** | [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md), [`conventions/code.md`](conventions/code.md). ⛔ The compatibility interface is implemented in `internal/compat`, not embedded; the .ps1 the scripts product releases is a separate artefact. |
 | **Writing or changing a script** | [`../scripts/README.md`](../scripts/README.md), [`conventions/shell.md`](conventions/shell.md), [`conventions/code.md`](conventions/code.md) |
 | **Writing or editing a document** | [`conventions/prose.md`](conventions/prose.md), [`conventions/docs.md`](conventions/docs.md) |
 | **Committing** | [`conventions/git.md`](conventions/git.md) |

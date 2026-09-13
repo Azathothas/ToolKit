@@ -95,16 +95,6 @@ jobs:
         shell: bash
         run: sh scripts/common/check-go.sh
 
-      # ⛔ THE EXECUTABLE MUST CARRY THE SCRIPT THIS RELEASE PUBLISHES. The two
-      # copies differ by line endings alone and the executable reconstructs the
-      # tracked bytes exactly. Without this, a release could ship a binary
-      # running a script that is not the one beside it in the same release.
-      - name: the executable carries the published script
-        shell: bash
-        run: |
-          cd tools/windows/wsl-toolkit
-          go test ./internal/script/ -run TestStoredCopyReconstructsTheProduct -v
-
       # ⭐ THE DIGESTS ARE COMPUTED OVER THE BYTES THAT ARE UPLOADED, in this
       # checkout, so a consumer verifying a download against SHA256SUMS is
       # checking the same object. A digest computed anywhere else would be a

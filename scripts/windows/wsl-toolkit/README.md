@@ -1,9 +1,11 @@
 # wsl-toolkit PowerShell compatibility interface
 
 The compiled [`wsl-toolkit` executable](../../../tools/windows/wsl-toolkit/README.md)
-is the primary interface. This directory contains the stable low-level
-PowerShell interface for existing consumers and the source that the executable
-embeds.
+is the primary interface, and since it implemented this command line natively in
+Go it no longer embeds or launches a copy of this script. This directory holds
+the PowerShell product itself, for the existing consumers who run it directly,
+and the two are held to the same surface by this page and by
+[`surface.lock`](surface.lock).
 
 [`tools/windows/wsl-toolkit/wsl-toolkit.md`](../../../tools/windows/wsl-toolkit/wsl-toolkit.md) is what the tool does, for somebody using it.
 This is what it is made of, for somebody changing it.
@@ -31,24 +33,21 @@ rather than built on demand because a consumer fetching one raw URL cannot run a
 build step, and that one-URL contract is the whole reason the launcher can verify
 anything: one URL, one digest, one thing to check.
 
-⛔ **THE BUILD WRITES TWO PRODUCTS AND `-Check` COMPARES BOTH.** The second is
-`tools/windows/wsl-toolkit/internal/script/wsl-toolkit.ps1`, which the Go
-executable embeds; Go's `embed` directive cannot reach outside its own package
-directory, so the file lives there rather than being referenced. A rebuild that
-refreshed only this one would ship a binary running the previous script.
-[`../../../tools/windows/wsl-toolkit/README.md`](../../../tools/windows/wsl-toolkit/README.md)
-is the compiled half.
+⛔ **THE BUILD WRITES ONE PRODUCT AND `-Check` COMPARES IT.** The executable's
+embedded copy is gone - see
+[`../../../tools/windows/wsl-toolkit/README.md`](../../../tools/windows/wsl-toolkit/README.md),
+the compiled half, which implements the same arguments, refusals and exit codes
+without a PowerShell host.
 
-⚠ **The embedded copy is stored with LF and this one with CRLF**, so the two
-differ by line endings and nothing else. git rewrites a `text eol=crlf` file on
-checkout, which would make an ubuntu build and a windows build of one commit
-embed different bytes. The build leaves no lone carriage return, so the
-executable turns each LF back into CRLF and reconstructs this file exactly; a Go
-test asserts that against this file rather than claiming it.
+⛔ **Do not edit `wsl-toolkit.ps1`.** An edit there is lost the next time
+anything runs the build, and the gate refuses a product that disagrees with its
+parts, so it is lost loudly rather than quietly.
 
-⛔ **Do not edit `wsl-toolkit.ps1`, or the copy under `tools/`.** An edit to
-either is lost the next time anything runs the build, and the gate refuses a
-product that disagrees with its parts, so it is lost loudly rather than quietly.
+⚠ **THE VERSION IS THIS PRODUCT'S OWN.** `$script:ToolkitVersion` in
+`src/20-prelude.ps1` is the version the script prints and release.ps1 tags. The
+executable declares its own, in its own tree, and the two are no longer one
+number by construction. A release that tags one product does not have to tag
+the other.
 
 ⚠ **The join order is not alphabetical and cannot be.** PowerShell requires
 `param()` to be the first statement in a script and comment-based help to come

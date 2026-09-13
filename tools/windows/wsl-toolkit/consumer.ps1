@@ -378,9 +378,10 @@ try {
         }
     }
 
-    # The manual says the executable CARRIES the script and reads its version
-    # out of it, so the two cannot be different products.
-    Test-Case 'the executable and the published script are the same product' 'True' {
+    # The executable declares its own version now: it no longer reads one out
+    # of an embedded script, so the tag answers for the binary and the .ps1
+    # asset is its own product beside it.
+    Test-Case 'the executable reports the version its tag names' 'True' {
         $v = Invoke-Released @('version')
         if ($v.Code -ne 0) { return "version exited $($v.Code): $($v.Err)" }
         $reported = $v.Out.Trim()
@@ -388,16 +389,16 @@ try {
             return "the tag is $($script:Tag) and the binary reports $reported"
         }
         $j = Read-ToolJson -Stdout (Invoke-Released @('version', '--json')).Out -What 'version --json'
-        if (-not $j.script_reversible) { return 'the embedded script does not reconstruct the tracked file' }
-        # The digest the binary reports for its embedded copy has to be the
-        # digest of the .ps1 the same release published, or the release is two
-        # products under one tag.
-        $published = Join-Path $script:Download 'wsl-toolkit.ps1'
-        $onDisk = (Get-FileHash -LiteralPath $published -Algorithm SHA256).Hash.ToLowerInvariant()
-        if ($j.script_sha256 -ne $onDisk) {
-            return "the binary embeds $($j.script_sha256) and the release published $onDisk"
-        }
+        if ($j.version -ne $reported) { return "the text says $reported and the json says $($j.version)" }
         'True'
+    }
+
+    # The compatibility interface is native, so a consumer who never
+    # installed PowerShell still gets the script's command line from the one
+    # binary they downloaded.
+    Test-Case 'the compatibility interface answers without a PowerShell host' 'True' {
+        $r = Invoke-Released @('script', '-Action', 'List')
+        (($r.Code -eq 0) -or ($r.Code -eq 2)).ToString()
     }
 
     # -- what the manual promises a first-run agent ---------------------------

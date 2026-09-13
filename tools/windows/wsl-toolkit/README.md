@@ -17,14 +17,16 @@ tools/windows/wsl-toolkit/
   main.go                   the dispatch, the global flags, and the two output rules
   cmd_*.go                  one file per command surface, all thin
   helper_route.go           the one place a command decides between the two paths
-  internal/script/          the embedded PowerShell product, and its reconstruction
+  internal/compat/          the compatibility interface the PowerShell product defines
   internal/toolkit/         everything else: WSL, the engine, jobs, the fleet, the helper
 ```
 
 ⭐ **It mirrors `scripts/windows/wsl-toolkit/` on purpose.** The PowerShell
-bundle is the low-level compatibility interface for existing consumers. The
-executable embeds that interface and adds the persistent base, container jobs,
-the host survey, and the generated manual.
+bundle is the low-level compatibility interface for existing consumers, and
+`internal/compat` implements that interface natively: the same arguments, the
+same refusals, the same streams and the same exit codes, with no PowerShell host
+involved. The executable adds the persistent base, container jobs, the host
+survey, and the generated manual.
 
 ⛔ **No dependencies.** Every line is the standard library, so there is no
 `go.sum`, nothing to audit on a bump and nothing to fetch in CI. Keep it that
@@ -33,25 +35,35 @@ path resolver, are a few lines of `syscall` each.
 
 ---
 
-## ⛔ The embedded script is GENERATED, and this directory holds a copy
+## ⛔ The compatibility interface is IMPLEMENTED HERE, not embedded
 
-`internal/script/wsl-toolkit.ps1` is written by
-[`../../../scripts/windows/wsl-toolkit/build.ps1`](../../../scripts/windows/wsl-toolkit/README.md)
-from the same parts that produce the tracked bundle. Go's `embed` directive
-cannot reach outside its own package directory, so the file is here rather than
-referenced.
+`internal/compat` is a Go port of the PowerShell product's command line. It used
+to be the other way round: this executable carried a copy of
+`wsl-toolkit.ps1` inside itself, extracted it to the state directory at run
+time, and launched it through whatever PowerShell host it found - so a downloaded
+binary depended on a host being installed, and the version it printed was read
+out of a file it shipped.
 
-⭐ **`build.ps1 -Check` compares BOTH copies against what the parts build**, and
-that is what stops the two from ever being different scripts. A rebuild that
-refreshed only the tracked bundle would ship a binary running the previous script
-with nothing saying so.
+⭐ **The port keeps the CONTRACT, not the implementation.** The binder resolves
+parameter names the way the script's host did - case-insensitive, unambiguous
+prefixes, `-Name value` and `-Name:value` - the applicability table refuses a
+parameter the action does not read, the exit codes are the script's (inner code
+forwarded, tool failure 1, refused listing 2, deadline 124), the report stream
+carries the action's report while the notes go to stderr, and a dry run prints a
+plan built by the same functions the real run uses. The guard decisions - the
+`eph-` prefix, the protected list, the containment check, the space preflight -
+are the same decisions with the same numbers, and the tests assert them against
+the behaviours, not the prose.
 
-⚠ **It is the one `.ps1` in this tree stored with LF.** git rewrites a
-`text eol=crlf` file on checkout, so an ubuntu build and a windows build of one
-commit would otherwise embed different bytes. The build leaves no lone carriage
-return, so turning each LF back into CRLF reconstructs the released artefact
-exactly. `TestStoredCopyReconstructsTheProduct` asserts that against the tracked
-file, and CI and the release workflow both run it by name.
+⚠ **What is deliberately NOT ported is the relay's cost story getting cheaper.**
+The stream log still relays through a pipe, still block-buffers a
+non-tty application, and still says so on the first escalation note. A port that
+quietly changed that would change what a caller's log means.
+
+⛔ **The PowerShell product is still released, for the consumers who run it
+directly.** This executable is not a dependency of it and it is not a dependency
+of this executable. The two are held to the same surface by their pages and by
+the script's `surface.lock`.
 
 ---
 
@@ -70,8 +82,9 @@ workflow is the defect.
 pwsh -NoProfile -File scripts/windows/wsl-toolkit/build.ps1
 ```
 
-Run that after editing any part of the PowerShell product, because it writes the
-copy this module embeds.
+Run that after editing any part of the PowerShell product, because it rebuilds
+the tracked bundle the release publishes. Nothing in this module reads it any
+more, but a stale bundle is still a release nobody should get.
 
 ### Building one to try
 
@@ -126,7 +139,7 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-
 ```
 
 ⭐ **It drives a real machine**, which is the whole reason it exists: it registers
-nothing the suite above can reach. Seventy-one cases in the full run and 69 in
+nothing the suite above can reach. Seventy-two cases in the full run and 70 in
 the quick run cover both accounts, all twelve catalog images, direct and helper
 execution, hostile archive names, a workspace a container tried to destroy, a
 failing command, a deadline, and the counts returning to zero afterwards.
@@ -179,10 +192,8 @@ and publishes.
 | `wsl-toolkit-windows-arm64.exe` | the same, for an arm64 Windows host |
 | `SHA256SUMS` | ⭐ computed in CI over the bytes that are uploaded |
 
-⛔ **The workflow runs the staged binary before it publishes it**, and asks it
-the one question whose answer proves it carries the right script: its version,
-which it reads out of the embedded copy rather than declaring. A binary that
-builds and cannot start is a release nobody can use.
+⛔ **The workflow runs the staged binary before it publishes it**, asking for its
+version: a binary that builds and cannot start is a release nobody can use.
 
 ⛔ **`-trimpath` and no build stamp.** Two builds of one commit produce identical
 bytes, so a consumer can rebuild and compare rather than trusting the publisher.
@@ -197,11 +208,12 @@ is how CI catches a guard whose answer depends on the host it runs on.
 
 ## The version has one home
 
-`$script:ToolkitVersion` in
-[`../../../scripts/windows/wsl-toolkit/src/20-prelude.ps1`](../../../scripts/windows/wsl-toolkit/src/20-prelude.ps1).
-This module READS it out of the embedded script and declares none of its own, so
-the executable and the script it carries cannot disagree about what they are.
-⛔ Nothing here may hold a copy of it.
+`Version` in [`internal/toolkit/version.go`](internal/toolkit/version.go). It
+used to be read out of the embedded PowerShell script, and this module declared
+none of its own, so the executable and the script it carried could not disagree.
+The executable is a standalone product now, so it declares its own version
+there, and the PowerShell product keeps `$script:ToolkitVersion` in its own
+prelude. ⛔ Nothing else in this module may hold a copy of it.
 
 ---
 

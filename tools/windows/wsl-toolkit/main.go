@@ -21,7 +21,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/script"
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
@@ -40,11 +39,12 @@ const (
 
 var quiet bool
 
-// The helper package reads the product version through this hook rather than
-// importing the script package, which would make the two depend on each other
-// for one string.
+// The helper reads the product version through this hook. ⛔ THE VERSION HAS
+// ONE HOME: toolkit.Version. It used to be read out of the embedded PowerShell
+// script, and the executable declared none of its own; the executable is now a
+// standalone product and declares the version in toolkit/version.go.
 func init() {
-	toolkit.ScriptVersion = script.Version
+	toolkit.ScriptVersion = func() (string, error) { return toolkit.Version, nil }
 	commandSpecs = registeredCommandSpecs()
 	commands = make(map[string]func(context.Context, []string) (int, error), len(commandSpecs))
 	for _, spec := range commandSpecs {
@@ -92,11 +92,7 @@ func usage() string {
 }
 
 func versionString() string {
-	v, err := script.Version()
-	if err != nil {
-		return "(the embedded script's version could not be read)"
-	}
-	return v
+	return toolkit.Version
 }
 
 type commandSpec struct {
@@ -117,7 +113,7 @@ var (
 func registeredCommandSpecs() []commandSpec {
 	return []commandSpec{
 		{Name: "doctor", Summary: "report the host and the tools that can run", Run: cmdDoctor, HelpForms: []string{"doctor"}},
-		{Name: "script", Summary: "run the embedded PowerShell compatibility interface", Run: cmdScript},
+		{Name: "script", Summary: "run the compatibility interface the PowerShell product defines", Run: cmdScript},
 		{Name: "base", Summary: "manage the WSL distribution that this tool owns", Run: cmdBase, HelpForms: []string{"base status", "base ensure", "base recreate", "base remove", "base shell", "base presets"}},
 		{Name: "images", Summary: "list, check, or pull catalog images", Run: cmdImages, HelpForms: []string{"images", "images warm", "images pull"}},
 		{Name: "run", Summary: "run one command in one container", Run: cmdRun, HelpForms: []string{"run"}},
@@ -134,7 +130,7 @@ func registeredCommandSpecs() []commandSpec {
 		{Name: "artifacts", Summary: "retrieve an artifact copy that a failed transfer retained", Run: cmdArtifacts, HelpForms: []string{"artifacts retry"}},
 		{Name: "examples", Summary: "print the canonical command examples", Run: func(_ context.Context, a []string) (int, error) { return cmdExamples(a) }, HelpForms: []string{"examples"}},
 		{Name: "man", Summary: "open or print the manual generated from the registered CLI", Run: cmdMan, HelpForms: []string{"man"}},
-		{Name: "version", Summary: "print the embedded product version", Run: func(_ context.Context, a []string) (int, error) { return cmdVersion(a) }, HelpForms: []string{"version"}},
+		{Name: "version", Summary: "print the product version", Run: func(_ context.Context, a []string) (int, error) { return cmdVersion(a) }, HelpForms: []string{"version"}},
 	}
 }
 
@@ -359,20 +355,13 @@ func cmdVersion(args []string) (int, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
-	v, err := script.Version()
-	if err != nil {
-		return exitCannot, err
-	}
 	if *asJSON {
 		return exitOK, writeJSON(map[string]any{
-			"schema":            "wsl-toolkit-version/1",
-			"version":           v,
-			"script_sha256":     script.Digest(),
-			"script_bytes":      script.Size(),
-			"script_reversible": script.StoredIsReversible(),
+			"schema":  "wsl-toolkit-version/1",
+			"version": toolkit.Version,
 		})
 	}
-	fmt.Println(v)
+	fmt.Println(toolkit.Version)
 	return exitOK, nil
 }
 

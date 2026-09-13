@@ -101,7 +101,7 @@ answer and still applies on top of both. `WSL-25`.
 
 | you want | pass |
 | --- | --- |
-| ⭐ the executable, which carries the script and adds to it | nothing. It is the default. |
+| ⭐ the executable, which implements the script's interface and adds to it | nothing. It is the default. |
 | the script exactly as before | `-LauncherKind script`, or `WSL_TOOLKIT_KIND=script` |
 | an executable you already hold | `-LauncherBinary PATH` |
 

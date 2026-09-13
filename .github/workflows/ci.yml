@@ -241,17 +241,6 @@ jobs:
         shell: bash
         run: sh scripts/common/check-go.sh
 
-      # ⛔ THE EMBEDDED SCRIPT IS THE TRACKED ONE, and this is where that is
-      # provable on a Linux checkout as well as a Windows one. The two copies
-      # differ by line endings alone and the executable reconstructs the
-      # tracked bytes exactly; a checkout that broke that would build a binary
-      # running a script nobody published.
-      - name: the executable carries the published script
-        shell: bash
-        run: |
-          cd tools/windows/wsl-toolkit
-          go test ./internal/script/ -run TestStoredCopyReconstructsTheProduct -v
-
       # ⭐ CROSS COMPILED HERE TOO, so a release cannot be the first time an
       # architecture is built. Nothing in this tool uses cgo, so both targets
       # build from either host.

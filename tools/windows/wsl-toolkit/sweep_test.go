@@ -112,12 +112,13 @@ func jsonSurfaces(t *testing.T) []string {
 	os.Stderr = devnull
 	defer func() { os.Stderr = realErr }()
 
-	for name, call := range commands {
-		// `script` forwards its arguments to the embedded PowerShell verbatim,
-		// so -h there would start a process. It registers no flag set.
-		if name == "script" {
-			continue
-		}
+	for _, call := range commands {
+		// The `script` surface binds PowerShell-style parameters through its
+		// own parser, not a flag.FlagSet, so no flag set registers here and
+		// the walk cannot see it. It takes no --json: its answers are the
+		// script's text streams, which is the contract its callers already
+		// hold. Asking it for -h is safe since it went native - the binder
+		// refuses, nothing launches - and pointless, so it stays in the walk.
 		_, _ = call(ctx, []string{"-h"})
 	}
 	for _, sub := range [][]string{
