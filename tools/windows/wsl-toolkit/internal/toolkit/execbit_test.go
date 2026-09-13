@@ -304,6 +304,29 @@ func TestTheVerifierReadsTheEngineVersionFromStdoutAlone(t *testing.T) {
 	}
 }
 
+// TestAutomountOffLeavesNoDriveMountPoints is the case for a drive that read as
+// absent in the configuration and present in the guest. A fresh import's first
+// start automounts every Windows drive before provisioning writes `automount
+// off`, and the restart left nine empty 0777 directories: `ls /mnt/c` succeeded
+// and listed nothing, which is not what the setting promises. Measured on a
+// rebuilt Arch base on 2026-09-13.
+func TestAutomountOffLeavesNoDriveMountPoints(t *testing.T) {
+	provision := string(provisionScript)
+	for _, want := range []string{
+		"\ncd /\n",
+		`for drive_dir in /mnt/?; do`,
+		`umount "$drive_dir" 2>/dev/null || umount -l "$drive_dir"`,
+		`rmdir "$drive_dir" 2>/dev/null || die`,
+	} {
+		if !strings.Contains(provision, want) {
+			t.Errorf("the provisioner does not carry %q", want)
+		}
+	}
+	if !strings.Contains(string(verifyScript), `if [ -e "$drive_dir" ]; then`) {
+		t.Error("the verifier does not refuse a drive mount point that automount off should have left absent")
+	}
+}
+
 func TestManagedAccountGetsPrivateXDGDirectories(t *testing.T) {
 	for _, want := range []string{
 		`"$TK_HOME/.config" "$TK_HOME/.cache" "$TK_HOME/.local" "$TK_HOME/.local/share" "$TK_HOME/.local/state"`,

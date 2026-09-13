@@ -21,6 +21,35 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-13
 
+### 2026-09-13T04:19:42Z: Muse Code installed, signed in, and driven by an agent from Windows
+
+**Record:** `WSL-69` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+2026-09-13 amendment carries the rulings and the defects and whose closing carries
+the acceptance output.
+**Deployed:** no deploy. This is `main` only; no tag was cut, and the executable
+that carries `base exec` ships in the next release.
+**Closes:** `WSL-69`. [Issue 30](https://github.com/Azathothas/ToolKit/issues/30)
+stays open for the entries that remain.
+
+⭐ **THE PROVIDER CLI RUNS IN ITS OWN NAMED BASE, AND AN AGENT DRIVES IT.** A
+managed `muse` account with a private persistent home, opt-in passwordless sudo
+validated by `visudo` before activation, one Windows checkout granted read-write,
+and `wsl-toolkit base exec` as the one non-interactive seam. Muse read, wrote,
+committed and pushed headless in 52 seconds, and answered through its interactive
+screen in a Zellij pane ten seconds after the agent typed into it.
+
+⛔ **SIX DEFECTS WERE FOUND BY BUILDING IT, NOT BY READING IT.** A restrictive
+umask leaked through the provisioner and would have locked the account out of its
+checkout; the verifier called that unreachable mount absent; `base exec` dropped a
+failure to start `wsl.exe`; the verifier published a podman warning as the engine
+version; an example carried a username in a path; and `automount off` left nine
+empty drive mount points, so `ls /mnt/c` succeeded. Each is fixed, and each has a
+guard that was planted and went red; the username's guard is `TOOL-25`'s.
+
+⚠ **Verification asks more of every base**, so an older one reports unusable until
+`base ensure` re-provisions it. [`docs/consumers.md`](docs/consumers.md) carries the
+measurement.
+
 ### 2026-09-13T03:33:20Z: three gate rules that could not fail the way they were written
 
 **Record:** `TOOL-23`, `TOOL-24` and `TOOL-25` in

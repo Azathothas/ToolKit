@@ -19,6 +19,11 @@ set -eu
 # tighter mask takes it inside a subshell, and a test holds that shape.
 umask 022
 
+# ⚠ OUT OF WHATEVER DIRECTORY WSL STARTED IN. With no --cd, wsl.exe starts the
+# shell in the caller's Windows directory translated under /mnt, so a drive this
+# script unmounts below would be the one it is standing in.
+cd /
+
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 
@@ -417,5 +422,33 @@ enabled=$INTEROP_ENABLED
 appendWindowsPath=false
 CONF
 say "wrote /etc/wsl.conf"
+
+# -- the drive mount points automount leaves behind ---------------------------
+# ⛔ AN EMPTY /mnt/c IS NOT AN ABSENT ONE. The first start of a fresh import
+# automounts every Windows drive before this script has written `automount off`,
+# and the restart that applies the setting leaves each mount point behind as an
+# empty 0777 directory. Nothing is reachable through them, but `ls /mnt/c`
+# succeeds, the host's drive letters are listed, and guest root has a place ready
+# to mount one. Measured on a rebuilt Arch base on 2026-09-13: nine of them.
+# ⚠ Only a single-letter directory, only when it is empty, and a live drive
+# mount is unmounted first: on a first start this runs before that restart.
+if [ "$TK_AUTOMOUNT" = off ]; then
+  drive_points=0
+  for drive_dir in /mnt/?; do
+    [ -d "$drive_dir" ] || continue
+    while read -r _source live_target live_type live_options _rest; do
+      [ "$live_target" = "$drive_dir" ] || continue
+      case "$live_type:$live_options" in
+        drvfs:*|9p:*aname=drvfs*)
+          umount "$drive_dir" 2>/dev/null || umount -l "$drive_dir" ||
+            die "the automounted drive at $drive_dir could not be unmounted"
+          ;;
+      esac
+    done < /proc/mounts
+    rmdir "$drive_dir" 2>/dev/null || die "$drive_dir is not an empty directory, so it was left and automount off cannot be true"
+    drive_points=$((drive_points + 1))
+  done
+  say "drive mount points removed: $drive_points"
+fi
 
 printf 'provision-complete\n'

@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 107  open 7  blocked 0  done 100
+total 107  open 6  blocked 0  done 101
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 54 | 55 |
+| P1 | 0 | 0 | 55 | 55 |
 | P2 | 6 | 0 | 36 | 42 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **7** | **0** | **100** | **107** |
+| **all** | **6** | **0** | **101** | **107** |
 
 ---
 
@@ -106,7 +106,7 @@ total 107  open 7  blocked 0  done 100
 | WSL-66 | P1 | M | done | `--workspace .` resolved against a directory the caller could not see | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-67 | P2 | L | open | A provider's Linux-only CLI, run from Windows as if it were native | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-68 | P2 | M | open | A base that can reach nothing on the host at all | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-69 | P1 | M | open | Muse Code installed, authenticated and driven end to end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-69 | P1 | M | done | Muse Code installed, authenticated and driven end to end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-70 | P2 | L | open | Two package maps become one, and the Go module embeds it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-71 | P2 | M | open | A portable shell profile this tree owns | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-72 | P2 | S | open | The BSD guest gets a 10 GiB disk, and the languages install on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

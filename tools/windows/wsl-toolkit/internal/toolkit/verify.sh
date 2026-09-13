@@ -28,6 +28,14 @@ case "$TK_AUTOMOUNT" in
       printf 'verify: a Windows drive is mounted below /mnt even though automount is off\n' >&2
       exit 3
     fi
+    # ⛔ ABSENT, NOT EMPTY. An empty mount point left by the first start answers
+    # `ls /mnt/c` with success, which is not what automount off promises.
+    for drive_dir in /mnt/?; do
+      if [ -e "$drive_dir" ]; then
+        printf 'verify: %s exists even though automount is off\n' "$drive_dir" >&2
+        exit 3
+      fi
+    done
     ;;
   ro|rw) ;;
   *) printf 'verify: unknown automount setting %s\n' "$TK_AUTOMOUNT" >&2; exit 3 ;;

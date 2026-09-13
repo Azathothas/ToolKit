@@ -85,30 +85,72 @@ provider does not need with `--without`, for example
 ## Install and run Muse Code
 
 Muse's official documentation currently requires a Meta login. Its published
-Linux installer is mutable, so it is shown here as an operator step and is not
-executed by this repository's bootstrap script. Download it, inspect the saved
-file, then run the file you inspected:
+Linux installer is mutable, so it is an operator step and this repository's
+bootstrap never runs it. From `base shell`, download it, inspect the saved file,
+then run the file you inspected:
 
 ```sh
-curl --proto '=https' --tlsv1.2 --fail --location \
-  https://dev.meta.ai/install.sh --output /tmp/muse-code-install.sh
-wc -l /tmp/muse-code-install.sh
-sha256sum /tmp/muse-code-install.sh
-less /tmp/muse-code-install.sh
-sh /tmp/muse-code-install.sh
-rm -f /tmp/muse-code-install.sh
+mkdir -p ~/.local/state/muse-install && cd ~/.local/state/muse-install
+curl --proto '=https' --tlsv1.2 --fail --location https://dev.meta.ai/install.sh --output install.sh
+wc -l install.sh && sha256sum install.sh | tee install.sh.sha256
+less install.sh
+sh ./install.sh
+exec bash -l
 muse --version
 muse login
 ```
 
-Start Muse from the Zellij session and the granted checkout:
+⭐ **What that did on 2026-09-13**, read back off the base afterwards:
 
-```sh
-cd /workspaces/project
-muse
+| step | measured |
+| --- | --- |
+| the installer | 314 lines, 9,314 bytes. It fetches a launcher from `api.meta.ai` and checks it against a SHA-256 only when the server sends one, which proves transport and not authorship |
+| the install | Muse Code 1.1.1 (`1.1.1-R2514.1`), a 273 MB download, into `~/.local/bin`. A PATH line is appended to `~/.profile` and `~/.bashrc`. No root and no sudo |
+| `muse login` | a device-code sign-in: it prints an `auth.meta.com` URL and a code, and offers to open a browser, which it cannot do with interop off. Open the URL in a Windows browser. The credential lands in `~/.config/muse/auth.json`, mode 0600, in the persistent home |
+
+⚠ **`base exec` starts a non-interactive shell that reads no profile**, so
+`muse` is not on `PATH` there until `. ~/.profile` has run. Both examples below
+start that way.
+
+⚠ **Muse says your content may be used for product improvement.** Its first
+screen named the model `muse-spark-1.3-contributor` and printed that notice. This
+repository makes no claim about Meta's terms; read them before giving it a
+checkout that matters.
+
+### An agent on Windows, driving Muse headless
+
+`muse exec` runs one prompt with no terminal and reports JSON events. Put the
+prompt in a file inside the base, then:
+
+```powershell
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec --dir /workspaces/project -c '. ~/.profile; muse exec --json --workspace /workspaces/project --approval-mode never --prompt-file /tmp/muse-task.txt'
 ```
 
-Windows interop is off. If authentication prints a URL, open it yourself in a
-Windows browser rather than trying to launch one from the guest. Muse's auth,
-configuration and sessions stay in the persistent Linux home; the checkout is
-the only configured Windows directory it can edit.
+`--approval-mode never` keeps an unattended run from waiting on a prompt nobody
+answers, and Muse's own sandbox stays on. ⭐ **Driven through the WSL-69
+smoke**: Muse read the checkout, ran a program in it, wrote a file that appeared
+on Windows, committed, and pushed to the checkout's remote, in 52 seconds, with
+exit 0.
+
+### An agent on Windows, driving Muse's interactive screen
+
+Start Muse in a named pane of the durable session, then type into it and read the
+screen back:
+
+```powershell
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c '. ~/.profile; zellij attach --create-background muse-code; zellij --session muse-code action new-pane --cwd /workspaces/project --name muse -- bash -lc "muse"'
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action write-chars --pane-id terminal_1 "Run python3 src/inventory.py and answer with only the number it prints."'
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action send-keys --pane-id terminal_1 ENTER'
+wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action dump-screen --full --pane-id terminal_1'
+```
+
+⚠ **The first start in a checkout asks `Do you trust this workspace?`**, and a
+question typed before that is answered is lost rather than queued. Answer it with
+`ENTER` for the default, `1 Trust and continue`, then type the question. Read the
+pane id from `new-pane` or `list-panes --json` rather than assuming one.
+⭐ Driven on 2026-09-13: the answer was on screen 10 seconds after `ENTER`.
+
+Windows interop is off, so nothing in the guest can start a Windows program.
+Muse's auth, configuration and sessions stay in the persistent Linux home, and
+the checkout is the only configured Windows directory it can edit. ⚠ Muse has
+passwordless sudo in this profile, so that is a configuration, not a boundary.

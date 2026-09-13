@@ -4003,7 +4003,7 @@ boundary.
 **Source** the operator, 2026-09-12, ruling that this be a task of its own rather
 than a line inside `WSL-67`. [Issue 30](https://github.com/Azathothas/ToolKit/issues/30)
 part 1 is the ask it completes.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -4192,7 +4192,92 @@ exclusive pair.
 ⛔ **Still open at this checkpoint:** the operator's two Meta steps, installing
 the CLI from a saved and inspected file and running `muse login`; the agent
 driving Muse to read, write, commit and push; the three negative paths; and the
-acceptance command above.
+acceptance command above. All four are answered in the closing below.
+
+---
+
+## Closing
+
+**Closed 2026-09-13T04:19:42Z.** The operator installed Muse and signed in; the
+agent drove everything else.
+
+⭐ **The operator's two steps**, from the operator's own terminal and read back
+off the base afterwards. `install.sh` was 314 lines and 9,314 bytes, SHA-256
+`5196d820…632a0ca` (shortened, because this tree refuses a long hex identifier),
+and it installed Muse Code 1.1.1 (`1.1.1-R2514.1`, a 273 MB download) into `~/.local/bin` with no
+root. `muse login` was a device-code sign-in and saved its credential at mode 0600
+in the persistent home; its contents were never read. ⚠ **The `less` review step
+does not appear in the operator's transcript**, so the file was read after it ran
+rather than before: it fetches a launcher from `api.meta.ai` and checks a SHA-256
+only when the server advertises one, which proves transport and not authorship.
+
+⭐ **Muse, driven headless by the agent** through `base exec` with `muse exec
+--json --workspace /workspaces/project --approval-mode never`: it read
+`src/inventory.py`, ran it, wrote `MUSE_SMOKE.md`, committed `65c47fd`, and pushed
+to the checkout's local bare remote, in 52 seconds with exit 0. The file's two
+lines were `muse-smoke-ok` and `47`, matching the program's own output.
+
+⭐ **Muse's interactive screen, driven by the agent** through Zellij's CLI in the
+same base: `new-pane` answered `terminal_1`, `list-panes --json` showed Muse
+running in `/workspaces/project`, and after `write-chars` and `send-keys ENTER`,
+`dump-screen` read back `Ran command ... ✓` and `47` ten seconds later. ⚠ The
+first start in a checkout asks whether to trust the workspace, and a question typed
+before that is answered is dropped rather than queued. The guide says so.
+
+⛔ **The negative pass found a sixth defect, and it is why `ls /mnt/c` could not
+fail.** Muse reported `ls /mnt/c` and `ls /mnt/d` succeeding with empty output. As
+the account and as root: nine empty 0777 directories, `c d f l m p r t y`, one per
+host drive letter, created at the fresh import's first start, before provisioning
+wrote `automount off`. None was a mount. The provisioner now leaves `/`, unmounts a
+live drive mount when automount is off, and removes the empty point; the verifier
+refuses one that is still there. Proved three ways: three mutation rows went red;
+`base ensure` on the Muse base refused `/mnt/c exists even though automount is
+off`, re-provisioned in place with `drive mount points removed: 9`, and was healthy
+after the restart in 20.6 seconds; and WSL did not create them again. The Muse
+install, the credential and the checkout were untouched by it.
+
+The acceptance command, run from the granted checkout as `muse` through `base exec
+--dir /workspaces/project`, with `PATH` from the profile the installer wrote:
+
+```text
+To .smoke-remote.git
+   65c47fd..02d68aa  main -> main
+Muse Code 1.1.1 (1.1.1-R2514.1)
+[main 02d68aa] muse smoke
+ls: cannot access '/mnt/c': No such file or directory
+rc=2
+```
+
+⚠ **The `&&` chain reports only its last status, so each part was read from its
+own process as well.** The two full commit identifiers were printed and were
+equal; they are shortened below for the same reason as the SHA-256.
+
+```text
+muse --version rc=0
+HEAD subject: muse smoke
+## main...origin/main
+local HEAD  02d68aa
+remote main 02d68aa
+pushed rc=0
+ls /mnt/c rc=2
+ls /mnt/d rc=2
+ls /mnt/c/Windows/System32 rc=2
+cmd.exe on PATH rc=1
+```
+
+From Windows, `git log` over the throwaway checkout and its bare remote both show
+`02d68aa muse smoke` above `65c47fd`, and `MUSE_SMOKE.md` reads `muse-smoke-ok`,
+`47`. The probed status:
+
+```text
+probe exit=0
+healthy=True user=muse passwordless_sudo=True automount=off interop=off grants=1 problems=0 engine=podman version 6.1.1
+grant: rw /workspaces/project <- the throwaway checkout under .tmp/wsl69-e2e/project
+```
+
+All four pass conditions hold: the version exits 0; the commit and the push exit 0
+and are visible from Windows; `/mnt/c` fails; and the probe reports exactly one
+grant, to the throwaway checkout.
 
 ---
 

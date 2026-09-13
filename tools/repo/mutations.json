@@ -853,8 +853,8 @@
       "label": "the provisioner setting its own creation mask",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
-      "find": "umask 022\n\nsay() {",
-      "replace": ": no creation mask\n\nsay() {",
+      "find": "\numask 022\n",
+      "replace": "\n: no creation mask\n",
       "run": "TestTheProvisionerScopesEveryRestrictiveUmask",
       "args": []
     },
@@ -874,6 +874,33 @@
       "find": "\tif code != exitTimeout && code != 130 && errors.As(runErr, &exited) {",
       "replace": "\tif code != exitTimeout && code != 130 && (errors.As(runErr, &exited) || true) {",
       "run": "TestBaseExecSurfacesAFailureToStart",
+      "args": []
+    },
+    {
+      "label": "automount off removing the drive mount points it left",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    rmdir \"$drive_dir\" 2>/dev/null || die",
+      "replace": "    : \"$drive_dir\" 2>/dev/null || die",
+      "run": "TestAutomountOffLeavesNoDriveMountPoints",
+      "args": []
+    },
+    {
+      "label": "the verifier refusing a drive mount point under automount off",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "      if [ -e \"$drive_dir\" ]; then",
+      "replace": "      if false; then",
+      "run": "TestAutomountOffLeavesNoDriveMountPoints",
+      "args": []
+    },
+    {
+      "label": "the provisioner leaving the directory WSL started it in",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "\ncd /\n",
+      "replace": "\n: stay here\n",
+      "run": "TestAutomountOffLeavesNoDriveMountPoints",
       "args": []
     },
     {

@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-13T02:36:12Z
 baseline        e9f0e08 with 19 uncommitted WSL-69 paths; local gate RED,
                 3 problems, 42.4s
-entries         total 107  open 7  blocked 0  done 100
+entries         total 107  open 6  blocked 0  done 101
 gate            19 checks green before each commit; ShellCheck 0.9.0 and an
                 8.3 TEMP reproduced locally before each push
 head            622f46a pushed; the gate fixes committed on top
@@ -23,11 +23,10 @@ and close the issue properly. The work order is `WSL-69`, then three defects thi
 session found in the gate itself, then `WSL-72`, `WSL-70`, `WSL-71`, `WSL-67` and
 `WSL-68`.
 
-⚠ **`WSL-69` is at a checkpoint and stays open.** The base the guide needs is
-built and driven; the three defects and the published fingerprint found in the
-uncommitted work are fixed and mutation-proved. The entry's 2026-09-13 amendment
-carries the measurements. What remains waits on the operator's Meta account for
-two steps, and this session polls for them rather than stopping.
+⭐ **`WSL-69` is closed.** The operator installed Muse and signed in; the agent
+drove Muse headless and through its interactive screen, found a sixth defect in
+the negative pass, fixed it, and ran the acceptance with all four conditions
+holding. The entry's closing carries the output.
 
 ⭐ **`TOOL-23`, `TOOL-24` and `TOOL-25` are filed and closed.** Three gate rules
 could not fail the way they were written: `bundle` rebuilt what it should have
