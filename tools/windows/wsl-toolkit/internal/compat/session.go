@@ -38,6 +38,27 @@ type session struct {
 	stop context.Context
 }
 
+// newSession is THE ONE construction path for a session, so the report and
+// note writers exist in exactly one spelling: the console reads the same two
+// writers the session holds, and a second construction that disagreed with it
+// is a defect this shape cannot produce.
+func newSession(o Options, baseDir string, report, notes io.Writer, stdin io.Reader, ctx context.Context) *session {
+	// The action report's colour is decided ONCE, here, from the report
+	// stream: a console gets colour and a redirect never does, which is the
+	// rule the script's host applied for its Write-Host colours. NO_COLOR is
+	// honoured for the same reason the stream log honours it.
+	color := writerIsTerminal(report) && envValue("NO_COLOR") == ""
+	return &session{
+		opts:    o,
+		baseDir: baseDir,
+		log:     &console{report: report, note: notes, color: color},
+		out:     report,
+		errw:    notes,
+		in:      stdin,
+		stop:    ctx,
+	}
+}
+
 // wslEnv is the environment every wsl.exe child runs with.
 //
 // ⛔ WSL EMITS UTF-16LE UNLESS THIS IS SET, and without it every parsed string

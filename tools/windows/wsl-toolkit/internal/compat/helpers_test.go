@@ -19,14 +19,7 @@ func sessionFor(t *testing.T, args ...string) *session {
 	if err != nil {
 		t.Fatalf("the test's own arguments were refused: %v", err)
 	}
-	s := &session{
-		opts:    o,
-		baseDir: t.TempDir(),
-		log:     &console{report: io.Discard, note: io.Discard},
-		out:     io.Discard,
-		errw:    io.Discard,
-		stop:    context.Background(),
-	}
+	s := newSession(o, t.TempDir(), io.Discard, io.Discard, nil, context.Background())
 	s.relayOff = o.NoTimestamps || o.TimestampProfile == "raw"
 	t.Cleanup(func() {
 		resolveWsl = findWsl

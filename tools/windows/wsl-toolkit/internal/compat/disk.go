@@ -36,7 +36,7 @@ func (s *session) assertEnoughDiskSpace(tarballPath, targetDir string) error {
 	}
 	tar := st.Size()
 	need := tar*importSpaceFactor + importSpaceFloor
-	free, measurable := volumeFreeBytes(targetDir)
+	free, measurable := volumeFree(targetDir)
 
 	note, refuse := spaceVerdict(need, free, measurable, targetDir)
 	if note != "" {
@@ -117,7 +117,7 @@ func (s *session) removeEphemeralDistro(distro string, skipConfirm bool) error {
 	}
 
 	dir := filepath.Join(s.baseDir, distro)
-	if _, err := os.Lstat(dir); err == nil {
+	if pathExists(dir) {
 		remedy := fmt.Sprintf("Close it and re-run: -Action Remove -Name %s -Force.", distro)
 		return s.removePathWithRetry(dir, "disk for '"+distro+"'", remedy)
 	}
@@ -267,11 +267,11 @@ type snapshotFile struct {
 }
 
 func (s *session) snapshots() []snapshotFile {
-	dir := ""
-	if s.baseDir != "" {
-		dir = filepath.Join(s.baseDir, "snapshots")
-	}
-	if dir == "" {
+	// ⛔ THROUGH THE ONE RESOLVER: a second spelling of the snapshots
+	// directory is a second place for the subdirectory decision to drift,
+	// which is the defect the subdirectory exists to answer.
+	dir, err := s.snapshotDir()
+	if err != nil {
 		return nil
 	}
 	entries, err := os.ReadDir(dir)
@@ -434,9 +434,13 @@ func formatDistroAge(found *reusableDistro) string {
 	return formatDuration(dur(now().Sub(found.When))) + " old"
 }
 
+// containsString is the port of PowerShell's -contains, which compares
+// strings CASE-INSENSITIVELY. A member check that compared exactly would
+// treat a distro wsl reports as "EPH-X" as absent from a list holding
+// "eph-x", and the removal guard would then take the wrong branch.
 func containsString(list []string, want string) bool {
 	for _, s := range list {
-		if s == want {
+		if strings.EqualFold(s, want) {
 			return true
 		}
 	}

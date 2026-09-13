@@ -507,19 +507,10 @@ func (b *Base) writeRecordFrom(id Identity) error {
 	return writeFileAtomic(b.recordPath(), data, 0o600)
 }
 
-// toolVersion is the product version where it can be read, and an empty string
-// where it cannot. ⚠ A marker with no version is still a marker; refusing to
-// stamp a distribution because a version string could not be read would trade a
-// working base for a cosmetic field.
+// toolVersion is the product version. It has one home, Version in version.go,
+// and this wrapper keeps the call sites reading as the marker field they feed.
 func toolVersion() string {
-	if ScriptVersion == nil {
-		return ""
-	}
-	v, err := ScriptVersion()
-	if err != nil {
-		return ""
-	}
-	return v
+	return Version
 }
 
 func (b *Base) create(ctx context.Context) error {

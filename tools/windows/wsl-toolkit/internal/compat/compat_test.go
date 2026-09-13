@@ -264,6 +264,7 @@ func stubGuestWsl(t *testing.T, probeBehaviour string) {
 	t.Helper()
 	script := `case " $* " in
   *" --list --quiet "*) echo eph-x-1a2b; exit 0 ;;
+  *" --import "*|*" --terminate "*|*" --unregister "*) exit 0 ;;
 esac
 for wtk_last in "$@"; do :; done
 wtk_b64=$(printf '%s' "$wtk_last" | sed -n 's/.*echo \([A-Za-z0-9+/=]*\)|base64.*/\1/p')
@@ -300,11 +301,16 @@ exit 0`)
 // TestNewSmokeProbeFailureNamesTheChannel runs the creation far enough to hit
 // the probe, and the refusal names the transport instead of a mystery.
 func TestNewSmokeProbeFailureNamesTheChannel(t *testing.T) {
-	stubWsl(t, `case " $* " in
-  *"__WSL_OK__"*) echo "sh: gimme a shell that works"; exit 0 ;;
-  *) exit 0 ;;
-esac`)
+	// The guest answers, but the marker never arrives: exactly what a rootfs
+	// whose /bin/sh cannot carry the channel looks like from outside.
+	stubGuestWsl(t, `echo "a shell that cannot carry a payload"`)
 	stubEngine(t)
+	// ⛔ THE VOLUME IS HELD STILL. Without this the preflight's answer depends
+	// on how full the machine running the test happens to be, and on a small
+	// volume the space refusal fires before the probe ever does.
+	previousFree := volumeFree
+	volumeFree = func(string) (int64, bool) { return 1 << 40, true }
+	t.Cleanup(func() { volumeFree = previousFree })
 	got := runCompat(t, "-Action", "New", "-Image", "alpine:3.22", "-Name", "probe", "-Force")
 	if got.code != 1 {
 		t.Fatalf("exit %d: %q", got.code, got.notes)

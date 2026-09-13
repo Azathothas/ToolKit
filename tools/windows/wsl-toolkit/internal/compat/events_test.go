@@ -129,11 +129,7 @@ func replaySession(t *testing.T, from string, args ...string) (int, string, stri
 		t.Fatal(err)
 	}
 	var report, notes bytes.Buffer
-	s := &session{
-		opts: o, baseDir: t.TempDir(),
-		log: &console{report: &report, note: &notes}, out: &report, errw: &notes,
-		stop: bgContext(),
-	}
+	s := newSession(o, t.TempDir(), &report, &notes, nil, bgContext())
 	s.relayOff = o.NoTimestamps || o.TimestampProfile == "raw"
 	if !s.relayOff {
 		settings, err := resolveStreamLogSettings(o, false)
@@ -218,7 +214,7 @@ func TestComparePutsTwoRunsSideBySideAndJudgesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	var report, notes bytes.Buffer
-	s := &session{opts: o, baseDir: t.TempDir(), log: &console{report: &report, note: &notes}, out: &report, errw: &notes, stop: bgContext()}
+	s := newSession(o, t.TempDir(), &report, &notes, nil, bgContext())
 	if code := s.actionCompare(); code != 0 {
 		t.Fatalf("compare exited %d", code)
 	}
@@ -240,7 +236,7 @@ func TestCompareRefusesAMissingHalfByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	var report, notes bytes.Buffer
-	s := &session{opts: o, baseDir: t.TempDir(), log: &console{report: &report, note: &notes}, out: &report, errw: &notes, stop: bgContext()}
+	s := newSession(o, t.TempDir(), &report, &notes, nil, bgContext())
 	if code := s.actionCompare(); code != 1 {
 		t.Fatalf("a compare with no -Against exited %d", code)
 	}

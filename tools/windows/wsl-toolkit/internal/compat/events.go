@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -60,52 +59,34 @@ func (e *eventSink) writeRecord(kind string, rel dur, provenance, stream, text s
 		return
 	}
 	e.seq++
-	rec := orderedRecord{}
-	rec.set("schema", "wsl-toolkit-event/1")
-	rec.set("seq", e.seq)
-	rec.set("t_rel", roundHalfUp(rel.Seconds(), 3))
-	rec.set("t_wall", now().Format(time.RFC3339Nano))
-	rec.set("kind", kind)
-	rec.set("prov", provenance)
-	rec.set("distro", e.distro)
+	// The encoding/json package sorts map keys on write, so field order in
+	// the file is the sorter's, not this call's. ⛔ THAT IS FINE, and the
+	// reason is worth writing down: the schema version on every record is
+	// what a reader keys on, and a positional reader of a versioned,
+	// self-describing record is the reader this schema exists to prevent.
+	rec := map[string]any{
+		"schema": "wsl-toolkit-event/1",
+		"seq":    e.seq,
+		"t_rel":  roundHalfUp(rel.Seconds(), 3),
+		"t_wall": now().Format(time.RFC3339Nano),
+		"kind":   kind,
+		"prov":   provenance,
+		"distro": e.distro,
+	}
 	if stream != "" {
-		rec.set("stream", stream)
+		rec["stream"] = stream
 	}
 	if text != "" || partial {
-		rec.set("text", text)
-		rec.set("partial", partial)
+		rec["text"] = text
+		rec["partial"] = partial
 	}
-	if data != nil {
-		keys := make([]string, 0, len(data))
-		for k := range data {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		for _, k := range keys {
-			rec.set(k, data[k])
-		}
+	for k, v := range data {
+		rec[k] = v
 	}
-	line, err := json.Marshal(rec.values)
+	line, err := json.Marshal(rec)
 	if err == nil {
 		fmt.Fprintf(e.w, "%s\n", line)
 	}
-}
-
-// orderedRecord keeps the record's fields in insertion order, which is what a
-// schema means when it says a reader can find the fields it names first.
-type orderedRecord struct {
-	order  []string
-	values map[string]any
-}
-
-func (o *orderedRecord) set(key string, value any) {
-	if o.values == nil {
-		o.values = map[string]any{}
-	}
-	if _, exists := o.values[key]; !exists {
-		o.order = append(o.order, key)
-	}
-	o.values[key] = value
 }
 
 // Close flushes and closes the file behind the sink.

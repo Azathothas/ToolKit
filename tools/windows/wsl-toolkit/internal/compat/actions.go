@@ -274,6 +274,14 @@ func (s *session) actionNew(ctx context.Context) int {
 	rollback := func(creationErr error) {
 		s.log.warn("creation failed; rolling back")
 		if known, err := s.distroNames(); err == nil && containsString(known, distro) {
+			// ⛔ THROUGH THE SAME REMOVAL GUARD, not beside it. A second
+			// removal path without assertRemovable is how the prefix rule and
+			// the protected list stop being applied, which is the failure the
+			// one-choke-point rule exists to prevent.
+			if err := s.assertRemovable(distro); err != nil {
+				s.log.warn("rollback refused: " + err.Error())
+				return
+			}
 			// ⛔ --terminate FIRST, exactly as removeEphemeralDistro does:
 			// going straight to --unregister releases the disk
 			// asynchronously, which is the race removePathWithRetry exists
@@ -385,7 +393,7 @@ func (s *session) actionNew(ctx context.Context) int {
 				if err != nil {
 					return err
 				}
-				if err := s.writeDistroFile(distro, "/etc/profile.d/10-oci-env.sh", newOciEnvScript(cfg, s.opts.Image), "0644"); err != nil {
+				if err := s.writeDistroFile(distro, "/etc/profile.d/10-oci-env.sh", s.ociEnvScript(cfg, s.opts.Image), "0644"); err != nil {
 					return err
 				}
 				s.log.ok("wrote /etc/profile.d/10-oci-env.sh")
@@ -1221,9 +1229,15 @@ func (s *session) commandPlanLine(distro, runAs string) string {
 	if err != nil {
 		return ""
 	}
-	// ⛔ The plan is an ARGUMENT LIST joined for reading, and every argument
-	// this tool passes is one it built, which is what makes the join safe.
-	return wsl + " -d " + distro + " -u " + runAs + " -- /bin/sh -lc " + line
+	// ⭐ THE PLAN IS BUILT BY THE SAME JOIN THE REAL RUN USES, so the plan
+	// cannot describe a command line the run would not produce. The join
+	// refuses a quote or a backslash rather than escaping one, which is safe
+	// because every argument here is one this tool built.
+	joined, err := nativeArgumentString([]string{"-d", distro, "-u", runAs, "--", "/bin/sh", "-lc", line})
+	if err != nil {
+		return ""
+	}
+	return wsl + " " + joined
 }
 
 func pathExists(p string) bool {

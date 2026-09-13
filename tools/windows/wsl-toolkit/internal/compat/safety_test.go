@@ -122,6 +122,16 @@ func TestDeletionIsConfinedToTheBaseDirectory(t *testing.T) {
 	if err := s.assertInsideBaseDir(filepath.Join(s.baseDir, "..", "escape")); err == nil {
 		t.Error("a traversal was accepted")
 	}
+	// ⛔ A SIBLING WHOSE NAME MERELY STARTS WITH THE SAME CHARACTERS IS
+	// OUTSIDE: the trailing separator is the boundary, and a prefix test
+	// without it would accept 'baseDirEVIL' as 'baseDir'.
+	sibling := s.baseDir + "EVIL"
+	if !strings.HasSuffix(sibling, string(filepath.Separator)+"EVIL") && filepath.Clean(sibling) == sibling {
+		sibling = s.baseDir + "EVIL"
+	}
+	if err := s.assertInsideBaseDir(sibling); err == nil {
+		t.Error("a sibling sharing the base directory's first characters was accepted")
+	}
 	// And a strict child is accepted, which is the one thing the guard exists
 	// to allow.
 	if err := s.assertInsideBaseDir(filepath.Join(s.baseDir, "eph-x-1a2b")); err != nil {

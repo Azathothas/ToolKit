@@ -39,12 +39,7 @@ const (
 
 var quiet bool
 
-// The helper reads the product version through this hook. ⛔ THE VERSION HAS
-// ONE HOME: toolkit.Version. It used to be read out of the embedded PowerShell
-// script, and the executable declared none of its own; the executable is now a
-// standalone product and declares the version in toolkit/version.go.
 func init() {
-	toolkit.ScriptVersion = func() (string, error) { return toolkit.Version, nil }
 	commandSpecs = registeredCommandSpecs()
 	commands = make(map[string]func(context.Context, []string) (int, error), len(commandSpecs))
 	for _, spec := range commandSpecs {

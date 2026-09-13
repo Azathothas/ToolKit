@@ -82,9 +82,18 @@ func (s *session) assertRemovable(distro string) error {
 // resolve the target to the base directory itself or, with traversal,
 // somewhere else entirely.
 func (s *session) assertInsideBaseDir(path string) error {
-	baseFull, err := fullPathNormalise(trimSeparators(s.baseDir) + string(filepath.Separator))
+	baseClean, err := fullPathNormalise(trimSeparators(s.baseDir))
 	if err != nil {
 		return fmt.Errorf("REFUSING to delete '%s': the state directory is not usable (%v).", path, err)
+	}
+	// ⛔ THE TRAILING SEPARATOR IS THE BOUNDARY, and cleaning alone cannot be
+	// allowed to drop it: a prefix test against the bare directory accepts a
+	// SIBLING whose name merely starts with the same characters, which is the
+	// crafted-name case this guard exists for. A drive root already ends in
+	// its separator and must not grow a second one.
+	baseFull := baseClean
+	if !strings.HasSuffix(baseFull, "/") && !strings.HasSuffix(baseFull, "\\") {
+		baseFull += string(filepath.Separator)
 	}
 	full, err := fullPathNormalise(path)
 	if err != nil {

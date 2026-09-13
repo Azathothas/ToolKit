@@ -76,18 +76,7 @@ func run(ctx context.Context, args []string, report, notes io.Writer, stdin io.R
 		return 1
 	}
 
-	s := &session{
-		opts:    o,
-		baseDir: baseDir,
-		log: &console{
-			report: report,
-			note:   notes,
-		},
-		out:  report,
-		errw: notes,
-		in:   stdin,
-		stop: ctx,
-	}
+	s := newSession(o, baseDir, report, notes, stdin, ctx)
 
 	// ⭐ raw IS -NoTimestamps UNDER ANOTHER NAME, resolved here so that
 	// exactly one variable decides whether the relay runs.

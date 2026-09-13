@@ -35,19 +35,19 @@ func envValue(name string) string { return os.Getenv(name) }
 // up front: a non-interactive session is told to pass -Force, in words, and
 // nothing destructive happens.
 func (s *session) interactive() bool {
-	if s.in == nil {
-		return false
-	}
+	// ⛔ THE DEFAULT IS NO. A reader this test cannot characterise is treated
+	// as NOT interactive, because the failure of answering the question is a
+	// warning the caller can read, and the failure of asking it over a pipe is
+	// a prompt in a captured stream and a run that waits forever. Only this
+	// process's own character-device stdin counts as somebody to ask.
 	if f, ok := s.in.(*os.File); ok {
 		fi, err := f.Stat()
 		if err != nil {
 			return false
 		}
-		if fi.Mode()&os.ModeCharDevice == 0 {
-			return false
-		}
+		return fi.Mode()&os.ModeCharDevice != 0
 	}
-	return runtime.GOOS != "js"
+	return false
 }
 
 // writerIsTerminal reports whether w is the process's own console, which is
@@ -64,6 +64,12 @@ func writerIsTerminal(w io.Writer) bool {
 	}
 	return fi.Mode()&os.ModeCharDevice != 0
 }
+
+// volumeFree is the one hook for the free-space measurement, a package
+// variable so the suite can hold the volume still: a test whose answer depends
+// on how full the machine running it happens to be is a test that passes on one
+// host and fails on another.
+var volumeFree = volumeFreeBytes
 
 // volumeFreeBytes reports the bytes available to this caller on the volume a
 // path lives on. The boolean is a THIRD answer: "could not measure" is not

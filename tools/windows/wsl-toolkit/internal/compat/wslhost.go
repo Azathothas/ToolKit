@@ -164,11 +164,15 @@ func parseWslConfigMode(body string) string {
 			rest := strings.TrimPrefix(line, "networkingMode")
 			rest = strings.TrimLeft(rest, " \t")
 			if strings.HasPrefix(rest, "=") {
-				value := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(rest, "=")))
-				// A trailing comment is not part of the value.
-				if i := strings.IndexAny(value, "#;"); i >= 0 {
-					value = strings.TrimSpace(value[:i])
+				// ⛔ THE VALUE ENDS AT THE FIRST WHITESPACE OR COMMENT, which is
+				// what the script's regex captured: `networkingMode=nat nat`
+				// has one live value and a parser that took both words would
+				// answer with a mode WSL never configured.
+				value := strings.TrimSpace(strings.TrimPrefix(rest, "="))
+				if i := strings.IndexAny(value, " \t#;"); i >= 0 {
+					value = value[:i]
 				}
+				value = strings.ToLower(value)
 				if value != "" {
 					mode = value
 				}

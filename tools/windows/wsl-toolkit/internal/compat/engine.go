@@ -138,7 +138,7 @@ func (s *session) exportImageRootfs(engine *containerEngine, imageRef, outFile s
 	s.log.step("Platform: " + platform)
 
 	s.log.step("Pulling " + imageRef)
-	if out, err := s.wslless(engine, []string{"pull", "--platform", platform, imageRef}); err != nil {
+	if out, err := s.engineCapture(engine, []string{"pull", "--platform", platform, imageRef}); err != nil {
 		return err
 	} else if out == "" {
 		// Pull output is streamed to the merged capture; nothing to add.
@@ -147,12 +147,12 @@ func (s *session) exportImageRootfs(engine *containerEngine, imageRef, outFile s
 
 	var cid string
 	{
-		out, err := s.wslless(engine, []string{"create", "--platform", platform, imageRef})
+		out, err := s.engineCapture(engine, []string{"create", "--platform", platform, imageRef})
 		if err != nil {
 			// Images with no CMD/ENTRYPOINT reject a bare create, so fall back
 			// to naming one.
 			s.log.warn("bare create failed; retrying with an explicit command")
-			out, err = s.wslless(engine, []string{"create", "--platform", platform, imageRef, "/bin/sh"})
+			out, err = s.engineCapture(engine, []string{"create", "--platform", platform, imageRef, "/bin/sh"})
 			if err != nil {
 				return err
 			}
@@ -173,13 +173,13 @@ func (s *session) exportImageRootfs(engine *containerEngine, imageRef, outFile s
 	}
 	s.log.step(fmt.Sprintf("Exporting rootfs (container %s)", short))
 	// -o is mandatory: a shell redirect would corrupt the binary stream.
-	if _, err := s.wslless(engine, []string{"export", "-o", outFile, cid}); err != nil {
+	if _, err := s.engineCapture(engine, []string{"export", "-o", outFile, cid}); err != nil {
 		// The container is removed in the cleanup below regardless; report the
 		// export failure itself.
-		_, _ = s.wslless(engine, []string{"rm", "-f", cid})
+		_, _ = s.engineCapture(engine, []string{"rm", "-f", cid})
 		return err
 	}
-	_, _ = s.wslless(engine, []string{"rm", "-f", cid})
+	_, _ = s.engineCapture(engine, []string{"rm", "-f", cid})
 
 	st, err := os.Stat(outFile)
 	if err != nil {
@@ -192,11 +192,9 @@ func (s *session) exportImageRootfs(engine *containerEngine, imageRef, outFile s
 	return nil
 }
 
-// wslless is a badly named capture of an ENGINE call, kept so the name
-// mentions nothing it does not do: it has nothing to do with wsl.exe. It is
-// Invoke-Native for the container engine, and a non-zero exit is a refusal
-// carrying what the engine said.
-func (s *session) wslless(engine *containerEngine, args []string) (string, error) {
+// engineCapture is Invoke-Native for the container engine: both streams
+// merged, a non-zero exit refused with what the engine said.
+func (s *session) engineCapture(engine *containerEngine, args []string) (string, error) {
 	var buf strings.Builder
 	cmd := engineCommand(engine.Path, args)
 	cmd.Stdout = &buf
@@ -245,7 +243,7 @@ type imageConfig struct {
 // decision rather than an omission: WSL fixes the login user at import time
 // and -User selects it per call, and a login shell has no entrypoint to run.
 // Writing either into profile.d would be a setting that looks like it works.
-func newOciEnvScript(cfg imageConfig, imageRef string) string {
+func (s *session) ociEnvScript(cfg imageConfig, imageRef string) string {
 	lines := []string{
 		"# Written by wsl-toolkit -OciEnv, from the OCI config of:",
 		"#   " + imageRef,
@@ -256,10 +254,14 @@ func newOciEnvScript(cfg imageConfig, imageRef string) string {
 	for _, e := range cfg.Env {
 		i := strings.Index(e, "=")
 		if i < 1 {
+			// ⛔ SAID, never silently dropped: a skipped entry is an env the
+			// caller asked to carry, and silence reads as carried.
+			s.log.warn("skipping malformed image env entry: " + e)
 			continue
 		}
 		k, v := e[:i], e[i+1:]
 		if !isShellIdentifier(k) {
+			s.log.warn("skipping image env name that is not a shell identifier: " + k)
 			continue
 		}
 		lines = append(lines, "export "+k+"="+shellSingleQuoted(v))

@@ -43,7 +43,8 @@ func TestTheOciEnvScriptCarriesEnvAndWorkdirAndNothingElse(t *testing.T) {
 		},
 		WorkingDir: "/work",
 	}
-	got := newOciEnvScript(cfg, "alpine:3.22")
+	s := sessionFor(t, "-Action", "New", "-Image", "x")
+	got := s.ociEnvScript(cfg, "alpine:3.22")
 	for _, want := range []string{
 		"export PATH='/usr/local/bin:/usr/bin'",
 		"export LANG='C.UTF-8'",
@@ -61,8 +62,13 @@ func TestTheOciEnvScriptCarriesEnvAndWorkdirAndNothingElse(t *testing.T) {
 		t.Errorf("the script carried a USER-ish value:\n%s", got)
 	}
 	// A root WorkingDir is a no-op, not a cd.
-	if got := newOciEnvScript(imageConfig{WorkingDir: "/"}, "x"); strings.Contains(got, "cd ") {
+	if got := s.ociEnvScript(imageConfig{WorkingDir: "/"}, "x"); strings.Contains(got, "cd ") {
 		t.Errorf("a root workdir produced a cd:\n%s", got)
+	}
+	// ⛔ A SKIPPED ENTRY IS SAID, never silently dropped: silence reads as
+	// carried.
+	if got := s.ociEnvScript(imageConfig{Env: []string{"NOEQUALS"}}, "x"); got == "" {
+		t.Error("a malformed entry produced no script at all")
 	}
 }
 

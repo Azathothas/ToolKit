@@ -206,9 +206,10 @@ wsl-toolkit script -Action Remove -Name eph-alpine-3-22-a1b2 -Force
 wsl-toolkit script -Action New -Image alpine:3.22 -Command 'make' -Ephemeral -Force
 ```
 
-Parameters bind the way the script's host bound them: `-Name value`,
-`-Name:value`, `-Name=value`, case-insensitive, with unambiguous prefixes
-resolved and ambiguous ones refused. The twelve actions are `New`, `Run`,
+Parameters bind the way the script's host bound them: `-Name value` and
+`-Name:value`, case-insensitive, with unambiguous prefixes resolved and
+ambiguous ones refused. `-Name=value` is accepted as well, because the binder
+splits on the first separator of either kind. The twelve actions are `New`, `Run`,
 `Enter`, `List`, `Remove`, `Purge`, `Resources`, `HostAddress`, `Doctor`,
 `Snapshot`, `Replay` and `Compare`.
 

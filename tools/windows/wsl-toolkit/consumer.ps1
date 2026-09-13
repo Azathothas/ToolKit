@@ -378,9 +378,9 @@ try {
         }
     }
 
-    # The executable declares its own version now: it no longer reads one out
-    # of an embedded script, so the tag answers for the binary and the .ps1
-    # asset is its own product beside it.
+    # The executable declares its own version now, and release.ps1 refuses a
+    # tag while the two products disagree, so one tag answers for both
+    # published artefacts. This case is the outside check of that.
     Test-Case 'the executable reports the version its tag names' 'True' {
         $v = Invoke-Released @('version')
         if ($v.Code -ne 0) { return "version exited $($v.Code): $($v.Err)" }

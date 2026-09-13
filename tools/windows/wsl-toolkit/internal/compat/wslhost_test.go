@@ -58,6 +58,13 @@ func TestTheNetworkingModeReaderAnswersWhatWSLWould(t *testing.T) {
 		t.Errorf("the comment became the value: %+v", got)
 	}
 
+	// ⛔ THE VALUE ENDS AT THE FIRST WHITESPACE, which is what the script's
+	// regex captured: two words are one bogus value and one live one.
+	write("[wsl2]\nnetworkingMode=nat mirrored\n")
+	if got := networkingMode(); got.Mode != "nat" {
+		t.Errorf("the value did not stop at the whitespace: %+v", got)
+	}
+
 	// An unreadable file is the default, never a guess.
 	if err := os.WriteFile(filepath.Join(profile, ".wslconfig"), []byte("[wsl2]\nnetworkingMode=mirrored\n"), 0o600); err != nil {
 		t.Fatal(err)

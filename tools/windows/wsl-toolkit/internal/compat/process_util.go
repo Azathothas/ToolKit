@@ -54,3 +54,25 @@ func asExitStatus(err error, target **exitStatus) bool {
 	}
 	return false
 }
+
+// nativeArgumentString joins arguments into the one command-line string a
+// dry-run plan prints. ⛔ AN ARGUMENT CARRYING A DOUBLE QUOTE OR A BACKSLASH
+// IS REFUSED RATHER THAN ESCAPED. Every argument the plan prints is one this
+// tool built, so a hand-rolled escape for a case that cannot occur is how a
+// quoting bug gets written and never exercised; the refusal is the guard the
+// script's host provided, ported.
+func nativeArgumentString(args []string) (string, error) {
+	parts := make([]string, 0, len(args))
+	for _, a := range args {
+		if strings.ContainsAny(a, `"\\`) {
+			return "", fmt.Errorf("refusing to build a command line containing a quote or a backslash: '%s'. "+
+				"This tool passes only arguments it built itself.", a)
+		}
+		if strings.ContainsAny(a, " \t") {
+			parts = append(parts, `"`+a+`"`)
+			continue
+		}
+		parts = append(parts, a)
+	}
+	return strings.Join(parts, " "), nil
+}
