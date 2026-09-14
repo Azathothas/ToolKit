@@ -202,9 +202,29 @@ the guide for the operator and for an agent.
 | twelve minutes with nothing attached | the base stayed running |
 | prefix then x, then prefix then shift+x, in two sessions made alike | herdr's own keys closed a pane, then a tab, each at once with no question; the tracked file closed nothing |
 
-⚠ **The adapter is driven on the `arch` preset with systemd, and a configuration
-naming it on anything else is refused.** Removing it from a configuration takes this
-machine's half away on the next ensure and leaves the base's half; `base recreate`
+⭐ **`muse` installs Muse Code for the base's account, and runs Meta's installer only
+while its digest is approved.** `base ensure` saves the installer Meta serves, prints
+its length and SHA-256, and runs it as the account when that digest is the one the
+adapter pins, which the operator approved after reading the file on 2026-09-14, or
+the `installer_sha256` the configuration's `muse` entry carries. ⛔ Any other stops the
+ensure with exit 2, keeps the file at `/var/lib/wsl-toolkit/muse/install.sh` and
+prints how to read it. Add its digest only after reading it:
+
+```json
+"adapters": [{ "name": "herdr" }, { "name": "muse", "installer_sha256": "SHA256" }]
+```
+
+A base whose Muse answers a version does not fetch the installer again, and Muse's
+own launcher updates it after that. `/usr/local/bin/muse` puts it on `PATH` for `base
+exec`, whose shell reads no profile, and refuses every other account. ⛔ **Signing in
+is the operator's:** `base shell`, then `muse login`. `base status --probe` reports
+the version, where `muse` resolves, and whether a credential file is present, never
+what it holds.
+
+⚠ **Both adapters are driven on the `arch` preset, herdr with systemd, and a
+configuration naming either on anything else is refused.** Removing herdr from a
+configuration takes this machine's half away on the next ensure and leaves the base's
+half, and removing either leaves what it installed in the base; `base recreate`
 removes that. `base remove` takes this machine's half away and keeps the key, which
 is this tool's and not the base's. `WSL_TOOLKIT_SSH_DIR` names a directory to write
 this machine's half into instead of `%USERPROFILE%\.ssh`, which the acceptance

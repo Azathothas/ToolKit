@@ -5,12 +5,16 @@ package toolkit
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -41,7 +45,7 @@ func TestAnAdapterIsRefusedWhereItWasNotDriven(t *testing.T) {
 		change func(*Config)
 		want   string
 	}{
-		"an unknown adapter": {func(c *Config) { c.Base.Adapters = []BaseAdapter{zellijAdapter} }, "the adapters this executable carries are: herdr"},
+		"an unknown adapter": {func(c *Config) { c.Base.Adapters = []BaseAdapter{zellijAdapter} }, "the adapters this executable carries are: herdr, muse"},
 		"a name twice":       {func(c *Config) { c.Base.Adapters = append(c.Base.Adapters, BaseAdapter{Name: "herdr"}) }, "more than once"},
 		"no systemd":         {func(c *Config) { c.Base.Systemd = false }, "needs base.systemd to be true"},
 		"another preset":     {func(c *Config) { c.Base.Image = "docker.io/library/alpine:latest" }, "driven on the arch preset only"},
@@ -53,6 +57,156 @@ func TestAnAdapterIsRefusedWhereItWasNotDriven(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s answered %v, want a refusal saying %q", name, err, tc.want)
 		}
+	}
+}
+
+// museDigest is a well-formed SHA-256 that no installer has, built rather than
+// written, because the gate refuses a long hex literal in a tracked file.
+var museDigest = strings.Repeat("0", 62) + "77"
+
+// TestAnInstallerDigestIsTakenOnlyByAnAdapterThatRunsAnInstaller holds WSL-77's
+// approval field: a SHA-256 on the muse adapter is accepted, and one on herdr, which
+// runs no installer, or one that is not a SHA-256, is refused rather than ignored.
+func TestAnInstallerDigestIsTakenOnlyByAnAdapterThatRunsAnInstaller(t *testing.T) {
+	cfg := adapterBase()
+	cfg.Base.Adapters = append(cfg.Base.Adapters, BaseAdapter{Name: "muse", InstallerSHA256: museDigest})
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("an installer digest on the muse adapter was refused: %v", err)
+	}
+	herdrWithDigest := BaseAdapter{Name: "herdr", InstallerSHA256: museDigest}
+	museInCapitals := BaseAdapter{Name: "muse", InstallerSHA256: strings.ToUpper("ab" + museDigest[2:])}
+	museShort := BaseAdapter{Name: "muse", InstallerSHA256: museDigest[1:]}
+	cases := map[string]struct {
+		adapters []BaseAdapter
+		want     string
+	}{
+		"on an adapter that runs no installer": {[]BaseAdapter{herdrWithDigest}, "runs no installer"},
+		"in capitals":                          {[]BaseAdapter{herdrAdapter, museInCapitals}, "is not a SHA-256"},
+		"one character short":                  {[]BaseAdapter{herdrAdapter, museShort}, "is not a SHA-256"},
+	}
+	for name, tc := range cases {
+		cfg := adapterBase()
+		cfg.Base.Adapters = tc.adapters
+		err := cfg.Validate()
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("an installer digest %s answered %v, want a refusal saying %q", name, err, tc.want)
+		}
+	}
+}
+
+// TestAnApprovedInstallerDigestReachesInstallSh holds the channel for that approval:
+// install.sh receives it as TK_INSTALLER_SHA256 beside the account and the
+// distribution, and an adapter with none receives no such variable.
+func TestAnApprovedInstallerDigestReachesInstallSh(t *testing.T) {
+	cfg := adapterBase()
+	env, err := adapterInstallEnv(cfg, BaseAdapter{Name: "muse", InstallerSHA256: museDigest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env["TK_INSTALLER_SHA256"] != museDigest || env["TK_USER"] != "herdr" || env["TK_DISTRO"] != cfg.Base.Name {
+		t.Fatalf("install.sh would receive %v", env)
+	}
+	env, err = adapterInstallEnv(cfg, herdrAdapter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := env["TK_INSTALLER_SHA256"]; ok {
+		t.Fatalf("an adapter with no approved digest received one: %v", env)
+	}
+}
+
+// TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved runs the muse adapter's
+// install.sh against stand-ins for the base's commands and for Meta's server. An
+// installer nobody approved stops the run before it runs, naming its digest and how to
+// approve it; the same file approved by the configuration runs, puts muse on PATH
+// through a wrapper that refuses any other account, and is not fetched again. WSL-77.
+func TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh runs under a POSIX shell, which the Linux job has")
+	}
+	for _, tool := range []string{"sh", "bash", "sha256sum", "cmp"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s is not on PATH", tool)
+		}
+	}
+	script, err := adapterScript("muse", "install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	home, bin := filepath.Join(root, "home"), filepath.Join(root, "bin")
+	for _, dir := range []string{home, bin} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// What Meta would serve: an installer that writes a launcher answering a version.
+	served := filepath.Join(root, "served.sh")
+	write(served, "#!/usr/bin/env bash\nset -eu\nmkdir -p \"$HOME/.local/bin\"\n"+
+		"printf '#!/bin/sh\\necho \"Muse Code 9.9.9 (9.9.9-R1)\"\\n' > \"$HOME/.local/bin/muse\"\n"+
+		"chmod 0755 \"$HOME/.local/bin/muse\"\n")
+	fetches := filepath.Join(root, "fetches")
+	write(filepath.Join(bin, "pacman"), "#!/bin/sh\nexit 0\n")
+	write(filepath.Join(bin, "getent"), "#!/bin/sh\nprintf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
+	write(filepath.Join(bin, "curl"), "#!/bin/sh\necho fetched >> \"$STUB_FETCHES\"\nout=\n"+
+		"while [ $# -gt 0 ]; do if [ \"$1\" = --output ]; then out=$2; shift; fi; shift; done\ncp \"$STUB_SERVED\" \"$out\"\n")
+	write(filepath.Join(bin, "runuser"), "#!/bin/sh\n[ \"$1\" = -u ] && [ \"$2\" = herdr ] && [ \"$3\" = -- ] || exit 9\nshift 3\nexec \"$@\"\n")
+	wrapper := filepath.Join(root, "usr-local-bin", "muse")
+	run := func(approval string) (int, string) {
+		t.Helper()
+		cmd := exec.Command("sh", "-s")
+		cmd.Stdin = bytes.NewReader(script)
+		cmd.Env = append(os.Environ(),
+			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
+			"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base", "TK_INSTALLER_SHA256="+approval,
+			"TK_MUSE_STAGE_DIR="+filepath.Join(root, "stage"), "TK_MUSE_WRAPPER="+wrapper,
+			"STUB_HOME="+home, "STUB_SERVED="+served, "STUB_FETCHES="+fetches)
+		out, err := cmd.CombinedOutput()
+		var exited *exec.ExitError
+		if err != nil && !errors.As(err, &exited) {
+			t.Fatalf("install.sh did not start: %v", err)
+		}
+		return cmd.ProcessState.ExitCode(), string(out)
+	}
+	body, err := os.ReadFile(served)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := fmt.Sprintf("%x", sha256.Sum256(body))
+	launcher := filepath.Join(home, ".local", "bin", "muse")
+
+	code, out := run("")
+	if code != 2 || !strings.Contains(out, "not one the operator approved") || !strings.Contains(out, digest) ||
+		!strings.Contains(out, `"installer_sha256": "`+digest+`"`) {
+		t.Fatalf("an installer nobody approved answered exit %d:\n%s", code, out)
+	}
+	if _, err := os.Stat(launcher); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("an installer nobody approved ran and left %s (%v):\n%s", launcher, err, out)
+	}
+
+	code, out = run(digest)
+	if code != 0 || !strings.Contains(out, "approved by the installer_sha256") || !strings.Contains(out, "installed Muse Code 9.9.9 (9.9.9-R1)") ||
+		!strings.HasSuffix(strings.TrimSpace(out), adapterCompleteLine("muse")) {
+		t.Fatalf("an approved installer answered exit %d:\n%s", code, out)
+	}
+	refused := exec.Command(wrapper, "--version")
+	if refusal, err := refused.CombinedOutput(); refused.ProcessState == nil || refused.ProcessState.ExitCode() != 126 ||
+		!strings.Contains(string(refusal), "runs only as herdr") {
+		t.Fatalf("the wrapper ran Muse for another account: %v\n%s", err, refusal)
+	}
+
+	before, _ := os.ReadFile(fetches)
+	code, out = run("")
+	after, _ := os.ReadFile(fetches)
+	if code != 0 || !strings.Contains(out, "is installed for herdr, so the installer is not fetched") || !bytes.Equal(before, after) {
+		t.Fatalf("a second run over an installed Muse answered exit %d, fetching %d time(s) more:\n%s",
+			code, bytes.Count(after, []byte("\n"))-bytes.Count(before, []byte("\n")), out)
 	}
 }
 

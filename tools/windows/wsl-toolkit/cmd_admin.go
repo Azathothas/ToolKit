@@ -399,6 +399,10 @@ func cmdConfig(args []string) (int, error) {
 		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}
 	for _, adapter := range cfg.Base.Adapters {
+		if adapter.InstallerSHA256 != "" {
+			fmt.Fprintf(os.Stderr, "  adapter     %s, and an installer approved by digest %s\n", adapter.Name, adapter.InstallerSHA256)
+			continue
+		}
 		fmt.Fprintf(os.Stderr, "  adapter     %s\n", adapter.Name)
 	}
 	// ⛔ THE DEFAULTS A JOB ACTUALLY RUNS UNDER WERE NOT ON THIS REPORT. `config`

@@ -6086,6 +6086,66 @@ Passing is:
 - `herdr --version` and `muse --version` answer through `base exec`;
 - `base remove --yes` removes the instance afterwards.
 
+## Amendment, 2026-09-14: the Muse adapter and the one base's profile, built
+
+⭐ **Built, under the ruling:**
+
+- `adapters/muse/`. `install.sh` saves the installer Meta serves, prints its length
+  and SHA-256, and runs the saved file as the account, with `MUSE_NO_MODIFY_PATH`,
+  only while the digest is the approved one, pinned as
+  `MUSE_INSTALLER_PINNED_SHA256`, or the `installer_sha256` the configuration's
+  `muse` entry carries. Any other stops with exit 2 and keeps the file at
+  `/var/lib/wsl-toolkit/muse/install.sh`, with the command to read it. A Muse that
+  answers a version is not installed again. `/usr/local/bin/muse` puts it on `PATH`
+  for `base exec`, whose shell reads no profile, and refuses every other account.
+  `probe.sh` reports the version, asked with `MUSE_NO_AUTO_UPDATE`, the wrapper, where
+  `muse` resolves, and whether a credential file is present.
+- `base.adapters[].installer_sha256`, the approval approach point 3 names: refused on
+  an adapter that runs no installer and when it is not 64 lowercase hex characters,
+  and passed to `install.sh` as `TK_INSTALLER_SHA256`. `config` prints it.
+- [`../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json`](../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json),
+  the one base of the operator's ruling with the `herdr` and `muse` adapters, and the
+  install section of the Muse guide rewritten to use it.
+- `pi` and `omp` named in the adapter contract as the next adapters, not built.
+
+⭐ **Read before it was built, on 2026-09-14, and not run by hand:**
+
+- the installer Meta serves still has the approved digest, and is 314 lines and 9,314
+  bytes. It needs bash, curl and mktemp, installs the launcher at `~/.local/bin/muse`,
+  checks the launcher's SHA-256 only when the server sends `x-content-sha256`, runs
+  it once to fetch the binary, and appends `PATH` lines to profiles unless
+  `MUSE_NO_MODIFY_PATH` is set;
+- the launcher, 1,138 lines and 33,118 bytes, sent with a matching
+  `x-content-sha256`. It looks for an update at most hourly unless
+  `MUSE_NO_AUTO_UPDATE=1`, and a download it is refused starts a device sign-in only
+  when stderr is a terminal or `MUSE_LOGIN=1`.
+
+⭐ **Measured without credentials:** the channel manifest and the release manifest
+both answered 200, the channel `"state":"public"` at version `1.2.1-R2847.1`, and the
+Linux x86 artifact answered a one-byte range with 206. So an unattended install needs
+no Meta account, and the operator's sign-in is needed only to use Muse.
+
+⚠ **The prove's first condition was written for a digest passed at run time.** Under
+the ruling the approved digest is pinned, so a fresh clone installs Muse without
+stopping while Meta serves that file. The stop is held by the shell case below, and on
+a real base by a build whose pin is planted to differ.
+
+| case | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
+| --- | --- | --- |
+| `TestAnInstallerDigestIsTakenOnlyByAnAdapterThatRunsAnInstaller` | pass | pass |
+| `TestAnApprovedInstallerDigestReachesInstallSh` | pass | pass |
+| `TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved`, `install.sh` against stand-ins under a POSIX shell | skip | pass |
+
+⭐ **Six mutation rows went red**, each after its case passed unmutated: the refusal on
+an adapter with no installer, the refusal of a malformed digest and the variable that
+carries it, on Windows; the unapproved installer kept and not run, the wrapper's
+account check and the installed Muse not fetched again, in `golang:1.25`.
+
+### Still open
+
+1. The prove from a fresh clone on a throwaway instance, with the planted stop.
+2. The three reviews, and the closing.
+
 ---
 
 ## WSL-78. Muse from any Windows project, and a guide for someone who has never used a coding agent

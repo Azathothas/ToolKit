@@ -9,6 +9,9 @@ one.
 | adapter | what it installs | driven on |
 | --- | --- | --- |
 | [`herdr/`](herdr/) | herdr 0.9.0, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
+| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, and `/usr/local/bin/muse` | the `arch` preset |
+
+`pi` and `omp` are the next adapters named, and neither is built.
 
 ---
 
@@ -24,7 +27,10 @@ One directory per adapter, named as the configuration names it.
 
 Both scripts receive `TK_USER`, the base's account, and `TK_DISTRO`, its
 distribution, as exported variables. An adapter with a half on this machine
-receives what that half prepares, which for herdr is `TK_SSH_CLIENT_KEY`.
+receives what that half prepares, which for herdr is `TK_SSH_CLIENT_KEY`. An adapter
+that runs a provider's installer receives `TK_INSTALLER_SHA256` when its
+configuration entry carries `installer_sha256`, and every other adapter refuses that
+key.
 
 ⛔ **Nothing is substituted into a script.** A value that becomes shell source is a
 value whose quote becomes code.
@@ -35,6 +41,11 @@ value whose quote becomes code.
 sits on a line whose variable name carries `PINNED_SHA256`, which is the shape the
 gate's `secrets` rule accepts, and a file that does not match is deleted without
 being run.
+
+⛔ **A provider's own installer, which no upstream pins, runs only while its digest
+is approved:** the one the adapter pins, which the operator approved after reading
+the file, or the `installer_sha256` its configuration carries. Any other is saved for
+the operator to read, never run, and the adapter exits non-zero naming its digest.
 
 ## The copy the executable carries
 

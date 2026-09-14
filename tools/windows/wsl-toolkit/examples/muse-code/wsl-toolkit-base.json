@@ -1,0 +1,20 @@
+{
+  "schema": "wsl-toolkit-config/1",
+  "base": {
+    "name": "wsl-toolkit-base",
+    "image": "ghcr.io/pkgforge-dev/archlinux:latest",
+    "user": "herdr",
+    "automount": "off",
+    "interop": "off",
+    "systemd": true,
+    "passwordless_sudo": true,
+    "toolset": "developer",
+    "adapters": [
+      { "name": "herdr" },
+      { "name": "muse" }
+    ]
+  },
+  "jobs": {
+    "container_lifecycle": "persistent"
+  }
+}

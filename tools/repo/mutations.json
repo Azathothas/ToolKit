@@ -1966,6 +1966,60 @@
       "args": []
     },
     {
+      "label": "adapters: an installer digest on an adapter that runs no installer is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif a.InstallerSHA256 != \"\" && !spec.TakesInstallerDigest {\n",
+      "replace": "\t\tif false && a.InstallerSHA256 != \"\" && !spec.TakesInstallerDigest {\n",
+      "run": "TestAnInstallerDigestIsTakenOnlyByAnAdapterThatRunsAnInstaller",
+      "args": []
+    },
+    {
+      "label": "adapters: an installer digest that is not a SHA-256 is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif a.InstallerSHA256 != \"\" && !installerDigestRE.MatchString(a.InstallerSHA256) {\n",
+      "replace": "\t\tif false && a.InstallerSHA256 != \"\" && !installerDigestRE.MatchString(a.InstallerSHA256) {\n",
+      "run": "TestAnInstallerDigestIsTakenOnlyByAnAdapterThatRunsAnInstaller",
+      "args": []
+    },
+    {
+      "label": "adapters: an approved installer digest reaches install.sh",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tenv[\"TK_INSTALLER_SHA256\"] = a.InstallerSHA256\n",
+      "replace": "\t\t_ = a.InstallerSHA256\n",
+      "run": "TestAnApprovedInstallerDigestReachesInstallSh",
+      "args": []
+    },
+    {
+      "label": "muse: an installer nobody approved is kept and not run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  if [ -z \"$approved\" ]; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved",
+      "args": []
+    },
+    {
+      "label": "muse: the wrapper runs Muse only as the account it is installed for",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "if [ \"\\$(id -un)\" != \"$TK_USER\" ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved",
+      "args": []
+    },
+    {
+      "label": "muse: an installed Muse is not fetched again",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "if [ -n \"$installed\" ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved",
+      "args": []
+    },
+    {
       "label": "config: a stored base.adapters survives loading",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/catalog.go",

@@ -84,33 +84,39 @@ provider does not need with `--without`, for example
 
 ## Install and run Muse Code
 
-Muse's official documentation currently requires a Meta login. Its published
-Linux installer is mutable, so it is an operator step and this repository's
-bootstrap never runs it. From `base shell`, download it, inspect the saved file,
-then run the file you inspected:
+The base's `muse` adapter installs it. Name it in `base.adapters` and run `base
+ensure`; [`wsl-toolkit-base.json`](wsl-toolkit-base.json) beside this page is the
+profile for the one base every agent shares, with the `herdr` and `muse` adapters,
+the account `herdr` and no standing grant. From a clone of this repository, put it
+where `--instance base` reads it from any directory, then build:
 
-```sh
-mkdir -p ~/.local/state/muse-install && cd ~/.local/state/muse-install
-curl --proto '=https' --tlsv1.2 --fail --location https://dev.meta.ai/install.sh --output install.sh
-wc -l install.sh && sha256sum install.sh | tee install.sh.sha256
-less install.sh
-sh ./install.sh
-exec bash -l
-muse --version
-muse login
+```powershell
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\wsl-toolkit\instances\base" | Out-Null
+Copy-Item tools\windows\wsl-toolkit\examples\muse-code\wsl-toolkit-base.json "$env:LOCALAPPDATA\wsl-toolkit\instances\base\config.json"
+wsl-toolkit --instance base base ensure
+wsl-toolkit --instance base base status --probe --json
 ```
 
-⭐ **What that did on 2026-09-13**, read back off the base afterwards:
+⛔ **Meta's installer runs only while its digest is approved.** The adapter saves
+it, prints its length and SHA-256, and runs it as the account when the digest is the
+one the adapter pins or the `installer_sha256` the profile's `muse` entry carries.
+Any other stops the ensure with exit 2 and prints how to read the saved file; add its
+digest as `installer_sha256` only after reading it.
 
-| step | measured |
-| --- | --- |
-| the installer | 314 lines, 9,314 bytes. It fetches a launcher from `api.meta.ai` and checks it against a SHA-256 only when the server sends one, which proves transport and not authorship |
-| the install | Muse Code 1.1.1 (`1.1.1-R2514.1`), a 273 MB download, into `~/.local/bin`. A PATH line is appended to `~/.profile` and `~/.bashrc`. No root and no sudo |
-| `muse login` | a device-code sign-in: it prints an `auth.meta.com` URL and a code, and offers to open a browser, which it cannot do with interop off. Open the URL in a Windows browser. The credential lands in `~/.config/muse/auth.json`, mode 0600, in the persistent home |
+⛔ **Signing in is the operator's.** `muse login` is a device-code sign-in: it
+prints an `auth.meta.com` URL and a code, and offers to open a browser, which it
+cannot do with interop off. Open the URL in a Windows browser. Measured on
+2026-09-13, the credential lands in `~/.config/muse/auth.json`, mode 0600, in the
+persistent home.
 
-⚠ **`base exec` starts a non-interactive shell that reads no profile**, so
-`muse` is not on `PATH` there until `. ~/.profile` has run. Both examples below
-start that way.
+```powershell
+wsl-toolkit --instance base base shell
+```
+
+Then run `muse login` in that shell.
+
+⭐ **`muse` is on `PATH` in `base exec`**, through `/usr/local/bin/muse`, which the
+adapter writes and which runs Muse only as the base's account.
 
 ⚠ **Muse says your content may be used for product improvement.** Its first
 screen named the model `muse-spark-1.3-contributor` and printed that notice. This

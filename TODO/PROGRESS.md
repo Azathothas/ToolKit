@@ -11,7 +11,7 @@ baseline        eff07c5, tree clean, CI run 34820474937 green
 entries         total 118  open 10  blocked 0  done 108
 closed          WSL-81 at e32791a; WSL-72
 filed           WSL-82, found by WSL-81's claim audit; WSL-83, found by WSL-72's baseline read
-head            e32791a, then this commit
+head            461269f, then this commit
 ```
 
 ## Active work
@@ -22,9 +22,11 @@ P1:** two read-only runs on the shared image panicked while powering off, with o
 processor, and the second panicked on the filesystem the first left unchecked. The
 shared image is restored, and the decision is the operator's, below.
 
-**Next: issue 32.** `WSL-76` waits for `wsl-toolkit-base` and the operator's sign-in,
-so `WSL-77` comes first: the Muse adapter, driven on a throwaway instance, then
-`WSL-78`'s launchers and guide as far as they go without a signed-in Muse.
+**Issue 32 is next, and `WSL-77` is built.** The Muse adapter, its approval key and
+the one base's profile are in this commit with six mutation rows red. Its prove from
+a fresh clone on a throwaway instance comes next, then `WSL-78`'s launchers and guide
+as far as they go without a signed-in Muse. `WSL-76` waits for `wsl-toolkit-base`
+and the operator's sign-in.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -98,7 +100,8 @@ never on the shared image.
 | commit | what |
 | --- | --- |
 | `e32791a` | `WSL-81` closed: 8 mutation rows red one at a time; a step the guest never finished no longer prints `(exit 0)`, with a case and a row; the manual's per-run cost measured again on the one-processor build, about 23 s; `WSL-82` filed for a payload that prints a panic's two lines |
-| this commit | `WSL-72` closed: the prove as written passed on a fresh image copy, exit 0, `absent=` empty, `nim` and `rustc` present, a 10.6 GiB root; 4 rows red. `WSL-83` filed after two panics at poweroff on the shared image, which is restored; the manual, two comments and `WSL-81`'s record corrected where they said such a panic comes after the buffers sync |
+| `461269f` | `WSL-72` closed: the prove as written passed on a fresh image copy, exit 0, `absent=` empty, `nim` and `rustc` present, a 10.6 GiB root; 4 rows red. `WSL-83` filed after two panics at poweroff on the shared image, which is restored; the manual, two comments and `WSL-81`'s record corrected where they said such a panic comes after the buffers sync |
+| this commit | `WSL-77` built: the `muse` adapter runs Meta's installer only while its digest is approved, `installer_sha256` carries an operator's approval, `/usr/local/bin/muse` serves `base exec`, and `wsl-toolkit-base.json` is the one base's profile; 3 cases, 6 rows red. Its prove is next |
 
 ## Measurements
 
@@ -121,6 +124,10 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 - **For `WSL-72`'s closing:** the prove exit 0 in 178.8 s on a fresh copy, whose
   first boot logged in at 29 s; 4 mutation rows red. `bsd fetch --force` restored
   the shared image in 13.1 s, and an image copy expanded in 24 s.
+- **For `WSL-77`'s build:** Meta's installer still has the approved digest, 9,314
+  bytes; Muse's channel is public at `1.2.1-R2847.1`, and its Linux artifact answers
+  an unauthenticated range request. The new cases green on Windows, with the shell
+  case skipped there, and all three green in `golang:1.25`; 6 rows red.
 - ⛔ **For `WSL-83`:** two read-only runs on the shared image, one processor, both
   exit 0, both panicked at poweroff: `bad pte va 389278400000 pte 0` before `Syncing
   disks`, then, on the next boot's unchecked root, `initiate_write_filepage: dir inum

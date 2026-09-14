@@ -39,6 +39,11 @@ var adapterTree embed.FS
 // BaseAdapter is one adapter a base configuration names.
 type BaseAdapter struct {
 	Name string `json:"name"`
+	// InstallerSHA256 is an installer digest the operator approved after reading
+	// the file, for an adapter that runs a provider's own installer. ⛔ It adds to
+	// the digest pinned in the adapter and replaces nothing, and an adapter that
+	// runs no installer refuses it rather than ignoring it.
+	InstallerSHA256 string `json:"installer_sha256,omitempty"`
 }
 
 // AdapterState is one adapter as `base status --probe` read it back.
@@ -59,6 +64,9 @@ type adapterSpec struct {
 	// Presets are the ones the adapter was driven on. ⛔ A base from any other
 	// image is refused rather than guessed at.
 	Presets []string
+	// TakesInstallerDigest says the adapter runs a provider's installer, and reads
+	// an operator's approval of one as TK_INSTALLER_SHA256.
+	TakesInstallerDigest bool
 	// Host is the half that lives on this machine, or nil.
 	Host adapterHost
 }
@@ -72,7 +80,16 @@ var adapterSpecs = []adapterSpec{
 		Presets:      []string{"arch"},
 		Host:         &herdrHost{},
 	},
+	{
+		Name:                 "muse",
+		Summary:              "Muse Code for the base's account, from Meta's installer, run only while that file's digest is one the operator approved",
+		Presets:              []string{"arch"},
+		TakesInstallerDigest: true,
+	},
 }
+
+// installerDigestRE is a SHA-256 as sha256sum prints it.
+var installerDigestRE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func lookupAdapter(name string) (adapterSpec, bool) {
 	for _, s := range adapterSpecs {
@@ -106,6 +123,12 @@ func validateAdapters(c Config) error {
 			return fmt.Errorf("base.adapters names %q more than once", a.Name)
 		}
 		seen[a.Name] = true
+		if a.InstallerSHA256 != "" && !spec.TakesInstallerDigest {
+			return fmt.Errorf("base.adapters[%d] gives %q an installer_sha256, and it runs no installer that one could approve", i, a.Name)
+		}
+		if a.InstallerSHA256 != "" && !installerDigestRE.MatchString(a.InstallerSHA256) {
+			return fmt.Errorf("base.adapters[%d].installer_sha256 is not a SHA-256. Give the 64 lowercase hex characters sha256sum prints for the installer you read", i)
+		}
 		if spec.NeedsSystemd && !c.Base.Systemd {
 			return fmt.Errorf("base.adapters names %q, whose server runs as a system unit, so it needs base.systemd to be true", a.Name)
 		}
@@ -192,6 +215,22 @@ func parseAdapterProbe(name, out string) AdapterState {
 // exit is a script that stopped early and said nothing.
 func adapterCompleteLine(name string) string { return "adapter-complete " + name }
 
+// adapterInstallEnv is what an adapter's install.sh receives, beside what its
+// machine half prepares: its files, the account and the distribution, and an
+// installer digest the operator approved.
+func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
+	env, err := adapterFileEnv(a.Name)
+	if err != nil {
+		return nil, err
+	}
+	env["TK_USER"] = cfg.Base.User
+	env["TK_DISTRO"] = cfg.Base.Name
+	if a.InstallerSHA256 != "" {
+		env["TK_INSTALLER_SHA256"] = a.InstallerSHA256
+	}
+	return env, nil
+}
+
 // applyAdapters installs every adapter the configuration names, in order, and
 // proves each one, and takes the machine half of every other one away.
 func (b *Base) applyAdapters(ctx context.Context) error {
@@ -219,12 +258,10 @@ func (b *Base) applyAdapters(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		env, err := adapterFileEnv(a.Name)
+		env, err := adapterInstallEnv(b.cfg, a)
 		if err != nil {
 			return err
 		}
-		env["TK_USER"] = b.cfg.Base.User
-		env["TK_DISTRO"] = b.cfg.Base.Name
 		if spec.Host != nil {
 			extra, err := spec.Host.prepare(ctx, b)
 			if err != nil {
