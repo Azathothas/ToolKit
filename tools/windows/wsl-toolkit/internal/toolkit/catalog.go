@@ -82,6 +82,9 @@ type BaseConfig struct {
 	// are mounted below /workspaces and are meaningful only with automount and
 	// interop both off.
 	Mounts []BaseMount `json:"mounts,omitempty"`
+	// Adapters are the pieces of software `base ensure` installs for the base's
+	// agents, in order, after provisioning. adapters.go carries the contract.
+	Adapters []BaseAdapter `json:"adapters,omitempty"`
 }
 
 // BaseMount is one Windows directory made visible inside a base.
@@ -431,6 +434,13 @@ func LoadConfig() (Config, error) {
 	if stored.Base.Mounts != nil {
 		cfg.Base.Mounts = stored.Base.Mounts
 	}
+	// ⛔ EVERY STORED FIELD IS COPIED BY NAME HERE, so a field added to BaseConfig
+	// and not to this list is decoded, validated as empty and dropped. base.adapters
+	// was, on its first drive: `config validate` passed and `base ensure` installed
+	// nothing. A case decodes a file with every base field set and compares.
+	if stored.Base.Adapters != nil {
+		cfg.Base.Adapters = stored.Base.Adapters
+	}
 	if stored.Jobs.ContainerLifecycle != "" {
 		cfg.Jobs.ContainerLifecycle = stored.Jobs.ContainerLifecycle
 	}
@@ -565,6 +575,9 @@ func (c Config) Validate() error {
 		if _, err := NormalizeBaseMountMode(mount.Mode); err != nil {
 			return fmt.Errorf("base.mounts[%d]: %w", i, err)
 		}
+	}
+	if err := validateAdapters(c); err != nil {
+		return err
 	}
 	if c.Jobs.ContainerLifecycle != ContainerPersistent && c.Jobs.ContainerLifecycle != ContainerEphemeral {
 		return fmt.Errorf("jobs.container_lifecycle %q must be %q or %q", c.Jobs.ContainerLifecycle, ContainerPersistent, ContainerEphemeral)

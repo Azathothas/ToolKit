@@ -1919,6 +1919,132 @@
       "replace": "`(?m)^panic: [^\\r\\n]*`",
       "run": "TestAKernelPanicIsToldFromAProgramThatSaysPanic",
       "args": []
+    },
+    {
+      "label": "adapters: an adapter this executable does not carry is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"base.adapters[%d] names %q, and the adapters this executable carries are: %s\",",
+      "replace": "\t\tif !ok && false {\n\t\t\treturn fmt.Errorf(\"base.adapters[%d] names %q, and the adapters this executable carries are: %s\",",
+      "run": "TestAnAdapterIsRefusedWhereItWasNotDriven",
+      "args": []
+    },
+    {
+      "label": "adapters: an adapter named twice is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif seen[a.Name] {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAnAdapterIsRefusedWhereItWasNotDriven",
+      "args": []
+    },
+    {
+      "label": "adapters: herdr without systemd is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif spec.NeedsSystemd && !c.Base.Systemd {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAnAdapterIsRefusedWhereItWasNotDriven",
+      "args": []
+    },
+    {
+      "label": "adapters: a preset the adapter was not driven on is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\t\tif !found {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestAnAdapterIsRefusedWhereItWasNotDriven",
+      "args": []
+    },
+    {
+      "label": "config: a stored base.adapters survives loading",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif stored.Base.Adapters != nil {\n\t\tcfg.Base.Adapters = stored.Base.Adapters\n\t}\n",
+      "replace": "",
+      "run": "TestEveryStoredBaseFieldSurvivesLoading",
+      "args": []
+    },
+    {
+      "label": "adapters: a begin marker with no end deletes nothing",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\t\tif end >= 0 {\n\t\t\t\ti = end\n\t\t\t\tcontinue\n\t\t\t}\n",
+      "replace": "\t\t\tif end < 0 {\n\t\t\t\tbreak\n\t\t\t}\n\t\t\ti = end\n\t\t\tcontinue\n",
+      "run": "TestAStrayBeginMarkerDeletesNothing",
+      "args": []
+    },
+    {
+      "label": "adapters: an alias has one known-host line",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\treturn matches == 1\n",
+      "replace": "\treturn matches >= 1\n",
+      "run": "TestAKnownHostLineIsThisBasesAlone",
+      "args": []
+    },
+    {
+      "label": "adapters: this machine's half is checked before the door is tried",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif len(problems) > 0 {\n\t\treturn problems\n\t}\n\tconnect := h.connect\n",
+      "replace": "\tconnect := h.connect\n",
+      "run": "TestTheHerdrHostHalfIsCheckedBeforeItConnects",
+      "args": []
+    },
+    {
+      "label": "adapters: the door must answer the base's herdr version",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif want := facts[\"version\"]; want == \"\" || answer != \"herdr \"+want {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheHerdrHostHalfIsCheckedBeforeItConnects",
+      "args": []
+    },
+    {
+      "label": "adapters: the tracked herdr configuration unbinds the close keys",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/config.toml",
+      "find": "close_pane = \"\"\n",
+      "replace": "# close_pane = \"\"\n",
+      "run": "TestTheHerdrConfigurationUnbindsTheCloseKeys",
+      "args": []
+    },
+    {
+      "label": "attach: the Windows line uses the server's keys",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_attach.go",
+      "find": "\t\tWindows:      \"herdr --remote \" + alias + \" --remote-keybindings server\",\n",
+      "replace": "\t\tWindows:      \"herdr --remote \" + alias,\n",
+      "run": "TestTheAttachLineUsesTheServersKeys",
+      "args": []
+    },
+    {
+      "label": "check: an adapter copy is compared byte for byte",
+      "module": "tools/check",
+      "file": "internal/checks/adapters.go",
+      "find": "\t\tif !bytes.Equal(want, got) {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestTheEmbeddedAdapterCopyIsRefusedWhenEitherSideMoves",
+      "args": []
+    },
+    {
+      "label": "check: an adapter copy with no definition is refused",
+      "module": "tools/check",
+      "file": "internal/checks/adapters.go",
+      "find": "\t\tif _, ok := src[rel]; !ok {\n\t\t\tr.bad(",
+      "replace": "\t\tif _, ok := src[rel]; !ok && false {\n\t\t\tr.bad(",
+      "run": "TestTheEmbeddedAdapterCopyIsRefusedWhenEitherSideMoves",
+      "args": []
+    },
+    {
+      "label": "bsd: a panic while the guest powers off is carried on the result",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\treturn bsdKernelPanic(g.after(from))\n",
+      "replace": "\t_ = from\n\treturn \"\"\n",
+      "run": "TestAPanicWhilePoweringOffIsCarriedOnTheResult",
+      "args": []
     }
   ]
 }

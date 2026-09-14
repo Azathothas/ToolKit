@@ -66,6 +66,10 @@ type BaseState struct {
 	// costs and the exact command that takes it. ⭐ A caller here is usually an
 	// agent, and the command is the field it acts on.
 	Remediations []Remediation `json:"remediations,omitempty"`
+	// Adapters are the configured adapters as read back under --probe, both the
+	// base's half and this machine's. ⚠ Nil without --probe, which is not the same
+	// as none configured: Access.Adapters says what is configured.
+	Adapters []AdapterState `json:"adapters,omitempty"`
 }
 
 // BaseAccessState is what the base is configured to reach on Windows.
@@ -76,6 +80,7 @@ type BaseAccessState struct {
 	PasswordlessSudo bool        `json:"passwordless_sudo"`
 	Toolset          string      `json:"toolset"`
 	Mounts           []BaseMount `json:"mounts,omitempty"`
+	Adapters         []string    `json:"adapters,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -144,6 +149,9 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 			Automount: automount, Interop: interop, Systemd: b.cfg.Base.Systemd,
 			PasswordlessSudo: b.cfg.Base.PasswordlessSudo, Toolset: toolset, Mounts: mounts,
 		},
+	}
+	for _, a := range b.cfg.Base.Adapters {
+		st.Access.Adapters = append(st.Access.Adapters, a.Name)
 	}
 	distros, err := b.wsl.List(ctx, b.cfg.Base.Name)
 	if err != nil {
@@ -236,6 +244,15 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	// refuse work over a limitation most jobs never reach. WSL-60.
 	if r, ok := cgroupRemediation(caps); ok {
 		st.Remediations = append(st.Remediations, r)
+	}
+	// ⚠ AN ADAPTER'S PROBLEM IS A PROBLEM, NOT AN UNUSABLE BASE. `healthy` answers
+	// whether a container runs; a broken adapter makes the verdict 1 through the
+	// problems list, with the adapter named.
+	st.Adapters = b.probeAdapters(ctx)
+	for _, a := range st.Adapters {
+		for _, p := range a.Problems {
+			st.Problems = append(st.Problems, "adapter "+a.Name+": "+p)
+		}
 	}
 	return st, nil
 }
@@ -349,7 +366,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 		}
 		if engine, _, _, err := b.verify(ctx); err == nil {
 			b.log("the engine answers: " + engine)
-			return b.Status(ctx, true)
+			return b.finishEnsure(ctx, st)
 		} else {
 			b.log("it cannot: " + err.Error())
 			// ⛔ RE-PROVISIONING CANNOT CLEAR STATE THAT IS THE ENGINE'S, and
@@ -388,7 +405,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 				// success until a container has actually run.
 				if engine, _, _, err := b.verify(ctx); err == nil {
 					b.log("the engine answers: " + engine)
-					return b.Status(ctx, true)
+					return b.finishEnsure(ctx, st)
 				} else {
 					b.log("it still cannot after the repair: " + err.Error())
 				}
@@ -407,7 +424,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 			} else {
 				b.log("the engine answers: " + engine)
 			}
-			return b.Status(ctx, true)
+			return b.finishEnsure(ctx, st)
 		}
 	}
 	// ⛔ FROM HERE THIS PROCESS OWNS THE DISTRIBUTION IT IS BUILDING, marker or
@@ -436,12 +453,28 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 	if err := b.writeRecord(); err != nil {
 		return st, err
 	}
-	return b.Status(ctx, true)
+	return b.finishEnsure(ctx, st)
 }
 
 // rollbackUnmarked removes a distribution this process imported but did not
 // stamp. A fresh context is deliberate: cancellation of the build must not
 // cancel the operation that prevents a nameless disk being stranded.
+// finishEnsure applies the configured adapters to a base whose engine answers,
+// and reads the base back.
+//
+// ⛔ A FAILED ADAPTER IS RETURNED WITH THE STATE, NOT INSTEAD OF IT. The engine
+// works and the record is written by the time this runs, so the caller is told
+// both what failed and what the base is.
+func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error) {
+	if err := b.applyAdapters(ctx); err != nil {
+		if probed, statusErr := b.Status(ctx, true); statusErr == nil {
+			return probed, err
+		}
+		return st, err
+	}
+	return b.Status(ctx, true)
+}
+
 func (b *Base) rollbackUnmarked(cause error) error {
 	b.log("the new base did not finish; removing the incomplete distribution")
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -931,7 +964,10 @@ func (b *Base) Remove(ctx context.Context) error {
 	if err := RemoveInside(b.home, b.recordPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
-	return nil
+	// ⭐ A WAY IN TO A DISTRIBUTION THAT IS GONE GOES WITH IT. The Host block and
+	// the known host key would otherwise name a distribution that no longer exists,
+	// and then the next one built under that name, with a different host key.
+	return b.removeAdapterHosts()
 }
 
 // prefixWriter relays a child's output through the logger and keeps a copy, so

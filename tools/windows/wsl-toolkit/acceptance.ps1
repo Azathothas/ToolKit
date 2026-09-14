@@ -1006,6 +1006,7 @@ try {
             @{ n = 'config';        a = @('config', '--json') }
             @{ n = 'base status';   a = @('base', 'status', '--json') }
             @{ n = 'base presets';  a = @('base', 'presets', '--json') }
+            @{ n = 'base attach';   a = @('base', 'attach', '--json') }
             @{ n = 'base ensure';   a = @('base', 'ensure', '--json') }
             @{ n = 'resources';     a = @('resources', '--json') }
             @{ n = 'gc';            a = @('gc', '--json') }

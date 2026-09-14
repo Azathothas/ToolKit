@@ -17,6 +17,8 @@ tools/windows/wsl-toolkit/
   helper_route.go           direct/helper routing decision
   internal/toolkit/         WSL, distros, containers, the relay, state and safety
   internal/toolkit/testdata a log the retired PowerShell product recorded
+  adapters/                 what base ensure installs for agents; see adapters/README.md
+  internal/toolkit/adapters generated copy of adapters/, which the gate compares
   acceptance.ps1            real-Windows acceptance runner
   consumer.ps1              published-release smoke runner
   wsl-toolkit.1             generated man page

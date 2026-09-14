@@ -9,7 +9,7 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|presets>
+const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|attach|presets>
 
   status     is it registered, and can it actually run a container
   ensure     bring it to a usable state, doing the least that achieves it
@@ -17,6 +17,7 @@ const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|pr
   remove     unregister it and delete its disk
   shell      attach an interactive shell to it, as the unprivileged account
   exec       run a non-interactive POSIX script in it, as that account
+  attach     print the commands that reach its herdr server, from Windows and inside
   presets    the rootfs choices, what each one measured here, and which is live
 
   --preset ID   build from a preset, or from any fully qualified reference.
@@ -61,6 +62,11 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
+	}
+	if sub == "attach" {
+		// ⭐ BEFORE THE HELPER ROUTE. It reads files on this machine and starts
+		// nothing, so a process that cannot reach wsl.exe can still answer it.
+		return cmdBaseAttach(cfg, *asJSON)
 	}
 	switched, err := applyPreset(ctx, &cfg, *preset, *save)
 	if err != nil {
@@ -257,6 +263,18 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}
+	if len(st.Adapters) == 0 {
+		// ⚠ NOT READ BACK IS SAID, AND WHY. Under --probe the adapters are read only
+		// once the engine has answered, so an empty list there is a base that did not
+		// get that far, not a base with no adapter.
+		why := "Pass --probe"
+		if probed {
+			why = "The base did not get as far as reading them"
+		}
+		for _, name := range st.Access.Adapters {
+			fmt.Fprintf(out, "  adapter     %s, not read back. %s\n", name, why)
+		}
+	}
 	fmt.Fprintf(out, "  registered  %v\n", st.Registered)
 	fmt.Fprintf(out, "  running     %v\n", st.Running)
 	if st.DiskKnown {
@@ -291,6 +309,13 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		fmt.Fprintf(out, "  binfmt      %d QEMU handler(s), ready: %v\n", bf.Handlers, bf.Ready)
 	} else if probed {
 		fmt.Fprintf(out, "  binfmt      not measured by this guest\n")
+	}
+	for _, a := range st.Adapters {
+		verdict := "healthy"
+		if !a.Healthy {
+			verdict = fmt.Sprintf("%d problem(s), listed below", len(a.Problems))
+		}
+		fmt.Fprintf(out, "  adapter     %s %s, %s\n", a.Name, a.Version, verdict)
 	}
 	for _, p := range st.Problems {
 		fmt.Fprintf(out, "  ! %s\n", p)

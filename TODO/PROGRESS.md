@@ -11,7 +11,7 @@ baseline        e73d7d5, tree clean
 entries         total 116  open 11  blocked 0  done 105
 closed          WSL-74 at ab4281c; WSL-80 and WSL-79 at 5e66e44; issue 33
 filed           WSL-80, found by the acceptance runner's baseline; WSL-81, found by WSL-72's prove
-head            the WSL-81 build commit after 469e52a
+head            the WSL-76 build commit after d85b90e
 ```
 
 ## Active work
@@ -37,7 +37,9 @@ is closed, and the issue gets a comment naming the commits.
    ⛔ The first such run panicked the guest and left the image unbootable, so
    **`WSL-81`** is inserted here, and `WSL-72`'s prove runs again after it.
 5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
-   that order, because the later ones use herdr and the grants.
+   that order, because the later ones use herdr and the grants. `WSL-76`'s
+   machinery is built and driven without Muse; its closing needs Muse through herdr,
+   so it waits for `wsl-toolkit-base` and the operator's sign-in.
 6. **Issue 30:** `WSL-67`'s open items, `WSL-68`, `WSL-70` and `WSL-71`.
 7. **`wsl-toolkit-base`** is built last, from the machinery, and the operator
    signs Muse in there.
@@ -88,7 +90,8 @@ carries all three as commands under "Build and local proof".
 | `ab4281c` | `WSL-74` closed: a configuration naming another instance's distribution is refused by every command, `ready` included, with 6 mutation rows and 2 acceptance cases; `WSL-80` filed |
 | `5e66e44` | `WSL-80` closed: the relay's heartbeat can no longer keep a finished `distro run` waiting, and its acceptance case no longer depends on how ticks fall. `WSL-79` closed: the FreeBSD guest reaches a login in about 9 s rather than 115 s, and a script reaches it as a file on its own disk. 10 mutation rows. CI green, and issue 33 closed |
 | `469e52a` | `bootstrap.sh` links FreeBSD's `nim` onto `PATH`, and the guest's default disk is 12 GiB, the smallest measured to give a 10 GiB root |
-| the WSL-81 build commit | `bsd run` ends a run when the guest's kernel panics or QEMU exits, rather than at the end of its budget. `WSL-81` filed and built, 5 mutation rows |
+| `d85b90e` | `bsd run` ends a run when the guest's kernel panics or QEMU exits, rather than at the end of its budget. `WSL-81` filed and built, 5 mutation rows |
+| the WSL-76 build commit | `WSL-76`'s machinery: `base.adapters` with the `adapters` gate rule, the `herdr` adapter and its SSH door through `wsl.exe`, and `base attach`, driven on a throwaway base, 14 mutation rows. `WSL-81`: a panic while the guest powers off is carried on the result, 1 row |
 
 ## Measurements
 
@@ -162,10 +165,14 @@ None. Every decision is ruled.
   `base remove --yes` on 2026-09-14, and `instances\muse` holds nothing.
 - herdr 0.9.0 is installed on Windows by the operator.
 - ⚠ **In use for `WSL-76`'s measurements, and removed when they end:** the throwaway
-  `wsl-toolkit-h76`; one marked `Host wsl-toolkit-h76` block at the top of
-  `%USERPROFILE%\.ssh\config`, whose key and known-hosts file are under this
-  repository's `.tmp`; and the `%APPDATA%\herdr` and `%LOCALAPPDATA%\herdr`
-  directories a local herdr session created, neither of which existed before.
+  `wsl-toolkit-h76`, and the marked `Host wsl-toolkit-h76` block `base ensure` wrote
+  at the top of `%USERPROFILE%\.ssh\config`, which `base remove` takes out. The
+  rest of that file is byte for byte what it was, SHA-256 `18FC11BE…E93F4`.
+- The dedicated SSH key the ruling allows is at
+  `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with `known_hosts` beside it, and
+  stays for `wsl-toolkit-base`.
+- The `%APPDATA%\herdr` and `%LOCALAPPDATA%\herdr` directories a local herdr session
+  created during the measurements are removed; neither existed before them.
 - The shared FreeBSD pkgbase guest is the published image again, 6,476,638,208
   bytes, restored by `bsd fetch --force` after `WSL-72`'s prove panicked it into a
   root filesystem that would not mount. The next `bsd run` grows it to 12 GiB. The

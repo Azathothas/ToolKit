@@ -321,6 +321,11 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	} else if res.Output != "" {
 		fmt.Println(res.Output)
 	}
+	if res.ShutdownPanic != "" {
+		// ⚠ Measured on 2026-09-13: the boot after a panic at poweroff saved a
+		// core dump of 171,601,920 bytes into the shared image's /var/crash.
+		logf("  ⚠ the guest's kernel panicked while it powered off: %s. The payload had already answered, and the next boot saves a core dump into the shared image's /var/crash", res.ShutdownPanic)
+	}
 	if runErr != nil {
 		return exitCannot, runErr
 	}

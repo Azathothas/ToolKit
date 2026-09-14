@@ -1,0 +1,26 @@
+# herdr's configuration for the base account, from wsl-toolkit's herdr adapter.
+# base ensure writes it to ~/.config/herdr/config.toml whole, every time, so a
+# change belongs in tools/windows/wsl-toolkit/adapters/herdr/config.toml.
+
+# The first-run screen asks questions nobody in the base is there to answer.
+onboarding = false
+
+[terminal]
+# Panes start bash, which reads ~/.bashrc, where Muse's installer adds its PATH.
+default_shell = "bash"
+
+[keys]
+# ⛔ ONE WRONG KEY MUST NOT END AN AGENT. With herdr's own keys, prefix then x
+# closed the focused pane and prefix then shift+x the focused tab, each at once
+# with no question, measured on 2026-09-14. Both are unbound; `herdr pane close`
+# and `herdr tab close` still close one on purpose.
+close_pane = ""
+close_tab = ""
+
+[ui]
+# Closing a workspace asks first. It is herdr's default, written here so that a
+# changed default does not change this base.
+confirm_close = true
+
+# [update] stays at herdr's defaults, version_check and manifest_check both on,
+# by the operator's ruling of 2026-09-14.

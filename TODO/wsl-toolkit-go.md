@@ -5801,6 +5801,58 @@ Passing is:
   it alive;
 - `check docs` green with no Zellij page left.
 
+## Amendment, 2026-09-14: the herdr adapter and its door, built and driven without Muse
+
+⭐ **Built, as the first adapter under `WSL-77`'s ruling A**, because that entry
+carries herdr as an adapter and building it twice would be building it wrong once:
+
+- `base.adapters`, each adapter a directory under
+  `tools/windows/wsl-toolkit/adapters/` with a generated copy under
+  `internal/toolkit/adapters/`, a gate rule `adapters` that compares them byte for
+  byte, and `check.sh adapters --fix`. `TODO/RULES.md` section 4 lists it.
+- `herdr`: herdr 0.9.0 pinned by the two Linux release digests, the server as
+  `wsl-toolkit-herdr.service`, the tracked `config.toml`, and the door: `sshd -i`
+  per connection through a root-owned wrapper, one `restrict` key, `AllowUsers` the
+  account, the distribution's `sshd` units masked. On Windows: the dedicated key,
+  a `known_hosts` line and one marked `Host` block at the top of the account's SSH
+  configuration.
+- `base status --probe` reads each adapter back, both halves, with an end-to-end
+  `ssh -F CONFIG ALIAS herdr --version`; `base attach` prints the lines;
+  `base remove` takes this machine's half away.
+- 12 cases, 14 mutation rows red.
+
+⭐ **What driving it found, on the throwaway `wsl-toolkit-h76`**, an arch base with
+systemd and the account `herdr`:
+
+| found | what was done |
+| --- | --- |
+| `sshd` refused a key for `herdr` with `User herdr not allowed because account is locked`: without PAM, OpenSSH refuses an account whose password field is `!`, which `useradd` leaves | the door sets `UsePAM yes`, and install refuses a base whose `sshd -T` does not honour it |
+| `herdr workspace create` with no server answered `server_not_running`; the CLI starts none | the server is a system unit |
+| `config validate` passed a file with `base.adapters` and `base ensure` installed nothing: `LoadConfig` copies stored base fields one by one | the field is copied, and a case now fails for any base field the loader drops |
+| the host half compared the door's answer with an empty version: the probe's `version` line was not among its facts | it is, and the check went green |
+| `base attach` printed `--config` relative, as typed | it prints the absolute path |
+| ⚠ not in herdr's documentation: its Windows client passes `HERDR_SESSION` to the remote bridge as `--session`, so a client inside a named local session attached to a new remote session of that name | recorded; the tool's line sets no session |
+| ⚠ not in herdr's documentation: after prefix then q, the Windows client printed `Error: Os { code: 104, kind: ConnectionReset }` while the server logged a clean detach | recorded |
+| ⚠ `herdr pane read` on Windows returned nothing for a pane running herdr's own full-screen client, so the Windows key presses could not be read back | the close keys were measured with a Linux client under tmux instead |
+
+⭐ **Measured, and now in the manual's table:** 68.7 s for `base recreate` with the
+adapter, 3.7 s for the next ensure; a 0.2 s SSH round trip; the Windows client
+connected and detached through the block the tool wrote; after `wsl --terminate`, one
+SSH connection restarted the distribution, the server and the workspaces in 5.4 s;
+twelve minutes idle with the base still running; and in two sessions made alike,
+herdr's own keys closed a pane and then a tab while the tracked file closed nothing.
+
+### Still open
+
+1. Muse through herdr: the prove's two commands. They need the Muse adapter from
+   `WSL-77` and the operator's sign-in on `wsl-toolkit-base`, so they run once that
+   base exists.
+2. The attach line reaching the same server with `herdr agent read muse`, and the
+   close keys in Muse's own pane, after 1.
+3. `examples/muse-code/README.md` rewritten from that drive, and
+   `examples/common/zellij.md` removed with every link to it.
+4. The three reviews, and the closing.
+
 ---
 
 ## WSL-77. A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters
@@ -6475,6 +6527,13 @@ checked the pinned digest and expanded it again in 84 s: the published 6,476,638
 bytes. `WSL-72`'s read-back eleven minutes before the panic found only the published
 packages and files on it, with its own additions removed, so the restore lost
 nothing another session had put there.
+
+⭐ **A second shape, found by the panic-rate runs:** a run whose payload exited 0
+and whose kernel then panicked while powering off, in `VOP_RECLAIM_APV` after `All
+buffers synced`. Its exit stands; the result now carries the panic as
+`shutdown_panic` and the run warns that the next boot saves a core dump into the
+shared image. A case holds it with a child that panics on `poweroff`, and its row
+went red.
 
 ### Still open
 

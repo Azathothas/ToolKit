@@ -230,6 +230,10 @@ type BsdResult struct {
 	DiskBytes int64  `json:"disk_bytes"`
 	RootBytes int64  `json:"root_bytes"`
 	Error     string `json:"error,omitempty"`
+	// ShutdownPanic is a kernel panic the guest printed while it powered off,
+	// after the payload had answered. ⚠ The payload's exit stands, and the next
+	// boot writes a core dump into the shared image. WSL-81.
+	ShutdownPanic string `json:"shutdown_panic,omitempty"`
 }
 
 // growBsdImage extends the guest disk to want bytes.
@@ -399,8 +403,7 @@ func bsdBootFailure(console string) string {
 var bsdPromptRE = regexp.MustCompile(`root@[^\r\n]*# `)
 
 // BsdRun boots the guest, runs one payload at a root shell, and powers it off.
-func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
-	var res BsdResult
+func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	started := time.Now()
 	img, err := BsdImagePath()
 	if err != nil {
@@ -457,7 +460,11 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 	if err != nil {
 		return res, err
 	}
-	defer g.stop()
+	// ⚠ THE RESULT CARRIES A PANIC AT POWEROFF, because nothing else would. The
+	// payload has answered by then, so its exit stands, and the guest has already
+	// synced its buffers; measured on 2026-09-14, a panic in VOP_RECLAIM after `All
+	// buffers synced` on a run that exited 0. WSL-81.
+	defer func() { res.ShutdownPanic = g.stopAndReadPanic() }()
 
 	if failure, ok := g.waitBoot(ctx); !ok {
 		res.Error = "the guest did not reach a login prompt within " + spec.Timeout.String()
@@ -928,6 +935,19 @@ func (g *guest) stop() {
 	_ = g.in.Close()
 	_ = g.cmd.Process.Kill()
 	<-done
+}
+
+// stopAndReadPanic stops the guest and answers a kernel panic it printed on the
+// way down, or "".
+func (g *guest) stopAndReadPanic() string {
+	from := len(g.seen())
+	g.stop()
+	// ⚠ QEMU having exited is not the reader having read its last bytes.
+	select {
+	case <-g.gone:
+	case <-time.After(2 * time.Second):
+	}
+	return bsdKernelPanic(g.after(from))
 }
 
 func bsdToken() (string, error) {

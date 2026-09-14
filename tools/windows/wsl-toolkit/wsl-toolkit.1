@@ -221,6 +221,35 @@ how long the command may run. 0 means no deadline. Default: 30m0s.
 \fB--via-helper\fR
 prove the helper refusal for arbitrary base commands
 .TP
+.B wsl-toolkit base attach
+.TP
+\fB--here\fR
+base shell starts in this Windows directory instead of the guest account's home
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--preset\fR
+build from this preset id or fully qualified reference
+.TP
+\fB--probe\fR
+run a real container to decide whether the base is usable
+.TP
+\fB--repair\fR
+ensure may clear engine run state a reboot invalidated. Off by default
+.TP
+\fB--root\fR
+attach as root
+.TP
+\fB--save\fR
+also store the preset as the default for later commands
+.TP
+\fB--via-helper\fR
+go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--yes\fR
+do not ask before removing
+.TP
 .B wsl-toolkit base presets
 .TP
 \fB--json\fR

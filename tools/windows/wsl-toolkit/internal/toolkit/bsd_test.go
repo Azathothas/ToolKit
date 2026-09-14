@@ -57,6 +57,42 @@ func TestBsdGuestChild(t *testing.T) {
 	case "exit":
 		_, _ = os.Stdout.WriteString("Starting devd.\r\n")
 		os.Exit(3)
+	case "poweroff-panic":
+		in := bufio.NewReader(os.Stdin)
+		for {
+			line, err := in.ReadString('\n')
+			if strings.TrimSpace(line) == "poweroff" {
+				_, _ = os.Stdout.WriteString(bsdPoweroffPanicConsole)
+				os.Exit(0)
+			}
+			if err != nil {
+				os.Exit(4)
+			}
+		}
+	}
+}
+
+// bsdPoweroffPanicConsole is a run of 2026-09-14 that exited 0, from the shutdown's
+// last line to the panic, with the lines between cut.
+const bsdPoweroffPanicConsole = "Syncing disks, vnodes remaining... 0 done\r\n" +
+	"All buffers synced.\r\n\r\n\r\n" +
+	"Fatal trap 12: page fault while in kernel mode\r\n" +
+	"cpuid = 0; apic id = 00\r\n" +
+	"fault virtual address\t= 0x1b8\r\n" +
+	"panic: page fault\r\n" +
+	"cpuid = 0\r\n" +
+	"KDB: stack backtrace:\r\n" +
+	"#5 0xffffffff80c6b1bc at VOP_RECLAIM_APV+0x1c\r\n" +
+	"Uptime: 3m21s\r\n"
+
+// TestAPanicWhilePoweringOffIsCarriedOnTheResult is WSL-81's second shape: a payload
+// that answered, then a kernel that panicked on the way down, which the run's exit
+// cannot show and the next boot's core dump in the shared image would.
+func TestAPanicWhilePoweringOffIsCarriedOnTheResult(t *testing.T) {
+	g := startBsdGuestChild(t, "poweroff-panic")
+	g.graceful = true
+	if got := g.stopAndReadPanic(); got != "panic: page fault, after Fatal trap 12: page fault while in kernel mode" {
+		t.Fatalf("a panic while powering off was answered %q", got)
 	}
 }
 

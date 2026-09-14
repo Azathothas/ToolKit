@@ -120,6 +120,61 @@ exit status. `--root` is an explicit administrative variant.
 root. Guest root can manually mount Windows paths, so this setting serves a
 trusted agent and is not a containment boundary.
 
+### Adapters, and herdr
+
+A base's `adapters` list names the software `base ensure` installs for its agents,
+after provisioning and in order. [`adapters/README.md`](adapters/README.md) is the
+contract for writing one.
+
+```json
+"adapters": [{ "name": "herdr" }]
+```
+
+⭐ **`herdr` puts the agents' multiplexer in the base, and a way in from Windows
+that listens on nothing.** In the base: herdr 0.9.0 from its release asset,
+digest-checked, at `/usr/local/bin/herdr`; its server as the system unit
+`wsl-toolkit-herdr.service`, started with the base and never restarted by an ensure,
+because a restart ends every pane; and the tracked configuration from
+[`adapters/herdr/config.toml`](adapters/herdr/config.toml), written whole each time.
+On this machine: a dedicated key at `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, the
+base's host key in `known_hosts` beside it, and one marked `Host` block at the top
+of `%USERPROFILE%\.ssh\config`, whose `ProxyCommand` starts `sshd -i` through
+`wsl.exe` for one connection.
+
+⛔ **The door accepts that one key, for the base's account, and nothing listens.**
+The distribution's own `sshd` units are masked, the key carries `restrict`, and
+`base status --probe` fails the adapter over a second key or a listening `sshd`.
+Anything that can reach the door could already run `wsl.exe` as this Windows
+account.
+
+```powershell
+wsl-toolkit --instance base base attach
+```
+
+`base attach` prints the commands with the values filled in, and runs none of them:
+`herdr --remote wsl-toolkit-base --remote-keybindings server` from Windows, the
+`base shell` line for a client inside, and a `base exec` line for an agent.
+`--json` answers the same as a document, with exit 1 and the reason when this
+machine's half is missing. [`examples/common/herdr.md`](examples/common/herdr.md) is
+the guide for the operator and for an agent.
+
+| measured on 2026-09-14, on a throwaway arch base | result |
+| --- | --- |
+| `base recreate` with the adapter, then `base ensure` | 68.7 s from nothing, the download and its digest included; then 3.7 s, rewriting only the tracked configuration |
+| `ssh wsl-toolkit-NAME` through the block | key authentication and a command in 0.2 s |
+| herdr's Windows client, `herdr --remote` | connected to the base's server through the block `base ensure` wrote, and detached on prefix then q |
+| `wsl --terminate`, then one `ssh` through the block | the distribution started, the unit started the server, and herdr restored its workspaces, in 5.4 s |
+| twelve minutes with nothing attached | the base stayed running |
+| prefix then x, then prefix then shift+x, in two sessions made alike | herdr's own keys closed a pane, then a tab, each at once with no question; the tracked file closed nothing |
+
+⚠ **The adapter is driven on the `arch` preset with systemd, and a configuration
+naming it on anything else is refused.** Removing it from a configuration takes this
+machine's half away on the next ensure and leaves the base's half; `base recreate`
+removes that. `base remove` takes this machine's half away and keeps the key, which
+is this tool's and not the base's. `WSL_TOOLKIT_SSH_DIR` names a directory to write
+this machine's half into instead of `%USERPROFILE%\.ssh`, which the acceptance
+runner uses; herdr's own client does not read it.
+
 [`examples/muse-code/README.md`](examples/muse-code/README.md) is the complete
 worked example. [`examples/common/access-profiles.md`](examples/common/access-profiles.md)
 carries both the one-checkout profile and the zero-grant profile, including the
@@ -228,6 +283,10 @@ as the console shows a kernel panic or QEMU exits, with exit 2 and the panic lin
 and a later boot that stops at that check is named as it happens. `bsd fetch
 --force` restores the published image. When the archive it keeps is whole, that is a
 digest check and an expansion, 84 s on this host, with no download.
+
+⚠ **A panic while the guest powers off leaves the payload's exit standing.** The
+buffers are synced by then, so the run warns and carries the panic as
+`shutdown_panic`, and the next boot saves a core dump into `/var/crash`.
 
 ⛔ **This reaches a BSD SHELL and not a BSD container endpoint.** A long-running
 `podman system service` inside the guest panics the guest kernel in `_umtx_op`.

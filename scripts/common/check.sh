@@ -19,8 +19,9 @@
 #   sh scripts/common/check.sh docs         one check
 #   sh scripts/common/check.sh docs --json  one check, as one object
 #   sh scripts/common/check.sh package-table --fix
-#                                           rewrite the one generated file a
-#                                           check can repair, then check it
+#   sh scripts/common/check.sh adapters --fix
+#                                           rewrite the generated copy a check
+#                                           can repair, then check it
 #
 # Exit codes: 0 it ran and agreed, 1 it ran and disagreed, 2 it could not run.
 #

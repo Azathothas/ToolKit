@@ -398,6 +398,9 @@ func cmdConfig(args []string) (int, error) {
 	for _, mount := range mounts {
 		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}
+	for _, adapter := range cfg.Base.Adapters {
+		fmt.Fprintf(os.Stderr, "  adapter     %s\n", adapter.Name)
+	}
 	// ⛔ THE DEFAULTS A JOB ACTUALLY RUNS UNDER WERE NOT ON THIS REPORT. `config`
 	// is where a caller looks to find out what the tool will do, and the
 	// container lifetime is the setting most likely to surprise one; issue 29
