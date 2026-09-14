@@ -6,9 +6,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -269,6 +271,57 @@ func TestARedactionCommaListKeepsRegexCommasInsideSyntax(t *testing.T) {
 		if got := strings.Join(splitRegexList(raw), "|"); got != want {
 			t.Errorf("splitRegexList(%q) = %q, want %q", raw, got, want)
 		}
+	}
+}
+
+// TestFinishReturnsWhileTheHeartbeatIsStillAskingAboutTheDistribution is WSL-80.
+//
+// ⛔ A COMMAND THAT HAD ENDED LEFT `distro run` WAITING FOREVER. The heartbeat's
+// loop re-read the stop channel from the struct, and Finish cleared that field
+// before closing the channel it had taken. A heartbeat still asking wsl.exe about
+// the distribution came back to a select on a nil channel, never saw the close,
+// and Finish waited on it with the command long finished. Measured once in eight
+// runs of a six-second command on this host.
+func TestFinishReturnsWhileTheHeartbeatIsStillAskingAboutTheDistribution(t *testing.T) {
+	log, err := OpenRunLog(LogSettings{Tick: time.Millisecond}, io.Discard, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	asking, answer := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	log.Begin("eph-test", func() TickFacts {
+		once.Do(func() { close(asking) })
+		<-answer
+		return TickFacts{State: "running"}
+	})
+	select {
+	case <-asking:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the heartbeat never asked about the distribution")
+	}
+	finished := make(chan error, 1)
+	go func() { finished <- log.Finish(RunOutcome{Exit: 0}, nil) }()
+	// ⚠ The question is answered only once Finish has taken the channels, which is
+	// the ordering the hang needed and the one a sleep could not promise.
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(time.Millisecond) {
+		log.mu.Lock()
+		taken := log.stop == nil
+		log.mu.Unlock()
+		if taken {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Finish never took the heartbeat's channels")
+		}
+	}
+	close(answer)
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatalf("Finish: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Finish did not return after the heartbeat's question was answered, so a finished command waits forever")
 	}
 }
 

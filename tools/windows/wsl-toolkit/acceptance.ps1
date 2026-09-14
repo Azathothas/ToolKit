@@ -625,9 +625,13 @@ try {
         (($d.before.exit_code -eq 3) -and ($d.before.stdout_lines -eq 1) -and ($d.before.stderr_lines -eq 1)).ToString()
     }
 
+    # NOTE: TEN SECONDS OF SILENCE, NOT SIX. A tick lands a poll interval plus
+    # WSL's answer after the last, so six seconds reached the 3s threshold in only
+    # 6 of 10 runs of this command on 2026-09-14, and ten reached it in 10 of 10.
+    # The case asserts that a silence is reported, not how the ticks fall. WSL-80.
     Test-Case 'an unterminated line is shown early and a silence is reported with the distribution state' 'True' {
         $r = Invoke-Throwaway @('run', '--name', $script:TwName, '--log-profile', 'ci', '--tick', '1s', '--tick-escalate', '3s',
-            '--command-base64', (ConvertTo-B64 "printf 'Password: '`nsleep 6`necho`necho done`n"))
+            '--command-base64', (ConvertTo-B64 "printf 'Password: '`nsleep 10`necho`necho done`n"))
         if ($r.Code -ne 0) { return "exited $($r.Code): $($r.Err)" }
         (($r.Out -match 'out~ Password: ') -and ($r.Err -match 'tick \ds silent .*\| distro running \| disk') -and
          ($r.Err -match 'after 3s of silence: ') -and ($r.Err -match 'output resumed after')).ToString()

@@ -47,7 +47,7 @@ var sweptElsewhere = map[string]string{
 	"ready":           "its own case covers it, and it is the longest-running survey here",
 	"examples":        "its own case covers it, and asserts every example parses as one command",
 	"bsd fetch":       "it downloads 635 MB from a release mirror. `bsd status` reports whether the image arrived and is swept",
-	"bsd run":         "it boots a guest, which costs about two minutes per call before any command runs",
+	"bsd run":         "it boots a guest from the image `bsd fetch` downloads, which not every acceptance host holds",
 	"distro new":      "it imports a whole distribution. Its own case covers the document it produces",
 	"distro run":      "it runs a command in a distribution. Its own case covers the document, against one it made",
 	"distro enter":    "its only document is the --dry-run plan of an interactive shell, and its own case covers that plan",

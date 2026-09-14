@@ -21,6 +21,37 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T04:11:39Z: a BSD run takes seconds, and its script runs as written
+
+**Record:** `WSL-79` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the boot series, the named cause and the acceptance output.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-79`, and with it [issue 33](https://github.com/Azathothas/ToolKit/issues/33).
+
+⭐ **The boot went from about 115 seconds to a login to about 9.** QEMU under WHPX
+showed the guest the host's hypervisor signature, and FreeBSD's Hyper-V VMBus driver
+held root mount for about 105 seconds waiting on a VMBus that does not exist. The guest
+is no longer shown the signature, and boots with no default devices.
+
+⛔ **A SCRIPT'S LINES ARE NO LONGER JOINED, WHICH CHANGES WHAT RUNS.** A payload was
+typed at the console with its newlines turned into `; `, so a comment line ended it
+while the run exited 0, and a blank line or a split `if` did not parse. A script now
+reaches the guest on its own read-only disk and runs as a file: a payload that relied
+on the join runs every line, `-c` has no console line limit, and a script's stdin is
+`/dev/null` where it was the console.
+
+### 2026-09-14T04:11:39Z: a finished throwaway command no longer waits forever
+
+**Record:** `WSL-80` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the stack dumps, the runs before and after, and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-80`.
+
+⛔ **`distro run` with a heartbeat could relay its command's last line and never
+return**, in 6 of 17 runs on this host. The heartbeat's loop re-read a channel that
+the end of the run cleared, and waited on nothing while the command sat finished. A
+caller now gets its command's exit code, in 30 of 30 runs.
+
 ### 2026-09-14T02:49:38Z: an instance and its configuration name one distribution
 
 **Record:** `WSL-74` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

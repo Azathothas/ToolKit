@@ -5944,7 +5944,7 @@ Passing is:
 the operator on 2026-09-13, and the comment the operator had posted on it the same
 day about the line join. By the operator's ruling the join belongs to that issue
 and is not an entry of its own, so it is a task here.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -6037,11 +6037,104 @@ Passing is:
 
 ---
 
+## Closing
+
+**Closed 2026-09-14T04:11:39Z.** A run of `bsd run -c true` takes about 23 seconds
+where it took about 128, and a script reaches the guest as a file on a disk of its
+own, so the join is gone rather than worked around.
+
+### ⛔ The premise called it device probing, and it was a driver waiting for a host
+
+The premise carried `BSD-03`'s reading that 108 s of the boot is device probing, and
+said which probe was not measured. Measured, with every console line stamped on
+arrival: the console fell silent for 105.3 s after `usb_needs_explore_all: no
+devclass` at 8.03 s, and the next line was the DVD drive QEMU adds by default, at
+113.33 s. That line was a coincidence of order. With the default devices gone, the
+silence was 105.6 s and ended at `Trying to mount root`.
+
+⭐ **The wait is FreeBSD's Hyper-V VMBus driver.** WHPX shows the guest the host's own
+signature, the console prints `Hypervisor: Origin = "Microsoft Hv"`, and `vmbus0:
+<Hyper-V Vmbus> on pcib0` attaches at 4.75 s and holds root mount waiting for a VMBus
+QEMU does not provide. Named by elimination on a copy of the image, so the shared one
+was not touched: `hint.vmbus.0.disabled="1"` alone took the login to 7.5 s.
+
+### The boots, three each, one change at a time
+
+| series | what changed | login, s | session, s |
+| --- | --- | --- | --- |
+| as the image boots | nothing | 115.0, 114.8, 115.0 | 121.6, 121.0, 121.3 |
+| 2 | `-nodefaults`, which removes the DVD drive and the VGA card | 113.3, 113.0, 113.3 | 119.5, 119.3, 119.5 |
+| 3 | 2, and the hypervisor bit hidden | 9.3, 8.3, 9.5 | 15.5, 14.6, 15.8 |
+| 4 | 3, and CLFLUSH and CLFLUSHOPT removed | 8.8, 8.5, 9.0 | 15.1, 14.8, 15.3 |
+| on the copy | 2, and VMBus disabled with the signature still shown | 7.5, 7.8, 7.8 | 13.8, 14.0, 14.1 |
+| the build that closes this | 4, and the payload disk | 9.5, 8.0, 8.0 | 17.4, 15.9, 15.9 |
+
+⚠ **Series 4 is kept although the copy measured about a second faster.** Disabling
+the driver means a line in the shared image's `/boot/loader.conf.local`, and a freshly
+fetched image would pay the two minutes on its first run; hiding the bit is a QEMU
+argument and costs nothing on any image. Series 3 printed `Unimplemented handler
+(ffffffff8107e4a0) for FST - 150 (f ae)` 256 times a boot, QEMU's WHPX emulator
+meeting a CLFLUSH the guest now believed it had; series 4 printed none.
+
+⭐ **By the ruling, no guest is kept running.** The tuned run reaches its payload at
+about 15 seconds, under the 30 that would have built one, and the manual carries the
+cost: a login at 9.5 s, 8.0 s and 8.0 s, the command done at 17.4 s, 15.9 s and 15.9
+s, and the process gone at 24.3 s, 22.8 s and 22.8 s.
+
+### The acceptance command, on the build that closes this
+
+The script file the Prove names, `echo a`, `# note`, an empty line, `if true; then`,
+`echo b`, `fi`, `exit 3`, one per line:
+
+```text
+wsl-toolkit bsd run --script .tmp\wsl79\bsd-join.sh
+exit=3, read unpiped
+stdout: a
+        b
+  login at 9s, session 17s, disk 10.0 GiB, root filesystem 8.7 GiB, exit 3
+```
+
+All four passing conditions hold:
+
+| condition | measured |
+| --- | --- |
+| stdout `a` then `b`, and exit 3 | above |
+| three runs of `-c true` with the login recorded, and the manual carrying it | the last row of the table, and the manual's BSD section |
+| the regression cases green in the Go suites | Windows with `TEMP` at the 8.3 path: 259 top-level cases, 255 passed, 4 skipped; `golang:1.25`: `check-go` ok, and the shell case, which skips on Windows, passed |
+| the image left as found | 500 packages before and after, none added, none missing, all 499 `FreeBSD-*` present |
+
+A script that exited 5 answered 5. Afterwards the guest's `/tmp` held one copy, and it
+was the checking script's own `$0`; no payload disk was left beside the image.
+
+### The reviews
+
+⛔ **The door sweep found the guest keeping copies, and it is fixed.** Every line typed
+at the console was listed: the login, the grow script, the extract, the run and the
+poweroff. The first build removed the script's copy in `/tmp` only after a clean run,
+so a script that failed or a run that timed out left it in the shared image, which
+FreeBSD does not clear at boot. The run line now removes it whatever the exit and still
+answers the script's code, and the extract sweeps copies by their exact name shape. A
+payload disk the host cannot remove is swept by a later run once it is an hour old.
+Any line with a newline in it is refused, so no later caller can reintroduce the join.
+
+⭐ **The guard mutation proved 8 rows**: the refused newline, the archive padding, the
+hidden hypervisor bit, `-nodefaults` and the payload disk's position on this host; and
+in `golang:1.25`, where the shell case runs, all 8, the script run as a file, the copy
+removed on a failed exit and the sweep among them.
+
+⭐ **The claim audit** re-measured the manual's figures on the final build after the
+run line changed, because the first figures came from a build with one more typed line;
+removed "about two minutes" from `bsd run`'s progress line and from the sweep's reason
+for not calling it; and corrected the premise above. What would have made it fire and
+did not: a figure in the manual from a build other than the one that closes this.
+
+---
+
 ## WSL-80. A throwaway command that has finished can leave `distro run` waiting forever
 
 **Source** found on 2026-09-14 by the acceptance runner's baseline run, while
 closing `WSL-74`.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -6110,3 +6203,84 @@ Passing is:
 - the regression case green in the Go suites on Windows and on Linux, and a
   mutation row that removes the bound goes red;
 - the acceptance case above green in a full run.
+
+---
+
+## Closing
+
+**Closed 2026-09-14T04:11:39Z.** The heartbeat's loop takes its stop and done
+channels as arguments, `Finish` takes both under the lock, and a case holds the
+ordering that hung. All three passing conditions hold:
+
+| condition | measured |
+| --- | --- |
+| 30 of 30 runs exit 0 inside the bound | the tree's build, the case's command on a throwaway Alpine distribution: 30 of 30 exit 0 with `done` on stdout, in 6.2 s to 8.9 s, no hang |
+| the regression case green in the Go suites on Windows and Linux, and a mutation row red | Windows with `TEMP` at the 8.3 path: 259 top-level cases, 255 passed, 4 skipped; `golang:1.25`: `check-go` ok and the case passed; two rows red on both hosts |
+| the acceptance case green in a full run | the tree's build: `acceptance: 91 case(s) passed against a real machine.` |
+
+⚠ **The first full run after the fix failed that case with `False`, and it was the
+case.** Run as written ten times on a quiet host, `after 3s of silence` was missing
+in 4: a tick lands a 250 ms poll plus WSL's answer after the last, and in six seconds
+of silence one run's ticks fell at 3.615 s and 4.863 s, with output resuming at
+6.099 s before a third. The case now sleeps ten seconds, which reached the
+threshold in 10 of 10 runs, and the full run above is on that case.
+
+### ⛔ The premise blamed the wrong thing, and the approach named the wrong seam
+
+The premise said a pipe held open past `wsl.exe`'s exit kept `Wait` from returning,
+and read that from `os/exec`. ⛔ **Measured, it was not a pipe.** Go 1.27 cancels a
+pending pipe read with `CancelIoEx` when it closes the pipe, and the hung process was
+not in `Exec` at all. A diagnostic build kept outside the tree wrote every
+goroutine's stack 40 seconds into a run, and each of six hangs showed the same two:
+
+```text
+goroutine 1 [chan receive]:
+toolkit.(*RunLog).Finish(...)        internal/toolkit/runlog.go:688
+toolkit.(*Throwaways).runIn(...)     internal/toolkit/throwaway.go:1177
+goroutine 18 [select]:
+toolkit.(*RunLog).poll(...)          internal/toolkit/runlog.go:523
+```
+
+⭐ **The command had ended and `Exec` had returned.** `Finish` was waiting for the
+heartbeat's loop to stop, and the loop never would: it selected on `r.stop` read from
+the struct on every pass, while `Finish` set that field to nil under the lock and then
+closed the channel it had taken. A pass that was inside `check`, asking `wsl.exe`
+about the distribution when `Finish` ran, came back to a select on a nil channel and
+never saw the close. The ticks that went on for ten minutes were that loop.
+
+So the seam is the relay, not `runCommand`: `poll` takes its stop and done channels as
+arguments, and `Finish` takes both under the lock. The regression case needs no WSL
+and no grandchild process either. It holds the heartbeat inside its question about
+the distribution, lets `Finish` take the channels, then answers.
+
+### What was measured
+
+On this host, a throwaway Alpine distribution under an isolated state directory, the
+case's command, each run bounded at 60 seconds from outside the tool:
+
+| build | runs | hung | each run that returned |
+| --- | --- | --- | --- |
+| the tree before the fix, with the stack hook | 17, stopped there | 6: runs 8, 11, 14, 15, 16 and 17 | exit 0 in 6.2 s to 6.6 s |
+| the fix, with the stack hook | 30 | 0 | exit 0 in 6.2 s to 6.5 s |
+
+⭐ **The regression case went red first.** Against the unfixed relay it failed after
+10.25 s with `Finish did not return after the heartbeat's question was answered`; with
+the fix it passed five times in five at 0.25 s each, and under `go test -race` three
+times in three with the relay's closed-stream case beside it.
+
+### The reviews
+
+⭐ **The door sweep** looked for every loop that selects on a channel read from a
+struct: the relay's `poll`, the job ticker in `tick.go` and the helper's shutdown in
+`helper.go`. The other two never clear the field they select on, and each closes its
+channel once through `sync.Once`, so the relay was the only one. What would have made
+it fire: a second loop re-reading a field some other path reassigns.
+
+⭐ **The guard mutation** proved two rows: the loop selecting on `r.stop` again, and
+`Finish` waiting on `r.done` after clearing it. The second first failed to compile,
+because the local it replaced became unused, and was rewritten to keep it; it then went
+red. The acceptance case that found the hang is the third check, in the full run below.
+
+⭐ **The claim audit** is the correction above: the premise's mechanism was read from
+the standard library and a stack showed it false, and the approach's seam and
+regression shape moved with it.

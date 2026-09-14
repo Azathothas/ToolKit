@@ -232,7 +232,7 @@ func (r *RunLog) Begin(distro string, facts func() TickFacts) {
 	}
 	if !r.manual && r.s.Active() {
 		r.stop, r.done = make(chan struct{}), make(chan struct{})
-		go r.poll()
+		go r.poll(r.stop, r.done)
 	}
 }
 
@@ -515,13 +515,20 @@ func (r *RunLog) record(e Event, now time.Duration) {
 	}
 }
 
-func (r *RunLog) poll() {
-	defer close(r.done)
+// poll flushes and ticks until stop is closed.
+//
+// ⛔ THE CHANNELS ARE ITS ARGUMENTS AND ARE NEVER READ FROM THE STRUCT AGAIN. It
+// used to select on r.stop on every pass, and Finish clears that field before it
+// closes the channel it took. A pass still inside check, asking wsl.exe about the
+// distribution, came back to a select on a nil channel, never saw the close, and
+// Finish waited for it forever over a command that had already ended. WSL-80.
+func (r *RunLog) poll(stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
 	t := time.NewTicker(relayPoll)
 	defer t.Stop()
 	for {
 		select {
-		case <-r.stop:
+		case <-stop:
 			return
 		case <-t.C:
 			r.check()
@@ -675,8 +682,8 @@ func (r *RunLog) escalate(now, silent time.Duration, grew *int64, state string) 
 // is reported rather than silently short.
 func (r *RunLog) Finish(o RunOutcome, facts func() TickFacts) error {
 	r.mu.Lock()
-	begun, stop := r.begun, r.stop
-	r.stop = nil
+	begun, stop, done := r.begun, r.stop, r.done
+	r.stop, r.done = nil, nil
 	r.mu.Unlock()
 	if !begun {
 		// A command that never started has no run to record.
@@ -685,7 +692,7 @@ func (r *RunLog) Finish(o RunOutcome, facts func() TickFacts) error {
 	}
 	if stop != nil {
 		close(stop)
-		<-r.done
+		<-done
 	}
 	// Read before the lock, and only when a diagnosis needs the distribution's state.
 	f := TickFacts{State: "unknown"}

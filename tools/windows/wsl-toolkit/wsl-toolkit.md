@@ -194,9 +194,18 @@ rather than `Exec format error`. `binfmt_misc` and `qemu-user` solve a foreign
 ARCHITECTURE presenting LINUX syscalls, and nothing presents BSD syscalls on a
 Linux kernel. A BSD userland needs a BSD kernel.
 
-⚠ **A boot costs about two minutes and it is paid per run.** Measured here:
-113.6 s, 117.4 s and 117.7 s to a login prompt over three boots, of which 108 s
-is device probing between the kernel banner and mounting root.
+⚠ **Every run boots the guest and powers it off, so every run pays about 25
+seconds.** Measured on 2026-09-14 over three runs of `bsd run -c true`: a login
+prompt at 9.5 s, 8.0 s and 8.0 s, the command finished at 17.4 s, 15.9 s and 15.9 s,
+and the process gone at 24.3 s, 22.8 s and 22.8 s. Nothing keeps a guest running
+between runs. ⚠ The guest is not shown the host's hypervisor signature, because a
+FreeBSD kernel that sees it waits about 105 seconds before mounting root, for a
+Hyper-V VMBus QEMU does not provide.
+
+⭐ **A script reaches the guest as a file, byte for byte.** `-c` and `--script` travel
+on a second read-only disk and run from a copy in `/tmp`, so a comment, a blank line
+and a command split across lines run as written. Its stdin is `/dev/null`, and the
+exit code is the script's own.
 
 ⭐ **The guest disk is 10 GiB, and the root filesystem follows it.** The published
 image is 6.0 GiB with a 4.8 GiB root, and a toolchain install fills that. `bsd run`
@@ -389,7 +398,7 @@ path that is still there exits non-zero naming it.
 | --- | --- | --- |
 | the base enforces no per-container resource bounds | host | rootless podman under `init` with no cgroup delegation means no cgroup per container. `--memory` is accepted and not applied, and `podman stats` reads `0B`. ⭐ `base status` reports this. A caller who bounds a job on this base is not bounded |
 | `podman logs` on the base is a silent zero | host | the default log driver is `journald` and nothing serves a journal. The tool names `k8s-file` on the runs it owns; a caller driving podman directly should too |
-| `bsd run` boots for about two minutes per call | host | device probing in the guest. `bsd` carries the measurement |
+| `bsd run` boots and powers off a guest per call, about 25 seconds each | host | nothing keeps a guest running between runs. The BSD section carries the measurement |
 | no BSD container endpoint | open | a long-running podman service panics the FreeBSD guest kernel. Tracked in [`../../../TODO/bsd.md`](../../../TODO/bsd.md) |
 | `--oci-env` carries `ENV` and `WORKDIR` only | decision | `USER` and `ENTRYPOINT` are not carried and will not be: WSL fixes the login account per call, and a login shell has no entrypoint |
 | a throwaway distribution's command gets no stdin | decision | its stdin is `/dev/null`, because a pipe that carries the script cannot also carry input. `distro enter` is interactive |

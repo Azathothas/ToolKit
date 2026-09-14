@@ -1,6 +1,8 @@
 package toolkit
 
 import (
+	"archive/tar"
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -31,9 +33,7 @@ import (
 // ⭐ THE ANSWER IS THE HOST'S OWN, AND IT NEEDS NO ELEVATION. `qemu-system-x86_64
 // -accel whpx` runs the guest on the Windows Hypervisor Platform, which is the
 // same hypervisor WSL2 already uses, so a BSD guest sits BESIDE the podman
-// machine rather than inside it. Measured on this machine: FreeBSD 15.1-RELEASE
-// reaches a login prompt in 113.6 s, 117.4 s and 117.7 s over three independent
-// boots, with the WSL2 podman machine running throughout.
+// machine rather than inside it, with the WSL2 podman machine running throughout.
 //
 // ⚠ THE RANKING IN `TODO/bsd.md` INVERTS HERE AND THE REASON IS NOT SPEED. That
 // table calls a Hyper-V `.vhd` guest the low-friction option and this one the
@@ -46,10 +46,9 @@ import (
 // parks threads on. So this reaches a BSD SHELL, which is what issue 29 asked
 // for, and it does not offer a BSD container endpoint.
 //
-// ⚠ 108 OF THE 114 SECONDS ARE DEVICE PROBING, between the kernel banner and
-// mounting root. Not the loader, not rc, not the filesystem, and not the
-// network: removing the NIC entirely changed the total by under four seconds.
-// A boot is the cost of this feature and it is paid per run.
+// ⚠ A BOOT IS PAID PER RUN. It is seconds rather than minutes because of how
+// BsdCPU presents the processor, which carries the measurement; nothing keeps a
+// guest running between runs.
 
 // BsdImage is the guest this tool boots.
 //
@@ -71,7 +70,20 @@ const (
 	// that advice forbids all behaved identically and none wedged, so the
 	// prediction is false HERE. A named model is still what is passed, because
 	// it costs nothing and the failure it avoids is expensive.
-	BsdCPU = "Icelake-Server-v7"
+	//
+	// ⭐ THE HYPERVISOR BIT IS HIDDEN, AND THAT IS WHAT TOOK THE BOOT FROM TWO
+	// MINUTES TO NINE SECONDS. WHPX shows the guest the host's own signature,
+	// `Microsoft Hv`, so FreeBSD attaches its Hyper-V VMBus driver and holds root
+	// mount for about 105 seconds waiting on a VMBus QEMU does not provide.
+	// Measured on 2026-09-14, three boots each: login at 115.0 s, 114.8 s and 115.0
+	// s as the image boots; at 7.5 s to 7.8 s on a copy with the VMBus driver
+	// disabled and the signature still shown; at 8.3 s to 9.5 s with the bit hidden.
+	// The bit is hidden rather than the driver disabled because disabling it means
+	// writing into the shared image, and a freshly fetched one would still pay the
+	// two minutes. ⚠ CLFLUSH goes with it: a guest that believes it has the hardware
+	// flushes a device's memory with it, and QEMU's WHPX emulator printed
+	// `Unimplemented handler` onto the console 256 times a boot. WSL-79.
+	BsdCPU = "Icelake-Server-v7,-hypervisor,-clflush,-clflushopt"
 
 	// BsdDefaultDiskGiB is the guest disk a run grows the image to.
 	//
@@ -257,11 +269,96 @@ func growBsdImage(path string, want int64) (int64, error) {
 // `growfs_enable` and it does nothing here: that rc script runs only on a first
 // boot, and a shared image has had its first boot. `gpart recover` moves the
 // backup GPT header to the new end, and nothing grows while it sits at the old
-// one. ⛔ ONE LINE, because the console runner joins lines with `; ` and a
-// `then` followed by `;` does not parse.
+// one. ⛔ ONE LINE, because it is typed at the console, and a typed line that
+// carries a newline is refused rather than joined.
 const bsdGrowRootScript = `gpart recover vtbd0 >/dev/null 2>&1; tk_g=$(gpart show vtbd0 | awk 'NR==1 {e=$2+$3} $4=="freebsd-ufs" {i=$3; p=$1+$2} END {print i, e-p}'); set -- $tk_g; if [ -z "${1:-}" ]; then echo "no freebsd-ufs partition on vtbd0"; exit 3; fi; if [ "$2" -gt 2048 ]; then gpart resize -i "$1" vtbd0 >/dev/null || exit 3; growfs -y / >/dev/null || exit 3; fi; df -k / | awk 'NR==2 {print "tk-root-kib", $2}'`
 
 var bsdRootKiBRE = regexp.MustCompile(`tk-root-kib ([0-9]+)`)
+
+// ⭐ A CALLER'S SCRIPT REACHES THE GUEST AS BYTES, ON A DISK OF ITS OWN.
+//
+// ⛔ IT USED TO BE TYPED AT THE CONSOLE AS ONE LINE, with every newline turned into
+// `; `. A `#` comment then swallowed every command after it and the run still
+// exited 0, a blank line became `; ;` and a syntax error, and a compound command
+// split across lines did not parse. Measured in the FreeBSD 15.1 guest:
+// `echo joined-a; # a comment; echo joined-b` printed only `joined-a`. WSL-79.
+//
+// The script travels as a tar on a second read-only virtio disk, the guest
+// extracts it to a file and runs that file, so no shell on the host parses it and
+// the console's line length bounds nothing but three short lines this tool types.
+const (
+	// bsdPayloadMember is the one file the payload disk holds.
+	bsdPayloadMember = "payload.sh"
+	// bsdPayloadDevice is the payload disk inside the guest. ⚠ The second
+	// virtio-blk device, because its drive follows the root disk's in the
+	// argument list and the guest numbers them in that order.
+	bsdPayloadDevice = "/dev/vtbd1"
+	// bsdPayloadRecord is what the archive is padded to: tar's default record,
+	// so a read of the device in whole records never has to be shorter.
+	bsdPayloadRecord = 10240
+)
+
+// bsdPayloadPrefix names every payload disk, so a run can find the ones an earlier
+// run could not remove.
+const bsdPayloadPrefix = "tk-payload-"
+
+// sweepBsdPayloads removes payload disks earlier runs left beside the image.
+//
+// ⚠ ONLY ONES AN HOUR OLD. Another run writes its disk before its QEMU opens it,
+// and a sweep in that gap would take the file from under it. A file an older run
+// still holds open cannot be removed on Windows, and that refusal is left alone.
+func sweepBsdPayloads(dir string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if !e.Type().IsRegular() || !strings.HasPrefix(name, bsdPayloadPrefix) || !strings.HasSuffix(name, ".tar") {
+			continue
+		}
+		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) >= time.Hour {
+			_ = RemoveInside(dir, filepath.Join(dir, name))
+		}
+	}
+}
+
+// bsdPayloadArchive is the script as a tar holding one file, byte for byte.
+func bsdPayloadArchive(script []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	tw := tar.NewWriter(&buf)
+	hdr := &tar.Header{Name: bsdPayloadMember, Mode: 0o600, Size: int64(len(script)), Typeflag: tar.TypeReg, Format: tar.FormatUSTAR}
+	if err := tw.WriteHeader(hdr); err != nil {
+		return nil, err
+	}
+	if _, err := tw.Write(script); err != nil {
+		return nil, err
+	}
+	if err := tw.Close(); err != nil {
+		return nil, err
+	}
+	if pad := (bsdPayloadRecord - buf.Len()%bsdPayloadRecord) % bsdPayloadRecord; pad > 0 {
+		buf.Write(make([]byte, pad))
+	}
+	return buf.Bytes(), nil
+}
+
+// bsdPayloadSteps are the two lines typed for a payload that arrived on a disk:
+// take the script off the disk into a file in dir, then run that file and remove
+// it. name is a token this run drew, `tk` and sixteen hex digits.
+//
+// ⚠ THE SCRIPT'S STDIN IS /dev/null, as it is for every command this tool runs. A
+// command in it that reads stdin would otherwise read the console, and wait there.
+//
+// ⛔ THE COPY IS REMOVED WHATEVER THE SCRIPT EXITS WITH, and the exit is still the
+// script's. The image is shared and FreeBSD does not clear /tmp at boot, so a copy
+// left by a script that failed would stay in every later session. A copy a killed
+// run left is swept by the next extract, by its exact name shape and nothing wider.
+func bsdPayloadSteps(device, dir, name string) (extract, run string) {
+	file := dir + "/" + name + ".sh"
+	return "rm -f " + dir + "/tk????????????????.sh; tar -xOf " + device + " " + bsdPayloadMember + " > " + file,
+		"sh " + file + " </dev/null; tk_rc=$?; rm -f " + file + "; exit $tk_rc"
+}
 
 // bsdBootFailureRE is what a guest prints when it will never reach a login.
 //
@@ -331,34 +428,27 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 	ctx, cancel := context.WithTimeout(ctx, spec.Timeout)
 	defer cancel()
 
-	args := []string{
-		"-accel", "whpx",
-		"-M", "q35",
-		"-cpu", BsdCPU,
-		"-smp", strconv.Itoa(spec.VCpus),
-		"-m", strconv.Itoa(spec.MemMiB),
-		// if=none plus an explicit device, so the transport is named rather
-		// than left to QEMU's if= heuristics.
-		"-drive", "if=none,file=" + BsdImageName + ",format=raw,id=root0",
-		"-device", "virtio-blk-pci,drive=root0",
-		"-display", "none",
-		"-no-reboot",
-		// ⭐ stdio, NOT mon:stdio. The monitor multiplexed onto the same pipe
-		// puts its own banner into the stream this parses.
-		"-serial", "stdio",
-		"-rtc", "base=utc,clock=host,driftfix=slew",
+	archive, err := bsdPayloadArchive(spec.Script)
+	if err != nil {
+		return res, err
 	}
-	if spec.Network {
-		// ⛔ No hostfwd. Outbound only. This image's root has an empty password
-		// and nothing should be able to reach it.
-		args = append(args, "-netdev", "user,id=n0,ipv6=off", "-device", "virtio-net-pci,netdev=n0")
-	} else {
-		// ⛔ NOT DECORATION. Without it QEMU attaches a DEFAULT NIC and the
-		// guest takes a DHCP lease, so a report saying "network none" is false.
-		args = append(args, "-nic", "none")
+	token, err := bsdToken()
+	if err != nil {
+		return res, err
 	}
+	dir := filepath.Dir(img)
+	sweepBsdPayloads(dir)
+	payloadName := bsdPayloadPrefix + strings.ToLower(token) + ".tar"
+	payloadPath := filepath.Join(dir, payloadName)
+	if err := os.WriteFile(payloadPath, archive, 0o600); err != nil {
+		return res, fmt.Errorf("writing the payload disk: %w", err)
+	}
+	// ⛔ THROUGH THE ONE DELETION, after QEMU has let go of the file: the guest's
+	// stop is deferred below this, so it runs first. ⚠ A file that could not be
+	// removed is swept by the next run rather than failing this one.
+	defer func() { _ = RemoveInside(dir, payloadPath) }()
 
-	g, err := startGuest(ctx, qemu, args, filepath.Dir(img), spec.Stdout)
+	g, err := startGuest(ctx, qemu, bsdQemuArgs(spec, payloadName), filepath.Dir(img), spec.Stdout)
 	if err != nil {
 		return res, err
 	}
@@ -405,7 +495,14 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 		}
 	}
 
-	exit, out, err := g.run(ctx, string(spec.Script))
+	extract, runScript := bsdPayloadSteps(bsdPayloadDevice, "/tmp", strings.ToLower(token))
+	if code, out, err := g.run(ctx, extract); err != nil || code != 0 {
+		res.Error = fmt.Sprintf("the script did not come off its disk in the guest (exit %d): %s", code, firstLine(out))
+		res.Duration = time.Since(started)
+		g.graceful = err == nil
+		return res, errors.New(res.Error)
+	}
+	exit, out, err := g.run(ctx, runScript)
 	res.Exit, res.Output, res.Duration = exit, out, time.Since(started)
 	if err != nil {
 		res.Error = err.Error()
@@ -413,6 +510,43 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 	}
 	g.graceful = true
 	return res, nil
+}
+
+// bsdQemuArgs is the command line one guest session boots with.
+func bsdQemuArgs(spec BsdRunSpec, payloadName string) []string {
+	args := []string{
+		"-accel", "whpx",
+		// ⚠ No default devices: a DVD drive and a VGA card the guest never uses
+		// each cost a probe, and together about 1.7 s of every boot.
+		"-nodefaults",
+		"-M", "q35",
+		"-cpu", BsdCPU,
+		"-smp", strconv.Itoa(spec.VCpus),
+		"-m", strconv.Itoa(spec.MemMiB),
+		// if=none plus an explicit device, so the transport is named rather
+		// than left to QEMU's if= heuristics.
+		"-drive", "if=none,file=" + BsdImageName + ",format=raw,id=root0",
+		"-device", "virtio-blk-pci,drive=root0",
+		// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.
+		"-drive", "if=none,file=" + payloadName + ",format=raw,id=payload0,readonly=on",
+		"-device", "virtio-blk-pci,drive=payload0",
+		"-display", "none",
+		"-no-reboot",
+		// ⭐ stdio, NOT mon:stdio. The monitor multiplexed onto the same pipe
+		// puts its own banner into the stream this parses.
+		"-serial", "stdio",
+		"-rtc", "base=utc,clock=host,driftfix=slew",
+	}
+	if spec.Network {
+		// ⛔ No hostfwd. Outbound only. This image's root has an empty password
+		// and nothing should be able to reach it.
+		return append(args, "-netdev", "user,id=n0,ipv6=off", "-device", "virtio-net-pci,netdev=n0")
+	}
+	// ⛔ NOT DECORATION. Without it QEMU attaches a DEFAULT NIC and the guest
+	// takes a DHCP lease, so a report saying "network none" is false. `-nodefaults`
+	// removes that NIC too, and the absence is still asserted here rather than
+	// inferred from another flag.
+	return append(args, "-nic", "none")
 }
 
 // guest is a running QEMU with its serial console on a pipe.
@@ -585,10 +719,14 @@ func (g *guest) run(ctx context.Context, payload string) (int, string, error) {
 	if err != nil {
 		return 0, "", err
 	}
-	// One line. A payload with newlines in it is sent as a single command
-	// sequence, which is what a shell already understands.
-	single := strings.ReplaceAll(strings.TrimRight(payload, "\r\n"), "\r\n", "\n")
-	single = strings.ReplaceAll(single, "\n", "; ")
+	// ⛔ A TYPED LINE CARRIES NO NEWLINE, AND ONE THAT DOES IS REFUSED. Joining the
+	// lines of a script with `; ` is what let a comment swallow the commands after
+	// it while the run exited 0. A caller's script travels on its own disk; what is
+	// typed here is a line this tool wrote. WSL-79.
+	if strings.ContainsAny(payload, "\r\n") {
+		return 0, "", errors.New("a line typed at the guest console cannot carry a newline")
+	}
+	single := payload
 	// ⛔ THE PAYLOAD RUNS IN A SUBSHELL, and a measured hang is why. A script
 	// that ends in `exit 42` is an ordinary script, and run at the login shell
 	// it exits THAT: the closing marker never prints, this waits for text the

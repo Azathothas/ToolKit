@@ -309,7 +309,7 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 		// answer alone, so a caller can read one without the other.
 		console = os.Stderr
 	}
-	logf("  booting FreeBSD %s under whpx. The first prompt takes about two minutes on this class of host.", toolkit.BsdRelease)
+	logf("  booting FreeBSD %s under whpx", toolkit.BsdRelease)
 	res, runErr := toolkit.BsdRun(ctx, toolkit.BsdRunSpec{
 		Script: payload, Timeout: *timeout,
 		Network: *network, MemMiB: *mem, VCpus: *vcpus, DiskGiB: *disk, Stdout: console,

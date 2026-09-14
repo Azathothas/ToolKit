@@ -1784,6 +1784,96 @@
       "replace": "\tcase false:\n",
       "run": "TestReadyReadsAndRunsNothingFromARefusedConfiguration",
       "args": []
+    },
+    {
+      "label": "relay: the heartbeat loop selects on the stop channel it was given",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\t\tcase <-stop:\n\t\t\treturn\n",
+      "replace": "\t\tcase <-r.stop:\n\t\t\treturn\n",
+      "run": "TestFinishReturnsWhileTheHeartbeatIsStillAskingAboutTheDistribution",
+      "args": []
+    },
+    {
+      "label": "relay: Finish waits on the done channel it took",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\t\tclose(stop)\n\t\t<-done\n",
+      "replace": "\t\tclose(stop)\n\t\t_ = done\n\t\t<-r.done\n",
+      "run": "TestFinishReturnsWhileTheHeartbeatIsStillAskingAboutTheDistribution",
+      "args": []
+    },
+    {
+      "label": "bsd: a line typed at the guest console refuses a newline",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tif strings.ContainsAny(payload, \"\\r\\n\") {\n\t\treturn 0, \"\", errors.New(\"a line typed at the guest console cannot carry a newline\")\n\t}\n",
+      "replace": "",
+      "run": "TestALineTypedAtTheGuestConsoleRefusesANewline",
+      "args": []
+    },
+    {
+      "label": "bsd: the payload disk is padded to whole tar records",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tif pad := (bsdPayloadRecord - buf.Len()%bsdPayloadRecord) % bsdPayloadRecord; pad > 0 {\n",
+      "replace": "\tif pad := 0; pad > 0 {\n",
+      "run": "TestABsdScriptTravelsAsBytesAndComesBackWhole",
+      "args": []
+    },
+    {
+      "label": "bsd: the guest runs the script as a file, not as joined lines",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\"sh \" + file + \" </dev/null; tk_rc=$?; rm -f \" + file + \"; exit $tk_rc\"\n",
+      "replace": "\t\t\"sh -c \\\"$(tr '\\\\n' ';' < \" + file + \")\\\" </dev/null; tk_rc=$?; rm -f \" + file + \"; exit $tk_rc\"\n",
+      "run": "TestTheJoinShapesRunWholeThroughTheGuestSteps",
+      "args": []
+    },
+    {
+      "label": "bsd: the guest is not shown the hypervisor signature",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tBsdCPU = \"Icelake-Server-v7,-hypervisor,-clflush,-clflushopt\"\n",
+      "replace": "\tBsdCPU = \"Icelake-Server-v7,-clflush,-clflushopt\"\n",
+      "run": "TestTheGuestBootsWithoutTheHyperVWait",
+      "args": []
+    },
+    {
+      "label": "bsd: the guest boots with no default devices",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\"-nodefaults\",\n",
+      "replace": "",
+      "run": "TestTheGuestBootsWithoutTheHyperVWait",
+      "args": []
+    },
+    {
+      "label": "bsd: the payload disk follows the root disk",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\"-drive\", \"if=none,file=\" + BsdImageName + \",format=raw,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
+      "replace": "\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n\t\t\"-drive\", \"if=none,file=\" + BsdImageName + \",format=raw,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n",
+      "run": "TestTheGuestBootsWithoutTheHyperVWait",
+      "args": []
+    },
+    {
+      "label": "bsd: the guest's copy of the script is removed whatever it exits with",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\"sh \" + file + \" </dev/null; tk_rc=$?; rm -f \" + file + \"; exit $tk_rc\"\n",
+      "replace": "\t\t\"sh \" + file + \" </dev/null; tk_rc=$?; exit $tk_rc\"\n",
+      "run": "TestTheJoinShapesRunWholeThroughTheGuestSteps",
+      "args": []
+    },
+    {
+      "label": "bsd: the extract sweeps a copy an ended run left",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\treturn \"rm -f \" + dir + \"/tk????????????????.sh; tar -xOf \" + device",
+      "replace": "\treturn \"tar -xOf \" + device",
+      "run": "TestTheJoinShapesRunWholeThroughTheGuestSteps",
+      "args": []
     }
   ]
 }

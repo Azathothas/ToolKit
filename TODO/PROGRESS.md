@@ -8,10 +8,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-14T02:01:53Z; the record commit's own time is its end
 baseline        e73d7d5, tree clean
-entries         total 115  open 12  blocked 0  done 103
-closed          WSL-74
+entries         total 115  open 10  blocked 0  done 105
+closed          WSL-74 at ab4281c; WSL-80 and WSL-79, which closes issue 33
 filed           WSL-80, found by the acceptance runner's baseline
-head            the WSL-74 commit after cf274eb
+head            the WSL-80 and WSL-79 commit after ab4281c
 ```
 
 ## Active work
@@ -28,9 +28,9 @@ is closed, and the issue gets a comment naming the commits.
 1. **`WSL-74`**, first, because `WSL-75` and `WSL-78` stand on it. ⭐ Closed.
 2. **`WSL-80`**, inserted here on 2026-09-14 and not part of the three issues: a
    `distro run` that never returns hangs the acceptance runner, which is how
-   every later entry here is proved on this host.
+   every later entry here is proved on this host. ⭐ Closed.
 3. **`WSL-79`**, issue 33: its line join reports success over commands that
-   never ran.
+   never ran. ⭐ Closed, and issue 33 closes with it once CI is green.
 4. **`WSL-72`**: the ruling it needed is made.
 5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants.
@@ -81,7 +81,8 @@ carries all three as commands under "Build and local proof".
 | commit | what |
 | --- | --- |
 | `cf274eb` | the operator's rulings written into `WSL-67`, `WSL-68`, `WSL-75` to `WSL-79` and this record |
-| the WSL-74 commit | `WSL-74` closed: a configuration naming another instance's distribution is refused by every command, `ready` included, with 6 mutation rows and 2 acceptance cases; `WSL-80` filed |
+| `ab4281c` | `WSL-74` closed: a configuration naming another instance's distribution is refused by every command, `ready` included, with 6 mutation rows and 2 acceptance cases; `WSL-80` filed |
+| the WSL-80 and WSL-79 commit | `WSL-80` closed: the relay's heartbeat can no longer keep a finished `distro run` waiting, and its acceptance case no longer depends on how ticks fall. `WSL-79` closed: the FreeBSD guest reaches a login in about 9 s rather than 115 s, and a script reaches it as a file on its own disk. 10 mutation rows |
 
 ## Measurements
 
@@ -103,6 +104,10 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
   before the run was still registered after it.
 - **For `WSL-74`:** the Go suites green with `TEMP` at the 8.3 path, 254
   top-level cases, 251 passed, 3 skipped; 6 mutation rows proved on Windows.
+- **For `WSL-80` and `WSL-79`:** the Go suites on Windows, 259 top-level cases, 255
+  passed, 4 skipped; `golang:1.25` green, with the POSIX shell case run there; the
+  acceptance runner 91 of 91 on the tree's build; 8 `bsd` and 12 `relay` mutation
+  rows proved in `golang:1.25`. Each entry's closing carries its own measurements.
 
 ## Found, and not filed
 
@@ -128,9 +133,12 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 
 ## Review findings
 
-`WSL-74`'s closing carries its three reviews. The door sweep found `ready` reading
-and building from a refused configuration, and the claim audit found the refusal
-advising a `--config` file that did not exist; both are fixed in the same commit.
+Each closed entry carries its three reviews. What they changed: `WSL-74`'s door
+sweep found `ready` reading and building from a refused configuration, and its claim
+audit found the refusal advising a `--config` file that did not exist. `WSL-80`'s
+claim audit found its own premise blaming a pipe the stack dumps cleared. `WSL-79`'s
+door sweep found the guest keeping script copies in a shared `/tmp` after a failed
+run. Each is fixed in the entry's own commit.
 
 ## Open questions for the operator
 
@@ -143,5 +151,8 @@ None. Every decision is ruled.
   `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
 - ⭐ **`wsl-toolkit-muse` is gone.** The operator ran `muse logout` in it and then
   `base remove --yes` on 2026-09-14, and `instances\muse` holds nothing.
-- herdr 0.9.0 is installed on Windows by the operator. The shared FreeBSD pkgbase
-  guest has not been booted or changed this session.
+- herdr 0.9.0 is installed on Windows by the operator.
+- The shared FreeBSD pkgbase guest was booted for `WSL-79` and read back as found:
+  500 packages, all 499 `FreeBSD-*` present, no script copy left in `/tmp`, a 10.0
+  GiB disk with an 8.7 GiB root. Its baseline package list is in `WSL-79`'s closing
+  as a count, and a copy of the image made to name the stalling driver is deleted.
