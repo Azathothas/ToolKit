@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 118  open 10  blocked 0  done 108
+total 118  open 9  blocked 0  done 109
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 1 | 0 | 60 | 61 |
-| P2 | 9 | 0 | 38 | 47 |
+| P2 | 8 | 0 | 39 | 47 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **10** | **0** | **108** | **118** |
+| **all** | **9** | **0** | **109** | **118** |
 
 ---
 
@@ -114,7 +114,7 @@ total 118  open 10  blocked 0  done 108
 | WSL-74 | P1 | S | done | A named instance acts on whatever base the nearest project file names | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-75 | P2 | L | done | One named base serves every project, and a grant changes without a restart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-76 | P2 | L | open | herdr replaces Zellij, and the operator watches the agents from Windows | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-77 | P2 | L | open | A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-77 | P2 | L | done | A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-78 | P2 | L | open | Muse from any Windows project, and a guide for someone who has never used a coding agent | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-79 | P1 | M | done | A BSD run pays two minutes before its first command, and a comment line ends its script early | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-80 | P1 | M | done | A throwaway command that has finished can leave `distro run` waiting forever | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

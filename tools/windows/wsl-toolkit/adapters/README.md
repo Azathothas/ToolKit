@@ -43,8 +43,8 @@ gate's `secrets` rule accepts, and a file that does not match is deleted without
 being run.
 
 ⛔ **A provider's own installer, which no upstream pins, runs only while its digest
-is approved:** the one the adapter pins, which the operator approved after reading
-the file, or the `installer_sha256` its configuration carries. Any other is saved for
+is approved:** the one the adapter pins, which the operator approved, or the
+`installer_sha256` its configuration carries. Any other is saved for
 the operator to read, never run, and the adapter exits non-zero naming its digest.
 
 ## The copy the executable carries

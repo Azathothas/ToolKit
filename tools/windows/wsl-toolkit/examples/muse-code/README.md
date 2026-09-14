@@ -116,7 +116,9 @@ wsl-toolkit --instance base base shell
 Then run `muse login` in that shell.
 
 ⭐ **`muse` is on `PATH` in `base exec`**, through `/usr/local/bin/muse`, which the
-adapter writes and which runs Muse only as the base's account.
+adapter writes and which runs Muse only as the base's account. ⚠ Meta's installer
+prints that `~/.local/bin` is not on your `PATH` and asks you to add it; that file is
+why nothing needs adding.
 
 ⚠ **Muse says your content may be used for product improvement.** Its first
 screen named the model `muse-spark-1.3-contributor` and printed that notice. This

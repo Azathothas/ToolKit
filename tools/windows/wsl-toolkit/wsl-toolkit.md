@@ -205,8 +205,8 @@ the guide for the operator and for an agent.
 ⭐ **`muse` installs Muse Code for the base's account, and runs Meta's installer only
 while its digest is approved.** `base ensure` saves the installer Meta serves, prints
 its length and SHA-256, and runs it as the account when that digest is the one the
-adapter pins, which the operator approved after reading the file on 2026-09-14, or
-the `installer_sha256` the configuration's `muse` entry carries. ⛔ Any other stops the
+adapter pins, which the operator approved on 2026-09-14, or the `installer_sha256`
+the configuration's `muse` entry carries. ⛔ Any other stops the
 ensure with exit 2, keeps the file at `/var/lib/wsl-toolkit/muse/install.sh` and
 prints how to read it. Add its digest only after reading it:
 
@@ -214,12 +214,20 @@ prints how to read it. Add its digest only after reading it:
 "adapters": [{ "name": "herdr" }, { "name": "muse", "installer_sha256": "SHA256" }]
 ```
 
-A base whose Muse answers a version does not fetch the installer again, and Muse's
-own launcher updates it after that. `/usr/local/bin/muse` puts it on `PATH` for `base
-exec`, whose shell reads no profile, and refuses every other account. ⛔ **Signing in
-is the operator's:** `base shell`, then `muse login`. `base status --probe` reports
-the version, where `muse` resolves, and whether a credential file is present, never
-what it holds.
+A base whose Muse answers a version does not fetch the installer again. ⚠ Muse's own
+launcher, as read on 2026-09-14, looks for an update of itself at most hourly after
+that. `/usr/local/bin/muse` puts it on `PATH` for `base exec`, whose shell reads no
+profile, and refuses every other account. ⛔ **Signing in is the operator's:** `base
+shell`, then `muse login`. `base status --probe` reports the version, where `muse`
+resolves, and whether a credential file is present, never what it holds.
+
+| measured on 2026-09-14, on a throwaway arch base from a fresh clone | result |
+| --- | --- |
+| `base ensure` from nothing, with `herdr` and `muse` | 77.6 s; Muse Code 1.2.1 installed as the account, approved by the pinned digest |
+| a build whose pin differs, over a base with no launcher | exit 2 in 4.4 s, the installer saved and not run, its digest and the approving key printed |
+| the same build, with that digest as `installer_sha256` | exit 0 in 5.6 s, approved by the configuration |
+| `base ensure` over an installed Muse | exit 0 in 3.8 s, the installer not fetched |
+| `muse --version` through `base exec`, then as root | `Muse Code 1.2.1 (1.2.1-R2847.1)`, then exit 126 |
 
 ⚠ **Both adapters are driven on the `arch` preset, herdr with systemd, and a
 configuration naming either on anything else is refused.** Removing herdr from a

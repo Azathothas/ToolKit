@@ -2029,6 +2029,15 @@
       "args": []
     },
     {
+      "label": "config: a field inside a stored adapter survives loading",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif stored.Base.Adapters != nil {\n\t\tcfg.Base.Adapters = stored.Base.Adapters\n\t}\n",
+      "replace": "\tfor _, a := range stored.Base.Adapters {\n\t\tcfg.Base.Adapters = append(cfg.Base.Adapters, BaseAdapter{Name: a.Name})\n\t}\n",
+      "run": "TestEveryStoredBaseFieldSurvivesLoading",
+      "args": []
+    },
+    {
       "label": "adapters: a begin marker with no end deletes nothing",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters.go",

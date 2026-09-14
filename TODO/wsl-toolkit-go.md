@@ -5987,7 +5987,7 @@ herdr's own keys closed a pane and then a tab while the tracked file closed noth
 **Source** [issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 4,
 filed by the operator on 2026-09-13. Their correction the same day puts herdr where
 the item says Zellij.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -6096,8 +6096,8 @@ Passing is:
   `MUSE_INSTALLER_PINNED_SHA256`, or the `installer_sha256` the configuration's
   `muse` entry carries. Any other stops with exit 2 and keeps the file at
   `/var/lib/wsl-toolkit/muse/install.sh`, with the command to read it. A Muse that
-  answers a version is not installed again. `/usr/local/bin/muse` puts it on `PATH`
-  for `base exec`, whose shell reads no profile, and refuses every other account.
+  answers a version is not installed again. A wrapper at `/usr/local/bin/muse` makes
+  the name resolve in `base exec`, and turns away any account but the base's own.
   `probe.sh` reports the version, asked with `MUSE_NO_AUTO_UPDATE`, the wrapper, where
   `muse` resolves, and whether a credential file is present.
 - `base.adapters[].installer_sha256`, the approval approach point 3 names: refused on
@@ -6141,10 +6141,83 @@ an adapter with no installer, the refusal of a malformed digest and the variable
 carries it, on Windows; the unapproved installer kept and not run, the wrapper's
 account check and the installed Muse not fetched again, in `golang:1.25`.
 
-### Still open
+---
 
-1. The prove from a fresh clone on a throwaway instance, with the planted stop.
-2. The three reviews, and the closing.
+## Closing
+
+**Closed 2026-09-14T10:31:57Z.** A clone of this repository and one `base ensure`
+rebuild the provider base with herdr and Muse, the sign-in excepted. The prove, from
+a fresh clone of `main` at `d8c8328`, on the throwaway instance `m77`, whose profile
+is `wsl-toolkit-base.json` with its name changed, and with `WSL_TOOLKIT_SSH_DIR` under
+this repository's `.tmp`. The digests are shortened, because the tree refuses a long
+hex identifier:
+
+```text
+wsl-toolkit --instance m77 --config profile-m77.json base ensure
+exit 0 in 77.6 s
+  adapter herdr: healthy, version 0.9.0
+  adapter muse: installing
+    * saved Meta's installer at /var/lib/wsl-toolkit/muse/install.sh: 9314 bytes, SHA-256 5196d820…632a0ca
+    * running it as herdr, approved by the digest this adapter pins
+    * installed Muse Code 1.2.1 (1.2.1-R2847.1) for herdr
+    * wrote /usr/local/bin/muse, which runs Muse as herdr
+    * signing in is the operator's: wsl-toolkit --instance m77 base shell, then muse login
+  adapter muse: healthy, version 1.2.1 (1.2.1-R2847.1)
+
+a build of the clone with its pin changed, after the launcher was removed
+exit 2 in 4.4 s
+  muse adapter: the installer Meta serves now is not one the operator approved, so it was not run.
+    saved at    /var/lib/wsl-toolkit/muse/install.sh, 9314 bytes, SHA-256 5196d820…632a0ca
+    read it     wsl-toolkit --instance m77 base exec --root -c 'cat /var/lib/wsl-toolkit/muse/install.sh'
+    approve it  add "installer_sha256": "5196d820…632a0ca" to the muse entry in base.adapters, then run base ensure again
+
+the same build, with that digest as installer_sha256
+exit 0 in 5.6 s
+    * running it as herdr, approved by the installer_sha256 in this base's configuration
+
+base status --probe --json               exit 0, healthy, no problem; herdr 0.9.0 and muse 1.2.1 (1.2.1-R2847.1) healthy
+base exec -c 'herdr --version'           herdr 0.9.0, exit 0
+base exec -c 'muse --version'            Muse Code 1.2.1 (1.2.1-R2847.1), exit 0
+base exec --root -c 'muse --version'     muse is installed for herdr, and runs only as herdr, exit 126
+base remove --yes                        exit 0 in 10.5 s
+```
+
+| condition | measured |
+| --- | --- |
+| the first run stops at the installer with exit 2, printing its digest | on the build whose pin differs: exit 2 with the digest, the file kept and not run, and the launcher still absent afterwards. ⚠ The fresh clone's own first run installed, because its pin is the digest Meta serves; the amendment above says why |
+| run again with that digest, exit 0, each adapter healthy with its version | exit 0, approved by the configuration; the probe read both adapters healthy with their versions |
+| `herdr --version` and `muse --version` through `base exec` | above |
+| `base remove --yes` removes the instance | exit 0, and `wsl -l` read the four distributions of the session's start. The instance directory, which held nothing, and everything under `.tmp` were deleted by hand |
+
+A fourth `base ensure` over the installed Muse exited 0 in 3.8 s without fetching the
+installer. The operator's `%USERPROFILE%\.ssh\config` read SHA-256 `18FC11BE…E93F4`
+before and after, and the door's own block went into, and out of, the file under
+`.tmp`.
+
+### The reviews
+
+⭐ **The door sweep** followed the new key and the new file. `installer_sha256` is
+read by `LoadConfig`, `Validate`, `adapterInstallEnv` and `config`, and `config
+--write` writes it back; the helper route, `ready --ensure` and `base recreate` reach
+the installer through the one `applyAdapters`, and the probe needs no key. The saved
+installer is root's, in a directory root owns, so the account cannot change it
+between the digest check and the run. ⚠ The profile's passwordless sudo gives the
+account root anyway, which the access profiles already call authority and not
+containment. ⛔ **It found one gap:** `LoadConfig` copies `base.adapters` whole, and
+no case held a field inside an adapter surviving a load, which is the shape of the
+defect `base.adapters`' first drive found. The case now carries one, and a row that
+copies the names alone went red.
+
+⭐ **The guard mutation proved 7 rows**, each after its case passed unmutated: the
+three configuration rows and the loading row on Windows, and the three `install.sh`
+rows in `golang:1.25`. The planted build proved the stop on a real base.
+
+⭐ **The claim audit** corrected three sentences. The manual and the adapter contract
+said the operator approved the digest after reading the file; the record says the
+agent read it and the operator approved it. The manual said Muse's launcher updates
+it; that is read in the launcher and not measured, and it now says so. And Meta's
+installer tells a reader that `~/.local/bin` is not on `PATH`, which a first-time
+reader would act on; the guide says why nothing needs adding.
 
 ---
 

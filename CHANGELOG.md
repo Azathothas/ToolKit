@@ -21,6 +21,24 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T10:31:57Z: a provider base is rebuilt from a clone in one command, with herdr and Muse as adapters
+
+**Record:** `WSL-77` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the prove from a fresh clone and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-77`, in [issue 32](https://github.com/Azathothas/ToolKit/issues/32).
+
+⭐ **`base.adapters` takes `muse`.** `base ensure` installs Muse Code for the base's
+account from Meta's own installer, and runs that installer only while its SHA-256 is
+the one the operator approved or the `installer_sha256` the configuration carries.
+Any other stops the ensure with exit 2 before it runs, and says how to read the file.
+`/usr/local/bin/muse` puts Muse on `PATH` for `base exec` and runs it only as that
+account. Signing in stays the operator's.
+
+⭐ **[`examples/muse-code/wsl-toolkit-base.json`](tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json)
+is the one base every agent shares**, with the `herdr` and `muse` adapters. The new
+configuration key is additive, and an adapter that runs no installer refuses it.
+
 ### 2026-09-14T09:54:56Z: the FreeBSD guest's disk grows to 12 GiB, and bootstrap.sh puts FreeBSD's nim on PATH
 
 **Record:** `WSL-72` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
