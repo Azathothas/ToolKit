@@ -968,12 +968,18 @@ install_tmux_config() {
 # `fd`. Measured on 2026-09-12: the install succeeded, the report said `fd` was
 # absent, and both were true. A link in the prefix makes the tool usable by the
 # name every other distribution gives it.
+#
+# ⚠ FREEBSD PUTS NIM OFF PATH ALTOGETHER. Its `nim` package installs 978 files with
+# the binaries in `/usr/local/nim/bin` and nothing in `/usr/local/bin`, so `command
+# -v nim` exited 127 after an install that succeeded. Measured on 2026-09-13 in the
+# FreeBSD 15.1 guest. The same link reaches it by its absolute path.
 link_renamed_binaries() {
   if [ "$DRY_RUN" = 1 ]; then
     return 0
   fi
-  # One pair per line, `logical:what the distribution actually installed`.
-  lr_pairs=$(printf '%s' 'fd:fdfind')
+  # Whitespace-separated pairs, `logical:what the system actually installed`, the
+  # second either a name on PATH or an absolute path.
+  lr_pairs=$(printf '%s' 'fd:fdfind nim:/usr/local/nim/bin/nim')
   for lr_pair in $lr_pairs; do
     lr_want=${lr_pair%%:*}
     lr_actual=${lr_pair#*:}

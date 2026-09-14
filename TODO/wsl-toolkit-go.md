@@ -4749,6 +4749,81 @@ the operator answered: "raise it to 12/13 however much necessary to provide true
 3. The acceptance again: exit 0, `absent=` empty, and `version.nim`.
 4. The changelog row at closing, because the default disk changing is observable.
 
+## Amendment, 2026-09-14: nim is linked, and 12 GiB is measured as the smallest disk
+
+⭐ **Built:**
+
+- `link_renamed_binaries` in
+  [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh) reads the
+  second half of a pair as a name on `PATH` or as an absolute path, and carries
+  `nim:/usr/local/nim/bin/nim`. A system with `nim` already on `PATH`, or with no
+  such file, gets no link.
+- `BsdDefaultDiskGiB` is 12, and its comment carries the ruling and the three
+  measurements below. The manual's `--disk` default and the BSD section of
+  `wsl-toolkit.md` move with it.
+
+⚠ **No mutation row holds the link.** Every row in `tools/repo/mutations.json`
+runs Go cases, and `bootstrap.sh` has no case runner. The link is proved by the run
+below, in the guest where it was measured missing.
+
+### The smallest disk, measured
+
+`df -k /` in the guest, against the 10,485,760 KiB the ruling asks for. Partitions
+are `gpart show` sectors of 512 bytes.
+
+| disk | image | `freebsd-ufs` partition | root | enough |
+| --- | --- | --- | --- | --- |
+| 10 GiB | the shared image, 2026-09-13 | 9.0G | 8.7G | no |
+| 11 GiB | a fresh copy of the published image | 20,904,741 sectors | 10,110,092 KiB | no |
+| 12 GiB | the shared image | 23,001,893 sectors | 11,138,540 KiB | ⭐ yes |
+
+⚠ **11 GiB was measured on a copy**, because the shared image was already 12 GiB
+and never shrinks. The copy came from the kept archive, whose SHA-256 matched
+`BsdImagePinnedSha256` before it was expanded. It booted from its own cache
+directory, `WSL_TOOLKIT_CACHE` under this repository's `.tmp`, and was deleted
+afterwards. Even its partition, 10,452,370 KiB, is smaller than the bar.
+
+### The acceptance, with the tree's bootstrap
+
+Run before the fix was on `main`, so the tree's `bootstrap.sh` went in by
+`--script` with `set -- --toolset languages --no-tmux-config` ahead of it:
+
+```text
+bootstrap:   linked /root/.local/bin/nim to this distribution's /usr/local/nim/bin/nim
+requested=8
+present=6
+skipped=build cargo
+absent=
+version.nim=Nim Compiler Version 2.2.10 [FreeBSD: amd64]
+version.rustc=rustc 1.96.1 (31fca3adb 2026-06-26) (built from a source tarball)
+failures=0
+  login at 11s, session 3m36s, disk 12.0 GiB, root filesystem 10.6 GiB, exit 0
+```
+
+### The guest put back
+
+The run added 31 packages to the 500, and none is a `FreeBSD-*` package. They were
+removed by exact name, and the guest reads back 500 packages, 499 of them
+`FreeBSD-*`, with no baseline package missing or at another version. Also removed:
+the three lines the bootstrap appended to `/root/.profile`, `/root/.local` with the
+link, and three telemetry files the `go` command wrote under `/root/.config/go`.
+
+⚠ **The package cache needed a second pass.** `pkg` gives a downloaded file its
+package's build date as its birth time, so a delete by the run's time window took
+the 31 links and missed the 31 files, 335,828 KiB. They were removed by exact name
+and version, and the cache is empty.
+
+⚠ **`/root/.cache` and `/root/.config` were residue of this entry's 2026-09-13 run**:
+every file in them was born at 04:08 that day, from `go` and `pwsh`, and neither is
+in the baseline. Both are removed. The root reads 3,264,500 KiB used of 11,138,540.
+`pkg`'s catalogue under `/var/db/pkg/repos` stays, refreshed by this run.
+
+### Still open
+
+1. The prove as written, which fetches `bootstrap.sh` from `main`, once this
+   commit is pushed, and the guest put back again.
+2. The closing, with the changelog row.
+
 ---
 
 ## WSL-73. The PowerShell product retires, and pull request 31 is reviewed before any of it lands

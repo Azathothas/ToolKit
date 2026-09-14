@@ -9,9 +9,9 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-14T02:01:53Z; the record commit's own time is its end
 baseline        e73d7d5, tree clean
 entries         total 115  open 10  blocked 0  done 105
-closed          WSL-74 at ab4281c; WSL-80 and WSL-79, which closes issue 33
+closed          WSL-74 at ab4281c; WSL-80 and WSL-79 at 5e66e44; issue 33
 filed           WSL-80, found by the acceptance runner's baseline
-head            the WSL-80 and WSL-79 commit after ab4281c
+head            the WSL-72 build commit after 5e66e44
 ```
 
 ## Active work
@@ -30,8 +30,10 @@ is closed, and the issue gets a comment naming the commits.
    `distro run` that never returns hangs the acceptance runner, which is how
    every later entry here is proved on this host. ⭐ Closed.
 3. **`WSL-79`**, issue 33: its line join reports success over commands that
-   never ran. ⭐ Closed, and issue 33 closes with it once CI is green.
-4. **`WSL-72`**: the ruling it needed is made.
+   never ran. ⭐ Closed, and issue 33 is closed with a comment naming `5e66e44`
+   and `cf274eb`.
+4. **`WSL-72`**: nim is linked and the 12 GiB default is measured. Its prove
+   fetches `bootstrap.sh` from `main`, so it runs after the build commit is pushed.
 5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants.
 6. **Issue 30:** `WSL-67`'s open items, `WSL-68`, `WSL-70` and `WSL-71`.
@@ -82,7 +84,8 @@ carries all three as commands under "Build and local proof".
 | --- | --- |
 | `cf274eb` | the operator's rulings written into `WSL-67`, `WSL-68`, `WSL-75` to `WSL-79` and this record |
 | `ab4281c` | `WSL-74` closed: a configuration naming another instance's distribution is refused by every command, `ready` included, with 6 mutation rows and 2 acceptance cases; `WSL-80` filed |
-| the WSL-80 and WSL-79 commit | `WSL-80` closed: the relay's heartbeat can no longer keep a finished `distro run` waiting, and its acceptance case no longer depends on how ticks fall. `WSL-79` closed: the FreeBSD guest reaches a login in about 9 s rather than 115 s, and a script reaches it as a file on its own disk. 10 mutation rows |
+| `5e66e44` | `WSL-80` closed: the relay's heartbeat can no longer keep a finished `distro run` waiting, and its acceptance case no longer depends on how ticks fall. `WSL-79` closed: the FreeBSD guest reaches a login in about 9 s rather than 115 s, and a script reaches it as a file on its own disk. 10 mutation rows. CI green, and issue 33 closed |
+| the WSL-72 build commit | `bootstrap.sh` links FreeBSD's `nim` onto `PATH`, and the guest's default disk is 12 GiB, the smallest measured to give a 10 GiB root |
 
 ## Measurements
 
@@ -130,6 +133,9 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
    output is kept: wsl-toolkit logs 4e94faa38b4c9c1c`; `logs` on that id answered
    exit 2, `no transcript`, and `jobs\4e94faa38b4c9c1c` was not in the state
    directory. Measured on 2026-09-14, and not yet read in the code.
+9. ⚠ **Every `bsd run` leaves its console lines in the shared image.** The guest's
+   root shell keeps history: `/root/.sh_history` read 40,215 bytes in one run on
+   2026-09-14 and 42,825 bytes two runs later.
 
 ## Review findings
 
@@ -152,7 +158,7 @@ None. Every decision is ruled.
 - ⭐ **`wsl-toolkit-muse` is gone.** The operator ran `muse logout` in it and then
   `base remove --yes` on 2026-09-14, and `instances\muse` holds nothing.
 - herdr 0.9.0 is installed on Windows by the operator.
-- The shared FreeBSD pkgbase guest was booted for `WSL-79` and read back as found:
-  500 packages, all 499 `FreeBSD-*` present, no script copy left in `/tmp`, a 10.0
-  GiB disk with an 8.7 GiB root. Its baseline package list is in `WSL-79`'s closing
-  as a count, and a copy of the image made to name the stalling driver is deleted.
+- The shared FreeBSD pkgbase guest is a 12.0 GiB disk with a root of 11,138,540
+  KiB, grown for `WSL-72` by the ruling. After that entry's run it reads back 500
+  packages, all 499 `FreeBSD-*` present, an empty package cache and no script copy
+  in `/tmp`. The copies of the image made for `WSL-79` and `WSL-72` are deleted.

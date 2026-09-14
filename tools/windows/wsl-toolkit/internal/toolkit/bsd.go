@@ -87,12 +87,17 @@ const (
 
 	// BsdDefaultDiskGiB is the guest disk a run grows the image to.
 	//
-	// ⭐ THE OPERATOR RULED 10 GiB, and the reason is measured. The published
-	// image is 6.0 GiB with a 4.8 GiB root, and `bootstrap.sh --toolset
-	// languages` installed go and python3 and then filled it before rust and nim.
-	// ⛔ Not larger than the ruling: a default nobody chose is a ceiling somebody
-	// else pays for, and `--disk` exists for anything else. WSL-72.
-	BsdDefaultDiskGiB = 10
+	// ⭐ THE OPERATOR RULED A TRUE 10 GiB ROOT, "raise it to 12/13 however much
+	// necessary to provide true 10GiB", and the smallest whole number that gives it
+	// is measured, not computed. The image carries a boot partition, an EFI
+	// partition and 1 GiB of swap ahead of root, so the root is smaller than the
+	// disk. Measured by `df -k /` in the guest against the 10,485,760 KiB the ruling
+	// asks for: a 10 GiB disk left 8.7 GiB, 11 GiB left 10,110,092 KiB on a fresh
+	// copy of the published image, and 12 GiB leaves 11,138,540 KiB. The published
+	// image is 6.0 GiB with a 4.8 GiB root, which a toolchain install fills. ⛔ Not
+	// larger than the ruling: a default nobody chose is a ceiling somebody else pays
+	// for, and `--disk` exists for anything else. WSL-72.
+	BsdDefaultDiskGiB = 12
 )
 
 // BsdStatus is what `bsd status` answers.
