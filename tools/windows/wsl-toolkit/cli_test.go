@@ -153,6 +153,72 @@ func TestBaseExecDefaultsToGuestHome(t *testing.T) {
 	}
 }
 
+// TestTheAutomountRowCarriesTheGuestsDrives is WSL-84's report: `base status --probe`
+// printed the configured `ro` over a guest whose /mnt/c was writable. A probe that
+// read the drives prints them beside the setting, and one that did not stays the
+// setting alone rather than claiming a reading.
+func TestTheAutomountRowCarriesTheGuestsDrives(t *testing.T) {
+	unprobed := toolkit.BaseAccessState{Automount: toolkit.AutomountReadOnly}
+	drifted := toolkit.BaseAccessState{Automount: toolkit.AutomountReadOnly, AutomountGuest: toolkit.AutomountReadWrite}
+	agreed := toolkit.BaseAccessState{Automount: toolkit.AutomountOff, AutomountGuest: toolkit.AutomountOff}
+	for _, c := range []struct {
+		access toolkit.BaseAccessState
+		want   string
+	}{
+		{unprobed, "ro"},
+		{drifted, "ro, and the guest's drives read rw"},
+		{agreed, "off, and the guest's drives read off"},
+	} {
+		if got := automountRow(c.access); got != c.want {
+			t.Errorf("%+v printed %q, want %q", c.access, got, c.want)
+		}
+	}
+}
+
+// TestARootShellNamesEachDriveByItsMode is the root shell's warning. It called every
+// drive "mounted and writable" in a base whose drives were read-only, where root's
+// touch on /mnt/c answered "Read-only file system".
+func TestARootShellNamesEachDriveByItsMode(t *testing.T) {
+	readOnlyC := toolkit.WindowsDriveMount{Target: "/mnt/c", ReadOnly: true}
+	readOnlyD := toolkit.WindowsDriveMount{Target: "/mnt/d", ReadOnly: true}
+	writableE := toolkit.WindowsDriveMount{Target: "/mnt/e"}
+	unread := errors.New("the mounts of wsl-toolkit could not be read (exit 1)")
+	for _, c := range []struct {
+		drives []toolkit.WindowsDriveMount
+		err    error
+		want   string
+	}{
+		{nil, nil, "root here is root INSIDE wsl-toolkit and not on this machine. No Windows drive is mounted"},
+		{nil, unread, "root here is root INSIDE wsl-toolkit and not on this machine. Which Windows drives are mounted could not be read: " + unread.Error()},
+		{[]toolkit.WindowsDriveMount{readOnlyC, readOnlyD}, nil,
+			"root here is root INSIDE wsl-toolkit and not on this machine. These Windows drives are mounted read-only: /mnt/c /mnt/d"},
+		{[]toolkit.WindowsDriveMount{readOnlyC, writableE}, nil,
+			"root here is root INSIDE wsl-toolkit and not on this machine, AND these Windows drives are mounted writable: /mnt/e. These Windows drives are mounted read-only: /mnt/c"},
+	} {
+		if got := rootDrivesNote("wsl-toolkit", c.drives, c.err); got != c.want {
+			t.Errorf("%+v noted %q, want %q", c.drives, got, c.want)
+		}
+	}
+}
+
+// TestAShellHereIntoABaseWithNoDriveIsRefused is the door that trusted the setting.
+// On a base configured `ro` whose guest had no drive mounted, `base shell --here`
+// noted "starting in this Windows directory" and started in the account's home. A read
+// that failed refuses nothing, so the shell starts where WSL puts it, as before.
+func TestAShellHereIntoABaseWithNoDriveIsRefused(t *testing.T) {
+	readOnlyC := toolkit.WindowsDriveMount{Target: "/mnt/c", ReadOnly: true}
+	err := hereRefusal("wsl-toolkit-m84", toolkit.AutomountReadOnly, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "has none although base.automount is ro. Run: wsl-toolkit base ensure") {
+		t.Errorf("a base with no drive answered %v, want a refusal naming base ensure", err)
+	}
+	if err := hereRefusal("wsl-toolkit-m84", toolkit.AutomountReadOnly, []toolkit.WindowsDriveMount{readOnlyC}, nil); err != nil {
+		t.Errorf("a base with a drive was refused: %v", err)
+	}
+	if err := hereRefusal("wsl-toolkit-m84", toolkit.AutomountReadOnly, nil, errors.New("could not be read")); err != nil {
+		t.Errorf("a read that failed was refused as a base with no drive: %v", err)
+	}
+}
+
 // TestBaseExecSurfacesAFailureToStart holds the line between a guest's answer
 // and a process that never ran. The guest's own exit status is forwarded
 // silently; a `wsl.exe` that could not be started used to exit 2 with its reason

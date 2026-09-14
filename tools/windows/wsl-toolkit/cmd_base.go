@@ -191,6 +191,10 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			if automount == toolkit.AutomountOff {
 				return exitCannot, fmt.Errorf("--here cannot inherit a Windows working directory while base.automount is off. Start without --here, then use a configured /workspaces mount")
 			}
+			drives, readErr := toolkit.MountedWindowsDrives(ctx, w, cfg.Base.Name)
+			if err := hereRefusal(cfg.Base.Name, automount, drives, readErr); err != nil {
+				return exitCannot, err
+			}
 			// ⚠ EXPLICIT, AND IT SAYS WHAT IT DID. `wsl.exe` inherits the
 			// caller's Windows working directory, so this is the OLD default
 			// under a flag rather than a new capability.
@@ -209,14 +213,11 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		if *asRoot {
 			// ⭐ THE WARNING NAMES WHAT IS ACTUALLY REACHABLE, rather than
 			// asserting an isolation this shell does not have. Every Windows
-			// drive WSL has mounted is writable from here whatever directory the
+			// drive WSL has mounted is reachable from here whatever directory the
 			// shell starts in, and saying so is the honest version of the
 			// sentence the manual used to carry.
-			if drives := toolkit.MountedWindowsDrives(ctx, w, cfg.Base.Name); len(drives) > 0 {
-				note("root here is root INSIDE " + cfg.Base.Name + " and not on this machine, AND these Windows drives are mounted and writable: " + strings.Join(drives, " "))
-			} else {
-				note("root here is root INSIDE " + cfg.Base.Name + " and not on this machine. No Windows drive is mounted")
-			}
+			drives, readErr := toolkit.MountedWindowsDrives(ctx, w, cfg.Base.Name)
+			note(rootDrivesNote(cfg.Base.Name, drives, readErr))
 			if mounts, mountErr := cfg.ResolvedBaseMounts(); mountErr == nil && len(mounts) > 0 {
 				targets := make([]string, 0, len(mounts))
 				for _, mount := range mounts {
@@ -263,7 +264,7 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)
 	}
 	fmt.Fprintf(out, "  account     %s\n", st.User)
-	fmt.Fprintf(out, "  automount   %s\n", st.Access.Automount)
+	fmt.Fprintf(out, "  automount   %s\n", automountRow(st.Access))
 	fmt.Fprintf(out, "  interop     %s\n", st.Access.Interop)
 	fmt.Fprintf(out, "  init        systemd %v\n", st.Access.Systemd)
 	fmt.Fprintf(out, "  sudo        passwordless %v\n", st.Access.PasswordlessSudo)
@@ -342,6 +343,62 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 			fmt.Fprintf(out, "     ⚠ this tool cannot repair it, and says so rather than pretending\n")
 		}
 	}
+}
+
+// rootDrivesNote names the Windows drive mounts a root shell reaches, each by its
+// mode.
+//
+// ⛔ WSL-84's door sweep: it said "mounted and writable" of every drive in a base
+// whose drives were all read-only, where root's touch on /mnt/c answered "Read-only
+// file system".
+func rootDrivesNote(distro string, drives []toolkit.WindowsDriveMount, readErr error) string {
+	msg := "root here is root INSIDE " + distro + " and not on this machine"
+	if readErr != nil {
+		return msg + ". Which Windows drives are mounted could not be read: " + readErr.Error()
+	}
+	if len(drives) == 0 {
+		return msg + ". No Windows drive is mounted"
+	}
+	var writable, readOnly []string
+	for _, d := range drives {
+		if d.ReadOnly {
+			readOnly = append(readOnly, d.Target)
+		} else {
+			writable = append(writable, d.Target)
+		}
+	}
+	if len(writable) > 0 {
+		msg += ", AND these Windows drives are mounted writable: " + strings.Join(writable, " ")
+	}
+	if len(readOnly) > 0 {
+		msg += ". These Windows drives are mounted read-only: " + strings.Join(readOnly, " ")
+	}
+	return msg
+}
+
+// hereRefusal refuses `base shell --here` into a base with no Windows drive mounted.
+//
+// ⛔ WSL-84's door sweep: on a base configured `ro` whose guest had no drive, the shell
+// noted "starting in this Windows directory" and started in the account's home,
+// because WSL could not reach the directory. A read that failed refuses nothing: the
+// shell then starts as it did, and WSL decides.
+func hereRefusal(distro, automount string, drives []toolkit.WindowsDriveMount, readErr error) error {
+	if readErr != nil || len(drives) > 0 {
+		return nil
+	}
+	return fmt.Errorf("--here needs a Windows drive mounted, and %s has none although base.automount is %s. Run: wsl-toolkit base ensure", distro, automount)
+}
+
+// automountRow is the configured automount and, once a probe has read them, what
+// the guest's drives are.
+//
+// ⛔ WSL-84: this row printed the configured `ro` over a guest whose /mnt/c was
+// writable, so a report read as the setting is kept apart from the drives read back.
+func automountRow(access toolkit.BaseAccessState) string {
+	if access.AutomountGuest == "" {
+		return access.Automount
+	}
+	return access.Automount + ", and the guest's drives read " + access.AutomountGuest
 }
 
 func isInteractive() bool { return isConsole(os.Stdin) }

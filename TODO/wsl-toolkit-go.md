@@ -7235,7 +7235,7 @@ Passing is:
 ## WSL-84. A base reconfigured to read-only drives keeps writable ones, and reports read-only
 
 **Source** found on 2026-09-14 while measuring `WSL-71`'s premise.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -7311,3 +7311,88 @@ Passing is:
 - `ro` then `off`: the ensure re-provisions, and no mount line remains;
 - `base status --probe` prints the automount the guest has in each case;
 - a mutation row per check red.
+
+---
+
+## Closing
+
+**Closed 2026-09-14T15:04:56Z.** The verifier reads the Windows drives from
+`/proc/mounts` and prints what they are, `base ensure` provisions again a base whose
+drives disagree with `base.automount`, and `base status --probe` prints the setting
+beside the drives. All five passing conditions hold on the tree's build, on the
+throwaway `wsl-toolkit-m84`, an arch base with interop off:
+
+| condition | measured |
+| --- | --- |
+| `rw` then `ro`: the ensure re-provisions, and the mount line carries `ro` | built `rw` in 74.1 s with `/mnt/c 9p rw`; the probe exit 1; `base ensure` exit 0 in 4.6 s through `re-provisioning in place`; then `/mnt/c 9p ro`, and all ten drive mounts `ro` |
+| `off` then `ro`: the ensure re-provisions, and a mount line appears carrying `ro` | built `off` in 34.7 s with no drive mount; the probe exit 1; `base ensure` exit 0 in 4.7 s, re-provisioning; then `/mnt/c 9p ro` |
+| `ro` then `off`: the ensure re-provisions, and no mount line remains | built `ro` in 63.9 s with `/mnt/c 9p ro`; the probe exit 1; `base ensure` exit 0 in 4.5 s, re-provisioning; then `grep` exit 1 and no drive mount |
+| `base status --probe` prints the automount the guest has in each case | before each ensure `automount ro, and the guest's drives read rw`, then `rw` over `ro` and `ro` over `off`, `usable false`; after each ensure the two agree, `usable true`, and `--json` reads `access.automount_guest` equal to `access.automount` with no problem |
+| a mutation row per check red | 16 rows, below |
+
+⭐ **The directions the premise left unmeasured also hold**, chained on the same base
+from the step before: `ro` then `rw` in 4.3 s, `rw` then `off` in 4.5 s and `off`
+then `rw` in 4.4 s, each re-provisioning and each probe agreeing afterwards. ⭐ **Guest
+root's own remount is caught:** `mount -o remount,rw /mnt/d` in an `ro` base exit 0,
+then the probe exit 1 with the drives `mixed`, 9 read-only and 1 writable, and `base
+ensure` exit 0 in 4.5 s put `/mnt/d` back to `ro`. The default `wsl-toolkit` base,
+built `ro`, answered `automount ro, and the guest's drives read ro` and `usable true`
+with no change.
+
+| suite | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
+| --- | --- | --- |
+| `check-go` | exit 0 | exit 0 |
+| `wsl-toolkit` top-level cases | 296: 289 passed, 7 skipped, 0 failed | 295: 294 passed, 1 skipped, 0 failed |
+| ShellCheck 0.9.0 in `ubuntu:24.04` | - | exit 0 over 34 tracked scripts |
+
+`TestTheVerifierReadsTheDrivesItPromises` runs the verifier's own drive section through
+`/bin/sh`, dash in `golang:1.25`, over ten mounts tables, and skips on Windows.
+
+### ⛔ What driving it found
+
+| found | what was done |
+| --- | --- |
+| a drive refusal read `a container did not run as toolkit (exit 3): verify: automount is ro, ...`, which sends a reader after the engine | `verifyError` names the setting: `the base does not match its configuration, checked as toolkit: ...`. An engine failure keeps its words, which the stale run state remediation reads |
+| the first build of that message never fired on a real guest: its case passed no error, and `Exec` answers a guest's exit 3 with a `ProcessError` beside the code | the condition reads the code alone, and the case holds exit 124 with a `verify:` line as not a refusal |
+| two builds from nothing failed when `geo.mirror.pkgbuild.com` stalled, `Operation too slow`, and each rolled its distribution back | nothing in this entry; the third attempt passed. The record carries it |
+
+### The reviews
+
+⭐ **The door sweep found two more doors that trusted the setting over the drives, and
+both are fixed.** `verify` has five callers, `Status` and four paths in `EnsureWith`,
+reached by `base status`, `base ensure`, `base recreate`, `ready` and the helper
+route; `run` and `matrix` reach it only to build a base that is not registered. Then
+every other reader of drive state:
+
+- ⛔ `base shell --root` read the one-letter directories under `/mnt` and said `these
+  Windows drives are mounted and writable` in the default base, where every drive is
+  `9p ro` and root's `touch /mnt/c/...` answered `Read-only file system`.
+  `MountedWindowsDrives` reads `/proc/mounts` by the verifier's rule, and the note
+  names each drive by its mode, or says the table could not be read. Driven: the
+  default base lists nine read-only drives; a throwaway `rw` base lists ten writable,
+  then nine writable and `/mnt/d` read-only after root remounted it.
+- ⛔ `base shell --here` checked the setting alone: on a base built `off` and set to
+  `ro`, it printed `starting in this Windows directory` and the shell started in
+  `/home/toolkit`. It now reads the mounts and refuses a base with none, exit 2 with
+  `base ensure`, and a read that fails refuses nothing. Driven: exit 2 on the drifted
+  base; after `base ensure`, the shell started under `/mnt/c`.
+
+What would have made it fire again: a fourth reader of the base's drives. `grep` for
+`/mnt` over the tool's Go and shell sources finds the verifier and the two fixed, the
+provisioner that writes the setting, the Windows path translation, and `ready --smoke`
+asking whether a container sees `/mnt/c`, which is about the container.
+
+⭐ **The guard mutation proved 16 rows**, each seen green unmutated first: in
+`golang:1.25` all 16 went red; on Windows the 10 whose cases run there went red and
+the 6 verifier rows reported skipped. The rows: the ro-or-rw comparison, the refusal
+of a mounted drive under `off`, the row printing the drives, a writable mount counted
+writable, a read-only mount counted read-only, a mount below a drive counted, the
+refusal message, only exit 3 read as a refusal, `mixed` read from the row, the
+status row, the root note's mode, a mount below a drive in the root note, the root
+note's unread table, and `--here`'s refusal and its read failure.
+
+⛔ **The claim audit corrected the manual twice.** Its first wording said a drifted
+base "answers exit 1 with both counts", and the refusal under `off` names no count;
+it now says the refusal names what disagrees. Its table said every drive mount was
+`9p`, where the drive listing measured only each mode; the type was read for `/mnt/c`
+alone, and the row now says read-only and writable.

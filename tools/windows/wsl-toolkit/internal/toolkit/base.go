@@ -63,7 +63,8 @@ type BaseState struct {
 	Cgroup *CgroupState `json:"cgroup,omitempty"`
 	Binfmt *BinfmtState `json:"binfmt,omitempty"`
 	// Access is the configured access state. Under --probe a healthy result
-	// means the configured account verified these settings after WSL restarted.
+	// means the configured account verified these settings after WSL restarted,
+	// and AutomountGuest carries what the guest's drives are.
 	Access BaseAccessState `json:"access"`
 	// Remediations are the conditions this tool found, each with what leaving it
 	// costs and the exact command that takes it. ⭐ A caller here is usually an
@@ -77,7 +78,12 @@ type BaseState struct {
 
 // BaseAccessState is what the base is configured to reach on Windows.
 type BaseAccessState struct {
-	Automount        string      `json:"automount"`
+	Automount string `json:"automount"`
+	// AutomountGuest is what the guest's /proc/mounts shows for the Windows drives,
+	// read under --probe: off, ro, rw, or mixed where a writable mount sits beside a
+	// read-only one. ⚠ Empty where the probe did not reach the drives, which is not
+	// the same as off. WSL-84.
+	AutomountGuest   string      `json:"automount_guest,omitempty"`
 	Interop          string      `json:"interop"`
 	Systemd          bool        `json:"systemd"`
 	PasswordlessSudo bool        `json:"passwordless_sudo"`
@@ -226,10 +232,11 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	} else {
 		st.Problems = append(st.Problems, err.Error())
 	}
-	engine, caps, binfmt, verifyErr := b.verify(ctx)
-	st.Engine = engine
-	st.Cgroup = caps
-	st.Binfmt = binfmt
+	report, verifyErr := b.verify(ctx)
+	st.Engine = report.Engine
+	st.Cgroup = report.Cgroup
+	st.Binfmt = report.Binfmt
+	st.Access.AutomountGuest = report.Automount
 	if verifyErr != nil {
 		st.Problems = append(st.Problems, verifyErr.Error())
 		// ⭐ A FAILURE IS CLASSIFIED HERE AND NOT ONLY IN ensure, because
@@ -245,7 +252,7 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	// ⛔ A CAPABILITY FINDING IS NOT A HEALTH FAILURE. The base runs containers;
 	// what it cannot do is account for them, and reporting that as unusable would
 	// refuse work over a limitation most jobs never reach. WSL-60.
-	if r, ok := cgroupRemediation(caps); ok {
+	if r, ok := cgroupRemediation(report.Cgroup); ok {
 		st.Remediations = append(st.Remediations, r)
 	}
 	// ⚠ AN ADAPTER'S PROBLEM IS A PROBLEM, NOT AN UNUSABLE BASE. `healthy` answers
@@ -367,8 +374,8 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 		if err := b.reconcileIdentity(ctx); err != nil {
 			return st, err
 		}
-		if engine, _, _, err := b.verify(ctx); err == nil {
-			b.log("the engine answers: " + engine)
+		if report, err := b.verify(ctx); err == nil {
+			b.log("the engine answers: " + report.Engine)
 			return b.finishEnsure(ctx, st)
 		} else {
 			b.log("it cannot: " + err.Error())
@@ -406,8 +413,8 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 				}
 				// ⛔ THE STATE IS READ BACK, and the repair is not reported as a
 				// success until a container has actually run.
-				if engine, _, _, err := b.verify(ctx); err == nil {
-					b.log("the engine answers: " + engine)
+				if report, err := b.verify(ctx); err == nil {
+					b.log("the engine answers: " + report.Engine)
 					return b.finishEnsure(ctx, st)
 				} else {
 					b.log("it still cannot after the repair: " + err.Error())
@@ -422,10 +429,10 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 				return st, err
 			}
 		} else {
-			if engine, _, _, err := b.verify(ctx); err != nil {
-				return st, fmt.Errorf("re-provisioned and it still cannot run a container: %w", err)
+			if report, err := b.verify(ctx); err != nil {
+				return st, fmt.Errorf("re-provisioned and it still does not verify: %w", err)
 			} else {
-				b.log("the engine answers: " + engine)
+				b.log("the engine answers: " + report.Engine)
 			}
 			return b.finishEnsure(ctx, st)
 		}
@@ -448,11 +455,11 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 		return st, b.rollbackUnmarked(err)
 	}
 	b.unmarked = false
-	engine, _, _, err := b.verify(ctx)
+	report, err := b.verify(ctx)
 	if err != nil {
-		return st, fmt.Errorf("built and it cannot run a container: %w", err)
+		return st, fmt.Errorf("built and it does not verify: %w", err)
 	}
-	b.log("the engine answers: " + engine)
+	b.log("the engine answers: " + report.Engine)
 	if err := b.writeRecord(); err != nil {
 		return st, err
 	}
@@ -828,15 +835,25 @@ func nativePlatformArch(value string) string {
 	}
 }
 
-// verify runs a real container as the unprivileged account and returns the
-// engine's own version line.
+// verifyReport is what verify.sh printed, each row read by its name.
+type verifyReport struct {
+	Engine string
+	Cgroup *CgroupState
+	Binfmt *BinfmtState
+	// Automount is what the guest's drives are, from the script's `automount` row.
+	Automount string
+}
+
 // verify runs a container as the unprivileged account and reads what came back.
 //
-// ⭐ IT RETURNS THREE THINGS AND THE THIRD IS NOT A HEALTH VERDICT. The engine
-// string and the error say whether this base works; the CgroupState says what it
-// can account for while it works, and a base with no delegation is healthy and
-// limited rather than broken. WSL-60.
-func (b *Base) verify(ctx context.Context) (string, *CgroupState, *BinfmtState, error) {
+// ⭐ THE REPORT IS NOT A HEALTH VERDICT. The error says whether this base works;
+// the CgroupState says what it can account for while it works, and a base with no
+// delegation is healthy and limited rather than broken. WSL-60.
+//
+// ⚠ A REFUSAL STILL CARRIES THE DRIVES. The script reads them before any check can
+// refuse, so a base whose drives disagree with its configuration reports what the
+// guest has beside the refusal. WSL-84.
+func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	half := func() string {
 		var raw [6]byte
 		if _, err := rand.Read(raw[:]); err != nil {
@@ -849,19 +866,19 @@ func (b *Base) verify(ctx context.Context) (string, *CgroupState, *BinfmtState, 
 	m1, m2 := half(), half()
 	automount, err := NormalizeAutomount(b.cfg.Base.Automount)
 	if err != nil {
-		return "", nil, nil, err
+		return verifyReport{}, err
 	}
 	interop, err := NormalizeBaseInterop(b.cfg.Base.Interop)
 	if err != nil {
-		return "", nil, nil, err
+		return verifyReport{}, err
 	}
 	toolset, err := NormalizeBaseToolset(b.cfg.Base.Toolset)
 	if err != nil {
-		return "", nil, nil, err
+		return verifyReport{}, err
 	}
 	_, checks, _, err := baseMountPayloads(b.cfg)
 	if err != nil {
-		return "", nil, nil, err
+		return verifyReport{}, err
 	}
 	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, map[string]string{
 		"TK_IMAGE":             VerifyImage,
@@ -874,14 +891,15 @@ func (b *Base) verify(ctx context.Context) (string, *CgroupState, *BinfmtState, 
 		"TK_TOOLSET":           toolset,
 		"TK_MOUNT_CHECKS":      checks,
 	}, 20*time.Minute)
+	drives := parseAutomount(out)
 	if err != nil || code != 0 {
-		return "", nil, nil, fmt.Errorf("a container did not run as %s (exit %d): %s", b.cfg.Base.User, code, firstLine(stderr+out))
+		return verifyReport{Automount: drives}, verifyError(b.cfg.Base.User, code, out, stderr)
 	}
 	// ⛔ Compared with whitespace removed: a tty wraps a long line, so a marker
 	// that arrived correctly can fail an exact match.
 	flat := strings.Join(strings.Fields(out), "")
 	if !strings.Contains(flat, m1+m2) {
-		return "", nil, nil, fmt.Errorf("the container ran and did not return the marker: %s", firstLine(out+stderr))
+		return verifyReport{Automount: drives}, fmt.Errorf("the container ran and did not return the marker: %s", firstLine(out+stderr))
 	}
 	engine := ""
 	for _, line := range strings.Split(out, "\n") {
@@ -891,7 +909,47 @@ func (b *Base) verify(ctx context.Context) (string, *CgroupState, *BinfmtState, 
 	}
 	// ⚠ `engine ` MATCHES BEFORE `engine-rootless ` DOES NOT, and it does not:
 	// the prefix compared carries a trailing space and that row's key does not.
-	return engine, parseCapabilities(out), parseBinfmt(out), nil
+	return verifyReport{Engine: engine, Cgroup: parseCapabilities(out), Binfmt: parseBinfmt(out), Automount: drives}, nil
+}
+
+// verifyRefused is the exit code verify.sh gives its own refusals.
+const verifyRefused = 3
+
+// verifyError is what a verification that did not pass says.
+//
+// ⚠ EXIT 3 WITH A `verify:` LINE IS THE SCRIPT'S OWN REFUSAL, made before a
+// container runs, so it names the setting the guest disagrees with. WSL-84: a
+// drive refusal read "a container did not run", which sends a reader after the
+// engine. Any other failure keeps the engine's words, which the stale run state
+// remediation classifies from.
+//
+// ⛔ THE CODE, NOT THE ERROR. Exec answers a guest's nonzero exit with a
+// ProcessError beside its code, so a refusal arrives with an error too, and the
+// first build that asked for no error never recognised one on a real guest.
+func verifyError(user string, code int, stdout, stderr string) error {
+	if refusal, ok := strings.CutPrefix(firstLine(stderr), "verify: "); ok && code == verifyRefused {
+		return fmt.Errorf("the base does not match its configuration, checked as %s: %s", user, refusal)
+	}
+	return fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, firstLine(stderr+stdout))
+}
+
+// parseAutomount reads the drives verify.sh measured from its `automount` row.
+//
+// ⚠ ONLY A VALUE THE SCRIPT PRINTS IS TAKEN. A row cut short answers empty, and an
+// empty answer is never read as off: off is a measurement, and empty is none.
+func parseAutomount(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		value, ok := strings.CutPrefix(strings.TrimSpace(line), "automount ")
+		if !ok {
+			continue
+		}
+		switch value = strings.TrimSpace(value); value {
+		case AutomountOff, AutomountReadOnly, AutomountReadWrite, AutomountMixed:
+			return value
+		}
+		return ""
+	}
+	return ""
 }
 
 // VerifyImage is what the health check runs: small, in the catalog, and pulled

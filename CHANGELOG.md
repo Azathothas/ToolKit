@@ -21,6 +21,28 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T15:04:56Z: a base's Windows drives are read back, and a changed automount is applied
+
+**Record:** `WSL-84` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the drive on a throwaway base, what driving it found and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-84`.
+
+⛔ **A BASE WHOSE DRIVES DISAGREE WITH `base.automount` IS PROVISIONED AGAIN, WHICH
+RESTARTS IT.** The verification checked nothing for `ro` or `rw` and printed the
+setting as its result, so a base changed from `rw` to `ro` kept `/mnt/c` writable and
+reported `ro` and usable. It now reads every mount at or below a one-letter directory
+under `/mnt`. `base ensure` over such a base exited 0 and changed nothing; it now
+provisions the base again and restarts the distribution, which stops what runs in it.
+`base status --probe` answers exit 1 until then.
+
+⭐ **`base status --probe` prints what the drives read beside the setting**, and
+`--json` carries it as `access.automount_guest`: `off`, `ro`, `rw`, or `mixed`.
+
+⚠ **`base shell` reads the same mounts.** `--root` names each drive as read-only or
+writable, where it called every drive writable. `--here` into a base with no drive
+mounted is refused with exit 2, where it started the shell in the account's home.
+
 ### 2026-09-14T10:31:57Z: a provider base is rebuilt from a clone in one command, with herdr and Muse as adapters
 
 **Record:** `WSL-77` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

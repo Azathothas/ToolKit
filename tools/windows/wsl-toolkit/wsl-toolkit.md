@@ -41,7 +41,7 @@ refuses it when it disagrees with the registered commands and flags.
 | **A file that grows while the workspace copies** would fail the copy with `archive/tar: write too long`, naming the archiver and not the file | the copy is bounded by the size in the header. The file travels as the prefix that was declared, and the result names it |
 | **A payload written on Windows carries CRLF**, and `/bin/sh` reads the carriage return as part of the last word | every spelling of a command has the copy that is sent repaired. The file on disk is never written to |
 | **`--workspace .` resolves against the working directory**, which a sandbox can reset | a relative path is resolved against the project configuration when there is one, the resolved host path is printed, and a filesystem root, a home directory or a system directory is refused outright |
-| **A writable `/mnt/c` inside the base** lets a wrong path in a job destroy the real checkout on Windows | the Windows drives mount read only. `base.automount` takes `rw` or `off`; explicit `base.mounts` grants are available only with automount and Windows interop both off |
+| **A writable `/mnt/c` inside the base** lets a wrong path in a job destroy the real checkout on Windows | the Windows drives mount read only, and the base's verification reads them back. `base.automount` takes `rw` or `off`; explicit `base.mounts` grants are available only with automount and Windows interop both off |
 
 ---
 
@@ -116,6 +116,23 @@ in.** When `%LOCALAPPDATA%\wsl-toolkit\instances\NAME\config.json` exists,
 project's `wsl-toolkit.json` does not change it. The project's file still applies
 to the default instance and to a named one with no file of its own, and `--config`
 comes before both.
+
+⛔ **A changed `base.automount` is applied, not only reported.** The verification
+reads the guest's drives from `/proc/mounts`: every mount at or below a one-letter
+directory under `/mnt`. `base status --probe` prints the setting and what the drives
+read, `off`, `ro`, `rw`, or `mixed` where a writable mount is beside a read-only one,
+and `--json` carries the second as `access.automount_guest`. A base whose drives do
+not match the setting answers exit 1 and names what disagrees. `base ensure`
+provisions it again, which restarts the distribution and stops what runs in it.
+`base shell` reads the same mounts: `--root` names each drive as read-only or
+writable, and `--here` into a base with no drive mounted is refused with exit 2 and
+`base ensure`.
+
+| measured on 2026-09-14, on a throwaway arch base with interop off | result |
+| --- | --- |
+| each of the six changes between `off`, `ro` and `rw`, three on a base built with the first value | `base status --probe` exit 1, naming the setting and the drives; `base ensure` exit 0 in 4.3 s to 4.7 s, provisioning again; then all ten drive mounts read-only under `ro`, writable under `rw`, and none under `off` |
+| guest root remounts one drive `rw` in an `ro` base | `base status --probe` exit 1, the drives `mixed`, 9 read-only and 1 writable; `base ensure` exit 0 in 4.5 s, and the drive `ro` again |
+| `base shell --here` on a base built `off` and set to `ro` | exit 2 naming `base ensure`; after it, the shell started in a directory under `/mnt/c` |
 
 `base exec` is the non-interactive host-to-guest seam. It starts as the
 configured account in that account's home unless `--dir` names an absolute

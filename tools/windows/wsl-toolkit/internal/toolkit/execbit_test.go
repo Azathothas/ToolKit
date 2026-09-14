@@ -5,10 +5,13 @@ package toolkit
 import (
 	"archive/tar"
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -324,6 +327,215 @@ func TestAutomountOffLeavesNoDriveMountPoints(t *testing.T) {
 	}
 	if !strings.Contains(string(verifyScript), `if [ -e "$drive_dir" ]; then`) {
 		t.Error("the verifier does not refuse a drive mount point that automount off should have left absent")
+	}
+}
+
+// verifierDriveSection is the verifier's own drive section, reading a mounts table
+// and a drive root under dir in place of /proc/mounts and /mnt.
+//
+// ⛔ EACH PATH IS REPLACED EXACTLY ONCE, OR THE CASE STOPS. A section that stopped
+// naming them would otherwise read this host's own /proc/mounts and /mnt.
+func verifierDriveSection(t *testing.T, mounts, root string) string {
+	t.Helper()
+	script := string(verifyScript)
+	begin := strings.Index(script, "# >>> the windows drives: begin\n")
+	end := strings.Index(script, "# <<< the windows drives: end\n")
+	if begin < 0 || end < begin {
+		t.Fatalf("the verifier's drive section is not marked: begin at %d, end at %d", begin, end)
+	}
+	section := script[begin:end]
+	for from, to := range map[string]string{
+		"\ndrive_mounts=/proc/mounts\n": "\ndrive_mounts='" + mounts + "'\n",
+		"\ndrive_root=/mnt\n":           "\ndrive_root='" + root + "'\n",
+	} {
+		if n := strings.Count(section, from); n != 1 {
+			t.Fatalf("the drive section names %q %d times, want once", strings.TrimSpace(from), n)
+		}
+		section = strings.Replace(section, from, to, 1)
+	}
+	return "set -eu\n" + section
+}
+
+// TestTheVerifierReadsTheDrivesItPromises runs the verifier's drive section through
+// a real POSIX shell over a mounts table written here.
+//
+// ⛔ WSL-84. A base changed from rw to ro kept /mnt/c mounted `9p rw`, and the
+// verifier printed `automount ro` and passed, because it checked nothing for ro or
+// rw. Measured on a throwaway arch base on 2026-09-14, with each direction below.
+func TestTheVerifierReadsTheDrivesItPromises(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the verifier is read by a POSIX shell, and this host has none to hand it to")
+	}
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh on this host")
+	}
+	const (
+		readOnly = "ro,noatime,aname=drvfs;path=X:\\;uid=1000;gid=1000;metadata"
+		writable = "rw,noatime,aname=drvfs;path=X:\\;uid=1000;gid=1000;metadata"
+		tmpfs    = "rw,relatime,inode64"
+	)
+	type mount struct{ target, options string }
+	var (
+		cWritable = mount{"c", writable}
+		dWritable = mount{"d", writable}
+		cReadOnly = mount{"c", readOnly}
+		dReadOnly = mount{"d", readOnly}
+		wslOwn    = mount{"wsl", tmpfs}
+		wslgOwn   = mount{"wslg/distro", tmpfs}
+		belowC    = mount{"c/work", writable}
+	)
+	cases := []struct {
+		name    string
+		setting string
+		mounts  []mount
+		dirs    []string
+		exit    int
+		row     string
+		refusal string
+	}{
+		{"writable drives under ro, the measured defect", AutomountReadOnly,
+			[]mount{cWritable, dWritable}, nil, 3, AutomountReadWrite,
+			"automount is ro, and below /mnt 0 mount(s) are read-only and 2 writable"},
+		{"no drive under ro, as after off", AutomountReadOnly,
+			nil, nil, 3, AutomountOff,
+			"automount is ro, and below /mnt 0 mount(s) are read-only and 0 writable"},
+		{"a read-only drive under off, as after ro", AutomountOff,
+			[]mount{cReadOnly}, nil, 3, AutomountReadOnly,
+			"a Windows drive is mounted below /mnt even though automount is off"},
+		{"read-only drives under ro, beside WSL's own writable mounts", AutomountReadOnly,
+			[]mount{cReadOnly, dReadOnly, wslOwn, wslgOwn}, nil, 0, AutomountReadOnly, ""},
+		{"writable drives under rw", AutomountReadWrite,
+			[]mount{cWritable}, nil, 0, AutomountReadWrite, ""},
+		{"a read-only drive under rw", AutomountReadWrite,
+			[]mount{cReadOnly}, nil, 3, AutomountReadOnly,
+			"automount is rw, and below /mnt 1 mount(s) are read-only and 0 writable"},
+		{"a writable mount below a read-only drive", AutomountReadOnly,
+			[]mount{cReadOnly, belowC}, nil, 3, AutomountMixed,
+			"automount is ro, and below /mnt 1 mount(s) are read-only and 1 writable"},
+		{"an empty mount point under off", AutomountOff,
+			nil, []string{"c"}, 3, AutomountOff, "c exists even though automount is off"},
+		{"nothing under off", AutomountOff,
+			nil, []string{"wsl"}, 0, AutomountOff, ""},
+		{"a setting the script does not know", "read-only",
+			nil, nil, 3, AutomountOff, "unknown automount setting read-only"},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		if strings.ContainsAny(dir, " \t'") {
+			t.Skipf("the temporary directory %q cannot be a field in a mounts table", dir)
+		}
+		root := filepath.Join(dir, "mnt")
+		for _, d := range append([]string{""}, c.dirs...) {
+			if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var table strings.Builder
+		fmt.Fprintf(&table, "none %s/wsl tmpfs rw,relatime 0 0\n", dir)
+		for _, m := range c.mounts {
+			fmt.Fprintf(&table, "X:\\134 %s/%s 9p %s 0 0\n", root, m.target, m.options)
+		}
+		mounts := filepath.Join(dir, "mounts")
+		if err := os.WriteFile(mounts, []byte(table.String()), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("/bin/sh", "-c", verifierDriveSection(t, mounts, root))
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "TK_AUTOMOUNT=" + c.setting}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		code := 0
+		if err := cmd.Run(); err != nil {
+			var exited *exec.ExitError
+			if !errors.As(err, &exited) {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			code = exited.ExitCode()
+		}
+		if code != c.exit {
+			t.Errorf("%s: exit %d, want %d; stderr %q", c.name, code, c.exit, stderr.String())
+		}
+		if got := parseAutomount(stdout.String()); got != c.row {
+			t.Errorf("%s: the automount row read %q, want %q; stdout %q", c.name, got, c.row, stdout.String())
+		}
+		if c.refusal == "" && stderr.Len() > 0 {
+			t.Errorf("%s: wrote to stderr over drives that agree: %q", c.name, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), c.refusal) {
+			t.Errorf("%s: stderr %q does not name %q", c.name, stderr.String(), c.refusal)
+		}
+	}
+}
+
+// TestAVerifierRefusalNamesTheSettingAndNotAContainer is the message a drive refusal
+// gives. It is made before a container runs, and read "a container did not run as
+// toolkit (exit 3)" when WSL-84 was first driven, which sends a reader after the
+// engine. An engine failure keeps the engine's words, which a remediation reads.
+func TestAVerifierRefusalNamesTheSettingAndNotAContainer(t *testing.T) {
+	const drives = "automount is ro, and below /mnt 0 mount(s) are read-only and 10 writable"
+	got := verifyError("toolkit", verifyRefused, "automount rw\n", "verify: "+drives+"\n")
+	if got == nil || got.Error() != "the base does not match its configuration, checked as toolkit: "+drives {
+		t.Errorf("the drive refusal read %v", got)
+	}
+	engine := "Error: current system boot ID differs from cached boot ID; an unclean shutdown may have occurred. " +
+		"Delete /tmp/wsl-toolkit-run-1000/containers and /tmp/wsl-toolkit-run-1000/libpod/tmp"
+	stale := verifyError("toolkit", 125, "", engine+"\n")
+	if stale == nil || !strings.HasPrefix(stale.Error(), "a container did not run as toolkit (exit 125): Error: current system boot ID") {
+		t.Errorf("an engine failure read %v", stale)
+	} else if _, ok := staleRunStateRemediation(stale.Error()); !ok {
+		t.Errorf("an engine failure no longer carries the words its remediation reads: %v", stale)
+	}
+	if other := verifyError("toolkit", verifyRefused, "", "sh: podman: not found\n"); other == nil || !strings.HasPrefix(other.Error(), "a container did not run") {
+		t.Errorf("an exit 3 with no verify line was read as a refusal: %v", other)
+	}
+	if timeout := verifyError("toolkit", 124, "automount ro\n", "verify: "+drives+"\n"); timeout == nil || !strings.HasPrefix(timeout.Error(), "a container did not run as toolkit (exit 124)") {
+		t.Errorf("a verification ended by its deadline was read as a refusal: %v", timeout)
+	}
+}
+
+// TestTheWindowsDriveMountsAreReadFromTheMountTable holds the root shell's source.
+// It read the one-letter directories under /mnt and called each drive writable, in a
+// base whose drives were all mounted `9p ro`. The lines below are the shapes measured
+// in the default base and a throwaway on 2026-09-14.
+func TestTheWindowsDriveMountsAreReadFromTheMountTable(t *testing.T) {
+	const options = "noatime,aname=drvfs;path=X:\\;uid=1000;gid=1000;metadata;symlinkroot=/mnt/,cache=0x5,access=client,msize=65536,trans=fd,rfd=5,wfd=5"
+	table := strings.Join([]string{
+		"none /mnt/wsl tmpfs rw,relatime,inode64 0 0",
+		"/dev/sdf /mnt/wslg/distro ext4 ro,relatime,discard,errors=remount-ro,data=ordered 0 0",
+		"C:\\134 /mnt/c 9p ro," + options + " 0 0",
+		"D:\\134 /mnt/d 9p rw," + options + " 0 0",
+		"none /mnt/c/work tmpfs rw,relatime 0 0",
+		"none /workspaces/project 9p rw," + options + " 0 0",
+		"short line",
+	}, "\n")
+	got := parseWindowsDriveMounts(table)
+	want := []WindowsDriveMount{
+		{Target: "/mnt/c", ReadOnly: true},
+		{Target: "/mnt/d", ReadOnly: false},
+		{Target: "/mnt/c/work", ReadOnly: false},
+	}
+	if fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("read %+v, want %+v", got, want)
+	}
+}
+
+// TestTheVerifiersAutomountRowIsReadByItsValue holds what the report takes from the
+// verifier: a value the script prints, and never an empty or unknown one read as off.
+func TestTheVerifiersAutomountRowIsReadByItsValue(t *testing.T) {
+	for out, want := range map[string]string{
+		"interop off\nautomount rw\nengine podman version 6.1.1\n": AutomountReadWrite,
+		"automount mixed\n":           AutomountMixed,
+		"automount off\n":             AutomountOff,
+		"  automount ro\r\n":          AutomountReadOnly,
+		"automount read-only\n":       "",
+		"automount \n":                "",
+		"engine podman version 6.1.1": "",
+	} {
+		if got := parseAutomount(out); got != want {
+			t.Errorf("%q read %q, want %q", out, got, want)
+		}
+	}
+	if _, err := NormalizeAutomount(AutomountMixed); err == nil {
+		t.Error("mixed, a measurement of the drives, was accepted as a setting")
 	}
 }
 

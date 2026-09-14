@@ -22,25 +22,63 @@ set -eu
 
 # The configuration files are intentions. These checks run after WSL has been
 # terminated and started again, so they answer whether WSL honored them.
+
+# >>> the windows drives: begin
+# ⛔ THE DRIVES ARE READ, AND THE LINE PRINTED IS WHAT THEY ARE. A base changed
+# from rw to ro kept /mnt/c mounted `9p rw` while this script printed `automount
+# ro`, because it checked nothing for ro or rw. WSL-84. Every mount at or below a
+# one-letter directory under /mnt counts, so a writable mount below a read-only
+# drive makes the drives `mixed`. The line comes before any refusal, so a refused
+# base still reports what its guest has.
+drive_mounts=/proc/mounts
+drive_root=/mnt
+drives_ro=0
+drives_rw=0
+while read -r _source live_target _type live_options _rest; do
+  case "$live_target" in
+    "$drive_root"/[[:alpha:]]|"$drive_root"/[[:alpha:]]/*) ;;
+    *) continue ;;
+  esac
+  case "$live_options" in
+    ro|ro,*) drives_ro=$((drives_ro + 1)) ;;
+    *) drives_rw=$((drives_rw + 1)) ;;
+  esac
+done < "$drive_mounts"
+if [ "$drives_ro" -gt 0 ] && [ "$drives_rw" -gt 0 ]; then
+  drives=mixed
+elif [ "$drives_rw" -gt 0 ]; then
+  drives=rw
+elif [ "$drives_ro" -gt 0 ]; then
+  drives=ro
+else
+  drives=off
+fi
+printf 'automount %s\n' "$drives"
+
 case "$TK_AUTOMOUNT" in
   off)
-    if grep -Eq '[[:space:]]/mnt/[[:alpha:]]([[:space:]]|/)' /proc/mounts; then
+    if [ "$drives" != off ]; then
       printf 'verify: a Windows drive is mounted below /mnt even though automount is off\n' >&2
       exit 3
     fi
     # ⛔ ABSENT, NOT EMPTY. An empty mount point left by the first start answers
     # `ls /mnt/c` with success, which is not what automount off promises.
-    for drive_dir in /mnt/?; do
+    for drive_dir in "$drive_root"/?; do
       if [ -e "$drive_dir" ]; then
         printf 'verify: %s exists even though automount is off\n' "$drive_dir" >&2
         exit 3
       fi
     done
     ;;
-  ro|rw) ;;
+  ro|rw)
+    if [ "$drives" != "$TK_AUTOMOUNT" ]; then
+      printf 'verify: automount is %s, and below /mnt %s mount(s) are read-only and %s writable\n' "$TK_AUTOMOUNT" "$drives_ro" "$drives_rw" >&2
+      exit 3
+    fi
+    ;;
   *) printf 'verify: unknown automount setting %s\n' "$TK_AUTOMOUNT" >&2; exit 3 ;;
 esac
-printf 'automount %s\n' "$TK_AUTOMOUNT"
+# <<< the windows drives: end
 
 case "$TK_INTEROP" in
   off)

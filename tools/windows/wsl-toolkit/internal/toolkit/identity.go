@@ -280,8 +280,15 @@ func (w *Wsl) writeGuestFile(ctx context.Context, distro, guestPath string, data
 	return nil
 }
 
-// MountedWindowsDrives lists the Windows drives WSL has mounted inside a
-// distribution, so a warning can name what is actually reachable.
+// WindowsDriveMount is one mount at or below a one-letter directory under /mnt, as
+// the guest's /proc/mounts shows it.
+type WindowsDriveMount struct {
+	Target   string
+	ReadOnly bool
+}
+
+// MountedWindowsDrives lists the Windows drive mounts inside a distribution, so a
+// warning can name what is actually reachable, and how.
 //
 // ⛔ ASKED, NOT ASSUMED. `/etc/wsl.conf` says automount is enabled, and which
 // drives that produces depends on what Windows has mounted at the moment the
@@ -289,29 +296,49 @@ func (w *Wsl) writeGuestFile(ctx context.Context, distro, guestPath string, data
 // about a property the command line does not enforce, which is the class
 // docs/conventions/forbidden-patterns.md names.
 //
-// ⚠ An empty answer means "none found", including the case where the question
-// could not be asked. The caller's message says "no drive is mounted", which is
-// weaker than the truth in that one case and never stronger.
-func MountedWindowsDrives(ctx context.Context, w *Wsl, distro string) []string {
+// ⛔ THE MOUNTS, NOT THE DIRECTORIES. This read the one-letter directories under
+// /mnt, and `base shell --root` then called every drive "mounted and writable" in a
+// base whose drives were all read-only, where root's touch answered "Read-only file
+// system". Measured on 2026-09-14 by WSL-84's door sweep. It reads the same mounts
+// verify.sh counts, by the same rule.
+//
+// ⚠ NONE FOUND AND NOT ASKED ARE TWO ANSWERS. An error means the table could not be
+// read, and a caller says so rather than "no drive is mounted".
+func MountedWindowsDrives(ctx context.Context, w *Wsl, distro string) ([]WindowsDriveMount, error) {
 	if err := AssertOwnedDistro(distro); err != nil {
-		return nil
+		return nil, err
 	}
 	bounded, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	out := &boundedBuffer{max: 64 << 10}
+	out := &boundedBuffer{max: 256 << 10}
 	code, err := w.ExecDirect(bounded, distro, "root", "",
-		[]string{"/bin/ls", "-1", "/mnt"}, nil, out, nil, 30*time.Second)
+		[]string{"/bin/cat", "/proc/mounts"}, nil, out, nil, 30*time.Second)
 	if err != nil || code != 0 {
-		return nil
+		return nil, fmt.Errorf("the mounts of %s could not be read (exit %d): %v", distro, code, err)
 	}
-	var drives []string
-	for _, line := range strings.Split(out.String(), "\n") {
-		name := strings.TrimSpace(strings.Trim(line, "\r\x00"))
-		// A drive is one letter. /mnt also holds wsl, wslg and whatever else
-		// somebody put there, and none of those is a Windows volume.
-		if len(name) == 1 && name[0] >= 'a' && name[0] <= 'z' {
-			drives = append(drives, "/mnt/"+name)
+	return parseWindowsDriveMounts(out.String()), nil
+}
+
+// parseWindowsDriveMounts reads the Windows drive mounts out of a mounts table. A
+// drive is a one-letter directory under /mnt; /mnt also holds wsl, wslg and whatever
+// else somebody put there, and none of those is a Windows volume.
+func parseWindowsDriveMounts(table string) []WindowsDriveMount {
+	var drives []WindowsDriveMount
+	for _, line := range strings.Split(table, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 {
+			continue
 		}
+		rest, ok := strings.CutPrefix(fields[1], "/mnt/")
+		if !ok || rest == "" || !isDriveLetter(rest[0]) || (len(rest) > 1 && rest[1] != '/') {
+			continue
+		}
+		mode, _, _ := strings.Cut(fields[3], ",")
+		drives = append(drives, WindowsDriveMount{Target: fields[1], ReadOnly: mode == "ro"})
 	}
 	return drives
+}
+
+func isDriveLetter(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }

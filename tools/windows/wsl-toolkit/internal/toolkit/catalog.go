@@ -95,9 +95,13 @@ type BaseMount struct {
 }
 
 const (
-	AutomountReadOnly    = "ro"
-	AutomountReadWrite   = "rw"
-	AutomountOff         = "off"
+	AutomountReadOnly  = "ro"
+	AutomountReadWrite = "rw"
+	AutomountOff       = "off"
+	// AutomountMixed is a guest's drives read back with a writable mount beside a
+	// read-only one. ⛔ It is a measurement and never a setting, so NormalizeAutomount
+	// refuses it.
+	AutomountMixed       = "mixed"
 	BaseInteropOn        = "on"
 	BaseInteropOff       = "off"
 	BaseMountReadOnly    = "ro"

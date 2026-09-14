@@ -895,6 +895,150 @@
       "args": []
     },
     {
+      "label": "drives: the verifier comparing the drives it read with ro or rw",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    if [ \"$drives\" != \"$TK_AUTOMOUNT\" ]; then",
+      "replace": "    if false; then",
+      "run": "TestTheVerifierReadsTheDrivesItPromises",
+      "args": []
+    },
+    {
+      "label": "drives: the verifier refusing a mounted drive under automount off",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    if [ \"$drives\" != off ]; then",
+      "replace": "    if false; then",
+      "run": "TestTheVerifierReadsTheDrivesItPromises",
+      "args": []
+    },
+    {
+      "label": "drives: the automount row printing what the drives are",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "printf 'automount %s\\n' \"$drives\"",
+      "replace": "printf 'automount %s\\n' \"$TK_AUTOMOUNT\"",
+      "run": "TestTheVerifierReadsTheDrivesItPromises",
+      "args": []
+    },
+    {
+      "label": "drives: a writable drive mount counted as writable",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    *) drives_rw=$((drives_rw + 1)) ;;",
+      "replace": "    *) drives_ro=$((drives_ro + 1)) ;;",
+      "run": "TestTheVerifierReadsTheDrivesItPromises",
+      "args": []
+    },
+    {
+      "label": "drives: a read-only drive mount counted as read-only",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    ro|ro,*) drives_ro=$((drives_ro + 1)) ;;",
+      "replace": "    ro|ro,*) drives_rw=$((drives_rw + 1)) ;;",
+      "run": "TestTheVerifierReadsTheDrivesItPromises",
+      "args": []
+    },
+    {
+      "label": "drives: a mount below a drive counted with the drives",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    \"$drive_root\"/[[:alpha:]]|\"$drive_root\"/[[:alpha:]]/*) ;;",
+      "replace": "    \"$drive_root\"/[[:alpha:]]) ;;",
+      "run": "TestTheVerifierReadsTheDrivesItPromises",
+      "args": []
+    },
+    {
+      "label": "drives: a verifier refusal naming the setting and not a container",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok && code == verifyRefused {",
+      "replace": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok && false {",
+      "run": "TestAVerifierRefusalNamesTheSettingAndNotAContainer",
+      "args": []
+    },
+    {
+      "label": "drives: only the verifier's own exit read as its refusal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok && code == verifyRefused {",
+      "replace": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok {",
+      "run": "TestAVerifierRefusalNamesTheSettingAndNotAContainer",
+      "args": []
+    },
+    {
+      "label": "drives: a root shell reading each drive's mode from its mount options",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "\t\tdrives = append(drives, WindowsDriveMount{Target: fields[1], ReadOnly: mode == \"ro\"})",
+      "replace": "\t\tdrives = append(drives, WindowsDriveMount{Target: fields[1], ReadOnly: len(mode) < 0})",
+      "run": "TestTheWindowsDriveMountsAreReadFromTheMountTable",
+      "args": []
+    },
+    {
+      "label": "drives: a root shell counting a mount below a drive",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/identity.go",
+      "find": "if !ok || rest == \"\" || !isDriveLetter(rest[0]) || (len(rest) > 1 && rest[1] != '/') {",
+      "replace": "if !ok || rest == \"\" || !isDriveLetter(rest[0]) || len(rest) > 1 {",
+      "run": "TestTheWindowsDriveMountsAreReadFromTheMountTable",
+      "args": []
+    },
+    {
+      "label": "drives: a root shell naming a read-only drive as read-only",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\t\tif d.ReadOnly {",
+      "replace": "\t\tif false {",
+      "run": "TestARootShellNamesEachDriveByItsMode",
+      "args": []
+    },
+    {
+      "label": "drives: a root shell saying the drives could not be read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tif readErr != nil {\n\t\treturn msg + \". Which Windows drives are mounted could not be read: \" + readErr.Error()\n\t}",
+      "replace": "\tif readErr != nil && false {\n\t\treturn msg + \". Which Windows drives are mounted could not be read: \" + readErr.Error()\n\t}",
+      "run": "TestARootShellNamesEachDriveByItsMode",
+      "args": []
+    },
+    {
+      "label": "drives: base shell --here refused into a base with no drive",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tif readErr != nil || len(drives) > 0 {",
+      "replace": "\tif true {",
+      "run": "TestAShellHereIntoABaseWithNoDriveIsRefused",
+      "args": []
+    },
+    {
+      "label": "drives: base shell --here refusing nothing on a read that failed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tif readErr != nil || len(drives) > 0 {",
+      "replace": "\tif len(drives) > 0 {",
+      "run": "TestAShellHereIntoABaseWithNoDriveIsRefused",
+      "args": []
+    },
+    {
+      "label": "drives: the report reading mixed from the automount row",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tcase AutomountOff, AutomountReadOnly, AutomountReadWrite, AutomountMixed:",
+      "replace": "\t\tcase AutomountOff, AutomountReadOnly, AutomountReadWrite:",
+      "run": "TestTheVerifiersAutomountRowIsReadByItsValue",
+      "args": []
+    },
+    {
+      "label": "drives: base status printing the guest's drives beside the setting",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tif access.AutomountGuest == \"\" {",
+      "replace": "\tif true {",
+      "run": "TestTheAutomountRowCarriesTheGuestsDrives",
+      "args": []
+    },
+    {
       "label": "the provisioner leaving the directory WSL started it in",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
