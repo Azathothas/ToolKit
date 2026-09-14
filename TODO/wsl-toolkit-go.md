@@ -6618,11 +6618,47 @@ s, where the first matrix's mid-run panics waited 540 s and 660 s for their budg
 panicked, including the one that shows the hypervisor, so hiding the bit is not the
 cause, and memory is not either.
 
-### Still open
+### One-vCPU proof and checkpoint, 2026-09-14
 
-1. ⚠ One vCPU, and it is a hypothesis: the panics are spread across memory and
-   filesystem code rather than one driver, which is the shape a race between two
-   processors would leave. Five `--cpus 1` runs were queued and had not started when
-   the session stopped. If one vCPU measures free of panics, the default changes here.
-2. A run on the shared image that boots, grows it and reads back its packages.
-3. The three reviews, and the closing.
+⭐ **The hypothesis held for five fresh images.** Each run copied and verified the
+published archive into its own cache under `.tmp`, expanded it, and ran the exact
+`WSL-72` language-toolset payload with `--cpus 1`, 2048 MiB and a 25-minute budget.
+The host ran no other toolkit guest or mutation job beside them.
+
+| run | wall | guest | boot | exit | panic |
+| --- | ---: | ---: | ---: | ---: | --- |
+| 1 | 320.3 s | 312.4 s | 11.8 s | 0 | none |
+| 2 | 212.0 s | 204.2 s | 13.8 s | 0 | none |
+| 3 | 234.1 s | 225.3 s | 11.8 s | 0 | none |
+| 4 | 316.3 s | 307.8 s | 15.0 s | 0 | none |
+| 5 | 264.3 s | 255.6 s | 12.5 s | 0 | none |
+
+All five reported the six expected tools present, `nim 2.2.10`, `rustc 1.96.1`,
+no failed package, no mid-run panic and no `shutdown_panic`: **5 clean of 5**.
+Each expanded copy was 12,884,901,888 bytes and was deleted immediately after its
+result was recorded; no image copy, QEMU process or toolkit process remained.
+
+⭐ **The shared image also passed the non-mutating part of the prove.** With one
+vCPU it booted, grew from the published 6,476,638,208 bytes to 12,884,901,888
+bytes, and read back 500 packages, 499 named `FreeBSD-*`. The sorted package
+baseline's SHA-256 was
+`f447f1da…0d9aa2`.
+`df -k /` read 11,138,540 1024-blocks, 2,608,628 used and 7,638,832 available.
+The run exited 0 in 35.7 s with no panic.
+
+⭐ **Built from that result:** `bsd run` now defaults to one processor in both the
+command and the library fallback; `--cpus` remains an override. The manual names
+the default and the five-run basis. The unmutated command-line case passed, and a
+mutation that restores the old two-processor default went red.
+
+⭐ **Door sweep complete.** The public `bsd run` path has one library entry point.
+Command waits converge on `waitFrom`, boot has its own closed-console branch, and
+poweroff converges on `stopAndReadPanic`; no sibling wait bypasses the panic or
+closed-console guards.
+
+### Still open at this checkpoint
+
+1. The WSL-81 guard mutation lens. Its broad `bsd:` run completed its child tests
+   but left the runner idle; the checkpoint stopped that runner after confirming
+   the planted edit had been restored. Re-run the seven WSL-81 rows narrowly.
+2. The claim audit, the closing record, and the full gate on the closing change.

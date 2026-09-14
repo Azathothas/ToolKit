@@ -1840,6 +1840,15 @@
       "args": []
     },
     {
+      "label": "bsd: the panic-rate profile defaults to one processor",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tBsdDefaultVCPUs = 1\n",
+      "replace": "\tBsdDefaultVCPUs = 2\n",
+      "run": "TestTheGuestBootsWithoutTheHyperVWait",
+      "args": []
+    },
+    {
       "label": "bsd: the guest boots with no default devices",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",

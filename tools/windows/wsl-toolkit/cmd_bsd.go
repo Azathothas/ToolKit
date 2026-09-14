@@ -272,7 +272,7 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	timeout := fs.Duration("timeout", 15*time.Minute, "the whole session, the boot included")
 	network := fs.Bool("network", false, "give the guest outbound user-mode networking. Nothing is forwarded inward")
 	mem := fs.Int("memory", 2048, "guest memory in MiB")
-	vcpus := fs.Int("cpus", 2, "guest processor count")
+	vcpus := fs.Int("cpus", toolkit.BsdDefaultVCPUs, "guest processor count")
 	disk := fs.Int("disk", toolkit.BsdDefaultDiskGiB, "guest disk in GiB. The image grows to it and never shrinks, and the root filesystem follows in the guest")
 	noConsole := fs.Bool("no-console", false, "do not mirror the guest console while it boots")
 	asJSON := fs.Bool("json", false, "write a structured answer")

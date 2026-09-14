@@ -292,6 +292,11 @@ between runs. ⚠ The guest is not shown the host's hypervisor signature, becaus
 FreeBSD kernel that sees it waits about 105 seconds before mounting root, for a
 Hyper-V VMBus QEMU does not provide.
 
+⭐ **The default is one vCPU.** Five fresh-image toolchain installs completed
+without a kernel panic with one processor on 2026-09-14. The same guest panicked
+under every two-processor CPU model and memory size measured. `--cpus` overrides
+the default.
+
 ⭐ **A script reaches the guest as a file, byte for byte.** `-c` and `--script` travel
 on a second read-only disk and run from a copy in `/tmp`, so a comment, a blank line
 and a command split across lines run as written. Its stdin is `/dev/null`, and the

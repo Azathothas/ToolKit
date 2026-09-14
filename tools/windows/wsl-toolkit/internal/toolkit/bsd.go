@@ -85,6 +85,12 @@ const (
 	// `Unimplemented handler` onto the console 256 times a boot. WSL-79.
 	BsdCPU = "Icelake-Server-v7,-hypervisor,-clflush,-clflushopt"
 
+	// BsdDefaultVCPUs is one because the FreeBSD image panics under concurrent
+	// package work on this WHPX host. Five fresh-image runs with one processor
+	// completed without a panic; the earlier two-processor matrix panicked under
+	// every CPU model and memory size it tried. Measured 2026-09-14. WSL-81.
+	BsdDefaultVCPUs = 1
+
 	// BsdDefaultDiskGiB is the guest disk a run grows the image to.
 	//
 	// ⭐ THE OPERATOR RULED A TRUE 10 GiB ROOT, "raise it to 12/13 however much
@@ -423,7 +429,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 		spec.MemMiB = 2048
 	}
 	if spec.VCpus <= 0 {
-		spec.VCpus = 2
+		spec.VCpus = BsdDefaultVCPUs
 	}
 	if spec.DiskGiB <= 0 {
 		spec.DiskGiB = BsdDefaultDiskGiB

@@ -7,6 +7,34 @@ on what was true last time.
 
 ---
 
+## 2026-09-14, resumed session
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-14T06:44:07Z | ended at the checkpoint commit's own time, after the operator stopped the session for budget |
+| Commits | `24fd159`, clean `main`, CI run 34814120051 still finishing | no intervening commit; this checkpoint commit is pushed after the table is written. Run 34814120051 finished green in all six jobs |
+| Work | issues 30 and 32 open; `WSL-81`'s one-vCPU runs unstarted | **Completed 0, partial 1, deferred 9 open entries, failed 0.** `WSL-81`: empirical proof and default complete; seven narrow guard mutations, claim audit and closing remain. Issues 30 and 32 remain open; no release |
+| Changes | 0 files changed from `24fd159` | 9 files, +138 / -26 before this same-line measurement replaced its placeholder |
+| Size | 81,328 tracked text lines at `24fd159` | 81,440, +112 before this same-line measurement replaced its placeholder |
+| Checks | doctor exit 0; start gate 20 of 20 outside the filesystem sandbox in about 76 s | Windows Go proof green with the 8.3 temporary path; Linux Go proof green in `golang:1.25`; ShellCheck 0.9.0 clean in `ubuntu:24.04`. The end gate first refused two full digests in tracked records; they were abbreviated, then all 20 checks passed; the exact-byte rerun also passed |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation and no Muse prompt. Network bytes not measured: five FreeBSD language package transactions and two container proofs ran. Five image-copy directories totalling 67,755,936,860 bytes were deleted; the shared image grew by 6,408,263,680 bytes |
+| Health | the shared FreeBSD image was the restored 6,476,638,208-byte published image; four registered distributions; no throwaway | shared image healthy at 12,884,901,888 bytes with its 500-package baseline intact; the same four distributions; every image copy removed; no QEMU or toolkit process left. WSL-81 remains explicitly partial; tree clean after the checkpoint commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| resume unattended from the record and complete the remaining work | ⚠ **partly.** Startup obligations were completed. `WSL-81`'s five-run hypothesis and shared-image proof completed, and the safer default was built. The operator then requested a checkpoint because the session budget ended |
+| when a step needs the operator, print exact commands, keep working and poll | no operator action or credential was needed in this resumed session |
+| end with the gate, record, saved and printed summary, and a resume prompt printed only in chat | done by this checkpoint; the resume prompt is not written to the tree |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. Finish `WSL-81`'s seven narrow guard
+mutations and claim audit, close it on a green gate, then continue at `WSL-72`.
+
+---
+
 ## 2026-09-14
 
 | row | before | after |

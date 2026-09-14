@@ -164,12 +164,12 @@ func TestAGuestWhoseConsoleClosesIsNotWaitedOn(t *testing.T) {
 	}
 }
 
-// TestTheGuestBootsWithoutTheHyperVWait holds the three things WSL-79 measured into
-// the command line: the hypervisor bit hidden, which is what keeps FreeBSD's VMBus
-// driver from holding root mount for about 105 seconds; no default devices; and the
-// payload disk after the root disk, which is what makes it the guest's vtbd1.
+// TestTheGuestBootsWithoutTheHyperVWait holds the measured CPU profile: WSL-81's
+// one-processor default; WSL-79's hidden hypervisor bit, which keeps FreeBSD's
+// VMBus driver from holding root mount for about 105 seconds; no default devices;
+// and the payload disk after the root disk, which makes it the guest's vtbd1.
 func TestTheGuestBootsWithoutTheHyperVWait(t *testing.T) {
-	args := bsdQemuArgs(BsdRunSpec{VCpus: 2, MemMiB: 2048}, "tk-payload-x.tar")
+	args := bsdQemuArgs(BsdRunSpec{VCpus: BsdDefaultVCPUs, MemMiB: 2048}, "tk-payload-x.tar")
 	value := func(flag string) string {
 		for i := 0; i+1 < len(args); i++ {
 			if args[i] == flag {
@@ -179,6 +179,9 @@ func TestTheGuestBootsWithoutTheHyperVWait(t *testing.T) {
 		return ""
 	}
 	cpu := value("-cpu")
+	if BsdDefaultVCPUs != 1 || value("-smp") != "1" {
+		t.Errorf("the panic-rate profile uses %d processors and emits -smp %q", BsdDefaultVCPUs, value("-smp"))
+	}
 	for _, feature := range []string{"-hypervisor", "-clflush", "-clflushopt"} {
 		if !strings.Contains(","+cpu+",", ","+feature+",") {
 			t.Errorf("the CPU model %q does not carry %s", cpu, feature)
