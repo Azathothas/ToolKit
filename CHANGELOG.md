@@ -21,6 +21,24 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T06:30:00Z: one base serves every project, and a grant changes without a restart
+
+**Record:** `WSL-75` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the prove on a throwaway base, what driving it found and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-75`, in [issue 32](https://github.com/Azathothas/ToolKit/issues/32).
+
+⛔ **A BREAK FOR ONE COMBINATION.** A named instance whose own `config.json` exists
+now reads that file before a `wsl-toolkit.json` in the working directory. A command
+run from inside a project with `--instance NAME` used the project's file before, and
+now uses the instance's. `--config` still comes first, and `config` says which file
+won and why.
+
+⭐ **`base grant` and `base revoke` change one Windows directory grant with no
+restart**, so nothing running in the base stops. The base changes first and the
+configuration file second, and a grant a process is standing in stays as it was.
+Provisioning now writes the fstab block through the same script.
+
 ### 2026-09-14T04:11:39Z: a BSD run takes seconds, and its script runs as written
 
 **Record:** `WSL-79` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 116  open 11  blocked 0  done 105
+total 116  open 10  blocked 0  done 106
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 1 | 0 | 59 | 60 |
-| P2 | 10 | 0 | 36 | 46 |
+| P2 | 9 | 0 | 37 | 46 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **11** | **0** | **105** | **116** |
+| **all** | **10** | **0** | **106** | **116** |
 
 ---
 
@@ -112,7 +112,7 @@ total 116  open 11  blocked 0  done 105
 | WSL-72 | P2 | S | open | The BSD guest gets a 10 GiB disk, and the languages install on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-73 | P1 | XL | done | The PowerShell product retires, and pull request 31 is reviewed before any of it lands | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-74 | P1 | S | done | A named instance acts on whatever base the nearest project file names | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-75 | P2 | L | open | One named base serves every project, and a grant changes without a restart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-75 | P2 | L | done | One named base serves every project, and a grant changes without a restart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-76 | P2 | L | open | herdr replaces Zellij, and the operator watches the agents from Windows | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-77 | P2 | L | open | A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-78 | P2 | L | open | Muse from any Windows project, and a guide for someone who has never used a coding agent | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

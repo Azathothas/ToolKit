@@ -958,7 +958,9 @@ func TestAConfigurationNamingAnotherInstancesDistributionIsRefused(t *testing.T)
 		`remove base.name from that file, or set it to "wsl-toolkit-muse"`)
 
 	// ⚠ The instance's own file is offered as --config only once it exists: a
-	// named file that is missing is a refusal of its own.
+	// named file that is missing is a refusal of its own. ⚠ And since WSL-75 an
+	// existing own file wins over the working directory, so the project file is
+	// reached here only by naming it.
 	own := filepath.Join(museHome, "config.json")
 	if err := os.MkdirAll(museHome, 0o755); err != nil {
 		t.Fatal(err)
@@ -966,7 +968,10 @@ func TestAConfigurationNamingAnotherInstancesDistributionIsRefused(t *testing.T)
 	if err := os.WriteFile(own, []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	refused("an instance whose own file exists", "pass --config "+own)
+	previousExplicit := ExplicitConfigPath
+	ExplicitConfigPath = file
+	refused("an instance whose own file exists, with the project file named", "pass --config "+own)
+	ExplicitConfigPath = previousExplicit
 	if err := os.Remove(own); err != nil {
 		t.Fatal(err)
 	}

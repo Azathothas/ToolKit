@@ -329,13 +329,20 @@ type ConfigSource struct {
 // ResolveConfig is the search order, stated once and printed by `config`.
 //
 //	1  --config PATH                       an explicit file, and a missing one is an error
-//	2  wsl-toolkit.json here or above      the nearest one wins
-//	3  <state home>/config.json            what this tool wrote for itself
-//	4  the compiled-in defaults
+//	2  <state home>/config.json            for a NAMED instance, when the file exists
+//	3  wsl-toolkit.json here or above      the nearest one wins
+//	4  <state home>/config.json            what this tool wrote for itself
+//	5  the compiled-in defaults
 //
 // ⛔ THE NEAREST FILE WINS OUTRIGHT rather than being merged. A partially merged
 // configuration is one nobody can reason about from any single file, which is
 // the property that makes "which config is in effect" answerable at all.
+//
+// ⭐ A NAMED INSTANCE'S OWN FILE COMES BEFORE THE WORKING DIRECTORY. One base serves
+// every project an operator has, so the configuration that says what it is belongs
+// to the instance and not to whichever checkout a command happens to run from.
+// Before this, a project's file won from inside that project, and the instance's own
+// file never applied there. WSL-75.
 func ResolveConfig() (ConfigSource, error) {
 	var src ConfigSource
 	if p := strings.TrimSpace(ExplicitConfigPath); p != "" {
@@ -351,6 +358,17 @@ func ResolveConfig() (ConfigSource, error) {
 		}
 		src.Path, src.From = abs, "--config"
 		return src, nil
+	}
+	if SelectedInstance.Name != "" && SelectedInstance.Name != DefaultInstance {
+		own, err := ConfigPath()
+		if err != nil {
+			return src, err
+		}
+		src.Searched = append(src.Searched, own)
+		if _, err := os.Stat(own); err == nil {
+			src.Path, src.From = own, "the instance's own configuration, which a named instance reads before the working directory"
+			return src, nil
+		}
 	}
 	cwd, err := os.Getwd()
 	if err == nil {
@@ -378,7 +396,14 @@ func ResolveConfig() (ConfigSource, error) {
 	if err != nil {
 		return src, err
 	}
-	src.Searched = append(src.Searched, stored)
+	// ⚠ Once in the searched list, whichever step looked at it first.
+	listed := false
+	for _, p := range src.Searched {
+		listed = listed || p == stored
+	}
+	if !listed {
+		src.Searched = append(src.Searched, stored)
+	}
 	src.Path, src.From = stored, "the state directory"
 	return src, nil
 }

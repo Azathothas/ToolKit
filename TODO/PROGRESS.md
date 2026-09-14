@@ -8,10 +8,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-14T02:01:53Z; the record commit's own time is its end
 baseline        e73d7d5, tree clean
-entries         total 116  open 11  blocked 0  done 105
-closed          WSL-74 at ab4281c; WSL-80 and WSL-79 at 5e66e44; issue 33
+entries         total 116  open 10  blocked 0  done 106
+closed          WSL-74 at ab4281c; WSL-80 and WSL-79 at 5e66e44; issue 33; WSL-75
 filed           WSL-80, found by the acceptance runner's baseline; WSL-81, found by WSL-72's prove
-head            the WSL-76 build commit after d85b90e
+head            the WSL-75 commit after c42ccee
 ```
 
 ## Active work
@@ -39,7 +39,8 @@ is closed, and the issue gets a comment naming the commits.
 5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants. `WSL-76`'s
    machinery is built and driven without Muse; its closing needs Muse through herdr,
-   so it waits for `wsl-toolkit-base` and the operator's sign-in.
+   so it waits for `wsl-toolkit-base` and the operator's sign-in. ⭐ `WSL-75` is
+   closed.
 6. **Issue 30:** `WSL-67`'s open items, `WSL-68`, `WSL-70` and `WSL-71`.
 7. **`wsl-toolkit-base`** is built last, from the machinery, and the operator
    signs Muse in there.
@@ -91,7 +92,8 @@ carries all three as commands under "Build and local proof".
 | `5e66e44` | `WSL-80` closed: the relay's heartbeat can no longer keep a finished `distro run` waiting, and its acceptance case no longer depends on how ticks fall. `WSL-79` closed: the FreeBSD guest reaches a login in about 9 s rather than 115 s, and a script reaches it as a file on its own disk. 10 mutation rows. CI green, and issue 33 closed |
 | `469e52a` | `bootstrap.sh` links FreeBSD's `nim` onto `PATH`, and the guest's default disk is 12 GiB, the smallest measured to give a 10 GiB root |
 | `d85b90e` | `bsd run` ends a run when the guest's kernel panics or QEMU exits, rather than at the end of its budget. `WSL-81` filed and built, 5 mutation rows |
-| the WSL-76 build commit | `WSL-76`'s machinery: `base.adapters` with the `adapters` gate rule, the `herdr` adapter and its SSH door through `wsl.exe`, and `base attach`, driven on a throwaway base, 14 mutation rows. `WSL-81`: a panic while the guest powers off is carried on the result, 1 row |
+| `c42ccee` | `WSL-76`'s machinery: `base.adapters` with the `adapters` gate rule, the `herdr` adapter and its SSH door through `wsl.exe`, and `base attach`, driven on a throwaway base, 14 mutation rows. `WSL-81`: a panic while the guest powers off is carried on the result, 1 row |
+| the WSL-75 commit | `WSL-75` closed: a named instance reads its own configuration first, and `base grant` and `base revoke` change one grant live, through `grants.sh`, now the one home of the fstab block. 7 mutation rows; two defects found by driving it and fixed |
 
 ## Measurements
 

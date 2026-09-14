@@ -9,7 +9,7 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|attach|presets>
+const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|grant|revoke|attach|presets>
 
   status     is it registered, and can it actually run a container
   ensure     bring it to a usable state, doing the least that achieves it
@@ -17,6 +17,8 @@ const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|at
   remove     unregister it and delete its disk
   shell      attach an interactive shell to it, as the unprivileged account
   exec       run a non-interactive POSIX script in it, as that account
+  grant      mount one more Windows directory under /workspaces, now, with no restart
+  revoke     unmount one, now, and take it out of the configuration
   attach     print the commands that reach its herdr server, from Windows and inside
   presets    the rootfs choices, what each one measured here, and which is live
 
@@ -55,6 +57,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	}
 	if sub == "exec" {
 		return cmdBaseExec(ctx, rest)
+	}
+	if sub == "grant" || sub == "revoke" {
+		return cmdBaseGrant(ctx, sub, rest)
 	}
 	if err := parseArgs(fs, rest); err != nil {
 		return exitCannot, err

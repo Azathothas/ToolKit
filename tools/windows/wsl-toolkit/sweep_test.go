@@ -36,6 +36,8 @@ var sweptElsewhere = map[string]string{
 	"base recreate":   "it destroys and rebuilds the base, which every later case needs",
 	"base remove":     "it unregisters the base. The cleanup case at the end owns that path",
 	"base shell":      "it attaches an interactive shell and produces no document at all",
+	"base grant":      "it mounts a Windows directory into the base and writes the configuration, which the sweep's shared base must not gain",
+	"base revoke":     "it unmounts a grant and writes the configuration, and the sweep's shared base has none to take away",
 	"helper serve":    "it starts a process. `helper status` is the readable surface and is swept",
 	"helper stop":     "the same, from the other end",
 	"selfupdate":      "it reaches the network and can replace this executable",

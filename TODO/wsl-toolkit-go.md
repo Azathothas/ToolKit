@@ -5566,7 +5566,7 @@ declared count moved from 90 to 91. The hang is filed as its own entry.
 
 **Source** [issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 1,
 filed by the operator on 2026-09-13.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -5667,6 +5667,60 @@ Passing is:
 - after `wsl --terminate` and `base ensure`, the same two grants verify;
 - removing a grant unmounts it live, and the probe lists one;
 - a mutation row per refusal goes red.
+
+---
+
+## Closing
+
+**Closed 2026-09-14T06:30:00Z.** A named instance reads its own configuration before
+the working directory, and `base grant` and `base revoke` change one grant without a
+restart. `grants.sh` is now the one home of the tool-owned fstab block: provisioning
+runs it to write the block, and the two verbs run it live. All five passing
+conditions hold on the tree's build:
+
+| condition | measured on `wsl-toolkit-h76`, through its own `config.json` |
+| --- | --- |
+| a process started before the grant still running after it, by PID | a herdr pane's `sleep`, PID 1835, before `base grant` twice; `kill -0 1835` answered alive after both |
+| the probe lists both grants and no problem, and the second command exits 0 | `problems` empty, `access.mounts` `rw /workspaces/first` and `rw /workspaces/second`; `base exec --dir /workspaces/second -c 'git status --short'` exit 0, printing `?? untracked.txt` |
+| after `wsl --terminate` and `base ensure`, the same two grants verify | ensure exit 0 in 10.2 s; the probe again empty, both grants, two live mounts |
+| removing a grant unmounts it live, and the probe lists one | `base revoke --target /workspaces/first` exit 0 in 0.4 s, `unmounted /workspaces/first`; the probe lists `rw /workspaces/second` alone, and a pane's process from before the revoke is alive |
+| a mutation row per refusal red | 7 rows, below |
+
+⭐ **Measured first, and not only read:** with automount and interop both off, root
+mounted a DrvFS directory live, `9p` with `aname=drvfs`, and the account read and
+wrote through it. The premise had that as read and not measured.
+
+### ⛔ What driving it found
+
+| found | what was done |
+| --- | --- |
+| a process `base exec` put in the background, `setsid sleep 3600 &`, was gone by the next command, before any grant | the prove keeps a process in a herdr pane instead, which is what an agent runs in; the manual says so |
+| `base revoke` over a directory a pane's process stood in refused rightly, and had already emptied the fstab block, so the grant would have been lost at the next restart | the block is written only after the removals, and a later failure puts the old one back |
+| run again after that, the revoke read the empty block, found nothing to unmount and exited 0 over a directory still mounted | the removals are read from the live mounts under `/workspaces`, where the configuration confines every grant |
+| WSL-74's case for an instance whose own file exists expected a refusal, and the instance's own file now wins | the case names the project file with `--config`, where the refusal still applies |
+
+Then, on the final build: a revoke refused over a busy directory left the live
+mount, the block and the configuration all naming it, and exited 1; after the pane
+closed, the revoke took 0.4 s. `base recreate` with a grant configured provisioned
+through `grants.sh`, mounted it at the restart, and ran `git status` in it, in 87 s.
+
+### The reviews
+
+⭐ **The door sweep** asked what else reads the configuration's order or changes a
+mount. `ready`, the helper route, `config` and every `base` verb read through
+`LoadConfig`, so the order is one change; the helper route refuses a grant; `verify.sh`
+still flags any unconfigured Windows mount; provisioning writes the block through the
+same script, where it had its own copy of the block code. What would have made it
+fire: a second writer of the fstab block, and there is none left.
+
+⭐ **The guard mutation** proved seven rows: the instance's own file first, a target
+granted from another source, a source granted at another target, the grant held to
+the configuration's rules, a revoke of a target never granted, the other grants kept
+as written, and the live block written after the removals.
+
+⭐ **The claim audit** corrected the manual's table, which said a process from before
+the first grant outlived the revoke; the process checked after the revoke was a
+second one, started after the restart.
 
 ---
 
@@ -6535,9 +6589,40 @@ buffers synced`. Its exit stands; the result now carries the panic as
 shared image. A case holds it with a child that panics on `poweroff`, and its row
 went red.
 
+### The panic-rate runs so far, stopped at the session's checkpoint
+
+The prove's payload on fresh copies of the published image, each run from its own
+cache directory under `.tmp`. ⚠ **The host was not quiet:** Go builds, mutation runs
+and container jobs ran beside most of them, which is a condition of these numbers
+and may be a cause.
+
+| model | runs | panic mid-run | panic at poweroff | clean |
+| --- | --- | --- | --- | --- |
+| `WSL-79`'s, the hypervisor bit, CLFLUSH and CLFLUSHOPT hidden, 2048 MiB | 6, and the prove | 1, and the prove | 1 | 4 |
+| the same with 4096 MiB | 2 | 0 | 1 | 1 |
+| the hypervisor bit hidden, CLFLUSH shown | 2 | 1 | 1 | 0 |
+| the hypervisor bit shown, which waits 105 s for VMBus | 4 | 1 | 1 | 2 |
+
+Eight panics in 14 runs and the prove, in eight different kernel functions:
+`pmap_ts_referenced`, `vmspace_exit`, `ufs_direnter`, `VOP_RECLAIM_APV`,
+`cache_purge_impl`, `uipc_close`, `sorele_locked`, and one whose backtrace the run
+cut short. ⚠ The four panics counted at poweroff on builds from before `shutdown_panic`
+are inferred: those builds end a run on a panic, so a run that exited 0 with a panic
+on its console panicked after the payload answered.
+
+⭐ **The rule the fix added worked on a real guest:** the second CLFLUSH-shown run
+ended `the guest's kernel panicked: panic: page fault, after Fatal trap 12` at 250.8
+s, where the first matrix's mid-run panics waited 540 s and 660 s for their budgets.
+
+⭐ **Decision about the CPU model, from these runs: it stays.** Every model tried
+panicked, including the one that shows the hypervisor, so hiding the bit is not the
+cause, and memory is not either.
+
 ### Still open
 
-1. The panic-rate runs from step 4, on throwaway copies, and the decision they
-   give about the CPU model.
+1. ⚠ One vCPU, and it is a hypothesis: the panics are spread across memory and
+   filesystem code rather than one driver, which is the shape a race between two
+   processors would leave. Five `--cpus 1` runs were queued and had not started when
+   the session stopped. If one vCPU measures free of panics, the default changes here.
 2. A run on the shared image that boots, grows it and reads back its packages.
 3. The three reviews, and the closing.

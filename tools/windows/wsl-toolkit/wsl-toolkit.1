@@ -221,6 +221,40 @@ how long the command may run. 0 means no deadline. Default: 30m0s.
 \fB--via-helper\fR
 prove the helper refusal for arbitrary base commands
 .TP
+.B wsl-toolkit base grant
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--mode\fR
+ro or rw. Default ro
+.TP
+\fB--source\fR
+the Windows directory to grant
+.TP
+\fB--target\fR
+where the base sees it, under /workspaces. Default /workspaces/ and the directory's name
+.TP
+\fB--via-helper\fR
+prove the helper refusal for a grant
+.TP
+.B wsl-toolkit base revoke
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--mode\fR
+ro or rw. Default ro
+.TP
+\fB--source\fR
+the Windows directory to grant
+.TP
+\fB--target\fR
+where the base sees it, under /workspaces. Default /workspaces/ and the directory's name
+.TP
+\fB--via-helper\fR
+prove the helper refusal for a grant
+.TP
 .B wsl-toolkit base attach
 .TP
 \fB--here\fR

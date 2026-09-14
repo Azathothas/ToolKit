@@ -35,8 +35,6 @@ die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 : "${TK_SYSTEMD:?TK_SYSTEMD is required}"
 : "${TK_PASSWORDLESS_SUDO:?TK_PASSWORDLESS_SUDO is required}"
 : "${TK_TOOLSET:?TK_TOOLSET is required}"
-: "${TK_FSTAB_B64?TK_FSTAB_B64 is required, and may be empty}"
-: "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
 
 # -- how the Windows drives appear ---------------------------------------------
 # ⛔ READ ONLY BY DEFAULT. WSL mounts every fixed drive under /mnt, and a job that
@@ -347,58 +345,9 @@ CONF
 chown -R "$TK_USER" "$TK_HOME/.config"
 
 # -- explicit Windows directory grants ---------------------------------------
-# One marked block is replaced as a unit, so changing the configuration removes
-# a stale grant on the next provision. The payload is base64 made by Go: no host
-# path becomes shell source, and base64 reads from a file so its exit code is not
-# hidden by a pipeline.
-FSTAB_BEGIN='# wsl-toolkit mounts begin'
-FSTAB_END='# wsl-toolkit mounts end'
-FSTAB_TMP="/etc/fstab.wsl-toolkit.$$"
-FSTAB_ENCODED="/tmp/wsl-toolkit-fstab.$$"
-: > "$FSTAB_TMP"
-if [ -f /etc/fstab ]; then
-  in_toolkit_block=false
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      "$FSTAB_BEGIN") in_toolkit_block=true; continue ;;
-      "$FSTAB_END")   in_toolkit_block=false; continue ;;
-    esac
-    if [ "$in_toolkit_block" = false ]; then
-      printf '%s\n' "$line" >> "$FSTAB_TMP"
-    fi
-  done < /etc/fstab
-fi
-printf '%s\n' "$FSTAB_BEGIN" >> "$FSTAB_TMP"
-if [ -n "$TK_FSTAB_B64" ]; then
-  printf '%s' "$TK_FSTAB_B64" > "$FSTAB_ENCODED"
-  if ! base64 -d "$FSTAB_ENCODED" >> "$FSTAB_TMP"; then
-    rm -f "$FSTAB_TMP" "$FSTAB_ENCODED"
-    die "the explicit mount table could not be decoded"
-  fi
-  rm -f "$FSTAB_ENCODED"
-fi
-printf '%s\n' "$FSTAB_END" >> "$FSTAB_TMP"
-mv "$FSTAB_TMP" /etc/fstab
-
-mount_count=0
-# The payload is a validated sequence of base64-target/mode pairs.
-# shellcheck disable=SC2086
-set -- $TK_MOUNT_CHECKS
-while [ "$#" -gt 0 ]; do
-  [ "$#" -ge 2 ] || die "the explicit mount check table is incomplete"
-  target_b64=$1
-  shift 2
-  printf '%s' "$target_b64" > "$FSTAB_ENCODED"
-  if ! target=$(base64 -d "$FSTAB_ENCODED"); then
-    rm -f "$FSTAB_ENCODED"
-    die "an explicit mount target could not be decoded"
-  fi
-  rm -f "$FSTAB_ENCODED"
-  mkdir -p "$target"
-  chmod 755 "$target"
-  mount_count=$((mount_count + 1))
-done
-say "explicit Windows directories: $mount_count"
+# ⭐ grants.sh writes the tool-owned /etc/fstab block, run by the executable right
+# after this script and before the restart that mounts it. It is also what
+# `base grant` and `base revoke` run live, so the block has one home.
 
 # -- how WSL starts this distribution -----------------------------------------
 # appendWindowsPath=false is the half that answers the reported complaint. With

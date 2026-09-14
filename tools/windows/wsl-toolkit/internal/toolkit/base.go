@@ -25,6 +25,9 @@ var verifyScript []byte
 //go:embed repair.sh
 var repairScript []byte
 
+//go:embed grants.sh
+var grantsScript []byte
+
 // BaseSpaceFloor is what the volume must have free before an import starts.
 //
 // ⚠ Far above a throwaway distribution's 256 MiB floor, because this
@@ -665,8 +668,9 @@ func (b *Base) provision(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fstab, checks, _, err := baseMountPayloads(b.cfg)
-	if err != nil {
+	// ⚠ Resolved before anything runs, so a grant whose source is gone refuses the
+	// provisioning rather than half of it.
+	if _, _, _, err := baseMountPayloads(b.cfg); err != nil {
 		return err
 	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
@@ -683,8 +687,6 @@ func (b *Base) provision(ctx context.Context) error {
 			"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
 			"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
 			"TK_TOOLSET":           toolset,
-			"TK_FSTAB_B64":         fstab,
-			"TK_MOUNT_CHECKS":      checks,
 		},
 		Timeout: 30 * time.Minute,
 		Stdout:  out,
@@ -698,6 +700,11 @@ func (b *Base) provision(ctx context.Context) error {
 		// ⛔ The script prints that line last, so its absence over a zero exit is
 		// a step that exited 0 having done nothing.
 		return errors.New("provisioning exited 0 without reaching its last line")
+	}
+	// ⭐ THE BLOCK IS WRITTEN BY THE SCRIPT `base grant` RUNS LIVE, so provisioning
+	// and a live grant cannot write two different blocks.
+	if _, err := b.applyGrants(ctx, b.cfg, GrantsWrite); err != nil {
+		return err
 	}
 	// WSL reads /etc/wsl.conf at start, so without this restart the settings
 	// just written appear to have been applied and are not.

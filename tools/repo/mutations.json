@@ -2045,6 +2045,69 @@
       "replace": "\t_ = from\n\treturn \"\"\n",
       "run": "TestAPanicWhilePoweringOffIsCarriedOnTheResult",
       "args": []
+    },
+    {
+      "label": "config: a named instance reads its own file before the working directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\tif _, err := os.Stat(own); err == nil {\n\t\t\tsrc.Path, src.From = own,",
+      "replace": "\t\tif _, err := os.Stat(own); err == nil && false {\n\t\t\tsrc.Path, src.From = own,",
+      "run": "TestANamedInstanceReadsItsOwnConfigurationFirst",
+      "args": []
+    },
+    {
+      "label": "grants: another source at a granted target is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\tcase sameTarget:\n",
+      "replace": "\t\tcase sameTarget && false:\n",
+      "run": "TestAGrantIsRefusedWhereItWouldReplaceAnother",
+      "args": []
+    },
+    {
+      "label": "grants: a granted source at another target is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\tcase sameSource:\n",
+      "replace": "\t\tcase sameSource && false:\n",
+      "run": "TestAGrantIsRefusedWhereItWouldReplaceAnother",
+      "args": []
+    },
+    {
+      "label": "grants: a grant is held to the configuration's own rules",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif err := next.Validate(); err != nil {\n\t\treturn GrantChange{}, err\n\t}\n",
+      "replace": "",
+      "run": "TestAGrantIsRefusedWhereItWouldReplaceAnother",
+      "args": []
+    },
+    {
+      "label": "grants: revoking a target never granted is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif taken == nil {\n",
+      "replace": "\tif taken == nil && false {\n",
+      "run": "TestARevokeTakesOneGrantAndKeepsTheRestAsWritten",
+      "args": []
+    },
+    {
+      "label": "grants: a revoke keeps the other grants as they were written",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\tnext.Base.Mounts = append(next.Base.Mounts, cfg.Base.Mounts[i])\n",
+      "replace": "\t\tnext.Base.Mounts = append(next.Base.Mounts, have)\n",
+      "run": "TestARevokeTakesOneGrantAndKeepsTheRestAsWritten",
+      "args": []
+    },
+    {
+      "label": "grants: a live change writes the block only after the removals",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "done < \"$WORK/live-targets\"\n\ninstall_fstab \"$WORK/fstab\"\n",
+      "replace": "done < \"$WORK/live-targets\"\n\n",
+      "run": "TestALiveGrantChangesTheBlockOnlyWhenNothingCanStillRefuse",
+      "args": []
     }
   ]
 }

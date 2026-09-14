@@ -110,11 +110,46 @@ muse`, and `wsl-toolkit` to no instance at all. The message names the file, both
 distributions, and the `--instance` or `--config` that agrees, and `wsl-toolkit
 config` still prints which file won and where it looked.
 
+⛔ **A named instance's own configuration comes before the directory a command runs
+in.** When `%LOCALAPPDATA%\wsl-toolkit\instances\NAME\config.json` exists,
+`--instance NAME` reads it from any directory, so one base serves every project and a
+project's `wsl-toolkit.json` does not change it. The project's file still applies
+to the default instance and to a named one with no file of its own, and `--config`
+comes before both.
+
 `base exec` is the non-interactive host-to-guest seam. It starts as the
 configured account in that account's home unless `--dir` names an absolute
 guest path, sends the command or `--script` body framed on stdin with
 `/dev/null` as the command's own stdin, forwards output, and returns the guest
 exit status. `--root` is an explicit administrative variant.
+
+⚠ **A process `base exec` starts in the background does not outlive the command.**
+Measured on 2026-09-14 in a systemd base: `setsid sleep 3600 &` was gone by the next
+command, two seconds later. Run anything that has to keep running in a herdr pane.
+
+### Grants that change live
+
+```powershell
+wsl-toolkit --instance base base grant --source C:\path\to\project --mode rw
+wsl-toolkit --instance base base revoke --target /workspaces/project
+```
+
+`base grant` mounts one Windows directory at `/workspaces/` and its own name, or at
+`--target`, read-only unless `--mode rw`. `base revoke` unmounts one. Each changes
+the running base first, reads every grant back as the account, and only then writes
+the configuration file in effect, so a later restart and `base ensure` mount the same
+directories. Nothing restarts, so nothing running in the base stops.
+
+⛔ **Neither replaces what it would disturb.** A directory or a target already granted
+differently is refused with the revoke to run first, and a grant a process is
+standing in stays mounted, with its configuration and fstab entry untouched and exit 1.
+
+| measured on 2026-09-14, on a throwaway arch base | result |
+| --- | --- |
+| two `base grant`, then `base revoke` | 0.4 s to 0.5 s each; a process in a herdr pane started before the grants was running after both, and one started before the revoke was running after it |
+| `git status --short` through `base exec --dir` in a granted checkout | exit 0 |
+| `wsl --terminate`, then `base ensure` | 6.6 s and 10.2 s in two runs, and both grants verified |
+| `base revoke` while a pane's process stood in the directory | exit 1 naming `target is busy`, everything else unchanged; after the pane closed, the revoke took 0.4 s |
 
 ⚠ `passwordless_sudo: true` gives the configured account unrestricted guest
 root. Guest root can manually mount Windows paths, so this setting serves a
