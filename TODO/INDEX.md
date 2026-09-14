@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 118  open 9  blocked 0  done 109
+total 119  open 10  blocked 0  done 109
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 60 | 61 |
+| P1 | 2 | 0 | 60 | 62 |
 | P2 | 8 | 0 | 39 | 47 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **9** | **0** | **109** | **118** |
+| **all** | **10** | **0** | **109** | **119** |
 
 ---
 
@@ -121,6 +121,7 @@ total 118  open 9  blocked 0  done 109
 | WSL-81 | P1 | M | done | A FreeBSD guest that panics mid-run leaves `bsd run` waiting out its budget | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-82 | P2 | S | open | A payload that prints a FreeBSD panic's two lines has its `bsd run` ended as a kernel panic | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-83 | P1 | M | open | A FreeBSD kernel panic at poweroff leaves the shared guest image unchecked, and the next run panics on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-84 | P1 | M | open | A base reconfigured to read-only drives keeps writable ones, and reports read-only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

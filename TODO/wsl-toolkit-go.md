@@ -4544,6 +4544,35 @@ Passing is:
 - in a base with `automount` off, a login shell whose working directory was under
   `/mnt/c` starts in the home directory instead.
 
+## Amendment, 2026-09-14: what WSL does with the starting directory, measured before building
+
+⭐ **Measured on the throwaway `wsl-toolkit-m71`**, an arch base with interop off,
+with `wsl.exe -d wsl-toolkit-m71 -u probe --exec /bin/pwd` started from a Windows
+directory in this repository:
+
+| the base's automount | where the command started |
+| --- | --- |
+| off | the account's home; `PWD` unset, `WSL_DISTRO_NAME` set |
+| rw, after `base recreate` | the same Windows directory, under `/mnt/c/Users/...` |
+
+⛔ **So the premise's second half does not hold, and the prove's third condition is
+WSL's own behaviour.** With automount off, WSL cannot reach the Windows directory and
+starts the shell in the home directory itself; nothing the profile does is seen
+there. The guard is for automount on, where a shell starts in a Windows drive.
+
+⚠ **A guard that moved every such shell would undo `base shell --here`**, which asks
+for exactly that directory. Measured the same day: a variable named in `WSLENV` on
+Windows reached the guest with interop off, so `--here` can mark its shell and the
+guard can leave a marked one where it is.
+
+⚠ **Driving this found `WSL-84`:** a base reconfigured from `rw` to `ro` kept a
+writable `/mnt/c` and reported `ro`.
+
+### Still open
+
+Everything in the Approach: the profile, the bootstrap's install of it, the `--here`
+marker, and the prove, with its third condition rewritten from the table above.
+
 ---
 
 ## WSL-72. The BSD guest gets a 10 GiB disk, and the languages install on it
@@ -5980,6 +6009,27 @@ herdr's own keys closed a pane and then a tab while the tracked file closed noth
    `examples/common/zellij.md` removed with every link to it.
 4. The three reviews, and the closing.
 
+## Ruled by the operator, 2026-09-14: Muse and herdr together are one dedicated session
+
+⭐ **The operator set the next session's one task**, in their words: "It should be able
+to use muse directly, or muse via herdr (or muse via pi/omp via herdr). i the human
+should be able to see or attach to the same session from windows." And the three of
+them, the operator on Windows, the operator's agent on Windows and Muse in the base,
+interact and work in that session together, with nothing between them that a person
+has to bridge by hand.
+
+What that session owns, read against the entries:
+
+- this entry's four open items, which need `wsl-toolkit-base` and the operator's `muse
+  login`, so the session builds the base from `wsl-toolkit-base.json` first;
+- `WSL-78`'s open items: the prove, the guide, and Muse's own screen started in a herdr
+  pane at the project's guest path and attached from Windows;
+- ⚠ **`pi` and `omp` as herdr agents driving Muse**, which no entry carries yet:
+  `WSL-77` names them as the next adapters and builds neither, so the session authors
+  them before it builds them.
+
+⛔ The sealed base, `WSL-68`, is a dedicated session of its own after this one.
+
 ---
 
 ## WSL-77. A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters
@@ -6368,6 +6418,26 @@ grant a throwaway git project there:
 repeated itself, `not granted to the base: ... is not granted to`, and the herdr
 route said "the lines this prints" beside a command that prints them.
 
+⚠ **Not driven:** the launcher in the account's own `%USERPROFILE%\bin`, which the
+drive replaced with `WSL_TOOLKIT_BIN_DIR` so the operator's directory stayed as it
+was, and an argument carrying quotes or a dollar sign from a Windows command line to
+the guest. The quoting is held by the Linux case, and Windows parses a program's
+arguments by the rules every executable uses.
+
+### The reviews so far
+
+⭐ **The door sweep** found two ways to the agent run, `base agent` and the launcher's
+name in `main`, both through `cmdBaseAgent`, and the helper route refusing it. A
+launcher names its instance, so the environment and a project's pointer file cannot
+send it elsewhere, and `WSL-74`'s refusal still holds its configuration. The
+launcher's removal runs on every ensure of an instance that names no agent, and it
+reaches only that instance's own launcher name. What would have made it fire: a
+second path that runs an agent without the grant mapping.
+
+⭐ **The claim audit** corrected the manual's "every argument reaches Muse as
+written", which the drive does not reach end to end; it now says each argument is
+quoted for the guest's shell. The third review is the guard mutation above.
+
 | case | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
 | --- | --- | --- |
 | `TestAGrantCoversItsDirectoryAndWhatIsBeneathItAlone` | pass | pass |
@@ -6389,7 +6459,7 @@ Windows; and the quoting, in `golang:1.25`.
    `muse login`.
 2. The interactive screen through herdr: starting Muse in a pane at the project's
    guest path and attaching from Windows, with `WSL-76`'s closing drive.
-3. The three reviews, and the closing.
+3. The closing, with the three reviews run again over what that drive adds.
 
 ---
 
@@ -7172,3 +7242,79 @@ Passing is:
 
 Under B, a fake-guest case whose boot prints the line answers exit 2 naming `bsd fetch
 --force`, a fake-guest case sees `sync` typed before `poweroff`, and each row goes red.
+
+---
+
+## WSL-84. A base reconfigured to read-only drives keeps writable ones, and reports read-only
+
+**Source** found on 2026-09-14 while measuring `WSL-71`'s premise.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+A changed `base.automount` is not applied by `base ensure`, and both `base ensure`
+and `base status` report the new value over a guest that still has the old one.
+Changed from `rw` to `ro`, the base kept `/mnt/c` writable while it reported
+`automount ro` and `usable true`, so a job in it can still write the Windows checkout
+that `WSL-63`'s read-only drives exist to protect.
+
+## Premise
+
+⭐ **Measured on 2026-09-14 on the throwaway `wsl-toolkit-m71`**, an arch base with
+interop off:
+
+| the configuration went | `base ensure` answered | what the guest had |
+| --- | --- | --- |
+| from `off` to `ro` | exit 0 in 2.3 s, `automount ro`, `usable true`, nothing provisioned | `/etc/wsl.conf` still `[automount] enabled=false`, and no `/mnt/c` |
+| from `rw`, after `base recreate`, to `ro` | exit 0 in 2.5 s, `automount ro`, `usable true` | `/mnt/c` mounted `9p rw`, and `test -w` on a directory in this repository's checkout exit 0 as the account |
+
+- ⭐ **Read in `internal/toolkit/verify.sh`:** `off` is checked, refusing a mounted
+  drive and an empty mount point alike; `ro|rw) ;;` checks nothing, and the script
+  then prints `automount` with the value it was handed, which is what the status
+  shows.
+- ⭐ **Read in `base.go`:** `EnsureWith` on a registered base whose verification
+  passes goes straight to the adapters, so a change verification does not see is
+  never provisioned.
+- ⭐ **Measured the same day, read-only:** the default `wsl-toolkit` base, built `ro`,
+  has `/mnt/c` mounted `9p ro`. The defect is a change after the build, not the build.
+- ⚠ Not measured: `ro` to `rw`, and `ro` or `rw` to `off`.
+
+## Approach
+
+1. **Verification reads the drives it promises**: with `ro`, every `/mnt/<drive>` in
+   `/proc/mounts` carries `ro`; with `rw`, the drives are mounted; and the printed
+   `automount` line is what `/proc/mounts` shows, not what was asked for.
+2. **A registered base whose verification refuses its automount is re-provisioned in
+   place**, which the existing recovery path already does for a verification failure,
+   and verified again after the restart.
+3. A case per direction measured above, through the verifier's own script, and a
+   mutation row per check.
+
+⛔ **Not a new flag, and not a warning over a base that passes.** The configuration
+already says what the drives must be, and a report that says so over a guest that
+disagrees is the defect.
+
+## Consumers
+
+⚠ By [`../docs/consumers.md`](../docs/consumers.md)'s definition, a caller whose base
+drifted gets a re-provision, which restarts it, where it got an exit 0 over the
+drift. The changelog says so.
+
+## Prove
+
+On a throwaway instance, each time from a base built with the first value:
+
+```powershell
+wsl-toolkit --instance NAME base ensure
+wsl.exe -d wsl-toolkit-NAME -u root --exec /usr/bin/grep -E ' /mnt/c ' /proc/mounts
+```
+
+Passing is:
+
+- `rw` then `ro`: the ensure re-provisions, and the mount line carries `ro`;
+- `off` then `ro`: the ensure re-provisions, and a mount line appears carrying `ro`;
+- `ro` then `off`: the ensure re-provisions, and no mount line remains;
+- `base status --probe` prints the automount the guest has in each case;
+- a mutation row per check red.

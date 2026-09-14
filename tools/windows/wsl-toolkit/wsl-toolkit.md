@@ -215,8 +215,8 @@ prints how to read it. Add its digest only after reading it:
 ```
 
 A base whose Muse answers a version does not fetch the installer again. ⚠ Muse's own
-launcher, as read on 2026-09-14, looks for an update of itself at most hourly after
-that. `/usr/local/bin/muse` puts it on `PATH` for `base exec`, whose shell reads no
+launcher, as read on 2026-09-14, looks for a newer launcher and a newer Muse at most
+hourly after that. `/usr/local/bin/muse` puts it on `PATH` for `base exec`, whose shell reads no
 profile, and refuses every other account. ⛔ **Signing in is the operator's:** `base
 shell`, then `muse login`. `base status --probe` reports the version, where `muse`
 resolves, and whether a credential file is present, never what it holds.
@@ -252,8 +252,8 @@ in.** The `muse` adapter writes `muse.exe` into `%USERPROFILE%\bin` for the inst
 Started under that name it is `wsl-toolkit --instance base base agent muse -- ARGS`:
 it finds the grant that covers the working directory, runs `muse ARGS` as the base's
 account at the guest path that directory is granted at, through the framed channel
-`base exec` uses, and answers Muse's own exit code. Every argument reaches Muse as
-written, and its stdin is `/dev/null`.
+`base exec` uses, and answers Muse's own exit code. Each argument is single-quoted for
+the guest's shell, so none is read as shell syntax, and Muse's stdin is `/dev/null`.
 
 ⛔ **A directory no grant covers is refused** with exit 2 and the `base grant` line
 for it. A grant covers its directory and what is beneath it, and never a sibling
@@ -358,8 +358,8 @@ one-vCPU default: a login prompt at 8.5 s, 8.3 s and 8.5 s, the command finished
 keeps a guest running between runs. ⚠ The first run after `bsd fetch` pays the
 image's first boot: FreeBSD grows its root to the disk and generates its SSH host
 keys before the login, which came at 29 s on 2026-09-14. ⚠ The guest is not shown
-the host's hypervisor signature, because a FreeBSD kernel that sees it waits about 105 seconds before
-mounting root, for a Hyper-V VMBus QEMU does not provide.
+the host's hypervisor signature, because a FreeBSD kernel that sees it waits about
+105 seconds before mounting root, for a Hyper-V VMBus QEMU does not provide.
 
 ⭐ **The default is one vCPU.** Five fresh-image toolchain installs completed
 without a kernel panic with one processor on 2026-09-14, where the same guest

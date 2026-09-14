@@ -7,6 +7,35 @@ on what was true last time.
 
 ---
 
+## 2026-09-14, the third sitting
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-14T09:18:24Z | ended at the record commit's own time, about two hours; the operator checkpointed it at about 11:00Z |
+| Commits | `eff07c5`, clean `main`, CI run 34820474937 green | `git log --oneline eff07c5..360bbde` read **5**, all pushed, CI green in all six jobs on the first four and `360bbde`'s mutation job still running at the record commit; then the record commit |
+| Work | the order's open items: `WSL-81` partial, `WSL-72`'s prove, `WSL-76`, `WSL-77` and `WSL-78` of issue 32, the four of issue 30, the base and the release | **Completed 3:** `WSL-81`, `WSL-72`, `WSL-77`. **Partial 2:** `WSL-78`, its entry point built and driven, its prove and guide waiting for a signed-in Muse; `WSL-71`, its premise measured and nothing built. **Deferred 6** by the operator's checkpoint: `WSL-76`'s closing, `WSL-67`'s open items, `WSL-68`, `WSL-70`, the base and the release. **Failed 0.** Filed 3: `WSL-82`, `WSL-83`, `WSL-84`. Entries 116 with 10 open to 119 with 10 open |
+| Changes | 0 files changed from `eff07c5` | `git diff --shortstat eff07c5 360bbde` read 24 files, +2,370 / -163; the record commit adds its own |
+| Size | 81,440 text lines in 280 files at `eff07c5`, `git grep -I -c ''` | 83,647 in 288 files at `360bbde`, +2,207, before the record commit |
+| Checks | doctor exit 0; gate 20 of 20 in 46.78 s | gate 20 of 20 before every commit and on the record commit; Go suites green on Windows with the 8.3 `TEMP` and in `golang:1.25` before every push; ShellCheck 0.9.0 clean. Mutation rows 235 to 250, each new one red after its case passed unmutated, and `WSL-81`'s 7 and `WSL-72`'s 4 proved again one at a time |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation and no Muse prompt. Network bytes not measured; the largest transfers known: Muse's 299,251,896-byte build twice, into `m77` and `m78`; the `languages` packages once, into a FreeBSD copy; ShellCheck's packages in six containers |
+| Health | the shared FreeBSD image at 12 GiB with its 500-package baseline; four distributions; no throwaway | ⛔ the shared image panicked twice at poweroff and is the published 6.0 GiB image again; `WSL-83` and `WSL-84` filed at P1; the same four distributions, no throwaway, and the operator's SSH configuration and `bin` directory unchanged; no tag; tree clean after the record commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| resume unattended, and work the order through issue 32, issue 30, the base and the release | ⚠ **partly.** `WSL-81`, `WSL-72` and `WSL-77` closed, `WSL-78` built as far as a sign-in allows; issue 30 reached `WSL-71`'s measurement before the operator's checkpoint |
+| when a step needs the operator, print exact commands, keep working and poll | three rulings asked for in chat, `WSL-82`, `WSL-83` and the release, and none answered; no credential needed |
+| wrap up, make Muse and herdr together the next session's one task, and the sealed base a session after it | written into `WSL-76` and the order, with the reviews run and the rest of the protocol |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. The next session builds `wsl-toolkit-base`,
+has the operator sign Muse in, and closes `WSL-76` and `WSL-78` with Muse used
+directly, through herdr, and through `pi` or `omp` in herdr.
+
+---
+
 ## 2026-09-14, resumed session
 
 | row | before | after |
