@@ -816,6 +816,18 @@ func (g *guest) waitBoot(ctx context.Context) (string, bool) {
 	}
 }
 
+// bsdPanicBound is how long a wait goes on after the console shows a kernel
+// panic's two lines, for QEMU's exit or the pattern.
+//
+// ⭐ RULED BY THE OPERATOR ON 2026-09-14: QEMU'S EXIT, THE COMMAND'S CLOSING MARKER
+// OR 60 SECONDS, WHICHEVER COMES FIRST. The payload's output is on the same console,
+// and a payload that printed a panic's two lines had its run ended as a kernel panic
+// at 641 ms, with its guest killed. A real panic dumps its memory and waits 15
+// seconds before the reboot that QEMU's -no-reboot turns into an exit, so it is still
+// named, later; a guest that hangs after one ends at the bound and not at the
+// budget. WSL-82. ⚠ A variable, so the cases can shorten it.
+var bsdPanicBound = 60 * time.Second
+
 // waitFrom waits for a match at or after a position in the stream. It answers nil
 // on a match, a *guestGoneError when the guest can no longer answer, and the
 // context's error when the budget ends.
@@ -825,22 +837,32 @@ func (g *guest) waitBoot(ctx context.Context) (string, bool) {
 // command that is still running reads as finished and its output is read as
 // somebody else's.
 //
-// ⛔ A PANICKED KERNEL ENDS THE WAIT WHEN IT PRINTS, NOT WHEN QEMU EXITS. FreeBSD
-// dumps its memory and waits 15 seconds before the reboot that stops QEMU, and
-// nothing typed afterwards reaches a shell. WSL-81.
+// ⛔ A PANIC ENDS THE WAIT WITHIN bsdPanicBound, NOT AT THE BUDGET. Nothing typed
+// after a real panic reaches a shell, and waiting for QEMU alone would leave a guest
+// that hangs after its panic costing the whole budget, which is the defect WSL-81
+// removed.
 func (g *guest) waitFrom(ctx context.Context, re *regexp.Regexp, from int) error {
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
+	var panicked string
+	var bound <-chan time.Time
 	for {
 		tail := g.after(from)
 		if re.MatchString(tail) {
 			return nil
 		}
-		if panicked := bsdKernelPanic(tail); panicked != "" {
-			return &guestGoneError{reason: "the guest's kernel panicked: " + panicked}
+		if panicked == "" {
+			if panicked = bsdKernelPanic(tail); panicked != "" {
+				timer := time.NewTimer(bsdPanicBound)
+				defer timer.Stop()
+				bound = timer.C
+			}
 		}
 		select {
 		case <-ctx.Done():
+			if panicked != "" {
+				return &guestGoneError{reason: "the guest's kernel panicked: " + panicked}
+			}
 			return ctx.Err()
 		case <-g.gone:
 			// ⚠ One more look. What the pattern waits for can arrive in the same
@@ -853,6 +875,8 @@ func (g *guest) waitFrom(ctx context.Context, re *regexp.Regexp, from int) error
 				return &guestGoneError{reason: "the guest's kernel panicked: " + panicked}
 			}
 			return &guestGoneError{reason: "the guest's console closed, after: " + lastConsoleLine(g.seen())}
+		case <-bound:
+			return &guestGoneError{reason: "the guest's kernel panicked: " + panicked + ", and the guest neither finished nor stopped within " + bsdPanicBound.String()}
 		case <-tick.C:
 		}
 	}

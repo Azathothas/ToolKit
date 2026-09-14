@@ -417,11 +417,16 @@ fetch --force` goes back to the published image.
 
 ⛔ **The guest kernel can panic.** Measured on 2026-09-14: `bootstrap.sh --toolset
 languages` in a 2048 MiB guest panicked in the page daemon while `pkg` installed.
-`bsd run` ends a run as soon as the console shows a kernel panic or QEMU exits, with
-exit 2 and the panic line, and what the panic wrote goes with the run's overlay. ⚠
-The payload's output is on the same console, so a payload that prints a FreeBSD
-panic's own two lines, `panic: ` and `cpuid = ` under it, can end its run the same
-way.
+`bsd run` ends a run with exit 2 and the panic line when QEMU exits after the console
+shows a panic's two lines, `panic: ` and `cpuid = ` under it, or 60 seconds after
+them, and what the panic wrote goes with the run's overlay. ⚠ The payload's output is
+on the same console, so a payload that prints those two lines itself and finishes
+within the 60 seconds answers with its own exit and output; one that runs on past
+them is ended as a panic.
+
+| measured on 2026-09-14, on the shared image | result |
+| --- | --- |
+| a script printing `panic: page fault` and `cpuid = 0`, then sleeping 2 s, printing a line and exiting 7 | exit 7 with all three lines, the session 22.9 s; the build before this rule answered exit 2, `the guest's kernel panicked`, and cut the output after the two lines |
 
 ⚠ **A panic while the guest powers off leaves the payload's exit standing**, and the
 run warns and carries it as `shutdown_panic`. It can come before the buffers sync,

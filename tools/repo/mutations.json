@@ -2110,12 +2110,48 @@
       "args": []
     },
     {
-      "label": "bsd: a kernel panic ends a command's wait when it prints",
+      "label": "bsd: a kernel panic ends a command's wait within the bound",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\tif panicked := bsdKernelPanic(tail); panicked != \"\" {\n\t\t\treturn &guestGoneError{reason: \"the guest's kernel panicked: \" + panicked}\n\t\t}\n\t\tselect {\n",
-      "replace": "\t\tif panicked := \"\"; panicked != \"\" {\n\t\t\treturn &guestGoneError{reason: \"the guest's kernel panicked: \" + panicked}\n\t\t}\n\t\tselect {\n",
-      "run": "TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce",
+      "find": "\t\t\tif panicked = bsdKernelPanic(tail); panicked != \"\" {\n",
+      "replace": "\t\t\tif panicked = \"\"; panicked != \"\" {\n",
+      "run": "TestAGuestWhoseKernelPanicsAndHangsEndsAtTheBound",
+      "args": []
+    },
+    {
+      "label": "panic bound: a payload's copy of a panic that finishes answers normally",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\t\tbound = timer.C\n",
+      "replace": "\t\t\t\tbound = timer.C\n\t\t\t\treturn &guestGoneError{reason: \"the guest's kernel panicked: \" + panicked}\n",
+      "run": "TestAPayloadsCopyOfAPanicThatFinishesAnswersNormally",
+      "args": []
+    },
+    {
+      "label": "panic bound: a guest that hangs after a panic ends at the bound",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\t\ttimer := time.NewTimer(bsdPanicBound)\n",
+      "replace": "\t\t\t\ttimer := time.NewTimer(time.Hour)\n",
+      "run": "TestAGuestWhoseKernelPanicsAndHangsEndsAtTheBound",
+      "args": []
+    },
+    {
+      "label": "panic bound: a budget that ends after a panic names the panic",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tcase <-ctx.Done():\n\t\t\tif panicked != \"\" {\n",
+      "replace": "\t\tcase <-ctx.Done():\n\t\t\tif false {\n",
+      "run": "TestABudgetThatEndsAfterAPanicNamesThePanic",
+      "args": []
+    },
+    {
+      "label": "panic bound: a real panic ends the wait when QEMU exits",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\tif panicked := bsdKernelPanic(tail); panicked != \"\" {\n\t\t\t\treturn &guestGoneError{reason: \"the guest's kernel panicked: \" + panicked}\n\t\t\t}\n\t\t\treturn &guestGoneError{reason: \"the guest's console closed, after: \" + lastConsoleLine(g.seen())}\n",
+      "replace": "\t\t\treturn &guestGoneError{reason: \"the guest's console closed, after: \" + lastConsoleLine(g.seen())}\n",
+      "run": "TestAGuestWhoseKernelPanicsAndExitsEndsWhenQEMUDoes",
       "args": []
     },
     {

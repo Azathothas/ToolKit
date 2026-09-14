@@ -8,16 +8,16 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-14T14:15:42Z; the record commit's own time is its end
 baseline        7122216, tree clean, CI run 34846522263 green
-entries         total 119  open 8  blocked 0  done 111
-closed          WSL-84 at 191062a; WSL-83 in its own commit
-approved        WSL-82 option B
-head            191062a, then the WSL-83 commit
+entries         total 119  open 7  blocked 0  done 112
+closed          WSL-84 at 191062a; WSL-83 at b9a8ea2; WSL-82 in its own commit
+approved        none waiting
+head            b9a8ea2, then the WSL-82 commit
 ```
 
 ## Active work
 
-⭐ **The session works the operator's order unattended.** `WSL-84` and `WSL-83` are
-closed. **Next: `WSL-82`**, then issue 30's `WSL-67`, `WSL-70` and `WSL-71`. Their
+⭐ **The session works the operator's order unattended.** `WSL-84`, `WSL-83` and
+`WSL-82` are closed. **Next: issue 30's `WSL-67`**, then `WSL-70` and `WSL-71`. Their
 decisions are ruled below and in their entries. No planning question remains.
 
 `WSL-78`'s entry point, `base agent` and the `muse.exe` launcher remain built and
@@ -30,20 +30,18 @@ premise, decisions and prove. An issue closes only when every entry mapped to it
 is closed, and the issue gets a comment naming the commits.
 
 1. ⭐ **Closed:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33, `WSL-75`, `WSL-81`,
-   `WSL-72`, `WSL-77`, `WSL-84` and `WSL-83`.
-2. **`WSL-82`, the panic detector.** Wait for QEMU to exit, the command marker or the
-   60-second bound after the two panic lines appear.
-3. **Finish issue 30's existing package and profile work:** `WSL-67`, then `WSL-70`,
+   `WSL-72`, `WSL-77`, `WSL-84`, `WSL-83` and `WSL-82`.
+2. **Finish issue 30's existing package and profile work:** `WSL-67`, then `WSL-70`,
    then `WSL-71`. `WSL-67` drives `pkgin` and `pkg_add`, removes Soar, keeps and
    drives Nix, and adds the provider-profile cases to the acceptance runner.
-4. **`WSL-68`, the sealed base: a dedicated session of its own.** It closes issue
+3. **`WSL-68`, the sealed base: a dedicated session of its own.** It closes issue
    30 after the work above, and uses the drive verifier `WSL-84` fixed.
-5. **Muse and herdr together, one dedicated session.** Build `wsl-toolkit-base` from
+4. **Muse and herdr together, one dedicated session.** Build `wsl-toolkit-base` from
    [`../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json`](../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json);
    the operator runs `muse login` in it; then close `WSL-76` and `WSL-78`. Author
    approved entries for `pi` and `omp` before either adapter is built.
-6. **`wsl-toolkit-v3.0.0`** is cut after issues 30 and 32 and `WSL-82` are closed,
-   and CI is green on the final commit.
+5. **`wsl-toolkit-v3.0.0`** is cut after issues 30 and 32 are closed, and CI is green
+   on the final commit.
 
 ## Rulings in force
 
@@ -67,14 +65,12 @@ is closed, and the issue gets a comment naming the commits.
    marked `Host` block in `%USERPROFILE%\.ssh\config`, and agent launchers in
    `%USERPROFILE%\bin`.
 6. **2026-09-14: cut `wsl-toolkit-v3.0.0` only after the order above is complete.**
-   Issues 30 and 32 and `WSL-82` are closed first. Run `repo release` read-only, and
-   publish only with CI green on the final commit.
+   Issues 30 and 32 are closed first. Run `repo release` read-only, and publish only
+   with CI green on the final commit.
 7. **2026-09-14: finish existing work before Muse and herdr.** Keep Muse and herdr
    together in one later dedicated session. Complete the sealed base before it. In
    `WSL-76`.
-8. **2026-09-14: `WSL-82` uses option B**, which waits for QEMU's exit, the command
-   marker or 60 seconds.
-9. **2026-09-14: remove Soar and keep Nix.** `WSL-67` removes Soar from the
+8. **2026-09-14: remove Soar and keep Nix.** `WSL-67` removes Soar from the
    bootstrap and its live documentation, and drives Nix as the one user-level
    provider.
 
@@ -99,7 +95,8 @@ ls-files`, so check a new one by name before it is added.
 | `08e23bc` | the operator's former order for the next two sessions; `WSL-71`'s starting directory measured; `WSL-84` filed |
 | `7122216` | `WSL-82`, `WSL-83` and `WSL-84` approved; the existing work restored ahead of Muse and herdr; Soar set for removal and Nix retained |
 | `191062a` | `WSL-84` closed: the verifier reads the drives and prints what they are, `base ensure` provisions a drifted base again, and `base status --probe` prints both; `base shell --root` and `--here` read the same mounts; 16 rows red |
-| the `WSL-83` commit | `WSL-83` closed: a BSD run boots from a qcow2 overlay it removes, the image is never written, and a root not properly dismounted is named; 6 rows new and 4 changed |
+| `b9a8ea2` | `WSL-83` closed: a BSD run boots from a qcow2 overlay it removes, the image is never written, and a root not properly dismounted is named; 6 rows new and 4 changed |
+| the `WSL-82` commit | `WSL-82` closed: after a panic's two lines a command's wait ends at QEMU's exit, the closing marker or 60 seconds; driven on a real guest; 4 rows new and 2 changed |
 
 ## Measurements
 
@@ -122,6 +119,10 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
   bytes, on 2026-09-14; the public channel serves `1.2.1-R2847.1`, a 299,251,896-byte
   Linux x86 build that answers without credentials.
 - **For `WSL-84`'s CI:** run 34860407687 for `191062a` green in all six jobs.
+- **For `WSL-82`'s closing:** the prove exit 0 on Windows and in `golang:1.25`; 303
+  top-level `wsl-toolkit` cases on Windows, 296 passed, 7 skipped; 302 in
+  `golang:1.25`, 301 passed, 1 skipped. A real guest's payload printing the two panic
+  lines exit 7 with its whole output, where the build before answered exit 2.
 - **For `WSL-83`'s closing:** on the shared image, `bsd run -c true` three times with
   the overlay: a login at 8.6 s to 8.8 s and the process gone at 23.4 s to 23.6 s; the
   image's SHA-256 `12807CE7…921663BF` unchanged across six runs. The Go suites green

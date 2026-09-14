@@ -7081,7 +7081,7 @@ what they did to the image.
 ## WSL-82. A payload that prints a FreeBSD panic's two lines has its `bsd run` ended as a kernel panic
 
 **Source** found on 2026-09-14 by `WSL-81`'s claim audit.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -7147,6 +7147,56 @@ Passing is, under B, green on Windows and in `golang:1.25`:
   kernel panicked` within seconds;
 - one that prints them and hangs answers the panic at the bound, not at the budget;
 - a mutation row per rule red.
+
+---
+
+## Closing
+
+**Closed 2026-09-14T15:45:01Z.** After the console shows a panic's two lines, a
+command's wait ends at QEMU's exit, at the command's closing marker, or 60 seconds
+later, whichever comes first, and a budget that ends inside those 60 seconds names
+the panic. All four passing conditions hold on the tree's build:
+
+| condition | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
+| --- | --- | --- |
+| the two lines, then the closing marker a second later, answer exit 0 | `TestAPayloadsCopyOfAPanicThatFinishesAnswersNormally` pass, 1.66 s, the lines in the output | pass, 1.55 s |
+| the two lines, then an exit, answer `the guest's kernel panicked` within seconds | `TestAGuestWhoseKernelPanicsAndExitsEndsWhenQEMUDoes` pass, 0.56 s | pass, 0.55 s |
+| the two lines, then a hang, answer the panic at the bound and not the budget | `TestAGuestWhoseKernelPanicsAndHangsEndsAtTheBound` pass, 2.98 s with the bound at 2 s and a 30 s budget | pass, 2.65 s |
+| a mutation row per rule red | 4 new rows and 2 changed, below | the same 6 red |
+
+The prove command exit 0 on both hosts. The whole `wsl-toolkit` suite: 303 top-level
+cases on Windows, 296 passed and 7 skipped; 302 in `golang:1.25`, 301 passed and 1
+skipped; `check-go` exit 0 on both; ShellCheck 0.9.0 clean over 34 tracked scripts.
+
+⭐ **Driven on a real guest, which the premise had not done.** On the shared image, a
+script printing `panic: page fault` and `cpuid = 0`, sleeping 2 s, printing a line
+and exiting 7: the build before this entry answered exit 2 in 20.2 s, `the guest's
+kernel panicked: panic: page fault, before the command finished`, with the output cut
+after the two lines and the guest killed. This build answered exit 7 in 30.2 s, the
+session 22.9 s, with all three lines. The image's SHA-256 was the same after both
+runs, and no QEMU process was left.
+
+### The reviews
+
+⭐ **The door sweep** listed every caller of `waitFrom`: `wait`, which `BsdRun` uses for
+the root prompt after the login; `run`, for the grow, the extract and the payload;
+and `stop`, for the poweroff lines. All three now take the bound. `waitBoot` reads the
+console before any payload, and still ends a boot at a panic's first line, which no
+payload can print. `stopAndReadPanic` reads only what the console printed after the
+poweroff was typed, so a payload's copy is not read as a panic at poweroff. What
+would have made it fire: a fourth wait over the payload's output that does its own
+panic check, and a grep for `bsdKernelPanic(` finds `waitFrom` and `stopAndReadPanic`
+only.
+
+⭐ **The guard mutation proved 6 rows on Windows**, each seen green unmutated first:
+a copy that finishes answers normally, a hang ends at the bound, a budget names the
+panic, a real panic ends when QEMU exits, and the changed rows for the panic check
+and for a step a panic ended. The same 6 went red in `golang:1.25`, in 2m7s with the
+suite.
+
+⛔ **The claim audit corrected the manual**, which said a run ends "as soon as" the
+console shows a panic, and that a payload printing the two lines "can end its run the
+same way". It now gives the three ways out and the 60 seconds, with the drive above.
 
 ---
 

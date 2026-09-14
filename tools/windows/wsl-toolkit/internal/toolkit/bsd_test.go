@@ -44,6 +44,17 @@ const bsdPanicConsole = "bootstrap:   installing 6\r\n" +
 // bsdNeverRE is a marker no child prints, so a wait on it ends only some other way.
 var bsdNeverRE = regexp.MustCompile(`TKNEVER [0-9]+`)
 
+// bsdMarkerHalvesRE reads the two halves of each marker a typed line carries.
+var bsdMarkerHalvesRE = regexp.MustCompile(`'(TK[0-9A-F]{4})' '([0-9A-F]{12})'`)
+
+// shortPanicBound makes a case's wait after a panic end in two seconds.
+func shortPanicBound(t *testing.T) {
+	t.Helper()
+	previous := bsdPanicBound
+	bsdPanicBound = 2 * time.Second
+	t.Cleanup(func() { bsdPanicBound = previous })
+}
+
 // TestBsdGuestChild is the QEMU the guest cases start. It prints what a guest's
 // console would, then does what the case asks.
 func TestBsdGuestChild(t *testing.T) {
@@ -53,6 +64,23 @@ func TestBsdGuestChild(t *testing.T) {
 		// sooner, it would sit before the position the command's wait reads from.
 		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
 		_, _ = os.Stdout.WriteString(bsdPanicConsole)
+		time.Sleep(60 * time.Second)
+	case "panic-exit":
+		// A real panic: the dump, then the reboot that -no-reboot turns into an exit.
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		_, _ = os.Stdout.WriteString(bsdPanicConsole)
+		os.Exit(0)
+	case "panic-copy":
+		// A payload that prints a panic's two lines and finishes a second later, as
+		// WSL-82's premise measured: the markers are the ones the typed line asks for.
+		line, _ := bufio.NewReader(os.Stdin).ReadString('\n')
+		halves := bsdMarkerHalvesRE.FindAllStringSubmatch(line, -1)
+		if len(halves) != 2 {
+			os.Exit(5)
+		}
+		_, _ = os.Stdout.WriteString("\r\n" + halves[0][1] + halves[0][2] + "\r\n" + bsdPanicConsole)
+		time.Sleep(time.Second)
+		_, _ = os.Stdout.WriteString("\r\n" + halves[1][1] + halves[1][2] + " 0\r\n")
 		time.Sleep(60 * time.Second)
 	case "exit":
 		_, _ = os.Stdout.WriteString("Starting devd.\r\n")
@@ -126,21 +154,76 @@ func TestAKernelPanicIsToldFromAProgramThatSaysPanic(t *testing.T) {
 	}
 }
 
-// TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce is WSL-81: a guest whose console
-// shows a panic, from a QEMU that has not exited yet, ends the command's wait with
-// the panic and the way back, rather than at the end of the budget.
-func TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce(t *testing.T) {
+// TestAGuestWhoseKernelPanicsAndHangsEndsAtTheBound is WSL-81 under WSL-82's ruling:
+// a guest whose console shows a panic, from a QEMU that does not exit, ends the
+// command's wait at the bound after the panic, with the panic named, rather than at
+// the end of the budget.
+func TestAGuestWhoseKernelPanicsAndHangsEndsAtTheBound(t *testing.T) {
+	shortPanicBound(t)
 	g := startBsdGuestChild(t, "panic")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	started := time.Now()
 	_, _, err := g.run(ctx, "true")
+	waited := time.Since(started)
 	if err == nil || !strings.Contains(err.Error(), "kernel panicked: panic: page fault, after Fatal trap 12") ||
+		!strings.Contains(err.Error(), "neither finished nor stopped within 2s") ||
 		!strings.Contains(err.Error(), "goes with this run's overlay") {
-		t.Fatalf("a panicked guest answered %v after %s", err, time.Since(started))
+		t.Fatalf("a panicked guest that hangs answered %v after %s", err, waited)
 	}
-	if waited := time.Since(started); waited > 15*time.Second {
-		t.Fatalf("the panic was named after %s, which is the budget and not the panic", waited)
+	if waited > 15*time.Second {
+		t.Fatalf("the panic was named after %s, which is the budget and not the bound", waited)
+	}
+	if waited < 1500*time.Millisecond {
+		t.Fatalf("the panic was named after %s, at once rather than at the bound", waited)
+	}
+}
+
+// TestAGuestWhoseKernelPanicsAndExitsEndsWhenQEMUDoes is a real panic under WSL-82's
+// ruling: the dump and the reboot end QEMU, and the wait ends with it, named as the
+// panic, long before the bound.
+func TestAGuestWhoseKernelPanicsAndExitsEndsWhenQEMUDoes(t *testing.T) {
+	g := startBsdGuestChild(t, "panic-exit")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	started := time.Now()
+	_, _, err := g.run(ctx, "true")
+	waited := time.Since(started)
+	if err == nil || !strings.Contains(err.Error(), "kernel panicked: panic: page fault, after Fatal trap 12") ||
+		strings.Contains(err.Error(), "neither finished") {
+		t.Fatalf("a panicked guest whose QEMU exited answered %v after %s", err, waited)
+	}
+	if waited > 15*time.Second {
+		t.Fatalf("a QEMU that exited after its panic was noticed after %s", waited)
+	}
+}
+
+// TestABudgetThatEndsAfterAPanicNamesThePanic holds the fourth way out: a run whose
+// budget ends inside the bound after a panic says the guest panicked, which is what
+// happened, rather than that the command did not finish in time.
+func TestABudgetThatEndsAfterAPanicNamesThePanic(t *testing.T) {
+	g := startBsdGuestChild(t, "panic")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	_, _, err := g.run(ctx, "true")
+	if err == nil || !strings.Contains(err.Error(), "kernel panicked: panic: page fault") || strings.Contains(err.Error(), "within the budget") {
+		t.Fatalf("a budget that ended after a panic answered %v", err)
+	}
+}
+
+// TestAPayloadsCopyOfAPanicThatFinishesAnswersNormally is WSL-82: a payload that
+// prints a panic's two lines and its closing marker a second later ended its run as
+// a kernel panic at 641 ms. It answers its own exit, with the lines in its output.
+func TestAPayloadsCopyOfAPanicThatFinishesAnswersNormally(t *testing.T) {
+	g := startBsdGuestChild(t, "panic-copy")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	code, out, err := g.run(ctx, "true")
+	if err != nil || code != 0 {
+		t.Fatalf("a payload's copy of a panic answered (%d, %v)", code, err)
+	}
+	if !strings.Contains(out, "panic: page fault") || !strings.Contains(out, "cpuid = 1") {
+		t.Fatalf("the payload's own output lost the two lines: %q", out)
 	}
 }
 
@@ -148,6 +231,7 @@ func TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce(t *testing.T) {
 // panic ended printed `(exit 0)` beside the panic, a code the guest never sent. A
 // step that did finish keeps its code and the first line it printed.
 func TestAStepTheGuestNeverFinishedCarriesNoExitCode(t *testing.T) {
+	shortPanicBound(t)
 	g := startBsdGuestChild(t, "panic")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()

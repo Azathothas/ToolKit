@@ -21,6 +21,21 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T15:45:01Z: a BSD payload that prints a panic's two lines is no longer ended as a kernel panic
+
+**Record:** `WSL-82` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the cases, the drive on a real guest and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-82`.
+
+⚠ **AN EXIT CHANGES MEANING FOR ONE KIND OF RUN.** A `bsd run` whose payload printed
+`panic: ` and `cpuid = ` under it exited 2 as a kernel panic, with its guest killed
+and its output cut. After those two lines a run now waits for QEMU's exit, the
+command's closing marker or 60 seconds, so such a payload answers with its own exit
+when it finishes within 60 seconds. A real panic still exits 2 with its line, after
+its dump and reboot rather than when it prints, and a guest that hangs after one ends
+at 60 seconds.
+
 ### 2026-09-14T15:31:34Z: a BSD run writes to an overlay, and the shared image is never written
 
 **Record:** `WSL-83` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
