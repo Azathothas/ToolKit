@@ -1993,6 +1993,69 @@
       "args": []
     },
     {
+      "label": "agents: a grant covers what is beneath it and not a name that starts the same",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "find": "\tif !strings.HasSuffix(prefix, string(filepath.Separator)) {\n\t\tprefix += string(filepath.Separator)\n\t}\n",
+      "replace": "",
+      "run": "TestAGrantCoversItsDirectoryAndWhatIsBeneathItAlone",
+      "args": []
+    },
+    {
+      "label": "agents: an adapter that is not an agent is not run as one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "find": "\t\tif !ok || spec.Agent == \"\" {\n\t\t\tcontinue\n",
+      "replace": "\t\tif !ok {\n\t\t\tcontinue\n",
+      "run": "TestAnAgentRunsOnlyForAnAdapterThatIsOne",
+      "args": []
+    },
+    {
+      "label": "agents: an agent's own screen is not started without a terminal",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "find": "\treturn len(args) == 0 || args[0] == \"resume\"\n",
+      "replace": "\t_ = args\n\treturn false\n",
+      "run": "TestAnAgentsOwnScreenIsNotStartedWithoutATerminal",
+      "args": []
+    },
+    {
+      "label": "agents: a launcher's instance suffix is a usable instance name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "find": " && ValidateInstanceName(suffix) == nil {\n",
+      "replace": " {\n",
+      "run": "TestALauncherNameCarriesItsInstance",
+      "args": []
+    },
+    {
+      "label": "agents: a launcher is never written over a file that is not this tool's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "find": "\t\tif !isToolBuild(path) {\n\t\t\treturn fmt.Errorf(\"%s exists and is not a build of wsl-toolkit",
+      "replace": "\t\tif false {\n\t\t\treturn fmt.Errorf(\"%s exists and is not a build of wsl-toolkit",
+      "run": "TestALauncherIsWrittenOnlyOverOneOfThisToolsBuilds",
+      "args": []
+    },
+    {
+      "label": "agents: removing a launcher leaves a file that is not this tool's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "find": "\tif !isToolBuild(path) {\n\t\tb.log(path + \" is not a build of wsl-toolkit, so it was left as it is\")\n",
+      "replace": "\tif false {\n\t\tb.log(path + \" is not a build of wsl-toolkit, so it was left as it is\")\n",
+      "run": "TestALauncherIsWrittenOnlyOverOneOfThisToolsBuilds",
+      "args": []
+    },
+    {
+      "label": "agents: every argument an agent gets is quoted",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "find": "\t\tb.WriteString(shellQuote(a))\n",
+      "replace": "\t\tb.WriteString(a)\n",
+      "run": "TestAnAgentsArgumentsReachItAsWritten",
+      "args": []
+    },
+    {
       "label": "muse: an installer nobody approved is kept and not run",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/install.sh",

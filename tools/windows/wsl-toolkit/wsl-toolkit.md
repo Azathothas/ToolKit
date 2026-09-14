@@ -238,6 +238,45 @@ is this tool's and not the base's. `WSL_TOOLKIT_SSH_DIR` names a directory to wr
 this machine's half into instead of `%USERPROFILE%\.ssh`, which the acceptance
 runner uses; herdr's own client does not read it.
 
+### Agents from Windows
+
+```powershell
+wsl-toolkit --instance base base grant --source C:\path\to\project --mode rw
+Set-Location C:\path\to\project
+muse --version
+```
+
+⭐ **An agent runs in the base, and Windows reaches it from the project it stands
+in.** The `muse` adapter writes `muse.exe` into `%USERPROFILE%\bin` for the instance
+`base`, and `muse-NAME.exe` for any other instance, as a copy of this executable.
+Started under that name it is `wsl-toolkit --instance base base agent muse -- ARGS`:
+it finds the grant that covers the working directory, runs `muse ARGS` as the base's
+account at the guest path that directory is granted at, through the framed channel
+`base exec` uses, and answers Muse's own exit code. Every argument reaches Muse as
+written, and its stdin is `/dev/null`.
+
+⛔ **A directory no grant covers is refused** with exit 2 and the `base grant` line
+for it. A grant covers its directory and what is beneath it, and never a sibling
+whose name starts the same way. ⛔ **Muse's own screen needs a terminal**, so `muse`
+alone and `muse resume` answer exit 2 with the herdr route, rather than start it
+where it cannot draw.
+
+⚠ **The launcher is a copy, so an update of this tool leaves it behind.** `base status
+--probe` names a launcher that is another build, and `base ensure` rewrites it. It
+never writes over, or removes, a file that is not a build of this tool, which it
+reads from the file's Go build information without running it. `WSL_TOOLKIT_BIN_DIR`
+names a directory to write it into instead, which a throwaway base uses.
+
+| measured on 2026-09-14, on a throwaway arch base with the muse adapter | result |
+| --- | --- |
+| `base ensure` from nothing, the instance's own configuration | 76.6 s, and the launcher written |
+| `muse-m78.exe --version` in the granted project, then in a directory beneath it | `Muse Code 1.2.1 (1.2.1-R2847.1)` and exit 0, both |
+| the same in a directory no grant covers | exit 2, with the `base grant` line |
+| `muse-m78.exe` with no argument | exit 2, naming the herdr route |
+| `muse-m78.exe --definitely-not-a-flag` | exit 2, Muse's own, which `base exec` also read |
+| a launcher from another build | the probe exit 1 naming it; `base ensure` rewrote it, and the probe exit 0 |
+| `base remove --yes` | the launcher removed with the distribution |
+
 [`examples/muse-code/README.md`](examples/muse-code/README.md) is the complete
 worked example. [`examples/common/access-profiles.md`](examples/common/access-profiles.md)
 carries both the one-checkout profile and the zero-grant profile, including the

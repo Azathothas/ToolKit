@@ -115,6 +115,16 @@ wsl-toolkit --instance base base shell
 
 Then run `muse login` in that shell.
 
+⭐ **From Windows, grant a project and run `muse` in it.** `base ensure` also writes
+`muse.exe` into `%USERPROFILE%\bin`, which runs Muse in the base at the guest path
+of the directory you stand in:
+
+```powershell
+wsl-toolkit --instance base base grant --source C:\path\to\project --mode rw
+Set-Location C:\path\to\project
+muse --version
+```
+
 ⭐ **`muse` is on `PATH` in `base exec`**, through `/usr/local/bin/muse`, which the
 adapter writes and which runs Muse only as the base's account. ⚠ Meta's installer
 prints that `~/.local/bin` is not on your `PATH` and asks you to add it; that file is

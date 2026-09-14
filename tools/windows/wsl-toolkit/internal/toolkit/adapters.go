@@ -67,6 +67,9 @@ type adapterSpec struct {
 	// TakesInstallerDigest says the adapter runs a provider's installer, and reads
 	// an operator's approval of one as TK_INSTALLER_SHA256.
 	TakesInstallerDigest bool
+	// Agent is the command an agent adapter installs in the base, which `base agent`
+	// and the Windows launcher run, or "" for an adapter that is not an agent.
+	Agent string
 	// Host is the half that lives on this machine, or nil.
 	Host adapterHost
 }
@@ -82,9 +85,11 @@ var adapterSpecs = []adapterSpec{
 	},
 	{
 		Name:                 "muse",
-		Summary:              "Muse Code for the base's account, from Meta's installer, run only while that file's digest is one the operator approved",
+		Summary:              "Muse Code for the base's account, from Meta's installer, run only while that file's digest is one the operator approved, and a launcher on Windows",
 		Presets:              []string{"arch"},
 		TakesInstallerDigest: true,
+		Agent:                "muse",
+		Host:                 &agentLauncherHost{agent: "muse"},
 	},
 }
 

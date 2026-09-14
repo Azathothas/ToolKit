@@ -9,7 +9,7 @@ one.
 | adapter | what it installs | driven on |
 | --- | --- | --- |
 | [`herdr/`](herdr/) | herdr 0.9.0, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
-| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, and `/usr/local/bin/muse` | the `arch` preset |
+| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, and a `muse.exe` launcher on this machine | the `arch` preset |
 
 `pi` and `omp` are the next adapters named, and neither is built.
 
@@ -69,6 +69,8 @@ generated file in this tree.
 2. Write the three kinds of file above, and the entry in `adapterSpecs` in
    [`../internal/toolkit/adapters.go`](../internal/toolkit/adapters.go): its
    summary, whether it needs systemd, and the presets it was driven on. ⛔ A base
-   from another preset is refused rather than guessed at.
+   from another preset is refused rather than guessed at. An agent adapter also
+   names its command as `Agent`, which gives it `base agent` and a launcher on this
+   machine.
 3. Run the fix above, then `base ensure` and `base status --probe` on the
    throwaway instance, and read every fact back.

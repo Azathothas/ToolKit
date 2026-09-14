@@ -61,6 +61,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	if sub == "grant" || sub == "revoke" {
 		return cmdBaseGrant(ctx, sub, rest)
 	}
+	if sub == "agent" {
+		return cmdBaseAgent(ctx, rest)
+	}
 	if err := parseArgs(fs, rest); err != nil {
 		return exitCannot, err
 	}

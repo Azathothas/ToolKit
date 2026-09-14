@@ -6323,6 +6323,74 @@ Passing is:
 - from an ungranted directory, exit 2 and the grant command printed;
 - a transcript of every command in the guide, run in the order the guide gives.
 
+## Amendment, 2026-09-14: the entry point and its launcher, built and driven without a sign-in
+
+⭐ **Built, under the ruling:**
+
+- `wsl-toolkit base agent NAME [--] ARGS`, for an adapter that names an `Agent`
+  command. It maps the working directory to the grant that covers it, a grant
+  covering its directory and what is beneath it and no sibling whose name starts the
+  same way; refuses an ungranted directory with exit 2 and the `base grant` line;
+  runs the command as the account at that guest path through `base exec`'s framed
+  channel, with every argument single-quoted; and forwards the exit code. `muse` with
+  no argument, and `muse resume`, answer exit 2 naming the herdr route.
+- **The launcher is this executable under the agent's name**: `muse.exe` in
+  `%USERPROFILE%\bin` reaches the instance `base`, and `muse-NAME.exe` the instance
+  `NAME`. It is the `muse` adapter's half on this machine, so `base ensure` writes
+  it, `base status --probe` names one that is another build, and `base remove` takes
+  it away. It never writes over or removes a file that is not a build of this tool,
+  read from Go's build information without running it.
+
+⛔ **Why an executable and not a script:** `forbidden-patterns.md` records that
+`cmd.exe` does not parse the argument list its callers produce, so a `.cmd` launcher
+would read an agent's prompt again, and an ampersand in one would start a second
+command. A `.ps1` reaches PowerShell callers alone. A copy of the executable takes its
+arguments as any program does, and the price, a copy an update leaves behind, is
+named by the probe.
+
+⭐ **Driven on the throwaway `wsl-toolkit-m78`**, its profile in the instance's own
+`config.json`, with `WSL_TOOLKIT_BIN_DIR` under this repository's `.tmp` and the
+grant a throwaway git project there:
+
+| measured | result |
+| --- | --- |
+| `base ensure` from nothing, with the muse adapter | exit 0 in 76.6 s, `muse-m78.exe` written, 14,200,320 bytes |
+| `base grant --source .tmp\wsl78\proj --mode rw` | exit 0, mounted live |
+| `muse-m78.exe --version` in the project, then in a directory beneath it | `Muse Code 1.2.1 (1.2.1-R2847.1)`, exit 0, both |
+| `muse-m78.exe --version` in a directory no grant covers | exit 2, and the `base grant --source` line for that directory |
+| `muse-m78.exe` with no argument | exit 2, naming `base attach` and the guest path |
+| `muse-m78.exe --definitely-not-a-flag`, read unpiped | exit 2, the code `base exec` read from Muse for the same argument |
+| `muse-m78.exe exec --help` | exit 0, Muse's 91-line help |
+| a launcher from an earlier build of the tree | the probe exit 1 naming it; `base ensure` rewrote it, byte for byte this build, and the probe exit 0 |
+| `base revoke`, then `base remove --yes` | exit 0 both, and the launcher removed with the distribution |
+
+⚠ **Driving it found two messages worth rewriting, and they are:** the refusal
+repeated itself, `not granted to the base: ... is not granted to`, and the herdr
+route said "the lines this prints" beside a command that prints them.
+
+| case | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
+| --- | --- | --- |
+| `TestAGrantCoversItsDirectoryAndWhatIsBeneathItAlone` | pass | pass |
+| `TestAnAgentRunsOnlyForAnAdapterThatIsOne` | pass | pass |
+| `TestAnAgentsOwnScreenIsNotStartedWithoutATerminal` | pass | pass |
+| `TestALauncherNameCarriesItsInstance` | pass | pass |
+| `TestALauncherIsWrittenOnlyOverOneOfThisToolsBuilds` | pass | pass |
+| `TestAnAgentsArgumentsReachItAsWritten`, quotes, a dollar sign, a backtick, a glob and an empty argument | skip | pass |
+
+⭐ **Seven mutation rows went red**, each after its case passed unmutated: the path
+boundary, an adapter that is not an agent, the screen rule, the launcher's instance
+suffix, the refusal to write over and to remove a file that is not this tool's, on
+Windows; and the quoting, in `golang:1.25`.
+
+### Still open
+
+1. The prove, and the guide, whose every command is run before it is written. Both
+   need Muse signed in, so both wait for `wsl-toolkit-base` and the operator's
+   `muse login`.
+2. The interactive screen through herdr: starting Muse in a pane at the project's
+   guest path and attaching from Windows, with `WSL-76`'s closing drive.
+3. The three reviews, and the closing.
+
 ---
 
 ## WSL-79. A BSD run pays two minutes before its first command, and a comment line ends its script early

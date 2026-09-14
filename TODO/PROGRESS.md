@@ -11,7 +11,7 @@ baseline        eff07c5, tree clean, CI run 34820474937 green
 entries         total 118  open 9  blocked 0  done 109
 closed          WSL-81 at e32791a; WSL-72 at 461269f; WSL-77
 filed           WSL-82, found by WSL-81's claim audit; WSL-83, found by WSL-72's baseline read
-head            d8c8328, then this commit
+head            c016d5c, then this commit
 ```
 
 ## Active work
@@ -25,9 +25,13 @@ shared image is restored, and the decision is the operator's, below.
 ⭐ **`WSL-77` is closed.** A fresh clone and one `base ensure` built a throwaway base
 with herdr and Muse; a build whose pin differed stopped with exit 2 before the
 installer ran, and the same build ran it once the digest was approved in the
-configuration. **Next: `WSL-78`'s Windows launchers**, as far as they go without a
-signed-in Muse. `WSL-76` and `WSL-78`'s closings wait for `wsl-toolkit-base` and the
-operator's sign-in.
+configuration.
+
+⭐ **`WSL-78`'s entry point is built and driven without a sign-in:** `base agent`, and
+`muse.exe` as this executable under the agent's name, mapping the working directory
+to its grant. Its prove and guide, and `WSL-76`'s closing, wait for
+`wsl-toolkit-base` and the operator's `muse login`. **Next: issue 30**, in the work
+order's sequence.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -103,7 +107,8 @@ never on the shared image.
 | `e32791a` | `WSL-81` closed: 8 mutation rows red one at a time; a step the guest never finished no longer prints `(exit 0)`, with a case and a row; the manual's per-run cost measured again on the one-processor build, about 23 s; `WSL-82` filed for a payload that prints a panic's two lines |
 | `461269f` | `WSL-72` closed: the prove as written passed on a fresh image copy, exit 0, `absent=` empty, `nim` and `rustc` present, a 10.6 GiB root; 4 rows red. `WSL-83` filed after two panics at poweroff on the shared image, which is restored; the manual, two comments and `WSL-81`'s record corrected where they said such a panic comes after the buffers sync |
 | `d8c8328` | `WSL-77` built: the `muse` adapter runs Meta's installer only while its digest is approved, `installer_sha256` carries an operator's approval, `/usr/local/bin/muse` serves `base exec`, and `wsl-toolkit-base.json` is the one base's profile; 3 cases, 6 rows red |
-| this commit | `WSL-77` closed: the prove from a fresh clone on a throwaway base, the planted stop and the approval by configuration; the door sweep's loading row, 7 rows in all; the manual's Muse table, and three sentences the claim audit corrected |
+| `c016d5c` | `WSL-77` closed: the prove from a fresh clone on a throwaway base, the planted stop and the approval by configuration; the door sweep's loading row, 7 rows in all; the manual's Muse table, and three sentences the claim audit corrected |
+| this commit | `WSL-78` partial: `base agent` and the `muse.exe` launcher, driven on a throwaway base from a granted project, an ungranted directory and a stale build; 6 cases, 7 rows red. Its prove and guide wait for a signed-in Muse |
 
 ## Measurements
 
@@ -135,6 +140,11 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
   4.4 s; approved by configuration exit 0 in 5.6 s; over an installed Muse exit 0 in
   3.8 s; `base remove --yes` exit 0 in 10.5 s. The operator's SSH configuration
   unchanged.
+- **For `WSL-78`'s entry point:** on the throwaway `m78`, `base ensure` exit 0 in
+  76.6 s writing a 14,200,320-byte launcher; the launcher exit 0 in the granted
+  project and beneath it, exit 2 elsewhere and with no argument, and Muse's own exit
+  2 forwarded; a stale launcher named by the probe and rewritten by `base ensure`;
+  the operator's `%USERPROFILE%\bin` untouched.
 - ⛔ **For `WSL-83`:** two read-only runs on the shared image, one processor, both
   exit 0, both panicked at poweroff: `bad pte va 389278400000 pte 0` before `Syncing
   disks`, then, on the next boot's unchecked root, `initiate_write_filepage: dir inum
