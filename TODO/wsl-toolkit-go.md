@@ -4550,7 +4550,7 @@ Passing is:
 
 **Source** the operator, 2026-09-12: grow and allow 10GB. Found while driving
 `bootstrap.sh --toolset languages` on FreeBSD 15.1.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -4818,11 +4818,84 @@ every file in them was born at 04:08 that day, from `go` and `pwsh`, and neither
 in the baseline. Both are removed. The root reads 3,264,500 KiB used of 11,138,540.
 `pkg`'s catalogue under `/var/db/pkg/repos` stays, refreshed by this run.
 
-### Still open
+---
 
-1. The prove as written, which fetches `bootstrap.sh` from `main`, once this
-   commit is pushed, and the guest put back again.
-2. The closing, with the changelog row.
+## Closing
+
+**Closed 2026-09-14T09:54:56Z.** The guest disk defaults to 12 GiB, the smallest
+measured to give a true 10 GiB root, and `bootstrap.sh` from `main` installs the
+`languages` toolset on FreeBSD with `nim` on `PATH`. The prove as written, on the
+tree's build at `e32791a`, with `bootstrap.sh` fetched from `main` identical to the
+tracked file, blob `908eb80`:
+
+```text
+wsl-toolkit bsd run --network --timeout 25m -c 'df -h / | tail -1; fetch -q -o /tmp/b.sh https://raw.githubusercontent.com/Azathothas/ToolKit/main/scripts/common/bootstrap.sh; sh /tmp/b.sh --toolset languages --no-tmux-config'
+exit 0, read unpiped, in 178.8 s
+/dev/gpt/rootfs     11G    2.5G    7.3G    25%    /
+bootstrap: freebsd on FreeBSD amd64, libc, wsl=no, privilege=root
+bootstrap: package manager: pkg, user-level provider: none
+bootstrap: [!] freebsd's pkg does not carry build
+bootstrap: [!] freebsd's pkg does not carry cargo
+bootstrap:   refreshing the pkg catalogue
+bootstrap:   installing 6
+bootstrap:   added /root/.local/bin to /root/.profile
+bootstrap:   linked /root/.local/bin/nim to this distribution's /usr/local/nim/bin/nim
+toolset=languages
+requested=8
+present=6
+skipped=build cargo
+absent=
+version.cargo=cargo 1.96.1 (356927216 2026-06-26) (built from a source tarball)
+version.go=go version go1.25.14 freebsd/amd64
+version.nim=Nim Compiler Version 2.2.10 [FreeBSD: amd64]
+version.pwsh=PowerShell 7.5.5
+version.python3=Python 3.12.14
+version.rustc=rustc 1.96.1 (31fca3adb 2026-06-26) (built from a source tarball)
+failures=0
+  login at 29s, session 2m50s, disk 12.0 GiB, root filesystem 10.6 GiB, exit 0
+```
+
+The report's other lines, the platform facts and the versions of tools FreeBSD's base
+carries, are cut. All four passing conditions hold:
+
+| condition | measured |
+| --- | --- |
+| a root filesystem of at least 10 GiB, by `df -k /` | `df -h /` read `11G`; the summary's 10.6 GiB is `df -k /`'s size, read by the grow step |
+| exit 0, `absent=` empty, `version.rustc` and `version.nim` | above, with `failures=0` |
+| `bsd status` prints the disk | `disk        12.0 GiB`, from the same cache |
+| the guest left as it was found | the prove booted a fresh copy, which was deleted; it never booted the shared image |
+
+### ⚠ The prove ran on a copy, and why
+
+Minutes before, two read-only runs on the shared image had panicked while powering
+off. The first came before the buffers synced, and the second on the filesystem the
+first left unchecked. `WSL-83` carries them, and `bsd fetch --force` restored the
+shared image at 09:46:42Z. As the operator directed for heavy runs, the prove ran on
+a fresh copy, with `WSL_TOOLKIT_CACHE` under this repository's `.tmp`, from the kept
+archive, whose SHA-256 matched `BsdImagePinnedSha256` before it expanded. The copy
+grew from 6,476,638,208 bytes to 12 GiB in the run and powered off after `All buffers
+synced`, with no panic. Its cache directory, 13,551,187,372 bytes, was then deleted.
+
+### The reviews
+
+⭐ **The door sweep** asked what else reads the disk default or reaches the grow.
+`BsdDefaultDiskGiB` is read in three places: the `--disk` flag, whose manual default
+is generated from it, `bsd status`, and `BsdRun`'s fallback. The grow runs in `BsdRun`
+alone, the file before the boot and the filesystem before the payload. It found
+nothing. What would have made it fire: a second spelling of the size, or a payload
+reached before the grow step.
+
+⭐ **The guard mutation proved 4 rows on Windows**, each after its case passed
+unmutated: the refusal to shrink, the `--disk` refusal, the loader line and the
+anchored panic line in a boot's failure. No row holds the `nim` link, because
+`bootstrap.sh` has no case runner; this prove is its proof, in the guest where it was
+measured missing.
+
+⭐ **The claim audit** read the manual's BSD section against these runs. The per-run
+cost it gives was measured on an image already grown: the first run after a fetch
+logged in at 29 s, because FreeBSD grew its root and generated its SSH host keys first.
+The manual now says so. `bsd fetch --force` took 13.1 s where the manual said 84 s;
+it now gives both.
 
 ---
 
@@ -6715,6 +6788,15 @@ runner idle, did not recur in these narrow runs.
 hold a 30-second budget with a 15-second ceiling, and answer in under a second. A
 mutated case fails at the 30-second budget, which is why those rows took about 40 s.
 
+### ⛔ Corrected the same day: one processor panicked at poweroff, before the buffers synced
+
+Six minutes after this closing, two read-only runs in a row on the shared image
+panicked while powering off, with one processor, and the first came before `Syncing
+disks`. The amendment's panic at poweroff came after `All buffers synced`, and the
+manual and two comments in `bsd.go` had made that true of every such panic; all three
+are rewritten. `shutdown_panic` caught both panics on a real guest. `WSL-83` carries
+what they did to the image.
+
 ---
 
 ## WSL-82. A payload that prints a FreeBSD panic's two lines has its `bsd run` ended as a kernel panic
@@ -6790,3 +6872,102 @@ Passing is, under B, green on Windows and in `golang:1.25`:
   kernel panicked` within seconds;
 - one that prints them and hangs answers the panic at the bound, not at the budget;
 - a mutation row per rule red.
+
+---
+
+## WSL-83. A FreeBSD kernel panic at poweroff leaves the shared guest image unchecked, and the next run panics on it
+
+**Source** found on 2026-09-14 while reading the shared image's package baseline for
+`WSL-72`'s prove.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Two `bsd run` calls in a row, each with a read-only payload that exited 0, panicked
+the guest's kernel while it powered off. The first panic came before the kernel
+synced its buffers. The second run booted on a root filesystem that was not properly
+dismounted and had not been checked, saved a core dump into the shared image, and
+panicked inside the filesystem as it powered off. Each run exited 0 with a
+`shutdown_panic` warning, and nothing told the second run's caller, before its payload
+ran, that the guest's filesystem was unchecked.
+
+## Premise
+
+⭐ **Measured on 2026-09-14** on the shared image, grown to 12 GiB, with one processor
+and 2048 MiB, on the tree's build at `e32791a`:
+
+| payload ran | payload | exit | panic while powering off |
+| --- | --- | --- | --- |
+| 09:41:56Z | `pkg query`, `df`, `ls`, `sha256` | 0 | `bad pte va 389278400000 pte 0`, in `pmap_remove_pages` from `exit1`, while `rc.shutdown` stopped processes and before `Syncing disks`; a 165 MB dump |
+| 09:44:52Z | `mount -p`, `tunefs -p /`, `dumpfs`, `ls /var/crash` | 0 | `initiate_write_filepage: dir inum 0 != new 160513` |
+
+- ⭐ The second boot printed `WARNING: / was not properly dismounted`; then `savecore`
+  wrote `/var/crash/vmcore.0`, 173,228,032 bytes, and the boot printed `Starting
+  background file system checks in 60 seconds.` Its payload ran 11 s after the
+  kernel's boot time and the poweroff followed, so that check never started.
+- ⭐ `tunefs -p /` reads soft updates enabled and soft update journaling disabled.
+- ⭐ The second run still read 500 packages, with the sorted digest `f447f1da…0d9aa2`
+  the first read.
+- ⭐ Three `-c true` runs on the same image with one processor, from 09:28Z to 09:29Z,
+  powered off with no panic.
+- ⭐ `bsd fetch --force` restored the published image in 13.1 s.
+- ⚠ **Not measured: what makes the kernel panic.** Every function named in `WSL-81`'s
+  panics and in these two is in memory management or the filesystem, under WHPX.
+
+## Approach
+
+1. The decision below first.
+2. Whatever is chosen, a boot whose console shows `was not properly dismounted` is
+   named on the run's result, because nothing reads that line today.
+3. The manual's BSD section keeps what a panic at poweroff leaves, with the
+   measurement.
+
+## Decision
+
+What protects the shared image from a panic while the guest powers off:
+
+- **A. A throwaway overlay per run. Recommended.** QEMU opens the image with
+  `snapshot=on`, so a run's writes land in a temporary file that QEMU discards when it
+  exits. No panic can damage the image, and nothing a payload installs survives its
+  run, which `WSL-72`'s prove already asks a caller to put back by hand. ⚠ Unmeasured,
+  and measured before it is built: the grow and the first-boot work would repeat on
+  every boot, and the first run after a fetch logged in at 29 s where a grown image
+  logs in at about 8.5 s.
+- **B. The image stays writable, and the tool guards it:** `sync` typed before
+  `poweroff`, and a boot that shows the line refused before its payload, with exit 2
+  and `bsd fetch --force` named. A panic can still damage the image, and the next run
+  stops rather than building on it.
+- **C. The image stays writable, and the run warns** when its boot shows the line,
+  then runs the payload anyway.
+
+⛔ A ends what `WSL-72`'s approach point 4 protects, a guest a previous session left
+configured, so the choice is the operator's.
+
+## Consumers
+
+⚠ By [`../docs/consumers.md`](../docs/consumers.md)'s definition, A breaks a caller
+that installs something in one run and uses it in the next, and B changes a run that
+went ahead on an unchecked filesystem into exit 2. The changelog says whichever holds.
+C changes no exit and no stream.
+
+## Prove
+
+Under A:
+
+```powershell
+wsl-toolkit bsd run -c 'touch /root/tk-overlay-probe'
+wsl-toolkit bsd run -c 'test ! -e /root/tk-overlay-probe'
+```
+
+Passing is:
+
+- both exit 0, and the image file's SHA-256 is the same before the first and after the
+  second;
+- three runs of `bsd run -c true` with the login and the session recorded, and the
+  manual carrying them;
+- a mutation row per rule red.
+
+Under B, a fake-guest case whose boot prints the line answers exit 2 naming `bsd fetch
+--force`, a fake-guest case sees `sync` typed before `poweroff`, and each row goes red.

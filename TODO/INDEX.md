@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 117  open 10  blocked 0  done 107
+total 118  open 10  blocked 0  done 108
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 60 | 60 |
-| P2 | 10 | 0 | 37 | 47 |
+| P1 | 1 | 0 | 60 | 61 |
+| P2 | 9 | 0 | 38 | 47 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **10** | **0** | **107** | **117** |
+| **all** | **10** | **0** | **108** | **118** |
 
 ---
 
@@ -109,7 +109,7 @@ total 117  open 10  blocked 0  done 107
 | WSL-69 | P1 | M | done | Muse Code installed, authenticated and driven end to end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-70 | P2 | L | open | Two package maps become one, and the Go module embeds it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-71 | P2 | M | open | A portable shell profile this tree owns | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-72 | P2 | S | open | The BSD guest gets a 10 GiB disk, and the languages install on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-72 | P2 | S | done | The BSD guest gets a 10 GiB disk, and the languages install on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-73 | P1 | XL | done | The PowerShell product retires, and pull request 31 is reviewed before any of it lands | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-74 | P1 | S | done | A named instance acts on whatever base the nearest project file names | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-75 | P2 | L | done | One named base serves every project, and a grant changes without a restart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -120,6 +120,7 @@ total 117  open 10  blocked 0  done 107
 | WSL-80 | P1 | M | done | A throwaway command that has finished can leave `distro run` waiting forever | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-81 | P1 | M | done | A FreeBSD guest that panics mid-run leaves `bsd run` waiting out its budget | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-82 | P2 | S | open | A payload that prints a FreeBSD panic's two lines has its `bsd run` ended as a kernel panic | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-83 | P1 | M | open | A FreeBSD kernel panic at poweroff leaves the shared guest image unchecked, and the next run panics on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -8,20 +8,23 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-14T09:18:24Z; the record commit's own time is its end
 baseline        eff07c5, tree clean, CI run 34820474937 green
-entries         total 117  open 10  blocked 0  done 107
-closed          WSL-81
-filed           WSL-82, found by WSL-81's claim audit
-head            eff07c5, then this commit
+entries         total 118  open 10  blocked 0  done 108
+closed          WSL-81 at e32791a; WSL-72
+filed           WSL-82, found by WSL-81's claim audit; WSL-83, found by WSL-72's baseline read
+head            e32791a, then this commit
 ```
 
 ## Active work
 
-⭐ **`WSL-81` is closed.** Its eight mutation rows went red one at a time. Its claim
-audit removed an exit code printed for a step that never finished, measured the
-manual's per-run cost again on the one-processor build, and filed what it could not
-settle as `WSL-82`. **Next: `WSL-72`'s exact prove, from pushed `main`**, on the
-shared image, with the package baseline read first and only the run's additions
-removed afterwards.
+⭐ **`WSL-81` and `WSL-72` are closed.** `WSL-72`'s prove ran as written from pushed
+`main` and passed on a fresh copy of the published image. ⛔ **`WSL-83` is filed at
+P1:** two read-only runs on the shared image panicked while powering off, with one
+processor, and the second panicked on the filesystem the first left unchecked. The
+shared image is restored, and the decision is the operator's, below.
+
+**Next: issue 32.** `WSL-76` waits for `wsl-toolkit-base` and the operator's sign-in,
+so `WSL-77` comes first: the Muse adapter, driven on a throwaway instance, then
+`WSL-78`'s launchers and guide as far as they go without a signed-in Muse.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -36,11 +39,8 @@ is closed, and the issue gets a comment naming the commits.
 3. **`WSL-79`**, issue 33: its line join reports success over commands that
    never ran. ⭐ Closed, and issue 33 is closed with a comment naming `5e66e44`
    and `cf274eb`.
-4. **`WSL-72`**: nim is linked and the 12 GiB default is measured. Its prove
-   fetches `bootstrap.sh` from `main`, so it runs after the build commit is pushed.
-   ⛔ The first such run panicked the guest and left the image unbootable, so
-   **`WSL-81`** was inserted here. ⭐ `WSL-81` is closed, and `WSL-72`'s prove runs
-   next.
+4. **`WSL-72`**, and **`WSL-81`** inserted before its prove, because the first run of
+   that prove panicked the guest. ⭐ Both closed.
 5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants. `WSL-76`'s
    machinery is built and driven without Muse; its closing needs Muse through herdr,
@@ -52,8 +52,8 @@ is closed, and the issue gets a comment naming the commits.
 8. **`wsl-toolkit-v3.0.0`** is cut once the three issues are closed and CI is
    green on the final commit.
 
-⚠ **`WSL-82` is in no issue and not in this order.** It waits for the operator's
-approval and ruling, below, and the release condition does not wait for it.
+⚠ **`WSL-82` and `WSL-83` are in no issue and not in this order.** Each waits for the
+operator's approval and ruling, below. The release condition does not name them.
 
 ## Rulings in force
 
@@ -89,13 +89,16 @@ approval and ruling, below, and the release condition does not wait for it.
 A green local gate is not CI. Run the Go tests with `TEMP` and `TMP` at an 8.3
 short path, then CI's Linux Go job and its ShellCheck in containers.
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
-carries all three as commands under "Build and local proof".
+carries all three as commands under "Build and local proof". ⚠ **A heavy BSD run goes
+on a fresh image copy**, with `WSL_TOOLKIT_CACHE` under this repository's `.tmp`,
+never on the shared image.
 
 ## Done this session
 
 | commit | what |
 | --- | --- |
-| this commit | `WSL-81` closed: 8 mutation rows red one at a time; a step the guest never finished no longer prints `(exit 0)`, with a case and a row; the manual's per-run cost measured again on the one-processor build, about 23 s; `WSL-82` filed for a payload that prints a panic's two lines |
+| `e32791a` | `WSL-81` closed: 8 mutation rows red one at a time; a step the guest never finished no longer prints `(exit 0)`, with a case and a row; the manual's per-run cost measured again on the one-processor build, about 23 s; `WSL-82` filed for a payload that prints a panic's two lines |
+| this commit | `WSL-72` closed: the prove as written passed on a fresh image copy, exit 0, `absent=` empty, `nim` and `rustc` present, a 10.6 GiB root; 4 rows red. `WSL-83` filed after two panics at poweroff on the shared image, which is restored; the manual, two comments and `WSL-81`'s record corrected where they said such a panic comes after the buffers sync |
 
 ## Measurements
 
@@ -115,6 +118,13 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
   tracked script. 8 mutation rows red on Windows, each after its cases passed
   unmutated. Three `bsd run -c true` runs with one processor: a login at 8.3 s to
   8.5 s and the process gone at 23.0 s to 23.3 s, with no panic.
+- **For `WSL-72`'s closing:** the prove exit 0 in 178.8 s on a fresh copy, whose
+  first boot logged in at 29 s; 4 mutation rows red. `bsd fetch --force` restored
+  the shared image in 13.1 s, and an image copy expanded in 24 s.
+- ⛔ **For `WSL-83`:** two read-only runs on the shared image, one processor, both
+  exit 0, both panicked at poweroff: `bad pte va 389278400000 pte 0` before `Syncing
+  disks`, then, on the next boot's unchecked root, `initiate_write_filepage: dir inum
+  0 != new 160513`.
 
 ## Found, and not filed
 
@@ -155,15 +165,23 @@ claim audit found its own premise blaming a pipe the stack dumps cleared. `WSL-7
 door sweep found the guest keeping script copies in a shared `/tmp` after a failed
 run. `WSL-81`'s claim audit found a grow a panic ended printing `(exit 0)`, the
 manual's per-run cost measured on the two-processor build, and a payload's copy of a
-panic read as the kernel's, which is `WSL-82`. Each is fixed or filed in the entry's
-own commit.
+panic read as the kernel's, which is `WSL-82`. `WSL-72`'s claim audit found the
+manual's per-run cost silent about a fresh image's first boot, and its restore time
+stale. Each is fixed or filed in the entry's own commit.
 
 ## Open questions for the operator
 
-1. **`WSL-82`: approve the entry, and rule A, B or C.** What ends a command's wait
+1. **`WSL-83`: approve the entry, and rule A, B or C.** What protects the shared FreeBSD
+   image from a panic at poweroff: **A, a throwaway overlay per run, recommended**,
+   which ends a guest one session configures for the next; B, the image writable,
+   with `sync` before `poweroff` and a run refused on a boot that shows its root not
+   properly dismounted; C, a warning only.
+2. **`WSL-82`: approve the entry, and rule A, B or C.** What ends a command's wait
    once the console shows a panic's two lines: A, at once, as now; **B, QEMU's exit,
    the command's closing marker, or 60 seconds, recommended**; C, QEMU's exit alone.
-   The entry carries the measurement and the trade.
+3. **Does `wsl-toolkit-v3.0.0` wait for `WSL-83`?** Recommended: no. The ruling names
+   the three issues, the manual's known limits carry the panic, and `bsd fetch
+   --force` restores the image in seconds.
 
 ## Host state
 
@@ -177,7 +195,6 @@ own commit.
   `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with an empty `known_hosts` beside it,
   and stays for `wsl-toolkit-base`. `%USERPROFILE%\.ssh\config` reads SHA-256
   `18FC11BE…E93F4`, as the previous session left it.
-- The shared FreeBSD pkgbase guest is 12,884,901,888 bytes, and read its published
-  500 packages, 499 named `FreeBSD-*`, with sorted digest `f447f1da…0d9aa2`, on its
-  last package read. This session booted it three times with `-c true` and no panic,
-  and added and removed no package.
+- ⛔ **The shared FreeBSD image is the published one again**, 6,476,638,208 bytes,
+  restored by `bsd fetch --force` at 09:46:42Z after `WSL-83`'s panics, and not booted
+  since. The next run grows it to 12 GiB. No image copy remains under `.tmp`.

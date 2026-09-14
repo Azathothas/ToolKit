@@ -21,6 +21,25 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T09:54:56Z: the FreeBSD guest's disk grows to 12 GiB, and bootstrap.sh puts FreeBSD's nim on PATH
+
+**Record:** `WSL-72` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the prove's output and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut. ⚠
+[`scripts/common/bootstrap.sh`](scripts/common/bootstrap.sh) is fetched by URL, so
+its change reached a caller of `main` when it was pushed.
+**Closes:** `WSL-72`.
+
+⚠ **THE GUEST DISK IS 12 GiB BY DEFAULT, AND THE PUBLISHED IMAGE IS 6.** `bsd run`
+grows the image file to `--disk` GiB before it boots, then grows the partition and
+the filesystem in the guest before the payload runs, which gives a 10.6 GiB root. The
+file never shrinks: a smaller `--disk` is refused, and `bsd fetch --force` goes back to
+the published image. `bsd status` prints the disk.
+
+⭐ **`bootstrap.sh --toolset languages` completes on FreeBSD 15.1.** Rust fits, and
+`nim`, which FreeBSD installs under `/usr/local/nim/bin` with nothing on `PATH`, is
+linked into `~/.local/bin`.
+
 ### 2026-09-14T09:36:07Z: a FreeBSD guest that panics or stops ends its run at once, and a run uses one processor
 
 **Record:** `WSL-81` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
@@ -41,6 +60,11 @@ one, in none of 5. `--cpus 2` restores the old count. A `-c true` run measured a
 
 ⚠ A payload that prints a FreeBSD panic's own two lines can end its run the same way.
 `WSL-82` carries it.
+
+⚠ **Amended 2026-09-14T09:54:56Z: one processor lowers the rate and does not end
+it.** Two read-only runs in a row on the shared image panicked while powering off,
+the first before the buffers synced, and the second on the filesystem the first left
+unchecked. `WSL-83` carries it.
 
 ### 2026-09-14T06:30:00Z: one base serves every project, and a grant changes without a restart
 

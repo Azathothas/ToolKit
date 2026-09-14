@@ -89,6 +89,10 @@ const (
 	// package work on this WHPX host. Five fresh-image runs with one processor
 	// completed without a panic; the earlier two-processor matrix panicked under
 	// every CPU model and memory size it tried. Measured 2026-09-14. WSL-81.
+	//
+	// ⚠ ONE PROCESSOR LOWERS THE RATE AND DOES NOT END IT. The same day, two
+	// read-only runs in a row on the shared image panicked while powering off,
+	// the first in pmap_remove_pages. WSL-83.
 	BsdDefaultVCPUs = 1
 
 	// BsdDefaultDiskGiB is the guest disk a run grows the image to.
@@ -467,9 +471,10 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 		return res, err
 	}
 	// ⚠ THE RESULT CARRIES A PANIC AT POWEROFF, because nothing else would. The
-	// payload has answered by then, so its exit stands, and the guest has already
-	// synced its buffers; measured on 2026-09-14, a panic in VOP_RECLAIM after `All
-	// buffers synced` on a run that exited 0. WSL-81.
+	// payload has answered by then, so its exit stands. ⛔ The buffers need not have
+	// synced: measured on 2026-09-14, one panic in VOP_RECLAIM after `All buffers
+	// synced`, and one in pmap_remove_pages before `Syncing disks`, whose next boot
+	// found the root filesystem not properly dismounted. WSL-81, WSL-83.
 	defer func() { res.ShutdownPanic = g.stopAndReadPanic() }()
 
 	if failure, ok := g.waitBoot(ctx); !ok {
