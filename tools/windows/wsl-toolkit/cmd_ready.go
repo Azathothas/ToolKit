@@ -182,7 +182,11 @@ func assembleReady(ctx context.Context, smoke, ensure, wantUpdate bool) ReadyRep
 	}
 	r.Config.Fingerprint = cfg.Fingerprint()
 	r.Catalog = len(cfg.Catalog())
-	r.Base.Name, r.Base.Image = cfg.Base.Name, cfg.Base.Image
+	if cfgErr == nil {
+		// ⚠ A refused configuration's base is not this report's base, and naming it
+		// here would read as the distribution the check was about. WSL-74.
+		r.Base.Name, r.Base.Image = cfg.Base.Name, cfg.Base.Image
+	}
 
 	if home, err := toolkit.Home(); err == nil {
 		r.Home = home
@@ -238,12 +242,12 @@ func assembleReady(ctx context.Context, smoke, ensure, wantUpdate bool) ReadyRep
 
 	// -- the base ------------------------------------------------------------
 	if r.Route.Selected != "none" {
-		r.fillBase(ctx, cfg, client, ensure)
+		r.fillBase(ctx, cfg, cfgErr, client, ensure)
 	}
 
 	// -- one container, end to end -------------------------------------------
 	if smoke {
-		r.Smoke = runReadySmoke(ctx, cfg, r.Base.Healthy)
+		r.Smoke = runReadySmoke(ctx, cfg, cfgErr, r.Base.Healthy)
 	}
 
 	// -- is there a newer release --------------------------------------------
@@ -257,7 +261,17 @@ func assembleReady(ctx context.Context, smoke, ensure, wantUpdate bool) ReadyRep
 	return r
 }
 
-func (r *ReadyReport) fillBase(ctx context.Context, cfg toolkit.Config, client *toolkit.HelperClient, ensure bool) {
+func (r *ReadyReport) fillBase(ctx context.Context, cfg toolkit.Config, cfgErr error, client *toolkit.HelperClient, ensure bool) {
+	// ⛔ NOTHING IS READ OR BUILT FROM A REFUSED CONFIGURATION. LoadConfig hands
+	// back what it read beside its refusal, so a status read from that describes
+	// a distribution the tool refused to act on, and --ensure would build it: a
+	// file naming another instance's distribution reached that distribution here
+	// after every other command had stopped. The refusal is already a problem.
+	// WSL-74.
+	if cfgErr != nil {
+		r.Notes = append(r.Notes, "the base was not checked, because the configuration was refused")
+		return
+	}
 	read := func(probe bool) (toolkit.BaseState, error) {
 		if r.Route.Selected == "helper" && client != nil {
 			return client.BaseStatus(ctx, probe)
@@ -377,8 +391,12 @@ printf 'ready\n' > /out/ready.txt
 if [ -d /mnt/c ]; then printf 'hostmnt=yes\n'; else printf 'hostmnt=no\n'; fi
 `
 
-func runReadySmoke(ctx context.Context, cfg toolkit.Config, healthy bool) *readySmoke {
+func runReadySmoke(ctx context.Context, cfg toolkit.Config, cfgErr error, healthy bool) *readySmoke {
 	s := &readySmoke{}
+	if cfgErr != nil {
+		s.Reason = "the configuration was refused, so nothing was run"
+		return s
+	}
 	if !healthy {
 		s.Reason = "the base is not usable, so nothing was run"
 		return s
@@ -532,6 +550,11 @@ func (r *ReadyReport) settleVerdict() {
 		r.Verdict = "ready"
 	case r.Route.Selected == "none":
 		r.Verdict = "no-route"
+	case !r.Config.Valid:
+		// ⚠ BEFORE no-base, because a refused configuration means the base was
+		// never checked, and `no-base` would report a measurement nobody took.
+		// WSL-74.
+		r.Verdict = "not-ready"
 	case !r.Base.Healthy:
 		r.Verdict = "no-base"
 	default:

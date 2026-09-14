@@ -19,6 +19,28 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-14
+
+### 2026-09-14T02:49:38Z: an instance and its configuration name one distribution
+
+**Record:** `WSL-74` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the prove output and the three reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-74`, the first entry of
+[issue 32](https://github.com/Azathothas/ToolKit/issues/32).
+
+⛔ **A BREAK FOR ONE SHAPE OF CONFIGURATION.** A file whose `base.name` is not the
+selected instance's distribution was accepted, so `--instance muse` run from a checkout
+whose file named `wsl-toolkit` acted on that distribution while it wrote muse's state.
+Every command that reads a configuration now refuses it with exit 2, naming the file,
+both distributions and the selection that agrees. A caller relying on the mismatch gets
+2 where it got 0.
+
+⚠ **`ready` changed with it.** A refused configuration was a problem in its report
+and then still the configuration it read the base from, ran `--smoke` through, and
+with `--ensure` built. It now checks no base, runs no smoke, names no base, and answers
+`not-ready`.
+
 ## 2026-09-13
 
 ### 2026-09-13T15:53:39Z: the PowerShell product is gone, and the executable does everything it did

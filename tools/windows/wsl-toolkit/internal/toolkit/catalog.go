@@ -445,10 +445,60 @@ func LoadConfig() (Config, error) {
 	if err := cfg.Validate(); err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
+	if err := instanceMatches(cfg.Base.Name, path); err != nil {
+		return cfg, err
+	}
 	if _, err := cfg.ResolvedBaseMounts(); err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// ErrInstanceMismatch is what a configuration naming another instance's
+// distribution is refused with, so `config` can keep reporting its search.
+var ErrInstanceMismatch = errors.New("the configuration and the instance name different distributions")
+
+// instanceMatches refuses a stored base.name that is not the distribution of the
+// instance this process selected.
+//
+// ⛔ AN INSTANCE IS A DISTRIBUTION AND A STATE DIRECTORY THAT BELONG TOGETHER.
+// A stored base.name used to replace the instance's distribution outright, so a
+// command run under --instance muse from a checkout whose file named
+// `wsl-toolkit` acted on that distribution, as that file's account, while it
+// wrote to muse's state, and the instance line on stderr still named muse's own.
+// With no instance selected, a file naming `wsl-toolkit-muse` paired that
+// distribution with the default state directory. WSL-74.
+//
+// ⛔ THE INSTANCE IS NEVER DERIVED FROM THE FILE. A file that silently selects a
+// state directory is the same defect from the other side, so the refusal names
+// the selection that would agree and leaves making it to the caller.
+func instanceMatches(name, path string) error {
+	want := InstanceDistro(SelectedInstance.Name)
+	if name == want {
+		return nil
+	}
+	// Validate has already held the name to `wsl-toolkit` or
+	// `wsl-toolkit-<instance>` in lower case, so the suffix is an instance name.
+	implied := "run it without --instance"
+	if name != DefaultBaseName {
+		implied = "pass --instance " + strings.TrimPrefix(name, DefaultBaseName+"-")
+	}
+	selected := fmt.Sprintf("no instance is selected, so the distribution is %q", want)
+	if SelectedInstance.Name != DefaultInstance {
+		selected = fmt.Sprintf("instance %s is selected, whose distribution is %q", SelectedInstance.Name, want)
+	}
+	// ⚠ --config IS OFFERED ONLY FOR A FILE THAT EXISTS. A named file that is not
+	// there is its own refusal, so pointing at the instance's file before anybody
+	// wrote one would send the caller from one refusal straight into another.
+	keep := fmt.Sprintf("remove base.name from that file, or set it to %q", want)
+	if own, err := ConfigPath(); err == nil && !strings.EqualFold(filepath.Clean(own), filepath.Clean(path)) {
+		if _, statErr := os.Stat(own); statErr == nil {
+			keep = "pass --config " + own
+		}
+	}
+	return fmt.Errorf("%w: %s sets base.name %q and %s. A command would act on one distribution while it records into "+
+		"the other's state, so nothing runs. To use the file, %s. To keep the selection, %s",
+		ErrInstanceMismatch, path, name, selected, implied, keep)
 }
 
 // Validate refuses a configuration at the point it is read rather than at the

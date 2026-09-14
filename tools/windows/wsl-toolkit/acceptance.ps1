@@ -112,10 +112,14 @@ function Test-Case {
 #
 # NOTE: THE EXIT CODE IS READ FROM THE PROCESS, NOT THROUGH A PIPE.
 function Invoke-Tool {
-    param([Parameter(Mandatory = $true)][string[]]$ToolArgs)
+    param(
+        [Parameter(Mandatory = $true)][string[]]$ToolArgs,
+        [string]$WorkingDirectory = ''
+    )
     $psi = [Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $script:Binary
     foreach ($a in $ToolArgs) { $null = $psi.ArgumentList.Add($a) }
+    if ($WorkingDirectory) { $psi.WorkingDirectory = $WorkingDirectory }
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
@@ -1138,14 +1142,39 @@ try {
     # half the reporter did not ask for and a fixed single name would forbid.
     Test-Case 'an instance name inside the prefix is accepted' 'True' {
         $h = New-StateHome 'home-instance-name'
-        $null = Set-StateConfig -StateHome $h -Config @{
+        # WSL-74: the name belongs to the instance that owns it, so its file is
+        # that instance's own and the instance is selected.
+        $instanceHome = Join-Path $h 'instances\two'
+        $null = New-Item -ItemType Directory -Path $instanceHome -Force
+        $null = Set-StateConfig -StateHome $instanceHome -Config @{
             base = @{ name = 'wsl-toolkit-two'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
         }
-        $r = Invoke-Tool @('--home', $h, 'base', 'status', '--json')
+        $r = Invoke-Tool @('--home', $h, '--instance', 'two', 'base', 'status', '--json')
         $d = Read-ToolJson -Stdout $r.Out -What 'base status --json'
         # Not registered, which is correct: nothing built it. What matters is
         # that the NAME was not refused.
         (($d.name -eq 'wsl-toolkit-two') -and ($d.registered -eq $false)).ToString()
+    }
+
+    # WSL-74: an instance is a distribution and a state directory together, so a
+    # file naming another instance's distribution is refused in both directions
+    # and one naming the selected instance's own loads.
+    Test-Case 'a configuration naming another instance distribution is refused both ways' 'True' {
+        $h = New-StateHome 'home-instance-mismatch'
+        $dir = Join-Path $script:Scratch 'cfg-instance-mismatch'
+        $null = New-Item -ItemType Directory -Path $dir -Force
+        $file = Join-Path $dir 'wsl-toolkit.json'
+        $noBom = [Text.UTF8Encoding]::new($false)
+        [IO.File]::WriteAllText($file, '{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"}}', $noBom)
+        $selected = Invoke-Tool -ToolArgs @('--home', $h, '--instance', 'two', 'config', '--json') -WorkingDirectory $dir
+        $selectedSaid = ($selected.Err.Contains($file) -and $selected.Err.Contains('"wsl-toolkit"') -and
+            $selected.Err.Contains('"wsl-toolkit-two"'))
+        [IO.File]::WriteAllText($file, '{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-two"}}', $noBom)
+        $unselected = Invoke-Tool -ToolArgs @('--home', $h, 'config', '--json') -WorkingDirectory $dir
+        $unselectedSaid = $unselected.Err.Contains('pass --instance two')
+        $agrees = Invoke-Tool -ToolArgs @('--home', $h, '--instance', 'two', 'config', '--json') -WorkingDirectory $dir
+        (($selected.Code -eq 2) -and $selectedSaid -and ($unselected.Code -eq 2) -and $unselectedSaid -and
+            ($agrees.Code -eq 0)).ToString()
     }
 
     # issue 18: a health probe identifies the ENGINE and not the rootfs, so
@@ -1641,7 +1670,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 88 } else { 90 }
+$expected = if ($Quick) { 89 } else { 91 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

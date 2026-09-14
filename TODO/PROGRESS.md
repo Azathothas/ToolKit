@@ -8,9 +8,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-14T02:01:53Z; the record commit's own time is its end
 baseline        e73d7d5, tree clean
-entries         total 114  open 12  blocked 0  done 102
-closed          none yet this session
-head            the rulings commit after e73d7d5
+entries         total 115  open 12  blocked 0  done 103
+closed          WSL-74
+filed           WSL-80, found by the acceptance runner's baseline
+head            the WSL-74 commit after cf274eb
 ```
 
 ## Active work
@@ -24,16 +25,19 @@ Each entry's section in [`wsl-toolkit-go.md`](wsl-toolkit-go.md) carries its
 premise, decisions and prove. An issue closes only when every entry mapped to it
 is closed, and the issue gets a comment naming the commits.
 
-1. **`WSL-74`**, first, because `WSL-75` and `WSL-78` stand on it.
-2. **`WSL-79`**, issue 33: its line join reports success over commands that
+1. **`WSL-74`**, first, because `WSL-75` and `WSL-78` stand on it. ⭐ Closed.
+2. **`WSL-80`**, inserted here on 2026-09-14 and not part of the three issues: a
+   `distro run` that never returns hangs the acceptance runner, which is how
+   every later entry here is proved on this host.
+3. **`WSL-79`**, issue 33: its line join reports success over commands that
    never ran.
-3. **`WSL-72`**: the ruling it needed is made.
-4. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
+4. **`WSL-72`**: the ruling it needed is made.
+5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants.
-5. **Issue 30:** `WSL-67`'s open items, `WSL-68`, `WSL-70` and `WSL-71`.
-6. **`wsl-toolkit-base`** is built last, from the machinery, and the operator
+6. **Issue 30:** `WSL-67`'s open items, `WSL-68`, `WSL-70` and `WSL-71`.
+7. **`wsl-toolkit-base`** is built last, from the machinery, and the operator
    signs Muse in there.
-7. **`wsl-toolkit-v3.0.0`** is cut once the three issues are closed and CI is
+8. **`wsl-toolkit-v3.0.0`** is cut once the three issues are closed and CI is
    green on the final commit.
 
 ## Rulings in force
@@ -76,7 +80,8 @@ carries all three as commands under "Build and local proof".
 
 | commit | what |
 | --- | --- |
-| the rulings commit | the operator's rulings written into `WSL-67`, `WSL-68`, `WSL-75` to `WSL-79` and this record |
+| `cf274eb` | the operator's rulings written into `WSL-67`, `WSL-68`, `WSL-75` to `WSL-79` and this record |
+| the WSL-74 commit | `WSL-74` closed: a configuration naming another instance's distribution is refused by every command, `ready` included, with 6 mutation rows and 2 acceptance cases; `WSL-80` filed |
 
 ## Measurements
 
@@ -89,6 +94,15 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 - **herdr:** 0.9.0 is the latest stable release, published 2026-09-07.
   `herdr-linux-x86_64` is 24,644,488 bytes and `herdr-windows-x86_64.zip`
   9,054,745 bytes, each with a published SHA-256 digest.
+- ⚠ **The acceptance runner's baseline, on a build of `e73d7d5`**, started by a
+  quoting mistake rather than on purpose: `pwsh -Command STRING PATH` appends the
+  path to the command text, so a parse check ran `acceptance.ps1`. 91 cases ran
+  and 89 passed. One hung for 10m31s and was ended, which is `WSL-80`; one was the
+  new `WSL-74` case, failing on a build without the guard; and the count guard
+  failed until the declared count moved to 91. Every distribution registered
+  before the run was still registered after it.
+- **For `WSL-74`:** the Go suites green with `TEMP` at the 8.3 path, 254
+  top-level cases, 251 passed, 3 skipped; 6 mutation rows proved on Windows.
 
 ## Found, and not filed
 
@@ -106,10 +120,17 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
    accepts and no example writes.
 7. `examples/muse-code/README.md` and `examples/common/zellij.md` describe Zellij
    and `wsl-toolkit-muse`, which changes with `WSL-76`.
+8. ⚠ **An ephemeral job says its output is kept, and it is not.** `run
+   --container-lifecycle ephemeral` against `golang:1.25` printed `the complete
+   output is kept: wsl-toolkit logs 4e94faa38b4c9c1c`; `logs` on that id answered
+   exit 2, `no transcript`, and `jobs\4e94faa38b4c9c1c` was not in the state
+   directory. Measured on 2026-09-14, and not yet read in the code.
 
 ## Review findings
 
-None yet this session.
+`WSL-74`'s closing carries its three reviews. The door sweep found `ready` reading
+and building from a refused configuration, and the claim audit found the refusal
+advising a `--config` file that did not exist; both are fixed in the same commit.
 
 ## Open questions for the operator
 

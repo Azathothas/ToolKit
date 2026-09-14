@@ -103,6 +103,13 @@ wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base sh
 wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec --dir /workspaces/project -c 'git status --short'
 ```
 
+⛔ **An instance and its configuration name one distribution.** A configuration
+whose `base.name` is not the selected instance's distribution is refused with exit
+2, whichever file the search resolved: `wsl-toolkit-muse` belongs to `--instance
+muse`, and `wsl-toolkit` to no instance at all. The message names the file, both
+distributions, and the `--instance` or `--config` that agrees, and `wsl-toolkit
+config` still prints which file won and where it looked.
+
 `base exec` is the non-interactive host-to-guest seam. It starts as the
 configured account in that account's home unless `--dir` names an absolute
 guest path, sends the command or `--script` body framed on stdin with

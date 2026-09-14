@@ -5326,7 +5326,7 @@ The pass conditions:
 
 **Source** found on 2026-09-13 while grounding the entry for
 [issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 1.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -5393,6 +5393,97 @@ Run from the directory described in the premise. Passing is:
   `--instance muse` still exits 0;
 - the Go suites green, with a case for each direction;
 - a mutation row that removes the comparison goes red.
+
+---
+
+## Closing
+
+**Closed 2026-09-14T02:49:38Z.** `LoadConfig` compares the stored `base.name` with
+the selected instance's distribution, beside `Validate`, so every command that reads
+a configuration refuses a mismatch with exit 2. `config` prints which file won and
+where it looked before it refuses. The manual's provider-base section says so.
+
+⭐ **The read-and-not-driven half of the premise is measured now**, on a build of
+`e73d7d5`, before the change: from a directory whose file names `wsl-toolkit-muse`,
+`wsl-toolkit config --json` with no instance exited 0 and answered `base.name`
+`wsl-toolkit-muse` beside the default state directory. `base remove --yes` was not
+driven, because it is destructive and the refusal now stops it before any WSL call.
+
+The acceptance command, run from the premise's directory, `.tmp\wsl74\names-default`,
+with a build of this change, the home path shortened:
+
+```text
+exit=2, stdout 0 bytes
+  instance muse: distribution wsl-toolkit-muse, state %USERPROFILE%\AppData\Local\wsl-toolkit\instances\muse
+  resolved    %USERPROFILE%\Downloads\ToolKit\.tmp\wsl74\names-default\wsl-toolkit.json, from the working directory or a parent
+    1. %USERPROFILE%\Downloads\ToolKit\.tmp\wsl74\names-default\wsl-toolkit.json
+wsl-toolkit: the configuration and the instance name different distributions: %USERPROFILE%\Downloads\ToolKit\.tmp\wsl74\names-default\wsl-toolkit.json sets base.name "wsl-toolkit" and instance muse is selected, whose distribution is "wsl-toolkit-muse". A command would act on one distribution while it records into the other's state, so nothing runs. To use the file, run it without --instance. To keep the selection, remove base.name from that file, or set it to "wsl-toolkit-muse"
+```
+
+The other direction, from a directory whose file names `wsl-toolkit-muse`, with no
+instance:
+
+```text
+exit=2, stdout 0 bytes
+wsl-toolkit: the configuration and the instance name different distributions: ...\names-muse\wsl-toolkit.json sets base.name "wsl-toolkit-muse" and no instance is selected, so the distribution is "wsl-toolkit". ... To use the file, pass --instance muse. To keep the selection, remove base.name from that file, or set it to "wsl-toolkit"
+```
+
+Every way out the message names was driven and exits 0: the first file with no
+instance, the second with `--instance muse`, and a file with `base.name` removed both
+with and without the instance. `--config` is offered only when the instance's own file
+exists, and a case holds both shapes.
+
+All four passing conditions hold:
+
+| condition | measured |
+| --- | --- |
+| exit 2, both names and the file's path in the message | above, read unpiped, and the same through an explicit `--config` and `base status` |
+| the one-checkout profile with `--instance muse` still exits 0 | exit 0, `base.name` `wsl-toolkit-muse`, account `muse`, one grant |
+| the Go suites green, with a case per direction | exit 0 with `TEMP` at the 8.3 path: 254 top-level cases, 251 passed, 3 skipped, both packages `ok` |
+| a mutation row that removes the comparison goes red | six rows, below, each seen green before it was planted |
+
+### The reviews
+
+⭐ **The door sweep found a second door, and it is fixed.** Every caller of
+`LoadConfig` was listed by grep: seventeen command sites through `loadConfig`,
+`DialHelper`, `config validate`, `doctor` and `ready`. ⛔ `ready` recorded a refused
+configuration as a problem and then read the base the refused file named, ran
+`ready --smoke` through it, and with `--ensure` would have built it, because
+`LoadConfig` returns what it read beside its refusal. It now checks no base and runs
+no smoke from a refused configuration, names no base in its report, and answers
+`not-ready` rather than `no-base`, which would report a check nobody made. Driven:
+exit 1, `verdict` `not-ready`, `config.valid` false, the note `the base was not
+checked, because the configuration was refused`, the smoke reason `the
+configuration was refused, so nothing was run`, and the one remediation `wsl-toolkit
+config`. `doctor` falls back to the defaults and says so, which is a report rather
+than an action; `config validate` answers `valid` false and exits 1.
+
+⭐ **The guard mutation proved six rows**, each through `repo mutate --only` after its
+cases passed unmutated: the comparison (3 cases red), the call in `LoadConfig` (1),
+the search printed on a refusal (1), the base check and the smoke skipped on a refused
+configuration (1 each), and the verdict (1). ⭐ The acceptance case `a configuration
+naming another instance distribution is refused both ways` ran against the build of
+`e73d7d5`, which has no comparison, and failed there. The case `an instance name inside
+the prefix is accepted` wrote `wsl-toolkit-two` into the default state directory and
+would now be refused, so it writes that name into `instances\two` and selects the
+instance, which is what its name claims.
+
+⛔ **The claim audit found the refusal's own advice false, and it is fixed.** The first
+build told a caller to keep the selection with `--config` naming the instance's
+`config.json`, a file that did not exist on this host, and a `--config` naming a
+missing file is a refusal of its own. The message now offers `--config` only for a
+file that exists, and otherwise says to remove `base.name` or set it to the instance's
+distribution; each way out was then driven, above. The manual's "whichever file the
+search resolved" was driven for a working-directory file and an explicit `--config`,
+and a case holds the state directory's own file.
+
+⚠ **Found beside this work and not caused by it, in the acceptance runner's baseline.**
+Against the build of `e73d7d5`, `distro run --log-profile ci --tick 1s` over `printf
+'Password: '; sleep 6; echo; echo done` printed `done` at 6.1 s and then never
+returned: its heartbeat kept reading the distribution for 10 minutes 31 seconds, WSL
+reporting it stopped from 22 s, until the process was ended. 89 of the run's 91 cases
+passed; this new case failed there as it should; and the count guard failed until the
+declared count moved from 90 to 91. The hang is filed as its own entry.
 
 ---
 
@@ -5943,3 +6034,79 @@ Passing is:
 - the regression cases green in the Go suites;
 - the image left as found: the package list compared with its baseline, no
   `FreeBSD-*` package removed.
+
+---
+
+## WSL-80. A throwaway command that has finished can leave `distro run` waiting forever
+
+**Source** found on 2026-09-14 by the acceptance runner's baseline run, while
+closing `WSL-74`.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`wsl-toolkit distro run` relayed a command's last line and never returned. Its
+heartbeat went on reporting the silence, and from 22 seconds reported the
+distribution as stopped, for ten minutes, until the process was ended. A caller
+with no `--timeout` waits forever over a command that exited at six seconds, and a
+caller with one is answered 124 over a command that succeeded.
+
+## Premise
+
+⭐ **Measured once, on a build of `e73d7d5`**, in the acceptance case `an
+unterminated line is shown early and a silence is reported with the distribution
+state`: `distro run --log-profile ci --tick 1s --tick-escalate 3s` over `printf
+'Password: '; sleep 6; echo; echo done`. The heartbeat's own lines: the output
+resumed at 6.095 s, `distro running` until 21.1 s, `distro stopped` from 22.4 s,
+and ticks until 10m31s. The process held no `wsl.exe` for the command, and it kept
+starting the heartbeat's own `wsl.exe` children.
+
+⚠ **Read, not measured.** `Wsl.Exec` reaches `runCommand` in
+`internal/toolkit/process.go`, which calls `exec.Cmd.Run` with writers that are not
+files, so `Wait` waits for the goroutines copying the child's pipes. `newCommand`
+sets `WaitDelay` to one second, which closes those pipes once the child has exited.
+⚠ On Windows a synchronous read of an anonymous pipe is not released by closing
+it, so a write end held open past the child's exit would keep `Wait` from ever
+returning. What held it here was not identified.
+
+⚠ **Not measured: how often.** The same case passed in the 90-case run that
+closed `WSL-73`.
+
+## Approach
+
+1. **Reproduce before changing anything:** the case's command in a loop on a
+   throwaway distribution, each run bounded from outside, counting the runs that
+   do not return. Then a diagnostic build kept outside the tree that writes every
+   goroutine's stack after a bound, to name the blocked call.
+2. **Fix it at the seam every command shares**, `runCommand`: once the child has
+   exited, its output copies get a bounded time to drain, and then the child's own
+   exit code is the answer, with the undrained stream named rather than waited on.
+3. **A regression case that needs no WSL:** a child that exits while a grandchild
+   still holds its stdout, asserting `runCommand` returns within the bound with the
+   child's code.
+
+⛔ **No deadline on the caller's command hides it.** The defect is waiting after
+the command has ended, and a timeout would turn it into a wrong 124.
+
+## Consumers
+
+None by [`../docs/consumers.md`](../docs/consumers.md)'s definition: a run that hung
+now returns its command's exit code.
+
+## Prove
+
+The case's command, run 30 times on a throwaway distribution, each bounded at 60
+seconds from outside the tool:
+
+```powershell
+wsl-toolkit distro run --name NAME --log-profile ci --tick 1s --tick-escalate 3s --command-base64 cHJpbnRmICdQYXNzd29yZDogJwpzbGVlcCA2CmVjaG8KZWNobyBkb25lCg==
+```
+
+Passing is:
+
+- 30 of 30 runs exit 0, each inside the bound, read unpiped;
+- the regression case green in the Go suites on Windows and on Linux, and a
+  mutation row that removes the bound goes red;
+- the acceptance case above green in a full run.

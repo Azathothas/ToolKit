@@ -286,6 +286,51 @@ func TestProjectConfigurationAnchorsRelativeHostPaths(t *testing.T) {
 	}
 }
 
+// WSL-74: `config` refuses a configuration naming another instance's
+// distribution with exit 2, and still says which file won and where it looked.
+func TestConfigRefusesAnotherInstancesDistributionAndStillReportsItsSearch(t *testing.T) {
+	museHome := filepath.Join(t.TempDir(), "instances", "muse")
+	t.Setenv("WSL_TOOLKIT_HOME", museHome)
+	previous := toolkit.SelectedInstance
+	t.Cleanup(func() { toolkit.SelectedInstance = previous })
+	toolkit.SelectedInstance = toolkit.Instance{Name: "muse", Distro: "wsl-toolkit-muse", Home: museHome}
+	project := t.TempDir()
+	file := filepath.Join(project, toolkit.WorkingConfigName)
+	if err := os.WriteFile(file, []byte(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(project); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(cwd) }()
+
+	captured, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	realErr := os.Stderr
+	os.Stderr = captured
+	code, runErr := cmdConfig([]string{"--json"})
+	os.Stderr = realErr
+	if err := captured.Close(); err != nil {
+		t.Fatal(err)
+	}
+	said, err := os.ReadFile(captured.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if code != exitCannot || !errors.Is(runErr, toolkit.ErrInstanceMismatch) {
+		t.Fatalf("config answered %d, %v, rather than refusing with %d", code, runErr, exitCannot)
+	}
+	if !strings.Contains(string(said), file) || !strings.Contains(string(said), "the working directory or a parent") {
+		t.Errorf("the refusal did not report the file that won and where it came from:\n%s", said)
+	}
+}
+
 func sameHostPath(a, b string) bool {
 	a, _ = filepath.Abs(a)
 	b, _ = filepath.Abs(b)

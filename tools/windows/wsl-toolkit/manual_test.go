@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -118,6 +119,30 @@ func TestANoteDoesNotChangeTheVerdict(t *testing.T) {
 	p.settleVerdict()
 	if p.Ready || p.Verdict == "ready" {
 		t.Fatalf("a problem left the verdict %q (ready=%v); Problems is what refuses", p.Verdict, p.Ready)
+	}
+}
+
+// TestReadyReadsAndRunsNothingFromARefusedConfiguration is the second door to
+// WSL-74: `ready` reported a refused configuration and then read, and with
+// --ensure built, the base that configuration named.
+func TestReadyReadsAndRunsNothingFromARefusedConfiguration(t *testing.T) {
+	refused := fmt.Errorf("%w: a file names wsl-toolkit and instance muse is selected", toolkit.ErrInstanceMismatch)
+	r := ReadyReport{Problems: []string{refused.Error()}}
+	r.Route.Selected = "direct"
+	r.fillBase(context.Background(), toolkit.Config{}, refused, nil, false)
+	if len(r.Problems) != 1 || len(r.Remediation) != 0 || r.Base.Registered {
+		t.Fatalf("a base was read from a refused configuration: problems %q, remediation %q", r.Problems, r.Remediation)
+	}
+	if len(r.Notes) != 1 || !strings.Contains(r.Notes[0], "not checked") {
+		t.Errorf("the report does not say the base was not checked: %q", r.Notes)
+	}
+	if s := runReadySmoke(context.Background(), toolkit.Config{}, refused, false); s.Ran ||
+		!strings.Contains(s.Reason, "configuration was refused") {
+		t.Errorf("the smoke did not say why nothing ran: %+v", s)
+	}
+	r.settleVerdict()
+	if r.Ready || r.Verdict != "not-ready" {
+		t.Errorf("a refused configuration left the verdict %q (ready=%v), which claims a base check nobody made", r.Verdict, r.Ready)
 	}
 }
 

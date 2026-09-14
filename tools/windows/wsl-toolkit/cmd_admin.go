@@ -307,6 +307,12 @@ func cmdConfig(args []string) (int, error) {
 	}
 	cfg, err := loadConfig()
 	if err != nil {
+		// ⛔ A REFUSAL STILL SAYS WHICH FILE WON AND WHERE IT LOOKED. `config` is
+		// the command a caller runs to find out why a configuration is in effect,
+		// and a refused one is exactly when that question is asked. WSL-74.
+		if src, srcErr := toolkit.ResolveConfig(); srcErr == nil {
+			renderConfigSearch(src)
+		}
 		return exitCannot, err
 	}
 	src, err := toolkit.ResolveConfig()
@@ -365,14 +371,7 @@ func cmdConfig(args []string) (int, error) {
 	}
 	fmt.Println(resolved)
 	fmt.Fprintf(os.Stderr, "  exists      %v\n", fileExists(resolved))
-	fmt.Fprintf(os.Stderr, "  resolved    from %s\n", src.From)
-	// ⭐ THE ORDER IS PRINTED, not only the winner. A caller with a
-	// wsl-toolkit.json in a parent directory silently changes which
-	// configuration is used, and the only honest answer to "why is it using
-	// that one" is the list of places that were looked at. WSL-51.
-	for i, cand := range src.Searched {
-		fmt.Fprintf(os.Stderr, "    %d. %s\n", i+1, cand)
-	}
+	renderConfigSearch(src)
 	fmt.Fprintf(os.Stderr, "  home        %s\n", home)
 	if toolkit.SelectedInstance.Name != toolkit.DefaultInstance {
 		fmt.Fprintf(os.Stderr, "  instance    %s\n", toolkit.SelectedInstance.Name)
@@ -414,6 +413,20 @@ func cmdConfig(args []string) (int, error) {
 	fmt.Fprintf(os.Stderr, "  fingerprint %s\n", cfg.Fingerprint())
 	fmt.Fprintf(os.Stderr, "\n  wsl-toolkit config --write puts the effective configuration on disk to edit.\n")
 	return exitOK, nil
+}
+
+// renderConfigSearch writes which file the search resolved and every place it
+// looked, to stderr.
+//
+// ⭐ THE ORDER IS PRINTED, not only the winner. A caller with a
+// wsl-toolkit.json in a parent directory silently changes which configuration is
+// used, and the only honest answer to "why is it using that one" is the list of
+// places that were looked at. WSL-51.
+func renderConfigSearch(src toolkit.ConfigSource) {
+	fmt.Fprintf(os.Stderr, "  resolved    %s, from %s\n", src.Path, src.From)
+	for i, cand := range src.Searched {
+		fmt.Fprintf(os.Stderr, "    %d. %s\n", i+1, cand)
+	}
 }
 
 // orNative names the default platform in the words the flag uses, because an

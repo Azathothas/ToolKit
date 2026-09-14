@@ -1730,6 +1730,60 @@
       "replace": "\treturn ok != 0 || f != nil\n",
       "run": "TestNulIsNotAConsole",
       "args": []
+    },
+    {
+      "label": "config: a stored base.name is compared with the selected instance's distribution",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif name == want {\n\t\treturn nil\n\t}\n",
+      "replace": "\tif true {\n\t\treturn nil\n\t}\n",
+      "run": "TestAConfigurationNamingAnotherInstancesDistributionIsRefused|TestAStateDirectoryFileNamingAnotherInstanceIsToldToChangeTheName|TestConfigRefusesAnotherInstancesDistributionAndStillReportsItsSearch",
+      "args": []
+    },
+    {
+      "label": "config: every load applies the instance comparison",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif err := instanceMatches(cfg.Base.Name, path); err != nil {\n\t\treturn cfg, err\n\t}\n",
+      "replace": "",
+      "run": "TestAConfigurationNamingAnotherInstancesDistributionIsRefused",
+      "args": []
+    },
+    {
+      "label": "config: a refused configuration still reports its search",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_admin.go",
+      "find": "\t\tif src, srcErr := toolkit.ResolveConfig(); srcErr == nil {\n\t\t\trenderConfigSearch(src)\n\t\t}\n",
+      "replace": "",
+      "run": "TestConfigRefusesAnotherInstancesDistributionAndStillReportsItsSearch",
+      "args": []
+    },
+    {
+      "label": "ready: no base is read or built from a refused configuration",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\tif cfgErr != nil {\n\t\tr.Notes = append(r.Notes, \"the base was not checked, because the configuration was refused\")\n\t\treturn\n\t}\n",
+      "replace": "",
+      "run": "TestReadyReadsAndRunsNothingFromARefusedConfiguration",
+      "args": []
+    },
+    {
+      "label": "ready: no smoke runs from a refused configuration",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\tif cfgErr != nil {\n\t\ts.Reason = \"the configuration was refused, so nothing was run\"\n\t\treturn s\n\t}\n",
+      "replace": "",
+      "run": "TestReadyReadsAndRunsNothingFromARefusedConfiguration",
+      "args": []
+    },
+    {
+      "label": "ready: a refused configuration is not reported as a missing base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_ready.go",
+      "find": "\tcase !r.Config.Valid:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestReadyReadsAndRunsNothingFromARefusedConfiguration",
+      "args": []
     }
   ]
 }

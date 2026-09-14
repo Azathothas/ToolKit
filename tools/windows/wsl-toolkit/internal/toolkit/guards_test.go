@@ -919,6 +919,97 @@ func TestTheNearestConfigurationWinsWhole(t *testing.T) {
 	}
 }
 
+// WSL-74: a configuration naming a distribution the selected instance does not
+// own is refused in both directions, and one naming its own loads.
+func TestAConfigurationNamingAnotherInstancesDistributionIsRefused(t *testing.T) {
+	root := t.TempDir()
+	museHome := filepath.Join(root, "instances", "muse")
+	previous := SelectedInstance
+	t.Cleanup(func() { SelectedInstance = previous })
+	project := t.TempDir()
+	file := filepath.Join(project, WorkingConfigName)
+	write := func(name string) {
+		t.Helper()
+		body := `{"schema":"wsl-toolkit-config/1","base":{"name":"` + name + `"}}`
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	restore := chdir(t, project)
+	defer restore()
+	refused := func(label string, wants ...string) {
+		t.Helper()
+		_, err := LoadConfig()
+		if !errors.Is(err, ErrInstanceMismatch) {
+			t.Fatalf("%s: loaded with %v rather than being refused", label, err)
+		}
+		for _, want := range wants {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("%s: the refusal does not name %q:\n%v", label, want, err)
+			}
+		}
+	}
+
+	t.Setenv("WSL_TOOLKIT_HOME", museHome)
+	SelectedInstance = Instance{Name: "muse", Distro: "wsl-toolkit-muse", Home: museHome}
+	write("wsl-toolkit")
+	refused("an instance against a file naming the default distribution",
+		file, `"wsl-toolkit"`, `"wsl-toolkit-muse"`, "run it without --instance",
+		`remove base.name from that file, or set it to "wsl-toolkit-muse"`)
+
+	// ⚠ The instance's own file is offered as --config only once it exists: a
+	// named file that is missing is a refusal of its own.
+	own := filepath.Join(museHome, "config.json")
+	if err := os.MkdirAll(museHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(own, []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	refused("an instance whose own file exists", "pass --config "+own)
+	if err := os.Remove(own); err != nil {
+		t.Fatal(err)
+	}
+
+	write("wsl-toolkit-muse")
+	if cfg, err := LoadConfig(); err != nil || cfg.Base.Name != "wsl-toolkit-muse" {
+		t.Fatalf("the instance's own distribution was not loaded: %q, %v", cfg.Base.Name, err)
+	}
+
+	t.Setenv("WSL_TOOLKIT_HOME", root)
+	SelectedInstance = Instance{}
+	refused("no instance against a file naming an instance's distribution",
+		file, `"wsl-toolkit-muse"`, `"wsl-toolkit"`, "pass --instance muse")
+}
+
+// WSL-74: the refusal of a state directory's own file points at the file rather
+// than at itself as the way out.
+func TestAStateDirectoryFileNamingAnotherInstanceIsToldToChangeTheName(t *testing.T) {
+	museHome := filepath.Join(t.TempDir(), "instances", "muse")
+	if err := os.MkdirAll(museHome, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WSL_TOOLKIT_HOME", museHome)
+	previous := SelectedInstance
+	t.Cleanup(func() { SelectedInstance = previous })
+	SelectedInstance = Instance{Name: "muse", Distro: "wsl-toolkit-muse", Home: museHome}
+	restore := chdir(t, t.TempDir())
+	defer restore()
+	body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-two"}}`
+	if err := os.WriteFile(filepath.Join(museHome, "config.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig()
+	if !errors.Is(err, ErrInstanceMismatch) {
+		t.Fatalf("the state directory's file loaded with %v", err)
+	}
+	if !strings.Contains(err.Error(), `remove base.name from that file, or set it to "wsl-toolkit-muse"`) ||
+		strings.Contains(err.Error(), "--config") ||
+		!strings.Contains(err.Error(), "pass --instance two") {
+		t.Errorf("the refusal does not name both ways out:\n%v", err)
+	}
+}
+
 func TestOldConfigurationGetsPersistentJobDefaults(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("WSL_TOOLKIT_HOME", home)
