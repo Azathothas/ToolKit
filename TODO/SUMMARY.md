@@ -7,6 +7,36 @@ on what was true last time.
 
 ---
 
+## 2026-09-14, work-order correction
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-14T12:35:13Z | ended at the record commit's own time |
+| Commits | `08e23bc`, clean `main`, CI run 34837219729 green | one record commit, pushed after this table is written |
+| Work | 10 open entries; Muse and herdr first in the recorded order; three entries waiting for rulings | **Completed 1 authoring task, deferred 10 open entries, failed 0.** `WSL-82`, `WSL-83` and `WSL-84` approved. `WSL-84`, `WSL-83`, `WSL-82`, issue 30, the sealed base, Muse and herdr, then the release is the new order. No entry was implemented. `WSL-67` now requires removal of Soar; Nix remains and is driven |
+| Changes | 0 files changed from `08e23bc` | 3 files, +133 / -94 |
+| Size | 83,814 tracked text lines at `08e23bc` | 83,853, +39 |
+| Checks | doctor exit 0; baseline gate 20 of 20; CI green | focused docs, markers, record and one-home checks green; Windows Go proof green with the 8.3 temporary path; Linux Go proof green in `golang:1.25`; ShellCheck 0.9.0 green in `ubuntu:24.04`; final gate 20 of 20 |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation; network bytes not measured |
+| Health | tree clean; four registered distributions matched the record; the shared FreeBSD image remained restored and unbooted | no WSL distribution or base changed; no tag; tree clean after the record commit and CI checked after its push |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| restore the unfinished safety and correctness work ahead of Muse and herdr | done in the record and entries; Muse and herdr remain one later session |
+| settle the pending decisions | done: `WSL-84` first, `WSL-83` option A, `WSL-82` option B, and the release waits for both P1 entries |
+| remove Soar and keep Nix | recorded in `WSL-67`; implementation is deliberately deferred with the entry |
+| update and push the plan without implementing it | done by this record commit after the required gates |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. Implement `WSL-84` and close it with its
+prove and three reviews. Continue through the work order only after that commit is
+green.
+
+---
+
 ## 2026-09-14, the third sitting
 
 | row | before | after |

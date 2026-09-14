@@ -3913,8 +3913,9 @@ found rather than assumed. The item is kept, as a measurement.
 2. ⛔ **`pkgin` on NetBSD and `pkg_add` on OpenBSD are written and have never
    been run.** There is no image for either here, and the header says so rather
    than letting the twelve-manager count imply otherwise.
-3. `soar` and `nix` as user-level providers are written and not driven. Neither is
-   on any catalogue image, and ⛔ this script may not install one.
+3. Nix as a user-level provider is written and not driven. Soar is also still in the
+   script and is removed under the ruling below. Neither is on a catalogue image,
+   and ⛔ this script may not install a user-level provider.
 4. The provider-profile scenarios still are not in the main acceptance runner.
 5. The Muse installer and an authenticated smoke still need operator access.
 
@@ -3932,7 +3933,7 @@ consumers also fetch by URL, and that is a decision rather than a refactor.
 | --- | --- |
 | 1, the FreeBSD path | driven. The disk limit it found is `WSL-72` |
 | 2, `pkgin` and `pkg_add` never run | open |
-| 3, `soar` and `nix` not driven | open |
+| 3, the user-level providers | open: remove Soar, then drive Nix |
 | 4, the provider-profile scenarios outside the acceptance runner | open |
 | 5, the Muse installer and an authenticated smoke | closed by `WSL-69` |
 | the second package map | `WSL-70` |
@@ -3954,6 +3955,14 @@ image, each booted under QEMU on this host from a download whose digest is check
 first, and both images are removed afterwards. A manager that cannot be driven on
 this host leaves `scripts/common/bootstrap.sh`, and because that file is fetched by
 URL the changelog says so.
+
+## Ruled by the operator, 2026-09-14: remove Soar and keep Nix
+
+⭐ **Nix is the one user-level provider.** Remove Soar from `bootstrap.sh`, its
+arguments, its detection, its package route and the live documentation. Drive Nix
+as an unprivileged account with neither root nor passwordless sudo. Keep the rule
+that this repository does not install it. Historical measurements and reference
+sweeps keep the names they measured.
 
 ---
 
@@ -6009,26 +6018,25 @@ herdr's own keys closed a pane and then a tab while the tracked file closed noth
    `examples/common/zellij.md` removed with every link to it.
 4. The three reviews, and the closing.
 
-## Ruled by the operator, 2026-09-14: Muse and herdr together are one dedicated session
+## Ruled by the operator, 2026-09-14: Muse and herdr stay together after existing work
 
-⭐ **The operator set the next session's one task**, in their words: "It should be able
-to use muse directly, or muse via herdr (or muse via pi/omp via herdr). i the human
-should be able to see or attach to the same session from windows." And the three of
-them, the operator on Windows, the operator's agent on Windows and Muse in the base,
-interact and work in that session together, with nothing between them that a person
-has to bridge by hand.
+⭐ **Finish the ordered safety, correctness and issue 30 work first.** The sealed
+base is also complete before this entry resumes. Muse and herdr remain one dedicated
+session after that work. The operator on Windows, the operator's agent on Windows
+and Muse in the base use the same session, with no manual message relay between
+them.
 
 What that session owns, read against the entries:
 
 - this entry's four open items, which need `wsl-toolkit-base` and the operator's `muse
-  login`, so the session builds the base from `wsl-toolkit-base.json` first;
+  login`, so the later session builds the base from `wsl-toolkit-base.json` first;
 - `WSL-78`'s open items: the prove, the guide, and Muse's own screen started in a herdr
   pane at the project's guest path and attached from Windows;
 - ⚠ **`pi` and `omp` as herdr agents driving Muse**, which no entry carries yet:
   `WSL-77` names them as the next adapters and builds neither, so the session authors
   them before it builds them.
 
-⛔ The sealed base, `WSL-68`, is a dedicated session of its own after this one.
+`WSL-68`, the sealed base, is a dedicated session of its own before this one.
 
 ---
 
@@ -7111,17 +7119,13 @@ is still running. The guest is then killed rather than powered off.
 
 ## Decision
 
-What ends a command's wait after the console shows the two lines:
-
-- **A. At once, as now.** A real panic is named within a second. A payload's copy
-  ends its run and kills a running guest. Nothing to build; the manual says so.
-- **B. QEMU's exit, the command's closing marker, or 60 seconds, whichever comes
-  first. Recommended.** A real panic is still named, after its dump and reboot rather
-  than within a second, and a guest that hangs after one ends at 60 seconds. A
-  payload's copy that finishes within 60 seconds answers normally; one that runs on
-  past 60 seconds is still ended.
-- **C. QEMU's exit alone.** No payload is misread, and a guest that hangs after its
-  panic waits out the whole budget, which is the defect `WSL-81` removed.
+⭐ **Ruled by the operator on 2026-09-14: B.** After the console shows the two
+lines, QEMU's exit, the command's closing marker or 60 seconds ends the wait,
+whichever comes first. A real panic is named after its dump and reboot. A guest that
+hangs after a panic ends at 60 seconds. A payload's copy that finishes inside the
+bound answers normally. Waiting at once was rejected because it kills a running
+guest over its payload. Waiting for QEMU alone was rejected because a hung guest
+would wait for the full run budget.
 
 ## Consumers
 
@@ -7197,35 +7201,21 @@ and 2048 MiB, on the tree's build at `e32791a`:
 
 ## Decision
 
-What protects the shared image from a panic while the guest powers off:
-
-- **A. A throwaway overlay per run. Recommended.** QEMU opens the image with
-  `snapshot=on`, so a run's writes land in a temporary file that QEMU discards when it
-  exits. No panic can damage the image, and nothing a payload installs survives its
-  run, which `WSL-72`'s prove already asks a caller to put back by hand. ⚠ Unmeasured,
-  and measured before it is built: the grow and the first-boot work would repeat on
-  every boot, and the first run after a fetch logged in at 29 s where a grown image
-  logs in at about 8.5 s.
-- **B. The image stays writable, and the tool guards it:** `sync` typed before
-  `poweroff`, and a boot that shows the line refused before its payload, with exit 2
-  and `bsd fetch --force` named. A panic can still damage the image, and the next run
-  stops rather than building on it.
-- **C. The image stays writable, and the run warns** when its boot shows the line,
-  then runs the payload anyway.
-
-⛔ A ends what `WSL-72`'s approach point 4 protects, a guest a previous session left
-configured, so the choice is the operator's.
+⭐ **Ruled by the operator on 2026-09-14: A.** QEMU opens a throwaway overlay for
+each run. A run's writes land in that overlay, and the overlay is discarded after
+QEMU exits. A panic cannot change the shared image. Nothing a payload installs
+survives its run. The accepted cost is that grow and first-boot work can repeat for
+each run. Measure that cost before the implementation is accepted. A writable image
+with a guard was rejected because a panic can still damage it. A warning alone was
+rejected because it runs the next payload on an unchecked filesystem.
 
 ## Consumers
 
-⚠ By [`../docs/consumers.md`](../docs/consumers.md)'s definition, A breaks a caller
-that installs something in one run and uses it in the next, and B changes a run that
-went ahead on an unchecked filesystem into exit 2. The changelog says whichever holds.
-C changes no exit and no stream.
+⚠ By [`../docs/consumers.md`](../docs/consumers.md)'s definition, the overlay breaks
+a caller that installs something in one run and uses it in the next. The changelog
+says so when this entry is implemented.
 
 ## Prove
-
-Under A:
 
 ```powershell
 wsl-toolkit bsd run -c 'touch /root/tk-overlay-probe'
@@ -7239,9 +7229,6 @@ Passing is:
 - three runs of `bsd run -c true` with the login and the session recorded, and the
   manual carrying them;
 - a mutation row per rule red.
-
-Under B, a fake-guest case whose boot prints the line answers exit 2 naming `bsd fetch
---force`, a fake-guest case sees `sync` typed before `poweroff`, and each row goes red.
 
 ---
 
@@ -7295,6 +7282,12 @@ interop off:
 ⛔ **Not a new flag, and not a warning over a base that passes.** The configuration
 already says what the drives must be, and a report that says so over a guest that
 disagrees is the defect.
+
+## Decision
+
+⭐ **Approved by the operator on 2026-09-14, and first in the work order.** Apply
+the approach above before any later base work relies on automount verification.
+The release waits for this entry to close.
 
 ## Consumers
 
