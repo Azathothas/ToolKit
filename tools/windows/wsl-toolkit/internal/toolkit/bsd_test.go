@@ -87,7 +87,7 @@ const bsdPoweroffPanicConsole = "Syncing disks, vnodes remaining... 0 done\r\n" 
 
 // TestAPanicWhilePoweringOffIsCarriedOnTheResult is WSL-81's second shape: a payload
 // that answered, then a kernel that panicked on the way down, which the run's exit
-// cannot show and the next boot's core dump in the shared image would.
+// cannot show.
 func TestAPanicWhilePoweringOffIsCarriedOnTheResult(t *testing.T) {
 	g := startBsdGuestChild(t, "poweroff-panic")
 	g.graceful = true
@@ -136,7 +136,7 @@ func TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce(t *testing.T) {
 	started := time.Now()
 	_, _, err := g.run(ctx, "true")
 	if err == nil || !strings.Contains(err.Error(), "kernel panicked: panic: page fault, after Fatal trap 12") ||
-		!strings.Contains(err.Error(), "bsd fetch --force") {
+		!strings.Contains(err.Error(), "goes with this run's overlay") {
 		t.Fatalf("a panicked guest answered %v after %s", err, time.Since(started))
 	}
 	if waited := time.Since(started); waited > 15*time.Second {
@@ -187,7 +187,7 @@ func TestAGuestWhoseConsoleClosesIsNotWaitedOn(t *testing.T) {
 // VMBus driver from holding root mount for about 105 seconds; no default devices;
 // and the payload disk after the root disk, which makes it the guest's vtbd1.
 func TestTheGuestBootsWithoutTheHyperVWait(t *testing.T) {
-	args := bsdQemuArgs(BsdRunSpec{VCpus: BsdDefaultVCPUs, MemMiB: 2048}, "tk-payload-x.tar")
+	args := bsdQemuArgs(BsdRunSpec{VCpus: BsdDefaultVCPUs, MemMiB: 2048}, "tk-overlay-x.qcow2", "tk-payload-x.tar")
 	value := func(flag string) string {
 		for i := 0; i+1 < len(args); i++ {
 			if args[i] == flag {
@@ -304,37 +304,124 @@ func TestTheJoinShapesRunWholeThroughTheGuestSteps(t *testing.T) {
 	}
 }
 
-// TestTheBsdGuestDiskGrowsAndNeverShrinks holds the three answers a shared image
-// can get. WSL-72: the guest disk grows to what a run asks for, an equal request
-// is nothing to do, and a smaller one is refused with the file untouched,
-// because a shorter file cuts off the filesystem inside it.
-func TestTheBsdGuestDiskGrowsAndNeverShrinks(t *testing.T) {
+// TestTheBsdGuestDiskIsNeverSmallerThanTheImage holds the three answers a run's disk
+// can get, and that none of them writes the image. WSL-72's disk is the size a run
+// asks for, an equal one is that size, and a smaller one is refused because it cuts
+// off the filesystem inside the image. WSL-83: the overlay carries the size, so the
+// image keeps the size it has.
+func TestTheBsdGuestDiskIsNeverSmallerThanTheImage(t *testing.T) {
 	img := filepath.Join(t.TempDir(), "guest.raw")
-	if err := os.WriteFile(img, make([]byte, 4096), 0o600); err != nil {
+	if err := os.WriteFile(img, make([]byte, 8192), 0o600); err != nil {
 		t.Fatal(err)
 	}
-
-	got, err := growBsdImage(img, 8192)
-	if err != nil || got != 8192 {
-		t.Fatalf("growing to 8192 bytes answered (%d, %v)", got, err)
+	if got, err := bsdGuestDisk(img, 16384); err != nil || got != 16384 {
+		t.Fatalf("a larger disk answered (%d, %v)", got, err)
+	}
+	if got, err := bsdGuestDisk(img, 8192); err != nil || got != 8192 {
+		t.Fatalf("an equal disk answered (%d, %v)", got, err)
+	}
+	got, err := bsdGuestDisk(img, 4096)
+	if err == nil || got != 8192 || !strings.Contains(err.Error(), "cuts off the filesystem") {
+		t.Fatalf("a smaller disk answered (%d, %v), want a refusal that says why", got, err)
 	}
 	if info, _ := os.Stat(img); info.Size() != 8192 {
-		t.Fatalf("the file is %d bytes after growing to 8192", info.Size())
+		t.Fatalf("the image is %d bytes after three answers, and no answer may write it", info.Size())
 	}
+}
 
-	if got, err := growBsdImage(img, 8192); err != nil || got != 8192 {
-		t.Fatalf("an equal request answered (%d, %v); it is nothing to do", got, err)
+// TestARunWritesToAnOverlayAndNeverTheImage is WSL-83's ruling: the guest's root
+// disk is a qcow2 overlay whose backing file is the image, so QEMU opens the image
+// read-only and a panic cannot change it. The image's name reaches QEMU only through
+// the overlay.
+func TestARunWritesToAnOverlayAndNeverTheImage(t *testing.T) {
+	const overlay, payload = "tk-overlay-0123456789abcdef.qcow2", "tk-payload-0123456789abcdef.tar"
+	joined := " " + strings.Join(bsdQemuArgs(BsdRunSpec{VCpus: 1, MemMiB: 2048}, overlay, payload), " ") + " "
+	if !strings.Contains(joined, " if=none,file="+overlay+",format=qcow2,id=root0 ") {
+		t.Errorf("the root disk is not the run's overlay: %s", joined)
 	}
+	if strings.Contains(joined, BsdImageName) {
+		t.Errorf("QEMU is handed the image itself, which it would open for writing: %s", joined)
+	}
+	got := strings.Join(bsdOverlayArgs(BsdImageName, overlay, 12<<30), " ")
+	want := "create -q -f qcow2 -b " + BsdImageName + " -F raw " + overlay + " 12884901888"
+	if got != want {
+		t.Errorf("qemu-img makes the overlay with %q, want %q", got, want)
+	}
+}
 
-	got, err = growBsdImage(img, 4096)
-	if err == nil {
-		t.Fatal("a smaller disk was accepted, which cuts off the filesystem inside the image")
+// TestTheFilesARunLeftAreSweptByTheirShape holds the sweep: a payload disk and an
+// overlay an hour old go, one younger stays because another run may be about to
+// open it, and a file of any other shape stays whatever its age.
+func TestTheFilesARunLeftAreSweptByTheirShape(t *testing.T) {
+	dir := t.TempDir()
+	old := time.Now().Add(-2 * time.Hour)
+	files := map[string]bool{
+		"tk-payload-0123456789abcdef.tar":   false,
+		"tk-overlay-0123456789abcdef.qcow2": false,
+		"tk-overlay-fedcba9876543210.qcow2": true,
+		BsdImageName:                        true,
+		BsdImageName + ".xz":                true,
+		"tk-overlay-notes.txt":              true,
 	}
-	if !strings.Contains(err.Error(), "never shrinks") {
-		t.Fatalf("the refusal does not say why: %v", err)
+	for name := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("x"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if name != "tk-overlay-fedcba9876543210.qcow2" {
+			if err := os.Chtimes(path, old, old); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
-	if info, _ := os.Stat(img); info.Size() != 8192 || got != 8192 {
-		t.Fatalf("a refused shrink changed the file to %d bytes (answered %d)", info.Size(), got)
+	sweepBsdRunFiles(dir)
+	for name, kept := range files {
+		_, err := os.Stat(filepath.Join(dir, name))
+		if kept && err != nil {
+			t.Errorf("%s was swept: %v", name, err)
+		}
+		if !kept && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s, a run's file two hours old, was left: %v", name, err)
+		}
+	}
+}
+
+// TestARootNotProperlyDismountedIsNamed is WSL-83's second run: its boot printed the
+// line over a root the previous poweroff's panic left, and the run ran its payload on
+// the unchecked filesystem saying nothing.
+func TestARootNotProperlyDismountedIsNamed(t *testing.T) {
+	boot := "Trying to mount root from ufs:/dev/gpt/rootfs [rw]...\r\n" +
+		"WARNING: / was not properly dismounted\r\n" +
+		"Starting file system checks:\r\n"
+	if got := bsdRootNotDismounted(boot); got != "WARNING: / was not properly dismounted" {
+		t.Errorf("the boot's line was answered %q", got)
+	}
+	if got := bsdRootNotDismounted("Starting file system checks:\r\n/dev/gpt/rootfs: FILE SYSTEM CLEAN; SKIPPING CHECKS\r\n"); got != "" {
+		t.Errorf("a clean boot was answered %q", got)
+	}
+}
+
+// TestQemuImgIsFoundBesideTheEmulator holds the order FindQemuImg looks in: the
+// emulator's own directory before PATH, because the two ship together.
+func TestQemuImgIsFoundBesideTheEmulator(t *testing.T) {
+	dir := t.TempDir()
+	name := "qemu-img"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	emulator := filepath.Join(dir, "qemu-system-x86_64")
+	beside := filepath.Join(dir, name)
+	for _, path := range []string{emulator, beside} {
+		if err := os.WriteFile(path, []byte("x"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", t.TempDir())
+	if got, err := FindQemuImg(emulator); err != nil || got != beside {
+		t.Errorf("FindQemuImg answered (%q, %v), want the one beside the emulator, %q", got, err, beside)
+	}
+	if got, err := FindQemuImg(filepath.Join(t.TempDir(), "qemu-system-x86_64")); err == nil {
+		t.Errorf("with none beside the emulator and none on PATH it answered %q", got)
 	}
 }
 

@@ -21,6 +21,26 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T15:31:34Z: a BSD run writes to an overlay, and the shared image is never written
+
+**Record:** `WSL-83` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the runs on the shared image, the per-run cost and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-83`.
+
+⛔ **NOTHING A PAYLOAD INSTALLS SURVIVES ITS `bsd run`, WHICH BREAKS A CALLER THAT
+INSTALLS IN ONE RUN AND USES IT IN THE NEXT.** A run boots from a qcow2 overlay over
+the image, and removes the overlay when QEMU exits, so a kernel panic can no longer
+leave the shared image unchecked or unable to boot. `bsd run` no longer grows the
+image file: `--disk` sizes the overlay, and a `--disk` smaller than the image is still
+refused. `qemu-img`, which ships with QEMU, is now required, and `bsd status` names it.
+
+⭐ **A run costs what it did**: three `-c true` runs took 23.4 s to 23.6 s, each doing
+the image's first-boot work.
+
+⚠ **`bsd run --json` carries `root_not_dismounted`** when a boot finds the image's
+own root not properly dismounted, with a warning to run `bsd fetch --force`.
+
 ### 2026-09-14T15:04:56Z: a base's Windows drives are read back, and a changed automount is applied
 
 **Record:** `WSL-84` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

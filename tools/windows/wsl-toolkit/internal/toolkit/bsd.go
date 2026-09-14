@@ -115,12 +115,13 @@ type BsdStatus struct {
 	Schema      string `json:"schema"`
 	Qemu        string `json:"qemu,omitempty"`
 	QemuVersion string `json:"qemu_version,omitempty"`
+	QemuImg     string `json:"qemu_img,omitempty"`
 	Whpx        bool   `json:"whpx"`
 	WhpxDetail  string `json:"whpx_detail"`
 	Image       string `json:"image,omitempty"`
 	ImageBytes  int64  `json:"image_bytes,omitempty"`
-	// DiskDefaultBytes is what the next run grows a smaller image to. The image
-	// file IS the guest disk, so ImageBytes is the disk's current size.
+	// DiskDefaultBytes is the disk a run's guest gets by default, in the run's
+	// overlay. ⚠ A run never writes the image, so ImageBytes stays what it is.
 	DiskDefaultBytes int64    `json:"disk_default_bytes"`
 	Ready            bool     `json:"ready"`
 	Problems         []string `json:"problems,omitempty"`
@@ -171,6 +172,27 @@ func FindQemu() (string, error) {
 	return "", errors.New("qemu-system-x86_64 was not found. Install it with: scoop install qemu")
 }
 
+// FindQemuImg locates qemu-img, which makes each run's overlay.
+//
+// ⚠ BESIDE THE EMULATOR FIRST. The two ship together, and a qemu-img found on PATH
+// can belong to another install of another version.
+func FindQemuImg(qemu string) (string, error) {
+	name := "qemu-img"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	if qemu != "" {
+		cand := filepath.Join(filepath.Dir(qemu), name)
+		if _, ok := FileSize(cand); ok {
+			return cand, nil
+		}
+	}
+	if p, err := exec.LookPath("qemu-img"); err == nil {
+		return p, nil
+	}
+	return "", errors.New("qemu-img was not found beside qemu-system-x86_64 or on PATH, and a run needs it for the overlay the guest writes to. It ships with QEMU: scoop install qemu")
+}
+
 // BsdProbe reports whether this host can boot the guest.
 func BsdProbe(ctx context.Context) BsdStatus {
 	st := BsdStatus{Schema: "wsl-toolkit-bsd-status/1", DiskDefaultBytes: int64(BsdDefaultDiskGiB) << 30}
@@ -183,6 +205,11 @@ func BsdProbe(ctx context.Context) BsdStatus {
 	} else {
 		st.Qemu = qemu
 		st.QemuVersion = qemuVersion(ctx, qemu)
+		if qemuImg, err := FindQemuImg(qemu); err != nil {
+			st.Problems = append(st.Problems, err.Error())
+		} else {
+			st.QemuImg = qemuImg
+		}
 	}
 	st.Whpx, st.WhpxDetail = whpxAvailable()
 	if !st.Whpx {
@@ -241,55 +268,84 @@ type BsdResult struct {
 	RootBytes int64  `json:"root_bytes"`
 	Error     string `json:"error,omitempty"`
 	// ShutdownPanic is a kernel panic the guest printed while it powered off,
-	// after the payload had answered. ⚠ The payload's exit stands, and the next
-	// boot writes a core dump into the shared image. WSL-81.
+	// after the payload had answered. ⚠ The payload's exit stands. The panic's
+	// writes went to the run's overlay and went with it. WSL-81, WSL-83.
 	ShutdownPanic string `json:"shutdown_panic,omitempty"`
+	// RootNotDismounted is the boot's line saying the root filesystem was not
+	// properly dismounted. ⚠ No run leaves one, because a run's writes go to its
+	// overlay, so the line means the image itself is in that state and every run
+	// boots on it until `bsd fetch --force`. WSL-83.
+	RootNotDismounted string `json:"root_not_dismounted,omitempty"`
 }
 
-// growBsdImage extends the guest disk to want bytes.
+// ⭐ A RUN WRITES TO AN OVERLAY, AND NEVER TO THE IMAGE.
 //
-// ⛔ IT NEVER SHRINKS. The image is shared state that outlives the session that
-// touched it, and a shorter file cuts off the filesystem inside it, so a smaller
-// request is refused rather than honoured or silently ignored. An equal one is
-// nothing to do. ⚠ Growing keeps every byte a previous session left.
-func growBsdImage(path string, want int64) (int64, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0, err
+// ⛔ WSL-83. Two read-only runs in a row panicked while the guest powered off, the
+// first before the kernel synced its buffers. The next boot found its root not
+// properly dismounted, saved a 173,228,032-byte core into the shared image, panicked
+// in the filesystem as it powered off. The operator ruled a throwaway overlay per
+// run: QEMU writes a qcow2 file this run makes beside the image, reads the image
+// through it, and the run removes the file after QEMU exits, so no panic reaches the
+// image. ⚠ What the ruling accepted: nothing a payload installs survives its run,
+// and every run boots the image as fetched, so FreeBSD's first-boot work repeats.
+const bsdOverlayPrefix = "tk-overlay-"
+
+// bsdOverlayArgs is the qemu-img command line for a run's overlay: qcow2, over the
+// raw image, the guest disk's size in bytes. ⚠ Both names are bare, resolved in the
+// image's directory, because a native Windows binary is given a filename and never
+// a path, and QEMU reads a relative backing name against the overlay's directory.
+func bsdOverlayArgs(image, overlay string, size int64) []string {
+	return []string{"create", "-q", "-f", "qcow2", "-b", image, "-F", "raw", overlay, strconv.FormatInt(size, 10)}
+}
+
+// createBsdOverlay makes a run's overlay in dir, and answers whether it is there.
+func createBsdOverlay(ctx context.Context, qemuImg, dir, overlay string, size int64) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, qemuImg, bsdOverlayArgs(BsdImageName, overlay, size)...)
+	cmd.Dir = dir
+	if _, err := cmd.Output(); err != nil {
+		var exited *exec.ExitError
+		if errors.As(err, &exited) {
+			return fmt.Errorf("qemu-img could not make the run's overlay, so nothing booted: %s", firstLine(string(exited.Stderr)))
+		}
+		return fmt.Errorf("qemu-img could not make the run's overlay, so nothing booted: %w", err)
 	}
-	have := info.Size()
+	// ⛔ THE FILE, NOT THE EXIT CODE. A guest booted over a missing overlay is a QEMU
+	// refusal naming a file nobody asked about.
+	if _, ok := FileSize(filepath.Join(dir, overlay)); !ok {
+		return fmt.Errorf("qemu-img exited 0 and %s is not in %s, so nothing booted", overlay, dir)
+	}
+	return nil
+}
+
+// bsdGuestDisk answers the size of the disk a run's guest gets: what the run asks
+// for, and never less than the image.
+//
+// ⛔ A DISK SMALLER THAN THE IMAGE IS REFUSED, because it cuts off the filesystem
+// inside it. ⚠ Nothing here writes the image: the overlay carries the size, and an
+// image an earlier build grew keeps its size until `bsd fetch --force`.
+func bsdGuestDisk(image string, want int64) (int64, error) {
+	have, ok := FileSize(image)
+	if !ok {
+		return 0, fmt.Errorf("the guest image is not on this machine. Run: wsl-toolkit bsd fetch")
+	}
 	if have > want {
-		return have, fmt.Errorf("the guest disk is already %s and this run asks for %s. It never shrinks, because a shorter file cuts off the filesystem inside it. Pass --disk %d or larger, or run `wsl-toolkit bsd fetch --force` to start again from the published image",
+		return have, fmt.Errorf("the image is %s and this run asks for a %s disk. A disk smaller than the image cuts off the filesystem inside it. Pass --disk %d or larger, or run `wsl-toolkit bsd fetch --force` to start again from the published image",
 			HumanBytes(have), HumanBytes(want), (have+(1<<30)-1)>>30)
 	}
-	if have == want {
-		return have, nil
-	}
-	// ⚠ A file another QEMU holds open cannot be extended on Windows, and that
-	// refusal is the right answer: growing a disk under a running guest is how
-	// a filesystem is damaged.
-	if err := os.Truncate(path, want); err != nil {
-		return have, fmt.Errorf("could not grow the guest disk to %s, and it is unchanged: %w. Is another `bsd run` using it?", HumanBytes(want), err)
-	}
-	after, err := os.Stat(path)
-	if err != nil {
-		return have, err
-	}
-	if after.Size() != want {
-		return after.Size(), fmt.Errorf("the guest disk was asked to grow to %s and is %s", HumanBytes(want), HumanBytes(after.Size()))
-	}
-	return after.Size(), nil
+	return want, nil
 }
 
 // bsdGrowRootScript extends the last UFS partition and its filesystem to the
 // end of the disk, and prints the root filesystem's size in KiB.
 //
-// ⭐ FreeBSD's own tools, in the guest, on every boot. The image enables
-// `growfs_enable` and it does nothing here: that rc script runs only on a first
-// boot, and a shared image has had its first boot. `gpart recover` moves the
-// backup GPT header to the new end, and nothing grows while it sits at the old
-// one. ⛔ ONE LINE, because it is typed at the console, and a typed line that
-// carries a newline is refused rather than joined.
+// ⭐ FreeBSD's own tools, in the guest, on every boot. The image's own
+// `growfs_enable` grows the root only on the image's first boot, and an image an
+// earlier build booted has had its first boot. `gpart recover` moves the backup GPT
+// header to the new end, and nothing grows while it sits at the old one. ⛔ ONE
+// LINE, because it is typed at the console, and a typed line that carries a newline
+// is refused rather than joined.
 const bsdGrowRootScript = `gpart recover vtbd0 >/dev/null 2>&1; tk_g=$(gpart show vtbd0 | awk 'NR==1 {e=$2+$3} $4=="freebsd-ufs" {i=$3; p=$1+$2} END {print i, e-p}'); set -- $tk_g; if [ -z "${1:-}" ]; then echo "no freebsd-ufs partition on vtbd0"; exit 3; fi; if [ "$2" -gt 2048 ]; then gpart resize -i "$1" vtbd0 >/dev/null || exit 3; growfs -y / >/dev/null || exit 3; fi; df -k / | awk 'NR==2 {print "tk-root-kib", $2}'`
 
 var bsdRootKiBRE = regexp.MustCompile(`tk-root-kib ([0-9]+)`)
@@ -321,19 +377,27 @@ const (
 // run could not remove.
 const bsdPayloadPrefix = "tk-payload-"
 
-// sweepBsdPayloads removes payload disks earlier runs left beside the image.
+// bsdRunFile says whether a name is a file a run makes beside the image: a
+// payload disk or an overlay, by the exact shape each is given.
+func bsdRunFile(name string) bool {
+	return (strings.HasPrefix(name, bsdPayloadPrefix) && strings.HasSuffix(name, ".tar")) ||
+		(strings.HasPrefix(name, bsdOverlayPrefix) && strings.HasSuffix(name, ".qcow2"))
+}
+
+// sweepBsdRunFiles removes payload disks and overlays earlier runs left beside
+// the image.
 //
-// ⚠ ONLY ONES AN HOUR OLD. Another run writes its disk before its QEMU opens it,
-// and a sweep in that gap would take the file from under it. A file an older run
+// ⚠ ONLY ONES AN HOUR OLD. Another run writes its files before its QEMU opens them,
+// and a sweep in that gap would take a file from under it. A file an older run
 // still holds open cannot be removed on Windows, and that refusal is left alone.
-func sweepBsdPayloads(dir string) {
+func sweepBsdRunFiles(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
 	for _, e := range entries {
 		name := e.Name()
-		if !e.Type().IsRegular() || !strings.HasPrefix(name, bsdPayloadPrefix) || !strings.HasSuffix(name, ".tar") {
+		if !e.Type().IsRegular() || !bsdRunFile(name) {
 			continue
 		}
 		if info, err := e.Info(); err == nil && time.Since(info.ModTime()) >= time.Hour {
@@ -370,9 +434,9 @@ func bsdPayloadArchive(script []byte) ([]byte, error) {
 // command in it that reads stdin would otherwise read the console, and wait there.
 //
 // ⛔ THE COPY IS REMOVED WHATEVER THE SCRIPT EXITS WITH, and the exit is still the
-// script's. The image is shared and FreeBSD does not clear /tmp at boot, so a copy
-// left by a script that failed would stay in every later session. A copy a killed
-// run left is swept by the next extract, by its exact name shape and nothing wider.
+// script's. FreeBSD does not clear /tmp at boot, and a copy in an image that an
+// earlier build wrote to stays in every run that boots it; the extract sweeps one by
+// its exact name shape and nothing wider.
 func bsdPayloadSteps(device, dir, name string) (extract, run string) {
 	file := dir + "/" + name + ".sh"
 	return "rm -f " + dir + "/tk????????????????.sh; tar -xOf " + device + " " + bsdPayloadMember + " > " + file,
@@ -407,6 +471,19 @@ func bsdBootFailure(console string) string {
 	return strings.TrimSpace(console[start:end])
 }
 
+// bsdRootNotDismountedRE is the line a boot prints over a root filesystem that
+// was not properly dismounted.
+var bsdRootNotDismountedRE = regexp.MustCompile(`WARNING: /[^\r\n]* was not properly dismounted`)
+
+// bsdRootNotDismounted answers that line from a boot's console, or "".
+//
+// ⛔ NOTHING READ IT, and a run then ran its payload on an unchecked filesystem that
+// had panicked at the previous poweroff, saying nothing. Its background check was
+// set for 60 seconds after boot, which a short run never reaches. WSL-83.
+func bsdRootNotDismounted(console string) string {
+	return strings.TrimSpace(bsdRootNotDismountedRE.FindString(console))
+}
+
 // bsdPromptRE is the shell prompt this image presents. ⚠ Unanchored on purpose;
 // the caller matches from a POSITION instead, which is what makes "the command
 // finished" mean the prompt AFTER the command rather than the one before it.
@@ -426,6 +503,10 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	if err != nil {
 		return res, err
 	}
+	qemuImg, err := FindQemuImg(qemu)
+	if err != nil {
+		return res, err
+	}
 	if spec.Timeout <= 0 {
 		spec.Timeout = 15 * time.Minute
 	}
@@ -438,7 +519,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	if spec.DiskGiB <= 0 {
 		spec.DiskGiB = BsdDefaultDiskGiB
 	}
-	disk, err := growBsdImage(img, int64(spec.DiskGiB)<<30)
+	disk, err := bsdGuestDisk(img, int64(spec.DiskGiB)<<30)
 	if err != nil {
 		return res, err
 	}
@@ -455,7 +536,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 		return res, err
 	}
 	dir := filepath.Dir(img)
-	sweepBsdPayloads(dir)
+	sweepBsdRunFiles(dir)
 	payloadName := bsdPayloadPrefix + strings.ToLower(token) + ".tar"
 	payloadPath := filepath.Join(dir, payloadName)
 	if err := os.WriteFile(payloadPath, archive, 0o600); err != nil {
@@ -465,8 +546,16 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	// stop is deferred below this, so it runs first. ⚠ A file that could not be
 	// removed is swept by the next run rather than failing this one.
 	defer func() { _ = RemoveInside(dir, payloadPath) }()
+	overlayName := bsdOverlayPrefix + strings.ToLower(token) + ".qcow2"
+	overlayPath := filepath.Join(dir, overlayName)
+	// ⛔ THE OVERLAY GOES THE SAME WAY, and its removal is deferred before it is
+	// made, so an overlay qemu-img left half-made goes too.
+	defer func() { _ = RemoveInside(dir, overlayPath) }()
+	if err := createBsdOverlay(ctx, qemuImg, dir, overlayName, disk); err != nil {
+		return res, err
+	}
 
-	g, err := startGuest(ctx, qemu, bsdQemuArgs(spec, payloadName), filepath.Dir(img), spec.Stdout)
+	g, err := startGuest(ctx, qemu, bsdQemuArgs(spec, overlayName, payloadName), dir, spec.Stdout)
 	if err != nil {
 		return res, err
 	}
@@ -487,6 +576,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 		return res, errors.New(res.Error)
 	}
 	res.BootTime = time.Since(started)
+	res.RootNotDismounted = bsdRootNotDismounted(g.seen())
 	// ⛔ Let the tty settle. login(1) reopens and reconfigures the line, and
 	// anything sent while it does is lost.
 	select {
@@ -540,7 +630,11 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 }
 
 // bsdQemuArgs is the command line one guest session boots with.
-func bsdQemuArgs(spec BsdRunSpec, payloadName string) []string {
+//
+// ⛔ THE ROOT DISK IS THE RUN'S OVERLAY, NEVER THE IMAGE. QEMU opens the image read
+// only, as the overlay's backing file, so a guest that panics mid-write leaves it as
+// it was. WSL-83.
+func bsdQemuArgs(spec BsdRunSpec, overlayName, payloadName string) []string {
 	args := []string{
 		"-accel", "whpx",
 		// ⚠ No default devices: a DVD drive and a VGA card the guest never uses
@@ -552,7 +646,7 @@ func bsdQemuArgs(spec BsdRunSpec, payloadName string) []string {
 		"-m", strconv.Itoa(spec.MemMiB),
 		// if=none plus an explicit device, so the transport is named rather
 		// than left to QEMU's if= heuristics.
-		"-drive", "if=none,file=" + BsdImageName + ",format=raw,id=root0",
+		"-drive", "if=none,file=" + overlayName + ",format=qcow2,id=root0",
 		"-device", "virtio-blk-pci,drive=root0",
 		// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.
 		"-drive", "if=none,file=" + payloadName + ",format=raw,id=payload0,readonly=on",
@@ -853,11 +947,11 @@ func (g *guest) run(ctx context.Context, payload string) (int, string, error) {
 	if err := g.waitFrom(ctx, doneRE, before); err != nil {
 		var gone *guestGoneError
 		if errors.As(err, &gone) {
-			// ⚠ The advice is measured: a panic in the middle of `pkg install` left a
-			// root filesystem the next boot would not mount without a manual check.
+			// ⚠ A panic in the middle of `pkg install` once left a root filesystem the next
+			// boot would not mount without a manual check. What a panic writes now goes
+			// with the run's overlay, so the next run boots the image as it was. WSL-83.
 			return 0, cleanConsole(g.after(before)), fmt.Errorf("%s, before the command finished. "+
-				"A panic while the guest writes can leave its filesystem needing a check this tool cannot run; "+
-				"if the next run stops at a single-user shell, `wsl-toolkit bsd fetch --force` restores the published image", gone.reason)
+				"What the guest wrote goes with this run's overlay, and the image is as it was", gone.reason)
 		}
 		return 0, cleanConsole(g.after(before)), errors.New("the guest did not finish the command within the budget")
 	}

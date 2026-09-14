@@ -8,16 +8,16 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-14T14:15:42Z; the record commit's own time is its end
 baseline        7122216, tree clean, CI run 34846522263 green
-entries         total 119  open 9  blocked 0  done 110
-closed          WSL-84, in its own commit
-approved        WSL-82 option B; WSL-83 option A
-head            7122216, then the WSL-84 commit
+entries         total 119  open 8  blocked 0  done 111
+closed          WSL-84 at 191062a; WSL-83 in its own commit
+approved        WSL-82 option B
+head            191062a, then the WSL-83 commit
 ```
 
 ## Active work
 
-⭐ **The session works the operator's order unattended.** `WSL-84` is closed. **Next:
-`WSL-83`, then `WSL-82`**, then issue 30's `WSL-67`, `WSL-70` and `WSL-71`. Their
+⭐ **The session works the operator's order unattended.** `WSL-84` and `WSL-83` are
+closed. **Next: `WSL-82`**, then issue 30's `WSL-67`, `WSL-70` and `WSL-71`. Their
 decisions are ruled below and in their entries. No planning question remains.
 
 `WSL-78`'s entry point, `base agent` and the `muse.exe` launcher remain built and
@@ -30,22 +30,20 @@ premise, decisions and prove. An issue closes only when every entry mapped to it
 is closed, and the issue gets a comment naming the commits.
 
 1. ⭐ **Closed:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33, `WSL-75`, `WSL-81`,
-   `WSL-72`, `WSL-77` and `WSL-84`.
-2. **`WSL-83`, a throwaway FreeBSD overlay per run.** Protect the shared image before
-   another BSD proof boots it.
-3. **`WSL-82`, the panic detector.** Wait for QEMU to exit, the command marker or the
+   `WSL-72`, `WSL-77`, `WSL-84` and `WSL-83`.
+2. **`WSL-82`, the panic detector.** Wait for QEMU to exit, the command marker or the
    60-second bound after the two panic lines appear.
-4. **Finish issue 30's existing package and profile work:** `WSL-67`, then `WSL-70`,
+3. **Finish issue 30's existing package and profile work:** `WSL-67`, then `WSL-70`,
    then `WSL-71`. `WSL-67` drives `pkgin` and `pkg_add`, removes Soar, keeps and
    drives Nix, and adds the provider-profile cases to the acceptance runner.
-5. **`WSL-68`, the sealed base: a dedicated session of its own.** It closes issue
+4. **`WSL-68`, the sealed base: a dedicated session of its own.** It closes issue
    30 after the work above, and uses the drive verifier `WSL-84` fixed.
-6. **Muse and herdr together, one dedicated session.** Build `wsl-toolkit-base` from
+5. **Muse and herdr together, one dedicated session.** Build `wsl-toolkit-base` from
    [`../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json`](../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json);
    the operator runs `muse login` in it; then close `WSL-76` and `WSL-78`. Author
    approved entries for `pi` and `omp` before either adapter is built.
-7. **`wsl-toolkit-v3.0.0`** is cut after issues 30 and 32 and `WSL-82` and `WSL-83`
-   are closed, and CI is green on the final commit.
+6. **`wsl-toolkit-v3.0.0`** is cut after issues 30 and 32 and `WSL-82` are closed,
+   and CI is green on the final commit.
 
 ## Rulings in force
 
@@ -69,14 +67,13 @@ is closed, and the issue gets a comment naming the commits.
    marked `Host` block in `%USERPROFILE%\.ssh\config`, and agent launchers in
    `%USERPROFILE%\bin`.
 6. **2026-09-14: cut `wsl-toolkit-v3.0.0` only after the order above is complete.**
-   Issues 30 and 32 and `WSL-82` and `WSL-83` are closed first. Run `repo release`
-   read-only, and publish only with CI green on the final commit.
+   Issues 30 and 32 and `WSL-82` are closed first. Run `repo release` read-only, and
+   publish only with CI green on the final commit.
 7. **2026-09-14: finish existing work before Muse and herdr.** Keep Muse and herdr
    together in one later dedicated session. Complete the sealed base before it. In
    `WSL-76`.
-8. **2026-09-14: `WSL-83` uses option A**, a throwaway overlay per BSD run, and
-   **`WSL-82` uses option B**, which waits for QEMU's exit, the command marker or 60
-   seconds.
+8. **2026-09-14: `WSL-82` uses option B**, which waits for QEMU's exit, the command
+   marker or 60 seconds.
 9. **2026-09-14: remove Soar and keep Nix.** `WSL-67` removes Soar from the
    bootstrap and its live documentation, and drives Nix as the one user-level
    provider.
@@ -86,10 +83,11 @@ is closed, and the issue gets a comment naming the commits.
 A green local gate is not CI. Run the Go tests with `TEMP` and `TMP` at an 8.3
 short path, then CI's Linux Go job and its ShellCheck in containers.
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
-carries all three as commands under "Build and local proof". ⚠ **A heavy BSD run goes
-on a fresh image copy**, with `WSL_TOOLKIT_CACHE` under this repository's `.tmp`,
-never on the shared image. ⚠ **An untracked script is outside CI's ShellCheck
-command**, which lists `git ls-files`, so check a new one by name before it is added.
+carries all three as commands under "Build and local proof". ⚠ **A BSD run no longer
+writes the shared image**, so a heavy run may boot it; a run that needs a damaged or
+altered image goes on a copy, with `WSL_TOOLKIT_CACHE` under this repository's `.tmp`.
+⚠ **An untracked script is outside CI's ShellCheck command**, which lists `git
+ls-files`, so check a new one by name before it is added.
 
 ## Recent work
 
@@ -100,7 +98,8 @@ command**, which lists `git ls-files`, so check a new one by name before it is a
 | `360bbde` | `WSL-78` partial: `base agent` and the `muse.exe` launcher, driven on a throwaway base |
 | `08e23bc` | the operator's former order for the next two sessions; `WSL-71`'s starting directory measured; `WSL-84` filed |
 | `7122216` | `WSL-82`, `WSL-83` and `WSL-84` approved; the existing work restored ahead of Muse and herdr; Soar set for removal and Nix retained |
-| the `WSL-84` commit | `WSL-84` closed: the verifier reads the drives and prints what they are, `base ensure` provisions a drifted base again, and `base status --probe` prints both; `base shell --root` and `--here` read the same mounts; 16 rows red |
+| `191062a` | `WSL-84` closed: the verifier reads the drives and prints what they are, `base ensure` provisions a drifted base again, and `base status --probe` prints both; `base shell --root` and `--here` read the same mounts; 16 rows red |
+| the `WSL-83` commit | `WSL-83` closed: a BSD run boots from a qcow2 overlay it removes, the image is never written, and a root not properly dismounted is named; 6 rows new and 4 changed |
 
 ## Measurements
 
@@ -122,10 +121,12 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 - **Muse:** Meta's installer at `dev.meta.ai` still has the approved digest, 9,314
   bytes, on 2026-09-14; the public channel serves `1.2.1-R2847.1`, a 299,251,896-byte
   Linux x86 build that answers without credentials.
-- ⛔ **For `WSL-83`:** two read-only runs on the shared image, one processor, both
-  exit 0, both panicked at poweroff: `bad pte va 389278400000 pte 0` before `Syncing
-  disks`, then, on the next boot's unchecked root, `initiate_write_filepage: dir inum
-  0 != new 160513`.
+- **For `WSL-84`'s CI:** run 34860407687 for `191062a` green in all six jobs.
+- **For `WSL-83`'s closing:** on the shared image, `bsd run -c true` three times with
+  the overlay: a login at 8.6 s to 8.8 s and the process gone at 23.4 s to 23.6 s; the
+  image's SHA-256 `12807CE7…921663BF` unchanged across six runs. The Go suites green
+  on Windows, 300 top-level `wsl-toolkit` cases, 293 passed, 7 skipped; in
+  `golang:1.25`, 299, 298 passed, 1 skipped; ShellCheck 0.9.0 clean over 34 scripts.
 - **For `WSL-71`:** on the throwaway `m71`, with automount off WSL starts a command in
   the account's home; with it on, in the Windows directory.
 
@@ -150,28 +151,27 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
    output is kept: wsl-toolkit logs 4e94faa38b4c9c1c`; `logs` on that id answered
    exit 2, `no transcript`, and `jobs\4e94faa38b4c9c1c` was not in the state
    directory. Measured on 2026-09-14, and not yet read in the code.
-9. ⚠ **Every `bsd run` leaves its console lines in the shared image.** The guest's
-   root shell keeps history: `/root/.sh_history` read 40,215 bytes in one run on
-   2026-09-14 and 42,825 bytes two runs later.
-10. ⚠ **A cancelled `bsd run` is reported as a budget that ran out.** Read in
-    `bsd.go` on 2026-09-14 and not measured: a cancelled context ends the boot's wait
-    with `the guest did not reach a login prompt within` the budget, and a command's
-    with `the guest did not finish the command within the budget`, both exit 2, where
-    `distro run` answers a cancellation with 130.
-11. ⚠ **A base build fails when one Arch mirror stalls, and nothing retries.** Two
+9. ⚠ **A cancelled `bsd run` is reported as a budget that ran out.** Read in
+   `bsd.go` on 2026-09-14 and not measured: a cancelled context ends the boot's wait
+   with `the guest did not reach a login prompt within` the budget, and a command's
+   with `the guest did not finish the command within the budget`, both exit 2, where
+   `distro run` answers a cancellation with 130.
+10. ⚠ **A base build fails when one Arch mirror stalls, and nothing retries.** Two
     `base ensure` builds from nothing on 2026-09-14 failed in `pacman` with
     `geo.mirror.pkgbuild.com : Operation too slow`, and each rolled its distribution
     back; the next attempt passed.
-12. ⚠ **`wsl-toolkit-podbox` has every drive mounted `9p rw`**, read on 2026-09-14,
+11. ⚠ **`wsl-toolkit-podbox` has every drive mounted `9p rw`**, read on 2026-09-14,
     and no configuration of its own, so it answers to the default `ro`. Its next
     `base ensure` provisions it again. It is not this session's to change.
 
 ## Review findings
 
-`WSL-84`'s closing carries its three reviews. The door sweep found `base shell --root`
-calling read-only drives writable and `base shell --here` trusting the setting over a
-guest with no drive, and both now read the mounts. The guard mutation proved 16 rows.
-The claim audit corrected two sentences in the manual before they were committed.
+Each closed entry carries its three reviews. `WSL-84`'s door sweep found `base shell
+--root` calling read-only drives writable and `base shell --here` trusting the setting
+over a guest with no drive, and both now read the mounts; its claim audit corrected
+two sentences in the manual. `WSL-83`'s door sweep found no second writer of the
+image; its claim audit corrected a panic error, a warning and `bsd status`, which each
+described the image a run used to write.
 
 ## Open questions for the operator
 
@@ -192,6 +192,7 @@ action at its stated checkpoint, not a planning question.
   `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with an empty `known_hosts` beside it,
   and stays for `wsl-toolkit-base`. `%USERPROFILE%\.ssh\config` reads SHA-256
   `18FC11BE…E93F4`, unchanged through the session.
-- ⛔ **The shared FreeBSD image is the published one**, 6,476,638,208 bytes, restored
-  by `bsd fetch --force` after `WSL-83`'s panics, and not booted since. The next run
-  grows it to 12 GiB. No image copy remains under `.tmp`.
+- ⭐ **The shared FreeBSD image is the published one**, 6,476,638,208 bytes, SHA-256
+  `12807CE7…921663BF`, booted six times through overlays and unchanged. No run grows
+  or writes it now. The copy `WSL-83` damaged under `.tmp` is deleted, and no QEMU
+  process is left.

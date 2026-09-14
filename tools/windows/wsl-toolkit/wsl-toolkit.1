@@ -903,7 +903,7 @@ the command to run at a root shell in the guest
 guest processor count. Default: 1.
 .TP
 \fB--disk\fR
-guest disk in GiB. The image grows to it and never shrinks, and the root filesystem follows in the guest. Default: 12.
+guest disk in GiB, no smaller than the image. The run's overlay has that size, and the root filesystem follows in the guest. Default: 12.
 .TP
 \fB--json\fR
 write a structured answer

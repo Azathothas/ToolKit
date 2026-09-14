@@ -1098,7 +1098,61 @@
       "file": "internal/toolkit/bsd.go",
       "find": "\tif have > want {\n",
       "replace": "\tif false {\n",
-      "run": "TestTheBsdGuestDiskGrowsAndNeverShrinks",
+      "run": "TestTheBsdGuestDiskIsNeverSmallerThanTheImage",
+      "args": []
+    },
+    {
+      "label": "overlay: the root disk is the run's overlay",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n",
+      "replace": "\t\t\"-drive\", \"if=none,file=\" + BsdImageName + \",format=raw,id=root0\",\n",
+      "run": "TestARunWritesToAnOverlayAndNeverTheImage",
+      "args": []
+    },
+    {
+      "label": "overlay: the image is the overlay's backing file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\"-b\", image, \"-F\", \"raw\", overlay,",
+      "replace": "overlay,",
+      "run": "TestARunWritesToAnOverlayAndNeverTheImage",
+      "args": []
+    },
+    {
+      "label": "overlay: an overlay a run left is swept",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t(strings.HasPrefix(name, bsdOverlayPrefix) && strings.HasSuffix(name, \".qcow2\"))",
+      "replace": "\t\tfalse",
+      "run": "TestTheFilesARunLeftAreSweptByTheirShape",
+      "args": []
+    },
+    {
+      "label": "overlay: a sweep keeps a run's file younger than an hour",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "err == nil && time.Since(info.ModTime()) >= time.Hour {",
+      "replace": "err == nil && info != nil {",
+      "run": "TestTheFilesARunLeftAreSweptByTheirShape",
+      "args": []
+    },
+    {
+      "label": "overlay: a root not properly dismounted is named",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\treturn strings.TrimSpace(bsdRootNotDismountedRE.FindString(console))\n",
+      "replace": "\treturn \"\"\n",
+      "run": "TestARootNotProperlyDismountedIsNamed",
+      "args": []
+    },
+    {
+      "label": "overlay: qemu-img found beside the emulator",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tif _, ok := FileSize(cand); ok {\n\t\t\treturn cand, nil\n\t\t}\n",
+      "replace": "\t\tif _, ok := FileSize(cand); ok && false {\n\t\t\treturn cand, nil\n\t\t}\n",
+      "run": "TestQemuImgIsFoundBesideTheEmulator",
       "args": []
     },
     {
@@ -2005,8 +2059,8 @@
       "label": "bsd: the payload disk follows the root disk",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\t\"-drive\", \"if=none,file=\" + BsdImageName + \",format=raw,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
-      "replace": "\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n\t\t\"-drive\", \"if=none,file=\" + BsdImageName + \",format=raw,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n",
+      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
+      "replace": "\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n",
       "run": "TestTheGuestBootsWithoutTheHyperVWait",
       "args": []
     },

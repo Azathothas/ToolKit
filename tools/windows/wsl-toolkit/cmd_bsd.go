@@ -50,14 +50,13 @@ func cmdBsdStatus(ctx context.Context, args []string) (int, error) {
 			logf("              %s", st.QemuVersion)
 		}
 	}
+	if st.QemuImg != "" {
+		logf("  qemu-img    %s", st.QemuImg)
+	}
 	logf("  whpx        %s", st.WhpxDetail)
 	if st.Image != "" {
-		logf("  image       %s", st.Image)
-		if st.ImageBytes < st.DiskDefaultBytes {
-			logf("  disk        %s now. The next run grows it to %s, and the root filesystem follows", toolkit.HumanBytes(st.ImageBytes), toolkit.HumanBytes(st.DiskDefaultBytes))
-		} else {
-			logf("  disk        %s", toolkit.HumanBytes(st.ImageBytes))
-		}
+		logf("  image       %s, %s, which no run writes", st.Image, toolkit.HumanBytes(st.ImageBytes))
+		logf("  disk        %s by default, in an overlay each run makes and removes", toolkit.HumanBytes(max(st.ImageBytes, st.DiskDefaultBytes)))
 	}
 	for _, p := range st.Problems {
 		logf("  ! %s", p)
@@ -273,7 +272,7 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	network := fs.Bool("network", false, "give the guest outbound user-mode networking. Nothing is forwarded inward")
 	mem := fs.Int("memory", 2048, "guest memory in MiB")
 	vcpus := fs.Int("cpus", toolkit.BsdDefaultVCPUs, "guest processor count")
-	disk := fs.Int("disk", toolkit.BsdDefaultDiskGiB, "guest disk in GiB. The image grows to it and never shrinks, and the root filesystem follows in the guest")
+	disk := fs.Int("disk", toolkit.BsdDefaultDiskGiB, "guest disk in GiB, no smaller than the image. The run's overlay has that size, and the root filesystem follows in the guest")
 	noConsole := fs.Bool("no-console", false, "do not mirror the guest console while it boots")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	if err := parseArgs(fs, args); err != nil {
@@ -321,10 +320,11 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	} else if res.Output != "" {
 		fmt.Println(res.Output)
 	}
+	if res.RootNotDismounted != "" {
+		logf("  ⚠ the image's root filesystem was not properly dismounted when this run booted it: %s. What a run checks or repairs goes with its overlay, so every run boots on it until `wsl-toolkit bsd fetch --force` restores the published image", res.RootNotDismounted)
+	}
 	if res.ShutdownPanic != "" {
-		// ⚠ Measured on 2026-09-13: the boot after a panic at poweroff saved a
-		// core dump of 171,601,920 bytes into the shared image's /var/crash.
-		logf("  ⚠ the guest's kernel panicked while it powered off: %s. The payload had already answered, and the next boot saves a core dump into the shared image's /var/crash", res.ShutdownPanic)
+		logf("  ⚠ the guest's kernel panicked while it powered off: %s. The payload had already answered, and what the panic wrote went with the run's overlay", res.ShutdownPanic)
 	}
 	if runErr != nil {
 		return exitCannot, runErr

@@ -7154,7 +7154,7 @@ Passing is, under B, green on Windows and in `golang:1.25`:
 
 **Source** found on 2026-09-14 while reading the shared image's package baseline for
 `WSL-72`'s prove.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -7229,6 +7229,81 @@ Passing is:
 - three runs of `bsd run -c true` with the login and the session recorded, and the
   manual carrying them;
 - a mutation row per rule red.
+
+---
+
+## Closing
+
+**Closed 2026-09-14T15:31:34Z.** A run boots the guest from a qcow2 overlay that
+`qemu-img` makes beside the image, with the image as its read-only backing file and
+the guest disk's size, and the run removes the overlay after QEMU exits. The image is
+never grown or written. A boot that finds the image's root not properly dismounted is
+named on the result as `root_not_dismounted`, with a warning. All three passing
+conditions hold on the tree's build, on the shared image:
+
+| condition | measured |
+| --- | --- |
+| both exit 0, and the image's SHA-256 the same before the first and after the second | `touch /root/tk-overlay-probe` exit 0 in 23.4 s; `test ! -e /root/tk-overlay-probe` exit 0 in 23.6 s; SHA-256 `12807CE7…921663BF` and 6,476,638,208 bytes before, after both, after three more runs, and after a last run of the final build; no `tk-overlay-` or `tk-payload-` file left |
+| three runs of `bsd run -c true`, the login and the session recorded, and the manual carrying them | below, and in the manual's BSD section |
+| a mutation row per rule red | 6 new rows and 4 changed, below |
+
+| run | login, s | command done, s | process gone, s | first-boot work on the console |
+| --- | ---: | ---: | ---: | --- |
+| 1 | 8.6 | 16.5 | 23.4 | `Growing root partition`, host keys generated |
+| 2 | 8.6 | 16.5 | 23.4 | the same |
+| 3 | 8.8 | 16.8 | 23.6 | the same |
+
+⭐ **The cost the ruling accepted measured at nothing this series can see.** Every run
+is the image's first boot and does its first-boot work, and the three runs read
+within 0.6 s of the one-processor series `WSL-81` measured on a grown image, 23.0 s to
+23.3 s. The guest disk read 12,884,901,888 bytes and the root 11,405,864,960, the
+11,138,540 KiB the manual gives for 12 GiB. ⚠ The 29 s first boot the manual gave
+after a fetch was not seen again; its cause was not read.
+
+⭐ **The new result field was driven on a throwaway copy of the image.** The build
+before this change ran `sync; sleep 600` with `--timeout 45s`, exit 2 at 45.2 s, which
+killed its guest and left the copy's root not properly dismounted. A run of this build
+then booted the copy: exit 0 in 23.6 s, `root_not_dismounted` `WARNING: / was not
+properly dismounted`, the warning printed, and the copy's SHA-256 the same after the
+run. The copy was deleted, and no QEMU process was left.
+
+| suite | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
+| --- | --- | --- |
+| `check-go` | exit 0 | exit 0 |
+| `wsl-toolkit` top-level cases | 300: 293 passed, 7 skipped, 0 failed | 299: 298 passed, 1 skipped, 0 failed |
+| ShellCheck 0.9.0 in `ubuntu:24.04` | - | exit 0 over 34 tracked scripts |
+
+`Found, and not filed` item 9 in the record, the guest's shell history growing in
+the shared image with every run, ends with this entry: the digest above held across
+six runs.
+
+### The reviews
+
+⭐ **The door sweep** listed every path that reaches the image file. `bsd fetch`
+writes it, and is the restore path. `BsdProbe` reads its size, and `BsdRun` reads its
+size and hands its name to `qemu-img` as a backing file; `startGuest` has one caller
+outside the tests, `BsdRun`, and `BsdRun` has one, `cmdBsdRun`. `growBsdImage`, the one
+writer a run had, is gone, and a grep for `os.Truncate`, `OpenFile` and `WriteFile`
+in `bsd.go` finds only the payload disk. The acceptance runner does not boot a guest,
+by its own sweep list. What would have made it fire: a second path that boots a
+guest, or a QEMU drive naming the image itself, which
+`TestARunWritesToAnOverlayAndNeverTheImage` refuses.
+
+⭐ **The guard mutation proved 10 rows on Windows**, each seen green unmutated
+first: the root disk is the overlay, the image is its backing file, a left overlay is
+swept, a younger one is kept, a root not properly dismounted is named, and `qemu-img`
+beside the emulator; and the changed rows for the disk refusal, the payload disk's
+order, a panic ending a command's wait, and a step a panic ended. In `golang:1.25`
+every BSD row went red, 23 of 23, in 3m2s: the 6 new, the disk refusal, and the 16
+`bsd:` rows, which read the changed code and messages.
+
+⛔ **The claim audit corrected three sentences.** The panic error told a caller that
+a panic "can leave its filesystem needing a check" and to run `bsd fetch --force` if
+the next run stopped, which the overlay makes false; it now says the guest's writes
+go with the overlay. The warning for a root not properly dismounted first said "no
+run checks it", and a run longer than 60 s does run the background check, in an
+overlay it then discards; it now says so. And `bsd status` said "the next run grows
+it to 12.0 GiB", which no run does now.
 
 ---
 
