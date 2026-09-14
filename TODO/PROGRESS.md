@@ -6,18 +6,17 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-13T14:24:42Z; the record commit's own time is its end
-baseline        fc30c6c, with 13 uncommitted paths another session had left
+session started 2026-09-14T02:01:53Z; the record commit's own time is its end
+baseline        e73d7d5, tree clean
 entries         total 114  open 12  blocked 0  done 102
-closed          WSL-73 at 02ea58d, CI run 34767124644 green on all six jobs
-filed           WSL-74 to WSL-79 for issues 32 and 33, none implemented
-head            the record commit after 02ea58d
+closed          none yet this session
+head            the rulings commit after e73d7d5
 ```
 
 ## Active work
 
-Nothing is in flight. ⭐ **The next session's job is to close issues 30, 32 and
-33**, in the order below.
+⭐ **This session closes issues 30, 32 and 33**, in the order below. Every
+decision the entries carried is ruled, and the rulings are in the entries.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -32,23 +31,39 @@ is closed, and the issue gets a comment naming the commits.
 4. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants.
 5. **Issue 30:** `WSL-67`'s open items, `WSL-68`, `WSL-70` and `WSL-71`.
-
-⚠ **`WSL-75` to `WSL-79` each carry a decision with a recommendation.** Ask the
-operator before building past one, and record the ruling in the entry.
+6. **`wsl-toolkit-base`** is built last, from the machinery, and the operator
+   signs Muse in there.
+7. **`wsl-toolkit-v3.0.0`** is cut once the three issues are closed and CI is
+   green on the final commit.
 
 ## Rulings in force
 
-1. **2026-09-13: herdr replaces Zellij** as the agents' multiplexer. It
-   supersedes the ruling that made Zellij 0.45.1 Muse's durable session, and tmux
-   stays a generic fallback. `WSL-76` quotes the operator and carries the swap.
-2. **The FreeBSD guest's default disk** rises to the smallest whole number of
-   GiB, 12 or 13, that gives a true 10 GiB root, measured with `df -k /`. In
-   `WSL-72`, not implemented.
-3. **The `bsd run` line join is not an entry of its own.** It is part of issue
-   33, so it is a task in `WSL-79`.
-4. **Issues 32 and 33 were amended in place** on the operator's instruction: the
-   original text kept, and a dated section appended mapping each item to its
-   entry.
+1. **2026-09-13: herdr replaces Zellij** as the agents' multiplexer, and tmux
+   stays a generic fallback. `WSL-76` quotes the operator.
+2. **2026-09-13: the FreeBSD guest's default disk** rises to the smallest whole
+   number of GiB, 12 or 13, that gives a true 10 GiB root, measured with `df -k /`.
+   In `WSL-72`.
+3. **2026-09-13: the `bsd run` line join is a task in `WSL-79`**, not an entry.
+4. **2026-09-14: one base for every agent.** `wsl-toolkit-base`, the instance
+   `base`, configured under the operator's account, with the Linux account
+   `herdr`, passwordless sudo and no standing grant. Test grants name directories
+   under this repository's `.tmp`. In `WSL-75`.
+5. **2026-09-14, the entries' decisions:** `WSL-75` live grants of a project or of
+   a parent directory; `WSL-76` OpenSSH through `wsl.exe` with nothing listening
+   and only the herdr client's key accepted, and herdr's background checks left
+   on; `WSL-77` adapters in the tree with a generated embedded copy; `WSL-78`
+   agents run in the base and Windows gets launchers; `WSL-79` document the boot
+   cost, and keep a guest running only if tuning leaves more than 30 seconds;
+   `WSL-68` the internet only with the host refused, and only with no rule in the
+   shared network namespace; `WSL-67` drive `pkgin` and `pkg_add`, and remove a
+   manager that cannot be driven here.
+6. **2026-09-14: one Muse installer digest is approved**, `5196d820…632a0ca`, in
+   `WSL-77`.
+7. **2026-09-14: host changes the agent may make:** a dedicated SSH key and one
+   marked `Host` block in `%USERPROFILE%\.ssh\config`, and agent launchers in
+   `%USERPROFILE%\bin`.
+8. **2026-09-14: cut `wsl-toolkit-v3.0.0` at the end of this session**, after
+   `repo release` passes read-only, and only with CI green on the final commit.
 
 ## Before every push
 
@@ -61,26 +76,19 @@ carries all three as commands under "Build and local proof".
 
 | commit | what |
 | --- | --- |
-| `02ea58d` | `WSL-73` closed: the inherited review pass proved and kept, 27 review findings fixed, 24 mutation rows added, 3 acceptance cases added, the manual, the maintainer README, `shell.md`, `consumers.md` and `RULES.md` corrected, and the two comparison distributions removed. Pull request 31's comment amended, and a second comment names the commits |
-| the record commit | `WSL-74` to `WSL-79` filed and `WSL-67` reconciled against issues 30, 32 and 33; issues 32 and 33 amended; `WSL-73`'s closing now names the build its acceptance ran on; `docs/AGENTS.md` and `examples/common/README.md` corrected |
+| the rulings commit | the operator's rulings written into `WSL-67`, `WSL-68`, `WSL-75` to `WSL-79` and this record |
 
 ## Measurements
 
-On Windows 11 Pro 26200 on 2026-09-13:
+On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 
-- **At the start:** the probe exit 0 in 19.56 s; the gate exit 1 in 40.88 s with
-  2 problems.
-- **For `WSL-73`**, with conditions in its closing: the Go suites green on
-  Windows with `TEMP` at the 8.3 path and in `golang:1.25`; the acceptance runner
-  90 of 90 on a build of `02ea58d`; the mutation table 189 of 192 rows proved on
-  Windows, the other 3 skipped there and proved on Linux; CI green on all six
-  jobs.
-- **While authoring**, each in its entry: `--instance muse config --json`
-  resolving another base from a project file, exit 0; Muse Code 1.1.1's own help
-  through `base exec`, read-only; `https://dev.meta.ai/install.ps1` read and not
-  run.
-- **Before the record push:** the Go suites green with `TEMP` at the 8.3 path;
-  ShellCheck 0.9.0 in `ubuntu:24.04` clean over every tracked script.
+- **At the start:** the probe exit 0 in 41.77 s; the gate exit 0 in 44.68 s,
+  19 checks green.
+- **WSL networking:** NAT mode, host address `172.23.96.1`, read by `wsl-toolkit
+  hostaddress`. Two distributions share one network namespace, in `WSL-68`.
+- **herdr:** 0.9.0 is the latest stable release, published 2026-09-07.
+  `herdr-linux-x86_64` is 24,644,488 bytes and `herdr-windows-x86_64.zip`
+  9,054,745 bytes, each with a published SHA-256 digest.
 
 ## Found, and not filed
 
@@ -96,48 +104,23 @@ On Windows 11 Pro 26200 on 2026-09-13:
 5. A deterministic regression for pre-marker base rollback is still owed.
 6. The generated manual prints a one-letter flag as `--c`, which the parser
    accepts and no example writes.
-7. ⚠ **Step 3 of this session's order, the second review of the docs, the
-   repository and CI, was cut to two fixes** when the operator ended the session
-   for budget. `examples/muse-code/README.md` and `examples/common/zellij.md`
-   describe Zellij, which is true today and changes with `WSL-76`.
+7. `examples/muse-code/README.md` and `examples/common/zellij.md` describe Zellij
+   and `wsl-toolkit-muse`, which changes with `WSL-76`.
 
 ## Review findings
 
-`WSL-73`'s closing carries its four reviews: the door sweep, the guard mutation,
-the claim audit and the driven pass. The entries filed this session were
-reviewed against the code they cite, and each premise says whether it was read
-or measured.
+None yet this session.
 
 ## Open questions for the operator
 
-1. ⭐ **Whether to cut `wsl-toolkit-v3.0.0`.** The latest release is
-   `wsl-toolkit-v2.0.2`, which still carries the PowerShell product, and the
-   manual on `main` names commands it lacks. Once CI is green on `main`:
-
-   ```powershell
-   pwsh -NoProfile -File scripts/common/repo.ps1 release
-   ```
-
-   ```powershell
-   pwsh -NoProfile -File scripts/common/repo.ps1 release --publish
-   ```
-
-2. **The decisions in the new entries**, each recommended in its section:
-   `WSL-75` live grants per project; `WSL-76` OpenSSH through `wsl.exe` for the
-   Windows herdr client; `WSL-77` adapters declared in the configuration and
-   applied by `base ensure`; `WSL-78` Muse kept in the base behind a Windows entry
-   point rather than Meta's Windows installer; `WSL-79` document the boot cost in
-   every outcome, and keep a guest running only if tuning leaves more than 30
-   seconds.
+None. Every decision is ruled.
 
 ## Host state
 
-- Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit`,
-  `wsl-toolkit-muse` and `wsl-toolkit-podbox`, the five registered before
-  `WSL-73` began. `eph-pgb` keeps its disk under `%LOCALAPPDATA%\wsl-ephemeral`
-  and is not this tool's.
-- `wsl-toolkit-muse` holds the operator's signed-in Muse credential. Never read,
-  recreate or remove it. This session ran only `muse --version` and help pages in
-  it.
-- herdr is installed nowhere. The shared FreeBSD pkgbase guest was not booted or
-  changed.
+- Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit`
+  and `wsl-toolkit-podbox`. `eph-pgb` keeps its disk under
+  `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
+- ⭐ **`wsl-toolkit-muse` is gone.** The operator ran `muse logout` in it and then
+  `base remove --yes` on 2026-09-14, and `instances\muse` holds nothing.
+- herdr 0.9.0 is installed on Windows by the operator. The shared FreeBSD pkgbase
+  guest has not been booted or changed this session.

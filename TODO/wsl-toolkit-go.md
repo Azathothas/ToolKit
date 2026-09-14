@@ -3946,6 +3946,15 @@ Issue 30 is resolved by this entry and `WSL-68`. `WSL-70`, `WSL-71` and `WSL-72`
 came out of the work on it. Issue 32 is `WSL-74` to `WSL-78`, and issue 33 is
 `WSL-79`.
 
+## Ruled by the operator, 2026-09-14: how item 2 closes
+
+⭐ **Both managers are driven, and one that cannot be driven here is removed.**
+`pkgin` runs in an official NetBSD image and `pkg_add` in an official OpenBSD
+image, each booted under QEMU on this host from a download whose digest is checked
+first, and both images are removed afterwards. A manager that cannot be driven on
+this host leaves `scripts/common/bootstrap.sh`, and because that file is fetched by
+URL the changelog says so.
+
 ---
 
 ## WSL-68. A base that can reach nothing on the host at all
@@ -3995,6 +4004,27 @@ each door and reports what it found.
 ⛔ **Do not describe this as a security boundary until the probe says so.** WSL
 is not a sandbox by design, and a page that claims isolation the kernel does not
 provide is worse than no page.
+
+## Decision
+
+⭐ **Measured on 2026-09-14, before the question was put: every WSL distribution on
+this host shares one network namespace.** Through `base exec`, `wsl-toolkit` and
+`wsl-toolkit-podbox` both answered `net:[4026531833]` and `eth0` at the same
+`172.23.102.192/20`. ⛔ So a firewall rule written inside a sealed base would change
+the network of every distribution here, the podman machine and the operator's own
+bases included.
+
+What a sealed base's network is:
+
+- **A. No network**: the sealed account's processes run in an empty network
+  namespace of their own. Recommended, as the one door this tool can close without
+  touching the shared namespace.
+- **B. The internet only, with the host and private ranges refused.**
+- **C. Left open**, reported open by the probe, and the base never called sealed.
+
+⭐ **Ruled by the operator on 2026-09-14: B**, on the condition the question carried:
+only if it can be done with no rule in the shared namespace. If it cannot, the work
+stops and the operator is asked again.
 
 ## Consumers
 
@@ -5422,6 +5452,19 @@ merging by design, `catalog.go:333`.
 
 ## Decision
 
+⭐ **Ruled by the operator on 2026-09-14: A and B together**, in their words "a mix
+of both live grant per project + one grant of a parent dir". A grant changes live
+whether it names one project or a directory holding several, and C is rejected.
+
+⭐ **Ruled the same day: the one base is `wsl-toolkit-base`**, the instance `base`,
+configured under the operator's own account rather than inside a project, and it
+is where herdr, Muse and every later agent are installed. Its Linux account is
+`herdr`, "the primary way we (humans+agents) will interface", with passwordless
+sudo. It starts with no standing grant, and a grant a test needs names a directory
+under this repository's `.tmp`. The operator removed `wsl-toolkit-muse` themselves
+on 2026-09-14, after `muse logout`, and the new base is built once the machinery
+from `WSL-74` to `WSL-78` exists.
+
 How one base reaches every project:
 
 - **A. Live grants, one per project. Recommended.** The least access, no restart,
@@ -5536,6 +5579,18 @@ through it.
 
 ## Decision
 
+⭐ **Ruled by the operator on 2026-09-14: A**, with a requirement in their words:
+"ensure only herdr and my windows communicate, and it doesn't accept any other
+connections". Nothing in the base listens, and the one key its sshd accepts belongs
+to the herdr client on the operator's Windows account. The agent may create that key
+and one marked `Host` block in `%USERPROFILE%\.ssh\config`. The operator installed
+the Windows client the same day, and `herdr --version` answers `herdr 0.9.0` from
+`C:\ProgramData\scoop\shims\herdr.exe`.
+
+⭐ **The smaller fork is ruled against its recommendation: both background checks
+stay on**, herdr's default. A pinned herdr in the base may announce a newer release,
+and nothing here acts on it.
+
 How the Windows herdr client reaches the server in the base:
 
 - **A. OpenSSH through `wsl.exe`. Recommended.** An SSH configuration entry on
@@ -5636,6 +5691,18 @@ pluggable adapter.
 ⛔ **No adapter registry and no adapter fetched from outside the tree.**
 
 ## Decision
+
+⭐ **Ruled by the operator on 2026-09-14: A**, the definitions in the tree and an
+embedded generated copy a gate rule compares byte for byte, with the pinning as
+recommended.
+
+⭐ **The operator approved one digest for Muse's installer the same day.** The agent
+fetched `https://dev.meta.ai/install.sh`, read it and did not run it: 314 lines,
+9,314 bytes, SHA-256 `5196d820…632a0ca`, the file run on 2026-09-13. It fetches
+`https://api.meta.ai/muse-launcher.sh`, checks that file's SHA-256 only when the
+server sends one, installs `~/.local/bin/muse`, runs it to download the binary, and
+appends `PATH` lines to shell profiles, with no root. The adapter runs the installer
+only while its digest is that value; any other stops and asks.
 
 Where adapters live and what applies them:
 
@@ -5744,6 +5811,13 @@ nobody here has measured.
 
 ## Decision
 
+⭐ **Ruled by the operator on 2026-09-14: A**, and wider than Muse: "muse and most
+of these other agents, even if we install them on windows, they will again have to
+use wsl-toolkit anyway because they need Linux because that's where they work best.
+So these agents should run inside wsl-toolkit base to begin with". The agent may
+write the launchers into `%USERPROFILE%\bin`, which is already on `PATH` beside
+`wsl-toolkit.exe` on this host.
+
 - **A. Muse stays in the base, and Windows gets an entry point. Recommended.**
   Issue 30's boundary holds, and one install serves the operator and every agent
   on Windows.
@@ -5835,6 +5909,11 @@ package.** Take a package baseline first, remove only what was added, and never
 remove a `FreeBSD-*` package.
 
 ## Decision
+
+⭐ **Ruled by the operator on 2026-09-14, ahead of step 2 and conditional on it: as
+recommended.** The measured cost is documented in every outcome, and a guest that
+stays running between runs is built only if tuning leaves more than 30 seconds
+before the payload.
 
 Asked after step 2, not before: keep tuning, keep a guest running between runs, or
 document the cost. Recommendation: document the measured cost in every outcome, and
