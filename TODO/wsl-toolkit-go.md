@@ -6471,7 +6471,7 @@ regression shape moved with it.
 ## WSL-81. A FreeBSD guest that panics mid-run leaves `bsd run` waiting out its budget
 
 **Source** found on 2026-09-14 by `WSL-72`'s prove, run against `main` at `469e52a`.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -6656,9 +6656,137 @@ Command waits converge on `waitFrom`, boot has its own closed-console branch, an
 poweroff converges on `stopAndReadPanic`; no sibling wait bypasses the panic or
 closed-console guards.
 
-### Still open at this checkpoint
+---
 
-1. The WSL-81 guard mutation lens. Its broad `bsd:` run completed its child tests
-   but left the runner idle; the checkpoint stopped that runner after confirming
-   the planted edit had been restored. Re-run the seven WSL-81 rows narrowly.
-2. The claim audit, the closing record, and the full gate on the closing change.
+## Closing
+
+**Closed 2026-09-14T09:36:07Z.** A guest that has gone ends every wait at once, a
+kernel panic ends a command's wait when it prints, a panic at poweroff is carried on
+the result, and a run defaults to the one processor that ran the payload five times
+without a panic. All three passing conditions hold on the tree's build:
+
+| condition | measured |
+| --- | --- |
+| both cases green on Windows and Linux, a mutation row per rule red | Windows with `TEMP` at the 8.3 path: 280 top-level `wsl-toolkit` cases, 276 passed, 4 skipped. `golang:1.25`: 279, 278 passed, 1 skipped, every `WSL-81` case among the passes. 8 rows red on Windows, below |
+| the runs recorded, and a decision about the CPU model | the two tables above: the model stays, and the processor count is one |
+| the shared image boots, and reads back its published packages | the one-processor run on the shared image above: 500 packages, 499 `FreeBSD-*`, sorted digest `f447f1da…0d9aa2`. Three runs of `-c true` below booted it again, with no panic |
+
+### The per-run cost, measured again on this build
+
+The manual's figures came from the two-processor build. Three runs of `bsd run -c
+true --json` on the shared image with the one-processor default:
+
+| run | login, s | command done, s | process gone, s | panic |
+| --- | ---: | ---: | ---: | --- |
+| 1 | 8.5 | 16.4 | 23.3 | none |
+| 2 | 8.3 | 16.2 | 23.0 | none |
+| 3 | 8.5 | 16.4 | 23.3 | none |
+
+One processor costs the boot nothing this series can see: the two-processor build read
+9.5, 8.0 and 8.0 s to a login, and 24.3, 22.8 and 22.8 s to the process gone. Each
+run read a 12,884,901,888-byte disk and an 11,405,864,960-byte root.
+
+### The reviews
+
+⭐ **The door sweep** listed every wait on the console: the boot's `waitBoot`, the root
+shell's `wait`, each command's `waitFrom` in `run`, and the poweroff's `waitFrom` in
+`stop`, which `stopAndReadPanic` reaches. `startGuest` has one caller outside the
+tests, `BsdRun`, and `BsdRun` has one, `cmdBsdRun`. It found no wait that bypasses
+the closed-console or panic checks. What would have made it fire: a console read
+outside `waitFrom` and `waitBoot`, or a second path that boots a guest.
+
+⭐ **The guard mutation proved 8 rows on Windows**, each run alone with `repo mutate
+--only` after its cases passed unmutated: the one-processor default, the reader
+closing the channel, the command's and the boot's wait selecting on it, the panic
+check in a command's wait, the `cpuid = ` line in the panic shape, the panic at
+poweroff carried on the result, and the step error below. The first seven took 7.2 s
+to 40.5 s each and 2m56s together. The checkpoint's broad `bsd:` run, which left its
+runner idle, did not recur in these narrow runs.
+
+⛔ **The claim audit found three things:**
+
+| found | what was done |
+| --- | --- |
+| a grow or an extract that a panic ended printed `(exit 0)` beside the panic, a code the guest never sent | `stepError` gives a step that never finished no exit code. `TestAStepTheGuestNeverFinishedCarriesNoExitCode` holds it through the fake guest, and its row went red |
+| the manual's per-run cost, about 25 seconds, came from the two-processor build | measured again above, and the manual and its known-limits row say about 23 seconds |
+| a payload that prints FreeBSD's two panic lines has its run ended as a panic, because its output shares the console, and nothing said so | measured through the fake guest: the two lines, then the command's closing marker a second later, ended the command at 641 ms as `the guest's kernel panicked`. With no gap, it answered exit 0. The manual says so, and `WSL-82` carries it, because telling the two apart is a decision |
+
+⚠ The Prove asked for an answer "within seconds under a budget of minutes". The cases
+hold a 30-second budget with a 15-second ceiling, and answer in under a second. A
+mutated case fails at the 30-second budget, which is why those rows took about 40 s.
+
+---
+
+## WSL-82. A payload that prints a FreeBSD panic's two lines has its `bsd run` ended as a kernel panic
+
+**Source** found on 2026-09-14 by `WSL-81`'s claim audit.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`bsd run` ends a command's wait as a kernel panic when the console shows a line
+starting `panic: ` with `cpuid = ` on the next line, and the payload's own output is
+on that console. A payload that prints those two lines, as a copy of an earlier panic
+would, has its run ended with exit 2 and `the guest's kernel panicked` while the guest
+is still running. The guest is then killed rather than powered off.
+
+## Premise
+
+- ⭐ **Measured on 2026-09-14 through the suite's fake guest**, a child that answers
+  the typed line: the two lines, then the command's closing marker one second later,
+  ended the command at 641 ms with `the guest's kernel panicked: panic: page fault`.
+  With no gap between them, the command answered exit 0, because `waitFrom` in
+  `bsd.go` looks for the marker before it looks for a panic.
+- ⭐ **Read in `bsd.go`:** `waitFrom` checks the console after the typed line, the
+  payload's output included, and a `*guestGoneError` leaves `graceful` false, so `stop`
+  kills QEMU rather than typing `poweroff`.
+- ⚠ **Not measured on a real guest.** Which payloads print both lines at the start of
+  a line was not surveyed.
+- ⚠ **Read from the console of `WSL-72`'s prove, not measured:** after a panic,
+  FreeBSD dumps its memory and prints `Automatic reboot in 15 seconds`, and QEMU's
+  `-no-reboot` turns that reboot into an exit.
+
+## Approach
+
+1. ⛔ **A real panic is still named with its line, and a guest that hangs after one
+   still ends before its budget.** `WSL-81`'s cases hold both.
+2. The decision below sets what ends the wait once the two lines show.
+3. A case through the fake guest for the payload's copy, in the shape the premise
+   measured, and a mutation row per rule.
+
+## Decision
+
+What ends a command's wait after the console shows the two lines:
+
+- **A. At once, as now.** A real panic is named within a second. A payload's copy
+  ends its run and kills a running guest. Nothing to build; the manual says so.
+- **B. QEMU's exit, the command's closing marker, or 60 seconds, whichever comes
+  first. Recommended.** A real panic is still named, after its dump and reboot rather
+  than within a second, and a guest that hangs after one ends at 60 seconds. A
+  payload's copy that finishes within 60 seconds answers normally; one that runs on
+  past 60 seconds is still ended.
+- **C. QEMU's exit alone.** No payload is misread, and a guest that hangs after its
+  panic waits out the whole budget, which is the defect `WSL-81` removed.
+
+## Consumers
+
+None by [`../docs/consumers.md`](../docs/consumers.md)'s definition. Under B, a run
+that exited 2 over a payload's copy exits with the payload's own code, and a real
+panic keeps exit 2.
+
+## Prove
+
+```powershell
+go test ./internal/toolkit -run 'TestAGuestWhoseKernelPanics|TestAPayloadsCopyOfAPanic' -count=1 -v
+```
+
+Passing is, under B, green on Windows and in `golang:1.25`:
+
+- a fake guest that prints the two lines and its closing marker a second later
+  answers exit 0;
+- one that prints them and exits, as a rebooting guest does, answers `the guest's
+  kernel panicked` within seconds;
+- one that prints them and hangs answers the panic at the bound, not at the budget;
+- a mutation row per rule red.

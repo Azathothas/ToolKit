@@ -6,24 +6,22 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-14T06:44:07Z; the record commit's own time is its end
-baseline        24fd159, tree clean, CI run 34814120051 green in all six jobs
-entries         total 116  open 10  blocked 0  done 106
-closed          WSL-74 at ab4281c; WSL-80 and WSL-79 at 5e66e44; issue 33; WSL-75
-filed           WSL-80, found by the acceptance runner's baseline; WSL-81, found by WSL-72's prove
-head            24fd159, then this checkpoint commit
+session started 2026-09-14T09:18:24Z; the record commit's own time is its end
+baseline        eff07c5, tree clean, CI run 34820474937 green
+entries         total 117  open 10  blocked 0  done 107
+closed          WSL-81
+filed           WSL-82, found by WSL-81's claim audit
+head            eff07c5, then this commit
 ```
 
 ## Active work
 
-⭐ **The operator checkpointed the resumed session on 2026-09-14 at 07:43Z**, with
-issue 33 closed and issues 30 and 32 open. `WSL-81`'s empirical work is complete:
-five fresh one-vCPU images ran the heavy payload cleanly, and the shared image
-booted, grew and read its published packages back. The one-vCPU default, manual,
-case and mutation row are in this checkpoint. `WSL-81` remains open only for its
-seven narrow guard mutations, claim audit and closing gate; then `WSL-72`'s exact
-prove runs from pushed `main`. Every decision the entries carried is ruled, and
-the rulings are in the entries.
+⭐ **`WSL-81` is closed.** Its eight mutation rows went red one at a time. Its claim
+audit removed an exit code printed for a step that never finished, measured the
+manual's per-run cost again on the one-processor build, and filed what it could not
+settle as `WSL-82`. **Next: `WSL-72`'s exact prove, from pushed `main`**, on the
+shared image, with the package baseline read first and only the run's additions
+removed afterwards.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -41,7 +39,8 @@ is closed, and the issue gets a comment naming the commits.
 4. **`WSL-72`**: nim is linked and the 12 GiB default is measured. Its prove
    fetches `bootstrap.sh` from `main`, so it runs after the build commit is pushed.
    ⛔ The first such run panicked the guest and left the image unbootable, so
-   **`WSL-81`** is inserted here, and `WSL-72`'s prove runs again after it.
+   **`WSL-81`** was inserted here. ⭐ `WSL-81` is closed, and `WSL-72`'s prove runs
+   next.
 5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants. `WSL-76`'s
    machinery is built and driven without Muse; its closing needs Muse through herdr,
@@ -52,6 +51,9 @@ is closed, and the issue gets a comment naming the commits.
    signs Muse in there.
 8. **`wsl-toolkit-v3.0.0`** is cut once the three issues are closed and CI is
    green on the final commit.
+
+⚠ **`WSL-82` is in no issue and not in this order.** It waits for the operator's
+approval and ruling, below, and the release condition does not wait for it.
 
 ## Rulings in force
 
@@ -93,59 +95,26 @@ carries all three as commands under "Build and local proof".
 
 | commit | what |
 | --- | --- |
-| `cf274eb` | the operator's rulings written into `WSL-67`, `WSL-68`, `WSL-75` to `WSL-79` and this record |
-| `ab4281c` | `WSL-74` closed: a configuration naming another instance's distribution is refused by every command, `ready` included, with 6 mutation rows and 2 acceptance cases; `WSL-80` filed |
-| `5e66e44` | `WSL-80` closed: the relay's heartbeat can no longer keep a finished `distro run` waiting, and its acceptance case no longer depends on how ticks fall. `WSL-79` closed: the FreeBSD guest reaches a login in about 9 s rather than 115 s, and a script reaches it as a file on its own disk. 10 mutation rows. CI green, and issue 33 closed |
-| `469e52a` | `bootstrap.sh` links FreeBSD's `nim` onto `PATH`, and the guest's default disk is 12 GiB, the smallest measured to give a 10 GiB root |
-| `d85b90e` | `bsd run` ends a run when the guest's kernel panics or QEMU exits, rather than at the end of its budget. `WSL-81` filed and built, 5 mutation rows |
-| `c42ccee` | `WSL-76`'s machinery: `base.adapters` with the `adapters` gate rule, the `herdr` adapter and its SSH door through `wsl.exe`, and `base attach`, driven on a throwaway base, 14 mutation rows. `WSL-81`: a panic while the guest powers off is carried on the result, 1 row |
-| `0143318` | `WSL-75` closed: a named instance reads its own configuration first, and `base grant` and `base revoke` change one grant live, through `grants.sh`, now the one home of the fstab block. 7 mutation rows; two defects found by driving it and fixed |
-| this checkpoint | `WSL-81` partial: five fresh one-vCPU images ran the language payload cleanly; the shared image booted, grew and read back its 500-package baseline; `bsd run` now defaults to one vCPU, with its case, mutation row and manual. The door sweep is complete; the guard lens and claim audit remain |
+| this commit | `WSL-81` closed: 8 mutation rows red one at a time; a step the guest never finished no longer prints `(exit 0)`, with a case and a row; the manual's per-run cost measured again on the one-processor build, about 23 s; `WSL-82` filed for a payload that prints a panic's two lines |
 
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 
-- **At the start:** the probe exit 0 in 41.77 s; the gate exit 0 in 44.68 s,
-  19 checks green.
-- **At this resumed start:** the doctor exit 0 at 06:48:07Z; the gate exit 0,
-  20 checks green in about 76 s when run outside the filesystem sandbox. The
-  sandbox-only run reached the Go suite and was refused access to a temporary
-  symlink, while that exact case passed outside it. `wsl -l -v` matched the host
-  state below. CI run 34814120051 for `24fd159` finished green in all six jobs.
+- **At the start:** the doctor exit 0 in 45.08 s at 09:19:45Z; the gate exit 0,
+  20 checks green in 46.78 s at 09:20:48Z. `wsl -l -v` matched the host state
+  below. CI run 34820474937 for `eff07c5` finished green.
 - **WSL networking:** NAT mode, host address `172.23.96.1`, read by `wsl-toolkit
   hostaddress`. Two distributions share one network namespace, in `WSL-68`.
-- **herdr:** 0.9.0 is the latest stable release, published 2026-09-07.
-  `herdr-linux-x86_64` is 24,644,488 bytes and `herdr-windows-x86_64.zip`
-  9,054,745 bytes, each with a published SHA-256 digest.
-- ⚠ **The acceptance runner's baseline, on a build of `e73d7d5`**, started by a
-  quoting mistake rather than on purpose: `pwsh -Command STRING PATH` appends the
-  path to the command text, so a parse check ran `acceptance.ps1`. 91 cases ran
-  and 89 passed. One hung for 10m31s and was ended, which is `WSL-80`; one was the
-  new `WSL-74` case, failing on a build without the guard; and the count guard
-  failed until the declared count moved to 91. Every distribution registered
-  before the run was still registered after it.
-- **For `WSL-74`:** the Go suites green with `TEMP` at the 8.3 path, 254
-  top-level cases, 251 passed, 3 skipped; 6 mutation rows proved on Windows.
-- **For `WSL-80` and `WSL-79`:** the Go suites on Windows, 259 top-level cases, 255
-  passed, 4 skipped; `golang:1.25` green, with the POSIX shell case run there; the
-  acceptance runner 91 of 91 on the tree's build; 8 `bsd` and 12 `relay` mutation
-  rows proved in `golang:1.25`. Each entry's closing carries its own measurements.
-- **For `WSL-81`, `WSL-76` and `WSL-75`:** the Go suites green on Windows with `TEMP` at
-  the 8.3 path and in `golang:1.25`; ShellCheck 0.9.0 in `ubuntu:24.04` clean over
-  every tracked script; the gate 20 of 20, with the new `adapters` rule; 26 new
-  mutation rows red on Windows. `WSL-76` and `WSL-75` were driven on the throwaway
-  `wsl-toolkit-h76`, and `WSL-81`'s panic-rate runs on image copies; each entry carries
-  its numbers.
-- **For `WSL-81`'s one-vCPU checkpoint:** 5 of 5 fresh-image language-toolset
-  installs exited 0, in 212.0 s to 320.3 s wall time, with no mid-run or shutdown
-  panic. Each image was deleted after its result. The shared image then exited 0
-  in 35.7 s, grew to 12,884,901,888 bytes and read 500 packages, 499 `FreeBSD-*`,
-  with sorted baseline digest
-  `f447f1da…0d9aa2`.
-  The new one-vCPU case passed unmutated and its default-restoring mutation went
-  red. The broad guard run was stopped after its children exited and its runner
-  went idle; its planted edit was confirmed restored.
+- **herdr:** 0.9.0 is the latest stable release, published 2026-09-07, read on
+  2026-09-13. `herdr-linux-x86_64` is 24,644,488 bytes and
+  `herdr-windows-x86_64.zip` 9,054,745 bytes, each with a published SHA-256 digest.
+- **For `WSL-81`'s closing:** the Go suites green on Windows with `TEMP` at the 8.3
+  path, 280 top-level `wsl-toolkit` cases, 276 passed, 4 skipped; in `golang:1.25`,
+  279, 278 passed, 1 skipped; ShellCheck 0.9.0 in `ubuntu:24.04` clean over every
+  tracked script. 8 mutation rows red on Windows, each after its cases passed
+  unmutated. Three `bsd run -c true` runs with one processor: a login at 8.3 s to
+  8.5 s and the process gone at 23.0 s to 23.3 s, with no panic.
 
 ## Found, and not filed
 
@@ -171,6 +140,11 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 9. ⚠ **Every `bsd run` leaves its console lines in the shared image.** The guest's
    root shell keeps history: `/root/.sh_history` read 40,215 bytes in one run on
    2026-09-14 and 42,825 bytes two runs later.
+10. ⚠ **A cancelled `bsd run` is reported as a budget that ran out.** Read in
+    `bsd.go` on 2026-09-14 and not measured: a cancelled context ends the boot's wait
+    with `the guest did not reach a login prompt within` the budget, and a command's
+    with `the guest did not finish the command within the budget`, both exit 2, where
+    `distro run` answers a cancellation with 130.
 
 ## Review findings
 
@@ -179,15 +153,17 @@ sweep found `ready` reading and building from a refused configuration, and its c
 audit found the refusal advising a `--config` file that did not exist. `WSL-80`'s
 claim audit found its own premise blaming a pipe the stack dumps cleared. `WSL-79`'s
 door sweep found the guest keeping script copies in a shared `/tmp` after a failed
-run. Each is fixed in the entry's own commit.
-
-`WSL-81` is not closed. Its door sweep found no bypass around `waitFrom`, the
-boot's closed-console branch or `stopAndReadPanic`. Its guard lens and claim audit
-are the exact resume point.
+run. `WSL-81`'s claim audit found a grow a panic ended printing `(exit 0)`, the
+manual's per-run cost measured on the two-processor build, and a payload's copy of a
+panic read as the kernel's, which is `WSL-82`. Each is fixed or filed in the entry's
+own commit.
 
 ## Open questions for the operator
 
-None. Every decision is ruled.
+1. **`WSL-82`: approve the entry, and rule A, B or C.** What ends a command's wait
+   once the console shows a panic's two lines: A, at once, as now; **B, QEMU's exit,
+   the command's closing marker, or 60 seconds, recommended**; C, QEMU's exit alone.
+   The entry carries the measurement and the trade.
 
 ## Host state
 
@@ -197,17 +173,11 @@ None. Every decision is ruled.
 - ⭐ **`wsl-toolkit-muse` is gone.** The operator ran `muse logout` in it and then
   `base remove --yes` on 2026-09-14, and `instances\muse` holds nothing.
 - herdr 0.9.0 is installed on Windows by the operator.
-- ⭐ **Every throwaway this session made is removed.** `wsl-toolkit-h76` with its
-  instance directory; its marked `Host` block, which `base remove` took out, leaving
-  `%USERPROFILE%\.ssh\config` byte for byte what it was, SHA-256 `18FC11BE…E93F4`;
-  the herdr state a local measurement session created under `%APPDATA%` and
-  `%LOCALAPPDATA%`; and every image copy and test directory under this repository's
-  `.tmp`.
 - The dedicated SSH key the ruling allows is at
   `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with an empty `known_hosts` beside it,
-  and stays for `wsl-toolkit-base`.
-- The shared FreeBSD pkgbase guest was restored by `bsd fetch --force` after
-  `WSL-72`'s prove panicked it into a root filesystem that would not mount. This
-  session booted and grew it to 12,884,901,888 bytes. It reads the published 500
-  packages, 499 named `FreeBSD-*`, with the package digest recorded above. No
-  package was added or removed.
+  and stays for `wsl-toolkit-base`. `%USERPROFILE%\.ssh\config` reads SHA-256
+  `18FC11BE…E93F4`, as the previous session left it.
+- The shared FreeBSD pkgbase guest is 12,884,901,888 bytes, and read its published
+  500 packages, 499 named `FreeBSD-*`, with sorted digest `f447f1da…0d9aa2`, on its
+  last package read. This session booted it three times with `-c true` and no panic,
+  and added and removed no package.

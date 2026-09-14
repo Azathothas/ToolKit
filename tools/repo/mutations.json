@@ -2056,6 +2056,15 @@
       "args": []
     },
     {
+      "label": "bsd: a step the guest never finished names why and carries no exit code",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\tif err != nil {\n\t\treturn step + \": \" + err.Error()\n\t}\n",
+      "replace": "\tif err != nil && false {\n\t\treturn step + \": \" + err.Error()\n\t}\n",
+      "run": "TestAStepTheGuestNeverFinishedCarriesNoExitCode",
+      "args": []
+    },
+    {
       "label": "config: a named instance reads its own file before the working directory",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/catalog.go",

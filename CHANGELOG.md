@@ -21,6 +21,27 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T09:36:07Z: a FreeBSD guest that panics or stops ends its run at once, and a run uses one processor
+
+**Record:** `WSL-81` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the panic-rate runs, the one-processor runs and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-81`.
+
+⭐ **A run no longer waits out its budget for a guest that has gone.** A guest whose
+kernel panicked, or whose QEMU exited, cost its run the rest of `--timeout` and an
+error naming a timeout. The run now ends when the console shows the panic or closes,
+with exit 2 and the panic's line. A panic while the guest powers off leaves the
+payload's exit standing, and is carried on the result as `shutdown_panic`.
+
+⚠ **THE DEFAULT PROCESSOR COUNT IS ONE, WHERE IT WAS TWO.** With two, the guest
+panicked in 8 of 15 heavy runs, under every CPU model and memory size tried; with
+one, in none of 5. `--cpus 2` restores the old count. A `-c true` run measured about
+23 seconds either way.
+
+⚠ A payload that prints a FreeBSD panic's own two lines can end its run the same way.
+`WSL-82` carries it.
+
 ### 2026-09-14T06:30:00Z: one base serves every project, and a grant changes without a restart
 
 **Record:** `WSL-75` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

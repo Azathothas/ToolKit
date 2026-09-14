@@ -144,6 +144,24 @@ func TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce(t *testing.T) {
 	}
 }
 
+// TestAStepTheGuestNeverFinishedCarriesNoExitCode is WSL-81's claim audit: a grow a
+// panic ended printed `(exit 0)` beside the panic, a code the guest never sent. A
+// step that did finish keeps its code and the first line it printed.
+func TestAStepTheGuestNeverFinishedCarriesNoExitCode(t *testing.T) {
+	g := startBsdGuestChild(t, "panic")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	code, out, err := g.run(ctx, "true")
+	got := stepError("the root filesystem did not grow to the 12.0 GiB disk", code, out, err)
+	if !strings.Contains(got, "12.0 GiB disk: the guest's kernel panicked: panic: page fault") || strings.Contains(got, "(exit") {
+		t.Fatalf("a step a panic ended was described as %q", got)
+	}
+	got = stepError("the script did not come off its disk in the guest", 3, "tar: Error opening archive\r\nmore", nil)
+	if got != "the script did not come off its disk in the guest (exit 3): tar: Error opening archive" {
+		t.Fatalf("a step that finished and failed was described as %q", got)
+	}
+}
+
 // TestAGuestWhoseConsoleClosesIsNotWaitedOn is WSL-81: QEMU exiting ends the boot's
 // wait and a command's, rather than leaving both polling text that will not change.
 func TestAGuestWhoseConsoleClosesIsNotWaitedOn(t *testing.T) {

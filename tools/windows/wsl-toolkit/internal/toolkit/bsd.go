@@ -506,7 +506,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	// never meets a grown file with the old root still inside it.
 	growExit, growOut, err := g.run(ctx, bsdGrowRootScript)
 	if err != nil || growExit != 0 {
-		res.Error = fmt.Sprintf("the root filesystem did not grow to the %s disk (exit %d): %s", HumanBytes(disk), growExit, runDetail(growOut, err))
+		res.Error = stepError("the root filesystem did not grow to the "+HumanBytes(disk)+" disk", growExit, growOut, err)
 		res.Duration = time.Since(started)
 		g.graceful = err == nil
 		return res, errors.New(res.Error)
@@ -519,7 +519,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 
 	extract, runScript := bsdPayloadSteps(bsdPayloadDevice, "/tmp", strings.ToLower(token))
 	if code, out, err := g.run(ctx, extract); err != nil || code != 0 {
-		res.Error = fmt.Sprintf("the script did not come off its disk in the guest (exit %d): %s", code, runDetail(out, err))
+		res.Error = stepError("the script did not come off its disk in the guest", code, out, err)
 		res.Duration = time.Since(started)
 		g.graceful = err == nil
 		return res, errors.New(res.Error)
@@ -871,13 +871,22 @@ func (g *guest) run(ctx context.Context, payload string) (int, string, error) {
 	return code, cleanConsole(chunk), nil
 }
 
-// runDetail is what a failed step's error carries: why the step could not finish
-// when it did not, and otherwise the first line it printed.
-func runDetail(out string, err error) string {
+// stepError is what a guest step that did not succeed ends its run with: why the
+// step could not finish when it did not, and otherwise its exit code and the first
+// line it printed.
+//
+// ⛔ NO EXIT CODE FOR A STEP THAT NEVER FINISHED. It has none, and the zero it was
+// left holding printed `(exit 0)` beside the panic that ended it, which reads as a
+// step that succeeded. WSL-81.
+func stepError(step string, code int, out string, err error) string {
 	if err != nil {
-		return err.Error()
+		return step + ": " + err.Error()
 	}
-	return firstLine(out)
+	detail := fmt.Sprintf("%s (exit %d)", step, code)
+	if line := firstLine(out); line != "" {
+		detail += ": " + line
+	}
+	return detail
 }
 
 // after returns the console text written since a position.
