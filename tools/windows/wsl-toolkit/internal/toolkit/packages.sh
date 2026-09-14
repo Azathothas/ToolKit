@@ -19,7 +19,7 @@
 # means adding values here and changing no code, and a name spelled the same
 # everywhere needs no override at all.
 #
-#   KEY=VALUE       a package manager, or `os:ID` from /etc/os-release
+#   KEY=VALUE       a package manager, `nix`, or `os:ID` from /etc/os-release
 #   a|b=VALUE       several keys share one value
 #   VALUE,VALUE     several packages for one logical name
 #   -               this place does not carry it, or its base system already
@@ -28,19 +28,21 @@
 # ⚠ `os:` BEATS THE MANAGER, and it has to. Alpine, Chimera and Wolfi all use apk
 # and disagree about half of these names; Fedora and Rocky 8 both use dnf and
 # Rocky has no ripgrep without EPEL. A table keyed on the manager alone cannot
-# say either thing.
+# say either thing. ⚠ A `nix` value is a nixpkgs attribute, the same on every
+# system, so nix is looked up with no `os:` key at all.
 #
 # ⚠ EVERY VALUE BELOW WAS READ OFF THE SYSTEM ON 2026-09-12, FreeBSD included.
 # The Linux rows came from the thirteen images in this repository own catalogue;
 # the `os:freebsd` rows came from FreeBSD 15.1 through `wsl-toolkit bsd run
 # --network`, which fetches this file by raw URL and then queries `pkg` for each
-# name. ⛔ NetBSD and OpenBSD are the exception and say so in the header: `pkgin`
-# and `pkg_add` are written and have never been run.
+# name. The `nix` values were evaluated in nixpkgs on 2026-09-14, every attribute the
+# agent toolset resolves. ⛔ NetBSD and OpenBSD are the exception and say so in the
+# header: `pkgin` and `pkg_add` are written and have never been run.
 package_table() {
   cat <<'TABLE'
-bash bash
-ca-certificates ca-certificates os:freebsd=ca_root_nss
-build - apk=build-base os:chimera=base-devel apt=build-essential pacman=base-devel xbps=base-devel dnf|yum|zypper=gcc,gcc-c++,make tdnf=gcc,make emerge=sys-devel/gcc,sys-devel/make
+bash bash nix=bashInteractive
+ca-certificates ca-certificates os:freebsd=ca_root_nss nix=cacert
+build - apk=build-base os:chimera=base-devel apt=build-essential pacman=base-devel xbps=base-devel dnf|yum|zypper=gcc,gcc-c++,make tdnf=gcc,make emerge=sys-devel/gcc,sys-devel/make nix=gcc,gnumake
 coreutils coreutils os:chimera=chimerautils os:rocky=-
 curl curl
 fd fd apt=fd-find dnf|yum=fd-find os:rocky=- tdnf=- os:chimera=- os:freebsd=fd-find
@@ -49,21 +51,21 @@ git git
 jq jq
 less less os:freebsd=-
 node nodejs zypper=nodejs-default os:freebsd=node
-npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=-
-openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=-
+npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=- nix=-
+openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=- nix=openssh
 procps procps pacman|xbps=procps-ng dnf|yum|tdnf=procps-ng emerge=sys-process/procps os:freebsd=-
 ripgrep ripgrep tdnf=- os:rocky=- os:chimera=-
-sudo sudo
-tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=-
+sudo sudo nix=-
+tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=- nix=gnutar
 tmux tmux
 unzip unzip os:freebsd=-
 xz xz apt=xz-utils emerge=app-arch/xz-utils os:freebsd=-
 go go apt=golang dnf|yum=golang emerge=dev-lang/go
 nim nim apt=- dnf|yum=- tdnf=- os:wolfi=- os:chimera=- os:rocky=-
 python python3 pacman=python os:chimera=python emerge=dev-lang/python
-rust rust apt=rustc emerge=dev-lang/rust
+rust rust apt=rustc emerge=dev-lang/rust nix=rustc
 cargo cargo pacman=- tdnf=- emerge=- os:wolfi=- os:photon=- os:freebsd=-
-powershell - apk=powershell os:wolfi=powershell tdnf=powershell os:chimera=- os:freebsd=powershell
+powershell - apk=powershell os:wolfi=powershell tdnf=powershell os:chimera=- os:freebsd=powershell nix=powershell
 TABLE
 }
 
@@ -134,10 +136,18 @@ package_row() {
   }
 }
 
-# package_for LOGICAL -> the package name(s) to install here, or nothing when
-# this place does not carry it.
+# package_for LOGICAL [PROVIDER OS_ID] -> the package name(s) to install here, or
+# nothing when this place does not carry it. The provider and the system are the
+# caller's PROVIDER and OS_ID unless the call names them, and an empty OS_ID matches
+# no `os:` key.
 package_for() {
   pf_row=$(package_row "$1") || return 1
+  # ⚠ OS_ID AND PROVIDER BELONG TO THE CALLER, which sets both before its first
+  # lookup. Read alone, the copy of this block has neither, and PROVIDER looks
+  # like a misspelling of the list below.
+  # shellcheck disable=SC2153
+  pf_want_provider=${2-$PROVIDER}
+  pf_want_os=${3-$OS_ID}
   pf_default=''
   pf_os=''
   pf_provider=''
@@ -150,13 +160,9 @@ package_for() {
     fi
     pf_key=${pf_field%%=*}
     pf_value=${pf_field#*=}
-    # ⚠ OS_ID AND PROVIDER BELONG TO THE CALLER, which sets both before its first
-    # lookup. Read alone, the copy of this block has neither, and PROVIDER looks
-    # like a misspelling of the list below.
-    # shellcheck disable=SC2153
-    if in_list "os:$OS_ID" "$pf_key"; then
+    if [ -n "$pf_want_os" ] && in_list "os:$pf_want_os" "$pf_key"; then
       pf_os=$pf_value
-    elif in_list "$PROVIDER" "$pf_key"; then
+    elif in_list "$pf_want_provider" "$pf_key"; then
       pf_provider=$pf_value
     fi
   done

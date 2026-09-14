@@ -7,6 +7,37 @@ on what was true last time.
 
 ---
 
+## 2026-09-14, the safety entries and the Nix route
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-14T14:15:42Z | ended at the record commit's own time, about two hours and fifteen minutes; the operator checkpointed it at `WSL-67` |
+| Commits | `7122216`, clean `main`, CI run 34846522263 green | `git log --oneline 7122216..HEAD` read **3**, each pushed and green in all six CI jobs, runs 34860407687, 34863266828 and 34865346058; then the record commit |
+| Work | 10 open entries; `WSL-84`, `WSL-83`, `WSL-82`, then issue 30's `WSL-67`, `WSL-70` and `WSL-71` assigned | **Completed 3:** `WSL-84`, `WSL-83`, `WSL-82`. **Partial 1:** `WSL-67`, Soar removed and Nix driven, with `pkgin`, `pkg_add` and the acceptance runner's cases open. **Deferred 2** by the checkpoint: `WSL-70`, `WSL-71`. **Failed 0.** Entries 119, open 10 to 7, done 109 to 112 |
+| Changes | 0 files changed from `7122216` | `git diff --shortstat 7122216` over the tree before this summary read 20 files, +2,049 / -424; the record commit adds this section |
+| Size | 83,853 text lines in 288 files at `7122216`, `git grep -I -c ''` | 85,478 in 288 files, +1,625, before this section |
+| Checks | doctor exit 0 in 21.17 s; gate 20 of 20 in 46.33 s | gate 20 of 20 before every commit; the Windows Go proof with the 8.3 `TEMP` and the Linux Go proof in `golang:1.25` exit 0 before every push; ShellCheck 0.9.0 clean over 34 scripts; 29 new or changed mutation rows red in `golang:1.25` |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation. Network bytes not measured; known transfers: `docker.io/nixos/nix:latest`, 161,500,661 bytes compressed, once, and Nix packages for four accounts; Arch packages for 15 throwaway base builds, 2 of them stopped by a stalled mirror, and 21 provisioning runs over a built one; 196,079,616 bytes of the NetBSD image and 53,981,184 of the OpenBSD image before the checkpoint stopped both |
+| Health | four distributions; the shared FreeBSD image restored and unbooted | ⭐ the shared FreeBSD image booted eight times through overlays with its SHA-256 unchanged; the same four distributions; no throwaway, image copy, partial download or Nix image left; the SSH configuration unchanged; no tag; tree clean after the record commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| read `docs/AGENTS.md` and reconcile the last session's unfinished authoring | done: `7122216` was pushed and green and carried the order and the rulings; only its next prompt had not been printed |
+| execute the work order in its order | `WSL-84`, `WSL-83` and `WSL-82` closed, each driven on this host, reviewed and green in CI; `WSL-67` reached its Nix work |
+| cover the operator's own Nix setup, and do it better | built as ruled in chat: an installed Nix is found and used, flakes are set up, the allow variables always on, a token through `NIX_CONFIG` only; `install_nix.sh` read and not run |
+| approve the BSD image and Nix image downloads | approved in chat; the Nix image used and removed; both BSD downloads stopped at the checkpoint and removed |
+| finish the task in flight, run the end of the session and print a resume prompt | done: the Nix work committed with the record, and the resume prompt in chat only |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. Resume `WSL-67` at driving `pkgin` and
+`pkg_add`, after asking the operator again in chat for the two image downloads, then
+the acceptance runner's provider-profile cases and the entry's closing.
+
+---
+
 ## 2026-09-14, work-order correction
 
 | row | before | after |

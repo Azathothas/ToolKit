@@ -9,8 +9,9 @@
 #
 # WHERE IT RUNS: Linux with apk, apt, dnf, emerge, pacman, tdnf, xbps, yum or
 # zypper; FreeBSD and DragonFly with pkg; NetBSD with pkgin; OpenBSD with
-# pkg_add. As root, through passwordless sudo, or as an unprivileged account when
-# soar or nix is present. It names what it looked for when it finds none.
+# pkg_add. As root, through passwordless sudo, or as an unprivileged account
+# through nix, which it finds where a login shell would and never installs. It
+# names what it looked for when it finds none.
 #
 # ⛔ IT DEPENDS ON THE SHELL AND THE PACKAGE MANAGER, AND ON ALMOST NOTHING
 # ELSE. Not awk, not sed, not grep, not tr, not find, not install, not dirname.
@@ -76,7 +77,10 @@ usage: sh bootstrap.sh [options]
   --with LIST             comma-separated logical names to add.
   --without LIST          comma-separated logical names to leave out.
   --provider NAME         force the package manager instead of detecting one.
-  --user-provider NAME    soar | nix | none. Default: whichever is present.
+  --user-provider NAME    nix | none. Default: nix when it is installed, on PATH
+                          or in its own profile locations. A new profile
+                          installs with flakes; GITHUB_TOKEN, when set, reaches
+                          nix only through NIX_CONFIG.
   --no-upstream           do not fall back to an upstream tarball for a tool the
                           system packages do not carry.
   --codegraph SPEC        a version, `latest`, or `none`. Default: `latest` for
@@ -123,7 +127,7 @@ USAGE
 # means adding values here and changing no code, and a name spelled the same
 # everywhere needs no override at all.
 #
-#   KEY=VALUE       a package manager, or `os:ID` from /etc/os-release
+#   KEY=VALUE       a package manager, `nix`, or `os:ID` from /etc/os-release
 #   a|b=VALUE       several keys share one value
 #   VALUE,VALUE     several packages for one logical name
 #   -               this place does not carry it, or its base system already
@@ -132,19 +136,21 @@ USAGE
 # ⚠ `os:` BEATS THE MANAGER, and it has to. Alpine, Chimera and Wolfi all use apk
 # and disagree about half of these names; Fedora and Rocky 8 both use dnf and
 # Rocky has no ripgrep without EPEL. A table keyed on the manager alone cannot
-# say either thing.
+# say either thing. ⚠ A `nix` value is a nixpkgs attribute, the same on every
+# system, so nix is looked up with no `os:` key at all.
 #
 # ⚠ EVERY VALUE BELOW WAS READ OFF THE SYSTEM ON 2026-09-12, FreeBSD included.
 # The Linux rows came from the thirteen images in this repository own catalogue;
 # the `os:freebsd` rows came from FreeBSD 15.1 through `wsl-toolkit bsd run
 # --network`, which fetches this file by raw URL and then queries `pkg` for each
-# name. ⛔ NetBSD and OpenBSD are the exception and say so in the header: `pkgin`
-# and `pkg_add` are written and have never been run.
+# name. The `nix` values were evaluated in nixpkgs on 2026-09-14, every attribute the
+# agent toolset resolves. ⛔ NetBSD and OpenBSD are the exception and say so in the
+# header: `pkgin` and `pkg_add` are written and have never been run.
 package_table() {
   cat <<'TABLE'
-bash bash
-ca-certificates ca-certificates os:freebsd=ca_root_nss
-build - apk=build-base os:chimera=base-devel apt=build-essential pacman=base-devel xbps=base-devel dnf|yum|zypper=gcc,gcc-c++,make tdnf=gcc,make emerge=sys-devel/gcc,sys-devel/make
+bash bash nix=bashInteractive
+ca-certificates ca-certificates os:freebsd=ca_root_nss nix=cacert
+build - apk=build-base os:chimera=base-devel apt=build-essential pacman=base-devel xbps=base-devel dnf|yum|zypper=gcc,gcc-c++,make tdnf=gcc,make emerge=sys-devel/gcc,sys-devel/make nix=gcc,gnumake
 coreutils coreutils os:chimera=chimerautils os:rocky=-
 curl curl
 fd fd apt=fd-find dnf|yum=fd-find os:rocky=- tdnf=- os:chimera=- os:freebsd=fd-find
@@ -153,21 +159,21 @@ git git
 jq jq
 less less os:freebsd=-
 node nodejs zypper=nodejs-default os:freebsd=node
-npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=-
-openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=-
+npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=- nix=-
+openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=- nix=openssh
 procps procps pacman|xbps=procps-ng dnf|yum|tdnf=procps-ng emerge=sys-process/procps os:freebsd=-
 ripgrep ripgrep tdnf=- os:rocky=- os:chimera=-
-sudo sudo
-tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=-
+sudo sudo nix=-
+tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=- nix=gnutar
 tmux tmux
 unzip unzip os:freebsd=-
 xz xz apt=xz-utils emerge=app-arch/xz-utils os:freebsd=-
 go go apt=golang dnf|yum=golang emerge=dev-lang/go
 nim nim apt=- dnf|yum=- tdnf=- os:wolfi=- os:chimera=- os:rocky=-
 python python3 pacman=python os:chimera=python emerge=dev-lang/python
-rust rust apt=rustc emerge=dev-lang/rust
+rust rust apt=rustc emerge=dev-lang/rust nix=rustc
 cargo cargo pacman=- tdnf=- emerge=- os:wolfi=- os:photon=- os:freebsd=-
-powershell - apk=powershell os:wolfi=powershell tdnf=powershell os:chimera=- os:freebsd=powershell
+powershell - apk=powershell os:wolfi=powershell tdnf=powershell os:chimera=- os:freebsd=powershell nix=powershell
 TABLE
 }
 
@@ -238,10 +244,18 @@ package_row() {
   }
 }
 
-# package_for LOGICAL -> the package name(s) to install here, or nothing when
-# this place does not carry it.
+# package_for LOGICAL [PROVIDER OS_ID] -> the package name(s) to install here, or
+# nothing when this place does not carry it. The provider and the system are the
+# caller's PROVIDER and OS_ID unless the call names them, and an empty OS_ID matches
+# no `os:` key.
 package_for() {
   pf_row=$(package_row "$1") || return 1
+  # ⚠ OS_ID AND PROVIDER BELONG TO THE CALLER, which sets both before its first
+  # lookup. Read alone, the copy of this block has neither, and PROVIDER looks
+  # like a misspelling of the list below.
+  # shellcheck disable=SC2153
+  pf_want_provider=${2-$PROVIDER}
+  pf_want_os=${3-$OS_ID}
   pf_default=''
   pf_os=''
   pf_provider=''
@@ -254,13 +268,9 @@ package_for() {
     fi
     pf_key=${pf_field%%=*}
     pf_value=${pf_field#*=}
-    # ⚠ OS_ID AND PROVIDER BELONG TO THE CALLER, which sets both before its first
-    # lookup. Read alone, the copy of this block has neither, and PROVIDER looks
-    # like a misspelling of the list below.
-    # shellcheck disable=SC2153
-    if in_list "os:$OS_ID" "$pf_key"; then
+    if [ -n "$pf_want_os" ] && in_list "os:$pf_want_os" "$pf_key"; then
       pf_os=$pf_value
-    elif in_list "$PROVIDER" "$pf_key"; then
+    elif in_list "$pf_want_provider" "$pf_key"; then
       pf_provider=$pf_value
     fi
   done
@@ -348,12 +358,184 @@ detect_os_id() {
 }
 # <<< shared package table: end
 
-USER_PROVIDERS='soar nix'
+USER_PROVIDERS='nix'
+
+# ---------------------------------------------------------------------- nix --
+
+# ⭐ NIX IS LOADED, NEVER INSTALLED. Ruled by the operator on 2026-09-14: a Nix
+# already on the machine is found even where this shell's PATH does not reach it,
+# flakes are set up for the account and used for a new profile, and every Nix
+# command this run starts gets the same settings. When Nix is absent the run says
+# so and installs nothing, because installing Nix means running a remote script.
+NIX_PROFILE_LINK=''
+NIX_ROUTE=''
+NIX_FLAKES_CONFIG=''
+NIX_NEWLINE='
+'
+
+# nix_profile_link -> the account's profile link: the XDG state location when Nix
+# made one there, and ~/.nix-profile otherwise, the order Nix's own profile script
+# uses.
+nix_profile_link() {
+  npl_state="${XDG_STATE_HOME:-$HOME/.local/state}/nix/profile"
+  if [ -e "$npl_state" ]; then
+    printf '%s' "$npl_state"
+    return 0
+  fi
+  printf '%s' "$HOME/.nix-profile"
+}
+
+# load_nix_environment puts an installed Nix on this run's PATH, and a CA bundle
+# in NIX_SSL_CERT_FILE, as a login shell's profile script would.
+#
+# ⚠ IT SOURCES NOTHING. Nix ships a different profile script for its single-user
+# and daemon installs, each written for an interactive shell, and a script in a
+# user's own profile can do anything. The locations below are what those scripts
+# read, taken from the filesystem instead. Run again after an install, so a
+# profile made by that install is on PATH for the report.
+load_nix_environment() {
+  NIX_PROFILE_LINK=$(nix_profile_link)
+  for ln_dir in /run/current-system/sw/bin /nix/var/nix/profiles/default/bin "$NIX_PROFILE_LINK/bin"; do
+    if [ ! -d "$ln_dir" ]; then
+      continue
+    fi
+    case ":$PATH:" in
+      *":$ln_dir:"*) ;;
+      *) PATH="$ln_dir:$PATH" ;;
+    esac
+  done
+  export PATH
+  if [ -n "${NIX_SSL_CERT_FILE:-}" ]; then
+    return 0
+  fi
+  for ln_cert in /etc/ssl/certs/ca-certificates.crt /etc/ssl/ca-bundle.pem \
+      /etc/ssl/certs/ca-bundle.crt /etc/pki/tls/certs/ca-bundle.crt \
+      "$NIX_PROFILE_LINK/etc/ssl/certs/ca-bundle.crt" \
+      /nix/var/nix/profiles/default/etc/ssl/certs/ca-bundle.crt; do
+    if [ -e "$ln_cert" ]; then
+      NIX_SSL_CERT_FILE=$ln_cert
+      export NIX_SSL_CERT_FILE
+      return 0
+    fi
+  done
+}
 
 detect_user_provider() {
-  if have soar;    then printf 'soar'; return 0; fi
-  if have nix-env; then printf 'nix';  return 0; fi
+  if have nix-env; then printf 'nix'; return 0; fi
   printf ''
+}
+
+# nix_run COMMAND... runs one Nix command with this run's settings.
+#
+# ⭐ THE SETTINGS ARE THE RUN'S, NOT THE MACHINE'S. flakes and the nix command, a
+# source build when a binary substitute fails, bounded network waits, and every
+# package nixpkgs would otherwise refuse as broken, insecure, unfree or unsupported,
+# as the operator ruled. A caller's own NIX_CONFIG comes last, so a line it sets
+# wins.
+#
+# ⛔ A GITHUB TOKEN REACHES NIX THROUGH NIX_CONFIG AND NOTHING ELSE. It is read from
+# GITHUB_TOKEN when that is set, given to the command's environment, and never
+# printed, logged or written to a file. It lifts GitHub's rate limit on the flake
+# registry's nixpkgs.
+nix_run() {
+  nr_config="experimental-features = nix-command flakes${NIX_NEWLINE}fallback = true${NIX_NEWLINE}connect-timeout = 20${NIX_NEWLINE}download-attempts = 5${NIX_NEWLINE}max-jobs = auto${NIX_NEWLINE}warn-dirty = false"
+  if [ -n "${GITHUB_TOKEN:-}" ]; then
+    nr_config="$nr_config${NIX_NEWLINE}access-tokens = github.com=$GITHUB_TOKEN"
+  fi
+  if [ -n "${NIX_CONFIG:-}" ]; then
+    nr_config="$nr_config${NIX_NEWLINE}$NIX_CONFIG"
+  fi
+  NIXPKGS_ALLOW_BROKEN=1 NIXPKGS_ALLOW_INSECURE=1 NIXPKGS_ALLOW_UNFREE=1 \
+    NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1 NIX_PAGER=cat NIX_CONFIG=$nr_config "$@"
+}
+
+# nix_route -> flakes or channels: how this account's profile is installed into.
+#
+# ⛔ A PROFILE HAS ONE FORMAT, AND AN EXISTING ONE DECIDES. `nix profile` rewrites a
+# profile nix-env made, after which nix-env refuses it, so a profile with a
+# manifest.nix stays on channels. A new profile, or one `nix profile` made, gets
+# flakes when this Nix has them.
+nix_route() {
+  if [ -e "$NIX_PROFILE_LINK/manifest.json" ]; then
+    printf 'flakes'
+    return 0
+  fi
+  if [ -e "$NIX_PROFILE_LINK/manifest.nix" ]; then
+    printf 'channels'
+    return 0
+  fi
+  if have nix && nix_run nix flake --help >/dev/null 2>&1; then
+    printf 'flakes'
+    return 0
+  fi
+  printf 'channels'
+}
+
+# ensure_nix_flakes_config enables flakes and the nix command for this account's
+# later shells, in its own nix.conf, and says what it found.
+#
+# ⚠ A LINE THE ACCOUNT ALREADY HAS IS ITS CHOICE. A file that names experimental
+# features without flakes is left as it is and the run says so; this run's own
+# commands get flakes either way, through nix_run.
+ensure_nix_flakes_config() {
+  nf_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nix"
+  nf_file="$nf_dir/nix.conf"
+  nf_named=0
+  if [ -f "$nf_file" ]; then
+    while IFS= read -r nf_line; do
+      case "$nf_line" in
+        *=*) ;;
+        *) continue ;;
+      esac
+      # ⚠ SPLIT ON THE FIRST `=`, NOT ON SPACES. nix.conf takes `key=value` with no
+      # space as well as `key = value`, and a key read by words missed the first.
+      # shellcheck disable=SC2086
+      set -- ${nf_line%%=*}
+      case "${1:-}" in
+        experimental-features|extra-experimental-features) ;;
+        *) continue ;;
+      esac
+      nf_named=1
+      if in_list flakes "${nf_line#*=}" && in_list nix-command "${nf_line#*=}"; then
+        NIX_FLAKES_CONFIG=present
+        return 0
+      fi
+    done < "$nf_file"
+  fi
+  if [ "$nf_named" = 1 ]; then
+    warn "$nf_file names experimental features without both nix-command and flakes; it is left as it is"
+    NIX_FLAKES_CONFIG=left
+    return 0
+  fi
+  if [ "$DRY_RUN" = 1 ]; then
+    step "would enable flakes and the nix command in $nf_file"
+    NIX_FLAKES_CONFIG=added
+    return 0
+  fi
+  mkdir -p "$nf_dir"
+  printf '\n# Added by %s.\nexperimental-features = nix-command flakes\n' "$SELF" >> "$nf_file"
+  step "enabled flakes and the nix command in $nf_file"
+  NIX_FLAKES_CONFIG=added
+}
+
+# nix_refresh updates the channels the account owns, before a channels install.
+# ⚠ Only its own: a daemon account installs from the channel Nix was set up with,
+# which only that channel's owner can update.
+nix_refresh() {
+  if [ "$NIX_ROUTE" != channels ]; then
+    return 0
+  fi
+  nr_channels=$(nix_run nix-channel --list 2>/dev/null) || nr_channels=''
+  if [ -z "$nr_channels" ]; then
+    step 'this account has no channel of its own, so the install reads the channel Nix was set up with'
+    return 0
+  fi
+  if [ "$DRY_RUN" = 1 ]; then
+    step 'would run: nix-channel --update'
+    return 0
+  fi
+  step 'nix-channel --update'
+  nix_run nix-channel --update >/dev/null 2>&1
 }
 
 # first_line COMMAND... -> the command's first line of output, or nothing. This
@@ -508,32 +690,50 @@ install_packages() {
   esac
 }
 
-# ⛔ A USER-LEVEL PROVIDER IS USED AND NEVER INSTALLED. Installing soar or nix
-# means piping a remote script into a shell, which docs/security/remote-ops.md
-# and docs/consumers.md both refuse for a script in this tree. Detect one, use
-# it, and say what is needed when there is none.
-install_one_user_level() {
-  case "$USER_PROVIDER" in
-    soar)
+# ⛔ THE USER-LEVEL PROVIDER IS USED AND NEVER INSTALLED. Installing nix means
+# piping a remote script into a shell, which docs/security/remote-ops.md and
+# docs/consumers.md both refuse for a script in this tree. Detect it, use it, and
+# say what is needed when it is absent.
+#
+# install_nix_packages ATTRIBUTE... installs nixpkgs attributes into the account's
+# profile by its route, in one transaction.
+install_nix_packages() {
+  if [ "$#" -eq 0 ]; then
+    return 0
+  fi
+  case "$NIX_ROUTE" in
+    flakes)
+      in_installables=''
+      for in_attr in "$@"; do
+        in_installables="$in_installables nixpkgs#$in_attr"
+      done
       if [ "$DRY_RUN" = 1 ]; then
-        step "would run: soar install $1"
+        step "would run: nix profile install --impure$in_installables"
         return 0
       fi
-      step "soar install $1"
-      soar install "$1" >/dev/null 2>&1
-      ;;
-    nix)
-      if [ "$DRY_RUN" = 1 ]; then
-        step "would run: nix-env -iA nixpkgs.$1"
-        return 0
-      fi
-      step "nix-env -iA nixpkgs.$1"
-      nix-env -iA "nixpkgs.$1" >/dev/null 2>&1
+      step "nix profile install --impure$in_installables"
+      # ⚠ --impure IS WHAT LETS THE NIXPKGS_ALLOW VARIABLES THROUGH. A flake
+      # evaluates purely by default and reads no environment variable at all.
+      # shellcheck disable=SC2086
+      set -- nix profile install --impure $in_installables
       ;;
     *)
-      return 1
+      if [ "$DRY_RUN" = 1 ]; then
+        step "would run: nix-env -f <nixpkgs> -iA $*"
+        return 0
+      fi
+      step "nix-env -f <nixpkgs> -iA $*"
+      # ⚠ -f <nixpkgs> AND NOT nixpkgs.NAME. The attribute path through
+      # ~/.nix-defexpr names the channel, and a NixOS account's channel is `nixos`;
+      # the search path names nixpkgs on both.
+      set -- nix-env -f '<nixpkgs>' -iA "$@"
       ;;
   esac
+  if [ "$LOUD" = 1 ]; then
+    nix_run "$@" >/dev/null
+    return $?
+  fi
+  nix_run "$@" >/dev/null 2>&1
 }
 
 # ---------------------------------------------------------------- fetch and --
@@ -1111,21 +1311,21 @@ if [ -z "$PROVIDER" ]; then
 elif ! in_list "$PROVIDER" "$PROVIDERS"; then
   die "--provider $PROVIDER is not one of: $PROVIDERS"
 fi
+if [ "$USER_PROVIDER" != none ]; then
+  load_nix_environment
+fi
 if [ -z "$USER_PROVIDER" ]; then
   USER_PROVIDER=$(detect_user_provider)
 elif [ "$USER_PROVIDER" = none ]; then
   USER_PROVIDER=''
 elif ! in_list "$USER_PROVIDER" "$USER_PROVIDERS"; then
   die "--user-provider $USER_PROVIDER is not one of: $USER_PROVIDERS none"
-else
+elif ! have nix-env; then
   # ⚠ A NAMED PROVIDER IS CHECKED FOR HERE, ONCE. Without this, forcing one that
   # is not installed reached the install loop and failed per package: measured on
-  # 2026-09-12, `--user-provider soar` on a box with no soar reported five
-  # failures for one missing program.
-  case "$USER_PROVIDER" in
-    nix) if ! have nix-env; then die "--user-provider nix was asked for and nix-env is not on PATH"; fi ;;
-    *)   if ! have "$USER_PROVIDER"; then die "--user-provider $USER_PROVIDER was asked for and is not on PATH"; fi ;;
-  esac
+  # 2026-09-12, a named provider on a box without it reported five failures for one
+  # missing program.
+  die "--user-provider nix was asked for and no Nix is installed: nix-env is not on PATH, in $NIX_PROFILE_LINK/bin or in /nix/var/nix/profiles/default/bin. This script never installs Nix; the installer is at https://nixos.org/download"
 fi
 
 say "$OS_ID on $KERNEL $ARCH, $LIBC, wsl=$IS_WSL, privilege=$PRIVILEGE"
@@ -1138,7 +1338,12 @@ USE_SYSTEM=0
 if [ -n "$PROVIDER" ] && [ "$PRIVILEGE" != none ]; then
   USE_SYSTEM=1
 elif [ -z "$USER_PROVIDER" ]; then
-  die "$PROVIDER needs root and this account has neither root nor passwordless sudo; a user-level provider such as soar or nix would give a path that needs neither"
+  die "$PROVIDER needs root and this account has neither root nor passwordless sudo; nix, as a user-level provider, would give a path that needs neither"
+fi
+if [ "$USE_SYSTEM" = 0 ]; then
+  NIX_ROUTE=$(nix_route)
+  say "nix $(first_line nix_run nix-env --version), installing through $NIX_ROUTE"
+  ensure_nix_flakes_config
 fi
 
 # Compose the request: the toolset, plus --with, minus --without.
@@ -1181,7 +1386,17 @@ for name in $WANTED; do
     fi
     SYSTEM_PACKAGES="$SYSTEM_PACKAGES $resolved"
   else
-    USER_LEVEL="$USER_LEVEL $name"
+    # ⚠ THE TABLE'S nix KEY, AND NO os: KEY. A nixpkgs attribute is the same on
+    # every system, and an `os:` override names that system's own package. The
+    # first drive installed logical names as attributes, and nixpkgs has no
+    # `ca-certificates` and no `tar`.
+    resolved=$(package_for "$name" nix '')
+    if [ -z "$resolved" ]; then
+      warn "nixpkgs, through nix, does not carry $name, or carries it inside another package"
+      SKIPPED="$SKIPPED $name"
+      continue
+    fi
+    USER_LEVEL="$USER_LEVEL $resolved"
   fi
   REQUESTED="$REQUESTED $name"
 done
@@ -1211,11 +1426,26 @@ if [ -n "$SYSTEM_PACKAGES" ]; then
     LOUD=0
   fi
 fi
-for name in $USER_LEVEL; do
-  if ! install_one_user_level "$name"; then
-    fail "$USER_PROVIDER could not install $name"
+if [ -n "$USER_LEVEL" ]; then
+  if ! nix_refresh; then
+    warn 'the nix channel update failed; the install below may be working from a stale channel'
   fi
-done
+  # ⭐ THE SAME SHAPE AS THE SYSTEM ROUTE: one transaction, then one attribute at a
+  # time with what nix says, so one missing attribute names itself rather than
+  # failing every other one.
+  # shellcheck disable=SC2086
+  if ! install_nix_packages $USER_LEVEL; then
+    warn 'the single nix transaction failed; retrying one attribute at a time, with what nix says'
+    LOUD=1
+    for attribute in $USER_LEVEL; do
+      if ! install_nix_packages "$attribute"; then
+        fail "nix could not install $attribute"
+      fi
+    done
+    LOUD=0
+  fi
+  load_nix_environment
+fi
 
 install_path_line
 link_renamed_binaries
@@ -1289,6 +1519,7 @@ if [ "$JSON" = 1 ]; then
   printf '{"schema":"%s/%s"' "$SELF" "$VERSION"
   printf ',"os":"%s","kernel":"%s","arch":"%s","libc":"%s","wsl":"%s"' "$OS_ID" "$KERNEL" "$ARCH" "$LIBC" "$IS_WSL"
   printf ',"provider":"%s","user_provider":"%s","privilege":"%s"' "$PROVIDER" "$USER_PROVIDER" "$PRIVILEGE"
+  printf ',"nix_route":"%s","nix_flakes_config":"%s"' "$NIX_ROUTE" "$NIX_FLAKES_CONFIG"
   printf ',"toolset":"%s","requested":%d,"present":%d' "$TOOLSET" "$WANTED_N" "$PRESENT"
   printf ',"skipped":"%s","absent":"%s","upstream":"%s"' "$(lead "$SKIPPED")" "$(lead "$ABSENT")" "$(lead "$UPSTREAM_DONE")"
   printf ',"codegraph":"%s","failures":%d}\n' "$CODEGRAPH_VERSION" "$FAILURES"
@@ -1300,6 +1531,10 @@ else
   printf 'wsl=%s\n'           "$IS_WSL"
   printf 'provider=%s\n'      "${PROVIDER:-none}"
   printf 'user_provider=%s\n' "${USER_PROVIDER:-none}"
+  if [ -n "$NIX_ROUTE" ]; then
+    printf 'nix_route=%s\n'         "$NIX_ROUTE"
+    printf 'nix_flakes_config=%s\n' "$NIX_FLAKES_CONFIG"
+  fi
   printf 'privilege=%s\n'     "$PRIVILEGE"
   printf 'toolset=%s\n'       "$TOOLSET"
   printf 'requested=%d\n'     "$WANTED_N"

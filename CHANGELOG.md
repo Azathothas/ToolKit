@@ -21,6 +21,30 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-14
 
+### 2026-09-14T16:26:40Z: bootstrap.sh drops Soar, and finds, sets up and uses an installed Nix
+
+**Record:** `WSL-67` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+amendment of this date carries the operator's rulings and the drives.
+**Deployed:** no deploy, and no tag. ⚠
+[`scripts/common/bootstrap.sh`](scripts/common/bootstrap.sh) is fetched by URL, so
+this reached a caller of `main` when it was pushed.
+**Closes:** nothing. `WSL-67` stays open for `pkgin`, `pkg_add` and the acceptance
+runner.
+
+⛔ **`--user-provider soar` IS REFUSED, WITH EXIT 2.** Soar is no longer detected or
+used. `nix` and `none` are the values.
+
+⚠ **THE NIX ROUTE INSTALLS DIFFERENTLY.** Names resolve to nixpkgs attributes
+through the table's new `nix` key, where they were installed under their logical
+names and two of four failed. A new profile installs with `nix profile install
+--impure` and flakes, and a `nix-env` profile with `nix-env -f '<nixpkgs>' -iA`.
+Every Nix command gets the four `NIXPKGS_ALLOW_*` variables, and the account's
+`nix.conf` gains the flakes line when it names no experimental features.
+
+⭐ **A Nix outside `PATH` is found**, in the account's or the daemon's profile, and a
+`GITHUB_TOKEN` reaches Nix through `NIX_CONFIG` only. The report and `--json` carry
+`nix_route` and `nix_flakes_config`.
+
 ### 2026-09-14T15:45:01Z: a BSD payload that prints a panic's two lines is no longer ended as a kernel panic
 
 **Record:** `WSL-82` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

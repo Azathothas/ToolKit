@@ -3933,7 +3933,7 @@ consumers also fetch by URL, and that is a decision rather than a refactor.
 | --- | --- |
 | 1, the FreeBSD path | driven. The disk limit it found is `WSL-72` |
 | 2, `pkgin` and `pkg_add` never run | open |
-| 3, the user-level providers | open: remove Soar, then drive Nix |
+| 3, the user-level providers | Soar removed and Nix driven, in the amendment below |
 | 4, the provider-profile scenarios outside the acceptance runner | open |
 | 5, the Muse installer and an authenticated smoke | closed by `WSL-69` |
 | the second package map | `WSL-70` |
@@ -3963,6 +3963,91 @@ arguments, its detection, its package route and the live documentation. Drive Ni
 as an unprivileged account with neither root nor passwordless sudo. Keep the rule
 that this repository does not install it. Historical measurements and reference
 sweeps keep the names they measured.
+
+## Ruled by the operator, 2026-09-14: Nix is loaded and set up, and never installed
+
+⭐ **The operator asked that the bootstrap cover their own Nix setup, and do it
+better**, and answered three questions in chat:
+
+- **Installing:** "1, and do it all properly, and include all scripts in our repo,
+  and test/setup flakes and sane defaults". Option 1 was: find an installed Nix
+  that is not on `PATH` and load it without sourcing a profile, and when Nix is
+  absent print the install command and exit 2. The logic lives in this repository
+  and fetches no script.
+- **`NIXPKGS_ALLOW_*`:** "always on, and also add some more if they make the
+  experience better".
+- **A GitHub token:** process only, when set: through `NIX_CONFIG`, written nowhere.
+
+⚠ The operator's own `install_nix.sh` was read and not run. It removes `/etc/nix`,
+`/nix` and the account's Nix state first, installs through `curl | bash`, appends
+to `/etc/sudoers`, and on riscv64 sets `require-sigs = false` with two extra
+substituters.
+
+## Amendment, 2026-09-14: Soar is removed, and Nix is driven as an unprivileged account
+
+⭐ **Built.** Soar leaves `bootstrap.sh`, its `--user-provider` values, its
+detection, its install route and `scripts/README.md`; `--user-provider soar` exits
+2 naming `nix none`. The Nix route:
+
+1. `load_nix_environment` puts `~/.nix-profile/bin`, or the XDG state profile,
+   `/nix/var/nix/profiles/default/bin` and `/run/current-system/sw/bin` on `PATH`
+   when they exist, and sets `NIX_SSL_CERT_FILE` from the list Nix's own profile
+   script reads. It sources nothing, and runs again after an install.
+2. A name resolves through the shared table's new `nix` key, with no `os:` key:
+   `bashInteractive`, `cacert`, `gcc,gnumake`, `openssh`, `gnutar`, `rustc`,
+   `powershell`, and `-` for `npm` and `sudo`. `package_for` takes the provider and
+   the system as optional arguments for it, so the system route reads the same
+   globals as before.
+3. `nix_route` answers `flakes` for a profile `nix profile` made or a new one, and
+   `channels` for a profile with a `manifest.nix`, because `nix profile` rewrites a
+   `nix-env` profile and `nix-env` then refuses it. Flakes install with `nix profile
+   install --impure nixpkgs#ATTR`; channels with `nix-env -f '<nixpkgs>' -iA ATTR`,
+   which also reads a NixOS account's channel.
+4. `nix_run` gives every Nix command `NIXPKGS_ALLOW_BROKEN`, `_INSECURE`, `_UNFREE`
+   and `_UNSUPPORTED_SYSTEM` as 1, `NIX_PAGER=cat`, and a `NIX_CONFIG` of
+   `experimental-features = nix-command flakes`, `fallback = true`, `connect-timeout
+   = 20`, `download-attempts = 5`, `max-jobs = auto` and `warn-dirty = false`, then
+   `access-tokens = github.com=` and `GITHUB_TOKEN` when it is set, then the caller's
+   own `NIX_CONFIG`, which wins.
+5. `ensure_nix_flakes_config` appends `experimental-features = nix-command flakes` to
+   the account's `nix.conf` when the file names no experimental features, and leaves
+   a file that names them otherwise.
+6. One transaction, then one attribute at a time with Nix's own message, as the
+   system route does; `nix-channel --update` first on channels for a channel the
+   account owns. The report carries `nix_route` and `nix_flakes_config`.
+
+### ⛔ What driving found
+
+The first drive, as an account reaching Nix through its daemon in
+`docker.io/nixos/nix:latest`, installed logical names as attributes: `nix-env -iA
+nixpkgs.ca-certificates` and `nixpkgs.tar` failed, and the report still read `present=4`
+because the account's `PATH` reached root's profile. Every drive after it gave the
+account a `PATH` of base tools with no Nix in it.
+
+### The drives, all in `docker.io/nixos/nix:latest` with Nix 2.35.2 unless named
+
+| drive | result |
+| --- | --- |
+| a new account, `--toolset minimal` with 13 more names, its `PATH` reaching no Nix | exit 0 in 24 s through flakes; 17 requested, 16 present, `npm` skipped; `nix.conf` gained the flakes line; the profile a `manifest.json` under `~/.local/state/nix/profiles` |
+| the same run again | exit 0 in 10 s, `nix_flakes_config=present`, nothing failed |
+| an account whose profile `nix-env` made | exit 0 in 9 s through channels, 4 of 4 present, `nix-env -f <nixpkgs> -iA cacert curl git gnutar` |
+| a stand-in `nix` in `alpine:latest` recording what it was given | `nix profile install --impure nixpkgs#jq`, all four allow variables 1, `NIX_PAGER=cat`, the six defaults, the token as `access-tokens`, and the caller's `max-jobs = 2` last; the token in none of the run's own output |
+| a copy with one row for nixpkgs' `hello-unfree`, as shipped and with `NIXPKGS_ALLOW_UNFREE=0` | shipped: installed; flag off: exit 1 and not installed |
+| every attribute the agent toolset resolves, evaluated | 25 of 25 exist, from `bashInteractive` 5.3p15 to `xz` 5.8.3 |
+| HEAD's `bootstrap.sh` and the tree's, `--dry-run --toolset agent`, on `golang:1.25` and `alpine:latest` | the resolved lines identical on both |
+
+### Still open
+
+1. **`pkgin` on NetBSD and `pkg_add` on OpenBSD**, as ruled. The operator approved in
+   chat on 2026-09-14 downloading `NetBSD-11.0-amd64-live.img.gz`, 503,277,153 bytes
+   from cdn.netbsd.org against its `SHA512`, and `install79.img`, 839,352,320 bytes from
+   cdn.openbsd.org against `SHA256` and `SHA256.sig`. Both downloads were stopped part
+   way at the session's checkpoint and removed. ⚠ QEMU 11.1.0 on this host has no
+   `sga` device, so neither boot loader's screen reaches the serial console on its
+   own; SeaBIOS's serial console or keys through QEMU's monitor are the next things to
+   try.
+2. **The provider-profile scenarios in the acceptance runner.**
+3. The three reviews and the closing.
 
 ---
 

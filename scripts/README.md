@@ -464,9 +464,20 @@ runs in a container, in CI, on a laptop, in a WSL guest, and in a BSD guest.
 
 ⭐ **Twelve package managers.** apk, apt, dnf, emerge, pacman, tdnf, xbps, yum and
 zypper on Linux; `pkg` on FreeBSD and DragonFly, `pkgin` on NetBSD, `pkg_add` on
-OpenBSD. `soar` and `nix` are used as user-level providers when an account has
-neither root nor passwordless sudo. ⛔ **It never installs one of those two**,
-because installing either means piping a remote script into a shell.
+OpenBSD. `nix` is the user-level provider when an account has neither root nor
+passwordless sudo. ⛔ **It never installs nix**, because installing it means piping
+a remote script into a shell.
+
+⭐ **An installed Nix is found and used whole.** A Nix outside the shell's `PATH`, in
+the account's profile or the daemon's default profile, is put on `PATH` without
+sourcing any profile script. A new profile installs with `nix profile install` and
+flakes, and one `nix-env` made stays on its channel. The account's own `nix.conf`
+gains `experimental-features = nix-command flakes` when it names no experimental
+features. Every Nix command the run starts gets the four `NIXPKGS_ALLOW_*`
+variables, a source build when a substitute fails, bounded network waits, and
+`GITHUB_TOKEN` as `access-tokens` through `NIX_CONFIG` when it is set, never
+printed or written. A caller's own `NIX_CONFIG` comes last and wins. The table's
+`nix` key names each nixpkgs attribute.
 
 ⭐ **The package table is the feature, and adding a distribution changes no
 code.** One row per LOGICAL name, a default package name, then only the places
