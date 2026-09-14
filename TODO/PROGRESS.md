@@ -11,13 +11,15 @@ baseline        e73d7d5, tree clean
 entries         total 116  open 10  blocked 0  done 106
 closed          WSL-74 at ab4281c; WSL-80 and WSL-79 at 5e66e44; issue 33; WSL-75
 filed           WSL-80, found by the acceptance runner's baseline; WSL-81, found by WSL-72's prove
-head            the WSL-75 commit after c42ccee
+head            0143318, then this record commit
 ```
 
 ## Active work
 
-⭐ **This session closes issues 30, 32 and 33**, in the order below. Every
-decision the entries carried is ruled, and the rulings are in the entries.
+⭐ **The operator checkpointed this session on 2026-09-14 at 06:30Z**, with issue 33
+closed and issues 30 and 32 open. The resume point is the first item below that is
+not closed: `WSL-81`'s one-vCPU runs, then `WSL-72`'s prove. Every decision the
+entries carried is ruled, and the rulings are in the entries.
 
 ## The work order, set by the operator on 2026-09-13
 
@@ -93,7 +95,7 @@ carries all three as commands under "Build and local proof".
 | `469e52a` | `bootstrap.sh` links FreeBSD's `nim` onto `PATH`, and the guest's default disk is 12 GiB, the smallest measured to give a 10 GiB root |
 | `d85b90e` | `bsd run` ends a run when the guest's kernel panics or QEMU exits, rather than at the end of its budget. `WSL-81` filed and built, 5 mutation rows |
 | `c42ccee` | `WSL-76`'s machinery: `base.adapters` with the `adapters` gate rule, the `herdr` adapter and its SSH door through `wsl.exe`, and `base attach`, driven on a throwaway base, 14 mutation rows. `WSL-81`: a panic while the guest powers off is carried on the result, 1 row |
-| the WSL-75 commit | `WSL-75` closed: a named instance reads its own configuration first, and `base grant` and `base revoke` change one grant live, through `grants.sh`, now the one home of the fstab block. 7 mutation rows; two defects found by driving it and fixed |
+| `0143318` | `WSL-75` closed: a named instance reads its own configuration first, and `base grant` and `base revoke` change one grant live, through `grants.sh`, now the one home of the fstab block. 7 mutation rows; two defects found by driving it and fixed |
 
 ## Measurements
 
@@ -119,6 +121,12 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
   passed, 4 skipped; `golang:1.25` green, with the POSIX shell case run there; the
   acceptance runner 91 of 91 on the tree's build; 8 `bsd` and 12 `relay` mutation
   rows proved in `golang:1.25`. Each entry's closing carries its own measurements.
+- **For `WSL-81`, `WSL-76` and `WSL-75`:** the Go suites green on Windows with `TEMP` at
+  the 8.3 path and in `golang:1.25`; ShellCheck 0.9.0 in `ubuntu:24.04` clean over
+  every tracked script; the gate 20 of 20, with the new `adapters` rule; 26 new
+  mutation rows red on Windows. `WSL-76` and `WSL-75` were driven on the throwaway
+  `wsl-toolkit-h76`, and `WSL-81`'s panic-rate runs on image copies; each entry carries
+  its numbers.
 
 ## Found, and not filed
 
@@ -166,17 +174,15 @@ None. Every decision is ruled.
 - ⭐ **`wsl-toolkit-muse` is gone.** The operator ran `muse logout` in it and then
   `base remove --yes` on 2026-09-14, and `instances\muse` holds nothing.
 - herdr 0.9.0 is installed on Windows by the operator.
-- ⚠ **In use for `WSL-76`'s measurements, and removed when they end:** the throwaway
-  `wsl-toolkit-h76`, and the marked `Host wsl-toolkit-h76` block `base ensure` wrote
-  at the top of `%USERPROFILE%\.ssh\config`, which `base remove` takes out. The
-  rest of that file is byte for byte what it was, SHA-256 `18FC11BE…E93F4`.
+- ⭐ **Every throwaway this session made is removed.** `wsl-toolkit-h76` with its
+  instance directory; its marked `Host` block, which `base remove` took out, leaving
+  `%USERPROFILE%\.ssh\config` byte for byte what it was, SHA-256 `18FC11BE…E93F4`;
+  the herdr state a local measurement session created under `%APPDATA%` and
+  `%LOCALAPPDATA%`; and every image copy and test directory under this repository's
+  `.tmp`.
 - The dedicated SSH key the ruling allows is at
-  `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with `known_hosts` beside it, and
-  stays for `wsl-toolkit-base`.
-- The `%APPDATA%\herdr` and `%LOCALAPPDATA%\herdr` directories a local herdr session
-  created during the measurements are removed; neither existed before them.
-- The shared FreeBSD pkgbase guest is the published image again, 6,476,638,208
-  bytes, restored by `bsd fetch --force` after `WSL-72`'s prove panicked it into a
-  root filesystem that would not mount. The next `bsd run` grows it to 12 GiB. The
-  copies of the image made for `WSL-79` and `WSL-72` are deleted, and `WSL-81`'s
-  panic-rate runs use copies under this repository's `.tmp`.
+  `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with an empty `known_hosts` beside it,
+  and stays for `wsl-toolkit-base`.
+- The shared FreeBSD pkgbase guest is the published image, 6,476,638,208 bytes,
+  restored by `bsd fetch --force` after `WSL-72`'s prove panicked it into a root
+  filesystem that would not mount. The next `bsd run` grows it to 12 GiB.

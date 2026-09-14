@@ -7,6 +7,35 @@ on what was true last time.
 
 ---
 
+## 2026-09-14
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-14T02:01:53Z | ended at the record commit's own time, about four hours and forty minutes, one context and one summarised continuation. The operator checkpointed it |
+| Commits | `e73d7d5`, clean `main` | `git log --oneline e73d7d5..0143318` read **7**, all pushed; CI green on the first six, the seventh running at the record commit; then the record commit |
+| Work | issues 30, 32 and 33: ten entries, the base and the release | **Completed 4:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33 closed, and `WSL-75`. **Partial 3:** `WSL-72`, built with its prove unrun because the guest panics; `WSL-76`, built and driven, its closing waiting for Muse; `WSL-81`, built, its one-vCPU runs unstarted. **Not started 6:** `WSL-77`, `WSL-78`, `WSL-67`, `WSL-68`, `WSL-70`, `WSL-71`; `wsl-toolkit-base` not built and `wsl-toolkit-v3.0.0` not cut. Failed: 0. Entries 114, 12 open, to 116, 10 open, 106 done |
+| Changes | `e73d7d5` | `git diff --shortstat e73d7d5 0143318` read 48 files, +5,386 / -272. ⚠ Stamped; the record commit adds to it |
+| Size | 76,179 text lines in 262 files at `e73d7d5`, `git grep -I -c ''` | 81,293 in 280 files at `0143318`, +5,114 |
+| Checks | the gate exit 0, 19 checks, 44.68 s | the gate exit 0, 20 checks with the new `adapters` rule, 48.9 s at 06:30Z. Go suites green on Windows with an 8.3 `TEMP` and in `golang:1.25`; ShellCheck 0.9.0 in `ubuntu:24.04` clean; acceptance 91 of 91 at `5e66e44`, not re-run since. Mutation rows 192 to 234, each new one red when planted |
+| Cost | not measured | no paid operation, and no Muse prompt. Network bytes not measured: herdr 0.9.0's 24.6 MB Linux asset downloaded three times into a throwaway base; about 16 BSD runs each fetched the `languages` packages, which one run's cache measured at 335,828 KiB; container images and the FreeBSD archive were already local |
+| Health | issues 30, 32 and 33 open; `wsl-toolkit-muse` present | ⭐ issue 33 closed with the commits named. `WSL-81` filed and open: the FreeBSD guest panicked 8 times in 14 heavy runs and the prove, under every CPU model tried. ⭐ `wsl -l -v` reads the start's distributions less `wsl-toolkit-muse`, which the operator removed; every throwaway, test directory and image copy removed; the user's SSH configuration byte for byte as found. No tag. Tree clean after the record commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| settle every decision only the operator can make, then work unattended | done first: every ruling written into its entry, `cf274eb` |
+| close issues 30, 32 and 33 properly, each entry driven, reviewed and closed with evidence | ⚠ **partly.** Issue 33 closed; `WSL-74` and `WSL-75` of issue 32 closed; `WSL-76`'s machinery built; issue 30 not started |
+| end with the gate, the record, a summary and a resume prompt, and cut `wsl-toolkit-v3.0.0` | the gate green, this record, and the resume prompt in chat; ⛔ the release not cut, because the ruling waits for the three issues to close |
+| checkpoint here and prepare a resume prompt | done |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. `WSL-81`'s one-vCPU runs come next,
+because `WSL-72`'s prove depends on a guest that does not panic.
+
+---
+
 ## 2026-09-13, the third session
 
 | row | before | after |
