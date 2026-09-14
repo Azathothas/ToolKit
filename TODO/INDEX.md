@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 115  open 10  blocked 0  done 105
+total 116  open 11  blocked 0  done 105
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 59 | 59 |
+| P1 | 1 | 0 | 59 | 60 |
 | P2 | 10 | 0 | 36 | 46 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **10** | **0** | **105** | **115** |
+| **all** | **11** | **0** | **105** | **116** |
 
 ---
 
@@ -118,6 +118,7 @@ total 115  open 10  blocked 0  done 105
 | WSL-78 | P2 | L | open | Muse from any Windows project, and a guide for someone who has never used a coding agent | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-79 | P1 | M | done | A BSD run pays two minutes before its first command, and a comment line ends its script early | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-80 | P1 | M | done | A throwaway command that has finished can leave `distro run` waiting forever | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-81 | P1 | M | open | A FreeBSD guest that panics mid-run leaves `bsd run` waiting out its budget | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -1874,6 +1874,51 @@
       "replace": "\treturn \"tar -xOf \" + device",
       "run": "TestTheJoinShapesRunWholeThroughTheGuestSteps",
       "args": []
+    },
+    {
+      "label": "bsd: the console reader says the console has closed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tdefer close(g.gone)\n",
+      "replace": "\t\tdefer func() {}()\n",
+      "run": "TestAGuestWhoseConsoleClosesIsNotWaitedOn",
+      "args": []
+    },
+    {
+      "label": "bsd: a command's wait ends when the console closes",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tcase <-g.gone:\n\t\t\t// ⚠ One more look.",
+      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\t// ⚠ One more look.",
+      "run": "TestAGuestWhoseConsoleClosesIsNotWaitedOn",
+      "args": []
+    },
+    {
+      "label": "bsd: the boot's wait ends when the console closes",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tcase <-g.gone:\n\t\t\ttext = g.seen()\n",
+      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\ttext = g.seen()\n",
+      "run": "TestAGuestWhoseConsoleClosesIsNotWaitedOn",
+      "args": []
+    },
+    {
+      "label": "bsd: a kernel panic ends a command's wait when it prints",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tif panicked := bsdKernelPanic(tail); panicked != \"\" {\n\t\t\treturn &guestGoneError{reason: \"the guest's kernel panicked: \" + panicked}\n\t\t}\n\t\tselect {\n",
+      "replace": "\t\tif panicked := \"\"; panicked != \"\" {\n\t\t\treturn &guestGoneError{reason: \"the guest's kernel panicked: \" + panicked}\n\t\t}\n\t\tselect {\n",
+      "run": "TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce",
+      "args": []
+    },
+    {
+      "label": "bsd: a kernel panic is told by the CPU line after it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "`(?m)^panic: [^\\r\\n]*\\r*\\ncpuid = [0-9]+`",
+      "replace": "`(?m)^panic: [^\\r\\n]*`",
+      "run": "TestAKernelPanicIsToldFromAProgramThatSaysPanic",
+      "args": []
     }
   ]
 }

@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -11,15 +12,121 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // bsdJoinShapes is issue 33's comment: a comment line, a blank line and a compound
 // command split across lines, each of which the typed join broke, ending in an exit
 // code that must be the script's own.
 const bsdJoinShapes = "echo a\n# note\n\nif true; then\necho b\nfi\nexit 3\n"
+
+// bsdPanicConsole is WSL-72's prove on 2026-09-14, from its last line of output to
+// the reboot notice, with the lines between cut. The serial console sends CRLF.
+const bsdPanicConsole = "bootstrap:   installing 6\r\n" +
+	"Fatal trap 12: page fault while in kernel mode\r\n" +
+	"cpuid = 1; apic id = 01\r\n" +
+	"fault virtual address\t= 0x18\r\n" +
+	"current process\t\t= 7 (dom0)\r\n" +
+	"trap number\t\t= 12\r\n" +
+	"panic: page fault\r\n" +
+	"cpuid = 1\r\n" +
+	"time = 1789360766\r\n" +
+	"KDB: stack backtrace:\r\n" +
+	"#5 0xffffffff81088f06 at pmap_ts_referenced+0x5a6\r\n" +
+	"#6 0xffffffff80f46778 at vm_pageout_worker+0xb18\r\n" +
+	"Uptime: 1m5s\r\n" +
+	"Automatic reboot in 15 seconds - press a key on the console to abort\r\n"
+
+// bsdNeverRE is a marker no child prints, so a wait on it ends only some other way.
+var bsdNeverRE = regexp.MustCompile(`TKNEVER [0-9]+`)
+
+// TestBsdGuestChild is the QEMU the guest cases start. It prints what a guest's
+// console would, then does what the case asks.
+func TestBsdGuestChild(t *testing.T) {
+	switch os.Getenv("TOOLKIT_BSD_CHILD") {
+	case "panic":
+		// ⚠ After the typed line arrives, as a panic during a command does. Printed
+		// sooner, it would sit before the position the command's wait reads from.
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		_, _ = os.Stdout.WriteString(bsdPanicConsole)
+		time.Sleep(60 * time.Second)
+	case "exit":
+		_, _ = os.Stdout.WriteString("Starting devd.\r\n")
+		os.Exit(3)
+	}
+}
+
+// startBsdGuestChild runs this test binary as the guest's QEMU.
+func startBsdGuestChild(t *testing.T, mode string) *guest {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TOOLKIT_BSD_CHILD", mode)
+	g, err := startGuest(context.Background(), self, []string{"-test.run=^TestBsdGuestChild$"}, t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(g.stop)
+	return g
+}
+
+// TestAKernelPanicIsToldFromAProgramThatSaysPanic holds WSL-81's shape: FreeBSD's
+// panic line followed by the CPU that took it, named with the trap before it, and
+// not a program's own line that starts the same way.
+func TestAKernelPanicIsToldFromAProgramThatSaysPanic(t *testing.T) {
+	want := "panic: page fault, after Fatal trap 12: page fault while in kernel mode"
+	if got := bsdKernelPanic(bsdPanicConsole); got != want {
+		t.Fatalf("the prove's console was answered %q, want %q", got, want)
+	}
+	goRuntime := "panic: runtime error: index out of range [3] with length 3\n\ngoroutine 1 [running]:\nmain.main()\n\t/work/main.go:5 +0x1d\nexit status 2\n"
+	if got := bsdKernelPanic(goRuntime); got != "" {
+		t.Fatalf("a Go program's panic in a payload's output was read as the guest's kernel: %q", got)
+	}
+}
+
+// TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce is WSL-81: a guest whose console
+// shows a panic, from a QEMU that has not exited yet, ends the command's wait with
+// the panic and the way back, rather than at the end of the budget.
+func TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce(t *testing.T) {
+	g := startBsdGuestChild(t, "panic")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	started := time.Now()
+	_, _, err := g.run(ctx, "true")
+	if err == nil || !strings.Contains(err.Error(), "kernel panicked: panic: page fault, after Fatal trap 12") ||
+		!strings.Contains(err.Error(), "bsd fetch --force") {
+		t.Fatalf("a panicked guest answered %v after %s", err, time.Since(started))
+	}
+	if waited := time.Since(started); waited > 15*time.Second {
+		t.Fatalf("the panic was named after %s, which is the budget and not the panic", waited)
+	}
+}
+
+// TestAGuestWhoseConsoleClosesIsNotWaitedOn is WSL-81: QEMU exiting ends the boot's
+// wait and a command's, rather than leaving both polling text that will not change.
+func TestAGuestWhoseConsoleClosesIsNotWaitedOn(t *testing.T) {
+	g := startBsdGuestChild(t, "exit")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	started := time.Now()
+	if failure, ok := g.waitBoot(ctx); ok || !strings.Contains(failure, "console closed before a login prompt, after: Starting devd.") {
+		t.Fatalf("a boot whose console closed answered (%q, %v) after %s", failure, ok, time.Since(started))
+	}
+	err := g.waitFrom(ctx, bsdNeverRE, 0)
+	var gone *guestGoneError
+	if !errors.As(err, &gone) || !strings.Contains(gone.reason, "console closed, after: Starting devd.") {
+		t.Fatalf("a command's wait on a closed console answered %v after %s", err, time.Since(started))
+	}
+	if waited := time.Since(started); waited > 15*time.Second {
+		t.Fatalf("a closed console was noticed after %s, which is the budget", waited)
+	}
+}
 
 // TestTheGuestBootsWithoutTheHyperVWait holds the three things WSL-79 measured into
 // the command line: the hypervisor bit hidden, which is what keeps FreeBSD's VMBus

@@ -6359,3 +6359,126 @@ red. The acceptance case that found the hang is the third check, in the full run
 ⭐ **The claim audit** is the correction above: the premise's mechanism was read from
 the standard library and a stack showed it false, and the approach's seam and
 regression shape moved with it.
+
+---
+
+## WSL-81. A FreeBSD guest that panics mid-run leaves `bsd run` waiting out its budget
+
+**Source** found on 2026-09-14 by `WSL-72`'s prove, run against `main` at `469e52a`.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`wsl-toolkit bsd run --network --timeout 25m -c '...'` exited 2 after 1500.2 s with
+`the guest did not finish the command within the budget`. The guest had panicked 65
+seconds after boot, and QEMU had exited soon after. The run spent the rest of its 25
+minutes waiting for console text from a process that no longer existed, and its
+message named a timeout, not the panic.
+
+The panic came in the middle of `pkg install`. The next boot stopped at `UNEXPECTED
+SOFT UPDATE INCONSISTENCY; RUN fsck MANUALLY` and asked for a single-user shell, so
+the shared image could not boot until `bsd fetch --force` restored it.
+
+## Premise
+
+⭐ **Measured on 2026-09-14**, the prove's console:
+
+```text
+bootstrap:   installing 6
+Fatal trap 12: page fault while in kernel mode
+current process		= 7 (dom0)
+panic: page fault
+cpuid = 1
+#5 0xffffffff81088f06 at pmap_ts_referenced+0x5a6
+#6 0xffffffff80f46778 at vm_pageout_worker+0xb18
+Uptime: 1m5s
+Dumping 277 out of 2009 MB:..6%..12%..24%..35%..41%..52%..64%..75%..81%..93%
+Automatic reboot in 15 seconds - press a key on the console to abort
+```
+
+- ⭐ **Read in `bsd.go`:** the goroutine `startGuest` starts to read the console
+  returns when QEMU closes it, and tells nobody. `waitFrom` and `waitBoot` poll the
+  text until a pattern matches or the context ends, so a guest that is gone costs
+  whatever is left of `--timeout`.
+- ⭐ **Read in `bsd.go`:** `bsdBootFailure` recognises a panic only while a run
+  waits for `login:`. After the login, nothing looks for one.
+- ⚠ **The panic is in the page daemon**, while `pkg` installed six packages into a
+  2048 MiB guest. The same payload exited 0 twice before it: the tree's
+  `bootstrap.sh` by `--script` on 2026-09-14 in 3m36s, and run B of `WSL-72`'s
+  amendment on 2026-09-13, before `WSL-79` changed the CPU model.
+- ⚠ **Not measured: whether `WSL-79`'s CPU model makes a panic likelier.** It hides
+  the hypervisor bit, CLFLUSH and CLFLUSHOPT from the guest. `WSL-72`'s amendment
+  records a kernel page fault at poweroff under the model before those flags, so
+  this image has panicked under WHPX without them.
+
+## Approach
+
+1. **A guest that has gone ends every wait at once.** The console reader closes a
+   channel when QEMU closes its console, and every wait selects on it.
+2. **A kernel panic ends a run's wait at once**, recognised by FreeBSD's own shape:
+   a line starting `panic: ` and, on the next line, `cpuid = `. ⛔ Not `panic: `
+   alone. A program's output can start a line that way, and Go's runtime does.
+3. **The error names what happened:** the panic line and the `Fatal trap` line
+   before it, or the console's last line when it closed. It also says that a panic
+   during writes can leave the image needing `bsd fetch --force`.
+4. **The panic rate is measured**, with the payload that panicked, on throwaway
+   copies of the published image: the CPU model `WSL-79` chose against the same
+   model with the hypervisor bit shown. If hiding the bit measures likelier to
+   panic, `WSL-79`'s choice is reopened here.
+
+## Consumers
+
+None by [`../docs/consumers.md`](../docs/consumers.md)'s definition. A run that
+waited out its budget and exited 2 naming a timeout exits 2 at once, naming the
+panic.
+
+## Prove
+
+Cases with no guest, through `startGuest`: a child that exits, and a child that
+prints the panic above and keeps running. Each must answer within seconds under a
+budget of minutes. Then the runs from step 4.
+
+Passing is:
+
+- both cases green on Windows and Linux, with a mutation row per rule red;
+- the runs recorded, each with its exit, wall time and panic, and a decision about
+  the CPU model written from them;
+- the shared image boots, and reads back its published packages.
+
+## Amendment, 2026-09-14: the waits end when the guest does
+
+⭐ **Built.** The console reader closes a channel when QEMU closes the console, and
+every wait selects on it. A command's wait also ends on a kernel panic, told by
+the `cpuid = ` line after the panic line, and the error names the panic, the trap
+before it and `bsd fetch --force`. A boot whose console closes answers with the last
+line it printed. A step that could not finish, such as the grow or the extract,
+names why instead of its first line of output.
+
+| case | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
+| --- | --- | --- |
+| `TestAKernelPanicIsToldFromAProgramThatSaysPanic` | pass | pass |
+| `TestAGuestWhoseKernelPanicsEndsTheCommandAtOnce` | pass, 0.66 s to 0.97 s in three runs | pass, 0.56 s |
+| `TestAGuestWhoseConsoleClosesIsNotWaitedOn` | pass, 0.03 s to 0.05 s in three runs | pass |
+
+⚠ **The panic case first held by timing.** Its child printed the panic as it
+started, which could land before the position the command's wait reads from. The
+child now prints it after the typed line arrives, as a panic during a command does.
+
+⭐ **Five mutation rows went red on Windows**: the reader closing the channel, a
+command's wait and the boot's wait selecting on it, the panic check in a command's
+wait, and the `cpuid = ` line in the panic shape.
+
+⭐ **The shared image is restored.** `bsd fetch --force` found its archive whole,
+checked the pinned digest and expanded it again in 84 s: the published 6,476,638,208
+bytes. `WSL-72`'s read-back eleven minutes before the panic found only the published
+packages and files on it, with its own additions removed, so the restore lost
+nothing another session had put there.
+
+### Still open
+
+1. The panic-rate runs from step 4, on throwaway copies, and the decision they
+   give about the CPU model.
+2. A run on the shared image that boots, grows it and reads back its packages.
+3. The three reviews, and the closing.

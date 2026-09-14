@@ -479,8 +479,12 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 	if err := g.send(ctx, "root"); err != nil {
 		return res, err
 	}
-	if !g.wait(ctx, bsdPromptRE) {
+	if err := g.wait(ctx, bsdPromptRE); err != nil {
 		res.Error = "the guest did not present a root shell"
+		var gone *guestGoneError
+		if errors.As(err, &gone) {
+			res.Error += ": " + gone.reason
+		}
 		res.Duration = time.Since(started)
 		return res, errors.New(res.Error)
 	}
@@ -489,7 +493,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 	// never meets a grown file with the old root still inside it.
 	growExit, growOut, err := g.run(ctx, bsdGrowRootScript)
 	if err != nil || growExit != 0 {
-		res.Error = fmt.Sprintf("the root filesystem did not grow to the %s disk (exit %d): %s", HumanBytes(disk), growExit, firstLine(growOut))
+		res.Error = fmt.Sprintf("the root filesystem did not grow to the %s disk (exit %d): %s", HumanBytes(disk), growExit, runDetail(growOut, err))
 		res.Duration = time.Since(started)
 		g.graceful = err == nil
 		return res, errors.New(res.Error)
@@ -502,7 +506,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (BsdResult, error) {
 
 	extract, runScript := bsdPayloadSteps(bsdPayloadDevice, "/tmp", strings.ToLower(token))
 	if code, out, err := g.run(ctx, extract); err != nil || code != 0 {
-		res.Error = fmt.Sprintf("the script did not come off its disk in the guest (exit %d): %s", code, firstLine(out))
+		res.Error = fmt.Sprintf("the script did not come off its disk in the guest (exit %d): %s", code, runDetail(out, err))
 		res.Duration = time.Since(started)
 		g.graceful = err == nil
 		return res, errors.New(res.Error)
@@ -561,6 +565,52 @@ type guest struct {
 	mu       sync.Mutex
 	text     strings.Builder
 	graceful bool
+	// gone is closed when QEMU closes its console, which is QEMU exiting.
+	gone chan struct{}
+}
+
+// guestGoneError is a wait that ended because the guest can no longer answer.
+type guestGoneError struct{ reason string }
+
+func (e *guestGoneError) Error() string { return e.reason }
+
+// bsdKernelPanicRE is a FreeBSD kernel panic as its console prints one: the panic
+// line, and the CPU that took it on the next.
+//
+// ⛔ NOT `panic: ` ALONE. A run's console carries the payload's own output, a
+// program can start a line that way, and Go's runtime does, with a goroutine dump
+// after it rather than a CPU number.
+var bsdKernelPanicRE = regexp.MustCompile(`(?m)^panic: [^\r\n]*\r*\ncpuid = [0-9]+`)
+
+var bsdFatalTrapRE = regexp.MustCompile(`(?m)^Fatal trap [0-9]+: [^\r\n]*`)
+
+// bsdKernelPanic answers the panic a console carries, with the trap that caused it
+// when the console shows one, or "".
+func bsdKernelPanic(console string) string {
+	loc := bsdKernelPanicRE.FindStringIndex(console)
+	if loc == nil {
+		return ""
+	}
+	line := console[loc[0]:loc[1]]
+	if i := strings.IndexAny(line, "\r\n"); i >= 0 {
+		line = line[:i]
+	}
+	line = strings.TrimSpace(line)
+	if traps := bsdFatalTrapRE.FindAllString(console[:loc[0]], -1); len(traps) > 0 {
+		return line + ", after " + strings.TrimSpace(traps[len(traps)-1])
+	}
+	return line
+}
+
+// lastConsoleLine answers the last line a console printed that is not blank.
+func lastConsoleLine(console string) string {
+	lines := strings.FieldsFunc(console, func(r rune) bool { return r == '\r' || r == '\n' })
+	for i := len(lines) - 1; i >= 0; i-- {
+		if line := strings.TrimSpace(lines[i]); line != "" {
+			return line
+		}
+	}
+	return ""
 }
 
 func startGuest(ctx context.Context, qemu string, args []string, workdir string, mirror io.Writer) (*guest, error) {
@@ -583,8 +633,13 @@ func startGuest(ctx context.Context, qemu string, args []string, workdir string,
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("starting the guest: %w", err)
 	}
-	g := &guest{cmd: cmd, in: in}
+	g := &guest{cmd: cmd, in: in, gone: make(chan struct{})}
 	go func() {
+		// ⛔ THE END OF THE CONSOLE IS SAID, NOT ONLY SEEN. This loop used to return
+		// at QEMU's exit and tell nobody, so every wait went on polling text that
+		// would never change: a guest that panicked 65 seconds in cost its run the
+		// remaining 23 minutes of a 25-minute budget. WSL-81.
+		defer close(g.gone)
 		buf := make([]byte, 8192)
 		for {
 			n, err := out.Read(buf)
@@ -611,8 +666,9 @@ func (g *guest) seen() string {
 	return g.text.String()
 }
 
-// wait pumps until a pattern matches anywhere, or the context ends.
-func (g *guest) wait(ctx context.Context, re *regexp.Regexp) bool {
+// wait pumps until a pattern matches anywhere, the guest is gone, or the context
+// ends.
+func (g *guest) wait(ctx context.Context, re *regexp.Regexp) error {
 	return g.waitFrom(ctx, re, 0)
 }
 
@@ -634,28 +690,57 @@ func (g *guest) waitBoot(ctx context.Context) (string, bool) {
 		select {
 		case <-ctx.Done():
 			return "", false
+		case <-g.gone:
+			text = g.seen()
+			if bsdLoginRE.MatchString(text) {
+				return "", true
+			}
+			if failure := bsdBootFailure(text); failure != "" {
+				return failure, false
+			}
+			return "the guest's console closed before a login prompt, after: " + lastConsoleLine(text), false
 		case <-tick.C:
 		}
 	}
 }
 
-// waitFrom waits for a match at or after a position in the stream.
+// waitFrom waits for a match at or after a position in the stream. It answers nil
+// on a match, a *guestGoneError when the guest can no longer answer, and the
+// context's error when the budget ends.
 //
 // ⛔ A POSITION, NOT A COUNT OF PROMPTS. Waiting for the prompt pattern anywhere
 // matches the prompt the command was TYPED at and returns immediately, so a
 // command that is still running reads as finished and its output is read as
 // somebody else's.
-func (g *guest) waitFrom(ctx context.Context, re *regexp.Regexp, from int) bool {
+//
+// ⛔ A PANICKED KERNEL ENDS THE WAIT WHEN IT PRINTS, NOT WHEN QEMU EXITS. FreeBSD
+// dumps its memory and waits 15 seconds before the reboot that stops QEMU, and
+// nothing typed afterwards reaches a shell. WSL-81.
+func (g *guest) waitFrom(ctx context.Context, re *regexp.Regexp, from int) error {
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		text := g.seen()
-		if from <= len(text) && re.MatchString(text[from:]) {
-			return true
+		tail := g.after(from)
+		if re.MatchString(tail) {
+			return nil
+		}
+		if panicked := bsdKernelPanic(tail); panicked != "" {
+			return &guestGoneError{reason: "the guest's kernel panicked: " + panicked}
 		}
 		select {
 		case <-ctx.Done():
-			return false
+			return ctx.Err()
+		case <-g.gone:
+			// ⚠ One more look. What the pattern waits for can arrive in the same
+			// read that ended the console.
+			tail = g.after(from)
+			if re.MatchString(tail) {
+				return nil
+			}
+			if panicked := bsdKernelPanic(tail); panicked != "" {
+				return &guestGoneError{reason: "the guest's kernel panicked: " + panicked}
+			}
+			return &guestGoneError{reason: "the guest's console closed, after: " + lastConsoleLine(g.seen())}
 		case <-tick.C:
 		}
 	}
@@ -747,7 +832,15 @@ func (g *guest) run(ctx context.Context, payload string) (int, string, error) {
 		return 0, "", err
 	}
 	doneRE := regexp.MustCompile(`(?m)^` + tail + ` ([0-9]+)\s*$`)
-	if !g.waitFrom(ctx, doneRE, before) {
+	if err := g.waitFrom(ctx, doneRE, before); err != nil {
+		var gone *guestGoneError
+		if errors.As(err, &gone) {
+			// ⚠ The advice is measured: a panic in the middle of `pkg install` left a
+			// root filesystem the next boot would not mount without a manual check.
+			return 0, cleanConsole(g.after(before)), fmt.Errorf("%s, before the command finished. "+
+				"A panic while the guest writes can leave its filesystem needing a check this tool cannot run; "+
+				"if the next run stops at a single-user shell, `wsl-toolkit bsd fetch --force` restores the published image", gone.reason)
+		}
 		return 0, cleanConsole(g.after(before)), errors.New("the guest did not finish the command within the budget")
 	}
 	chunk := g.after(before)
@@ -763,6 +856,15 @@ func (g *guest) run(ctx context.Context, payload string) (int, string, error) {
 		chunk = chunk[:i]
 	}
 	return code, cleanConsole(chunk), nil
+}
+
+// runDetail is what a failed step's error carries: why the step could not finish
+// when it did not, and otherwise the first line it printed.
+func runDetail(out string, err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	return firstLine(out)
 }
 
 // after returns the console text written since a position.
@@ -814,7 +916,7 @@ func (g *guest) stop() {
 	if g.graceful {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		if err := g.send(ctx, "poweroff"); err == nil {
-			g.waitFrom(ctx, bsdPoweredOffRE, 0)
+			_ = g.waitFrom(ctx, bsdPoweredOffRE, 0)
 		}
 		cancel()
 		select {

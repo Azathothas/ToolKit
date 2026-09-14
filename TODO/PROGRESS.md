@@ -8,10 +8,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-14T02:01:53Z; the record commit's own time is its end
 baseline        e73d7d5, tree clean
-entries         total 115  open 10  blocked 0  done 105
+entries         total 116  open 11  blocked 0  done 105
 closed          WSL-74 at ab4281c; WSL-80 and WSL-79 at 5e66e44; issue 33
-filed           WSL-80, found by the acceptance runner's baseline
-head            the WSL-72 build commit after 5e66e44
+filed           WSL-80, found by the acceptance runner's baseline; WSL-81, found by WSL-72's prove
+head            the WSL-81 build commit after 469e52a
 ```
 
 ## Active work
@@ -34,6 +34,8 @@ is closed, and the issue gets a comment naming the commits.
    and `cf274eb`.
 4. **`WSL-72`**: nim is linked and the 12 GiB default is measured. Its prove
    fetches `bootstrap.sh` from `main`, so it runs after the build commit is pushed.
+   ⛔ The first such run panicked the guest and left the image unbootable, so
+   **`WSL-81`** is inserted here, and `WSL-72`'s prove runs again after it.
 5. **`WSL-76`**, then **`WSL-75`**, **`WSL-77`** and **`WSL-78`**: issue 32, in
    that order, because the later ones use herdr and the grants.
 6. **Issue 30:** `WSL-67`'s open items, `WSL-68`, `WSL-70` and `WSL-71`.
@@ -85,7 +87,8 @@ carries all three as commands under "Build and local proof".
 | `cf274eb` | the operator's rulings written into `WSL-67`, `WSL-68`, `WSL-75` to `WSL-79` and this record |
 | `ab4281c` | `WSL-74` closed: a configuration naming another instance's distribution is refused by every command, `ready` included, with 6 mutation rows and 2 acceptance cases; `WSL-80` filed |
 | `5e66e44` | `WSL-80` closed: the relay's heartbeat can no longer keep a finished `distro run` waiting, and its acceptance case no longer depends on how ticks fall. `WSL-79` closed: the FreeBSD guest reaches a login in about 9 s rather than 115 s, and a script reaches it as a file on its own disk. 10 mutation rows. CI green, and issue 33 closed |
-| the WSL-72 build commit | `bootstrap.sh` links FreeBSD's `nim` onto `PATH`, and the guest's default disk is 12 GiB, the smallest measured to give a 10 GiB root |
+| `469e52a` | `bootstrap.sh` links FreeBSD's `nim` onto `PATH`, and the guest's default disk is 12 GiB, the smallest measured to give a 10 GiB root |
+| the WSL-81 build commit | `bsd run` ends a run when the guest's kernel panics or QEMU exits, rather than at the end of its budget. `WSL-81` filed and built, 5 mutation rows |
 
 ## Measurements
 
@@ -158,7 +161,13 @@ None. Every decision is ruled.
 - ⭐ **`wsl-toolkit-muse` is gone.** The operator ran `muse logout` in it and then
   `base remove --yes` on 2026-09-14, and `instances\muse` holds nothing.
 - herdr 0.9.0 is installed on Windows by the operator.
-- The shared FreeBSD pkgbase guest is a 12.0 GiB disk with a root of 11,138,540
-  KiB, grown for `WSL-72` by the ruling. After that entry's run it reads back 500
-  packages, all 499 `FreeBSD-*` present, an empty package cache and no script copy
-  in `/tmp`. The copies of the image made for `WSL-79` and `WSL-72` are deleted.
+- ⚠ **In use for `WSL-76`'s measurements, and removed when they end:** the throwaway
+  `wsl-toolkit-h76`; one marked `Host wsl-toolkit-h76` block at the top of
+  `%USERPROFILE%\.ssh\config`, whose key and known-hosts file are under this
+  repository's `.tmp`; and the `%APPDATA%\herdr` and `%LOCALAPPDATA%\herdr`
+  directories a local herdr session created, neither of which existed before.
+- The shared FreeBSD pkgbase guest is the published image again, 6,476,638,208
+  bytes, restored by `bsd fetch --force` after `WSL-72`'s prove panicked it into a
+  root filesystem that would not mount. The next `bsd run` grows it to 12 GiB. The
+  copies of the image made for `WSL-79` and `WSL-72` are deleted, and `WSL-81`'s
+  panic-rate runs use copies under this repository's `.tmp`.

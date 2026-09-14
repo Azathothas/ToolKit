@@ -220,6 +220,15 @@ status` prints the disk, and the run's last line prints both sizes.
 file cuts off the filesystem inside it, so a `--disk` smaller than the image is
 refused. `bsd fetch --force` goes back to the published image.
 
+⛔ **The guest kernel can panic, and a panic can leave the shared image unable to
+boot.** Measured on 2026-09-14: `bootstrap.sh --toolset languages` in a 2048 MiB
+guest panicked in the page daemon while `pkg` installed, and the next boot stopped
+at a filesystem check that needs a single-user shell. `bsd run` ends a run as soon
+as the console shows a kernel panic or QEMU exits, with exit 2 and the panic line,
+and a later boot that stops at that check is named as it happens. `bsd fetch
+--force` restores the published image. When the archive it keeps is whole, that is a
+digest check and an expansion, 84 s on this host, with no download.
+
 ⛔ **This reaches a BSD SHELL and not a BSD container endpoint.** A long-running
 `podman system service` inside the guest panics the guest kernel in `_umtx_op`.
 [`pkgforge-dev/docker-bsd`](https://github.com/pkgforge-dev/docker-bsd) carries
