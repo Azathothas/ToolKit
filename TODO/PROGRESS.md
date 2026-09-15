@@ -8,11 +8,11 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-15T06:16:51Z; the record commit's own time is its end
 baseline        53a8f1f, tree clean, doctor exit 0 in 27.79 s, gate 20 of 20 in 33.09 s
-head            8801301, CI run 34938687647 started on its push
+head            aecba49, pushed with 72655ee green in CI; the gate is 21 of 21 since
 entries         total 124  open 6  blocked 0  done 118
-closed          WSL-71 in 8801301
+closed          WSL-71 in 8801301 and WSL-67 in 72655ee
 partial         WSL-68, its door enumeration done and four items named
-partial         WSL-67, waiting on the two BSD downloads
+authored        WSL-88 and WSL-89, whose adapters are written and never run
 ```
 
 ## Active work

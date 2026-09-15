@@ -7,6 +7,60 @@ on what was true last time.
 
 ---
 
+## 2026-09-15, the BSD drives, the reference sweep, and a binary that carries its scripts
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-15T06:16:51Z | ended at the record commit's own time, about three hours and twenty minutes |
+| Commits | `53a8f1f`, clean `main`, its CI run 34934199765 green in all six jobs | `git log --oneline 53a8f1f..HEAD` reads **6**, each pushed with the previous one's CI green first |
+| Work | 6 open entries; `WSL-67` blocked on two downloads, `WSL-71` and `WSL-68` untouched | **Completed 2:** `WSL-71` and `WSL-67`. **Partial 1:** `WSL-68`, its door enumeration closed and four items named. **Authored 2:** `WSL-88` and `WSL-89`, whose adapters are written and never run. **Deferred 2:** `WSL-76` and `WSL-78`, the interactive session the operator reserved. **Failed 0.** Entries 122 to 124, open 6 to 6, done 116 to 118 |
+| Changes | 0 files changed from `53a8f1f` | `git diff --shortstat 53a8f1f` reads **57 files, +7,834 / -385**, one file deleted and eleven new |
+| Size | 87,866 text lines in 291 tracked files at `53a8f1f`, `git grep -I -c ''` | **95,315 in 308 files, +7,449** |
+| Checks | doctor exit 0 in 27.79 s; gate 20 of 20 in 33.09 s | ⭐ gate **21 of 21**, the new one being `shipped`; green before every commit. The Windows Go proof with the 8.3 `TEMP` **323 results, 304 passed, 19 skipped, 0 failed**; `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 clean over **45** tracked scripts, up from 34. **21 new mutation rows** proved, four of them in `golang:1.25` because they need a `dash` this host has not got; **10 defects planted by hand** in two shell files, each changing exactly one column |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation. ⭐ **1.25 GiB of BSD images, approved in chat and removed after use**, with about 6.5 GiB of images and overlays freed. Fourteen repositories cloned shallow for the sweep. Two full thirteen-image matrices, five `base ensure` builds, and roughly forty container runs |
+| Health | four distributions; `WSL-67` blocked for the fourth session | ⭐ `WSL-67` closed on a real NetBSD guest; three defects in a URL-fetched file fixed. ⛔ Recorded and not fixed: `/mnt/wsl` is shared and writable across every distribution, so a zero-grant base is not a sandbox, and the manual now says so. The same four distributions, no throwaway, no BSD image, the shared tmpfs as it was found, no tag, tree clean |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| `WSL-67`, once the downloads are approved | ⭐ **approved in chat after four sessions, and closed.** NetBSD 11.0 booted under QEMU drove **both** arms: `pkgin` and, with pkgin hidden, the base `pkg_add`. Three defects fixed, each invisible in the source. OpenBSD 7.9 was installed and booted; the operator then ruled that one driven system is enough |
+| then `WSL-71` | ⭐ done. A portable shell profile, the `--here` mark through `WSLENV`, and a `PATH` line that had never reached a bash login shell on this tool's own default base |
+| `WSL-68` | ⚠ **partial by design.** Approach step 1 is closed - every door attacked on a live zero-grant base - and it found one the entry did not list |
+| mine fourteen references for `WSL-76` and `WSL-78` | ⭐ done, with commits and **the trackers**. Recorded in `docs/reference-sweeps/` |
+| amend the stale documents | ⭐ done. The replaced multiplexer's page deleted, its links moved, and ten documents amended against what is now true |
+| collapse the examples | ⭐ the muse-code example went from **eleven commands and two files copied by hand to three commands**, because the tool already did the work the page described by hand |
+| our own herdr-muse plugin | ⭐ built, taking what the references got right and none of what they got wrong. Driven against a stub herdr; ⛔ never against a real herdr or a real Muse |
+| the pi and omp adapters | ⛔ **written, never run.** Both entries and the adapters README say so in those words |
+| resilience, no hardcoded values | ⭐ an adapter's version and digests move from the configuration, either alone refused; no adapter summary carries a version; the omp adapter refuses the directory collision before herdr does |
+| embed the scripts in the binary | ⭐ `shipped list/cat/write` and `base bootstrap`, with a `shipped` gate rule and a carried script that needs no `mktemp` |
+| leave the interactive test | ⭐ left. `WSL-76` and `WSL-78` name the first measurement each |
+
+### ⛔ What the reviews caught, and one of them was wrong in five places
+
+- ⛔ **`herdrdev/herdr#4176` is closed `not_planned`, not closed as fixed.** This
+  session had written "closed, so a later release carries the fix" and repeated it in
+  five files. It would have sent the next session to update herdr and read a green
+  result as proof the door worked. Corrected everywhere.
+- ⛔ **The muse probe never read its own reporter back**, while the pi and omp probes
+  both read theirs. Found by the door sweep; it now reports the reporter, runs its
+  self-test, and lists the events the settings register.
+- ⛔ **A carried script's temporary file needed `mktemp`**, which a base at
+  `toolset none` has not got, and the fallback would have been a predictable path
+  under `/tmp`. It reads from a file descriptor instead.
+- ⛔ **A mutation planter that planted nothing**, twice: `awk`'s `sub()` takes a
+  regular expression and the anchors were full of metacharacters, so five guards read
+  as doing nothing. Printing the unmutated row first is what made it legible.
+- ⛔ **A `TK_GROUP` added at the top of a script for a feature used at the bottom**
+  ended every path above it under `set -e`. Found by CI's Linux job, not by Windows.
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. `WSL-68`'s four remaining items, then the
+Muse and herdr session the operator reserved, which is attended and interactive.
+
+---
+
 ## 2026-09-15, the shell profile, and the doors a zero-grant base still has
 
 | row | before | after |
