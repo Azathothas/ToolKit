@@ -9449,3 +9449,154 @@ Passing is:
   paths and the variable**, and the refusal is a mutation row.
 
 ---
+
+## WSL-90. herdr built nightly from its development branch, published here, and followed by the herdr adapter
+
+**Source** the operator on 2026-09-15, "let's build herdr ourself (now locally for
+windows) and if it works, we will create a dedicated nightly builder for it on github
+and publish it on our repo", and the rulings they gave in chat the same day, below.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+The herdr the base pins, 0.9.0, cannot do two things this repository's herdr guide
+needs. Its Windows `--remote` client draws nothing until the window is focused and
+delivers no typed text and no prefix command, and it has no `--machine` prefix. herdr's
+development branch fixes the first and carries the second, and herdr publishes no
+build of that branch.
+
+## Premise
+
+⭐ **Measured on 2026-09-15**, with every number in `WSL-76`'s amendment of that date:
+
+- herdr's development branch at `052779c4159ed851` builds on this host for
+  `x86_64-pc-windows-msvc` in 227 s and for `x86_64-unknown-linux-musl` in 223.4 s.
+- Driven in a Windows pseudo console against the base's server, which is how herdr's
+  collaborator verified `#4038`: the 0.9.0 client drew nothing for 10 s and drew
+  after a focus-in, and ran no typed text and no new tab; the development client drew
+  at once, ran the typed text, made the tab, and detached. Every result was read from
+  the server.
+- The development client and server together answer `--machine base agent list` with
+  exit 0 in 1.3 s; the development client against a 0.9.0 server exits 1.
+- ⚠ A development build answers `herdr 0.9.0` to `--version`.
+
+⚠ **Read, not measured:** herdr's own release workflow at that commit builds Windows
+for `x86_64` only, and its `windows-arm64.yml` tests the `x86_64` binary under
+emulation; `packaging/windows/conpty.json` carries an `x86_64` bundle and no `aarch64`
+one. A native Windows `aarch64` herdr is not something upstream makes.
+
+⛔ **Read, and it decides the first task:** `LatestRelease` in
+`tools/windows/wsl-toolkit/internal/toolkit/release.go` reads the newest 30 releases
+and `Resolve-LatestTag` in `tools/windows/wsl-toolkit/consumer.ps1` lists 30. A nightly
+published every day would push every `wsl-toolkit-v*` release out of both windows, and
+every consumer's update check would answer that none was published.
+
+## Approach
+
+1. **The release lookups first.** `LatestRelease` reads every page it needs until a
+   `wsl-toolkit-v*` release that is not a prerelease appears, with a bounded page
+   count; `Resolve-LatestTag` excludes prereleases. A case over a release list whose
+   first hundred entries are nightlies, and a mutation row per ceiling.
+2. **`.github/workflows/herdr-build.yml`**, a reusable workflow that builds one herdr
+   ref for Windows `x86_64` and `aarch64` and Linux `x86_64` and `aarch64` musl, with
+   the Rust toolchain the ref's `rust-toolchain.toml` names and Zig checked against
+   the digest ziglang.org publishes, and packages the Windows builds with a ConPTY
+   bundle checked against the digests herdr pins. It publishes nothing.
+3. **`.github/workflows/herdr-nightly.yml`**, daily and by dispatch: resolve herdr's
+   development head, build it only when it moved and herdr's own CI passed on that
+   commit, write `SHA256SUMS` and `BUILD-INFO.json`, sign every file keyless as
+   `release.yml` does, publish a prerelease tagged `herdr-nightly-YYYYMMDD-SHA12`, and
+   keep the newest seven.
+4. **`release.yml`** builds herdr's newest stable tag through the same reusable
+   workflow and publishes those four files in each `wsl-toolkit-v*` release, covered
+   by its `SHA256SUMS` and signed with its identity.
+5. **The herdr adapter follows a channel.** `{"name": "herdr", "channel": "nightly"}`
+   resolves the newest nightly, and `install.sh` installs only a binary whose digest
+   matches that release's `SHA256SUMS`. A channel with a `version` or `sha256` beside
+   it is refused. On Windows the matching client is kept under the instance's state
+   directory and `base attach` prints its full path.
+6. **The documents**: `docs/AGENTS.md` section 1 and `TODO/RULES.md` name two published
+   things, and `docs/consumers.md`, the manual and `examples/common/herdr.md` say what
+   each channel installs.
+7. **The pseudo-console probe becomes a tracked acceptance script** for the Windows
+   client.
+
+⛔ **No patch to herdr's source, no version stamp inside a binary, no macOS build, no
+running server restarted by an ensure, and nothing sent to herdr's repository.**
+
+## Decision
+
+⭐ **Ruled by the operator on 2026-09-15:**
+
+1. **Publish from ToolKit, as prereleases**, over a separate repository and over local
+   builds only.
+2. **Targets:** "win x64/arm64 + Linux x64/arm64, also let us publish the last stable
+   herdr alongside our main stable release".
+3. **Adoption:** "Follow the newest nightly", over a pin by version and digest. ⚠ The
+   recommendation was the pin; the ruling is honoured by taking each digest from the
+   nightly's own `SHA256SUMS`, which proves transport and not authorship, and the
+   manual says so.
+4. **Implemented in the session that authored it**, "Approve, implement now", which
+   sets aside `docs/methodology/authoring.md`'s rule that the two are separate sessions.
+
+## Consumers
+
+- ⚠ **The release channel is a consumer contract.** A `herdr-nightly-*` tag is always
+  a prerelease and never matches `wsl-toolkit-v*`; approach step 1 removes the window
+  that would hide a `wsl-toolkit` release; the stable herdr files a `wsl-toolkit`
+  release gains are additive, and `consumer.ps1` already verifies every file
+  `SHA256SUMS` names.
+- `scripts/common/bootstrap.sh` and every other fetched file: none.
+
+## Prove
+
+```powershell
+go -C tools/windows/wsl-toolkit test -count=1 -run 'TestTheNewestReleaseIsFoundBehindAnyNumberOfNightlies' ./internal/toolkit/
+gh workflow run herdr-nightly.yml --repo Azathothas/ToolKit
+gh release view TAG --repo Azathothas/ToolKit --json isPrerelease,assets
+wsl-toolkit --instance base base ensure
+wsl-toolkit --instance base base attach
+```
+
+Passing is:
+
+- the case passes, and goes red with either ceiling put back;
+- a dispatched run publishes a prerelease carrying the four builds, `SHA256SUMS`,
+  `BUILD-INFO.json` and a bundle for each, and a downloaded copy passes `sha256sum -c`
+  and `cosign verify-blob` against `herdr-nightly.yml`'s identity;
+- with `"channel": "nightly"`, `base ensure` exits 0 and installs a server whose digest
+  is the nightly's; the client `base attach` prints answers `--machine base agent list`
+  with exit 0;
+- the pseudo-console probe passes its four signals with the nightly's Windows client;
+- the gate is green and `check-record.sh` agrees.
+
+## Amendment, 2026-09-15: steps 1 to 4 and 6 written, and step 1 proved
+
+⭐ **Step 1 is proved.** `LatestRelease` reads a hundred releases a page until it finds
+this tool's, stopping at a short page or after ten.
+`TestTheNewestReleaseIsFoundBehindAnyNumberOfNightlies` puts 150 nightlies, a
+prerelease and a draft of this tool in front of `wsl-toolkit-v3.1.0` and reads it on
+the second page; `TestAListWithNoReleaseOfThisToolEndsAndSaysSo` ends a list of
+nightlies after two pages with the refusal. **3 mutation rows, and `repo mutate --only
+release:` 7 of 7 guards proved on Windows in 26.2 s.** `consumer.ps1` lists releases
+with `--exclude-pre-releases`, which measured `wsl-toolkit-v2.0.2` first against this
+repository on 2026-09-15. ⚠ `consumer.ps1` has no case harness, so its half has no
+mutation row; the weekly release smoke drives it.
+
+⛔ **Steps 2 to 4 are WRITTEN AND NOT RUN**: `herdr-build.yml`, `herdr-nightly.yml`,
+and the stable herdr jobs in `release.yml`. They parse, and their actions are pinned
+to commits resolved on 2026-09-15. Read in herdr's source while writing them:
+
+- `app_local_conpty_path` in `vendor/portable-pty/src/win/psuedocon.rs` loads the
+  bundled ConPTY only when the architecture is `x86_64`, with the bundle's three
+  digests compiled in, so the `aarch64` zip carries `herdr.exe` and its licence;
+- `vendor/libghostty-vt/build.zig.zon` asks for Zig 0.15.2 at `v0.9.0` and 0.16.0 on
+  the development branch, and both are pinned by the digests ziglang.org's download
+  index published on 2026-09-15.
+
+Step 6 is written in `docs/AGENTS.md` section 1, `TODO/RULES.md`, `docs/consumers.md`
+and the maintainers' README.
+
+---

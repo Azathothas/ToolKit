@@ -21,6 +21,26 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T11:46:43Z: herdr gets a builder here, and this tool's release lookup stops reading one page
+
+**Record:** `WSL-90` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), filed and
+approved on 2026-09-15.
+**Deployed:** no deploy, and no tag. No nightly has run.
+**Closes:** nothing.
+
+⭐ **The operator ruled that this repository builds and publishes herdr.** Two
+workflows are written and not yet run: `herdr-build.yml` builds one herdr ref for
+Windows `x86_64` and `aarch64` and Linux `x86_64` and `aarch64`, and
+`herdr-nightly.yml` publishes herdr's development branch as a signed prerelease when it
+moved and herdr's own CI passed, keeping seven. `release.yml` now also builds herdr's
+newest stable release into each `wsl-toolkit` release. `docs/AGENTS.md` names two
+published things.
+
+⛔ **`wsl-toolkit`'s update check read one page of thirty releases**, so daily nightlies
+would soon have hidden every `wsl-toolkit` release from it. It reads as many pages as
+it takes, with two cases and three mutation rows, and the consumer smoke lists releases
+without prereleases.
+
 ### 2026-09-15T11:16:41Z: Muse's herdr reporter meets a real herdr, and herdr's unreleased pages leave the router
 
 **Record:** the amendments of 2026-09-15 to `WSL-76` and `WSL-78` in

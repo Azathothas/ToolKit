@@ -20,14 +20,17 @@ repository that needs it. It is worked on by one operator across many hosts and
 shells, so a tool states which hosts it runs on and fails with a message on the
 ones it does not.
 
-⭐ **One thing is published from here, and exactly one.** The `wsl-toolkit` tool
-is cut as a GitHub release on a `wsl-toolkit-v*` tag. It carries the native
-executable for two Windows architectures, `SHA256SUMS`, and one
-`.cosign.bundle` per published file.
+⭐ **Two things are published from here, and only two.** The `wsl-toolkit` tool is
+cut as a GitHub release on a `wsl-toolkit-v*` tag, carrying the native executable
+for two Windows architectures, herdr's newest stable release built for four
+targets, `SHA256SUMS`, and one `.cosign.bundle` per published file. herdr's
+development branch is published as a nightly prerelease on a `herdr-nightly-*`
+tag by [`../.github/workflows/herdr-nightly.yml`](../.github/workflows/herdr-nightly.yml),
+by the operator's ruling of 2026-09-15.
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
 is how the compiled half is built.
 
-⛔ **Nothing else is.** No image, no package, no second release train. The BSD
+⛔ **Nothing else is.** No image, no package, no third release train. The BSD
 container images this tree once referred to are built by `pkgforge-dev/docker-bsd`.
 
 ⭐ **What makes this different from an ordinary project is one thing.** A file

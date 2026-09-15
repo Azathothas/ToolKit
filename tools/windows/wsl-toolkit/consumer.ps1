@@ -215,7 +215,9 @@ function Resolve-LatestTag {
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $out = & $gh.Source 'release' 'list' '--repo' $Repo '--limit' '30' '--json' 'tagName' 2>&1
+        # Prereleases are excluded before the limit applies: this repository publishes herdr's
+        # nightly builds as prereleases, and thirty of them would hide every wsl-toolkit release.
+        $out = & $gh.Source 'release' 'list' '--repo' $Repo '--exclude-pre-releases' '--limit' '30' '--json' 'tagName' 2>&1
         $code = $LASTEXITCODE
     }
     finally { $ErrorActionPreference = $prev }

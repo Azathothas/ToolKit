@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-15T10:20:32Z; the record commit's own time is its end
 baseline        6f22e39, tree clean, doctor exit 0 in 39.71 s, gate 21 of 21 in 33.81 s
 head            6f22e39, pushed with its CI run 34955394330 green in all six jobs
-entries         total 124  open 6  blocked 0  done 118
+entries         total 125  open 7  blocked 0  done 118
 this session    WSL-76 and WSL-78 partial, the attended Muse and herdr session
 ```
 
@@ -37,20 +37,26 @@ rows, and the full lifecycle, a `wait --until working` and resume adoption are m
 in a pane of the base.
 
 ⭐ **herdr is built here from its development branch, by the operator's instruction**,
-for Windows and for Linux, and neither is installed anywhere. The development client
-has `--machine` and refuses a 0.9.0 server. ⛔ **Publishing such a build contradicts
-`docs/AGENTS.md` section 1**, and is the operator's ruling to make.
+and **`WSL-90` carries it forward**: approved, filed, and implemented in this session by
+the operator's rulings 12 to 15. Driven in a Windows pseudo console against the base,
+the development client passes every signal `#4176` names and 0.9.0 fails three; with
+the development server swapped into `wsl-toolkit-base`, `--machine base agent list`
+answers exit 0. Its release-lookup step is proved; its workflows are written and not
+run.
 
 **Resume, in this order:**
 
-1. **The operator's three steps**, which nothing else here can stand in for: the six
-   `--remote` signals in Windows Terminal with the 0.9.0 client and with
-   `.tmp\herdr-master-052779c4\herdr.exe`; where the development Linux server goes; and
+1. **`WSL-90`'s first nightly**: dispatch `herdr-nightly.yml`, read every job, and fix
+   what the runners find, `windows-11-arm` first; then the adapter's `nightly` channel,
+   the Windows client under the instance's state directory, and the probe as a tracked
+   script.
+2. **The operator's two steps**, which nothing else here can stand in for: the six
+   `--remote` signals in a real Windows Terminal window with the development client, and
    `muse login` in `base shell`.
-2. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
+3. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
    `PermissionRequest` from a real turn, then the guide.
-3. `WSL-68`'s four remaining items, listed in its own entry.
-4. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
+4. `WSL-68`'s four remaining items, listed in its own entry.
+5. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
    RUN**.
 
 ## The work order, set by the operator on 2026-09-14
@@ -117,6 +123,18 @@ is closed, and the issue gets a comment naming the commits.
     operator asked in the same message to be asked only for what actually needs them,
     which is why the drive-sweep race found while proving it is recorded under "Found,
     and not filed" rather than proposed as an entry.
+12. **2026-09-15: herdr is built here.** "let's build herdr ourself (now locally for
+    windows) and if it works, we will create a dedicated nightly builder for it on
+    github and publish it on our repo". In `WSL-90`.
+13. **2026-09-15: herdr builds are published from ToolKit, as prereleases**, which
+    amends `docs/AGENTS.md` section 1's one published thing to two; for Windows
+    `x86_64` and `aarch64` and Linux `x86_64` and `aarch64`; and the newest stable herdr
+    is published inside each `wsl-toolkit` release. In `WSL-90`.
+14. **2026-09-15: the herdr adapter may follow the newest nightly**, over the
+    recommended pin by version and digest. In `WSL-90`.
+15. **2026-09-15: `WSL-90` approved and implemented in the session that authored it**,
+    and the development herdr server swapped into `wsl-toolkit-base` for the
+    `--machine` measurement.
 
 ## Before every push
 
@@ -430,14 +448,13 @@ ruling this repository's own rules require, a download, a credential, or Windows
 software. Four are open, each asked in chat on 2026-09-15:
 
 1. **`muse login`**, the credential, in `wsl-toolkit --instance base base shell`.
-2. **The six `--remote` signals in Windows Terminal**, with the 0.9.0 client and with
-   the development build: a window and a keyboard nobody here has.
-3. **Where the development Linux server runs for `--machine`**: swapped into
-   `wsl-toolkit-base`, which the recommendation names because its server holds nothing,
-   or into a throwaway base.
-4. ⛔ **Whether this repository publishes herdr builds**, which `docs/AGENTS.md`
-   section 1 forbids today. It is the operator's ruling, in an entry of its own, once
-   the builds are shown to work.
+2. **The six `--remote` signals in a real Windows Terminal window**, with the
+   development client: a pseudo console measured all four input signals, and only a
+   real window carries a real focus event.
+
+Answered on 2026-09-15 and recorded as rulings 13 to 15: whether herdr builds are
+published here, the targets, how the adapter takes a nightly, and where the
+development server ran for `--machine`.
 
 ## Host state
 
@@ -460,6 +477,15 @@ software. Four are open, each asked in chat on 2026-09-15:
   for. `.tmp\herdr` holds herdr's source at `052779c4159ed851` and its Windows build
   tree; `.tmp\herdr-master-052779c4` and `.tmp\herdr-linux-052779c4` hold the two built
   binaries.
+- ⚠ **`wsl-toolkit-base` runs herdr's development server**, SHA-256 `978fde51…9827d75`,
+  swapped in by the operator's ruling 15 with the pinned 0.9.0 kept beside it at
+  `/usr/local/bin/herdr-0.9.0-pinned`; the next `base ensure` puts the pinned digest
+  back. Its server holds the workspace `w2`.
+- ⚠ **Running herdr's Windows clients in a pseudo console created
+  `%APPDATA%\herdr`**, which did not exist: a 19-byte `config.toml` reading
+  `onboarding = false`, written by the development client, and `herdr-client.log`. Kept
+  so the operator's own `--remote` test is not met by the onboarding overlay that
+  swallowed the probe's keys.
 - The shared `/mnt/wsl` was not written to this session.
 - ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
   `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and

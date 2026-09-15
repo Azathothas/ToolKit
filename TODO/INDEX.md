@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 124  open 6  blocked 0  done 118
+total 125  open 7  blocked 0  done 118
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 65 | 65 |
-| P2 | 6 | 0 | 43 | 49 |
+| P2 | 7 | 0 | 43 | 50 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **6** | **0** | **118** | **124** |
+| **all** | **7** | **0** | **118** | **125** |
 
 ---
 
@@ -127,6 +127,7 @@ total 124  open 6  blocked 0  done 118
 | WSL-87 | P1 | S | done | bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-88 | P2 | M | open | The pi adapter, and herdr's first lifecycle authority in this base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-89 | P2 | M | open | The omp adapter, and the directory collision herdr refuses | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-90 | P2 | L | open | herdr built nightly from its development branch, published here, and followed by the herdr adapter | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

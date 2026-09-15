@@ -20,7 +20,7 @@ where it is checked.
 | fact | value | where it is read from |
 | --- | --- | --- |
 | repository | `Azathothas/ToolKit`, public, 0BSD | `gh api repos/Azathothas/ToolKit` |
-| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: from `wsl-toolkit-v3.0.0`, the executable for two Windows architectures, `SHA256SUMS`, and one `.cosign.bundle` per published file. Nothing else. ⚠ Every earlier release also carries `wsl-toolkit.ps1` and `launcher.ps1` | `gh release view TAG --repo Azathothas/ToolKit --json assets` |
+| what it publishes | the `wsl-toolkit` tool, as a GitHub release on a `wsl-toolkit-v*` tag: from `wsl-toolkit-v3.0.0`, the executable for two Windows architectures, herdr's newest stable release built for four targets, `SHA256SUMS`, and one `.cosign.bundle` per published file. ⚠ Every earlier release also carries `wsl-toolkit.ps1` and `launcher.ps1`. And herdr's development branch, as a nightly prerelease on a `herdr-nightly-*` tag, the newest seven kept, by the operator's ruling of 2026-09-15. Nothing else | `gh release view TAG --repo Azathothas/ToolKit --json assets` |
 | work model | todo | [`../docs/methodology/work-todo.md`](../docs/methodology/work-todo.md) |
 | push policy | commit and push, to this remote only, on `main` | [`../docs/conventions/git.md`](../docs/conventions/git.md) section 2 |
 | `main` | protected. One approving review, three required status checks, linear history. Force push and deletion refused. Admin bypass is on. | `gh api repos/Azathothas/ToolKit/branches/main/protection` |

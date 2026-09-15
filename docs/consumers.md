@@ -61,7 +61,7 @@ BSD images that ToolKit names. It is not a consumer row.
 ⛔ **The PowerShell product, its launcher and `wsl-toolkit script` are
 deleted.** A raw fetch of any file under `scripts/windows/wsl-toolkit/` at a
 later commit returns 404, a commit before the deletion still serves it, and
-every release from `wsl-toolkit-v3.0.0` publishes only the executables. The
+every release from `wsl-toolkit-v3.0.0` publishes the executables and no script. The
 `distro` and `hostaddress` commands carry what the product did.
 [`HISTORY/consumers.md`](HISTORY/consumers.md) keeps the pin-state table this
 page carried for it.
@@ -91,8 +91,18 @@ A release carries:
 
 - `wsl-toolkit-windows-amd64.exe`
 - `wsl-toolkit-windows-arm64.exe`
+- from `wsl-toolkit-v3.0.0`, herdr's newest stable release built by this repository:
+  `herdr-VERSION-windows-x86_64.zip`, `herdr-VERSION-windows-aarch64.zip`,
+  `herdr-VERSION-linux-x86_64` and `herdr-VERSION-linux-aarch64`
 - `SHA256SUMS`
 - one `<asset>.cosign.bundle` per file above
+
+⭐ **herdr's development branch is published separately, as a nightly prerelease** on a
+`herdr-nightly-YYYYMMDD-SHA12` tag, with the same four builds, `BUILD-INFO.json` naming
+the herdr commit, `SHA256SUMS`, and a bundle per file that verifies against
+`.github/workflows/herdr-nightly.yml`. The newest seven are kept. ⛔ A nightly is always
+a prerelease and never a `wsl-toolkit-v*` tag, so a lookup for this tool's releases
+skips it.
 
 Use an immutable `wsl-toolkit-v*` release. Download the executable matching the
 host architecture and `SHA256SUMS`, verify the executable's SHA-256, then

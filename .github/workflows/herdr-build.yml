@@ -1,0 +1,302 @@
+# Build one herdr ref for the four targets this repository publishes. It publishes nothing.
+#
+# ⭐ ONE DEFINITION, TWO CALLERS. herdr-nightly.yml builds herdr's development head with
+# it, and release.yml builds herdr's newest stable tag with it, so a nightly and a stable
+# herdr are made by the same steps. WSL-90.
+#
+# ⛔ NOTHING IN herdr's SOURCE IS CHANGED, and no version is stamped into the binary. A
+# build of the development branch answers `herdr 0.9.0` to --version; its identity is the
+# commit the caller records and the digest of the file.
+#
+# ⛔ EVERY DOWNLOAD IS CHECKED BEFORE IT RUNS. Zig against a digest pinned here for the
+# version the ref asks for, and the ConPTY package against the digest herdr pins, by
+# herdr's own packaging script. A ref asking for a Zig this file pins no digest for is
+# refused rather than fetched unchecked.
+#
+# ⚠ WINDOWS aarch64 IS NOT A TARGET herdr's OWN RELEASE BUILDS. Its source loads the
+# bundled ConPTY only when the architecture is x86_64 and uses Windows' own ConPTY
+# otherwise, so that zip carries herdr.exe and its licence and no bundle.
+#
+# ⛔ Third-party actions are pinned to a COMMIT, for the reason ci.yml states.
+
+name: herdr-build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: the herdr commit or tag to build
+        required: true
+        type: string
+      label:
+        description: the stem every asset name starts with, such as herdr or herdr-0.9.0
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: the herdr commit or tag to build
+        required: true
+      label:
+        description: the stem every asset name starts with
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: herdr ${{ inputs.label }} for ${{ matrix.asset }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-pc-windows-msvc
+            os: windows-2022
+            asset: windows-x86_64.zip
+          - target: aarch64-pc-windows-msvc
+            os: windows-11-arm
+            asset: windows-aarch64.zip
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-24.04
+            asset: linux-x86_64
+          - target: aarch64-unknown-linux-musl
+            os: ubuntu-24.04-arm
+            asset: linux-aarch64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      TARGET: ${{ matrix.target }}
+      ASSET: ${{ inputs.label }}-${{ matrix.asset }}
+      LIBGHOSTTY_VT_OPTIMIZE: ReleaseFast
+      LIBGHOSTTY_VT_SIMD: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: herdrdev/herdr
+          ref: ${{ inputs.ref }}
+          path: herdr
+          persist-credentials: false
+
+      - name: the label is an asset name
+        shell: bash
+        run: |
+          set -eu
+          case "$ASSET" in
+            *[!A-Za-z0-9._-]*|'') echo "the label makes '$ASSET', which is not an asset name" >&2; exit 1 ;;
+          esac
+
+      # ⛔ THE VERSION COMES FROM THE REF, AND ITS DIGEST FROM HERE. Measured on 2026-09-15:
+      # herdr v0.9.0 asks for Zig 0.15.2 and the development branch for 0.16.0, each read
+      # from vendor/libghostty-vt/build.zig.zon. Digests read from ziglang.org's download
+      # index on 2026-09-15.
+      - name: Zig for Linux, checked against its pinned digest
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          want=$(sed -n 's/^[[:space:]]*\.minimum_zig_version = "\([0-9.]*\)",$/\1/p' herdr/vendor/libghostty-vt/build.zig.zon)
+          arch=$(uname -m)
+          case "$want-$arch" in
+            0.16.0-x86_64)  ZIG_PINNED_SHA256=70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00 ;;
+            0.16.0-aarch64) ZIG_PINNED_SHA256=ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17 ;;
+            0.15.2-x86_64)  ZIG_PINNED_SHA256=02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239 ;;
+            0.15.2-aarch64) ZIG_PINNED_SHA256=958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f ;;
+            *) echo "herdr at this ref asks for Zig '$want' on $arch, and this workflow pins no digest for it" >&2; exit 1 ;;
+          esac
+          curl --proto '=https' --tlsv1.2 -fsSL "https://ziglang.org/download/$want/zig-$arch-linux-$want.tar.xz" -o "$RUNNER_TEMP/zig.tar.xz"
+          got=$(sha256sum "$RUNNER_TEMP/zig.tar.xz" | cut -d' ' -f1)
+          if [ "$got" != "$ZIG_PINNED_SHA256" ]; then
+            echo "Zig $want for $arch digests $got, and the pinned digest is $ZIG_PINNED_SHA256" >&2
+            exit 1
+          fi
+          tar -xJf "$RUNNER_TEMP/zig.tar.xz" -C "$RUNNER_TEMP"
+          echo "ZIG=$RUNNER_TEMP/zig-$arch-linux-$want/zig" >> "$GITHUB_ENV"
+          echo "ZIG_VERSION=$want" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/zig-$arch-linux-$want/zig" version
+
+      - name: Zig for Windows, checked against its pinned digest
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zon = [IO.File]::ReadAllText('herdr\vendor\libghostty-vt\build.zig.zon')
+          $m = [regex]::Match($zon, '(?m)^\s*\.minimum_zig_version = "([0-9.]+)",\s*$')
+          if (-not $m.Success) { Write-Output 'build.zig.zon names no minimum_zig_version'; exit 1 }
+          $want = $m.Groups[1].Value
+          $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+          $ZIG_0_16_0_X86_64_PINNED_SHA256 = '68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e'
+          $ZIG_0_16_0_AARCH64_PINNED_SHA256 = 'aee38316ee4111717900f45dd3130145c39289e105541d737eb8c5ed653c78ef'
+          $ZIG_0_15_2_X86_64_PINNED_SHA256 = '3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7ddedc3cc14cb0c'
+          $ZIG_0_15_2_AARCH64_PINNED_SHA256 = 'b926465f8872bf983422257cd9ec248bb2b270996fbe8d57872cca13b56fc370'
+          $pins = @{
+            '0.16.0-x86_64'  = $ZIG_0_16_0_X86_64_PINNED_SHA256
+            '0.16.0-aarch64' = $ZIG_0_16_0_AARCH64_PINNED_SHA256
+            '0.15.2-x86_64'  = $ZIG_0_15_2_X86_64_PINNED_SHA256
+            '0.15.2-aarch64' = $ZIG_0_15_2_AARCH64_PINNED_SHA256
+          }
+          $ZIG_PINNED_SHA256 = $pins["$want-$arch"]
+          if (-not $ZIG_PINNED_SHA256) { Write-Output "herdr at this ref asks for Zig '$want' on $arch, and this workflow pins no digest for it"; exit 1 }
+          $zip = Join-Path $env:RUNNER_TEMP 'zig.zip'
+          Invoke-WebRequest -UseBasicParsing -Uri "https://ziglang.org/download/$want/zig-$arch-windows-$want.zip" -OutFile $zip
+          $got = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($got -ne $ZIG_PINNED_SHA256) { Write-Output "Zig $want for $arch digests $got, and the pinned digest is $ZIG_PINNED_SHA256"; exit 1 }
+          Expand-Archive -LiteralPath $zip -DestinationPath $env:RUNNER_TEMP
+          $zig = Join-Path $env:RUNNER_TEMP "zig-$arch-windows-$want\zig.exe"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "ZIG=$zig"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "ZIG_VERSION=$want"
+          & $zig version
+
+      # ⭐ THE TOOLCHAIN THE REF NAMES, not the runner's. rustup is installed first where
+      # the image has none, from the file rustup publishes with its own digest beside it.
+      - name: Rust for Linux, the toolchain the ref names
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' herdr/rust-toolchain.toml)
+          [ -n "$channel" ] || { echo "herdr's rust-toolchain.toml names no channel" >&2; exit 1; }
+          if ! command -v rustup >/dev/null 2>&1; then
+            host="$(uname -m)-unknown-linux-gnu"
+            curl --proto '=https' --tlsv1.2 -fsSL "https://static.rust-lang.org/rustup/dist/$host/rustup-init" -o "$RUNNER_TEMP/rustup-init"
+            curl --proto '=https' --tlsv1.2 -fsSL "https://static.rust-lang.org/rustup/dist/$host/rustup-init.sha256" -o "$RUNNER_TEMP/rustup-init.sha256"
+            want=$(cut -d' ' -f1 "$RUNNER_TEMP/rustup-init.sha256")
+            got=$(sha256sum "$RUNNER_TEMP/rustup-init" | cut -d' ' -f1)
+            [ "$got" = "$want" ] || { echo "rustup-init digests $got, and rustup published $want" >&2; exit 1; }
+            chmod 0755 "$RUNNER_TEMP/rustup-init"
+            "$RUNNER_TEMP/rustup-init" -y --no-modify-path --profile minimal --default-toolchain none
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          rustup toolchain install "$channel" --profile minimal --target "$TARGET" --component clippy --component rustfmt --no-self-update
+          echo "RUST_CHANNEL=$channel" >> "$GITHUB_ENV"
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq musl-tools cmake ninja-build xz-utils
+
+      - name: Rust for Windows, the toolchain the ref names
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $toml = [IO.File]::ReadAllText('herdr\rust-toolchain.toml')
+          $m = [regex]::Match($toml, '(?m)^channel = "([^"]+)"\s*$')
+          if (-not $m.Success) { Write-Output "herdr's rust-toolchain.toml names no channel"; exit 1 }
+          $channel = $m.Groups[1].Value
+          if (-not (Get-Command rustup -CommandType Application -ErrorAction SilentlyContinue)) {
+            $hostTriple = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64-pc-windows-msvc' } else { 'x86_64-pc-windows-msvc' }
+            $init = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
+            Invoke-WebRequest -UseBasicParsing -Uri "https://static.rust-lang.org/rustup/dist/$hostTriple/rustup-init.exe" -OutFile $init
+            $want = ((Invoke-WebRequest -UseBasicParsing -Uri "https://static.rust-lang.org/rustup/dist/$hostTriple/rustup-init.exe.sha256").Content.Trim() -split '\s+')[0].ToLowerInvariant()
+            $got = (Get-FileHash -LiteralPath $init -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($got -ne $want) { Write-Output "rustup-init.exe digests $got, and rustup published $want"; exit 1 }
+            & $init -y --no-modify-path --profile minimal --default-toolchain none
+            if ($LASTEXITCODE -ne 0) { Write-Output "rustup-init exited $LASTEXITCODE"; exit 1 }
+            $cargoBin = Join-Path $env:USERPROFILE '.cargo\bin'
+            Add-Content -LiteralPath $env:GITHUB_PATH -Value $cargoBin
+            $env:PATH = "$cargoBin;$env:PATH"
+          }
+          & rustup toolchain install $channel --profile minimal --target $env:TARGET --component clippy --component rustfmt --no-self-update
+          if ($LASTEXITCODE -ne 0) { Write-Output "rustup exited $LASTEXITCODE"; exit 1 }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "RUST_CHANNEL=$channel"
+
+      - name: build for Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        working-directory: herdr
+        run: |
+          set -eu
+          cargo build --release --locked --target "$TARGET"
+
+      # ⚠ UNDER POWERSHELL, as herdr's own release job builds it. Git Bash puts a coreutils
+      # link.exe on PATH, and the build must reach the MSVC linker.
+      - name: build for Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: herdr
+        run: |
+          & cargo build --release --locked --target $env:TARGET
+          if ($LASTEXITCODE -ne 0) { Write-Output "cargo build exited $LASTEXITCODE"; exit 1 }
+
+      # ⛔ THE BINARY RUNS BEFORE IT IS PACKAGED. Each runner is the architecture it built
+      # for, so a build that cannot start is caught here and not by the first person who
+      # downloads it.
+      - name: the Linux binary starts and names itself herdr
+        if: runner.os == 'Linux'
+        shell: bash
+        working-directory: herdr
+        run: |
+          set -eu
+          answer=$("target/$TARGET/release/herdr" --version)
+          case "$answer" in
+            'herdr '*) echo "$answer" ;;
+            *) echo "the binary answered '$answer' to --version" >&2; exit 1 ;;
+          esac
+
+      - name: the Windows binary starts and names itself herdr
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: herdr
+        run: |
+          $answer = (& ".\target\$env:TARGET\release\herdr.exe" --version | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $answer.StartsWith('herdr ')) { Write-Output "the binary exited $LASTEXITCODE and answered '$answer' to --version"; exit 1 }
+          Write-Output $answer
+
+      - name: package for Linux
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p "$RUNNER_TEMP/out"
+          cp "herdr/target/$TARGET/release/herdr" "$RUNNER_TEMP/out/$ASSET"
+          chmod 0755 "$RUNNER_TEMP/out/$ASSET"
+
+      # ⭐ herdr's OWN PACKAGER for x86_64: it fetches the ConPTY package, refuses a digest
+      # other than the one herdr pins, verifies the NuGet signature and each file's
+      # Authenticode signature, and lays the bundle out as the binary checks it at start.
+      - name: package for Windows x86_64 with herdr's ConPTY bundle
+        if: runner.os == 'Windows' && matrix.target == 'x86_64-pc-windows-msvc'
+        shell: pwsh
+        working-directory: herdr
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = Join-Path $env:RUNNER_TEMP 'out'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          .\scripts\package_windows_conpty.ps1 `
+            -HerdrExe "target\$env:TARGET\release\herdr.exe" `
+            -PackagePath (Join-Path $env:RUNNER_TEMP 'Microsoft.Windows.Console.ConPTY.nupkg') `
+            -StageDir (Join-Path $env:RUNNER_TEMP 'stage') `
+            -OutputPath (Join-Path $out $env:ASSET)
+
+      - name: package for Windows aarch64, which uses Windows' own ConPTY
+        if: runner.os == 'Windows' && matrix.target == 'aarch64-pc-windows-msvc'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP 'stage'
+          $out = Join-Path $env:RUNNER_TEMP 'out'
+          New-Item -ItemType Directory -Force -Path $stage, $out | Out-Null
+          Copy-Item -LiteralPath "herdr\target\$env:TARGET\release\herdr.exe" -Destination $stage
+          Copy-Item -LiteralPath 'herdr\LICENSE' -Destination $stage
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          [IO.Compression.ZipFile]::CreateFromDirectory($stage, (Join-Path $out $env:ASSET))
+
+      - name: what was built
+        shell: bash
+        run: |
+          set -eu
+          count=$(find "$RUNNER_TEMP/out" -maxdepth 1 -type f | wc -l)
+          [ "$count" = 1 ] || { echo "the build left $count files, and it makes one" >&2; exit 1; }
+          ls -l "$RUNNER_TEMP/out"
+          printf '{"asset":"%s","target":"%s","runner":"%s","rust":"%s","zig":"%s"}\n' \
+            "$ASSET" "$TARGET" "$RUNNER_NAME_IMAGE" "$RUST_CHANNEL" "$ZIG_VERSION" > "$RUNNER_TEMP/buildinfo-$ASSET.json"
+        env:
+          RUNNER_NAME_IMAGE: ${{ matrix.os }}
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: herdr-build-${{ inputs.label }}-${{ matrix.asset }}
+          path: |
+            ${{ runner.temp }}/out/
+            ${{ runner.temp }}/buildinfo-*.json
+          if-no-files-found: error
+          retention-days: 3

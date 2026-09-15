@@ -68,57 +68,92 @@ type Release struct {
 	Assets  map[string]string
 }
 
+// releaseAPI is the GitHub API the release list is read from. A case points it at a
+// local server; nothing else sets it.
+var releaseAPI = "https://api.github.com"
+
+// releaseListPage is how many releases one request asks for, the API's largest page.
+const releaseListPage = 100
+
+// releaseListPages bounds how far back the list is read. ⚠ A BOUND, NOT A WINDOW
+// OF CONCERN: it exists so a list that never contains this tool's release ends
+// within UpdateCheckTimeout, and at a hundred releases a page it reaches a thousand.
+const releaseListPages = 10
+
 // LatestRelease resolves the newest `wsl-toolkit-v*` release.
 //
 // ⭐ IT USES THE PUBLIC API AND NO CLIENT. `gh` is not required, because the
 // machine this runs on is a consumer's rather than a developer's.
+//
+// ⛔ IT READS AS MANY PAGES AS IT TAKES. This repository also publishes herdr's
+// nightly builds as prereleases, and a lookup that read one page of thirty would
+// stop seeing this tool's newest release once thirty nightlies stood in front of
+// it, and answer every consumer that none was published. WSL-90.
 func LatestRelease(ctx context.Context) (Release, error) {
 	var rel Release
 	bounded, cancel := context.WithTimeout(ctx, UpdateCheckTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(bounded, http.MethodGet,
-		"https://api.github.com/repos/"+ReleaseRepo+"/releases?per_page=30", nil)
+	for page := 1; page <= releaseListPages; page++ {
+		list, err := releaseListPageAt(bounded, page)
+		if err != nil {
+			return rel, err
+		}
+		for _, r := range list {
+			if r.Draft || r.Prerelease || !strings.HasPrefix(r.TagName, ReleaseTagPrefix) {
+				continue
+			}
+			// ⚠ THE FIRST MATCH, because the API returns newest first. Comparing
+			// version strings ourselves would mean writing a version comparator for
+			// a list that is already ordered by the thing that published it.
+			rel.Tag = r.TagName
+			rel.Version = strings.TrimPrefix(r.TagName, ReleaseTagPrefix)
+			rel.Assets = map[string]string{}
+			for _, a := range r.Assets {
+				rel.Assets[a.Name] = a.URL
+			}
+			return rel, nil
+		}
+		// A short page is the end of the list.
+		if len(list) < releaseListPage {
+			break
+		}
+	}
+	return rel, fmt.Errorf("no %s* release was published", ReleaseTagPrefix)
+}
+
+// releaseEntry is the part of one listed release this tool reads.
+type releaseEntry struct {
+	TagName    string `json:"tag_name"`
+	Draft      bool   `json:"draft"`
+	Prerelease bool   `json:"prerelease"`
+	Assets     []struct {
+		Name string `json:"name"`
+		URL  string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
+// releaseListPageAt reads one page of the repository's releases, newest first.
+func releaseListPageAt(ctx context.Context, page int) ([]releaseEntry, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		releaseAPI+"/repos/"+ReleaseRepo+"/releases?per_page="+strconv.Itoa(releaseListPage)+"&page="+strconv.Itoa(page), nil)
 	if err != nil {
-		return rel, err
+		return nil, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "wsl-toolkit")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return rel, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return rel, fmt.Errorf("the release list answered %s", resp.Status)
+		return nil, fmt.Errorf("the release list answered %s", resp.Status)
 	}
-	var list []struct {
-		TagName    string `json:"tag_name"`
-		Draft      bool   `json:"draft"`
-		Prerelease bool   `json:"prerelease"`
-		Assets     []struct {
-			Name string `json:"name"`
-			URL  string `json:"browser_download_url"`
-		} `json:"assets"`
+	var list []releaseEntry
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&list); err != nil {
+		return nil, err
 	}
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 4<<20)).Decode(&list); err != nil {
-		return rel, err
-	}
-	for _, r := range list {
-		if r.Draft || r.Prerelease || !strings.HasPrefix(r.TagName, ReleaseTagPrefix) {
-			continue
-		}
-		// ⚠ THE FIRST MATCH, because the API returns newest first. Comparing
-		// version strings ourselves would mean writing a version comparator for
-		// a list that is already ordered by the thing that published it.
-		rel.Tag = r.TagName
-		rel.Version = strings.TrimPrefix(r.TagName, ReleaseTagPrefix)
-		rel.Assets = map[string]string{}
-		for _, a := range r.Assets {
-			rel.Assets[a.Name] = a.URL
-		}
-		return rel, nil
-	}
-	return rel, fmt.Errorf("no %s* release was published", ReleaseTagPrefix)
+	return list, nil
 }
 
 // CheckUpdate answers whether a newer release exists.

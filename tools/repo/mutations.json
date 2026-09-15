@@ -1129,6 +1129,33 @@
       "args": []
     },
     {
+      "label": "release: the lookup reads past its first page",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/release.go",
+      "find": "\tfor page := 1; page <= releaseListPages; page++ {\n",
+      "replace": "\tfor page := 1; page <= 1; page++ {\n",
+      "run": "TestTheNewestReleaseIsFoundBehindAnyNumberOfNightlies",
+      "args": []
+    },
+    {
+      "label": "release: a prerelease is not this tool's release",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/release.go",
+      "find": "\t\t\tif r.Draft || r.Prerelease || !strings.HasPrefix(r.TagName, ReleaseTagPrefix) {\n",
+      "replace": "\t\t\tif r.Draft || !strings.HasPrefix(r.TagName, ReleaseTagPrefix) {\n",
+      "run": "TestTheNewestReleaseIsFoundBehindAnyNumberOfNightlies",
+      "args": []
+    },
+    {
+      "label": "release: a short page ends the lookup",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/release.go",
+      "find": "\t\tif len(list) < releaseListPage {\n\t\t\tbreak\n\t\t}\n",
+      "replace": "",
+      "run": "TestAListWithNoReleaseOfThisToolEndsAndSaysSo",
+      "args": []
+    },
+    {
       "label": "a gate skip printed as a skip",
       "module": "tools/check",
       "file": "main.go",

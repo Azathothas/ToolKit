@@ -1,0 +1,188 @@
+# Publish herdr's development branch as a nightly prerelease of this repository.
+#
+# ⭐ WHY THIS REPOSITORY BUILDS SOMEBODY ELSE'S PROGRAM. The herdr the base pins, 0.9.0,
+# has a Windows --remote client that draws nothing until focused and delivers no typed
+# text, and has no --machine; herdr's development branch fixes the first and carries
+# the second, and herdr publishes no build of it. Ruled by the operator on 2026-09-15.
+# WSL-90.
+#
+# ⛔ A NIGHTLY IS ALWAYS A PRERELEASE AND ITS TAG NEVER STARTS wsl-toolkit-v, so nothing
+# that looks for this tool's own releases can take one for them.
+#
+# ⛔ NOTHING IS BUILT FROM A COMMIT herdr's OWN CI DID NOT PASS, and nothing is built
+# twice: a commit that already has a nightly is left alone.
+#
+# ⚠ THE DIGESTS PROVE TRANSPORT, THE SIGNATURES AUTHORSHIP. SHA256SUMS ships beside the
+# files it covers; each file's keyless bundle is tied to this workflow's identity, which
+# nothing outside this repository can mint, as release.yml's are to that one.
+#
+# ⛔ Third-party actions are pinned to a COMMIT, for the reason ci.yml states.
+
+name: herdr-nightly
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: herdr-nightly
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: herdr's development head, its CI, and whether it is published
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.head.outputs.sha }}
+      tag: ${{ steps.head.outputs.tag }}
+      build: ${{ steps.head.outputs.build }}
+    steps:
+      - id: head
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          sha=$(gh api repos/herdrdev/herdr/commits/master --jq .sha)
+          case "$sha" in
+            *[!0-9a-f]*|'') echo "herdr's development head answered '$sha'" >&2; exit 1 ;;
+          esac
+          [ "${#sha}" = 40 ] || { echo "herdr's development head answered '$sha'" >&2; exit 1; }
+          short=$(printf '%s' "$sha" | cut -c1-12)
+          ci=$(gh api "repos/herdrdev/herdr/actions/runs?head_sha=$sha&event=push&per_page=50" \
+            --jq '[.workflow_runs[] | select(.name == "CI")] | first | .conclusion // "none"')
+          published=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq "[.[] | select(.tag_name | startswith(\"herdr-nightly-\") and endswith(\"-$short\")) | .tag_name] | first // \"\"")
+          build=true
+          if [ "$ci" != success ]; then
+            build=false
+            echo "::notice::herdr's CI on $short concluded '$ci', so nothing is built"
+          fi
+          if [ -n "$published" ]; then
+            build=false
+            echo "::notice::$published already carries $short"
+          fi
+          tag="herdr-nightly-$(date -u +%Y%m%d)-$short"
+          echo "herdr $sha, CI $ci, published '${published}', build $build, tag $tag"
+          {
+            echo "sha=$sha"
+            echo "tag=$tag"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: build
+    needs: resolve
+    if: needs.resolve.outputs.build == 'true'
+    uses: ./.github/workflows/herdr-build.yml
+    with:
+      ref: ${{ needs.resolve.outputs.sha }}
+      label: herdr
+
+  publish:
+    name: sign and publish the nightly
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # ⛔ Raised for this job alone, as release.yml raises its publish job: contents:write
+    # publishes and prunes, id-token:write mints the token cosign signs with.
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+      HERDR_SHA: ${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: herdr-build-herdr-*
+          path: artifacts
+          merge-multiple: true
+
+      # ⛔ THE COUNT IS ASSERTED, as release.yml asserts its own. A nightly missing a
+      # target would otherwise look complete.
+      - name: stage the four builds, BUILD-INFO.json and SHA256SUMS
+        shell: bash
+        run: |
+          set -eu
+          mkdir -p dist
+          for name in herdr-windows-x86_64.zip herdr-windows-aarch64.zip herdr-linux-x86_64 herdr-linux-aarch64; do
+            [ -f "artifacts/out/$name" ] || { echo "artifacts/out/$name was not built" >&2; exit 1; }
+            cp "artifacts/out/$name" "dist/$name"
+          done
+          infos=$(find artifacts -maxdepth 1 -name 'buildinfo-*.json' | sort)
+          [ "$(printf '%s\n' "$infos" | grep -c .)" = 4 ] || { echo "expected 4 build records" >&2; exit 1; }
+          jq -n --arg sha "$HERDR_SHA" --arg tag "$TAG" \
+            --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --slurpfile builds <(cat $infos) \
+            '{schema: "herdr-nightly-build/1", tag: $tag, herdr: {repository: "herdrdev/herdr", commit: $sha}, run: $run, builds: $builds}' \
+            > dist/BUILD-INFO.json
+          (cd dist && sha256sum -- * > SHA256SUMS)
+          cat dist/SHA256SUMS
+          [ "$(grep -c . dist/SHA256SUMS)" = 5 ] || { echo "SHA256SUMS covers $(grep -c . dist/SHA256SUMS) files and must cover 5" >&2; exit 1; }
+
+      # ⚠ THE COSIGN VERSION IS PINNED, as release.yml and release-smoke.yml pin theirs.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+
+      - name: sign every file, then verify each against this workflow's identity
+        shell: bash
+        env:
+          IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/herdr-nightly.yml@${{ github.ref }}
+        run: |
+          set -eu
+          files=$(cd dist && ls -1)
+          [ "$(printf '%s\n' "$files" | grep -c .)" = 6 ] || { echo "expected 6 files to sign" >&2; exit 1; }
+          for name in $files; do
+            cosign sign-blob --yes --bundle "dist/$name.cosign.bundle" "dist/$name"
+          done
+          for name in $files; do
+            [ -s "dist/$name.cosign.bundle" ] || { echo "dist/$name.cosign.bundle is missing or empty" >&2; exit 1; }
+            cosign verify-blob --bundle "dist/$name.cosign.bundle" \
+              --certificate-identity "$IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "dist/$name"
+          done
+
+      - name: publish the prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          {
+            echo "An unofficial build of [herdrdev/herdr](https://github.com/herdrdev/herdr) at"
+            echo "[\`$HERDR_SHA\`](https://github.com/herdrdev/herdr/commit/$HERDR_SHA), made by"
+            echo "[\`herdr-nightly.yml\`](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/.github/workflows/herdr-nightly.yml)"
+            echo "from herdr's development branch with no change to its source. Its \`--version\` does"
+            echo "not name the commit; \`BUILD-INFO.json\` and the digests do."
+            echo
+            echo "herdr is licensed under Apache-2.0; each Windows zip carries its licence."
+          } > notes.md
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --prerelease \
+            --title "$TAG" --notes-file notes.md --target "$GITHUB_SHA"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,assets \
+            --jq '"prerelease \(.isPrerelease), \(.assets | length) assets"'
+
+      # ⛔ KEEP THE NEWEST SEVEN, and nothing but a herdr-nightly- tag is ever deleted.
+      - name: keep the newest seven nightlies
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          old=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            --jq '[.[] | select(.prerelease and (.tag_name | startswith("herdr-nightly-")))] | sort_by(.created_at) | reverse | .[7:] | .[].tag_name')
+          for tag in $old; do
+            case "$tag" in
+              herdr-nightly-*) gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag ;;
+              *) echo "refusing to delete '$tag'" >&2; exit 1 ;;
+            esac
+          done
+          echo "pruned: ${old:-nothing}"

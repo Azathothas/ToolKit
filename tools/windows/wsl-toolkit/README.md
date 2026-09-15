@@ -140,9 +140,16 @@ the release. [`release-smoke.yml`](../../../.github/workflows/release-smoke.yml)
 downloads that release into a temporary directory and drives it as a consumer,
 and does it again weekly against whichever release is the latest.
 
-Only Windows binaries are published because the operational commands drive
+The executables are Windows only because the operational commands drive
 `wsl.exe`. The module still builds and tests on Linux so host-dependent path
 logic is caught before release.
+
+⭐ **The release also carries herdr's newest stable release**, which
+[`herdr-build.yml`](../../../.github/workflows/herdr-build.yml) builds for Windows
+`x86_64` and `aarch64` and Linux `x86_64` and `aarch64`, and `release.yml` covers with
+its `SHA256SUMS` and signs. The same workflow builds herdr's development branch for
+[`herdr-nightly.yml`](../../../.github/workflows/herdr-nightly.yml), which publishes a
+prerelease on a `herdr-nightly-*` tag and keeps the newest seven. `WSL-90`.
 
 ## Related
 

@@ -26,8 +26,43 @@ permissions:
   contents: read
 
 jobs:
+  # ⭐ herdr's NEWEST STABLE RELEASE IS PUBLISHED INSIDE EACH wsl-toolkit RELEASE, by the
+  # operator's ruling of 2026-09-15, built by the same workflow that builds the nightly
+  # and signed below with this workflow's identity. WSL-90.
+  herdr-stable-ref:
+    name: herdr's newest stable release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.ref.outputs.tag }}
+      label: ${{ steps.ref.outputs.label }}
+    steps:
+      - id: ref
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag=$(gh api repos/herdrdev/herdr/releases/latest --jq .tag_name)
+          if ! printf '%s\n' "$tag" | grep -Eqx 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "herdr's newest stable release is tagged '$tag', which is not vMAJOR.MINOR.PATCH" >&2
+            exit 1
+          fi
+          echo "herdr's newest stable release: $tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "label=herdr-${tag#v}" >> "$GITHUB_OUTPUT"
+
+  herdr-stable:
+    name: herdr's newest stable release, built
+    needs: herdr-stable-ref
+    uses: ./.github/workflows/herdr-build.yml
+    with:
+      ref: ${{ needs.herdr-stable-ref.outputs.tag }}
+      label: ${{ needs.herdr-stable-ref.outputs.label }}
+
   publish:
     name: publish wsl-toolkit
+    needs: [herdr-stable-ref, herdr-stable]
     runs-on: windows-latest
     timeout-minutes: 20
     # ⛔ Raised for this job alone. Every other job in this repository reads.
@@ -76,6 +111,12 @@ jobs:
         shell: bash
         run: sh scripts/common/check-go.sh
 
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: herdr-build-${{ needs.herdr-stable-ref.outputs.label }}-*
+          path: herdr-artifacts
+          merge-multiple: true
+
       # ⭐ THE DIGESTS ARE COMPUTED OVER THE BYTES THAT ARE UPLOADED, in this
       # checkout, so a consumer verifying a download against SHA256SUMS is
       # checking the same object. A digest computed anywhere else would be a
@@ -87,6 +128,8 @@ jobs:
       # every build unique and that property unavailable.
       - name: stage the assets and write SHA256SUMS
         shell: pwsh
+        env:
+          HERDR_LABEL: ${{ needs.herdr-stable-ref.outputs.label }}
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           Push-Location tools\windows\wsl-toolkit
@@ -97,10 +140,16 @@ jobs:
             if ($LASTEXITCODE -ne 0) { Write-Output "the $arch build failed"; exit 1 }
           }
           Pop-Location
+          $herdr = @('windows-x86_64.zip', 'windows-aarch64.zip', 'linux-x86_64', 'linux-aarch64') | ForEach-Object { "$env:HERDR_LABEL-$_" }
+          foreach ($name in $herdr) {
+            $built = Join-Path 'herdr-artifacts\out' $name
+            if (-not (Test-Path -LiteralPath $built)) { Write-Output "$built was not built"; exit 1 }
+            Copy-Item -LiteralPath $built -Destination (Join-Path 'dist' $name)
+          }
           # ⛔ THE COUNT IS ASSERTED. A staging step that produced fewer assets
           # than expected and exited 0 would publish a release missing the thing
           # a consumer came for, and the release would look complete.
-          $expected = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
+          $expected = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe') + $herdr
           foreach ($name in $expected) {
             if (-not (Test-Path -LiteralPath "dist\$name")) { Write-Output "dist\$name was not staged"; exit 1 }
           }
@@ -153,7 +202,7 @@ jobs:
         shell: pwsh
         run: |
           $assets = @(Get-ChildItem dist -File | Sort-Object Name | ForEach-Object { $_.Name })
-          if ($assets.Count -ne 3) { Write-Output "expected 3 assets to sign and found $($assets.Count)"; exit 1 }
+          if ($assets.Count -ne 7) { Write-Output "expected 7 assets to sign and found $($assets.Count)"; exit 1 }
           foreach ($name in $assets) {
             & cosign sign-blob --yes --bundle "dist\$name.cosign.bundle" "dist\$name"
             if ($LASTEXITCODE -ne 0) { Write-Output "signing $name exited $LASTEXITCODE"; exit 1 }
@@ -178,7 +227,7 @@ jobs:
           IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
         run: |
           $assets = @(Get-ChildItem dist -File -Filter '*.cosign.bundle' | ForEach-Object { $_.Name -replace '\.cosign\.bundle$', '' })
-          if ($assets.Count -ne 3) { Write-Output "expected 3 bundles and found $($assets.Count)"; exit 1 }
+          if ($assets.Count -ne 7) { Write-Output "expected 7 bundles and found $($assets.Count)"; exit 1 }
           foreach ($name in $assets) {
             & cosign verify-blob `
               --bundle "dist\$name.cosign.bundle" `
