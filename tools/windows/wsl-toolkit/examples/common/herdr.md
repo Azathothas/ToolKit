@@ -77,6 +77,11 @@ so a prompt carrying quotes or a dollar sign is not read by any shell.
 | `herdr --machine base agent list` | ⛔ exit 2, `unknown option: --machine`. 0.9.0 has no such prefix |
 | a build of herdr's development branch, `--machine base agent list`, against the 0.9.0 server | exit 1, `remote Herdr does not support machine API forwarding` |
 | `herdr machine add wsl-toolkit-base --label base` | exit 0 in 2.7 s. It saved the profile in `%LOCALAPPDATA%\herdr\client\endpoints.json`, installed nothing in the base, started no second server, and created a workspace on a server that had none |
+| a development build on both sides, `--machine base agent list` | exit 0 in 1.3 s, with no terminal UI open |
+
+⭐ **`--machine` needs a development build on both sides.** Set the base's herdr adapter
+to `"channel": "nightly"`, as the manual's herdr adapter section says, and `base attach`
+prints the Windows client of the build the base runs.
 
 ⚠ **A saved machine is for herdr's own multi-machine sidebar**, which herdr's 0.9.0
 pages call not yet verified or supported on a Windows client. Remove one with

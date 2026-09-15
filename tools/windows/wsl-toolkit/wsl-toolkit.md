@@ -281,6 +281,24 @@ the guide for the operator and for an agent.
 | twelve minutes with nothing attached | the base stayed running |
 | prefix then x, then prefix then shift+x, in two sessions made alike | herdr's own keys closed a pane, then a tab, each at once with no question; the tracked file closed nothing |
 
+⭐ **`"channel": "nightly"` makes the herdr adapter follow this repository's herdr
+nightlies** instead of the release it pins:
+
+```json
+"adapters": [{ "name": "herdr", "channel": "nightly" }]
+```
+
+`base ensure` resolves the newest `herdr-nightly-*` prerelease, installs its Linux build
+only when the digest matches the one that nightly's `SHA256SUMS` publishes, and writes
+the Windows client of the same build to `herdr\TAG\herdr.exe` under the instance's state
+directory. `base attach` then prints that client, which is the one with `--machine`, and
+`base remove` takes it away. ⚠ **A nightly's digest proves transport, not authorship**:
+`SHA256SUMS` ships beside the files it covers, and the keyless bundle beside each file,
+which verifies against `herdr-nightly.yml`, is not checked by this tool. ⛔ A channel
+beside a `version` or `sha256` is refused. ⚠ `base ensure` never restarts a running
+server, so a newer build serves nothing until the server next starts; `base status
+--probe` reports it as `server-binary-stale`, with the installed `release` and `sha256`.
+
 ⭐ **`muse` installs Muse Code for the base's account, and runs Meta's installer only
 while its digest is approved.** `base ensure` saves the installer Meta serves, prints
 its length and SHA-256, and runs it as the account when that digest is the one the

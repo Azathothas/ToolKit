@@ -9599,4 +9599,41 @@ to commits resolved on 2026-09-15. Read in herdr's source while writing them:
 Step 6 is written in `docs/AGENTS.md` section 1, `TODO/RULES.md`, `docs/consumers.md`
 and the maintainers' README.
 
+## Amendment, 2026-09-15: the build matrix's first run, and step 5 written
+
+⭐ **`herdr-build.yml` dispatched by hand, twice, publishing nothing**: run
+`34965359315` for the development head `052779c4159ed851` and run `34965362191` for
+`v0.9.0`.
+
+| ref, the Zig it asks for | Windows x86_64 | Windows aarch64 | Linux x86_64 | Linux aarch64 |
+| --- | --- | --- | --- | --- |
+| development head, 0.16.0 | ✅ | ❌ `zig build` exited `0xc0000005` | ✅ | ✅ |
+| `v0.9.0`, 0.15.2 | ❌ Zig's build runner asserted `!std.fs.path.isAbsolute(child_cwd_rel)` in `Run.zig:662` | ✅ | ✅ | ✅ |
+
+Both fixes are in `herdr-build.yml` and **not yet re-run**: a Windows job puts Zig's
+global and local caches under the runner's temporary directory, on the checkout's
+drive, where `windows-2022` otherwise leaves the global cache on `C:` beside a checkout
+on `D:`; and Zig 0.16.0 on a Windows Arm host runs as its `x86_64` build under
+emulation. ⚠ The first is a reading of the assertion, not yet a measurement.
+
+⭐ **Step 5 is written and proved in the suite.** `{"name": "herdr", "channel":
+"nightly"}`: the host half resolves the newest nightly and hands `install.sh` its tag,
+the two Linux digests from its `SHA256SUMS` and its download base; `install.sh` accepts
+only a GitHub release download base beside a version and records the release it
+installed; `probe.sh` reports `release`, `sha256` and `server-binary-stale`; the host
+half writes the matching Windows client under the instance's state directory only over
+a matching digest and a zip whose entries resolve inside it, removes older ones, and
+names a base whose machine holds none; `base attach` prints that client.
+
+- 4 cases: `TestAChannelIsHerdrsAloneAndNeverBesideAPin`,
+  `TestTheNightlyChannelInstallsWhatTheNewestNightlyPublished`,
+  `TestTheWindowsClientIsWrittenOnlyOverAMatchingDigest` and
+  `TestTheNightlyChannelReachesInstallThroughTheHostHalf`, each passing unmutated.
+- **5 mutation rows, and the `attach` row moved to its new line: `repo mutate` 6 of 6
+  guards proved on Windows.**
+- ⚠ While writing the rows, the zip guard was found to be two checks for one
+  condition, a `..` test and `ResolveInside`, so removing either left the case green;
+  the `..` test is gone and `ResolveInside` is the containment.
+- ⛔ **Not driven**: no nightly is published yet, so no base has followed the channel.
+
 ---

@@ -2518,9 +2518,54 @@
       "label": "attach: the Windows line uses the server's keys",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_base_attach.go",
-      "find": "\t\tWindows:      \"herdr --remote \" + alias + \" --remote-keybindings server\",\n",
-      "replace": "\t\tWindows:      \"herdr --remote \" + alias,\n",
+      "find": "\t\tWindows:      client + \" --remote \" + alias + \" --remote-keybindings server\",\n",
+      "replace": "\t\tWindows:      client + \" --remote \" + alias,\n",
       "run": "TestTheAttachLineUsesTheServersKeys",
+      "args": []
+    },
+    {
+      "label": "adapters: a channel beside a version pin is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\t\tif a.Version != \"\" || len(a.SHA256) > 0 {\n\t\t\t\treturn fmt.Errorf(\"base.adapters[%d] gives %q a channel and a version pin",
+      "replace": "\t\t\tif false {\n\t\t\t\treturn fmt.Errorf(\"base.adapters[%d] gives %q a channel and a version pin",
+      "run": "TestAChannelIsHerdrsAloneAndNeverBesideAPin",
+      "args": []
+    },
+    {
+      "label": "herdr nightly: only a prerelease with a nightly's tag is followed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/herdr_nightly.go",
+      "find": "\t\t\tif r.Draft || !r.Prerelease || !herdrNightlyTagRE.MatchString(r.TagName) {\n",
+      "replace": "\t\t\tif r.Draft || !herdrNightlyTagRE.MatchString(r.TagName) {\n",
+      "run": "TestTheNightlyChannelInstallsWhatTheNewestNightlyPublished",
+      "args": []
+    },
+    {
+      "label": "herdr nightly: the Windows client is written only over a matching digest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/herdr_nightly.go",
+      "find": "\tif got := sha256Hex(body); got != want {\n",
+      "replace": "\tif got := sha256Hex(body); false && got != want {\n",
+      "run": "TestTheWindowsClientIsWrittenOnlyOverAMatchingDigest",
+      "args": []
+    },
+    {
+      "label": "herdr nightly: a zip entry outside the client's directory refuses the zip",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/herdr_nightly.go",
+      "find": "\t\tdest, err := ResolveInside(root, filepath.Join(root, filepath.FromSlash(name)))\n",
+      "replace": "\t\tdest, err := filepath.Join(root, filepath.FromSlash(name)), error(nil)\n",
+      "run": "TestTheWindowsClientIsWrittenOnlyOverAMatchingDigest",
+      "args": []
+    },
+    {
+      "label": "herdr nightly: a nightly base with no matching client on this machine is named",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif st, ok := readHerdrClient(b.home); !ok || st.Release != facts[\"release\"] {\n",
+      "replace": "\t\tif st, ok := readHerdrClient(b.home); false && (!ok || st.Release != facts[\"release\"]) {\n",
+      "run": "TestTheNightlyChannelReachesInstallThroughTheHostHalf",
       "args": []
     },
     {

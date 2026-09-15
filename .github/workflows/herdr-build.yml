@@ -125,6 +125,10 @@ jobs:
           if (-not $m.Success) { Write-Output 'build.zig.zon names no minimum_zig_version'; exit 1 }
           $want = $m.Groups[1].Value
           $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'aarch64' } else { 'x86_64' }
+          # ⛔ ZIG 0.16.0's OWN aarch64 BUILD CRASHED HERE, `zig build` exiting 0xc0000005 on
+          # windows-11-arm on 2026-09-15, where 0.15.2's built herdr v0.9.0. Windows on Arm
+          # runs the x86_64 Zig under emulation, and the target is unchanged.
+          if ($want -eq '0.16.0' -and $arch -eq 'aarch64') { $arch = 'x86_64' }
           $ZIG_0_16_0_X86_64_PINNED_SHA256 = '68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e'
           $ZIG_0_16_0_AARCH64_PINNED_SHA256 = 'aee38316ee4111717900f45dd3130145c39289e105541d737eb8c5ed653c78ef'
           $ZIG_0_15_2_X86_64_PINNED_SHA256 = '3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7ddedc3cc14cb0c'
@@ -145,6 +149,12 @@ jobs:
           $zig = Join-Path $env:RUNNER_TEMP "zig-$arch-windows-$want\zig.exe"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "ZIG=$zig"
           Add-Content -LiteralPath $env:GITHUB_ENV -Value "ZIG_VERSION=$want"
+          # ⛔ ZIG's CACHES ON THE WORKSPACE's DRIVE. On windows-2022 the checkout is on D: and
+          # Zig's global cache defaults to the profile on C:, and Zig 0.15.2's build runner
+          # asserted `!isAbsolute(child_cwd_rel)` building herdr v0.9.0 there on 2026-09-15.
+          $caches = Join-Path $env:RUNNER_TEMP 'zig-cache'
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "ZIG_GLOBAL_CACHE_DIR=$(Join-Path $caches 'global')"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Value "ZIG_LOCAL_CACHE_DIR=$(Join-Path $caches 'local')"
           & $zig version
 
       # ⭐ THE TOOLCHAIN THE REF NAMES, not the runner's. rustup is installed first where

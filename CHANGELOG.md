@@ -21,6 +21,22 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T12:01:11Z: the herdr adapter can follow the nightlies, and the build matrix's first run is read
+
+**Record:** `WSL-90`'s amendment "the build matrix's first run, and step 5 written" in
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
+**Deployed:** no deploy, and no tag. No nightly is published.
+**Closes:** nothing.
+
+⭐ **`"channel": "nightly"` on the herdr adapter** installs the newest herdr nightly's
+Linux build over the digest its `SHA256SUMS` publishes, writes the Windows client of the
+same build under the instance's state directory, and makes `base attach` print it. Four
+cases and five mutation rows hold the channel's refusals.
+
+⚠ **The first run of the build matrix built six of eight**: Zig 0.16.0 crashed on
+Windows on Arm, and Zig 0.15.2 asserted building herdr `v0.9.0` for Windows `x86_64`.
+The workflow now answers both, and has not yet run again.
+
 ### 2026-09-15T11:46:43Z: herdr gets a builder here, and this tool's release lookup stops reading one page
 
 **Record:** `WSL-90` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), filed and

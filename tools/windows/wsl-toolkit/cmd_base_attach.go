@@ -60,12 +60,19 @@ func cmdBaseAttach(cfg toolkit.Config, asJSON bool) (int, error) {
 func attachAnswer(cfg toolkit.Config) baseAttach {
 	alias, problems := toolkit.HerdrDoor(cfg)
 	invocation := toolInvocation()
+	// ⭐ THE CLIENT OF THE BUILD THE BASE RUNS, when the herdr adapter follows the nightly
+	// channel: a 0.9.0 client has no --machine and cannot type into a development server
+	// from Windows. Quoted for PowerShell, and run with the call operator. WSL-90.
+	client := "herdr"
+	if path := toolkit.HerdrWindowsClient(cfg); path != "" {
+		client = "& '" + strings.ReplaceAll(path, "'", "''") + "'"
+	}
 	return baseAttach{
 		Schema:       "wsl-toolkit-base-attach/1",
 		Distribution: cfg.Base.Name,
 		Account:      cfg.Base.User,
 		SSHAlias:     alias,
-		Windows:      "herdr --remote " + alias + " --remote-keybindings server",
+		Windows:      client + " --remote " + alias + " --remote-keybindings server",
 		Linux:        []string{invocation + " base shell", "herdr"},
 		Agents:       invocation + " base herdr -- agent list",
 		Problems:     problems,

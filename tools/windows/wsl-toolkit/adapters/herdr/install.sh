@@ -43,7 +43,25 @@ if [ -n "${TK_ADAPTER_VERSION:-}" ]; then
   HERDR_AARCH64_PINNED_SHA256=${TK_ADAPTER_SHA256_AARCH64:-}
 fi
 
+# ⭐ A NIGHTLY COMES FROM THIS REPOSITORY'S OWN RELEASES. For the `nightly` channel the
+# executable resolves the newest herdr-nightly-* prerelease and passes its tag as the
+# version, each digest from that release's SHA256SUMS, and its download base; the digest
+# check below does not change. ⛔ Only a GitHub release download, and only beside the
+# version it belongs to. WSL-90.
+HERDR_URL_BASE=https://github.com/herdrdev/herdr/releases/download/v$HERDR_VERSION
+if [ -n "${TK_ADAPTER_URL_BASE:-}" ]; then
+  [ -n "${TK_ADAPTER_VERSION:-}" ] ||
+    die "a download base arrived without the version it belongs to"
+  case $TK_ADAPTER_URL_BASE in
+    https://github.com/*/releases/download/*) HERDR_URL_BASE=$TK_ADAPTER_URL_BASE ;;
+    *) die "the download base $TK_ADAPTER_URL_BASE is not a GitHub release download" ;;
+  esac
+fi
+
 HERDR_BIN=/usr/local/bin/herdr
+# The release the installed binary came from, which probe.sh reports and this machine's
+# half reads to fetch the Windows client of the same build.
+HERDR_RELEASE_FILE=/usr/local/lib/wsl-toolkit/herdr-release
 DOOR_DIR=/etc/wsl-toolkit/ssh
 DOOR_WRAPPER=/usr/local/lib/wsl-toolkit/sshd-stdio
 UNIT=wsl-toolkit-herdr.service
@@ -106,7 +124,7 @@ else
   tmp=$(mktemp "$HERDR_BIN.XXXXXX")
   trap 'rm -f "$tmp"' 0 1 2 15
   curl --proto '=https' --tlsv1.2 --fail --silent --show-error --location \
-    "https://github.com/herdrdev/herdr/releases/download/v$HERDR_VERSION/$asset" --output "$tmp" ||
+    "$HERDR_URL_BASE/$asset" --output "$tmp" ||
     die "downloading $asset failed"
   got=$(sha256sum "$tmp" | cut -d' ' -f1)
   [ "$got" = "$want" ] || die "$asset does not match its pinned digest: expected $want, measured $got. It was deleted and not run"
@@ -115,6 +133,9 @@ else
   trap - 0 1 2 15
   say "installed herdr $HERDR_VERSION from $asset, digest verified"
 fi
+install -d -m 0755 "${HERDR_RELEASE_FILE%/*}"
+printf '%s\n' "$HERDR_VERSION" > "$HERDR_RELEASE_FILE.tmp"
+mv "$HERDR_RELEASE_FILE.tmp" "$HERDR_RELEASE_FILE"
 
 # -- the account's configuration ----------------------------------------------------
 # ⭐ THE TRACKED FILE IS THE CONFIGURATION, and it is written whole on every ensure.

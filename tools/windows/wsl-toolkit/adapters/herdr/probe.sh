@@ -22,6 +22,11 @@ UNIT=wsl-toolkit-herdr.service
 if [ -x "$HERDR_BIN" ]; then
   version=$("$HERDR_BIN" --version 2>/dev/null | sed -n 's/^herdr //p')
   printf 'version %s\n' "${version:-unknown}"
+  # ⚠ THE DIGEST AND THE RELEASE, because a build of herdr's development branch answers
+  # the same --version as the release it follows.
+  printf 'sha256 %s\n' "$(sha256sum "$HERDR_BIN" | cut -d' ' -f1)"
+  release=$(cat /usr/local/lib/wsl-toolkit/herdr-release 2>/dev/null || :)
+  printf 'release %s\n' "${release:-unknown}"
 else
   problem "herdr is not installed at $HERDR_BIN"
 fi
@@ -33,6 +38,10 @@ printf 'server %s\n' "${state:-unknown}"
 answer=$(runuser -u "$TK_USER" -- "$HERDR_BIN" status server 2>/dev/null | sed -n 's/^status: //p')
 printf 'server-answers %s\n' "${answer:-nothing}"
 [ "$answer" = running ] || problem "herdr status server answers ${answer:-nothing} for $TK_USER"
+# ⚠ A FACT AND NOT A PROBLEM. base ensure never restarts a running server, so a newer
+# binary serves nothing until the server next starts, and herdr says whether that is so.
+stale=$(runuser -u "$TK_USER" -- "$HERDR_BIN" status 2>/dev/null | sed -n 's/^[[:space:]]*server_binary_stale: //p')
+printf 'server-binary-stale %s\n' "${stale:-unknown}"
 
 if [ -r "$DOOR_DIR/ssh_host_ed25519_key.pub" ]; then
   printf 'ssh-host-key %s\n' "$(cut -d' ' -f1,2 "$DOOR_DIR/ssh_host_ed25519_key.pub")"

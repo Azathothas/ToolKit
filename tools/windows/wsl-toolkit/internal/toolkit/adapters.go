@@ -55,6 +55,11 @@ type BaseAdapter struct {
 	// SHA256 is the digest of that release's asset for each machine architecture,
 	// keyed as `uname -m` spells it: `x86_64`, `aarch64`.
 	SHA256 map[string]string `json:"sha256,omitempty"`
+	// Channel makes an adapter follow the newest build of a channel rather than the
+	// release it pins. The one channel is `nightly`, herdr's nightly prereleases of this
+	// repository. ⛔ A channel beside a version or digests is refused: the two answer the
+	// same question differently. WSL-90.
+	Channel string `json:"channel,omitempty"`
 }
 
 // AdapterState is one adapter as `base status --probe` read it back.
@@ -83,6 +88,8 @@ type adapterSpec struct {
 	// or rebuilding this executable. It reads TK_ADAPTER_VERSION and
 	// TK_ADAPTER_SHA256_<ARCH>.
 	TakesVersionPin bool
+	// TakesChannel says the adapter may follow AdapterChannelNightly.
+	TakesChannel bool
 	// Agent is the command an agent adapter installs in the base, which `base agent`
 	// and the Windows launcher run, or "" for an adapter that is not an agent.
 	Agent string
@@ -101,6 +108,7 @@ var adapterSpecs = []adapterSpec{
 		NeedsSystemd:    true,
 		Presets:         []string{"arch"},
 		TakesVersionPin: true,
+		TakesChannel:    true,
 		Host:            &herdrHost{},
 	},
 	{
@@ -186,6 +194,17 @@ func validateAdapters(c Config) error {
 		}
 		if err := validateAdapterPin(i, a, spec); err != nil {
 			return err
+		}
+		if a.Channel != "" {
+			if !spec.TakesChannel {
+				return fmt.Errorf("base.adapters[%d] gives %q a channel, and only herdr follows one", i, a.Name)
+			}
+			if a.Channel != AdapterChannelNightly {
+				return fmt.Errorf("base.adapters[%d].channel is %q, and the one channel is %q", i, a.Channel, AdapterChannelNightly)
+			}
+			if a.Version != "" || len(a.SHA256) > 0 {
+				return fmt.Errorf("base.adapters[%d] gives %q a channel and a version pin, and it follows one or the other. Remove \"channel\" to keep the pin, or \"version\" and \"sha256\" to follow the channel", i, a.Name)
+			}
 		}
 		if spec.NeedsSystemd && !c.Base.Systemd {
 			return fmt.Errorf("base.adapters names %q, whose server runs as a system unit, so it needs base.systemd to be true", a.Name)
@@ -484,6 +503,9 @@ type herdrHost struct {
 	// connect answers what `ssh -F CONFIG ALIAS herdr --version` printed. Nil
 	// means run it.
 	connect func(ctx context.Context, config, alias string) (string, error)
+	// nightly answers the install environment for the newest nightly. Nil means resolve
+	// it from this repository's releases; a case stands in for the network.
+	nightly func(ctx context.Context) (map[string]string, error)
 }
 
 // SSHDirEnv names a directory that stands in for the account's .ssh directory.
@@ -551,7 +573,22 @@ func (h *herdrHost) prepare(ctx context.Context, b *Base) (map[string]string, er
 	if !strings.HasPrefix(line, "ssh-ed25519 ") || strings.ContainsAny(line, "\r\n") {
 		return nil, fmt.Errorf("%s is not one ed25519 public key", p.key+".pub")
 	}
-	return map[string]string{"TK_SSH_CLIENT_KEY": line}, nil
+	env := map[string]string{"TK_SSH_CLIENT_KEY": line}
+	if herdrChannel(b.cfg) == AdapterChannelNightly {
+		nightly := h.nightly
+		if nightly == nil {
+			nightly = herdrNightlyEnv
+		}
+		extra, err := nightly(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range extra {
+			env[k] = v
+		}
+		b.log("the herdr adapter follows the nightly channel: " + extra["TK_ADAPTER_VERSION"])
+	}
+	return env, nil
 }
 
 func (h *herdrHost) apply(ctx context.Context, b *Base, facts map[string]string) error {
@@ -581,16 +618,22 @@ func (h *herdrHost) apply(ctx context.Context, b *Base, facts map[string]string)
 		return err
 	}
 	block := herdrHostBlock(alias, b.cfg.Base.User, b.wsl.Path, p)
-	if found, ok := markedBlock(current, alias); ok && equalLines(found, block) {
-		return nil
+	if found, ok := markedBlock(current, alias); !ok || !equalLines(found, block) {
+		if err := os.MkdirAll(p.sshDir, 0o700); err != nil {
+			return err
+		}
+		if err := writeFileAtomic(p.config, withMarkedBlock(current, alias, block), 0o600); err != nil {
+			return err
+		}
+		b.log("wrote the Host " + alias + " block at the top of " + p.config)
 	}
-	if err := os.MkdirAll(p.sshDir, 0o700); err != nil {
-		return err
+	// ⭐ THE CLIENT OF THE BUILD THE BASE RUNS, read from the base's own facts, so a
+	// nightly published between install and here is not fetched in its place.
+	if herdrChannel(b.cfg) == AdapterChannelNightly {
+		if _, err := ensureHerdrClient(ctx, b.home, facts["release"], b.log); err != nil {
+			return err
+		}
 	}
-	if err := writeFileAtomic(p.config, withMarkedBlock(current, alias, block), 0o600); err != nil {
-		return err
-	}
-	b.log("wrote the Host " + alias + " block at the top of " + p.config)
 	return nil
 }
 
@@ -611,6 +654,11 @@ func (h *herdrHost) check(ctx context.Context, b *Base, facts map[string]string)
 	current, _ := readOptional(p.config)
 	if found, ok := markedBlock(current, alias); !ok || !equalLines(found, herdrHostBlock(alias, b.cfg.Base.User, b.wsl.Path, p)) {
 		problems = append(problems, p.config+" does not carry this base's Host block as this tool writes it. Run: wsl-toolkit base ensure")
+	}
+	if herdrChannel(b.cfg) == AdapterChannelNightly {
+		if st, ok := readHerdrClient(b.home); !ok || st.Release != facts["release"] {
+			problems = append(problems, "this machine has no herdr client for the base's "+facts["release"]+". Run: wsl-toolkit base ensure")
+		}
 	}
 	if len(problems) > 0 {
 		return problems
@@ -646,7 +694,18 @@ func (h *herdrHost) remove(b *Base) error {
 	if known, err := readOptional(p.knownHosts); err != nil {
 		return err
 	} else if next := withKnownHost(known, alias, ""); !bytes.Equal(next, known) {
-		return writeFileAtomic(p.knownHosts, next, 0o600)
+		if err := writeFileAtomic(p.knownHosts, next, 0o600); err != nil {
+			return err
+		}
+	}
+	// The instance's herdr client goes with its base's half, whatever the channel says now.
+	if client := herdrClientDir(b.home); b.home != "" {
+		if _, err := os.Lstat(client); err == nil {
+			if err := RemoveInside(b.home, client); err != nil {
+				return err
+			}
+			b.log("removed the herdr client under " + client)
+		}
 	}
 	return nil
 }
