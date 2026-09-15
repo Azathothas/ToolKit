@@ -8,10 +8,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-15T03:12:15Z; the record commit's own time is its end
 baseline        deea680, tree clean, doctor exit 0 in 25.85 s, gate 20 of 20 in 32.19 s
+head            12705a1, CI run 34932875176 green in all six jobs
 entries         total 122  open 6  blocked 0  done 116
 closed          WSL-86, WSL-87 and WSL-70 in this session's work commit
 partial         WSL-67, waiting on the two BSD downloads
-head            deea680, then this session's commits
 ```
 
 ## Active work
