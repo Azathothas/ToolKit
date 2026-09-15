@@ -4087,6 +4087,19 @@ and its boot messages reached `-serial stdio` under `-M q35,graphics=off`, and n
 did under a plain `-M q35`, measured on 2026-09-15. The two downloads wait for the
 operator's approval, asked in chat the same day.
 
+## Amendment, 2026-09-15: asked a fourth time, and not answered
+
+⛔ **`pkgin` and `pkg_add` did not move, and the reason is the only one.** The two
+images were asked for again at the start of the session of 2026-09-15T06:16:51Z, in
+chat and as a file, each named with its byte count, its mirror and the digest file it
+would be checked against, and with an explicit alternative: a denial closes this entry
+by REMOVING both managers from `bootstrap.sh` under the second half of the ruling
+above, which is a complete outcome rather than a failure. Neither answer came.
+
+⚠ **Nothing was downloaded and nothing was worked around.** That is four sessions.
+Saying so plainly is the outcome, and this entry stays open carrying exactly one item
+plus its closing reviews.
+
 ---
 
 ## WSL-68. A base that can reach nothing on the host at all
@@ -4177,6 +4190,97 @@ has not been enumerated. A `sealed` preset, an attacking probe that reports
 each door, and a precise threat model remain. Until then the documentation
 calls the implemented shape **zero grants**, never a sandbox or security
 boundary.
+
+## Amendment, 2026-09-15: the doors, attacked rather than read
+
+⭐ **Approach step 1 is done: every door was TRIED, on a live zero-grant base**,
+`wsl-toolkit-b68`, an arch base with `automount off`, `interop off`, no systemd, no
+passwordless sudo, no grant, and the unprivileged account `sealed`. ⛔ Nothing below is
+a setting read back. A door is OPEN because something got through, and closed because
+the attempt was refused.
+
+| door | attacked as the account | verdict |
+| --- | --- | --- |
+| Windows drives | no `/mnt/<letter>` in `/proc/mounts` | ⭐ closed |
+| mounting one | `mount -t drvfs C:` answered `must be superuser to use mount` | ⭐ closed to the account |
+| WSL's own driver mount | `/usr/lib/wsl/drivers` present, 9p, a write refused | ⭐ read-only |
+| Windows interop | no `WSLInterop` handler, `cmd.exe` not found, `WSLENV` unset, no Windows directory on `PATH` | ⭐ closed |
+| passwordless sudo | `sudo -n true` refused | ⭐ closed |
+| the internet | `1.1.1.1:443` connected | ⛔ open |
+| the Windows host | `445` and `3389` refused, and **ICMP answered** | ⛔ reachable |
+| a private network namespace | `unshare -n` refused, `unshare -Un` SUCCEEDED | ⛔ available |
+| ⛔ **the shared tmpfs** | wrote `/mnt/wsl`, and another distribution read it | ⛔ **open, both ways** |
+
+### ⛔ The door this pass found, and it is not in the entry's list
+
+**`/mnt/wsl` is one `tmpfs rw`, mounted `drwxrwxrwt`, shared by every distribution in
+the WSL2 utility VM.** Measured on 2026-09-15, in both directions:
+
+- the zero-grant base's unprivileged account wrote `/mnt/wsl/.wsl68-channel`, and
+  `wsl-toolkit`, a different distribution, read its contents;
+- `wsl-toolkit`'s root wrote a file there, and the zero-grant account read it.
+
+⛔ **And uids are not namespaced across it.** The file written by uid 1000 in one
+distribution lists as owned by uid 1000's name in the other - `sealed` in one listing
+and `toolkit` in the other, for one inode. The sticky bit is the one thing that does
+hold: the sealed account could not remove the other distribution's file.
+
+⚠ **`/mnt/wsl/podman-sockets` is NOT a door, and the first reading of it was wrong.**
+It holds `podman-root.sock` and `podman-user.sock` for `podman-machine-default`, and
+both are **zero-byte regular files**, not sockets: `curl --unix-socket` against each
+exits **7**, could not connect. A first pass reported them as answering, because the
+check read a PIPELINE's status rather than curl's own.
+
+### Closing the shared tmpfs: it works, it needs root, and it costs DNS
+
+| question | measured |
+| --- | --- |
+| can it be unmounted in one distribution only? | ⭐ yes. As root, `umount /mnt/wsl` exit 0; `wsl-toolkit` still had it mounted with its contents |
+| does the account then see it? | ⭐ no. A new session read 0 mounts, an empty directory, and a write refused |
+| can the ACCOUNT unmount it? | ⛔ no, exit 32, and the mount stayed. It belongs in the provisioner, which has root |
+| does it survive a restart? | ⛔ no. After `wsl --terminate` it was mounted again, so it is a boot-time action and not a one-off |
+| ⛔ **what does it cost?** | **DNS.** `/etc/resolv.conf` resolves to `/mnt/wsl/resolv.conf`, so closing the tmpfs takes the resolver with it: a new session answered `getent hosts` exit 2. A sealed base has to write a real `/etc/resolv.conf` first, which WSL's `generateResolvConf = false` is for |
+
+### The network, and the condition the ruling carries
+
+⭐ **The ruling of 2026-09-14 is option B, "only if it can be done with no rule in the
+shared network namespace".** What is measured:
+
+- the shared namespace is `net:[4026531833]`, the same one `wsl-toolkit` and
+  `wsl-toolkit-podbox` answered with, so a rule written there reaches every
+  distribution on the host, the podman machine included;
+- ⭐ **the account can make its own**, with no privilege: `unshare -Un` succeeded,
+  and `pasta --config-net` put the probe in `net:[4026532318]` while the shared one was
+  **unchanged** before and after. So a rule written inside it is not a rule in the
+  shared namespace, and the ruling's condition CAN be met by this route;
+- `pasta`, `passt` and `slirp4netns` are all present on the arch base, so nothing has
+  to be fetched;
+- ⛔ **but the flag alone does not refuse the host.** Inside `pasta --config-net` the
+  internet answered (exit 0) and so did a ping to the Windows host; **`--no-map-gw`
+  changed neither**. Refusing the host and the private ranges therefore needs a rule
+  INSIDE the private namespace, which is exactly what the ruling permits and is the
+  work that remains.
+
+### Still open
+
+⭐ **Step 1 of the Approach is complete and is the amendment above.** What is left, and
+none of it needs the operator:
+
+1. **A real `/etc/resolv.conf` and the tmpfs closed at every start.** Both belong in
+   the provisioner, which already runs as root and already restarts the distribution.
+2. **The account's processes in their own network namespace**, through `pasta`, with
+   the Windows host and the private ranges refused by a rule inside that namespace.
+   ⚠ This changes how `base exec` and `base shell` start a command, which is the
+   invasive part and the reason it is named rather than begun.
+3. **The probe as a command rather than a script.** The attack above lives in
+   `.tmp\s16\seal-attack.sh` and answers in the shape this entry asked for; it is not
+   yet a registered command with tests, mutation rows and a manual entry.
+4. **The manual paragraph** saying what is NOT sealed, with these measurements beside
+   it.
+
+⛔ **Until all four are done the documentation calls this shape zero grants, never a
+sandbox or a security boundary**, and the shared tmpfs above is the reason that
+sentence is not merely caution.
 
 ---
 

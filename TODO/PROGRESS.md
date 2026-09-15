@@ -8,9 +8,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-15T06:16:51Z; the record commit's own time is its end
 baseline        53a8f1f, tree clean, doctor exit 0 in 27.79 s, gate 20 of 20 in 33.09 s
-head            53a8f1f, CI run 34934199765 green in all six jobs
+head            8801301, CI run 34938687647 started on its push
 entries         total 122  open 5  blocked 0  done 117
-closed          WSL-71 in this session's first work commit
+closed          WSL-71 in 8801301
+partial         WSL-68, its door enumeration done and four items named
 partial         WSL-67, waiting on the two BSD downloads
 ```
 
@@ -22,9 +23,21 @@ new file other projects may fetch: an INTERACTIVE login shell on a Windows drive
 the account's home, a shell `base shell --here` marked stays, and a granted directory is
 never touched. **Resume, in this order:**
 
-1. `WSL-67`'s `pkgin` and `pkg_add`, once the two downloads are approved: ask again once,
-   then its closing.
-2. `WSL-68`, the sealed base, which closes issue 30.
+1. `WSL-67`'s `pkgin` and `pkg_add`, once the two downloads are approved, then its
+   closing. ⛔ Asked a fourth time on 2026-09-15 and not answered, so it did not move.
+2. `WSL-68`'s four remaining items, listed in its own entry: a real `/etc/resolv.conf`
+   and the shared tmpfs closed at every start, the account's processes in their own
+   network namespace through `pasta`, the probe as a registered command, and the manual
+   paragraph. Its Approach step 1 is closed.
+
+⛔ **`WSL-68`'s attack found a door the entry did not list: `/mnt/wsl` is one shared
+`tmpfs`, mounted `drwxrwxrwt` for every distribution in the utility VM.** A zero-grant
+base wrote a file there that another distribution read, and read one another
+distribution wrote, and uids are not namespaced across it. ⭐ It can be unmounted in one
+distribution only, by root, at every start - and doing so costs DNS, because
+`/etc/resolv.conf` resolves into it. ⚠ `podman-sockets` there is NOT a door: both
+entries are zero-byte regular files and `curl --unix-socket` exits 7. The entry carries
+all of it.
 
 ⛔ **Found while building `WSL-71`, and FIXED in the same change: the `PATH` line
 `bootstrap.sh` writes has never reached a bash login shell on this tool's own default
@@ -136,7 +149,8 @@ ls-files`, so check a new one by name before it is added.
 | `9df2e7b` | `WSL-70` partial: the base provisioner reads the shared package table and its detection; 4 mutation rows; `WSL-87` filed |
 | `deea680` | `WSL-87` partial: `bootstrap.sh` installs CodeGraph under dash and names an npm too old for it; the last session's record and summary |
 | `53a8f1f` | `WSL-86` filed and closed, `WSL-87` and `WSL-70` closed: the provisioner installs `nftables` and restores the id-mapping capability, `install_codegraph` names a kernel it publishes no package for, and all four presets build; 3 mutation rows and one defect planted by hand |
-| this session's first work commit | `WSL-71` closed: `shell-profile.sh` moves an interactive shell off a Windows drive and leaves a marked or granted one alone, `base shell --here` marks its own shell through `WSLENV`, and `bootstrap.sh` writes its lines to the login file bash actually reads; 2 mutation rows and 5 defects planted by hand |
+| `8801301` | `WSL-71` closed: `shell-profile.sh` moves an interactive shell off a Windows drive and leaves a marked or granted one alone, `base shell --here` marks its own shell through `WSLENV`, and `bootstrap.sh` writes its lines to the login file bash actually reads; 2 mutation rows and 5 defects planted by hand |
+| this session's record commit | `WSL-68` partial: its Approach step 1 closed, every door attacked on a live zero-grant base, and the shared `/mnt/wsl` found open in both directions; `WSL-67` asked for and not answered a fourth time |
 
 ## Measurements
 
@@ -172,6 +186,18 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 - **For `WSL-71`, the five defects planted by hand** in copies cut by `write-file.mjs
   replace --expect 1`: each changed exactly one column of a six-column drive, and the
   restored file matched the unmutated row. 2 Go mutation rows red in `golang:1.25`.
+- **For `WSL-68`, on the throwaway zero-grant base `wsl-toolkit-b68`**, arch, automount
+  and interop off, no systemd, no sudo, no grant: `base ensure` exit 0 in 40.23 s. Every
+  door tried as the account: drives, drvfs mounting, interop and passwordless sudo all
+  refused; `/usr/lib/wsl/drivers` present and read-only; the internet reachable; the
+  Windows host refused on 445 and 3389 and answering ICMP; `unshare -n` refused and
+  `unshare -Un` granted. ⛔ `/mnt/wsl` written from the base and read from
+  `wsl-toolkit`, and the reverse. Root's `umount /mnt/wsl` exit 0 in that distribution
+  alone, the account's exit 32, and the mount back after `wsl --terminate`.
+  `/etc/resolv.conf` resolves to `/mnt/wsl/resolv.conf`, so a new session after the
+  umount answered `getent hosts` exit 2. `pasta --config-net` ran the probe in
+  `net:[4026532318]` with the shared `net:[4026531833]` unchanged; inside it the internet
+  answered and so did a ping to the Windows host, with and without `--no-map-gw`.
 - **The suites, on this session's tree:** 315 top-level `wsl-toolkit` results on Windows
   with `TEMP` at the 8.3 path, 299 passed, 16 skipped, 0 failed, exit 0 in 16.5 s;
   `check-go.sh` exit 0 in `golang:1.25` in 32.15 s; ShellCheck 0.9.0 in `ubuntu:24.04`
@@ -316,6 +342,25 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     `WSL_TOOLKIT_HERE`, but `bootstrap.sh` installs the profile into the managed
     account's home, not root's. Harmless - the mark is read by nothing - and read rather
     than measured, on 2026-09-15.
+22. ⛔ **`/dev/kvm`, `/dev/dxg` and `/dev/vsock` are `crw-rw-rw-` in a zero-grant base**,
+    read on 2026-09-15 while attacking `WSL-68`'s doors. None was attacked, so what any
+    of them reaches from an unprivileged account is unmeasured; they are named here
+    because a sealed base's threat model has to answer for them and this session's
+    enumeration did not.
+23. ⛔ **The verifier's `automount off` check cannot fire on a guest whose automount
+    root is not `/mnt`.** `verify.sh:34` hardcodes `drive_root=/mnt`, while
+    `shell-profile.sh`, written this session, reads `[automount] root` from
+    `/etc/wsl.conf`. So the two disagree about what "a Windows drive" is. ⚠ A base this
+    tool BUILDS is unaffected: `provision.sh:473` writes an `[automount]` block with no
+    `root` key, so the default holds. A distribution adopted with a hand-set root would
+    have its drives mounted where the verifier does not look. Read on 2026-09-15 by
+    `WSL-71`'s door sweep, not measured, and it is a value in two places with no check
+    that they agree - they cannot be merged, because one is embedded in the executable
+    and the other is fetched by URL and must work with no executable at all.
+24. ⚠ **`base status --probe` reports no cgroup delegation on every base built this
+    session**, arch at two different configurations, so a memory or cpu limit is accepted
+    and not enforced. The remediation says the tool cannot repair it. That is `WSL-60`'s
+    known condition and is recorded here only because two more builds met it.
 
 ## Review findings
 
@@ -352,6 +397,15 @@ or without the file, so the assertion is now the DELTA between a run without the
 and one with it. It also put the conditions back on a byte count that had been quoted as
 though it were a constant.
 
+⭐ **2026-09-15, `WSL-68`'s driven pass**, which is a fourth lens and started from the
+attacker rather than from the code. It found the shared `/mnt/wsl` the entry's own door
+list did not contain, and it found two of its own readings to be wrong before they were
+written down - both because a check read a PIPELINE's status instead of the process's,
+which is the absolute this repository states first and the one a scratch probe keeps
+breaking. Its door sweep found finding 23, that this tree now holds two disagreeing
+definitions of "a Windows drive under /mnt". `WSL-68` is a checkpoint and owes its three
+closing reviews.
+
 ## Open questions for the operator
 
 ⚠ **One, and it is the BSD download approval above**, asked for the fourth time on
@@ -367,11 +421,16 @@ session rather than put to them.
 - Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit` and
   `wsl-toolkit-podbox`, as at the session's start. `eph-pgb` keeps its disk under
   `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
-- ⭐ **No throwaway is left.** `WSL-71` built one, `wsl-toolkit-b71` under
-  `.tmp\s16\b71`, and `base remove --yes` exit 0 removed it with its disk; `wsl -l -q`
-  read the same four distributions afterwards. ⚠ **Its first build failed and rolled
-  itself back**, in `pacman` at `geo.mirror.pkgbuild.com : Operation too slow`, which is
-  finding 10 met for the third time, and left nothing registered.
+- ⭐ **No throwaway is left.** Two were built under `.tmp\s16`: `wsl-toolkit-b71` for
+  `WSL-71` and `wsl-toolkit-b68` for `WSL-68`, and `base remove --yes` exit 0 removed
+  each with its disk; `wsl -l -q` read the same four distributions afterwards. ⚠
+  **`b71`'s first build failed and rolled itself back**, in `pacman` at
+  `geo.mirror.pkgbuild.com : Operation too slow`, which is finding 10 met for the third
+  time, and left nothing registered.
+- ⭐ **The shared `/mnt/wsl` was written to and is left as it was found**, holding
+  `podman-sockets` and `resolv.conf` and nothing of this session's. Three files were
+  created there while attacking `WSL-68`'s doors and all three were removed, the one
+  written by another distribution's root by that distribution's root.
 - ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
   `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and
   the OpenBSD installer over SeaBIOS's serial console, and runs commands from a spool with

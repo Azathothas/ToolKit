@@ -7,6 +7,54 @@ on what was true last time.
 
 ---
 
+## 2026-09-15, the shell profile, and the doors a zero-grant base still has
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-15T06:16:51Z | ended at the record commit's own time, about forty minutes. Much of it ran in parallel: two full thirteen-image matrices, four base builds and about a dozen container runs overlapped with the writing |
+| Commits | `53a8f1f`, clean `main`, its CI run 34934199765 green in all six jobs | `git log --oneline 53a8f1f..HEAD` reads **2**: `8801301`, `WSL-71`, pushed with CI run 34938687647; and this record commit |
+| Work | 5 open entries after `WSL-71` was counted; `WSL-67` partial and waiting on two downloads, `WSL-68` untouched since 2026-09-14 | **Completed 1:** `WSL-71`, with its prove, five hand-planted mutations and three reviews. **Partial 1:** `WSL-68`, its Approach step 1 closed and four items named. **Blocked 1:** `WSL-67`, asked a fourth time and not answered. **Deferred 2:** `WSL-76` and `WSL-78`, the herdr and Muse drive, excluded by the operator for this session. **Failed 0.** Entries 122, open 6 to 5, done 116 to 117 |
+| Changes | 0 files changed from `53a8f1f` | `git diff --cached --shortstat 53a8f1f` with this whole change staged reads **14 files, +1,018 / -72**, one of them new |
+| Size | 87,866 text lines in 291 tracked files at `53a8f1f`, `git grep -I -c ''` | **88,812 in 292 files, +946**, this section included |
+| Checks | doctor exit 0 in 27.79 s; gate 20 of 20 in 33.09 s | gate 20 of 20 before every commit; the Windows Go proof with the 8.3 `TEMP` 315 results, 299 passed, 16 skipped, 0 failed, exit 0 in 16.5 s; `check-go.sh` exit 0 in `golang:1.25` in 32.15 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **35** tracked scripts; 2 new mutation rows red and 5 defects planted by hand in the shell file, each changing exactly one column |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation, and ⛔ **no BSD image: the download was asked for a fourth time and not approved.** Network bytes not measured; known transfers: two full thirteen-image matrices with `--toolset minimal`, four throwaway base builds (three arch completing, one rolled back by a stalled mirror), and about a dozen container runs in `debian`, `ubuntu:24.04`, `golang:1.25`, `fedora`, `rockylinux:8` and `alpine` |
+| Health | four distributions; `WSL-71` and `WSL-68` both untouched this session | ⭐ `WSL-71` closed and a defect it found fixed in the same change. ⛔ Found on `main` and NOT fixed: `/mnt/wsl` is one shared tmpfs every distribution can write to, recorded in `WSL-68` with the attack that proved it. The same four distributions and no throwaway; both test bases removed with their disks; the shared tmpfs left as it was found; the FreeBSD image not booted; the SSH configuration unchanged; no tag; tree clean after this commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| `WSL-67`'s `pkgin` and `pkg_add` once the downloads are approved, then its closing | ⛔ **not started.** The two images were asked for in chat and as a file at the session's start, with a denial offered as a complete outcome. No answer came, so nothing was downloaded and nothing was worked around. Four sessions have now asked |
+| then `WSL-71` | ⭐ **done and pushed.** A new `scripts/common/shell-profile.sh`, `base shell --here` marking its own shell through `WSLENV`, and the `PATH` line `bootstrap.sh` writes reaching the login file bash actually reads |
+| finish everything except the herdr and Muse drive | `WSL-68` was brought into this session by that instruction, against the 2026-09-14 order that gave it a session of its own. Its Approach step 1 is closed - every door attacked on a live zero-grant base - and the remaining four items are named. It does not close here, and the entry says why |
+
+### What the work found
+
+- ⛔ **`bootstrap.sh`'s `PATH` line has never reached a bash login shell on this tool's
+  own default base.** bash reads the first of `~/.bash_profile`, `~/.bash_login` and
+  `~/.profile` and stops, and arch's `/etc/skel` ships `.bash_profile` and no `.profile`,
+  as fedora's and rocky 8's do. Measured on an arch base built at this tool's defaults, and
+  fixed in the same commit.
+- ⛔ **A zero-grant base is not sealed, and the reason is not in `WSL-68`'s own list.**
+  `/mnt/wsl` is one `tmpfs` mounted `drwxrwxrwt` and shared by every distribution in the
+  utility VM. The base wrote a file another distribution read, and read one another
+  distribution wrote. Closing it needs root, at every start, and costs DNS.
+- ⚠ **Two readings were wrong before they were corrected**, both because a check read a
+  pipeline's status instead of the process's: the podman sockets in that tmpfs are
+  zero-byte regular files that `curl` cannot connect to, and the first DNS answer after
+  the unmount was `head`'s status, not `getent`'s.
+- ⛔ **A mutation pass reported five guards as doing nothing, and the planter was the
+  defect.** `awk`'s `sub()` takes a regular expression, and the anchors were full of
+  metacharacters. Printing the unmutated row first is what made it readable as a claim
+  about the planter.
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. `WSL-67`'s BSD drives if and only if the
+downloads are approved, then `WSL-68`'s four remaining items, then the herdr and Muse
+session.
+
+
 ## 2026-09-15, the two presets that would not build, and three entries closed
 
 | row | before | after |
