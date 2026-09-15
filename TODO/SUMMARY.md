@@ -11,7 +11,7 @@ on what was true last time.
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-09-15T03:12:15Z | ended at the record commit's own time, about two hours |
+| Elapsed | started 2026-09-15T03:12:15Z | ended at the record commit's own time, two hours and thirty-five minutes. About half of it was spent waiting on a Fedora mirror answering in tens of KiB/s and on two full agent matrices |
 | Commits | `deea680`, clean `main`, its CI run 34923941438 still in progress | `git log --oneline deea680..HEAD` read **3**: `ef7ad79`, whose CI run 34931576687 failed one mutation row as THEATRE; the record commit; and the fix for that row. CI read after each push |
 | Work | 9 open entries; `WSL-87` partial and owing its reviews, `WSL-86` proposed and unruled, `WSL-70` partial on two presets that did not build | **Completed 3:** `WSL-87`, `WSL-86` (filed, ruled and closed in this session) and `WSL-70`. **Partial 1:** `WSL-67`, still waiting on the two BSD downloads. **Deferred 1:** `WSL-71`. **Failed 0.** Entries 122, open 9 to 6, done 113 to 116 |
 | Changes | 0 files changed from `deea680` | `git diff --shortstat deea680 HEAD` read 12 files, +1,095 / -53 over the three commits |
