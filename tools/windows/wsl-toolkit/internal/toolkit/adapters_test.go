@@ -20,8 +20,8 @@ import (
 )
 
 var (
-	herdrAdapter  = BaseAdapter{Name: "herdr"}
-	zellijAdapter = BaseAdapter{Name: "zellij"}
+	herdrAdapter = BaseAdapter{Name: "herdr"}
+	notAnAdapter = BaseAdapter{Name: "not-an-adapter"}
 )
 
 // adapterBase is a configuration the herdr adapter accepts.
@@ -45,7 +45,7 @@ func TestAnAdapterIsRefusedWhereItWasNotDriven(t *testing.T) {
 		change func(*Config)
 		want   string
 	}{
-		"an unknown adapter": {func(c *Config) { c.Base.Adapters = []BaseAdapter{zellijAdapter} }, "the adapters this executable carries are: herdr, muse"},
+		"an unknown adapter": {func(c *Config) { c.Base.Adapters = []BaseAdapter{notAnAdapter} }, "the adapters this executable carries are: herdr, muse"},
 		"a name twice":       {func(c *Config) { c.Base.Adapters = append(c.Base.Adapters, BaseAdapter{Name: "herdr"}) }, "more than once"},
 		"no systemd":         {func(c *Config) { c.Base.Systemd = false }, "needs base.systemd to be true"},
 		"another preset":     {func(c *Config) { c.Base.Image = "docker.io/library/alpine:latest" }, "driven on the arch preset only"},

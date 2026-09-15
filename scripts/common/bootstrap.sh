@@ -8,8 +8,9 @@
 # actually resolved, and names every package it could not get.
 #
 # WHERE IT RUNS: Linux with apk, apt, dnf, emerge, pacman, tdnf, xbps, yum or
-# zypper; FreeBSD and DragonFly with pkg; NetBSD with pkgin; OpenBSD with
-# pkg_add. As root, through passwordless sudo, or as an unprivileged account
+# zypper; FreeBSD and DragonFly with pkg; NetBSD with pkgin, or with the pkg_add
+# in its base when pkgin is not installed; OpenBSD with pkg_add. As root, through
+# passwordless sudo, or as an unprivileged account
 # through nix, which it finds where a login shell would and never installs. It
 # names what it looked for when it finds none.
 #
@@ -148,8 +149,10 @@ USAGE
 # the `os:freebsd` rows came from FreeBSD 15.1 through `wsl-toolkit bsd run
 # --network`, which fetches this file by raw URL and then queries `pkg` for each
 # name. The `nix` values were evaluated in nixpkgs on 2026-09-14, every attribute the
-# agent toolset resolves. ⛔ NetBSD and OpenBSD are the exception and say so in the
-# header: `pkgin` and `pkg_add` are written and have never been run.
+# agent toolset resolves. ⭐ The `os:netbsd` rows came from NetBSD 11.0 on
+# 2026-09-15, booted under QEMU on the maintainer's host and driven through
+# `pkgin`: each one names a tool NetBSD's BASE already provides, which pkgsrc
+# either spells differently or does not carry at all.
 package_table() {
   cat <<'TABLE'
 bash bash nix=bashInteractive
@@ -158,20 +161,20 @@ build - apk=build-base os:chimera=base-devel apt=build-essential pacman=base-dev
 coreutils coreutils os:chimera=chimerautils os:rocky=-
 curl curl
 fd fd apt=fd-find dnf|yum=fd-find os:rocky=- tdnf=- os:chimera=- os:freebsd=fd-find
-file file os:freebsd=-
+file file os:freebsd=- os:netbsd=-
 git git
 jq jq
-less less os:freebsd=-
+less less os:freebsd=- os:netbsd=-
 node nodejs zypper=nodejs-default os:freebsd=node
-npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=- nix=-
-openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=- nix=openssh
-procps procps pacman|xbps=procps-ng dnf|yum|tdnf=procps-ng emerge=sys-process/procps os:freebsd=-
+npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=- os:netbsd=- nix=-
+openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=- os:netbsd=- nix=openssh
+procps procps pacman|xbps=procps-ng dnf|yum|tdnf=procps-ng emerge=sys-process/procps os:freebsd=- os:netbsd=-
 ripgrep ripgrep tdnf=- os:rocky=- os:chimera=-
 sudo sudo nix=-
-tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=- nix=gnutar
+tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=- os:netbsd=- nix=gnutar
 tmux tmux
-unzip unzip os:freebsd=-
-xz xz apt=xz-utils emerge=app-arch/xz-utils os:freebsd=-
+unzip unzip os:freebsd=- os:netbsd=-
+xz xz apt=xz-utils emerge=app-arch/xz-utils os:freebsd=- os:netbsd=-
 go go apt=golang dnf|yum=golang emerge=dev-lang/go
 nim nim apt=- dnf|yum=- tdnf=- os:wolfi=- os:chimera=- os:rocky=-
 python python3 pacman=python os:chimera=python emerge=dev-lang/python
@@ -313,7 +316,14 @@ detect_provider() {
       return 0
       ;;
     NetBSD)
+      # ⭐ pkgin FIRST AND pkg_add SECOND, because both are real and one installs
+      # the other. ⛔ Measured on a stock NetBSD 11.0 on 2026-09-15: `pkgin` is
+      # ABSENT and `/usr/sbin/pkg_add` is in base, so a detection that looked only
+      # for pkgin exited 2 with "no package manager found" - while naming pkg_add
+      # in the list it said it had looked for - on a system whose base carries a
+      # working one. `pkg_add -I pkgin` installed pkgin there in 13.5 s.
       if have pkgin; then printf 'pkgin'; return 0; fi
+      if have pkg_add; then printf 'pkg_add'; return 0; fi
       printf ''
       return 0
       ;;
@@ -689,9 +699,38 @@ install_packages() {
     pkgin)   run_root "installing $#" pkgin -y install "$@" ;;
     # ⚠ pkg_add IS INTERACTIVE BY DEFAULT over an ambiguous name, and -I is what
     # turns that into a refusal rather than a prompt nothing will answer.
-    pkg_add) run_root "installing $#" pkg_add -I "$@" ;;
+    pkg_add) netbsd_pkg_path; run_root "installing $#" pkg_add -I "$@" ;;
     *)       return 1 ;;
   esac
+}
+
+# ⛔ NetBSD's pkg_add HAS NO DEFAULT REPOSITORY AND OpenBSD's HAS ONE. Measured on
+# NetBSD 11.0 on 2026-09-15: with no `PKG_PATH` exported, `pkg_add -I jq` answered
+# `no pkg found for 'jq', sorry.` and a five-name run reported five failures and
+# one name absent. OpenBSD's reads `/etc/installurl` and needs nothing from here.
+#
+# ⚠ A PKG_PATH THE CALLER ALREADY SET IS LEFT ALONE, because a machine pointed at
+# an internal mirror has said where its packages come from and this must not
+# overrule that.
+netbsd_pkg_path() {
+  if [ -n "${PKG_PATH:-}" ]; then
+    return 0
+  fi
+  if [ "$KERNEL" != NetBSD ]; then
+    return 0
+  fi
+  np_arch=$(uname -m 2>/dev/null) || np_arch=''
+  np_rel=$(uname -r 2>/dev/null) || np_rel=''
+  # A release reads `11.0` on a release build and `11.0_STABLE` on a branch, and
+  # the repository is named for the first half.
+  np_rel=${np_rel%%_*}
+  if [ -z "$np_arch" ] || [ -z "$np_rel" ]; then
+    warn 'this NetBSD did not answer uname -m or -r, so PKG_PATH was not set and pkg_add has no repository'
+    return 0
+  fi
+  PKG_PATH="https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/$np_arch/$np_rel/All"
+  export PKG_PATH
+  step "PKG_PATH set to $PKG_PATH"
 }
 
 # ⛔ THE USER-LEVEL PROVIDER IS USED AND NEVER INSTALLED. Installing nix means

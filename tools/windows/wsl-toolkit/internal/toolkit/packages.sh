@@ -35,8 +35,10 @@
 # the `os:freebsd` rows came from FreeBSD 15.1 through `wsl-toolkit bsd run
 # --network`, which fetches this file by raw URL and then queries `pkg` for each
 # name. The `nix` values were evaluated in nixpkgs on 2026-09-14, every attribute the
-# agent toolset resolves. ⛔ NetBSD and OpenBSD are the exception and say so in the
-# header: `pkgin` and `pkg_add` are written and have never been run.
+# agent toolset resolves. ⭐ The `os:netbsd` rows came from NetBSD 11.0 on
+# 2026-09-15, booted under QEMU on the maintainer's host and driven through
+# `pkgin`: each one names a tool NetBSD's BASE already provides, which pkgsrc
+# either spells differently or does not carry at all.
 package_table() {
   cat <<'TABLE'
 bash bash nix=bashInteractive
@@ -45,20 +47,20 @@ build - apk=build-base os:chimera=base-devel apt=build-essential pacman=base-dev
 coreutils coreutils os:chimera=chimerautils os:rocky=-
 curl curl
 fd fd apt=fd-find dnf|yum=fd-find os:rocky=- tdnf=- os:chimera=- os:freebsd=fd-find
-file file os:freebsd=-
+file file os:freebsd=- os:netbsd=-
 git git
 jq jq
-less less os:freebsd=-
+less less os:freebsd=- os:netbsd=-
 node nodejs zypper=nodejs-default os:freebsd=node
-npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=- nix=-
-openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=- nix=openssh
-procps procps pacman|xbps=procps-ng dnf|yum|tdnf=procps-ng emerge=sys-process/procps os:freebsd=-
+npm npm zypper=npm-default emerge=- tdnf=- xbps=- os:chimera=- os:void=- os:netbsd=- nix=-
+openssh openssh-client pacman|xbps=openssh os:chimera=openssh dnf|yum|tdnf|zypper=openssh-clients emerge=net-misc/openssh os:freebsd=- os:netbsd=- nix=openssh
+procps procps pacman|xbps=procps-ng dnf|yum|tdnf=procps-ng emerge=sys-process/procps os:freebsd=- os:netbsd=-
 ripgrep ripgrep tdnf=- os:rocky=- os:chimera=-
 sudo sudo nix=-
-tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=- nix=gnutar
+tar tar os:chimera=libarchive-progs os:wolfi=- os:freebsd=- os:netbsd=- nix=gnutar
 tmux tmux
-unzip unzip os:freebsd=-
-xz xz apt=xz-utils emerge=app-arch/xz-utils os:freebsd=-
+unzip unzip os:freebsd=- os:netbsd=-
+xz xz apt=xz-utils emerge=app-arch/xz-utils os:freebsd=- os:netbsd=-
 go go apt=golang dnf|yum=golang emerge=dev-lang/go
 nim nim apt=- dnf|yum=- tdnf=- os:wolfi=- os:chimera=- os:rocky=-
 python python3 pacman=python os:chimera=python emerge=dev-lang/python
@@ -200,7 +202,14 @@ detect_provider() {
       return 0
       ;;
     NetBSD)
+      # ⭐ pkgin FIRST AND pkg_add SECOND, because both are real and one installs
+      # the other. ⛔ Measured on a stock NetBSD 11.0 on 2026-09-15: `pkgin` is
+      # ABSENT and `/usr/sbin/pkg_add` is in base, so a detection that looked only
+      # for pkgin exited 2 with "no package manager found" - while naming pkg_add
+      # in the list it said it had looked for - on a system whose base carries a
+      # working one. `pkg_add -I pkgin` installed pkgin there in 13.5 s.
       if have pkgin; then printf 'pkgin'; return 0; fi
+      if have pkg_add; then printf 'pkg_add'; return 0; fi
       printf ''
       return 0
       ;;

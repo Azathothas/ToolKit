@@ -41,10 +41,23 @@ to the unprivileged account whose home persists with the named base.
 
 ---
 
-## The durable session
+## ⛔ Which multiplexer, and it is not a preference
 
-`bootstrap.sh` installs [`tmux.conf`](../../../../../scripts/common/tmux.conf) as
-`~/.tmux.conf` when it can find it beside itself. Start or reattach with:
+⭐ **herdr owns the agents' session.** [`herdr.md`](herdr.md) is how it is
+reached and what it does. tmux is the **generic fallback for a shell that is not
+inside herdr** - a plain `base shell`, a machine with no herdr, a BSD guest.
+
+⛔ **tmux inside a herdr pane hides the agent from herdr.** herdr's own agents
+page says detection does not inspect a tmux session launched inside a pane, so
+herdr sees `tmux` as the pane process and the agent behind it becomes invisible:
+no `idle`, no `working`, no `blocked`, no notification. ⚠ **A shell framework that
+auto-enters tmux therefore breaks the whole point of running agents under herdr.**
+Read on 2026-09-15 and recorded in
+[`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md).
+
+Outside herdr, `bootstrap.sh` installs
+[`tmux.conf`](../../../../../scripts/common/tmux.conf) as `~/.tmux.conf` when it
+can find it beside itself. Start or reattach with:
 
 ```sh
 tmux new-session -A -s provider
@@ -62,3 +75,4 @@ pane whose command has ended.
 
 [`access-profiles.md`](access-profiles.md) carries the one-checkout and
 zero-grant configurations, including what each one does and does not isolate.
+[`herdr.md`](herdr.md) carries the session the agents actually run in.

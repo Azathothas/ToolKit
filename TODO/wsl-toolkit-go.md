@@ -3650,7 +3650,7 @@ ordinary trees it must not. The copy line now reads
 filed by the operator on 2026-09-12. **Implementation checkpointed
 2026-09-12T14:18:33Z.** The provider-neutral base is built and driven; the
 provider's own installer and authenticated smoke remain.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -4099,6 +4099,165 @@ above, which is a complete outcome rather than a failure. Neither answer came.
 ⚠ **Nothing was downloaded and nothing was worked around.** That is four sessions.
 Saying so plainly is the outcome, and this entry stays open carrying exactly one item
 plus its closing reviews.
+
+## Closing, 2026-09-15: NetBSD drove both arms, and OpenBSD is ruled enough
+
+**Closed 2026-09-15.** ⭐ **The operator approved the two downloads on 2026-09-15,
+after four sessions of asking**, and then ruled part way through the drive: "we
+don't care about bsd that much, we already have one of them that works and that's
+enough". ⛔ **That ruling is what closes this entry**, not a claim that both
+operating systems were driven. What is true is better than it reads: **both
+package-manager arms ran, because NetBSD has both.**
+
+### The images, and what verifying them was worth
+
+| file | bytes | checked |
+| --- | --- | --- |
+| `NetBSD-11.0-amd64-live.img.gz` | **503,277,153** | ⭐ SHA512 matched its published `SHA512` |
+| `install79.img` | **839,352,320** | ⭐ SHA256 matched, **and `signify-openbsd -V` answered `Signature Verified`** |
+
+⭐ **The OpenBSD signature is authorship, not transport, and that took one extra
+step.** The `SHA256.sig` was checked against `openbsd-79-base.pub` fetched from
+**`raw.githubusercontent.com/openbsd/src`** - a different origin from
+`cdn.openbsd.org`, which served the file - and the two copies of the key are
+**byte-identical**, SHA-256 `B7EE8E79…7DD7E4B1`. ⚠ Debian's independent
+`signify-openbsd-keys` 2025.1 stops at **openbsd-78**, so it could not supply a
+7.9 key; the GitHub mirror is what made this stronger than a same-origin check.
+⭐ Both images, both overlays and the installed disk were removed afterwards,
+about 6.5 GiB.
+
+### ⭐ `pkgin`, driven
+
+On NetBSD 11.0 amd64 booted under QEMU here, root over the serial console,
+`bootstrap.sh` fetched into the guest over the driver's own TFTP and checked by
+`cksum` against the tree's copy:
+
+```text
+provider=pkgin  toolset=developer
+requested=18  present=9  skipped=build file less npm openssh procps tar unzip xz
+absent=  failures=0        BOOTSTRAP EXIT 0
+```
+
+### ⭐ `pkg_add`, driven, on the same NetBSD with `pkgin` hidden
+
+```text
+provider=pkg_add  requested=5  present=4  skipped=tar  absent=  failures=0
+bootstrap:   PKG_PATH set to https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/amd64/11.0/All
+/usr/pkg/bin/jq                                       PKG_ADD EXIT 0
+```
+
+⚠ **So `pkg_add` is not an undriven arm**, which is what the 2026-09-14 ruling
+was written to prevent. What is undriven is `pkg_add` **on OpenBSD**, where
+`/etc/installurl` supplies the repository instead of `PKG_PATH`. OpenBSD 7.9 was
+installed and booted here - shell after 64.5 s, `/usr/sbin/pkg_add` present,
+`/etc/installurl` reading `https://cdn.openbsd.org/pub/OpenBSD` - and the operator
+stopped it there.
+
+### ⛔ Three defects in `bootstrap.sh`, none visible in the source
+
+1. ⛔ **A stock NetBSD had no package manager at all, and the message named the
+   one it was standing on.** `pkgin` is not installed on NetBSD 11.0; `pkg_add` is
+   in base at `/usr/sbin/pkg_add`. The detection looked only for `pkgin`, so the
+   run exited **2** with `no package manager found; looked for apk apt dnf emerge
+   pacman pkg pkg_add pkgin tdnf xbps yum zypper and nix` - a list containing
+   `pkg_add`, on a system where `command -v pkg_add` answers. ⭐ Fixed: NetBSD
+   tries `pkgin`, then `pkg_add`. `pkg_add -I pkgin` installed pkgin in **13.5 s**.
+2. ⛔ **NetBSD's `pkg_add` has no default repository and OpenBSD's has one.**
+   With no `PKG_PATH`, `pkg_add -I jq` answered `no pkg found for 'jq', sorry.` and
+   a five-name run reported **five failures and one name absent**. ⭐ Fixed:
+   `netbsd_pkg_path` sets it from `uname -m` and `uname -r`, for NetBSD only, and
+   ⚠ **leaves a `PKG_PATH` the caller already exported alone**.
+3. ⛔ **The table had no NetBSD column, so it asked pkgsrc for what NetBSD base
+   already provides.** `tar`, `procps`, `openssh`, `npm`, `file`, `less`, `unzip`
+   and `xz` - four not in the repository at all, and a run therefore exited 1 with
+   `absent=` **empty**, a report saying everything was present while failing. ⭐
+   Fixed: eight rows gained `os:netbsd=-`, confirmed by `pkg_info -Fe` naming each
+   as BASE rather than guessed.
+
+### ⛔ And five in the scratch driver, which had never booted a guest
+
+`.tmp\bsd67-driver` is untracked and stays that way; it booted its first guest
+today, after these:
+
+| what | the symptom it produced |
+| --- | --- |
+| ⛔ **both boot loaders take LF, not CR** | the typed line echoed and was never submitted, and the driver reported "no boot prompt" about a loader that was simply waiting. NetBSD's menu and its `boot>`, and OpenBSD's `boot>`, all three |
+| ⛔ `-no-reboot` against a first-boot resize | the NetBSD live image resizes its own filesystem and reboots; QEMU exited and the driver reported "qemu exited before a login prompt" about a guest that was working correctly |
+| ⛔ a prompt that ends in `)` | `System hostname? (short form, e.g. 'foo')` ends in a **parenthesis**, and the prompt test accepted only `?`, `]`, `:` or `>`. The install sat at that question with the rule for it unused in the table |
+| ⛔ the success line checked only on exit | the installer's last answer is `reboot`, so with reboots allowed QEMU never exits; the loop read the boot loader's prompt as an unknown question and stopped to ask about a finished install |
+| ⛔ `Set-StrictMode` against an omitted field | the result JSON omits `error` when there is none, so **every successful request failed in the client** after the guest had already run the command correctly |
+
+⭐ **The installer's one refusal was correct and is kept.** Installing the sets
+from the install media reached `Directory does not contain SHA256.sig. Continue
+without verification? [no]`, and the driver refused. The sets now come from the
+mirror over http, where the installer fetches `SHA256.sig` beside them and checks
+every one against the key on its own media: `CONGRATULATIONS! Your OpenBSD install
+has been successfully completed!`
+
+### The three reviews
+
+⭐ **1. The door sweep - what other door reaches this code?** `detect_provider`
+has one caller and `netbsd_pkg_path` one, in `install_packages`'s `pkg_add` arm.
+What the enumeration missed and grepping found:
+
+- ⛔ **`detect_provider` lives INSIDE the shared package-table block**, so the
+  NetBSD fallback is generated into `internal/toolkit/packages.sh` and reaches the
+  base provisioner too. ⚠ Harmless - the provisioner runs in a Linux WSL
+  distribution and never on NetBSD - but it is a change to an embedded file, and
+  `check.sh package-table --fix` regenerated it in the same change.
+- **`netbsd_pkg_path` is OUTSIDE that block**, so the export does not reach the
+  provisioner. That is the correct side of the line: `PKG_PATH` is a bootstrap
+  concern.
+- **`--provider pkg_add` forces the arm on any kernel.** The guard is the kernel,
+  not the provider, so forcing `pkg_add` on Linux sets no `PKG_PATH` and fails as
+  it did before. A case covers it.
+- ⚠ **Found, recorded, not acted on:** `PROVIDERS` still lists twelve names in one
+  string used for both the refusal message and `--list-providers`. The message
+  that misled here was correct about the list and wrong about the machine, and no
+  change makes a list say what is installed.
+
+⭐ **2. The guard mutation - can the new guards fail?** Each planted by hand in
+`golang:1.25` with **`-count=1`**, because `go test` serves a cached result for a
+shell file the build cache does not track:
+
+```text
+unmutated                                      exit=0  0 failing case(s)
+planted: the base pkg_add fallback removed     exit=1  1 failing case(s)
+planted: the kernel guard removed              exit=1  1 failing case(s)
+planted: the callers own PKG_PATH ignored      exit=1  1 failing case(s)
+restored                                       exit=0  0 failing case(s)
+```
+
+⭐ **The first plant was REFUSED, and that is the planter working.**
+`if have pkg_add; then printf 'pkg_add'; return 0; fi` occurs **twice** - once in
+the NetBSD arm and once in OpenBSD's - and `write-file.mjs replace --expect 1`
+refused an ambiguous anchor rather than mutating the wrong arm. A hand-rolled
+`sed` would have taken the first and reported a guard proved.
+
+⭐ **3. The claim audit - which sentence is not backed by an artefact?**
+
+- ⛔ **"Both managers are driven" would have been false as the 2026-09-14 ruling
+  meant it**, and the closing above says so instead of eliding it: both *arms* ran,
+  on one operating system, and `pkg_add` on OpenBSD did not.
+- ⛔ **A first draft of the OpenBSD verification would have claimed a signature
+  check that proved only transport.** The key and the file came from the same
+  mirror; fetching the key from a second origin and comparing is what makes the
+  sentence true, and Debian's independent key set stopping at 78 is why that was
+  necessary.
+- **The 13.5 s, 108 s and 64.5 s figures** are single measurements on one host
+  under WHPX with one processor and 2 GiB, and they are quoted with those
+  conditions rather than as properties of the systems.
+- ⚠ **Not measured, and said so:** every `os:netbsd=-` row is justified by
+  `pkg_info -Fe` answering BASE for that tool on NetBSD 11.0. `npm` is the one
+  exception - it is marked `-` because it arrived with `node` from pkgsrc at
+  `/usr/pkg/bin/npm`, not because base provides it.
+
+### Still open
+
+⛔ **Nothing, and one thing is deliberately not done.** `pkg_add` on OpenBSD is
+undriven by the operator's ruling of 2026-09-15. ⚠ The 2026-09-14 ruling's second
+half - remove a manager that cannot be driven here - is **not** invoked: both
+managers were driven, so neither leaves `bootstrap.sh`.
 
 ---
 
@@ -6644,6 +6803,158 @@ herdr's own keys closed a pane and then a tab while the tracked file closed noth
    `examples/common/zellij.md` removed with every link to it.
 4. The three reviews, and the closing.
 
+## Amendment, 2026-09-15: the reference sweep, and what it corrects in this entry
+
+⭐ **`herdrdev/herdr` was cloned and read at commit
+`052779c4159ed851`, with its tracker**, alongside the two
+third-party Muse plugins and nine other bridges. The sweep is
+[`../docs/reference-sweeps/findings.md`](../docs/reference-sweeps/findings.md)
+and its contract half is
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md). ⛔
+**Nothing in it was run**, and this entry still closes on measurement taken here.
+
+### ⛔ Three things this entry did not know, and the first one blocks the prove
+
+1. ⛔ **herdr 0.9.0's Windows `--remote` client repaints only on
+   window-activation events, and prefix commands never take effect.**
+   `herdrdev/herdr#4176`, **closed**, so a later release carries the fix. The
+   record's host state says the operator installed **0.9.0**, and the adapter pins
+   0.9.0. ⚠ **The prove's second passing condition - the attach line reaching the
+   same server - is against exactly that client on exactly that version.** The
+   next session checks the installed version against that issue before it
+   concludes anything about the door, the key or `sshd`.
+2. ⛔ **A musl base is the wrong host for a herdr server.** `#4174`, open: the
+   0.9.0 Linux server aborts in a musl malloc integrity check and **every pane
+   child dies**, with restore bringing back empty shells. `wsl-toolkit-base.json`
+   already chooses `arch`, which is glibc; this is why that is not a preference.
+3. ⛔ **`events.subscribe` silently drops events above roughly 500 in flight, with
+   no gap indication.** `#4178`, open. Anything built on a subscription
+   reconciles against `agent list` rather than trusting the stream.
+
+### ⛔ The upstream Muse integration was written, and closed unmerged
+
+| pull request | state |
+| --- | --- |
+| `#4163` report Muse panes awaiting background agents as working | closed, ⛔ not merged |
+| `#4164` Muse hook install plumbing | closed, ⛔ not merged |
+| `#4165` Muse target in registry, CLI, resume and authority | closed, ⛔ not merged |
+| `#4166` docs: cover Muse integration | closed, ⛔ not merged |
+
+All four by `ohk`, closed **2026-09-15T02:38:16Z**, and ⚠ **no human comment
+states a reason**. ⭐ **So this entry must not wait for upstream and must not
+assume `herdr integration install muse` exists.** What it can use is the design
+the closed bodies describe, which is more than any third-party plugin publishes:
+`assets/muse/herdr-agent-state.{sh,ps1}` - ⭐ **a reporter with a PowerShell
+half** - source `herdr:muse`, a subagent-safe session claim, `MUSE_HOOK_EVENTS`,
+an install that **merges into Muse's `settings.json`**, and resume by
+`muse resume <uuid>`.
+
+### ⭐ The premise table's Muse row is right, and smaller than it reads
+
+herdr ships `src/detect/manifests/muse.toml`, version `2026.08.26.1`, so **Muse
+panes are already classified `idle`, `working` and `blocked` with no integration
+at all**. The gap is lifecycle authority and session identity, not detection.
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md)
+section 5 carries the manifest's measured description of Muse's UI, including the
+rule that matters most:
+
+⛔ **Every approval rule needs a PAIR of phrases**, because "Muse can emit any one
+of these phrases as ordinary assistant text after a completed turn". ⭐ That is
+this repository's own forbidden pattern - a check satisfied by the command's own
+echo - met independently in somebody else's detection rules.
+
+### ⭐ A third Windows surface this entry never considered
+
+The decision's three forks are all about an interactive client. There is a fourth
+thing, and for "the operator watches the agents from Windows" it is the better
+one:
+
+```powershell
+herdr --machine base agent list
+herdr --machine base agent prompt w1:p1 "..."
+```
+
+⭐ **`herdr --machine <label-or-id>` routes one API command to a saved SSH machine
+with no terminal UI open at all**, over non-interactive SSH. ⭐ **And herdr states
+that those payloads are not interpolated into the SSH shell command** - the same
+rule this tool reached on 2026-09-09 for every guest payload, reached
+independently by somebody else.
+
+⚠ **Two herdr documents disagree about Windows.** Its capability table calls
+saved SSH machines supported; its connecting-machines page says multi-machine
+connections are **not yet verified or supported on a Windows client**, with
+standalone `--remote` still supported. ⛔ Neither was measured. The next session
+measures `--remote`, `--machine` and `machine add` on this host and records which
+sentence held.
+
+What `--machine` will and will not carry, which shapes any tooling built on it:
+
+- forwarded: `workspace`, `worktree`, `tab`, `pane`, `notification`, `agent`
+  (⛔ except `attach`), `api snapshot`, `status server`, and API-backed plugin
+  `link`/`unlink`/`enable`/`disable`/`list`/`action`/`log`/`pane`;
+- ⛔ **not forwarded: plugin INSTALLATION**, session management, local
+  configuration, interactive attach;
+- ⛔ the selector is a saved profile id or a **unique, case-sensitive label**, not
+  an SSH hostname; combining it with `--session` or `--remote` is an error;
+- ⛔ local pane ids are not inherited and `--current` cannot mean a local pane.
+
+### ⛔ Four traps the sweep found that this shape walks straight into
+
+1. ⛔ **tmux is invisible to herdr's agent detection**, so a pane that auto-enters
+   it loses its agent's state entirely. ⭐ The 2026-09-13 ruling keeps tmux as a
+   generic fallback; this is what that must mean in practice. The mechanism is in
+   [`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md)
+   section 8, and both example pages now warn about it.
+2. ⛔ **A launcher is a wrapper, and a wrapper hides the agent.** `HERDR_AGENT=<agent>`
+   must be set **on the wrapper command, on the herdr side**; herdr cannot see it
+   if it is set only inside a VM or container. ⚠ `base agent NAME` and the
+   `NAME.exe` launcher are exactly such wrappers, and `WSL-78` owns them.
+3. ⚠ **WSL may not expose a foreground process group**, which is how herdr
+   identifies a pane's agent. herdr offers `HERDR_PROCESS_DETECTION=child-groups`
+   for "restricted Linux runtimes": read by the **server**, needs a restart, best
+   effort. ⭐ **Whether WSL needs it is a one-command measurement** and it belongs
+   in this entry's first driven pass.
+4. ⛔ **herdr copies nothing onto an SSH host** - no plugin, configuration,
+   executable or secret - and "missing remote commands fail visibly". Everything
+   the base needs is installed by the adapter, in the base.
+
+### ⭐ The integration contract, if this entry builds one
+
+Should the closing need lifecycle authority rather than screen detection, the
+whole contract is in
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md)
+sections 1 to 4. The two rules that are not obvious, both of which cost their
+finders a pull request:
+
+- ⛔ **`--seq` is strictly increasing per source, and a stale one is accepted by
+  the API and IGNORED by the pane state.** Nothing errors. A `release-agent`
+  without its own `seq` is silently dropped and the stale row sits in
+  `herdr agent list` for ever.
+- ⛔ **`muse resume` reuses the session id and never emits `SessionStart`**, so a
+  resumed session is invisible without an adoption path. Adopt only on
+  `UserPromptSubmit`, `PreToolUse` or `PermissionRequest`, only into an unowned
+  pane, and seed the seq from wall-clock.
+
+⚠ **A Muse hook sees none of herdr's environment.** `HERDR_ENV`, `HERDR_PANE_ID`
+and `HERDR_BIN_PATH` are not visible to it, which is why one reference patches the
+`muse` launcher and the other walks the process tree. ⛔ **And a Muse hook must
+never write to stdout**: hook stdout can influence the agent.
+
+### Still open, revised
+
+1. **Measure herdr on this host before anything else**, and in this order: the
+   installed Windows version against `#4176`; `--remote`, then `--machine`, then
+   `machine add`; and whether WSL needs `HERDR_PROCESS_DETECTION=child-groups`.
+2. Muse through herdr: the prove's two commands. They need the Muse adapter and
+   the operator's sign-in on `wsl-toolkit-base`.
+3. The attach line reaching the same server, and the close keys in Muse's own
+   pane, after 2.
+4. ⭐ **Done in this session:** `examples/common/zellij.md` is removed, every link
+   to it is gone, `examples/common/herdr.md` carries the operator and agent guide
+   with the sweep's traps, and `examples/muse-code/README.md` is rewritten from
+   eleven commands to three.
+5. The three reviews, and the closing.
+
 ## Ruled by the operator, 2026-09-14: Muse and herdr stay together after existing work
 
 ⭐ **Finish the ordered safety, correctness and issue 30 work first.** The sealed
@@ -7094,6 +7405,122 @@ Windows; and the quoting, in `golang:1.25`.
 2. The interactive screen through herdr: starting Muse in a pane at the project's
    guest path and attaching from Windows, with `WSL-76`'s closing drive.
 3. The closing, with the three reviews run again over what that drive adds.
+
+## Amendment, 2026-09-15: what the reference sweep adds, and one trap it closes
+
+The sweep behind this is
+[`../docs/reference-sweeps/findings.md`](../docs/reference-sweeps/findings.md),
+commits and all; the contract half is
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md). ⛔
+**Nothing in it was run**, and every claim carries the version it was read
+against.
+
+### ⛔ The trap this entry's own launcher walks into
+
+⛔ **A launcher is a wrapper, and a wrapper hides the agent from herdr.** herdr
+identifies a pane's agent from its foreground process, and its agents page says
+plainly: a host-visible wrapper can hide the real agent. The fix herdr documents
+is `HERDR_AGENT=<agent>` **on the wrapper command**, and it is explicit about the
+half that gets it wrong - "Herdr cannot see it if you set it only inside a VM or
+container."
+
+⚠ **`base agent muse` and the `muse.exe` launcher are both exactly such a
+wrapper**, and the `wsl.exe` hop is the container boundary that sentence is about.
+So the setting has to be made **on the herdr side**, in the pane herdr owns, not
+inside the base by the launcher. ⛔ **This was not measured**, and it is the first
+thing the interactive half of item 2 should measure, because a Muse screen that
+herdr reports as `unknown` for ever is the failure this predicts.
+
+### ⭐ herdr can start Muse itself, which shrinks item 2
+
+⭐ **`muse` is a supported `--kind`.** herdr's agent-automation page lists 24 of
+them and Muse is one:
+
+```bash
+herdr agent start muse --kind muse --pane "$pane" -- --reasoning-effort high
+```
+
+| ⛔ | |
+| --- | --- |
+| `agent start` needs an **available shell pane at its prompt** | it never creates, splits or moves layout |
+| the name must match `[a-z][a-z0-9_-]{0,31}` | and be unique among live agents |
+| 30 s default, `--timeout` 3000-300000 ms | `agent_not_ready` if detection reports blocked during startup |
+| capture ids from the JSON | `pane split` returns `.result.pane`, `workspace create` returns `.result.root_pane` |
+
+⭐ **So "Muse's own screen started in a herdr pane at the project's guest path"
+is one herdr command against a pane created at that path**, not a terminal to
+script. ⚠ Whether it survives the `wsl.exe` wrapper is the measurement above.
+
+### ⭐ Muse's real interop surface, corroborated three ways
+
+⛔ **This entry's premise reads Muse's `--help` and stops at flags.** Three
+independent references name a protocol:
+
+| reference | what it says |
+| --- | --- |
+| `ibchouti9/openmuse` | talks to the real `muse` binary over its **MSP session protocol**, `muse serve` over **stdio**, speaking **JSON-RPC** |
+| `LimpingNinja/omp-muse-bridge` | a **persistent `muse serve` host** keeps backend context between turns |
+| `danny-hines/muse-code-bridge` | requires **Muse Code 1.0.3+ and Muse Session Protocol v1** |
+
+⭐ **That is a far better surface than sending keys and reading a screen**, and it
+is the one item 1's guide should prefer wherever a command has to be scripted
+rather than typed.
+
+⛔ **And this entry already recorded the obstacle**: `base exec` gives a command
+`/dev/null` as stdin, `cmd_base_exec.go:18`, so a stdio protocol cannot pass
+through it. ⚠ **That is now a design question with a name**, not a note: either a
+`base` surface that keeps stdin open for a stdio protocol, or `muse serve` reached
+from inside the base by something that is already there. Neither is built and
+neither is ruled.
+
+### ⭐ Muse's lifecycle hooks, and what they are worth to a guide
+
+Muse emits `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`,
+`Stop` and `SessionEnd`, each a **command hook reading a JSON payload on stdin**,
+carrying `session_id`, `turn_id`, `cwd`, `transcript_path`, `model` and
+`permission_mode`.
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md)
+section 3 carries the payloads.
+
+⛔ **A Muse hook must never write to stdout** - hook stdout can influence the
+agent - and every failure path exits 0. ⚠ **The `PermissionRequest` payload is the
+one shape nobody has confirmed**; its own publisher marks the fixture
+`INFERRED SHAPE - not yet observed live`.
+
+⚠ **`muse skills install` plus a `settings.json` merge is how a third party
+installs into Muse**, because `siddicky/oh-my-musecode` measured that **Muse 1.1.1
+reports plugins are unavailable in that build**. herdr's own unmerged plumbing did
+the same `settings.json` merge. A guide that tells a first-time operator to
+install a Muse plugin would be telling them to do something their build refuses.
+
+### ⚠ Every Muse version in evidence disagrees
+
+| source | version |
+| --- | --- |
+| herdr's shipped detection manifest | measured against **0.2.1** |
+| `danny-hines/muse-code-bridge` | requires **1.0.3+** |
+| `siddicky/oh-my-musecode` | measured **1.1.1** |
+| this entry's own premise | **1.1.1** through `base exec` |
+| this repository's record, public channel 2026-09-14 | **1.2.1-R2847.1** |
+
+⛔ **So no behaviour quoted from a reference is evidence for the build this
+session would install.** The guide's every command is run on the installed build
+before it is written, which this entry already required; this table is why.
+
+### Still open, revised
+
+1. The prove, and the guide, whose every command is run before it is written. Both
+   need Muse signed in, so both wait for `wsl-toolkit-base` and the operator's
+   `muse login`.
+2. The interactive screen through herdr, now with a named first measurement:
+   **does a Muse started through `base agent` or `muse.exe` keep its identity to
+   herdr, and does `HERDR_AGENT` on the herdr side restore it when it does not?**
+   Then `herdr agent start muse --kind muse` in a pane at the project's guest
+   path, and attach from Windows with `WSL-76`'s closing drive.
+3. ⚠ **A decision nobody has made:** whether `muse serve`'s stdio protocol gets a
+   route through this tool, given that `base exec` closes stdin. It is named here
+   so the later session rules on it rather than discovering it.
+4. The closing, with the three reviews run again over what that drive adds.
 
 ---
 
@@ -8719,3 +9146,171 @@ scripts README at 508. The consumers claim was measured rather than asserted, ab
 - The amendment's npm boundary figures - 6.14.11 and 7.17.0 without `--pack-destination`,
   7.18.0 and 7.18.1 with - are last session's measurement and were not taken again. The
   case holds them as a table, so a future npm that disagrees fails it.
+
+## WSL-88. The pi adapter, and herdr's first lifecycle authority in this base
+
+**Source** the operator's work order of 2026-09-14, "Author approved entries for
+`pi` and `omp` before either adapter is built", and the reference sweep of
+2026-09-15 that costed both.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`adapters/README.md` names `pi` and `omp` as the next adapters and builds
+neither. A base configured for agents therefore carries Muse, which herdr can
+only classify from its screen, and none of the agents herdr has **lifecycle
+authority** for. The operator cannot compare an agent whose state herdr knows
+exactly against one it infers.
+
+## Premise
+
+⭐ **Read on 2026-09-15**, from `earendil-works/pi` at commit
+`f9bcd351dc3cedf9` and `herdrdev/herdr` at
+`052779c4159ed851`. ⛔ **None of it was run**, and the
+sweep is [`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md)
+section 9.
+
+| what | read |
+| --- | --- |
+| install | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`. ⭐ pi documents `--ignore-scripts` as normal: "Pi does not require install scripts for normal npm installs" |
+| ⭐ no piped script | there is a `curl \| sh` installer and **nothing here needs it**, so this repository's refusal costs nothing |
+| herdr integration | `herdr integration install pi`, which writes `~/.pi/agent/extensions/herdr-agent-state.ts`, or `$PI_CODING_AGENT_DIR/extensions/` when set. Uninstall removes only that file |
+| authority | ⭐ **lifecycle hooks, state AND session.** herdr's agents table: "Pi \| lifecycle hooks when installed; otherwise screen manifest \| state and session" |
+| restore | needs Pi integration version **2**; `herdr integration status` prints installed versions |
+| ⛔ a trap | pi binds `Enter` to submit and `Shift+Enter` to newline, and tmux strips modifiers by default. `WSL-71`'s work added the version-guarded `extended-keys` to this tree's `tmux.conf` for exactly this |
+| the reference to copy | herdr names `prime-agent`'s own `herdr-agent-state.ts` as the real-world example: activates only inside herdr, maps events to `working`, `idle`, `blocked`, preserves ordering, releases on exit |
+
+⚠ **The base already has Node and npm** at `toolset developer`, so the adapter
+adds a package rather than a toolchain.
+
+## Approach
+
+1. **`adapters/pi/install.sh`**, following `adapters/muse/` and the contract in
+   [`../tools/windows/wsl-toolkit/adapters/README.md`](../tools/windows/wsl-toolkit/adapters/README.md):
+   look before changing anything, end with `adapter-complete pi`.
+2. ⭐ **Install with `--ignore-scripts` and pin the version**, then
+   `herdr integration install pi` **in the base**, because herdr copies nothing
+   onto an SSH host.
+3. **`probe.sh`** prints `version`, the integration version from
+   `herdr integration status`, and a `problem` line for each thing wrong.
+4. ⚠ **The launcher question is `WSL-78`'s, not this entry's.** If `pi` gets a
+   `pi.exe`, it inherits the wrapper problem: herdr cannot see an agent behind a
+   wrapper unless `HERDR_AGENT` is set on the herdr side.
+
+⛔ **Do not build a second install path.** `base agent` and the adapter contract
+exist; this is one directory of two scripts, not a new surface. ⛔ **Do not pipe
+pi's installer into a shell**, and do not add pi to `bootstrap.sh`'s table, which
+is fetched by URL and is not where a herdr-specific agent belongs.
+
+## Decision
+
+⭐ **No fork.** The install route, the integration command and the authority model
+are all documented by their own projects, and the alternative - screen detection
+only - is what the base already has with Muse.
+
+## Consumers
+
+None: `adapters/` has no row in [`../docs/consumers.md`](../docs/consumers.md).
+⚠ It stays none only while pi is kept out of `bootstrap.sh`, which is fetched by
+URL.
+
+## Prove
+
+```powershell
+wsl-toolkit --instance base base status --probe --json
+wsl-toolkit --instance base base exec -c 'herdr integration status'
+```
+
+Passing is:
+
+- the probe reports the `pi` adapter healthy with a `version` line, exit 0 read
+  from the process;
+- `herdr integration status` names pi at integration version **2** or later;
+- ⭐ **an agent started in a pane reaches `idle` and then `working` from herdr's
+  own report rather than from its screen**, shown by `herdr agent explain` naming
+  a lifecycle authority rather than a manifest rule;
+- `base remove --yes` takes the adapter's half of this machine away.
+
+---
+
+## WSL-89. The omp adapter, and the directory collision herdr refuses
+
+**Source** the operator's work order of 2026-09-14, alongside `WSL-88`.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+The same as `WSL-88`, for omp. ⛔ **And one thing that is not the same:** a base
+that carries both pi and omp can be configured so that herdr **refuses** the omp
+integration, and the failure is a refusal at install time rather than anything an
+operator would predict.
+
+## Premise
+
+⭐ **Read on 2026-09-15**, from `can1357/oh-my-pi` at commit
+`6a0b915dcac4576f` and herdr at the commit above. ⛔ **None
+of it was run.**
+
+| what | read |
+| --- | --- |
+| what it is | ⭐ **a fork of pi**, upstream `badlogic/pi-mono`, published as `@oh-my-pi/pi-coding-agent` |
+| herdr integration | `herdr integration install omp`, writing `~/.omp/agent/extensions/herdr-omp-agent-state.ts` |
+| ⛔ the collision | herdr resolves omp's agent directory as `PI_CODING_AGENT_DIR` when set, else `$HOME/$PI_CONFIG_DIR/agent` when `PI_CONFIG_DIR` is set, else `~/.omp/agent`. **"If Pi and OMP resolve to the same extension directory, Herdr refuses the OMP install so the OMP extension cannot be loaded by Pi."** |
+| authority | ⭐ lifecycle hooks, state **and** session, reported through herdr's socket API. It "does not require native process detection for the `omp` executable" |
+| restore | `omp --resume=<session>`, integration version **3** |
+| extensibility | `.omp/hooks/pre/*.ts` factories are loaded as extension modules; `--hook` is an alias for `--extension` |
+
+⚠ **`PI_CODING_AGENT_DIR` is read by BOTH**, which is what makes the collision
+reachable: one variable exported for pi silently redirects omp onto pi's
+directory.
+
+## Approach
+
+1. **`adapters/omp/install.sh`**, the same shape as `WSL-88`'s.
+2. ⛔ **Refuse the collision before herdr does, and say which variable caused
+   it.** Resolve both directories the way herdr resolves them, compare, and fail
+   with the two paths and the variable named. A refusal from the adapter names the
+   cause; one from `herdr integration install` names only itself.
+3. `probe.sh` reports the resolved agent directory as a fact, so a base whose
+   environment changed later is visible in `base status --probe`.
+4. ⚠ **A base carrying pi and omp together is the case to drive**, because a base
+   carrying one is the case that cannot fail.
+
+⛔ **Do not set `PI_CODING_AGENT_DIR` or `PI_CONFIG_DIR` for the account** to work
+around it. A variable this tool exports to fix its own install is one the operator
+cannot see and will not expect.
+
+## Decision
+
+⭐ **No fork on the install.** One decision is open and it is small: whether the
+adapter **refuses** a colliding configuration or **separates** the directories
+itself. Recommended: **refuse and name the cause.** Separating means writing an
+environment variable into the account for a reason the operator never chose,
+which is the thing this repository's own rules keep finding to be wrong later.
+
+## Consumers
+
+None, on the same terms as `WSL-88`.
+
+## Prove
+
+```powershell
+wsl-toolkit --instance base base status --probe --json
+wsl-toolkit --instance base base exec -c 'herdr integration status'
+```
+
+Passing is:
+
+- the probe reports the `omp` adapter healthy with a `version` line and the
+  resolved agent directory, exit 0 read from the process;
+- `herdr integration status` names omp at integration version **3** or later;
+- ⭐ **with pi installed too, both integrations are present and their directories
+  differ**, read back from the probe;
+- ⛔ **a base configured so the two collide is REFUSED by the adapter, naming both
+  paths and the variable**, and the refusal is a mutation row.
+
+---

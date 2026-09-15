@@ -1,174 +1,105 @@
 # Muse Code in one named WSL base
 
-This is the concrete provider example for the one-checkout profile in
-[`../common/access-profiles.md`](../common/access-profiles.md). It gives Muse a
-persistent Linux home, systemd, rootless Podman, developer tools, CodeGraph and
-Zellij, with exactly one Windows checkout mounted for the base account. The
-trusted Muse agent has passwordless sudo, so a package install or a system
-change does not stop and wait for a password nobody is there to type.
+⭐ **Three commands, and the third one is the agent.** This is the concrete
+provider example for the one-checkout profile in
+[`../common/access-profiles.md`](../common/access-profiles.md): a persistent
+Linux home for Muse with systemd, rootless Podman, the developer toolset,
+CodeGraph and herdr, and exactly one Windows checkout reachable from it.
 
-## Prepare the checkout on Windows
+⚠ **This page used to carry eleven steps, two files copied by hand and a
+multiplexer that has been replaced.** What removed them was not a shorter page:
+`base.adapters` installs the software during `base ensure`, and `base agent` runs
+the agent in the granted directory. The page is short because the tool does the
+work.
 
-1. Copy [`../../../../../scripts/common/bootstrap.sh`](../../../../../scripts/common/bootstrap.sh)
-   into the target checkout as `.wsl-toolkit/common/bootstrap.sh`.
-2. Save the **One read/write checkout** JSON from
-   [`access-profiles.md`](../common/access-profiles.md) as
-   `wsl-toolkit.json` at that checkout's root.
-3. Validate before creating anything:
+---
 
-```powershell
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json config validate
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json config
-```
+## The whole of it
 
-The second command must print `passwordless sudo true` and one `grant` row whose
-Windows source is the exact target checkout and whose guest target is
-`/workspaces/project`.
-
-Create or reconcile the named base, then make it prove its live state:
+[`wsl-toolkit-base.json`](wsl-toolkit-base.json) is the profile. Save it at the
+checkout's root as `wsl-toolkit.json`, or point `--config` straight at this file.
 
 ```powershell
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base ensure
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base status --probe --json
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base shell
+wsl-toolkit --instance base --config .\wsl-toolkit.json base ensure
+wsl-toolkit --instance base base grant . --mode rw
+wsl-toolkit --instance base base agent muse
 ```
 
-`base shell` starts as `muse`; `sudo` does not prompt. `base shell --root`
-remains the recovery path if that configured account is ever unhealthy.
+| the command | what it does |
+| --- | --- |
+| `base ensure` | builds the distribution, provisions it, and installs the `herdr` and `muse` adapters named in the profile. Idempotent: a second run reconciles rather than rebuilds |
+| `base grant` | mounts **this** Windows directory under `/workspaces`, live, with no restart |
+| `base agent muse` | runs Muse in the guest directory this Windows directory is granted at, with its screen in a herdr pane. Every argument after the name is Muse's |
 
-## Bootstrap the agent and durable session
+⭐ **The adapter also writes `muse.exe`** into the account's bin directory, so the
+same run is `muse.exe` from the checkout once that directory is on `PATH`.
 
-Install the measured Zellij package explicitly, then run the shared agent
-bootstrap as the configured account. The bootstrap installs CodeGraph and skips
-the tmux-specific configuration because Zellij owns this provider workflow:
+⛔ **A directory no grant covers is refused**, with the `base grant` line that
+would cover it. That refusal is the profile working, not a failure.
+
+---
+
+## Before the first run, once
 
 ```powershell
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec --root -c 'pacman -Syu --noconfirm --needed zellij'
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec --dir /workspaces/project -c 'sh .wsl-toolkit/common/bootstrap.sh --toolset agent --without nim,powershell,tmux --no-tmux-config'
+wsl-toolkit --instance base --config .\wsl-toolkit.json config validate
 ```
 
-The operator starts or rejoins the durable terminal from `base shell`:
+It must print `passwordless sudo true`, `systemd true`, and the two adapters.
+⚠ **The profile carries no standing grant on purpose**: the base is built once
+and each project is granted when it is worked on, so a base left running reaches
+no checkout at all.
 
-```sh
-cd /workspaces/project
-zellij attach --create muse-code
-```
-
-Detach without stopping it by pressing `Ctrl-o`, then `d`, and run the same
-attach command after reconnecting.
-
-For native Windows attachment, the first-run, token and key guide is
-[`../common/zellij.md`](../common/zellij.md). A native Windows Zellij 0.45.1
-client completed an authenticated attach to the WSL 0.45.1 server over localhost
-on 2026-09-13, and `WSL-69` in
-[`../../../../../TODO/wsl-toolkit-go.md`](../../../../../TODO/wsl-toolkit-go.md)
-records that run.
-
-The agent reaches the same session through `base exec`. Zellij 0.45.1 exposes
-stable pane IDs, JSON discovery, targeted input and screen capture:
+After `base ensure`, make it prove its live state rather than trusting the
+configuration:
 
 ```powershell
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij attach --create-background muse-code'
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action list-panes --all --json'
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action dump-screen --full --pane-id terminal_0'
-```
-
-For ordinary unattended commands, use `base exec -c` directly and trust its
-forwarded exit status. Use a Zellij pane when the process must remain visible,
-interactive, or durable across terminal disconnects.
-
-⚠ **`--toolset agent` is a long install on a fresh base**, because it carries
-Rust, Go, Nim, Python and PowerShell as well as the developer set. Drop what this
-provider does not need with `--without`, for example
-`--without nim,powershell`.
-
-## Install and run Muse Code
-
-The base's `muse` adapter installs it. Name it in `base.adapters` and run `base
-ensure`; [`wsl-toolkit-base.json`](wsl-toolkit-base.json) beside this page is the
-profile for the one base every agent shares, with the `herdr` and `muse` adapters,
-the account `herdr` and no standing grant. From a clone of this repository, put it
-where `--instance base` reads it from any directory, then build:
-
-```powershell
-New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\wsl-toolkit\instances\base" | Out-Null
-Copy-Item tools\windows\wsl-toolkit\examples\muse-code\wsl-toolkit-base.json "$env:LOCALAPPDATA\wsl-toolkit\instances\base\config.json"
-wsl-toolkit --instance base base ensure
 wsl-toolkit --instance base base status --probe --json
 ```
 
-⛔ **Meta's installer runs only while its digest is approved.** The adapter saves
-it, prints its length and SHA-256, and runs it as the account when the digest is the
-one the adapter pins or the `installer_sha256` the profile's `muse` entry carries.
-Any other stops the ensure with exit 2 and prints how to read the saved file; add its
-digest as `installer_sha256` only after reading it.
+⛔ **`registered` is not `usable`.** `--probe` runs a container and reads the
+adapters back; without it the answer is what this machine believes.
 
-⛔ **Signing in is the operator's.** `muse login` is a device-code sign-in: it
-prints an `auth.meta.com` URL and a code, and offers to open a browser, which it
-cannot do with interop off. Open the URL in a Windows browser. Measured on
-2026-09-13, the credential lands in `~/.config/muse/auth.json`, mode 0600, in the
-persistent home.
+---
 
-```powershell
-wsl-toolkit --instance base base shell
-```
+## What the profile chose, and why
 
-Then run `muse login` in that shell.
+| choice | reason |
+| --- | --- |
+| `arch` | glibc. ⛔ herdr's 0.9.0 Linux server aborts in a **musl** malloc check and takes every pane child with it, `herdrdev/herdr#4174` |
+| `automount: off`, `interop: off` | no Windows drive is reachable and no Windows executable runs. A grant is then the only door, and it is explicit |
+| `passwordless_sudo: true` | a package install does not stop for a password nobody is there to type. ⚠ It is a **trust** decision about the agent, not a containment one |
+| `systemd: true` | herdr's server is a system unit, so it starts with the base |
+| `toolset: developer` | the thirteen commands the base itself installs as root |
+| `adapters: herdr, muse` | installed by `base ensure` and read back by `base status --probe` |
 
-⭐ **From Windows, grant a project and run `muse` in it.** `base ensure` also writes
-`muse.exe` into `%USERPROFILE%\bin`, which runs Muse in the base at the guest path
-of the directory you stand in:
+---
 
-```powershell
-wsl-toolkit --instance base base grant --source C:\path\to\project --mode rw
-Set-Location C:\path\to\project
-muse --version
-```
+## The account's own tools
 
-⭐ **`muse` is on `PATH` in `base exec`**, through `/usr/local/bin/muse`, which the
-adapter writes and which runs Muse only as the base's account. ⚠ Meta's installer
-prints that `~/.local/bin` is not on your `PATH` and asks you to add it; that file is
-why nothing needs adding.
-
-⚠ **Muse says your content may be used for product improvement.** Its first
-screen named the model `muse-spark-1.3-contributor` and printed that notice. This
-repository makes no claim about Meta's terms; read them before giving it a
-checkout that matters.
-
-### An agent on Windows, driving Muse headless
-
-`muse exec` runs one prompt with no terminal and reports JSON events. Put the
-prompt in a file inside the base, then:
+The base's toolset is installed as root into the image. ⭐ **The bootstrap is the
+other half**, and it adds the languages and CodeGraph into the account's home,
+which is what persists with the base:
 
 ```powershell
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec --dir /workspaces/project -c '. ~/.profile; muse exec --json --workspace /workspaces/project --approval-mode never --prompt-file /tmp/muse-task.txt'
+wsl-toolkit --instance base base exec -c 'sh /workspaces/project/.wsl-toolkit/common/bootstrap.sh --toolset agent'
 ```
 
-`--approval-mode never` keeps an unattended run from waiting on a prompt nobody
-answers, and Muse's own sandbox stays on. ⭐ **Driven through the WSL-69
-smoke**: Muse read the checkout, ran a program in it, wrote a file that appeared
-on Windows, committed, and pushed to the checkout's remote, in 52 seconds, with
-exit 0.
+⛔ **Not as root.** Provider state, authentication and CodeGraph belong to the
+unprivileged account. [`../common/README.md`](../common/README.md) carries what
+each toolset name resolves to.
 
-### An agent on Windows, driving Muse's interactive screen
+---
 
-Start Muse in a named pane of the durable session, then type into it and read the
-screen back:
+## Watching it
 
-```powershell
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c '. ~/.profile; zellij attach --create-background muse-code; zellij --session muse-code action new-pane --cwd /workspaces/project --name muse -- bash -lc "muse"'
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action write-chars --pane-id terminal_1 "Run python3 src/inventory.py and answer with only the number it prints."'
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action send-keys --pane-id terminal_1 ENTER'
-wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base exec -c 'zellij --session muse-code action dump-screen --full --pane-id terminal_1'
-```
+[`../common/herdr.md`](../common/herdr.md) is the operator and agent guide:
+attaching from Windows, `herdr --machine` for scripted watching with nothing
+open, and the four traps a Windows-to-WSL shape walks into.
 
-⚠ **The first start in a checkout asks `Do you trust this workspace?`**, and a
-question typed before that is answered is lost rather than queued. Answer it with
-`ENTER` for the default, `1 Trust and continue`, then type the question. Read the
-pane id from `new-pane` or `list-panes --json` rather than assuming one.
-⭐ Driven on 2026-09-13: the answer was on screen 10 seconds after `ENTER`.
-
-Windows interop is off, so nothing in the guest can start a Windows program.
-Muse's auth, configuration and sessions stay in the persistent Linux home, and
-the checkout is the only configured Windows directory it can edit. ⚠ Muse has
-passwordless sudo in this profile, so that is a configuration, not a boundary.
+⚠ **herdr detects Muse already.** It ships a Muse screen-detection manifest, so a
+Muse pane is classified `idle`, `working` and `blocked` with no integration at
+all. What it does not have is lifecycle authority or session identity; `WSL-76`
+owns that gap and
+[`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md)
+carries the contract it is built from.

@@ -11,7 +11,15 @@ one.
 | [`herdr/`](herdr/) | herdr 0.9.0, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
 | [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, and a `muse.exe` launcher on this machine | the `arch` preset |
 
-`pi` and `omp` are the next adapters named, and neither is built.
+⭐ **`pi` and `omp` are the next two, and both now have entries rather than a
+sentence.** `WSL-88` and `WSL-89` in
+[`../../../../TODO/wsl-toolkit-go.md`](../../../../TODO/wsl-toolkit-go.md) carry
+what each installs, costed from a reference sweep on 2026-09-15: both are npm
+packages installed with `--ignore-scripts` and **neither needs a piped installer**,
+both already have official herdr integrations, and both give herdr **lifecycle
+authority** rather than the screen detection Muse gets. ⛔ `WSL-89` also carries
+the one trap: herdr **refuses** the omp integration when pi and omp resolve to the
+same extension directory, and `PI_CODING_AGENT_DIR` is read by both.
 
 ---
 

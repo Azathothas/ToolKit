@@ -542,6 +542,25 @@ spelled `setw -g` and `set -s`.** A bare `set -g` over a window option is an err
 on an older tmux, and the configuration then loads PARTIALLY: tmux starts, that
 line did nothing, and the session looks configured.
 
+⛔ **The one exception is behind a version test, and without it an agent cannot
+type a newline.** tmux strips modifier information by default, so `Shift+Enter`
+arrives as plain `Enter` - and pi binds `Enter` to submit and `Shift+Enter` to
+insert a newline, so under an unconfigured tmux the second one submits. The fix is
+`extended-keys on` with `extended-keys-format csi-u`, and the second needs tmux
+**3.5**. The file tests the version in the shell's own `case`, because `sort -V`
+and `awk` are not on every image this repository installs into. Driven on
+2026-09-15: on tmux 3.5a both options read back set, tmux started with exit 0 and
+**empty stderr**, and the rest of the configuration still applied; the test skips
+2.9 through 3.4b and sets 3.5, 3.5a, 3.6, **3.10** and 4.0, which a numeric
+comparison would get wrong.
+
+⛔ **tmux is the fallback, not the agents' multiplexer.** herdr's agent detection
+does not inspect a tmux session launched inside one of its panes: it sees `tmux`
+as the pane process and the agent behind it becomes invisible. A shell framework
+that auto-enters tmux therefore breaks agent state entirely.
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) carries
+the sweep that read it.
+
 ### `common/shell-profile.sh`
 
 A login-shell profile that does ONE thing: an **interactive** shell whose working

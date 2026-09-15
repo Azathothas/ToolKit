@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-15T06:16:51Z; the record commit's own time is its end
 baseline        53a8f1f, tree clean, doctor exit 0 in 27.79 s, gate 20 of 20 in 33.09 s
 head            8801301, CI run 34938687647 started on its push
-entries         total 122  open 5  blocked 0  done 117
+entries         total 124  open 6  blocked 0  done 118
 closed          WSL-71 in 8801301
 partial         WSL-68, its door enumeration done and four items named
 partial         WSL-67, waiting on the two BSD downloads
@@ -21,39 +21,39 @@ partial         WSL-67, waiting on the two BSD downloads
 reviews. [`../scripts/common/shell-profile.sh`](../scripts/common/shell-profile.sh) is a
 new file other projects may fetch: an INTERACTIVE login shell on a Windows drive moves to
 the account's home, a shell `base shell --here` marked stays, and a granted directory is
-never touched. **Resume, in this order:**
+never touched.
 
-1. `WSL-67`'s `pkgin` and `pkg_add`, once the two downloads are approved, then its
-   closing. ⛔ Asked a fourth time on 2026-09-15 and not answered, so it did not move.
-2. `WSL-68`'s four remaining items, listed in its own entry: a real `/etc/resolv.conf`
+⭐ **`WSL-67` is closed on NetBSD, by the operator's ruling of 2026-09-15 that OpenBSD
+is enough left undriven.** Both package-manager arms were driven on NetBSD 11.0 booted
+under QEMU here: `pkgin` exit 0 with 0 failures, and the base `pkg_add` exit 0 after two
+defects the drive found were fixed. Both images were verified and removed.
+
+⭐ **The reference sweep of 2026-09-15 is done and recorded**, fourteen repositories
+including herdr itself, with commits and the tracker.
+[`../docs/reference-sweeps/findings.md`](../docs/reference-sweeps/findings.md) carries
+the verdicts and
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) the contract
+`WSL-76` and `WSL-78` are built from. ⛔ **Nothing in it was run**, and both entries now
+say so in their amendments.
+
+**Resume, in this order:**
+
+1. `WSL-68`'s four remaining items, listed in its own entry: a real `/etc/resolv.conf`
    and the shared tmpfs closed at every start, the account's processes in their own
    network namespace through `pasta`, the probe as a registered command, and the manual
    paragraph. Its Approach step 1 is closed.
+2. **Muse and herdr together**, `WSL-76` and `WSL-78`, in the session the operator
+   reserved for it. ⛔ **Read the sweep first** - it changes both entries' premises and
+   names the version check that has to come before anything else.
+3. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters, authored on 2026-09-15 and built
+   after the Muse and herdr session.
 
-⛔ **`WSL-68`'s attack found a door the entry did not list: `/mnt/wsl` is one shared
-`tmpfs`, mounted `drwxrwxrwt` for every distribution in the utility VM.** A zero-grant
-base wrote a file there that another distribution read, and read one another
-distribution wrote, and uids are not namespaced across it. ⭐ It can be unmounted in one
-distribution only, by root, at every start - and doing so costs DNS, because
-`/etc/resolv.conf` resolves into it. ⚠ `podman-sockets` there is NOT a door: both
-entries are zero-byte regular files and `curl --unix-socket` exits 7. The entry carries
-all of it.
-
-⛔ **Found while building `WSL-71`, and FIXED in the same change: the `PATH` line
-`bootstrap.sh` writes has never reached a bash login shell on this tool's own default
-base.** bash reads the first of `~/.bash_profile`, `~/.bash_login` and `~/.profile` and
-stops, and arch's `/etc/skel` ships `.bash_profile` and no `.profile`, as fedora's and
-rocky 8's do. Measured on the arch base `wsl-toolkit-b71`: `HEAD` left the prefix off a
-bash login shell's `PATH` and reported that it had added it; the tree puts it there.
-`WSL-71` carries the measurement.
-
-⚠ **The two BSD image downloads still wait for the operator's approval in chat.** Asked
-again on 2026-09-15 at this session's start, in chat and as a file, naming each file, its
-source and its size, and not answered. This is the fourth session that has asked. ⭐ QEMU
-11.1.0 here puts SeaBIOS's screen on the serial console with `-M q35,graphics=off`,
-measured with no disk on 2026-09-15, which is how a BSD boot loader's prompt is reached
-with no `sga` device. The scratch driver under `.tmp\bsd67-driver` has still never booted
-a guest.
+⛔ **The first thing the Muse and herdr session does is check a version.**
+`herdrdev/herdr#4176`, closed: **herdr 0.9.0's Windows `--remote` client repaints only
+on window-activation events and never applies prefix commands.** The record's host state
+says the operator installed 0.9.0 and the adapter pins 0.9.0, so `WSL-76`'s prove is
+aimed at exactly that defect. ⛔ And `#4174`: a 0.9.0 Linux server aborts in a **musl**
+malloc check and kills every pane child, which is why the base preset is glibc.
 
 ⛔ **Found while proving `WSL-86`, and not filed: the automount sweep is a race.** A
 Windows drive that appears between the provisioner's sweep and the restart that applies
@@ -276,8 +276,12 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 5. A deterministic regression for pre-marker base rollback is still owed. ⚠ **Met again on 2026-09-15:** a fedora build stopped mid-provisioning left `wsl-toolkit-t86fedora` registered, and `base remove` refused it with `carries no wsl-toolkit identity marker`, so `wsl.exe --unregister` was used by hand.
 6. The generated manual prints a one-letter flag as `--c`, which the parser
    accepts and no example writes.
-7. `examples/muse-code/README.md` and `examples/common/zellij.md` describe Zellij
-   and `wsl-toolkit-muse`, which changes with `WSL-76`.
+7. ⭐ **Closed on 2026-09-15.** `examples/common/zellij.md` is deleted, the manual's
+   link to it now names `herdr.md`, `examples/muse-code/README.md` is rewritten from
+   eleven commands to three, and `examples/common/README.md` no longer tells a reader
+   the agents' durable session is tmux. No live document names Zellij; the entries
+   that do are recording a decision, and [`ENTRY.md`](ENTRY.md) forbids rewriting a
+   title or a premise after the fact.
 8. ⚠ **An ephemeral job says its output is kept, and it is not.** `run
    --container-lifecycle ephemeral` against `golang:1.25` printed `the complete
    output is kept: wsl-toolkit logs 4e94faa38b4c9c1c`; `logs` on that id answered

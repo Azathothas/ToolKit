@@ -214,3 +214,89 @@ func TestBootstrapNamesAnNpmTooOldToPackToADirectory(t *testing.T) {
 		}
 	}
 }
+
+// TestBootstrapFallsBackToTheNetBSDBasePkgAdd is WSL-67's first NetBSD defect, found
+// by booting one rather than by reading the file.
+//
+// ⛔ A STOCK NetBSD 11.0 HAS NO pkgin AND ITS BASE HAS pkg_add. The detection looked
+// only for pkgin, so `bootstrap.sh` exited 2 with "no package manager found" - while
+// naming pkg_add in the list it said it had looked for - on a system whose
+// /usr/sbin/pkg_add installs pkgin itself in 13.5 s. Measured 2026-09-15 under QEMU.
+func TestBootstrapFallsBackToTheNetBSDBasePkgAdd(t *testing.T) {
+	dash := dashFor(t)
+	src := bootstrapSource(t)
+	for _, c := range []struct {
+		name, uname, present, want string
+	}{
+		{"NetBSD with pkgin", "NetBSD", "pkgin pkg_add", "pkgin"},
+		{"NetBSD with only the base pkg_add", "NetBSD", "pkg_add", "pkg_add"},
+		{"NetBSD with neither", "NetBSD", "", ""},
+		{"OpenBSD is unchanged", "OpenBSD", "pkg_add", "pkg_add"},
+		{"OpenBSD does not gain pkgin", "OpenBSD", "pkgin", ""},
+		{"FreeBSD is unchanged", "FreeBSD", "pkg", "pkg"},
+	} {
+		harness := strings.Join([]string{
+			"set -eu",
+			`uname() { printf '%s' "$UNAME_S"; }`,
+			`have() { for h in $PRESENT; do [ "$h" = "$1" ] && return 0; done; return 1; }`,
+			bootstrapFunction(t, src, "detect_provider"),
+			`printf 'provider=%s\n' "$(detect_provider)"`,
+		}, "\n") + "\n"
+		cmd := exec.Command(dash, "-c", harness)
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "UNAME_S=" + c.uname, "PRESENT=" + c.present}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%s: the harness exited: %v; stderr %q", c.name, err, stderr.String())
+		}
+		got := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(stdout.String()), "provider="))
+		if got != c.want {
+			t.Errorf("%s: detect_provider answered %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// TestBootstrapGivesTheNetBSDPkgAddARepository is WSL-67's second NetBSD defect.
+//
+// ⛔ NetBSD's pkg_add HAS NO DEFAULT REPOSITORY AND OpenBSD's HAS ONE. With no
+// PKG_PATH exported, `pkg_add -I jq` answered "no pkg found for 'jq', sorry." and a
+// five-name run reported five failures; OpenBSD's reads /etc/installurl and needs
+// nothing. ⚠ A PKG_PATH the caller already set is left alone.
+func TestBootstrapGivesTheNetBSDPkgAddARepository(t *testing.T) {
+	dash := dashFor(t)
+	src := bootstrapSource(t)
+	for _, c := range []struct {
+		name, kernel, already, want string
+	}{
+		{"NetBSD gets one", "NetBSD", "", "https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/amd64/11.0/All"},
+		{"the caller's own is kept", "NetBSD", "https://mirror.example/packages/All", "https://mirror.example/packages/All"},
+		{"OpenBSD is left alone", "OpenBSD", "", ""},
+		{"FreeBSD is left alone", "FreeBSD", "", ""},
+	} {
+		harness := strings.Join([]string{
+			"set -eu",
+			`warn() { printf 'warn: %s\n' "$*" >&2; }`,
+			`step() { printf 'step: %s\n' "$*" >&2; }`,
+			`uname() { case "$1" in -m) printf 'amd64' ;; -r) printf '11.0_STABLE' ;; esac; }`,
+			"KERNEL=" + c.kernel,
+			bootstrapFunction(t, src, "netbsd_pkg_path"),
+			"netbsd_pkg_path",
+			`printf 'PKG_PATH=%s\n' "${PKG_PATH:-}"`,
+		}, "\n") + "\n"
+		cmd := exec.Command(dash, "-c", harness)
+		env := []string{"PATH=/usr/bin:/bin"}
+		if c.already != "" {
+			env = append(env, "PKG_PATH="+c.already)
+		}
+		cmd.Env = env
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%s: the harness exited: %v; stderr %q", c.name, err, stderr.String())
+		}
+		got := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(stdout.String()), "PKG_PATH="))
+		if got != c.want {
+			t.Errorf("%s: PKG_PATH became %q, want %q", c.name, got, c.want)
+		}
+	}
+}

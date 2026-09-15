@@ -327,8 +327,8 @@ names a directory to write it into instead, which a throwaway base uses.
 worked example. [`examples/common/access-profiles.md`](examples/common/access-profiles.md)
 carries both the one-checkout profile and the zero-grant profile, including the
 boundary they do not claim against guest root or the network.
-[`examples/common/zellij.md`](examples/common/zellij.md) is the operator and
-agent guide for the same durable session, including native Windows attachment.
+[`examples/common/herdr.md`](examples/common/herdr.md) is the operator and agent
+guide for the same durable session, including how it is reached from Windows.
 
 ---
 

@@ -21,6 +21,66 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T08:55:00Z: NetBSD drives both of bootstrap.sh's BSD package managers, and neither worked before
+
+**Record:** `WSL-67` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the images, the digests, the drives, the five driver defects and the
+three reviews.
+**Deployed:** no deploy, and no tag. ⚠
+[`scripts/common/bootstrap.sh`](scripts/common/bootstrap.sh) is fetched by URL, so this
+reached a caller of `main` when it was pushed.
+**Closes:** `WSL-67`.
+
+⛔ **A STOCK NetBSD HAD NO PACKAGE MANAGER AT ALL, AND THE MESSAGE NAMED THE ONE IT WAS
+STANDING ON.** `pkgin` is not installed on NetBSD 11.0 and `pkg_add` is in base, so the
+run exited 2 with `no package manager found; looked for ... pkg_add pkgin ...` on a
+system where `command -v pkg_add` answers. NetBSD now tries `pkgin`, then the base
+`pkg_add`.
+
+⛔ **NetBSD's `pkg_add` has no default repository and OpenBSD's has one.** With no
+`PKG_PATH` exported, `pkg_add -I jq` answered `no pkg found for 'jq', sorry.` and a
+five-name run reported five failures. `PKG_PATH` is now set from `uname -m` and
+`uname -r`, for NetBSD only, and ⚠ a value the caller already exported is left alone.
+
+⛔ **Eight table rows asked pkgsrc for what NetBSD base already provides.** `tar`,
+`procps`, `openssh`, `npm`, `file`, `less`, `unzip` and `xz`; four are not in the
+repository at all, so a run exited 1 with `absent=` empty - a report saying everything
+was present while failing. Each row gained `os:netbsd=-`, confirmed by `pkg_info -Fe`.
+
+⭐ **Driven on NetBSD 11.0 booted under QEMU on the maintainer's host**, after its
+SHA512 was checked: `pkgin` exit 0 with `failures=0`, and with `pkgin` hidden the base
+`pkg_add` exit 0 with `failures=0`. No flag changed and no exit code changed for any
+Linux or FreeBSD caller.
+
+### 2026-09-15T08:55:00Z: the agents' multiplexer is herdr everywhere a live page says so
+
+**Record:** the sweep in
+[`docs/reference-sweeps/findings.md`](docs/reference-sweeps/findings.md) and
+[`docs/reference-sweeps/usable.md`](docs/reference-sweeps/usable.md), and the amendments
+to `WSL-76` and `WSL-78`.
+**Deployed:** no deploy, and no tag. ⚠
+[`scripts/common/tmux.conf`](scripts/common/tmux.conf) is fetched by URL and changed.
+**Closes:** nothing. `WSL-88` and `WSL-89` are new and open.
+
+⛔ **`examples/common/zellij.md` is deleted.** The multiplexer it documents was replaced
+on 2026-09-13 and the page had outlived the decision. The manual's link now names
+`herdr.md`, and `examples/muse-code/README.md` went from eleven commands and two files
+copied by hand to **three commands**, because `base.adapters` and `base agent` already do
+the work the page was describing by hand.
+
+⛔ **`examples/common/README.md` told a reader the agents' durable session was tmux, and
+herdr cannot see an agent behind one.** herdr's agent detection does not inspect a tmux
+session launched inside a pane: it sees `tmux` as the pane process and the agent becomes
+invisible. tmux is the fallback for a shell outside herdr, and all three example pages now
+say so.
+
+⚠ **`tmux.conf` gained `extended-keys on` and `extended-keys-format csi-u`, behind a
+version test.** Without them tmux strips modifier information and `Shift+Enter` arrives
+as plain `Enter`, so an agent that binds `Enter` to submit cannot type a newline. The
+option needs tmux 3.5 and the file targets 3.0, so a `case` on `tmux -V` sets it from 3.5
+upward - including 3.10, which a numeric comparison gets wrong - and skips 3.0 to 3.4b
+with empty stderr.
+
 ### 2026-09-15T06:37:22Z: a portable shell profile this tree owns, and the login file bash actually reads
 
 **Record:** `WSL-71` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

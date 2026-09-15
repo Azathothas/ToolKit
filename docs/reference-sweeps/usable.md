@@ -998,3 +998,315 @@ value there is a defect in the report rather than a cosmetic gap.
 ⚠ **A later session that gains a BSD guest with working DNS should re-drive the
 `pkg` row first**, because it is the one with real values written from a manual
 rather than from a machine.
+
+# Sweep 3: what herdr and Muse actually expose, 2026-09-15
+
+⭐ **The file `WSL-76` and `WSL-78` are built from.** Everything below is cited to
+a reference and a commit in [`findings.md`](findings.md), which carries the
+verdicts. ⛔ **None of it has been driven on this host.** It is somebody else's
+contract, read carefully, and the entry that uses it measures it here first.
+
+---
+
+## 1. What a herdr pane gives a process, and it is the whole integration surface
+
+An agent running in a herdr pane inherits these, and nothing else is needed:
+
+```text
+HERDR_ENV=1            present only inside herdr
+HERDR_PANE_ID          w1:p1
+HERDR_WORKSPACE_ID     w1
+HERDR_TAB_ID           w1:t1
+HERDR_BIN_PATH         the running herdr binary
+HERDR_SOCKET_PATH      the session's socket, for raw clients
+```
+
+⛔ **Report only when `HERDR_ENV=1` and the variables are present.** That is
+herdr's own instruction, and it is what keeps an integration a no-op outside
+herdr. ⭐ **Call `"$HERDR_BIN_PATH"` rather than the socket**: herdr states that
+this is what keeps a plugin portable across Unix sockets and **Windows named
+pipes**, which is exactly this repository's problem.
+
+⛔ **Muse's hooks do NOT see any of them.** `akshat12/herdr-muse` states it in the
+module docstring: "Muse hooks run with a cleared environment: HERDR_ENV,
+HERDR_PANE_ID and HERDR_BIN_PATH are NOT visible here." That single sentence is
+why one plugin patches the `muse` launcher and the other walks the process tree.
+
+---
+
+## 2. The report contract
+
+```bash
+"$HERDR_BIN_PATH" pane report-agent "$HERDR_PANE_ID" \
+  --source custom:wsl-toolkit-muse \
+  --agent muse \
+  --state working \
+  --agent-session-id "$session" \
+  --seq "$n"
+
+"$HERDR_BIN_PATH" pane release-agent "$HERDR_PANE_ID" \
+  --source custom:wsl-toolkit-muse --agent muse --seq "$((n+1))"
+```
+
+| rule | what it is |
+| --- | --- |
+| states | `idle`, `working`, `blocked`. herdr also reports `done` and `unknown`, which nobody sends |
+| `done` | idle **and not yet seen**. `pane focus` / `agent focus` mark seen; reads do not |
+| `unknown` | an agent is present and herdr cannot classify it. ⛔ **It does not prove completion** |
+| ⛔ `--seq` | strictly increasing **per source**. A report at or below the last accepted sequence is **accepted by the API and ignored by the pane state**. Nothing errors |
+| `--source` | at most 80 characters, ASCII letters, digits, colon, dot, underscore, hyphen. Keep it stable and unique |
+| `--message` | describes a block. `akshat12` truncates at 500 |
+| release | ⛔ **needs its own `seq`**, or the row never clears |
+
+Display-only values go through a different call and never touch state:
+
+```bash
+herdr pane report-metadata w1:p1 --source custom:x --token summary=indexing
+```
+
+Metadata caps: values normalised and capped at **80 characters**, at most **16
+token keys per report**, **32 per pane**, token names 1-32 ASCII characters,
+`ttl_ms` between 1 and 86400000, and a pane accepts sequenced token reports from
+at most **32 distinct sources for its lifetime**.
+
+---
+
+## 3. Muse's own surfaces, from three independent references
+
+| surface | what it is | from |
+| --- | --- | --- |
+| ⭐ **lifecycle hooks** | `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `Stop`, `SessionEnd`. Payload is **JSON on stdin** | H3 |
+| ⭐ **`muse serve`** | the **Muse Session Protocol**, JSON-RPC **over stdio**. A persistent host keeps context between turns | M1, M3, M8 |
+| `settings.json` | where an integration is merged. herdr's own unmerged plumbing did the same | M9, H1 `#4164` |
+| `muse skills install` | how M9 installs, **because Muse 1.1.1 reports plugins are unavailable in that build** | M9 |
+| session index | `~/.local/share/muse/session-index.db`, sqlite, table `sessions(session_id, workspace_root, updated_at_us)` | H2 |
+| transcripts | `~/.local/share/muse/sessions/**/<session_id>/session.jsonl` | H2 |
+| resume | `muse resume <uuid>` | H1 `#4165` |
+| launcher | `~/.local/bin/muse` execs `muse-bin-*`; `muse-spark` is a separate name | H2, M3 |
+
+⭐ **The hook payload, from H3's fixtures**, which are the closest thing to a
+specification anyone has published:
+
+```json
+{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"},
+ "tool_use_id":"toolu_01","session_id":"...","turn_id":"...","cwd":"...",
+ "transcript_path":null,"model":"unknown","permission_mode":"default"}
+```
+
+`SessionStart` adds `source`; `Stop` adds `stop_hook_active` and
+`last_assistant_message`; `SessionEnd` adds `reason`; `PermissionRequest` adds
+`tool_name` and `question`. ⚠ **The `PermissionRequest` shape is marked INFERRED
+and not observed live by its own author.**
+
+⛔ **A Muse hook must never write to stdout.** H3: "hook stdout can influence
+agent behavior", and every failure path exits 0.
+
+---
+
+## 4. The event-to-state mapping, which is the whole state machine
+
+| Muse event | herdr state | note |
+| --- | --- | --- |
+| `SessionStart` | `idle`, seq 1 | bind the session to the pane. First one wins |
+| `UserPromptSubmit` | `working` | |
+| `PreToolUse` | `working` | ⭐ also what claims a pane for the lead conversation before a subagent can |
+| `PermissionRequest` | `blocked` | with `--message` |
+| `Stop` | `idle` | |
+| `SessionEnd` | `idle`, then **release** at seq+1 | |
+
+⛔ **`muse resume` never emits `SessionStart`**, so a resumed or already-running
+session is invisible unless the integration can **adopt** a pane. Adopt only on
+`UserPromptSubmit`, `PreToolUse` or `PermissionRequest`, only when the pane is
+unowned, and seed the seq from wall-clock so a pane carrying a high seq from the
+previous session still accepts the new one.
+
+---
+
+## 5. herdr already knows Muse, and that changes the size of the job
+
+⭐ **`src/detect/manifests/muse.toml`, version `2026.08.26.1`, ships in the
+binary.** Muse is detected and classified with no integration at all. The
+manifest's own comments are a measured description of Muse's UI, taken against
+**Muse Code 0.2.1**:
+
+| state | what the screen shows |
+| --- | --- |
+| idle | a `⟩` prompt and a `model · effort · cwd` footer |
+| working | `◆ Working (... · esc to interrupt)`, or another activity label with the same interrupt hint |
+| blocked, question | two co-occurring footer controls: `Enter to select · ↑/↓ to move · Tab for an optional note · Esc to interrupt`. Multi-select uses `Enter to toggle` |
+| blocked, trust | `Do you trust this workspace?` together with `Trust and continue` |
+| blocked, command | `Allow this stage once` with `Always allow in this workspace`. Muse 0.1 used `Allow once` with `Allow for this session` |
+| blocked, network | `Yes, proceed` with `Yes, don't ask again this session` |
+| ⛔ **not** blocked | a user-opened `/theme` or `/skills` menu |
+
+⛔ **Every approval rule needs a PAIR of phrases, and the manifest says why:**
+"Muse can emit any one of these phrases as ordinary assistant text after a
+completed turn." ⭐ That is this repository's own forbidden pattern - a check
+satisfied by the command's own echo - met independently in somebody else's
+detection rules.
+
+⭐ **`muse` is a supported `--kind`.** `herdr agent start NAME --kind muse --pane
+PANE -- <args>` launches it. The full kind list is `pi`, `claude`, `codex`,
+`gemini`, `cursor`, `devin`, `agy`, `cline`, `omp`, `mastracode`, `opencode`,
+`copilot`, `kimi`, `kiro`, `droid`, `amp`, `grok`, `hermes`, `kilo`, `qodercli`,
+`qwen`, `letta`, `maki`, `muse`.
+
+Local manifest overrides, which always win, live at
+`~/.config/herdr/agent-detection/<agent>.toml`; apply one with
+`herdr server reload-agent-manifests`. Diagnose a wrong state with
+`herdr agent explain <target>`.
+
+---
+
+## 6. ⭐ Reaching a base from Windows: the three surfaces, ranked
+
+| surface | supported on a Windows client | what it gives |
+| --- | --- | --- |
+| ⭐ `herdr --machine <label-or-id> <cmd>` | yes, no TUI needed | scripted watching and control of a saved SSH machine |
+| `herdr --remote <target>` | yes | one interactive remote session |
+| `herdr machine add` + the sidebar | ⚠ **"not yet verified or supported on Windows"** | the combined multi-machine agent list |
+
+```powershell
+herdr --machine base agent list
+herdr --machine base pane list
+herdr --machine base agent prompt w1:p1 "review this change"
+```
+
+| rule | what it is |
+| --- | --- |
+| forwarded | `workspace`, `worktree`, `tab`, `pane`, `notification`, `agent` (⛔ except `attach` and local `explain --file`), `api snapshot`, `status server`, plugin `link`/`unlink`/`enable`/`disable`/`list`/`action`/`log`/`pane`, server `stop`/`reload-config`/`agent-manifests`/`reload-agent-manifests` |
+| ⛔ not forwarded | local installation and configuration, **plugin installation**, session management, interactive terminal attach |
+| ⭐ transport | "Requests and responses travel through the JSON API over non-interactive SSH; **API payloads are not interpolated into the SSH shell command**" |
+| selector | an enabled profile **ID or a unique, case-sensitive label** - ⛔ not an SSH hostname |
+| ⛔ combining | `--machine` with `--session` or `--remote` is an error |
+| ⛔ IDs | local pane IDs are not inherited; `--current` cannot mean the caller's local pane |
+| paths | remote worktree paths absolute, `~`, or `~/`; **plugin link paths must be absolute** |
+| ⛔ scope | one machine at a time; no combined listing |
+
+⭐ **The transport line is independent confirmation of this repository's own
+absolute.** herdr reached the same conclusion `wsl-toolkit` reached on 2026-09-09:
+a payload travels as data, never interpolated into a shell command.
+
+⚠ **Authentication**: herdr uses the Windows OpenSSH client and the user's SSH
+configuration. Windows OpenSSH does not use herdr's Unix control-socket reuse, so
+a key in **`ssh-agent`** is recommended; a passphrase-protected key must be loaded
+with `ssh-add` before any non-interactive background connection. A saved profile
+stores only an opaque id, label, SSH target, remote session and enabled state -
+⭐ **no passwords, keys or control sockets**.
+
+---
+
+## 7. The automation primitives, which collapse most of an example page
+
+```bash
+created=$(herdr workspace create --cwd ~/project --label api --no-focus)
+pane=$(printf '%s\n' "$created" | jq -r '.result.root_pane.pane_id')
+split=$(herdr pane split "$pane" --direction right --no-focus)
+right=$(printf '%s\n' "$split" | jq -r '.result.pane.pane_id')
+
+herdr agent start reviewer --kind muse --pane "$right"
+herdr agent prompt reviewer "Review the current diff" --wait --timeout 120000
+herdr agent read reviewer --source recent-unwrapped --lines 120
+herdr agent wait reviewer --until blocked --timeout 120000
+herdr agent send-keys reviewer esc
+```
+
+| rule | what it is |
+| --- | --- |
+| IDs | ⛔ **capture from the JSON, never predict**. `workspace create` returns `.result.workspace`, `.result.tab`, `.result.root_pane`; `tab create` returns `.result.tab` and `.result.root_pane`; `pane split` returns `.result.pane` |
+| agent names | `[a-z][a-z0-9_-]{0,31}`, unique among live agents, cleared when the agent exits |
+| `agent start` | needs an **available shell pane at its prompt**, and never creates layout. 30 s default, `--timeout` 3000-300000 ms. `agent_not_ready` if detection reports blocked during startup |
+| `agent prompt` | rejects an already-`blocked` agent with `agent_blocked` **without sending input**. `--until` requires `--wait` |
+| ⛔ retries | "A timeout or `agent_prompt_stalled` does not prove that no input was sent. **Read the agent before retrying** to avoid submitting the same prompt twice" |
+| waits | ⛔ **no default timeout; they can wait indefinitely** |
+| exit codes | a server error prints JSON on **stderr** and exits **1**; invalid CLI syntax exits **2** |
+| `pane move` | changes the pane ID. Continue from `.result.move_result.pane.pane_id`; an in-flight wait ends `agent_not_running` |
+
+⛔ **Do not run bare `herdr` for discovery** - herdr's own skill says it launches
+or attaches the TUI. Use `herdr <group>` with no subcommand, and
+`herdr api schema --json` for the machine-readable protocol.
+
+---
+
+## 8. ⛔ The traps, each one already paid for by somebody
+
+1. ⛔ **tmux inside a herdr pane hides the agent.** herdr sees `tmux` as the pane
+   process. A shell framework that auto-enters tmux breaks detection completely.
+2. ⛔ **A musl herdr server aborts** in 0.9.0 and takes every pane child with it.
+   Use a glibc base.
+3. ⛔ **`events.subscribe` drops events above ~500 in flight, with no gap
+   indication.** Reconcile against `agent list`; do not trust the stream alone.
+4. ⛔ **herdr 0.9.0's Windows `--remote` client repaints only on window
+   activation and never applies prefix commands.** Update before concluding
+   anything about SSH.
+5. ⛔ **A wrapper hides the agent from herdr.** Set `HERDR_AGENT=<agent>` on the
+   **wrapper command**, not inside the guest: "Herdr cannot see it if you set it
+   only inside a VM or container." ⚠ A `wsl.exe` launcher is exactly such a
+   wrapper.
+6. ⚠ **WSL may not expose a foreground process group.** herdr offers
+   `HERDR_PROCESS_DETECTION=child-groups` for "restricted Linux runtimes"; it is
+   read by the **server**, needs a restart, and is best-effort - a newer
+   background job can be mistaken for the foreground one.
+7. ⛔ **herdr copies nothing to an SSH host** - no plugins, configuration,
+   executables or secrets. "Missing remote commands fail visibly." Anything the
+   base needs is installed **on the base**.
+8. ⛔ **Pi and omp must not share an extension directory**, or herdr refuses the
+   omp install.
+
+---
+
+## 9. pi and omp, for the two adapter entries
+
+| | pi | omp |
+| --- | --- | --- |
+| package | `@earendil-works/pi-coding-agent` | `@oh-my-pi/pi-coding-agent` |
+| ⭐ install | `npm install -g --ignore-scripts <pkg>` | npm, same shape |
+| herdr integration | `herdr integration install pi` | `herdr integration install omp` |
+| extension written to | `~/.pi/agent/extensions/herdr-agent-state.ts` | `~/.omp/agent/extensions/herdr-omp-agent-state.ts` |
+| directory override | `PI_CODING_AGENT_DIR` | `PI_CODING_AGENT_DIR`, else `$HOME/$PI_CONFIG_DIR/agent`, else `~/.omp/agent` |
+| resume | herdr resumes the pane | `omp --resume=<session>` |
+| authority | ⭐ lifecycle hooks, state **and** session | ⭐ lifecycle hooks, state **and** session |
+| integration version needed | `2` | `3` |
+
+⭐ **Neither needs a piped install script**, and pi documents `--ignore-scripts`
+as the normal install: "Pi does not require install scripts for normal npm
+installs." That is the whole of the `pi` adapter's install story, and it satisfies
+this repository's refusal to pipe a remote script into a shell.
+
+⚠ **omp is a fork of pi** (`badlogic/pi-mono` upstream), so the two share shapes
+but not directories, and herdr refuses the omp integration when they collide.
+
+---
+
+## 10. ⭐ The one change this sweep makes to a file this repository ships
+
+⛔ **`scripts/common/tmux.conf` costs pi its `Shift+Enter`.** pi's own `tmux.md`:
+without configuration, tmux strips modifier information, and `Shift+Enter` and
+`Ctrl+Enter` are indistinguishable from plain `Enter`. pi binds `Enter` to submit
+and `Shift+Enter` to newline, so inside this repository's tmux an agent cannot
+insert a newline.
+
+```tmux
+set -g extended-keys on
+set -g extended-keys-format csi-u
+```
+
+⚠ **`extended-keys-format` needs tmux 3.5**, and this repository's `tmux.conf`
+deliberately targets tmux 3.0 - a bare unsupported option makes tmux load the
+file **partially**, which is the exact failure that file's own header warns
+about. So the option is guarded by version rather than added.
+
+---
+
+## ⛔ What this half does not know
+
+- **Nothing here was run.** No herdr command, no Muse hook, no `--machine` call.
+- **No version was checked on this host.** The operator's herdr is recorded as
+  0.9.0 and `#4176` says that version's Windows `--remote` client is defective;
+  neither the version nor the defect was confirmed here.
+- **Muse's hook names and payloads come from a third party**, and one of them is
+  marked inferred by its own author.
+- **`muse serve`'s actual JSON-RPC methods were never read**, only that the
+  protocol exists and is called MSP v1.
+- **Four references were sized and not opened**: `BrokkAi/mjolnir`,
+  `BrokkAi/muse-acp`, `bex-co/muse-code-acp`, `souta-lab/pi-muse`.

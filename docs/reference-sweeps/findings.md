@@ -1002,3 +1002,255 @@ home for one file's worth of personal configuration, and
 [`../conventions/prose.md`](../conventions/prose.md)'s one-home rule is against
 it. ⭐ **Nothing was written, and the question is recorded for the operator rather
 than settled here.**
+
+# Sweep 3: herdr, Muse and the agent bridges, read 2026-09-15
+
+The sweep behind `WSL-76` and `WSL-78`, and behind the `pi` and `omp` adapter
+entries the work order asks to author. ⛔ Nothing here was run. Every repository
+below was cloned read-only and read as **data**, per
+[`../security/remote-ops.md`](../security/remote-ops.md).
+
+## Provenance
+
+⭐ **Every commit was captured before anything was read**, which is the one piece
+of provenance that survives the clone being deleted.
+
+⚠ **Each is the first 16 characters of the full object name**, because this
+tree's `secrets` check refuses a run of 24 or more lowercase hex outside a
+declared pin, and every git command that takes an object name takes a prefix.
+`git rev-parse <prefix>` expands one.
+
+| # | reference | commit | depth reached |
+| --- | --- | --- | --- |
+| H1 | `herdrdev/herdr` | `052779c4159ed851` | ⭐ the authority. 8 of its `docs/next/website/src/content/docs/*.mdx` read in full, `skills/herdr/SKILL.md`, the shipped `src/detect/manifests/muse.toml`, and **the tracker** |
+| H2 | `reduced2ash/herdr-muse` | `b5beebed7c378417` | all 10 files; `report.sh` and `startup.sh` read line by line |
+| H3 | `akshat12/herdr-muse` | `9b3365ac25a0ff55` | `hooks/herdr-muse.py` in full, the manifest, and all 8 hook fixtures |
+| M1 | `ibchouti9/openmuse` | `e02cadbea41d6f84` | README, one pass |
+| M2 | `phareim/musecode` | `42409f1f70984df3` | README and file list, one pass |
+| M3 | `LimpingNinja/omp-muse-bridge` | `fbbff5f9c4e8d88f` | README, one pass |
+| M4 | `BrokkAi/mjolnir` | `131223a9d3ade28a` | ⚠ shape only: 657 files, Rust |
+| M5 | `BrokkAi/muse-acp` | `70ec4e23e0edc915` | ⚠ shape only: 133 files, Rust, 50 `ndjson` fixtures |
+| M6 | `bex-co/muse-code-acp` | `f0da62b2118f8cd9` | ⚠ shape only: 525 files, TypeScript |
+| M7 | `souta-lab/pi-muse` | `333a9502f8199c64` | ⚠ shape only: 1,724 files, TypeScript |
+| M8 | `danny-hines/muse-code-bridge` | `58165874f5b83da8` | README, one pass |
+| M9 | `siddicky/oh-my-musecode` | `69345b4e5b06e2e2` | README, one pass |
+| P1 | `earendil-works/pi` | `f9bcd351dc3cedf9` | `packages/coding-agent/docs/` index and `tmux.md` |
+| P2 | `can1357/oh-my-pi` | `6a0b915dcac4576f` | README and `docs/hooks.md`, one pass |
+
+⛔ **What this sweep did not do**, stated rather than left to be inferred:
+
+- **M4 to M7 were not read**, only sized. Four repositories between 133 and 1,724
+  files, and the material they would add is a fourth and fifth way to bridge Muse
+  when three were already enough to settle the design. They are named here so a
+  later session knows they are unopened rather than absent.
+- **Only H1's tracker was fetched.** H2, M3, M8 and M9 have no issues at all; H3
+  and M9 have only their own pull requests, which were read. No tracker was
+  fetched for M1, M2, M4 to M7, P1 or P2.
+- **No four-pass reading** was taken over any reference. H1 and H3 got three
+  distinct passes; everything else got one.
+- ⛔ **Nothing below was verified by running it.** Every claim is a reading of
+  somebody else's repository at the commit named, and this repository has driven
+  none of it. That is the whole of what trap 8 warns about.
+
+---
+
+## ⭐ The finding that only the tracker could produce
+
+⛔ **herdr has no official Muse integration, an attempt to add one was proposed as
+a five-part stack, and every part was closed WITHOUT merging - hours before this
+sweep.**
+
+| pull request | state | merged |
+| --- | --- | --- |
+| `herdrdev/herdr#4163` `fix(detect): report Muse panes awaiting background agents as working` | closed | ⛔ no |
+| `herdrdev/herdr#4164` `feat(integration): add Muse hook install plumbing` | closed | ⛔ no |
+| `herdrdev/herdr#4165` `feat(integration): wire Muse target into registry, CLI, resume and authority` | closed | ⛔ no |
+| `herdrdev/herdr#4166` `docs: cover Muse integration` | closed | ⛔ no |
+
+All four were authored by `ohk` from `ohk/herdr:feat/muse-integration-core` and
+closed at **2026-09-15T02:38:16Z**. ⚠ **No human comment states a reason.** The
+only comments are a review bot declining to review for a missing label. So the
+honest reading is: withdrawn or rejected, cause unknown, and a later session must
+not repeat the guess as a fact.
+
+⭐ **What it settles for `WSL-76`:** a Muse integration for herdr is third-party
+work, now and for the foreseeable future. `WSL-76` must not wait for upstream and
+must not assume `herdr integration install muse` exists.
+
+⭐ **And what makes it worth more than the code:** the closed pull request bodies
+describe the design an insider actually built, including a detail no third-party
+plugin has - `assets/muse/herdr-agent-state.{sh,ps1}`, a reporter with a
+**PowerShell half**. Whoever writes the integration for `WSL-76` has the shape of
+the Windows side from a source that is not a Linux-only plugin.
+
+---
+
+## ⭐ The finding that changes what the operator must do first
+
+⛔ **`herdrdev/herdr#4176`, closed: "0.9.0: Windows `--remote` client repaints
+only on window-activation events, and prefix commands never take effect".**
+
+The record's host state says herdr **0.9.0** is what the operator installed on
+Windows. That is the exact version, on the exact platform, with the exact feature
+`WSL-76` is built on. The issue is closed, so it is fixed in a later release.
+
+⚠ **This would have cost a whole session to find by driving**, and it would have
+read as "our SSH setup is wrong" rather than "this version does not repaint".
+
+Two more open issues bound what can be built:
+
+- **`#4178`**: `events.subscribe` silently drops events when more than ~500 arrive
+  faster than they are delivered, **with no gap indication**. ⛔ An event
+  subscription is therefore not a reliable source of truth; a design that must not
+  miss a transition has to reconcile against `agent list` rather than trust the
+  stream.
+- **`#4174`**: the 0.9.0 **Linux server aborts in a musl malloc integrity check**,
+  and every pane child dies. ⛔ That is a direct constraint on the base preset: a
+  musl base (`alpine`, `void-musl`, `chimera`) is the wrong host for a herdr
+  server, and the glibc default (`arch`) is right.
+- **`#4179`**: `herdr plugin install` fails with a sharing violation on Windows.
+  Plugins are declared **preview** on Windows in any case.
+
+---
+
+## Verdicts
+
+| # | verdict | why |
+| --- | --- | --- |
+| H1 | ⭐ **adopt** | The contract for `WSL-76` and `WSL-78` in full: the environment a pane injects, the CLI, the socket protocol, the state model, the `seq` rule, the supported agent kinds, and the remote surfaces. Cited in [`usable.md`](usable.md). |
+| H2 | ⭐ **anti-pattern exhibit**, kept on purpose | It works, and it does four things this repository forbids. Below. |
+| H3 | ⭐ **adopt** | The best-engineered reference in the batch. Its two closed pull requests are each a lesson this repository would otherwise pay for. |
+| M1 | **adopt, one mechanism** | `muse serve` over stdio, JSON-RPC. Independent corroboration of the protocol. |
+| M2 | **refused** | It routes Claude Code to a free Muse model through `opencode`, which is a cost-optimisation on a different axis. Nothing here is about running Muse in a base from Windows. |
+| M3 | **filed elsewhere** | Registers Muse as an **OMP model provider**. That belongs to the `omp` adapter entry, not to `WSL-76`. |
+| M4 to M7 | ⚠ **not read** | Sized only. See above. |
+| M8 | **confirms** | Names `Muse Session Protocol v1` and `Muse Code 1.0.3+`, corroborating M1 and M3 from a third direction. |
+| M9 | ⭐ **adopt, one fact** | `muse skills install` plus a `settings.json` merge, **because Muse 1.1.1 reports plugins are unavailable in that build**. A measured negative from somebody else's driving. |
+| P1 | ⭐ **adopt** | `npm install -g --ignore-scripts`, and a tmux requirement that lands on a file this repository ships. |
+| P2 | **adopt, one fact** | omp is a fork of pi with its own agent directory, and herdr **refuses** the omp integration when both resolve to the same extension directory. |
+
+---
+
+## H2, the anti-pattern exhibit, read at file and line
+
+⭐ **A shipped defect is worth more than an absence.** `reduced2ash/herdr-muse`
+is a working plugin with a demo, and it carries four faults this repository has
+rules against. Each is cited so a later session can see the shape rather than
+take the warning on trust.
+
+1. ⛔ **Another person's home directory is shipped as a default.** `report.sh:6`
+   falls back to that author's own `/home/<their-name>/.config/herdr/herdr.sock`, and
+   `report.sh:26` reads their `/home/<their-name>/.local/share/muse/session-index.db`.
+   ⭐ This repository's `secrets` check refuses a home path in a tracked file, and it
+   refused THIS paragraph when the path was quoted literally, which is the rule
+   working on the sweep that was documenting it.
+2. ⛔ **SQL built by string interpolation.** `report.sh:29` is
+   `WHERE workspace_root='$cwd'`. A checkout path containing an apostrophe breaks
+   the query, and the failure is silent because of fault 3.
+3. ⛔ **Every failure is swallowed.** `|| true`, `2>/dev/null` and a bare
+   `except Exception: pass` at `report.sh:66` and `report.sh:83`. A report that
+   never arrived is indistinguishable from one that did - the class this
+   repository's absolute 5 exists for.
+4. ⛔ **A wrong answer is preferred to no answer.** `report.sh:31-33`: when no
+   session matches the working directory it takes **the most recently updated
+   session of any workspace**. A pane is then labelled with another project's
+   session, confidently.
+5. ⚠ **It patches a file it does not own**, `~/.local/bin/muse`, keeping a
+   timestamped backup. The README is honest about it, and it is still a launcher
+   rewrite that a later Muse update will overwrite.
+
+⭐ **What it gets right, and it is the load-bearing idea:** it refuses to report
+unless `herdr pane process-info` says the pane's foreground process is actually
+`muse` (`report.sh:19-23`), so an empty shell is never mislabelled. The README
+states that as the feature - "Empty `fish` tabs stay `unknown` - no false
+positives".
+
+---
+
+## H3, and the two lessons its tracker carries
+
+Both of `akshat12/herdr-muse`'s pull requests are closed, merged, and each fixes
+a defect that is invisible in a first reading of the protocol.
+
+- **`#1` "Pass a seq when releasing the pane on SessionEnd".** herdr ignores a
+  pane lifecycle call whose `seq` is not above the last one recorded for that
+  pane. A release sent without one is **silently dropped**, and a stale agent row
+  sits in `herdr agent list` long after the agent exited. ⭐ The socket API
+  documents the same rule from the other side: a stale sequence is *accepted by
+  the API and ignored by the pane state*, so nothing errors.
+- **`#2` "Adopt sessions that never send a SessionStart (muse resume)".**
+  `muse resume` reuses the original session id, so Muse treats the restored
+  conversation as a continuation and **never emits `SessionStart`**. Without an
+  adoption path every later event bails out on the missing binding and the pane
+  stays invisible for the rest of its life.
+
+⭐ **And the subagent rule that makes adoption safe**, in the reference's own
+words: dispatching a subagent is itself a tool call, so the lead conversation's
+`PreToolUse` always arrives first and claims the pane; the `SessionStart` guard
+then stops the subagent from taking it. Adoption is refused unless the pane is
+currently unowned.
+
+⛔ **One caution about H3's fixtures.** `tests/fixtures/permission_request.json`
+carries `"_note":"INFERRED SHAPE - not yet observed live"`. The `PermissionRequest`
+payload is the one shape in the set that nobody has confirmed, and the reference
+says so itself. Anything this repository builds on it inherits that caveat.
+
+---
+
+## ⛔ Two herdr documents disagree, and the narrower one is the one to plan against
+
+| document | says |
+| --- | --- |
+| `windows-beta.mdx` | "`herdr --remote` and saved SSH machines to Linux/macOS/Windows hosts \| **supported**" |
+| `connecting-machines.mdx` | "**Multi-machine connections are not yet verified or supported on Windows**; standalone `herdr --remote` remains supported on Windows. Native Windows servers are not supported as SSH targets." |
+
+⚠ This is trap 2 in [`../methodology/references.md`](../methodology/references.md)
+in its plainest form. The capability table is a summary; the page about the
+feature carries the caveat. ⛔ **Neither was measured here**, and `WSL-76` closes
+on a measurement taken on this host, not on either sentence.
+
+⭐ **What is not in dispute** is the third surface, and it is the useful one:
+`herdr --machine <label-or-id> <command>` routes API commands to a saved SSH
+machine **with no TUI open at all**, which is what "watch the agents from
+Windows" actually needs.
+
+---
+
+## ⭐ What this sweep corrects in this repository's own record
+
+1. ⛔ **`WSL-76`'s premise that herdr must be taught about Muse is half wrong.**
+   herdr already ships a Muse **detection manifest**,
+   `src/detect/manifests/muse.toml`, version `2026.08.26.1`. Muse panes are
+   detected and classified `idle`, `working` and `blocked` out of the box. What is
+   missing is *lifecycle authority* and *session identity*, which is a smaller and
+   better-defined gap than "no support".
+2. ⛔ **`muse` is already a supported `--kind` for `herdr agent start`.** The
+   agent-automation document lists it among 24 kinds. herdr can launch Muse into
+   an existing pane itself, which removes most of what a launcher would have done.
+3. ⛔ **This repository's `tmux.conf` is a liability inside herdr, and the
+   conflict is documented upstream.** herdr's agents document: "Agent detection
+   does not inspect tmux sessions launched inside a Herdr pane. If a shell
+   framework auto-enters tmux inside Herdr, Herdr sees `tmux` as the pane process
+   instead of the agent behind it." ⭐ The 2026-09-13 ruling keeps tmux as a
+   generic fallback; this sweep says what that must mean in practice - **never
+   auto-entered inside a herdr pane**.
+4. ⚠ **The `pi` and `omp` adapters are far cheaper than assumed.** Both are npm
+   packages, both already have official herdr integrations, and neither needs a
+   piped install script.
+5. ⚠ **Muse's version numbers disagree across every source read.** herdr's
+   manifest was measured against **0.2.1**; M8 requires **1.0.3+**; M9 measured
+   **1.1.1**; this repository's own record read **1.2.1-R2847.1** from the public
+   channel on 2026-09-14. ⛔ Any behaviour quoted from a reference carries the
+   version it was measured on or it is not evidence.
+
+---
+
+## ⭐ The ranking, for a session that can only read three things
+
+1. **H1's `agent-automation.mdx` and `cli-reference.mdx`** - the primitives and
+   the `--machine` prefix. Everything `WSL-76` and `WSL-78` do is assembled from
+   these.
+2. **H3's `hooks/herdr-muse.py`** - the only complete, honest implementation of
+   the thing `WSL-76` needs, with its two tracker lessons already applied.
+3. **H1's tracker** - because `#4176` decides whether the operator's installed
+   version can do the job at all.
