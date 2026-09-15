@@ -21,6 +21,28 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T05:07:50Z: the debian and fedora presets build, and codegraph names a kernel it publishes no package for
+
+**Record:** `WSL-86` and `WSL-87` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md),
+whose closings carry the four preset builds, the agent matrix and the reviews.
+**Deployed:** no deploy, and no tag. ⚠
+[`scripts/common/bootstrap.sh`](scripts/common/bootstrap.sh) is fetched by URL, so its
+half of this reached a caller of `main` when it was pushed.
+**Closes:** `WSL-86`, `WSL-87` and `WSL-70`.
+
+⚠ **TWO OF THE FOUR BASE PRESETS BUILD WHERE THEY DID NOT.** `base ensure` from the
+`debian` preset ended in `netavark: nftables error: unable to execute nft: No such file
+or directory`, because the provisioner's `apt` arm installed no firewall package; it
+installs `nftables`. From the `fedora` preset it built and then failed verification,
+because an imported rootfs's `newuidmap` carries neither the setuid bit nor
+`cap_setuid`; the provisioner now reads the privilege rather than the path, restores a
+dropped capability with `setcap`, and refuses with the capability named when it cannot.
+
+⚠ **A BSD IS NAMED BEFORE A FETCH.** `bootstrap.sh --toolset agent` read the
+architecture and not the kernel, so an amd64 FreeBSD, NetBSD or OpenBSD host resolved
+codegraph's `linux-x64` package and fetched it. Such a run now fails codegraph with the
+kernel's name and fetches nothing.
+
 ### 2026-09-15T03:03:22Z: bootstrap.sh installs CodeGraph where /bin/sh is dash, and names an npm too old for it
 
 **Record:** `WSL-87` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

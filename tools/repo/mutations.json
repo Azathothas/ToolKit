@@ -2549,6 +2549,33 @@
       "replace": "done < \"$WORK/live-targets\"\n\n",
       "run": "TestALiveGrantChangesTheBlockOnlyWhenNothingCanStillRefuse",
       "args": []
+    },
+    {
+      "label": "provisioner: the apt engine arm installs the nft netavark shells out to",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      slirp4netns ca-certificates iproute2 nftables >/dev/null\n",
+      "replace": "      slirp4netns ca-certificates iproute2 >/dev/null\n",
+      "run": "TestTheProvisionerInstallsWhatEachFamilysEngineNeeds",
+      "args": []
+    },
+    {
+      "label": "provisioner: a dropped id-mapping capability is restored, not reported",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  \"$SETCAP\" \"$want_cap+ep\" \"$tool_path\" >/dev/null 2>&1 || :\n",
+      "replace": "  : \"$SETCAP\"\n",
+      "run": "TestTheProvisionerRestoresTheCapabilityRootlessIdMappingNeeds",
+      "args": []
+    },
+    {
+      "label": "provisioner: an id-mapping capability that cannot be read is refused, not passed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  [ -n \"$GETCAP\" ] || die \"$tool_path is not setuid and $CAP_PACKAGE supplied no getcap, so whether it carries $want_cap cannot be read\"\n",
+      "replace": "  [ -n \"$GETCAP\" ] || continue\n",
+      "run": "TestTheProvisionerRestoresTheCapabilityRootlessIdMappingNeeds",
+      "args": []
     }
   ]
 }

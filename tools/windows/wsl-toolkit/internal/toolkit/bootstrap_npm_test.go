@@ -105,6 +105,84 @@ func TestBootstrapFetchesAnNpmArchiveIntoANamedDirectoryUnderDash(t *testing.T) 
 	}
 }
 
+// codegraphKernelCase is one kernel and architecture install_codegraph is offered.
+type codegraphKernelCase struct {
+	kernel  string
+	arch    string
+	fetched string // the package it reached for, or empty where it refused first
+	says    string
+}
+
+// TestBootstrapNamesAKernelCodegraphPublishesNoPackageFor runs bootstrap.sh's own
+// install_codegraph under dash with the fetch, the registry and npm stood in for.
+//
+// ⛔ WSL-87's door sweep, 2026-09-15. The function read the architecture and not the
+// kernel, so an amd64 FreeBSD, NetBSD or OpenBSD host resolved the linux-x64 package
+// and fetched it. A route that cannot exist is named before the fetch, as the too-old
+// npm is.
+func TestBootstrapNamesAKernelCodegraphPublishesNoPackageFor(t *testing.T) {
+	dash := dashFor(t)
+	src := bootstrapSource(t)
+	linux := codegraphKernelCase{kernel: "Linux", arch: "x86_64", fetched: "@colbymchenry/codegraph-linux-x64"}
+	linuxArm := codegraphKernelCase{kernel: "Linux", arch: "aarch64", fetched: "@colbymchenry/codegraph-linux-arm64"}
+	freeBSD := codegraphKernelCase{kernel: "FreeBSD", arch: "amd64", says: "codegraph publishes a Linux package only, and this kernel is FreeBSD"}
+	netBSD := codegraphKernelCase{kernel: "NetBSD", arch: "amd64", says: "codegraph publishes a Linux package only, and this kernel is NetBSD"}
+	openBSD := codegraphKernelCase{kernel: "OpenBSD", arch: "amd64", says: "codegraph publishes a Linux package only, and this kernel is OpenBSD"}
+	darwin := codegraphKernelCase{kernel: "Darwin", arch: "arm64", says: "codegraph publishes a Linux package only, and this kernel is Darwin"}
+	elsewhere := codegraphKernelCase{kernel: "Linux", arch: "riscv64", says: "codegraph publishes no Linux package for riscv64"}
+	for _, c := range []codegraphKernelCase{linux, linuxArm, freeBSD, netBSD, openBSD, darwin, elsewhere} {
+		prefix := t.TempDir()
+		harness := strings.Join([]string{
+			"set -eu",
+			`fail() { printf 'fail: %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }`,
+			`step() { printf 'step: %s\n' "$*" >&2; }`,
+			"FAILURES=0",
+			"DRY_RUN=0",
+			"CODEGRAPH_VERSION=",
+			"CODEGRAPH_MAIN='@colbymchenry/codegraph'",
+			"KERNEL=" + c.kernel,
+			"ARCH=" + c.arch,
+			`PREFIX=$WORK`,
+			`have() { return 0; }`,
+			`first_line() { printf '10.0.0'; }`,
+			`npm_registry_version() { printf '1.6.0'; }`,
+			`npm() { printf 'npm %s\n' "$*" >&2; }`,
+			`fetch_verified_npm() { printf 'fetch: %s\n' "$2"; FETCHED_ARCHIVE=$1/one.tgz; }`,
+			bootstrapFunction(t, src, "npm_packs_to_a_directory"),
+			bootstrapFunction(t, src, "install_codegraph"),
+			`if install_codegraph latest; then printf 'installed=%s\n' "$CODEGRAPH_VERSION"; else printf 'refused failures=%s\n' "$FAILURES"; fi`,
+		}, "\n") + "\n"
+		cmd := exec.Command(dash, "-c", harness)
+		cmd.Env = []string{"PATH=/usr/bin:/bin", "WORK=" + prefix}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%s %s: the harness exited: %v; stderr %q", c.kernel, c.arch, err, stderr.String())
+		}
+		fetched := ""
+		for _, line := range strings.Split(stdout.String(), "\n") {
+			if rest, ok := strings.CutPrefix(line, "fetch: "); ok && fetched == "" {
+				fetched = rest
+			}
+		}
+		if fetched != c.fetched {
+			t.Errorf("%s %s reached for %q, want %q", c.kernel, c.arch, fetched, c.fetched)
+		}
+		if c.says == "" {
+			if !strings.Contains(stdout.String(), "installed=1.6.0") {
+				t.Errorf("%s %s answered %q, want an install", c.kernel, c.arch, stdout.String())
+			}
+			continue
+		}
+		if !strings.Contains(stdout.String(), "refused failures=1") {
+			t.Errorf("%s %s answered %q, want one refusal", c.kernel, c.arch, stdout.String())
+		}
+		if !strings.Contains(stderr.String(), c.says) {
+			t.Errorf("%s %s said %q, want a line carrying %q", c.kernel, c.arch, stderr.String(), c.says)
+		}
+	}
+}
+
 // TestBootstrapNamesAnNpmTooOldToPackToADirectory holds the versions measured on
 // 2026-09-15: npm 6.14.11 and 7.17.0 have no --pack-destination, 7.18.0 and 7.18.1 do.
 func TestBootstrapNamesAnNpmTooOldToPackToADirectory(t *testing.T) {

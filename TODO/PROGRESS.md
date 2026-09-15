@@ -6,33 +6,40 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-15T00:39:50Z; the record commit's own time is its end
-baseline        45fc7cc, tree clean, CI run 34869369358 green
-entries         total 121  open 8  blocked 0  done 113
-closed          WSL-85 at 953e7b8
-partial         WSL-67 at 4c573cf; WSL-70 at 9df2e7b; WSL-87 in the checkpoint commit
-head            9df2e7b, then the checkpoint commit
+session started 2026-09-15T03:12:15Z; the record commit's own time is its end
+baseline        deea680, tree clean, doctor exit 0 in 25.85 s, gate 20 of 20 in 32.19 s
+entries         total 122  open 6  blocked 0  done 116
+closed          WSL-86, WSL-87 and WSL-70 in this session's work commit
+partial         WSL-67, waiting on the two BSD downloads
+head            deea680, then this session's commits
 ```
 
 ## Active work
 
-⭐ **The operator checkpointed the session at `WSL-87`.** `WSL-85` is closed. `WSL-67`'s
-provider-profile cases are in the acceptance runner and pass. `WSL-70`'s provisioner reads the
-shared table, and its prove found two presets that do not build. `WSL-87` is built, its cases
-proved by hand, and its matrix run over the fix. **Resume, in this order:**
+⭐ **`WSL-86`, `WSL-87` and `WSL-70` are closed**, each with its prove and its three
+reviews. The base provisioner installs the `nft` its podman shells out to and reads the
+id-mapping privilege rather than the path; `bootstrap.sh` installs CodeGraph under dash
+and names a kernel it publishes no package for. All four base presets build and verify.
+**Resume, in this order:**
 
-1. `WSL-87`'s three reviews and its closing; its door sweep has begun, in its amendment.
-2. `WSL-86`, the debian and fedora presets, proposed in chat and not yet ruled: ask again
-   once, and on approval file it, fix it and build all four presets.
-3. `WSL-70`'s closing, on those four builds.
-4. `WSL-67`'s `pkgin` and `pkg_add`, once the two downloads are approved: ask again once.
-5. `WSL-71`.
+1. `WSL-67`'s `pkgin` and `pkg_add`, once the two downloads are approved: ask again once,
+   then its closing.
+2. `WSL-71`.
+3. `WSL-68`, the sealed base, in a dedicated session, which closes issue 30.
 
-⚠ **The two BSD image downloads wait for the operator's approval in chat.** Asked on
-2026-09-15 at the session's start, naming each file, its source and its size, and not
-yet answered. ⭐ QEMU 11.1.0 here puts SeaBIOS's screen on the serial console with `-M
-q35,graphics=off`, measured with no disk on 2026-09-15, which is how a BSD boot loader's
-prompt is reached with no `sga` device.
+⚠ **The two BSD image downloads still wait for the operator's approval in chat.** Asked
+again on 2026-09-15 at this session's start, in chat and as a file, naming each file, its
+source and its size, and not answered. The operator's reply that day approved `WSL-86` and
+asked to be asked only for what actually needs them; a 1.3 GiB download from two mirrors
+is one of those, so it is asked once more and no further. ⭐ QEMU 11.1.0 here puts
+SeaBIOS's screen on the serial console with `-M q35,graphics=off`, measured with no disk on
+2026-09-15, which is how a BSD boot loader's prompt is reached with no `sga` device. The
+scratch driver under `.tmp\bsd67-driver` has still never booted a guest.
+
+⛔ **Found while proving `WSL-86`, and not filed: the automount sweep is a race.** A
+Windows drive that appears between the provisioner's sweep and the restart that applies
+`automount off` leaves an empty mount point, and the base then fails verification.
+Measured on 2026-09-15 and recorded under "Found, and not filed" below, with the numbers.
 
 `WSL-78`'s entry point, `base agent` and the `muse.exe` launcher remain built and
 driven without a sign-in.
@@ -93,6 +100,12 @@ is closed, and the issue gets a comment naming the commits.
    session, before `WSL-70`.
 10. **2026-09-15: `WSL-87` approved**, "approve WSL-87": filed and fixed in this
     session.
+11. **2026-09-15: `WSL-86` approved** as recommended, "yes i accept your
+    recommendation": `nftables` in the provisioner's `apt` arm, and the id-mapping
+    check reads the capability rather than the path and restores a dropped one. The
+    operator asked in the same message to be asked only for what actually needs them,
+    which is why the drive-sweep race found while proving it is recorded under "Found,
+    and not filed" rather than proposed as an entry.
 
 ## Before every push
 
@@ -113,15 +126,35 @@ ls-files`, so check a new one by name before it is added.
 | `953e7b8` | `WSL-85` filed and closed: the verifier refuses passwordless sudo the configuration turned off, `base ensure` provisions such a base again, and a verification failure is named past wsl.exe's own lines; 3 mutation rows |
 | `4c573cf` | `WSL-67` partial: the acceptance runner builds `wsl-toolkit-accp` and drives the two provider profiles as five cases, 96 of 96 in a full run |
 | `9df2e7b` | `WSL-70` partial: the base provisioner reads the shared package table and its detection; 4 mutation rows; `WSL-87` filed |
-| the checkpoint commit | `WSL-87` partial: `bootstrap.sh` installs CodeGraph under dash and names an npm too old for it; the session's record and summary |
+| `deea680` | `WSL-87` partial: `bootstrap.sh` installs CodeGraph under dash and names an npm too old for it; the last session's record and summary |
+| this session's work commit | `WSL-86` filed and closed, `WSL-87` and `WSL-70` closed: the provisioner installs `nftables` and restores the id-mapping capability, `install_codegraph` names a kernel it publishes no package for, and all four presets build; 3 mutation rows and one defect planted by hand |
 
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 
-- **At the start of this session:** the doctor exit 0 in 37.62 s at 00:40:58Z; the
-  gate exit 0, 20 checks green in 37.47 s at 00:41:42Z; `wsl -l -v` matched the host
-  state below; CI run 34869369358 for `45fc7cc` was green.
+- **At the start of this session:** the doctor exit 0 in 25.85 s at 03:12:24Z; the gate
+  exit 0, 20 checks green in 32.19 s at 03:12:49Z; `wsl -l -v` matched the host state
+  below; CI run 34923941438 for `deea680` was still running.
+- **For `WSL-86`, on throwaway instances under `.tmp` with automount and interop off:**
+  arch exit 0 in 77.3 s and alpine in 172.9 s with `toolset developer`; debian exit 0 in
+  94.0 s, where it had failed at `nft`, with `newuidmap` and `newgidmap` setuid; fedora
+  exit 0 in 48.4 s with `toolset none`, its `newuidmap` and `newgidmap` arriving without
+  their capability and given it. ⚠ Fedora's `developer` build installed all thirteen
+  commands and ran a container in 420 s from a mirror answering in tens of KiB/s, then
+  failed verification on `/mnt/e`; a second took the whole 30-minute budget. Three
+  mutation rows red in `golang:1.25`, each green unmutated first.
+- **For `WSL-87`:** the agent matrix `--images all --toolset agent`, 13 ran, 3 failed, 0
+  unreached, 0 timed out, in 1184.45 s: debian, debian 12, ubuntu 22.04 and void-musl each
+  `codegraph=1.6.0` and `failures=0`, rocky 8 naming npm 6.14.11 as too old, and chimera
+  and gentoo failing as they did before. The kernel guard planted by hand in `golang:1.25`:
+  unmutated exit 0, planted exit 1, restored exit 0. ⛔ The first plant read exit 0
+  over the removed guard, because `go test` served a cached result for a shell file the
+  build cache does not track; `-count=1` made it fire.
+- **The suites, on this session's tree:** 313 top-level `wsl-toolkit` results on Windows
+  with `TEMP` at the 8.3 path, 298 passed, 15 skipped, 0 failed, exit 0 in 16.8 s;
+  `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 in `ubuntu:24.04` clean over 34
+  tracked scripts.
 - **For `WSL-85`:** on the throwaway `wsl-toolkit-p67`, a sudo drift made `base status
   --probe` exit 1 in 0.5 s and `base ensure` provision again in 15.9 s and 16.0 s; a
   rule the tool did not write made `base ensure` exit 2 in 14.5 s. The Go suites green:
@@ -176,7 +209,7 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
    directory rather than its own location.
 4. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 1 on
    Debian 13; its cause has not been read.
-5. A deterministic regression for pre-marker base rollback is still owed.
+5. A deterministic regression for pre-marker base rollback is still owed. ⚠ **Met again on 2026-09-15:** a fedora build stopped mid-provisioning left `wsl-toolkit-t86fedora` registered, and `base remove` refused it with `carries no wsl-toolkit identity marker`, so `wsl.exe --unregister` was used by hand.
 6. The generated manual prints a one-letter flag as `--c`, which the parser
    accepts and no example writes.
 7. `examples/muse-code/README.md` and `examples/common/zellij.md` describe Zellij
@@ -210,9 +243,30 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 14. The verifier's `interop on` checks nothing, so a base configured with interop on
     over a guest without it verifies. Read on 2026-09-15, not measured, and it grants
     no authority.
-15. `install_codegraph` in `bootstrap.sh` checks the architecture and not the kernel, so
-    on a BSD it would fetch CodeGraph's Linux package. Read on 2026-09-15, not measured;
-    `WSL-67`'s `--toolset agent` drives on NetBSD and OpenBSD will meet it.
+15. ⚠ **A verification that fails is named by the FIRST guest line, and podman writes a
+    warning before its error.** `verifyError` in `base.go` takes `firstLine` of the guest's
+    output, so fedora's `newuidmap: write to uid_map failed: Operation not permitted` sat
+    behind podman's shared-mount warning and needed a diagnostic build to read, on
+    2026-09-15. It is finding 12's family from the other side: not wsl.exe's line but the
+    engine's own first one. Found by `WSL-86`'s door sweep.
+16. `fetch_verified_npm` in `bootstrap.sh` calls `split_on`, which lives inside the shared
+    package table block and is generated into `packages.sh` for the provisioner, so a
+    change to `split_on` made for the table changes the npm work directory's name. Read on
+    2026-09-15 by `WSL-87`'s door sweep, not measured, and nothing is built on it.
+17. `bootstrapSource` in `bootstrap_npm_test.go` reads five levels above its package, which
+    is outside the Go module, so a `repo mutate` row naming one of those cases would report
+    the file unreadable rather than a guard's verdict. No row names one. Read on 2026-09-15.
+18. ⚠ **The provisioner sweeps the automount mount points once, and a Windows drive that
+    appears after that sweep is left behind.** Measured on 2026-09-15: this host carries
+    ten fixed drives; the arch, alpine and debian builds each removed ten mount points and
+    the fedora build, which ran for 420 s, removed **nine**, and its verification then
+    refused the base with `/mnt/e exists even though automount is off`. E: is an external
+    HDD. The sweep at `provision.sh:494` runs before the restart that applies `automount
+    off`, so a drive WSL mounts between the sweep and that restart leaves an empty 0777
+    directory the verifier is right to refuse. Found by `WSL-86`'s driven pass.
+19. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 0 in
+    `golang:1.25` and 1 in `debian:latest`, measured on 2026-09-15, which narrows finding 4
+    to what the image carries rather than to Debian.
 
 ## Review findings
 
@@ -221,22 +275,34 @@ error messages named by a guest's first stderr line, recorded above; its claim a
 corrected the manual's first draft, which said a disagreeing base "answers exit 1" and
 named no command. `WSL-67`'s checkpoint: the claim audit found the Nix version probe
 outside `nix_run`, where the documentation said every Nix command gets the settings, and
-the probe now goes through it. `WSL-67`, `WSL-70` and `WSL-87` still owe their closing
-reviews.
+the probe now goes through it. ⭐ **2026-09-15:** `WSL-87`'s guard mutation found a
+defect in its own method - a hand-planted defect in a file outside the Go module read as a
+green pass, because `go test` served a cached result and only `-count=1` made the guard
+fire; `repo mutate` already passes it. Its claim audit found `presets.go` publishing a
+build figure for a preset that had not built since, now corrected with both dates and both
+sets of conditions. `WSL-86`'s driven pass found the automount sweep race, and its door
+sweep found that a verification failure is named by the engine's first line. `WSL-67` still
+owes its closing reviews.
 
 ## Open questions for the operator
 
-The download approval above, and `WSL-86`, the debian and fedora presets that do not
-build, proposed in chat on 2026-09-15 with its measurements and a recommended fix. The
-later Muse session still needs the operator to run `muse login`.
+⚠ **One, and it is the BSD download approval above.** `WSL-86` was ruled on
+2026-09-15 and is closed. The later Muse session still needs the operator to run `muse
+login`. ⭐ The operator asked on 2026-09-15 to be asked only for what actually needs
+them: a ruling this repository's own rules require, a download, a credential, or Windows
+software. Everything else is decided here and recorded.
 
 ## Host state
 
 - Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit` and
   `wsl-toolkit-podbox`, as at the session's start. `eph-pgb` keeps its disk under
   `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
-- ⭐ **No throwaway is left.** `wsl-toolkit-p67`, the acceptance runner's `wsl-toolkit-accp`
-  and `wsl-toolkit-acc`, the four preset builds and the two diagnostic builds were removed.
+- ⭐ **No throwaway is left.** The seven preset builds this session made under
+  `.tmp\wtk86` were each removed by `base remove`. ⚠ **One needed `wsl.exe
+  --unregister` by hand:** a fedora build whose mirror stalled was stopped before
+  provisioning wrote the identity marker, and `base remove` refuses a distribution that
+  carries none - the pre-marker rollback case the record has owed a regression for since
+  it was first seen. Its name was typed in full and no other distribution was touched.
 - ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
   `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and
   the OpenBSD installer over SeaBIOS's serial console, and runs commands from a spool with

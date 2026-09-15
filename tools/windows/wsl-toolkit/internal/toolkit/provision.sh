@@ -118,6 +118,7 @@ say "package manager: $FAMILY on $OS_ID"
 # ⚠ The passt install is allowed to fail. A distribution that does not package
 # it is a distribution the fallback covers, and refusing the whole build over an
 # optional package would turn a working base into no base at all.
+# >>> engine packages: begin
 case "$FAMILY" in
   apk)
     apk update >/dev/null
@@ -137,8 +138,14 @@ case "$FAMILY" in
   apt)
     export DEBIAN_FRONTEND=noninteractive
     apt-get update -qq >/dev/null
+    # ⛔ nftables SUPPLIES nft, AND netavark SHELLS OUT TO IT BY THAT NAME.
+    # Measured on this host on 2026-09-15: a Debian base carrying no firewall
+    # package refused the QEMU binary-format installer's rootful run with
+    # `netavark: nftables error: unable to execute nft: No such file or
+    # directory`, and the build rolled the distribution back. The apk arm carries
+    # iptables and the pacman arm iptables-nft; this arm carried neither. WSL-86.
     apt-get install -y -qq --no-install-recommends podman uidmap fuse-overlayfs \
-      slirp4netns ca-certificates iproute2 >/dev/null
+      slirp4netns ca-certificates iproute2 nftables >/dev/null
     apt-get install -y -qq --no-install-recommends passt >/dev/null 2>&1 || :
     ;;
   dnf)
@@ -156,6 +163,7 @@ case "$FAMILY" in
     xbps-install -Sy passt >/dev/null 2>&1 || :
     ;;
 esac
+# <<< engine packages: end
 
 # -- optional systemd ---------------------------------------------------------
 # WSL starts systemd only when both halves exist: wsl.conf asks for it and the
@@ -228,9 +236,87 @@ say "toolset: $TK_TOOLSET"
 # showed pacman doing. What matters is whether the binary is on PATH.
 command -v podman >/dev/null 2>&1 || die "podman is still not installed after the package step"
 say "podman: $(podman --version 2>&1 | head -1)"
+# >>> rootless id mapping: begin
+# ⛔ THE PRIVILEGE IS CHECKED, NOT THE PATH. newuidmap and newgidmap raise their
+# own privilege through a file capability, or through a setuid bit where a
+# distribution still ships one. A rootfs imported from a tar unpacked without
+# extended attributes keeps the bytes and drops the capability, and the binary is
+# then on PATH and inert.
+#
+# ⛔ MEASURED ON THIS HOST ON 2026-09-15. Fedora's imported newuidmap carried
+# neither. Its base built, and verification then answered `newuidmap: write to
+# uid_map failed: Operation not permitted` and `cannot set up namespace using
+# "/usr/sbin/newuidmap": should have setuid or have filecaps setuid`, which reads
+# as a broken image and is a dropped capability. The working Arch base's carries
+# cap_setuid=ep. A check that asked only whether the binary was on PATH passed
+# over it. WSL-86.
+cap_tool() {
+  # ⚠ /usr/sbin AND /sbin ARE NAMED. setcap and getcap live there on most of
+  # these distributions, and an imported rootfs's root PATH does not always carry
+  # them; this runs before any profile is read.
+  for ct_name in "$1" /usr/sbin/"$1" /sbin/"$1" /usr/bin/"$1" /bin/"$1"; do
+    if ct_found=$(command -v "$ct_name" 2>/dev/null); then
+      printf '%s' "$ct_found"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# ⚠ The capability tools are the family's own spelling, and the install is
+# allowed to fail: a spelling this host has not measured is then named by the
+# refusals below, with the package in the message, rather than ending the build
+# inside a package manager.
+case "$FAMILY" in
+  apt)  CAP_PACKAGE=libcap2-bin ;;
+  xbps) CAP_PACKAGE=libcap-progs ;;
+  *)    CAP_PACKAGE=libcap ;;
+esac
+if ! cap_tool getcap >/dev/null || ! cap_tool setcap >/dev/null; then
+  case "$FAMILY" in
+    apk)    apk add --no-cache "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    pacman) pacman -S --noconfirm --needed "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    apt)    apt-get install -y -qq --no-install-recommends "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    dnf)    dnf -y --setopt=install_weak_deps=False install "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    tdnf)   tdnf install -y "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+    xbps)   xbps-install -Sy "$CAP_PACKAGE" >/dev/null 2>&1 || : ;;
+  esac
+fi
+GETCAP=$(cap_tool getcap) || GETCAP=''
+SETCAP=$(cap_tool setcap) || SETCAP=''
+
 for tool in newuidmap newgidmap; do
-  command -v "$tool" >/dev/null 2>&1 || die "$tool is missing, so a rootless engine cannot map more than one id"
+  case "$tool" in
+    newuidmap) want_cap=cap_setuid ;;
+    *)         want_cap=cap_setgid ;;
+  esac
+  tool_path=$(command -v "$tool" 2>/dev/null) || tool_path=''
+  [ -n "$tool_path" ] || die "$tool is missing, so a rootless engine cannot map more than one id"
+  # A distribution that ships it setuid root needs no capability at all.
+  if [ -u "$tool_path" ]; then
+    say "$tool_path is setuid"
+    continue
+  fi
+  # ⛔ EVERY SUBSTITUTION HAS ITS OWN FALLBACK. Under `set -e` an assignment from
+  # a command that exits non-zero ends the script, and getcap exits non-zero on a
+  # file with no capability at all, which is precisely the case being read.
+  [ -n "$GETCAP" ] || die "$tool_path is not setuid and $CAP_PACKAGE supplied no getcap, so whether it carries $want_cap cannot be read"
+  tool_caps=$("$GETCAP" "$tool_path" 2>/dev/null) || tool_caps=''
+  case "$tool_caps" in
+    *"$want_cap"*) continue ;;
+  esac
+  [ -n "$SETCAP" ] || die "$tool_path carries neither the setuid bit nor $want_cap, and $CAP_PACKAGE supplied no setcap to give it one"
+  "$SETCAP" "$want_cap+ep" "$tool_path" >/dev/null 2>&1 || :
+  tool_caps=$("$GETCAP" "$tool_path" 2>/dev/null) || tool_caps=''
+  case "$tool_caps" in
+    *"$want_cap"*)
+      say "$tool_path arrived without $want_cap and now carries it"
+      continue
+      ;;
+  esac
+  die "$tool_path carries neither the setuid bit nor $want_cap, so a rootless engine cannot map more than one id"
 done
+# <<< rootless id mapping: end
 
 # -- other Linux architectures ----------------------------------------------
 # The WSL kernel is common to its distributions. These handlers let the

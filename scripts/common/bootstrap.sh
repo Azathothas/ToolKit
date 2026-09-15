@@ -1095,6 +1095,19 @@ install_codegraph() {
     return 1
   fi
 
+  # ⛔ THE KERNEL IS READ BEFORE THE ARCHITECTURE. codegraph publishes
+  # linux-x64 and linux-arm64, and the architecture alone does not say which
+  # kernel is under it: a FreeBSD, NetBSD or OpenBSD amd64 host resolved the
+  # Linux package and fetched it. Named here, before any fetch, for the same
+  # reason the npm version is. Found by WSL-87's door sweep on 2026-09-15.
+  case "$KERNEL" in
+    Linux) ;;
+    *)
+      fail "codegraph publishes a Linux package only, and this kernel is $KERNEL"
+      return 1
+      ;;
+  esac
+
   case "$ARCH" in
     x86_64|amd64)  cg_platform="$CODEGRAPH_MAIN-linux-x64" ;;
     aarch64|arm64) cg_platform="$CODEGRAPH_MAIN-linux-arm64" ;;

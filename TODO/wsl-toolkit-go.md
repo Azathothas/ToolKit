@@ -4467,7 +4467,7 @@ grant, to the throwaway checkout.
 
 **Source** the operator, 2026-09-12, ruling **one shared table** on the fork
 recorded in `WSL-67`'s amendment.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -4678,6 +4678,75 @@ where busybox and bash keep it. Filed as `WSL-87`, approved by the operator in c
 
 1. `base ensure` from all four presets, which waits on `WSL-86`.
 2. The three reviews and the closing.
+
+---
+
+## Closing
+
+**Closed 2026-09-15T05:07:50Z.** The table has one home in
+[`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh), a gate rule holds the
+generated copy byte for byte, and the base provisioner reads that copy for its detection
+and its `developer` names. The two items the amendment of 2026-09-15 left open are done:
+`base ensure` builds from all four presets, and the agent matrix is no worse than the
+figure the entry set.
+
+⚠ **The two presets that did not build were not this entry's doing, and proving that took
+a separate entry.** `WSL-86` carries the `nft` package and the dropped id-mapping
+capability, and its closing carries the four builds. This entry's prove is met by them.
+
+⭐ **The prove's three conditions, each measured:**
+
+| condition | measured |
+| --- | --- |
+| a gate rule that regenerates the embedded table and compares it byte for byte, and goes RED when one copy is edited alone | `check package-table`, the gate's twentieth check. A copy edited alone and a block edited alone each made it exit 1 naming the line, read unpiped; both restored, exit 0. Three mutation rows hold it |
+| `base ensure` still builds from all four presets | arch, alpine and debian exit 0 with `toolset developer`, fedora exit 0 with `toolset none`, each probe healthy. `WSL-86`'s closing carries the table, the times and the conditions |
+| `matrix --images all` with `--toolset agent` no worse than 13 ran / 2 failed | 13 ran and 3 failed with CodeGraph on, and 13 ran and 4 failed on a second run whose extra failure is fedora's mirror timing out. The comparison figure is below |
+
+⚠ **The 2026-09-12 figure this is measured against was taken with `--codegraph none`, and
+that is the comparison that holds.** The run beside it in `WSL-67` says one image was
+driven "including the extra tool", so the 13 ran and 2 failed is the no-CodeGraph shape.
+⛔ **It was not re-measured this session, and the reason is readable rather than assumed:**
+`bootstrap.sh` calls `install_codegraph` only inside `if [ "$CODEGRAPH" != none ]`, and
+`npm_packs_to_a_directory` and `fetch_verified_npm` have no other caller, so a
+`--codegraph none` run executes none of this session's changes to that file. The
+byte-identical `--help`, `--list-names` and `--list-providers` comparison in `WSL-87`'s
+closing is the measured half of the same statement.
+
+### The three reviews
+
+⭐ **1. The door sweep - what other door reaches the shared table?** Three readers, and
+the third is the one an enumeration from memory leaves out:
+
+- `bootstrap.sh` itself, which every caller fetching the file by URL runs;
+- the base provisioner, through the generated `packages.sh` that `base.go` embeds;
+- ⛔ **`fetch_verified_npm`, which is not about packages at all.** It calls `split_on`
+  from inside the block to name its npm work directory, so a change made to `split_on`
+  for the table's sake changes a path in the codegraph install. Found by `WSL-87`'s door
+  sweep and recorded in `PROGRESS.md`; nothing is built on it.
+
+The gate rule is the guard on the first two agreeing, and `check package-table --fix` is
+the one way to move the copy.
+
+⭐ **2. The guard mutation - can the gate rule fail?** Proved twice, at each end and
+after the generated banner changed: a copy edited alone and a block edited alone each
+made `check package-table` exit 1 naming the line, read unpiped, and the restored files
+exit 0. Three mutation rows hold the byte comparison, a doubled begin marker and an end
+marker before its begin.
+
+⛔ **What this lens could NOT prove, said rather than implied:** that the provisioner's
+own engine packages are right, because they are deliberately not in the table.
+`WSL-86` found two of them wrong, on the two presets nobody had built.
+
+⭐ **3. The claim audit.** The entry's ruling accepted a named cost: an edit to the table
+now reaches the published executable AND every caller of the fetched file in one commit.
+That is true today and the record says so in three places -
+[`RULES.md`](RULES.md) section 4, [`../docs/consumers.md`](../docs/consumers.md) and the
+scripts README - each of which was re-read against the tree rather than assumed.
+
+⚠ **The comparison this entry's prove asks for is not like with like unless it is
+stated.** The 2026-09-12 figure of 13 ran and 2 failed does not name its command, and the
+run beside it says one image was driven "including the extra tool". The comparison is
+therefore made with `--codegraph none`, and both numbers are recorded with their flag.
 
 ---
 
@@ -7882,10 +7951,187 @@ status --probe` is what answers exit 1. It checked the `--root` sentence above a
 
 ---
 
+## WSL-86. The debian and fedora presets build a base that cannot run a container
+
+**Source** found on 2026-09-15 while driving `WSL-70`'s four-preset prove.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+`base ensure` from the `debian` and `fedora` presets exits 2. Two of the four presets
+the tool offers cannot produce a base at all, and the failure is reported in the words
+of a container engine rather than as the missing package or the dropped privilege it
+is: debian's reads as a netavark error and fedora's as a broken image.
+
+## Premise
+
+⭐ **Measured on 2026-09-15**, `base ensure` with `toolset developer`, automount and
+interop off, on throwaway instances under this repository's `.tmp`:
+
+| preset | answer |
+| --- | --- |
+| arch | exit 0 in 51.5 s; `package manager: pacman on arch`; the probe healthy; all thirteen developer commands present |
+| alpine | exit 0 in 44.2 s; `package manager: apk on alpine`; healthy; all thirteen present |
+| debian | exit 2 in 123.2 s: the developer packages installed, then the QEMU binary-format installer's rootful run answered `netavark: nftables error: unable to execute nft: No such file or directory` |
+| fedora | exit 2 in 97.8 s: built, then verification answered `a container did not run as agent (exit 125)`, naming podman's shared-mount warning |
+
+- ⭐ **debian fails the same way before `WSL-70`'s change.** `4c573cf`'s build, with no
+  toolset, answered the same `nft` error in 33.6 s. `base presets` still carries its
+  2026-09-09 figure.
+- ⭐ **fedora's own error, read with a diagnostic build that printed verification's
+  whole stderr:** `newuidmap: write to uid_map failed: Operation not permitted` and
+  `cannot set up namespace using "/usr/sbin/newuidmap": should have setuid or have
+  filecaps setuid`. The working arch base's `newuidmap` carries `cap_setuid=ep`; the
+  imported Fedora rootfs's carries neither that nor the setuid bit. Fedora had never
+  been built on this host.
+- ⚠ **Read, not measured:** a rootfs tarball unpacked without extended attributes
+  keeps a binary's bytes and drops its file capability, which is why an imported
+  Fedora differs from one installed in place.
+
+## Approach
+
+1. ⭐ **The seam is `internal/toolkit/provision.sh`'s engine section**, the
+   per-family `case` on `$FAMILY`. The `apt` arm installs no firewall package where
+   the `apk` arm installs `iptables ip6tables` and the `pacman` arm `iptables-nft`.
+   Add `nftables`, which is what supplies `nft` on Debian.
+2. ⭐ **The second seam is the `newuidmap`/`newgidmap` loop below it**, which asks
+   `command -v` and nothing else. ⛔ **The privilege is the thing being checked, not
+   the path.** It reads the setuid bit and the file capability, restores a missing
+   capability with `setcap`, and refuses with the capability named when it cannot.
+3. The capability tools come from each family's own spelling, and that install is
+   allowed to fail so a spelling this host has not measured is named by the refusal
+   rather than ending the build inside a package manager.
+4. Both sections get begin and end markers, so a case can run the real text.
+
+⛔ **Do not move the engine packages into the shared table.** `WSL-70`'s ruling keeps
+them per family on purpose: the table is the tool-set names, and the engine is the
+provisioner's own.
+
+⛔ **Do not make the check pass when it cannot tell.** A guard that answers "probably
+fine" over a missing capability is the guard that let this reach verification.
+
+## Decision
+
+⭐ **Approved by the operator in chat on 2026-09-15**, accepting the recommendation as
+proposed: file it, fix both in `provision.sh` with a regression case each, and prove
+it on all four preset builds, which is also `WSL-70`'s open prove.
+
+## Consumers
+
+**None: this change cannot reach a fetched file.** `provision.sh` is embedded in the
+executable and is not fetched by URL; the shared table it reads is untouched, so
+[`../docs/consumers.md`](../docs/consumers.md)'s `bootstrap.sh` row is unaffected and
+the `package-table` gate rule stays green without a regeneration.
+
+## Prove
+
+```powershell
+.tmp/wsl-toolkit.exe base ensure --preset PRESET --toolset developer --automount off --interop off
+```
+
+Passing is:
+
+- all four presets exit 0 and their probes report healthy;
+- `TestTheProvisionerInstallsWhatEachFamilysEngineNeeds` holds what each of the six
+  families installs, with the `apt` arm carrying `nftables`;
+- `TestTheProvisionerRestoresTheCapabilityRootlessIdMappingNeeds` goes red when the
+  restore is removed and when the check is returned to asking `command -v` alone. ⛔
+  Plant each and read the exit code, unpiped.
+
+---
+
+## Closing
+
+**Closed 2026-09-15T05:07:50Z.** The `apt` arm installs `nftables`, so netavark finds the `nft` it
+shells out to. The id-mapping check reads the privilege rather than the path: it accepts
+a setuid bit or the capability, restores a capability an imported rootfs dropped, and
+refuses with the capability named when it cannot. Both sections carry begin and end
+markers so a case runs the real text.
+
+⭐ **All four presets build and verify**, on throwaway instances under this repository's
+`.tmp`, with automount and interop off, on 2026-09-15:
+
+| preset | answer |
+| --- | --- |
+| arch | exit 0 in 77.3 s, toolset `developer`; `pacman on arch`; podman 6.1.1; probe exit 0 healthy; all thirteen developer commands present |
+| alpine | exit 0 in 172.9 s, toolset `developer`; `apk on alpine`; podman 5.8.6; healthy; all thirteen |
+| debian | exit 0 in 94.0 s, toolset `developer`; `apt on debian`; podman 5.4.2; healthy; all thirteen. ⭐ `/usr/bin/newuidmap is setuid` and `/usr/bin/newgidmap is setuid`: Debian needs no capability, and `nftables` is the whole of its fix |
+| fedora | exit 0 in 48.4 s, toolset `none`; `dnf on fedora`; podman 5.8.4; healthy. ⭐ `/usr/sbin/newuidmap arrived without cap_setuid and now carries it`, and the same for `newgidmap` |
+
+⚠ **fedora is proved at `toolset none` and the other three at `developer`, and that is
+stated rather than smoothed over.** Its `developer` build installs 99 packages from a
+mirror that answered in tens of KiB/s on the day: one such build took 420 s and a second
+ran out of the 30-minute provisioning budget at 1811.7 s. What that 420 s build DID prove
+is the half this entry is about - the capability was restored, podman ran, and `base exec`
+found all thirteen commands. It then failed verification for an unrelated reason, below.
+
+⛔ **And that reason is a third defect, found by driving and not by the suite.**
+`base ensure` on that 420 s fedora build answered exit 2 with `/mnt/e exists even though
+automount is off`. The provisioner's sweep at `provision.sh:494` removes the mount points
+WSL's first start leaves behind, and it runs once: that build removed **nine** where the
+arch, alpine and debian builds each removed **ten** and the 48.4 s fedora build removed
+ten. This host carries ten fixed drives and E: is an external HDD. A drive WSL mounts
+between the sweep and the restart that applies `automount off` is left behind, and the
+verifier is right to refuse it. ⚠ Recorded in [`PROGRESS.md`](PROGRESS.md) under "Found,
+and not filed"; it is not this entry's, and it is not the presets'.
+
+### The three reviews
+
+⭐ **1. The door sweep - what other door reaches this code?** The change touches what
+`base ensure` installs and what it then checks, so the enumeration is every path into
+provisioning and every other reader of the id mapping.
+
+- **One path, checked:** `provisionRequest` in `base.go` assembles the only provisioning
+  run there is, so `base ensure`, `base recreate` and a repair all get both halves.
+  `TestTheProvisioningRunIsTheSharedTableThenTheProvisioner` holds that payload.
+- **The other half of the mapping:** `/etc/subuid` and `/etc/subgid` are written at
+  `provision.sh:399`. The binaries' privilege and the ranges they read are two resources
+  and were authorized by one check; both are checked now.
+- **Reaches an existing base:** `wsl-toolkit-podbox` is provisioned by this same script,
+  so its next `base ensure` runs the new check over it. Recorded, not run: it is not this
+  session's distribution to change.
+- ⛔ **Found, recorded, not fixed here:** `verifyError` in `base.go` names the FIRST guest
+  line, and podman writes a shared-mount warning before its error, so fedora's real cause
+  needed a diagnostic build to read. It is `PROGRESS.md` finding 12's family seen from the
+  other side - not wsl.exe's line but the engine's own - and it is tracked there as
+  finding 15 rather than widened into this entry.
+
+⭐ **2. The guard mutation - can the new guards actually fail?** `provision.sh` is inside
+the Go module, so `repo mutate` can hold these, and each case passed unmutated first.
+Run in `golang:1.25`, where the cases do not skip:
+
+```text
+  ok       provisioner: the apt engine arm installs the nft netavark shells out to        1 case(s), went red
+  ok       provisioner: a dropped id-mapping capability is restored, not reported         1 case(s), went red
+  ok       provisioner: an id-mapping capability that cannot be read is refused, not passed 1 case(s), went red
+
+3 of 3 guards proved.
+```
+
+The third is the one that matters most: it returns the check to passing when it cannot
+read the capability, which is the shape that let the defect through in the first place.
+
+⭐ **3. The claim audit - which sentence is not backed by an artefact?**
+
+- ⛔ **Found the hard way, and it invalidated a first set of measurements.** The first
+  four preset builds were run with an executable built BEFORE `provision.sh` was edited.
+  `provision.sh` is embedded with `go:embed`, so the run measured the old provisioner and
+  debian failed with the same netavark error the fix removes. The builds recorded above
+  are from a rebuilt executable. ⚠ A build figure whose binary predates the change is a
+  number that was not measured, and it read exactly like one that was.
+- The header's claim that four of twelve managers have had a base built is now true of
+  four builds taken on one day rather than four taken across three.
+- `presets.go`'s figures were stale and are corrected in `WSL-87`'s closing, which found
+  them.
+
+---
+
 ## WSL-87. bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash
 
 **Source** found on 2026-09-15 while driving `WSL-70`'s agent matrix.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -7985,9 +8231,121 @@ arch, opensuse, photon and wolfi `codegraph=1.6.0` and `failures=0`, as before; 
 before, with no node. ⚠ Fedora's row was still installing from a mirror answering in KiB/s
 when the operator checkpointed the session, so the run is not counted as a whole.
 
-### Still open
+### Still open at the checkpoint, and answered by the closing below
 
 1. The three reviews and the closing. ⚠ **The door sweep has begun:** every other `read`
    in `bootstrap.sh` sits in a `while`, an `if` or a `||`, so none can end a substitution
    under `set -e`; and `install_codegraph` checks the architecture and not the kernel, so
    on a BSD it would fetch the Linux package, read and not measured.
+---
+
+## Closing
+
+**Closed 2026-09-15T05:07:50Z.** `fetch_verified_npm` names its work directory without reading it
+back, an npm with no `--pack-destination` is named before any fetch, and a kernel
+codegraph publishes no package for is named the same way. Three cases hold the three,
+each red with its defect planted by hand.
+
+```text
+wsl-toolkit matrix --images all --workspace . --exclude .tmp --exclude .codegraph \
+  --container-lifecycle ephemeral -c 'sh /work/scripts/common/bootstrap.sh --toolset agent'
+
+ran 13  failed 3  unreached 0  timed out 0, in 1184.45 s
+```
+
+| row | answer |
+| --- | --- |
+| debian, debian 12, ubuntu 22.04, void-musl | `codegraph=1.6.0`, `failures=0`, exit 0. Each exited 1 with an empty directory before the fix |
+| rocky 8 | `codegraph is fetched with npm pack --pack-destination, which needs npm 7.18.0 or later, and this npm answers 6.14.11`, `codegraph=none`, `failures=1`. It said `npm could not fetch` before |
+| alpine, arch, fedora, opensuse, photon, wolfi | exit 0, as before |
+| chimera | CodeGraph installed; it fails on its own pre-existing `openssh` conflict |
+| gentoo | as before, with no node and no portage tree |
+
+⭐ **3 failed rather than 2, and the third is the tool being honest.** Rocky 8's npm cannot
+fetch codegraph and now says so, where `--codegraph none` gives 13 ran and 2 failed. The
+two figures are not comparable and each is recorded with its flag.
+
+⭐ **Run twice, and the second is over the final tree.** The first ran while the door
+sweep's kernel guard was still being written, so its workspace copy predates it; the
+second carries the whole change.
+
+```text
+second run, same command, 2026-09-15T04:37:04Z
+ran 13  failed 4  unreached 0  timed out 1, in 1816.82 s
+```
+
+⚠ **The extra failure is fedora's mirror, not the tree.** It answered in tens of KiB/s all
+session and its row hit the 30-minute budget with exit 124, where it exited 0 in the first
+run. Every row this entry is about answered identically in both: the four dash images
+`codegraph=1.6.0` and `failures=0`, rocky 8 naming its npm, chimera and gentoo failing as
+they always have.
+
+⭐ **The caller-visible surface is unchanged.** In `golang:1.25`, `HEAD`'s `bootstrap.sh`
+and the tree's gave byte-identical `--help`, `--list-names` and `--list-providers`, each
+exit 0. ⚠ The `--dry-run --toolset agent --codegraph none --json` run differed by one
+line, and the difference is the staging rather than the change: `HEAD`'s copy was
+extracted to `/tmp`, where `script_dir` finds no `tmux.conf` beside it, so it reported
+the file as skipped where the tree's copy would install it. Read rather than reported,
+because a `DIFFERS` nobody opens is a break nobody notices.
+
+### The three reviews
+
+⭐ **1. The door sweep - what other door reaches this code?** The fix adds three
+affordances, and each has exactly one caller: `npm_packs_to_a_directory` and the kernel
+`case` are called by `install_codegraph`, and `fetch_verified_npm`'s naming is reached
+from its two calls there. What the enumeration missed was found by grepping for it:
+
+- **Every `read` in the file, all eight**, at lines 237, 485, 546, 589, 774, 905, 1235
+  and 1584. Each sits in a `while`, an `if` or a `||`, so none can end a command
+  substitution under `set -e` the way the defect's did. The closest in shape is the
+  report's `ssh -V` reader at 1584, which carries its own `|| line=""`.
+- ⛔ **Found and fixed:** `install_codegraph` read `$ARCH` and never `$KERNEL`, so a
+  FreeBSD, NetBSD or OpenBSD amd64 host resolved `codegraph-linux-x64` and fetched it.
+  It is named before the fetch now, as the too-old npm is, and `has_upstream_route`
+  three functions above was already the shape for it.
+- **Found, recorded, nothing built on it:** `fetch_verified_npm` calls `split_on`, which
+  lives INSIDE the shared package table block and is generated into `packages.sh` for the
+  base provisioner. A change to `split_on` made for the table changes the npm work
+  directory's name.
+- **Found, recorded:** `bootstrapSource` reads five levels above its own package, outside
+  the Go module, so a `repo mutate` row naming one of these cases would report the file
+  unreadable rather than a guard's verdict. No row names one.
+
+⭐ **2. The guard mutation - can the new guard actually fail?** The kernel guard was
+planted by hand in `golang:1.25`, because `repo mutate` copies a module and
+`bootstrap.sh` is in none - verified in `mutate.go`, whose `one` calls `copyTree` over
+`root/module` alone.
+
+```text
+unmutated exit 0
+planted: the kernel guard removed
+planted exit 1
+--- FAIL: TestBootstrapNamesAKernelCodegraphPublishesNoPackageFor (0.02s)
+    FreeBSD amd64 reached for "@colbymchenry/codegraph-linux-x64", want ""
+    FreeBSD amd64 said "step: codegraph resolves to 1.6.0\n", want a line carrying
+      "codegraph publishes a Linux package only, and this kernel is FreeBSD"
+    NetBSD amd64 reached for "@colbymchenry/codegraph-linux-x64", want ""
+restored exit 0
+```
+
+⛔ **And the pass found a defect in its own method, which is the point of the lens.** The
+FIRST plant reported `planted exit 0` over the removed guard. `go test` had served a
+cached result: the only file that changed was a shell script outside the module, which
+the Go build cache does not track, and the case reads it at run time. `-count=1` is what
+made the guard fire. ⭐ `repo mutate` already passes `-count=1`, at `mutate.go:194`, so
+its rows were never exposed to this; a hand-rolled plant is, and this one was, twice, for
+about four minutes.
+
+⭐ **3. The claim audit - which sentence is not backed by an artefact?** The amendment's
+four "built" claims were re-read against the tree and each resolves: the directory naming
+at `bootstrap.sh:1035`, `npm_packs_to_a_directory` at 993, its refusal at 1093, and the
+scripts README at 508. The consumers claim was measured rather than asserted, above.
+
+- ⛔ **Found and fixed:** `presets.go` published a build figure for a preset that had not
+  built since. Its `debian` row carried `37s, 556 MiB disk, podman 5.4.2`, taken on
+  2026-09-09, and `base ensure` from that preset has ended in netavark's `nft` error every
+  time it has been run since. `fedora` said `not measured on this host`, which was honest.
+  Both now carry what was measured today, with the date and the conditions on them.
+- The amendment's npm boundary figures - 6.14.11 and 7.17.0 without `--pack-destination`,
+  7.18.0 and 7.18.1 with - are last session's measurement and were not taken again. The
+  case holds them as a table, so a future npm that disagrees fails it.

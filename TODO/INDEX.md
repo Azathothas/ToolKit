@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 121  open 8  blocked 0  done 113
+total 122  open 6  blocked 0  done 116
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 1 | 0 | 63 | 64 |
-| P2 | 7 | 0 | 40 | 47 |
+| P1 | 0 | 0 | 65 | 65 |
+| P2 | 6 | 0 | 41 | 47 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **8** | **0** | **113** | **121** |
+| **all** | **6** | **0** | **116** | **122** |
 
 ---
 
@@ -107,7 +107,7 @@ total 121  open 8  blocked 0  done 113
 | WSL-67 | P2 | L | open | A provider's Linux-only CLI, run from Windows as if it were native | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-68 | P2 | M | open | A base that can reach nothing on the host at all | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-69 | P1 | M | done | Muse Code installed, authenticated and driven end to end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-70 | P2 | L | open | Two package maps become one, and the Go module embeds it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-70 | P2 | L | done | Two package maps become one, and the Go module embeds it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-71 | P2 | M | open | A portable shell profile this tree owns | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-72 | P2 | S | done | The BSD guest gets a 10 GiB disk, and the languages install on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-73 | P1 | XL | done | The PowerShell product retires, and pull request 31 is reviewed before any of it lands | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -123,7 +123,8 @@ total 121  open 8  blocked 0  done 113
 | WSL-83 | P1 | M | done | A FreeBSD kernel panic at poweroff leaves the shared guest image unchecked, and the next run panics on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-84 | P1 | M | done | A base reconfigured to read-only drives keeps writable ones, and reports read-only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-85 | P1 | S | done | A base reconfigured from passwordless sudo to none keeps it, and reports none | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-87 | P1 | S | open | bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-86 | P1 | M | done | The debian and fedora presets build a base that cannot run a container | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-87 | P1 | S | done | bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

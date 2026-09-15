@@ -507,7 +507,8 @@ replaced pinned CodeGraph 1.5.0 and three SHA-512 values, and the registry was o
 stronger check back for a caller who holds a value; the run prints every version
 and digest it resolved so that caller can. ⚠ CodeGraph is fetched with `npm pack
 --pack-destination`, which needs npm 7.18.0 or later, and an older npm is named as
-that rather than tried.
+that rather than tried. ⚠ It publishes a Linux package only, so a BSD is named as
+that before any fetch rather than offered the linux-x64 one.
 
 ⛔ **The report is read from the machine.** A name that was asked for, whose
 install command exited 0, and that is not on `PATH` afterwards is a failure and
