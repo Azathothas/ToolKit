@@ -9,18 +9,19 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-15T00:39:50Z; the record commit's own time is its end
 baseline        45fc7cc, tree clean, CI run 34869369358 green
 entries         total 120  open 7  blocked 0  done 113
-closed          WSL-85, in its own commit
-partial         WSL-67: pkgin, pkg_add and the acceptance runner's cases still open
-head            45fc7cc, then the WSL-85 commit
+closed          WSL-85 at 953e7b8
+partial         WSL-67: the acceptance runner's cases built and driven; pkgin and pkg_add open
+head            953e7b8, then the WSL-67 acceptance commit
 ```
 
 ## Active work
 
 ⭐ **The session resumed `WSL-67` from the operator's checkpoint and works unattended.**
 Driving its provider profiles found `WSL-85`, which the operator approved in chat, and it
-is closed. **Next:** `WSL-67`'s provider-profile cases in the acceptance runner, and its
-`pkgin` and `pkg_add` drives once the operator approves the two image downloads; then its
-closing with three reviews; then `WSL-70` and `WSL-71`.
+is closed. `WSL-67`'s provider-profile cases are in the acceptance runner and pass.
+**Next:** `WSL-67`'s `pkgin` and `pkg_add` drives once the operator approves the two image
+downloads, then its closing with three reviews; `WSL-70` and `WSL-71` meanwhile, and
+after it.
 
 ⚠ **The two BSD image downloads wait for the operator's approval in chat.** Asked on
 2026-09-15 at the session's start, naming each file, its source and its size, and not
@@ -40,8 +41,8 @@ is closed, and the issue gets a comment naming the commits.
 1. ⭐ **Closed:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33, `WSL-75`, `WSL-81`,
    `WSL-72`, `WSL-77`, `WSL-84`, `WSL-83`, `WSL-82` and `WSL-85`.
 2. **Finish issue 30's existing package and profile work:** `WSL-67`, then `WSL-70`,
-   then `WSL-71`. `WSL-67` has left: driving `pkgin` and `pkg_add`, and the
-   provider-profile cases in the acceptance runner.
+   then `WSL-71`. `WSL-67` has left: driving `pkgin` and `pkg_add`, which waits for
+   the operator's approval of the two downloads, and its closing.
 3. **`WSL-68`, the sealed base: a dedicated session of its own.** It closes issue
    30 after the work above, and uses the drive verifier `WSL-84` fixed.
 4. **Muse and herdr together, one dedicated session.** Build `wsl-toolkit-base` from
@@ -102,7 +103,8 @@ ls-files`, so check a new one by name before it is added.
 | commit | what |
 | --- | --- |
 | `45fc7cc` | `WSL-67` partial: Soar removed from `bootstrap.sh`; the Nix route finds an installed Nix, sets up flakes and installs through the table's `nix` key; the last session's record and summary |
-| the `WSL-85` commit | `WSL-85` filed and closed: the verifier refuses passwordless sudo the configuration turned off, `base ensure` provisions such a base again, and a verification failure is named past wsl.exe's own lines; 3 mutation rows |
+| `953e7b8` | `WSL-85` filed and closed: the verifier refuses passwordless sudo the configuration turned off, `base ensure` provisions such a base again, and a verification failure is named past wsl.exe's own lines; 3 mutation rows |
+| the `WSL-67` acceptance commit | `WSL-67` partial: the acceptance runner builds `wsl-toolkit-accp` and drives the two provider profiles as five cases, 96 of 96 in a full run |
 
 ## Measurements
 
@@ -124,6 +126,9 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
   `/mnt` drive, no interop, systemd PID 1, `mount -t drvfs C:` refused. Zero grants: the
   probe exit 1 naming the stale mount, and `base ensure` removed it in 20.4 s. `base
   grant` and `base revoke` 0.31 s and 0.29 s.
+- **For `WSL-67`'s acceptance cases:** the five alone 5 of 5 in 105.1 s, and red over a
+  build with `WSL-85`'s check taken out; the full runner exit 0, 96 of 96 cases in
+  465.3 s from 01:33:26Z.
 - **For `WSL-67`'s Nix work, on 2026-09-14:** in `docker.io/nixos/nix:latest`, Nix
   2.35.2, a new unprivileged account installed 16 names through flakes in 24 s and again
   in 10 s; a `nix-env` account through channels in 9 s; 25 of 25 table attributes
@@ -207,11 +212,10 @@ The download approval above. The later Muse session still needs the operator to 
 ## Host state
 
 - Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit` and
-  `wsl-toolkit-podbox`, as at the session's start, and the throwaway
-  `wsl-toolkit-p67`, whose state and disk are under this repository's
-  `.tmp\wtk67-home`, kept while `WSL-67`'s provider-profile cases are written and
-  removed before the session ends. `eph-pgb` keeps its disk under
+  `wsl-toolkit-podbox`, as at the session's start. `eph-pgb` keeps its disk under
   `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
+- ⭐ **No throwaway is left.** `wsl-toolkit-p67` and the acceptance runner's
+  `wsl-toolkit-accp` and `wsl-toolkit-acc` were removed, with their state under `.tmp`.
 - `instances` under `%LOCALAPPDATA%\wsl-toolkit` holds `acc`, `muse`, `nobase`,
   `podbox` and `podbox-migrate`, as at the start. `instances\muse` holds nothing.
 - No BSD image is downloaded. The shared FreeBSD image is the published one,

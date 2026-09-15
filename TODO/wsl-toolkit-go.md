@@ -4049,6 +4049,44 @@ account a `PATH` of base tools with no Nix in it.
 2. **The provider-profile scenarios in the acceptance runner.**
 3. The three reviews and the closing.
 
+## Amendment, 2026-09-15: the provider profiles are cases in the acceptance runner
+
+⭐ **Item 2 of the list above is built.**
+[`../tools/windows/wsl-toolkit/acceptance.ps1`](../tools/windows/wsl-toolkit/acceptance.ps1)
+builds `wsl-toolkit-accp` under a state directory of its own, grants it a checkout under
+its `.tmp` scratch directory as the operator ruled, and drives the two profiles in
+[`../tools/windows/wsl-toolkit/examples/common/access-profiles.md`](../tools/windows/wsl-toolkit/examples/common/access-profiles.md)
+as five cases. They are behind `-Quick`, because they build a distribution, so a full run
+carries 96 cases and `-Quick` still 89.
+
+| case | what it reads |
+| --- | --- |
+| a provider profile mounts its one checkout read-write and nothing else of Windows | the probe exit 0 with automount and interop off, systemd, passwordless sudo and one `rw /workspaces/project` grant; then, as the account: that grant is the one DrvFS mount, a sentinel written on Windows reads back, a file written in the guest arrives on Windows, no drive is under `/mnt`, interop is absent, systemd is PID 1, the developer toolset's thirteen commands are present, `mount -t drvfs C:` is refused and `sudo -n true` is granted |
+| a grant taken out of the profile is refused, then unmounted by base ensure | the probe exit 1 naming the stale mount; `base ensure` exit 0; the probe exit 0 with no grant, and the account reads no sentinel and writes nothing |
+| passwordless sudo taken out of the profile is refused, then removed by base ensure | the probe exit 1 naming the account's sudo, `WSL-85`; after `base ensure`, `sudo -n true` is refused |
+| a live grant mounts the checkout without a restart, and a revoke unmounts it | `base grant --json` answers live; the account reads and writes through the grant, and after `base revoke` reads nothing; PID 1's start tick is the same before and after, `WSL-75` |
+| the profile base is removed with its disk | `base remove --yes` exit 0; `base status` answers not registered, and the disk is gone |
+
+Every guest fact comes from one probe script the account runs through `base exec`, and
+no case reads the configuration back as evidence of the guest.
+
+⭐ **Measured on 2026-09-15:**
+
+- the five alone, from a copy of the runner cut down to them: 5 of 5 in 105.1 s;
+- ⛔ **the same five against a build with `WSL-85`'s check taken back out**: the sudo case
+  red, `before ensure the probe exited 0`, and the live grant case red over an account
+  still granted sudo, exit 1, so the cases fail on the defect they carry;
+- the full runner on the tree's build: exit 0, 96 of 96 cases in 465.3 s from
+  2026-09-15T01:33:26Z, leaving the same four distributions and no scratch directory.
+
+⚠ **Driving the profiles by hand first found `WSL-85`**, filed and closed the same day,
+and every expected line in the cases was read off that drive before it was written.
+
+⭐ **For item 1, the boot loader's screen has a route.** With no disk, SeaBIOS's banner
+and its boot messages reached `-serial stdio` under `-M q35,graphics=off`, and nothing
+did under a plain `-M q35`, measured on 2026-09-15. The two downloads wait for the
+operator's approval, asked in chat the same day.
+
 ---
 
 ## WSL-68. A base that can reach nothing on the host at all

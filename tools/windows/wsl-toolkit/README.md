@@ -86,7 +86,9 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-
 
 The runner inventories pre-existing distributions, uses isolated state, and
 checks the names again at teardown. Its throwaway-distribution cases import and
-remove their own distribution under a state directory of their own. Never
+remove their own distribution under a state directory of their own, and its
+provider-profile cases build `wsl-toolkit-accp` the same way, granting it a
+checkout under the runner's `.tmp` scratch directory, and remove it. Never
 point it at `wsl-toolkit-muse`, `podman-machine-default`, or another
 distribution it did not create.
 

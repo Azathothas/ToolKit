@@ -1322,6 +1322,179 @@ try {
         }
     }
 
+    # -- a provider's base: one checkout, grants taken away, a grant made live -
+    # WSL-67. The two profiles in examples/common/access-profiles.md, driven on a
+    # distribution this runner builds under its own state directory, granting a
+    # checkout under this repository's .tmp as the operator ruled. WSL-85 is the
+    # sudo taken away and WSL-75 the live grant. Every case reads the guest as its
+    # account and never reads the configuration back. It is behind -Quick because
+    # it builds a distribution.
+    if (-not $Quick) {
+        $script:ProfileHome = New-StateHome 'profile-home'
+        $script:ProfileProject = New-StateHome 'profile-project'
+        $script:ProfileFile = Join-Path $script:ProfileProject 'wsl-toolkit.json'
+        $script:ProfileProbe = Join-Path $script:Scratch 'profile-probe.sh'
+        $script:ProfileBack = Join-Path $script:ProfileProject 'from-guest.txt'
+        $noBom = [Text.UTF8Encoding]::new($false)
+        [IO.File]::WriteAllText((Join-Path $script:ProfileProject 'sentinel.txt'), 'FROM-WINDOWS', $noBom)
+        # Each line is one fact about what the account can reach. The DrvFS mounts
+        # leave out WSL's own read-only /usr/lib/wsl/drivers, which is not a grant.
+        [IO.File]::WriteAllText($script:ProfileProbe, ((@(
+                    'set -u'
+                    'awk ''($3 == "9p" && $4 ~ /aname=drvfs/) || $3 == "drvfs" { printf "grant=%s %s\n", $2, substr($4, 1, 2) }'' /proc/mounts'
+                    'for d in /mnt/?; do if [ -e "$d" ]; then printf ''drive=%s\n'' "$d"; fi; done'
+                    'printf ''sentinel=%s\n'' "$(cat /workspaces/project/sentinel.txt 2>/dev/null)"'
+                    'if ( printf FROM-GUEST > /workspaces/project/from-guest.txt ) 2>/dev/null; then echo wrote=yes; else echo wrote=no; fi'
+                    'if [ -e /proc/sys/fs/binfmt_misc/WSLInterop ] || [ -e /proc/sys/fs/binfmt_misc/WSLInterop-late ] || [ -n "${WSL_INTEROP:-}" ]; then echo interop=present; else echo interop=absent; fi'
+                    'printf ''pid1=%s\n'' "$(cat /proc/1/comm)"'
+                    'for t in bash cc c++ curl git jq make node npm rg ssh tmux unzip; do command -v "$t" >/dev/null 2>&1 || printf ''missing=%s\n'' "$t"; done'
+                    'mkdir -p /tmp/tk-profile-c'
+                    'if mount -t drvfs C: /tmp/tk-profile-c 2>/dev/null; then echo mountc=mounted; umount /tmp/tk-profile-c; else echo mountc=refused; fi'
+                    'if sudo -n true 2>/dev/null; then echo sudo=granted; else echo sudo=refused; fi'
+                ) -join "`n") + "`n"), $noBom)
+
+        function Invoke-Profile {
+            param([Parameter(Mandatory = $true)][string[]]$ToolArgs)
+            return Invoke-Tool (@('--home', $script:ProfileHome, '--instance', 'accp', '--config', $script:ProfileFile) + $ToolArgs)
+        }
+
+        # Set-Profile writes the one-checkout profile, with its grant and its sudo
+        # each kept or taken away.
+        function Set-Profile {
+            param([bool]$Grant, [bool]$Sudo)
+            $base = [ordered]@{
+                name = 'wsl-toolkit-accp'; image = 'ghcr.io/pkgforge-dev/archlinux:latest'; user = 'agent'
+                automount = 'off'; interop = 'off'; systemd = $true; toolset = 'developer'
+            }
+            if ($Sudo) { $base['passwordless_sudo'] = $true }
+            if ($Grant) { $base['mounts'] = @([ordered]@{ source = '.'; target = '/workspaces/project'; mode = 'rw' }) }
+            $cfg = [ordered]@{ schema = 'wsl-toolkit-config/1'; base = $base; jobs = [ordered]@{ container_lifecycle = 'persistent' } }
+            [IO.File]::WriteAllText($script:ProfileFile, ($cfg | ConvertTo-Json -Depth 8), [Text.UTF8Encoding]::new($false))
+        }
+
+        # NOTE: an index past the end THROWS under Set-StrictMode, so an empty stream
+        # is answered rather than indexed.
+        function Get-LastLine {
+            param([AllowEmptyString()][string]$Text)
+            $lines = @(($Text -split "`n") | Where-Object { $_.Trim() -ne '' })
+            if ($lines.Count -eq 0) { return 'it said nothing' }
+            return $lines[$lines.Count - 1].Trim()
+        }
+
+        # Read-Profile runs the probe as the account and answers its lines.
+        function Read-Profile {
+            $r = Invoke-Profile @('base', 'exec', '--script', $script:ProfileProbe)
+            if ($r.Code -ne 0) { throw "the probe exited $($r.Code): $(Get-LastLine $r.Err)" }
+            return (($r.Out -replace "`r", '').Trim())
+        }
+
+        # Read-ProfileStatus is the verifier's answer, with the lists an answer
+        # omits when they are empty read as empty.
+        function Read-ProfileStatus {
+            $s = Invoke-Profile @('base', 'status', '--probe', '--json')
+            $d = Read-ToolJson -Stdout $s.Out -What 'base status --probe --json'
+            $problems = @()
+            if ($d.PSObject.Properties.Name -contains 'problems') { $problems = @($d.problems) }
+            $mounts = @()
+            if ($d.access.PSObject.Properties.Name -contains 'mounts') { $mounts = @($d.access.mounts | ForEach-Object { "$($_.mode) $($_.target)" }) }
+            return [pscustomobject]@{ Code = $s.Code; Problems = $problems; Mounts = $mounts; Access = $d.access }
+        }
+
+        # PID 1's start, in clock ticks since the kernel booted. A restart of the
+        # distribution starts a new PID 1 and the number moves; WSL's kernel does not.
+        function Read-InitStart {
+            $r = Invoke-Profile @('base', 'exec', '-c', 'cut -d " " -f 22 /proc/1/stat')
+            if ($r.Code -ne 0) { throw "PID 1's start could not be read: $(Get-LastLine $r.Err)" }
+            return $r.Out.Trim()
+        }
+
+        try {
+            Test-Case 'a provider profile mounts its one checkout read-write and nothing else of Windows' 'True' {
+                Set-Profile -Grant $true -Sudo $true
+                $e = Invoke-Profile @('base', 'ensure')
+                if ($e.Code -ne 0) { return "base ensure exited $($e.Code): $(Get-LastLine $e.Err)" }
+                $st = Read-ProfileStatus
+                if ($st.Code -ne 0 -or $st.Problems.Count -ne 0) { return "the probe exited $($st.Code): $($st.Problems -join ' | ')" }
+                $a = $st.Access
+                if ($a.automount_guest -ne 'off' -or $a.interop -ne 'off' -or $a.systemd -ne $true -or
+                    $a.passwordless_sudo -ne $true -or ($st.Mounts -join ',') -ne 'rw /workspaces/project') {
+                    return "the probe reported $($a | ConvertTo-Json -Compress -Depth 5)"
+                }
+                $seen = Read-Profile
+                $want = @('grant=/workspaces/project rw', 'sentinel=FROM-WINDOWS', 'wrote=yes', 'interop=absent',
+                    'pid1=systemd', 'mountc=refused', 'sudo=granted') -join "`n"
+                if ($seen -ne $want) { return "the account read $(Show-Bytes $seen)" }
+                ((Test-Path -LiteralPath $script:ProfileBack) -and ([IO.File]::ReadAllText($script:ProfileBack) -eq 'FROM-GUEST')).ToString()
+            }
+
+            Test-Case 'a grant taken out of the profile is refused, then unmounted by base ensure' 'True' {
+                Set-Profile -Grant $false -Sudo $true
+                $before = Read-ProfileStatus
+                $named = @($before.Problems | Where-Object { $_ -match 'unconfigured Windows directory is mounted at /workspaces/project' }).Count -eq 1
+                if ($before.Code -ne 1 -or -not $named) { return "before ensure the probe exited $($before.Code): $($before.Problems -join ' | ')" }
+                $e = Invoke-Profile @('base', 'ensure')
+                if ($e.Code -ne 0) { return "base ensure exited $($e.Code): $(Get-LastLine $e.Err)" }
+                $after = Read-ProfileStatus
+                if ($after.Code -ne 0 -or $after.Mounts.Count -ne 0) { return "after ensure the probe exited $($after.Code) with grants [$($after.Mounts -join ',')]" }
+                $seen = Read-Profile
+                $want = @('sentinel=', 'wrote=no', 'interop=absent', 'pid1=systemd', 'mountc=refused', 'sudo=granted') -join "`n"
+                if ($seen -ne $want) { return "the account read $(Show-Bytes $seen)" }
+                'True'
+            }
+
+            Test-Case 'passwordless sudo taken out of the profile is refused, then removed by base ensure' 'True' {
+                Set-Profile -Grant $false -Sudo $false
+                $before = Read-ProfileStatus
+                $named = @($before.Problems | Where-Object { $_ -match 'can use sudo without a password, and passwordless sudo is off' }).Count -eq 1
+                if ($before.Code -ne 1 -or -not $named) { return "before ensure the probe exited $($before.Code): $($before.Problems -join ' | ')" }
+                $e = Invoke-Profile @('base', 'ensure')
+                if ($e.Code -ne 0) { return "base ensure exited $($e.Code): $(Get-LastLine $e.Err)" }
+                $after = Read-ProfileStatus
+                if ($after.Code -ne 0 -or $after.Problems.Count -ne 0) { return "after ensure the probe exited $($after.Code): $($after.Problems -join ' | ')" }
+                $seen = Read-Profile
+                $want = @('sentinel=', 'wrote=no', 'interop=absent', 'pid1=systemd', 'mountc=refused', 'sudo=refused') -join "`n"
+                if ($seen -ne $want) { return "the account read $(Show-Bytes $seen)" }
+                'True'
+            }
+
+            Test-Case 'a live grant mounts the checkout without a restart, and a revoke unmounts it' 'True' {
+                if (Test-Path -LiteralPath $script:ProfileBack) { Remove-Item -LiteralPath $script:ProfileBack -Force }
+                $started = Read-InitStart
+                $g = Invoke-Profile @('base', 'grant', '--source', $script:ProfileProject, '--target', '/workspaces/project', '--mode', 'rw', '--json')
+                if ($g.Code -ne 0) { return "base grant exited $($g.Code): $(Get-LastLine $g.Err)" }
+                $gd = Read-ToolJson -Stdout $g.Out -What 'base grant --json'
+                if ($gd.live -ne $true) { return 'the grant did not answer that it is live' }
+                $granted = Read-Profile
+                $wantGranted = @('grant=/workspaces/project rw', 'sentinel=FROM-WINDOWS', 'wrote=yes', 'interop=absent',
+                    'pid1=systemd', 'mountc=refused', 'sudo=refused') -join "`n"
+                if ($granted -ne $wantGranted) { return "after the grant the account read $(Show-Bytes $granted)" }
+                if (-not (Test-Path -LiteralPath $script:ProfileBack)) { return 'the write through the live grant did not arrive on Windows' }
+                $v = Invoke-Profile @('base', 'revoke', '--target', '/workspaces/project', '--json')
+                if ($v.Code -ne 0) { return "base revoke exited $($v.Code): $(Get-LastLine $v.Err)" }
+                $revoked = Read-Profile
+                $wantRevoked = @('sentinel=', 'wrote=no', 'interop=absent', 'pid1=systemd', 'mountc=refused', 'sudo=refused') -join "`n"
+                if ($revoked -ne $wantRevoked) { return "after the revoke the account read $(Show-Bytes $revoked)" }
+                $ended = Read-InitStart
+                if ($ended -ne $started) { return "PID 1 started at tick $started before the grant and at $ended after the revoke" }
+                $st = Read-ProfileStatus
+                (($st.Code -eq 0) -and ($st.Mounts.Count -eq 0)).ToString()
+            }
+
+            Test-Case 'the profile base is removed with its disk' 'True' {
+                $r = Invoke-Profile @('base', 'remove', '--yes')
+                if ($r.Code -ne 0) { return "base remove exited $($r.Code): $(Get-LastLine $r.Err)" }
+                $s = Read-ToolJson -Stdout (Invoke-Profile @('base', 'status', '--json')).Out -What 'base status --json'
+                $disk = Join-Path $script:ProfileHome 'instances\accp\base\ext4.vhdx'
+                (($s.registered -eq $false) -and -not (Test-Path -LiteralPath $disk)).ToString()
+            }
+        }
+        finally {
+            # TORN DOWN WHATEVER HAPPENED, as the two instances case is. Over a base
+            # the last case removed, this is a refusal and changes nothing.
+            $null = Invoke-Profile @('base', 'remove', '--yes')
+        }
+    }
+
     # -- one command to readiness, and the one that moves off this version ---
     # WSL-49 and WSL-53.
 
@@ -1675,7 +1848,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 89 } else { 91 }
+$expected = if ($Quick) { 89 } else { 96 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++
