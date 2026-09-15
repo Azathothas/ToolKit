@@ -7,6 +7,35 @@ on what was true last time.
 
 ---
 
+## 2026-09-15, the two presets that would not build, and three entries closed
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-15T03:12:15Z | ended at the record commit's own time, about two hours |
+| Commits | `deea680`, clean `main`, its CI run 34923941438 still in progress | `git log --oneline deea680..HEAD` read **1, `ef7ad79`, pushed with `deea680`'s CI green; then the record commit**; CI read after each push |
+| Work | 9 open entries; `WSL-87` partial and owing its reviews, `WSL-86` proposed and unruled, `WSL-70` partial on two presets that did not build | **Completed 3:** `WSL-87`, `WSL-86` (filed, ruled and closed in this session) and `WSL-70`. **Partial 1:** `WSL-67`, still waiting on the two BSD downloads. **Deferred 1:** `WSL-71`. **Failed 0.** Entries 122, open 9 to 6, done 113 to 116 |
+| Changes | 0 files changed from `deea680` | `git diff --shortstat deea680` read 11 files, +1,024 / -54; the record commit adds this section |
+| Size | 86,824 text lines in 290 tracked files at `deea680`, `git grep -I -c ''` | 87,794 in 291 files, +970, before this section |
+| Checks | doctor exit 0 in 25.85 s; gate 20 of 20 in 32.19 s | gate 20 of 20 before every commit; the Windows Go proof with the 8.3 `TEMP` 313 results, 298 passed, 15 skipped, 0 failed; `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 clean over 34 scripts; 3 new mutation rows red and one defect planted by hand red |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation. Network bytes not measured; known transfers: seven throwaway base builds (2 arch, 2 alpine, 2 debian, 4 fedora attempts), two full 13-image agent matrices with CodeGraph on, and about ten short container runs in `golang:1.25`, `ubuntu:24.04` and `debian:latest`. No BSD image |
+| Health | four distributions; two of four base presets did not build | ⭐ all four presets build and verify. ⛔ Found on `main` and not fixed: the automount sweep is a race, recorded. The same four distributions and no throwaway; the FreeBSD image not booted; the SSH configuration unchanged; no tag; tree clean after the record commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| close `WSL-87` with its three reviews | done. Its door sweep also found and fixed the kernel it never checked, and its guard mutation found a false green in its own method |
+| get the ruling on `WSL-86` and act on it | done: approved in chat as recommended, filed, fixed, proved and closed |
+| close `WSL-70` on four preset builds | done. Fedora is proved at `toolset none` and the other three at `developer`, and the entry says so |
+| drive `pkgin` on NetBSD and `pkg_add` on OpenBSD | ⚠ **not started:** the two downloads were asked for once more at this session's start, in chat and as a file, and not approved |
+| then `WSL-71` | not started |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. `WSL-67`'s BSD drives, once the downloads are
+approved, then `WSL-71`.
+
+
 ## 2026-09-15, the provider profiles, the shared table and three findings
 
 | row | before | after |
