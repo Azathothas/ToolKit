@@ -21,6 +21,24 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T03:03:22Z: bootstrap.sh installs CodeGraph where /bin/sh is dash, and names an npm too old for it
+
+**Record:** `WSL-87` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+amendment of this date carries the measurements and the cases planted by hand.
+**Deployed:** no deploy, and no tag. ⚠
+[`scripts/common/bootstrap.sh`](scripts/common/bootstrap.sh) is fetched by URL, so this
+reached a caller of `main` when it was pushed.
+**Closes:** nothing. `WSL-87` stays open for its reviews.
+
+⚠ **AN EXIT CHANGES MEANING ON DEBIAN, UBUNTU AND VOID.** `--toolset agent`, and any run
+with `--codegraph` other than `none`, exited 1 with `npm did not write exactly one archive
+into ` after every package installed, because the fetch's directory came back empty under
+dash. It installs CodeGraph now, and exits 0 when nothing else failed.
+
+⚠ **An npm older than 7.18.0 is named, and not tried.** CodeGraph is fetched with `npm pack
+--pack-destination`, which npm 6 and npm 7.17 do not have; such a run fails CodeGraph with
+the npm's version, where it said `npm could not fetch`.
+
 ### 2026-09-15T01:19:47Z: a base configured without passwordless sudo is refused while its account still has it
 
 **Record:** `WSL-85` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

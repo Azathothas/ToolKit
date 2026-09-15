@@ -984,6 +984,20 @@ npm_registry_version() {
 
 npm_registry_integrity() { first_line npm view "$1@$2" dist.integrity; }
 
+# npm_packs_to_a_directory VERSION answers whether that npm has --pack-destination.
+#
+# ⛔ MEASURED, NOT READ. On 2026-09-15 npm 6.14.11 took the directory for a second
+# package, wrote the archive into its working directory and exited 1, which read as a
+# fetch that failed; npm 7.17.0 exited 254; npm 7.18.0 wrote the archive where it was
+# told. WSL-87.
+npm_packs_to_a_directory() {
+  case "$1" in
+    [0-6].*|7.[0-9].*|7.1[0-7].*) return 1 ;;
+    [0-9]*.*) return 0 ;;
+  esac
+  return 1
+}
+
 sri_of_file() {
   # ⚠ node is the hashing tool here on purpose. sha512sum prints hex, the
   # registry publishes base64, and every converter between them is absent on some
@@ -1015,8 +1029,15 @@ fetch_verified_npm() {
   fv_package=$2
   fv_version=$3
   FETCHED_ARCHIVE=
-  fv_dir="$fv_work/$(split_on '/@' "$fv_package")"
-  fv_dir=$(printf '%s' "$fv_dir" | { read -r fv_line; printf '%s' "$fv_line"; })
+  # ⛔ THE DIRECTORY IS NAMED WITHOUT read. Its name was read back from a pipe with no
+  # trailing newline, and under dash with `set -e` that substitution ends before its
+  # printf: every Debian, Ubuntu and Void run exited 1 with `npm did not write exactly
+  # one archive into ` and no directory. Measured on 2026-09-15. WSL-87.
+  fv_name=
+  for fv_part in $(split_on '/@' "$fv_package"); do
+    fv_name=${fv_name:+$fv_name-}$fv_part
+  done
+  fv_dir="$fv_work/$fv_name"
   mkdir -p "$fv_dir"
   if ! npm pack "$fv_package@$fv_version" --ignore-scripts --pack-destination "$fv_dir" >/dev/null 2>&1; then
     fail "npm could not fetch $fv_package@$fv_version"
@@ -1068,6 +1089,11 @@ install_codegraph() {
       return 1
     fi
   done
+  cg_npm=$(first_line npm --version)
+  if ! npm_packs_to_a_directory "$cg_npm"; then
+    fail "codegraph is fetched with npm pack --pack-destination, which needs npm 7.18.0 or later, and this npm answers ${cg_npm:-nothing}"
+    return 1
+  fi
 
   case "$ARCH" in
     x86_64|amd64)  cg_platform="$CODEGRAPH_MAIN-linux-x64" ;;

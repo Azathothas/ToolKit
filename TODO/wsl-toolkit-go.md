@@ -7944,3 +7944,50 @@ Passing is:
 - debian, debian 12, ubuntu 22.04 and void-musl install CodeGraph and exit 0;
 - rocky 8's npm 6 is named as too old for the fetch;
 - the other images answer as they did with CodeGraph off.
+
+---
+
+## Amendment, 2026-09-15: built and proved by hand, and the operator checkpointed it
+
+⭐ **Built:**
+
+- `fetch_verified_npm` names its directory by joining the package's parts with `-`, in a
+  loop, where it read the name back through `read`.
+- `npm_packs_to_a_directory` answers whether an npm has `--pack-destination`, and
+  `install_codegraph` refuses one that has not, naming its version, before any fetch.
+- `TestBootstrapFetchesAnNpmArchiveIntoANamedDirectoryUnderDash` runs the file's own
+  `fetch_verified_npm` under dash inside an `if`, with npm and the two digest readers stood
+  in for, and `TestBootstrapNamesAnNpmTooOldToPackToADirectory` holds the versions below.
+  Both read `scripts/common/bootstrap.sh` from the tree and skip where there is no dash.
+- The scripts README says CodeGraph needs npm 7.18.0.
+
+⭐ **The npm boundary, measured on 2026-09-15:** npm 6.14.11 on rocky 8 took the directory
+for a second package, `ENOLOCAL`, wrote the archive into its working directory and exited
+1; through `npx` in `debian:latest`, npm 7.17.0 exited 254 and wrote nothing, and npm
+7.18.0 and 7.18.1 wrote the archive into the directory.
+
+⛔ **No mutation row can hold these cases**, because `repo mutate` copies a module and
+`bootstrap.sh` is in none. Each was planted by hand in `golang:1.25`, the case green on
+the tree first:
+
+| planted in the container's copy | the case |
+| --- | --- |
+| the two lines that read the directory back, as `2ec9238` wrote them | red: dash answered `refused failures=1`, with `mkdir: cannot create directory ''` |
+| `7.1[0-7].*` taken out of the version check | red: `npm "7.17.0" answered yes` |
+| both restored | green |
+
+⭐ **The agent matrix with CodeGraph on, over the fix, as far as it had run at the
+checkpoint:** debian, debian 12, ubuntu 22.04 and void-musl each `codegraph=1.6.0` and
+`failures=0`, where each had exit 1; chimera `codegraph=1.6.0` beside its `openssh`
+conflict. Rocky 8 named its npm, `codegraph is fetched with npm pack --pack-destination, which needs npm
+7.18.0 or later, and this npm answers 6.14.11`, where it said `npm could not fetch`; alpine,
+arch, opensuse, photon and wolfi `codegraph=1.6.0` and `failures=0`, as before; gentoo as
+before, with no node. ⚠ Fedora's row was still installing from a mirror answering in KiB/s
+when the operator checkpointed the session, so the run is not counted as a whole.
+
+### Still open
+
+1. The three reviews and the closing. ⚠ **The door sweep has begun:** every other `read`
+   in `bootstrap.sh` sits in a `while`, an `if` or a `||`, so none can end a substitution
+   under `set -e`; and `install_codegraph` checks the architecture and not the kernel, so
+   on a BSD it would fetch the Linux package, read and not measured.

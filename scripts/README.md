@@ -505,7 +505,9 @@ at run time, which proves transport rather than authorship. The version it
 replaced pinned CodeGraph 1.5.0 and three SHA-512 values, and the registry was on
 1.6.0 the following day. ⭐ `--expect-integrity` and `--expect-sha256` put the
 stronger check back for a caller who holds a value; the run prints every version
-and digest it resolved so that caller can.
+and digest it resolved so that caller can. ⚠ CodeGraph is fetched with `npm pack
+--pack-destination`, which needs npm 7.18.0 or later, and an older npm is named as
+that rather than tried.
 
 ⛔ **The report is read from the machine.** A name that was asked for, whose
 install command exited 0, and that is not on `PATH` afterwards is a failure and

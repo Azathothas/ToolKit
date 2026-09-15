@@ -7,6 +7,37 @@ on what was true last time.
 
 ---
 
+## 2026-09-15, the provider profiles, the shared table and three findings
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-15T00:39:50Z | ended at the record commit's own time, about two hours and thirty minutes; the operator checkpointed it at `WSL-87` |
+| Commits | `45fc7cc`, clean `main`, CI run 34869369358 green | `git log --oneline 45fc7cc..HEAD` read **3**, each pushed and green in CI, runs 34917175480, 34918661319 and 34921726479; then the record commit |
+| Work | 7 open entries; `WSL-67` resumed at `pkgin`, `pkg_add` and the acceptance runner's cases, then `WSL-70` and `WSL-71` | **Completed 1:** `WSL-85`, found and approved this session. **Partial 3:** `WSL-67`, its acceptance cases built and its BSD drives waiting for the download approval; `WSL-70`, built, with two presets not building; `WSL-87`, found, approved and built, its reviews owed. **Deferred 1:** `WSL-71`. **Failed 0.** Proposed and not ruled: `WSL-86`. Entries 119, 7 open, to 121, 8 open, 113 done |
+| Changes | 0 files changed from `45fc7cc` | `git diff --shortstat 45fc7cc` over the tree before this summary read 21 files, +1,436 / -153; the record commit adds this section |
+| Size | 85,510 text lines in 288 files at `45fc7cc`, `git grep -I -c ''` | 86,793 in 290 files, +1,283, before this section |
+| Checks | doctor exit 0 in 37.62 s; gate 20 of 20 in 37.47 s | gate 20 of 20 before every commit; the Windows Go proof with the 8.3 `TEMP` and the Linux Go proof in `golang:1.25` exit 0 before every push; ShellCheck 0.9.0 clean over 34 scripts; 7 new mutation rows red and 2 re-pointed rows red; the acceptance runner 96 of 96 |
+| Cost | no paid operation authorized; network bytes not measured | no paid operation. Network bytes not measured; known transfers: the packages for 11 throwaway base builds, 6 Arch, 1 Alpine, 2 Debian and 2 Fedora, Fedora's mirror answering in KiB/s; three 13-image agent matrices, two with CodeGraph; npm 7.17.0 and 7.18.0 through `npx`; Rocky 8's nodejs; no BSD image |
+| Health | four distributions; the shared FreeBSD image the published one | ⛔ found on `main` and not fixed: the debian and fedora presets do not build, `WSL-86` proposed. ⭐ `bootstrap.sh`'s CodeGraph install works under dash again. The same four distributions and no throwaway; the FreeBSD image's SHA-256 unchanged and not booted; the SSH configuration unchanged; no tag; tree clean after the record commit |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| drive `pkgin` on NetBSD and `pkg_add` on OpenBSD | ⚠ **not started:** the two downloads were asked for in chat at the start, once, and not approved. The boot loader's route to the serial console was measured, and a driver written under `.tmp`, never booted |
+| add the provider-profile scenarios to the acceptance runner | done: five cases, red over a planted `WSL-85` defect, and a full run of 96 of 96 |
+| close `WSL-67` with its three reviews | not done: it waits for the BSD drives |
+| `WSL-70` and `WSL-71` follow | `WSL-70` built and partial, its four-preset prove blocked by two presets that did not build before it either; `WSL-71` not started |
+| rule on what driving found | `WSL-85` approved and closed; `WSL-87` approved, built and proved by hand; `WSL-86` proposed and not yet ruled |
+| checkpoint here and print the resume prompt | done: the record, this summary and the resume prompt in chat only |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. Close `WSL-87` with its reviews, then ask again
+for `WSL-86` and the two downloads, and continue down the order the record gives.
+
+---
+
 ## 2026-09-14, the safety entries and the Nix route
 
 | row | before | after |

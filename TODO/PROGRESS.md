@@ -10,20 +10,23 @@ session started 2026-09-15T00:39:50Z; the record commit's own time is its end
 baseline        45fc7cc, tree clean, CI run 34869369358 green
 entries         total 121  open 8  blocked 0  done 113
 closed          WSL-85 at 953e7b8
-partial         WSL-67 at 4c573cf: pkgin and pkg_add open; WSL-70: all but two presets' builds
-head            4c573cf, then the WSL-70 commit
+partial         WSL-67 at 4c573cf; WSL-70 at 9df2e7b; WSL-87 in the checkpoint commit
+head            9df2e7b, then the checkpoint commit
 ```
 
 ## Active work
 
-⭐ **The session resumed `WSL-67` from the operator's checkpoint and works unattended.**
-Driving its provider profiles found `WSL-85`, which the operator approved in chat, and it
-is closed. `WSL-67`'s provider-profile cases are in the acceptance runner and pass.
-`WSL-70`'s provisioner reads the shared table; its prove found the debian and fedora presets
-not building, proposed as `WSL-86`, and the agent matrix's CodeGraph failing under dash,
-filed as `WSL-87` on the operator's approval. **Next:** `WSL-87`; then `WSL-86` if the
-operator approves it, and `WSL-70`'s closing; `WSL-67`'s `pkgin` and `pkg_add` once the two
-downloads are approved; then `WSL-71`.
+⭐ **The operator checkpointed the session at `WSL-87`.** `WSL-85` is closed. `WSL-67`'s
+provider-profile cases are in the acceptance runner and pass. `WSL-70`'s provisioner reads the
+shared table, and its prove found two presets that do not build. `WSL-87` is built, its cases
+proved by hand, and its matrix run over the fix. **Resume, in this order:**
+
+1. `WSL-87`'s three reviews and its closing; its door sweep has begun, in its amendment.
+2. `WSL-86`, the debian and fedora presets, proposed in chat and not yet ruled: ask again
+   once, and on approval file it, fix it and build all four presets.
+3. `WSL-70`'s closing, on those four builds.
+4. `WSL-67`'s `pkgin` and `pkg_add`, once the two downloads are approved: ask again once.
+5. `WSL-71`.
 
 ⚠ **The two BSD image downloads wait for the operator's approval in chat.** Asked on
 2026-09-15 at the session's start, naming each file, its source and its size, and not
@@ -109,7 +112,8 @@ ls-files`, so check a new one by name before it is added.
 | `45fc7cc` | `WSL-67` partial: Soar removed from `bootstrap.sh`; the Nix route finds an installed Nix, sets up flakes and installs through the table's `nix` key; the last session's record and summary |
 | `953e7b8` | `WSL-85` filed and closed: the verifier refuses passwordless sudo the configuration turned off, `base ensure` provisions such a base again, and a verification failure is named past wsl.exe's own lines; 3 mutation rows |
 | `4c573cf` | `WSL-67` partial: the acceptance runner builds `wsl-toolkit-accp` and drives the two provider profiles as five cases, 96 of 96 in a full run |
-| the `WSL-70` commit | `WSL-70` partial: the base provisioner reads the shared package table and its detection; 4 mutation rows; `WSL-87` filed |
+| `9df2e7b` | `WSL-70` partial: the base provisioner reads the shared package table and its detection; 4 mutation rows; `WSL-87` filed |
+| the checkpoint commit | `WSL-87` partial: `bootstrap.sh` installs CodeGraph under dash and names an npm too old for it; the session's record and summary |
 
 ## Measurements
 
@@ -138,6 +142,9 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
   debian failed at the `nft` its podman reaches for, as `4c573cf`'s build did with no
   toolset in 33.6 s, and fedora at `newuidmap`'s missing capability. The agent matrix with
   `--codegraph none`: 13 ran, 2 failed, in 340.6 s; with CodeGraph on, 7 failed in 517.3 s.
+- **For `WSL-87`:** npm 6.14.11 and 7.17.0 have no `--pack-destination` and 7.18.0 has;
+  both cases green under dash in `golang:1.25` and red with each defect planted by hand;
+  over the fix, debian, debian 12, ubuntu 22.04 and void-musl install CodeGraph 1.6.0.
 - **For `WSL-67`'s Nix work, on 2026-09-14:** in `docker.io/nixos/nix:latest`, Nix
   2.35.2, a new unprivileged account installed 16 names through flakes in 24 s and again
   in 10 s; a `nix-env` account through channels in 9 s; 25 of 25 table attributes
@@ -203,6 +210,9 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 14. The verifier's `interop on` checks nothing, so a base configured with interop on
     over a guest without it verifies. Read on 2026-09-15, not measured, and it grants
     no authority.
+15. `install_codegraph` in `bootstrap.sh` checks the architecture and not the kernel, so
+    on a BSD it would fetch CodeGraph's Linux package. Read on 2026-09-15, not measured;
+    `WSL-67`'s `--toolset agent` drives on NetBSD and OpenBSD will meet it.
 
 ## Review findings
 
@@ -211,7 +221,8 @@ error messages named by a guest's first stderr line, recorded above; its claim a
 corrected the manual's first draft, which said a disagreeing base "answers exit 1" and
 named no command. `WSL-67`'s checkpoint: the claim audit found the Nix version probe
 outside `nix_run`, where the documentation said every Nix command gets the settings, and
-the probe now goes through it; its closing reviews are still owed.
+the probe now goes through it. `WSL-67`, `WSL-70` and `WSL-87` still owe their closing
+reviews.
 
 ## Open questions for the operator
 
@@ -224,8 +235,12 @@ later Muse session still needs the operator to run `muse login`.
 - Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit` and
   `wsl-toolkit-podbox`, as at the session's start. `eph-pgb` keeps its disk under
   `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
-- ⭐ **No throwaway is left.** `wsl-toolkit-p67` and the acceptance runner's
-  `wsl-toolkit-accp` and `wsl-toolkit-acc` were removed, with their state under `.tmp`.
+- ⭐ **No throwaway is left.** `wsl-toolkit-p67`, the acceptance runner's `wsl-toolkit-accp`
+  and `wsl-toolkit-acc`, the four preset builds and the two diagnostic builds were removed.
+- ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
+  `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and
+  the OpenBSD installer over SeaBIOS's serial console, and runs commands from a spool with
+  files served over QEMU's own TFTP. It has never booted a guest; read it before using it.
 - `instances` under `%LOCALAPPDATA%\wsl-toolkit` holds `acc`, `muse`, `nobase`,
   `podbox` and `podbox-migrate`, as at the start. `instances\muse` holds nothing.
 - No BSD image is downloaded. The shared FreeBSD image is the published one,
