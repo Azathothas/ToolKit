@@ -38,6 +38,9 @@ Read from each repository on 2026-09-13.
 Two files are intended for direct fetching and have no known consumer:
 [`bootstrap.sh`](../scripts/common/bootstrap.sh) and
 [`tmux.conf`](../scripts/common/tmux.conf). Add a row when a consumer is found.
+⚠ `bootstrap.sh`'s shared package table is also a build input to the published
+executable, whose base provisioner resolves its `developer` names through a generated
+copy of it, so an edit to that block reaches both in one commit.
 
 The dependency on `pkgforge-dev/docker-bsd` runs the other way: it publishes
 BSD images that ToolKit names. It is not a consumer row.

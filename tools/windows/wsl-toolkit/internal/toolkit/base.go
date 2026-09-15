@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -18,6 +19,25 @@ import (
 
 //go:embed provision.sh
 var provisionScript []byte
+
+// packagesScript is the shared package table, generated from the block in
+// scripts/common/bootstrap.sh. TODO/RULES.md section 4 owns the rule.
+//
+//go:embed packages.sh
+var packagesScript []byte
+
+// provisionPayload is what provisioning runs: the shared package table, then the
+// provisioner that resolves its developer names through it.
+//
+// ⛔ ONE TABLE FOR BOTH READERS. The provisioner carried a second map of package
+// names that knew six managers where the table knew twelve, and a distribution that
+// renamed a package had to be fixed in both. WSL-70.
+func provisionPayload() []byte {
+	payload := make([]byte, 0, len(packagesScript)+1+len(provisionScript))
+	payload = append(payload, packagesScript...)
+	payload = append(payload, '\n')
+	return append(payload, provisionScript...)
+}
 
 //go:embed verify.sh
 var verifyScript []byte
@@ -681,24 +701,7 @@ func (b *Base) provision(ctx context.Context) error {
 		return err
 	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
-	code, err := b.wsl.Exec(ctx, ExecRequest{
-		Distro: b.cfg.Base.Name,
-		User:   "root",
-		Script: provisionScript,
-		Env: map[string]string{
-			"TK_USER":              b.cfg.Base.User,
-			"TK_UID":               "1000",
-			"TK_BINFMT_IMAGE":      BinfmtImage,
-			"TK_AUTOMOUNT":         automount,
-			"TK_INTEROP":           interop,
-			"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
-			"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
-			"TK_TOOLSET":           toolset,
-		},
-		Timeout: 30 * time.Minute,
-		Stdout:  out,
-		Stderr:  out,
-	})
+	code, err := b.wsl.Exec(ctx, b.provisionRequest(automount, interop, toolset, out))
 	out.Flush()
 	if err != nil || code != 0 {
 		return fmt.Errorf("provisioning exited %d: %w", code, err)
@@ -720,6 +723,29 @@ func (b *Base) provision(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+// provisionRequest is the one provisioning run: the payload, as root, with the
+// configuration's settings in its environment.
+func (b *Base) provisionRequest(automount, interop, toolset string, out io.Writer) ExecRequest {
+	return ExecRequest{
+		Distro: b.cfg.Base.Name,
+		User:   "root",
+		Script: provisionPayload(),
+		Env: map[string]string{
+			"TK_USER":              b.cfg.Base.User,
+			"TK_UID":               "1000",
+			"TK_BINFMT_IMAGE":      BinfmtImage,
+			"TK_AUTOMOUNT":         automount,
+			"TK_INTEROP":           interop,
+			"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
+			"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
+			"TK_TOOLSET":           toolset,
+		},
+		Timeout: 30 * time.Minute,
+		Stdout:  out,
+		Stderr:  out,
+	}
 }
 
 // baseMountPayloads renders explicit grants for /etc/fstab and for the

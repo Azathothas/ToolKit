@@ -6,6 +6,17 @@
 # repair time. Normal work runs as the configured account; an explicit profile
 # setting may let that account elevate without a password.
 #
+# ⭐ packages.sh ARRIVES AHEAD OF IT, in the same payload. That is the shared
+# package table from scripts/common/bootstrap.sh, and this script calls its
+# detect_provider, detect_os_id and package_for rather than keeping a second map of
+# package names. TODO/RULES.md section 4 owns the rule.
+#
+# ⚠ TWELVE MANAGERS ARE DETECTED AND FOUR HAVE HAD A BASE BUILT. A base has been
+# built and verified from apk, apt, dnf and pacman, the alpine, debian, fedora and
+# arch presets. tdnf and xbps have engine packages below and no build. emerge, yum
+# and zypper are refused by name, because nothing here installs an engine through
+# them, and pkg, pkg_add and pkgin are BSD managers no WSL distribution has.
+#
 # TK_USER and TK_UID arrive as exported variables rather than being substituted
 # into this text. Substituting a value into a script is the defect the command
 # channel exists to remove, and doing it here would undo that one layer up.
@@ -74,17 +85,23 @@ case "$TK_PASSWORDLESS_SUDO" in
 esac
 
 # -- which userland is this ---------------------------------------------------
-# Read from what is installed rather than from /etc/os-release's ID, because a
-# derivative names itself and keeps its parent's package manager.
-if   command -v apk          >/dev/null 2>&1; then FAMILY=apk
-elif command -v pacman       >/dev/null 2>&1; then FAMILY=pacman
-elif command -v apt-get      >/dev/null 2>&1; then FAMILY=apt
-elif command -v dnf          >/dev/null 2>&1; then FAMILY=dnf
-elif command -v tdnf         >/dev/null 2>&1; then FAMILY=tdnf
-elif command -v xbps-install >/dev/null 2>&1; then FAMILY=xbps
-else die "no package manager this script knows: tried apk, pacman, apt-get, dnf, tdnf, xbps-install"
-fi
-say "package manager: $FAMILY"
+# The package manager is read from what is installed, by the shared table's
+# detection, because a derivative names itself in /etc/os-release and keeps its
+# parent's manager. The system's ID is read too, because the table spells some
+# names per distribution.
+# >>> package manager: begin
+PROVIDER=$(detect_provider)
+OS_ID=$(detect_os_id)
+FAMILY=$PROVIDER
+# PROVIDERS is the shared table's list, set by packages.sh ahead of this script.
+# shellcheck disable=SC2153
+case "$FAMILY" in
+  apk|apt|dnf|pacman|tdnf|xbps) ;;
+  '') die "no package manager this script knows: tried $PROVIDERS" ;;
+  *)  die "$FAMILY is installed, and this script installs a container engine only through apk, apt, dnf, pacman, tdnf or xbps" ;;
+esac
+say "package manager: $FAMILY on $OS_ID"
+# <<< package manager: end
 
 # -- the engine and what rootless needs ---------------------------------------
 # shadow supplies newuidmap and newgidmap. Without them a rootless engine cannot
@@ -166,33 +183,38 @@ if [ "$SYSTEMD_ENABLED" = true ]; then
 fi
 
 # -- reproducible base tools --------------------------------------------------
-# Package names differ, but the commands promised by `developer` do not. Keep
-# this list small: provider-specific installers remain an explicit act by the
-# unprivileged account and are not fetched or executed as root here.
+# The commands promised by `developer` are this script's. Their package names are
+# the shared table's. Keep this list small: provider-specific installers remain an
+# explicit act by the unprivileged account and are not fetched or executed as root
+# here.
 case "$TK_TOOLSET" in
   none)
     ;;
   developer)
+    # >>> developer packages: begin
+    # ⚠ A NAME THE TABLE SAYS THIS SYSTEM DOES NOT CARRY IS NAMED AND LEFT OUT, and
+    # the check after the install then refuses the command it would have supplied.
+    developer_packages=
+    for developer_name in bash build curl git jq node npm openssh ripgrep tmux unzip; do
+      developer_resolved=$(package_for "$developer_name") ||
+        die "the shared package table has no row for $developer_name"
+      if [ -z "$developer_resolved" ]; then
+        say "$OS_ID's $FAMILY carries no package for $developer_name"
+        continue
+      fi
+      developer_packages="$developer_packages $developer_resolved"
+    done
+    # The list is package names from the table, split on purpose.
+    # shellcheck disable=SC2086
     case "$FAMILY" in
-      apk)
-        apk add --no-cache bash build-base curl git jq nodejs npm openssh-client ripgrep tmux unzip >/dev/null
-        ;;
-      pacman)
-        pacman -S --noconfirm --needed bash base-devel curl git jq nodejs npm openssh ripgrep tmux unzip >/dev/null
-        ;;
-      apt)
-        apt-get install -y -qq --no-install-recommends bash build-essential curl git jq nodejs npm openssh-client ripgrep tmux unzip >/dev/null
-        ;;
-      dnf)
-        dnf -y --setopt=install_weak_deps=False install bash gcc gcc-c++ make curl git jq nodejs npm openssh-clients ripgrep tmux unzip >/dev/null
-        ;;
-      tdnf)
-        tdnf install -y bash gcc gcc-c++ make curl git jq nodejs npm openssh-clients ripgrep tmux unzip >/dev/null
-        ;;
-      xbps)
-        xbps-install -Sy bash base-devel curl git jq nodejs npm openssh ripgrep tmux unzip >/dev/null
-        ;;
+      apk)    apk add --no-cache $developer_packages >/dev/null ;;
+      pacman) pacman -S --noconfirm --needed $developer_packages >/dev/null ;;
+      apt)    apt-get install -y -qq --no-install-recommends $developer_packages >/dev/null ;;
+      dnf)    dnf -y --setopt=install_weak_deps=False install $developer_packages >/dev/null ;;
+      tdnf)   tdnf install -y $developer_packages >/dev/null ;;
+      xbps)   xbps-install -Sy $developer_packages >/dev/null ;;
     esac
+    # <<< developer packages: end
     for tool in bash cc c++ curl git jq make node npm rg ssh tmux unzip; do
       command -v "$tool" >/dev/null 2>&1 || die "the developer toolset promised $tool and it is absent"
     done

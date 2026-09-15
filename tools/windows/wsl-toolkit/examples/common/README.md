@@ -15,7 +15,8 @@ contract, and this page carries nothing that belongs to them.
 
 `base.toolset: "developer"` provisions the DISTRIBUTION as root during
 `base ensure`: Bash, a C/C++ build chain, curl, git, jq, Node/npm, OpenSSH,
-ripgrep, tmux, unzip, and the base's own rootless Podman.
+ripgrep, tmux, unzip, and the base's own rootless Podman. Their package names come
+from the bootstrap's own table.
 
 ⚠ **The bootstrap is the other half and it is not the same half.** It runs as the
 ordinary account, it can add the language toolchains and CodeGraph that no base

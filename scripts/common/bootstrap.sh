@@ -108,10 +108,10 @@ USAGE
 
 # ⛔ THE BLOCK BETWEEN THE TWO MARKER LINES BELOW HAS A SECOND COPY. It is copied
 # byte for byte into tools/windows/wsl-toolkit/internal/toolkit/packages.sh, so
-# that the base provisioner of that tool can resolve its own `developer` names
-# from one table, one lookup and one detection, and a distribution that renames a
-# package is fixed once. ⚠ Nothing reads that copy yet: wiring the provisioner to
-# it is the rest of WSL-70. Edit the block HERE. The gate's `package-table` check
+# that the base provisioner of that tool resolves its own `developer` names from
+# one table, one lookup and one detection, and a distribution that renames a
+# package is fixed once. ⚠ So an edit here reaches that executable as well as every
+# caller of this file. Edit the block HERE. The gate's `package-table` check
 # refuses the copy disagreeing, and this rewrites the copy:
 #
 #   sh scripts/common/check.sh package-table --fix

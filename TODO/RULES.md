@@ -121,8 +121,9 @@ same sentence, which is where a reader of the code will look.
 | every file under `tools/windows/wsl-toolkit/internal/toolkit/adapters/` | the adapter definitions under [`../tools/windows/wsl-toolkit/adapters/`](../tools/windows/wsl-toolkit/adapters/README.md), the README beside them excepted; `sh scripts/common/check.sh adapters --fix` | the gate's `adapters` rule compares every file byte for byte, and refuses one missing or one with no definition |
 | `tools/windows/wsl-toolkit/wsl-toolkit.1` | the native command registry and flag bindings; from `tools/windows/wsl-toolkit`, `go run . man --output wsl-toolkit.1` | `TestGeneratedManPageIsCurrent` regenerates and compares it byte for byte |
 
-⚠ Nothing reads `packages.sh` yet: wiring the base provisioner to it is the rest
-of `WSL-70`.
+⚠ **`packages.sh` is read by the base provisioner**, which the executable sends ahead
+of `provision.sh`, so an edit to the table's block reaches the published `wsl-toolkit`
+as well as every caller of `bootstrap.sh`, in one commit. `WSL-70`.
 
 ## 5. The record moves in the same change as the work
 

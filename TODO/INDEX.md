@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 120  open 7  blocked 0  done 113
+total 121  open 8  blocked 0  done 113
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 63 | 63 |
+| P1 | 1 | 0 | 63 | 64 |
 | P2 | 7 | 0 | 40 | 47 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **7** | **0** | **113** | **120** |
+| **all** | **8** | **0** | **113** | **121** |
 
 ---
 
@@ -123,6 +123,7 @@ total 120  open 7  blocked 0  done 113
 | WSL-83 | P1 | M | done | A FreeBSD kernel panic at poweroff leaves the shared guest image unchecked, and the next run panics on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-84 | P1 | M | done | A base reconfigured to read-only drives keeps writable ones, and reports read-only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-85 | P1 | S | done | A base reconfigured from passwordless sudo to none keeps it, and reports none | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-87 | P1 | S | open | bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

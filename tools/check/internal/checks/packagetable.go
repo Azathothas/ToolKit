@@ -18,8 +18,9 @@ import (
 // wsl-toolkit base provisioner is compiled into an executable, and go:embed
 // cannot reach outside its own package directory, so the copy sits in the
 // provisioner's package. Two hand-kept maps had already disagreed: one knew
-// twelve package managers and the other six. ⚠ Nothing reads the copy yet, and
-// wiring the provisioner to it is the rest of WSL-70.
+// twelve package managers and the other six. ⭐ The provisioner reads the copy:
+// base.go sends it ahead of provision.sh, which resolves its developer names through
+// it. WSL-70.
 const (
 	PackageTableSource = "scripts/common/bootstrap.sh"
 	PackageTableCopy   = "tools/windows/wsl-toolkit/internal/toolkit/packages.sh"
@@ -32,9 +33,8 @@ const packageTableBanner = `#!/bin/sh
 #
 # This is the shared package table from scripts/common/bootstrap.sh, copied byte
 # for byte from its begin marker line to its end marker line, for the base
-# provisioner to resolve its developer names from. ⚠ Nothing reads it yet;
-# wiring the provisioner to it is the rest of WSL-70. Edit the block in
-# bootstrap.sh, then rewrite this with:
+# provisioner to resolve its developer names from. The executable sends it ahead of
+# provision.sh. Edit the block in bootstrap.sh, then rewrite this with:
 #
 #   sh scripts/common/check.sh package-table --fix
 #

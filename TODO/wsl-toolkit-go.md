@@ -4594,6 +4594,93 @@ drew SC2153 and SC2034. Two targeted directives inside the block carry the reaso
 
 ---
 
+## Amendment, 2026-09-15: the provisioner reads the table, and two presets do not build
+
+⭐ **Items 1 and 2 of the list above are built.**
+
+- `base.go` embeds `packages.sh` and provisioning sends it ahead of `provision.sh`, through
+  `provisionRequest`, the one place the run is assembled.
+- `provision.sh` detects its package manager with the table's `detect_provider` and reads
+  `detect_os_id`, so it knows the same twelve managers. It installs a container engine
+  through apk, apt, dnf, pacman, tdnf and xbps, as before, and refuses emerge, yum and zypper
+  by name. ⚠ Its header says a base has been built from four of the twelve.
+- The `developer` section resolves `bash build curl git jq node npm openssh ripgrep tmux
+  unzip` through `package_for`, and names a package this system does not carry. The commands
+  it promises and verifies are unchanged.
+- The generated banner, `bootstrap.sh`'s comment above the block, `RULES.md` section 4,
+  [`../docs/consumers.md`](../docs/consumers.md) and the scripts README say the provisioner
+  reads the copy.
+
+⭐ **The table gives the four presets what their lists installed, byte for byte.**
+`TestTheProvisionerResolvesItsDeveloperPackagesThroughTheSharedTable` runs the provisioner's
+own developer section in `/bin/sh` after the table, with each manager stood in for:
+
+| family, system | the install |
+| --- | --- |
+| apk, alpine | `apk add --no-cache bash build-base curl git jq nodejs npm openssh-client ripgrep tmux unzip` |
+| pacman, arch | `pacman -S --noconfirm --needed bash base-devel curl git jq nodejs npm openssh ripgrep tmux unzip` |
+| apt, debian | `apt-get install -y -qq --no-install-recommends bash build-essential curl git jq nodejs npm openssh-client ripgrep tmux unzip` |
+| dnf, fedora | `dnf -y --setopt=install_weak_deps=False install bash gcc gcc-c++ make curl git jq nodejs npm openssh-clients ripgrep tmux unzip` |
+| tdnf, photon | `tdnf install -y bash gcc make curl git jq nodejs openssh-clients tmux unzip`, naming npm and ripgrep as not carried |
+| xbps, void | `xbps-install -Sy bash base-devel curl git jq nodejs openssh ripgrep tmux unzip`, naming npm |
+| apk, chimera | `apk add --no-cache bash base-devel curl git jq nodejs openssh tmux unzip`, naming npm and ripgrep |
+
+⚠ **The last three differ from the lists they replace**, which had never built a base:
+they are the table's values, measured on those images on 2026-09-12.
+
+⭐ **The gate rule holds both ends.** With the new banner, a copy edited alone and a block
+edited alone each made `check package-table` exit 1 naming line 50, read unpiped, and the
+restored files exit 0.
+
+### ⛔ Two presets do not build, and neither is this change
+
+`base ensure` with `toolset developer`, automount and interop off, on throwaway instances
+under this repository's `.tmp`, on 2026-09-15:
+
+| preset | answer |
+| --- | --- |
+| arch | exit 0 in 51.5 s; `package manager: pacman on arch`; the probe healthy; all thirteen developer commands present |
+| alpine | exit 0 in 44.2 s; `package manager: apk on alpine`; healthy; all thirteen present |
+| debian | exit 2 in 123.2 s: the developer packages installed, then the QEMU binary-format installer's rootful run answered `netavark: nftables error: unable to execute nft: No such file or directory` |
+| fedora | exit 2 in 97.8 s: built, then verification answered `a container did not run as agent (exit 125)`, naming podman's shared-mount warning |
+
+- ⭐ **debian fails the same way before this change.** `HEAD`'s build, `4c573cf`, with no
+  toolset, answered the same `nft` error in 33.6 s. `base presets` still carries its
+  2026-09-09 figure.
+- ⭐ **fedora's own error, read with a diagnostic build that printed verification's whole
+  stderr:** `newuidmap: write to uid_map failed: Operation not permitted` and `cannot set up
+  namespace using "/usr/sbin/newuidmap": should have setuid or have filecaps setuid`. The
+  working arch base's `newuidmap` carries `cap_setuid=ep`; the imported Fedora rootfs's does
+  not. Fedora was never built on this host before.
+
+Both are proposed to the operator as `WSL-86`, and this entry's prove waits on it.
+
+### The agent matrix, with and without CodeGraph
+
+`matrix --images all --workspace . -c 'sh /work/scripts/common/bootstrap.sh --toolset agent ...'`,
+on 2026-09-15:
+
+| run | answer |
+| --- | --- |
+| `--codegraph none` | 13 ran, 2 failed, 0 unreached, 0 timed out, in 340.6 s: chimera, `apk could not install openssh`, and gentoo, with no portage tree. ⭐ The same two as on 2026-09-12, in 5m45s |
+| CodeGraph latest, the toolset's default | 13 ran, 7 failed, in 517.3 s: chimera and gentoo; debian, debian 12, ubuntu 22.04 and void-musl with every package present and then `npm did not write exactly one archive into ` and an empty directory; rocky 8, whose npm 6.14.11 answered `npm could not fetch` |
+
+⚠ **The 2026-09-12 figure does not name its command.** The run beside it in `WSL-67` says
+one image was driven "including the extra tool", so the comparison is made without
+CodeGraph.
+
+⛔ **The CodeGraph failures are `bootstrap.sh`'s and not the table's.** Under dash,
+measured in `debian:latest`, `fetch_verified_npm` sets its directory to an empty string,
+where busybox and bash keep it. Filed as `WSL-87`, approved by the operator in chat on
+2026-09-15.
+
+### Still open
+
+1. `base ensure` from all four presets, which waits on `WSL-86`.
+2. The three reviews and the closing.
+
+---
+
 ## WSL-71. A portable shell profile this tree owns
 
 **Source** the operator, 2026-09-12: write a portable proper one here, as a task
@@ -7792,3 +7879,68 @@ against the drive's logs. It corrected the manual's first draft, which said "a b
 disagrees answers exit 1" and named no command, where `base ensure` provisions and `base
 status --probe` is what answers exit 1. It checked the `--root` sentence above against
 `wsl.go` before it was written.
+
+---
+
+## WSL-87. bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash
+
+**Source** found on 2026-09-15 while driving `WSL-70`'s agent matrix.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`sh bootstrap.sh --toolset agent` installs CodeGraph by default. On Debian, Ubuntu and
+Void, whose `/bin/sh` is dash, every package installed and the run then exited 1 with `npm
+did not write exactly one archive into ` and no directory after it, so a caller that fetches
+the file gets a failed bootstrap over a machine that has everything but CodeGraph.
+
+## Premise
+
+⭐ **Measured on 2026-09-15**, `matrix --images all -c 'sh /work/scripts/common/bootstrap.sh
+--toolset agent'`:
+
+| image | answer |
+| --- | --- |
+| debian, debian 12, ubuntu 22.04, void-musl | every package present, then `[-] npm did not write exactly one archive into ` with an empty directory, exit 1 |
+| rocky 8, node v10.24.0 and npm 6.14.11 | `[-] npm could not fetch @colbymchenry/codegraph-linux-x64@1.6.0`, exit 1 |
+| alpine, arch, fedora, opensuse, photon, wolfi | CodeGraph installed |
+
+- ⭐ **Measured the same day**, a script holding `fetch_verified_npm`'s two lines that name its
+  directory: under dash in `debian:latest` the directory is an empty string, and under busybox
+  in `alpine` and bash in `arch` it is the directory.
+- ⚠ **Read, not measured:** dash's `read` answers 1 on a last line with no newline, and `set
+  -e` then ends the substitution before its `printf`. The line came in with `2ec9238` on
+  2026-09-12.
+- ⚠ **Read, not measured:** npm 6 has no `--pack-destination`, which the fetch passes.
+
+## Approach
+
+1. `fetch_verified_npm` names its directory without reading it back through `read`.
+2. A too-old npm is named for what it is before the fetch, rather than as a fetch that failed.
+3. A case that runs the fetch's directory step under dash, and the agent matrix again with
+   CodeGraph on.
+
+## Decision
+
+⭐ **Approved by the operator in chat on 2026-09-15**, "approve WSL-87": filed and fixed in
+this session.
+
+## Consumers
+
+⚠ `scripts/common/bootstrap.sh` is fetched by URL, and [`../docs/consumers.md`](../docs/consumers.md)
+registers no consumer of it. A caller on a dash system gets CodeGraph and exit 0 where it got
+exit 1. The changelog says so.
+
+## Prove
+
+```powershell
+wsl-toolkit matrix --images all --workspace . -c 'sh /work/scripts/common/bootstrap.sh --toolset agent'
+```
+
+Passing is:
+
+- debian, debian 12, ubuntu 22.04 and void-musl install CodeGraph and exit 0;
+- rocky 8's npm 6 is named as too old for the fetch;
+- the other images answer as they did with CodeGraph off.

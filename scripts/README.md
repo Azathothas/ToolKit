@@ -486,10 +486,10 @@ that spell it differently. ⚠ An override key may be a package manager OR
 disagree about half the names.
 
 ⚠ **The table sits between two marker lines because a generated copy of that
-block lives in `wsl-toolkit`'s provisioner package.** The gate's `package-table`
-check refuses the two disagreeing, and `sh scripts/common/check.sh package-table
---fix` rewrites the copy. [`../TODO/RULES.md`](../TODO/RULES.md) section 4 carries
-the rule.
+block lives in `wsl-toolkit`'s provisioner package**, and the base provisioner
+resolves its `developer` names through it. The gate's `package-table` check refuses
+the two disagreeing, and `sh scripts/common/check.sh package-table --fix` rewrites
+the copy. [`../TODO/RULES.md`](../TODO/RULES.md) section 4 carries the rule.
 
 ⛔ **IT DEPENDS ON THE SHELL AND THE PACKAGE MANAGER AND ALMOST NOTHING ELSE.**
 Not `awk`, `tr`, `find`, `grep`, `sed`, `install` or `dirname`. Measured over the

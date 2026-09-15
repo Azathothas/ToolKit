@@ -3,9 +3,8 @@
 #
 # This is the shared package table from scripts/common/bootstrap.sh, copied byte
 # for byte from its begin marker line to its end marker line, for the base
-# provisioner to resolve its developer names from. ⚠ Nothing reads it yet;
-# wiring the provisioner to it is the rest of WSL-70. Edit the block in
-# bootstrap.sh, then rewrite this with:
+# provisioner to resolve its developer names from. The executable sends it ahead of
+# provision.sh. Edit the block in bootstrap.sh, then rewrite this with:
 #
 #   sh scripts/common/check.sh package-table --fix
 #

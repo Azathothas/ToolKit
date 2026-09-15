@@ -841,6 +841,42 @@
       "args": []
     },
     {
+      "label": "table: provisioning sends the shared table ahead of the provisioner",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tScript: provisionPayload(),",
+      "replace": "\t\tScript: provisionScript,",
+      "run": "TestTheProvisioningRunIsTheSharedTableThenTheProvisioner",
+      "args": []
+    },
+    {
+      "label": "table: the provisioner resolving its developer names through the table",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      developer_resolved=$(package_for \"$developer_name\") ||",
+      "replace": "      developer_resolved=$developer_name ||",
+      "run": "TestTheProvisionerResolvesItsDeveloperPackagesThroughTheSharedTable",
+      "args": []
+    },
+    {
+      "label": "table: a developer name this system does not carry named and left out",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "      if [ -z \"$developer_resolved\" ]; then",
+      "replace": "      if false; then",
+      "run": "TestTheProvisionerResolvesItsDeveloperPackagesThroughTheSharedTable",
+      "args": []
+    },
+    {
+      "label": "table: a manager with no engine packages refused by name",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  *)  die \"$FAMILY is installed, and this script installs a container engine only through apk, apt, dnf, pacman, tdnf or xbps\" ;;",
+      "replace": "  *)  ;;",
+      "run": "TestTheProvisionerInstallsAnEngineOnlyThroughTheManagersItHasPackagesFor",
+      "args": []
+    },
+    {
       "label": "sudo: the verifier refusing passwordless sudo the configuration turned off",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/verify.sh",

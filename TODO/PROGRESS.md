@@ -8,10 +8,10 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-15T00:39:50Z; the record commit's own time is its end
 baseline        45fc7cc, tree clean, CI run 34869369358 green
-entries         total 120  open 7  blocked 0  done 113
+entries         total 121  open 8  blocked 0  done 113
 closed          WSL-85 at 953e7b8
-partial         WSL-67: the acceptance runner's cases built and driven; pkgin and pkg_add open
-head            953e7b8, then the WSL-67 acceptance commit
+partial         WSL-67 at 4c573cf: pkgin and pkg_add open; WSL-70: all but two presets' builds
+head            4c573cf, then the WSL-70 commit
 ```
 
 ## Active work
@@ -19,9 +19,11 @@ head            953e7b8, then the WSL-67 acceptance commit
 ⭐ **The session resumed `WSL-67` from the operator's checkpoint and works unattended.**
 Driving its provider profiles found `WSL-85`, which the operator approved in chat, and it
 is closed. `WSL-67`'s provider-profile cases are in the acceptance runner and pass.
-**Next:** `WSL-67`'s `pkgin` and `pkg_add` drives once the operator approves the two image
-downloads, then its closing with three reviews; `WSL-70` and `WSL-71` meanwhile, and
-after it.
+`WSL-70`'s provisioner reads the shared table; its prove found the debian and fedora presets
+not building, proposed as `WSL-86`, and the agent matrix's CodeGraph failing under dash,
+filed as `WSL-87` on the operator's approval. **Next:** `WSL-87`; then `WSL-86` if the
+operator approves it, and `WSL-70`'s closing; `WSL-67`'s `pkgin` and `pkg_add` once the two
+downloads are approved; then `WSL-71`.
 
 ⚠ **The two BSD image downloads wait for the operator's approval in chat.** Asked on
 2026-09-15 at the session's start, naming each file, its source and its size, and not
@@ -86,6 +88,8 @@ is closed, and the issue gets a comment naming the commits.
    `NIX_CONFIG` only. All of it lives in this repository. In `WSL-67`.
 9. **2026-09-15: `WSL-85` approved**, "approve WSL-85": filed and fixed in this
    session, before `WSL-70`.
+10. **2026-09-15: `WSL-87` approved**, "approve WSL-87": filed and fixed in this
+    session.
 
 ## Before every push
 
@@ -104,7 +108,8 @@ ls-files`, so check a new one by name before it is added.
 | --- | --- |
 | `45fc7cc` | `WSL-67` partial: Soar removed from `bootstrap.sh`; the Nix route finds an installed Nix, sets up flakes and installs through the table's `nix` key; the last session's record and summary |
 | `953e7b8` | `WSL-85` filed and closed: the verifier refuses passwordless sudo the configuration turned off, `base ensure` provisions such a base again, and a verification failure is named past wsl.exe's own lines; 3 mutation rows |
-| the `WSL-67` acceptance commit | `WSL-67` partial: the acceptance runner builds `wsl-toolkit-accp` and drives the two provider profiles as five cases, 96 of 96 in a full run |
+| `4c573cf` | `WSL-67` partial: the acceptance runner builds `wsl-toolkit-accp` and drives the two provider profiles as five cases, 96 of 96 in a full run |
+| the `WSL-70` commit | `WSL-70` partial: the base provisioner reads the shared package table and its detection; 4 mutation rows; `WSL-87` filed |
 
 ## Measurements
 
@@ -129,6 +134,10 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 - **For `WSL-67`'s acceptance cases:** the five alone 5 of 5 in 105.1 s, and red over a
   build with `WSL-85`'s check taken out; the full runner exit 0, 96 of 96 cases in
   465.3 s from 01:33:26Z.
+- **For `WSL-70`:** with the developer toolset, arch built in 51.5 s and alpine in 44.2 s;
+  debian failed at the `nft` its podman reaches for, as `4c573cf`'s build did with no
+  toolset in 33.6 s, and fedora at `newuidmap`'s missing capability. The agent matrix with
+  `--codegraph none`: 13 ran, 2 failed, in 340.6 s; with CodeGraph on, 7 failed in 517.3 s.
 - **For `WSL-67`'s Nix work, on 2026-09-14:** in `docker.io/nixos/nix:latest`, Nix
   2.35.2, a new unprivileged account installed 16 names through flakes in 24 s and again
   in 10 s; a `nix-env` account through channels in 9 s; 25 of 25 table attributes
@@ -206,8 +215,9 @@ the probe now goes through it; its closing reviews are still owed.
 
 ## Open questions for the operator
 
-The download approval above. The later Muse session still needs the operator to run
-`muse login`.
+The download approval above, and `WSL-86`, the debian and fedora presets that do not
+build, proposed in chat on 2026-09-15 with its measurements and a recommended fix. The
+later Muse session still needs the operator to run `muse login`.
 
 ## Host state
 
