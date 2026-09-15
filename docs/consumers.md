@@ -35,9 +35,13 @@ Read from each repository on 2026-09-13.
 | `Azathothas/bit-cli`, at `scripts/wsl-tool.ps1` and `docs/containers.md` | its wrapper runs the deleted launcher at a pinned commit with SHA-256 pins, and its guide fetches `wsl-ephemeral.ps1` by raw URL at a commit it resolves | keep its current pin until it chooses to move, then choose an executable release, verify it, and translate its own invocation from the latest manual |
 | `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | carries a vendored copy and fetches nothing from ToolKit | nothing here can update it; its owner decides whether to replace the copy |
 
-Two files are intended for direct fetching and have no known consumer:
-[`bootstrap.sh`](../scripts/common/bootstrap.sh) and
-[`tmux.conf`](../scripts/common/tmux.conf). Add a row when a consumer is found.
+Three files are intended for direct fetching and have no known consumer:
+[`bootstrap.sh`](../scripts/common/bootstrap.sh),
+[`tmux.conf`](../scripts/common/tmux.conf) and
+[`shell-profile.sh`](../scripts/common/shell-profile.sh). Add a row when a
+consumer is found. ⚠ `shell-profile.sh` is READ BY A LOGIN SHELL rather than run,
+so a caller who fetched it holds a file that every shell on that account starts,
+and a change to it is felt on the next login rather than at the next call.
 ⚠ `bootstrap.sh`'s shared package table is also a build input to the published
 executable, whose base provisioner resolves its `developer` names through a generated
 copy of it, so an edit to that block reaches both in one commit.

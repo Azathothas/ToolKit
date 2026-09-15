@@ -21,6 +21,37 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T06:37:22Z: a portable shell profile this tree owns, and the login file bash actually reads
+
+**Record:** `WSL-71` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the drives, the three reviews and the conditions each figure was
+taken under.
+**Deployed:** no deploy, and no tag. ⚠
+[`scripts/common/bootstrap.sh`](scripts/common/bootstrap.sh) is fetched by URL and
+[`scripts/common/shell-profile.sh`](scripts/common/shell-profile.sh) is a new file
+beside it, so both reached a caller of `main` when they were pushed.
+**Closes:** `WSL-71`.
+
+⭐ **`shell-profile.sh` is new, and it does one thing.** An INTERACTIVE login shell
+whose working directory is a Windows drive WSL mounted for it moves to the account's
+home and says so once. `bootstrap.sh --shell-profile PATH` and `--no-shell-profile`
+select it, and the default is the file beside the script, as `tmux.conf` already was.
+⛔ It fetches nothing, defines no alias and sets no prompt, and `PATH` for the prefix
+stays `bootstrap.sh`'s line.
+
+⛔ **A PATH LINE WRITTEN ONLY TO `~/.profile` DOES NOTHING ON THE RHEL FAMILY.** bash
+reads the FIRST of `~/.bash_profile`, `~/.bash_login` and `~/.profile` and stops.
+Measured on 2026-09-15: Fedora's `/etc/skel` ships `.bash_profile` and no `.profile`,
+and with one present, `HEAD`'s `bootstrap.sh` left `$PREFIX/bin` off the PATH of a bash
+login shell while reporting that it had added it. It is written to the other two where
+they already exist, and ⚠ neither is created, because creating `~/.bash_profile` would
+itself stop bash reading `~/.profile`.
+
+⭐ **`base shell --here` now marks its own shell**, with `WSL_TOOLKIT_HERE` named in
+`WSLENV`, so the profile leaves a shell that ASKED for the Windows directory where it
+started. A caller's own `WSLENV` is extended rather than replaced. No flag changed and
+no exit code changed.
+
 ### 2026-09-15T05:07:50Z: the debian and fedora presets build, and codegraph names a kernel it publishes no package for
 
 **Record:** `WSL-86` and `WSL-87` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md),

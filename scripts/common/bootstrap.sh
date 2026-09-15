@@ -92,6 +92,10 @@ usage: sh bootstrap.sh [options]
   --tmux-config PATH      install this file as ~/.tmux.conf. Default: the
                           tmux.conf beside this script, when there is one.
   --no-tmux-config        install no tmux configuration.
+  --shell-profile PATH    install this file under the prefix and read it from
+                          the files a login shell reads. Default: the
+                          shell-profile.sh beside this script, when there is one.
+  --no-shell-profile      install no shell profile.
   --prefix DIR            where user-level installs go. Default ~/.local.
   --dry-run               print what would be run and change nothing.
   --json                  write the final report as one JSON object.
@@ -1234,29 +1238,103 @@ link_renamed_binaries() {
   done
 }
 
-install_path_line() {
-  ip_line="export PATH=\"$PREFIX/bin:\$PATH\""
-  ip_profile="$HOME/.profile"
-  if [ "$DRY_RUN" = 1 ]; then
-    step "would make sure $ip_profile carries $PREFIX/bin"
-    return 0
-  fi
+# ⭐ ONE APPENDER FOR EVERY LOGIN FILE THIS SCRIPT WRITES TO. Two copies of "add
+# this line unless it is already there" is how the two drift, and the second copy
+# is always the one that forgets the marker comment or compares a prefix. It
+# CREATES the file, so a caller that must not bring a file into being tests for
+# it first.
+#
+# AO_ADDED is 1 when this call wrote the line and 0 when it was already there.
+append_once() {
+  ao_file=$1
+  ao_line=$2
+  AO_ADDED=0
   # `: >>` creates without truncating, which is `touch`'s job here, and it is a
   # shell redirection rather than a program that may be absent.
-  : >> "$ip_profile"
-  ip_present=0
-  while read -r ip_existing; do
-    if [ "$ip_existing" = "$ip_line" ]; then
-      ip_present=1
-      break
+  : >> "$ao_file"
+  while read -r ao_existing; do
+    if [ "$ao_existing" = "$ao_line" ]; then
+      return 0
     fi
-  done < "$ip_profile"
-  if [ "$ip_present" = 0 ]; then
-    printf '\n# Added by %s.\n%s\n' "$SELF" "$ip_line" >> "$ip_profile"
-    step "added $PREFIX/bin to $ip_profile"
+  done < "$ao_file"
+  printf '\n# Added by %s.\n%s\n' "$SELF" "$ao_line" >> "$ao_file"
+  AO_ADDED=1
+  return 0
+}
+
+# ⛔ BASH READS THE FIRST OF THREE FILES AND STOPS, and this function is that
+# fact. Where ~/.bash_profile or ~/.bash_login exists - the RHEL family's
+# skeleton ships one - bash never reads ~/.profile at all, so a line written only
+# there does nothing for the login shell that account actually gets. ⚠ NEITHER OF
+# THE TWO IS CREATED: creating ~/.bash_profile would itself stop bash reading
+# ~/.profile, which is where every other shell looks.
+append_to_login_files() {
+  alf_line=$1
+  alf_what=$2
+  append_once "$HOME/.profile" "$alf_line"
+  if [ "$AO_ADDED" = 1 ]; then
+    step "added $alf_what to $HOME/.profile"
   fi
+  for alf_file in "$HOME/.bash_profile" "$HOME/.bash_login"; do
+    if [ -f "$alf_file" ]; then
+      append_once "$alf_file" "$alf_line"
+      if [ "$AO_ADDED" = 1 ]; then
+        step "added $alf_what to $alf_file"
+      fi
+    fi
+  done
+}
+
+install_path_line() {
+  ip_line="export PATH=\"$PREFIX/bin:\$PATH\""
+  if [ "$DRY_RUN" = 1 ]; then
+    step "would make sure the login files carry $PREFIX/bin"
+    return 0
+  fi
+  append_to_login_files "$ip_line" "$PREFIX/bin"
   PATH="$PREFIX/bin:$PATH"
   export PATH
+}
+
+# ⭐ THE PROFILE IS INSTALLED UNDER THE PREFIX AND READ FROM THE LOGIN FILES,
+# rather than written over one of them. ~/.profile is the account's own file and
+# already carries the PATH line above; a bootstrap that replaced it would take
+# whatever else the account had with it.
+install_shell_profile() {
+  if [ "$SHELL_PROFILE" = none ]; then
+    return 0
+  fi
+  if [ -z "$SHELL_PROFILE" ]; then
+    isp_dir=$(script_dir)
+    if [ -n "$isp_dir" ] && [ -f "$isp_dir/shell-profile.sh" ]; then
+      SHELL_PROFILE="$isp_dir/shell-profile.sh"
+    fi
+  fi
+  if [ -z "$SHELL_PROFILE" ]; then
+    warn 'no shell-profile.sh beside this script: pass --shell-profile PATH or --no-shell-profile'
+    SKIPPED="$SKIPPED shell-profile"
+    return 0
+  fi
+  if [ ! -f "$SHELL_PROFILE" ]; then
+    fail "the shell profile $SHELL_PROFILE does not exist"
+    return 1
+  fi
+  isp_target="$PREFIX/share/wsl-toolkit/shell-profile.sh"
+  # ⚠ ONE LINE, AND IT GUARDS ITS OWN READ. A login file is read by every shell
+  # this account starts, so a line that errors once the profile is gone is a line
+  # that errors forever. One line because append_once compares whole lines.
+  isp_line="if [ -r \"$isp_target\" ]; then . \"$isp_target\"; fi"
+  if [ "$DRY_RUN" = 1 ]; then
+    step "would install $SHELL_PROFILE as $isp_target and read it from the login files"
+    return 0
+  fi
+  mkdir -p "$PREFIX/share/wsl-toolkit"
+  # `install` is coreutils, and coreutils is one of the things being installed.
+  cp "$SHELL_PROFILE" "$isp_target"
+  chmod 0644 "$isp_target"
+  step "installed $isp_target"
+  append_to_login_files "$isp_line" "$isp_target"
+  return 0
 }
 
 # ---------------------------------------------------------------- arguments --
@@ -1270,6 +1348,7 @@ CODEGRAPH=''
 EXPECT_INTEGRITY=''
 EXPECT_SHA256=''
 TMUX_CONFIG=''
+SHELL_PROFILE=''
 PREFIX=''
 DRY_RUN=0
 JSON=0
@@ -1294,6 +1373,8 @@ while [ "$#" -gt 0 ]; do
     --expect-sha256)    need_value "$@"; EXPECT_SHA256=$2; shift 2 ;;
     --tmux-config)      need_value "$@"; TMUX_CONFIG=$2; shift 2 ;;
     --no-tmux-config)   TMUX_CONFIG=none; shift ;;
+    --shell-profile)    need_value "$@"; SHELL_PROFILE=$2; shift 2 ;;
+    --no-shell-profile) SHELL_PROFILE=none; shift ;;
     --prefix)           need_value "$@"; PREFIX=$2; shift 2 ;;
     --dry-run)          DRY_RUN=1; shift ;;
     --json)             JSON=1; shift ;;
@@ -1504,6 +1585,7 @@ if [ "$CODEGRAPH" != none ]; then
 fi
 
 install_tmux_config || true
+install_shell_profile || true
 
 # ------------------------------------------------------------------ report ---
 

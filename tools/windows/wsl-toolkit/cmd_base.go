@@ -183,6 +183,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
 		}
 		shellArgs := []string{"-d", cfg.Base.Name, "-u", user}
+		var extraEnv []string
 		if *here {
 			automount, err := toolkit.NormalizeAutomount(cfg.Base.Automount)
 			if err != nil {
@@ -199,6 +200,11 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			// caller's Windows working directory, so this is the OLD default
 			// under a flag rather than a new capability.
 			note("starting in this Windows directory, mounted under /mnt")
+			// ⭐ AND THE GUEST IS TOLD. scripts/common/shell-profile.sh moves an
+			// interactive shell off a Windows drive, which is right for a shell
+			// that merely inherited the directory and wrong for this one. From
+			// inside the guest the two are identical without this mark.
+			extraEnv = hereEnv(os.Getenv("WSLENV"))
 		} else {
 			// ⛔ THE MANUAL SAID ROOT WAS "INSIDE THE DISTRIBUTION" AND "NOT ON
 			// THIS MACHINE", and `wsl.exe -d NAME -u USER` inherits the caller's
@@ -227,7 +233,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			}
 			note("--root is an administration escape hatch: guest root can manually mount additional Windows paths")
 		}
-		return toolkit.RunForeground(ctx, w.Path, shellArgs)
+		return toolkit.RunForegroundEnv(ctx, w.Path, shellArgs, extraEnv)
 
 	default:
 		fmt.Fprint(os.Stderr, baseUsage)
@@ -387,6 +393,39 @@ func hereRefusal(distro, automount string, drives []toolkit.WindowsDriveMount, r
 		return nil
 	}
 	return fmt.Errorf("--here needs a Windows drive mounted, and %s has none although base.automount is %s. Run: wsl-toolkit base ensure", distro, automount)
+}
+
+// hereMarker is the variable name `base shell --here` sets in the guest, and that
+// scripts/common/shell-profile.sh reads to leave such a shell where it started.
+const hereMarker = "WSL_TOOLKIT_HERE"
+
+// hereEnv is the environment `base shell --here` adds so the guest can tell a
+// shell that ASKED for the Windows directory from one that merely inherited it.
+//
+// ⛔ WSLENV IS THE ONLY DOOR, and it is a list this process does not own. A
+// variable not named in it does not cross into the guest at all, and a WSLENV
+// written rather than appended to would drop whatever the caller had put there.
+// The `/u` flag is "only on the way in", which is the only direction this is for.
+//
+// ⚠ IT IS NOT ADDED TWICE. A caller whose own WSLENV already names it gets their
+// spelling kept, flags and all, because a second entry for one name is a list
+// whose meaning depends on which end wsl.exe reads first.
+func hereEnv(wslenv string) []string {
+	out := []string{hereMarker + "=1"}
+	for _, entry := range strings.Split(wslenv, ":") {
+		name := entry
+		if slash := strings.IndexByte(name, '/'); slash >= 0 {
+			name = name[:slash]
+		}
+		if name == hereMarker {
+			return out
+		}
+	}
+	joined := hereMarker + "/u"
+	if trimmed := strings.Trim(wslenv, ":"); trimmed != "" {
+		joined = trimmed + ":" + joined
+	}
+	return append(out, "WSLENV="+joined)
 }
 
 // automountRow is the configured automount and, once a probe has read them, what

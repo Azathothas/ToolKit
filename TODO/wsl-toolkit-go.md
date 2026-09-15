@@ -4754,7 +4754,7 @@ therefore made with `--codegraph none`, and both numbers are recorded with their
 
 **Source** the operator, 2026-09-12: write a portable proper one here, as a task
 for a later session.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -4856,10 +4856,253 @@ guard can leave a marked one where it is.
 ⚠ **Driving this found `WSL-84`:** a base reconfigured from `rw` to `ro` kept a
 writable `/mnt/c` and reported `ro`.
 
+## Amendment, 2026-09-15: built, and the prove's third condition rewritten
+
+⭐ **The profile is [`../scripts/common/shell-profile.sh`](../scripts/common/shell-profile.sh),
+and it does one thing.** An INTERACTIVE login shell whose working directory is a
+Windows drive WSL mounted for it moves to the account's home and says so once.
+Everything else an interactive profile usually carries is deliberately absent, and
+the file's own header says why.
+
+### The five decisions, and what each was decided against
+
+| decision | the alternative, and why it lost |
+| --- | --- |
+| ⭐ **the extension is `.sh`** | a name with no extension would put the file OUTSIDE CI's `shellcheck -s sh`, which lists `git ls-files "*.sh"`. The constraint that check imposes - no arrays, no `local`, no `[[` - is exactly this file's requirement, so the check is the specification and the name buys it for nothing |
+| ⛔ **the guard is INTERACTIVE, not login** | the Approach said "a login shell", and reading the code is what disproved it. `distro run -c`, `matrix -c` and `base exec` all send commands to a LOGIN shell - `ExecRequest.Login`, `wsl.go:372` - so a profile that moved a login shell would silently change the working directory of every command any caller runs from a Windows drive, after their own `cd`. `$-` carries `i` only for a shell a person is typing at |
+| ⛔ **one level under the automount root, not the whole of it** | matching all of `/mnt` would move a shell out of `/mnt/wsl`, which is WSL's own tmpfs, and the filesystem-TYPE test considered first is worse still: a `base.mounts` grant is a DrvFS mount of a Windows directory too, so that test would move a shell out of the one directory the caller was granted |
+| ⚠ **the automount root is read from `/etc/wsl.conf`** | assuming `/mnt` makes a guard that can never fire on a host that set `root`, which is the shape this repository bans. It is a few lines, parsed with no `awk`, and read only for an interactive shell inside WSL |
+| ⭐ **`base shell --here` marks its own shell** | the alternative was to let the guard move it, which undoes the flag. From inside the guest a shell that ASKED for the Windows directory and one that merely inherited it are identical without a mark |
+
+### What is installed, and where
+
+`bootstrap.sh` gains `--shell-profile PATH` and `--no-shell-profile`, defaulting to
+the file beside the script, exactly as `tmux.conf` already did. ⛔ **It is installed
+UNDER THE PREFIX and read from the login files, not written over one of them:**
+`~/.profile` is the account's own file and already carries the `PATH` line, and a
+bootstrap that replaced it would take whatever else the account had with it. The line
+it adds guards its own read, so a profile later removed does not make every shell
+start with an error.
+
+### ⛔ The defect found while building it, and it is on this tool's own default base
+
+**bash reads the FIRST of `~/.bash_profile`, `~/.bash_login` and `~/.profile`, and
+stops.** `install_path_line` wrote the `PATH` line only to `~/.profile` and reported
+that it had added it. Where the account's skeleton ships `~/.bash_profile`, that line
+has never reached a bash login shell.
+
+| `/etc/skel`, read 2026-09-15 | `.profile` | `.bash_profile` |
+| --- | --- | --- |
+| arch, ⭐ **this tool's own default base image** | absent | **present** |
+| fedora | absent | **present** |
+| rocky 8 | absent | **present** |
+| debian | present | absent |
+| alpine | neither, and no bash at all | |
+
+⭐ **Measured on the arch base `wsl-toolkit-b71`, built by this tool at its defaults**,
+with a fresh account each time and `--toolset minimal`:
+
+```text
+head  rc=0  bash-login-has-local-bin=no   sh-login-has-local-bin=yes
+tree  rc=0  bash-login-has-local-bin=yes  sh-login-has-local-bin=yes
+```
+
+⚠ **And in containers, where the login file is the variable rather than the
+distribution:** on both debian and fedora, with a `~/.bash_profile` present `HEAD`'s
+bootstrap left the prefix off a bash login shell's `PATH` and the tree's did not; with
+none present both put it there. The profile is read by `sh` and by `bash` in every
+case under the tree, and by neither under `HEAD`.
+
+⛔ **Neither file is created**, and that is the half a fix gets wrong: creating
+`~/.bash_profile` would itself stop bash reading `~/.profile`, which is where every
+other shell looks. ⭐ **One appender does all of it**, `append_once` plus
+`append_to_login_files`, because two copies of "add this line unless it is there" is
+how the two drift.
+
+### The prove, with its third condition rewritten
+
+⛔ **The Prove above asked for "writes nothing to stderr", and that condition is
+wrong as stated.** Photon's own `/etc/profile.d/dircolors.sh` writes 66 bytes to
+every login shell's stderr with or without this file, so an absolute count reports
+that image's defect as this one's. **What must be zero is what the profile ADDS**, so
+each image is driven twice - `--no-shell-profile` first, with every package already
+installed, then again with it - and the two captures are compared as text.
+
+⚠ **The first driver got that wrong, and reading the output rather than the verdict
+is what caught it.** It compared `wc -c` against `0`, and chimera's `wc` pads its
+answer with spaces, so a count of zero read as non-zero and reported a PASSING image
+as failing. `tr -d ' '` is not available to fix it either: Photon carries no `tr`.
+
+The third condition, as WSL measured it rather than as the Approach guessed:
+
+| condition | measured |
+| --- | --- |
+| an INTERACTIVE login shell whose working directory is a Windows drive starts in the home | ⭐ yes |
+| a NON-interactive login shell in the same place is left alone, and gets no stderr | ⭐ yes, 0 bytes |
+| a shell marked by `--here` is left alone | ⭐ yes |
+| a granted directory and `/mnt/wsl` are left alone | ⭐ yes |
+
+### The drives
+
+⭐ **On the throwaway arch base `wsl-toolkit-b71`**, automount `rw`, interop off, no
+systemd, the profile installed by `bootstrap.sh` itself from the mounted checkout:
+
+```text
+non-interactive login on drive -> stayed   guard_line=0
+interactive login on drive     -> home     guard_line=174
+interactive, marked here       -> stayed   guard_line=0
+interactive in the home        -> home     guard_line=0
+```
+
+⭐ **WSLENV is the only door, and it was measured rather than assumed**, with
+`wsl.exe --exec /usr/bin/printenv`, so nothing is expanded before the guest sees it:
+
+| what was set on Windows | the guest read |
+| --- | --- |
+| neither | exit 1, nothing |
+| the variable set, `WSLENV` unset | exit 1, nothing |
+| the variable set, `WSLENV=EDITOR` | exit 1, nothing |
+| both, as `hereEnv` builds them | exit 0, `1` |
+| `WSLENV=EDITOR:WSL_TOOLKIT_HERE/u` | exit 0, `1` |
+
+⭐ **Under three shells, in a debian container with `dash` and `busybox` added**, nine
+cases each, and the same answer from all three. ⚠ The guard's own line measured **147
+bytes** in bash, dash and busybox ash alike, for a working directory 14 characters long;
+the same line on the arch base read 174, because that path is longer. What the three
+shells AGREEING proves is that nothing but the profile wrote it:
+
+| case | all three shells |
+| --- | --- |
+| non-interactive login on a drive | stays, 0 B of stderr |
+| interactive on a drive | the home |
+| interactive in a granted directory | stays |
+| interactive in `/mnt/wsl` | stays |
+| interactive, marked here | stays |
+| interactive, not WSL at all | stays |
+| `root` overridden, shell under the new root | the home |
+| `root` overridden, shell under the old one | stays |
+| `root` set in another section, shell on a drive | the home |
+
+⭐ **ShellCheck 0.9.0 in `ubuntu:24.04`, the version CI installs**, clean over the new
+file.
+
+⭐ **The matrix, which is the prove's first condition.** The payload is
+`.tmp/s16/matrix-profile.sh` in the session's scratch, and the command is:
+
+```powershell
+wsl-toolkit matrix --images all --workspace . --transcripts DIR --container-lifecycle ephemeral --script matrix-profile.sh
+```
+
+```text
+13 ran, 0 failed, 0 unreached, 0 timed out, in 1m53s
+```
+
+**28 shells across the thirteen images, and not one adds a byte to stderr.** Every
+one of the 28 also read the profile, which is the half that says the run proved
+something rather than finding no shell to test:
+
+| image | shells | adds stderr |
+| --- | --- | --- |
+| debian, debian 12, ubuntu 22.04 | `sh` `bash` `dash` | 0 |
+| alpine, wolfi | `sh` `ash` | 0 |
+| arch, fedora, rocky 8, opensuse, photon, gentoo | `sh` `bash` | 0 |
+| void-musl | `sh` `dash` | 0 |
+| chimera | `sh` | 0 |
+
+⚠ **The same run against the FIRST driver read 13 ran, 2 failed**, chimera and
+photon, and both were the driver. That number is kept here because a session that
+recorded only the passing one would be recording a run it had to fix to get.
+
+### The three reviews
+
+⭐ **1. The door sweep - what other door reaches this code?** The change adds six
+affordances: the profile file, two `bootstrap.sh` flags, `append_once`,
+`append_to_login_files`, `hereEnv` and `RunForegroundEnv`. Every one was enumerated
+with its callers and then grepped for:
+
+- **`RunForeground` has two callers, and only one of them needed anything.**
+  `cmd_distro.go:627`, `distro enter`, passes `--cd ~`, so a throwaway
+  distribution's interactive shell always starts in the home and the guard cannot
+  fire there. `base shell` without `--here` takes the same `--cd ~`. So the ONE door
+  into a shell whose working directory is a Windows drive is `--here`, and it is the
+  one that carries the mark.
+- **Nothing else in the tree writes a login file.** `provision.sh` and `verify.sh`
+  were grepped for `.profile`, `.bash_profile`, `.bashrc` and `profile.d` and touch
+  none of them. ⚠ So a base built by `base ensure` alone carries no profile at all;
+  it arrives when `bootstrap.sh` is run inside it, and the manual says so rather than
+  implying the base has one.
+- **The environment namespace was swept rather than assumed.** The tool already
+  reads seven `WSL_TOOLKIT_*` names; `WSL_TOOLKIT_HERE` and `WSL_TOOLKIT_PROFILE`
+  collide with none of them.
+- ⛔ **Found while enumerating, and it is why the guard is not a filesystem-type
+  test:** a `base.mounts` grant is a DrvFS mount of a Windows directory, exactly like
+  an automounted drive. A guard that asked "is this on a Windows filesystem" would
+  have moved every shell out of `/workspaces/project`, which is the one directory the
+  caller was granted. The path test is narrower AND more correct, and the driven pass
+  has a case for it.
+- **Found and fixed, and it is the defect above:** `install_path_line` was the second
+  door into the same question - which file does a login shell actually read - and it
+  had the wrong answer on this tool's own default base image.
+
+⭐ **2. The guard mutation - can the new guard actually fail?** Two Go rows and five
+hand-planted defects in the shell file.
+
+```text
+  ok  base shell --here: the mark is named in WSLENV, so it crosses at all   1 case(s), went red
+  ok  base shell --here: a name WSLENV already carries is not added twice    1 case(s), went red
+```
+
+Each planted copy was cut by `write-file.mjs replace --expect 1`, which refuses an
+anchor that is absent or not unique, and each changed **exactly one** column:
+
+```text
+planted defect                     inter  login  marked wslsub oldmnt notwsl
+WANT (unmutated)                   home   stay   stay   stay   stay   stay
+none, the tree                     home   stay   stay   stay   stay   stay
+interactive                        home   home   stay   stay   stay   stay
+heremark                           home   stay   home   stay   stay   stay
+onelevel                           home   stay   stay   home   stay   stay
+wslconf                            stay   stay   stay   stay   home   stay
+notwsl                             home   stay   stay   stay   stay   home
+restored, the tree                 home   stay   stay   stay   stay   stay
+```
+
+⛔ **And this pass found a defect in its own method, for the second session
+running.** The FIRST planting script reported every one of the five rows identical to
+the unmutated one - which reads, at a glance, like five guards that do nothing. It
+used `awk`'s `sub()`, whose first argument is an **ERE**, against anchors full of
+`*`, `$`, `{`, `?` and `|`; every substitution silently failed and the file was never
+mutated. ⭐ **Printing the unmutated row first is what made it legible**, because
+"nothing changed" against a known-good row is a claim about the planter, not about
+the guard. `write-file.mjs --expect 1` cannot fail this way: an anchor it does not
+match exactly once is a refusal and nothing is written.
+
+⭐ **3. The claim audit - which sentence is not backed by an artefact?** Every
+figure above was re-read against the run that produced it, and two were corrected
+before this was written:
+
+- ⛔ **The prove's own first condition was wrong, and is rewritten above.** "Writes
+  nothing to stderr" is unmeetable on photon, whose own `/etc/profile.d` writes 66
+  bytes to every login shell with or without this file. A first draft of this
+  amendment would have recorded photon as a failure of the profile.
+- ⛔ **"The guard's line is 147 bytes in all three shells" is stated as evidence,
+  and it needs its condition.** It is 147 bytes for a working directory 14 characters
+  long; the same line on the arch base read **174** bytes, because the path there is
+  longer. What the three shells agreeing proves is that nothing but the profile wrote
+  it, and the sentence now says that rather than implying a constant.
+- **The `/etc/skel` table is five `ls` readings, one per image**, and the arch row -
+  the one the claim rests on - was also confirmed from the built base's own
+  `/etc/skel` and from the account's home, not from the image alone.
+- **Not measured, and said so:** FreeBSD, in Still open below. And rocky 8's
+  behaviour half hit its 12-minute deadline in dnf, so its row in the `/etc/skel`
+  table is the skeleton reading alone, which is all that row claims.
+
 ### Still open
 
-Everything in the Approach: the profile, the bootstrap's install of it, the `--here`
-marker, and the prove, with its third condition rewritten from the table above.
+⚠ **The prove's second condition, FreeBSD through `bsd run --network`, is not
+driven.** The three shells above cover `ash` and `dash`, which is what a FreeBSD `sh`
+is closest to, and the file uses nothing outside POSIX; that is an argument, not a
+measurement, and this entry says which it is.
 
 ---
 

@@ -84,7 +84,7 @@ the language does.**
 | [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync`, `mutate` and `release` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` and `release` have no wrapper and need none**: `repo.sh mutate` and `repo.sh release` reach them. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules. |
 | [`common/set-record.mjs`](common/) and [`common/write-file.mjs`](common/) | ⛔ **Neither needs one.** They are node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. ⚠ A twin for `set-record` would be a second implementation of table arithmetic, in the one file whose whole job is that the arithmetic is right. ⚠ What they need instead is node, which is the one dependency anything under `scripts/` has. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell no matter what language it is written in. |
-| [`common/bootstrap.sh`](common/) and [`common/tmux.conf`](common/) | ⛔ **No twin.** The job is to drive a Unix package manager inside a Unix userland. A PowerShell half would have nothing to install and nowhere to install it, and neither file is a check. |
+| [`common/bootstrap.sh`](common/), [`common/tmux.conf`](common/) and [`common/shell-profile.sh`](common/) | ⛔ **No twin.** The job is to drive a Unix package manager inside a Unix userland, and to configure a Unix shell. A PowerShell half would have nothing to install and nowhere to install it, and none of the three is a check. |
 | [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | ⛔ **Not a check and not a script.** It is a Go module, and the gate's `go` check is the check OVER it. Its release refusals are `repo release`, under [`../tools/repo/`](../tools/repo/). |
 
 ## The check contract
@@ -541,6 +541,40 @@ respawns one.
 spelled `setw -g` and `set -s`.** A bare `set -g` over a window option is an error
 on an older tmux, and the configuration then loads PARTIALLY: tmux starts, that
 line did nothing, and the session looks configured.
+
+### `common/shell-profile.sh`
+
+A login-shell profile that does ONE thing: an **interactive** shell whose working
+directory is a Windows drive WSL mounted for it moves to the account's home and
+says so once. `bootstrap.sh` installs it under the prefix and adds one line that
+reads it to `~/.profile`, and to `~/.bash_profile` or `~/.bash_login` where the
+account already has one.
+
+⛔ **Interactive, not login, and the difference is the whole guard.** `wsl-toolkit
+distro run -c` and `matrix -c` send every command to a LOGIN shell, so a profile
+that moved a login shell would silently change the working directory of every
+command any caller runs from a Windows drive. `$-` carries `i` only for a shell a
+person is typing at.
+
+⛔ **A granted directory is not a Windows drive for this purpose.** The guard
+matches one level under the automount root - `/mnt/c`, and the root itself is read
+from `/etc/wsl.conf` rather than assumed - so `/workspaces/project` and `/mnt/wsl`
+are left alone. A guard that matched the whole of `/mnt` would move a shell out of
+the directory it was granted.
+
+⭐ **`wsl-toolkit base shell --here` marks its own shell** with `WSL_TOOLKIT_HERE`,
+named in `WSLENV`, and the profile leaves a marked shell where it started. From
+inside the guest a shell that asked for the Windows directory and one that merely
+inherited it are otherwise identical.
+
+⛔ **It fetches nothing and has no aliases and no prompt.** A profile that updates
+itself puts a network fetch in front of every shell start and makes its own content
+untrackable; an alias for a tool the toolset did not install is an error on every
+shell start. `PATH` for the prefix is `bootstrap.sh`'s line, not this file's.
+
+⚠ **The `.sh` extension is the constraint, not a label.** CI runs `shellcheck -s
+sh` over every tracked `*.sh`, which is exactly what this file needs: no arrays, no
+`local`, no `[[`. Driven under bash, dash and busybox ash on 2026-09-15.
 
 ---
 

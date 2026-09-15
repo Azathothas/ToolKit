@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 122  open 6  blocked 0  done 116
+total 122  open 5  blocked 0  done 117
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 65 | 65 |
-| P2 | 6 | 0 | 41 | 47 |
+| P2 | 5 | 0 | 42 | 47 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **6** | **0** | **116** | **122** |
+| **all** | **5** | **0** | **117** | **122** |
 
 ---
 
@@ -108,7 +108,7 @@ total 122  open 6  blocked 0  done 116
 | WSL-68 | P2 | M | open | A base that can reach nothing on the host at all | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-69 | P1 | M | done | Muse Code installed, authenticated and driven end to end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-70 | P2 | L | done | Two package maps become one, and the Go module embeds it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-71 | P2 | M | open | A portable shell profile this tree owns | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-71 | P2 | M | done | A portable shell profile this tree owns | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-72 | P2 | S | done | The BSD guest gets a 10 GiB disk, and the languages install on it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-73 | P1 | XL | done | The PowerShell product retires, and pull request 31 is reviewed before any of it lands | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-74 | P1 | S | done | A named instance acts on whatever base the nearest project file names | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -219,6 +219,37 @@ func TestAShellHereIntoABaseWithNoDriveIsRefused(t *testing.T) {
 	}
 }
 
+// TestAShellHereMarksItselfThroughWslenv is the other half of WSL-71's guard.
+// scripts/common/shell-profile.sh moves an interactive shell off a Windows drive,
+// which is right for a shell that inherited the directory and wrong for one that
+// asked for it. The mark is how the guest tells them apart, and WSLENV is the only
+// way a variable crosses at all: one not named there never arrives.
+func TestAShellHereMarksItselfThroughWslenv(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		given string
+		want  []string
+	}{
+		{"nothing set", "", []string{"WSL_TOOLKIT_HERE=1", "WSLENV=WSL_TOOLKIT_HERE/u"}},
+		{"the caller's list is kept", "GOPATH/p:EDITOR", []string{"WSL_TOOLKIT_HERE=1", "WSLENV=GOPATH/p:EDITOR:WSL_TOOLKIT_HERE/u"}},
+		{"a trailing separator makes no empty entry", "EDITOR:", []string{"WSL_TOOLKIT_HERE=1", "WSLENV=EDITOR:WSL_TOOLKIT_HERE/u"}},
+		{"already named, so not named twice", "EDITOR:WSL_TOOLKIT_HERE/u", []string{"WSL_TOOLKIT_HERE=1"}},
+		{"already named with other flags", "WSL_TOOLKIT_HERE/w:EDITOR", []string{"WSL_TOOLKIT_HERE=1"}},
+	} {
+		got := hereEnv(c.given)
+		if len(got) != len(c.want) {
+			t.Errorf("%s: WSLENV %q gave %q, want %q", c.name, c.given, got, c.want)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("%s: WSLENV %q gave %q, want %q", c.name, c.given, got, c.want)
+				break
+			}
+		}
+	}
+}
+
 // TestBaseExecSurfacesAFailureToStart holds the line between a guest's answer
 // and a process that never ran. The guest's own exit status is forwarded
 // silently; a `wsl.exe` that could not be started used to exit 2 with its reason

@@ -6,35 +6,41 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-15T03:12:15Z; the record commit's own time is its end
-baseline        deea680, tree clean, doctor exit 0 in 25.85 s, gate 20 of 20 in 32.19 s
-head            12705a1, CI run 34932875176 green in all six jobs
-entries         total 122  open 6  blocked 0  done 116
-closed          WSL-86, WSL-87 and WSL-70 in this session's work commit
+session started 2026-09-15T06:16:51Z; the record commit's own time is its end
+baseline        53a8f1f, tree clean, doctor exit 0 in 27.79 s, gate 20 of 20 in 33.09 s
+head            53a8f1f, CI run 34934199765 green in all six jobs
+entries         total 122  open 5  blocked 0  done 117
+closed          WSL-71 in this session's first work commit
 partial         WSL-67, waiting on the two BSD downloads
 ```
 
 ## Active work
 
-⭐ **`WSL-86`, `WSL-87` and `WSL-70` are closed**, each with its prove and its three
-reviews. The base provisioner installs the `nft` its podman shells out to and reads the
-id-mapping privilege rather than the path; `bootstrap.sh` installs CodeGraph under dash
-and names a kernel it publishes no package for. All four base presets build and verify.
-**Resume, in this order:**
+⭐ **`WSL-71` is closed**, with its prove, its five hand-planted mutations and its three
+reviews. [`../scripts/common/shell-profile.sh`](../scripts/common/shell-profile.sh) is a
+new file other projects may fetch: an INTERACTIVE login shell on a Windows drive moves to
+the account's home, a shell `base shell --here` marked stays, and a granted directory is
+never touched. **Resume, in this order:**
 
 1. `WSL-67`'s `pkgin` and `pkg_add`, once the two downloads are approved: ask again once,
    then its closing.
-2. `WSL-71`.
-3. `WSL-68`, the sealed base, in a dedicated session, which closes issue 30.
+2. `WSL-68`, the sealed base, which closes issue 30.
+
+⛔ **Found while building `WSL-71`, and FIXED in the same change: the `PATH` line
+`bootstrap.sh` writes has never reached a bash login shell on this tool's own default
+base.** bash reads the first of `~/.bash_profile`, `~/.bash_login` and `~/.profile` and
+stops, and arch's `/etc/skel` ships `.bash_profile` and no `.profile`, as fedora's and
+rocky 8's do. Measured on the arch base `wsl-toolkit-b71`: `HEAD` left the prefix off a
+bash login shell's `PATH` and reported that it had added it; the tree puts it there.
+`WSL-71` carries the measurement.
 
 ⚠ **The two BSD image downloads still wait for the operator's approval in chat.** Asked
 again on 2026-09-15 at this session's start, in chat and as a file, naming each file, its
-source and its size, and not answered. The operator's reply that day approved `WSL-86` and
-asked to be asked only for what actually needs them; a 1.3 GiB download from two mirrors
-is one of those, so it is asked once more and no further. ⭐ QEMU 11.1.0 here puts
-SeaBIOS's screen on the serial console with `-M q35,graphics=off`, measured with no disk on
-2026-09-15, which is how a BSD boot loader's prompt is reached with no `sga` device. The
-scratch driver under `.tmp\bsd67-driver` has still never booted a guest.
+source and its size, and not answered. This is the fourth session that has asked. ⭐ QEMU
+11.1.0 here puts SeaBIOS's screen on the serial console with `-M q35,graphics=off`,
+measured with no disk on 2026-09-15, which is how a BSD boot loader's prompt is reached
+with no `sga` device. The scratch driver under `.tmp\bsd67-driver` has still never booted
+a guest.
 
 ⛔ **Found while proving `WSL-86`, and not filed: the automount sweep is a race.** A
 Windows drive that appears between the provisioner's sweep and the restart that applies
@@ -52,11 +58,13 @@ is closed, and the issue gets a comment naming the commits.
 
 1. ⭐ **Closed:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33, `WSL-75`, `WSL-81`,
    `WSL-72`, `WSL-77`, `WSL-84`, `WSL-83`, `WSL-82` and `WSL-85`.
-2. **Finish issue 30's existing package and profile work:** `WSL-67`, then `WSL-70`,
-   then `WSL-71`. `WSL-67` has left: driving `pkgin` and `pkg_add`, which waits for
-   the operator's approval of the two downloads, and its closing.
-3. **`WSL-68`, the sealed base: a dedicated session of its own.** It closes issue
-   30 after the work above, and uses the drive verifier `WSL-84` fixed.
+2. **Finish issue 30's existing package and profile work:** `WSL-70` and `WSL-71` are
+   closed. `WSL-67` has left: driving `pkgin` and `pkg_add`, which waits for the
+   operator's approval of the two downloads, and its closing.
+3. **`WSL-68`, the sealed base.** It closes issue 30 after the work above, and uses the
+   drive verifier `WSL-84` fixed. ⚠ The 2026-09-14 order gave it a dedicated session;
+   the operator's instruction of 2026-09-15, to finish everything except the herdr and
+   Muse drive, brings it into this one.
 4. **Muse and herdr together, one dedicated session.** Build `wsl-toolkit-base` from
    [`../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json`](../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json);
    the operator runs `muse login` in it; then close `WSL-76` and `WSL-78`. Author
@@ -127,15 +135,49 @@ ls-files`, so check a new one by name before it is added.
 | `4c573cf` | `WSL-67` partial: the acceptance runner builds `wsl-toolkit-accp` and drives the two provider profiles as five cases, 96 of 96 in a full run |
 | `9df2e7b` | `WSL-70` partial: the base provisioner reads the shared package table and its detection; 4 mutation rows; `WSL-87` filed |
 | `deea680` | `WSL-87` partial: `bootstrap.sh` installs CodeGraph under dash and names an npm too old for it; the last session's record and summary |
-| this session's work commit | `WSL-86` filed and closed, `WSL-87` and `WSL-70` closed: the provisioner installs `nftables` and restores the id-mapping capability, `install_codegraph` names a kernel it publishes no package for, and all four presets build; 3 mutation rows and one defect planted by hand |
+| `53a8f1f` | `WSL-86` filed and closed, `WSL-87` and `WSL-70` closed: the provisioner installs `nftables` and restores the id-mapping capability, `install_codegraph` names a kernel it publishes no package for, and all four presets build; 3 mutation rows and one defect planted by hand |
+| this session's first work commit | `WSL-71` closed: `shell-profile.sh` moves an interactive shell off a Windows drive and leaves a marked or granted one alone, `base shell --here` marks its own shell through `WSLENV`, and `bootstrap.sh` writes its lines to the login file bash actually reads; 2 mutation rows and 5 defects planted by hand |
 
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 
-- **At the start of this session:** the doctor exit 0 in 25.85 s at 03:12:24Z; the gate
-  exit 0, 20 checks green in 32.19 s at 03:12:49Z; `wsl -l -v` matched the host state
-  below; CI run 34923941438 for `deea680` was still running.
+- **At the start of this session:** the doctor exit 0 in 27.79 s at 06:17:28Z; the gate
+  exit 0, 20 checks green in 33.09 s at 06:18:07Z; `wsl -l -v` matched the host state
+  below; CI run 34934199765 for `53a8f1f` was still running and later went green.
+- **For `WSL-71`, the shell profile:** `matrix --images all` with a payload that drives
+  every shell on the image twice, `--no-shell-profile` then with it, exit 0, **13 ran, 0
+  failed, 0 unreached, 0 timed out, in 1m53s**; **28 shells, 0 that add a byte to
+  stderr**, and all 28 read the profile. ⚠ The same command against the FIRST driver read
+  13 ran, 2 failed, and both failures were the driver: chimera's `wc -c` pads its answer
+  with spaces so a count of zero read as non-zero, and photon's own
+  `/etc/profile.d/dircolors.sh` writes 66 bytes to every login shell with or without this
+  file.
+- **For `WSL-71`, on the throwaway arch base `wsl-toolkit-b71`**, automount `rw`, interop
+  off, no systemd, the profile installed by `bootstrap.sh` from the mounted checkout: a
+  non-interactive login shell on a Windows drive stayed with 0 bytes of stderr, an
+  interactive one moved to the home with one 174-byte line, a shell carrying the `--here`
+  mark stayed, and one already in the home stayed. `base ensure` exit 0 in 66.07 s. ⚠ **The
+  first attempt failed in 57.34 s** at `geo.mirror.pkgbuild.com : Operation too slow`, and
+  rolled the distribution back: finding 10 below, met for the third time.
+- **For `WSL-71`, the login file bash reads:** `/etc/skel` ships `.bash_profile` and no
+  `.profile` on arch, fedora and rocky 8, `.profile` and no `.bash_profile` on debian, and
+  neither on alpine. On the arch base, with a fresh account each time: `HEAD` left the
+  prefix off a bash login shell's `PATH` and the tree put it there, and both put it on an
+  `sh` login shell's. In debian and fedora containers, the same result with a
+  `~/.bash_profile` present, and no difference with none.
+- **For `WSL-71`, WSLENV measured with `wsl.exe --exec /usr/bin/printenv`:** the variable
+  set without being named in `WSLENV` did not reach the guest, in three spellings; named
+  as `hereEnv` builds it, and appended to a caller's own list, it did.
+- **For `WSL-71`, the five defects planted by hand** in copies cut by `write-file.mjs
+  replace --expect 1`: each changed exactly one column of a six-column drive, and the
+  restored file matched the unmutated row. 2 Go mutation rows red in `golang:1.25`.
+- **The suites, on this session's tree:** 315 top-level `wsl-toolkit` results on Windows
+  with `TEMP` at the 8.3 path, 299 passed, 16 skipped, 0 failed, exit 0 in 16.5 s;
+  `check-go.sh` exit 0 in `golang:1.25` in 32.15 s; ShellCheck 0.9.0 in `ubuntu:24.04`
+  clean over **35** tracked scripts, one more than last session because
+  `shell-profile.sh` is new. ⚠ It was clean by name BEFORE it was staged, because CI's
+  command lists `git ls-files` and an untracked file is outside it.
 - **For `WSL-86`, on throwaway instances under `.tmp` with automount and interop off:**
   arch exit 0 in 77.3 s and alpine in 172.9 s with `toolset developer`; debian exit 0 in
   94.0 s, where it had failed at `nft`, with `newuidmap` and `newgidmap` setuid; fedora
@@ -151,10 +193,6 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
   unmutated exit 0, planted exit 1, restored exit 0. ⛔ The first plant read exit 0
   over the removed guard, because `go test` served a cached result for a shell file the
   build cache does not track; `-count=1` made it fire.
-- **The suites, on this session's tree:** 313 top-level `wsl-toolkit` results on Windows
-  with `TEMP` at the 8.3 path, 298 passed, 15 skipped, 0 failed, exit 0 in 16.8 s;
-  `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 in `ubuntu:24.04` clean over 34
-  tracked scripts.
 - **For `WSL-85`:** on the throwaway `wsl-toolkit-p67`, a sudo drift made `base status
   --probe` exit 1 in 0.5 s and `base ensure` provision again in 15.9 s and 16.0 s; a
   rule the tool did not write made `base ensure` exit 2 in 14.5 s. The Go suites green:
@@ -267,6 +305,17 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 19. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 0 in
     `golang:1.25` and 1 in `debian:latest`, measured on 2026-09-15, which narrows finding 4
     to what the image carries rather than to Debian.
+20. ⚠ **`base ensure` does not install the shell profile, and nothing says it should.**
+    `provision.sh` and `verify.sh` write no login file at all, so a base built by `base
+    ensure` alone carries no `~/.profile` line and `base shell --here`'s mark has nothing
+    to mark for. `bootstrap.sh` run inside the base is what installs it. Found by
+    `WSL-71`'s door sweep on 2026-09-15, recorded in the manual, and deliberately not
+    changed: merging the two would put a URL-fetched file inside `base ensure`.
+21. ⚠ **`--here` and `--root` together mark root's shell, and root has no profile to
+    read it.** `base shell --root --here` takes the same branch and gets
+    `WSL_TOOLKIT_HERE`, but `bootstrap.sh` installs the profile into the managed
+    account's home, not root's. Harmless - the mark is read by nothing - and read rather
+    than measured, on 2026-09-15.
 
 ## Review findings
 
@@ -287,25 +336,42 @@ be staged where no `getcap` exists and `ubuntu-latest` carries one: the row is n
 case, which skips there and goes red in `golang:1.25`. `WSL-67` still owes its closing
 reviews.
 
+⭐ **2026-09-15, `WSL-71`.** Its door sweep found that a `base.mounts` grant is a DrvFS
+mount exactly like an automounted drive, which is why the profile's guard is a path test
+and not a filesystem-type test: the type test would have moved every shell out of the one
+directory the caller was granted. It also found the `PATH` line that never reached a bash
+login shell, fixed in the same change. ⛔ **Its guard mutation found a defect in its own
+method for the second session running.** The first planting script used `awk`'s `sub()`,
+whose first argument is an ERE, against anchors full of `*`, `$`, `{`, `?` and `|`; every
+substitution silently failed, and all five rows read identically to the unmutated one -
+which looks exactly like five guards that do nothing. Printing the unmutated row FIRST is
+what made it legible, and `write-file.mjs replace --expect 1` cannot fail that way. ⛔ Its
+claim audit rejected the entry's own first passing condition: "writes nothing to stderr"
+is unmeetable on photon, whose `/etc/profile.d` writes 66 bytes to every login shell with
+or without the file, so the assertion is now the DELTA between a run without the profile
+and one with it. It also put the conditions back on a byte count that had been quoted as
+though it were a constant.
+
 ## Open questions for the operator
 
-⚠ **One, and it is the BSD download approval above.** `WSL-86` was ruled on
-2026-09-15 and is closed. The later Muse session still needs the operator to run `muse
-login`. ⭐ The operator asked on 2026-09-15 to be asked only for what actually needs
-them: a ruling this repository's own rules require, a download, a credential, or Windows
-software. Everything else is decided here and recorded.
+⚠ **One, and it is the BSD download approval above**, asked for the fourth time on
+2026-09-15 and still unanswered. The later Muse and herdr session still needs the
+operator to run `muse login`. ⭐ The operator asked on 2026-09-15 to be asked only for
+what actually needs them: a ruling this repository's own rules require, a download, a
+credential, or Windows software. Everything else is decided here and recorded, which is
+why `WSL-71`'s five design decisions and the `PATH` fix it found were settled in the
+session rather than put to them.
 
 ## Host state
 
 - Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit` and
   `wsl-toolkit-podbox`, as at the session's start. `eph-pgb` keeps its disk under
   `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
-- ⭐ **No throwaway is left.** The seven preset builds this session made under
-  `.tmp\wtk86` were each removed by `base remove`. ⚠ **One needed `wsl.exe
-  --unregister` by hand:** a fedora build whose mirror stalled was stopped before
-  provisioning wrote the identity marker, and `base remove` refuses a distribution that
-  carries none - the pre-marker rollback case the record has owed a regression for since
-  it was first seen. Its name was typed in full and no other distribution was touched.
+- ⭐ **No throwaway is left.** `WSL-71` built one, `wsl-toolkit-b71` under
+  `.tmp\s16\b71`, and `base remove --yes` exit 0 removed it with its disk; `wsl -l -q`
+  read the same four distributions afterwards. ⚠ **Its first build failed and rolled
+  itself back**, in `pacman` at `geo.mirror.pkgbuild.com : Operation too slow`, which is
+  finding 10 met for the third time, and left nothing registered.
 - ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
   `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and
   the OpenBSD installer over SeaBIOS's serial console, and runs commands from a spool with

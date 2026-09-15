@@ -134,6 +134,23 @@ writable, and `--here` into a base with no drive mounted is refused with exit 2 
 | guest root remounts one drive `rw` in an `ro` base | `base status --probe` exit 1, the drives `mixed`, 9 read-only and 1 writable; `base ensure` exit 0 in 4.5 s, and the drive `ro` again |
 | `base shell --here` on a base built `off` and set to `ro` | exit 2 naming `base ensure`; after it, the shell started in a directory under `/mnt/c` |
 
+⭐ **`base shell --here` marks its own shell, and the profile this tree ships reads
+the mark.** [`../../../scripts/common/shell-profile.sh`](../../../scripts/common/shell-profile.sh)
+moves an INTERACTIVE shell off a Windows drive to the account's home, which is right
+for a shell that merely inherited the directory and wrong for one that asked for it.
+`--here` sets `WSL_TOOLKIT_HERE` and names it in `WSLENV`, which is the only way a
+variable crosses into a guest at all, and a caller's own `WSLENV` is extended rather
+than replaced. ⚠ The profile is installed by `bootstrap.sh`, not by `base ensure`, so a
+base that has never run it has nothing to mark for.
+
+| measured on 2026-09-15, driven under bash, dash and busybox ash | result |
+| --- | --- |
+| a NON-interactive login shell on `/mnt/c` | stays there, and writes **0 bytes** to stderr. `distro run -c` and `matrix -c` are login shells, so moving one would change every caller's working directory |
+| an interactive shell on `/mnt/c` | starts in the account's home, with one line of 147 bytes on stderr, identical in all three shells |
+| an interactive shell with `WSL_TOOLKIT_HERE` set | stays on `/mnt/c` |
+| an interactive shell in `/workspaces/project` or `/mnt/wsl` | stays. Only one level under the automount root is a Windows drive |
+| an interactive shell on `/mnt/c` with `root = /windows/` in `/etc/wsl.conf` | stays, and one under `/windows/c` moves. The root is read, not assumed |
+
 ⛔ **A changed `base.passwordless_sudo` is applied too, and read from what `sudo`
 answers.** The verification runs `sudo -n true` as the account, which must succeed
 under `true` and be refused under `false`. `base status --probe` answers exit 1 naming a

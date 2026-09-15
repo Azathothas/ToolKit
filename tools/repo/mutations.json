@@ -2576,6 +2576,24 @@
       "replace": "  [ -n \"$GETCAP\" ] || continue\n",
       "run": "TestTheProvisionerRefusesAnIdMappingCapabilityItCannotRead",
       "args": []
+    },
+    {
+      "label": "base shell --here: the mark is named in WSLENV, so it crosses at all",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tjoined := hereMarker + \"/u\"\n",
+      "replace": "\tjoined := \"\"\n",
+      "run": "TestAShellHereMarksItselfThroughWslenv",
+      "args": []
+    },
+    {
+      "label": "base shell --here: a name WSLENV already carries is not added twice",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\t\tif name == hereMarker {\n\t\t\treturn out\n\t\t}\n",
+      "replace": "",
+      "run": "TestAShellHereMarksItselfThroughWslenv",
+      "args": []
     }
   ]
 }

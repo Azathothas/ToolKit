@@ -118,7 +118,21 @@ func Output(ctx context.Context, file string, args ...string) (string, string, e
 // differently behind a pipe. Inheriting means the caller sees exactly what they
 // would have seen running the script directly.
 func RunForeground(ctx context.Context, file string, args []string) (int, error) {
+	return RunForegroundEnv(ctx, file, args, nil)
+}
+
+// RunForegroundEnv is RunForeground with extra environment for the child.
+//
+// ⛔ ONE IMPLEMENTATION, and RunForeground is this with no additions. A second
+// copy that happened to forget WaitDelay or the platform's process attributes
+// would differ from it only on the day something went wrong.
+//
+// ⚠ AN ENTRY HERE WINS OVER THE INHERITED ONE OF THE SAME NAME, because Go keeps
+// the LAST of a duplicated name in Cmd.Env. That is what lets a caller extend a
+// variable this process already has rather than being refused it.
+func RunForegroundEnv(ctx context.Context, file string, args []string, env []string) (int, error) {
 	cmd := newCommand(ctx, file, args...)
+	cmd.Env = append(cmd.Env, env...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		var ee *exec.ExitError
