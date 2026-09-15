@@ -51,3 +51,30 @@ if [ -f "$TK_HOME/.config/muse/auth.json" ]; then
 else
   printf 'credential absent\n'
 fi
+
+# -- the herdr reporter, read back ------------------------------------------------
+# ⭐ install.sh WRITES IT, SO THE PROBE READS IT. A gap here is how "the integration
+# is installed" becomes something an operator believes rather than something the
+# machine says. ⚠ Its absence is a FACT and not a problem: muse runs without it, and
+# a base with no herdr is a perfectly good base for muse.
+HOOK=$TK_HOME/.local/share/wsl-toolkit/herdr-agent-state.sh
+MUSE_SETTINGS=$TK_HOME/.muse/settings.json
+if [ -x "$HOOK" ]; then
+  printf 'herdr_reporter installed\n'
+  # ⛔ AND IT STILL PASSES ITS OWN CASES. A file that is present and broken reports
+  # the same as one that works, until something asks it.
+  if as_account sh "$HOOK" --selftest >/dev/null 2>&1; then
+    printf 'herdr_reporter_selftest pass\n'
+  else
+    problem "the herdr reporter at $HOOK fails its own self-test"
+  fi
+else
+  printf 'herdr_reporter absent\n'
+fi
+if [ -f "$MUSE_SETTINGS" ] && command -v jq >/dev/null 2>&1; then
+  # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
+  registered=$(as_account jq -r --arg h "$HOOK" \
+    '[(.hooks // {}) | to_entries[] | select(any(.value[]?; (.command // "") == $h)) | .key] | sort | join(",")' \
+    "$MUSE_SETTINGS" 2>/dev/null)
+  printf 'herdr_reporter_events %s\n' "${registered:-none}"
+fi

@@ -113,12 +113,13 @@ file's own directory, which makes the containment check vacuous. A guard that
 cannot refuse anything is theatre. `RemoveInside`'s own comment carries the
 same sentence, which is where a reader of the code will look.
 
-## 4. THREE things here are GENERATED, and the tree holds both halves
+## 4. FOUR things here are GENERATED, and the tree holds both halves
 
 | generated file | source and regeneration | drift proof |
 | --- | --- | --- |
 | `tools/windows/wsl-toolkit/internal/toolkit/packages.sh` | the block between the two `shared package table` markers in [`../scripts/common/bootstrap.sh`](../scripts/common/bootstrap.sh); `sh scripts/common/check.sh package-table --fix` | the gate's `package-table` rule regenerates and compares it byte for byte |
 | every file under `tools/windows/wsl-toolkit/internal/toolkit/adapters/` | the adapter definitions under [`../tools/windows/wsl-toolkit/adapters/`](../tools/windows/wsl-toolkit/adapters/README.md), the README beside them excepted; `sh scripts/common/check.sh adapters --fix` | the gate's `adapters` rule compares every file byte for byte, and refuses one missing or one with no definition |
+| every file under `tools/windows/wsl-toolkit/internal/toolkit/shipped/` | the general-purpose files the executable CARRIES, from [`../scripts/common/`](../scripts/README.md): `bootstrap.sh`, `shell-profile.sh` and `tmux.conf`; `sh scripts/common/check.sh shipped --fix` | the gate's `shipped` rule compares each byte for byte, refuses one missing, and refuses one carried that this repository does not ship |
 | `tools/windows/wsl-toolkit/wsl-toolkit.1` | the native command registry and flag bindings; from `tools/windows/wsl-toolkit`, `go run . man --output wsl-toolkit.1` | `TestGeneratedManPageIsCurrent` regenerates and compares it byte for byte |
 
 ⚠ **`packages.sh` is read by the base provisioner**, which the executable sends ahead

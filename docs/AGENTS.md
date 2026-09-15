@@ -182,6 +182,9 @@ these is held to.
 | check that no page says what another page says | `scripts/common/check-one-home.sh` | reading for it |
 | check the character set and the marker density | `scripts/common/check-markers.sh` | `check-docs.sh`, which reads markdown alone |
 | ⭐ run something on Linux from a Windows host | `wsl-toolkit run --image ID -c '...'`, or `wsl-toolkit distro new --image ID -c '...'` for a whole throwaway distro | calling `wsl.exe` directly. ⚠ An argument to it is expanded before the guest sees it, and the result is parsed again. |
+| ⭐ bring a base's account up to a tool set | `wsl-toolkit base bootstrap -- --toolset agent`, which runs the bootstrap the executable CARRIES | copying `bootstrap.sh` into a checkout. ⚠ A copy of a moving file, in a place nothing checks. |
+| get one of the files the executable carries | `wsl-toolkit shipped list`, then `shipped cat` or `shipped write` | fetching it by URL when the binary is already in front of you. The URL is for callers OUTSIDE this tree. |
+| ⭐ drive herdr in the base from an agent on Windows | `herdr --machine NAME ...` where herdr is on Windows, else `wsl-toolkit base herdr -- ...` | `base exec -c 'herdr ...'`, which composes a shell string out of a prompt that is prose |
 | know what is REALLY installed, past every shim | ⭐ `wsl-toolkit doctor` | `scripts/doctor/`, which answers what its own shell resolves. Both are right and they disagree. |
 | run one command across several userlands | `wsl-toolkit matrix --images all` | a loop that creates one distro per userland |
 | keep one Linux host with a container engine in it | `wsl-toolkit base ensure` | using `podman-machine-default`, which is somebody else's |

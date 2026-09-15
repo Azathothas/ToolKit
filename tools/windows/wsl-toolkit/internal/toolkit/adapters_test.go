@@ -493,3 +493,35 @@ func TestAMovedAdapterVersionReachesItsInstaller(t *testing.T) {
 		t.Error("an adapter with no pin still received TK_ADAPTER_VERSION, so the script could not tell that it has its own default")
 	}
 }
+
+// TestACarriedFileIsNotWrittenOverSomethingElse holds the one destructive edge of
+// `shipped write`.
+//
+// ⛔ A FILE ALREADY THERE WHOSE CONTENT DIFFERS IS SOMEBODY'S EDIT, and replacing
+// it silently is how that edit disappears. Identical content is left alone rather
+// than rewritten, so a second run moves no timestamp.
+func TestACarriedFileIsNotWrittenOverSomethingElse(t *testing.T) {
+	dir := t.TempDir()
+	dest, wrote, err := WriteShipped("tmux.conf", dir, false)
+	if err != nil || !wrote {
+		t.Fatalf("the first write answered (%q, %v, %v)", dest, wrote, err)
+	}
+	if _, wrote, err = WriteShipped("tmux.conf", dir, false); err != nil || wrote {
+		t.Errorf("writing the same bytes again answered (%v, %v); want no write and no error", wrote, err)
+	}
+	if err := os.WriteFile(dest, []byte("the operator edited this\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := WriteShipped("tmux.conf", dir, false); err == nil {
+		t.Error("a file that differs was overwritten without --force")
+	}
+	if _, wrote, err := WriteShipped("tmux.conf", dir, true); err != nil || !wrote {
+		t.Errorf("--force answered (%v, %v); want it written", wrote, err)
+	}
+	if _, err := ShippedBody("../../etc/passwd"); err == nil {
+		t.Error("a path was accepted where a bare name is required")
+	}
+	if _, err := ShippedBody("no-such-file"); err == nil {
+		t.Error("a name this executable does not carry was accepted")
+	}
+}

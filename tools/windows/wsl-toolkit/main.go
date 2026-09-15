@@ -132,6 +132,7 @@ func registeredCommandSpecs() []commandSpec {
 		{Name: "ready", Summary: "test whether this host can run an isolated Linux job", Run: cmdReady, HelpForms: []string{"ready"}},
 		{Name: "selfupdate", Summary: "verify and install a published release", Run: cmdSelfUpdate, HelpForms: []string{"selfupdate"}},
 		{Name: "artifacts", Summary: "retrieve an artifact copy that a failed transfer retained", Run: cmdArtifacts, HelpForms: []string{"artifacts retry"}},
+		{Name: "shipped", Summary: "the general-purpose files this executable carries, so a machine with the binary needs nothing else", Run: cmdShipped, HelpForms: []string{"shipped list", "shipped cat", "shipped write"}},
 		{Name: "examples", Summary: "print the canonical command examples", Run: func(_ context.Context, a []string) (int, error) { return cmdExamples(a) }, HelpForms: []string{"examples"}},
 		{Name: "man", Summary: "open or print the manual generated from the registered CLI", Run: cmdMan, HelpForms: []string{"man"}},
 		{Name: "version", Summary: "print the product version", Run: func(_ context.Context, a []string) (int, error) { return cmdVersion(a) }, HelpForms: []string{"version"}},

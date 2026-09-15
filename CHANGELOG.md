@@ -21,6 +21,49 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T09:45:00Z: the executable carries the scripts, and the agents get adapters of their own
+
+**Record:** `WSL-88` and `WSL-89` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md),
+and the amendments to `WSL-76` and `WSL-78`.
+**Deployed:** no deploy, and no tag.
+**Closes:** nothing. `WSL-88` and `WSL-89` are open and their adapters are built but
+not driven.
+
+⭐ **A single binary now needs no clone and no fetch.** `wsl-toolkit shipped list`
+names each general-purpose file the executable carries with its length and SHA-256,
+`shipped cat` and `shipped write` produce one, and `base bootstrap` runs the carried
+bootstrap inside the base with nothing copied anywhere. ⛔ The URLs in
+[`docs/consumers.md`](docs/consumers.md) are unchanged and stay the contract for a
+caller that does not hold the binary; what this removes is an operator copying
+`bootstrap.sh` into a checkout with no way afterwards to say which version it was. A
+`shipped` gate rule refuses the carried copy disagreeing with the file this repository
+publishes, refuses one missing, and refuses one carried that is not shipped.
+
+⭐ **Muse reports its own lifecycle to herdr.** The `muse` adapter installs a reporter
+of this repository's own and merges it into Muse's `settings.json` for six events.
+herdr ships a Muse detection manifest and no Muse integration, and the one proposed
+upstream was closed unmerged on 2026-09-15, so a third-party hook is the only route.
+⛔ It never writes stdout, because Muse reads a hook's stdout and it can influence the
+agent; it always exits 0; and it never guesses a pane.
+
+⭐ **`pi` and `omp` are adapters.** Both are npm packages installed with
+`--ignore-scripts`, and both use **herdr's own** integration rather than anything of
+this repository's, because herdr has one for each. ⛔ The omp adapter refuses when pi
+and omp resolve to one extension directory, naming both paths and the variable that
+caused it.
+
+⭐ **An adapter's version moves without an edit to this tree.** `version` and `sha256`
+on an adapter's entry pin a release this executable has never heard of, and ⛔ either
+alone is refused. No adapter summary carries a version number any more.
+
+⭐ **`base herdr` runs one herdr command in the base** with every argument herdr's
+own, for an agent that cannot run herdr on Windows. It is a channel and not a wrapper:
+it knows no subcommand and parses no answer.
+
+⚠ **`tmux.conf` is a fallback and the pages now say so.** herdr's agent detection does
+not inspect a tmux session launched inside one of its panes, so a shell framework that
+auto-enters tmux makes the agent invisible.
+
 ### 2026-09-15T08:55:00Z: NetBSD drives both of bootstrap.sh's BSD package managers, and neither worked before
 
 **Record:** `WSL-67` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose

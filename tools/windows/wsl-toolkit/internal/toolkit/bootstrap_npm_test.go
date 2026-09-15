@@ -300,3 +300,65 @@ func TestBootstrapGivesTheNetBSDPkgAddARepository(t *testing.T) {
 		}
 	}
 }
+
+// TestTheCarriedBootstrapRunsFromItsPayload proves the whole point of carrying it:
+// the script travels as a payload and the arguments travel as arguments, so a
+// machine with the binary needs no clone and no fetch.
+//
+// ⛔ AND THAT AN ARGUMENT IS A VALUE, NOT SHELL. A caller's `--with` value that
+// spells a command substitution reaches the bootstrap as those characters.
+func TestTheCarriedBootstrapRunsFromItsPayload(t *testing.T) {
+	dash := dashFor(t)
+	// ⚠ A STAND-IN SCRIPT, not the real bootstrap: this case is about the channel,
+	// and the real one would need a package manager. It prints what it received.
+	body := []byte("#!/bin/sh\nprintf 'args=%s\n' \"$*\"\nprintf 'count=%s\n' \"$#\"\n")
+	for _, c := range []struct {
+		name  string
+		args  []string
+		want  string
+		count string
+	}{
+		{"no arguments", nil, "args=", "count=0"},
+		{"ordinary flags", []string{"--toolset", "agent"}, "args=--toolset agent", "count=2"},
+		{"a value with a space", []string{"--with", "a b"}, "args=--with a b", "count=2"},
+		{"a command substitution stays text", []string{"--with", "$(id -u)"}, "args=--with $(id -u)", "count=2"},
+		{"a backtick stays text", []string{"--with", "`id -u`"}, "args=--with `id -u`", "count=2"},
+		{"a quote stays text", []string{"--with", `a'b"c`}, `args=--with a'b"c`, "count=2"},
+	} {
+		script := ShippedScript(body, c.args)
+		cmd := exec.Command(dash, "-s")
+		cmd.Stdin = bytes.NewReader(script)
+		cmd.Env = []string{"PATH=/usr/bin:/bin"}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%s: the payload exited: %v; stderr %q", c.name, err, stderr.String())
+		}
+		got := stdout.String()
+		if !strings.Contains(got, c.want) {
+			t.Errorf("%s: the script saw %q, want a line %q", c.name, strings.TrimSpace(got), c.want)
+		}
+		if !strings.Contains(got, c.count) {
+			t.Errorf("%s: the script saw %q, want %q", c.name, strings.TrimSpace(got), c.count)
+		}
+	}
+}
+
+// TestACarriedScriptCannotEndItsOwnHereDocument is the delimiter rule.
+//
+// ⛔ A FIXED DELIMITER IS A SCRIPT THAT CAN END ITSELF. A body containing the
+// delimiter on a line of its own would close the here-document early and the rest
+// of the file would run as commands. The delimiter carries a random component, so
+// two calls never agree and no content can be written to match one.
+func TestACarriedScriptCannotEndItsOwnHereDocument(t *testing.T) {
+	a := string(ShippedScript([]byte("echo hi\n"), nil))
+	b := string(ShippedScript([]byte("echo hi\n"), nil))
+	if a == b {
+		t.Fatal("two payloads for the same body were identical, so the delimiter is fixed and a script could end its own here-document")
+	}
+	for _, s := range []string{a, b} {
+		if !strings.Contains(s, "<<'TK_SHIPPED_") {
+			t.Errorf("the payload does not quote its delimiter, so the body would be expanded on the way: %q", s)
+		}
+	}
+}

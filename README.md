@@ -30,7 +30,7 @@ is the one page to read.
 
 | path | what it is |
 | --- | --- |
-| ⭐ [`tools/windows/wsl-toolkit/`](tools/windows/wsl-toolkit/wsl-toolkit.md) | one executable: a host survey that resolves past every shim, one owned WSL distribution running a rootless engine, container jobs that get a COPY of a workspace and never a mount, a fleet runner over a catalog of fully qualified images, and a cleanup that removes only what it made |
+| ⭐ [`tools/windows/wsl-toolkit/`](tools/windows/wsl-toolkit/wsl-toolkit.md) | one executable: a host survey that resolves past every shim, one owned WSL distribution running a rootless engine, container jobs that get a COPY of a workspace and never a mount, a fleet runner over a catalog of fully qualified images, a FreeBSD guest on the host's own hypervisor, adapters that install a multiplexer and coding agents into the base, and a cleanup that removes only what it made. ⭐ It CARRIES the general-purpose scripts below, so a machine with the binary needs no clone: `wsl-toolkit shipped list` |
 | [`scripts/doctor/`](scripts/doctor/README.md) | one read-only pass reporting the host, the shell, the installed tools with versions, and the repository state |
 | [`scripts/common/`](scripts/README.md) | the entry points to the gate and the helpers that write files, move the record, commit and fill a licence. ⚠ Each is a thin `sh` and PowerShell pair over one Go subcommand; the rules themselves are not written twice. |
 | ⭐ [`tools/check/`](tools/check/) | every rule this repository enforces over its own tree. One binary, one tree walk. ⚠ The count moves; the gate prints it and [`TODO/PROGRESS.md`](TODO/PROGRESS.md) records the measurement |
@@ -84,6 +84,12 @@ not this one**, before using it.
 ## Using a tool from another project
 
 Fetch it by URL. Nothing here assumes it is being run from a clone.
+
+⭐ **Or take the executable, which carries them.** `wsl-toolkit shipped list`
+names each file it holds with its length and SHA-256, `shipped cat` and `shipped
+write` produce one, and `base bootstrap` runs the carried bootstrap inside the
+base with nothing copied anywhere. The URLs below stay the contract for a caller
+that does not hold the binary.
 
 **Resolve a commit and use that.** A branch moves, and a moved reference runs
 code nobody reviewed:

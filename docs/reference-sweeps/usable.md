@@ -1303,7 +1303,8 @@ about. So the option is guarded by version rather than added.
 - **Nothing here was run.** No herdr command, no Muse hook, no `--machine` call.
 - **No version was checked on this host.** The operator's herdr is recorded as
   0.9.0 and `#4176` says that version's Windows `--remote` client is defective;
-  neither the version nor the defect was confirmed here.
+  neither the version nor the defect was confirmed here. ⛔ **And that issue was
+  closed `not_planned`, so a newer herdr is not evidence of a fix.**
 - **Muse's hook names and payloads come from a third party**, and one of them is
   marked inferred by its own author.
 - **`muse serve`'s actual JSON-RPC methods were never read**, only that the

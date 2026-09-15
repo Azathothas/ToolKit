@@ -5,6 +5,13 @@ distribution, runs rootless Podman inside it, and gives a job a COPY of a
 workspace rather than a mount. It also makes, runs and removes throwaway WSL
 distributions, and boots a FreeBSD guest.
 
+⭐ **And it keeps a base for coding agents.** `base.adapters` installs a
+multiplexer and the agents themselves during `base ensure`, `base agent NAME`
+runs one in the directory this Windows directory is granted at, and
+`base herdr` reaches the multiplexer that watches them. ⭐ **The executable
+carries the general-purpose scripts too**, so a machine with the binary needs no
+clone: `wsl-toolkit shipped list`.
+
 ⭐ **This is the only page you need to use it, and it is deliberately short.**
 The flags live in the CLI, which generates its own manual, so nothing here can
 drift from the binary. Read the three commands under
@@ -649,8 +656,17 @@ Removal is constrained, and every destructive path goes through the same gate.
 releases a disk asynchronously, so the state is read back after removal and a
 path that is still there exits non-zero naming it.
 
-### ⚠ Two things about WSL that this tool cannot protect you from
+### ⚠ Three things about WSL that this tool cannot protect you from
 
+- ⛔ **Every distribution on this machine shares one writable directory.**
+  `/mnt/wsl` is a single `tmpfs`, mounted `drwxrwxrwt`, common to every
+  distribution in the WSL2 utility VM. Measured on 2026-09-15: a base with **no
+  grants at all** wrote a file there that another distribution read, and read one
+  that distribution's root wrote; uids are not namespaced across it, so one inode
+  lists under two different account names. ⛔ **So a zero-grant base is not a
+  sandbox**, and this page never calls one that. Root can unmount it in one
+  distribution, at every start, and doing so costs DNS because `/etc/resolv.conf`
+  resolves into it. `WSL-68` owns the work.
 - ⛔ **`wsl --shutdown` is machine-wide.** It is what a person reaches for after
   finishing with a throwaway distribution, and it stops every distribution on the
   machine, including the podman machine. This tool never runs it.
@@ -678,6 +694,9 @@ path that is still there exits non-zero naming it.
 | `--oci-env` carries `ENV` and `WORKDIR` only | decision | `USER` and `ENTRYPOINT` are not carried and will not be: WSL fixes the login account per call, and a login shell has no entrypoint |
 | a throwaway distribution's command gets no stdin | decision | its stdin is `/dev/null`, because a pipe that carries the script cannot also carry input. `distro enter` is interactive |
 | there is no port forwarding | decision | forwarding a port on Windows needs an elevated session and leaves a rule behind. `hostaddress` answers the question it was wanted for: bind the host service to that address |
+| an agent behind a launcher may be invisible to herdr | host | herdr reads a pane's foreground process, and `base agent` and a `NAME.exe` launcher are both wrappers. herdr's own remedy is `HERDR_AGENT=<agent>` set on the wrapper command **on the herdr side**; it cannot see one set inside the guest. ⚠ Read from herdr's documentation on 2026-09-15 and not yet measured here |
+| a base carrying both pi and omp can be configured so herdr refuses one | decision | `PI_CODING_AGENT_DIR` is read by both, so one exported for pi redirects omp onto pi's extension directory and herdr refuses the omp install. The omp adapter refuses first, naming both paths and the variable |
+| ⛔ a base is not a sandbox, and `/mnt/wsl` is the reason | host | every WSL distribution shares one `tmpfs` at `/mnt/wsl`, mounted world-writable. A zero-grant base wrote a file there that another distribution read, measured 2026-09-15. Closing it needs root at every start and costs DNS, because `/etc/resolv.conf` resolves into it. `WSL-68` |
 
 ---
 

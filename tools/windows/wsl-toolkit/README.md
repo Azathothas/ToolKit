@@ -19,10 +19,18 @@ tools/windows/wsl-toolkit/
   internal/toolkit/testdata a log the retired PowerShell product recorded
   adapters/                 what base ensure installs for agents; see adapters/README.md
   internal/toolkit/adapters generated copy of adapters/, which the gate compares
+  internal/toolkit/shipped  generated copy of the scripts/common/ files the
+                            executable CARRIES, which the gate compares
   acceptance.ps1            real-Windows acceptance runner
   consumer.ps1              published-release smoke runner
   wsl-toolkit.1             generated man page
 ```
+
+⭐ **Two of those directories are generated and neither is edited by hand.**
+`sh scripts/common/check.sh adapters --fix` and `sh scripts/common/check.sh
+shipped --fix` write them, and the gate's `adapters` and `shipped` rules compare
+each file byte for byte. [`../../../TODO/RULES.md`](../../../TODO/RULES.md)
+section 4 lists all four generated halves.
 
 ⛔ Keep the module on the Go standard library. There is no `go.sum`, no
 dependency graph to audit, and no network fetch required to build it.

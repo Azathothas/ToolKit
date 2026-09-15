@@ -82,8 +82,13 @@ other half**, and it adds the languages and CodeGraph into the account's home,
 which is what persists with the base:
 
 ```powershell
-wsl-toolkit --instance base base exec -c 'sh /workspaces/project/.wsl-toolkit/common/bootstrap.sh --toolset agent'
+wsl-toolkit --instance base base bootstrap -- --toolset agent
 ```
+
+⭐ **Nothing is copied and nothing is fetched.** The executable carries the
+bootstrap; `wsl-toolkit shipped list` prints its length and SHA-256, and
+`base bootstrap` sends those exact bytes into the base as a payload and runs them
+as the account.
 
 ⛔ **Not as root.** Provider state, authentication and CodeGraph belong to the
 unprivileged account. [`../common/README.md`](../common/README.md) carries what

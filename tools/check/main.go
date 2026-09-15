@@ -52,6 +52,7 @@ var all = []check{
 	{"powershell", "check-powershell/1", checks.PowerShell, "every tracked .ps1 parses and PSScriptAnalyzer is clean over scripts/"},
 	{"package-table", "check-package-table/1", checks.PackageTable, "the base provisioner's copy of the shared package table matches bootstrap.sh"},
 	{"adapters", "check-adapters/1", checks.Adapters, "the executable's copy of every wsl-toolkit adapter matches its definition"},
+	{"shipped", "check-shipped/1", checks.Shipped, "the executable's copy of every file it carries matches the one this repository publishes"},
 	{"go", "check-go/1", checks.GoModules, "gofmt, vet, build and test over every Go module here"},
 	{"mutations", "check-mutations/1", checks.Mutations, "every row of the mutation table still reaches the guard it names"},
 	{"commits", "check-commits/1", checks.Commits, "no commit credits a tool: no trailer, no generated-with line, no tool name, no emoji"},

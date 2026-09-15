@@ -2639,6 +2639,42 @@
       "replace": "",
       "run": "TestHerdrCommandsThatWantATerminalAreNamedRatherThanRun",
       "args": []
+    },
+    {
+      "label": "shipped: a carried script's delimiter is random, so it cannot end itself",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped.go",
+      "find": "\tdelim := \"TK_SHIPPED_\" + randomToken()\n",
+      "replace": "\tdelim := \"TK_SHIPPED_FIXED\"\n",
+      "run": "TestACarriedScriptCannotEndItsOwnHereDocument",
+      "args": []
+    },
+    {
+      "label": "shipped: a carried script's body is not expanded on the way",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped.go",
+      "find": "\tb.WriteString(\"; } 8<<'\" + delim + \"'\\n\")\n",
+      "replace": "\tb.WriteString(\"; } 8<<\" + delim + \"\\n\")\n",
+      "run": "TestACarriedScriptCannotEndItsOwnHereDocument",
+      "args": []
+    },
+    {
+      "label": "shipped: a carried script's arguments are quoted, so none becomes shell",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped.go",
+      "find": "\t\tb.WriteString(shellQuote(a))\n",
+      "replace": "\t\tb.WriteString(a)\n",
+      "run": "TestTheCarriedBootstrapRunsFromItsPayload",
+      "args": []
+    },
+    {
+      "label": "shipped: a carried file already there and different is not overwritten",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped.go",
+      "find": "\t\tif !force {\n\t\t\treturn dest, false, fmt.Errorf(\"%s is already there and differs",
+      "replace": "\t\tif false {\n\t\t\treturn dest, false, fmt.Errorf(\"%s is already there and differs",
+      "run": "TestACarriedFileIsNotWrittenOverSomethingElse",
+      "args": []
     }
   ]
 }

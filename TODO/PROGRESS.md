@@ -45,12 +45,29 @@ say so in their amendments.
 2. **Muse and herdr together**, `WSL-76` and `WSL-78`, in the session the operator
    reserved for it. ⛔ **Read the sweep first** - it changes both entries' premises and
    names the version check that has to come before anything else.
-3. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters, authored on 2026-09-15 and built
-   after the Muse and herdr session.
+3. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
+   RUN**: the scripts exist, the executable registers them and the gate compares their
+   generated copies, and no base has installed either. Their entries carry what each
+   still owes.
+
+⭐ **Built on 2026-09-15 and awaiting the interactive session:** a herdr reporter for
+Muse of this repository's own, in the muse adapter, because herdr ships a Muse
+detection manifest and no integration and the one proposed upstream was closed
+unmerged. ⚠ **Its state machine was driven against a STUB herdr** that records what it
+is asked to do - the full lifecycle, subagent protection, resume adoption and the
+refusal to guess a pane - and never against a real herdr or a real Muse.
+
+⭐ **The executable now carries the general-purpose scripts.** `wsl-toolkit shipped
+list` names each with its length and SHA-256, and `base bootstrap` runs the carried
+bootstrap in the base with nothing copied anywhere. A `shipped` gate rule keeps the
+carried copy equal to the file this repository publishes; `TODO/RULES.md` section 4
+lists it as the fourth generated half.
 
 ⛔ **The first thing the Muse and herdr session does is check a version.**
-`herdrdev/herdr#4176`, closed: **herdr 0.9.0's Windows `--remote` client repaints only
-on window-activation events and never applies prefix commands.** The record's host state
+`herdrdev/herdr#4176`, closed **`not_planned`**: **herdr 0.9.0's Windows `--remote`
+client repaints only on window-activation events and never applies prefix commands.**
+⛔ Closed `not_planned` is not fixed, so updating may not help and the behaviour is
+measured on this host first. The record's host state
 says the operator installed 0.9.0 and the adapter pins 0.9.0, so `WSL-76`'s prove is
 aimed at exactly that defect. ⛔ And `#4174`: a 0.9.0 Linux server aborts in a **musl**
 malloc check and kills every pane child, which is why the base preset is glibc.

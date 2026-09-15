@@ -22,6 +22,7 @@ wsl-toolkit 3.0.0
   ready       test whether this host can run an isolated Linux job
   selfupdate  verify and install a published release
   artifacts   retrieve an artifact copy that a failed transfer retained
+  shipped     the general-purpose files this executable carries, so a machine with the binary needs nothing else
   examples    print the canonical command examples
   man         open or print the manual generated from the registered CLI
   version     print the product version
@@ -961,6 +962,24 @@ write a structured answer
 .TP
 \fB--to\fR
 the directory to write the retained copy into
+.SS shipped
+the general-purpose files this executable carries, so a machine with the binary needs nothing else
+.TP
+.B wsl-toolkit shipped list
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+.B wsl-toolkit shipped cat
+This form has no options.
+.TP
+.B wsl-toolkit shipped write
+.TP
+\fB--dir\fR
+where the file is put. Default: the working directory
+.TP
+\fB--force\fR
+replace a file already there whose content differs
 .SS examples
 print the canonical command examples
 .TP

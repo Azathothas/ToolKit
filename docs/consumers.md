@@ -35,6 +35,15 @@ Read from each repository on 2026-09-13.
 | `Azathothas/bit-cli`, at `scripts/wsl-tool.ps1` and `docs/containers.md` | its wrapper runs the deleted launcher at a pinned commit with SHA-256 pins, and its guide fetches `wsl-ephemeral.ps1` by raw URL at a commit it resolves | keep its current pin until it chooses to move, then choose an executable release, verify it, and translate its own invocation from the latest manual |
 | `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | carries a vendored copy and fetches nothing from ToolKit | nothing here can update it; its owner decides whether to replace the copy |
 
+⭐ **The published executable CARRIES all three**, so a machine with the binary
+needs no clone and no fetch: `wsl-toolkit shipped list` prints each one's length
+and SHA-256, `shipped cat` and `shipped write` produce it, and `base bootstrap`
+runs the carried bootstrap inside the base with nothing copied anywhere. ⛔ **That
+changes nothing about the URLs**, which stay the contract for a caller outside
+this tree; what it removes is an operator copying one into a checkout with no way
+afterwards to say which version they copied. The gate's `shipped` check refuses
+the carried copy disagreeing with the file below.
+
 Three files are intended for direct fetching and have no known consumer:
 [`bootstrap.sh`](../scripts/common/bootstrap.sh),
 [`tmux.conf`](../scripts/common/tmux.conf) and

@@ -10,8 +10,15 @@ one.
 | --- | --- | --- |
 | [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
 | [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, and ⭐ a herdr reporter for its lifecycle | the `arch` preset |
-| [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | ⚠ not yet driven |
-| [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | ⚠ not yet driven |
+| [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | ⛔ **written, never run** |
+| [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | ⛔ **written, never run** |
+
+⛔ **"Written, never run" means exactly that.** No base has installed `pi` or
+`omp`, so their install and probe scripts have executed nowhere. `WSL-88` and
+`WSL-89` carry the passing conditions each still owes. ⚠ **The muse adapter's
+herdr reporter is in between**: its state machine was driven against a stub herdr
+that records what it is asked to do, and never against a real herdr or a real
+Muse.
 
 ## ⭐ How a version moves without an edit to this tree
 

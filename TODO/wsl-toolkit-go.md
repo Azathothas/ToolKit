@@ -6817,9 +6817,10 @@ and its contract half is
 
 1. ⛔ **herdr 0.9.0's Windows `--remote` client repaints only on
    window-activation events, and prefix commands never take effect.**
-   `herdrdev/herdr#4176`, **closed**, so a later release carries the fix. The
-   record's host state says the operator installed **0.9.0**, and the adapter pins
-   0.9.0. ⚠ **The prove's second passing condition - the attach line reaching the
+   `herdrdev/herdr#4176`. ⛔ **It was closed `not_planned`, and that is not the
+   same as fixed**: nothing in the tracker says any release repairs it, so a newer
+   herdr may behave identically. The record's host state says the operator
+   installed **0.9.0**, and the adapter pins 0.9.0. ⚠ **The prove's second passing condition - the attach line reaching the
    same server - is against exactly that client on exactly that version.** The
    next session checks the installed version against that issue before it
    concludes anything about the door, the key or `sshd`.
@@ -9154,6 +9155,12 @@ scripts README at 508. The consumers claim was measured rather than asserted, ab
 2026-09-15 that costed both.
 **Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
 
+⚠ **Amended 2026-09-15: the adapter is BUILT and NOT DRIVEN.**
+`adapters/pi/install.sh` and `probe.sh` exist, the executable registers `pi`, and
+the gate compares its generated copy. ⛔ **No base has installed it**, so every
+passing condition below is still owed, and the `Presets` row naming `arch` says
+where it WILL be driven rather than where it has been.
+
 ---
 
 ## Problem
@@ -9239,6 +9246,10 @@ Passing is:
 
 **Source** the operator's work order of 2026-09-14, alongside `WSL-88`.
 **Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+⚠ **Amended 2026-09-15: the adapter is BUILT and NOT DRIVEN**, on the same terms
+as `WSL-88`. ⛔ The collision refusal below is written and has never been reached
+on a real base, which is the one condition here that most wants driving.
 
 ---
 

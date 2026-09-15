@@ -1092,7 +1092,10 @@ only on window-activation events, and prefix commands never take effect".**
 
 The record's host state says herdr **0.9.0** is what the operator installed on
 Windows. That is the exact version, on the exact platform, with the exact feature
-`WSL-76` is built on. The issue is closed, so it is fixed in a later release.
+`WSL-76` is built on. ⛔ **The issue is closed `not_planned`, which is not fixed.** Nothing in the
+tracker says a release repairs it, so updating is not evidence and the behaviour is
+measured on this host first. ⚠ A first draft of this sweep read `closed` as `fixed`
+and said so in four places; the claim audit is what caught it.
 
 ⚠ **This would have cost a whole session to find by driving**, and it would have
 read as "our SSH setup is wrong" rather than "this version does not repaint".

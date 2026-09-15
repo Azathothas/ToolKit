@@ -17,9 +17,11 @@ carries the sweep and its commits; this page carries only what an operator does.
 
 1. ⛔ **herdr 0.9.0's Windows `--remote` client repaints only on
    window-activation events, and prefix commands never take effect.** That is
-   `herdrdev/herdr#4176`, closed, so a later release carries the fix. The adapter
-   pins 0.9.0. Check `herdr --version` on Windows against what the adapter
-   installed in the base before concluding anything about SSH.
+   `herdrdev/herdr#4176`. ⛔ **It was closed `not_planned`, NOT as fixed**, so
+   there is no evidence a later release repairs it and a newer herdr may behave
+   the same way. The adapter pins 0.9.0. ⭐ **Measure the repaint on this host
+   before concluding anything about SSH**: a client that repaints only on window
+   activation looks exactly like a connection that is not working.
 2. ⛔ **The base must be a glibc preset.** `herdrdev/herdr#4174`, open: a 0.9.0
    Linux server aborts in a musl malloc integrity check and every pane child
    dies. `arch` is the default and is glibc; `alpine`, `void-musl` and `chimera`
