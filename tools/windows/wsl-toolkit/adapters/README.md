@@ -8,8 +8,38 @@ one.
 
 | adapter | what it installs | driven on |
 | --- | --- | --- |
-| [`herdr/`](herdr/) | herdr 0.9.0, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
-| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, and a `muse.exe` launcher on this machine | the `arch` preset |
+| [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
+| [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, and ⭐ a herdr reporter for its lifecycle | the `arch` preset |
+| [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | ⚠ not yet driven |
+| [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | ⚠ not yet driven |
+
+## ⭐ How a version moves without an edit to this tree
+
+An adapter that downloads a release pins it **by version and by digest**, and a
+configuration may move it to another without editing a script or rebuilding the
+executable:
+
+```json
+{ "name": "herdr", "version": "0.10.1",
+  "sha256": { "x86_64": "…", "aarch64": "…" } }
+```
+
+⛔ **A version with no digest is refused, and digests with no version are refused
+too.** Taking the version from a configuration and the digest from the script
+would download one release and check it against another's; and a digest nothing
+reads is how an operator believes they pinned a thing they did not. They move
+together or neither moves. An architecture the configuration does not name is
+refused rather than falling back.
+
+⚠ **An npm adapter pins differently and the difference is the route, not the
+standard.** `pi` and `omp` are npm packages, and npm checks a package against the
+registry's own integrity value; a digest written here would duplicate that check
+and then go stale against it. `version` alone pins one for an operator who wants
+that, and `TK_ADAPTER_PACKAGE` names a different package for a fork.
+
+⭐ **No adapter's summary carries a version number.** A number in a Go string is a
+second home for a fact the probe reads back from the machine, and it is the one
+nobody updates.
 
 ⭐ **`pi` and `omp` are the next two, and both now have entries rather than a
 sentence.** `WSL-88` and `WSL-89` in

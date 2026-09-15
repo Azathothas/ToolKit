@@ -740,3 +740,26 @@ func TestAJobWithNoPlatformStillCarriesOne(t *testing.T) {
 		t.Errorf("--platform arm64 became %q", asked.platform)
 	}
 }
+
+// TestHerdrCommandsThatWantATerminalAreNamedRatherThanRun holds the line between a
+// herdr command this channel can carry and one that would hang with nothing to draw
+// on. herdr's own agent skill says a bare `herdr` launches or attaches its UI.
+func TestHerdrCommandsThatWantATerminalAreNamedRatherThanRun(t *testing.T) {
+	for _, c := range []struct {
+		args []string
+		want bool
+	}{
+		{nil, true},
+		{[]string{"attach"}, true},
+		{[]string{"agent", "attach", "reviewer"}, true},
+		{[]string{"terminal", "attach", "t1"}, true},
+		{[]string{"agent", "list"}, false},
+		{[]string{"pane", "read", "w1:p1"}, false},
+		{[]string{"agent", "prompt", "w1:p1", "attach the debugger"}, false},
+		{[]string{"workspace", "list"}, false},
+	} {
+		if got := herdrWantsATerminal(c.args); got != c.want {
+			t.Errorf("herdrWantsATerminal(%q) = %v, want %v", c.args, got, c.want)
+		}
+	}
+}

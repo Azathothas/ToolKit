@@ -2594,6 +2594,51 @@
       "replace": "",
       "run": "TestAShellHereMarksItselfThroughWslenv",
       "args": []
+    },
+    {
+      "label": "adapters: a moved version with no digest is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif len(a.SHA256) == 0 {\n\t\treturn fmt.Errorf(\"base.adapters[%d] moves %q to version %q and gives no digests.",
+      "replace": "\tif false {\n\t\treturn fmt.Errorf(\"base.adapters[%d] moves %q to version %q and gives no digests.",
+      "run": "TestAnAdapterVersionAndItsDigestsMoveTogether",
+      "args": []
+    },
+    {
+      "label": "adapters: digests with no version are refused rather than ignored",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif a.Version == \"\" {\n\t\treturn fmt.Errorf(\"base.adapters[%d] gives %q digests and no version",
+      "replace": "\tif false {\n\t\treturn fmt.Errorf(\"base.adapters[%d] gives %q digests and no version",
+      "run": "TestAnAdapterVersionAndItsDigestsMoveTogether",
+      "args": []
+    },
+    {
+      "label": "adapters: a pin on an adapter that downloads nothing is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif a.Version != \"\" || len(a.SHA256) > 0 {\n\t\t\treturn fmt.Errorf(\"base.adapters[%d] pins a version for %q",
+      "replace": "\t\tif false {\n\t\t\treturn fmt.Errorf(\"base.adapters[%d] pins a version for %q",
+      "run": "TestAnAdapterVersionAndItsDigestsMoveTogether",
+      "args": []
+    },
+    {
+      "label": "adapters: a moved version reaches the installer's environment",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tenv[\"TK_ADAPTER_VERSION\"] = a.Version\n",
+      "replace": "",
+      "run": "TestAMovedAdapterVersionReachesItsInstaller",
+      "args": []
+    },
+    {
+      "label": "base herdr: a command that wants a terminal is named, not run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_herdr.go",
+      "find": "\tif len(args) == 0 {\n\t\treturn true\n\t}\n",
+      "replace": "",
+      "run": "TestHerdrCommandsThatWantATerminalAreNamedRatherThanRun",
+      "args": []
     }
   ]
 }

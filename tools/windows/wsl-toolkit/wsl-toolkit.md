@@ -134,6 +134,28 @@ writable, and `--here` into a base with no drive mounted is refused with exit 2 
 | guest root remounts one drive `rw` in an `ro` base | `base status --probe` exit 1, the drives `mixed`, 9 read-only and 1 writable; `base ensure` exit 0 in 4.5 s, and the drive `ro` again |
 | `base shell --here` on a base built `off` and set to `ro` | exit 2 naming `base ensure`; after it, the shell started in a directory under `/mnt/c` |
 
+## ⭐ Reaching herdr, and through it the agents
+
+Three routes, and which one an agent uses depends only on what it can run.
+
+```powershell
+herdr --machine base agent list                 # herdr on Windows, over SSH
+wsl-toolkit base herdr -- agent list            # through this tool, no herdr on Windows
+wsl-toolkit base exec -c 'herdr agent list'     # the general channel
+```
+
+⭐ **`base herdr` exists because the third line is a quoted shell string.** A herdr
+prompt is prose, and prose carries quotes, dollar signs and backticks; measured on
+2026-09-09 against a real distribution, a payload's backtick was EXECUTED and the
+command still reported exit 0. `base herdr` takes herdr's arguments as arguments
+and quotes each one once, on the same path `base agent` uses.
+
+⛔ **It is a channel, not a wrapper.** It knows no herdr subcommand, adds no
+default and parses no answer, so a herdr release that adds or renames a command
+reaches the caller unchanged and nothing here has to be taught about it. The one
+thing it refuses is a command that wants a terminal - a bare `herdr`, or any
+`attach` - because this path has no screen to draw on, and it names `base attach`
+instead.
 ⭐ **`base shell --here` marks its own shell, and the profile this tree ships reads
 the mark.** [`../../../scripts/common/shell-profile.sh`](../../../scripts/common/shell-profile.sh)
 moves an INTERACTIVE shell off a Windows drive to the account's home, which is right

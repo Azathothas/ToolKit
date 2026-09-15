@@ -44,6 +44,17 @@ type BaseAdapter struct {
 	// the digest pinned in the adapter and replaces nothing, and an adapter that
 	// runs no installer refuses it rather than ignoring it.
 	InstallerSHA256 string `json:"installer_sha256,omitempty"`
+	// Version moves an adapter to a release its script does not pin, without
+	// editing the script or rebuilding this executable.
+	//
+	// ⛔ A VERSION WITHOUT DIGESTS IS REFUSED. Taking a version from a
+	// configuration and a digest from the script would download one release and
+	// check it against another's, which fails confusingly at best and silently
+	// installs nothing at worst. The two move together or neither moves.
+	Version string `json:"version,omitempty"`
+	// SHA256 is the digest of that release's asset for each machine architecture,
+	// keyed as `uname -m` spells it: `x86_64`, `aarch64`.
+	SHA256 map[string]string `json:"sha256,omitempty"`
 }
 
 // AdapterState is one adapter as `base status --probe` read it back.
@@ -67,6 +78,11 @@ type adapterSpec struct {
 	// TakesInstallerDigest says the adapter runs a provider's installer, and reads
 	// an operator's approval of one as TK_INSTALLER_SHA256.
 	TakesInstallerDigest bool
+	// TakesVersionPin says the adapter downloads a release it pins by version and
+	// digest, so a configuration may move it to another without editing the script
+	// or rebuilding this executable. It reads TK_ADAPTER_VERSION and
+	// TK_ADAPTER_SHA256_<ARCH>.
+	TakesVersionPin bool
 	// Agent is the command an agent adapter installs in the base, which `base agent`
 	// and the Windows launcher run, or "" for an adapter that is not an agent.
 	Agent string
@@ -77,19 +93,43 @@ type adapterSpec struct {
 // adapterSpecs is every adapter this executable carries.
 var adapterSpecs = []adapterSpec{
 	{
-		Name:         "herdr",
-		Summary:      "herdr 0.9.0 with its server as a system unit, and an SSH door the operator's Windows herdr client attaches through",
-		NeedsSystemd: true,
-		Presets:      []string{"arch"},
-		Host:         &herdrHost{},
+		Name: "herdr",
+		// ⛔ NO VERSION IN THIS SENTENCE. The adapter pins one and a configuration
+		// may move it, so a number here would be a second home for that fact and
+		// the one nobody updates. `base status --probe` reads back what is there.
+		Summary:         "herdr with its server as a system unit, and an SSH door the operator's Windows herdr client attaches through",
+		NeedsSystemd:    true,
+		Presets:         []string{"arch"},
+		TakesVersionPin: true,
+		Host:            &herdrHost{},
 	},
 	{
 		Name:                 "muse",
-		Summary:              "Muse Code for the base's account, from Meta's installer, run only while that file's digest is one the operator approved, and a launcher on Windows",
+		Summary:              "Muse Code for the base's account, from Meta's installer, run only while that file's digest is one the operator approved, a launcher on Windows, and a herdr reporter for its lifecycle",
 		Presets:              []string{"arch"},
 		TakesInstallerDigest: true,
 		Agent:                "muse",
 		Host:                 &agentLauncherHost{agent: "muse"},
+	},
+	{
+		Name: "pi",
+		// ⭐ NO DIGEST PIN AND NO INSTALLER APPROVAL, and the difference from muse is
+		// the install route rather than a lower standard: pi is an npm package, and
+		// npm checks a package against the registry's own integrity value. The
+		// version is pinnable from the configuration for an operator who wants one.
+		Summary:         "the Pi coding agent for the base's account from npm, with herdr's own integration so herdr has lifecycle authority",
+		Presets:         []string{"arch"},
+		TakesVersionPin: true,
+		Agent:           "pi",
+		Host:            &agentLauncherHost{agent: "pi"},
+	},
+	{
+		Name:            "omp",
+		Summary:         "Oh My Pi for the base's account from npm, with herdr's own integration, and a refusal when it and pi resolve to one extension directory",
+		Presets:         []string{"arch"},
+		TakesVersionPin: true,
+		Agent:           "omp",
+		Host:            &agentLauncherHost{agent: "omp"},
 	},
 }
 
@@ -103,6 +143,16 @@ func lookupAdapter(name string) (adapterSpec, bool) {
 		}
 	}
 	return adapterSpec{}, false
+}
+
+// ConfigNamesAdapter says whether a configuration names an adapter.
+func ConfigNamesAdapter(c Config, name string) bool {
+	for _, a := range c.Base.Adapters {
+		if a.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // AdapterNames answers the adapters this executable carries, sorted.
@@ -134,6 +184,9 @@ func validateAdapters(c Config) error {
 		if a.InstallerSHA256 != "" && !installerDigestRE.MatchString(a.InstallerSHA256) {
 			return fmt.Errorf("base.adapters[%d].installer_sha256 is not a SHA-256. Give the 64 lowercase hex characters sha256sum prints for the installer you read", i)
 		}
+		if err := validateAdapterPin(i, a, spec); err != nil {
+			return err
+		}
 		if spec.NeedsSystemd && !c.Base.Systemd {
 			return fmt.Errorf("base.adapters names %q, whose server runs as a system unit, so it needs base.systemd to be true", a.Name)
 		}
@@ -151,6 +204,48 @@ func validateAdapters(c Config) error {
 	}
 	return nil
 }
+
+// adapterVersionRE is a release as an adapter names one: digits, dots and the
+// letters a release tag carries. ⛔ Not a free string: it becomes part of a URL.
+var adapterVersionRE = regexp.MustCompile(`^[0-9][0-9A-Za-z.+-]{0,31}$`)
+
+// validateAdapterPin holds the rule that a version and its digests move together.
+//
+// ⛔ EITHER ALONE IS A REFUSAL. A version with no digest is a download this
+// repository will not make; a digest with no version is a value nothing reads,
+// and silently ignoring it is how an operator believes they pinned something.
+func validateAdapterPin(i int, a BaseAdapter, spec adapterSpec) error {
+	if !spec.TakesVersionPin {
+		if a.Version != "" || len(a.SHA256) > 0 {
+			return fmt.Errorf("base.adapters[%d] pins a version for %q, and that adapter installs nothing this pins", i, a.Name)
+		}
+		return nil
+	}
+	if a.Version == "" && len(a.SHA256) == 0 {
+		return nil
+	}
+	if a.Version == "" {
+		return fmt.Errorf("base.adapters[%d] gives %q digests and no version, so nothing would read them. Add \"version\"", i, a.Name)
+	}
+	if len(a.SHA256) == 0 {
+		return fmt.Errorf("base.adapters[%d] moves %q to version %q and gives no digests. Add \"sha256\", keyed by architecture as `uname -m` spells it, because this tool downloads nothing it cannot check", i, a.Name, a.Version)
+	}
+	if !adapterVersionRE.MatchString(a.Version) {
+		return fmt.Errorf("base.adapters[%d].version %q is not a release this adapter can name. It becomes part of a download URL, so it is digits, dots, letters, plus and hyphen", i, a.Version)
+	}
+	for arch, digest := range a.SHA256 {
+		if !adapterArchRE.MatchString(arch) {
+			return fmt.Errorf("base.adapters[%d].sha256 is keyed %q, and a key is an architecture as `uname -m` spells it, such as x86_64 or aarch64", i, arch)
+		}
+		if !installerDigestRE.MatchString(digest) {
+			return fmt.Errorf("base.adapters[%d].sha256[%q] is not a SHA-256. Give the 64 lowercase hex characters sha256sum prints for that release's asset", i, arch)
+		}
+	}
+	return nil
+}
+
+// adapterArchRE is a machine architecture as `uname -m` spells one.
+var adapterArchRE = regexp.MustCompile(`^[a-z0-9_]{3,16}$`)
 
 // adapterScript answers one of an adapter's two scripts.
 func adapterScript(name, script string) ([]byte, error) {
@@ -232,6 +327,15 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 	env["TK_DISTRO"] = cfg.Base.Name
 	if a.InstallerSHA256 != "" {
 		env["TK_INSTALLER_SHA256"] = a.InstallerSHA256
+	}
+	// ⭐ A RELEASE THIS EXECUTABLE HAS NEVER HEARD OF, pinned by the configuration
+	// that asked for it. The script keeps its own default, so a base that names
+	// neither is unchanged.
+	if a.Version != "" {
+		env["TK_ADAPTER_VERSION"] = a.Version
+		for arch, digest := range a.SHA256 {
+			env["TK_ADAPTER_SHA256_"+strings.ToUpper(arch)] = digest
+		}
 	}
 	return env, nil
 }

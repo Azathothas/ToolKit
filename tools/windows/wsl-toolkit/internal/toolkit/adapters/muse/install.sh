@@ -142,6 +142,94 @@ else
   say "wrote $WRAPPER, which runs Muse as $TK_USER"
 fi
 
+# -- the herdr reporter --------------------------------------------------------------
+# ⭐ herdr CLASSIFIES A MUSE PANE BY READING ITS SCREEN, and this gives it the events
+# instead. herdr ships a Muse detection manifest but no Muse integration: its own was
+# proposed as herdrdev/herdr#4163 to #4166 and every part was closed WITHOUT merging on
+# 2026-09-15, so a third-party hook is the only route and this is ours.
+#
+# ⛔ NOTHING IS INSTALLED WHEN THE PIECES ARE NOT THERE, and each refusal says which.
+# A hook registered against a missing herdr is a hook that runs on every tool call of
+# every turn and does nothing.
+HOOK_DIR=$TK_HOME/.local/share/wsl-toolkit
+HOOK=$HOOK_DIR/herdr-agent-state.sh
+HOOK_MARK=/wsl-toolkit/herdr-agent-state.sh
+MUSE_SETTINGS=$TK_HOME/.muse/settings.json
+HOOK_EVENTS='SessionStart UserPromptSubmit PreToolUse PermissionRequest Stop SessionEnd'
+
+herdr_reporter_skip=
+if [ -z "${TK_FILE_HERDR_AGENT_STATE_SH_B64:-}" ]; then
+  herdr_reporter_skip='this adapter carries no reporter file'
+elif ! command -v herdr >/dev/null 2>&1 && [ ! -x /usr/local/bin/herdr ]; then
+  herdr_reporter_skip='no herdr is installed in this base, so there is nothing to report to. Add the herdr adapter to base.adapters'
+elif ! command -v jq >/dev/null 2>&1; then
+  herdr_reporter_skip='jq is not installed, and the reporter reads its payload with it. Set base.toolset to developer or later'
+fi
+
+if [ -n "$herdr_reporter_skip" ]; then
+  say "no herdr reporter: $herdr_reporter_skip"
+else
+  # ⛔ RESOLVED HERE, NOT AT THE TOP OF THE FILE. An earlier draft set this beside
+  # TK_HOME, and under `set -e` an `id` for an account that does not exist then
+  # ended the script before ANY path below it - including the digest refusal, which
+  # a case drives with no such account. A variable a feature needs belongs inside
+  # the branch that has the feature.
+  TK_GROUP=$(id -gn "$TK_USER")
+  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$HOOK_DIR"
+  hook_tmp=$(mktemp)
+  hook_encoded=$(mktemp)
+  printf '%s' "$TK_FILE_HERDR_AGENT_STATE_SH_B64" > "$hook_encoded"
+  base64 -d < "$hook_encoded" > "$hook_tmp" || die "the reporter did not decode"
+  rm -f "$hook_encoded"
+  # ⭐ ITS OWN SELF-TEST IS THE GATE ON INSTALLING IT. A reporter that cannot pass
+  # its own cases is not registered, because a broken hook runs on every event.
+  if ! sh "$hook_tmp" --selftest >/dev/null 2>&1; then
+    rm -f "$hook_tmp"
+    die "the herdr reporter failed its own self-test in this base, so it was not installed"
+  fi
+  if cmp -s "$hook_tmp" "$HOOK"; then
+    rm -f "$hook_tmp"
+  else
+    install -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$hook_tmp" "$HOOK"
+    rm -f "$hook_tmp"
+    say "wrote $HOOK, and its self-test passed"
+  fi
+
+  # ⛔ MUSE'S settings.json IS MERGED, NEVER REPLACED. It is the operator's file and
+  # carries their own settings; herdr's own unmerged plumbing did the same. jq does
+  # the merge, so a value this adapter does not name is preserved exactly.
+  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0700 "$TK_HOME/.muse"
+  [ -f "$MUSE_SETTINGS" ] || as_account sh -c "printf '{}\n' > '$MUSE_SETTINGS'"
+  if ! as_account jq -e . "$MUSE_SETTINGS" >/dev/null 2>&1; then
+    die "$MUSE_SETTINGS is not valid JSON, so it was left untouched. Read it, then run base ensure again"
+  fi
+  settings_tmp=$(mktemp)
+  chown "$TK_USER" "$settings_tmp"
+  # ⚠ ONE ENTRY PER EVENT, and every OLD one of ours is dropped first. ⛔ Keying on
+  # the current path alone was measured leaving a dead entry behind when the path
+  # moved, and a hook that no longer exists still runs on every event of every turn.
+  # The marker is the trailing path this adapter always writes, so our entry is
+  # recognised wherever the account's home is, and nobody else's is touched.
+  # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
+  if as_account jq --arg hook "$HOOK" --arg mark "$HOOK_MARK" --arg events "$HOOK_EVENTS" '
+      ($events | split(" ")) as $names
+      | .hooks = ((.hooks // {}) | reduce $names[] as $n (.;
+          .[$n] = (((.[$n] // []) | map(select(((.command // "") | endswith($mark)) | not))) + [{"type":"command","command":$hook}])))
+    ' "$MUSE_SETTINGS" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
+    if cmp -s "$settings_tmp" "$MUSE_SETTINGS"; then
+      rm -f "$settings_tmp"
+      say "Muse already reports to herdr on $(printf '%s' "$HOOK_EVENTS" | wc -w) events"
+    else
+      install -o "$TK_USER" -g "$TK_GROUP" -m 0600 "$settings_tmp" "$MUSE_SETTINGS"
+      rm -f "$settings_tmp"
+      say "registered the herdr reporter in $MUSE_SETTINGS for: $HOOK_EVENTS"
+    fi
+  else
+    rm -f "$settings_tmp"
+    die "merging the reporter into $MUSE_SETTINGS failed, and that file was left as it was"
+  fi
+fi
+
 # ⛔ SIGNING IN IS THE OPERATOR'S, and nothing here reads or writes the credential.
 say "signing in is the operator's: $tool base shell, then muse login"
 

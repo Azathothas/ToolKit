@@ -34,6 +34,13 @@ func adapterBase() Config {
 	return cfg
 }
 
+// baseConfigWithAdapters is an arch base with systemd that names the given adapters.
+func baseConfigWithAdapters(adapters ...BaseAdapter) Config {
+	cfg := adapterBase()
+	cfg.Base.Adapters = adapters
+	return cfg
+}
+
 // TestAnAdapterIsRefusedWhereItWasNotDriven holds the four refusals WSL-76 put on
 // base.adapters: a name this executable does not carry, a name twice, herdr without
 // systemd, and herdr on a preset it was not driven on.
@@ -45,7 +52,7 @@ func TestAnAdapterIsRefusedWhereItWasNotDriven(t *testing.T) {
 		change func(*Config)
 		want   string
 	}{
-		"an unknown adapter": {func(c *Config) { c.Base.Adapters = []BaseAdapter{notAnAdapter} }, "the adapters this executable carries are: herdr, muse"},
+		"an unknown adapter": {func(c *Config) { c.Base.Adapters = []BaseAdapter{notAnAdapter} }, "the adapters this executable carries are: herdr, muse, omp, pi"},
 		"a name twice":       {func(c *Config) { c.Base.Adapters = append(c.Base.Adapters, BaseAdapter{Name: "herdr"}) }, "more than once"},
 		"no systemd":         {func(c *Config) { c.Base.Systemd = false }, "needs base.systemd to be true"},
 		"another preset":     {func(c *Config) { c.Base.Image = "docker.io/library/alpine:latest" }, "driven on the arch preset only"},
@@ -419,5 +426,70 @@ func TestTheHerdrHostHalfIsCheckedBeforeItConnects(t *testing.T) {
 		if len(body) != 0 {
 			t.Fatalf("%s still holds %q after removal", path, body)
 		}
+	}
+}
+
+// TestAnAdapterVersionAndItsDigestsMoveTogether is the resilience rule: an operator
+// may move an adapter to a release this executable has never heard of, and may not
+// move it to one nothing can check.
+//
+// ⛔ EITHER ALONE IS A REFUSAL. A version with no digest is a download this
+// repository will not make. A digest with no version is a value nothing reads, and
+// ignoring it silently is how somebody believes they pinned a thing they did not.
+func TestAnAdapterVersionAndItsDigestsMoveTogether(t *testing.T) {
+	good := strings.Repeat("a1", 32)
+	for _, c := range []struct {
+		name    string
+		adapter BaseAdapter
+		want    string
+	}{
+		{"neither is the ordinary case", BaseAdapter{Name: "herdr"}, ""},
+		{"both together are accepted", BaseAdapter{Name: "herdr", Version: "0.10.1", SHA256: map[string]string{"x86_64": good}}, ""},
+		{"a version alone is refused", BaseAdapter{Name: "herdr", Version: "0.10.1"}, "gives no digests"},
+		{"digests alone are refused", BaseAdapter{Name: "herdr", SHA256: map[string]string{"x86_64": good}}, "nothing would read them"},
+		{"a version that is not one", BaseAdapter{Name: "herdr", Version: "../../etc", SHA256: map[string]string{"x86_64": good}}, "is not a release"},
+		{"an architecture that is not one", BaseAdapter{Name: "herdr", Version: "0.10.1", SHA256: map[string]string{"x86_64; rm": good}}, "keyed"},
+		{"a digest that is not one", BaseAdapter{Name: "herdr", Version: "0.10.1", SHA256: map[string]string{"x86_64": "nope"}}, "is not a SHA-256"},
+		{"an adapter that pins nothing", BaseAdapter{Name: "muse", Version: "1.2.3", SHA256: map[string]string{"x86_64": good}}, "installs nothing this pins"},
+	} {
+		cfg := baseConfigWithAdapters(c.adapter)
+		err := cfg.Validate()
+		if c.want == "" {
+			if err != nil {
+				t.Errorf("%s: %v", c.name, err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), c.want) {
+			t.Errorf("%s: answered %v, want a refusal carrying %q", c.name, err, c.want)
+		}
+	}
+}
+
+// TestAMovedAdapterVersionReachesItsInstaller proves the pin arrives as the
+// environment the script reads, rather than being validated and dropped.
+func TestAMovedAdapterVersionReachesItsInstaller(t *testing.T) {
+	good := strings.Repeat("b2", 32)
+	cfg := baseConfigWithAdapters(BaseAdapter{Name: "herdr", Version: "0.10.1",
+		SHA256: map[string]string{"x86_64": good, "aarch64": good}})
+	env, err := adapterInstallEnv(cfg, cfg.Base.Adapters[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{
+		"TK_ADAPTER_VERSION":        "0.10.1",
+		"TK_ADAPTER_SHA256_X86_64":  good,
+		"TK_ADAPTER_SHA256_AARCH64": good,
+	} {
+		if env[k] != want {
+			t.Errorf("%s reached the installer as %q, want %q", k, env[k], want)
+		}
+	}
+	plain, err := adapterInstallEnv(baseConfigWithAdapters(BaseAdapter{Name: "herdr"}), BaseAdapter{Name: "herdr"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := plain["TK_ADAPTER_VERSION"]; ok {
+		t.Error("an adapter with no pin still received TK_ADAPTER_VERSION, so the script could not tell that it has its own default")
 	}
 }

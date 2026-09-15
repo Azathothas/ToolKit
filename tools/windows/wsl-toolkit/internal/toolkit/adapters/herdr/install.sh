@@ -23,13 +23,25 @@ cd /
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'herdr adapter: %s\n' "$*" >&2; exit 3; }
 
-# -- what this adapter pins ----------------------------------------------------
+# -- what this adapter pins, and how a configuration moves it ------------------
 # ⛔ PINNED BY VERSION AND VERIFIED BY DIGEST BEFORE USE. The digests are the ones
 # GitHub publishes for the v0.9.0 release assets, read on 2026-09-14, and a file
 # that does not match is deleted without being run.
 HERDR_VERSION=0.9.0
 HERDR_X86_64_PINNED_SHA256=4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f
 HERDR_AARCH64_PINNED_SHA256=9c8db20fb7e7427b138d5367113f1621ffd319f2f65d6f009e2594029115f0d2
+
+# ⭐ A NEWER RELEASE IS A CONFIGURATION CHANGE, NOT AN EDIT TO THIS FILE. `version`
+# and `sha256` on this adapter's entry in base.adapters arrive as TK_ADAPTER_VERSION
+# and TK_ADAPTER_SHA256_<ARCH>, and the executable refuses one without the other, so
+# a moved version always brings its own digests. ⛔ An architecture the configuration
+# does not name is refused rather than falling back to a digest for a release this is
+# no longer installing.
+if [ -n "${TK_ADAPTER_VERSION:-}" ]; then
+  HERDR_VERSION=$TK_ADAPTER_VERSION
+  HERDR_X86_64_PINNED_SHA256=${TK_ADAPTER_SHA256_X86_64:-}
+  HERDR_AARCH64_PINNED_SHA256=${TK_ADAPTER_SHA256_AARCH64:-}
+fi
 
 HERDR_BIN=/usr/local/bin/herdr
 DOOR_DIR=/etc/wsl-toolkit/ssh
@@ -81,6 +93,11 @@ case "$(uname -m)" in
   aarch64) asset=herdr-linux-aarch64; want=$HERDR_AARCH64_PINNED_SHA256 ;;
   *) die "herdr publishes no Linux build for $(uname -m)" ;;
 esac
+# ⛔ AN EMPTY DIGEST IS A REFUSAL, NOT AN UNCHECKED DOWNLOAD. It means a
+# configuration moved the version and gave no digest for THIS architecture, and
+# checking a new release against the old one's digest would be worse than either.
+[ -n "$want" ] ||
+  die "base.adapters moves herdr to $HERDR_VERSION and names no sha256 for $(uname -m). Add it, or remove the version to use the one this adapter pins"
 have=
 [ -f "$HERDR_BIN" ] && have=$(sha256sum "$HERDR_BIN" | cut -d' ' -f1)
 if [ "$have" = "$want" ]; then
