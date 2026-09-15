@@ -19,6 +19,27 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-15
+
+### 2026-09-15T01:19:47Z: a base configured without passwordless sudo is refused while its account still has it
+
+**Record:** `WSL-85` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), whose
+closing carries the drive on a throwaway base, the cases and the reviews.
+**Deployed:** no deploy. This is `main` only, and no tag was cut.
+**Closes:** `WSL-85`.
+
+⚠ **AN EXIT CHANGES MEANING FOR A BASE WHOSE SUDO DISAGREES WITH ITS CONFIGURATION.**
+Under `passwordless_sudo: false`, `base status --probe` and `base ensure` answered exit 0
+over an account that could still use sudo without a password. The probe now answers exit
+1 naming it, and `base ensure` provisions the base again, which restarts it and removes
+the rule this tool wrote. Where another rule grants it, the ensure answers exit 2.
+
+⭐ **A verification that fails is named by the guest's own line.** A line wsl.exe writes
+about itself, beginning `wsl: `, no longer stands in for the verifier's refusal or the
+engine's error.
+
+---
+
 ## 2026-09-14
 
 ### 2026-09-14T16:26:40Z: bootstrap.sh drops Soar, and finds, sets up and uses an installed Nix

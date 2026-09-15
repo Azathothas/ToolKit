@@ -7606,3 +7606,151 @@ base "answers exit 1 with both counts", and the refusal under `off` names no cou
 it now says the refusal names what disagrees. Its table said every drive mount was
 `9p`, where the drive listing measured only each mode; the type was read for `/mnt/c`
 alone, and the row now says read-only and writable.
+
+---
+
+## WSL-85. A base reconfigured from passwordless sudo to none keeps it, and reports none
+
+**Source** found on 2026-09-15 while driving `WSL-67`'s provider profiles.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The low-authority profile in
+[`../tools/windows/wsl-toolkit/examples/common/access-profiles.md`](../tools/windows/wsl-toolkit/examples/common/access-profiles.md)
+says its account cannot use `sudo -n`. A base built with `passwordless_sudo: true` and
+then configured without it kept the account's rule, and `base status --probe` and `base
+ensure` both reported `passwordless false` and a usable base over an account that could
+still become root.
+
+## Premise
+
+⭐ **Measured on 2026-09-15 on the throwaway `wsl-toolkit-p67`**, an arch base with
+automount and interop off, its state and its one grant under this repository's `.tmp`:
+
+| step | answer |
+| --- | --- |
+| built with `passwordless_sudo: true`, then set to `false` | `base status --probe` exit 0, healthy, no problem |
+| `base ensure` | exit 0 in 1.8 s, nothing provisioned, printing `sudo passwordless false` |
+| `sudo -n true` as the account | granted |
+
+- ⭐ **Read in `internal/toolkit/verify.sh`:** the `true` arm runs `sudo -n true` and
+  refuses when it fails, and the `false` arm checks nothing.
+- ⭐ **Read in `internal/toolkit/provision.sh`:** under `false` provisioning removes
+  `/etc/sudoers.d/wsl-toolkit-ACCOUNT`, the one rule it writes. Measured the same day:
+  after a grant change made `base ensure` provision the base, `sudo -n true` was
+  refused.
+- ⭐ **Measured read-only the same day:** the default `wsl-toolkit` base and
+  `wsl-toolkit-podbox` have no `sudo`, so a check under `false` cannot turn either red.
+
+## Approach
+
+1. **The verifier's `false` arm refuses an account whose `sudo -n true` is granted**, so
+   `base status --probe` answers exit 1 naming it and `base ensure` provisions in place,
+   which the existing recovery path already does for a refusal.
+2. A case that runs the verifier's own sudo section through a POSIX shell, with a
+   `sudo` the case writes, under both settings, and a mutation row.
+
+⛔ **Not a removal of rules this tool did not write.** Provisioning removes its own, and
+a rule from elsewhere leaves the base refused.
+
+## Decision
+
+⭐ **Approved by the operator in chat on 2026-09-15**, "approve WSL-85": filed and fixed
+in this session, before `WSL-70`.
+
+## Consumers
+
+⚠ By [`../docs/consumers.md`](../docs/consumers.md)'s definition, a caller whose base's
+sudo disagrees with its configuration gets exit 1 from `base status --probe` and a
+provision from `base ensure`, which restarts the base, where both answered exit 0. The
+changelog says so. No fetched file changes.
+
+## Prove
+
+On a throwaway instance:
+
+```powershell
+wsl-toolkit --instance NAME base status --probe --json
+wsl-toolkit --instance NAME base ensure
+wsl-toolkit --instance NAME base exec -c 'sudo -n true'
+```
+
+Passing is:
+
+- set from `true` to `false`: the probe exit 1 naming the account's sudo, the ensure
+  provisions again, then `sudo -n true` is refused and the probe exit 0;
+- set from `false` to `true`: the same, with `sudo -n true` granted;
+- a mutation row red.
+
+---
+
+## Closing
+
+**Closed 2026-09-15T01:19:47Z.** The verifier refuses an account whose `sudo -n true` is
+granted under `passwordless_sudo: false`, so `base status --probe` names the disagreement
+and `base ensure` provisions the base again, which removes the rule this tool wrote. A
+verification that fails is named by the guest's own line, past any line wsl.exe writes
+about itself. All three passing conditions hold on the tree's build, on
+`wsl-toolkit-p67`:
+
+| condition | measured |
+| --- | --- |
+| set from `true` to `false`: the probe exit 1 naming the account's sudo, the ensure provisions again, then `sudo -n true` is refused and the probe exit 0 | the probe exit 1 in 0.5 s, `the configured account can use sudo without a password, and passwordless sudo is off`; `base ensure` exit 0 in 16.0 s through `re-provisioning in place`; then `sudo -n true` refused, and the probe exit 0 with no problem |
+| set from `false` to `true`: the same, with `sudo -n true` granted | the probe exit 1 in 0.5 s, `the configured account cannot use sudo without a password`; `base ensure` exit 0 in 15.9 s, provisioning again; then `sudo -n true` granted, and the probe exit 0 |
+| a mutation row red | 3 rows, below |
+
+⭐ **A rule this tool did not write is refused and left in place.** Under `false`, a
+second rule at `/etc/sudoers.d/zz-elsewhere` granting the account sudo made the probe exit
+1, and `base ensure` exit 2 in 14.5 s with `re-provisioned and it still does not verify`
+and the same refusal, with `sudo -n true` still granted. With that rule removed as root,
+`base ensure` exit 0 in 2.5 s without provisioning, and the probe exit 0.
+
+| suite | Windows, `TEMP` at the 8.3 path | `golang:1.25` |
+| --- | --- | --- |
+| `check-go` | exit 0 | exit 0 |
+| `wsl-toolkit` top-level cases | 305: 297 passed, 8 skipped, 0 failed | 304: 303 passed, 1 skipped, 0 failed |
+| ShellCheck 0.9.0 in `ubuntu:24.04` | - | exit 0 over 34 tracked scripts |
+
+`TestTheVerifierReadsTheSudoItPromises` runs the verifier's own sudo section through
+`/bin/sh`, dash in `golang:1.25`, under both settings, with a `sudo` the case writes on a
+`PATH` that holds nothing else, and skips on Windows.
+
+### ⛔ What driving it found
+
+| found | what was done |
+| --- | --- |
+| over the rule from elsewhere, the first build's `base ensure` answered `a container did not run as agent (exit 3): wsl: Failed to start the systemd user session for 'agent'. See journalctl for more details.`: wsl.exe wrote its own line ahead of the verifier's refusal, and the message took the first line | `verifyError` takes the last `verify:` line as the refusal and names any other failure by the first line that is not wsl.exe's; driven again, the ensure named the account's sudo |
+| building the throwaway printed 93 `wsl: Failed to translate` lines, for the working directory and each Windows `PATH` entry, between provisioning and the restart | nothing in this entry. Read, not measured: the provisioner writes `appendWindowsPath=false`, which WSL reads at that restart. The record carries it |
+
+### The reviews
+
+⭐ **The door sweep** asked what else reaches a sudo decision, and what else names an
+error by a line of a guest's stderr. `verify` has five callers, `Status` and four paths in
+`EnsureWith`, reached by `base status`, `base ensure`, `base recreate`, `ready` and the
+helper route, so the refusal is one change. `base exec --root` and `base shell --root`
+reach root through `wsl.exe -u root`, `wsl.go` line 402, and never through sudo, whatever
+the setting says. `config` and `base status` print the configured value, and under
+`--probe` a disagreement is a problem beside `usable false`. ⚠ **It found 23 more lines,
+in nine files, that build an error from the first line of a guest command's stderr**,
+where wsl.exe can write first: `adapters.go`, `base.go`, `cleanup_run.go`, `engine.go`,
+`inspect.go`, `job.go`, `matrix.go`, `resources.go` and `throwaway.go`. None was measured
+naming a wsl.exe line, so none is changed here, and the record carries them. What would
+make the sweep fire on sudo again: a second writer of the rule, and `grep` for `sudoers`
+finds only `provision.sh`.
+
+⭐ **The guard mutation proved 3 rows**, each seen green unmutated first: the verifier
+refusing sudo under `false`, a refusal read past wsl.exe's lines, and wsl.exe's lines left
+out of a failure's detail. In `golang:1.25` all 3 went red; on Windows the two in `base.go`
+went red and the verifier row reported skipped. ⚠ **The gate's `mutations` rule then
+refused two of `WSL-84`'s rows**, which named the line `verifyError` no longer has; both
+now address the refusal branch, `if code == verifyRefused {`, and both went red again on
+Windows.
+
+⭐ **The claim audit** read the manual's paragraph and table, this entry and the changelog
+against the drive's logs. It corrected the manual's first draft, which said "a base that
+disagrees answers exit 1" and named no command, where `base ensure` provisions and `base
+status --probe` is what answers exit 1. It checked the `--root` sentence above against
+`wsl.go` before it was written.

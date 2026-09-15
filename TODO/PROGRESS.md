@@ -6,26 +6,27 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-14T14:15:42Z; the record commit's own time is its end
-baseline        7122216, tree clean, CI run 34846522263 green
-entries         total 119  open 7  blocked 0  done 112
-closed          WSL-84 at 191062a; WSL-83 at b9a8ea2; WSL-82 at 86e51dc
-partial         WSL-67: Soar removed and Nix driven, in the record commit
-head            86e51dc, then the record commit
+session started 2026-09-15T00:39:50Z; the record commit's own time is its end
+baseline        45fc7cc, tree clean, CI run 34869369358 green
+entries         total 120  open 7  blocked 0  done 113
+closed          WSL-85, in its own commit
+partial         WSL-67: pkgin, pkg_add and the acceptance runner's cases still open
+head            45fc7cc, then the WSL-85 commit
 ```
 
 ## Active work
 
-⭐ **The operator checkpointed the session at `WSL-67`.** Its Nix work is built,
-driven and committed with the record. **Resume at `WSL-67`'s two open items, in
-this order:** drive `pkgin` on NetBSD and `pkg_add` on OpenBSD, then add the
-provider-profile scenarios to the acceptance runner; then close it with its three
-reviews. `WSL-70` and `WSL-71` follow.
+⭐ **The session resumed `WSL-67` from the operator's checkpoint and works unattended.**
+Driving its provider profiles found `WSL-85`, which the operator approved in chat, and it
+is closed. **Next:** `WSL-67`'s provider-profile cases in the acceptance runner, and its
+`pkgin` and `pkg_add` drives once the operator approves the two image downloads; then its
+closing with three reviews; then `WSL-70` and `WSL-71`.
 
-⚠ **The two BSD image downloads need the operator's approval again in chat.** They
-were approved on 2026-09-14 for this session, stopped part way at the checkpoint and
-removed. Ask once, naming each file, its source and its size, which the entry
-carries, and keep working while the answer comes.
+⚠ **The two BSD image downloads wait for the operator's approval in chat.** Asked on
+2026-09-15 at the session's start, naming each file, its source and its size, and not
+yet answered. ⭐ QEMU 11.1.0 here puts SeaBIOS's screen on the serial console with `-M
+q35,graphics=off`, measured with no disk on 2026-09-15, which is how a BSD boot loader's
+prompt is reached with no `sga` device.
 
 `WSL-78`'s entry point, `base agent` and the `muse.exe` launcher remain built and
 driven without a sign-in.
@@ -37,7 +38,7 @@ premise, decisions and prove. An issue closes only when every entry mapped to it
 is closed, and the issue gets a comment naming the commits.
 
 1. ⭐ **Closed:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33, `WSL-75`, `WSL-81`,
-   `WSL-72`, `WSL-77`, `WSL-84`, `WSL-83` and `WSL-82`.
+   `WSL-72`, `WSL-77`, `WSL-84`, `WSL-83`, `WSL-82` and `WSL-85`.
 2. **Finish issue 30's existing package and profile work:** `WSL-67`, then `WSL-70`,
    then `WSL-71`. `WSL-67` has left: driving `pkgin` and `pkg_add`, and the
    provider-profile cases in the acceptance runner.
@@ -82,6 +83,8 @@ is closed, and the issue gets a comment naming the commits.
    and used for a new profile, the four `NIXPKGS_ALLOW_*` variables are always on
    with more defaults where they help, and a GitHub token reaches Nix through
    `NIX_CONFIG` only. All of it lives in this repository. In `WSL-67`.
+9. **2026-09-15: `WSL-85` approved**, "approve WSL-85": filed and fixed in this
+   session, before `WSL-70`.
 
 ## Before every push
 
@@ -98,36 +101,33 @@ ls-files`, so check a new one by name before it is added.
 
 | commit | what |
 | --- | --- |
-| `7122216` | `WSL-82`, `WSL-83` and `WSL-84` approved; the existing work restored ahead of Muse and herdr; Soar set for removal and Nix retained |
-| `191062a` | `WSL-84` closed: the verifier reads the drives and prints what they are, `base ensure` provisions a drifted base again, and `base status --probe` prints both; `base shell --root` and `--here` read the same mounts; 16 rows red |
-| `b9a8ea2` | `WSL-83` closed: a BSD run boots from a qcow2 overlay it removes, the image is never written, and a root not properly dismounted is named; 6 rows new and 4 changed |
-| `86e51dc` | `WSL-82` closed: after a panic's two lines a command's wait ends at QEMU's exit, the closing marker or 60 seconds; driven on a real guest; 4 rows new and 2 changed |
-| the record commit | `WSL-67` partial: Soar removed from `bootstrap.sh`; the Nix route finds an installed Nix, sets up flakes and installs through the table's `nix` key, driven as unprivileged accounts; the session's record and summary |
+| `45fc7cc` | `WSL-67` partial: Soar removed from `bootstrap.sh`; the Nix route finds an installed Nix, sets up flakes and installs through the table's `nix` key; the last session's record and summary |
+| the `WSL-85` commit | `WSL-85` filed and closed: the verifier refuses passwordless sudo the configuration turned off, `base ensure` provisions such a base again, and a verification failure is named past wsl.exe's own lines; 3 mutation rows |
 
 ## Measurements
 
-On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
+On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 
-- **At the start of this session:** the doctor exit 0 in 21.17 s at 14:16:33Z; the
-  gate exit 0, 20 checks green in 46.33 s at 14:17:30Z; `wsl -l -v` matched the host
-  state below; CI run 34846522263 for `7122216` was green.
-- **CI for this session's closings:** runs 34860407687 for `191062a`, 34863266828 for
-  `b9a8ea2` and 34865346058 for `86e51dc`, each green in all six jobs.
-- **For `WSL-84`:** the Go suites green on Windows with `TEMP` at the 8.3 path, 296
-  top-level `wsl-toolkit` cases, 289 passed, 7 skipped; in `golang:1.25`, 295, 294
-  passed, 1 skipped. On the throwaway `m84`, a build from nothing took 32.7 s to 74.1
-  s, and each `base ensure` over drifted drives 4.3 s to 4.7 s.
-- **For `WSL-83`:** on the shared image, `bsd run -c true` three times with the
-  overlay: a login at 8.6 s to 8.8 s and the process gone at 23.4 s to 23.6 s.
-- **For `WSL-82`:** 303 top-level `wsl-toolkit` cases on Windows, 296 passed, 7
-  skipped; 302 in `golang:1.25`, 301 passed, 1 skipped. A real guest's payload
-  printing the two panic lines exit 7 with its whole output, where the build before
-  answered exit 2.
-- **For `WSL-67`'s Nix work:** in `docker.io/nixos/nix:latest`, Nix 2.35.2, a new
-  unprivileged account installed 16 names through flakes in 24 s and again in 10 s;
-  a `nix-env` account through channels in 9 s; 25 of 25 table attributes evaluate.
-  ShellCheck 0.9.0 in `ubuntu:24.04` clean over 34 tracked scripts; the Linux and
-  Windows Go proofs exit 0.
+- **At the start of this session:** the doctor exit 0 in 37.62 s at 00:40:58Z; the
+  gate exit 0, 20 checks green in 37.47 s at 00:41:42Z; `wsl -l -v` matched the host
+  state below; CI run 34869369358 for `45fc7cc` was green.
+- **For `WSL-85`:** on the throwaway `wsl-toolkit-p67`, a sudo drift made `base status
+  --probe` exit 1 in 0.5 s and `base ensure` provision again in 15.9 s and 16.0 s; a
+  rule the tool did not write made `base ensure` exit 2 in 14.5 s. The Go suites green:
+  305 top-level `wsl-toolkit` cases on Windows with `TEMP` at the 8.3 path, 297 passed,
+  8 skipped; 304 in `golang:1.25`, 303 passed, 1 skipped. ShellCheck 0.9.0 in
+  `ubuntu:24.04` clean over 34 tracked scripts.
+- **For `WSL-67`'s provider profiles, on `wsl-toolkit-p67`:** a build from nothing with
+  automount and interop off, systemd, the developer toolset and one read-write grant
+  under `.tmp` took 67.3 s. As the account: the grant the one DrvFS mount beside WSL's
+  own `/usr/lib/wsl/drivers`, a sentinel read and a file written back to Windows, no
+  `/mnt` drive, no interop, systemd PID 1, `mount -t drvfs C:` refused. Zero grants: the
+  probe exit 1 naming the stale mount, and `base ensure` removed it in 20.4 s. `base
+  grant` and `base revoke` 0.31 s and 0.29 s.
+- **For `WSL-67`'s Nix work, on 2026-09-14:** in `docker.io/nixos/nix:latest`, Nix
+  2.35.2, a new unprivileged account installed 16 names through flakes in 24 s and again
+  in 10 s; a `nix-env` account through channels in 9 s; 25 of 25 table attributes
+  evaluate.
 - **WSL networking:** NAT mode, host address `172.23.96.1`, read by `wsl-toolkit
   hostaddress`. Two distributions share one network namespace, in `WSL-68`.
 - **herdr:** 0.9.0 is the latest stable release, published 2026-09-07, read on
@@ -139,7 +139,10 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 - **For `WSL-71`:** on the throwaway `m71`, with automount off WSL starts a command in
   the account's home; with it on, in the Windows directory.
 - **For `WSL-67`'s BSD drives:** NetBSD 11.0 and OpenBSD 7.9 are the current releases,
-  read from the mirrors on 2026-09-14. QEMU 11.1.0 here has no `sga` device.
+  read from the mirrors on 2026-09-14. QEMU 11.1.0 here has no `sga` device; with no
+  disk, SeaBIOS's banner and boot messages reached `-serial stdio` under `-M
+  q35,graphics=off` and under an `etc/sercon-port` fw_cfg file, and nothing did under a
+  plain `-M q35`, on 2026-09-15.
 
 ## Found, and not filed
 
@@ -174,40 +177,48 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-14:
 11. ⚠ **`wsl-toolkit-podbox` has every drive mounted `9p rw`**, read on 2026-09-14,
     and no configuration of its own, so it answers to the default `ro`. Its next
     `base ensure` provisions it again. It is not this session's to change.
+12. ⚠ **23 more lines in nine files name an error by the first line of a guest
+    command's stderr**, where wsl.exe can write a line of its own first: `adapters.go`,
+    `base.go`, `cleanup_run.go`, `engine.go`, `inspect.go`, `job.go`, `matrix.go`,
+    `resources.go` and `throwaway.go`, found by `WSL-85`'s door sweep on 2026-09-15.
+    `WSL-85` fixed the verifier's; none of the others was measured naming a wsl.exe
+    line.
+13. A base built from nothing with automount and interop off printed 93 `wsl: Failed
+    to translate` lines between provisioning and its restart, measured on 2026-09-15.
+    Read, not measured: `appendWindowsPath=false` takes effect at that restart.
+14. The verifier's `interop on` checks nothing, so a base configured with interop on
+    over a guest without it verifies. Read on 2026-09-15, not measured, and it grants
+    no authority.
 
 ## Review findings
 
-Each closed entry carries its three reviews. `WSL-84`'s door sweep found `base shell
---root` calling read-only drives writable and `base shell --here` trusting the setting
-over a guest with no drive, and both now read the mounts. `WSL-83`'s door sweep found
-no second writer of the image, and its claim audit corrected three messages written
-for the image a run used to write. `WSL-82`'s claim audit corrected the manual's
-"as soon as". `WSL-67`'s checkpoint: the claim audit found the Nix version probe
-outside `nix_run`, where the documentation said every Nix command gets the settings,
-and the probe now goes through it; its closing reviews are still owed.
+Each closed entry carries its three reviews. `WSL-85`'s door sweep found 23 more
+error messages named by a guest's first stderr line, recorded above; its claim audit
+corrected the manual's first draft, which said a disagreeing base "answers exit 1" and
+named no command. `WSL-67`'s checkpoint: the claim audit found the Nix version probe
+outside `nix_run`, where the documentation said every Nix command gets the settings, and
+the probe now goes through it; its closing reviews are still owed.
 
 ## Open questions for the operator
 
-None beyond the download approval above, which is an action at the resume point. The
-later Muse session still needs the operator to run `muse login`.
+The download approval above. The later Muse session still needs the operator to run
+`muse login`.
 
 ## Host state
 
-- Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit`
-  and `wsl-toolkit-podbox`, as at the session's start. `eph-pgb` keeps its disk
-  under `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
-- ⭐ **No throwaway is left.** `wsl-toolkit-m84` was removed with its instance
-  directory, and `instances` holds `acc`, `muse`, `nobase`, `podbox` and
-  `podbox-migrate`, as at the start. `instances\muse` holds nothing.
-- The base's image store no longer holds `docker.io/nixos/nix:latest`, pulled for
-  `WSL-67` and removed. The partial NetBSD and OpenBSD downloads under `.tmp` are
-  removed.
+- Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit` and
+  `wsl-toolkit-podbox`, as at the session's start, and the throwaway
+  `wsl-toolkit-p67`, whose state and disk are under this repository's
+  `.tmp\wtk67-home`, kept while `WSL-67`'s provider-profile cases are written and
+  removed before the session ends. `eph-pgb` keeps its disk under
+  `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
+- `instances` under `%LOCALAPPDATA%\wsl-toolkit` holds `acc`, `muse`, `nobase`,
+  `podbox` and `podbox-migrate`, as at the start. `instances\muse` holds nothing.
+- No BSD image is downloaded. The shared FreeBSD image is the published one,
+  6,476,638,208 bytes, SHA-256 `12807CE7…921663BF`, not booted this session.
 - herdr 0.9.0 is installed on Windows by the operator. `%USERPROFILE%\bin` holds no
   `muse.exe`.
 - The dedicated SSH key the ruling allows is at
   `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with an empty `known_hosts` beside it,
   and stays for `wsl-toolkit-base`. `%USERPROFILE%\.ssh\config` reads SHA-256
-  `18FC11BE…E93F4`, unchanged through the session.
-- ⭐ **The shared FreeBSD image is the published one**, 6,476,638,208 bytes, SHA-256
-  `12807CE7…921663BF`, booted eight times through overlays and unchanged. No run grows
-  or writes it now, and no QEMU process is left.
+  `18FC11BE…E93F4`, as at the last session's end.

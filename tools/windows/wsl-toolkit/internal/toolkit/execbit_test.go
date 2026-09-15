@@ -250,6 +250,87 @@ func TestPasswordlessSudoIsValidatedBeforeActivation(t *testing.T) {
 	}
 }
 
+// verifierSudoSection is the verifier's own passwordless sudo section.
+func verifierSudoSection(t *testing.T) string {
+	t.Helper()
+	script := string(verifyScript)
+	begin := strings.Index(script, "# >>> passwordless sudo: begin\n")
+	end := strings.Index(script, "# <<< passwordless sudo: end\n")
+	if begin < 0 || end < begin {
+		t.Fatalf("the verifier's passwordless sudo section is not marked: begin at %d, end at %d", begin, end)
+	}
+	return "set -eu\n" + script[begin:end]
+}
+
+// TestTheVerifierReadsTheSudoItPromises runs the verifier's sudo section through a
+// real POSIX shell, with a sudo written here that answers as a rule would.
+//
+// ⛔ WSL-85. A base built with passwordless sudo and set to false kept the rule, and
+// `base status --probe` answered healthy and printed `passwordless false`, because
+// the verifier checked nothing for false. Measured on a throwaway arch base on
+// 2026-09-15.
+func TestTheVerifierReadsTheSudoItPromises(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the verifier is read by a POSIX shell, and this host has none to hand it to")
+	}
+	if _, err := os.Stat("/bin/sh"); err != nil {
+		t.Skip("no /bin/sh on this host")
+	}
+	const (
+		granted = "exit 0"
+		refused = "echo 'sudo: a password is required' >&2; exit 1"
+		absent  = ""
+	)
+	cases := []struct {
+		name, setting, sudo string
+		exit                int
+		refusal             string
+	}{
+		{"a rule kept under false, the measured defect", "false", granted, 3,
+			"the configured account can use sudo without a password, and passwordless sudo is off"},
+		{"no rule under false", "false", refused, 0, ""},
+		{"no sudo under false", "false", absent, 0, ""},
+		{"a rule under true", "true", granted, 0, ""},
+		{"no rule under true", "true", refused, 3, "the configured account cannot use sudo without a password"},
+		{"no sudo under true", "true", absent, 3, "passwordless sudo was requested and sudo is absent"},
+		{"a setting the script does not know", "yes", granted, 3, "unknown passwordless sudo setting yes"},
+	}
+	for _, c := range cases {
+		dir := t.TempDir()
+		if c.sudo != absent {
+			if err := os.WriteFile(filepath.Join(dir, "sudo"), []byte("#!/bin/sh\n"+c.sudo+"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command("/bin/sh", "-c", verifierSudoSection(t))
+		// ⛔ PATH IS THIS DIRECTORY ALONE. A runner whose own account has passwordless
+		// sudo would otherwise answer every case from its real sudo.
+		cmd.Env = []string{"PATH=" + dir, "TK_PASSWORDLESS_SUDO=" + c.setting}
+		var stdout, stderr bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		code := 0
+		if err := cmd.Run(); err != nil {
+			var exited *exec.ExitError
+			if !errors.As(err, &exited) {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			code = exited.ExitCode()
+		}
+		if code != c.exit {
+			t.Errorf("%s: exit %d, want %d; stderr %q", c.name, code, c.exit, stderr.String())
+		}
+		if c.exit == 0 && stdout.String() != "passwordless-sudo "+c.setting+"\n" {
+			t.Errorf("%s: stdout %q, want the setting's row", c.name, stdout.String())
+		}
+		if c.refusal == "" && stderr.Len() > 0 {
+			t.Errorf("%s: wrote to stderr over sudo that agrees: %q", c.name, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), c.refusal) {
+			t.Errorf("%s: stderr %q does not name %q", c.name, stderr.String(), c.refusal)
+		}
+	}
+}
+
 // TestTheProvisionerScopesEveryRestrictiveUmask is the case for a mask that
 // leaked. The sudoers candidate took `umask 077` at the top level of the script,
 // so every later step inherited it: a fresh build left /workspaces at 0700 and
@@ -489,6 +570,31 @@ func TestAVerifierRefusalNamesTheSettingAndNotAContainer(t *testing.T) {
 	}
 	if timeout := verifyError("toolkit", 124, "automount ro\n", "verify: "+drives+"\n"); timeout == nil || !strings.HasPrefix(timeout.Error(), "a container did not run as toolkit (exit 124)") {
 		t.Errorf("a verification ended by its deadline was read as a refusal: %v", timeout)
+	}
+}
+
+// TestAVerifierRefusalIsReadPastWslsOwnLines is the refusal WSL-85 measured. After a
+// restart wsl.exe wrote its own line ahead of the verifier's on the same stream, and
+// `base ensure` over a sudo rule it could not remove said "a container did not run as
+// agent (exit 3): wsl: Failed to start the systemd user session for 'agent'".
+func TestAVerifierRefusalIsReadPastWslsOwnLines(t *testing.T) {
+	const (
+		session = "wsl: Failed to start the systemd user session for 'agent'. See journalctl for more details."
+		sudo    = "the configured account can use sudo without a password, and passwordless sudo is off"
+		engine  = "Error: current system boot ID differs from cached boot ID; an unclean shutdown may have occurred."
+	)
+	refused := verifyError("agent", verifyRefused, "automount off\n", session+"\nverify: "+sudo+"\n")
+	if refused == nil || refused.Error() != "the base does not match its configuration, checked as agent: "+sudo {
+		t.Errorf("a refusal after wsl.exe's own line read %v", refused)
+	}
+	failed := verifyError("agent", 125, "", session+"\r\n"+engine+"\n")
+	if failed == nil || failed.Error() != "a container did not run as agent (exit 125): "+engine {
+		t.Errorf("an engine failure after wsl.exe's own line read %v", failed)
+	} else if _, ok := staleRunStateRemediation(failed.Error()); !ok {
+		t.Errorf("an engine failure after wsl.exe's own line lost the words its remediation reads: %v", failed)
+	}
+	if only := verifyError("agent", 1, "", session+"\n"); only == nil || only.Error() != "a container did not run as agent (exit 1): "+session {
+		t.Errorf("a failure with nothing but wsl.exe's line named nothing: %v", only)
 	}
 }
 

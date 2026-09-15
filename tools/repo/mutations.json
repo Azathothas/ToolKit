@@ -841,6 +841,33 @@
       "args": []
     },
     {
+      "label": "sudo: the verifier refusing passwordless sudo the configuration turned off",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then",
+      "replace": "    if false; then",
+      "run": "TestTheVerifierReadsTheSudoItPromises",
+      "args": []
+    },
+    {
+      "label": "sudo: a verifier refusal read past wsl.exe's own lines",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif refusal, ok := lastPrefixed(stderr, \"verify: \"); ok {",
+      "replace": "\t\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok {",
+      "run": "TestAVerifierRefusalIsReadPastWslsOwnLines",
+      "args": []
+    },
+    {
+      "label": "sudo: wsl.exe's own lines left out of a failure's detail",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif line == \"\" || strings.HasPrefix(line, \"wsl: \") {",
+      "replace": "\t\tif line == \"\" {",
+      "run": "TestAVerifierRefusalIsReadPastWslsOwnLines",
+      "args": []
+    },
+    {
       "label": "a restrictive umask kept inside its subshell",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/provision.sh",
@@ -952,8 +979,8 @@
       "label": "drives: a verifier refusal naming the setting and not a container",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/base.go",
-      "find": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok && code == verifyRefused {",
-      "replace": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok && false {",
+      "find": "\tif code == verifyRefused {",
+      "replace": "\tif false {",
       "run": "TestAVerifierRefusalNamesTheSettingAndNotAContainer",
       "args": []
     },
@@ -961,8 +988,8 @@
       "label": "drives: only the verifier's own exit read as its refusal",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/base.go",
-      "find": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok && code == verifyRefused {",
-      "replace": "\tif refusal, ok := strings.CutPrefix(firstLine(stderr), \"verify: \"); ok {",
+      "find": "\tif code == verifyRefused {",
+      "replace": "\tif true {",
       "run": "TestAVerifierRefusalNamesTheSettingAndNotAContainer",
       "args": []
     },

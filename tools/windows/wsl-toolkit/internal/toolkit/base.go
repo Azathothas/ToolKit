@@ -926,11 +926,48 @@ const verifyRefused = 3
 // ⛔ THE CODE, NOT THE ERROR. Exec answers a guest's nonzero exit with a
 // ProcessError beside its code, so a refusal arrives with an error too, and the
 // first build that asked for no error never recognised one on a real guest.
+//
+// ⛔ WSL'S OWN LINES ARE NOT THE GUEST'S. After a restart wsl.exe wrote `wsl: Failed
+// to start the systemd user session for 'agent'` ahead of the verifier's refusal,
+// and the first line named that: a passwordless sudo refusal read "a container did
+// not run as agent (exit 3): wsl: ...". WSL-85. The refusal is the last `verify:`
+// line, and any other failure is named by the first line that is not wsl.exe's.
 func verifyError(user string, code int, stdout, stderr string) error {
-	if refusal, ok := strings.CutPrefix(firstLine(stderr), "verify: "); ok && code == verifyRefused {
-		return fmt.Errorf("the base does not match its configuration, checked as %s: %s", user, refusal)
+	if code == verifyRefused {
+		if refusal, ok := lastPrefixed(stderr, "verify: "); ok {
+			return fmt.Errorf("the base does not match its configuration, checked as %s: %s", user, refusal)
+		}
 	}
-	return fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, firstLine(stderr+stdout))
+	detail := firstLine(strings.Join(append(guestLines(stderr), guestLines(stdout)...), "\n"))
+	if detail == "" {
+		detail = firstLine(stderr + stdout)
+	}
+	return fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, detail)
+}
+
+// guestLines are the lines of a guest command's stream that are not blank and not
+// wsl.exe's own, which it writes on the same stream beginning `wsl: `.
+func guestLines(s string) []string {
+	var lines []string
+	for _, line := range strings.FieldsFunc(s, func(r rune) bool { return r == '\n' || r == '\r' }) {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "wsl: ") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// lastPrefixed answers the last guest line of s that starts with prefix, without it.
+func lastPrefixed(s, prefix string) (string, bool) {
+	lines := guestLines(s)
+	for i := len(lines) - 1; i >= 0; i-- {
+		if rest, ok := strings.CutPrefix(lines[i], prefix); ok {
+			return rest, true
+		}
+	}
+	return "", false
 }
 
 // parseAutomount reads the drives verify.sh measured from its `automount` row.

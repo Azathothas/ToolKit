@@ -108,6 +108,12 @@ case "$TK_SYSTEMD:$pid_one" in
 esac
 printf 'systemd %s pid-one %s\n' "$TK_SYSTEMD" "$pid_one"
 
+# >>> passwordless sudo: begin
+# ⛔ BOTH SETTINGS ARE READ FROM WHAT sudo ANSWERS. A base built with passwordless
+# sudo and set to false kept the rule, and this printed `passwordless-sudo false`
+# and passed, because nothing was checked for false. WSL-85. Provisioning removes
+# the rule this tool wrote, so a refusal that outlives it names a rule from
+# elsewhere.
 case "$TK_PASSWORDLESS_SUDO" in
   true)
     command -v sudo >/dev/null 2>&1 || {
@@ -119,10 +125,16 @@ case "$TK_PASSWORDLESS_SUDO" in
       exit 3
     }
     ;;
-  false) ;;
+  false)
+    if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+      printf 'verify: the configured account can use sudo without a password, and passwordless sudo is off\n' >&2
+      exit 3
+    fi
+    ;;
   *) printf 'verify: unknown passwordless sudo setting %s\n' "$TK_PASSWORDLESS_SUDO" >&2; exit 3 ;;
 esac
 printf 'passwordless-sudo %s\n' "$TK_PASSWORDLESS_SUDO"
+# <<< passwordless sudo: end
 
 for xdg_dir in "$HOME/.config" "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state"; do
   if [ ! -d "$xdg_dir" ] || [ ! -w "$xdg_dir" ]; then

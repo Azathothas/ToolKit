@@ -134,6 +134,18 @@ writable, and `--here` into a base with no drive mounted is refused with exit 2 
 | guest root remounts one drive `rw` in an `ro` base | `base status --probe` exit 1, the drives `mixed`, 9 read-only and 1 writable; `base ensure` exit 0 in 4.5 s, and the drive `ro` again |
 | `base shell --here` on a base built `off` and set to `ro` | exit 2 naming `base ensure`; after it, the shell started in a directory under `/mnt/c` |
 
+⛔ **A changed `base.passwordless_sudo` is applied too, and read from what `sudo`
+answers.** The verification runs `sudo -n true` as the account, which must succeed
+under `true` and be refused under `false`. `base status --probe` answers exit 1 naming a
+base that disagrees, and `base ensure` provisions it again, which writes or removes the
+rule this tool owns, `/etc/sudoers.d/wsl-toolkit-ACCOUNT`. ⚠ Any other rule that grants
+it stays, and the ensure then answers exit 2 with the same refusal.
+
+| measured on 2026-09-15, on a throwaway arch base with interop off | result |
+| --- | --- |
+| set from `false` to `true`, then from `true` to `false` | each time `base status --probe` exit 1 naming the account's sudo; `base ensure` exit 0 in 15.9 s and 16.0 s, provisioning again; then `sudo -n true` granted, then refused, and the probe exit 0 |
+| under `false`, a second rule that is not this tool's granting the account sudo | `base ensure` exit 2 in 14.5 s, `re-provisioned and it still does not verify`, naming the account's sudo; with that rule removed, exit 0 in 2.5 s |
+
 `base exec` is the non-interactive host-to-guest seam. It starts as the
 configured account in that account's home unless `--dir` names an absolute
 guest path, sends the command or `--script` body framed on stdin with
