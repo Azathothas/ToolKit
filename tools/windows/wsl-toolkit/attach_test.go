@@ -28,7 +28,7 @@ func TestTheAttachLineUsesTheServersKeys(t *testing.T) {
 	if ans.Windows != "herdr --remote wsl-toolkit-base --remote-keybindings server" {
 		t.Fatalf("the Windows line is %q", ans.Windows)
 	}
-	if ans.Linux[0] != "wsl-toolkit --instance base base shell" || !strings.HasPrefix(ans.Agents, "wsl-toolkit --instance base base exec ") {
+	if ans.Linux[0] != "wsl-toolkit --instance base base shell" || !strings.HasPrefix(ans.Agents, "wsl-toolkit --instance base base herdr -- ") {
 		t.Fatalf("the other lines do not carry the instance: %q, %q", ans.Linux, ans.Agents)
 	}
 }

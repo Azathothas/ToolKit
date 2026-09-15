@@ -154,7 +154,13 @@ fi
 HOOK_DIR=$TK_HOME/.local/share/wsl-toolkit
 HOOK=$HOOK_DIR/herdr-agent-state.sh
 HOOK_MARK=/wsl-toolkit/herdr-agent-state.sh
-MUSE_SETTINGS=$TK_HOME/.muse/settings.json
+# ⛔ THE FILE MUSE READS, measured on Muse Code 1.3.0 with its credential-free echo
+# provider: hooks in $HOME/.config/muse/settings.json ran, and the same hooks in
+# ~/.muse/settings.json or in a workspace's .muse/settings.json were ignored without a
+# word. Muse's config root is $XDG_CONFIG_HOME/muse, and this tool sets no
+# XDG_CONFIG_HOME for the account.
+MUSE_CONFIG_DIR=$TK_HOME/.config/muse
+MUSE_SETTINGS=$MUSE_CONFIG_DIR/settings.json
 HOOK_EVENTS='SessionStart UserPromptSubmit PreToolUse PermissionRequest Stop SessionEnd'
 
 herdr_reporter_skip=
@@ -196,25 +202,40 @@ else
   fi
 
   # ⛔ MUSE'S settings.json IS MERGED, NEVER REPLACED. It is the operator's file and
-  # carries their own settings; herdr's own unmerged plumbing did the same. jq does
-  # the merge, so a value this adapter does not name is preserved exactly.
-  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0700 "$TK_HOME/.muse"
-  [ -f "$MUSE_SETTINGS" ] || as_account sh -c "printf '{}\n' > '$MUSE_SETTINGS'"
-  if ! as_account jq -e . "$MUSE_SETTINGS" >/dev/null 2>&1; then
-    die "$MUSE_SETTINGS is not valid JSON, so it was left untouched. Read it, then run base ensure again"
+  # carries their own settings. jq does the merge, so a value this adapter does not
+  # name is preserved exactly.
+  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0700 "$MUSE_CONFIG_DIR"
+  # ⛔ A NEW FILE CARRIES schema_version 1, AND A FILE WITHOUT ONE IS REFUSED. Muse
+  # refuses to start over a settings file with no schema_version, measured as
+  # `malformed settings file ... missing field schema_version`, so the `{}` an earlier
+  # draft wrote would have ended every Muse session in this base.
+  [ -f "$MUSE_SETTINGS" ] || as_account sh -c "printf '{\"schema_version\":1}\n' > '$MUSE_SETTINGS'"
+  if ! as_account jq -e 'type == "object" and has("schema_version")' "$MUSE_SETTINGS" >/dev/null 2>&1; then
+    die "$MUSE_SETTINGS is not a Muse settings document: Muse reads only a JSON object carrying schema_version, and refuses to start over any other. It was left untouched. Read it, then run base ensure again"
   fi
+  # ⛔ THE TEMPORARY FILE STAYS ROOT'S until install gives the result to the account.
+  # systemd sets fs.protected_regular = 1, under which root's own redirect into a file
+  # in sticky /tmp that another account owns is refused with Permission denied, and an
+  # earlier draft chowned the file first. Measured in a base on 2026-09-15.
   settings_tmp=$(mktemp)
-  chown "$TK_USER" "$settings_tmp"
-  # ⚠ ONE ENTRY PER EVENT, and every OLD one of ours is dropped first. ⛔ Keying on
-  # the current path alone was measured leaving a dead entry behind when the path
-  # moved, and a hook that no longer exists still runs on every event of every turn.
-  # The marker is the trailing path this adapter always writes, so our entry is
-  # recognised wherever the account's home is, and nobody else's is touched.
+  # ⛔ A MATCHER GROUP PER EVENT, NOT A BARE COMMAND. On Muse Code 1.3.0 a command
+  # listed straight under an event was accepted and never run; the same command inside
+  # {"matcher":"","hooks":[...]} ran on every event it was listed for.
+  # ⚠ EVERY OLD ENTRY OF OURS IS DROPPED FIRST. Keying on the current path alone left a
+  # dead entry behind when the path moved, and a hook that no longer exists still runs
+  # on every event of every turn. The marker is the trailing path this adapter always
+  # writes, so our entry is recognised wherever the account's home is; a group of the
+  # operator's own keeps every hook of theirs.
   # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
   if as_account jq --arg hook "$HOOK" --arg mark "$HOOK_MARK" --arg events "$HOOK_EVENTS" '
+      def ours: (.command // "") | endswith($mark);
       ($events | split(" ")) as $names
       | .hooks = ((.hooks // {}) | reduce $names[] as $n (.;
-          .[$n] = (((.[$n] // []) | map(select(((.command // "") | endswith($mark)) | not))) + [{"type":"command","command":$hook}])))
+          .[$n] = (((.[$n] // [])
+                    | map(if ((.hooks | type) == "array") and any(.hooks[]; ours)
+                          then (.hooks |= map(select(ours | not))) | select((.hooks | length) > 0)
+                          else . end))
+                   + [{"matcher":"","hooks":[{"type":"command","command":$hook}]}])))
     ' "$MUSE_SETTINGS" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
     if cmp -s "$settings_tmp" "$MUSE_SETTINGS"; then
       rm -f "$settings_tmp"

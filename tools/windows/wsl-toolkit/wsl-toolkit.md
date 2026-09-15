@@ -143,15 +143,19 @@ writable, and `--here` into a base with no drive mounted is refused with exit 2 
 
 ## ⭐ Reaching herdr, and through it the agents
 
-Three routes, and which one an agent uses depends only on what it can run.
+Two routes for a command, and a terminal UI for a person.
 
 ```powershell
-herdr --machine base agent list                 # herdr on Windows, over SSH
-wsl-toolkit base herdr -- agent list            # through this tool, no herdr on Windows
+wsl-toolkit base herdr -- agent list            # one herdr command, its arguments as arguments
 wsl-toolkit base exec -c 'herdr agent list'     # the general channel
 ```
 
-⭐ **`base herdr` exists because the third line is a quoted shell string.** A herdr
+⛔ **The herdr the base pins, 0.9.0, has no `--machine` prefix.** Its Windows client
+exits 2 on the flag, `unknown option: --machine`, measured on 2026-09-15. A build of
+herdr's development branch has it, and refuses a 0.9.0 server with `remote Herdr does
+not support machine API forwarding`, so the prefix needs a newer herdr on both sides.
+
+⭐ **`base herdr` exists because the second line is a quoted shell string.** A herdr
 prompt is prose, and prose carries quotes, dollar signs and backticks; measured on
 2026-09-09 against a real distribution, a payload's backtick was EXECUTED and the
 command still reported exit 0. `base herdr` takes herdr's arguments as arguments
@@ -263,7 +267,7 @@ wsl-toolkit --instance base base attach
 
 `base attach` prints the commands with the values filled in, and runs none of them:
 `herdr --remote wsl-toolkit-base --remote-keybindings server` from Windows, the
-`base shell` line for a client inside, and a `base exec` line for an agent.
+`base shell` line for a client inside, and a `base herdr` line for an agent.
 `--json` answers the same as a document, with exit 1 and the reason when this
 machine's half is missing. [`examples/common/herdr.md`](examples/common/herdr.md) is
 the guide for the operator and for an agent.
@@ -303,6 +307,25 @@ resolves, and whether a credential file is present, never what it holds.
 | the same build, with that digest as `installer_sha256` | exit 0 in 5.6 s, approved by the configuration |
 | `base ensure` over an installed Muse | exit 0 in 3.8 s, the installer not fetched |
 | `muse --version` through `base exec`, then as root | `Muse Code 1.2.1 (1.2.1-R2847.1)`, then exit 126 |
+
+⭐ **With the `herdr` adapter beside it, `muse` also reports Muse's lifecycle to
+herdr.** It installs a hook at `~/.local/share/wsl-toolkit/herdr-agent-state.sh` and
+registers it in `~/.config/muse/settings.json`, the file Muse reads, for
+`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `Stop` and
+`SessionEnd`, merged into what the file already holds. The hook finds the herdr pane
+Muse runs in and reports `idle`, `working` or `blocked` for it, and releases the pane
+when the session ends. ⛔ A settings file that is not a JSON object carrying
+`schema_version` stops the ensure with the file untouched, because Muse refuses to
+start over one. `base status --probe` reports the events the hook is registered for
+and runs its self-test.
+
+| measured on 2026-09-15, herdr 0.9.0 and Muse Code 1.3.0 with `--provider echo`, in a pane of the base | result |
+| --- | --- |
+| the same hook in `~/.config/muse/settings.json`, `~/.muse/settings.json` and a workspace's `.muse/settings.json` | it ran from the first only; the other two were ignored without a word |
+| the command straight under an event, then inside `{"matcher":"","hooks":[...]}` | it ran only inside the matcher group |
+| a settings file with no `schema_version` | Muse exit 1, `malformed settings file ... missing field schema_version` |
+| a turn submitted with `herdr agent prompt` | reported `idle`, `working`, `idle`; `herdr agent wait --until working` returned when the hook reported, with no screen rule matching |
+| `/exit`, then `muse resume` and a prompt | reported `idle` and released; the resumed session sent no `SessionStart`, and the hook adopted the pane at a sequence above the release |
 
 ⚠ **Both adapters are driven on the `arch` preset, herdr with systemd, and a
 configuration naming either on anything else is refused.** Removing herdr from a

@@ -6976,6 +6976,94 @@ What that session owns, read against the entries:
 
 `WSL-68`, the sealed base, is a dedicated session of its own before this one.
 
+## Amendment, 2026-09-15: the interactive session measures the four, and the reporter meets a real herdr
+
+⚠ **Conditions:** `wsl-toolkit-base`, built this session from
+`examples/muse-code/wsl-toolkit-base.json` saved as the instance's own configuration;
+herdr 0.9.0 on Windows from scoop and in the base; Muse Code 1.3.0
+(`1.3.0-R3057.1`), which the approved installer digest now serves, driven with its
+credential-free `--provider echo` because `muse login` had not happened.
+
+### ⭐ The four measurements the sweep named, in order
+
+| # | question | measured |
+| --- | --- | --- |
+| 1 | the Windows herdr | `herdr 0.9.0`, exit 0. `#4176` is closed `not_planned` as a duplicate of `#4038`, which herdr closed `completed` on 2026-09-13 as fixed on its development branch. ⛔ The four fix commits `#4038` names are 20 to 51 commits after `v0.9.0` and after the newest preview, `preview-2026-09-08-62431dbd033b`, read with GitHub's compare API: **no published herdr carries them** |
+| 2 | `--remote`, `--machine`, `machine add` | `--remote`: owed, below. ⛔ `--machine`: exit 2, `unknown option: --machine` - it is not in 0.9.0. `herdr machine add wsl-toolkit-base --label base`: exit 0 in 2.7 s, the profile saved in `%LOCALAPPDATA%\herdr\client\endpoints.json`, nothing installed in the base, no second server, and a workspace `w2` created on a server that had none |
+| 3 | a foreground process group in WSL | ⭐ **exposed.** A pane running `sleep 300`: herdr's `pane process-info` answered `foreground_process_group_id` 3644 and `ps` answered `TPGID` 3644 on `pts/7`, so `HERDR_PROCESS_DETECTION=child-groups` is not needed |
+| 4 | Muse's identity through this tool's wrapper | ⭐ **kept.** `muse --provider echo --trust-workspace` in a pane: herdr named the agent `muse` from the process `muse-bin-1.3.0-`, argv `~/.local/bin/muse-bin-1.3.0-R3057.1` of the account, because every hop `exec`s. ⚠ `agent explain`: manifest `2026.08.26.1`, `rule: none`, `fallback_reason: default_known_agent_idle_fallback` - no screen rule matches Muse 1.3.0's input screen |
+
+⛔ **What the sweep got wrong, and why:** it read herdr's `docs/next`, the pages for
+the unreleased version. `docs/versions/0.9.0` agrees with itself that multi-machine is
+not verified or supported on a Windows client, and has no `--machine`.
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) carries the
+row-by-row correction, including two more: herdr's Linux release binary is static and
+carries musl's allocator itself, so the base's libc does not avoid `#4174`; and no
+update exists to apply for `#4176`.
+
+### ⛔ The reporter's first real run found four defects, and none was visible to the stub
+
+`base ensure` from nothing **exit 2 in 92.34 s**: herdr healthy, Muse 1.3.0 installed,
+then `/tmp/tmp.X3WzEiEIg6: Permission denied` merging the reporter into
+`~/.muse/settings.json`.
+
+| defect | measured | fixed |
+| --- | --- | --- |
+| root's redirect into a temporary file chowned to the account | systemd's `/usr/lib/sysctl.d/50-default.conf` sets `fs.protected_regular = 1`; root's write into a herdr-owned file in `/tmp` refused, into a root-owned one allowed | the temporary file stays root's until `install -o` places the result |
+| the wrong file | hooks in `~/.config/muse/settings.json` ran; in `~/.muse/settings.json` and a workspace's `.muse/settings.json` they were ignored, every shape | `MUSE_SETTINGS` is `~/.config/muse/settings.json`, and the probe reads the same file |
+| the wrong shape | a command straight under an event never ran; inside `{"matcher":"","hooks":[...]}` it ran for `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` | the merge writes one matcher group per event and drops only our old commands |
+| the `{}` a new file got | Muse exit 1, `malformed settings file ... missing field schema_version` | a new file carries `schema_version: 1`, and one without it stops the ensure untouched |
+
+⭐ **Proved:** `TestTheHerdrReporterIsRegisteredWhereMuseReadsIt`, the first case to
+reach the registration branch, passes in `golang:1.25` with `jq` and skips on
+Windows; **5 new mutation rows, and `repo mutate --only muse:` 8 of 8 guards proved in
+`golang:1.25` in 34.3 s**. Over the fix, `base ensure` exit 0 in 4.5 s, the muse
+adapter healthy with `herdr_reporter_events` naming all six events.
+
+### ⭐ The lifecycle, against herdr 0.9.0 and Muse 1.3.0, in a pane of the base
+
+| step | the reporter's log | herdr |
+| --- | --- | --- |
+| the first prompt, by `herdr agent prompt` | `reported idle seq=1`, `working seq=2`, `idle seq=3`. ⚠ `SessionStart` arrived with the first submit, not at start | `state_change_seq` 1 to 3 |
+| a second prompt, with `herdr agent wait --until working` waiting | `reported working seq=4` at 10:57:04Z | the wait returned `working`, exit 0, 0.6 s after the submit, with no screen rule matching |
+| `/exit` | `reported idle seq=6`, `released seq=7`, the bindings file empty | `agent list` empty |
+| `muse resume ID`, then a prompt | no `SessionStart`; `adopted w1:p1 ... at seq 1789469866`, `working`, `idle` | accepted above the release |
+
+⚠ **Read in herdr's source at `v0.9.0`, `src/detect/mod.rs` and
+`src/terminal/state.rs`:** a full lifecycle authority, which turns screen detection
+off, is an allowlist of six `herdr:` sources. A `custom:` report is always effective
+for the pane's state, and a blocker on the screen still overrides it to `blocked`.
+`PreToolUse` and `PermissionRequest` are registered and not driven: the echo provider
+calls no tool.
+
+### herdr built from its development branch, by the operator's instruction of 2026-09-15
+
+The operator: "let's build herdr ourself (now locally for windows) and if it works, we
+will create a dedicated nightly builder for it on github and publish it on our repo".
+At `052779c4159ed851`, with herdr's own release settings:
+
+| target | result |
+| --- | --- |
+| `x86_64-pc-windows-msvc`, Rust 1.96.1, Zig 0.16.0, VS Build Tools 2022 | exit 0 in 227 s, `herdr.exe` 25,253,888 bytes, SHA-256 `88357283...736e3507`, staged with the ConPTY bundle whose three files match the development branch's pins |
+| `x86_64-unknown-linux-musl` in `rust:1.96.1-bookworm`, Zig's tarball checked against its published digest | exit 0 in 223.4 s, 26,059,064 bytes, SHA-256 `978fde51...9827d75` |
+| both, `--version` | ⚠ `herdr 0.9.0`: the development branch has not moved its version, so a build cannot be told from the release by asking it |
+| the Windows build, `--machine base agent list`, against the 0.9.0 server | exit 1 in 0.87 s, `remote Herdr does not support machine API forwarding` |
+
+⛔ **Publishing a herdr build from this repository contradicts `docs/AGENTS.md`
+section 1**, which says one thing is published from here. That is the operator's to
+rule on, in an entry of its own.
+
+### Still open, revised
+
+1. `--remote` measured by the operator in Windows Terminal, with the 0.9.0 client and
+   then the development build, against `#4176`'s signals: repaint, typed text, a
+   prefix command, resize, detach.
+2. `--machine` end to end, which needs the development build in the base too.
+3. Muse through herdr: the prove's two commands, after `muse login`.
+4. The attach line reaching the same server, and the close keys in Muse's own pane.
+5. `PreToolUse` and `PermissionRequest` reported from a real turn.
+6. The three reviews, and the closing.
+
 ---
 
 ## WSL-77. A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters
@@ -7522,6 +7610,42 @@ before it is written, which this entry already required; this table is why.
    route through this tool, given that `base exec` closes stdin. It is named here
    so the later session rules on it rather than discovering it.
 4. The closing, with the three reviews run again over what that drive adds.
+
+## Amendment, 2026-09-15: the launcher on the operator's own base, before the sign-in
+
+⚠ **Conditions:** `wsl-toolkit-base` as `WSL-76`'s amendment of the same date gives
+them, the launcher written by `base ensure` into the account's own
+`%USERPROFILE%\bin`, and a throwaway git project of three tracked files at
+`.tmp\wsl78\proj`.
+
+| measured | result |
+| --- | --- |
+| `base ensure` | wrote `%USERPROFILE%\bin\muse.exe`, 14,413,312 bytes; `Get-Command muse -All` names it alone |
+| `muse --version` from this repository's root, which no grant covers | ⭐ exit 2, and the `base grant --source` line for that directory: the prove's second condition |
+| `base grant --source . --mode rw` in the project | exit 0 in 0.33 s, `/workspaces/proj` mounted and written to the instance's own configuration |
+| `muse exec --json --provider echo --approval-mode never "..."` in the project | exit 0 in 0.98 s, 29 JSON records on stdout, Muse's `workspace root: /workspaces/proj` on stderr. ⚠ The echo provider answers with the prompt, so the number is still owed |
+| `base agent muse` with no argument, from an ungranted directory | exit 2 on the grant, before the screen rule |
+
+⛔ **The example page had two commands that fail as written**, both found by running
+them: `base grant . --mode rw`, exit 2 because `base grant` takes `--source` and no
+positional path; and `base agent muse`, exit 2 whether or not the directory is
+granted, while the page said it opens Muse's screen in a herdr pane. The page is
+rewritten to commands that were run, and to the instance's own configuration: a
+`--config` pointing at the example would let `base grant` edit the tracked file.
+
+⚠ **Muse's version moved under the approved installer**: the same digest,
+`5196d820...632a0ca`, now installs 1.3.0 where it installed 1.2.1 on 2026-09-14,
+because the installer fetches a launcher that fetches the current Muse.
+
+### Still open, revised
+
+1. The prove's first condition, and the guide, after `muse login`.
+2. The interactive screen through herdr: Muse started in a pane at the project's guest
+   path, attached from Windows, with `WSL-76`'s closing drive. ⭐ Its identity question
+   is answered in `WSL-76`: kept.
+3. ⚠ **The decision nobody has made** still stands: whether `muse serve`'s stdio
+   protocol gets a route through this tool.
+4. The closing, with the three reviews.
 
 ---
 

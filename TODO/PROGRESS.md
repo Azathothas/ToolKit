@@ -6,79 +6,52 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-15T06:16:51Z; the record commit's own time is its end
-baseline        53a8f1f, tree clean, doctor exit 0 in 27.79 s, gate 20 of 20 in 33.09 s
-head            aecba49, pushed with 72655ee green in CI; the gate is 21 of 21 since
+session started 2026-09-15T10:20:32Z; the record commit's own time is its end
+baseline        6f22e39, tree clean, doctor exit 0 in 39.71 s, gate 21 of 21 in 33.81 s
+head            6f22e39, pushed with its CI run 34955394330 green in all six jobs
 entries         total 124  open 6  blocked 0  done 118
-closed          WSL-71 in 8801301 and WSL-67 in 72655ee
-partial         WSL-68, its door enumeration done and four items named
-authored        WSL-88 and WSL-89, whose adapters are written and never run
+this session    WSL-76 and WSL-78 partial, the attended Muse and herdr session
 ```
 
 ## Active work
 
-⭐ **`WSL-71` is closed**, with its prove, its five hand-planted mutations and its three
-reviews. [`../scripts/common/shell-profile.sh`](../scripts/common/shell-profile.sh) is a
-new file other projects may fetch: an INTERACTIVE login shell on a Windows drive moves to
-the account's home, a shell `base shell --here` marked stays, and a granted directory is
-never touched.
+⭐ **This is the attended Muse and herdr session the work order reserved.**
+`wsl-toolkit-base` is built from the example profile, saved as the instance's own
+configuration, and holds herdr 0.9.0 and Muse Code 1.3.0. The operator's `muse login`
+has not happened yet.
 
-⭐ **`WSL-67` is closed on NetBSD, by the operator's ruling of 2026-09-15 that OpenBSD
-is enough left undriven.** Both package-manager arms were driven on NetBSD 11.0 booted
-under QEMU here: `pkgin` exit 0 with 0 failures, and the base `pkg_add` exit 0 after two
-defects the drive found were fixed. Both images were verified and removed.
+⭐ **The four measurements the sweep named are taken**, and three of them overturn the
+record. herdr on Windows is 0.9.0 and no published herdr carries `#4038`'s fix; ⛔
+**`herdr --machine` does not exist in 0.9.0**, because the sweep read herdr's
+unreleased `docs/next`; WSL exposes a foreground process group; and Muse started
+through this tool's wrapper keeps its identity to herdr. `WSL-76`'s amendment of
+2026-09-15 carries every number, and
+[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) the
+row-by-row correction.
 
-⭐ **The reference sweep of 2026-09-15 is done and recorded**, fourteen repositories
-including herdr itself, with commits and the tracker.
-[`../docs/reference-sweeps/findings.md`](../docs/reference-sweeps/findings.md) carries
-the verdicts and
-[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) the contract
-`WSL-76` and `WSL-78` are built from. ⛔ **Nothing in it was run**, and both entries now
-say so in their amendments.
+⭐ **The muse adapter's herdr reporter now runs against a real herdr and a real Muse.**
+Its first real run found four defects the stub could not: a temporary file
+`fs.protected_regular` refused, the wrong settings file, the wrong hook shape, and a new
+file Muse would refuse to start over. All four are fixed with a case and five mutation
+rows, and the full lifecycle, a `wait --until working` and resume adoption are measured
+in a pane of the base.
+
+⭐ **herdr is built here from its development branch, by the operator's instruction**,
+for Windows and for Linux, and neither is installed anywhere. The development client
+has `--machine` and refuses a 0.9.0 server. ⛔ **Publishing such a build contradicts
+`docs/AGENTS.md` section 1**, and is the operator's ruling to make.
 
 **Resume, in this order:**
 
-1. `WSL-68`'s four remaining items, listed in its own entry: a real `/etc/resolv.conf`
-   and the shared tmpfs closed at every start, the account's processes in their own
-   network namespace through `pasta`, the probe as a registered command, and the manual
-   paragraph. Its Approach step 1 is closed.
-2. **Muse and herdr together**, `WSL-76` and `WSL-78`, in the session the operator
-   reserved for it. ⛔ **Read the sweep first** - it changes both entries' premises and
-   names the version check that has to come before anything else.
-3. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
-   RUN**: the scripts exist, the executable registers them and the gate compares their
-   generated copies, and no base has installed either. Their entries carry what each
-   still owes.
-
-⭐ **Built on 2026-09-15 and awaiting the interactive session:** a herdr reporter for
-Muse of this repository's own, in the muse adapter, because herdr ships a Muse
-detection manifest and no integration and the one proposed upstream was closed
-unmerged. ⚠ **Its state machine was driven against a STUB herdr** that records what it
-is asked to do - the full lifecycle, subagent protection, resume adoption and the
-refusal to guess a pane - and never against a real herdr or a real Muse.
-
-⭐ **The executable now carries the general-purpose scripts.** `wsl-toolkit shipped
-list` names each with its length and SHA-256, and `base bootstrap` runs the carried
-bootstrap in the base with nothing copied anywhere. A `shipped` gate rule keeps the
-carried copy equal to the file this repository publishes; `TODO/RULES.md` section 4
-lists it as the fourth generated half.
-
-⛔ **The first thing the Muse and herdr session does is check a version.**
-`herdrdev/herdr#4176`, closed **`not_planned`**: **herdr 0.9.0's Windows `--remote`
-client repaints only on window-activation events and never applies prefix commands.**
-⛔ Closed `not_planned` is not fixed, so updating may not help and the behaviour is
-measured on this host first. The record's host state
-says the operator installed 0.9.0 and the adapter pins 0.9.0, so `WSL-76`'s prove is
-aimed at exactly that defect. ⛔ And `#4174`: a 0.9.0 Linux server aborts in a **musl**
-malloc check and kills every pane child, which is why the base preset is glibc.
-
-⛔ **Found while proving `WSL-86`, and not filed: the automount sweep is a race.** A
-Windows drive that appears between the provisioner's sweep and the restart that applies
-`automount off` leaves an empty mount point, and the base then fails verification.
-Measured on 2026-09-15 and recorded under "Found, and not filed" below, with the numbers.
-
-`WSL-78`'s entry point, `base agent` and the `muse.exe` launcher remain built and
-driven without a sign-in.
+1. **The operator's three steps**, which nothing else here can stand in for: the six
+   `--remote` signals in Windows Terminal with the 0.9.0 client and with
+   `.tmp\herdr-master-052779c4\herdr.exe`; where the development Linux server goes; and
+   `muse login` in `base shell`.
+2. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
+   `PermissionRequest` from a real turn, then the guide.
+3. `WSL-68`'s four remaining items, listed in its own entry.
+4. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
+   RUN**.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -167,15 +140,21 @@ ls-files`, so check a new one by name before it is added.
 | `deea680` | `WSL-87` partial: `bootstrap.sh` installs CodeGraph under dash and names an npm too old for it; the last session's record and summary |
 | `53a8f1f` | `WSL-86` filed and closed, `WSL-87` and `WSL-70` closed: the provisioner installs `nftables` and restores the id-mapping capability, `install_codegraph` names a kernel it publishes no package for, and all four presets build; 3 mutation rows and one defect planted by hand |
 | `8801301` | `WSL-71` closed: `shell-profile.sh` moves an interactive shell off a Windows drive and leaves a marked or granted one alone, `base shell --here` marks its own shell through `WSLENV`, and `bootstrap.sh` writes its lines to the login file bash actually reads; 2 mutation rows and 5 defects planted by hand |
-| this session's record commit | `WSL-68` partial: its Approach step 1 closed, every door attacked on a live zero-grant base, and the shared `/mnt/wsl` found open in both directions; `WSL-67` asked for and not answered a fourth time |
+| `6f22e39` | the last session's record: `WSL-71` and `WSL-67` closed, `WSL-68` attacked, `WSL-88` and `WSL-89` written and never run |
+| this checkpoint | `WSL-76` and `WSL-78` partial: the four measurements, the muse reporter's four defects fixed with a case and 5 mutation rows, its lifecycle against a real herdr, `--machine` corrected out of every live page, and two failing commands out of the Muse example |
 
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 
-- **At the start of this session:** the doctor exit 0 in 27.79 s at 06:17:28Z; the gate
-  exit 0, 20 checks green in 33.09 s at 06:18:07Z; `wsl -l -v` matched the host state
-  below; CI run 34934199765 for `53a8f1f` was still running and later went green.
+- **At the start of this session:** the doctor exit 0 in 39.71 s at 10:21:35Z; the gate
+  exit 0, 21 checks green in 33.81 s at 10:22:19Z; `wsl -l -v` matched the host state
+  of the last session; CI run 34955394330 for `6f22e39` green in all six jobs.
+- **For `WSL-76` and `WSL-78`, on `wsl-toolkit-base`:** the four ordered measurements,
+  the reporter's four defects and its lifecycle, the two herdr builds and the launcher
+  from a granted project are in each entry's amendment of 2026-09-15, with their
+  conditions. The Windows Go proof with the 8.3 `TEMP`: **324 results, 304 passed, 20
+  skipped, 0 failed, exit 0 in 19.1 s**.
 - **For `WSL-71`, the shell profile:** `matrix --images all` with a payload that drives
   every shell on the image twice, `--no-shell-profile` then with it, exit 0, **13 ran, 0
   failed, 0 unreached, 0 timed out, in 1m53s**; **28 shells, 0 that add a byte to
@@ -382,6 +361,23 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     session**, arch at two different configurations, so a memory or cpu limit is accepted
     and not enforced. The remediation says the tool cannot repair it. That is `WSL-60`'s
     known condition and is recorded here only because two more builds met it.
+25. ⭐ **Fixed on 2026-09-15:** `base attach` printed `base exec -c 'herdr agent list'` as
+    the line for an agent, the quoted shell string `base herdr` exists to avoid. It
+    prints `base herdr -- agent list`, and its case asserts the prefix.
+26. ⚠ **The muse probe proves the reporter's registration by reading the file the
+    install wrote, not by Muse running the hook**, which is the class
+    [`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md)
+    now has a row for. The registration was measured against Muse by hand on
+    2026-09-15; nothing re-measures it when Muse changes its settings file again.
+    Muse's `--provider echo` runs `SessionStart` with no credential, which is the
+    candidate check.
+27. ⚠ **herdr's Muse manifest `2026.08.26.1` matches no rule on Muse Code 1.3.0's input
+    screen**, measured on 2026-09-15, so without the reporter herdr shows a Muse pane as
+    `idle` whatever it is doing, and `agent prompt --wait` depends on the reporter's
+    `working` to pass its five-second activity gate. Upstream's to fix.
+28. ⚠ **A build of herdr's development branch answers `herdr 0.9.0`**, because the
+    branch has not moved `Cargo.toml`. Any build this repository makes or ships cannot be
+    told from the release by `--version`; its digest is the only identity.
 
 ## Review findings
 
@@ -429,29 +425,42 @@ closing reviews.
 
 ## Open questions for the operator
 
-⚠ **One, and it is the BSD download approval above**, asked for the fourth time on
-2026-09-15 and still unanswered. The later Muse and herdr session still needs the
-operator to run `muse login`. ⭐ The operator asked on 2026-09-15 to be asked only for
-what actually needs them: a ruling this repository's own rules require, a download, a
-credential, or Windows software. Everything else is decided here and recorded, which is
-why `WSL-71`'s five design decisions and the `PATH` fix it found were settled in the
-session rather than put to them.
+⭐ The operator asked on 2026-09-15 to be asked only for what actually needs them: a
+ruling this repository's own rules require, a download, a credential, or Windows
+software. Four are open, each asked in chat on 2026-09-15:
+
+1. **`muse login`**, the credential, in `wsl-toolkit --instance base base shell`.
+2. **The six `--remote` signals in Windows Terminal**, with the 0.9.0 client and with
+   the development build: a window and a keyboard nobody here has.
+3. **Where the development Linux server runs for `--machine`**: swapped into
+   `wsl-toolkit-base`, which the recommendation names because its server holds nothing,
+   or into a throwaway base.
+4. ⛔ **Whether this repository publishes herdr builds**, which `docs/AGENTS.md`
+   section 1 forbids today. It is the operator's ruling, in an entry of its own, once
+   the builds are shown to work.
 
 ## Host state
 
-- Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit` and
-  `wsl-toolkit-podbox`, as at the session's start. `eph-pgb` keeps its disk under
+- Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit`,
+  `wsl-toolkit-podbox`, and ⭐ **`wsl-toolkit-base`, the operator's one base for every
+  agent**, built on 2026-09-15 and kept. `eph-pgb` keeps its disk under
   `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
-- ⭐ **No throwaway is left.** Two were built under `.tmp\s16`: `wsl-toolkit-b71` for
-  `WSL-71` and `wsl-toolkit-b68` for `WSL-68`, and `base remove --yes` exit 0 removed
-  each with its disk; `wsl -l -q` read the same four distributions afterwards. ⚠
-  **`b71`'s first build failed and rolled itself back**, in `pacman` at
-  `geo.mirror.pkgbuild.com : Operation too slow`, which is finding 10 met for the third
-  time, and left nothing registered.
-- ⭐ **The shared `/mnt/wsl` was written to and is left as it was found**, holding
-  `podman-sockets` and `resolv.conf` and nothing of this session's. Three files were
-  created there while attacking `WSL-68`'s doors and all three were removed, the one
-  written by another distribution's root by that distribution's root.
+- ⭐ **`instances\base\config.json`** is `examples/muse-code/wsl-toolkit-base.json` plus
+  one test grant, `.tmp\wsl78\proj` read-write at `/workspaces/proj`, a throwaway git
+  project of three files.
+- ⭐ **This machine's half of the herdr adapter is written**, as ruling 5 allows: the
+  marked `Host wsl-toolkit-base` block at the top of `%USERPROFILE%\.ssh\config`, which
+  now reads SHA-256 `72693CCF…E626AF`, one line in the dedicated `known_hosts`, and
+  `%USERPROFILE%\bin\muse.exe`.
+- ⚠ **`herdr machine add` saved a profile** `base`, id `e70f5d617fc95616…`,
+  in `%LOCALAPPDATA%\herdr\client\endpoints.json`, a directory it created, and created
+  the workspace `w2` in the base's herdr server.
+- ⚠ **Rust 1.96.1 is installed through rustup for herdr's build, and rustup updated
+  itself from 1.29.0 to 1.29.1** while doing it, which is its default and was not asked
+  for. `.tmp\herdr` holds herdr's source at `052779c4159ed851` and its Windows build
+  tree; `.tmp\herdr-master-052779c4` and `.tmp\herdr-linux-052779c4` hold the two built
+  binaries.
+- The shared `/mnt/wsl` was not written to this session.
 - ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
   `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and
   the OpenBSD installer over SeaBIOS's serial console, and runs commands from a spool with

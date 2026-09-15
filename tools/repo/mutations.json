@@ -2380,6 +2380,51 @@
       "args": []
     },
     {
+      "label": "muse: the herdr reporter is registered in the settings file Muse reads",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "MUSE_CONFIG_DIR=$TK_HOME/.config/muse\n",
+      "replace": "MUSE_CONFIG_DIR=$TK_HOME/.muse\n",
+      "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt",
+      "args": []
+    },
+    {
+      "label": "muse: a settings file this writes carries schema_version",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  [ -f \"$MUSE_SETTINGS\" ] || as_account sh -c \"printf '{\\\"schema_version\\\":1}\\n' > '$MUSE_SETTINGS'\"\n",
+      "replace": "  [ -f \"$MUSE_SETTINGS\" ] || as_account sh -c \"printf '{}\\n' > '$MUSE_SETTINGS'\"\n",
+      "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt",
+      "args": []
+    },
+    {
+      "label": "muse: a settings file without schema_version is refused and left untouched",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  if ! as_account jq -e 'type == \"object\" and has(\"schema_version\")' \"$MUSE_SETTINGS\" >/dev/null 2>&1; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt",
+      "args": []
+    },
+    {
+      "label": "muse: the reporter's command sits inside a matcher group",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "                   + [{\"matcher\":\"\",\"hooks\":[{\"type\":\"command\",\"command\":$hook}]}])))\n",
+      "replace": "                   + [{\"type\":\"command\",\"command\":$hook}])))\n",
+      "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt",
+      "args": []
+    },
+    {
+      "label": "muse: root's temporary settings file is never given to the account before root writes it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "  settings_tmp=$(mktemp)\n",
+      "replace": "  settings_tmp=$(mktemp)\n  chown \"$TK_USER\" \"$settings_tmp\"\n",
+      "run": "TestTheHerdrReporterIsRegisteredWhereMuseReadsIt",
+      "args": []
+    },
+    {
       "label": "config: a stored base.adapters survives loading",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/catalog.go",

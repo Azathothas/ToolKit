@@ -21,6 +21,29 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-15
 
+### 2026-09-15T11:16:41Z: Muse's herdr reporter meets a real herdr, and herdr's unreleased pages leave the router
+
+**Record:** the amendments of 2026-09-15 to `WSL-76` and `WSL-78` in
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
+**Deployed:** no deploy, and no tag.
+**Closes:** nothing. `WSL-76` and `WSL-78` are open and wait for the operator's sign-in.
+
+⛔ **The muse adapter registered its herdr reporter where Muse Code 1.3.0 never looks,
+in a shape it never runs, and failed to install at all on a systemd base.** Measured
+with Muse's credential-free echo provider: Muse reads `~/.config/muse/settings.json`,
+runs a hook only inside a matcher group, and refuses to start over a file with no
+`schema_version`; and `fs.protected_regular` refused root's write into a temporary
+file the script had already given to the account. The adapter now writes the file,
+shape and version Muse runs, and `TestTheHerdrReporterIsRegisteredWhereMuseReadsIt`
+with five mutation rows holds each. Driven in a pane against herdr 0.9.0, the hook
+reports every turn, releases the pane at the end, and adopts a resumed session.
+
+⛔ **`herdr --machine` left every live page.** The reference sweep read herdr's pages
+for its unreleased version, and herdr 0.9.0 refuses the flag with exit 2. `base herdr`
+is the route, `base attach` prints it for an agent, and
+[`docs/reference-sweeps/usable.md`](docs/reference-sweeps/usable.md) carries what the
+measurement corrected. The Muse example lost two commands that failed as written.
+
 ### 2026-09-15T09:45:00Z: the executable carries the scripts, and the agents get adapters of their own
 
 **Record:** `WSL-88` and `WSL-89` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md),

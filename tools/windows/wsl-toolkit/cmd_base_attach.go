@@ -67,7 +67,7 @@ func attachAnswer(cfg toolkit.Config) baseAttach {
 		SSHAlias:     alias,
 		Windows:      "herdr --remote " + alias + " --remote-keybindings server",
 		Linux:        []string{invocation + " base shell", "herdr"},
-		Agents:       invocation + " base exec -c 'herdr agent list'",
+		Agents:       invocation + " base herdr -- agent list",
 		Problems:     problems,
 	}
 }

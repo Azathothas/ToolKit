@@ -217,6 +217,185 @@ func TestTheMuseInstallerRunsOnlyWhileItsDigestIsApproved(t *testing.T) {
 	}
 }
 
+// TestTheHerdrReporterIsRegisteredWhereMuseReadsIt holds the reporter's registration to
+// what Muse Code 1.3.0 was measured to run: the settings file under ~/.config/muse, a
+// schema_version on a file this writes, the command inside a matcher group, the
+// operator's own settings and hooks kept, and a file Muse would refuse left untouched.
+//
+// ⚠ THE KERNEL RULE BEHIND THE TEMPORARY FILE CANNOT BE STAGED WITHOUT ROOT, so the
+// case holds its cause instead: root chowned the file it then wrote, and
+// fs.protected_regular refused the write. Nothing may be chowned under TMPDIR.
+func TestTheHerdrReporterIsRegisteredWhereMuseReadsIt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("install.sh runs under a POSIX shell, which the Linux job has")
+	}
+	for _, tool := range []string{"sh", "bash", "sha256sum", "cmp", "base64", "install", "id"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("%s is not on PATH", tool)
+		}
+	}
+	// ⚠ jq IS REACHED THROUGH as_account, WHOSE PATH IS FIXED, so a jq elsewhere does not count.
+	jqFound := false
+	for _, dir := range []string{"/usr/local/sbin", "/usr/local/bin", "/usr/bin", "/bin"} {
+		if _, err := os.Stat(filepath.Join(dir, "jq")); err == nil {
+			jqFound = true
+		}
+	}
+	if !jqFound {
+		t.Skip("jq is not in the PATH install.sh gives the account")
+	}
+	realInstall, _ := exec.LookPath("install")
+	realID, _ := exec.LookPath("id")
+	script, err := adapterScript("muse", "install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reporter, err := adapterTree.ReadFile("adapters/muse/herdr-agent-state.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	home, bin, tmp := filepath.Join(root, "home"), filepath.Join(root, "bin"), filepath.Join(root, "tmp")
+	for _, dir := range []string{filepath.Join(home, ".local", "bin"), bin, tmp} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// An installed Muse, so the installer is never fetched.
+	write(filepath.Join(home, ".local", "bin", "muse"), "#!/bin/sh\necho \"Muse Code 9.9.9 (9.9.9-R1)\"\n")
+	chowns := filepath.Join(root, "chowns")
+	write(filepath.Join(bin, "pacman"), "#!/bin/sh\nexit 0\n")
+	write(filepath.Join(bin, "curl"), "#!/bin/sh\nexit 9\n")
+	write(filepath.Join(bin, "herdr"), "#!/bin/sh\nexit 0\n")
+	write(filepath.Join(bin, "getent"), "#!/bin/sh\nprintf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
+	write(filepath.Join(bin, "runuser"), "#!/bin/sh\n[ \"$1\" = -u ] && [ \"$2\" = herdr ] && [ \"$3\" = -- ] || exit 9\nshift 3\nexec \"$@\"\n")
+	write(filepath.Join(bin, "id"), "#!/bin/sh\nif [ \"$1\" = -gn ]; then echo herdr; exit 0; fi\nexec "+realID+" \"$@\"\n")
+	write(filepath.Join(bin, "chown"), "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$STUB_CHOWNS\"\n")
+	// install without its owner flags, which only root may pass.
+	write(filepath.Join(bin, "install"), "#!/bin/sh\nskip=\nfor a in \"$@\"; do\n  shift\n"+
+		"  if [ -n \"$skip\" ]; then skip=; continue; fi\n"+
+		"  case $a in -o|-g) skip=1; continue ;; esac\n  set -- \"$@\" \"$a\"\ndone\nexec "+realInstall+" \"$@\"\n")
+	settings := filepath.Join(home, ".config", "muse", "settings.json")
+	hook := filepath.Join(home, ".local", "share", "wsl-toolkit", "herdr-agent-state.sh")
+	run := func() (int, string) {
+		t.Helper()
+		cmd := exec.Command("sh", "-s")
+		cmd.Stdin = bytes.NewReader(script)
+		cmd.Env = append(os.Environ(),
+			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "TMPDIR="+tmp,
+			"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base",
+			"TK_MUSE_STAGE_DIR="+filepath.Join(root, "stage"), "TK_MUSE_WRAPPER="+filepath.Join(root, "usr-local-bin", "muse"),
+			"TK_FILE_HERDR_AGENT_STATE_SH_B64="+base64.StdEncoding.EncodeToString(reporter),
+			"STUB_HOME="+home, "STUB_CHOWNS="+chowns)
+		out, err := cmd.CombinedOutput()
+		var exited *exec.ExitError
+		if err != nil && !errors.As(err, &exited) {
+			t.Fatalf("install.sh did not start: %v", err)
+		}
+		return cmd.ProcessState.ExitCode(), string(out)
+	}
+	type group struct {
+		Matcher *string `json:"matcher"`
+		Hooks   []struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		} `json:"hooks"`
+	}
+	read := func() (map[string]json.RawMessage, map[string][]group) {
+		t.Helper()
+		body, err := os.ReadFile(settings)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var top map[string]json.RawMessage
+		if err := json.Unmarshal(body, &top); err != nil {
+			t.Fatalf("%s is not a JSON object: %v\n%s", settings, err, body)
+		}
+		groups := map[string][]group{}
+		if raw, ok := top["hooks"]; ok {
+			if err := json.Unmarshal(raw, &groups); err != nil {
+				t.Fatalf("hooks is not a map of matcher groups: %v\n%s", err, body)
+			}
+		}
+		return top, groups
+	}
+	// ours counts the groups that hold exactly this adapter's command and match everything.
+	ours := func(gs []group) int {
+		n := 0
+		for _, g := range gs {
+			if g.Matcher != nil && *g.Matcher == "" && len(g.Hooks) == 1 && g.Hooks[0].Type == "command" && g.Hooks[0].Command == hook {
+				n++
+			}
+		}
+		return n
+	}
+	events := []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest", "Stop", "SessionEnd"}
+
+	code, out := run()
+	if code != 0 || !strings.Contains(out, "registered the herdr reporter in "+settings) ||
+		!strings.HasSuffix(strings.TrimSpace(out), adapterCompleteLine("muse")) {
+		t.Fatalf("a base with no settings file answered exit %d:\n%s", code, out)
+	}
+	top, groups := read()
+	if string(top["schema_version"]) != "1" {
+		t.Fatalf("the settings file this wrote carries schema_version %q, and Muse refuses to start without one", top["schema_version"])
+	}
+	for _, e := range events {
+		if len(groups[e]) != 1 || ours(groups[e]) != 1 {
+			t.Fatalf("%s holds %+v, and it must hold one matcher group running %s", e, groups[e], hook)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ".muse", "settings.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("~/.muse/settings.json was written, and Muse 1.3.0 does not read it (%v)", err)
+	}
+	if logged, _ := os.ReadFile(chowns); bytes.Contains(logged, []byte(tmp)) {
+		t.Fatalf("a file under the temporary directory was chowned, which fs.protected_regular turns into a refused write:\n%s", logged)
+	}
+
+	before, _ := os.ReadFile(settings)
+	code, out = run()
+	after, _ := os.ReadFile(settings)
+	if code != 0 || !strings.Contains(out, "Muse already reports to herdr on 6 events") || !bytes.Equal(before, after) {
+		t.Fatalf("a second run answered exit %d and changed the settings file %v:\n%s", code, !bytes.Equal(before, after), out)
+	}
+
+	own := `{"schema_version":1,"theme":"dark","hooks":{"Stop":[` +
+		`{"matcher":"","hooks":[{"type":"command","command":"/opt/own/stop.sh"}]},` +
+		`{"matcher":"","hooks":[{"type":"command","command":"/old/home/.local/share/wsl-toolkit/herdr-agent-state.sh"},{"type":"command","command":"/opt/own/also.sh"}]}]}}`
+	if err := os.WriteFile(settings, []byte(own), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code, out = run(); code != 0 {
+		t.Fatalf("a settings file of the operator's own answered exit %d:\n%s", code, out)
+	}
+	top, groups = read()
+	if string(top["theme"]) != `"dark"` {
+		t.Fatalf("the operator's own setting became %q", top["theme"])
+	}
+	stop := groups["Stop"]
+	if len(stop) != 3 || ours(stop) != 1 || len(stop[0].Hooks) != 1 || stop[0].Hooks[0].Command != "/opt/own/stop.sh" ||
+		len(stop[1].Hooks) != 1 || stop[1].Hooks[0].Command != "/opt/own/also.sh" {
+		t.Fatalf("Stop became %+v: the operator's two hooks kept, the old entry of ours gone, and ours once", stop)
+	}
+
+	for name, body := range map[string]string{"no schema_version": `{"theme":"dark"}`, "not JSON": `{`} {
+		if err := os.WriteFile(settings, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		code, out = run()
+		left, _ := os.ReadFile(settings)
+		if code == 0 || !strings.Contains(out, "schema_version") || string(left) != body {
+			t.Fatalf("a settings file with %s answered exit %d and left %q:\n%s", name, code, left, out)
+		}
+	}
+}
+
 // TestEveryStoredBaseFieldSurvivesLoading is the case the first drive of base.adapters
 // called for: LoadConfig copies a stored file's base fields one by one, and the new
 // field was decoded, validated as empty and dropped. It sets every field of

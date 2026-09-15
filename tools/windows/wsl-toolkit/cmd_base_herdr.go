@@ -18,10 +18,10 @@ const baseHerdrUsage = `wsl-toolkit base herdr [--] ARGS...
   Run one herdr command inside the base and return its answer. Every argument is
   herdr's and reaches it unchanged; its exit code is the answer.
 
-  This is the route for an agent on Windows that cannot run herdr itself: a
-  sandboxed one, or one that would otherwise have to quote a herdr command inside
-  a shell string. An agent that CAN run herdr on Windows should use herdr's own
-  --machine prefix instead, which talks to the base over SSH.
+  This is the route for an agent on Windows to the herdr in the base, including a
+  sandboxed one and one that would otherwise have to quote a herdr command inside
+  a shell string. The herdr the base pins has no --machine prefix, so a herdr on
+  Windows reaches the base only through its terminal UI, herdr --remote.
 
   Examples:
     wsl-toolkit base herdr -- agent list

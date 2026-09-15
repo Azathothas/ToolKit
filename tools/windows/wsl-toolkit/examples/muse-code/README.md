@@ -1,54 +1,64 @@
 # Muse Code in one named WSL base
 
-⭐ **Three commands, and the third one is the agent.** This is the concrete
+⭐ **One profile, three commands, and then the agent.** This is the concrete
 provider example for the one-checkout profile in
 [`../common/access-profiles.md`](../common/access-profiles.md): a persistent
-Linux home for Muse with systemd, rootless Podman, the developer toolset,
-CodeGraph and herdr, and exactly one Windows checkout reachable from it.
-
-⚠ **This page used to carry eleven steps, two files copied by hand and a
-multiplexer that has been replaced.** What removed them was not a shorter page:
-`base.adapters` installs the software during `base ensure`, and `base agent` runs
-the agent in the granted directory. The page is short because the tool does the
-work.
+Linux home for Muse with systemd, rootless Podman, the developer toolset and
+herdr, which reaches a Windows checkout only when that checkout is granted.
 
 ---
 
 ## The whole of it
 
-[`wsl-toolkit-base.json`](wsl-toolkit-base.json) is the profile. Save it at the
-checkout's root as `wsl-toolkit.json`, or point `--config` straight at this file.
+[`wsl-toolkit-base.json`](wsl-toolkit-base.json) is the profile. ⭐ **It becomes the
+instance's own configuration**, which `--instance base` reads from any directory, so
+one base serves every project:
 
 ```powershell
-wsl-toolkit --instance base --config .\wsl-toolkit.json base ensure
-wsl-toolkit --instance base base grant . --mode rw
-wsl-toolkit --instance base base agent muse
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\wsl-toolkit\instances\base" | Out-Null
+Copy-Item wsl-toolkit-base.json "$env:LOCALAPPDATA\wsl-toolkit\instances\base\config.json"
+```
+
+⛔ **Do not point `--config` at the file in this directory.** `base grant` writes the
+configuration in effect, so it would edit the example.
+
+Then, from the checkout to work on:
+
+```powershell
+wsl-toolkit --instance base base ensure
+wsl-toolkit --instance base base grant --source . --mode rw
+muse exec --json "Answer with only the number of files git tracks here."
 ```
 
 | the command | what it does |
 | --- | --- |
-| `base ensure` | builds the distribution, provisions it, and installs the `herdr` and `muse` adapters named in the profile. Idempotent: a second run reconciles rather than rebuilds |
+| `base ensure` | builds the distribution, provisions it, and installs the `herdr` and `muse` adapters the profile names. A second run reconciles rather than rebuilds |
 | `base grant` | mounts **this** Windows directory under `/workspaces`, live, with no restart |
-| `base agent muse` | runs Muse in the guest directory this Windows directory is granted at, with its screen in a herdr pane. Every argument after the name is Muse's |
+| `muse exec` | `muse.exe`, the launcher the adapter writes into `%USERPROFILE%\bin`, runs Muse in the base at the guest path this directory is granted at. Every argument is Muse's, and the exit code is Muse's |
 
-⭐ **The adapter also writes `muse.exe`** into the account's bin directory, so the
-same run is `muse.exe` from the checkout once that directory is on `PATH`.
+⛔ **A directory no grant covers is refused** with exit 2 and the `base grant` line
+that would cover it. That refusal is the profile working, not a failure.
 
-⛔ **A directory no grant covers is refused**, with the `base grant` line that
-would cover it. That refusal is the profile working, not a failure.
+⛔ **Muse's own screen needs a terminal, so `muse` with no argument, and `muse
+resume`, answer exit 2 from Windows.** The screen runs in a herdr pane in the base:
+attach with the line `base attach` prints, then in a pane `cd` to the guest path and
+run `muse`. [`../common/herdr.md`](../common/herdr.md) is that guide.
 
 ---
 
 ## Before the first run, once
 
 ```powershell
-wsl-toolkit --instance base --config .\wsl-toolkit.json config validate
+wsl-toolkit --instance base config
 ```
 
-It must print `passwordless sudo true`, `systemd true`, and the two adapters.
-⚠ **The profile carries no standing grant on purpose**: the base is built once
-and each project is granted when it is worked on, so a base left running reaches
-no checkout at all.
+It names the instance's own configuration as the file in effect, and prints `systemd
+true`, `passwordless sudo true`, and the two adapters. ⚠ **The profile carries no
+standing grant on purpose**: the base is built once and each project is granted when
+it is worked on, so a base left running reaches no checkout at all.
+
+⛔ **Signing in is the operator's, once:** `wsl-toolkit --instance base base shell`,
+then `muse login`.
 
 After `base ensure`, make it prove its live state rather than trusting the
 configuration:
@@ -58,7 +68,8 @@ wsl-toolkit --instance base base status --probe --json
 ```
 
 ⛔ **`registered` is not `usable`.** `--probe` runs a container and reads the
-adapters back; without it the answer is what this machine believes.
+adapters back: Muse's version, whether a credential file is present, and the events
+its herdr reporter is registered for.
 
 ---
 
@@ -66,11 +77,11 @@ adapters back; without it the answer is what this machine believes.
 
 | choice | reason |
 | --- | --- |
-| `arch` | glibc. ⛔ herdr's 0.9.0 Linux server aborts in a **musl** malloc check and takes every pane child with it, `herdrdev/herdr#4174` |
+| `arch` | the preset both adapters are measured on; a configuration naming either on another preset is refused |
 | `automount: off`, `interop: off` | no Windows drive is reachable and no Windows executable runs. A grant is then the only door, and it is explicit |
 | `passwordless_sudo: true` | a package install does not stop for a password nobody is there to type. ⚠ It is a **trust** decision about the agent, not a containment one |
 | `systemd: true` | herdr's server is a system unit, so it starts with the base |
-| `toolset: developer` | the thirteen commands the base itself installs as root |
+| `toolset: developer` | the thirteen commands the base itself installs as root, `jq` among them, which the herdr reporter reads its events with |
 | `adapters: herdr, muse` | installed by `base ensure` and read back by `base status --probe` |
 
 ---
@@ -99,12 +110,12 @@ each toolset name resolves to.
 ## Watching it
 
 [`../common/herdr.md`](../common/herdr.md) is the operator and agent guide:
-attaching from Windows, `herdr --machine` for scripted watching with nothing
-open, and the four traps a Windows-to-WSL shape walks into.
+attaching from Windows, `wsl-toolkit base herdr` for scripted watching with nothing
+open, and the traps a Windows-to-WSL shape walks into.
 
-⚠ **herdr detects Muse already.** It ships a Muse screen-detection manifest, so a
-Muse pane is classified `idle`, `working` and `blocked` with no integration at
-all. What it does not have is lifecycle authority or session identity; `WSL-76`
-owns that gap and
-[`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md)
-carries the contract it is built from.
+⭐ **Muse reports its own lifecycle to herdr.** The `muse` adapter registers a hook
+for six of Muse's events in `~/.config/muse/settings.json`, and the hook reports
+`idle`, `working` and `blocked` for the pane Muse runs in. ⚠ herdr's own Muse screen
+rules were written against an older Muse: on Muse Code 1.3.0's input screen none of
+them matched and herdr fell back to `idle`, and `herdr agent wait --until working`
+returned only because the hook reported the turn.

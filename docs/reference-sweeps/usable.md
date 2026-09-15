@@ -1311,3 +1311,32 @@ about. So the option is guarded by version rather than added.
   protocol exists and is called MSP v1.
 - **Four references were sized and not opened**: `BrokkAi/mjolnir`,
   `BrokkAi/muse-acp`, `bex-co/muse-code-acp`, `souta-lab/pi-muse`.
+
+---
+
+## ⛔ Measured on this host, 2026-09-15: what held and what did not
+
+⚠ **Conditions:** Windows 11 Pro 26200, herdr 0.9.0 on Windows from scoop and in
+`wsl-toolkit-base`, an arch base with systemd; Muse Code 1.3.0 (`1.3.0-R3057.1`)
+driven with its credential-free `--provider echo`; a build of herdr's development
+branch at `052779c4159ed851` for both platforms. `WSL-76` carries every command.
+
+⛔ **The root of most of the rows below: the sweep read `docs/next`, herdr's pages for
+its UNRELEASED version.** herdr keeps the pages for each release under
+`docs/versions/`. At the `v0.9.0` tag, `docs/next` mentions `--machine` nowhere.
+
+| section | the claim | measured |
+| --- | --- | --- |
+| 6 | `herdr --machine <label> <cmd>` works from a Windows client | ⛔ **0.9.0 has no such flag**: exit 2, `unknown option: --machine`. A development-branch client has it and refuses a 0.9.0 server with `remote Herdr does not support machine API forwarding`, exit 1 |
+| 6 | two herdr pages disagree about saved machines on Windows | ⚠ they disagree in `docs/next` only. herdr's own 0.9.0 pages agree that multi-machine is not verified or supported on a Windows client. `herdr machine add` still ran: exit 0 in 2.7 s, the profile in `%LOCALAPPDATA%\herdr\client\endpoints.json`, and a workspace created on a server that had none |
+| 1 | Muse's hooks see none of herdr's environment | ✅ held. A hook ran with `HOME LANG LOGNAME PATH PWD SHELL SHLVL TERM USER` and nothing else |
+| 3 | `settings.json` is where an integration is merged | ⛔ **the file is `$XDG_CONFIG_HOME/muse/settings.json`, else `~/.config/muse/settings.json`**. A hook in `~/.muse/settings.json` or a workspace's `.muse/settings.json` never ran, and a settings file with no `schema_version` stops Muse with exit 1 |
+| 3 | the hook shape, by the fixtures | ⛔ **a command straight under an event never ran; the same command inside `{"matcher":"","hooks":[{"type":"command","command":PATH}]}` ran.** The `SessionStart` payload matched the fixture field for field |
+| 3 | `muse skills install` because plugins are unavailable | ✅ still true on 1.3.0: `muse plugins` answers `plugins are not available in this build`, although the binary carries a native plugin manifest format with a `hooks` capability |
+| 4 | `muse resume` never emits `SessionStart` | ✅ held on 1.3.0. ⚠ **And an interactive session emits its first `SessionStart` only when the first prompt is submitted**, not at start |
+| 5 | Muse is detected and classified out of the box | ⚠ **detected, and not classified.** herdr named the agent `muse` from the process `muse-bin-1.3.0-R3057.1`; the manifest `2026.08.26.1` matched no rule on Muse 1.3.0's input screen and fell back to `idle` |
+| 2 | a report sets the pane's state | ✅ held, and ⚠ **a `custom:` source is never a full lifecycle authority.** herdr's source allowlists six `herdr:` sources for that, so screen detection keeps running beside the reports; the reported state is the pane's state unless the screen shows a blocker |
+| 8, trap 2 | a musl base is the wrong host for a herdr server | ⛔ **herdr's Linux release binary is static and carries musl's allocator itself**, which `#4174`'s own body resolves. The base's libc does not change which allocator detects that heap corruption |
+| 8, trap 4 | update herdr before concluding anything about SSH | ⛔ **no update exists.** `#4176` was closed as a duplicate of `#4038`, which herdr closed as fixed on its development branch; the four fix commits it names are 20 to 51 commits after `v0.9.0`, and 18 to 49 after the newest preview |
+| 8, trap 5 | a wrapper hides the agent from herdr | ⚠ **not for this tool's wrappers.** Every hop from `/usr/local/bin/muse` to `muse-bin-*` `exec`s, so herdr saw Muse; `muse.exe` and `base agent` never put Muse in a pane at all |
+| 8, trap 6 | WSL may not expose a foreground process group | ✅ **it does.** `pane process-info` and the kernel's `tpgid` named the same group, so `child-groups` is not needed |

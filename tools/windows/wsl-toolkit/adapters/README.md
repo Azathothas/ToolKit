@@ -15,10 +15,12 @@ one.
 
 ⛔ **"Written, never run" means exactly that.** No base has installed `pi` or
 `omp`, so their install and probe scripts have executed nowhere. `WSL-88` and
-`WSL-89` carry the passing conditions each still owes. ⚠ **The muse adapter's
-herdr reporter is in between**: its state machine was driven against a stub herdr
-that records what it is asked to do, and never against a real herdr or a real
-Muse.
+`WSL-89` carry the passing conditions each still owes. ⭐ **The muse adapter's herdr
+reporter is driven** against herdr 0.9.0 and Muse Code 1.3.0, through Muse's
+credential-free `--provider echo`: `SessionStart`, `UserPromptSubmit`, `Stop`,
+`SessionEnd` with its release, and the adoption of a resumed session. ⚠
+`PreToolUse` and `PermissionRequest` are registered and not yet driven, because the
+echo provider calls no tool.
 
 ## ⭐ How a version moves without an edit to this tree
 

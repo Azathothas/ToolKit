@@ -58,7 +58,8 @@ fi
 # machine says. ⚠ Its absence is a FACT and not a problem: muse runs without it, and
 # a base with no herdr is a perfectly good base for muse.
 HOOK=$TK_HOME/.local/share/wsl-toolkit/herdr-agent-state.sh
-MUSE_SETTINGS=$TK_HOME/.muse/settings.json
+# The file Muse reads, as install.sh names it and for the same measured reason.
+MUSE_SETTINGS=$TK_HOME/.config/muse/settings.json
 if [ -x "$HOOK" ]; then
   printf 'herdr_reporter installed\n'
   # ⛔ AND IT STILL PASSES ITS OWN CASES. A file that is present and broken reports
@@ -72,9 +73,14 @@ else
   printf 'herdr_reporter absent\n'
 fi
 if [ -f "$MUSE_SETTINGS" ] && command -v jq >/dev/null 2>&1; then
+  # ⛔ A SETTINGS FILE MUSE WILL NOT READ STOPS MUSE, not only the reporter: it refuses
+  # to start over one that is not an object carrying schema_version.
+  if ! as_account jq -e 'type == "object" and has("schema_version")' "$MUSE_SETTINGS" >/dev/null 2>&1; then
+    problem "$MUSE_SETTINGS is not a JSON object carrying schema_version, and Muse refuses to start over it"
+  fi
   # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
   registered=$(as_account jq -r --arg h "$HOOK" \
-    '[(.hooks // {}) | to_entries[] | select(any(.value[]?; (.command // "") == $h)) | .key] | sort | join(",")' \
+    '[(.hooks // {}) | to_entries[] | select(any(.value[]?.hooks[]?; (.command // "") == $h)) | .key] | sort | join(",")' \
     "$MUSE_SETTINGS" 2>/dev/null)
   printf 'herdr_reporter_events %s\n' "${registered:-none}"
 fi

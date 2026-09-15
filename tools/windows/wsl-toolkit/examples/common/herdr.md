@@ -1,31 +1,32 @@
-# herdr: one server in the base, three ways in
+# herdr: one server in the base, two ways in
 
 herdr runs inside the named base as its account, and its server starts with the
 base. The operator watches and steers the agents from herdr's Windows client; an
-agent on Windows drives the same server through `wsl-toolkit base exec`. The base's
+agent on Windows drives the same server through `wsl-toolkit base herdr`. The base's
 `herdr` adapter installs all of it, and
 [`../../wsl-toolkit.md`](../../wsl-toolkit.md) says what that adapter writes.
 
-⚠ **Everything below about herdr's own behaviour was READ from herdr's
-documentation and tracker on 2026-09-15, not measured here.**
-[`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md)
+⚠ **What herdr does on this host is measured where a line says so, on 2026-09-15,
+with herdr 0.9.0 on both sides.** The rest is read from herdr's documentation for
+0.9.0. [`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md)
 carries the sweep and its commits; this page carries only what an operator does.
 
 ---
 
-## ⛔ Two things to settle before the first attach
+## ⛔ Two things to know before the first attach
 
-1. ⛔ **herdr 0.9.0's Windows `--remote` client repaints only on
-   window-activation events, and prefix commands never take effect.** That is
-   `herdrdev/herdr#4176`. ⛔ **It was closed `not_planned`, NOT as fixed**, so
-   there is no evidence a later release repairs it and a newer herdr may behave
-   the same way. The adapter pins 0.9.0. ⭐ **Measure the repaint on this host
-   before concluding anything about SSH**: a client that repaints only on window
-   activation looks exactly like a connection that is not working.
-2. ⛔ **The base must be a glibc preset.** `herdrdev/herdr#4174`, open: a 0.9.0
-   Linux server aborts in a musl malloc integrity check and every pane child
-   dies. `arch` is the default and is glibc; `alpine`, `void-musl` and `chimera`
-   are not.
+1. ⛔ **herdr 0.9.0's Windows `--remote` client is reported to repaint only on
+   window activation and to apply no prefix command.** That is
+   `herdrdev/herdr#4176`, closed `not_planned` as a duplicate of `#4038`, which herdr
+   closed as fixed on its development branch. ⛔ **No published herdr carries that
+   fix**: 0.9.0 is the newest stable release and the newest preview predates it. ⭐
+   **Measure the repaint before concluding anything about SSH**: a client that
+   repaints only on window activation looks exactly like a connection that is not
+   working.
+2. ⚠ **herdr's Linux release binary is static and carries its own musl allocator,
+   whatever the base's libc is.** `herdrdev/herdr#4174`, open, is a heap corruption
+   that allocator detected inside a 0.9.0 server, so a glibc base does not avoid it.
+   The base is `arch` because the adapters are measured on that preset alone.
 
 ---
 
@@ -62,28 +63,24 @@ Unix control socket on Windows, so a key with a passphrase is loaded with
 
 ## ⭐ Watch the agents without opening anything
 
-`herdr --machine` routes one command to a saved SSH machine over its JSON API,
-with **no terminal UI open at all**. This is the surface to script against:
-
 ```powershell
-herdr machine add wsl-toolkit-base --label base
-herdr --machine base agent list
-herdr --machine base pane list
-herdr --machine base agent prompt w1:p1 "summarise what you just changed"
+wsl-toolkit --instance base base herdr -- agent list
+wsl-toolkit --instance base base herdr -- pane list
+wsl-toolkit --instance base base herdr -- agent prompt w1:p1 "summarise what you just changed"
 ```
 
-| ⛔ | |
-| --- | --- |
-| the selector is a saved profile **id or a unique, case-sensitive label** | not an SSH hostname |
-| `--machine` with `--session` or `--remote` | is an error |
-| local pane ids are not inherited, and `--current` cannot mean a local pane | name the remote id |
-| `agent attach` and plugin **installation** are not forwarded | run those in the base |
+Every herdr command answers in JSON, and each argument reaches herdr as an argument,
+so a prompt carrying quotes or a dollar sign is not read by any shell.
 
-⚠ **The multi-machine sidebar is a different feature and herdr's own pages
-disagree about it on Windows**: its capability table calls saved machines
-supported, and its connecting-machines page says multi-machine connections are
-not yet verified or supported on a Windows client. `--remote` and `--machine`
-are not in dispute. Measure before planning on the sidebar.
+| measured on 2026-09-15, herdr 0.9.0 on Windows and in the base | result |
+| --- | --- |
+| `herdr --machine base agent list` | ⛔ exit 2, `unknown option: --machine`. 0.9.0 has no such prefix |
+| a build of herdr's development branch, `--machine base agent list`, against the 0.9.0 server | exit 1, `remote Herdr does not support machine API forwarding` |
+| `herdr machine add wsl-toolkit-base --label base` | exit 0 in 2.7 s. It saved the profile in `%LOCALAPPDATA%\herdr\client\endpoints.json`, installed nothing in the base, started no second server, and created a workspace on a server that had none |
+
+⚠ **A saved machine is for herdr's own multi-machine sidebar**, which herdr's 0.9.0
+pages call not yet verified or supported on a Windows client. Remove one with
+`herdr machine list`, then `herdr machine remove ID`.
 
 ---
 
@@ -103,14 +100,14 @@ take the machine-readable contract with `herdr api schema --json`.
 
 ## An agent on Windows
 
-Every herdr command answers in JSON. Read a pane's id from the command that made
-it rather than guessing one, because the base may already hold workspaces:
+Read a pane's id from the command that made it rather than guessing one, because
+the base may already hold workspaces:
 
 ```powershell
-$made = wsl-toolkit --instance base base exec -c 'herdr workspace create --cwd ~ --label work --no-focus' | ConvertFrom-Json
+$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
-wsl-toolkit --instance base base exec -c "herdr pane run $pane 'git status --short'"
-wsl-toolkit --instance base base exec -c "herdr pane read $pane --source recent --lines 40"
+wsl-toolkit --instance base base herdr -- pane run $pane 'git status --short'
+wsl-toolkit --instance base base herdr -- pane read $pane --source recent --lines 40
 ```
 
 ⚠ **The pane runs the command and returns at once.** `herdr pane wait-output PANE
@@ -119,6 +116,11 @@ wsl-toolkit --instance base base exec -c "herdr pane read $pane --source recent 
 ⛔ **A wait has no default timeout and can wait for ever.** Always pass
 `--timeout`. A server error prints JSON on stderr and exits 1; bad CLI syntax
 exits 2.
+
+⚠ **Submit a prompt with `herdr agent prompt`, not with `pane send-text` and
+`pane send-keys enter`.** Measured against Muse Code 1.3.0: the two pane commands
+left the text in Muse's input with a new line after it, and `agent prompt` submitted
+it.
 
 ---
 
@@ -130,15 +132,15 @@ exits 2.
    generic fallback for a shell that is not inside herdr**, and a shell framework
    that auto-enters tmux breaks agent detection completely.
    [`README.md`](README.md) says where each one belongs.
-2. ⛔ **A launcher is a wrapper, and a wrapper hides the agent.** herdr reads the
-   pane's foreground process; set `HERDR_AGENT=<agent>` **on the wrapper command
-   on the herdr side**, never only inside the guest - herdr cannot see a variable
-   set inside a container or VM.
-3. ⚠ **WSL may not expose a foreground process group.** herdr offers
-   `HERDR_PROCESS_DETECTION=child-groups` for restricted Linux runtimes. It is
-   read by the **server**, needs a restart, and is best effort: a newer background
-   job can be mistaken for the foreground one. Set it in the base, not on the
-   Windows client.
+2. ⚠ **A launcher that does not `exec` hides the agent.** herdr reads the pane's
+   foreground process. Measured: Muse started in a base pane as `muse` passes
+   through `/usr/local/bin/muse` and Muse's own launcher, every hop `exec`s, and
+   herdr names the process `muse-bin-1.3.0-R3057.1` and the agent `muse`. ⚠
+   `muse.exe` and `base agent` never put Muse in a pane at all: they run a command
+   with no terminal.
+3. ⭐ **WSL exposes a terminal's foreground process group.** Measured: herdr's
+   `pane process-info` and the kernel's `tpgid` named the same process group, so
+   `HERDR_PROCESS_DETECTION=child-groups` is not needed.
 4. ⛔ **herdr copies nothing onto an SSH host.** No plugin, configuration,
    executable or secret crosses; missing remote commands fail visibly. Whatever
    the base needs is installed **in the base**, which is what the adapter is for.
@@ -152,8 +154,3 @@ socket is a Unix domain socket on Linux and a **named pipe** on Windows, so a
 bare Windows `herdr` reaches only Windows. SSH is the bridge, and it is the only
 one. That is why the `herdr` adapter installs an SSH door in the base rather than
 forwarding a port.
-
-⭐ **A payload never becomes part of a shell command.** herdr states that
-`--machine` requests travel through its JSON API over non-interactive SSH and are
-not interpolated into the SSH shell command - the same rule this tool holds for
-every guest payload, reached independently.

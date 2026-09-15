@@ -1248,6 +1248,26 @@ Windows" actually needs.
 
 ---
 
+## ⛔ What measurement on this host corrected, 2026-09-15
+
+⛔ **This sweep read `herdrdev/herdr`'s `docs/next`, the pages for herdr's UNRELEASED
+version, as the contract of the 0.9.0 installed here.** herdr keeps each release's
+pages under `docs/versions/`, and at the `v0.9.0` tag `docs/next` does not mention
+`--machine` at all. The Windows client answered `unknown option: --machine`, and
+this repository's router had sent every agent to that command.
+
+⚠ **Muse's integration surface was taken from third-party plugins written against
+older Muse**, and Muse Code 1.3.0 reads its settings from another file and runs a
+hook only in another shape.
+
+The measured table, row by row, is in [`usable.md`](usable.md) under "Measured on this
+host". ⭐ **The lesson for a later sweep: read a project's documentation at the tag of
+the version that will run, and measure an integration against the version that will
+run it.** [`../conventions/forbidden-patterns.md`](../conventions/forbidden-patterns.md)
+carries both as rows.
+
+---
+
 ## ⭐ The ranking, for a session that can only read three things
 
 1. **H1's `agent-automation.mdx` and `cli-reference.mdx`** - the primitives and
