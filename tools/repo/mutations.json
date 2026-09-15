@@ -2574,7 +2574,7 @@
       "file": "internal/toolkit/provision.sh",
       "find": "  [ -n \"$GETCAP\" ] || die \"$tool_path is not setuid and $CAP_PACKAGE supplied no getcap, so whether it carries $want_cap cannot be read\"\n",
       "replace": "  [ -n \"$GETCAP\" ] || continue\n",
-      "run": "TestTheProvisionerRestoresTheCapabilityRootlessIdMappingNeeds",
+      "run": "TestTheProvisionerRefusesAnIdMappingCapabilityItCannotRead",
       "args": []
     }
   ]

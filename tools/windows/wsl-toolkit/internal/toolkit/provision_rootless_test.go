@@ -207,13 +207,6 @@ func TestTheProvisionerRestoresTheCapabilityRootlessIdMappingNeeds(t *testing.T)
 		says:       "carries neither the setuid bit nor cap_setuid",
 		setcapCall: []string{"cap_setuid+ep newuidmap"},
 	}
-	noTools := rootlessCase{
-		name:       "no package supplied the capability tools",
-		family:     "apt",
-		noCapTools: true,
-		exit:       3,
-		says:       "libcap2-bin supplied no getcap",
-	}
 	absent := rootlessCase{
 		name:    "newuidmap is not there at all",
 		family:  "dnf",
@@ -221,12 +214,36 @@ func TestTheProvisionerRestoresTheCapabilityRootlessIdMappingNeeds(t *testing.T)
 		exit:    3,
 		says:    "newuidmap is missing, so a rootless engine cannot map more than one id",
 	}
-	outside := capToolOutsidePath()
-	for _, c := range []rootlessCase{both, setuid, restored, deadSetcap, noTools, absent} {
-		if c.noCapTools && outside != "" {
-			t.Logf("%s: not staged, because this host carries %s and the section reaches for it by path", c.name, outside)
-			continue
-		}
+	runRootlessCases(t, shell, section, []rootlessCase{both, setuid, restored, deadSetcap, absent})
+}
+
+// TestTheProvisionerRefusesAnIdMappingCapabilityItCannotRead is its own case because
+// it can only be staged on a host with no getcap at any of the absolute paths
+// provision.sh reaches for.
+//
+// ⛔ It is the guard that matters most: without it the check returns to passing when
+// it cannot tell, which is the shape that let WSL-86 through. ⚠ A host that carries
+// the tool skips this whole case, so its mutation row reports SKIPPED there rather
+// than theatre, and `golang:1.25` is where it is proved red.
+func TestTheProvisionerRefusesAnIdMappingCapabilityItCannotRead(t *testing.T) {
+	shell := posixShell(t)
+	if outside := capToolOutsidePath(); outside != "" {
+		t.Skipf("this host carries %s and the section reaches for it by path, so a system with none cannot be staged here", outside)
+	}
+	noTools := rootlessCase{
+		name:       "no package supplied the capability tools",
+		family:     "apt",
+		noCapTools: true,
+		exit:       3,
+		says:       "libcap2-bin supplied no getcap",
+	}
+	runRootlessCases(t, shell, provisionerSection(t, "rootless id mapping"), []rootlessCase{noTools})
+}
+
+// runRootlessCases stages each arrangement and runs the section over it.
+func runRootlessCases(t *testing.T, shell, section string, cases []rootlessCase) {
+	t.Helper()
+	for _, c := range cases {
 		dir := t.TempDir()
 		capsDir := filepath.Join(dir, "caps")
 		if err := os.Mkdir(capsDir, 0o755); err != nil {

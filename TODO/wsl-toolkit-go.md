@@ -8113,6 +8113,29 @@ Run in `golang:1.25`, where the cases do not skip:
 The third is the one that matters most: it returns the check to passing when it cannot
 read the capability, which is the shape that let the defect through in the first place.
 
+⛔ **And CI failed on that third row, which is the lens firing on its own work.** The
+case it named could only be staged where no `getcap` exists at any absolute path the
+section reaches for. `golang:1.25` has none and it went red there; `ubuntu-latest` carries
+`/usr/sbin/getcap`, so on CI the case did not run, the other five stayed green with the
+guard removed, and `repo mutate` reported **THEATRE**: `1 case(s), still green`, 284 of 286
+guards proved, at 05:25:19Z on run 34931576687. ⚠ A row that goes red on one host and is
+theatre on another is a row that proves nothing on the host that matters.
+
+⭐ **Fixed by splitting it out.** `TestTheProvisionerRefusesAnIdMappingCapabilityItCannotRead`
+holds that one arrangement and skips the whole case where a capability tool exists outside
+`PATH`, so the row reports SKIPPED rather than theatre there - the same shape as the
+`distro: NUL is not a console` row CI has always carried. Measured both ways on 2026-09-15:
+
+```text
+golang:1.25, no getcap
+  ok       provisioner: an id-mapping capability that cannot be read is refused, not passed  1 case(s), went red
+  3 of 3 guards proved.
+
+golang:1.25 with libcap2-bin, getcap at /usr/sbin/getcap
+  SKIPPED  provisioner: an id-mapping capability that cannot be read is refused, not passed  1 case(s), all skipped here
+  MUTATE EXIT 0
+```
+
 ⭐ **3. The claim audit - which sentence is not backed by an artefact?**
 
 - ⛔ **Found the hard way, and it invalidated a first set of measurements.** The first

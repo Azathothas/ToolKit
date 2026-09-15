@@ -281,8 +281,11 @@ green pass, because `go test` served a cached result and only `-count=1` made th
 fire; `repo mutate` already passes it. Its claim audit found `presets.go` publishing a
 build figure for a preset that had not built since, now corrected with both dates and both
 sets of conditions. `WSL-86`'s driven pass found the automount sweep race, and its door
-sweep found that a verification failure is named by the engine's first line. `WSL-67` still
-owes its closing reviews.
+sweep found that a verification failure is named by the engine's first line. ⛔ **CI
+then failed one of its own mutation rows as THEATRE**, because the case proving it can only
+be staged where no `getcap` exists and `ubuntu-latest` carries one: the row is now its own
+case, which skips there and goes red in `golang:1.25`. `WSL-67` still owes its closing
+reviews.
 
 ## Open questions for the operator
 
