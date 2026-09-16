@@ -57,11 +57,17 @@ NEWEST nightly. Fixed and driven; finding 33 records that no harness covers it.
 herdr, and the probe as a tracked script is still a draft outside the tree,
 `.tmp\herdr-remote-probe.cs`.
 
+⭐ **The probe is a tracked script**, `tools/windows/wsl-toolkit/herdr-remote-probe.ps1`,
+and it reproduces the entry's premise from a command: the nightly client passes all six
+measurable signals and 0.9.0 fails three. Its own driven pass found three defects in
+itself, all fixed and proved by mutation. ⛔ **Only `WSL-90`'s reviews and closing are
+left**, plus the operator's real-window signal.
+
 **Resume, in this order:**
 
-1. **`WSL-90`'s last two steps**: the pseudo-console probe as a tracked acceptance
-   script, approach step 7, driven against the nightly's Windows client and typing only
-   into a workspace of its own; then the three reviews and the closing.
+1. **`WSL-90`'s three reviews and its closing.** Everything it can prove without the
+   operator is proved; signal 7, a real window focus event, stays `operator` forever and
+   the entry closes naming it rather than waiting on it.
 2. **The operator's two steps**, which nothing else here can stand in for: the six
    `--remote` signals in a real Windows Terminal window with the development client, and
    `muse login` in `base shell`.
@@ -178,7 +184,8 @@ ls-files`, so check a new one by name before it is added.
 | `062ae9c` | `WSL-90` filed and approved: the release lookup reads past its first page, with 2 cases and 3 mutation rows; `herdr-build.yml`, `herdr-nightly.yml` and `release.yml`'s herdr jobs written |
 | `cfa3252` | `WSL-90` partial: the herdr adapter's `nightly` channel, with 4 cases and 5 mutation rows, and the build matrix's first run read and answered |
 | `42a7c5b` | the 2026-09-15 checkpoint finished by the session that resumed it: `WSL-90`'s second build matrix run recorded from its logs, 8 of 8 green and both fixes measured; the three closing reviews run, finding 31; five live pages that described a publication none has made; the work order corrected, finding 29; and that session's summary written from artefacts |
-| this record commit | `WSL-90` partial: the first herdr nightly published, its six signatures verified and both refusals proved, the base driven onto the `nightly` channel end to end, and the prune's `created_at` defect found by that first run and fixed |
+| `431417b` | `WSL-90` partial: the first herdr nightly published, its six signatures verified and both refusals proved, the base driven onto the `nightly` channel end to end, and the prune's `created_at` defect found by that first run and fixed |
+| this record commit | `WSL-90` partial: the `--remote` probe as a tracked script, driven against both clients, the nightly passing six signals and 0.9.0 failing three; three defects in the probe itself found by driving it, fixed, and proved by mutation |
 
 ## Measurements
 
@@ -299,9 +306,20 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 
 1. ⛔ `repo mutate` never runs a row's cases unmutated, so a case already red
    reports "went red".
-2. ⛔ The gate's `powershell` check cannot fail: its producer uses pipe
-   separators and its Go reader looks for tabs. Until fixed, parse every edited
-   PowerShell file independently.
+2. ⭐ **Fixed on 2026-09-16, and it was worse than this entry said.** The
+   separator mismatch was real - the child writes `PARSE|` and the reader looked
+   for `PARSE\t` - but repairing it alone left the check still unable to fail,
+   because of a **second, independent** defect this entry never named: the file
+   list was passed as arguments after `pwsh -Command`, which does not reach
+   `$args` at all. Measured: that invocation answers `ARGS_SEEN|0` and echoes the
+   file names as output. So the loop ran zero times over zero files and reported
+   ok over every broken script in the tree, for as long as the check has existed.
+   The list now arrives in the environment, the child returns how many files it
+   actually parsed, and the caller refuses any count that is not the number it
+   handed over. **2 cases and 2 mutation rows, both red when planted**, and a
+   syntax error planted by hand in a tracked `.ps1` takes the check to exit 1
+   naming the file. ⚠ The cases need a real PowerShell and are in their own test
+   function, so a host without one reports SKIPPED rather than passing.
 3. ⛔ `scripts/common/check.ps1` resolves the repository from the working
    directory rather than its own location.
 4. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 1 on
@@ -466,6 +484,21 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     2026-09-15 already noted it has no case harness - so this is one gap with two known
     occupants, and both are load-bearing: one publishes, one deletes. Found on
     2026-09-16 by `WSL-90`'s driven pass.
+34. ⚠ **A `.ps1` under `$ErrorActionPreference = 'Stop'` cannot exit through
+    `Write-Error`.** The preference makes it a terminating error, so an `exit 2` written
+    after it never runs and pwsh ends **1** - which silently merges "could not run" into
+    "a check failed". Met on 2026-09-16 in `herdr-remote-probe.ps1` and fixed there with
+    `[Console]::Error.WriteLine`. ⚠ **Not swept for elsewhere**: `acceptance.ps1`,
+    `consumer.ps1` and the `check-*.ps1` wrappers set the same preference and document a
+    distinct exit 2, and none was read for this shape.
+35. ⚠ **A guard that reads a field can be defeated by the read itself throwing.**
+    `herdr-remote-probe.ps1` read a workspace id from the wrong property; StrictMode
+    made the missing property a terminating error, which jumped past the assignment, so
+    the id the cleanup path needed was exactly what had failed to be read, and the
+    workspace leaked. Fixed by reading through a helper that returns null rather than
+    throwing. ⚠ It is a general shape under StrictMode, not a fact about this file:
+    anywhere a cleanup handler depends on a value assigned from a property read, the
+    read's own failure disarms the handler.
 
 ## Review findings
 

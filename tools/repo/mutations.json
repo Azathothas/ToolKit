@@ -2792,6 +2792,24 @@
       "replace": "\t\tif false {\n\t\t\treturn dest, false, fmt.Errorf(\"%s is already there and differs",
       "run": "TestACarriedFileIsNotWrittenOverSomethingElse",
       "args": []
+    },
+    {
+      "label": "the powershell check reads the separator its own child writes",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\tcase strings.HasPrefix(ln, \"PARSE|\"):",
+      "replace": "\t\tcase strings.HasPrefix(ln, \"PARSE\t\"):",
+      "run": "TestThePowerShellCheckRefusesAScriptThatDoesNotParse",
+      "args": []
+    },
+    {
+      "label": "the powershell check refuses a session that parsed no file",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "append(os.Environ(), \"CHECK_PS1_LIST=",
+      "replace": "append(os.Environ(), \"CHECK_PS1_LIST_UNSET=",
+      "run": "TestThePowerShellCheckRefusesASessionThatParsedNothing",
+      "args": []
     }
   ]
 }

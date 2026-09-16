@@ -9751,3 +9751,105 @@ rather than closed.
    into a workspace of its own.
 2. The six `--remote` signals in a real Windows Terminal window, which is the operator's.
 3. The three reviews and the closing.
+
+## Amendment, 2026-09-16: approach step 7, the probe as a tracked script, and two defects in it
+
+⭐ **`tools/windows/wsl-toolkit/herdr-remote-probe.ps1` is tracked**, 421 lines, ASCII
+only with no BOM, no CRLF, and no path naming anybody's home: the repository root is
+`$PSScriptRoot` three levels up and `-Binary` and `-OutDir` default from it. Parsed
+independently with `[Parser]::ParseFile`, because finding 2 says the gate's `powershell`
+check cannot fail.
+
+⭐ **It types only into a workspace it makes.** `workspace create --label probe-LABEL
+--focus`, every keystroke to that workspace's root pane, every verdict read back from
+the server with `pane read` and `tab list`, and `workspace close --group` in a `finally`.
+The operator's own workspace `w2` was never focused, typed into or closed, and a
+`workspace list` after every run below shows it alone.
+
+**Seven signals, six measurable, the count asserted.** Driven against both clients:
+
+| signal | nightly client | pinned 0.9.0 |
+| --- | --- | --- |
+| 1 repaint with no input | ✅ 4,872 bytes in 28 ms, **98.4 pct** of the paint before any focus | ❌ **8.7 pct**, 331 bytes cold against 3,813 after focus-in |
+| 2 focus-in, CSI I | info, 4,872 to 4,949 | info, 331 to 3,813 |
+| 3 typed text | ✅ the pane printed the marker | ❌ no pane printed it |
+| 4 prefix command, ctrl+b then c | ✅ tabs 2 to 3 | ❌ tabs unchanged |
+| 5 resize, 140x42 to 100x30 | ✅ 16,005 to 19,278 bytes | ✅ 4,309 to 6,770 |
+| 6 detach, ctrl+b then q | ✅ exit 0 | ✅ exit 0 |
+| 7 real window focus | `operator` | `operator` |
+
+**Exit 0 for the nightly, exit 1 and three failures for 0.9.0**, in about 27 s each,
+which is the entry's premise reproduced from a tracked command: the development build
+passes every signal `#4176` names and 0.9.0 fails three.
+
+⛔ **The driven pass found two defects in the probe itself, and the first is the class
+this repository keeps meeting.**
+
+- ⛔ **Signal 1's name claimed more than it checked.** Written as "drew more than zero
+  bytes", it **passed 0.9.0** on 331 bytes of terminal setup - a signal reporting the
+  opposite of the truth, in the probe written to catch exactly that. Bytes alone do not
+  separate the builds; the SHARE of the paint that arrives before any focus does, 98
+  against 9, and the threshold is half. The measurement is in the file beside the rule.
+- ⛔ **It leaked the workspace it promises to close.** An early version read the id from
+  `result.workspace_id` where the server answers `result.workspace.workspace_id`;
+  StrictMode made the missing property throw, `Exit-Cannot` ran before any `finally`
+  existed, and `probe-nightly` was left running on the operator's server - found in a
+  `workspace list`, not by the probe. ⚠ **The throw jumped past the assignment, so the
+  id needed to clean up was the very thing that failed to be read**: the fix reads both
+  fields through a `Read-Field` that returns null instead of throwing, and closes the
+  workspace on every exit after the create.
+- ⚠ **And `Exit-Cannot` could not exit 2.** Under `$ErrorActionPreference = 'Stop'`,
+  `Write-Error` throws before `exit 2` is reached and pwsh ends **1**, so "could not
+  run" was indistinguishable from "a signal failed". It writes to `[Console]::Error`
+  now.
+
+⭐ **All three fixes are proved by mutation**, planted with `write-file.mjs replace
+--expect 1` and the unmutated file restored byte-identical afterwards: pointing the root
+pane read at a field the server does not send made the probe exit **2**, print `closed
+the probe's workspace wA`, and leave `workspace list` holding `w2` alone. Unmutated
+before and after: exit 0, six measurable, none failed.
+
+⚠ **It is not in the gate and not in CI**, and cannot be: it needs a Windows host, a
+running base, a herdr server and a client binary, which is the same reason
+`acceptance.ps1` is a command a person runs. The maintainers' README names it under
+"What needs a real host".
+
+## Amendment, 2026-09-16: the gate check that was supposed to cover the new script could not fail
+
+⛔ **Adding a tracked `.ps1` exposed that nothing verifies one.** CI's `powershell
+(windows)` job runs the whole gate through `check-gate.ps1`, so the gate's `powershell`
+check is the only thing between a broken PowerShell file and a merge. Finding 2 had
+recorded since 2026-09-14 that it cannot fail. It was fixed here rather than left to
+cover a 421-line file this session added.
+
+⛔ **Finding 2 named one defect and there were two.** The separator mismatch was real:
+the child writes `PARSE|{0}|{1}` and the Go reader matched `PARSE\t`. Repairing that
+alone changed nothing, because the file list never reached the child at all - it was
+passed as arguments after `pwsh -Command`, which does not bind `$args` the way `-File`
+does. Measured on 2026-09-16 with the same invocation shape: it prints `ARGS_SEEN|0` and
+then echoes the file names as output. **So the check parsed zero files and found zero
+problems, for its whole life.**
+
+⭐ **Both are fixed, and the class is closed rather than the instance.** The list arrives
+through `CHECK_PS1_LIST` in the environment, which also needs no quoting; the child
+returns `COUNT|n`; and the caller **refuses any count that is not the number of scripts
+it handed over**, so "parsed nothing" can never again read as "agreed". The check now
+publishes `parsed` beside `scripts` in its JSON: `{"analyzer":"ran","parsed":"22",
+"problems":0,"scripts":22}`.
+
+| driven | exit | what it said |
+| --- | --- | --- |
+| unmutated | 0 | `parsed 22` of 22 scripts, 0 problems |
+| a syntax error planted by hand in `herdr-remote-probe.ps1` | **1** | `herdr-remote-probe.ps1 does not parse: Unexpected token '{'` |
+| the environment variable renamed, which is the original defect | **1** | `parsed 0 of the 22 tracked scripts; the session read no file list` |
+| restored | 0 | `parsed 22`, 0 problems |
+
+⭐ **2 cases and 2 mutation rows**, `repo mutate --only "the powershell check"` **2 of 2
+guards proved** in 7.11 s. ⚠ Both cases need a real PowerShell, so they are in **their
+own test function** behind a `requirePwsh` skip: a host without pwsh reports SKIPPED
+rather than folding a skip into a function whose other cases passed, which is the shape
+CI failed on in a previous session.
+
+⚠ **This is not `WSL-90`'s work and is recorded here because `WSL-90` is what found it.**
+It belongs to the gate, and finding 2 is now closed with the correction that it named
+half the defect.

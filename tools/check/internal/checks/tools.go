@@ -3,9 +3,11 @@
 package checks
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -62,17 +64,37 @@ func PowerShell(t *Tree) Result {
 		return r
 	}
 	scripts := WithExt(t.Ours(), ".ps1")
+	parsed := "0"
 	r.Extra["scripts"] = len(scripts)
 
 	// One session for every file: starting pwsh per script is most of the cost
 	// of the check it replaced.
+	//
+	// ⛔ THE FILE LIST ARRIVES IN THE ENVIRONMENT, NEVER AS ARGUMENTS. `pwsh
+	// -Command <text> -- a.ps1 b.ps1` does NOT bind those names to $args the way
+	// -File does; it appends them to the command text, so $args was EMPTY and the
+	// loop below ran zero times while the names were echoed as output. Measured on
+	// 2026-09-16: the same invocation printed `ARGS_SEEN|0` and then `a.ps1` and
+	// `b.ps1`. An environment variable also needs no quoting, which is what
+	// conventions/shell.md asks for over an escaped payload.
+	//
+	// ⛔ AND THE COUNT IS RETURNED, because "parsed nothing" is the failure this
+	// check spent its whole life in. The caller refuses a count that is not the
+	// number of scripts it handed over.
 	const parseAll = `
-$bad = 0
-foreach ($f in $args) {
-  $e = $null; $tk = $null
-  $null = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path -LiteralPath $f), [ref]$tk, [ref]$e)
-  if ($e -and $e.Count -gt 0) { $bad++; Write-Output ("PARSE|{0}|{1}" -f $f, $e[0].Message) }
+$list = $env:CHECK_PS1_LIST
+$seen = 0
+if ($list) {
+  foreach ($f in $list.Split([char]10)) {
+    $f = $f.Trim()
+    if (-not $f) { continue }
+    $seen++
+    $e = $null; $tk = $null
+    $null = [Management.Automation.Language.Parser]::ParseFile((Resolve-Path -LiteralPath $f).Path, [ref]$tk, [ref]$e)
+    if ($e -and $e.Count -gt 0) { Write-Output ("PARSE|{0}|{1}" -f $f, $e[0].Message) }
+  }
 }
+Write-Output ("COUNT|{0}" -f $seen)
 if (Get-Module -ListAvailable PSScriptAnalyzer) {
   Import-Module PSScriptAnalyzer
   foreach ($r in @(Invoke-ScriptAnalyzer -Path 'scripts' -Recurse -Severity Error,Warning)) {
@@ -80,9 +102,9 @@ if (Get-Module -ListAvailable PSScriptAnalyzer) {
   }
 } else { Write-Output "NOANALYZER" }
 `
-	args := append([]string{"-NoProfile", "-NonInteractive", "-Command", parseAll, "--"}, scripts...)
-	cmd := exec.Command(pwsh, args...)
+	cmd := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", parseAll)
 	cmd.Dir = t.Root
+	cmd.Env = append(os.Environ(), "CHECK_PS1_LIST="+strings.Join(scripts, "\n"))
 	out, err := cmd.CombinedOutput()
 	if err != nil && len(out) == 0 {
 		r.bad("PowerShell could not be driven: %v", err)
@@ -91,15 +113,28 @@ if (Get-Module -ListAvailable PSScriptAnalyzer) {
 	for _, ln := range strings.Split(string(out), "\n") {
 		ln = strings.TrimRight(ln, "\r")
 		switch {
-		case strings.HasPrefix(ln, "PARSE\t"):
-			f := strings.SplitN(strings.TrimPrefix(ln, "PARSE\t"), "\t", 2)
+		// ⛔ THE SEPARATOR IS THE ONE parseAll ABOVE ACTUALLY WRITES, a pipe.
+		// This read for "PARSE\t" and "LINT\t" until 2026-09-16, so no line it
+		// produced could ever match and the check reported ok over every broken
+		// script there was. It is the shape reviews.md calls theatre: green,
+		// trusted, and incapable of refusing. A tab is not usable here anyway,
+		// because PSScriptAnalyzer messages contain them.
+		case strings.HasPrefix(ln, "PARSE|"):
+			f := strings.SplitN(strings.TrimPrefix(ln, "PARSE|"), "|", 2)
 			r.bad("%s does not parse: %s", f[0], f[len(f)-1])
-		case strings.HasPrefix(ln, "LINT\t"):
-			f := strings.SplitN(strings.TrimPrefix(ln, "LINT\t"), "\t", 2)
+		case strings.HasPrefix(ln, "LINT|"):
+			f := strings.SplitN(strings.TrimPrefix(ln, "LINT|"), "|", 2)
 			r.bad("%s %s", f[0], f[len(f)-1])
+		case strings.HasPrefix(ln, "COUNT|"):
+			parsed = strings.TrimPrefix(ln, "COUNT|")
 		case ln == "NOANALYZER":
 			r.Extra["analyzer"] = "not installed"
 		}
+	}
+	// ⛔ A CHECK THAT READ NOTHING IS NOT A CHECK THAT AGREED.
+	r.Extra["parsed"] = parsed
+	if want := strconv.Itoa(len(scripts)); parsed != want {
+		r.bad("PowerShell parsed %s of the %s tracked scripts; the session read no file list", parsed, want)
 	}
 	if _, ok := r.Extra["analyzer"]; !ok {
 		r.Extra["analyzer"] = "ran"

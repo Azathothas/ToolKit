@@ -100,6 +100,21 @@ checkout under the runner's `.tmp` scratch directory, and remove it. Never
 point it at `wsl-toolkit-muse`, `podman-machine-default`, or another
 distribution it did not create.
 
+⭐ **A herdr `--remote` client is proved by its own probe**, because nothing in the
+Go suite can see it: both builds answer `herdr 0.9.0`, so `--version` tells them
+apart from nothing.
+
+```powershell
+pwsh -NoProfile -File tools/windows/wsl-toolkit/herdr-remote-probe.ps1 -Herdr CLIENT -Label NAME
+```
+
+It drives the client in a Windows pseudo console, types into a herdr workspace **it
+creates and closes itself**, and reads every result back from the server rather than
+off the screen. Six signals are measurable and the seventh, a real window focus event,
+is reported `operator` because a pseudo console has no window. `base attach` prints the
+client matching the server the base runs, which is the one to pass. ⚠ Exit 2 is "could
+not run" and exit 1 is "a signal failed"; they are different answers.
+
 For a focused distro change, use a separately named `eph-*` distribution and an
 isolated `--home`. Exercise success, failure, deadline, ownership refusal,
 snapshot and reuse, and cleanup. When the command channel or the relay changes,
