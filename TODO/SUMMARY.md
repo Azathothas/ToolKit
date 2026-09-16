@@ -7,6 +7,56 @@ on what was true last time.
 
 ---
 
+## 2026-09-16, a checkpoint finished, the first nightly published, and three checks that could not fail
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-16T06:59:37Z | the record commit's own time is its end, about one hour |
+| Commits | `cfa3252`, tree **DIRTY** with the previous session's unfinished record, its CI run 34967456693 green | `git log --oneline cfa3252..HEAD` reads **4**, each pushed with the previous one's CI green first |
+| Work | 7 open entries; a checkpoint claimed and not made | **Completed 0.** **Partial 1:** `WSL-90`, whose every step but one is now proved and driven. **Failed 0.** ⛔ **`WSL-90` does NOT close**, and not on the operator: its step 4 needs a `wsl-toolkit-v*` release that ruling 6 forbids cutting yet. Entries 125 to 125, open 7 to 7, done 118 to 118 |
+| Changes | 0 files changed from `cfa3252` | `git diff --shortstat cfa3252..HEAD` reads **14 files, +1,193 / -52**, two of them new |
+| Size | 97,648 text lines in 313 tracked files at `cfa3252`, `git grep -I -c ''` | **98,789 in 315 files, +1,141** |
+| Checks | doctor exit 0 in 75.96 s; gate 21 of 21 in 64.8 s | gate 21 of 21, green before every commit. Windows Go **330 top-level results, 310 passed, 20 skipped, 0 failed, exit 0 in 15.25 s**, and `tools/check` and `tools/repo` green beside it; `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 clean over **47** scripts. **2 new mutation rows**, 310 to **312**, both red when planted |
+| Cost | no paid operation authorized | no paid operation. One `herdr-nightly.yml` run, 6 jobs, about 11 minutes of GitHub runner time across four architectures; **68 MiB downloaded** and verified, kept under `.tmp`; six container runs |
+| Health | five distributions; the base running a hand-swapped development herdr | ⭐ the same five, none added or removed. The base now runs a **published** artefact, `herdr-nightly-20260916-18061191fdc0`, over the hand-swapped build. ⭐ Findings 2, 29 and 31 to 36 opened or closed; **finding 2 closed and corrected** - it named half a defect. Tree clean, no tag, no BSD image, the operator's herdr workspace `w2` untouched |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| resume at `WSL-67`'s `pkgin` and `pkg_add` drives, then `WSL-71` | ⛔ **the prompt was stale and this was not done.** Both entries closed at `6f22e39` on 2026-09-15; `INDEX.md` and both entries read `done`. Only `PROGRESS.md`'s work order still said otherwise, and it is what misrouted the prompt. Finding 29 |
+| ask the operator to approve two BSD downloads | ⛔ **not asked, deliberately.** They were approved on 2026-09-15, downloaded, driven and removed. Asking a fourth time for something already given is the opposite of the instruction |
+| validate and reconcile actual progress before working | ⭐ done, and it is the reason anything else here is right. The doctor, the gate, `wsl -l -v`, the CI API and `INDEX.md` were read against the record, and the record lost |
+| finish what the previous session left | ⭐ done. Its checkpoint claimed an amendment that did not exist, owed three reviews it had not run, and had written no summary. All three delivered, and its summary written from artefacts |
+| `WSL-90`'s first nightly | ⭐ **published, verified and driven.** 6 of 6 jobs, 12 assets, every digest and signature checked and both proved able to refuse, and the base driven onto the channel end to end |
+| the probe as a tracked script | ⭐ done, and it reproduces the entry's premise from a command rather than from a session's memory |
+| `muse login`, and the six `--remote` signals in a real window | ⛔ **not done, and they are the operator's.** Asked once, with exact commands, and the `--remote` ask revised to the nightly's own client when the base moved to it |
+
+### ⛔ Three things were green and could not have been otherwise
+
+- ⛔ **The gate's `powershell` check had never checked anything.** Finding 2 blamed a
+  separator mismatch; fixing that alone changed nothing, because the file list was passed
+  as arguments after `pwsh -Command`, which does not reach `$args`. It parsed **zero**
+  files and reported ok for its whole life, while CI's `powershell` job ran the gate and
+  trusted it. It now returns how many files it read and refuses any count that is not the
+  number handed to it.
+- ⛔ **A signal called `repaint` passed the client that cannot repaint.** Written as "drew
+  more than zero bytes", it passed herdr 0.9.0 on 331 bytes of terminal setup - inside the
+  probe written to catch exactly that. What separates the builds is the SHARE of the paint
+  arriving before any focus, 98 per cent against 9.
+- ⛔ **`herdr-nightly.yml`'s prune would have deleted the newest nightly.**
+  `gh release create --target SHA` dates a release from the target commit, so
+  `sort_by(.created_at)` ordered nightlies by when `main` last moved. The one it would
+  have deleted is the one the adapter resolves. Nothing published was at risk, because
+  the prune keeps seven and there is one.
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. The operator's two steps, then `WSL-68`'s four
+remaining items, none of which needs them.
+
+---
+
 ## 2026-09-15, the attended Muse and herdr session, and a builder for somebody else's program
 
 ⚠ **Written on 2026-09-16 by the session that resumed this one.** The session below was

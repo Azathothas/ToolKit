@@ -8,9 +8,9 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-16T06:59:37Z, resuming the session of 2026-09-15T10:20:32Z that was checkpointed and ended before it wrote its record
 baseline        cfa3252, tree DIRTY with that session's unfinished record, doctor exit 0 in 75.96 s, gate 21 of 21 in 64.8 s
-head            42a7c5b, the finished checkpoint, pushed after cfa3252's CI run 34967456693 was green; this record commit follows it
+head            69ae23f, each commit pushed after the previous one's CI was green; this record commit follows it
 entries         total 125  open 7  blocked 0  done 118
-this session    the 2026-09-15 checkpoint finished; WSL-90's first nightly published, verified, driven, and one defect found in it and fixed
+this session    the 2026-09-15 checkpoint finished; WSL-90's first nightly published, verified and driven; the probe tracked; three checks that could not fail, fixed
 ```
 
 ## Active work
@@ -194,7 +194,8 @@ new file FIRST, then run the gate.**
 | `42a7c5b` | the 2026-09-15 checkpoint finished by the session that resumed it: `WSL-90`'s second build matrix run recorded from its logs, 8 of 8 green and both fixes measured; the three closing reviews run, finding 31; five live pages that described a publication none has made; the work order corrected, finding 29; and that session's summary written from artefacts |
 | `431417b` | `WSL-90` partial: the first herdr nightly published, its six signatures verified and both refusals proved, the base driven onto the `nightly` channel end to end, and the prune's `created_at` defect found by that first run and fixed |
 | `b2203ab` | `WSL-90` partial: the `--remote` probe as a tracked script, driven against both clients, the nightly passing six signals and 0.9.0 failing three; three defects in the probe itself found by driving it; and the gate's `powershell` check, which could not fail for two independent reasons, fixed with 2 cases and 2 mutation rows |
-| this record commit | `WSL-90`'s three closing reviews, finding 36 and a line count corrected; the entry stays open on its step 4, which only `wsl-toolkit-v3.0.0` can prove |
+| `69ae23f` | `WSL-90`'s three closing reviews, finding 36 and a line count corrected; the entry stays open on its step 4, which only `wsl-toolkit-v3.0.0` can prove |
+| this record commit | this session's summary |
 
 ## Measurements
 
