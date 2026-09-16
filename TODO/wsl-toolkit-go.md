@@ -9853,3 +9853,57 @@ CI failed on in a previous session.
 ⚠ **This is not `WSL-90`'s work and is recorded here because `WSL-90` is what found it.**
 It belongs to the gate, and finding 2 is now closed with the correction that it named
 half the defect.
+
+## Amendment, 2026-09-16: the three reviews, and why this entry does not close
+
+⭐ **The door sweep started from the state directory rather than the code**, because the
+nightly channel is the first thing here that writes a binary per release onto the host.
+It asked what removes one. The prune is real - after installing tag `X` the host half
+reads its own directory and removes every other name matching
+`^herdr-nightly-[0-9]{8}-[0-9a-f]{12}$` - and it is deliberately narrow, so a directory
+it does not recognise is left alone rather than guessed at. ⛔ **But it is inside the
+write path.** Driven with a decoy old client and an unrecognised directory planted
+beside the real one, `base ensure` exited 0, printed `herdr ... is installed and matches
+its pinned digest`, wrote no client and **removed nothing**. So "removes older ones",
+which the amendment of 2026-09-15 says, holds for an install and not for an ensure.
+Finding 36, with both decoys removed by literal path afterwards.
+
+⭐ **The guard mutation ran on four different things, and every one of them refused.**
+
+| guard | planted | result |
+| --- | --- | --- |
+| `herdr-nightly.yml`'s tag, prune and staging shell | empty, short, uppercase and payload heads; this tool's own release; a missing target; a short `SHA256SUMS` | 14 rows, unmutated first, all as wanted |
+| the published artefact's signature | `release.yml`'s identity in place of `herdr-nightly.yml`'s | exit 1, naming the SAN it got |
+| the published artefact's digest | one byte zeroed at offset 1024 of `herdr-linux-x86_64` | `sha256sum -c` exit 1 and `cosign` exit 1; restored, exit 0 |
+| the probe's own cleanup | the root pane read pointed at a field the server does not send | exit **2**, `closed the probe's workspace wA`, and `workspace list` holding the operator's `w2` alone |
+
+⛔ **And it found three defects in the probe itself and two in the gate check meant to
+cover it**, all recorded in the two amendments above. The one worth repeating is that a
+signal called `repaint` **passed the client that cannot repaint**, on 331 bytes of
+terminal setup, inside the probe written to catch exactly that.
+
+⭐ **The claim audit re-derived every number in these amendments from the artefact
+rather than from the session.** `8 of 8` and `6 of 6` jobs from the runs API; the four
+asset sizes from `gh release view`; the installed digest read back from `base status
+--probe --json` and compared character by character with the release's own `SHA256SUMS`
+line for `herdr-linux-x86_64`, `213580fc…f92f14a1`, equal; `parsed 22` against `scripts
+22`; and the probe's figures from its own JSON. ⛔ **It caught one number written from
+memory**: this entry said the tracked probe was 370 lines where `wc -l` reads **421**,
+corrected before the commit. ⚠ It also confirms what these amendments do NOT claim:
+nothing here measures that either Zig fix alone changed a matrix outcome, because no
+single-variable run was made.
+
+### Still open
+
+⛔ **This entry does not close, and the reason is not the operator.**
+
+1. ⛔ **Approach step 4 has never run.** `release.yml`'s herdr jobs publish herdr's newest
+   stable build inside a `wsl-toolkit-v*` release, and no release has been cut since they
+   were written, so **no `wsl-toolkit` release carries herdr and none has been proved to**.
+   It cannot be driven early: `TODO/PROGRESS.md`'s ruling 6 cuts `wsl-toolkit-v3.0.0` only
+   after issues 30 and 32 close and CI is green on the final commit. This entry closes
+   when that release proves it.
+2. ⚠ **Signal 7, a real window focus event**, is the operator's and always will be: a
+   pseudo console has no window. It is asked for, it is not a blocker for anything else,
+   and the probe reports it `operator` rather than pretending.
+3. ⚠ Finding 36, the prune that only runs on the write path, is recorded and not fixed.

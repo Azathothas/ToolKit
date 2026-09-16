@@ -60,22 +60,25 @@ herdr, and the probe as a tracked script is still a draft outside the tree,
 ⭐ **The probe is a tracked script**, `tools/windows/wsl-toolkit/herdr-remote-probe.ps1`,
 and it reproduces the entry's premise from a command: the nightly client passes all six
 measurable signals and 0.9.0 fails three. Its own driven pass found three defects in
-itself, all fixed and proved by mutation. ⛔ **Only `WSL-90`'s reviews and closing are
-left**, plus the operator's real-window signal.
+itself, all fixed and proved by mutation. ⭐ **Its three reviews are run** and recorded in
+its last amendment; the door sweep found finding 36 and the claim audit caught a line
+count written from memory. ⛔ **`WSL-90` stays open, and not on the operator**: approach
+step 4, herdr inside a `wsl-toolkit-v*` release, has never run and cannot be driven until
+ruling 6 lets `wsl-toolkit-v3.0.0` be cut.
 
 **Resume, in this order:**
 
-1. **`WSL-90`'s three reviews and its closing.** Everything it can prove without the
-   operator is proved; signal 7, a real window focus event, stays `operator` forever and
-   the entry closes naming it rather than waiting on it.
-2. **The operator's two steps**, which nothing else here can stand in for: the six
-   `--remote` signals in a real Windows Terminal window with the development client, and
-   `muse login` in `base shell`.
+1. **The operator's two steps**, which nothing else here can stand in for: `muse login`
+   in `base shell`, and the six `--remote` signals in a real Windows Terminal window -
+   now with the nightly's own client, which `base attach` prints.
+2. `WSL-68`'s four remaining items, listed in its own entry. ⭐ **None of them needs the
+   operator**, so this is what to do while the two steps above are unanswered.
 3. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
    `PermissionRequest` from a real turn, then the guide.
-4. `WSL-68`'s four remaining items, listed in its own entry.
-5. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
+4. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
    RUN**.
+5. `WSL-90`'s closing, which waits on `wsl-toolkit-v3.0.0` proving its step 4, and so on
+   ruling 6 rather than on any work.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -165,8 +168,13 @@ short path, then CI's Linux Go job and its ShellCheck in containers.
 carries all three as commands under "Build and local proof". ⚠ **A BSD run no longer
 writes the shared image**, so a heavy run may boot it; a run that needs a damaged or
 altered image goes on a copy, with `WSL_TOOLKIT_CACHE` under this repository's `.tmp`.
-⚠ **An untracked script is outside CI's ShellCheck command**, which lists `git
-ls-files`, so check a new one by name before it is added.
+⚠ **An untracked file is outside the WHOLE gate, not just ShellCheck.** Every check
+reads the tracked set, so a new file is invisible until it is staged and the green gate
+you ran before adding it said nothing about it. Met twice: CI's ShellCheck command
+lists `git ls-files`, and on 2026-09-16 `herdr-remote-probe.ps1` passed a full gate
+while untracked and failed `line-endings` on the very next run, because
+`.gitattributes` gives `*.ps1` `eol=crlf` and it had been written with LF. ⭐ **Stage a
+new file FIRST, then run the gate.**
 
 ## Recent work
 
@@ -185,7 +193,8 @@ ls-files`, so check a new one by name before it is added.
 | `cfa3252` | `WSL-90` partial: the herdr adapter's `nightly` channel, with 4 cases and 5 mutation rows, and the build matrix's first run read and answered |
 | `42a7c5b` | the 2026-09-15 checkpoint finished by the session that resumed it: `WSL-90`'s second build matrix run recorded from its logs, 8 of 8 green and both fixes measured; the three closing reviews run, finding 31; five live pages that described a publication none has made; the work order corrected, finding 29; and that session's summary written from artefacts |
 | `431417b` | `WSL-90` partial: the first herdr nightly published, its six signatures verified and both refusals proved, the base driven onto the `nightly` channel end to end, and the prune's `created_at` defect found by that first run and fixed |
-| this record commit | `WSL-90` partial: the `--remote` probe as a tracked script, driven against both clients, the nightly passing six signals and 0.9.0 failing three; three defects in the probe itself found by driving it, fixed, and proved by mutation |
+| `b2203ab` | `WSL-90` partial: the `--remote` probe as a tracked script, driven against both clients, the nightly passing six signals and 0.9.0 failing three; three defects in the probe itself found by driving it; and the gate's `powershell` check, which could not fail for two independent reasons, fixed with 2 cases and 2 mutation rows |
+| this record commit | `WSL-90`'s three closing reviews, finding 36 and a line count corrected; the entry stays open on its step 4, which only `wsl-toolkit-v3.0.0` can prove |
 
 ## Measurements
 
@@ -499,6 +508,20 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     throwing. ⚠ It is a general shape under StrictMode, not a fact about this file:
     anywhere a cleanup handler depends on a value assigned from a property read, the
     read's own failure disarms the handler.
+36. ⚠ **The old herdr client is pruned only when a new one is WRITTEN.** The loop that
+    removes every other `herdr-nightly-*` directory lives inside the function that
+    installs a client, so a `base ensure` that finds the current client already matching
+    its digest short-circuits and never reaches it. Driven on 2026-09-16: a decoy
+    `herdr-nightly-20260901-aaaaaaaaaaaa` and an unrecognised `not-a-nightly-dir` were
+    planted under the instance's herdr directory, `base ensure` exited 0 printing
+    `herdr ... is installed and matches its pinned digest` and no `removed the herdr
+    client` line, and **both survived**. ⚠ **The amendment of 2026-09-15 says the host
+    half "removes older ones"**, which is true of the write path and not of an ensure;
+    the correction is here rather than in that premise. ⚠ It self-corrects at the next
+    nightly, each directory is about 9.6 MiB extracted, and the loop is deliberately
+    conservative - it only ever removes a name matching the nightly tag, so the
+    unrecognised directory surviving is correct behaviour and not part of the finding.
+    Both decoys were removed by literal path afterwards.
 
 ## Review findings
 
