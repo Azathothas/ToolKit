@@ -7,6 +7,59 @@ on what was true last time.
 
 ---
 
+## 2026-09-15, the attended Muse and herdr session, and a builder for somebody else's program
+
+⚠ **Written on 2026-09-16 by the session that resumed this one.** The session below was
+checkpointed at the operator's request and ended before it wrote its own summary, so every
+figure here is read from git, the CI API and the entries rather than from its narrative.
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-15T10:20:32Z | its last work commit `cfa3252` at 12:05:05Z, about one hour forty-five; the record commit that closes it is the next day's |
+| Commits | `6f22e39`, clean `main`, its CI run 34955394330 green in all six jobs | `git log --oneline 6f22e39..HEAD` reads **3**, each pushed with the previous one's CI green first; `cfa3252`'s own CI run 34967456693 is green |
+| Work | 7 open entries | **Completed 0.** **Partial 3:** `WSL-76` and `WSL-78`, whose four ordered measurements were taken and whose muse reporter was driven against a real herdr; and `WSL-90`, filed, approved by ruling and implemented the same session. **Failed 0.** Entries 124 to 125, open 6 to 7, done 118 to 118 |
+| Changes | 0 files changed from `6f22e39` | `git diff --shortstat 6f22e39` reads **37 files, +2,712 / -299**, five of them new |
+| Size | 95,369 text lines in 308 tracked files at `6f22e39`, `git grep -I -c ''` | **97,782 in 313 files, +2,413** |
+| Checks | doctor exit 0 in 39.71 s; gate 21 of 21 in 33.81 s | gate 21 of 21, green before every commit. ⚠ Re-measured on the finished tree on 2026-09-16, because the session recorded its Go proof mid-way and then added six cases: the Windows proof with the 8.3 `TEMP` reads **330 top-level results, 310 passed, 20 skipped, 0 failed, exit 0 in 15.25 s**, where `WSL-76`'s amendment quotes 324 and 304; `check-go.sh` exit 0 in `golang:1.25` in 31.52 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **47** tracked scripts in 24.12 s. **8 new mutation rows**, 3 for the release lookup and 5 for the nightly channel |
+| Cost | no paid operation authorized | no paid operation. Rust 1.96.1 installed through rustup for herdr's build; two local herdr builds, 227 s for Windows and 223.4 s for Linux; four dispatched `herdr-build.yml` runs on GitHub's runners, two of them failures |
+| Health | five distributions; `wsl-toolkit-base` holding pinned herdr 0.9.0 | the same five, none added or removed. ⚠ **`wsl-toolkit-base` left running herdr's DEVELOPMENT server** by the operator's ruling 15, with 0.9.0 kept beside it; the next `base ensure` puts the pinned digest back. ⛔ Tree left **dirty** across the session boundary, and the record commit was not written |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| the four measurements the reference sweep named | ⭐ done, and **three of the four overturned the record**. herdr on Windows is 0.9.0, no published herdr carries `#4038`'s fix, and ⛔ **`herdr --machine` does not exist in 0.9.0** - the sweep had read herdr's unreleased `docs/next` |
+| the muse adapter's herdr reporter, against a real herdr and a real Muse | ⭐ done, and its first real run found **four defects the stub could not**: a temporary file `fs.protected_regular` refused, the wrong settings file, the wrong hook shape, and a new file Muse would refuse to start over |
+| build herdr here, and a nightly builder if it works | ⭐ built locally for Windows and Linux, and `WSL-90` filed, approved and implemented in the same session by the operator's rulings 12 to 15 |
+| `muse login` | ⛔ **not done.** The credential is the operator's and was asked for in chat |
+| the six `--remote` signals in a real window | ⛔ **not done.** A pseudo console measured four; only a real window carries a real focus event |
+
+### ⛔ What it left behind, and what the resuming session found
+
+- ⛔ **The checkpoint was claimed and not made.** Its own record row said the build
+  matrix's second run was "read in `WSL-90`'s last amendment". No such amendment existed;
+  the runs had happened and were green, and nothing recorded them. Written on 2026-09-16
+  from the run logs.
+- ⛔ **The work order outlived the work by a session.** It still sent a reader to drive
+  `pkgin` and `pkg_add` for `WSL-67` and to ask the operator for two downloads, after
+  `6f22e39` had closed that entry on a driven NetBSD guest and the operator had approved
+  the downloads. `INDEX.md` and the entry both read `done`, so only the work order was
+  wrong - and a session resumed on 2026-09-16 was misrouted by it. Finding 29.
+- ⛔ **The three closing reviews were not run.** Run on 2026-09-16; the door sweep found
+  that `consumer.ps1` downloads every asset a release carries, the guard mutation drove
+  `herdr-nightly.yml`'s guards for the first time, and the claim audit found an
+  enumeration that was right by luck and a correction with no date.
+- ⭐ **The four measurements and the reporter's four defects are real and recorded**, each
+  with its conditions, in `WSL-76`'s and `WSL-78`'s amendments of 2026-09-15. Nothing in
+  this session's measured work was found wanting.
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. `WSL-90`'s first nightly, then the operator's two
+steps, then `WSL-76`'s and `WSL-78`'s proves.
+
+---
+
 ## 2026-09-15, the BSD drives, the reference sweep, and a binary that carries its scripts
 
 | row | before | after |

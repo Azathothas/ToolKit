@@ -6,11 +6,11 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-15T10:20:32Z; the record commit's own time is its end
-baseline        6f22e39, tree clean, doctor exit 0 in 39.71 s, gate 21 of 21 in 33.81 s
-head            6f22e39, pushed with its CI run 34955394330 green in all six jobs
+session started 2026-09-16T06:59:37Z, resuming the session of 2026-09-15T10:20:32Z that was checkpointed and ended before it wrote its record
+baseline        cfa3252, tree DIRTY with that session's unfinished record, doctor exit 0 in 75.96 s, gate 21 of 21 in 64.8 s
+head            cfa3252, its CI run 34967456693 green in all six jobs; this record commit finishes the checkpoint and follows it
 entries         total 125  open 7  blocked 0  done 118
-this session    WSL-76 and WSL-78 partial, the attended Muse and herdr session
+this session    the checkpoint completed: the second build matrix run recorded, three reviews run, the 2026-09-15 summary written from artefacts
 ```
 
 ## Active work
@@ -41,15 +41,19 @@ and **`WSL-90` carries it forward**: approved, filed, and implemented in this se
 the operator's rulings 12 to 15. Driven in a Windows pseudo console against the base,
 the development client passes every signal `#4176` names and 0.9.0 fails three; with
 the development server swapped into `wsl-toolkit-base`, `--machine base agent list`
-answers exit 0. Its release-lookup step is proved; its workflows are written and not
-run.
+answers exit 0. Its release lookup is proved. `herdr-build.yml` is dispatched by hand
+only, and its second run is read in `WSL-90`'s last amendment; `herdr-nightly.yml` and
+`release.yml`'s herdr jobs have never run, so ⛔ **no nightly is published**. The
+adapter's `nightly` channel is written and proved in the suite, and never driven. The
+probe as a tracked script is a draft outside the tree, `.tmp\herdr-remote-probe.cs`.
 
 **Resume, in this order:**
 
-1. **`WSL-90`'s first nightly**: dispatch `herdr-nightly.yml`, read every job, and fix
-   what the runners find, `windows-11-arm` first; then the adapter's `nightly` channel,
-   the Windows client under the instance's state directory, and the probe as a tracked
-   script.
+1. **`WSL-90`'s first nightly**: dispatch `herdr-nightly.yml`, read every job, and verify
+   the prerelease with `sha256sum -c` and `cosign verify-blob`; then set `"channel":
+   "nightly"` on `wsl-toolkit-base` and drive `base ensure`, `base attach` and
+   `--machine base agent list`; then the probe as a tracked script, typing only into a
+   workspace of its own; then the owed findings `WSL-90`'s last amendment lists.
 2. **The operator's two steps**, which nothing else here can stand in for: the six
    `--remote` signals in a real Windows Terminal window with the development client, and
    `muse login` in `base shell`.
@@ -67,9 +71,12 @@ is closed, and the issue gets a comment naming the commits.
 
 1. ⭐ **Closed:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33, `WSL-75`, `WSL-81`,
    `WSL-72`, `WSL-77`, `WSL-84`, `WSL-83`, `WSL-82` and `WSL-85`.
-2. **Finish issue 30's existing package and profile work:** `WSL-70` and `WSL-71` are
-   closed. `WSL-67` has left: driving `pkgin` and `pkg_add`, which waits for the
-   operator's approval of the two downloads, and its closing.
+2. ⭐ **Closed:** `WSL-70`, `WSL-71` and `WSL-67`, which finish issue 30's existing
+   package and profile work. ⚠ **This item said until 2026-09-16 that `WSL-67` still
+   had `pkgin` and `pkg_add` to drive and was waiting on two downloads.** Both were
+   approved on 2026-09-15, both managers were driven on a NetBSD 11.0 guest, and the
+   entry closed at `6f22e39`; the sentence outlived the work by a session and sent a
+   resuming session to a finished entry. Finding 29.
 3. **`WSL-68`, the sealed base.** It closes issue 30 after the work above, and uses the
    drive verifier `WSL-84` fixed. ⚠ The 2026-09-14 order gave it a dedicated session;
    the operator's instruction of 2026-09-15, to finish everything except the herdr and
@@ -159,7 +166,10 @@ ls-files`, so check a new one by name before it is added.
 | `53a8f1f` | `WSL-86` filed and closed, `WSL-87` and `WSL-70` closed: the provisioner installs `nftables` and restores the id-mapping capability, `install_codegraph` names a kernel it publishes no package for, and all four presets build; 3 mutation rows and one defect planted by hand |
 | `8801301` | `WSL-71` closed: `shell-profile.sh` moves an interactive shell off a Windows drive and leaves a marked or granted one alone, `base shell --here` marks its own shell through `WSLENV`, and `bootstrap.sh` writes its lines to the login file bash actually reads; 2 mutation rows and 5 defects planted by hand |
 | `6f22e39` | the last session's record: `WSL-71` and `WSL-67` closed, `WSL-68` attacked, `WSL-88` and `WSL-89` written and never run |
-| this checkpoint | `WSL-76` and `WSL-78` partial: the four measurements, the muse reporter's four defects fixed with a case and 5 mutation rows, its lifecycle against a real herdr, `--machine` corrected out of every live page, and two failing commands out of the Muse example |
+| `f179609` | `WSL-76` and `WSL-78` partial: the four measurements, the muse reporter's four defects fixed with a case and 5 mutation rows, its lifecycle against a real herdr, `--machine` corrected out of every live page, and two failing commands out of the Muse example |
+| `062ae9c` | `WSL-90` filed and approved: the release lookup reads past its first page, with 2 cases and 3 mutation rows; `herdr-build.yml`, `herdr-nightly.yml` and `release.yml`'s herdr jobs written |
+| `cfa3252` | `WSL-90` partial: the herdr adapter's `nightly` channel, with 4 cases and 5 mutation rows, and the build matrix's first run read and answered |
+| this record commit | the 2026-09-15 checkpoint finished by the session that resumed it: `WSL-90`'s second build matrix run recorded from its logs, 8 of 8 green and both fixes measured; the three closing reviews run, finding 31; five live pages that described a publication none has made; the work order corrected, finding 29; and that session's summary written from artefacts |
 
 ## Measurements
 
@@ -396,6 +406,36 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 28. ⚠ **A build of herdr's development branch answers `herdr 0.9.0`**, because the
     branch has not moved `Cargo.toml`. Any build this repository makes or ships cannot be
     told from the release by `--version`; its digest is the only identity.
+29. ⛔ **The work order outlived the work by a session, and misrouted a resuming
+    session.** Item 2 above still read "`WSL-67` has left: driving `pkgin` and
+    `pkg_add`, which waits for the operator's approval of the two downloads" after
+    `6f22e39` closed the entry on a driven NetBSD guest. A session resumed on
+    2026-09-16 was sent to re-ask for an approval the operator had already given and
+    to re-drive two package managers already driven. ⚠ **`INDEX.md` and the entry both
+    read `done` throughout**, so the record disagreed with itself and only the work
+    order was wrong; the three-way reconciliation the methodology asks for is what
+    caught it. ⚠ **No check asserts that the work order agrees with `INDEX.md`**, and
+    `check-record.sh` did not fire. That check is the fix and is not written.
+30. ⚠ **A green `herdr-build.yml` matrix does not cover what the nightly builds.** The
+    matrix was dispatched against a pinned ref, `052779c4159ed851`, while
+    `herdr-nightly.yml` resolves herdr's development head at run time; by 2026-09-16
+    that head had moved to `18061191fdc0`. So the first nightly built a commit no
+    matrix run had ever built. Read on 2026-09-16, and it is the design working as
+    written rather than a defect - recorded because "the matrix is green" is not the
+    same sentence as "the nightly will build".
+31. ⛔ **`consumer.ps1` downloads every asset a release carries, and from
+    `wsl-toolkit-v3.0.0` that includes herdr's four builds.** `Get-Release`'s `gh` path
+    is `gh release download` with no `--pattern`, and its no-`gh` fallback reads
+    `SHA256SUMS` and fetches every name in it plus a `.cosign.bundle` for each;
+    `release.yml` writes herdr's four builds into that same `SHA256SUMS`. So this
+    repository's own reference runner, and the weekly release smoke that drives it,
+    will fetch four herdr binaries neither uses, while
+    [`../docs/consumers.md`](../docs/consumers.md) tells a consumer to download only
+    the executable for its architecture and `SHA256SUMS`. Found by `WSL-90`'s door
+    sweep on 2026-09-16, read and not measured - no `wsl-toolkit-v3.0.0` exists yet, so
+    the added bytes are the nightly's own asset sizes and are recorded with them. ⚠ It
+    is a cost and a page disagreeing with a script, not a consumer break: no consumer in
+    the register fetches `consumer.ps1`.
 
 ## Review findings
 
@@ -441,11 +481,59 @@ breaking. Its door sweep found finding 23, that this tree now holds two disagree
 definitions of "a Windows drive under /mnt". `WSL-68` is a checkpoint and owes its three
 closing reviews.
 
+⭐ **2026-09-16, `WSL-90`'s checkpoint reviews**, owed by the session that was
+checkpointed on 2026-09-15 and run by the one that resumed it.
+
+**The door sweep** enumerated every release lookup in the tracked tree rather than the
+two the entry named, with `git ls-files | xargs grep -l releases`: `LatestRelease` in
+`release.go`, the nightly's in `herdr_nightly.go`, `Resolve-LatestTag` and `Get-Release`
+in `consumer.ps1`, `remote.go`, `bootstrap.sh`, `release.yml` and `herdr-nightly.yml`.
+⭐ Two of those are not exposed and the entry never said why: `bootstrap.sh` and
+`remote.go` both read `/releases/latest`, which the API defines as excluding
+prereleases, so no nightly can reach them. The nightly's own lookup is the mirror image
+of `LatestRelease` - same hundred-a-page, same ten-page bound, and
+`^herdr-nightly-[0-9]{8}-[0-9a-f]{12}$`, which is exactly the tag
+`herdr-nightly.yml` builds - so the symmetric hazard, this tool's releases hiding the
+nightlies, is closed too. ⛔ **It found one the entry's Consumers section missed:
+`consumer.ps1` downloads EVERY asset a release carries.** Its `gh` path is `gh release
+download` with no `--pattern`, and its fallback walks `SHA256SUMS` and fetches each
+name plus a bundle. `release.yml` stages herdr's four builds into that same
+`SHA256SUMS`, so from `wsl-toolkit-v3.0.0` this repository's own reference runner will
+fetch four herdr binaries it never uses, where `consumers.md` tells a consumer to
+download only "the executable matching the host architecture and `SHA256SUMS`". The
+entry called the herdr files "additive", which is true of the release and not of the
+fetch. Filed as finding 31.
+
+**The guard mutation** took the guards in `herdr-nightly.yml`, which had never been
+driven at all, and planted the defect each exists to catch, unmutated row printed
+first: the development head's shape refused an empty string, 39 characters, uppercase,
+a shell payload and an API error string; the prune refused this tool's own release,
+an upstream tag, and a release standing behind a nightly; the staging refused a missing
+target and a `SHA256SUMS` one line short. **14 rows, 14 as wanted, 0 red.** ⚠ **It
+proves the logic and not the deployed step**: the harness transcribes each guard's
+control flow into a function returning 1 where the workflow exits 1, so it is a reading
+of the workflow rather than the workflow. The dispatched nightly is what drives the
+steps themselves, and only their passing half.
+
+**The claim audit** read the five corrected pages against `gh run list` and `gh release
+list` rather than against the checkpoint's description of them, and the corrections
+hold: `herdr-nightly` appears in no run listing and no `herdr-nightly-*` tag exists.
+⛔ **The enumeration "five live pages" was right by luck.** A grep for the claim found
+**six** files; the sixth, `CHANGELOG.md:28`, is a dated `**Deployed:**` line that the
+changelog's own rule 4 requires and its "do not delete an entry" rule protects, so it
+is history and correctly untouched - but nothing in the checkpoint showed it had been
+looked at. ⛔ **The README's correction carried no date** where the other four carry
+`read on 2026-09-15`, which is a claim quoted without its conditions; it now names the
+date and says `herdr-build.yml` publishes nothing by design. ⛔ **And four of the five
+corrections are false by the end of this session**, because it publishes the first
+nightly: they are committed as the previous session's record, dated, and rewritten in
+the nightly's own commit rather than left to rot.
+
 ## Open questions for the operator
 
 ⭐ The operator asked on 2026-09-15 to be asked only for what actually needs them: a
 ruling this repository's own rules require, a download, a credential, or Windows
-software. Four are open, each asked in chat on 2026-09-15:
+software. Two are open, each asked in chat on 2026-09-15:
 
 1. **`muse login`**, the credential, in `wsl-toolkit --instance base base shell`.
 2. **The six `--remote` signals in a real Windows Terminal window**, with the
@@ -486,6 +574,9 @@ development server ran for `--machine`.
   `onboarding = false`, written by the development client, and `herdr-client.log`. Kept
   so the operator's own `--remote` test is not met by the onboarding overlay that
   swallowed the probe's keys.
+- ⚠ **`%LOCALAPPDATA%\herdr\remote` holds three `ssh-PID-0` directories and three
+  `.sock` files**, left by the three pseudo-console runs that were killed, at 11:19,
+  11:20 and 11:21Z; the two runs that detached with exit 0 left none.
 - The shared `/mnt/wsl` was not written to this session.
 - ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
   `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and
@@ -495,9 +586,8 @@ development server ran for `--machine`.
   `podbox` and `podbox-migrate`, as at the start. `instances\muse` holds nothing.
 - No BSD image is downloaded. The shared FreeBSD image is the published one,
   6,476,638,208 bytes, SHA-256 `12807CE7…921663BF`, not booted this session.
-- herdr 0.9.0 is installed on Windows by the operator. `%USERPROFILE%\bin` holds no
-  `muse.exe`.
+- herdr 0.9.0 is installed on Windows by the operator, through scoop, and is the `herdr`
+  on `PATH`; the `wsl-toolkit` on `PATH` is `%USERPROFILE%\bin\wsl-toolkit.exe`.
 - The dedicated SSH key the ruling allows is at
-  `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with an empty `known_hosts` beside it,
-  and stays for `wsl-toolkit-base`. `%USERPROFILE%\.ssh\config` reads SHA-256
-  `18FC11BE…E93F4`, as at the last session's end.
+  `%USERPROFILE%\.ssh\wsl-toolkit\id_ed25519`, with the one-line `known_hosts` above
+  beside it, and stays for `wsl-toolkit-base`.

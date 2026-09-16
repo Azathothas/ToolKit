@@ -81,7 +81,8 @@ so a prompt carrying quotes or a dollar sign is not read by any shell.
 
 ⭐ **`--machine` needs a development build on both sides.** Set the base's herdr adapter
 to `"channel": "nightly"`, as the manual's herdr adapter section says, and `base attach`
-prints the Windows client of the build the base runs.
+prints the Windows client of the build the base runs. ⛔ No nightly is published yet,
+read on 2026-09-15, so that channel has nothing to install today.
 
 ⚠ **A saved machine is for herdr's own multi-machine sidebar**, which herdr's 0.9.0
 pages call not yet verified or supported on a Windows client. Remove one with

@@ -22,8 +22,8 @@ ones it does not.
 
 ⭐ **Two things are published from here, and only two.** The `wsl-toolkit` tool is
 cut as a GitHub release on a `wsl-toolkit-v*` tag, carrying the native executable
-for two Windows architectures, herdr's newest stable release built for four
-targets, `SHA256SUMS`, and one `.cosign.bundle` per published file. herdr's
+for two Windows architectures, from `wsl-toolkit-v3.0.0` herdr's newest stable release
+built for four targets, `SHA256SUMS`, and one `.cosign.bundle` per published file. herdr's
 development branch is published as a nightly prerelease on a `herdr-nightly-*`
 tag by [`../.github/workflows/herdr-nightly.yml`](../.github/workflows/herdr-nightly.yml),
 by the operator's ruling of 2026-09-15.

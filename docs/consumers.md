@@ -102,7 +102,8 @@ A release carries:
 the herdr commit, `SHA256SUMS`, and a bundle per file that verifies against
 `.github/workflows/herdr-nightly.yml`. The newest seven are kept. ⛔ A nightly is always
 a prerelease and never a `wsl-toolkit-v*` tag, so a lookup for this tool's releases
-skips it.
+skips it. ⚠ **No nightly is published yet**, and no release carries herdr: read with
+`gh release list` on 2026-09-15, where `wsl-toolkit-v2.0.2` is the newest release.
 
 Use an immutable `wsl-toolkit-v*` release. Download the executable matching the
 host architecture and `SHA256SUMS`, verify the executable's SHA-256, then

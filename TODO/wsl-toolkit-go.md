@@ -9637,3 +9637,41 @@ names a base whose machine holds none; `base attach` prints that client.
 - ⛔ **Not driven**: no nightly is published yet, so no base has followed the channel.
 
 ---
+
+## Amendment, 2026-09-15: the build matrix's second run, 8 of 8, and both fixes measured
+
+⚠ **Written on 2026-09-16 by the session that resumed this one.** The runs below are the
+previous session's; it was checkpointed before it recorded them, and its record row
+claimed this amendment already existed. It did not. The runs are read here from their
+logs, not from that claim.
+
+⭐ **`herdr-build.yml` dispatched by hand a second time, publishing nothing, and every
+job green**: run `34967532999` for the development head `052779c4159ed851` and run
+`34967536251` for `v0.9.0`.
+
+| ref, the Zig it asks for | Windows x86_64 | Windows aarch64 | Linux x86_64 | Linux aarch64 |
+| --- | --- | --- | --- | --- |
+| development head, 0.16.0 | ✅ 428 s | ✅ 605 s | ✅ 296 s | ✅ 317 s |
+| `v0.9.0`, 0.15.2 | ✅ 498 s | ✅ 451 s | ✅ 250 s | ✅ 282 s |
+
+The development head's run took 10m09s wall, `v0.9.0`'s 8m25s, both dispatched within two
+seconds of each other on 2026-09-15 at 12:12Z.
+
+⭐ **Both fixes the first run's failures asked for are now measurements rather than
+readings.**
+
+- **The Zig cache on the checkout's drive.** `v0.9.0`'s Windows `x86_64` job, which had
+  asserted `!std.fs.path.isAbsolute(child_cwd_rel)` in `Run.zig:662`, checked out to
+  `D:\a\ToolKit\ToolKit\herdr` and ran with `ZIG_GLOBAL_CACHE_DIR` at
+  `D:\a\_temp\zig-cache\global`, the same drive, and passed. ⚠ The previous amendment
+  called this "a reading of the assertion, not yet a measurement"; it is now measured,
+  and the mechanism it named is the one that held.
+- **Zig 0.16.0 under emulation on a Windows Arm host.** The development head's Windows
+  `aarch64` job, which had exited `0xc0000005`, ran `zig-x86_64-windows-0.16.0\zig.exe`
+  and passed. The Rust target is unchanged, so the binary is still native `aarch64`.
+
+⚠ **Not proved by these runs:** that either fix is what changed the outcome. Each run
+carried both fixes and no single-variable run was made, so the attribution above is the
+mechanism read from the logs and not an isolated experiment. ⛔ **Nothing published**:
+`herdr-build.yml` publishes nothing by design, and on 2026-09-15 no release of this
+repository carried a herdr file and no `herdr-nightly-*` tag existed.

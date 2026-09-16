@@ -298,6 +298,8 @@ which verifies against `herdr-nightly.yml`, is not checked by this tool. ⛔ A c
 beside a `version` or `sha256` is refused. ⚠ `base ensure` never restarts a running
 server, so a newer build serves nothing until the server next starts; `base status
 --probe` reports it as `server-binary-stale`, with the installed `release` and `sha256`.
+⛔ **No nightly is published yet**, read on 2026-09-15, and until one is `base ensure`
+refuses the channel with `this repository has published no herdr nightly`.
 
 ⭐ **`muse` installs Muse Code for the base's account, and runs Meta's installer only
 while its digest is approved.** `base ensure` saves the installer Meta serves, prints
