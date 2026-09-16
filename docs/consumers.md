@@ -102,8 +102,17 @@ A release carries:
 the herdr commit, `SHA256SUMS`, and a bundle per file that verifies against
 `.github/workflows/herdr-nightly.yml`. The newest seven are kept. ⛔ A nightly is always
 a prerelease and never a `wsl-toolkit-v*` tag, so a lookup for this tool's releases
-skips it. ⚠ **No nightly is published yet**, and no release carries herdr: read with
-`gh release list` on 2026-09-15, where `wsl-toolkit-v2.0.2` is the newest release.
+skips it. ⭐ **The first nightly is published**, `herdr-nightly-20260916-18061191fdc0`,
+on 2026-09-16. ⚠ **No `wsl-toolkit-v*` release carries herdr yet**: read with `gh
+release list` on 2026-09-16, where `wsl-toolkit-v2.0.2` is still the newest release and
+predates the herdr jobs.
+
+⚠ **A release that carries herdr is about 65 MiB larger, and a consumer that takes the
+whole release takes all of it.** The four builds the first nightly published are
+26,235,080, 24,100,240, 9,635,803 and 8,348,489 bytes. `consumer.ps1` in this tree
+fetches every asset a release names, so from `wsl-toolkit-v3.0.0` it will fetch herdr
+too; the instructions below take only the executable for the host's architecture and
+`SHA256SUMS`, which is what a consumer should do.
 
 Use an immutable `wsl-toolkit-v*` release. Download the executable matching the
 host architecture and `SHA256SUMS`, verify the executable's SHA-256, then

@@ -149,9 +149,11 @@ logic is caught before release.
 `x86_64` and `aarch64` and Linux `x86_64` and `aarch64`, and `release.yml` covers with
 its `SHA256SUMS` and signs. The same workflow builds herdr's development branch for
 [`herdr-nightly.yml`](../../../.github/workflows/herdr-nightly.yml), which publishes a
-prerelease on a `herdr-nightly-*` tag and keeps the newest seven. `WSL-90`. ⚠ Neither
-had published anything as of 2026-09-15: `herdr-build.yml` is dispatched by hand only,
-and it publishes nothing by design.
+prerelease on a `herdr-nightly-*` tag and keeps the newest seven. `WSL-90`. ⭐ **The
+first nightly is published**, `herdr-nightly-20260916-18061191fdc0`, on 2026-09-16, with
+all four builds green. ⚠ `herdr-build.yml` publishes nothing by design and is dispatched
+by hand; `release.yml`'s herdr jobs have still never run, because no release has been cut
+since they were written.
 
 ## Related
 

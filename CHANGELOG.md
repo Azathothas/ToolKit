@@ -19,6 +19,36 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-16
+
+### 2026-09-16T07:15:16Z: the first herdr nightly is published from this repository
+
+**Record:** `WSL-90`'s amendment "the first nightly is published, verified and driven,
+and the prune deletes the wrong release" in
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
+**Deployed:** ⭐ **yes, and it is the first thing this repository has published other
+than `wsl-toolkit` itself.** The prerelease `herdr-nightly-20260916-18061191fdc0`, from
+[`.github/workflows/herdr-nightly.yml`](.github/workflows/herdr-nightly.yml) run
+35066661420, 6 of 6 jobs green. No `wsl-toolkit-v*` tag was cut.
+**Closes:** nothing. `WSL-90` stays open for its probe script and its closing.
+
+⭐ **Twelve assets**: herdr built from its development branch at `18061191fdc0` for
+Windows `x86_64` and `aarch64` and Linux `x86_64` and `aarch64` musl, `BUILD-INFO.json`,
+`SHA256SUMS`, and a keyless `.cosign.bundle` for each. A downloaded copy passes
+`sha256sum -c` and passes `cosign verify-blob` against this workflow's identity, and both
+refuse a flipped byte and a wrong workflow identity.
+
+⭐ **The herdr adapter's `nightly` channel is driven for the first time.** `base ensure`
+on `wsl-toolkit-base` installed the nightly in 8.78 s over the digest its own
+`SHA256SUMS` publishes, and the client `base attach` prints answered `--machine base
+agent list` with exit 0.
+
+⛔ **The first real run found a defect the suite could not.** `gh release create --target`
+dates a release from the target commit, so the prune's `sort_by(.created_at)` ordered
+nightlies by when this repository's `main` last moved and would have deleted the NEWEST
+nightly once eight existed - the one the adapter resolves. It sorts by `published_at`
+now. Nothing published was ever at risk, because the prune keeps seven and there is one.
+
 ## 2026-09-15
 
 ### 2026-09-15T12:01:11Z: the herdr adapter can follow the nightlies, and the build matrix's first run is read

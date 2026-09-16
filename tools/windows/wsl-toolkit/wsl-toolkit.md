@@ -298,8 +298,12 @@ which verifies against `herdr-nightly.yml`, is not checked by this tool. ⛔ A c
 beside a `version` or `sha256` is refused. ⚠ `base ensure` never restarts a running
 server, so a newer build serves nothing until the server next starts; `base status
 --probe` reports it as `server-binary-stale`, with the installed `release` and `sha256`.
-⛔ **No nightly is published yet**, read on 2026-09-15, and until one is `base ensure`
-refuses the channel with `this repository has published no herdr nightly`.
+⭐ **Driven on 2026-09-16, against the first published nightly.** With `"channel":
+"nightly"` on `wsl-toolkit-base`, `base ensure` exited 0 in 8.78 s and installed
+`herdr-nightly-20260916-18061191fdc0` over the digest its `SHA256SUMS` publishes;
+`base status --probe` then read `release`, that tag, `sha256`
+`213580fc…f92f14a1`, and `server-binary-stale no`. ⚠ Until a nightly exists `base
+ensure` refuses the channel with `this repository has published no herdr nightly`.
 
 ⭐ **`muse` installs Muse Code for the base's account, and runs Meta's installer only
 while its digest is approved.** `base ensure` saves the installer Meta serves, prints

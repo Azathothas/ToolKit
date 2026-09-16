@@ -9675,3 +9675,79 @@ carried both fixes and no single-variable run was made, so the attribution above
 mechanism read from the logs and not an isolated experiment. ⛔ **Nothing published**:
 `herdr-build.yml` publishes nothing by design, and on 2026-09-15 no release of this
 repository carried a herdr file and no `herdr-nightly-*` tag existed.
+
+## Amendment, 2026-09-16: the first nightly is published, verified and driven, and the prune deletes the wrong release
+
+⭐ **Approach step 3 is proved, and with it the whole channel.** `herdr-nightly.yml`
+dispatched by hand as run `35066661420`, created 07:03:59Z and finished 07:15:19Z, **6 of
+6 jobs green**: resolve 5 s, Linux `x86_64` 340 s, Linux `aarch64` 347 s, Windows
+`x86_64` 432 s, Windows `aarch64` 646 s, and sign-and-publish 19 s.
+
+⚠ **It built a commit no matrix run had covered.** `resolve` read herdr's development
+head as `18061191fdc0`, which had moved from the `052779c4159ed851` both matrix runs
+built, and its own CI had concluded `success`. Finding 30.
+
+⭐ **The prerelease, `herdr-nightly-20260916-18061191fdc0`.** `isPrerelease` true, **12
+assets**: the four builds, `BUILD-INFO.json` and `SHA256SUMS`, each with a
+`.cosign.bundle`. `BUILD-INFO.json` names the herdr commit, the run, and per build the
+target, the runner, Rust 1.96.1 and Zig 0.16.0 - including `aarch64-pc-windows-msvc` on
+`windows-11-arm`, which is a native Arm binary built by the `x86_64` Zig under emulation.
+
+| file | bytes |
+| --- | --- |
+| `herdr-linux-x86_64` | 26,235,080 |
+| `herdr-linux-aarch64` | 24,100,240 |
+| `herdr-windows-x86_64.zip` | 9,635,803 |
+| `herdr-windows-aarch64.zip` | 8,348,489 |
+
+⭐ **Verified on this host, and the verification was proved able to refuse.** A downloaded
+copy under `.tmp`: `sha256sum -c SHA256SUMS` exit 0 over all five covered files, and
+`cosign verify-blob` **exit 0 for all six** against
+`herdr-nightly.yml@refs/heads/main` with cosign v3.1.3, the version the workflow pins.
+Then, each read unpiped: the same bundle against `release.yml`'s identity **exit 1**,
+naming the SAN it got; one byte set to zero at offset 1024 of `herdr-linux-x86_64` made
+`sha256sum -c` **exit 1** and `cosign verify-blob` **exit 1**; the restored file **exit
+0**.
+
+⭐ **Step 5 driven, which it never had been.** `"channel": "nightly"` on
+`wsl-toolkit-base`, then:
+
+| command | result |
+| --- | --- |
+| `base ensure` | exit 0 in **8.78 s**; resolved the tag, installed from `herdr-linux-x86_64` with the digest verified, wrote the tracked configuration, left the server running, and wrote the Windows client under the instance's state directory |
+| `base status --probe --json` | `release` the nightly's tag, `sha256` `213580fc…f92f14a1`, which is that release's own `SHA256SUMS` line for `herdr-linux-x86_64`; `server active`, `server-answers running`, `server-binary-stale no`, `ssh-listeners 0`, `ssh-client-keys 1` |
+| `base attach` | exit 0 in 0.09 s, printing the nightly's own client and `base herdr -- agent list` |
+| that client, `--machine base agent list` | **exit 0 in 2.1 s**, `{"id":"cli:agent:list","result":{"agents":[],"type":"agent_list"}}` |
+
+⚠ The base's herdr adapter had been carrying no channel and the server swapped in by hand
+under ruling 15; this ensure replaced it with the published nightly, which is what the
+host state now records.
+
+## ⛔ The first real run found a defect the suite could not: the prune deletes the newest nightly
+
+⛔ **`gh release create --target SHA` makes GitHub date a release from the target commit,
+not from the publish**, and the prune sorted by that date. Measured on the first nightly:
+`created_at` **2026-09-15T12:05:05Z**, which is `cfa3252`'s own commit date to the second,
+against `published_at` **2026-09-16T07:15:16Z** - nineteen hours apart.
+
+So `sort_by(.created_at) | reverse | .[7:]` ordered nightlies by when this repository's
+`main` last moved. Driven against a list of eight nightlies whose two dates disagree, the
+shipped expression selected **`herdr-nightly-20260908`, the NEWEST**, for deletion and
+kept the oldest; `sort_by(.published_at)` selected `herdr-nightly-20260901`, the oldest,
+which is what "keep the newest seven" means. ⛔ **The one it would have deleted is exactly
+the one the adapter's `nightly` channel resolves and installs.**
+
+Fixed in `herdr-nightly.yml` to `sort_by(.published_at)`, with the measurement in the
+step's own comment. Re-driven: the crafted list now deletes the oldest, and the live
+release list deletes nothing, there being one nightly. ⚠ **Harmless until an eighth
+nightly exists**, because `.[7:]` is empty below that, so nothing published so far was at
+risk. ⚠ **It has no case and no mutation row**: the expression lives in a workflow this
+repository has no harness for, which is the same gap `consumer.ps1` has and is recorded
+rather than closed.
+
+### Still open
+
+1. The pseudo-console probe as a tracked acceptance script, approach step 7, typing only
+   into a workspace of its own.
+2. The six `--remote` signals in a real Windows Terminal window, which is the operator's.
+3. The three reviews and the closing.
