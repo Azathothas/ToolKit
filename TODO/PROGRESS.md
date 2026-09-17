@@ -82,17 +82,24 @@ distribution with the same configuration - so `base.interop = "off"` now claims 
 the PATH door, and the handler is reported and never claimed. ⭐ **The shared tmpfs now closes**, `base.shared_tmpfs = "off"`: the provisioner installs
 a boot script WSL runs as root at every start, the resolver is written before the door
 shuts and refreshed before every unmount, and the verifier refuses a base where either
-half did not happen. Driven from nothing in 110 s and proved able to fail. ⚠ **One item
-is left**, the invasive one: the account's processes in their own network namespace.
+half did not happen. Driven from nothing in 110 s and proved able to fail. ⭐ **And the private network namespace is measured, delivered and driven**, as
+`base exec --private-net`: the Windows host goes from answering ICMP to refused while
+the internet and DNS stay up, and the shared namespace is unchanged with no rule in it,
+which is the condition ruling 3 carries. ⛔ **It is a flag and not how every command
+starts, because no container runs inside it** - measured three ways. ⚠ **`WSL-68` still
+does not close**: `base shell` does not take the flag, because an interactive attach
+through `pasta` cannot be driven from here, and the design question the measurement
+raised is question 3 below.
 
 **Resume, in this order:**
 
 1. **The operator's two steps**, which nothing else here can stand in for: `muse login`
    in `base shell`, and the six `--remote` signals in a real Windows Terminal window -
    now with the nightly's own client, which `base attach` prints.
-2. `WSL-68`'s **one** remaining item, which its "Still open" list names and its
-   amendments carry in full. ⭐ **It does not need the operator.** ⚠ It is the invasive
-   one: it changes how a command is started inside the base.
+2. `WSL-68`'s last piece, named at the end of its amendment of 2026-09-17: the flag on
+   an interactive attach, which needs a way to drive a terminal here rather than a
+   design. ⭐ **It does not need the operator**, and question 3 below is a ruling that
+   nothing waits on.
 3. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
    `PermissionRequest` from a real turn, then the guide.
 4. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
@@ -216,7 +223,8 @@ new file FIRST, then run the gate.**
 | `b2203ab` | `WSL-90` partial: the `--remote` probe as a tracked script, driven against both clients, the nightly passing six signals and 0.9.0 failing three; three defects in the probe itself found by driving it; and the gate's `powershell` check, which could not fail for two independent reasons, fixed with 2 cases and 2 mutation rows |
 | `69ae23f` | `WSL-90`'s three closing reviews, finding 36 and a line count corrected; the entry stays open on its step 4, which only `wsl-toolkit-v3.0.0` can prove |
 | `a19926c` | `WSL-68` steps 3 and 4: `base doors`, the attack as a registered command, with 13 cases, 6 mutation rows, a manual section and a sweep row; three defects it found in itself and one about WSL that narrowed its claims |
-| this record commit | `WSL-68` step 1's first half: `base.shared_tmpfs = "off"` closes the shared tmpfs at every start and keeps the resolver, with 6 cases and 4 mutation rows, driven from nothing and proved able to fail; this session's summary |
+| `ef0dd2f` | `WSL-68` step 1's first half: `base.shared_tmpfs = "off"` closes the shared tmpfs at every start and keeps the resolver, with 6 cases and 4 mutation rows, driven from nothing and proved able to fail |
+| this record commit | `WSL-68` step 1's second half: `base exec --private-net`, the account's own network namespace with the Windows host refused by a rule inside it, 7 cases and 3 mutation rows; the engine conflict that makes it a flag; this session's summary |
 
 ## Measurements
 
@@ -241,20 +249,31 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
   `base recreate` from nothing exit 0 in **110 s**, the resolver written with 1
   nameserver before the door shut and the boot script installed; after the restart the
   account found `/mnt/wsl` not mounted, a write refused and `getent hosts` OK; `base
-  doors` exit 0 with `fs.mnt-wsl-shared closed` and the open list **six to four**. ⛔ With
+  doors` exit 0 with `fs.mnt-wsl-shared closed`, and **four** doors still open. ⚠ Not a
+  delta against the six `wsl-toolkit-base` reports, which differs by more than this
+  setting; the claim audit caught that conflation. ⛔ With
   the unmount removed from the boot script by hand, `base doors` exit **1** and `base
   status --probe` exit **1**, `usable false`; restored, both exit 0. ⚠ **The first plant
   was defeated by its own shell**, `false && umount ... || umount -l ...`, which still
   runs the fallback. ⚠ The podman machine was started to export the rootfs, which is
   what a base build from an OCI image needs.
-- **The three pre-push checks:**
- Windows Go with `TEMP` at the 8.3 path, **343 top-level
-  results, 323 passed, 20 skipped, 0 failed, exit 0 in 14 s**; `check-go.sh` exit 0 in
-  `golang:1.25` in 30 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **48** tracked
-  scripts, one more than last session because `doors.sh` is new.
-- **The mutation table:** 312 rows to **318**. `repo mutate -only door` read **8 of 8
-  guards proved**, the six new ones among them, and all thirteen cases were green
-  unmutated first - which finding 1 says `repo mutate` does not do for itself.
+- **For `WSL-68`'s private network namespace, on `wsl-toolkit-b68b`:** inside
+  `pasta --config-net` the namespace is its own and `CapEff` is `000001ffffffffff`, so
+  the account loads `nft` rules with no privilege; with them the Windows host goes from
+  answering ICMP to **refused** while `1.1.1.1:443` and DNS stay up, and the shared
+  `net:[4026531833]` is unchanged with a ruleset the account cannot even read. ⛔ **No
+  container runs inside**, measured three ways, each failing on a path podman chooses
+  because it reads itself as rootful. `base exec --private-net` forwards 0, 7 and 42
+  exactly and adds **zero** stderr bytes, 116 against 116.
+- **The three pre-push checks, at the end of the session:** Windows Go with `TEMP` at
+  the 8.3 path, **357 top-level results, 337 passed, 20 skipped, 0 failed, exit 0 in
+  14 s**; `check-go.sh` exit 0 in `golang:1.25` in 29 s; ShellCheck 0.9.0 in
+  `ubuntu:24.04` clean over **49** tracked scripts, two more than last session because
+  `doors.sh` and `private-net.sh` are new. ⚠ At the first commit the Go figure was 343.
+- **The mutation table:** 312 rows to **325**. Every one of the thirteen new rows went
+  red, in three runs, and every case was green unmutated first - which finding 1 says
+  `repo mutate` does not do for itself. ⚠ Three rows reported `BROKEN, does not
+  compile` before they were rewritten; finding 41.
 - ⚠ **`wsl --shutdown` was run twice**, to measure the interop handler across utility-VM
   lifetimes. It stopped every distribution, which is what the manual says it does; all
   five were Stopped at the start of this session and none was started by it except
@@ -615,9 +634,78 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     all. Not fixed: documenting three more commands is its own unit of work with its
     own proof, and this is where it is tracked.
 
+40. ⚠ **`base agent`, `base herdr` and `shipped write` build their own request as the
+    account and none takes `--private-net`.** So an agent started through `base agent`
+    runs in the shared network namespace whatever a sealed base intends. Found on
+    2026-09-17 by `WSL-68`'s door sweep, grepping every builder of an `ExecRequest`
+    rather than reading the two the task named. ⛔ Not closed, because closing it is
+    the same design question the operator is asked in question 3: whether a base may
+    declare the namespace for ALL of the account's processes and give up running
+    containers as that account.
+41. ⛔ **A `repo mutate` row that stops the module compiling reports `BROKEN`, which is
+    neither red nor green.** Met three times on 2026-09-17: deleting a guard left the
+    variable it read unused, and the row read `does not compile`. ⚠ **It is easy to
+    read as proved** in a run where other rows say `ok`, and the exit code is 1 for
+    both a broken row and a guard that failed to go red. A mutation that keeps the
+    variable referenced, by comparing it against a value the setting never takes, goes
+    red properly. The table has no rule that a row must compile, and nothing checks it.
+
 ## Review findings
 
+
+⭐ **2026-09-17, `WSL-68`'s reviews for approach step 1**, run over the shared tmpfs and
+the private network namespace together.
+
+**The door sweep** grepped for every builder of an `ExecRequest` that runs as the
+account rather than trusting the two the task named, and for every reader of the new
+setting. ⛔ **It found that `base status` could not report `base.shared_tmpfs` at all**:
+`BaseAccessState` carried automount, interop, systemd, sudo and toolset and nothing
+else, so a caller could read the configuration of a base and not learn whether it
+closes the directory every distribution shares. `base doors` answers about the DOOR and
+`base status` about the CONFIGURATION, and a base that should close it and does not is
+only visible by comparing them. Added, with a case. ⚠ **And it found a gap that is
+left**: `base agent`, `base herdr` and `shipped write` each build their own request as
+the account and none takes `--private-net`, so an agent started through `base agent` is
+not in a private namespace. That is named in the entry rather than closed, because
+closing it is the same design question the operator is asked.
+
+**The guard mutation** ran seven new rows through `repo mutate`, 7 of 7 red, each case
+green unmutated first. ⚠ **Two had to be rewritten before they could go red at all**:
+deleting a guard left its variable unused and the row reported `BROKEN, does not
+compile`, which is neither red nor green and would have been easy to read as proved.
+⭐ **And two live plants on a real base, which no row can reach:**
+
+- the unmount taken out of the boot script: `base doors` **exit 1** naming the claim,
+  `base status --probe` **exit 1**, `usable false`, naming the setting. ⚠ **The FIRST
+  plant was defeated by its own shell** - `false && umount ... || umount -l ...` still
+  runs the fallback, the door stayed closed, and the row would have read as a guard
+  that does nothing. Printing what the script actually contained is what caught it;
+- the ruleset flushed inside the namespace: the Windows host went from `closed` back to
+  **open** while the internet stayed open. ⭐ So it is the RULE that refuses the host,
+  not pasta and not the namespace, which is the thing the entry's premise rests on and
+  the one a reading could not have settled.
+
+**The claim audit** read every number in the two amendments, the manual and this record
+against the run that produced it. ⛔ **It caught a conflation**: "four open doors, down
+from six" put a figure from `wsl-toolkit-base` under a table headed by the throwaway
+base, and those two differ by passwordless sudo and by the tmpfs as well as by this
+setting. ⛔ **The honest reading is worse than the correction**: the throwaway base with
+its tmpfs OPEN and the CORRECTED probe was never measured at all, because the probe was
+corrected first, so no before-and-after for that door on that base exists. Both pages
+say so now. ⚠ It also confirmed what the entry may claim: the ruling's condition, "no
+rule in the shared namespace", is backed by three readings - the namespace id differs,
+the shared id is unchanged before and after, and the shared ruleset is not readable to
+the account at all.
+
+⭐ **The fourth lens, "what did the driven pass show that the suite could not":** all
+four defects in the shared-tmpfs work and the whole engine conflict came from running
+it. The suite could not have found any of them - a `command=` wsl.conf silently ignores,
+a resolver that reads empty that early, a door that cannot say `closed`, and podman
+taking itself for rootful inside a user namespace are all facts about WSL and podman
+rather than about this code.
+
 ⭐ **2026-09-17, `WSL-68`'s three closing reviews for steps 3 and 4.**
+
 
 **The door sweep** did not read either list of `base` subcommands; it grepped for every
 one named anywhere, in `cmd_base.go`, `main.go` and `helper.go`. ⛔ **That found finding
@@ -766,6 +854,17 @@ software. Two are open, each asked in chat on 2026-09-15:
 2. **The six `--remote` signals in a real Windows Terminal window**, with the
    development client: a pseudo console measured all four input signals, and only a
    real window carries a real focus event.
+
+3. ⭐ **New on 2026-09-17, and it is a ruling rather than work.** `WSL-68`'s amendment
+   of that date measured that a base cannot both put the account's processes in their
+   own network namespace and run containers as that account: `pasta --config-net` puts
+   them in a user namespace where podman takes itself for rootful and cannot write the
+   paths it then chooses, measured three ways. The 2026-09-14 ruling made the private
+   network a property of a sealed base. What is delivered is
+   `base exec --private-net`, a flag, which leaves the engine working everywhere else.
+   **Whether a base should instead be able to declare the namespace for ALL of the
+   account's processes, and give up running containers as that account, is the
+   operator's to decide.** Nothing waits on the answer; the flag is shipped either way.
 
 Answered on 2026-09-15 and recorded as rulings 13 to 15: whether herdr builds are
 published here, the targets, how the adapter takes a nightly, and where the

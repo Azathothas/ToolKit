@@ -1,6 +1,7 @@
 package toolkit
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -141,4 +142,38 @@ func TestTheVerifierRefusesASharedTmpfsThatIsStillMountedOrALostResolver(t *test
 	if strings.Contains(script, "grep -q shared_tmpfs /etc/wsl.conf") {
 		t.Error("the verifier reads wsl.conf for this, which is the intention rather than the result")
 	}
+}
+
+// ⛔ `base doors` ANSWERS ABOUT THE DOOR AND `base status` ABOUT THE CONFIGURATION,
+// and a caller needs both: a base that should close the shared tmpfs and does not
+// is only visible by comparing them. Status could not report the setting at all
+// until 2026-09-17, which the door sweep found rather than any check.
+func TestTheStatusReportCarriesTheSharedTmpfsSetting(t *testing.T) {
+	for _, want := range []string{SharedTmpfsOn, SharedTmpfsOff} {
+		cfg := DefaultConfig()
+		cfg.Base.Automount = AutomountOff
+		cfg.Base.SharedTmpfs = want
+		b, err := NewBase(cfg, func(string) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := NormalizeSharedTmpfs(b.cfg.Base.SharedTmpfs)
+		if err != nil || got != want {
+			t.Fatalf("the base reads shared_tmpfs %q (%v), want %q", got, err, want)
+		}
+	}
+	// The report's own field, which is what a caller parses.
+	if !hasJSONTag(BaseAccessState{}, "shared_tmpfs") {
+		t.Fatal("base status's access block carries no shared_tmpfs field, so a caller cannot tell whether the base closes it")
+	}
+}
+
+func hasJSONTag(v any, tag string) bool {
+	t := reflect.TypeOf(v)
+	for i := 0; i < t.NumField(); i++ {
+		if strings.Split(t.Field(i).Tag.Get("json"), ",")[0] == tag {
+			return true
+		}
+	}
+	return false
 }

@@ -30,6 +30,7 @@ type baseExecFlags struct {
 	timeout    time.Duration
 	asRoot     bool
 	viaHelper  bool
+	privateNet bool
 }
 
 func (e *baseExecFlags) bind(fs *flag.FlagSet) {
@@ -39,6 +40,7 @@ func (e *baseExecFlags) bind(fs *flag.FlagSet) {
 	fs.DurationVar(&e.timeout, "timeout", 30*time.Minute, "how long the command may run. 0 means no deadline")
 	fs.BoolVar(&e.asRoot, "root", false, "run as root instead of the configured account")
 	fs.BoolVar(&e.viaHelper, "via-helper", false, "prove the helper refusal for arbitrary base commands")
+	fs.BoolVar(&e.privateNet, "private-net", false, "run in a network namespace of the account's own, with the Windows host and the private ranges refused. ⛔ No container can run inside it")
 }
 
 func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) {
@@ -57,10 +59,31 @@ func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) 
 	if e.asRoot {
 		user = "root"
 	}
+	var env map[string]string
+	if e.privateNet {
+		// ⛔ ROOT IS REFUSED HERE, and it is not squeamishness. The namespace is
+		// what confines the ACCOUNT; a root payload can unmount, re-mount and
+		// re-enter whatever it likes, so wrapping it would put a boundary around
+		// something that can step over it and report that it had been confined.
+		if e.asRoot {
+			return toolkit.ExecRequest{}, errors.New("--private-net and --root are contradictory: guest root can leave the namespace it is put in, so the confinement would be a claim rather than a fact")
+		}
+		host, hostErr := toolkit.ResolveHostAddress()
+		address := ""
+		if hostErr == nil {
+			address = host.Address
+		}
+		wrapped, wrappedEnv, err := toolkit.PrivateNetPayload(payload, address)
+		if err != nil {
+			return toolkit.ExecRequest{}, err
+		}
+		payload, env = wrapped, wrappedEnv
+	}
 	return toolkit.ExecRequest{
 		Distro:  cfg.Base.Name,
 		User:    user,
 		Script:  payload,
+		Env:     env,
 		Dir:     dir,
 		Timeout: e.timeout,
 		// ⛔ FRAMED, so a command that reads stdin cannot eat the lines after it.

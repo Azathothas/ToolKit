@@ -2900,6 +2900,33 @@
       "replace": "\tcase \"\":\n\t\treturn SharedTmpfsOff, nil\n\tcase SharedTmpfsOn:\n\t\treturn SharedTmpfsOn, nil",
       "run": "TestTheSharedTmpfsDefaultsToOnSoAnOlderBaseKeepsItsResolver",
       "args": []
+    },
+    {
+      "label": "private-net refusing to wrap a root payload",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_exec.go",
+      "find": "\t\tif e.asRoot {\n\t\t\treturn toolkit.ExecRequest{}, errors.New(\"--private-net and --root are contradictory",
+      "replace": "\t\tif false {\n\t\t\treturn toolkit.ExecRequest{}, errors.New(\"--private-net and --root are contradictory",
+      "run": "TestPrivateNetAndRootAreRefusedTogether",
+      "args": []
+    },
+    {
+      "label": "private-net carrying the payload as base64 rather than as text",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/private_net.go",
+      "find": "\t\t\"TK_PRIVATE_NET_PAYLOAD_B64\": base64.StdEncoding.EncodeToString(payload),",
+      "replace": "\t\t\"TK_PRIVATE_NET_PAYLOAD_B64\": base64.StdEncoding.EncodeToString(append([]byte{}, payload...)[:0]),",
+      "run": "TestAPrivateNetPayloadCrossesNoShell",
+      "args": []
+    },
+    {
+      "label": "private-net refusing an empty payload",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/private_net.go",
+      "find": "\tif len(payload) == 0 {",
+      "replace": "\tif false {",
+      "run": "TestAnEmptyPrivateNetPayloadIsRefused",
+      "args": []
     }
   ]
 }

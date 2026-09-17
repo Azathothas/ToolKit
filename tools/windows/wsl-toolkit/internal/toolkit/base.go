@@ -103,13 +103,18 @@ type BaseAccessState struct {
 	// read under --probe: off, ro, rw, or mixed where a writable mount sits beside a
 	// read-only one. ⚠ Empty where the probe did not reach the drives, which is not
 	// the same as off. WSL-84.
-	AutomountGuest   string      `json:"automount_guest,omitempty"`
-	Interop          string      `json:"interop"`
-	Systemd          bool        `json:"systemd"`
-	PasswordlessSudo bool        `json:"passwordless_sudo"`
-	Toolset          string      `json:"toolset"`
-	Mounts           []BaseMount `json:"mounts,omitempty"`
-	Adapters         []string    `json:"adapters,omitempty"`
+	AutomountGuest   string `json:"automount_guest,omitempty"`
+	Interop          string `json:"interop"`
+	Systemd          bool   `json:"systemd"`
+	PasswordlessSudo bool   `json:"passwordless_sudo"`
+	Toolset          string `json:"toolset"`
+	// SharedTmpfs is whether /mnt/wsl, the one directory every distribution in the
+	// utility VM shares, stays mounted. ⛔ A caller reading this report could not
+	// tell before, and `base doors` answers about the DOOR while this answers about
+	// the CONFIGURATION; a base that should close it and does not needs both.
+	SharedTmpfs string      `json:"shared_tmpfs"`
+	Mounts      []BaseMount `json:"mounts,omitempty"`
+	Adapters    []string    `json:"adapters,omitempty"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -172,11 +177,16 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	if err != nil {
 		return BaseState{}, err
 	}
+	sharedTmpfs, err := NormalizeSharedTmpfs(b.cfg.Base.SharedTmpfs)
+	if err != nil {
+		return BaseState{}, err
+	}
 	st := BaseState{
 		Name: b.cfg.Base.Name, Image: b.cfg.Base.Image, User: b.cfg.Base.User,
 		Access: BaseAccessState{
 			Automount: automount, Interop: interop, Systemd: b.cfg.Base.Systemd,
-			PasswordlessSudo: b.cfg.Base.PasswordlessSudo, Toolset: toolset, Mounts: mounts,
+			PasswordlessSudo: b.cfg.Base.PasswordlessSudo, Toolset: toolset,
+			SharedTmpfs: sharedTmpfs, Mounts: mounts,
 		},
 	}
 	for _, a := range b.cfg.Base.Adapters {

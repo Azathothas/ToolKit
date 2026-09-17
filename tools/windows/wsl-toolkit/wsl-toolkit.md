@@ -736,7 +736,49 @@ that gets written about a base is made of attempts rather than of settings.
 
 ---
 
+### ⭐ A network namespace of the account's own
+
+```powershell
+wsl-toolkit --instance base base exec --private-net -c 'curl -sS https://example.com'
+```
+
+`--private-net` runs one payload in a network namespace the **account** makes, with
+no privilege, through `pasta --config-net`, and refuses the Windows host and the
+private ranges with an `nft` rule **inside** that namespace.
+
+⭐ **The rule is not in the shared namespace**, which is the condition the operator's
+ruling of 2026-09-14 carries. Every WSL distribution on a host shares one network
+namespace, so a rule written there would change the network of the podman machine
+and of every other base.
+
+⛔ **No container can run inside it.** `pasta --config-net` puts the payload in a
+user namespace where it is uid 0, so podman takes itself for rootful and chooses
+system paths it cannot write. Measured 2026-09-17 three ways: plain, with `--root`
+and `--runroot` pointed at the account's own directories, and with
+`_CONTAINERS_USERNS_CONFIGURED` set. Each failed, the refusal moving between
+`/var/lib/containers` and `/run/libpod`. ⭐ **That is why this is a flag on one
+command and not how every command in the base starts**: the base exists to run
+containers as that account.
+
+⛔ **`--private-net` and `--root` are refused together.** Guest root can leave the
+namespace it is put in, so the confinement would be a claim rather than a fact.
+
+| measured on 2026-09-17, on a throwaway arch base with no grants | plain | `--private-net` |
+| --- | --- | --- |
+| the Windows host, ICMP | open | ⭐ **closed** |
+| the internet, `1.1.1.1:443` | open | open |
+| DNS | ok | ok |
+| the namespace | `net:[4026531833]`, shared with every distribution | ⭐ `net:[4026532297]`, its own |
+| the shared namespace's own ruleset, after | empty | ⭐ **empty, and unreadable to the account** |
+| a payload exiting 0, 7 and 42 | 0, 7, 42 | ⭐ 0, 7, 42 |
+| bytes the wrapper adds to stderr | | ⭐ **zero**: 116 against 116 for the same command |
+
+⚠ **`base shell` does not take this flag.** The wrapper delivers its payload as a
+script, and an interactive attach through `pasta` has not been driven here, so it is
+not offered rather than shipped unproved.
+
 ### ⭐ Closing the shared tmpfs, and what it costs
+
 
 ```json
 { "base": { "automount": "off", "shared_tmpfs": "off" } }
@@ -774,7 +816,7 @@ silently ignored, which is why the boot line is a bare path with no shell in it.
 | `base recreate` from nothing with `shared_tmpfs: "off"` | exit 0 in **110 s**, `wrote /etc/resolv.conf, 1 nameserver(s)`, boot script installed, verification passed |
 | the account, after the restart | `/mnt/wsl` **not mounted**, a write refused, `getent hosts` **OK** |
 | `base doors` | exit 0, `fs.mnt-wsl-shared closed`, `no tmpfs mounted at /mnt/wsl`, claimed by the setting |
-| the open doors that remain | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net`. **Four, down from six** |
+| the open doors that remain | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net`. ⚠ **Four, and the comparison is not with the six `wsl-toolkit-base` reports**: that base has passwordless sudo on and its tmpfs open, so the two numbers differ by more than this setting. This base with the tmpfs open and the corrected probe was never measured, and saying so beats a delta nothing took |
 | ⛔ with the unmount removed from the boot script by hand | `base doors` **exit 1** naming the claim, and `base status --probe` **exit 1**, `usable false`, naming the setting. Restored, both green again |
 | three consecutive restarts before the setting existed | the earlier hand-driven form: tmpfs closed and DNS up on every one |
 
@@ -811,7 +853,7 @@ exists in a page as well as in a command.
 | ⭐ `/mnt/wsl`, **and this one now has a remedy** | 2026-09-15 both ways; closed and driven 2026-09-17 | one world-writable `tmpfs` shared by every distribution in the utility VM, with uids not namespaced across it. A zero-grant account wrote a file another distribution read. ⭐ **`base.shared_tmpfs: "off"` closes it at every start**, and the section above carries what that costs and what was measured. ⚠ It is off by default, so a base that does not ask for it still shares the directory |
 | ⛔ the internet | 2026-09-15 and 2026-09-17 | `1.1.1.1:443` connects from a base with no grants. Nothing in this tool closes it |
 | ⛔ the Windows host | 2026-09-15 and 2026-09-17 | `445` and `3389` were refused and **ICMP answered**, so the host is reachable. The address is `hostaddress`'s answer |
-| ⛔ a private network namespace | 2026-09-15 and 2026-09-17 | `unshare -n` is refused and `unshare -Un` SUCCEEDS, so the account can make one with no privilege. ⚠ `pasta --config-net` inside it still reached the internet and the Windows host, with and without `--no-map-gw` |
+| ⭐ a private network namespace, **and this one now has a use** | 2026-09-15; refused from inside 2026-09-17 | `unshare -n` is refused and `unshare -Un` SUCCEEDS, so the account can make one with no privilege. ⚠ `pasta --config-net` alone still reached the internet and the Windows host, with and without `--no-map-gw`; ⭐ **an `nft` rule INSIDE that namespace refuses the host and the private ranges while the internet and DNS stay up**, which is what `base exec --private-net` runs. ⛔ No container runs inside it |
 | ⛔ a PE handler this tool cannot remove | 2026-09-17, two distributions, three utility-VM lifetimes | the `WSLInterop` `binfmt_misc` registration does not follow `[interop] enabled`, and both values were seen on the same distribution with the same configuration. `base doors` reports `interop.exec-pe` and never claims it |
 | ⚠ `/dev/kvm`, `/dev/dxg`, `/dev/vsock` | 2026-09-15, read; 2026-09-17, read again | all three are `crw-rw-rw-` in a zero-grant base. **None has been attacked**, so what an unprivileged account reaches through them is unmeasured, and a threat model has to answer for them |
 | ⚠ passwordless sudo, where it is on | by configuration | guest root can mount a Windows path the configuration never granted. It is authority, not containment, and `base doors` reports it open |

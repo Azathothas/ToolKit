@@ -218,6 +218,9 @@ the POSIX shell command to run in the base
 \fB--dir\fR
 working directory inside the guest. Default is its home. Default: ~.
 .TP
+\fB--private-net\fR
+run in a network namespace of the account's own, with the Windows host and the private ranges refused. ⛔ No container can run inside it
+.TP
 \fB--root\fR
 run as root instead of the configured account
 .TP

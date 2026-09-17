@@ -7,30 +7,33 @@ on what was true last time.
 
 ---
 
-## 2026-09-17, the attack becomes a command, and three defects it found in itself
+## 2026-09-17, the attack becomes a command, and the last two doors a zero-grant base had
 
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-17T02:52:40Z | the record commit's own time is its end, about 26 minutes to the last measurement |
-| Commits | `485252c`, tree **DIRTY** with the last session's two uncommitted wording corrections, its CI run 35070882239 green | **1**, this one, carrying the work and the record together. ⚠ It is pushed only once `485252c`'s CI is green, which it already is |
-| Work | 7 open entries; `WSL-68` with **four** remaining items | ⭐ **Partial 1:** `WSL-68`, steps 3 and 4 of its Approach done and **two** items left. **Completed 0. Failed 0.** ⛔ `WSL-68` does NOT close: a real `/etc/resolv.conf` with the shared tmpfs closed, and the account in its own network namespace, both remain. Entries 125 to 125, open 7 to 7, done 118 to 118 |
-| Changes | 0 files changed from `485252c` | `git diff --shortstat` reads **13 files, +1,434 / -17**, four of them new |
-| Size | 98,840 text lines in 315 tracked files, `git grep -I -c ''` | **100,257 in 319 files, +1,417** |
-| Checks | doctor exit 0 in 55 s; gate 21 of 21 in 70 s | gate 21 of 21, exit 0, green before the commit. Windows Go with `TEMP` at the 8.3 path **343 top-level results, 323 passed, 20 skipped, 0 failed, exit 0 in 14 s**; `check-go.sh` exit 0 in `golang:1.25` in 30 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **48** scripts. **6 new mutation rows**, 312 to **318**, 6 of 6 red, each green unmutated first |
-| Cost | no paid operation authorized | no paid operation. Three container runs on the base, about 70 s of engine time; no download, no release, no workflow dispatched |
-| Health | five distributions; `WSL-68` with a scratch attack script in `.tmp` | ⭐ the same five, none added or removed. `base doors` is a registered command. **Findings 37, 38 and 39 opened**; three record self-contradictions corrected. ⚠ `wsl --shutdown` was run twice for the interop measurement and the base was repaired with `base ensure --repair`, exit 0. Tree clean, no tag, no BSD image, the operator's herdr workspace `w2` untouched |
+| Commits | `485252c`, tree **DIRTY** with the last session's two uncommitted wording corrections, its CI run 35070882239 green | **3**: `a19926c` the doors command, `ef0dd2f` the shared tmpfs, and this record commit. ⭐ Each pushed only after the previous one's CI was green; `a19926c` and `ef0dd2f` are green |
+| Work | 7 open entries; `WSL-68` with **four** remaining items | ⭐ **Partial 1:** `WSL-68`, all four of its remaining items attacked and three delivered whole. **Completed 0. Failed 0.** ⛔ **`WSL-68` does NOT close**, and it is one piece rather than four: `base shell` does not take `--private-net`, because an interactive attach through `pasta` cannot be driven from here. Entries 125 to 125, open 7 to 7, done 118 to 118 |
+| Changes | 0 files changed from `485252c` | `git diff --shortstat 485252c` reads **25 files, +2,575 / -29**, six of them new |
+| Size | 98,840 text lines in 315 tracked files | **101,386 in 323 files, +2,546**, by `git grep -I -c` |
+| Checks | doctor exit 0 in 55 s; gate 21 of 21 in 70 s | gate 21 of 21, exit 0, green before every commit. Windows Go with `TEMP` at the 8.3 path **357 top-level results, 337 passed, 20 skipped, 0 failed, exit 0 in 14 s**; `check-go.sh` exit 0 in `golang:1.25` in 29 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **49** scripts. **13 new mutation rows**, 312 to **325**, all thirteen red, each green unmutated first |
+| Cost | no paid operation authorized | no paid operation. Six container runs on the base, about 3 minutes of engine time; two throwaway base builds; the podman machine started to export a rootfs. No download, no release, no workflow dispatched |
+| Health | five distributions; `WSL-68` with a scratch attack script in `.tmp` | ⭐ the same five registered, none added or removed; ⚠ **plus the throwaway `wsl-toolkit-b68b`**, built under `.tmp` for the drives and left registered for the next session, and `podman-machine-default` left Running. `base doors` and `base.shared_tmpfs` are new surfaces. **Findings 37 to 41 opened**; four record self-contradictions corrected. ⚠ `wsl --shutdown` twice, base repaired with `base ensure --repair`. Tree clean, no tag, no BSD image, the operator's herdr workspace `w2` untouched |
 
 ### What was asked, and what happened
 
 | asked | outcome |
 | --- | --- |
-| resume at `WSL-68`'s four remaining items, none of which needs the operator | ⭐ **two of the four done**, steps 3 and 4. The two left are the invasive ones: the provisioner closing the shared tmpfs, and `base exec` starting commands in a private network namespace |
+| resume at `WSL-68`'s four remaining items, none of which needs the operator | ⭐ **all four attacked, three delivered whole.** The probe is a command, the manual says what is not sealed, the shared tmpfs closes, and the private network namespace is measured and shipped as a flag. ⛔ One piece is left and the entry names it |
 | the probe as a command rather than a script | ⭐ done. `wsl-toolkit base doors`: 30 doors attacked as the unprivileged account, 13 cases, 6 mutation rows, a manual section, a row in the acceptance sweep, and both refusal paths, one driven and one read |
 | the manual paragraph saying what is NOT sealed | ⭐ done, with the measurement beside each door, and `base doors` named as the thing to run instead of trusting the paragraph |
 | `muse login`, and the six `--remote` signals in a real window | ⛔ **not done, and they are the operator's.** The ask was re-sent unchanged; the client path in it was verified to still exist on disk |
 | validate and reconcile before working | ⭐ done. Doctor, gate, `wsl -l -v`, CI, releases, `INDEX.md` and the entries all read against the record. The work order agreed three ways this time |
+| finish all remaining tasks | ⭐ **three of the four items are finished.** ⛔ The fourth is not, and the reason is a measurement rather than a shortfall: no container runs inside the namespace, so wrapping every command would break the base, and an interactive attach cannot be driven from this session |
+| the shared tmpfs closed at every start | ⭐ done. `base.shared_tmpfs = "off"`, a boot script WSL runs as root, the resolver written before the door shuts and refreshed before every unmount, and a verifier that refuses either half failing |
+| the account in its own network namespace | ⭐ **the mechanism is measured and driven**, `base exec --private-net`: the Windows host refused by an `nft` rule inside the namespace, the internet and DNS up, the shared namespace untouched. ⛔ **A flag, not a default**, because podman inside it takes itself for rootful and cannot run |
 
-### ⛔ Four defects, and every one needed the command to be RUN
+### ⛔ Seven defects, and every one needed the thing to be RUN
 
 - ⛔ **A door reported CLOSED over an attempt that never happened.** `interop.run-exe` ran
   a hardcoded `/mnt/c/...` path that does not exist on a base with automount off and read
@@ -44,11 +47,22 @@ on what was true last time.
 - ⛔ **WSL's `WSLInterop` registration does not follow `[interop] enabled`.** Both values
   were observed on the SAME distribution with the same configuration, so
   `base.interop = "off"` now claims only the PATH door. ⚠ The mechanism has not been read.
+- ⛔ **A `command=` value wsl.conf cannot parse does not run, and says nothing about it.**
+  A value carrying nested quotes was silently ignored; the only evidence was a marker
+  file that never appeared. The boot line is a bare path for that reason.
+- ⛔ **`base doors` could not say `closed` on a closed door.** It tested for the directory
+  and then the write, so on a sealed base the empty root-owned directory made it read
+  `readonly` over a door that is shut. That base was the first one it had ever been
+  closed on.
+- ⛔ **No container runs inside the private network namespace.** pasta puts the payload
+  in a user namespace where it is uid 0, podman then takes itself for rootful and cannot
+  write the paths it chooses. Measured three ways. It is why `--private-net` is a flag
+  and not how every command in the base starts.
 
 ### Resume point
 
-Read [`PROGRESS.md`](PROGRESS.md) first. The operator's two steps, then `WSL-68`'s two
-remaining items, neither of which needs them.
+Read [`PROGRESS.md`](PROGRESS.md) first. The operator's two steps and the new question 3,
+then `WSL-68`'s last piece, which needs none of them.
 
 ---
 

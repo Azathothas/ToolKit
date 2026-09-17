@@ -4613,7 +4613,7 @@ No grants, automount off, interop off, systemd, no passwordless sudo, toolset no
 | `base recreate` from nothing with the setting on | exit 0 in **110 s**; `shared /mnt/wsl: off`, `wrote /etc/resolv.conf, 1 nameserver(s)`, boot script installed, verification passed |
 | the account after the restart | `/mnt/wsl` **not mounted**, a write refused, `getent hosts` **OK** |
 | `base doors` | exit **0**, `fs.mnt-wsl-shared closed`, claimed by `base.shared_tmpfs = "off"` |
-| open doors remaining | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net`. **Four, down from six** |
+| open doors remaining | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net`. ⚠ **Four, and NOT "down from six"**: the six is `wsl-toolkit-base`, which has passwordless sudo on and its tmpfs open, so the two differ by more than this setting. ⛔ This base with the tmpfs open AND the corrected probe was never measured, because the probe was corrected first. The claim audit caught the conflation |
 | ⛔ the guard mutation, on the live base | the unmount removed from the boot script by hand: `base doors` **exit 1** naming the claim and the open door, `base status --probe` **exit 1**, `usable false`, naming the setting. Restored, both exit 0 again |
 | ⚠ the first plant was defeated by its own shell | `false && umount ... \|\| umount -l ...` still runs the lazy fallback, so the door stayed closed and the row would have read as a guard that does not work. The second plant removed the branch outright |
 | the suite | 6 cases; **4 mutation rows, 4 of 4 went red**. ⚠ Two of the four had to be rewritten: deleting the guard left its variable unused and the row reported BROKEN, does not compile, rather than red |
@@ -4629,7 +4629,82 @@ this case cannot see it dropped`. It was written after `base.adapters` was dropp
 same way, and it works. ⚠ It did not fire earlier only because the filtered test runs
 this session never included it; the gate would have refused the commit.
 
+## Amendment, 2026-09-17: the private network namespace, and the engine it cannot hold
+
+⭐ **Approach step 1's second half is measured, delivered and driven**, as
+`base exec --private-net`. ⛔ **It is a flag rather than how every command starts**, and
+the measurement below is why.
+
+### ⭐ The ruling's condition is met, exactly
+
+The operator ruled option B on 2026-09-14, "only if it can be done with no rule in the
+shared network namespace". Measured 2026-09-17, on the throwaway base `wsl-toolkit-b68b`:
+
+| | outside | inside `pasta --config-net` |
+| --- | --- | --- |
+| the namespace | `net:[4026531833]`, shared by every distribution on the host | `net:[4026532295]`, its own |
+| capabilities | the account's | `CapEff 000001ffffffffff`, so `nft` loads |
+| the Windows host, ICMP | open | ⭐ **closed**, once the rule is loaded |
+| the internet, `1.1.1.1:443` | open | open |
+| DNS | ok | ok |
+| the SHARED namespace afterwards | `net:[4026531833]` | ⭐ **unchanged, and its ruleset is not even readable to the account** |
+
+⭐ **So the rule is inside the namespace and nowhere else.** The chain is: every
+nameserver `/etc/resolv.conf` names, accepted one at a time; then the Windows host,
+dropped; then `10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16`, dropped.
+⛔ **The order is the chain's order**: WSL's resolver lives at a `10/8` address, so a
+drop of the private ranges with nothing ahead of it takes DNS with it and the payload
+then fails for a reason that looks nothing like a firewall.
+
+### ⛔ And the obstacle the entry did not anticipate: no container runs inside it
+
+`pasta --config-net` puts the payload in a **user** namespace where it is uid 0, so
+podman takes itself for rootful and chooses system paths it cannot write. Measured
+three ways on the same base, each failing:
+
+| attempt | result |
+| --- | --- |
+| `podman run` plain, inside | `creating runtime static files directory "/var/lib/containers/storage/libpod": mkdir: permission denied` |
+| with `--root` and `--runroot` at the account's own directories | `creating runtime temporary files directory: mkdir /run/libpod: permission denied` |
+| with `_CONTAINERS_USERNS_CONFIGURED=done` | back to `/var/lib/containers/storage/libpod: permission denied` |
+| the same `podman run` OUTSIDE the namespace, for the control | `container-ok`, exit 0 |
+
+⛔ **So wrapping every `base exec` would break the base's whole purpose.** It exists to
+run containers as that account. The flag delivers the ruling's option B where it is
+wanted and leaves the engine working everywhere else.
+
+### What it does, and what it refuses
+
+- the payload arrives **base64**, decoded through a file in the guest, so nothing in it
+  is ever parsed by a shell. A case sends a payload of quotes, backticks, `$`, `|`,
+  `;`, `&`, `<` and `>` and compares it byte for byte on the other side;
+- ⛔ **`--private-net` with `--root` is refused.** The namespace confines the ACCOUNT;
+  guest root can leave one it is put in, so wrapping a root payload would be a claim
+  rather than a fact;
+- ⛔ **`pasta --quiet`**, because this wraps somebody else's command. Without it pasta
+  writes `No interfaces with usable IPv6 routes` and one more line to stderr on every
+  run. Measured: `base exec --private-net` adds **zero** bytes against the same command
+  run plain, **116 against 116**;
+- the payload is `exec`'d, so its own exit status is what a caller reads: 0, 7 and 42
+  driven, all three forwarded exactly.
+
+### Still open, and it is one item
+
+⛔ **`base shell` does not take the flag.** The wrapper delivers its payload as a
+script, and an interactive attach through `pasta` has not been driven from this
+session, so it is not offered rather than shipped unproved. ⚠ It is the same class as
+the `--remote` window test: what is missing is a way to drive an interactive terminal
+here, not a design.
+
+⛔ **And one question for the operator**, because it is a ruling rather than work: the
+2026-09-14 ruling made option B a property of a sealed base, and the measurement above
+shows that property and a working container engine cannot both hold for the same
+account at the same time. What is delivered is the flag. Whether a base should instead
+be able to declare the namespace for ALL of the account's processes, and give up
+running containers as that account, is the operator's to decide.
+
 ## WSL-69. Muse Code installed, authenticated and driven end to end
+
 
 
 **Source** the operator, 2026-09-12, ruling that this be a task of its own rather

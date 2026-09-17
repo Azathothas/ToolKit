@@ -763,3 +763,26 @@ func TestHerdrCommandsThatWantATerminalAreNamedRatherThanRun(t *testing.T) {
 		}
 	}
 }
+
+// ⛔ --private-net AND --root ARE CONTRADICTORY. The namespace is what confines the
+// ACCOUNT; guest root can unmount, re-mount and re-enter whatever it likes, so
+// wrapping a root payload would put a boundary around something that can step over
+// it and then report that it had been confined. WSL-68.
+func TestPrivateNetAndRootAreRefusedTogether(t *testing.T) {
+	cfg := toolkit.DefaultConfig()
+	opts := baseExecFlags{command: "true", dir: "~", privateNet: true, asRoot: true}
+	if _, err := opts.request(cfg); err == nil || !strings.Contains(err.Error(), "--private-net and --root") {
+		t.Fatalf("request() = %v, want a refusal naming both flags", err)
+	}
+	opts.asRoot = false
+	req, err := opts.request(cfg)
+	if err != nil {
+		t.Fatalf("request() as the account = %v, want it accepted", err)
+	}
+	if req.Env["TK_PRIVATE_NET_PAYLOAD_B64"] == "" {
+		t.Fatal("the payload did not reach the wrapper's environment")
+	}
+	if req.User != cfg.Base.User {
+		t.Fatalf("the wrapped request runs as %q, want the configured account %q", req.User, cfg.Base.User)
+	}
+}

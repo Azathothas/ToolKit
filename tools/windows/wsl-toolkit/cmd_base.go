@@ -287,6 +287,7 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	fmt.Fprintf(out, "  init        systemd %v\n", st.Access.Systemd)
 	fmt.Fprintf(out, "  sudo        passwordless %v\n", st.Access.PasswordlessSudo)
 	fmt.Fprintf(out, "  toolset     %s\n", st.Access.Toolset)
+	fmt.Fprintf(out, "  shared wsl  /mnt/wsl %s\n", st.Access.SharedTmpfs)
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}
