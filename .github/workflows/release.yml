@@ -206,6 +206,12 @@ jobs:
           if ($LASTEXITCODE -ne 1) { Write-Output "staged text-tool did not refuse a wrong count: exit $LASTEXITCODE"; exit 1 }
           Remove-Item -LiteralPath $probe -Force
           Write-Output 'the staged text-tool wrote, edited and refused'
+          # ⛔ EXPLICIT, BECAUSE THE LAST NATIVE COMMAND ABOVE EXITED 1 ON PURPOSE.
+          # A pwsh step takes its status from $LASTEXITCODE, so proving a refusal
+          # leaves the STEP holding that refusal: this one printed every success
+          # line it has and then failed the whole release with exit 1. Any step
+          # that asserts a command FAILS has to say how it itself ended.
+          exit 0
 
       # ⭐ THE SIGNATURE IS WHAT SHA256SUMS CANNOT BE. That file ships in the
       # same release as the asset it describes, so anyone who could replace one
