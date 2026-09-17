@@ -41,9 +41,13 @@ type Report struct {
 	EOL     string `json:"eol"`
 	Changed bool   `json:"changed"`
 	DryRun  bool   `json:"dry_run,omitempty"`
-	// Lines are the 1-based line numbers the operation touched, at most twenty,
-	// so a caller can see WHERE without reading the file back.
+	// Lines are the 1-based line numbers the operation touched, at most
+	// maxReportedLines of them, so a caller can see WHERE without reading the
+	// file back.
 	Lines []int `json:"lines,omitempty"`
+	// LinesTruncated says Lines is shorter than Matches because of that cap,
+	// so a caller comparing the two is not left deciding which one lied.
+	LinesTruncated bool `json:"lines_truncated,omitempty"`
 }
 
 type options struct {
@@ -108,7 +112,7 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 		Schema: Schema, Path: o.path, Mode: o.mode, Matches: matches,
 		Before: len(before), After: len(after), EOL: eol,
 		Changed: !bytes.Equal(before, after), DryRun: o.dryRun || o.count,
-		Lines: lines,
+		Lines: lines, LinesTruncated: len(lines) > 0 && len(lines) < matches,
 	}
 
 	// ⛔ THE COUNT IS CHECKED BEFORE ANYTHING IS WRITTEN. A substitution that
@@ -151,8 +155,15 @@ func emit(out io.Writer, asJSON bool, verb string, r Report) {
 		_ = enc.Encode(r)
 		return
 	}
-	fmt.Fprintf(out, "%s %s: %d match(es), %d -> %d bytes, %s endings\n",
-		verb, r.Path, r.Matches, r.Before, r.After, r.EOL)
+	// A TRUNCATED LIST SAYS SO IN THE PROSE TOO, and names where it starts,
+	// because the caller who reads the human line is the one who cannot see
+	// lines_truncated.
+	where := ""
+	if r.LinesTruncated {
+		where = fmt.Sprintf(", first %d at line %d", len(r.Lines), r.Lines[0])
+	}
+	fmt.Fprintf(out, "%s %s: %d match(es)%s, %d -> %d bytes, %s endings\n",
+		verb, r.Path, r.Matches, where, r.Before, r.After, r.EOL)
 }
 
 func parse(args []string) (*options, error) {

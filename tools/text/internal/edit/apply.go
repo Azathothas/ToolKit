@@ -90,11 +90,20 @@ func (o *options) applyReplace(before, payload []byte) ([]byte, int, []int, erro
 	return bytes.ReplaceAll(before, find, payload), n, linesAt(before, locs), nil
 }
 
-// linesAt turns byte offsets into 1-based line numbers, at most twenty of them.
+// maxReportedLines bounds the line numbers one report carries.
+//
+// ⚠ THE CAP IS VISIBLE, NOT SILENT. It used to be a bare 20 in two places,
+// so a delete of 21 lines answered `matches: 21` beside a list of 20 numbers and
+// the reader had to guess which was wrong. Report.LinesTruncated says the list
+// is short, because a report whose two halves disagree with no explanation is
+// the class this tool exists to remove.
+const maxReportedLines = 20
+
+// linesAt turns byte offsets into 1-based line numbers, at most maxReportedLines.
 func linesAt(body []byte, locs [][]int) []int {
 	var out []int
 	for _, loc := range locs {
-		if len(out) >= 20 {
+		if len(out) >= maxReportedLines {
 			break
 		}
 		out = append(out, 1+bytes.Count(body[:loc[0]], []byte("\n")))
@@ -165,7 +174,7 @@ func (o *options) applyDelete(before []byte) ([]byte, int, []int, error) {
 	out := append([]byte{}, bytes.Join(lines[:o.deleteFrom-1], nil)...)
 	out = append(out, bytes.Join(lines[to:], nil)...)
 	var touched []int
-	for n := o.deleteFrom; n <= to && len(touched) < 20; n++ {
+	for n := o.deleteFrom; n <= to && len(touched) < maxReportedLines; n++ {
 		touched = append(touched, n)
 	}
 	return out, to - o.deleteFrom + 1, touched, nil

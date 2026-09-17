@@ -124,6 +124,10 @@ function Invoke-Released {
     # consumer that forgets the flag once would write into the operator's own
     # state and this file must not be able to.
     $psi.Environment['WSL_TOOLKIT_HOME'] = $script:StateHome
+    # THE INSTANCE IS AN ENVIRONMENT VARIABLE FOR THE SAME REASON THE HOME IS.
+    # A flag this file forgot on one call would act on the DEFAULT distribution,
+    # which is the operator's. Set here, no case can be written that misses it.
+    $psi.Environment['WSL_TOOLKIT_INSTANCE'] = $script:Instance
     # The consumer's working directory is NOT this repository. That is the
     # property being tested: a released binary must not need the tree.
     $psi.WorkingDirectory = $script:Elsewhere
@@ -257,17 +261,33 @@ foreach ($d in @($script:Download, $script:Elsewhere, $script:StateHome)) {
 # how this file nearly removed a real base. The distribution name comes from the
 # configuration and defaults to `wsl-toolkit` whatever WSL_TOOLKIT_HOME says, so
 # a consumer run under a temp home would have found the operator's registered
-# base, adopted it, and unregistered it in its own teardown. WSL-43 is the entry
-# that makes an instance a first-class thing; until it lands, the name is set
-# here, BEFORE the first invocation, so no case in this file can reach the real
-# one.
-$script:BaseName = 'wsl-toolkit-consumer'
-[IO.File]::WriteAllText(
-    (Join-Path $script:StateHome 'config.json'),
-    (@{ schema = 'wsl-toolkit-config/1'
-        base   = @{ name = $script:BaseName; image = 'ghcr.io/pkgforge-dev/archlinux:latest'; user = 'toolkit' }
-    } | ConvertTo-Json -Depth 6),
-    [Text.UTF8Encoding]::new($false))
+# base, adopted it, and unregistered it in its own teardown.
+#
+# WSL-43 LANDED, so the selection is an INSTANCE now rather than a name typed
+# into a file. Invoke-Released sets WSL_TOOLKIT_INSTANCE, which moves the
+# distribution and the state directory together, and WSL-74 REFUSES the shape
+# this file used to write: a base.name of `wsl-toolkit-consumer` with no
+# instance selected named one distribution while recording into another's
+# state. The 3.0.0 smoke run is where that refusal first reached a consumer.
+#
+# THE FILE IS WRITTEN AT BOTH PATHS, AND THAT IS DELIBERATE. -Tag accepts any
+# published tag and nine of them exist; the ones from before instances landed
+# ignore WSL_TOOLKIT_INSTANCE and read <home>/config.json. Writing only the
+# instance's copy would leave those binaries with no configuration at all,
+# defaulting to `wsl-toolkit`, which is the operator's own base, which this
+# file's teardown then removes. One document, two files, so NO tag this script
+# accepts can reach a real distribution.
+$script:Instance = 'consumer'
+$script:BaseName = "wsl-toolkit-$script:Instance"
+$script:InstanceHome = Join-Path (Join-Path $script:StateHome 'instances') $script:Instance
+$null = New-Item -ItemType Directory -Path $script:InstanceHome -Force
+$script:ConfigJson = @{ schema = 'wsl-toolkit-config/1'
+    base   = @{ name = $script:BaseName; image = 'ghcr.io/pkgforge-dev/archlinux:latest'; user = 'toolkit' }
+} | ConvertTo-Json -Depth 6
+foreach ($d in @($script:StateHome, $script:InstanceHome)) {
+    [IO.File]::WriteAllText(
+        (Join-Path $d 'config.json'), $script:ConfigJson, [Text.UTF8Encoding]::new($false))
+}
 
 Write-Line "consumer: $Repo $($script:Tag)"
 Write-Line "download: $script:Download"

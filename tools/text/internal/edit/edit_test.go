@@ -266,3 +266,52 @@ func TestBase64WrappedByAShellIsStillRead(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// TestALineListShorterThanTheCountSaysWhy holds the report honest when the cap
+// bites.
+//
+// ⛔ THE TWO HALVES USED TO DISAGREE WITH NOTHING SAYING WHY. Deleting 21
+// lines answered `matches: 21` beside a list of 20 line numbers, and the reader
+// had to guess which number was wrong. It was neither: the list is capped. This
+// was found driving the tool on a real edit the day after it shipped, and it is
+// the same class as the refused edit that printed "wrote" - a report whose shape
+// misleads is a defect even when every number in it is correct.
+func TestALineListShorterThanTheCountSaysWhy(t *testing.T) {
+	dir := t.TempDir()
+	var b strings.Builder
+	for i := 1; i <= 40; i++ {
+		b.WriteString("line\n")
+	}
+
+	// 21 lines deleted, and the list holds maxReportedLines of them.
+	p := write(t, dir, "many.txt", []byte(b.String()))
+	code, out, err := run(t, "edit", p, "--delete", "5,25", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %v", code, err)
+	}
+	if !strings.Contains(out, "\"lines_truncated\": true") {
+		t.Fatalf("21 matches and a capped list, and the report does not say so: %s", out)
+	}
+
+	// ⭐ AND IT DOES NOT CLAIM TRUNCATION WHEN THE LIST IS WHOLE. A field that
+	// is always true is one nobody can read anything from.
+	q := write(t, dir, "few.txt", []byte(b.String()))
+	code, out, err = run(t, "edit", q, "--delete", "5,9", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %v", code, err)
+	}
+	if strings.Contains(out, "\"lines_truncated\"") {
+		t.Fatalf("5 matches, 5 listed, and it still reports a truncation: %s", out)
+	}
+
+	// ⚠ A write NAMES NO LINES AT ALL, and 0 listed against 1 match must not
+	// read as a cap. The guard for that is the one this field is derived through.
+	w := write(t, dir, "w.txt", []byte("x\n"))
+	code, out, err = run(t, "write", w, "--text", "y", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d: %v", code, err)
+	}
+	if strings.Contains(out, "\"lines_truncated\"") {
+		t.Fatalf("a write lists no lines and that is not a truncation: %s", out)
+	}
+}

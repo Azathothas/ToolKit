@@ -7395,6 +7395,34 @@ every other signal and reports that one as `operator` rather than as a pass, whi
 is the honest half. ⚠ **So this entry closes with one signal never measured on this
 host**, and the probe is tracked and runnable the day somebody wants it.
 
+⭐ **AND THEN THE OPERATOR RAN IT, 2026-09-17.** This closing first said the probe
+was tracked and runnable and stopped there, which was a shortfall recorded while
+the person who could remove it was at the machine. They ran it and pasted the
+table, so the entry carries a measurement rather than a plan:
+
+| signal | result |
+| --- | --- |
+| repaint on attach | ⭐ pass, 4911 bytes in 6 ms with no input, 98.5 pct of the 4988 a focus-in draws |
+| focus-in (CSI I) | info, reported not asserted |
+| typed text | ⭐ pass |
+| prefix command, tabs 2 to 3 | ⭐ pass |
+| resize, 16133 to 19492 bytes | ⭐ pass |
+| detach | ⭐ pass, exited 0 |
+| real window focus | ⛔ `operator`, the one a pseudo console cannot produce |
+
+**6 measurable, 0 failed**, against `herdr 0.9.0` from
+`herdr-nightly-20260916-18061191fdc0`, artefact `nightly-20260917T113425Z.json`.
+⭐ That is the PUBLISHED nightly client, which is what `wsl-toolkit-base` now
+runs, so the table describes what a reader gets rather than a hand-swapped build.
+
+⛔ **AND A CORRECTION THIS SESSION OWES, because the instruction given with that
+command was wrong.** The operator was told that running the probe from a real
+Windows Terminal window would measure signal 7. It would not, and no launch
+context will: the probe OPENS ITS OWN PSEUDO CONSOLE for the client, so the
+window the operator is looking at is never the window the client reads. Signal 7
+needs a driver that attaches to a real console, which is a different program from
+this one. The row above says `operator` for that reason and not for want of trying.
+
 ⚠ **And one thing the driving found that is upstream's, not this tree's:** a
 cancelled tool approval makes Muse Code 1.3.0 emit no hook at all, so the reporter's
 last word stays `blocked` and `herdr agent prompt` then answers `agent_blocked` for
@@ -10495,3 +10523,54 @@ single-variable run was made.
    pseudo console has no window. It is asked for, it is not a blocker for anything else,
    and the probe reports it `operator` rather than pretending.
 3. ⚠ Finding 36, the prune that only runs on the write path, is recorded and not fixed.
+
+---
+
+## WSL-91. The consumer smoke can only break after a release
+
+**Source** finding 70, 2026-09-17: `wsl-toolkit-v3.0.0` published and its
+`release-smoke` job failed, because `consumer.ps1` wrote a configuration shape
+`WSL-74` had made a refusal months of commits earlier and nothing could tell.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`consumer.ps1` is the only thing that proves a published release can be consumed,
+and it runs ONLY against published binaries. The gate never drives it. So a
+refusal, a flag rename or a changed default added to the tool cannot be detected
+by it until a release is already cut and the artefacts are public.
+
+⛔ **That is the whole defect class, not one instance of it.** Finding 70 is the
+first time it fired. Nothing about it was specific to configurations: any change
+that makes the tool answer differently to the way `consumer.ps1` drives it has the
+same shape and the same delay.
+
+## What was rejected, and why it matters
+
+⛔ **A textual rule was designed and thrown away.** It would have refused a `.ps1`
+that writes a `base.name` of `wsl-toolkit-<something>` without also naming
+`WSL_TOOLKIT_INSTANCE` or `--instance`. `acceptance.ps1` writes
+`wsl-toolkit-nobase` deliberately, to drive the refusal itself, so the rule would
+report a correct file. ⭐ **A guard that fires on correct code is worse than no
+guard**, because the exemption list becomes the real rule and nobody reads it.
+
+## Approach
+
+1. `consumer.ps1` takes `-Exe PATH`. When given, it uses that binary instead of
+   downloading one, and the four release-artefact cases - the digests, the
+   signature bundles, the signature itself and the tag-matches-version case - are
+   SKIPPED with that as the reason, because a local build has no release to check.
+2. The case-count assertion reads the cases the run was going to attempt, so a
+   local drive does not trip the `$expected` guard that exists to catch a table
+   stopping early.
+3. The gate builds the binary already; it runs `consumer.ps1 -Exe` over it. The
+   distribution cases skip there exactly as they skip on a runner.
+4. A case asserts that `-Exe` and a downloaded binary take the same path through
+   the file, so the local drive cannot quietly become a different suite.
+
+## Done when
+
+The gate fails if the working-tree binary refuses anything `consumer.ps1` asks of
+it, and finding 70's shape is caught before a tag rather than after one.

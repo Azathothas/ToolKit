@@ -682,7 +682,7 @@
       "label": "the verdict a caller reads is the code the process returns",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/job.go",
-      "find": "\tcase j.ArtifactError != \"\":\n\t\t// ⛔ The command succeeded and what it was asked to deliver did not\n\t\t// arrive. Exiting 0 here is how a green pipeline lost its build output.\n\t\treturn ExitFailed",
+      "find": "\tcase j.ArtifactError != \"\":\n\t\t// \u26d4 The command succeeded and what it was asked to deliver did not\n\t\t// arrive. Exiting 0 here is how a green pipeline lost its build output.\n\t\treturn ExitFailed",
       "replace": "\tcase false:\n\t\treturn ExitFailed",
       "run": "TestVerdictCarriesWhatTheProcessReturns",
       "args": []
@@ -2149,7 +2149,7 @@
       "label": "bsd: the payload disk follows the root disk",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
+      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// \u26a0 AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
       "replace": "\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n",
       "run": "TestTheGuestBootsWithoutTheHyperVWait",
       "args": []
@@ -2185,8 +2185,8 @@
       "label": "bsd: a command's wait ends when the console closes",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\tcase <-g.gone:\n\t\t\t// ⚠ One more look.",
-      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\t// ⚠ One more look.",
+      "find": "\t\tcase <-g.gone:\n\t\t\t// \u26a0 One more look.",
+      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\t// \u26a0 One more look.",
       "run": "TestAGuestWhoseConsoleClosesIsNotWaitedOn",
       "args": []
     },
@@ -3013,7 +3013,7 @@
       "label": "base revoke: its help describing itself in grant's words",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_base_grant.go",
-      "find": "\tif sub == \"revoke\" {\n\t\tsourceHelp = \"⛔ not for revoke: name the grant by --target, where the base sees it\"\n\t\ttargetHelp = \"the /workspaces path of the grant to take away\"\n\t\tmodeHelp = \"⛔ not for revoke: a grant is taken away whatever its mode\"\n\t}\n",
+      "find": "\tif sub == \"revoke\" {\n\t\tsourceHelp = \"\u26d4 not for revoke: name the grant by --target, where the base sees it\"\n\t\ttargetHelp = \"the /workspaces path of the grant to take away\"\n\t\tmodeHelp = \"\u26d4 not for revoke: a grant is taken away whatever its mode\"\n\t}\n",
       "replace": "",
       "run": "TestRevokeHelpDoesNotDescribeItselfAsGrant",
       "args": []
@@ -3314,6 +3314,33 @@
       "file": "internal/checks/docs.go",
       "args": [],
       "run": "TestAPowerShellInvocationInADocumentPassesNoProfile"
+    },
+    {
+      "label": "text: a capped line list says it is capped",
+      "find": "\t\tLines: lines, LinesTruncated: len(lines) > 0 && len(lines) < matches,\n",
+      "replace": "\t\tLines: lines,\n",
+      "module": "tools/text",
+      "run": "TestALineListShorterThanTheCountSaysWhy",
+      "args": [],
+      "file": "internal/edit/edit.go"
+    },
+    {
+      "label": "text: a report that names no lines is not a truncated one",
+      "find": "LinesTruncated: len(lines) > 0 && len(lines) < matches,",
+      "replace": "LinesTruncated: len(lines) < matches,",
+      "module": "tools/text",
+      "run": "TestALineListShorterThanTheCountSaysWhy",
+      "args": [],
+      "file": "internal/edit/edit.go"
+    },
+    {
+      "label": "text: the reported line list is bounded",
+      "find": "const maxReportedLines = 20",
+      "replace": "const maxReportedLines = 1000",
+      "module": "tools/text",
+      "run": "TestALineListShorterThanTheCountSaysWhy",
+      "args": [],
+      "file": "internal/edit/apply.go"
     }
   ]
 }

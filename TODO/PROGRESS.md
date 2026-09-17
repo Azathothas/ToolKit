@@ -9,8 +9,8 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-17T10:01:48Z
 baseline        1699de9, tree clean, doctor exit 0, gate 21 of 21, and three commits the previous session left unpushed, pushed at 10:03:30Z on green CI for 5eae667
 head            this session's commit
-entries         total 125  open 2  blocked 0  done 123
-this session    the ending the previous session never wrote, wsl-toolkit-v3.0.0, and WSL-90 closed on the release that proves its step 4
+entries         total 126  open 3  blocked 0  done 123
+this session    the ending the previous session never wrote, wsl-toolkit-v3.0.0, and the smoke that release failed
 ```
 
 ## Active work
@@ -97,10 +97,13 @@ is closed, and the issue gets a comment naming the commits.
    the entry says so: what is missing is a way to drive an interactive terminal from a
    session here, not a design. Ruling 23.
 4. ⭐ **Closed:** `WSL-76` and `WSL-78`, on the operator's own base with `muse login`
-   done. ⛔ **`WSL-76` closes with one signal never measured**, a real window focus
-   event, which a pseudo console cannot produce; ⛔ **`WSL-78` closes without its
-   ordered from-nothing transcript**, because that pass needs three sign-ins at a
-   keyboard. Both entries say so rather than claiming the condition. Ruling 23.
+   done. ⭐ **The operator then RAN the probe**, 2026-09-17: **6 measurable, 0 failed**
+   against the published `herdr 0.9.0` nightly, repaint 4911 bytes in 6 ms with no
+   input. ⛔ **One signal stays unmeasured**, a real window focus event, and NO launch
+   context can produce it, because the probe opens its own pseudo console for the
+   client; ⛔ **`WSL-78` closes without its ordered from-nothing transcript**, because
+   that pass needs three sign-ins at a keyboard. Both entries say so rather than
+   claiming the condition. Ruling 23.
 5. ⭐ **Cut:** `wsl-toolkit-v3.0.0`, under ruling 22, on a commit with CI green.
    ⛔ Issues 30 and 32 were NOT closed first, and ruling 22 is what amended that.
 
@@ -275,7 +278,9 @@ new file FIRST, then run the gate.**
 | `302c31c` | `check-record` rule 7: `PROGRESS.md`'s work order must agree with `INDEX.md` about what is finished; 10 cases, 5 mutation rows, and finding 29 closed by the check it named |
 | `0eb5fb7` | a one-letter flag is written with one dash, in BOTH of the manual's renderers; 1 mutation row and finding 6 closed |
 | `4c35680` | ASD-STE100's countable half becomes `check ste`, 20 violations fixed and 0 left; `check skills` holds a skill to standing alone and to naming only commands that exist; `base --help` answers 0 and finding 39 closes; findings 3 and 34 fixed in both halves of the `repo` wrapper pair; the windows-repo example; 12 mutation rows |
-| this record commit | `wsl-toolkit-v3.0.0` cut and its published assets verified; `WSL-90` closed on approach step 4; finding 69 fixed, a shadowed Windows launcher reported by `base status --probe` with a `Notes` channel for it; the invisible-character rule; issues 30 and 32 commented rather than closed |
+| `6e204c2` | finding 69 fixed: a Windows launcher another program has taken the name of is reported by `base status --probe` through a new `Notes` channel, and the check accumulates rather than returning at the first problem; the rule that claimed to be host-free used `path/filepath` and went red in `golang:1.25`, which is finding 42 again inside the commit that cited it; the invisible-character rule; 3 mutation rows |
+| `675003d` | `tools/text`, one Go program with three modes on either host, with 22 cases and 3 defects the harness found in it rather than a reading; `WSL-68`, `WSL-76` and `WSL-78` closed with what each never measured written into its own closing; ruling 24; a fenced `pwsh` invocation must pass `-NoProfile`; rule 7 caught the work order going behind the moment those three closed |
+| this record commit | the smoke of `wsl-toolkit-v3.0.0` fixed: `consumer.ps1` wrote a `base.name` with no instance selected, which `WSL-74` refuses, so the first release cut since that rule published green and could not be consumed; measured back to 8 passed, 0 failed against the real tag; findings 70 and 71; `WSL-91` filed for the gap that let it reach a release; the `text` tool's silently capped line list; `WSL-76`'s closing carries the operator's own probe run |
 
 ## Measurements
 
@@ -1122,6 +1127,49 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     [`../tools/windows/wsl-toolkit/examples/windows-repo/README.md`](../tools/windows/wsl-toolkit/examples/windows-repo/README.md)
     tells a reader to check with `Get-Command` and gives the full-path fallback,
     which is a page doing a check's job.
+
+70. ⛔ **THE CONSUMER SMOKE WROTE A CONFIGURATION ITS OWN TOOL REFUSES, AND ONLY A
+    RELEASE COULD SHOW IT.** `consumer.ps1` set `base.name` to
+    `wsl-toolkit-consumer` and selected no instance. `WSL-74` made exactly that
+    pairing a refusal: one distribution acted on while another's state is written.
+    The file said so itself - "`WSL-43` is the entry that makes an instance a
+    first-class thing; **until it lands**, the name is set here" - and `WSL-43`
+    landed. ⛔ **Run 35213476786 is where it surfaced**: `publish wsl-toolkit`
+    succeeded and `the published release can be consumed` FAILED, 14 cases, 2
+    failed, on `images --json` and `config --json`, both exiting 2 with the
+    mismatch refusal. ⭐ **This is the job doing its work**: the first release cut
+    since `WSL-74` carried the new refusal to a consumer, and the smoke caught it
+    before any reader did.
+    ⭐ **FIXED 2026-09-17.** `Invoke-Released` sets `WSL_TOOLKIT_INSTANCE`, beside
+    the `WSL_TOOLKIT_HOME` it already set and for the same reason the comment there
+    gives: a flag one call forgets acts on the operator's own distribution, and an
+    environment variable has no call site to forget it. ⚠ **The configuration is
+    written at BOTH paths, deliberately.** `-Tag` accepts any published tag and
+    nine exist; the ones before instances ignore `WSL_TOOLKIT_INSTANCE` and read
+    `<home>/config.json`, so writing only the instance's copy would leave them with
+    no configuration, defaulting to `wsl-toolkit`, which is the operator's base,
+    which this file's teardown removes. One document, two files.
+    ⭐ **MEASURED against the published `wsl-toolkit-v3.0.0`**, not asserted: **8
+    passed, 6 skipped, 0 failed**, and the two that failed in CI now pass. The 6
+    skip because podman would not answer on this host, which is what CI does too.
+    ⛔ **NO GUARD, AND THE OBVIOUS ONE IS WRONG.** A textual rule refusing a `.ps1`
+    that names a non-default distribution without selecting the instance was
+    designed and REJECTED: `acceptance.ps1` writes `wsl-toolkit-nobase` on purpose,
+    to drive the refusal, so the rule would refuse a correct file. The gap is
+    structural - `consumer.ps1` only ever runs against PUBLISHED binaries, so the
+    gate cannot reach it and a refusal added to the tool cannot be detected until
+    after a release is cut. `WSL-91` carries the design.
+71. ⛔ **THE `text` TOOL CAPPED ITS LINE LIST AT TWENTY AND SAID NOTHING.** Found by
+    driving it on finding 70's own edit the day after it shipped: `--delete 250,270`
+    answered `matches: 21` beside a list of **20** line numbers, and a reader has to
+    guess which number is wrong. Neither was: `linesAt` and `applyDelete` each held
+    a bare `20`. ⭐ **A report whose two halves disagree is a defect even when every
+    number in it is correct** - the same class as the refused edit that printed
+    `wrote`, fixed the day before. Fixed: one named `maxReportedLines`, a
+    `lines_truncated` field, and the human line names where the list starts. 1 case
+    with 3 assertions, **3 mutation rows, 3 of 3 red**, including one that drops the
+    emptiness guard so a `write` - which names no lines at all - would read as a
+    truncation.
 
 ## Review findings
 
