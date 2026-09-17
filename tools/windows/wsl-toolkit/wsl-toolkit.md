@@ -705,9 +705,10 @@ closed. ⛔ **It does not mean the base reaches nothing**, and the report ends w
 the doors that are open and that no setting here closes. Exit 1 is a claim the base
 does not keep; exit 2 is a probe that could not run.
 
-Three settings make a claim, and only three: `base.automount = off` claims
-`fs.windows-drives`, `base.interop = "off"` claims `interop.windows-path`, and
-`base.passwordless_sudo = false` claims `priv.passwordless-sudo`.
+Four settings make a claim, and only four: `base.automount = off` claims
+`fs.windows-drives`, `base.interop = "off"` claims `interop.windows-path`,
+`base.passwordless_sudo = false` claims `priv.passwordless-sudo`, and
+`base.shared_tmpfs = "off"` claims `fs.mnt-wsl-shared`.
 
 ⚠ **`base.interop = "off"` deliberately claims only the PATH door**, because the
 other two are not this tool's to promise. Measured on 2026-09-17, across two
@@ -735,7 +736,50 @@ that gets written about a base is made of attempts rather than of settings.
 
 ---
 
+### ⭐ Closing the shared tmpfs, and what it costs
+
+```json
+{ "base": { "automount": "off", "shared_tmpfs": "off" } }
+```
+
+⛔ **`/mnt/wsl` is one `tmpfs`, common to every distribution in the WSL2 utility
+VM, mounted `drwxrwxrwt`, with uids not namespaced across it.** A base with no
+grants at all wrote a file there that another distribution read, measured
+2026-09-15. It is the last door a zero-grant base has, and `base.shared_tmpfs`
+is what shuts it: the provisioner installs
+`/usr/local/lib/wsl-toolkit/seal-boot.sh`, which WSL runs as root at every start.
+
+⚠ **It costs DNS, and that is why it is opt-in and why the order matters.**
+`/etc/resolv.conf` is a symlink INTO that directory, so a base that unmounts it
+and does nothing else answers `getent hosts` exit 2. So, in this order and no
+other: WSL is told to stop generating the symlink; the provisioner writes a real
+`/etc/resolv.conf` from the shared file **while it is still reachable**; and the
+boot script refreshes that file at every start **before** it unmounts. A refresh
+that reads short leaves the working file alone, because a resolver that works
+beats a fresher one that does not.
+
+⛔ **`shared_tmpfs: "off"` requires `automount: "off"`** and is refused otherwise:
+closing the tmpfs while the Windows drives are mounted costs the resolver and
+seals nothing, because the drives are a wider channel than the tmpfs was.
+
+⭐ **The verifier reads the result, not the intention.** It refuses a base whose
+`/mnt/wsl` is still mounted, whose `/etc/resolv.conf` is still a symlink or
+carries no nameserver, or which cannot resolve a name. ⚠ That last one matters
+because a `command=` value wsl.conf's parser rejects does not run and says
+nothing about it: measured 2026-09-17, a value carrying nested quotes was
+silently ignored, which is why the boot line is a bare path with no shell in it.
+
+| measured on 2026-09-17, on a throwaway arch base with no grants | result |
+| --- | --- |
+| `base recreate` from nothing with `shared_tmpfs: "off"` | exit 0 in **110 s**, `wrote /etc/resolv.conf, 1 nameserver(s)`, boot script installed, verification passed |
+| the account, after the restart | `/mnt/wsl` **not mounted**, a write refused, `getent hosts` **OK** |
+| `base doors` | exit 0, `fs.mnt-wsl-shared closed`, `no tmpfs mounted at /mnt/wsl`, claimed by the setting |
+| the open doors that remain | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net`. **Four, down from six** |
+| ⛔ with the unmount removed from the boot script by hand | `base doors` **exit 1** naming the claim, and `base status --probe` **exit 1**, `usable false`, naming the setting. Restored, both green again |
+| three consecutive restarts before the setting existed | the earlier hand-driven form: tmpfs closed and DNS up on every one |
+
 ## The safety model
+
 
 Removal is constrained, and every destructive path goes through the same gate.
 
@@ -764,7 +808,7 @@ exists in a page as well as in a command.
 
 | door | measured | what it means |
 | --- | --- | --- |
-| ⛔ `/mnt/wsl` | 2026-09-15, both ways; again 2026-09-17 from `wsl-toolkit-base` | one world-writable `tmpfs` shared by every distribution in the utility VM, with uids not namespaced across it. A zero-grant account wrote a file another distribution read. Root can unmount it per distribution at every start, and that costs DNS |
+| ⭐ `/mnt/wsl`, **and this one now has a remedy** | 2026-09-15 both ways; closed and driven 2026-09-17 | one world-writable `tmpfs` shared by every distribution in the utility VM, with uids not namespaced across it. A zero-grant account wrote a file another distribution read. ⭐ **`base.shared_tmpfs: "off"` closes it at every start**, and the section above carries what that costs and what was measured. ⚠ It is off by default, so a base that does not ask for it still shares the directory |
 | ⛔ the internet | 2026-09-15 and 2026-09-17 | `1.1.1.1:443` connects from a base with no grants. Nothing in this tool closes it |
 | ⛔ the Windows host | 2026-09-15 and 2026-09-17 | `445` and `3389` were refused and **ICMP answered**, so the host is reachable. The address is `hostaddress`'s answer |
 | ⛔ a private network namespace | 2026-09-15 and 2026-09-17 | `unshare -n` is refused and `unshare -Un` SUCCEEDS, so the account can make one with no privilege. ⚠ `pasta --config-net` inside it still reached the internet and the Windows host, with and without `--no-map-gw` |
@@ -825,7 +869,7 @@ every start, and the account's processes in a network namespace of their own.
 | there is no port forwarding | decision | forwarding a port on Windows needs an elevated session and leaves a rule behind. `hostaddress` answers the question it was wanted for: bind the host service to that address |
 | an agent behind a launcher may be invisible to herdr | host | herdr reads a pane's foreground process, and `base agent` and a `NAME.exe` launcher are both wrappers. herdr's own remedy is `HERDR_AGENT=<agent>` set on the wrapper command **on the herdr side**; it cannot see one set inside the guest. ⚠ Read from herdr's documentation on 2026-09-15 and not yet measured here |
 | a base carrying both pi and omp can be configured so herdr refuses one | decision | `PI_CODING_AGENT_DIR` is read by both, so one exported for pi redirects omp onto pi's extension directory and herdr refuses the omp install. The omp adapter refuses first, naming both paths and the variable |
-| ⛔ a base is not a sandbox, and `/mnt/wsl` is the reason | host | every WSL distribution shares one `tmpfs` at `/mnt/wsl`, mounted world-writable. A zero-grant base wrote a file there that another distribution read, measured 2026-09-15. Closing it needs root at every start and costs DNS, because `/etc/resolv.conf` resolves into it. `WSL-68` |
+| ⛔ a base is not a sandbox, and the network is now the reason | host | `/mnt/wsl`, the world-writable `tmpfs` every WSL distribution shares, ⭐ **closes with `base.shared_tmpfs: "off"`**, driven 2026-09-17. What does not close: the internet answers, the Windows host answers ICMP, and the account can make a private network namespace with no privilege. Run `base doors` for this host's own list. `WSL-68` |
 
 ---
 

@@ -17,6 +17,7 @@ set -eu
 : "${TK_INTEROP:?TK_INTEROP is required}"
 : "${TK_SYSTEMD:?TK_SYSTEMD is required}"
 : "${TK_PASSWORDLESS_SUDO:?TK_PASSWORDLESS_SUDO is required}"
+: "${TK_SHARED_TMPFS:?TK_SHARED_TMPFS is required}"
 : "${TK_TOOLSET:?TK_TOOLSET is required}"
 : "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
 
@@ -136,7 +137,48 @@ esac
 printf 'passwordless-sudo %s\n' "$TK_PASSWORDLESS_SUDO"
 # <<< passwordless sudo: end
 
+# >>> the shared tmpfs: begin
+# ⛔ READ FROM THE MOUNT TABLE AND FROM THE RESOLVER, NOT FROM wsl.conf. This runs
+# after WSL has been terminated and started again, so it answers whether the boot
+# script actually ran, which is the only thing that matters. A `command=` that
+# wsl.conf's parser rejected does not run and says nothing about it: measured on
+# 2026-09-17, a value carrying nested quotes was silently ignored.
+#
+# ⛔ AND THE RESOLVER IS CHECKED IN THE SAME BREATH. Closing /mnt/wsl takes DNS
+# with it, because /etc/resolv.conf resolves into that directory, so a base whose
+# tmpfs is shut and whose resolver is gone has been broken by this setting rather
+# than sealed by it. WSL-68.
+case "$TK_SHARED_TMPFS" in
+  off)
+    if grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; then
+      printf 'verify: base.shared_tmpfs is off and /mnt/wsl is still mounted, so every distribution here still shares it\n' >&2
+      exit 3
+    fi
+    if [ -L /etc/resolv.conf ]; then
+      printf 'verify: /etc/resolv.conf is still a symlink, so it resolves into the directory that was just closed\n' >&2
+      exit 3
+    fi
+    if [ ! -s /etc/resolv.conf ] || ! grep -q '^nameserver ' /etc/resolv.conf; then
+      printf 'verify: base.shared_tmpfs is off and /etc/resolv.conf carries no nameserver, so closing the shared tmpfs took DNS with it\n' >&2
+      exit 3
+    fi
+    # ⚠ RESOLUTION ITSELF, not just the file. A resolver naming an address that
+    # answers nothing is exactly what this setting breaks, and the container run
+    # further down would fail with a pull error that names none of this.
+    if command -v getent >/dev/null 2>&1 && ! getent hosts github.com >/dev/null 2>&1; then
+      printf 'verify: base.shared_tmpfs is off and this base cannot resolve a name, so the resolver it was left with does not work\n' >&2
+      exit 3
+    fi
+    ;;
+  on)
+    ;;
+  *) printf 'verify: unknown shared tmpfs setting %s\n' "$TK_SHARED_TMPFS" >&2; exit 3 ;;
+esac
+printf 'shared-tmpfs %s\n' "$TK_SHARED_TMPFS"
+# <<< the shared tmpfs: end
+
 for xdg_dir in "$HOME/.config" "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state"; do
+
   if [ ! -d "$xdg_dir" ] || [ ! -w "$xdg_dir" ]; then
     printf 'verify: the managed account does not own a writable XDG directory at %s\n' "$xdg_dir" >&2
     exit 3

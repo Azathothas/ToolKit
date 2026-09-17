@@ -44,6 +44,7 @@ die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 : "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
 : "${TK_INTEROP:?TK_INTEROP is required}"
 : "${TK_SYSTEMD:?TK_SYSTEMD is required}"
+: "${TK_SHARED_TMPFS:?TK_SHARED_TMPFS is required}"
 : "${TK_PASSWORDLESS_SUDO:?TK_PASSWORDLESS_SUDO is required}"
 : "${TK_TOOLSET:?TK_TOOLSET is required}"
 
@@ -78,6 +79,12 @@ case "$TK_SYSTEMD" in
   *)          die "TK_SYSTEMD is $TK_SYSTEMD; it must be true or false" ;;
 esac
 say "systemd: $SYSTEMD_ENABLED"
+
+case "$TK_SHARED_TMPFS" in
+  on|off) ;;
+  *) die "TK_SHARED_TMPFS is $TK_SHARED_TMPFS; it must be on or off" ;;
+esac
+say "shared /mnt/wsl: $TK_SHARED_TMPFS"
 
 case "$TK_PASSWORDLESS_SUDO" in
   true|false) ;;
@@ -457,7 +464,93 @@ chown -R "$TK_USER" "$TK_HOME/.config"
 # after this script and before the restart that mounts it. It is also what
 # `base grant` and `base revoke` run live, so the block has one home.
 
+# -- the shared tmpfs every distribution in the utility VM writes to ----------
+# ⛔ /mnt/wsl IS ONE tmpfs, COMMON TO EVERY DISTRIBUTION, mounted world-writable,
+# and uids are not namespaced across it. A base with no grants at all wrote a file
+# there that another distribution read, measured 2026-09-15. WSL-68.
+#
+# ⛔ CLOSING IT TAKES DNS WITH IT, and that is the whole difficulty. WSL points
+# /etc/resolv.conf at /mnt/wsl/resolv.conf, so a base that unmounts the directory
+# and does nothing else answers `getent hosts` exit 2. The order below is the fix
+# and it is not interchangeable: a real resolver is written HERE, while the shared
+# file is still reachable, and the boot script refreshes it at every start BEFORE
+# it unmounts.
+SEAL_BOOT=/usr/local/lib/wsl-toolkit/seal-boot.sh
+if [ "$TK_SHARED_TMPFS" = off ]; then
+  # ⛔ THE SYMLINK IS REMOVED BEFORE ANYTHING IS WRITTEN. /etc/resolv.conf points
+  # INTO the shared directory, so writing through it would put this base's
+  # resolver in the tmpfs every other distribution can read and replace.
+  if [ -s /mnt/wsl/resolv.conf ]; then
+    rm -f /etc/resolv.conf
+    grep -E '^(nameserver|search|options|domain) ' /mnt/wsl/resolv.conf > /etc/resolv.conf ||
+      die "the shared resolver held no usable line, so closing /mnt/wsl would leave this base unable to resolve anything"
+    chmod 0644 /etc/resolv.conf
+  elif [ -f /etc/resolv.conf ] && [ ! -L /etc/resolv.conf ] && grep -q '^nameserver ' /etc/resolv.conf; then
+    say "kept the real /etc/resolv.conf this base already had"
+  else
+    die "base.shared_tmpfs is off and there is no resolver to keep: /mnt/wsl/resolv.conf is absent or empty and /etc/resolv.conf carries no nameserver"
+  fi
+  resolvers=$(grep -c '^nameserver ' /etc/resolv.conf)
+  say "wrote /etc/resolv.conf, $resolvers nameserver(s), before closing the shared tmpfs"
+
+  # ⭐ THE BOOT COMMAND NAMES A SCRIPT AND CARRIES NO LOGIC. Measured on
+  # 2026-09-17: a `command=` whose value held nested quotes did not run at all,
+  # silently, and the only evidence was a marker file that never appeared. A path
+  # has nothing for wsl.conf's parser to get wrong.
+  install -d -m 0755 /usr/local/lib/wsl-toolkit
+  cat > "$SEAL_BOOT" <<'BOOTSH'
+#!/bin/sh
+# Written by wsl-toolkit. WSL runs this as root at every start of this
+# distribution, named by `command` in /etc/wsl.conf's [boot] section.
+#
+# ⛔ THE RESOLVER IS REFRESHED BEFORE THE UNMOUNT, AND A BAD READ CHANGES
+# NOTHING. The shared file is not always populated this early - measured empty on
+# 2026-09-17 - so a refresh that comes back short leaves the working file alone.
+# A resolver that works beats a fresher one that does not.
+set -u
+log=/run/wsl-toolkit-seal.log
+{
+  printf 'seal-boot %s\n' "$(date -u +%FT%TZ 2>/dev/null)"
+  if [ -s /mnt/wsl/resolv.conf ]; then
+    t=$(mktemp /etc/.resolv.XXXXXX 2>/dev/null) || t=
+    if [ -n "$t" ]; then
+      if grep -E '^(nameserver|search|options|domain) ' /mnt/wsl/resolv.conf > "$t" 2>/dev/null && [ -s "$t" ]; then
+        chmod 0644 "$t" && mv "$t" /etc/resolv.conf && printf 'resolver refreshed\n'
+      else
+        rm -f "$t"
+        printf 'resolver kept, the shared file gave nothing usable\n'
+      fi
+    fi
+  else
+    printf 'resolver kept, no shared file to read yet\n'
+  fi
+  if ! grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; then
+    printf 'shared tmpfs was not mounted\n'
+  elif umount /mnt/wsl 2>/dev/null || umount -l /mnt/wsl 2>/dev/null; then
+    printf 'shared tmpfs unmounted\n'
+  else
+    printf 'shared tmpfs NOT unmounted\n'
+  fi
+} > "$log" 2>&1
+# ⛔ ALWAYS 0. WSL treats a failing boot command as a start it should complain
+# about, and a base that will not start is worse than one whose tmpfs is open.
+# The log above is where the answer is, and `base doors` is what reads the result.
+exit 0
+BOOTSH
+  chmod 0755 "$SEAL_BOOT"
+  SEAL_BOOT_LINE="command=$SEAL_BOOT"
+  RESOLV_BLOCK='
+[network]
+generateResolvConf=false'
+  say "installed $SEAL_BOOT, run at every start"
+else
+  rm -f "$SEAL_BOOT" 2>/dev/null || :
+  SEAL_BOOT_LINE=''
+  RESOLV_BLOCK=''
+fi
+
 # -- how WSL starts this distribution -----------------------------------------
+
 # appendWindowsPath=false is the half that answers the reported complaint. With
 # it left on, every Windows PATH entry is appended to the guest's, so a guest
 # `find` on PATH can resolve to a Windows executable and a tool an agent
@@ -469,6 +562,7 @@ default=$TK_USER
 
 [boot]
 systemd=$SYSTEMD_ENABLED
+$SEAL_BOOT_LINE
 
 [automount]
 $AUTOMOUNT_BLOCK
@@ -477,6 +571,7 @@ mountFsTab=true
 [interop]
 enabled=$INTEROP_ENABLED
 appendWindowsPath=false
+$RESOLV_BLOCK
 CONF
 say "wrote /etc/wsl.conf"
 

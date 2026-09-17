@@ -16,7 +16,7 @@ import (
 // that knew six managers where the shared table knew twelve.
 func TestTheProvisioningRunIsTheSharedTableThenTheProvisioner(t *testing.T) {
 	b := &Base{cfg: Config{Base: BaseConfig{Name: "wsl-toolkit-tbl", User: "agent"}}}
-	req := b.provisionRequest(AutomountOff, BaseInteropOff, BaseToolsetDeveloper, io.Discard)
+	req := b.provisionRequest(AutomountOff, BaseInteropOff, BaseToolsetDeveloper, SharedTmpfsOn, io.Discard)
 	want := append(append(append([]byte{}, packagesScript...), '\n'), provisionScript...)
 	if !bytes.Equal(req.Script, want) {
 		t.Fatalf("the provisioning run sends %d bytes that are not the shared table and then the provisioner", len(req.Script))

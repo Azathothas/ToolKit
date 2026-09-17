@@ -78,6 +78,16 @@ type BaseConfig struct {
 	// Toolset optionally installs a reproducible group of tools in the base.
 	// `developer` is the provider-CLI foundation: git, build tools and tmux.
 	Toolset string `json:"toolset,omitempty"`
+	// SharedTmpfs is whether /mnt/wsl stays mounted. ⛔ It is ONE tmpfs shared by
+	// every distribution in the WSL2 utility VM, mounted world-writable and with
+	// uids not namespaced across it, so a base with no grants at all can pass a
+	// file to any other distribution through it. `off` unmounts it at every start.
+	//
+	// ⚠ IT COSTS DNS, AND THAT IS WHY IT IS OPT-IN. /etc/resolv.conf is a symlink
+	// INTO that directory, so closing it takes the resolver with it. `off` makes
+	// WSL stop generating the symlink, writes a real resolver at provisioning, and
+	// refreshes it from the shared file at every start before unmounting.
+	SharedTmpfs string `json:"shared_tmpfs,omitempty"`
 	// Mounts are the Windows directories explicitly granted to the base. They
 	// are mounted below /workspaces and are meaningful only with automount and
 	// interop both off.
@@ -104,6 +114,8 @@ const (
 	AutomountMixed       = "mixed"
 	BaseInteropOn        = "on"
 	BaseInteropOff       = "off"
+	SharedTmpfsOn        = "on"
+	SharedTmpfsOff       = "off"
 	BaseMountReadOnly    = "ro"
 	BaseMountReadWrite   = "rw"
 	BaseToolsetNone      = "none"
@@ -131,6 +143,21 @@ func NormalizeBaseInterop(value string) (string, error) {
 		return BaseInteropOff, nil
 	}
 	return "", fmt.Errorf("base.interop %q must be %q or %q", value, BaseInteropOn, BaseInteropOff)
+}
+
+// NormalizeSharedTmpfs validates whether the shared /mnt/wsl stays mounted.
+//
+// ⛔ THE DEFAULT IS `on`, AND THAT IS NOT A PREFERENCE. Closing the shared tmpfs
+// removes the resolver every ordinary WSL distribution depends on, so a default
+// of `off` would break DNS in every base built before this setting existed.
+func NormalizeSharedTmpfs(value string) (string, error) {
+	switch value {
+	case "", SharedTmpfsOn:
+		return SharedTmpfsOn, nil
+	case SharedTmpfsOff:
+		return SharedTmpfsOff, nil
+	}
+	return "", fmt.Errorf("base.shared_tmpfs %q must be %q or %q", value, SharedTmpfsOn, SharedTmpfsOff)
 }
 
 // NormalizeBaseMountMode supplies the safer default for an explicit grant.
@@ -460,6 +487,9 @@ func LoadConfig() (Config, error) {
 	if stored.Base.Toolset != "" {
 		cfg.Base.Toolset = stored.Base.Toolset
 	}
+	if stored.Base.SharedTmpfs != "" {
+		cfg.Base.SharedTmpfs = stored.Base.SharedTmpfs
+	}
 	if stored.Base.Mounts != nil {
 		cfg.Base.Mounts = stored.Base.Mounts
 	}
@@ -587,6 +617,19 @@ func (c Config) Validate() error {
 	}
 	if _, err := NormalizeBaseToolset(c.Base.Toolset); err != nil {
 		return err
+	}
+	sharedTmpfs, err := NormalizeSharedTmpfs(c.Base.SharedTmpfs)
+	if err != nil {
+		return err
+	}
+	// ⛔ CLOSING THE SHARED TMPFS WITHOUT CLOSING THE DRIVES IS NOT A SEAL, IT IS
+	// A COST. /mnt/wsl is the last door a zero-grant base has; on a base whose
+	// Windows drives are mounted anyway, shutting it removes the resolver's home
+	// and buys nothing, because the drives are a wider channel than the tmpfs was.
+	// The refusal names the setting to change rather than letting a caller pay for
+	// a containment they did not get.
+	if sharedTmpfs == SharedTmpfsOff && automount != AutomountOff {
+		return errors.New(`base.shared_tmpfs "off" requires base.automount to be "off": closing the shared tmpfs while the Windows drives are mounted costs the resolver and seals nothing`)
 	}
 	seenTargets := map[string]bool{}
 	for i, mount := range c.Base.Mounts {

@@ -2864,6 +2864,42 @@
       "replace": "",
       "run": "TestAnOpenDoorNoSettingClosesIsReportedAndIsNotAProblem",
       "args": []
+    },
+    {
+      "label": "the shared tmpfs claim that lets base doors refuse",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.go",
+      "find": "\tif sharedTmpfs == SharedTmpfsOff {\n\t\tclaims = append(claims, doorClaim{\"fs.mnt-wsl-shared\", `base.shared_tmpfs = \"off\"`})",
+      "replace": "\tif sharedTmpfs == \"a value this setting never takes\" {\n\t\tclaims = append(claims, doorClaim{\"fs.mnt-wsl-shared\", `base.shared_tmpfs = \"off\"`})",
+      "run": "TestTheSharedTmpfsDoorIsClaimedOnlyWhenTheSettingIsOff",
+      "args": []
+    },
+    {
+      "label": "the refusal of a closed shared tmpfs beside mounted drives",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif sharedTmpfs == SharedTmpfsOff && automount != AutomountOff {",
+      "replace": "\tif sharedTmpfs == \"a value this setting never takes\" && automount != AutomountOff {",
+      "run": "TestClosingTheSharedTmpfsRequiresTheDrivesToBeOffToo",
+      "args": []
+    },
+    {
+      "label": "the shared tmpfs setting surviving a stored configuration",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif stored.Base.SharedTmpfs != \"\" {\n\t\tcfg.Base.SharedTmpfs = stored.Base.SharedTmpfs\n\t}\n",
+      "replace": "",
+      "run": "TestEveryStoredBaseFieldSurvivesLoading",
+      "args": []
+    },
+    {
+      "label": "the shared tmpfs defaulting to on rather than off",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tcase \"\", SharedTmpfsOn:\n\t\treturn SharedTmpfsOn, nil",
+      "replace": "\tcase \"\":\n\t\treturn SharedTmpfsOff, nil\n\tcase SharedTmpfsOn:\n\t\treturn SharedTmpfsOn, nil",
+      "run": "TestTheSharedTmpfsDefaultsToOnSoAnOlderBaseKeepsItsResolver",
+      "args": []
     }
   ]
 }

@@ -4553,7 +4553,84 @@ that sentence.
 
 ---
 
+## Amendment, 2026-09-17: the shared tmpfs closes, and the resolver survives it
+
+⭐ **Approach step 1's first half is done: `base.shared_tmpfs`.** `/mnt/wsl` is the
+last door a zero-grant base had, and `"off"` shuts it at every start. The provisioner
+installs `/usr/local/lib/wsl-toolkit/seal-boot.sh` and WSL runs it as root at each
+start, named by `command` in `[boot]`.
+
+### ⛔ The order is the whole fix, and it is not interchangeable
+
+`/etc/resolv.conf` is a symlink INTO the directory being closed, so:
+
+1. WSL is told to stop generating the symlink, `[network] generateResolvConf=false`;
+2. the provisioner removes the symlink and writes a real `/etc/resolv.conf` from the
+   shared file **while it is still reachable** - writing through the symlink would have
+   put this base's resolver in the tmpfs every other distribution can replace;
+3. the boot script refreshes that file at every start **before** it unmounts, and a
+   read that comes back short leaves the working file alone.
+
+⚠ **Step 3's fallback is not hypothetical.** The first hand-driven form read the shared
+file at boot and got nothing: `/etc/resolv.conf` ended up 0 bytes and `getent hosts`
+exited 2. A resolver that works beats a fresher one that does not.
+
+### ⛔ Two defects found by driving it, before any of it was code
+
+- ⛔ **A `command=` value that wsl.conf's parser rejects does not run, and says
+  nothing about it.** The second hand-driven form carried nested single and double
+  quotes; the marker file it was supposed to write never appeared, and nothing
+  anywhere reported a problem. The boot line is a bare path for that reason and a case
+  refuses any shell metacharacter in it.
+- ⛔ **`base doors` could not say `closed` on a closed door.** It tested `[ -d /mnt/wsl ]`
+  and then the write; on a base where the tmpfs is unmounted the empty root-owned
+  directory is still there, so the write was refused and the door read `readonly`,
+  "present and a write was refused", over a door that is SHUT. It reads `/proc/mounts`
+  first now. ⚠ This base was the first one the door had ever been closed on, so no
+  earlier run could have found it.
+
+### The refusals
+
+⛔ **`shared_tmpfs: "off"` requires `automount: "off"`.** Closing the tmpfs while the
+Windows drives are mounted costs the resolver and seals nothing, because the drives are
+a wider channel than the tmpfs was.
+
+⛔ **The verifier reads the result and not the intention**: it refuses a base whose
+`/mnt/wsl` is still mounted, whose `/etc/resolv.conf` is a symlink or carries no
+nameserver, or which cannot resolve a name. The last is what catches a boot command
+that never ran.
+
+⭐ **The default is `on`**, because every base built before this setting existed has no
+such key, and a default of `off` would unmount the resolver's home on the next ensure
+of every one of them.
+
+### Measured, 2026-09-17, on the throwaway arch base `wsl-toolkit-b68b`
+
+No grants, automount off, interop off, systemd, no passwordless sudo, toolset none.
+
+| | result |
+| --- | --- |
+| `base recreate` from nothing with the setting on | exit 0 in **110 s**; `shared /mnt/wsl: off`, `wrote /etc/resolv.conf, 1 nameserver(s)`, boot script installed, verification passed |
+| the account after the restart | `/mnt/wsl` **not mounted**, a write refused, `getent hosts` **OK** |
+| `base doors` | exit **0**, `fs.mnt-wsl-shared closed`, claimed by `base.shared_tmpfs = "off"` |
+| open doors remaining | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net`. **Four, down from six** |
+| ⛔ the guard mutation, on the live base | the unmount removed from the boot script by hand: `base doors` **exit 1** naming the claim and the open door, `base status --probe` **exit 1**, `usable false`, naming the setting. Restored, both exit 0 again |
+| ⚠ the first plant was defeated by its own shell | `false && umount ... \|\| umount -l ...` still runs the lazy fallback, so the door stayed closed and the row would have read as a guard that does not work. The second plant removed the branch outright |
+| the suite | 6 cases; **4 mutation rows, 4 of 4 went red**. ⚠ Two of the four had to be rewritten: deleting the guard left its variable unused and the row reported BROKEN, does not compile, rather than red |
+
+### ⭐ And the repository's own guard caught the defect this change introduced
+
+`LoadConfig` copies a stored file's base fields **one by one**, and a field added to
+`BaseConfig` and not to that list is decoded, validated as empty and dropped. It
+happened: the first `base recreate` with `shared_tmpfs: "off"` printed `shared
+/mnt/wsl: on`. ⭐ `TestEveryStoredBaseFieldSurvivesLoading` is a reflect walk over every
+field of `BaseConfig` and it fails with `the fixture leaves base.SharedTmpfs empty, so
+this case cannot see it dropped`. It was written after `base.adapters` was dropped the
+same way, and it works. ⚠ It did not fire earlier only because the filtered test runs
+this session never included it; the gate would have refused the commit.
+
 ## WSL-69. Muse Code installed, authenticated and driven end to end
+
 
 **Source** the operator, 2026-09-12, ruling that this be a task of its own rather
 than a line inside `WSL-67`. [Issue 30](https://github.com/Azathothas/ToolKit/issues/30)

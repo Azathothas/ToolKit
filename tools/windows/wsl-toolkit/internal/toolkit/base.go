@@ -695,13 +695,17 @@ func (b *Base) provision(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	sharedTmpfs, err := NormalizeSharedTmpfs(b.cfg.Base.SharedTmpfs)
+	if err != nil {
+		return err
+	}
 	// ⚠ Resolved before anything runs, so a grant whose source is gone refuses the
 	// provisioning rather than half of it.
 	if _, _, _, err := baseMountPayloads(b.cfg); err != nil {
 		return err
 	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
-	code, err := b.wsl.Exec(ctx, b.provisionRequest(automount, interop, toolset, out))
+	code, err := b.wsl.Exec(ctx, b.provisionRequest(automount, interop, toolset, sharedTmpfs, out))
 	out.Flush()
 	if err != nil || code != 0 {
 		return fmt.Errorf("provisioning exited %d: %w", code, err)
@@ -727,7 +731,7 @@ func (b *Base) provision(ctx context.Context) error {
 
 // provisionRequest is the one provisioning run: the payload, as root, with the
 // configuration's settings in its environment.
-func (b *Base) provisionRequest(automount, interop, toolset string, out io.Writer) ExecRequest {
+func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string, out io.Writer) ExecRequest {
 	return ExecRequest{
 		Distro: b.cfg.Base.Name,
 		User:   "root",
@@ -741,6 +745,7 @@ func (b *Base) provisionRequest(automount, interop, toolset string, out io.Write
 			"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
 			"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
 			"TK_TOOLSET":           toolset,
+			"TK_SHARED_TMPFS":      sharedTmpfs,
 		},
 		Timeout: 30 * time.Minute,
 		Stdout:  out,
@@ -902,6 +907,10 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	if err != nil {
 		return verifyReport{}, err
 	}
+	sharedTmpfs, err := NormalizeSharedTmpfs(b.cfg.Base.SharedTmpfs)
+	if err != nil {
+		return verifyReport{}, err
+	}
 	_, checks, _, err := baseMountPayloads(b.cfg)
 	if err != nil {
 		return verifyReport{}, err
@@ -915,6 +924,7 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 		"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
 		"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
 		"TK_TOOLSET":           toolset,
+		"TK_SHARED_TMPFS":      sharedTmpfs,
 		"TK_MOUNT_CHECKS":      checks,
 	}, 20*time.Minute)
 	drives := parseAutomount(out)

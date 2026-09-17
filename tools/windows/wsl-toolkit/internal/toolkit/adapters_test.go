@@ -409,6 +409,7 @@ func TestEveryStoredBaseFieldSurvivesLoading(t *testing.T) {
 	stored.Base.Interop = BaseInteropOff
 	stored.Base.PasswordlessSudo = true
 	stored.Base.Toolset = BaseToolsetDeveloper
+	stored.Base.SharedTmpfs = SharedTmpfsOff
 	grant := BaseMount{Source: dir, Target: "/workspaces/project", Mode: BaseMountReadWrite}
 	stored.Base.Mounts = []BaseMount{grant}
 	// ⚠ AND A FIELD INSIDE AN ADAPTER, which the reflect walk below cannot see.

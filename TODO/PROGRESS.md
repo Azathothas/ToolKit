@@ -79,22 +79,20 @@ deadline, and `--json` answering `"problems": null` on exactly the healthy case.
 ⛔ **And one about WSL**: the `WSLInterop` `binfmt_misc` registration does not follow a
 distribution's `[interop] enabled` setting - both values were seen on the SAME
 distribution with the same configuration - so `base.interop = "off"` now claims only
-the PATH door, and the handler is reported and never claimed. ⚠ **Two of the four
-remaining items are left**, both in the provisioner or across `base exec`: a real
-`/etc/resolv.conf` with the shared tmpfs closed, and the account in its own network
-namespace.
+the PATH door, and the handler is reported and never claimed. ⭐ **The shared tmpfs now closes**, `base.shared_tmpfs = "off"`: the provisioner installs
+a boot script WSL runs as root at every start, the resolver is written before the door
+shuts and refreshed before every unmount, and the verifier refuses a base where either
+half did not happen. Driven from nothing in 110 s and proved able to fail. ⚠ **One item
+is left**, the invasive one: the account's processes in their own network namespace.
 
 **Resume, in this order:**
 
 1. **The operator's two steps**, which nothing else here can stand in for: `muse login`
    in `base shell`, and the six `--remote` signals in a real Windows Terminal window -
    now with the nightly's own client, which `base attach` prints.
-2. `WSL-68`'s **two** remaining items, listed in its own entry: a real
-   `/etc/resolv.conf` with the shared tmpfs closed at every start, and the account's
-   processes in their own network namespace through `pasta`. ⭐ **Neither needs the
-   operator**, so this is what to do while the two steps above are unanswered. ⚠ The
-   second changes how `base exec` and `base shell` start a command, which is why it was
-   named rather than begun.
+2. `WSL-68`'s **one** remaining item, which its "Still open" list names and its
+   amendments carry in full. ⭐ **It does not need the operator.** ⚠ It is the invasive
+   one: it changes how a command is started inside the base.
 3. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
    `PermissionRequest` from a real turn, then the guide.
 4. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
@@ -217,7 +215,8 @@ new file FIRST, then run the gate.**
 | `431417b` | `WSL-90` partial: the first herdr nightly published, its six signatures verified and both refusals proved, the base driven onto the `nightly` channel end to end, and the prune's `created_at` defect found by that first run and fixed |
 | `b2203ab` | `WSL-90` partial: the `--remote` probe as a tracked script, driven against both clients, the nightly passing six signals and 0.9.0 failing three; three defects in the probe itself found by driving it; and the gate's `powershell` check, which could not fail for two independent reasons, fixed with 2 cases and 2 mutation rows |
 | `69ae23f` | `WSL-90`'s three closing reviews, finding 36 and a line count corrected; the entry stays open on its step 4, which only `wsl-toolkit-v3.0.0` can prove |
-| this record commit | `WSL-68` steps 3 and 4: `base doors`, the attack as a registered command, with 13 cases, 6 mutation rows, a manual section and a sweep row; three defects it found in itself and one about WSL that narrowed its claims; this session's summary |
+| `a19926c` | `WSL-68` steps 3 and 4: `base doors`, the attack as a registered command, with 13 cases, 6 mutation rows, a manual section and a sweep row; three defects it found in itself and one about WSL that narrowed its claims |
+| this record commit | `WSL-68` step 1's first half: `base.shared_tmpfs = "off"` closes the shared tmpfs at every start and keeps the resolver, with 6 cases and 4 mutation rows, driven from nothing and proved able to fail; this session's summary |
 
 ## Measurements
 
@@ -238,7 +237,18 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
   `/proc/sys/fs/binfmt_misc/WSLInterop` across two distributions and three utility-VM
   lifetimes, with **both values on the same distribution and the same configuration**.
   The table is in the entry's amendment of 2026-09-17 and the manual's safety model.
-- **The three pre-push checks:** Windows Go with `TEMP` at the 8.3 path, **343 top-level
+- **For `WSL-68`'s `base.shared_tmpfs`, on the throwaway arch base `wsl-toolkit-b68b`:**
+  `base recreate` from nothing exit 0 in **110 s**, the resolver written with 1
+  nameserver before the door shut and the boot script installed; after the restart the
+  account found `/mnt/wsl` not mounted, a write refused and `getent hosts` OK; `base
+  doors` exit 0 with `fs.mnt-wsl-shared closed` and the open list **six to four**. ⛔ With
+  the unmount removed from the boot script by hand, `base doors` exit **1** and `base
+  status --probe` exit **1**, `usable false`; restored, both exit 0. ⚠ **The first plant
+  was defeated by its own shell**, `false && umount ... || umount -l ...`, which still
+  runs the fallback. ⚠ The podman machine was started to export the rootfs, which is
+  what a base build from an OCI image needs.
+- **The three pre-push checks:**
+ Windows Go with `TEMP` at the 8.3 path, **343 top-level
   results, 323 passed, 20 skipped, 0 failed, exit 0 in 14 s**; `check-go.sh` exit 0 in
   `golang:1.25` in 30 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **48** tracked
   scripts, one more than last session because `doors.sh` is new.

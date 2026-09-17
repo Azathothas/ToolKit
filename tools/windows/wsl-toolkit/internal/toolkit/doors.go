@@ -140,6 +140,17 @@ func doorClaims(cfg Config) ([]doorClaim, error) {
 	if !cfg.Base.PasswordlessSudo {
 		claims = append(claims, doorClaim{"priv.passwordless-sudo", "base.passwordless_sudo = false"})
 	}
+	// ⭐ THE ONLY DOOR IN THIS LIST THAT WAS OPEN ON EVERY BASE THIS TOOL HAD EVER
+	// BUILT. /mnt/wsl is one world-writable tmpfs shared by every distribution in
+	// the utility VM; `off` unmounts it at every start, and claiming it here is
+	// what makes `base doors` refuse a base where the boot script did not run.
+	sharedTmpfs, err := NormalizeSharedTmpfs(cfg.Base.SharedTmpfs)
+	if err != nil {
+		return nil, err
+	}
+	if sharedTmpfs == SharedTmpfsOff {
+		claims = append(claims, doorClaim{"fs.mnt-wsl-shared", `base.shared_tmpfs = "off"`})
+	}
 	return claims, nil
 }
 

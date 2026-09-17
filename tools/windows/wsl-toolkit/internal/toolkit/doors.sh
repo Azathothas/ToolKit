@@ -76,7 +76,18 @@ fi
 # drwxrwxrwt, and uids are not namespaced across it. A file written here is a
 # channel out of a base that is otherwise sealed, and it is the door this entry's
 # own list did not contain until the attack found it.
-if [ -d /mnt/wsl ]; then
+#
+# ⛔ THE TEST IS THE MOUNT AND THEN THE WRITE, IN THAT ORDER. `[ -d /mnt/wsl ]`
+# is true on a base where the tmpfs has been unmounted, because the empty
+# directory it was mounted on is still there and is root-owned; the write is then
+# refused and the door read `readonly` - "present and a write was refused" - over
+# a door that is SHUT. Measured on 2026-09-17 against the first base built with
+# `base.shared_tmpfs = "off"`, which is the first base this door was ever closed
+# on. A verdict that cannot say "closed" on a closed door is a verdict nobody can
+# act on.
+if ! grep -q ' /mnt/wsl ' /proc/mounts 2>/dev/null; then
+  say fs.mnt-wsl-shared closed 'no tmpfs mounted at /mnt/wsl, so nothing is shared with another distribution'
+elif [ -d /mnt/wsl ]; then
   if printf 'doors %s\n' "$TK_DOORS_MARK" > "/mnt/wsl/.doors-$TK_DOORS_MARK" 2>/dev/null; then
     rm -f "/mnt/wsl/.doors-$TK_DOORS_MARK" 2>/dev/null
     left=present
