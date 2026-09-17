@@ -1683,8 +1683,14 @@ try {
         $other = @($plan.removed | Where-Object { "$_" -match $two.id })
         # Both transcripts survive either way: gc removes guest state, and the
         # host transcript is what `logs` reads. What is asserted is that the
-        # plan touched one job and not the other.
-        ($other.Count -eq 0).ToString()
+        # plan touched one job AND not the other.
+        #
+        # BOTH HALVES, and only the second was asserted until 2026-09-17: $named
+        # was computed and dropped, so a `gc --job` that removed NOTHING passed a
+        # case named for leaving other jobs alone. PSScriptAnalyzer names it
+        # PSUseDeclaredVarsMoreThanAssignments, and the gate did not analyse this
+        # directory. Measured here: the plan names the job asked for 3 times.
+        (($named.Count -gt 0) -and ($other.Count -eq 0)).ToString()
     }
 
     Test-Case 'images warm says what is here without going to a registry' 'True' -MaxSeconds 120 {

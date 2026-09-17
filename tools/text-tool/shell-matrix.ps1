@@ -58,11 +58,17 @@ function Test-Host {
     # cmd passed and both PowerShells failed on the SAME line.
     $amp = if ($Name -eq 'cmd') { '' } else { '& ' }
     $line = '{0}"{1}" write "{2}" --b64 {3}' -f $amp, $tool, $out, $b64
-    $args = @()
-    foreach ($p in $Prefix) { $args += $p }
-    $args += $line
+    # NOT $args. It is an automatic variable inside a function, which
+    # docs/conventions/shell.md section 8 forbids for the reason it gives: it
+    # silently swallows a parameter of that name, and names are
+    # case-insensitive so $Args collides too. PSScriptAnalyzer says so, and
+    # until 2026-09-17 the gate ran the analyzer over scripts/ alone and never
+    # looked at this directory.
+    $argv = @()
+    foreach ($p in $Prefix) { $argv += $p }
+    $argv += $line
 
-    & $found.Source @args | Out-Null
+    & $found.Source @argv | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Write-Output ("  FAIL  {0,-12} the tool exited {1}" -f $Name, $LASTEXITCODE)
         $script:Failed++

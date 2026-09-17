@@ -21,6 +21,44 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-17
 
+### 2026-09-17T16:55:00Z: the last two open entries close, and the tool watches a container
+
+**Record:** `WSL-59` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md),
+`WSL-91` and `WSL-93` in
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), findings 81 to 88 in
+[`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no. Nothing is published by this unit; the next `wsl-toolkit-v*`
+tag carries it.
+
+⭐ **The observation layer reaches a container.** The timestamp layer, the
+silence heartbeat, the event log and the exit reading were container-agnostic
+and could only watch a distribution, so a podman workload got a byte counter and
+nothing else. An `Observer` seam now answers about the thing the command is in,
+and `run` takes the same flags `distro run` does.
+
+⛔ **A feed that does not exist reports ABSENT, never zero.** `podman stats` on a
+container running `sleep` answers `35048.23%` of a processor and `0B / 33.44GB`.
+Both parse, neither is a measurement, and the resource column names its reason
+instead of printing them.
+
+⭐ **The gate drives the released-binary contract on every commit.**
+`consumer.ps1` ran only against published binaries, so a refusal added to the
+tool could not be found until a tag was cut - which is how
+`wsl-toolkit-v3.0.0` published green and failed its own smoke. It takes `-Exe`
+now and the gate runs it in 2.4 seconds.
+
+⛔ **`text-tool --between` was the one edit operation with no required count.**
+With no `--expect` it wrote nothing and exited **0**, both when two ranges
+matched and when none did; with `--expect 1` and an anchor that appeared twice
+it replaced the wrong region and reported `1 match(es)`. It took 745 lines out
+of a 43 KB file in this session before it was seen. It is a breaking change to a
+published binary, and every call it breaks was already doing nothing.
+
+⛔ **The gate analysed one directory of three.** PSScriptAnalyzer ran over
+`scripts/` alone, so the eight `.ps1` files under `tools/` were parsed and never
+analysed - and the one real finding in the tree was in that half.
+
+
 ### 2026-09-17T14:10:00Z: wsl-toolkit-v3.1.0, and the first release whose smoke is green
 
 **Record:** `WSL-90`'s closing and `WSL-92` in

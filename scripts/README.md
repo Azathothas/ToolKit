@@ -298,8 +298,30 @@ they did.
 
 ### `common/check-powershell.ps1`
 
-Does every tracked `.ps1` parse, and is PSScriptAnalyzer clean over `scripts/`
-at Error and Warning.
+Does every tracked `.ps1` parse, and is PSScriptAnalyzer clean over every one of
+them at Error and Warning.
+
+⛔ **IT ANALYSED `scripts/` ALONE UNTIL 2026-09-17, and the one real finding in
+the tree was in the half it did not look at.** The parse loop always covered
+every tracked file; the analyzer took one directory. `consumer.ps1` held a
+non-ASCII byte with no byte order mark, which is the exact rule
+`PSUseBOMForUnicodeEncodedFile` exists for and which that file's own header
+claimed it did not need. It also found `$args` assigned inside a function in
+`shell-matrix.ps1`, which
+[`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 8
+forbids, and a variable computed and never asserted in `acceptance.ps1` whose
+case was named for the half it dropped. A guard on one of several paths into the
+same thing is the commonest hole there is.
+
+⚠ **Two rules are excluded and each exclusion is a decision.**
+`PSUseShouldProcessForStateChangingFunctions` wants `-WhatIf` on `New-*` and
+`Set-*` helpers inside a test harness, which no caller ever passes;
+`PSUseSingularNouns` would rename `Get-ReleaseAssets`, which downloads all of
+them, to a name that is less true. ⛔ Everything else it reports is a finding
+this repository fixes rather than excludes.
+
+⚠ **`-Path` takes ONE path.** Handing it the file list refuses with `Cannot
+convert System.Object[] to System.String`, so the walk is one call per file.
 
 ⚠ **The analyzer is a module, not part of PowerShell.** Without it this reports
 `SKIPPED` and exits 0. ⛔ **It never installs it**: a check that installs
@@ -308,6 +330,34 @@ CI installs it explicitly and then asserts it was not skipped.
 
 ⭐ Its last line is a fixed `analyzer=clean|skipped|issues:N`, which is what
 `check-gate` reads. ⛔ Parse that, never the prose above it.
+
+### `consumer`, the gate's drive of the released-binary contract
+
+⭐ **It builds `tools/windows/wsl-toolkit` and runs
+[`../tools/windows/wsl-toolkit/consumer.ps1`](../tools/windows/wsl-toolkit/consumer.ps1)
+over the result with `-Exe`.** That file is the only thing here that drives the
+tool the way somebody outside this repository does.
+
+⛔ **It ran ONLY against published binaries until 2026-09-17, so a refusal added
+to the tool could not be detected until a tag was cut.** It fired for real:
+`wsl-toolkit-v3.0.0` published green and its smoke job then failed, because
+`consumer.ps1` wrote a configuration shape `WSL-74` had made a refusal months of
+commits earlier. `WSL-91`.
+
+| on a `-Exe` run | what happens |
+| --- | --- |
+| the four cases that need a release | skipped, each carrying that as its reason |
+| the six cases that need a distribution | skipped, unless `-WithJobs` is passed |
+| everything else | run against the working tree, in about a second |
+
+⛔ **A skip is accounted for, never dropped.** `consumer.ps1` declares its cases
+by name, compares the names REACHED against them both ways, and answers
+`complete`; the check refuses a run that is not complete. That is what stops a
+local drive quietly becoming a smaller suite than a release drive.
+
+⚠ **`-WithJobs` builds a whole distribution and removes it again.** It is for a
+session driving the full suite by hand, not for the gate: on a host that CAN
+build one it costs minutes and about a gigabyte.
 
 ### `common/check-binfmt.sh`
 
@@ -387,7 +437,7 @@ pwsh -NoProfile -File scripts/common/text-tool.ps1 edit PATH --line 42 --b64 BAS
 | `--replace`, `--replace-b64`, `--replace-from` | the search. ⚠ It has the same three channels as the payload, because a search string carries the same quoting |
 | `--line`, `--insert-after`, `--insert-before`, `--delete` | by line number, and a number outside the file is refused |
 | `--after FIND`, `--before FIND` | put the payload beside the line matching FIND and KEEP that line. ⭐ Use these rather than a substitution that has to retype its anchor: a `--replace` whose replacement forgets to put the anchor back DELETES it |
-| `--between A B` | from the line matching A to the line matching B, which is what `sed` and `awk` address. ⚠ TWO arguments: an anchor may hold a comma |
+| `--between A B` | from the line matching A to the line matching B, which is what `sed` and `awk` address. ⚠ TWO arguments: an anchor may hold a comma. ⛔ `--expect` is required, and the report names the SPAN it took, because an anchor that appears twice pairs with the first copy and that is still one match |
 | `--regex` | read the search as a regular expression |
 | `--count`, `--dry-run` | report and write nothing |
 | `--expect N` | ⛔ how many matches you believe are there, across every file named |

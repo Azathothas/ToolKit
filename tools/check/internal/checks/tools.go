@@ -83,6 +83,13 @@ func PowerShell(t *Tree) Result {
 	// number of scripts it handed over.
 	const parseAll = `
 $list = $env:CHECK_PS1_LIST
+# TWO RULES ARE EXCLUDED AND EACH EXCLUSION IS A DECISION, not a way to make a
+# red list go green. PSUseShouldProcessForStateChangingFunctions wants -WhatIf
+# on New-*/Set-* helpers INSIDE a test harness, which no caller ever passes;
+# PSUseSingularNouns would rename Get-ReleaseAssets, which downloads all of
+# them, to a name that is less true. Everything else the analyzer reports is a
+# finding this repository fixes.
+$exclude = @('PSUseShouldProcessForStateChangingFunctions', 'PSUseSingularNouns')
 $seen = 0
 if ($list) {
   foreach ($f in $list.Split([char]10)) {
@@ -97,8 +104,23 @@ if ($list) {
 Write-Output ("COUNT|{0}" -f $seen)
 if (Get-Module -ListAvailable PSScriptAnalyzer) {
   Import-Module PSScriptAnalyzer
-  foreach ($r in @(Invoke-ScriptAnalyzer -Path 'scripts' -Recurse -Severity Error,Warning)) {
-    Write-Output ("LINT|{0}:{1}|{2}: {3}" -f $r.ScriptName, $r.Line, $r.RuleName, $r.Message)
+  # EVERY TRACKED SCRIPT, NOT ONE DIRECTORY. This read -Path 'scripts' -Recurse
+  # until 2026-09-17, so the eight .ps1 files under tools/ were parsed and never
+  # analysed - and the one real finding in the tree was in that half:
+  # consumer.ps1 held a non-ASCII byte with no BOM, which is the exact rule
+  # PSUseBOMForUnicodeEncodedFile exists for and which that file's own header
+  # claimed it did not need. A guard on one of several paths into the same
+  # thing is the commonest hole there is.
+  #
+  # -Path TAKES ONE PATH. Handing it the array refuses with "Cannot convert
+  # System.Object[] to System.String", so the loop is per file rather than one
+  # call, and $seen above is what proves the list arrived at all.
+  foreach ($f in $list.Split([char]10)) {
+    $f = $f.Trim()
+    if (-not $f) { continue }
+    foreach ($r in @(Invoke-ScriptAnalyzer -Path $f -Severity Error,Warning -ExcludeRule $exclude)) {
+      Write-Output ("LINT|{0}:{1}|{2}: {3}" -f $r.ScriptName, $r.Line, $r.RuleName, $r.Message)
+    }
   }
 } else { Write-Output "NOANALYZER" }
 `

@@ -88,7 +88,10 @@ EDIT OPERATIONS, exactly one:
   --insert-before N    put the payload before line N
   --delete N[,M]       delete line N, or lines N to M inclusive
   --between A B        replace from the line matching A to the line matching B.
-                       ⚠ TWO arguments, because an anchor may hold a comma
+                       --expect is REQUIRED. ⚠ TWO arguments, because an anchor
+                       may hold a comma. ⛔ IT REPORTS THE LINES IT TOOK: an
+                       anchor that also appears earlier in the file pairs with
+                       the FIRST copy, which is still exactly one match
 
 ⚠ --line, --insert-after, --insert-before and --delete name a place in ONE file
 and are refused when several are given. --replace and eol name the same thing in

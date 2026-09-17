@@ -36,12 +36,29 @@ type logFlags struct {
 }
 
 func (l *logFlags) bind(fs *flag.FlagSet) {
+	l.bindSinks(fs)
+	fs.DurationVar(&l.tick, "tick", 0, "after this much silence, write a heartbeat reading the watched thing's state. 0 is off; a rendering --log-profile turns it on at 30s")
+}
+
+// bindSinks is everything except --tick.
+//
+// ⛔ IT EXISTS BECAUSE `run` ALREADY HAS A --tick AND THE TWO ARE NOT THE SAME
+// MECHANISM. jobFlags binds one that fires on a TIMER and reports byte counts
+// for a fleet row; this one fires on SILENCE and reads the watched thing. They
+// had the same name on different commands and nothing made them meet, so
+// binding both on `run` panicked at startup with "flag redefined: tick" -
+// found by doing it, in WSL-59.
+//
+// ⭐ THE RESOLUTION IS ONE FLAG WITH ONE MEANING, not a second name. To a
+// caller `--tick` has always meant "say something while this is quiet", so
+// `run` binds it once and routes it to whichever reporter is active: the relay
+// where one is open, the fleet heartbeat otherwise.
+func (l *logFlags) bindSinks(fs *flag.FlagSet) {
 	l.bindRenderer(fs)
 	fs.StringVar(&l.textPath, "stream-log", "", "append the rendered, uncoloured lines to this file")
 	fs.BoolVar(&l.textOverwrite, "stream-log-overwrite", false, "replace the --stream-log file when the command starts, rather than appending")
 	fs.StringVar(&l.eventPath, "event-log", "", "append one "+toolkit.EventLogSchema+" JSON record per line, per event, to this file")
 	fs.StringVar(&l.progress, "progress-prefix", "", "consume a line that is this token, whitespace and a percentage with an optional label, and report the last one on the heartbeat")
-	fs.DurationVar(&l.tick, "tick", 0, "after this much silence, write a heartbeat reading the distribution's state and disk. 0 is off; a rendering --log-profile turns it on at 30s")
 	fs.StringVar(&l.escalate, "tick-escalate", "", "silence thresholds at which the heartbeat says more, comma separated, or none. Defaults to 2m,5m,15m whenever a heartbeat is on")
 }
 

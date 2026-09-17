@@ -10567,7 +10567,7 @@ measurable, 0 failed**.
 **Source** finding 70, 2026-09-17: `wsl-toolkit-v3.0.0` published and its
 `release-smoke` job failed, because `consumer.ps1` wrote a configuration shape
 `WSL-74` had made a refusal months of commits earlier and nothing could tell.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -10613,6 +10613,249 @@ it, and finding 70's shape is caught before a tag rather than after one.
 
 ---
 
+
+---
+
+## Closing
+
+**Closed 2026-09-17T16:40:00Z.** All four approach steps are delivered, and the
+gate now fails if the working-tree binary refuses anything `consumer.ps1` asks
+of it.
+
+### The acceptance
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+```text
+  ok     consumer
+```
+
+⭐ **The guard was PLANTED, both ways, because a check nobody has seen refuse is
+a check nobody knows works.**
+
+⛔ **Finding 70's own shape, planted:** an early `return exitCannot` in
+`cmdConfig`, which is a refusal a consumer cannot satisfy. The gate went to exit
+**1** and named the case and the tool's own words:
+
+```text
+  FAIL   the released-binary contract is broken by this tree: the state directory it names is the one it was
+         told to use (config exited 2:   instance consumer: distribution wsl-toolkit-consumer, ...)
+```
+
+⛔ **And the completeness half, planted separately:** one case wrapped in
+`if (-not $script:Local)`, so a local drive would quietly answer fewer
+questions. Exit **1**, `did not reach every case it declares, so this run
+covered less than the file says it does`. Restored, exit 0 both times.
+
+### The driven pass, the whole suite locally
+
+```text
+consumer: the working-tree binary .tmp/s917/wsl-toolkit-new.exe
+  skip  every digest in SHA256SUMS matches the file it names (a binary from the working tree has no release to check)
+  skip  every published asset carries a signature bundle (...)
+  skip  the signature verifies against this repository release workflow (...)
+  skip  the executable reports the version named by the release tag (...)
+  ok    the survey runs from an empty state directory and creates no distribution
+  ok    the catalog is fully qualified, which is what the manual says it is
+  ok    the state directory it names is the one it was told to use
+  ok    the usage text names the commands the manual documents
+  probing: base ensure, which is the only honest answer to whether jobs can run here
+  ok    a released binary runs a container job from an empty state directory
+  ok    a container gets a copy of a workspace and never the host directory
+  ok    a failing payload returns its own exit code
+  ok    what a job writes to /out comes back to the directory named
+  ok    a job past its deadline returns 124 and the caller is not held past it
+  ok    gc --apply removes what this run made
+
+consumer: 10 case(s) passed against ...wsl-toolkit-new.exe (3.1.0), 4 skipped.
+exit=0
+```
+
+⭐ **`-WithJobs` built a real distribution and removed it again.** Five
+registered distributions before, five after.
+
+### The four steps
+
+| step | what was done |
+| --- | --- |
+| 1. `-Exe PATH`, and the four release cases skip | `Test-ReleaseCase` is a WRAPPER, so every case still reaches `Test-Case` or `Skip-Case` and the report accounts for all of them |
+| 2. the count assertion reads what the run attempted | ⭐ it is a SET now, not a count. The names reached are compared with the names declared, BOTH ways |
+| 3. the gate drives it over the built binary | the `consumer` check, **2.4 s** including the Go build |
+| 4. a case asserts the two paths do not diverge | the completeness assertion IS that case, and it is the one planted above |
+
+⛔ **Step 3 as written would have built a distribution on every commit.** The
+approach said the job cases "skip there exactly as they skip on a runner", which
+is true of a runner with no WSL and false of this host: `base ensure` SUCCEEDS
+here, and would have cost minutes and about a gigabyte per gate run. ⭐ `-Exe`
+does not probe unless `-WithJobs` is passed, and the skip says which of the two
+reasons applied, because "no distribution here" and "you did not ask" are
+different facts.
+
+### ⛔ What this found on the way, and none of it was in the approach
+
+1. ⛔ **`consumer.ps1` DECLARED ITSELF ASCII-ONLY AND WAS NOT.** Its header says
+   so, and names the hazard: Windows PowerShell 5.1 decodes a byte-order-mark-less
+   file as the system code page. It held one `⛔`, three bytes, no mark. Measured:
+   5.1 reads it as `â›”`. ⭐ **It is the ONLY tracked `.ps1` with non-ASCII and no
+   mark** - the other seven all carry one.
+2. ⛔ **AND THE REASON IT SURVIVED IS THE REAL FINDING.** The gate ran
+   PSScriptAnalyzer over `scripts/` alone, so the eight `.ps1` files under
+   `tools/` were parsed and never analysed. `PSUseBOMForUnicodeEncodedFile` is
+   exactly the rule, and it had nothing to fire at. ⭐ Widened to every tracked
+   file, and PROVED by planting the byte back: exit **1** naming the file,
+   exit 0 restored.
+3. ⛔ **`shell-matrix.ps1` ASSIGNS `$args` INSIDE A FUNCTION**, which
+   [`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 8
+   forbids for the reason it gives. Renamed.
+4. ⛔ **A CASE IN `acceptance.ps1` ASSERTED HALF OF WHAT ITS NAME CLAIMED.**
+   `gc --job leaves every other job alone` computed `$named` and dropped it, so
+   a `gc --job` that removed NOTHING would have passed. Measured: the plan names
+   the job asked for **3** times and the other **0**. Both halves are asserted
+   now.
+5. ⛔ **A THIRD INLINE TAG PARSE, inside the function whose docstring said it was
+   the one place that parses the tag.** It reads `$script:Version` now, which is
+   the tag on a release run and the binary's own answer on a local one.
+
+### The proof
+
+- 3 cases and 10 assertions in `consumer_test.go`, over a verdict function with
+  NO process in it, so they run where a Go toolchain and PowerShell are not both
+  present.
+- **3 mutation rows, 3 of 3 red**, each case green unmutated first.
+- the two live plants above, which no row can reach.
+
+## WSL-93. `--between` is the one edit operation with no required count, and it deletes the most
+
+**Source** found on 2026-09-17 by USING the tool: a `--between` over
+`consumer.ps1` matched an anchor that also appeared 700 lines earlier, replaced
+the region between that copy and the closing anchor, reported `1 match(es)` and
+exited 0.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`text-tool edit --between A B` replaces a whole REGION, which makes it the
+widest operation the tool has. It was the only search operation that did not
+require `--expect`, and its report named a count and never the lines it took.
+
+⛔ **Two shapes, both exit 0.** A call that changed nothing reported success,
+and a call that changed the wrong 745 lines reported success in the same words.
+
+## Premise
+
+⭐ **Measured against the published 3.1.0 behaviour on 2026-09-17**, not read.
+
+| the call | what happened |
+| --- | --- |
+| `--replace`, `--after`, `--before` with no `--expect` | refused, exit **2** |
+| `--between A B` with TWO ranges and no `--expect` | ⛔ **exit 0**, nothing written, `left unchanged ... 2 match(es)` |
+| `--between A B` matching NOTHING and no `--expect` | ⛔ **exit 0**, nothing written, `0 match(es)` |
+| `--between A B --expect 1` where A appears twice | ⛔ **exit 0**, 8 lines of 10 replaced, `1 match(es)` |
+
+⛔ **`applyBetween`'s own comment asserted the guard it did not have**: "the
+count this reports is what --expect checks, so a file with two ranges refuses
+rather than silently changing the first". True only for a caller who passed a
+flag nothing required.
+
+⛔ **AND THE SUITE ENCODED THE DEFECT.** `TestTheLineOperations` drove
+`--between` with no `--expect` and passed, so the missing guard had a green case
+sitting on it.
+
+⚠ **The last row is the one a count cannot catch.** A wrong range is still
+exactly one range, so `--expect 1` is satisfied. Only the byte delta gave it
+away, and the tool KNEW the line range and did not print it.
+
+## Approach
+
+Two changes, in
+[`../tools/text-tool/internal/edit/edit.go`](../tools/text-tool/internal/edit/edit.go)
+and
+[`../tools/text-tool/internal/edit/apply.go`](../tools/text-tool/internal/edit/apply.go).
+
+1. `--between` joins the `--expect` requirement and the unmatched refusal, so it
+   is held to what every other search is held to.
+2. The report NAMES THE SPAN it replaced. `applyBetween` already computes it and
+   throws it away.
+
+⛔ **Not a second flag and not a warning.** A confirmation prompt has no place
+in a tool written for a harness, and a warning on stderr is what a caller reading
+an exit code never sees.
+
+## Consumers
+
+⚠ **`text-tool` is published from `wsl-toolkit-v3.1.0` onward**, so this reaches
+anyone who downloaded that release. ⛔ **It is a BREAKING change by
+[`../docs/consumers.md`](../docs/consumers.md)'s definition**: a `--between`
+with no `--expect` exited 0 and now exits 2. ⭐ **Every call it breaks was
+already doing nothing**, which is the whole defect, so no caller loses an edit
+that was happening.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Green, with the three new mutation rows red under `repo mutate`.
+
+---
+
+## Closing
+
+**Closed 2026-09-17T15:05:00Z.** Driven, both directions:
+
+```text
+=== --between, two ranges, NO --expect ===
+text-tool: --replace, --after, --before and --between need --expect N, ...
+exit=2
+=== --between, no match, NO --expect ===
+text-tool: --replace, --after, --before and --between need --expect N, ...
+exit=2
+=== --between, two ranges, --expect 1 ===
+refused ...: 2 match(es), first 1 at line 1, 12 -> 12 bytes, lf endings
+text-tool: --expect 1 and this matches 2 times across 1 file(s). Nothing was written
+exit=1
+=== the wrong-region case now names its lines ===
+wrote ...: 1 match(es), lines 2-9 (8 line(s)), 54 -> 15 bytes, lf endings
+exit=0
+=== a correct single range still works ===
+wrote ...: 1 match(es), lines 2-4 (3 line(s)), 19 -> 6 bytes, lf endings
+exit=0
+```
+
+⭐ **The span is what closes the last row.** `lines 2-9 (8 line(s))` over a file
+of ten is unmistakable where `1 match(es)` was not.
+
+⭐ **The document names the operation now.** `Report.Op` is `replace`, `after`,
+`before`, `between`, `line`, `delete`, `insert-after` or `insert-before`, so a
+reader of the JSON can tell which question produced a number. ⚠ It sits BESIDE
+the apply dispatch, because two switches over one set of flags in two files is a
+value in two places with no check that they agree.
+
+⛔ **The case that encoded the defect was corrected, not deleted.**
+`TestTheLineOperations` passes `--expect 1` now.
+
+### The proof
+
+- 3 new case functions, 13 sub-cases, including all three shapes above.
+- **3 mutation rows, 3 of 3 red.** `repo mutate --only 'text-tool:'` reports
+  **21 of 21 guards proved** over the whole tool.
+- 3 rows of the existing table pointed at code this change moved, and the
+  gate's `mutations` check caught all three. ⭐ That is `TOOL-19` doing its job
+  in under a second.
+
+### ⚠ What this does not fix
+
+⚠ **An anchor that is not unique is still the caller's problem**, and the tool
+cannot know which range was meant. What it can do, and now does, is refuse
+without a stated count and name the lines it took when it acts. ⭐ The safest
+operation for an exact region is `--replace-from FILE`, whose search is the
+literal bytes and cannot pair the wrong two anchors; this session used it for
+every multi-line edit after meeting the defect.
 ## WSL-92. text-tool becomes a product an agent downloads, not a script in a checkout
 
 **Source** the operator on 2026-09-17, mid-session, after watching this session

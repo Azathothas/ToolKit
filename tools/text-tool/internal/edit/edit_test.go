@@ -161,7 +161,7 @@ func TestTheLineOperations(t *testing.T) {
 		{"insert before a line", []string{"--insert-before", "3", "--text", "NEW"}, "one\ntwo\nNEW\nthree\n"},
 		{"delete a line", []string{"--delete", "2"}, "one\nthree\n"},
 		{"delete a range", []string{"--delete", "1,2"}, "three\n"},
-		{"replace between two markers", []string{"--between", "one", "three", "--text", "ALL"}, "ALL\n"},
+		{"replace between two markers", []string{"--between", "one", "three", "--text", "ALL", "--expect", "1"}, "ALL\n"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			p := write(t, dir, strings.ReplaceAll(c.name, " ", "-")+".txt", []byte(body))
@@ -736,5 +736,103 @@ func TestPathsCanComeFromAFile(t *testing.T) {
 	}
 	if err == nil || !strings.Contains(err.Error(), "absent.txt") {
 		t.Fatalf("the refusal does not name the list it could not read: %v", err)
+	}
+}
+
+// TestBetweenNeedsExpectLikeEveryOtherSearch is the guard --between did not have.
+//
+// ⛔ IT WAS THE ONLY SEARCH OPERATION WITHOUT ONE, and it is the widest of them:
+// --replace changes one string, --after and --before add a line, and --between
+// deletes a whole region. Measured on 2026-09-17 against the published 3.1.0
+// behaviour: a file with TWO ranges wrote nothing and exited 0, and a file with
+// NO range wrote nothing and exited 0. applyBetween's own comment claimed "a
+// file with two ranges refuses rather than silently changing the first" - true
+// only for a caller who passed a flag nothing required.
+func TestBetweenNeedsExpectLikeEveryOtherSearch(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		body string
+		a, b string
+	}{
+		{"two ranges", "A\nx\nB\nA\ny\nB\n", "A", "B"},
+		{"no range at all", "A\nx\nB\n", "NOPE", "ALSO"},
+		{"exactly one range", "A\nx\nB\n", "A", "B"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := write(t, dir, strings.ReplaceAll(tc.name, " ", "-")+".txt", []byte(tc.body))
+			code, _, err := run(t, "edit", p, "--between", tc.a, tc.b, "--text", "GONE")
+			if code != 2 {
+				t.Fatalf("--between with no --expect exited %d, and a search with no stated count must be refused: %v", code, err)
+			}
+			// ⛔ AND THE FILE IS UNTOUCHED, which is the half that mattered: the
+			// old behaviour also wrote nothing, and reported success for it.
+			if got := read(t, p); !bytes.Equal(got, []byte(tc.body)) {
+				t.Fatalf("a refused call wrote: %q", got)
+			}
+		})
+	}
+}
+
+// TestBetweenSaysWhichLinesItTook is the other half of the same defect, and no
+// count could have caught it.
+//
+// ⛔ A RANGE CAN BE THE WRONG ONE AND STILL BE EXACTLY ONE MATCH. An anchor that
+// also appears earlier in the file pairs the FIRST occurrence with the closing
+// anchor, so `--expect 1` is satisfied and a much larger region is replaced.
+// Measured on 2026-09-17 on this repository's own consumer.ps1: 745 lines and
+// 36 KB went, reported as `1 match(es)` with exit 0. The tool computed the range
+// and did not print it.
+func TestBetweenSaysWhichLinesItTook(t *testing.T) {
+	dir := t.TempDir()
+	p := write(t, dir, "x.txt", []byte("keep1\nif (X) {\n  early\n}\nMIDDLE\nif (X) {\n  late\n}\nEND\n"))
+	code, out, err := run(t, "edit", p, "--between", "if (X) {", "END", "--text", "REPLACED", "--expect", "1")
+	if code != 0 {
+		t.Fatalf("exit %d: %v", code, err)
+	}
+	// The range it actually took, in the human line, where the caller reads it.
+	if !strings.Contains(out, "lines 2-9 (8 line(s))") {
+		t.Fatalf("the report does not say which lines went: %q", out)
+	}
+	// ⚠ AND THE SPAN SURVIVES INTO THE DOCUMENT, because the human line is for
+	// the caller watching and the JSON is for whatever reads the run afterwards.
+	// TestTheReportNamesTheOperationThatRan is what holds `op` itself.
+	code, out, err = run(t, "edit", p, "--json", "--count", "--between", "keep1", "REPLACED")
+	if code != 0 {
+		t.Fatalf("--count exit %d: %v", code, err)
+	}
+	if !strings.Contains(out, `"op": "between"`) {
+		t.Fatalf("the document does not name the operation: %q", out)
+	}
+}
+
+// TestTheReportNamesTheOperationThatRan holds every operation to saying what it
+// was, so the JSON document is self-describing rather than positional.
+func TestTheReportNamesTheOperationThatRan(t *testing.T) {
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		want string
+		args []string
+	}{
+		{"replace", []string{"--replace", "b", "--text", "X", "--expect", "1"}},
+		{"after", []string{"--after", "b", "--text", "X", "--expect", "1"}},
+		{"before", []string{"--before", "b", "--text", "X", "--expect", "1"}},
+		{"between", []string{"--between", "a", "c", "--text", "X", "--expect", "1"}},
+		{"line", []string{"--line", "2", "--text", "X"}},
+		{"delete", []string{"--delete", "2"}},
+		{"insert-after", []string{"--insert-after", "1", "--text", "X"}},
+		{"insert-before", []string{"--insert-before", "1", "--text", "X"}},
+	} {
+		t.Run(tc.want, func(t *testing.T) {
+			p := write(t, dir, tc.want+".txt", []byte("a\nb\nc\n"))
+			args := append([]string{"edit", p, "--json"}, tc.args...)
+			code, out, err := run(t, args...)
+			if code != 0 {
+				t.Fatalf("exit %d: %v", code, err)
+			}
+			if !strings.Contains(out, `"op": "`+tc.want+`"`) {
+				t.Fatalf("the document does not name the operation %q: %s", tc.want, out)
+			}
+		})
 	}
 }

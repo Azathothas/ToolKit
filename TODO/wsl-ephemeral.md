@@ -3153,7 +3153,7 @@ exactly the case row 8 says cannot be identified. `WSL-60`.
 ## WSL-59. the podman adapter, on what the matrix says it can be built
 
 **Source** the split `WSL-30` pre-authorised, executed 2026-09-10 when its matrix answered.
-**Category** wsl-ephemeral, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-ephemeral, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -3268,6 +3268,137 @@ rests on, taken again rather than carried.
 
 ---
 
+
+---
+
+## Closing
+
+**Closed 2026-09-17T16:20:00Z.** The adapter is built, and it is a SEAM rather
+than a second implementation: one relay renders, records and reports, and an
+`Observer` answers about the thing the command is in.
+
+⭐ **[`../tools/windows/wsl-toolkit/internal/toolkit/observe.go`](../tools/windows/wsl-toolkit/internal/toolkit/observe.go)
+is the seam.** `DistroObserver` is what `RunLog` always did, named and moved
+rather than rewritten; `ContainerObserver` is new. Each answers three questions:
+what kind of thing this is, what its feeds say, and how an exit code reads for
+it. ⛔ **The relay asks podman and wsl.exe nothing.**
+
+⭐ **`run` takes the observation flags now**, which is what the problem statement
+was about: the timestamp layer, the heartbeat, the event log and the exit reading
+were container-agnostic and could only watch a distribution.
+
+### The acceptance, run
+
+```text
+### A. wsl-toolkit run  (container) ###
+00:00:01.990 out  start
+00:00:08.138 tick 6s silent | elapsed 8s | out 1 lines 6 B | err 0 lines 0 B | container running | resources absent (this container is in the ROOT cgroup, so podman accounts for nothing and every figure it prints is invented)
+00:00:14.396 tick 12s silent | elapsed 14s | out 1 lines 6 B | err 0 lines 0 B | container running | resources absent (this container is in the ROOT cgroup, so podman accounts for nothing and every figure it prints is invented)
+00:00:14.985 note output resumed after 12s of silence
+00:00:14.985 out  done
+00:00:15.148 note exit 5 is the payload's own, passed through unchanged
+exitA=5
+
+### B. wsl-toolkit distro new (distribution), SAME command, SAME flags ###
+00:00:00.070 out  start
+00:00:06.315 tick 6s silent | elapsed 6s | out 1 lines 6 B | err 0 lines 0 B | distro running | disk 76.0 MiB | resources absent (WSL does not account for a distribution separately; the disk figure is what this side can size)
+00:00:12.564 tick 12s silent | elapsed 12s | out 1 lines 6 B | err 0 lines 0 B | distro running | disk 76.0 MiB (unchanged) | resources absent (WSL does not account for a distribution separately; the disk figure is what this side can size)
+00:00:13.072 note output resumed after 13s of silence
+00:00:13.072 out  done
+00:00:13.144 note exit 5 is the command's own, passed through unchanged
+exitB=5
+```
+
+⭐ **That is the comparison the amendment of 2026-09-13 asks for.** One layer,
+two vocabularies, and ⛔ **the resource column reports ABSENT with its reason on
+the line** rather than the `0B` and the nonsense percentage podman answers.
+
+The event log for the same run, which is the fourth thing the problem named:
+
+```text
+{"schema":"wsl-toolkit-event/1","seq":1,...,"kind":"LOG","stream":"stdout","text":"hello-from-container"}
+{"schema":"wsl-toolkit-event/1","seq":2,...,"kind":"LOG","stream":"stderr","text":"to-stderr"}
+{"schema":"wsl-toolkit-event/1","seq":3,...,"kind":"NOTE","prov":"inf","text":"exit 9 is the payload's own, passed through unchanged"}
+{"schema":"wsl-toolkit-event/1","seq":4,...,"kind":"EXIT","exit_code":9,"timed_out":false}
+```
+
+### The premise, measured a third time on 2026-09-17
+
+⭐ **The 2026-09-17 amendment's table holds, and the discriminator is sharper
+than the base-wide one it used.** Read on `wsl-toolkit-base` against a container
+running `sleep`:
+
+| reading | value |
+| --- | --- |
+| `.State.CgroupPath` | `/`, the ROOT cgroup |
+| `podman stats` | `35048.23%` and `0B / 33.44GB` |
+| `.HostConfig.LogConfig.Type` | `journald`, the base default |
+| a container that is gone | `Error: no such container` |
+
+⭐ **`CgroupPath` is read PER CONTAINER**, in the same `inspect` the heartbeat
+already makes, so the resource feed's state costs no extra round trip and is a
+fact about the thing being watched rather than about the base in general.
+`WSL-60`'s capability row is the same question asked one level up.
+
+### What the approach said, and what was done about each
+
+| the approach | what was done |
+| --- | --- |
+| an adapter behind the rendering layer | `Observer`, two implementations |
+| the observation layer must not name a command | `RunLog` holds no `podman` and no `wsl.exe` string. The probe is the adapter's |
+| a feed that does not exist reports absent | `FeedState` is present, absent or unknown, and ⛔ absent and unknown are kept apart |
+| the log driver is named and never defaulted | `ContainerLogDriver`, `k8s-file`. Measured: under the base default `podman logs` answers 0 bytes on BOTH streams and exits 0; under `k8s-file`, 6 and 6 |
+| a distro and a container are not the same kind of thing | each adapter writes its own state words, its own exit diagnosis and its own reason for an absent feed |
+
+### ⛔ Four defects this found, three of them in itself
+
+1. ⛔ **`--tick` MEANT TWO DIFFERENT THINGS AND BINDING BOTH PANICKED.**
+   `jobFlags` binds a timer heartbeat and `logFlags` binds a silence heartbeat,
+   under one name on commands that never met. Bringing them onto `run` gave
+   `flag redefined: tick` at startup, on the first invocation. ⭐ Resolved as ONE
+   flag with one meaning - "say something while this is quiet" - routed to
+   whichever reporter is active, rather than as a second name.
+2. ⛔ **THE HEARTBEAT SAID `disk unreadable` ABOUT A CONTAINER.** That claims the
+   figure was sought and could not be got, over a thing with no disk of its own
+   to seek. The disk is a feed now, and an absent one prints no column at all.
+   Found by driving it.
+3. ⛔ **THE RENDERER WROTE THE ADAPTER'S SENTENCE.** `no per-container cgroup
+   here` was rendered for a DISTRIBUTION too, which is true and about a unit a
+   distribution does not have. The reason belongs to the adapter now. Found by
+   running the same command both ways, which is this entry's own acceptance.
+4. ⛔ **A SIZE WAS READ ONE BYTE SHORT, EVERY TIME.** `33.44GB` times a billion
+   is 33,439,999,999.999996 in binary floating point, and `int64()` of that
+   truncates. It is `[int](2.65)` from
+   [`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 8, in
+   Go. The case found it; the fix is `math.Round`.
+
+### ⚠ What this entry did NOT do
+
+⛔ **`matrix` does not take the observation flags**, and it is a decision rather
+than an omission. A fleet renders ROWS: twelve relays interleaving timestamped
+lines into one terminal is a reading of nothing, and a flag a command accepts
+and does not read is the dead-config row in
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md).
+A fleet's per-row record is `--transcripts DIR`. ⚠ The acceptance above names
+`run`, which is the command it asks for.
+
+⛔ **`run --via-helper` REFUSES them rather than ignoring them.** The job runs on
+the helper's machine, so the adapter here would be asking this host about a
+container that is somewhere else.
+
+⚠ **`podman events` is still only read after the fact**, by `inspect`. The
+heartbeat asks `inspect` instead, which needs no window, so the `--until` trap
+this entry's amendment measured cannot be reached from the live path at all.
+
+### The proof
+
+- 8 cases in `observe_test.go`, every one over a function with NO process in it,
+  so they run on either host. Finding 42 twice over is why.
+- **7 mutation rows, 7 of 7 red**, each case green unmutated first. ⚠ One came
+  back `BROKEN, does not compile` first - removing `math.Round` left the import
+  unused - which is finding 41, and it was rewritten to `math.Trunc` so it could
+  go red properly.
+- the driven comparison above, which no case could have produced.
 ## WSL-60. the base accepts a memory limit and does not enforce it
 
 **Source** found by `WSL-30`'s validation matrix, 2026-09-10, row 8.

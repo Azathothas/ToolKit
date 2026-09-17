@@ -48,6 +48,38 @@ func (o *options) apply(before []byte, eol string) ([]byte, int, []int, error) {
 	return before, 0, nil, fmt.Errorf("no operation ran, which is a defect in this tool rather than in the call")
 }
 
+// operation names what apply is about to do, in the words the usage text uses.
+//
+// ⛔ IT IS BESIDE THE DISPATCH ON PURPOSE. Two switches over the same set of
+// flags, in two files, is a value in two places with no check that they agree;
+// this one sits against the switch it describes so a new operation that forgets
+// it is one screen away rather than one package away.
+func (o *options) operation() string {
+	switch o.mode {
+	case "write", "append", "eol":
+		return o.mode
+	}
+	switch {
+	case o.haveFind:
+		return "replace"
+	case o.haveLine:
+		return "line"
+	case o.haveAfter:
+		return "insert-after"
+	case o.haveBefore:
+		return "insert-before"
+	case o.haveInsertFind && o.insertBeforeMatch:
+		return "before"
+	case o.haveInsertFind:
+		return "after"
+	case o.haveDelete:
+		return "delete"
+	case o.haveBetween:
+		return "between"
+	}
+	return ""
+}
+
 // utf8BOM is the three bytes a Windows editor puts at the front of a file.
 //
 // ⚠ IT IS DATA, NOT AN ENCODING DECLARATION, to everything that reads bytes. A

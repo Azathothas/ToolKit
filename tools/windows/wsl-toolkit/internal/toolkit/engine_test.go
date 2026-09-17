@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -166,5 +167,62 @@ func TestDiagnosePodmanSpeaksForARealSocketFailure(t *testing.T) {
 	}
 	if !strings.Contains(got, "user@1000.service") {
 		t.Fatalf("the diagnosis names nothing to look at: %s", got)
+	}
+}
+
+// TestALongEngineCallSaysHowLongItHasBeenQuiet is WSL-18's rule applied to the
+// image pull, and the measurement that earned it.
+//
+// ⚠ MEASURED 2026-09-17: a `podman pull` on this host sat for 28 minutes with
+// ZERO bytes read, ZERO written and ZERO processor time over a 25-second
+// window, while `base ensure` printed `pulling <ref>` and then nothing at all.
+// The pull IS bounded, at thirty minutes, and the ceiling is right; what was
+// missing was any signal in between, so a stalled pull and a slow one were the
+// same picture for half an hour.
+func TestALongEngineCallSaysHowLongItHasBeenQuiet(t *testing.T) {
+	var mu sync.Mutex
+	var lines []string
+	log := func(s string) { mu.Lock(); lines = append(lines, s); mu.Unlock() }
+	stop := beat(context.Background(), log, "still pulling REF")
+	// The ticker fires at PullBeatEvery, which is far longer than a case should
+	// wait, so what is asserted here is the CONTRACT rather than the interval:
+	// stopping is safe, it waits, and it is idempotent.
+	stop()
+	stop()
+	mu.Lock()
+	defer mu.Unlock()
+	if len(lines) != 0 {
+		t.Fatalf("a beat that was stopped at once still spoke: %v", lines)
+	}
+	// ⛔ A nil log MUST NOT start a goroutine, or every capture-only caller
+	// would leak one. Calling the returned function proves it is safe.
+	beat(context.Background(), nil, "x")()
+}
+
+// TestTheBeatSaysTheElapsedTimeAndNotJustThatItIsAlive. A watcher whose only
+// output is that it is watching is the row forbidden-patterns.md already has.
+func TestTheBeatSaysTheElapsedTimeAndNotJustThatItIsAlive(t *testing.T) {
+	var mu sync.Mutex
+	got := make(chan string, 4)
+	log := func(s string) {
+		mu.Lock()
+		defer mu.Unlock()
+		select {
+		case got <- s:
+		default:
+		}
+	}
+	// A context already cancelled ends the goroutine without a line, which is
+	// the other half: a cancelled pull does not go on reporting.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	beat(ctx, log, "still pulling REF")()
+	select {
+	case s := <-got:
+		t.Fatalf("a cancelled beat spoke: %q", s)
+	default:
+	}
+	if PullBeatEvery <= 0 {
+		t.Fatal("the interval is not positive, so the beat would spin")
 	}
 }

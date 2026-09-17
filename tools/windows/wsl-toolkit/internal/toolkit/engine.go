@@ -3,9 +3,12 @@ package toolkit
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -114,13 +117,28 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	pullCtx, cancelPull := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancelPull()
 	log(fmt.Sprintf("pulling %s for %s", ref, e.Platform()))
-	if out, stderr, err := Output(pullCtx, e.Path, "pull", "--platform", e.Platform(), ref); err != nil {
+	// ⛔ NEVER EMIT NOTHING: RENDER SILENCE, WITH A TIME ON IT. The pull is
+	// bounded at thirty minutes above, which is the right ceiling and the whole
+	// of what this used to say. Between the line before and the pull returning,
+	// a caller saw NOTHING, so a stalled pull and a slow one were the same
+	// picture for up to half an hour.
+	//
+	// ⚠ MEASURED 2026-09-17, and it is why this exists. A
+	// `podman pull ghcr.io/pkgforge-dev/archlinux:latest` on this host sat for
+	// 28 minutes with ZERO bytes read, ZERO written and ZERO processor time over
+	// a 25-second window; the same pull, run again minutes later, finished in
+	// 221 seconds. The stall is not reproducible and is not diagnosed. The
+	// silence was ours, and this is WSL-18's own rule applied where it was not.
+	stopBeat := beat(pullCtx, log, "still pulling "+ref)
+	out, stderr, err := Output(pullCtx, e.Path, "pull", "--platform", e.Platform(), ref)
+	stopBeat()
+	if err != nil {
 		return fmt.Errorf("%s pull %s: %w: %s", e.Name, ref, err, firstLine(out+stderr))
 	}
 
 	createCtx, cancelCreate := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancelCreate()
-	out, stderr, err := Output(createCtx, e.Path, "create", "--platform", e.Platform(), ref)
+	out, stderr, err = Output(createCtx, e.Path, "create", "--platform", e.Platform(), ref)
 	if err != nil {
 		return fmt.Errorf("%s create %s: %w: %s", e.Name, ref, err, firstLine(out+stderr))
 	}
@@ -169,6 +187,51 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	return nil
 }
 
+// PullBeatEvery is how often a long engine call says it is still there.
+//
+// ⚠ IT IS NOT A PROGRESS BAR AND CANNOT BECOME ONE. podman writes its progress
+// to stderr and Output CAPTURES that, so nothing here knows how many bytes have
+// moved. What it can say honestly is how long it has been waiting, which is the
+// difference between "this is slow" and "this has stopped".
+const PullBeatEvery = 30 * time.Second
+
+// beat writes one line every PullBeatEvery until the returned function is
+// called, and returns a function that is safe to call exactly once.
+//
+// ⭐ THE ELAPSED TIME IS THE CONTENT. A heartbeat that only said "still working"
+// would be the watcher whose output is the thing it is watching, which
+// docs/conventions/forbidden-patterns.md already has a row for.
+func beat(ctx context.Context, log func(string), what string) func() {
+	if log == nil {
+		return func() {}
+	}
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	started := time.Now()
+	go func() {
+		defer close(done)
+		t := time.NewTicker(PullBeatEvery)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ctx.Done():
+				return
+			case now := <-t.C:
+				log(fmt.Sprintf("%s: %s so far, no output yet", what, FormatSpan(now.Sub(started))))
+			}
+		}
+	}()
+	// ⛔ THE STOP WAITS, for the reason tick.go gives: a line already in flight
+	// would otherwise print after the one saying the step finished.
+	var once sync.Once
+	return func() {
+		once.Do(func() { close(stop) })
+		<-done
+	}
+}
+
 // HumanBytes renders a byte count in binary units, labelled as binary.
 func HumanBytes(n int64) string {
 	const unit = 1024
@@ -181,6 +244,63 @@ func HumanBytes(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTP"[exp])
+}
+
+// ParseHumanBytes reads a size the way an engine prints one, and it lives
+// beside HumanBytes because it is its inverse and the two vocabularies have to
+// agree.
+//
+// ⛔ THE TWO UNIT FAMILIES MEAN DIFFERENT NUMBERS AND BOTH ARE IN USE. podman's
+// `{{.MemUsage}}` goes through docker's units.HumanSize, which is DECIMAL: the
+// `33.44GB` measured on this host on 2026-09-17 is 33,440,000,000 bytes, which
+// is 31.1 GiB on a 32 GiB machine. Reading it as binary would report a tenth
+// less memory than there is, with nothing saying so. A `iB` suffix is binary,
+// a bare `B` suffix is decimal, and that is the rule both tools follow.
+func ParseHumanBytes(s string) (int64, bool) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, false
+	}
+	i := 0
+	for i < len(s) && (s[i] == '.' || (s[i] >= '0' && s[i] <= '9')) {
+		i++
+	}
+	if i == 0 {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(s[:i], 64)
+	if err != nil || n < 0 {
+		return 0, false
+	}
+	suffix := strings.TrimSpace(s[i:])
+	binary := strings.HasSuffix(suffix, "iB")
+	letter := strings.TrimSuffix(strings.TrimSuffix(suffix, "iB"), "B")
+	step := float64(1000)
+	if binary {
+		step = 1024
+	}
+	mul := float64(1)
+	switch strings.ToUpper(strings.TrimSpace(letter)) {
+	case "":
+	case "K":
+		mul = step
+	case "M":
+		mul = step * step
+	case "G":
+		mul = step * step * step
+	case "T":
+		mul = step * step * step * step
+	case "P":
+		mul = step * step * step * step * step
+	default:
+		return 0, false
+	}
+	// ⛔ ROUNDED, NOT TRUNCATED. 33.44 times a billion is 33439999999.999996 in
+	// binary floating point, and int64() of that is 33,439,999,999 - a byte
+	// short of the figure the engine printed, every time, with nothing saying
+	// so. It is docs/conventions/shell.md section 8's [int](2.65) in Go, and
+	// the case is what found it.
+	return int64(math.Round(n * mul)), true
 }
 
 func min(a, b int) int {

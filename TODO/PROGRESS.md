@@ -6,77 +6,53 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-17T10:01:48Z
-baseline        1699de9, tree clean, doctor exit 0, gate 21 of 21, and three commits the previous session left unpushed, pushed at 10:03:30Z on green CI for 5eae667
+session started 2026-09-17T14:42:39Z
+baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
 head            this session's commit
-entries         total 127  open 2  blocked 0  done 125
-this session    wsl-toolkit-v3.0.0 and v3.1.0, text-tool as a published product, and a broken engine diagnosed rather than called host state
+entries         total 128  open 0  blocked 0  done 128
+this session    the last two open entries closed: a container is watched by the same layer a distribution is, and the gate drives the released-binary contract on every commit
 ```
 
 ## Active work
 
-⛔ **THIS SESSION RESUMED ONE THAT STOPPED WITHOUT ENDING.** The session of
-2026-09-17T05:13:01Z was asked for six things - the guide, the default model and
-effort, the errandsh ideas, every document plus two skills, four reviews, and the
-release - and it delivered the first four. Then it stopped without doing any of what
-[`../docs/methodology/sessions.md`](../docs/methodology/sessions.md) says a session
-owes: no `SUMMARY.md` section, no `Recent work` rows, no measurements of its own, and
-⛔ **the release was never cut.** Three of its four commits were still unpushed.
-⚠ **Everything it did record is correct** - the entries, the rulings and findings 51
-to 66 were all read against the tree and the artefacts; what was missing was only the
-ending. It is written from artefacts below and in `SUMMARY.md`, by the session that
-resumed it, which is the second time in three days that a session has owed this.
+⭐ **EVERY ENTRY IS CLOSED.** 128 of 128, and `WSL-59` and `WSL-91` were the two
+that were open at the start. ⚠ That is a statement about the INDEX and not about
+the tree: "Found, and not filed" below carries 88 numbered findings, and the
+open questions section carries what still needs the operator.
 
-⭐ **THE DOCUMENTS HAVE A STANDARD AND A CHECK NOW.** The operator asked for
-ASD-STE100, Simplified Technical English. ⚠ **The first reading of that ask was
-wrong and the measurement corrected it**: STE looked like it contradicted this
-tree's house style, and `docs/conventions/prose.md` has in fact been asking for
-most of it all along with no number attached. Measured before a word was changed:
-the documents a reader follows hold **4,836 sentences, none over 25 words**, and
-the longest anywhere is **19**. So `check ste` puts the number on a rule that
-already held, and adds the three nobody counted. **20 violations found and fixed,
-0 remain.** ⛔ **The rule had two defects of its own and running it found both**,
-and `repo mutate` found a third in one of its cases.
+⭐ **THE OBSERVATION LAYER REACHES A CONTAINER, AND IT IS A SEAM RATHER THAN A
+SECOND IMPLEMENTATION.** `WSL-59` sat open since 2026-09-10 because the timestamp
+layer, the silence heartbeat, the event log and the exit reading are
+container-agnostic and none of them could watch a container: `RunLog` asked
+wsl.exe about a DISTRIBUTION and sized a `.vhdx` on the host disk. An `Observer`
+answers three questions now - what kind of thing this is, what its feeds say, and
+how an exit code reads for it - and `run` takes the same flags `distro run` does.
+⛔ **The relay holds no `podman` and no `wsl.exe` string.**
 
-⭐ **The two skills keep the promise their index makes.** `check skills` refuses a
-skill that links out of `skills/`, and refuses one naming a `wsl-toolkit` command
-the generated manual does not document. ⛔ **`wsl-toolkit-agents` was not
-standalone**: no way to get the tool, and neither of the two rules `wsl-toolkit`
-calls session-costing, while every one of its examples is PowerShell.
+⭐ **The acceptance is the two commands side by side**, which is what the entry
+asked for: the same payload through `run` and through `distro new`, one layer,
+two vocabularies. ⛔ **The resource column reports ABSENT with its reason** rather
+than the `35048.23%` and `0B / 33.44GB` podman answers for a container running
+`sleep`.
 
-⭐ **And three defects in the tool, each the shape a weak agent falls into.**
-`base --help` exited 2 saying `"--help" is not a base subcommand`; `base agent`
-was in the manual and no usage text; `base herdr` and `base bootstrap` were in the
-usage text and no manual. That is finding 39, and the check it said nobody had
-written is written.
+⭐ **THE GATE DRIVES THE RELEASED-BINARY CONTRACT NOW.** `WSL-91` is finding 70's
+other half: `consumer.ps1` is the only thing here that drives the tool from
+outside, and it ran ONLY against published binaries, so a refusal added to the
+tool was undetectable until a tag was cut. It takes `-Exe` and the gate runs it
+in **2.4 s**. ⭐ **Both halves of the guard were planted and both went red.**
 
-⭐ **`wsl-toolkit-v3.0.0` IS CUT**, under ruling 22, and it is the first release this
-repository has made since `wsl-toolkit-v2.0.2` on 2026-09-10. It carries the two
-Windows executables, herdr's newest stable release built for four targets,
-`SHA256SUMS` and a keyless signature for each - fourteen files. ⭐ **It is what closes
-`WSL-90`**, whose approach step 4 had never run: no `wsl-toolkit` release had ever
-carried herdr, so nothing had proved that half of the workflow.
+⛔ **AND `text-tool --between` WAS THE ONE EDIT OPERATION WITH NO REQUIRED
+COUNT.** `WSL-93`, filed and closed. It is a defect in a PUBLISHED binary, it was
+found by using the tool on this session's own work, and it cost 745 lines of
+`consumer.ps1` before it was seen. ⚠ Every call the fix breaks was already doing
+nothing.
 
-⭐ **The startup model and effort are delivered and PROVED THROUGH herdr.** `base.adapters`
-takes `model` and `effort` on an agent adapter, `effort` is `max` when a configuration
-names none, and each value is written where that agent itself reads it: pi's settings
-file, omp's own `config set`, and - because Muse Code 1.3.0 has no settings key for
-either - the wrapper the muse adapter already owns. ⛔ **Not an environment variable, and
-that is the whole reason the fields exist**: finding 51. Each agent was started BY herdr
-and its own screen read back: Muse `muse-spark-1.3-contributor · max`, pi
-`(muse-gateway) muse-spark-1.3-contributor • max`, omp `Muse Spark 1.3 Contributor`.
-⛔ **Two silent failures were found doing it**, findings 53 and 54: pi falls back to
-another provider's model when its catalogue cannot resolve the one configured, and
-clamps `max` to `high` without a `thinkingLevelMap`. Both are now problems
-`base status --probe` raises, each proved by planting it.
-
-⭐ **The shell profile gained three mechanisms and was driven across every image.**
-`WSL_TOOLKIT_NO_PROFILE` turns all of it off, `PATH` loses its duplicates and its empty
-elements for an interactive shell only, and history gets a home where the shell gave it
-none. `matrix --images all`, each image twice: **13 images, 28 shells, 0 add a byte to
-stderr, 28 de-duplicate, 28 leave a non-interactive shell alone, 13 gained a history
-home, 28 honour the switch.** ⛔ **Two defects in the DRIVER found first**, findings 57
-and 58: `-ic` never reads `~/.profile`, and Photon has no `tr`.
+⛔ **THE GATE ANALYSED ONE DIRECTORY OF THREE.** PSScriptAnalyzer ran over
+`scripts/` alone. The eight `.ps1` files under `tools/` were parsed and never
+analysed, and **the one real analyzer finding in the tree was in that half**:
+`consumer.ps1` held a non-ASCII byte with no byte order mark, under a header
+claiming it was ASCII-only for exactly that reason. Widened, and three more real
+defects came out of the half that had never been looked at.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -87,25 +63,16 @@ is closed, and the issue gets a comment naming the commits.
 1. ⭐ **Closed:** `WSL-74`, `WSL-80`, `WSL-79` with issue 33, `WSL-75`, `WSL-81`,
    `WSL-72`, `WSL-77`, `WSL-84`, `WSL-83`, `WSL-82` and `WSL-85`.
 2. ⭐ **Closed:** `WSL-70`, `WSL-71` and `WSL-67`, which finish issue 30's existing
-   package and profile work. ⚠ **This item said until 2026-09-16 that `WSL-67` still
-   had `pkgin` and `pkg_add` to drive and was waiting on two downloads.** Both were
-   approved on 2026-09-15, both managers were driven on a NetBSD 11.0 guest, and the
-   entry closed at `6f22e39`; the sentence outlived the work by a session and sent a
-   resuming session to a finished entry. Finding 29.
+   package and profile work.
 3. ⭐ **Closed:** `WSL-68`, the sealed base, which used the drive verifier `WSL-84`
-   fixed. ⛔ **It closes with one item undelivered**, `base shell --private-net`, and
-   the entry says so: what is missing is a way to drive an interactive terminal from a
-   session here, not a design. Ruling 23.
-4. ⭐ **Closed:** `WSL-76` and `WSL-78`, on the operator's own base with `muse login`
-   done. ⭐ **The operator then RAN the probe**, 2026-09-17: **6 measurable, 0 failed**
-   against the published `herdr 0.9.0` nightly, repaint 4911 bytes in 6 ms with no
-   input. ⛔ **One signal stays unmeasured**, a real window focus event, and NO launch
-   context can produce it, because the probe opens its own pseudo console for the
-   client; ⛔ **`WSL-78` closes without its ordered from-nothing transcript**, because
-   that pass needs three sign-ins at a keyboard. Both entries say so rather than
-   claiming the condition. Ruling 23.
-5. ⭐ **Cut:** `wsl-toolkit-v3.0.0`, under ruling 22, on a commit with CI green.
-   ⛔ Issues 30 and 32 were NOT closed first, and ruling 22 is what amended that.
+   fixed. ⛔ **It closes with one item undelivered**, `base shell --private-net`,
+   and the entry says so. Ruling 23.
+4. ⭐ **Closed:** `WSL-76` and `WSL-78`, on the operator's own base with
+   `muse login` done. Ruling 23.
+5. ⭐ **Cut:** `wsl-toolkit-v3.0.0` and `wsl-toolkit-v3.1.0`, under rulings 22 and
+   25, each on a commit with CI green.
+6. ⭐ **Closed:** `WSL-59` and `WSL-91`, the two entries that were still open, and
+   `WSL-93`, filed and closed in the same session.
 
 ## Rulings in force
 
@@ -235,10 +202,23 @@ is closed, and the issue gets a comment naming the commits.
     condition ruling 22 had to work around no longer applies. ⛔ **A minor version and
     not a patch**, because the release publishes four assets no previous release
     carried, and a consumer's asset list changes.
+
+26. ⭐ **2026-09-17: the session was told to finish every open task and to defer
+    nothing.** The operator: "finish all open tasks / do not stall or defer or theater
+    and claim 'waiting' on you / you are authorized and must finish all tasks and end
+    session docs amended, updated, corrected, with 4 deep reviews". ⛔ **Two things
+    follow from it and both are recorded rather than assumed.** A defect found in
+    passing was FIXED in the same session rather than filed and left, which is why
+    `WSL-93` is filed and closed together. And a condition this session could not
+    explain is written as unexplained rather than stepped around: finding 84.
 ## Before every push
 
-
-
+⛔ **A FILE GIT CANNOT SEE CAN STOP THE CONTAINER CHECKS DEAD.** Met on
+2026-09-17: a file named `NUL` in the repository root took
+`run --workspace .` to `workspace refused: NUL shrank while it was being read`,
+and `git status --untracked-files=all` lists nothing, because git cannot stat a
+Windows reserved device name. ⭐ Read the refusal's own words, and remove such a
+file by literal path with the `\\?\` prefix. Finding 86.
 
 A green local gate is not CI. Run the Go tests with `TEMP` and `TMP` at an 8.3
 short path, then CI's Linux Go job and its ShellCheck in containers.
@@ -299,11 +279,76 @@ new file FIRST, then run the gate.**
 | `ced8bea` | the operator refuses "host state": podman is DIAGNOSED rather than stepped around, `user@1000.service` fails to spawn its executor on systemd 259 under WSL2 so the rootless socket is never created, and `FindEngine` now contradicts podman's own advice and names a connection it has driven. The container matrix then ran: 27 shell invocations across Windows, the base and six images, musl and glibc, one digest. Findings 76 and 77; a systemd unit is no longer read as an email address |
 | `9523778` | a release step that proves a refusal must not end holding it: the staged-binary step printed every success line it has and failed the release with the exit code of the refusal it had just proved on purpose |
 | `a5b2fd9` | the number of published assets has one home rather than three: staging writes `SIGN_COUNT` from the list it already asserts against, and the signing and verifying steps read it |
-| this record commit | `wsl-toolkit-v3.1.0` published, 22 assets and BOTH jobs green; `WSL-90` closed on a release that is consumable rather than merely cut; the end-to-end pass driven from a consumer's side, which found that this repository's own documented verification command fails in Git Bash; findings 78, 79 and 80 |
+| `105dfdc` | `wsl-toolkit-v3.1.0` published, 22 assets and BOTH jobs green; `WSL-90` closed on a release that is consumable rather than merely cut; the end-to-end pass driven from a consumer's side, which found that this repository's own documented verification command fails in Git Bash; findings 78, 79 and 80 |
+| this record commit | ⭐ **the last two open entries closed.** `WSL-59`: the observation layer reaches a container through an `Observer` seam, and the resource feed reports ABSENT rather than the nonsense podman answers. `WSL-91`: the gate drives `consumer.ps1` over a working-tree build, so finding 70's shape is caught before a tag. `WSL-93` filed and closed: `--between` was the one edit operation with no required count, in a PUBLISHED binary. The gate's analyzer widened from one directory to three, which is where its only real finding was. 13 mutation rows, 13 of 13 red; findings 81 to 88 |
 
 ## Measurements
 
-On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
+On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17, in the 14:42Z session:
+
+- **At the start:** the doctor exit 0, its report stamped `2026-09-17T14:42:39Z`,
+  61 tools found and 26 missing; the gate exit 0, **24 of 24 in 35.9 s**; the tree
+  clean at `105dfdc`; `wsl -l -v` five distributions, matching the host state.
+  ⚠ **The recorded baseline said 21 of 21** and the gate has 23 checks at that
+  commit and 24 with this session's; the figure in the record was stale rather
+  than the gate having grown three in a session.
+- **At the end, the three pre-push checks:** Windows Go with `TEMP` at the 8.3
+  short path over **all four** modules, every one exit 0 in **24.5 s** total;
+  `check-go.sh` in `golang:1.25` exit **0 in 27.5 s**; ShellCheck 0.9.0 in
+  `ubuntu:24.04` clean over **51** tracked scripts, exit 0 in **33.6 s**.
+  ⚠ **51, and the record's last figure was 49.** This session added no shell
+  script and `git ls-tree -r HEAD` also answers 51, so the 49 was already wrong
+  when it was written.
+- **The gate at the end: 24 of 24 in 48.3 s**, with `consumer` as the new check.
+  ⚠ The four new files were STAGED before that run, because an untracked file is
+  outside the whole gate.
+- **The mutation table:** 399 rows at `105dfdc` to **412**. ⭐ **13 new rows, 13 of
+  13 red**, each case green unmutated first. ⚠ **One came back `BROKEN, does not
+  compile`** - deleting `math.Round` left the import unused - which is finding 41,
+  and it was rewritten to `math.Trunc` so it could go red properly. ⛔ **And the
+  gate's `mutations` check caught three EXISTING rows whose code this change
+  moved**, in under a second, which is `TOOL-19` doing its job.
+- **For `WSL-59`, the podman feeds, read on `wsl-toolkit-base` against a container
+  running `sleep`:** `.State.CgroupPath` **`/`**, the root cgroup;
+  `podman stats` **`35048.23%`** and **`0B / 33.44GB`**;
+  `.HostConfig.LogConfig.Type` **`journald`**; a container that is gone answers
+  `Error: no such container`.
+- **For `WSL-59`, the acceptance**, the same payload through both paths with the
+  same flags: `run` reported `container running | resources absent (this container
+  is in the ROOT cgroup...)` and `distro new` reported `distro running | disk 76.0
+  MiB | resources absent (WSL does not account for a distribution separately...)`.
+  Both exited **5**, the payload's own. The two transcripts are in the entry.
+- ⭐ **For `WSL-59`, the log driver, driven end to end:** a job's container is
+  created `k8s-file`, and `podman logs` on it answered **6 bytes on stdout and 52
+  on stderr**. ⛔ **The same call answered 0 and 0 before this change**, which is
+  what the manual had been claiming was already fixed.
+- **For `WSL-91`, the local drive:** `consumer.ps1 -Exe` over a working-tree
+  build, **14 cases reached, 4 passed, 10 skipped, exit 0 in 1.25 s**; the gate's
+  `consumer` check **2.4 s** including the Go build. With `-WithJobs`, which
+  builds a real distribution and removes it: **10 passed, 4 skipped, 0 failed**.
+- **For `WSL-91`, the guard planted twice:** a refusal in `cmdConfig` took the
+  check to exit **1** naming the case and the tool's own words; one case wrapped
+  in `if (-not $script:Local)` took it to exit **1** on completeness. Exit 0
+  restored both times.
+- **For `WSL-93`, `--between` measured against the published 3.1.0 behaviour:**
+  two ranges with no `--expect` exit **0** writing nothing; no range with no
+  `--expect` exit **0**; `--expect 1` over an anchor appearing twice replaced **8
+  lines of 10** and reported `1 match(es)`. After the fix: **2**, **2**, and
+  `lines 2-9 (8 line(s))` on the line.
+- ⭐ **`repo mutate --only 'text-tool:'` reports 21 of 21 guards proved.**
+- **The analyzer, over every tracked `.ps1`:** **24 files**, 12 findings before
+  this session's fixes and **0** after, in **3.2 s**. ⛔ **Zero of the 12 were
+  under `scripts/`**, which is the only directory it used to walk. Planting the
+  byte order mark defect back took the check to exit **1** naming the file.
+- ⛔ **A `podman pull` STALLED DEAD FOR 28 MINUTES**, then the same pull finished
+  in **221 s**. Measured over a 25-second window while it was stuck: **0 bytes
+  read, 0 written, 0 processor time**. Finding 84.
+- **`$LASTEXITCODE` after a pipe, measured three ways** because finding 63 states
+  the rule more broadly than it holds: a native command with no pipe answers
+  **1**; piped to a CMDLET, `Out-Null`, still **1**; piped to another NATIVE
+  command, **0**. Finding 85.
+
+On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17, in the 10:01Z session:
 
 - **At the start of the 10:01Z session:** the doctor exit 0, its report stamped
   `2026-09-17T10:02:53Z`; the gate exit 0, **21 of 21**; `wsl -l -v` five
@@ -1329,7 +1374,167 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     page says so now, with the working spelling for each.
     ⭐ **Found by running the documented command rather than reading it**, in the
     end-to-end pass, which is the only way this class is ever found.
+
+81. ⛔ **A PAGE CLAIMED A BEHAVIOUR THE TOOL DID NOT HAVE, AND THE ENTRY THAT
+    WOULD HAVE BUILT IT AGREED WITH THE PAGE.** `wsl-toolkit.md`'s known limits
+    said "the default log driver is `journald` ... The tool names `k8s-file` on
+    the runs it owns". ⛔ **`git grep log-driver` over HEAD's code answers ZERO.**
+    `containerScript` named no driver at all, so every job's container took the
+    base default and `podman logs` on one answered 0 bytes on both streams and
+    exited 0. ⚠ **`WSL-59`'s approach listed the same rule as a thing to do**, so
+    the page said it was done and the entry said it was planned and the code did
+    neither; the two documents agreed with each other and nothing compared either
+    with the tree. ⭐ Found by the door sweep grepping for `log-driver` rather
+    than reading the page. Fixed and DRIVEN: the container is `k8s-file` now and
+    `podman logs` answers 6 bytes and 52.
+82. ⛔ **THE GATE'S ANALYZER WALKED ONE DIRECTORY OF THREE, AND THE ONLY REAL
+    FINDING IN THE TREE WAS IN THE HALF IT SKIPPED.** `checks.PowerShell` parsed
+    every tracked `.ps1` and then ran `Invoke-ScriptAnalyzer -Path 'scripts'
+    -Recurse`. Measured: **24 tracked files, 12 findings, 0 of them under
+    `scripts/`**. ⭐ Widened to every tracked file, and proved by planting the
+    defect back. ⚠ **`-Path` takes ONE path** and refuses an array with `Cannot
+    convert System.Object[] to System.String`, which is why it is a loop.
+83. ⛔ **`consumer.ps1` DECLARED ITSELF ASCII-ONLY AND HELD THREE NON-ASCII BYTES
+    WITH NO BYTE ORDER MARK.** Its own header names the hazard: Windows
+    PowerShell 5.1 decodes a mark-less file as the system code page. Measured:
+    5.1 reads the character as `â›”`. ⚠ **It parses anyway**, because the byte is
+    inside a comment, so the cost today is a false sentence rather than a broken
+    file. ⭐ **It was the ONLY tracked `.ps1` with non-ASCII and no mark**; the
+    other seven all carry one. Finding 82 is why nothing saw it.
+84. ⛔ **A `podman pull` STALLED DEAD FOR 28 MINUTES AND THE SAME PULL THEN TOOK
+    221 SECONDS.** `base ensure` inside `consumer.ps1 -WithJobs` reached
+    `podman pull --platform linux/amd64 ghcr.io/pkgforge-dev/archlinux:latest` and
+    stopped. Measured over a 25-second window while it was stuck: **0 bytes read,
+    0 written, 0 processor time**. The process tree was alive and idle.
+    ⛔ **THE STALL IS NOT DIAGNOSED AND IS NOT REPRODUCIBLE**, and saying so is
+    the point: the registry answered normally minutes later, on the same engine,
+    with the same reference. ⚠ **The first suspicion was wrong and reading the
+    code corrected it**: the pull IS bounded, at 30 minutes, in `ExportRootfs`.
+    ⭐ **What WAS ours is the silence.** `base ensure` printed `pulling <ref>` and
+    then nothing at all, so a stalled pull and a slow one were the same picture
+    for up to half an hour. That is `WSL-18`'s own rule - never emit nothing,
+    render silence with a time on it - unapplied here. Fixed with a heartbeat
+    every 30 s carrying the elapsed time, 2 cases.
+85. ⚠ **FINDING 63 STATES ITS RULE MORE BROADLY THAN IT HOLDS, and the difference
+    would send a reader to fix a correct line.** It says `$LASTEXITCODE` after a
+    pipe is the pipeline's. Measured three ways on pwsh 7.6.6: no pipe **1**;
+    piped to a CMDLET, `Out-Null`, **1**; piped to another NATIVE command, **0**.
+    ⭐ So it is a pipe to a native command that loses it. `release.yml`'s staged
+    `text-tool` assertions read `$LASTEXITCODE` after `| Out-Null` and are
+    correct. ⚠ The safe habit is still to read it unpiped; what changes is that
+    the existing `| Out-Null` lines are not defects.
+86. ⛔ **A FILE NAMED `NUL` IN THE REPOSITORY ROOT BLOCKED THIS REPOSITORY'S OWN
+    PRE-PUSH CHECK, AND GIT COULD NOT SEE IT.** `run --workspace .` refused with
+    `workspace refused: NUL shrank while it was being read (0 of 198 bytes)`.
+    ⚠ `git status --untracked-files=all` lists nothing, because git cannot stat a
+    Windows reserved device name, so the file was outside every check this
+    repository has. It held two SSH host-key lines for two ephemeral localhost
+    ports, which is a `known_hosts` fragment the previous session's herdr
+    remote-probe work wrote to a path called `NUL` expecting the null device.
+    ⭐ Dated 2026-09-17T12:32Z, BEFORE this session, so the previous session's
+    three container checks were the last that could have run. Removed by literal
+    path with the `\\?\` prefix, which is the only way to touch a reserved name,
+    and a copy is under this session's scratch as evidence.
+87. ⚠ **`gc --apply` SWEPT ABOUT 250 HOST JOB DIRECTORIES from earlier sessions.**
+    It is `gc` doing exactly what it documents, and it was run to clean up this
+    session's own jobs. ⭐ Nothing tracked was touched and no distribution was
+    removed. It is recorded because the host holds less than it did and a later
+    session reading `resources` should not read that as a loss.
+88. ⛔ **A CASE IN `acceptance.ps1` ASSERTED HALF OF WHAT ITS NAME CLAIMED.**
+    `gc --job leaves every other job alone` computed `$named`, the entries the
+    plan names for the job asked for, and never read it; the verdict was
+    `$other.Count -eq 0` alone. ⛔ **So a `gc --job` that removed NOTHING would
+    have passed it.** `WSL-91`'s closing carries the reading that settles it.
+    Both halves are asserted now. ⚠ It is the "a test whose name
+    claims more than it checks" row, found by an analyzer rule
+    (`PSUseDeclaredVarsMoreThanAssignments`) rather than by a reading, in the
+    directory finding 82 says was never analysed.
 ## Review findings
+
+⭐ **2026-09-17T14:42Z, the closing session's four reviews.** Each pass names
+what it looked at that the others did not.
+
+**Pass 1, the door sweep** - "what else reaches the observation layer, the
+consumer runner and the edit tool?" It enumerated by
+`git ls-files | xargs grep -l` rather than from the task list, over four
+subjects: every construction of a `JobSpec`, every reader of an `Event`, every
+caller of `consumer.ps1`, and everything naming a container log driver.
+
+⭐ **Four doors it settled.** `Replay` renders `e.Text`, the already-rendered
+line, so the new structured fields on `TICK_FACTS` are additive and a recorded
+log still replays. `cmd_ready.go` builds a `JobSpec` and was not on the task
+list; it passes no relay, so it is unaffected. `release.yml` drives the staged
+`text-tool` with `--replace` and never `--between`, so the release check is not
+broken by requiring `--expect`. And `provision.sh` already writes
+`events_logger = "file"` for the same reason the log driver needed naming, which
+is the tree having met this class before.
+
+⛔ **And it found finding 81, which is the best of the session.** Grepping for
+`log-driver` rather than reading the page turned up ZERO occurrences in HEAD's
+code, under a manual row asserting the tool named `k8s-file` and an entry
+listing the same rule as work to do. ⭐ **Two documents agreed with each other
+and nothing compared either with the tree.**
+
+⛔ **It also found the inference the fix then invited.** `inspect` renders
+`logs journald` from `Host.LogDriver`, which is the ENGINE'S default and true;
+with a job's container now on `k8s-file`, a reader of `inspect JOB` would draw
+the wrong conclusion from a correct fact. The row names its scope now.
+
+**Pass 2, the guard mutation** - "can each new guard actually fail?" 13 new
+rows, **13 of 13 red**, each case green unmutated first, and the three live
+plants a row cannot reach: a refusal in `cmdConfig`, a case dropped from the
+local consumer path, and the byte order mark put back under `tools/`.
+
+⚠ **One row came back `BROKEN, does not compile`** before it could go red,
+which is finding 41 met again: deleting `math.Round` left the import unused.
+Rewritten as `math.Trunc`, which keeps the reference and changes the answer.
+
+⛔ **The lens's real find was a guard it refused to write.** The pull heartbeat
+has two cases and NO row: the only mutation available is removing the
+`if log == nil` early return, and with it gone the case still passes, because a
+goroutine that writes to a nil log is not observable from the call site. ⭐ A row
+that cannot go red is theatre, so none is written and this sentence is the
+record of why.
+
+**Pass 3, the claim audit** - "which sentence about to be published is not
+backed by an artefact?" It read every page this session touched, and every
+number in this record, against the command that produced it.
+
+⛔ **Five failed.** The manual's `k8s-file` claim, finding 81, which is the one
+that mattered. `consumer.ps1`'s ASCII-only header, finding 83. The record's
+baseline of "gate 21 of 21" against a gate with 23 checks at that commit. The
+record's "49 tracked scripts" against **51** at the same commit, which this
+session did not change. And `applyBetween`'s own comment, which said a file with
+two ranges "refuses rather than silently changing the first" over a guard that
+was optional.
+
+⭐ **One existing finding was narrowed rather than repeated.** Finding 63 says
+`$LASTEXITCODE` after a pipe is the pipeline's. Measured three ways: it is a
+pipe to a NATIVE command that loses it, and a pipe to a cmdlet does not. Acting
+on the broad wording would have sent a reader to "fix" correct lines in
+`release.yml`. Finding 85.
+
+**Pass 4, what the driven pass showed that the suite could not.** ⛔ **Five, and
+no case could have produced any of them.**
+
+- ⛔ **`run` PANICKED AT STARTUP** with `flag redefined: tick`, on the first
+  invocation, because `jobFlags` and `logFlags` each bind a `--tick` and the two
+  had never met. A suite that never runs the binary cannot see a flag set built
+  at registration time.
+- ⛔ **The heartbeat said `disk unreadable` about a container**, which claims a
+  figure was sought over a thing with no disk to seek.
+- ⛔ **The renderer wrote the adapter's sentence.** `no per-container cgroup
+  here` was rendered for a DISTRIBUTION too. ⭐ Found by running the same command
+  both ways, which is `WSL-59`'s own acceptance: neither side alone shows it.
+- ⛔ **A `podman pull` stalled for 28 minutes**, finding 84, and the silence
+  around it was ours.
+- ⛔ **A file named `NUL` blocked the pre-push container check**, finding 86, and
+  git cannot see it, so no check in this repository could have.
+
+⚠ **What the suite's own lens would have needed to fire.** No case in
+`observe_test.go` failed after it was written, which means every one was written
+against a defect already understood. The four things that were NOT understood
+came from running the command.
 
 ⭐ **2026-09-17T10:01Z, the release session's four closing reviews.** Each pass names
 what it looked at that the others did not.
@@ -1729,12 +1934,51 @@ software.
    and a stdio bridge is a second protocol surface with one caller and no consumer in
    the register. A yes means an entry, authored before anything is built.
 
+6. ⭐ **NOTHING NEW FROM THE 14:42Z SESSION, and that is the answer rather than
+   an omission.** It was told to finish every open task and defer nothing, and it
+   needed no ruling, no download, no credential and no Windows software to do it.
+   ⚠ **One thing is worth knowing rather than deciding**: a `podman pull` on the
+   host engine stalled dead for 28 minutes and the same pull then took 221
+   seconds, with no cause found. Finding 84. If it happens again with a session
+   watching, the readings to take are in that finding.
+
 Answered on 2026-09-15 and recorded as rulings 13 to 15: whether herdr builds are
 published here, the targets, how the adapter takes a nightly, and where the
 development server ran for `--machine`.
 
 ## Host state
-- ⛔ **THIS SESSION CHANGED THE OPERATOR'S PODMAN DEFAULT CONNECTION, and it has to
+
+⭐ **WHAT THE 14:42Z SESSION CHANGED ON THIS MACHINE, and how to undo each.**
+
+- ⛔ **A FILE NAMED `NUL` IN THE REPOSITORY ROOT WAS REMOVED.** 198 bytes, dated
+  2026-09-17T12:32Z, so it predates this session. It held two SSH host-key lines
+  for two ephemeral localhost ports and is a `known_hosts` fragment written to a
+  path expecting the null device. ⚠ **It blocked `run --workspace .`**, which is
+  this repository's own pre-push container check, and git cannot see a Windows
+  reserved name so nothing here could report it. Finding 86. ⭐ **The undo is
+  that there is nothing to undo**: the two ports are long gone. A copy is under
+  this session's scratch directory.
+- ⚠ **`gc --apply` removed about 250 host job directories** under
+  `%LOCALAPPDATA%\wsl-toolkit\jobs`, left by earlier sessions, plus seven
+  containers and seven guest directories this session made. Finding 87. ⛔ **No
+  undo, and none is wanted**: it is job state this tool owns and `gc` is the
+  command for it.
+- ⚠ **`ghcr.io/pkgforge-dev/archlinux:latest` was pulled into the HOST engine**,
+  by hand, after the stalled pull of finding 84. It is a cache entry. Remove it
+  with `podman rmi ghcr.io/pkgforge-dev/archlinux:latest` if the space is wanted.
+- ⭐ **Two throwaway distributions were created and PURGED**,
+  `eph-alpine-latest-ypaz` and `eph-alpine-latest-a4wm`, for `WSL-59`'s
+  acceptance. `distro purge --apply` removed both. Five registered distributions
+  at the start and five at the end.
+- ⭐ **`wsl-toolkit-consumer` was built and REMOVED** by `consumer.ps1`'s own
+  teardown, twice attempted and once completed. No consumer state directory is
+  left under the temp folder.
+- ⚠ **The `wsl-toolkit` base gained four packages on 2026-09-17**, `dash`, `zsh`,
+  `ksh` and `busybox`, in an earlier session. Additive, and untouched by this one.
+
+⚠ **What the 10:01Z session changed, and what still stands:**
+
+- ⛔ **THE 10:01Z SESSION CHANGED THE OPERATOR'S PODMAN DEFAULT CONNECTION, and it has to
   be changed back the day the rootless socket works again.** It is
   `podman-machine-default-root` now, not `podman-machine-default`, because the
   rootless one is dead: `user@1000.service` fails to spawn its executor on systemd
@@ -1745,10 +1989,6 @@ development server ran for `--machine`.
     podman INSIDE the owned distribution, which is a different engine entirely.
   - ⭐ **The undo, whenever the upstream fault is fixed**:
     `podman system connection default podman-machine-default`
-- ⚠ **The `wsl-toolkit` base gained four packages on 2026-09-17**, `dash`, `zsh`,
-  `ksh` and `busybox`, installed with `base exec --root` to measure `text-tool`
-  across shells while the engine was down. Additive, and the distribution is
-  otherwise untouched.
 - ⭐ **`%USERPROFILE%\bin` carries `wsl-toolkit.exe` 3.1.0 and `text-tool.exe`** as
   of 2026-09-17, both installed from the published release and both verified: the
   first by `selfupdate`'s own digest check, the second by `SHA256SUMS` and its

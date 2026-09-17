@@ -29,6 +29,14 @@
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/consumer.ps1
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/consumer.ps1 -Tag wsl-toolkit-v1.3.0
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/consumer.ps1 -Tag ... -Json
+#   pwsh -NoProfile -File tools/windows/wsl-toolkit/consumer.ps1 -Exe .tmp/wsl-toolkit.exe
+#
+# -Exe drives a binary from the working tree instead of downloading one. The
+# four cases that check a RELEASE - the digests, the bundles, the signature and
+# the tag - skip, because a local build has no release to check, and the job
+# cases skip unless -WithJobs is also passed, because building a distribution
+# costs minutes and the gate that runs this is measured in seconds. That is how
+# a refusal added to the tool is caught BEFORE a tag rather than after one.
 #
 # Exit codes: 0 every case passed, 1 a case failed, 2 could not run.
 # Read the exit code from this process, unpiped.
@@ -41,6 +49,8 @@ param(
     [string]$Tag = '',
     [string]$Repo = 'Azathothas/ToolKit',
     [switch]$Json,
+    [string]$Exe = '',
+    [switch]$WithJobs,
     [switch]$KeepDownload
 )
 
@@ -50,6 +60,36 @@ $ErrorActionPreference = 'Stop'
 $script:Cases = @()
 $script:Failed = 0
 $script:Skipped = 0
+$script:JobsWhy = ''
+
+# THE CASES THIS FILE CARRIES, BY NAME, and this is the one home for the list.
+# It used to be the number 14 typed at the bottom, which is the shape a stale
+# enumeration always takes: nothing about the number said which cases it was
+# counting, so a case renamed in place read as a table that stopped early, and
+# a case dropped read as nothing at all. The report compares the names REACHED
+# against these, both ways, and derives the count from them.
+#
+# THE THREE GROUPS ARE WHAT CAN BE SKIPPED AS A GROUP, and each group names the
+# thing it needs: the release group needs a published release and the job group
+# needs a distribution.
+$script:ReleaseCaseNames = @(
+    'every digest in SHA256SUMS matches the file it names',
+    'every published asset carries a signature bundle',
+    'the signature verifies against this repository release workflow',
+    'the executable reports the version named by the release tag')
+$script:HostCaseNames = @(
+    'the survey runs from an empty state directory and creates no distribution',
+    'the catalog is fully qualified, which is what the manual says it is',
+    'the state directory it names is the one it was told to use',
+    'the usage text names the commands the manual documents')
+$script:JobCaseNames = @(
+    'a released binary runs a container job from an empty state directory',
+    'a container gets a copy of a workspace and never the host directory',
+    'a failing payload returns its own exit code',
+    'what a job writes to /out comes back to the directory named',
+    'a job past its deadline returns 124 and the caller is not held past it',
+    'gc --apply removes what this run made')
+$script:CaseNames = $script:ReleaseCaseNames + $script:HostCaseNames + $script:JobCaseNames
 
 function Write-Line { param([string]$Text) if (-not $Json) { Write-Output $Text } }
 
@@ -106,23 +146,55 @@ function Skip-Case {
     Write-Line ("  skip  {0} ({1})" -f $Name, $Why)
 }
 
+
+# THE ONE REASON A LOCAL DRIVE SKIPS A CASE, written once so the four release
+# cases and the six job cases cannot describe the same run differently.
+$script:LocalWhy = 'a binary from the working tree has no release to check'
+
+function Test-ReleaseCase {
+    <#
+      A case only a PUBLISHED release can answer. On a -Exe run it skips with
+      that as the reason.
+
+      IT IS A WRAPPER AND NOT A COPY. Every case in this file, local or not,
+      reaches Test-Case or Skip-Case, so the report accounts for all of them
+      the same way and a local drive cannot become a quieter suite by leaving
+      one out. The name is checked against $script:ReleaseCaseNames here,
+      because a case that skips under a name the list does not carry would be
+      invisible to the completeness assertion at the bottom.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Name,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Expected,
+        [Parameter(Mandatory = $true)][scriptblock]$Body)
+    if ($script:ReleaseCaseNames -notcontains $Name) {
+        throw "Test-ReleaseCase was given a name that is not in `$script:ReleaseCaseNames: $Name"
+    }
+    if ($script:Local) {
+        Skip-Case -Name $Name -Why $script:LocalWhy
+        return
+    }
+    Test-Case -Name $Name -Expected $Expected -Body $Body
+}
 # NOTE: ProcessStartInfo.ArgumentList, not Start-Process. Start-Process JOINS
 # the list and re-quotes it, which turns -c 'exit 37' into two arguments.
 # NOTE: both streams are read before the wait, or a child that fills a pipe
 # buffer deadlocks against the parent.
 # NOTE: the exit code is read from the process, never through a pipe.
-function Test-TagAtLeast {
+function Test-VersionAtLeast {
     <#
-      Is the tag this run fetched at least the given version?
+      Is the version under test at least the given one?
 
-      ⛔ ONE PLACE THAT PARSES THE TAG. Two cases already needed this and each
-      wrote its own `-split` expression inline, which is how one of them ends up
-      comparing a string and answering that '10' is less than '9'. -Tag accepts
-      any published tag, so every assertion about what a release carries has to
-      say which releases it is about.
+      ONE PLACE THAT PARSES THE VERSION, and it reads $script:Version rather
+      than the tag, because an -Exe run has a version and no tag. THREE cases
+      needed this and each wrote its own -split expression inline, which is how
+      one of them ends up comparing a string and answering that 10 is less than
+      9. The third was still inline when -Exe was added: this docstring claimed
+      to be the one place while the usage-text case parsed the tag again four
+      hundred lines below it.
     #>
     param([int]$Major, [int]$Minor = 0)
-    $v = ($script:Tag -replace '^wsl-toolkit-v', '') -split '\.'
+    $v = $script:Version -split '\.'
     if ($v.Count -lt 2) { return $false }
     $haveMajor = 0; $haveMinor = 0
     if (-not [int]::TryParse($v[0], [ref]$haveMajor)) { return $false }
@@ -257,8 +329,17 @@ function Resolve-LatestTag {
 if ($PSVersionTable.PSEdition -ne 'Core') {
     Exit-Cannot 'this runner needs PowerShell 7 or later, because it passes arguments as a list rather than as a joined string'
 }
-if (-not $Tag) { $Tag = Resolve-LatestTag }
-if (-not $Tag) { Exit-Cannot 'no tag given and the latest could not be resolved. Pass -Tag wsl-toolkit-vX.Y.Z' }
+# -Exe AND -Tag NAME TWO DIFFERENT THINGS TO TEST, so asking for both is a
+# refusal rather than a resolution. -Tag says which published release to fetch
+# and check; -Exe says there is no release here at all. Picking one over the
+# other would hand a caller who typed both a suite they did not ask for.
+if ($Exe -and $Tag) { Exit-Cannot '-Exe and -Tag cannot be given together: -Exe drives a binary from the working tree and -Tag fetches a published release' }
+if ($WithJobs -and -not $Exe) { Exit-Cannot '-WithJobs only means anything beside -Exe: a release run probes for a distribution on its own' }
+$script:Local = [bool]$Exe
+if (-not $script:Local) {
+    if (-not $Tag) { $Tag = Resolve-LatestTag }
+    if (-not $Tag) { Exit-Cannot 'no tag given and the latest could not be resolved. Pass -Tag wsl-toolkit-vX.Y.Z' }
+}
 $script:Tag = $Tag
 $script:SignatureSuffix = '.cosign.bundle'
 
@@ -309,24 +390,52 @@ foreach ($d in @($script:StateHome, $script:InstanceHome)) {
         (Join-Path $d 'config.json'), $script:ConfigJson, [Text.UTF8Encoding]::new($false))
 }
 
-Write-Line "consumer: $Repo $($script:Tag)"
-Write-Line "download: $script:Download"
+if ($script:Local) { Write-Line "consumer: the working-tree binary $Exe" }
+else {
+    Write-Line "consumer: $Repo $($script:Tag)"
+    Write-Line "download: $script:Download"
+}
 Write-Line "state:    $script:StateHome"
 Write-Line "base:     $script:BaseName (this run's own, never the operator's)"
 Write-Line ''
 
-try {
-    Get-ReleaseAssets -Into $script:Download
+if ($script:Local) {
+    # RESOLVED BEFORE ANYTHING RUNS. Invoke-Released sets a working directory
+    # of its own, and a relative -Exe left unresolved would be looked for in
+    # THAT directory, which this file deliberately leaves empty.
+    $resolved = $null
+    try { $resolved = (Resolve-Path -LiteralPath $Exe -ErrorAction Stop).Path } catch { $null = $_ }
+    if (-not $resolved -or -not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+        Exit-Cannot "-Exe names no file: $Exe"
+    }
+    $script:Exe = $resolved
 }
-catch {
-    Exit-Cannot "could not download $($script:Tag): $($_.Exception.Message)"
+else {
+    try {
+        Get-ReleaseAssets -Into $script:Download
+    }
+    catch {
+        Exit-Cannot "could not download $($script:Tag): $($_.Exception.Message)"
+    }
+    $arch = if ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq 'Arm64') { 'arm64' } else { 'amd64' }
+    $script:Exe = Join-Path $script:Download "wsl-toolkit-windows-$arch.exe"
+    if (-not (Test-Path -LiteralPath $script:Exe -PathType Leaf)) {
+        Exit-Cannot "the release carries no wsl-toolkit-windows-$arch.exe"
+    }
 }
 
-$arch = if ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq 'Arm64') { 'arm64' } else { 'amd64' }
-$script:Exe = Join-Path $script:Download "wsl-toolkit-windows-$arch.exe"
-if (-not (Test-Path -LiteralPath $script:Exe -PathType Leaf)) {
-    Exit-Cannot "the release carries no wsl-toolkit-windows-$arch.exe"
+# THE VERSION UNDER TEST HAS ONE HOME, read from the tag on a release run and
+# from the binary itself on a local one. Every assertion about what a release
+# carries reads it through Test-VersionAtLeast, so neither path can grow its
+# own idea of which version it is looking at.
+if ($script:Local) {
+    $probeVersion = Invoke-Released @('version')
+    if ($probeVersion.Code -ne 0) {
+        Exit-Cannot "-Exe $($script:Exe) could not answer version: exit $($probeVersion.Code) $($probeVersion.Err)"
+    }
+    $script:Version = $probeVersion.Out.Trim()
 }
+else { $script:Version = $script:Tag -replace '^wsl-toolkit-v', '' }
 
 # A distribution takes minutes to build and needs a network and an engine. Cases
 # that need one say so, and their absence is a SKIP that is counted rather than
@@ -342,7 +451,7 @@ $script:Executables = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-ar
 # tag rather than typed once. -Tag accepts any of the published tags and the
 # older ones carry no text-tool at all; asserting it for them would report a
 # correct release as broken.
-$script:HasTextTool = (Test-TagAtLeast -Major 3 -Minor 1)
+$script:HasTextTool = (Test-VersionAtLeast -Major 3 -Minor 1)
 if ($script:HasTextTool) {
     $script:Executables += @(
         'text-tool-windows-amd64.exe', 'text-tool-windows-arm64.exe',
@@ -363,7 +472,7 @@ try {
     # The manual's install section says the digests in SHA256SUMS cover the
     # bytes that were uploaded. That is checkable in one pass and it is the
     # first thing a consumer should do.
-    Test-Case 'every digest in SHA256SUMS matches the file it names' 'True' {
+    Test-ReleaseCase 'every digest in SHA256SUMS matches the file it names' 'True' {
         $sums = Join-Path $script:Download 'SHA256SUMS'
         if (-not (Test-Path -LiteralPath $sums)) { return 'the release carries no SHA256SUMS' }
         $bad = @()
@@ -399,12 +508,15 @@ try {
     $bundles = @($script:SignedAssets | Where-Object {
         Test-Path -LiteralPath (Join-Path $script:Download ($_ + $script:SignatureSuffix))
     })
-    if ($bundles.Count -eq 0) {
+    if ($script:Local -or $bundles.Count -eq 0) {
         # NOT A FAILURE AND NOT A PASS. A release cut before signing existed
         # genuinely has none, and the weekly run points at whatever is latest.
-        # Counting it as a pass would be the case answering itself.
-        Skip-Case 'every published asset carries a signature bundle' 'this release predates asset signing'
-        Skip-Case 'the signature verifies against this repository release workflow' 'this release predates asset signing'
+        # Counting it as a pass would be the case answering itself. A local
+        # binary has no bundle either, for a different reason, so the two
+        # reasons are told apart rather than sharing one wording.
+        $why = if ($script:Local) { $script:LocalWhy } else { 'this release predates asset signing' }
+        Skip-Case 'every published asset carries a signature bundle' $why
+        Skip-Case 'the signature verifies against this repository release workflow' $why
     }
     else {
         Test-Case 'every published asset carries a signature bundle' 'True' {
@@ -451,7 +563,7 @@ try {
 
     # The text and structured surfaces read the same native version, and both
     # must agree with the immutable release tag.
-    Test-Case 'the executable reports the version named by the release tag' 'True' {
+    Test-ReleaseCase 'the executable reports the version named by the release tag' 'True' {
         $v = Invoke-Released @('version')
         if ($v.Code -ne 0) { return "version exited $($v.Code): $($v.Err)" }
         $reported = $v.Out.Trim()
@@ -515,7 +627,7 @@ try {
         # The commands every release documents, and from 3.0.0 the throwaway
         # distribution commands that replaced the PowerShell product.
         $commandsNamed = @('doctor', 'base', 'images', 'run', 'matrix', 'resources', 'gc', 'logs', 'inspect', 'helper', 'config', 'version')
-        if ([int](($script:Tag -replace '^wsl-toolkit-v', '') -split '\.')[0] -ge 3) { $commandsNamed += @('distro', 'hostaddress') }
+        if (Test-VersionAtLeast -Major 3) { $commandsNamed += @('distro', 'hostaddress') }
         foreach ($c in $commandsNamed) {
             if ($text -notmatch ("(?m)^\s+" + [regex]::Escape($c) + "\s")) { $missing += $c }
         }
@@ -544,16 +656,33 @@ try {
     # case had to run it anyway. A host that cannot build a base skips the job
     # cases with the engine's own words attached, which is a SKIP that carries
     # its reason rather than a red over a machine that was never going to work.
-    Write-Line '  probing: base ensure, which is the only honest answer to whether jobs can run here'
-    $probe = Invoke-Released @('base', 'ensure')
-    if ($probe.Code -ne 0) {
-        $why = (@($probe.Err -split "`n") | Where-Object { $_.Trim() } | Select-Object -Last 1)
-        Write-Line ''
-        Write-Line ("  no distribution can be built on this host, so the job cases are skipped: " + $why)
+    #
+    # A LOCAL DRIVE DOES NOT PROBE AT ALL UNLESS IT IS ASKED TO, and the reason
+    # is the caller -Exe exists for. The gate runs this file over the
+    # working-tree binary on every commit, and on a host that CAN build a
+    # distribution `base ensure` costs minutes and about a gigabyte, which is
+    # not a gate. -WithJobs asks for them anyway, which is what a session
+    # driving the whole suite locally passes. The skip says which of the two it
+    # was, because "no distribution here" and "you did not ask" are different
+    # facts and a run that confused them would hide a broken host.
+    if ($script:Local -and -not $WithJobs) {
+        $script:JobsWhy = 'a local drive does not build a distribution: pass -WithJobs to run these'
+        Write-Line ("  " + $script:JobsWhy)
         Write-Line ''
     }
     else {
-        $script:CanRunJobs = $true
+        Write-Line '  probing: base ensure, which is the only honest answer to whether jobs can run here'
+        $probe = Invoke-Released @('base', 'ensure')
+        if ($probe.Code -ne 0) {
+            $why = (@($probe.Err -split "`n") | Where-Object { $_.Trim() } | Select-Object -Last 1)
+            $script:JobsWhy = "no reachable distribution on this host: $why"
+            Write-Line ''
+            Write-Line ("  no distribution can be built on this host, so the job cases are skipped: " + $why)
+            Write-Line ''
+        }
+        else {
+            $script:CanRunJobs = $true
+        }
     }
 
     if ($script:CanRunJobs) {
@@ -622,14 +751,11 @@ try {
         }
     }
     else {
-        foreach ($n in @(
-                'a released binary runs a container job from an empty state directory',
-                'a container gets a copy of a workspace and never the host directory',
-                'a failing payload returns its own exit code',
-                'what a job writes to /out comes back to the directory named',
-                'a job past its deadline returns 124 and the caller is not held past it',
-                'gc --apply removes what this run made')) {
-            Skip-Case -Name $n -Why 'no reachable distribution on this host'
+        # THE NAMES COME FROM THE LIST, not from a second copy of them typed
+        # here. The six were written out twice until 2026-09-17, which is a
+        # value in two places with no check that they agree.
+        foreach ($n in $script:JobCaseNames) {
+            Skip-Case -Name $n -Why $script:JobsWhy
         }
     }
 }
@@ -654,33 +780,59 @@ finally {
 }
 
 # -- the report --------------------------------------------------------------
-# THE COUNT IS ASSERTED. A table that stopped early exits 0 over a smaller
-# suite, which is the shape a check takes on its way to reporting nothing.
-$expected = 14
+# THE SET IS ASSERTED, NOT A COUNT. A table that stopped early exits 0 over a
+# smaller suite, which is the shape a check takes on its way to reporting
+# nothing, and the guard against that used to be the literal number 14 typed
+# here. A number says nothing about WHICH case went missing, it cannot tell a
+# case renamed in place from a case dropped, and it has to be edited by hand
+# every time the table grows. The names REACHED are compared with the names
+# DECLARED, both ways: one direction catches a case that never ran, the other
+# catches a case running under a name nothing accounts for.
+#
+# IT IS ALSO WHAT KEEPS -Exe HONEST. A local drive reaches every case in the
+# list - the ones it cannot answer arrive as skips carrying their reason - so
+# a case quietly left out of the local path fails this assertion rather than
+# making the run smaller.
+$reached = @($script:Cases | ForEach-Object { $_.name })
+$missed = @($script:CaseNames | Where-Object { $reached -notcontains $_ })
+$extra = @($reached | Where-Object { $script:CaseNames -notcontains $_ })
+$script:Complete = (($missed.Count -eq 0) -and ($extra.Count -eq 0))
 $ran = $script:Cases.Count
-if ($ran -ne $expected) {
+if (-not $script:Complete) {
     $script:Failed++
     Write-Line ''
-    Write-Line ("  FAIL  {0} case(s) ran and this file carries {1}" -f $ran, $expected)
+    Write-Line ("  FAIL  {0} case(s) ran and this file declares {1}" -f $ran, $script:CaseNames.Count)
+    if ($missed.Count -gt 0) { Write-Line ("        never reached: " + ($missed -join " | ")) }
+    if ($extra.Count -gt 0) { Write-Line ("        not declared : " + ($extra -join " | ")) }
 }
 
+$against = if ($script:Local) { "$($script:Exe) ($($script:Version))" } else { $script:Tag }
 if ($Json) {
     Write-Output (@{
-            schema  = 'wsl-toolkit-consumer/1'
-            ok      = ($script:Failed -eq 0)
-            tag     = $script:Tag
-            cases   = $ran
-            failed  = $script:Failed
-            skipped = $script:Skipped
-            detail  = $script:Cases
+            schema   = 'wsl-toolkit-consumer/1'
+            ok       = ($script:Failed -eq 0)
+            # THE SUBJECT, and exactly one of the two is ever set. A reader of
+            # this document must be able to tell a release run from a local one
+            # without inferring it from which cases were skipped.
+            tag      = $script:Tag
+            exe      = $(if ($script:Local) { $script:Exe } else { '' })
+            version  = $script:Version
+            cases    = $ran
+            # complete says every case this file DECLARES was reached. A run
+            # that is not complete has already failed above; the field is here
+            # so a caller reading the document does not have to re-derive it.
+            complete = $script:Complete
+            failed   = $script:Failed
+            skipped  = $script:Skipped
+            detail   = $script:Cases
         } | ConvertTo-Json -Depth 5 -Compress)
 }
 else {
     Write-Line ''
     if ($script:Failed -eq 0) {
-        Write-Line ("consumer: {0} case(s) passed against {1}, {2} skipped." -f ($ran - $script:Skipped), $script:Tag, $script:Skipped)
+        Write-Line ("consumer: {0} case(s) passed against {1}, {2} skipped." -f ($ran - $script:Skipped), $against, $script:Skipped)
     }
-    else { [Console]::Error.WriteLine("consumer FAILED: $script:Failed of $ran case(s) against $script:Tag.") }
+    else { [Console]::Error.WriteLine("consumer FAILED: $script:Failed of $ran case(s) against $against.") }
 }
 
 if ($script:Failed -ne 0) { exit 1 }

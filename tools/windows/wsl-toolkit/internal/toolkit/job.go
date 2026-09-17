@@ -144,6 +144,19 @@ type JobSpec struct {
 	// TickInterval overrides the default. Zero means TickInterval, and anything
 	// under MinTickInterval is raised to it.
 	TickEvery time.Duration
+	// Log is the observation relay: the timestamp layer, the silence heartbeat,
+	// the event log and the exit reading. Nil means none, which is what a caller
+	// that named no renderer and no sink passes.
+	//
+	// ⛔ IT IS THE SAME RELAY `distro run` FEEDS, and that is the point of
+	// WSL-59: those four things are container-agnostic and could only watch a
+	// distribution, so a podman workload got a byte counter and nothing else.
+	// What differs is the ADAPTER behind it, which observe.go owns.
+	//
+	// ⚠ WHERE IT IS SET, THE RELAY OWNS THE LIVE STREAMS. Stdout and Stderr
+	// above are handed to it instead of to the bounded copy, or the caller would
+	// see every line twice: once rendered and once raw.
+	Log *RunLog
 }
 
 // JobResult is what one unit of work produced.
@@ -582,9 +595,29 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	}
 	runScript := r.containerScript(spec, container, guestWork, guestOut, guestScript, token)
 
-	streams := newJobStreams(r.home, id, spec.Stdout, spec.Stderr, spec.MaxOutput, r.log)
+	// ⛔ THE RELAY TAKES THE LIVE STREAMS WHERE THERE IS ONE. The bounded copy
+	// and the transcript are written either way; what moves is who renders to
+	// the caller, and both writing would double every line.
+	liveOut, liveErr := spec.Stdout, spec.Stderr
+	if spec.Log != nil {
+		liveOut, liveErr = nil, nil
+	}
+	streams := newJobStreams(r.home, id, liveOut, liveErr, spec.MaxOutput, r.log)
 	defer streams.Close()
-	marker := newMarkerStripper(streams.Err, token)
+	// ⚠ THE RELAY SEES THE STRIPPED STREAM, never the raw one. The marker is
+	// this tool's own token, written from inside the container so an image that
+	// never ran can be told from a payload that exited 125, and a reader who saw
+	// it in a rendered log would be reading an implementation detail as output.
+	errSink := io.Writer(streams.Err)
+	outSink := io.Writer(streams.Out)
+	if spec.Log != nil {
+		spec.Log.Begin(container, &ContainerObserver{Name: container, Ask: func(c context.Context, s []byte) (string, string, int, error) {
+			return r.baseCapture(c, s, containerProbeBudget)
+		}})
+		errSink = io.MultiWriter(streams.Err, spec.Log.Stderr())
+		outSink = io.MultiWriter(streams.Out, spec.Log.Stdout())
+	}
+	marker := newMarkerStripper(errSink, token)
 
 	// ⭐ THE HEARTBEAT COUNTS THE BYTES THE STREAMS CARRY, which is what makes a
 	// tick the difference between work and a stall. It holds a number and never
@@ -601,7 +634,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	// after the result would tell a caller reading events in order that a job
 	// finished and is still running.
 	defer tick.Stop()
-	jobOut := &countingWriter{to: streams.Out, count: &outCount}
+	jobOut := &countingWriter{to: outSink, count: &outCount}
 	jobErr := &countingWriter{to: marker, count: &errCount}
 	runCtx := ctx
 	if spec.Timeout > 0 {
@@ -684,7 +717,32 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			keepGuest = true
 		}
 	}
+	// ⛔ THE RELAY IS FINISHED AFTER THE ARTEFACTS, so its EXIT record is the
+	// last thing in the event log and a reader of that file sees the run end
+	// once. ⚠ Finish reads the observer Begin was given, so the two ends of one
+	// run cannot be told about different things.
+	if spec.Log != nil {
+		if lerr := spec.Log.Finish(RunOutcome{Exit: res.Exit, TimedOut: res.TimedOut,
+			Cancelled: res.Cancelled, Timeout: spec.Timeout, StartError: unreachedReason(res)}); lerr != nil && res.Error == "" {
+			res.Error = lerr.Error()
+		}
+	}
 	return res
+}
+
+// unreachedReason is the START error the relay records, and it is empty for a
+// job whose container ran.
+//
+// ⛔ A PAYLOAD THAT EXITED NONZERO AND A CONTAINER THAT NEVER STARTED ARE NOT
+// THE SAME EVENT, and the relay says so differently: one gets a diagnosis of
+// its exit code and the other gets "the command could not be started". Passing
+// res.Error for both would have told a reader that a payload exiting 37 had
+// failed to start.
+func unreachedReason(res JobResult) string {
+	if res.Unreached {
+		return res.Error
+	}
+	return ""
 }
 
 // engineFailure picks the line worth reporting out of the engine's own noise.
@@ -732,6 +790,9 @@ func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, g
 		"--label", JobLabel,
 		"--label", "wsl-toolkit.image="+spec.Image,
 		"--pull=missing",
+		// THE LOG DRIVER IS NAMED. observe.go says why, and what the base's own
+		// default does to `podman logs`.
+		"--log-driver", ContainerLogDriver,
 		"--volume", guestWork+":/work"+opts,
 		"--volume", guestOut+":/out"+opts,
 		// ⚠ The read-only option joins the same comma list rather than adding a

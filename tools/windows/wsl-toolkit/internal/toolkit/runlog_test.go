@@ -242,7 +242,7 @@ func TestRedactionReplacesTheMatchAloneBeforeEverySink(t *testing.T) {
 	s.TextPath, s.EventPath = filepath.Join(dir, "run.log"), filepath.Join(dir, "events.jsonl")
 	h := newRelay(t, s)
 	_, _ = h.log.Stdout().Write([]byte("password SECRET here\n"))
-	if err := h.log.Finish(RunOutcome{}, nil); err != nil {
+	if err := h.log.Finish(RunOutcome{}); err != nil {
 		t.Fatal(err)
 	}
 	for name, got := range map[string]string{"live": h.out.String(), "text": mustRead(t, s.TextPath), "events": mustRead(t, s.EventPath)} {
@@ -289,18 +289,18 @@ func TestFinishReturnsWhileTheHeartbeatIsStillAskingAboutTheDistribution(t *test
 	}
 	asking, answer := make(chan struct{}), make(chan struct{})
 	var once sync.Once
-	log.Begin("eph-test", func() TickFacts {
+	log.Begin("eph-test", &fakeObserver{read: func() TickFacts {
 		once.Do(func() { close(asking) })
 		<-answer
 		return TickFacts{State: "running"}
-	})
+	}})
 	select {
 	case <-asking:
 	case <-time.After(10 * time.Second):
 		t.Fatal("the heartbeat never asked about the distribution")
 	}
 	finished := make(chan error, 1)
-	go func() { finished <- log.Finish(RunOutcome{Exit: 0}, nil) }()
+	go func() { finished <- log.Finish(RunOutcome{Exit: 0}) }()
 	// ⚠ The question is answered only once Finish has taken the channels, which is
 	// the ordering the hang needed and the one a sleep could not promise.
 	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(time.Millisecond) {
@@ -346,7 +346,7 @@ func TestAClosedLiveStreamDoesNotStopTheRecord(t *testing.T) {
 	log.Begin("eph-test", nil)
 	_, _ = log.Stdout().Write([]byte("one\ntwo\n"))
 	_, _ = log.Stderr().Write([]byte("to-stderr\n"))
-	ferr := log.Finish(RunOutcome{Exit: 0}, nil)
+	ferr := log.Finish(RunOutcome{Exit: 0})
 	if ferr == nil || !strings.Contains(ferr.Error(), "stdout") {
 		t.Fatalf("a closed stdout was not reported: %v", ferr)
 	}
@@ -377,7 +377,7 @@ func TestAHeldCarriageReturnEndsTheLineAndIsNotPartOfItsText(t *testing.T) {
 	h.clock.at(StreamFlushAfter)
 	h.log.check()
 	_, _ = h.log.Stdout().Write([]byte("last\r"))
-	if err := h.log.Finish(RunOutcome{}, nil); err != nil {
+	if err := h.log.Finish(RunOutcome{}); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(h.out.String(), "\r") || strings.Contains(mustRead(t, s.EventPath), `\r`) {
@@ -473,7 +473,7 @@ func TestWithNothingRenderingTheLiveBytesPassThroughExactly(t *testing.T) {
 	h := newRelay(t, s)
 	raw := "10%\r50%\r100%\r\ndone without a newline"
 	_, _ = h.log.Stdout().Write([]byte(raw))
-	if err := h.log.Finish(RunOutcome{}, nil); err != nil {
+	if err := h.log.Finish(RunOutcome{}); err != nil {
 		t.Fatal(err)
 	}
 	if h.out.String() != raw {
@@ -526,7 +526,7 @@ func TestAConsumedProgressLineIsNotRenderedAndTheTickCarriesItsAge(t *testing.T)
 	s := settingsFor(t, LogRequest{Mode: "rel", ProgressPrefix: "WTK", Tick: time.Second, TickSet: true,
 		EventPath: filepath.Join(dir, "events.jsonl")})
 	h := newRelay(t, s)
-	h.log.facts = func() TickFacts { return TickFacts{State: "running"} }
+	h.log.obs = &fakeObserver{read: func() TickFacts { return TickFacts{State: "running"} }}
 	_, _ = h.log.Stdout().Write([]byte("WTK 40 copying\n"))
 	_, _ = h.log.Stdout().Write([]byte("WTK 60"))
 	h.clock.at(StreamFlushAfter)
@@ -543,7 +543,7 @@ func TestAConsumedProgressLineIsNotRenderedAndTheTickCarriesItsAge(t *testing.T)
 	if !strings.Contains(h.err.String(), "progress 40% copying (7s ago)") {
 		t.Fatalf("the tick does not carry the last progress and its age: %q", h.err.String())
 	}
-	_ = h.log.Finish(RunOutcome{}, nil)
+	_ = h.log.Finish(RunOutcome{})
 	if events := mustRead(t, s.EventPath); !strings.Contains(events, `"kind":"PROGRESS"`) || !strings.Contains(events, `"progress_percent":40`) {
 		t.Fatalf("the PROGRESS record is missing: %s", events)
 	}
@@ -555,7 +555,7 @@ func TestTheHeartbeatReadsTheDiskAndEscalatesOncePerSilence(t *testing.T) {
 		EventPath: filepath.Join(dir, "events.jsonl")})
 	h := newRelay(t, s)
 	disk := int64(100 << 20)
-	h.log.facts = func() TickFacts { d := disk; return TickFacts{State: "running", DiskBytes: &d} }
+	h.log.obs = &fakeObserver{read: func() TickFacts { d := disk; return TickFacts{State: "running", DiskBytes: &d} }}
 	_, _ = h.log.Stdout().Write([]byte("started\n"))
 	for i := 1; i <= 7; i++ {
 		if i == 4 {
@@ -578,7 +578,7 @@ func TestTheHeartbeatReadsTheDiskAndEscalatesOncePerSilence(t *testing.T) {
 	if !strings.Contains(h.err.String(), "output resumed after 7s of silence") {
 		t.Fatalf("output coming back is not said: %s", h.err.String())
 	}
-	_ = h.log.Finish(RunOutcome{}, nil)
+	_ = h.log.Finish(RunOutcome{})
 	events := mustRead(t, s.EventPath)
 	for _, want := range []string{`"kind":"TICK_FACTS"`, `"distro_state":"running"`, `"disk_grew_bytes":8388608`, `"prov":"inf"`} {
 		if !strings.Contains(events, want) {
@@ -592,8 +592,8 @@ func TestFinishRecordsTheEndAndSaysWhatANonzeroExitCanMean(t *testing.T) {
 	s := settingsFor(t, LogRequest{Mode: "rel", EventPath: filepath.Join(dir, "events.jsonl")})
 	h := newRelay(t, s)
 	_, _ = h.log.Stdout().Write([]byte("no newline at the end"))
-	state := func() TickFacts { return TickFacts{State: "running"} }
-	if err := h.log.Finish(RunOutcome{Exit: 137}, state); err != nil {
+	h.log.obs = &fakeObserver{read: func() TickFacts { return TickFacts{State: "running"} }}
+	if err := h.log.Finish(RunOutcome{Exit: 137}); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(h.out.String(), "out~ no newline at the end") {
@@ -615,7 +615,7 @@ func TestFinishRecordsTheEndAndSaysWhatANonzeroExitCanMean(t *testing.T) {
 		t.Error("a diagnosis invented something about 0, 3 or 124")
 	}
 	h = newRelay(t, settingsFor(t, LogRequest{Mode: "rel"}))
-	_ = h.log.Finish(RunOutcome{Exit: 124, TimedOut: true, Timeout: time.Minute}, nil)
+	_ = h.log.Finish(RunOutcome{Exit: 124, TimedOut: true, Timeout: time.Minute})
 	if !strings.Contains(h.err.String(), "TIMED OUT") || strings.Contains(h.err.String(), "did not fire") {
 		t.Fatalf("a deadline is said as the deadline: %q", h.err.String())
 	}
@@ -632,7 +632,7 @@ func TestASinkForACommandThatNeverStartsRemovesTheFileItCreatedAndTruncatesNothi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := log.Finish(RunOutcome{Exit: 2}, nil); err != nil {
+	if err := log.Finish(RunOutcome{Exit: 2}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(created); !os.IsNotExist(err) {
@@ -831,3 +831,34 @@ func mustRead(t *testing.T, path string) string {
 	}
 	return string(b)
 }
+
+// fakeObserver is what a case hands the relay in place of a real adapter.
+//
+// ⚠ IT IS A DOUBLE FOR DETERMINISM AND NOT FOR CONVENIENCE. The two real
+// adapters are driven for real - a distribution by the throwaway suite and a
+// container by `run` - and what no real one can do on demand is answer at the
+// instant a case chooses, which is what the heartbeat cases need.
+type fakeObserver struct {
+	kind string
+	read func() TickFacts
+}
+
+func (f *fakeObserver) Kind() string {
+	if f.kind == "" {
+		return "distro"
+	}
+	return f.kind
+}
+
+func (f *fakeObserver) Facts() TickFacts {
+	if f.read == nil {
+		return TickFacts{Kind: f.Kind(), State: "unknown"}
+	}
+	got := f.read()
+	if got.Kind == "" {
+		got.Kind = f.Kind()
+	}
+	return got
+}
+
+func (f *fakeObserver) Diagnose(code int, t TickFacts) string { return DiagnoseExit(code, t.State) }

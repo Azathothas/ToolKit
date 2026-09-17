@@ -239,6 +239,14 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("run")
 	var j jobFlags
 	j.bind(fs)
+	// ⭐ THE OBSERVATION LAYER IS BOUND HERE AND NOT IN jobFlags, and that is
+	// deliberate. `matrix` shares jobFlags, and a fleet renders ROWS: twelve
+	// relays interleaving their timestamped lines into one terminal is not a
+	// reading of anything, and a flag a command accepts and does not read is the
+	// dead-config row in docs/conventions/forbidden-patterns.md. A fleet's
+	// per-row record is `--transcripts`; WSL-59 says so where a reader will look.
+	var l logFlags
+	l.bindSinks(fs)
 	image := fs.String("image", "", "a catalog id or a fully qualified reference")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
@@ -268,6 +276,14 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	// ⭐ ONE --tick, ROUTED. jobFlags owns the flag on this command, and the
+	// relay reads the same value, so a caller who asked to hear about a quiet
+	// job hears about it once from whichever reporter is active.
+	l.tick = j.tick
+	s, err := l.settings(cfg)
+	if err != nil {
+		return exitCannot, err
+	}
 	if c, err := useHelper(ctx, j.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
@@ -275,6 +291,15 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 			if _, err := c.BaseEnsure(ctx, false); err != nil {
 				return exitCannot, err
 			}
+		}
+		// ⛔ THE HELPER ROUTE CANNOT CARRY THE RELAY, AND IT REFUSES RATHER THAN
+		// DROPPING IT. The relay watches a container through the base it is in,
+		// and a helper runs the job on ITS machine, so the adapter here would be
+		// asking this host about a container that is somewhere else. A flag
+		// silently ignored is the dead-config row; a refusal names the reason.
+		if s.Active() {
+			return exitCannot, errors.New("the observation flags do not cross the helper: the job runs on the helper's machine and its container cannot be watched from here. " +
+				"Run without --via-helper, or read the job afterwards with: wsl-toolkit inspect JOB")
 		}
 		res, err := helperRunJob(ctx, c, j, ref, *image, payload, env)
 		if err != nil {
@@ -293,13 +318,26 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	liveOut, liveErr := j.sinks()
+	// ⛔ THE RELAY IS OPENED ONLY WHERE THE CALLER ASKED FOR ONE. Opening one
+	// unconditionally would put a rendering layer in front of every job's
+	// output, and a caller reading a value off stdout would get a prefix.
+	var relay *toolkit.RunLog
+	if s.Active() {
+		if relay, err = toolkit.OpenRunLog(s, liveOut, liveErr); err != nil {
+			return exitCannot, err
+		}
+		// ⚠ ABORTED, NOT CLOSED, WHERE THE JOB NEVER BEGAN. Abort removes a sink
+		// file this call created, so a run refused before its container leaves no
+		// empty log behind; Finish inside the job is what closes a real one.
+		defer relay.Abort()
+	}
 	res := runner.Run(ctx, toolkit.JobSpec{
 		Image: ref, Script: payload, Workspace: j.workspace, Excludes: toolkit.SortedExcludes(j.excludes),
 		ArtifactDir: j.artifactDir, Env: env, Timeout: j.timeout, Network: !j.noNetwork,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
 		Limits: j.limits(), Label: *image, User: j.user,
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
-		OnTick: tickPrinter(j), TickEvery: j.tick,
+		OnTick: jobTick(j, relay), TickEvery: j.tick, Log: relay,
 	})
 	return reportJob(res, j.asJSON)
 }
@@ -505,6 +543,20 @@ func tickPrinter(j jobFlags) func(toolkit.TickEvent) {
 			t.Label, (time.Duration(t.ElapsedMS) * time.Millisecond).Round(time.Second), left,
 			t.StdoutBytes, t.StderrBytes)
 	}
+}
+
+// jobTick picks which heartbeat a job gets.
+//
+// ⛔ NEVER BOTH. The relay's fires on SILENCE and reads the container's own
+// state; the fleet's fires on a TIMER and reports byte counts. Two heartbeats
+// about one job, at the same interval, is a reader being told the same thing
+// twice in two vocabularies - and the relay's is the one that can say what the
+// container is doing, which is the whole of WSL-59.
+func jobTick(j jobFlags, relay *toolkit.RunLog) func(toolkit.TickEvent) {
+	if relay != nil {
+		return nil
+	}
+	return tickPrinter(j)
 }
 
 // rowPrinter reports a fleet row as it finishes.

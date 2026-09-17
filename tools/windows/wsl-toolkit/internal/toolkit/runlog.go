@@ -54,6 +54,15 @@ type Event struct {
 	ProgressPercent *float64 `json:"progress_percent,omitempty"`
 	ProgressLabel   string   `json:"progress_label,omitempty"`
 	ProgressAgeS    *float64 `json:"progress_age_s,omitempty"`
+	// Subject and Feeds are the adapter's answers, recorded so a replay of a
+	// container's run is not read as a distribution's. ⚠ It is NOT called Kind:
+	// this record already has one, and it is the kind of EVENT.
+	Subject string `json:"subject,omitempty"`
+	Feeds   string `json:"feeds,omitempty"`
+	// CPUPercent and MemoryBytes are absent unless the resource feed is
+	// PRESENT. ⛔ A replay must not be able to show a zero nobody measured.
+	CPUPercent  *float64 `json:"cpu_percent,omitempty"`
+	MemoryBytes *int64   `json:"memory_bytes,omitempty"`
 }
 
 // TickFacts is what the host can read about a distribution while its command is
@@ -63,8 +72,37 @@ type Event struct {
 // and has been measured unchanged six seconds after a guest wrote 120 MiB, so a
 // disk that grew means something allocated and one that did not rules nothing out.
 type TickFacts struct {
+	// Kind is what this is about: "distro" or "container". ⛔ IT IS NOT
+	// COSMETIC. A reader told "distro running" about a container has been given
+	// a fact about the wrong thing, and the two states do not even share a
+	// vocabulary: a distribution is stopped or not registered, a container is
+	// exited or gone.
+	Kind      string
 	State     string
 	DiskBytes *int64
+	// Feeds is what the adapter says it HAS, per channel. ⛔ A feed reported
+	// absent is a measurement and a feed reported unknown is the lack of one;
+	// observe.go says why they are kept apart.
+	Feeds map[Feed]FeedState
+	// Resources is what the resource feed answered, and it is nil wherever that
+	// feed is not present. ⛔ NEVER A ZERO: `podman stats` on a base with no
+	// per-container cgroup answers 0B of memory and a nonsense processor
+	// percentage, and carrying those through is worse than carrying nothing.
+	Resources *ResourceReading
+	// ExitCode is what the THING says it exited with, which is not always what
+	// the process this side saw. ⚠ Absent where the feed could not answer.
+	ExitCode *int
+	// ResourceNote is the ADAPTER'S one line on why the resource feed reads the
+	// way it does. ⛔ THE REASON BELONGS TO THE ADAPTER AND NOT TO THE RENDERER.
+	// The renderer wrote `no per-container cgroup here` for both, so a
+	// DISTRIBUTION was told it had no per-container cgroup - true, and about a
+	// unit it does not have. Found by running the same command both ways, which
+	// is the comparison WSL-59's acceptance asks for.
+	ResourceNote string
+	// OOMKilled is the engine's own flag. ⚠ It is false on a base with no
+	// cgroup delegation whatever happened, which is why the container adapter's
+	// diagnosis says so rather than reading false as "not out of memory".
+	OOMKilled bool
 }
 
 // RunOutcome is how the relayed command ended, as the relay records it.
@@ -107,7 +145,7 @@ type RunLog struct {
 	events      *os.File
 	created     []string
 	createdDirs []string
-	facts       func() TickFacts
+	obs         Observer
 	now         func() time.Time
 	start       time.Time
 	begun       bool
@@ -215,14 +253,19 @@ func (r *RunLog) ensureSinkDir(dir string) error {
 	return nil
 }
 
-// Begin starts the clock for one command in one distribution.
-func (r *RunLog) Begin(distro string, facts func() TickFacts) {
+// Begin starts the clock for one command against one observed thing.
+//
+// ⛔ IT TAKES AN Observer RATHER THAN A FACTS FUNCTION, and Finish reads the
+// same one. They took a function each, and two call sites handing the two ends
+// of one run different readers is a class nothing here could have caught.
+// observe.go owns what an Observer is and why there are two.
+func (r *RunLog) Begin(subject string, obs Observer) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.begun || r.closed {
 		return
 	}
-	r.begun, r.distro, r.facts, r.start = true, distro, facts, r.now()
+	r.begun, r.distro, r.obs, r.start = true, subject, obs, r.now()
 	r.created = nil
 	r.createdDirs = nil
 	if r.text != nil && r.s.TextOverwrite {
@@ -558,14 +601,14 @@ func (r *RunLog) check() {
 		}
 	}
 	due := r.tickDue(now)
-	facts := r.facts
+	obs := r.obs
 	r.mu.Unlock()
 	if !due {
 		return
 	}
-	f := TickFacts{State: "unknown"}
-	if facts != nil {
-		f = facts()
+	f := unknownFacts(obs)
+	if obs != nil {
+		f = obs.Facts()
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -588,7 +631,13 @@ func (r *RunLog) tickDue(now time.Duration) bool {
 func (r *RunLog) tick(now time.Duration, f TickFacts) {
 	silent := now - r.lastLine
 	var grew *int64
-	diskText := "disk unreadable"
+	// ⛔ AN ABSENT FEED IS NOT AN UNREADABLE ONE. This said "disk unreadable"
+	// for a container, which claims the figure was sought and could not be got
+	// over a thing that has no disk of its own to seek. Found by driving it.
+	diskText := ""
+	if f.Feeds[FeedDisk] != FeedAbsent {
+		diskText = "disk unreadable"
+	}
 	if f.DiskBytes != nil {
 		diskText = "disk " + HumanBytes(*f.DiskBytes)
 		if r.lastDisk != nil {
@@ -603,8 +652,22 @@ func (r *RunLog) tick(now time.Duration, f TickFacts) {
 		d := *f.DiskBytes
 		r.lastDisk = &d
 	}
-	text := fmt.Sprintf("%s silent | elapsed %s | out %d lines %s | err %d lines %s | distro %s | %s",
-		FormatSpan(silent), FormatSpan(now), r.out.lines, HumanBytes(r.out.bytes), r.err.lines, HumanBytes(r.err.bytes), f.State, diskText)
+	// THE KIND IS NAMED, NEVER ASSUMED. This line said "distro" whatever it was
+	// watching, and the first container it watched would have been reported as a
+	// distribution, in a state a distribution cannot be in.
+	text := fmt.Sprintf("%s silent | elapsed %s | out %d lines %s | err %d lines %s | %s %s",
+		FormatSpan(silent), FormatSpan(now), r.out.lines, HumanBytes(r.out.bytes),
+		r.err.lines, HumanBytes(r.err.bytes), kindWord(f.Kind), f.State)
+	if diskText != "" {
+		text += " | " + diskText
+	}
+	// THE RESOURCE COLUMN REPORTS ABSENT RATHER THAN ZERO, which is the whole of
+	// WSL-60 closing as a capability and the rule WSL-59 approach states. A base
+	// with no per-container cgroup makes podman answer 0B and a nonsense
+	// percentage; a tick carrying those is a number nobody measured.
+	if res := resourceText(f); res != "" {
+		text += " | " + res
+	}
 	var pct, age *float64
 	label := ""
 	if r.progress != nil {
@@ -620,8 +683,13 @@ func (r *RunLog) tick(now time.Duration, f TickFacts) {
 	}
 	r.emit("tick", "obs", text, false, now)
 	s, ol, el := math.Round(silent.Seconds()*10)/10, r.out.lines, r.err.lines
-	r.record(Event{Kind: "TICK_FACTS", Prov: "obs", SilenceS: &s, DistroState: f.State, OutLines: &ol, ErrLines: &el,
-		DiskBytes: f.DiskBytes, DiskGrewBytes: grew, ProgressPercent: pct, ProgressLabel: label, ProgressAgeS: roundTenth(age)}, now)
+	ev := Event{Kind: "TICK_FACTS", Prov: "obs", SilenceS: &s, DistroState: f.State, OutLines: &ol, ErrLines: &el,
+		DiskBytes: f.DiskBytes, DiskGrewBytes: grew, ProgressPercent: pct, ProgressLabel: label, ProgressAgeS: roundTenth(age),
+		Subject: kindWord(f.Kind), Feeds: FeedSummary(f.Feeds)}
+	if f.Resources != nil {
+		ev.CPUPercent, ev.MemoryBytes = f.Resources.CPUPercent, f.Resources.MemoryBytes
+	}
+	r.record(ev, now)
 	r.escalate(now, silent, grew, f.State)
 	r.lastTick, r.quiet = now, true
 }
@@ -632,6 +700,63 @@ func roundTenth(v *float64) *float64 {
 	}
 	x := math.Round(*v*10) / 10
 	return &x
+}
+
+// kindWord is the word a reader sees for the thing being watched. An adapter
+// that named none is reported as unknown rather than as a distribution: this
+// line read "distro" unconditionally until 2026-09-17, and a wrong subject is a
+// worse answer than no subject.
+func kindWord(kind string) string {
+	if kind == "" {
+		return "unknown-kind"
+	}
+	return kind
+}
+
+// unknownFacts is what the relay reports when it has no adapter, or before one
+// has answered. It carries the kind so a reader is not told the wrong subject.
+func unknownFacts(obs Observer) TickFacts {
+	f := TickFacts{State: "unknown"}
+	if obs != nil {
+		f.Kind = obs.Kind()
+	}
+	return f
+}
+
+// resourceText renders the resource feed, and REPORTS ITS ABSENCE rather than
+// leaving the column out.
+//
+// A missing column reads as "nobody asked". `resources absent` reads as "this
+// was asked and there is nothing to have", which is the difference a caller
+// watching a memory-hungry job needs, and it names where to go for the reason.
+func resourceText(f TickFacts) string {
+	note := ""
+	if f.ResourceNote != "" {
+		note = " (" + f.ResourceNote + ")"
+	}
+	switch f.Feeds[FeedResources] {
+	case FeedAbsent:
+		return "resources absent" + note
+	case FeedUnknown:
+		return "resources unknown" + note
+	case FeedPresent:
+	default:
+		return ""
+	}
+	if f.Resources == nil {
+		return "resources present and unread"
+	}
+	parts := []string{}
+	if f.Resources.CPUPercent != nil {
+		parts = append(parts, "cpu "+FormatPercent(*f.Resources.CPUPercent))
+	}
+	if f.Resources.MemoryBytes != nil {
+		parts = append(parts, "mem "+HumanBytes(*f.Resources.MemoryBytes))
+	}
+	if len(parts) == 0 {
+		return "resources present and unread"
+	}
+	return strings.Join(parts, " ")
 }
 
 // escalate says more at each silence threshold, once per silence.
@@ -680,9 +805,9 @@ func (r *RunLog) escalate(now, silent time.Duration, grew *int64, state string) 
 // Finish flushes what is pending, records how the command ended, and closes
 // every sink. It returns the first sink error, so a log that could not be written
 // is reported rather than silently short.
-func (r *RunLog) Finish(o RunOutcome, facts func() TickFacts) error {
+func (r *RunLog) Finish(o RunOutcome) error {
 	r.mu.Lock()
-	begun, stop, done := r.begun, r.stop, r.done
+	begun, stop, done, obs := r.begun, r.stop, r.done, r.obs
 	r.stop, r.done = nil, nil
 	r.mu.Unlock()
 	if !begun {
@@ -694,10 +819,10 @@ func (r *RunLog) Finish(o RunOutcome, facts func() TickFacts) error {
 		close(stop)
 		<-done
 	}
-	// Read before the lock, and only when a diagnosis needs the distribution's state.
-	f := TickFacts{State: "unknown"}
-	if o.Exit != 0 && !o.TimedOut && !o.Cancelled && o.StartError == "" && facts != nil {
-		f = facts()
+	// Read before the lock, and only when a diagnosis needs the thing's state.
+	f := unknownFacts(obs)
+	if o.Exit != 0 && !o.TimedOut && !o.Cancelled && o.StartError == "" && obs != nil {
+		f = obs.Facts()
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -720,8 +845,13 @@ func (r *RunLog) Finish(o RunOutcome, facts func() TickFacts) error {
 	case o.Cancelled:
 		r.emit("note", "obs", "the run was cancelled, so "+r.distro+" was terminated. The answer is 130", false, now)
 	default:
-		if why := DiagnoseExit(o.Exit, f.State); why != "" {
-			r.emit("note", "inf", why, false, now)
+		// ⛔ THE ADAPTER DIAGNOSES, because the sentences are not shared. A
+		// signal explained by asking whether the WSL virtual machine went away
+		// is true of a distribution and the wrong subject for a container.
+		if obs != nil {
+			if why := obs.Diagnose(o.Exit, f); why != "" {
+				r.emit("note", "inf", why, false, now)
+			}
 		}
 	}
 	code, timedOut := o.Exit, o.TimedOut

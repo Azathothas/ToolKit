@@ -62,6 +62,13 @@ type FileReport struct {
 type Report struct {
 	Schema string `json:"schema"`
 	Mode   string `json:"mode"`
+	// Op is the operation that ran: write, append, eol, replace, line, after,
+	// before, insert-after, insert-before, delete or between. ⛔ THE DOCUMENT
+	// HAS TO SAY WHICH ONE. A --between that replaced the wrong region reports
+	// exactly the same `1 match(es)` as one that replaced the right region, and
+	// a reader who cannot tell which operation produced the number cannot tell
+	// which question to ask next.
+	Op string `json:"op"`
 	// Matches is the TOTAL across every file, which is what --expect checks.
 	Matches int `json:"matches"`
 	// Changed is true when ANY file's bytes moved.
@@ -130,7 +137,7 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 	}
 	o.noteLiteralEscapes(errOut)
 
-	rep := Report{Schema: Schema, Mode: o.mode, DryRun: o.dryRun || o.count}
+	rep := Report{Schema: Schema, Mode: o.mode, Op: o.operation(), DryRun: o.dryRun || o.count}
 	staged := make([][]byte, len(o.paths))
 	var unmatched []string
 
@@ -153,7 +160,7 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 			EOL: eol, Changed: changed, BOM: bytes.HasPrefix(before, utf8BOM),
 			Lines: lines, LinesTruncated: len(lines) > 0 && len(lines) < matches,
 		})
-		if matches == 0 && (o.haveFind || o.haveInsertFind) {
+		if matches == 0 && (o.haveFind || o.haveInsertFind || o.haveBetween) {
 			unmatched = append(unmatched, p)
 		}
 	}
@@ -230,6 +237,15 @@ func emit(out io.Writer, asJSON bool, verb string, r Report) {
 		where := ""
 		if f.LinesTruncated {
 			where = fmt.Sprintf(", first %d at line %d", len(f.Lines), f.Lines[0])
+		}
+		// ⛔ A --between SAYS WHICH LINES IT TOOK. One match is one match whether
+		// the range was the one the caller meant or a much larger one starting at
+		// an earlier copy of the same anchor, and the byte delta is the only other
+		// signal. Measured on 2026-09-17: an anchor that also appeared earlier in
+		// the file took 745 lines out of a 43 KB script, reported "1 match(es)"
+		// and exited 0. The tool knew the range and did not print it.
+		if r.Op == "between" && len(f.Lines) == 2 {
+			where = fmt.Sprintf(", lines %d-%d (%d line(s))", f.Lines[0], f.Lines[1], f.Lines[1]-f.Lines[0]+1)
 		}
 		fmt.Fprintf(out, "%s %s: %d match(es)%s, %d -> %d bytes, %s endings\n",
 			verb, f.Path, f.Matches, where, f.Before, f.After, f.EOL)
@@ -554,12 +570,23 @@ func (o *options) validate() error {
 		if len(ops) > 1 {
 			return fmt.Errorf("edit takes one operation and %d were given: %s", len(ops), strings.Join(ops, ", "))
 		}
-		// ⛔ A SUBSTITUTION WITHOUT --expect IS THE DEFECT THIS TOOL REMOVES.
+		// ⛔ A SEARCH WITHOUT --expect IS THE DEFECT THIS TOOL REMOVES.
 		// Every other operation names its own place; a search does not, and a
 		// search that silently matched nothing is what a caller never notices.
-		if (o.haveFind || o.haveInsertFind) && !o.haveExpect && !o.count {
-			return errors.New("--replace, --after and --before need --expect N, the number of matches you believe are there. " +
-				"Use --count first if you do not know. A substitution that matches a different number of " +
+		//
+		// ⛔ --between WAS LEFT OUT OF THIS GUARD AND IT IS THE WIDEST OF THEM
+		// ALL, because it deletes a whole region rather than one line. Measured
+		// on 2026-09-17: `--between A B` over a file with TWO ranges wrote
+		// nothing and exited 0, and over a file with NO range wrote nothing and
+		// exited 0. applyBetween's own comment says "the count this reports is
+		// what --expect checks, so a file with two ranges refuses" - which was
+		// true only for a caller who passed a flag nothing required. A step that
+		// exits 0 having done nothing it was asked to do is the row in
+		// docs/conventions/forbidden-patterns.md this tool exists to make
+		// impossible.
+		if (o.haveFind || o.haveInsertFind || o.haveBetween) && !o.haveExpect && !o.count {
+			return errors.New("--replace, --after, --before and --between need --expect N, the number of matches you believe are there. " +
+				"Use --count first if you do not know. A search that matches a different number of " +
 				"times is a different edit from the one you asked for")
 		}
 		if o.haveDelete && o.haveLoad {

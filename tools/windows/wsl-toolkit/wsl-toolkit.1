@@ -341,6 +341,9 @@ a directory on this machine to receive whatever the container leaves in /out
 \fB-c\fR
 the shell command to run in the container
 .TP
+\fB--color\fR
+colour the live prefix: auto, always or never. A file is never coloured. Default: auto.
+.TP
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
 .TP
@@ -349,6 +352,9 @@ build the base first when it is missing or unusable. Default: true.
 .TP
 \fB--env\fR
 NAME=VALUE passed to the container. Repeatable
+.TP
+\fB--event-log\fR
+append one wsl-toolkit-event/1 JSON record per line, per event, to this file
 .TP
 \fB--exclude\fR
 a glob to leave out of the workspace copy. Repeatable
@@ -359,11 +365,17 @@ a catalog id or a fully qualified reference
 \fB--json\fR
 write a structured answer
 .TP
+\fB--log-profile\fR
+raw, human, ci, forensic or wall. Empty forwards the command's streams unchanged. Flags passed beside a profile win over it
+.TP
 \fB--max-bytes\fR
 refuse a workspace or an artifact set larger than this. Default: 1073741824.
 .TP
 \fB--max-entries\fR
 refuse a workspace or an artifact set with more entries than this. Default: 200000.
+.TP
+\fB--max-line-bytes\fR
+cut a line after this many bytes, at a character boundary, and say how many went. 0 never cuts
 .TP
 \fB--max-output\fR
 how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says
@@ -374,14 +386,44 @@ run with no network at all
 \fB--platform\fR
 the Linux OCI platform. Empty uses jobs.platform, then the native platform
 .TP
+\fB--prefix-only\fR
+write the timestamp prefix and not the line itself
+.TP
+\fB--progress-prefix\fR
+consume a line that is this token, whitespace and a percentage with an optional label, and report the last one on the heartbeat
+.TP
+\fB--redact\fR
+a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
+.TP
 \fB--script\fR
 a file on this machine whose bytes are the command
+.TP
+\fB--stream-log\fR
+append the rendered, uncoloured lines to this file
+.TP
+\fB--stream-log-overwrite\fR
+replace the --stream-log file when the command starts, rather than appending
 .TP
 \fB--tick\fR
 emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it. Default: 0s.
 .TP
+\fB--tick-escalate\fR
+silence thresholds at which the heartbeat says more, comma separated, or none. Defaults to 2m,5m,15m whenever a heartbeat is on
+.TP
 \fB--timeout\fR
 how long one container may run before lifecycle cleanup; the row reports 124. Default: 30m0s.
+.TP
+\fB--timestamp-column\fR
+a timestamp column: rel, delta, wall, iso or epoch. Repeatable; a comma list is accepted
+.TP
+\fB--timestamp-format\fR
+a strftime format for the rel and wall columns: %Y %m %d %H %M %S %z %Z %3f %6f %9f %%
+.TP
+\fB--timestamp-mode\fR
+one timestamp column: rel, delta, wall, iso or epoch
+.TP
+\fB--timestamp-separator\fR
+the text between the timestamp columns and the tag. Default:  .
 .TP
 \fB--user\fR
 what the container runs as: a name, a uid, or uid:gid. Empty means the image's default
@@ -667,7 +709,7 @@ boot it with systemd as PID 1, and refuse an image that cannot
 a rootfs archive on this machine, or the tag of a snapshot this state directory holds
 .TP
 \fB--tick\fR
-after this much silence, write a heartbeat reading the distribution's state and disk. 0 is off; a rendering --log-profile turns it on at 30s. Default: 0s.
+after this much silence, write a heartbeat reading the watched thing's state. 0 is off; a rendering --log-profile turns it on at 30s. Default: 0s.
 .TP
 \fB--tick-escalate\fR
 silence thresholds at which the heartbeat says more, comma separated, or none. Defaults to 2m,5m,15m whenever a heartbeat is on
@@ -750,7 +792,7 @@ append the rendered, uncoloured lines to this file
 replace the --stream-log file when the command starts, rather than appending
 .TP
 \fB--tick\fR
-after this much silence, write a heartbeat reading the distribution's state and disk. 0 is off; a rendering --log-profile turns it on at 30s. Default: 0s.
+after this much silence, write a heartbeat reading the watched thing's state. 0 is off; a rendering --log-profile turns it on at 30s. Default: 0s.
 .TP
 \fB--tick-escalate\fR
 silence thresholds at which the heartbeat says more, comma separated, or none. Defaults to 2m,5m,15m whenever a heartbeat is on

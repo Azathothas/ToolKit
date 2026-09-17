@@ -96,6 +96,84 @@ A timeout stops a persistent container and removes an ephemeral one, and exits
 
 ---
 
+## ⭐ Watching and recording a command
+
+⭐ **With no option below, the command's streams are forwarded unchanged.**
+
+⭐ **`run` and `distro run` and `distro new` all take these.** One relay renders,
+records and reports for both, and an ADAPTER behind it answers about the thing
+the command is in. A container and a distribution share a kernel and nothing
+else, so each is described in its own words rather than in one set that fits
+neither.
+
+| to get | pass |
+| --- | --- |
+| a timestamp and a stream tag on every line | `--log-profile human`, `ci` (rel and delta, no colour), `forensic` (wall and rel to the microsecond, and delta) or `wall`, or `--timestamp-column rel,delta`. A flag passed beside a profile wins over it |
+| a heartbeat while a command is silent | `--tick 30s`, which a rendering profile turns on. It reads the watched thing's state, and says more at each `--tick-escalate` threshold, 2m, 5m and 15m by default |
+| progress a command reports | `--progress-prefix TOKEN`. A line `TOKEN 42 unpacking` is consumed, and the heartbeat carries the last one and its age |
+| a copy of the rendered lines | `--stream-log FILE`, which is never coloured |
+| a record a program reads | `--event-log FILE`, one `wsl-toolkit-event/1` object per line, appended |
+| a secret kept out of every sink | `--redact REGEX`, whose matches become `***` before any sink sees a line. Repeat it or pass a comma list; `[,]` matches a literal comma |
+| a bound on a line | `--max-line-bytes N`, cut at a character boundary, saying how many bytes went |
+
+- A prefix is the timestamp columns, the separator, then a fixed four-character
+  tag: `out`, `err`, `tick` or `note`. A `~` in the tag marks a line that had not
+  ended: a carriage return redrew it, or it sat unterminated for two seconds and
+  was shown early.
+- The command's stdout stays on stdout. Its stderr, the heartbeat and the notes go
+  to stderr, and a nonzero exit gets a note on what the number can mean.
+- ⚠ **A rendered line is not the guest's bytes.** A prefix, a redaction, a line
+  bound or a progress token relays the live streams line by line, re-terminated
+  with a newline. A sink or a heartbeat alone leaves the live bytes exact. Either
+  way the command writes into a pipe, so a program that block-buffers off a
+  terminal shows its lines late.
+- ⚠ A redaction matches within one line, so a secret split across a
+  carriage-return redraw is two lines and matches neither.
+- `distro replay --from FILE` renders a recorded log again, stamped from each
+  record's own wall clock. `distro compare --before A --after B` sets two runs
+  side by side: elapsed time, time to first output, longest silence, the lines
+  and bytes the record holds, which are counted after redaction and the line
+  bound, and exit code, with `-` where a run measured nothing. It reports and does
+  not judge. An appended log holds one run per command: `--run`, `--before-run`
+  and `--after-run` pick one, and `compare` takes each file's last by default.
+
+### ⛔ What the heartbeat can and cannot measure, per feed
+
+⛔ **A feed that does not exist reports ABSENT, and never a zero.** Each row was
+measured on this base on 2026-09-17, against podman 6.1.1.
+
+| feed | a container, through `run` | a distribution, through `distro` |
+| --- | --- | --- |
+| state | the engine's own word: `running`, `exited`, or `gone` where the container is not there | WSL's word: `running`, `stopped` or `not registered` |
+| output | present. The bytes arrive ATTACHED, on the pipe the engine was started on, so no log driver can lose them | present |
+| disk | ⛔ **absent.** A container has no disk of its own this side can size | present: the distribution's `ext4.vhdx`, and whether it grew since the last tick |
+| resources | ⛔ **absent on this base**, with the reason on the line. The container sits in the ROOT cgroup, so podman accounts for nothing | ⛔ **absent.** WSL does not account for a distribution separately |
+| exit | present, read from the engine as well as from the process | present |
+
+⚠ **`podman stats` answers anyway, and the answer is not a measurement.** A
+container running `sleep` reported **`35048.23%`** of a processor and
+**`0B / 33.44GB`** of memory. Both parse. Neither is true. That is why the
+resource column says absent and names its reason instead of printing them, and it
+is the same finding `base status --probe` reports as the cgroup capability.
+
+⚠ **The heartbeat asks the engine once per silent tick, and never otherwise.** A
+talkative job costs the engine nothing. `--tick` is off by default and a
+rendering profile turns it on at 30 seconds.
+
+⛔ **`matrix` does not take these, and that is deliberate.** A fleet renders
+ROWS, and twelve relays interleaving timestamped lines into one terminal is a
+reading of nothing. A fleet's per-row record is `--transcripts DIR`.
+
+⛔ **Neither does `run --via-helper`, and it refuses rather than ignoring them.**
+The job runs on the helper's machine, so its container cannot be watched from
+here. Read it afterwards with `wsl-toolkit inspect JOB`.
+
+⚠ The helper does not serve `distro replay` or `distro compare` either. A process
+that may not call `wsl.exe` makes them through the path its session uses to
+approve it.
+
+---
+
 ## Dedicated provider bases
 
 A named instance can be a persistent Linux home for a provider CLI. A project
@@ -751,44 +829,6 @@ running distribution, and one another run is still creating, is kept unless
   size and digest and the variables' names, never their values. Nothing in WSL
   changes and no log file is opened.
 
-### Watching and recording a command
-
-⭐ **With no option below, the command's streams are forwarded unchanged.**
-
-| to get | pass |
-| --- | --- |
-| a timestamp and a stream tag on every line | `--log-profile human`, `ci` (rel and delta, no colour), `forensic` (wall and rel to the microsecond, and delta) or `wall`, or `--timestamp-column rel,delta`. A flag passed beside a profile wins over it |
-| a heartbeat while a command is silent | `--tick 30s`, which a rendering profile turns on. It reads the distribution's state and disk, and says more at each `--tick-escalate` threshold, 2m, 5m and 15m by default |
-| progress a command reports | `--progress-prefix TOKEN`. A line `TOKEN 42 unpacking` is consumed, and the heartbeat carries the last one and its age |
-| a copy of the rendered lines | `--stream-log FILE`, which is never coloured |
-| a record a program reads | `--event-log FILE`, one `wsl-toolkit-event/1` object per line, appended |
-| a secret kept out of every sink | `--redact REGEX`, whose matches become `***` before any sink sees a line. Repeat it or pass a comma list; `[,]` matches a literal comma |
-| a bound on a line | `--max-line-bytes N`, cut at a character boundary, saying how many bytes went |
-
-- A prefix is the timestamp columns, the separator, then a fixed four-character
-  tag: `out`, `err`, `tick` or `note`. A `~` in the tag marks a line that had not
-  ended: a carriage return redrew it, or it sat unterminated for two seconds and
-  was shown early.
-- The command's stdout stays on stdout. Its stderr, the heartbeat and the notes go
-  to stderr, and a nonzero exit gets a note on what the number can mean.
-- ⚠ **A rendered line is not the guest's bytes.** A prefix, a redaction, a line
-  bound or a progress token relays the live streams line by line, re-terminated
-  with a newline. A sink or a heartbeat alone leaves the live bytes exact. Either
-  way the command writes into a pipe, so a program that block-buffers off a
-  terminal shows its lines late.
-- ⚠ A redaction matches within one line, so a secret split across a
-  carriage-return redraw is two lines and matches neither.
-- `distro replay --from FILE` renders a recorded log again, stamped from each
-  record's own wall clock. `distro compare --before A --after B` sets two runs
-  side by side: elapsed time, time to first output, longest silence, the lines
-  and bytes the record holds, which are counted after redaction and the line
-  bound, and exit code, with `-` where a run measured nothing. It reports and does
-  not judge. An appended log holds one run per command: `--run`, `--before-run`
-  and `--after-run` pick one, and `compare` takes each file's last by default.
-
-⚠ The helper does not serve these commands. A process that may not call `wsl.exe`
-makes them through the path its session uses to approve it.
-
 `wsl-toolkit doctor` reports what a throwaway distribution would meet: free space
 against the import floor, what the state directory holds, the networking mode
 and host address, the host engine, and the clock's resolution. `resources` lists
@@ -1028,7 +1068,7 @@ every start, and the account's processes in a network namespace of their own.
 | limit | kind | what it means |
 | --- | --- | --- |
 | the base enforces no per-container resource bounds | host | rootless podman under `init` with no cgroup delegation means no cgroup per container. `--memory` is accepted and not applied, and `podman stats` reads `0B`. ⭐ `base status` reports this. A caller who bounds a job on this base is not bounded |
-| `podman logs` on the base is a silent zero | host | the default log driver is `journald` and nothing serves a journal. The tool names `k8s-file` on the runs it owns; a caller driving podman directly should too |
+| `podman logs` on the base is a silent zero | host | the default log driver is `journald` and nothing serves a journal. ⛔ **This page claimed the tool named `k8s-file` before the tool did**; it does from 2026-09-17, and a job's container answered 6 bytes and 52 where the same call answered 0 and 0. ⚠ The first line podman shows is this tool's own start marker. A caller driving podman directly should name a driver too |
 | `bsd run` boots and powers off a guest per call, about 23 seconds each | host | nothing keeps a guest running between runs. The BSD section carries the measurement |
 | nothing a payload installs survives its `bsd run` | decision | a run writes to an overlay it removes, so no panic can damage the shared image. A payload installs what it needs in the run that uses it |
 | no BSD container endpoint | open | a long-running podman service panics the FreeBSD guest kernel. Tracked in [`../../../TODO/bsd.md`](../../../TODO/bsd.md) |

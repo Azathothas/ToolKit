@@ -155,7 +155,7 @@ text-tool edit PATH --line 12 --text 'the whole of line 12'
 text-tool edit PATH --insert-after 12 --text 'goes after line 12'
 text-tool edit PATH --insert-before 1 --text 'a new first line'
 text-tool edit PATH --delete 5,9
-text-tool edit PATH --between 'START' 'END' --text 'the replacement'
+text-tool edit PATH --between 'START' 'END' --text 'the replacement' --expect 1
 ```
 
 ⭐ **USE `--after` AND `--before` TO ADD SOMETHING BESIDE AN ANCHOR.** They keep
@@ -163,6 +163,16 @@ the anchor line. The obvious alternative is a substitution that matches the
 anchor and replaces it with your text PLUS the anchor, and forgetting the second
 half DELETES the anchor. That is the commonest way to damage a file with this
 tool.
+
+⛔ **`--between` NEEDS `--expect`, AND IT REPORTS THE LINES IT TOOK.** It is the
+widest operation here - it deletes a whole region rather than one line - and it
+was the only search without a required count until 2026-09-17: with no
+`--expect` it wrote nothing and exited **0**, both when two ranges matched and
+when none did. ⚠ **A count is still not enough on its own.** An anchor that also
+appears earlier in the file pairs the FIRST copy with the closing anchor, which
+is exactly one match, so `--expect 1` is satisfied and a far bigger region goes.
+That happened here, to a 43 KB script: 745 lines, reported as `1 match(es)`. The
+report now names the span - `lines 2-9 (8 line(s))` - so read it.
 
 ⚠ **`--between` takes TWO arguments**, not one with a comma in it. An anchor
 holding a comma is ordinary, and a separator that appears in the data is not a

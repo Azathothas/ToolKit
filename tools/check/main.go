@@ -52,6 +52,7 @@ var all = []check{
 	{"secrets", "check-no-secrets/1", checks.Secrets, "no credential, and no fingerprint of a private system"},
 	{"shellcheck", "check-shellcheck/1", checks.Shellcheck, "shellcheck is clean over every tracked shell script"},
 	{"powershell", "check-powershell/1", checks.PowerShell, "every tracked .ps1 parses and PSScriptAnalyzer is clean over scripts/"},
+	{"consumer", "check-consumer/1", checks.Consumer, "consumer.ps1 drives a binary built from this tree, so a refusal is caught before a tag"},
 	{"package-table", "check-package-table/1", checks.PackageTable, "the base provisioner's copy of the shared package table matches bootstrap.sh"},
 	{"adapters", "check-adapters/1", checks.Adapters, "the executable's copy of every wsl-toolkit adapter matches its definition"},
 	{"shipped", "check-shipped/1", checks.Shipped, "the executable's copy of every file it carries matches the one this repository publishes"},

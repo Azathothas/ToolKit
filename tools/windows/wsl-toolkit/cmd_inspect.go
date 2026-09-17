@@ -206,7 +206,12 @@ func renderInspect(w *os.File, rep toolkit.InspectReport) error {
 			{"cgroups", cgroupLine(rep.Engine)},
 			{"rootless", rep.Engine.Rootless},
 			{"events", rep.Engine.EventLogger},
-			{"logs", rep.Engine.LogDriver},
+			// ⚠ THE ENGINE'S DEFAULT, AND A JOB'S CONTAINER DOES NOT USE IT.
+			// This row said `journald` alone, and a reader of a JOB would take
+			// it to mean their output went to a journal that nothing serves.
+			// The tool names the driver on the runs it owns, which is what
+			// makes `podman logs` on one answer at all.
+			{"logs", rep.Engine.LogDriver + " (engine default; this tool names " + toolkit.ContainerLogDriver + " on a job)"},
 		}
 		for _, r := range rows {
 			if err := p("    %-11s %s\n", r[0], r[1]); err != nil {

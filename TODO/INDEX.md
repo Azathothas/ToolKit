@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 127  open 2  blocked 0  done 125
+total 128  open 0  blocked 0  done 128
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 66 | 66 |
-| P2 | 2 | 0 | 49 | 51 |
+| P1 | 0 | 0 | 67 | 67 |
+| P2 | 0 | 0 | 51 | 51 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **2** | **0** | **125** | **127** |
+| **all** | **0** | **0** | **128** | **128** |
 
 ---
 
@@ -103,7 +103,7 @@ total 127  open 2  blocked 0  done 125
 | WSL-29 | P3 | S | done | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-30 | P2 | XL | done | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-31 | P1 | XL | done | A portable entry point for isolated Linux jobs on Windows | [`issue-6.md`](issue-6.md) |
-| WSL-59 | P2 | L | open | the podman adapter, on what the matrix says it can be built | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
+| WSL-59 | P2 | L | done | the podman adapter, on what the matrix says it can be built | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-60 | P2 | M | done | the base accepts a memory limit and does not enforce it | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-61 | P2 | S | done | `base ensure` cannot recover a base whose engine has stale run state | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-62 | P2 | S | done | two of this tool sharing one state directory corrupt each other's writes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -135,8 +135,9 @@ total 127  open 2  blocked 0  done 125
 | WSL-88 | P2 | M | done | The pi adapter, and herdr's first lifecycle authority in this base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-89 | P2 | M | done | The omp adapter, and the directory collision herdr refuses | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-90 | P2 | L | done | herdr built nightly from its development branch, published here, and followed by the herdr adapter | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-91 | P2 | S | open | The consumer smoke can only break after a release | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-91 | P2 | S | done | The consumer smoke can only break after a release | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-92 | P1 | M | done | text-tool becomes a product an agent downloads, not a script in a checkout | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-93 | P1 | S | done | `--between` is the one edit operation with no required count, and it deletes the most | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

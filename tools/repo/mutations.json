@@ -148,8 +148,8 @@
     {
       "label": "text-tool: --after and --before need --expect too",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif (o.haveFind || o.haveInsertFind) && !o.haveExpect && !o.count {",
-      "replace": "\t\tif o.haveFind && !o.haveExpect && !o.count {",
+      "find": "\t\tif (o.haveFind || o.haveInsertFind || o.haveBetween) && !o.haveExpect && !o.count {",
+      "replace": "\t\tif (o.haveFind || o.haveBetween) && !o.haveExpect && !o.count {",
       "run": "TestInsertingBesideAMatchNeedsExpect",
       "module": "tools/text-tool",
       "args": []
@@ -184,7 +184,7 @@
     {
       "label": "text-tool: only a --replace can leave a file unmatched",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif matches == 0 \u0026\u0026 (o.haveFind || o.haveInsertFind) {",
+      "find": "\t\tif matches == 0 \u0026\u0026 (o.haveFind || o.haveInsertFind || o.haveBetween) {",
       "replace": "\t\tif matches == 0 \u0026\u0026 false {",
       "run": "TestAFileThatMatchedNothingRefusesTheWholeCall",
       "module": "tools/text-tool",
@@ -241,6 +241,123 @@
       "find": "\t\tif o.eol == \"keep\" && o.bom == \"keep\" {",
       "replace": "\t\tif o.eol == \"keep\" && o.bom == \"keep\" && false {",
       "run": "TestTheEOLModeRefusesWhatItCannotDo",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "a resource feed that is absent keeps no figure, however well podman parsed it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/observe.go",
+      "find": "\tif f.Feeds[FeedResources] != FeedPresent {\n\t\treturn\n\t}",
+      "replace": "\tif f.Feeds[FeedResources] == \"never\" {\n\t\treturn\n\t}",
+      "run": "TestAFeedThatDoesNotExistReportsAbsentAndNotZero",
+      "args": []
+    },
+    {
+      "label": "the root cgroup is what makes a container unaccountable, and it is read per container",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/observe.go",
+      "find": "\tcase \"/\":\n\t\tf.Feeds[FeedResources] = FeedAbsent",
+      "replace": "\tcase \"/never-matches\":\n\t\tf.Feeds[FeedResources] = FeedAbsent",
+      "run": "TestAFeedThatDoesNotExistReportsAbsentAndNotZero",
+      "args": []
+    },
+    {
+      "label": "the heartbeat names the kind of thing it is watching",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tif kind == \"\" {\n\t\treturn \"unknown-kind\"\n\t}",
+      "replace": "\tif kind == \"\" {\n\t\treturn \"distro\"\n\t}",
+      "run": "TestTheHeartbeatSaysWhichKindOfThingItIsWatching",
+      "args": []
+    },
+    {
+      "label": "an absent resource feed does not render as an unknown one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tcase FeedAbsent:\n\t\treturn \"resources absent\" + note",
+      "replace": "\tcase FeedAbsent:\n\t\treturn \"resources unknown\" + note",
+      "run": "TestTheResourceColumnSaysWhyItIsEmpty",
+      "args": []
+    },
+    {
+      "label": "a 137 on a base with no cgroup says the out-of-memory kill cannot be told apart",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/observe.go",
+      "find": "\t\tif f.Feeds[FeedResources] == FeedAbsent {",
+      "replace": "\t\tif f.Feeds[FeedResources] == FeedPresent {",
+      "run": "TestAContainerIsNotDiagnosedInADistributionsWords",
+      "args": []
+    },
+    {
+      "label": "a size the engine printed is rounded rather than truncated",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/engine.go",
+      "find": "\treturn int64(math.Round(n * mul)), true",
+      "replace": "\treturn int64(math.Trunc(n * mul)), true",
+      "run": "TestASizeIsReadInTheUNITSTheEnginePrinted",
+      "args": []
+    },
+    {
+      "label": "the container probe never reaches for a podman events window it cannot answer",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/observe.go",
+      "find": "\t\t\"podman stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}' \" + n + \" 2\u003e/dev/null || printf '\\\\n'\\n\")",
+      "replace": "\t\t\"podman events --since 5m --until 0s \" + n + \" 2\u003e/dev/null || printf '\\\\n'\\n\")",
+      "run": "TestTheProbeNeverAsksPodmanForAWindowItCannotAnswer",
+      "args": []
+    },
+    {
+      "label": "the consumer check refuses a run that did not reach every case it declares",
+      "file": "internal/checks/consumer.go",
+      "find": "\tif !rep.Complete {",
+      "replace": "\tif !rep.Complete \u0026\u0026 false {",
+      "run": "TestAConsumerRunThatProvedNothingIsRefused",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "the consumer check refuses a run that reached no case at all",
+      "file": "internal/checks/consumer.go",
+      "find": "\tif rep.Cases == 0 {",
+      "replace": "\tif rep.Cases == -1 {",
+      "run": "TestAConsumerRunThatProvedNothingIsRefused",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "the consumer check refuses a failure count no detail row accounts for",
+      "file": "internal/checks/consumer.go",
+      "find": "\tif rep.Failed \u003e named {",
+      "replace": "\tif rep.Failed \u003e named \u0026\u0026 false {",
+      "run": "TestAConsumerRunThatProvedNothingIsRefused",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "text-tool: --between needs --expect, like every other search",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif (o.haveFind || o.haveInsertFind || o.haveBetween) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {",
+      "replace": "\t\tif (o.haveFind || o.haveInsertFind) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {",
+      "run": "TestBetweenNeedsExpectLikeEveryOtherSearch",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a --between says which lines it took, because a wrong range is still one match",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif r.Op == \"between\" \u0026\u0026 len(f.Lines) == 2 {",
+      "replace": "\t\tif false \u0026\u0026 len(f.Lines) == 2 {",
+      "run": "TestBetweenSaysWhichLinesItTook",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: the report names the operation that ran",
+      "file": "internal/edit/apply.go",
+      "find": "\tcase o.haveBetween:\n\t\treturn \"between\"",
+      "replace": "\tcase o.haveBetween \u0026\u0026 false:\n\t\treturn \"between\"",
+      "run": "TestTheReportNamesTheOperationThatRan",
       "module": "tools/text-tool",
       "args": []
     },
@@ -3498,8 +3615,8 @@
     {
       "label": "text: a substitution with no expected count is refused",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif (o.haveFind || o.haveInsertFind) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {\n",
-      "replace": "\t\tif false \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {\n",
+      "find": "\t\tif (o.haveFind || o.haveInsertFind || o.haveBetween) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {\n",
+      "replace": "\t\tif false \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count \u0026\u0026 o.haveBetween {\n",
       "run": "TestASubstitutionWithoutExpectIsRefused",
       "module": "tools/text-tool",
       "args": []

@@ -22,7 +22,9 @@ tools/windows/wsl-toolkit/
   internal/toolkit/shipped  generated copy of the scripts/common/ files the
                             executable CARRIES, which the gate compares
   acceptance.ps1            real-Windows acceptance runner
-  consumer.ps1              published-release smoke runner
+  consumer.ps1              published-release smoke runner. -Exe drives a
+                            working-tree build instead, which is what the
+                            gate's `consumer` check runs on every commit
   wsl-toolkit.1             generated man page
 ```
 

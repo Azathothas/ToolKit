@@ -1155,11 +1155,14 @@ func (t *Throwaways) runIn(ctx context.Context, name string, spec ThrowawaySpec)
 	var outN, errN atomic.Int64
 	started := time.Now()
 	stdout, stderr := spec.Stdout, spec.Stderr
-	facts := t.tickFacts(name)
 	if spec.Log != nil {
 		// ⭐ THE HEARTBEAT IS THE RELAY'S. It fires on silence rather than on a
 		// timer, and reads the distribution's state and disk when it does.
-		spec.Log.Begin(name, facts)
+		//
+		// ⚠ THE ADAPTER SAYS WHAT THIS IS. observe.go owns the seam; before it,
+		// the relay reported every subject as a distribution, which was true of
+		// every subject it had.
+		spec.Log.Begin(name, &DistroObserver{Name: name, Read: t.tickFacts(name)})
 		stdout, stderr = spec.Log.Stdout(), spec.Log.Stderr()
 	}
 	code, err := t.wsl.Exec(ctx, ExecRequest{
@@ -1175,7 +1178,7 @@ func (t *Throwaways) runIn(ctx context.Context, name string, spec ThrowawaySpec)
 	}
 	if spec.Log != nil {
 		if lerr := spec.Log.Finish(RunOutcome{Exit: out.Exit, TimedOut: out.TimedOut, Cancelled: out.Cancelled,
-			Timeout: spec.Timeout, StartError: out.Error}, facts); lerr != nil {
+			Timeout: spec.Timeout, StartError: out.Error}); lerr != nil {
 			out.LogError = lerr.Error()
 		}
 	}
@@ -1214,7 +1217,7 @@ func (t *Throwaways) classifyRun(ctx context.Context, name string, spec Throwawa
 // the word unknown rather than a guess.
 func (t *Throwaways) tickFacts(name string) func() TickFacts {
 	return func() TickFacts {
-		f := TickFacts{State: "unknown"}
+		f := TickFacts{Kind: "distro", State: "unknown"}
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if names, err := t.wsl.listNames(ctx); err == nil {
