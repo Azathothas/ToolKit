@@ -3089,6 +3089,123 @@
       "replace": "\tif len(name) == 1 && false {\n\t\treturn \"-\"\n\t}\n",
       "run": "TestAOneLetterFlagIsWrittenWithOneDash",
       "args": []
+    },
+    {
+      "label": "record: an entry the work order names twice is reported once",
+      "module": "tools/check",
+      "file": "internal/checks/record.go",
+      "find": "\t\t\tif _, ok := status[id]; !ok || seen[id] {\n",
+      "replace": "\t\t\tif _, ok := status[id]; !ok {\n",
+      "run": "TestTheWorkOrderMustAgreeWithTheIndexAboutWhatIsFinished",
+      "args": []
+    },
+    {
+      "label": "base: the usage line names every subcommand the manual does",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "shell|exec|agent|herdr|bootstrap|grant",
+      "replace": "shell|exec|herdr|bootstrap|grant",
+      "run": "TestTheBaseUsageAndTheManualNameTheSameSubcommands",
+      "args": []
+    },
+    {
+      "label": "base: the manual names every subcommand the usage line does",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "main.go",
+      "find": "\"base agent\", \"base herdr\", \"base bootstrap\", ",
+      "replace": "\"base agent\", \"base bootstrap\", ",
+      "run": "TestTheBaseUsageAndTheManualNameTheSameSubcommands",
+      "args": []
+    },
+    {
+      "label": "base: asking the group for help is not a failure",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base.go",
+      "find": "\tif len(args) == 1 && (args[0] == \"--help\" || args[0] == \"-h\" || args[0] == \"help\") {\n",
+      "replace": "\tif len(args) == 1 && (args[0] == \"--help\" || args[0] == \"-h\" || args[0] == \"help\") && false {\n",
+      "run": "TestAskingTheBaseGroupForHelpIsNotAFailure",
+      "args": []
+    },
+    {
+      "label": "ste: a sentence over its ceiling is refused",
+      "find": "\t\t\tif w > ceiling {\n",
+      "replace": "\t\t\tif w > ceiling && false {\n",
+      "module": "tools/check",
+      "file": "internal/checks/ste.go",
+      "args": [],
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot"
+    },
+    {
+      "label": "ste: a paragraph over six sentences is refused",
+      "find": "\t\tif n > SentencesPerParagraph {\n",
+      "replace": "\t\tif n > SentencesPerParagraph && false {\n",
+      "module": "tools/check",
+      "file": "internal/checks/ste.go",
+      "args": [],
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot"
+    },
+    {
+      "label": "ste: a list item is its own unit, not part of the one before it",
+      "find": "\t\tif steItem.MatchString(line) {\n\t\t\tflush()\n",
+      "replace": "\t\tif steItem.MatchString(line) && false {\n\t\t\tflush()\n",
+      "module": "tools/check",
+      "file": "internal/checks/ste.go",
+      "args": [],
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot"
+    },
+    {
+      "label": "ste: a code span is masked across a line break",
+      "find": "\tregexp.MustCompile(\"(?s)`[^`]*`\"),",
+      "replace": "\tregexp.MustCompile(\"`[^`\\\\n]*`\"),",
+      "module": "tools/check",
+      "file": "internal/checks/ste.go",
+      "args": [],
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot"
+    },
+    {
+      "label": "ste: the record is outside the rule",
+      "find": "\tcase strings.HasPrefix(f, \"TODO/\"):\n",
+      "replace": "\tcase strings.HasPrefix(f, \"TODO-none/\"):\n",
+      "module": "tools/check",
+      "file": "internal/checks/ste.go",
+      "args": [],
+      "run": "TestTheRecordIsOutsideSTEAndSaysWhy"
+    },
+    {
+      "label": "skills: a command a skill names must exist in the manual",
+      "find": "\t\t\tif !manualHas(manual, cmd) {\n",
+      "replace": "\t\t\tif !manualHas(manual, cmd) && false {\n",
+      "module": "tools/check",
+      "file": "internal/checks/skills.go",
+      "args": [],
+      "run": "TestASkillNamesOnlyCommandsThatExist"
+    },
+    {
+      "label": "skills: a skill may not link out of its own directory",
+      "find": "\t\t\t\tif strings.HasPrefix(target, \"../\") || strings.HasPrefix(target, \"/\") {\n",
+      "replace": "\t\t\t\tif (strings.HasPrefix(target, \"../\") || strings.HasPrefix(target, \"/\")) && false {\n",
+      "module": "tools/check",
+      "file": "internal/checks/skills.go",
+      "args": [],
+      "run": "TestASkillNamesOnlyCommandsThatExist"
+    },
+    {
+      "label": "skills: only a fenced block is read for a command name",
+      "find": "\t\tif !inFence {\n",
+      "replace": "\t\tif false {\n",
+      "module": "tools/check",
+      "file": "internal/checks/skills.go",
+      "args": [],
+      "run": "TestASkillNamesOnlyCommandsThatExist"
+    },
+    {
+      "label": "skills: the front matter name matches the skill's directory",
+      "find": "\t} else if name != dir {\n",
+      "replace": "\t} else if name != dir && false {\n",
+      "module": "tools/check",
+      "file": "internal/checks/skills.go",
+      "args": [],
+      "run": "TestASkillNamesOnlyCommandsThatExist"
     }
   ]
 }

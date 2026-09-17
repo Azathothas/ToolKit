@@ -55,7 +55,7 @@ Two consequences that come up constantly:
 | a token an agent may use | an ignored file the project documents **by name**, never by value |
 
 ⭐ **The `.example` twin is the useful half.** It documents which keys exist and
-what shape each takes, so a reader knows what to obtain without anyone
+what shape each takes, so a reader knows what to get without anyone
 publishing what they are.
 
 ⛔ **List the ignore rule before the file exists.** A credential file added to

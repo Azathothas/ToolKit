@@ -15,13 +15,18 @@ reading.
 [`../security/secrets.md`](../security/secrets.md) covers credentials. This is
 the wider rule, and it catches things that are not credentials at all:
 
-⛔ Real hostnames and domains. Account, project, tenant, namespace and zone
-identifiers. Internal paths, especially absolute ones with a username in them.
-Credential filenames specific to one machine. The names of private projects.
-Email addresses. Internal service names and topology.
+⛔ **None of these goes in a public file:**
+
+- real hostnames and domains;
+- account, project, tenant, namespace and zone identifiers;
+- internal paths, especially absolute ones with a username in them;
+- credential filenames specific to one machine;
+- the names of private projects;
+- email addresses;
+- internal service names and topology.
 
 None of it is a credential. All of it is a map, and a map is what makes the
-next attempt cheap.
+next try cheap.
 
 ⭐ **In an example, use an obvious placeholder.** `example.com`, `OWNER/REPO`,
 `ACCOUNT_ID`. A reader can tell a placeholder from a real value; a scanner

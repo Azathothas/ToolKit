@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -9,7 +10,7 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|remove|shell|exec|herdr|bootstrap|grant|revoke|attach|presets>
+const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|remove|shell|exec|agent|herdr|bootstrap|grant|revoke|attach|presets>
 
   status     is it registered, and can it actually run a container
   doors      attack its doors from the inside and report what got through
@@ -18,6 +19,7 @@ const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|remove|shell|e
   remove     unregister it and delete its disk
   shell      attach an interactive shell to it, as the unprivileged account
   exec       run a non-interactive POSIX script in it, as that account
+  agent      run one agent in it by name, with every argument the agent's own
   herdr      run one herdr command in it, with every argument herdr's own
   bootstrap  run the bootstrap this executable carries in it, as its account
   grant      mount one more Windows directory under /workspaces, now, with no restart
@@ -43,6 +45,17 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	if len(args) == 0 {
 		fmt.Fprint(os.Stderr, baseUsage)
 		return exitCannot, nil
+	}
+	// ⛔ ASKING A GROUP FOR HELP IS NOT AN UNKNOWN SUBCOMMAND. `base --help` fell
+	// through to the default arm, printed this usage and exited 2 saying
+	// `"--help" is not a base subcommand` - while the top level and every one of
+	// this group's own subcommands answer --help with 0. A page that tells a
+	// reader to run `base --help` and also to read the exit code from the process
+	// was telling them their correct command had failed. `skills/wsl-toolkit`
+	// says both of those things.
+	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help") {
+		fmt.Fprint(os.Stderr, baseUsage)
+		return exitOK, flag.ErrHelp
 	}
 	sub, rest := args[0], args[1:]
 	fs := newFlagSet("base " + sub)

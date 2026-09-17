@@ -16,6 +16,41 @@ person who is looking for one fact.
 
 ---
 
+## "Short sentences" is a number now: ASD-STE100
+
+⭐ **The countable half of ASD-STE100, Simplified Technical English, is a gate
+check.** Run it with `sh scripts/common/check.sh ste`. Four rules, and every
+finding cites the STE rule it comes from:
+
+| rule | what it holds |
+| --- | --- |
+| STE 4.1 | a sentence is at most 25 words, and at most 20 when it is a step in an ordered list |
+| STE 6.1 | a paragraph is at most 6 sentences. A list item is its own unit |
+| STE 1.1 | a word with an approved replacement is replaced, from the table in the check |
+| STE 1.2 and 1.3 | one concept is written one way. `distro` and `distribution` are the same thing |
+
+⭐ **The corpus was measured before the rule was written**, on 2026-09-17: 4,836
+sentences in the documents a reader follows, **none over 25 words**, longest 19.
+This rule did not arrive to punish the tree. It arrived to put a number on a
+sentence that had none, and to catch the three things nobody was counting.
+
+⚠ **A short form inside backticks is a Technical Name and is allowed**, which is
+STE rule 1.4. This tool really does have a command called `distro` and a flag
+called `--dir`. Outside backticks the same word is prose, and rule 1.3 applies.
+
+⛔ **The voice rules are NOT in the check, and that is deliberate.** STE bans the
+passive voice and the gerund used as a noun. No regular expression decides either
+without refusing correct sentences, and this page already rules that such a guard
+is worse than none. They stay with the review pass.
+
+⚠ **The work record is outside the rule.** `TODO/`, `CHANGELOG.md`,
+[`../HISTORY/`](../HISTORY/README.md) and the reference sweeps are evidence of
+what was believed on a date, and [`../../TODO/ENTRY.md`](../../TODO/ENTRY.md)
+forbids rewriting a premise. Each exemption is a path with a reason, in the
+check, so the set cannot grow quietly.
+
+---
+
 ## The three markers, and nothing else
 
 ⛔ ⭐ ⚠ and no others. Each means one thing:

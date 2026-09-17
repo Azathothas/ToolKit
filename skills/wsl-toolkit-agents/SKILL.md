@@ -15,7 +15,51 @@ base's `herdr` adapter installs it.
 
 ---
 
-## 1. Work out where you are
+## 1. Get the tool, and two rules that cost a session when broken
+
+`wsl-toolkit` is a single Windows executable. Ask it what it is:
+
+```powershell
+wsl-toolkit --version
+```
+
+If the command is not found, the executable is not on `PATH`. It is one file. The
+user downloads it from the repository's releases and puts it in a directory on
+`PATH`, usually `%USERPROFILE%\bin`.
+
+To move it to the newest release:
+
+```powershell
+wsl-toolkit selfupdate
+```
+
+⚠ **An old executable cannot read a newer configuration.** The refusal names the
+field it does not know. `selfupdate` is the fix.
+
+⛔ **RUN IT FROM POWERSHELL, NOT GIT BASH.** MSYS rewrites a guest path, so
+`--dir /workspaces/proj` arrived inside the tool as
+`C:/Program Files/Git/workspaces/proj`. Every example here is PowerShell, and
+several of them pipe into `ConvertFrom-Json`, which is PowerShell only.
+
+⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** A pipeline reports
+its own status and not the tool's. Read `$LASTEXITCODE` on the line after the
+command.
+
+⚠ **Asking for help is not a failure.** `wsl-toolkit base --help` and every
+`wsl-toolkit base SUBCOMMAND --help` answer 0. `wsl-toolkit base` with no
+subcommand answers 2, because nothing was asked.
+
+⛔ **Never guess a `wsl-toolkit` flag either.** Its manual is generated from the
+commands the executable really has, so it is current for the binary you are
+running:
+
+```powershell
+wsl-toolkit man --no-pager
+```
+
+---
+
+## 2. Work out where you are
 
 **Inside a herdr pane**, the `herdr` command talks to the session you are in:
 
@@ -37,7 +81,7 @@ config` prints what is configured.
 
 ---
 
-## 2. Learn the CLI from the CLI
+## 3. Learn the CLI from the CLI
 
 ⛔ **Do not guess a herdr flag.** herdr moves quickly and a pasted flag list rots:
 
@@ -52,7 +96,7 @@ terminal UI and blocks. Print a group instead.
 
 ---
 
-## 3. Start an agent
+## 4. Start an agent
 
 Make a pane, read its id back from the command that made it, and start an agent in it:
 
@@ -72,12 +116,16 @@ wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $p
 ⚠ **Read the pane id from the command output.** The base may already hold workspaces,
 so a guessed id points at someone else's work.
 
+⚠ **The flags above were measured on 2026-09-17 and this page is not their
+authority.** herdr moves. If one is refused, ask the CLI, as the section before
+this one says, and use what it answers.
+
 ⛔ **The name must be free.** A second start under a name in use answers
 `agent_name_taken` and names the pane already holding it. Pick another name.
 
 ---
 
-## 4. Send a turn, and read the answer
+## 5. Send a turn, and read the answer
 
 ```powershell
 wsl-toolkit --instance base base herdr -- agent prompt work "Answer with only the number of files git tracks here."
@@ -96,7 +144,7 @@ wsl-toolkit --instance base base herdr -- agent wait work --until idle --timeout
 
 ---
 
-## 5. ⭐ Read back what the agent is really on
+## 6. ⭐ Read back what the agent is really on
 
 ⛔ **A configuration file saying a model is set is not the model the agent started
 on.** Read the agent's own status line:
@@ -122,7 +170,7 @@ fine:
 
 ---
 
-## 6. Set the model and the effort a session begins on
+## 7. Set the model and the effort a session begins on
 
 ⛔ **AN ENVIRONMENT VARIABLE CANNOT DO THIS.** An agent herdr starts inherits the
 herdr **service's** environment, not a login shell's. A value exported in `~/.profile`
@@ -169,7 +217,7 @@ all to `muse login`.
 
 ---
 
-## 7. Attach, when a person wants to watch
+## 8. Attach, when a person wants to watch
 
 ```powershell
 wsl-toolkit --instance base base attach
@@ -182,7 +230,7 @@ From inside the base, `wsl-toolkit --instance base base shell`, then `herdr`.
 
 ---
 
-## 8. Traps
+## 9. Traps
 
 ⛔ **An agent must be on the PATH a PANE has**, which is a login shell's and does not
 include `~/.local/bin`. The adapters write a wrapper on the system path for this. If

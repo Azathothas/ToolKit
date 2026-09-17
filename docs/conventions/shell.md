@@ -272,7 +272,7 @@ rather than warns, over every tracked text file.
   as mojibake. `WSL_UTF8=1` fixes it.
 - ⛔ **A payload handed to `wsl.exe -- /bin/sh -lc` does NOT keep its quoting,
   and the caller cannot fix it by quoting harder.** Measured on 2026-08-27
-  against real Alpine and Debian distros, under **both** PowerShell hosts, with
+  against real Alpine and Debian distributions, under **both** PowerShell hosts, with
   every hazard **already correctly single-quoted for `sh`** before it was
   passed:
 
@@ -303,7 +303,7 @@ rather than warns, over every tracked text file.
 - ⛔ **`wsl.exe` is one of the commands the path-conversion rule above applies
   to**, which is not obvious because `wsl.exe` is itself a Windows program.
   From Git Bash, `wsl -d D -- /bin/sh -lc ...` has `/bin/sh` rewritten to
-  `C:/Program Files/Git/bin/sh`, and the distro reports as unstartable on a
+  `C:/Program Files/Git/bin/sh`, and the distribution reports as unstartable on a
   machine where it is running fine.
 - ⚠ **Windows PowerShell 5.1 drops a double quote when it builds a CHILD
   PROCESS's argument list**, one layer above `wsl.exe`. A `-Command` value of
@@ -375,7 +375,7 @@ rather than warns, over every tracked text file.
   swallows a parameter of that name. Variable names are case-insensitive, so
   `$Args` collides too. Name locals so they cannot.
 - ⚠ **`$PSNativeCommandUseErrorActionPreference` defaults to false** from pwsh
-  7.4, so a native command writing to stderr does not terminate under
+  7.4, so a native command writing to stderr does not stop under
   `$ErrorActionPreference = 'Stop'`.
 - ⚠ **`Get-Command` finds cmdlets, functions and aliases too.** Filter to
   `Application` and `ExternalScript` when you mean an executable. A cmdlet

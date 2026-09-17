@@ -41,7 +41,12 @@ function Get-Tool {
 
 $git = Get-Tool 'git'
 if (-not $git) { [Console]::Error.WriteLine('repo: git not found'); exit 2 }
-$repoRoot = (& $git rev-parse --show-toplevel 2>$null)
+# THE REPOSITORY IS RESOLVED FROM THIS FILE, for the reason its sh twin states.
+# Measured 2026-09-17 from a git repository with no tools/repo: this half ended 1
+# where the twin ended 2, because $ErrorActionPreference = 'Stop' made
+# Push-Location's failure terminating and the exit 2 below was never reached.
+# TODO/PROGRESS.md findings 3 and 34.
+$repoRoot = (& $git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) { [Console]::Error.WriteLine('repo: not a git repository'); exit 2 }
 $repoRoot = $repoRoot.Trim()
 
@@ -56,7 +61,13 @@ $tmp = Join-Path $repoRoot '.tmp'
 if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp -Force }
 $bin = Join-Path $tmp ('repo' + $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }))
 
-Push-Location (Join-Path $repoRoot 'tools/repo')
+$toolDir = Join-Path $repoRoot 'tools/repo'
+# TESTED RATHER THAN THROWN, so "could not run" stays 2 and does not become 1.
+if (-not (Test-Path -LiteralPath $toolDir -PathType Container)) {
+    [Console]::Error.WriteLine("repo: $toolDir does not exist, so the tool box cannot be built")
+    exit 2
+}
+Push-Location $toolDir
 try { & $go build -o $bin . }
 finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('repo: the tool box did not build'); exit 2 }

@@ -30,8 +30,17 @@
 set -u
 
 command -v git >/dev/null 2>&1 || { printf 'repo: git not found\n' >&2; exit 2; }
-git rev-parse --show-toplevel >/dev/null 2>&1 || { printf 'repo: not a git repository\n' >&2; exit 2; }
-REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# THE REPOSITORY IS RESOLVED FROM THIS FILE, NOT FROM THE CALLER'S DIRECTORY.
+# `git rev-parse --show-toplevel` with no -C answers about wherever the caller
+# is standing, so running this from a checkout under .tmp built and ran THAT
+# tree's tools. Measured 2026-09-17 from a git repository with no tools/repo:
+# exit 2 and `the tool box did not build`, which is honest and is an answer
+# about the wrong tree. Its .ps1 twin had the same defect and answered 1.
+# TODO/PROGRESS.md findings 3 and 34.
+HERE=$(cd -- "$(dirname -- "$0")" && pwd) || { printf 'repo: could not resolve this script\n' >&2; exit 2; }
+git -C "$HERE" rev-parse --show-toplevel >/dev/null 2>&1 || { printf 'repo: not a git repository\n' >&2; exit 2; }
+REPO_ROOT=$(git -C "$HERE" rev-parse --show-toplevel)
 command -v go >/dev/null 2>&1 || {
   printf 'repo: no Go toolchain on PATH, and these tools are a Go program.\n' >&2
   printf '  That is "could not run" rather than a pass: nothing was done.\n' >&2

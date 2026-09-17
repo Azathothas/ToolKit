@@ -116,6 +116,17 @@ func TestTheWorkOrderMustAgreeWithTheIndexAboutWhatIsFinished(t *testing.T) {
 			status: map[string]string{"WSL-74": "done"},
 			want:   1,
 		},
+		{
+			// ⚠ AN ITEM MAY NAME ONE ENTRY TWICE, once as its subject and once in
+			// the sentence about what it uses, and the real item 3 does. Listing it
+			// twice made one defect read as two. Found by planting the defect in the
+			// real record, which is the pass a fixture could not have made.
+			name:       "an item that names the same done entry twice",
+			order:      "1. **`WSL-84`**, and it uses what `WSL-84` fixed.\n",
+			status:     map[string]string{"WSL-84": "done"},
+			want:       1,
+			wantDetail: "(WSL-84)",
+		},
 	}
 
 	for _, c := range cases {

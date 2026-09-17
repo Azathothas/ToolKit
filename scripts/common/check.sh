@@ -31,8 +31,17 @@
 set -u
 
 command -v git >/dev/null 2>&1 || { printf 'check: git not found\n' >&2; exit 2; }
-git rev-parse --show-toplevel >/dev/null 2>&1 || { printf 'check: not a git repository\n' >&2; exit 2; }
-REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# ⛔ THE REPOSITORY IS RESOLVED FROM THIS FILE, NOT FROM THE CALLER'S DIRECTORY.
+# `git rev-parse --show-toplevel` with no -C answers about wherever the caller
+# happens to be standing, so running this from a checkout under .tmp gated THAT
+# repository instead of this one. Measured on 2026-09-17 from a git repository
+# with no tools/check: exit 2 and `the gate did not build`, which is honest but is
+# an answer about the wrong tree. Its .ps1 twin had the same defect and answered 1
+# rather than 2. TODO/PROGRESS.md findings 3 and 34.
+HERE=$(cd -- "$(dirname -- "$0")" && pwd) || { printf 'check: could not resolve this script\n' >&2; exit 2; }
+git -C "$HERE" rev-parse --show-toplevel >/dev/null 2>&1 || { printf 'check: not a git repository\n' >&2; exit 2; }
+REPO_ROOT=$(git -C "$HERE" rev-parse --show-toplevel)
 command -v go >/dev/null 2>&1 || {
   printf 'check: no Go toolchain on PATH, and the gate is a Go program.\n' >&2
   printf '  That is "could not run" rather than a pass: nothing was checked.\n' >&2

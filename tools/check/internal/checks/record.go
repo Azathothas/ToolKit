@@ -276,11 +276,18 @@ func checkWorkOrder(r *Result, t *Tree, status map[string]string) {
 	}
 
 	for _, it := range items {
+		// ⚠ EACH ID ONCE. An item may name one entry twice - the real item 3
+		// does, once as its subject and once in the sentence about what it uses -
+		// and a finding that listed it twice read as two defects. Found by planting
+		// the defect in the real record rather than in a fixture.
 		var known []string
+		seen := map[string]bool{}
 		for _, id := range it.ids {
-			if _, ok := status[id]; ok {
-				known = append(known, id)
+			if _, ok := status[id]; !ok || seen[id] {
+				continue
 			}
+			seen[id] = true
+			known = append(known, id)
 		}
 		if len(known) == 0 {
 			continue

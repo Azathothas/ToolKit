@@ -208,7 +208,7 @@ and fails a review instead. That is the same split every other prose rule has.
 ### `common/check-twins.sh`
 
 Do the two probe implementations still answer the same way. It runs both on
-one machine and compares the schema, the section keys, and the host and repo
+one machine and compares the schema, the section keys, and the host and repository
 facts that describe that machine.
 
 ⚠ It compares the SHAPE and the FACTS, not the tool-by-tool verdicts. Each
@@ -317,14 +317,14 @@ against, and can that directory be read at all.
 ⭐ **It reads the kernel, not a unit's exit code**, because the unit is the thing
 that lied: `systemd-binfmt.service` reported `status=0/SUCCESS` having
 registered zero handlers, with an autofs stacked on the mount so every read
-returned `ELOOP`. Green unit, complete config, installed emulators, and
+returned `ELOOP`. Green unit, complete configuration, installed emulators, and
 cross-architecture execution had never once worked.
 
 ⛔ **It does not use `podman machine ssh`**, which is what the reporting issue
 assumed. On Windows that command passes `-o UserKnownHostsFile=NUL` to its own
 ssh, and under Git Bash `NUL` is a filename rather than the null device, so it
 writes a 99-byte file called `NUL` into the directory you ran it from. ⭐ It is
-also unnecessary: every WSL2 distro shares one kernel, so `wsl -d DISTRO` reads
+also unnecessary: every WSL2 distribution shares one kernel, so `wsl -d DISTRO` reads
 the same handlers with nothing written anywhere.
 
 ⚠ **`--require N` is what turns it from a report into an assertion.** Without
@@ -427,7 +427,7 @@ merely mentions one skips CI, because the platform does not read the sentence
 around it.
 
 ⚠ **It knows nothing about who you are.** Identity comes from the flags or from
-git config, and if neither has one it refuses rather than guessing.
+`git config`, and if neither has one it refuses rather than guessing.
 
 ### `common/deslop.sh`
 

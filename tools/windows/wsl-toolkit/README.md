@@ -115,7 +115,7 @@ is reported `operator` because a pseudo console has no window. `base attach` pri
 client matching the server the base runs, which is the one to pass. ⚠ Exit 2 is "could
 not run" and exit 1 is "a signal failed"; they are different answers.
 
-For a focused distro change, use a separately named `eph-*` distribution and an
+For a focused distribution change, use a separately named `eph-*` distribution and an
 isolated `--home`. Exercise success, failure, deadline, ownership refusal,
 snapshot and reuse, and cleanup. When the command channel or the relay changes,
 also prove on a real distribution:
@@ -173,6 +173,9 @@ since they were written.
 ## Related
 
 - [`wsl-toolkit.md`](wsl-toolkit.md): operator guide
+- [`examples/windows-repo/README.md`](examples/windows-repo/README.md): a GitHub
+  repository cloned on Windows, an agent editing it inside the base, and the
+  commit and the push staying on Windows with nothing signed in under WSL
 - [`../../../docs/consumers.md`](../../../docs/consumers.md): external contract
 - [`../../../docs/methodology/gate.md`](../../../docs/methodology/gate.md):
   completion gate

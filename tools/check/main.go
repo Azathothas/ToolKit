@@ -40,6 +40,8 @@ var all = []check{
 	{"markers", "check-markers/1", checks.Markers, "only the five allowed characters, and not too many of them"},
 	{"record", "check-record/1", checks.Record, "the work record agrees with itself"},
 	{"one-home", "check-one-home/1", checks.OneHome, "no long sentence in two documents"},
+	{"ste", "check-ste/1", checks.STE, "the countable half of ASD-STE100 over the documents a reader follows"},
+	{"skills", "check-skills/1", checks.Skills, "every skill stands alone and names only commands the tool really has"},
 	{"control-bytes", "check-control-bytes/1", checks.ControlBytes, "no literal control byte in a tracked text file"},
 	{"placeholders", "check-placeholders/1", checks.Placeholders, "no template placeholder survived into a real file"},
 	{"shell", "check-shell/1", checks.Shell, "every tracked shell script parses"},

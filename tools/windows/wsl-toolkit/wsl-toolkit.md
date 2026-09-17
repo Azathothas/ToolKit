@@ -716,7 +716,7 @@ wsl-toolkit distro remove --name build-box --yes
   unencrypted archive of whatever the distribution held, a credential a command
   left behind included.
 - A refusal answers 2 and changes nothing. A removal or an export that was
-  attempted and did not finish answers 1.
+  tried and did not finish answers 1.
 
 ⛔ **The tool acts only on a distribution whose disk WSL registered inside this
 state directory's `distros` folder.** The prefix proves nothing, so a
@@ -733,7 +733,7 @@ running distribution, and one another run is still creating, is kept unless
   waiting for input reads end of file rather than waiting. `distro enter` is the
   interactive path.
 - It runs as a login shell, as `--user`, and its exit code is the answer.
-  `--timeout` terminates the distribution and answers 124, and a cancellation
+  `--timeout` stops the distribution and answers 124, and a cancellation
   answers 130.
 - `-c`, `--command-base64` and `--script` are three spellings of one command.
   The copy in transit has CRLF turned into LF and a byte order mark dropped, and
@@ -819,8 +819,8 @@ wsl-toolkit --instance base base doors --json
 `base doors` runs a probe inside the base, **as its unprivileged account**, that
 TRIES each way out and reports what got through. ⛔ **No row is a setting read
 back.** A door is `open` because something actually got through, `closed` because
-the attempt was refused, `unknown` because this guest carries no way to make the
-attempt, and `info` where a value is worth printing and no attempt was made.
+something refused it, `unknown` because this guest carries no way to try it, and
+`info` where a value is worth printing and nothing was tried.
 
 ⛔ **`unknown` is not `closed`.** A probe that reports a door shut because it could
 not reach the handle is the failure this command exists to refuse, so a door the
@@ -858,7 +858,7 @@ to try and saying so is the honest answer.
 
 ⛔ **This is a report, not a boundary.** Nothing in this tree has measured a WSL
 distribution to be a security boundary, and this command exists so the sentence
-that gets written about a base is made of attempts rather than of settings.
+that gets written about a base is made of what was tried rather than of settings.
 
 ---
 

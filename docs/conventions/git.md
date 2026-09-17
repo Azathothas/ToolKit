@@ -25,7 +25,7 @@ than explained afterwards.
 theirs and tooling is not a contributor to it.
 
 **How to apply.** Set the identity per invocation, so a machine with different
-global config still produces the right commits:
+global configuration still produces the right commits:
 
 ```bash
 git -c user.name="$NAME" -c user.email="$EMAIL" commit -F message.txt

@@ -37,7 +37,12 @@ function Get-Tool {
 
 $git = Get-Tool 'git'
 if (-not $git) { [Console]::Error.WriteLine('check: git not found'); exit 2 }
-$repoRoot = (& $git rev-parse --show-toplevel 2>$null)
+# THE REPOSITORY IS RESOLVED FROM THIS FILE, NOT FROM THE CALLER'S DIRECTORY,
+# for the reason its sh twin states. Measured on 2026-09-17 from a git repository
+# with no tools/check: this half ended 1 where the twin ended 2, because
+# $ErrorActionPreference = 'Stop' made Push-Location's failure terminating and the
+# exit 2 below was never reached. TODO/PROGRESS.md findings 3 and 34.
+$repoRoot = (& $git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) { [Console]::Error.WriteLine('check: not a git repository'); exit 2 }
 $repoRoot = $repoRoot.Trim()
 
@@ -52,7 +57,17 @@ $tmp = Join-Path $repoRoot '.tmp'
 if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp -Force }
 $bin = Join-Path $tmp ('check' + $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }))
 
-Push-Location (Join-Path $repoRoot 'tools/check')
+$checkDir = Join-Path $repoRoot 'tools/check'
+# TESTED RATHER THAN THROWN. Under $ErrorActionPreference = 'Stop' a
+# Push-Location onto a missing directory is a TERMINATING error, so pwsh ends 1
+# and the exit 2 this file documents is never reached - which merges "could not
+# run" into "a check failed", and is what this half did where its sh twin
+# answered 2. TODO/PROGRESS.md finding 34.
+if (-not (Test-Path -LiteralPath $checkDir -PathType Container)) {
+    [Console]::Error.WriteLine("check: $checkDir does not exist, so the gate cannot be built")
+    exit 2
+}
+Push-Location $checkDir
 try { & $go build -o $bin . }
 finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('check: the gate did not build'); exit 2 }

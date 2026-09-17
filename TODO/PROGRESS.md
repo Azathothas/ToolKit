@@ -233,7 +233,11 @@ new file FIRST, then run the gate.**
 | `e0a239b` | the muse-code guide rewritten with every command run before it was written, two standalone skills, `base revoke --help` describing itself, and three defects writing the guide found; 1 mutation row |
 | `6192e61` | the door sweep's find: `base bootstrap` puts `~/.local/bin` first and every agent wrapper is bypassed, with all three probes reading the name back on a LOGIN shell; 4 cases and 3 mutation rows |
 | `1699de9` | `WSL-76`'s fifth item driven: `PreToolUse` and `PermissionRequest` reported from a real turn, the reporter's log naming the event, and the cancelled approval that leaves an agent `blocked` for ever |
-| this record commit | the ending the 05:13Z session never wrote, from artefacts; `wsl-toolkit-v3.0.0` cut and its published assets verified; `WSL-90` closed on approach step 4; issues 30 and 32 commented rather than closed |
+| `7a23f46` | the ending the 05:13Z session never wrote, written from artefacts: its `SUMMARY.md` section, these rows and its measurements; findings 67 and 68 |
+| `ea89452` | herdr's newest stable corrected to `v0.9.1` across two pages and a workflow comment; `WSL-59`'s premise re-measured on podman 6.1.1, with the `--until` trap that returns nothing and exits 0 |
+| `302c31c` | `check-record` rule 7: `PROGRESS.md`'s work order must agree with `INDEX.md` about what is finished; 10 cases, 5 mutation rows, and finding 29 closed by the check it named |
+| `0eb5fb7` | a one-letter flag is written with one dash, in BOTH of the manual's renderers; 1 mutation row and finding 6 closed |
+| this record commit | `wsl-toolkit-v3.0.0` cut and its published assets verified; `WSL-90` closed on approach step 4; findings 3 and 34 fixed in both halves of the `check` wrapper pair, driven; issues 30 and 32 commented rather than closed |
 
 ## Measurements
 
@@ -253,6 +257,12 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
   then passed. ⚠ **It is the same damage the previous session recorded and repaired on
   `wsl-toolkit-base` after running `wsl --shutdown` twice** - and the sibling base,
   which every `run` and `matrix` uses, was left behind. Finding 67.
+- **The three pre-push checks at the END of the 10:01Z session:** Windows Go with
+  `TEMP` at the 8.3 path over all three modules, **378, 21 and 33 top-level results,
+  358 + 21 + 33 passed, 20 skipped, 0 failed, exit 0**; `check-go.sh` exit 0 in
+  `golang:1.25`; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **49** tracked scripts
+  in 20.5 s. ⚠ **The `wsl-toolkit` figure is 378 against 377 earlier in the same
+  session**, because `TestAOneLetterFlagIsWrittenWithOneDash` is new.
 - **The three pre-push checks, on `1699de9`:** Windows Go with `TEMP` at the 8.3 path,
   **377 top-level results, 357 passed, 20 skipped, 0 failed, exit 0**; `check-go.sh`
   exit 0 in `golang:1.25` in **27.9 s**; ShellCheck 0.9.0 in `ubuntu:24.04` clean over
@@ -475,8 +485,31 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
    syntax error planted by hand in a tracked `.ps1` takes the check to exit 1
    naming the file. ⚠ The cases need a real PowerShell and are in their own test
    function, so a host without one reports SKIPPED rather than passing.
-3. ⛔ `scripts/common/check.ps1` resolves the repository from the working
-   directory rather than its own location.
+3. ⭐ **CLOSED ON 2026-09-17, AND IT WAS BOTH HALVES OF THE PAIR.** This finding
+   named `check.ps1`; `check.sh` resolved the repository the same way, with a bare
+   `git rev-parse --show-toplevel`. Both take it from `$0` / `$PSScriptRoot` now.
+   ⛔ **Driven from a git repository with no `tools/check`, under `.tmp`:** before,
+   `check.sh` exit **2** `the gate did not build` and `check.ps1` exit **1**; after,
+   both exit **0** and check THIS repository. ⚠ **Neither ever reported a false
+   green**, which is better than this finding implied and is why the entry is
+   corrected rather than quoted. ⛔ **The `1` was finding 34 in a file finding 34
+   said had not been swept**: `Push-Location` onto a missing directory is
+   terminating under `'Stop'`, so the documented `exit 2` was never reached. It is
+   tested rather than thrown now, and a COPY of each wrapper placed inside that
+   repository answers **2** from both.
+   ⛔ **AND THE SWEEP FOUND A SECOND PAIR, which this finding never named.**
+   `git ls-files "scripts/**"` against `rev-parse --show-toplevel` turned up
+   `repo.sh` and `repo.ps1` with the identical defect, and the identical
+   disagreement: from that same repository `repo.sh` exited **2** and `repo.ps1`
+   exited **1**. Both resolve from their own location now and both answer about
+   THIS repository, `tag wsl-toolkit-v3.0.0 already exists`. ⭐ **So it is finding
+   34 three times, in two pairs.**
+   ⭐ **`doctor.sh` matches the same pattern and is CORRECT as it stands**, which
+   is why the sweep was read rather than applied: a host probe reporting which
+   repository you are standing in is doing its job, and "fixing" it would have
+   broken it. ⚠ **Nothing compares a pair's exit codes** since `check-twins` was
+   removed by `TOOL-14`, and there are four wrappers now rather than two, which is
+   the third occupant that justifies the rule this finding said would need one.
 4. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 1 on
    Debian 13; its cause has not been read.
 5. A deterministic regression for pre-marker base rollback is still owed. ⚠ **Met again on 2026-09-15:** a fedora build stopped mid-provisioning left `wsl-toolkit-t86fedora` registered, and `base remove` refused it with `carries no wsl-toolkit identity marker`, so `wsl.exe --unregister` was used by hand.
@@ -672,9 +705,15 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     `Write-Error`.** The preference makes it a terminating error, so an `exit 2` written
     after it never runs and pwsh ends **1** - which silently merges "could not run" into
     "a check failed". Met on 2026-09-16 in `herdr-remote-probe.ps1` and fixed there with
-    `[Console]::Error.WriteLine`. ⚠ **Not swept for elsewhere**: `acceptance.ps1`,
-    `consumer.ps1` and the `check-*.ps1` wrappers set the same preference and document a
-    distinct exit 2, and none was read for this shape.
+    `[Console]::Error.WriteLine`. ⛔ **MET AGAIN ON 2026-09-17, IN `check.ps1`, AND IN
+    A SECOND SHAPE**: not a `Write-Error` but a `Push-Location` onto a missing
+    directory, which is terminating under the same preference, so the file's
+    documented `exit 2` was never reached and pwsh ended **1** where its sh twin
+    ended 2. ⭐ Fixed by testing the directory rather than throwing, and proved by
+    running a copy of each wrapper inside a repository that has no `tools/check`:
+    both answer 2. ⚠ **`acceptance.ps1` and `consumer.ps1` are STILL not swept**,
+    and the shape is wider than `Write-Error`: any terminating operation between a
+    refusal and its `exit` has it.
 35. ⚠ **A guard that reads a field can be defeated by the read itself throwing.**
     `herdr-remote-probe.ps1` read a workspace id from the wrong property; StrictMode
     made the missing property a terminating error, which jumped past the assignment, so
@@ -999,10 +1038,98 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     settled. Found on 2026-09-17 by re-running that sweep with
     `git ls-files | xargs grep -l` rather than reading the sentence.
 
+69. ⛔ **A WINDOWS LAUNCHER THIS TOOL WROTE IS SHADOWED BY A NATIVE INSTALL, AND
+    NOTHING SAYS SO.** `base ensure` writes `%USERPROFILE%\bin\NAME.exe` for each
+    agent, and typing that name on Windows runs the agent INSIDE the base at the
+    granted project. Measured on 2026-09-17: `muse.exe`, `pi.exe` and `omp.exe`
+    all exist there, all **14,817,280 bytes** and all one digest, `8074069F…`,
+    which is this tool under three names. ⛔ **`omp` does not reach any of them.**
+    `C:\ProgramData\scoop\persist\bun\bin` is at `PATH` position **3** and
+    `%USERPROFILE%\bin` at **66**, so `omp` resolves to a native Windows build.
+    Driven both ways: the launcher by full path exits **2** with the `base grant`
+    refusal, and the native one exits **0** answering `omp/18.1.19` - while the
+    base holds `omp/18.2.3`. ⚠ **So the operator types the agent's name, gets a
+    different program AND a different version, and it can see neither the base nor
+    the grant.** ⭐ **This is finding 62's shape on the other side of the bridge.**
+    That one made all three probes read the name back on a LOGIN shell inside the
+    guest; nothing reads the name back on **Windows**, which is where the operator
+    types it. ⚠ `muse` and `pi` work here by luck - nothing else claims those two
+    names on this `PATH` - and the same accident breaks them the day a native one
+    is installed. Not fixed. The example at
+    [`../tools/windows/wsl-toolkit/examples/windows-repo/README.md`](../tools/windows/wsl-toolkit/examples/windows-repo/README.md)
+    tells a reader to check with `Get-Command` and gives the full-path fallback,
+    which is a page doing a check's job.
+
 ## Review findings
 
-⭐ **2026-09-17, this session's FOUR closing reviews.** Each pass names what it looked at
-that the others did not.
+⭐ **2026-09-17T10:01Z, the release session's four closing reviews.** Each pass names
+what it looked at that the others did not.
+
+**Pass 1, the door sweep** - "what else reaches a published release, and what else
+reaches the things I changed?" It enumerated the release's readers with
+`git ls-files | xargs grep -l`, which found **21** files naming a release URL or API,
+rather than listing the two or three anyone would name from memory. ⭐ Three answers
+the sweep settled: `release.go` picks its asset by exact name and reads its
+`SHA256SUMS` line by name, so a file with seven lines instead of three changes
+nothing; `consumer.ps1` fetches every asset by design and is **the only thing that
+verifies herdr's four files in a `wsl-toolkit` release are signed and match their
+digests** - ⚠ it does NOT assert they are PRESENT, because its presence assertion
+names the two `wsl-toolkit` executables alone and `release.yml`'s staging count is
+what refuses a release missing one of herdr's, which is the right split because a
+consumer does not need herdr; and the nightly's tag
+regex cannot match `wsl-toolkit-v*` while `LatestRelease` skips prereleases, so the
+two lookups cannot shadow each other in either direction. ⛔ **And it found finding
+68**: `WSL-90`'s own door sweep listed `bootstrap.sh` and `remote.go` as release
+readers a prerelease cannot reach, and neither reads this repository's releases at
+all - `bootstrap.sh` names exactly one owner anywhere and it is PowerShell. The
+conclusion was right and the reason was not, which is a reason that would survive the
+change that broke it.
+⭐ **The same lens on this session's own changes found three more.** The manual has
+**two** flag renderers and fixing the roff one left the plain-text one publishing
+`--c`. `set-record.mjs` moves counts and touches no prose, so the new work-order rule
+can now be tripped by closing an entry - said in `scripts/README.md` where somebody
+closing one will read it. And finding 3 named `check.ps1` where the defect is in both
+halves of the pair.
+
+**Pass 2, the guard mutation** - "can each new guard actually fail?" `repo mutate
+--only release:` **7 of 7 red before the tag was cut**, over the code the release was
+about to exercise. Five new rows for the work-order rule, **5 of 5 red**; one for the
+manual, red. Every case green unmutated first.
+⭐ **Two things a row could not have reached.** One case had to assert the finding's
+MESSAGE rather than the count, because with the heading guard disabled a *different*
+guard also reports exactly one problem - so that row would have read as proved over a
+guard that does nothing. And the rule was planted BY HAND in the real
+`TODO/PROGRESS.md`, both halves, because a fixture cannot show what the message looks
+like against the actual record: it read `(WSL-84, WSL-84)`, one entry named twice by
+one item, which no fixture covered. Restored byte-identical by SHA-256, exit 0 again.
+⛔ **The gap that remains is finding 33 with a third occupant**: `release.yml`'s
+staging, counting and signing guards have no harness, and the release run is the only
+thing that exercises them.
+
+**Pass 3, the claim audit** - "which sentence about to be published is not backed by
+an artefact?" ⛔ **Four failed.** herdr's newest stable is `v0.9.1` and two pages plus
+a workflow comment said 0.9.0, which mattered because the release carries whatever
+that lookup returns. This session's own `WSL-59` amendment conflated two containers'
+events into one claim and quoted "50 lines" as though it were a property of a
+container when it is a property of the window - re-measured as six records for one
+container. Finding 8 does not reproduce and is narrowed rather than closed, with the
+reason its original observation can no longer be checked. And a commit body carried a
+timestamp typed rather than read from the machine; the commit was redone.
+⚠ It also caught "at the start of this session" in a record that a later session
+reads, which is a sentence that stops being true the moment it is committed.
+
+**Pass 4, what the driven pass showed that the suite could not.** ⛔ Three, and no
+suite could have found any of them. The default `wsl-toolkit` base was still carrying
+the stale podman boot id `wsl --shutdown` leaves, so the first container check exited
+2 before anything ran - the previous session repaired the sibling base and recorded
+exactly that. `podman events --since 5m --until 0s` returns **zero lines and exits
+0**, and `--until 1h` blocks until killed, because `--until` is an instant rather than
+a duration. And `check.sh` answered 2 where `check.ps1` answered 1 for the same
+condition, which is a fact about PowerShell's error preference rather than about
+either file.
+
+⭐ **2026-09-17, the 05:13Z session's FOUR closing reviews.** Each pass names what it
+looked at that the others did not.
 
 **Pass 1, the door sweep** - "what other door reaches an agent's startup model?" It
 enumerated every route that starts an agent by name: `base agent`, the Windows launcher
@@ -1342,7 +1469,23 @@ development server ran for `--machine`.
 - Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit`,
   `wsl-toolkit-podbox`, and ⭐ **`wsl-toolkit-base`, the operator's one base for every
   agent**, built on 2026-09-15 and kept. `eph-pgb` keeps its disk under
-  `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's.
+  `%LOCALAPPDATA%\wsl-ephemeral` and is not this tool's. ⚠ **Read at
+  2026-09-17T10:02Z: `podman-machine-default` is RUNNING** and the other four Stopped;
+  the entry for 2026-09-17 above says it was started to export a rootfs and stopped
+  again, and it is running now.
+- ⛔ **The `wsl-toolkit` base needed `base ensure --repair` on 2026-09-17**, because
+  `wsl --shutdown` had invalidated its podman boot id and nothing had repaired it. It
+  is the base every `run` and `matrix` uses, and the first container check of that
+  session exited 2 on it. Finding 67.
+- ⭐ **A second herdr nightly is published**, `herdr-nightly-20260917-e7e3dfa60e35`,
+  at 2026-09-17T10:12:44Z, 6 of 6 jobs green. ⚠ **The base still runs the 0916 one**,
+  `herdr-nightly-20260916-18061191fdc0`; the next `base ensure` moves it, and the
+  client under the instance's state directory moves with it.
+- ⚠ **herdr's newest STABLE release is `v0.9.1`**, published 2026-09-16T18:40:01Z. The
+  `herdr` on the operator's Windows `PATH` is still 0.9.0 through scoop.
+- ⚠ **`.tmp\f3\nested` is a throwaway git repository** created on 2026-09-17 to drive
+  findings 3 and 34 from outside this tree. It holds one file and is safe to remove by
+  literal path.
 - ⭐ **`instances\base\config.json`** is `examples/muse-code/wsl-toolkit-base.json` plus
   one test grant, `.tmp\wsl78\proj` read-write at `/workspaces/proj`, a throwaway git
   project of three files.

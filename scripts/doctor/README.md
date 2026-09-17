@@ -33,7 +33,7 @@ It is a probe, not a gate. A missing tool is data, not a failure, so it exits
 0 whenever it ran. It exits 2 only when it could not run at all. Nothing here
 belongs in a gate chain.
 
-It is read-only. No installer, no config change, no network call unless the
+It is read-only. No installer, no configuration change, no network call unless the
 network flag is passed, and the only file it writes is a temp file it removes.
 
 ## Flags

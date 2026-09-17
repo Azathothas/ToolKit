@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"os"
 	"regexp"
@@ -25,6 +26,93 @@ import (
 	"strings"
 	"testing"
 )
+
+// TestAskingTheBaseGroupForHelpIsNotAFailure holds the contract a weak agent
+// depends on.
+//
+// ⛔ `base --help` EXITED 2 AND SAID `"--help" is not a base subcommand`.
+// The top level answers --help with 0 and so does every subcommand in this
+// group, so the one spelling a reader reaches for first was the one that
+// looked like a failure. `skills/wsl-toolkit` tells an agent to run
+// `wsl-toolkit base --help` AND to read the exit code from the process, which
+// together told it its correct command had failed.
+//
+// ⚠ `base` WITH NO ARGUMENTS STAYS 2, and that is not the same question:
+// nothing was asked, so "could not run" is the honest answer. The case asserts
+// both so a fix to one does not quietly change the other.
+func TestAskingTheBaseGroupForHelpIsNotAFailure(t *testing.T) {
+	for _, spelling := range []string{"--help", "-h", "help"} {
+		code, err := cmdBase(context.Background(), []string{spelling})
+		if code != exitOK {
+			t.Errorf("base %s exited %d, and asking for help is not a failure", spelling, code)
+		}
+		if !errors.Is(err, flag.ErrHelp) {
+			t.Errorf("base %s returned %v, and the dispatcher reads flag.ErrHelp to mean help was asked for", spelling, err)
+		}
+	}
+	if code, _ := cmdBase(context.Background(), nil); code != exitCannot {
+		t.Errorf("base with no arguments exited %d, and nothing was asked, so it could not run", code)
+	}
+}
+
+// TestTheBaseUsageAndTheManualNameTheSameSubcommands closes the gap finding 39
+// named and left open.
+//
+// ⛔ TWO LISTS OF THE SAME SUBCOMMANDS, WRITTEN FROM MEMORY AT DIFFERENT
+// TIMES, AND NOTHING COMPARED THEM. `baseUsage` in cmd_base.go is what a reader
+// of `wsl-toolkit base` sees; the `base` command spec's HelpForms is what
+// reaches wsl-toolkit.1 and `man`. They disagreed in BOTH directions: `herdr`
+// and `bootstrap` were in the usage and in no manual, so neither had a flag
+// documented anywhere, and `agent` was in the manual and in no usage, so a
+// reader of the group never learned it exists.
+//
+// ⚠ IT READS THE ANGLE-BRACKET LIST, which is the line a reader actually
+// sees, rather than the descriptions under it. A subcommand described below the
+// line but missing from it is still missing from the sentence that lists them.
+func TestTheBaseUsageAndTheManualNameTheSameSubcommands(t *testing.T) {
+	m := regexp.MustCompile(`^wsl-toolkit base <([^>]+)>`).FindStringSubmatch(baseUsage)
+	if m == nil {
+		t.Fatal("baseUsage does not open with `wsl-toolkit base <a|b|c>`, so nothing can be read from it")
+	}
+	inUsage := map[string]bool{}
+	for _, name := range strings.Split(m[1], "|") {
+		inUsage[strings.TrimSpace(name)] = true
+	}
+
+	inManual := map[string]bool{}
+	for _, spec := range registeredCommandSpecs() {
+		if spec.Name != "base" {
+			continue
+		}
+		for _, form := range spec.HelpForms {
+			inManual[strings.TrimPrefix(form, "base ")] = true
+		}
+	}
+	if len(inManual) == 0 {
+		t.Fatal("the base command spec registers no help form, so this case is asserting nothing")
+	}
+
+	// ⭐ BOTH DIRECTIONS. Each one was the real defect once.
+	var missingFromManual, missingFromUsage []string
+	for name := range inUsage {
+		if !inManual[name] {
+			missingFromManual = append(missingFromManual, name)
+		}
+	}
+	for name := range inManual {
+		if !inUsage[name] {
+			missingFromUsage = append(missingFromUsage, name)
+		}
+	}
+	sort.Strings(missingFromManual)
+	sort.Strings(missingFromUsage)
+	if len(missingFromManual) > 0 {
+		t.Errorf("baseUsage names %v, which the base HelpForms do not, so they reach no manual and no flag of theirs is documented", missingFromManual)
+	}
+	if len(missingFromUsage) > 0 {
+		t.Errorf("the base HelpForms name %v, which baseUsage does not, so a reader of `wsl-toolkit base` never learns they exist", missingFromUsage)
+	}
+}
 
 // acceptancePath is the suite whose sweep this checks.
 const acceptancePath = "acceptance.ps1"

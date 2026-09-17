@@ -215,7 +215,7 @@ have had capabilities this one lacks, or the reverse.
 
 ## Do not idle
 
-⚠ **A turn is never ended in order to wait**, and the cost of doing it is a
+⚠ **A turn is never ended to wait**, and the cost of doing it is a
 session that dies with state half-changed.
 
 ⭐ [`../conventions/shell.md`](../conventions/shell.md) section 10 owns this

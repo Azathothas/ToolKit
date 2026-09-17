@@ -3,7 +3,7 @@
 Canonical licence texts, and a script that fills one in without breaking it.
 
 ⭐ **Every text here was fetched from the SPDX license-list-data repository, not
-written from memory.** A licence reproduced approximately is a legal defect that
+written from memory.** A licence reproduced about right is a legal defect that
 nobody notices until it matters. If an id you need is missing, fetch it the same
 way rather than typing it:
 
