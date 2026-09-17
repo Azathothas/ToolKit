@@ -71,7 +71,7 @@ func renderManPage(ctx context.Context) (string, error) {
 				continue
 			}
 			for _, f := range flags {
-				out.WriteString(".TP\n\\fB--" + roffEscape(f.Name) + "\\fR\n")
+				out.WriteString(".TP\n\\fB" + flagDashes(f.Name) + roffEscape(f.Name) + "\\fR\n")
 				text := strings.TrimSpace(f.Usage)
 				if f.DefValue != "" && f.DefValue != "false" && f.DefValue != "0" {
 					text += ". Default: " + f.DefValue + "."
@@ -117,7 +117,7 @@ func renderManualText(ctx context.Context) (string, error) {
 			}
 			out.WriteString("\n  wsl-toolkit " + form + "\n")
 			for _, f := range flagsInNameOrder(fs) {
-				out.WriteString("    --" + f.Name + "\n")
+				out.WriteString("    " + flagDashes(f.Name) + f.Name + "\n")
 				out.WriteString("        " + strings.TrimSpace(f.Usage))
 				if f.DefValue != "" && f.DefValue != "false" && f.DefValue != "0" {
 					out.WriteString(" Default: " + f.DefValue + ".")
@@ -208,4 +208,19 @@ func roffEscape(value string) string {
 		value = `\&` + value
 	}
 	return value
+}
+
+// flagDashes is the prefix a flag's name is written with.
+//
+// ⛔ THE MANUAL WROTE EVERY FLAG WITH TWO DASHES, INCLUDING THE ONE-LETTER
+// ONES, so `-c` was published as `--c` in six places. Go's flag package accepts
+// either spelling, which is why nothing broke and why nobody noticed: the page
+// was wrong and the command still worked. ⚠ Every example in this tree writes
+// `-c`, so the manual disagreed with the examples beside it. `TODO/PROGRESS.md`
+// finding 6.
+func flagDashes(name string) string {
+	if len(name) == 1 {
+		return "-"
+	}
+	return "--"
 }

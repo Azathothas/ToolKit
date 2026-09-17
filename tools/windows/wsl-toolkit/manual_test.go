@@ -89,6 +89,50 @@ func TestGeneratedManPageIsText(t *testing.T) {
 	}
 }
 
+// TestAOneLetterFlagIsWrittenWithOneDash is the case for finding 6.
+//
+// ⛔ THE MANUAL PUBLISHED `-c` AS `--c` IN SIX PLACES. Go's flag package
+// accepts either spelling, so the page was wrong and every command still
+// worked, which is why it survived. ⚠ Every example in this tree writes `-c`,
+// so the generated page disagreed with the examples printed beside it.
+//
+// ⭐ IT ASSERTS BOTH DIRECTIONS. A rule that only checked the short flags would
+// pass over a generator that wrote every flag with one dash.
+func TestAOneLetterFlagIsWrittenWithOneDash(t *testing.T) {
+	page, err := renderManPage(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(page, `\fB--c\fR`) {
+		t.Fatal("the manual writes the one-letter flag -c with two dashes")
+	}
+	if !strings.Contains(page, `\fB-c\fR`) {
+		t.Fatal("the manual does not write -c at all, so this case is asserting nothing")
+	}
+	if !strings.Contains(page, `\fB--dir\fR`) {
+		t.Fatal("the manual does not write --dir with two dashes, so every flag lost a dash")
+	}
+
+	// ⛔ AND THE OTHER RENDERER. The door sweep on the first fix found that
+	// this file writes flags TWICE - once as roff for the man page and once as
+	// plain text for the readable manual - and fixing one left the other still
+	// publishing --c. A case that read only the man page would have called it
+	// done, which is the one-gated-door shape this repository keeps meeting.
+	text, err := renderManualText(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, "    --c\n") {
+		t.Fatal("the readable manual writes the one-letter flag -c with two dashes")
+	}
+	if !strings.Contains(text, "    -c\n") {
+		t.Fatal("the readable manual does not write -c at all, so this half asserts nothing")
+	}
+	if !strings.Contains(text, "    --dir\n") {
+		t.Fatal("the readable manual does not write --dir with two dashes, so every flag lost a dash")
+	}
+}
+
 // TestANoteDoesNotChangeTheVerdict is the case for a regression this session
 // shipped and caught by running the command rather than by reading it.
 //

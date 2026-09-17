@@ -3080,6 +3080,15 @@
       "replace": "\tquotedEntryID = regexp.MustCompile(\"([A-Z]{2,6}-[0-9]{2,})\")",
       "run": "TestTheWorkOrderRuleReadsOnlyBacktickedIds",
       "args": []
+    },
+    {
+      "label": "manual: a one-letter flag is written with one dash",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_manual.go",
+      "find": "\tif len(name) == 1 {\n\t\treturn \"-\"\n\t}\n",
+      "replace": "\tif len(name) == 1 && false {\n\t\treturn \"-\"\n\t}\n",
+      "run": "TestAOneLetterFlagIsWrittenWithOneDash",
+      "args": []
     }
   ]
 }

@@ -480,8 +480,16 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 4. `bootstrap.sh --dry-run --toolset agent --codegraph none --json` exits 1 on
    Debian 13; its cause has not been read.
 5. A deterministic regression for pre-marker base rollback is still owed. ⚠ **Met again on 2026-09-15:** a fedora build stopped mid-provisioning left `wsl-toolkit-t86fedora` registered, and `base remove` refused it with `carries no wsl-toolkit identity marker`, so `wsl.exe --unregister` was used by hand.
-6. The generated manual prints a one-letter flag as `--c`, which the parser
-   accepts and no example writes.
+6. ⭐ **CLOSED ON 2026-09-17.** The generated manual printed a one-letter flag as
+   `--c`, which the parser accepts and no example writes, so the page was wrong
+   in **six** places and every command still worked. `flagDashes` writes one dash
+   for a one-character name, the page is regenerated, and the six read `\fB-c\fR`.
+   ⛔ **The door sweep on the fix found a SECOND renderer**: `cmd_manual.go` writes
+   flags twice, once as roff and once as plain text for the readable manual, and
+   fixing the roff half left `    --c` in the other. Both are fixed and the one
+   case asserts both, in both directions - a rule that only checked the short
+   flags would pass over a generator that dropped a dash from every flag. 1
+   mutation row, red when planted.
 7. ⭐ **Closed on 2026-09-15.** `examples/common/zellij.md` is deleted, the manual's
    link to it now names `herdr.md`, `examples/muse-code/README.md` is rewritten from
    eleven commands to three, and `examples/common/README.md` no longer tells a reader
