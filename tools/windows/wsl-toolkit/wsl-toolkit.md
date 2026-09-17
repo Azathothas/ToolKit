@@ -683,6 +683,58 @@ printed. Mirrored mode answers 127.0.0.1, and any other mode is refused.
 
 ---
 
+## ⭐ The doors, attacked rather than read
+
+```powershell
+wsl-toolkit --instance base base doors
+wsl-toolkit --instance base base doors --json
+```
+
+`base doors` runs a probe inside the base, **as its unprivileged account**, that
+TRIES each way out and reports what got through. ⛔ **No row is a setting read
+back.** A door is `open` because something actually got through, `closed` because
+the attempt was refused, `unknown` because this guest carries no way to make the
+attempt, and `info` where a value is worth printing and no attempt was made.
+
+⛔ **`unknown` is not `closed`.** A probe that reports a door shut because it could
+not reach the handle is the failure this command exists to refuse, so a door the
+configuration claims to close and that could not be tried is a problem, not a pass.
+
+Exit 0 means every door **this base's own configuration claims to close** was
+closed. ⛔ **It does not mean the base reaches nothing**, and the report ends with
+the doors that are open and that no setting here closes. Exit 1 is a claim the base
+does not keep; exit 2 is a probe that could not run.
+
+Three settings make a claim, and only three: `base.automount = off` claims
+`fs.windows-drives`, `base.interop = "off"` claims `interop.windows-path`, and
+`base.passwordless_sudo = false` claims `priv.passwordless-sudo`.
+
+⚠ **`base.interop = "off"` deliberately claims only the PATH door**, because the
+other two are not this tool's to promise. Measured on 2026-09-17, across two
+distributions and three utility-VM lifetimes: the `WSLInterop` `binfmt_misc`
+registration does **not** follow a distribution's own `[interop] enabled` setting,
+and both values were observed on the same distribution with the same configuration.
+`wsl-toolkit-base`, configured `enabled=false`, was found with the handler live,
+accepting a PE image and handing it to `/init`; `wsl-toolkit`, configured
+`enabled=true`, was found with none and could not execute a Windows binary. ⚠ The mechanism has not been read. So
+`interop.exec-pe` is reported and never claimed, and `interop.run-exe` reports
+`unknown` on a base with no Windows path reachable, because there is no executable
+to try and saying so is the honest answer.
+
+| measured on 2026-09-17, on `wsl-toolkit-base`: automount off, interop off, passwordless sudo on | result |
+| --- | --- |
+| `base doors` | exit 0, 12 s with the distribution already running, 19 s including its start |
+| closed, and each by an attempt | `fs.windows-drives`, `fs.mount-drvfs` (`must be superuser to use mount`), `interop.windows-path`, `net.windows-host-smb`, `net.windows-host-rdp`, `priv.unshare-netns` |
+| read-only | `fs.wsl-drivers`, 9p, a write refused |
+| ⛔ open, and no setting here closes them | `fs.mnt-wsl-shared`, `net.windows-host-icmp`, `net.internet`, `priv.passwordless-sudo`, `priv.unshare-userns`, `priv.unshare-user-plus-net`, and `interop.exec-pe` whenever the handler is live |
+| ⚠ the first driven run took **277 s** | two filtered ports, connected through bash's `/dev/tcp`, which carries no deadline. Every route now has one and the bash route is not used at all without `timeout` |
+
+⛔ **This is a report, not a boundary.** Nothing in this tree has measured a WSL
+distribution to be a security boundary, and this command exists so the sentence
+that gets written about a base is made of attempts rather than of settings.
+
+---
+
 ## The safety model
 
 Removal is constrained, and every destructive path goes through the same gate.
@@ -703,7 +755,29 @@ Removal is constrained, and every destructive path goes through the same gate.
 releases a disk asynchronously, so the state is read back after removal and a
 path that is still there exits non-zero naming it.
 
-### ⚠ Three things about WSL that this tool cannot protect you from
+### ⛔ What a zero-grant base does NOT seal, with the measurement beside each
+
+⭐ **Run `base doors` and read its answer rather than this list**, which is what
+that command is for: these are the doors it found open on a base built with
+`automount off`, `interop off` and no grant, and the list is here so the sentence
+exists in a page as well as in a command.
+
+| door | measured | what it means |
+| --- | --- | --- |
+| ⛔ `/mnt/wsl` | 2026-09-15, both ways; again 2026-09-17 from `wsl-toolkit-base` | one world-writable `tmpfs` shared by every distribution in the utility VM, with uids not namespaced across it. A zero-grant account wrote a file another distribution read. Root can unmount it per distribution at every start, and that costs DNS |
+| ⛔ the internet | 2026-09-15 and 2026-09-17 | `1.1.1.1:443` connects from a base with no grants. Nothing in this tool closes it |
+| ⛔ the Windows host | 2026-09-15 and 2026-09-17 | `445` and `3389` were refused and **ICMP answered**, so the host is reachable. The address is `hostaddress`'s answer |
+| ⛔ a private network namespace | 2026-09-15 and 2026-09-17 | `unshare -n` is refused and `unshare -Un` SUCCEEDS, so the account can make one with no privilege. ⚠ `pasta --config-net` inside it still reached the internet and the Windows host, with and without `--no-map-gw` |
+| ⛔ a PE handler this tool cannot remove | 2026-09-17, two distributions, three utility-VM lifetimes | the `WSLInterop` `binfmt_misc` registration does not follow `[interop] enabled`, and both values were seen on the same distribution with the same configuration. `base doors` reports `interop.exec-pe` and never claims it |
+| ⚠ `/dev/kvm`, `/dev/dxg`, `/dev/vsock` | 2026-09-15, read; 2026-09-17, read again | all three are `crw-rw-rw-` in a zero-grant base. **None has been attacked**, so what an unprivileged account reaches through them is unmeasured, and a threat model has to answer for them |
+| ⚠ passwordless sudo, where it is on | by configuration | guest root can mount a Windows path the configuration never granted. It is authority, not containment, and `base doors` reports it open |
+
+⛔ **So the shape this tool builds is called zero grants and never a sandbox or a
+security boundary**, and no page here says otherwise. `WSL-68` owns the work that
+would narrow the list: a real `/etc/resolv.conf` with the shared `tmpfs` closed at
+every start, and the account's processes in a network namespace of their own.
+
+### ⚠ Four things about WSL that this tool cannot protect you from
 
 - ⛔ **Every distribution on this machine shares one writable directory.**
   `/mnt/wsl` is a single `tmpfs`, mounted `drwxrwxrwt`, common to every
@@ -724,6 +798,14 @@ path that is still there exits non-zero naming it.
   kernel ten hours old. Only `wsl --shutdown` gives a fresh one, and anyone
   reproducing a kernel-level condition without it reads stale state and gets a
   confident wrong answer.
+- ⚠ **A distribution's `binfmt_misc` is not its own**, and that is the row
+  above from the other side. Measured 2026-09-17: the
+  `WSLInterop` registration was present in a distribution configured `[interop]
+  enabled=false` and absent in one configured `enabled=true`, and both values were
+  observed on the SAME distribution with the same configuration across three
+  utility-VM lifetimes. The mechanism has not been read. Anything deciding whether
+  interop is available by reading that file gets a confident wrong answer; run a
+  Windows executable instead, which is what `base doors` does.
 
 ---
 

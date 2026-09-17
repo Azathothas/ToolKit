@@ -6,11 +6,11 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-16T06:59:37Z, resuming the session of 2026-09-15T10:20:32Z that was checkpointed and ended before it wrote its record
-baseline        cfa3252, tree DIRTY with that session's unfinished record, doctor exit 0 in 75.96 s, gate 21 of 21 in 64.8 s
-head            69ae23f, each commit pushed after the previous one's CI was green; this record commit follows it
+session started 2026-09-17T02:52:40Z
+baseline        485252c, tree DIRTY with the last session's two uncommitted wording corrections, doctor exit 0 in 55 s, gate 21 of 21 in 70 s, CI run 35070882239 green
+head            this session's commit
 entries         total 125  open 7  blocked 0  done 118
-this session    the 2026-09-15 checkpoint finished; WSL-90's first nightly published, verified and driven; the probe tracked; three checks that could not fail, fixed
+this session    WSL-68's steps 3 and 4: the attack is `base doors`, a registered command; three defects it found in itself, and one about WSL that narrowed what it may promise
 ```
 
 ## Active work
@@ -53,9 +53,11 @@ flipped. With `"channel": "nightly"` the base installs it in 8.78 s, `base statu
 ⛔ **Its first real run found a defect the suite could not**: the prune sorted by
 `created_at`, which `--target` sets from the target commit, and would have deleted the
 NEWEST nightly. Fixed and driven; finding 33 records that no harness covers it.
-⚠ `release.yml`'s herdr jobs have still never run, no `wsl-toolkit-v*` release carries
-herdr, and the probe as a tracked script is still a draft outside the tree,
-`.tmp\herdr-remote-probe.cs`.
+⚠ `release.yml`'s herdr jobs have still never run and no `wsl-toolkit-v*` release
+carries herdr. ⛔ **This sentence also said the probe was "still a draft outside the
+tree", which the paragraph below it contradicts**: it was tracked at `b2203ab` on
+2026-09-16, in the same session. Corrected on 2026-09-17; it is finding 29's shape
+inside one section rather than across two files.
 
 ⭐ **The probe is a tracked script**, `tools/windows/wsl-toolkit/herdr-remote-probe.ps1`,
 and it reproduces the entry's premise from a command: the nightly client passes all six
@@ -66,13 +68,33 @@ count written from memory. ⛔ **`WSL-90` stays open, and not on the operator**:
 step 4, herdr inside a `wsl-toolkit-v*` release, has never run and cannot be driven until
 ruling 6 lets `wsl-toolkit-v3.0.0` be cut.
 
+⭐ **`WSL-68`'s approach steps 3 and 4 are done, on 2026-09-17**, and nobody was needed
+for either. The attack that lived in `.tmp\s16\seal-attack.sh` is
+`wsl-toolkit base doors`: an embedded probe of 30 doors run as the unprivileged
+account, a reader whose every refusal has a case, 13 cases, 6 mutation rows, a manual section, a row
+in the acceptance sweep and a paragraph in the safety model naming what is NOT sealed.
+⛔ **Its own driven runs found three defects in it**: a door reported CLOSED over an
+attempt that never happened, a run that took 277 s because bash's `/dev/tcp` has no
+deadline, and `--json` answering `"problems": null` on exactly the healthy case.
+⛔ **And one about WSL**: the `WSLInterop` `binfmt_misc` registration does not follow a
+distribution's `[interop] enabled` setting - both values were seen on the SAME
+distribution with the same configuration - so `base.interop = "off"` now claims only
+the PATH door, and the handler is reported and never claimed. ⚠ **Two of the four
+remaining items are left**, both in the provisioner or across `base exec`: a real
+`/etc/resolv.conf` with the shared tmpfs closed, and the account in its own network
+namespace.
+
 **Resume, in this order:**
 
 1. **The operator's two steps**, which nothing else here can stand in for: `muse login`
    in `base shell`, and the six `--remote` signals in a real Windows Terminal window -
    now with the nightly's own client, which `base attach` prints.
-2. `WSL-68`'s four remaining items, listed in its own entry. ⭐ **None of them needs the
-   operator**, so this is what to do while the two steps above are unanswered.
+2. `WSL-68`'s **two** remaining items, listed in its own entry: a real
+   `/etc/resolv.conf` with the shared tmpfs closed at every start, and the account's
+   processes in their own network namespace through `pasta`. ⭐ **Neither needs the
+   operator**, so this is what to do while the two steps above are unanswered. ⚠ The
+   second changes how `base exec` and `base shell` start a command, which is why it was
+   named rather than begun.
 3. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
    `PermissionRequest` from a real turn, then the guide.
 4. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
@@ -195,13 +217,43 @@ new file FIRST, then run the gate.**
 | `431417b` | `WSL-90` partial: the first herdr nightly published, its six signatures verified and both refusals proved, the base driven onto the `nightly` channel end to end, and the prune's `created_at` defect found by that first run and fixed |
 | `b2203ab` | `WSL-90` partial: the `--remote` probe as a tracked script, driven against both clients, the nightly passing six signals and 0.9.0 failing three; three defects in the probe itself found by driving it; and the gate's `powershell` check, which could not fail for two independent reasons, fixed with 2 cases and 2 mutation rows |
 | `69ae23f` | `WSL-90`'s three closing reviews, finding 36 and a line count corrected; the entry stays open on its step 4, which only `wsl-toolkit-v3.0.0` can prove |
-| this record commit | this session's summary |
+| this record commit | `WSL-68` steps 3 and 4: `base doors`, the attack as a registered command, with 13 cases, 6 mutation rows, a manual section and a sweep row; three defects it found in itself and one about WSL that narrowed its claims; this session's summary |
 
 ## Measurements
 
+On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
+
+- **At the start of this session:** the doctor exit 0 in 55 s at 02:53Z; the gate exit 0,
+  21 of 21 in 70 s; `wsl -l -v` matched the host state, five distributions; CI run
+  35070882239 for `485252c` green. ⭐ **A second `herdr-nightly` run, 35078871134, is
+  green with build and publish SKIPPED** - herdr's head had not moved, so the workflow's
+  idempotency path ran for real for the first time and published nothing. Finding 30
+  said a green matrix does not cover what the nightly builds; this is the other half,
+  and it worked.
+- **For `WSL-68`'s `base doors`, on `wsl-toolkit-base`:** exit 0, 30 doors, 0 problems,
+  6 open, **12 s** with the distribution up and 19 s including its start. The first
+  driven run took **277 s** and reported a false CLOSED; both are in the entry's
+  amendment with their causes. `--json` answers `wsl-toolkit-base-doors/1`.
+- **For `WSL-68`'s interop measurement:** readings of
+  `/proc/sys/fs/binfmt_misc/WSLInterop` across two distributions and three utility-VM
+  lifetimes, with **both values on the same distribution and the same configuration**.
+  The table is in the entry's amendment of 2026-09-17 and the manual's safety model.
+- **The three pre-push checks:** Windows Go with `TEMP` at the 8.3 path, **343 top-level
+  results, 323 passed, 20 skipped, 0 failed, exit 0 in 14 s**; `check-go.sh` exit 0 in
+  `golang:1.25` in 30 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **48** tracked
+  scripts, one more than last session because `doors.sh` is new.
+- **The mutation table:** 312 rows to **318**. `repo mutate -only door` read **8 of 8
+  guards proved**, the six new ones among them, and all thirteen cases were green
+  unmutated first - which finding 1 says `repo mutate` does not do for itself.
+- ⚠ **`wsl --shutdown` was run twice**, to measure the interop handler across utility-VM
+  lifetimes. It stopped every distribution, which is what the manual says it does; all
+  five were Stopped at the start of this session and none was started by it except
+  `wsl-toolkit-base` and `wsl-toolkit`. ⛔ **It invalidated the base's podman boot id**,
+  and `base ensure --repair` cleared it, exit 0, the base usable with podman 6.1.1.
+
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 
-- **At the start of this session:** the doctor exit 0 in 39.71 s at 10:21:35Z; the gate
+- **At the start of that session:** the doctor exit 0 in 39.71 s at 10:21:35Z; the gate
   exit 0, 21 checks green in 33.81 s at 10:22:19Z; `wsl -l -v` matched the host state
   of the last session; CI run 34955394330 for `6f22e39` green in all six jobs.
 - **For `WSL-76` and `WSL-78`, on `wsl-toolkit-base`:** the four ordered measurements,
@@ -524,7 +576,85 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     unrecognised directory surviving is correct behaviour and not part of the finding.
     Both decoys were removed by literal path afterwards.
 
+37. ⚠ **A case's verdict depends on what ran before it.** `jsonSurfaces` in
+    `sweep_test.go` reads `flagSets.byName`, a package-level registry that
+    `collectManualFlagSets` resets and repopulates, and it adds to whatever is
+    already there rather than building its own. So `go test . -run
+    TestEveryJSONSurfaceReachesTheSweep` reports four `sweptElsewhere` rows as stale
+    - `base grant`, `base revoke`, `bsd fetch`, `bsd run` - and a full package run
+    reports none, because a manual case ran first and registered every HelpForm. Met
+    on 2026-09-17 while adding `base doors`: the isolated run's message sent this
+    session looking for a defect that a full run does not have. ⚠ The case is right in
+    a full run, which is how CI and the gate call it; it is the isolated invocation
+    that lies. Not fixed, and nothing is built on it.
+38. ⛔ **`base doors` reports `/dev/kvm`, `/dev/dxg` and `/dev/vsock` and still does
+    not attack them**, which is finding 22 carried forward rather than closed. All
+    three read `crw-rw-rw-` again on 2026-09-17. What an unprivileged account reaches
+    through any of them is unmeasured, and the manual's safety model says so in the
+    row rather than leaving the reader to infer it.
+
+39. ⛔ **`baseUsage` and the manual's `HelpForms` disagree about what `base` has, in
+    BOTH directions, and no check asserts they agree.** Found on 2026-09-17 by
+    `WSL-68`'s door sweep, grepping for every base subcommand named anywhere rather
+    than reading either list. `cmd_base.go`'s usage text names `herdr` and `bootstrap`,
+    which `main.go:119` does not, so neither reaches `wsl-toolkit.1` or `man` and
+    neither has its flags documented anywhere; `main.go:119` names `agent`, which the
+    usage text does not, so a reader of `base` with no arguments never learns it
+    exists. ⚠ Three subcommands, one tool, two lists written from memory at different
+    times. `base doors` was added to both, which is how the disagreement was seen at
+    all. Not fixed: documenting three more commands is its own unit of work with its
+    own proof, and this is where it is tracked.
+
 ## Review findings
+
+⭐ **2026-09-17, `WSL-68`'s three closing reviews for steps 3 and 4.**
+
+**The door sweep** did not read either list of `base` subcommands; it grepped for every
+one named anywhere, in `cmd_base.go`, `main.go` and `helper.go`. ⛔ **That found finding
+39**: the usage text and the manual registry disagree in both directions, so `base herdr`
+and `base bootstrap` are in no manual and `base agent` is in no usage text. It also
+enumerated the reaches into the new code rather than trusting the task list - the
+dispatch, the `--json` surface, the acceptance sweep, the man page registry, the helper
+route, and `shipped`, which does not carry `doors.sh` and should not. ⭐ **Two refusals
+were driven, not read**: an unregistered instance exits 2 naming `base ensure`, and it
+created no state directory, which is `NewBase`'s rule holding. ⚠ **The helper refusal was
+NOT driven**: no helper is running on this host, so `--via-helper` exits 2 at
+`no helper has been started` before the refusal in `cmd_base_doors.go` is reached. It is
+read, not measured, and saying so is the point.
+
+**The guard mutation** ran the six new rows through `repo mutate`, 6 of 6 red, each case
+green unmutated first. ⭐ **And then the one the rows cannot reach**: the contract between
+`doors.sh` and its reader is two files, so the defect was planted in the SHELL half - the
+row separator changed from `|` to `\t`, the executable rebuilt, and the command driven
+against the live base. Unmutated first: exit 0, 30 doors. Mutated: **exit 2, `the probe
+says it reported 30 doors and 0 were understood here`**, which is finding 2's whole
+defect class refused out loud instead of an empty table and a zero. Restored and verified
+byte-identical, exit 0 again. ⛔ **`TestEveryRequiredDoorIsEmittedByTheEmbeddedProbe`
+stayed GREEN over that mutation**, correctly - it asserts the emitting calls exist, not
+the format - so the Go suite alone would not have caught it and the live count comparison
+is what did.
+
+**The claim audit** read every number in the amendment, the manual and this record
+against the artefact that produced it, and **three were invented**: "12 cases" where
+`grep -c '^func Test'` reads **13**; "a reader with four guards" where nothing counted
+four; and "six readings" of the interop handler where the session took **seventeen**
+across two distributions and three utility-VM lifetimes. All three are corrected, and
+the interop claim now carries the table rather than a total. ⚠ It also caught
+`wsl-toolkit.md` placing the new section under **"Reaching herdr, and through it the
+agents"**, where `base doors` is not a herdr topic; it is a top-level section before the
+safety model now. ⛔ **And it caught the record contradicting itself twice**: a
+`PROGRESS.md` line still calling the `--remote` probe "a draft outside the tree" three
+paragraphs above the one saying it is tracked, and `WSL-68`'s own 2026-09-15 "Still open"
+list still naming items 3 and 4 as open above the amendment that closes them. Both are
+finding 29's shape inside one file, both corrected in place.
+
+⚠ **What a fourth lens would have had to be.** The driven pass is not listed separately
+here because it is not separable: this whole unit was built by driving it, and the three
+defects in the probe and the one in WSL all came from runs rather than from reading. The
+lens with nothing to report is the suite's own - no case in `doors_test.go` failed at any
+point after it was written, which means every one of them was written against a defect
+already understood, and the things that were NOT understood were found by the command
+running against a real base.
 
 Each closed entry carries its three reviews. `WSL-85`'s door sweep found 23 more
 error messages named by a guest's first stderr line, recorded above; its claim audit
@@ -676,7 +806,13 @@ development server ran for `--machine`.
 - ⚠ **`%LOCALAPPDATA%\herdr\remote` holds three `ssh-PID-0` directories and three
   `.sock` files**, left by the three pseudo-console runs that were killed, at 11:19,
   11:20 and 11:21Z; the two runs that detached with exit 0 left none.
-- The shared `/mnt/wsl` was not written to this session.
+- ⚠ **The shared `/mnt/wsl` was written to and cleaned up**, once per `base doors` run:
+  each run writes `/mnt/wsl/.doors-<12 hex>` and removes it, and the row reports whether
+  its own file went away. Every run this session reported `own file removed`, and the
+  directory holds `resolv.conf` alone.
+- ⚠ **`wsl --shutdown` was run twice on 2026-09-17** and the base was repaired with
+  `base ensure --repair` afterwards. `eph-pgb` was Stopped throughout and was not
+  touched; no distribution was added or removed.
 - ⚠ **A scratch serial-console driver for the NetBSD and OpenBSD guests is at
   `.tmp\bsd67-driver`**, untracked: it boots through an overlay, answers the boot loader and
   the OpenBSD installer over SeaBIOS's serial console, and runs commands from a spool with

@@ -9,9 +9,10 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|ensure|recreate|remove|shell|exec|herdr|bootstrap|grant|revoke|attach|presets>
+const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|remove|shell|exec|herdr|bootstrap|grant|revoke|attach|presets>
 
   status     is it registered, and can it actually run a container
+  doors      attack its doors from the inside and report what got through
   ensure     bring it to a usable state, doing the least that achieves it
   recreate   remove it and build it again from nothing
   remove     unregister it and delete its disk
@@ -59,6 +60,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	}
 	if sub == "exec" {
 		return cmdBaseExec(ctx, rest)
+	}
+	if sub == "doors" {
+		return cmdBaseDoors(ctx, rest)
 	}
 	if sub == "grant" || sub == "revoke" {
 		return cmdBaseGrant(ctx, sub, rest)

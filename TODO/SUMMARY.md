@@ -7,12 +7,59 @@ on what was true last time.
 
 ---
 
+## 2026-09-17, the attack becomes a command, and three defects it found in itself
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-17T02:52:40Z | the record commit's own time is its end, about 26 minutes to the last measurement |
+| Commits | `485252c`, tree **DIRTY** with the last session's two uncommitted wording corrections, its CI run 35070882239 green | **1**, this one, carrying the work and the record together. ⚠ It is pushed only once `485252c`'s CI is green, which it already is |
+| Work | 7 open entries; `WSL-68` with **four** remaining items | ⭐ **Partial 1:** `WSL-68`, steps 3 and 4 of its Approach done and **two** items left. **Completed 0. Failed 0.** ⛔ `WSL-68` does NOT close: a real `/etc/resolv.conf` with the shared tmpfs closed, and the account in its own network namespace, both remain. Entries 125 to 125, open 7 to 7, done 118 to 118 |
+| Changes | 0 files changed from `485252c` | `git diff --shortstat` reads **13 files, +1,434 / -17**, four of them new |
+| Size | 98,840 text lines in 315 tracked files, `git grep -I -c ''` | **100,257 in 319 files, +1,417** |
+| Checks | doctor exit 0 in 55 s; gate 21 of 21 in 70 s | gate 21 of 21, exit 0, green before the commit. Windows Go with `TEMP` at the 8.3 path **343 top-level results, 323 passed, 20 skipped, 0 failed, exit 0 in 14 s**; `check-go.sh` exit 0 in `golang:1.25` in 30 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **48** scripts. **6 new mutation rows**, 312 to **318**, 6 of 6 red, each green unmutated first |
+| Cost | no paid operation authorized | no paid operation. Three container runs on the base, about 70 s of engine time; no download, no release, no workflow dispatched |
+| Health | five distributions; `WSL-68` with a scratch attack script in `.tmp` | ⭐ the same five, none added or removed. `base doors` is a registered command. **Findings 37, 38 and 39 opened**; three record self-contradictions corrected. ⚠ `wsl --shutdown` was run twice for the interop measurement and the base was repaired with `base ensure --repair`, exit 0. Tree clean, no tag, no BSD image, the operator's herdr workspace `w2` untouched |
+
+### What was asked, and what happened
+
+| asked | outcome |
+| --- | --- |
+| resume at `WSL-68`'s four remaining items, none of which needs the operator | ⭐ **two of the four done**, steps 3 and 4. The two left are the invasive ones: the provisioner closing the shared tmpfs, and `base exec` starting commands in a private network namespace |
+| the probe as a command rather than a script | ⭐ done. `wsl-toolkit base doors`: 30 doors attacked as the unprivileged account, 13 cases, 6 mutation rows, a manual section, a row in the acceptance sweep, and both refusal paths, one driven and one read |
+| the manual paragraph saying what is NOT sealed | ⭐ done, with the measurement beside each door, and `base doors` named as the thing to run instead of trusting the paragraph |
+| `muse login`, and the six `--remote` signals in a real window | ⛔ **not done, and they are the operator's.** The ask was re-sent unchanged; the client path in it was verified to still exist on disk |
+| validate and reconcile before working | ⭐ done. Doctor, gate, `wsl -l -v`, CI, releases, `INDEX.md` and the entries all read against the record. The work order agreed three ways this time |
+
+### ⛔ Four defects, and every one needed the command to be RUN
+
+- ⛔ **A door reported CLOSED over an attempt that never happened.** `interop.run-exe` ran
+  a hardcoded `/mnt/c/...` path that does not exist on a base with automount off and read
+  the `No such file or directory` as a refusal, in the file whose own header forbids
+  exactly that.
+- ⛔ **The first driven run took 277 seconds.** bash's `/dev/tcp` carries no deadline and
+  two filtered ports ran to the kernel's own timeout. The same run now takes 12 s.
+- ⛔ **`--json` answered `"problems": null`** on a base with no problems, so the one answer
+  a caller most wants is the one that breaks `.problems.length`, while every failing base
+  parses.
+- ⛔ **WSL's `WSLInterop` registration does not follow `[interop] enabled`.** Both values
+  were observed on the SAME distribution with the same configuration, so
+  `base.interop = "off"` now claims only the PATH door. ⚠ The mechanism has not been read.
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. The operator's two steps, then `WSL-68`'s two
+remaining items, neither of which needs them.
+
+---
+
 ## 2026-09-16, a checkpoint finished, the first nightly published, and three checks that could not fail
+
+
 
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-16T06:59:37Z | the record commit's own time is its end, about one hour |
-| Commits | `cfa3252`, tree **DIRTY** with the previous session's unfinished record, its CI run 34967456693 green | `git log --oneline cfa3252..HEAD` reads **4**, each pushed with the previous one's CI green first |
+| Commits | `cfa3252`, tree **DIRTY** with the previous session's unfinished record, its CI run 34967456693 green | `git log --oneline cfa3252..HEAD` reads **5**. ⚠ **Three pushes, not five:** `42a7c5b` after `cfa3252`'s CI was green, `431417b` after `42a7c5b`'s, then `b2203ab`, `69ae23f` and `485252c` **together** after `431417b`'s. So CI ran on the head of each push and not on every commit, which is what a branch push does and is stated here rather than implied away |
 | Work | 7 open entries; a checkpoint claimed and not made | **Completed 0.** **Partial 1:** `WSL-90`, whose every step but one is now proved and driven. **Failed 0.** ⛔ **`WSL-90` does NOT close**, and not on the operator: its step 4 needs a `wsl-toolkit-v*` release that ruling 6 forbids cutting yet. Entries 125 to 125, open 7 to 7, done 118 to 118 |
 | Changes | 0 files changed from `cfa3252` | `git diff --shortstat cfa3252..HEAD` reads **14 files, +1,193 / -52**, two of them new |
 | Size | 97,648 text lines in 313 tracked files at `cfa3252`, `git grep -I -c ''` | **98,789 in 315 files, +1,141** |

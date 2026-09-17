@@ -2810,6 +2810,60 @@
       "replace": "append(os.Environ(), \"CHECK_PS1_LIST_UNSET=",
       "run": "TestThePowerShellCheckRefusesASessionThatParsedNothing",
       "args": []
+    },
+    {
+      "label": "the doors count the probe and the reader must agree on",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.go",
+      "find": "\tif claimed != len(doors) {",
+      "replace": "\tif false {",
+      "run": "TestADoorsAnswerThatDisagreesWithItsOwnCountIsRefused",
+      "args": []
+    },
+    {
+      "label": "the doors probe having reached its last line",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.go",
+      "find": "\tif claimed < 0 {",
+      "replace": "\tif false {",
+      "run": "TestADoorsProbeThatNeverReachedItsLastLineIsRefused",
+      "args": []
+    },
+    {
+      "label": "the refusal of a doors answer missing a required door",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.go",
+      "find": "\tif len(missing) > 0 {",
+      "replace": "\tif false {",
+      "run": "TestADoorsAnswerMissingARequiredDoorIsRefused",
+      "args": []
+    },
+    {
+      "label": "unknown is not closed for a door the configuration claims",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.go",
+      "find": "\t\tcase DoorUnknown:\n\t\t\tproblems = append(problems, fmt.Sprintf(\"%s claims %s is shut, and the probe could not try it: %s. Unknown is not closed\", d.ClaimedBy, d.ID, d.Detail))",
+      "replace": "\t\tcase DoorUnknown:",
+      "run": "TestAClaimedDoorThatCouldNotBeTriedIsAProblem",
+      "args": []
+    },
+    {
+      "label": "a claimed door that is not closed being a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.go",
+      "find": "\t\tdefault:\n\t\t\tproblems = append(problems, fmt.Sprintf(\"%s claims %s is shut and it is %s: %s\", d.ClaimedBy, d.ID, d.Verdict, d.Detail))",
+      "replace": "\t\tdefault:",
+      "run": "TestAClaimedDoorThatIsOpenIsAProblem",
+      "args": []
+    },
+    {
+      "label": "an open door no setting claims not being a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.go",
+      "find": "\t\tif !d.Claimed {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestAnOpenDoorNoSettingClosesIsReportedAndIsNotAProblem",
+      "args": []
     }
   ]
 }

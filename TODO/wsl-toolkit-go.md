@@ -4420,7 +4420,12 @@ shared network namespace".** What is measured:
   INSIDE the private namespace, which is exactly what the ruling permits and is the
   work that remains.
 
-### Still open
+### Still open, as it stood on 2026-09-15
+
+⛔ **ITEMS 3 AND 4 BELOW CLOSED ON 2026-09-17** and the amendment at the end of this
+entry is where they are recorded. The list is left as it was written, per
+[`ENTRY.md`](ENTRY.md), and marked here rather than rewritten - a stale list that a
+resuming session reads as current is exactly what finding 29 cost.
 
 ⭐ **Step 1 of the Approach is complete and is the amendment above.** What is left, and
 none of it needs the operator:
@@ -4440,6 +4445,111 @@ none of it needs the operator:
 ⛔ **Until all four are done the documentation calls this shape zero grants, never a
 sandbox or a security boundary**, and the shared tmpfs above is the reason that
 sentence is not merely caution.
+
+⚠ **Two of the four are done. The sentence above still holds**, on the two that are
+not, and the amendment below carries the current list.
+
+## Amendment, 2026-09-17: the attack becomes a command, and driving it found three defects in itself
+
+⭐ **Approach steps 3 and 4 are done.** The attack that lived in `.tmp\s16\seal-attack.sh`
+is `wsl-toolkit base doors`: an embedded probe, a reader whose every refusal has a case, six mutation
+rows, thirteen cases, a manual section and a row in the acceptance sweep. The manual's
+safety model carries what is NOT sealed, with the measurement beside each door.
+
+### What the command is
+
+`base doors` runs [`doors.sh`](../tools/windows/wsl-toolkit/internal/toolkit/doors.sh)
+in the base **as the unprivileged account** and reports 30 rows. A verdict is `open`
+because something got through, `closed` because the attempt was refused, `unknown`
+because this guest carries no way to make the attempt, and `info` where a value is
+worth printing and no attempt was made.
+
+⛔ **`unknown` is not `closed`**, and `judgeDoors` refuses to fold them together: a
+door the configuration claims to close and that could not be tried is a problem.
+
+Exit 0 means every door **the configuration claims** was closed. ⛔ It does not mean
+the base reaches nothing, and the report ends with the open doors no setting closes.
+
+Three settings claim, and only three: `base.automount = off` claims
+`fs.windows-drives`, `base.interop = "off"` claims `interop.windows-path`, and
+`base.passwordless_sudo = false` claims `priv.passwordless-sudo`.
+
+### ⛔ Three defects the command found in itself, and all three needed driving
+
+1. ⛔ **`interop.run-exe` reported a door CLOSED over an attempt that never
+   happened.** It ran a hardcoded `/mnt/c/Windows/System32/cmd.exe`, which does not
+   exist on a base with automount off, and reported the `No such file or directory`
+   as a refusal. That is a false CLOSED, in the file whose own header forbids exactly
+   it. It now searches for a reachable executable and answers `unknown` when there is
+   none, naming why.
+2. ⛔ **The first driven run took 277 SECONDS**, because bash's `/dev/tcp` carries no
+   deadline and two filtered ports ran to the kernel's own timeout. `nc -w` and
+   python3's `settimeout` have one; the bash route is now wrapped in `timeout` and is
+   not used at all without it. The same run takes **12 s**.
+3. ⛔ **`--json` answered `"problems": null`** on a base with no problems, because Go
+   marshals a nil slice as null. So the ONE answer a caller most wants is the one that
+   breaks `.problems.length`, while every failing base parses. It is the convention
+   `base grant` already keeps. Found by consuming this command's own JSON.
+
+⚠ A fourth, found before it shipped: the scratch script tried TCP through `sh -c
+"exec 3<>/dev/tcp/..."`, which is bash-only. Under dash on Debian or busybox ash on
+Alpine every TCP door would have read CLOSED with no packet sent.
+
+### ⛔ And one about WSL, which changed what the command may promise
+
+**The `WSLInterop` `binfmt_misc` registration does not follow a distribution's own
+`[interop] enabled` setting.** Measured 2026-09-17 across two distributions and three
+utility-VM lifetimes:
+
+| distribution | `/etc/wsl.conf` | handler | a Windows executable |
+| --- | --- | --- | --- |
+| `wsl-toolkit-base` | `enabled=false` | PRESENT, `interpreter /init`, `magic 4d5a` | placed by hand in the granted DrvFS directory it ran `/init`, which answered `UtilAcceptVsock:273: accept4 failed 110` and exited 1 |
+| `wsl-toolkit` | `enabled=true` | ABSENT: `binfmt_misc` holds only `register` and `status` | `/mnt/c/Windows/System32/hostname.exe` -> `cannot execute binary file: Exec format error`, rc 126 |
+| `wsl-toolkit-base`, restarted while the VM was up | `enabled=false` | ABSENT, three readings | - |
+| `wsl-toolkit-base`, after `wsl --shutdown` | `enabled=false` | PRESENT, six consecutive readings over 12 s | - |
+
+⚠ **Both values were observed on the SAME distribution with the same configuration**,
+so it is not a fact about the setting. ⛔ **The mechanism has not been read**, and this
+entry does not guess one.
+
+What it changed:
+
+- reading that proc file is a SETTING READ BACK and is misleading in both directions,
+  so `interop.binfmt` is an `info` row with no verdict;
+- `interop.exec-pe` is a real attempt - a two-byte `MZ` file, `chmod +x`, executed -
+  and it is **reported and never claimed**, because this tool cannot remove a handler
+  WSL registers and a command that refuses every correctly built base is one its
+  caller learns to ignore. Driven both ways on a real base: `open` with the handler
+  live, `closed` without, exit 0 either time;
+- `base.interop = "off"` claims `interop.windows-path` alone, which the provisioner
+  writes and the probe can decide on every base.
+
+### Measured, 2026-09-17, on `wsl-toolkit-base`
+
+automount off, interop off, passwordless sudo on, one rw grant.
+
+| | result |
+| --- | --- |
+| `base doors` | exit **0**, 30 doors, 0 problems, **12 s** with the distribution up and 19 s including its start |
+| `base doors --json` | exit 0, `wsl-toolkit-base-doors/1`, `doors` 30, `problems` 0, `open` 6 |
+| closed by an attempt | `fs.windows-drives`, `fs.mount-drvfs` (`must be superuser to use mount`), `interop.windows-path`, `net.windows-host-smb`, `net.windows-host-rdp`, `priv.unshare-netns` |
+| read-only | `fs.wsl-drivers`, 9p, a write refused |
+| ⛔ open, and no setting closes them | `fs.mnt-wsl-shared`, `net.windows-host-icmp`, `net.internet`, `priv.passwordless-sudo`, `priv.unshare-userns`, `priv.unshare-user-plus-net` |
+| the suite | 13 cases; **6 mutation rows, 6 of 6 went red**, each green unmutated first |
+
+### Still open, and it is now two rather than four
+
+1. **A real `/etc/resolv.conf` and the shared tmpfs closed at every start.** Both belong
+   in the provisioner. ⚠ `base doors` now reports the cost directly: `net.resolv-conf`
+   reads `/etc/resolv.conf -> /mnt/wsl/resolv.conf`, so closing the tmpfs takes the
+   resolver with it.
+2. **The account's processes in their own network namespace**, through `pasta`, with the
+   Windows host and the private ranges refused by a rule inside it. ⚠ It changes how
+   `base exec` and `base shell` start a command, which is the invasive part.
+
+⛔ **Until both are done the documentation calls this shape zero grants, never a sandbox
+or a security boundary**, and `base doors` is now what a reader runs instead of trusting
+that sentence.
 
 ---
 
