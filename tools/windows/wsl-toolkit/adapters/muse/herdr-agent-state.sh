@@ -33,6 +33,7 @@ set -u
 
 SOURCE=custom:wsl-toolkit-muse
 AGENT=muse
+EVENT=
 MESSAGE_MAX=500
 
 STATE_DIR=${WSL_TOOLKIT_HERDR_MUSE_STATE:-${XDG_STATE_HOME:-$HOME/.local/state}/wsl-toolkit/herdr-muse}
@@ -253,6 +254,12 @@ ROWS
 
 # ------------------------------------------------------------------ reporting --
 
+# ⛔ THE LOG NAMES THE EVENT, because without it two reports of `working` in one turn
+# cannot be told apart and `PreToolUse` cannot be shown to have fired at all. WSL-76's
+# fifth outstanding item was exactly that: registered and never driven. Measured on
+# 2026-09-17, a real turn logged UserPromptSubmit and then PreToolUse.
+#
+# ⚠ EVENT IS THE CALLER'S, read from the payload, and empty outside main().
 report() {
   r_pane=$1
   r_state=$2
@@ -265,9 +272,9 @@ report() {
     set -- "$@" --message "$(printf '%.'"$MESSAGE_MAX"'s' "$r_message")"
   fi
   if "$HERDR" "$@" >/dev/null 2>&1; then
-    log "reported $r_state pane=$r_pane seq=$r_seq"
+    log "reported $r_state on ${EVENT:-?} pane=$r_pane seq=$r_seq"
   else
-    log "herdr refused $r_state pane=$r_pane seq=$r_seq"
+    log "herdr refused $r_state on ${EVENT:-?} pane=$r_pane seq=$r_seq"
   fi
 }
 
@@ -363,6 +370,7 @@ main() {
   [ -n "$payload" ] || return 0
 
   event=$(field hook_event_name "$payload")
+  EVENT=$event
   session=$(field session_id "$payload")
   [ -n "$event" ] && [ -n "$session" ] || return 0
 

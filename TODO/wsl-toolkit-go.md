@@ -7326,6 +7326,46 @@ rule on, in an entry of its own.
 5. `PreToolUse` and `PermissionRequest` reported from a real turn.
 6. The three reviews, and the closing.
 
+### Amended 2026-09-17: the fifth item is driven, and a defect it found
+
+⭐ **`PreToolUse` and `PermissionRequest` are reported from a REAL turn**, on the
+operator's own base, with Muse on `muse-spark-1.3-contributor` at `max` in a pane
+herdr started at a granted project.
+
+⭐ **The reporter's log names the event now.** It printed only the state, so two
+reports of `working` in one turn could not be told apart and `PreToolUse` could not
+be shown to have fired at all. One line changed, the self-test's 16 cases still pass.
+
+| the turn | what the reporter logged |
+| --- | --- |
+| `python3 src/inventory.py`, which Muse ran and answered `47` to | `working on UserPromptSubmit` seq=5, `working on PreToolUse` seq=6, `idle on Stop` seq=7 |
+| a write to `/etc`, outside the workspace | `working on PreToolUse` seq=9, then `blocked on PermissionRequest` seq=10, with the pane showing the request and the exact command |
+| ⛔ the request DENIED with `escape` | ⛔ **nothing.** The pane printed `tool approval cancelled`, the file was never written, and no hook fired |
+
+⛔ **So a cancelled approval leaves the agent `blocked` for ever, and herdr then
+refuses every prompt** with `agent_blocked`. ⚠ **Registering `Interrupt` and
+`PostToolUse` does not help**: both were added to Muse's settings and driven through
+the same cancel, and neither fired. Muse Code 1.3.0 emits no hook for a cancelled
+approval.
+
+⭐ **The recovery is to submit through the PANE rather than through the agent.**
+`pane send-text` and `pane send-keys enter` reached Muse, herdr's own screen
+detection moved the agent to `working`, and `agent prompt` was accepted again.
+⚠ **That recovery is herdr's, not the hook's** - the reporter logged nothing new -
+and it is the screen-derived fallback herdr keeps even under full lifecycle
+authority.
+
+### Still open after this, revised again
+
+1. `--remote` measured by the operator in Windows Terminal, against `#4176`'s five
+   signals. ⛔ **Theirs, and the only item here that is.**
+2. ⭐ **Done 2026-09-16:** `--machine` end to end, with the nightly on both sides.
+3. ⭐ **Done 2026-09-17:** Muse through herdr, which answered `47` twice.
+4. ⭐ **Done 2026-09-17:** the attach line reaching the same server; the operator
+   attached and accepted a request in Muse's own pane.
+5. ⭐ **Done 2026-09-17**, above.
+6. The reviews and the closing, which wait on item 1.
+
 ---
 
 ## WSL-77. A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters
@@ -7908,6 +7948,39 @@ because the installer fetches a launcher that fetches the current Muse.
 3. ⚠ **The decision nobody has made** still stands: whether `muse serve`'s stdio
    protocol gets a route through this tool.
 4. The closing, with the three reviews.
+
+### Amended 2026-09-17: the guide is written and every command in it was run
+
+⭐ **[`../tools/windows/wsl-toolkit/examples/muse-code/README.md`](../tools/windows/wsl-toolkit/examples/muse-code/README.md)
+is the guide the operator asked for**, end to end: install the tool, write the
+configuration, build the base, grant one project, sign each of the three agents in,
+prove it with `base status --probe`, attach both ways, drive an agent through herdr,
+and run one prompt from Windows.
+
+⭐ **Every command in it was RUN before it was written**, and that is what found three
+defects in the guide itself: pi's credential type is `api_key` and not `api`; a grant
+is taken away with `base revoke --target` and not by editing the file; and a generated
+block had lost a backslash. Finding 61.
+
+⭐ **Item 2 is done.** Muse was started by herdr in a pane whose working directory is
+the project's guest path, `/workspaces/proj`, ran that project's own script through its
+bash tool, and answered `47`. `WSL-76`'s amendment of the same date carries the
+lifecycle it reported while doing it.
+
+⚠ **The prove's first condition is NOT fully met, and the reason is not a shortfall.**
+It asks for a transcript of every command in the guide, run in the ORDER the guide
+gives, from nothing. Every command has been run and none is a guess, but not as one
+ordered pass from an empty host: step 5 is three sign-ins, and each is the operator's
+credential. A from-nothing transcript needs them at the keyboard.
+
+### Still open, revised again
+
+1. A from-nothing transcript of the guide in its own order. ⛔ **Needs the operator**,
+   for the three sign-ins alone.
+2. ⭐ **Done 2026-09-17**, above.
+3. ⚠ **The decision nobody has made** still stands: whether `muse serve`'s stdio
+   protocol gets a route through this tool.
+4. The closing, with the reviews.
 
 ---
 

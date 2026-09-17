@@ -855,6 +855,32 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     had just exited 1.** Seen while proving finding 62, in the same session whose own
     rules say to read an exit code from the process. The reading was redone unpiped.
 
+64. ⭐ **`PreToolUse` AND `PermissionRequest` ARE DRIVEN FROM A REAL TURN**, which is
+    `WSL-76`'s fifth outstanding item and had been registered and never fired, because the
+    echo provider calls no tool. On the operator's base on 2026-09-17, with Muse on
+    `muse-spark-1.3-contributor` at `max`:
+    `reported working on UserPromptSubmit`, `reported working on PreToolUse`,
+    `reported idle on Stop`; and for a command outside the workspace,
+    `reported working on PreToolUse` then `reported blocked on PermissionRequest`, with
+    the pane showing the approval request and the exact command.
+    ⭐ **The log names the event now.** It used to print only the state, so two reports of
+    `working` in one turn could not be told apart and `PreToolUse` could not be shown to
+    have fired at all.
+65. ⛔ **A CANCELLED APPROVAL LEAVES THE AGENT `blocked` FOR EVER, AND herdr THEN REFUSES
+    EVERY PROMPT.** Measured 2026-09-17: the approval was denied with `escape`, the pane
+    printed `tool approval cancelled`, the file was never written - and Muse fired **no
+    hook at all**, so the reporter's last word stayed `blocked` and
+    `herdr agent prompt` answered `agent_blocked`. ⚠ **Two more hook events were tried and neither
+    fired**; `WSL-76`'s amendment of the same date names them and what they did. ⭐ **The recovery is to submit through the PANE
+    rather than through the agent**: `pane send-text` plus `pane send-keys enter` reached
+    Muse, herdr's own screen detection moved the agent to `working`, and `agent prompt`
+    was accepted again. ⚠ **That recovery came from herdr and not from the hook** - the
+    reporter logged nothing new - which is the screen-derived fallback herdr keeps even
+    under full lifecycle authority.
+66. ⚠ **`agent wait --until idle` timed out over an agent that was ALREADY idle.** The
+    turn finished before the wait began. Not a defect, and worth knowing before treating
+    a timeout as a failure.
+
 
 ## Review findings
 
