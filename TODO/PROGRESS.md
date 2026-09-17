@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-17T10:01:48Z
 baseline        1699de9, tree clean, doctor exit 0, gate 21 of 21, and three commits the previous session left unpushed, pushed at 10:03:30Z on green CI for 5eae667
 head            this session's commit
-entries         total 126  open 3  blocked 0  done 123
+entries         total 127  open 3  blocked 0  done 124
 this session    the ending the previous session never wrote, wsl-toolkit-v3.0.0, and the smoke that release failed
 ```
 
@@ -280,7 +280,8 @@ new file FIRST, then run the gate.**
 | `4c35680` | ASD-STE100's countable half becomes `check ste`, 20 violations fixed and 0 left; `check skills` holds a skill to standing alone and to naming only commands that exist; `base --help` answers 0 and finding 39 closes; findings 3 and 34 fixed in both halves of the `repo` wrapper pair; the windows-repo example; 12 mutation rows |
 | `6e204c2` | finding 69 fixed: a Windows launcher another program has taken the name of is reported by `base status --probe` through a new `Notes` channel, and the check accumulates rather than returning at the first problem; the rule that claimed to be host-free used `path/filepath` and went red in `golang:1.25`, which is finding 42 again inside the commit that cited it; the invisible-character rule; 3 mutation rows |
 | `675003d` | `tools/text`, one Go program with three modes on either host, with 22 cases and 3 defects the harness found in it rather than a reading; `WSL-68`, `WSL-76` and `WSL-78` closed with what each never measured written into its own closing; ruling 24; a fenced `pwsh` invocation must pass `-NoProfile`; rule 7 caught the work order going behind the moment those three closed |
-| this record commit | the smoke of `wsl-toolkit-v3.0.0` fixed: `consumer.ps1` wrote a `base.name` with no instance selected, which `WSL-74` refuses, so the first release cut since that rule published green and could not be consumed; measured back to 8 passed, 0 failed against the real tag; findings 70 and 71; `WSL-91` filed for the gap that let it reach a release; the `text` tool's silently capped line list; `WSL-76`'s closing carries the operator's own probe run |
+| `f6ab39b` | the smoke of `wsl-toolkit-v3.0.0` fixed: `consumer.ps1` wrote a `base.name` with no instance selected, which `WSL-74` refuses, so the first release cut since that rule published green and could not be consumed; measured back to 8 passed, 0 failed against the real tag; findings 70 and 71; `WSL-91` filed for the gap that let it reach a release; the `text` tool's silently capped line list; `WSL-76`'s closing carries the operator's own probe run |
+| this record commit | `WSL-92`: `text-tool` in its own directory, published with the release for Windows and Linux, with a standalone skill and a check that holds it to the flags the program has; the `eol` mode that replaces `dos2unix` and `unix2dos`; many files edited as one unit; ONE digest from 13 shell invocations on two hosts; findings 72 to 75, three of them found by using the tool on itself |
 
 ## Measurements
 
@@ -1171,6 +1172,49 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     emptiness guard so a `write` - which names no lines at all - would read as a
     truncation.
 
+72. ⛔ **`--between` CUT ITS TWO ANCHORS AT THE FIRST COMMA, so an anchor holding
+    one silently became two different anchors.** Found on the first real use:
+    `--between "// Report is what one call did, or would have done.,^}$"` took
+    `// Report is what one call did` and ` or would have done.,^}$` and matched
+    nothing. ⭐ **The refusal is what surfaced it** - `--expect 1` answered 0 and
+    wrote nothing - so the guard worked and the interface was the defect.
+    ⚠ **A separator that appears in the data is not a separator.** Ordinary prose
+    and most Go declarations hold a comma. Fixed by taking TWO arguments,
+    `--between START END`, which has no separator to get wrong. 1 case and 1
+    mutation row that restores the `strings.Cut`.
+73. ⛔ **AN OPERATION THAT TAKES NO PAYLOAD READ STDIN AND HUNG.**
+    `text-tool edit F --delete 73,187` never returned, and the harness timed it
+    out at 120 s. `loadPayload` guards against a TERMINAL by looking for a
+    character device; the stdin an agent harness hands a child is a PIPE whose
+    writer never writes and never closes, which is not a character device, so
+    `io.ReadAll` waited for ever. ⭐ **THE GUARD RECOGNISED SHAPES WHEN IT SHOULD
+    HAVE ASKED A QUESTION**: `--delete`, `--count` and the `eol` mode all REFUSE a
+    payload, so none of them should reach stdin at all, whatever it is. That rule
+    needs no knowledge of pipes. ⚠ **Nothing was written**, because the hang came
+    before any apply. 3 cases and 1 mutation row.
+    ⛔ **And the first case for it HUNG THE MUTATION RUN.** Its fake reader
+    blocked for ever, faithfully reproducing the real pipe, so the mutated build
+    never failed - it waited, and `repo mutate` waited with it. A guard whose
+    failure mode is a hang teaches nobody anything. The reader records the read
+    and returns an error now, and the row goes red in microseconds.
+74. ⛔ **A SUBSTITUTION THAT HAS TO RETYPE ITS OWN ANCHOR DELETES THAT ANCHOR WHEN
+    YOU FORGET, AND I FORGOT THREE TIMES IN ONE SESSION.** Twice it removed a Go
+    function's declaration and left the body orphaned - `lineEnding` and
+    `Invoke-Released` - and once a section heading. ⚠ **This is already a written
+    memory in this project** and it still happened three times, which is the
+    evidence that a note is not a fix. ⭐ **FIXED BY ADDING THE OPERATION THAT
+    CANNOT EXPRESS THE MISTAKE**: `--after FIND` and `--before FIND` put the
+    payload beside the matching line and KEEP that line. `--expect` is required,
+    as for `--replace`, because a pattern names no place of its own. 9 cases and
+    4 mutation rows.
+75. ⚠ **A QUOTED EXECUTABLE PATH AT THE START OF A POWERSHELL COMMAND IS AN
+    EXPRESSION, NOT AN INVOCATION**, and answers `Unexpected token`. Measured by
+    `shell-matrix.ps1` on its first run: the same line PASSED in `cmd` and FAILED
+    in both PowerShell 7 and Windows PowerShell 5.1, which is the shape that
+    points at the host rather than the tool. The call operator `&` is what runs
+    it. ⭐ **A bare name found on `PATH` needs none**, so this only bites the
+    caller who quoted a full path - which is the caller following a document that
+    showed one. Written into the skill because an agent will meet it.
 ## Review findings
 
 ⭐ **2026-09-17T10:01Z, the release session's four closing reviews.** Each pass names

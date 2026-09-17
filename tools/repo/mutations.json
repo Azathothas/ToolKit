@@ -2,6 +2,168 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: a skill names only text-tool flags that exist",
+      "file": "internal/checks/skills.go",
+      "find": "\t\t\tif textTool != nil && !textTool[fl] {",
+      "replace": "\t\t\tif textTool != nil && !textTool[fl] && false {",
+      "run": "TestASkillNamesOnlyTextToolFlagsThatExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "check: prose naming text-tool is not an invocation of it",
+      "file": "internal/checks/skills.go",
+      "find": "\tfirst := fields[0]\n",
+      "replace": "\tfirst := fields[0]\n\tfor _, f := range fields {\n\t\tif f == \"text-tool\" {\n\t\t\tfirst = f\n\t\t}\n\t}\n",
+      "run": "TestASkillNamesOnlyTextToolFlagsThatExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "check: the text-tool vocabulary is read from the real usage text",
+      "file": "internal/checks/skills.go",
+      "find": "\tif len(known) == 0 {\n\t\treturn nil\n\t}\n\treturn known\n",
+      "replace": "\treturn known\n",
+      "run": "TestTheTextToolVocabularyComesFromTheRealUsageText",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "text-tool: inserting beside a match keeps the match",
+      "file": "internal/edit/apply.go",
+      "find": "\t\tif hit && !o.insertBeforeMatch {\n\t\t\tout = append(out, block...)\n\t\t}\n",
+      "replace": "\t\tif hit && !o.insertBeforeMatch {\n\t\t\tout = out[:len(out)-len(ln)]\n\t\t\tout = append(out, block...)\n\t\t}\n",
+      "run": "TestInsertingBesideAMatchKeepsTheMatch",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: --before puts the payload above the line and --after below it",
+      "file": "internal/edit/apply.go",
+      "find": "\t\tif hit && o.insertBeforeMatch {\n\t\t\tout = append(out, block...)\n\t\t}\n",
+      "replace": "\t\tif hit && !o.insertBeforeMatch {\n\t\t\tout = append(out, block...)\n\t\t}\n",
+      "run": "TestInsertingBesideAMatchKeepsTheMatch",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: an anchor with no trailing newline gains one",
+      "file": "internal/edit/apply.go",
+      "find": "\t\tif hit && !o.insertBeforeMatch && !hadNewline(ln) {",
+      "replace": "\t\tif hit && !o.insertBeforeMatch && !hadNewline(ln) && false {",
+      "run": "TestInsertingBesideAMatchKeepsTheMatch",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: --after and --before need --expect too",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif (o.haveFind || o.haveInsertFind) && !o.haveExpect && !o.count {",
+      "replace": "\t\tif o.haveFind && !o.haveExpect && !o.count {",
+      "run": "TestInsertingBesideAMatchNeedsExpect",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: many files change together or not at all",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tstaged[i] = after\n",
+      "replace": "\t\tstaged[i] = after\n\t\t_ = writeAtomic(p, after)\n",
+      "run": "TestManyFilesChangeTogetherOrNotAtAll",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a total that is not what the caller expected is refused",
+      "file": "internal/edit/edit.go",
+      "find": "\tif o.haveExpect && rep.Matches != o.expect {",
+      "replace": "\tif o.haveExpect && rep.Matches != o.expect && false {",
+      "run": "TestManyFilesChangeTogetherOrNotAtAll",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a named file that matched nothing refuses the whole call",
+      "file": "internal/edit/edit.go",
+      "find": "\tif len(unmatched) > 0 && !o.allowUnmatched && !o.count {",
+      "replace": "\tif len(unmatched) > 0 && !o.allowUnmatched && !o.count && false {",
+      "run": "TestAFileThatMatchedNothingRefusesTheWholeCall",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: only a --replace can leave a file unmatched",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif matches == 0 \u0026\u0026 (o.haveFind || o.haveInsertFind) {",
+      "replace": "\t\tif matches == 0 \u0026\u0026 false {",
+      "run": "TestAFileThatMatchedNothingRefusesTheWholeCall",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a place in one file is refused for many",
+      "file": "internal/edit/edit.go",
+      "find": "\tif len(o.paths) > 1 {\n\t\tfor _, f := range []struct {",
+      "replace": "\tif len(o.paths) > 1 && false {\n\t\tfor _, f := range []struct {",
+      "run": "TestAPlaceInOneFileIsRefusedForMany",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: an operation with no payload never reads stdin",
+      "file": "internal/edit/edit.go",
+      "find": "\treturn o.mode != \"eol\" && !o.haveDelete && !o.count\n",
+      "replace": "\treturn true\n",
+      "run": "TestAnOperationWithNoPayloadNeverReadsStdin",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: eol converts the endings it was asked for",
+      "file": "internal/edit/apply.go",
+      "find": "\tout := toEOL(body, want)\n",
+      "replace": "\tout := body\n",
+      "run": "TestTheEOLModeIsDos2unixAndUnix2dos",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: eol keeps a byte order mark it was not told to remove",
+      "file": "internal/edit/apply.go",
+      "find": "\t\tif hadBOM {\n\t\t\tout = append(append([]byte{}, utf8BOM...), out...)\n\t\t}\n",
+      "replace": "\t\tif hadBOM && false {\n\t\t\tout = append(append([]byte{}, utf8BOM...), out...)\n\t\t}\n",
+      "run": "TestTheEOLModeIsDos2unixAndUnix2dos",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a byte order mark that moved counts as a change",
+      "file": "internal/edit/apply.go",
+      "find": "\tif hadBOM != bytes.HasPrefix(out, utf8BOM) {\n\t\tconverted++\n\t}\n",
+      "replace": "\tif hadBOM != bytes.HasPrefix(out, utf8BOM) && false {\n\t\tconverted++\n\t}\n",
+      "run": "TestTheEOLModeIsDos2unixAndUnix2dos",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: eol refuses a call that names no target",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif o.eol == \"keep\" && o.bom == \"keep\" {",
+      "replace": "\t\tif o.eol == \"keep\" && o.bom == \"keep\" && false {",
+      "run": "TestTheEOLModeRefusesWhatItCannotDo",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: --between takes two arguments, because an anchor may hold a comma",
+      "file": "internal/edit/edit.go",
+      "find": "\t\t\to.betweenA, o.betweenB, o.haveBetween = rest[i+1], rest[i+2], true\n\t\t\ti += 2\n",
+      "replace": "\t\t\ta2, b2, _ := strings.Cut(rest[i+1], \",\")\n\t\t\to.betweenA, o.betweenB, o.haveBetween = a2, b2, true\n\t\t\ti++\n",
+      "run": "TestBetweenTakesTwoArgumentsBecauseAnAnchorMayHoldAComma",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
       "label": "the colon rule that catches an NTFS stream",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/workspace.go",
@@ -3237,19 +3399,19 @@
     {
       "label": "text: a match count that is not what the caller expected is refused",
       "file": "internal/edit/edit.go",
-      "find": "\tif o.haveExpect && matches != o.expect {\n",
-      "replace": "\tif o.haveExpect && matches != o.expect && false {\n",
+      "find": "\tif o.haveExpect \u0026\u0026 rep.Matches != o.expect {\n",
+      "replace": "\tif o.haveExpect \u0026\u0026 rep.Matches \u003c o.expect {\n",
       "run": "TestASubstitutionThatMatchesADifferentNumberOfTimesIsRefused",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "args": []
     },
     {
       "label": "text: a substitution with no expected count is refused",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif o.haveFind && !o.haveExpect && !o.count {\n",
-      "replace": "\t\tif o.haveFind && !o.haveExpect && !o.count && false {\n",
+      "find": "\t\tif (o.haveFind || o.haveInsertFind) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {\n",
+      "replace": "\t\tif false \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {\n",
       "run": "TestASubstitutionWithoutExpectIsRefused",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "args": []
     },
     {
@@ -3258,7 +3420,7 @@
       "find": "\tif o.count || o.dryRun {\n",
       "replace": "\tif o.dryRun && false {\n",
       "run": "TestACountChangesNothingAndSaysSo",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "args": []
     },
     {
@@ -3267,7 +3429,7 @@
       "find": "\tif bytes.Contains(body, []byte(\"\\r\\n\")) {\n\t\treturn \"crlf\"\n\t}\n",
       "replace": "\tif bytes.Contains(body, []byte(\"\\r\\n\")) && false {\n\t\treturn \"crlf\"\n\t}\n",
       "run": "TestTheFilesShapeSurvives",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "args": []
     },
     {
@@ -3276,7 +3438,7 @@
       "find": "\tif o.line < 1 || o.line > len(lines) {\n",
       "replace": "\tif o.line < 1 && false {\n",
       "run": "TestALineNumberOutsideTheFileIsRefused",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "args": []
     },
     {
@@ -3285,7 +3447,7 @@
       "find": "\t\tif len(ops) > 1 {\n",
       "replace": "\t\tif len(ops) > 2 {\n",
       "run": "TestTwoOperationsAtOnceAreRefused",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "args": []
     },
     {
@@ -3294,7 +3456,7 @@
       "find": "base64.StdEncoding.DecodeString(strings.Join(strings.Fields(v), \"\"))",
       "replace": "base64.StdEncoding.DecodeString(v)",
       "run": "TestBase64WrappedByAShellIsStillRead",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "args": []
     },
     {
@@ -3319,7 +3481,7 @@
       "label": "text: a capped line list says it is capped",
       "find": "\t\tLines: lines, LinesTruncated: len(lines) > 0 && len(lines) < matches,\n",
       "replace": "\t\tLines: lines,\n",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "run": "TestALineListShorterThanTheCountSaysWhy",
       "args": [],
       "file": "internal/edit/edit.go"
@@ -3328,7 +3490,7 @@
       "label": "text: a report that names no lines is not a truncated one",
       "find": "LinesTruncated: len(lines) > 0 && len(lines) < matches,",
       "replace": "LinesTruncated: len(lines) < matches,",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "run": "TestALineListShorterThanTheCountSaysWhy",
       "args": [],
       "file": "internal/edit/edit.go"
@@ -3337,7 +3499,7 @@
       "label": "text: the reported line list is bounded",
       "find": "const maxReportedLines = 20",
       "replace": "const maxReportedLines = 1000",
-      "module": "tools/text",
+      "module": "tools/text-tool",
       "run": "TestALineListShorterThanTheCountSaysWhy",
       "args": [],
       "file": "internal/edit/apply.go"

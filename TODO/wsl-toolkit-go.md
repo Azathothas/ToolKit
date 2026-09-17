@@ -10574,3 +10574,92 @@ guard**, because the exemption list becomes the real rule and nobody reads it.
 
 The gate fails if the working-tree binary refuses anything `consumer.ps1` asks of
 it, and finding 70's shape is caught before a tag rather than after one.
+
+---
+
+## WSL-92. text-tool becomes a product an agent downloads, not a script in a checkout
+
+**Source** the operator on 2026-09-17, mid-session, after watching this session
+edit files with a `py - <<'PY'` heredoc: "you just used a py heredoc style to
+edit a file, and see that was what we are trying to prevent". They asked for the
+tool in its own directory, with its own docs and skill, published with the
+releases, tested across shells, and able to replace `dos2unix` and `unix2dos`
+and to edit several files at once.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+The tool existed and was not reachable. It lived at `tools/text`, was built on
+demand by two wrappers, and had no released binary, so the only way to use it
+was to be inside a checkout of this repository with a Go toolchain. ⛔ **The
+agents it was written for are not in a checkout**, and the operator wanted to
+hand them one page and one binary.
+
+⚠ **AND THE AUTHOR OF IT DID NOT USE IT.** That is the sharpest evidence that it
+was not reachable: in the same session that shipped it, this one reached for a
+Python heredoc four times, which is the exact pattern the tool exists to remove.
+
+## What was done
+
+1. ⭐ `tools/text` is `tools/text-tool`, the program is `text-tool`, and the
+   wrappers are `text-tool.sh` and `text-tool.ps1`. The name is its own home in
+   `edit.Name`, so the next rename cannot leave half the messages behind.
+2. ⭐ **`eol` is a mode**: `text-tool eol PATH --lf` is `dos2unix` and `--crlf` is
+   `unix2dos`, with `--bom keep|strip|add`. The count it reports is endings
+   CONVERTED, so a file already right answers 0 and a caller can tell "nothing to
+   do" from "everything moved".
+3. ⭐ **Every mode takes as many files as it is given**, and all of them change or
+   none do: every file is read and applied and checked before any is written.
+   `--expect` is the total, a file that matched nothing refuses the whole call
+   unless `--allow-unmatched` is passed, and `--files-from` reads a list.
+4. ⭐ **`--after FIND` and `--before FIND`**, which keep the line they match.
+   Finding 74 is why.
+5. ⭐ **Published.** `release.yml` builds four assets, runs the staged Windows
+   one - write, edit, AND a refused `--expect`, because a build with the guard
+   compiled out would pass every other line - and `consumer.ps1` verifies their
+   digests and signatures from 3.1.0 onward.
+6. ⭐ **A skill that stands alone**, `skills/text-tool/SKILL.md`, and `check
+   skills` now refuses a skill naming a `text-tool` flag its own usage text does
+   not document. That rule found a real gap on its first run: the skill said
+   `text-tool --help`, which the program accepts and its usage never mentioned.
+
+## Measured, not asserted
+
+⭐ **ONE DIGEST FROM THIRTEEN SHELL INVOCATIONS on two operating systems**,
+2026-09-17. The payload is the one that `docs/conventions/shell.md` measured
+executing inside a QUOTED heredoc: backticks, a dollar sign, double quotes,
+apostrophes and a backslash escape.
+
+| host | shells | result |
+| --- | --- | --- |
+| Windows, Git Bash | sh, dash, bash, zsh | 4 agreed |
+| the base, Arch | sh, dash, bash, zsh, ksh, busybox | 6 agreed |
+| Windows hosts | pwsh 7, powershell 5.1, cmd | 3 agreed |
+
+The digest begins `dc493308` and it is the same one every time.
+
+⛔ **THIS IS THE ONE CLAIM THE GO SUITE CANNOT MAKE.** Those cases call `Run()`
+directly and never cross a shell boundary, which is exactly where a payload
+loses its quoting. `shell-matrix.sh` and `shell-matrix.ps1` are tracked, and a
+run that finds fewer than two shells exits non-zero rather than reporting that
+they agreed.
+
+⚠ **THE BASE GAINED FOUR PACKAGES TO MAKE THAT TABLE**, `dash`, `zsh`, `ksh` and
+`busybox`, installed with `base exec --root`. The container matrix would have
+been the better instrument and podman would not answer on this host all session
+- finding 67's neighbour, an SSH forward that rejects after a clean stop and
+start - so the shells were brought to the base instead. It is additive and the
+distribution is otherwise untouched.
+
+## What this entry did NOT do
+
+⛔ **The container matrix never ran.** `wsl-toolkit matrix` across the image
+catalog is the instrument that would cover musl, Void and Alpine's own busybox
+ash, and podman was unreachable for the whole session. The six Linux shells
+above are all glibc on one distribution. ⚠ **That is a real gap and it is not
+the tool's**: nothing suggests a different result, and nothing measured it.
+
+⚠ **No darwin build.** The asks were Windows and inside the base. Adding one is
+a line in `release.yml` the day somebody wants it.

@@ -19,6 +19,8 @@ func (o *options) apply(before []byte, eol string) ([]byte, int, []int, error) {
 	switch o.mode {
 	case "write":
 		return payload, 1, nil, nil
+	case "eol":
+		return o.applyEOL(before)
 	case "append":
 		// ⚠ A FILE WITH NO TRAILING NEWLINE WOULD HAVE ITS LAST LINE JOINED.
 		// Saying so is not enough: this inserts the ending the file already uses.
@@ -36,12 +38,72 @@ func (o *options) apply(before []byte, eol string) ([]byte, int, []int, error) {
 		return o.applyLine(before, payload, eol)
 	case o.haveAfter, o.haveBefore:
 		return o.applyInsert(before, payload, eol)
+	case o.haveInsertFind:
+		return o.applyInsertAt(before, payload, eol)
 	case o.haveDelete:
 		return o.applyDelete(before)
 	case o.haveBetween:
 		return o.applyBetween(before, payload, eol)
 	}
 	return before, 0, nil, fmt.Errorf("no operation ran, which is a defect in this tool rather than in the call")
+}
+
+// utf8BOM is the three bytes a Windows editor puts at the front of a file.
+//
+// ⚠ IT IS DATA, NOT AN ENCODING DECLARATION, to everything that reads bytes. A
+// BOM in front of `#!/bin/sh` stops the kernel finding the interpreter, and one
+// in front of a JSON document makes encoding/json refuse it, which is why
+// dos2unix grew an option for it and why this tool has one.
+var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
+
+// applyEOL converts a whole file's line endings and its byte order mark, which
+// is what dos2unix and unix2dos do and the only thing they do.
+//
+// ⛔ THE COUNT IS LINES CONVERTED, NOT LINES IN THE FILE. `--count` over a file
+// that is already in the wanted ending answers 0, so a caller can tell "nothing
+// to do" from "converted everything" without comparing byte totals.
+//
+// ⚠ A LONE CARRIAGE RETURN IS NOT A LINE ENDING HERE. Classic Mac files use one
+// and converting them is a different job with a different risk: a CR inside a
+// quoted string in an otherwise LF file would be rewritten as a line break.
+// toEOL only ever pairs CR with the LF that follows it.
+func (o *options) applyEOL(before []byte) ([]byte, int, []int, error) {
+	want := o.eol
+	if want == "keep" {
+		return before, 0, nil, fmt.Errorf("eol needs a target: --to lf, --to crlf, --lf or --crlf")
+	}
+	body := before
+	hadBOM := bytes.HasPrefix(body, utf8BOM)
+	if hadBOM {
+		body = body[len(utf8BOM):]
+	}
+
+	// counted BEFORE the conversion, over the endings that are going to move
+	converted := 0
+	if want == "crlf" {
+		converted = bytes.Count(body, []byte("\n")) - bytes.Count(body, []byte("\r\n"))
+	} else {
+		converted = bytes.Count(body, []byte("\r\n"))
+	}
+	out := toEOL(body, want)
+
+	switch o.bom {
+	case "add":
+		out = append(append([]byte{}, utf8BOM...), out...)
+	case "strip":
+		// already removed
+	default:
+		if hadBOM {
+			out = append(append([]byte{}, utf8BOM...), out...)
+		}
+	}
+	// ⚠ A BOM THE CALLER ASKED TO ADD OR REMOVE IS A CHANGE EVEN WHEN NO LINE
+	// ENDING MOVED, so it counts. Otherwise `--bom strip` on a file already in
+	// the wanted ending would report 0 matches and `--expect` could not name it.
+	if hadBOM != bytes.HasPrefix(out, utf8BOM) {
+		converted++
+	}
+	return out, converted, nil, nil
 }
 
 func lineEnding(eol string) []byte {
@@ -241,3 +303,58 @@ func lineMatcher(pattern string, useRegex bool) (func([]byte) bool, error) {
 }
 
 func trimEnding(line []byte) []byte { return bytes.TrimRight(line, "\r\n") }
+
+// applyInsertAt puts the payload beside every line matching a pattern, and
+// LEAVES THAT LINE WHERE IT IS.
+//
+// ⛔ THIS EXISTS BECAUSE --replace EATS ITS ANCHOR. The way to add a paragraph
+// above a heading with a substitution is to search for the heading and replace
+// it with the paragraph PLUS the heading, and forgetting the second half
+// deletes the heading. That is not a hypothetical: it happened three times in
+// one session in this repository, twice removing a Go function's declaration
+// and leaving its body orphaned, and once removing a document's section
+// heading. The operation that means "put this here" should not be spelled as a
+// substitution that has to rebuild what it matched.
+//
+// ⚠ --expect IS REQUIRED, for the same reason --replace requires it: a pattern
+// names no place of its own, so a pattern that matched nothing, or matched four
+// times, is a different edit from the one the caller asked for.
+func (o *options) applyInsertAt(before, payload []byte, eol string) ([]byte, int, []int, error) {
+	match, err := lineMatcher(o.insertFind, o.useRegex)
+	if err != nil {
+		return before, 0, nil, err
+	}
+	lines := splitLines(before)
+	block := append([]byte{}, payload...)
+	if !hadNewline(block) {
+		block = append(block, lineEnding(eol)...)
+	}
+
+	var out []byte
+	var touched []int
+	matches := 0
+	for i, ln := range lines {
+		hit := match(ln)
+		if hit && o.insertBeforeMatch {
+			out = append(out, block...)
+		}
+		// ⚠ THE ANCHOR LINE THAT HAS NO TRAILING NEWLINE gets one before an
+		// insertion after it, or the payload would be joined onto it.
+		if hit && !o.insertBeforeMatch && !hadNewline(ln) {
+			out = append(out, ln...)
+			out = append(out, lineEnding(eol)...)
+		} else {
+			out = append(out, ln...)
+		}
+		if hit && !o.insertBeforeMatch {
+			out = append(out, block...)
+		}
+		if hit {
+			matches++
+			if len(touched) < maxReportedLines {
+				touched = append(touched, i+1)
+			}
+		}
+	}
+	return out, matches, touched, nil
+}

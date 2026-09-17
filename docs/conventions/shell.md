@@ -16,7 +16,7 @@ loses its quoting, or a result crosses a boundary and loses its meaning.**
 1. ⭐ **Whatever writes a file directly.** Your harness's own write or edit tool
    puts bytes on disk with no shell in the path at all. Nothing below is as good,
    and reaching past this for a heredoc is the mistake this section is about.
-2. ⭐ **`scripts/common/text.sh`, or `text.ps1`.** A tool built for this, with the
+2. ⭐ **`scripts/common/text-tool.sh`, or `text-tool.ps1`.** A tool built for this, with the
    payload in base64 and the match count asserted. `scripts/README.md` has it.
 3. **Base64 on the command line.** `[A-Za-z0-9+/=]` is interpreted by no shell.
 4. **Copy from a file you already wrote.**

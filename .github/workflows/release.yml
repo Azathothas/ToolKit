@@ -140,6 +140,22 @@ jobs:
             if ($LASTEXITCODE -ne 0) { Write-Output "the $arch build failed"; exit 1 }
           }
           Pop-Location
+          # ⭐ text-tool SHIPS FOR BOTH HOSTS, because the agent that needs it
+          # runs on Windows and inside the base, and a tool that writes files
+          # without a shell in the path is no use only on one of them. Pure Go,
+          # CGO off, so the cross builds need nothing installed.
+          Push-Location tools\text-tool
+          $textTool = @()
+          foreach ($os in @('windows', 'linux')) {
+            foreach ($arch in @('amd64', 'arm64')) {
+              $env:GOOS = $os; $env:GOARCH = $arch; $env:CGO_ENABLED = '0'
+              $name = if ($os -eq 'windows') { "text-tool-$os-$arch.exe" } else { "text-tool-$os-$arch" }
+              & go build -trimpath -o "..\..\dist\$name" .
+              if ($LASTEXITCODE -ne 0) { Write-Output "the text-tool $os/$arch build failed"; exit 1 }
+              $textTool += $name
+            }
+          }
+          Pop-Location
           $herdr = @('windows-x86_64.zip', 'windows-aarch64.zip', 'linux-x86_64', 'linux-aarch64') | ForEach-Object { "$env:HERDR_LABEL-$_" }
           foreach ($name in $herdr) {
             $built = Join-Path 'herdr-artifacts\out' $name
@@ -149,7 +165,7 @@ jobs:
           # ⛔ THE COUNT IS ASSERTED. A staging step that produced fewer assets
           # than expected and exited 0 would publish a release missing the thing
           # a consumer came for, and the release would look complete.
-          $expected = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe') + $herdr
+          $expected = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe') + $herdr + $textTool
           foreach ($name in $expected) {
             if (-not (Test-Path -LiteralPath "dist\$name")) { Write-Output "dist\$name was not staged"; exit 1 }
           }
@@ -174,6 +190,22 @@ jobs:
           $want = 'wsl-toolkit-v' + ($out | Select-Object -First 1).Trim()
           if ($tag -ne $want) { Write-Output "tag is '$tag' and the binary says '$want'"; exit 1 }
           Write-Output "the staged binary reports $out, which matches $tag"
+          # ⛔ AND text-tool IS RUN TOO, on a real file, because `--help` only
+          # proves it starts. A cross-built binary that cannot write a file is a
+          # release an agent downloads and then cannot use, and the whole point
+          # of shipping it is that an agent with no write tool reaches for it.
+          $probe = Join-Path $env:RUNNER_TEMP 'text-tool-probe.txt'
+          & .\dist\text-tool-windows-amd64.exe write $probe --text 'staged' | Out-Null
+          if ($LASTEXITCODE -ne 0) { Write-Output "staged text-tool write exited $LASTEXITCODE"; exit 1 }
+          & .\dist\text-tool-windows-amd64.exe edit $probe --replace 'staged' --text 'proved' --expect 1 | Out-Null
+          if ($LASTEXITCODE -ne 0) { Write-Output "staged text-tool edit exited $LASTEXITCODE"; exit 1 }
+          if ((Get-Content -LiteralPath $probe -Raw).Trim() -ne 'proved') { Write-Output 'staged text-tool did not write what it said'; exit 1 }
+          # ⭐ AND ITS REFUSAL IS PROVED, not only its success. A build with the
+          # --expect guard compiled out would pass every line above.
+          & .\dist\text-tool-windows-amd64.exe edit $probe --replace 'absent' --text 'x' --expect 1 | Out-Null
+          if ($LASTEXITCODE -ne 1) { Write-Output "staged text-tool did not refuse a wrong count: exit $LASTEXITCODE"; exit 1 }
+          Remove-Item -LiteralPath $probe -Force
+          Write-Output 'the staged text-tool wrote, edited and refused'
 
       # ⭐ THE SIGNATURE IS WHAT SHA256SUMS CANNOT BE. That file ships in the
       # same release as the asset it describes, so anyone who could replace one

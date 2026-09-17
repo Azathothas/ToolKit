@@ -3,7 +3,7 @@
     Write and edit a file without the shell touching the payload.
 
 .DESCRIPTION
-    A WRAPPER. The tool is `text` in tools/text.
+    A WRAPPER. The tool is `text-tool` in tools/text-tool.
 
     WHAT IT IS FOR. A payload crossing a shell boundary loses its quoting
     SILENTLY: the file is written, nothing returns non-zero, and the damage is a
@@ -20,10 +20,10 @@
     bytes. Base64 is [A-Za-z0-9+/=] and needs no quoting in any shell.
 
 .EXAMPLE
-    pwsh -NoProfile -File scripts/common/text.ps1 write PATH --b64 BASE64
+    pwsh -NoProfile -File scripts/common/text-tool.ps1 write PATH --b64 BASE64
 
 .EXAMPLE
-    pwsh -NoProfile -File scripts/common/text.ps1 edit PATH --replace FIND --text NEW --expect 1
+    pwsh -NoProfile -File scripts/common/text-tool.ps1 edit PATH --replace FIND --text NEW --expect 1
 
 .NOTES
     Exit codes: 0 it did it, 1 it refused, 2 it could not run.
@@ -58,9 +58,9 @@ if (-not $go) {
 
 $tmp = Join-Path $repoRoot '.tmp'
 if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp -Force }
-$bin = Join-Path $tmp ('text' + $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }))
+$bin = Join-Path $tmp ('text-tool' + $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }))
 
-$toolDir = Join-Path $repoRoot 'tools/text'
+$toolDir = Join-Path $repoRoot 'tools/text-tool'
 # TESTED RATHER THAN THROWN, so "could not run" stays 2 and does not become 1.
 if (-not (Test-Path -LiteralPath $toolDir -PathType Container)) {
     [Console]::Error.WriteLine("text: $toolDir does not exist, so the tool cannot be built")

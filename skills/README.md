@@ -1,17 +1,18 @@
 # skills/
 
-Two skills for an agent that has to use this repository's one product, and nothing
+Three skills for an agent that has to use this repository's products, and nothing
 else to go on.
 
 | skill | what it is for |
 | --- | --- |
 | [`wsl-toolkit/`](wsl-toolkit/SKILL.md) | building and operating a base: the configuration, `base ensure`, grants, `base exec`, and attacking the base rather than trusting a page |
 | [`wsl-toolkit-agents/`](wsl-toolkit-agents/SKILL.md) | driving Muse Code, pi and omp through herdr, from Windows and from inside the base, including the model and the effort each one starts on |
+| [`text-tool/`](text-tool/SKILL.md) | writing and editing files from a shell that would otherwise mangle the payload: the safe channels, `--expect`, many files at once, and the `eol` mode that replaces `dos2unix` and `unix2dos` |
 
 ⛔ **Each one stands alone.** It is handed to an agent with no other context, so it
 repeats what it needs rather than pointing into this tree.
 
-⛔ **Neither hardcodes a flag list.** Both say how to install or self-update the tool
+⛔ **None of them hardcodes a flag list.** Both say how to install or self-update the tool
 and how to print the manual, because `wsl-toolkit man --no-pager` is generated from the
 commands the executable really has and a pasted list is wrong the day after it is
 written.

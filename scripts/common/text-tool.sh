@@ -1,7 +1,7 @@
 #!/bin/sh
-# text.sh - write and edit a file without the shell touching the payload.
+# text-tool.sh - write and edit a file without the shell touching the payload.
 #
-# A WRAPPER. The tool is `text` in tools/text.
+# A WRAPPER. The tool is `text-tool` in tools/text-tool.
 #
 # WHAT IT IS FOR. A payload crossing a shell boundary loses its quoting SILENTLY:
 # the file is written, nothing returns non-zero, and the damage is a substituted
@@ -15,9 +15,9 @@
 # a line range, or a file that is not valid UTF-8.
 #
 # Usage:
-#   sh scripts/common/text.sh write PATH --b64 BASE64
-#   sh scripts/common/text.sh edit PATH --replace FIND --text NEW --expect 1
-#   sh scripts/common/text.sh --help
+#   sh scripts/common/text-tool.sh write PATH --b64 BASE64
+#   sh scripts/common/text-tool.sh edit PATH --replace FIND --text NEW --expect 1
+#   sh scripts/common/text-tool.sh --help
 #
 # Exit codes: 0 it did it, 1 it refused, 2 it could not run.
 #
@@ -39,13 +39,13 @@ command -v go >/dev/null 2>&1 || {
   exit 2
 }
 
-BIN="$REPO_ROOT/.tmp/text"
+BIN="$REPO_ROOT/.tmp/text-tool"
 case "$(uname -s 2>/dev/null || echo unknown)" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT) BIN="$BIN.exe" ;;
 esac
 mkdir -p "$REPO_ROOT/.tmp" || { printf 'text: cannot write to %s/.tmp\n' "$REPO_ROOT" >&2; exit 2; }
 
-if ! (cd "$REPO_ROOT/tools/text" && go build -o "$BIN" . 2>&1); then
+if ! (cd "$REPO_ROOT/tools/text-tool" && go build -o "$BIN" . 2>&1); then
   printf 'text: the tool did not build\n' >&2
   exit 2
 fi

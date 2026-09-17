@@ -111,6 +111,26 @@ function Skip-Case {
 # NOTE: both streams are read before the wait, or a child that fills a pipe
 # buffer deadlocks against the parent.
 # NOTE: the exit code is read from the process, never through a pipe.
+function Test-TagAtLeast {
+    <#
+      Is the tag this run fetched at least the given version?
+
+      ⛔ ONE PLACE THAT PARSES THE TAG. Two cases already needed this and each
+      wrote its own `-split` expression inline, which is how one of them ends up
+      comparing a string and answering that '10' is less than '9'. -Tag accepts
+      any published tag, so every assertion about what a release carries has to
+      say which releases it is about.
+    #>
+    param([int]$Major, [int]$Minor = 0)
+    $v = ($script:Tag -replace '^wsl-toolkit-v', '') -split '\.'
+    if ($v.Count -lt 2) { return $false }
+    $haveMajor = 0; $haveMinor = 0
+    if (-not [int]::TryParse($v[0], [ref]$haveMajor)) { return $false }
+    if (-not [int]::TryParse($v[1], [ref]$haveMinor)) { return $false }
+    if ($haveMajor -ne $Major) { return ($haveMajor -gt $Major) }
+    return ($haveMinor -ge $Minor)
+}
+
 function Invoke-Released {
     param([Parameter(Mandatory = $true)][string[]]$ToolArgs)
     $psi = [Diagnostics.ProcessStartInfo]::new()
@@ -318,6 +338,16 @@ $script:CanRunJobs = $false
 # the weekly run verifies whatever the latest release published rather than a
 # list typed here for one version of it.
 $script:Executables = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe')
+# text-tool IS PUBLISHED FROM 3.1.0 AND NOT BEFORE, so the list is gated on the
+# tag rather than typed once. -Tag accepts any of the published tags and the
+# older ones carry no text-tool at all; asserting it for them would report a
+# correct release as broken.
+$script:HasTextTool = (Test-TagAtLeast -Major 3 -Minor 1)
+if ($script:HasTextTool) {
+    $script:Executables += @(
+        'text-tool-windows-amd64.exe', 'text-tool-windows-arm64.exe',
+        'text-tool-linux-amd64', 'text-tool-linux-arm64')
+}
 $script:SignedAssets = @('SHA256SUMS')
 $sumsFile = Join-Path $script:Download 'SHA256SUMS'
 if (Test-Path -LiteralPath $sumsFile) {

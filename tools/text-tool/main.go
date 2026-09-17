@@ -1,4 +1,4 @@
-// text - write and edit a file without the shell ever touching the payload.
+// text-tool - write and edit a file without the shell ever touching the payload.
 //
 // ⛔ THE DEFECT THIS EXISTS TO REMOVE IS NOT "QUOTING IS HARD". It is that a
 // payload crossing a shell boundary loses its quoting SILENTLY, so the file is
@@ -28,7 +28,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Azathothas/ToolKit/tools/text/internal/edit"
+	"github.com/Azathothas/ToolKit/tools/text-tool/internal/edit"
 )
 
 func main() { os.Exit(run(os.Args[1:])) }
@@ -43,16 +43,23 @@ func run(args []string) int {
 		if errors.Is(err, edit.ErrUsage) {
 			fmt.Fprint(os.Stderr, usage)
 		}
-		fmt.Fprintln(os.Stderr, "text: "+strings.TrimSpace(err.Error()))
+		fmt.Fprintln(os.Stderr, edit.Name+": "+strings.TrimSpace(err.Error()))
 	}
 	return code
 }
 
-const usage = `text <write|append|edit> PATH [payload] [operation]
+const usage = `text-tool <write|append|edit|eol> PATH... [payload] [operation]
 
   write    replace the whole file, creating parents
   append   add to the end
   edit     change one part of it
+  eol      convert line endings and the byte order mark. This is dos2unix and
+           unix2dos, and it takes no payload
+
+⭐ NAME AS MANY FILES AS YOU LIKE. Every argument after the mode is a path, up
+to the first one starting with a dash. ⛔ ALL OF THEM CHANGE OR NONE DO: every
+file is read and checked before any is written, so a refusal on the last one
+leaves the first untouched.
 
 THE PAYLOAD, and exactly one of these. Pick by what your shell makes easy:
   --b64 B64     base64. ⭐ [A-Za-z0-9+/=] needs no quoting in ANY shell, so this
@@ -66,21 +73,45 @@ THE PAYLOAD, and exactly one of these. Pick by what your shell makes easy:
 
 EDIT OPERATIONS, exactly one:
   --replace FIND       substitute FIND with the payload. --expect is REQUIRED
+  --replace-b64 B64    the same search, given as base64
+  --replace-from FILE  the same search, read from a file
   --regex              read FIND as a regular expression, and $1 in the payload
+  --after FIND         put the payload after each line matching FIND and KEEP
+                       that line. --expect is REQUIRED
+  --before FIND        the same, above the line. ⭐ USE THESE RATHER THAN A
+                       SUBSTITUTION that has to retype what it matched: a
+                       --replace whose replacement forgets to put the anchor
+                       back DELETES it, which is the commonest way to damage a
+                       file with this tool
   --line N             replace line N with the payload
   --insert-after N     put the payload after line N. 0 means before the first
   --insert-before N    put the payload before line N
   --delete N[,M]       delete line N, or lines N to M inclusive
-  --between A,B        replace from the line matching A to the line matching B
+  --between A B        replace from the line matching A to the line matching B.
+                       ⚠ TWO arguments, because an anchor may hold a comma
+
+⚠ --line, --insert-after, --insert-before and --delete name a place in ONE file
+and are refused when several are given. --replace and eol name the same thing in
+each, so they take as many as you like.
+
+EOL OPTIONS, for the eol mode:
+  --lf | --crlf | --to lf | --to crlf    the ending to convert to
+  --bom keep|strip|add                   the UTF-8 byte order mark
 
 ALWAYS:
-  --expect N    how many matches you believe are there. ⛔ A different number is
-                REFUSED and the file is untouched. A silent no-op that reports
-                success is the failure this whole tool exists to remove
+  --expect N    how many matches you believe are there, across ALL the files
+                named. ⛔ A different number is REFUSED and nothing is written. A
+                silent no-op that reports success is the failure this whole tool
+                exists to remove
+  --allow-unmatched  permit a named file that matched nothing. Without it, a
+                file that matched nothing refuses the whole call, because a
+                typo in a path and a file that has drifted look identical
+  --files-from FILE  read paths from FILE, one per line; # and blanks skipped
+  --help        print this and exit 0. -h and the word help do the same
   --count       report the matches and change nothing
   --dry-run     report what would change and write nothing
-  --json        a structured answer on stdout
-  --eol MODE    keep (default), lf or crlf
+  --json        a structured answer on stdout, schema text-edit/2
+  --eol MODE    keep (default), lf or crlf: the ending a PAYLOAD is written with
 
 Exit codes: 0 it did it, 1 it refused, 2 it could not run.
 ⛔ Read the exit code from the process, unpiped.

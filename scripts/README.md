@@ -359,7 +359,7 @@ contract: `deslop` writes under `--apply` and `fill-license` writes a licence.
 ⛔ Both refuse rather than writing when they are unsure, which is the property
 that matters more than which list they appear in.
 
-### `common/text.sh` and `common/text.ps1`
+### `common/text-tool.sh` and `common/text-tool.ps1`
 
 Write and edit a file without the shell touching the payload. ⭐ **Prefer this to
 `write-file.mjs`**, which it supersedes: it needs no node, it takes line and range
@@ -370,13 +370,15 @@ bytes on disk with no shell in the path at all, which is strictly better. This i
 for a harness that has none, and for what those tools cannot express.
 
 ```bash
-sh scripts/common/text.sh --help
-sh scripts/common/text.sh write PATH --b64 BASE64
-sh scripts/common/text.sh edit PATH --replace FIND --text NEW --expect 1
+sh scripts/common/text-tool.sh --help
+sh scripts/common/text-tool.sh write PATH --b64 BASE64
+sh scripts/common/text-tool.sh edit PATH --replace FIND --text NEW --expect 1
+sh scripts/common/text-tool.sh edit A.md B.md --after "## Heading" --text NEW --expect 2
+sh scripts/common/text-tool.sh eol PATH --lf
 ```
 
 ```powershell
-pwsh -NoProfile -File scripts/common/text.ps1 edit PATH --line 42 --b64 BASE64
+pwsh -NoProfile -File scripts/common/text-tool.ps1 edit PATH --line 42 --b64 BASE64
 ```
 
 | it takes | and it means |
@@ -384,10 +386,30 @@ pwsh -NoProfile -File scripts/common/text.ps1 edit PATH --line 42 --b64 BASE64
 | `--b64`, `--from`, `--text`, stdin | the payload. ⭐ Base64 is the one encoding no shell interprets |
 | `--replace`, `--replace-b64`, `--replace-from` | the search. ⚠ It has the same three channels as the payload, because a search string carries the same quoting |
 | `--line`, `--insert-after`, `--insert-before`, `--delete` | by line number, and a number outside the file is refused |
-| `--between A,B` | from the line matching A to the line matching B, which is what `sed` and `awk` address |
+| `--after FIND`, `--before FIND` | put the payload beside the line matching FIND and KEEP that line. ⭐ Use these rather than a substitution that has to retype its anchor: a `--replace` whose replacement forgets to put the anchor back DELETES it |
+| `--between A B` | from the line matching A to the line matching B, which is what `sed` and `awk` address. ⚠ TWO arguments: an anchor may hold a comma |
 | `--regex` | read the search as a regular expression |
 | `--count`, `--dry-run` | report and write nothing |
-| `--expect N` | ⛔ how many matches you believe are there |
+| `--expect N` | ⛔ how many matches you believe are there, across every file named |
+| `--allow-unmatched` | permit a named file that matched nothing |
+| `--files-from FILE` | read paths from a file, one per line |
+| `--bom` | the UTF-8 byte order mark: `keep`, `strip` or `add`, for the `eol` mode |
+
+⭐ **IT TAKES AS MANY FILES AS YOU LIKE**, and all of them change or none do:
+every file is read and checked before any is written. ⛔ **A named file that
+matched nothing refuses the whole call**, because a path with a typo and a file
+that has drifted look identical from inside the tool and both answer zero.
+
+⭐ **The `eol` mode is `dos2unix` and `unix2dos`.** `text-tool eol PATH --lf` and
+`--crlf`, with `--bom` for the byte order mark. The count it reports is endings
+CONVERTED, so a file already in the wanted ending answers 0.
+
+⚠ **The wrappers build from source; the RELEASE ships the binary.** From 3.1.0
+each release publishes `text-tool-windows-amd64.exe`, `text-tool-windows-arm64.exe`,
+`text-tool-linux-amd64` and `text-tool-linux-arm64`, each with a signature
+bundle. An agent outside this checkout downloads one and needs nothing else;
+[`../skills/text-tool/SKILL.md`](../skills/text-tool/SKILL.md) is the page to
+hand it.
 
 ⛔ **A substitution whose match count differs from `--expect` is REFUSED and the
 file is left untouched.** A silent no-op reporting success is the failure this
@@ -406,7 +428,7 @@ sees one, and writes what you gave it. Use `--b64` or `--from` for a newline.
 
 Write, append to, or patch a file without the shell touching the payload.
 
-⚠ **SUPERSEDED by `common/text.sh` and `common/text.ps1` above**, which need no
+⚠ **SUPERSEDED by `common/text-tool.sh` and `common/text-tool.ps1` above**, which need no
 node and do more. This is kept because other repositories fetch it and because a
 machine with node and no Go toolchain can still use it.
 

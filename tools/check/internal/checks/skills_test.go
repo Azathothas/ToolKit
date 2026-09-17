@@ -26,7 +26,7 @@ const steManual = ".SH COMMAND REFERENCE\n.SS base\n.TP\n.B wsl-toolkit base sta
 func skillRun(t *testing.T, path, body string) Result {
 	t.Helper()
 	r := Result{Extra: map[string]any{}}
-	skillFile(&r, path, []byte(body), steManual)
+	skillFile(&r, path, []byte(body), steManual, nil)
 	return r
 }
 
@@ -104,5 +104,84 @@ func TestASkillNamesOnlyCommandsThatExist(t *testing.T) {
 				t.Fatalf("no finding said %q: %s", c.says, strings.Join(r.Detail, " | "))
 			}
 		})
+	}
+}
+
+// TestASkillNamesOnlyTextToolFlagsThatExist closes the same loop for the other
+// product.
+//
+// ⛔ text-tool HAS NO GENERATED MANUAL, so its own usage text is the authority:
+// it is the string the program prints, so it cannot describe a different build.
+// The rule caught a real gap on its first run - the skill told a reader to run
+// `text-tool --help`, which the program accepts and its usage text never
+// mentioned - and the fix was to the usage text, not to the page.
+//
+// ⚠ THE VOCABULARY IS ALLOWED TO BE ABSENT. A check that refused every skill
+// because it could not parse one Go file would block the tree for the wrong
+// reason, so a nil vocabulary asserts nothing.
+func TestASkillNamesOnlyTextToolFlagsThatExist(t *testing.T) {
+	vocab := map[string]bool{"--text": true, "--expect": true, "--replace": true}
+	cases := []struct {
+		name  string
+		line  string
+		vocab map[string]bool
+		want  int
+	}{
+		{"a flag it has", "text-tool edit x --replace a --text b --expect 1", vocab, 0},
+		{"a flag it does not have", "text-tool edit x --teleport", vocab, 1},
+		{"two of them", "text-tool edit x --teleport --vanish", vocab, 2},
+		{"prose naming the tool passes no flags", "run text-tool when --teleport is needed", vocab, 0},
+		{"a full path still counts", "/usr/local/bin/text-tool write x --teleport", vocab, 1},
+		{"the Windows name still counts", "text-tool.exe write x --teleport", vocab, 1},
+		// ⚠ A LINE THAT NAMES NO INVOCATION AT ALL, such as the tool's own
+		// output quoted back inside a fenced block, passes no flags.
+		{"output quoted back is not an invocation", "refused x: --expect 1 and this matches 0", vocab, 0},
+		{"an unparseable usage asserts nothing", "text-tool edit x --teleport", nil, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := Result{Extra: map[string]any{}}
+			body := skillHead + "```bash\n" + c.line + "\n```\n"
+			skillFile(&r, "skills/text-tool/SKILL.md", []byte(body), steManual, c.vocab)
+			got := 0
+			for _, d := range r.Detail {
+				if strings.Contains(d, "passes text-tool") {
+					got++
+				}
+			}
+			if got != c.want {
+				t.Fatalf("%d finding(s), want %d: %s", got, c.want, strings.Join(r.Detail, " | "))
+			}
+		})
+	}
+}
+
+// TestTheTextToolVocabularyComesFromTheRealUsageText holds the extraction to the
+// file it reads, so a rename of the const cannot leave the rule asserting over
+// an empty set and reporting green.
+func TestTheTextToolVocabularyComesFromTheRealUsageText(t *testing.T) {
+	src := "package main\n\nconst usage = `text-tool <write|edit>\n  --expect N  a count\n  --json      structured\n`\n"
+	tree := treeWithFile(t, TextToolMain, src)
+	got := textToolVocabulary(tree)
+	for _, want := range []string{"--expect", "--json"} {
+		if !got[want] {
+			t.Fatalf("%s was not read out of the usage text: %v", want, got)
+		}
+	}
+	if got["--absent"] {
+		t.Fatal("it invented a flag the usage text does not hold")
+	}
+	// ⛔ AND A USAGE CONST THAT HOLDS NO FLAG AT ALL ANSWERS nil TOO. Without
+	// this the rule would compare every skill against an EMPTY set and refuse
+	// every flag in the tree, which is the widest possible false report, and
+	// repo mutate called the row for it THEATRE until this case existed.
+	empty := "package main\n\nconst usage = `text-tool does things\n`\n"
+	if v := textToolVocabulary(treeWithFile(t, TextToolMain, empty)); v != nil {
+		t.Fatalf("a usage text with no flags gave a vocabulary: %v", v)
+	}
+	// ⛔ A FILE WITH NO USAGE CONST ANSWERS nil, which makes the rule assert
+	// nothing rather than refuse everything.
+	if v := textToolVocabulary(treeWithFile(t, TextToolMain, "package main\n")); v != nil {
+		t.Fatalf("a file with no usage text gave a vocabulary: %v", v)
 	}
 }

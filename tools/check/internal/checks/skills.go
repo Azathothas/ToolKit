@@ -38,13 +38,16 @@ func Skills(t *Tree) Result {
 		return r
 	}
 
+	// ⚠ READ ONCE, not per skill: it is the same file every time.
+	textTool := textToolVocabulary(t)
+
 	found := 0
 	for _, f := range t.Files {
 		if !strings.HasPrefix(f, SkillsDir) || !strings.HasSuffix(f, "/SKILL.md") {
 			continue
 		}
 		found++
-		skillFile(&r, f, t.Read(f), manual)
+		skillFile(&r, f, t.Read(f), manual, textTool)
 	}
 	if found == 0 {
 		r.bad("%s", sprintf("no %s*/SKILL.md is tracked, so this check asserted nothing", SkillsDir))
@@ -56,7 +59,7 @@ func Skills(t *Tree) Result {
 // ManualPath is the generated manual, which is the authority for what exists.
 const ManualPath = "tools/windows/wsl-toolkit/wsl-toolkit.1"
 
-func skillFile(r *Result, path string, raw []byte, manual string) {
+func skillFile(r *Result, path string, raw []byte, manual string, textTool map[string]bool) {
 	body := string(raw)
 	lines := Lines(raw)
 
@@ -94,6 +97,11 @@ func skillFile(r *Result, path string, raw []byte, manual string) {
 		for _, cmd := range skillCommands(ln.Text) {
 			if !manualHas(manual, cmd) {
 				r.bad("%s", sprintf("%s:%d: names `wsl-toolkit %s`, which %s does not document. A weak agent runs what the page says and reports the task impossible", path, ln.N, cmd, ManualPath))
+			}
+		}
+		for _, fl := range skillTextToolFlags(ln.Text) {
+			if textTool != nil && !textTool[fl] {
+				r.bad("%s", sprintf("%s:%d: passes text-tool %s, which its own usage text in %s does not document", path, ln.N, fl, TextToolMain))
 			}
 		}
 	}
@@ -177,3 +185,74 @@ var (
 	skillLink = regexp.MustCompile(`\]\(([^)]+)\)`)
 	skillWord = regexp.MustCompile(`^[a-z][a-z-]*$`)
 )
+
+// TextToolMain is where text-tool's usage text lives, and the usage text is the
+// authority for what flags it has.
+const TextToolMain = "tools/text-tool/main.go"
+
+// textToolVocabulary reads the modes and flags text-tool documents about itself.
+//
+// ⛔ THE SAME LOOP THE wsl-toolkit MANUAL CLOSES, for the other product. A skill
+// naming a flag the program does not have sends a weak agent to exit 2, and a
+// weak agent reports the task as impossible rather than reading the refusal.
+// text-tool has no generated manual, so its own --help text is the authority:
+// it is the string the program actually prints, so it cannot describe a
+// different build.
+//
+// ⚠ IT RETURNS nil WHEN IT CANNOT FIND THE TEXT, and the caller then asserts
+// nothing rather than refusing every skill. A check that fails closed on a file
+// it could not parse is a check that blocks the tree for the wrong reason.
+func textToolVocabulary(t *Tree) map[string]bool {
+	src := string(t.Read(TextToolMain))
+	const marker = "const usage = `"
+	i := strings.Index(src, marker)
+	if i < 0 {
+		return nil
+	}
+	rest := src[i+len(marker):]
+	j := strings.Index(rest, "`")
+	if j < 0 {
+		return nil
+	}
+	known := map[string]bool{}
+	for _, tok := range textToolToken.FindAllString(rest[:j], -1) {
+		known[tok] = true
+	}
+	if len(known) == 0 {
+		return nil
+	}
+	return known
+}
+
+// textToolToken picks a long flag out of the usage text.
+var textToolToken = regexp.MustCompile(`--[a-z0-9][a-z0-9-]*`)
+
+// skillTextToolFlags returns the long flags a line passes to text-tool.
+//
+// ⛔ THE INVOCATION MUST BE THE FIRST WORD ON THE LINE, and that narrowing was
+// forced by a case. Without it, prose reading "run text-tool when --teleport is
+// needed" reported --teleport as a flag, because the scan took every dashed word
+// after the name. A fenced block also holds the tool's OWN OUTPUT, which quotes
+// flags back, and that is the same defect from the other side.
+//
+// ⚠ WHAT THIS DELIBERATELY DOES NOT SEE: a call nested inside another command,
+// such as `pwsh -c "text-tool ..."`. Reporting those needs a shell parser, and a
+// rule that is narrow and true beats one that is wide and guesses.
+func skillTextToolFlags(line string) []string {
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return nil
+	}
+	first := fields[0]
+	if first != "text-tool" && first != "text-tool.exe" &&
+		!strings.HasSuffix(first, "/text-tool") && !strings.HasSuffix(first, "\text-tool.exe") {
+		return nil
+	}
+	var out []string
+	for _, f := range fields[1:] {
+		if strings.HasPrefix(f, "--") {
+			out = append(out, strings.TrimSuffix(f, ","))
+		}
+	}
+	return out
+}
