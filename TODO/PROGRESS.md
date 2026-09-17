@@ -6,18 +6,33 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-17T05:13:01Z
-baseline        bf7753b, tree clean, doctor exit 0, gate 21 of 21, CI green on 895b804 and the two held commits pushed at 05:31Z
+session started 2026-09-17T10:01:48Z
+baseline        1699de9, tree clean, doctor exit 0, gate 21 of 21, and three commits the previous session left unpushed, pushed at 10:03:30Z on green CI for 5eae667
 head            this session's commit
 entries         total 125  open 5  blocked 0  done 120
-this session    the startup model and effort every agent begins on, the shell profile's three new mechanisms across thirteen images, the guide, two skills, four reviews and the release
+this session    the ending the previous session never wrote, wsl-toolkit-v3.0.0, and WSL-90 closed on the release that proves its step 4
 ```
 
 ## Active work
 
-⭐ **THE SIX THINGS THE OPERATOR ASKED FOR ON 2026-09-17**, in their order: the guide,
-the default model and effort, the errandsh ideas, every document plus two skills, four
-reviews and the release, and then the end of the session.
+⛔ **THIS SESSION RESUMED ONE THAT STOPPED WITHOUT ENDING.** The session of
+2026-09-17T05:13:01Z was asked for six things - the guide, the default model and
+effort, the errandsh ideas, every document plus two skills, four reviews, and the
+release - and it delivered the first four. Then it stopped without doing any of what
+[`../docs/methodology/sessions.md`](../docs/methodology/sessions.md) says a session
+owes: no `SUMMARY.md` section, no `Recent work` rows, no measurements of its own, and
+⛔ **the release was never cut.** Three of its four commits were still unpushed.
+⚠ **Everything it did record is correct** - the entries, the rulings and findings 51
+to 66 were all read against the tree and the artefacts; what was missing was only the
+ending. It is written from artefacts below and in `SUMMARY.md`, by the session that
+resumed it, which is the second time in three days that a session has owed this.
+
+⭐ **`wsl-toolkit-v3.0.0` IS CUT**, under ruling 22, and it is the first release this
+repository has made since `wsl-toolkit-v2.0.2` on 2026-09-10. It carries the two
+Windows executables, herdr's newest stable release built for four targets,
+`SHA256SUMS` and a keyless signature for each - fourteen files. ⭐ **It is what closes
+`WSL-90`**, whose approach step 4 had never run: no `wsl-toolkit` release had ever
+carried herdr, so nothing had proved that half of the workflow.
 
 ⭐ **The startup model and effort are delivered and PROVED THROUGH herdr.** `base.adapters`
 takes `model` and `effort` on an agent adapter, `effort` is `max` when a configuration
@@ -212,13 +227,41 @@ new file FIRST, then run the gate.**
 | `ef0dd2f` | `WSL-68` step 1's first half: `base.shared_tmpfs = "off"` closes the shared tmpfs at every start and keeps the resolver, with 6 cases and 4 mutation rows, driven from nothing and proved able to fail |
 | `0d4d66f` | `WSL-68` step 1's second half: `base exec --private-net`, the account's own network namespace with the Windows host refused by a rule inside it, 7 cases and 3 mutation rows; the engine conflict that makes it a flag |
 | `c68ca25` | the teardown of that session's throwaway base |
-| this record commit | `WSL-88` and `WSL-89` driven: pi 0.85.1 and omp 18.2.3 on one base with herdr, the collision refusal that could never fire made to fire, the operator's opt-in that separates, bun from the distribution, and this session's summary |
+| `7182b58` | `WSL-88` and `WSL-89` driven: pi 0.85.1 and omp 18.2.3 on one base with herdr, the collision refusal that could never fire made to fire, the operator's opt-in that separates, bun from the distribution, and that session's summary |
+| `bf7753b` | ruling 22 recorded: the release stops waiting on issue 30, whose part 2 the operator deferred |
+| `5eae667` | `base.adapters` takes `model` and `effort` and each agent is started on them by herdr, with pi's two silent failures raised by the probe; the shell profile's three new mechanisms, driven across 13 images; 6 mutation rows |
+| `e0a239b` | the muse-code guide rewritten with every command run before it was written, two standalone skills, `base revoke --help` describing itself, and three defects writing the guide found; 1 mutation row |
+| `6192e61` | the door sweep's find: `base bootstrap` puts `~/.local/bin` first and every agent wrapper is bypassed, with all three probes reading the name back on a LOGIN shell; 4 cases and 3 mutation rows |
+| `1699de9` | `WSL-76`'s fifth item driven: `PreToolUse` and `PermissionRequest` reported from a real turn, the reporter's log naming the event, and the cancelled approval that leaves an agent `blocked` for ever |
+| this record commit | the ending the 05:13Z session never wrote, from artefacts; `wsl-toolkit-v3.0.0` cut and its published assets verified; `WSL-90` closed on approach step 4; issues 30 and 32 commented rather than closed |
 
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
 
-- **At the start of this session:** the doctor exit 0 in 55 s at 02:53Z; the gate exit 0,
+- **At the start of the 10:01Z session:** the doctor exit 0, its report stamped
+  `2026-09-17T10:02:53Z`; the gate exit 0, **21 of 21**; `wsl -l -v` five
+  distributions, matching the host state below, ⚠ with `podman-machine-default`
+  **Running** where that list says Stopped; `repo release` read-only exit 0,
+  `wsl-toolkit 3.0.0 -> wsl-toolkit-v3.0.0`, ready. ⛔ **Three commits the previous
+  session had committed were never pushed**; CI run 35187005197 was green on
+  `5eae667`, so they went at 10:03:30Z as run 35208465569.
+- ⛔ **THE DEFAULT BASE'S PODMAN BOOT ID WAS STALE AND NOTHING SAID SO.** The first
+  container check of this session exited **2** at `current system boot ID differs from
+  cached boot ID; an unhandled reboot has occurred`, from the `wsl-toolkit` base rather
+  than `wsl-toolkit-base`. `base ensure --repair` cleared it, exit 0, and both checks
+  then passed. ⚠ **It is the same damage the previous session recorded and repaired on
+  `wsl-toolkit-base` after running `wsl --shutdown` twice** - and the sibling base,
+  which every `run` and `matrix` uses, was left behind. Finding 67.
+- **The three pre-push checks, on `1699de9`:** Windows Go with `TEMP` at the 8.3 path,
+  **377 top-level results, 357 passed, 20 skipped, 0 failed, exit 0**; `check-go.sh`
+  exit 0 in `golang:1.25` in **27.9 s**; ShellCheck 0.9.0 in `ubuntu:24.04` clean over
+  **49** tracked scripts, exit 0 in 22.6 s. ⚠ The Windows figure is 377 against the 363
+  of the previous session's first commit and the 365 of its last, because
+  `agent_default_test.go` and `shell_profile_test.go` are new.
+- **The mutation table:** 327 rows at `bf7753b` to **338** at `1699de9`, 11 added by
+  the previous session and all 11 reported red by it.
+- **At the start of the 02:52Z session:** the doctor exit 0 in 55 s at 02:53Z; the gate exit 0,
   21 of 21 in 70 s; `wsl -l -v` matched the host state, five distributions; CI run
   35070882239 for `485252c` green. ⭐ **A second `herdr-nightly` run, 35078871134, is
   green with build and publish SKIPPED** - herdr's head had not moved, so the workflow's
@@ -881,6 +924,33 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     turn finished before the wait began. Not a defect, and worth knowing before treating
     a timeout as a failure.
 
+67. ⛔ **`wsl --shutdown` INVALIDATES THE PODMAN BOOT ID IN EVERY BASE, AND ONLY ONE
+    WAS REPAIRED.** The previous session ran it twice, met the damage on
+    `wsl-toolkit-base`, repaired that one with `base ensure --repair`, and recorded
+    exactly that. ⚠ **The default `wsl-toolkit` base was never touched**, and it is the
+    one every `run` and `matrix` uses, so the first container check of 2026-09-17T10:07Z
+    exited **2** on `current system boot ID differs from cached boot ID` before anything
+    else could run. `base ensure --repair` cleared it in one command. ⛔ **The record
+    said the base was repaired, and a reader would take that to mean the host was** -
+    the host state names five distributions and does not say which of them carry an
+    engine. ⭐ **The mechanical half is cheap and is not written**: a `wsl --shutdown`
+    is a host-wide event and the tool knows which instances it manages, so `base status`
+    could answer for all of them rather than for the one named. Not built, and tracked
+    here.
+
+68. ⛔ **`bootstrap.sh` AND `remote.go` READ NO RELEASE OF THIS REPOSITORY AT ALL, and
+    `WSL-90`'s door sweep said they did.** That sweep, on 2026-09-16, listed both as
+    reading `/releases/latest` and reasoned that "the API defines latest as excluding
+    prereleases, so no nightly can reach them". ⚠ **The conclusion is true and the
+    reason is not.** `bootstrap.sh` has exactly two release URLs and both are
+    `github.com/PowerShell/PowerShell`; the only owner it names anywhere is PowerShell.
+    `latestRelease` in `remote.go` takes an `OWNER/NAME` argument and is called to pin
+    third-party GitHub Actions, never for `Azathothas/ToolKit`. So a nightly cannot
+    reach either of them because **neither looks**, not because of what `latest` means.
+    ⛔ **It is a reason that would survive a change that broke it**: if either file ever
+    did read this repository's releases, the recorded argument would still read as
+    settled. Found on 2026-09-17 by re-running that sweep with
+    `git ls-files | xargs grep -l` rather than reading the sentence.
 
 ## Review findings
 
@@ -1180,12 +1250,17 @@ the nightly's own commit rather than left to rot.
 
 ⭐ The operator asked on 2026-09-15 to be asked only for what actually needs them: a
 ruling this repository's own rules require, a download, a credential, or Windows
-software. Two are open, each asked in chat on 2026-09-15:
+software.
 
-1. **`muse login`**, the credential, in `wsl-toolkit --instance base base shell`.
-2. **The six `--remote` signals in a real Windows Terminal window**, with the
-   development client: a pseudo console measured all four input signals, and only a
-   real window carries a real focus event.
+1. ⭐ **ANSWERED on 2026-09-17.** `muse login` was done in the operator's own base,
+   Muse drove a real turn through herdr, and findings 47 to 51 and 64 to 66 are what
+   that sign-in made measurable. ⛔ **Do not ask for it again.**
+2. **The six `--remote` signals in a real Windows Terminal window.** A pseudo console
+   measured every input signal; only a real window carries a real focus event, so the
+   probe reports signal 7 as `operator` rather than pretending. ⚠ **The client to pass
+   is the one `base attach` prints**, which changes with each nightly; asked again with
+   exact commands on 2026-09-17T10:05Z. It is `WSL-76`'s only remaining item and
+   `WSL-90`'s second.
 
 3. ⭐ **New on 2026-09-17, and it is a ruling rather than work.** `WSL-68`'s amendment
    of that date measured that a base cannot both put the account's processes in their
@@ -1197,6 +1272,19 @@ software. Two are open, each asked in chat on 2026-09-15:
    **Whether a base should instead be able to declare the namespace for ALL of the
    account's processes, and give up running containers as that account, is the
    operator's to decide.** Nothing waits on the answer; the flag is shipped either way.
+
+4. ⭐ **New on 2026-09-17T10:05Z: a from-nothing transcript of the muse-code guide, in
+   its own order.** `WSL-78`'s prove asks for one and every command in the guide has
+   been run, ⛔ **but never as one ordered pass from an empty host**, because step 5 is
+   three sign-ins and each is the operator's credential. ⚠ **The alternative was offered
+   in the same message**: say so and the entry closes with the condition recorded as
+   met-except-for-the-ordered-pass, naming which commands were run separately and when.
+   Either answer closes it; silence is what leaves it open.
+5. ⭐ **New on 2026-09-17T10:05Z, and it is a ruling: does `muse serve`'s stdio protocol
+   get a route through this tool?** `WSL-78` item 3, open and undecided since
+   2026-09-15. ⚠ **The recommendation sent was no** - herdr already reaches every agent,
+   and a stdio bridge is a second protocol surface with one caller and no consumer in
+   the register. A yes means an entry, authored before anything is built.
 
 Answered on 2026-09-15 and recorded as rulings 13 to 15: whether herdr builds are
 published here, the targets, how the adapter takes a nightly, and where the

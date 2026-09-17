@@ -7,6 +7,45 @@ on what was true last time.
 
 ---
 
+## 2026-09-17, the model and effort every agent starts on, the guide, and a session that stopped without ending
+
+⛔ **Written from artefacts by the session that resumed it**, at 2026-09-17T10:08Z, not
+by the session it describes. That session made four commits and then stopped: no
+section here, no `Recent work` rows, no measurements of its own, three of its four
+commits unpushed, and ⛔ **the sixth thing it was asked for, the release, never cut.**
+⚠ **Everything below is read from git, from `PROGRESS.md` and from the tree.** Where it
+recorded no number, this says so rather than supplying one.
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | started 2026-09-17T05:13:01Z, per its own State block | ⛔ **unknown.** Its last commit `1699de9` is dated 2026-09-17, and it wrote no end instant |
+| Commits | `bf7753b`, tree clean | `git log --oneline bf7753b..1699de9` reads **4**. ⛔ **One pushed, three held.** `5eae667` went out and CI 35187005197 was green on it; `e0a239b`, `6192e61` and `1699de9` sat unpushed until the resuming session sent them at 10:03:30Z |
+| Work | 5 open entries | **Completed 0.** **Partial 2:** `WSL-76`, whose fifth item it drove, and `WSL-78`, whose guide it wrote and ran. **Failed 0.** Entries 125 to 125, open 5 to 5, done 120 to 120 |
+| Changes | 0 files changed from `bf7753b` | `git diff --shortstat bf7753b..1699de9` reads **36 files, +2,661 / -218**, five of them new |
+| Size | 102,952 text lines in 324 tracked files | **105,395 in 329 files, +2,443**, by `git grep -I -c ''` |
+| Checks | ⛔ **it recorded none of its own** | ⛔ **none it took.** What the resuming session measured over its head `1699de9`: gate **21 of 21** exit 0; Windows Go **377 top-level results, 357 passed, 20 skipped, 0 failed**; `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 clean over **49** scripts. **11 new mutation rows**, 327 to **338**, all 11 reported red by it |
+| Cost | ⛔ not recorded | ⛔ **not measurable from artefacts.** Its own record says three agents were started by herdr and answered, so **the operator's subscriptions were spent**; the number of prompts is not written anywhere |
+| Health | five distributions | ⭐ the same five, none added or removed. **Findings 53 to 66 opened**, and **ruling 22** recorded. ⛔ **It left the default `wsl-toolkit` base carrying a stale podman boot id**, which the next session's first container check found; finding 67. Tree clean, no tag |
+
+### What it was asked for, and what it did
+
+| asked | outcome |
+| --- | --- |
+| the guide | ⭐ **done**, and every command in it was RUN before it was written, which found three defects in the guide itself. Finding 61 |
+| the default model and effort | ⭐ **done and proved through herdr.** `base.adapters` takes `model` and `effort`, each written where that agent reads it, and each agent's own screen read back. Two silent pi failures found doing it, findings 53 and 54 |
+| the errandsh ideas | ⭐ **done.** Three mechanisms into `shell-profile.sh`, driven across 13 images and 28 shells |
+| every document plus two skills | ⭐ **done.** `skills/wsl-toolkit` and `skills/wsl-toolkit-agents`, and the manual, `scripts/README.md` and the muse-code guide rewritten |
+| four reviews | ⭐ **done**, and each names what it looked at that the others did not. The door sweep found finding 62, the bootstrap PATH line that bypasses every agent wrapper |
+| the release | ⛔ **NOT DONE.** Ruling 22, which it recorded itself, authorises it, and it stopped before cutting it |
+| the end of the session | ⛔ **NOT DONE.** This section, the `Recent work` rows and the measurements are the debt, paid by the next session |
+
+### Resume point
+
+Read [`PROGRESS.md`](PROGRESS.md) first. What it left: the release, this ending, and
+three unpushed commits.
+
+---
+
 ## 2026-09-17, the last doors a zero-grant base had, and three agents driven through herdr
 
 | row | before | after |
