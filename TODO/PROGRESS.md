@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-17T02:52:40Z
 baseline        485252c, tree DIRTY with the last session's two uncommitted wording corrections, doctor exit 0 in 55 s, gate 21 of 21 in 70 s, CI run 35070882239 green
 head            this session's commit
-entries         total 125  open 7  blocked 0  done 118
+entries         total 125  open 5  blocked 0  done 120
 this session    WSL-68's steps 3 and 4: the attack is `base doors`, a registered command; three defects it found in itself, and one about WSL that narrowed what it may promise
 ```
 
@@ -91,13 +91,15 @@ does not close**: `base shell` does not take the flag, because an interactive at
 through `pasta` cannot be driven from here, and the design question the measurement
 raised is question 3 below.
 
-⭐ **`WSL-88` and `WSL-89` are driven**, on one throwaway base with herdr, pi and omp
-together: pi 0.85.1 with herdr's lifecycle authority at integration v9, omp 18.2.3 at
-v10, both healthy and in different directories. ⛔ **The collision refusal this entry was
-written around could never fire**, because it read the account's environment under `env -i`;
-it fires now, and the operator's opt-in separates instead when asked. ⚠ **Neither entry
-closes**: the last condition in each is an agent reaching `working` from herdr's own report,
-which needs a provider credential this repository does not hold.
+⭐ **`WSL-88` AND `WSL-89` ARE CLOSED**, driven on the operator's own base after they signed in.
+All three agents answer through herdr: muse, pi on their Muse gateway at `spark-max`, and
+omp on the subscription, each running `python3 src/inventory.py` and returning **47**,
+read back with `herdr agent read`. ⭐ **And herdr's authority is the lifecycle rather than
+the screen** for both: `agent explain` answers `manifest: none`, `rule: none`,
+`screen_detection_skip_reason: full_lifecycle_hook_authority`. ⛔ **Three things stood
+between installed and working and none was in either entry**: neither agent was on a
+pane's PATH, the first guard for that was theatre, and pi sends its key to a built-in
+model when none is pinned.
 
 **Resume, in this order:**
 
@@ -108,11 +110,13 @@ which needs a provider credential this repository does not hold.
    an interactive attach, which needs a way to drive a terminal here rather than a
    design. ⭐ **It does not need the operator**, and question 3 below is a ruling that
    nothing waits on.
-3. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
-   `PermissionRequest` from a real turn, then the guide.
-4. `WSL-88` and `WSL-89` are DRIVEN and stay open on one condition each: an agent
-   reaching `working` from herdr's own report, which needs a provider credential. ⭐ The
-   adapters themselves are proved; see each entry's amendment of 2026-09-17.
+3. `WSL-76` and `WSL-78`: ⭐ **both acceptances are driven** - `muse exec` answered 3 from
+   the granted project and exit 2 from an ungranted one, and `herdr agent prompt muse`
+   ran the script and read back 47. ⚠ What is left in each is smaller than it was: the
+   guide transcript for `WSL-78`, and `PreToolUse` and `PermissionRequest` from a real
+   turn for `WSL-76`.
+4. ⭐ **`WSL-88` and `WSL-89` are CLOSED**, 2026-09-17, with every condition driven on
+   the operator's own base. Nothing is left in either.
 5. `WSL-90`'s closing, which waits on `wsl-toolkit-v3.0.0` proving its step 4, and so on
    ruling 6 rather than on any work.
 

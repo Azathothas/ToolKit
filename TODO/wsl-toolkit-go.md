@@ -9539,7 +9539,7 @@ scripts README at 508. The consumers claim was measured rather than asserted, ab
 **Source** the operator's work order of 2026-09-14, "Author approved entries for
 `pi` and `omp` before either adapter is built", and the reference sweep of
 2026-09-15 that costed both.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ⚠ **Amended 2026-09-15: the adapter is BUILT and NOT DRIVEN.**
 `adapters/pi/install.sh` and `probe.sh` exist, the executable registers `pi`, and
@@ -9653,11 +9653,50 @@ toolset already had what it needed, and `--ignore-scripts` was enough - which is
 stating because omp's premise, written the same day from the same sweep, was wrong about
 exactly that.
 
+## Amendment, 2026-09-17: driven on the operator's own base, and the entry closes
+
+⭐ **Every passing condition is met**, on `wsl-toolkit-base` with herdr, muse, pi and omp
+installed together, after the operator signed in.
+
+| condition | result |
+| --- | --- |
+| the probe reports pi healthy with a `version`, exit 0 from the process | ⭐ `adapter pi: healthy, version 0.85.1` |
+| `herdr integration status` names pi at integration **2** or later | ⭐ `pi: current (v9)` |
+| ⭐ **an agent reaches its state from herdr's OWN report rather than its screen** | ⭐ `herdr agent explain pi` answers `manifest: none`, `rule: none`, **`screen_detection_skip_reason: full_lifecycle_hook_authority`** |
+| the agent does work | ⭐ `herdr agent prompt pi --wait` exit 0, the pane shows `$ python3 ... 47`, `Took 0.1s`, and `herdr agent read pi` carries **47** |
+
+⛔ **Three things stood between "installed" and "working", and none was in the entry.**
+
+1. ⛔ **herdr could not start pi at all.** npm installs into `$HOME/.local/bin`, and a
+   herdr pane is a login shell whose PATH does not include it. The pane answered
+   `command not found` and `agent start` timed out. `muse` was the only agent that
+   worked, because it has had a root-owned wrapper at `/usr/local/bin/muse` since it was
+   built. The adapter writes one now and the contract is in `adapters/README.md`.
+2. ⛔ **The first guard for that was theatre**, and is worth more than the fix. It read
+   the name back through `as_account`, whose PATH puts the npm prefix first, so it
+   resolved the account's own copy and would have passed with **no wrapper at all**. It
+   uses `runuser -l` now - proved by removing the wrapper and watching
+   `base status --probe` go to exit **1** naming it, and back to 0 restored.
+3. ⚠ **pi picks a built-in model when none is named, and sends the configured key to
+   it.** Unpinned it chose `claude-opus-4-8` and answered a 401 from that provider.
+   Started with `--model muse-gateway/spark-max` it used the operator's gateway. ⭐ An
+   adapter that configures a custom provider has to pin the model too.
+
+⚠ **And one about credentials that the guide must carry.** An agent herdr starts
+inherits the **herdr server's** environment - a systemd unit - not a login shell's, so an
+`export` in `~/.profile` never reaches it. Measured by reading `/proc/PID/environ` for
+every pane process: none had the variable while a login shell did. The credential belongs
+in the agent's own store, `~/.pi/agent/models.json` and `auth.json`, which pi reads
+whatever the environment is.
+
+**Status** done.
+
 ## WSL-89. The omp adapter, and the directory collision herdr refuses
 
 
+
 **Source** the operator's work order of 2026-09-14, alongside `WSL-88`.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ⚠ **Amended 2026-09-15: the adapter is BUILT and NOT DRIVEN**, on the same terms
 as `WSL-88`. ⛔ The collision refusal below is written and has never been reached
@@ -9807,7 +9846,37 @@ arch, developer toolset, systemd, herdr on the nightly channel, pi and omp toget
 report needs a provider credential this repository does not hold. Everything else here is
 driven.
 
+## Amendment, 2026-09-17: driven on the operator's own base, and the entry closes
+
+⭐ **Every passing condition is met**, on `wsl-toolkit-base` alongside pi, after the
+operator's Muse subscription carried omp.
+
+| condition | result |
+| --- | --- |
+| the probe reports omp healthy with a `version` and the resolved agent directory | ⭐ `adapter omp: healthy, version omp/18.2.3`, `agent_dir $HOME/.omp/agent`, `bun 1.4.2` |
+| `herdr integration status` names omp at integration **3** or later | ⭐ `omp: current (v10)` |
+| ⭐ **with pi installed too, both integrations present and their directories differ** | ⭐ `pi: current (v9)` at `~/.pi/agent/extensions/herdr-agent-state.ts`, `omp: current (v10)` at `~/.omp/agent/extensions/herdr-omp-agent-state.ts` |
+| ⛔ **a base configured so the two collide is REFUSED, naming both paths and the variable** | ⭐ exit **3**: `both resolve to .../.pi/agent`, `the cause PI_CODING_AGENT_DIR is read by BOTH`, and the refusal is a mutation row |
+| the agent does work through herdr | ⭐ `herdr agent prompt omp --wait` exit 0, the pane shows **47**, `Wall: 0.07s`, and `herdr agent read omp` carries it |
+| the authority | ⭐ `herdr agent explain omp`: `manifest: none`, `rule: none`, **`screen_detection_skip_reason: full_lifecycle_hook_authority`** |
+
+⭐ **The operator's ruling of 2026-09-17 is implemented and driven**: the adapter refuses
+a collision by default AND offers `separate_agent_dir`, which gives omp a directory of
+its own through a wrapper that leaves `PI_CODING_AGENT_DIR` exactly as the operator set
+it. Both halves are in the amendment above.
+
+⛔ **And the thing this entry was written around could never have fired.** The collision
+refusal read the account's environment through `as_account`, which runs `env -i`, so
+every variable read as unset and the guard was dead code on every base that has ever
+existed. It reads a login shell now and fired on its first run.
+
+⚠ **omp needed a runtime this entry's premise never recorded**: it is a Bun program, and
+a base with Node alone installs it and cannot run it. That is in the amendment above too.
+
+**Status** done.
+
 ## WSL-90. herdr built nightly from its development branch, published here, and followed by the herdr adapter
+
 
 
 **Source** the operator on 2026-09-15, "let's build herdr ourself (now locally for

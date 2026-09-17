@@ -13,16 +13,16 @@ entry a row, and that no status disagrees between the two. It runs as a gate.
 ## Counts
 
 ```text
-total 125  open 7  blocked 0  done 118
+total 125  open 5  blocked 0  done 120
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 65 | 65 |
-| P2 | 7 | 0 | 43 | 50 |
+| P2 | 5 | 0 | 45 | 50 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **7** | **0** | **118** | **125** |
+| **all** | **5** | **0** | **120** | **125** |
 
 ---
 
@@ -125,8 +125,8 @@ total 125  open 7  blocked 0  done 118
 | WSL-85 | P1 | S | done | A base reconfigured from passwordless sudo to none keeps it, and reports none | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-86 | P1 | M | done | The debian and fedora presets build a base that cannot run a container | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-87 | P1 | S | done | bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-88 | P2 | M | open | The pi adapter, and herdr's first lifecycle authority in this base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-89 | P2 | M | open | The omp adapter, and the directory collision herdr refuses | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-88 | P2 | M | done | The pi adapter, and herdr's first lifecycle authority in this base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-89 | P2 | M | done | The omp adapter, and the directory collision herdr refuses | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-90 | P2 | L | open | herdr built nightly from its development branch, published here, and followed by the herdr adapter | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
