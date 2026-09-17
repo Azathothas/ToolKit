@@ -1734,6 +1734,25 @@ published here, the targets, how the adapter takes a nightly, and where the
 development server ran for `--machine`.
 
 ## Host state
+- ⛔ **THIS SESSION CHANGED THE OPERATOR'S PODMAN DEFAULT CONNECTION, and it has to
+  be changed back the day the rootless socket works again.** It is
+  `podman-machine-default-root` now, not `podman-machine-default`, because the
+  rootless one is dead: `user@1000.service` fails to spawn its executor on systemd
+  259 under WSL2, so `/run/user/1000/podman/podman.sock` is never created. Finding
+  76 has the whole chain.
+  - ⚠ **What it costs**: containers on the HOST engine now run as root inside the
+    machine rather than rootless. ⭐ Jobs are unaffected - they run in a rootless
+    podman INSIDE the owned distribution, which is a different engine entirely.
+  - ⭐ **The undo, whenever the upstream fault is fixed**:
+    `podman system connection default podman-machine-default`
+- ⚠ **The `wsl-toolkit` base gained four packages on 2026-09-17**, `dash`, `zsh`,
+  `ksh` and `busybox`, installed with `base exec --root` to measure `text-tool`
+  across shells while the engine was down. Additive, and the distribution is
+  otherwise untouched.
+- ⭐ **`%USERPROFILE%\bin` carries `wsl-toolkit.exe` 3.1.0 and `text-tool.exe`** as
+  of 2026-09-17, both installed from the published release and both verified: the
+  first by `selfupdate`'s own digest check, the second by `SHA256SUMS` and its
+  cosign bundle.
 
 - Registered distributions: `podman-machine-default`, `eph-pgb`, `wsl-toolkit`,
   `wsl-toolkit-podbox`, and ⭐ **`wsl-toolkit-base`, the operator's one base for every
