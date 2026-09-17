@@ -60,6 +60,18 @@ type BaseAdapter struct {
 	// repository. ⛔ A channel beside a version or digests is refused: the two answer the
 	// same question differently. WSL-90.
 	Channel string `json:"channel,omitempty"`
+	// SeparateAgentDir opts omp out of the refusal it makes by default when pi and
+	// omp resolve to one extension directory, and has it use its own instead.
+	//
+	// ⛔ THE REFUSAL IS THE DEFAULT AND THIS IS THE OPT-IN. `PI_CODING_AGENT_DIR` is
+	// read by BOTH, so one exported for pi silently redirects omp onto pi's
+	// directory and herdr then refuses the omp integration. The operator ruled on
+	// 2026-09-17 that the adapter refuse AND offer this. WSL-89.
+	//
+	// ⚠ IT IS ONLY HONEST WITH A WRAPPER, and the adapter writes one. Separating at
+	// install time alone would put the integration in one directory and leave omp
+	// reading the other at run time, which is a claim rather than a fact.
+	SeparateAgentDir bool `json:"separate_agent_dir,omitempty"`
 }
 
 // AdapterState is one adapter as `base status --probe` read it back.
@@ -88,6 +100,10 @@ type adapterSpec struct {
 	// or rebuilding this executable. It reads TK_ADAPTER_VERSION and
 	// TK_ADAPTER_SHA256_<ARCH>.
 	TakesVersionPin bool
+	// TakesSeparateAgentDir says the adapter can resolve an extension directory of
+	// its own when another agent would collide with it. Only omp can: it is the one
+	// whose directory another agent's variable redirects.
+	TakesSeparateAgentDir bool
 	// TakesChannel says the adapter may follow AdapterChannelNightly.
 	TakesChannel bool
 	// Agent is the command an agent adapter installs in the base, which `base agent`
@@ -132,12 +148,13 @@ var adapterSpecs = []adapterSpec{
 		Host:            &agentLauncherHost{agent: "pi"},
 	},
 	{
-		Name:            "omp",
-		Summary:         "Oh My Pi for the base's account from npm, with herdr's own integration, and a refusal when it and pi resolve to one extension directory",
-		Presets:         []string{"arch"},
-		TakesVersionPin: true,
-		Agent:           "omp",
-		Host:            &agentLauncherHost{agent: "omp"},
+		Name:                  "omp",
+		TakesSeparateAgentDir: true,
+		Summary:               "Oh My Pi for the base's account from npm, with herdr's own integration, and a refusal when it and pi resolve to one extension directory",
+		Presets:               []string{"arch"},
+		TakesVersionPin:       true,
+		Agent:                 "omp",
+		Host:                  &agentLauncherHost{agent: "omp"},
 	},
 }
 
@@ -191,6 +208,12 @@ func validateAdapters(c Config) error {
 		}
 		if a.InstallerSHA256 != "" && !installerDigestRE.MatchString(a.InstallerSHA256) {
 			return fmt.Errorf("base.adapters[%d].installer_sha256 is not a SHA-256. Give the 64 lowercase hex characters sha256sum prints for the installer you read", i)
+		}
+		// ⛔ REFUSED ON AN ADAPTER THAT CANNOT USE IT, rather than ignored. A
+		// setting accepted and silently dropped is one the operator believes is in
+		// force, which is the same rule installer_sha256 and channel already keep.
+		if a.SeparateAgentDir && !spec.TakesSeparateAgentDir {
+			return fmt.Errorf("base.adapters[%d] gives %q separate_agent_dir, and only omp resolves an extension directory another agent's variable can take", i, a.Name)
 		}
 		if err := validateAdapterPin(i, a, spec); err != nil {
 			return err
@@ -346,6 +369,9 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 	env["TK_DISTRO"] = cfg.Base.Name
 	if a.InstallerSHA256 != "" {
 		env["TK_INSTALLER_SHA256"] = a.InstallerSHA256
+	}
+	if a.SeparateAgentDir {
+		env["TK_ADAPTER_SEPARATE_AGENT_DIR"] = "1"
 	}
 	// ⭐ A RELEASE THIS EXECUTABLE HAS NEVER HEARD OF, pinned by the configuration
 	// that asked for it. The script keeps its own default, so a base that names

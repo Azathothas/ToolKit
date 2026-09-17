@@ -2927,6 +2927,24 @@
       "replace": "\tif false {",
       "run": "TestAnEmptyPrivateNetPayloadIsRefused",
       "args": []
+    },
+    {
+      "label": "omp: separate_agent_dir refused on an adapter that cannot take it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif a.SeparateAgentDir && !spec.TakesSeparateAgentDir {",
+      "replace": "\t\tif a.SeparateAgentDir && false {",
+      "run": "TestSeparateAgentDirIsRefusedOnAnAdapterThatCannotTakeIt",
+      "args": []
+    },
+    {
+      "label": "omp: separate_agent_dir reaching the installer at all",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif a.SeparateAgentDir {\n\t\tenv[\"TK_ADAPTER_SEPARATE_AGENT_DIR\"] = \"1\"\n\t}\n",
+      "replace": "",
+      "run": "TestSeparateAgentDirReachesTheInstaller",
+      "args": []
     }
   ]
 }

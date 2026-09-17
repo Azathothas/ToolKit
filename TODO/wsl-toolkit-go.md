@@ -9628,7 +9628,33 @@ Passing is:
 
 ---
 
+## Amendment, 2026-09-17: pi is driven, and it worked as read
+
+⭐ **Approved by the work order of 2026-09-14**, confirmed by the operator on 2026-09-17,
+recorded as ruling 16. ⭐ **The adapter is now DRIVEN**, on the throwaway arch base
+`wsl-toolkit-b89` with herdr, pi and omp together.
+
+| condition | result |
+| --- | --- |
+| `base ensure` installs it | ⭐ exit 0, `installed pi 0.85.1`, `npm install -g --ignore-scripts` as pi documents |
+| the probe reports it healthy with a version | ⭐ `adapter pi: healthy, version 0.85.1` |
+| `herdr integration status` names pi at version **2** or later | ⭐ `pi: current (v9)`, at `$HOME/.pi/agent/extensions/herdr-agent-state.ts` |
+| herdr has lifecycle authority | ⭐ `installed herdr's pi integration, which gives herdr lifecycle authority` |
+| the launcher | ⭐ the pi launcher was written under the operator profile's bin directory, named for the instance |
+
+⛔ **One passing condition is NOT met and it is not this adapter's fault.** "An agent
+started in a pane reaches `idle` and then `working` from herdr's own report" needs a pi
+that can run a turn, and that needs a provider credential this repository does not hold.
+It is the same shape as `WSL-76`'s `muse login`, and it is the only thing between this
+entry and closing.
+
+⚠ **Nothing in the premise was wrong.** pi is a Node program, the base's `developer`
+toolset already had what it needed, and `--ignore-scripts` was enough - which is worth
+stating because omp's premise, written the same day from the same sweep, was wrong about
+exactly that.
+
 ## WSL-89. The omp adapter, and the directory collision herdr refuses
+
 
 **Source** the operator's work order of 2026-09-14, alongside `WSL-88`.
 **Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
@@ -9712,7 +9738,77 @@ Passing is:
 
 ---
 
+## Amendment, 2026-09-17: omp is driven, and the refusal it exists for was dead code
+
+⭐ **Approved by ruling 16, and ruling 17 settled the decision this entry left open**:
+the adapter **refuses** a colliding configuration by default **and** offers an explicit
+opt-in that separates. ⚠ The entry recommended refuse alone; the operator chose both.
+
+### ⛔ Three defects, and every one needed a real base
+
+1. ⛔ **THE COLLISION REFUSAL COULD NEVER FIRE.** `account_env` read the account's
+   variables through `as_account`, which runs `env -i` to make an install reproducible,
+   so a plain `sh -c` under it reports **every** variable unset. Measured 2026-09-17
+   with `export PI_CODING_AGENT_DIR` in the account's profile: a login shell answered
+   `$HOME/.pi/agent` and the adapter answered nothing. So the one condition this
+   entry said "most wants driving" was dead code on every base that has ever existed.
+   ⭐ Fixed with `sh -lc`, which is how the agent itself gets the variable, and the
+   refusal then fired on its first run: exit 3, naming both paths, the variable and
+   three fixes.
+2. ⛔ **omp IS A BUN PROGRAM AND THIS ENTRY'S PREMISE SAID IT WAS A PACKAGE.** The shim
+   is `#!/usr/bin/env bun` and the package requires `bun >= 1.3.14`. On a base with Node
+   alone it installed and answered `env: 'bun': No such file or directory`, rc 127.
+   ⛔ **And not from npm**: `npm install -g --ignore-scripts bun` exits 0 and leaves a
+   bun that refuses to run, `Bun's postinstall script was not run`, because the
+   postinstall is what downloads the binary. ⭐ Ruled by the operator, "yes install bun":
+   from the distribution, `pacman -S bun`, signed and verified. Arch carries 1.4.2 and
+   with it omp answers `omp/18.2.3`.
+3. ⛔ **The integration override made herdr refuse an install on a base with NO
+   collision.** Exporting `PI_CODING_AGENT_DIR` for `herdr integration install omp` is
+   right when separating and wrong otherwise, because the variable is read by BOTH: on an
+   ordinary base it made herdr resolve pi's directory to omp's value, see one directory
+   for two agents, and refuse. Measured, then fixed to apply only when separating, and
+   the same command by hand without it exited 0.
+
+⚠ **And one in the wrapper, from the same driving.** The guard that stopped the adapter
+wrapping its own wrapper read the PATH, and npm's prefix for the account **is**
+`$HOME/.local` - so npm's own shim lives exactly where the wrapper wants to, and the
+guard called the shim a wrapper and refused. It tells them apart by a marker line now,
+and moves npm's shim to `omp-npm`.
+
+### The opt-in, and why it needs a wrapper
+
+⛔ **Separating at install time alone would be a claim.** The integration would sit in
+omp's directory while omp, started later, read the account's `PI_CODING_AGENT_DIR` again
+and looked in pi's. So the adapter writes `$HOME/.local/bin/omp`, which sets that one
+variable for **omp alone** and execs npm's shim; the account's own value is untouched.
+⭐ **A wrapper costs herdr nothing here, and that is why it is allowed for omp and is not
+the answer for pi**: this entry's own premise records that omp reports state and session
+through herdr's socket API and "does not require native process detection".
+
+### Measured, 2026-09-17, on `wsl-toolkit-b89`
+
+arch, developer toolset, systemd, herdr on the nightly channel, pi and omp together.
+
+| condition | result |
+| --- | --- |
+| `base ensure` with all three adapters | ⭐ exit **0**, herdr 0.9.0, pi 0.85.1, omp `omp/18.2.3`, all healthy |
+| `herdr integration status` names omp at version **3** or later | ⭐ `omp: current (v10)` |
+| with pi installed too, both integrations present and their directories differ | ⭐ `pi: current (v9)` at `~/.pi/agent`, `omp: current (v10)` at `~/.omp/agent` |
+| ⛔ a base configured so the two collide is REFUSED, naming both paths and the variable | ⭐ exit **3**, `both resolve to $HOME/.pi/agent`, `the cause PI_CODING_AGENT_DIR is read by BOTH` |
+| the same collision with `"separate_agent_dir": true` | ⭐ exit **0**: `omp takes $HOME/.omp/agent`, `moved npm's omp to omp-npm and wrote the wrapper`, `the account's omp resolves to the wrapper and runs` |
+| the separation end to end | ⭐ account still `$HOME/.pi/agent`; omp sees `$HOME/.omp/agent`; pi unchanged |
+| a second `base ensure` | ⭐ exit 0, `the omp wrapper is already in place`, nothing re-wrapped |
+| the suite | 6 cases; **2 mutation rows, 2 of 2 went red** |
+
+### Still open
+
+⛔ **The same one as `WSL-88`**: an agent reaching `idle` then `working` from herdr's own
+report needs a provider credential this repository does not hold. Everything else here is
+driven.
+
 ## WSL-90. herdr built nightly from its development branch, published here, and followed by the herdr adapter
+
 
 **Source** the operator on 2026-09-15, "let's build herdr ourself (now locally for
 windows) and if it works, we will create a dedicated nightly builder for it on github

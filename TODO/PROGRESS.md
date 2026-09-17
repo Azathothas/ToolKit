@@ -91,6 +91,14 @@ does not close**: `base shell` does not take the flag, because an interactive at
 through `pasta` cannot be driven from here, and the design question the measurement
 raised is question 3 below.
 
+⭐ **`WSL-88` and `WSL-89` are driven**, on one throwaway base with herdr, pi and omp
+together: pi 0.85.1 with herdr's lifecycle authority at integration v9, omp 18.2.3 at
+v10, both healthy and in different directories. ⛔ **The collision refusal this entry was
+written around could never fire**, because it read the account's environment under `env -i`;
+it fires now, and the operator's opt-in separates instead when asked. ⚠ **Neither entry
+closes**: the last condition in each is an agent reaching `working` from herdr's own report,
+which needs a provider credential this repository does not hold.
+
 **Resume, in this order:**
 
 1. **The operator's two steps**, which nothing else here can stand in for: `muse login`
@@ -102,8 +110,9 @@ raised is question 3 below.
    nothing waits on.
 3. `WSL-76`'s and `WSL-78`'s proves after the sign-in, then `PreToolUse` and
    `PermissionRequest` from a real turn, then the guide.
-4. `WSL-88` and `WSL-89`, the `pi` and `omp` adapters. ⛔ **Both are WRITTEN AND NEVER
-   RUN**.
+4. `WSL-88` and `WSL-89` are DRIVEN and stay open on one condition each: an agent
+   reaching `working` from herdr's own report, which needs a provider credential. ⭐ The
+   adapters themselves are proved; see each entry's amendment of 2026-09-17.
 5. `WSL-90`'s closing, which waits on `wsl-toolkit-v3.0.0` proving its step 4, and so on
    ruling 6 rather than on any work.
 
@@ -187,7 +196,50 @@ is closed, and the issue gets a comment naming the commits.
     and the development herdr server swapped into `wsl-toolkit-base` for the
     `--machine` measurement.
 
+16. **2026-09-17: `WSL-88` and `WSL-89` were approved by the work order of 2026-09-14**,
+    "Author approved entries for `pi` and `omp` before either adapter is built". Asked
+    because neither entry carried an approval line where `WSL-85` to `WSL-87` do, and
+    both adapters had already been built under that instruction. Both entries are
+    approved as written.
+17. ⛔ **2026-09-17: the omp adapter REFUSES a colliding configuration by default AND
+    offers an explicit opt-in that separates the directories.** ⚠ **This is not the
+    recommendation the entry carried**, which was refuse alone; the operator chose the
+    third option. So the separation is new work with its own cases and mutation rows,
+    and the refusal stays the default. In `WSL-89`.
+18. **2026-09-17: `pi` and `omp` are driven on a throwaway base first**, and installed
+    into `wsl-toolkit-base` only once both adapters are known good. Ruling 2 still names
+    `wsl-toolkit-base` as the one base for every agent; this is about the order, not the
+    destination.
+19. ⭐ **2026-09-17: `WSL-68`'s last piece is DEFERRED by the operator**, "defer it for
+    now". The entry stays open on the flag for an interactive attach; nothing else in it
+    is outstanding. Issue 30 closes when that piece does, and it is the only entry mapped
+    to that issue still open.
+
+20. ⭐ **2026-09-17: an adapter prefers the provider's OFFICIAL installer and falls back
+    to this repository's own route.** The operator: "we should prefer official installers
+    and then fallback to ours". ⚠ **Not implemented, and it is not a small change.** This
+    repository never pipes an installer into a shell; the route it permits is the one
+    ruling 4 set for Muse - download the installer, read it, run it from the file that
+    was read, against an approved digest. Applying that to `pi` and `omp` means a digest
+    for each, which is an operator approval per installer. ⛔ Recorded here, filed as the
+    next work on the adapters, and NOT silently half-done: today `pi` and `omp` install
+    from npm, which is this repository's own route.
+    ⭐ **What was read while settling it**, on 2026-09-17: `https://omp.sh/install`, 9,954
+    bytes, fetched and READ and never run. Its default mode is `binary`, a prebuilt
+    standalone release asset from GitHub, which needs no Bun at all; only `--source`
+    installs through Bun, and that path runs `curl -fsSL https://bun.sh/install | bash`,
+    a second pipe into a shell. So the official route would also remove this base's need
+    for Bun, which makes it worth doing rather than merely worth recording.
+21. ⛔ **2026-09-17: bun is NOT in `bootstrap.sh`'s table or the developer toolset**,
+    against the expectation that it was. `bootstrap.sh` has seven matches for "bun" and
+    every one is `ca-bundle`; a word-boundary search finds none, and `packages.sh` has
+    none. The omp adapter installs it from the distribution itself, and does not add it
+    to the shared table, which is fetched by URL and is not where a runtime one adapter
+    needs belongs - the rule `WSL-88` states for pi.
+
 ## Before every push
+
+
 
 A green local gate is not CI. Run the Go tests with `TEMP` and `TMP` at an 8.3
 short path, then CI's Linux Go job and its ShellCheck in containers.
@@ -224,7 +276,9 @@ new file FIRST, then run the gate.**
 | `69ae23f` | `WSL-90`'s three closing reviews, finding 36 and a line count corrected; the entry stays open on its step 4, which only `wsl-toolkit-v3.0.0` can prove |
 | `a19926c` | `WSL-68` steps 3 and 4: `base doors`, the attack as a registered command, with 13 cases, 6 mutation rows, a manual section and a sweep row; three defects it found in itself and one about WSL that narrowed its claims |
 | `ef0dd2f` | `WSL-68` step 1's first half: `base.shared_tmpfs = "off"` closes the shared tmpfs at every start and keeps the resolver, with 6 cases and 4 mutation rows, driven from nothing and proved able to fail |
-| this record commit | `WSL-68` step 1's second half: `base exec --private-net`, the account's own network namespace with the Windows host refused by a rule inside it, 7 cases and 3 mutation rows; the engine conflict that makes it a flag; this session's summary |
+| `0d4d66f` | `WSL-68` step 1's second half: `base exec --private-net`, the account's own network namespace with the Windows host refused by a rule inside it, 7 cases and 3 mutation rows; the engine conflict that makes it a flag |
+| `c68ca25` | the teardown of that session's throwaway base |
+| this record commit | `WSL-88` and `WSL-89` driven: pi 0.85.1 and omp 18.2.3 on one base with herdr, the collision refusal that could never fire made to fire, the operator's opt-in that separates, bun from the distribution, and this session's summary |
 
 ## Measurements
 
@@ -265,13 +319,24 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
   container runs inside**, measured three ways, each failing on a path podman chooses
   because it reads itself as rootful. `base exec --private-net` forwards 0, 7 and 42
   exactly and adds **zero** stderr bytes, 116 against 116.
+- **For `WSL-88` and `WSL-89`, on the throwaway arch base `wsl-toolkit-b89`:** herdr on
+  the nightly channel, pi and omp together, `base ensure` exit **0**, all three healthy:
+  herdr 0.9.0, pi **0.85.1**, omp **omp/18.2.3** with bun **1.4.2** from the distribution.
+  `herdr integration status` reads `pi: current (v9)` and `omp: current (v10)` in
+  different directories. ⛔ The collision refusal fired for the first time ever, exit 3
+  naming both paths and the variable; with `"separate_agent_dir": true` the same
+  collision gives exit 0, a wrapper that wins on PATH, and omp resolving to its own
+  directory while the account's value and pi are untouched; a second ensure is
+  idempotent. ⚠ **`base ensure` cannot be driven from Git Bash**: MSYS translates the
+  guest path in herdr's SSH ProxyCommand and it fails with
+  `execvpe(C:/Program Files/Git/usr/local/lib/...)`. From PowerShell it works.
 - **The three pre-push checks, at the end of the session:** Windows Go with `TEMP` at
-  the 8.3 path, **357 top-level results, 337 passed, 20 skipped, 0 failed, exit 0 in
-  14 s**; `check-go.sh` exit 0 in `golang:1.25` in 29 s; ShellCheck 0.9.0 in
+
+  the 8.3 path, **363 top-level results, 343 passed, 20 skipped, 0 failed, exit 0**; `check-go.sh` exit 0 in `golang:1.25` in 29 s; ShellCheck 0.9.0 in
   `ubuntu:24.04` clean over **49** tracked scripts, two more than last session because
   `doors.sh` and `private-net.sh` are new. ⚠ At the first commit the Go figure was 343.
-- **The mutation table:** 312 rows to **325**. Every one of the thirteen new rows went
-  red, in three runs, and every case was green unmutated first - which finding 1 says
+- **The mutation table:** 312 rows to **327**. Every one of the fifteen new rows went
+  red, in four runs, and every case was green unmutated first - which finding 1 says
   `repo mutate` does not do for itself. ⚠ Three rows reported `BROKEN, does not
   compile` before they were rewritten; finding 41.
 - ⭐ **The throwaway base `wsl-toolkit-b68b` was built under `.tmp` and removed**, with
@@ -654,8 +719,63 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     variable referenced, by comparing it against a value the setting never takes, goes
     red properly. The table has no rule that a row must compile, and nothing checks it.
 
+42. ⛔ **A case that only runs on one host was written, passed here, and PUSHED RED.**
+    `TestTheStatusReportCarriesTheSharedTmpfsSetting` built a `Base` to read a setting
+    back, and `NewBase` binds to the host through `FindWsl`, which on Linux answers
+    `wsl.exe was not found on this host: this host is linux`. It passed on Windows, the
+    local gate ran `go test` on Windows and passed, and `check-go.sh` in `golang:1.25`
+    is the check that would have caught it - which was run BEFORE that case existed and
+    not again after. It went out in `0d4d66f`. ⚠ **The case never needed a host at all**:
+    it asserts a normalizer and a JSON tag, both facts about the types, and it does that
+    now. ⛔ **The rule this breaks is already written**: PROGRESS's own "Before every
+    push" says a green local gate is not CI, and the three container checks exist for
+    exactly this. Running them once at the start of a change and not again at the end is
+    the gap, and nothing enforces the order.
+
 ## Review findings
 
+
+
+⭐ **2026-09-17, `WSL-88`'s and `WSL-89`'s closing reviews**, run over the two adapters
+together because they were driven together on one base.
+
+**The door sweep** went after the setting rather than the scripts: every reader of
+`separate_agent_dir`, and every place a configuration field can be lost. ⛔ **It found
+that the field is inside `BaseAdapter`, which the reflect walk guarding the rest cannot
+see.** `TestEveryStoredBaseFieldSurvivesLoading` says so in its own comment - it walks
+`BaseConfig` and stops at the adapter - and `base.adapters` itself was once decoded,
+validated as empty and dropped. A case now writes the setting out, reads it back through
+`LoadConfig` and asserts it survived. ⚠ It also confirmed the flag is refused on every
+adapter but omp, which is the rule `installer_sha256` and `channel` already keep.
+
+**The guard mutation** ran two new rows, 2 of 2 red. ⭐ **But the lens's real find came
+before any row existed**: the collision refusal this entry was written around **could
+never fire**. `account_env` read the account's variables under `env -i`, which clears the
+environment on purpose, so every variable read as unset and the refusal was dead code on
+every base that has ever existed. ⚠ **A row could not have caught it**: the guard was
+reachable in Go, correct in the shell, and answered a question nobody could make true. It
+took exporting the variable on a real base, in a login shell, to see the two disagree.
+⭐ Three more defects came out of the same driving, each named in `WSL-89`'s amendment:
+bun, the unconditional override, and a wrapper guard that read a path where npm's own
+shim lives.
+
+**The claim audit** read the two amendments against the runs. ⛔ **It caught a claim in a
+CASE rather than a page**: `TestBunComesFromTheDistributionAndNotFromNpm` asserted the
+installer does not run `npm install -g bun`, and failed - over the COMMENT that explains
+why it must not. A negative assertion that reads comments fails on the sentence stating
+the rule; it strips comment lines and reads what runs. ⚠ It also rejected a first draft
+of `WSL-88`'s amendment that called the entry's premise "correct": correct is what it
+was, and worth stating only because `WSL-89`'s premise, written the same day from the
+same sweep, was wrong about exactly the thing that mattered. ⛔ **And it caught six
+absolute home paths** carrying an account name in the amendments and two scripts, which
+the gate's `secrets` rule then refused; they are the class `examples/common/zellij.md`
+published three times once.
+
+⚠ **What a pass with nothing to report would have needed.** None of these three was
+quiet. The one that came closest was the door sweep on `pi`, which found nothing to
+change: pi is a Node program, `--ignore-scripts` is what its own project documents, and
+its premise held in every particular. It would have fired if pi had needed a runtime the
+base lacks, which is exactly what omp turned out to need.
 
 ⭐ **2026-09-17, `WSL-68`'s reviews for approach step 1**, run over the shared tmpfs and
 the private network namespace together.

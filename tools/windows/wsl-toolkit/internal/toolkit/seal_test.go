@@ -149,17 +149,22 @@ func TestTheVerifierRefusesASharedTmpfsThatIsStillMountedOrALostResolver(t *test
 // is only visible by comparing them. Status could not report the setting at all
 // until 2026-09-17, which the door sweep found rather than any check.
 func TestTheStatusReportCarriesTheSharedTmpfsSetting(t *testing.T) {
+	// ⛔ NO NewBase HERE, AND THAT WAS A REAL FAILURE. The first version built one to
+	// read the setting back, and NewBase binds to this host through FindWsl, which on
+	// Linux answers `wsl.exe was not found on this host`. It passed on Windows and CI
+	// went red in golang:1.25 - a case that only runs on one host, asserting something
+	// that needs no host at all. The setting and the report's field are both facts
+	// about the types.
 	for _, want := range []string{SharedTmpfsOn, SharedTmpfsOff} {
 		cfg := DefaultConfig()
 		cfg.Base.Automount = AutomountOff
 		cfg.Base.SharedTmpfs = want
-		b, err := NewBase(cfg, func(string) {})
-		if err != nil {
-			t.Fatal(err)
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("a configuration with shared_tmpfs %q was refused: %v", want, err)
 		}
-		got, err := NormalizeSharedTmpfs(b.cfg.Base.SharedTmpfs)
+		got, err := NormalizeSharedTmpfs(cfg.Base.SharedTmpfs)
 		if err != nil || got != want {
-			t.Fatalf("the base reads shared_tmpfs %q (%v), want %q", got, err, want)
+			t.Fatalf("the configuration reads shared_tmpfs %q (%v), want %q", got, err, want)
 		}
 	}
 	// The report's own field, which is what a caller parses.

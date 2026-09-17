@@ -7,18 +7,18 @@ on what was true last time.
 
 ---
 
-## 2026-09-17, the attack becomes a command, and the last two doors a zero-grant base had
+## 2026-09-17, the last doors a zero-grant base had, and two agents driven onto one base
 
 | row | before | after |
 | --- | --- | --- |
-| Elapsed | started 2026-09-17T02:52:40Z | the record commit's own time is its end, about 26 minutes to the last measurement |
-| Commits | `485252c`, tree **DIRTY** with the last session's two uncommitted wording corrections, its CI run 35070882239 green | **3**: `a19926c` the doors command, `ef0dd2f` the shared tmpfs, and this record commit. ⭐ Each pushed only after the previous one's CI was green; `a19926c` and `ef0dd2f` are green |
-| Work | 7 open entries; `WSL-68` with **four** remaining items | ⭐ **Partial 1:** `WSL-68`, all four of its remaining items attacked and three delivered whole. **Completed 0. Failed 0.** ⛔ **`WSL-68` does NOT close**, and it is one piece rather than four: `base shell` does not take `--private-net`, because an interactive attach through `pasta` cannot be driven from here. Entries 125 to 125, open 7 to 7, done 118 to 118 |
-| Changes | 0 files changed from `485252c` | `git diff --shortstat 485252c` reads **25 files, +2,575 / -29**, six of them new |
-| Size | 98,840 text lines in 315 tracked files | **101,386 in 323 files, +2,546**, by `git grep -I -c` |
-| Checks | doctor exit 0 in 55 s; gate 21 of 21 in 70 s | gate 21 of 21, exit 0, green before every commit. Windows Go with `TEMP` at the 8.3 path **357 top-level results, 337 passed, 20 skipped, 0 failed, exit 0 in 14 s**; `check-go.sh` exit 0 in `golang:1.25` in 29 s; ShellCheck 0.9.0 in `ubuntu:24.04` clean over **49** scripts. **13 new mutation rows**, 312 to **325**, all thirteen red, each green unmutated first |
-| Cost | no paid operation authorized | no paid operation. Six container runs on the base, about 3 minutes of engine time; two throwaway base builds; the podman machine started to export a rootfs. No download, no release, no workflow dispatched |
-| Health | five distributions; `WSL-68` with a scratch attack script in `.tmp` | ⭐ the same five registered, none added or removed; ⭐ **the throwaway `wsl-toolkit-b68b` was built for the drives and REMOVED**, 1.2 GiB with it, and `podman-machine-default` was started to export a rootfs and stopped again, so the host is as it was found. `base doors` and `base.shared_tmpfs` are new surfaces. **Findings 37 to 41 opened**; four record self-contradictions corrected. ⚠ `wsl --shutdown` twice, base repaired with `base ensure --repair`. Tree clean, no tag, no BSD image, the operator's herdr workspace `w2` untouched |
+| Elapsed | started 2026-09-17T02:52:40Z | the record commit's own time is its end |
+| Commits | `485252c`, tree **DIRTY** with the last session's two uncommitted wording corrections, its CI run 35070882239 green | **5**: `a19926c` the doors command, `ef0dd2f` the shared tmpfs, `0d4d66f` the private namespace, `c68ca25` a teardown, and this record commit. ⭐ Each pushed only after the previous one's CI was green. ⛔ **`c68ca25` is RED on CI** over a case of mine that only runs on Windows, fixed in this commit; finding 42 |
+| Work | 7 open entries; `WSL-68` with **four** remaining items, `WSL-88` and `WSL-89` written and never run | ⭐ **Partial 3.** `WSL-68`: all four remaining items attacked, three delivered whole, the fourth deferred by the operator. `WSL-88` and `WSL-89`: both adapters DRIVEN on one base with herdr. **Completed 0. Failed 0.** ⛔ **None of the three closes**, each on one condition: an interactive attach for `WSL-68`, a provider credential for the two adapters. Entries 125 to 125, open 7 to 7, done 118 to 118 |
+| Changes | 0 files changed from `485252c` | `git diff --shortstat 485252c` reads **31 files, +3,407 / -55**, ten of them new |
+| Size | 98,840 text lines in 315 tracked files | **102,192 in 324 files, +3,352**, by `git grep -I -c` |
+| Checks | doctor exit 0 in 55 s; gate 21 of 21 in 70 s | gate 21 of 21, exit 0, green before every commit. Windows Go **363 top-level results, 343 passed, 20 skipped, 0 failed**; `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 clean over **49** scripts. **15 new mutation rows**, 312 to **327**, all fifteen red, each green unmutated first. ⛔ CI caught one case of mine that only runs on Windows; finding 42 |
+| Cost | no paid operation authorized | no paid operation. Eleven container runs; three throwaway base builds; the podman machine started and stopped; two npm packages and one distribution package installed in a throwaway. No download piped to a shell, no release, no workflow dispatched |
+| Health | five distributions; `WSL-88` and `WSL-89` written and never run | ⭐ the same five registered, none added or removed: both throwaway bases were built under `.tmp` and removed, and `podman-machine-default` was started to export rootfs and stopped. `base doors`, `base.shared_tmpfs`, `--private-net` and `separate_agent_dir` are new surfaces. **Findings 37 to 42 opened**; four record self-contradictions corrected; four rulings recorded, 16 to 21. Tree clean, no tag, no BSD image, the operator's base and herdr workspace `w2` untouched |
 
 ### What was asked, and what happened
 
@@ -29,7 +29,7 @@ on what was true last time.
 | the manual paragraph saying what is NOT sealed | ⭐ done, with the measurement beside each door, and `base doors` named as the thing to run instead of trusting the paragraph |
 | `muse login`, and the six `--remote` signals in a real window | ⛔ **not done, and they are the operator's.** The ask was re-sent unchanged; the client path in it was verified to still exist on disk |
 | validate and reconcile before working | ⭐ done. Doctor, gate, `wsl -l -v`, CI, releases, `INDEX.md` and the entries all read against the record. The work order agreed three ways this time |
-| finish all remaining tasks | ⭐ **three of the four items are finished.** ⛔ The fourth is not, and the reason is a measurement rather than a shortfall: no container runs inside the namespace, so wrapping every command would break the base, and an interactive attach cannot be driven from this session |
+| finish all remaining tasks | ⭐ **three of WSL-68's four items are finished, and the fourth you deferred.** ⛔ The fourth is not, and the reason is a measurement rather than a shortfall: no container runs inside the namespace, so wrapping every command would break the base, and an interactive attach cannot be driven from this session |
 | the shared tmpfs closed at every start | ⭐ done. `base.shared_tmpfs = "off"`, a boot script WSL runs as root, the resolver written before the door shuts and refreshed before every unmount, and a verifier that refuses either half failing |
 | the account in its own network namespace | ⭐ **the mechanism is measured and driven**, `base exec --private-net`: the Windows host refused by an `nft` rule inside the namespace, the internet and DNS up, the shared namespace untouched. ⛔ **A flag, not a default**, because podman inside it takes itself for rootful and cannot run |
 
@@ -58,6 +58,14 @@ on what was true last time.
   in a user namespace where it is uid 0, podman then takes itself for rootful and cannot
   write the paths it chooses. Measured three ways. It is why `--private-net` is a flag
   and not how every command in the base starts.
+
+### And then the adapters
+
+| asked | outcome |
+| --- | --- |
+| ask and settle open questions before working | ⭐ done. Four rulings recorded, 16 to 21: the two entries approved by the 2026-09-14 work order, the omp collision settled as refuse-plus-opt-in, throwaway-first, and official-installers-first |
+| finish the herdr/muse/pi/omp work | ⭐ **pi and omp are DRIVEN**, on one base with herdr. ⛔ **Muse is not**: `WSL-76` and `WSL-78` need `muse login`, which is yours, and nothing in them moved |
+| `WSL-89`'s collision refusal | ⛔ **it could never fire**, on any base, ever. It read the account's environment under `env -i`, which clears it. It fires now, and the opt-in separates instead when asked |
 
 ### Resume point
 
