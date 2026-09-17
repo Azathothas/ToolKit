@@ -106,6 +106,30 @@ func Docs(t *Tree) Result {
 			}
 		}
 
+		// 5b. a PowerShell invocation in a fenced block passes -NoProfile.
+		//
+		// ⛔ A PROFILE RUNS BEFORE THE COMMAND AND CAN WRITE TO ITS OUTPUT.
+		// Somebody else's $PROFILE prints a banner, sets a preference variable,
+		// or defines a function whose name collides, and the command a document
+		// told a reader to run answers differently on their machine than on the
+		// one the document was written on. -NoProfile is what makes a documented
+		// command mean the same thing everywhere.
+		//
+		// ⭐ MEASURED BEFORE THE RULE WAS WRITTEN, on 2026-09-17: not one live
+		// document breaks it. This puts a check on a practice that already holds,
+		// so it cannot drift the first time a session types a command from memory.
+		if steExemptReason(f) == "" {
+			for _, blk := range shellBlocks(lines) {
+				for _, ln := range blk.lines {
+					if m := powershellCall.FindStringSubmatch(ln.Text); m != nil &&
+						!strings.Contains(ln.Text, "-NoProfile") {
+						r.bad("%s:%d: %s is invoked with no -NoProfile; somebody else's profile runs first and can write to the output",
+							f, ln.N, m[1])
+					}
+				}
+			}
+		}
+
 		// 6. banned vocabulary.
 		low := strings.ToLower(string(b))
 		for _, w := range banned {
@@ -293,6 +317,14 @@ func (b block) body() string {
 	}
 	return sb.String()
 }
+
+// powershellCall matches an INVOCATION of a PowerShell host, and not a mention.
+//
+// ⚠ THE TRAILING FLAG IS REQUIRED. A line reading `powershell 5.1 answered`
+// is prose inside an output block and names no command, and a rule that fired on
+// it would be refusing a correct document. TEMPLATE narrowed its own version of
+// this rule for exactly that, after a fixture showed it reporting a comment.
+var powershellCall = regexp.MustCompile(`(?:^|[|&;(]|\s)(pwsh|powershell)\s+-`)
 
 // shellBlocks returns the fenced blocks tagged as shell. An untagged block is
 // not assumed to be shell: guessing produces failures on output samples.

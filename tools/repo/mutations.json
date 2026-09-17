@@ -3218,8 +3218,8 @@
     },
     {
       "label": "launcher: two spellings of one path are one path",
-      "find": "\t\treturn strings.ToLower(filepath.Clean(strings.ReplaceAll(p, \"/\", string(filepath.Separator))))\n",
-      "replace": "\t\treturn filepath.Clean(p)\n",
+      "find": "\tp = strings.ToLower(strings.ReplaceAll(p, \"\\\\\", \"/\"))\n",
+      "replace": "\tp = strings.ReplaceAll(p, \"\\\\\", \"/\")\n",
       "run": "TestALauncherAnotherProgramHasTakenTheNameOfIsReported",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/agents.go",
@@ -3233,6 +3233,87 @@
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/agents.go",
       "args": []
+    },
+    {
+      "label": "text: a match count that is not what the caller expected is refused",
+      "file": "internal/edit/edit.go",
+      "find": "\tif o.haveExpect && matches != o.expect {\n",
+      "replace": "\tif o.haveExpect && matches != o.expect && false {\n",
+      "run": "TestASubstitutionThatMatchesADifferentNumberOfTimesIsRefused",
+      "module": "tools/text",
+      "args": []
+    },
+    {
+      "label": "text: a substitution with no expected count is refused",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif o.haveFind && !o.haveExpect && !o.count {\n",
+      "replace": "\t\tif o.haveFind && !o.haveExpect && !o.count && false {\n",
+      "run": "TestASubstitutionWithoutExpectIsRefused",
+      "module": "tools/text",
+      "args": []
+    },
+    {
+      "label": "text: a count writes nothing",
+      "file": "internal/edit/edit.go",
+      "find": "\tif o.count || o.dryRun {\n",
+      "replace": "\tif o.dryRun && false {\n",
+      "run": "TestACountChangesNothingAndSaysSo",
+      "module": "tools/text",
+      "args": []
+    },
+    {
+      "label": "text: a file's line endings are kept",
+      "file": "internal/edit/edit.go",
+      "find": "\tif bytes.Contains(body, []byte(\"\\r\\n\")) {\n\t\treturn \"crlf\"\n\t}\n",
+      "replace": "\tif bytes.Contains(body, []byte(\"\\r\\n\")) && false {\n\t\treturn \"crlf\"\n\t}\n",
+      "run": "TestTheFilesShapeSurvives",
+      "module": "tools/text",
+      "args": []
+    },
+    {
+      "label": "text: a line number outside the file is refused",
+      "file": "internal/edit/apply.go",
+      "find": "\tif o.line < 1 || o.line > len(lines) {\n",
+      "replace": "\tif o.line < 1 && false {\n",
+      "run": "TestALineNumberOutsideTheFileIsRefused",
+      "module": "tools/text",
+      "args": []
+    },
+    {
+      "label": "text: two operations in one call are refused",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif len(ops) > 1 {\n",
+      "replace": "\t\tif len(ops) > 2 {\n",
+      "run": "TestTwoOperationsAtOnceAreRefused",
+      "module": "tools/text",
+      "args": []
+    },
+    {
+      "label": "text: base64 a shell wrapped is still read",
+      "file": "internal/edit/edit.go",
+      "find": "base64.StdEncoding.DecodeString(strings.Join(strings.Fields(v), \"\"))",
+      "replace": "base64.StdEncoding.DecodeString(v)",
+      "run": "TestBase64WrappedByAShellIsStillRead",
+      "module": "tools/text",
+      "args": []
+    },
+    {
+      "label": "docs: a PowerShell invocation in a document passes -NoProfile",
+      "find": "\t\t\t\t\t\t!strings.Contains(ln.Text, \"-NoProfile\") {\n",
+      "replace": "\t\t\t\t\t\t!strings.Contains(ln.Text, \"-NoProfile\") && false {\n",
+      "module": "tools/check",
+      "file": "internal/checks/docs.go",
+      "args": [],
+      "run": "TestAPowerShellInvocationInADocumentPassesNoProfile"
+    },
+    {
+      "label": "docs: prose naming a shell is not an invocation of it",
+      "find": "var powershellCall = regexp.MustCompile(`(?:^|[|&;(]|\\s)(pwsh|powershell)\\s+-`)\n",
+      "replace": "var powershellCall = regexp.MustCompile(`(pwsh|powershell)`)\n",
+      "module": "tools/check",
+      "file": "internal/checks/docs.go",
+      "args": [],
+      "run": "TestAPowerShellInvocationInADocumentPassesNoProfile"
     }
   ]
 }

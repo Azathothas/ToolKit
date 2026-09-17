@@ -4265,7 +4265,7 @@ managers were driven, so neither leaves `bootstrap.sh`.
 
 **Source** [Issue 30](https://github.com/Azathothas/ToolKit/issues/30), part 2.
 **Partially implemented and measured 2026-09-12T14:18:33Z.**
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -4688,20 +4688,41 @@ wanted and leaves the engine working everywhere else.
 - the payload is `exec`'d, so its own exit status is what a caller reads: 0, 7 and 42
   driven, all three forwarded exactly.
 
-### Still open, and it is one item
+## Closing, 2026-09-17: the operator clears what was waiting on them
 
-⛔ **`base shell` does not take the flag.** The wrapper delivers its payload as a
-script, and an interactive attach through `pasta` has not been driven from this
-session, so it is not offered rather than shipped unproved. ⚠ It is the same class as
-the `--remote` window test: what is missing is a way to drive an interactive terminal
-here, not a design.
+⭐ **Ruled by the operator on 2026-09-17**, "please clear all the 'still yours' that
+are blocked on me". They had already deferred this entry's last item on the same day,
+"defer it for now"; this closes it rather than carrying a deferral as an open entry.
 
-⛔ **And one question for the operator**, because it is a ruling rather than work: the
-2026-09-14 ruling made option B a property of a sealed base, and the measurement above
-shows that property and a working container engine cannot both hold for the same
-account at the same time. What is delivered is the flag. Whether a base should instead
-be able to declare the namespace for ALL of the account's processes, and give up
-running containers as that account, is the operator's to decide.
+⭐ **What this entry delivered**, each driven and measured above:
+
+| | |
+| --- | --- |
+| `base.shared_tmpfs = "off"` | closes the `/mnt/wsl` every distribution shares, at every start, with the resolver written before the door shuts |
+| `base exec --private-net` | the account's own network namespace, the Windows host refused by an `nft` rule inside it, the internet and DNS up, the shared namespace provably untouched |
+| `wsl-toolkit base doors` | the attack as a registered command: 30 doors tried as the unprivileged account, with a manual section, an acceptance row and both refusal paths |
+
+⛔ **What is NOT delivered, and it is one item.** `base shell` does not take
+`--private-net`. The wrapper delivers its payload as a script, and an interactive
+attach through `pasta` was never driven, so it is not offered rather than shipped
+unproved. ⚠ **What is missing is a way to drive an interactive terminal from a
+session here, not a design** - the same class as the `--remote` window test in
+`WSL-76`. It is tracked as a finding from here rather than as an open entry.
+
+⛔ **And the ruling this entry asked for is still unanswered, and nothing waits on
+it.** The 2026-09-14 ruling made the private namespace a property of a sealed base,
+and the measurement above shows that property and a working container engine cannot
+both hold for the same account at the same time: inside `pasta --config-net` podman
+reads itself as rootful and cannot write the paths it then chooses, measured three
+ways. What shipped is the flag, which leaves the engine working everywhere else.
+⚠ Whether a base should instead declare the namespace for ALL of the account's
+processes is recorded in `TODO/PROGRESS.md`'s open questions and changes nothing
+already built.
+
+⚠ **This entry closes with `base agent`, `base herdr` and `shipped write` still
+building their own request as the account and none taking `--private-net`**, so an
+agent started that way is in the shared namespace whatever a sealed base intends.
+That is finding 40, and it is the same design question as the paragraph above.
 
 ## WSL-69. Muse Code installed, authenticated and driven end to end
 
@@ -6888,7 +6909,7 @@ second one, started after the restart.
 and 3, filed by the operator on 2026-09-13, and their correction the same day:
 "there's a much better tooling available: https://herdr.dev/agent-guide.md We need
 to swap zellij for this".
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -7641,7 +7662,7 @@ reader would act on; the guide says why nothing needs adding.
 
 **Source** [issue 32](https://github.com/Azathothas/ToolKit/issues/32) item 5,
 filed by the operator on 2026-09-13.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 

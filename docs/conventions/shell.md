@@ -11,6 +11,22 @@ loses its quoting, or a result crosses a boundary and loses its meaning.**
 
 ## 1. A prose payload goes through a file. Not through a shell.
 
+### The order to try, and it is an order rather than a menu
+
+1. ⭐ **Whatever writes a file directly.** Your harness's own write or edit tool
+   puts bytes on disk with no shell in the path at all. Nothing below is as good,
+   and reaching past this for a heredoc is the mistake this section is about.
+2. ⭐ **`scripts/common/text.sh`, or `text.ps1`.** A tool built for this, with the
+   payload in base64 and the match count asserted. `scripts/README.md` has it.
+3. **Base64 on the command line.** `[A-Za-z0-9+/=]` is interpreted by no shell.
+4. **Copy from a file you already wrote.**
+5. ⛔ **A quoted heredoc, last, and only with the measurement below in view.**
+
+⚠ **An agent that has reached step 5 twice should go back to step 1.** The pattern
+this order exists to stop is a session trying a heredoc, tripping, trying again,
+tripping, and ending up writing a Python script to write a file.
+
+
 ⛔ **Write the text to a file with a file-writing tool, then pass the path.**
 This applies to a commit message, a document, a script, a JSON body, anything
 multi-line, and anything containing an apostrophe, a backtick, a dollar sign or

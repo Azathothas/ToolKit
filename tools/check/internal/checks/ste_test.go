@@ -19,6 +19,8 @@
 package checks
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -156,4 +158,64 @@ func TestTheRecordIsOutsideSTEAndSaysWhy(t *testing.T) {
 			t.Errorf("%s is exempt as %q, and it is a document a reader follows", f, why)
 		}
 	}
+}
+
+// TestAPowerShellInvocationInADocumentPassesNoProfile holds the last line of
+// Azathothas/TEMPLATE issue 16: caution an agent to invoke PowerShell with
+// -NoProfile.
+//
+// ⛔ A PROFILE RUNS BEFORE THE COMMAND AND CAN WRITE TO ITS OUTPUT. Somebody
+// else's $PROFILE prints a banner or defines a colliding function, and the
+// command a document told a reader to run answers differently on their machine.
+//
+// ⭐ MEASURED BEFORE THE RULE WAS WRITTEN: not one live document broke it. This
+// is a check on a practice that already holds, so it cannot drift.
+//
+// ⚠ THE FOURTH CASE IS THE ONE THAT NARROWED THE PATTERN. TEMPLATE had to
+// narrow its own version after a fixture showed it reporting a comment that
+// merely mentioned the shell.
+func TestAPowerShellInvocationInADocumentPassesNoProfile(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want int
+	}{
+		{"an invocation with no flag", "pwsh -File x.ps1", 1},
+		{"the Windows host with no flag", "powershell -Command x", 1},
+		{"the flagged form", "pwsh -NoProfile -File x.ps1", 0},
+		{"the Windows host, flagged", "powershell -NoProfile -Command x", 0},
+		{"prose that merely names it", "powershell 5.1 answered 131 cases", 0},
+		{"a bare name with no flag at all", "run powershell now", 0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			body := "# A page\n\n```bash\n" + c.line + "\n```\n"
+			tree := treeWithFile(t, "docs/x.md", body)
+			r := Docs(tree)
+			got := 0
+			for _, d := range r.Detail {
+				if strings.Contains(d, "-NoProfile") {
+					got++
+				}
+			}
+			if got != c.want {
+				t.Fatalf("%d finding(s) about -NoProfile, want %d: %s", got, c.want, strings.Join(r.Detail, " | "))
+			}
+		})
+	}
+}
+
+// treeWithFile writes one tracked file and returns a Tree over it.
+func treeWithFile(t *testing.T, name, body string) *Tree {
+	t.Helper()
+	root := t.TempDir()
+	p := filepath.Join(root, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return &Tree{Root: root, Files: []string{name}, cache: map[string][]byte{}}
 }

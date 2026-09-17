@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-17T10:01:48Z
 baseline        1699de9, tree clean, doctor exit 0, gate 21 of 21, and three commits the previous session left unpushed, pushed at 10:03:30Z on green CI for 5eae667
 head            this session's commit
-entries         total 125  open 5  blocked 0  done 120
+entries         total 125  open 2  blocked 0  done 123
 this session    the ending the previous session never wrote, wsl-toolkit-v3.0.0, and WSL-90 closed on the release that proves its step 4
 ```
 
@@ -92,16 +92,17 @@ is closed, and the issue gets a comment naming the commits.
    approved on 2026-09-15, both managers were driven on a NetBSD 11.0 guest, and the
    entry closed at `6f22e39`; the sentence outlived the work by a session and sent a
    resuming session to a finished entry. Finding 29.
-3. **`WSL-68`, the sealed base.** It closes issue 30 after the work above, and uses the
-   drive verifier `WSL-84` fixed. ⚠ The 2026-09-14 order gave it a dedicated session;
-   the operator's instruction of 2026-09-15, to finish everything except the herdr and
-   Muse drive, brings it into this one.
-4. **Muse and herdr together, one dedicated session.** Build `wsl-toolkit-base` from
-   [`../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json`](../tools/windows/wsl-toolkit/examples/muse-code/wsl-toolkit-base.json);
-   the operator runs `muse login` in it; then close `WSL-76` and `WSL-78`. Author
-   approved entries for `pi` and `omp` before either adapter is built.
-5. **`wsl-toolkit-v3.0.0`** is cut after issues 30 and 32 are closed, and CI is green
-   on the final commit.
+3. ⭐ **Closed:** `WSL-68`, the sealed base, which used the drive verifier `WSL-84`
+   fixed. ⛔ **It closes with one item undelivered**, `base shell --private-net`, and
+   the entry says so: what is missing is a way to drive an interactive terminal from a
+   session here, not a design. Ruling 23.
+4. ⭐ **Closed:** `WSL-76` and `WSL-78`, on the operator's own base with `muse login`
+   done. ⛔ **`WSL-76` closes with one signal never measured**, a real window focus
+   event, which a pseudo console cannot produce; ⛔ **`WSL-78` closes without its
+   ordered from-nothing transcript**, because that pass needs three sign-ins at a
+   keyboard. Both entries say so rather than claiming the condition. Ruling 23.
+5. ⭐ **Cut:** `wsl-toolkit-v3.0.0`, under ruling 22, on a commit with CI green.
+   ⛔ Issues 30 and 32 were NOT closed first, and ruling 22 is what amended that.
 
 ## Rulings in force
 
@@ -207,6 +208,19 @@ is closed, and the issue gets a comment naming the commits.
     happens only with the gate green and CI green on the final commit. ⭐ **Issue 30 gets a
     comment saying what is left rather than being closed**, and issue 32 closes only if
     every entry mapped to it is done.
+
+23. ⭐ **2026-09-17: the operator CLEARS everything that was waiting on them.**
+    "please clear all the 'still yours' that are blocked on me". ⛔ **It is not a
+    claim that those things were done.** `WSL-68`, `WSL-76` and `WSL-78` close with
+    what each one never measured written into its own closing: `base shell` takes no
+    `--private-net`; a real window focus event was never produced, because a pseudo
+    console has no window; and the muse-code guide never had one ordered pass from an
+    empty host, because that needs three sign-ins at a keyboard. ⭐ **Every command in
+    that guide has been run**, which is a different and weaker statement, and the
+    entry makes the difference explicit.
+24. ⭐ **2026-09-17: `muse serve`'s stdio protocol gets NO route through this tool**,
+    cleared with ruling 23 and taking the recommendation. The reasoning is in
+    `WSL-78`'s closing and is not repeated here.
 
 ## Before every push
 

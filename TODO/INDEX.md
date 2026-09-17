@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 125  open 5  blocked 0  done 120
+total 125  open 2  blocked 0  done 123
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 65 | 65 |
-| P2 | 5 | 0 | 45 | 50 |
+| P2 | 2 | 0 | 48 | 50 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **5** | **0** | **120** | **125** |
+| **all** | **2** | **0** | **123** | **125** |
 
 ---
 
@@ -112,7 +112,7 @@ total 125  open 5  blocked 0  done 120
 | WSL-65 | P2 | S | done | The generated manual carried a control byte, and its drift check agreed with it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-66 | P1 | M | done | `--workspace .` resolved against a directory the caller could not see | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-67 | P2 | L | done | A provider's Linux-only CLI, run from Windows as if it were native | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-68 | P2 | M | open | A base that can reach nothing on the host at all | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-68 | P2 | M | done | A base that can reach nothing on the host at all | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-69 | P1 | M | done | Muse Code installed, authenticated and driven end to end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-70 | P2 | L | done | Two package maps become one, and the Go module embeds it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-71 | P2 | M | done | A portable shell profile this tree owns | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -120,9 +120,9 @@ total 125  open 5  blocked 0  done 120
 | WSL-73 | P1 | XL | done | The PowerShell product retires, and pull request 31 is reviewed before any of it lands | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-74 | P1 | S | done | A named instance acts on whatever base the nearest project file names | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-75 | P2 | L | done | One named base serves every project, and a grant changes without a restart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-76 | P2 | L | open | herdr replaces Zellij, and the operator watches the agents from Windows | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-76 | P2 | L | done | herdr replaces Zellij, and the operator watches the agents from Windows | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-77 | P2 | L | done | A provider base rebuilt from a clone in one command, with herdr and Muse as its first adapters | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-78 | P2 | L | open | Muse from any Windows project, and a guide for someone who has never used a coding agent | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-78 | P2 | L | done | Muse from any Windows project, and a guide for someone who has never used a coding agent | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-79 | P1 | M | done | A BSD run pays two minutes before its first command, and a comment line ends its script early | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-80 | P1 | M | done | A throwaway command that has finished can leave `distro run` waiting forever | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-81 | P1 | M | done | A FreeBSD guest that panics mid-run leaves `bsd run` waiting out its budget | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -359,9 +359,56 @@ contract: `deslop` writes under `--apply` and `fill-license` writes a licence.
 ⛔ Both refuse rather than writing when they are unsure, which is the property
 that matters more than which list they appear in.
 
+### `common/text.sh` and `common/text.ps1`
+
+Write and edit a file without the shell touching the payload. ⭐ **Prefer this to
+`write-file.mjs`**, which it supersedes: it needs no node, it takes line and range
+operations, and it keeps a file that is not valid UTF-8 exactly as it is.
+
+⭐ **Use your harness's own write and edit tools before either of them.** They put
+bytes on disk with no shell in the path at all, which is strictly better. This is
+for a harness that has none, and for what those tools cannot express.
+
+```bash
+sh scripts/common/text.sh --help
+sh scripts/common/text.sh write PATH --b64 BASE64
+sh scripts/common/text.sh edit PATH --replace FIND --text NEW --expect 1
+```
+
+```powershell
+pwsh -NoProfile -File scripts/common/text.ps1 edit PATH --line 42 --b64 BASE64
+```
+
+| it takes | and it means |
+| --- | --- |
+| `--b64`, `--from`, `--text`, stdin | the payload. ⭐ Base64 is the one encoding no shell interprets |
+| `--replace`, `--replace-b64`, `--replace-from` | the search. ⚠ It has the same three channels as the payload, because a search string carries the same quoting |
+| `--line`, `--insert-after`, `--insert-before`, `--delete` | by line number, and a number outside the file is refused |
+| `--between A,B` | from the line matching A to the line matching B, which is what `sed` and `awk` address |
+| `--regex` | read the search as a regular expression |
+| `--count`, `--dry-run` | report and write nothing |
+| `--expect N` | ⛔ how many matches you believe are there |
+
+⛔ **A substitution whose match count differs from `--expect` is REFUSED and the
+file is left untouched.** A silent no-op reporting success is the failure this
+exists to remove. It refused its own author three times on the day it was written.
+⚠ `--replace` without `--expect` is refused outright; use `--count` first.
+
+⭐ **What it keeps, measured on 2026-09-17:** a file's CRLF endings, a file with no
+trailing newline, bytes that are not UTF-8, and the file's mode. The same base64
+given from bash and from PowerShell produced byte-identical files.
+
+⚠ **It interprets no escape.** A `\n` in `--text` is a backslash and an `n`,
+because interpreting one is the mangling it exists to avoid. It says so when it
+sees one, and writes what you gave it. Use `--b64` or `--from` for a newline.
+
 ### `common/write-file.mjs`
 
 Write, append to, or patch a file without the shell touching the payload.
+
+⚠ **SUPERSEDED by `common/text.sh` and `common/text.ps1` above**, which need no
+node and do more. This is kept because other repositories fetch it and because a
+machine with node and no Go toolchain can still use it.
 
 ⭐ **The payload channel is base64**, which is the one encoding no shell
 interprets: not bash, not PowerShell, not `cmd`. A quote, a backtick, a dollar
