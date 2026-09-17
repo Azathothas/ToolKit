@@ -43,6 +43,9 @@ TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 if [ -z "$TK_HOME" ] || [ ! -d "$TK_HOME" ]; then
   die "the account $TK_USER has no home directory"
 fi
+# ⛔ SET HERE AND NOT AT FIRST USE. It was defined halfway down, so an earlier
+# section that reached for it exited with `TK_GROUP: unbound variable` under set -u.
+TK_GROUP=$(id -gn "$TK_USER")
 LAUNCHER=$TK_HOME/.local/bin/muse
 
 case $TK_DISTRO in
@@ -77,7 +80,32 @@ for want in bash curl sha256sum mktemp uname wc date runuser cmp; do
   command -v "$want" >/dev/null 2>&1 || die "$want is still absent after the package step"
 done
 
+# -- the sandbox Muse REFUSES TO RUN WITHOUT --------------------------------------------
+# ⛔ MEASURED 2026-09-17, AND IT IS NOT AN OPTIONAL EXTRA. Muse Code 1.3.0 enforces its
+# own sandbox before running any command, and on a base without bubblewrap it refuses
+# every one of them:
+#
+#   The execution environment is broken: the command was never started and every later
+#   command will fail the same way. ... sandbox enforcement unavailable (muse-bin under
+#   writable root, no usable bwrap).
+#
+# ⭐ It is the agent behaving well - it says so rather than fabricating output - and it
+# means a base built exactly as this repository documents could install Muse, sign in,
+# and then run NOTHING. `herdr agent prompt` reached `done` with that refusal as the
+# answer, which is the shape a green run takes when the work never happened.
+#
+# ⚠ THE CHECK IS MADE AT STARTUP. Installing bubblewrap under a Muse that is already
+# running does not help it; the agent has to be started again.
+if ! command -v bwrap >/dev/null 2>&1; then
+  say "Muse enforces a sandbox and this base has no bwrap; installing bubblewrap"
+  pacman -S --noconfirm --needed bubblewrap >/dev/null ||
+    die "pacman could not install bubblewrap, and Muse refuses to run any command without it"
+fi
+command -v bwrap >/dev/null 2>&1 ||
+  die "bubblewrap is installed and bwrap is not on PATH, so Muse would refuse every command"
+
 # -- Muse ------------------------------------------------------------------------------
+
 installed=$(muse_version)
 if [ -n "$installed" ]; then
   say "Muse Code $installed is installed for $TK_USER, so the installer is not fetched"
@@ -142,6 +170,70 @@ else
   say "wrote $WRAPPER, which runs Muse as $TK_USER"
 fi
 
+# -- the workspaces the operator already granted, pre-trusted ----------------------------
+# ⭐ RULED BY THE OPERATOR ON 2026-09-17, "let my agents auto accept it". Muse asks "Do
+# you trust this workspace?" on its first start in a directory and BLOCKS until it is
+# answered: measured the same day, `herdr agent start muse` returned
+# `agent_not_ready: agent muse is blocked during startup`, and the agent sat at
+# `agent_status: blocked` until a person pressed 1 in the pane.
+#
+# ⛔ ONLY WHAT THE OPERATOR ALREADY EXPOSED. TK_TRUSTED_WORKSPACES carries the account's
+# home and each configured base.mounts target - the grants - and nothing else. Trusting
+# those adds no reach the operator has not already given; a blanket trust would, and this
+# must never become one. A directory the agent finds some other way is still asked about.
+#
+# ⚠ AN EXISTING DECISION IS NEVER OVERWRITTEN. If the operator has answered for a path,
+# theirs stands, including a "no".
+if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
+  trust_file=$TK_HOME/.config/muse/trust.json
+  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0700 "$TK_HOME/.config/muse"
+  # ⛔ THE STORE'S SHAPE IS MUSE'S, NOT THIS ADAPTER'S, AND IT WAS INVENTED ONCE.
+  # A first version wrote `{"workspaces":{}}`: the key is `projects` and the file
+  # carries `schema_version`, so Muse refused to start at all with
+  # `malformed trust store ... missing field schema_version`. It was written from a
+  # truncated read of the file rather than from the file. Measured 2026-09-17.
+  #
+  # ⛔ SO: an existing store is EDITED and never replaced, and one that cannot be
+  # parsed stops the adapter rather than being overwritten with a guess.
+  if [ -f "$trust_file" ]; then
+    jq -e 'has("schema_version") and has("projects")' "$trust_file" >/dev/null 2>&1 ||
+      die "$trust_file is not a Muse trust store this adapter understands; it is left exactly as it is"
+  else
+    printf '{\n  "schema_version": 1,\n  "projects": {}\n}\n' > "$trust_file"
+    chown "$TK_USER:$TK_GROUP" "$trust_file"; chmod 0600 "$trust_file"
+  fi
+  added=0
+  OLDIFS=$IFS; IFS=:
+  for ws in $TK_TRUSTED_WORKSPACES; do
+    IFS=$OLDIFS
+    [ -n "$ws" ] || continue
+    case $ws in '~') ws=$TK_HOME ;; esac
+    if jq -e --arg w "$ws" '.projects | has($w)' "$trust_file" >/dev/null 2>&1; then
+      IFS=:
+      continue
+    fi
+    tmp=$(mktemp "$TK_HOME/.config/muse/.trust.XXXXXX") || die "no temporary file for the trust store"
+    # ⭐ Only the one key is added. schema_version and every other project keep their
+    # values, because the document is edited rather than rebuilt.
+    if jq --arg w "$ws" '.projects += {($w): {"decision":"trusted"}}' "$trust_file" > "$tmp" 2>/dev/null &&
+        jq -e 'has("schema_version") and has("projects")' "$tmp" >/dev/null 2>&1; then
+      chown "$TK_USER:$TK_GROUP" "$tmp"; chmod 0600 "$tmp"; mv "$tmp" "$trust_file"
+      added=$((added + 1))
+    else
+      rm -f "$tmp"
+      die "the Muse trust store could not be updated, and it is not being rewritten blind"
+    fi
+    IFS=:
+  done
+  IFS=$OLDIFS
+  chown "$TK_USER:$TK_GROUP" "$trust_file"
+  if [ "$added" -gt 0 ]; then
+    say "pre-trusted $added workspace(s) Muse would otherwise block on: the account's home and its grants"
+  else
+    say "every granted workspace already has a trust decision, and none was changed"
+  fi
+fi
+
 # -- the herdr reporter --------------------------------------------------------------
 # ⭐ herdr CLASSIFIES A MUSE PANE BY READING ITS SCREEN, and this gives it the events
 # instead. herdr ships a Muse detection manifest but no Muse integration: its own was
@@ -180,7 +272,6 @@ else
   # ended the script before ANY path below it - including the digest refusal, which
   # a case drives with no such account. A variable a feature needs belongs inside
   # the branch that has the feature.
-  TK_GROUP=$(id -gn "$TK_USER")
   install -d -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$HOOK_DIR"
   hook_tmp=$(mktemp)
   hook_encoded=$(mktemp)

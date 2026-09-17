@@ -45,7 +45,18 @@ resolved=$(as_account sh -c 'command -v muse' 2>/dev/null || :)
 printf 'resolves %s\n' "${resolved:-nothing}"
 [ "$resolved" = "$WRAPPER" ] || problem "muse resolves to ${resolved:-nothing} for $TK_USER, not to $WRAPPER"
 
+# ⛔ THE SANDBOX MUSE REFUSES TO RUN WITHOUT. Without bwrap, Muse installs, signs in,
+# answers questions, and refuses EVERY command with "the execution environment is
+# broken". A probe that reported only a version called that base healthy. Measured
+# 2026-09-17.
+if command -v bwrap >/dev/null 2>&1; then
+  printf 'sandbox bwrap %s\n' "$(bwrap --version 2>/dev/null | awk '{print $2}')"
+else
+  problem "Muse enforces a sandbox and this base has no bwrap, so it will refuse every command it is asked to run"
+fi
+
 # Whether the operator has signed in: the credential file's presence, never its content.
+
 if [ -f "$TK_HOME/.config/muse/auth.json" ]; then
   printf 'credential present\n'
 else

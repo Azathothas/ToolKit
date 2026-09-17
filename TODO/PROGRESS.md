@@ -770,7 +770,34 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     `foreground_cwd` as the account's home. ⛔ It is upstream's, not this tree's, and it
     is why `WSL-76`'s drive could not place the agent's pane in the granted project.
 
+47. ⛔ **A FILE'S SHAPE WAS INVENTED FROM A TRUNCATED READ, AND IT BROKE THE
+    OPERATOR'S AGENT.** The muse adapter's new trust step wrote `{"workspaces":{}}`.
+    Muse's store is `{"schema_version": 1, "projects": {...}}` - **two** things wrong,
+    the key and the required field - and Muse then refused to start at all:
+    `malformed trust store at ~/.config/muse/trust.json: missing field schema_version`.
+    The operator hit it in their own terminal. ⛔ **The cause is exactly the claim-audit
+    lens's own subject**: the shape was taken from a `cat` whose output had been cut by a
+    `Select-Object -Last`, so the parent key was never actually seen and was assumed.
+    ⭐ **Fixed and driven three ways**: an existing store is EDITED with `jq` so
+    `schema_version` and every other project survive; a store that does not parse as one
+    stops the adapter, exit 3, `it is left exactly as it is`, proved by planting the
+    exact malformed file and reading it back unchanged; and a store that is absent is
+    created in Muse's own shape. ⚠ **The operator's file was restored from the backup the
+    step itself had taken**, which is the only reason this cost minutes rather than a
+    re-authentication.
+48. ⛔ **Muse ENFORCES A SANDBOX AND THE BASE HAD NONE, so a signed-in agent ran
+    nothing.** Measured 2026-09-17: with no `bwrap`, every command Muse was asked to run
+    came back `The execution environment is broken: the command was never started ...
+    sandbox enforcement unavailable (muse-bin under writable root, no usable bwrap)`, and
+    `herdr agent prompt --wait` returned **exit 0** with that refusal as the answer. ⭐ **A
+    green run where the work never happened**, which is the shape this repository hunts.
+    Arch carries `bubblewrap 0.12.0`; the adapter installs it now and the probe reports
+    `sandbox bwrap 0.12.0` as a fact, so a base without it is a problem rather than a
+    healthy base that refuses everything. ⚠ **The check is made at Muse's startup**, so an
+    agent already running does not pick it up and has to be started again.
+
 ## Review findings
+
 
 
 

@@ -373,6 +373,23 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 	if a.SeparateAgentDir {
 		env["TK_ADAPTER_SEPARATE_AGENT_DIR"] = "1"
 	}
+	// ⭐ THE DIRECTORIES THE OPERATOR ALREADY CHOSE TO EXPOSE, and no others. An agent
+	// that asks "do you trust this workspace?" on every start is a prompt the operator
+	// answers the same way every time for the places they granted themselves, so the
+	// adapter can pre-answer for exactly those. Ruled on 2026-09-17, "let my agents auto
+	// accept it".
+	//
+	// ⛔ IT IS NOT A BLANKET TRUST AND MUST NEVER BECOME ONE. What goes in is the
+	// account's home and each configured base.mounts target - the grants - because
+	// trusting them adds nothing the operator has not already granted. A directory the
+	// agent reaches some other way is still asked about.
+	targets := []string{"~"}
+	if mounts, err := cfg.ResolvedBaseMounts(); err == nil {
+		for _, m := range mounts {
+			targets = append(targets, m.Target)
+		}
+	}
+	env["TK_TRUSTED_WORKSPACES"] = strings.Join(targets, ":")
 	// ⭐ A RELEASE THIS EXECUTABLE HAS NEVER HEARD OF, pinned by the configuration
 	// that asked for it. The script keeps its own default, so a base that names
 	// neither is unchanged.
