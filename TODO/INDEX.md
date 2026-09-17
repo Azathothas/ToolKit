@@ -8,6 +8,13 @@ else.
 asserts that they agree with the rows, that every row has an entry and every
 entry a row, and that no status disagrees between the two. It runs as a gate.
 
+⭐ **And since 2026-09-17 it asserts that [`PROGRESS.md`](PROGRESS.md)'s work
+order agrees with these rows**: an item marked Closed may not name an entry this
+list calls open, and an item that is not marked Closed must name at least one
+entry this list does not call done. ⛔ **That rule exists because the work order
+outlived the work twice**, and both times this list and the entry were right and
+only the order was wrong, so nothing fired.
+
 ---
 
 ## Counts

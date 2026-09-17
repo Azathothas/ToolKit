@@ -34,6 +34,15 @@ TODO/
 which carries the list rather than the order. Not in the kickoff prompt, which
 would be a second copy going stale the moment an entry closes.
 
+⭐ **And it is checked against the index, because the one copy went stale
+anyway.** Twice the order described work an entry had already finished, the
+index and the entry both read `done`, and a resuming session was routed by the
+one file that was wrong. `check-record`'s rule 7 refuses an item marked Closed
+that names an entry the index calls open, and an item not marked Closed whose
+every named entry is done. ⚠ **A prompt is still not checkable** - it is not in
+the tree - which is the reason the prompt carries the reading list and never the
+order.
+
 ---
 
 ## An entry

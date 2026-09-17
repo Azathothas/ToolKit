@@ -396,6 +396,13 @@ record's own count line.
 own work is one bug away from hiding the bug, and the reader has to assert
 independently. It prints the command; `check-gate` runs it.
 
+⚠ **Since 2026-09-17, closing an entry can also mean editing the work order by
+hand.** `check-record`'s rule 7 refuses a work order item that is not marked
+Closed when every entry it names is done, and this writer moves the numbers
+alone - it does not touch prose and is not going to start. So the gate is what
+tells you the order is now behind the work, which is the whole point of the
+rule.
+
 ⚠ **It needs `node`, and has no PowerShell twin for the same reason
 `write-file.mjs` has none.** A second implementation of table arithmetic is a
 second place for that arithmetic to be wrong.

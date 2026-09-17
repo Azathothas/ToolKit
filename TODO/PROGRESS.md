@@ -492,7 +492,18 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
    --container-lifecycle ephemeral` against `golang:1.25` printed `the complete
    output is kept: wsl-toolkit logs 4e94faa38b4c9c1c`; `logs` on that id answered
    exit 2, `no transcript`, and `jobs\4e94faa38b4c9c1c` was not in the state
-   directory. Measured on 2026-09-14, and not yet read in the code.
+   directory. Measured on 2026-09-14.
+   ⚠ **RE-MEASURED ON 2026-09-17 AND IT DOES NOT REPRODUCE.** Two
+   `--container-lifecycle ephemeral` runs against `golang:1.25` and `ubuntu:24.04`
+   both printed the line, `logs` answered **exit 0** on each with the container's own
+   output, and each job directory holds `stdout.log` and `stderr.log`. ⛔ **The
+   original id can no longer be checked**: `jobs\4e94faa38b4c9c1c` is still absent, so
+   whether it was ever there is unanswerable now. ⭐ **The code was read**, which the
+   finding said had not been done: `transcriptHint` in `cmd_run.go` prints the line
+   only when `res.Transcript` is non-empty, and ⛔ **that guard has been there since
+   `cdb7c9c` on 2026-09-10, four days BEFORE the observation** - so the cause was not
+   an unconditional hint, and what it was is unidentified. The finding stays open,
+   narrowed to that.
 9. ⚠ **A cancelled `bsd run` is reported as a budget that ran out.** Read in
    `bsd.go` on 2026-09-14 and not measured: a cancelled context ends the boot's wait
    with `the guest did not reach a login prompt within` the budget, and a command's
@@ -596,8 +607,18 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     to re-drive two package managers already driven. ⚠ **`INDEX.md` and the entry both
     read `done` throughout**, so the record disagreed with itself and only the work
     order was wrong; the three-way reconciliation the methodology asks for is what
-    caught it. ⚠ **No check asserts that the work order agrees with `INDEX.md`**, and
-    `check-record.sh` did not fire. That check is the fix and is not written.
+    caught it.
+    ⭐ **CLOSED ON 2026-09-17: the check is written and it is rule 7 of
+    `check-record`.** An item marked Closed may not name an entry `INDEX.md` calls
+    open, and an item that is not marked Closed must name at least one entry it
+    does not call done; an item naming no entry is exempt, because item 5 of the
+    real order is a release. ⛔ **It met the defect a second time first**: the
+    prompt that opened the session of 2026-09-17T10:01Z sent it to `WSL-68`'s
+    "four remaining items, which need nobody" after three had closed and the
+    operator had deferred the fourth. 9 cases and **4 mutation rows, 4 of 4 red**,
+    each green unmutated first. ⚠ **One case reads the message and not the count**,
+    because with the heading guard off a second guard reports one problem too and
+    a count could not tell the two apart.
 30. ⚠ **A green `herdr-build.yml` matrix does not cover what the nightly builds.** The
     matrix was dispatched against a pinned ref, `052779c4159ed851`, while
     `herdr-nightly.yml` resolves herdr's development head at run time; by 2026-09-16

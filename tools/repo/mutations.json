@@ -3044,6 +3044,42 @@
       "replace": "",
       "run": "TestTheProfileSwitchTurnsEverythingOff",
       "args": []
+    },
+    {
+      "label": "record: a Closed work order item may not name unfinished work",
+      "module": "tools/check",
+      "file": "internal/checks/record.go",
+      "find": "\t\tif it.closed {\n\t\t\tfor _, id := range known {\n\t\t\t\tif status[id] != \"done\" {\n",
+      "replace": "\t\tif it.closed {\n\t\t\tfor _, id := range known {\n\t\t\t\tif status[id] != \"done\" && false {\n",
+      "run": "TestTheWorkOrderMustAgreeWithTheIndexAboutWhatIsFinished",
+      "args": []
+    },
+    {
+      "label": "record: a live work order item must still name something unfinished",
+      "module": "tools/check",
+      "file": "internal/checks/record.go",
+      "find": "\t\tif !unfinished {\n",
+      "replace": "\t\tif !unfinished && false {\n",
+      "run": "TestTheWorkOrderMustAgreeWithTheIndexAboutWhatIsFinished",
+      "args": []
+    },
+    {
+      "label": "record: a missing work order section is named as such",
+      "module": "tools/check",
+      "file": "internal/checks/record.go",
+      "find": "\tif start < 0 {\n",
+      "replace": "\tif start < -1 {\n",
+      "run": "TestTheWorkOrderMustAgreeWithTheIndexAboutWhatIsFinished",
+      "args": []
+    },
+    {
+      "label": "record: the work order names its entries in code spans",
+      "module": "tools/check",
+      "file": "internal/checks/record.go",
+      "find": "\tquotedEntryID = regexp.MustCompile(\"`([A-Z]{2,6}-[0-9]{2,})`\")",
+      "replace": "\tquotedEntryID = regexp.MustCompile(\"([A-Z]{2,6}-[0-9]{2,})\")",
+      "run": "TestTheWorkOrderRuleReadsOnlyBacktickedIds",
+      "args": []
     }
   ]
 }

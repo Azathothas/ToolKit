@@ -22,7 +22,7 @@ const RecordDir = "TODO/"
 // never pushed again, so the published state said those entries were open
 // beside entries saying done for the whole of the next session.
 //
-// Six rules, and the arithmetic ones exist because a count is the part a
+// Seven rules, and the arithmetic ones exist because a count is the part a
 // careful person gets wrong:
 //
 //  1. every row in the index has an entry heading somewhere under TODO/;
@@ -30,7 +30,8 @@ const RecordDir = "TODO/"
 //  3. the entry's own Status matches the row's;
 //  4. every entry has a row, so nothing is worked on off the books;
 //  5. the index's own total line agrees with its rows;
-//  6. the per-priority table agrees, and so does PROGRESS.md's state line.
+//  6. the per-priority table agrees, and so does PROGRESS.md's state line;
+//  7. PROGRESS.md's work order agrees with the index about what is finished.
 func Record(t *Tree) Result {
 	r := Result{Extra: map[string]any{}}
 
@@ -154,6 +155,15 @@ func Record(t *Tree) Result {
 		checkCounts(&r, t, progress, index, total, counts)
 	}
 
+	// ⛔ AND THE WORK ORDER, which nothing checked for as long as this check has
+	// existed. It is rule 7 and it is the newest, because the defect it catches
+	// has now misrouted two sessions.
+	status := make(map[string]string, len(rows))
+	for _, row := range rows {
+		status[row.id] = strings.ToLower(row.status)
+	}
+	checkWorkOrder(&r, t, status)
+
 	// The per-priority table.
 	//
 	// ⛔ INCLUDING ITS `all` ROW, which was not checked for as long as this
@@ -184,6 +194,118 @@ func Record(t *Tree) Result {
 		}
 	}
 	return r
+}
+
+// checkWorkOrder asserts that PROGRESS.md's work order and the index agree
+// about what is finished.
+//
+// ⛔ THE WORK ORDER OUTLIVED THE WORK BY A SESSION, TWICE, AND NO CHECK FIRED.
+// On 2026-09-16 an item still read "`WSL-67` has left: driving `pkgin` and
+// `pkg_add`" after the entry had closed on a driven NetBSD guest, and a session
+// resumed on that sentence went to re-ask for an approval already given. The
+// index and the entry both read `done` throughout, so the record disagreed with
+// itself and only the work order was wrong. On 2026-09-17 a prompt sent a
+// session to `WSL-68`'s "four remaining items, which need nobody" after three
+// had closed and the operator had deferred the fourth. `TODO/PROGRESS.md`'s own
+// finding 29 names this check as the fix.
+//
+// The rule, in two halves, because each catches the other's blind spot:
+//
+//   - an item marked Closed must name only entries the index calls done. A
+//     victory lap over open work.
+//   - an item NOT marked Closed that names entries must name at least one the
+//     index does not call done. That is the half that fires on the defect
+//     above, and an item naming no entry at all is exempt because an item may
+//     be about a release or a decision rather than an entry.
+//
+// ⛔ THE SECTION MUST EXIST. A check that quietly stops checking when a heading
+// is reworded is the shape this whole file is about.
+func checkWorkOrder(r *Result, t *Tree, status map[string]string) {
+	progress := RecordDir + "PROGRESS.md"
+	body := t.Read(progress)
+	if len(body) == 0 {
+		return
+	}
+	lines := Lines(body)
+	start := -1
+	for _, ln := range lines {
+		if workOrderHeading.MatchString(ln.Text) {
+			start = ln.N
+			break
+		}
+	}
+	if start < 0 {
+		r.bad("%s", sprintf("%s carries no `## The work order` section, so nothing says which entries the order believes are finished", progress))
+		return
+	}
+
+	// One item is its numbered line plus everything indented under it, and it
+	// ends at the next numbered line or the next heading.
+	type item struct {
+		num    string
+		line   int
+		closed bool
+		ids    []string
+	}
+	var items []item
+	var cur *item
+	for _, ln := range lines {
+		if ln.N <= start {
+			continue
+		}
+		if strings.HasPrefix(ln.Text, "## ") {
+			break
+		}
+		if m := orderedItem.FindStringSubmatch(ln.Text); m != nil {
+			items = append(items, item{num: m[1], line: ln.N})
+			cur = &items[len(items)-1]
+		}
+		if cur == nil {
+			continue
+		}
+		if workOrderClosed.MatchString(ln.Text) {
+			cur.closed = true
+		}
+		for _, id := range quotedEntryID.FindAllStringSubmatch(ln.Text, -1) {
+			cur.ids = append(cur.ids, id[1])
+		}
+	}
+	if len(items) == 0 {
+		r.bad("%s", sprintf("%s:%d: the work order section has no numbered items", progress, start))
+		return
+	}
+
+	for _, it := range items {
+		var known []string
+		for _, id := range it.ids {
+			if _, ok := status[id]; ok {
+				known = append(known, id)
+			}
+		}
+		if len(known) == 0 {
+			continue
+		}
+		if it.closed {
+			for _, id := range known {
+				if status[id] != "done" {
+					r.bad("%s", sprintf("%s:%d: work order item %s says Closed and names %s, which %sINDEX.md calls %q",
+						progress, it.line, it.num, id, RecordDir, status[id]))
+				}
+			}
+			continue
+		}
+		unfinished := false
+		for _, id := range known {
+			if status[id] != "done" {
+				unfinished = true
+				break
+			}
+		}
+		if !unfinished {
+			r.bad("%s", sprintf("%s:%d: work order item %s is not marked Closed and every entry it names (%s) is done in %sINDEX.md, so the order is behind the work",
+				progress, it.line, it.num, strings.Join(known, ", "), RecordDir))
+		}
+	}
 }
 
 // checkCounts compares one file's declared state line against the rows.
@@ -248,4 +370,14 @@ var (
 	statusField    = regexp.MustCompile(`\*\*Status\*\*[^A-Za-z]*([A-Za-z]+)`)
 	linkTargetOnly = regexp.MustCompile(`\(([^)]+)\)`)
 	stateLine      = regexp.MustCompile(`total\s+([0-9]+)\s+open\s+([0-9]+)\s+blocked\s+([0-9]+)\s+done\s+([0-9]+)`)
+
+	// ⚠ THE HEADING IS MATCHED ON ITS STEM, not its whole text: it carries the
+	// date the operator set the order, and that date moves.
+	workOrderHeading = regexp.MustCompile(`^##\s+The work order\b`)
+	orderedItem      = regexp.MustCompile(`^([0-9]+)\.\s`)
+	workOrderClosed  = regexp.MustCompile(`\*\*Closed:\*\*`)
+	// ⛔ BACKTICKED ONLY. An id in prose without them is a mention; the order
+	// names the entries it is about in code spans, and reading bare text would
+	// pull ids out of the corrections written underneath an item.
+	quotedEntryID = regexp.MustCompile("`([A-Z]{2,6}-[0-9]{2,})`")
 )
