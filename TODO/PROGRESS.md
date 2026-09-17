@@ -835,8 +835,81 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     not `api`, a grant is taken away with `base revoke --target` rather than by hand, and
     `printf '\n'` inside a generated block lost its escape. ⚠ **None would have been
     caught by reading.** A guide whose commands have not been run is a list of guesses.
+62. ⛔ **`base bootstrap` SILENTLY BYPASSES EVERY AGENT WRAPPER, AND THE PROBE CALLED
+    THAT HEALTHY.** `bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the
+    account's profile, so after it runs a LOGIN shell finds the vendor's own launcher
+    first and `/usr/local/bin/NAME` is never reached. Measured on 2026-09-17 by planting
+    that one line: all three names moved from `/usr/local/bin/*` to
+    the account's own `~/.local/bin`, and the resolved `muse` was Meta's own bash launcher.
+    ⛔ **Muse Code has no settings key for a model or an effort**, so what is lost is
+    BOTH, on every session, with nothing said. ⚠ pi and omp keep theirs, which live in
+    their own configuration; what they lose is the account guard.
+    ⛔ **And the muse probe's existing wrapper check could not see it**: it asked
+    `as_account`, whose PATH is curated and carries no `$HOME/.local/bin`. That is
+    finding 49's shape a second time, in the guard written to answer finding 49.
+    ⭐ All three probes now read the name back on a LOGIN shell and refuse a resolution
+    that is not this tool's wrapper. Driven both ways: with the line planted the probe
+    exits 1 and names the cause for each of the three; with it gone and `base ensure`
+    run, exit 0.
+63. ⚠ **`$LASTEXITCODE` AFTER A PIPE IS THE PIPELINE'S, and it said 0 over a probe that
+    had just exited 1.** Seen while proving finding 62, in the same session whose own
+    rules say to read an exit code from the process. The reading was redone unpiped.
+
 
 ## Review findings
+
+⭐ **2026-09-17, this session's FOUR closing reviews.** Each pass names what it looked at
+that the others did not.
+
+**Pass 1, the door sweep** - "what other door reaches an agent's startup model?" It
+enumerated every route that starts an agent by name: `base agent`, the Windows launcher
+`NAME.exe`, `herdr agent start`, a person typing the name in `base shell`, and
+`base exec -c`. ⭐ All five resolve through `/usr/local/bin/NAME`, measured on both
+`base exec`'s cleared environment and a login shell's. ⛔ **Then it grepped for the door
+it had not enumerated, and found one**: `bootstrap.sh` writes
+`export PATH="$HOME/.local/bin:$PATH"` into the account's profile, so after
+`base bootstrap` every one of those names resolves to the VENDOR's launcher and the
+wrapper is never reached. Muse then starts with neither the model nor the effort, and
+`base status --probe` called that base healthy. Finding 62. ⚠ **The guard that should
+have caught it was finding 49's shape a second time**: the muse probe did check the
+wrapper, through `as_account`, whose PATH is curated and carries no `$HOME/.local/bin`.
+All three probes now read the name back on a LOGIN shell and refuse a resolution that is
+not this tool's wrapper; driven both ways, exit 1 planted and exit 0 restored.
+
+**Pass 2, the guard mutation** - "can each new guard actually fail?" 11 rows, **11 of 11
+red**, and each green unmutated first. ⛔ **Its first real find was redundant code rather
+than a weak case**: a row deleting `tk_model=; tk_effort=;` from the Muse wrapper stayed
+green, because `tk_after=none` alone already stops the injection. The redundancy was
+deleted rather than the case strengthened. Finding 59. ⭐ **And it found a gap no row
+could cover**: the shell profile's three new mechanisms were proved only by
+`matrix --images all`, which nobody runs on a commit, so a regression would have reached
+a release with the gate green. Four cases now drive the SHIPPED copy under `sh`, and
+three rows prove them.
+
+**Pass 3, the claim audit** - "which sentence about to be published is not backed by an
+artefact?" It read the guide, the two skills, the manual's new sections and
+`scripts/README.md` against the tree and the live base. ⛔ **Four sentences failed.**
+`base ensure takes about 80 seconds` was carried from a 2026-09-14 measurement of a base
+with TWO adapters and was not re-measured, so the number is gone and the manual's
+measured table is named instead; pi's credential type is `api_key` and the guide said
+`api`; a grant is taken away with `base revoke --target` and the guide said to edit the
+file by hand, which came from `base revoke --help` describing itself in `base grant`'s
+words, finding 60; and a generated block had lost a backslash. ⭐ **The numbers that
+passed were recounted from the artefacts**: 13 transcripts, 28 `shells_seen`, 28
+`deduplicated`, 13 `gained-a-home`, and `base doors --json` reporting 30 doors.
+
+**Pass 4, what was measured but never verified** - naturally distinct from pass 3,
+because it starts from a number taken on trust rather than from a sentence. ⭐ **Three
+results.** `spark-max` and its three siblings are absent from the gateway's `/v1/models`
+listing, which looked like last session had invented them; asking for each by name
+answers **HTTP 200**, so they are aliases the gateway serves and does not list, and the
+entry stands. Finding 55. Each agent's effort vocabulary had been read from its `--help`
+and never exercised: driven word by word, pi refuses `ultra` and `auto`, omp refuses
+`ultra` and `off`, muse refuses `auto` and takes `ultra`, and all three take `max`.
+⛔ **And pi only WARNS on a level it does not know and continues at exit 0**, so an
+unvalidated effort would be silently ignored rather than refused - which is why this
+tool validates the word before sending it.
+
 
 
 

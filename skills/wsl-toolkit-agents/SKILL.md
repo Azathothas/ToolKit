@@ -188,6 +188,11 @@ From inside the base, `wsl-toolkit --instance base base shell`, then `herdr`.
 include `~/.local/bin`. The adapters write a wrapper on the system path for this. If
 `agent start` times out with `command not found` in the pane, run `base ensure`.
 
+⛔ **Running the bootstrap puts the account's own prefix AHEAD of that wrapper.** After
+`base bootstrap`, a login shell finds each agent's vendor launcher first, and an agent
+whose default lives in the wrapper then starts without it. Run `base status --probe`
+after any bootstrap: it refuses a base whose login shell does not reach the wrapper.
+
 ⛔ **tmux inside a herdr pane hides the agent.** herdr then sees `tmux` as the pane
 process. Never start a multiplexer inside a pane.
 

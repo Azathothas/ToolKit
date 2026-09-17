@@ -45,6 +45,32 @@ resolved=$(as_account sh -c 'command -v muse' 2>/dev/null || :)
 printf 'resolves %s\n' "${resolved:-nothing}"
 [ "$resolved" = "$WRAPPER" ] || problem "muse resolves to ${resolved:-nothing} for $TK_USER, not to $WRAPPER"
 
+# ⛔ AND THE SAME QUESTION ON A LOGIN SHELL'S PATH, WHICH IS A DIFFERENT PATH. The
+# check above reads base exec's curated environment; a herdr pane and `base shell` read
+# a LOGIN shell's, and those two disagree the moment `base bootstrap` runs.
+# `bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the account's
+# profile, so the vendor's own launcher is found FIRST and this wrapper is never
+# reached. ⛔ Muse Code has no settings key for a model or a reasoning effort, so what
+# is lost is BOTH of them, on every session, with nothing said.
+#
+# ⚠ Finding 49's shape, a second time: a guard proved on a curated PATH is a guard
+# proved on a path nobody uses.
+pane_path=$(runuser -l "$TK_USER" -c "command -v muse" 2>/dev/null | tr -d '' | head -1)
+if [ -z "$pane_path" ]; then
+  problem "Muse is installed and a login shell cannot find it, so herdr cannot start it in a pane. Run: base ensure"
+else
+  printf 'on_login_path %s
+' "$pane_path"
+  if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's muse adapter"; then
+    printf 'wrapper_on_login_path yes
+'
+  else
+    printf 'wrapper_on_login_path no
+'
+    problem "a login shell resolves muse to $pane_path, which is not this tool's wrapper, so the configured model and reasoning effort reach no session started from a pane. The account's own prefix is ahead of /usr/local/bin, which bootstrap.sh puts there"
+  fi
+fi
+
 # ⛔ THE SANDBOX MUSE REFUSES TO RUN WITHOUT. Without bwrap, Muse installs, signs in,
 # answers questions, and refuses EVERY command with "the execution environment is
 # broken". A probe that reported only a version called that base healthy. Measured

@@ -79,8 +79,10 @@ wsl-toolkit --instance base base ensure
 This builds the distribution, provisions it, and installs the four adapters. A second
 run reconciles and does not rebuild.
 
-⚠ **`base ensure` takes about 80 seconds from nothing**, and a few seconds after that.
-The agents add to the first run.
+⚠ **The first run is the slow one.** It downloads a rootfs, provisions it and installs
+four adapters; a later run reconciles in seconds.
+[`../../wsl-toolkit.md`](../../wsl-toolkit.md) carries the measured times, each with the
+conditions it was taken under.
 
 The last lines print the state. Every adapter must read `healthy`.
 
@@ -359,6 +361,13 @@ wsl-toolkit --instance base base bootstrap -- --toolset agent
 ⭐ **Nothing is copied and nothing is fetched.** The executable carries the bootstrap.
 `wsl-toolkit shipped list` prints its length and SHA-256, and `base bootstrap` sends
 those exact bytes into the base and runs them as the account.
+
+⛔ **Run `base ensure` again after `base bootstrap`, and read the probe.** The
+bootstrap puts the account's own prefix ahead of `/usr/local/bin` on a login shell's
+`PATH`, so a pane then finds each agent's vendor launcher instead of this tool's
+wrapper. Muse Code has no settings key for a model or an effort, so it would start
+every session without the ones you configured. `base status --probe` refuses that
+base and names it.
 
 ⛔ **Not as root.** Provider state, authentication and CodeGraph belong to the
 unprivileged account. [`../common/README.md`](../common/README.md) carries what each

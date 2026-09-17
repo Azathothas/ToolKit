@@ -34,6 +34,22 @@ else
   problem "pi is installed and a login shell cannot find it, so herdr cannot start it in a pane. Run: base ensure"
 fi
 
+# ⛔ AND IT MUST RESOLVE TO THIS TOOL'S WRAPPER, NOT MERELY RESOLVE. Measured on
+# 2026-09-17: `bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the
+# account's profile, so after `base bootstrap` a login shell finds the vendor's own
+# launcher FIRST and the wrapper on the system path is never reached. pi keeps its startup model and effort in its own settings file, so those survive; the account guard does not.
+# ⚠ A probe that only asked whether the name resolved called that base healthy.
+if [ -n "$pane_path" ]; then
+  if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's pi adapter"; then
+    printf 'wrapper_on_login_path yes
+'
+  else
+    printf 'wrapper_on_login_path no
+'
+    problem "a login shell resolves pi to $pane_path, which is not this tool's wrapper. The account's own prefix is ahead of /usr/local/bin, which bootstrap.sh puts there, so the wrapper and everything it sets are bypassed"
+  fi
+fi
+
 version=$(as_account pi --version 2>/dev/null | tr -d '\r' | head -1)
 if [ -n "$version" ]; then
   printf 'version %s\n' "$version"

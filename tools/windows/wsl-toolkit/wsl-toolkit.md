@@ -421,6 +421,15 @@ process - so a default exported in `~/.profile` never reaches it.
 | `model` | the model a session nobody passed a flag to begins on. Empty leaves the agent's own default alone, which is what a base with no provider serving a named model needs. A value carrying a slash is `provider/id` for an agent that reaches a model through a named provider |
 | `effort` | the reasoning effort that session begins at. **`max` when a configuration names none**, because it is the one word all three agents take |
 
+⛔ **`base bootstrap` PUTS THE ACCOUNT'S PREFIX AHEAD OF THE WRAPPER.**
+`bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the account's profile,
+so after it runs a login shell finds each agent's own launcher first and
+`/usr/local/bin/NAME` is never reached. Measured on 2026-09-17 by planting that one
+line: all three names moved. ⛔ Muse then starts with neither the model nor the effort,
+because it has no settings key for either. ⭐ Every agent probe reads the name back on a
+LOGIN shell and refuses a resolution that is not this tool's wrapper, so
+`base status --probe` says so rather than calling that base healthy.
+
 ⚠ **The effort vocabulary is each agent's own**, read from its own `--help` on
 2026-09-17, and a word an agent does not take is refused rather than sent to it:
 

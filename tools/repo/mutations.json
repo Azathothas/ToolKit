@@ -3017,6 +3017,33 @@
       "replace": "",
       "run": "TestRevokeHelpDoesNotDescribeItselfAsGrant",
       "args": []
+    },
+    {
+      "label": "shell profile: the PATH de-duplication itself",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/shell-profile.sh",
+      "find": "      case \":$wtp_new:\" in\n        *\":$wtp_one:\"*) continue ;;\n      esac\n",
+      "replace": "",
+      "run": "TestTheProfileDeduplicatesAnInteractiveShellsPath",
+      "args": []
+    },
+    {
+      "label": "shell profile: the interactive-only guard, which keeps distro run -c untouched",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/shell-profile.sh",
+      "find": "  case \"$-\" in\n    *i*) ;;\n    *)   return 0 ;;\n  esac\n",
+      "replace": "",
+      "run": "TestTheProfileLeavesANonInteractiveShellAlone",
+      "args": []
+    },
+    {
+      "label": "shell profile: the one switch that turns it off",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/shell-profile.sh",
+      "find": "  if [ -n \"${WSL_TOOLKIT_NO_PROFILE:-}\" ]; then\n    return 0\n  fi\n",
+      "replace": "",
+      "run": "TestTheProfileSwitchTurnsEverythingOff",
+      "args": []
     }
   ]
 }

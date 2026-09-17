@@ -96,6 +96,16 @@ of which herdr could launch.
    ⚠ Reading it on the adapter's own curated PATH is what let this ship. The probe
    must ask the question herdr will ask.
 
+⛔ **AND IT HAS TO RESOLVE TO THE WRAPPER, NOT MERELY RESOLVE.** `bootstrap.sh` writes
+`export PATH="$HOME/.local/bin:$PATH"` into the account's profile, so after
+`base bootstrap` a login shell finds the vendor's own launcher first and the wrapper on
+the system path is never reached. Measured on 2026-09-17 by planting that one line: all
+three agent names moved. ⭐ **So an agent adapter's probe reads the resolved file and
+refuses one that does not carry this tool's marker**, and it reads it through
+`runuser -l`. ⚠ The muse probe already checked the wrapper and could not see this,
+because it asked `as_account`, whose PATH is curated: a guard proved on a path nobody
+uses, for the second time.
+
 ## The files
 
 
