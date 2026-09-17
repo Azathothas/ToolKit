@@ -198,6 +198,27 @@ func jsonSurfaces(t *testing.T) []string {
 	ctx := context.Background()
 	quiet = true
 	defer func() { quiet = false }()
+
+	// ⛔ ITS OWN REGISTRY, BECAUSE THE VERDICT USED TO DEPEND ON WHAT RAN
+	// FIRST. flagSets is package level and this walk ADDED to whatever was
+	// already in it. A manual case resets and repopulates it, so with one
+	// running first every surface was registered and this answered correctly;
+	// run alone, `go test . -run TestEveryJSONSurfaceReachesTheSweep` reported
+	// four rows of sweptElsewhere as stale and sent a session looking for a
+	// defect a full run does not have. Measured 2026-09-17, both ways.
+	//
+	// ⚠ A CASE THAT IS RIGHT ONLY IN COMPANY IS NOT RIGHT. CI and the gate run
+	// the full package, so it never fired there, which is exactly what made it
+	// cost a session rather than a commit.
+	flagSets.Lock()
+	previous := flagSets.byName
+	flagSets.byName = map[string]*flag.FlagSet{}
+	flagSets.Unlock()
+	defer func() {
+		flagSets.Lock()
+		flagSets.byName = previous
+		flagSets.Unlock()
+	}()
 	devnull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -210,12 +231,19 @@ func jsonSurfaces(t *testing.T) []string {
 	for _, call := range commands {
 		_, _ = call(ctx, []string{"-h"})
 	}
+	// ⛔ EVERY SUBCOMMAND sweptElsewhere NAMES IS BUILT HERE. It used to name
+	// four that this walk never built - `base grant`, `base revoke`,
+	// `bsd fetch` and `bsd run` - so they could never be seen to take --json,
+	// and the case reported its own exemptions as stale. The completeness
+	// assertion below is what turns a missing name into a refusal rather than
+	// a silent gap.
 	for _, sub := range [][]string{
 		{"base", "ensure"}, {"base", "status"}, {"base", "recreate"}, {"base", "remove"},
-		{"base", "shell"}, {"base", "presets"},
+		{"base", "shell"}, {"base", "presets"}, {"base", "grant"}, {"base", "revoke"},
 		{"helper", "serve"}, {"helper", "status"}, {"helper", "stop"},
 		{"images", "warm"}, {"images", "pull"},
 		{"artifacts", "retry"}, {"config", "validate"},
+		{"bsd", "status"}, {"bsd", "fetch"}, {"bsd", "run"},
 		{"distro", "list"}, {"distro", "new"}, {"distro", "run"}, {"distro", "enter"},
 		{"distro", "remove"}, {"distro", "purge"}, {"distro", "snapshot"},
 		{"distro", "replay"}, {"distro", "compare"},
@@ -234,6 +262,8 @@ func jsonSurfaces(t *testing.T) []string {
 			_, _ = cmdArtifacts(ctx, args)
 		case "config":
 			_, _ = cmdConfig(args)
+		case "bsd":
+			_, _ = cmdBsd(ctx, args)
 		}
 	}
 	os.Stderr = realErr

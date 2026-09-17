@@ -32,7 +32,21 @@ set -eu
 # drive makes the drives `mixed`. The line comes before any refusal, so a refused
 # base still reports what its guest has.
 drive_mounts=/proc/mounts
-drive_root=/mnt
+# ⛔ READ FROM wsl.conf, NOT HARDCODED. This was `/mnt`, while shell-profile.sh
+# reads `[automount] root` from the same file, so the two held disagreeing
+# definitions of "a Windows drive" with no check that they agree.
+# TODO/PROGRESS.md finding 23.
+#
+# ⚠ A BASE THIS TOOL BUILDS IS UNAFFECTED, because provision.sh writes an
+# `[automount]` block with no `root` key and the default holds. What was exposed
+# is a distribution ADOPTED with a hand-set root: its drives are mounted where
+# this check was not looking, so `automount off` verified over a guest with
+# every drive mounted.
+drive_root=$(
+  sed -n 's/^[[:space:]]*root[[:space:]]*=[[:space:]]*//p' /etc/wsl.conf 2>/dev/null |
+    tail -n 1 | tr -d '"' | sed 's#/*$##'
+)
+[ -n "$drive_root" ] || drive_root=/mnt
 drives_ro=0
 drives_rw=0
 while read -r _source live_target _type live_options _rest; do
@@ -59,7 +73,7 @@ printf 'automount %s\n' "$drives"
 case "$TK_AUTOMOUNT" in
   off)
     if [ "$drives" != off ]; then
-      printf 'verify: a Windows drive is mounted below /mnt even though automount is off\n' >&2
+      printf 'verify: a Windows drive is mounted below %s even though automount is off\n' "$drive_root" >&2
       exit 3
     fi
     # ⛔ ABSENT, NOT EMPTY. An empty mount point left by the first start answers
@@ -73,7 +87,7 @@ case "$TK_AUTOMOUNT" in
     ;;
   ro|rw)
     if [ "$drives" != "$TK_AUTOMOUNT" ]; then
-      printf 'verify: automount is %s, and below /mnt %s mount(s) are read-only and %s writable\n' "$TK_AUTOMOUNT" "$drives_ro" "$drives_rw" >&2
+      printf 'verify: automount is %s, and below %s %s mount(s) are read-only and %s writable\n' "$TK_AUTOMOUNT" "$drive_root" "$drives_ro" "$drives_rw" >&2
       exit 3
     fi
     ;;
@@ -81,6 +95,24 @@ case "$TK_AUTOMOUNT" in
 esac
 # <<< the windows drives: end
 
+# ⛔ `on` IS AN EMPTY ARM ON PURPOSE, AND THE REASON IS MEASURED. Finding 14
+# read it as a check that checks nothing, and a check WAS written here on
+# 2026-09-17 and then removed, because WSL-68 had already measured that the one
+# signal available from inside the guest is misleading in BOTH directions:
+#
+#   wsl-toolkit-base   enabled=false   handler PRESENT
+#   wsl-toolkit        enabled=true    handler ABSENT
+#
+# Both values were seen on the SAME distribution with the same configuration,
+# across utility-VM lifetimes. So refusing a base whose handler is missing would
+# have reported the operator's own working base as unusable, intermittently, and
+# driving it did exactly that before the reading was rechecked.
+#
+# ⭐ WHERE THE REAL ANSWER LIVES: `base doors` runs `interop.exec-pe`, which
+# places a two-byte MZ file, makes it executable and RUNS it. That is an
+# attempt rather than a setting read back, and it is reported and never claimed.
+# This line stays what the configuration says, and the drives line beside it is
+# what the guest has, and the difference between them is deliberate.
 case "$TK_INTEROP" in
   off)
     if [ -n "${WSL_INTEROP:-}" ]; then

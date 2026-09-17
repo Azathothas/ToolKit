@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -818,7 +819,7 @@ func (b *Base) EnsurePlatform(ctx context.Context, platform string) error {
 	}
 	out, stderr, code, runErr := b.captureAs(ctx, "root", []byte("uname -m\n"), nil, 2*time.Minute)
 	if runErr != nil || code != 0 {
-		return fmt.Errorf("could not read the base architecture (exit %d): %s", code, firstLine(stderr+out))
+		return fmt.Errorf("could not read the base architecture (exit %d): %s", code, guestFailure(stderr, out))
 	}
 	if nativePlatformArch(strings.TrimSpace(firstLine(out))) == target {
 		return nil
@@ -837,7 +838,7 @@ printf 'binfmt-ready %s\n' "$TK_HANDLER"
 		"TK_ARCH": target, "TK_HANDLER": handler, "TK_BINFMT_IMAGE": BinfmtImage,
 	}, 20*time.Minute)
 	if runErr != nil || code != 0 {
-		return fmt.Errorf("could not prepare %s (exit %d): %s", normalized, code, firstLine(stderr+out))
+		return fmt.Errorf("could not prepare %s (exit %d): %s", normalized, code, guestFailure(stderr, out))
 	}
 	if !strings.Contains(out, "binfmt-ready "+handler) {
 		return fmt.Errorf("the %s handler did not report that it is ready", handler)
@@ -945,7 +946,7 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	// that arrived correctly can fail an exact match.
 	flat := strings.Join(strings.Fields(out), "")
 	if !strings.Contains(flat, m1+m2) {
-		return verifyReport{Automount: drives}, fmt.Errorf("the container ran and did not return the marker: %s", firstLine(out+stderr))
+		return verifyReport{Automount: drives}, fmt.Errorf("the container ran and did not return the marker: %s", guestFailure(out, stderr))
 	}
 	engine := ""
 	for _, line := range strings.Split(out, "\n") {
@@ -1004,6 +1005,56 @@ func guestLines(s string) []string {
 	}
 	return lines
 }
+
+// guestFailure is the line worth reporting out of a guest command's output.
+//
+// ⛔ WHAT WAS WRONG, IN TWENTY-FOUR PLACES. A failed guest command was named by
+// the FIRST line of its output, and the first line is regularly not the
+// program's. wsl.exe prints its own before the guest says anything - a base
+// built with automount off produced 93 `wsl: Failed to translate` lines - and
+// podman prints a warning before its error: fedora's
+// `newuidmap: write to uid_map failed` sat behind a shared-mount warning and
+// needed a diagnostic build to read. TODO/PROGRESS.md findings 12, 13 and 15.
+//
+// ⭐ THE KNOWLEDGE ALREADY EXISTED AND WAS APPLIED ONCE. `WSL-85` wrote
+// guestLines to drop wsl.exe's lines and used it at the verifier alone, so
+// twenty-three other messages kept naming the wrong line. This is that filter
+// with one home and every caller through it.
+//
+// ⚠ THE LAST GUEST LINE, NOT THE FIRST. A shell that fails prints its context
+// first and its reason last, and `engineFailure` in job.go already reached the
+// same conclusion for podman by measurement. Where nothing survives the filter
+// the raw first line is returned rather than an empty string, because a message
+// that says nothing is worse than one naming a wrapper's line.
+func guestFailure(streams ...string) string {
+	var lines []string
+	for _, s := range streams {
+		lines = append(lines, guestLines(s)...)
+	}
+	if len(lines) > 0 {
+		return lines[len(lines)-1]
+	}
+	// Nothing but a wrapper's own lines: say what there was rather than
+	// nothing at all.
+	for _, s := range streams {
+		if t := firstLine(s); t != "" {
+			return t
+		}
+	}
+	return "the guest said nothing"
+}
+
+// ⛔ THERE WAS A NOISE FILTER HERE AND THE MUTATION HARNESS DELETED IT.
+// It skipped `WARN[`, `Trying to pull `, `Copying blob ` and their siblings
+// before taking a line. Removing it left all eight cases GREEN, because in
+// every capture measured the noise comes BEFORE the error and taking the LAST
+// guest line already steps over it. A guard that cannot be made to matter is
+// not a guard: TODO/PROGRESS.md finding 59 says so, and says the fix is to
+// delete the redundancy rather than to strengthen the case around it.
+//
+// ⚠ WHAT WOULD BRING IT BACK is a capture where a warning comes LAST, after the
+// error. That is plausible - podman prints cleanup warnings - and it has not
+// been measured here, so it is not built on.
 
 // lastPrefixed answers the last guest line of s that starts with prefix, without it.
 func lastPrefixed(s, prefix string) (string, bool) {
@@ -1406,13 +1457,76 @@ func staleRunStateRemediation(msg string) (Remediation, bool) {
 	if !strings.Contains(strings.ToLower(msg), "boot id") {
 		return Remediation{}, false
 	}
-	return Remediation{
+	r := Remediation{
 		ID:         "stale-run-state",
 		What:       "the engine's cached boot id is not this boot's, so every container is refused before it starts",
 		Costs:      "nothing runs. Re-provisioning does not clear it, because the state is the engine's and not the distribution's",
 		Command:    "wsl-toolkit base ensure --repair",
 		Repairable: true,
-	}, true
+	}
+	// ⛔ THE CONDITION IS HOST-WIDE AND THIS USED TO ANSWER FOR ONE BASE.
+	// `wsl --shutdown` invalidates the cached boot id in EVERY distribution
+	// that holds an engine. On 2026-09-17 a session met it on
+	// `wsl-toolkit-base`, repaired that one, recorded exactly that, and left
+	// the default `wsl-toolkit` base - which every `run` and `matrix` uses -
+	// carrying the same damage into the next session, where the first
+	// container check exited 2 before anything could run. Finding 67.
+	if note := siblingRepairNote(SelectedInstance.Name, managedInstances()); note != "" {
+		r.Costs += ". " + note
+	}
+	return r, true
+}
+
+// siblingRepairNote names the other instances this tool manages, because the
+// cause is host-wide and repairing one says nothing about the rest.
+//
+// ⛔ IT IS A FUNCTION WITH NO FILESYSTEM IN IT, so every branch has a case.
+// Finding 42 twice over is why anything shaped like a rule gets separated from
+// the thing that reads the disk.
+func siblingRepairNote(current string, managed []string) string {
+	var others []string
+	for _, name := range managed {
+		if name != current && name != "" {
+			others = append(others, name)
+		}
+	}
+	if len(others) == 0 {
+		return ""
+	}
+	sort.Strings(others)
+	var cmds []string
+	for _, name := range others {
+		cmds = append(cmds, "wsl-toolkit --instance "+name+" base ensure --repair")
+	}
+	// ⚠ "LIKELY", NOT "IS". This says what the cause implies, and it does not
+	// claim to have probed the others: a note that asserted damage it never
+	// measured would be the fabricated-number row.
+	return "⚠ THIS IS A HOST-WIDE EVENT and `wsl --shutdown` invalidates it in every " +
+		"distribution holding an engine, so " + strings.Join(others, ", ") +
+		" managed here are LIKELY to need the same repair, unprobed: " + strings.Join(cmds, "; ")
+}
+
+// managedInstances lists the instance names this state directory holds.
+//
+// ⚠ AN UNREADABLE STATE DIRECTORY ANSWERS NONE rather than failing. This feeds
+// a note on a remediation, and a diagnosis that could not be produced must not
+// take down the diagnosis it was decorating.
+func managedInstances() []string {
+	home, err := Home()
+	if err != nil {
+		return nil
+	}
+	entries, err := os.ReadDir(filepath.Join(home, "instances"))
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, e.Name())
+		}
+	}
+	return out
 }
 
 // repairRunState clears the engine run state this boot invalidated, by running
@@ -1429,13 +1543,13 @@ func (b *Base) repairRunState(ctx context.Context) (string, error) {
 		return out, err
 	}
 	if code != 0 {
-		return out, fmt.Errorf("repair exited %d: %s", code, firstLine(stderr+out))
+		return out, fmt.Errorf("repair exited %d: %s", code, guestFailure(stderr, out))
 	}
 	// ⛔ THE EFFECT IS ASSERTED, not inferred from the exit code. repair.sh
 	// reads every removal back and refuses to exit 0 over one that is still
 	// there, and this refuses to report a repair the script did not announce.
 	if !strings.Contains(out, "repaired run-state") {
-		return out, fmt.Errorf("repair exited 0 without saying what it did: %s", firstLine(out+stderr))
+		return out, fmt.Errorf("repair exited 0 without saying what it did: %s", guestFailure(out, stderr))
 	}
 	return out, nil
 }

@@ -214,7 +214,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 func (r *Runner) removeGuestDir(ctx context.Context, root, dir string) error {
 	out, stderr, code, err := r.baseCapture(ctx, []byte(GuestRemoveScript(root, dir)), 5*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("exit %d: %s", code, firstLine(stderr+out))
+		return fmt.Errorf("exit %d: %s", code, guestFailure(stderr, out))
 	}
 	return nil
 }

@@ -188,7 +188,7 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 
 	errBuf := &boundedBuffer{max: 64 << 10}
 	if code, err := w.ExecDirect(ctx, distro, user, "", []string{"/bin/mkdir", "-p", guestDir}, nil, io.Discard, errBuf, 2*time.Minute); err != nil || code != 0 {
-		return zero, fmt.Errorf("could not create %s in the guest (exit %d): %s", guestDir, code, firstLine(errBuf.String()))
+		return zero, fmt.Errorf("could not create %s in the guest (exit %d): %s", guestDir, code, guestFailure(errBuf.String()))
 	}
 
 	pr, pw := io.Pipe()
@@ -213,7 +213,7 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 		return res.up, res.err
 	}
 	if execErr != nil || code != 0 {
-		return res.up, fmt.Errorf("unpacking the workspace in the guest exited %d: %s", code, firstLine(errBuf.String()))
+		return res.up, fmt.Errorf("unpacking the workspace in the guest exited %d: %s", code, guestFailure(errBuf.String()))
 	}
 	if log != nil {
 		// ⭐ THE HOST DIRECTORY IS NAMED, not only the guest one. `--workspace .`
@@ -548,7 +548,7 @@ func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDi
 		return res.got, res.err
 	}
 	if execErr != nil || code != 0 {
-		return res.got, fmt.Errorf("packing %s in the guest exited %d: %s", guestDir, code, firstLine(errBuf.String()))
+		return res.got, fmt.Errorf("packing %s in the guest exited %d: %s", guestDir, code, guestFailure(errBuf.String()))
 	}
 	if log != nil {
 		log(fmt.Sprintf("artifacts: %d entries, %s written to %s", res.got.Delivered, HumanBytes(res.got.Bytes), hostDir))

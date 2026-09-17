@@ -275,7 +275,7 @@ func (w *Wsl) writeGuestFile(ctx context.Context, distro, guestPath string, data
 	code, err := w.ExecDirect(bounded, distro, "root", "",
 		[]string{"/bin/tar", "-xf", "-", "-C", dir}, pr, io.Discard, errBuf, 2*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("could not write %s in %s (exit %d): %s", guestPath, distro, code, firstLine(errBuf.String()))
+		return fmt.Errorf("could not write %s in %s (exit %d): %s", guestPath, distro, code, guestFailure(errBuf.String()))
 	}
 	return nil
 }

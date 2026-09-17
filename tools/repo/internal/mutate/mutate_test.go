@@ -22,6 +22,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeTable(t *testing.T, tb Table) string {
@@ -231,5 +232,134 @@ func TestRunRefusesAFilterThatSelectsNothing(t *testing.T) {
 	var out bytes.Buffer
 	if _, err := Run(t.TempDir(), tb, "no such label", &out); err == nil {
 		t.Fatal("a filter that selected nothing was reported as a clean run")
+	}
+}
+
+// TestARowWhoseCaseWasAlreadyRedIsRefused is finding 1, the oldest in the
+// record, and it is a defect in the instrument that proves every other guard.
+//
+// ⛔ WHAT WAS WRONG. The harness deleted a guard, ran the case, saw red and
+// reported "went red". It never asked what the case did BEFORE the mutation, so
+// a case that was already failing certified every guard it was named by. That
+// is a harness reporting a result it did not measure, which is the exact class
+// it exists to catch.
+func TestARowWhoseCaseWasAlreadyRedIsRefused(t *testing.T) {
+	root := fixture(t)
+	// A second case in the same package that fails on its own, and a row whose
+	// -run pattern reaches it. The guard it names is real and its removal would
+	// genuinely be caught; the point is that this run cannot tell.
+	dir := filepath.Join(root, "mod")
+	broken := "package guard\n\nimport \"testing\"\n\nfunc TestAlreadyRed(t *testing.T) {\n\tt.Fatal(\"this case was red before anybody mutated anything\")\n}\n"
+	if err := os.WriteFile(filepath.Join(dir, "red_test.go"), []byte(broken), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	m := Mutation{
+		Label: "a guard whose case was already failing", Module: "mod", File: "guard.go",
+		Run: "TestAlreadyRed", Find: "if s == \"\" {", Replace: "if false {",
+	}
+	tb := &Table{Schema: TableSchema, Mutations: []Mutation{m}}
+	var log bytes.Buffer
+	got, err := Run(root, tb, "", &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d verdicts", len(got))
+	}
+	// ⛔ THE VERDICT THIS USED TO GIVE WAS "ok". Anything but BROKEN here means
+	// the harness is certifying a guard over a case that proves nothing.
+	if got[0].State != "BROKEN" {
+		t.Fatalf("a row over an already-red case reported %q, not BROKEN", got[0].State)
+	}
+	if !strings.Contains(got[0].Reason, "not green BEFORE") {
+		t.Fatalf("the refusal does not say the case was already red: %q", got[0].Reason)
+	}
+	// ⭐ AND THE REASON CARRIES THE CASE'S OWN FIRST FAILING LINE, file and
+	// number, or a reader cannot tell which of several cases the pattern
+	// reached was the failing one.
+	if !strings.Contains(got[0].Reason, "red_test.go") {
+		t.Fatalf("the refusal does not name the failing case: %q", got[0].Reason)
+	}
+}
+
+// TestABrokenRowSaysWhatTheCompilerSaid is finding 41.
+//
+// ⛔ A row whose mutation stops the module compiling is neither red nor green,
+// and it reported the bare words "does not compile" while DISCARDING the
+// compiler's output. Met three times in one day, every time because deleting a
+// guard left the variable it read unused, and every time the session had to
+// reproduce the build by hand to find that out.
+func TestABrokenRowSaysWhatTheCompilerSaid(t *testing.T) {
+	root := fixture(t)
+	m := Mutation{
+		Label: "a mutation that does not compile", Module: "mod", File: "guard.go",
+		Run: "TestEmptyIsRefused", Find: "return true\n", Replace: "return nope\n",
+	}
+	tb := &Table{Schema: TableSchema, Mutations: []Mutation{m}}
+	var log bytes.Buffer
+	got, err := Run(root, tb, "", &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got[0].State != "BROKEN" {
+		t.Fatalf("state %q, want BROKEN", got[0].State)
+	}
+	// ⭐ THE ROW IS NAMED AS THE THING TO REWRITE, not the tree.
+	if !strings.Contains(got[0].Reason, "this row proves nothing") {
+		t.Fatalf("the reason does not say the row is at fault: %q", got[0].Reason)
+	}
+	// ⛔ AND THE COMPILER'S OWN LINE IS THERE. "does not compile" alone is what
+	// this case exists to refuse.
+	if !strings.Contains(got[0].Reason, "nope") && !strings.Contains(got[0].Reason, "guard.go") {
+		t.Fatalf("the reason does not carry what the compiler said: %q", got[0].Reason)
+	}
+}
+
+// TestAKilledRunsStagedCopyIsSweptOnTheNextRun is finding 32.
+//
+// ⛔ `one` stages a copy of the module and removes it with a defer, which a
+// killed process never runs. One was measured at 127 MiB, left since
+// 2026-09-14, and `wsl-toolkit gc` does not cover it because the directory is
+// not that tool's job state.
+func TestAKilledRunsStagedCopyIsSweptOnTheNextRun(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	t.Setenv("TMP", tmp)
+	t.Setenv("TEMP", tmp)
+	if os.TempDir() != tmp {
+		t.Skipf("this host resolves TempDir to %s rather than the fixture", os.TempDir())
+	}
+	stale := filepath.Join(tmp, "mutate-999999")
+	if err := os.MkdirAll(filepath.Join(stale, "t"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stale, "t", "big.go"), make([]byte, 4096), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ AN AGE THRESHOLD, because a CONCURRENT run's copy is live. Backdating
+	// is what makes this one abandoned rather than in use.
+	old := time.Now().Add(-3 * time.Hour)
+	if err := os.Chtimes(stale, old, old); err != nil {
+		t.Fatal(err)
+	}
+	fresh := filepath.Join(tmp, "mutate-000001")
+	if err := os.MkdirAll(fresh, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	var log bytes.Buffer
+	sweepStaleCopies(&log)
+
+	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+		t.Fatalf("the abandoned copy survived: %v", err)
+	}
+	// ⛔ AND THE LIVE ONE IS UNTOUCHED. A sweep that removed a running pass's
+	// staging would be worse than the leak it fixes.
+	if _, err := os.Stat(fresh); err != nil {
+		t.Fatalf("a copy younger than the threshold was removed: %v", err)
+	}
+	if !strings.Contains(log.String(), "swept 1") {
+		t.Fatalf("the sweep did not say what it did: %q", log.String())
 	}
 }

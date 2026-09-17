@@ -425,9 +425,15 @@ func verifierDriveSection(t *testing.T, mounts, root string) string {
 		t.Fatalf("the verifier's drive section is not marked: begin at %d, end at %d", begin, end)
 	}
 	section := script[begin:end]
+	// ⚠ THE ROOT IS THE FALLBACK LINE, NOT AN ASSIGNMENT. verify.sh reads
+	// `[automount] root` from /etc/wsl.conf and falls back to /mnt, so there is
+	// no `drive_root=/mnt` line to substitute any more. Pinning the fallback is
+	// what gives this case a root it can build a mounts table under, and the
+	// count assertion below is what turns a moved line into a refusal rather
+	// than a case that silently drives the real /mnt.
 	for from, to := range map[string]string{
-		"\ndrive_mounts=/proc/mounts\n": "\ndrive_mounts='" + mounts + "'\n",
-		"\ndrive_root=/mnt\n":           "\ndrive_root='" + root + "'\n",
+		"\ndrive_mounts=/proc/mounts\n":                 "\ndrive_mounts='" + mounts + "'\n",
+		"\n[ -n \"$drive_root\" ] || drive_root=/mnt\n": "\ndrive_root='" + root + "'\n",
 	} {
 		if n := strings.Count(section, from); n != 1 {
 			t.Fatalf("the drive section names %q %d times, want once", strings.TrimSpace(from), n)
@@ -541,8 +547,13 @@ func TestTheVerifierReadsTheDrivesItPromises(t *testing.T) {
 		if c.refusal == "" && stderr.Len() > 0 {
 			t.Errorf("%s: wrote to stderr over drives that agree: %q", c.name, stderr.String())
 		}
-		if !strings.Contains(stderr.String(), c.refusal) {
-			t.Errorf("%s: stderr %q does not name %q", c.name, stderr.String(), c.refusal)
+		// ⚠ THE ROOT IS SUBSTITUTED INTO THE EXPECTATION. The refusals name the
+		// root they measured rather than a hardcoded /mnt, because verify.sh
+		// reads it from wsl.conf now: a distribution adopted with a hand-set
+		// root had its drives mounted where the old check was not looking.
+		want := strings.ReplaceAll(c.refusal, "/mnt", root)
+		if !strings.Contains(stderr.String(), want) {
+			t.Errorf("%s: stderr %q does not name %q", c.name, stderr.String(), want)
 		}
 	}
 }

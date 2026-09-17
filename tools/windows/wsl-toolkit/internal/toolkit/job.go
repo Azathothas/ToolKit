@@ -365,7 +365,7 @@ func (r *Runner) guestHome(ctx context.Context) (string, error) {
 	out, stderr, code, err := r.wsl.Capture(ctx, r.cfg.Base.Name, r.cfg.Base.User,
 		[]byte("printf '%s\\n' \"$HOME\"\n"), 2*time.Minute)
 	if err != nil || code != 0 {
-		return "", fmt.Errorf("could not read the guest home directory (exit %d): %s", code, firstLine(stderr+out))
+		return "", fmt.Errorf("could not read the guest home directory (exit %d): %s", code, guestFailure(stderr, out))
 	}
 	h := strings.TrimSpace(firstLine(out))
 	if !strings.HasPrefix(h, "/") {
@@ -863,7 +863,7 @@ func (r *Runner) sendFile(ctx context.Context, user, guestDir, name string, cont
 	code, err := r.wsl.ExecDirect(ctx, r.cfg.Base.Name, user, "",
 		[]string{"/bin/tar", "-xf", "-", "-C", guestDir}, pr, io.Discard, errBuf, 2*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("could not place %s in the guest (exit %d): %s", name, code, firstLine(errBuf.String()))
+		return fmt.Errorf("could not place %s in the guest (exit %d): %s", name, code, guestFailure(errBuf.String()))
 	}
 	return nil
 }
@@ -877,7 +877,7 @@ func (r *Runner) copyStaged(ctx context.Context, from, to string) error {
 	code, err := r.wsl.ExecDirect(ctx, r.cfg.Base.Name, r.cfg.Base.User, "",
 		[]string{"/bin/cp", "-a", from + "/.", to + "/"}, nil, io.Discard, errBuf, 30*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("could not copy the staged workspace (exit %d): %s", code, firstLine(errBuf.String()))
+		return fmt.Errorf("could not copy the staged workspace (exit %d): %s", code, guestFailure(errBuf.String()))
 	}
 	return nil
 }
@@ -914,7 +914,7 @@ func (r *Runner) teardown(ctx context.Context, id, jobsRoot, guestJob string) er
 		GuestRemoveScript(jobsRoot, guestJob)
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 5*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("exit %d: %s", code, firstLine(stderr+out))
+		return fmt.Errorf("exit %d: %s", code, guestFailure(stderr, out))
 	}
 	if !strings.Contains(out, "removed") {
 		return errors.New("the guest reported no removal")
@@ -1074,7 +1074,7 @@ func (r *Runner) ReachImage(ctx context.Context, ref string, pull bool) (cached,
 	script := "podman image exists " + shellQuote(ref) + " && printf 'cached\n' || printf 'absent\n'\n"
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 2*time.Minute)
 	if err != nil || code != 0 {
-		return false, false, "the engine could not be asked: " + firstLine(stderr+out)
+		return false, false, "the engine could not be asked: " + guestFailure(stderr, out)
 	}
 	if strings.Contains(out, "cached") {
 		return true, false, ""

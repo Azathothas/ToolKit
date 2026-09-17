@@ -76,7 +76,8 @@ $script:ReleaseCaseNames = @(
     'every digest in SHA256SUMS matches the file it names',
     'every published asset carries a signature bundle',
     'the signature verifies against this repository release workflow',
-    'the executable reports the version named by the release tag')
+    'the executable reports the version named by the release tag',
+    'the two files the manual tells a consumer to take are enough to run it')
 $script:HostCaseNames = @(
     'the survey runs from an empty state directory and creates no distribution',
     'the catalog is fully qualified, which is what the manual says it is',
@@ -270,6 +271,19 @@ function Get-ReleaseAssets {
       asset redirects and reports a missing release as an error rather than as
       an HTML page saved to disk. Where gh is absent it falls back to the public
       download URLs, which need no credential.
+
+      IT TAKES EVERY ASSET, AND THAT IS DELIBERATE RATHER THAN AN OVERSIGHT.
+      From wsl-toolkit-v3.0.0 a release also carries herdr for four targets,
+      about 65 MiB, which this file never runs.
+      ../../../docs/consumers.md tells a CONSUMER to take only the executable
+      for its architecture and SHA256SUMS, so the two read as disagreeing.
+
+      THEY ARE ANSWERING DIFFERENT QUESTIONS. This file is the only thing
+      anywhere that verifies herdr's four builds are signed and match their
+      digests; dropping them to save the bandwidth would delete that check and
+      nothing would replace it. What the page describes is what a consumer
+      NEEDS, and the case named below is what proves that smaller set is
+      actually enough. TODO/PROGRESS.md finding 31.
     #>
     param([Parameter(Mandatory = $true)][string]$Into)
     $gh = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue
@@ -576,6 +590,55 @@ try {
         'True'
     }
 
+
+    # WHAT THE PAGE TELLS A CONSUMER TO TAKE, AND WHETHER THAT IS ENOUGH.
+    #
+    # docs/consumers.md says to download "the executable matching the host
+    # architecture and SHA256SUMS" and nothing else. This file downloads every
+    # asset, because it is also the only thing that verifies herdr's builds are
+    # signed, so nothing here had ever tested the SMALLER set the page
+    # describes. Finding 31 read that as a page disagreeing with a script; the
+    # disagreement is real and the untested claim is the half that could bite.
+    #
+    # It copies rather than downloading again: the bytes are already here and a
+    # second fetch would test GitHub rather than the release.
+    Test-ReleaseCase 'the two files the manual tells a consumer to take are enough to run it' 'True' {
+        $only = Join-Path $script:Elsewhere 'minimal'
+        $null = New-Item -ItemType Directory -Path $only -Force
+        $exeName = Split-Path -Leaf $script:Exe
+        Copy-Item -LiteralPath $script:Exe -Destination (Join-Path $only $exeName) -Force
+        Copy-Item -LiteralPath (Join-Path $script:Download 'SHA256SUMS') -Destination $only -Force
+        $left = @(Get-ChildItem -LiteralPath $only -File | ForEach-Object { $_.Name })
+        if ($left.Count -ne 2) { return "the minimal set holds $($left.Count) file(s): $($left -join ', ')" }
+
+        # The digest a consumer is told to check, checked the way they would.
+        $want = $null
+        foreach ($line in [IO.File]::ReadAllLines((Join-Path $only 'SHA256SUMS'))) {
+            $parts = $line.Trim() -split '\s+', 2
+            if ($parts.Count -eq 2 -and $parts[1].TrimStart('*') -eq $exeName) { $want = $parts[0].ToLowerInvariant() }
+        }
+        if (-not $want) { return "SHA256SUMS does not name $exeName" }
+        $got = (Get-FileHash -LiteralPath (Join-Path $only $exeName) -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($got -ne $want) { return "the copy is $got and SHA256SUMS says $want" }
+
+        # And it RUNS from there, with nothing else beside it.
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = Join-Path $only $exeName
+        foreach ($a in @('version')) { $null = $psi.ArgumentList.Add($a) }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.Environment['WSL_TOOLKIT_HOME'] = $script:StateHome
+        $psi.Environment['WSL_TOOLKIT_INSTANCE'] = $script:Instance
+        $psi.WorkingDirectory = $only
+        $p = [Diagnostics.Process]::Start($psi)
+        $o = $p.StandardOutput.ReadToEndAsync()
+        $e = $p.StandardError.ReadToEndAsync()
+        $p.WaitForExit()
+        if ($p.ExitCode -ne 0) { return "the minimal set could not run: exit $($p.ExitCode) $($e.Result)" }
+        if ($o.Result.Trim() -ne $script:Version) { return "it reports $($o.Result.Trim()) and the release is $($script:Version)" }
+        'True'
+    }
     # -- what the manual promises a first-run agent ---------------------------
 
     Test-Case 'the survey runs from an empty state directory and creates no distribution' 'True' {

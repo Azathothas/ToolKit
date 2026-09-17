@@ -248,7 +248,7 @@ done
 `, shellQuote(root))
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 3*time.Minute)
 	if err != nil || code != 0 {
-		return nil, 0, false, fmt.Errorf("exit %d: %s", code, firstLine(stderr+out))
+		return nil, 0, false, fmt.Errorf("exit %d: %s", code, guestFailure(stderr, out))
 	}
 	var jobs []GuestJob
 	var total int64
@@ -299,7 +299,7 @@ podman system df --format '{{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Rec
 `
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 5*time.Minute)
 	if err != nil || code != 0 {
-		return nil, nil, nil, fmt.Errorf("exit %d: %s", code, firstLine(stderr+out))
+		return nil, nil, nil, fmt.Errorf("exit %d: %s", code, guestFailure(stderr, out))
 	}
 	var containers, images []OwnedThing
 	var summary []string

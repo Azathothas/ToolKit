@@ -300,7 +300,7 @@ func (b *Base) Doors(ctx context.Context) (DoorsReport, error) {
 		return rep, fmt.Errorf("the doors probe could not run in %s: %w", b.cfg.Base.Name, err)
 	}
 	if code != 0 {
-		return rep, fmt.Errorf("the doors probe exited %d in %s: %s", code, b.cfg.Base.Name, firstLine(stderr+out))
+		return rep, fmt.Errorf("the doors probe exited %d in %s: %s", code, b.cfg.Base.Name, guestFailure(stderr, out))
 	}
 	doors, err := parseDoors(out)
 	if err != nil {

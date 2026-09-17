@@ -8,9 +8,9 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-17T14:42:39Z
 baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
-head            29ca209 plus this record commit
+head            29ca209, 9660143, plus this record commit
 entries         total 128  open 0  blocked 0  done 128
-this session    the last two open entries closed: a container is watched by the same layer a distribution is, and the gate drives the released-binary contract on every commit
+this session    the last two open entries closed, then the operator refused the handover: every host-engine call bounded with a stall deadline, and nine findings that had a named fix and no entry FIXED rather than listed
 ```
 
 ## Active work
@@ -281,12 +281,38 @@ new file FIRST, then run the gate.**
 | `a5b2fd9` | the number of published assets has one home rather than three: staging writes `SIGN_COUNT` from the list it already asserts against, and the signing and verifying steps read it |
 | `105dfdc` | `wsl-toolkit-v3.1.0` published, 22 assets and BOTH jobs green; `WSL-90` closed on a release that is consumable rather than merely cut; the end-to-end pass driven from a consumer's side, which found that this repository's own documented verification command fails in Git Bash; findings 78, 79 and 80 |
 | `29ca209` | ⭐ **the last two open entries closed.** `WSL-59`: the observation layer reaches a container through an `Observer` seam, and the resource feed reports ABSENT rather than the nonsense podman answers. `WSL-91`: the gate drives `consumer.ps1` over a working-tree build, so finding 70's shape is caught before a tag. `WSL-93` filed and closed: `--between` was the one edit operation with no required count, in a PUBLISHED binary. The gate's analyzer widened from one directory to three, which is where its only real finding was. 13 mutation rows, 13 of 13 red; findings 81 to 88 |
-| this record commit | the claim audit's own catch: five timestamps in this record were typed rather than read and two were in the future, corrected to the commit's instant; finding 89 |
-
+| `9660143` | the claim audit own catch: five timestamps in this record were typed rather than read and two were in the future, corrected to the commit instant; finding 89 |
+| this record commit | ⛔ **the operator refused the handover, and it was right to.** The session had ended by listing findings with a named fix and no entry, which is the deferral the prompt forbade. ⭐ **A default deadline on EVERY host-engine call**, with a separate STALL deadline so a pull that has stopped is given up in minutes rather than waited out for half an hour; driven against a real child both ways. Then the findings themselves: the mutation harness runs a case unmutated first (finding 1, the oldest in the record), sweeps a killed run staging (32, and the first run removed the real 122 MiB), and says what the compiler said (41); 29 error messages name the guest own line (12, 13, 15); a case that answered differently alone and in company agrees with itself (37); the two readers of the automount root agree (23); a host-wide repair names the other instances (67); and the consumer runner tests the smaller fetch the register documents (31). ⛔ **Finding 14 closes as a check that CANNOT exist**, because driving the one written for it contradicted a measurement this repository already had. Findings 90 to 99 |
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17, in the 14:42Z session:
 
+- ⭐ **THE SECOND HALF OF THE SESSION, after the operator refused the handover.**
+  Every host-engine call is bounded at one door: a default ceiling of 2 minutes,
+  a transfer ceiling of 30, and a STALL deadline of 4. ⭐ **Driven against a real
+  child**: a process printing one line then sleeping for ever was given up after
+  **3.2 s** against a 2 s limit and named the stall; a process talking every
+  second for **6 s**, three times the stall window, was untouched.
+- **The mutation harness, re-measured with the unmutated baseline in it:** the
+  21 `text-tool` rows in **30.3 s**, 21 of 21 proved. ⛔ **Its first full run
+  reported 2 BROKEN over a flake**, which a single retry on a failure removes;
+  the same rows passed alone seconds later with no code between the runs.
+  ⭐ **The sweep removed 122 MiB** of a staged copy left since 2026-09-14.
+- **The mutation table:** 412 rows to **419**. ⭐ **8 rows written, 7 red, 1
+  THEATRE and deleted with the code it guarded** - the noise filter in
+  `guestFailure`, which every measured capture makes unreachable.
+- **29 call sites** now name a guest failure by the guest own last line, counted
+  by the conversion and by `git diff`.
+- ⛔ **A check written for finding 14 reported the operator own base
+  `usable false` on its first run**, and `WSL-68` measurement of the same signal
+  across three utility-VM lifetimes is why it was removed rather than kept.
+- ⛔ **The container check went RED and the local gate did not**, on
+  `TestTheVerifierReadsTheDrivesItPromises`, which skips on Windows. Finding 42
+  class, caught before a push. Green in `golang:1.25` after the fix, **36.0 s**.
+- **The three pre-push checks at the end:** Windows Go over all four modules
+  exit 0; `check-go.sh` in `golang:1.25` exit **0 in 36.0 s**; ShellCheck 0.9.0
+  in `ubuntu:24.04` clean over 51 tracked scripts, exit **0 in 18.7 s**.
+- **The gate: 24 of 24**, 65.4 s with the new files staged.
 - **At the start:** the doctor exit 0, its report stamped `2026-09-17T14:42:39Z`,
   61 tools found and 26 missing; the gate exit 0, **24 of 24 in 35.9 s**; the tree
   clean at `105dfdc`; `wsl -l -v` five distributions, matching the host state.
@@ -1463,8 +1489,173 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     happened again one session later, which is the evidence that a note is not a
     fix. All five are the commit's own instant now.
 
+90. ⭐ **EVERY HOST-ENGINE CALL CARRIES A DEADLINE NOW, AND A STALL IS A
+    SEPARATE ONE.** Finding 84 left a real gap: the pull was bounded at thirty
+    minutes, which is the right ceiling and useless against a pull that has
+    STOPPED. ⛔ **The deadline was also chosen at each of SEVEN call sites** -
+    90 seconds for `info`, five minutes for `create`, thirty for `pull`, and
+    whatever the caller held for the rest - which is the guard-at-many-call-sites
+    shape `RULES.md` section 3 already names.
+    ⭐ **`engineCall` is the one door**, with a total ceiling defaulting to two
+    minutes and an optional STALL deadline of four for a transfer. A pull moving
+    bytes over a slow link is never stopped; one that has produced nothing for
+    four minutes is given up, and the refusal SAYS it was a stall rather than
+    reporting a slow link.
+    ⛔ **The guard that keeps it found a SEVENTH call site on its first run.**
+    `TestEveryEngineCallCarriesADeadline` reads `engine.go` and refuses a reach
+    for the host engine through the raw process helpers; the connection probe
+    inside `podmanWorkingConnection` was not one this session enumerated.
+    ⭐ **DRIVEN AGAINST A REAL CHILD, both directions**: a process that printed
+    one line and slept for ever was given up after **3.2 s** against a 2 s
+    limit, naming the stall; a process talking every second for six seconds,
+    three times the stall window, ran to completion untouched.
+91. ⛔ **THE MUTATION HARNESS NEVER ASKED WHAT A CASE DID BEFORE THE MUTATION,
+    AND THAT IS FINDING 1, THE OLDEST IN THE RECORD.** It deleted a guard, ran
+    the case, saw red and reported "went red". A case that was ALREADY FAILING
+    therefore certified every guard it was named by. ⭐ **It runs the cases
+    unmutated first now**, cached per module and pattern so a table where twenty
+    rows name one case pays once; a row over a red case is BROKEN and says so.
+    ⚠ **The cost is measured: 21 rows in 30.3 s**, because the cache collapses
+    the repeats.
+    ⛔ **AND THE FIRST FULL RUN FLAKED.** Two rows reported BROKEN over a
+    baseline that passed alone moments later, with no code between the two runs.
+    The staging churns a temporary directory hard and a Windows delete is
+    asynchronous. ⭐ A single retry ON A FAILURE only: a genuinely red case
+    fails twice, so it cannot mask one, and retrying a PASS would be the
+    dangerous direction and is not done.
+92. ⛔ **A BROKEN MUTATION ROW DISCARDED THE COMPILER OUTPUT.** Finding 41: the
+    reason read "does not compile" with the output assigned to nothing one line
+    below it, met three times in one day, every time forcing a session to
+    reproduce the build by hand. It carries the compiler first line now and
+    names the ROW as the thing to rewrite rather than the tree.
+    ⚠ **The reporter first attempt picked the wrong line**, the one
+    `go test ./...` prints for a module whose root package holds no tests, so a
+    reason naming the wrong thing existed for about ten minutes and was caught
+    by reading its own output.
+93. ⭐ **A KILLED `repo mutate` SWEEPS ITS OWN LEFTOVERS NOW.** Finding 32. The
+    staged copy is removed by a `defer` a killed process never runs, so it
+    survived in whatever `TEMP` named at the time. ⛔ **The first run of the new
+    sweep removed the real one: 122 MiB, left since 2026-09-14**, which the
+    record had been carrying as safe to delete by literal path. ⚠ An age
+    threshold of an hour, because a concurrent run staging is live.
+94. ⛔ **A CASE VERDICT DEPENDED ON WHAT RAN BEFORE IT, AND BOTH ANSWERS WERE
+    REPRODUCED.** Finding 37. Run alone the case reported four rows of its own
+    exemption list as stale; the full package passed. Measured both ways on
+    2026-09-17 before anything changed.
+    ⭐ **The cause was a package-level registry it ADDED to rather than built**,
+    and it builds its own now. ⛔ **Making it consistent then made it fail
+    consistently**, which is the honest half: `base grant`, `base revoke`,
+    `bsd fetch` and `bsd run` were named in the exemption list and never built
+    by the walk, so they could never be seen to take `--json`. All four are
+    built now, and the case agrees with itself isolated and in a full run.
+95. ⭐ **TWENTY-NINE ERROR MESSAGES NAME THE GUEST OWN LINE NOW.** Findings 12,
+    13 and 15. A failed guest command was named by the FIRST line of its output,
+    and the first line is regularly a wrapper line: a base built with automount
+    off printed 93 translation lines, and a fedora `newuidmap` failure sat
+    behind a podman warning and needed a diagnostic build to read. ⛔ **The
+    knowledge already existed and was applied once**: `WSL-85` wrote
+    `guestLines` and used it at the verifier alone. `guestFailure` is that
+    filter with one home and 29 callers.
+    ⛔ **AND THE MUTATION HARNESS DELETED HALF OF WHAT WAS WRITTEN.** A noise
+    filter skipping warning and progress prefixes came back THEATRE: in every
+    capture measured the noise comes BEFORE the error, so taking the LAST guest
+    line already steps over it. Finding 59 says the fix is to delete the
+    redundancy rather than strengthen the case, and it is deleted. ⚠ What would
+    bring it back is a capture where a warning comes last, which is plausible
+    and has not been measured here.
+96. ⛔ **A CHECK WRITTEN FOR FINDING 14 CONTRADICTED A MEASUREMENT THIS
+    REPOSITORY HAD ALREADY MADE, AND DRIVING IT IS WHAT CAUGHT THAT.** The
+    verifier `interop on` arm was empty, so a base configured with interop on
+    over a guest without it verified cleanly. A check reading the binfmt handler
+    was written, and on its first run against the real `wsl-toolkit` base it
+    reported **usable false**.
+    ⚠ **`WSL-68` had measured that reading across two distributions and three
+    utility-VM lifetimes**: the handler is PRESENT on a distribution configured
+    off and ABSENT on one configured on, both values on the SAME distribution.
+    It is misleading in both directions, which is why `base doors` already
+    reports it as an info row with no verdict.
+    ⭐ **So the check was removed and the empty arm carries the reason instead.**
+    The real attempt lives in `base doors`, which places a two-byte MZ file and
+    RUNS it. ⛔ **The finding closes as no check being possible from inside the
+    guest, with the measurement beside it**, rather than as a check.
+97. ⭐ **THE TWO READERS OF THE AUTOMOUNT ROOT AGREE NOW, AND A CASE HOLDS THEM
+    TO IT.** Finding 23. The verifier hardcoded `/mnt` while the shell profile
+    read the key from `/etc/wsl.conf`, so a distribution adopted with a hand-set
+    root had its drives mounted where the verifier was not looking. ⚠ **They
+    cannot be merged**: one is embedded in the executable and the other is
+    fetched by URL and must work with no executable at all, which is exactly the
+    shape that needs a check rather than a shared function. Six rows, including
+    a quoted value, a trailing slash and two keys.
+    ⛔ **The container check caught the fallout and the local gate did not.**
+    The drives case skips on Windows and drives a real POSIX shell on Linux, so
+    a substitution anchor this change deleted showed up only in `golang:1.25`.
+    That is finding 42 class, caught before a push by the check that exists for
+    it.
+98. ⭐ **A HOST-WIDE REPAIR NAMES THE OTHER INSTANCES NOW.** Finding 67
+    mechanical half, which the record said was cheap and unwritten. A stale boot
+    id is caused by `wsl --shutdown`, which invalidates it in EVERY distribution
+    holding an engine; the remediation now names the other instances this state
+    directory manages and gives the exact command for each.
+    ⚠ **It says LIKELY and unprobed**, because nothing probed them, and a note
+    asserting damage it never measured would be the fabricated-number row.
+    ⛔ **NOT DRIVEN AGAINST A REAL STALE BOOT ID.** Planting one by writing a
+    `bootid` file under the runtime directory did not reproduce the condition:
+    podman keeps it in its own state database, and corrupting that to force the
+    message was not worth what it would cost. The note is proved by five case
+    rows over a pure function, and this sentence is the part that was not
+    measured.
+99. ⭐ **THE CONSUMER RUNNER FETCHING EVERY ASSET IS A DECISION NOW, NOT AN
+    OVERSIGHT.** Finding 31 read it as a page disagreeing with a script: the
+    register tells a consumer to take the executable and `SHA256SUMS`, and that
+    file takes all 22 assets including 65 MiB of herdr. ⛔ **Removing the fetch
+    would delete the only check anywhere that herdr four builds are signed and
+    match their digests**, and nothing would replace it, so it stays and says
+    why. ⭐ **What was missing was the other half**: nothing tested that the
+    SMALLER set the page describes is actually enough. A case now copies just
+    those two files into an empty directory, checks the digest the way a
+    consumer would, and RUNS the tool from there.
     directory finding 82 says was never analysed.
+
 ## Review findings
+⭐ **2026-09-17, the reviews of the second half.** The operator refused the
+handover, so these are reviews of the work that followed it.
+
+**Pass 1, the door sweep** - "what else reaches the host engine, the mutation
+harness and a guest failure message?" It enumerated by grep rather than from
+memory, and ⛔ **it is the only pass here that was turned into a CHECK.**
+`TestEveryEngineCallCarriesADeadline` reads `engine.go` and refuses a reach for
+the engine through the raw process helpers, and it found a SEVENTH call site on
+its first run, inside `podmanWorkingConnection`, which the sweep by hand had
+missed. ⭐ The same lens over `firstLine` found 29 error messages naming a
+wrapper line rather than the guest, where the record had counted 23.
+
+**Pass 2, the guard mutation** - "can each new guard actually fail?" 8 rows, 7
+red, each case green unmutated first. ⛔ **The eighth came back THEATRE and the
+code it guarded was DELETED**, which is finding 59 rather than a weak case: in
+every capture measured the noise a filter would skip comes BEFORE the error, so
+taking the last guest line already steps over it. ⭐ **And this pass improved
+the instrument it runs on**: the harness now runs a case unmutated first, which
+is finding 1 and the oldest in the record.
+
+**Pass 3, the claim audit** - "which sentence about to be published is not
+backed by an artefact?" ⛔ **Two failed, and one of them was a check written
+this session.** The interop guard asserted that a missing binfmt handler means
+interop is unavailable; `WSL-68` had measured the same reading as PRESENT on a
+distribution configured off and ABSENT on one configured on. The guard was
+removed rather than the measurement re-argued. ⚠ The second was the reporter in
+the mutation harness, which named `[no test files]` as the reason a case failed.
+
+**Pass 4, what the driven pass showed that the suite could not.** ⛔ **Four.**
+The interop check reporting the operator own base unusable, which only a run
+against a real base could show. The baseline flake, which only a 21-row pass
+could produce. The 122 MiB sweep, which only ran because the code ran. And
+`TestTheVerifierReadsTheDrivesItPromises` going red in `golang:1.25` while the
+local gate stayed green, because it skips on Windows.
+
+⚠ **What a pass with nothing to report would have needed.** None was quiet. The
+closest was the door sweep over the mutation harness: its three findings were
+already written down as 1, 32 and 41, so what it added was the reading that they
+live in one file and are one change rather than three.
 
 ⭐ **2026-09-17T14:42Z, the closing session's four reviews.** Each pass names
 what it looked at that the others did not.

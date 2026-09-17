@@ -21,6 +21,32 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-17
 
+### 2026-09-17T16:29:52Z: a deadline on every engine call, and the findings that had been listed rather than fixed
+
+**Record:** findings 90 to 99 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no. The next `wsl-toolkit-v*` tag carries it.
+
+⛔ **The session before this entry ended by handing the operator a list.** It had
+been told to finish every open task and it closed the entries, then printed a
+next prompt naming findings that had a named fix and no entry. That is the
+deferral the instruction forbade, and this entry is the work it should have
+done.
+
+⭐ **Every host-engine call is bounded at one door.** The deadline used to be
+chosen at each of seven call sites, and the largest was 30 minutes: a ceiling
+nobody would sit through, which is why a stalled `podman pull` cost 28 minutes.
+`engineCall` adds a STALL deadline beside the total, so a transfer that is
+moving is never stopped and one that has produced nothing for four minutes is
+given up, naming the stall.
+
+⭐ **The mutation harness asks what a case did BEFORE the mutation.** It saw red
+and reported "went red", so a case that was already failing certified every
+guard it was named by. That is finding 1, the oldest in the record.
+
+⛔ **One guard written this session was DELETED by the harness that proves
+them**, and one check was removed because driving it contradicted a measurement
+this repository already had. Both are recorded as what they are.
+
 ### 2026-09-17T15:43:52Z: the last two open entries close, and the tool watches a container
 
 **Record:** `WSL-59` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md),

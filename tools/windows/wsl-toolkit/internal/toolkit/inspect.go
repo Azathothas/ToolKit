@@ -313,8 +313,8 @@ func (r *Runner) machineFacts(ctx context.Context) (EngineFacts, *DiskUse, strin
 	script := engineInfoScript + "df -Pk " + shellQuote(guestHome) + " 2>/dev/null | tail -n +2 | head -1 || :\n"
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 3*time.Minute)
 	if err != nil || code != 0 {
-		return EngineFacts{Reason: firstLine(stderr + out)}, nil, guestHome,
-			fmt.Errorf("exit %d: %s", code, firstLine(stderr+out))
+		return EngineFacts{Reason: guestFailure(stderr, out)}, nil, guestHome,
+			fmt.Errorf("exit %d: %s", code, guestFailure(stderr, out))
 	}
 	facts, disk := parseMachineFacts(out)
 	if !facts.Reached {
@@ -413,7 +413,7 @@ func (r *Runner) inspectContainer(ctx context.Context, job *InspectedJob, since 
 		"podman ps -a --filter name=" + name + " --format '{{.Status}} {{.Image}}' 2>/dev/null || :\n"
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 3*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("exit %d: %s", code, firstLine(stderr+out))
+		return fmt.Errorf("exit %d: %s", code, guestFailure(stderr, out))
 	}
 	readEventSections(job, out)
 	sort.SliceStable(job.Events, func(i, j int) bool { return job.Events[i].At.Before(job.Events[j].At) })
@@ -482,7 +482,7 @@ done
 `, shellQuote(root), shellQuote(job.ID), shellQuote(root), shellQuote(job.ID))
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 3*time.Minute)
 	if err != nil || code != 0 {
-		return fmt.Errorf("exit %d: %s", code, firstLine(stderr+out))
+		return fmt.Errorf("exit %d: %s", code, guestFailure(stderr, out))
 	}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)

@@ -184,8 +184,8 @@
     {
       "label": "text-tool: only a --replace can leave a file unmatched",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif matches == 0 \u0026\u0026 (o.haveFind || o.haveInsertFind || o.haveBetween) {",
-      "replace": "\t\tif matches == 0 \u0026\u0026 false {",
+      "find": "\t\tif matches == 0 && (o.haveFind || o.haveInsertFind || o.haveBetween) {",
+      "replace": "\t\tif matches == 0 && false {",
       "run": "TestAFileThatMatchedNothingRefusesTheWholeCall",
       "module": "tools/text-tool",
       "args": []
@@ -242,6 +242,69 @@
       "replace": "\t\tif o.eol == \"keep\" && o.bom == \"keep\" && false {",
       "run": "TestTheEOLModeRefusesWhatItCannotDo",
       "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "a stalled engine call is given up, and reported as a stall",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/enginecall.go",
+      "find": "\tcase watch.Fired():",
+      "replace": "\tcase watch.Fired() && false:",
+      "run": "TestAStalledEngineCallIsGivenUpAndSaysSo",
+      "args": []
+    },
+    {
+      "label": "a stall and the total ceiling are told apart",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/enginecall.go",
+      "find": "\tcase watch.Elapsed() >= total:",
+      "replace": "\tcase watch.Elapsed() >= total && false:",
+      "run": "TestTheTotalCeilingAndTheStallAreToldApart",
+      "args": []
+    },
+    {
+      "label": "the caller's own cancellation is not blamed on the engine",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/enginecall.go",
+      "find": "\tcase callerErr != nil:",
+      "replace": "\tcase callerErr == nil && false:",
+      "run": "TestTheTotalCeilingAndTheStallAreToldApart",
+      "args": []
+    },
+    {
+      "label": "a zero-length write counts as a child that is still alive",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/enginecall.go",
+      "find": "\tw.watch.touch()\n\tif w.to == nil {",
+      "replace": "\tif len(p) > 0 {\n\t\tw.watch.touch()\n\t}\n\tif w.to == nil {",
+      "run": "TestTheStallWatchRecordsEveryWriteIncludingAnEmptyOne",
+      "args": []
+    },
+    {
+      "label": "a guest failure takes the LAST guest line, because a shell prints its reason last",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif len(lines) > 0 {\n\t\treturn lines[len(lines)-1]\n\t}",
+      "replace": "\tif len(lines) > 0 {\n\t\treturn lines[0]\n\t}",
+      "run": "TestAGuestFailureIsNamedByTheGuestsOwnLine",
+      "args": []
+    },
+    {
+      "label": "a host-wide repair names the other instances this tool manages",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif len(others) == 0 {\n\t\treturn \"\"\n\t}",
+      "replace": "\tif len(others) >= 0 {\n\t\treturn \"\"\n\t}",
+      "run": "TestAHostWideRepairNamesTheOtherInstances",
+      "args": []
+    },
+    {
+      "label": "the verifier reads the automount root from wsl.conf rather than hardcoding it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "[ -n \"$drive_root\" ] || drive_root=/mnt",
+      "replace": "drive_root=/mnt",
+      "run": "TestBothReadersOfTheAutomountRootAgree",
       "args": []
     },
     {
@@ -302,8 +365,8 @@
       "label": "the container probe never reaches for a podman events window it cannot answer",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/observe.go",
-      "find": "\t\t\"podman stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}' \" + n + \" 2\u003e/dev/null || printf '\\\\n'\\n\")",
-      "replace": "\t\t\"podman events --since 5m --until 0s \" + n + \" 2\u003e/dev/null || printf '\\\\n'\\n\")",
+      "find": "\t\t\"podman stats --no-stream --format '{{.CPUPerc}}|{{.MemUsage}}' \" + n + \" 2>/dev/null || printf '\\\\n'\\n\")",
+      "replace": "\t\t\"podman events --since 5m --until 0s \" + n + \" 2>/dev/null || printf '\\\\n'\\n\")",
       "run": "TestTheProbeNeverAsksPodmanForAWindowItCannotAnswer",
       "args": []
     },
@@ -311,7 +374,7 @@
       "label": "the consumer check refuses a run that did not reach every case it declares",
       "file": "internal/checks/consumer.go",
       "find": "\tif !rep.Complete {",
-      "replace": "\tif !rep.Complete \u0026\u0026 false {",
+      "replace": "\tif !rep.Complete && false {",
       "run": "TestAConsumerRunThatProvedNothingIsRefused",
       "module": "tools/check",
       "args": []
@@ -328,8 +391,8 @@
     {
       "label": "the consumer check refuses a failure count no detail row accounts for",
       "file": "internal/checks/consumer.go",
-      "find": "\tif rep.Failed \u003e named {",
-      "replace": "\tif rep.Failed \u003e named \u0026\u0026 false {",
+      "find": "\tif rep.Failed > named {",
+      "replace": "\tif rep.Failed > named && false {",
       "run": "TestAConsumerRunThatProvedNothingIsRefused",
       "module": "tools/check",
       "args": []
@@ -337,8 +400,8 @@
     {
       "label": "text-tool: --between needs --expect, like every other search",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif (o.haveFind || o.haveInsertFind || o.haveBetween) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {",
-      "replace": "\t\tif (o.haveFind || o.haveInsertFind) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {",
+      "find": "\t\tif (o.haveFind || o.haveInsertFind || o.haveBetween) && !o.haveExpect && !o.count {",
+      "replace": "\t\tif (o.haveFind || o.haveInsertFind) && !o.haveExpect && !o.count {",
       "run": "TestBetweenNeedsExpectLikeEveryOtherSearch",
       "module": "tools/text-tool",
       "args": []
@@ -346,8 +409,8 @@
     {
       "label": "text-tool: a --between says which lines it took, because a wrong range is still one match",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif r.Op == \"between\" \u0026\u0026 len(f.Lines) == 2 {",
-      "replace": "\t\tif false \u0026\u0026 len(f.Lines) == 2 {",
+      "find": "\t\tif r.Op == \"between\" && len(f.Lines) == 2 {",
+      "replace": "\t\tif false && len(f.Lines) == 2 {",
       "run": "TestBetweenSaysWhichLinesItTook",
       "module": "tools/text-tool",
       "args": []
@@ -356,7 +419,7 @@
       "label": "text-tool: the report names the operation that ran",
       "file": "internal/edit/apply.go",
       "find": "\tcase o.haveBetween:\n\t\treturn \"between\"",
-      "replace": "\tcase o.haveBetween \u0026\u0026 false:\n\t\treturn \"between\"",
+      "replace": "\tcase o.haveBetween && false:\n\t\treturn \"between\"",
       "run": "TestTheReportNamesTheOperationThatRan",
       "module": "tools/text-tool",
       "args": []
@@ -1051,7 +1114,7 @@
       "label": "the verdict a caller reads is the code the process returns",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/job.go",
-      "find": "\tcase j.ArtifactError != \"\":\n\t\t// \u26d4 The command succeeded and what it was asked to deliver did not\n\t\t// arrive. Exiting 0 here is how a green pipeline lost its build output.\n\t\treturn ExitFailed",
+      "find": "\tcase j.ArtifactError != \"\":\n\t\t// ⛔ The command succeeded and what it was asked to deliver did not\n\t\t// arrive. Exiting 0 here is how a green pipeline lost its build output.\n\t\treturn ExitFailed",
       "replace": "\tcase false:\n\t\treturn ExitFailed",
       "run": "TestVerdictCarriesWhatTheProcessReturns",
       "args": []
@@ -2518,7 +2581,7 @@
       "label": "bsd: the payload disk follows the root disk",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// \u26a0 AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
+      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
       "replace": "\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n",
       "run": "TestTheGuestBootsWithoutTheHyperVWait",
       "args": []
@@ -2554,8 +2617,8 @@
       "label": "bsd: a command's wait ends when the console closes",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\tcase <-g.gone:\n\t\t\t// \u26a0 One more look.",
-      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\t// \u26a0 One more look.",
+      "find": "\t\tcase <-g.gone:\n\t\t\t// ⚠ One more look.",
+      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\t// ⚠ One more look.",
       "run": "TestAGuestWhoseConsoleClosesIsNotWaitedOn",
       "args": []
     },
@@ -3382,7 +3445,7 @@
       "label": "base revoke: its help describing itself in grant's words",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_base_grant.go",
-      "find": "\tif sub == \"revoke\" {\n\t\tsourceHelp = \"\u26d4 not for revoke: name the grant by --target, where the base sees it\"\n\t\ttargetHelp = \"the /workspaces path of the grant to take away\"\n\t\tmodeHelp = \"\u26d4 not for revoke: a grant is taken away whatever its mode\"\n\t}\n",
+      "find": "\tif sub == \"revoke\" {\n\t\tsourceHelp = \"⛔ not for revoke: name the grant by --target, where the base sees it\"\n\t\ttargetHelp = \"the /workspaces path of the grant to take away\"\n\t\tmodeHelp = \"⛔ not for revoke: a grant is taken away whatever its mode\"\n\t}\n",
       "replace": "",
       "run": "TestRevokeHelpDoesNotDescribeItselfAsGrant",
       "args": []
@@ -3606,8 +3669,8 @@
     {
       "label": "text: a match count that is not what the caller expected is refused",
       "file": "internal/edit/edit.go",
-      "find": "\tif o.haveExpect \u0026\u0026 rep.Matches != o.expect {\n",
-      "replace": "\tif o.haveExpect \u0026\u0026 rep.Matches \u003c o.expect {\n",
+      "find": "\tif o.haveExpect && rep.Matches != o.expect {\n",
+      "replace": "\tif o.haveExpect && rep.Matches < o.expect {\n",
       "run": "TestASubstitutionThatMatchesADifferentNumberOfTimesIsRefused",
       "module": "tools/text-tool",
       "args": []
@@ -3615,8 +3678,8 @@
     {
       "label": "text: a substitution with no expected count is refused",
       "file": "internal/edit/edit.go",
-      "find": "\t\tif (o.haveFind || o.haveInsertFind || o.haveBetween) \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count {\n",
-      "replace": "\t\tif false \u0026\u0026 !o.haveExpect \u0026\u0026 !o.count \u0026\u0026 o.haveBetween {\n",
+      "find": "\t\tif (o.haveFind || o.haveInsertFind || o.haveBetween) && !o.haveExpect && !o.count {\n",
+      "replace": "\t\tif false && !o.haveExpect && !o.count && o.haveBetween {\n",
       "run": "TestASubstitutionWithoutExpectIsRefused",
       "module": "tools/text-tool",
       "args": []

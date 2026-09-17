@@ -124,7 +124,7 @@ func classifyWslFailure(out, stderr string, err error) error {
 	joined := strings.ToLower(out + " " + stderr)
 	for _, marker := range deniedMarkers {
 		if strings.Contains(joined, marker) {
-			return fmt.Errorf("%w: %s", ErrWslDenied, strings.TrimSpace(firstLine(out+stderr)))
+			return fmt.Errorf("%w: %s", ErrWslDenied, strings.TrimSpace(guestFailure(out, stderr)))
 		}
 	}
 	return err
@@ -296,7 +296,7 @@ func (w *Wsl) importDistro(ctx context.Context, name, dir, tarball string) error
 	defer cancel()
 	out, stderr, err := Output(bounded, w.Path, "--import", name, dir, tarball, "--version", "2")
 	if err != nil {
-		return fmt.Errorf("wsl --import failed: %w: %s", classifyWslFailure(out, stderr, err), firstLine(out+stderr))
+		return fmt.Errorf("wsl --import failed: %w: %s", classifyWslFailure(out, stderr, err), guestFailure(out, stderr))
 	}
 	return nil
 }

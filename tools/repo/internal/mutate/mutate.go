@@ -48,6 +48,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // Mutation is one claim: remove this, and that test fails.
@@ -127,11 +128,15 @@ func Run(root string, t *Table, only string, w io.Writer) ([]Verdict, error) {
 		}
 	}
 	var out []Verdict
+	// ⛔ SWEPT BEFORE ANYTHING IS STAGED, because a killed run leaves its copy
+	// behind and nothing else collects it. Finding 32.
+	sweepStaleCopies(w)
+	base := &baselines{seen: map[string]baseline{}}
 	for _, m := range t.Mutations {
 		if only != "" && !strings.Contains(m.Label, only) {
 			continue
 		}
-		v := one(root, m)
+		v := one(root, m, base)
 		out = append(out, v)
 		switch v.State {
 		case "ok":
@@ -150,8 +155,33 @@ func Run(root string, t *Table, only string, w io.Writer) ([]Verdict, error) {
 	return out, nil
 }
 
-// one copies the module, applies the change, and asks the named cases.
-func one(root string, m Mutation) Verdict {
+// baselines remembers whether a row's cases pass UNMUTATED, keyed by the module
+// and the -run pattern, so a table where twenty rows name one case pays for it
+// once rather than twenty times.
+type baselines struct {
+	seen map[string]baseline
+}
+
+type baseline struct {
+	green   bool
+	cases   int
+	skipped int
+	why     string
+}
+
+func (b *baselines) key(m Mutation) string {
+	return m.Module + "\x00" + m.Run + "\x00" + strings.Join(m.Args, "\x1f")
+}
+
+// one copies the module, runs the named cases UNMUTATED, applies the change,
+// and asks them again.
+//
+// ⛔ THE UNMUTATED RUN IS FINDING 1, AND IT IS THE OLDEST IN THE RECORD. Without
+// it a case that was ALREADY FAILING reported "went red" when the guard was
+// removed, because the harness only ever saw red and never asked what red meant.
+// That is a harness certifying a guard it never tested, which is the exact class
+// this harness exists to catch, in the instrument that catches it.
+func one(root string, m Mutation, base *baselines) Verdict {
 	v := Verdict{Label: m.Label, State: "BROKEN"}
 
 	tmp, err := os.MkdirTemp("", "mutate-")
@@ -163,6 +193,15 @@ func one(root string, m Mutation) Verdict {
 	dest := filepath.Join(tmp, "t")
 	if err := copyTree(filepath.Join(root, filepath.FromSlash(m.Module)), dest); err != nil {
 		v.Reason = "the module could not be copied: " + err.Error()
+		return v
+	}
+
+	// ⛔ UNMUTATED FIRST, AND THE ROW IS REFUSED IF IT IS NOT GREEN. Finding 1.
+	// A case already red reports "went red" the moment a guard is deleted, and
+	// there is no way to tell that from a guard that works.
+	if b := base.of(dest, m); !b.green {
+		v.Cases, v.Skipped = b.cases, b.skipped
+		v.Reason = "the case was not green BEFORE the mutation: " + b.why
 		return v
 	}
 
@@ -186,8 +225,13 @@ func one(root string, m Mutation) Verdict {
 	}
 
 	if out, err := run(dest, "go", "build", "./..."); err != nil {
-		v.Reason = "does not compile"
-		_ = out
+		// ⛔ THE COMPILER'S OWN FIRST LINE, BECAUSE THE ROW IS WHAT HAS TO BE
+		// REWRITTEN. This said "does not compile" and discarded the reason, so a
+		// session met a verdict that is neither red nor green with nothing to act
+		// on. Finding 41: met three times in one day, every time because deleting
+		// a guard left the variable it read unused, which a row can avoid by
+		// comparing against a value the setting never takes.
+		v.Reason = "the MUTATED module does not compile, so this row proves nothing: " + buildFailure(out)
 		return v
 	}
 
@@ -212,6 +256,146 @@ func one(root string, m Mutation) Verdict {
 	return v
 }
 
+// of runs the row's cases in an UNMUTATED copy, once per module and pattern.
+//
+// ⚠ IT COSTS ONE EXTRA TEST RUN PER DISTINCT PATTERN, not per row. The table
+// holds hundreds of rows over a few dozen patterns, so the run this adds is a
+// fraction of the pass rather than a doubling of it.
+func (b *baselines) of(dest string, m Mutation) baseline {
+	k := b.key(m)
+	if got, ok := b.seen[k]; ok {
+		return got
+	}
+	args := append([]string{"test", "./...", "-run", m.Run, "-count=1", "-v"}, m.Args...)
+	out, err := run(dest, "go", args...)
+	if err != nil {
+		// ⛔ ONE RETRY, AND ONLY ON A FAILURE. Measured on 2026-09-17: a
+		// baseline failed once inside a 21-row pass and passed alone moments
+		// later, with no code between the two runs. The staging churns a
+		// temporary directory hard - a copy per row, and the sweep removing
+		// 122 MiB of an abandoned one - and a Windows delete is asynchronous,
+		// so a transient failure there turns a GOOD row into BROKEN.
+		//
+		// ⭐ IT CANNOT MASK A RED CASE. A case that genuinely fails, fails both
+		// times; retrying a negative only discards a flake. Retrying a PASS
+		// would be the dangerous direction and is not done.
+		out, err = run(dest, "go", args...)
+	}
+	got := baseline{
+		cases:   len(runLine.FindAllString(out, -1)),
+		skipped: len(skipLine.FindAllString(out, -1)),
+	}
+
+	switch {
+	case got.cases == 0:
+		// ⛔ NAMED HERE RATHER THAN AFTER THE MUTATION. A pattern that matches
+		// nothing is a row pointing at a case that has been renamed or deleted,
+		// and finding that out before the mutation says so plainly.
+		got.why = fmt.Sprintf("0 cases matched %q, so this row names no test", m.Run)
+	case err != nil:
+		got.why = "it fails unmutated, TWICE: " + testFailure(out)
+	default:
+		got.green = true
+	}
+	b.seen[k] = got
+	return got
+}
+
+// buildFailure and testFailure pick the line worth reporting out of a
+// toolchain's output.
+//
+// ⛔ THE FIRST REAL LINE, NOT THE LAST. `go build` prints the package header
+// first and the error under it, and `go test` ends with a summary that says
+// only FAIL. A reader needs the line naming the file.
+func buildFailure(out string) string { return firstUseful(out, "#") }
+
+func testFailure(out string) string { return firstUseful(out, "") }
+
+// noise are the lines a toolchain prints that say nothing about a failure.
+//
+// ⛔ `?   pkg [no test files]` IS THE ONE THAT CAUGHT THIS OUT. It is the first
+// line `go test ./...` prints for a module whose root package holds no tests,
+// so a reporter taking the first line reported it as the reason a case failed,
+// over a real failure forty lines below. A reason that names the wrong thing
+// sends a reader to the wrong file, which is worse than no reason.
+var noise = []string{"=== RUN", "--- PASS", "=== CONT", "=== PAUSE", "?   ", "ok  ", "--- SKIP"}
+
+func firstUseful(out, skipPrefix string) string {
+	for _, ln := range strings.Split(out, "\n") {
+		ln = strings.TrimSpace(strings.TrimRight(ln, "\r"))
+		if ln == "" || ln == "FAIL" || ln == "PASS" {
+			continue
+		}
+		if skipPrefix != "" && strings.HasPrefix(ln, skipPrefix) {
+			continue
+		}
+		skip := false
+		for _, n := range noise {
+			if strings.HasPrefix(ln, strings.TrimSpace(n)) {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		if len(ln) > 200 {
+			ln = ln[:200] + "..."
+		}
+		return ln
+	}
+	return "the toolchain said nothing"
+}
+
+// sweepStaleCopies removes staged module copies that an earlier run was KILLED
+// before it could clean up.
+//
+// ⛔ FINDING 32. `one` stages with os.MkdirTemp and removes it with a defer,
+// which a killed process never runs, so the copy survives in whatever TEMP
+// named at the time. One was measured at 127 MiB, sitting since 2026-09-14.
+// `wsl-toolkit gc` does not cover it, because the directory is not that tool's
+// job state.
+//
+// ⚠ AN AGE THRESHOLD, because a concurrent run's copy is live. Anything this
+// process did not make and has not been touched for an hour was left behind.
+func sweepStaleCopies(w io.Writer) {
+	dir := os.TempDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	removed, bytes := 0, int64(0)
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "mutate-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < time.Hour {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		size := treeSize(p)
+		if err := os.RemoveAll(p); err != nil {
+			continue
+		}
+		removed++
+		bytes += size
+	}
+	if removed > 0 && w != nil {
+		fmt.Fprintf(w, "  swept %d staged cop(y/ies) a killed run left behind, %d MiB\n", removed, bytes>>20)
+	}
+}
+
+func treeSize(root string) int64 {
+	var total int64
+	_ = filepath.Walk(root, func(_ string, info os.FileInfo, err error) error {
+		if err == nil && info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	return total
+}
 func run(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir

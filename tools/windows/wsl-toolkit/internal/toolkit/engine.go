@@ -73,13 +73,14 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 // recognises is passed through rather than guessed at, so the engine refuses it
 // by name instead of this code inventing one.
 func (e *Engine) readArch(ctx context.Context) (string, error) {
-	bounded, cancel := context.WithTimeout(ctx, 90*time.Second)
-	defer cancel()
 	field := "{{.Host.Arch}}"
 	if e.Name == "docker" {
 		field = "{{.Architecture}}"
 	}
-	out, stderr, err := Output(bounded, e.Path, "info", "--format", field)
+	// ⚠ 90 SECONDS RATHER THAN THE DEFAULT, and it is a measurement: `info` on
+	// a machine that has just started is the slowest question this tool asks.
+	out, stderr, err := (engineCall{Timeout: 90 * time.Second, What: e.Name + " info"}).
+		run(ctx, e.Path, "info", "--format", field)
 	if err != nil {
 		return "", fmt.Errorf("%s info --format %s: %w: %s", e.Name, field, err, firstLine(stderr))
 	}
@@ -114,8 +115,6 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	if err := ValidateImageRef(ref); err != nil {
 		return err
 	}
-	pullCtx, cancelPull := context.WithTimeout(ctx, 30*time.Minute)
-	defer cancelPull()
 	log(fmt.Sprintf("pulling %s for %s", ref, e.Platform()))
 	// ⛔ NEVER EMIT NOTHING: RENDER SILENCE, WITH A TIME ON IT. The pull is
 	// bounded at thirty minutes above, which is the right ceiling and the whole
@@ -129,30 +128,37 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	// a 25-second window; the same pull, run again minutes later, finished in
 	// 221 seconds. The stall is not reproducible and is not diagnosed. The
 	// silence was ours, and this is WSL-18's own rule applied where it was not.
-	stopBeat := beat(pullCtx, log, "still pulling "+ref)
-	out, stderr, err := Output(pullCtx, e.Path, "pull", "--platform", e.Platform(), ref)
+	stopBeat := beat(ctx, log, "still pulling "+ref)
+	// ⭐ THE STALL DEADLINE IS WHAT CATCHES A HANG. The total ceiling has to be
+	// set for the worst legitimate pull, which makes it useless against a pull
+	// that has simply stopped; this one asks whether anything arrived recently.
+	out, stderr, err := (engineCall{
+		Timeout: EngineTransferTimeout, Stall: EngineStallTimeout,
+		What: e.Name + " pull " + ref,
+	}).run(ctx, e.Path, "pull", "--platform", e.Platform(), ref)
 	stopBeat()
 	if err != nil {
-		return fmt.Errorf("%s pull %s: %w: %s", e.Name, ref, err, firstLine(out+stderr))
+		return fmt.Errorf("%s pull %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
 	}
 
-	createCtx, cancelCreate := context.WithTimeout(ctx, 5*time.Minute)
-	defer cancelCreate()
-	out, stderr, err = Output(createCtx, e.Path, "create", "--platform", e.Platform(), ref)
+	out, stderr, err = (engineCall{Timeout: 5 * time.Minute, What: e.Name + " create " + ref}).
+		run(ctx, e.Path, "create", "--platform", e.Platform(), ref)
 	if err != nil {
-		return fmt.Errorf("%s create %s: %w: %s", e.Name, ref, err, firstLine(out+stderr))
+		return fmt.Errorf("%s create %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
 	}
 	id := strings.TrimSpace(firstLine(out))
 	if id == "" {
 		return fmt.Errorf("%s create %s printed no container id", e.Name, ref)
 	}
 	defer func() {
-		rmCtx, cancelRm := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
-		defer cancelRm()
 		// The container is this function's to remove and nothing else reads it,
 		// so a failure here is reported and does not change the export's
 		// verdict. It is discarded explicitly rather than by omission.
-		if _, _, rmErr := Output(rmCtx, e.Path, "rm", "-f", id); rmErr != nil {
+		//
+		// ⚠ WithoutCancel, because the caller's context may already have ended
+		// and this cleanup still has to run; the deadline is the engine call's.
+		if _, _, rmErr := (engineCall{What: e.Name + " rm " + id}).
+			run(context.WithoutCancel(ctx), e.Path, "rm", "-f", id); rmErr != nil {
 			log("could not remove the export container " + id + ": " + rmErr.Error())
 		}
 	}()
@@ -162,15 +168,18 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	if err != nil {
 		return err
 	}
-	exportCtx, cancelExport := context.WithTimeout(ctx, 30*time.Minute)
-	defer cancelExport()
 	errBuf := &boundedBuffer{max: 64 << 10}
-	cmd := newCommand(exportCtx, e.Path, "export", id)
-	runErr := runCommand(exportCtx, cmd, nil, f, errBuf)
+	// ⭐ THE EXPORT GETS THE STALL DEADLINE TOO. It is the other call here that
+	// moves bytes for minutes, and a rootfs export that stops is exactly as
+	// invisible as a pull that stops.
+	runErr := (engineCall{
+		Timeout: EngineTransferTimeout, Stall: EngineStallTimeout,
+		What: e.Name + " export " + id[:min(12, len(id))],
+	}).runStream(ctx, f, errBuf, e.Path, "export", id)
 	closeErr := f.Close()
 	if runErr != nil {
 		_ = os.Remove(tarPath)
-		return fmt.Errorf("%s export %s: %w: %s", e.Name, id, runErr, firstLine(errBuf.String()))
+		return fmt.Errorf("%s export %s: %w: %s", e.Name, id, runErr, guestFailure(errBuf.String()))
 	}
 	if closeErr != nil {
 		return closeErr
@@ -373,7 +382,7 @@ func podmanHint(running bool, machine, conn string) string {
 
 // podmanMachineRunning reports whether any machine is running, and its name.
 func podmanMachineRunning(ctx context.Context, exe string) (bool, string) {
-	out, _, err := Output(ctx, exe, "machine", "list", "--format", "{{.Name}} {{.Running}}")
+	out, _, err := (engineCall{What: "podman machine list"}).run(ctx, exe, "machine", "list", "--format", "{{.Name}} {{.Running}}")
 	if err != nil {
 		return false, ""
 	}
@@ -392,7 +401,7 @@ func podmanMachineRunning(ctx context.Context, exe string) (bool, string) {
 // as present says nothing about whether the socket behind it is served, which is
 // the entire failure being diagnosed.
 func podmanWorkingConnection(ctx context.Context, exe string) string {
-	out, _, err := Output(ctx, exe, "system", "connection", "list", "--format", "{{.Name}}")
+	out, _, err := (engineCall{What: "podman system connection list"}).run(ctx, exe, "system", "connection", "list", "--format", "{{.Name}}")
 	if err != nil {
 		return ""
 	}
@@ -401,9 +410,11 @@ func podmanWorkingConnection(ctx context.Context, exe string) string {
 		if name == "" || strings.EqualFold(name, "name") {
 			continue
 		}
-		probe, cancel := context.WithTimeout(ctx, 15*time.Second)
-		_, _, probeErr := Output(probe, exe, "--connection", name, "info", "--format", "{{.Host.Arch}}")
-		cancel()
+		// ⚠ FIFTEEN SECONDS, NOT THE DEFAULT. This runs once per registered
+		// connection while the engine is already known to be broken, so a
+		// diagnosis over four dead connections must not cost four ceilings.
+		_, _, probeErr := (engineCall{Timeout: 15 * time.Second, What: "podman --connection " + name + " info"}).
+			run(ctx, exe, "--connection", name, "info", "--format", "{{.Host.Arch}}")
 		if probeErr == nil {
 			return name
 		}

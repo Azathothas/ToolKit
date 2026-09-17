@@ -199,7 +199,7 @@ func (r *Runner) runningContainers(ctx context.Context) (map[string]bool, error)
 	script := "podman ps --filter label=" + JobLabel + " --format '{{.Names}}' 2>/dev/null || :\n"
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 2*time.Minute)
 	if err != nil || code != 0 {
-		return nil, fmt.Errorf("could not ask the engine what is running (exit %d): %s", code, firstLine(stderr+out))
+		return nil, fmt.Errorf("could not ask the engine what is running (exit %d): %s", code, guestFailure(stderr, out))
 	}
 	running := map[string]bool{}
 	for _, line := range strings.Split(out, "\n") {
@@ -338,7 +338,7 @@ func (r *Runner) applyGuestCleanup(ctx context.Context, plan *CleanupPlan, root 
 		}
 	}
 	if err != nil || code != 0 {
-		return fmt.Errorf("cleanup in the guest exited %d: %s", code, firstLine(stderr+out))
+		return fmt.Errorf("cleanup in the guest exited %d: %s", code, guestFailure(stderr, out))
 	}
 	if !strings.Contains(out, "cleanup-complete") {
 		return fmt.Errorf("cleanup exited 0 without reaching its last line")
