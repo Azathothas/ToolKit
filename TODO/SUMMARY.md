@@ -7,18 +7,18 @@ on what was true last time.
 
 ---
 
-## 2026-09-17, the last doors a zero-grant base had, and two agents driven onto one base
+## 2026-09-17, the last doors a zero-grant base had, and three agents driven through herdr
 
 | row | before | after |
 | --- | --- | --- |
 | Elapsed | started 2026-09-17T02:52:40Z | the record commit's own time is its end |
-| Commits | `485252c`, tree **DIRTY** with the last session's two uncommitted wording corrections, its CI run 35070882239 green | **5**: `a19926c` the doors command, `ef0dd2f` the shared tmpfs, `0d4d66f` the private namespace, `c68ca25` a teardown, and this record commit. ⭐ Each pushed only after the previous one's CI was green. ⛔ **`c68ca25` is RED on CI** over a case of mine that only runs on Windows, fixed in this commit; finding 42 |
-| Work | 7 open entries; `WSL-68` with **four** remaining items, `WSL-88` and `WSL-89` written and never run | ⭐ **Partial 3.** `WSL-68`: all four remaining items attacked, three delivered whole, the fourth deferred by the operator. `WSL-88` and `WSL-89`: both adapters DRIVEN on one base with herdr. **Completed 0. Failed 0.** ⛔ **None of the three closes**, each on one condition: an interactive attach for `WSL-68`, a provider credential for the two adapters. Entries 125 to 125, open 7 to 7, done 118 to 118 |
-| Changes | 0 files changed from `485252c` | `git diff --shortstat 485252c` reads **31 files, +3,407 / -55**, ten of them new |
-| Size | 98,840 text lines in 315 tracked files | **102,192 in 324 files, +3,352**, by `git grep -I -c` |
-| Checks | doctor exit 0 in 55 s; gate 21 of 21 in 70 s | gate 21 of 21, exit 0, green before every commit. Windows Go **363 top-level results, 343 passed, 20 skipped, 0 failed**; `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 clean over **49** scripts. **15 new mutation rows**, 312 to **327**, all fifteen red, each green unmutated first. ⛔ CI caught one case of mine that only runs on Windows; finding 42 |
-| Cost | no paid operation authorized | no paid operation. Eleven container runs; three throwaway base builds; the podman machine started and stopped; two npm packages and one distribution package installed in a throwaway. No download piped to a shell, no release, no workflow dispatched |
-| Health | five distributions; `WSL-88` and `WSL-89` written and never run | ⭐ the same five registered, none added or removed: both throwaway bases were built under `.tmp` and removed, and `podman-machine-default` was started to export rootfs and stopped. `base doors`, `base.shared_tmpfs`, `--private-net` and `separate_agent_dir` are new surfaces. **Findings 37 to 42 opened**; four record self-contradictions corrected; four rulings recorded, 16 to 21. Tree clean, no tag, no BSD image, the operator's base and herdr workspace `w2` untouched |
+| Commits | `485252c`, tree **DIRTY** with the last session's two uncommitted wording corrections, its CI run 35070882239 green | **10**, all pushed. ⚠ `c68ca25` went RED on CI over a case of mine that only runs on Windows; `9e1e56e` fixed it and `0c04f98` is green. Finding 42 |
+| Work | 7 open entries; `WSL-68` with four remaining items; `WSL-88` and `WSL-89` written and never run | ⭐ **Completed 2**, `WSL-88` and `WSL-89`, every condition driven on the operator's own base. **Partial 3:** `WSL-68` three of four items, the fourth deferred by the operator; `WSL-76` and `WSL-78` both acceptances driven. **Failed 0.** Entries 125 to 125, open 7 to **5**, done 118 to **120**, verified with `check-record.sh` |
+| Changes | 0 files changed from `485252c` | `git diff --shortstat 485252c..HEAD` reads **41 files, +4,165 / -75**, eleven of them new |
+| Size | 98,840 text lines in 315 tracked files | **102,930 in 324 files, +4,090**, by `git grep -I -c` |
+| Checks | doctor exit 0 in 55 s; gate 21 of 21 in 70 s | gate 21 of 21, exit 0, green before every commit. Windows Go **365 top-level results, 345 passed, 20 skipped, 0 failed**; `check-go.sh` exit 0 in `golang:1.25`; ShellCheck 0.9.0 clean over **49** scripts. **15 new mutation rows**, 312 to **327**, all red, each green unmutated first |
+| Cost | no paid operation authorized | no paid operation by this session. Sixteen container runs; three throwaway base builds, all removed; the podman machine started and stopped. ⚠ **The operator's own subscriptions were spent**: three agents each ran a prompt through their providers |
+| Health | five distributions; `WSL-88` and `WSL-89` written and never run | ⭐ the same five registered, none added or removed. The operator's base gained pi, omp, bubblewrap and bun, and all four adapters read healthy. **Findings 37 to 52 opened**, six rulings recorded, 16 to 21. ⛔ **One of those findings is a defect this session shipped into their live base**: the Muse trust store was written in an invented shape and Muse refused to start until it was restored. Tree clean, no tag |
 
 ### What was asked, and what happened
 
@@ -67,10 +67,22 @@ on what was true last time.
 | finish the herdr/muse/pi/omp work | ⭐ **pi and omp are DRIVEN**, on one base with herdr. ⛔ **Muse is not**: `WSL-76` and `WSL-78` need `muse login`, which is yours, and nothing in them moved |
 | `WSL-89`'s collision refusal | ⛔ **it could never fire**, on any base, ever. It read the account's environment under `env -i`, which clears it. It fires now, and the opt-in separates instead when asked |
 
+### And then the agents, once the operator signed in
+
+| asked | outcome |
+| --- | --- |
+| install and set up pi and omp here, then drive muse via pi and omp through herdr | ⭐ **done.** All four adapters healthy in the operator's base; all three agents answered  through .  and  closed |
+| stop asking my agents about workspace trust | ⭐ done, for the account's home and each configured grant and nothing else. ⛔ **It shipped broken first** and Muse would not start until the store was restored; finding 47 |
+| `base shell` should use bash with a proper login shell | ⭐ done, three arms, all driven. ⚠ Only `base shell` chooses; the account's shell is still `/bin/sh`, so herdr panes and `base exec` still land in sh. Finding 44 |
+| why does `--instance base base shell` say base twice | answered: an instance name meeting a command group, with `WSL_TOOLKIT_INSTANCE` as the documented way out. Finding 45 |
+| ensure future agents do not fall into the PATH trap | ⭐ done: a wrapper on the system PATH, a probe that reads the name back on a LOGIN shell, and the contract in `adapters/README.md`. ⛔ The first guard was theatre. Finding 49 |
+| adopt the issue 30 bashrc list, and errandsh | ⛔ **not done, and not started.** `errandsh` is a Python file rather than a shell rc, so adopting it means extracting its ideas into `scripts/common/shell-profile.sh` under `WSL-71`'s constraints. It is the next unit of work |
+
 ### Resume point
 
-Read [`PROGRESS.md`](PROGRESS.md) first. The operator's two steps and the new question 3,
-then `WSL-68`'s last piece, which needs none of them.
+Read [`PROGRESS.md`](PROGRESS.md) first. ⭐ **Nothing waits on the operator any more.**
+The shell profile work they asked for is unstarted; `WSL-76` and `WSL-78` each owe one
+small thing; `WSL-68` is deferred and `WSL-90` waits on ruling 6.
 
 ---
 
