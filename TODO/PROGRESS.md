@@ -274,6 +274,10 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
   red, in three runs, and every case was green unmutated first - which finding 1 says
   `repo mutate` does not do for itself. ⚠ Three rows reported `BROKEN, does not
   compile` before they were rewritten; finding 41.
+- ⭐ **The throwaway base `wsl-toolkit-b68b` was built under `.tmp` and removed**, with
+  its 1.2 GiB, and `podman-machine-default` was started to export a rootfs and stopped
+  again. Five registered distributions at the start and five at the end. ⚠ Rebuilding it
+  takes 110 s and its configuration is in the entry.
 - ⚠ **`wsl --shutdown` was run twice**, to measure the interop handler across utility-VM
   lifetimes. It stopped every distribution, which is what the manual says it does; all
   five were Stopped at the start of this session and none was started by it except
