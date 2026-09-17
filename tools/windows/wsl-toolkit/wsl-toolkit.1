@@ -256,16 +256,16 @@ prove the helper refusal for a grant
 write a structured answer
 .TP
 \fB--mode\fR
-ro or rw. Default ro
+⛔ not for revoke: a grant is taken away whatever its mode
 .TP
 \fB--source\fR
-the Windows directory to grant
+⛔ not for revoke: name the grant by --target, where the base sees it
 .TP
 \fB--target\fR
-where the base sees it, under /workspaces. Default /workspaces/ and the directory's name
+the /workspaces path of the grant to take away
 .TP
 \fB--via-helper\fR
-prove the helper refusal for a grant
+prove the helper refusal for a revoke
 .TP
 .B wsl-toolkit base attach
 .TP

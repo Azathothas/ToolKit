@@ -36,11 +36,27 @@ type baseGrantAnswer struct {
 // restart ends every agent in the base. WSL-75.
 func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	fs := newFlagSet("base " + sub)
-	source := fs.String("source", "", "the Windows directory to grant")
-	target := fs.String("target", "", "where the base sees it, under /workspaces. Default /workspaces/ and the directory's name")
-	mode := fs.String("mode", "", "ro or rw. Default ro")
+	// ⛔ REVOKE DOES NOT DESCRIBE ITSELF IN GRANT'S WORDS. Both register one flag set,
+	// so `base revoke --help` used to answer "--source: the Windows directory to grant"
+	// over a command that REFUSES --source, and the help sent a reader straight into
+	// the refusal. Found by writing the guide from the help and then running it.
+	//
+	// ⚠ THE FLAGS STAY REGISTERED FOR REVOKE ON PURPOSE. Dropping them would turn its
+	// own refusal, which names --target and says why, into an unknown-flag error, and
+	// that refusal is the one a caller who guessed --source should meet.
+	sourceHelp := "the Windows directory to grant"
+	targetHelp := "where the base sees it, under /workspaces. Default /workspaces/ and the directory's name"
+	modeHelp := "ro or rw. Default ro"
+	if sub == "revoke" {
+		sourceHelp = "⛔ not for revoke: name the grant by --target, where the base sees it"
+		targetHelp = "the /workspaces path of the grant to take away"
+		modeHelp = "⛔ not for revoke: a grant is taken away whatever its mode"
+	}
+	source := fs.String("source", "", sourceHelp)
+	target := fs.String("target", "", targetHelp)
+	mode := fs.String("mode", "", modeHelp)
 	asJSON := fs.Bool("json", false, "write a structured answer")
-	viaHelper := fs.Bool("via-helper", false, "prove the helper refusal for a grant")
+	viaHelper := fs.Bool("via-helper", false, "prove the helper refusal for a "+sub)
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}

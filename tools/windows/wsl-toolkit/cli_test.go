@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -820,4 +821,44 @@ func TestBaseShellPrefersBashAsALoginShell(t *testing.T) {
 	if n := strings.Count(src, " -l; fi;") + strings.Count(src, "exec /bin/sh -l`)"); n < 2 {
 		t.Errorf("the shell selection has %d login arms, want every arm to carry -l", n)
 	}
+}
+
+// ⛔ REVOKE MUST NOT DESCRIBE ITSELF IN GRANT'S WORDS. `base revoke --help` answered
+// "--source: the Windows directory to grant" over a command that REFUSES --source, so
+// the help sent a reader into the refusal. Found on 2026-09-17 by writing the guide
+// from the help and then running what it said.
+func TestRevokeHelpDoesNotDescribeItselfAsGrant(t *testing.T) {
+	grant := flagHelpFor(t, "grant")
+	revoke := flagHelpFor(t, "revoke")
+	if !strings.Contains(grant, "the Windows directory to grant") {
+		t.Fatalf("base grant's own wording is gone:\n%s", grant)
+	}
+	for _, phrase := range []string{"directory to grant", "ro or rw"} {
+		if strings.Contains(revoke, phrase) {
+			t.Fatalf("base revoke's help still carries grant's wording %q:\n%s", phrase, revoke)
+		}
+	}
+	// ⭐ And it says what revoke actually takes.
+	if !strings.Contains(revoke, "the /workspaces path of the grant to take away") {
+		t.Fatalf("base revoke's help does not say what --target is:\n%s", revoke)
+	}
+}
+
+// flagHelpFor runs one base subcommand's flag help and returns it.
+func flagHelpFor(t *testing.T, sub string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	done := make(chan struct{})
+	go func() { _, _ = buf.ReadFrom(r); close(done) }()
+	_, _ = cmdBaseGrant(context.Background(), sub, []string{"--help"})
+	_ = w.Close()
+	os.Stderr = old
+	<-done
+	return buf.String()
 }

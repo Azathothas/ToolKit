@@ -132,6 +132,54 @@ it.
 
 ---
 
+## ⭐ Starting an agent, and reading what it says
+
+```powershell
+$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$pane = $made.result.root_pane.pane_id
+wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $pane --timeout 120000
+```
+
+| part | what it is |
+| --- | --- |
+| the first argument | the NAME you will address the agent by. ⛔ It must be free: a second start under a name in use answers `agent_name_taken` and names the pane holding it |
+| `--kind` | which agent this is. herdr's list includes `muse`, `pi` and `omp` |
+| `--pane` | a pane already at its interactive shell prompt |
+| `--timeout` | how long to wait for readiness. Default 30000 ms, maximum 300000 |
+
+⭐ **The name is also the target of every later command**, so `agent prompt`,
+`agent read` and `agent wait` all take it:
+
+```powershell
+wsl-toolkit --instance base base herdr -- agent prompt work "summarise what you just changed"
+wsl-toolkit --instance base base herdr -- agent read work --source recent --lines 40
+```
+
+⭐ **`agent read` is how you check what an agent is really doing**, including which
+model and effort it started on. Each agent prints that in its own status line:
+
+| agent | what its status line reads |
+| --- | --- |
+| muse | `muse-spark-1.3-contributor · max · ~` |
+| pi | `(muse-gateway) muse-spark-1.3-contributor • max` |
+| omp | `◕ Muse Spark 1.3 Contributor` |
+
+⛔ **Read it back rather than trusting the configuration.** Both pi failures found on
+2026-09-17 - a model it could not resolve, and an effort it clamped - looked correct in
+every file and wrong in that one line.
+
+⭐ **herdr has full lifecycle authority over pi and omp**, so their state comes from the
+agent rather than from a guess about its screen:
+
+```powershell
+wsl-toolkit --instance base base herdr -- agent explain work
+```
+
+It answers `screen_detection_skip_reason: full_lifecycle_hook_authority` for those two.
+Muse reports through the hook this tool's `muse` adapter installs.
+
+---
+
 ## ⛔ Four traps this tool's shape walks into
 
 1. ⛔ **tmux inside a herdr pane hides the agent.** herdr's agents page: detection

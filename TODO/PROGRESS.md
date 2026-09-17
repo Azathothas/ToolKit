@@ -822,6 +822,19 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     delete the redundancy rather than to strengthen the case. A guard that cannot be
     made to matter is not a guard.
 
+60. ⛔ **`base revoke --help` DESCRIBED ITSELF IN `base grant`'S WORDS.** Both subcommands
+    register one flag set, so revoke's help offered `--source: the Windows directory to
+    grant` and `--mode: ro or rw` over a command that REFUSES both. ⚠ **It was found by
+    writing the guide from the help and then running what the guide said**, which is the
+    claim audit working on a page that had not been published yet: the command answered
+    `base revoke takes --target alone`. ⭐ The flags stay registered, so that refusal
+    still fires rather than becoming an unknown-flag error; only the wording is revoke's
+    now. 1 case, 1 mutation row, red when planted.
+61. ⭐ **THE GUIDE ITSELF FOUND THE DEFECTS, because every command in it was RUN.** Three
+    things it says were wrong when first written: pi's credential type is `api_key` and
+    not `api`, a grant is taken away with `base revoke --target` rather than by hand, and
+    `printf '\n'` inside a generated block lost its escape. ⚠ **None would have been
+    caught by reading.** A guide whose commands have not been run is a list of guesses.
 
 ## Review findings
 

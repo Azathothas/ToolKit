@@ -3008,6 +3008,15 @@
       "replace": "    --model|--model=*) : ;;",
       "run": "TestTheMuseWrapperPlacesTheDefaultsWhereMuseTakesThem",
       "args": []
+    },
+    {
+      "label": "base revoke: its help describing itself in grant's words",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_grant.go",
+      "find": "\tif sub == \"revoke\" {\n\t\tsourceHelp = \"⛔ not for revoke: name the grant by --target, where the base sees it\"\n\t\ttargetHelp = \"the /workspaces path of the grant to take away\"\n\t\tmodeHelp = \"⛔ not for revoke: a grant is taken away whatever its mode\"\n\t}\n",
+      "replace": "",
+      "run": "TestRevokeHelpDoesNotDescribeItselfAsGrant",
+      "args": []
     }
   ]
 }

@@ -36,6 +36,7 @@ is the one page to read.
 | ⭐ [`tools/check/`](tools/check/) | every rule this repository enforces over its own tree. One binary, one tree walk. ⚠ The count moves; the gate prints it and [`TODO/PROGRESS.md`](TODO/PROGRESS.md) records the measurement |
 | [`tools/repo/`](tools/repo/) | the tools that are NOT gate rules: the mutation harness, open-items reader, `git-sync`, release verifier/tagger, binfmt probe, `deslop`, and licence filler |
 | [`LICENSES/`](LICENSES/README.md) | the SPDX texts `scripts/common/fill-license.sh` reads |
+| [`skills/`](skills/) | two skills for an agent driving this repository's one product: `wsl-toolkit` itself, and the agents that run under herdr inside a base. ⭐ Each stands alone and tells the reader to generate the manual rather than carrying a flag list that rots |
 
 Every tool has a `.md` beside it that stands alone. **Read the tool's own page,
 not this one**, before using it.
