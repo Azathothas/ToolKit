@@ -796,7 +796,50 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     healthy base that refuses everything. ⚠ **The check is made at Muse's startup**, so an
     agent already running does not pick it up and has to be started again.
 
+49. ⛔ **AN AGENT npm PUTS IN `$HOME/.local/bin` CANNOT BE STARTED BY herdr AT ALL, AND
+    THE ADAPTER'S OWN CHECK COULD NOT SEE IT.** herdr launches an agent by running its
+    canonical name in a pane, and that pane is a LOGIN shell whose PATH is
+    `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:...` with no `~/.local/bin`;
+    `/etc/profile` appends `/usr/local/bin` and nothing else. Measured 2026-09-17 on the
+    operator's base: `pi` and `omp` both installed healthy, both answered a version, and
+    `herdr agent start` timed out on each because the pane said `command not found`. ⭐
+    `muse` was the only one that worked, because it has had a root-owned wrapper at
+    `/usr/local/bin/muse` since it was built. Both adapters write one now.
+    ⛔ **And the first guard written for it was THEATRE.** It read the name back through
+    `as_account`, whose PATH puts the npm prefix first, so it resolved `~/.local/bin/pi`
+    and would have passed with no wrapper at all. It uses `runuser -l`, a real login
+    shell, which answers `/usr/local/bin/pi` - proved by removing the wrapper and
+    watching `base status --probe` go to exit **1** naming it, and back to 0 restored.
+    ⭐ The contract is in `adapters/README.md` so the next adapter does not repeat it.
+50. ⚠ **`herdr agent prompt` answers `agent_prompt_stalled` for an agent with no
+    credential**, `no observed working or blocked state within 5000 ms; current status is
+    idle`. Met on 2026-09-17 for `pi` and `omp`, which are installed, integrated and
+    started but reach no model. ⭐ It is the right answer and not a defect: the agent
+    never moved, and herdr says so rather than waiting out the full timeout.
+
+51. ⛔ **AN AGENT herdr STARTS INHERITS THE herdr SERVER'S ENVIRONMENT, NOT A LOGIN
+    SHELL'S.** So an `export` in the account's `~/.profile` never reaches it. Measured
+    2026-09-17 on the operator's base: the variable was set and 51 characters long in a
+    login shell, `pi auth check` answered `ready` under `runuser -l`, and **not one**
+    shell in a herdr pane had it - read from `/proc/PID/environ` for every pane process.
+    herdr runs as `wsl-toolkit-herdr.service`, a systemd unit, which reads no profile at
+    all, and its panes inherit from it. ⛔ **So a credential an agent needs cannot be
+    delivered by a shell startup file**, and the guide must not tell anyone to try. It
+    belongs in the agent's own credential store - `~/.pi/agent/auth.json` for pi, which
+    pi reads whatever the environment is. ⚠ **This tree has no way to give an agent an
+    environment variable**, and `base agent` carries none either; that is the gap behind
+    both, and it is not filled.
+52. ⚠ **pi picks a built-in model when one is not named, and sends the configured key to
+    it.** Started with no `--model`, pi chose `claude-opus-4-8` and answered
+    `401 authentication_error: API key is invalid` - it had used the `anthropic` entry in
+    `auth.json` against the real Anthropic API. Started with `--model
+    muse-gateway/spark-max` the status line reads `spark-max` and the provider is the
+    gateway. ⭐ Not a defect, and worth writing down: an agent adapter that configures a
+    custom provider has to pin the model too, or the agent silently uses another one.
+
 ## Review findings
+
+
 
 
 

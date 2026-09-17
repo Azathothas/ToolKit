@@ -103,5 +103,38 @@ else
   say "no herdr in this base, so no integration was installed. Add the herdr adapter to base.adapters"
 fi
 
+# -- the wrapper that puts the agent on a PANE's PATH ------------------------------------
+# ⛔ npm INSTALLS INTO $HOME/.local/bin AND A herdr PANE DOES NOT HAVE IT ON PATH.
+# Measured 2026-09-17 on the operator's base: a login shell's PATH is
+# /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:... with no ~/.local/bin, and
+# /etc/profile appends /usr/local/bin and nothing else. So `herdr agent start pi`
+# ran `pi` in the pane, the shell answered `command not found`, and the start timed
+# out waiting for an agent that was never going to appear.
+#
+# ⭐ THE FIX IS THE ONE muse ALREADY USES: a root-owned wrapper on the system PATH.
+# It is what makes an agent reachable by the NAME herdr launches it by, from a pane,
+# from SSH, and from `base agent`, without changing the account's environment.
+install -d -m 0755 /usr/local/bin
+cat > "/usr/local/bin/pi" <<WRAPPER
+#!/bin/sh
+# Written by wsl-toolkit's pi adapter. base ensure rewrites it.
+if [ "\$(id -un)" != "$TK_USER" ]; then
+  printf 'pi is installed for $TK_USER, and runs only as $TK_USER\n' >&2
+  exit 126
+fi
+exec "$TK_HOME/.local/bin/pi" "\$@"
+WRAPPER
+chmod 0755 "/usr/local/bin/pi"
+say "wrote /usr/local/bin/pi, so a herdr pane can start it by name"
+
+# ⛔ AND IT IS READ BACK ON THE PATH A PANE ACTUALLY HAS, not on this script's own.
+# A wrapper that a login shell never reaches is the same as no wrapper, and that is
+# exactly the failure this section exists to remove.
+resolved_on_pane_path=$(runuser -l "$TK_USER" -c "command -v pi" 2>/dev/null | tr -d '\r' | head -1)
+[ -n "$resolved_on_pane_path" ] ||
+  die "pi is installed and a login shell still cannot find it, so herdr could not start it in a pane"
+say "a login shell resolves pi to $resolved_on_pane_path"
+
 say "pi is ready: $tool base agent pi"
+
 printf 'adapter-complete pi\n'

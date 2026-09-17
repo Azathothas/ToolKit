@@ -49,6 +49,17 @@ else
   problem "omp is a Bun program and this base has no bun the account can run"
 fi
 
+# ⛔ RESOLVED ON THE PATH A PANE ACTUALLY HAS, not on this probe's own. A login shell
+# is what herdr starts an agent in, and $HOME/.local/bin is NOT on it: measured
+# 2026-09-17, npm put omp there, a pane answered `command not found`, and
+# `herdr agent start` timed out on an agent that could never appear. A probe that
+# looked only at its own curated PATH called that base healthy.
+pane_path=$(runuser -l "$TK_USER" -c "command -v omp" 2>/dev/null | tr -d '\r' | head -1)
+if [ -n "$pane_path" ]; then
+  printf 'on_login_path %s\n' "$pane_path"
+else
+  problem "omp is installed and a login shell cannot find it, so herdr cannot start it in a pane. Run: base ensure"
+fi
 version=$(as_account omp --version 2>/dev/null | tr -d '\r' | head -1)
 if [ -n "$version" ]; then
   printf 'version %s\n' "$version"
@@ -69,7 +80,7 @@ fi
 # separation resolves omp through a wrapper and its directory is NOT the account's
 # PI_CODING_AGENT_DIR. Judging the collision without looking would report a problem on
 # exactly the base that fixed it.
-omp_path=$(as_account sh -lc 'command -v omp' 2>/dev/null | tr -d '\r' | head -1)
+omp_path=$(runuser -l "$TK_USER" -c "command -v omp" 2>/dev/null | tr -d '\r' | head -1)
 separated=no
 # ⛔ BY CONTENT, NOT BY PATH. npm's prefix for this account is $HOME/.local, so its
 # own shim and the wrapper share a filename and only the marker tells them apart.

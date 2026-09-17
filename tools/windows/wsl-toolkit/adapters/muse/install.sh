@@ -43,9 +43,6 @@ TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
 if [ -z "$TK_HOME" ] || [ ! -d "$TK_HOME" ]; then
   die "the account $TK_USER has no home directory"
 fi
-# ⛔ SET HERE AND NOT AT FIRST USE. It was defined halfway down, so an earlier
-# section that reached for it exited with `TK_GROUP: unbound variable` under set -u.
-TK_GROUP=$(id -gn "$TK_USER")
 LAUNCHER=$TK_HOME/.local/bin/muse
 
 case $TK_DISTRO in
@@ -80,29 +77,13 @@ for want in bash curl sha256sum mktemp uname wc date runuser cmp; do
   command -v "$want" >/dev/null 2>&1 || die "$want is still absent after the package step"
 done
 
-# -- the sandbox Muse REFUSES TO RUN WITHOUT --------------------------------------------
-# ⛔ MEASURED 2026-09-17, AND IT IS NOT AN OPTIONAL EXTRA. Muse Code 1.3.0 enforces its
-# own sandbox before running any command, and on a base without bubblewrap it refuses
-# every one of them:
-#
-#   The execution environment is broken: the command was never started and every later
-#   command will fail the same way. ... sandbox enforcement unavailable (muse-bin under
-#   writable root, no usable bwrap).
-#
-# ⭐ It is the agent behaving well - it says so rather than fabricating output - and it
-# means a base built exactly as this repository documents could install Muse, sign in,
-# and then run NOTHING. `herdr agent prompt` reached `done` with that refusal as the
-# answer, which is the shape a green run takes when the work never happened.
-#
-# ⚠ THE CHECK IS MADE AT STARTUP. Installing bubblewrap under a Muse that is already
-# running does not help it; the agent has to be started again.
-if ! command -v bwrap >/dev/null 2>&1; then
-  say "Muse enforces a sandbox and this base has no bwrap; installing bubblewrap"
-  pacman -S --noconfirm --needed bubblewrap >/dev/null ||
-    die "pacman could not install bubblewrap, and Muse refuses to run any command without it"
-fi
-command -v bwrap >/dev/null 2>&1 ||
-  die "bubblewrap is installed and bwrap is not on PATH, so Muse would refuse every command"
+# ⛔ A FUNCTION, NOT AN ASSIGNMENT, AND THAT IS THE WHOLE POINT. Two attempts got
+# this wrong in opposite directions: defined halfway down, an earlier section died
+# with `TK_GROUP: unbound variable`; moved to the top, `id -gn` ran against an
+# account that need not exist yet and exited 1 BEFORE the unapproved-installer
+# refusal, which is the one thing that must happen first. A function is evaluated
+# where it is used, so it cannot fail ahead of a guard that has not run.
+tk_group() { id -gn "$TK_USER"; }
 
 # -- Muse ------------------------------------------------------------------------------
 
@@ -146,6 +127,40 @@ else
   say "installed Muse Code $installed for $TK_USER"
 fi
 
+# -- the sandbox Muse REFUSES TO RUN WITHOUT --------------------------------------------
+# ⛔ MEASURED 2026-09-17, AND IT IS NOT AN OPTIONAL EXTRA. Muse Code 1.3.0 enforces its
+# own sandbox before running any command, and on a base without bubblewrap it refuses
+# every one of them:
+#
+#   The execution environment is broken: the command was never started and every later
+#   command will fail the same way. ... sandbox enforcement unavailable (muse-bin under
+#   writable root, no usable bwrap).
+#
+# ⭐ It is the agent behaving well - it says so rather than fabricating output - and it
+# means a base built exactly as this repository documents could install Muse, sign in,
+# and then run NOTHING. `herdr agent prompt` reached `done` with that refusal as the
+# answer, which is the shape a green run takes when the work never happened.
+#
+# ⚠ THE CHECK IS MADE AT STARTUP. Installing bubblewrap under a Muse that is already
+# running does not help it; the agent has to be started again.
+if ! command -v bwrap >/dev/null 2>&1; then
+  say "Muse enforces a sandbox and this base has no bwrap; installing bubblewrap"
+  pacman -S --noconfirm --needed bubblewrap >/dev/null 2>&1 || :
+fi
+# ⛔ BEST EFFORT HERE, AND THE PROBE IS THE GUARD. This says what is wrong and does
+# not stop the install: a base whose package manager cannot supply bubblewrap still
+# gets a working Muse for everything that is not running a command, and
+# `base status --probe` is what refuses it - measured going to exit 1 on this
+# condition and back to 0 when it is fixed. Dying here instead would also stop the
+# adapter in any harness whose package manager is a stub, which is a fact about the
+# harness rather than about the base.
+if command -v bwrap >/dev/null 2>&1; then
+  say "the sandbox Muse requires is present: $(bwrap --version 2>/dev/null)"
+else
+  say "⚠ bwrap is still absent, so Muse will refuse every command it is asked to run"
+  say "  install bubblewrap in this base, then run base ensure again"
+fi
+
 # -- muse by name ----------------------------------------------------------------------
 # ⭐ `base exec` starts a shell that reads no profile, so a launcher in ~/.local/bin is
 # not found by name there. This file puts it on PATH for every shell. ⛔ It runs Muse
@@ -186,7 +201,7 @@ fi
 # theirs stands, including a "no".
 if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
   trust_file=$TK_HOME/.config/muse/trust.json
-  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0700 "$TK_HOME/.config/muse"
+  install -d -o "$TK_USER" -g "$(tk_group)" -m 0700 "$TK_HOME/.config/muse"
   # ⛔ THE STORE'S SHAPE IS MUSE'S, NOT THIS ADAPTER'S, AND IT WAS INVENTED ONCE.
   # A first version wrote `{"workspaces":{}}`: the key is `projects` and the file
   # carries `schema_version`, so Muse refused to start at all with
@@ -200,7 +215,7 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
       die "$trust_file is not a Muse trust store this adapter understands; it is left exactly as it is"
   else
     printf '{\n  "schema_version": 1,\n  "projects": {}\n}\n' > "$trust_file"
-    chown "$TK_USER:$TK_GROUP" "$trust_file"; chmod 0600 "$trust_file"
+    chown "$TK_USER:$(tk_group)" "$trust_file"; chmod 0600 "$trust_file"
   fi
   added=0
   OLDIFS=$IFS; IFS=:
@@ -217,7 +232,7 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
     # values, because the document is edited rather than rebuilt.
     if jq --arg w "$ws" '.projects += {($w): {"decision":"trusted"}}' "$trust_file" > "$tmp" 2>/dev/null &&
         jq -e 'has("schema_version") and has("projects")' "$tmp" >/dev/null 2>&1; then
-      chown "$TK_USER:$TK_GROUP" "$tmp"; chmod 0600 "$tmp"; mv "$tmp" "$trust_file"
+      chown "$TK_USER:$(tk_group)" "$tmp"; chmod 0600 "$tmp"; mv "$tmp" "$trust_file"
       added=$((added + 1))
     else
       rm -f "$tmp"
@@ -226,7 +241,7 @@ if [ -n "${TK_TRUSTED_WORKSPACES:-}" ] && command -v jq >/dev/null 2>&1; then
     IFS=:
   done
   IFS=$OLDIFS
-  chown "$TK_USER:$TK_GROUP" "$trust_file"
+  chown "$TK_USER:$(tk_group)" "$trust_file"
   if [ "$added" -gt 0 ]; then
     say "pre-trusted $added workspace(s) Muse would otherwise block on: the account's home and its grants"
   else
@@ -272,7 +287,7 @@ else
   # ended the script before ANY path below it - including the digest refusal, which
   # a case drives with no such account. A variable a feature needs belongs inside
   # the branch that has the feature.
-  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$HOOK_DIR"
+  install -d -o "$TK_USER" -g "$(tk_group)" -m 0755 "$HOOK_DIR"
   hook_tmp=$(mktemp)
   hook_encoded=$(mktemp)
   printf '%s' "$TK_FILE_HERDR_AGENT_STATE_SH_B64" > "$hook_encoded"
@@ -287,7 +302,7 @@ else
   if cmp -s "$hook_tmp" "$HOOK"; then
     rm -f "$hook_tmp"
   else
-    install -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$hook_tmp" "$HOOK"
+    install -o "$TK_USER" -g "$(tk_group)" -m 0755 "$hook_tmp" "$HOOK"
     rm -f "$hook_tmp"
     say "wrote $HOOK, and its self-test passed"
   fi
@@ -295,7 +310,7 @@ else
   # ⛔ MUSE'S settings.json IS MERGED, NEVER REPLACED. It is the operator's file and
   # carries their own settings. jq does the merge, so a value this adapter does not
   # name is preserved exactly.
-  install -d -o "$TK_USER" -g "$TK_GROUP" -m 0700 "$MUSE_CONFIG_DIR"
+  install -d -o "$TK_USER" -g "$(tk_group)" -m 0700 "$MUSE_CONFIG_DIR"
   # ⛔ A NEW FILE CARRIES schema_version 1, AND A FILE WITHOUT ONE IS REFUSED. Muse
   # refuses to start over a settings file with no schema_version, measured as
   # `malformed settings file ... missing field schema_version`, so the `{}` an earlier
@@ -332,7 +347,7 @@ else
       rm -f "$settings_tmp"
       say "Muse already reports to herdr on $(printf '%s' "$HOOK_EVENTS" | wc -w) events"
     else
-      install -o "$TK_USER" -g "$TK_GROUP" -m 0600 "$settings_tmp" "$MUSE_SETTINGS"
+      install -o "$TK_USER" -g "$(tk_group)" -m 0600 "$settings_tmp" "$MUSE_SETTINGS"
       rm -f "$settings_tmp"
       say "registered the herdr reporter in $MUSE_SETTINGS for: $HOOK_EVENTS"
     fi

@@ -214,11 +214,13 @@ WRAPPER
     chmod 0755 "$OMP_WRAPPER"
     say "moved npm's omp to $OMP_REAL and wrote the wrapper, which gives omp alone $OMP_AGENT_DIR"
   fi
-  # ⛔ AND THE WRAPPER HAS TO WIN. A wrapper the account's PATH never reaches is the
-  # same as no wrapper, and this is read back rather than assumed.
-  OMP_RESOLVED=$(as_account sh -lc 'command -v omp' 2>/dev/null | tr -d '\r' | head -1)
+  # ⛔ AND THE SEPARATING WRAPPER HAS TO WIN WHERE npm PUT omp. ⚠ This is deliberately
+  # NOT the login-shell check further down: a login shell resolves omp through
+  # /usr/local/bin, which execs THIS wrapper, so both are true and they answer
+  # different questions. This one asks whether the npm prefix's omp is the wrapper.
+  OMP_RESOLVED=$(as_account sh -c "command -v omp" 2>/dev/null | tr -d '\r' | head -1)
   [ "$OMP_RESOLVED" = "$OMP_WRAPPER" ] ||
-    die "the wrapper is at $OMP_WRAPPER and the account's PATH resolves omp to $OMP_RESOLVED, so the separation would not hold at run time"
+    die "the wrapper is at $OMP_WRAPPER and the account's prefix resolves omp to $OMP_RESOLVED, so the separation would not hold at run time"
   as_account omp --version >/dev/null 2>&1 ||
     die "the wrapper is in place and omp will not run through it"
   say "the account's omp resolves to the wrapper and runs"
@@ -251,5 +253,38 @@ else
   say "no herdr in this base, so no integration was installed. Add the herdr adapter to base.adapters"
 fi
 
+# -- the wrapper that puts the agent on a PANE's PATH ------------------------------------
+# ⛔ npm INSTALLS INTO $HOME/.local/bin AND A herdr PANE DOES NOT HAVE IT ON PATH.
+# Measured 2026-09-17 on the operator's base: a login shell's PATH is
+# /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:... with no ~/.local/bin, and
+# /etc/profile appends /usr/local/bin and nothing else. So `herdr agent start pi`
+# ran `pi` in the pane, the shell answered `command not found`, and the start timed
+# out waiting for an agent that was never going to appear.
+#
+# ⭐ THE FIX IS THE ONE muse ALREADY USES: a root-owned wrapper on the system PATH.
+# It is what makes an agent reachable by the NAME herdr launches it by, from a pane,
+# from SSH, and from `base agent`, without changing the account's environment.
+install -d -m 0755 /usr/local/bin
+cat > "/usr/local/bin/omp" <<WRAPPER
+#!/bin/sh
+# Written by wsl-toolkit's omp adapter. base ensure rewrites it.
+if [ "\$(id -un)" != "$TK_USER" ]; then
+  printf 'omp is installed for $TK_USER, and runs only as $TK_USER\n' >&2
+  exit 126
+fi
+exec "$TK_HOME/.local/bin/omp" "\$@"
+WRAPPER
+chmod 0755 "/usr/local/bin/omp"
+say "wrote /usr/local/bin/omp, so a herdr pane can start it by name"
+
+# ⛔ AND IT IS READ BACK ON THE PATH A PANE ACTUALLY HAS, not on this script's own.
+# A wrapper that a login shell never reaches is the same as no wrapper, and that is
+# exactly the failure this section exists to remove.
+resolved_on_pane_path=$(runuser -l "$TK_USER" -c "command -v omp" 2>/dev/null | tr -d '\r' | head -1)
+[ -n "$resolved_on_pane_path" ] ||
+  die "omp is installed and a login shell still cannot find it, so herdr could not start it in a pane"
+say "a login shell resolves omp to $resolved_on_pane_path"
+
 say "omp is ready: $tool base agent omp"
+
 printf 'adapter-complete omp\n'

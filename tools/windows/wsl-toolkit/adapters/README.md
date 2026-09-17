@@ -62,7 +62,42 @@ same extension directory, and `PI_CODING_AGENT_DIR` is read by both.
 
 ---
 
+## ⛔ An agent has to be on the PATH a PANE has
+
+⭐ **This is the one an adapter gets wrong**, and it has been got wrong twice.
+
+herdr starts an agent by running its canonical name in a pane, and that pane is a
+**login shell**. On a base this tool builds, that PATH is:
+
+```text
+/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:...
+```
+
+⛔ **`$HOME/.local/bin` is NOT on it**, and `/etc/profile` appends `/usr/local/bin`
+and nothing else. So an adapter that installs through `npm -g` into the account's
+prefix produces an agent that works from `base exec`, works from the adapter's own
+script, and **cannot be started by herdr at all**: the pane answers `command not
+found` and `herdr agent start` times out on an agent that was never going to appear.
+Measured 2026-09-17 for `pi` and `omp`, both of which installed cleanly and neither
+of which herdr could launch.
+
+**So an adapter that names an `Agent` owes two things:**
+
+1. ⭐ **A root-owned wrapper at `/usr/local/bin/NAME`** that refuses any account but
+   the configured one and execs the real binary. `muse` has had one since it was
+   built, which is why it was the only agent that worked.
+2. ⛔ **A probe line that reads the name back on a LOGIN shell**, not on the PATH the
+   adapter itself set up:
+
+   ```sh
+   pane_path=$(as_account sh -lc 'command -v NAME' 2>/dev/null | tr -d '\r' | head -1)
+   ```
+
+   ⚠ Reading it on the adapter's own curated PATH is what let this ship. The probe
+   must ask the question herdr will ask.
+
 ## The files
+
 
 One directory per adapter, named as the configuration names it.
 
