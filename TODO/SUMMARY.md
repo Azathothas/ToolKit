@@ -16,7 +16,7 @@ that reads this and acts on it is reading what was true last time.
 | Changes |  58 files changed, 5155 insertions(+), 1179 deletions(-) |
 | Checks | gate **24 of 24**; Windows Go over 4 modules; `check-go.sh` in `golang:1.25`; ShellCheck over 51 scripts. CI green on every pushed commit |
 | Guards | **419 mutation rows.** Full table: **390 ok, 0 THEATRE, 0 BROKEN**, 29 platform skips |
-| Cost | ⭐ **the guard job in CI: 26.4, 26.6, 27.2 min before; 19.7 and 24.0 after.** ⚠ Two runs is a small sample and the second is close to the old range, so the honest claim is the per-row one, **6.40 to 2.01 s**, measured on the same 20 rows. 122 MiB reclaimed by a sweep that did not exist |
+| Cost | ⭐ **the guard job in CI: 26.4, 26.6, 27.2 min before; 19.7, 24.0, 24.4 after.** ⚠ Three runs each way, so roughly **26.7 to 22.7 on the mean**, and two of the three after sit close to the old range. The firm claim is the per-row one, **6.40 to 2.01 s**, measured on the same 20 rows. 122 MiB reclaimed by a sweep that did not exist |
 | Reviews | **17 passes**: 4 on the first half, 4 on the second, 3 more lenses, and 3 each over the documents, the record and the skills |
 | Health | 128 of 128 entries done. Tree clean, nothing unpushed |
 
