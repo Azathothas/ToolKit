@@ -292,7 +292,7 @@ new file FIRST, then run the gate.**
 | `29ca209` | ⭐ **the last two open entries closed.** `WSL-59`: the observation layer reaches a container through an `Observer` seam, and the resource feed reports ABSENT rather than the nonsense podman answers. `WSL-91`: the gate drives `consumer.ps1` over a working-tree build, so finding 70's shape is caught before a tag. `WSL-93` filed and closed: `--between` was the one edit operation with no required count, in a PUBLISHED binary. The gate's analyzer widened from one directory to three, which is where its only real finding was. 13 mutation rows, 13 of 13 red; findings 81 to 88 |
 | `9660143` | the claim audit own catch: five timestamps in this record were typed rather than read and two were in the future, corrected to the commit instant; finding 89 |
 | `02182bb` | ⛔ **the operator refused the handover, and it was right to.** The session had ended by listing findings with a named fix and no entry, which is the deferral the prompt forbade. ⭐ **A default deadline on EVERY host-engine call**, with a separate STALL deadline so a pull that has stopped is given up in minutes rather than waited out for half an hour; driven against a real child both ways. Then the findings themselves: the mutation harness runs a case unmutated first (finding 1, the oldest in the record), sweeps a killed run staging (32, and the first run removed the real 122 MiB), and says what the compiler said (41); 29 error messages name the guest own line (12, 13, 15); a case that answered differently alone and in company agrees with itself (37); the two readers of the automount root agree (23); a host-wide repair names the other instances (67); and the consumer runner tests the smaller fetch the register documents (31). ⛔ **Finding 14 closes as a check that CANNOT exist**, because driving the one written for it contradicted a measurement this repository already had. Findings 90 to 99 |
-| `09eea4f` | the guard job stops paying for the same copy 419 times: one staged module copy with a verified byte-exact restore and the duplicate compile dropped, **6.40 to 2.01 s per row**, and CI **26.4 to 19.7 min**; three lenses the session had not used, which found the call-site count wrong, the cost nobody had asked about, and a refusal sending a reader to the wrong place; findings 100 to 102 |
+| `09eea4f` | the guard job stops paying for the same copy 419 times: one staged module copy with a verified byte-exact restore and the duplicate compile dropped, **6.40 to 2.01 s per row**, and CI from 26.4-27.2 min to **19.7 and 24.0**, which is two runs and a range rather than a single number; three lenses the session had not used, which found the call-site count wrong, the cost nobody had asked about, and a refusal sending a reader to the wrong place; findings 100 to 102 |
 | this record commit | ⭐ **`wsl-toolkit-v4.0.0` IS PUBLISHED**, 22 assets, all three release jobs green including the consumer smoke. ⛔ **A MAJOR because a published binary changed how it exits**, which `docs/consumers.md` calls a break in its own words. ⛔ **The first attempt destroyed its own release**: `gh release create` uploads inside the call that creates, and a retried upload collided with itself and took the release with it; the publish is idempotent and resumable now, and reads back what is actually on the release. Nine review passes over the documents, the record and the skills; findings 103 |
 ## Measurements
 
@@ -1657,6 +1657,12 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
      speedup figure**: the 26 minutes was CI on ubuntu and no full-table run
      was timed locally before the change, so the comparable number is the
      per-row one above and CI own next run is what settles the rest.
+
+     ⚠ **CI MEASURED TWICE AND THE SECOND WAS NOT AS GOOD**: 19.7 min and then
+     24.0, against 26.4, 26.6 and 27.2 before. Two runs is a small sample, the
+     runner is shared, and 24.0 sits close to the old range, so the claim this
+     record makes is the per-row figure measured on the same 20 rows rather than
+     a CI percentage.
 102. ⛔ **REMOVING THE DUPLICATE COMPILE MADE A BRANCH UNREACHABLE, AND CI
      CAUGHT IT AS THEATRE.** With the baseline refusing a pattern that matches
      no case BEFORE anything is mutated, and a mutation changing source rather
