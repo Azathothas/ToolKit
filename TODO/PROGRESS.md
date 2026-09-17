@@ -260,7 +260,18 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17:
   of the previous session's first commit and the 365 of its last, because
   `agent_default_test.go` and `shell_profile_test.go` are new.
 - **The mutation table:** 327 rows at `bf7753b` to **338** at `1699de9`, 11 added by
-  the previous session and all 11 reported red by it.
+  the previous session and all 11 reported red by it. ⭐ **`repo mutate --only
+  release:` 7 of 7 guards proved on Windows** before the tag was cut, each row's cases
+  green unmutated first.
+- **For `WSL-59`, the premise re-measured on podman 6.1.1:** every row of the
+  2026-09-10 table still holds, and the lifecycle feed carries a trap that returns
+  nothing and exits 0. Both are in that entry's amendment of 2026-09-17 with their
+  invocations; they are not repeated here.
+- ⭐ **A second herdr nightly published at 10:12:44Z**,
+  `herdr-nightly-20260917-e7e3dfa60e35`, 6 of 6 jobs green, resolved from a
+  development head that had moved since `18061191fdc0`. ⚠ **It is the first time the
+  prune has had more than one nightly to keep**, and it keeps seven, so nothing was
+  removed. Finding 36, the prune that only runs on the write path, is unchanged by it.
 - **At the start of the 02:52Z session:** the doctor exit 0 in 55 s at 02:53Z; the gate exit 0,
   21 of 21 in 70 s; `wsl -l -v` matched the host state, five distributions; CI run
   35070882239 for `485252c` green. ⭐ **A second `herdr-nightly` run, 35078871134, is
@@ -425,9 +436,16 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
   evaluate.
 - **WSL networking:** NAT mode, host address `172.23.96.1`, read by `wsl-toolkit
   hostaddress`. Two distributions share one network namespace, in `WSL-68`.
-- **herdr:** 0.9.0 is the latest stable release, published 2026-09-07, read on
-  2026-09-13. `herdr-linux-x86_64` is 24,644,488 bytes and
-  `herdr-windows-x86_64.zip` 9,054,745 bytes, each with a published SHA-256 digest.
+- **herdr:** ⭐ **`v0.9.1` is the newest stable release**, published
+  2026-09-16T18:40:01Z, read from `repos/herdrdev/herdr/releases/latest` on
+  2026-09-17. ⚠ **It supersedes the reading of 2026-09-13**, which had 0.9.0 of
+  2026-09-07 as the newest with `herdr-linux-x86_64` at 24,644,488 bytes and
+  `herdr-windows-x86_64.zip` at 9,054,745 bytes; those two figures are 0.9.0's and are
+  not 0.9.1's. ⭐ **v0.9.1 asks for Zig 0.16.0 and Rust 1.96.1**, read from its own
+  `vendor/libghostty-vt/build.zig.zon` and `rust-toolchain.toml` on 2026-09-17, and
+  `herdr-build.yml` pins a digest for 0.16.0 on both architectures - the same one the
+  nightly built with twice on 2026-09-17. ⛔ **Whether v0.9.1 carries the `#4038`
+  repaint fix is NOT measured here**; `herdr-remote-probe.ps1` is what would settle it.
 - **Muse:** Meta's installer at `dev.meta.ai` still has the approved digest, 9,314
   bytes, on 2026-09-14; the public channel serves `1.2.1-R2847.1`, a 299,251,896-byte
   Linux x86 build that answers without credentials.

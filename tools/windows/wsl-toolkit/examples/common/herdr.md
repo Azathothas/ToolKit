@@ -18,8 +18,11 @@ carries the sweep and its commits; this page carries only what an operator does.
 1. ⛔ **herdr 0.9.0's Windows `--remote` client is reported to repaint only on
    window activation and to apply no prefix command.** That is
    `herdrdev/herdr#4176`, closed `not_planned` as a duplicate of `#4038`, which herdr
-   closed as fixed on its development branch. ⛔ **No published herdr carries that
-   fix**: 0.9.0 is the newest stable release and the newest preview predates it. ⭐
+   closed as fixed on its development branch. ⚠ **The newest stable release is
+   `v0.9.1`**, published 2026-09-16T18:40:01Z and read on 2026-09-17; ⛔ **whether it
+   carries that fix is not measured here**, and `herdr-remote-probe.ps1` is what would
+   settle it. ⭐ **What this repository ships and drives is the nightly**, built from
+   the development branch where herdr closed `#4038` as fixed. ⭐
    **Measure the repaint before concluding anything about SSH**: a client that
    repaints only on window activation looks exactly like a connection that is not
    working.

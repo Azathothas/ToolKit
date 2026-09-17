@@ -3228,6 +3228,44 @@ Then the same container run as above, through `wsl-toolkit run`, compared with
 row, so where the base reports no cgroup delegation the resource column still
 reports absent rather than zero.
 
+## Amendment, 2026-09-17: the premise re-measured on podman 6.1.1, and a trap in the feed it leans on
+
+⭐ **Every row of the premise table still holds**, measured on the `wsl-toolkit` base on
+2026-09-17 with **podman 6.1.1**, `eventLogger=file`, against
+`docker.io/library/alpine:latest`. The table was taken on 2026-09-10 and
+[`../docs/methodology/authoring.md`](../docs/methodology/authoring.md) section 2 says a
+premise about what the program does is re-measured before anything is built on it.
+
+| feed | measured 2026-09-17 |
+| --- | --- |
+| lifecycle, `podman events` | ⭐ present and complete. One `--rm` run of one container produced **six** records - `create`, `init`, `start`, `attach`, `died`, `remove` - and both `died` and `remove` carry `"ContainerExitCode": 9` |
+| output, `podman logs` | ⛔ **0 bytes on stdout AND 0 on stderr, exit 0**, under the base's default `journald`. With `--log-driver k8s-file` the same container gave **6 bytes and 6 bytes**, `K-OUT` and `K-ERR`. The driver is the whole difference |
+| resources, `podman stats` | ⛔ **`cpu=2799.71%` and `mem=0B / 33.44GB`** on a container doing nothing but `sleep`. Nonsense, as in 2026-09-10, and `WSL-60`'s cgroup-delegation row is why |
+| exit code, `podman wait` | ⭐ returns **5** for a container that exited 5, and `podman run` itself passes **7** and **9** through unchanged |
+
+⛔ **AND THE LIFECYCLE FEED HAS A TRAP THE DESIGN HAS TO NAME.** The obvious way to
+read a bounded window of it returns nothing and exits 0:
+
+| invocation | result |
+| --- | --- |
+| `podman events --since 5m --stream=false --format json` | ⭐ **every record in the window.** ⚠ The count depends on how many containers ran in it: 50 lines over a busy five minutes, and **7** over three minutes carrying one container, whose own six are above |
+| `podman events --since 5m --until 0s --format json` | ⛔ **0 lines, exit 0** |
+| `podman events --since 5m --until 1h --format json` | ⛔ **blocks**, and had to be killed with `pkill` |
+
+⚠ **`--until` is an instant, not a duration back from now**, so `0s` is an empty window
+and `1h` is an hour in the future that the reader waits out. ⭐ **Both failures are this
+repository's own refused shapes** - one is `exits 0 having done nothing` from
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md),
+the other is a read with no deadline. ⛔ **The adapter reads with `--since` and
+`--stream=false` and never with `--until`**, and its case asserts a line count rather
+than an exit code, because the exit code is 0 either way. ⚠ **The 2026-09-10 premise
+called this feed "present and complete" and that is true of the feed and not of every
+way to ask for it**; nothing was built on it, so nothing is corrected - this is what
+the re-measurement added.
+
+⚠ **Still not built.** The entry stays open and this is the measurement its approach
+rests on, taken again rather than carried.
+
 ---
 
 ## WSL-60. the base accepts a memory limit and does not enforce it
