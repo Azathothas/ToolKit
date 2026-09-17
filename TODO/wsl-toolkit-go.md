@@ -10663,3 +10663,76 @@ the tool's**: nothing suggests a different result, and nothing measured it.
 
 ⚠ **No darwin build.** The asks were Windows and inside the base. Adding one is
 a line in `release.yml` the day somebody wants it.
+
+## The reviews, 2026-09-17
+
+Four passes, and each names what it looked at that the others did not.
+
+### 1. The door sweep: what else reaches this code
+
+⛔ **FOUND: [`../docs/consumers.md`](../docs/consumers.md) enumerates what a
+release carries and named none of the four `text-tool` assets.** That page is the
+consumer's door, and the enumeration in it is the thing a consumer acts on.
+⛔ **And the same block asserted "No `wsl-toolkit-v*` release carries herdr yet"**,
+which `wsl-toolkit-v3.0.0` falsified four hours earlier in this same session.
+[`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
+carried the other half of that claim, "`release.yml`'s herdr jobs have still never
+run". Both corrected.
+
+⭐ **What was enumerated and found sound**, each measured rather than assumed:
+`check-go.sh --json` answers `"modules":4`, so the renamed module is walked;
+`git check-attr` resolves `shell-matrix.sh` to `eol: lf` and `shell-matrix.ps1` to
+`eol: crlf`; no `text-tool` exists on this host's `PATH` to collide with; and the
+`mutations` check refused three rows whose code this change had moved, which is
+the door I would not have thought to look through.
+
+### 2. The guard mutation: can the new guards fail
+
+⛔ **FOUND: `--files-from` had NO case at all.** It was driven by hand, it worked,
+and it went in. Three branches nothing exercised: the `#` skip, the blank-line
+skip, and the unreadable list.
+
+⛔ **AND THE FIRST ROW FOR THE THIRD ONE CAME BACK THEATRE.** With the read error
+swallowed, the call still failed - no path was collected, so `name at least one
+file` fired instead. That is the shape this lens names explicitly: a check that
+passes because a DIFFERENT code path happens to satisfy it. The case asserts the
+MESSAGE now, because "name at least one file" is a true statement and a useless
+answer to "your list is missing".
+
+⚠ **This lens also rejected a guard before it was written.** A textual rule
+refusing a `.ps1` that names a non-default distribution without selecting an
+instance would have refused `acceptance.ps1`, which writes `wsl-toolkit-nobase`
+on purpose to drive the refusal. Finding 70 records why that one was thrown away.
+
+### 3. The claim audit: which sentence has no artefact behind it
+
+⛔ **FOUND: the skill tells a reader to download `text-tool` from "the latest
+release", and the latest release carries none.** It becomes true when
+`wsl-toolkit-v3.1.0` publishes and is false until then. ⚠ **That is a claim whose
+truth depends on a step later in this same session**, which is the most dangerous
+kind: it reads as verified because it was written by somebody who intended to
+make it so.
+
+⭐ **Checked and sound:** the thirteen shell invocations are 4 plus 6 plus 3 and
+the table sums; the digest quoted is the one the runs printed; the four defect
+numbers in the commit body match findings 71 to 74; `consumer.ps1`'s "8 passed, 6
+skipped, 0 failed" is a run whose output is on disk, and the same fix went green
+on the RUNNER in run 35220237357, which is a second source for it.
+
+### 4. What the driven pass showed that the suite could not
+
+⛔ **FOUND: finding 75, the PowerShell call operator**, and it was found by
+`shell-matrix.ps1` on its first run rather than by reading. ⭐ **The shape is what
+made it readable**: `cmd` passed the identical line and both PowerShells failed,
+which points at the host and not at the tool. No Go case can produce that, because
+the suite never invokes a shell.
+
+⛔ **And finding 73, the stdin hang**, for the same reason: the suite hands `Run`
+a reader it controls, so the pipe an agent harness hands a child is a thing the
+suite cannot express. It took driving the tool from a harness to see it, and the
+symptom was a 120-second timeout rather than a failure.
+
+⚠ **This is the lens with the standing gap.** The container matrix is the driven
+pass that would cover musl, Void and Alpine's busybox ash, and podman refused its
+own SSH forward all session, after a clean stop and start. Six glibc shells on one
+distribution is what was measured, and the entry says so above.

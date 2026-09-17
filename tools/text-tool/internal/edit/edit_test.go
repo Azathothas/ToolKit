@@ -670,3 +670,71 @@ func TestInsertingBesideAMatchNeedsExpect(t *testing.T) {
 		})
 	}
 }
+
+// TestPathsCanComeFromAFile covers the channel for more paths than a command
+// line holds.
+//
+// ⛔ THIS HAD NO CASE AT ALL UNTIL THE GUARD-MUTATION LENS ASKED FOR ONE. It was
+// driven by hand, it worked, and "I ran it once" is not a guard. The comment
+// skipping and the blank-line skipping are each a branch nothing exercised.
+//
+// ⭐ THE # SKIP IS WHAT MAKES A SEARCH'S OUTPUT USABLE DIRECTLY: a caller can
+// comment out a path they decided against and hand the same file back.
+func TestPathsCanComeFromAFile(t *testing.T) {
+	dir := t.TempDir()
+	body := []byte("target here\n")
+	a := write(t, dir, "a.txt", body)
+	b := write(t, dir, "b.txt", body)
+	skipped := write(t, dir, "skipped.txt", body)
+
+	list := write(t, dir, "list.txt", []byte(
+		"# a comment naming a file that must NOT be read\n"+
+			"#"+skipped+"\n"+
+			"\n"+
+			a+"\n"+
+			"   \n"+
+			b+"\n"))
+
+	code, out, err := run(t, "edit", "--files-from", list,
+		"--replace", "target", "--text", "hit", "--expect", "2")
+	if code != 0 {
+		t.Fatalf("exit %d: %v", code, err)
+	}
+	for _, p := range []string{a, b} {
+		if got := read(t, p); !bytes.Contains(got, []byte("hit")) {
+			t.Fatalf("%s was named in the list and not changed: %q", p, got)
+		}
+	}
+	// ⛔ THE COMMENTED PATH MUST BE UNTOUCHED. A list format that read a
+	// commented line would change a file the caller explicitly excluded.
+	if got := read(t, skipped); !bytes.Equal(got, body) {
+		t.Fatalf("a commented path was edited anyway: %q", got)
+	}
+	if strings.Contains(out, skipped) {
+		t.Fatalf("a commented path appears in the report: %s", out)
+	}
+
+	// ⚠ A LIST AND NAMED PATHS TOGETHER: both are used, so --expect counts both.
+	c := write(t, dir, "c.txt", body)
+	code, _, err = run(t, "edit", c, "--files-from", list,
+		"--replace", "hit", "--text", "again", "--expect", "2", "--allow-unmatched")
+	if code != 0 {
+		t.Fatalf("a list beside a named path: exit %d: %v", code, err)
+	}
+
+	// ⛔ A LIST THAT IS NOT THERE IS AN ERROR THAT NAMES THE LIST, never an empty
+	// list silently edited. ⚠ THE MESSAGE IS THE ASSERTION, not the exit code:
+	// with the read error swallowed the call still fails, because no path was
+	// collected and `name at least one file` fires instead - which is a true
+	// statement and a useless answer to "your list is missing". repo mutate
+	// called the first version of this row THEATRE for exactly that.
+	missing := filepath.Join(dir, "absent.txt")
+	code, _, err = run(t, "edit", "--files-from", missing,
+		"--replace", "x", "--text", "y", "--expect", "1")
+	if code == 0 {
+		t.Fatalf("a missing list was accepted: %v", err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "absent.txt") {
+		t.Fatalf("the refusal does not name the list it could not read: %v", err)
+	}
+}

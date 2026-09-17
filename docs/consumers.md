@@ -94,8 +94,16 @@ A release carries:
 - from `wsl-toolkit-v3.0.0`, herdr's newest stable release built by this repository:
   `herdr-VERSION-windows-x86_64.zip`, `herdr-VERSION-windows-aarch64.zip`,
   `herdr-VERSION-linux-x86_64` and `herdr-VERSION-linux-aarch64`
+- from `wsl-toolkit-v3.1.0`, `text-tool` for both hosts:
+  `text-tool-windows-amd64.exe`, `text-tool-windows-arm64.exe`,
+  `text-tool-linux-amd64` and `text-tool-linux-arm64`
 - `SHA256SUMS`
 - one `<asset>.cosign.bundle` per file above
+
+⭐ **`text-tool` writes and edits a file without a shell touching the payload**, and
+it is a separate program with no dependency on the rest: take the one asset for your
+host and nothing else. [`../skills/text-tool/SKILL.md`](../skills/text-tool/SKILL.md)
+is the page to hand an agent, and it stands alone.
 
 ⭐ **herdr's development branch is published separately, as a nightly prerelease** on a
 `herdr-nightly-YYYYMMDD-SHA12` tag, with the same four builds, `BUILD-INFO.json` naming
@@ -103,9 +111,11 @@ the herdr commit, `SHA256SUMS`, and a bundle per file that verifies against
 `.github/workflows/herdr-nightly.yml`. The newest seven are kept. ⛔ A nightly is always
 a prerelease and never a `wsl-toolkit-v*` tag, so a lookup for this tool's releases
 skips it. ⭐ **The first nightly is published**, `herdr-nightly-20260916-18061191fdc0`,
-on 2026-09-16. ⚠ **No `wsl-toolkit-v*` release carries herdr yet**: read with `gh
-release list` on 2026-09-16, where `wsl-toolkit-v2.0.2` is still the newest release and
-predates the herdr jobs.
+on 2026-09-16.
+
+⭐ **`wsl-toolkit-v3.0.0` is the first release that carries herdr**, published on
+2026-09-17 with 14 assets: the two executables, the four herdr builds, `SHA256SUMS`
+and a bundle for each.
 
 ⚠ **A release that carries herdr is about 65 MiB larger, and a consumer that takes the
 whole release takes all of it.** The four builds the first nightly published are

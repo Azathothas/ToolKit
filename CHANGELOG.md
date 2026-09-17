@@ -19,6 +19,62 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-17
+
+### 2026-09-17T12:16:46Z: text-tool becomes a product an agent downloads
+
+**Record:** `WSL-92` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and
+findings 71 to 75 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** ⛔ **not yet at the time of writing.** On `main` as `19eb9d8`. It
+publishes with `wsl-toolkit-v3.1.0`, which adds
+`text-tool-windows-amd64.exe`, `text-tool-windows-arm64.exe`,
+`text-tool-linux-amd64` and `text-tool-linux-arm64`, each with a signature
+bundle.
+
+`tools/text` is `tools/text-tool`, and the reason it moved is that it was not
+reachable: it was built on demand inside a checkout, so the agents it was
+written for could not use it. `eol` is a mode now and is the whole of `dos2unix`
+and `unix2dos`; every mode takes as many files as it is given and all of them
+change or none do; `--after` and `--before` insert beside a matched line and KEEP
+that line. `skills/text-tool/SKILL.md` stands alone, and `check skills` refuses a
+skill naming a `text-tool` flag its own usage text does not document.
+
+⭐ **One digest from thirteen shell invocations on two operating systems**, by
+`shell-matrix.sh` and `shell-matrix.ps1`: four shells under Git Bash, six in the
+base, and pwsh, powershell 5.1 and cmd on Windows. That is the one claim the Go
+suite cannot make, because its cases never cross a shell boundary.
+
+⛔ **Four defects, all found by using the tool on itself**: `--between` cut its
+anchors at the first comma, `edit --delete` read stdin and hung on an inherited
+pipe, a substitution that retypes its own anchor deleted that anchor three times
+in one session, and the line list capped at twenty silently.
+
+### 2026-09-17T11:46:20Z: the smoke of the first released tag could not consume it
+
+**Record:** finding 70 and `WSL-91` in [`TODO/PROGRESS.md`](TODO/PROGRESS.md) and
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
+**Deployed:** ⛔ **no deploy.** On `main` as `f6ab39b`; it changes a test runner
+and no shipped code.
+
+`wsl-toolkit-v3.0.0` published with all 14 assets and its `release-smoke` job
+FAILED. `consumer.ps1` wrote a configuration with `base.name` set and no instance
+selected, which `WSL-74` had made a refusal, so the first release cut since that
+rule landed was the one that carried it to a consumer. Fixed by selecting the
+instance through the environment, beside the state directory that was already set
+that way, and writing the configuration at both paths so the eight older tags
+`-Tag` accepts still find one. Measured back to 8 passed, 0 failed against the
+published tag, and green on the runner in run 35220237357.
+
+### 2026-09-17T09:12:00Z: wsl-toolkit-v3.0.0, the first release carrying herdr
+
+**Record:** `WSL-90` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v3.0.0`, 14 assets: the two executables,
+herdr 0.9.1 for Windows and Linux on both architectures, `SHA256SUMS` and a
+signature bundle for each. It is the first release this repository has cut that
+publishes another project's build, which is `WSL-90`'s approach step 4 and the
+only thing that could prove it.
+
+---
 ## 2026-09-16
 
 ### 2026-09-16T07:15:16Z: the first herdr nightly is published from this repository

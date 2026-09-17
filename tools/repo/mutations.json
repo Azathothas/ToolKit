@@ -2,6 +2,33 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "text-tool: a commented path in a list is not edited",
+      "file": "internal/edit/edit.go",
+      "find": "\t\t\t\tif ln == \"\" || strings.HasPrefix(ln, \"#\") {",
+      "replace": "\t\t\t\tif ln == \"\" {",
+      "run": "TestPathsCanComeFromAFile",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a blank line in a list names no file",
+      "file": "internal/edit/edit.go",
+      "find": "\t\t\t\tln = strings.TrimSpace(strings.TrimSuffix(ln, \"\\r\"))\n",
+      "replace": "\t\t\t\tln = strings.TrimSuffix(ln, \"\\r\")\n",
+      "run": "TestPathsCanComeFromAFile",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a list that is not there is an error",
+      "file": "internal/edit/edit.go",
+      "find": "\t\t\tnamed, readErr := os.ReadFile(v)\n\t\t\tif readErr != nil {\n\t\t\t\treturn nil, readErr\n\t\t\t}\n",
+      "replace": "\t\t\tnamed, _ := os.ReadFile(v)\n",
+      "run": "TestPathsCanComeFromAFile",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
       "label": "check: a skill names only text-tool flags that exist",
       "file": "internal/checks/skills.go",
       "find": "\t\t\tif textTool != nil && !textTool[fl] {",

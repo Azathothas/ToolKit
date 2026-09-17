@@ -167,8 +167,12 @@ its `SHA256SUMS` and signs. The same workflow builds herdr's development branch 
 prerelease on a `herdr-nightly-*` tag and keeps the newest seven. `WSL-90`. ⭐ **The
 first nightly is published**, `herdr-nightly-20260916-18061191fdc0`, on 2026-09-16, with
 all four builds green. ⚠ `herdr-build.yml` publishes nothing by design and is dispatched
-by hand; `release.yml`'s herdr jobs have still never run, because no release has been cut
-since they were written.
+by hand. ⭐ **`release.yml`'s herdr jobs ran for the first time on 2026-09-17**, cutting
+`wsl-toolkit-v3.0.0`. From `wsl-toolkit-v3.1.0` the same workflow also builds
+`text-tool` for Windows and Linux on both architectures, and runs the staged Windows
+one before publishing it.
+[`../../../docs/consumers.md`](../../../docs/consumers.md) lists what each release
+carries; this page does not repeat it.
 
 ## Related
 
