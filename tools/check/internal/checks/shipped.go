@@ -54,15 +54,15 @@ func Shipped(t *Tree) Result {
 			continue
 		}
 		if !have[name] {
-			r.bad("%s is missing. Write it with: sh scripts/common/check.sh shipped --fix", dest)
+			r.bad("%s is missing. Write it with: cp %s %s", dest, src, dest)
 			continue
 		}
 		delete(have, name)
 		want := lf(t.Read(src))
 		got := lf(t.Read(dest))
 		if !bytes.Equal(want, got) {
-			r.bad("%s disagrees with %s at line %d. Rewrite it with: sh scripts/common/check.sh shipped --fix",
-				dest, src, firstDifferingLine(want, got))
+			r.bad("%s disagrees with %s at line %d. Rewrite it with: cp %s %s",
+				dest, src, firstDifferingLine(want, got), src, dest)
 		}
 	}
 	names := make([]string, 0, len(have))
@@ -71,7 +71,7 @@ func Shipped(t *Tree) Result {
 	}
 	sort.Strings(names)
 	for _, rel := range names {
-		r.bad("%s%s is carried and is not one this repository ships. Remove it with: sh scripts/common/check.sh shipped --fix", ShippedCopy, rel)
+		r.bad("%s%s is carried and is not one this repository ships. Remove it with: rm %s%s", ShippedCopy, rel, ShippedCopy, rel)
 	}
 	r.Extra["files"] = len(shippedNames)
 	return r

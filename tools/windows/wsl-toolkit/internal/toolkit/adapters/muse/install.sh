@@ -166,6 +166,37 @@ fi
 # not found by name there. This file puts it on PATH for every shell. ⛔ It runs Muse
 # only as the account it is installed for: the launcher updates itself in that home,
 # and another account would write there as itself.
+# -- the startup model and reasoning effort ---------------------------------------------
+# ⛔ MUSE CODE 1.3.0 HAS NO SETTINGS KEY FOR EITHER, which is the whole reason this is in
+# the wrapper rather than in a file. Its settings.json takes schema_version and hooks; the
+# only doors to a model and an effort are --model and --reasoning-effort. An environment
+# variable would not do either, because a herdr pane inherits the herdr SERVICE's
+# environment and not a login shell's, measured 2026-09-17.
+#
+# ⛔ AND THEY CANNOT SIMPLY BE PUT IN FRONT OF EVERY CALL. Measured on Muse Code 1.3.0:
+# `muse --model M config status` exits 2 with `invalid TUI options: unknown argument
+# config`, because a root option turns the line into a TUI invocation and the subcommand
+# then has nowhere to go. `muse --model a --model b` exits 2 as well: the argument
+# `cannot be used multiple times`, so "the last one wins" is false here and a duplicate is
+# a refusal.
+#
+# ⭐ SO THE WRAPPER READS THE LINE FIRST. It injects in front for the TUI, after `exec` or
+# `resume` for those two, and NOT AT ALL for any other subcommand. A flag the caller
+# passed is never joined by a second.
+#
+# ⭐ THE SUBCOMMAND LIST COMES FROM THIS MUSE, not from this file. `muse --help` prints
+# its own Commands block and the adapter reads it at install time, so a subcommand Muse
+# adds later is known the next time `base ensure` runs rather than rotting here.
+MUSE_SUBCOMMANDS=$(as_account MUSE_NO_AUTO_UPDATE=1 "$LAUNCHER" --help 2>/dev/null |
+  sed -n '/^Commands:/,/^$/p' | sed -n 's/^  \([a-z][a-z0-9-]*\)  *[A-Z].*/\1/p' | tr '\n' ' ')
+if [ -z "$MUSE_SUBCOMMANDS" ]; then
+  # ⚠ NO LIST MEANS NO INJECTION, rather than a guessed list. Guessing here would break
+  # `muse login`, which is the one command the operator has to be able to run.
+  say "Muse printed no Commands block, so no startup model or effort is set in the wrapper"
+  TK_ADAPTER_MODEL=
+  TK_ADAPTER_EFFORT=
+fi
+
 wrapper_tmp=$(mktemp)
 cat > "$wrapper_tmp" <<WRAPPER
 #!/bin/sh
@@ -173,6 +204,55 @@ cat > "$wrapper_tmp" <<WRAPPER
 if [ "\$(id -un)" != "$TK_USER" ]; then
   printf 'muse is installed for $TK_USER, and runs only as $TK_USER\n' >&2
   exit 126
+fi
+# The startup defaults this base configured, and the subcommands this Muse has.
+tk_model='${TK_ADAPTER_MODEL:-}'
+tk_effort='${TK_ADAPTER_EFFORT:-}'
+tk_subcommands='$MUSE_SUBCOMMANDS'
+
+# ⛔ A FLAG THE CALLER PASSED IS NEVER JOINED BY A SECOND: Muse refuses a repeated
+# --model with exit 2 rather than taking the last one.
+tk_after=
+for tk_a in "\$@"; do
+  case \$tk_a in
+    --model|--model=*) tk_model= ;;
+    --reasoning-effort|--reasoning-effort=*) tk_effort= ;;
+  esac
+  case " \$tk_subcommands " in
+    *" \$tk_a "*)
+      # ⭐ exec AND resume TAKE THEM, and every other subcommand takes neither. The
+      # first subcommand word on the line decides, and a later one is a prompt.
+      if [ -z "\$tk_after" ]; then
+        case \$tk_a in
+          exec|resume) tk_after=\$tk_a ;;
+          *) tk_after=none ;;
+        esac
+      fi
+      ;;
+  esac
+done
+
+if [ -n "\$tk_model\$tk_effort" ]; then
+  if [ -z "\$tk_after" ]; then
+    # The TUI, or a bare prompt: the options go in front.
+    [ -z "\$tk_effort" ] || set -- --reasoning-effort "\$tk_effort" "\$@"
+    [ -z "\$tk_model" ] || set -- --model "\$tk_model" "\$@"
+  elif [ "\$tk_after" != none ]; then
+    # After the subcommand, because Muse reads a root option before one as a TUI line.
+    tk_n=\$#
+    tk_i=0
+    tk_done=no
+    while [ "\$tk_i" -lt "\$tk_n" ]; do
+      tk_arg=\$1; shift
+      set -- "\$@" "\$tk_arg"
+      tk_i=\$((tk_i + 1))
+      if [ "\$tk_done" = no ] && [ "\$tk_arg" = "\$tk_after" ]; then
+        [ -z "\$tk_model" ] || set -- "\$@" --model "\$tk_model"
+        [ -z "\$tk_effort" ] || set -- "\$@" --reasoning-effort "\$tk_effort"
+        tk_done=yes
+      fi
+    done
+  fi
 fi
 exec "$LAUNCHER" "\$@"
 WRAPPER

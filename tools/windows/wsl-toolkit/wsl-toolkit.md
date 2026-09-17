@@ -373,10 +373,105 @@ and runs its self-test.
 | a turn submitted with `herdr agent prompt` | reported `idle`, `working`, `idle`; `herdr agent wait --until working` returned when the hook reported, with no screen rule matching |
 | `/exit`, then `muse resume` and a prompt | reported `idle` and released; the resumed session sent no `SessionStart`, and the hook adopted the pane at a sequence above the release |
 
-⚠ **Both adapters are driven on the `arch` preset, herdr with systemd, and a
-configuration naming either on anything else is refused.** Removing herdr from a
+⭐ **`pi` and `omp` install the other two agents from npm, and take herdr's own
+integration.** Both are npm packages, so there is no installer to approve and no
+digest to pin: npm checks a package against the registry's own integrity value.
+`version` on either entry pins a release. Each writes a wrapper at
+`/usr/local/bin/NAME`, because npm installs into `~/.local/bin` and ⛔ **a herdr pane
+does not have that on `PATH`** - measured on 2026-09-17, a pane answered `command not
+found` and `herdr agent start` waited for an agent that could never appear. Each
+adapter reads the name back through `runuser -l`, which is the PATH a pane really
+has, and refuses the install when a login shell still cannot find it.
+
+⚠ **omp is a Bun program and the adapter installs Bun from the distribution.** npm's
+own `bun` package leaves `Bun's postinstall script was not run`, so the adapter takes
+the distribution's, which `bootstrap.sh` does not carry.
+
+⛔ **A base carrying both pi and omp is REFUSED when they resolve to one extension
+directory.** `PI_CODING_AGENT_DIR` is read by both, so one exported for pi silently
+redirects omp onto pi's directory and herdr then refuses the omp integration. The
+refusal names both paths and the variable. `separate_agent_dir` is the opt-in that
+gives omp a directory of its own instead, and the adapter writes a wrapper so the
+separation is true at run time and not only at install time.
+
+```json
+"adapters": [{ "name": "pi" }, { "name": "omp", "separate_agent_dir": true }]
+```
+
+#### ⭐ The model and the reasoning effort a new session starts on
+
+An agent adapter takes `model` and `effort`, and writes each where that agent itself
+reads it.
+
+```json
+"adapters": [
+  { "name": "muse", "model": "muse-spark-1.3-contributor", "effort": "max" },
+  { "name": "pi",   "model": "muse-gateway/muse-spark-1.3-contributor", "effort": "max" },
+  { "name": "omp",  "model": "muse-spark-1.3-contributor", "effort": "max" }
+]
+```
+
+⛔ **NOT AN ENVIRONMENT VARIABLE, AND THAT IS THE WHOLE REASON THESE FIELDS EXIST.**
+An agent herdr starts inherits the herdr **service's** environment, not a login
+shell's - measured on 2026-09-17 by reading `/proc/PID/environ` for every pane
+process - so a default exported in `~/.profile` never reaches it.
+
+| field | what it does |
+| --- | --- |
+| `model` | the model a session nobody passed a flag to begins on. Empty leaves the agent's own default alone, which is what a base with no provider serving a named model needs. A value carrying a slash is `provider/id` for an agent that reaches a model through a named provider |
+| `effort` | the reasoning effort that session begins at. **`max` when a configuration names none**, because it is the one word all three agents take |
+
+⚠ **The effort vocabulary is each agent's own**, read from its own `--help` on
+2026-09-17, and a word an agent does not take is refused rather than sent to it:
+
+| agent | takes |
+| --- | --- |
+| `muse` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `ultra` |
+| `pi` | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
+| `omp` | `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, `auto` |
+
+**Where each one is written**, which is also where to change it by hand:
+
+| agent | the door |
+| --- | --- |
+| `pi` | `~/.pi/agent/settings.json`: `defaultProvider`, `defaultModel`, `defaultThinkingLevel`. Merged, so every other setting is kept |
+| `omp` | `omp config set modelRoles` for the `default` role, and `omp config set defaultThinkingLevel`. omp's own command writes them, so nothing here parses YAML |
+| `muse` | ⛔ **Muse Code 1.3.0 has no settings key for either**, so `/usr/local/bin/muse` passes `--model` and `--reasoning-effort` instead |
+
+⛔ **The Muse wrapper reads the line before it adds anything**, and these are the
+measurements that shape it, taken on Muse Code 1.3.0:
+
+| what was run | what Muse answered |
+| --- | --- |
+| `muse --model M config status` | exit 2, `invalid TUI options: unknown argument config`. A root option in front of a subcommand makes the whole line a TUI line |
+| `muse --model a --model b` | exit 2, `the argument '--model <MODEL>' cannot be used multiple times`. The last one does not win |
+| `muse how do I use exec mode` | exit 2, `unknown argument how`. Muse takes exactly one positional, so a prompt is one argument |
+
+So the wrapper puts them in front for the TUI, after `exec` or `resume` for those
+two, and **adds nothing at all to any other subcommand** - `muse login` reaches Muse
+exactly as typed. ⭐ **It reads the subcommand list from `muse --help` at install
+time** rather than carrying one, so a subcommand Muse adds later is known the next
+time `base ensure` runs. A flag the caller passed is never joined by a second.
+
+⛔ **A startup model pi cannot resolve is not an error to pi**: it falls back to its
+own built-in default, on a different provider, and says nothing. Measured on
+2026-09-17, a correct `defaultModel` gave `(anthropic) claude-opus-4-8` because
+`models.json` declared four ids and not that one - the gateway serving a model and
+pi's catalogue knowing it are two different facts. ⚠ **And `max` clamps to `high`
+without a `thinkingLevelMap`**, which pi's own documentation states. `base status
+--probe` reports `startup_model` and `startup_effort` and raises a problem for either
+case, so neither is silent again.
+
+| measured on 2026-09-17, on the operator's own base, each agent started BY herdr and its own screen read back | what the agent said |
+| --- | --- |
+| `muse` | `Model set to muse-spark-1.3-contributor`, status line `muse-spark-1.3-contributor · max · ~` |
+| `pi` | `(muse-gateway) muse-spark-1.3-contributor • max` |
+| `omp` | `Muse Spark 1.3 Contributor` |
+
+⚠ **All four adapters are driven on the `arch` preset, herdr with systemd, and a
+configuration naming any of them on anything else is refused.** Removing herdr from a
 configuration takes this machine's half away on the next ensure and leaves the base's
-half, and removing either leaves what it installed in the base; `base recreate`
+half, and removing any of them leaves what it installed in the base; `base recreate`
 removes that. `base remove` takes this machine's half away and keeps the key, which
 is this tool's and not the base's. `WSL_TOOLKIT_SSH_DIR` names a directory to write
 this machine's half into instead of `%USERPROFILE%\.ssh`, which the acceptance

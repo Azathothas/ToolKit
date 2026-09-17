@@ -72,6 +72,27 @@ type BaseAdapter struct {
 	// install time alone would put the integration in one directory and leave omp
 	// reading the other at run time, which is a claim rather than a fact.
 	SeparateAgentDir bool `json:"separate_agent_dir,omitempty"`
+	// Model is the model an agent adapter makes the STARTUP default for the account,
+	// so a session nobody passed a flag to begins on it.
+	//
+	// ⛔ WHERE IT IS WRITTEN IS THE AGENT'S OWN DOOR AND DIFFERS PER AGENT, because an
+	// environment variable cannot reach an agent herdr starts: a herdr pane inherits the
+	// herdr SERVICE's environment and not a login shell's, measured on 2026-09-17. pi
+	// takes defaultProvider and defaultModel in its settings file, omp takes the
+	// `default` entry of modelRoles, and Muse Code has no settings key at all, so its
+	// adapter's wrapper passes --model.
+	//
+	// ⚠ EMPTY MEANS LEAVE THE AGENT'S OWN DEFAULT ALONE, which is what a base with no
+	// provider serving a named model needs. A value carrying a slash is `provider/id`
+	// for an agent that reaches a model through a named provider.
+	Model string `json:"model,omitempty"`
+	// Effort is the reasoning effort an agent adapter makes the startup default.
+	//
+	// ⚠ THE VOCABULARY IS EACH AGENT'S OWN and adapterSpec.Efforts holds it: Muse takes
+	// `ultra` and pi does not, pi takes `off` and omp does not, omp takes `auto` and
+	// neither of the others does. `max` is the one word all three take, which is why it
+	// is the default. A word an agent does not know is refused rather than sent to it.
+	Effort string `json:"effort,omitempty"`
 }
 
 // AdapterState is one adapter as `base status --probe` read it back.
@@ -106,6 +127,10 @@ type adapterSpec struct {
 	TakesSeparateAgentDir bool
 	// TakesChannel says the adapter may follow AdapterChannelNightly.
 	TakesChannel bool
+	// Efforts are the reasoning-effort words this agent's own CLI accepts, or nil for an
+	// adapter that is not an agent. A non-empty list is also what says the adapter reads
+	// TK_ADAPTER_MODEL and TK_ADAPTER_EFFORT.
+	Efforts []string
 	// Agent is the command an agent adapter installs in the base, which `base agent`
 	// and the Windows launcher run, or "" for an adapter that is not an agent.
 	Agent string
@@ -132,6 +157,7 @@ var adapterSpecs = []adapterSpec{
 		Summary:              "Muse Code for the base's account, from Meta's installer, run only while that file's digest is one the operator approved, a launcher on Windows, and a herdr reporter for its lifecycle",
 		Presets:              []string{"arch"},
 		TakesInstallerDigest: true,
+		Efforts:              []string{"none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"},
 		Agent:                "muse",
 		Host:                 &agentLauncherHost{agent: "muse"},
 	},
@@ -144,6 +170,7 @@ var adapterSpecs = []adapterSpec{
 		Summary:         "the Pi coding agent for the base's account from npm, with herdr's own integration so herdr has lifecycle authority",
 		Presets:         []string{"arch"},
 		TakesVersionPin: true,
+		Efforts:         []string{"off", "minimal", "low", "medium", "high", "xhigh", "max"},
 		Agent:           "pi",
 		Host:            &agentLauncherHost{agent: "pi"},
 	},
@@ -153,6 +180,7 @@ var adapterSpecs = []adapterSpec{
 		Summary:               "Oh My Pi for the base's account from npm, with herdr's own integration, and a refusal when it and pi resolve to one extension directory",
 		Presets:               []string{"arch"},
 		TakesVersionPin:       true,
+		Efforts:               []string{"minimal", "low", "medium", "high", "xhigh", "max", "auto"},
 		Agent:                 "omp",
 		Host:                  &agentLauncherHost{agent: "omp"},
 	},
@@ -218,6 +246,9 @@ func validateAdapters(c Config) error {
 		if err := validateAdapterPin(i, a, spec); err != nil {
 			return err
 		}
+		if err := validateAdapterModel(i, a, spec); err != nil {
+			return err
+		}
 		if a.Channel != "" {
 			if !spec.TakesChannel {
 				return fmt.Errorf("base.adapters[%d] gives %q a channel, and only herdr follows one", i, a.Name)
@@ -245,6 +276,69 @@ func validateAdapters(c Config) error {
 		}
 	}
 	return nil
+}
+
+// AdapterDefaultEffort is the reasoning effort an agent adapter uses when a
+// configuration names none.
+//
+// ⭐ `max` IS THE ONE WORD ALL THREE AGENTS TAKE. Measured from each CLI's own help
+// in a base on 2026-09-17: Muse reads none|minimal|low|medium|high|xhigh|max|ultra, pi
+// reads off|minimal|low|medium|high|xhigh|max, and omp reads
+// minimal|low|medium|high|xhigh|max|auto. Their intersection past the shared middle is
+// this word, so it is the only default that can be given to every agent unchanged.
+const AdapterDefaultEffort = "max"
+
+// AdapterEffort answers the effort an adapter installs, which is the configured one
+// or AdapterDefaultEffort.
+func AdapterEffort(a BaseAdapter, spec adapterSpec) string {
+	if len(spec.Efforts) == 0 {
+		return ""
+	}
+	if a.Effort != "" {
+		return a.Effort
+	}
+	return AdapterDefaultEffort
+}
+
+// AdapterEffortWords answers what an adapter's agent accepts, for a message.
+func AdapterEffortWords(name string) []string {
+	spec, ok := lookupAdapter(name)
+	if !ok {
+		return nil
+	}
+	return append([]string(nil), spec.Efforts...)
+}
+
+// validateAdapterModel holds the rule for a startup model and effort.
+//
+// ⛔ REFUSED ON AN ADAPTER THAT IS NOT AN AGENT, rather than ignored, and refused for
+// a word that agent's own CLI does not take. An effort accepted here and rejected by
+// the agent at every start is a setting the operator believes is in force; the whole
+// point of this field is that the default reaches an agent herdr starts, where no
+// environment variable can.
+func validateAdapterModel(i int, a BaseAdapter, spec adapterSpec) error {
+	if len(spec.Efforts) == 0 {
+		if a.Model != "" {
+			return fmt.Errorf("base.adapters[%d] gives %q a model, and it installs no agent that a model would reach", i, a.Name)
+		}
+		if a.Effort != "" {
+			return fmt.Errorf("base.adapters[%d] gives %q an effort, and it installs no agent that a reasoning effort would reach", i, a.Name)
+		}
+		return nil
+	}
+	if a.Model != "" && len(strings.Fields(a.Model)) != 1 {
+		return fmt.Errorf("base.adapters[%d].model is %q, and a model id carries no whitespace. It reaches the agent as one argument", i, a.Model)
+	}
+	if a.Effort == "" {
+		return nil
+	}
+	for _, w := range spec.Efforts {
+		if a.Effort == w {
+			return nil
+		}
+	}
+	return fmt.Errorf("base.adapters[%d].effort is %q, and %s takes: %s",
+		i, a.Effort, a.Name, strings.Join(spec.Efforts, ", "))
 }
 
 // adapterVersionRE is a release as an adapter names one: digits, dots and the
@@ -365,6 +459,7 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	spec, _ := lookupAdapter(a.Name)
 	env["TK_USER"] = cfg.Base.User
 	env["TK_DISTRO"] = cfg.Base.Name
 	if a.InstallerSHA256 != "" {
@@ -393,6 +488,14 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 	// ⭐ A RELEASE THIS EXECUTABLE HAS NEVER HEARD OF, pinned by the configuration
 	// that asked for it. The script keeps its own default, so a base that names
 	// neither is unchanged.
+	// ⭐ THE STARTUP MODEL AND EFFORT, resolved here so one rule answers for every
+	// adapter and each install.sh only has to write what its own agent reads.
+	if len(spec.Efforts) > 0 {
+		if a.Model != "" {
+			env["TK_ADAPTER_MODEL"] = a.Model
+		}
+		env["TK_ADAPTER_EFFORT"] = AdapterEffort(a, spec)
+	}
 	if a.Version != "" {
 		env["TK_ADAPTER_VERSION"] = a.Version
 		for arch, digest := range a.SHA256 {

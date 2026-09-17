@@ -2945,6 +2945,69 @@
       "replace": "",
       "run": "TestSeparateAgentDirReachesTheInstaller",
       "args": []
+    },
+    {
+      "label": "agent defaults: max is the effort a base that names none gets",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "const AdapterDefaultEffort = \"max\"",
+      "replace": "const AdapterDefaultEffort = \"high\"",
+      "run": "TestEveryAgentAdapterDefaultsToMaxEffort",
+      "args": []
+    },
+    {
+      "label": "agent defaults: the model and effort reaching the installer at all",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tenv[\"TK_ADAPTER_EFFORT\"] = AdapterEffort(a, spec)\n",
+      "replace": "",
+      "run": "TestEveryAgentAdapterDefaultsToMaxEffort",
+      "args": []
+    },
+    {
+      "label": "agent defaults: a model on an adapter that installs no agent is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif a.Model != \"\" {\n\t\t\treturn fmt.Errorf(\"base.adapters[%d] gives %q a model, and it installs no agent that a model would reach\", i, a.Name)\n\t\t}\n",
+      "replace": "",
+      "run": "TestAModelOnAnAdapterThatInstallsNoAgentIsRefused",
+      "args": []
+    },
+    {
+      "label": "agent defaults: an effort word the agent does not take is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tfor _, w := range spec.Efforts {\n\t\tif a.Effort == w {\n\t\t\treturn nil\n\t\t}\n\t}\n",
+      "replace": "\treturn nil\n",
+      "run": "TestEachAgentRefusesAnEffortWordItsOwnCLIDoesNotTake",
+      "args": []
+    },
+    {
+      "label": "agent defaults: a model carrying whitespace is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif a.Model != \"\" && len(strings.Fields(a.Model)) != 1 {",
+      "replace": "\tif a.Model != \"\" && false {",
+      "run": "TestAModelCarryingWhitespaceIsRefused",
+      "args": []
+    },
+    {
+      "label": "agent defaults: the muse wrapper keeps a subcommand free of root options",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "          *) tk_after=none ;;",
+      "replace": "          *) tk_after=$tk_a ;;",
+      "run": "TestTheMuseWrapperPlacesTheDefaultsWhereMuseTakesThem",
+      "args": []
+    },
+    {
+      "label": "agent defaults: the muse wrapper never repeats a flag the caller passed",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/install.sh",
+      "find": "    --model|--model=*) tk_model= ;;",
+      "replace": "    --model|--model=*) : ;;",
+      "run": "TestTheMuseWrapperPlacesTheDefaultsWhereMuseTakesThem",
+      "args": []
     }
   ]
 }

@@ -563,17 +563,36 @@ the sweep that read it.
 
 ### `common/shell-profile.sh`
 
-A login-shell profile that does ONE thing: an **interactive** shell whose working
-directory is a Windows drive WSL mounted for it moves to the account's home and
-says so once. `bootstrap.sh` installs it under the prefix and adds one line that
-reads it to `~/.profile`, and to `~/.bash_profile` or `~/.bash_login` where the
+A login-shell profile that does three things, and every one of them only for an
+**interactive** shell. `bootstrap.sh` installs it under the prefix and adds one line
+that reads it to `~/.profile`, and to `~/.bash_profile` or `~/.bash_login` where the
 account already has one.
+
+| what | when |
+| --- | --- |
+| a shell whose working directory is a Windows drive WSL mounted moves to the account's home, and says so once | the directory is one level under the automount root |
+| duplicate entries come out of the `PATH` it inherited | the list has a repeat, or an empty element |
+| shell history gets a home that survives | the shell itself gave it none |
 
 ⛔ **Interactive, not login, and the difference is the whole guard.** `wsl-toolkit
 distro run -c` and `matrix -c` send every command to a LOGIN shell, so a profile
-that moved a login shell would silently change the working directory of every
-command any caller runs from a Windows drive. `$-` carries `i` only for a shell a
-person is typing at.
+that changed one would silently change what every command any caller runs sees.
+`$-` carries `i` only for a shell a person is typing at.
+
+⭐ **`WSL_TOOLKIT_NO_PROFILE=1` turns all of it off**, which is the one named way.
+
+⛔ **NOTHING HERE ADDS A DIRECTORY TO `PATH`.** `bootstrap.sh` writes the line for
+the prefix and one fact has one home. This file only removes a repeat of something
+already there, keeping the first occurrence in its place so which binary wins does
+not change. ⚠ **An empty element is dropped**, because `PATH=/bin:` searches the
+current directory for every command typed; that is the one change here that alters
+what a command resolves to, and it is deliberate.
+
+⚠ **History is four plain variables and nothing else.** `HISTFILE`, `HISTSIZE`,
+`HISTFILESIZE` and `HISTCONTROL`, each set only where nothing set it, so the
+account's own choice always wins. `shopt -s histappend` is bash's and is not POSIX,
+so it is not here. bash already has a history file and keeps it; the sh, dash and ash
+family had none and gain one.
 
 ⛔ **A granted directory is not a Windows drive for this purpose.** The guard
 matches one level under the automount root - `/mnt/c`, and the root itself is read
@@ -589,12 +608,25 @@ inherited it are otherwise identical.
 ⛔ **It fetches nothing and has no aliases and no prompt.** A profile that updates
 itself puts a network fetch in front of every shell start and makes its own content
 untrackable; an alias for a tool the toolset did not install is an error on every
-shell start. `PATH` for the prefix is `bootstrap.sh`'s line, not this file's.
+shell start.
 
 ⚠ **The `.sh` extension is the constraint, not a label.** CI runs `shellcheck -s
 sh` over every tracked `*.sh`, which is exactly what this file needs: no arrays, no
-`local`, no `[[`. Driven under bash, dash and busybox ash on 2026-09-15.
+`local`, no `[[`.
 
+| measured on 2026-09-17, `matrix --images all`, each image driven twice - without the profile, then with it | result |
+| --- | --- |
+| images, and shells found on them | 13 and **28** |
+| shells that add a byte to stderr, login or interactive | ⭐ **0**. ⚠ The assertion is the DELTA, because Photon's own `dircolors.sh` writes 66 bytes either way |
+| shells that de-duplicate a planted repeat for an interactive shell | **28 of 28** |
+| shells that leave a non-interactive shell's `PATH` exactly as it was | **28 of 28** |
+| shells that gained a history home | **13**, every `sh`, `dash` and `ash`; the other 15 kept their own |
+| shells that honour `WSL_TOOLKIT_NO_PROFILE` | **28 of 28** |
+
+⛔ **`-ic` is not the flag to drive this with.** An interactive NON-login shell reads
+`~/.bashrc` or `$ENV` and never `~/.profile`, so a driver using it reported six
+images as failing over code that had not run. ⛔ **And a planted `PATH` cannot be
+read back through `/etc/profile`**, which every image but arch replaces `PATH` in.
 ---
 
 ## Adding one

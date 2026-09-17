@@ -41,6 +41,47 @@ else
   problem "pi answers no version for $TK_USER, so it is not usable by that account"
 fi
 
+# -- the startup model, read back from pi rather than from the file that set it ---------
+# ⛔ A STARTUP MODEL PI CANNOT RESOLVE IS NOT AN ERROR TO PI: it falls back to its own
+# built-in default, on a DIFFERENT provider, and says nothing. Measured 2026-09-17: with
+# defaultProvider muse-gateway and defaultModel muse-spark-1.3-contributor set correctly,
+# pi's own status line read `(anthropic) claude-opus-4-8`, because models.json declared
+# four spark ids and not that one. The gateway serving a model and pi's catalogue knowing
+# it are two different facts.
+#
+# ⚠ AND max CLAMPS TO high WITHOUT A thinkingLevelMap. pi's own docs: with the map
+# omitted, `xhigh` and `max` are unsupported and clamped away. A base can therefore be set
+# to max and start every session at high with nothing said.
+#
+# ⭐ SO BOTH ARE READ BACK FROM PI'S OWN CATALOGUE, and a mismatch is a problem rather
+# than a fact.
+settings=$TK_HOME/.pi/agent/settings.json
+if [ -f "$settings" ] && command -v jq >/dev/null 2>&1; then
+  want_provider=$(as_account jq -r '.defaultProvider // ""' "$settings" 2>/dev/null)
+  want_model=$(as_account jq -r '.defaultModel // ""' "$settings" 2>/dev/null)
+  want_effort=$(as_account jq -r '.defaultThinkingLevel // ""' "$settings" 2>/dev/null)
+  [ -n "$want_model" ] && printf 'startup_model %s/%s\n' "${want_provider:-?}" "$want_model"
+  [ -n "$want_effort" ] && printf 'startup_effort %s\n' "$want_effort"
+  if [ -n "$want_model" ]; then
+    if as_account pi --list-models 2>/dev/null | tr -d '\r' |
+        awk -v p="$want_provider" -v m="$want_model" '$1 == p && $2 == m { found = 1 } END { exit !found }'; then
+      : # pi's own catalogue resolves it
+    else
+      problem "pi's startup model is $want_provider/$want_model and its own catalogue does not list it, so every session starts on pi's built-in default instead. Declare the model under that provider in $TK_HOME/.pi/agent/models.json"
+    fi
+    case $want_effort in
+      xhigh|max)
+        models=$TK_HOME/.pi/agent/models.json
+        # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
+        if [ -f "$models" ] && ! as_account jq -e --arg p "$want_provider" --arg m "$want_model" --arg e "$want_effort" \
+            '(.providers[$p].models // []) | any(.id == $m and ((.thinkingLevelMap // {}) | has($e)))' "$models" >/dev/null 2>&1; then
+          problem "pi's startup effort is $want_effort and $want_provider/$want_model declares no thinkingLevelMap exposing it, so pi clamps every session to high. Add \"thinkingLevelMap\": {\"$want_effort\": \"$want_effort\"} to that model"
+        fi
+        ;;
+    esac
+  fi
+fi
+
 # ⭐ THE AGENT DIRECTORY IS REPORTED AS A FACT, because it is the thing that decides
 # whether herdr will accept an omp integration beside this one: herdr refuses omp
 # when the two resolve to the same directory. WSL-89.

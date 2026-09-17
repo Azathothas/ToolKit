@@ -226,6 +226,43 @@ WRAPPER
   say "the account's omp resolves to the wrapper and runs"
 fi
 
+# -- the startup model and reasoning effort --------------------------------------------
+# ⛔ IT GOES IN OMP'S OWN CONFIGURATION AND NOT IN AN ENVIRONMENT. A herdr pane inherits
+# the herdr SERVICE's environment, not a login shell's, measured on 2026-09-17, so a
+# variable exported in a profile never reaches an agent herdr starts.
+#
+# ⭐ OMP'S OWN DOOR, AND ITS OWN COMMAND WRITES IT. `omp config` reads and writes
+# ~/.omp/agent/config.yml, so nothing here parses or rewrites YAML by hand. Measured in
+# the base on 2026-09-17: `defaultThinkingLevel` is a settings key omp lists, and the
+# startup model is the `default` entry of the `modelRoles` record, which omp's own code
+# reads as `defaultModelPattern ?? getModelRole("default")`.
+#
+# ⚠ THE RECORD IS MERGED, NEVER REPLACED, so a role the operator set for smol, slow or
+# plan keeps its model.
+if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
+  if [ -n "${TK_ADAPTER_EFFORT:-}" ]; then
+    as_account "$OMP_BIN" config set defaultThinkingLevel "$TK_ADAPTER_EFFORT" >/dev/null 2>&1 ||
+      die "omp refused the effort $TK_ADAPTER_EFFORT. Read what it takes with: $tool base exec -c 'omp config list'"
+  fi
+  if [ -n "${TK_ADAPTER_MODEL:-}" ]; then
+    if ! command -v jq >/dev/null 2>&1; then
+      say "no jq in this base, so omp's startup model was not set. Set base.toolset to developer or later"
+    else
+      roles=$(as_account "$OMP_BIN" config get modelRoles 2>/dev/null | tr -d '\r')
+      printf '%s' "$roles" | jq -e 'type == "object"' >/dev/null 2>&1 || roles='{}'
+      merged=$(printf '%s' "$roles" | jq -c --arg m "$TK_ADAPTER_MODEL" '. + {"default": $m}' 2>/dev/null) ||
+        die "omp's modelRoles could not be merged, and it was left as it was"
+      as_account "$OMP_BIN" config set modelRoles "$merged" >/dev/null 2>&1 ||
+        die "omp refused the model $TK_ADAPTER_MODEL. Read what it has with: $tool base exec -c 'omp config get modelRoles'"
+    fi
+  fi
+  # ⛔ READ BACK FROM omp ITSELF, not from the file this wrote. A setting written and
+  # never read back is a claim; omp normalises and validates what it stores, so its own
+  # answer is the only proof the value is in force.
+  back=$(as_account "$OMP_BIN" config get defaultThinkingLevel 2>/dev/null | tr -d '\r' | head -1)
+  say "omp starts on ${TK_ADAPTER_MODEL:-its own model} at effort ${back:-unread}"
+fi
+
 # -- herdr's own OMP integration --------------------------------------------------------
 if command -v herdr >/dev/null 2>&1 || [ -x /usr/local/bin/herdr ]; then
   herdr_bin=$(command -v herdr 2>/dev/null || printf '/usr/local/bin/herdr')

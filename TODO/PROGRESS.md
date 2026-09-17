@@ -6,119 +6,39 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-17T02:52:40Z
-baseline        485252c, tree DIRTY with the last session's two uncommitted wording corrections, doctor exit 0 in 55 s, gate 21 of 21 in 70 s, CI run 35070882239 green
+session started 2026-09-17T05:13:01Z
+baseline        bf7753b, tree clean, doctor exit 0, gate 21 of 21, CI green on 895b804 and the two held commits pushed at 05:31Z
 head            this session's commit
 entries         total 125  open 5  blocked 0  done 120
-this session    WSL-68's steps 3 and 4: the attack is `base doors`, a registered command; three defects it found in itself, and one about WSL that narrowed what it may promise
+this session    the startup model and effort every agent begins on, the shell profile's three new mechanisms across thirteen images, the guide, two skills, four reviews and the release
 ```
 
 ## Active work
 
-⭐ **This is the attended Muse and herdr session the work order reserved.**
-`wsl-toolkit-base` is built from the example profile, saved as the instance's own
-configuration, and holds herdr 0.9.0 and Muse Code 1.3.0. The operator's `muse login`
-has not happened yet.
+⭐ **THE SIX THINGS THE OPERATOR ASKED FOR ON 2026-09-17**, in their order: the guide,
+the default model and effort, the errandsh ideas, every document plus two skills, four
+reviews and the release, and then the end of the session.
 
-⭐ **The four measurements the sweep named are taken**, and three of them overturn the
-record. herdr on Windows is 0.9.0 and no published herdr carries `#4038`'s fix; ⛔
-**`herdr --machine` does not exist in 0.9.0**, because the sweep read herdr's
-unreleased `docs/next`; WSL exposes a foreground process group; and Muse started
-through this tool's wrapper keeps its identity to herdr. `WSL-76`'s amendment of
-2026-09-15 carries every number, and
-[`../docs/reference-sweeps/usable.md`](../docs/reference-sweeps/usable.md) the
-row-by-row correction.
+⭐ **The startup model and effort are delivered and PROVED THROUGH herdr.** `base.adapters`
+takes `model` and `effort` on an agent adapter, `effort` is `max` when a configuration
+names none, and each value is written where that agent itself reads it: pi's settings
+file, omp's own `config set`, and - because Muse Code 1.3.0 has no settings key for
+either - the wrapper the muse adapter already owns. ⛔ **Not an environment variable, and
+that is the whole reason the fields exist**: finding 51. Each agent was started BY herdr
+and its own screen read back: Muse `muse-spark-1.3-contributor · max`, pi
+`(muse-gateway) muse-spark-1.3-contributor • max`, omp `Muse Spark 1.3 Contributor`.
+⛔ **Two silent failures were found doing it**, findings 53 and 54: pi falls back to
+another provider's model when its catalogue cannot resolve the one configured, and
+clamps `max` to `high` without a `thinkingLevelMap`. Both are now problems
+`base status --probe` raises, each proved by planting it.
 
-⭐ **The muse adapter's herdr reporter now runs against a real herdr and a real Muse.**
-Its first real run found four defects the stub could not: a temporary file
-`fs.protected_regular` refused, the wrong settings file, the wrong hook shape, and a new
-file Muse would refuse to start over. All four are fixed with a case and five mutation
-rows, and the full lifecycle, a `wait --until working` and resume adoption are measured
-in a pane of the base.
-
-⭐ **herdr is built here from its development branch, by the operator's instruction**,
-and **`WSL-90` carries it forward**: approved, filed, and implemented in this session by
-the operator's rulings 12 to 15. Driven in a Windows pseudo console against the base,
-the development client passes every signal `#4176` names and 0.9.0 fails three; with
-the development server swapped into `wsl-toolkit-base`, `--machine base agent list`
-answers exit 0. Its release lookup is proved, and both build matrix runs are read.
-
-⭐ **The first nightly is published, verified and driven**, on 2026-09-16:
-`herdr-nightly-20260916-18061191fdc0`, run `35066661420`, 6 of 6 jobs green, 12 assets.
-Every digest passes `sha256sum -c` and every bundle passes `cosign verify-blob` against
-`herdr-nightly.yml`'s identity, and both refuse when the identity is wrong or a byte is
-flipped. With `"channel": "nightly"` the base installs it in 8.78 s, `base status
---probe` reads the release's own digest and `server-binary-stale no`, and the client
-`base attach` prints answers `--machine base agent list` with exit 0.
-⛔ **Its first real run found a defect the suite could not**: the prune sorted by
-`created_at`, which `--target` sets from the target commit, and would have deleted the
-NEWEST nightly. Fixed and driven; finding 33 records that no harness covers it.
-⚠ `release.yml`'s herdr jobs have still never run and no `wsl-toolkit-v*` release
-carries herdr. ⛔ **This sentence also said the probe was "still a draft outside the
-tree", which the paragraph below it contradicts**: it was tracked at `b2203ab` on
-2026-09-16, in the same session. Corrected on 2026-09-17; it is finding 29's shape
-inside one section rather than across two files.
-
-⭐ **The probe is a tracked script**, `tools/windows/wsl-toolkit/herdr-remote-probe.ps1`,
-and it reproduces the entry's premise from a command: the nightly client passes all six
-measurable signals and 0.9.0 fails three. Its own driven pass found three defects in
-itself, all fixed and proved by mutation. ⭐ **Its three reviews are run** and recorded in
-its last amendment; the door sweep found finding 36 and the claim audit caught a line
-count written from memory. ⛔ **`WSL-90` stays open, and not on the operator**: approach
-step 4, herdr inside a `wsl-toolkit-v*` release, has never run and cannot be driven until
-ruling 6 lets `wsl-toolkit-v3.0.0` be cut.
-
-⭐ **`WSL-68`'s approach steps 3 and 4 are done, on 2026-09-17**, and nobody was needed
-for either. The attack that lived in `.tmp\s16\seal-attack.sh` is
-`wsl-toolkit base doors`: an embedded probe of 30 doors run as the unprivileged
-account, a reader whose every refusal has a case, 13 cases, 6 mutation rows, a manual section, a row
-in the acceptance sweep and a paragraph in the safety model naming what is NOT sealed.
-⛔ **Its own driven runs found three defects in it**: a door reported CLOSED over an
-attempt that never happened, a run that took 277 s because bash's `/dev/tcp` has no
-deadline, and `--json` answering `"problems": null` on exactly the healthy case.
-⛔ **And one about WSL**: the `WSLInterop` `binfmt_misc` registration does not follow a
-distribution's `[interop] enabled` setting - both values were seen on the SAME
-distribution with the same configuration - so `base.interop = "off"` now claims only
-the PATH door, and the handler is reported and never claimed. ⭐ **The shared tmpfs now closes**, `base.shared_tmpfs = "off"`: the provisioner installs
-a boot script WSL runs as root at every start, the resolver is written before the door
-shuts and refreshed before every unmount, and the verifier refuses a base where either
-half did not happen. Driven from nothing in 110 s and proved able to fail. ⭐ **And the private network namespace is measured, delivered and driven**, as
-`base exec --private-net`: the Windows host goes from answering ICMP to refused while
-the internet and DNS stay up, and the shared namespace is unchanged with no rule in it,
-which is the condition ruling 3 carries. ⛔ **It is a flag and not how every command
-starts, because no container runs inside it** - measured three ways. ⚠ **`WSL-68` still
-does not close**: `base shell` does not take the flag, because an interactive attach
-through `pasta` cannot be driven from here, and the design question the measurement
-raised is question 3 below.
-
-⭐ **`WSL-88` AND `WSL-89` ARE CLOSED**, driven on the operator's own base after they signed in.
-All three agents answer through herdr: muse, pi on their Muse gateway at `spark-max`, and
-omp on the subscription, each running `python3 src/inventory.py` and returning **47**,
-read back with `herdr agent read`. ⭐ **And herdr's authority is the lifecycle rather than
-the screen** for both: `agent explain` answers `manifest: none`, `rule: none`,
-`screen_detection_skip_reason: full_lifecycle_hook_authority`. ⛔ **Three things stood
-between installed and working and none was in either entry**: neither agent was on a
-pane's PATH, the first guard for that was theatre, and pi sends its key to a built-in
-model when none is pinned.
-
-**Resume, in this order:**
-
-1. **The operator's two steps**, which nothing else here can stand in for: `muse login`
-   in `base shell`, and the six `--remote` signals in a real Windows Terminal window -
-   now with the nightly's own client, which `base attach` prints.
-2. `WSL-68`'s last piece, named at the end of its amendment of 2026-09-17: the flag on
-   an interactive attach, which needs a way to drive a terminal here rather than a
-   design. ⭐ **It does not need the operator**, and question 3 below is a ruling that
-   nothing waits on.
-3. `WSL-76` and `WSL-78`: ⭐ **both acceptances are driven** - `muse exec` answered 3 from
-   the granted project and exit 2 from an ungranted one, and `herdr agent prompt muse`
-   ran the script and read back 47. ⚠ What is left in each is smaller than it was: the
-   guide transcript for `WSL-78`, and `PreToolUse` and `PermissionRequest` from a real
-   turn for `WSL-76`.
-4. ⭐ **`WSL-88` and `WSL-89` are CLOSED**, 2026-09-17, with every condition driven on
-   the operator's own base. Nothing is left in either.
-5. `WSL-90`'s closing, which waits on `wsl-toolkit-v3.0.0` proving its step 4, and so on
-   ruling 6 rather than on any work.
+⭐ **The shell profile gained three mechanisms and was driven across every image.**
+`WSL_TOOLKIT_NO_PROFILE` turns all of it off, `PATH` loses its duplicates and its empty
+elements for an interactive shell only, and history gets a home where the shell gave it
+none. `matrix --images all`, each image twice: **13 images, 28 shells, 0 add a byte to
+stderr, 28 de-duplicate, 28 leave a non-interactive shell alone, 13 gained a history
+home, 28 honour the switch.** ⛔ **Two defects in the DRIVER found first**, findings 57
+and 58: `-ic` never reads `~/.profile`, and Photon has no `tr`.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -850,6 +770,58 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     muse-gateway/spark-max` the status line reads `spark-max` and the provider is the
     gateway. ⭐ Not a defect, and worth writing down: an agent adapter that configures a
     custom provider has to pin the model too, or the agent silently uses another one.
+
+53. ⛔ **A STARTUP MODEL PI CANNOT RESOLVE IS NOT AN ERROR TO PI, and this is finding 52
+    made worse rather than the same finding.** `~/.pi/agent/settings.json` carried
+    `defaultProvider muse-gateway` and `defaultModel muse-spark-1.3-contributor`, both
+    correct and both what the operator asked for, and pi's own status line still read
+    `(anthropic) claude-opus-4-8`. ⭐ **The cause: pi resolves a startup model against
+    its own catalogue, and `models.json` declared four `spark-*` ids and not that one.**
+    The gateway serving a model and pi's catalogue knowing it are two different facts -
+    `GET /v1/models/muse-spark-1.3-contributor` answers HTTP 200 on the gateway, and pi
+    could not select it. ⚠ **Nothing is printed when this happens**, which is why
+    `base status --probe` now reads the startup model back through `pi --list-models`
+    and raises a problem. Proved by removing the id and watching the probe go to exit 1.
+54. ⛔ **`max` CLAMPS TO `high` WITH NOTHING SAID, unless the model declares a
+    `thinkingLevelMap` that exposes it.** pi's own `docs/models.md`: with the map
+    omitted, "Standard levels through `high` use the provider's default mapping;
+    extended `xhigh` and `max` levels are unsupported". So a base configured for `max`
+    started every session at `high`, and the status line said `high` while the settings
+    file said `max`. ⭐ Adding `"thinkingLevelMap": {"xhigh": "xhigh", "max": "max"}` to
+    the gateway's models made the same session read `max`. The probe raises a problem
+    for this too.
+55. ⭐ **`spark-max` WAS NOT AN INVENTED ID.** The lens "what did I measure but never
+    verify" went after last session's `models.json`, because the gateway's `/v1/models`
+    listing does not contain `spark-max`, `spark-hi`, `spark-lo` or `spark-min`.
+    ⚠ Asking for each one by name answers **HTTP 200**, so they are aliases the gateway
+    serves and does not list. The entry stands; what was missing was the check.
+56. ⛔ **MUSE REFUSES A ROOT OPTION IN FRONT OF A SUBCOMMAND, AND REFUSES A REPEATED
+    ONE.** `muse --model M config status` exits 2 with `unknown argument config`,
+    because a root option makes the whole line a TUI line; `muse --model a --model b`
+    exits 2 with `cannot be used multiple times`, so "the last one wins" is false here.
+    ⚠ And `muse how do I use exec mode` exits 2 with `unknown argument how`: Muse takes
+    exactly one positional. ⭐ All three together are why the wrapper reads the line
+    before it adds anything, rather than putting the defaults in front of every call.
+57. ⛔ **AN INTERACTIVE NON-LOGIN SHELL NEVER READS `~/.profile`.** The first driver for
+    the profile's new mechanisms used `sh -ic` and reported **six of thirteen images as
+    failing** over code that had not run: `-ic` reads `~/.bashrc` or `$ENV`. ⚠ **And a
+    `PATH` planted in the environment cannot be read back through `/etc/profile`**,
+    which every image but arch replaces `PATH` in, so the count read 0 whatever the
+    profile did. The driver sources the file inside the shell instead, which tests the
+    file rather than the plumbing.
+58. ⛔ **PHOTON CARRIES NO `tr`.** A counter written as `tr ':' '\n' | grep -c` answered
+    0 for every case on that image - including the cases with the profile switched OFF,
+    which is what gave it away, because a real failure could not have made the switch
+    stop working too. ⚠ This is the same shape as chimera's padded `wc`, which the last
+    driver hit: **the assertion must not need a program the image may not have.**
+    Splitting on the colon with parameter expansion needs none.
+59. ⭐ **THE MUTATION HARNESS CAUGHT REDUNDANT CODE, not a weak case.** A row that
+    deleted `tk_model=; tk_effort=;` from the Muse wrapper's non-agent-subcommand arm
+    stayed green, and the case was right: `tk_after=none` alone already stops the
+    injection, so the two assignments could never change an outcome. ⚠ The fix was to
+    delete the redundancy rather than to strengthen the case. A guard that cannot be
+    made to matter is not a guard.
+
 
 ## Review findings
 

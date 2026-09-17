@@ -103,6 +103,60 @@ else
   say "no herdr in this base, so no integration was installed. Add the herdr adapter to base.adapters"
 fi
 
+# -- the startup model and reasoning effort --------------------------------------------
+# ⛔ IT GOES IN PI'S OWN SETTINGS FILE AND NOT IN AN ENVIRONMENT. A herdr pane inherits
+# the herdr SERVICE's environment, not a login shell's: measured on 2026-09-17 by reading
+# /proc/PID/environ for every pane process, which is why a key exported in ~/.profile
+# never reached pi and `pi auth check` answered not_ready. A value the agent itself reads
+# at startup is the only kind that reaches an agent herdr starts.
+#
+# ⭐ PI'S OWN DOOR, from pi's own docs/settings.md in this base: ~/.pi/agent/settings.json
+# takes defaultProvider, defaultModel and defaultThinkingLevel, and they are what /model
+# and /thinking write when a person saves a choice there.
+#
+# ⚠ THE FILE IS MERGED, NEVER REPLACED. It is the account's, it carries their own
+# settings, and one that cannot be parsed stops this rather than being overwritten with a
+# guess - the rule the Muse trust store taught on 2026-09-17.
+if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
+  if ! command -v jq >/dev/null 2>&1; then
+    say "no jq in this base, so pi's startup model and effort were not set. Set base.toolset to developer or later"
+  else
+    install -d -o "$TK_USER" -g "$TK_GROUP" -m 0755 "$TK_HOME/.pi" "$TK_HOME/.pi/agent"
+    pi_settings=$TK_HOME/.pi/agent/settings.json
+    [ -f "$pi_settings" ] || as_account sh -c "printf '{}\n' > '$pi_settings'"
+    as_account jq -e 'type == "object"' "$pi_settings" >/dev/null 2>&1 ||
+      die "$pi_settings is not a JSON object, and pi reads its settings from one. It was left exactly as it is; read it, then run base ensure again"
+    # ⭐ A SLASH SPLITS PROVIDER FROM MODEL, because pi reaches a model through a named
+    # provider and spells that pair `provider/id` on its own --model flag. A bare id
+    # leaves defaultProvider alone, so a base that only moves the effort keeps its
+    # provider.
+    pi_provider=
+    pi_model=${TK_ADAPTER_MODEL:-}
+    case $pi_model in
+      */*) pi_provider=${pi_model%%/*}; pi_model=${pi_model#*/} ;;
+    esac
+    settings_tmp=$(mktemp)
+    # shellcheck disable=SC2016  # the single quotes hold a jq program, not shell
+    if as_account jq \
+        --arg provider "$pi_provider" --arg model "$pi_model" --arg effort "${TK_ADAPTER_EFFORT:-}" '
+        (if $provider == "" then . else .defaultProvider = $provider end)
+        | (if $model == "" then . else .defaultModel = $model end)
+        | (if $effort == "" then . else .defaultThinkingLevel = $effort end)
+      ' "$pi_settings" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
+      if cmp -s "$settings_tmp" "$pi_settings"; then
+        rm -f "$settings_tmp"
+      else
+        install -o "$TK_USER" -g "$TK_GROUP" -m 0600 "$settings_tmp" "$pi_settings"
+        rm -f "$settings_tmp"
+      fi
+      say "pi starts on ${TK_ADAPTER_MODEL:-its own model} at effort ${TK_ADAPTER_EFFORT:-its own}, from $pi_settings"
+    else
+      rm -f "$settings_tmp"
+      die "pi's settings could not be updated, and $pi_settings was left as it was"
+    fi
+  fi
+fi
+
 # -- the wrapper that puts the agent on a PANE's PATH ------------------------------------
 # ⛔ npm INSTALLS INTO $HOME/.local/bin AND A herdr PANE DOES NOT HAVE IT ON PATH.
 # Measured 2026-09-17 on the operator's base: a login shell's PATH is

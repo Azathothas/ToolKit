@@ -1,9 +1,13 @@
 # shell-profile.sh - the one interactive-shell mechanism this tree owns.
 #
-# WHAT IT DOES, AND IT IS ONE THING: an INTERACTIVE login shell whose working
-# directory is a Windows drive that WSL mounted for it moves to the account's
-# home and says so once. A directory this tool GRANTED is not touched, because
-# that is the directory the caller asked to work in.
+# WHAT IT DOES, AND EVERY PART IS FOR AN INTERACTIVE SHELL ONLY:
+#
+#   1. an interactive login shell whose working directory is a Windows drive that
+#      WSL mounted for it moves to the account's home and says so once. A
+#      directory this tool GRANTED is not touched, because that is the directory
+#      the caller asked to work in;
+#   2. duplicate entries are taken out of the PATH it inherited;
+#   3. shell history is given a home that survives, when nothing else gave it one.
 #
 # ⚠ THE EXTENSION IS `.sh` ON PURPOSE, and it is a constraint rather than a
 # label. CI runs `shellcheck -s sh` over every tracked `*.sh`, and POSIX sh is
@@ -19,8 +23,20 @@
 # ⛔ NO ALIASES AND NO PROMPT. An alias for a tool the toolset did not install is
 # an error on every shell start, and a prompt is taste rather than a tool.
 #
-# `PATH` for the user prefix is NOT here. `bootstrap.sh` writes that line, and
-# one fact has one home.
+# ⭐ WHAT WAS TAKEN FROM THE TWO REFERENCES, AND WHAT WAS NOT. `errandsh` is a
+# PYTHON program that replaces a login shell to give pty-less SSH sessions echo,
+# line editing and history; almost none of it is profile material. What it is
+# right about, and what is here, is that history should survive a session and
+# that every behaviour should have one named way to turn it off. The second
+# reference is a 1,603-line bash profile whose PATH helpers drop duplicates; the
+# de-duplication is here and nothing else is, because prompt colours, `rvm`
+# state and a self-update path are the three things this file may not have.
+#
+# ⛔ NOTHING HERE ADDS A DIRECTORY TO `PATH`. `bootstrap.sh` writes the line for
+# the user prefix and one fact has one home. This file only removes a repeat of
+# something already there.
+#
+# ⭐ ONE SWITCH TURNS ALL OF IT OFF: `WSL_TOOLKIT_NO_PROFILE=1`.
 #
 # `bootstrap.sh` installs this file and adds the line that reads it. By hand:
 #   install -m 0644 shell-profile.sh ~/.local/share/wsl-toolkit/shell-profile.sh
@@ -39,16 +55,95 @@ wsl_toolkit_profile_main() {
   fi
   WSL_TOOLKIT_PROFILE=1
 
+  # ⭐ ONE NAMED WAY TO TURN THE WHOLE FILE OFF, which is what `errandsh` gets
+  # right about its own behaviour: every thing it does has one variable that
+  # stops it. A caller who wants the shell exactly as the image left it sets
+  # this, and nothing below runs.
+  if [ -n "${WSL_TOOLKIT_NO_PROFILE:-}" ]; then
+    return 0
+  fi
+
   # ⛔ INTERACTIVE, NOT LOGIN, AND THE DIFFERENCE IS THE WHOLE GUARD. This
   # tool's own `distro run -c` and `matrix -c` send every command to a LOGIN
-  # shell, so a profile that moved a login shell would change the working
-  # directory of every command any caller runs from a Windows drive - silently,
-  # and after their `cd`. `$-` carries `i` only for a shell a person is typing
-  # at, which is the shell this guard is about.
+  # shell, so a profile that changed one would change what every caller's
+  # command sees - silently, and after their own setup. `$-` carries `i` only
+  # for a shell a person is typing at, which is the shell this file is about.
   case "$-" in
     *i*) ;;
     *)   return 0 ;;
   esac
+
+  # -- PATH, de-duplicated and nothing else -------------------------------------
+  # ⭐ THE ONE IDEA WORTH TAKING from the reference profile's four PATH helpers.
+  # A login shell inside a login shell runs /etc/profile again, and /etc/profile
+  # appends - so /usr/local/bin appears twice in a nested shell, and the list a
+  # person reads to work out which binary wins gets longer every time. The first
+  # occurrence of each directory keeps its place, so which binary wins does not
+  # change.
+  #
+  # ⛔ AN EMPTY ELEMENT MEANS THE CURRENT DIRECTORY and it is dropped. `PATH=/bin:`
+  # searches `.` for every command typed, which is the oldest way to run someone
+  # else's program by accident. Dropping it is the only change here that alters
+  # what a command resolves to, and it is deliberate.
+  if [ -n "${PATH:-}" ]; then
+    wtp_new=''
+    wtp_rest=$PATH
+    while [ -n "$wtp_rest" ]; do
+      case "$wtp_rest" in
+        *:*) wtp_one=${wtp_rest%%:*}; wtp_rest=${wtp_rest#*:} ;;
+        *)   wtp_one=$wtp_rest; wtp_rest='' ;;
+      esac
+      if [ -z "$wtp_one" ]; then
+        continue
+      fi
+      case ":$wtp_new:" in
+        *":$wtp_one:"*) continue ;;
+      esac
+      if [ -z "$wtp_new" ]; then
+        wtp_new=$wtp_one
+      else
+        wtp_new=$wtp_new:$wtp_one
+      fi
+    done
+    if [ -n "$wtp_new" ] && [ "$wtp_new" != "$PATH" ]; then
+      PATH=$wtp_new
+      export PATH
+    fi
+  fi
+
+  # -- history that survives the session ----------------------------------------
+  # ⭐ THE ONE IDEA WORTH TAKING from `errandsh`, whose reason to exist is that a
+  # session without a pty loses its history. A base is long-lived and is attached
+  # to again and again, so a history that dies with the pane is a real loss.
+  #
+  # ⛔ EVERY VALUE IS SET ONLY WHEN NOTHING SET IT. The account's own choice wins,
+  # including a choice to send history nowhere.
+  #
+  # ⚠ THESE ARE PLAIN VARIABLES AND NOTHING ELSE. `shopt -s histappend` is bash's
+  # and is not POSIX, so it is not here; a shell that does not know these names
+  # ignores them, which is the degrade this file is required to make.
+  if [ -n "${HOME:-}" ] && [ -d "$HOME" ]; then
+    if [ -z "${HISTFILE:-}" ]; then
+      HISTFILE=$HOME/.sh_history
+      export HISTFILE
+    fi
+    if [ -z "${HISTSIZE:-}" ]; then
+      HISTSIZE=10000
+      export HISTSIZE
+    fi
+    if [ -z "${HISTFILESIZE:-}" ]; then
+      HISTFILESIZE=20000
+      export HISTFILESIZE
+    fi
+    # ⚠ bash reads this one and the others ignore it. `ignoreboth` keeps a repeat
+    # and a line typed with a leading space out of the file.
+    if [ -z "${HISTCONTROL:-}" ]; then
+      HISTCONTROL=ignoreboth
+      export HISTCONTROL
+    fi
+  fi
+
+  # -- the Windows drive an interactive shell should not be sitting on ----------
 
   # Outside WSL there is no Windows drive to leave, and this costs one variable
   # read on every other system.
@@ -151,6 +246,6 @@ wsl_toolkit_profile_main() {
 }
 
 wsl_toolkit_profile_main
-unset wtp_release wtp_pwd wtp_root wtp_prefix wtp_in wtp_line wtp_value
+unset wtp_release wtp_pwd wtp_root wtp_prefix wtp_in wtp_line wtp_value wtp_new wtp_rest wtp_one
 unset -f wsl_toolkit_profile_main
 :
