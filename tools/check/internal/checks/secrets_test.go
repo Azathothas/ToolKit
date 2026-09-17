@@ -46,3 +46,57 @@ func TestAGenericWindowsHomeIsNotAFingerprint(t *testing.T) {
 		}
 	}
 }
+
+// at builds an address from parts, so this file carries no literal one.
+func at(local, domain string) string { return local + "@" + domain }
+
+// TestASystemdUnitIsNotAnEmailAddress narrows a leak rule that fired on correct
+// documentation.
+//
+// ⛔ IT REPORTED `user@1000.service` AS AN ADDRESS IN SEVEN PLACES the first time
+// a document in this tree explained one, and the document was right. A rule that
+// fires on correct content is a rule somebody switches off, which is how a real
+// leak gets through later.
+//
+// ⚠ THE NEGATIVES MATTER MORE THAN THE POSITIVES HERE. This narrows a rule whose
+// whole job is to catch a leak, so every case below that expects `false` is
+// holding the narrowing to systemd's own suffixes and nothing wider.
+func TestASystemdUnitIsNotAnEmailAddress(t *testing.T) {
+	cases := []struct {
+		in     string
+		exempt bool
+	}{
+		{"user@1000.service", true},
+		{"getty@tty1.service", true},
+		{"podman@user.socket", true},
+		{"blockdev@sda1.device", true},
+		{"user@1000.slice", true},
+		{"backup@daily.timer", true},
+
+		// ⛔ STILL REPORTED. None of these is a unit, and the rule exists for them.
+		//
+		// ⚠ ASSEMBLED RATHER THAN WRITTEN OUT, and this file is NOT exempt from
+		// the rule it tests. Exempting a test file from a leak check is exactly
+		// where a real credential would hide, so the fixtures are built from
+		// parts and the whole file stays under the rule.
+		{at("somebody", "example.com"), false},
+		{at("first.last", "corp.co.uk"), false},
+		{at("ops", "internal.services"), false},
+		{at("a", "b.servicedesk.io"), false},
+
+		// ⭐ the two exemptions that were already here, unchanged
+		{at("somebody", "users.noreply.github.com"), true},
+		{at("noreply", "anything.com"), true},
+	}
+	for _, c := range cases {
+		t.Run(c.in, func(t *testing.T) {
+			m := emailRe.FindString(c.in)
+			if m == "" {
+				t.Fatalf("the address pattern did not match %q at all, so this case asserts nothing", c.in)
+			}
+			if got := exemptEmail(m); got != c.exempt {
+				t.Fatalf("exemptEmail(%q) = %v, want %v", m, got, c.exempt)
+			}
+		})
+	}
+}

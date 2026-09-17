@@ -295,7 +295,8 @@ new file FIRST, then run the gate.**
 | `cfca609` | the four reviews of `WSL-92`, each with a finding: `docs/consumers.md` named none of the new assets and asserted no release carried herdr, which `wsl-toolkit-v3.0.0` had falsified hours earlier; `--files-from` had no case at all and its first mutation row came back THEATRE because a different refusal satisfied the test; the skill tells a reader to download from a release that does not carry it yet; and the driven pass found finding 75, which no Go case can express. The CHANGELOG catches up with three shipped units |
 | `1c7cfb8` | ruling 25 records the release; the session summary written from artefacts, including what this session got wrong |
 | `c94fac0` | the version reads `3.1.0` and the generated manual with it; `repo release` refused the tag until it moved, because `wsl-toolkit-v3.0.0` exists both locally and on origin |
-| this record commit | the root README lists `text-tool` and says there are three skills, which is the door sweep's finding one level up: an enumeration goes stale silently, because nothing about a list of four says a fifth exists |
+| `79641af` | the root README lists `text-tool` and says there are three skills, which is the door sweep's finding one level up: an enumeration goes stale silently, because nothing about a list of four says a fifth exists |
+| this record commit | the operator refuses "host state": podman is DIAGNOSED rather than stepped around, `user@1000.service` fails to spawn its executor on systemd 259 under WSL2 so the rootless socket is never created, and `FindEngine` now contradicts podman's own advice and names a connection it has driven. The container matrix then ran: 27 shell invocations across Windows, the base and six images, musl and glibc, one digest. Findings 76 and 77; a systemd unit is no longer read as an email address |
 
 ## Measurements
 
@@ -1229,6 +1230,63 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     it. ⭐ **A bare name found on `PATH` needs none**, so this only bites the
     caller who quoted a full path - which is the caller following a document that
     showed one. Written into the skill because an agent will meet it.
+76. ⛔ **THIS TOOL RELAYED PODMAN'S ADVICE FOR A STATE THAT ADVICE CANNOT FIX, AND
+    A CONSUMER WOULD BLAME US FOR IT.** `FindEngine` reported podman's own words
+    and stopped: "try `podman machine init` and `podman machine start`". ⚠ **The
+    machine was already Running**, so `start` does nothing and `init` would build
+    a SECOND machine. A reader runs both, neither helps, and the program that
+    handed them that advice is the one they came from.
+    ⛔ **THIS SESSION CALLED IT HOST STATE TWICE AND STEPPED AROUND IT**, once to
+    skip six consumer cases and once to abandon the container matrix, recording
+    the second as a standing gap in a review. ⭐ **The operator refused that reading**, in the
+    question recorded against lens 4 of `WSL-92`. That is the correction, and it
+    is about a habit rather than a line of code: "not ours" is a CONCLUSION, and it
+    was reached without measuring whether this tool could say anything useful.
+    ⭐ **DIAGNOSED ON THE FAILING HOST, 2026-09-17, because it was here.** The
+    chain: `podman info` exits 125 with `ssh: rejected: connect failed (open
+    failed)`; `podman machine ssh` works, so SSH is healthy and the CHANNEL to the
+    socket is what fails; `/run/user/1000/podman/podman.sock` does not exist;
+    `systemctl --user` answers `Failed to connect to user scope bus`;
+    `user@1000.service` is **failed**, with `Failed to spawn executor: Device or
+    resource busy` on **systemd 259** under WSL2, repeated until `Start request
+    repeated too quickly`. ⚠ **`Linger=yes` and the cgroup layout are both
+    healthy**, which is what rules out the two usual causes. So the ROOTLESS
+    socket is never created, while the ROOTFUL one is served by system systemd and
+    answers perfectly.
+    ⛔ **A full terminate and a fresh boot did not fix it**, so it is not a latch;
+    it reproduces from boot. The recovery that works is one command:
+    `podman system connection default podman-machine-default-root`.
+    ⭐ **FIXED IN THE TOOL, not in a document.** `DiagnosePodman` runs ONLY on the
+    failure path and adds two sentences it has MEASURED: that the machine reports
+    Running so start will not help and init would build a second one, and the name
+    of a registered connection it has just DRIVEN successfully, with the command
+    to make it the default. Where nothing answers it names `user@1000.service`
+    instead of inventing a command. 15 cases and **5 mutation rows, 5 of 5 red**.
+    ⛔ **Two of those rows came back THEATRE first.** The cases asserted only that
+    the diagnosis stayed SILENT for a nil or unrelated error and never that it
+    SPOKE, so removing the whole guard left them green. The sentence-building is a
+    function with no process in it now, so what a consumer reads is driven
+    directly on a host with no podman at all.
+    ⭐ **And the gap it was blocking closed the same hour**: 27 shell invocations
+    across Windows, the base and six container images, musl and glibc, one digest.
+77. ⛔ **GIT BASH ON WINDOWS ATE A LEADING SLASH FROM `--text`, AND IT ATE IT
+    TWICE IN THIS SESSION BEFORE I SAW IT.** `--text '// a comment'` reached the
+    program as `/ a comment`, so a Go file got `/ Name is what...` and a test file
+    got `/ at builds...`, both of which stopped the package compiling. ⚠ **Neither
+    call returned non-zero.** The write succeeded and the bytes were wrong, which
+    is the exact failure this tool was built to remove, arriving through the one
+    door it cannot close.
+    ⭐ **MEASURED 2026-09-17, both halves.** `--text "//double-slash"` writes
+    `/double-slash`; the same payload through `--b64` writes `//double-slash`.
+    ⚠ **The mangling is MSYS's path translation and it happens BEFORE the program
+    starts**, so nothing in the tool can detect or undo it: by the time `main`
+    runs, the argument it was given is simply the shorter string.
+    ⛔ **SO THE FIX IS NOT CODE, IT IS THE CHANNEL**, which is what the tool has
+    always said and what its author did not do. Written into the skill with both
+    commands, because an agent writing Go, C or JavaScript comments from Git Bash
+    meets this on its first file.
+    ⚠ **I diagnosed it as "a mystery" the first time** and retyped the line rather
+    than asking why, which is how the second one happened four hours later.
 ## Review findings
 
 ⭐ **2026-09-17T10:01Z, the release session's four closing reviews.** Each pass names

@@ -30,7 +30,7 @@ forgetfulness: `text-tool` was not reachable from outside a checkout.
 | Rulings | 21 | **25.** Ruling 22 amends ruling 6 on the release; 23 clears what was blocked on the operator; 24 refuses a route for `muse serve`; 25 records this release |
 | Issues | 2 open | **0.** 30 and 32 closed, each with a comment naming what its entries did NOT deliver |
 | Released | `wsl-toolkit-v2.0.2` newest | **`wsl-toolkit-v3.0.0`**, 14 assets, the first release this repository has cut that publishes another project's build |
-| Health | 5 distributions | ⭐ **the same 5**, none added or removed; `eph-pgb` untouched. ⛔ **podman would not answer all session**, rejecting its own SSH forward after a clean stop and start |
+| Health | 5 distributions | ⭐ **the same 5**, none added or removed; `eph-pgb` untouched. ⛔ **podman would not answer**, and was DIAGNOSED rather than worked around: `user@1000.service` fails to spawn its executor on systemd 259 under WSL2, so the rootless socket is never created. Finding 76 |
 
 ### What was asked for, and what happened
 
@@ -75,9 +75,13 @@ session whose own prompt warns about it in capitals.
 ⛔ **I wrote a case whose failure mode was a HANG.** Its fake reader reproduced a
 blocking pipe so faithfully that the mutation row waited instead of going red.
 
-⚠ **The container matrix never ran.** Six glibc shells on one distribution is what
-was measured, not musl, Void or Alpine's busybox ash, and the base gained four
-packages to make even that table.
+⛔ **AND THE WORST ONE: I CALLED A BROKEN ENGINE "HOST STATE" AND STEPPED AROUND
+IT TWICE**, once to skip six consumer cases and once to abandon the container
+matrix, then recorded the second as a standing gap in a review as though it were
+nobody's fault. The operator asked who a consumer would blame. The answer is this
+tool, and the answer was right: it was relaying podman's advice for a state that
+advice cannot fix. Finding 76 has the cause, found by diagnosing the host that was
+in front of me the whole time, and the matrix then ran across six images.
 
 ---
 ## 2026-09-17, the model and effort every agent starts on, the guide, and a session that stopped without ending

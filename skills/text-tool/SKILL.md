@@ -89,6 +89,28 @@ both PowerShell 7 and Windows PowerShell 5.1.
 ⭐ **A bare `text-tool` on PATH needs no `&`.** The call operator is only for a
 path you quoted.
 
+⛔ **FROM GIT BASH ON WINDOWS, A `--text` STARTING WITH `//` LOSES A SLASH.** Git
+Bash rewrites an argument that looks like a path before the program is started,
+so `--text '// a Go comment'` arrives as `/ a Go comment`. Nothing returns
+non-zero and the file is written with the wrong bytes.
+
+```bash
+text-tool write x.go --text '//double-slash'   # writes /double-slash
+```
+
+⭐ **Measured, and it is the whole reason this tool has channels.** The same
+payload through `--b64` arrives intact, because base64 holds no character a shell
+or its path translator will touch:
+
+```bash
+text-tool write x.go --b64 Ly9kb3VibGUtc2xhc2g=
+```
+
+⚠ **This is not something the tool can fix.** The mangling happens before the
+program runs, so the only defence is a channel the shell has no opinion about.
+Reach for `--b64` or `--from` for any payload that starts with a slash, and for
+Go, C or JavaScript comments in particular.
+
 ⚠ **`--text` is read literally.** `--text 'a\nb'` writes a backslash and an `n`,
 not a newline. For a real newline use `--b64` or `--from`. The tool prints a
 note when it sees a literal `\n` or `\t` in `--text`, because that is almost

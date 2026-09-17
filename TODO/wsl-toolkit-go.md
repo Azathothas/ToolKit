@@ -10646,20 +10646,37 @@ loses its quoting. `shell-matrix.sh` and `shell-matrix.ps1` are tracked, and a
 run that finds fewer than two shells exits non-zero rather than reporting that
 they agreed.
 
-⚠ **THE BASE GAINED FOUR PACKAGES TO MAKE THAT TABLE**, `dash`, `zsh`, `ksh` and
-`busybox`, installed with `base exec --root`. The container matrix would have
-been the better instrument and podman would not answer on this host all session
-- finding 67's neighbour, an SSH forward that rejects after a clean stop and
-start - so the shells were brought to the base instead. It is additive and the
-distribution is otherwise untouched.
+⭐ **THE CONTAINER MATRIX RAN, and this paragraph replaces one saying it never
+would.** It said podman was unreachable and called that host state. ⛔ **The
+operator refused that**: "what happens when a future consumer uses our tools and
+runs into this, who do you think they will blame". They will blame this tool,
+and they would be right to, so the engine was DIAGNOSED rather than worked
+around. Finding 76 has the cause.
+
+| image | libc | shells that ran | result |
+| --- | --- | --- | --- |
+| alpine | musl | sh, busybox, ash | ⭐ 3 agreed |
+| debian | glibc | sh, dash, bash | ⭐ 3 agreed |
+| ubuntu2204 | glibc | sh, dash, bash | ⭐ 3 agreed |
+| void-musl | musl | sh, dash | ⭐ 2 agreed |
+| fedora | glibc | sh, bash | ⭐ 2 agreed |
+| chimera | musl | sh | ⛔ **exit 1**, and correctly |
+
+⭐ **TWENTY-SEVEN SHELL INVOCATIONS, ONE DIGEST**, across Windows, the base and
+six container images, musl and glibc alike. The digest begins `dc493308` and it
+is the same one every time.
+
+⭐ **Chimera is the guard firing on a real host.** One shell is all it carries, so
+`shell-matrix.sh` refused to report agreement over a set of one and exited 1. A
+run that found one shell has compared nothing, and saying so is the whole reason
+that branch exists.
+
+⚠ **THE BASE GAINED FOUR PACKAGES BEFORE ANY OF THAT**, `dash`, `zsh`, `ksh` and
+`busybox`, installed with `base exec --root` while the engine was still down. It
+is additive and the distribution is otherwise untouched, and the six shells it
+contributed are now the smallest part of the table.
 
 ## What this entry did NOT do
-
-⛔ **The container matrix never ran.** `wsl-toolkit matrix` across the image
-catalog is the instrument that would cover musl, Void and Alpine's own busybox
-ash, and podman was unreachable for the whole session. The six Linux shells
-above are all glibc on one distribution. ⚠ **That is a real gap and it is not
-the tool's**: nothing suggests a different result, and nothing measured it.
 
 ⚠ **No darwin build.** The asks were Windows and inside the base. Adding one is
 a line in `release.yml` the day somebody wants it.
@@ -10732,7 +10749,21 @@ a reader it controls, so the pipe an agent harness hands a child is a thing the
 suite cannot express. It took driving the tool from a harness to see it, and the
 symptom was a 120-second timeout rather than a failure.
 
-⚠ **This is the lens with the standing gap.** The container matrix is the driven
-pass that would cover musl, Void and Alpine's busybox ash, and podman refused its
-own SSH forward all session, after a clean stop and start. Six glibc shells on one
-distribution is what was measured, and the entry says so above.
+⛔ **THIS LENS REPORTED A STANDING GAP AND THE OPERATOR REFUSED IT**, which is a
+fifth pass this session did not think to run. The paragraph here said the
+container matrix could not run because podman refused its own SSH forward, and
+called that host state. They asked: "what happens when a future consumer uses our
+tools and runs into this, who do you think they will blame".
+
+⭐ **The answer is this tool, and the answer was right.** A consumer runs
+`wsl-toolkit` and gets podman's own advice relayed through it - `podman machine
+init`, `podman machine start` - both useless for this state, from a program they
+will hold responsible. The gap was never host state; it was a diagnosis this tool
+did not make. Finding 76 has the cause and the fix, and the matrix then ran across
+six images.
+
+⚠ **What that says about a review that reports a gap.** Three of the four passes
+above found a defect and this one found a limit, and a limit is the easier thing
+to write down, because nothing about it is anybody's fault. ⛔ **"Not ours" is a
+conclusion, not an observation**, and this pass reached it without measuring
+whether the tool could have said something useful. It could.

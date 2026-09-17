@@ -135,9 +135,29 @@ func declaredPin(line string) bool {
 	return pinnedAction.MatchString(line) || declaredPinRe.MatchString(line)
 }
 
-// exemptEmail passes the addresses that are the project's own published
-// contact rather than a person's private one.
+// systemdUnitSuffixes are what a systemd unit name ends in.
+//
+// ⛔ A TEMPLATE UNIT IS SPELLED LIKE AN EMAIL AND IS NOT ONE. `user@1000.service`
+// is the user manager for uid 1000, and this check reported it as an address in
+// seven places the first time a document explained one. None of these is a
+// top-level domain, so the shape is decidable rather than guessed at.
+//
+// ⚠ NARROWING A LEAK RULE IS A RISK, so it is narrowed by SUFFIX and not by
+// anything about the local part: an address at a real domain still reports,
+// whatever it is called.
+var systemdUnitSuffixes = []string{
+	".service", ".socket", ".target", ".timer", ".mount", ".automount",
+	".slice", ".scope", ".path", ".device", ".swap",
+}
+
+// exemptEmail passes a systemd unit name, and the addresses that are the
+// project's own published contact rather than a person's private one.
 func exemptEmail(m string) bool {
+	for _, s := range systemdUnitSuffixes {
+		if strings.HasSuffix(m, s) {
+			return true
+		}
+	}
 	return strings.HasSuffix(m, "@users.noreply.github.com") ||
 		strings.HasPrefix(m, "noreply@")
 }

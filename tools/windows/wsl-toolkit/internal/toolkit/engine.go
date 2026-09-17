@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -36,7 +37,15 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 		e := &Engine{Name: name, Path: exe.Resolved}
 		arch, err := e.readArch(ctx)
 		if err != nil {
-			problems = append(problems, fmt.Sprintf("%s is installed at %s and did not answer: %v", name, exe.Resolved, err))
+			why := fmt.Sprintf("%s is installed at %s and did not answer: %v", name, exe.Resolved, err)
+			// ⭐ PODMAN GETS A SECOND SENTENCE, because its own advice for this
+			// state sends the reader to two commands that cannot help.
+			if name == "podman" {
+				if hint := DiagnosePodman(ctx, exe.Resolved, err); hint != "" {
+					why += ". " + hint
+				}
+			}
+			problems = append(problems, why)
 			continue
 		}
 		e.Arch = arch
@@ -179,4 +188,105 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// podmanSocketFailure matches a podman that started and cannot be talked to.
+//
+// ⚠ THE TWO SPELLINGS ARE ONE STATE. The transport error surfaces as an SSH
+// channel refusal when the machine is up and the socket behind it is not
+// served, and as a plain dial refusal when the forward itself is gone.
+var podmanSocketFailure = regexp.MustCompile(`(?i)unable to connect to podman socket|ssh: rejected|connection refused|actively refused|cannot connect to podman`)
+
+// DiagnosePodman explains a podman that is installed and will not answer, and
+// names a recovery it has MEASURED rather than one it believes.
+//
+// ⛔ PODMAN'S OWN ADVICE IS WRONG FOR THIS STATE AND A CONSUMER WILL BLAME US.
+// When the default connection's socket is not served, podman says to try
+// `podman machine init` and `podman machine start`. The machine is already
+// running, so start does nothing, and init would build a second machine. The
+// reader runs both, neither helps, and the tool that relayed that advice is the
+// one they came from. Measured on this host 2026-09-17: the machine reported
+// Running, `podman machine ssh` worked, and `user@1000.service` had failed with
+// "Failed to spawn executor: Device or resource busy" on systemd 259, so the
+// ROOTLESS socket was never created while the ROOTFUL one was healthy.
+//
+// ⭐ IT NAMES A CONNECTION IT HAS JUST DRIVEN. podman registers a root
+// connection beside the rootless one for every machine, and when the rootless
+// user manager is dead the root one usually answers. Trying each and reporting
+// the one that worked turns a dead end into one command.
+//
+// ⚠ IT RUNS ONLY ON THE FAILURE PATH and is bounded, so a healthy host pays
+// nothing for it. An empty answer means nothing was recognised, and the caller
+// then reports podman's own words alone rather than a guess of ours.
+func DiagnosePodman(ctx context.Context, exe string, failure error) string {
+	if failure == nil || !podmanSocketFailure.MatchString(failure.Error()) {
+		return ""
+	}
+	bounded, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	running, machine := podmanMachineRunning(bounded, exe)
+	return podmanHint(running, machine, podmanWorkingConnection(bounded, exe))
+}
+
+// podmanHint is what the diagnosis SAYS, with no process in it.
+//
+// ⛔ SEPARATED FROM THE MEASURING so the sentences can be driven on a host with
+// no podman at all. They could not be before, and repo mutate said so: removing
+// the whole guard left the cases green, because every one of them asserted only
+// that the diagnosis stayed SILENT and none that it ever spoke.
+func podmanHint(running bool, machine, conn string) string {
+	var notes []string
+	if running {
+		notes = append(notes, fmt.Sprintf("the machine %q reports Running, so `podman machine start` will not help and "+
+			"`podman machine init` would build a SECOND machine", machine))
+	}
+	if conn != "" {
+		notes = append(notes, fmt.Sprintf("connection %q DOES answer, so the socket is fine and the default connection is "+
+			"the broken half. Run: podman system connection default %s", conn, conn))
+	} else {
+		notes = append(notes, "no registered connection answers. Inside the machine, `systemctl is-active user@1000.service` "+
+			"reports whether the user manager that serves the rootless socket came up at all; a failed one leaves no socket "+
+			"to connect to and no amount of restarting the machine creates one")
+	}
+	return strings.Join(notes, "; ")
+}
+
+// podmanMachineRunning reports whether any machine is running, and its name.
+func podmanMachineRunning(ctx context.Context, exe string) (bool, string) {
+	out, _, err := Output(ctx, exe, "machine", "list", "--format", "{{.Name}} {{.Running}}")
+	if err != nil {
+		return false, ""
+	}
+	for _, ln := range strings.Split(out, "\n") {
+		fields := strings.Fields(ln)
+		if len(fields) == 2 && strings.EqualFold(fields[1], "true") {
+			return true, strings.TrimSuffix(fields[0], "*")
+		}
+	}
+	return false, ""
+}
+
+// podmanWorkingConnection returns the first registered connection that answers.
+//
+// ⛔ IT DRIVES EACH ONE rather than reading a status field. A connection listed
+// as present says nothing about whether the socket behind it is served, which is
+// the entire failure being diagnosed.
+func podmanWorkingConnection(ctx context.Context, exe string) string {
+	out, _, err := Output(ctx, exe, "system", "connection", "list", "--format", "{{.Name}}")
+	if err != nil {
+		return ""
+	}
+	for _, ln := range strings.Split(out, "\n") {
+		name := strings.TrimSpace(ln)
+		if name == "" || strings.EqualFold(name, "name") {
+			continue
+		}
+		probe, cancel := context.WithTimeout(ctx, 15*time.Second)
+		_, _, probeErr := Output(probe, exe, "--connection", name, "info", "--format", "{{.Host.Arch}}")
+		cancel()
+		if probeErr == nil {
+			return name
+		}
+	}
+	return ""
 }

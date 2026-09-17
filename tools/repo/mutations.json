@@ -2,6 +2,69 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: a systemd unit name is not reported as an email address",
+      "file": "internal/checks/secrets.go",
+      "find": "\t\tif strings.HasSuffix(m, s) {\n\t\t\treturn true\n\t\t}\n",
+      "replace": "\t\t_ = s\n",
+      "run": "TestASystemdUnitIsNotAnEmailAddress",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "check: the email exemption is narrowed to systemd suffixes and no wider",
+      "file": "internal/checks/secrets.go",
+      "find": "\tfor _, s := range systemdUnitSuffixes {",
+      "replace": "\tfor _, s := range []string{\".com\", \".uk\", \".io\", \".services\"} {",
+      "run": "TestASystemdUnitIsNotAnEmailAddress",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the podman hint contradicts podman own advice",
+      "file": "internal/toolkit/engine.go",
+      "find": "\t\tnotes = append(notes, fmt.Sprintf(\"the machine %q reports Running, so `podman machine start` will not help and \"+",
+      "replace": "\t\tnotes = append(notes, fmt.Sprintf(\"the machine %q is up and \"+",
+      "run": "TestThePodmanHintContradictsPodmansOwnAdvice",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the podman hint offers a connection only when one answers",
+      "file": "internal/toolkit/engine.go",
+      "find": "\tif conn != \"\" {",
+      "replace": "\tif conn != \"\" || true {",
+      "run": "TestThePodmanHintContradictsPodmansOwnAdvice",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a podman that will not answer is explained, not relayed",
+      "file": "internal/toolkit/engine.go",
+      "find": "\tif failure == nil || !podmanSocketFailure.MatchString(failure.Error()) {",
+      "replace": "\tif failure == nil || !podmanSocketFailure.MatchString(failure.Error()) || true {",
+      "run": "TestDiagnosePodmanSpeaksForARealSocketFailure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the podman socket failure is recognised by its real messages",
+      "file": "internal/toolkit/engine.go",
+      "find": "unable to connect to podman socket|ssh: rejected|connection refused|actively refused|cannot connect to podman",
+      "replace": "ssh: rejected",
+      "run": "TestPodmanSocketFailureIsRecognisedAndNothingElseIs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the podman diagnosis does not fire on an unrelated failure",
+      "file": "internal/toolkit/engine.go",
+      "find": "var podmanSocketFailure = regexp.MustCompile(`(?i)unable to connect to podman socket|ssh: rejected|connection refused|actively refused|cannot connect to podman`)",
+      "replace": "var podmanSocketFailure = regexp.MustCompile(`(?i)error|podman|connect`)",
+      "run": "TestPodmanSocketFailureIsRecognisedAndNothingElseIs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "text-tool: a commented path in a list is not edited",
       "file": "internal/edit/edit.go",
       "find": "\t\t\t\tif ln == \"\" || strings.HasPrefix(ln, \"#\") {",
