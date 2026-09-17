@@ -225,6 +225,16 @@ is closed, and the issue gets a comment naming the commits.
     cleared with ruling 23 and taking the recommendation. The reasoning is in
     `WSL-78`'s closing and is not repeated here.
 
+25. ⭐ **2026-09-17: `wsl-toolkit-v3.1.0` is cut, and it carries `text-tool`.** The
+    operator: "cut the release finally", in the same instruction that asked for
+    `text-tool` to be published alongside the rest. ⚠ **Ruling 22's second half still
+    governs how**: `repo release` runs read-only first, and the publish happens only
+    with the gate green and CI green on the final commit. ⭐ **Ruling 6's first half is
+    satisfied outright this time rather than amended**: issues 30 and 32 are both
+    CLOSED, each with a comment naming what its entries did not deliver, so the
+    condition ruling 22 had to work around no longer applies. ⛔ **A minor version and
+    not a patch**, because the release publishes four assets no previous release
+    carried, and a consumer's asset list changes.
 ## Before every push
 
 

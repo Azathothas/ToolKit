@@ -7,6 +7,79 @@ on what was true last time.
 
 ---
 
+## 2026-09-17, the release that could not be consumed, and the tool its author would not use
+
+⭐ **Two things happened that only a release could show.** `wsl-toolkit-v3.0.0`
+published with all 14 assets and its smoke job FAILED, because `consumer.ps1`
+wrote a configuration shape `WSL-74` had made a refusal and nothing could detect
+that until a release carried the new binary. And the operator watched this
+session edit a file with a Python heredoc and said that was the thing the
+repository is trying to prevent - which was true, and the reason was not
+forgetfulness: `text-tool` was not reachable from outside a checkout.
+
+| row | before | after |
+| --- | --- | --- |
+| Elapsed | baseline `1699de9` pushed at 10:03:30Z | last measurement 12:22:40Z, about 2 h 20 m |
+| Commits | `1699de9`, tree clean | **10**, by `git log --oneline 1699de9..HEAD`. All pushed except the last, which waits on CI for `19eb9d8` |
+| Work | 125 entries, 5 open, 120 done | **127 entries, 3 open, 124 done.** Closed `WSL-68`, `WSL-76`, `WSL-78`, `WSL-90`, `WSL-92`; filed `WSL-91` and `WSL-92` |
+| Changes | 0 files from `1699de9` | `git diff --shortstat` reads **62 files, +6,686 / -191** |
+| Size | 105,395 text lines in 329 files | **111,890 in 346 files, +6,495**, by `git grep -I -c ''` |
+| Checks | gate 21 of 21 | **gate 23 of 23, exit 0 read from the process.** `ste` and `skills` are new checks; `check-go.sh --json` answers `"modules":4` |
+| Guards | 338 mutation rows | **392, +54.** Every new row driven and reported red; two came back THEATRE first and both were fixed rather than dropped |
+| Findings | 66 | **75.** Findings 67 to 75, and **three of 72 to 75 were found by using `text-tool` on itself** |
+| Rulings | 21 | **25.** Ruling 22 amends ruling 6 on the release; 23 clears what was blocked on the operator; 24 refuses a route for `muse serve`; 25 records this release |
+| Issues | 2 open | **0.** 30 and 32 closed, each with a comment naming what its entries did NOT deliver |
+| Released | `wsl-toolkit-v2.0.2` newest | **`wsl-toolkit-v3.0.0`**, 14 assets, the first release this repository has cut that publishes another project's build |
+| Health | 5 distributions | ⭐ **the same 5**, none added or removed; `eph-pgb` untouched. ⛔ **podman would not answer all session**, rejecting its own SSH forward after a clean stop and start |
+
+### What was asked for, and what happened
+
+⭐ **The smoke failure was the job doing its work.** `publish wsl-toolkit`
+succeeded and `the published release can be consumed` did not, on two of fourteen
+cases. `consumer.ps1` set `base.name` to `wsl-toolkit-consumer` and selected no
+instance, which names one distribution while recording into another's state. Its
+own comment said "`WSL-43` is the entry that makes an instance a first-class
+thing; **until it lands**, the name is set here" - and `WSL-43` had landed. Fixed
+by selecting the instance through the environment, beside the state directory
+already set that way, and writing the configuration at both paths so the eight
+older tags `-Tag` accepts still find one. Driven against the published tag until every case it runs on a runner passed,
+and confirmed independently on the runner itself in run 35220237357.
+
+⛔ **No guard was written for it, and the obvious one was designed and thrown
+away.** A rule refusing a `.ps1` that names a non-default distribution without
+selecting an instance would refuse `acceptance.ps1`, which writes
+`wsl-toolkit-nobase` on purpose to drive the refusal. `WSL-91` carries the
+structural fix: `consumer.ps1` only ever runs against PUBLISHED binaries, so the
+gate cannot reach it.
+
+⭐ **`text-tool` is a product now.** Its own directory, four published assets, a
+skill that stands alone, an `eol` mode that is the whole of `dos2unix` and
+`unix2dos`, many files edited as one unit, and `--after`/`--before` that keep the
+line they match. `check skills` refuses a skill naming a flag the program's own
+usage text does not document, and that rule found a real gap on its first run.
+
+⭐ **ONE DIGEST FROM THIRTEEN SHELL INVOCATIONS on two operating systems**, which
+is the one claim the Go suite cannot make, because its cases call `Run()` directly
+and never cross a shell boundary.
+
+### What this session got wrong
+
+⛔ **I ate an anchor with a substitution three times**, twice orphaning a Go
+function's body and once removing a heading. That is already a written note in
+this project, which is the evidence that a note is not a fix. The answer was to
+add the operation that cannot express the mistake.
+
+⛔ **I read an exit code through a pipe twice** and said so both times, in a
+session whose own prompt warns about it in capitals.
+
+⛔ **I wrote a case whose failure mode was a HANG.** Its fake reader reproduced a
+blocking pipe so faithfully that the mutation row waited instead of going red.
+
+⚠ **The container matrix never ran.** Six glibc shells on one distribution is what
+was measured, not musl, Void or Alpine's busybox ash, and the base gained four
+packages to make even that table.
+
+---
 ## 2026-09-17, the model and effort every agent starts on, the guide, and a session that stopped without ending
 
 ⛔ **Written from artefacts by the session that resumed it**, at 2026-09-17T10:08Z, not
