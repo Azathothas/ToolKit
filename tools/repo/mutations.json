@@ -844,7 +844,7 @@
       "label": "the harness telling a missing case from a real failure",
       "module": "tools/repo",
       "file": "internal/mutate/mutate.go",
-      "find": "\tcase v.Cases == 0:",
+      "find": "\tcase got.cases == 0:",
       "replace": "\tcase false:",
       "run": "TestRunTellsTheFourOutcomesApart",
       "args": []

@@ -83,6 +83,24 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+⛔ **A BEHAVIOUR CHANGE LANDED IN `text-tool` AFTER `wsl-toolkit-v3.1.0`, and by
+the table above it is a BREAK. It is why the next release is `4.0.0` and not a
+minor: a consumer pinning by major is not moved across it silently.** `text-tool edit --between A B` now REQUIRES
+`--expect N`, as `--replace`, `--after` and `--before` already did.
+
+| before | from `wsl-toolkit-v4.0.0` |
+| --- | --- |
+| `--between` with no `--expect` | ⛔ exited **0** and wrote nothing, both when two ranges matched and when none did | refused, exit **2**, naming the missing count |
+
+⭐ **Every call it breaks was already doing nothing.** The old exit 0 was the
+defect: a caller reading the code believed an edit had happened. ⚠ **A count is
+still not enough on its own** - an anchor that also appears earlier in the file
+pairs with the FIRST copy, which is exactly one match - so the report names the
+SPAN it replaced, `lines 2-9 (8 line(s))`, and a caller should read it.
+
+⭐ **What a caller does:** add `--expect N` to any `--between`. Use
+`--count` first where the number is not known.
+
 ---
 
 ## Fetching the published product

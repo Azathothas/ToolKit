@@ -6,4 +6,4 @@ package toolkit
 // helper's compatibility check and `wsl-toolkit version` all read it, and both
 // `repo release` and the release workflow read it from this file and refuse one
 // that declares it other than exactly once.
-const Version = "3.1.0"
+const Version = "4.0.0"

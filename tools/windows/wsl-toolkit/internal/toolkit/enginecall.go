@@ -68,6 +68,13 @@ type engineCall struct {
 	// What names the operation in a refusal, in the engine's own words, so a
 	// reader is not told "process" about a pull.
 	What string
+	// Hint is where to look when THIS call stalls.
+	//
+	// ⛔ IT IS THE CALLER'S BECAUSE THE ANSWER IS NOT SHARED. One sentence for
+	// every operation told a reader whose ROOTFS EXPORT had stalled to go and
+	// check the registry, which an export never touches. A refusal that sends
+	// somebody to the wrong place costs more than one that says nothing.
+	Hint string
 }
 
 // run executes the engine with both deadlines applied.
@@ -137,10 +144,13 @@ func (c engineCall) explain(watch *stallWatch, total time.Duration, callerErr er
 		// saying it was would blame the engine for a cancellation.
 		return nil
 	case watch.Fired():
+		hint := c.Hint
+		if hint == "" {
+			hint = "Read what the engine is doing with: podman system connection list"
+		}
 		return fmt.Errorf("%s produced nothing for %s and was given up; it had run %s in total. "+
-			"⚠ This is a STALL and not a slow link: a transfer that is moving is never stopped here. "+
-			"Check the registry and the engine's own connection with: podman system connection list",
-			what, FormatSpan(c.Stall), FormatSpan(watch.Elapsed()))
+			"⚠ This is a STALL and not a slow link: a transfer that is moving is never stopped here. %s",
+			what, FormatSpan(c.Stall), FormatSpan(watch.Elapsed()), hint)
 	case watch.Elapsed() >= total:
 		return fmt.Errorf("%s did not finish within %s, which is this tool's ceiling for it",
 			what, FormatSpan(total))

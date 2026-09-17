@@ -21,6 +21,29 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-17
 
+### 2026-09-17T17:30:08Z: the guard job stops paying for the same copy 419 times, and 4.0.0
+
+**Record:** findings 100 to 102 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v4.0.0`.
+
+⛔ **A MAJOR AND NOT A MINOR, because a published binary changed how it exits.**
+`text-tool edit --between` now requires `--expect`, as every other search
+operation already did: with no count it exited **0** and wrote nothing, both
+when two ranges matched and when none did.
+[`docs/consumers.md`](docs/consumers.md) calls that a break in its own words,
+so a consumer pinning by major is not moved across it silently.
+
+⭐ **The mutation job was 26 minutes on every push and the copy was 17 of them.**
+Measured: one row in the biggest module is 6.40 s, of which the module copy is
+3.13 s, and that module holds 332 of the table 419 rows. One staged copy per
+module with a verified byte-exact restore, and the duplicate compile dropped
+because the unmutated baseline already proves the module builds: **6.40 to
+2.01 s per row**.
+
+⛔ **Removing the duplicate compile made a branch unreachable and CI caught it
+as THEATRE**, which is the harness working on itself. The dead branch is gone
+and the row points at the guard that decides it now.
+
 ### 2026-09-17T16:29:52Z: a deadline on every engine call, and the findings that had been listed rather than fixed
 
 **Record:** findings 90 to 99 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).

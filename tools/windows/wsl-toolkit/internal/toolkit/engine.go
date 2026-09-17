@@ -135,6 +135,7 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	out, stderr, err := (engineCall{
 		Timeout: EngineTransferTimeout, Stall: EngineStallTimeout,
 		What: e.Name + " pull " + ref,
+		Hint: "The registry or the network is where a pull stalls. Retry, or read: podman system connection list",
 	}).run(ctx, e.Path, "pull", "--platform", e.Platform(), ref)
 	stopBeat()
 	if err != nil {
@@ -175,6 +176,7 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 	runErr := (engineCall{
 		Timeout: EngineTransferTimeout, Stall: EngineStallTimeout,
 		What: e.Name + " export " + id[:min(12, len(id))],
+		Hint: "An export writes a rootfs to this host and touches no registry, so read disk space and the engine machine",
 	}).runStream(ctx, f, errBuf, e.Path, "export", id)
 	closeErr := f.Close()
 	if runErr != nil {

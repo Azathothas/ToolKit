@@ -10,7 +10,7 @@ session started 2026-09-17T14:42:39Z
 baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
 head            29ca209, 9660143, plus this record commit
 entries         total 128  open 0  blocked 0  done 128
-this session    the last two open entries closed, then the operator refused the handover: every host-engine call bounded with a stall deadline, and nine findings that had a named fix and no entry FIXED rather than listed
+this session    wsl-toolkit-v4.0.0; the last two open entries closed, then the operator refused the handover: every host-engine call bounded with a stall deadline, and nine findings that had a named fix and no entry FIXED rather than listed
 ```
 
 ## Active work
@@ -211,6 +211,15 @@ is closed, and the issue gets a comment naming the commits.
     passing was FIXED in the same session rather than filed and left, which is why
     `WSL-93` is filed and closed together. And a condition this session could not
     explain is written as unexplained rather than stepped around: finding 84.
+
+26. ⭐ **2026-09-17: `wsl-toolkit-v4.0.0` is a MAJOR, and the rule decided it
+    rather than a preference.** `docs/consumers.md` calls a changed exit meaning
+    a break, and `text-tool edit --between` now exits 2 where it exited 0. ⚠ **The
+    break is in `text-tool` and the version is `wsl-toolkit`s**, because one tag
+    publishes both; a consumer pinning `wsl-toolkit` by major is what the bump
+    protects. ⛔ **Ruling 22 second half still governs how**: `repo release` runs
+    read-only first, and the publish happens only with the gate green and CI
+    green on the final commit.
 ## Before every push
 
 ⛔ **A FILE GIT CANNOT SEE CAN STOP THE CONTAINER CHECKS DEAD.** Met on
@@ -1492,7 +1501,7 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
 90. ⭐ **EVERY HOST-ENGINE CALL CARRIES A DEADLINE NOW, AND A STALL IS A
     SEPARATE ONE.** Finding 84 left a real gap: the pull was bounded at thirty
     minutes, which is the right ceiling and useless against a pull that has
-    STOPPED. ⛔ **The deadline was also chosen at each of SEVEN call sites** -
+    STOPPED. ⛔ **The deadline was also chosen at each of EIGHT call sites** -
     90 seconds for `info`, five minutes for `create`, thirty for `pull`, and
     whatever the caller held for the rest - which is the guard-at-many-call-sites
     shape `RULES.md` section 3 already names.
@@ -1501,10 +1510,11 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     bytes over a slow link is never stopped; one that has produced nothing for
     four minutes is given up, and the refusal SAYS it was a stall rather than
     reporting a slow link.
-    ⛔ **The guard that keeps it found a SEVENTH call site on its first run.**
+    ⛔ **The guard that keeps it found an EIGHTH call site on its first run.**
     `TestEveryEngineCallCarriesADeadline` reads `engine.go` and refuses a reach
     for the host engine through the raw process helpers; the connection probe
-    inside `podmanWorkingConnection` was not one this session enumerated.
+    inside `podmanWorkingConnection` was not one this session enumerated. ⚠ **This
+    said SEVEN until lens A counted them**; there are eight. Finding 100.
     ⭐ **DRIVEN AGAINST A REAL CHILD, both directions**: a process that printed
     one line and slept for ever was given up after **3.2 s** against a 2 s
     limit, naming the stall; a process talking every second for six seconds,
@@ -1615,8 +1625,105 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     those two files into an empty directory, checks the digest the way a
     consumer would, and RUNS the tool from there.
     directory finding 82 says was never analysed.
+100. ⛔ **THE RECORD SAID SEVEN ENGINE CALL SITES AND THERE ARE EIGHT.** Finding
+     90, the commit body and the review pass all said the deadline had been
+     chosen at seven places and that the new guard found a seventh.
+     `grep -c "engineCall{"` over `engine.go` answers **8**: `info`, `pull`,
+     `create`, `rm`, `export`, `machine list`, `connection list` and the
+     per-connection probe. The guard found the EIGHTH. ⚠ **Nothing was built on
+     the wrong number**, which is why it is a correction rather than a rebuild;
+     what it cost was a sentence a later reader would have counted and
+     disbelieved. Found by lens A, which starts from a number rather than a
+     sentence.
+101. ⭐ **THE MUTATION JOB WAS 26 MINUTES ON EVERY PUSH, AND IT IS THE COPY.**
+     Measured across four CI runs: **26.4, 26.6 and 27.2 minutes**, the last two
+     carrying the baseline this session added, so that addition is about **45
+     seconds** and the rest predates it. ⭐ **The phases, measured rather than
+     guessed**: one `tools/windows/wsl-toolkit` row is **6.40 s**, of which the
+     module copy is **3.13 s**, `go build ./...` **1.34 s** and `go test`
+     **1.49 s**. That module holds **332 of 419 rows**, so the copy alone is
+     about 17 minutes of the pass.
+     ⭐ **Two changes, each measured on the same 20 rows.** One staged copy per
+     module rather than one per row, with the mutated file restored byte for
+     byte and the restore VERIFIED, and the copy dropped where it does not take
+     so a dirty tree can never poison the next row: **6.40 to 2.85 s**. Then the
+     separate `go build ./...` removed, which the baseline makes unnecessary
+     because it has already proved the module compiles: **2.85 to 2.01 s**.
+     ⚠ **20 of 20 proved at each step.** ⭐ **The whole table then ran on the
+     finished harness: 390 ok, 0 THEATRE, 0 BROKEN, 29 platform SKIPPED, in
+     18.4 minutes on this Windows host.** ⛔ **That is NOT a like-for-like
+     speedup figure**: the 26 minutes was CI on ubuntu and no full-table run
+     was timed locally before the change, so the comparable number is the
+     per-row one above and CI own next run is what settles the rest.
+102. ⛔ **REMOVING THE DUPLICATE COMPILE MADE A BRANCH UNREACHABLE, AND CI
+     CAUGHT IT AS THEATRE.** With the baseline refusing a pattern that matches
+     no case BEFORE anything is mutated, and a mutation changing source rather
+     than test names, a post-mutation run that started no case can only be a
+     module that stopped compiling. So `case v.Cases == 0:` could no longer
+     decide anything, and the row aimed at it came back **THEATRE** on the
+     ubuntu runner: **416 of 419**, with two platform SKIPPED beside it.
+     ⭐ **Reproduced locally, then diagnosed by planting the mutation BY HAND
+     and printing the verdict**, which is what showed the baseline had already
+     answered. The dead branch is deleted and the row points at the guard that
+     does the job now. ⚠ **This is finding 59 for the third time in one
+     session**, and the third time it was the harness catching redundant code
+     rather than a weak case.
 
 ## Review findings
+⭐ **2026-09-17, three MORE reviews, asked for after the second half.** ⛔ **They
+are three lenses the session had not used**, because four more passes of the
+door sweep, the guard mutation and the claim audit would be one sweep written up
+three times, which `reviews.md` refuses by name.
+
+
+**Lens A, what was measured but never verified** - it starts from a number taken
+on trust rather than from a sentence. ⛔ **One of this session own claims was
+wrong.** The record and the commit body say the engine deadline was chosen at
+SEVEN call sites and that the new guard found a seventh; `grep -c` over
+`engine.go` answers **EIGHT** constructions, so the guard found the EIGHTH.
+⭐ **Two other numbers held when checked**: `guestFailure` has **29** call sites
+outside the tests, the definition excluded, which is what was claimed; and the
+sweep 122 MiB against finding 32 recorded **127 MiB** is two measurements taken
+a day apart by different methods, which is named here rather than left as a
+contradiction between two live lines.
+
+**Lens B, what does this cost and who pays it** - the resource lens, and nothing
+else this session had asked the question. ⛔ **The mutation job runs 26 minutes
+on every push**, measured across four runs: 26.4, 26.6 and 27.2 minutes, the
+last two carrying the baseline this session added, so that addition costs about
+45 seconds and the other 26 minutes predate it.
+⭐ **The phases were measured rather than guessed.** One `tools/windows/wsl-toolkit`
+row takes **6.40 s**: the module copy **3.13 s**, `go build ./...` **1.34 s**,
+`go test` **1.49 s**. That module holds **332 of the table 419 rows**, so the
+copy alone is about 17 minutes of the pass.
+⭐ **Two changes, each measured on the same 20 rows.** One staged copy per module
+instead of one per row, with the mutated file restored byte for byte and the
+restore VERIFIED: **6.40 to 2.85 s per row**. Then the separate `go build ./...`
+removed, which the baseline makes unnecessary because it has already proved the
+module compiles: **2.85 to 2.01 s per row**. 20 of 20 still proved at each step.
+⛔ **AND CI CAUGHT A REGRESSION FROM THIS LENS OWN FIX**, which is the best
+argument for the lens. Removing the duplicate compile made
+`case v.Cases == 0:` unreachable - the baseline refuses a pattern that matches
+nothing BEFORE anything is mutated - so the row aimed at that branch came back
+THEATRE. The dead branch is deleted and the row points at the guard that does
+the job now. Finding 59 for the third time in one session.
+
+**Lens C, what would a fresh reader do wrong with what I wrote** - it starts
+from the reader rather than from the code, and both findings are in text this
+session had already committed. ⛔ **A refusal sent a reader to the wrong place.**
+One stall sentence was shared by every engine call, so a ROOTFS EXPORT that
+stalled told the reader to go and check the registry, which an export never
+touches. Each call carries its own hint now. ⛔ **And the page a consumer
+actually reads said nothing about the break.** `WSL-93` named the `--between`
+change in its own Consumers section, which is the entry; `docs/consumers.md` is
+the register, and a consumer on 3.1.0 had no way to learn from it that a call
+which exited 0 now exits 2. It carries the before-and-after and what a caller
+does about it.
+
+⚠ **What a quiet pass would have needed here.** None was quiet. Lens A came
+closest to it: two of the three numbers it checked were right, and what it
+bought was the third plus the reading that a 122 and a 127 are two measurements
+rather than a mistake.
 ⭐ **2026-09-17, the reviews of the second half.** The operator refused the
 handover, so these are reviews of the work that followed it.
 

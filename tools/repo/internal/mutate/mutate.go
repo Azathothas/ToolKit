@@ -40,6 +40,7 @@
 package mutate
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -131,12 +132,16 @@ func Run(root string, t *Table, only string, w io.Writer) ([]Verdict, error) {
 	// ⛔ SWEPT BEFORE ANYTHING IS STAGED, because a killed run leaves its copy
 	// behind and nothing else collects it. Finding 32.
 	sweepStaleCopies(w)
+	// ⭐ ONE STAGED COPY PER MODULE, reused by every row that names it. The
+	// copy was 3.13 s of a 6.4 s row and was paid 419 times.
+	st := newStage(root)
+	defer st.cleanup()
 	base := &baselines{seen: map[string]baseline{}}
 	for _, m := range t.Mutations {
 		if only != "" && !strings.Contains(m.Label, only) {
 			continue
 		}
-		v := one(root, m, base)
+		v := one(m, base, st)
 		out = append(out, v)
 		switch v.State {
 		case "ok":
@@ -181,18 +186,12 @@ func (b *baselines) key(m Mutation) string {
 // removed, because the harness only ever saw red and never asked what red meant.
 // That is a harness certifying a guard it never tested, which is the exact class
 // this harness exists to catch, in the instrument that catches it.
-func one(root string, m Mutation, base *baselines) Verdict {
+func one(m Mutation, base *baselines, st *stage) Verdict {
 	v := Verdict{Label: m.Label, State: "BROKEN"}
 
-	tmp, err := os.MkdirTemp("", "mutate-")
+	dest, err := st.dir(m.Module)
 	if err != nil {
-		v.Reason = "no temporary directory: " + err.Error()
-		return v
-	}
-	defer os.RemoveAll(tmp)
-	dest := filepath.Join(tmp, "t")
-	if err := copyTree(filepath.Join(root, filepath.FromSlash(m.Module)), dest); err != nil {
-		v.Reason = "the module could not be copied: " + err.Error()
+		v.Reason = "the module could not be staged: " + err.Error()
 		return v
 	}
 
@@ -223,25 +222,52 @@ func one(root string, m Mutation, base *baselines) Verdict {
 		v.Reason = "the change could not be written: " + err.Error()
 		return v
 	}
+	// ⛔ RESTORED BEFORE THIS FUNCTION RETURNS, BY ANY ROUTE, and the restore is
+	// VERIFIED. The copy is shared with every other row naming this module, so
+	// a mutation left behind would be reported as the next row's guard failing.
+	// Where the restore does not take, the staged copy is dropped and the next
+	// row that needs it makes a fresh one rather than running on a dirty tree.
+	defer func() {
+		if err := os.WriteFile(path, body, 0o600); err != nil {
+			st.drop(m.Module)
+			return
+		}
+		back, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(back, body) {
+			st.drop(m.Module)
+		}
+	}()
 
-	if out, err := run(dest, "go", "build", "./..."); err != nil {
-		// ⛔ THE COMPILER'S OWN FIRST LINE, BECAUSE THE ROW IS WHAT HAS TO BE
-		// REWRITTEN. This said "does not compile" and discarded the reason, so a
-		// session met a verdict that is neither red nor green with nothing to act
-		// on. Finding 41: met three times in one day, every time because deleting
-		// a guard left the variable it read unused, which a row can avoid by
-		// comparing against a value the setting never takes.
-		v.Reason = "the MUTATED module does not compile, so this row proves nothing: " + buildFailure(out)
-		return v
-	}
-
+	// ⛔ THERE IS NO SEPARATE `go build ./...` HERE ANY MORE, and the baseline
+	// above is what makes that safe. `go test` compiles the module itself, so
+	// building first compiled everything twice: measured on 2026-09-17, 1.34 s
+	// of a 2.85 s row, paid 419 times.
+	//
+	// ⭐ A BUILD FAILURE IS STILL TOLD APART FROM A GUARD GOING RED, and the
+	// baseline is why it can be. It has already proved that this module
+	// compiles and that this pattern reaches at least one case UNMUTATED, so
+	// after the mutation a run that fails having started NO case is a module
+	// that stopped compiling. Without the baseline the same output would be
+	// indistinguishable from a pattern that matches nothing.
 	args := append([]string{"test", "./...", "-run", m.Run, "-count=1", "-v"}, m.Args...)
 	out, testErr := run(dest, "go", args...)
 	v.Cases = len(runLine.FindAllString(out, -1))
 	v.Skipped = len(skipLine.FindAllString(out, -1))
 	switch {
-	case v.Cases == 0:
-		v.Reason = fmt.Sprintf("0 cases matched %q", m.Run)
+	case v.Cases == 0 && testErr != nil:
+		// Finding 41: the compiler's own line, because the ROW is what has to
+		// be rewritten. Deleting a guard regularly leaves the variable it read
+		// unused, and a row can avoid that by comparing against a value the
+		// setting never takes.
+		v.Reason = "the MUTATED module does not compile, so this row proves nothing: " + buildFailure(out)
+	// ⛔ THERE IS NO `case v.Cases == 0:` HERE ANY MORE, AND THE MUTATION
+	// HARNESS IS WHAT PROVED IT DEAD. The baseline above already refuses a row
+	// whose pattern matches no case, BEFORE anything is mutated, and a mutation
+	// changes source rather than test names - so a run that started no case
+	// after the mutation is a module that stopped compiling, which the branch
+	// above catches. The row aimed at the old branch came back THEATRE in CI on
+	// 2026-09-17, and this comment is what it bought. Finding 59 again: the fix
+	// is to delete the redundancy, not to strengthen a case around it.
 	case testErr != nil:
 		v.State = "ok"
 	case v.Skipped >= v.Cases:
@@ -395,6 +421,63 @@ func treeSize(root string) int64 {
 		return nil
 	})
 	return total
+}
+
+// stage is one module copied once and reused by every row that names it.
+//
+// ⛔ THE COPY WAS THE COST, AND IT WAS PAID 419 TIMES. Measured on 2026-09-17:
+// one `tools/windows/wsl-toolkit` row takes about 6.4 s, of which the copy is
+// 3.13 s, the build 1.34 s and the test 1.49 s. That module holds 332 of the
+// table's 419 rows, and the whole pass took about 26 minutes in CI on every
+// push.
+//
+// ⭐ ONE COPY PER MODULE, AND THE MUTATED FILE IS RESTORED BYTE FOR BYTE. The
+// row still runs against a copy and never against the tree, which is the
+// isolation the per-row copy was for; what changes is how often the copy is
+// made.
+//
+// ⛔ THE RESTORE IS VERIFIED AND A FAILURE RESTAGES. A row that left the copy
+// dirty would poison every row after it, and reporting the NEXT guard as
+// broken because this one did not clean up is exactly the kind of result this
+// harness exists to refuse. Cheap to check: the bytes are already in hand.
+type stage struct {
+	root string
+	dirs map[string]string
+}
+
+func newStage(root string) *stage { return &stage{root: root, dirs: map[string]string{}} }
+
+// dir returns a staged copy of the module, making it on first use.
+func (s *stage) dir(module string) (string, error) {
+	if d, ok := s.dirs[module]; ok {
+		return d, nil
+	}
+	tmp, err := os.MkdirTemp("", "mutate-")
+	if err != nil {
+		return "", err
+	}
+	dest := filepath.Join(tmp, "t")
+	if err := copyTree(filepath.Join(s.root, filepath.FromSlash(module)), dest); err != nil {
+		_ = os.RemoveAll(tmp)
+		return "", err
+	}
+	s.dirs[module] = dest
+	return dest, nil
+}
+
+// drop forgets a staged copy, so the next row that needs it makes a fresh one.
+func (s *stage) drop(module string) {
+	if d, ok := s.dirs[module]; ok {
+		_ = os.RemoveAll(filepath.Dir(d))
+		delete(s.dirs, module)
+	}
+}
+
+// cleanup removes every staged copy.
+func (s *stage) cleanup() {
+	for module := range s.dirs {
+		s.drop(module)
+	}
 }
 func run(dir, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
