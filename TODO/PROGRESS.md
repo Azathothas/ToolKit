@@ -241,7 +241,17 @@ is closed, and the issue gets a comment naming the commits.
     to the shared table, which is fetched by URL and is not where a runtime one adapter
     needs belongs - the rule `WSL-88` states for pi.
 
+22. ⭐ **2026-09-17: `wsl-toolkit-v3.0.0` is cut, and this AMENDS ruling 6.** The operator:
+    "cut the release finally". ⛔ **Ruling 6 required issues 30 and 32 to be CLOSED first,
+    and issue 30 cannot be**: its part 2 is `WSL-68`, which the same operator deferred in
+    ruling 19. So the release no longer waits on issue 30. ⚠ **The second half of ruling 6
+    still holds and is not amended**: `repo release` runs read-only first, and the publish
+    happens only with the gate green and CI green on the final commit. ⭐ **Issue 30 gets a
+    comment saying what is left rather than being closed**, and issue 32 closes only if
+    every entry mapped to it is done.
+
 ## Before every push
+
 
 
 
