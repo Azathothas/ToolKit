@@ -3273,7 +3273,7 @@ rests on, taken again rather than carried.
 
 ## Closing
 
-**Closed 2026-09-17T16:20:00Z.** The adapter is built, and it is a SEAM rather
+**Closed 2026-09-17T15:43:52Z.** The adapter is built, and it is a SEAM rather
 than a second implementation: one relay renders, records and reports, and an
 `Observer` answers about the thing the command is in.
 

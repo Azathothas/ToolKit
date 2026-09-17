@@ -5,11 +5,11 @@ that reads this and acts on it is reading what was true last time.
 
 ---
 
-## 2026-09-17T14:42:39Z to 2026-09-17T17:05Z
+## 2026-09-17T14:42:39Z to 2026-09-17T15:54Z
 
 | row | measured |
 | --- | --- |
-| Elapsed | about 2h 23m, from the recorded start instant |
+| Elapsed | **71 minutes**, the doctor's own stamp to the clock. ⚠ This row and four closing stamps were TYPED before they were read, and two of them were in the future; the claim audit caught it and they are the commit's own instant now |
 | Commits | 1, on `main`, over `105dfdc..HEAD` |
 | Work | **3 completed, 0 deferred, 0 failed.** `WSL-59` and `WSL-91` were the two open entries; `WSL-93` was filed and closed in the same session |
 | Changes | 33 files, **+2,949 / -275**. 4 new files |

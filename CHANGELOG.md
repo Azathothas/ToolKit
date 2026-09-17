@@ -21,7 +21,7 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-17
 
-### 2026-09-17T16:55:00Z: the last two open entries close, and the tool watches a container
+### 2026-09-17T15:43:52Z: the last two open entries close, and the tool watches a container
 
 **Record:** `WSL-59` in [`TODO/wsl-ephemeral.md`](TODO/wsl-ephemeral.md),
 `WSL-91` and `WSL-93` in

@@ -10618,7 +10618,7 @@ it, and finding 70's shape is caught before a tag rather than after one.
 
 ## Closing
 
-**Closed 2026-09-17T16:40:00Z.** All four approach steps are delivered, and the
+**Closed 2026-09-17T15:43:52Z.** All four approach steps are delivered, and the
 gate now fails if the working-tree binary refuses anything `consumer.ps1` asks
 of it.
 
@@ -10806,7 +10806,7 @@ Green, with the three new mutation rows red under `repo mutate`.
 
 ## Closing
 
-**Closed 2026-09-17T15:05:00Z.** Driven, both directions:
+**Closed 2026-09-17T15:43:52Z.** Driven, both directions:
 
 ```text
 === --between, two ranges, NO --expect ===

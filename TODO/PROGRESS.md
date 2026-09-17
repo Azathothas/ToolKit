@@ -8,7 +8,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-17T14:42:39Z
 baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
-head            this session's commit
+head            29ca209 plus this record commit
 entries         total 128  open 0  blocked 0  done 128
 this session    the last two open entries closed: a container is watched by the same layer a distribution is, and the gate drives the released-binary contract on every commit
 ```
@@ -280,7 +280,8 @@ new file FIRST, then run the gate.**
 | `9523778` | a release step that proves a refusal must not end holding it: the staged-binary step printed every success line it has and failed the release with the exit code of the refusal it had just proved on purpose |
 | `a5b2fd9` | the number of published assets has one home rather than three: staging writes `SIGN_COUNT` from the list it already asserts against, and the signing and verifying steps read it |
 | `105dfdc` | `wsl-toolkit-v3.1.0` published, 22 assets and BOTH jobs green; `WSL-90` closed on a release that is consumable rather than merely cut; the end-to-end pass driven from a consumer's side, which found that this repository's own documented verification command fails in Git Bash; findings 78, 79 and 80 |
-| this record commit | ⭐ **the last two open entries closed.** `WSL-59`: the observation layer reaches a container through an `Observer` seam, and the resource feed reports ABSENT rather than the nonsense podman answers. `WSL-91`: the gate drives `consumer.ps1` over a working-tree build, so finding 70's shape is caught before a tag. `WSL-93` filed and closed: `--between` was the one edit operation with no required count, in a PUBLISHED binary. The gate's analyzer widened from one directory to three, which is where its only real finding was. 13 mutation rows, 13 of 13 red; findings 81 to 88 |
+| `29ca209` | ⭐ **the last two open entries closed.** `WSL-59`: the observation layer reaches a container through an `Observer` seam, and the resource feed reports ABSENT rather than the nonsense podman answers. `WSL-91`: the gate drives `consumer.ps1` over a working-tree build, so finding 70's shape is caught before a tag. `WSL-93` filed and closed: `--between` was the one edit operation with no required count, in a PUBLISHED binary. The gate's analyzer widened from one directory to three, which is where its only real finding was. 13 mutation rows, 13 of 13 red; findings 81 to 88 |
+| this record commit | the claim audit's own catch: five timestamps in this record were typed rather than read and two were in the future, corrected to the commit's instant; finding 89 |
 
 ## Measurements
 
@@ -1448,6 +1449,20 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     Both halves are asserted now. ⚠ It is the "a test whose name
     claims more than it checks" row, found by an analyzer rule
     (`PSUseDeclaredVarsMoreThanAssignments`) rather than by a reading, in the
+89. ⛔ **FIVE TIMESTAMPS WERE TYPED RATHER THAN READ, AND TWO OF THEM WERE IN
+    THE FUTURE.** Three entry closings, a changelog heading and the summary's
+    elapsed row: `16:20:00Z`, `16:40:00Z`, `15:05:00Z`, `16:55:00Z`, and "about
+    2h 23m". The commit landed at **15:43:52Z** and the session had run **71
+    minutes**. ⚠ **Every one of them is plausible**, which is the whole hazard: a
+    reader has no way to tell a stamp that was read from one that was guessed,
+    and two of these described work as finishing after the commit that carried
+    it. ⭐ **The claim audit caught it on this session's OWN record**, in the last
+    pass before printing, by asking the machine for the time instead of reading
+    the file. ⛔ **The previous session recorded the same class** - "a commit body
+    carried a timestamp typed rather than read from the machine" - and it
+    happened again one session later, which is the evidence that a note is not a
+    fix. All five are the commit's own instant now.
+
     directory finding 82 says was never analysed.
 ## Review findings
 
@@ -1500,13 +1515,15 @@ record of why.
 backed by an artefact?" It read every page this session touched, and every
 number in this record, against the command that produced it.
 
-⛔ **Five failed.** The manual's `k8s-file` claim, finding 81, which is the one
+⛔ **Six failed, and the sixth was in this record.** The manual's `k8s-file` claim, finding 81, which is the one
 that mattered. `consumer.ps1`'s ASCII-only header, finding 83. The record's
 baseline of "gate 21 of 21" against a gate with 23 checks at that commit. The
 record's "49 tracked scripts" against **51** at the same commit, which this
 session did not change. And `applyBetween`'s own comment, which said a file with
 two ranges "refuses rather than silently changing the first" over a guard that
-was optional.
+was optional. ⛔ **And five timestamps in THIS record, typed rather than read,
+two of them in the future**, caught by asking the machine for the time in the
+last pass before printing. Finding 89.
 
 ⭐ **One existing finding was narrowed rather than repeated.** Finding 63 says
 `$LASTEXITCODE` after a pipe is the pipeline's. Measured three ways: it is a
