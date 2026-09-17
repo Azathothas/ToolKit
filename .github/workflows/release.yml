@@ -285,19 +285,69 @@ jobs:
       # --generate-notes writes the body from the commits since the previous tag.
       # ⛔ No hand-written body: one that is typed here goes stale the first time
       # somebody forgets to edit it, and the commits cannot.
-      - name: publish
+      # ⛔ THE RELEASE IS CREATED EMPTY AND THE ASSETS GO UP SEPARATELY, and
+      # that is not a style choice. `gh release create TAG file1 file2 ...`
+      # creates the release and then uploads inside the same call, and when an
+      # upload fails it DELETES the release it had just made. Two things follow
+      # and both were measured on 2026-09-17 against `wsl-toolkit-v4.0.0`:
+      #
+      #   HTTP 422: Validation Failed .../assets?name=herdr-0.9.1-linux-x86_64
+      #   ReleaseAsset.name already exists
+      #
+      # gh retried an upload that had in fact landed, the retry collided with
+      # itself, and the whole release went away - so a 65 MiB upload over a slow
+      # link could lose a release that was otherwise complete. ⛔ AND THE STEP
+      # WAS NOT RE-RUNNABLE: running it again hit the same collision.
+      #
+      # ⭐ `--clobber` IS WHAT MAKES IT IDEMPOTENT. An upload that already landed
+      # is replaced rather than refused, so this step can be re-run against a tag
+      # until it completes, which is exactly what a flaky uplink needs.
+      - name: create the release, with no assets yet
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = '${{ github.event.inputs.tag || github.ref_name }}'
-          gh release create $tag `
-            (Get-ChildItem dist -File | ForEach-Object { $_.FullName }) `
-            --title $tag `
-            --generate-notes `
-            --verify-tag
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          Write-Output "published $tag"
+          # ⚠ A RE-RUN MUST NOT FAIL HERE. The release may already exist from an
+          # attempt whose uploads did not finish, and that is the case this
+          # whole step exists to survive.
+          gh release view $tag > $null 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output "release $tag already exists; its assets are replaced below"
+            exit 0
+          }
+          gh release create $tag --title $tag --generate-notes --verify-tag
+          if ($LASTEXITCODE -ne 0) { Write-Output "could not create the release for $tag"; exit 1 }
+          Write-Output "created $tag with no assets"
+
+      - name: upload every asset, one at a time
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ github.event.inputs.tag || github.ref_name }}'
+          # ⛔ ONE AT A TIME AND NAMED, so a failure says WHICH asset and the
+          # ones already up are kept. The all-in-one call reported a URL and a
+          # validation error and left nothing behind to resume from.
+          $files = @(Get-ChildItem dist -File | Sort-Object Name)
+          if ($files.Count -eq 0) { Write-Output 'dist holds no asset to upload'; exit 1 }
+          foreach ($f in $files) {
+            gh release upload $tag $f.FullName --clobber
+            if ($LASTEXITCODE -ne 0) { Write-Output "uploading $($f.Name) exited $LASTEXITCODE"; exit 1 }
+            Write-Output "uploaded $($f.Name) ($($f.Length) bytes)"
+          }
+          # ⛔ READ BACK WHAT IS ACTUALLY ON THE RELEASE. Every step above can
+          # report success and still leave a release short, which is the whole
+          # class this workflow keeps meeting; the count staging asserted is the
+          # number that has to be there.
+          $onRelease = @(gh release view $tag --json assets --jq '.assets[].name')
+          if ($LASTEXITCODE -ne 0) { Write-Output "could not read back $tag"; exit 1 }
+          $missing = @($files | Where-Object { $onRelease -notcontains $_.Name } | ForEach-Object { $_.Name })
+          if ($missing.Count -gt 0) {
+            Write-Output "the release is missing $($missing.Count) asset(s): $($missing -join ', ')"
+            exit 1
+          }
+          Write-Output "published $tag with $($onRelease.Count) asset(s)"
 
   # ⛔ THE PUBLISH IS NOT THE LAST WORD. Everything above runs against the tree
   # and the staging directory; this fetches what was actually uploaded and

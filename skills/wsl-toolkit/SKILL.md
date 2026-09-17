@@ -160,8 +160,9 @@ Attacks the base from the unprivileged account and reports every door it found o
 | a field the tool does not know | the executable is older than the configuration. `wsl-toolkit selfupdate` |
 | an adapter reports a problem | read the line. It names the file and the command |
 | the base is registered and nothing works | `wsl-toolkit --instance NAME base ensure --repair` |
-| Windows restarted WSL under it | the same `--repair`. It clears the stale boot id |
+| Windows restarted WSL under it | the same `--repair`. It clears the stale boot id. ⛔ **`wsl --shutdown` breaks EVERY instance holding an engine**, so the remediation names the others and gives each one its command: repair the one that complained and the next session meets the rest |
 | a Windows launcher says it is another build | `base ensure` rewrites it |
+| `produced nothing for 4m and was given up` | ⭐ **a STALL, not a slow link.** Every host-engine call carries a total ceiling and a silence deadline, so a pull or an export that has stopped is given up in minutes rather than waited out. The line says where to look, and it differs for a pull and an export |
 
 ⭐ **The tool keeps a complete transcript of every job it ran:**
 

@@ -43,6 +43,20 @@ Two shapes to test for specifically:
 
 - A test whose **name** claims more than it **checks**.
 - A check that passes because a different code path happens to satisfy it.
+- ⛔ **A guard whose case was ALREADY RED before the mutation.** Planting the
+  defect and seeing red proves nothing unless the case was green first. Measured
+  here: the harness deleted a guard, saw red and reported "went red", so a case
+  that was failing on its own certified every guard it was named by. ⭐ Run the
+  case unmutated first, and refuse the row where it is not green.
+- ⛔ **A mutation that stops the module compiling**, which is neither red nor
+  green and is easy to read as proved in a run where other rows say ok. It
+  happens most often because deleting a guard leaves the variable it read
+  unused. ⭐ Mutate to a value the setting never takes rather than deleting, so
+  the reference survives and the row can actually go red.
+- ⭐ **A row that comes back THEATRE may be telling you the CODE is redundant**,
+  not that the case is weak. Met three times in one session: each time the guard
+  could not be made to matter because something earlier already decided the
+  answer. Delete the redundancy rather than strengthening the case around it.
 
 ⚠ This lens caught a defect in this template's own probe. A patch script
 asserted only that *something* in the file had changed, so it reported success

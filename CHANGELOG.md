@@ -19,6 +19,28 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-18
+
+### 2026-09-17T18:37:16Z: `wsl-toolkit-v4.0.0` published, and a publish that can be run twice
+
+**Record:** finding 103 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v4.0.0`, **22 assets**: the two
+`wsl-toolkit` executables, herdr 0.9.1 for four targets, the four
+`text-tool` builds, `SHA256SUMS`, and a signature bundle for each. All three
+jobs green, including the smoke that fetches the release and drives it.
+
+⛔ **THE FIRST ATTEMPT DESTROYED ITS OWN RELEASE.** `gh release create TAG
+file...` uploads inside the call that creates the release, and deletes the
+release when an upload fails. A retried upload of a herdr build collided with
+itself, `ReleaseAsset.name already exists`, and the release went with it: its
+id answers 404. Nothing published, so no consumer saw it.
+
+⭐ **The publish is idempotent and resumable now.** The release is created
+empty, the assets go up one at a time with `--clobber`, and the step reads
+back what is actually on the release and refuses a count short of what staging
+produced. ⚠ **The publish that landed used the old step on a re-dispatch**,
+which is what says the failure was transient; the fix is what stops it costing a
+release next time.
 ## 2026-09-17
 
 ### 2026-09-17T17:30:08Z: the guard job stops paying for the same copy 419 times, and 4.0.0
@@ -56,11 +78,13 @@ deferral the instruction forbade, and this entry is the work it should have
 done.
 
 ⭐ **Every host-engine call is bounded at one door.** The deadline used to be
-chosen at each of seven call sites, and the largest was 30 minutes: a ceiling
+chosen at each of eight call sites, and the largest was 30 minutes: a ceiling
 nobody would sit through, which is why a stalled `podman pull` cost 28 minutes.
 `engineCall` adds a STALL deadline beside the total, so a transfer that is
 moving is never stopped and one that has produced nothing for four minutes is
-given up, naming the stall.
+given up, naming the stall. ⚠ **Amended 2026-09-18: this entry said SEVEN call
+sites.** A later review counted the constructions and there are eight; nothing
+was built on the wrong number. `TODO/PROGRESS.md` finding 100.
 
 ⭐ **The mutation harness asks what a case did BEFORE the mutation.** It saw red
 and reported "went red", so a case that was already failing certified every

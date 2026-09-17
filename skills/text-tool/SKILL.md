@@ -126,7 +126,8 @@ asked for, and it is the kind nobody notices.
 text-tool edit config.json --replace '"debug": true' --text '"debug": false' --expect 1
 ```
 
-⛔ **`--replace` WITHOUT `--expect` IS REFUSED OUTRIGHT.** If you do not know the
+⛔ **A SEARCH WITHOUT `--expect` IS REFUSED OUTRIGHT**, and that is `--replace`,
+`--after`, `--before` and `--between` alike. If you do not know the
 number, ask first:
 
 ```bash
@@ -164,7 +165,10 @@ anchor and replaces it with your text PLUS the anchor, and forgetting the second
 half DELETES the anchor. That is the commonest way to damage a file with this
 tool.
 
-⛔ **`--between` NEEDS `--expect`, AND IT REPORTS THE LINES IT TOOK.** It is the
+⛔ **`--between` NEEDS `--expect` FROM `wsl-toolkit-v4.0.0`, AND IT REPORTS THE
+LINES IT TOOK.** ⚠ On a 3.1.0 binary the flag is optional there, so a reader
+holding an older build will not see the refusal this section describes;
+`text-tool --help` names what your copy really requires. It is the
 widest operation here - it deletes a whole region rather than one line - and it
 was the only search without a required count until 2026-09-17: with no
 `--expect` it wrote nothing and exited **0**, both when two ranges matched and
@@ -258,9 +262,15 @@ uses. You rarely need the flag.
 text-tool edit PATH --replace 'old' --text 'new' --expect 2 --json
 ```
 
-`--json` gives `text-edit/2`: a `mode`, a total `matches`, a `changed`, and a
-`files` array with one entry per path holding `path`, `matches`,
-`bytes_before`, `bytes_after`, `eol`, `changed` and the line numbers touched.
+`--json` gives `text-edit/2`: a `mode`, an `op` naming the operation that ran, a
+total `matches`, a `changed`, and a `files` array with one entry per path
+holding `path`, `matches`, `bytes_before`, `bytes_after`, `eol`, `changed` and
+the line numbers touched.
+
+⭐ **`op` is what tells a `--between` apart from a `--replace` afterwards**, and
+for a `--between` the human line also names the SPAN it took, as
+`lines 2-9 (8 line(s))`. A wrong range is still exactly one match, so the span
+is the only thing that shows it.
 
 ⚠ **`lines` is capped at twenty.** When it is shorter than `matches` the report
 sets `lines_truncated`, so the two numbers disagreeing is never a mystery.
@@ -276,7 +286,7 @@ it found and what to do.
 | message | do this |
 | --- | --- |
 | `--expect N and this matches M times` | run `--count`, decide whether you meant M, then say M |
-| `needs --expect N` | you used `--replace`, `--after` or `--before` without it |
+| `needs --expect N` | you used `--replace`, `--after`, `--before` or `--between` without it |
 | `file(s) matched nothing` | check the path for a typo; the file may have drifted; `--allow-unmatched` if you meant it |
 | `names a place in ONE file` | run it once per file, or use `--replace` |
 | `takes one operation and N were given` | pick one |

@@ -8,7 +8,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-17T14:42:39Z
 baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
-head            29ca209, 9660143, plus this record commit
+head            wsl-toolkit-v4.0.0 published; 29ca209, 9660143, 02182bb, 09eea4f plus this record commit
 entries         total 128  open 0  blocked 0  done 128
 this session    wsl-toolkit-v4.0.0; the last two open entries closed, then the operator refused the handover: every host-engine call bounded with a stall deadline, and nine findings that had a named fix and no entry FIXED rather than listed
 ```
@@ -291,7 +291,9 @@ new file FIRST, then run the gate.**
 | `105dfdc` | `wsl-toolkit-v3.1.0` published, 22 assets and BOTH jobs green; `WSL-90` closed on a release that is consumable rather than merely cut; the end-to-end pass driven from a consumer's side, which found that this repository's own documented verification command fails in Git Bash; findings 78, 79 and 80 |
 | `29ca209` | ⭐ **the last two open entries closed.** `WSL-59`: the observation layer reaches a container through an `Observer` seam, and the resource feed reports ABSENT rather than the nonsense podman answers. `WSL-91`: the gate drives `consumer.ps1` over a working-tree build, so finding 70's shape is caught before a tag. `WSL-93` filed and closed: `--between` was the one edit operation with no required count, in a PUBLISHED binary. The gate's analyzer widened from one directory to three, which is where its only real finding was. 13 mutation rows, 13 of 13 red; findings 81 to 88 |
 | `9660143` | the claim audit own catch: five timestamps in this record were typed rather than read and two were in the future, corrected to the commit instant; finding 89 |
-| this record commit | ⛔ **the operator refused the handover, and it was right to.** The session had ended by listing findings with a named fix and no entry, which is the deferral the prompt forbade. ⭐ **A default deadline on EVERY host-engine call**, with a separate STALL deadline so a pull that has stopped is given up in minutes rather than waited out for half an hour; driven against a real child both ways. Then the findings themselves: the mutation harness runs a case unmutated first (finding 1, the oldest in the record), sweeps a killed run staging (32, and the first run removed the real 122 MiB), and says what the compiler said (41); 29 error messages name the guest own line (12, 13, 15); a case that answered differently alone and in company agrees with itself (37); the two readers of the automount root agree (23); a host-wide repair names the other instances (67); and the consumer runner tests the smaller fetch the register documents (31). ⛔ **Finding 14 closes as a check that CANNOT exist**, because driving the one written for it contradicted a measurement this repository already had. Findings 90 to 99 |
+| `02182bb` | ⛔ **the operator refused the handover, and it was right to.** The session had ended by listing findings with a named fix and no entry, which is the deferral the prompt forbade. ⭐ **A default deadline on EVERY host-engine call**, with a separate STALL deadline so a pull that has stopped is given up in minutes rather than waited out for half an hour; driven against a real child both ways. Then the findings themselves: the mutation harness runs a case unmutated first (finding 1, the oldest in the record), sweeps a killed run staging (32, and the first run removed the real 122 MiB), and says what the compiler said (41); 29 error messages name the guest own line (12, 13, 15); a case that answered differently alone and in company agrees with itself (37); the two readers of the automount root agree (23); a host-wide repair names the other instances (67); and the consumer runner tests the smaller fetch the register documents (31). ⛔ **Finding 14 closes as a check that CANNOT exist**, because driving the one written for it contradicted a measurement this repository already had. Findings 90 to 99 |
+| `09eea4f` | the guard job stops paying for the same copy 419 times: one staged module copy with a verified byte-exact restore and the duplicate compile dropped, **6.40 to 2.01 s per row**, and CI **26.4 to 19.7 min**; three lenses the session had not used, which found the call-site count wrong, the cost nobody had asked about, and a refusal sending a reader to the wrong place; findings 100 to 102 |
+| this record commit | ⭐ **`wsl-toolkit-v4.0.0` IS PUBLISHED**, 22 assets, all three release jobs green including the consumer smoke. ⛔ **A MAJOR because a published binary changed how it exits**, which `docs/consumers.md` calls a break in its own words. ⛔ **The first attempt destroyed its own release**: `gh release create` uploads inside the call that creates, and a retried upload collided with itself and took the release with it; the publish is idempotent and resumable now, and reads back what is actually on the release. Nine review passes over the documents, the record and the skills; findings 103 |
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17, in the 14:42Z session:
@@ -1668,8 +1670,99 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
      does the job now. ⚠ **This is finding 59 for the third time in one
      session**, and the third time it was the harness catching redundant code
      rather than a weak case.
+103. ⛔ **`gh release create` UPLOADS INSIDE THE CALL THAT CREATES THE RELEASE,
+     AND DELETES THE RELEASE WHEN AN UPLOAD FAILS.** The first attempt at
+     `wsl-toolkit-v4.0.0` built every asset, signed and verified all 22, and then
+     ended:
+
+     ```text
+     HTTP 422: Validation Failed (.../releases/390943600/assets?name=herdr-0.9.1-linux-x86_64)
+     ReleaseAsset.name already exists
+     ```
+
+     ⚠ **The asset had landed and gh retried it**, over about 65 MiB of herdr
+     builds and seven minutes of uploading, and the collision took the whole
+     release with it: release 390943600 answers **404** now, so there was nothing
+     to resume from. ⛔ **AND THE STEP WAS NOT RE-RUNNABLE**: running it again met
+     the same shape.
+     ⭐ **FIXED IN THE WORKFLOW, not by retrying until it worked.** The release is
+     created EMPTY, the assets go up one at a time with `--clobber`, and the step
+     READS BACK what is on the release and refuses a count short of what staging
+     produced. An upload that already landed is replaced rather than refused, so
+     the step can be run again against a tag until it completes.
+     ⚠ **The publish that actually landed used the OLD step**, on a re-dispatch,
+     which is what says the 422 was transient rather than deterministic. The fix
+     is what stops it costing a release next time, and it has not itself
+     published anything yet.
 
 ## Review findings
+
+⭐ **2026-09-18, three reviews of the DOCUMENTS, three of the RECORD and three
+of the SKILLS**, asked for by name. ⚠ **Each set uses lenses suited to its
+subject**, because a door sweep over a document is not a door sweep.
+
+### The documents
+
+**Does a rule this session learned have a home?** ⛔ **No, and
+`forbidden-patterns.md` says in its own words to grow it.** Three classes were
+met today and none had a row: a total deadline used as the guard against a hang,
+a guard chosen at each call site rather than at one door, and two documents
+agreeing with each other about code neither was compared against. All three are
+rows now, each with what it caused. ⭐ `reviews.md` gained the three things the
+guard-mutation lens learned: a case already red proves nothing, a mutation that
+stops the module compiling is neither red nor green, and a THEATRE verdict may
+be telling you the CODE is redundant.
+
+**Does the router still route to things that exist?** ⭐ **Yes.** The 21 tools
+`AGENTS.md` names were resolved against the disk, and every cited path in every
+document resolves, which the gate also asserts.
+
+**What did this session change that a page still describes the old way?**
+⭐ **Nothing.** The observation flags are in the generated manual, which carries
+`log-profile` in seven places, and no page still says `run` carries `--tick`
+alone. ⚠ **What would have made this fire** is a page describing `run` written
+before today; the usage page was moved and rewritten in the same change, which
+is why it did not.
+
+### The record
+
+**Does it contradict itself?** ⛔ **It did, in three places.** The engine call
+sites were written as seven and there are eight; two of the three were passages
+QUOTING the wrong claim, which are correct as they stand, and the third was a
+live sentence and is corrected. ⭐ **The changelog is amended in place with a
+dated note** rather than edited silently, which is rule 4 of its own page.
+
+**Do the cross-references resolve?** ⭐ **Yes, and this is checkable rather than
+readable**: every `finding N` in the record names a finding that exists, the
+numbering runs 1 to 102 with no gaps, and the counts agree with the rows.
+
+**Do the closings still describe what the code does?** ⭐ **Yes, and one was
+deliberately left alone.** `TOOL-19`'s closing says the harness asks for five
+answers at once, which is still true although the no-case answer now comes from
+the baseline rather than from the branch after the mutation. ⛔ **`ENTRY.md`
+forbids rewriting a closing**, and it is not misleading, so it stands.
+
+### The skills
+
+**Does each one match what the tool now does?** ⛔ **The text-tool skill had a
+stale row.** Its troubleshooting table said `needs --expect N` comes from
+`--replace`, `--after` or `--before`; `--between` joins them, and the tool's own
+message names all four. The `--json` section named no `op` field. Both fixed,
+and ⭐ **the `op` was verified by running the binary rather than by reading the
+code**.
+
+**Would a cold reader end up somewhere wrong?** ⛔ **Yes.** The skill states the
+`--between` refusal unconditionally, and a reader holding a 3.1.0 binary will
+not see it, because the flag is optional there. A measurement carries its
+conditions or it is not a measurement, so the section names the version and
+points at `--help` for what the reader's own copy requires.
+
+**What has this session learned that a skill does not say?** ⛔ **Two things,
+both operator-facing.** A `wsl --shutdown` breaks every instance holding an
+engine and the remediation now names the others, so repairing the one that
+complained is not enough. And a stalled engine call is given up in minutes with
+a line that says STALL rather than hanging. Both are rows in the skill's
+when-it-is-broken table now.
 ⭐ **2026-09-17, three MORE reviews, asked for after the second half.** ⛔ **They
 are three lenses the session had not used**, because four more passes of the
 door sweep, the guard mutation and the claim audit would be one sweep written up
@@ -1731,9 +1824,10 @@ handover, so these are reviews of the work that followed it.
 harness and a guest failure message?" It enumerated by grep rather than from
 memory, and ⛔ **it is the only pass here that was turned into a CHECK.**
 `TestEveryEngineCallCarriesADeadline` reads `engine.go` and refuses a reach for
-the engine through the raw process helpers, and it found a SEVENTH call site on
+the engine through the raw process helpers, and it found an EIGHTH call site on
 its first run, inside `podmanWorkingConnection`, which the sweep by hand had
-missed. ⭐ The same lens over `firstLine` found 29 error messages naming a
+missed. ⚠ **This passage said SEVENTH until lens A counted the constructions**;
+finding 100. ⭐ The same lens over `firstLine` found 29 error messages naming a
 wrapper line rather than the guest, where the record had counted 23.
 
 **Pass 2, the guard mutation** - "can each new guard actually fail?" 8 rows, 7
