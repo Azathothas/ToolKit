@@ -21,15 +21,15 @@ forgetfulness: `text-tool` was not reachable from outside a checkout.
 | --- | --- | --- |
 | Elapsed | baseline `1699de9` pushed at 10:03:30Z | last measurement 12:22:40Z, about 2 h 20 m |
 | Commits | `1699de9`, tree clean | **10**, by `git log --oneline 1699de9..HEAD`. All pushed except the last, which waits on CI for `19eb9d8` |
-| Work | 125 entries, 5 open, 120 done | **127 entries, 3 open, 124 done.** Closed `WSL-68`, `WSL-76`, `WSL-78`, `WSL-90`, `WSL-92`; filed `WSL-91` and `WSL-92` |
+| Work | 125 entries, 5 open, 120 done | **127 entries, 2 open, 125 done.** Closed `WSL-68`, `WSL-76`, `WSL-78`, `WSL-90`, `WSL-92`; filed `WSL-91` and `WSL-92` |
 | Changes | 0 files from `1699de9` | `git diff --shortstat` reads **62 files, +6,686 / -191** |
 | Size | 105,395 text lines in 329 files | **111,890 in 346 files, +6,495**, by `git grep -I -c ''` |
 | Checks | gate 21 of 21 | **gate 23 of 23, exit 0 read from the process.** `ste` and `skills` are new checks; `check-go.sh --json` answers `"modules":4` |
 | Guards | 338 mutation rows | **392, +54.** Every new row driven and reported red; two came back THEATRE first and both were fixed rather than dropped |
-| Findings | 66 | **75.** Findings 67 to 75, and **three of 72 to 75 were found by using `text-tool` on itself** |
+| Findings | 66 | **80.** Findings 67 to 75, and **three of 72 to 75 were found by using `text-tool` on itself** |
 | Rulings | 21 | **25.** Ruling 22 amends ruling 6 on the release; 23 clears what was blocked on the operator; 24 refuses a route for `muse serve`; 25 records this release |
 | Issues | 2 open | **0.** 30 and 32 closed, each with a comment naming what its entries did NOT deliver |
-| Released | `wsl-toolkit-v2.0.2` newest | **`wsl-toolkit-v3.0.0`**, 14 assets, the first release this repository has cut that publishes another project's build |
+| Released | `wsl-toolkit-v2.0.2` newest | **`wsl-toolkit-v3.0.0` and `wsl-toolkit-v3.1.0`**. 3.0.0 is the first release this repository cut that publishes another project's build; 3.1.0 is the first whose smoke job is green, with 22 assets. ⛔ **Three attempts, and each failure was ours** |
 | Health | 5 distributions | ⭐ **the same 5**, none added or removed; `eph-pgb` untouched. ⛔ **podman would not answer**, and was DIAGNOSED rather than worked around: `user@1000.service` fails to spawn its executor on systemd 259 under WSL2, so the rootless socket is never created. Finding 76 |
 
 ### What was asked for, and what happened

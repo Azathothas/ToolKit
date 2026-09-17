@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 127  open 3  blocked 0  done 124
+total 127  open 2  blocked 0  done 125
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
 | P1 | 0 | 0 | 66 | 66 |
-| P2 | 3 | 0 | 48 | 51 |
+| P2 | 2 | 0 | 49 | 51 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **3** | **0** | **124** | **127** |
+| **all** | **2** | **0** | **125** | **127** |
 
 ---
 
@@ -134,7 +134,7 @@ total 127  open 3  blocked 0  done 124
 | WSL-87 | P1 | S | done | bootstrap.sh's CodeGraph install fails wherever /bin/sh is dash | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-88 | P2 | M | done | The pi adapter, and herdr's first lifecycle authority in this base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-89 | P2 | M | done | The omp adapter, and the directory collision herdr refuses | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-90 | P2 | L | open | herdr built nightly from its development branch, published here, and followed by the herdr adapter | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-90 | P2 | L | done | herdr built nightly from its development branch, published here, and followed by the herdr adapter | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-91 | P2 | S | open | The consumer smoke can only break after a release | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-92 | P1 | M | done | text-tool becomes a product an agent downloads, not a script in a checkout | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

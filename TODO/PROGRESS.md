@@ -9,8 +9,8 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-17T10:01:48Z
 baseline        1699de9, tree clean, doctor exit 0, gate 21 of 21, and three commits the previous session left unpushed, pushed at 10:03:30Z on green CI for 5eae667
 head            this session's commit
-entries         total 127  open 3  blocked 0  done 124
-this session    the ending the previous session never wrote, wsl-toolkit-v3.0.0, and the smoke that release failed
+entries         total 127  open 2  blocked 0  done 125
+this session    wsl-toolkit-v3.0.0 and v3.1.0, text-tool as a published product, and a broken engine diagnosed rather than called host state
 ```
 
 ## Active work
@@ -296,7 +296,10 @@ new file FIRST, then run the gate.**
 | `1c7cfb8` | ruling 25 records the release; the session summary written from artefacts, including what this session got wrong |
 | `c94fac0` | the version reads `3.1.0` and the generated manual with it; `repo release` refused the tag until it moved, because `wsl-toolkit-v3.0.0` exists both locally and on origin |
 | `79641af` | the root README lists `text-tool` and says there are three skills, which is the door sweep's finding one level up: an enumeration goes stale silently, because nothing about a list of four says a fifth exists |
-| this record commit | the operator refuses "host state": podman is DIAGNOSED rather than stepped around, `user@1000.service` fails to spawn its executor on systemd 259 under WSL2 so the rootless socket is never created, and `FindEngine` now contradicts podman's own advice and names a connection it has driven. The container matrix then ran: 27 shell invocations across Windows, the base and six images, musl and glibc, one digest. Findings 76 and 77; a systemd unit is no longer read as an email address |
+| `ced8bea` | the operator refuses "host state": podman is DIAGNOSED rather than stepped around, `user@1000.service` fails to spawn its executor on systemd 259 under WSL2 so the rootless socket is never created, and `FindEngine` now contradicts podman's own advice and names a connection it has driven. The container matrix then ran: 27 shell invocations across Windows, the base and six images, musl and glibc, one digest. Findings 76 and 77; a systemd unit is no longer read as an email address |
+| `9523778` | a release step that proves a refusal must not end holding it: the staged-binary step printed every success line it has and failed the release with the exit code of the refusal it had just proved on purpose |
+| `a5b2fd9` | the number of published assets has one home rather than three: staging writes `SIGN_COUNT` from the list it already asserts against, and the signing and verifying steps read it |
+| this record commit | `wsl-toolkit-v3.1.0` published, 22 assets and BOTH jobs green; `WSL-90` closed on a release that is consumable rather than merely cut; the end-to-end pass driven from a consumer's side, which found that this repository's own documented verification command fails in Git Bash; findings 78, 79 and 80 |
 
 ## Measurements
 
@@ -1287,6 +1290,45 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     meets this on its first file.
     ⚠ **I diagnosed it as "a mystery" the first time** and retyped the line rather
     than asking why, which is how the second one happened four hours later.
+78. ⛔ **A RELEASE STEP THAT PROVES A REFUSAL ENDED HOLDING THAT REFUSAL, AND
+    FAILED THE WHOLE RELEASE AFTER PRINTING EVERY SUCCESS LINE IT HAS.** The step
+    runs the staged `text-tool` and asserts it REFUSES a wrong `--expect`, because
+    a build with that guard compiled out would pass every other line. Proving a
+    refusal means running a command that exits 1 on purpose, and a pwsh step takes
+    its status from `$LASTEXITCODE`. The log reads `the staged text-tool wrote,
+    edited and refused` and then `##[error]Process completed with exit code 1`.
+    ⚠ **Nothing published**, so no consumer saw it: the publish job failed before
+    creating the release. The tag was not moved and the version was not bumped -
+    `release.yml` takes a `workflow_dispatch` with an existing tag and checks THAT
+    tag out, while the workflow FILE comes from the ref it is dispatched on.
+    ⭐ Fixed with an explicit `exit 0` and the comment beside it: a step that
+    asserts a command FAILS has to say how it itself ended.
+79. ⛔ **THE NUMBER OF PUBLISHED ASSETS WAS WRITTEN DOWN IN THREE PLACES AND I
+    UPDATED ONE.** The second attempt at `wsl-toolkit-v3.1.0` built every asset
+    correctly and failed at `expected 7 assets to sign and found 11`. The staging
+    step COMPUTES its list, so adding `text-tool` moved it there; the signing step
+    and the verifying step each carried a literal `7`.
+    ⭐ **This is the door sweep's own finding for the third time in one session**:
+    an enumeration goes stale silently, because nothing about a list of seven says
+    an eleventh exists. It found `docs/consumers.md` naming no `text-tool` asset,
+    and the root README listing no `text-tool` at all, before this.
+    ⭐ Fixed by giving the count one home: staging writes `SIGN_COUNT` to
+    `GITHUB_ENV` from the list it already asserts against, and both later steps
+    read it. The assertion still means something - it catches `dist` holding a
+    different number of files than staging produced.
+80. ⛔ **OUR OWN DOCUMENTED VERIFICATION COMMAND FAILS IN GIT BASH ON WINDOWS.**
+    `docs/consumers.md` tells a consumer to verify a signature with
+    `--certificate-identity-regexp '^https://github\.com/...\.yml@'`, and Git Bash
+    rewrites every `\.` to `/.`, so cosign is asked for
+    `^https://github/.com/...release/.yml@` and answers `no matching
+    CertificateIdentity found`. ⚠ **The signature is fine and the command is
+    right**; the shell changed it in between, which is finding 77 reaching a page
+    a consumer follows. Measured 2026-09-17 against the published
+    `text-tool-windows-amd64.exe`: PowerShell answers `Verified OK`, Git Bash with
+    `MSYS2_ARG_CONV_EXCL='*'` answers `Verified OK`, plain Git Bash does not. The
+    page says so now, with the working spelling for each.
+    ⭐ **Found by running the documented command rather than reading it**, in the
+    end-to-end pass, which is the only way this class is ever found.
 ## Review findings
 
 ⭐ **2026-09-17T10:01Z, the release session's four closing reviews.** Each pass names

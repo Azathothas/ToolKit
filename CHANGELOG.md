@@ -21,12 +21,36 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-17
 
+### 2026-09-17T14:10:00Z: wsl-toolkit-v3.1.0, and the first release whose smoke is green
+
+**Record:** `WSL-90`'s closing and `WSL-92` in
+[`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), findings 78 to 80 in
+[`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v3.1.0`, **22 assets, 11 files each with
+a signature bundle**: the two `wsl-toolkit` executables, herdr 0.9.1 for four
+targets, the four new `text-tool` builds, and `SHA256SUMS`. ⭐ **Both jobs green**,
+`publish wsl-toolkit` and `the published release can be consumed`, which
+`wsl-toolkit-v3.0.0` could not manage.
+
+⛔ **It took three attempts and each failure was ours.** The first ended the
+staged-binary step holding the exit code of a refusal it had just proved on
+purpose. The second failed at `expected 7 assets to sign and found 11`, because
+the number of published assets was written in three places and one was updated.
+Neither published anything, so no consumer saw either.
+
+⭐ **Driven from a consumer's side afterwards**, not read from a job summary: the
+published `text-tool-windows-amd64.exe` downloaded, its digest compared against
+`SHA256SUMS`, its keyless bundle verified, installed to `%USERPROFILE%\bin`, and
+all 22 commands its skill shows run green against it, with the installed
+`wsl-toolkit` moved from 2.0.2 by its own `selfupdate`. That pass found finding 80: this
+repository's own documented verification command fails in Git Bash on Windows,
+because the shell rewrites the identity regex before cosign sees it.
+
 ### 2026-09-17T12:16:46Z: text-tool becomes a product an agent downloads
 
 **Record:** `WSL-92` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and
 findings 71 to 75 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
-**Deployed:** ⛔ **not yet at the time of writing.** On `main` as `19eb9d8`. It
-publishes with `wsl-toolkit-v3.1.0`, which adds
+**Deployed:** ⭐ **yes**, in `wsl-toolkit-v3.1.0`, which adds
 `text-tool-windows-amd64.exe`, `text-tool-windows-arm64.exe`,
 `text-tool-linux-amd64` and `text-tool-linux-arm64`, each with a signature
 bundle.

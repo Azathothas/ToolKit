@@ -10071,7 +10071,7 @@ a base with Node alone installs it and cannot run it. That is in the amendment a
 **Source** the operator on 2026-09-15, "let's build herdr ourself (now locally for
 windows) and if it works, we will create a dedicated nightly builder for it on github
 and publish it on our repo", and the rulings they gave in chat the same day, below.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -10523,6 +10523,42 @@ single-variable run was made.
    pseudo console has no window. It is asked for, it is not a blocker for anything else,
    and the probe reports it `operator` rather than pretending.
 3. ⚠ Finding 36, the prune that only runs on the write path, is recorded and not fixed.
+
+## Closing, 2026-09-17: step 4 is proved twice, and the second one is consumable
+
+⭐ **`wsl-toolkit-v3.0.0` published herdr 0.9.1 for four targets**, which is this
+entry's approach step 4 and the only thing that could prove it. 14 assets: the two
+executables, the four herdr builds, `SHA256SUMS` and a signature bundle for each.
+It is the first release this repository has cut that publishes another project's
+build.
+
+⛔ **AND ITS SMOKE JOB FAILED, so step 4 was proved by a release nobody could
+consume.** That is finding 70, and it was not herdr's half: `consumer.ps1` wrote a
+configuration `WSL-74` had made a refusal. The entry did not close on that
+release.
+
+⭐ **`wsl-toolkit-v3.1.0` is the one it closes on**, published 2026-09-17 with
+**22 assets, 11 files each signed**, and BOTH jobs green - `publish wsl-toolkit`
+and `the published release can be consumed`. The herdr four are there, built by
+this repository from herdr's newest stable, and so are four `text-tool` builds
+that `WSL-92` added.
+
+⭐ **Driven end to end from a consumer's side**, not read from a job summary: the
+published `text-tool-windows-amd64.exe` downloaded, its digest compared against
+`SHA256SUMS`, its keyless bundle verified against this workflow's identity,
+installed to `%USERPROFILE%\bin`, and every command its skill shows run against
+it. The installed `wsl-toolkit` self-updated 2.0.2 to 3.1.0 in the same pass.
+
+⚠ **Two defects in the release path were found by cutting it**, and both are in
+this repository rather than in herdr: a step that proved a refusal ended holding
+that refusal's exit code, and the number of published assets was written in three
+places. Findings 78 and 79.
+
+⛔ **What this entry did NOT deliver, unchanged from its earlier amendment**: the
+`--remote` client measured in a real Windows Terminal window. A pseudo console has
+no window, so no launch context can produce that event, and the probe reports it
+`operator` rather than pretending. The operator ran the probe on 2026-09-17: **6
+measurable, 0 failed**.
 
 ---
 

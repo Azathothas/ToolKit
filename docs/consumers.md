@@ -136,6 +136,25 @@ $want = (Select-String -Path SHA256SUMS -Pattern 'wsl-toolkit-windows-amd64.exe'
 cosign verify-blob --bundle wsl-toolkit-windows-amd64.exe.cosign.bundle --certificate-identity-regexp '^https://github\.com/Azathothas/ToolKit/\.github/workflows/release\.yml@' --certificate-oidc-issuer https://token.actions.githubusercontent.com wsl-toolkit-windows-amd64.exe
 ```
 
+⛔ **RUN THAT COMMAND FROM POWERSHELL OR cmd ON WINDOWS, NOT FROM GIT BASH.** Git
+Bash rewrites an argument that looks like a path, and the identity regex above is
+full of `\.`, so it arrives at cosign as `^https://github/.com/...release/.yml@`
+and the verification fails with `no matching CertificateIdentity found`. ⚠ **The
+signature is fine and the command is right**; the shell changed it in between.
+
+Measured on 2026-09-17 against `wsl-toolkit-v3.1.0`: PowerShell answers
+`Verified OK`, and so does Git Bash with `MSYS2_ARG_CONV_EXCL='*'` set for the
+call. Plain Git Bash does not.
+
+```bash
+MSYS2_ARG_CONV_EXCL='*' cosign verify-blob --bundle ASSET.cosign.bundle --certificate-identity-regexp '^https://github\.com/Azathothas/ToolKit/\.github/workflows/release\.yml@' --certificate-oidc-issuer https://token.actions.githubusercontent.com ASSET
+```
+
+⚠ **The identity ends at the `@` on purpose.** A release cut by pushing a tag
+signs as `release.yml@refs/tags/wsl-toolkit-vX.Y.Z` and one republished by
+workflow dispatch signs as `release.yml@refs/heads/main`. Both are this
+repository's own workflow; pinning the ref would refuse half of its own releases.
+
 Never pipe a download into a shell. Save it, verify it, then run it.
 
 ⚠ **The manual on `main` describes the executable built from `main`.**
