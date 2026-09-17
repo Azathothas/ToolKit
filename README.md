@@ -34,9 +34,10 @@ is the one page to read.
 | [`scripts/doctor/`](scripts/doctor/README.md) | one read-only pass reporting the host, the shell, the installed tools with versions, and the repository state |
 | [`scripts/common/`](scripts/README.md) | the entry points to the gate and the helpers that write files, move the record, commit and fill a licence. ⚠ Each is a thin `sh` and PowerShell pair over one Go subcommand; the rules themselves are not written twice. |
 | ⭐ [`tools/check/`](tools/check/) | every rule this repository enforces over its own tree. One binary, one tree walk. ⚠ The count moves; the gate prints it and [`TODO/PROGRESS.md`](TODO/PROGRESS.md) records the measurement |
+| ⭐ [`tools/text-tool/`](tools/text-tool/README.md) | one program that writes a file, adds to a file, changes part of a file, and converts line endings, without the shell ever touching the payload. ⭐ It is PUBLISHED for Windows and Linux, so an agent downloads one asset and needs no clone. Its `eol` mode is the whole of `dos2unix` and `unix2dos` |
 | [`tools/repo/`](tools/repo/) | the tools that are NOT gate rules: the mutation harness, open-items reader, `git-sync`, release verifier/tagger, binfmt probe, `deslop`, and licence filler |
 | [`LICENSES/`](LICENSES/README.md) | the SPDX texts `scripts/common/fill-license.sh` reads |
-| [`skills/`](skills/) | two skills for an agent driving this repository's one product: `wsl-toolkit` itself, and the agents that run under herdr inside a base. ⭐ Each stands alone and tells the reader to generate the manual rather than carrying a flag list that rots |
+| [`skills/`](skills/) | three skills for an agent driving this repository's products: `wsl-toolkit` itself, the agents that run under herdr inside a base, and `text-tool`. ⭐ Each stands alone and tells the reader to generate the manual rather than carrying a flag list that rots |
 
 Every tool has a `.md` beside it that stands alone. **Read the tool's own page,
 not this one**, before using it.
@@ -50,7 +51,7 @@ not this one**, before using it.
 | `TODO/` | the work: the record, the entry list, the entries themselves, and the standing rules |
 | `docs/` | how this repository is worked on. The map is below. |
 | `scripts/` | the tools and the checks |
-| `tools/` | the Go modules: `check` holds every gate rule, `repo` the tools that are not rules, and `windows/wsl-toolkit` the compiled tool |
+| `tools/` | the Go modules: `check` holds every gate rule, `repo` the tools that are not rules, `text-tool` the file writer, and `windows/wsl-toolkit` the compiled tool |
 | `LICENSES/` | licence texts, not code |
 | `.github/workflows/` | CI. `ci.yml` on every push, across ubuntu and windows; `release.yml` on a version tag; `release-smoke.yml` and `remote-items.yml` weekly. [`TODO/RULES.md`](TODO/RULES.md) has the counts and which of them `main` requires. |
 
