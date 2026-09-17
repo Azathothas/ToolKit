@@ -177,6 +177,12 @@ jobs:
           }
           if ($lines.Count -ne $expected.Count) { Write-Output "staged $($lines.Count) assets and expected $($expected.Count)"; exit 1 }
           [IO.File]::WriteAllText('dist\SHA256SUMS', (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
+          # ⛔ THE COUNT THE LATER STEPS ASSERT COMES FROM HERE, and it used to be
+          # typed into each of them. Adding text-tool moved it from 7 to 11 and
+          # the staging list was updated while two literal 7s were not, so the
+          # release failed at signing having built every asset correctly. One
+          # home: the list above, plus the SHA256SUMS this line just wrote.
+          "SIGN_COUNT=$($expected.Count + 1)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       # ⛔ THE PUBLISHED BINARY IS RUN BEFORE IT IS PUBLISHED, and it is asked
       # the one question whose answer proves it carries the tag's version.
@@ -240,7 +246,7 @@ jobs:
         shell: pwsh
         run: |
           $assets = @(Get-ChildItem dist -File | Sort-Object Name | ForEach-Object { $_.Name })
-          if ($assets.Count -ne 7) { Write-Output "expected 7 assets to sign and found $($assets.Count)"; exit 1 }
+          if ($assets.Count -ne [int]$env:SIGN_COUNT) { Write-Output "expected $env:SIGN_COUNT assets to sign and found $($assets.Count)"; exit 1 }
           foreach ($name in $assets) {
             & cosign sign-blob --yes --bundle "dist\$name.cosign.bundle" "dist\$name"
             if ($LASTEXITCODE -ne 0) { Write-Output "signing $name exited $LASTEXITCODE"; exit 1 }
@@ -265,7 +271,7 @@ jobs:
           IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
         run: |
           $assets = @(Get-ChildItem dist -File -Filter '*.cosign.bundle' | ForEach-Object { $_.Name -replace '\.cosign\.bundle$', '' })
-          if ($assets.Count -ne 7) { Write-Output "expected 7 bundles and found $($assets.Count)"; exit 1 }
+          if ($assets.Count -ne [int]$env:SIGN_COUNT) { Write-Output "expected $env:SIGN_COUNT bundles and found $($assets.Count)"; exit 1 }
           foreach ($name in $assets) {
             & cosign verify-blob `
               --bundle "dist\$name.cosign.bundle" `
