@@ -732,7 +732,47 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     exactly this. Running them once at the start of a change and not again at the end is
     the gap, and nothing enforces the order.
 
+43. ⛔ **THE `wsl-toolkit` ON THE OPERATOR'S PATH CANNOT READ THE BASE THIS TREE
+    WRITES.** `%USERPROFILE%\bin\wsl-toolkit.exe` is **2.0.2**, built 2026-09-11, the
+    last cut release; the configuration carries `automount`, added after it, and the
+    loader uses `DisallowUnknownFields`, so every command the operator types as
+    `wsl-toolkit ...` exits 2 with `json: unknown field "automount"`. Met on 2026-09-17
+    when the operator ran `wsl-toolkit --instance base base shell` to sign in to Muse
+    and could not. ⚠ **Neither half is wrong**: ruling 6 forbids cutting `v3.0.0` yet,
+    so the released binary is correctly old, and the tree is correctly ahead of it. ⛔
+    **What is wrong is that every page and entry writes the command as `wsl-toolkit`**,
+    which is the binary that fails, rather than the build under `.tmp`. A reader
+    following this repository's own documented commands on this host gets an error about
+    their configuration being unreadable, which is the opposite of what is true.
+    ⚠ Not fixed. The narrow fix is a sentence; the real one is `v3.0.0`, which ruling 6
+    gates on issues 30 and 32.
+
+44. ⛔ **`base shell` attached to `/bin/sh` with no profile read, on a base that has
+    bash.** `wsl.exe -d N -u U` runs the account's passwd shell and the provisioner
+    leaves that at `/bin/sh`, so an interactive attach had no line editing, no history
+    and no login profile. Measured 2026-09-17 on `wsl-toolkit-base`: passwd shell
+    `/bin/sh`, bash at `/usr/sbin/bash`, `BASH_VERSION 5.3.15`. Reported by the operator.
+    ⭐ Fixed in `base shell`: the guest is asked, in the same call, to exec bash as a
+    LOGIN shell and to fall back to `/bin/sh -l`, so a guest with no bash still gains the
+    login half. ⚠ **The deeper fix is not done**: the provisioner still creates the
+    account with `/bin/sh`, so every other route in - a herdr pane, `base exec`, an SSH
+    session - still lands in sh. Changing the account's shell is a change to a base that
+    already exists and is its own unit of work.
+45. ⚠ **`wsl-toolkit --instance base base shell` says "base" twice, and both are right.**
+    `--instance base` names the instance and `base` names the command group; the clash is
+    only that ruling 2 named the instance the same word as the group. ⭐ **There is a way
+    out and it is documented but unused**: `WSL_TOOLKIT_INSTANCE=base` makes it
+    `wsl-toolkit base shell`. Raised by the operator on 2026-09-17. Not changed: renaming
+    either half now would break ruling 2 or every page that names the command.
+46. ⚠ **herdr's `tab create --cwd PATH` is ignored by the published nightly.** Measured
+    2026-09-17 on `herdr-nightly-20260916-18061191fdc0`: a tab created with
+    `--cwd /workspaces/proj` and another with `--cwd /tmp` both reported `cwd` and
+    `foreground_cwd` as the account's home. ⛔ It is upstream's, not this tree's, and it
+    is why `WSL-76`'s drive could not place the agent's pane in the granted project.
+
 ## Review findings
+
+
 
 
 

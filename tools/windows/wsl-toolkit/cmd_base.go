@@ -228,6 +228,28 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			shellArgs = append(shellArgs, "--cd", "~")
 		}
 		note("attaching to " + cfg.Base.Name + " as " + user + ". Leave with exit or Ctrl-D")
+		// ⭐ A LOGIN SHELL, AND THE BEST ONE THE GUEST ACTUALLY HAS. `wsl.exe -d N -u U`
+		// runs the account's passwd shell, which the provisioner leaves at /bin/sh, so
+		// an interactive attach landed in sh with no line editing, no history and no
+		// profile read - on a base that has bash installed. Measured 2026-09-17 on
+		// wsl-toolkit-base: passwd shell /bin/sh, bash at /usr/sbin/bash, 5.3.15.
+		//
+		// ⛔ THE CHOICE IS MADE IN THE GUEST, NOT HERE, and it falls back twice rather
+		// than once. bash where there is one; else the account's OWN configured shell,
+		// which is what a guest with zsh or fish is entitled to; else /bin/sh. Every
+		// arm is a LOGIN shell, which is the half that was missing before.
+		//
+		// ⚠ A MISSING bashrc OR profile IS NOT A FAILURE. `bash -l` with no
+		// /etc/profile, ~/.bash_profile, ~/.bash_login or ~/.profile starts normally
+		// and reads nothing; there is no arm for it because there is nothing to catch.
+		// What IS caught is a bash that cannot be executed at all: the `exec` fails,
+		// the script carries on, and the next arm runs.
+		shellArgs = append(shellArgs, "--", "/bin/sh", "-c",
+			`if command -v bash >/dev/null 2>&1; then exec bash -l; fi; `+
+				`s=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7); `+
+				`if [ -n "$s" ] && [ -x "$s" ]; then exec "$s" -l; fi; `+
+				`exec /bin/sh -l`)
+
 		if *asRoot {
 			// ⭐ THE WARNING NAMES WHAT IS ACTUALLY REACHABLE, rather than
 			// asserting an isolation this shell does not have. Every Windows

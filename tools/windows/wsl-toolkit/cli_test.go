@@ -786,3 +786,38 @@ func TestPrivateNetAndRootAreRefusedTogether(t *testing.T) {
 		t.Fatalf("the wrapped request runs as %q, want the configured account %q", req.User, cfg.Base.User)
 	}
 }
+
+// ⛔ `base shell` LANDED IN sh WITH NO PROFILE READ. `wsl.exe -d N -u U` runs the
+// account's passwd shell, which the provisioner leaves at /bin/sh, so an
+// interactive attach got no line editing, no history and no profile - on a base
+// that has bash installed. Measured 2026-09-17 on the operator's own base: passwd
+// shell /bin/sh, bash present, and the operator asked for it. The choice is made
+// in the GUEST, in the same call, because reading the shell from this side is a
+// second round trip and still a guess about that machine's PATH.
+func TestBaseShellPrefersBashAsALoginShell(t *testing.T) {
+	body, err := os.ReadFile("cmd_base.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := string(body)
+	// ⛔ THREE ARMS, AND EVERY ONE A LOGIN SHELL. Driven on a real base 2026-09-17:
+	// bash where there is one; else the account's OWN passwd shell, proved with a
+	// PATH holding getent, cut and id and no bash, which chose /usr/bin/bash; else
+	// /bin/sh. A single fallback would hand a guest running zsh a /bin/sh it never
+	// configured.
+	for _, arm := range []string{
+		`if command -v bash >/dev/null 2>&1; then exec bash -l; fi; `,
+		`s=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7); `,
+		`if [ -n "$s" ] && [ -x "$s" ]; then exec "$s" -l; fi; `,
+		`exec /bin/sh -l`,
+	} {
+		if !strings.Contains(src, arm) {
+			t.Errorf("base shell lost an arm of its shell selection: %s", arm)
+		}
+	}
+	// ⚠ EVERY ARM IS A LOGIN SHELL. The `-l` is the half that was missing before,
+	// and dropping it from any one arm is the regression that reads as working.
+	if n := strings.Count(src, " -l; fi;") + strings.Count(src, "exec /bin/sh -l`)"); n < 2 {
+		t.Errorf("the shell selection has %d login arms, want every arm to carry -l", n)
+	}
+}

@@ -230,7 +230,29 @@ standing in stays mounted, with its configuration and fstab entry untouched and 
 | `wsl --terminate`, then `base ensure` | 6.6 s and 10.2 s in two runs, and both grants verified |
 | `base revoke` while a pane's process stood in the directory | exit 1 naming `target is busy`, everything else unchanged; after the pane closed, the revoke took 0.4 s |
 
+### The shell `base shell` gives you
+
+⭐ **bash, as a LOGIN shell, where the guest has one.** `wsl.exe -d NAME -u USER` runs
+the account's passwd shell, which provisioning leaves at `/bin/sh`, so an attach used to
+land in `sh` with no line editing, no history and no profile read. The guest is asked, in
+the same call, and answers in three arms, every one a login shell:
+
+| the guest has | `base shell` runs |
+| --- | --- |
+| bash on `PATH` | `bash -l` |
+| no bash, and the account has its own shell | that shell, `-l` |
+| neither | `/bin/sh -l` |
+
+⚠ **A missing `.bashrc` or profile is not a failure.** `bash -l` with no `/etc/profile`,
+`~/.bash_profile`, `~/.bash_login` or `~/.profile` starts normally and reads nothing;
+measured 2026-09-17 with an empty `HOME`, exit 0.
+
+⛔ **Only `base shell` chooses.** The account's configured shell is still `/bin/sh`, so a
+herdr pane, `base exec` and an SSH session all land in `sh`. Changing the account's shell
+touches a base that already exists and has not been done.
+
 ⚠ `passwordless_sudo: true` gives the configured account unrestricted guest
+
 root. Guest root can manually mount Windows paths, so this setting serves a
 trusted agent and is not a containment boundary.
 
