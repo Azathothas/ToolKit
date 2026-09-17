@@ -379,6 +379,11 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 			verdict = fmt.Sprintf("%d problem(s), listed below", len(a.Problems))
 		}
 		fmt.Fprintf(out, "  adapter     %s %s, %s\n", a.Name, a.Version, verdict)
+		// ⚠ A NOTE IS TRUE AND STOPS NOTHING, so it prints beside the adapter it
+		// is about rather than in the problem list, which is what refuses.
+		for _, n := range a.Notes {
+			fmt.Fprintf(out, "              ⚠ %s\n", n)
+		}
 	}
 	for _, p := range st.Problems {
 		fmt.Fprintf(out, "  ! %s\n", p)

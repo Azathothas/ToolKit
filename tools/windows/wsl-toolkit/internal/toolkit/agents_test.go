@@ -147,7 +147,7 @@ func TestALauncherIsWrittenOnlyOverOneOfThisToolsBuilds(t *testing.T) {
 	b := &Base{cfg: DefaultConfig(), log: func(string) {}}
 	launcher := filepath.Join(dir, "muse-m78.exe")
 
-	if problems := h.check(context.Background(), b, nil); len(problems) != 1 || !strings.Contains(problems[0], "no muse launcher") {
+	if problems, _ := h.check(context.Background(), b, nil); len(problems) != 1 || !strings.Contains(problems[0], "no muse launcher") {
 		t.Fatalf("a missing launcher was checked as %v", problems)
 	}
 	if err := h.apply(context.Background(), b, nil); err != nil {
@@ -156,7 +156,7 @@ func TestALauncherIsWrittenOnlyOverOneOfThisToolsBuilds(t *testing.T) {
 	if !sameFileBytes(launcher, self) {
 		t.Fatalf("%s is not a copy of this executable", launcher)
 	}
-	if problems := h.check(context.Background(), b, nil); len(problems) != 0 {
+	if problems, _ := h.check(context.Background(), b, nil); len(problems) != 0 {
 		t.Fatalf("a written launcher was checked as %v", problems)
 	}
 	if err := h.remove(b); err != nil {
@@ -210,5 +210,81 @@ func TestAnAgentsArgumentsReachItAsWritten(t *testing.T) {
 	}
 	if string(out) != want.String() {
 		t.Fatalf("the agent received\n%s\nwant\n%s", out, want.String())
+	}
+}
+
+// TestALauncherAnotherProgramHasTakenTheNameOfIsReported is finding 69.
+//
+// ⛔ THE LAUNCHER EXISTED, MATCHED THIS BUILD, AND THE NAME REACHED SOMETHING
+// ELSE. On the operator's host on 2026-09-17, muse.exe, pi.exe and omp.exe were
+// all in the bin directory and all one digest, and typing omp reached a native
+// Windows build 63 PATH positions earlier. It answered omp/18.1.19 where the
+// base held omp/18.2.3, and it can see neither the base nor the grant.
+//
+// ⭐ THE RULE IS TESTED WITHOUT A HOST. Resolving a name needs a real PATH and
+// deciding what the resolution MEANS does not, so the second half is a function
+// and this case runs on Linux too. Finding 42 is the case that needed Windows,
+// passed here, and went red on CI.
+func TestALauncherAnotherProgramHasTakenTheNameOfIsReported(t *testing.T) {
+	const launcher = `D:\tools\bin\omp.exe`
+
+	cases := []struct {
+		name     string
+		resolved string
+		want     bool
+	}{
+		{"the name reaches the launcher", launcher, false},
+		{"the same file, spelled the way PATH held it", `d:/tools/bin/omp.exe`, false},
+		{"the same file, with a redundant segment", `D:\tools\bin\.\omp.exe`, false},
+		{"a native install earlier on PATH", `C:\ProgramData\scoop\persist\bun\bin\omp.exe`, true},
+		{"another directory entirely", `E:\other\omp.exe`, true},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			note := launcherShadow("omp", c.resolved, launcher)
+			if (note != "") != c.want {
+				t.Fatalf("resolved %q against %q gave %q, and a note was wanted: %v", c.resolved, launcher, note, c.want)
+			}
+			if !c.want {
+				return
+			}
+			// ⛔ THE NOTE NAMES BOTH PROGRAMS. A note saying only that something is
+			// wrong leaves the reader to find out which two files it means.
+			for _, want := range []string{c.resolved, launcher, "cannot see this base"} {
+				if !strings.Contains(note, want) {
+					t.Errorf("the note does not name %q: %s", want, note)
+				}
+			}
+		})
+	}
+}
+
+// TestTheLauncherCheckReportsEveryFactRatherThanTheFirst holds the shape the
+// first version of finding 69's fix got wrong.
+//
+// ⛔ THE NOTE SAT BEHIND FOUR EARLY RETURNS, so it could only ever fire on a
+// machine where everything else was already right. Whether the launcher is this
+// build and whether its NAME reaches it are independent, and a reader wants both.
+func TestTheLauncherCheckReportsEveryFactRatherThanTheFirst(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "omp.exe")
+	if err := os.WriteFile(path, []byte("not a build of this tool"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	h := &agentLauncherHost{agent: "omp", dir: dir, self: path}
+
+	previous := SelectedInstance.Name
+	SelectedInstance.Name = "base"
+	t.Cleanup(func() { SelectedInstance.Name = previous })
+
+	problems, _ := h.check(context.Background(), nil, nil)
+	if len(problems) == 0 {
+		t.Fatal("a launcher that is not a build of this tool produced no problem")
+	}
+	// ⚠ THE RETURN IS A PAIR EVEN WHEN THE FIRST HALF IS NOT EMPTY. That is the
+	// whole point: the second half is computed rather than skipped.
+	if !strings.Contains(strings.Join(problems, " "), "not a build of wsl-toolkit") {
+		t.Errorf("the problem does not say what is wrong: %v", problems)
 	}
 }

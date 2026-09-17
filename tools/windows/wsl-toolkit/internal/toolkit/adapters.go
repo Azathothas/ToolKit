@@ -102,6 +102,12 @@ type AdapterState struct {
 	Version  string            `json:"version,omitempty"`
 	Facts    map[string]string `json:"facts,omitempty"`
 	Problems []string          `json:"problems,omitempty"`
+	// Notes are true and stop nothing. ⛔ A FINDING WRITTEN INTO Problems
+	// TURNS A WORKING BASE INTO not-ready, which is the regression
+	// TestANoteDoesNotChangeTheVerdict holds `ready` to. A launcher another
+	// program has taken the name of is a real surprise and does not stop
+	// `base agent` or herdr from reaching the agent, so it belongs here.
+	Notes []string `json:"notes,omitempty"`
 }
 
 // adapterSpec is what this executable knows about an adapter beyond its files.
@@ -562,7 +568,9 @@ func (b *Base) applyAdapters(ctx context.Context) error {
 			if err := spec.Host.apply(ctx, b, st.Facts); err != nil {
 				return fmt.Errorf("adapter %s: %w", a.Name, err)
 			}
-			st.Problems = append(st.Problems, spec.Host.check(ctx, b, st.Facts)...)
+			hostProblems, hostNotes := spec.Host.check(ctx, b, st.Facts)
+			st.Problems = append(st.Problems, hostProblems...)
+			st.Notes = append(st.Notes, hostNotes...)
 		}
 		if len(st.Problems) > 0 {
 			return fmt.Errorf("adapter %s is installed, and reading it back found: %s", a.Name, strings.Join(st.Problems, "; "))
@@ -599,7 +607,9 @@ func (b *Base) probeAdapters(ctx context.Context) []AdapterState {
 		}
 		st := b.probeAdapter(ctx, spec)
 		if spec.Host != nil && st.Facts != nil {
-			st.Problems = append(st.Problems, spec.Host.check(ctx, b, st.Facts)...)
+			hostProblems, hostNotes := spec.Host.check(ctx, b, st.Facts)
+			st.Problems = append(st.Problems, hostProblems...)
+			st.Notes = append(st.Notes, hostNotes...)
 		}
 		st.Healthy = len(st.Problems) == 0
 		states = append(states, st)
@@ -627,8 +637,9 @@ type adapterHost interface {
 	prepare(ctx context.Context, b *Base) (map[string]string, error)
 	// apply writes what this machine needs from the guest's facts.
 	apply(ctx context.Context, b *Base, facts map[string]string) error
-	// check answers what is wrong with this machine's half.
-	check(ctx context.Context, b *Base, facts map[string]string) []string
+	// check answers what is wrong with this machine's half, and what is worth
+	// saying about it that is not wrong.
+	check(ctx context.Context, b *Base, facts map[string]string) (problems, notes []string)
 	// remove takes this machine's half away, and is a success when nothing was there.
 	remove(b *Base) error
 }
@@ -783,13 +794,12 @@ func (h *herdrHost) apply(ctx context.Context, b *Base, facts map[string]string)
 	return nil
 }
 
-func (h *herdrHost) check(ctx context.Context, b *Base, facts map[string]string) []string {
+func (h *herdrHost) check(ctx context.Context, b *Base, facts map[string]string) (problems, notes []string) {
 	p, err := h.paths()
 	if err != nil {
-		return []string{err.Error()}
+		return []string{err.Error()}, nil
 	}
 	alias := b.cfg.Base.Name
-	var problems []string
 	if _, err := os.Stat(p.key); err != nil {
 		problems = append(problems, "this machine has no key for the SSH door at "+p.key)
 	}
@@ -807,7 +817,7 @@ func (h *herdrHost) check(ctx context.Context, b *Base, facts map[string]string)
 		}
 	}
 	if len(problems) > 0 {
-		return problems
+		return problems, nil
 	}
 	connect := h.connect
 	if connect == nil {
@@ -815,12 +825,12 @@ func (h *herdrHost) check(ctx context.Context, b *Base, facts map[string]string)
 	}
 	answer, err := connect(ctx, p.config, alias)
 	if err != nil {
-		return []string{fmt.Sprintf("ssh %s did not reach herdr through wsl.exe: %v", alias, err)}
+		return []string{fmt.Sprintf("ssh %s did not reach herdr through wsl.exe: %v", alias, err)}, nil
 	}
 	if want := facts["version"]; want == "" || answer != "herdr "+want {
-		return []string{fmt.Sprintf("ssh %s answered %q where the base reports herdr %s", alias, answer, facts["version"])}
+		return []string{fmt.Sprintf("ssh %s answered %q where the base reports herdr %s", alias, answer, facts["version"])}, nil
 	}
-	return nil
+	return nil, nil
 }
 
 func (h *herdrHost) remove(b *Base) error {

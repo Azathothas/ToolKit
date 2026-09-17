@@ -259,10 +259,11 @@ func TestTheNightlyChannelReachesInstallThroughTheHostHalf(t *testing.T) {
 	b.wsl = &Wsl{Path: `C:\Windows\System32\wsl.exe`}
 	facts := map[string]string{"version": "0.9.0", "ssh-host-key": "ssh-ed25519 AAAA", "release": "herdr-nightly-20260915-052779c4159e"}
 	found := false
-	for _, p := range h.check(context.Background(), b, facts) {
+	checkProblems, _ := h.check(context.Background(), b, facts)
+	for _, p := range checkProblems {
 		found = found || strings.Contains(p, "no herdr client for the base's herdr-nightly-20260915-052779c4159e")
 	}
 	if !found {
-		t.Fatalf("a nightly base with no client on this machine was not named: %v", h.check(context.Background(), b, facts))
+		t.Fatalf("a nightly base with no client on this machine was not named: %v", checkProblems)
 	}
 }

@@ -27,6 +27,29 @@ to 66 were all read against the tree and the artefacts; what was missing was onl
 ending. It is written from artefacts below and in `SUMMARY.md`, by the session that
 resumed it, which is the second time in three days that a session has owed this.
 
+⭐ **THE DOCUMENTS HAVE A STANDARD AND A CHECK NOW.** The operator asked for
+ASD-STE100, Simplified Technical English. ⚠ **The first reading of that ask was
+wrong and the measurement corrected it**: STE looked like it contradicted this
+tree's house style, and `docs/conventions/prose.md` has in fact been asking for
+most of it all along with no number attached. Measured before a word was changed:
+the documents a reader follows hold **4,836 sentences, none over 25 words**, and
+the longest anywhere is **19**. So `check ste` puts the number on a rule that
+already held, and adds the three nobody counted. **20 violations found and fixed,
+0 remain.** ⛔ **The rule had two defects of its own and running it found both**,
+and `repo mutate` found a third in one of its cases.
+
+⭐ **The two skills keep the promise their index makes.** `check skills` refuses a
+skill that links out of `skills/`, and refuses one naming a `wsl-toolkit` command
+the generated manual does not document. ⛔ **`wsl-toolkit-agents` was not
+standalone**: no way to get the tool, and neither of the two rules `wsl-toolkit`
+calls session-costing, while every one of its examples is PowerShell.
+
+⭐ **And three defects in the tool, each the shape a weak agent falls into.**
+`base --help` exited 2 saying `"--help" is not a base subcommand`; `base agent`
+was in the manual and no usage text; `base herdr` and `base bootstrap` were in the
+usage text and no manual. That is finding 39, and the check it said nobody had
+written is written.
+
 ⭐ **`wsl-toolkit-v3.0.0` IS CUT**, under ruling 22, and it is the first release this
 repository has made since `wsl-toolkit-v2.0.2` on 2026-09-10. It carries the two
 Windows executables, herdr's newest stable release built for four targets,
@@ -237,7 +260,8 @@ new file FIRST, then run the gate.**
 | `ea89452` | herdr's newest stable corrected to `v0.9.1` across two pages and a workflow comment; `WSL-59`'s premise re-measured on podman 6.1.1, with the `--until` trap that returns nothing and exits 0 |
 | `302c31c` | `check-record` rule 7: `PROGRESS.md`'s work order must agree with `INDEX.md` about what is finished; 10 cases, 5 mutation rows, and finding 29 closed by the check it named |
 | `0eb5fb7` | a one-letter flag is written with one dash, in BOTH of the manual's renderers; 1 mutation row and finding 6 closed |
-| this record commit | `wsl-toolkit-v3.0.0` cut and its published assets verified; `WSL-90` closed on approach step 4; findings 3 and 34 fixed in both halves of the `check` wrapper pair, driven; issues 30 and 32 commented rather than closed |
+| `4c35680` | ASD-STE100's countable half becomes `check ste`, 20 violations fixed and 0 left; `check skills` holds a skill to standing alone and to naming only commands that exist; `base --help` answers 0 and finding 39 closes; findings 3 and 34 fixed in both halves of the `repo` wrapper pair; the windows-repo example; 12 mutation rows |
+| this record commit | `wsl-toolkit-v3.0.0` cut and its published assets verified; `WSL-90` closed on approach step 4; finding 69 fixed, a shadowed Windows launcher reported by `base status --probe` with a `Notes` channel for it; the invisible-character rule; issues 30 and 32 commented rather than closed |
 
 ## Measurements
 
@@ -794,6 +818,17 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     push" says a green local gate is not CI, and the three container checks exist for
     exactly this. Running them once at the start of a change and not again at the end is
     the gap, and nothing enforces the order.
+    ⛔ **MET AGAIN ON 2026-09-17, IN THE COMMIT WHOSE OWN COMMENT CLAIMED TO HAVE
+    APPLIED THIS LESSON.** Finding 69's fix put its rule in a function so its case
+    would run on any host, and said so in the code. That function used
+    `filepath.Clean`, `filepath.Abs`, `filepath.Separator` and `filepath.Dir`,
+    every one of which answers about the host it runs on, over paths that are
+    Windows paths wherever they are compiled. It passed here and went **red in
+    `golang:1.25`**. ⭐ **What differed from the first time is the ORDER**: the
+    container check ran BEFORE the push, so it cost a rewrite rather than a red CI
+    run and a fixing commit. The rule decides Windows path equality in-package now
+    and is green on both hosts. ⚠ **"I put the rule in a pure function" and "the
+    function is pure" are different claims**, and only the second is checkable.
 
 43. ⛔ **THE `wsl-toolkit` ON THE OPERATOR'S PATH CANNOT READ THE BASE THIS TREE
     WRITES.** `%USERPROFILE%\bin\wsl-toolkit.exe` is **2.0.2**, built 2026-09-11, the
@@ -1055,7 +1090,21 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
     guest; nothing reads the name back on **Windows**, which is where the operator
     types it. ⚠ `muse` and `pi` work here by luck - nothing else claims those two
     names on this `PATH` - and the same accident breaks them the day a native one
-    is installed. Not fixed. The example at
+    is installed.
+    ⭐ **FIXED on 2026-09-17, on the operator's instruction.** `base status --probe`
+    resolves each agent's launcher name the way Windows would and reports what it
+    reached. Driven on the operator's own machine at the first run: `omp` carries a
+    note naming both programs and the two directories to reorder, and `muse` and
+    `pi` carry none, because their names do resolve. ⚠ **It is a NOTE and not a
+    problem**, so a base whose launcher is shadowed is not reported `not-ready` over
+    a `PATH` order that `base ensure` cannot fix; `AdapterState` gained a `Notes`
+    channel for it, which is the rule `TestANoteDoesNotChangeTheVerdict` already
+    holds `ready` to. ⛔ **Restructuring it found a second defect**: the note sat
+    behind four early returns, so it could only ever have fired on a machine where
+    everything else was already right, which is a guard for the case nobody needs.
+    `check` accumulates now. 7 cases and **3 mutation rows, 3 of 3 red**. ⭐ The rule
+    is a function with no host in it, so its case runs on Linux too, which is
+    finding 42's lesson. The example at
     [`../tools/windows/wsl-toolkit/examples/windows-repo/README.md`](../tools/windows/wsl-toolkit/examples/windows-repo/README.md)
     tells a reader to check with `Get-Command` and gives the full-path fallback,
     which is a page doing a check's job.

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -291,28 +292,145 @@ func (h *agentLauncherHost) apply(_ context.Context, b *Base, _ map[string]strin
 	return nil
 }
 
-func (h *agentLauncherHost) check(_ context.Context, _ *Base, _ map[string]string) []string {
+// check reads this machine's half back.
+//
+// ⛔ IT ACCUMULATES RATHER THAN BAILING. The first version returned at each
+// problem, so the shadow note below sat behind four early returns and could only
+// ever be reported on a machine where everything else was already right. A guard
+// that only runs when nothing is wrong is a guard for the case nobody needs.
+// Whether the launcher is the current build and whether its NAME reaches it are
+// independent facts, and a reader wants both.
+func (h *agentLauncherHost) check(_ context.Context, _ *Base, _ map[string]string) (problems, notes []string) {
 	_, path, err := h.paths()
 	if err != nil {
-		return []string{err.Error()}
+		return []string{err.Error()}, nil
 	}
 	if path == "" {
+		// The default instance gets no launcher, so there is no name to resolve.
+		return nil, nil
+	}
+	switch {
+	case !fileExists(path):
+		problems = append(problems, "this machine has no "+h.agent+" launcher at "+path+". Run: wsl-toolkit base ensure")
+	case !isToolBuild(path):
+		problems = append(problems, path+" is not a build of wsl-toolkit")
+	default:
+		self, err := h.executable()
+		switch {
+		case err != nil:
+			problems = append(problems, err.Error())
+		case !sameFileBytes(path, self):
+			problems = append(problems, path+" is another build of wsl-toolkit than this one. Run: wsl-toolkit base ensure")
+		}
+	}
+	// ⭐ AND THE NAME HAS TO REACH IT, whatever the answers above were. Finding 69.
+	return problems, h.shadowNote(path)
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+// shadowNote says whether typing the agent's name on this machine reaches the
+// launcher, and is finding 69.
+//
+// ⛔ THE LAUNCHER EXISTED, MATCHED THIS BUILD, AND THE NAME REACHED SOMETHING
+// ELSE. Measured on the operator's host on 2026-09-17: muse.exe, pi.exe and
+// omp.exe were all present in the bin directory and all one digest, and `omp`
+// resolved to a native Windows build because its directory sat at PATH position
+// 3 and the bin directory at 66. The native program answered omp/18.1.19 while
+// the base held omp/18.2.3, and it can see neither the base nor the grant.
+//
+// ⭐ IT IS FINDING 62 ON THE OTHER SIDE OF THE BRIDGE. That one made all three
+// guest probes read the agent's name back on a LOGIN shell inside the base,
+// because the account's own prefix had got in front of the wrapper. Nothing read
+// the name back on WINDOWS, which is where the operator types it.
+//
+// ⚠ A NOTE AND NOT A PROBLEM. `base agent NAME` and herdr both still reach the
+// agent, so the base is not broken and must not be reported not-ready over the
+// operator's PATH order, which `base ensure` cannot fix anyway.
+func (h *agentLauncherHost) shadowNote(launcher string) []string {
+	if runtime.GOOS != "windows" {
+		// A launcher is a Windows file. There is nothing to resolve elsewhere.
 		return nil
 	}
-	if _, err := os.Stat(path); err != nil {
-		return []string{"this machine has no " + h.agent + " launcher at " + path + ". Run: wsl-toolkit base ensure"}
-	}
-	if !isToolBuild(path) {
-		return []string{path + " is not a build of wsl-toolkit"}
-	}
-	self, err := h.executable()
+	resolved, err := exec.LookPath(h.agent)
 	if err != nil {
-		return []string{err.Error()}
+		return []string{"typing " + h.agent + " on this machine reaches nothing: " +
+			filepath.Dir(launcher) + " is not on PATH. Add it, or run the launcher by its full path, " + launcher}
 	}
-	if !sameFileBytes(path, self) {
-		return []string{path + " is another build of wsl-toolkit than this one. Run: wsl-toolkit base ensure"}
+	if note := launcherShadow(h.agent, resolved, launcher); note != "" {
+		return []string{note}
 	}
 	return nil
+}
+
+// launcherShadow is the rule, with no host in it.
+//
+// ⭐ SEPARATED SO ITS CASE RUNS EVERYWHERE. Finding 42 is a case that needed
+// Windows, passed here, and went red on CI's Linux host. The lookup above needs
+// a real PATH; deciding what the lookup MEANS does not.
+func launcherShadow(agent, resolved, launcher string) string {
+	if samePath(resolved, launcher) {
+		return ""
+	}
+	return "typing " + agent + " on this machine runs " + resolved + ", which is not this tool's launcher at " +
+		launcher + ". That program cannot see this base or its grants. Run the launcher by its full path, " +
+		"or put " + windowsDir(launcher) + " earlier on PATH than " + windowsDir(resolved)
+}
+
+// windowsDir is the directory half of a Windows path, decided here for the
+// reason normalizeWindowsPath is.
+//
+// ⚠ filepath.Dir ANSWERS ABOUT THE HOST. On Linux it reads a backslash as an
+// ordinary character, so it returns "." for every Windows path and the note would
+// tell a reader to reorder two directories both called ".". Nothing computes this
+// note on Linux today, and a rule that is only right because nothing calls it is
+// a rule waiting to be called.
+func windowsDir(p string) string {
+	p = strings.ReplaceAll(p, "\\", "/")
+	if i := strings.LastIndex(p, "/"); i > 0 {
+		return strings.ReplaceAll(p[:i], "/", "\\")
+	}
+	return p
+}
+
+// samePath compares two Windows paths the way Windows does.
+//
+// ⚠ CASE-INSENSITIVE AND SEPARATOR-INSENSITIVE. PATH holds whatever a user
+// typed, so one file arrives spelled with either separator and in either case,
+// and a plain string comparison calls those two different files.
+//
+// ⛔ IT USES NO path/filepath, AND THAT IS THE WHOLE POINT. The first version
+// did, and its case went RED in golang:1.25 while passing here, because Clean,
+// Abs and Separator all answer about the host they run on and these are Windows
+// paths wherever this is compiled. That is finding 42, in the commit whose own
+// comment claimed to have applied finding 42's lesson. The container check caught
+// it before the push, which is the check finding 42 says exists for this.
+func samePath(a, b string) bool {
+	return normalizeWindowsPath(a) == normalizeWindowsPath(b)
+}
+
+// normalizeWindowsPath is Windows path equality, decided here rather than by the
+// host: one separator, one case, and no redundant segment.
+//
+// ⚠ IT RESOLVES NO "..", because neither input is relative. PATH holds
+// absolute entries and the launcher path is built from the account's home, so a
+// parent segment would be a shape this never sees and a rule it cannot check.
+func normalizeWindowsPath(p string) string {
+	p = strings.ToLower(strings.ReplaceAll(p, "\\", "/"))
+	parts := strings.Split(p, "/")
+	kept := parts[:0]
+	for i, part := range parts {
+		// An empty part is a doubled separator, except at the start, where it is
+		// the leading slash of a UNC or rooted path and carries meaning.
+		if part == "." || (part == "" && i > 0) {
+			continue
+		}
+		kept = append(kept, part)
+	}
+	return strings.Join(kept, "/")
 }
 
 // remove deletes this instance's launcher when it is a build of this tool.

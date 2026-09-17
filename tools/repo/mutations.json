@@ -2491,7 +2491,7 @@
       "label": "adapters: this machine's half is checked before the door is tried",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters.go",
-      "find": "\tif len(problems) > 0 {\n\t\treturn problems\n\t}\n\tconnect := h.connect\n",
+      "find": "\tif len(problems) > 0 {\n\t\treturn problems, nil\n\t}\n\tconnect := h.connect\n",
       "replace": "\tconnect := h.connect\n",
       "run": "TestTheHerdrHostHalfIsCheckedBeforeItConnects",
       "args": []
@@ -3206,6 +3206,33 @@
       "file": "internal/checks/skills.go",
       "args": [],
       "run": "TestASkillNamesOnlyCommandsThatExist"
+    },
+    {
+      "label": "launcher: a name that reaches another program is reported",
+      "find": "\tif samePath(resolved, launcher) {\n\t\treturn \"\"\n\t}\n",
+      "replace": "\tif !samePath(resolved, launcher) {\n\t\treturn \"\"\n\t}\n",
+      "run": "TestALauncherAnotherProgramHasTakenTheNameOfIsReported",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "args": []
+    },
+    {
+      "label": "launcher: two spellings of one path are one path",
+      "find": "\t\treturn strings.ToLower(filepath.Clean(strings.ReplaceAll(p, \"/\", string(filepath.Separator))))\n",
+      "replace": "\t\treturn filepath.Clean(p)\n",
+      "run": "TestALauncherAnotherProgramHasTakenTheNameOfIsReported",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "args": []
+    },
+    {
+      "label": "launcher: the note names both programs",
+      "find": "\treturn \"typing \" + agent + \" on this machine runs \" + resolved + \", which is not this tool's launcher at \" +\n",
+      "replace": "\treturn \"typing \" + agent + \" on this machine runs something else, which is not this tool's launcher at \" +\n",
+      "run": "TestALauncherAnotherProgramHasTakenTheNameOfIsReported",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/agents.go",
+      "args": []
     }
   ]
 }

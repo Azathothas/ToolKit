@@ -41,9 +41,71 @@ func ControlBytes(t *Tree) Result {
 			r.bad("%s:%d: literal control byte 0x%02x at offset %d; write it as an escape", f, line, c, i)
 			break
 		}
+		invisible(&r, f, b)
 	}
 	r.Extra["files"] = n
 	return r
+}
+
+// invisible refuses a character above ASCII that a reader cannot see.
+//
+// ⛔ A SOFT HYPHEN REACHED A DOCUMENT AND NO CHECK SAW IT. Measured on
+// 2026-09-17: U+00AD was typed into TODO/PROGRESS.md and `control-bytes`,
+// `markers` and `docs` all reported ok, because the first reads bytes below
+// 0x20, the second reads the marker set, and the third reads the emoji
+// allowlist. The character is invisible in every editor and in every diff.
+//
+// ⛔ AND THE BIDI CONTROLS ARE A SECURITY RULE, not a tidiness one. They
+// reorder how a line RENDERS without changing what it MEANS, so a reviewer and
+// a compiler read two different programs. This repository publishes shell
+// scripts other projects fetch by URL, which is the exact place that matters.
+//
+// ⚠ ONE EXCEPTION, AND IT IS AT OFFSET ZERO ONLY. A UTF-8 BOM starting a
+// file is legitimate here: docs/conventions/shell.md section 8 says a .ps1
+// holding non-ASCII needs one before Windows PowerShell 5.1 decodes it. The
+// same character anywhere else in the file is invisible junk.
+func invisible(r *Result, f string, b []byte) {
+	line := 1
+	for i, c := range string(b) {
+		if c == '\n' {
+			line++
+			continue
+		}
+		why, bad := invisibleRunes[c]
+		if !bad {
+			continue
+		}
+		if c == '\ufeff' && i == 0 {
+			// The byte order mark, where a byte order mark belongs.
+			continue
+		}
+		r.bad("%s:%d: %s, U+%04X, at offset %d. A reader cannot see it and neither can a diff", f, line, why, c, i)
+		return
+	}
+}
+
+// invisibleRunes is an explicit list with a reason each, rather than a Unicode
+// category test. A category moves between Unicode versions and this does not.
+var invisibleRunes = map[rune]string{
+	'\u00a0': "a non-breaking space",
+	'\u00ad': "a soft hyphen",
+	'\u200b': "a zero-width space",
+	'\u200c': "a zero-width non-joiner",
+	'\u200d': "a zero-width joiner",
+	'\u2060': "a word joiner",
+	'\ufeff': "a byte order mark away from the start of the file",
+	'\u200e': "a left-to-right mark",
+	'\u200f': "a right-to-left mark",
+	'\u202a': "a bidirectional embedding control",
+	'\u202b': "a bidirectional embedding control",
+	'\u202c': "a bidirectional embedding control",
+	'\u202d': "a bidirectional override, which makes a reader and a compiler read different programs",
+	'\u202e': "a bidirectional override, which makes a reader and a compiler read different programs",
+	'\u202f': "a narrow non-breaking space",
+	'\u2066': "a bidirectional isolate control",
+	'\u2067': "a bidirectional isolate control",
+	'\u2068': "a bidirectional isolate control",
+	'\u2069': "a bidirectional isolate control",
 }
 
 var sentenceRe = regexp.MustCompile(`[^.!?\n]{40,}`)

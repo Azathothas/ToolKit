@@ -575,7 +575,7 @@ func TestTheHerdrHostHalfIsCheckedBeforeItConnects(t *testing.T) {
 	}}
 	b := &Base{cfg: adapterBase(), wsl: &Wsl{Path: `C:\Windows\System32\wsl.exe`}, log: func(string) {}}
 	facts := map[string]string{"version": "0.9.0", "ssh-host-key": "ssh-ed25519 AAAA"}
-	if problems := h.check(context.Background(), b, facts); len(problems) != 3 || connected != 0 {
+	if problems, _ := h.check(context.Background(), b, facts); len(problems) != 3 || connected != 0 {
 		t.Fatalf("an empty home answered %d problem(s) after %d connection(s): %v", len(problems), connected, problems)
 	}
 	p, _ := h.paths()
@@ -588,11 +588,11 @@ func TestTheHerdrHostHalfIsCheckedBeforeItConnects(t *testing.T) {
 	if err := h.apply(context.Background(), b, facts); err != nil {
 		t.Fatal(err)
 	}
-	if problems := h.check(context.Background(), b, facts); len(problems) != 0 || connected != 1 {
+	if problems, _ := h.check(context.Background(), b, facts); len(problems) != 0 || connected != 1 {
 		t.Fatalf("a written half answered %v after %d connection(s)", problems, connected)
 	}
 	answer = "herdr 0.8.2"
-	if problems := h.check(context.Background(), b, facts); len(problems) != 1 || !strings.Contains(problems[0], "0.8.2") {
+	if problems, _ := h.check(context.Background(), b, facts); len(problems) != 1 || !strings.Contains(problems[0], "0.8.2") {
 		t.Fatalf("a door answering another version was answered %v", problems)
 	}
 	if err := h.remove(b); err != nil {

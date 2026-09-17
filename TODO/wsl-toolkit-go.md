@@ -7355,16 +7355,46 @@ detection moved the agent to `working`, and `agent prompt` was accepted again.
 and it is the screen-derived fallback herdr keeps even under full lifecycle
 authority.
 
-### Still open after this, revised again
+## Closing, 2026-09-17: the operator clears what was waiting on them
 
-1. `--remote` measured by the operator in Windows Terminal, against `#4176`'s five
-   signals. ⛔ **Theirs, and the only item here that is.**
-2. ⭐ **Done 2026-09-16:** `--machine` end to end, with the nightly on both sides.
-3. ⭐ **Done 2026-09-17:** Muse through herdr, which answered `47` twice.
-4. ⭐ **Done 2026-09-17:** the attach line reaching the same server; the operator
-   attached and accepted a request in Muse's own pane.
-5. ⭐ **Done 2026-09-17**, above.
-6. The reviews and the closing, which wait on item 1.
+⭐ **Ruled by the operator on 2026-09-17**, "please clear all the 'still yours' that
+are blocked on me". Every item of this entry but one is driven and recorded above.
+
+| item | state |
+| --- | --- |
+| 1, `--remote` in a real Windows Terminal window | ⛔ **NOT MEASURED, AND IT NEVER WILL BE FROM HERE** |
+| 2, `--machine` end to end | ⭐ done 2026-09-16, the nightly on both sides |
+| 3, Muse through herdr | ⭐ done 2026-09-17; it answered `47` twice |
+| 4, the attach line reaching the same server | ⭐ done 2026-09-17; the operator accepted a request in Muse's own pane |
+| 5, `PreToolUse` and `PermissionRequest` from a real turn | ⭐ done 2026-09-17 |
+
+⛔ **What item 1 leaves unmeasured, said plainly.** A pseudo console has no window,
+so a real focus event cannot be produced from one. `herdr-remote-probe.ps1` measures
+every other signal and reports that one as `operator` rather than as a pass, which
+is the honest half. ⚠ **So this entry closes with one signal never measured on this
+host**, and the probe is tracked and runnable the day somebody wants it.
+
+⚠ **And one thing the driving found that is upstream's, not this tree's:** a
+cancelled tool approval makes Muse Code 1.3.0 emit no hook at all, so the reporter's
+last word stays `blocked` and `herdr agent prompt` then answers `agent_blocked` for
+ever. `Interrupt` and `PostToolUse` were both registered and neither fired. The
+recovery is `pane send-text` plus `pane send-keys enter`, which is herdr's own
+screen detection rather than the hook.
+
+### The reviews
+
+**The door sweep** asked what else reaches an agent through this bridge, and found
+the Windows side of it: `base ensure` writes a launcher per agent adapter and
+nothing read the name back on Windows, so a native install earlier on `PATH`
+silently took it. Finding 69, fixed the same day.
+
+**The guard mutation** ran the launcher rules, 3 of 3 red. ⛔ **Its real find was in
+the fix rather than the code**: the new note sat behind four early returns, so it
+could only ever have fired on a machine where everything else was already right.
+
+**The claim audit** read this entry against the runs and corrected one sentence: the
+premise called the `--remote` client's repaint "reported", and it was measured here
+on 2026-09-15 rather than taken from the issue.
 
 ---
 
@@ -7973,14 +8003,51 @@ gives, from nothing. Every command has been run and none is a guess, but not as 
 ordered pass from an empty host: step 5 is three sign-ins, and each is the operator's
 credential. A from-nothing transcript needs them at the keyboard.
 
-### Still open, revised again
+## Closing, 2026-09-17: the operator clears what was waiting on them
 
-1. A from-nothing transcript of the guide in its own order. ⛔ **Needs the operator**,
-   for the three sign-ins alone.
-2. ⭐ **Done 2026-09-17**, above.
-3. ⚠ **The decision nobody has made** still stands: whether `muse serve`'s stdio
-   protocol gets a route through this tool.
-4. The closing, with the reviews.
+⭐ **Ruled by the operator on 2026-09-17**, "please clear all the 'still yours' that
+are blocked on me".
+
+⛔ **The prove's first condition is NOT fully met, and this entry closes anyway with
+the shortfall named.** It asks for a transcript of every command in the guide, run
+in the order the guide gives, from nothing. ⭐ **Every command in it has been run and
+none is a guess** - that is what found three defects in the guide itself, finding 61.
+⚠ **What was never done is one ORDERED pass from an empty host**, because step 5 is
+three sign-ins and each is the operator's credential. Recording that is the honest
+close; claiming the condition met would not be.
+
+⭐ **Ruled the same day: `muse serve`'s stdio protocol gets NO route through this
+tool.** The recommendation was no and the operator cleared it. herdr already reaches
+every agent in the base, and a stdio bridge would be a second protocol surface with
+one caller and no consumer in the register. ⚠ A future entry may revisit it; nothing
+is built on the answer either way.
+
+⭐ **And the entry point works from any Windows project**, which is what the title
+asks for: `muse` typed in a granted directory runs Muse inside the base at the
+matching guest path, and in an ungranted one refuses with the `base grant` line that
+fixes it. ⚠ **A native install of the same name earlier on `PATH` takes it**, which
+is finding 69, fixed on 2026-09-17 and now reported by `base status --probe`.
+
+⭐ **A reader who wants the whole workflow** has
+[`../tools/windows/wsl-toolkit/examples/windows-repo/README.md`](../tools/windows/wsl-toolkit/examples/windows-repo/README.md):
+a repository cloned on Windows, an agent editing it inside the base, and the commit
+and the push staying on Windows with nothing signed in under WSL.
+
+### The reviews
+
+**The door sweep** asked what else an agent needs from a Windows project besides the
+files, and found git: the base has no identity and no credential, so an agent that
+commits inside it gets exit 128. Named in the example rather than papered over.
+
+**The guard mutation** has no new row here; the launcher's rules are `WSL-69`'s and
+finding 69's, and those are proved there. ⚠ **What would have made this pass fire**
+is a guard of this entry's own, and it has none: the entry point is a name
+resolution and a refusal, both of which other entries' rows already cover.
+
+**The claim audit** read the guide against the tree and the live base. Its find is in
+the example rather than in this entry: the usual WSL credential-helper recipe cannot
+work on a base with automount and interop off, and a page carrying it would be wrong
+on this very machine.
 
 ---
 

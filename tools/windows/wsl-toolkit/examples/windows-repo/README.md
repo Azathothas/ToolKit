@@ -108,6 +108,38 @@ path when the name is taken:
 
 ---
 
+## ⚠ Can a native Windows agent run its commands in the base instead?
+
+Partly, and the measurement is why this repository does not ship the bridge.
+
+⭐ **The seam exists.** A native Windows omp takes `shellPath`, and its shell is
+called as `SHELL -c "COMMAND"`, which is the shape `base exec -c` already takes. A
+shim that forwards one to the other, after moving to the guest path that matches
+the Windows directory, was written and driven on 2026-09-17:
+
+| driven | result |
+| --- | --- |
+| a relative command | exit 0. `pwd` answered `/workspaces/proj` and `uname -s` answered `Linux` |
+| a command carrying a Windows absolute path | ⛔ exit 1, and the path arrived as `C:UsersAjamX...` with every backslash eaten as a shell escape |
+
+⛔ **The second row is not a bug to fix. It is the shape of the idea.** A shim
+cannot rewrite paths inside a command without guessing which strings are paths,
+which is the defect that makes Git Bash unusable for this tool.
+
+⛔ **And the shell is only part of what an agent does.** A native agent's file
+tools - read, write, edit, grep, glob - are not shell commands. They keep running
+on Windows against Windows paths while only the shell reaches the base, so one
+agent holds two views of one tree. ⚠ **omp's own settings make this worse rather
+than better**: `bashInterceptor.patterns` pushes it away from shell commands and
+towards those native tools, so the more native the agent is, the less of its work
+the shim reaches.
+
+⭐ **The launcher has none of this**, because the whole agent runs in the base and
+there is one view of the tree. That is why section 3 is the answer and this
+section is a measurement.
+
+---
+
 ## 4. Watch or steer the agent, without opening anything
 
 ```powershell
