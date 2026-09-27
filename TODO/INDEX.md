@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 140  open 1  blocked 0  done 139
+total 141  open 0  blocked 0  done 141
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 1 | 0 | 70 | 71 |
-| P2 | 0 | 0 | 58 | 58 |
+| P1 | 0 | 0 | 71 | 71 |
+| P2 | 0 | 0 | 59 | 59 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **1** | **0** | **139** | **140** |
+| **all** | **0** | **0** | **141** | **141** |
 
 ---
 
@@ -73,7 +73,7 @@ total 140  open 1  blocked 0  done 139
 | TOOL-23 | P1 | S | done | The bundle rule rebuilt the products it was meant to compare | [`tooling.md`](tooling.md) |
 | TOOL-24 | P1 | S | done | The gate printed a check that could not run as a pass | [`tooling.md`](tooling.md) |
 | TOOL-25 | P1 | S | done | The secrets rule could not see a Windows home path | [`tooling.md`](tooling.md) |
-| TOOL-26 | P1 | S | open | The job that proves every guard cannot finish the table it proves | [`tooling.md`](tooling.md) |
+| TOOL-26 | P1 | S | done | The job that proves every guard cannot finish the table it proves | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -150,6 +150,7 @@ total 140  open 1  blocked 0  done 139
 | WSL-101 | P1 | S | done | `--redact` keeps a secret off the screen and writes it to the answer and the transcript | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-102 | P0 | S | done | `gc --via-helper --job ID` plans and applies a cleanup of every job | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-103 | P1 | S | done | Under an instance, `helper serve --detach` never answers, and a detached run would not either | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-104 | P2 | S | done | `--help` and the manual name flags a subcommand refuses, and `helper` and `config` still ignore flags | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

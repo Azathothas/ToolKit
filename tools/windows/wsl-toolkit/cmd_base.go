@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"slices"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -291,12 +290,9 @@ type baseFlags struct {
 // refusal names them.
 var baseSubcommands = []string{"status", "ensure", "recreate", "remove", "shell", "attach"}
 
-// baseFlagsRead names the flags each of those subcommands reads.
-//
-// ⛔ A FLAG A SUBCOMMAND DOES NOT READ IS REFUSED, NOT IGNORED. The set is shared,
-// so `base shell --json` and `base status --repair` parsed, did nothing and said
-// nothing. `base ensure --probe` stays accepted: ensure verifies the base by
-// running a container whether or not it is asked to. WSL-100.
+// baseFlagsRead names the flags each of those subcommands reads. `base ensure
+// --probe` stays accepted: ensure verifies the base by running a container
+// whether or not it is asked to. WSL-100.
 var baseFlagsRead = map[string][]string{
 	"status":   {"json", "probe", "via-helper"},
 	"ensure":   {"json", "probe", "repair", "via-helper", "preset", "save"},
@@ -306,12 +302,9 @@ var baseFlagsRead = map[string][]string{
 	"attach":   {"json"},
 }
 
-// parseBaseFlags parses the shared set for one subcommand and refuses a flag it
-// does not read. An unknown subcommand parses everything, and the dispatch then
-// refuses the subcommand itself.
-func parseBaseFlags(sub string, args []string) (baseFlags, error) {
-	var f baseFlags
-	fs := newFlagSet("base " + sub)
+var baseShared = sharedFlags[baseFlags]{group: "base", order: baseSubcommands, reads: baseFlagsRead, bind: (*baseFlags).bind}
+
+func (f *baseFlags) bind(fs *flag.FlagSet) {
 	fs.BoolVar(&f.asJSON, "json", false, "write a structured answer")
 	fs.BoolVar(&f.probe, "probe", false, "status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag")
 	fs.BoolVar(&f.repair, "repair", false, "ensure and recreate may clear engine run state a reboot invalidated. Off by default")
@@ -321,28 +314,14 @@ func parseBaseFlags(sub string, args []string) (baseFlags, error) {
 	fs.BoolVar(&f.viaHelper, "via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
 	fs.StringVar(&f.preset, "preset", "", "ensure and recreate build from this preset id or fully qualified reference")
 	fs.BoolVar(&f.save, "save", false, "ensure and recreate also store the preset as the default for later commands")
-	if err := parseArgs(fs, args); err != nil {
+}
+
+// parseBaseFlags parses the shared set for one subcommand, which refuses a flag
+// it does not read.
+func parseBaseFlags(sub string, args []string) (baseFlags, error) {
+	var f baseFlags
+	if err := baseShared.parse(sub, &f, args); err != nil {
 		return f, err
-	}
-	read, known := baseFlagsRead[sub]
-	if !known {
-		return f, nil
-	}
-	var refused error
-	fs.Visit(func(fl *flag.Flag) {
-		if refused != nil || slices.Contains(read, fl.Name) {
-			return
-		}
-		var readers []string
-		for _, s := range baseSubcommands {
-			if slices.Contains(baseFlagsRead[s], fl.Name) {
-				readers = append(readers, "base "+s)
-			}
-		}
-		refused = fmt.Errorf("base %s does not read --%s, so it is refused rather than ignored. It is read by %s", sub, fl.Name, strings.Join(readers, ", "))
-	})
-	if refused != nil {
-		return f, refused
 	}
 	if f.save && f.preset == "" {
 		return f, errors.New("--save stores the preset --preset names, and no --preset was given")

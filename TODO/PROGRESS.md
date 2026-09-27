@@ -6,30 +6,32 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-27, on issue 34
+session started 2026-09-27T04:41:27Z, on issue 34
 baseline        6ec3fbc, gate 24 of 24
-head            this commit, entries closed 2026-09-27T10:55:59Z; wsl-toolkit-v5.0.0 is the next step
-entries         total 140  open 1  blocked 0  done 139
-this session    issue 34 in full: WSL-94 to WSL-101 built, WSL-102 and WSL-103 found and fixed, DOC-08
+head            this commit; wsl-toolkit-v5.0.0 published, wsl-toolkit-v6.0.0 is the next step
+entries         total 141  open 0  blocked 0  done 141
+this session    issue 34 in full: WSL-94 to WSL-101 built, WSL-102 to WSL-104 found and fixed, DOC-08, TOOL-26
 ```
 
 ## Active work
 
-⭐ **ISSUE 34'S ENTRIES ARE CLOSED.** `WSL-94` to `WSL-101` are what the consumer
-asked for, extended to the class: a job reached by id from any process, a base
-command that outlives its client, devices and input files, the base64 channel on
-every job command, and a redaction that reaches every copy. The final acceptance
-pass is 101 of 101 against a scratch instance.
+⭐ **ISSUE 34'S ENTRIES ARE CLOSED, AND 5.0.0 CARRIES THEM.** `WSL-94` to `WSL-101`
+are what the consumer asked for, extended to the class: a job reached by id from
+any process, a base command that outlives its client, devices and input files,
+the base64 channel on every job command, and a redaction that reaches every
+copy. `wsl-toolkit-v5.0.0` is published, this host runs it, and the acceptance
+suite passed 101 of 101 with the installed binary.
 
-⛔ **Two defects found on the way are fixed here.** `WSL-102`: `gc --via-helper
+⛔ **Three defects found on the way are fixed here.** `WSL-102`: `gc --via-helper
 --job ID` planned and applied a cleanup of every job. `WSL-103`: under an
-instance, a child this tool starts nested its parent's state, and `helper serve
---detach` never answered. Both are in 4.0.0.
+instance, a child this tool starts nested its parent's state. `WSL-104`, found
+after the publish: `--help` and the manual listed flags a subcommand refuses,
+and `helper` and `config` still accepted flags they never read.
 
 ⭐ **`DOC-08`: the live pages say what is true now.** 28 pages rewritten, 0 dates
 left, and the `ste` check refuses one. The rewrite found a defect in that check.
 
-⚠ **What remains is the release**: work order item 8.
+⚠ **What remains is the release**: work order item 10.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -52,9 +54,12 @@ is closed, and the issue gets a comment naming the commits.
    `WSL-93`, filed and closed in the same session.
 7. ⭐ **Closed:** issue 34's entries, `WSL-94` to `WSL-101`, the two defects found
    on the way, `WSL-102` and `WSL-103`, and `DOC-08`.
-8. **`wsl-toolkit-v5.0.0`:** `TOOL-26` first, so CI proves the guards again; then
-   publish it, selfupdate this host to it, drive it end to end, and close issue
-   34 with a comment naming the commits.
+8. ⭐ **Closed:** `TOOL-26`, which put the guard job back under its limit, and
+   `wsl-toolkit-v5.0.0` is cut on it: published, this host updated to it, and
+   driven end to end.
+9. ⭐ **Closed:** `WSL-104`, found after 5.0.0 was published. It is a break.
+10. **`wsl-toolkit-v6.0.0`:** publish it, update this host to it, drive it end to
+    end, and close issue 34 with a comment naming the commits and both releases.
 
 ## Rulings in force
 
@@ -194,7 +199,7 @@ is closed, and the issue gets a comment naming the commits.
     `WSL-93` is filed and closed together. And a condition this session could not
     explain is written as unexplained rather than stepped around: finding 84.
 
-26. ⭐ **2026-09-17: `wsl-toolkit-v4.0.0` is a MAJOR, and the rule decided it
+27. ⭐ **2026-09-17: `wsl-toolkit-v4.0.0` is a MAJOR, and the rule decided it
     rather than a preference.** `docs/consumers.md` calls a changed exit meaning
     a break, and `text-tool edit --between` now exits 2 where it exited 0. ⚠ **The
     break is in `text-tool` and the version is `wsl-toolkit`s**, because one tag
@@ -202,7 +207,7 @@ is closed, and the issue gets a comment naming the commits.
     protects. ⛔ **Ruling 22 second half still governs how**: `repo release` runs
     read-only first, and the publish happens only with the gate green and CI
     green on the final commit.
-27. **2026-09-27: issue 34's four forks, each the recommended option.** The
+28. **2026-09-27: issue 34's four forks, each the recommended option.** The
     operator answered a structured question before any code was written.
     - **Detach:** `run --detach` through a detached copy of the tool, and
       `base exec --detach` through the guest. Both use one id with
@@ -290,7 +295,10 @@ new file FIRST, then run the gate.**
 | this record commit | ⭐ **`wsl-toolkit-v4.0.0` IS PUBLISHED**, 22 assets, all three release jobs green including the consumer smoke. ⛔ **A MAJOR because a published binary changed how it exits**, which `docs/consumers.md` calls a break in its own words. ⛔ **The first attempt destroyed its own release**: `gh release create` uploads inside the call that creates, and a retried upload collided with itself and took the release with it; the publish is idempotent and resumable now, and reads back what is actually on the release. Nine review passes over the documents, the record and the skills; findings 103 |
 | `d8b47d7` | issue 34 becomes eight entries and six are built: a redaction reaches every copy of a job's output, a device and an input file reach a container, the base64 channel reaches every job command, a Git Bash rewrite is refused by name, a workspace copy names its file, and the `base` group refuses a flag a subcommand does not read |
 | `a20b4d2` | `WSL-94` and `WSL-95` built, `WSL-102` and `WSL-103` found and fixed, `DOC-08` applied to every live page, and the acceptance runner takes `-Instance`; 32 mutation rows |
-| `this commit` | the three review passes and what they found: a session's `logs` and `resources`, the preassigned id, the ownerless stop verdict; 5 more mutation rows; the entries closed on 101 of 101 |
+| `c96873b` | the three review passes and what they found: a session's `logs` and `resources`, the preassigned id, the ownerless stop verdict; 5 more mutation rows; the entries closed on 101 of 101 |
+| `5a667cc` | `TOOL-26`: `repo mutate --shard K/N`, and the guard job runs as three shares; its first run found one THEATRE row |
+| `3290937` | the session stop case reads the payload's background child, which proves the whole group is reached; `wsl-toolkit-v5.0.0` is tagged on this commit |
+| this commit | `WSL-104`: one parser for every group whose subcommands share a flag set, so `helper` and `config` refuse what they never read, and `--help` and the manual list only what a command reads, `base revoke` included; the TERM a stop or a deadline sends is proved by the payload's own trap; `TOOL-26` closed; 5.0.0's publish recorded; 7 mutation rows added and 3 moved with their code, 512 in the table |
 
 ## Measurements
 

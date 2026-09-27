@@ -2762,7 +2762,7 @@ match text is left off the lines above for the same reason as in the premise.
 
 **Source** found on 2026-09-27 when CI cancelled the guard job on `c96873b`
 after 30 minutes, the job's own limit, and on `a20b4d2` before it.
-**Category** tooling, **Priority** P1, **Effort** S, **Status** open
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -2789,3 +2789,54 @@ the alternative, and it makes every push wait on one runner.
 ## Prove
 
 Exit 0 on every share, in CI, on the commit that carries this change.
+
+---
+
+## Closing
+
+**Closed 2026-09-27T15:26:02Z.** CI ran the three shares on `3290937`, run
+`36326850193`. Every share exited 0, and the slowest took 12 minutes 17
+seconds, where the single job was cancelled at 30 minutes 16 seconds:
+
+```text
+share 1/3   167 of 169 guards proved   11m11s   2 rows skip on Linux
+share 2/3   167 of 168 guards proved   11m35s   1 row skips on Linux
+share 3/3   168 of 168 guards proved   12m17s
+```
+
+The three shares hold 505 rows, which is the whole table, and 502 are proved.
+The 3 that are not are rows whose every case skips itself on Linux.
+
+⭐ **The first sharded run went red, and the harness was right.** On `5a667cc`,
+run `36325961000`, share 2/3 stopped at 7 minutes 43 seconds on one row:
+
+```text
+  THEATRE  wsl-toolkit: a session stop signals the group in a form dash reads   1 case(s), still green
+166 of 168 guards proved.
+```
+
+⛔ **`3290937`'s message gives the wrong cause.** It says that the dash on
+Ubuntu reads `kill -TERM -- "-$pg"`. Measured after the push, with a process
+group of two:
+
+| shell | with `--` | without |
+| --- | --- | --- |
+| dash 0.5.12-12, `golang:1.25` | `Illegal number`, exit 2, 2 processes left | exit 0, 0 left |
+| dash 0.5.12-6ubuntu5, `ubuntu:24.04` | `Illegal number`, exit 2, 2 left | exit 0, 0 left |
+| dash 0.5.12-2, `debian:bookworm-slim` | `Illegal number`, exit 2, 2 left | exit 0, 0 left |
+| busybox, `alpine` | `invalid number '--'`, exit 1, 0 left | exit 0, 0 left |
+| bash, `golang:1.25` | exit 0, 0 left | exit 0, 0 left |
+
+The row planted `--` in the TERM alone, and the KILL after the one-second grace
+reached the group. So the session ended as stopped either way, and the case
+could not see that the TERM had failed. `3290937` made the case read the
+payload's background child, which proves the whole group is reached, and it
+did not guard the TERM. The case now also reads a TERM trap in the payload, for
+a stop and for a deadline, and a row plants `--` in each. The table holds 507
+rows, and all three session rows are red in `golang:1.25`:
+
+```text
+  ok  wsl-toolkit: a session stop sends its TERM in a form dash reads                1 case(s), went red
+  ok  wsl-toolkit: a session deadline sends its TERM in a form dash reads            1 case(s), went red
+  ok  wsl-toolkit: a session stop reaches the payload's whole process group          1 case(s), went red
+```

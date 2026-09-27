@@ -84,6 +84,18 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⛔ What `wsl-toolkit-v6.0.0` breaks, and what a caller does
+
+A major version, so a consumer that pins by major is not moved across it silently.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a `helper` or `config` subcommand refuses a flag it does not read, exit 2. `WSL-104` | passes a flag the subcommand ignored, such as `helper stop --json` or `config --path FILE` | removes the flag. `config validate --path FILE` reads a named file |
+| `helper serve --json` with no `--detach` is refused, exit 2 | passes `--json` to a helper in the foreground | adds `--detach`, or removes `--json` |
+
+Everything else in 6.0.0 adds or corrects: `--help` and the manual list only
+the flags a command reads.
+
 ### ⛔ What `wsl-toolkit-v5.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

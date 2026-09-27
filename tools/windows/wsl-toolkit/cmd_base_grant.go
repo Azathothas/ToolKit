@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"strings"
@@ -23,6 +24,42 @@ type baseGrantAnswer struct {
 	Grants    []toolkit.BaseMount `json:"grants"`
 }
 
+// grantFlags are the values of the flag set base grant and base revoke share.
+type grantFlags struct {
+	source, target, mode string
+	asJSON, viaHelper    bool
+}
+
+// grantShared is that set, and revoke reads --target alone: a grant is named by
+// where the base sees it.
+//
+// ⛔ REVOKE DOES NOT DESCRIBE ITSELF IN GRANT'S WORDS. `base revoke --help` once
+// answered "--source: the Windows directory to grant" over a command that
+// refuses --source, and the help sent a reader straight into the refusal. Found
+// by writing the guide from the help and then running it. Its help now lists
+// only what it reads, and --target in its own words. WSL-104.
+func grantShared(sub string) sharedFlags[grantFlags] {
+	targetHelp := "where the base sees it, under /workspaces. Default /workspaces/ and the directory's name"
+	if sub == "revoke" {
+		targetHelp = "the /workspaces path of the grant to take away"
+	}
+	return sharedFlags[grantFlags]{
+		group: "base",
+		order: []string{"grant", "revoke"},
+		reads: map[string][]string{
+			"grant":  {"source", "target", "mode", "json", "via-helper"},
+			"revoke": {"target", "json", "via-helper"},
+		},
+		bind: func(g *grantFlags, fs *flag.FlagSet) {
+			fs.StringVar(&g.source, "source", "", "the Windows directory to grant")
+			fs.StringVar(&g.target, "target", "", targetHelp)
+			fs.StringVar(&g.mode, "mode", "", "ro or rw. Default ro")
+			fs.BoolVar(&g.asJSON, "json", false, "write a structured answer")
+			fs.BoolVar(&g.viaHelper, "via-helper", false, "prove the helper refusal for a "+sub)
+		},
+	}
+}
+
 // cmdBaseGrant adds one Windows directory to the base, or takes one away, without a
 // restart.
 //
@@ -35,32 +72,11 @@ type baseGrantAnswer struct {
 // ⭐ NO RESTART, SO NOTHING RUNNING IN THE BASE STOPS. That is the point of it: a
 // restart ends every agent in the base. WSL-75.
 func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
-	fs := newFlagSet("base " + sub)
-	// ⛔ REVOKE DOES NOT DESCRIBE ITSELF IN GRANT'S WORDS. Both register one flag set,
-	// so `base revoke --help` used to answer "--source: the Windows directory to grant"
-	// over a command that REFUSES --source, and the help sent a reader straight into
-	// the refusal. Found by writing the guide from the help and then running it.
-	//
-	// ⚠ THE FLAGS STAY REGISTERED FOR REVOKE ON PURPOSE. Dropping them would turn its
-	// own refusal, which names --target and says why, into an unknown-flag error, and
-	// that refusal is the one a caller who guessed --source should meet.
-	sourceHelp := "the Windows directory to grant"
-	targetHelp := "where the base sees it, under /workspaces. Default /workspaces/ and the directory's name"
-	modeHelp := "ro or rw. Default ro"
-	if sub == "revoke" {
-		sourceHelp = "⛔ not for revoke: name the grant by --target, where the base sees it"
-		targetHelp = "the /workspaces path of the grant to take away"
-		modeHelp = "⛔ not for revoke: a grant is taken away whatever its mode"
-	}
-	source := fs.String("source", "", sourceHelp)
-	target := fs.String("target", "", targetHelp)
-	mode := fs.String("mode", "", modeHelp)
-	asJSON := fs.Bool("json", false, "write a structured answer")
-	viaHelper := fs.Bool("via-helper", false, "prove the helper refusal for a "+sub)
-	if err := parseArgs(fs, args); err != nil {
+	var g grantFlags
+	if err := grantShared(sub).parse(sub, &g, args); err != nil {
 		return exitCannot, err
 	}
-	if err := gitBashRewrite("--target", *target, guestPath); err != nil {
+	if err := gitBashRewrite("--target", g.target, guestPath); err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()
@@ -70,18 +86,15 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	var change toolkit.GrantChange
 	switch sub {
 	case "grant":
-		if *source == "" {
+		if g.source == "" {
 			return exitCannot, errors.New("base grant needs --source, the Windows directory to grant")
 		}
-		change, err = toolkit.PlanGrant(cfg, *source, *target, *mode)
+		change, err = toolkit.PlanGrant(cfg, g.source, g.target, g.mode)
 	case "revoke":
-		if *source != "" || *mode != "" {
-			return exitCannot, errors.New("base revoke takes --target alone: a grant is named by where the base sees it")
-		}
-		if *target == "" {
+		if g.target == "" {
 			return exitCannot, errors.New("base revoke needs --target, the /workspaces path of the grant to take away")
 		}
-		change, err = toolkit.PlanRevoke(cfg, *target)
+		change, err = toolkit.PlanRevoke(cfg, g.target)
 	}
 	if err != nil {
 		return exitCannot, err
@@ -89,9 +102,9 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	ans := baseGrantAnswer{Schema: "wsl-toolkit-base-grant/1", Action: sub, File: cfg.Path(), Mount: change.Mount, Unchanged: change.Unchanged}
 	if change.Unchanged {
 		logf("  %s is already granted from %s, %s. Nothing to do", change.Mount.Target, change.Mount.Source, change.Mount.Mode)
-		return renderGrant(ans, cfg, *asJSON)
+		return renderGrant(ans, cfg, g.asJSON)
 	}
-	if c, err := useHelper(ctx, *viaHelper); err != nil {
+	if c, err := useHelper(ctx, g.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
 		return exitCannot, fmt.Errorf("base %s mounts a Windows directory into the base, which the restricted helper protocol does not accept. Make this call through the session's WSL approval path", sub)
@@ -128,7 +141,7 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 		return exitCannot, fmt.Errorf("%s could not be written, so the live change was taken back: %w", cfg.Path(), err)
 	}
 	logf("  %s %s %s <- %s, written to %s", sub, change.Mount.Mode, change.Mount.Target, change.Mount.Source, cfg.Path())
-	return renderGrant(ans, change.Next, *asJSON)
+	return renderGrant(ans, change.Next, g.asJSON)
 }
 
 func renderGrant(ans baseGrantAnswer, cfg toolkit.Config, asJSON bool) (int, error) {

@@ -1,9 +1,9 @@
-.TH WSL-TOOLKIT 1 "" "wsl-toolkit 5.0.0" "User Commands"
+.TH WSL-TOOLKIT 1 "" "wsl-toolkit 6.0.0" "User Commands"
 .SH NAME
 wsl-toolkit \- run isolated Linux container jobs from Windows
 .SH SYNOPSIS
 .nf
-wsl-toolkit 5.0.0
+wsl-toolkit 6.0.0
 
   doctor      report the host and the tools that can run
   base        manage the WSL distribution that this tool owns
@@ -61,32 +61,14 @@ manage the WSL distribution that this tool owns
 .TP
 .B wsl-toolkit base status
 .TP
-\fB--here\fR
-shell starts in this Windows directory instead of the guest account's home
-.TP
 \fB--json\fR
 write a structured answer
-.TP
-\fB--preset\fR
-ensure and recreate build from this preset id or fully qualified reference
 .TP
 \fB--probe\fR
 status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
 .TP
-\fB--repair\fR
-ensure and recreate may clear engine run state a reboot invalidated. Off by default
-.TP
-\fB--root\fR
-shell attaches as root
-.TP
-\fB--save\fR
-ensure and recreate also store the preset as the default for later commands
-.TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
-.TP
-\fB--yes\fR
-remove does not ask before removing
 .TP
 .B wsl-toolkit base doors
 .TP
@@ -98,9 +80,6 @@ prove the helper refusal for the doors probe
 .TP
 .B wsl-toolkit base ensure
 .TP
-\fB--here\fR
-shell starts in this Windows directory instead of the guest account's home
-.TP
 \fB--json\fR
 write a structured answer
 .TP
@@ -113,23 +92,14 @@ status runs a real container to decide whether the base is usable. ensure and re
 \fB--repair\fR
 ensure and recreate may clear engine run state a reboot invalidated. Off by default
 .TP
-\fB--root\fR
-shell attaches as root
-.TP
 \fB--save\fR
 ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
-.TP
-\fB--yes\fR
-remove does not ask before removing
 .TP
 .B wsl-toolkit base recreate
 .TP
-\fB--here\fR
-shell starts in this Windows directory instead of the guest account's home
-.TP
 \fB--json\fR
 write a structured answer
 .TP
@@ -141,9 +111,6 @@ status runs a real container to decide whether the base is usable. ensure and re
 .TP
 \fB--repair\fR
 ensure and recreate may clear engine run state a reboot invalidated. Off by default
-.TP
-\fB--root\fR
-shell attaches as root
 .TP
 \fB--save\fR
 ensure and recreate also store the preset as the default for later commands
@@ -151,31 +118,7 @@ ensure and recreate also store the preset as the default for later commands
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
-\fB--yes\fR
-remove does not ask before removing
-.TP
 .B wsl-toolkit base remove
-.TP
-\fB--here\fR
-shell starts in this Windows directory instead of the guest account's home
-.TP
-\fB--json\fR
-write a structured answer
-.TP
-\fB--preset\fR
-ensure and recreate build from this preset id or fully qualified reference
-.TP
-\fB--probe\fR
-status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
-.TP
-\fB--repair\fR
-ensure and recreate may clear engine run state a reboot invalidated. Off by default
-.TP
-\fB--root\fR
-shell attaches as root
-.TP
-\fB--save\fR
-ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
@@ -188,29 +131,11 @@ remove does not ask before removing
 \fB--here\fR
 shell starts in this Windows directory instead of the guest account's home
 .TP
-\fB--json\fR
-write a structured answer
-.TP
-\fB--preset\fR
-ensure and recreate build from this preset id or fully qualified reference
-.TP
-\fB--probe\fR
-status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
-.TP
-\fB--repair\fR
-ensure and recreate may clear engine run state a reboot invalidated. Off by default
-.TP
 \fB--root\fR
 shell attaches as root
 .TP
-\fB--save\fR
-ensure and recreate also store the preset as the default for later commands
-.TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
-.TP
-\fB--yes\fR
-remove does not ask before removing
 .TP
 .B wsl-toolkit base exec
 .TP
@@ -275,12 +200,6 @@ prove the helper refusal for a grant
 \fB--json\fR
 write a structured answer
 .TP
-\fB--mode\fR
-⛔ not for revoke: a grant is taken away whatever its mode
-.TP
-\fB--source\fR
-⛔ not for revoke: name the grant by --target, where the base sees it
-.TP
 \fB--target\fR
 the /workspaces path of the grant to take away
 .TP
@@ -289,32 +208,8 @@ prove the helper refusal for a revoke
 .TP
 .B wsl-toolkit base attach
 .TP
-\fB--here\fR
-shell starts in this Windows directory instead of the guest account's home
-.TP
 \fB--json\fR
 write a structured answer
-.TP
-\fB--preset\fR
-ensure and recreate build from this preset id or fully qualified reference
-.TP
-\fB--probe\fR
-status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
-.TP
-\fB--repair\fR
-ensure and recreate may clear engine run state a reboot invalidated. Off by default
-.TP
-\fB--root\fR
-shell attaches as root
-.TP
-\fB--save\fR
-ensure and recreate also store the preset as the default for later commands
-.TP
-\fB--via-helper\fR
-go through the local helper even when this process could call wsl.exe itself
-.TP
-\fB--yes\fR
-remove does not ask before removing
 .TP
 .B wsl-toolkit base presets
 .TP
@@ -637,23 +532,15 @@ manage the optional local WSL helper
 start a background copy and return once it answers
 .TP
 \fB--json\fR
-write a structured answer
+write a structured answer. serve writes one with --detach alone
 .TP
 .B wsl-toolkit helper status
 .TP
-\fB--detach\fR
-start a background copy and return once it answers
-.TP
 \fB--json\fR
-write a structured answer
+write a structured answer. serve writes one with --detach alone
 .TP
 .B wsl-toolkit helper stop
-.TP
-\fB--detach\fR
-start a background copy and return once it answers
-.TP
-\fB--json\fR
-write a structured answer
+This form has no options.
 .SS config
 report, validate, or write the configuration
 .TP
@@ -665,25 +552,16 @@ print the configuration that WOULD be used, as JSON, without writing it
 \fB--json\fR
 write a structured answer
 .TP
-\fB--path\fR
-validate this file instead of the one the search resolves
-.TP
 \fB--write\fR
 write the effective configuration to disk, so it can be edited
 .TP
 .B wsl-toolkit config validate
-.TP
-\fB--effective\fR
-print the configuration that WOULD be used, as JSON, without writing it
 .TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--path\fR
 validate this file instead of the one the search resolves
-.TP
-\fB--write\fR
-write the effective configuration to disk, so it can be edited
 .SS distro
 create, use, observe and remove throwaway WSL distributions built from an image or a rootfs
 .TP

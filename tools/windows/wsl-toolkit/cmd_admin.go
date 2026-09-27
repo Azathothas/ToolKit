@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -290,23 +291,12 @@ func cmdConfig(args []string) (int, error) {
 	if len(args) > 0 && args[0] == "validate" {
 		sub, args = args[0], args[1:]
 	}
-	name := "config"
-	if sub != "" {
-		name = "config " + sub
-	}
-	fs := newFlagSet(name)
-	asJSON := fs.Bool("json", false, "write a structured answer")
-	write := fs.Bool("write", false, "write the effective configuration to disk, so it can be edited")
-	effective := fs.Bool("effective", false, "print the configuration that WOULD be used, as JSON, without writing it")
-	path := fs.String("path", "", "validate this file instead of the one the search resolves")
-	if err := parseArgs(fs, args); err != nil {
+	var c configFlags
+	if err := configShared.parse(sub, &c, args); err != nil {
 		return exitCannot, err
 	}
 	if sub == "validate" {
-		if *write {
-			return exitCannot, errors.New("config validate does not write. Drop --write, or run config --write on its own")
-		}
-		return runConfigValidate(*asJSON, *path)
+		return runConfigValidate(c.asJSON, c.path)
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -323,7 +313,7 @@ func cmdConfig(args []string) (int, error) {
 		return exitCannot, err
 	}
 	resolved := src.Path
-	if *write {
+	if c.write {
 		// ⛔ --write ALWAYS writes the STATE DIRECTORY's file, never the one the
 		// search resolved. A caller standing in a checkout that carries a
 		// wsl-toolkit.json would otherwise have `config --write` overwrite a
@@ -346,7 +336,7 @@ func cmdConfig(args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	if *effective {
+	if c.effective {
 		// ⛔ THE EFFECTIVE CONFIGURATION AND NOTHING ELSE, so a caller can pipe
 		// it into a file, edit it and pass it back with --config. `config
 		// --json` carries the report AROUND the configuration; this is the
@@ -355,7 +345,7 @@ func cmdConfig(args []string) (int, error) {
 		cfg.Matrix = cfg.MatrixDefault()
 		return exitOK, writeJSON(cfg)
 	}
-	if *asJSON {
+	if c.asJSON {
 		return exitOK, writeJSON(map[string]any{
 			"schema":      "wsl-toolkit-config-report/1",
 			"path":        resolved,
@@ -458,4 +448,27 @@ func builtinOrStored(cfg toolkit.Config) string {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// configFlags are the values of the flag set config and config validate share.
+type configFlags struct {
+	asJSON, write, effective bool
+	path                     string
+}
+
+func (c *configFlags) bind(fs *flag.FlagSet) {
+	fs.BoolVar(&c.asJSON, "json", false, "write a structured answer")
+	fs.BoolVar(&c.write, "write", false, "write the effective configuration to disk, so it can be edited")
+	fs.BoolVar(&c.effective, "effective", false, "print the configuration that WOULD be used, as JSON, without writing it")
+	fs.StringVar(&c.path, "path", "", "validate this file instead of the one the search resolves")
+}
+
+// configShared names what config and config validate read. `config --path`
+// reported on the configuration the search resolved and not on the file it
+// named. WSL-104.
+var configShared = sharedFlags[configFlags]{
+	group: "config",
+	order: []string{"", "validate"},
+	reads: map[string][]string{"": {"json", "write", "effective"}, "validate": {"json", "path"}},
+	bind:  (*configFlags).bind,
 }

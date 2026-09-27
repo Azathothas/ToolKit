@@ -420,8 +420,9 @@ func StopSession(ctx context.Context, w *Wsl, rec SessionRecord, grace time.Dura
 // supervisor has written the exit, or ten seconds after the KILL.
 //
 // ⛔ NO `--` BEFORE THE GROUP, here or in the supervisor's watchdog. dash, the
-// /bin/sh of a Debian base, reads `--` as a process id and signals nothing;
-// `kill -TERM "-$pg"` is read as a group by dash, bash and busybox alike.
+// /bin/sh of a Debian or Ubuntu base, reads `--` as a process id, refuses it
+// and signals nothing; `kill -TERM "-$pg"` is read as a group by dash, bash and
+// busybox alike.
 func stopSessionScript(guestDir string, grace time.Duration) []byte {
 	g := int64(grace.Round(time.Second) / time.Second)
 	if g < 1 {

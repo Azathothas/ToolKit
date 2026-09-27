@@ -292,6 +292,35 @@ func TestASessionRunsStopsTimesOutAndIsFollowedInARealShell(t *testing.T) {
 		t.Fatalf("the stop ended the session and left its child %s running", child)
 	}
 
+	// ⛔ The KILL after the grace reaches the group whatever the TERM did, so a
+	// TERM that signals nothing still ends a session as stopped or timed out.
+	// Only the payload's own trap says the TERM arrived, and the TERM is what
+	// gives a payload its grace.
+	trapping := func(name string, timeout time.Duration) string {
+		return start(name, "trap 'echo TERM > "+name+".term; exit 143' TERM\nsleep 30 &\nwait\n", timeout, 5*time.Second)
+	}
+	sawTerm := func(name string) bool {
+		_, err := os.Stat(filepath.Join(home, name+".term"))
+		return err == nil
+	}
+	trapped := trapping("trapped", 0)
+	if _, stderr, code := run(stopSessionScript(trapped, 5*time.Second)); code != 0 {
+		t.Fatalf("the stop script exited %d: %s", code, stderr)
+	}
+	if st := state(trapped); !st.Stopped || st.Verdict() != 130 {
+		t.Fatalf("a stopped session reads as %+v", st)
+	}
+	if !sawTerm("trapped") {
+		t.Fatal("the stop ended the session and the payload never saw TERM")
+	}
+	expired := trapping("expired", time.Second)
+	if st := waitEnd(expired, 15*time.Second); !st.TimedOut || st.Verdict() != ExitTimeout {
+		t.Fatalf("a session past its deadline reads as %+v", st)
+	}
+	if !sawTerm("expired") {
+		t.Fatal("the deadline ended the session and the payload never saw TERM")
+	}
+
 	late := start("deadline", "trap '' TERM\nsleep 30\n", time.Second, time.Second)
 	if st := waitEnd(late, 15*time.Second); !st.TimedOut || st.Verdict() != ExitTimeout {
 		t.Fatalf("a session past its deadline reads as %+v", st)

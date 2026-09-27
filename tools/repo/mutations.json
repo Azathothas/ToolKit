@@ -2,6 +2,69 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: base revoke reads --target alone of grant's names",
+      "file": "cmd_base_grant.go",
+      "find": "\t\t\t\"revoke\": {\"target\", \"json\", \"via-helper\"},\n",
+      "replace": "\t\t\t\"revoke\": {\"target\", \"json\", \"via-helper\", \"source\"},\n",
+      "run": "TestEverySharedSetPublishesAndAcceptsOnlyWhatEachSubcommandReads",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a subcommand's help and the manual carry only the flags it reads",
+      "file": "shared_flags.go",
+      "find": "\t\tif slices.Contains(read, fl.Name) {\n\t\t\tfs.Var(fl.Value, fl.Name, fl.Usage)",
+      "replace": "\t\tif true {\n\t\t\tfs.Var(fl.Value, fl.Name, fl.Usage)",
+      "run": "TestEverySharedSetPublishesAndAcceptsOnlyWhatEachSubcommandReads",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: helper stop reads none of the helper set",
+      "file": "cmd_helper.go",
+      "find": "\"stop\": {}}",
+      "replace": "\"stop\": {\"json\", \"detach\"}}",
+      "run": "TestEverySharedSetPublishesAndAcceptsOnlyWhatEachSubcommandReads",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: config reads --path under validate alone",
+      "file": "cmd_admin.go",
+      "find": "\"\": {\"json\", \"write\", \"effective\"}",
+      "replace": "\"\": {\"json\", \"write\", \"effective\", \"path\"}",
+      "run": "TestEverySharedSetPublishesAndAcceptsOnlyWhatEachSubcommandReads",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: helper serve reads --json with --detach alone",
+      "file": "cmd_helper.go",
+      "find": "\tif sub == \"serve\" && h.asJSON && !h.detach {",
+      "replace": "\tif sub == \"serve-never-typed\" && h.asJSON && !h.detach {",
+      "run": "TestAForegroundHelperRefusesJSON",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session stop sends its TERM in a form dash reads",
+      "file": "internal/toolkit/session.go",
+      "find": "kill -TERM \"-$pg\" 2>/dev/null\ni=0;",
+      "replace": "kill -TERM -- \"-$pg\" 2>/dev/null\ni=0;",
+      "run": "TestASessionRunsStopsTimesOutAndIsFollowedInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session deadline sends its TERM in a form dash reads",
+      "file": "internal/toolkit/session.go",
+      "find": ": > \"$d/timedout\"; kill -TERM \"-$p\" 2>/dev/null",
+      "replace": ": > \"$d/timedout\"; kill -TERM -- \"-$p\" 2>/dev/null",
+      "run": "TestASessionRunsStopsTimesOutAndIsFollowedInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "repo: a shard holds only its own rows",
       "file": "internal/mutate/mutate.go",
       "find": "\treturn s.N <= 1 || i%s.N == s.K-1\n",
@@ -515,11 +578,11 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: a base subcommand refuses a flag it does not read",
-      "file": "cmd_base.go",
-      "find": "\tif refused != nil {\n\t\treturn f, refused\n\t}\n",
+      "label": "wsl-toolkit: a subcommand of a shared set refuses a flag it does not read",
+      "file": "shared_flags.go",
+      "find": "\t\tif refused != nil {\n\t\t\treturn refused\n\t\t}\n",
       "replace": "",
-      "run": "TestEveryBaseSubcommandRefusesAFlagItDoesNotRead",
+      "run": "TestEveryBaseSubcommandRefusesAFlagItDoesNotRead|TestEverySharedSetPublishesAndAcceptsOnlyWhatEachSubcommandReads",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -625,7 +688,7 @@
     {
       "label": "wsl-toolkit: base grant and revoke --target refuse a Git Bash rewrite",
       "file": "cmd_base_grant.go",
-      "find": "\tif err := gitBashRewrite(\"--target\", *target, guestPath); err != nil {\n\t\treturn exitCannot, err\n\t}\n",
+      "find": "\tif err := gitBashRewrite(\"--target\", g.target, guestPath); err != nil {\n\t\treturn exitCannot, err\n\t}\n",
       "replace": "",
       "run": "TestEveryGuestDoorRefusesARewrite",
       "module": "tools/windows/wsl-toolkit",
@@ -4219,7 +4282,7 @@
       "label": "base revoke: its help describing itself in grant's words",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_base_grant.go",
-      "find": "\tif sub == \"revoke\" {\n\t\tsourceHelp = \"⛔ not for revoke: name the grant by --target, where the base sees it\"\n\t\ttargetHelp = \"the /workspaces path of the grant to take away\"\n\t\tmodeHelp = \"⛔ not for revoke: a grant is taken away whatever its mode\"\n\t}\n",
+      "find": "\tif sub == \"revoke\" {\n\t\ttargetHelp = \"the /workspaces path of the grant to take away\"\n\t}\n",
       "replace": "",
       "run": "TestRevokeHelpDoesNotDescribeItselfAsGrant",
       "args": []

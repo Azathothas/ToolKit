@@ -11148,8 +11148,6 @@ verdict `wait` returns.
 
 ---
 
----
-
 ## Closing
 
 **Closed 2026-09-27T10:55:59Z.** The final acceptance pass, `-Quick -Instance s34` on `wsl-toolkit-s34`:
@@ -11244,8 +11242,6 @@ timed out by its own deadline, and run as root.
 
 ---
 
----
-
 ## Closing
 
 **Closed 2026-09-27T10:55:59Z.** The final acceptance pass:
@@ -11263,7 +11259,25 @@ acceptance: 101 case(s) passed against a real machine.
 | `--timeout 3s` over a payload that ignores TERM | `wait` exit 124 in 13.5 s: the deadline, then KILL after the grace |
 | `--root`, and `--private-net` | `root` in `/root`; the namespace the attached run uses, not the shared one |
 
-⛔ **The Linux suite found a defect no Windows run could.** `kill -TERM -- "-$pg"` stops nothing in dash, the `/bin/sh` of a Debian base, because dash reads `--` as a process id. The case that runs the four scripts in a real shell went red in `golang:1.25` and green with the form every shell reads.
+⛔ **The Linux suite found a defect no Windows run could.** `kill -TERM --
+"-$pg"` stops nothing in dash, the `/bin/sh` of a Debian or Ubuntu base: dash
+reads `--` as a process id, refuses it and exits 2. The case that runs the four
+scripts in a real shell went red in `golang:1.25` and green with the form every
+shell reads.
+
+⚠ **The KILL after the grace hides a TERM that failed.** With `--` put back in
+the TERM of a stop or of a deadline, the session still ends as stopped or timed
+out, and only the payload's own grace is lost. So the case reads a TERM trap in
+the payload, for a stop and for a deadline. Planted in `golang:1.25`, each form
+fails on that trap and on no earlier line:
+
+```text
+    session_test.go:314: the stop ended the session and the payload never saw TERM
+    session_test.go:321: the deadline ended the session and the payload never saw TERM
+```
+
+A mutation row holds each one, and `TOOL-26`'s closing has the row that found
+the gap.
 
 ## WSL-96. A job container cannot be given a host device
 
@@ -11317,8 +11331,6 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-
 
 Exit 0, with a case that opens `/dev/kvm` in a job and a case that refuses a
 node the account cannot open.
-
----
 
 ---
 
@@ -11377,8 +11389,6 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-
 
 Exit 0, with a case where two concurrent jobs from one workspace each read their
 own `/in` file.
-
----
 
 ---
 
@@ -11445,8 +11455,6 @@ carries a file named `NUL`.
 
 ---
 
----
-
 ## Closing
 
 **Closed 2026-09-27T10:55:59Z.**
@@ -11507,8 +11515,6 @@ Exit 0, with cases for the new channel on each command and for the refusal.
 
 ---
 
----
-
 ## Closing
 
 **Closed 2026-09-27T10:55:59Z.**
@@ -11564,8 +11570,6 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 ```
 
 Exit 0, with a case that walks every subcommand against every flag in the set.
-
----
 
 ---
 
@@ -11775,3 +11779,126 @@ ok    a helper resolves a catalog id against the config as it is now
 ok    helper status says whose configuration the helper is running
 acceptance: 101 case(s) passed against a real machine.
 ```
+
+## WSL-104. `--help` and the manual name flags a subcommand refuses, and `helper` and `config` still ignore flags
+
+**Source** found on 2026-09-27 by the door sweep of issue 34's close-out, in the
+published `wsl-toolkit-v5.0.0`.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`WSL-100` refuses a `base` flag that the subcommand does not read. Two doors
+still describe or accept a flag like that:
+
+- `base SUB --help` and the generated manual list all nine flags of the shared
+  set under each of six subcommands. `base remove --help` lists seven flags
+  that `base remove` refuses, so a reader who follows the help meets the
+  refusal. `base revoke --help` lists `--source` and `--mode`, marked `⛔ not
+  for revoke`, and refuses both.
+- `helper` and `config` share one flag set across their subcommands. A
+  subcommand accepts a flag it does not read, exits as though the flag was not
+  there, and says nothing. That is the dead-configuration row of
+  [`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md).
+
+## Premise
+
+⛔ **Read, and the code is the whole path**, in the published 5.0.0:
+
+| command | flag | what it did |
+| --- | --- | --- |
+| `helper stop` | `--json`, `--detach` | parsed and did nothing. `--json` wrote nothing on stdout |
+| `helper status` | `--detach` | parsed and did nothing |
+| `helper serve` | `--json` with no `--detach` | parsed and did nothing: a helper in the foreground writes its log and no answer |
+| `config` | `--path` | parsed and did nothing: the report is of the configuration the search resolved |
+| `config validate` | `--effective` | parsed and did nothing |
+
+⭐ **Measured on 2026-09-27** with the published binary: `base remove --help`
+listed `-here`, `-json`, `-preset`, `-probe`, `-repair`, `-root`, `-save`,
+`-via-helper` and `-yes`, and `base remove` refuses seven of them. The manual
+listed the same nine flags under each of the six subcommands.
+
+The other groups were read as well. `shipped`, `artifacts` and `images`
+register only what each subcommand reads. `run` and `matrix` share `jobFlags`,
+and both read every one of them, `--device` and `--input` included.
+
+## Approach
+
+`sharedFlags`, in
+[`../tools/windows/wsl-toolkit/shared_flags.go`](../tools/windows/wsl-toolkit/shared_flags.go),
+is one parser for a group whose subcommands share a set:
+
+- each subcommand names the flags it reads;
+- the whole set is parsed only to find a flag the subcommand does not read, and
+  the refusal names the subcommands that read it;
+- the subcommand's own set, which `--help` prints and the manual is generated
+  from, holds only what it reads.
+
+`base`, `base grant` with `base revoke`, `helper` and `config` parse through
+it. `helper serve` reads `--json` with `--detach` alone.
+
+## Decision
+
+⛔ **Taken in the session, unattended, and the operator can reverse it.**
+Refusing a flag that used to parse is a break by
+[`../docs/consumers.md`](../docs/consumers.md), so the version is
+`wsl-toolkit-v6.0.0`. The operator ruled this class a break for `base` in
+`WSL-100`, and the session was told to extend each fix to its class. The
+alternative was 5.0.1 with the help fix alone, which leaves a forbidden pattern
+in a published release.
+
+## Consumers
+
+⛔ **A break**: a call that parsed now refuses, exit 2. Every call it breaks
+passed a flag that did nothing. No row of
+[`../docs/consumers.md`](../docs/consumers.md) and no call in this tree passes
+one.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that holds the three groups to one table written in the
+test: the flags each subcommand publishes, the flags it accepts, and the
+readers each refusal names. An acceptance case drives the published doors.
+
+---
+
+## Closing
+
+**Closed 2026-09-27T15:58:55Z.** The acceptance pass, with a build of this
+tree:
+
+```text
+ok    a base subcommand refuses a flag it does not read, and ensure keeps --probe
+ok    help names only the flags a subcommand reads, and helper and config refuse the rest
+acceptance: 102 case(s) passed against a real machine.
+```
+
+The same build, driven by hand:
+
+```text
+base remove --help           Usage of base remove: -via-helper, -yes. exit 0
+base revoke --help           Usage of base revoke: -json, -target, -via-helper. exit 0
+helper stop --json           helper stop does not read --json, so it is refused rather than ignored. It is read by helper serve, helper status. exit 2
+config --path x.json         config does not read --path, so it is refused rather than ignored. It is read by config validate. exit 2
+config validate --effective  config validate does not read --effective, so it is refused rather than ignored. It is read by config. exit 2
+helper serve --json          helper serve reads --json with --detach alone: a helper in the foreground writes its log to stderr and no answer. Add --detach, or drop --json. exit 2
+```
+
+The generated manual lost 127 lines, and each one described a flag that the
+command it was listed under refuses. The sweep's exemption list lost three
+rows, for `base remove`, `base shell` and `helper stop`: each was listed as a
+`--json` surface that the sweep does not call, and none of the three reads
+`--json`.
+
+8 mutation rows go red: 5 new, and 3 that moved with their code. The row for
+`helper serve --json` came back BROKEN at first, because `go vet` refuses
+`sub == "serve" && sub == ""`, and it plants a subcommand name that is never
+typed now. Planted by hand, the case fails at its answer check in 0.01 s, and
+the helper that the missing refusal starts stops at once in the case's own
+state directory.

@@ -36,6 +36,10 @@ wsl-toolkit examples           # the canonical commands, ready to paste
 is the same manual as a tracked roff page for `man`. It is generated, and a test
 refuses it when it disagrees with the registered commands and flags.
 
+⛔ **A command refuses a flag it does not read.** It exits 2 and names the
+commands that read the flag. So `--help` and the manual list only the flags a
+command reads. `WSL-100`, `WSL-104`.
+
 ---
 
 ## ⭐ Hazards a caller does not have to handle

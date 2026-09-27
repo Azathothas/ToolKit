@@ -21,10 +21,43 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-27
 
+### 2026-09-27T15:47:41Z: every command refuses a flag it does not read, and a session stop proves its TERM
+
+**Record:** `WSL-104` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `TOOL-26` in [`TODO/tooling.md`](TODO/tooling.md), and work order item 9 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no. `wsl-toolkit-v6.0.0` carries it.
+
+⛔ **A MAJOR, because a call that parsed now refuses.** `helper` and `config`
+accepted flags their subcommands never read: `helper stop --json`, `helper
+status --detach`, `config --path` and `config validate --effective` parsed and
+did nothing. Each one exits 2 now and names the subcommands that read the flag.
+[`docs/consumers.md`](docs/consumers.md) lists the break and what a caller does.
+
+⭐ **`--help` and the manual list only the flags a command reads.** In 5.0.0,
+`base remove --help` listed nine flags and `base remove` refuses seven of them.
+One parser serves every group whose subcommands share a flag set.
+
+⭐ **The guard job runs as three shares of the table.** One job was cancelled
+at its 30-minute limit with no verdict. Three shares finish in about 12
+minutes each, and every row runs exactly once.
+
+⚠ **A session stop and a deadline are proved to deliver their TERM.** The KILL
+after the grace hid a TERM that failed, so a guard planted with `--` stayed
+green. The case now reads the payload's own TERM trap.
+
+### 2026-09-27T15:10:21Z: `wsl-toolkit-v5.0.0` published
+
+**Record:** work order item 8 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v5.0.0`, **22 assets**. All 7 release
+jobs green, including the smoke that fetches the release and drives it.
+
+⭐ **Driven after the publish**, on this host after `selfupdate`: the acceptance
+suite, 101 of 101, against the scratch instance, and each command issue 34
+asked for by hand.
+
 ### 2026-09-27T10:55:59Z: issue 34, and the live pages lose their dates
 
 **Record:** `WSL-94` to `WSL-103` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `DOC-08` in [`TODO/docs.md`](TODO/docs.md), and work order item 7 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
-**Deployed:** no. `wsl-toolkit-v5.0.0` carries it.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v5.0.0`.
 
 ⭐ **A job and a base command reach a second process by id.** `run --detach`
 answers with the id at once, and `logs ID --follow`, `wait ID` and `stop ID`

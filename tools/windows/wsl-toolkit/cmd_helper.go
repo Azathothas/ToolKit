@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -19,7 +20,7 @@ const helperUsage = `wsl-toolkit helper <serve|status|stop>
   stop       ask a listening helper to shut down
 
   --detach   serve starts a background copy and returns as soon as it answers
-  --json     a structured answer
+  --json     a structured answer, from status, or from serve with --detach
 
   ⛔ It is a lifetime boundary, not a privilege boundary. It listens on the
   loopback interface, runs as whoever started it, and its token lives in that
@@ -32,11 +33,14 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 		return exitCannot, nil
 	}
 	sub, rest := args[0], args[1:]
-	fs := newFlagSet("helper " + sub)
-	asJSON := fs.Bool("json", false, "write a structured answer")
-	detach := fs.Bool("detach", false, "start a background copy and return once it answers")
-	if err := parseArgs(fs, rest); err != nil {
+	var h helperFlags
+	if err := helperShared.parse(sub, &h, rest); err != nil {
 		return exitCannot, err
+	}
+	// ⛔ A HELPER IN THE FOREGROUND WRITES ITS LOG AND NO ANSWER, so serve reads
+	// --json with --detach alone. WSL-104.
+	if sub == "serve" && h.asJSON && !h.detach {
+		return exitCannot, errors.New("helper serve reads --json with --detach alone: a helper in the foreground writes its log to stderr and no answer. Add --detach, or drop --json")
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -45,8 +49,8 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 
 	switch sub {
 	case "serve":
-		if *detach {
-			return helperDetach(ctx, *asJSON)
+		if h.detach {
+			return helperDetach(ctx, h.asJSON)
 		}
 		// ⚠ A second helper on one machine would overwrite the first's endpoint
 		// file, so the first becomes unreachable while still holding its work.
@@ -68,7 +72,7 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 	case "status":
 		c, err := toolkit.DialHelper(ctx)
 		if err != nil {
-			if *asJSON {
+			if h.asJSON {
 				return exitFailed, writeJSON(map[string]any{
 					"schema": toolkit.HelperSchema, "listening": false, "reason": err.Error(),
 				})
@@ -86,7 +90,7 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 		// so a difference is information rather than a fault. WSL-52.
 		mine := c.Config().Fingerprint()
 		theirs, _ := st["config_fingerprint"].(string)
-		if *asJSON {
+		if h.asJSON {
 			st["listening"] = true
 			st["address"] = c.Endpoint().Address
 			st["client_config_fingerprint"] = mine
@@ -261,4 +265,22 @@ func useHelper(ctx context.Context, forced bool) (*toolkit.HelperClient, error) 
 	default:
 		return nil, nil
 	}
+}
+
+// helperFlags are the values of the flag set the helper subcommands share.
+type helperFlags struct{ asJSON, detach bool }
+
+func (h *helperFlags) bind(fs *flag.FlagSet) {
+	fs.BoolVar(&h.asJSON, "json", false, "write a structured answer. serve writes one with --detach alone")
+	fs.BoolVar(&h.detach, "detach", false, "start a background copy and return once it answers")
+}
+
+// helperShared names what each helper subcommand reads, and stop reads none of
+// the set. `helper stop --json` and `helper status --detach` parsed and did
+// nothing. WSL-104.
+var helperShared = sharedFlags[helperFlags]{
+	group: "helper",
+	order: []string{"serve", "status", "stop"},
+	reads: map[string][]string{"serve": {"json", "detach"}, "status": {"json"}, "stop": {}},
+	bind:  (*helperFlags).bind,
 }

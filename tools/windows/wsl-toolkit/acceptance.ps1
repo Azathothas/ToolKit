@@ -2026,6 +2026,23 @@ try {
         (($bad.Code -eq 2) -and ($bad.Err -match 'does not read --repair') -and ($ensure.Code -eq 0)).ToString()
     }
 
+    # `helper serve --json` is not called here: without its refusal it would
+    # start a helper in the foreground, and Invoke-Tool has no deadline.
+    Test-Case 'help names only the flags a subcommand reads, and helper and config refuse the rest' 'True' {
+        $help = Invoke-Tool @('base', 'remove', '--help')
+        $revoke = Invoke-Tool @('base', 'revoke', '--help')
+        $stop = Invoke-Tool @('helper', 'stop', '--detach')
+        $status = Invoke-Tool @('helper', 'status', '--detach')
+        $path = Invoke-Tool @('config', '--path', 'wsl-toolkit.json')
+        $effective = Invoke-Tool @('config', 'validate', '--effective')
+        (($help.Code -eq 0) -and ($help.Err -match '-yes') -and ($help.Err -notmatch '-root|-probe|-json') -and
+         ($revoke.Code -eq 0) -and ($revoke.Err -match '-target') -and ($revoke.Err -notmatch '-source|-mode') -and
+         ($stop.Code -eq 2) -and ($stop.Err -match 'helper stop does not read --detach') -and
+         ($status.Code -eq 2) -and ($status.Err -match 'It is read by helper serve') -and
+         ($path.Code -eq 2) -and ($path.Err -match 'It is read by config validate') -and
+         ($effective.Code -eq 2) -and ($effective.Err -match 'config validate does not read --effective')).ToString()
+    }
+
     Test-Case 'gc --job through the helper leaves every other job alone' 'True' {
         $start = Invoke-Tool @('helper', 'serve', '--detach', '--json')
         if ($start.Code -ne 0) { return "helper would not start: $($start.Err)" }
@@ -2093,7 +2110,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 101 } else { 108 }
+$expected = if ($Quick) { 102 } else { 109 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++
