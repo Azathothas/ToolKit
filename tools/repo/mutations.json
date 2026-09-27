@@ -227,10 +227,10 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: a session stop signals the group in a form dash reads",
+      "label": "wsl-toolkit: a session stop reaches the payload's whole process group",
       "file": "internal/toolkit/session.go",
       "find": "kill -TERM \"-$pg\" 2>/dev/null\ni=0;",
-      "replace": "kill -TERM -- \"-$pg\" 2>/dev/null\ni=0;",
+      "replace": "kill -TERM \"$pg\" 2>/dev/null\ni=0;",
       "run": "TestASessionRunsStopsTimesOutAndIsFollowedInARealShell",
       "module": "tools/windows/wsl-toolkit",
       "args": []

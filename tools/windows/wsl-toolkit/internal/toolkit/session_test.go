@@ -264,12 +264,32 @@ func TestASessionRunsStopsTimesOutAndIsFollowedInARealShell(t *testing.T) {
 		t.Error("a stream that is not stdout or stderr is accepted")
 	}
 
-	stopped := start("stopped", "sleep 30 &\nsleep 30\n", 0, time.Second)
+	// The payload leaves a child in the background. ⛔ A stop that ends only the
+	// payload's shell ends the session and leaves the child running, so the
+	// child is what says the whole group was reached.
+	stopped := start("stopped", "sleep 30 &\necho $! > child.pid\nsleep 30\n", 0, time.Second)
 	if _, stderr, code := run(stopSessionScript(stopped, time.Second)); code != 0 {
 		t.Fatalf("the stop script exited %d: %s", code, stderr)
 	}
 	if st := state(stopped); st.Alive || !st.Stopped || st.Verdict() != 130 {
 		t.Fatalf("a stopped session reads as %+v", st)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, "child.pid"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := strings.TrimSpace(string(raw))
+	gone := false
+	for i := 0; i < 40 && !gone; i++ {
+		_, _, code := run([]byte("kill -0 " + child + " 2>/dev/null\n"))
+		gone = code != 0
+		if !gone {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	if !gone {
+		_, _, _ = run([]byte("kill -KILL " + child + " 2>/dev/null\n"))
+		t.Fatalf("the stop ended the session and left its child %s running", child)
 	}
 
 	late := start("deadline", "trap '' TERM\nsleep 30\n", time.Second, time.Second)
