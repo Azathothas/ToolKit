@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-27, on issue 34
 baseline        6ec3fbc, gate 24 of 24
 head            this commit, entries closed 2026-09-27T10:55:59Z; wsl-toolkit-v5.0.0 is the next step
-entries         total 139  open 0  blocked 0  done 139
+entries         total 140  open 1  blocked 0  done 139
 this session    issue 34 in full: WSL-94 to WSL-101 built, WSL-102 and WSL-103 found and fixed, DOC-08
 ```
 
@@ -52,8 +52,9 @@ is closed, and the issue gets a comment naming the commits.
    `WSL-93`, filed and closed in the same session.
 7. ⭐ **Closed:** issue 34's entries, `WSL-94` to `WSL-101`, the two defects found
    on the way, `WSL-102` and `WSL-103`, and `DOC-08`.
-8. **`wsl-toolkit-v5.0.0`:** publish it, selfupdate this host to it, drive it end
-   to end, and close issue 34 with a comment naming the commits.
+8. **`wsl-toolkit-v5.0.0`:** `TOOL-26` first, so CI proves the guards again; then
+   publish it, selfupdate this host to it, drive it end to end, and close issue
+   34 with a comment naming the commits.
 
 ## Rulings in force
 

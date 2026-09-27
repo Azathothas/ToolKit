@@ -48,6 +48,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -118,10 +119,51 @@ var runLine = regexp.MustCompile(`(?m)^=== RUN\s+Test`)
 // for a subtest, so the anchor is the marker rather than the start of the line.
 var skipLine = regexp.MustCompile(`(?m)^\s*--- SKIP:\s+Test`)
 
-// Run applies every mutation and reports one verdict each. Progress is written
-// to w as it goes, because a full pass takes minutes and a silent one reads as
-// a hang.
-func Run(root string, t *Table, only string, w io.Writer) ([]Verdict, error) {
+// Selection is which rows one run proves: those whose label contains Only,
+// and of those, the ones in Shard.
+type Selection struct {
+	Only  string
+	Shard Shard
+}
+
+// Shard is the K-th of N runners sharing one table. Row i of the table belongs
+// to runner i mod N + 1, so the rows of one module spread over every runner and
+// no runner waits on the biggest module alone. The zero value is the whole
+// table.
+//
+// ⛔ EVERY ROW BELONGS TO EXACTLY ONE SHARD. The union of N shards is the table
+// and no row runs twice, which a case asserts over every K for several N.
+type Shard struct {
+	K, N int
+}
+
+// ParseShard reads K/N, as 2/3.
+func ParseShard(s string) (Shard, error) {
+	if s == "" {
+		return Shard{}, nil
+	}
+	refused := fmt.Errorf("--shard %q is not K/N with 1 <= K <= N, as 2/3", s)
+	k, n, ok := strings.Cut(s, "/")
+	if !ok {
+		return Shard{}, refused
+	}
+	kk, errK := strconv.Atoi(k)
+	nn, errN := strconv.Atoi(n)
+	if errK != nil || errN != nil || nn < 1 || kk < 1 || kk > nn {
+		return Shard{}, refused
+	}
+	return Shard{K: kk, N: nn}, nil
+}
+
+// Has says whether row i of the table is in this shard.
+func (s Shard) Has(i int) bool {
+	return s.N <= 1 || i%s.N == s.K-1
+}
+
+// Run applies every selected mutation and reports one verdict each. Progress is
+// written to w as it goes, because a full pass takes minutes and a silent one
+// reads as a hang.
+func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
 	width := 0
 	for _, m := range t.Mutations {
 		if len(m.Label) > width {
@@ -137,8 +179,11 @@ func Run(root string, t *Table, only string, w io.Writer) ([]Verdict, error) {
 	st := newStage(root)
 	defer st.cleanup()
 	base := &baselines{seen: map[string]baseline{}}
-	for _, m := range t.Mutations {
-		if only != "" && !strings.Contains(m.Label, only) {
+	for i, m := range t.Mutations {
+		if sel.Only != "" && !strings.Contains(m.Label, sel.Only) {
+			continue
+		}
+		if !sel.Shard.Has(i) {
 			continue
 		}
 		v := one(m, base, st)
@@ -155,7 +200,10 @@ func Run(root string, t *Table, only string, w io.Writer) ([]Verdict, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no mutation's label contains %q", only)
+		if sel.Shard.N > 1 {
+			return nil, fmt.Errorf("shard %d/%d holds no mutation whose label contains %q", sel.Shard.K, sel.Shard.N, sel.Only)
+		}
+		return nil, fmt.Errorf("no mutation's label contains %q", sel.Only)
 	}
 	return out, nil
 }

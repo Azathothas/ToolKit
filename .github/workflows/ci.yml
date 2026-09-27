@@ -222,10 +222,20 @@ jobs:
   # link guard excuses itself and the row is unproved on the operator machine.
   # It runs here. ⚠ The harness reports such a row as SKIPPED rather than as
   # theatre, and it used to conflate the two.
+  #
+  # ⭐ THREE SHARES OF ONE TABLE, ON THREE RUNNERS. One runner did not finish a
+  # table of 503 rows inside the 30-minute limit, and a limit raised to fit
+  # makes every push wait on it. `--shard K/N`
+  # gives runner K the rows whose place in the table is K modulo N, so every
+  # module's rows spread over all three and every row runs exactly once.
   mutations:
-    name: the guards go red when the guard is gone
+    name: the guards go red when the guard is gone (${{ matrix.shard }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -238,11 +248,13 @@ jobs:
       # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped. The harness exits 1
       # on a theatre row and on a broken one, and 0 when the only unproved rows
       # are ones this host could not reach - which here should be none.
-      - name: every row of the mutation table
+      - name: one share of the mutation table
         shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           cd tools/repo
-          go run . mutate
+          go run . mutate --shard "$SHARD"
 
   # -- the two probes must agree. The drift rule, with a machine behind it ----
   twins:

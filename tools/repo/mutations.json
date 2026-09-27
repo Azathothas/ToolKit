@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "repo: a shard holds only its own rows",
+      "file": "internal/mutate/mutate.go",
+      "find": "\treturn s.N <= 1 || i%s.N == s.K-1\n",
+      "replace": "\treturn s.N >= 0\n",
+      "run": "TestEveryRowBelongsToExactlyOneShard",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "repo: a shard is read as K over N",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tif errK != nil || errN != nil || nn < 1 || kk < 1 || kk > nn {\n",
+      "replace": "\tif errK != nil || errN != nil {\n",
+      "run": "TestAShardIsReadAsKOverN",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a preassigned id is read only by a detached owner",
       "file": "internal/toolkit/jobowner.go",
       "find": "\tif id == \"\" || strings.TrimSpace(os.Getenv(DetachedEnv)) == \"\" {\n",

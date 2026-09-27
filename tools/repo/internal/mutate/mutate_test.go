@@ -147,7 +147,7 @@ func TestRunTellsTheFourOutcomesApart(t *testing.T) {
 
 	tb := &Table{Schema: TableSchema, Mutations: []Mutation{real, theatre, broken, missing, noCase, skipped}}
 	var log bytes.Buffer
-	got, err := Run(root, tb, "", &log)
+	got, err := Run(root, tb, Selection{}, &log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,13 +224,61 @@ func TestReportFailsOnEveryRowThatDisagrees(t *testing.T) {
 	}
 }
 
+// TestEveryRowBelongsToExactlyOneShard: N runners sharing one table prove the
+// whole of it, and none proves a row another already did.
+func TestEveryRowBelongsToExactlyOneShard(t *testing.T) {
+	for _, n := range []int{1, 2, 3, 7} {
+		for i := 0; i < 50; i++ {
+			owners := 0
+			for k := 1; k <= n; k++ {
+				if (Shard{K: k, N: n}).Has(i) {
+					owners++
+				}
+			}
+			if owners != 1 {
+				t.Fatalf("row %d is in %d of %d shards", i, owners, n)
+			}
+		}
+	}
+	for i := 0; i < 5; i++ {
+		if !(Shard{}).Has(i) {
+			t.Fatalf("the zero shard leaves out row %d, and it is the whole table", i)
+		}
+	}
+}
+
+func TestAShardIsReadAsKOverN(t *testing.T) {
+	for in, want := range map[string]Shard{"": {}, "1/1": {K: 1, N: 1}, "2/3": {K: 2, N: 3}, "3/3": {K: 3, N: 3}} {
+		if got, err := ParseShard(in); err != nil || got != want {
+			t.Errorf("%q read as %+v, %v", in, got, err)
+		}
+	}
+	for _, bad := range []string{"0/3", "4/3", "1/0", "a/b", "1", "1/2/3", "-1/2", " 1/2", "1/ 2", "/"} {
+		if _, err := ParseShard(bad); err == nil {
+			t.Errorf("%q is accepted", bad)
+		}
+	}
+}
+
+// TestAShardThatSelectsNothingIsRefused: a shard past the end of a small table
+// runs nothing, and nothing is not a clean run.
+func TestAShardThatSelectsNothingIsRefused(t *testing.T) {
+	tb := &Table{Schema: TableSchema, Mutations: []Mutation{
+		{Label: "a guard"},
+	}}
+	var out bytes.Buffer
+	if _, err := Run(t.TempDir(), tb, Selection{Shard: Shard{K: 2, N: 2}}, &out); err == nil || !strings.Contains(err.Error(), "shard 2/2") {
+		t.Fatalf("an empty shard answered %v", err)
+	}
+}
+
 // TestRunRefusesAFilterThatSelectsNothing. ⛔ Zero rows run and exit 0 is the
 // answer this whole file exists to prevent.
 func TestRunRefusesAFilterThatSelectsNothing(t *testing.T) {
 	only := Mutation{Label: "a guard"}
 	tb := &Table{Schema: TableSchema, Mutations: []Mutation{only}}
 	var out bytes.Buffer
-	if _, err := Run(t.TempDir(), tb, "no such label", &out); err == nil {
+	if _, err := Run(t.TempDir(), tb, Selection{Only: "no such label"}, &out); err == nil {
 		t.Fatal("a filter that selected nothing was reported as a clean run")
 	}
 }
@@ -260,7 +308,7 @@ func TestARowWhoseCaseWasAlreadyRedIsRefused(t *testing.T) {
 	}
 	tb := &Table{Schema: TableSchema, Mutations: []Mutation{m}}
 	var log bytes.Buffer
-	got, err := Run(root, tb, "", &log)
+	got, err := Run(root, tb, Selection{}, &log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +346,7 @@ func TestABrokenRowSaysWhatTheCompilerSaid(t *testing.T) {
 	}
 	tb := &Table{Schema: TableSchema, Mutations: []Mutation{m}}
 	var log bytes.Buffer
-	got, err := Run(root, tb, "", &log)
+	got, err := Run(root, tb, Selection{}, &log)
 	if err != nil {
 		t.Fatal(err)
 	}

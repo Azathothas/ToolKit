@@ -2757,3 +2757,35 @@ match text is left off the lines above for the same reason as in the premise.
 ```text
   ok       a Windows home path found with either separator      1 case(s), went red
 ```
+
+## TOOL-26. The job that proves every guard cannot finish the table it proves
+
+**Source** found on 2026-09-27 when CI cancelled the guard job on `c96873b`
+after 30 minutes, the job's own limit, and on `a20b4d2` before it.
+**Category** tooling, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The CI job that runs `repo mutate` over the whole table is cancelled by its
+30-minute limit, so no push proves its guards and every run reads cancelled
+rather than red or green.
+
+## Premise
+
+⛔ **Measured on 2026-09-27.** The table held 503 rows. The job started at
+11:11:07Z and was cancelled at 11:41:23Z with no verdict. The same job took
+19.7, 24.0 and 24.4 minutes over 419 rows, which is `09eea4f`'s measurement,
+so the growth from issue 34's rows carried it past the limit.
+
+## Approach
+
+`repo mutate --shard K/N` proves the rows whose place in the table is K modulo
+N, and the job becomes three runners, one share each. Every row runs exactly
+once, and every module's rows spread over all three. A limit raised to fit was
+the alternative, and it makes every push wait on one runner.
+
+## Prove
+
+Exit 0 on every share, in CI, on the commit that carries this change.

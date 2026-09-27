@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 139  open 0  blocked 0  done 139
+total 140  open 1  blocked 0  done 139
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 0 | 0 | 70 | 70 |
+| P1 | 1 | 0 | 70 | 71 |
 | P2 | 0 | 0 | 58 | 58 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **0** | **0** | **139** | **139** |
+| **all** | **1** | **0** | **139** | **140** |
 
 ---
 
@@ -73,6 +73,7 @@ total 139  open 0  blocked 0  done 139
 | TOOL-23 | P1 | S | done | The bundle rule rebuilt the products it was meant to compare | [`tooling.md`](tooling.md) |
 | TOOL-24 | P1 | S | done | The gate printed a check that could not run as a pass | [`tooling.md`](tooling.md) |
 | TOOL-25 | P1 | S | done | The secrets rule could not see a Windows home path | [`tooling.md`](tooling.md) |
+| TOOL-26 | P1 | S | open | The job that proves every guard cannot finish the table it proves | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

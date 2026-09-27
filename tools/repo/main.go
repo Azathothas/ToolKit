@@ -170,8 +170,14 @@ func runMutate(args []string) int {
 	fs := newFlagSet("mutate")
 	table := fs.String("table", "", "the mutation table. Empty reads tools/repo/mutations.json from the repository root")
 	only := fs.String("only", "", "run just the mutations whose label contains this")
+	shardFlag := fs.String("shard", "", "K/N: run the K-th of N shares of the table, so N runners prove it together")
 	if code, done := exitFor(parseArgs(fs, args)); done {
 		return code
+	}
+	shard, err := mutate.ParseShard(*shardFlag)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
+		return 2
 	}
 	repo, err := gitrepo.Open()
 	if err != nil {
@@ -187,7 +193,7 @@ func runMutate(args []string) int {
 		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
 		return 2
 	}
-	verdicts, err := mutate.Run(repo.Root, t, *only, os.Stdout)
+	verdicts, err := mutate.Run(repo.Root, t, mutate.Selection{Only: *only, Shard: shard}, os.Stdout)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
 		return 2
