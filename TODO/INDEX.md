@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 128  open 0  blocked 0  done 128
+total 137  open 9  blocked 0  done 128
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 3 | 3 |
-| P1 | 0 | 0 | 67 | 67 |
-| P2 | 0 | 0 | 51 | 51 |
+| P1 | 2 | 0 | 67 | 69 |
+| P2 | 7 | 0 | 51 | 58 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **0** | **0** | **128** | **128** |
+| **all** | **9** | **0** | **128** | **137** |
 
 ---
 
@@ -47,6 +47,7 @@ total 128  open 0  blocked 0  done 128
 | DOC-05 | P1 | M | done | `docs/AGENTS.md`, and what `README.md` is for | [`docs.md`](docs.md) |
 | DOC-06 | P1 | M | done | The documents carry the story of their own fixes | [`docs.md`](docs.md) |
 | DOC-07 | P2 | S | done | There are two AGENTS.md files | [`docs.md`](docs.md) |
+| DOC-08 | P2 | L | open | The live pages carry dated measurements and the story of their own work again | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
@@ -138,6 +139,14 @@ total 128  open 0  blocked 0  done 128
 | WSL-91 | P2 | S | done | The consumer smoke can only break after a release | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-92 | P1 | M | done | text-tool becomes a product an agent downloads, not a script in a checkout | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-93 | P1 | S | done | `--between` is the one edit operation with no required count, and it deletes the most | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-94 | P1 | L | open | A job whose client is gone can be neither stopped, followed nor waited on | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-95 | P2 | M | open | A long base drive has to be held in a foreground client | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-96 | P2 | S | open | A job container cannot be given a host device | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-97 | P2 | S | open | A job takes one payload file, so a second one travels through the workspace and collides | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-98 | P2 | S | open | A workspace copy that fails does not always name the file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-99 | P2 | S | open | Only `distro` has a channel no shell can reach into, and Git Bash rewrites the rest | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-100 | P2 | S | open | The `base` group accepts flags its subcommands never read | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-101 | P1 | S | open | `--redact` keeps a secret off the screen and writes it to the answer and the transcript | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

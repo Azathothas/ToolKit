@@ -51,6 +51,9 @@ func cmdBaseAgent(ctx context.Context, args []string) (int, error) {
 	if len(passed) > 0 && passed[0] == "--" {
 		passed = passed[1:]
 	}
+	if err := gitBashRewriteAny("an argument to "+name, passed, guestText); err != nil {
+		return exitCannot, err
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err

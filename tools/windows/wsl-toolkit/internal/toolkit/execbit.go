@@ -140,7 +140,7 @@ func plural(n int, noun string) string {
 // same file immediately afterwards and reports the real error there, with the
 // path in it.
 func hasShebang(absPath string) bool {
-	f, err := os.Open(absPath)
+	f, err := os.Open(deviceSafePath(absPath))
 	if err != nil {
 		return false
 	}

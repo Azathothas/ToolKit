@@ -61,6 +61,9 @@ func cmdBaseHerdr(ctx context.Context, args []string) (int, error) {
 		fmt.Fprint(os.Stderr, baseHerdrUsage)
 		return exitCannot, errors.New("base herdr takes herdr's own arguments: base herdr -- agent list")
 	}
+	if err := gitBashRewriteAny("an argument to herdr", passed, guestText); err != nil {
+		return exitCannot, err
+	}
 	// ⛔ A BARE `herdr` LAUNCHES OR ATTACHES ITS TERMINAL UI, which herdr's own agent
 	// skill says in those words, and there is no terminal on this path. Naming the
 	// route beats a command that hangs with nothing to draw on.

@@ -25,6 +25,8 @@ type MatrixSpec struct {
 	Limits             WorkspaceLimits
 	Transcripts        string
 	User               string
+	Devices            []JobDevice
+	Inputs             []JobInput
 	MaxOutput          int64
 	// OnRow is called once per row, THE MOMENT IT FINISHES rather than when the
 	// fleet does.
@@ -42,6 +44,23 @@ type MatrixSpec struct {
 	OnTick func(TickEvent)
 	// TickEvery overrides the interval. Zero means the default.
 	TickEvery time.Duration
+}
+
+// rowSpec is one row's job: the fleet's settings, this row's image, and the
+// staged workspace every row copies from.
+//
+// ⛔ A FIELD THE FLEET CARRIES REACHES EVERY ROW. It is a function of its own so
+// TestEveryMatrixFieldReachesItsRows can hold every field the two types share,
+// which a literal inside a goroutine could drop with nothing to say so.
+func rowSpec(spec MatrixSpec, img Image, staged, artifacts string, limits WorkspaceLimits) JobSpec {
+	return JobSpec{
+		Image: img.Ref, Script: spec.Script, StagedFrom: staged,
+		Workspace: "", ArtifactDir: artifacts, Env: spec.Env,
+		Timeout: spec.Timeout, Network: spec.Network, Limits: limits,
+		Platform: spec.Platform, ContainerLifecycle: spec.ContainerLifecycle,
+		Label: img.ID, User: spec.User, Devices: spec.Devices, Inputs: spec.Inputs, MaxOutput: spec.MaxOutput,
+		OnTick: spec.OnTick, TickEvery: spec.TickEvery,
+	}
 }
 
 // MatrixReport is what a fleet run produced.
@@ -182,14 +201,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 			if spec.ArtifactDir != "" {
 				artifacts = joinHostPath(spec.ArtifactDir, img.ID)
 			}
-			rows[i] = r.Run(ctx, JobSpec{
-				Image: img.Ref, Script: spec.Script, StagedFrom: staged,
-				Workspace: "", ArtifactDir: artifacts, Env: spec.Env,
-				Timeout: spec.Timeout, Network: spec.Network, Limits: limits,
-				Platform: spec.Platform, ContainerLifecycle: spec.ContainerLifecycle,
-				Label: img.ID, User: spec.User, MaxOutput: spec.MaxOutput,
-				OnTick: spec.OnTick, TickEvery: spec.TickEvery,
-			})
+			rows[i] = r.Run(ctx, rowSpec(spec, img, staged, artifacts, limits))
 			if spec.Transcripts != "" {
 				if err := r.WriteTranscript(spec.Transcripts, &rows[i]); err != nil {
 					r.log("could not write the transcript for " + img.ID + ": " + err.Error())

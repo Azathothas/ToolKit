@@ -1815,7 +1815,7 @@ func TestPlatformAndLifecycleReachPodman(t *testing.T) {
 	persistent := string(runner.containerScript(JobSpec{
 		Image: "docker.io/library/alpine:latest", Platform: "linux/arm64",
 		ContainerLifecycle: ContainerPersistent,
-	}, "wtk-one", "/jobs/one/work", "/jobs/one/out", "/jobs/one/job.sh", "marker"))
+	}, "wtk-one", jobLayout("/home/toolkit", "one"), "marker"))
 	if strings.Contains(persistent, "'--rm'") {
 		t.Fatal("a persistent job still has --rm")
 	}
@@ -1825,7 +1825,7 @@ func TestPlatformAndLifecycleReachPodman(t *testing.T) {
 
 	ephemeral := string(runner.containerScript(JobSpec{
 		Image: "docker.io/library/alpine:latest", ContainerLifecycle: ContainerEphemeral,
-	}, "wtk-two", "/jobs/two/work", "/jobs/two/out", "/jobs/two/job.sh", "marker"))
+	}, "wtk-two", jobLayout("/home/toolkit", "two"), "marker"))
 	if !strings.Contains(ephemeral, "'--rm'") {
 		t.Fatal("an ephemeral job does not have --rm")
 	}

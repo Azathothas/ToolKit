@@ -122,6 +122,9 @@ type relayStream struct {
 	since   time.Duration
 	lines   int
 	bytes   int64
+	// copiedTail is true once the unterminated tail in pending is in the copy,
+	// so a later flush of the same bytes for rendering does not copy them twice.
+	copiedTail bool
 }
 
 type progressReading struct {
@@ -175,6 +178,66 @@ type RunLog struct {
 	// manual leaves check to its caller rather than a timer, so a case can drive
 	// the flush and the heartbeat against a clock it controls.
 	manual bool
+	// copyOut and copyErr receive the command's bytes with every redaction
+	// applied, for a caller that keeps a copy of the output. Nil means none.
+	//
+	// ⛔ A COPY KEPT BESIDE THE RELAY BYPASSES THE REDACTION. The copy has to be
+	// fed from here, line by line, with each line's own ending, or a secret the
+	// caller asked to redact reaches the copy as it was written. WSL-101.
+	copyOut io.Writer
+	copyErr io.Writer
+}
+
+// Redacts reports whether a redaction is in force for this relay.
+func (r *RunLog) Redacts() bool { return len(r.s.redact) > 0 }
+
+// CopyLinesTo makes this relay the one writer of a caller's copy of each stream.
+// Every line goes to the copy with the redactions applied and with its own
+// ending: LF, CRLF, a lone CR, or none for a tail with no newline. No line bound
+// applies, because a copy is complete.
+func (r *RunLog) CopyLinesTo(out, err io.Writer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.copyOut, r.copyErr = out, err
+}
+
+// FlushCopies writes each stream's unterminated tail to the copy.
+//
+// ⚠ IT RENDERS NOTHING. The tail stays pending, so Finish still shows it and
+// records it, and copiedTail stops that flush from copying it a second time.
+// A caller calls this after the command has ended and before it reads its copy.
+func (r *RunLog) FlushCopies() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, st := range []*relayStream{&r.out, &r.err} {
+		r.copyPending(st)
+	}
+}
+
+// copyLine writes one line to its stream's copy, redacted, followed by end.
+func (r *RunLog) copyLine(tag, text, end string) {
+	w := r.copyOut
+	if tag == "err" {
+		w = r.copyErr
+	}
+	if w == nil {
+		return
+	}
+	_, _ = io.WriteString(w, r.s.Redact(text)+end)
+}
+
+// copyPending writes a stream's unterminated tail to the copy once. A held
+// carriage return at the end of the tail is written as the byte it is.
+func (r *RunLog) copyPending(st *relayStream) {
+	if st.copiedTail || len(st.pending) == 0 {
+		return
+	}
+	st.copiedTail = true
+	text, end := string(st.pending), ""
+	if strings.HasSuffix(text, "\r") {
+		text, end = strings.TrimSuffix(text, "\r"), "\r"
+	}
+	r.copyLine(st.tag, text, end)
 }
 
 // OpenRunLog opens every sink before anything is created, so an unwritable log
@@ -352,6 +415,7 @@ func (r *RunLog) receive(tag string, p []byte) {
 	for i := 0; i < len(buf); i++ {
 		switch buf[i] {
 		case '\n':
+			r.copyLine(st.tag, string(buf[start:i]), "\n")
 			r.line(st, string(buf[start:i]), false, now)
 			start, emitted = i+1, true
 		case '\r':
@@ -362,11 +426,13 @@ func (r *RunLog) receive(tag string, p []byte) {
 				continue
 			}
 			if buf[i+1] == '\n' {
+				r.copyLine(st.tag, string(buf[start:i]), "\r\n")
 				r.line(st, string(buf[start:i]), false, now)
 				i++
 			} else {
 				// A carriage return ends a line that is being redrawn, which is
 				// what makes a progress meter visible at all.
+				r.copyLine(st.tag, string(buf[start:i]), "\r")
 				r.line(st, string(buf[start:i]), true, now)
 			}
 			start, emitted = i+1, true
@@ -375,6 +441,7 @@ func (r *RunLog) receive(tag string, p []byte) {
 	st.pending = append([]byte(nil), buf[start:]...)
 	for len(st.pending) > MaxLineBytesLimit {
 		cut := utf8Cut(st.pending, MaxLineBytesLimit)
+		r.copyLine(st.tag, string(st.pending[:cut]), "")
 		r.line(st, string(st.pending[:cut]), true, now)
 		st.pending = append([]byte(nil), st.pending[cut:]...)
 		emitted = true
@@ -595,8 +662,9 @@ func (r *RunLog) check() {
 		if len(st.pending) > 0 && now-st.since >= StreamFlushAfter {
 			// ⭐ A PROMPT WAITING ON INPUT IS EXACTLY THIS SHAPE, and it is the
 			// one case where showing nothing means waiting forever.
+			r.copyPending(st)
 			r.line(st, pendingText(st.pending), true, now)
-			st.pending = nil
+			st.pending, st.copiedTail = nil, false
 			r.lastLine, r.lastTick = now, now
 		}
 	}
@@ -832,8 +900,9 @@ func (r *RunLog) Finish(o RunOutcome) error {
 	now := r.elapsed()
 	for _, st := range []*relayStream{&r.out, &r.err} {
 		if len(st.pending) > 0 {
+			r.copyPending(st)
 			r.line(st, pendingText(st.pending), true, now)
-			st.pending = nil
+			st.pending, st.copiedTail = nil, false
 		}
 	}
 	switch {

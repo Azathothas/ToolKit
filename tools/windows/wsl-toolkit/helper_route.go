@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"os"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -15,8 +17,13 @@ import (
 // client builds the workspace archive and extracts the artifacts itself, with
 // the same validation, so the helper never opens a path a caller named.
 
-func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref, label string, payload []byte, env map[string]string) (toolkit.JobResult, error) {
+func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref, label string, payload []byte, env map[string]string, devices []toolkit.JobDevice, inputs []toolkit.JobInput) (toolkit.JobResult, error) {
+	wireInputs, err := helperInputs(inputs)
+	if err != nil {
+		return toolkit.JobResult{}, err
+	}
 	req := toolkit.HelperRunRequest{
+		Devices: helperDevices(devices), Inputs: wireInputs,
 		Image: ref, ScriptB64: toolkit.EncodeScript(payload), Env: env,
 		TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
@@ -68,9 +75,14 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 	return res, nil
 }
 
-func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, images []string, parallel int, payload []byte, env map[string]string, transcripts string) (toolkit.MatrixReport, error) {
+func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, images []string, parallel int, payload []byte, env map[string]string, devices []toolkit.JobDevice, inputs []toolkit.JobInput, transcripts string) (toolkit.MatrixReport, error) {
+	wireInputs, err := helperInputs(inputs)
+	if err != nil {
+		return toolkit.MatrixReport{}, err
+	}
 	req := toolkit.HelperMatrixRequest{
 		HelperRunRequest: toolkit.HelperRunRequest{
+			Devices: helperDevices(devices), Inputs: wireInputs,
 			ScriptB64: toolkit.EncodeScript(payload), Env: env,
 			TimeoutMS: j.timeout.Milliseconds(), Network: !j.noNetwork,
 			Platform: j.platform, ContainerLifecycle: j.lifecycle,
@@ -119,6 +131,39 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 		}
 	}
 	return report, nil
+}
+
+// helperDevices is each --device in podman's spelling, which the helper parses
+// again rather than trusting.
+func helperDevices(devices []toolkit.JobDevice) []string {
+	var out []string
+	for _, d := range devices {
+		out = append(out, d.String())
+	}
+	return out
+}
+
+// helperInputs reads each input file into the request.
+//
+// ⚠ THEY TRAVEL INSIDE ONE JSON BODY, which the helper caps, so a set past
+// MaxHelperInputBytes is refused here, naming the workspace as the route for a
+// larger file.
+func helperInputs(inputs []toolkit.JobInput) ([]toolkit.HelperInput, error) {
+	var out []toolkit.HelperInput
+	var total int64
+	for _, in := range inputs {
+		b, err := os.ReadFile(in.Path)
+		if err != nil {
+			return nil, fmt.Errorf("--input %s=%s: %w", in.Name, in.Path, err)
+		}
+		total += int64(len(b))
+		if total > toolkit.MaxHelperInputBytes {
+			return nil, fmt.Errorf("the inputs pass %s, which is what one request to the helper carries. A larger file travels in the workspace",
+				toolkit.HumanBytes(toolkit.MaxHelperInputBytes))
+		}
+		out = append(out, toolkit.HelperInput{Name: in.Name, B64: base64.StdEncoding.EncodeToString(b)})
+	}
+	return out, nil
 }
 
 // newClientSpool opens one, tolerating a machine with no writable state

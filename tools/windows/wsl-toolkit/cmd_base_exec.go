@@ -25,6 +25,7 @@ const baseExecUsage = `wsl-toolkit base exec (-c COMMAND | --script FILE)
 
 type baseExecFlags struct {
 	command    string
+	commandB64 string
 	scriptFile string
 	dir        string
 	timeout    time.Duration
@@ -35,6 +36,7 @@ type baseExecFlags struct {
 
 func (e *baseExecFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&e.command, "c", "", "the POSIX shell command to run in the base")
+	fs.StringVar(&e.commandB64, "command-base64", "", "the command as base64 of its bytes, for a caller that must keep every shell away from it")
 	fs.StringVar(&e.scriptFile, "script", "", "a file on this machine whose bytes are the command")
 	fs.StringVar(&e.dir, "dir", "~", "working directory inside the guest. Default is its home")
 	fs.DurationVar(&e.timeout, "timeout", 30*time.Minute, "how long the command may run. 0 means no deadline")
@@ -44,7 +46,7 @@ func (e *baseExecFlags) bind(fs *flag.FlagSet) {
 }
 
 func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) {
-	payload, err := guestScript(e.command, e.scriptFile)
+	payload, err := guestScript(e.command, e.commandB64, e.scriptFile)
 	if err != nil {
 		return toolkit.ExecRequest{}, err
 	}
@@ -52,6 +54,9 @@ func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) 
 		return toolkit.ExecRequest{}, fmt.Errorf("--timeout %s is negative. Pass 0 for no deadline, or a positive duration", e.timeout)
 	}
 	dir := strings.TrimSpace(e.dir)
+	if err := gitBashRewrite("--dir", dir, guestPath); err != nil {
+		return toolkit.ExecRequest{}, err
+	}
 	if dir != "~" && !strings.HasPrefix(dir, "/") {
 		return toolkit.ExecRequest{}, fmt.Errorf("--dir %q is not a guest absolute path. Pass ~ or a path beginning with /", e.dir)
 	}

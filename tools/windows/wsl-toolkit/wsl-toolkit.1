@@ -60,31 +60,31 @@ manage the WSL distribution that this tool owns
 .B wsl-toolkit base status
 .TP
 \fB--here\fR
-base shell starts in this Windows directory instead of the guest account's home
+shell starts in this Windows directory instead of the guest account's home
 .TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--preset\fR
-build from this preset id or fully qualified reference
+ensure and recreate build from this preset id or fully qualified reference
 .TP
 \fB--probe\fR
-run a real container to decide whether the base is usable
+status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
 .TP
 \fB--repair\fR
-ensure may clear engine run state a reboot invalidated. Off by default
+ensure and recreate may clear engine run state a reboot invalidated. Off by default
 .TP
 \fB--root\fR
-attach as root
+shell attaches as root
 .TP
 \fB--save\fR
-also store the preset as the default for later commands
+ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
 \fB--yes\fR
-do not ask before removing
+remove does not ask before removing
 .TP
 .B wsl-toolkit base doors
 .TP
@@ -97,123 +97,126 @@ prove the helper refusal for the doors probe
 .B wsl-toolkit base ensure
 .TP
 \fB--here\fR
-base shell starts in this Windows directory instead of the guest account's home
+shell starts in this Windows directory instead of the guest account's home
 .TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--preset\fR
-build from this preset id or fully qualified reference
+ensure and recreate build from this preset id or fully qualified reference
 .TP
 \fB--probe\fR
-run a real container to decide whether the base is usable
+status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
 .TP
 \fB--repair\fR
-ensure may clear engine run state a reboot invalidated. Off by default
+ensure and recreate may clear engine run state a reboot invalidated. Off by default
 .TP
 \fB--root\fR
-attach as root
+shell attaches as root
 .TP
 \fB--save\fR
-also store the preset as the default for later commands
+ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
 \fB--yes\fR
-do not ask before removing
+remove does not ask before removing
 .TP
 .B wsl-toolkit base recreate
 .TP
 \fB--here\fR
-base shell starts in this Windows directory instead of the guest account's home
+shell starts in this Windows directory instead of the guest account's home
 .TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--preset\fR
-build from this preset id or fully qualified reference
+ensure and recreate build from this preset id or fully qualified reference
 .TP
 \fB--probe\fR
-run a real container to decide whether the base is usable
+status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
 .TP
 \fB--repair\fR
-ensure may clear engine run state a reboot invalidated. Off by default
+ensure and recreate may clear engine run state a reboot invalidated. Off by default
 .TP
 \fB--root\fR
-attach as root
+shell attaches as root
 .TP
 \fB--save\fR
-also store the preset as the default for later commands
+ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
 \fB--yes\fR
-do not ask before removing
+remove does not ask before removing
 .TP
 .B wsl-toolkit base remove
 .TP
 \fB--here\fR
-base shell starts in this Windows directory instead of the guest account's home
+shell starts in this Windows directory instead of the guest account's home
 .TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--preset\fR
-build from this preset id or fully qualified reference
+ensure and recreate build from this preset id or fully qualified reference
 .TP
 \fB--probe\fR
-run a real container to decide whether the base is usable
+status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
 .TP
 \fB--repair\fR
-ensure may clear engine run state a reboot invalidated. Off by default
+ensure and recreate may clear engine run state a reboot invalidated. Off by default
 .TP
 \fB--root\fR
-attach as root
+shell attaches as root
 .TP
 \fB--save\fR
-also store the preset as the default for later commands
+ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
 \fB--yes\fR
-do not ask before removing
+remove does not ask before removing
 .TP
 .B wsl-toolkit base shell
 .TP
 \fB--here\fR
-base shell starts in this Windows directory instead of the guest account's home
+shell starts in this Windows directory instead of the guest account's home
 .TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--preset\fR
-build from this preset id or fully qualified reference
+ensure and recreate build from this preset id or fully qualified reference
 .TP
 \fB--probe\fR
-run a real container to decide whether the base is usable
+status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
 .TP
 \fB--repair\fR
-ensure may clear engine run state a reboot invalidated. Off by default
+ensure and recreate may clear engine run state a reboot invalidated. Off by default
 .TP
 \fB--root\fR
-attach as root
+shell attaches as root
 .TP
 \fB--save\fR
-also store the preset as the default for later commands
+ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
 \fB--yes\fR
-do not ask before removing
+remove does not ask before removing
 .TP
 .B wsl-toolkit base exec
 .TP
 \fB-c\fR
 the POSIX shell command to run in the base
+.TP
+\fB--command-base64\fR
+the command as base64 of its bytes, for a caller that must keep every shell away from it
 .TP
 \fB--dir\fR
 working directory inside the guest. Default is its home. Default: ~.
@@ -279,31 +282,31 @@ prove the helper refusal for a revoke
 .B wsl-toolkit base attach
 .TP
 \fB--here\fR
-base shell starts in this Windows directory instead of the guest account's home
+shell starts in this Windows directory instead of the guest account's home
 .TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--preset\fR
-build from this preset id or fully qualified reference
+ensure and recreate build from this preset id or fully qualified reference
 .TP
 \fB--probe\fR
-run a real container to decide whether the base is usable
+status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag
 .TP
 \fB--repair\fR
-ensure may clear engine run state a reboot invalidated. Off by default
+ensure and recreate may clear engine run state a reboot invalidated. Off by default
 .TP
 \fB--root\fR
-attach as root
+shell attaches as root
 .TP
 \fB--save\fR
-also store the preset as the default for later commands
+ensure and recreate also store the preset as the default for later commands
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
 \fB--yes\fR
-do not ask before removing
+remove does not ask before removing
 .TP
 .B wsl-toolkit base presets
 .TP
@@ -344,8 +347,14 @@ the shell command to run in the container
 \fB--color\fR
 colour the live prefix: auto, always or never. A file is never coloured. Default: auto.
 .TP
+\fB--command-base64\fR
+the command as base64 of its bytes, for a caller that must keep every shell away from it
+.TP
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--device\fR
+a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it
 .TP
 \fB--ensure-base\fR
 build the base first when it is missing or unusable. Default: true.
@@ -361,6 +370,9 @@ a glob to leave out of the workspace copy. Repeatable
 .TP
 \fB--image\fR
 a catalog id or a fully qualified reference
+.TP
+\fB--input\fR
+NAME=FILE: a file on this machine the container reads at /in/NAME, read-only and byte for byte. Repeatable
 .TP
 \fB--json\fR
 write a structured answer
@@ -444,8 +456,14 @@ a directory on this machine to receive whatever the container leaves in /out
 \fB-c\fR
 the shell command to run in the container
 .TP
+\fB--command-base64\fR
+the command as base64 of its bytes, for a caller that must keep every shell away from it
+.TP
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--device\fR
+a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it
 .TP
 \fB--ensure-base\fR
 build the base first when it is missing or unusable. Default: true.
@@ -458,6 +476,9 @@ a glob to leave out of the workspace copy. Repeatable
 .TP
 \fB--images\fR
 catalog ids, libc:musl, kind:legacy or all. Comma separated. Empty means the configured default
+.TP
+\fB--input\fR
+NAME=FILE: a file on this machine the container reads at /in/NAME, read-only and byte for byte. Repeatable
 .TP
 \fB--json\fR
 write a structured answer
@@ -958,6 +979,9 @@ write a structured answer
 .TP
 \fB-c\fR
 the command to run at a root shell in the guest
+.TP
+\fB--command-base64\fR
+the command as base64 of its bytes, for a caller that must keep every shell away from it
 .TP
 \fB--cpus\fR
 guest processor count. Default: 1.

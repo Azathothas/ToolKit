@@ -2,6 +2,429 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a device is a node under /dev",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\tif underDev && !strings.HasPrefix(p, \"/dev/\") {\n",
+      "replace": "\tif underDev && !strings.HasPrefix(p, \"/\") {\n",
+      "run": "TestADeviceIsReadInPodmansOwnSpelling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a device path is in its clean form",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\tif path.Clean(p) != p {\n",
+      "replace": "\tif path.Clean(p) != p && !underDev {\n",
+      "run": "TestADeviceIsReadInPodmansOwnSpelling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: device permissions are r, w and m",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "strings.Trim(d.Perms, \"rwm\") != \"\"",
+      "replace": "strings.Trim(d.Perms, \"rwmx\") != \"\"",
+      "run": "TestADeviceIsReadInPodmansOwnSpelling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's devices reach podman",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\targs = append(args, \"--device\", d.String())\n",
+      "replace": "\t\t_ = d\n",
+      "run": "TestDevicesInputsAndTheEngineDeadlineReachPodman",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the device check runs before the engine",
+      "file": "internal/toolkit/job.go",
+      "find": "\tb.WriteString(deviceCheckScript(spec.Devices))\n",
+      "replace": "",
+      "run": "TestDevicesInputsAndTheEngineDeadlineReachPodman",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the device check names an absent node",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\"if [ ! -e %s ]; then echo",
+      "replace": "\"if [ -e %s ] && false; then echo",
+      "run": "TestTheDeviceCheckRefusesInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engine holds a job's deadline",
+      "file": "internal/toolkit/job.go",
+      "find": "\tif spec.Timeout > 0 {\n\t\t// ⛔ THE ENGINE HOLDS THE DEADLINE TOO",
+      "replace": "\tif spec.Timeout > 0 && spec.Timeout < 0 {\n\t\t// ⛔ THE ENGINE HOLDS THE DEADLINE TOO",
+      "run": "TestDevicesInputsAndTheEngineDeadlineReachPodman",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engine deadline carries its margin",
+      "file": "internal/toolkit/job.go",
+      "find": "const EngineDeadlineMargin = 30 * time.Second",
+      "replace": "const EngineDeadlineMargin = 0 * time.Second",
+      "run": "TestDevicesInputsAndTheEngineDeadlineReachPodman",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an input name climbs nowhere",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\t\tcase \"\", \".\", \"..\":\n",
+      "replace": "\t\tcase \"\", \".\":\n",
+      "run": "TestAnInputNameIsAPlainPathUnderIn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an input name is refused twice",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\t\tif names[in.Name] {\n",
+      "replace": "\t\tif names[in.Name] && in.Name == \"\" {\n",
+      "run": "TestASetOfInputsThatCannotArriveAsNamedIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an input cannot be another input's directory",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\t\t\tif names[dir] {\n",
+      "replace": "\t\t\tif names[dir] && dir == \"\" {\n",
+      "run": "TestASetOfInputsThatCannotArriveAsNamedIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an input is a regular file",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\t\t\tif !info.Mode().IsRegular() {\n",
+      "replace": "\t\t\tif !info.Mode().IsRegular() && info.Size() < 0 {\n",
+      "run": "TestASetOfInputsThatCannotArriveAsNamedIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's inputs are mounted read-only at /in",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\targs = append(args, \"--volume\", paths.in+\":/in:ro\"+strings.Replace(opts, \":\", \",\", 1))\n",
+      "replace": "",
+      "run": "TestDevicesInputsAndTheEngineDeadlineReachPodman",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper route caps its inputs on the client",
+      "file": "helper_route.go",
+      "find": "\t\tif total > toolkit.MaxHelperInputBytes {\n",
+      "replace": "\t\tif total > toolkit.MaxHelperInputBytes*1000 {\n",
+      "run": "TestInputsOverTheHelperAreCapped",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper caps a request's inputs",
+      "file": "internal/toolkit/helper.go",
+      "find": "\t\tif total > MaxHelperInputBytes {\n",
+      "replace": "\t\tif total > MaxHelperInputBytes*1000 {\n",
+      "run": "TestAHelperRequestIsHeldToTheDirectRules",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper holds a request's inputs to the direct rules",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tif err := CheckInputs(inputs, req.limits()); err != nil {\n\t\treturn nil, nil, err\n\t}\n",
+      "replace": "",
+      "run": "TestAHelperRequestIsHeldToTheDirectRules",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper holds a request's devices to the direct rules",
+      "file": "internal/toolkit/helper.go",
+      "find": "\t\td, err := ParseDevice(v)\n\t\tif err != nil {\n\t\t\treturn nil, nil, err\n\t\t}\n",
+      "replace": "\t\td, _ := ParseDevice(v)\n",
+      "run": "TestAHelperRequestIsHeldToTheDirectRules",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a matrix row carries every field the fleet takes",
+      "file": "internal/toolkit/matrix.go",
+      "find": "\t\tLabel: img.ID, User: spec.User, Devices: spec.Devices, Inputs: spec.Inputs, MaxOutput: spec.MaxOutput,\n",
+      "replace": "\t\tLabel: img.ID, User: spec.User, Devices: spec.Devices, MaxOutput: spec.MaxOutput,\n",
+      "run": "TestEveryMatrixFieldReachesItsRows",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base subcommand refuses a flag it does not read",
+      "file": "cmd_base.go",
+      "find": "\tif refused != nil {\n\t\treturn f, refused\n\t}\n",
+      "replace": "",
+      "run": "TestEveryBaseSubcommandRefusesAFlagItDoesNotRead",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure --probe stays accepted",
+      "file": "cmd_base.go",
+      "find": "\t\"ensure\":   {\"json\", \"probe\", \"repair\", \"via-helper\", \"preset\", \"save\"},\n",
+      "replace": "\t\"ensure\":   {\"json\", \"repair\", \"via-helper\", \"preset\", \"save\"},\n",
+      "run": "TestAConsumersEnsureProbeStaysAcceptedAndSaveNeedsAPreset",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base --save needs --preset",
+      "file": "cmd_base.go",
+      "find": "\tif f.save && f.preset == \"\" {\n",
+      "replace": "\tif f.save && f.preset == \"\" && f.yes {\n",
+      "run": "TestAConsumersEnsureProbeStaysAcceptedAndSaveNeedsAPreset",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a Git Bash rewrite is refused only where MSYS started the process",
+      "file": "gitbash.go",
+      "find": "\tif strings.TrimSpace(os.Getenv(\"MSYSTEM\")) == \"\" {\n",
+      "replace": "\tif strings.TrimSpace(os.Getenv(\"MSYSTEM\")) != \"\" {\n",
+      "run": "TestAGitBashRewriteIsRefusedAndNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a guest path flag refuses any drive-letter path",
+      "file": "gitbash.go",
+      "find": "\tif typed == \"\" && !(path && isDriveSlashPath(v)) {\n",
+      "replace": "\tif typed == \"\" {\n",
+      "run": "TestAGitBashRewriteIsRefusedAndNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: Git Bash's /tmp rewrite is recognised",
+      "file": "gitbash.go",
+      "find": "{forwardSlashed(os.Getenv(\"TEMP\")), \"/tmp\"}",
+      "replace": "{\"\", \"/tmp\"}",
+      "run": "TestAGitBashRewriteIsRefusedAndNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a Git Bash mount prefix ends at a separator",
+      "file": "gitbash.go",
+      "find": "\t\tif rest != \"\" && rest[0] != '/' {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestAGitBashRewriteIsRefusedAndNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the job commands' -c refuses a Git Bash rewrite",
+      "file": "cmd_run.go",
+      "find": "\t\tif err := gitBashRewrite(\"-c\", command, guestPath); err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's --env refuses a Git Bash rewrite",
+      "file": "cmd_run.go",
+      "find": "\t\tif err := gitBashRewrite(\"--env\", pair, guestText); err != nil {\n\t\t\treturn nil, err\n\t\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec --dir refuses a Git Bash rewrite",
+      "file": "cmd_base_exec.go",
+      "find": "\tif err := gitBashRewrite(\"--dir\", dir, guestPath); err != nil {\n\t\treturn toolkit.ExecRequest{}, err\n\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: distro -c refuses a Git Bash rewrite",
+      "file": "cmd_distro.go",
+      "find": "\t\tif err := gitBashRewrite(\"-c\", c.command, guestPath); err != nil {\n\t\t\treturn p, err\n\t\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: distro --env refuses a Git Bash rewrite",
+      "file": "cmd_distro.go",
+      "find": "\t\tif err := gitBashRewrite(\"--env\", raw, guestText); err != nil {\n\t\t\treturn p, err\n\t\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base grant and revoke --target refuse a Git Bash rewrite",
+      "file": "cmd_base_grant.go",
+      "find": "\tif err := gitBashRewrite(\"--target\", *target, guestPath); err != nil {\n\t\treturn exitCannot, err\n\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base agent refuses a Git Bash rewrite of an argument",
+      "file": "cmd_base_agent.go",
+      "find": "\tif err := gitBashRewriteAny(\"an argument to \"+name, passed, guestText); err != nil {\n\t\treturn exitCannot, err\n\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base herdr refuses a Git Bash rewrite of an argument",
+      "file": "cmd_base_herdr.go",
+      "find": "\tif err := gitBashRewriteAny(\"an argument to herdr\", passed, guestText); err != nil {\n\t\treturn exitCannot, err\n\t}\n",
+      "replace": "",
+      "run": "TestEveryGuestDoorRefusesARewrite",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run and matrix take --command-base64",
+      "file": "cmd_run.go",
+      "find": "\tfs.StringVar(&j.commandB64, \"command-base64\", \"\", \"the command as base64 of its bytes, for a caller that must keep every shell away from it\")\n",
+      "replace": "",
+      "run": "TestTheThreeSpellingsOfACommandReachEveryJobCommand",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a guest that stops reading cannot leave the copy waiting",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t_ = pr.CloseWithError(errGuestStopped)\n",
+      "replace": "",
+      "run": "TestAGuestThatStopsReadingSpeaksFirstAndNothingWaitsForEver",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a guest that stops reading speaks first",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\tcase res.err != nil && errors.Is(res.err, errGuestStopped) && guestFailed:\n",
+      "replace": "\tcase res.err != nil && errors.Is(res.err, errGuestStopped) && guestFailed && res.up.Entries < 0:\n",
+      "run": "TestAGuestThatStopsReadingSpeaksFirstAndNothingWaitsForEver",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a member that cannot be opened is named",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\treturn memberError(slashRel, \"opening it\", err)\n",
+      "replace": "\t\treturn err\n",
+      "run": "TestAMemberThatVanishedBeforeItsOpenIsNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an artifact refusal beats the broken pipe it causes",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\tcase extractErr != nil && errors.Is(extractErr, ErrWorkspaceRefused):\n",
+      "replace": "\tcase extractErr != nil && errors.Is(extractErr, ErrWorkspaceRefused) && guestStderr == \"\":\n",
+      "run": "TestAFetchNamesTheFailureThatCausedTheOthers",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cut artifact archive names the member before the cut",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\treturn got, fmt.Errorf(\"the artifact archive broke after %s: %w\", last, err)\n",
+      "replace": "\t\t\treturn got, fmt.Errorf(\"the artifact archive broke%.0s: %w\", last, err)\n",
+      "run": "TestACutArtifactArchiveNamesWhereItBroke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an artifact write that fails names its member",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\t\treturn got, artifactError(rel, \"writing its bytes\", err)\n",
+      "replace": "\t\t\t\treturn got, err\n",
+      "run": "TestACutArtifactArchiveNamesWhereItBroke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a file named like a device is read through the long path",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\tif runtime.GOOS != \"windows\" || !isWindowsDeviceName(filepath.Base(p)) || strings.HasPrefix(p, `\\\\?\\`) {\n",
+      "replace": "\tif runtime.GOOS != \"windows\" || isWindowsDeviceName(filepath.Base(p)) || strings.HasPrefix(p, `\\\\?\\`) {\n",
+      "run": "TestAFileNamedLikeADeviceTravelsWithItsBytes",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a device name with a trailing space is still a device",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\treturn windowsDeviceNames[strings.TrimRight(stem, \" \")]\n",
+      "replace": "\treturn windowsDeviceNames[stem]\n",
+      "run": "TestAWindowsDeviceNameIsRecognisedInEveryShape",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a redacted job keeps no raw copy of its output",
+      "file": "internal/toolkit/stream.go",
+      "find": "\tif s.fedByRelay {\n\t\treturn len(p), nil\n\t}\n",
+      "replace": "",
+      "run": "TestARedactionReachesEveryCopyOfAJobsOutput",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a redaction makes the relay feed the job's copies",
+      "file": "internal/toolkit/job.go",
+      "find": "\tif log.Redacts() {\n",
+      "replace": "\tif log.Redacts() && log == nil {\n",
+      "run": "TestARedactionReachesEveryCopyOfAJobsOutput",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's copy carries the redaction",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\t_, _ = io.WriteString(w, r.s.Redact(text)+end)",
+      "replace": "\t_, _ = io.WriteString(w, text+end)",
+      "run": "TestARedactionReachesEveryCopyOfAJobsOutput",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's copy keeps its unterminated tail",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tfor _, st := range []*relayStream{&r.out, &r.err} {\n\t\tr.copyPending(st)\n\t}\n",
+      "replace": "\tfor _, st := range []*relayStream{&r.out, &r.err} {\n\t\t_ = st\n\t}\n",
+      "run": "TestARedactionReachesEveryCopyOfAJobsOutput",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's copy takes its tail once",
+      "file": "internal/toolkit/runlog.go",
+      "find": "\tif st.copiedTail || len(st.pending) == 0 {",
+      "replace": "\tif len(st.pending) == 0 {",
+      "run": "TestATailIsCopiedOnceWhenThePollFlushesItAgain",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "check: a systemd unit name is not reported as an email address",
       "file": "internal/checks/secrets.go",
       "find": "\t\tif strings.HasSuffix(m, s) {\n\t\t\treturn true\n\t\t}\n",

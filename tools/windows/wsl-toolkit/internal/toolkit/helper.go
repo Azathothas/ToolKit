@@ -444,6 +444,11 @@ type HelperRunRequest struct {
 	// door sweep found it missing before this shipped, which is the SECOND time
 	// a job flag has been dropped between the two routes.
 	MaxOutput int64 `json:"max_output,omitempty"`
+	// Devices are --device values in podman's spelling, parsed again here.
+	// Inputs are --input files, their bytes in base64. On the wire because the
+	// direct path has them: TestEveryJobFlagCrossesTheWire holds that.
+	Devices []string      `json:"devices,omitempty"`
+	Inputs  []HelperInput `json:"inputs,omitempty"`
 	// TickMS asks for a heartbeat at this interval. Zero means none.
 	//
 	// ⛔ ON THE WIRE because the direct path has it. A job flag one route
@@ -461,6 +466,42 @@ type HelperRunRequest struct {
 	// issue 17. A request that omits this is served from the helper's own
 	// config, which is what an older client sends.
 	Config *Config `json:"config,omitempty"`
+}
+
+// HelperInput is one --input file on the wire.
+type HelperInput struct {
+	Name string `json:"name"`
+	B64  string `json:"b64"`
+}
+
+// jobExtras decodes a request's devices and inputs, holding them to the rules
+// the direct path applies, because a request is not trusted for being local.
+func (req HelperRunRequest) jobExtras() ([]JobDevice, []JobInput, error) {
+	var devices []JobDevice
+	for _, v := range req.Devices {
+		d, err := ParseDevice(v)
+		if err != nil {
+			return nil, nil, err
+		}
+		devices = append(devices, d)
+	}
+	var inputs []JobInput
+	var total int64
+	for _, in := range req.Inputs {
+		b, err := base64.StdEncoding.DecodeString(in.B64)
+		if err != nil {
+			return nil, nil, fmt.Errorf("input %q is not base64: %w", in.Name, err)
+		}
+		total += int64(len(b))
+		if total > MaxHelperInputBytes {
+			return nil, nil, fmt.Errorf("the inputs pass %s, which is what one request carries", HumanBytes(MaxHelperInputBytes))
+		}
+		inputs = append(inputs, JobInput{Name: in.Name, Bytes: b})
+	}
+	if err := CheckInputs(inputs, req.limits()); err != nil {
+		return nil, nil, err
+	}
+	return devices, inputs, nil
 }
 
 // HelperMatrixRequest is the wire shape of a fleet run.
@@ -515,6 +556,11 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": "script_b64 is not base64: " + err.Error()})
 		return
 	}
+	devices, inputs, err := req.jobExtras()
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	staged, err := h.stagedDir(req.StagingID)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -552,7 +598,7 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		Platform:           platform,
 		ContainerLifecycle: effectiveJobLifecycle(req, effective),
 		Limits:             req.limits(), ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
-		User: req.User, MaxOutput: req.MaxOutput,
+		User: req.User, MaxOutput: req.MaxOutput, Devices: devices, Inputs: inputs,
 		Stdout:    &chunkWriter{out: events, kind: "stdout"},
 		Stderr:    &chunkWriter{out: events, kind: "stderr"},
 		TickEvery: time.Duration(req.TickMS) * time.Millisecond,
@@ -598,6 +644,11 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": "script_b64 is not base64: " + err.Error()})
 		return
 	}
+	devices, inputs, err := req.HelperRunRequest.jobExtras()
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	runner, effective, err := h.runnerFor(req.Config)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -639,6 +690,8 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		Parallel:           req.Parallel, Limits: req.limits(),
 		ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
 		User:        req.User,
+		Devices:     devices,
+		Inputs:      inputs,
 		MaxOutput:   req.MaxOutput,
 		// ⛔ A ROW IS SENT WHEN IT FINISHES, not when the fleet does. A
 		// caller watching twelve images can see eleven succeed while the

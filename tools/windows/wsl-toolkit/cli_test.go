@@ -487,6 +487,7 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 	// Fields that describe the job, and what carries them over the protocol.
 	carried := map[string]string{
 		"command":     "ScriptB64",
+		"commandB64":  "ScriptB64",
 		"scriptFile":  "ScriptB64",
 		"workspace":   "StagingID",
 		"artifactDir": "Artifacts",
@@ -500,6 +501,8 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 		"maxEntries":  "MaxEntries",
 		"maxOutput":   "MaxOutput",
 		"tick":        "TickMS",
+		"devices":     "Devices",
+		"inputs":      "Inputs",
 	}
 	// Fields that are the CLIENT's own business and correctly never sent.
 	local := map[string]string{

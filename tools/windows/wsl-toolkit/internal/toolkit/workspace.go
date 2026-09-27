@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -191,6 +192,64 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 		return zero, fmt.Errorf("could not create %s in the guest (exit %d): %s", guestDir, code, guestFailure(errBuf.String()))
 	}
 
+	errBuf = &boundedBuffer{max: 64 << 10}
+	up, err := pumpArchive(
+		func(pw io.Writer) (WorkspaceUpload, error) { return writeWorkspaceTar(pw, hostDir, limits, excludes) },
+		func(pr io.Reader) (int, error) {
+			return w.ExecDirect(ctx, distro, user, "", []string{"/bin/tar", "-xf", "-", "-C", guestDir}, pr, io.Discard, errBuf, 60*time.Minute)
+		},
+		func() string { return errBuf.String() })
+	if err != nil {
+		return up, err
+	}
+	if log != nil {
+		// ⭐ THE HOST DIRECTORY IS NAMED, not only the guest one. `--workspace .`
+		// resolves against whatever the working directory happens to be, and the
+		// only way a caller can tell which tree actually travelled is to be told
+		// which one it was.
+		log(fmt.Sprintf("workspace: %d entries, %s copied from %s to %s", up.Entries, HumanBytes(up.Bytes), hostDir, guestDir))
+		// ⭐ SAID OUT LOUD AT THE POINT IT HAPPENS, as well as carried on the
+		// result. A caller reading only the human output learns the same fact.
+		for _, o := range up.Omission {
+			log("workspace: left out " + o.Path + ": " + o.Reason)
+		}
+		if up.Omitted > len(up.Omission) {
+			log(fmt.Sprintf("workspace: and %d more entry(s) left out", up.Omitted-len(up.Omission)))
+		}
+		for _, t := range up.Truncation {
+			log("workspace: " + t.Path + ": " + t.Reason)
+		}
+		if up.Truncated > len(up.Truncation) {
+			log(fmt.Sprintf("workspace: and %d more file(s) grew while they were copied", up.Truncated-len(up.Truncation)))
+		}
+		// ⛔ A MODE THIS TOOL SUPPLIED IS ANNOUNCED. The alternative to saying it
+		// is `chmod -R +x`, which marks data executable and reports nothing, and
+		// the distance between the two is that a reader can check this one.
+		if up.ExecRestored != "" {
+			log("workspace: " + up.ExecRestored)
+		}
+	}
+	return up, nil
+}
+
+// errGuestStopped is what the archive writer meets when the guest has stopped
+// reading. It is never the cause of a failure: the guest's own words are.
+var errGuestStopped = errors.New("the guest stopped reading the archive")
+
+// pumpArchive writes an archive into a guest program's stdin and decides which
+// failure a caller is told about.
+//
+// ⛔ THE READER IS CLOSED WHEN THE GUEST RETURNS. The pipe is synchronous, so a
+// writer with bytes left to send after the guest stopped reading would wait for
+// ever.
+//
+// The precedence, and each arm is a different fact:
+//
+//	the guest stopped first       the guest's own stderr, and the member the copy had reached
+//	a failure on this side        that failure, naming its member. A refusal is one of these,
+//	                              and the guest's complaint about the cut archive follows from it
+//	the guest failed alone        the guest's own stderr
+func pumpArchive(write func(io.Writer) (WorkspaceUpload, error), run func(io.Reader) (int, error), guestStderr func() string) (WorkspaceUpload, error) {
 	pr, pw := io.Pipe()
 	type result struct {
 		up  WorkspaceUpload
@@ -198,51 +257,63 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 	}
 	done := make(chan result, 1)
 	go func() {
-		up, err := writeWorkspaceTar(pw, hostDir, limits, excludes)
+		up, err := write(pw)
 		// ⛔ CloseWithError, not Close. A writer that stopped at a limit must
 		// make the READER fail too, or the guest unpacks a truncated archive
 		// without complaint.
 		_ = pw.CloseWithError(err)
 		done <- result{up, err}
 	}()
-
-	errBuf = &boundedBuffer{max: 64 << 10}
-	code, execErr := w.ExecDirect(ctx, distro, user, "", []string{"/bin/tar", "-xf", "-", "-C", guestDir}, pr, io.Discard, errBuf, 60*time.Minute)
+	code, execErr := run(pr)
+	_ = pr.CloseWithError(errGuestStopped)
 	res := <-done
-	if res.err != nil {
+	guestFailed := execErr != nil || code != 0
+	switch {
+	case res.err != nil && errors.Is(res.err, errGuestStopped) && guestFailed:
+		return res.up, fmt.Errorf("unpacking the workspace in the guest exited %d: %s. The copy had reached: %v", code, guestFailure(guestStderr()), res.err)
+	case res.err != nil:
 		return res.up, res.err
-	}
-	if execErr != nil || code != 0 {
-		return res.up, fmt.Errorf("unpacking the workspace in the guest exited %d: %s", code, guestFailure(errBuf.String()))
-	}
-	if log != nil {
-		// ⭐ THE HOST DIRECTORY IS NAMED, not only the guest one. `--workspace .`
-		// resolves against whatever the working directory happens to be, and the
-		// only way a caller can tell which tree actually travelled is to be told
-		// which one it was.
-		log(fmt.Sprintf("workspace: %d entries, %s copied from %s to %s", res.up.Entries, HumanBytes(res.up.Bytes), hostDir, guestDir))
-		// ⭐ SAID OUT LOUD AT THE POINT IT HAPPENS, as well as carried on the
-		// result. A caller reading only the human output learns the same fact.
-		for _, o := range res.up.Omission {
-			log("workspace: left out " + o.Path + ": " + o.Reason)
-		}
-		if res.up.Omitted > len(res.up.Omission) {
-			log(fmt.Sprintf("workspace: and %d more entry(s) left out", res.up.Omitted-len(res.up.Omission)))
-		}
-		for _, t := range res.up.Truncation {
-			log("workspace: " + t.Path + ": " + t.Reason)
-		}
-		if res.up.Truncated > len(res.up.Truncation) {
-			log(fmt.Sprintf("workspace: and %d more file(s) grew while they were copied", res.up.Truncated-len(res.up.Truncation)))
-		}
-		// ⛔ A MODE THIS TOOL SUPPLIED IS ANNOUNCED. The alternative to saying it
-		// is `chmod -R +x`, which marks data executable and reports nothing, and
-		// the distance between the two is that a reader can check this one.
-		if res.up.ExecRestored != "" {
-			log("workspace: " + res.up.ExecRestored)
-		}
+	case guestFailed:
+		return res.up, fmt.Errorf("unpacking the workspace in the guest exited %d: %s", code, guestFailure(guestStderr()))
 	}
 	return res.up, nil
+}
+
+// memberError names the workspace member a copy stopped at and what it was
+// doing there. Every failure between the walk and the archive goes through it,
+// so no failure names the archiver without naming the file.
+func memberError(rel, op string, err error) error {
+	return fmt.Errorf("the copy stopped at %s, %s: %w", rel, op, err)
+}
+
+// isWindowsDeviceName reports whether Windows opens a file of this name as a
+// device: CON, PRN, AUX, NUL, COM1 to COM9 and LPT1 to LPT9, in any case, with
+// any extension.
+func isWindowsDeviceName(name string) bool {
+	stem := strings.ToLower(name)
+	if i := strings.IndexByte(stem, '.'); i >= 0 {
+		stem = stem[:i]
+	}
+	return windowsDeviceNames[strings.TrimRight(stem, " ")]
+}
+
+// deviceSafePath is the path to open for a workspace file.
+//
+// ⛔ A FILE NAMED LIKE A DEVICE IS OPENED THROUGH \\?\. By its plain path,
+// Windows opens the DEVICE: a real 44-byte file named NUL read as 0 bytes,
+// and through the prefix it read all 44. Elsewhere, and for every other name,
+// the path is returned unchanged. WSL-98.
+func deviceSafePath(p string) string {
+	if runtime.GOOS != "windows" || !isWindowsDeviceName(filepath.Base(p)) || strings.HasPrefix(p, `\\?\`) {
+		return p
+	}
+	if strings.HasPrefix(p, `\\`) {
+		return `\\?\UNC\` + strings.TrimPrefix(filepath.Clean(p), `\\`)
+	}
+	if isWindowsAbsolute(p) {
+		return `\\?\` + filepath.Clean(p)
+	}
+	return p
 }
 
 func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, excludes []string) (WorkspaceUpload, error) {
@@ -260,11 +331,15 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 	var total int64
 	walkErr := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
-			return err
+			at := p
+			if r, relErr := filepath.Rel(root, p); relErr == nil {
+				at = filepath.ToSlash(r)
+			}
+			return memberError(at, "reading it", err)
 		}
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
-			return err
+			return memberError(p, "placing it under the workspace root", err)
 		}
 		if rel == "." {
 			return nil
@@ -278,7 +353,7 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 		}
 		info, err := d.Info()
 		if err != nil {
-			return err
+			return memberError(slashRel, "reading its attributes", err)
 		}
 		entries++
 		if entries > limits.MaxEntries {
@@ -286,13 +361,16 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 		}
 		switch {
 		case d.IsDir():
-			return tw.WriteHeader(&tar.Header{
+			if err := tw.WriteHeader(&tar.Header{
 				Name: slashRel + "/", Typeflag: tar.TypeDir, Mode: 0o755, ModTime: info.ModTime(),
-			})
+			}); err != nil {
+				return memberError(slashRel+"/", "writing its archive header", err)
+			}
+			return nil
 		case info.Mode()&fs.ModeSymlink != 0:
 			target, err := os.Readlink(p)
 			if err != nil {
-				return err
+				return memberError(slashRel, "reading its link target", err)
 			}
 			// ⛔ A link out of the workspace is LEFT OUT AND NAMED, not
 			// refused and not silently dropped. It used to fail the whole job,
@@ -310,10 +388,13 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 				entries--
 				return nil
 			}
-			return tw.WriteHeader(&tar.Header{
+			if err := tw.WriteHeader(&tar.Header{
 				Name: slashRel, Typeflag: tar.TypeSymlink, Linkname: filepath.ToSlash(target),
 				Mode: 0o777, ModTime: info.ModTime(),
-			})
+			}); err != nil {
+				return memberError(slashRel, "writing its archive header", err)
+			}
+			return nil
 		case info.Mode().IsRegular():
 			total += info.Size()
 			if total > limits.MaxBytes {
@@ -339,7 +420,7 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 		return up, walkErr
 	}
 	if err := tw.Close(); err != nil {
-		return up, err
+		return up, fmt.Errorf("the workspace copy could not finish its archive: %w", err)
 	}
 	up.Entries, up.Bytes = entries, total
 	up.ExecRestored = bits.report()
@@ -348,51 +429,42 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 
 // writeRegularMember puts one regular file into the archive.
 //
-// ⛔ IT TAKES THE FileInfo THE WALKER ALREADY READ, and that is the whole shape
-// of the hazard rather than an optimisation. A tar member's length goes into its
-// header BEFORE its bytes are read, so the size written and the bytes available
-// come from two different moments and a file being appended to differs between
-// them. Splitting this out is what lets a test hand in a deliberately stale
-// FileInfo and reproduce that gap with no timing in it.
-//
-// ⚠ THE FIRST VERSION OF THAT TEST RACED A WRITER AGAINST THE COPY, and it
-// passed on Windows and failed on Linux: the walk finished in under a
-// millisecond and the writing goroutine was never scheduled in between, so
-// nothing grew and the case asserted a truncation that had not happened.
+// ⛔ IT TAKES THE FileInfo THE WALKER ALREADY READ. A tar member's length goes
+// into its header BEFORE its bytes are read, so the size written and the bytes
+// available come from two different moments, and a file being appended to
+// differs between them. A test hands in a stale FileInfo to reproduce that gap
+// with no timing in it.
 func writeRegularMember(tw *tar.Writer, up *WorkspaceUpload, p, slashRel string, info fs.FileInfo, mode int64) error {
 	if err := tw.WriteHeader(&tar.Header{
 		Name: slashRel, Typeflag: tar.TypeReg, Mode: mode, Size: info.Size(), ModTime: info.ModTime(),
 	}); err != nil {
-		return err
+		return memberError(slashRel, "writing its archive header", err)
 	}
-	f, err := os.Open(p)
+	f, err := os.Open(deviceSafePath(p))
 	if err != nil {
-		return err
+		return memberError(slashRel, "opening it", err)
 	}
-	// ⛔ BOUNDED BY THE DECLARED SIZE. Unbounded, a file that grew overran what
-	// the header promised and the archiver refused with `archive/tar: write too
-	// long`, which names the archiver and not the file: measured by a consumer
-	// on 2026-09-12 against a live index daemon, whole job dead in 475 ms, and
-	// worked around there by excluding four sidecars by name. ⚠ A background
-	// daemon appending to a log is an ordinary thing for a tree to be doing and
-	// is not a reason to refuse a copy.
+	// ⛔ BOUNDED BY THE DECLARED SIZE. A file that grows during the copy would
+	// otherwise overrun its own header, and the archiver refuses that with an
+	// error that names the archiver and not the file. A daemon appending to a
+	// log is an ordinary thing for a tree to hold, and not a reason to refuse.
 	written, err := io.Copy(tw, io.LimitReader(f, info.Size()))
 	closeErr := f.Close()
 	if err != nil {
-		return err
+		return memberError(slashRel, "copying its bytes", err)
 	}
 	if closeErr != nil {
-		return closeErr
+		return memberError(slashRel, "closing it", closeErr)
 	}
 	// ⛔ Count what arrived rather than trusting the declared length. A file that
 	// SHRANK leaves a header disagreeing with its payload, which is a broken
-	// archive rather than a stale snapshot, so it still refuses. ⚠ The two
-	// directions are not symmetric: growing is a truncation that can be named,
-	// shrinking is a corruption that cannot.
+	// archive rather than a stale snapshot, so it refuses. ⚠ The two directions
+	// are not symmetric: growing is a truncation that can be named, shrinking is
+	// a corruption that cannot.
 	if written != info.Size() {
 		return fmt.Errorf("%w: %s shrank while it was being read (%d of %d bytes)", ErrWorkspaceRefused, slashRel, written, info.Size())
 	}
-	if grew, err := os.Stat(p); err == nil && grew.Size() > info.Size() {
+	if grew, err := os.Stat(deviceSafePath(p)); err == nil && grew.Size() > info.Size() {
 		up.truncate(slashRel, fmt.Sprintf("it grew while it was copied; the copy holds the first %s", HumanBytes(info.Size())))
 	}
 	return nil
@@ -544,16 +616,37 @@ func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDi
 	code, execErr := w.ExecDirect(ctx, distro, user, "", []string{"/bin/tar", "-cf", "-", "-C", guestDir, "."}, nil, pw, errBuf, 60*time.Minute)
 	_ = pw.Close()
 	res := <-done
-	if res.err != nil {
-		return res.got, res.err
-	}
-	if execErr != nil || code != 0 {
-		return res.got, fmt.Errorf("packing %s in the guest exited %d: %s", guestDir, code, guestFailure(errBuf.String()))
+	if err := fetchFailure(guestDir, code, execErr, errBuf.String(), res.err); err != nil {
+		return res.got, err
 	}
 	if log != nil {
 		log(fmt.Sprintf("artifacts: %d entries, %s written to %s", res.got.Delivered, HumanBytes(res.got.Bytes), hostDir))
 	}
 	return res.got, nil
+}
+
+// fetchFailure decides which failure of an artifact fetch a caller is told
+// about, or nil when both halves succeeded.
+//
+//	a refusal on this side        the refusal. The guest's broken pipe follows from it
+//	the guest failed as well      the guest's own stderr first: a guest tar that
+//	                              stopped leaves the extractor a cut archive, and
+//	                              "unexpected EOF" is the consequence
+//	a failure on this side        that failure, naming its member
+//	the guest failed alone        the guest's own stderr
+func fetchFailure(guestDir string, code int, execErr error, guestStderr string, extractErr error) error {
+	guestFailed := execErr != nil || code != 0
+	switch {
+	case extractErr != nil && errors.Is(extractErr, ErrWorkspaceRefused):
+		return extractErr
+	case extractErr != nil && guestFailed:
+		return fmt.Errorf("packing %s in the guest exited %d: %s. The copy had reached: %v", guestDir, code, guestFailure(guestStderr), extractErr)
+	case extractErr != nil:
+		return extractErr
+	case guestFailed:
+		return fmt.Errorf("packing %s in the guest exited %d: %s", guestDir, code, guestFailure(guestStderr))
+	}
+	return nil
 }
 
 var windowsDeviceNames = map[string]bool{
@@ -598,11 +691,11 @@ func checkWindowsComponent(name, part string) error {
 	if last := part[len(part)-1]; last == '.' || last == ' ' {
 		return fmt.Errorf("%w: %q ends in %q, which the destination strips, so it would collide with the same name without it", ErrWorkspaceRefused, name, string(last))
 	}
-	stem := strings.ToLower(part)
-	if i := strings.IndexByte(stem, '.'); i >= 0 {
-		stem = stem[:i]
-	}
-	if windowsDeviceNames[stem] {
+	if isWindowsDeviceName(part) {
+		stem := strings.ToLower(part)
+		if i := strings.IndexByte(stem, '.'); i >= 0 {
+			stem = stem[:i]
+		}
 		return fmt.Errorf("%w: %q names the Windows device %q, and writing to one discards what is written and reports success", ErrWorkspaceRefused, name, stem)
 	}
 	return nil
@@ -668,6 +761,8 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 	// A container writing /out/Result and /out/result returned one five-byte file
 	// on NTFS and exit 0, because the second open with O_TRUNC replaced the first.
 	written := map[string]string{}
+	// last is the member before a failure, so a cut archive names where it broke.
+	last := "the first member"
 	claim := func(rel, name string) error {
 		key := destinationKey(rel)
 		if first, ok := written[key]; ok {
@@ -682,8 +777,9 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 			return got, nil
 		}
 		if err != nil {
-			return got, err
+			return got, fmt.Errorf("the artifact archive broke after %s: %w", last, err)
 		}
+		last = hdr.Name
 		rel, err := SafeArchiveName(hdr.Name)
 		if err != nil {
 			return got, err
@@ -705,7 +801,7 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 		switch hdr.Typeflag {
 		case tar.TypeDir:
 			if err := os.MkdirAll(target, 0o700); err != nil {
-				return got, err
+				return got, artifactError(rel, "making its directory", err)
 			}
 			got.Delivered++
 		case tar.TypeReg:
@@ -717,19 +813,19 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 				return got, fmt.Errorf("%w: the guest returned more than %s", ErrWorkspaceRefused, HumanBytes(limits.MaxBytes))
 			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return got, err
+				return got, artifactError(rel, "making its directory", err)
 			}
 			f, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 			if err != nil {
-				return got, err
+				return got, artifactError(rel, "creating it", err)
 			}
 			written, err := io.Copy(f, tr)
 			closeErr := f.Close()
 			if err != nil {
-				return got, err
+				return got, artifactError(rel, "writing its bytes", err)
 			}
 			if closeErr != nil {
-				return got, closeErr
+				return got, artifactError(rel, "closing it", closeErr)
 			}
 			if written != hdr.Size {
 				return got, fmt.Errorf("%w: %s declared %d bytes and %d arrived", ErrWorkspaceRefused, rel, hdr.Size, written)
@@ -759,7 +855,7 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 			// writes THROUGH it. Recording it keeps the information and removes
 			// the mechanism.
 			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return got, err
+				return got, artifactError(rel, "making its directory", err)
 			}
 			// ⚠ The sidecar's name is an entry name too, and a real file called
 			// x.link.txt would otherwise be overwritten by the record of a link
@@ -770,7 +866,7 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 			note := fmt.Sprintf("wsl-toolkit: the guest returned a link here, pointing at %q. "+
 				"Links are recorded rather than recreated, because the entry after one writes through it.\n", hdr.Linkname)
 			if err := os.WriteFile(target+".link.txt", []byte(note), 0o600); err != nil {
-				return got, err
+				return got, artifactError(rel+".link.txt", "writing the record of its link", err)
 			}
 			got.Delivered++
 		default:
@@ -778,6 +874,12 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 			continue
 		}
 	}
+}
+
+// artifactError names the artifact member a fetch stopped at, and what it was
+// doing there, for the reason memberError does on the way in.
+func artifactError(rel, op string, err error) error {
+	return fmt.Errorf("the artifact copy stopped at %s, %s: %w", filepath.ToSlash(rel), op, err)
 }
 
 // SortedExcludes is what a caller's exclude flags become, deduplicated so a

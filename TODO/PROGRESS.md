@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-17T14:42:39Z
 baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
 head            wsl-toolkit-v4.0.0 published; 29ca209, 9660143, 02182bb, 09eea4f plus this record commit
-entries         total 128  open 0  blocked 0  done 128
+entries         total 137  open 9  blocked 0  done 128
 this session    wsl-toolkit-v4.0.0; the last two open entries closed, then the operator refused the handover: every host-engine call bounded with a stall deadline, and nine findings that had a named fix and no entry FIXED rather than listed
 ```
 
@@ -73,6 +73,9 @@ is closed, and the issue gets a comment naming the commits.
    25, each on a commit with CI green.
 6. ⭐ **Closed:** `WSL-59` and `WSL-91`, the two entries that were still open, and
    `WSL-93`, filed and closed in the same session.
+7. **Issue 34, set by the operator on 2026-09-27:** `WSL-94` to `WSL-101` and
+   `DOC-08`, then `wsl-toolkit-v5.0.0`, a selfupdate, and the new version driven
+   end to end.
 
 ## Rulings in force
 
@@ -220,6 +223,18 @@ is closed, and the issue gets a comment naming the commits.
     protects. ⛔ **Ruling 22 second half still governs how**: `repo release` runs
     read-only first, and the publish happens only with the gate green and CI
     green on the final commit.
+27. **2026-09-27: issue 34's four forks, each the recommended option.** The
+    operator answered a structured question before any code was written.
+    - **Detach:** `run --detach` through a detached copy of the tool, and
+      `base exec --detach` through the guest. Both use one id with
+      `logs --follow`, `wait`, `stop` and `inspect`. `WSL-94`, `WSL-95`.
+    - **Devices:** `run --device` takes any node under `/dev` that the base
+      account can read and write. `WSL-96`.
+    - **Documents:** a dated measurement moves to the entry that produced it, and
+      a live page cites the entry. `DOC-08`.
+    - **Version:** `wsl-toolkit-v5.0.0`, because `WSL-100` refuses flags that
+      used to parse. `base ensure --probe` stays accepted.
+
 ## Before every push
 
 ⛔ **A FILE GIT CANNOT SEE CAN STOP THE CONTAINER CHECKS DEAD.** Met on

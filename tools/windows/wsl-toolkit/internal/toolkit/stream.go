@@ -34,26 +34,61 @@ type jobStream struct {
 	// spoilt records a sink that failed, so a partial transcript is never
 	// reported as a complete one.
 	spoilt string
+	// fedByRelay is true when a relay writes the copies through Feed. The
+	// command's own bytes are then counted here and written nowhere, because
+	// the relay applies the redactions and a raw copy would not.
+	fedByRelay bool
 }
 
 func (s *jobStream) Write(p []byte) (int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.total += int64(len(p))
-	// ⛔ THE BOUNDED COPY CANNOT FAIL THE WRITE. Its whole job is to stop early,
-	// so an error from it is not a reason to tell the command its output could
-	// not be written.
+	if s.fedByRelay {
+		return len(p), nil
+	}
+	s.writeCopies(p)
+	if s.live != nil {
+		if _, err := s.live.Write(p); err != nil && s.spoilt == "" {
+			s.spoilt = "the live stream could not be written: " + err.Error()
+		}
+	}
+	return len(p), nil
+}
+
+// writeCopies puts bytes in the bounded copy and the transcript. The caller
+// holds the lock.
+//
+// ⛔ THE BOUNDED COPY CANNOT FAIL THE WRITE. Its whole job is to stop early,
+// so an error from it is not a reason to tell the command its output could
+// not be written.
+func (s *jobStream) writeCopies(p []byte) {
 	_, _ = s.buf.Write(p)
 	if s.spool != nil {
 		if _, err := s.spool.Write(p); err != nil && s.spoilt == "" {
 			s.spoilt = "the transcript could not be written: " + err.Error()
 		}
 	}
-	if s.live != nil {
-		if _, err := s.live.Write(p); err != nil && s.spoilt == "" {
-			s.spoilt = "the live stream could not be written: " + err.Error()
-		}
-	}
+}
+
+// feedFromRelay hands this stream's copies to a relay, before the first write.
+func (s *jobStream) feedFromRelay() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fedByRelay = true
+}
+
+// Feed is the writer a relay puts this stream's redacted lines into. It fills
+// the bounded copy and the transcript, and it does not count: the count is of
+// what the command wrote, which Write receives.
+func (s *jobStream) Feed() io.Writer { return jobStreamFeed{s} }
+
+type jobStreamFeed struct{ s *jobStream }
+
+func (f jobStreamFeed) Write(p []byte) (int, error) {
+	f.s.mu.Lock()
+	defer f.s.mu.Unlock()
+	f.s.writeCopies(p)
 	return len(p), nil
 }
 

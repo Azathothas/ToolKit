@@ -60,6 +60,9 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
+	if err := gitBashRewrite("--target", *target, guestPath); err != nil {
+		return exitCannot, err
+	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err

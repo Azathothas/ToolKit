@@ -263,6 +263,9 @@ func (c *commandFlags) payload(cfg toolkit.Config) (commandPayload, error) {
 	var raw []byte
 	switch {
 	case c.command != "":
+		if err := gitBashRewrite("-c", c.command, guestPath); err != nil {
+			return p, err
+		}
 		p.source, raw = "the -c command", []byte(c.command)
 		if !c.verbatim {
 			raw = append(raw, '\n')
@@ -326,6 +329,9 @@ func (c *commandFlags) payload(cfg toolkit.Config) (commandPayload, error) {
 		p.env = append(p.env, pairs...)
 	}
 	for _, raw := range c.env {
+		if err := gitBashRewrite("--env", raw, guestText); err != nil {
+			return p, err
+		}
 		pair, err := toolkit.ParseEnvPair(raw)
 		if err != nil {
 			return p, fmt.Errorf("--env %w", err)

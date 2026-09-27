@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"flag"
 	"fmt"
@@ -19,11 +20,14 @@ import (
 // accepting different spellings of the same thing.
 type jobFlags struct {
 	command     string
+	commandB64  string
 	scriptFile  string
 	workspace   string
 	artifactDir string
 	excludes    stringList
 	env         stringList
+	devices     stringList
+	inputs      stringList
 	timeout     time.Duration
 	noNetwork   bool
 	user        string
@@ -45,11 +49,14 @@ func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 
 func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&j.command, "c", "", "the shell command to run in the container")
+	fs.StringVar(&j.commandB64, "command-base64", "", "the command as base64 of its bytes, for a caller that must keep every shell away from it")
 	fs.StringVar(&j.scriptFile, "script", "", "a file on this machine whose bytes are the command")
 	fs.StringVar(&j.workspace, "workspace", "", "a directory on this machine, COPIED into the container as /work")
 	fs.StringVar(&j.artifactDir, "artifacts", "", "a directory on this machine to receive whatever the container leaves in /out")
 	fs.Var(&j.excludes, "exclude", "a glob to leave out of the workspace copy. Repeatable")
 	fs.Var(&j.env, "env", "NAME=VALUE passed to the container. Repeatable")
+	fs.Var(&j.devices, "device", "a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it")
+	fs.Var(&j.inputs, "input", "NAME=FILE: a file on this machine the container reads at /in/NAME, read-only and byte for byte. Repeatable")
 	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before lifecycle cleanup; the row reports 124")
 	fs.DurationVar(&j.tick, "tick", 0, "emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it")
 	fs.BoolVar(&j.noNetwork, "no-network", false, "run with no network at all")
@@ -72,30 +79,49 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 // by /bin/sh otherwise fails on its first line with a message about a character
 // nobody can see.
 func (j *jobFlags) script() ([]byte, error) {
-	return guestScript(j.command, j.scriptFile)
+	return guestScript(j.command, j.commandB64, j.scriptFile)
 }
 
-func guestScript(command, scriptFile string) ([]byte, error) {
-	if command != "" && scriptFile != "" {
-		return nil, errors.New("-c and --script are two spellings of one argument, so passing both is refused rather than resolved by a precedence nobody would remember")
+// guestScript reads the one command a caller named, through -c, --command-base64
+// or --script, and repairs the copy that is sent.
+//
+// ⛔ ONE READER FOR run, matrix AND base exec. `distro` had --command-base64 and
+// these three did not, so a caller whose shell reaches into a command had a
+// channel on one command and none on its siblings. WSL-99.
+func guestScript(command, commandB64, scriptFile string) ([]byte, error) {
+	given := 0
+	for _, v := range []string{command, commandB64, scriptFile} {
+		if v != "" {
+			given++
+		}
 	}
-	if command != "" {
-		// ⛔ -c GETS THE SAME REPAIR AS --script, and it did not. A multi-line
-		// command assembled in PowerShell carries CRLF, and /bin/sh reads the
-		// carriage return as part of the last word on the line: `2>/dev/null`
-		// becomes a file named `/dev/null` followed by an invisible byte, and
-		// the error names a file nobody wrote. One channel repairing its
-		// payload while its sibling does not is the one-gated-door shape.
+	if given > 1 {
+		return nil, errors.New("-c, --command-base64 and --script are three spellings of one command, so exactly one may be passed rather than one chosen by a precedence nobody would remember")
+	}
+	switch {
+	case command != "":
+		if err := gitBashRewrite("-c", command, guestPath); err != nil {
+			return nil, err
+		}
+		// ⛔ -c GETS THE SAME REPAIR AS --script. A multi-line command assembled
+		// in PowerShell carries CRLF, and /bin/sh reads the carriage return as
+		// part of the last word on the line: `2>/dev/null` becomes a file named
+		// `/dev/null` followed by an invisible byte.
 		return toolkit.RepairGuestScript([]byte(command + "\n"))
+	case commandB64 != "":
+		decoded, err := base64.StdEncoding.Strict().DecodeString(commandB64)
+		if err != nil {
+			return nil, fmt.Errorf("--command-base64 is not valid base64: %w", err)
+		}
+		return toolkit.RepairGuestScript(decoded)
+	case scriptFile != "":
+		raw, err := os.ReadFile(scriptFile)
+		if err != nil {
+			return nil, err
+		}
+		return toolkit.RepairGuestScript(raw)
 	}
-	if scriptFile == "" {
-		return nil, errors.New("nothing to run: pass -c COMMAND or --script FILE")
-	}
-	raw, err := os.ReadFile(scriptFile)
-	if err != nil {
-		return nil, err
-	}
-	return toolkit.RepairGuestScript(raw)
+	return nil, errors.New("nothing to run: pass -c COMMAND, --command-base64 BASE64 or --script FILE")
 }
 
 func (j *jobFlags) envMap() (map[string]string, error) {
@@ -105,6 +131,9 @@ func (j *jobFlags) envMap() (map[string]string, error) {
 		if !ok {
 			return nil, fmt.Errorf("--env %q is not NAME=VALUE", pair)
 		}
+		if err := gitBashRewrite("--env", pair, guestText); err != nil {
+			return nil, err
+		}
 		// ⛔ Refused HERE, where the caller's own spelling is still available.
 		// The container invocation silently skipped a name it could not use, so
 		// `--env BAD-NAME=x` was accepted, dropped, and the job ran without it.
@@ -112,6 +141,47 @@ func (j *jobFlags) envMap() (map[string]string, error) {
 			return nil, fmt.Errorf("--env %q: %q is not a usable environment name. A name is letters, digits and underscores, and does not start with a digit", pair, name)
 		}
 		out[name] = value
+	}
+	return out, nil
+}
+
+// jobDevices reads every --device. WSL-96.
+func (j *jobFlags) jobDevices() ([]toolkit.JobDevice, error) {
+	var out []toolkit.JobDevice
+	for _, v := range j.devices {
+		if err := gitBashRewrite("--device", v, guestPath); err != nil {
+			return nil, err
+		}
+		d, err := toolkit.ParseDevice(v)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// jobInputs reads every --input NAME=FILE, resolves each file the way every
+// other host path of a job is resolved, and refuses a set that cannot arrive as
+// named. WSL-97.
+func (j *jobFlags) jobInputs(cfg toolkit.Config) ([]toolkit.JobInput, error) {
+	var out []toolkit.JobInput
+	for _, v := range j.inputs {
+		name, file, ok := strings.Cut(v, "=")
+		if !ok || file == "" {
+			return nil, fmt.Errorf("--input %q is not NAME=FILE: a name under /in, one equals sign, then a file on this machine", v)
+		}
+		if err := toolkit.ValidateInputName(name); err != nil {
+			return nil, err
+		}
+		p, err := pathFromProject(cfg, file)
+		if err != nil {
+			return nil, fmt.Errorf("--input %s: %w", v, err)
+		}
+		out = append(out, toolkit.JobInput{Name: name, Path: p})
+	}
+	if err := toolkit.CheckInputs(out, j.limits()); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -272,6 +342,14 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	devices, err := j.jobDevices()
+	if err != nil {
+		return exitCannot, err
+	}
+	inputs, err := j.jobInputs(cfg)
+	if err != nil {
+		return exitCannot, err
+	}
 	ref, err := resolveImage(cfg, *image)
 	if err != nil {
 		return exitCannot, err
@@ -301,7 +379,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 			return exitCannot, errors.New("the observation flags do not cross the helper: the job runs on the helper's machine and its container cannot be watched from here. " +
 				"Run without --via-helper, or read the job afterwards with: wsl-toolkit inspect JOB")
 		}
-		res, err := helperRunJob(ctx, c, j, ref, *image, payload, env)
+		res, err := helperRunJob(ctx, c, j, ref, *image, payload, env, devices, inputs)
 		if err != nil {
 			return exitCannot, err
 		}
@@ -335,7 +413,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		Image: ref, Script: payload, Workspace: j.workspace, Excludes: toolkit.SortedExcludes(j.excludes),
 		ArtifactDir: j.artifactDir, Env: env, Timeout: j.timeout, Network: !j.noNetwork,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
-		Limits: j.limits(), Label: *image, User: j.user,
+		Limits: j.limits(), Label: *image, User: j.user, Devices: devices, Inputs: inputs,
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 		OnTick: jobTick(j, relay), TickEvery: j.tick, Log: relay,
 	})
@@ -444,6 +522,14 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	devices, err := j.jobDevices()
+	if err != nil {
+		return exitCannot, err
+	}
+	inputs, err := j.jobInputs(cfg)
+	if err != nil {
+		return exitCannot, err
+	}
 	var selectors []string
 	if *images != "" {
 		selectors = strings.Split(*images, ",")
@@ -469,7 +555,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		for _, img := range selected {
 			ids = append(ids, img.ID)
 		}
-		report, err := helperRunMatrix(ctx, c, j, ids, *parallel, payload, env, *transcripts)
+		report, err := helperRunMatrix(ctx, c, j, ids, *parallel, payload, env, devices, inputs, *transcripts)
 		if err != nil {
 			return exitCannot, err
 		}
@@ -491,7 +577,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		Excludes: toolkit.SortedExcludes(j.excludes), ArtifactDir: j.artifactDir,
 		Env: env, Timeout: j.timeout, Network: !j.noNetwork, Parallel: *parallel,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
-		Limits: j.limits(), Transcripts: *transcripts, User: j.user,
+		Limits: j.limits(), Transcripts: *transcripts, User: j.user, Devices: devices, Inputs: inputs,
 		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
 		OnTick: tickPrinter(j), TickEvery: j.tick,
 	})

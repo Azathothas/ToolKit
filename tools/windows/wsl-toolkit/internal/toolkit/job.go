@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -49,6 +51,12 @@ const StopGraceFlag = "-t 0"
 // leaves the container for `gc`, which is the outcome that was always available
 // and is now the bounded one.
 const CleanupGrace = 10 * time.Second
+
+// EngineDeadlineMargin is how far past a job's own deadline the engine kills its
+// container. It is larger than CleanupGrace, so an owner that is alive reports
+// its own 124 before the engine acts, and the engine acts only for a job whose
+// owner is gone.
+const EngineDeadlineMargin = 30 * time.Second
 
 // cleanupBudget is ONE allowance shared by everything a timed-out job still has
 // to do, rather than a fresh ceiling per step.
@@ -120,6 +128,10 @@ type JobSpec struct {
 	// uid, or uid:gid. Empty means the image's own default, which is usually
 	// root INSIDE the container and is not root on this machine.
 	User string
+	// Devices are device nodes in the base passed into the container. WSL-96.
+	Devices []JobDevice
+	// Inputs are files the container reads at /in/NAME, read-only. WSL-97.
+	Inputs []JobInput
 	// Stdout and Stderr receive the container's bytes AS THEY ARRIVE.
 	//
 	// ⛔ Nil means nothing is written live, which is what a caller wants when
@@ -476,11 +488,8 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 		return res
 	}
-	jobsRoot := guestHome + "/" + GuestRoot + "/jobs"
-	guestJob := jobsRoot + "/" + id
-	guestWork := guestJob + "/work"
-	guestOut := guestJob + "/out"
-	guestScript := guestJob + "/job.sh"
+	paths := jobLayout(guestHome, id)
+	jobsRoot, guestJob, guestWork, guestOut := paths.root, paths.dir, paths.work, paths.out
 	container := "wtk-" + id
 	deadline := time.Time{}
 	if spec.Timeout > 0 {
@@ -581,6 +590,15 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		}
 	}
 
+	// ⛔ The inputs travel into the job's OWN directory, named by its id, so two
+	// jobs from one workspace cannot read each other's. WSL-97.
+	if len(spec.Inputs) > 0 {
+		if err := r.sendInputs(ctx, user, paths.in, spec.Inputs); err != nil {
+			res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+			return res
+		}
+	}
+
 	// ⛔ The job script travels as a FILE. Not an argument, which wsl.exe
 	// expands; not stdin, which a job that reads its own would consume.
 	if err := r.sendFile(ctx, user, guestJob, "job.sh", spec.Script); err != nil {
@@ -593,7 +611,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 		return res
 	}
-	runScript := r.containerScript(spec, container, guestWork, guestOut, guestScript, token)
+	runScript := r.containerScript(spec, container, paths, token)
 
 	// ⛔ THE RELAY TAKES THE LIVE STREAMS WHERE THERE IS ONE. The bounded copy
 	// and the transcript are written either way; what moves is who renders to
@@ -608,15 +626,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	// this tool's own token, written from inside the container so an image that
 	// never ran can be told from a payload that exited 125, and a reader who saw
 	// it in a rendered log would be reading an implementation detail as output.
-	errSink := io.Writer(streams.Err)
-	outSink := io.Writer(streams.Out)
 	if spec.Log != nil {
 		spec.Log.Begin(container, &ContainerObserver{Name: container, Ask: func(c context.Context, s []byte) (string, string, int, error) {
 			return r.baseCapture(c, s, containerProbeBudget)
 		}})
-		errSink = io.MultiWriter(streams.Err, spec.Log.Stderr())
-		outSink = io.MultiWriter(streams.Out, spec.Log.Stdout())
 	}
+	outSink, errSink := relaySinks(spec.Log, streams)
 	marker := newMarkerStripper(errSink, token)
 
 	// ⭐ THE HEARTBEAT COUNTS THE BYTES THE STREAMS CARRY, which is what makes a
@@ -651,6 +666,11 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	tick.Stop()
 	if err := marker.Flush(); err != nil {
 		r.log("could not flush the job's error stream: " + err.Error())
+	}
+	if spec.Log != nil {
+		// The command has ended, so its unterminated tails go to the copies now,
+		// before the copies are read. The relay still renders them at Finish.
+		spec.Log.FlushCopies()
 	}
 	streams.Close()
 	trace.Mark("streams")
@@ -730,6 +750,25 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	return res
 }
 
+// relaySinks is where a job's two streams are written: the job's own copies,
+// and the relay when there is one.
+//
+// ⛔ WITH A REDACTION IN FORCE THE RELAY FEEDS THE COPIES. The bounded copy on
+// the answer and the transcript on disk then hold the redacted lines, and the
+// job's streams count the command's own bytes and keep none of them. Without a
+// redaction the copies keep the bytes exactly. WSL-101.
+func relaySinks(log *RunLog, streams *jobStreams) (out, errw io.Writer) {
+	if log == nil {
+		return streams.Out, streams.Err
+	}
+	if log.Redacts() {
+		streams.Out.feedFromRelay()
+		streams.Err.feedFromRelay()
+		log.CopyLinesTo(streams.Out.Feed(), streams.Err.Feed())
+	}
+	return io.MultiWriter(streams.Out, log.Stdout()), io.MultiWriter(streams.Err, log.Stderr())
+}
+
 // unreachedReason is the START error the relay records, and it is empty for a
 // job whose container ran.
 //
@@ -762,11 +801,51 @@ func engineFailure(stderr string, execErr error) string {
 	return "the engine gave no reason"
 }
 
+// jobPaths is where one job's files live in the guest. ⛔ ONE LAYOUT: the job
+// runner, the container invocation and the cleanup read it from here.
+type jobPaths struct {
+	root   string // every job's directory is under it
+	dir    string // this job's directory, named by its id
+	work   string // the workspace copy, /work in the container
+	out    string // what the container hands back, /out
+	in     string // the job's input files, /in, read-only
+	script string // the payload, /job.sh, read-only
+}
+
+func jobLayout(guestHome, id string) jobPaths {
+	root := guestHome + "/" + GuestRoot + "/jobs"
+	dir := root + "/" + id
+	return jobPaths{root: root, dir: dir, work: dir + "/work", out: dir + "/out", in: dir + "/in", script: dir + "/job.sh"}
+}
+
+// sendInputs places a job's input files in its own directory, through the pump
+// the workspace uses. WSL-97.
+func (r *Runner) sendInputs(ctx context.Context, user, guestIn string, inputs []JobInput) error {
+	if err := AssertArgvSafe([]string{guestIn}); err != nil {
+		return err
+	}
+	errBuf := &boundedBuffer{max: 64 << 10}
+	if code, err := r.wsl.ExecDirect(ctx, r.cfg.Base.Name, user, "", []string{"/bin/mkdir", "-p", guestIn}, nil, io.Discard, errBuf, 2*time.Minute); err != nil || code != 0 {
+		return fmt.Errorf("could not create %s in the guest (exit %d): %s", guestIn, code, guestFailure(errBuf.String()))
+	}
+	errBuf = &boundedBuffer{max: 64 << 10}
+	if _, err := pumpArchive(
+		func(w io.Writer) (WorkspaceUpload, error) { return writeInputsTar(w, inputs) },
+		func(pr io.Reader) (int, error) {
+			return r.wsl.ExecDirect(ctx, r.cfg.Base.Name, user, "", []string{"/bin/tar", "-xf", "-", "-C", guestIn}, pr, io.Discard, errBuf, 10*time.Minute)
+		},
+		func() string { return errBuf.String() }); err != nil {
+		return fmt.Errorf("the inputs: %w", err)
+	}
+	return nil
+}
+
 // containerScript builds the engine invocation.
 //
 // ⛔ Every value is POSIX-quoted and nothing is substituted into the caller's
 // script, which is a file the container reads. This text never contains it.
-func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, guestScript, token string) []byte {
+func (r *Runner) containerScript(spec JobSpec, container string, paths jobPaths, token string) []byte {
+	guestWork, guestOut, guestScript := paths.work, paths.out, paths.script
 	// ⚠ :Z is not SELinux theatre on a host that has none: podman ignores it
 	// where there is no policy and it is required where there is one.
 	//
@@ -802,6 +881,9 @@ func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, g
 		"--workdir", "/work",
 		"--env", "WSL_TOOLKIT_JOB=1",
 	)
+	if len(spec.Inputs) > 0 {
+		args = append(args, "--volume", paths.in+":/in:ro"+strings.Replace(opts, ":", ",", 1))
+	}
 	if spec.Platform != "" {
 		args = append(args, "--platform", spec.Platform)
 	}
@@ -810,6 +892,15 @@ func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, g
 	}
 	if spec.User != "" {
 		args = append(args, "--user", spec.User)
+	}
+	for _, d := range spec.Devices {
+		args = append(args, "--device", d.String())
+	}
+	if spec.Timeout > 0 {
+		// ⛔ THE ENGINE HOLDS THE DEADLINE TOO, so a job whose owner is gone still
+		// ends. The owner's own deadline starts first and has no margin, so it
+		// fires first whenever the owner is alive. WSL-94.
+		args = append(args, "--timeout", strconv.FormatInt(int64(math.Ceil((spec.Timeout+EngineDeadlineMargin).Seconds())), 10))
 	}
 	envKeys := make([]string, 0, len(spec.Env))
 	for k := range spec.Env {
@@ -832,6 +923,7 @@ func (r *Runner) containerScript(spec JobSpec, container, guestWork, guestOut, g
 
 	var b strings.Builder
 	b.WriteString("set -u\n")
+	b.WriteString(deviceCheckScript(spec.Devices))
 	b.WriteString("exec podman")
 	for _, a := range args {
 		b.WriteString(" ")

@@ -11046,3 +11046,479 @@ above found a defect and this one found a limit, and a limit is the easier thing
 to write down, because nothing about it is anybody's fault. ⛔ **"Not ours" is a
 conclusion, not an observation**, and this pass reached it without measuring
 whether the tool could have said something useful. It could.
+
+---
+
+## WSL-94. A job whose client is gone can be neither stopped, followed nor waited on
+
+**Source** issue 34, items 2 and 3, from the consumer `Azathothas/podbox`; the
+operator's rulings of 2026-09-27 in [`PROGRESS.md`](PROGRESS.md).
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+A `run` job keeps running after the process that started it is gone. Nothing
+can stop it, show its output while it runs, or say how it ended. The job id is
+printed only when the job ends, so a caller that starts `run` in the background
+cannot name the job at all. `--timeout` is enforced by the client, so a job
+whose client is gone also runs past its own deadline.
+
+## Premise
+
+⭐ **Measured on 2026-09-27** on the throwaway base `wsl-toolkit-s34` (WSL
+2.7.12, podman 6.1.2), with the payload
+`echo job-start; sleep 40; echo job-end; exit 7`:
+
+| the case | what happened |
+| --- | --- |
+| the client killed WITHOUT its tree, 5 s in | `wsl.exe` stayed alive and the whole session continued. This is the consumer's case: the wrapper died and the tool under it kept writing |
+| the client killed WITH its tree, 12 s in | the container stayed `Up`; the host transcript stopped at 10 bytes; the ledger record stayed open with the 30-minute deadline |
+| 35 s later | the container `Exited (7)`. `podman logs` on it held `job-start` and `job-end` on stdout and the start marker on stderr, streams separate |
+| `gc` then, dry run | ⛔ it planned to REMOVE the exited container and KEEP both job directories as in use, so the only record of the exit code would go first |
+| `podman run --timeout 3` over `sleep 30` | the engine killed it after 4 s. The container records exit `-1` and podman exits `255` |
+
+⚠ **`gc --job ID --include-live --apply` does reach a running job**, which the
+issue did not name. It removes the container and its directories together, so
+it is a demolition and not a stop: the exit code, the output and `/out` go with
+it.
+
+## Approach
+
+1. **A job records itself where a second process can read it.** The process that
+   runs a job holds an exclusive lock on `jobs/ID/owner.lock` for the job's whole
+   life and writes the sealed result to `jobs/ID/result.json` when it ends. `run`
+   prints the job id on stderr BEFORE the container starts.
+   [`../tools/windows/wsl-toolkit/cmd_run.go`](../tools/windows/wsl-toolkit/cmd_run.go)
+   `cmdRun`, and `Runner.Run` in
+   [`../tools/windows/wsl-toolkit/internal/toolkit/job.go`](../tools/windows/wsl-toolkit/internal/toolkit/job.go).
+2. **`stop JOB`.** `podman stop` on the job's own container, checked by its label,
+   with `--grace` before the kill. A `stop` record goes in the ledger, and the
+   owner reports the job `stopped`, exit 130, and still fetches `/out`. A stop
+   that arrives before the container exists stops it from starting.
+3. **`logs JOB --follow`.** While the owner holds the lock, the host transcript is
+   read as it grows; the verdict is then read from `result.json`. With no owner and
+   no result, the engine is asked: `podman logs --follow` on the container, the
+   start marker stripped, and the container's own exit. It exits with the job's
+   verdict.
+4. **`wait JOB`.** The same states, no output, the verdict. `--timeout` bounds
+   the wait itself, and exit 124 with the job still running is said in the answer.
+5. **`run --detach`.** A detached copy of this executable owns the job through the
+   same code as an attached run, so artifacts, teardown and the verdict do not
+   change. The caller gets the id on stdout.
+6. **The engine carries the deadline too.** `podman run --timeout` at the job's
+   timeout plus a margin, so a job whose owner is gone still ends. The owner's
+   own deadline fires first whenever the owner is alive.
+7. **`gc` holds a job's container to the job's own liveness**, in
+   [`../tools/windows/wsl-toolkit/internal/toolkit/cleanup_run.go`](../tools/windows/wsl-toolkit/internal/toolkit/cleanup_run.go)
+   `cleanupTargets`, so an orphan's exit record is not removed while its
+   directories are kept.
+8. **`logs` with no id lists each job's state and exit.**
+
+⛔ **No second implementation of a run.** A detached job and an attached one run
+through `Runner.Run`; the only difference is which process holds the lock.
+
+## Decision
+
+**Ruled 2026-09-27, the operator's recommended option:** `run --detach` through a
+detached copy of the tool, and `base exec --detach` through the guest, `WSL-95`.
+Both use one id with `logs --follow`, `wait`, `stop` and `inspect`.
+
+## Consumers
+
+Additive: three commands and two flags. ⛔ **`logs` with no id changes its
+table**, which [`../docs/consumers.md`](../docs/consumers.md) counts as a break,
+so it ships in the major that `WSL-100` makes. `podbox` names no `logs` listing.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
+```
+
+Both exit 0. The acceptance runner carries a case per state: an attached job
+followed and waited on from a second process, a job stopped while it runs, a
+job whose owner was killed followed from the engine, and a `run --detach` whose
+verdict `wait` returns.
+
+---
+
+## WSL-95. A long base drive has to be held in a foreground client
+
+**Source** issue 34, item 4; the operator's ruling of 2026-09-27.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`base exec` has no way to start a payload, return, and come back to it. A drive
+that runs for hours is held in one client, and that client is what an agent
+harness kills at its own timeout. There is no id to reattach to, no record of
+the output, and no exit code once the client is gone.
+
+## Premise
+
+⛔ **The manual's claim is false today, and so is the issue's.** The page says a
+process `base exec` starts in the background does not outlive the command; the
+issue says a base session reaps its process group. ⭐ **Measured on 2026-09-27**
+on `wsl-toolkit-s34`, WSL 2.7.12:
+
+| base | how the client ended | `nohup cmd &` | `setsid cmd &` | plain `cmd &` | the foreground command |
+| --- | --- | --- | --- | --- | --- |
+| no systemd | cleanly | survived | survived | not tried | ended |
+| no systemd | killed with its tree | survived | survived | not tried | killed |
+| systemd | cleanly | survived | survived | not tried | ended |
+| systemd | killed with its tree | survived | survived | ⛔ killed | killed |
+
+⭐ **The pieces for survival exist**; what is missing is capture, a record of the
+exit code, a way back in, and a way to stop it. ⚠ The distribution stayed up
+with no client attached and a detached process in it, for over five minutes,
+under this host's `.wslconfig`.
+
+## Approach
+
+`base exec --detach`, in
+[`../tools/windows/wsl-toolkit/cmd_base_exec.go`](../tools/windows/wsl-toolkit/cmd_base_exec.go):
+the payload is placed in the guest through the archive channel, and a
+supervisor started with `setsid` runs it in a process group of its own with
+stdout and stderr in files, enforces `--timeout` itself, and writes the exit
+code last. The call returns the session id once the payload is running.
+
+- the files live under the session user's own home, so root's session is never
+  written into a directory the account controls;
+- `logs ID --follow`, `wait ID` and `stop ID` read and signal the session in the
+  guest; `stop` signals the payload's process group and the supervisor records
+  the code;
+- `gc` removes an ended session's directory and spares one whose supervisor is
+  alive.
+
+⛔ **No Windows process is needed while it runs**, which is the point: the
+session survives whatever happens to the client, the harness and the tool.
+
+## Consumers
+
+Additive. The manual's false sentence is corrected in the same change.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
+```
+
+Exit 0, with cases for a detached session followed to its exit code, stopped,
+timed out by its own deadline, and run as root.
+
+---
+
+## WSL-96. A job container cannot be given a host device
+
+**Source** issue 34, item 1; the operator's ruling of 2026-09-27.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`run` has no way to pass a device node into a job's container, so a payload
+that needs `/dev/kvm` runs through `base exec` instead, and a lane is split in
+two by one flag.
+
+## Premise
+
+⭐ **Measured on 2026-09-27** on `wsl-toolkit-s34`, as the base account:
+
+| the node | on the base | in a rootless container given `--device` |
+| --- | --- | --- |
+| `/dev/kvm` | `crw-rw-rw- root kvm` | present, opened read-write |
+| `/dev/loop-control` | `crw-rw---- root disk` | present as `nobody`. ⚠ The base account cannot open it, so nothing in the container can either |
+| `/dev/nonexistent-s34` | absent | podman refuses, `Error: stat /dev/nonexistent-s34: no such file or directory`, exit 125 |
+
+## Approach
+
+A repeatable `--device HOST[:CONTAINER[:PERMS]]` on `run` and `matrix`, carried
+over the helper protocol. The job's own script refuses a node that does not
+exist, is not a device, or that the base account cannot read and write, by
+name and before the engine starts, so the refusal is `unreached` and exit 2.
+[`../tools/windows/wsl-toolkit/internal/toolkit/job.go`](../tools/windows/wsl-toolkit/internal/toolkit/job.go)
+`containerScript`.
+
+⛔ **A device and never a mount.** The copy-never-mount rule is about host
+directories, and a device node carries no file tree.
+
+## Decision
+
+**Ruled 2026-09-27:** any node under `/dev` that the base account can open.
+The alternatives were a configured allowlist and `/dev/kvm` alone.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
+```
+
+Exit 0, with a case that opens `/dev/kvm` in a job and a case that refuses a
+node the account cannot open.
+
+---
+
+## WSL-97. A job takes one payload file, so a second one travels through the workspace and collides
+
+**Source** issue 34, item 5.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`--script` takes exactly one file. A caller whose wrapper is the script puts the
+real job into the checkout under a fixed name, and two jobs from one checkout
+then read one file: the consumer measured both containers running the first
+job's script while one caller asked for the second.
+
+## Premise
+
+Read in the consumer's `scripts/windows/run-in-base.sh` and its
+`docs/containers.md` on 2026-09-27: the job is staged as `$ROOT/.podbox-job.sh`,
+and the collision was measured there on 2026-09-22. ⭐ The tool's side is read
+from `jobFlags` in
+[`../tools/windows/wsl-toolkit/cmd_run.go`](../tools/windows/wsl-toolkit/cmd_run.go):
+one `--script`, one `-c`, one workspace.
+
+## Approach
+
+A repeatable `--input NAME=FILE` on `run` and `matrix`, over the helper protocol
+too. Each file travels byte for byte, with no repair, through the archive
+channel into the job's own directory, and the container sees it read-only at
+`/in/NAME`. The inputs count against `--max-bytes` and `--max-entries`, and a
+name is a relative path that climbs nowhere.
+
+⛔ **Per job, never per checkout.** The job directory is named by the job id, so
+two jobs cannot share an input.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
+```
+
+Exit 0, with a case where two concurrent jobs from one workspace each read their
+own `/in` file.
+
+---
+
+## WSL-98. A workspace copy that fails does not always name the file
+
+**Source** issue 34, item 6.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The copy path has several ways to fail and they read differently. Some name the
+member, some name the archiver, and one can hide the guest's own words behind a
+pipe error.
+
+## Premise
+
+- ⭐ **`archive/tar: write too long` is fixed in 4.0.0.** `writeRegularMember` in
+  [`../tools/windows/wsl-toolkit/internal/toolkit/workspace.go`](../tools/windows/wsl-toolkit/internal/toolkit/workspace.go)
+  bounds the read by the declared size, and a file that grew is named on the
+  result. The consumer's measurement is from 2026-09-12, before that release.
+- ⛔ **A file named `NUL` fails the copy although its bytes are readable.**
+  Measured on 2026-09-27 with go1.27.0 on this host: the walk lists a 44-byte
+  `NUL`, opening it by its path reads the device and 0 bytes, and opening it
+  through the `\\?\` prefix reads all 44.
+- ⚠ **Read, not measured:** when the guest's `tar` stops first, the host writer
+  meets a closed pipe, and `SendWorkspace` returns the writer's error ahead of the
+  guest's own stderr. A writer blocked on a pipe nobody reads can also wait for
+  ever.
+- ⚠ **Read, not measured:** the walker's own errors, a header the archiver cannot
+  encode and an open that fails reach the caller without the member's name.
+
+## Approach
+
+Every failure in the copy path names the member and the operation, the guest's
+own stderr is preferred when the guest exited non-zero, the pipe reader is closed
+when the guest has gone so the writer cannot block, and a file whose name is a
+Windows device name is read through the `\\?\` prefix so its real bytes travel.
+
+## Consumers
+
+⚠ A workspace holding such a file used to be refused and now travels whole,
+which changes what a job sees. It is additive for every call that used to
+succeed.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case per failure naming its member, and a Windows case that
+carries a file named `NUL`.
+
+---
+
+## WSL-99. Only `distro` has a channel no shell can reach into, and Git Bash rewrites the rest
+
+**Source** found on 2026-09-27 while reading the consumer's traps: "`base exec
+-c` carrying a guest path needs `MSYS_NO_PATHCONV=1` ... or Git Bash rewrites
+`/root/...` into `C:\Program Files\Git\...`".
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`distro new` and `distro run` take `--command-base64`, which no shell can
+change. `run`, `matrix` and `base exec` take `-c` and `--script` alone, so a
+caller in Git Bash whose command begins with a guest path has it rewritten
+before this tool starts, and the guest then fails with 127 naming a path
+nobody typed.
+
+## Premise
+
+Read from `guestScript` in
+[`../tools/windows/wsl-toolkit/cmd_run.go`](../tools/windows/wsl-toolkit/cmd_run.go)
+and `commandFlags` in
+[`../tools/windows/wsl-toolkit/cmd_distro.go`](../tools/windows/wsl-toolkit/cmd_distro.go).
+⭐ The rewrite is MSYS's and happens before `main` runs, which
+[`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 7 already
+carries, so no code here can undo it. ⚠ What code CAN do is recognise its
+signature: a command whose first word is a drive-letter path with forward
+slashes is what MSYS makes of a leading `/`, and no POSIX command begins that
+way.
+
+## Approach
+
+`--command-base64` on `run`, `matrix` and `base exec`, through the one reader
+the three share. Where `MSYSTEM` is set and a `-c` command or a `--dir` begins
+with a drive-letter path, the call is refused with exit 2, naming Git Bash's
+rewrite and the three ways past it.
+
+## Consumers
+
+Additive, and the refusal replaces a guest failure that could not succeed.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for the new channel on each command and for the refusal.
+
+---
+
+## WSL-100. The `base` group accepts flags its subcommands never read
+
+**Source** found on 2026-09-27: the consumer's session start calls `base ensure
+--probe`, and `--probe` is read by `base status` alone.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`cmdBase` in
+[`../tools/windows/wsl-toolkit/cmd_base.go`](../tools/windows/wsl-toolkit/cmd_base.go)
+binds one flag set for `status`, `ensure`, `recreate`, `remove`, `shell` and
+`attach`. `base shell --json`, `base status --repair`, `base remove --probe` and
+`base attach --root` all parse, exit as though nothing was passed, and say
+nothing, which is the dead-configuration row of
+[`../docs/conventions/forbidden-patterns.md`](../docs/conventions/forbidden-patterns.md).
+
+## Premise
+
+Read, and it is the whole of the code path: each subcommand reads only its own
+flags from the shared set.
+
+## Approach
+
+Each subcommand names the flags it reads, and a flag passed to one that does
+not read it is refused with exit 2, naming the subcommands that do.
+⭐ **`base ensure --probe` stays accepted**, because `ensure` always runs a
+container to verify the base, and a consumer passes it today.
+
+## Decision
+
+**Ruled 2026-09-27:** fix it now, as a break, in `wsl-toolkit-v5.0.0`.
+
+## Consumers
+
+⛔ **A break by [`../docs/consumers.md`](../docs/consumers.md)'s table**: a call
+that parsed now refuses. Every call it breaks passed a flag that did nothing.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that walks every subcommand against every flag in the set.
+
+---
+
+## WSL-101. `--redact` keeps a secret off the screen and writes it to the answer and the transcript
+
+**Source** found on 2026-09-27 while designing `WSL-94`'s follow, which reads the
+transcript a second process sees.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The manual says `--redact REGEX` turns a match into `***` before any sink sees a
+line. On `run`, the live stream is redacted, and the structured answer and the
+job's transcript on disk carry the secret as it was written.
+
+## Premise
+
+⛔ **Measured on 2026-09-27** on `wsl-toolkit-s34`:
+`run --redact 'SECRET[0-9]+' --json -c 'echo token=SECRET123; echo err-SECRET456 >&2'`.
+
+| where | what it held |
+| --- | --- |
+| the live stderr | `err-***` |
+| the answer's `stdout` and `stderr` | ⛔ `token=SECRET123` and `err-SECRET456` |
+| `jobs/ID/stdout.log` and `stderr.log` | ⛔ the same two secrets |
+
+⭐ **The cause is one line.** `Runner.Run` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/job.go`](../tools/windows/wsl-toolkit/internal/toolkit/job.go)
+hands the raw bytes to the bounded copy and the transcript BESIDE the relay
+rather than behind it. `distro` feeds the relay alone and keeps no raw copy.
+
+## Approach
+
+With a redaction in force, the bounded copy and the transcript receive the
+relay's redacted lines, and the byte counts keep counting what the command
+wrote. Without one, nothing changes.
+
+## Consumers
+
+⚠ The answer and the transcript change under `--redact`, which is the fix.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that reads all three places back through a real `Runner`
+pipeline and finds no secret.

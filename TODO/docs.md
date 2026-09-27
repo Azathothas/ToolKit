@@ -453,3 +453,58 @@ itself to whatever lands there next, which is the `DOC-04` row in
 first paragraph so a session that arrives some other way is told. A session
 pointed at nothing has to be pointed at `docs/AGENTS.md` by whoever starts it.
 That is now a line in the next-session prompt rather than a property of the tree.
+
+## DOC-08. The live pages carry dated measurements and the story of their own work again
+
+**Source** the operator, 2026-09-27: "all docs/skills etc are amended in place,
+carry no dated/stale/narrative lore, and read as ASD STE100 technical manual".
+**Category** docs, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+`DOC-06` moved the story of old fixes off the pages, and the class came back. A
+reader of the tool's usage page meets "measured on 2026-09-14" rows, "the first
+published nightly", "this page claimed ... before the tool did", and sentences
+that describe what a release used to do. A reader who wants one fact reads a
+diary to find it.
+
+## Premise
+
+Counted on 2026-09-27 with `git grep` for a `YYYY-MM-DD` date over the live
+pages (`docs/` without `HISTORY/` and `reference-sweeps/`, `skills/`, the tool
+pages, the READMEs and the examples): **93 lines across 18 pages**, and
+`tools/windows/wsl-toolkit/wsl-toolkit.md` alone carries **51** of them. ⚠ **`DOC-06`'s own line cannot hold the stricter rule**: it kept a
+measurement on a page when "a reader who does not know it will undo the rule",
+which is most measurements.
+
+## Approach
+
+1. Each live page states behaviour, limits and commands in the present tense,
+   in STE sentences, with no dates, no session history and no "used to".
+2. ⭐ A dated measurement moves to the entry that produced it, and the page cites
+   that entry by id. A constraint a reader needs stays, as a present-tense fact.
+3. [`../docs/conventions/prose.md`](../docs/conventions/prose.md) and
+   [`../docs/conventions/docs.md`](../docs/conventions/docs.md) are amended in
+   place to state that rule.
+4. A check refuses a date on a live page, so the class cannot come back a third
+   time without a red gate.
+
+⛔ **The record is not a live page.** `TODO/`, `CHANGELOG.md` and `docs/HISTORY/`
+are evidence of what was believed on a date, and they keep their dates.
+
+## Decision
+
+**Ruled 2026-09-27, the operator's recommended option:** the entries hold the
+measurements and the pages cite them. The alternative was one dated appendix per
+page.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0, with the new check green over the live pages and red when a date is
+planted in one.

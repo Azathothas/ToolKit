@@ -267,6 +267,7 @@ func checkBsdDisk(gib int) error {
 func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("bsd run")
 	command := fs.String("c", "", "the command to run at a root shell in the guest")
+	commandB64 := fs.String("command-base64", "", "the command as base64 of its bytes, for a caller that must keep every shell away from it")
 	scriptFile := fs.String("script", "", "a file whose contents run at a root shell in the guest")
 	timeout := fs.Duration("timeout", 15*time.Minute, "the whole session, the boot included")
 	network := fs.Bool("network", false, "give the guest outbound user-mode networking. Nothing is forwarded inward")
@@ -278,26 +279,10 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
-	if *command != "" && *scriptFile != "" {
-		return exitCannot, errors.New("-c and --script are two spellings of one argument, so passing both is refused")
-	}
 	if err := checkBsdDisk(*disk); err != nil {
 		return exitCannot, err
 	}
-	var payload []byte
-	var err error
-	switch {
-	case *command != "":
-		payload, err = toolkit.RepairGuestScript([]byte(*command + "\n"))
-	case *scriptFile != "":
-		raw, readErr := os.ReadFile(*scriptFile)
-		if readErr != nil {
-			return exitCannot, readErr
-		}
-		payload, err = toolkit.RepairGuestScript(raw)
-	default:
-		return exitCannot, errors.New("nothing to run: pass -c COMMAND or --script FILE")
-	}
+	payload, err := guestScript(*command, *commandB64, *scriptFile)
 	if err != nil {
 		return exitCannot, err
 	}

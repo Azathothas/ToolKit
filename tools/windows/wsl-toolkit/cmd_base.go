@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -58,16 +60,6 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		return exitOK, flag.ErrHelp
 	}
 	sub, rest := args[0], args[1:]
-	fs := newFlagSet("base " + sub)
-	asJSON := fs.Bool("json", false, "write a structured answer")
-	probe := fs.Bool("probe", false, "run a real container to decide whether the base is usable")
-	repair := fs.Bool("repair", false, "ensure may clear engine run state a reboot invalidated. Off by default")
-	asRoot := fs.Bool("root", false, "attach as root")
-	here := fs.Bool("here", false, "base shell starts in this Windows directory instead of the guest account's home")
-	yes := fs.Bool("yes", false, "do not ask before removing")
-	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
-	preset := fs.String("preset", "", "build from this preset id or fully qualified reference")
-	save := fs.Bool("save", false, "also store the preset as the default for later commands")
 	if sub == "presets" {
 		return cmdPresets(rest)
 	}
@@ -89,7 +81,8 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	if sub == "bootstrap" {
 		return cmdBaseBootstrap(ctx, rest)
 	}
-	if err := parseArgs(fs, rest); err != nil {
+	flags, err := parseBaseFlags(sub, rest)
+	if err != nil {
 		return exitCannot, err
 	}
 	cfg, err := loadConfig()
@@ -99,9 +92,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	if sub == "attach" {
 		// ⭐ BEFORE THE HELPER ROUTE. It reads files on this machine and starts
 		// nothing, so a process that cannot reach wsl.exe can still answer it.
-		return cmdBaseAttach(cfg, *asJSON)
+		return cmdBaseAttach(cfg, flags.asJSON)
 	}
-	switched, err := applyPreset(ctx, &cfg, *preset, *save)
+	switched, err := applyPreset(ctx, &cfg, flags.preset, flags.save)
 	if err != nil {
 		return exitCannot, err
 	}
@@ -116,22 +109,22 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	// status and ensure are the two a restricted caller needs; remove and shell
 	// are deliberately NOT on the helper protocol. Removing a distribution and
 	// attaching a terminal are not job data.
-	if c, err := useHelper(ctx, *viaHelper); err != nil {
+	if c, err := useHelper(ctx, flags.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
 		switch sub {
 		case "status":
-			st, err := c.BaseStatus(ctx, *probe)
+			st, err := c.BaseStatus(ctx, flags.probe)
 			if err != nil {
 				return exitCannot, err
 			}
-			return verdictFor(st), renderBase(st, *asJSON, *probe)
+			return verdictFor(st), renderBase(st, flags.asJSON, flags.probe)
 		case "ensure", "recreate":
-			st, err := c.BaseEnsureWith(ctx, sub == "recreate", *repair)
+			st, err := c.BaseEnsureWith(ctx, sub == "recreate", flags.repair)
 			if err != nil {
 				return exitCannot, err
 			}
-			return verdictFor(st), renderBase(st, *asJSON, true)
+			return verdictFor(st), renderBase(st, flags.asJSON, true)
 		default:
 			return exitCannot, fmt.Errorf("this process cannot reach wsl.exe and %q is not something the helper accepts. Removing a distribution and attaching a terminal are not job data", sub)
 		}
@@ -144,40 +137,40 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 
 	switch sub {
 	case "status":
-		st, err := base.Status(ctx, *probe)
+		st, err := base.Status(ctx, flags.probe)
 		if err != nil {
 			return exitCannot, err
 		}
-		return verdictFor(st), renderBase(st, *asJSON, *probe)
+		return verdictFor(st), renderBase(st, flags.asJSON, flags.probe)
 
 	case "ensure":
-		st, err := base.EnsureWith(ctx, false, *repair)
+		st, err := base.EnsureWith(ctx, false, flags.repair)
 		if err != nil {
 			// ⛔ THE STATE IS RENDERED BEFORE THE ERROR IS RETURNED. A refusal
 			// that carries a remediation is the one case where the answer is in
 			// the state and not in the message, and a caller reading --json got
 			// nothing at all here before.
-			_ = renderBase(st, *asJSON, true)
+			_ = renderBase(st, flags.asJSON, true)
 			return exitCannot, err
 		}
-		return verdictFor(st), renderBase(st, *asJSON, true)
+		return verdictFor(st), renderBase(st, flags.asJSON, true)
 
 	case "recreate":
-		st, err := base.EnsureWith(ctx, true, *repair)
+		st, err := base.EnsureWith(ctx, true, flags.repair)
 		if err != nil {
 			return exitCannot, err
 		}
-		return verdictFor(st), renderBase(st, *asJSON, true)
+		return verdictFor(st), renderBase(st, flags.asJSON, true)
 
 	case "remove":
 		// ⛔ A DESTRUCTIVE ACTION ASKS, AND REFUSES WHEN NOBODY CAN ANSWER. The
 		// rule `distro remove` holds too: a non-interactive session passes the
 		// flag or gets a refusal, because a prompt nobody reads is a prompt that
 		// approves itself.
-		if !*yes && !isInteractive() {
+		if !flags.yes && !isInteractive() {
 			return exitCannot, fmt.Errorf("removing %s is destructive and this session is not interactive. Pass --yes", cfg.Base.Name)
 		}
-		if !*yes {
+		if !flags.yes {
 			fmt.Fprintf(os.Stderr, "Remove the distribution %q and delete its disk? [y/N] ", cfg.Base.Name)
 			var answer string
 			fmt.Fscanln(os.Stdin, &answer)
@@ -193,7 +186,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 
 	case "shell":
 		user := cfg.Base.User
-		if *asRoot {
+		if flags.asRoot {
 			user = "root"
 		}
 		w, err := toolkit.FindWsl()
@@ -209,7 +202,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		}
 		shellArgs := []string{"-d", cfg.Base.Name, "-u", user}
 		var extraEnv []string
-		if *here {
+		if flags.here {
 			automount, err := toolkit.NormalizeAutomount(cfg.Base.Automount)
 			if err != nil {
 				return exitCannot, err
@@ -263,7 +256,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 				`if [ -n "$s" ] && [ -x "$s" ]; then exec "$s" -l; fi; `+
 				`exec /bin/sh -l`)
 
-		if *asRoot {
+		if flags.asRoot {
 			// ⭐ THE WARNING NAMES WHAT IS ACTUALLY REACHABLE, rather than
 			// asserting an isolation this shell does not have. Every Windows
 			// drive WSL has mounted is reachable from here whatever directory the
@@ -286,6 +279,75 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		fmt.Fprint(os.Stderr, baseUsage)
 		return exitCannot, fmt.Errorf("%q is not a base subcommand", sub)
 	}
+}
+
+// baseFlags are the values of the flag set the simple base subcommands share.
+type baseFlags struct {
+	asJSON, probe, repair, asRoot, here, yes, viaHelper, save bool
+	preset                                                    string
+}
+
+// baseSubcommands are the subcommands that parse the shared set, in the order a
+// refusal names them.
+var baseSubcommands = []string{"status", "ensure", "recreate", "remove", "shell", "attach"}
+
+// baseFlagsRead names the flags each of those subcommands reads.
+//
+// ⛔ A FLAG A SUBCOMMAND DOES NOT READ IS REFUSED, NOT IGNORED. The set is shared,
+// so `base shell --json` and `base status --repair` parsed, did nothing and said
+// nothing. `base ensure --probe` stays accepted: ensure verifies the base by
+// running a container whether or not it is asked to. WSL-100.
+var baseFlagsRead = map[string][]string{
+	"status":   {"json", "probe", "via-helper"},
+	"ensure":   {"json", "probe", "repair", "via-helper", "preset", "save"},
+	"recreate": {"json", "probe", "repair", "via-helper", "preset", "save"},
+	"remove":   {"yes", "via-helper"},
+	"shell":    {"root", "here", "via-helper"},
+	"attach":   {"json"},
+}
+
+// parseBaseFlags parses the shared set for one subcommand and refuses a flag it
+// does not read. An unknown subcommand parses everything, and the dispatch then
+// refuses the subcommand itself.
+func parseBaseFlags(sub string, args []string) (baseFlags, error) {
+	var f baseFlags
+	fs := newFlagSet("base " + sub)
+	fs.BoolVar(&f.asJSON, "json", false, "write a structured answer")
+	fs.BoolVar(&f.probe, "probe", false, "status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag")
+	fs.BoolVar(&f.repair, "repair", false, "ensure and recreate may clear engine run state a reboot invalidated. Off by default")
+	fs.BoolVar(&f.asRoot, "root", false, "shell attaches as root")
+	fs.BoolVar(&f.here, "here", false, "shell starts in this Windows directory instead of the guest account's home")
+	fs.BoolVar(&f.yes, "yes", false, "remove does not ask before removing")
+	fs.BoolVar(&f.viaHelper, "via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
+	fs.StringVar(&f.preset, "preset", "", "ensure and recreate build from this preset id or fully qualified reference")
+	fs.BoolVar(&f.save, "save", false, "ensure and recreate also store the preset as the default for later commands")
+	if err := parseArgs(fs, args); err != nil {
+		return f, err
+	}
+	read, known := baseFlagsRead[sub]
+	if !known {
+		return f, nil
+	}
+	var refused error
+	fs.Visit(func(fl *flag.Flag) {
+		if refused != nil || slices.Contains(read, fl.Name) {
+			return
+		}
+		var readers []string
+		for _, s := range baseSubcommands {
+			if slices.Contains(baseFlagsRead[s], fl.Name) {
+				readers = append(readers, "base "+s)
+			}
+		}
+		refused = fmt.Errorf("base %s does not read --%s, so it is refused rather than ignored. It is read by %s", sub, fl.Name, strings.Join(readers, ", "))
+	})
+	if refused != nil {
+		return f, refused
+	}
+	if f.save && f.preset == "" {
+		return f, errors.New("--save stores the preset --preset names, and no --preset was given")
+	}
+	return f, nil
 }
 
 func verdictFor(st toolkit.BaseState) int {
