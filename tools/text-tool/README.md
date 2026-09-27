@@ -67,9 +67,7 @@ pwsh -NoProfile -File scripts/common/text-tool.ps1 --help
 
 ⛔ **`--replace`, `--after` and `--before` require `--expect N`, and a different
 number is refused with the file untouched.** A substitution names no place of its
-own; one that silently matched nothing is what a caller never notices. The guard
-refused its own author three times on the day it was written, which is three
-silent no-ops that did not happen.
+own; one that silently matched nothing is what a caller never notices.
 
 ⚠ **`--expect` is the TOTAL across every file named.** The per-file counts are in
 the report, so a refusal names which file disagreed.
@@ -95,9 +93,8 @@ they agreed.
 `--json` gives `text-edit/2`: a `mode`, a total `matches`, a `changed`, and a
 `files` array with one entry per path.
 
-⚠ **One shape whether one file was named or twenty.** The first version emitted a
-flat object for a single file, which would have given a caller two shapes to
-parse from one command.
+⚠ **One shape whether one file is named or twenty.** A flat object for a single
+file would give a caller two shapes to parse from one command.
 
 ⚠ **`lines` is capped at twenty**, and when it is shorter than `matches` the
 report sets `lines_truncated`. A report whose two halves disagree with nothing
@@ -105,7 +102,7 @@ saying why is a defect even when every number in it is correct.
 
 ## Published
 
-From `wsl-toolkit-v3.1.0` each release publishes `text-tool-windows-amd64.exe`,
+Each release publishes `text-tool-windows-amd64.exe`,
 `text-tool-windows-arm64.exe`, `text-tool-linux-amd64` and
 `text-tool-linux-arm64`, each with a cosign bundle, and
 [`../../docs/consumers.md`](../../docs/consumers.md) says how to verify one.

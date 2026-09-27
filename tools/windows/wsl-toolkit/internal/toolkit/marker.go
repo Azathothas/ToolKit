@@ -65,6 +65,9 @@ type markerStripper struct {
 	// already have been flushed.
 	last byte
 	any  bool
+	// onSeen runs once, when the token first arrives. It is called with the
+	// lock held, so it must not block.
+	onSeen func()
 }
 
 func newMarkerStripper(dst io.Writer, token string) *markerStripper {
@@ -82,6 +85,9 @@ func (m *markerStripper) Write(p []byte) (int, error) {
 		i := bytes.Index(m.buf, m.tok)
 		if i < 0 {
 			break
+		}
+		if !m.seen && m.onSeen != nil {
+			m.onSeen()
 		}
 		m.seen = true
 		// Whatever sits immediately in front of the token in the WHOLE stream,

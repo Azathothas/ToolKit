@@ -367,10 +367,7 @@ func (c *HelperClient) Cleanup(ctx context.Context, apply bool, policy CleanupPo
 		Plan  CleanupPlan `json:"plan"`
 		Error string      `json:"error"`
 	}
-	body := map[string]any{
-		"apply": apply, "older_than_ms": policy.OlderThan.Milliseconds(),
-		"images": images, "include_live": policy.IncludeLive,
-	}
+	body := gcRequest(apply, policy, images)
 	if err := c.call(ctx, http.MethodPost, "/v1/gc", body, &out); err != nil {
 		return out.Plan, err
 	}
@@ -378,6 +375,34 @@ func (c *HelperClient) Cleanup(ctx context.Context, apply bool, policy CleanupPo
 		return out.Plan, errors.New(out.Error)
 	}
 	return out.Plan, nil
+}
+
+// StopJob asks the helper to stop a job it ran. WSL-94.
+func (c *HelperClient) StopJob(ctx context.Context, id string, grace time.Duration) (StopReport, error) {
+	var out struct {
+		Report  StopReport `json:"report"`
+		Error   string     `json:"error"`
+		Unknown bool       `json:"unknown"`
+	}
+	if err := c.call(ctx, http.MethodPost, "/v1/job/stop", HelperStopRequest{ID: id, GraceMS: grace.Milliseconds()}, &out); err != nil {
+		return out.Report, err
+	}
+	if out.Error != "" {
+		if out.Unknown {
+			return out.Report, fmt.Errorf("%w: %s", ErrUnknownJob, out.Error)
+		}
+		return out.Report, errors.New(out.Error)
+	}
+	return out.Report, nil
+}
+
+// gcRequest is one cleanup on the wire, built in one place so every policy
+// field reaches the helper. WSL-102.
+func gcRequest(apply bool, policy CleanupPolicy, images bool) HelperGCRequest {
+	return HelperGCRequest{
+		Apply: apply, OlderThanMS: policy.OlderThan.Milliseconds(), Images: images,
+		IncludeLive: policy.IncludeLive, Job: policy.Job,
+	}
 }
 
 // EncodeScript is how a payload crosses the protocol.

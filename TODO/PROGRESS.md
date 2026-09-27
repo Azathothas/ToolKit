@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-09-17T14:42:39Z
 baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
 head            wsl-toolkit-v4.0.0 published; 29ca209, 9660143, 02182bb, 09eea4f plus this record commit
-entries         total 137  open 9  blocked 0  done 128
+entries         total 139  open 11  blocked 0  done 128
 this session    wsl-toolkit-v4.0.0; the last two open entries closed, then the operator refused the handover: every host-engine call bounded with a stall deadline, and nine findings that had a named fix and no entry FIXED rather than listed
 ```
 

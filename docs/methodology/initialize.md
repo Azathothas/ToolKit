@@ -131,10 +131,10 @@ optional recommendations with rationale and tradeoffs, ⛔ **never as hidden
 decisions baked into the code.**
 
 **Better ways to do what was asked.** Simpler, safer, cheaper, more
-maintainable. The worked example: an intake asked to make a leaking field
-admin-only. The right call, recommended and taken, was to remove it entirely,
-because the leak had no access control to fix and the data was redundant with
-an already-protected copy. Challenging the framing was the value.
+maintainable. An example: an intake asks to make a leaking field admin-only.
+The better call is to remove it, because the leak has no access control to fix
+and the data is redundant with an already-protected copy. Challenging the
+framing is the value.
 
 **Adjacent capabilities the decision just unlocked.** Authentication naturally
 enables roles, audit logs, API tokens. Background jobs naturally enable
@@ -165,12 +165,12 @@ has to.
 ⛔ **Whenever a choice is load-bearing, unusual, or bleeding-edge, spike it
 before it becomes a locked decision.** Automatically for anything load-bearing.
 
-- ⭐ **Measure on the real target, not from the documentation.** Real examples:
-  a library chosen by benchmarking candidates inside the actual runtime rather
-  than trusting stated throughput; a memory ceiling found only by a deployed
-  probe because the local runtime happily held far more; an async path that was
-  fine serially and deadlocked under concurrency, caught only by a concurrency
-  benchmark. Each would have shipped a broken choice if adopted on faith.
+- ⭐ **Measure on the real target, not from the documentation.** Choose a library
+  by benchmarking candidates inside the actual runtime, not by stated throughput.
+  A memory ceiling shows only to a deployed probe, because a local runtime holds
+  far more. An async path that is fine serially can deadlock under concurrency,
+  and only a concurrency benchmark shows it. Each is a broken choice when adopted
+  on faith.
 - **Keep the spike as a committed, re-runnable harness**, so the decision can be
   re-checked when a version moves. "Measured, not assumed" has an expiry date.
 - **Pin exact versions and verify the API from the installed package.**
@@ -221,10 +221,9 @@ named prior work, is right-sized, and can be validated against concrete
 criteria.
 
 ⭐ **Order them so each stands on a verified foundation, and build the seams
-early.** The worked example: a driver interface, a placement chooser and the
-multi-account seams were all built empty in the first three units and stayed
-unused for many more, so that when scaling finally arrived it was "make the
-seam real" rather than "rewrite the engine".
+early.** A driver interface, a placement chooser and multi-account seams can be
+built empty in the first units, so that when scaling arrives the work is "make
+the seam real" rather than "rewrite the engine".
 
 ⚠ **Right-sized is not small.** A one-file change is not a unit of work. A
 "quick feature" that touches authentication or the core write path is.

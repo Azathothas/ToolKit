@@ -15,16 +15,13 @@ what makes them true.
 answers. This table is the shorter question: when two pages disagree, which one
 is right.
 
-⛔ **Every row names a file that exists.** It used to list thirteen documents,
-seven of which have never existed here, and one of those seven was named as the
-authority a conflict is settled against. A file nobody selected is a file a
-future session reads, believes, and follows into a rule that was never meant to
-apply; a file that does not exist at all is worse, because there is nothing to
-read and the rule pointing at it cannot be followed.
+⛔ **Every row names a file that exists.** A row that names a missing file points
+a reader at a rule that cannot be followed, and a row that names a file nobody
+selected sends a future session into a rule that was never meant to apply.
 
 | file | owns |
 | --- | --- |
-| ⭐ [`../AGENTS.md`](../AGENTS.md) | the router, and the ONLY one, read end to end. Where you are, the absolutes, the start of a session, what to read for which task, and which tool already exists. ⚠ A root `AGENTS.md` restating the absolutes existed until 2026-08-30 and was deleted under `DOC-07`. |
+| ⭐ [`../AGENTS.md`](../AGENTS.md) | the router, and the ONLY one, read end to end. Where you are, the absolutes, the start of a session, what to read for which task, and which tool already exists. ⚠ There is no root `AGENTS.md`. `DOC-07` |
 | [`../../README.md`](../../README.md) | what this is, for a competent stranger, and the map of everything else |
 | ⭐ [`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) | the record. What changed since last time and what is next. Nothing else carries a work order. |
 | [`../../TODO/RULES.md`](../../TODO/RULES.md) | the half of the record that does not change between sessions: the standing facts, and the rules that are this repository's own |
@@ -38,9 +35,7 @@ read and the rule pointing at it cannot be followed.
 threat model are both worth having and neither has content yet, so neither
 exists rather than shipping an empty skeleton for each.
 [`../../TODO/PROGRESS.md`](../../TODO/PROGRESS.md) carries both under its open
-questions. ⛔ That sentence was here before the line it names was, which the
-claim audit found on 2026-09-10; the fix was to write the open question rather
-than to delete the sentence.
+questions.
 
 ⛔ **There is no architecture document, and nothing here should claim one.**
 This repository is a set of independent tools, each with its own page; there is
@@ -87,9 +82,14 @@ Writing the documentation is the audit. Being forced to say precisely what
 something does, and then checking whether that is true, is where a surprising
 share of real defects are found.
 
-⚠ The most confident sentence in a file is regularly the only false one. A test
-file header asserting it ran "exactly as production uses it" hid the gap that
-shipped a server error for six units of work.
+⚠ The most confident sentence in a file is often the only false one, because it
+is the one nobody thought to check.
+
+### A live page says what is true now
+
+⛔ A live page carries no date and no story of its own work, and a measurement
+lives in the entry that made it. [`prose.md`](prose.md) states the rule, and the
+`ste` check refuses a date. `DOC-08`
 
 ### Prefer a shape a check can assert
 
@@ -126,7 +126,7 @@ better at one part of the job:
 | grep-able, and cost something | [`forbidden-patterns.md`](forbidden-patterns.md) | a reader greps themselves against it before calling a gate green, which a log does not get read for |
 | mechanical | ⭐ a check, and a row pointing at it | a rule enforced by a script is a rule nobody has to remember |
 | a measurement, or a rejected approach | the entry that produced it, in `TODO/` | it keeps the conditions and the acceptance command beside it, which a log strips |
-| ⭐ the wording a live page used to carry | [`../HISTORY/`](../HISTORY/README.md), one page per subject | a reference page that is also a diary stops being read as either. [`prose.md`](prose.md) is the rule; that directory is its destination. |
+| ⭐ the wording a live page carried before | [`../HISTORY/`](../HISTORY/README.md), one page per subject | a reference page that is also a diary stops being read as either. [`prose.md`](prose.md) is the rule; that directory is its destination. |
 | about somebody else's project | [`../reference-sweeps/usable.md`](../reference-sweeps/usable.md) | that page exists to say which findings this repository can act on |
 
 ⚠ **The cost of not having one** is that there is no single page to read for
@@ -140,15 +140,14 @@ rewritten every session rather than appended to.
 **What shipped, when, and where the evidence is.** One entry per shipped unit
 of work, pointing at the record that carries the detail.
 
-⭐ It is also the destination for what a documentation pass removes. When a
-document loses the *story* of a fix, what broke and what the sentence used to
-say, the story comes here. So this file is expected to grow, and its length is
-not a defect.
+⭐ It is also the destination for what a documentation pass removes: the *story*
+of a fix, what broke and what the sentence said before. So this file is expected
+to grow, and its length is not a defect.
 
 | the text is | where it goes |
 | --- | --- |
 | a fact, limit or constraint a future session needs | ⛔ the document. Not here. |
-| a measurement with its conditions | ⛔ the document, as a table. Not here. |
+| a measurement with its conditions | ⛔ the entry that made it, which the document cites. Not here. |
 | the story of a fix, or a superseded claim kept for provenance | ⭐ here |
 | the full detail of one session's work | ⛔ the handoff. Here goes a pointer to it. |
 

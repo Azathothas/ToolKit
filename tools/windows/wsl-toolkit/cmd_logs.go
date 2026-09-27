@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -22,12 +24,14 @@ import (
 
 const logsUsage = `wsl-toolkit logs [JOB-ID]
 
-  With no id, list the transcripts this machine still has, newest first.
-  With one, write that job's streams.
+  With no id, list the jobs and detached sessions this machine still has,
+  newest first, each with its state. With one, write that job's streams.
 
   --stderr    write the error stream instead of the output stream
   --both      write both, the output first
   --tail N    only the last N lines
+  --follow    write both streams, each to its own, as the job writes them,
+              and answer with the job's own exit code once it ends
   --json      list as structured data
 
   A transcript lives beside the job's own state and is removed by
@@ -35,11 +39,12 @@ const logsUsage = `wsl-toolkit logs [JOB-ID]
   that ran long enough ago will not be here.
 `
 
-func cmdLogs(args []string) (int, error) {
+func cmdLogs(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("logs")
 	wantErr := fs.Bool("stderr", false, "write the error stream instead of the output stream")
 	both := fs.Bool("both", false, "write both streams, the output first")
 	tail := fs.Int("tail", 0, "only the last N lines. 0 means all of it")
+	follow := fs.Bool("follow", false, "write both streams, each to its own, as the job writes them, and answer with the job's exit code once it ends")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	id, rest := splitLogsArgs(args)
 	if err := parseArgs(fs, rest); err != nil {
@@ -48,6 +53,30 @@ func cmdLogs(args []string) (int, error) {
 			return exitOK, nil
 		}
 		return exitCannot, err
+	}
+	if *tail < 0 {
+		return exitCannot, fmt.Errorf("--tail %d is negative. Pass 0 for all of it", *tail)
+	}
+	if *follow {
+		// ⭐ ONE STATE MACHINE FOR --follow AND wait: the host's record first, a
+		// running owner's transcript next, and the engine only for a job whose
+		// owner is gone without saying. WSL-94.
+		switch {
+		case id == "":
+			return exitCannot, errors.New("--follow reads one job: wsl-toolkit logs JOB-ID --follow")
+		case *wantErr || *both:
+			return exitCannot, errors.New("--follow writes both streams, each to its own, so --stderr and --both have nothing to choose")
+		case *asJSON:
+			return exitCannot, errors.New("--follow writes the job's streams as they arrive, which is not a document. wsl-toolkit wait JOB-ID --json answers how it ended")
+		}
+		end, err := jobEnd(ctx, id, *tail, os.Stdout, os.Stderr)
+		if err != nil {
+			return jobEndCode(err), err
+		}
+		if end.Note != "" {
+			logf("  %s", end.Note)
+		}
+		return end.verdict, nil
 	}
 	// ⛔ Home, not EnsureHome. `logs` READS transcripts, and a reader that
 	// created the directory it was about to say was empty has changed the thing
@@ -80,7 +109,7 @@ func cmdLogs(args []string) (int, error) {
 	}
 	wrote := false
 	for _, name := range names {
-		n, err := writeTranscript(filepath.Join(dir, name), *tail)
+		n, err := copyTranscript(filepath.Join(dir, name), *tail, os.Stdout)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return exitCannot, err
 		}
@@ -106,8 +135,8 @@ func splitLogsArgs(args []string) (id string, rest []string) {
 	return "", args
 }
 
-// writeTranscript puts one stream on stdout, optionally its last N lines.
-func writeTranscript(path string, tail int) (bool, error) {
+// copyTranscript writes one recorded stream to w, or its last N lines.
+func copyTranscript(path string, tail int, w io.Writer) (bool, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return false, err
@@ -117,48 +146,19 @@ func writeTranscript(path string, tail int) (bool, error) {
 		// ⭐ Copied rather than read into memory. The whole reason a transcript
 		// exists is that the output did not fit in a buffer, so a reader that
 		// buffered it would reintroduce the limit it is here to escape.
-		_, err := io.Copy(os.Stdout, f)
+		_, err := io.Copy(w, f)
 		return true, err
 	}
-	lines, err := lastLines(f, tail)
+	lines, err := toolkit.LastLines(f, tail)
 	if err != nil {
 		return false, err
 	}
 	for _, ln := range lines {
-		fmt.Println(ln)
+		if _, err := fmt.Fprintln(w, ln); err != nil {
+			return true, err
+		}
 	}
 	return true, nil
-}
-
-// lastLines reads the end of a file without holding all of it.
-//
-// ⚠ It reads a window from the end and grows it until it has enough newlines, so
-// a 400 MiB transcript costs one small read rather than a full scan.
-func lastLines(f *os.File, n int) ([]string, error) {
-	info, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	size := info.Size()
-	window := int64(64 << 10)
-	for {
-		if window > size {
-			window = size
-		}
-		buf := make([]byte, window)
-		if _, err := f.ReadAt(buf, size-window); err != nil && err != io.EOF {
-			return nil, err
-		}
-		text := strings.TrimSuffix(string(buf), "\n")
-		lines := strings.Split(text, "\n")
-		if len(lines) > n {
-			return lines[len(lines)-n:], nil
-		}
-		if window == size {
-			return lines, nil
-		}
-		window *= 4
-	}
 }
 
 type transcriptRow struct {
@@ -167,6 +167,11 @@ type transcriptRow struct {
 	Modified time.Time `json:"modified"`
 	Stdout   int64     `json:"stdout_bytes"`
 	Stderr   int64     `json:"stderr_bytes"`
+	// Kind is job or session, State is running, ended, detached or no owner,
+	// and Exit is the recorded verdict of an ended job. WSL-94.
+	Kind  string `json:"kind"`
+	State string `json:"state"`
+	Exit  *int   `json:"exit,omitempty"`
 }
 
 func listTranscripts(home string, asJSON bool) (int, error) {
@@ -207,6 +212,17 @@ func listTranscripts(home string, asJSON bool) (int, error) {
 		}
 		row.Stdout, _ = toolkit.FileSize(filepath.Join(dir, "stdout.log"))
 		row.Stderr, _ = toolkit.FileSize(filepath.Join(dir, "stderr.log"))
+		row.Kind, row.State = "job", "unknown"
+		if st, err := toolkit.ReadJobState(home, e.Name()); err == nil && st.Known {
+			row.State = st.Word()
+			if st.Session != nil {
+				row.Kind = "session"
+			}
+			if st.Result != nil {
+				v := st.Result.Verdict()
+				row.Exit = &v
+			}
+		}
 		rows = append(rows, row)
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].Modified.After(rows[j].Modified) })
@@ -217,11 +233,15 @@ func listTranscripts(home string, asJSON bool) (int, error) {
 		logf("  no transcripts on this machine yet")
 		return exitOK, nil
 	}
-	fmt.Fprintf(os.Stderr, "  %-18s %-20s %10s %10s\n", "job", "when", "stdout", "stderr")
+	fmt.Fprintf(os.Stderr, "  %-18s %-8s %-9s %5s %-20s %10s %10s\n", "id", "kind", "state", "exit", "when", "stdout", "stderr")
 	for _, r := range rows {
-		fmt.Printf("  %-18s %-20s %10s %10s\n", r.ID, r.Modified.Format("2006-01-02 15:04:05"),
+		exit := "-"
+		if r.Exit != nil {
+			exit = strconv.Itoa(*r.Exit)
+		}
+		fmt.Printf("  %-18s %-8s %-9s %5s %-20s %10s %10s\n", r.ID, r.Kind, r.State, exit, r.Modified.Format("2006-01-02 15:04:05"),
 			toolkit.HumanBytes(r.Stdout), toolkit.HumanBytes(r.Stderr))
 	}
-	fmt.Fprintf(os.Stderr, "\n  %d transcript(s). wsl-toolkit logs ID writes one.\n", len(rows))
+	fmt.Fprintf(os.Stderr, "\n  %d job(s). wsl-toolkit logs ID writes one; --follow follows one that is running.\n", len(rows))
 	return exitOK, nil
 }

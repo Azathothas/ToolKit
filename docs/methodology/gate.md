@@ -45,15 +45,15 @@ necessary and not sufficient.
 ⛔ **For every user-facing change, run the actual system and use it as the real
 user would. This is not the operator's job to do for you.**
 
-The reason is specific and repeatedly measured. The **one-gated-door** class of
-defect, where a control is enforced on one path and not its siblings, or a
-read-only state renders as a live action, is invisible to a green suite and has
-been caught only by driving the real thing.
+The reason is specific. The **one-gated-door** class of defect, where a control
+is enforced on one path and not its siblings, or a read-only state renders as a
+live action, is invisible to a green suite. Driving the real thing is what finds
+it.
 
-The worked example: a read-only user saw a live upload button in the header and
-could drag files onto the window. The server refused every one, so every test
-was green and every gate was correct. The user learned their permission by
-watching an upload tray fill with errors.
+An example: a read-only user sees a live upload button in the header and can
+drag files onto the window. The server refuses every one, so every test is green
+and every gate is correct. The user learns their permission by watching an upload
+tray fill with errors.
 
 Two more traps a suite structurally cannot see:
 
@@ -124,9 +124,9 @@ update and into the handoff.
 does. Crypto limits, header rewrites, permission restrictions, memory ceilings:
 a local runtime is routinely more permissive.
 
-The worked example: a password hashing rule specified an iteration count the
-deployment platform silently caps far below. Local tests passed for six units
-of work while the feature returned a server error in production the whole time.
+An example: a password hashing rule names an iteration count that the deployment
+platform caps far below, and says nothing. The local tests pass, and the feature
+answers a server error in production.
 
 **The suite proves the code. Only a deployed request proves the platform.**
 Anything platform-shaped or security-shaped gets a real-environment checkpoint,
@@ -134,12 +134,11 @@ and that checkpoint is part of (b).
 
 ⚠ **The same check is not the same tool.** A local gate and CI can run the
 identical command over the identical files and disagree, because the binary
-underneath is a different version. Measured on 2026-09-09: shellcheck 0.11.0 on
-the development host reports nothing for `cd "$D" && cmd || true`, and the
-version on `ubuntu-latest` reports SC2015 and fails the job. The local gate was
-green on that line for a whole session. ⛔ A green local run is evidence the
-tree is right, never evidence that CI will agree; the CI result is the one that
-gates a merge, so read it rather than predicting it.
+underneath is a different version. shellcheck 0.11.0 reports nothing for
+`cd "$D" && cmd || true`, and the version on `ubuntu-latest` reports SC2015 and
+fails the job. ⛔ A green local run is evidence the tree is right, never evidence
+that CI will agree. The CI result is the one that gates a merge, so read it
+rather than predicting it.
 
 ---
 
@@ -155,4 +154,4 @@ never checked off from memory. Then:
 
 ⛔ A unit of work whose scope grew during implementation re-passes the gate
 against its **new** scope. The gate is against what the work is now, not what it
-was this morning.
+was when it started.

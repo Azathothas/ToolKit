@@ -91,16 +91,22 @@ Unit tests cannot prove calls to `wsl.exe`, a real distribution, or the
 container engine. Build a temporary executable and run:
 
 ```powershell
-pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe
+$env:WSL_TOOLKIT_HOME = (Resolve-Path .tmp).Path + '\acc-home'
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-toolkit.exe -Quick -Instance acc
 ```
 
-The runner inventories pre-existing distributions, uses isolated state, and
-checks the names again at teardown. Its throwaway-distribution cases import and
-remove their own distribution under a state directory of their own, and its
-provider-profile cases build `wsl-toolkit-accp` the same way, granting it a
-checkout under the runner's `.tmp` scratch directory, and remove it. Never
-point it at `wsl-toolkit-muse`, `podman-machine-default`, or another
-distribution it did not create.
+⭐ **Run it against a scratch instance.** `-Instance NAME` runs every case against
+`wsl-toolkit-NAME` and that instance's state, and builds the base when there is
+none. With `WSL_TOOLKIT_HOME` at a scratch directory, nothing it writes lands in
+the operator's own state. `base remove --yes` under the same selection removes
+the base afterwards.
+
+The runner inventories pre-existing distributions and checks the names again at
+teardown. Its throwaway-distribution cases import and remove their own
+distribution under a state directory of their own. Its provider-profile cases
+build `wsl-toolkit-accp` the same way, grant it a checkout under the runner's
+`.tmp` scratch directory, and remove it. ⛔ Never point it at a base in use,
+`podman-machine-default`, or another distribution it did not create.
 
 ⭐ **A herdr `--remote` client is proved by its own probe**, because nothing in the
 Go suite can see it: both builds answer `herdr 0.9.0`, so `--version` tells them
@@ -125,7 +131,8 @@ also prove on a real distribution:
 - a command that reads stdin, and every quoting hazard through `--command-base64`;
 - raw and rendered live output, the stdout and stderr split, colour, and the
   uncoloured stream log;
-- redaction before the live, text and event sinks;
+- redaction before the live, text and event sinks, the structured answer and the
+  transcript;
 - progress consumption, heartbeats with the distribution's state and disk, and
   the escalation notes;
 - replay and compare over `wsl-toolkit-event/1`, including the log in
@@ -161,18 +168,17 @@ The executables are Windows only because the operational commands drive
 `wsl.exe`. The module still builds and tests on Linux so host-dependent path
 logic is caught before release.
 
-⭐ **From `wsl-toolkit-v3.0.0`, the release also carries herdr's newest stable release**, which
-[`herdr-build.yml`](../../../.github/workflows/herdr-build.yml) builds for Windows
-`x86_64` and `aarch64` and Linux `x86_64` and `aarch64`, and `release.yml` covers with
-its `SHA256SUMS` and signs. The same workflow builds herdr's development branch for
-[`herdr-nightly.yml`](../../../.github/workflows/herdr-nightly.yml), which publishes a
-prerelease on a `herdr-nightly-*` tag and keeps the newest seven. `WSL-90`. ⭐ **The
-first nightly is published**, `herdr-nightly-20260916-18061191fdc0`, on 2026-09-16, with
-all four builds green. ⚠ `herdr-build.yml` publishes nothing by design and is dispatched
-by hand. ⭐ **`release.yml`'s herdr jobs ran for the first time on 2026-09-17**, cutting
-`wsl-toolkit-v3.0.0`. From `wsl-toolkit-v3.1.0` the same workflow also builds
-`text-tool` for Windows and Linux on both architectures, and runs the staged Windows
-one before publishing it.
+⭐ **The release also carries herdr's newest stable release and `text-tool`.**
+[`herdr-build.yml`](../../../.github/workflows/herdr-build.yml) builds herdr for
+Windows `x86_64` and `aarch64` and Linux `x86_64` and `aarch64`, and `release.yml`
+covers each build with its `SHA256SUMS` and signs it. `release.yml` also builds
+`text-tool` for Windows and Linux on both architectures, and runs the staged
+Windows one before publishing it. The same herdr workflow builds herdr's
+development branch for [`herdr-nightly.yml`](../../../.github/workflows/herdr-nightly.yml),
+which publishes a prerelease on a `herdr-nightly-*` tag and keeps the newest
+seven. `WSL-90`
+
+⚠ `herdr-build.yml` publishes nothing by design and is dispatched by hand.
 [`../../../docs/consumers.md`](../../../docs/consumers.md) lists what each release
 carries; this page does not repeat it.
 

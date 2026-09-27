@@ -52,6 +52,9 @@ type CleanupTarget struct {
 	// old. A container whose job directory has already been removed has no age
 	// to read, which is a different thing from having an age of zero.
 	ModTime time.Time `json:"mod_time,omitempty"`
+	// Unknown is why its state could not be read. Such a target is kept, even
+	// under --include-live, because nothing says what removing it would end.
+	Unknown string `json:"unknown,omitempty"`
 }
 
 // Spared is one target cleanup did not touch, and why.
@@ -75,6 +78,8 @@ func (p CleanupPolicy) Select(targets []CleanupTarget, now time.Time) (remove []
 			// something this run declined to remove would make one job's cleanup
 			// report look like a refusal to clean the rest.
 			continue
+		case t.Unknown != "":
+			spared = append(spared, Spared{Target: t, Reason: "its state could not be read, so it is kept: " + t.Unknown})
 		case t.Live && !p.IncludeLive:
 			spared = append(spared, Spared{Target: t, Reason: "in use right now. Pass --include-live to remove it anyway"})
 		case p.OlderThan > 0 && !t.ModTime.IsZero() && now.Sub(t.ModTime) < p.OlderThan:

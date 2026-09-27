@@ -338,9 +338,12 @@ type CleanupPlan struct {
 	Containers []string `json:"containers"`
 	GuestDirs  []string `json:"guest_dirs"`
 	HostDirs   []string `json:"host_dirs"`
-	Images     []string `json:"images,omitempty"`
-	Removed    []string `json:"removed,omitempty"`
-	Failed     []string `json:"failed,omitempty"`
+	// Sessions are ended detached base sessions, each named with its guest
+	// directory. WSL-95.
+	Sessions []string `json:"sessions,omitempty"`
+	Images   []string `json:"images,omitempty"`
+	Removed  []string `json:"removed,omitempty"`
+	Failed   []string `json:"failed,omitempty"`
 	// Kept is what was spared and why. ⛔ A DRY RUN THAT ONLY LISTS WHAT IT
 	// WOULD REMOVE cannot be checked: the caller sees an empty plan and cannot
 	// tell "nothing is here" from "everything here is in use".

@@ -24,7 +24,9 @@ import (
 
 const inspectUsage = `wsl-toolkit inspect [JOB-ID]
 
-  What one job was, and what the machine was doing when it ran.
+  What one job was, and what the machine was doing when it ran. For a job,
+  the state is running, ended, detached or no owner. For a detached base
+  session, the report says where it runs and whether it still runs.
 
   With no id, the machine half alone: the engine, its storage and the
   filesystem under it.
@@ -121,11 +123,32 @@ func renderInspect(w *os.File, rep toolkit.InspectReport) error {
 		return err
 	}
 	if j := rep.Job; j != nil {
-		if err := p("==> Job %s\n", j.ID); err != nil {
+		kind := "Job"
+		if j.Session != nil {
+			kind = "Session"
+		}
+		if err := p("==> %s %s\n", kind, j.ID); err != nil {
 			return err
 		}
-		if err := p("    container   %s\n", j.Container); err != nil {
-			return err
+		if j.State != "" {
+			if err := p("    state       %s\n", j.State); err != nil {
+				return err
+			}
+		}
+		if j.Result != nil {
+			if err := p("    exit        %d, recorded by the job's owner\n", j.Result.Verdict()); err != nil {
+				return err
+			}
+		}
+		if s := j.Session; s != nil {
+			if err := renderSession(p, *s, j.SessionState); err != nil {
+				return err
+			}
+		}
+		if j.Container != "" {
+			if err := p("    container   %s\n", j.Container); err != nil {
+				return err
+			}
 		}
 		if j.Image != "" {
 			if err := p("    image       %s\n", j.Image); err != nil {
@@ -133,6 +156,7 @@ func renderInspect(w *os.File, rep toolkit.InspectReport) error {
 			}
 		}
 		switch {
+		case j.Session != nil:
 		case j.ExitCode != nil:
 			if err := p("    last exit   %d, from the engine's own journal\n", *j.ExitCode); err != nil {
 				return err
@@ -171,7 +195,7 @@ func renderInspect(w *os.File, rep toolkit.InspectReport) error {
 				return err
 			}
 		}
-		if len(j.Events) == 0 {
+		if len(j.Events) == 0 && j.Session == nil {
 			if err := p("    events      none in the window read\n"); err != nil {
 				return err
 			}
@@ -242,6 +266,37 @@ func renderInspect(w *os.File, rep toolkit.InspectReport) error {
 		}
 	}
 	return nil
+}
+
+// renderSession writes the rows for one detached base session. WSL-95.
+func renderSession(p func(string, ...any) error, s toolkit.SessionRecord, st *toolkit.SessionState) error {
+	if err := p("    runs in     %s as %s\n", s.Distro, s.User); err != nil {
+		return err
+	}
+	if err := p("    in the guest %s\n", s.GuestDir); err != nil {
+		return err
+	}
+	if s.TimeoutMS > 0 {
+		if err := p("    deadline    %s after its start\n", time.Duration(s.TimeoutMS)*time.Millisecond); err != nil {
+			return err
+		}
+	}
+	if st == nil {
+		return p("    now         the guest could not be asked\n")
+	}
+	switch {
+	case st.Gone:
+		return p("    now         the guest holds nothing for this session\n")
+	case st.Alive:
+		if err := p("    now         running\n"); err != nil {
+			return err
+		}
+	default:
+		if err := p("    now         ended. Exit %d\n", st.Verdict()); err != nil {
+			return err
+		}
+	}
+	return p("    streams     %s on stdout, %s on stderr\n", toolkit.HumanBytes(st.Stdout), toolkit.HumanBytes(st.Stderr))
 }
 
 // cgroupLine says whether the engine's account can actually create a cgroup, not

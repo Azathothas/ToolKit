@@ -27,22 +27,24 @@ were checked rather than assuming the answer.
 
 ## The register
 
-Read from each repository on 2026-09-13.
+Each row is read from the consumer's own tree, and a change to a fetched contract
+reads it again.
 
 | consumer | current relationship | what it must do before moving |
 | --- | --- | --- |
 | `Azathothas/TEMPLATE`, at `docs/containers.md` and `docs/agent-tooling.md` | describes the tool as a PowerShell product and an executable, with a launcher | rewrite its guide from the latest manual |
 | `Azathothas/bit-cli`, at `scripts/wsl-tool.ps1` and `docs/containers.md` | its wrapper runs the deleted launcher at a pinned commit with SHA-256 pins, and its guide fetches `wsl-ephemeral.ps1` by raw URL at a commit it resolves | keep its current pin until it chooses to move, then choose an executable release, verify it, and translate its own invocation from the latest manual |
+| `Azathothas/podbox`, at `docs/containers.md`, `docs/agent-tooling.md` and `experiments/` | calls an installed executable with `--instance podbox`: `run --script`, `base status --probe`, `base ensure --probe`, `resources`, `gc --apply --older-than`, `hostaddress`. Reads the three skills from `main` by raw URL | read the latest manual, then replace the wrappers written around a job that outlives its client with `run --detach`, `logs ID --follow`, `wait ID`, `stop ID` and `base exec --detach`, and pass a device and a second file with `--device` and `--input` |
 | `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | carries a vendored copy and fetches nothing from ToolKit | nothing here can update it; its owner decides whether to replace the copy |
 
-⭐ **The published executable CARRIES all three**, so a machine with the binary
-needs no clone and no fetch: `wsl-toolkit shipped list` prints each one's length
-and SHA-256, `shipped cat` and `shipped write` produce it, and `base bootstrap`
-runs the carried bootstrap inside the base with nothing copied anywhere. ⛔ **That
-changes nothing about the URLs**, which stay the contract for a caller outside
-this tree; what it removes is an operator copying one into a checkout with no way
-afterwards to say which version they copied. The gate's `shipped` check refuses
-the carried copy disagreeing with the file below.
+⭐ **The published executable CARRIES the three fetched scripts**, so a machine with
+the binary needs no clone and no fetch. `wsl-toolkit shipped list` prints each
+one's length and SHA-256, `shipped cat` and `shipped write` produce it, and `base
+bootstrap` runs the carried bootstrap inside the base with nothing copied anywhere.
+⛔ **The URLs stay the contract for a caller outside this tree.** What the carried
+copy removes is an operator copying a file into a checkout with no way to say
+which version it was. The gate's `shipped` check refuses a carried copy that
+disagrees with the file below.
 
 Three files are intended for direct fetching and have no known consumer:
 [`bootstrap.sh`](../scripts/common/bootstrap.sh),
@@ -52,7 +54,7 @@ consumer is found. ⚠ `shell-profile.sh` is READ BY A LOGIN SHELL rather than r
 so a caller who fetched it holds a file that every shell on that account starts,
 and a change to it is felt on the next login rather than at the next call.
 ⚠ `bootstrap.sh`'s shared package table is also a build input to the published
-executable, whose base provisioner resolves its `developer` names through a generated
+executable. The base provisioner resolves its `developer` names through a generated
 copy of it, so an edit to that block reaches both in one commit.
 
 The dependency on `pkgforge-dev/docker-bsd` runs the other way: it publishes
@@ -60,11 +62,10 @@ BSD images that ToolKit names. It is not a consumer row.
 
 ⛔ **The PowerShell product, its launcher and `wsl-toolkit script` are
 deleted.** A raw fetch of any file under `scripts/windows/wsl-toolkit/` at a
-later commit returns 404, a commit before the deletion still serves it, and
-every release from `wsl-toolkit-v3.0.0` publishes the executables and no script. The
-`distro` and `hostaddress` commands carry what the product did.
-[`HISTORY/consumers.md`](HISTORY/consumers.md) keeps the pin-state table this
-page carried for it.
+commit after the deletion returns 404, and a commit before it still serves it.
+No release publishes a script. The `distro` and `hostaddress` commands carry what
+the product did. [`HISTORY/consumers.md`](HISTORY/consumers.md) keeps the
+pin-state table and the release history.
 
 ---
 
@@ -83,23 +84,25 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
-⛔ **A BEHAVIOUR CHANGE LANDED IN `text-tool` AFTER `wsl-toolkit-v3.1.0`, and by
-the table above it is a BREAK. It is why the next release is `4.0.0` and not a
-minor: a consumer pinning by major is not moved across it silently.** `text-tool edit --between A B` now REQUIRES
-`--expect N`, as `--replace`, `--after` and `--before` already did.
+### ⛔ What `wsl-toolkit-v5.0.0` breaks, and what a caller does
 
-| before | from `wsl-toolkit-v4.0.0` |
-| --- | --- |
-| `--between` with no `--expect` | ⛔ exited **0** and wrote nothing, both when two ranges matched and when none did | refused, exit **2**, naming the missing count |
+A major version, so a consumer that pins by major is not moved across it silently.
 
-⭐ **Every call it breaks was already doing nothing.** The old exit 0 was the
-defect: a caller reading the code believed an edit had happened. ⚠ **A count is
-still not enough on its own** - an anchor that also appears earlier in the file
-pairs with the FIRST copy, which is exactly one match - so the report names the
-SPAN it replaced, `lines 2-9 (8 line(s))`, and a caller should read it.
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a `base` subcommand refuses a flag it does not read, exit 2. `WSL-100` | passes a flag the subcommand ignored, such as `base status --repair` | removes the flag. `base ensure --probe` stays accepted |
+| the helper protocol is `wsl-toolkit-helper/5`, and a 4.x helper and a 5.x client refuse each other | leaves a 4.x helper running after the update | stops it and starts it again: `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach` |
+| `logs` with no id prints kind, state and exit columns | parses the text list | reads `logs --json`, which only gains fields |
+| `run` names the job's id on stderr before the job starts | treats every stderr line as the job's own | reads the job's streams from `--json` or from `logs ID` |
+| `--redact` reaches the structured answer and the transcript. `WSL-101` | reads a redacted value back from the answer | nothing: the value reaching the answer was the defect |
+| `gc` reads a job whose owner process is gone as ended. `WSL-94` | counts on `gc` keeping a killed job's leftovers until its deadline | reads the job with `wait` or `inspect` before `gc --apply` |
 
-⭐ **What a caller does:** add `--expect N` to any `--between`. Use
-`--count` first where the number is not known.
+Everything else in 5.0.0 adds: `run --detach`, `logs ID --follow`, `wait`,
+`stop`, `base exec --detach`, `--device`, `--input`, and `--command-base64` on
+every job command.
+
+⚠ **A `text-tool edit --between` needs `--expect N`**, as every other search
+does. A build older than `wsl-toolkit-v4.0.0` does not require it. `WSL-93`
 
 ---
 
@@ -109,12 +112,12 @@ A release carries:
 
 - `wsl-toolkit-windows-amd64.exe`
 - `wsl-toolkit-windows-arm64.exe`
-- from `wsl-toolkit-v3.0.0`, herdr's newest stable release built by this repository:
+- herdr's newest stable release built by this repository:
   `herdr-VERSION-windows-x86_64.zip`, `herdr-VERSION-windows-aarch64.zip`,
   `herdr-VERSION-linux-x86_64` and `herdr-VERSION-linux-aarch64`
-- from `wsl-toolkit-v3.1.0`, `text-tool` for both hosts:
-  `text-tool-windows-amd64.exe`, `text-tool-windows-arm64.exe`,
-  `text-tool-linux-amd64` and `text-tool-linux-arm64`
+- `text-tool` for both hosts: `text-tool-windows-amd64.exe`,
+  `text-tool-windows-arm64.exe`, `text-tool-linux-amd64` and
+  `text-tool-linux-arm64`
 - `SHA256SUMS`
 - one `<asset>.cosign.bundle` per file above
 
@@ -124,23 +127,15 @@ host and nothing else. [`../skills/text-tool/SKILL.md`](../skills/text-tool/SKIL
 is the page to hand an agent, and it stands alone.
 
 ⭐ **herdr's development branch is published separately, as a nightly prerelease** on a
-`herdr-nightly-YYYYMMDD-SHA12` tag, with the same four builds, `BUILD-INFO.json` naming
-the herdr commit, `SHA256SUMS`, and a bundle per file that verifies against
-`.github/workflows/herdr-nightly.yml`. The newest seven are kept. ⛔ A nightly is always
-a prerelease and never a `wsl-toolkit-v*` tag, so a lookup for this tool's releases
-skips it. ⭐ **The first nightly is published**, `herdr-nightly-20260916-18061191fdc0`,
-on 2026-09-16.
+`herdr-nightly-YYYYMMDD-SHA12` tag. It carries the same four builds, `BUILD-INFO.json`
+naming the herdr commit, `SHA256SUMS`, and a bundle per file that verifies against
+`.github/workflows/herdr-nightly.yml`. The newest seven are kept. ⛔ A nightly is
+always a prerelease and never a `wsl-toolkit-v*` tag, so a lookup for this tool's
+releases skips it.
 
-⭐ **`wsl-toolkit-v3.0.0` is the first release that carries herdr**, published on
-2026-09-17 with 14 assets: the two executables, the four herdr builds, `SHA256SUMS`
-and a bundle for each.
-
-⚠ **A release that carries herdr is about 65 MiB larger, and a consumer that takes the
-whole release takes all of it.** The four builds the first nightly published are
-26,235,080, 24,100,240, 9,635,803 and 8,348,489 bytes. `consumer.ps1` in this tree
-fetches every asset a release names, so from `wsl-toolkit-v3.0.0` it will fetch herdr
-too; the instructions below take only the executable for the host's architecture and
-`SHA256SUMS`, which is what a consumer should do.
+⚠ **herdr's four builds make a release about 65 MiB larger**, and a consumer that
+takes the whole release takes all of it. The steps below take only the executable
+for the host's architecture and `SHA256SUMS`, which is what a consumer should do.
 
 Use an immutable `wsl-toolkit-v*` release. Download the executable matching the
 host architecture and `SHA256SUMS`, verify the executable's SHA-256, then
@@ -159,10 +154,8 @@ Bash rewrites an argument that looks like a path, and the identity regex above i
 full of `\.`, so it arrives at cosign as `^https://github/.com/...release/.yml@`
 and the verification fails with `no matching CertificateIdentity found`. ⚠ **The
 signature is fine and the command is right**; the shell changed it in between.
-
-Measured on 2026-09-17 against `wsl-toolkit-v3.1.0`: PowerShell answers
-`Verified OK`, and so does Git Bash with `MSYS2_ARG_CONV_EXCL='*'` set for the
-call. Plain Git Bash does not.
+PowerShell answers `Verified OK`, and so does Git Bash with
+`MSYS2_ARG_CONV_EXCL='*'` set for the call:
 
 ```bash
 MSYS2_ARG_CONV_EXCL='*' cosign verify-blob --bundle ASSET.cosign.bundle --certificate-identity-regexp '^https://github\.com/Azathothas/ToolKit/\.github/workflows/release\.yml@' --certificate-oidc-issuer https://token.actions.githubusercontent.com ASSET

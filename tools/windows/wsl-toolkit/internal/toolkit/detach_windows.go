@@ -1,8 +1,15 @@
 package toolkit
 
 import (
+	"errors"
 	"os/exec"
 	"syscall"
+)
+
+const (
+	createNewProcessGroup  = 0x00000200
+	detachedProcess        = 0x00000008
+	createBreakawayFromJob = 0x01000000
 )
 
 // DetachProcess makes a child survive its parent.
@@ -14,6 +21,35 @@ import (
 func DetachProcess(c *exec.Cmd) {
 	c.SysProcAttr = &syscall.SysProcAttr{
 		HideWindow:    true,
-		CreationFlags: 0x00000200 | 0x00000008, // CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS
+		CreationFlags: createNewProcessGroup | detachedProcess,
 	}
+}
+
+// StartDetached starts a child that outlives this process, and leaves the job
+// object this process is in where that object permits it, so a harness that
+// closes its job object does not end the child with it. The bool is false where
+// the child stays in that job object.
+//
+// ⚠ A JOB OBJECT MAY REFUSE A BREAKAWAY, and CreateProcess then answers access
+// denied. The start is made again without it, from a fresh command, because a
+// command cannot be started twice.
+func StartDetached(mk func() *exec.Cmd) (*exec.Cmd, bool, error) {
+	c := mk()
+	c.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow:    true,
+		CreationFlags: createNewProcessGroup | detachedProcess | createBreakawayFromJob,
+	}
+	err := c.Start()
+	if err == nil {
+		return c, true, nil
+	}
+	if !errors.Is(err, syscall.ERROR_ACCESS_DENIED) {
+		return nil, false, err
+	}
+	c = mk()
+	DetachProcess(c)
+	if err := c.Start(); err != nil {
+		return nil, false, err
+	}
+	return c, false, nil
 }

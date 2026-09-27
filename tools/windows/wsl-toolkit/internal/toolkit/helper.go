@@ -56,7 +56,9 @@ import (
 // newer client is a refusal until somebody restarts it. That is correct
 // behaviour and it is still a thing a consumer has to do, which is why it did
 // not travel with the command it completes.
-const HelperSchema = "wsl-toolkit-helper/4"
+// ⚠ VERSION 5 ADDS /v1/job/stop, and devices, inputs and a gc job filter on the
+// wire. WSL-94, WSL-96, WSL-97, WSL-102.
+const HelperSchema = "wsl-toolkit-helper/5"
 
 // HelperEndpoint is what a client reads to find a listening helper.
 type HelperEndpoint struct {
@@ -233,6 +235,7 @@ func (h *HelperServer) Serve(ctx context.Context) error {
 	mux.HandleFunc("/v1/resources", h.guard(h.handleResources))
 	mux.HandleFunc("/v1/inspect", h.guard(h.handleInspect))
 	mux.HandleFunc("/v1/gc", h.guard(h.handleGC))
+	mux.HandleFunc("/v1/job/stop", h.guard(h.handleJobStop))
 	mux.HandleFunc("/v1/stop", h.guard(h.handleStop))
 
 	h.server = &http.Server{
@@ -246,6 +249,13 @@ func (h *HelperServer) Serve(ctx context.Context) error {
 	ep := HelperEndpoint{
 		Schema: HelperSchema, Address: ln.Addr().String(), Token: h.token,
 		PID: os.Getpid(), Version: version, Started: time.Now().UTC(),
+	}
+	// ⛔ THE STATE DIRECTORY IS MADE HERE, because serving writes to it. A fresh
+	// instance has none until something writes, and the helper was often the
+	// first writer: it exited at the endpoint file and its parent waited 30s for
+	// an answer that could not come.
+	if _, err := EnsureHome(); err != nil {
+		return err
 	}
 	path, err := HelperEndpointPath()
 	if err != nil {
@@ -901,25 +911,71 @@ func (h *HelperServer) handleInspect(w http.ResponseWriter, r *http.Request) {
 	writeHelperJSON(w, http.StatusOK, payload)
 }
 
-func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Apply       bool  `json:"apply"`
-		OlderThanMS int64 `json:"older_than_ms"`
-		Images      bool  `json:"images"`
-		// IncludeLive is on the wire because the direct path has it. ⛔ A
-		// flag one route honours and the other drops is the defect this
-		// protocol has already had once.
-		IncludeLive bool `json:"include_live,omitempty"`
+// HelperStopRequest is one stop on the wire. WSL-94.
+type HelperStopRequest struct {
+	ID      string `json:"id"`
+	GraceMS int64  `json:"grace_ms"`
+}
+
+// handleJobStop stops a job the helper ran. ⛔ The id is held to its shape
+// before it names a container, as it is on the direct route.
+func (h *HelperServer) handleJobStop(w http.ResponseWriter, r *http.Request) {
+	var req HelperStopRequest
+	if err := decodeHelperBody(r, &req); err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
 	}
+	if !ValidJobID(req.ID) {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("%q is not a job id", req.ID)})
+		return
+	}
+	rep, err := h.runner.StopJob(r.Context(), req.ID, time.Duration(req.GraceMS)*time.Millisecond)
+	payload := map[string]any{"schema": HelperSchema, "report": rep}
+	if err != nil {
+		payload["error"] = err.Error()
+		payload["unknown"] = errors.Is(err, ErrUnknownJob)
+	}
+	writeHelperJSON(w, http.StatusOK, payload)
+}
+
+// HelperGCRequest is the wire shape of one cleanup. It carries every field of
+// CleanupPolicy, and TestEveryCleanupFieldCrossesTheWire holds that.
+//
+// ⛔ JOB WAS NOT ON THE WIRE. `gc --job ID --via-helper --apply` removed every
+// job that was not live, where the direct route removed the one named. WSL-102.
+type HelperGCRequest struct {
+	Apply       bool   `json:"apply"`
+	OlderThanMS int64  `json:"older_than_ms"`
+	Images      bool   `json:"images"`
+	IncludeLive bool   `json:"include_live,omitempty"`
+	Job         string `json:"job,omitempty"`
+}
+
+// policy is the cleanup a request asks for, with the job held to the shape an
+// id has before it narrows anything.
+func (req HelperGCRequest) policy() (CleanupPolicy, error) {
+	if req.Job != "" && !ValidJobID(req.Job) {
+		return CleanupPolicy{}, fmt.Errorf("%q is not a job id", req.Job)
+	}
+	return CleanupPolicy{
+		OlderThan:   time.Duration(req.OlderThanMS) * time.Millisecond,
+		IncludeLive: req.IncludeLive,
+		Job:         req.Job,
+	}, nil
+}
+
+func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
+	var req HelperGCRequest
 	if r.ContentLength > 0 {
 		if err := decodeHelperBody(r, &req); err != nil {
 			writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
 	}
-	policy := CleanupPolicy{
-		OlderThan:   time.Duration(req.OlderThanMS) * time.Millisecond,
-		IncludeLive: req.IncludeLive,
+	policy, err := req.policy()
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
 	}
 	plan, err := h.runner.Cleanup(r.Context(), req.Apply, policy, req.Images)
 	payload := map[string]any{"schema": HelperSchema, "plan": plan}

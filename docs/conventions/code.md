@@ -32,9 +32,9 @@ different axis from scope.
 in one direction costs correctness while the other only costs efficiency,
 choose the pessimistic reading. You are then right under both.
 
-The worked example: an external service documented its rate limit ambiguously,
+An example: an external service documents its rate limit ambiguously,
 per-resource or per-client-per-resource. Budgeting as though the tighter
-reading held is correct either way. The optimistic reading is right only if you
+reading holds is correct either way. The optimistic reading is right only if you
 are lucky, and wrong in the direction that causes outages.
 
 Ask of every feature: what is the worst input, the worst ordering, the worst
@@ -144,9 +144,9 @@ Rules that fall out of it:
   dependency. Reality stays the acceptance gate.
 - ⛔ **Test the production default of every injectable seam.** A suite where
   every test injects the double leaves exactly one branch untested: the one
-  that ships. The worked example: a helper stored on an instance and called
-  through the wrong receiver failed only on the real call, so the suite stayed
-  green while the real integration was broken for several units of work.
+  that ships. A helper stored on an instance and called through the wrong
+  receiver fails only on the real call, so the suite stays green while the
+  real integration is broken.
 - ⛔ **A test that cannot fail is not evidence.** Mutation-prove the critical
   guards: delete what they protect and confirm they fail.
 - **Every defect found later becomes a named regression test.**

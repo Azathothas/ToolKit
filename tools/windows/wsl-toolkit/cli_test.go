@@ -587,7 +587,7 @@ func TestLastLines(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	got, err := lastLines(f, 3)
+	got, err := toolkit.LastLines(f, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -597,7 +597,7 @@ func TestLastLines(t *testing.T) {
 	}
 	// ⚠ Asking for more lines than the file has is not an error. It is the
 	// whole file, which is what a caller passing a big --tail means.
-	all, err := lastLines(f, 100000)
+	all, err := toolkit.LastLines(f, 100000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -629,7 +629,7 @@ func TestLastLinesGrowsItsWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	got, err := lastLines(f, 3)
+	got, err := toolkit.LastLines(f, 3)
 	if err != nil {
 		t.Fatal(err)
 	}

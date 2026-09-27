@@ -49,20 +49,11 @@ network flag is passed, and the only file it writes is a temp file it removes.
 Groups: `vcs`, `runtime`, `compiler`, `pkg-lang`, `pkg-system`, `container`,
 `build`, `quality`, `cli`, `cloud`, `shell`, `agent`.
 
-## Measured runtime
+## What a run costs
 
-On one Windows 11 machine, 86 tools, 51 of them present:
-
-| run | sh | ps |
-| --- | --- | --- |
-| full | 25 s | 16 s |
-| fast | 5 s | 4 s |
-| one group | 2 s | 2 s |
-
-The numbers are from this machine on 2026-08-25 and are here so a session
-knows what to expect, not as a claim about any other host. Windows is the slow
-case: a process spawn costs more there than anywhere else, and this spawns one
-per tool. Re-measure rather than quote these if the answer matters.
+A full run spawns one process per tool, so it takes tens of seconds on Windows,
+where a spawn costs most. `--fast` and one `--group` take a few seconds. Time it
+on the host in front of you rather than quote a number from another.
 
 ## The schema, agent-doctor/1
 
@@ -112,29 +103,27 @@ msys installed those differ honestly:
 | `zsh` | present | absent | msys `/usr/bin/zsh` is not on the native PATH |
 | `psscriptanalyzer` | not probed | probed | a PowerShell module, invisible to sh |
 
-## Things this cost to learn
+## Traps the probe handles
 
-Each of these was a real defect in this script, found by running it.
-
-- ⛔ A greedy regex over a version line reports the wrong half of the version
-  and does it confidently. `git version 2.51.0.windows.3` came back as
-  `5.0.windows.3`, `v22.11.0` as `7.0`. The fix is to split into tokens and
-  take the first that reads as a version. A wrong number is worse than a blank
-  one, because a blank one gets checked.
-- ⛔ The name may be joined to the number by a hyphen. `jq-1.8.2` read as no
-  version at all until the pattern allowed one.
+- ⛔ A greedy regex over a version line reports the wrong half of the version,
+  and does it confidently: `git version 2.51.0.windows.3` reads as
+  `5.0.windows.3`, and `v22.11.0` as `7.0`. So the probe splits the line into
+  tokens and takes the first that reads as a version. A wrong number is worse
+  than a blank one, because a blank one gets checked.
+- ⛔ The name may be joined to the number by a hyphen, as in `jq-1.8.2`, and the
+  pattern allows it.
 - ⛔ Several tools block for as long as you let them. `kubectl version` without
   `--client` contacts a cluster. Every probe is time-limited at six seconds,
   and a timeout is reported as its own fact rather than as an absent tool.
 - ⛔ In the sh twin, `probe_version` runs inside `$( )`, which is a subshell,
   so an assignment inside it is discarded. The caller reads the exit code.
 - ⛔ In the ps twin, `Process.Start` with `UseShellExecute` false cannot run a
-  `.ps1` or a `.cmd`. On Windows the node ecosystem ships shims and scoop's are
-  `.ps1`, so npm, pnpm, yarn, wrangler and codegraph all reported as
-  uninstalled stubs until the launcher handled them.
-- ⛔ In the ps twin, reading a value from merged stdout and stderr put a git
+  `.ps1` or a `.cmd`. On Windows the node ecosystem ships such shims, and
+  scoop's are `.ps1`. So the launcher starts a `.ps1` through PowerShell and a
+  `.cmd` or `.bat` through `cmd.exe`.
+- ⛔ In the ps twin, a value read from merged stdout and stderr can carry a git
   fatal into the `branch` field. A version probe merges the streams on purpose,
-  because java prints its version to stderr. Anything reading a value must not.
+  because java prints its version to stderr. Anything that reads a value must not.
 - ⛔ `.NET` says `X64` where `uname -m` says `x86_64`. Normalised, or one
   machine reads as two.
 - ⚠ `wsl.exe` writes UTF-16LE, which a redirected stdout reads as empty. It is

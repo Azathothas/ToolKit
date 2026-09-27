@@ -82,6 +82,15 @@ type InspectedJob struct {
 	// GuestDirs are the job's directories inside the distribution that still
 	// exist, with their sizes.
 	GuestDirs []GuestJob `json:"guest_dirs,omitempty"`
+	// State is the word `logs` shows for the id: running, ended, detached, or
+	// no owner. WSL-94.
+	State string `json:"state,omitempty"`
+	// Result is what the job's owner recorded at its end.
+	Result *JobResult `json:"result,omitempty"`
+	// Session is the record of a detached base session, and SessionState is
+	// what the guest says about it now. WSL-95.
+	Session      *SessionRecord `json:"session,omitempty"`
+	SessionState *SessionState  `json:"session_state,omitempty"`
 }
 
 // ContainerEvent is one lifecycle line from the engine's journal.
@@ -214,6 +223,15 @@ func (r *Runner) Inspect(ctx context.Context, id string, since time.Duration) (I
 		rep.Guest.Home = guestHome
 	}
 
+	if rep.Job != nil && rep.Job.Session != nil {
+		ss, err := SessionNow(ctx, r.wsl, *rep.Job.Session)
+		if err != nil {
+			rep.Warnings = append(rep.Warnings, "the guest could not be asked about the session: "+err.Error())
+		} else {
+			rep.Job.SessionState = &ss
+		}
+		return rep, nil
+	}
 	if rep.Job != nil && rep.Engine.Reached {
 		if err := r.inspectContainer(ctx, rep.Job, since); err != nil {
 			rep.Warnings = append(rep.Warnings, "the engine's journal could not be read: "+err.Error())
@@ -240,12 +258,28 @@ func inspectJobRecord(home string, led *Ledger, id string) (*InspectedJob, error
 		// reader. It is resolved and contained before anything is opened.
 		return nil, err
 	}
-	if info, err := os.Stat(dir); err == nil && info.IsDir() {
-		job.Transcript = dir
-		if size, _, err := dirSize(dir); err == nil {
-			job.TranscriptBytes = size
+	if ValidJobID(id) {
+		st, err := ReadJobState(home, id)
+		if err != nil {
+			return nil, err
 		}
-		job.Known = append(job.Known, "a transcript on this host")
+		if st.Known {
+			job.State, job.Result, job.Session = st.Word(), st.Result, st.Session
+		}
+	}
+	if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		if job.Session != nil {
+			// ⚠ A session's streams are in the guest. Its host directory holds
+			// the record that finds them, and no transcript.
+			job.Container = ""
+			job.Known = append(job.Known, "a detached session record on this host")
+		} else {
+			job.Transcript = dir
+			if size, _, err := dirSize(dir); err == nil {
+				job.TranscriptBytes = size
+			}
+			job.Known = append(job.Known, "a transcript on this host")
+		}
 	}
 
 	all, err := led.All()

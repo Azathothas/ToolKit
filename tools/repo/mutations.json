@@ -2,6 +2,294 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a job's state reads its owner's lock",
+      "file": "internal/toolkit/jobowner.go",
+      "find": "\tst.Owned = held\n",
+      "replace": "\tst.Owned = held && false\n",
+      "run": "TestAJobHasOneOwnerAndASecondClaimIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an owner records the job's end",
+      "file": "internal/toolkit/jobowner.go",
+      "find": "\treturn writeFileAtomic(filepath.Join(o.Dir, resultFileName), append(doc, '\\n'), 0o600)\n",
+      "replace": "\t_ = doc\n\treturn nil\n",
+      "run": "TestAnOwnersEndIsRecordedAndItsLockReleased",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job id is sixteen characters",
+      "file": "internal/toolkit/jobowner.go",
+      "find": "\tif len(id) != 16 {\n",
+      "replace": "\tif len(id) < 1 {\n",
+      "run": "TestAJobIDIsSixteenLowercaseHexCharacters",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only the engine's TERM or KILL is a stop",
+      "file": "internal/toolkit/job.go",
+      "find": "func stoppedBySignal(code int) bool { return code == 143 || code == 137 }\n",
+      "replace": "func stoppedBySignal(code int) bool { return code == 143 || code == 137 || code == 130 }\n",
+      "run": "TestOnlyTheEnginesTermOrKillIsAStop",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop in the ledger is the job's own",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\t\tif e.Event == \"stop\" && e.Kind == \"job\" && e.ID == id {\n",
+      "replace": "\t\tif e.Event == \"stop\" && e.Kind == \"job\" {\n",
+      "run": "TestAStopIsFoundInTheLedger",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the owner and a second process share one stop rule",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\treturn stoppedBySignal(exit) && r.stopRequested(id)\n",
+      "replace": "\treturn stoppedBySignal(exit)\n",
+      "run": "TestAStopIsFoundInTheLedger",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a follower reads what was written as the owner let go",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\t\tfor _, f := range streams {\n\t\t\tif err := f.copyNew(); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t}\n\t\tif !held {\n\t\t\treturn nil\n\t\t}\n",
+      "replace": "\t\tif !held {\n\t\t\treturn nil\n\t\t}\n\t\tfor _, f := range streams {\n\t\t\tif err := f.copyNew(); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t}\n",
+      "run": "TestFollowingATranscriptReadsUntilTheOwnerLetsGo",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a follow from the tail starts at the last lines",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\tf.off = info.Size() - kept\n",
+      "replace": "\tf.off = 0 * (info.Size() - kept)\n",
+      "run": "TestFollowingFromTheTailStartsAtTheLastLines",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engine log filter drops only the marker",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\tif markerLine.MatchString(line) {\n",
+      "replace": "\tif markerLine.MatchString(line) || true {\n",
+      "run": "TestTheMarkerFilterDropsOnlyTheWrappersTwoLines",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the container announces itself once",
+      "file": "internal/toolkit/marker.go",
+      "find": "\t\tif !m.seen && m.onSeen != nil {\n",
+      "replace": "\t\tif m.onSeen != nil {\n",
+      "run": "TestTheContainerAnnouncesItselfOnce",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an open record whose owner is gone is not live work",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "stillRunning(e, now) && !ownerGone(r.home, e.ID) {\n",
+      "replace": "stillRunning(e, now) {\n",
+      "run": "TestAnOpenRecordWhoseOwnerIsGoneIsNotLiveWork",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job with no lock file is read by its record",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "\treturn err == nil && exists && !held\n",
+      "replace": "\treturn err == nil && (exists || !exists) && !held\n",
+      "run": "TestAnOpenRecordWhoseOwnerIsGoneIsNotLiveWork",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unreadable target is kept under include-live",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\t\tcase t.Unknown != \"\":\n",
+      "replace": "\t\tcase t.Unknown == \"never\":\n",
+      "run": "TestATargetWhoseStateIsUnknownIsKeptEvenUnderIncludeLive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: many sessions are read from one answer",
+      "file": "internal/toolkit/session.go",
+      "find": "\t\t\tstates[dir] = parseSessionState(strings.Join(section, \"\\n\"))\n",
+      "replace": "\t\t\tstates[dir] = SessionState{}\n",
+      "run": "TestManySessionsAreReadFromOneAnswer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stopped session answers 130",
+      "file": "internal/toolkit/session.go",
+      "find": "\tcase s.Stopped:\n\t\treturn 130\n",
+      "replace": "\tcase s.Stopped:\n\t\treturn ExitFailed\n",
+      "run": "TestASessionEndsOnTheRulesAJobKeeps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session record names only its own directory",
+      "file": "internal/toolkit/session.go",
+      "find": "\tcase !strings.HasPrefix(rec.GuestDir, \"/\") || !strings.HasSuffix(rec.GuestDir, want) || len(rec.GuestDir) == len(want):\n",
+      "replace": "\tcase !strings.HasPrefix(rec.GuestDir, \"/\") || want == \"\":\n",
+      "run": "TestASessionRecordNamesOnlyItsOwnDirectory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's payload carries its environment",
+      "file": "internal/toolkit/session.go",
+      "find": "\treturn append(shellAssignments(req.Env), req.Script...)\n",
+      "replace": "\treturn req.Script\n",
+      "run": "TestASessionsPayloadIsItsEnvironmentThenItsScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session deadline is at least a second",
+      "file": "internal/toolkit/session.go",
+      "find": "\t\tif to < 1 {\n\t\t\tto = 1\n\t\t}\n",
+      "replace": "",
+      "run": "TestTheSupervisorIsGivenWholeSecondsAndItsDirectory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session stop signals the group in a form dash reads",
+      "file": "internal/toolkit/session.go",
+      "find": "kill -TERM \"-$pg\" 2>/dev/null\ni=0;",
+      "replace": "kill -TERM -- \"-$pg\" 2>/dev/null\ni=0;",
+      "run": "TestASessionRunsStopsTimesOutAndIsFollowedInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec answers json only when detached",
+      "file": "cmd_base_exec.go",
+      "find": "\tif opts.asJSON && !opts.detach {\n",
+      "replace": "\tif opts.asJSON && !opts.detach && false {\n",
+      "run": "TestJobControlRefusesWhatItCannotAnswer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a follow refuses to pick one stream",
+      "file": "cmd_logs.go",
+      "find": "\t\tcase *wantErr || *both:\n",
+      "replace": "\t\tcase (*wantErr || *both) && false:\n",
+      "run": "TestJobControlRefusesWhatItCannotAnswer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a detached answer warns when the owner stays in the job object",
+      "file": "cmd_run.go",
+      "find": "\t\t\tdoc[\"warning\"] = jobObjectWarning\n",
+      "replace": "",
+      "run": "TestADetachedAnswerSaysWhenTheOwnerStaysInTheJobObject",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a recorded end answers with its sealed verdict",
+      "file": "cmd_jobs.go",
+      "find": "\t} else if st.Result != nil {\n\t\tif stdout != nil {\n\t\t\tif err := writeBothTranscripts(dir, tail, stdout, stderr); err != nil {\n\t\t\t\treturn out, err\n\t\t\t}\n\t\t}\n\t\tout.Result, out.verdict = st.Result, st.Result.Verdict()\n",
+      "replace": "\t} else if st.Result != nil {\n\t\tif stdout != nil {\n\t\t\tif err := writeBothTranscripts(dir, tail, stdout, stderr); err != nil {\n\t\t\t\treturn out, err\n\t\t\t}\n\t\t}\n\t\tout.Result, out.verdict = st.Result, st.Result.Exit\n",
+      "run": "TestARecordedEndIsTheAnswer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper cleanup sends the job filter",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\t\tIncludeLive: policy.IncludeLive, Job: policy.Job,\n",
+      "replace": "\t\tIncludeLive: policy.IncludeLive,\n",
+      "run": "TestEveryCleanupFieldCrossesTheWire",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper cleanup honours the job filter",
+      "file": "internal/toolkit/helper.go",
+      "find": "\t\tJob:         req.Job,\n",
+      "replace": "",
+      "run": "TestEveryCleanupFieldCrossesTheWire",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper refuses a job filter that is not an id",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tif req.Job != \"\" && !ValidJobID(req.Job) {\n",
+      "replace": "\tif req.Job != \"\" && !ValidJobID(req.Job) && false {\n",
+      "run": "TestTheHelperRefusesAJobThatIsNotAnID",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper makes the state directory it serves from",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tif _, err := EnsureHome(); err != nil {\n\t\treturn err\n\t}\n\tpath, err := HelperEndpointPath()\n",
+      "replace": "\tpath, err := HelperEndpointPath()\n",
+      "run": "TestAHelperServesFromAStateDirectoryThatDoesNotExistYet",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a child resolves its parent's instance once",
+      "file": "main.go",
+      "find": "\tif resolved := os.Getenv(instanceHomeEnv); resolved != \"\" && samePath(resolved, os.Getenv(\"WSL_TOOLKIT_HOME\")) {\n",
+      "replace": "\tif resolved := os.Getenv(instanceHomeEnv); resolved != \"\" && samePath(resolved, os.Getenv(\"WSL_TOOLKIT_HOME\")) && false {\n",
+      "run": "TestAChildResolvesItsParentsInstanceOnce",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "check: a calendar date in prose is refused",
+      "file": "internal/checks/ste.go",
+      "find": "\t\t\tif d := steDate.FindString(dated[i]); d != \"\" {\n",
+      "replace": "\t\t\tif d := steDate.FindString(dated[i]); d != \"\" && false {\n",
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "check: a dated table row is read as prose",
+      "file": "internal/checks/ste.go",
+      "find": "\tdated := strings.Split(steMaskWith(string(raw), false), \"\\n\")\n",
+      "replace": "\tdated := strings.Split(steMaskWith(string(raw), true), \"\\n\")\n",
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "check: a double-backtick span is masked before a single one",
+      "file": "internal/checks/ste.go",
+      "find": "\tregexp.MustCompile(\"``(?:[^`\\n]|`[^`\\n]|\\n[^`\\n])*?``\"),\n",
+      "replace": "",
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "check: a code span does not cross a blank line",
+      "file": "internal/checks/ste.go",
+      "find": "\tregexp.MustCompile(\"`(?:[^`\\n]|\\n[^`\\n])*`\"),\n",
+      "replace": "\tregexp.MustCompile(\"(?s)`[^`]*`\"),\n",
+      "run": "TestSTECountsWhatItCanAndRefusesWhatItCannot",
+      "module": "tools/check",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a device is a node under /dev",
       "file": "internal/toolkit/jobinput.go",
       "find": "\tif underDev && !strings.HasPrefix(p, \"/dev/\") {\n",
@@ -373,8 +661,8 @@
     {
       "label": "wsl-toolkit: a device name with a trailing space is still a device",
       "file": "internal/toolkit/workspace.go",
-      "find": "\treturn windowsDeviceNames[strings.TrimRight(stem, \" \")]\n",
-      "replace": "\treturn windowsDeviceNames[stem]\n",
+      "find": "\treturn windowsDeviceName(strings.TrimRight(stem, \" \"))\n",
+      "replace": "\treturn windowsDeviceName(stem)\n",
       "run": "TestAWindowsDeviceNameIsRecognisedInEveryShape",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -1066,7 +1354,7 @@
     {
       "label": "the tail window that grows",
       "module": "tools/windows/wsl-toolkit",
-      "file": "cmd_logs.go",
+      "file": "internal/toolkit/jobctl.go",
       "find": "\t\tif len(lines) > n {",
       "replace": "\t\tif n = min(n, len(lines)); true {",
       "run": "TestLastLines",
@@ -4010,8 +4298,8 @@
     },
     {
       "label": "ste: a code span is masked across a line break",
-      "find": "\tregexp.MustCompile(\"(?s)`[^`]*`\"),",
-      "replace": "\tregexp.MustCompile(\"`[^`\\\\n]*`\"),",
+      "find": "\tregexp.MustCompile(\"`(?:[^`\\n]|\\n[^`\\n])*`\"),",
+      "replace": "\tregexp.MustCompile(\"`[^`\\n]*`\"),",
       "module": "tools/check",
       "file": "internal/checks/ste.go",
       "args": [],

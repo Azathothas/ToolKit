@@ -27,7 +27,7 @@ import (
 // number that makes an existing rule enforceable, plus the three rules nobody
 // was measuring.
 //
-// The four rules:
+// The five rules:
 //
 //  1. a sentence is at most 25 words, or 20 when it is a step in an ordered
 //     list. STE writing rule 4.1, with procedures held tighter than description;
@@ -36,7 +36,10 @@ import (
 //     applied through the explicit table below rather than through STE's full
 //     dictionary, which has no entry for the technical names this tree needs;
 //  4. one concept is written one way. STE rules 1.2 and 1.3. `distro` and
-//     `distribution` are the same thing and this tree used both.
+//     `distribution` are the same thing and this tree used both;
+//  5. prose carries no calendar date. A page that says what is true now has no
+//     use for one, and a date is how the story of a page's own work gets back
+//     onto it. DOC-08.
 func STE(t *Tree) Result {
 	r := Result{Extra: map[string]any{}}
 
@@ -94,6 +97,7 @@ func steExemptReason(f string) string {
 func steFile(r *Result, path string, raw []byte) (int, int) {
 	masked := steMask(string(raw))
 	lines := strings.Split(masked, "\n")
+	dated := strings.Split(steMaskWith(string(raw), false), "\n")
 
 	total, longest := 0, 0
 	unit := []string{}
@@ -125,6 +129,12 @@ func steFile(r *Result, path string, raw []byte) (int, int) {
 
 	for i, line := range lines {
 		n := i + 1
+		if i < len(dated) {
+			if d := steDate.FindString(dated[i]); d != "" {
+				r.bad("%s", sprintf("%s:%d: %s is a calendar date. A live page states what is true now, and a dated measurement lives in the entry that made it, which the page cites. DOC-08",
+					path, n, d))
+			}
+		}
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			flush()
@@ -229,6 +239,9 @@ var steShortForms = []steSub{
 }
 
 var (
+	// A calendar date in prose. ⚠ Code is masked first, so a date that is data,
+	// an API version or a changelog heading shown as an example, stays allowed.
+	steDate = regexp.MustCompile(`\b(?:19|20)[0-9]{2}-[01][0-9]-[0-3][0-9]\b`)
 	// A step in an ordered list, which STE holds to the tighter ceiling.
 	steStep = regexp.MustCompile(`^\s*[0-9]+\.\s`)
 	// Any list item, ordered or not. It ends the unit before it.
@@ -323,7 +336,11 @@ func steWordByte(b byte) bool {
 // in README.md - and a line-by-line mask reads the half after the break as
 // prose. That produced a false finding in the first measurement, and it is the
 // one defect a scanner of this shape reliably has.
-func steMask(s string) string {
+func steMask(s string) string { return steMaskWith(s, true) }
+
+// steMaskWith is steMask, and with prose false it keeps tables and headings,
+// which the date rule reads: a dated measurement table is prose to a reader.
+func steMaskWith(s string, prose bool) string {
 	b := []byte(s)
 	blank := func(from, to int) {
 		for i := from; i < to && i < len(b); i++ {
@@ -355,7 +372,10 @@ func steMask(s string) string {
 			inFence = !inFence
 			blank(start, end)
 			continue
-		case inFence, strings.HasPrefix(trimmed, "|"), strings.HasPrefix(trimmed, "#"):
+		case inFence:
+			blank(start, end)
+			continue
+		case prose && (strings.HasPrefix(trimmed, "|") || strings.HasPrefix(trimmed, "#")):
 			blank(start, end)
 			continue
 		}
@@ -378,8 +398,14 @@ func steMask(s string) string {
 	return out
 }
 
+// ⛔ A SPAN DOES NOT CROSS A BLANK LINE, and a double-backtick span is read
+// before a single one. A span pattern that paired backticks across the whole
+// document read a two-backtick span that holds one backtick as the start of a
+// span that ran to the next backtick anywhere below it. Every pair after it
+// shifted by one, and the rest of the page was masked as code: no rule read it.
 var steSpans = []*regexp.Regexp{
-	regexp.MustCompile("(?s)`[^`]*`"),
+	regexp.MustCompile("``(?:[^`\n]|`[^`\n]|\n[^`\n])*?``"),
+	regexp.MustCompile("`(?:[^`\n]|\n[^`\n])*`"),
 	regexp.MustCompile(`\]\([^)]*\)`),
 	regexp.MustCompile(`https?://\S+`),
 	regexp.MustCompile(`[A-Za-z0-9_.-]*[\\/][A-Za-z0-9_.\\/-]+`),

@@ -294,7 +294,7 @@ func isWindowsDeviceName(name string) bool {
 	if i := strings.IndexByte(stem, '.'); i >= 0 {
 		stem = stem[:i]
 	}
-	return windowsDeviceNames[strings.TrimRight(stem, " ")]
+	return windowsDeviceName(strings.TrimRight(stem, " "))
 }
 
 // deviceSafePath is the path to open for a workspace file.

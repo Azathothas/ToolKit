@@ -240,6 +240,7 @@ func jsonSurfaces(t *testing.T) []string {
 	for _, sub := range [][]string{
 		{"base", "ensure"}, {"base", "status"}, {"base", "recreate"}, {"base", "remove"},
 		{"base", "shell"}, {"base", "presets"}, {"base", "grant"}, {"base", "revoke"},
+		{"base", "exec"}, {"base", "doors"}, {"base", "attach"},
 		{"helper", "serve"}, {"helper", "status"}, {"helper", "stop"},
 		{"images", "warm"}, {"images", "pull"},
 		{"artifacts", "retry"}, {"config", "validate"},

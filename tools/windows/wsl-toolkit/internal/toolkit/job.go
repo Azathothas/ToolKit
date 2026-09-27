@@ -156,6 +156,11 @@ type JobSpec struct {
 	// TickInterval overrides the default. Zero means TickInterval, and anything
 	// under MinTickInterval is raised to it.
 	TickEvery time.Duration
+	// ID is the job's id, where the caller chose it; empty draws one. Owner is
+	// the caller's claim on it, where the caller took one before the job ran;
+	// nil means this Run claims the job and records its end. WSL-94.
+	ID    string
+	Owner *JobOwner
 	// Log is the observation relay: the timestamp layer, the silence heartbeat,
 	// the event log and the exit reading. Nil means none, which is what a caller
 	// that named no renderer and no sink passes.
@@ -250,6 +255,9 @@ type JobResult struct {
 	ContainerLifecycle string `json:"container_lifecycle"`
 	Platform           string `json:"platform,omitempty"`
 	Cancelled          bool   `json:"cancelled,omitempty"`
+	// Stopped is true where `wsl-toolkit stop` ended the job. Cancelled is true
+	// beside it and the verdict is 130, as for any cancellation. WSL-94.
+	Stopped bool `json:"stopped,omitempty"`
 }
 
 // Failed says whether this row counts against the run: the command's own
@@ -475,12 +483,40 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			fmt.Sprintf("container lifecycle %q must be %q or %q", spec.ContainerLifecycle, ContainerPersistent, ContainerEphemeral), true
 		return res
 	}
-	id, err := newJobID()
-	if err != nil {
-		res.Exit, res.Error = 2, err.Error()
+	id := spec.ID
+	if id == "" {
+		fresh, err := newJobID()
+		if err != nil {
+			res.Exit, res.Error = 2, err.Error()
+			return res
+		}
+		id = fresh
+	}
+	if !ValidJobID(id) {
+		res.Exit, res.Error, res.Unreached = 2, fmt.Sprintf("%q is not a job id: an id is 16 lowercase hex characters", id), true
 		return res
 	}
 	res.ID = id
+	// ⭐ A JOB HAS ONE OWNER, and it is this process unless the caller already
+	// claimed it. The owner's lock and result are what a second process follows,
+	// waits on and stops by. WSL-94.
+	if spec.Owner == nil && r.home != "" {
+		owner, err := ClaimJob(r.home, id)
+		if err != nil {
+			res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+			return res
+		}
+		// ⚠ Deferred calls run in reverse, and this one runs before the one that
+		// sets the duration, so it measures its own.
+		defer func() {
+			sealed := res
+			sealed.Duration = time.Since(started)
+			sealed.Seal()
+			if err := owner.Finish(sealed); err != nil {
+				r.log("could not record the end of job " + id + ": " + err.Error())
+			}
+		}()
+	}
 
 	user := r.cfg.Base.User
 	guestHome, err := r.guestHome(ctx)
@@ -606,6 +642,14 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		return res
 	}
 
+	// ⛔ A STOP THAT ARRIVED WHILE THE JOB WAS PREPARED IS HONOURED HERE, before
+	// the container exists, rather than by starting it and stopping it.
+	if r.stopRequested(id) {
+		res.Cancelled, res.Stopped, res.Exit = true, true, 130
+		res.Error = "the job was stopped by wsl-toolkit stop before its container started"
+		return res
+	}
+
 	token, err := newMarkerToken()
 	if err != nil {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
@@ -633,6 +677,21 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	}
 	outSink, errSink := relaySinks(spec.Log, streams)
 	marker := newMarkerStripper(errSink, token)
+	// ⛔ A STOP IS READ AGAIN WHEN THE CONTAINER ANNOUNCES ITSELF. A stop that
+	// arrives after the check above and before the container exists finds no
+	// container to stop, and the image pull can make that interval minutes long.
+	// The stop is in the ledger before the stop looks for the container, so this
+	// read finds every stop that the stop's own look missed. WSL-94.
+	var lateStop sync.WaitGroup
+	marker.onSeen = func() {
+		lateStop.Add(1)
+		go func() {
+			defer lateStop.Done()
+			if r.stopRequested(id) {
+				r.stopContainer(ctx, container)
+			}
+		}()
+	}
 
 	// ⭐ THE HEARTBEAT COUNTS THE BYTES THE STREAMS CARRY, which is what makes a
 	// tick the difference between work and a stall. It holds a number and never
@@ -663,6 +722,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		Stdout: jobOut, Stderr: jobErr,
 	})
 	trace.Mark("exec")
+	lateStop.Wait()
 	tick.Stop()
 	if err := marker.Flush(); err != nil {
 		r.log("could not flush the job's error stream: " + err.Error())
@@ -708,6 +768,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			r.killContainer(budget.Context(ctx), container)
 		}
 		trace.Mark("cancel")
+	case marker.Seen() && r.EndedByStop(id, code):
+		// ⚠ A STOP IS READ AS ONE ONLY WHERE IT CHANGED THE ENDING: the engine's
+		// TERM or KILL. A payload that finished on its own as the stop arrived
+		// keeps its own exit code.
+		res.Cancelled, res.Stopped, res.Exit = true, true, 130
+		res.Error = "the job was stopped by wsl-toolkit stop"
 	case !marker.Seen() && (code != 0 || execErr != nil):
 		// ⛔ NOTHING RAN, so this is not the payload's exit code. The engine
 		// could not acquire the image, could not create the container, or could
@@ -768,6 +834,10 @@ func relaySinks(log *RunLog, streams *jobStreams) (out, errw io.Writer) {
 	}
 	return io.MultiWriter(streams.Out, log.Stdout()), io.MultiWriter(streams.Err, log.Stderr())
 }
+
+// stoppedBySignal is an exit the engine's stop produces: 143 for its TERM, 137
+// for the KILL after the grace.
+func stoppedBySignal(code int) bool { return code == 143 || code == 137 }
 
 // unreachedReason is the START error the relay records, and it is empty for a
 // job whose container ran.

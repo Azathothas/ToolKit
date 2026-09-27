@@ -15,12 +15,17 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseExecUsage = `wsl-toolkit base exec (-c COMMAND | --script FILE)
+const baseExecUsage = `wsl-toolkit base exec (-c COMMAND | --command-base64 BASE64 | --script FILE)
 
   Run a non-interactive POSIX script directly in the configured base. The
   script starts in the guest account's home unless --dir names a guest path,
   and its stdin is /dev/null. Its stdout, stderr and exit code are forwarded
   unchanged.
+
+  --detach starts it with no client attached and answers with a session id.
+  The base runs it in a process group of its own, keeps its two streams and
+  its exit code, and holds --timeout itself. wsl-toolkit logs ID --follow,
+  wait ID and stop ID reach it.
 `
 
 type baseExecFlags struct {
@@ -32,6 +37,8 @@ type baseExecFlags struct {
 	asRoot     bool
 	viaHelper  bool
 	privateNet bool
+	detach     bool
+	asJSON     bool
 }
 
 func (e *baseExecFlags) bind(fs *flag.FlagSet) {
@@ -43,6 +50,8 @@ func (e *baseExecFlags) bind(fs *flag.FlagSet) {
 	fs.BoolVar(&e.asRoot, "root", false, "run as root instead of the configured account")
 	fs.BoolVar(&e.viaHelper, "via-helper", false, "prove the helper refusal for arbitrary base commands")
 	fs.BoolVar(&e.privateNet, "private-net", false, "run in a network namespace of the account's own, with the Windows host and the private ranges refused. ⛔ No container can run inside it")
+	fs.BoolVar(&e.detach, "detach", false, "start the command with no client attached and answer with a session id. wsl-toolkit logs ID --follow, wait ID and stop ID reach it")
+	fs.BoolVar(&e.asJSON, "json", false, "with --detach, write the session as a structured answer")
 }
 
 func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) {
@@ -115,6 +124,9 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	if opts.asJSON && !opts.detach {
+		return exitCannot, errors.New("base exec forwards the command's own streams, so --json has nothing to describe. It writes the session with --detach")
+	}
 	if c, err := useHelper(ctx, opts.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
@@ -131,8 +143,43 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 	if !exists {
 		return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
 	}
+	if opts.detach {
+		return detachSession(ctx, w, req, opts)
+	}
 	req.Stdout, req.Stderr = os.Stdout, os.Stderr
 	return baseExecResult(w.Exec(ctx, req))
+}
+
+// detachSession starts a base exec with no client attached. WSL-95.
+//
+// ⛔ THE PAYLOAD IS THE ONE THE ATTACHED PATH WOULD SEND, environment and
+// private network wrapping included, so --detach changes who waits and nothing
+// about what runs.
+func detachSession(ctx context.Context, w *toolkit.Wsl, req toolkit.ExecRequest, opts baseExecFlags) (int, error) {
+	home, err := toolkit.Home()
+	if err != nil {
+		return exitCannot, err
+	}
+	rec, err := toolkit.StartSession(ctx, w, home, toolkit.SessionStart{
+		Distro: req.Distro, User: req.User, Dir: req.Dir,
+		Payload: toolkit.SessionPayload(req), Timeout: opts.timeout,
+	})
+	if err != nil {
+		return exitCannot, err
+	}
+	if opts.asJSON {
+		return exitOK, writeJSON(map[string]any{
+			"schema": DetachedSchema, "id": rec.ID, "kind": "session",
+			"distro": rec.Distro, "user": rec.User, "guest_dir": rec.GuestDir,
+			"follow": "wsl-toolkit logs " + rec.ID + " --follow",
+			"wait":   "wsl-toolkit wait " + rec.ID,
+			"stop":   "wsl-toolkit stop " + rec.ID,
+		})
+	}
+	fmt.Println(rec.ID)
+	logf("  session %s runs in %s as %s, with no client attached. Follow: wsl-toolkit logs %s --follow. Wait: wsl-toolkit wait %s. Stop: wsl-toolkit stop %s",
+		rec.ID, rec.Distro, rec.User, rec.ID, rec.ID, rec.ID)
+	return exitOK, nil
 }
 
 // baseExecResult forwards the guest's own exit status silently and surfaces

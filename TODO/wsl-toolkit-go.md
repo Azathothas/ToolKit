@@ -11522,3 +11522,112 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 
 Exit 0, with a case that reads all three places back through a real `Runner`
 pipeline and finds no secret.
+
+## WSL-102. `gc --via-helper --job ID` plans and applies a cleanup of every job
+
+**Source** found on 2026-09-27 by the door sweep over `WSL-94`'s job control: the
+helper route of every command that takes a job id was read against the direct
+route.
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`gc --job ID` narrows a cleanup to one job. Through the helper, the narrowing is
+lost, and `gc --via-helper --job ID --apply` removes every job that the age and
+liveness rules allow. That is the data loss `--job` exists to prevent.
+
+## Premise
+
+⛔ **Measured on 2026-09-27 on `wsl-toolkit-s34`**, with two retained jobs A and
+B, the released 4.0.0 as the helper and as the client, and the plan only:
+`gc --via-helper --job A --json`.
+
+| build | containers in the plan | guest directories | host directories |
+| --- | --- | --- | --- |
+| 4.0.0 | ⛔ A and B | ⛔ A and B | ⛔ A and B |
+| this change | A | A | A |
+
+⭐ **The cause is two literals.** `HelperClient.Cleanup` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/helper_client.go`](../tools/windows/wsl-toolkit/internal/toolkit/helper_client.go)
+built its body as a map with four keys and no job, and `handleGC` decoded into a
+struct with the same four fields. Neither side could carry the filter, so neither
+side's test could see it drop.
+
+## Approach
+
+One type on the wire, `HelperGCRequest`, built by one function on the client and
+turned back into a `CleanupPolicy` by one method on the helper. A case walks
+every field of `CleanupPolicy` by reflection and fails when one does not survive
+the trip, so the next policy field cannot be dropped the same way. The helper
+refuses a job filter that is not a job id.
+
+## Consumers
+
+⚠ A caller that ran `gc --via-helper --job ID --apply` on 4.0.0 lost more than
+it asked to remove. The protocol moves to `wsl-toolkit-helper/5`, so a 4.x
+helper and a 5.x client refuse each other rather than drop the field again.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the reflection case and the refusal case green. The acceptance
+case `gc --job through the helper leaves every other job alone` passes on a real
+base.
+
+## WSL-103. Under an instance, `helper serve --detach` never answers, and a detached run would not either
+
+**Source** found on 2026-09-27 when the acceptance suite ran against the
+`s34` instance: every helper case waited 30 seconds and failed.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`wsl-toolkit --instance NAME helper serve --detach` waits 30 seconds and exits 2
+with "a background helper was started and did not answer". The same happens
+with the instance selected by `WSL_TOOLKIT_INSTANCE`. `run --detach` starts its
+owner the same way, so it inherits the defect.
+
+## Premise
+
+⛔ **Measured on 2026-09-27 with the released 4.0.0**, a fresh `--home` and the
+instance `zz`. The parent resolves `HOME\instances\zz`. The child is started with
+`--home HOME\instances\zz` and inherits `WSL_TOOLKIT_INSTANCE=zz`:
+
+| the child | what it did |
+| --- | --- |
+| as started | resolved `HOME\instances\zz\instances\zz`, exited 2: `open ...\helper.json....tmp: The system cannot find the path specified` |
+| with that nested directory made by hand | served, and wrote `instances\zz\instances\zz\helper.json`, which the parent never reads |
+
+⭐ **Two causes.** `applyInstance` resolves an instance under whatever
+`WSL_TOOLKIT_HOME` holds, and a child inherits the home its parent already
+resolved. `HelperServer.Serve` writes its endpoint file into a state directory
+it never creates, and on a fresh instance nothing else has created it yet.
+
+## Approach
+
+1. A process that resolves an instance hands the root and the resolved home to
+   the processes it starts. A child whose home is that resolved home resolves
+   from the root, so the selection applies once.
+2. `Serve` makes the state directory before it writes to it.
+
+## Consumers
+
+Nothing changes for a caller that selects no instance.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that plays the parent and the child in one process both
+ways a child meets the resolved home, and a case that serves from a state
+directory that does not exist yet. The acceptance suite's helper cases pass
+under `-Instance`.

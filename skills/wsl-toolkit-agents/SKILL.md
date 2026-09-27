@@ -116,9 +116,8 @@ wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $p
 ⚠ **Read the pane id from the command output.** The base may already hold workspaces,
 so a guessed id points at someone else's work.
 
-⚠ **The flags above were measured on 2026-09-17 and this page is not their
-authority.** herdr moves. If one is refused, ask the CLI, as the section before
-this one says, and use what it answers.
+⚠ **This page is not the authority for the flags above.** herdr moves. If one is
+refused, ask the CLI, as the section before this one says, and use what it answers.
 
 ⛔ **The name must be free.** A second start under a name in use answers
 `agent_name_taken` and names the pane already holding it. Pick another name.
@@ -133,8 +132,8 @@ wsl-toolkit --instance base base herdr -- agent read work --source recent --line
 ```
 
 ⛔ **Submit with `agent prompt`, not with `pane send-text` plus `pane send-keys
-enter`.** Measured against Muse Code 1.3.0: the two pane commands left the text
-sitting in the input with a newline after it, and only `agent prompt` submitted it.
+enter`.** With Muse Code 1.3.0 the two pane commands leave the text in the input
+with a newline after it, and only `agent prompt` submits it.
 
 ⛔ **Every wait needs a `--timeout`.** A wait has no default and can wait for ever.
 
@@ -159,8 +158,8 @@ wsl-toolkit --instance base base herdr -- agent read work --lines 5
 | pi | `(<provider>) <model> • <effort>` |
 | omp | `◕ <model name>` in its status bar |
 
-Two silent failures found this way on 2026-09-17, both of which every file said were
-fine:
+Two silent failures that only the status line shows, while every file says the
+setting is right:
 
 - ⛔ **pi resolves its startup model against its own catalogue.** A model the provider
   serves but `~/.pi/agent/models.json` does not declare makes pi fall back to a
@@ -174,8 +173,7 @@ fine:
 
 ⛔ **AN ENVIRONMENT VARIABLE CANNOT DO THIS.** An agent herdr starts inherits the
 herdr **service's** environment, not a login shell's. A value exported in `~/.profile`
-or `~/.bashrc` never reaches it. This was measured by reading `/proc/PID/environ` for
-every pane process.
+or `~/.bashrc` never reaches it: `/proc/PID/environ` of every pane process shows it.
 
 ⭐ **Set it in the base's configuration and let the tool write each agent's own file:**
 

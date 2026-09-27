@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -122,8 +124,10 @@ func registeredCommandSpecs() []commandSpec {
 		{Name: "matrix", Summary: "run one command across a set of images", Run: cmdMatrix, HelpForms: []string{"matrix"}},
 		{Name: "resources", Summary: "report resources that this tool owns", Run: cmdResources, HelpForms: []string{"resources"}},
 		{Name: "gc", Summary: "report or remove resources that this tool owns", Run: cmdGC, HelpForms: []string{"gc"}},
-		{Name: "logs", Summary: "read the complete output from one job", Run: func(_ context.Context, a []string) (int, error) { return cmdLogs(a) }, HelpForms: []string{"logs"}},
-		{Name: "inspect", Summary: "inspect one job and its recorded host state", Run: cmdInspect, HelpForms: []string{"inspect"}},
+		{Name: "logs", Summary: "list jobs, read one job's complete output, or follow a running one", Run: cmdLogs, HelpForms: []string{"logs"}},
+		{Name: "wait", Summary: "wait for one job or detached session to end, and answer with its exit code", Run: cmdWait, HelpForms: []string{"wait"}},
+		{Name: "stop", Summary: "stop one job or detached session", Run: cmdStop, HelpForms: []string{"stop"}},
+		{Name: "inspect", Summary: "inspect one job or detached session and its recorded host state", Run: cmdInspect, HelpForms: []string{"inspect"}},
 		{Name: "helper", Summary: "manage the optional local WSL helper", Run: cmdHelper, HelpForms: []string{"helper serve", "helper status", "helper stop"}},
 		{Name: "config", Summary: "report, validate, or write the configuration", Run: func(_ context.Context, a []string) (int, error) { return cmdConfig(a) }, HelpForms: []string{"config", "config validate"}},
 		{Name: "distro", Summary: "create, use, observe and remove throwaway WSL distributions built from an image or a rootfs", Run: cmdDistro, HelpForms: []string{"distro list", "distro new", "distro run", "distro enter", "distro remove", "distro purge", "distro snapshot", "distro replay", "distro compare"}},
@@ -241,6 +245,15 @@ func run(ctx context.Context, args []string) int {
 // parent, then the default. A pointer that overrode an explicit flag would be a
 // file in a checkout silently deciding which machine an agent talks to.
 func applyInstance(ctx context.Context, asked string) (int, error) {
+	// ⛔ A PROCESS THIS TOOL STARTS INHERITS A HOME THAT IS ALREADY RESOLVED.
+	// `helper serve --detach` and `run --detach` start a copy of this program
+	// with the instance's own home and the instance's name, and resolving the
+	// name again nested one inside the other: the child served
+	// instances/NAME/instances/NAME while its parent waited on instances/NAME.
+	// The root is put back first, so the selection below resolves once.
+	if resolved := os.Getenv(instanceHomeEnv); resolved != "" && samePath(resolved, os.Getenv("WSL_TOOLKIT_HOME")) {
+		os.Setenv("WSL_TOOLKIT_HOME", os.Getenv(instanceRootEnv))
+	}
 	if asked == "" && strings.TrimSpace(os.Getenv(toolkit.InstanceEnv)) == "" {
 		cwd, err := os.Getwd()
 		if err == nil {
@@ -257,6 +270,10 @@ func applyInstance(ctx context.Context, asked string) (int, error) {
 	if asked == "" && strings.TrimSpace(os.Getenv(toolkit.InstanceEnv)) == "" {
 		return exitOK, nil
 	}
+	root, err := toolkit.Home()
+	if err != nil {
+		return exitCannot, err
+	}
 	inst, err := toolkit.ResolveInstance(ctx, asked)
 	if err != nil {
 		return exitCannot, err
@@ -266,6 +283,8 @@ func applyInstance(ctx context.Context, asked string) (int, error) {
 	}
 	os.Setenv("WSL_TOOLKIT_HOME", inst.Home)
 	os.Setenv(toolkit.InstanceEnv, inst.Name)
+	os.Setenv(instanceRootEnv, root)
+	os.Setenv(instanceHomeEnv, inst.Home)
 	// ⛔ The DISTRIBUTION is set through the configuration's default rather than
 	// written to a file. An instance that rewrote somebody's config.json to
 	// record its own name would make the selection sticky, and a flag is not a
@@ -273,6 +292,27 @@ func applyInstance(ctx context.Context, asked string) (int, error) {
 	toolkit.SelectedInstance = inst
 	note("instance " + inst.Name + ": distribution " + inst.Distro + ", state " + inst.Home)
 	return exitOK, nil
+}
+
+// instanceRootEnv and instanceHomeEnv hand a resolved selection to the
+// processes this one starts: the state root it was resolved from, and the
+// instance home it resolved to. A child whose WSL_TOOLKIT_HOME is that home
+// resolves from the root instead.
+const (
+	instanceRootEnv = "WSL_TOOLKIT_INSTANCE_ROOT"
+	instanceHomeEnv = "WSL_TOOLKIT_INSTANCE_HOME"
+)
+
+// samePath compares two host paths the way this host's filesystem does.
+func samePath(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 func describeInstance(name string) string {

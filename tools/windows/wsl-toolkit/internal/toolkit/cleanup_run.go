@@ -48,6 +48,7 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 	plan.Containers = Names(Of(remove, "container"))
 	plan.GuestDirs = Names(Of(remove, "guest-dir"))
 	plan.HostDirs = Names(Of(remove, "host-dir"))
+	plan.Sessions = Names(Of(remove, "session"))
 
 	if !apply {
 		return plan, nil
@@ -56,6 +57,7 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 	if err := r.applyGuestCleanup(ctx, &plan, root, remove, includeImages); err != nil {
 		return plan, err
 	}
+	r.removeSessions(ctx, &plan, Of(remove, "session"))
 	for _, t := range Of(remove, "host-dir") {
 		if err := RemoveInside(r.home, t.Name); err != nil {
 			plan.Failed = append(plan.Failed, "host directory "+t.Name+": "+err.Error())
@@ -103,12 +105,25 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 		}
 	}
 
+	// ⚠ A JOB IS ALSO LIVE BETWEEN ITS CONTAINER EXITING AND ITS ARTIFACTS BEING
+	// FETCHED. The container may be gone by then, so the engine cannot answer
+	// this and the ledger has to: an open record with no close is work still in
+	// progress.
+	//
+	// ⛔ AND A JOB'S CONTAINER IS LIVE WHILE ITS JOB IS. A job whose owner was
+	// killed leaves an exited container that holds its only exit code and its only
+	// complete output, and removing it while the job's directories are spared
+	// throws the record away first. WSL-94.
+	openIDs, ledgerErr := r.openJobIDs()
 	liveJob := map[string]bool{}
+	for id := range openIDs {
+		liveJob[id] = true
+	}
 	var targets []CleanupTarget
 	for _, c := range containers {
 		id := jobIDFromContainer(c.Name)
-		live := running[c.Name]
-		if live && id != "" {
+		live := running[c.Name] || liveJob[id]
+		if running[c.Name] && id != "" {
 			liveJob[id] = true
 		}
 		targets = append(targets, CleanupTarget{
@@ -117,14 +132,6 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 		})
 	}
 
-	// ⚠ A JOB IS ALSO LIVE BETWEEN ITS CONTAINER EXITING AND ITS ARTIFACTS BEING
-	// FETCHED. The container is gone by then, because it runs with --rm, so the
-	// engine cannot answer this and the ledger has to: an open record with no
-	// close is work still in progress.
-	openIDs, ledgerErr := r.openJobIDs()
-	for id := range openIDs {
-		liveJob[id] = true
-	}
 	for _, j := range jobs {
 		id := jobIDFromPath(j.Path)
 		targets = append(targets, CleanupTarget{
@@ -140,12 +147,22 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 			if err != nil {
 				continue
 			}
+			dir := filepath.Join(hostJobs, e.Name())
+			// A session's directory goes with its guest directory, as its own kind,
+			// and so does one whose record does not read.
+			if _, err := os.Stat(filepath.Join(dir, sessionRecordName)); err == nil {
+				continue
+			}
+			// ⛔ AN OWNED JOB IS LIVE whatever its record says: a process holds its
+			// lock, which is exact, and a detached owner is still writing here.
+			owned, _, _ := lockProbe(filepath.Join(dir, ownerLockName))
 			targets = append(targets, CleanupTarget{
-				Kind: "host-dir", Name: filepath.Join(hostJobs, e.Name()), JobID: e.Name(),
-				Live: liveJob[e.Name()], ModTime: info.ModTime(),
+				Kind: "host-dir", Name: dir, JobID: e.Name(),
+				Live: liveJob[e.Name()] || owned, ModTime: info.ModTime(),
 			})
 		}
 	}
+	targets = append(targets, r.sessionTargets(ctx)...)
 	// ⛔ AN UPLOAD AND AN ARTIFACT SET DO NOT CARRY THE JOB'S ID, so liveJob
 	// cannot answer for them. The ledger can: the helper opens a record before it
 	// writes either directory and closes it when the client is done, so an open
@@ -235,7 +252,13 @@ func stillRunning(e LedgerEntry, now time.Time) bool {
 }
 
 // openJobIDs is every job the ledger says was started, not finished, and not yet
-// stale.
+// stale, less every job whose owner is known to be gone.
+//
+// ⭐ THE OWNER LOCK IS EXACT WHERE THE RECORD IS NOT. A job's owner holds its
+// lock from before the record opens until after it closes, so a lock that
+// exists and is free is an owner that is gone, and its record is what a killed
+// run leaves. A job with no lock file is read by the record alone, as before
+// the lock existed. WSL-94.
 func (r *Runner) openJobIDs() (map[string]bool, error) {
 	open, err := r.ledger.Open()
 	if err != nil {
@@ -244,11 +267,20 @@ func (r *Runner) openJobIDs() (map[string]bool, error) {
 	now := time.Now()
 	ids := map[string]bool{}
 	for _, e := range open {
-		if e.Kind == "job" && e.ID != "" && stillRunning(e, now) {
+		if e.Kind == "job" && e.ID != "" && stillRunning(e, now) && !ownerGone(r.home, e.ID) {
 			ids[e.ID] = true
 		}
 	}
 	return ids, nil
+}
+
+// ownerGone says whether a job's owner lock exists and no process holds it.
+func ownerGone(home, id string) bool {
+	if home == "" || !ValidJobID(id) {
+		return false
+	}
+	held, exists, err := lockProbe(filepath.Join(home, "jobs", id, ownerLockName))
+	return err == nil && exists && !held
 }
 
 // openHostDirs is every host directory the ledger says is still in use.

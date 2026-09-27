@@ -32,13 +32,12 @@ This applies to a commit message, a document, a script, a JSON body, anything
 multi-line, and anything containing an apostrophe, a backtick, a dollar sign or
 a backslash.
 
-The reason it is a file and not "better quoting" is that quoting is not
-sufficient. Measured on 2026-08-25:
+It is a file and not "better quoting", because quoting is not enough:
 
-| how the payload travelled | result |
+| how the payload travels | result |
 | --- | --- |
 | written to a file, then read by the shell | 8657 bytes, byte-exact, exit 0 |
-| passed inline to `bash -c` inside a **quoted** heredoc `<<'EOF'` | the backticks in the prose were **executed**: `origin: command not found` |
+| passed inline to `bash -c` inside a **quoted** heredoc `<<'EOF'` | the backticks in the prose are **executed**: `origin: command not found` |
 
 The second row is the surprising one. A quoted heredoc is supposed to be
 literal, and when the payload is handed to a shell as an inline string it is
@@ -90,11 +89,10 @@ That makes it the right transport for a helper that writes files:
 | **stdin** | ⚠ only behind a pipe, and only from a POSIX shell. See below. |
 
 ⛔ **PowerShell's stdin to a native command is NOT byte-exact, and Git Bash's
-is.** Measured on one 59-byte fixture: piping it through PowerShell wrote **61**
-bytes, because PowerShell's native-command pipe appends a trailing CRLF. The
-tail `3e 20 3c 0a` arrived as `3c 0a 0d 0a`. The same file piped through Git
-Bash was byte-identical, as were the base64 and copy-from-file paths from
-**both** shells.
+is.** A 59-byte fixture piped through PowerShell arrives as **61** bytes, because
+PowerShell's native-command pipe appends a trailing CRLF: the tail `3e 20 3c 0a`
+arrives as `3c 0a 0d 0a`. Piped through Git Bash, the same file is byte-identical,
+and so are the base64 and copy-from-file paths from **both** shells.
 
 ⚠ A receiving tool cannot tell an intended trailing newline from an added one,
 so it must not guess. **From PowerShell, use base64 or copy-from-file. Reserve
@@ -109,8 +107,7 @@ silent failure into a loud one:
 - **Require an expected match count on a substitution.** A replace that matches
   a different number of times than you believed is refused, and the file is
   left untouched. ⛔ A silent no-op that reports success is the failure that
-  discipline exists to remove, and it is the exact shape that bit this
-  repository twice while it was being written.
+  discipline exists to remove.
 
 ---
 
@@ -145,10 +142,9 @@ try { Some-Cmdlet -ErrorAction Stop } catch { }
 ⛔ **Anything reading a value reads stdout alone and checks the exit code.**
 Merging is correct only when the thing you want is on either stream.
 
-The worked example, from this repository's own probe: `git rev-parse
---abbrev-ref HEAD` in a repository with no commits prints `HEAD` to stdout
-**and** a three-line fatal to stderr, exiting 128. A version of the probe that
-merged the streams put that fatal into a field called `branch`.
+An example: `git rev-parse --abbrev-ref HEAD` in a repository with no commits
+prints `HEAD` to stdout **and** a three-line fatal to stderr, exiting 128. A
+probe that merges the streams puts that fatal into a field called `branch`.
 
 The opposite case is equally real: `java -version` prints the version to
 **stderr**, so a probe reading stdout alone finds nothing. Merge on purpose
@@ -229,7 +225,7 @@ rather than warns, over every tracked text file.
 - ⭐ **Git Bash rewrites arguments that look like POSIX paths.** Anything with a
   leading slash is converted to a Windows path before the target process sees
   it. When the target is not a Windows program, the rewrite is corruption, it
-  is silent, and the error never names the cause. Measured on 2026-08-26:
+  is silent, and the error never names the cause. For example:
 
   ```bash
   gh api /repos/OWNER/NAME/actions/workflows
@@ -265,21 +261,19 @@ rather than warns, over every tracked text file.
   2. ⚠ **A tool's own argument list.** `podman machine ssh` on Windows passes
      `-o UserKnownHostsFile=NUL` to its own ssh invocation. Under Git Bash that
      is a filename, not the null device, so a 99-byte `NUL` holding an ssh host
-     key appears in whatever directory the command ran in. Measured on
-     2026-08-27 with `MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` already set:
-     **the prefix above does not prevent this one**, because the argument never
-     looked like a path.
+     key appears in whatever directory the command runs in. ⚠ **The prefix
+     above does not prevent this one**, even with `MSYS_NO_PATHCONV=1
+     MSYS2_ARG_CONV_EXCL='*'` set, because the argument never looks like a path.
 
   ⚠ The two differ in recoverability, so do not assume the worse case is the
-  only case. The `NUL` written by trigger 2 was removed by `rm` on the same
-  machine; the lowercase `nul` from trigger 1 was not. Put the whole reserved
+  only case. `rm` removes the `NUL` that trigger 2 writes, and does not remove
+  the lowercase `nul` from trigger 1. Put the whole reserved
   set in `.gitignore` before any of it happens, because the directory it lands
   in is usually a repository.
 - ⚠ **`/tmp` is not one directory.** Git Bash resolves it inside the msys root;
   a native Windows Python or PowerShell resolves it somewhere else entirely, or
   not at all. A file written by one and read by the other is not found. Use a
   repository-relative scratch directory, or an absolute path both agree on.
-  This document's author hit it while testing the probe.
 - ⚠ **A shim is not an executable.** On Windows the node ecosystem ships shims,
   and scoop's are `.ps1`. `Process.Start` with `UseShellExecute` false throws
   "not a valid application for this OS platform" on a `.ps1` and refuses a
@@ -287,10 +281,9 @@ rather than warns, over every tracked text file.
 - ⚠ **`wsl.exe` writes UTF-16LE**, which a redirected stdout reads as empty or
   as mojibake. `WSL_UTF8=1` fixes it.
 - ⛔ **A payload handed to `wsl.exe -- /bin/sh -lc` does NOT keep its quoting,
-  and the caller cannot fix it by quoting harder.** Measured on 2026-08-27
-  against real Alpine and Debian distributions, under **both** PowerShell hosts, with
-  every hazard **already correctly single-quoted for `sh`** before it was
-  passed:
+  and the caller cannot fix it by quoting harder.** It holds on Alpine and
+  Debian distributions, under **both** PowerShell hosts, with every hazard
+  **already correctly single-quoted for `sh`**:
 
   | POSIX-quoted for sh | PowerShell 7.6.5 | Windows PowerShell 5.1 |
   | --- | --- | --- |
@@ -334,8 +327,7 @@ rather than warns, over every tracked text file.
   next build fails on a locked file with an error naming neither. Kill stray
   processes before rebuilding.
 - ⛔ **Python on Windows cannot print this repository's own markers.** stdout
-  defaults to cp1252, which has no ⛔, no ⭐ and no ⚠. Measured on 2026-08-27,
-  Python 3.13.15:
+  defaults to cp1252, which has no ⛔, no ⭐ and no ⚠. With Python 3.13.15:
 
   ```bash
   python -c "print('⛔')"
@@ -357,8 +349,7 @@ rather than warns, over every tracked text file.
 - ⛔ **A byte class is not a character class, and the wrong one is silently
   wrong.** `grep -o '[^\x00-\x7F]'` returns per-byte fragments, so a three-byte
   marker counts as three separate entries and the total is wrong in a way that
-  looks like real output. Measured on 2026-08-27 over a file holding exactly one
-  ⛔ and one ⚠:
+  looks like real output. Over a file that holds exactly one ⛔ and one ⚠:
 
   | tool | answer |
   | --- | --- |
@@ -366,8 +357,8 @@ rather than warns, over every tracked text file.
   | `rg -o '[^\x00-\x7F]'` | `1 ⚠`, `1 ⛔` |
 
   ⚠ **Setting `LC_ALL=C` does not rescue the first row**, and assuming it does
-  is the trap. On the measured machine `LANG` was already empty, so `LC_ALL=C`
-  changed nothing at all. The fix is choosing the right tool, not the locale.
+  is the trap. Where `LANG` is already empty, `LC_ALL=C` changes nothing at all.
+  The fix is choosing the right tool, not the locale.
 
   ⛔ **A check states which of the two jobs it is doing**, because the same
   expression is correct for one and quietly wrong for the other. Counting bytes
@@ -397,10 +388,10 @@ rather than warns, over every tracked text file.
   `Application` and `ExternalScript` when you mean an executable. A cmdlet
   looked for on PATH reports as missing on every machine that has it.
 - ⛔ **`Start-Process -ArgumentList` re-quotes what you hand it**, so an array
-  is not passed through as an array. `-c 'exit 37'` reached the child as `-c`
-  and `37`, and the case asserting an exit code is not flattened read 0 against
-  a tool that was right. `[Diagnostics.ProcessStartInfo]::new().ArgumentList` is
-  exact, and it is PowerShell 7 only.
+  is not passed through as an array. `-c 'exit 37'` reaches the child as `-c`
+  and `37`, so a test that asserts an exit code reads 0 against a tool that is
+  right. `[Diagnostics.ProcessStartInfo]::new().ArgumentList` is exact, and it is
+  PowerShell 7 only.
 - ⚠ **Read the child's streams before waiting on it.** Calling `WaitForExit`
   first deadlocks any child that fills the pipe buffer: the child blocks on
   write, the parent blocks on the wait, and neither moves until the timeout.
@@ -411,32 +402,28 @@ rather than warns, over every tracked text file.
   code page, so every non-ASCII character is mis-decoded. PowerShell 7 defaults
   to UTF-8 and does not care, which is exactly why this is easy to miss: the
   file works on the machine it was written on and breaks on the one it was
-  written for. `PSUseBOMForUnicodeEncodedFile` is the analyzer rule, and it
-  caught this repository's own probe.
+  written for. `PSUseBOMForUnicodeEncodedFile` is the analyzer rule.
   ⚠ The alternative is to keep every `.ps1` ASCII-only. That is also defensible;
   what is not defensible is non-ASCII with no BOM and a claim of 5.1 support.
 - ⛔ **PowerShell's `2>` on a native command is NOT byte-faithful, and it will
   make you diagnose a defect that is not there.** It captures the child's stderr
   as error records and re-renders them, so escape sequences are dropped.
-  Measured on 2026-08-30, running one script that writes an ANSI-coloured line
-  to each stream:
+  One script that writes an ANSI-coloured line to each stream shows it:
 
-  | how stderr was captured | escape bytes on stdout | escape bytes on stderr |
+  | how stderr is captured | escape bytes on stdout | escape bytes on stderr |
   | --- | --- | --- |
   | `pwsh -File s.ps1 > out 2> err` | 3 | ⛔ **0** |
   | `cmd /c "pwsh -File s.ps1 > out 2> err"` | 3 | 4 |
 
   ⚠ **The first row reads exactly like a bug in the program**: stdout is
-  coloured, stderr is not, and the code that writes them is one function. An
-  hour went into the wrong file before the same line was captured a second way.
+  coloured, stderr is not, and the code that writes them is one function.
   ⭐ To check what a child actually put on stderr, redirect with `cmd /c`, or
   have the child write the file itself. Section 3's rule about the two streams
   being different is about which one to READ; this is about the capture
   changing what is there.
 - ⛔ **A `.ps1` run through `-File` CANNOT be handed an array, and the failure
-  modes differ by type.** Measured on 2026-08-30 under PowerShell 7.6.5 and
-  Windows PowerShell 5.1, both identical, against a script declaring
-  `[int[]]$Ints` and `[string[]]$Strs`:
+  modes differ by type.** Under PowerShell 7.6.5 and Windows PowerShell 5.1
+  alike, against a script that declares `[int[]]$Ints` and `[string[]]$Strs`:
 
   | what the caller types | what binds |
   | --- | --- |

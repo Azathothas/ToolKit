@@ -66,10 +66,9 @@ A repository shows you what somebody built. ⭐ **Its tracker shows you what
 broke, what was measured, what was refused and why, and what the maintainer
 says the project is actually for.**
 
-A sweep of eleven repositories once opened no tracker at all. The issue pass
-that followed produced a measured production figure, a threat model nobody had
-stated, and two corrections to claims already written down. **None of it was
-visible in the code.**
+A sweep that opens no tracker misses what only a tracker holds: a measured
+production figure, a threat model nobody states in the code, and corrections to
+claims already written down. **None of it is visible in the code.**
 
 ```bash
 gh api "repos/OWNER/REPO/issues?state=all&per_page=100" --jq '.[] | "\(.number)\t[\(.state)]\t\(if .pull_request then "PR" else "IS" end)\t\(.title)"'

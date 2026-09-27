@@ -31,14 +31,14 @@ ever baked into this template.
 
 ## ⛔ Why a naive fill script corrupts five of these twelve
 
-This is the reason the script carries a table instead of a regex. Each of these
-was found by reading the actual texts.
+This is the reason the script carries a table instead of a regex. Each row comes
+from reading the texts themselves.
 
 | licence | what goes wrong |
 | --- | --- |
 | **GPL-3.0, AGPL-3.0, LGPL-3.0** | The copyright at the top belongs to the **Free Software Foundation**, on the licence document itself. It is not yours. Rewriting it is wrong and is a licence violation. Your notice goes in each source file's header. ⛔ The script refuses these. |
 | **ISC** | SPDX ships a licence **instance**, carrying Internet Systems Consortium's own copyright. Shipping it unedited attributes your software to them. ⛔ The script refuses without an explicit override. |
-| **0BSD** | Its placeholder is the bare word `AUTHOR`, and the same word appears twice more in its warranty clause. A global replace produced *"THE Test Holder DISCLAIMS ALL WARRANTIES"*. ⚠ **This actually happened while building this directory**, and the placeholder check passed over it, because it only ever asked whether a placeholder survived. The substitution is now anchored to the first line, and a second guard asserts that no line other than the notice changed. |
+| **0BSD** | Its placeholder is the bare word `AUTHOR`, and the same word appears twice more in its warranty clause. A global replace produces *"THE Test Holder DISCLAIMS ALL WARRANTIES"*, and a check that asks only whether a placeholder survived passes over it. ⚠ **So the substitution is anchored to the first line**, and a second guard asserts that no line other than the notice changed. |
 | **MPL-2.0, CC0-1.0, Unlicense** | No copyright line to fill at all. Copied verbatim. |
 
 ⭐ Four different placeholder styles appear across twelve files: `<year>`,

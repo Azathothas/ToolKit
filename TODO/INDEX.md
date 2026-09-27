@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 137  open 9  blocked 0  done 128
+total 139  open 11  blocked 0  done 128
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
-| P0 | 0 | 0 | 3 | 3 |
-| P1 | 2 | 0 | 67 | 69 |
+| P0 | 1 | 0 | 3 | 4 |
+| P1 | 3 | 0 | 67 | 70 |
 | P2 | 7 | 0 | 51 | 58 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **9** | **0** | **128** | **137** |
+| **all** | **11** | **0** | **128** | **139** |
 
 ---
 
@@ -147,6 +147,8 @@ total 137  open 9  blocked 0  done 128
 | WSL-99 | P2 | S | open | Only `distro` has a channel no shell can reach into, and Git Bash rewrites the rest | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-100 | P2 | S | open | The `base` group accepts flags its subcommands never read | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-101 | P1 | S | open | `--redact` keeps a secret off the screen and writes it to the answer and the transcript | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-102 | P0 | S | open | `gc --via-helper --job ID` plans and applies a cleanup of every job | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-103 | P1 | S | open | Under an instance, `helper serve --detach` never answers, and a detached run would not either | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

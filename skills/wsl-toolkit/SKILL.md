@@ -1,6 +1,6 @@
 ---
 name: wsl-toolkit
-description: "Build and operate a named Linux base on Windows with wsl-toolkit: one WSL distribution the tool owns, with systemd, rootless Podman, a toolset, and Windows directories granted to it one at a time. Use when the user asks to make, inspect, repair, grant a directory to, or attack a wsl-toolkit base, or names wsl-toolkit, a wsl-toolkit instance, or wsl-toolkit-base. Do not use for ordinary WSL work that does not involve this tool."
+description: "Build and operate a named Linux base on Windows with wsl-toolkit: one WSL distribution the tool owns, with systemd, rootless Podman, a toolset, and Windows directories granted to it one at a time. Use when the user asks to make, inspect, repair, grant a directory to, or attack a wsl-toolkit base, to run a job or a base command that outlives the call and then follow, wait on or stop it, or names wsl-toolkit, a wsl-toolkit instance, or wsl-toolkit-base. Do not use for ordinary WSL work that does not involve this tool."
 ---
 
 # wsl-toolkit
@@ -58,11 +58,11 @@ file, the field and the command that fixes it.
 
 ---
 
-## 3. Two rules that cost a whole session when broken
+## 3. Two rules that hold on every call
 
-⛔ **RUN IT FROM POWERSHELL, NOT GIT BASH.** MSYS rewrites a guest path: `--dir
-/workspaces/proj` arrived inside the tool as `C:/Program Files/Git/workspaces/proj`.
-Every example here is PowerShell.
+⛔ **RUN IT FROM POWERSHELL, NOT GIT BASH.** MSYS rewrites a guest path such as
+`--dir /workspaces/proj` into `C:/Program Files/Git/workspaces/proj` before the tool
+starts, and the tool refuses the rewrite. Every example here is PowerShell.
 
 ⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** `cmd | Select-Object`
 gives you the pipeline's status, not the tool's. Read `$LASTEXITCODE` on the line
@@ -142,18 +142,51 @@ interactive login shell.
 
 ⚠ **`base exec` runs with a CLEARED environment.** When the question is what a login
 shell or an agent's pane really sees, run `runuser -l ACCOUNT -c '...'` inside it
-instead. A guard proved on `base exec`'s curated environment has been wrong before.
+instead. A guard proved on `base exec`'s curated environment can be wrong about a
+pane.
 
 ```powershell
 wsl-toolkit --instance base base doors
 ```
 
-Attacks the base from the unprivileged account and reports every door it found open.
+Attacks the base from the unprivileged account and reports every door it finds open.
 ⛔ **Run this rather than believing any page about what a base cannot reach.**
 
 ---
 
-## 6. When it is broken
+## 6. Work that outlives the call
+
+⭐ **A job, or a command in the base, can run apart from the client that started it**,
+and any later call reaches it by its id:
+
+```powershell
+$id = wsl-toolkit --instance base run --detach --image alpine --workspace . -c 'make test'
+wsl-toolkit --instance base logs $id --follow
+wsl-toolkit --instance base wait $id --timeout 30m
+wsl-toolkit --instance base stop $id
+```
+
+`run --detach` answers with the job's id at once. `logs ID --follow` writes both
+streams as they are written and exits with the job's own code. `wait ID` answers that
+code alone, and `stop ID` ends the job, after which `wait` answers 130.
+
+```powershell
+$sid = wsl-toolkit --instance base base exec --detach -c './serve.sh'
+```
+
+`base exec --detach` runs the command in the base with no client attached, holds
+`--timeout` itself, and answers with a session id that `logs`, `wait`, `stop` and
+`inspect` take. ⛔ **Do not wrap a long command in `nohup` or `setsid` inside `base
+exec -c`**: nothing then keeps its output or its exit code, and nothing can stop it
+by id.
+
+`wsl-toolkit logs` lists every job and session with its state: `running`, `ended`,
+`detached` or `no owner`. A job gets a device node with `--device /dev/kvm`, and a
+file from Windows at `/in/NAME` with `--input NAME=FILE`.
+
+---
+
+## 7. When it is broken
 
 | what you see | what to do |
 | --- | --- |
@@ -162,9 +195,10 @@ Attacks the base from the unprivileged account and reports every door it found o
 | the base is registered and nothing works | `wsl-toolkit --instance NAME base ensure --repair` |
 | Windows restarted WSL under it | the same `--repair`. It clears the stale boot id. ⛔ **`wsl --shutdown` breaks EVERY instance holding an engine**, so the remediation names the others and gives each one its command: repair the one that complained and the next session meets the rest |
 | a Windows launcher says it is another build | `base ensure` rewrites it |
+| a helper that `declares schema` another version | a helper from an older release is still running. `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach` |
 | `produced nothing for 4m and was given up` | ⭐ **a STALL, not a slow link.** Every host-engine call carries a total ceiling and a silence deadline, so a pull or an export that has stopped is given up in minutes rather than waited out. The line says where to look, and it differs for a pull and an export |
 
-⭐ **The tool keeps a complete transcript of every job it ran:**
+⭐ **The tool keeps a complete transcript of every job it runs:**
 
 ```powershell
 wsl-toolkit logs
@@ -172,7 +206,7 @@ wsl-toolkit logs
 
 ---
 
-## 7. What this tool does not promise
+## 8. What this tool does not promise
 
 ⛔ **A base with no grants is not a sandbox, and the documentation never calls it
 one.** `base doors` lists what stays open, and the manual's safety model names each
@@ -185,7 +219,7 @@ namespace**, which is why it is a flag and not how every command starts.
 
 ---
 
-## 8. Where the detail lives
+## 9. Where the detail lives
 
 Everything above is the shape. The authority for behaviour is
 `wsl-toolkit man --no-pager`, and it ships with the executable you are running.

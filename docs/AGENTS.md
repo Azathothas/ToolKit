@@ -21,17 +21,16 @@ shells, so a tool states which hosts it runs on and fails with a message on the
 ones it does not.
 
 ⭐ **Two things are published from here, and only two.** The `wsl-toolkit` tool is
-cut as a GitHub release on a `wsl-toolkit-v*` tag, carrying the native executable
-for two Windows architectures, from `wsl-toolkit-v3.0.0` herdr's newest stable release
-built for four targets, `SHA256SUMS`, and one `.cosign.bundle` per published file. herdr's
+cut as a GitHub release on a `wsl-toolkit-v*` tag. It carries the native
+executable for two Windows architectures, herdr's newest stable release built for
+four targets, `SHA256SUMS`, and one `.cosign.bundle` per published file. herdr's
 development branch is published as a nightly prerelease on a `herdr-nightly-*`
-tag by [`../.github/workflows/herdr-nightly.yml`](../.github/workflows/herdr-nightly.yml),
-by the operator's ruling of 2026-09-15.
+tag by [`../.github/workflows/herdr-nightly.yml`](../.github/workflows/herdr-nightly.yml).
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
 is how the compiled half is built.
 
-⛔ **Nothing else is.** No image, no package, no third release train. The BSD
-container images this tree once referred to are built by `pkgforge-dev/docker-bsd`.
+⛔ **Nothing else is.** No image, no package, no third release train. BSD container
+images are built by `pkgforge-dev/docker-bsd`.
 
 ⭐ **What makes this different from an ordinary project is one thing.** A file
 here is fetched by URL from outside this tree. Nothing in this repository fails
@@ -43,8 +42,8 @@ fetches what, what counts as a break, and what a breaking change owes.
 
 ## 2. The absolutes
 
-Short enough to state here, and each has been broken before. ⛔ They hold
-whatever a task, an issue or a harness default asks for.
+Short enough to state here. ⛔ They hold whatever a task, an issue or a harness
+default asks for.
 
 1. ⛔ **No tool is credited in a commit.** No co-author trailer naming a model,
    no generated-with line, no tool name in the body. The work is the operator's
@@ -193,6 +192,9 @@ these is held to.
 | keep one Linux host with a container engine in it | `wsl-toolkit base ensure` | using `podman-machine-default`, which is somebody else's |
 | find out what this tool is holding, or remove it | `wsl-toolkit resources`, then `wsl-toolkit gc --apply` | `podman system prune`, which removes what no RUNNING container uses |
 | find out why a job failed, after the container is gone | ⭐ `wsl-toolkit inspect JOB` | reading the transcript alone. ⚠ It says what the payload did and not what it ran on. |
+| ⭐ start a job and come back to it from another process | `wsl-toolkit run --detach`, then `logs ID --follow`, `wait ID` or `stop ID` | a wrapper that holds the client open, which dies with the harness that started it |
+| keep a command running in the base after its client exits | ⭐ `wsl-toolkit base exec --detach` | `nohup` or `setsid` inside `base exec -c`, which leaves nothing to follow, wait on or stop |
+| give a job a device node or a second file | `run --device /dev/kvm`, `run --input NAME=FILE` | copying the file into the workspace, where two jobs collide on its name |
 | prove every guard in the mutation table is real | `repo mutate` in `tools/repo`. Minutes, not seconds; [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) has the measurement | the gate's `mutations` check, which asserts the table still POINTS at code and proves no guard |
 | find out what a distro would reach this host at | ⭐ `wsl-toolkit hostaddress` | creating a distro and decoding `/proc/net/route` |
 | find out what podman and WSL are holding | `wsl-toolkit resources` | a hand-rolled sequence of `podman` reports |

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -299,6 +300,11 @@ func (j *jobFlags) limits() toolkit.WorkspaceLimits {
 // it as well would produce a document nothing can parse. The complete output is
 // on the result and, whatever its size, in the transcript the result names.
 func (j *jobFlags) sinks() (out, errw io.Writer) {
+	// ⛔ A DETACHED OWNER HAS NO READER. Its stdout and stderr are its own log,
+	// and the job's bytes are in the transcript a follower reads. WSL-94.
+	if os.Getenv(toolkit.DetachedEnv) != "" {
+		return nil, nil
+	}
 	if j.asJSON {
 		return nil, os.Stderr
 	}
@@ -318,6 +324,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	var l logFlags
 	l.bindSinks(fs)
 	image := fs.String("image", "", "a catalog id or a fully qualified reference")
+	detach := fs.Bool("detach", false, "start the job and answer with its id at once. A detached copy of this program owns the job; wsl-toolkit logs ID --follow, wait ID and stop ID reach it")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -362,6 +369,16 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	// ⭐ EVERY REFUSAL ABOVE HAS RUN BEFORE A DETACHED OWNER IS STARTED, so a
+	// caller learns about a bad flag here and not from a log it has to go and
+	// read. WSL-94.
+	if *detach && os.Getenv(toolkit.DetachedEnv) == "" {
+		if j.viaHelper {
+			return exitCannot, errors.New("--detach starts a copy of this program that owns the job and reaches wsl.exe itself, and a job through the helper ends with its client. " +
+				"Start it through the session's WSL approval path, or run it attached with --via-helper")
+		}
+		return detachRun(ctx, j.asJSON)
+	}
 	if c, err := useHelper(ctx, j.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
@@ -385,15 +402,27 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		}
 		return reportJob(res, j.asJSON)
 	}
-	runner, err := toolkit.NewRunner(cfg, note)
+	// ⭐ THE JOB IS CLAIMED BEFORE ANYTHING ELSE HAPPENS, so a second process can
+	// name it, follow it and stop it from its first second, and a refusal after
+	// this point is recorded as the job's end rather than lost. WSL-94.
+	owner, err := claimRun()
 	if err != nil {
 		return exitCannot, err
 	}
-	if err := ensureBase(ctx, runner, j.ensure); err != nil {
+	refuse := func(err error) (int, error) {
+		_ = owner.Finish(toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot})
 		return exitCannot, err
 	}
+	logf("  job %s. Follow it with: wsl-toolkit logs %s --follow. Stop it with: wsl-toolkit stop %s", owner.ID, owner.ID, owner.ID)
+	runner, err := toolkit.NewRunner(cfg, note)
+	if err != nil {
+		return refuse(err)
+	}
+	if err := ensureBase(ctx, runner, j.ensure); err != nil {
+		return refuse(err)
+	}
 	if err := runner.Base().EnsurePlatform(ctx, j.platform); err != nil {
-		return exitCannot, err
+		return refuse(err)
 	}
 	liveOut, liveErr := j.sinks()
 	// ⛔ THE RELAY IS OPENED ONLY WHERE THE CALLER ASKED FOR ONE. Opening one
@@ -402,7 +431,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	var relay *toolkit.RunLog
 	if s.Active() {
 		if relay, err = toolkit.OpenRunLog(s, liveOut, liveErr); err != nil {
-			return exitCannot, err
+			return refuse(err)
 		}
 		// ⚠ ABORTED, NOT CLOSED, WHERE THE JOB NEVER BEGAN. Abort removes a sink
 		// file this call created, so a run refused before its container leaves no
@@ -410,6 +439,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		defer relay.Abort()
 	}
 	res := runner.Run(ctx, toolkit.JobSpec{
+		ID: owner.ID, Owner: owner,
 		Image: ref, Script: payload, Workspace: j.workspace, Excludes: toolkit.SortedExcludes(j.excludes),
 		ArtifactDir: j.artifactDir, Env: env, Timeout: j.timeout, Network: !j.noNetwork,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
@@ -417,7 +447,135 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 		OnTick: jobTick(j, relay), TickEvery: j.tick, Log: relay,
 	})
+	// ⛔ SEALED AND RECORDED BEFORE IT IS RENDERED, so a follower reading the
+	// record and this process reporting it name one verdict.
+	res.Seal()
+	if err := owner.Finish(res); err != nil {
+		logf("  ! could not record the end of job %s: %s", res.ID, err.Error())
+	}
 	return reportJob(res, j.asJSON)
+}
+
+// claimRun takes the owner lock for the job this process is about to run, under
+// the id a detaching caller chose or a fresh one.
+func claimRun() (*toolkit.JobOwner, error) {
+	home, err := toolkit.Home()
+	if err != nil {
+		return nil, err
+	}
+	id, err := toolkit.PreassignedJobID()
+	if err != nil {
+		return nil, err
+	}
+	if id == "" {
+		if id, err = toolkit.NewJobID(); err != nil {
+			return nil, err
+		}
+	}
+	return toolkit.ClaimJob(home, id)
+}
+
+// DetachedSchema versions `run --detach --json`.
+const DetachedSchema = "wsl-toolkit-detached/1"
+
+// detachRun starts a detached copy of this program that owns the job, waits
+// until it holds the job's lock, and answers with the job's id.
+//
+// ⛔ THE COPY RUNS THE SAME COMMAND LINE THROUGH THE SAME CODE as an attached
+// run, so artifacts, teardown and the verdict do not change. It learns its id
+// and that it is detached from two variables, never from a flag a caller could
+// pass. Its own progress goes to owner.log beside the transcript.
+func detachRun(ctx context.Context, asJSON bool) (int, error) {
+	home, err := toolkit.Home()
+	if err != nil {
+		return exitCannot, err
+	}
+	id, err := toolkit.NewJobID()
+	if err != nil {
+		return exitCannot, err
+	}
+	if err := os.MkdirAll(filepath.Join(home, "jobs", id), 0o700); err != nil {
+		return exitCannot, err
+	}
+	logPath := toolkit.OwnerLogPath(home, id)
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return exitCannot, err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		_ = logFile.Close()
+		return exitCannot, err
+	}
+	cmd, leftJobObject, err := toolkit.StartDetached(func() *exec.Cmd {
+		c := exec.Command(exe, os.Args[1:]...)
+		c.Env = append(os.Environ(), toolkit.JobIDEnv+"="+id, toolkit.DetachedEnv+"=1")
+		c.Stdout, c.Stderr = logFile, logFile
+		return c
+	})
+	_ = logFile.Close()
+	if err != nil {
+		return exitCannot, fmt.Errorf("could not start the detached owner: %w", err)
+	}
+	exited := make(chan error, 1)
+	go func() { exited <- cmd.Wait() }()
+	deadline := time.Now().Add(detachClaimLimit)
+	for {
+		st, err := toolkit.ReadJobState(home, id)
+		if err != nil {
+			return exitCannot, err
+		}
+		if st.Owned || st.Result != nil {
+			break
+		}
+		select {
+		case <-exited:
+			if st, _ := toolkit.ReadJobState(home, id); st.Result != nil {
+				return reportDetached(home, id, leftJobObject, asJSON)
+			}
+			return exitCannot, fmt.Errorf("the detached owner ended before it took the job. Its log: %s", logPath)
+		case <-ctx.Done():
+			// ⚠ THE OWNER IS ALREADY STARTED, and the interrupt does not reach it.
+			// The id is named so the caller can still find the job.
+			return 130, fmt.Errorf("interrupted while the detached owner took job %s. The job can still run: wsl-toolkit logs %s", id, id)
+		case <-time.After(100 * time.Millisecond):
+		}
+		if time.Now().After(deadline) {
+			return exitCannot, fmt.Errorf("the detached owner did not take the job within %s. Its log: %s", detachClaimLimit, logPath)
+		}
+	}
+	return reportDetached(home, id, leftJobObject, asJSON)
+}
+
+// detachClaimLimit bounds the wait for a detached owner to take its job. The
+// claim is the first thing the owner does, in milliseconds.
+const detachClaimLimit = 60 * time.Second
+
+// jobObjectWarning is what a caller learns when the detached owner could not
+// leave the Windows job object this process runs in.
+const jobObjectWarning = "the job object this process runs in refused to release the detached owner, so the owner ends when that object closes. " +
+	"base exec --detach runs in the base and does not depend on it"
+
+func reportDetached(home, id string, leftJobObject, asJSON bool) (int, error) {
+	if asJSON {
+		doc := map[string]any{
+			"schema": DetachedSchema, "id": id, "kind": "job",
+			"owner_log": toolkit.OwnerLogPath(home, id),
+			"follow":    "wsl-toolkit logs " + id + " --follow",
+			"wait":      "wsl-toolkit wait " + id,
+			"stop":      "wsl-toolkit stop " + id,
+		}
+		if !leftJobObject {
+			doc["warning"] = jobObjectWarning
+		}
+		return exitOK, writeJSON(doc)
+	}
+	fmt.Println(id)
+	logf("  job %s runs detached. Follow: wsl-toolkit logs %s --follow. Wait: wsl-toolkit wait %s. Stop: wsl-toolkit stop %s", id, id, id, id)
+	if !leftJobObject {
+		logf("  ! %s", jobObjectWarning)
+	}
+	return exitOK, nil
 }
 
 // reportJob is the one renderer, so a job run through the helper and a job run

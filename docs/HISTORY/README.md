@@ -51,15 +51,16 @@ sentences the live pages used to carry.
 | [`wsl-toolkit.md`](wsl-toolkit.md) | the defects `wsl-toolkit.ps1` shipped and closed, and the shapes its behaviour used to have. ⚠ The tool was `wsl-ephemeral.ps1` until 2026-08-30; that page says so at the top. |
 | [`consumers.md`](consumers.md) | how each consumer pin came to move, and what was measured while moving it. The live page keeps the pin STATE, which is the part a consumer's owner acts on. |
 | [`scripts.md`](scripts.md) | what `check-markers` and `check-one-home` counted the day each was first armed |
+| [`dated-passages.md`](dated-passages.md) | every dated paragraph and measurement table the live pages carried until `DOC-08`, verbatim |
 
 ⭐ **`DOC-06` closed on 2026-08-30 and the purge is applied**, so the four files
 it named carry constraints and no longer carry diaries.
 
-⚠ **The line it drew is the part worth keeping**, because a later session has to
-apply it rather than copy it: a measurement STAYS on a live page when a reader
-who does not know it will undo the rule, and MOVES here when it is a count from
-a tree that has since been fixed. `Sort-Object -u` dropping two of four distinct
-values stayed; "before it was armed, 164 characters across 28 files" moved.
+⚠ **`DOC-06` drew a line that let a measurement STAY on a live page when a reader
+who did not know it would undo the rule. `DOC-08` replaced it on 2026-09-27**:
+a live page carries no date at all, states the constraint in the present tense,
+and cites the entry that holds the measurement. The `ste` check refuses a date
+in the prose of a live page.
 
 ⭐ **Prior art.** The shape is `pkgforge-dev/docker-archlinux`'s `HISTORY/`,
 recorded in

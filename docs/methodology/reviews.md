@@ -4,8 +4,8 @@ The deep review pass, which is part (c) of [`gate.md`](gate.md).
 
 At least three passes, and ⛔ **they are three different questions, not one
 sweep written up three times.** A single pass finds what you were already
-looking for. Every recurring defect class in this methodology was found by a
-*different* lens than the one that was looking.
+looking for. A recurring defect class is found by a *different* lens than the one
+that is looking for it.
 
 ---
 
@@ -25,7 +25,7 @@ The list you wrote from memory has never been complete.
 - A gate on one of several paths into the same action is the single most
   recurring hole there is.
 
-⚠ The task list is never the enumeration. It has never once contained them all.
+⚠ The task list is never the enumeration. It does not contain them all.
 
 ### 2. The guard mutation
 
@@ -35,32 +35,32 @@ The list you wrote from memory has never been complete.
 unpiped.** A guard that has never been seen to refuse is a guard nobody knows
 works.
 
-The worked example: a scan reported "no orphans" over the exact orphan it
-existed to find, twice, because its model of a reader was too narrow. It was
-green, it was trusted, and it was theatre.
+An example: a scan reports "no orphans" over the exact orphan it exists to find,
+because its model of a reader is too narrow. It is green, it is trusted, and it is
+theatre.
 
 Two shapes to test for specifically:
 
 - A test whose **name** claims more than it **checks**.
 - A check that passes because a different code path happens to satisfy it.
 - ⛔ **A guard whose case was ALREADY RED before the mutation.** Planting the
-  defect and seeing red proves nothing unless the case was green first. Measured
-  here: the harness deleted a guard, saw red and reported "went red", so a case
-  that was failing on its own certified every guard it was named by. ⭐ Run the
-  case unmutated first, and refuse the row where it is not green.
+  defect and seeing red proves nothing unless the case was green first. A harness
+  that reads red as proof lets a case that fails on its own certify every guard it
+  is named by. ⭐ Run the case unmutated first, and refuse the row where it is not
+  green.
 - ⛔ **A mutation that stops the module compiling**, which is neither red nor
   green and is easy to read as proved in a run where other rows say ok. It
   happens most often because deleting a guard leaves the variable it read
   unused. ⭐ Mutate to a value the setting never takes rather than deleting, so
   the reference survives and the row can actually go red.
 - ⭐ **A row that comes back THEATRE may be telling you the CODE is redundant**,
-  not that the case is weak. Met three times in one session: each time the guard
-  could not be made to matter because something earlier already decided the
-  answer. Delete the redundancy rather than strengthening the case around it.
+  not that the case is weak: the guard cannot matter, because something earlier
+  already decides the answer. Delete the redundancy rather than strengthening the
+  case around it.
 
-⚠ This lens caught a defect in this template's own probe. A patch script
-asserted only that *something* in the file had changed, so it reported success
-while the replacement it was written to make had silently not matched.
+⚠ A patch script that asserts only that *something* in the file changed reports
+success while the replacement it exists to make has silently not matched. This
+lens is what finds it.
 
 ### 3. The claim audit
 
@@ -117,8 +117,8 @@ reference naming nothing, a dead link, a cited path or line that does not
 resolve.
 
 ⭐ Doing the mechanical half in one second is what leaves time for the half that
-needs reading. A record check of this kind has caught things that had been
-wrong for a whole session, in under a second, that two humans had read past.
+needs reading. A record check of this kind finds, in under a second, what two
+readers pass over.
 
 ⛔ **What no check can answer is whether a claim is true.** That is lens 3, and
 it stays with the reviewer.

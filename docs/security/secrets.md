@@ -61,8 +61,8 @@ publishing what they are.
 ⛔ **List the ignore rule before the file exists.** A credential file added to
 `.gitignore` after the fact was trackable in between, and once staged, a later
 ignore rule does nothing: `.gitignore` only applies to files git is not already
-tracking. This has happened: a rule was written for one token, a second token
-arrived with a different filename, and it sat tracked for three days.
+tracking. A rule written for one token does not cover a second token that
+arrives under a different filename, and the second one is tracked.
 
 ⚠ **Re-exclude credentials last** in a `.gitignore`, by name rather than by
 pattern precedence, so no re-inclusion rule above can reach them.

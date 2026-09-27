@@ -5,7 +5,7 @@ The probe, the checks, and the helpers a project inherits.
 | directory | what is in it |
 | --- | --- |
 | [`doctor/`](doctor/) | ⭐ the environment probe. Two implementations, one schema. Every project keeps this. |
-| [`common/`](common/) | the checks and the helpers, and since 2026-09-12 one configuration file a helper installs. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin; a helper and a data file have neither and the twins table below says why. |
+| [`common/`](common/) | the checks and the helpers, and one configuration file a helper installs. ⛔ Every CHECK has a POSIX sh implementation AND a PowerShell twin; a helper and a data file have neither and the twins table below says why. |
 | [`../tools/windows/wsl-toolkit/`](../tools/windows/wsl-toolkit/README.md) | the native Windows product, in Go. ⛔ Not a script, so nothing in this file's check contract applies to it; [`common/check-go.sh`](common/) is what the gate runs over it. |
 | [`../LICENSES/`](../LICENSES/README.md) | the SPDX texts [`common/fill-license.sh`](common/) reads. ⛔ Not scripts, and four of them must never be edited. |
 
@@ -19,8 +19,8 @@ enforces over its own tree.** One binary, one tree walk, native on either host.
 it.
 
 ⛔ **A POSIX sh check cannot be assumed to run on Windows**, which is why the
-rules are not shell. Measured on one Windows 11 machine, 2026-08-25, from a
-native PowerShell session with Git Bash NOT on `PATH`:
+rules are not shell. From a native PowerShell session with Git Bash NOT on
+`PATH`, on a Windows 11 machine:
 
 | tool a shell check needs | native PowerShell resolves it to |
 | --- | --- |
@@ -28,7 +28,7 @@ native PowerShell session with Git Bash NOT on `PATH`:
 | `sort` | ⚠ PowerShell's own `Sort-Object` alias, not the coreutils binary |
 | `awk`, `grep`, `tr`, `comm`, `xargs` | present only because scoop and a coreutils package happen to be installed |
 
-⚠ **The second row is the dangerous one, and this is the measurement to keep.** A
+⚠ **The second row is the dangerous one.** A
 missing tool fails loudly and somebody fixes it. An ALIASED one succeeds and
 returns a different answer. Over the five values `b A a B a`:
 
@@ -55,9 +55,9 @@ one tree and compares the `--json` answer and the exit code.
 `check-remote-items`, `deslop` and `fill-license` are entry points onto one Go
 subcommand each, under [`../tools/repo/`](../tools/repo/). What a wrapper row
 proves is narrower: not that two implementations of a rule agree, but that two
-entry points FORWARD the same thing. ⚠ That is a real class. A `.ps1` wrapper
-once passed `-Json` straight through to a binary that takes `--json`, and this
-check is what reported it.
+entry points FORWARD the same thing. ⚠ That is a real class: a `.ps1` wrapper
+that passes `-Json` straight through to a binary that takes `--json` fails, and
+this check reports it.
 
 ⛔ **THE PROBE CANNOT BECOME A WRAPPER.** It RUNS BEFORE YOU KNOW WHAT IS
 INSTALLED, which is its whole job, and "is there a Go toolchain" is one of the
@@ -122,8 +122,6 @@ sh scripts/common/check-no-secrets.sh
 Not `check | grep`, not `check | Select-String`, not `check | tee`. A pipeline
 reports the **last** command's status, so a check that failed reads as green.
 
-⚠ This has caught the author of this sentence, in the session that wrote it.
-
 ---
 
 ## What is here
@@ -131,7 +129,7 @@ reports the **last** command's status, so a check that failed reads as green.
 ### `doctor/`
 
 The environment probe. Read [`doctor/README.md`](doctor/README.md) for what it
-answers, the schema, and the measured runtimes.
+answers, the schema, and what a run costs.
 
 ⭐ It is a **probe, not a gate**: a missing tool is data, so it exits 0 whether
 or not anything is missing. Nothing here belongs in a gate chain.
@@ -176,13 +174,11 @@ meaning anything.
 
 ⛔ **It covers every tracked text file, not markdown alone**, which is the whole
 reason it exists beside `check-docs.sh` rather than inside it: that one reads
-markdown, and every finding the first armed run produced was in a `.ps1` or a
-`.sh`. The count is in
-[`../docs/HISTORY/scripts.md`](../docs/HISTORY/scripts.md).
+markdown alone, and a `.ps1` or a `.sh` carries the same characters.
 
 ⭐ **The density ceiling is 30 markers per 100 non-blank lines**, and it is a
 constant rather than a flag: a ceiling anybody can raise from a command line is
-a ceiling that gets raised instead of met. Three files here were over it.
+a ceiling that gets raised instead of met.
 
 ⚠ **A specimen inside a code span or a fenced block is permitted in markdown.**
 Without that, a page that bans a character cannot show a reader which one.
@@ -192,15 +188,11 @@ Without that, a page that bans a character cannot show a reader which one.
 Does any sentence of twelve words or more appear in two documents.
 
 ⭐ [`../docs/conventions/prose.md`](../docs/conventions/prose.md) owns the rule
-that one fact lives in one document; this is what enforces it. What the first
-armed run found is in
-[`../docs/HISTORY/scripts.md`](../docs/HISTORY/scripts.md).
+that one fact lives in one document; this is what enforces it.
 
-⛔ **It carries no router exemption, and it used to.** `AGENTS.md` and
-`docs/AGENTS.md` each stated the absolutes in full, so the pair was exempt from
-each other by name; the root file was deleted on 2026-08-30 and the exemption
-went with it. ⭐ An exemption for a file that no longer exists grants itself to
-whatever lands at that path next, so it is deleted rather than emptied.
+⛔ **It carries no exemption for a second router**, because there is one router,
+`docs/AGENTS.md`. ⭐ An exemption for a file that does not exist grants itself to
+whatever lands at that path next, so none is kept.
 
 ⚠ **It compares sentences**, so a fact restated in different words passes here
 and fails a review instead. That is the same split every other prose rule has.
@@ -217,9 +209,8 @@ installed `bash`, `tar` and `zsh` genuinely differ between them.
 
 ⭐ **It also compares the CLI surface, which the schema cannot show.** Every
 comparison above reads what the probes OUTPUT; none of them reads what the
-probes ACCEPT. `doctor.sh --text` exited 0 while `doctor.ps1 -Text` exited 1
-with a parameter-binding error, and every other comparison in the file passed
-the whole time that was true.
+probes ACCEPT. A flag one twin takes and the other refuses passes every
+comparison of their output, so the flags are compared too.
 
 ### `common/check-remote-items.sh`
 
@@ -234,19 +225,17 @@ is the operator's.
 ⚠ It cannot tell you whether a change is a good idea. It checks the facts an
 item asserts about the world; whether you want the change is a reading.
 
-⭐ It exists because this repository was pinned to an action targeting a Node
-runtime GitHub had deprecated, and the warning sat in a log nobody read. A
-dependency bot is right almost every time, and that is precisely what makes
-the wrong one expensive.
+⭐ **A pinned action can target a Node runtime the platform has deprecated**,
+and the warning sits in a log nobody reads. A dependency bot is right almost
+every time, and that is what makes the wrong one expensive.
 
 ### `common/check-control-bytes.sh`
 
 Is there a literal control byte in any text file in the tree.
 
-⭐ **It covers every text file, not only markdown.** The rule used to live in
-`check-docs.sh` and scanned `.md` alone, which left every `.ts`, `.py`, `.rs`,
-`.sh` and `.yml` unchecked for the one defect that makes a file invisible to
-both review tools at once: `grep` calls it binary and skips it, and `git diff`
+⭐ **It covers every text file, not only markdown.** A rule over `.md` alone
+leaves every `.ts`, `.py`, `.rs`, `.sh` and `.yml` unchecked for the one defect
+that makes a file invisible to both review tools at once: `grep` calls it binary and skips it, and `git diff`
 prints "Binary files differ" so a code review shows no diff at all.
 
 ⚠ The runtime value is identical either way, so only reviewability is ever at
@@ -290,28 +279,17 @@ PSScriptAnalyzer are not on every machine. A missing one is reported with what
 was missing rather than counted as agreement, and the exit code is still 0,
 because "this host cannot run that one" is not a failure of the tree.
 
-⛔ **`--fast` IS GONE, AND A CALLER PASSING IT IS TOLD SO.** It skipped
-`check-twins` and nothing else. The rules are one program now, so there are no
-halves to compare and nothing worth skipping. Silently accepting the flag and
-doing something different is how a caller comes to believe they ran less than
-they did.
+⛔ **`--fast` is refused with a message.** The rules are one program, so there
+is nothing to skip. Accepting the flag and doing something different is how a
+caller comes to believe they ran less than they did.
 
 ### `common/check-powershell.ps1`
 
 Does every tracked `.ps1` parse, and is PSScriptAnalyzer clean over every one of
 them at Error and Warning.
 
-⛔ **IT ANALYSED `scripts/` ALONE UNTIL 2026-09-17, and the one real finding in
-the tree was in the half it did not look at.** The parse loop always covered
-every tracked file; the analyzer took one directory. `consumer.ps1` held a
-non-ASCII byte with no byte order mark, which is the exact rule
-`PSUseBOMForUnicodeEncodedFile` exists for and which that file's own header
-claimed it did not need. It also found `$args` assigned inside a function in
-`shell-matrix.ps1`, which
-[`../docs/conventions/shell.md`](../docs/conventions/shell.md) section 8
-forbids, and a variable computed and never asserted in `acceptance.ps1` whose
-case was named for the half it dropped. A guard on one of several paths into the
-same thing is the commonest hole there is.
+⛔ **The analyzer covers every tracked `.ps1`, like the parse loop.** A guard on
+one of several paths into the same thing is the commonest hole there is.
 
 ⚠ **Two rules are excluded and each exclusion is a decision.**
 `PSUseShouldProcessForStateChangingFunctions` wants `-WhatIf` on `New-*` and
@@ -338,11 +316,8 @@ CI installs it explicitly and then asserts it was not skipped.
 over the result with `-Exe`.** That file is the only thing here that drives the
 tool the way somebody outside this repository does.
 
-⛔ **It ran ONLY against published binaries until 2026-09-17, so a refusal added
-to the tool could not be detected until a tag was cut.** It fired for real:
-`wsl-toolkit-v3.0.0` published green and its smoke job then failed, because
-`consumer.ps1` wrote a configuration shape `WSL-74` had made a refusal months of
-commits earlier. `WSL-91`.
+⛔ **It drives a build of this tree on every commit**, so a refusal added to the
+tool is caught before a tag is cut, not by a release's own smoke job. `WSL-91`
 
 | on a `-Exe` run | what happens |
 | --- | --- |
@@ -364,14 +339,12 @@ build one it costs minutes and about a gigabyte.
 Are `binfmt_misc` handlers actually registered in the kernel containers run
 against, and can that directory be read at all.
 
-⭐ **It reads the kernel, not a unit's exit code**, because the unit is the thing
-that lied: `systemd-binfmt.service` reported `status=0/SUCCESS` having
-registered zero handlers, with an autofs stacked on the mount so every read
-returned `ELOOP`. Green unit, complete configuration, installed emulators, and
-cross-architecture execution had never once worked.
+⭐ **It reads the kernel, not a unit's exit code.** `systemd-binfmt.service` can
+report `status=0/SUCCESS` having registered zero handlers, with an autofs stacked
+on the mount so every read returns `ELOOP`: a green unit, a complete
+configuration, installed emulators, and no cross-architecture execution at all.
 
-⛔ **It does not use `podman machine ssh`**, which is what the reporting issue
-assumed. On Windows that command passes `-o UserKnownHostsFile=NUL` to its own
+⛔ **It does not use `podman machine ssh`.** On Windows that command passes `-o UserKnownHostsFile=NUL` to its own
 ssh, and under Git Bash `NUL` is a filename rather than the null device, so it
 writes a 99-byte file called `NUL` into the directory you ran it from. ⭐ It is
 also unnecessary: every WSL2 distribution shares one kernel, so `wsl -d DISTRO` reads
@@ -387,9 +360,8 @@ Does `CHANGELOG.md` still obey the four rules a machine can hold: newest first,
 every heading dated, every entry naming its record, every entry saying whether
 it deployed.
 
-⭐ It exists because [`../docs/conventions/docs.md`](../docs/conventions/docs.md)
-stated those four rules, said in as many words that each was mechanical enough
-to check, and nothing checked them.
+⭐ [`../docs/conventions/docs.md`](../docs/conventions/docs.md) states those four
+rules, and each is mechanical enough to check.
 
 ⚠ **No `CHANGELOG.md` is exit 2, not exit 0.** A project without one has
 neither broken these rules nor satisfied them, and reporting green over an
@@ -454,8 +426,8 @@ that has drifted look identical from inside the tool and both answer zero.
 `--crlf`, with `--bom` for the byte order mark. The count it reports is endings
 CONVERTED, so a file already in the wanted ending answers 0.
 
-⚠ **The wrappers build from source; the RELEASE ships the binary.** From 3.1.0
-each release publishes `text-tool-windows-amd64.exe`, `text-tool-windows-arm64.exe`,
+⚠ **The wrappers build from source; the RELEASE ships the binary.** Each release
+publishes `text-tool-windows-amd64.exe`, `text-tool-windows-arm64.exe`,
 `text-tool-linux-amd64` and `text-tool-linux-arm64`, each with a signature
 bundle. An agent outside this checkout downloads one and needs nothing else;
 [`../skills/text-tool/SKILL.md`](../skills/text-tool/SKILL.md) is the page to
@@ -463,12 +435,12 @@ hand it.
 
 ⛔ **A substitution whose match count differs from `--expect` is REFUSED and the
 file is left untouched.** A silent no-op reporting success is the failure this
-exists to remove. It refused its own author three times on the day it was written.
+exists to remove.
 ⚠ `--replace` without `--expect` is refused outright; use `--count` first.
 
-⭐ **What it keeps, measured on 2026-09-17:** a file's CRLF endings, a file with no
-trailing newline, bytes that are not UTF-8, and the file's mode. The same base64
-given from bash and from PowerShell produced byte-identical files.
+⭐ **What it keeps:** a file's CRLF endings, a file with no trailing newline,
+bytes that are not UTF-8, and the file's mode. The same base64 given from bash and
+from PowerShell produces byte-identical files.
 
 ⚠ **It interprets no escape.** A `\n` in `--text` is a backslash and an `n`,
 because interpreting one is the mangling it exists to avoid. It says so when it
@@ -488,13 +460,13 @@ sign, a percent and an emoji all survive it unchanged.
 
 ⛔ **A substitution whose match count differs from the number you declared is
 REFUSED and the file is left untouched.** A silent no-op reporting success is
-the failure this exists to remove. It fired twice while this template was
-being maintained, once on a CRLF file whose LF search string matched nothing.
+the failure this exists to remove. ⚠ A CRLF file whose LF search string matches
+nothing is the case it refuses most.
 
 ⚠ It needs `node`. That is the only thing under `scripts/` that does, and it
 is the reason this is a helper a project may decline rather than a check every
 project inherits. [`../docs/conventions/shell.md`](../docs/conventions/shell.md)
-section 1 is the reasoning, measured.
+section 1 is the reasoning.
 
 ### `common/set-record.mjs`
 
@@ -515,8 +487,7 @@ record's own count line.
 own work is one bug away from hiding the bug, and the reader has to assert
 independently. It prints the command; `check-gate` runs it.
 
-⚠ **Since 2026-09-17, closing an entry can also mean editing the work order by
-hand.** `check-record`'s rule 7 refuses a work order item that is not marked
+⚠ **Closing an entry can also mean editing the work order by hand.** `check-record`'s rule 7 refuses a work order item that is not marked
 Closed when every entry it names is done, and this writer moves the numbers
 alone - it does not touch prose and is not going to start. So the gate is what
 tells you the order is now behind the work, which is the whole point of the
@@ -532,11 +503,9 @@ Commit and push with the rules in
 [`../docs/conventions/git.md`](../docs/conventions/git.md) enforced rather than
 remembered.
 
-⭐ **It arrived as a 674-line PowerShell script and now exists as both**: a
-POSIX sh implementation so every Linux and macOS project can run it, and a
-PowerShell twin because on Windows the sh one needs a POSIX layer that a native
-session may not have. ⚠ On Windows prefer the `.ps1`: it drives the native
-`git.exe` rather than one inside an msys layer.
+⭐ **`git-sync.sh` and `git-sync.ps1` are two entry points onto one Go
+subcommand**, `repo git-sync`. ⚠ On Windows prefer the `.ps1`: it drives the
+native `git.exe` rather than one inside an msys layer.
 
 ⛔ **An AI-attribution line is refused, never stripped.** Rewriting somebody's
 commit message is worse than declining it: the author never learns the rule.
@@ -559,8 +528,7 @@ wants rather than content it regrets.
 
 ⛔ **It never touches history, never deletes without `--apply`, and `--apply`
 refuses on a dirty tree.** ⭐ It reads the state back after removing and reports
-what is actually gone: the version this repository inherited printed the number
-it had planned to remove, which is a delete reporting success it never checked.
+what is actually gone, never the number it planned to remove.
 
 ### `common/fill-license.sh`
 
@@ -574,19 +542,17 @@ licence instance carrying Internet Systems Consortium's own notice. Rewriting
 any of those attributes your software to somebody else.
 
 ⚠ **Compared on its OUTPUT by `check-twins.sh`, not on a status line**, because
-a corrupted licence exits 0. The over-replacement that produced that rule wrote
-a valid-looking file with a mangled warranty clause.
+a corrupted licence exits 0. An over-replacement writes a valid-looking file
+with a mangled warranty clause.
 
 ### `common/bootstrap.sh`
 
 Bring a Unix userland up to a named set of tools, and report what it actually
 resolved.
 
-⭐ **It is here rather than under one tool's `examples/` directory, and that move
-is the point of it.** It began as `tools/windows/wsl-toolkit/examples/common/`,
-where a caller had to know that a particular provider example existed before they
-could find a general-purpose bootstrap. Nothing in it is about `wsl-toolkit`: it
-runs in a container, in CI, on a laptop, in a WSL guest, and in a BSD guest.
+⭐ **It is general-purpose, so it lives here rather than under one tool.** Nothing
+in it is about `wsl-toolkit`: it runs in a container, in CI, on a laptop, in a WSL
+guest, and in a BSD guest.
 
 ⭐ **Twelve package managers.** apk, apt, dnf, emerge, pacman, tdnf, xbps, yum and
 zypper on Linux; `pkg` on FreeBSD and DragonFly, `pkgin` on NetBSD, `pkg_add` on
@@ -618,18 +584,15 @@ the two disagreeing, and `sh scripts/common/check.sh package-table --fix` rewrit
 the copy. [`../TODO/RULES.md`](../TODO/RULES.md) section 4 carries the rule.
 
 ⛔ **IT DEPENDS ON THE SHELL AND THE PACKAGE MANAGER AND ALMOST NOTHING ELSE.**
-Not `awk`, `tr`, `find`, `grep`, `sed`, `install` or `dirname`. Measured over the
-image catalogue: Photon has neither `awk` nor `tr`, openSUSE has neither `awk` nor
+Not `awk`, `tr`, `find`, `grep`, `sed`, `install` or `dirname`. Across the image
+catalogue, Photon has neither `awk` nor `tr`, openSUSE has neither `awk` nor
 `find`, and Void and Rocky 8 have no `find`. ⚠ **A bootstrap whose job is to
-install the missing tools cannot require them to be there already**, and the first
-draft of this file did, and reported that it had no table row for ten names on
-Photon as a result.
+install the missing tools cannot require them to be there already.**
 
 ⚠ **NO DIGEST IS WRITTEN INTO IT, and that is weaker on purpose.** Where it
 verifies a download the expected value is read from the same registry as the bytes
-at run time, which proves transport rather than authorship. The version it
-replaced pinned CodeGraph 1.5.0 and three SHA-512 values, and the registry was on
-1.6.0 the following day. ⭐ `--expect-integrity` and `--expect-sha256` put the
+at run time, which proves transport rather than authorship. A digest written
+into the file goes stale the day the registry moves. ⭐ `--expect-integrity` and `--expect-sha256` put the
 stronger check back for a caller who holds a value; the run prints every version
 and digest it resolved so that caller can. ⚠ CodeGraph is fetched with `npm pack
 --pack-destination`, which needs npm 7.18.0 or later, and an older npm is named as
@@ -639,8 +602,8 @@ that before any fetch rather than offered the linux-x64 one.
 ⛔ **The report is read from the machine.** A name that was asked for, whose
 install command exited 0, and that is not on `PATH` afterwards is a failure and
 exit 1. ⚠ **One transaction first, then one package at a time**: a bulk install
-that fails installs nothing and names nothing, and six of twelve images once
-failed over one absent package each while reporting all eighteen as missing.
+that fails installs nothing and names nothing, so one absent package would report
+every name as missing.
 
 Exit codes: 0 done, 1 something asked for could not be installed, 2 could not run.
 
@@ -674,11 +637,10 @@ arrives as plain `Enter` - and pi binds `Enter` to submit and `Shift+Enter` to
 insert a newline, so under an unconfigured tmux the second one submits. The fix is
 `extended-keys on` with `extended-keys-format csi-u`, and the second needs tmux
 **3.5**. The file tests the version in the shell's own `case`, because `sort -V`
-and `awk` are not on every image this repository installs into. Driven on
-2026-09-15: on tmux 3.5a both options read back set, tmux started with exit 0 and
-**empty stderr**, and the rest of the configuration still applied; the test skips
-2.9 through 3.4b and sets 3.5, 3.5a, 3.6, **3.10** and 4.0, which a numeric
-comparison would get wrong.
+and `awk` are not on every image this repository installs into. On tmux 3.5a both
+options read back set, tmux starts with exit 0 and **empty stderr**, and the rest
+of the configuration still applies. The test skips 2.9 through 3.4b and sets 3.5,
+3.5a, 3.6, **3.10** and 4.0, which a numeric comparison gets wrong.
 
 ⛔ **tmux is the fallback, not the agents' multiplexer.** herdr's agent detection
 does not inspect a tmux session launched inside one of its panes: it sees `tmux`
@@ -740,7 +702,7 @@ shell start.
 sh` over every tracked `*.sh`, which is exactly what this file needs: no arrays, no
 `local`, no `[[`.
 
-| measured on 2026-09-17, `matrix --images all`, each image driven twice - without the profile, then with it | result |
+| `matrix --images all`, each image driven without the profile and then with it. `WSL-71` | result |
 | --- | --- |
 | images, and shells found on them | 13 and **28** |
 | shells that add a byte to stderr, login or interactive | ⭐ **0**. ⚠ The assertion is the DELTA, because Photon's own `dircolors.sh` writes 66 bytes either way |
@@ -750,8 +712,8 @@ sh` over every tracked `*.sh`, which is exactly what this file needs: no arrays,
 | shells that honour `WSL_TOOLKIT_NO_PROFILE` | **28 of 28** |
 
 ⛔ **`-ic` is not the flag to drive this with.** An interactive NON-login shell reads
-`~/.bashrc` or `$ENV` and never `~/.profile`, so a driver using it reported six
-images as failing over code that had not run. ⛔ **And a planted `PATH` cannot be
+`~/.bashrc` or `$ENV` and never `~/.profile`, so a driver that uses it reports
+failures over code that never ran. ⛔ **And a planted `PATH` cannot be
 read back through `/etc/profile`**, which every image but arch replaces `PATH` in.
 ---
 
@@ -764,11 +726,9 @@ read back through `/etc/profile`**, which every image but arch replaces `PATH` i
    read the exit code unpiped. **A guard that has never been seen to refuse is
    a guard nobody knows works.**
 
-   This is not optional advice. While building this repository, a licence
-   filler reported success over a licence whose warranty clause it had
-   corrupted, because its check only ever asked whether a placeholder
-   *survived*, never whether the substitution had reached too far. The mutation
-   test is what found it.
+   ⚠ A licence filler that asks only whether a placeholder *survived* reports
+   success over a licence whose warranty clause it corrupted. Only a planted
+   defect shows that.
 
 4. **Wire it into the gate**, if it can fail.
 5. **Document it**: here, and in the project's own tool table.

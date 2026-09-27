@@ -254,6 +254,9 @@ func renderCleanup(plan toolkit.CleanupPlan) {
 	for _, d := range plan.HostDirs {
 		fmt.Fprintf(out, "  host dir       %s\n", d)
 	}
+	for _, s := range plan.Sessions {
+		fmt.Fprintf(out, "  session        %s\n", s)
+	}
 	for _, i := range plan.Images {
 		fmt.Fprintf(out, "  image          %s\n", i)
 	}
@@ -265,7 +268,7 @@ func renderCleanup(plan toolkit.CleanupPlan) {
 	for _, f := range plan.Failed {
 		fmt.Fprintf(out, "  ! could not remove %s\n", f)
 	}
-	if plan.DryRun && len(plan.Containers)+len(plan.GuestDirs)+len(plan.HostDirs)+len(plan.Images) == 0 {
+	if plan.DryRun && len(plan.Containers)+len(plan.GuestDirs)+len(plan.HostDirs)+len(plan.Sessions)+len(plan.Images) == 0 {
 		fmt.Fprintln(out, "  nothing")
 	}
 	// ⭐ WHAT WAS SPARED, AND WHY. Without it an empty plan reads the same

@@ -121,6 +121,44 @@ func TestSTECountsWhatItCanAndRefusesWhatItCannot(t *testing.T) {
 			body: "# One. Two. Three. Four. Five. Six. Seven.\n",
 			want: 0,
 		},
+		{
+			// DOC-08: the story of a page's own work comes back through a date.
+			name: "a calendar date in prose",
+			body: "The base was measured on 2026-09-17 and it held.\n",
+			want: 1,
+			says: "DOC-08",
+		},
+		{
+			name: "a date in a table row",
+			body: "| measured on 2026-09-14 | result |\n| --- | --- |\n",
+			want: 1,
+			says: "calendar date",
+		},
+		{
+			name: "a date inside code is data",
+			body: "Send `X-GitHub-Api-Version: 2022-11-28` with it.\n\n```text\n## 2026-09-18\n```\n",
+			want: 0,
+		},
+		{
+			// ⛔ THE DEFECT THE MASK HAD. A double-backtick span holding one
+			// backtick shifted every later pair, so the prose between two of
+			// them was read as code.
+			name: "a double-backtick span does not hide the prose after it",
+			body: "Read `` a`b `` then 2026-08-29 and `x` here.\n",
+			want: 1,
+			says: "calendar date",
+		},
+		{
+			name: "a span does not cross a blank line",
+			body: "An open ` backtick.\n\nThe base on 2026-08-29 is `here`.\n",
+			want: 1,
+			says: "calendar date",
+		},
+		{
+			name: "a version or a tag is not a date",
+			body: "It pins herdr 0.9.0 and the tag herdr-nightly-20260916-18061191fdc0 at 1.2.3-4.\n",
+			want: 0,
+		},
 	}
 
 	for _, c := range cases {

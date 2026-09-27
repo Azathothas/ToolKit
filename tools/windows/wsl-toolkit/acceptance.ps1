@@ -22,6 +22,12 @@
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary PATH
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary PATH -Quick
 #   pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary PATH -Json
+#   pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary PATH -Quick -Instance NAME
+#
+# -Instance runs every case against that instance's base and state, and leaves
+# the default instance alone. WSL_TOOLKIT_INSTANCE selects the same way. With
+# WSL_TOOLKIT_HOME also set, nothing the run writes lands in the operator's own
+# state directory.
 #
 # Exit codes: 0 every case passed, 1 a case failed, 2 could not run.
 # Read the exit code from this process, unpiped.
@@ -33,11 +39,18 @@
 param(
     [string]$Binary = '',
     [switch]$Quick,
-    [switch]$Json
+    [switch]$Json,
+    [string]$Instance = ''
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# The instance every case runs against, and the base it names. The children
+# inherit the selection through the environment, as a caller's would.
+if ($Instance) { $env:WSL_TOOLKIT_INSTANCE = $Instance }
+$script:Instance = if ($env:WSL_TOOLKIT_INSTANCE) { $env:WSL_TOOLKIT_INSTANCE.Trim() } else { '' }
+$script:BaseName = if ($script:Instance -and $script:Instance -ne 'default') { 'wsl-toolkit-' + $script:Instance } else { 'wsl-toolkit' }
 
 $script:Cases = @()
 $script:Failed = 0
@@ -220,14 +233,29 @@ function New-StateHome {
 function Set-StateConfig {
     param(
         [Parameter(Mandatory = $true)][string]$StateHome,
-        [Parameter(Mandatory = $true)][hashtable]$Config
+        [Parameter(Mandatory = $true)][hashtable]$Config,
+        [switch]$Exact
     )
     if (-not $Config.ContainsKey('schema')) { $Config['schema'] = 'wsl-toolkit-config/1' }
     $json = $Config | ConvertTo-Json -Depth 8
+    $dir = if ($Exact) { $StateHome } else { Get-StateDir -StateHome $StateHome }
+    $null = New-Item -ItemType Directory -Path $dir -Force
     # WriteAllText with an explicit UTF8 encoding that carries no BOM.
     # Set-Content would write the host's default, and the tool decodes bytes.
-    [IO.File]::WriteAllText((Join-Path $StateHome 'config.json'), $json, [Text.UTF8Encoding]::new($false))
-    return (Join-Path $StateHome 'config.json')
+    [IO.File]::WriteAllText((Join-Path $dir 'config.json'), $json, [Text.UTF8Encoding]::new($false))
+    return (Join-Path $dir 'config.json')
+}
+
+# Get-StateDir is where the tool keeps the state of a home a case passes with
+# --home. Under an instance it is that instance's directory beneath the home,
+# which is where the tool reads config.json from. -Exact above skips it for a
+# case that names its instance directory itself.
+function Get-StateDir {
+    param([Parameter(Mandatory = $true)][string]$StateHome)
+    if ($script:Instance -and $script:Instance -ne 'default') {
+        return (Join-Path $StateHome ('instances\' + $script:Instance))
+    }
+    return $StateHome
 }
 
 # -- setup -------------------------------------------------------------------
@@ -396,9 +424,9 @@ try {
         # The name is passed as the configured base through the environment, so
         # the refusal comes from the guard rather than from a missing flag.
         $home2 = Join-Path $script:Scratch 'home-protected'
-        $null = New-Item -ItemType Directory -Path $home2 -Force
-        [IO.File]::WriteAllText((Join-Path $home2 'config.json'),
-            '{"schema":"wsl-toolkit-config/1","base":{"name":"podman-machine-default","image":"docker.io/library/alpine:latest","user":"toolkit"}}')
+        $null = Set-StateConfig -StateHome $home2 -Config @{
+            base = @{ name = 'podman-machine-default'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
+        }
         $r = Invoke-Tool @('--home', $home2, 'base', 'status', '--json')
         (($r.Code -eq 2) -and (($r.Err + $r.Out) -match 'container runtime')).ToString()
     }
@@ -668,9 +696,17 @@ try {
     Test-Case 'a dry run of every mutating distro command changes nothing and repeats no secret' 'True' {
         # NOTE: what this state directory holds, and not the whole report. Another
         # distribution on the machine may start or stop while the case runs.
+        # What a dry run could make or remove: which rows exist, and where. NOT
+        # whether one is running or how big its disk is, which WSL changes on
+        # its own when a distribution idles between the two readings.
         $held = {
             $o = (Invoke-Throwaway @('list', '--json')).Out | ConvertFrom-Json
-            (@($o.owned) + @($o.leftovers) + @($o.snapshots)) | ConvertTo-Json -Depth 6 -Compress
+            @((@($o.owned) + @($o.leftovers) + @($o.snapshots)) | Where-Object { $_ } | ForEach-Object {
+                $props = $_.PSObject.Properties.Name
+                $n = if ($props -contains 'name') { $_.name } else { '' }
+                $p = if ($props -contains 'disk') { $_.disk } elseif ($props -contains 'path') { $_.path } else { '' }
+                "$n|$p"
+            }) -join ';'
         }
         $before = & $held
         $sink = Join-Path $script:TwLogs 'dry\never.jsonl'
@@ -688,7 +724,10 @@ try {
             if (-not $d.dry_run -or $r.Out -match 'hunter3') { return "$($p[0]): the plan is not a dry run, or repeats a secret" }
         }
         $after = & $held
-        (($before -eq $after) -and -not (Test-Path -LiteralPath (Split-Path -Parent $sink))).ToString()
+        # NAMES, not a bare False: which half failed decides where to look.
+        if ($before -ne $after) { return "what this state directory holds changed: before $before after $after" }
+        if (Test-Path -LiteralPath (Split-Path -Parent $sink)) { return "a dry run created $(Split-Path -Parent $sink)" }
+        'True'
     }
 
     Test-Case 'distro run --json puts one document on stdout and the command output on stderr' 'True' {
@@ -715,7 +754,7 @@ try {
     }
 
     Test-Case 'a snapshot under a tag already held is refused without --force and replaced with it' 'True' {
-        $path = Join-Path $script:TwHome 'distros\snapshots\acc-snap.tar'
+        $path = Join-Path (Get-StateDir -StateHome $script:TwHome) 'distros\snapshots\acc-snap.tar'
         $before = (Get-Item -LiteralPath $path).LastWriteTimeUtc
         $r = Invoke-Throwaway @('snapshot', '--name', $script:TwName, '--tag', 'acc-snap')
         if ($r.Code -ne 2 -or $r.Err -notmatch 'already exists') { return "without --force: exit $($r.Code) $($r.Err)" }
@@ -961,11 +1000,11 @@ try {
             }
             $uploads = @()
             $artifacts = @()
-            if (Test-Path -LiteralPath (Join-Path $home3 'uploads')) {
-                $uploads = @(Get-ChildItem -LiteralPath (Join-Path $home3 'uploads') -Directory -ErrorAction SilentlyContinue)
+            if (Test-Path -LiteralPath (Join-Path (Get-StateDir -StateHome $home3) 'uploads')) {
+                $uploads = @(Get-ChildItem -LiteralPath (Join-Path (Get-StateDir -StateHome $home3) 'uploads') -Directory -ErrorAction SilentlyContinue)
             }
-            if (Test-Path -LiteralPath (Join-Path $home3 'artifacts')) {
-                $artifacts = @(Get-ChildItem -LiteralPath (Join-Path $home3 'artifacts') -Directory -ErrorAction SilentlyContinue)
+            if (Test-Path -LiteralPath (Join-Path (Get-StateDir -StateHome $home3) 'artifacts')) {
+                $artifacts = @(Get-ChildItem -LiteralPath (Join-Path (Get-StateDir -StateHome $home3) 'artifacts') -Directory -ErrorAction SilentlyContinue)
             }
             # v1.1.0 left both behind and gc could not see either.
             (($r.Code -eq 0) -and $delivered -and ($uploads.Count -eq 0) -and ($artifacts.Count -eq 0)).ToString()
@@ -998,7 +1037,9 @@ try {
     Test-Case 'every surface that advertises --json puts exactly one object on stdout' 'True' {
         # Each row is a name and the arguments. Read-only where it can be:
         # `base ensure` is here because it is idempotent and the base is already
-        # up by this point, and `gc` without --apply only plans.
+        # up by this point, and `gc` without --apply only plans. `wait` and
+        # `stop` are asked about a job that has ended, which changes nothing.
+        $ended = Read-ToolJson -Stdout (Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'true')).Out -What 'run --json'
         $surfaces = @(
             @{ n = 'version';       a = @('version', '--json') }
             @{ n = 'doctor';        a = @('doctor', '--json', '--fast') }
@@ -1021,6 +1062,9 @@ try {
             @{ n = 'distro purge';  a = @('distro', 'purge', '--json') }
             @{ n = 'distro compare'; a = @('distro', 'compare', '--before', $script:CompareBefore, '--after', $script:CompareAfter, '--json') }
             @{ n = 'hostaddress';   a = @('hostaddress', '--json') }
+            @{ n = 'wait';          a = @('wait', $ended.id, '--json') }
+            @{ n = 'stop';          a = @('stop', $ended.id, '--json') }
+            @{ n = 'base exec';     a = @('base', 'exec', '--detach', '--json', '-c', 'true') }
         )
         $bad = @()
         foreach ($s in $surfaces) {
@@ -1153,7 +1197,7 @@ try {
         # that instance's own and the instance is selected.
         $instanceHome = Join-Path $h 'instances\two'
         $null = New-Item -ItemType Directory -Path $instanceHome -Force
-        $null = Set-StateConfig -StateHome $instanceHome -Config @{
+        $null = Set-StateConfig -StateHome $instanceHome -Exact -Config @{
             base = @{ name = 'wsl-toolkit-two'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
         }
         $r = Invoke-Tool @('--home', $h, '--instance', 'two', 'base', 'status', '--json')
@@ -1199,7 +1243,7 @@ try {
             $null = New-Item -ItemType Directory -Path (Split-Path -Parent $cfgPath) -Force
             [IO.File]::WriteAllText($cfgPath, (@{
                 schema = 'wsl-toolkit-config/1'
-                base   = @{ name = 'wsl-toolkit'; image = $lie; user = 'toolkit' }
+                base   = @{ name = $script:BaseName; image = $lie; user = 'toolkit' }
             } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
             $e = Invoke-Tool @('base', 'ensure')
             # EXIT 1, AND THAT IS THE POINT. `ensure` was asked to bring the
@@ -1230,7 +1274,7 @@ try {
             param($dir, $image)
             [IO.File]::WriteAllText((Join-Path $dir 'wsl-toolkit.json'), (@{
                 schema = 'wsl-toolkit-config/1'
-                base   = @{ name = 'wsl-toolkit'; image = $image; user = 'toolkit' }
+                base   = @{ name = $script:BaseName; image = $image; user = 'toolkit' }
             } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
         }
         & $write $outer 'docker.io/library/debian:latest'
@@ -1250,7 +1294,10 @@ try {
         $d = Read-ToolJson -Stdout $o.Result -What 'config --json'
         $nearest = ($d.base.image -eq 'docker.io/library/alpine:latest')
         $named = ($d.path -eq (Join-Path $inner 'wsl-toolkit.json'))
-        $ordered = (@($d.searched)[0] -eq (Join-Path $inner 'wsl-toolkit.json'))
+        # Among the project files the nearest comes first. A named instance's own
+        # config.json comes before all of them, so it is not counted here.
+        $projectFiles = @($d.searched | Where-Object { $_ -like '*wsl-toolkit.json' })
+        $ordered = ($projectFiles.Count -gt 0 -and $projectFiles[0] -eq (Join-Path $inner 'wsl-toolkit.json'))
         (($p.ExitCode -eq 0) -and $nearest -and $named -and $ordered).ToString()
     }
 
@@ -1258,7 +1305,7 @@ try {
     Test-Case 'a configuration this tool does not read is refused by name' 'True' {
         $dir = Join-Path $script:Scratch 'cfg-toml'
         $null = New-Item -ItemType Directory -Path $dir -Force
-        [IO.File]::WriteAllText((Join-Path $dir 'wsl-toolkit.toml'), "[base]`nname = 'wsl-toolkit'`n")
+        [IO.File]::WriteAllText((Join-Path $dir 'wsl-toolkit.toml'), "[base]`nname = '$($script:BaseName)'`n")
         $psi = [Diagnostics.ProcessStartInfo]::new()
         $psi.FileName = $script:Binary
         foreach ($a in @('config', '--json')) { $null = $psi.ArgumentList.Add($a) }
@@ -1576,25 +1623,23 @@ try {
     # -- a heartbeat, and the six commands behind an answer -------------------
     # WSL-50 and WSL-52.
 
+    # The heartbeat speaks during a silence and only then. The payload writes one
+    # line, then is silent for longer than three ticks, then writes another, so
+    # the count of ticks does not depend on how the writes fall against the
+    # interval.
     Test-Case 'a job that outlives the tick interval says so, and stops saying it' 'True' {
-        # A payload that writes something every few seconds, so the byte counts
-        # RISE across ticks. A tick whose numbers never move is what a stall
-        # looks like, and a case that did not check that would pass over one.
         $r = Invoke-Tool @('run', '--tick', '2s', '--timeout', '2m', '--image', 'alpine',
-            '-c', 'i=0; while [ $i -lt 5 ]; do printf "chunk%s" $i; sleep 2; i=$((i+1)); done')
+            '-c', 'echo first; sleep 7; echo second')
         if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
-        $ticks = @(($r.Err -split "`n") | Where-Object { $_ -match '^\s+~ ' })
-        if ($ticks.Count -lt 3) { return "only $($ticks.Count) tick(s) over a ten second job at 2s" }
-        # The byte counts have to move, or this is a timer rather than a
-        # heartbeat.
-        $counts = @($ticks | ForEach-Object {
-            if ($_ -match '(\d+)/\d+ bytes') { [int]$Matches[1] } else { -1 } })
-        $rose = ($counts[-1] -gt $counts[0])
-        # And nothing may tick after the answer: the last line of stderr is the
-        # job's own summary, never a tick.
+        $ticks = @(($r.Err -split "`n") | Where-Object { $_ -match '^\d+s silent \| elapsed ' })
+        if ($ticks.Count -lt 2) { return "only $($ticks.Count) tick(s) over seven silent seconds at 2s: $($r.Err)" }
+        # The counts are what had arrived: one line of six bytes, not a timer.
+        $counted = @($ticks | Where-Object { $_ -match '\| out 1 lines 6 B \|' })
+        if ($counted.Count -lt 1) { return "no tick counted the line before the silence: $($ticks -join ' / ')" }
+        # And nothing ticks after the answer: the last line of stderr is the
+        # job's own summary.
         $lastReal = @(($r.Err -split "`n") | Where-Object { $_.Trim() -ne '' })[-1]
-        $tickLast = ($lastReal -match '^\s+~ ')
-        ($rose -and (-not $tickLast)).ToString()
+        ($lastReal -notmatch ' silent \| elapsed ').ToString()
     }
 
     Test-Case 'nothing ticks unless it is asked to' 'True' {
@@ -1614,7 +1659,7 @@ try {
         $good = Join-Path $dir 'good.json'
         [IO.File]::WriteAllText($good, (@{
             schema = 'wsl-toolkit-config/1'
-            base   = @{ name = 'wsl-toolkit'; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
+            base   = @{ name = $script:BaseName; image = 'docker.io/library/alpine:latest'; user = 'toolkit' }
         } | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($false))
         $h = New-StateHome 'home-validate'
         $before = @(Get-ChildItem -LiteralPath $h -Force -ErrorAction SilentlyContinue).Count
@@ -1764,7 +1809,7 @@ try {
         $w = Join-Path $script:Scratch 'ro-writes'
         if (Test-Path -LiteralPath $w) { Remove-Item -LiteralPath $w -Recurse -Force }
         $r = Invoke-Tool @('--home', $w, 'config', '--write')
-        (($r.Code -eq 0) -and (Test-Path -LiteralPath (Join-Path $w 'config.json'))).ToString()
+        (($r.Code -eq 0) -and (Test-Path -LiteralPath (Join-Path (Get-StateDir -StateHome $w) 'config.json'))).ToString()
     }
 
     # WSL-56. What a failed job leaves a reader to ask the machine by hand. The
@@ -1803,6 +1848,193 @@ try {
         # verdict about the id, and the message has to name the id.
         (($i.Code -eq 1) -and ($i.Err -match 'deadbeefdeadbeef') -and
          ($i.Out.Trim() -eq '')).ToString()
+    }
+
+    # -- issue 34: what a consumer wrapped this tool to get -------------------
+    # WSL-94 to WSL-102. Each case drives one capability through the executable
+    # on the real base, and each asserts the answer a caller reads.
+
+    Test-Case 'run --detach answers with an id at once, and follow and wait answer the job exit' 'True' -MaxSeconds 120 {
+        $m = Measure-Tool @('run', '--detach', '--image', 'alpine', '-c', 'echo DETACHED-OUT; sleep 3; echo DETACHED-ERR >&2; exit 5')
+        $id = $m.Out.Trim()
+        if ($m.Code -ne 0 -or $id -notmatch '^[0-9a-f]{16}$') { return "run --detach exited $($m.Code) with stdout $(Show-Bytes $m.Out): $($m.Err)" }
+        # The answer comes before the job ends, which is the whole capability.
+        if ($m.Seconds -ge 3) { return "the id came back after $($m.Seconds)s, after the job itself" }
+        $f = Invoke-Tool @('logs', $id, '--follow')
+        if ($f.Code -ne 5 -or $f.Out -notmatch 'DETACHED-OUT' -or $f.Err -notmatch 'DETACHED-ERR') {
+            return "logs --follow exited $($f.Code): out $(Show-Bytes $f.Out) err $(Show-Bytes $f.Err)"
+        }
+        $w = Invoke-Tool @('wait', $id, '--json')
+        $wd = Read-ToolJson -Stdout $w.Out -What 'wait --json'
+        (($w.Code -eq 5) -and ($wd.kind -eq 'job') -and ($wd.result.exit -eq 5)).ToString()
+    }
+
+    Test-Case 'stop ends a detached job, and wait answers 130' 'True' -MaxSeconds 180 {
+        $id = (Invoke-Tool @('run', '--detach', '--image', 'alpine', '-c', 'echo STOP-ME; sleep 300')).Out.Trim()
+        if ($id -notmatch '^[0-9a-f]{16}$') { return "no id: $id" }
+        $s = Invoke-Tool @('stop', $id, '--json')
+        $sd = Read-ToolJson -Stdout $s.Out -What 'stop --json'
+        if ($s.Code -ne 0 -or -not $sd.stopped) { return "stop exited $($s.Code): $($s.Out) $($s.Err)" }
+        $w = Invoke-Tool @('wait', $id, '--json')
+        $wd = Read-ToolJson -Stdout $w.Out -What 'wait --json'
+        (($w.Code -eq 130) -and ($wd.result.stopped -eq $true) -and ($wd.result.exit -eq 130)).ToString()
+    }
+
+    # The owner is killed with its whole tree. Its container runs on, so wait
+    # answers from the engine and says that no owner recorded the end.
+    Test-Case 'a job whose owner was killed is still waited to its end' 'True' -MaxSeconds 240 {
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $script:Binary
+        foreach ($a in @('run', '--container-lifecycle', 'persistent', '--image', 'alpine', '-c', 'sleep 10; echo ORPHAN-END; exit 6')) {
+            $null = $psi.ArgumentList.Add($a)
+        }
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $owner = [Diagnostics.Process]::Start($psi)
+        $null = $owner.StandardOutput.ReadToEndAsync()
+        $null = $owner.StandardError.ReadToEndAsync()
+        try {
+            $row = $null
+            $deadline = (Get-Date).AddMinutes(2)
+            while ((Get-Date) -lt $deadline -and $null -eq $row) {
+                $l = Invoke-Tool @('logs', '--json')
+                if ($l.Code -eq 0) {
+                    $row = @(($l.Out | ConvertFrom-Json).transcripts | Where-Object { $_.state -eq 'running' -and $_.kind -eq 'job' }) | Select-Object -First 1
+                }
+                if ($owner.HasExited) { break }
+                if ($null -eq $row) { Start-Sleep -Milliseconds 500 }
+            }
+            if ($null -eq $row) { return 'the job never showed as running, so this case proved nothing' }
+            # The container must exist before the owner goes, or there is no
+            # orphan to wait on.
+            $deadline = (Get-Date).AddMinutes(2)
+            $up = $false
+            while ((Get-Date) -lt $deadline -and -not $up) {
+                $res = Read-ToolJson -Stdout (Invoke-Tool @('resources', '--json')).Out -What 'resources --json'
+                $up = @($res.owned.containers | Where-Object { $_ -and $_.name -eq ('wtk-' + $row.id) }).Count -gt 0
+                if (-not $up) { Start-Sleep -Milliseconds 500 }
+            }
+            if (-not $up) { return 'the container never appeared' }
+            $owner.Kill($true)
+            $owner.WaitForExit()
+            $w = Invoke-Tool @('wait', $row.id, '--json')
+            $wd = Read-ToolJson -Stdout $w.Out -What 'wait --json'
+            (($w.Code -eq 6) -and ($wd.orphaned -eq $true) -and ($wd.result.exit -eq 6)).ToString()
+        }
+        finally {
+            if (-not $owner.HasExited) { $owner.Kill($true) }
+        }
+    }
+
+    Test-Case 'base exec --detach runs apart from its client and answers through logs and wait' 'True' -MaxSeconds 90 {
+        $s = Invoke-Tool @('base', 'exec', '--detach', '--json', '-c', 'echo SESSION-OUT; sleep 2; echo SESSION-ERR >&2; exit 7')
+        $sd = Read-ToolJson -Stdout $s.Out -What 'base exec --detach --json'
+        if ($s.Code -ne 0 -or $sd.kind -ne 'session') { return "base exec --detach exited $($s.Code): $($s.Err)" }
+        $f = Invoke-Tool @('logs', $sd.id, '--follow')
+        if ($f.Code -ne 7 -or $f.Out -notmatch 'SESSION-OUT' -or $f.Err -notmatch 'SESSION-ERR') {
+            return "logs --follow exited $($f.Code): out $(Show-Bytes $f.Out) err $(Show-Bytes $f.Err)"
+        }
+        $w = Invoke-Tool @('wait', $sd.id, '--json')
+        $wd = Read-ToolJson -Stdout $w.Out -What 'wait --json'
+        $row = @(((Invoke-Tool @('logs', '--json')).Out | ConvertFrom-Json).transcripts | Where-Object { $_.id -eq $sd.id })
+        (($w.Code -eq 7) -and ($wd.kind -eq 'session') -and ($wd.session.exit -eq 7) -and
+         ($row.Count -eq 1) -and ($row[0].kind -eq 'session')).ToString()
+    }
+
+    Test-Case 'stop ends a detached session, and gc --job removes it' 'True' -MaxSeconds 120 {
+        $id = (Invoke-Tool @('base', 'exec', '--detach', '-c', 'sleep 300 & sleep 300')).Out.Trim()
+        if ($id -notmatch '^[0-9a-f]{16}$') { return "no id: $id" }
+        # The client has exited by now. A session still running here is the
+        # capability: nothing on Windows holds it open.
+        $s = Invoke-Tool @('stop', $id, '--json')
+        $sd = Read-ToolJson -Stdout $s.Out -What 'stop --json'
+        if ($s.Code -ne 0 -or $sd.before -ne 'running' -or -not $sd.stopped -or $sd.exit -ne 130) { return "stop answered $($s.Code): $($s.Out)" }
+        $w = Invoke-Tool @('wait', $id)
+        $g = Invoke-Tool @('gc', '--job', $id, '--apply', '--json')
+        $gd = Read-ToolJson -Stdout $g.Out -What 'gc --json'
+        $named = @($gd.removed | Where-Object { "$_" -match "session $id" })
+        $left = Invoke-Tool @('wait', $id)
+        (($w.Code -eq 130) -and ($g.Code -eq 0) -and ($named.Count -eq 1) -and ($left.Code -eq 2)).ToString()
+    }
+
+    Test-Case 'run --device passes a node the base has and refuses one it does not' 'True' {
+        $ok = Invoke-Tool @('run', '--image', 'alpine', '--device', '/dev/null', '-c', 'test -c /dev/null && echo DEV-OK')
+        if ($ok.Code -ne 0 -or $ok.Out -notmatch 'DEV-OK') { return "a present node: exit $($ok.Code): $($ok.Err)" }
+        $no = Invoke-Tool @('run', '--json', '--image', 'alpine', '--device', '/dev/wsl-toolkit-absent', '-c', 'echo MUST-NOT-RUN')
+        $nd = Read-ToolJson -Stdout $no.Out -What 'run --json'
+        if ($no.Code -ne 2 -or -not $nd.unreached -or $nd.error -notmatch '/dev/wsl-toolkit-absent' -or $no.Out -match 'MUST-NOT-RUN') {
+            return "an absent node: exit $($no.Code): $($nd.error)"
+        }
+        # /dev/kvm is the node issue 34 names. Where the base has it, it passes.
+        $kvm = Invoke-Tool @('base', 'exec', '-c', 'test -c /dev/kvm && test -r /dev/kvm && test -w /dev/kvm')
+        if ($kvm.Code -eq 0) {
+            $k = Invoke-Tool @('run', '--image', 'alpine', '--device', '/dev/kvm', '-c', 'test -c /dev/kvm && echo KVM-OK')
+            if ($k.Code -ne 0 -or $k.Out -notmatch 'KVM-OK') { return "/dev/kvm: exit $($k.Code): $($k.Err)" }
+        }
+        'True'
+    }
+
+    Test-Case 'run --input places each file read-only at /in in the job' 'True' {
+        $dir = New-StateHome 'inputs'
+        [IO.File]::WriteAllText((Join-Path $dir 'payload.txt'), "PAYLOAD-ONE`n", [Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText((Join-Path $dir 'second.txt'), "PAYLOAD-TWO`n", [Text.UTF8Encoding]::new($false))
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--input', ('one.txt=' + (Join-Path $dir 'payload.txt')),
+            '--input', ('conf/two.txt=' + (Join-Path $dir 'second.txt')),
+            '-c', 'cat /in/one.txt /in/conf/two.txt; if touch /in/x 2>/dev/null; then echo WRITABLE; else echo READ-ONLY; fi')
+        $twice = Invoke-Tool @('run', '--image', 'alpine', '--input', ('a=' + (Join-Path $dir 'payload.txt')),
+            '--input', ('a=' + (Join-Path $dir 'second.txt')), '-c', 'echo MUST-NOT-RUN')
+        (($r.Code -eq 0) -and ($r.Out -match 'PAYLOAD-ONE') -and ($r.Out -match 'PAYLOAD-TWO') -and ($r.Out -match 'READ-ONLY') -and
+         ($twice.Code -eq 2) -and ($twice.Out -notmatch 'MUST-NOT-RUN')).ToString()
+    }
+
+    Test-Case 'a redaction reaches the answer, the transcript and logs' 'True' {
+        $r = Invoke-Tool @('run', '--json', '--image', 'alpine', '--redact', 'hunter[0-9]', '-c', 'echo token=hunter2; echo err-hunter3 >&2')
+        $d = Read-ToolJson -Stdout $r.Out -What 'run --json'
+        $l = Invoke-Tool @('logs', $d.id, '--both')
+        $all = $r.Out + $r.Err + $l.Out + $l.Err
+        (($r.Code -eq 0) -and ($all -notmatch 'hunter[23]') -and ($d.stdout -match 'token=\*\*\*') -and
+         ($l.Out -match 'err-\*\*\*')).ToString()
+    }
+
+    # A name Win32 reserves opens the device instead of the file unless the
+    # path is given whole, so the file is written here through \\?\.
+    Test-Case 'a workspace file named like a Windows device travels with its bytes' 'True' {
+        $ws = New-StateHome 'device-names'
+        [IO.File]::WriteAllText('\\?\' + (Join-Path $ws 'aux.txt'), "DEVICE-NAMED`n", [Text.UTF8Encoding]::new($false))
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--workspace', $ws, '-c', 'cat aux.txt')
+        (($r.Code -eq 0) -and ($r.Out -match 'DEVICE-NAMED')).ToString()
+    }
+
+    Test-Case 'base exec and run take a base64 command byte for byte' 'True' {
+        $text = 'printf ''%s|%s|%s\n'' "`uname`" "it''s" "a' + "`t" + 'tab"' + "`n"
+        $b = Invoke-Tool @('base', 'exec', '--command-base64', (ConvertTo-B64 $text))
+        $r = Invoke-Tool @('run', '--image', 'alpine', '--command-base64', (ConvertTo-B64 $text))
+        $want = "Linux|it's|a`ttab"
+        (($b.Code -eq 0) -and ($b.Out.Trim() -eq $want) -and ($r.Code -eq 0) -and ($r.Out.Trim() -eq $want)).ToString()
+    }
+
+    Test-Case 'a base subcommand refuses a flag it does not read, and ensure keeps --probe' 'True' {
+        $bad = Invoke-Tool @('base', 'status', '--repair')
+        $ensure = Invoke-Tool @('base', 'ensure', '--probe', '--json')
+        (($bad.Code -eq 2) -and ($bad.Err -match 'does not read --repair') -and ($ensure.Code -eq 0)).ToString()
+    }
+
+    Test-Case 'gc --job through the helper leaves every other job alone' 'True' {
+        $start = Invoke-Tool @('helper', 'serve', '--detach', '--json')
+        if ($start.Code -ne 0) { return "helper would not start: $($start.Err)" }
+        try {
+            $one = Read-ToolJson -Stdout (Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'true')).Out -What 'run'
+            $two = Read-ToolJson -Stdout (Invoke-Tool @('run', '--json', '--image', 'alpine', '-c', 'true')).Out -What 'run'
+            $g = Invoke-Tool @('gc', '--via-helper', '--job', $one.id, '--apply', '--json')
+            if ($g.Code -ne 0) { return "gc --via-helper --job exited $($g.Code): $($g.Err)" }
+            $plan = Read-ToolJson -Stdout $g.Out -What 'gc --json'
+            $named = @($plan.removed | Where-Object { "$_" -match $one.id })
+            $other = @($plan.removed | Where-Object { "$_" -match $two.id })
+            (($named.Count -gt 0) -and ($other.Count -eq 0)).ToString()
+        }
+        finally { $null = Invoke-Tool @('helper', 'stop') }
     }
 
     # -- cleanup, counted rather than remembered -----------------------------
@@ -1856,7 +2088,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 89 } else { 96 }
+$expected = if ($Quick) { 101 } else { 108 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

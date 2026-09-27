@@ -237,15 +237,11 @@ func SnapshotTag(tag string) (string, error) {
 	return t, nil
 }
 
-func windowsDeviceName(upper string) bool {
-	switch upper {
-	case "CON", "PRN", "AUX", "NUL":
-		return true
-	}
-	if len(upper) == 4 && (strings.HasPrefix(upper, "COM") || strings.HasPrefix(upper, "LPT")) {
-		return upper[3] >= '1' && upper[3] <= '9'
-	}
-	return false
+// windowsDeviceName reports whether a stem, with no extension, is a Windows
+// device name. ⛔ ONE TABLE, windowsDeviceNames in workspace.go, answers it for
+// every caller.
+func windowsDeviceName(stem string) bool {
+	return windowsDeviceNames[strings.ToLower(stem)]
 }
 
 // ThrowawayOrigin is what a throwaway distribution was made from, kept beside

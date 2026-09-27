@@ -52,8 +52,8 @@ page says detection does not inspect a tmux session launched inside a pane, so
 herdr sees `tmux` as the pane process and the agent behind it becomes invisible:
 no `idle`, no `working`, no `blocked`, no notification. ⚠ **A shell framework that
 auto-enters tmux therefore breaks the whole point of running agents under herdr.**
-Read on 2026-09-15 and recorded in
-[`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md).
+[`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md)
+records the reading.
 
 Outside herdr, `bootstrap.sh` installs
 [`tmux.conf`](../../../../../scripts/common/tmux.conf) as `~/.tmux.conf` when it

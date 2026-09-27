@@ -5,10 +5,11 @@ one Linux base on Windows, installs herdr and the three agents, signs each one i
 drives one of them. It is the concrete provider example for the one-checkout profile in
 [`../common/access-profiles.md`](../common/access-profiles.md).
 
-Every command below was run on 2026-09-17, on Windows 11 Pro 26200 with WSL 2.7.12.
+Every command below is driven on Windows 11 Pro 26200 with WSL 2.7.12. `WSL-78`
 
-⛔ **Run every command in PowerShell.** Git Bash rewrites a guest path: `--dir
-/workspaces/proj` arrived as `C:/Program Files/Git/workspaces/proj`.
+⛔ **Run every command in PowerShell.** Git Bash rewrites a guest path such as
+`--dir /workspaces/proj` into a Windows path before the tool starts, and the tool
+refuses the rewrite and names it.
 
 ---
 
@@ -80,9 +81,9 @@ This builds the distribution, provisions it, and installs the four adapters. A s
 run reconciles and does not rebuild.
 
 ⚠ **The first run is the slow one.** It downloads a rootfs, provisions it and installs
-four adapters; a later run reconciles in seconds.
-[`../../wsl-toolkit.md`](../../wsl-toolkit.md) carries the measured times, each with the
-conditions it was taken under.
+four adapters; a later run reconciles in seconds. The entries that built the
+adapters carry the measured times with their conditions: `WSL-76`, `WSL-77`,
+`WSL-88` and `WSL-89`.
 
 The last lines print the state. Every adapter must read `healthy`.
 

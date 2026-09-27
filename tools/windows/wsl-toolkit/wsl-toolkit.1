@@ -1,9 +1,9 @@
-.TH WSL-TOOLKIT 1 "" "wsl-toolkit 4.0.0" "User Commands"
+.TH WSL-TOOLKIT 1 "" "wsl-toolkit 5.0.0" "User Commands"
 .SH NAME
 wsl-toolkit \- run isolated Linux container jobs from Windows
 .SH SYNOPSIS
 .nf
-wsl-toolkit 4.0.0
+wsl-toolkit 5.0.0
 
   doctor      report the host and the tools that can run
   base        manage the WSL distribution that this tool owns
@@ -12,8 +12,10 @@ wsl-toolkit 4.0.0
   matrix      run one command across a set of images
   resources   report resources that this tool owns
   gc          report or remove resources that this tool owns
-  logs        read the complete output from one job
-  inspect     inspect one job and its recorded host state
+  logs        list jobs, read one job's complete output, or follow a running one
+  wait        wait for one job or detached session to end, and answer with its exit code
+  stop        stop one job or detached session
+  inspect     inspect one job or detached session and its recorded host state
   helper      manage the optional local WSL helper
   config      report, validate, or write the configuration
   distro      create, use, observe and remove throwaway WSL distributions built from an image or a rootfs
@@ -218,8 +220,14 @@ the POSIX shell command to run in the base
 \fB--command-base64\fR
 the command as base64 of its bytes, for a caller that must keep every shell away from it
 .TP
+\fB--detach\fR
+start the command with no client attached and answer with a session id. wsl-toolkit logs ID --follow, wait ID and stop ID reach it
+.TP
 \fB--dir\fR
 working directory inside the guest. Default is its home. Default: ~.
+.TP
+\fB--json\fR
+with --detach, write the session as a structured answer
 .TP
 \fB--private-net\fR
 run in a network namespace of the account's own, with the Windows host and the private ranges refused. ⛔ No container can run inside it
@@ -352,6 +360,9 @@ the command as base64 of its bytes, for a caller that must keep every shell away
 .TP
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--detach\fR
+start the job and answer with its id at once. A detached copy of this program owns the job; wsl-toolkit logs ID --follow, wait ID and stop ID reach it
 .TP
 \fB--device\fR
 a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it
@@ -563,12 +574,15 @@ only remove something untouched for at least this long. It applies to containers
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .SS logs
-read the complete output from one job
+list jobs, read one job's complete output, or follow a running one
 .TP
 .B wsl-toolkit logs
 .TP
 \fB--both\fR
 write both streams, the output first
+.TP
+\fB--follow\fR
+write both streams, each to its own, as the job writes them, and answer with the job's exit code once it ends
 .TP
 \fB--json\fR
 write a structured answer
@@ -578,8 +592,31 @@ write the error stream instead of the output stream
 .TP
 \fB--tail\fR
 only the last N lines. 0 means all of it
+.SS wait
+wait for one job or detached session to end, and answer with its exit code
+.TP
+.B wsl-toolkit wait
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--timeout\fR
+stop waiting after this long. 0 waits for as long as the job runs. Default: 0s.
+.SS stop
+stop one job or detached session
+.TP
+.B wsl-toolkit stop
+.TP
+\fB--grace\fR
+time between TERM and KILL. Default: 10s.
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--via-helper\fR
+stop a job through the local helper
 .SS inspect
-inspect one job and its recorded host state
+inspect one job or detached session and its recorded host state
 .TP
 .B wsl-toolkit inspect
 .TP
@@ -1132,6 +1169,31 @@ wsl-toolkit run --image alpine --user 1000:1000 -c 'id -u'
 read a job's complete output back
 .nf
 wsl-toolkit logs JOB-ID
+.fi
+.TP
+start a job, answer with its id at once, then follow it to its exit code
+.nf
+wsl-toolkit run --detach --image alpine -c 'make' ; wsl-toolkit logs JOB-ID --follow
+.fi
+.TP
+wait for a job, or stop it
+.nf
+wsl-toolkit wait JOB-ID --timeout 10m ; wsl-toolkit stop JOB-ID
+.fi
+.TP
+a command in the base that outlives this client
+.nf
+wsl-toolkit base exec --detach -c './serve.sh' ; wsl-toolkit logs SESSION-ID --follow
+.fi
+.TP
+a device node and a second input file in the container
+.nf
+wsl-toolkit run --image alpine --device /dev/kvm --input config.toml=.\\app.toml -c 'ls -l /dev/kvm /in'
+.fi
+.TP
+a command no shell may touch, as base64 of its bytes
+.nf
+wsl-toolkit run --image alpine --command-base64 ZWNobyBoaQo=
 .fi
 .TP
 why a job failed, after the container is gone

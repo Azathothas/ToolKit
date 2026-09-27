@@ -16,11 +16,11 @@ person who is looking for one fact.
 
 ---
 
-## "Short sentences" is a number now: ASD-STE100
+## ASD-STE100, and the half a check counts
 
 ⭐ **The countable half of ASD-STE100, Simplified Technical English, is a gate
-check.** Run it with `sh scripts/common/check.sh ste`. Four rules, and every
-finding cites the STE rule it comes from:
+check.** Run it with `sh scripts/common/check.sh ste`. Five rules, and every
+finding cites the rule it comes from:
 
 | rule | what it holds |
 | --- | --- |
@@ -28,11 +28,7 @@ finding cites the STE rule it comes from:
 | STE 6.1 | a paragraph is at most 6 sentences. A list item is its own unit |
 | STE 1.1 | a word with an approved replacement is replaced, from the table in the check |
 | STE 1.2 and 1.3 | one concept is written one way. `distro` and `distribution` are the same thing |
-
-⭐ **The corpus was measured before the rule was written**, on 2026-09-17: 4,836
-sentences in the documents a reader follows, **none over 25 words**, longest 19.
-This rule did not arrive to punish the tree. It arrived to put a number on a
-sentence that had none, and to catch the three things nobody was counting.
+| `DOC-08` | prose carries no calendar date. [A live page has no date and no story](#a-live-page-has-no-date-and-no-story) |
 
 ⚠ **A short form inside backticks is a Technical Name and is allowed**, which is
 STE rule 1.4. This tool really does have a command called `distro` and a flag
@@ -113,11 +109,9 @@ check.
 ⛔ **When a rule changes, rewrite the rule.** Do not append a dated box under
 the old text saying the text above is retired.
 
-This is the correction with the most evidence behind it. A document written by
-accretion, where the paragraph says one thing and a box below it says the
-opposite, has a documented failure mode: an agent reads the first paragraph of
-the box, stops, and acts on the retired rule. It happened, it broke a rule
-about publishing, and the incident report is the reason this section exists.
+A document written by accretion, where a paragraph says one thing and a box
+below it says the opposite, fails in a known way. An agent reads the first
+paragraph of the box, stops, and acts on the retired rule.
 
 What to do instead:
 
@@ -138,6 +132,32 @@ re-deriving it wrongly.
 
 ---
 
+## A live page has no date and no story
+
+⛔ **A live page states behaviour, limits and commands in the present tense.** It
+does not say when a thing was measured, what an earlier release did, or how a
+defect was found. A reader who wants one fact reads that fact, not a diary.
+
+| the text is | where it goes |
+| --- | --- |
+| a fact, a limit or a constraint a reader needs | the page, in the present tense |
+| ⭐ a measurement, with its date, machine and conditions | the entry in `TODO/` that made it. The page states what it proves and cites the entry by id, as `WSL-68` |
+| the wording a page carried before | [`../HISTORY/`](../HISTORY/README.md) |
+| the story of a fix, or of a release | [`../../CHANGELOG.md`](../../CHANGELOG.md) and the entry |
+
+⭐ **The `ste` check refuses a calendar date in prose**, in a table and in a
+heading. A date inside code is data, such as an API version or a changelog
+heading shown as an example, and stays.
+
+⛔ **The record is not a live page.** `TODO/`, `CHANGELOG.md`, `docs/HISTORY/`
+and the reference sweeps are evidence of what was believed on a date, and they
+keep their dates.
+
+⚠ **A comment in code is the maintainer's record beside the code**, and this
+rule does not reach it.
+
+---
+
 ## Say what is not true
 
 Reserve an explicit place for the truths that are tempting to hide. This is
@@ -151,7 +171,8 @@ checked and a number gets used.
 ⚠ **A measurement carries its conditions or it is not a measurement.** A rate
 with no date, no machine, no sample count and no input size cannot be compared
 to anything, which makes it worse than an absence: it invites a comparison that
-means nothing.
+means nothing. So a measurement lives in the entry that made it, conditions and
+all, and a live page cites the entry.
 
 ---
 
@@ -210,6 +231,7 @@ check sees:
 5. **No em dash, no emoji outside the five, none of the banned vocabulary.**
    The five are the three prose markers plus the two status glyphs.
 6. **No page under the docs directory that nothing links to.**
+7. **No calendar date in the prose of a live page.**
 
 ⛔ **What a linter cannot check is whether a claim is true.** That is a reading,
 and it belongs to the review pass. A guard that tried to verify prose would

@@ -4,8 +4,8 @@ You clone on Windows. An agent runs inside the base and edits the same files. Yo
 commit and push on Windows. ⭐ **Nothing signs in inside WSL, and no credential and
 no git identity is ever written there.**
 
-Every command and every reading on this page was driven on Windows 11 Pro 26200,
-WSL 2.7.12, against `wsl-toolkit-base`, on 2026-09-17.
+Every command and every reading on this page is driven on Windows 11 Pro 26200 with
+WSL 2.7.12, against a base built with `automount off` and `interop off`.
 
 ---
 
@@ -19,8 +19,8 @@ git config --global credential.helper "/mnt/c/Program Files/Git/.../git-credenti
 
 ⛔ **That cannot work on a base this tool builds.** The base runs with
 `automount off` and `interop off`, so there is no `/mnt/c` and no way to start a
-Windows program. Measured on the operator's base: `/mnt` holds `wsl` and `wslg`
-and nothing else.
+Windows program. On such a base, `/mnt` holds `wsl` and `wslg` and nothing
+else.
 
 ⭐ **The answer is better than the workaround.** git never enters the base at
 all. The checkout lives on Windows, where your credentials already are, and the
@@ -95,12 +95,11 @@ install of the same agent takes the name if its directory comes first on `PATH`:
 Get-Command muse, pi, omp | Select-Object Name, Source
 ```
 
-⛔ **Measured on this host on 2026-09-17: `omp` resolved to a native Windows
-install and not to the launcher.** `C:\ProgramData\scoop\persist\bun\bin` sat at
-`PATH` position 3 and `%USERPROFILE%\bin` at position 66, and both files exist. The
-native program answered `omp/18.1.19` while the base holds `omp/18.2.3`. A native
-program cannot see the grant and cannot see the base. Run the launcher by its full
-path when the name is taken:
+⛔ **A native install earlier on `PATH` takes the name.** A Bun installed by scoop
+puts a native `omp` in `C:\ProgramData\scoop\persist\bun\bin`, which a typical
+`PATH` reaches before `%USERPROFILE%\bin`. That program answers its own version,
+not the base's, and it cannot see the grant or the base. Run the launcher by its
+full path when the name is taken:
 
 ```powershell
 & "$env:USERPROFILE\bin\omp.exe"
@@ -115,12 +114,12 @@ Partly, and the measurement is why this repository does not ship the bridge.
 ⭐ **The seam exists.** A native Windows omp takes `shellPath`, and its shell is
 called as `SHELL -c "COMMAND"`, which is the shape `base exec -c` already takes. A
 shim that forwards one to the other, after moving to the guest path that matches
-the Windows directory, was written and driven on 2026-09-17:
+the Windows directory, behaves like this:
 
-| driven | result |
+| driven through the shim | result |
 | --- | --- |
-| a relative command | exit 0. `pwd` answered `/workspaces/proj` and `uname -s` answered `Linux` |
-| a command carrying a Windows absolute path | ⛔ exit 1, and the path arrived as `C:UsersAjamX...` with every backslash eaten as a shell escape |
+| a relative command | exit 0. `pwd` answers `/workspaces/proj` and `uname -s` answers `Linux` |
+| a command carrying a Windows absolute path | ⛔ exit 1, and the path arrives as `C:Users...`, every backslash read as a shell escape |
 
 ⛔ **The second row is not a bug to fix. It is the shape of the idea.** A shim
 cannot rewrite paths inside a command without guessing which strings are paths,
@@ -165,15 +164,14 @@ git commit -m "what the agent changed"
 git push
 ```
 
-⭐ **Your identity and your credential are Windows'.** Nothing was configured in
+⭐ **Your identity and your credential are Windows'.** Nothing is configured in
 WSL, and nothing needs to be.
 
 ---
 
 ## ⛔ The one sharp edge: the agent cannot commit
 
-An agent that runs `git commit` **inside** the base fails. Measured on the
-operator's base on 2026-09-17:
+An agent that runs `git commit` **inside** the base fails:
 
 ```text
 commit rc=128
@@ -199,11 +197,11 @@ Windows.
 
 ## What the base can and cannot reach
 
-| reading, 2026-09-17 | result |
+| reading | result |
 | --- | --- |
 | the granted directory, written by the base's account | writes succeed |
 | who owns the checkout, as the base sees it | the base's own account, so git raises no ownership refusal |
-| `git --version` in the base | 2.55.0 |
+| `git` in the base | the distribution's own |
 | `git ls-remote https://github.com/...` from the base | exit 0, so the base reaches GitHub |
 | `user.name`, `user.email`, `credential.helper` in the base | none of the three |
 | `/mnt` in the base | `wsl` and `wslg`, and no Windows drive |

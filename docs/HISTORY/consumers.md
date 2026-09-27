@@ -247,3 +247,42 @@ entry says explicitly which ones have not and why.
 its `.NOTES` block, so bumping it does not require reading this file. Read the
 digest from the API rather than typing it: a hand-copied digest that is wrong
 fails closed, which is safe and takes an hour to work out.
+
+## What the live page carried until 2026-09-27
+
+Moved here under `DOC-08`, which took dates and release history off the live pages.
+
+### The register's reading date
+
+The register said it was read from each repository on 2026-09-13.
+
+### The 4.0.0 break
+
+⛔ **A BEHAVIOUR CHANGE LANDED IN `text-tool` AFTER `wsl-toolkit-v3.1.0`, and by
+the table above it is a BREAK. It is why the next release is `4.0.0` and not a
+minor: a consumer pinning by major is not moved across it silently.** `text-tool edit --between A B` now REQUIRES
+`--expect N`, as `--replace`, `--after` and `--before` already did.
+
+| before | from `wsl-toolkit-v4.0.0` |
+| --- | --- |
+| `--between` with no `--expect` | ⛔ exited **0** and wrote nothing, both when two ranges matched and when none did | refused, exit **2**, naming the missing count |
+
+⭐ **Every call it breaks was already doing nothing.** The old exit 0 was the
+defect: a caller reading the code believed an edit had happened.
+
+### What each release started to carry
+
+- From `wsl-toolkit-v3.0.0`, herdr's newest stable release built by this
+  repository. `wsl-toolkit-v3.0.0` was published on 2026-09-17 with 14 assets:
+  the two executables, the four herdr builds, `SHA256SUMS` and a bundle for each.
+- From `wsl-toolkit-v3.1.0`, `text-tool` for both hosts.
+- The first herdr nightly, `herdr-nightly-20260916-18061191fdc0`, was published
+  on 2026-09-16. Its four builds were 26,235,080, 24,100,240, 9,635,803 and
+  8,348,489 bytes.
+- Every release from `wsl-toolkit-v3.0.0` publishes the executables and no script.
+
+### The cosign measurement
+
+Measured on 2026-09-17 against `wsl-toolkit-v3.1.0`: PowerShell answered
+`Verified OK`, and so did Git Bash with `MSYS2_ARG_CONV_EXCL='*'` set for the
+call. Plain Git Bash did not.

@@ -79,8 +79,8 @@ arrives with bytes you did not put there.
 
 ⛔ **FROM POWERSHELL, INVOKE A QUOTED PATH WITH `&`.** A quoted string at the
 start of a PowerShell command is an EXPRESSION, not an invocation, and answers
-`Unexpected token`. This is measured: the same line passed in `cmd` and failed in
-both PowerShell 7 and Windows PowerShell 5.1.
+`Unexpected token` in both PowerShell 7 and Windows PowerShell 5.1. The same line
+works in `cmd`.
 
 ```powershell
 & "D:\tools\text-tool.exe" write notes.md --b64 SGVsbG8K
@@ -98,9 +98,9 @@ non-zero and the file is written with the wrong bytes.
 text-tool write x.go --text '//double-slash'   # writes /double-slash
 ```
 
-⭐ **Measured, and it is the whole reason this tool has channels.** The same
-payload through `--b64` arrives intact, because base64 holds no character a shell
-or its path translator will touch:
+⭐ **That is the reason this tool has channels.** The same payload through
+`--b64` arrives intact, because base64 holds no character a shell or its path
+translator will touch:
 
 ```bash
 text-tool write x.go --b64 Ly9kb3VibGUtc2xhc2g=
@@ -165,18 +165,15 @@ anchor and replaces it with your text PLUS the anchor, and forgetting the second
 half DELETES the anchor. That is the commonest way to damage a file with this
 tool.
 
-⛔ **`--between` NEEDS `--expect` FROM `wsl-toolkit-v4.0.0`, AND IT REPORTS THE
-LINES IT TOOK.** ⚠ On a 3.1.0 binary the flag is optional there, so a reader
-holding an older build will not see the refusal this section describes;
-`text-tool --help` names what your copy really requires. It is the
-widest operation here - it deletes a whole region rather than one line - and it
-was the only search without a required count until 2026-09-17: with no
-`--expect` it wrote nothing and exited **0**, both when two ranges matched and
-when none did. ⚠ **A count is still not enough on its own.** An anchor that also
-appears earlier in the file pairs the FIRST copy with the closing anchor, which
-is exactly one match, so `--expect 1` is satisfied and a far bigger region goes.
-That happened here, to a 43 KB script: 745 lines, reported as `1 match(es)`. The
-report now names the span - `lines 2-9 (8 line(s))` - so read it.
+⛔ **`--between` NEEDS `--expect`, AND IT REPORTS THE LINES IT TOOK.** It is the
+widest operation here: it deletes a whole region rather than one line.
+`text-tool --help` names what your copy requires, and a build older than
+`wsl-toolkit-v4.0.0` does not require the count. `WSL-93`
+
+⚠ **A count is still not enough on its own.** An anchor that also appears earlier
+in the file pairs the FIRST copy with the closing anchor. That is exactly one
+match, so `--expect 1` is satisfied and a far bigger region goes. The report names
+the span, as `lines 2-9 (8 line(s))`, so read it before you trust the edit.
 
 ⚠ **`--between` takes TWO arguments**, not one with a comma in it. An anchor
 holding a comma is ordinary, and a separator that appears in the data is not a

@@ -50,21 +50,20 @@ that, and `TK_ADAPTER_PACKAGE` names a different package for a fork.
 second home for a fact the probe reads back from the machine, and it is the one
 nobody updates.
 
-⭐ **`pi` and `omp` are the next two, and both now have entries rather than a
-sentence.** `WSL-88` and `WSL-89` in
+⭐ **`pi` and `omp` are npm packages, installed with `--ignore-scripts`, and
+neither needs a piped installer.** Both have official herdr integrations, and both
+give herdr **lifecycle authority** rather than the screen detection Muse gets.
+`WSL-88` and `WSL-89` in
 [`../../../../TODO/wsl-toolkit-go.md`](../../../../TODO/wsl-toolkit-go.md) carry
-what each installs, costed from a reference sweep on 2026-09-15: both are npm
-packages installed with `--ignore-scripts` and **neither needs a piped installer**,
-both already have official herdr integrations, and both give herdr **lifecycle
-authority** rather than the screen detection Muse gets. ⛔ `WSL-89` also carries
-the one trap: herdr **refuses** the omp integration when pi and omp resolve to the
-same extension directory, and `PI_CODING_AGENT_DIR` is read by both.
+what each installs. ⛔ `WSL-89` also carries the one trap: herdr **refuses** the
+omp integration when pi and omp resolve to the same extension directory, and both
+read `PI_CODING_AGENT_DIR`.
 
 ---
 
 ## ⛔ An agent has to be on the PATH a PANE has
 
-⭐ **This is the one an adapter gets wrong**, and it has been got wrong twice.
+⭐ **This is the one an adapter gets wrong.**
 
 herdr starts an agent by running its canonical name in a pane, and that pane is a
 **login shell**. On a base this tool builds, that PATH is:
@@ -77,15 +76,12 @@ herdr starts an agent by running its canonical name in a pane, and that pane is 
 and nothing else. So an adapter that installs through `npm -g` into the account's
 prefix produces an agent that works from `base exec`, works from the adapter's own
 script, and **cannot be started by herdr at all**: the pane answers `command not
-found` and `herdr agent start` times out on an agent that was never going to appear.
-Measured 2026-09-17 for `pi` and `omp`, both of which installed cleanly and neither
-of which herdr could launch.
+found`, and `herdr agent start` waits for an agent that cannot appear. `WSL-88`
 
 **So an adapter that names an `Agent` owes two things:**
 
 1. ⭐ **A root-owned wrapper at `/usr/local/bin/NAME`** that refuses any account but
-   the configured one and execs the real binary. `muse` has had one since it was
-   built, which is why it was the only agent that worked.
+   the configured one and execs the real binary.
 2. ⛔ **A probe line that reads the name back on a LOGIN shell**, not on the PATH the
    adapter itself set up:
 
@@ -93,18 +89,16 @@ of which herdr could launch.
    pane_path=$(as_account sh -lc 'command -v NAME' 2>/dev/null | tr -d '\r' | head -1)
    ```
 
-   ⚠ Reading it on the adapter's own curated PATH is what let this ship. The probe
-   must ask the question herdr will ask.
+   ⚠ A probe that reads the name on the adapter's own curated PATH passes over an
+   agent herdr cannot start. The probe asks the question herdr asks.
 
 ⛔ **AND IT HAS TO RESOLVE TO THE WRAPPER, NOT MERELY RESOLVE.** `bootstrap.sh` writes
 `export PATH="$HOME/.local/bin:$PATH"` into the account's profile, so after
-`base bootstrap` a login shell finds the vendor's own launcher first and the wrapper on
-the system path is never reached. Measured on 2026-09-17 by planting that one line: all
-three agent names moved. ⭐ **So an agent adapter's probe reads the resolved file and
-refuses one that does not carry this tool's marker**, and it reads it through
-`runuser -l`. ⚠ The muse probe already checked the wrapper and could not see this,
-because it asked `as_account`, whose PATH is curated: a guard proved on a path nobody
-uses, for the second time.
+`base bootstrap` a login shell finds the vendor's own launcher first, and the wrapper
+on the system path is not reached. ⭐ **So an agent adapter's probe reads the
+resolved file and refuses one that does not carry this tool's marker**, and it reads
+it through `runuser -l`. ⚠ `as_account` has a curated PATH, so a probe that asks
+through it cannot see this.
 
 ## The files
 
