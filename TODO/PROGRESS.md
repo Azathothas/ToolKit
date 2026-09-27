@@ -8,12 +8,15 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-09-27T04:41:27Z, on issue 34
 baseline        6ec3fbc, gate 24 of 24
-head            this commit; wsl-toolkit-v5.0.0 published, wsl-toolkit-v6.0.0 is the next step
+head            this commit; wsl-toolkit-v6.0.0 published and driven, issue 34 closed
 entries         total 141  open 0  blocked 0  done 141
 this session    issue 34 in full: WSL-94 to WSL-101 built, WSL-102 to WSL-104 found and fixed, DOC-08, TOOL-26
 ```
 
 ## Active work
+
+⭐ **NOTHING IS OPEN.** Every entry is done, issue 34 is closed, no issue or pull
+request is open, and this host runs `wsl-toolkit-v6.0.0`.
 
 ⭐ **ISSUE 34'S ENTRIES ARE CLOSED, AND 5.0.0 CARRIES THEM.** `WSL-94` to `WSL-101`
 are what the consumer asked for, extended to the class: a job reached by id from
@@ -31,7 +34,10 @@ and `helper` and `config` still accepted flags they never read.
 ⭐ **`DOC-08`: the live pages say what is true now.** 28 pages rewritten, 0 dates
 left, and the `ste` check refuses one. The rewrite found a defect in that check.
 
-⚠ **What remains is the release**: work order item 10.
+⭐ **`wsl-toolkit-v6.0.0` carries `WSL-104`**, a break. It is published, this host
+runs it through `selfupdate`, and the acceptance suite passed 102 of 102 with the
+installed binary. The scratch instance `s34` is removed, and so is every
+directory this session made under `.tmp`.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -58,8 +64,9 @@ is closed, and the issue gets a comment naming the commits.
    `wsl-toolkit-v5.0.0` is cut on it: published, this host updated to it, and
    driven end to end.
 9. ⭐ **Closed:** `WSL-104`, found after 5.0.0 was published. It is a break.
-10. **`wsl-toolkit-v6.0.0`:** publish it, update this host to it, drive it end to
-    end, and close issue 34 with a comment naming the commits and both releases.
+10. ⭐ **Cut:** `wsl-toolkit-v6.0.0`: published, this host updated to it, and driven
+    end to end. Issue 34 is closed with a comment naming the commits and both
+    releases.
 
 ## Rulings in force
 
@@ -298,9 +305,35 @@ new file FIRST, then run the gate.**
 | `c96873b` | the three review passes and what they found: a session's `logs` and `resources`, the preassigned id, the ownerless stop verdict; 5 more mutation rows; the entries closed on 101 of 101 |
 | `5a667cc` | `TOOL-26`: `repo mutate --shard K/N`, and the guard job runs as three shares; its first run found one THEATRE row |
 | `3290937` | the session stop case reads the payload's background child, which proves the whole group is reached; `wsl-toolkit-v5.0.0` is tagged on this commit |
-| this commit | `WSL-104`: one parser for every group whose subcommands share a flag set, so `helper` and `config` refuse what they never read, and `--help` and the manual list only what a command reads, `base revoke` included; the TERM a stop or a deadline sends is proved by the payload's own trap; `TOOL-26` closed; 5.0.0's publish recorded; 7 mutation rows added and 3 moved with their code, 512 in the table |
+| `f9560bb` | `WSL-104`: one parser for every group whose subcommands share a flag set, so `helper` and `config` refuse what they never read, and `--help` and the manual list only what a command reads, `base revoke` included; the TERM a stop or a deadline sends is proved by the payload's own trap; `TOOL-26` closed; 5.0.0's publish recorded; 7 mutation rows added and 3 moved with their code, 512 in the table; `wsl-toolkit-v6.0.0` is tagged on this commit |
+| this commit | ⭐ **`wsl-toolkit-v6.0.0` IS PUBLISHED**, 22 assets, all 7 release jobs green; verified, installed by `selfupdate` and driven, 102 of 102; issue 34 closed with its comment; the scratch instance removed; the session summary |
 
 ## Measurements
+
+On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-27, in the 04:41Z session:
+
+- **At the start:** the doctor stamped `2026-09-27T04:41:27Z`, 61 tools found and
+  26 missing; the gate 24 of 24 at `6ec3fbc`.
+- **The guard job in CI:** one job over 503 rows was cancelled at its 30-minute
+  limit. Three shares on `3290937`: **11m11s, 11m35s and 12m17s**; on `f9560bb`,
+  **9m58s, 11m14s and 11m31s** over 512 rows, 509 proved and 3 that skip on
+  Linux.
+- ⛔ **`kill -TERM -- "-$pg"` in five shells**, with a process group of two: the
+  dash of `golang:1.25`, `ubuntu:24.04` and `debian:bookworm-slim` refuse it, exit
+  2, and signal nothing. busybox prints `invalid number` and exits 1 and signals
+  the group. bash signals it. Without `--`, all five signal it.
+- **The acceptance suite, quick:** 101 of 101 with the installed 5.0.0 in 6.4
+  minutes; 102 of 102 with a build of `f9560bb` in 6.1 minutes, and with the
+  installed 6.0.0 in 6.2 minutes.
+- **The releases:** `wsl-toolkit-v5.0.0` published at `15:10:21Z` and
+  `wsl-toolkit-v6.0.0` at `16:28:38Z`, 22 assets each, 7 of 7 release jobs green
+  each. The 6.0.0 Windows `amd64` executable is `18a9d7a2…65bb6c`, the digest in
+  `SHA256SUMS`, and cosign answers `Verified OK`.
+- **The pre-push checks at the end:** the gate 24 of 24 in 87 s; `check-go.sh` in
+  `golang:1.25` exit 0 in 69.6 s; ShellCheck 0.9.0 in `ubuntu:24.04` over 51
+  scripts, exit 0, run through the 6.0.0 build.
+- **The teardown:** `wsl-toolkit-s34` unregistered; 70.3 MiB under `.tmp/s34`
+  and a 190.0 MiB clone under `.tmp/ref-podbox` removed.
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17, in the 14:42Z session:
 

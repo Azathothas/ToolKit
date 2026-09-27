@@ -21,10 +21,25 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-09-27
 
+### 2026-09-27T16:28:38Z: `wsl-toolkit-v6.0.0` published, and issue 34 closed
+
+**Record:** work order item 10 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v6.0.0`, **22 assets**. All 7 release
+jobs green, including the smoke that fetches the release and drives it.
+
+⭐ **Driven after the publish.** The executable's digest matches `SHA256SUMS`,
+and cosign verifies its bundle against this repository's release workflow.
+`selfupdate` put 6.0.0 on this host, and the acceptance suite passed 102 of 102
+with it against the scratch instance. Each command issue 34 asked for, and each
+refusal `WSL-104` added, was driven by hand with the same binary.
+
+⭐ **Issue 34 is closed**, with a comment that maps each item to its entry and
+names the commits and both releases.
+
 ### 2026-09-27T15:47:41Z: every command refuses a flag it does not read, and a session stop proves its TERM
 
 **Record:** `WSL-104` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `TOOL-26` in [`TODO/tooling.md`](TODO/tooling.md), and work order item 9 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
-**Deployed:** no. `wsl-toolkit-v6.0.0` carries it.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v6.0.0`.
 
 ⛔ **A MAJOR, because a call that parsed now refuses.** `helper` and `config`
 accepted flags their subcommands never read: `helper stop --json`, `helper
