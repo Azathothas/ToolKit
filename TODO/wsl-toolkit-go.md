@@ -11053,7 +11053,7 @@ whether the tool could have said something useful. It could.
 
 **Source** issue 34, items 2 and 3, from the consumer `Azathothas/podbox`; the
 operator's rulings of 2026-09-27 in [`PROGRESS.md`](PROGRESS.md).
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** L, **Status** done
 
 ---
 
@@ -11148,10 +11148,38 @@ verdict `wait` returns.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.** The final acceptance pass, `-Quick -Instance s34` on `wsl-toolkit-s34`:
+
+```text
+ok    run --detach answers with an id at once, and follow and wait answer the job exit
+ok    stop ends a detached job, and wait answers 130
+ok    a job whose owner was killed is still waited to its end
+ok    every surface that advertises --json puts exactly one object on stdout
+acceptance: 101 case(s) passed against a real machine.
+```
+
+Driven by hand on the same base:
+
+| drive | result |
+| --- | --- |
+| `run --detach` | the id on stdout in 0.3 s, the job then running, `logs ID --follow` exit 3 with both streams, `wait ID --json` exit 3 |
+| `stop` on a running job whose payload traps TERM | exit 0 in 1.1 s, `before running`, and the payload's own exit 0 kept |
+| `stop` while the image pulls | `before not started`, the container stopped as it started, `wait` exit 130 with `stopped` |
+| the owner killed with its tree | the first `wait` exit 6 and `orphaned`; the second exit 6 from the recorded end; `logs` lists it `ended` |
+| `stop --via-helper` on a job the helper runs | the client's `run` exits 130 with `stopped` |
+
+⭐ **Four defects were found by driving it and are fixed here.** A stop that landed while the image pulled was reported and then ignored; an ownerless job answered the container's 137 where the owner's rule says 130; `gc` kept a killed job's leftovers for its whole deadline; and a stray `WSL_TOOLKIT_JOB_ID` in a caller's shell would have given every run one id.
+
+⚠ **Not measured:** a Windows job object that refuses the breakaway. The answer warns when it happens, and a case holds the warning; no harness here builds such an object.
+
 ## WSL-95. A long base drive has to be held in a foreground client
 
 **Source** issue 34, item 4; the operator's ruling of 2026-09-27.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -11216,10 +11244,31 @@ timed out by its own deadline, and run as root.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.** The final acceptance pass:
+
+```text
+ok    base exec --detach runs apart from its client and answers through logs and wait
+ok    stop ends a detached session, and gc --job removes it
+acceptance: 101 case(s) passed against a real machine.
+```
+
+| drive | result |
+| --- | --- |
+| a session sleeping 120 s, no `wsl.exe` call for its first 60 s | the distribution stayed `Running`, the session ran to its end, `wait` exit 0 and `SLEPT-THROUGH` |
+| `stop` on a session with a child | exit 0 in 1.4 s, 130, and no `sleep` left in the base |
+| `--timeout 3s` over a payload that ignores TERM | `wait` exit 124 in 13.5 s: the deadline, then KILL after the grace |
+| `--root`, and `--private-net` | `root` in `/root`; the namespace the attached run uses, not the shared one |
+
+⛔ **The Linux suite found a defect no Windows run could.** `kill -TERM -- "-$pg"` stops nothing in dash, the `/bin/sh` of a Debian base, because dash reads `--` as a process id. The case that runs the four scripts in a real shell went red in `golang:1.25` and green with the form every shell reads.
+
 ## WSL-96. A job container cannot be given a host device
 
 **Source** issue 34, item 1; the operator's ruling of 2026-09-27.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -11271,10 +11320,21 @@ node the account cannot open.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.**
+
+```text
+ok    run --device passes a node the base has and refuses one it does not
+acceptance: 101 case(s) passed against a real machine.
+```
+
 ## WSL-97. A job takes one payload file, so a second one travels through the workspace and collides
 
 **Source** issue 34, item 5.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -11320,10 +11380,21 @@ own `/in` file.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.**
+
+```text
+ok    run --input places each file read-only at /in in the job
+acceptance: 101 case(s) passed against a real machine.
+```
+
 ## WSL-98. A workspace copy that fails does not always name the file
 
 **Source** issue 34, item 6.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -11374,12 +11445,23 @@ carries a file named `NUL`.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.**
+
+```text
+ok    a workspace file named like a Windows device travels with its bytes
+acceptance: 101 case(s) passed against a real machine.
+```
+
 ## WSL-99. Only `distro` has a channel no shell can reach into, and Git Bash rewrites the rest
 
 **Source** found on 2026-09-27 while reading the consumer's traps: "`base exec
 -c` carrying a guest path needs `MSYS_NO_PATHCONV=1` ... or Git Bash rewrites
 `/root/...` into `C:\Program Files\Git\...`".
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -11425,11 +11507,22 @@ Exit 0, with cases for the new channel on each command and for the refusal.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.**
+
+```text
+ok    base exec and run take a base64 command byte for byte
+acceptance: 101 case(s) passed against a real machine.
+```
+
 ## WSL-100. The `base` group accepts flags its subcommands never read
 
 **Source** found on 2026-09-27: the consumer's session start calls `base ensure
 --probe`, and `--probe` is read by `base status` alone.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -11474,11 +11567,22 @@ Exit 0, with a case that walks every subcommand against every flag in the set.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.**
+
+```text
+ok    a base subcommand refuses a flag it does not read, and ensure keeps --probe
+acceptance: 101 case(s) passed against a real machine.
+```
+
 ## WSL-101. `--redact` keeps a secret off the screen and writes it to the answer and the transcript
 
 **Source** found on 2026-09-27 while designing `WSL-94`'s follow, which reads the
 transcript a second process sees.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -11523,12 +11627,24 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 Exit 0, with a case that reads all three places back through a real `Runner`
 pipeline and finds no secret.
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.**
+
+```text
+ok    a redaction reaches the answer, the transcript and logs
+ok    the relay renders, records, redacts and reads its own record back
+acceptance: 101 case(s) passed against a real machine.
+```
+
 ## WSL-102. `gc --via-helper --job ID` plans and applies a cleanup of every job
 
 **Source** found on 2026-09-27 by the door sweep over `WSL-94`'s job control: the
 helper route of every command that takes a job id was read against the direct
 route.
-**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** done
 
 ---
 
@@ -11579,11 +11695,23 @@ Exit 0, with the reflection case and the refusal case green. The acceptance
 case `gc --job through the helper leaves every other job alone` passes on a real
 base.
 
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.**
+
+```text
+ok    gc --job through the helper leaves every other job alone
+ok    gc --job leaves every other job alone
+acceptance: 101 case(s) passed against a real machine.
+```
+
 ## WSL-103. Under an instance, `helper serve --detach` never answers, and a detached run would not either
 
 **Source** found on 2026-09-27 when the acceptance suite ran against the
 `s34` instance: every helper case waited 30 seconds and failed.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -11631,3 +11759,19 @@ Exit 0, with a case that plays the parent and the child in one process both
 ways a child meets the resolved home, and a case that serves from a state
 directory that does not exist yet. The acceptance suite's helper cases pass
 under `-Instance`.
+
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.** Every helper case passes under `-Instance`, which is the shape that failed:
+
+```text
+ok    a job runs through the local helper and its artifacts come back
+ok    both paths agree about which account a job runs as
+ok    inspect through the helper names the engine and the container exit
+ok    a helper job leaves its transcript on the machine that asked for it
+ok    a helper resolves a catalog id against the config as it is now
+ok    helper status says whose configuration the helper is running
+acceptance: 101 case(s) passed against a real machine.
+```

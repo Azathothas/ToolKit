@@ -1939,8 +1939,13 @@ try {
         $w = Invoke-Tool @('wait', $sd.id, '--json')
         $wd = Read-ToolJson -Stdout $w.Out -What 'wait --json'
         $row = @(((Invoke-Tool @('logs', '--json')).Out | ConvertFrom-Json).transcripts | Where-Object { $_.id -eq $sd.id })
+        # logs ID reads a session's stream from the base, and resources lists it.
+        $l = Invoke-Tool @('logs', $sd.id, '--stderr')
+        $held = @((Read-ToolJson -Stdout (Invoke-Tool @('resources', '--json')).Out -What 'resources --json').owned.sessions |
+            Where-Object { $_ -and $_.id -eq $sd.id })
         (($w.Code -eq 7) -and ($wd.kind -eq 'session') -and ($wd.session.exit -eq 7) -and
-         ($row.Count -eq 1) -and ($row[0].kind -eq 'session')).ToString()
+         ($row.Count -eq 1) -and ($row[0].kind -eq 'session') -and ($l.Code -eq 0) -and ($l.Out -match 'SESSION-ERR') -and
+         ($held.Count -eq 1) -and ($held[0].state -eq 'ended') -and ($held[0].exit -eq 7)).ToString()
     }
 
     Test-Case 'stop ends a detached session, and gc --job removes it' 'True' -MaxSeconds 120 {

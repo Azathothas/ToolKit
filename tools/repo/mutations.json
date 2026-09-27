@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a preassigned id is read only by a detached owner",
+      "file": "internal/toolkit/jobowner.go",
+      "find": "\tif id == \"\" || strings.TrimSpace(os.Getenv(DetachedEnv)) == \"\" {\n",
+      "replace": "\tif id == \"\" || strings.TrimSpace(os.Getenv(DetachedEnv)) == \"never\" {\n",
+      "run": "TestAJobIDIsSixteenLowercaseHexCharacters",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session whose state cannot be read is kept",
+      "file": "internal/toolkit/cleanup_session.go",
+      "find": "ModTime: s.rec.Started, Unknown: s.unknown}\n",
+      "replace": "ModTime: s.rec.Started}\n",
+      "run": "TestGCAndResourcesReadOneSurvey",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a running session is live to cleanup",
+      "file": "internal/toolkit/cleanup_session.go",
+      "find": "\t\tt.Live = true\n",
+      "replace": "\t\tt.Live = false\n",
+      "run": "TestGCAndResourcesReadOneSurvey",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ended session is aged from its end",
+      "file": "internal/toolkit/cleanup_session.go",
+      "find": "\t\t\tt.ModTime = at\n",
+      "replace": "\t\t\t_ = at\n",
+      "run": "TestGCAndResourcesReadOneSurvey",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session keeps only stdout and stderr",
+      "file": "internal/toolkit/session.go",
+      "find": "\t\tif n != \"stdout\" && n != \"stderr\" {\n",
+      "replace": "\t\tif n == \"never\" {\n",
+      "run": "TestASessionKeepsTwoStreamsAndReadsThemInOrder",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a job's state reads its owner's lock",
       "file": "internal/toolkit/jobowner.go",
       "find": "\tst.Owned = held\n",

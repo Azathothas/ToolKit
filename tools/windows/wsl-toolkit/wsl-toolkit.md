@@ -182,6 +182,10 @@ guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
 - `logs ID --follow`, `wait ID`, `stop ID`, `inspect ID` and `gc` reach it by id.
 - Its deadline sends TERM, then KILL after 10 seconds, and answers 124. A stop
   answers 130. `stop --grace` sets the time between the two signals.
+- ⚠ `--timeout` defaults to 30 minutes, as for `base exec`. Pass `--timeout 0`
+  for a command that runs until something stops it.
+- `logs ID` reads the session's streams from the base, and `resources` lists
+  each session with its state.
 - `--json` answers `wsl-toolkit-detached/1` with `kind` `session`. Without
   `--detach`, `--json` is refused, because `base exec` forwards the command's
   own streams.

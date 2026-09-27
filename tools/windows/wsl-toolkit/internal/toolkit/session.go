@@ -455,6 +455,41 @@ func FollowSession(ctx context.Context, w *Wsl, rec SessionRecord, tail int, std
 	return ReadSessionState(ctx, w, rec)
 }
 
+// ReadSessionStreams writes a session's recorded streams, named "stdout" or
+// "stderr", in the order given, whole or their last tail lines. It is `logs ID`
+// for a session, whose streams are in the guest.
+func ReadSessionStreams(ctx context.Context, w *Wsl, rec SessionRecord, names []string, tail int, out io.Writer) error {
+	script, err := sessionStreamsScript(rec.GuestDir, names, tail)
+	if err != nil {
+		return err
+	}
+	errBuf := &boundedBuffer{max: 64 << 10}
+	code, err := w.Exec(ctx, ExecRequest{Distro: rec.Distro, User: rec.User, Script: script, Stdout: out, Stderr: errBuf, Timeout: 10 * time.Minute})
+	if err != nil || code != 0 {
+		return fmt.Errorf("could not read session %s (exit %d): %s", rec.ID, code, guestFailure(errBuf.String()))
+	}
+	return nil
+}
+
+// sessionStreamsScript writes the named streams, whole or their last tail
+// lines, in order.
+func sessionStreamsScript(guestDir string, names []string, tail int) ([]byte, error) {
+	var b strings.Builder
+	b.WriteString("d=" + shellQuote(guestDir) + "\n")
+	b.WriteString(`[ -d "$d" ] || { echo "wsl-toolkit: the guest holds nothing for this session" >&2; exit 2; }` + "\n")
+	for _, n := range names {
+		if n != "stdout" && n != "stderr" {
+			return nil, fmt.Errorf("a session keeps stdout and stderr, not %q", n)
+		}
+		if tail > 0 {
+			fmt.Fprintf(&b, "tail -n %d \"$d/%s\" 2>/dev/null || :\n", tail, n)
+		} else {
+			fmt.Fprintf(&b, "cat \"$d/%s\" 2>/dev/null || :\n", n)
+		}
+	}
+	return []byte(b.String()), nil
+}
+
 // followSessionScript writes each stream's new bytes, once a second, until the
 // exit is recorded or the supervisor is gone. The last pass after the exit
 // reads what the payload wrote before it ended.

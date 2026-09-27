@@ -19,6 +19,40 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-09-27
+
+### 2026-09-27T10:55:59Z: issue 34, and the live pages lose their dates
+
+**Record:** `WSL-94` to `WSL-103` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `DOC-08` in [`TODO/docs.md`](TODO/docs.md), and work order item 7 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no. `wsl-toolkit-v5.0.0` carries it.
+
+⭐ **A job and a base command reach a second process by id.** `run --detach`
+answers with the id at once, and `logs ID --follow`, `wait ID` and `stop ID`
+reach the job from any process. `base exec --detach` runs a command under a
+supervisor in the base that outlives its client. Issue 34 asked for both, from a
+consumer that had wrapped the tool to get them.
+
+⭐ **A container gets a device node and its own input files.** `--device` passes
+a node the base account can open, and `--input NAME=FILE` puts a file at
+`/in/NAME`. Every job command takes `--command-base64`, a Git Bash rewrite of a
+guest path is refused by name, and a workspace copy names the file it failed on.
+
+⛔ **Two defects found on the way, one of them data loss.** `gc --via-helper
+--job ID` planned and applied a cleanup of every job, because the helper
+protocol could not carry the filter. And under an instance, a child this tool
+starts nested its parent's state inside itself, so `helper serve --detach` never
+answered.
+
+⛔ **The redaction reaches every copy.** `--redact` kept a secret off the screen
+and wrote it to the structured answer and the transcript.
+
+⭐ **The live pages say what is true now.** Every date and every story of the
+repository's own work is off the documents a reader follows. A measurement is
+cited by the entry that holds it, and the dated passages are in
+[`docs/HISTORY/dated-passages.md`](docs/HISTORY/dated-passages.md). The `ste` check
+refuses a calendar date, and its code-span mask stopped hiding the rest of a page
+behind one double-backtick span.
+
 ## 2026-09-18
 
 ### 2026-09-17T18:37:16Z: `wsl-toolkit-v4.0.0` published, and a publish that can be run twice

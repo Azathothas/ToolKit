@@ -109,6 +109,13 @@ func TestAJobIDIsSixteenLowercaseHexCharacters(t *testing.T) {
 			t.Errorf("%q is accepted", bad)
 		}
 	}
+	// ⛔ Outside a detached owner the variable is not read at all.
+	t.Setenv(DetachedEnv, "")
+	t.Setenv(JobIDEnv, testJobID)
+	if id, err := PreassignedJobID(); err != nil || id != "" {
+		t.Errorf("a preassigned id outside a detached owner answered %q, %v", id, err)
+	}
+	t.Setenv(DetachedEnv, "1")
 	t.Setenv(JobIDEnv, "../escape")
 	if _, err := PreassignedJobID(); err == nil {
 		t.Error("a preassigned id that is not an id is accepted")

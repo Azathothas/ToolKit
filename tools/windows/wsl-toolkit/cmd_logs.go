@@ -36,7 +36,8 @@ const logsUsage = `wsl-toolkit logs [JOB-ID]
 
   A transcript lives beside the job's own state and is removed by
   wsl-toolkit gc under the same age policy as everything else, so an id
-  that ran long enough ago will not be here.
+  that ran long enough ago will not be here. A detached base session keeps
+  its streams in the base, and logs reads them there.
 `
 
 func cmdLogs(ctx context.Context, args []string) (int, error) {
@@ -91,6 +92,15 @@ func cmdLogs(ctx context.Context, args []string) (int, error) {
 	if err := toolkit.AssertArgvSafe([]string{id}); err != nil {
 		return exitCannot, err
 	}
+	// ⭐ A SESSION'S STREAMS ARE IN THE GUEST, so its host directory holds a
+	// record and no transcript, and `logs ID` reads them where they are. WSL-95.
+	if toolkit.ValidJobID(id) {
+		if rec, isSession, err := toolkit.ReadSessionRecord(home, id); err != nil {
+			return exitCannot, err
+		} else if isSession {
+			return sessionLogs(ctx, rec, *wantErr, *both, *tail)
+		}
+	}
 	dir := filepath.Join(home, "jobs", id)
 	if _, err := toolkit.ResolveInside(home, dir); err != nil {
 		// ⛔ A caller-supplied path component is how a log reader becomes a file
@@ -118,6 +128,33 @@ func cmdLogs(ctx context.Context, args []string) (int, error) {
 	if !wrote {
 		logf("  job %s has a directory and no transcript in it", id)
 		return exitFailed, nil
+	}
+	return exitOK, nil
+}
+
+// sessionLogs writes a detached session's recorded streams, as `logs ID` does
+// for a job.
+func sessionLogs(ctx context.Context, rec toolkit.SessionRecord, wantErr, both bool, tail int) (int, error) {
+	names := []string{"stdout"}
+	switch {
+	case both:
+		names = []string{"stdout", "stderr"}
+	case wantErr:
+		names = []string{"stderr"}
+	}
+	w, err := toolkit.FindWsl()
+	if err != nil {
+		return exitCannot, err
+	}
+	st, err := toolkit.SessionNow(ctx, w, rec)
+	if err != nil {
+		return exitCannot, err
+	}
+	if st.Gone {
+		return exitFailed, fmt.Errorf("session %s: the guest holds nothing for it, so there is nothing to write", rec.ID)
+	}
+	if err := toolkit.ReadSessionStreams(ctx, w, rec, names, tail, os.Stdout); err != nil {
+		return exitCannot, err
 	}
 	return exitOK, nil
 }

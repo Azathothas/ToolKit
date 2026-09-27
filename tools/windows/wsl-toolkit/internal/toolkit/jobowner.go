@@ -202,9 +202,13 @@ const JobIDEnv = "WSL_TOOLKIT_JOB_ID"
 const DetachedEnv = "WSL_TOOLKIT_DETACHED"
 
 // PreassignedJobID is the id a detaching caller chose, or empty.
+//
+// ⛔ ONLY A DETACHED OWNER READS IT. A value left exported in a caller's own
+// shell would otherwise give every run one id, and each would overwrite the
+// last one's record.
 func PreassignedJobID() (string, error) {
 	id := strings.TrimSpace(os.Getenv(JobIDEnv))
-	if id == "" {
+	if id == "" || strings.TrimSpace(os.Getenv(DetachedEnv)) == "" {
 		return "", nil
 	}
 	if !ValidJobID(id) {

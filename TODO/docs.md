@@ -458,7 +458,7 @@ That is now a line in the next-session prompt rather than a property of the tree
 
 **Source** the operator, 2026-09-27: "all docs/skills etc are amended in place,
 carry no dated/stale/narrative lore, and read as ASD STE100 technical manual".
-**Category** docs, **Priority** P2, **Effort** L, **Status** open
+**Category** docs, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -508,3 +508,37 @@ pwsh -NoProfile -File scripts/common/check-gate.ps1
 
 Exit 0, with the new check green over the live pages and red when a date is
 planted in one.
+
+---
+
+## Closing
+
+**Closed 2026-09-27T10:55:59Z.** The check's own answer over the live pages:
+
+```text
+sh scripts/common/check.sh ste --json
+{"files":35,"longest_sentence":25,"problems":0,"schema":"check-ste/1","sentences":5261}
+```
+
+| | result |
+| --- | --- |
+| dates the new rule found on its first run | **47**, on 16 pages |
+| dates the old span mask had hidden from every rule | **3** more, all on `docs/conventions/forbidden-patterns.md` |
+| dates on the live pages now | **0** |
+| live pages rewritten | **28**: every date, release-by-release story and past-tense anecdote out, and each measured claim citing its entry |
+| passages moved | 90 blocks from 18 pages to `docs/HISTORY/dated-passages.md`, verbatim; the consumer page's release history to `docs/HISTORY/consumers.md` |
+
+⭐ **The rule can fail.** A date planted in prose, in a table row and in a heading
+is a finding, and one inside code is not. Two mutation rows went red: the rule
+removed, and tables masked again. `prose.md` and `docs.md` state the rule in
+place, and the gate runs it.
+
+⛔ **The rewrite found a defect in the check itself.** Its code-span mask paired
+backticks across the whole document, so one double-backtick span shifted every
+later pair and masked the rest of the page as code. No rule had read the tail
+of `forbidden-patterns.md`. A span does not cross a blank line now, and a
+double-backtick span is read first; two more rows prove both.
+
+⚠ **Not in scope, and said so on `prose.md`:** a comment in code keeps its
+dates. It is the maintainer's record beside the code, not a page a reader
+follows.

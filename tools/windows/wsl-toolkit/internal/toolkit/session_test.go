@@ -38,6 +38,58 @@ func TestManySessionsAreReadFromOneAnswer(t *testing.T) {
 	}
 }
 
+// TestGCAndResourcesReadOneSurvey: the same survey row is a cleanup target and
+// a held session, and the two cannot disagree about whether it runs.
+func TestGCAndResourcesReadOneSurvey(t *testing.T) {
+	id := "0123456789abcdef"
+	rec := SessionRecord{ID: id, Distro: "wsl-toolkit", User: "toolkit", GuestDir: "/home/user/" + GuestRoot + "/sessions/" + id,
+		Started: time.Date(2000, 1, 2, 3, 4, 5, 0, time.UTC)}
+	four := 4
+	for _, c := range []struct {
+		name  string
+		s     sessionSurvey
+		state string
+		live  bool
+		kept  bool
+	}{
+		{"running", sessionSurvey{rec: rec, id: id, st: SessionState{Alive: true}}, "running", true, false},
+		{"ended", sessionSurvey{rec: rec, id: id, st: SessionState{Exit: &four, Ended: "2000-01-02T03:05:00Z"}}, "ended", false, false},
+		{"gone with its distribution", sessionSurvey{rec: rec, id: id, st: SessionState{Gone: true}}, "gone", false, false},
+		{"not readable", sessionSurvey{rec: rec, id: id, unknown: "the guest could not be asked"}, "unknown", false, true},
+		{"a record that does not read", sessionSurvey{id: id, unknown: "does not parse"}, "unknown", false, true},
+	} {
+		h, tg := c.s.held(), c.s.target()
+		if h.State != c.state || tg.Live != c.live || (tg.Unknown != "") != c.kept || tg.JobID != id {
+			t.Errorf("%s: held %+v, target %+v", c.name, h, tg)
+		}
+		if c.name == "ended" {
+			if h.Exit == nil || *h.Exit != 4 {
+				t.Errorf("an ended session holds exit %v", h.Exit)
+			}
+			if !tg.ModTime.Equal(time.Date(2000, 1, 2, 3, 5, 0, 0, time.UTC)) {
+				t.Errorf("an ended session is aged from %s, not from its end", tg.ModTime)
+			}
+		}
+	}
+}
+
+func TestASessionKeepsTwoStreamsAndReadsThemInOrder(t *testing.T) {
+	s, err := sessionStreamsScript("/home/user/"+GuestRoot+"/sessions/0123456789abcdef", []string{"stderr", "stdout"}, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := string(s)
+	errAt, outAt := strings.Index(body, `tail -n 3 "$d/stderr"`), strings.Index(body, `tail -n 3 "$d/stdout"`)
+	if errAt < 0 || outAt < 0 || errAt > outAt {
+		t.Fatalf("the streams are not read in the order asked:\n%s", body)
+	}
+	for _, bad := range []string{"exit", "payload.sh", "../stdout"} {
+		if _, err := sessionStreamsScript("/d", []string{bad}, 0); err == nil {
+			t.Errorf("%q is read as a stream", bad)
+		}
+	}
+}
+
 func TestASessionEndsOnTheRulesAJobKeeps(t *testing.T) {
 	four := 4
 	killed := 137
@@ -200,6 +252,16 @@ func TestASessionRunsStopsTimesOutAndIsFollowedInARealShell(t *testing.T) {
 	}
 	if out, errs, code := run(followSessionScript(done, 0)); code != 0 || out != home+"\n" || errs != "to-err\n" {
 		t.Errorf("following an ended session wrote %q and %q, exit %d", out, errs, code)
+	}
+	both, err := sessionStreamsScript(done, []string{"stdout", "stderr"}, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, _, code := run(both); code != 0 || out != home+"\nto-err\n" {
+		t.Errorf("reading both streams wrote %q, exit %d", out, code)
+	}
+	if _, err := sessionStreamsScript(done, []string{"exit"}, 0); err == nil {
+		t.Error("a stream that is not stdout or stderr is accepted")
 	}
 
 	stopped := start("stopped", "sleep 30 &\nsleep 30\n", 0, time.Second)

@@ -56,6 +56,9 @@ type OwnedResources struct {
 	// ThrowawaySnapshots are kept on purpose and never purged, and they are
 	// still bytes this tool holds.
 	ThrowawaySnapshots []HeldFile `json:"throwaway_snapshots,omitempty"`
+	// Sessions are the detached base sessions this state directory records,
+	// running or ended. `gc` removes an ended one. WSL-95.
+	Sessions []HeldSession `json:"sessions,omitempty"`
 }
 
 // HostStage is one directory the helper is keeping for a client.
@@ -204,6 +207,7 @@ func (r *Runner) Resources(ctx context.Context) ResourceReport {
 	}
 
 	rep.Owned.HostStaging = r.hostStaging()
+	rep.Owned.Sessions = r.heldSessions(ctx)
 	if open, err := r.ledger.Open(); err == nil {
 		rep.Owned.OpenRecords = open
 	} else {
@@ -447,6 +451,18 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 	}
 	for _, c := range rep.Owned.Containers {
 		if err := p("  container         %s %s\n", c.Name, c.Detail); err != nil {
+			return err
+		}
+	}
+	for _, s := range rep.Owned.Sessions {
+		state := s.State
+		switch {
+		case s.Exit != nil:
+			state += fmt.Sprintf(", exit %d", *s.Exit)
+		case s.Unknown != "":
+			state += ": " + s.Unknown
+		}
+		if err := p("  base session      %s %s as %s, %s\n", s.ID, s.Distro, s.User, state); err != nil {
 			return err
 		}
 	}

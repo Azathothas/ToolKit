@@ -135,6 +135,12 @@ func TestSTECountsWhatItCanAndRefusesWhatItCannot(t *testing.T) {
 			says: "calendar date",
 		},
 		{
+			name: "a date in a heading",
+			body: "## The pin moves on 2026-08-27\n",
+			want: 1,
+			says: "calendar date",
+		},
+		{
 			name: "a date inside code is data",
 			body: "Send `X-GitHub-Api-Version: 2022-11-28` with it.\n\n```text\n## 2026-09-18\n```\n",
 			want: 0,

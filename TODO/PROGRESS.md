@@ -6,53 +6,30 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-17T14:42:39Z
-baseline        105dfdc, tree clean, doctor exit 0, gate 24 of 24 in 35.9 s, five registered distributions
-head            wsl-toolkit-v4.0.0 published; 29ca209, 9660143, 02182bb, 09eea4f plus this record commit
-entries         total 139  open 11  blocked 0  done 128
-this session    wsl-toolkit-v4.0.0; the last two open entries closed, then the operator refused the handover: every host-engine call bounded with a stall deadline, and nine findings that had a named fix and no entry FIXED rather than listed
+session started 2026-09-27, on issue 34
+baseline        6ec3fbc, gate 24 of 24
+head            this commit, entries closed 2026-09-27T10:55:59Z; wsl-toolkit-v5.0.0 is the next step
+entries         total 139  open 0  blocked 0  done 139
+this session    issue 34 in full: WSL-94 to WSL-101 built, WSL-102 and WSL-103 found and fixed, DOC-08
 ```
 
 ## Active work
 
-⭐ **EVERY ENTRY IS CLOSED.** 128 of 128, and `WSL-59` and `WSL-91` were the two
-that were open at the start. ⚠ That is a statement about the INDEX and not about
-the tree: "Found, and not filed" below carries 88 numbered findings, and the
-open questions section carries what still needs the operator.
+⭐ **ISSUE 34'S ENTRIES ARE CLOSED.** `WSL-94` to `WSL-101` are what the consumer
+asked for, extended to the class: a job reached by id from any process, a base
+command that outlives its client, devices and input files, the base64 channel on
+every job command, and a redaction that reaches every copy. The final acceptance
+pass is 101 of 101 against a scratch instance.
 
-⭐ **THE OBSERVATION LAYER REACHES A CONTAINER, AND IT IS A SEAM RATHER THAN A
-SECOND IMPLEMENTATION.** `WSL-59` sat open since 2026-09-10 because the timestamp
-layer, the silence heartbeat, the event log and the exit reading are
-container-agnostic and none of them could watch a container: `RunLog` asked
-wsl.exe about a DISTRIBUTION and sized a `.vhdx` on the host disk. An `Observer`
-answers three questions now - what kind of thing this is, what its feeds say, and
-how an exit code reads for it - and `run` takes the same flags `distro run` does.
-⛔ **The relay holds no `podman` and no `wsl.exe` string.**
+⛔ **Two defects found on the way are fixed here.** `WSL-102`: `gc --via-helper
+--job ID` planned and applied a cleanup of every job. `WSL-103`: under an
+instance, a child this tool starts nested its parent's state, and `helper serve
+--detach` never answered. Both are in 4.0.0.
 
-⭐ **The acceptance is the two commands side by side**, which is what the entry
-asked for: the same payload through `run` and through `distro new`, one layer,
-two vocabularies. ⛔ **The resource column reports ABSENT with its reason** rather
-than the `35048.23%` and `0B / 33.44GB` podman answers for a container running
-`sleep`.
+⭐ **`DOC-08`: the live pages say what is true now.** 28 pages rewritten, 0 dates
+left, and the `ste` check refuses one. The rewrite found a defect in that check.
 
-⭐ **THE GATE DRIVES THE RELEASED-BINARY CONTRACT NOW.** `WSL-91` is finding 70's
-other half: `consumer.ps1` is the only thing here that drives the tool from
-outside, and it ran ONLY against published binaries, so a refusal added to the
-tool was undetectable until a tag was cut. It takes `-Exe` and the gate runs it
-in **2.4 s**. ⭐ **Both halves of the guard were planted and both went red.**
-
-⛔ **AND `text-tool --between` WAS THE ONE EDIT OPERATION WITH NO REQUIRED
-COUNT.** `WSL-93`, filed and closed. It is a defect in a PUBLISHED binary, it was
-found by using the tool on this session's own work, and it cost 745 lines of
-`consumer.ps1` before it was seen. ⚠ Every call the fix breaks was already doing
-nothing.
-
-⛔ **THE GATE ANALYSED ONE DIRECTORY OF THREE.** PSScriptAnalyzer ran over
-`scripts/` alone. The eight `.ps1` files under `tools/` were parsed and never
-analysed, and **the one real analyzer finding in the tree was in that half**:
-`consumer.ps1` held a non-ASCII byte with no byte order mark, under a header
-claiming it was ASCII-only for exactly that reason. Widened, and three more real
-defects came out of the half that had never been looked at.
+⚠ **What remains is the release**: work order item 8.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -73,9 +50,10 @@ is closed, and the issue gets a comment naming the commits.
    25, each on a commit with CI green.
 6. ⭐ **Closed:** `WSL-59` and `WSL-91`, the two entries that were still open, and
    `WSL-93`, filed and closed in the same session.
-7. **Issue 34, set by the operator on 2026-09-27:** `WSL-94` to `WSL-101` and
-   `DOC-08`, then `wsl-toolkit-v5.0.0`, a selfupdate, and the new version driven
-   end to end.
+7. ⭐ **Closed:** issue 34's entries, `WSL-94` to `WSL-101`, the two defects found
+   on the way, `WSL-102` and `WSL-103`, and `DOC-08`.
+8. **`wsl-toolkit-v5.0.0`:** publish it, selfupdate this host to it, drive it end
+   to end, and close issue 34 with a comment naming the commits.
 
 ## Rulings in force
 
@@ -309,6 +287,10 @@ new file FIRST, then run the gate.**
 | `02182bb` | ⛔ **the operator refused the handover, and it was right to.** The session had ended by listing findings with a named fix and no entry, which is the deferral the prompt forbade. ⭐ **A default deadline on EVERY host-engine call**, with a separate STALL deadline so a pull that has stopped is given up in minutes rather than waited out for half an hour; driven against a real child both ways. Then the findings themselves: the mutation harness runs a case unmutated first (finding 1, the oldest in the record), sweeps a killed run staging (32, and the first run removed the real 122 MiB), and says what the compiler said (41); 29 error messages name the guest own line (12, 13, 15); a case that answered differently alone and in company agrees with itself (37); the two readers of the automount root agree (23); a host-wide repair names the other instances (67); and the consumer runner tests the smaller fetch the register documents (31). ⛔ **Finding 14 closes as a check that CANNOT exist**, because driving the one written for it contradicted a measurement this repository already had. Findings 90 to 99 |
 | `09eea4f` | the guard job stops paying for the same copy 419 times: one staged module copy with a verified byte-exact restore and the duplicate compile dropped, **6.40 to 2.01 s per row**, and CI from 26.4-27.2 min to **19.7, 24.0 and 24.4**, which is a mean of about 26.7 against 22.7 rather than a single number; three lenses the session had not used, which found the call-site count wrong, the cost nobody had asked about, and a refusal sending a reader to the wrong place; findings 100 to 102 |
 | this record commit | ⭐ **`wsl-toolkit-v4.0.0` IS PUBLISHED**, 22 assets, all three release jobs green including the consumer smoke. ⛔ **A MAJOR because a published binary changed how it exits**, which `docs/consumers.md` calls a break in its own words. ⛔ **The first attempt destroyed its own release**: `gh release create` uploads inside the call that creates, and a retried upload collided with itself and took the release with it; the publish is idempotent and resumable now, and reads back what is actually on the release. Nine review passes over the documents, the record and the skills; findings 103 |
+| `d8b47d7` | issue 34 becomes eight entries and six are built: a redaction reaches every copy of a job's output, a device and an input file reach a container, the base64 channel reaches every job command, a Git Bash rewrite is refused by name, a workspace copy names its file, and the `base` group refuses a flag a subcommand does not read |
+| `a20b4d2` | `WSL-94` and `WSL-95` built, `WSL-102` and `WSL-103` found and fixed, `DOC-08` applied to every live page, and the acceptance runner takes `-Instance`; 32 mutation rows |
+| `this commit` | the three review passes and what they found: a session's `logs` and `resources`, the preassigned id, the ownerless stop verdict; 5 more mutation rows; the entries closed on 101 of 101 |
+
 ## Measurements
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-17, in the 14:42Z session:

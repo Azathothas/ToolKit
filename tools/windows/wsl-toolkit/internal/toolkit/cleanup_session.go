@@ -10,29 +10,51 @@ import (
 	"time"
 )
 
-// sessionTargets surveys every detached base session this state directory
+// HeldSession is one detached base session as `resources` reports it. WSL-95.
+type HeldSession struct {
+	ID       string `json:"id"`
+	Distro   string `json:"distro"`
+	User     string `json:"user"`
+	GuestDir string `json:"guest_dir"`
+	// State is running, ended, gone or unknown. Unknown carries its reason.
+	State   string `json:"state"`
+	Exit    *int   `json:"exit,omitempty"`
+	Unknown string `json:"unknown,omitempty"`
+}
+
+// sessionSurvey is one recorded session and what the guest says about it.
+type sessionSurvey struct {
+	rec SessionRecord
+	st  SessionState
+	// unknown is why the state could not be read, or "".
+	unknown string
+	// id is the directory name where the record itself does not read.
+	id string
+}
+
+// surveySessions reads every detached base session this state directory
 // records. One guest call answers for every session of one account in one
-// distribution. WSL-95.
+// distribution, and `gc` and `resources` both read this one survey.
 //
-// ⚠ A SESSION THE GUEST CANNOT BE ASKED ABOUT IS KEPT, and the plan says why.
+// ⚠ A SESSION THE GUEST CANNOT BE ASKED ABOUT IS UNKNOWN, never ended.
 // Reading it as ended would remove the files of a payload that may still be
 // writing them. A session whose distribution is no longer registered is not
 // such a case: its guest half is gone with the distribution.
-func (r *Runner) sessionTargets(ctx context.Context) []CleanupTarget {
+func (r *Runner) surveySessions(ctx context.Context) []sessionSurvey {
 	entries, err := os.ReadDir(filepath.Join(r.home, "jobs"))
 	if err != nil {
 		return nil
 	}
 	type group struct{ distro, user string }
 	groups := map[group][]SessionRecord{}
-	var out []CleanupTarget
+	var out []sessionSurvey
 	for _, e := range entries {
 		rec, ok, err := ReadSessionRecord(r.home, e.Name())
 		if err != nil {
 			// ⛔ A RECORD THAT DOES NOT READ IS NAMED, never skipped: skipping it
 			// would hide a host directory that nothing ever removes.
 			if ValidJobID(e.Name()) {
-				out = append(out, CleanupTarget{Kind: "session", Name: e.Name(), JobID: e.Name(), Unknown: err.Error()})
+				out = append(out, sessionSurvey{id: e.Name(), unknown: err.Error()})
 			}
 			continue
 		}
@@ -59,7 +81,7 @@ func (r *Runner) sessionTargets(ctx context.Context) []CleanupTarget {
 			var err error
 			if reg, err = r.wsl.Exists(ctx, k.distro); err != nil {
 				for _, rec := range recs {
-					out = append(out, sessionTarget(rec, SessionState{}, "WSL could not say whether "+k.distro+" is registered: "+err.Error()))
+					out = append(out, sessionSurvey{rec: rec, id: rec.ID, unknown: "WSL could not say whether " + k.distro + " is registered: " + err.Error()})
 				}
 				continue
 			}
@@ -67,7 +89,7 @@ func (r *Runner) sessionTargets(ctx context.Context) []CleanupTarget {
 		}
 		if !reg {
 			for _, rec := range recs {
-				out = append(out, sessionTarget(rec, SessionState{Gone: true}, ""))
+				out = append(out, sessionSurvey{rec: rec, id: rec.ID, st: SessionState{Gone: true}})
 			}
 			continue
 		}
@@ -78,29 +100,67 @@ func (r *Runner) sessionTargets(ctx context.Context) []CleanupTarget {
 		states, err := readSessionStates(ctx, r.wsl, k.distro, k.user, dirs)
 		for _, rec := range recs {
 			if err != nil {
-				out = append(out, sessionTarget(rec, SessionState{}, err.Error()))
+				out = append(out, sessionSurvey{rec: rec, id: rec.ID, unknown: err.Error()})
 				continue
 			}
-			out = append(out, sessionTarget(rec, states[rec.GuestDir], ""))
+			out = append(out, sessionSurvey{rec: rec, id: rec.ID, st: states[rec.GuestDir]})
 		}
 	}
 	return out
 }
 
-// sessionTarget is one session as cleanup sees it. Its age is from its end
-// where the guest recorded one, and from its start otherwise.
-func sessionTarget(rec SessionRecord, st SessionState, unknown string) CleanupTarget {
-	t := CleanupTarget{Kind: "session", Name: sessionTargetName(rec), JobID: rec.ID, ModTime: rec.Started, Unknown: unknown}
+// sessionTargets is the survey as cleanup targets.
+func (r *Runner) sessionTargets(ctx context.Context) []CleanupTarget {
+	var out []CleanupTarget
+	for _, s := range r.surveySessions(ctx) {
+		out = append(out, s.target())
+	}
+	return out
+}
+
+// heldSessions is the survey as `resources` reports it.
+func (r *Runner) heldSessions(ctx context.Context) []HeldSession {
+	var out []HeldSession
+	for _, s := range r.surveySessions(ctx) {
+		out = append(out, s.held())
+	}
+	return out
+}
+
+// target is one session as cleanup sees it. Its age is from its end where the
+// guest recorded one, and from its start otherwise.
+func (s sessionSurvey) target() CleanupTarget {
+	if s.rec.ID == "" {
+		return CleanupTarget{Kind: "session", Name: s.id, JobID: s.id, Unknown: s.unknown}
+	}
+	t := CleanupTarget{Kind: "session", Name: sessionTargetName(s.rec), JobID: s.rec.ID, ModTime: s.rec.Started, Unknown: s.unknown}
 	switch {
-	case unknown != "":
-	case st.Alive:
+	case s.unknown != "":
+	case s.st.Alive:
 		t.Live = true
-	case st.Ended != "":
-		if at, err := time.Parse(time.RFC3339, st.Ended); err == nil {
+	case s.st.Ended != "":
+		if at, err := time.Parse(time.RFC3339, s.st.Ended); err == nil {
 			t.ModTime = at
 		}
 	}
 	return t
+}
+
+func (s sessionSurvey) held() HeldSession {
+	h := HeldSession{ID: s.id, Distro: s.rec.Distro, User: s.rec.User, GuestDir: s.rec.GuestDir, Unknown: s.unknown}
+	switch {
+	case s.unknown != "":
+		h.State = "unknown"
+	case s.st.Gone:
+		h.State = "gone"
+	case s.st.Alive:
+		h.State = "running"
+	default:
+		h.State = "ended"
+		v := s.st.Verdict()
+		h.Exit = &v
+	}
+	return h
 }
 
 func sessionTargetName(rec SessionRecord) string {
