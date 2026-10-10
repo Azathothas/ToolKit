@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 141  open 0  blocked 0  done 141
+total 142  open 0  blocked 0  done 142
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
 | P1 | 0 | 0 | 71 | 71 |
-| P2 | 0 | 0 | 59 | 59 |
+| P2 | 0 | 0 | 60 | 60 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **0** | **0** | **141** | **141** |
+| **all** | **0** | **0** | **142** | **142** |
 
 ---
 
@@ -74,6 +74,7 @@ total 141  open 0  blocked 0  done 141
 | TOOL-24 | P1 | S | done | The gate printed a check that could not run as a pass | [`tooling.md`](tooling.md) |
 | TOOL-25 | P1 | S | done | The secrets rule could not see a Windows home path | [`tooling.md`](tooling.md) |
 | TOOL-26 | P1 | S | done | The job that proves every guard cannot finish the table it proves | [`tooling.md`](tooling.md) |
+| TOOL-27 | P2 | M | done | The Claude desktop app runs one account per user, and a second instance shares everything with the first | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

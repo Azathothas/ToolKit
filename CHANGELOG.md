@@ -19,6 +19,35 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-10-10
+
+### 2026-10-10T08:22:19Z: `cc_profile` runs the Claude desktop app as isolated profiles, and a terminal cannot end them
+
+**Record:** `TOOL-27` in [`TODO/tooling.md`](TODO/tooling.md), and work order item 11 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy, and no tag. The operator's copy is in `~/bin`, written by
+the tool's own `install`.
+
+⭐ **One profile per account, each with its own folders.** A profile has its own
+app data through `--user-data-dir` and its own Claude Code folder through
+`CLAUDE_CONFIG_DIR`, so two accounts no longer share `~/.claude`. Profiles live in
+`~/.cc_profiles.json`, which is hand-editable and validated on every write.
+
+⭐ **A launch the terminal cannot end.** The app starts with no console, through a
+`cmd.exe` that exits at once, and out of the caller's job where the job allows
+it. The suite closes a pseudo-console terminal, kills a terminal's process tree,
+and closes a kill-on-close job around a launch, and the app survives each: 67 of 67
+cases with `-Live`, and 53 of 53 mutation rows proved.
+
+⛔ **The first launch command this session gave the operator attached the app to
+its terminal.** The app printed its log there and ended when the tab closed.
+`ELECTRON_NO_ATTACH_CONSOLE=1` stops that, and every report on a running instance
+now reads its console attachment and names one that a terminal can end.
+
+⚠ **Three reviews before the close found 39 defects and gaps**, and all 39 are
+fixed here, 37 of them with a case. Among them: a purge that moved the tool's own data folder,
+a `-Force` that also allowed an elevated launch, and a profile block that stopped
+the whole PowerShell profile loading.
+
 ## 2026-09-27
 
 ### 2026-09-27T16:28:38Z: `wsl-toolkit-v6.0.0` published, and issue 34 closed

@@ -2840,3 +2840,169 @@ rows, and all three session rows are red in `golang:1.25`:
   ok  wsl-toolkit: a session deadline sends its TERM in a form dash reads            1 case(s), went red
   ok  wsl-toolkit: a session stop reaches the payload's whole process group          1 case(s), went red
 ```
+
+## TOOL-27. The Claude desktop app runs one account per user, and a second instance shares everything with the first
+
+**Source** the operator, on 2026-10-08: a PowerShell script that runs separate
+Claude desktop profiles from `~/.cc_profiles.json`, safe to run twice, sealed
+from the shell that starts it, placed in `~/bin` and committed here. Authored and
+built in the same session on that instruction, which is ruling 29.
+**Category** tooling, **Priority** P2, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+The Claude desktop app keeps one account per Windows user. A second instance
+started with `--user-data-dir` alone still reads Claude Code's `~/.claude` and
+`~/.claude.json`, so two accounts mix their settings, memory and session
+transcripts.
+
+⛔ **Started from a terminal, the app also belongs to that terminal.** It
+inherits the shell's `CLAUDE_*` and `ANTHROPIC_*` variables, prints its log into
+the terminal, and ends when the terminal closes. The operator met the last two on
+2026-10-10, with an instance started by the bare command this session had given
+on 2026-10-08.
+
+## Premise
+
+⭐ **Measured on 2026-10-08**, on Claude 2.26454.2.0, the MSIX package:
+
+- A launch with `--user-data-dir` wrote `Local State`, `logs` and
+  `claude_desktop_config.json` into the folder it named, so the app's own data
+  moves with the flag.
+- The default instance keeps its data under the package's `LocalCache`, and a
+  PowerShell outside the package does not see the app's `%APPDATA%\Claude` at
+  all. A file the app wrote there was absent from the same path in `pwsh`. So a
+  profile folder under `AppData` would be two different folders.
+- A second instance logged `Global shortcut registration refused` for
+  Ctrl+Alt+Space. `AppxManifest.xml` declares the `claude` protocol, the
+  `CoworkVMService` service and the `ClaudeStartup` task once, for every instance.
+
+⚠ **Read, not measured:** the app passes `CLAUDE_CONFIG_DIR` from its own
+environment to Claude Code. That is from `app.asar`, which reads
+`process.env.CLAUDE_CONFIG_DIR` and falls back to `~/.claude`.
+
+⭐ **Measured on 2026-10-10**, on the operator's own instance: a probe that
+attaches to a process's console found it attached to a Windows Terminal tab,
+with the tab's `pwsh` and three of the app's own processes. Its log recorded a
+component killed with exit code `-1073741510`, `STATUS_CONTROL_C_EXIT`, when an
+earlier tab closed. `Claude.exe` contains the string `ELECTRON_NO_ATTACH_CONSOLE`,
+the switch Electron reads before it attaches to its parent's console.
+
+## Approach
+
+`scripts/cc_profile/cc_profile.ps1`, one file, with
+[`../scripts/cc_profile/README.md`](../scripts/cc_profile/README.md) as its whole
+reference and `scripts/cc_profile/tests/cc_profile.tests.ps1` as its suite.
+
+- **The configuration** is hand-editable JSON, and every write goes through one
+  door, `Save-ConfigText`, always under a named lock: validation, a refusal of a
+  newer schema, a refusal when the file changed since it was read, a backup, an
+  atomic replace and a read-back.
+- **The launch** builds its environment from the registry, sets
+  `CLAUDE_CONFIG_DIR` and `ELECTRON_NO_ATTACH_CONSOLE=1`, and starts the app
+  through `cmd /c start` with breakaway, so it has no console and no live parent,
+  and no job where the caller's job allows breakaway.
+- **Every report on a running instance reads its console attachment**, so an
+  instance that a terminal can end is named rather than reported as fine, and
+  one whose console cannot be read is named too.
+
+⛔ It does not delete a profile's data, edit `PATH`, touch `~/.claude`, or change
+the PowerShell profile unless asked with `-AddToProfile`.
+
+## Decision
+
+**The app's parent is a `cmd.exe` that exits at once**, by default, and
+`launch.via = direct` skips that hop. ⚠ The alternative was to name
+`explorer.exe` as the parent with `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`. It
+lost because that is the shape endpoint protection reports as parent process
+spoofing.
+
+**A launch that cannot detach refuses.** The first version fell back to
+`Process.Start`, which hands the app this terminal's console and handles, and
+that is the failure the tool exists to prevent.
+
+## Consumers
+
+None. No row of [`../docs/consumers.md`](../docs/consumers.md) fetches anything
+under `scripts/cc_profile/`, and the operator's `~/bin` copy is written by the
+tool's own `install`.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/cc_profile/tests/cc_profile.tests.ps1 -Live -Mutate
+```
+
+Exit 0, with every case passed and every mutation row proved for the reason it
+names. ⚠ `-Live` starts the real app, so it needs the app installed and a
+desktop to draw on.
+
+---
+
+## Closing
+
+**Closed 2026-10-10T08:22:19Z**, the instant the prove command's last run ended,
+exit 0, after 12 minutes 41 seconds. `cc_profile` is in `~/bin`, and `cc_profile`
+resolves by name in a new PowerShell and in `cmd.exe`.
+
+```text
+  ok    live-launch-survives-a-tree-kill-and-ends-with-the-app (57.8s)
+  ok    live-a-kill-on-close-job-that-allows-breakaway-does-not-end-the-app (34.5s)
+  ok    live-a-job-that-forbids-breakaway-is-reported (20s)
+  ok    live-closing-the-terminal-leaves-the-app-running-and-silent (41.6s)
+  ok    live-a-direct-launch-also-survives-closing-the-terminal (38.5s)
+  ok    live-an-app-started-from-a-terminal-is-named-and-dies-with-it (41.4s)
+cases=67 passed=67 failed=0 skipped=0 mutations=53 proved=53 theatre=0 misfired=0 broken=0 unrun=0
+```
+
+⭐ **The operator's question, answered by the running app.** The live tree-kill
+case runs the script in-process in a shell, the way an alias does, and the
+launch reads its own claims back. Its terminal printed:
+
+```text
+Launched 't-live' with Claude 2.26454.2.0.
+Verified: pid 1471912 is running with its data in ~/Downloads/ToolKit/.tmp/cc_profile-tests/20261010T080938Z-30952f/live-launch-survives-a-tree-kill-and-ends-with-the-app-cb71/profiles/t-live.
+Detached: it has no console and its parent has exited, so closing or killing this terminal does not end it. Quitting the app does.
+```
+
+The case then ran `taskkill /T /F` on that terminal, and the app was still
+running 3 seconds later. Ending the app ended all its processes, and nothing
+started it again in 5 seconds. Two more cases closed a pseudo-console terminal
+around a launch, through `cmd` and directly: the app stayed off the console,
+printed nothing into it, and outlived the closed tab.
+
+⭐ **The premise, measured both ways.** An app started from a shell with
+`ELECTRON_NO_ATTACH_CONSOLE` removed attached to that shell's pseudo-console, the
+suite's own probe found it there, and closing the tab ended it. `doctor` failed on
+it, `status` showed it ATTACHED, and focusing it warned. Started by `cc_profile`,
+the same app had no console.
+
+⛔ **Three reviews before this close found 39 defects and gaps**, and all 39 are
+fixed in this change, 37 of them with a case. The two without are the lock, now
+keyed on the file a write lands on, which only a symlinked configuration reaches,
+and `#Requires -Version 7.5`, which PowerShell enforces before a line runs. The door sweep found 9, among them a purge that
+moved the tool's own data folder and one `-Force` that also lifted the refusal to
+launch elevated, which is why `-AllowElevated` exists. The guard-strength review
+found 14 in the suite. The correctness review found 16, among them a profile block
+that stopped the operator's whole PowerShell profile loading.
+[`PROGRESS.md`](PROGRESS.md) has the list under "Review findings".
+
+⚠ **The suite's first runs found 5 more, 1 in the script and 4 in the suite, and
+all are fixed.** Under `-WhatIf`, the Appx module's first import printed 45 "What
+if" lines. Turning off the preference in the function, in the script and globally
+did not stop them, and `Set-Variable` honours `-WhatIf` itself. The package query
+now runs in a runspace of its own, which prints none; in a scratch script it took
+357 ms. In the suite, 2 mutation rows went red for another reason: each case
+crashed on a later line before its own assertion. The harness counts that as
+misfired rather than proved, and both cases now assert first. A case that counted
+every profile `discover` registered also counted the operator's running instance.
+And a log an ended app still held kept the run's folder once, so the removal now
+retries.
+
+⚠ **What is not measured.** Whether the app outlives a job that forbids
+breakaway: the launch says so in `launch.log`, and the suite asserts only that.
+A real Windows Terminal window: the suite closes a pseudo-console built the way
+Windows Terminal builds one. An elevated instance probed from a normal shell,
+which the door sweep suspected answers `unknown` and which `doctor` now reports.

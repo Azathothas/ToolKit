@@ -5,6 +5,37 @@ that reads this and acts on it is reading what was true last time.
 
 ---
 
+## 2026-10-08T13:15:39Z to 2026-10-10T08:31:56Z, `cc_profile`, and it ends on `TOOL-27`
+
+| row | measured |
+| --- | --- |
+| Elapsed | **2,596 minutes** of wall clock, the doctor's stamp to the clock, across two days. The operator used the tool between them |
+| Commits | 1 on `main`, this one, pushed |
+| Released | nothing published. ⭐ `cc_profile` is in `~/bin` and resolves by name in PowerShell and in `cmd.exe` |
+| Work | ⭐ **1 entry filed and closed**, `TOOL-27`, on the operator's instruction, ruling 29. 0 deferred, 0 failed |
+| Changes | 10 files changed, 5471 insertions(+), 31 deletions(-), `8a7e03e` to this commit |
+| Size | 126,060 tracked lines to 131,500, **+5,440** |
+| Checks | gate **24 of 24** at the start and at the end; PSScriptAnalyzer 0 findings on both new scripts; the suite **67 of 67 cases with `-Live`** on this host |
+| Guards | the suite's own table: **53 mutation rows, 53 proved**, 0 THEATRE, 0 misfired. ⚠ They are this tool's rows, run by its suite; `repo mutate` and its table are untouched |
+| Cost | the full suite with `-Live -Mutate` in **12 minutes 41 seconds**, with Claude windows opening on the operator's desktop for that time |
+| Reviews | **3 passes**, run as agents: the door sweep found 9 gaps, the guard-strength review 14 problems in the suite, the correctness review 16 defects. All 39 fixed, 37 with a case. The suite's first runs then found 5 more, 1 in the script and 4 in the suite |
+| Health | 142 of 142 entries done. Tree clean, nothing unpushed |
+
+⛔ **What the session got wrong.** Its first answer, on 2026-10-08, gave the operator a
+bare command that starts the app from a terminal, and an app started that way
+attaches to it. On 2026-10-10, `cc_profile av` found that instance running, brought
+it to the front and reported ok without reading its console; its log streamed into
+the operator's tab, and closing the tab ended it. The session's claim that a launch
+survives the terminal had covered a tree kill and a job, never a closed tab. The
+tool's first build also fell back to `Process.Start` when it could not detach. And
+the live cases first opened windows on the operator's desktop without a warning;
+they were stopped, and run again once the operator accepted them.
+
+⚠ **What is not measured** is listed in `TOOL-27`'s closing: a job that refuses
+breakaway, a real Windows Terminal window, and an elevated instance.
+
+---
+
 ## 2026-09-27T04:41:27Z to 2026-09-27T16:41:19Z, issue 34, and it ends on `wsl-toolkit-v6.0.0`
 
 | row | measured |

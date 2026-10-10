@@ -6,38 +6,32 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-09-27T04:41:27Z, on issue 34
-baseline        6ec3fbc, gate 24 of 24
-head            this commit; wsl-toolkit-v6.0.0 published and driven, issue 34 closed
-entries         total 141  open 0  blocked 0  done 141
-this session    issue 34 in full: WSL-94 to WSL-101 built, WSL-102 to WSL-104 found and fixed, DOC-08, TOOL-26
+session started 2026-10-08T13:15:39Z, on the operator's request for cc_profile
+baseline        8a7e03e, gate 24 of 24
+head            this commit; TOOL-27 closed, cc_profile installed in ~/bin
+entries         total 142  open 0  blocked 0  done 142
+this session    TOOL-27: cc_profile written, reviewed three ways, fixed, and proved live on this host
 ```
 
 ## Active work
 
-⭐ **NOTHING IS OPEN.** Every entry is done, issue 34 is closed, no issue or pull
-request is open, and this host runs `wsl-toolkit-v6.0.0`.
+⭐ **NOTHING IS OPEN.** Every entry is done, no issue or pull request is open, and
+this host runs `wsl-toolkit-v6.0.0`.
 
-⭐ **ISSUE 34'S ENTRIES ARE CLOSED, AND 5.0.0 CARRIES THEM.** `WSL-94` to `WSL-101`
-are what the consumer asked for, extended to the class: a job reached by id from
-any process, a base command that outlives its client, devices and input files,
-the base64 channel on every job command, and a redaction that reaches every
-copy. `wsl-toolkit-v5.0.0` is published, this host runs it, and the acceptance
-suite passed 101 of 101 with the installed binary.
+⭐ **`TOOL-27` IS CLOSED.** `scripts/cc_profile/cc_profile.ps1` runs the Claude
+desktop app as isolated profiles, one per account, each with its own app data and
+its own Claude Code folder. A launch has no console and no live parent, and leaves
+the caller's job where the job allows it. So closing or killing the terminal does
+not end the app, and quitting the app does.
+The suite passed 67 of 67 cases with `-Live` on this host and proved 53 of 53
+mutation rows. The installed copy is `%USERPROFILE%\bin\cc_profile.ps1`, with
+`cc_profile.cmd` beside it.
 
-⛔ **Three defects found on the way are fixed here.** `WSL-102`: `gc --via-helper
---job ID` planned and applied a cleanup of every job. `WSL-103`: under an
-instance, a child this tool starts nested its parent's state. `WSL-104`, found
-after the publish: `--help` and the manual listed flags a subcommand refuses,
-and `helper` and `config` still accepted flags they never read.
-
-⭐ **`DOC-08`: the live pages say what is true now.** 28 pages rewritten, 0 dates
-left, and the `ste` check refuses one. The rewrite found a defect in that check.
-
-⭐ **`wsl-toolkit-v6.0.0` carries `WSL-104`**, a break. It is published, this host
-runs it through `selfupdate`, and the acceptance suite passed 102 of 102 with the
-installed binary. The scratch instance `s34` is removed, and so is every
-directory this session made under `.tmp`.
+⚠ **One instance on this host is still tied to a terminal**: the operator's
+`avalyn` profile, started from a Windows Terminal tab on 2026-10-10, and not by
+`cc_profile`. `cc_profile av -Restart -Force` replaces it with a detached one, and
+closing that tab first ends it. Its email is a placeholder; `cc_profile set
+avalyn -Email ADDRESS` sets the real one.
 
 ## The work order, set by the operator on 2026-09-14
 
@@ -67,6 +61,9 @@ is closed, and the issue gets a comment naming the commits.
 10. ⭐ **Cut:** `wsl-toolkit-v6.0.0`: published, this host updated to it, and driven
     end to end. Issue 34 is closed with a comment naming the commits and both
     releases.
+11. ⭐ **Closed:** `TOOL-27`, filed and closed on the operator's instruction of
+    2026-10-08, which is ruling 29. `cc_profile` is installed in `~/bin`, which is
+    on `PATH`.
 
 ## Rulings in force
 
@@ -225,6 +222,16 @@ is closed, and the issue gets a comment naming the commits.
       a live page cites the entry. `DOC-08`.
     - **Version:** `wsl-toolkit-v5.0.0`, because `WSL-100` refuses flags that
       used to parse. `base ensure --probe` stays accepted.
+29. ⭐ **2026-10-08: a PowerShell script that runs the Claude desktop app as
+    isolated profiles, committed here and installed in `~/bin`.** The operator
+    asked for one that keeps its profiles in `~/.cc_profiles.json`, is safe to run
+    twice and to edit by hand, is sealed from the shell that starts it, and keeps
+    working as the app moves its folders. They authorised the commit and the push
+    under this repository's conventions, asked for the script in `~/bin` and on
+    `PATH` before the push, and asked that a launch be confirmed detached: the app
+    outlives the terminal, and ends when it is quit. On 2026-10-10, "it is fine,
+    finish it properly" accepted the live suite's windows on their desktop. In
+    `TOOL-27`.
 
 ## Before every push
 
@@ -299,16 +306,41 @@ new file FIRST, then run the gate.**
 | `9660143` | the claim audit own catch: five timestamps in this record were typed rather than read and two were in the future, corrected to the commit instant; finding 89 |
 | `02182bb` | ⛔ **the operator refused the handover, and it was right to.** The session had ended by listing findings with a named fix and no entry, which is the deferral the prompt forbade. ⭐ **A default deadline on EVERY host-engine call**, with a separate STALL deadline so a pull that has stopped is given up in minutes rather than waited out for half an hour; driven against a real child both ways. Then the findings themselves: the mutation harness runs a case unmutated first (finding 1, the oldest in the record), sweeps a killed run staging (32, and the first run removed the real 122 MiB), and says what the compiler said (41); 29 error messages name the guest own line (12, 13, 15); a case that answered differently alone and in company agrees with itself (37); the two readers of the automount root agree (23); a host-wide repair names the other instances (67); and the consumer runner tests the smaller fetch the register documents (31). ⛔ **Finding 14 closes as a check that CANNOT exist**, because driving the one written for it contradicted a measurement this repository already had. Findings 90 to 99 |
 | `09eea4f` | the guard job stops paying for the same copy 419 times: one staged module copy with a verified byte-exact restore and the duplicate compile dropped, **6.40 to 2.01 s per row**, and CI from 26.4-27.2 min to **19.7, 24.0 and 24.4**, which is a mean of about 26.7 against 22.7 rather than a single number; three lenses the session had not used, which found the call-site count wrong, the cost nobody had asked about, and a refusal sending a reader to the wrong place; findings 100 to 102 |
-| this record commit | ⭐ **`wsl-toolkit-v4.0.0` IS PUBLISHED**, 22 assets, all three release jobs green including the consumer smoke. ⛔ **A MAJOR because a published binary changed how it exits**, which `docs/consumers.md` calls a break in its own words. ⛔ **The first attempt destroyed its own release**: `gh release create` uploads inside the call that creates, and a retried upload collided with itself and took the release with it; the publish is idempotent and resumable now, and reads back what is actually on the release. Nine review passes over the documents, the record and the skills; findings 103 |
+| `48b95d0` | ⭐ **`wsl-toolkit-v4.0.0` IS PUBLISHED**, 22 assets, all three release jobs green including the consumer smoke. ⛔ **A MAJOR because a published binary changed how it exits**, which `docs/consumers.md` calls a break in its own words. ⛔ **The first attempt destroyed its own release**: `gh release create` uploads inside the call that creates, and a retried upload collided with itself and took the release with it; the publish is idempotent and resumable now, and reads back what is actually on the release. Nine review passes over the documents, the record and the skills; findings 103 |
 | `d8b47d7` | issue 34 becomes eight entries and six are built: a redaction reaches every copy of a job's output, a device and an input file reach a container, the base64 channel reaches every job command, a Git Bash rewrite is refused by name, a workspace copy names its file, and the `base` group refuses a flag a subcommand does not read |
 | `a20b4d2` | `WSL-94` and `WSL-95` built, `WSL-102` and `WSL-103` found and fixed, `DOC-08` applied to every live page, and the acceptance runner takes `-Instance`; 32 mutation rows |
 | `c96873b` | the three review passes and what they found: a session's `logs` and `resources`, the preassigned id, the ownerless stop verdict; 5 more mutation rows; the entries closed on 101 of 101 |
 | `5a667cc` | `TOOL-26`: `repo mutate --shard K/N`, and the guard job runs as three shares; its first run found one THEATRE row |
 | `3290937` | the session stop case reads the payload's background child, which proves the whole group is reached; `wsl-toolkit-v5.0.0` is tagged on this commit |
 | `f9560bb` | `WSL-104`: one parser for every group whose subcommands share a flag set, so `helper` and `config` refuse what they never read, and `--help` and the manual list only what a command reads, `base revoke` included; the TERM a stop or a deadline sends is proved by the payload's own trap; `TOOL-26` closed; 5.0.0's publish recorded; 7 mutation rows added and 3 moved with their code, 512 in the table; `wsl-toolkit-v6.0.0` is tagged on this commit |
-| this commit | ⭐ **`wsl-toolkit-v6.0.0` IS PUBLISHED**, 22 assets, all 7 release jobs green; verified, installed by `selfupdate` and driven, 102 of 102; issue 34 closed with its comment; the scratch instance removed; the session summary |
+| `8a7e03e` | ⭐ **`wsl-toolkit-v6.0.0` IS PUBLISHED**, 22 assets, all 7 release jobs green; verified, installed by `selfupdate` and driven, 102 of 102; issue 34 closed with its comment; the scratch instance removed; the session summary |
+| this commit | ⭐ **`TOOL-27`: `cc_profile`, the Claude desktop app as isolated profiles**, with its suite. Each profile has its own app data and its own Claude Code folder, and a launch has no console and no live parent, and leaves a job that allows it, which the live cases prove by closing a pseudo-console terminal, killing a terminal's tree and closing a kill-on-close job. Three reviews found 39 defects and gaps, all fixed, 37 with a case; the suite 67 of 67 cases with `-Live` and 53 of 53 mutation rows proved |
 
 ## Measurements
+
+On Windows 11 Pro 26200, PowerShell 7.6.6 and Claude 2.26454.2.0, in the session
+that started on 2026-10-08:
+
+- **At the start:** the doctor stamped `2026-10-08T13:15:39Z`; the gate 24 of 24
+  at `8a7e03e`.
+- ⭐ **`cc_profile.tests.ps1 -Live -Mutate`**, from 2026-10-10T08:09:38Z to
+  08:22:19Z: 67 of 67 cases, 6 of them live, and 53 of 53 mutation rows proved, 0
+  THEATRE, 0 misfired. The run before it proved 51 and misfired 2, which the suite
+  then fixed.
+- ⭐ **A launch read back from the running app**: no console, and a parent that
+  had exited. `taskkill /T /F` on the launching terminal left the app running, and
+  so did closing a kill-on-close job that allows breakaway, and closing a
+  pseudo-console tab, through `cmd` and directly.
+- ⛔ **The app started straight from a shell attached to that shell's console**,
+  and ended when the tab closed. On the operator's own instance, which printed its
+  log into their tab, the same probe found pid 1581096 attached to a Windows
+  Terminal tab with its `pwsh` and three of the app's processes.
+- ⛔ **`-WhatIf` and the Appx module.** The module's first import printed 45 "What
+  if" lines. In a scratch script, turning off the function's preference alone left
+  45, and the global one alone through `Set-Variable` left 45; `Set-Variable` itself
+  answers `-WhatIf`. Inside the tool, with the function's, the script's and the
+  global preference all reading off at the call, it still printed 45. A runspace of
+  its own printed 0, and its query took 357 ms in a scratch script.
 
 On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-27, in the 04:41Z session:
 
@@ -2349,6 +2381,42 @@ corrections are false by the end of this session**, because it publishes the fir
 nightly: they are committed as the previous session's record, dated, and rewritten in
 the nightly's own commit rather than left to rot.
 
+⭐ **2026-10-10, `TOOL-27`'s three reviews**, run as three agents over the script and
+its suite before the close, each with its own lens and each against throwaway
+configurations only.
+
+**The door sweep** walked every way into each guard and found 9 gaps. `remove
+-PurgeData` checked no protected folder, and moved the tool's own data folder, backups
+and all, into `.cc-trash`. `Remove-Contained` accepted its own root, because
+`root\...` normalises to the root. A console that could not be read counted as fine.
+Two of the three doors that write a shortcut skipped the temporary-folder check. ⛔
+**One `-Force` gave two permissions**: the advice printed for an attached instance said
+`-Restart -Force`, and that `-Force` also lifted the refusal to launch elevated. A
+configuration could empty the environment scrub, positional alias lists were not split,
+`-Verbose` corrupted `-Json`, and the lock was keyed on the path as typed.
+
+**The guard-strength review** found 14 problems in the suite: 9 cases that stayed
+green with their guard planted, or claimed more than they checked, and 5 guards no case
+reached. ⛔ **One mutation row wrote into the real `%LOCALAPPDATA%`**, and two folders it
+had left there on 2026-10-08 were removed.
+
+**The correctness review** found 16 defects and reproduced 15. ⛔ **`install
+-AddToProfile` wrote a block that does not parse**, which stops the whole PowerShell
+profile loading. `restore` failed with one backup. A write merged two keys that
+differed only in case. Shortcuts were keyed by profile name alone, so `remove` deleted
+another configuration's. A trailing dot got `.credentials.json` past the seed refusal
+list, a UTF-16 file was refused, and `$` let a trailing line feed into a name. Seven
+smaller ones and two suspected ones complete it.
+
+⭐ **All 39 are fixed in the same change**, 37 of them with a case, and the suite's 53
+mutation rows prove the guards among them, each naming the failure it must cause.
+The two without a case are the lock, now keyed on the file a write lands on, which
+only a symlinked configuration reaches, and `#Requires -Version 7.5`. ⚠ **The suite's first full run
+then found one more**: under `-WhatIf`, the Appx module's first import printed 45
+"What if" lines. Turning the preference off in reach did not stop them, and
+`Set-Variable` honours `-WhatIf` itself. The package query now runs in a runspace of its
+own.
+
 ## Open questions for the operator
 
 ⭐ The operator asked on 2026-09-15 to be asked only for what actually needs them: a
@@ -2402,6 +2470,26 @@ published here, the targets, how the adapter takes a nightly, and where the
 development server ran for `--machine`.
 
 ## Host state
+
+⭐ **WHAT THE SESSION OF 2026-10-08 TO 2026-10-10 CHANGED ON THIS MACHINE, and how to
+undo each.**
+
+- ⭐ **`%USERPROFILE%\bin\cc_profile.ps1` and `cc_profile.cmd`**, written by the tool's
+  own `install`, with `cc_profile.ps1.previous` beside them, the build it replaced.
+  `%USERPROFILE%\bin` is on the user `PATH`. The undo is to delete the three files.
+- ⭐ **`~/.cc_profiles.json` and `~/.cc_profiles.d`** hold the operator's one profile,
+  `avalyn`, whose folders are under `~/claude-profiles/avalyn`. ⚠ **Its email is a
+  placeholder**, set before the operator named one; `cc_profile set avalyn -Email
+  ADDRESS` corrects it. The undo is `cc_profile remove avalyn`, which keeps the data.
+- ⚠ **That profile's running instance was started from a Windows Terminal tab** on
+  2026-10-10, and not by `cc_profile`: the tool's launch log has no entry for it. So it
+  is attached to that tab and ends with it. `cc_profile av -Restart -Force` replaces
+  it with a detached one.
+- ⚠ **Two folders `%LOCALAPPDATA%\cc-profile-test-*`**, left by the 2026-10-08 mutation
+  runs of the AppData case, were removed on 2026-10-10. The case now points
+  `LOCALAPPDATA` at a folder of its own, so no run writes there again.
+- ⭐ **Every throwaway profile the suite started has ended**: the suite stops each one
+  and fails when one is left. The scratch directories under `.tmp` are removed.
 
 ⭐ **WHAT THE 14:42Z SESSION CHANGED ON THIS MACHINE, and how to undo each.**
 
