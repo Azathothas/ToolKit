@@ -1,4 +1,5 @@
-// hooks.go - the commit-msg hook is present in the tree and installed here.
+// hooks.go - the commit-msg and pre-push hooks are present in the tree and
+// installed here.
 //
 // ⛔ WHY THIS CHECK EXISTS AND WHY IT IS NOT OPTIONAL. `commits` is the only
 // rule in this gate whose subject is `git log` rather than the tracked tree.
@@ -67,6 +68,18 @@ func Hooks(t *Tree) Result {
 	// until the day they disagree.
 	if !strings.Contains(string(t.Read(rel)), "commit-msg \"$1\"") {
 		r.bad("%s does not call `check commit-msg` on the message git handed it, so it holds its own copy of a rule that lives in tools/check", rel)
+	}
+
+	// 2b. The pre-push hook is tracked and hands git's arguments to `repo
+	// pre-push`. ⛔ It is the one place a push is refused for a tree CI's Linux
+	// jobs never ran on, and a hook that decided by itself would hold a second
+	// copy of the rule tools/repo has the cases for. TOOL-33.
+	push := HooksDir + "/pre-push"
+	switch {
+	case !t.Tracked(push):
+		r.bad("%s is not tracked, so a push carries no proof that CI's Linux jobs pass on its tree", push)
+	case !strings.Contains(string(t.Read(push)), "pre-push \"$@\""):
+		r.bad("%s does not hand git's arguments to `repo pre-push`, so it holds its own copy of a rule that lives in tools/repo", push)
 	}
 
 	// 3. THIS CHECKOUT runs it. ⚠ Not a skip when the answer is inconvenient:

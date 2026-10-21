@@ -65,19 +65,26 @@ $env:TEMP = (New-Object -ComObject Scripting.FileSystemObject).GetFolder((Resolv
 $env:TMP = $env:TEMP
 ```
 
-⚠ **A green local run is not CI.** Before a push, run the Linux half of the
-suite and CI's ShellCheck in containers on the base, which carries the same
-images CI's jobs use:
+⚠ **A green local run is not CI.** CI runs the Go tests and ShellCheck on
+Linux, so a push is proved there first, in containers on the default base:
 
 ```powershell
-.tmp/wsl-toolkit.exe run --image docker.io/library/golang:1.25 --container-lifecycle ephemeral --timeout 30m --workspace . --exclude .tmp --exclude .codegraph -c 'git config --global --add safe.directory "*" && cd /work && sh scripts/common/check-go.sh'
-.tmp/wsl-toolkit.exe run --image docker.io/library/ubuntu:24.04 --container-lifecycle ephemeral --timeout 30m --workspace . --exclude .tmp --exclude .codegraph -c 'apt-get update -qq && apt-get install -y -qq shellcheck git >/dev/null && git config --global --add safe.directory "*" && cd /work && shellcheck --version && git ls-files -z "*.sh" | xargs -0 shellcheck -s sh'
+pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof --rows-since origin/main
 ```
 
-Both run from the repository root, with the executable built above rather than
-an installed release, which may not carry every flag they pass. The first is
-CI's `go` job on its Linux host, over every module, and the second is the
-ShellCheck CI's `checks` job installs.
+It refuses a tree with uncommitted changes, so commit first. It runs CI's `go`
+job in `golang:1.25` over every module, and the ShellCheck CI's `checks` job
+installs, in `ubuntu:24.04`. `--rows-since REF` adds every mutation row
+`tools/repo/mutations.json` gained since REF, in `golang:1.25`. The jobs run
+through the `wsl-toolkit` on PATH. `--wsl-toolkit PATH` names another, such as
+`.tmp/wsl-toolkit.exe` when a job needs a flag no release carries yet.
+
+⛔ **A push of an unproved tree is refused.** On success the proof is filed
+under git's common directory, keyed by `git rev-parse HEAD^{tree}`. The tracked
+`.githooks/pre-push` refuses a pushed commit whose tree has none, and names the
+command above. A deleted ref, and a commit or tree the remote already holds,
+need no proof. The command lines each job runs are in
+`tools/repo/internal/linuxproof/linuxproof.go`.
 
 Add a test for every refusal and a row in
 [`../../repo/mutations.json`](../../repo/mutations.json) for every new guard

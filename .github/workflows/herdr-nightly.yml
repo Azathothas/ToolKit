@@ -98,6 +98,26 @@ jobs:
       TAG: ${{ needs.resolve.outputs.tag }}
       HERDR_SHA: ${{ needs.resolve.outputs.sha }}
     steps:
+      # ⭐ THE READ-BACK AND THE PRUNE ARE DECIDED IN tools/repo, with cases and
+      # mutation rows, so this job checks the tree out to build it. TOOL-32.
+      # ⚠ No credential is left in .git/config: nothing here pushes, and gh
+      # reads GH_TOKEN from the environment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/repo/go.mod
+          cache: false
+
+      - name: build this repository's tool box
+        shell: bash
+        run: |
+          set -eu
+          (cd tools/repo && go build -o "$RUNNER_TEMP/repo" .)
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: herdr-build-herdr-*
@@ -180,37 +200,22 @@ jobs:
             staged=$((staged + 1))
           done
           [ "$staged" -gt 0 ] || { echo "dist holds no asset to upload" >&2; exit 1; }
-          on=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
-          missing=""
-          for f in dist/*; do
-            name=${f##*/}
-            printf '%s\n' "$on" | grep -qxF -- "$name" || missing="$missing $name"
-          done
-          [ -z "$missing" ] || { echo "the prerelease is missing:$missing" >&2; exit 1; }
+          # ⛔ READ BACK, as release.yml does: `repo release-readback` names each
+          # staged file the prerelease lacks, and refuses an empty dist.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/on-release.txt"
+          "$RUNNER_TEMP/repo" release-readback --dist dist --reported "$RUNNER_TEMP/on-release.txt"
           echo "published $TAG with $staged asset(s), each read back"
 
       # ⛔ KEEP THE NEWEST SEVEN, and nothing but a herdr-nightly- tag is ever deleted.
-      #
-      # ⛔ NEWEST BY published_at, NEVER created_at. `gh release create --target SHA`
-      # makes GitHub date the release from THE TARGET COMMIT, not from the publish.
-      # Measured on 2026-09-16 on the first nightly: created_at 2026-09-15T12:05:05Z,
-      # which is cfa3252's own commit date, against published_at 2026-09-16T07:15:16Z,
-      # nineteen hours later. Sorting by created_at therefore orders these by when
-      # ToolKit's main last moved, so a nightly published today from an older main
-      # sorts BELOW one published last week from a newer main, and `.[7:]` deletes the
-      # NEWEST - which is the one the adapter's `nightly` channel resolves. WSL-90.
+      # ⛔ NEWEST BY published_at, NEVER created_at, because `--target SHA` dates a
+      # release from its target commit and a sort by created_at deleted the NEWEST.
+      # The measurement and the rest of the reason are in
+      # tools/repo/internal/workflow/publish.go, beside the sort. WSL-90.
       - name: keep the newest seven nightlies
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          old=$(gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-            --jq '[.[] | select(.prerelease and (.tag_name | startswith("herdr-nightly-")))] | sort_by(.published_at) | reverse | .[7:] | .[].tag_name')
-          for tag in $old; do
-            case "$tag" in
-              herdr-nightly-*) gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag ;;
-              *) echo "refusing to delete '$tag'" >&2; exit 1 ;;
-            esac
-          done
-          echo "pruned: ${old:-nothing}"
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/releases.json"
+          "$RUNNER_TEMP/repo" nightly-prune --releases "$RUNNER_TEMP/releases.json" --keep 7 --delete --repo "$GITHUB_REPOSITORY"

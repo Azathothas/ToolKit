@@ -1,0 +1,56 @@
+#!/bin/sh
+# pre-push - refuse a push whose tree was never proved on Linux.
+#
+# ⛔ THIS HOOK EXISTS BECAUSE CI's LINUX JOBS WERE A STEP A SESSION COULD SKIP.
+# CI runs the Go tests and ShellCheck on Linux; a session here runs them on
+# Windows. Three cases reached main green here and red on Linux. TOOL-33.
+#
+# ⭐ IT RUNS NOTHING SLOW. The proof is made beforehand by `repo linux-proof`,
+# which runs CI's Linux jobs in containers and files a proof keyed by the tree
+# under git's common directory. This hook only looks the proof up:
+#
+#   pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof
+#   sh scripts/common/repo.sh linux-proof
+#
+# A deleted ref and a commit or tree the remote already holds need no proof.
+# The decision is `repo pre-push` in tools/repo, which has the cases; this file
+# holds no copy of it.
+#
+# ⛔ INSTALL IT, as commit-msg is installed: git config core.hooksPath .githooks
+#
+# Exit codes: 0 the push may go, 1 it is refused, 2 the check could not run.
+# git refuses the push on either non-zero answer.
+#
+# SPDX-License-Identifier: 0BSD
+
+set -u
+
+command -v go >/dev/null 2>&1 || {
+  printf 'pre-push: no Go toolchain on PATH, and this check is a Go program.\n' >&2
+  printf '  That is "could not run" rather than a pass: the push was NOT checked.\n' >&2
+  exit 2
+}
+
+# ⛔ THE TOOL IS FOUND FROM THIS FILE, NOT FROM git. git can export GIT_DIR to a
+# hook, so `git rev-parse` would answer about the repository being pushed, and
+# a checkout whose hooksPath names this directory would build ITS tools/repo.
+HOOK_DIR=$(cd -- "$(dirname -- "$0")" && pwd) || { printf 'pre-push: could not resolve this hook\n' >&2; exit 2; }
+TOOL_ROOT=$(cd -- "$HOOK_DIR/.." && pwd) || exit 2
+
+# ⚠ A NAME OF ITS OWN under .tmp/, because Windows will not overwrite an
+# executable that is running, and `repo.ps1 linux-proof` runs .tmp/repo.exe.
+BIN="$TOOL_ROOT/.tmp/repo-pre-push"
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) BIN="$BIN.exe" ;;
+esac
+mkdir -p "$TOOL_ROOT/.tmp" || { printf 'pre-push: cannot write to %s/.tmp\n' "$TOOL_ROOT" >&2; exit 2; }
+
+# ⚠ -buildvcs=false, because a GIT_DIR git exported names the repository
+# being pushed, and Go's VCS stamp would read that one or fail on it.
+if ! (cd "$TOOL_ROOT/tools/repo" && go build -buildvcs=false -o "$BIN" . 2>&1); then
+  printf 'pre-push: the check did not build, so the push was NOT checked\n' >&2
+  exit 2
+fi
+
+# ⛔ git's update lines arrive on stdin and are read by the binary itself.
+exec "$BIN" pre-push "$@"

@@ -184,6 +184,25 @@ rotated first and the rewrite does not un-publish it. See
   installs the current release on every run and gains lints with every version.
   Report the local toolchain version and warn when it is older, rather than
   failing: a stale toolchain is not a reason to stop working.
+- ⛔ **A push is proved on Linux before it leaves.** CI runs the Go tests and
+  ShellCheck on Linux, and this host is Windows. Cases green here and red there
+  have reached `main` three times. `repo linux-proof` runs those jobs in
+  containers and files a proof keyed by the commit's tree. The tracked
+  `.githooks/pre-push` refuses a pushed tree with no proof and names the
+  command. A deleted ref, and a commit or tree the remote already holds, need
+  none.
+
+  The proof needs a clean tree, so a session commits, proves, then pushes:
+
+  ```powershell
+  pwsh -NoProfile -File scripts/common/git-sync.ps1 -Message 'SUBJECT' -BodyFile message.txt -NoPush
+  pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof --rows-since origin/main
+  pwsh -NoProfile -File scripts/common/git-sync.ps1 -PushOnly
+  ```
+
+  `git-sync.sh` takes the same three steps. A run of `git-sync` that commits
+  and pushes in one call is refused at the push, because nothing proved the
+  tree it just committed.
 - ⚠ **A documentation-only push that skips CI must actually be
   documentation-only.** A "docs" push carrying a source file is exactly the one
   that needed the run. `.github/` is never safe to skip, because a workflow
