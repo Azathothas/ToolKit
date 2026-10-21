@@ -386,6 +386,31 @@ func parseArgs(fs *flag.FlagSet, args []string) error {
 	return errors.New(msg)
 }
 
+// parseOneName parses a subcommand that takes ONE name beside its flags, and
+// answers the name, or an empty one when none was given.
+//
+// ⚠ flag.Parse STOPS AT THE FIRST WORD THAT IS NOT A FLAG, so a name written
+// between flags leaves every flag after it unparsed. The name is taken from the
+// front, or from where the parse stopped, and the rest is parsed again, so the
+// name may stand before, between or after the flags. A second word is still a
+// refusal: one name means one. WSL-108.
+func parseOneName(fs *flag.FlagSet, args []string) (string, error) {
+	name, rest := splitLogsArgs(args)
+	if err := fs.Parse(rest); err != nil {
+		return "", err
+	}
+	if name == "" && len(fs.Args()) > 0 {
+		name = fs.Args()[0]
+		if err := fs.Parse(fs.Args()[1:]); err != nil {
+			return "", err
+		}
+	}
+	if extra := fs.Args(); len(extra) > 0 {
+		return "", fmt.Errorf("%s takes one name, and %q is a second", fs.Name(), extra[0])
+	}
+	return name, nil
+}
+
 // writeJSON puts a structured answer on stdout. It is the only thing in this
 // program that writes there, apart from a forwarded child's own stream.
 func writeJSON(v any) error {

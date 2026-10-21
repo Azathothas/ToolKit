@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 142  open 0  blocked 0  done 142
+total 153  open 7  blocked 0  done 146
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 0 | 0 | 71 | 71 |
-| P2 | 0 | 0 | 60 | 60 |
+| P1 | 1 | 0 | 73 | 74 |
+| P2 | 6 | 0 | 62 | 68 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **0** | **0** | **142** | **142** |
+| **all** | **7** | **0** | **146** | **153** |
 
 ---
 
@@ -75,6 +75,7 @@ total 142  open 0  blocked 0  done 142
 | TOOL-25 | P1 | S | done | The secrets rule could not see a Windows home path | [`tooling.md`](tooling.md) |
 | TOOL-26 | P1 | S | done | The job that proves every guard cannot finish the table it proves | [`tooling.md`](tooling.md) |
 | TOOL-27 | P2 | M | done | The Claude desktop app runs one account per user, and a second instance shares everything with the first | [`tooling.md`](tooling.md) |
+| TOOL-28 | P2 | S | done | A carriage return inside a line passes the control-bytes rule | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -152,6 +153,16 @@ total 142  open 0  blocked 0  done 142
 | WSL-102 | P0 | S | done | `gc --via-helper --job ID` plans and applies a cleanup of every job | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-103 | P1 | S | done | Under an instance, `helper serve --detach` never answers, and a detached run would not either | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-104 | P2 | S | done | `--help` and the manual name flags a subcommand refuses, and `helper` and `config` still ignore flags | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-105 | P1 | M | open | Another distribution empties the QEMU handler table, and only a job gets its handler back | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-106 | P1 | S | done | A grant whose Windows directory is gone refuses every command, `base revoke` included | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-107 | P2 | S | done | `base ensure` stops at the first adapter whose read-back finds a problem, and a probe calls an adapter installed that never was | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-108 | P1 | S | done | `shipped cat NAME` and `shipped write NAME` can never succeed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-109 | P2 | M | open | The space a base frees comes back only with `base recreate` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-110 | P2 | M | open | WSL's own container tool is on this host, and this tool does not know it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-111 | P2 | S | open | A Git Bash caller bridges every call through PowerShell | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-112 | P2 | S | open | A workspace copy takes what git ignores, so each project keeps its own exclude list | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-113 | P2 | S | open | Nothing stops two jobs of one project from running at once | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-114 | P2 | S | open | `gc` cannot be limited to one project's jobs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

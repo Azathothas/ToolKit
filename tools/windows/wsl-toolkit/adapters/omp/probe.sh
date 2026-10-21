@@ -37,6 +37,44 @@ account_env() {
   as_account sh -lc "printf '%s' \"\${$1:-}\"" 2>/dev/null
 }
 
+# ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk. `base status` asks it of
+# an adapter the configuration no longer names, which keeps its files until `base
+# recreate`. POSIX `du -sk`, so it answers on any userland. WSL-109.
+footprint() {
+  total=0
+  for p in "$@"; do
+    [ -n "$p" ] || continue
+    [ -e "$p" ] || [ -L "$p" ] || continue
+    k=$(du -sk "$p" 2>/dev/null | cut -f1)
+    total=$((total + ${k:-0} * 1024))
+  done
+  printf '%s' "$total"
+}
+# The npm package a launcher in $PREFIX/bin points into, or nothing.
+npm_package_dir() {
+  target=$(readlink -f "$1" 2>/dev/null) || return 0
+  printf '%s' "$target" | sed -n 's#^\(.*/node_modules/\(@[^/]*/\)\{0,1\}[^/]*\)/.*$#\1#p'
+}
+
+# ⛔ ASKED FIRST: IS OMP IN THIS BASE AT ALL. Without it, an omp that never installed,
+# because an adapter before it stopped `base ensure`, read as five problems: no bun,
+# "installed and a login shell cannot find it", and three more that only mean
+# something for an omp that is there. The adapter installs bun itself. WSL-107,
+# issue 37.
+if [ -e /usr/local/bin/omp ] || [ -e "$PREFIX/bin/omp" ]; then installed=yes; else installed=no; fi
+printf 'installed %s\n' "$installed"
+if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
+  # ⚠ The npm shim is moved aside to omp-npm when the adapter separates omp's
+  # directory, so the package is found through whichever launcher is npm's.
+  shim=$PREFIX/bin/omp
+  [ -e "$PREFIX/bin/omp-npm" ] && shim=$PREFIX/bin/omp-npm
+  printf 'footprint %s\n' "$(footprint /usr/local/bin/omp "$PREFIX/bin/omp" "$PREFIX/bin/omp-npm" "$(npm_package_dir "$shim")" "$TK_HOME/.omp")"
+  exit 0
+fi
+if [ "$installed" = no ]; then
+  problem "omp is not installed in this base. Run: base ensure"
+  exit 0
+fi
 
 # ⭐ THE RUNTIME IS A FACT HERE, because omp is a Bun program and a base with Node
 # alone installs it and cannot run it. Reporting the version alone would have said
@@ -68,11 +106,9 @@ fi
 # ⚠ A probe that only asked whether the name resolved called that base healthy.
 if [ -n "$pane_path" ]; then
   if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's omp adapter"; then
-    printf 'wrapper_on_login_path yes
-'
+    printf 'wrapper_on_login_path yes\n'
   else
-    printf 'wrapper_on_login_path no
-'
+    printf 'wrapper_on_login_path no\n'
     problem "a login shell resolves omp to $pane_path, which is not this tool's wrapper. The account's own prefix is ahead of /usr/local/bin, which bootstrap.sh puts there, so the wrapper and everything it sets are bypassed"
   fi
 fi

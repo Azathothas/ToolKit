@@ -157,7 +157,16 @@ func renderGrant(ans baseGrantAnswer, cfg toolkit.Config, asJSON bool) (int, err
 		return exitOK, writeJSON(ans)
 	}
 	for _, g := range grants {
-		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s\n", g.Mode, g.Target, g.Source)
+		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s%s\n", g.Mode, g.Target, g.Source, goneMark(g))
 	}
 	return exitOK, nil
+}
+
+// goneMark is what a grant line adds when the grant's source no longer exists.
+// WSL-106.
+func goneMark(g toolkit.BaseMount) string {
+	if !g.Missing {
+		return ""
+	}
+	return ". ⛔ The directory no longer exists. Run: " + toolkit.ToolCommand("base revoke --target "+g.Target)
 }

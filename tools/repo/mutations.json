@@ -2,6 +2,132 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: a carriage return inside a line is a control byte",
+      "file": "internal/checks/bytes.go",
+      "find": "\t\t\tif c == '\\r' && (i+1 >= len(b) || b[i+1] != '\\n') {\n",
+      "replace": "\t\t\tif c == '\\r' && (i+1 >= len(b) || b[i+1] == 0) {\n",
+      "run": "TestTheControlByteRuleRefusesACarriageReturnInsideALine",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter that fails does not stop the adapters after it",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\t\tlog(\"adapter \" + a.Name + \": FAILED, and the adapters after it are still installed: \" + err.Error())\n\t\t\tfailed = append(failed, err)\n",
+      "replace": "\t\t\tlog(\"adapter \" + a.Name + \": FAILED, and the adapters after it are still installed: \" + err.Error())\n\t\t\treturn err\n",
+      "run": "TestEveryAdapterIsTriedWhenOneBeforeItFails",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter that is not installed is one problem, with no version line",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif st.Version == \"\" && st.Facts[\"installed\"] != \"no\" {\n",
+      "replace": "\tif st.Version == \"\" && st.Facts[\"installed\"] != \"never\" {\n",
+      "run": "TestAnAdapterThatIsNotInstalledIsOneProblemAndNotFive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp probe stops at not installed, before its bun and login-shell checks",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "  problem \"omp is not installed in this base. Run: base ensure\"\n  exit 0\n",
+      "replace": "  problem \"omp is not installed in this base. Run: base ensure\"\n",
+      "run": "TestEachAgentProbeAsksWhetherItIsInstalledFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant whose source is gone loads, marked, rather than refusing the file",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\tif errors.Is(err, fs.ErrNotExist) {\n\t\t\t// ⛔ A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
+      "replace": "\t\tif false && errors.Is(err, fs.ErrNotExist) {\n\t\t\t// ⛔ A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
+      "run": "TestAGrantWhoseSourceIsGoneIsKeptAndMarkedRatherThanRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: rendering the grants refuses a gone source by its revoke",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := GoneGrantsError(mounts); err != nil {\n\t\treturn \"\", \"\", nil, err\n\t}\n",
+      "replace": "\tif err := GoneGrantsError(nil); err != nil {\n\t\treturn \"\", \"\", nil, err\n\t}\n",
+      "run": "TestEverythingThatMountsTheGrantsRefusesAGoneOneByItsRevoke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base grant refuses beside a gone grant before anything changes",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif err := GoneGrantsError(current); err != nil {\n",
+      "replace": "\tif err := GoneGrantsError(nil); err != nil {\n",
+      "run": "TestEverythingThatMountsTheGrantsRefusesAGoneOneByItsRevoke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure refuses a gone grant before it can remove and rebuild",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := GoneGrantsError(st.Access.Mounts); err != nil {\n",
+      "replace": "\tif err := GoneGrantsError(nil); err != nil {\n",
+      "run": "TestEverythingThatMountsTheGrantsRefusesAGoneOneByItsRevoke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier reads back only the grants that exist",
+      "file": "internal/toolkit/base.go",
+      "find": "\tfor _, m := range mounts {\n\t\tif !m.Missing {\n\t\t\tpresent = append(present, m)\n",
+      "replace": "\tfor _, m := range mounts {\n\t\tif true {\n\t\t\tpresent = append(present, m)\n",
+      "run": "TestAGoneGrantCanBeRevokedAndTheRestStillMounts",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stored configuration does not carry a grant's missing mark",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t// not stored.\n\tfor i := range resolved {\n\t\tresolved[i].Missing = false\n\t}\n",
+      "replace": "\t// not stored.\n\tfor i := range resolved[:0] {\n\t\tresolved[i].Missing = false\n\t}\n",
+      "run": "TestAGoneMarkIsNeitherStoredNorFingerprinted",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant's missing mark does not move the fingerprint",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t// a grant whose directory went away does not change the fingerprint.\n\tfor i := range resolved {\n",
+      "replace": "\t// a grant whose directory went away does not change the fingerprint.\n\tfor i := range resolved[:0] {\n",
+      "run": "TestAGoneMarkIsNeitherStoredNorFingerprinted",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: shipped cat and write take their name rather than refusing it",
+      "file": "cmd_shipped.go",
+      "find": "\tcase \"cat\", \"write\":\n\t\tname, err = parseOneName(fs, rest)\n",
+      "replace": "\tcase \"cat\", \"write\":\n\t\terr = parseArgs(fs, rest)\n",
+      "run": "TestShippedCatWritesTheCarriedBytes",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a shipped name between flags leaves no flag unparsed",
+      "file": "main.go",
+      "find": "\t\tif err := fs.Parse(fs.Args()[1:]); err != nil {\n\t\t\treturn \"\", err\n\t\t}\n",
+      "replace": "\t\tif err := fs.Parse(nil); err != nil {\n\t\t\treturn \"\", err\n\t\t}\n",
+      "run": "TestShippedWriteTakesItsNameOnEitherSideOfItsFlags",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a shipped second name is a refusal",
+      "file": "main.go",
+      "find": "\tif extra := fs.Args(); len(extra) > 0 {\n\t\treturn \"\", fmt.Errorf(\"%s takes one name, and %q is a second\", fs.Name(), extra[0])\n\t}\n",
+      "replace": "\tif extra := fs.Args(); len(extra) > 99 {\n\t\treturn \"\", fmt.Errorf(\"%s takes one name, and %q is a second\", fs.Name(), extra[0])\n\t}\n",
+      "run": "TestShippedRefusesASecondNameAndListRefusesAny",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base revoke reads --target alone of grant's names",
       "file": "cmd_base_grant.go",
       "find": "\t\t\t\"revoke\": {\"target\", \"json\", \"via-helper\"},\n",

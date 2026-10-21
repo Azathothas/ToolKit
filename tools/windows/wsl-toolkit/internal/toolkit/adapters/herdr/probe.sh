@@ -19,6 +19,24 @@ DOOR_DIR=/etc/wsl-toolkit/ssh
 DOOR_WRAPPER=/usr/local/lib/wsl-toolkit/sshd-stdio
 UNIT=wsl-toolkit-herdr.service
 
+# ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk, asked by `base status` of
+# an adapter the configuration no longer names: the guest half stays until `base
+# recreate`. POSIX `du -sk`, so it answers on any userland. WSL-109.
+if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
+  if [ -e "$HERDR_BIN" ]; then installed=yes; else installed=no; fi
+  printf 'installed %s\n' "$installed"
+  TK_HOME=$(getent passwd "$TK_USER" | cut -d: -f6)
+  total=0
+  for p in "$HERDR_BIN" "/etc/systemd/system/$UNIT" "$DOOR_DIR" "$DOOR_WRAPPER" \
+      /usr/local/lib/wsl-toolkit/herdr-release "$TK_HOME/.config/herdr"; do
+    [ -e "$p" ] || continue
+    k=$(du -sk "$p" 2>/dev/null | cut -f1)
+    total=$((total + ${k:-0} * 1024))
+  done
+  printf 'footprint %s\n' "$total"
+  exit 0
+fi
+
 if [ -x "$HERDR_BIN" ]; then
   version=$("$HERDR_BIN" --version 2>/dev/null | sed -n 's/^herdr //p')
   printf 'version %s\n' "${version:-unknown}"

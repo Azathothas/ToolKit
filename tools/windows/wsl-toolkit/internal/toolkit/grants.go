@@ -106,8 +106,17 @@ func PlanGrant(cfg Config, source, target, mode string) (GrantChange, error) {
 		return GrantChange{}, err
 	}
 	want := resolvedNew[0]
+	if want.Missing {
+		return GrantChange{}, fmt.Errorf("%s does not exist, so it cannot be granted", want.Source)
+	}
 	current, err := cfg.ResolvedBaseMounts()
 	if err != nil {
+		return GrantChange{}, err
+	}
+	// ⛔ REFUSED BEFORE ANYTHING CHANGES. The live step mounts every grant and
+	// reads each back, and a gone source fails that after this grant is mounted.
+	// WSL-106.
+	if err := GoneGrantsError(current); err != nil {
 		return GrantChange{}, err
 	}
 	for _, have := range current {

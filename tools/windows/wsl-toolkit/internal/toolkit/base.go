@@ -162,6 +162,16 @@ func (b *Base) Dir() string { return filepath.Join(b.home, "base") }
 // a container: always would cost a pull on a cold machine, never could only
 // report that a distribution is registered, which is not the same as usable.
 func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
+	st, err := b.configuredState()
+	if err != nil {
+		return st, err
+	}
+	return b.statusFrom(ctx, st, probe)
+}
+
+// configuredState is the half of a status this machine answers from the
+// configuration alone, with no call into WSL.
+func (b *Base) configuredState() (BaseState, error) {
 	automount, err := NormalizeAutomount(b.cfg.Base.Automount)
 	if err != nil {
 		return BaseState{}, err
@@ -193,6 +203,30 @@ func (b *Base) Status(ctx context.Context, probe bool) (BaseState, error) {
 	for _, a := range b.cfg.Base.Adapters {
 		st.Access.Adapters = append(st.Access.Adapters, a.Name)
 	}
+	// ⭐ A GRANT WHOSE SOURCE IS GONE IS REPORTED WITHOUT --probe, because it is
+	// this machine's fact, and `base ensure` and `base grant` refuse over it until
+	// it is revoked. WSL-106.
+	for _, m := range mounts {
+		if !m.Missing {
+			continue
+		}
+		revoke := ToolCommand("base revoke --target " + m.Target)
+		st.Problems = append(st.Problems, fmt.Sprintf(
+			"the grant at %s has lost its source: %s no longer exists. Run: %s", m.Target, m.Source, revoke))
+		st.Remediations = append(st.Remediations, Remediation{
+			ID:         "grant-source-gone",
+			What:       "the Windows directory granted at " + m.Target + ", " + m.Source + ", no longer exists",
+			Costs:      "base ensure and base grant refuse until the grant is revoked, because neither can mount it",
+			Command:    revoke,
+			Repairable: true,
+		})
+	}
+	return st, nil
+}
+
+// statusFrom completes a configured state with what WSL and, under probe, the
+// guest answer.
+func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseState, error) {
 	distros, err := b.wsl.List(ctx, b.cfg.Base.Name)
 	if err != nil {
 		return st, err
@@ -378,7 +412,19 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 // engine state to make a probe pass is one deletion away from removing something
 // else. Ruled 2026-09-10. WSL-61.
 func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, error) {
-	st, err := b.Status(ctx, false)
+	st, err := b.configuredState()
+	if err != nil {
+		return st, err
+	}
+	// ⛔ BEFORE ANYTHING ELSE, AND THE ORDER IS THE SAFETY OF IT. A grant whose
+	// source is gone fails the provisioner, and below, a registered base whose
+	// re-provisioning fails is REMOVED AND REBUILT, as is every base under
+	// --force. So refusing any later would have spent the whole base on a
+	// directory that went away. WSL-106.
+	if err := GoneGrantsError(st.Access.Mounts); err != nil {
+		return st, err
+	}
+	st, err = b.statusFrom(ctx, st, false)
 	if err != nil {
 		return st, err
 	}
@@ -772,12 +818,49 @@ func baseMountPayloads(cfg Config) (fstab64, checks string, mounts []BaseMount, 
 	if err != nil {
 		return "", "", nil, err
 	}
+	// ⛔ EVERY PATH THAT MOUNTS THE GRANTS COMES THROUGH HERE: provisioning,
+	// `base ensure`, and the live step of `base grant` and `base revoke`. A source
+	// that is gone cannot be mounted or read back, so the one refusal is here
+	// rather than at each caller. Revoking the gone grant itself leaves it out of
+	// the configuration this renders, so that revoke still runs. WSL-106.
+	if err := GoneGrantsError(mounts); err != nil {
+		return "", "", nil, err
+	}
+	fstab64, checks, err = renderBaseMounts(mounts)
+	if err != nil {
+		return "", "", nil, err
+	}
+	return fstab64, checks, mounts, nil
+}
+
+// presentGrantChecks is the read-back the verifier runs for the grants whose
+// source still exists. ⛔ A gone grant is left out of the CHECK and not of the
+// report: `base status` names it with its revoke, and a probe that failed the
+// whole engine over it would call a working base unusable. WSL-106.
+func presentGrantChecks(cfg Config) (string, error) {
+	mounts, err := cfg.ResolvedBaseMounts()
+	if err != nil {
+		return "", err
+	}
+	present := mounts[:0:0]
+	for _, m := range mounts {
+		if !m.Missing {
+			present = append(present, m)
+		}
+	}
+	_, checks, err := renderBaseMounts(present)
+	return checks, err
+}
+
+// renderBaseMounts writes the fstab block and the read-back lines for a set of
+// grants whose sources exist.
+func renderBaseMounts(mounts []BaseMount) (fstab64, checks string, err error) {
 	var fstab strings.Builder
 	var verify strings.Builder
 	for _, mount := range mounts {
 		source := filepath.ToSlash(mount.Source)
 		if runtimeVolume := filepath.VolumeName(mount.Source); runtimeVolume != "" && strings.HasPrefix(runtimeVolume, `\\`) {
-			return "", "", nil, fmt.Errorf("base.mounts source %q is a network path; this release grants local Windows directories only", mount.Source)
+			return "", "", fmt.Errorf("base.mounts source %q is a network path; this release grants local Windows directories only", mount.Source)
 		}
 		fmt.Fprintf(&fstab, "%s %s drvfs metadata,%s,uid=1000,gid=1000,umask=022,fmask=011,nofail 0 0\n",
 			fstabEscape(source), fstabEscape(mount.Target), mount.Mode)
@@ -787,7 +870,7 @@ func baseMountPayloads(cfg Config) (fstab64, checks string, mounts []BaseMount, 
 	if fstab.Len() > 0 {
 		fstab64 = base64.StdEncoding.EncodeToString([]byte(fstab.String()))
 	}
-	return fstab64, strings.TrimSpace(verify.String()), mounts, nil
+	return fstab64, strings.TrimSpace(verify.String()), nil
 }
 
 // fstabEscape uses the escape sequences fstab accepts for fields. Sources are
@@ -922,7 +1005,7 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	if err != nil {
 		return verifyReport{}, err
 	}
-	_, checks, _, err := baseMountPayloads(b.cfg)
+	checks, err := presentGrantChecks(b.cfg)
 	if err != nil {
 		return verifyReport{}, err
 	}

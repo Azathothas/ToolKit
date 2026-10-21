@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -102,6 +103,10 @@ type BaseMount struct {
 	Source string `json:"source"`
 	Target string `json:"target"`
 	Mode   string `json:"mode,omitempty"`
+	// Missing says the source no longer exists on this machine. ⛔ It is decided
+	// by ResolvedBaseMounts from the disk and never read from a file, and
+	// Config.Write leaves it out of the one it stores. WSL-106.
+	Missing bool `json:"missing,omitempty"`
 }
 
 const (
@@ -708,6 +713,33 @@ func (c Config) ResolvedBaseMounts() ([]BaseMount, error) {
 			return nil, fmt.Errorf("base.mounts[%d].source: %w", i, err)
 		}
 		resolved, err := filepath.EvalSymlinks(abs)
+		if errors.Is(err, fs.ErrNotExist) {
+			// ⛔ A SOURCE THAT IS GONE IS A GRANT TO REVOKE, NOT A FILE TO REFUSE.
+			// This refused the whole configuration at load, before any command ran,
+			// so `base revoke`, the command that removes the grant, could not run
+			// either. The grant is kept, marked, and refused only by what has to
+			// mount it. Any other failure to resolve a source is still a refusal.
+			// WSL-106, issue 37.
+			clean := filepath.Clean(abs)
+			key := strings.ToLower(clean)
+			if runtime.GOOS != "windows" {
+				key = clean
+			}
+			if seenSources[key] {
+				return nil, fmt.Errorf("base.mounts contains source %q more than once", clean)
+			}
+			seenSources[key] = true
+			target, err := normalizeBaseMountTarget(mount.Target)
+			if err != nil {
+				return nil, fmt.Errorf("base.mounts[%d]: %w", i, err)
+			}
+			mode, err := NormalizeBaseMountMode(mount.Mode)
+			if err != nil {
+				return nil, fmt.Errorf("base.mounts[%d]: %w", i, err)
+			}
+			out = append(out, BaseMount{Source: clean, Target: target, Mode: mode, Missing: true})
+			continue
+		}
 		if err != nil {
 			return nil, fmt.Errorf("base.mounts[%d].source %s is not accessible: %w", i, abs, err)
 		}
@@ -740,6 +772,38 @@ func (c Config) ResolvedBaseMounts() ([]BaseMount, error) {
 		out = append(out, BaseMount{Source: filepath.Clean(resolved), Target: target, Mode: mode})
 	}
 	return out, nil
+}
+
+// ErrGrantSourceGone is what an operation that has to mount every grant is
+// refused with while one grant's source no longer exists.
+var ErrGrantSourceGone = errors.New("a grant's Windows directory no longer exists")
+
+// GoneGrantsError refuses an operation that mounts every grant while any of them
+// has lost its source, naming the revoke for each. Nil when none has. WSL-106.
+//
+// ⭐ IT NAMES THE COMMAND, because the reader is usually an agent and the one
+// thing that clears this is a revoke it can run as written.
+func GoneGrantsError(mounts []BaseMount) error {
+	var lines []string
+	for _, m := range mounts {
+		if m.Missing {
+			lines = append(lines, fmt.Sprintf("%s from %s, which no longer exists. Run: %s",
+				m.Target, m.Source, ToolCommand("base revoke --target "+m.Target)))
+		}
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w, so it cannot be mounted: %s", ErrGrantSourceGone, strings.Join(lines, "; "))
+}
+
+// ToolCommand is a command line for this tool under the instance this process
+// selected, so a command a message hands to a reader runs against the same base.
+func ToolCommand(args string) string {
+	if SelectedInstance.Name != "" && SelectedInstance.Name != DefaultInstance {
+		return "wsl-toolkit --instance " + SelectedInstance.Name + " " + args
+	}
+	return "wsl-toolkit " + args
 }
 
 // Validate refuses an image entry that could not be pulled or named.
@@ -903,6 +967,11 @@ func (c Config) Fingerprint() string {
 	if err != nil {
 		return "unfingerprintable"
 	}
+	// ⚠ Missing is what the disk says today, not what the configuration says, so
+	// a grant whose directory went away does not change the fingerprint.
+	for i := range resolved {
+		resolved[i].Missing = false
+	}
 	base.Mounts = resolved
 	payload := struct {
 		Base   BaseConfig `json:"base"`
@@ -1037,6 +1106,11 @@ func (c Config) Write() error {
 	// A relative source was relative to the file this configuration came from.
 	// The state file is elsewhere, so store the resolved path and preserve what
 	// the configuration means rather than only how it was spelled.
+	// ⚠ Missing is the disk's answer today and not part of the grant, so it is
+	// not stored.
+	for i := range resolved {
+		resolved[i].Missing = false
+	}
 	c.Base.Mounts = resolved
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {

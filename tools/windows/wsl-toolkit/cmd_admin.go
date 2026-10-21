@@ -389,7 +389,7 @@ func cmdConfig(args []string) (int, error) {
 		return exitCannot, err
 	}
 	for _, mount := range mounts {
-		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
+		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s%s\n", mount.Mode, mount.Target, mount.Source, goneMark(mount))
 	}
 	for _, adapter := range cfg.Base.Adapters {
 		if adapter.InstallerSHA256 != "" {

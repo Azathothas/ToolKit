@@ -3006,3 +3006,66 @@ breakaway: the launch says so in `launch.log`, and the suite asserts only that.
 A real Windows Terminal window: the suite closes a pseudo-console built the way
 Windows Terminal builds one. An elevated instance probed from a normal shell,
 which the door sweep suspected answers `unknown` and which `doctor` now reports.
+
+## TOOL-28. A carriage return inside a line passes the control-bytes rule
+
+**Source** found on 2026-10-21 while reading the muse adapter's probe for
+[issue 37](https://github.com/Azathothas/ToolKit/issues/37). Filed and fixed in
+the session ruling 30 authorised.
+**Category** tooling, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`tools/windows/wsl-toolkit/adapters/muse/probe.sh` line 58 reads `tr -d ''` on
+screen and in a diff. Between the quotes is a literal carriage return, so the
+line does what it means and no reader can see what that is. Its generated copy
+under `internal/toolkit/adapters/` carries the same byte, and the gate is green.
+
+## Premise
+
+⭐ **Measured on 2026-10-21**: `git ls-files -z | xargs -0 grep -lP
+'\r(?!\n)'` names exactly those two files, and `od -c` shows `'` `\r` `'` at
+that line. Read: `ControlBytes` in
+[`../tools/check/internal/checks/bytes.go`](../tools/check/internal/checks/bytes.go)
+skips every `\r`, because a CRLF file is legitimate here, so it cannot tell a
+line ending from a carriage return in the middle of a line.
+
+## Approach
+
+`ControlBytes` refuses a carriage return that no line feed follows, and the
+probe writes `'\r'`, which `tr` reads as the same byte. The three agent probes
+also write `\n` in place of a line break inside a `printf` quote.
+
+## Consumers
+
+None: the probe's behaviour does not change, and the rule is internal.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh control-bytes
+```
+
+Exit 0 after the fix, and exit 1 naming the probe's line with the byte put back.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T03:26:51Z.** `ControlBytes` refuses a carriage return that no
+line feed follows, at the line it is on. The muse probe writes `'\r'`, and the three
+agent probes write `\n` where a `printf` quote held a line break.
+
+```text
+sh scripts/common/check.sh control-bytes      exit 0
+  ok     control-bytes
+the byte put back into adapters/muse/probe.sh:
+sh scripts/common/check.sh control-bytes      exit 1
+  FAIL   tools/windows/wsl-toolkit/adapters/muse/probe.sh:94: a carriage return inside a line at offset 4073, which a reader cannot see; write it as an escape
+```
+
+1 mutation row, red. ⚠ **`gofmt` from Go 1.27 rewrote two single quotes in a doc
+comment into a typographic quote**, so the case's comment says what the byte did in
+words instead.

@@ -6,26 +6,21 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ## State
 
 ```text
-session started 2026-10-08T13:15:39Z, on the operator's request for cc_profile
-baseline        8a7e03e, gate 24 of 24
-head            this commit; TOOL-27 closed, cc_profile installed in ~/bin
-entries         total 142  open 0  blocked 0  done 142
-this session    TOOL-27: cc_profile written, reviewed three ways, fixed, and proved live on this host
+session started 2026-10-21T02:36:37Z, on the operator's request to resolve issues 35 and 37 and pull request 36
+baseline        d52040b, gate 24 of 24
+head            this commit; WSL-105 to WSL-114 and TOOL-28 filed under ruling 30
+entries         total 153  open 7  blocked 0  done 146
+this session    issue 37's five items, issue 35's wslc, four changes that retire a consumer's wrapper, and a release
 ```
 
 ## Active work
 
-⭐ **NOTHING IS OPEN.** Every entry is done, no issue or pull request is open, and
-this host runs `wsl-toolkit-v6.0.0`.
-
-⭐ **`TOOL-27` IS CLOSED.** `scripts/cc_profile/cc_profile.ps1` runs the Claude
-desktop app as isolated profiles, one per account, each with its own app data and
-its own Claude Code folder. A launch has no console and no live parent, and leaves
-the caller's job where the job allows it. So closing or killing the terminal does
-not end the app, and quitting the app does.
-The suite passed 67 of 67 cases with `-Live` on this host and proved 53 of 53
-mutation rows. The installed copy is `%USERPROFILE%\bin\cc_profile.ps1`, with
-`cc_profile.cmd` beside it.
+⭐ **ELEVEN ENTRIES ARE OPEN, all filed under ruling 30 and worked in this
+session.** `WSL-105` to `WSL-109` are issue 37's five items, `WSL-110` is issue
+35, `WSL-111` to `WSL-114` remove what `podssh`'s `scripts/dev-wsl.sh` works
+around, and `TOOL-28` was found reading the muse probe. Pull request 36 is
+Dependabot's bump of the two artifact actions, its two pins re-derived against
+their tags.
 
 ⚠ **One instance on this host is still tied to a terminal**: the operator's
 `avalyn` profile, started from a Windows Terminal tab on 2026-10-10, and not by
@@ -64,6 +59,13 @@ is closed, and the issue gets a comment naming the commits.
 11. ⭐ **Closed:** `TOOL-27`, filed and closed on the operator's instruction of
     2026-10-08, which is ruling 29. `cc_profile` is installed in `~/bin`, which is
     on `PATH`.
+12. **Issue 37:** `WSL-108`, `WSL-106`, `WSL-107`, `WSL-105` and `WSL-109`, in
+    that order, smallest first. Then issue 35, `WSL-110`.
+13. **The wrapper a consumer no longer needs:** `WSL-111`, `WSL-112`, `WSL-113`
+    and `WSL-114`, and `TOOL-28`, found on the way.
+14. **The release:** pull request 36 merged, `wsl-toolkit-v7.0.0` cut under ruling
+    30, this host moved to it by `selfupdate` and driven, and issues 35 and 37
+    closed with comments naming the commits.
 
 ## Rulings in force
 
@@ -232,6 +234,27 @@ is closed, and the issue gets a comment naming the commits.
     outlives the terminal, and ends when it is quit. On 2026-10-10, "it is fine,
     finish it properly" accepted the live suite's windows on their desktop. In
     `TOOL-27`.
+30. ⭐ **2026-10-21: resolve every open issue and pull request, retire the
+    wrappers consumers write, and release.** The operator: "work & resolve the open
+    issues ... see what changes/QOL improvements we can make so the wrapper/helper
+    from projects like [podssh] aren't necessary ... ask & settle open/pending
+    questions and then work unattended ... a new release cut & released, the
+    existing `wsl-toolkit` updated using self update and driven". The operator named
+    `podssh` by the path of its checkout on this machine.
+    ⭐ **So these entries are authored and built in one session**, as ruling 15
+    allowed once. Four forks were answered before any code, each the recommended
+    option:
+    - **binfmt**, `WSL-105`: a watcher on a systemd base, and a registration in
+      every `base ensure`; the count is the base's own handlers.
+    - **disk**, `WSL-109`: a report, and `base reclaim`, because WSL refuses
+      `--set-sparse` while its VM runs and this tool never runs `wsl --shutdown`.
+    - **wslc**, `WSL-110`: the analysis into the tree, and `wslc` as a host engine
+      tried after podman and docker.
+    - **wrappers**, `WSL-111` to `WSL-114`: all four, Git Bash calls, a git-aware
+      copy, a concurrency guard and a cleanup scoped to one project.
+    ⛔ **The version is a MAJOR, and the rule decides it**: `WSL-105` corrects a
+    false pass in `binfmt.ready`, which [`../docs/consumers.md`](../docs/consumers.md)
+    calls a break.
 
 ## Before every push
 

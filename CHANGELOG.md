@@ -19,6 +19,33 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-10-21
+
+### 2026-10-21T03:26:51Z: `shipped cat` takes its name, a gone grant can be revoked, and one adapter no longer stops the rest
+
+**Record:** `WSL-108`, `WSL-106` and `WSL-107` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `TOOL-28` in [`TODO/tooling.md`](TODO/tooling.md), and work order items 12 and 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+
+⭐ **Three of issue 37's five items.** `shipped cat NAME` and `shipped write NAME`
+could never succeed, because the guard every subcommand shares refused the one name
+they need; each now takes it before, between or after its flags. A grant whose
+Windows directory was deleted refused every command as the configuration loaded,
+`base revoke` included; it now loads marked `missing`, `base status` names the
+revoke, and `base revoke` removes it. `base ensure` installs every adapter it is
+given and names each one that failed, and an agent probe says an agent is not
+installed rather than reporting five problems about one that never was.
+
+⛔ **The dead grant's fix had a trap in it.** With the load no longer refusing, a
+registered base whose re-provisioning fails is removed and rebuilt, so `base ensure`
+would have spent the whole base on a directory that went away. The refusal now
+comes first, from the configuration alone.
+
+⚠ **Found on the way and fixed**: the muse probe carried a literal carriage return
+that read as `tr -d` with empty quotes, and the control-bytes rule passed it,
+because every `\r` passed. The rule now refuses one that no line feed follows. The
+adapters README said `pi` and `omp` were never run, which `WSL-88` and `WSL-89` had
+falsified.
+
 ## 2026-10-10
 
 ### 2026-10-10T08:22:19Z: `cc_profile` runs the Claude desktop app as isolated profiles, and a terminal cannot end them

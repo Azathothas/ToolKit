@@ -446,7 +446,9 @@ func parseAdapterProbe(name, out string) AdapterState {
 			st.Facts[key] = value
 		}
 	}
-	if st.Version == "" {
+	// ⚠ AN ADAPTER THAT IS NOT INSTALLED HAS NO VERSION TO NAME, and its probe has
+	// already said what is wrong; a second line saying so is noise. WSL-107.
+	if st.Version == "" && st.Facts["installed"] != "no" {
 		st.Problems = append(st.Problems, "the probe named no version")
 	}
 	st.Healthy = len(st.Problems) == 0
@@ -528,55 +530,80 @@ func (b *Base) applyAdapters(ctx context.Context) error {
 			}
 		}
 	}
-	for _, a := range b.cfg.Base.Adapters {
-		spec, ok := lookupAdapter(a.Name)
-		if !ok {
-			return fmt.Errorf("this executable carries no adapter %q", a.Name)
+	// ⛔ ONE ADAPTER DOES NOT STOP THE OTHERS. This returned at the first install
+	// that failed and at the first read-back that found a problem, so a startup
+	// model missing from pi's catalogue left omp never installed, and the probe then
+	// reported five problems for an omp that was never there. Every adapter is tried
+	// in order, each failure is kept, and the answer names all of them. WSL-107,
+	// issue 37.
+	return applyEach(b.cfg.Base.Adapters, b.log, func(a BaseAdapter) error { return b.applyAdapter(ctx, a) })
+}
+
+// applyEach applies every adapter in order, keeps each failure, and answers one
+// error naming all of them, or nil.
+func applyEach(adapters []BaseAdapter, log func(string), apply func(BaseAdapter) error) error {
+	var failed []error
+	for _, a := range adapters {
+		if err := apply(a); err != nil {
+			log("adapter " + a.Name + ": FAILED, and the adapters after it are still installed: " + err.Error())
+			failed = append(failed, err)
 		}
-		b.log("adapter " + a.Name + ": installing")
-		install, err := adapterScript(a.Name, "install.sh")
-		if err != nil {
-			return err
-		}
-		env, err := adapterInstallEnv(b.cfg, a)
-		if err != nil {
-			return err
-		}
-		if spec.Host != nil {
-			extra, err := spec.Host.prepare(ctx, b)
-			if err != nil {
-				return fmt.Errorf("adapter %s: %w", a.Name, err)
-			}
-			for k, v := range extra {
-				env[k] = v
-			}
-		}
-		out := &prefixWriter{prefix: "", to: b.logWriter()}
-		code, err := b.wsl.Exec(ctx, ExecRequest{
-			Distro: b.cfg.Base.Name, User: "root", Script: install, Env: env,
-			Timeout: 20 * time.Minute, Stdout: out, Stderr: out,
-		})
-		out.Flush()
-		if err != nil || code != 0 {
-			return fmt.Errorf("adapter %s: install exited %d: %w", a.Name, code, err)
-		}
-		if !strings.Contains(out.seen.String(), adapterCompleteLine(a.Name)) {
-			return fmt.Errorf("adapter %s: install exited 0 without reaching its last line", a.Name)
-		}
-		st := b.probeAdapter(ctx, spec)
-		if spec.Host != nil && st.Facts != nil {
-			if err := spec.Host.apply(ctx, b, st.Facts); err != nil {
-				return fmt.Errorf("adapter %s: %w", a.Name, err)
-			}
-			hostProblems, hostNotes := spec.Host.check(ctx, b, st.Facts)
-			st.Problems = append(st.Problems, hostProblems...)
-			st.Notes = append(st.Notes, hostNotes...)
-		}
-		if len(st.Problems) > 0 {
-			return fmt.Errorf("adapter %s is installed, and reading it back found: %s", a.Name, strings.Join(st.Problems, "; "))
-		}
-		b.log("adapter " + a.Name + ": healthy, version " + st.Version)
 	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d adapter(s) did not finish: %w", len(failed), len(adapters), errors.Join(failed...))
+	}
+	return nil
+}
+
+// applyAdapter installs one adapter and reads it back, both halves.
+func (b *Base) applyAdapter(ctx context.Context, a BaseAdapter) error {
+	spec, ok := lookupAdapter(a.Name)
+	if !ok {
+		return fmt.Errorf("this executable carries no adapter %q", a.Name)
+	}
+	b.log("adapter " + a.Name + ": installing")
+	install, err := adapterScript(a.Name, "install.sh")
+	if err != nil {
+		return err
+	}
+	env, err := adapterInstallEnv(b.cfg, a)
+	if err != nil {
+		return err
+	}
+	if spec.Host != nil {
+		extra, err := spec.Host.prepare(ctx, b)
+		if err != nil {
+			return fmt.Errorf("adapter %s: %w", a.Name, err)
+		}
+		for k, v := range extra {
+			env[k] = v
+		}
+	}
+	out := &prefixWriter{prefix: "", to: b.logWriter()}
+	code, err := b.wsl.Exec(ctx, ExecRequest{
+		Distro: b.cfg.Base.Name, User: "root", Script: install, Env: env,
+		Timeout: 20 * time.Minute, Stdout: out, Stderr: out,
+	})
+	out.Flush()
+	if err != nil || code != 0 {
+		return fmt.Errorf("adapter %s: install exited %d: %w", a.Name, code, err)
+	}
+	if !strings.Contains(out.seen.String(), adapterCompleteLine(a.Name)) {
+		return fmt.Errorf("adapter %s: install exited 0 without reaching its last line", a.Name)
+	}
+	st := b.probeAdapter(ctx, spec)
+	if spec.Host != nil && st.Facts != nil {
+		if err := spec.Host.apply(ctx, b, st.Facts); err != nil {
+			return fmt.Errorf("adapter %s: %w", a.Name, err)
+		}
+		hostProblems, hostNotes := spec.Host.check(ctx, b, st.Facts)
+		st.Problems = append(st.Problems, hostProblems...)
+		st.Notes = append(st.Notes, hostNotes...)
+	}
+	if len(st.Problems) > 0 {
+		return fmt.Errorf("adapter %s is installed, and reading it back found: %s", a.Name, strings.Join(st.Problems, "; "))
+	}
+	b.log("adapter " + a.Name + ": healthy, version " + st.Version)
 	return nil
 }
 

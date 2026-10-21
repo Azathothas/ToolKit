@@ -22,6 +22,42 @@ as_account() {
     SHELL=/bin/bash LANG=C.UTF-8 PATH=/usr/local/sbin:/usr/local/bin:/usr/bin:/bin "$@"
 }
 
+# ⭐ WHAT THIS ADAPTER LEAVES IN THE BASE, in bytes on disk. `base status` asks it of
+# an adapter the configuration no longer names, which keeps its files until `base
+# recreate`. POSIX `du -sk`, so it answers on any userland. WSL-109.
+footprint() {
+  total=0
+  for p in "$@"; do
+    [ -n "$p" ] || continue
+    [ -e "$p" ] || [ -L "$p" ] || continue
+    k=$(du -sk "$p" 2>/dev/null | cut -f1)
+    total=$((total + ${k:-0} * 1024))
+  done
+  printf '%s' "$total"
+}
+
+# ⛔ ASKED FIRST: IS MUSE IN THIS BASE AT ALL. Without it, a Muse that never
+# installed, because an adapter before it stopped `base ensure`, read as
+# "installed and a login shell cannot find it". WSL-107, issue 37.
+if [ -e "$WRAPPER" ] || [ -e "$LAUNCHER" ]; then installed=yes; else installed=no; fi
+printf 'installed %s\n' "$installed"
+if [ "${TK_PROBE_FOOTPRINT:-}" = 1 ]; then
+  # ⚠ Meta's launcher may be a link into the versions it keeps, so the directory it
+  # resolves into is counted when that is under the account's own share.
+  versions=''
+  if real=$(readlink -f "$LAUNCHER" 2>/dev/null); then
+    case $real in
+      "$TK_HOME"/.local/share/*) versions=$(dirname "$real") ;;
+    esac
+  fi
+  printf 'footprint %s\n' "$(footprint "$WRAPPER" "$LAUNCHER" "$versions" "$TK_HOME/.config/muse" /var/lib/wsl-toolkit/muse)"
+  exit 0
+fi
+if [ "$installed" = no ]; then
+  problem "Muse is not installed in this base. Run: base ensure"
+  exit 0
+fi
+
 if [ -x "$LAUNCHER" ]; then
   printf 'launcher %s\n' "$LAUNCHER"
   # ⚠ MUSE_NO_AUTO_UPDATE, so reading the version downloads nothing.
@@ -55,18 +91,15 @@ printf 'resolves %s\n' "${resolved:-nothing}"
 #
 # ⚠ Finding 49's shape, a second time: a guard proved on a curated PATH is a guard
 # proved on a path nobody uses.
-pane_path=$(runuser -l "$TK_USER" -c "command -v muse" 2>/dev/null | tr -d '' | head -1)
+pane_path=$(runuser -l "$TK_USER" -c "command -v muse" 2>/dev/null | tr -d '\r' | head -1)
 if [ -z "$pane_path" ]; then
   problem "Muse is installed and a login shell cannot find it, so herdr cannot start it in a pane. Run: base ensure"
 else
-  printf 'on_login_path %s
-' "$pane_path"
+  printf 'on_login_path %s\n' "$pane_path"
   if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's muse adapter"; then
-    printf 'wrapper_on_login_path yes
-'
+    printf 'wrapper_on_login_path yes\n'
   else
-    printf 'wrapper_on_login_path no
-'
+    printf 'wrapper_on_login_path no\n'
     problem "a login shell resolves muse to $pane_path, which is not this tool's wrapper, so the configured model and reasoning effort reach no session started from a pane. The account's own prefix is ahead of /usr/local/bin, which bootstrap.sh puts there"
   fi
 fi

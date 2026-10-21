@@ -59,7 +59,18 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 		dir = fs.String("dir", "", "where the file is put. Default: the working directory")
 		force = fs.Bool("force", false, "replace a file already there whose content differs")
 	}
-	if err := parseArgs(fs, rest); err != nil {
+	// ⛔ cat AND write TAKE ONE NAME, AND parseArgs REFUSES EVERY NAME. Both went
+	// through it, so neither could ever succeed: the guard every subcommand shares
+	// refused the one argument these two need, in a published release. WSL-108.
+	name := ""
+	var err error
+	switch sub {
+	case "cat", "write":
+		name, err = parseOneName(fs, rest)
+	default:
+		err = parseArgs(fs, rest)
+	}
+	if err != nil {
 		return exitCannot, err
 	}
 	files, err := toolkit.ShippedFiles()
@@ -80,10 +91,10 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 		return exitOK, nil
 
 	case "cat":
-		if len(fs.Args()) != 1 {
+		if name == "" {
 			return exitCannot, errors.New("shipped cat takes one name: shipped cat bootstrap.sh")
 		}
-		body, err := toolkit.ShippedBody(fs.Args()[0])
+		body, err := toolkit.ShippedBody(name)
 		if err != nil {
 			return exitCannot, err
 		}
@@ -92,7 +103,7 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 		return exitOK, err
 
 	case "write":
-		if len(fs.Args()) != 1 {
+		if name == "" {
 			return exitCannot, errors.New("shipped write takes one name: shipped write bootstrap.sh --dir .")
 		}
 		target := ""
@@ -105,7 +116,7 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 				return exitCannot, err
 			}
 		}
-		dest, wrote, err := toolkit.WriteShipped(fs.Args()[0], target, force != nil && *force)
+		dest, wrote, err := toolkit.WriteShipped(name, target, force != nil && *force)
 		if err != nil {
 			return exitCannot, err
 		}
