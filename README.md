@@ -80,6 +80,7 @@ not this one**, before using it.
 | [`docs/public/README.md`](docs/public/README.md) | what changes because this repository is public |
 | [`docs/reference-sweeps/findings.md`](docs/reference-sweeps/findings.md) | what external repositories were read, and what was true in them |
 | [`docs/reference-sweeps/usable.md`](docs/reference-sweeps/usable.md) | which of those findings this repository can use |
+| [`docs/reference-sweeps/wslc.md`](docs/reference-sweeps/wslc.md) | WSL's own container tool beside `wsl-toolkit`, and the one mechanism adopted from it |
 | [`docs/HISTORY/README.md`](docs/HISTORY/README.md) | superseded wording and the story of fixes that have shipped. Nothing there is read to do work. |
 
 ---

@@ -11,12 +11,15 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|remove|shell|exec|agent|herdr|bootstrap|grant|revoke|attach|presets>
+const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove|shell|exec|agent|herdr|bootstrap|grant|revoke|attach|presets>
 
   status     is it registered, and can it actually run a container
   doors      attack its doors from the inside and report what got through
   ensure     bring it to a usable state, doing the least that achieves it
   recreate   remove it and build it again from nothing
+  reclaim    give back to this machine the space its guest freed: make its disk
+             sparse, then trim. WSL holds the disk while its VM runs, and the
+             answer then names the one step that frees it
   remove     unregister it and delete its disk
   shell      attach an interactive shell to it, as the unprivileged account
   exec       run a non-interactive POSIX script in it, as that account
@@ -161,6 +164,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		}
 		return verdictFor(st), renderBase(st, flags.asJSON, true)
 
+	case "reclaim":
+		return cmdBaseReclaim(ctx, base, flags.asJSON)
+
 	case "remove":
 		// ⛔ A DESTRUCTIVE ACTION ASKS, AND REFUSES WHEN NOBODY CAN ANSWER. The
 		// rule `distro remove` holds too: a non-interactive session passes the
@@ -288,7 +294,7 @@ type baseFlags struct {
 
 // baseSubcommands are the subcommands that parse the shared set, in the order a
 // refusal names them.
-var baseSubcommands = []string{"status", "ensure", "recreate", "remove", "shell", "attach"}
+var baseSubcommands = []string{"status", "ensure", "recreate", "reclaim", "remove", "shell", "attach"}
 
 // baseFlagsRead names the flags each of those subcommands reads. `base ensure
 // --probe` stays accepted: ensure verifies the base by running a container
@@ -297,6 +303,7 @@ var baseFlagsRead = map[string][]string{
 	"status":   {"json", "probe", "via-helper"},
 	"ensure":   {"json", "probe", "repair", "via-helper", "preset", "save"},
 	"recreate": {"json", "probe", "repair", "via-helper", "preset", "save"},
+	"reclaim":  {"json"},
 	"remove":   {"yes", "via-helper"},
 	"shell":    {"root", "here", "via-helper"},
 	"attach":   {"json"},
@@ -383,6 +390,12 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	fmt.Fprintf(out, "  running     %v\n", st.Running)
 	if st.DiskKnown {
 		fmt.Fprintf(out, "  disk        %s  %s\n", toolkit.HumanBytes(st.DiskBytes), st.DiskPath)
+		// ⭐ THE SPACE IT TAKES BESIDE ITS LENGTH, because only a sparse disk gives
+		// back what its guest frees. WSL-109.
+		if st.DiskSparse != "" {
+			fmt.Fprintf(out, "  disk space  takes %s, sparse %s, .wslconfig sparseVhd %s\n",
+				toolkit.HumanBytes(st.DiskAllocated), st.DiskSparse, st.WslConfigSparseVhd)
+		}
 	} else {
 		fmt.Fprintf(out, "  disk        not measured  %s\n", st.DiskPath)
 	}
@@ -410,7 +423,18 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		fmt.Fprintf(out, "  cgroup      not measured by this guest\n")
 	}
 	if bf := st.Binfmt; bf != nil {
-		fmt.Fprintf(out, "  binfmt      %d QEMU handler(s), ready: %v\n", bf.Handlers, bf.Ready)
+		// ⭐ THE BASE'S OWN SET IS THE VERDICT, and the kernel's total is beside it,
+		// because the total is every distribution's. WSL-105.
+		switch {
+		case bf.Recorded && len(bf.Missing) == 0:
+			fmt.Fprintf(out, "  binfmt      %d of this base's %d QEMU handler(s) held, %d in the kernel, ready: %v, watcher: %s\n",
+				bf.Own, bf.Own, bf.Handlers, bf.Ready, valueOrNone(bf.Watch))
+		case bf.Recorded:
+			fmt.Fprintf(out, "  binfmt      %d of this base's %d QEMU handler(s) held, %d in the kernel, ready: %v, gone: %s, watcher: %s\n",
+				bf.Own-len(bf.Missing), bf.Own, bf.Handlers, bf.Ready, strings.Join(bf.Missing, " "), valueOrNone(bf.Watch))
+		default:
+			fmt.Fprintf(out, "  binfmt      %d QEMU handler(s) in the kernel, ready: %v, this base's own set not recorded yet\n", bf.Handlers, bf.Ready)
+		}
 	} else if probed {
 		fmt.Fprintf(out, "  binfmt      not measured by this guest\n")
 	}
@@ -535,3 +559,53 @@ func automountRow(access toolkit.BaseAccessState) string {
 }
 
 func isInteractive() bool { return isConsole(os.Stdin) }
+
+// valueOrNone is a row's value, or none where the guest named nothing.
+func valueOrNone(s string) string {
+	if strings.TrimSpace(s) == "" {
+		return "none"
+	}
+	return s
+}
+
+// cmdBaseReclaim gives the space the base's guest freed back to this machine.
+//
+// ⛔ IT NEVER RUNS `wsl --shutdown`. WSL makes a disk sparse only while its VM is
+// stopped, and stopping it stops every distribution on the machine, somebody
+// else's included. So where WSL holds the disk the answer is exit 1 with that
+// step named, and the step stays the operator's. WSL-109.
+func cmdBaseReclaim(ctx context.Context, base *toolkit.Base, asJSON bool) (int, error) {
+	res, err := base.Reclaim(ctx)
+	code := exitOK
+	switch {
+	case errors.Is(err, toolkit.ErrDiskHeld):
+		code = exitFailed
+	case err != nil:
+		code = exitCannot
+	}
+	if asJSON {
+		if res.Schema != "" && (err == nil || code == exitFailed) {
+			if werr := writeJSON(res); werr != nil {
+				return exitCannot, werr
+			}
+		}
+		return code, err
+	}
+	if res.Disk != "" {
+		logf("  disk        %s", res.Disk)
+	}
+	if res.AllocatedBefore > 0 || res.SparseBefore {
+		logf("  before      sparse %v, takes %s", res.SparseBefore, toolkit.HumanBytes(res.AllocatedBefore))
+	}
+	if res.Refused != "" {
+		logf("  ⛔ %s", res.Refused)
+	}
+	if err == nil {
+		trimmed := "fstrim reported no figure"
+		if res.TrimmedKnown {
+			trimmed = "fstrim discarded " + toolkit.HumanBytes(res.Trimmed)
+		}
+		logf("  after       sparse %v, takes %s; %s", res.SparseAfter, toolkit.HumanBytes(res.AllocatedAfter), trimmed)
+	}
+	return code, err
+}

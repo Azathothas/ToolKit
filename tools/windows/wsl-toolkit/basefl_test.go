@@ -98,6 +98,7 @@ func TestEverySharedSetPublishesAndAcceptsOnlyWhatEachSubcommandReads(t *testing
 		"base status":     {"json", "probe", "via-helper"},
 		"base ensure":     {"json", "preset", "probe", "repair", "save", "via-helper"},
 		"base recreate":   {"json", "preset", "probe", "repair", "save", "via-helper"},
+		"base reclaim":    {"json"},
 		"base remove":     {"via-helper", "yes"},
 		"base shell":      {"here", "root", "via-helper"},
 		"base attach":     {"json"},

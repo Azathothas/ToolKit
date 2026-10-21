@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 153  open 7  blocked 0  done 146
+total 153  open 4  blocked 0  done 149
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 1 | 0 | 73 | 74 |
-| P2 | 6 | 0 | 62 | 68 |
+| P1 | 0 | 0 | 74 | 74 |
+| P2 | 4 | 0 | 64 | 68 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **7** | **0** | **146** | **153** |
+| **all** | **4** | **0** | **149** | **153** |
 
 ---
 
@@ -153,12 +153,12 @@ total 153  open 7  blocked 0  done 146
 | WSL-102 | P0 | S | done | `gc --via-helper --job ID` plans and applies a cleanup of every job | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-103 | P1 | S | done | Under an instance, `helper serve --detach` never answers, and a detached run would not either | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-104 | P2 | S | done | `--help` and the manual name flags a subcommand refuses, and `helper` and `config` still ignore flags | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-105 | P1 | M | open | Another distribution empties the QEMU handler table, and only a job gets its handler back | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-105 | P1 | M | done | Another distribution empties the QEMU handler table, and only a job gets its handler back | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-106 | P1 | S | done | A grant whose Windows directory is gone refuses every command, `base revoke` included | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-107 | P2 | S | done | `base ensure` stops at the first adapter whose read-back finds a problem, and a probe calls an adapter installed that never was | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-108 | P1 | S | done | `shipped cat NAME` and `shipped write NAME` can never succeed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-109 | P2 | M | open | The space a base frees comes back only with `base recreate` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-110 | P2 | M | open | WSL's own container tool is on this host, and this tool does not know it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-109 | P2 | M | done | The space a base frees comes back only with `base recreate` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-110 | P2 | M | done | WSL's own container tool is on this host, and this tool does not know it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-111 | P2 | S | open | A Git Bash caller bridges every call through PowerShell | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-112 | P2 | S | open | A workspace copy takes what git ignores, so each project keeps its own exclude list | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-113 | P2 | S | open | Nothing stops two jobs of one project from running at once | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

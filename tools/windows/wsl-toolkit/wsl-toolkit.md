@@ -698,9 +698,16 @@ guide for the same durable session, including how it is reached from Windows.
 wsl-toolkit run --image alpine --platform linux/arm64 -c 'uname -m'
 ```
 
-Architecture shorthand such as `arm64` is accepted. The base registers QEMU
-binfmt handlers for a foreign architecture, and restores a handler that WSL
-discarded when its VM stopped.
+Architecture shorthand such as `arm64` is accepted. Every `base ensure` registers
+the base's QEMU binfmt handlers and records which ones are its own: the emulators
+the pinned image carries that the kernel then holds. A job registers its own
+platform's handler again when it is gone.
+
+⛔ **The handler table is every distribution's, and another distribution can empty
+it while this base runs.** The Podman machine does as it stops. ⭐ On a base with
+systemd, `wsl-toolkit-binfmt.service` registers the base's handlers again within 30
+seconds. `base status --probe` reads the base's own set: `ready` is false while any
+of it is gone, and the kernel's total stands beside it. `WSL-105`
 
 ⛔ **Every job names a platform, including one that asked for nothing.** With no
 `--platform`, podman runs whatever variant of the image its local store holds.
@@ -837,7 +844,7 @@ wsl-toolkit distro remove --name build-box --yes
 
 - Every name starts with `eph-`, and every `--name` adds the prefix when it is
   left off. A name in the wrong case is refused rather than lowered.
-- `distro new --image` needs a host engine, podman or docker, and pulls for this
+- `distro new --image` needs a host engine, podman, docker or `wslc`, and pulls for this
   host's platform. The import is refused before it starts when the volume lacks
   256 MiB beyond twice the archive. `--probe-timeout` bounds the questions the
   tool asks the new distribution for itself: the smoke probe, whether PID 1 is
@@ -1033,6 +1040,34 @@ the boot line is a bare path with no shell in it.
 | the doors that stay open | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net` |
 | ⛔ the unmount taken out of the boot script by hand | `base doors` exit 1 naming the claim, and `base status --probe` exit 1, `usable false`, naming the setting |
 
+## The space a base gives back
+
+```powershell
+wsl-toolkit base status      # the disk, the space it takes, and whether it is sparse
+wsl-toolkit base reclaim     # make it sparse, then trim what the guest freed
+```
+
+⛔ **A disk that is not sparse only grows.** A build deleted in the base keeps its
+space in `ext4.vhdx` on this machine, and a trim inside the guest changes nothing.
+A sparse disk gives the space back when the guest trims it. `WSL-109`
+
+⚠ **WSL makes a disk sparse only while its VM is stopped**, and the VM runs while
+any distribution runs. So on a busy machine `base reclaim` changes nothing, exits 1,
+and names `wsl --shutdown` as the operator's step. That command stops every
+distribution on the machine, the Podman machine too, and this tool never runs it.
+Once the disk is sparse, `base reclaim` trims in the running base and reports the
+space before and after.
+
+⭐ **`sparseVhd=true` under `[experimental]` in `%USERPROFILE%\.wslconfig` makes WSL
+create each new disk sparse**, from the next start of its VM. `base status` reports
+what the file sets.
+
+`base status --probe` also names each adapter the configuration no longer names
+that left files in the base, with their size. `base recreate` removes them, with
+everything else made in the base.
+
+---
+
 ## The safety model
 
 Removal is constrained, and every destructive path goes through the same gate.
@@ -1103,7 +1138,8 @@ security boundary**, and no page here says otherwise.
 | no BSD container endpoint | open | a long-running podman service panics the FreeBSD guest kernel. [`../../../TODO/bsd.md`](../../../TODO/bsd.md) tracks it |
 | `--oci-env` carries `ENV` and `WORKDIR` only | decision | `USER` and `ENTRYPOINT` are not carried: WSL fixes the login account per call, and a login shell has no entrypoint |
 | a throwaway distribution's command gets no stdin | decision | its stdin is `/dev/null`, because a pipe that carries the script cannot also carry input. `distro enter` is interactive |
-| there is no port forwarding | decision | forwarding a port on Windows needs an elevated session and leaves a rule behind. `hostaddress` answers the question it was wanted for |
+| there is no port forwarding | decision | a job's container publishes no port, and a service in the base is reached at the address `hostaddress` answers. ⚠ It is a choice and not a limit of Windows: `wslc` publishes a port with no elevation, through a process of its own that keeps running while the port answers. `WSL-110` |
+| a disk becomes sparse only while WSL's VM is stopped | host | `base reclaim` names `wsl --shutdown` as the operator's step and never runs it, because it stops every distribution on the machine. `WSL-109` |
 | an agent behind a launcher may be invisible to herdr | host | herdr reads a pane's foreground process, and `base agent` and a `NAME.exe` launcher are wrappers. herdr's own remedy is `HERDR_AGENT=<agent>` set on the wrapper command **on the herdr side**. This is herdr's documentation, not a measurement here |
 | a base carrying both pi and omp can be configured so herdr refuses one | decision | the omp adapter refuses first, naming both paths and the variable |
 | a detached owner inside a job object that forbids a breakaway | host | the owner ends when that object closes. The answer warns, and a base session does not depend on it |
@@ -1116,7 +1152,7 @@ security boundary**, and no page here says otherwise.
 | thing | needed for |
 | --- | --- |
 | Windows 10 2004+ or Windows 11, with WSL2 | everything |
-| a container engine on the host | `base ensure`, once, to export the base rootfs, and `distro new --image` |
+| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, so a machine with podman or docker keeps it. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110` |
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 

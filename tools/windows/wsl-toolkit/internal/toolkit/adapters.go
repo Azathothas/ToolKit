@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -621,6 +622,74 @@ func (b *Base) probeAdapter(ctx context.Context, spec adapterSpec) AdapterState 
 		return AdapterState{Name: spec.Name, Problems: []string{fmt.Sprintf("the probe exited %d: %s", code, firstLine(errOut))}}
 	}
 	return parseAdapterProbe(spec.Name, out)
+}
+
+// AdapterLeftover is an adapter the configuration no longer names whose files
+// are still in the base, and the bytes they take there.
+type AdapterLeftover struct {
+	Name  string `json:"name"`
+	Bytes int64  `json:"bytes"`
+}
+
+// adapterLeftovers asks each adapter the configuration does not name what it
+// left in the base. WSL-109.
+//
+// ⚠ THE GUEST HALF STAYS BY DESIGN, and that is why this exists: removing an
+// adapter from a configuration takes this machine's half away and leaves what it
+// installed, about 450 MB for three agents on the operator's base, until `base
+// recreate`. A probe run with TK_PROBE_FOOTPRINT=1 answers two facts and stops.
+func (b *Base) adapterLeftovers(ctx context.Context) []AdapterLeftover {
+	named := map[string]bool{}
+	for _, a := range b.cfg.Base.Adapters {
+		named[a.Name] = true
+	}
+	var out []AdapterLeftover
+	for _, spec := range adapterSpecs {
+		if named[spec.Name] {
+			continue
+		}
+		probe, err := adapterScript(spec.Name, "probe.sh")
+		if err != nil {
+			continue
+		}
+		answer, _, code, err := b.captureAs(ctx, "root", probe, map[string]string{
+			"TK_USER": b.cfg.Base.User, "TK_DISTRO": b.cfg.Base.Name, "TK_PROBE_FOOTPRINT": "1",
+		}, 2*time.Minute)
+		if err != nil || code != 0 {
+			continue
+		}
+		if l, ok := parseLeftover(spec.Name, answer); ok {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// parseLeftover reads a footprint probe's two facts. An adapter that is not
+// installed and takes nothing is no leftover.
+func parseLeftover(name, answer string) (AdapterLeftover, bool) {
+	st := parseAdapterProbe(name, answer)
+	bytes, err := strconv.ParseInt(st.Facts["footprint"], 10, 64)
+	if err != nil {
+		return AdapterLeftover{}, false
+	}
+	if st.Facts["installed"] != "yes" && bytes == 0 {
+		return AdapterLeftover{}, false
+	}
+	return AdapterLeftover{Name: name, Bytes: bytes}, true
+}
+
+// leftoverRemediation is what a leftover adapter earns: the space, and the one
+// command that removes it, with what that command costs.
+func leftoverRemediation(l AdapterLeftover) Remediation {
+	return Remediation{
+		ID:   "adapter-leftover",
+		What: fmt.Sprintf("the %s adapter is not configured, and its files take %s in the base", l.Name, HumanBytes(l.Bytes)),
+		Costs: "the space stays until the base is rebuilt. base recreate removes the base and everything made in it, " +
+			"and builds it again from the configuration",
+		Command:    ToolCommand("base recreate"),
+		Repairable: true,
+	}
 }
 
 // probeAdapters reads back every adapter the configuration names, both halves.

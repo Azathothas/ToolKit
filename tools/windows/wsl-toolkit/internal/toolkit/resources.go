@@ -136,6 +136,39 @@ func ReadHostEngineHolding(ctx context.Context) *HostEngineHolding {
 		}
 		return out, nil
 	}
+	count := func(out string) *int {
+		n := 0
+		for _, line := range strings.Split(out, "\n") {
+			if strings.TrimSpace(line) != "" {
+				n++
+			}
+		}
+		return &n
+	}
+	// ⚠ wslc HAS NO `system df` AND TAKES NO TEMPLATE. It answers its lists as
+	// one JSON object per line, so the same three questions are asked in its own
+	// spelling, and the commands it prints are its own. WSL-110.
+	if e.Name == "wslc" {
+		out, err := ask("image", "list", "--format", "json")
+		if err != nil {
+			h.Error = err.Error()
+			return h
+		}
+		h.Summary = append(h.Summary, fmt.Sprintf("images  %d", *count(out)))
+		if out, err := ask("image", "list", "--filter", "dangling=true", "--format", "json"); err == nil {
+			h.Dangling = count(out)
+		}
+		if out, err := ask("volume", "list", "--filter", "dangling=true", "--format", "json"); err == nil {
+			h.UnusedVolumes = count(out)
+		}
+		h.Commands = []string{
+			"wslc image list",
+			"wslc image prune --force",
+			"wslc container prune --force",
+			"wslc volume prune --force",
+		}
+		return h
+	}
 	out, err := ask("system", "df", "--format", "{{.Type}}\t{{.Total}}\t{{.Active}}\t{{.Size}}\t{{.Reclaimable}}")
 	if err != nil {
 		h.Error = err.Error()
@@ -145,15 +178,6 @@ func ReadHostEngineHolding(ctx context.Context) *HostEngineHolding {
 		if fields := strings.Split(strings.TrimSpace(line), "\t"); len(fields) == 5 {
 			h.Summary = append(h.Summary, strings.Join(fields, "  "))
 		}
-	}
-	count := func(out string) *int {
-		n := 0
-		for _, line := range strings.Split(out, "\n") {
-			if strings.TrimSpace(line) != "" {
-				n++
-			}
-		}
-		return &n
 	}
 	if out, err := ask("images", "--filter", "dangling=true", "--format", "{{.ID}}"); err == nil {
 		h.Dangling = count(out)

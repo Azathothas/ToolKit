@@ -380,6 +380,24 @@ for handler in /proc/sys/fs/binfmt_misc/qemu-*; do
   binfmt_handlers=$((binfmt_handlers + 1))
 done
 printf 'binfmt-handlers %s\n' "$binfmt_handlers"
+# ⛔ THE COUNT ABOVE IS EVERY DISTRIBUTION'S, so readiness is read from the base's
+# OWN set, which `base ensure` records: 31 handlers right after a build was mostly
+# the Podman machine's, and 0 a second after it stopped. WSL-105.
+if [ -r /var/lib/wsl-toolkit/binfmt-handlers ]; then
+  binfmt_own=0
+  binfmt_missing=''
+  while IFS= read -r name; do
+    case $name in '' | image\ *) continue ;; esac
+    binfmt_own=$((binfmt_own + 1))
+    [ -e "/proc/sys/fs/binfmt_misc/$name" ] || binfmt_missing="$binfmt_missing $name"
+  done < /var/lib/wsl-toolkit/binfmt-handlers
+  printf 'binfmt-own %s\n' "$binfmt_own"
+  printf 'binfmt-missing%s\n' "$binfmt_missing"
+else
+  printf 'binfmt-own unrecorded\n'
+fi
+binfmt_watch=$(systemctl is-active wsl-toolkit-binfmt.service 2>/dev/null) || :
+printf 'binfmt-watch %s\n' "${binfmt_watch:-none}"
 
 # ⭐ THE ENFORCEMENT CLAIM IS THE ONE A CALLER ACTS ON, so it is measured inside
 # a container and not derived from the rows above. A separate run from the

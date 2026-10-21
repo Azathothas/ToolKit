@@ -49,6 +49,9 @@ var repairScript []byte
 //go:embed grants.sh
 var grantsScript []byte
 
+//go:embed binfmt.sh
+var binfmtScript []byte
+
 // BaseSpaceFloor is what the volume must have free before an import starts.
 //
 // ⚠ Far above a throwaway distribution's 256 MiB floor, because this
@@ -61,18 +64,29 @@ const BinfmtImage = "docker.io/tonistiigi/binfmt:qemu-v10.2.3-68"
 
 // BaseState is what `base status` answers.
 type BaseState struct {
-	Name       string    `json:"name"`
-	Image      string    `json:"image"`
-	BuiltFrom  string    `json:"built_from,omitempty"`
-	User       string    `json:"user"`
-	Registered bool      `json:"registered"`
-	Running    bool      `json:"running"`
-	Healthy    bool      `json:"healthy"`
-	Engine     string    `json:"engine,omitempty"`
-	DiskPath   string    `json:"disk_path,omitempty"`
-	DiskBytes  int64     `json:"disk_bytes,omitempty"`
-	DiskKnown  bool      `json:"disk_known"`
-	Created    time.Time `json:"created,omitempty"`
+	Name       string `json:"name"`
+	Image      string `json:"image"`
+	BuiltFrom  string `json:"built_from,omitempty"`
+	User       string `json:"user"`
+	Registered bool   `json:"registered"`
+	Running    bool   `json:"running"`
+	Healthy    bool   `json:"healthy"`
+	Engine     string `json:"engine,omitempty"`
+	DiskPath   string `json:"disk_path,omitempty"`
+	DiskBytes  int64  `json:"disk_bytes,omitempty"`
+	DiskKnown  bool   `json:"disk_known"`
+	// DiskSparse is yes or no where the disk could be read, and DiskAllocated the
+	// bytes it takes on its volume. ⚠ A disk that is not sparse keeps every byte
+	// its guest ever wrote, whatever the guest frees. WSL-109.
+	DiskSparse    string `json:"disk_sparse,omitempty"`
+	DiskAllocated int64  `json:"disk_allocated_bytes,omitempty"`
+	// WslConfigSparseVhd is what .wslconfig sets for sparseVhd: true, false,
+	// unset or unreadable.
+	WslConfigSparseVhd string `json:"wslconfig_sparse_vhd,omitempty"`
+	// Leftovers are the adapters the configuration no longer names that left
+	// files in the base, read under --probe. `base recreate` removes them.
+	Leftovers []AdapterLeftover `json:"leftovers,omitempty"`
+	Created   time.Time         `json:"created,omitempty"`
 	// Identity is what the GUEST says it is, read under --probe. ⛔ It is the
 	// authority: `built_from` above comes from a file on this machine that an
 	// editor can reach, and this comes from inside the distribution. WSL-42.
@@ -239,6 +253,9 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 	st.DiskPath = filepath.Join(b.Dir(), "ext4.vhdx")
 	if size, ok := FileSize(st.DiskPath); ok {
 		st.DiskBytes, st.DiskKnown = size, true
+		if r, ok := diskSparseFacts(&st); ok {
+			st.Remediations = append(st.Remediations, r)
+		}
 	}
 	if rec, err := b.readRecord(); err == nil {
 		st.Created = rec.Created
@@ -320,6 +337,9 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 	if r, ok := cgroupRemediation(report.Cgroup); ok {
 		st.Remediations = append(st.Remediations, r)
 	}
+	if r, ok := binfmtRemediation(report.Binfmt); ok {
+		st.Remediations = append(st.Remediations, r)
+	}
 	// ⚠ AN ADAPTER'S PROBLEM IS A PROBLEM, NOT AN UNUSABLE BASE. `healthy` answers
 	// whether a container runs; a broken adapter makes the verdict 1 through the
 	// problems list, with the adapter named.
@@ -329,7 +349,36 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 			st.Problems = append(st.Problems, "adapter "+a.Name+": "+p)
 		}
 	}
+	st.Leftovers = b.adapterLeftovers(ctx)
+	for _, l := range st.Leftovers {
+		st.Remediations = append(st.Remediations, leftoverRemediation(l))
+	}
 	return st, nil
+}
+
+// diskSparseFacts reads the disk's sparse attribute and the space it takes, and
+// what .wslconfig sets, and answers the remediation a disk that is not sparse
+// earns. WSL-109.
+func diskSparseFacts(st *BaseState) (Remediation, bool) {
+	st.WslConfigSparseVhd = WslConfigSparseVhd()
+	sparse, allocated, ok := DiskAllocation(st.DiskPath)
+	if !ok {
+		return Remediation{}, false
+	}
+	st.DiskAllocated = allocated
+	if sparse {
+		st.DiskSparse = "yes"
+		return Remediation{}, false
+	}
+	st.DiskSparse = "no"
+	return Remediation{
+		ID:   "disk-not-sparse",
+		What: "the base's disk is not sparse, so the space its guest frees stays in " + st.DiskPath,
+		Costs: "the disk only grows: a build deleted in the base keeps its space on this machine until the base is rebuilt. " +
+			"WSL makes it sparse only while its VM is stopped, and base reclaim names that step",
+		Command:    ToolCommand("base reclaim"),
+		Repairable: true,
+	}, true
 }
 
 // withoutRecordDrift removes the problem the host record raised, for the case
@@ -553,13 +602,54 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 // works and the record is written by the time this runs, so the caller is told
 // both what failed and what the base is.
 func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error) {
-	if err := b.applyAdapters(ctx); err != nil {
+	// ⭐ THE HANDLERS COME FIRST AND THEIR FAILURE STOPS NOTHING ELSE. They are
+	// registered in every ensure, because another distribution can empty the table
+	// while this one runs, and a base whose handlers could not be registered is
+	// still a base whose adapters should be installed. WSL-105.
+	err := errors.Join(b.ensureBinfmt(ctx), b.applyAdapters(ctx))
+	if err != nil {
 		if probed, statusErr := b.Status(ctx, true); statusErr == nil {
 			return probed, err
 		}
 		return st, err
 	}
 	return b.Status(ctx, true)
+}
+
+// ensureBinfmt registers the base's QEMU handlers when any is gone, records the
+// base's own set, and on a systemd base installs the watcher that registers them
+// again. binfmt.sh carries the rule; this only runs it. WSL-105.
+func (b *Base) ensureBinfmt(ctx context.Context) error {
+	out := &prefixWriter{prefix: "", to: b.logWriter()}
+	code, err := b.wsl.Exec(ctx, ExecRequest{
+		Distro: b.cfg.Base.Name, User: "root", Script: binfmtScript,
+		Env: map[string]string{
+			"TK_BINFMT_IMAGE": BinfmtImage,
+			"TK_SYSTEMD":      strconv.FormatBool(b.cfg.Base.Systemd),
+			"TK_SELF_B64":     base64.StdEncoding.EncodeToString(binfmtScript),
+		},
+		Timeout: 20 * time.Minute, Stdout: out, Stderr: out,
+	})
+	out.Flush()
+	if err != nil || code != 0 {
+		return fmt.Errorf("the QEMU handlers: binfmt.sh exited %d: %s", code, lastToolLine(out.seen.String(), "binfmt: "))
+	}
+	if !strings.Contains(out.seen.String(), "binfmt-complete") {
+		return errors.New("the QEMU handlers: binfmt.sh exited 0 without reaching its last line")
+	}
+	return nil
+}
+
+// lastToolLine is the last line a guest script wrote with its own prefix, which
+// is its reason, or a note that it wrote none.
+func lastToolLine(seen, prefix string) string {
+	reason := "it printed no reason"
+	for _, line := range strings.Split(seen, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), prefix) {
+			reason = strings.TrimPrefix(strings.TrimSpace(line), prefix)
+		}
+	}
+	return reason
 }
 
 func (b *Base) rollbackUnmarked(cause error) error {
@@ -796,7 +886,6 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 		Env: map[string]string{
 			"TK_USER":              b.cfg.Base.User,
 			"TK_UID":               "1000",
-			"TK_BINFMT_IMAGE":      BinfmtImage,
 			"TK_AUTOMOUNT":         automount,
 			"TK_INTEROP":           interop,
 			"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
@@ -884,7 +973,12 @@ func fstabEscape(value string) string {
 }
 
 // EnsurePlatform restores the QEMU handler for one non-native Linux platform.
-// WSL removes kernel registrations when its utility virtual machine stops.
+//
+// ⚠ THE TABLE IS EVERY DISTRIBUTION'S, AND IT EMPTIES WHILE THIS BASE RUNS. A
+// registration ends when WSL's utility VM stops, and also when another
+// distribution unregisters everything, which the Podman machine does as it stops,
+// with the VM and this base still running. This covers one job's platform;
+// binfmt.sh and its watcher cover the rest. WSL-105.
 func (b *Base) EnsurePlatform(ctx context.Context, platform string) error {
 	normalized, err := NormalizePlatform(platform)
 	if err != nil || normalized == "" {
@@ -1377,25 +1471,83 @@ type CgroupState struct {
 	StatsUsable string `json:"stats_usable"`    // yes, no, unknown
 }
 
-// BinfmtState is the QEMU handler count in the current WSL kernel.
+// BinfmtState is what the WSL kernel's QEMU handler table holds for this base.
 type BinfmtState struct {
-	Handlers int  `json:"handlers"`
-	Ready    bool `json:"ready"`
+	// Handlers counts every `qemu-*` entry in the kernel, whichever distribution
+	// registered it.
+	Handlers int `json:"handlers"`
+	// Own is how many handlers `base ensure` recorded as this base's own, and
+	// Missing names the ones the kernel no longer holds. ⚠ Own is 0 and Recorded
+	// false on a base no ensure of this version has run on.
+	Own      int      `json:"own"`
+	Missing  []string `json:"missing,omitempty"`
+	Recorded bool     `json:"recorded"`
+	// Watch is the watcher unit's state: active, or what systemd answered, or
+	// none where there is no unit.
+	Watch string `json:"watch,omitempty"`
+	// Ready is true when none of this base's own handlers is missing.
+	// ⛔ It was `Handlers > 0`, so it followed another distribution's lifetime: a
+	// base with every handler of its own gone read ready while the Podman machine
+	// ran. WSL-105.
+	Ready bool `json:"ready"`
 }
 
 func parseBinfmt(out string) *BinfmtState {
+	var st *BinfmtState
+	rows := map[string]string{}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "binfmt-handlers ") {
-			continue
+		key, value, _ := strings.Cut(line, " ")
+		switch key {
+		case "binfmt-handlers", "binfmt-own", "binfmt-watch":
+			rows[key] = strings.TrimSpace(value)
+		case "binfmt-missing":
+			rows[key] = strings.TrimSpace(value)
+			rows["missing-seen"] = "yes"
 		}
-		var count int
-		if _, err := fmt.Sscanf(strings.TrimPrefix(line, "binfmt-handlers "), "%d", &count); err != nil {
-			return nil
-		}
-		return &BinfmtState{Handlers: count, Ready: count > 0}
 	}
-	return nil
+	var count int
+	if _, err := fmt.Sscanf(rows["binfmt-handlers"], "%d", &count); err != nil {
+		return nil
+	}
+	st = &BinfmtState{Handlers: count, Watch: rows["binfmt-watch"]}
+	if own, err := strconv.Atoi(rows["binfmt-own"]); err == nil && own > 0 && rows["missing-seen"] == "yes" {
+		st.Own, st.Recorded = own, true
+		st.Missing = strings.Fields(rows["binfmt-missing"])
+		st.Ready = len(st.Missing) == 0
+		return st
+	}
+	// ⚠ NO RECORD, so nothing here says which handlers are this base's own, and
+	// readiness cannot be more than whether the kernel holds any. `base ensure`
+	// records the set, and `base status` names it as the step that is missing.
+	st.Ready = count > 0
+	return st
+}
+
+// binfmtRemediation is the finding a base whose own handlers are gone earns.
+func binfmtRemediation(bf *BinfmtState) (Remediation, bool) {
+	switch {
+	case bf == nil:
+		return Remediation{}, false
+	case bf.Recorded && len(bf.Missing) > 0:
+		return Remediation{
+			ID:   "binfmt-handlers-gone",
+			What: fmt.Sprintf("%d of this base's %d QEMU handlers are gone from the kernel: %s", len(bf.Missing), bf.Own, strings.Join(bf.Missing, " ")),
+			Costs: "a container for that architecture fails `Exec format error` in base exec, base shell, a herdr pane or an agent. " +
+				"Another distribution removed them; the Podman machine does when it stops",
+			Command:    ToolCommand("base ensure"),
+			Repairable: true,
+		}, true
+	case !bf.Recorded:
+		return Remediation{
+			ID:         "binfmt-handlers-unrecorded",
+			What:       "no ensure of this version has recorded which QEMU handlers are this base's own, so readiness counts every distribution's",
+			Costs:      "a handler of this base's can be gone while another distribution's keeps it reading ready",
+			Command:    ToolCommand("base ensure"),
+			Repairable: true,
+		}, true
+	}
+	return Remediation{}, false
 }
 
 // Remediation is one condition this tool found, what leaving it costs, and the

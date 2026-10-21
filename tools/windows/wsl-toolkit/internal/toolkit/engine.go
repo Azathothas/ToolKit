@@ -2,10 +2,12 @@ package toolkit
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,10 +21,17 @@ import (
 // owned distribution, so nothing a job does can reach the machine's own engine
 // or the images somebody else put in it.
 type Engine struct {
-	Name string // podman or docker
+	Name string // podman, docker or wslc
 	Path string
 	Arch string // the platform token this engine accepts, normalised
 }
+
+// hostEngineNames is the order a host engine is looked for.
+//
+// ⭐ wslc IS LAST, so a machine with podman or docker keeps the engine it had.
+// It is WSL's own container tool, from WSL 3.0.1, so a machine with nothing else
+// installed can still build a base. Ruled on 2026-10-21, ruling 30. WSL-110.
+var hostEngineNames = []string{"podman", "docker", "wslc"}
 
 // FindEngine picks the host engine, preferring podman.
 func FindEngine(ctx context.Context) (*Engine, error) {
@@ -31,7 +40,7 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 	// a missing docker and the next reader looks in the wrong place. That is
 	// exactly what this function did on its first run here.
 	var problems []string
-	for _, name := range []string{"podman", "docker"} {
+	for _, name := range hostEngineNames {
 		exe, err := ResolveExecutable(name)
 		if err != nil {
 			problems = append(problems, name+": "+err.Error())
@@ -55,9 +64,104 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 		return e, nil
 	}
 	if len(problems) == 0 {
-		problems = append(problems, "neither podman nor docker is installed")
+		problems = append(problems, "none of podman, docker and wslc is installed")
 	}
 	return nil, fmt.Errorf("no usable container engine on this host: %s", strings.Join(problems, "; "))
+}
+
+// wslcVersion is the liveness question asked of wslc. ⚠ wslc's `info` names no
+// architecture, and its containers run in a VM on this machine's own, so the
+// architecture is this machine's and the call proves only that wslc answers.
+func (e *Engine) wslcVersion(ctx context.Context) error {
+	out, stderr, err := (engineCall{Timeout: 90 * time.Second, What: "wslc version"}).run(ctx, e.Path, "version")
+	if err != nil {
+		return fmt.Errorf("wslc version: %w: %s", err, firstLine(stderr))
+	}
+	if !strings.HasPrefix(strings.TrimSpace(out), "wslc ") {
+		return fmt.Errorf("wslc version answered %q, which is not a version", firstLine(out))
+	}
+	return nil
+}
+
+// pullArgs, createArgs and removeArgs are the one place the engines' spellings
+// differ for an export.
+//
+// ⛔ wslc TAKES NO --platform, on its pull or its create, measured on wslc
+// 3.0.3. So what it pulled is read back by checkArch before anything is created,
+// rather than named and trusted. WSL-110.
+func (e *Engine) pullArgs(ref string) []string {
+	if e.Name == "wslc" {
+		return []string{"pull", ref}
+	}
+	return []string{"pull", "--platform", e.Platform(), ref}
+}
+
+func (e *Engine) createArgs(ref string) []string {
+	if e.Name == "wslc" {
+		return []string{"create", ref}
+	}
+	return []string{"create", "--platform", e.Platform(), ref}
+}
+
+// wslcImage is the part of `wslc image inspect --format json` this tool reads.
+type wslcImage struct {
+	Architecture string      `json:"Architecture"`
+	Os           string      `json:"Os"`
+	Config       imageConfig `json:"Config"`
+}
+
+// inspectWslcImage reads one image's architecture and configuration from wslc.
+func (e *Engine) inspectWslcImage(ctx context.Context, ref string) (wslcImage, error) {
+	out, stderr, err := (engineCall{What: "wslc image inspect " + ref}).run(ctx, e.Path, "image", "inspect", "--format", "json", ref)
+	if err != nil {
+		return wslcImage{}, fmt.Errorf("wslc image inspect %s: %w: %s", ref, err, firstLine(stderr))
+	}
+	var images []wslcImage
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &images); err != nil || len(images) != 1 {
+		return wslcImage{}, fmt.Errorf("wslc image inspect %s answered %d image(s) that do not parse as one: %v", ref, len(images), err)
+	}
+	return images[0], nil
+}
+
+// checkArch refuses an image whose architecture is not the one this engine runs.
+// ⛔ A ROOTFS FOR ANOTHER ARCHITECTURE IMPORTS CLEANLY, and then nothing in it
+// executes. WSL-64 named the variant on every fetch; an engine that cannot name
+// it has to be read back instead.
+func (e *Engine) checkArch(ctx context.Context, ref string) error {
+	if e.Name != "wslc" {
+		return nil
+	}
+	img, err := e.inspectWslcImage(ctx, ref)
+	if err != nil {
+		return err
+	}
+	return wslcArchVerdict(ref, img, e.Arch)
+}
+
+// wslcArchVerdict is the rule checkArch applies, with no process in it.
+func wslcArchVerdict(ref string, img wslcImage, want string) error {
+	if !strings.EqualFold(img.Os, "linux") || !strings.EqualFold(img.Architecture, want) {
+		return fmt.Errorf("wslc pulled %s for %s/%s, and this machine runs linux/%s. wslc takes no --platform, so it cannot be asked for another; "+
+			"remove the image with `wslc rmi %s` and pull it again, or use podman or docker", ref, img.Os, img.Architecture, want, ref)
+	}
+	return nil
+}
+
+// ImageConfig reads an image's configuration, ENV and WORKDIR, from the engine.
+func (e *Engine) ImageConfig(ctx context.Context, ref string) (imageConfig, error) {
+	if e.Name == "wslc" {
+		img, err := e.inspectWslcImage(ctx, ref)
+		return img.Config, err
+	}
+	out, stderr, err := (engineCall{What: e.Name + " image inspect " + ref}).run(ctx, e.Path, "image", "inspect", ref, "--format", "{{json .Config}}")
+	if err != nil {
+		return imageConfig{}, fmt.Errorf("%s image inspect %s: %w: %s", e.Name, ref, err, firstLine(stderr))
+	}
+	var cfg imageConfig
+	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &cfg); err != nil {
+		return imageConfig{}, fmt.Errorf("the configuration of %s does not parse: %w", ref, err)
+	}
+	return cfg, nil
 }
 
 // readArch asks the engine what architecture it runs, and normalises the answer.
@@ -73,6 +177,12 @@ func FindEngine(ctx context.Context) (*Engine, error) {
 // recognises is passed through rather than guessed at, so the engine refuses it
 // by name instead of this code inventing one.
 func (e *Engine) readArch(ctx context.Context) (string, error) {
+	if e.Name == "wslc" {
+		if err := e.wslcVersion(ctx); err != nil {
+			return "", err
+		}
+		return runtime.GOARCH, nil
+	}
 	field := "{{.Host.Arch}}"
 	if e.Name == "docker" {
 		field = "{{.Architecture}}"
@@ -136,14 +246,17 @@ func (e *Engine) ExportRootfs(ctx context.Context, ref, tarPath string, log func
 		Timeout: EngineTransferTimeout, Stall: EngineStallTimeout,
 		What: e.Name + " pull " + ref,
 		Hint: "The registry or the network is where a pull stalls. Retry, or read: podman system connection list",
-	}).run(ctx, e.Path, "pull", "--platform", e.Platform(), ref)
+	}).run(ctx, e.Path, e.pullArgs(ref)...)
 	stopBeat()
 	if err != nil {
 		return fmt.Errorf("%s pull %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
 	}
+	if err := e.checkArch(ctx, ref); err != nil {
+		return err
+	}
 
 	out, stderr, err = (engineCall{Timeout: 5 * time.Minute, What: e.Name + " create " + ref}).
-		run(ctx, e.Path, "create", "--platform", e.Platform(), ref)
+		run(ctx, e.Path, e.createArgs(ref)...)
 	if err != nil {
 		return fmt.Errorf("%s create %s: %w: %s", e.Name, ref, err, guestFailure(out, stderr))
 	}

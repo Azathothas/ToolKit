@@ -21,6 +21,36 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-21
 
+### 2026-10-21T04:08:52Z: a base gets its QEMU handlers back, says what its disk holds, and can be built with `wslc`
+
+**Record:** `WSL-105`, `WSL-109` and `WSL-110` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), [`docs/reference-sweeps/wslc.md`](docs/reference-sweeps/wslc.md), and work order item 12 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+
+⭐ **Issue 37's last two items, and issue 35.** The Podman machine empties the
+kernel's QEMU handler table as it stops, the base's handlers included. Every `base
+ensure` now registers them again and records which are the base's own, and a systemd
+base runs `wsl-toolkit-binfmt.service`, which put them back 5 seconds after a real
+Podman machine stop. `binfmt.ready` reads the base's own set rather than every
+distribution's, which is a break: a base with its own handlers gone read ready.
+
+⭐ **`base reclaim`, and a disk that says whether it is sparse.** WSL refuses
+`--set-sparse` while its VM runs, which is while any distribution runs, so the
+command names `wsl --shutdown` as the operator's step and never runs it. `base
+status` reports the sparse attribute, the space the disk takes, and `.wslconfig`'s
+`sparseVhd`, and `--probe` names what a removed adapter left in the base.
+
+⭐ **`wslc`, WSL's own container tool, is the third host engine**, after podman and
+docker, so a machine with only WSL 3.0.1 or later can build a base. A scratch base
+was built with it in 119 seconds. The 2026-09-30 analysis of `wslc` is in the tree
+now, with what WSL 3.0.3 measured: `wslc` publishes a port with no elevation, which
+the manual's port-forwarding limit now says.
+
+⛔ **The driven passes found two defects the cases could not.** WSL answers a running
+distribution's disk as `WSL_E_DISTRO_NOT_STOPPED`, which `base reclaim` first read as
+an unknown failure. And `cmp` is missing from a base with no toolset, so the new
+script and three adapter installers read every file as changed; they compare digests
+now.
+
 ### 2026-10-21T03:26:51Z: `shipped cat` takes its name, a gone grant can be revoked, and one adapter no longer stops the rest
 
 **Record:** `WSL-108`, `WSL-106` and `WSL-107` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `TOOL-28` in [`TODO/tooling.md`](TODO/tooling.md), and work order items 12 and 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).

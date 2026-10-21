@@ -30,7 +30,7 @@ func ToolCatalog() []ToolSpec {
 		{"compiler", "gcc clang cl"},
 		{"pkg-lang", "npm pnpm yarn pip pipx uv poetry cargo rustup gem composer maven gradle"},
 		{"pkg-system", "scoop choco winget brew apt dnf pacman apk zypper nix"},
-		{"container", "docker podman kubectl wsl"},
+		{"container", "docker podman kubectl wsl wslc"},
 		{"build", "make cmake ninja just task msbuild"},
 		{"quality", "shellcheck shfmt ruff eslint prettier golangci-lint"},
 		{"cli", "jq yq rg fd curl wget aria2c tar 7z sqlite3 scc tokei hyperfine"},
@@ -41,7 +41,7 @@ func ToolCatalog() []ToolSpec {
 	custom := map[string][]string{
 		"cl": nil, "scoop": nil, "7z": nil, "wsl": nil,
 		"java": {"-version"}, "go": {"version"}, "zig": {"version"},
-		"lua": {"-v"}, "kubectl": {"version", "--client"},
+		"lua": {"-v"}, "kubectl": {"version", "--client"}, "wslc": {"version"},
 		"msbuild": {"-version"}, "flyctl": {"version"},
 		"powershell": {"-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"},
 	}

@@ -11908,7 +11908,7 @@ state directory.
 **Source** [Issue 37](https://github.com/Azathothas/ToolKit/issues/37) item 1,
 filed by the operator against the published `wsl-toolkit-v6.0.0` on
 2026-10-21. Approved in ruling 30, "Watcher + ensure".
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -11996,6 +11996,48 @@ scratch base with systemd: empty the table by hand, read the watcher register it
 again within a minute, and read `base status --probe` before and after.
 
 ---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T04:08:52Z.** `binfmt.sh` is the one rule: it registers the
+image's handlers when one of the base's own is gone, records the own set at
+`/var/lib/wsl-toolkit/binfmt-handlers`, and on a systemd base installs itself as
+`wsl-toolkit-binfmt.service`. `base ensure` runs it on every base before the
+adapters, and the provisioner no longer registers once. `binfmt.ready` is the own
+set, and `base status --probe` prints the own count, what is gone, the kernel's
+total and the watcher.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 89 s
+  ok     go
+```
+
+⭐ **Driven, on a scratch systemd base, `wsl-toolkit-s110`, built for this:**
+
+```text
+base ensure, first                      QEMU binary formats: 8 handler(s) of this base's own; the watcher wsl-toolkit-binfmt.service is active
+base ensure, again                      5 s, nothing registered, and the watcher's start time unchanged
+echo -1 > .../qemu-riscv64              back after 12 s; journal: binfmt: registered again
+podman machine start                    31 handlers in the kernel
+podman machine stop                     0 a moment after; back after 5 s with 8; journal: binfmt: registered again
+base status --probe                     binfmt  8 of this base's 8 QEMU handler(s) held, 8 in the kernel, ready: true, watcher: active
+```
+
+That is issue 37's own sequence, reproduced: 31, then 0 a moment after the stop.
+⚠ The operator's own watcher in `wsl-toolkit-base` checks every 30 seconds too, so
+which one registered first after the stop is not certain. The single handler
+removed by hand is certain: the operator's watcher looks for `qemu-aarch64` alone.
+
+⛔ **The driven pass found a defect, and three adapters carried it too.** The first
+ensure printed `cmp: command not found` twice: `cmp` is diffutils, and a base with no
+toolset has none, so the script read every file as changed and restarted its watcher.
+`binfmt.sh` and the herdr, muse and pi installers compare with `sha256sum` now. The
+herdr installer had been rewriting its unit on every ensure on such a base.
+
+3 mutation rows, 3 of 3 red.
+
 
 ## WSL-106. A grant whose Windows directory is gone refuses every command, `base revoke` included
 
@@ -12259,7 +12301,7 @@ so `--force` has to be read.
 
 **Source** [Issue 37](https://github.com/Azathothas/ToolKit/issues/37) item 5.
 Approved in ruling 30, "Report + base reclaim".
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -12323,13 +12365,54 @@ WSL holds every disk, and its answer read.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-10-21T04:08:52Z.** `base status` reports the disk's sparse attribute,
+the space it takes, and what `.wslconfig` sets for `sparseVhd`, with a remediation
+naming `base reclaim` for a disk that is not sparse. `base status --probe` names each
+adapter the configuration no longer names that left files, with its size, through
+the probes' `TK_PROBE_FOOTPRINT=1` answer. `base reclaim` asks WSL to make the disk
+sparse, and trims in the guest once it is.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 89 s
+  ok     go
+```
+
+Driven, with a build of this tree:
+
+```text
+base status                       disk 54.4 GiB; disk space  takes 54.4 GiB, sparse no, .wslconfig sparseVhd unset
+--instance base base status --probe   the same three facts for the operator's base, and DISK-NOT-SPARSE with its command
+base reclaim                      exit 1
+  ⛔ WSL holds a distribution's disk while its VM runs, ... Stop it with `wsl --shutdown`, which stops EVERY
+     distribution on this machine, the Podman machine too, then run wsl-toolkit base reclaim again. This tool never runs it.
+base reclaim --json               exit 1, wsl-toolkit-reclaim/1 with sparse_before false and refused set
+```
+
+⛔ **The driven pass found a defect the case could not.** The first build answered
+exit 2 and a line naming nothing, because WSL answers a RUNNING distribution with
+`WSL_E_DISTRO_NOT_STOPPED` and a stopped one with `ERROR_SHARING_VIOLATION`, and the
+case carried the second alone. Both are read as the disk being held now.
+
+⚠ **What is not driven**: the sparse half. No disk on this host is sparse and none
+can be made so while its VM runs, which is this entry's own finding. The trim and its
+reading are cases: util-linux's line from issue 37, `991 GiB (1064071028736 bytes)
+trimmed`, and busybox's.
+
+5 mutation rows, 5 of 5 red. The one for the remediation skips on Linux, where the
+attribute is not read.
+
+
 ## WSL-110. WSL's own container tool is on this host, and this tool does not know it
 
 **Source** [Issue 35](https://github.com/Azathothas/ToolKit/issues/35), the
 operator's analysis of 2026-09-30, which the issue carries as its attachment
 and this tree held untracked at `.tmp/wslc-analysis-2026-09-30.md`. Approved in
 ruling 30, "Record + host engine".
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -12393,6 +12476,38 @@ base built with `wslc` as the only engine this tool can find, on a scratch
 instance.
 
 ---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T04:08:52Z.** `wslc` is the third host engine, tried after podman
+and docker, in its own spelling: no `--platform` on its pull or create, the pulled
+image's `Architecture` and `Os` read back from `wslc image inspect --format json` and
+a foreign one refused, its image configuration read from the same JSON for
+`--oci-env`, and `resources --host-engine` asking it in its own words. `doctor`, both
+standalone probes and the Go one report it. The analysis is
+[`../docs/reference-sweeps/wslc.md`](../docs/reference-sweeps/wslc.md), with its
+section 10 measured on this host, and the manual's port-forwarding limit says what
+that section found.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 89 s
+  ok     go
+```
+
+⭐ **Driven**: with the Podman machine stopped, `--instance s110 base ensure` on a
+scratch configuration answered `host engine: wslc, platform linux/amd64`, exported a
+544.1 MiB root filesystem, and finished usable in 119 seconds. `doctor`'s three probes
+each answer `wslc 3.0.3.0`. Section 10 of the sweep carries the export, the mounts,
+the kernel and the port measured by hand.
+
+⚠ **A finding the analysis could not have made**: a `wslc` session runs the stock
+WSL kernel, `6.18.54.1-microsoft-standard-WSL2`, while this host's distributions run
+the 7.2.0 kernel `.wslconfig` names. A session is its own VM.
+
+3 mutation rows, 3 of 3 red.
+
 
 ## WSL-111. A Git Bash caller bridges every call through PowerShell
 

@@ -2,6 +2,105 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: wslc is the host engine tried last",
+      "file": "internal/toolkit/engine.go",
+      "find": "var hostEngineNames = []string{\"podman\", \"docker\", \"wslc\"}",
+      "replace": "var hostEngineNames = []string{\"wslc\", \"podman\", \"docker\"}",
+      "run": "TestWslcIsTheHostEngineTriedLast",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wslc is pulled from with no --platform, which it does not take",
+      "file": "internal/toolkit/engine.go",
+      "find": "func (e *Engine) pullArgs(ref string) []string {\n\tif e.Name == \"wslc\" {\n",
+      "replace": "func (e *Engine) pullArgs(ref string) []string {\n\tif e.Name == \"never an engine\" {\n",
+      "run": "TestWslcIsAskedInItsOwnSpellingAndTheOthersInTheirs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an image wslc pulled for another architecture is refused",
+      "file": "internal/toolkit/engine.go",
+      "find": "\tif !strings.EqualFold(img.Os, \"linux\") || !strings.EqualFold(img.Architecture, want) {\n",
+      "replace": "\tif !strings.EqualFold(img.Os, \"linux\") {\n",
+      "run": "TestAnImageWslcPulledForAnotherArchitectureIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a .wslconfig key is read from its own section",
+      "file": "internal/toolkit/hostaddr.go",
+      "find": "\t\tif section != strings.ToLower(wantSection) {\n",
+      "replace": "\t\tif section == \"never a section\" {\n",
+      "run": "TestSparseVhdIsReadFromItsOwnSectionAndTheLastLineWins",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: fstrim's busybox spelling is read",
+      "file": "internal/toolkit/reclaim.go",
+      "find": "regexp.MustCompile(`\\((\\d+) bytes\\) trimmed|(\\d+) bytes trimmed`)",
+      "replace": "regexp.MustCompile(`\\((\\d+) bytes\\) trimmed|(\\d+) bytes trimmed nowhere`)",
+      "run": "TestTrimmedBytesAreReadInBothSpellings",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter that left files and is not installed is still a leftover",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif st.Facts[\"installed\"] != \"yes\" && bytes == 0 {\n",
+      "replace": "\tif st.Facts[\"installed\"] != \"yes\" {\n",
+      "run": "TestALeftoverAdapterIsOneThatIsInstalledOrTakesSpace",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a running distribution's disk held by WSL is named as held",
+      "file": "internal/toolkit/reclaim.go",
+      "find": "var diskHeldCodes = []string{\"WSL_E_DISTRO_NOT_STOPPED\", \"ERROR_SHARING_VIOLATION\"}",
+      "replace": "var diskHeldCodes = []string{\"ERROR_SHARING_VIOLATION\"}",
+      "run": "TestWslHoldingTheDiskIsNamedWithTheOperatorsStep",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a disk that is not sparse earns the reclaim",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif sparse {\n\t\tst.DiskSparse = \"yes\"\n",
+      "replace": "\tif !sparse || sparse {\n\t\tst.DiskSparse = \"yes\"\n",
+      "run": "TestADiskThatIsNotSparseEarnsTheReclaim",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt readiness is the base's own set, not the kernel's total",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tst.Ready = len(st.Missing) == 0\n",
+      "replace": "\t\tst.Ready = count > 0\n",
+      "run": "TestReadinessIsTheBasesOwnSetAndNotTheKernelsTotal",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a gone handler of the base's own is a remediation naming base ensure",
+      "file": "internal/toolkit/base.go",
+      "find": "\tcase bf.Recorded && len(bf.Missing) > 0:\n",
+      "replace": "\tcase bf.Recorded && len(bf.Missing) > 99:\n",
+      "run": "TestAGoneHandlerIsARemediationNamingBaseEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the binfmt watcher registers again what is gone",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "      if register && [ -z \"$(missing)\" ]; then\n",
+      "replace": "      if true && [ -z \"$(missing)\" ]; then\n",
+      "run": "TestTheHandlersAreRegisteredByEveryEnsureAndWatched",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "check: a carriage return inside a line is a control byte",
       "file": "internal/checks/bytes.go",
       "find": "\t\t\tif c == '\\r' && (i+1 >= len(b) || b[i+1] != '\\n') {\n",
@@ -2779,8 +2878,8 @@
       "label": "hostaddress: a key outside the wsl2 section",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/hostaddr.go",
-      "find": "\t\tif section != \"wsl2\" {\n",
-      "replace": "\t\tif section != \"wsl2\" && false {\n",
+      "find": "\t\tif section != strings.ToLower(wantSection) {\n",
+      "replace": "\t\tif section != strings.ToLower(wantSection) && false {\n",
       "run": "TestTheWslConfigParserReadsOnlyTheLiveSetting",
       "args": []
     },

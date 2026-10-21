@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-10-21T02:36:37Z, on the operator's request to resolve issues 35 and 37 and pull request 36
 baseline        d52040b, gate 24 of 24
 head            this commit; WSL-105 to WSL-114 and TOOL-28 filed under ruling 30
-entries         total 153  open 7  blocked 0  done 146
+entries         total 153  open 4  blocked 0  done 149
 this session    issue 37's five items, issue 35's wslc, four changes that retire a consumer's wrapper, and a release
 ```
 
@@ -59,8 +59,8 @@ is closed, and the issue gets a comment naming the commits.
 11. ⭐ **Closed:** `TOOL-27`, filed and closed on the operator's instruction of
     2026-10-08, which is ruling 29. `cc_profile` is installed in `~/bin`, which is
     on `PATH`.
-12. **Issue 37:** `WSL-108`, `WSL-106`, `WSL-107`, `WSL-105` and `WSL-109`, in
-    that order, smallest first. Then issue 35, `WSL-110`.
+12. ⭐ **Closed:** issue 37's `WSL-108`, `WSL-106`, `WSL-107`, `WSL-105` and
+    `WSL-109`, smallest first, and issue 35's `WSL-110`.
 13. **The wrapper a consumer no longer needs:** `WSL-111`, `WSL-112`, `WSL-113`
     and `WSL-114`, and `TOOL-28`, found on the way.
 14. **The release:** pull request 36 merged, `wsl-toolkit-v7.0.0` cut under ruling

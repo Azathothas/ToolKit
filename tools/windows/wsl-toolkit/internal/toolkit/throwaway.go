@@ -1091,13 +1091,11 @@ type imageConfig struct {
 func (t *Throwaways) carryOciEnv(ctx context.Context, name string, engine *Engine, ref string, timeout time.Duration) ([]string, []string, error) {
 	bounded, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	out, stderr, err := Output(bounded, engine.Path, "image", "inspect", ref, "--format", "{{json .Config}}")
+	// ⭐ THE ENGINE READS ITS OWN SPELLING: podman and docker take a template,
+	// and wslc answers JSON alone. WSL-110.
+	cfg, err := engine.ImageConfig(bounded, ref)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%s image inspect %s: %w: %s", engine.Name, ref, err, firstLine(stderr))
-	}
-	var cfg imageConfig
-	if err := json.Unmarshal([]byte(strings.TrimSpace(out)), &cfg); err != nil {
-		return nil, nil, fmt.Errorf("the configuration of %s does not parse: %w", ref, err)
+		return nil, nil, err
 	}
 	profile, carried, skipped := ociEnvProfile(cfg, ref)
 	for _, s := range skipped {

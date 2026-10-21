@@ -119,7 +119,14 @@ func pickWSLAdapter(adapters []adapterInfo) (string, string, bool) {
 // `[experimental]` carries keys with related names. The value ends at the first
 // space or comment character, so `nat mirrored` is `nat`.
 func parseWslConfigMode(body string) string {
-	section, mode := "", ""
+	return parseWslConfigKey(body, "wsl2", "networkingMode")
+}
+
+// parseWslConfigKey reads one key of one section from a .wslconfig, lower-cased.
+// Empty means the key is not set. The rules are parseWslConfigMode's, which
+// every key shares.
+func parseWslConfigKey(body, wantSection, wantKey string) string {
+	section, found := "", ""
 	for _, raw := range strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
@@ -129,11 +136,11 @@ func parseWslConfigMode(body string) string {
 			section = strings.ToLower(strings.TrimSpace(line[1 : len(line)-1]))
 			continue
 		}
-		if section != "wsl2" {
+		if section != strings.ToLower(wantSection) {
 			continue
 		}
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || !strings.EqualFold(strings.TrimSpace(key), "networkingMode") {
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), wantKey) {
 			continue
 		}
 		value = strings.TrimSpace(value)
@@ -141,8 +148,29 @@ func parseWslConfigMode(body string) string {
 			value = value[:i]
 		}
 		if value != "" {
-			mode = strings.ToLower(value)
+			found = strings.ToLower(value)
 		}
 	}
-	return mode
+	return found
+}
+
+// WslConfigSparseVhd is what %USERPROFILE%\.wslconfig sets for sparseVhd under
+// [experimental]: true, false, unset, or unreadable. WSL reads it when its VM
+// starts, and makes each disk it creates after that sparse. WSL-109.
+func WslConfigSparseVhd() string {
+	profile := strings.TrimSpace(os.Getenv("USERPROFILE"))
+	if profile == "" {
+		return "unset"
+	}
+	data, err := os.ReadFile(filepath.Join(profile, ".wslconfig"))
+	if errors.Is(err, os.ErrNotExist) {
+		return "unset"
+	}
+	if err != nil {
+		return "unreadable"
+	}
+	if v := parseWslConfigKey(string(data), "experimental", "sparseVhd"); v != "" {
+		return v
+	}
+	return "unset"
 }

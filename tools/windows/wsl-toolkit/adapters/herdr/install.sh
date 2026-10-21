@@ -22,6 +22,13 @@ cd /
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'herdr adapter: %s\n' "$*" >&2; exit 3; }
+# same_file A B is true when B exists and holds A's bytes. ⚠ NOT cmp: cmp is
+# diffutils, which a base with no toolset does not carry, and a missing cmp read
+# as "the files differ" on every run. WSL-105.
+same_file() {
+  [ -f "$2" ] || return 1
+  [ "$(sha256sum < "$1")" = "$(sha256sum < "$2")" ]
+}
 
 # -- what this adapter pins, and how a configuration moves it ------------------
 # ⛔ PINNED BY VERSION AND VERIFIED BY DIGEST BEFORE USE. The digests are the ones
@@ -173,7 +180,7 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 UNIT
-if cmp -s "$unit_tmp" "/etc/systemd/system/$UNIT"; then
+if same_file "$unit_tmp" "/etc/systemd/system/$UNIT"; then
   rm -f "$unit_tmp"
 else
   mv "$unit_tmp" "/etc/systemd/system/$UNIT"
