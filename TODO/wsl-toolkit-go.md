@@ -15133,3 +15133,145 @@ Exit 0, and the widened guard red against the old call.
 ## Closing
 
 Open.
+
+## WSL-164. `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help`
+
+**Source** the review of the three skills, 2026-10-21
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`wsl-toolkit helper --help` and the same for four other command groups exit 2 with
+"not a ... subcommand". `base --help` was fixed and answers its usage.
+
+## Premise
+
+Measured on 2026-10-21 with the installed 7.0.0 and a build of `9784821`.
+
+## Approach
+
+Each group answers `--help` with its usage and exit 0, as `base` does, with a case per group.
+
+## Consumers
+
+Additive: a refusal becomes the usage it should have printed.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then `--help` on each group exits 0.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-165. `text-tool eol` creates an empty file at a path that does not exist
+
+**Source** the review of the three skills, 2026-10-21
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`text-tool eol MISSING --lf` creates `MISSING` empty and answers 0, and `--dry-run`
+says it would change a file that is not there. A mistyped path leaves a new empty
+file behind and reads as success.
+
+## Premise
+
+Measured on 2026-10-21 by the review with the published text-tool.
+
+## Approach
+
+A missing path is reported and never created, with or without `--dry-run`. The
+exit code does not change in this release: see `WSL-166`.
+
+## Consumers
+
+`text-tool` is published. The exit code is unchanged, so no caller's branch moves;
+a file that was never asked for is no longer created.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case for the missing path, with and without `--dry-run`.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T13:49:08Z.** `eol` skips a path that does not exist, writes nothing
+there with or without `--dry-run`, and says so: a `missing` line in the text answer, a
+`missing` field in `--json`, and one line on stderr. The total counts only the files
+that exist. The exit code is still 0, as `WSL-166` records.
+
+```text
+text-tool eol .tmp/w165/gone-old.txt --lf      (published)   exit 0, the file created
+text-tool eol real.txt gone.txt --lf           (this build)
+  wrote .tmp/w165/real.txt: 1 match(es), 3 -> 2 bytes, lf endings
+  missing .tmp/w165/gone.txt: no such file, nothing created
+  wrote 1 file(s): 1 match(es) in total
+  text-tool: 1 path(s) do not exist, and eol created nothing there: .tmp/w165/gone.txt
+                                                               exit 0, no file created
+go test ./... in tools/text-tool                               ok
+repo mutate --only 'text-tool: '                               24 of 24 guards proved
+```
+
+3 mutation rows, 3 of 3 red.
+
+
+## WSL-166. `text-tool eol` answers 0 for a path that does not exist
+
+**Source** the review of the three skills, 2026-10-21, the residual of `WSL-165`
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+After `WSL-165`, `eol` no longer creates a missing file, and still answers 0 for
+it, where `edit` answers 1.
+
+## Premise
+
+Measured on 2026-10-21.
+
+## Approach
+
+A missing path answers 1, as `edit` does.
+
+## Decision
+
+⛔ **Not in a minor release.** A changed exit code is a break by
+[`../docs/consumers.md`](../docs/consumers.md), as ruling 27 found for `--between`, and
+ruling 31 made 7.1.0 a minor. It ships with the next major, beside `WSL-127`.
+
+## Consumers
+
+⛔ A break: it ships only in a major, with the breaks table.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0 with the case.
+
+---
+
+## Closing
+
+Open.

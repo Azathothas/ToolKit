@@ -3510,3 +3510,43 @@ Exit 0, and the next nightly's run green.
 ## Closing
 
 Open.
+
+## TOOL-38. The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag
+
+**Source** the review of the three skills, 2026-10-21
+**Category** tooling, **Priority** P3, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`skills.go:248` writes `"\text-tool.exe"`, where `\t` is a tab, so a call by full
+path is never checked. The check holds each `wsl-toolkit` command name to the manual
+and none of its flags, so a renamed flag in a skill passes.
+
+## Premise
+
+Read on 2026-10-21 by the review.
+
+## Approach
+
+Fix the string, and check every flag a fenced `wsl-toolkit` line passes against
+that command's flags in the generated manual.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh skills
+```
+
+Exit 0, with a case for a full-path call and one for an unknown flag.
+
+---
+
+## Closing
+
+Open.

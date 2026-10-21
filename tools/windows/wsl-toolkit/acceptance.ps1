@@ -502,6 +502,21 @@ try {
         finally { $null = Invoke-Tool @('helper', 'stop') }
     }
 
+    # WSL-142. THE REFUSAL WAS PROVED BY A CASE ALONE. `base doors` mounts, writes and
+    # opens sockets in the base, which the restricted helper protocol must never
+    # carry, and this meets the refusal from a helper that is really serving.
+    Test-Case 'base doors refuses the helper route while a helper serves' 'refused' {
+        $start = Invoke-Tool @('helper', 'serve', '--detach', '--json')
+        if ($start.Code -ne 0) { return "helper would not start: $($start.Err)" }
+        try {
+            $r = Invoke-Tool @('base', 'doors', '--via-helper', '--json')
+            if ($r.Code -ne 2) { return "base doors --via-helper exited $($r.Code), want 2: $($r.Err)" }
+            if ($r.Err -notmatch 'restricted helper protocol does not accept') { return "the refusal does not say why: $($r.Err)" }
+            'refused'
+        }
+        finally { $null = Invoke-Tool @('helper', 'stop') }
+    }
+
     # WSL-58. THE SAME QUESTION DOWN BOTH ROUTES, COMPARED. `inspect` was the one
     # report the helper could not serve, so a restricted client got the host half
     # of the answer and not the machine half while its sibling report had the
@@ -2127,7 +2142,7 @@ finally {
 # -- the report --------------------------------------------------------------
 # HARD RULE: THE COUNT IS ASSERTED. A table that stopped early exits 0 over a
 # smaller suite, and this is what makes that impossible.
-$expected = if ($Quick) { 102 } else { 109 }
+$expected = if ($Quick) { 103 } else { 110 }
 $ran = $script:Cases.Count
 if ($ran -ne $expected) {
     $script:Failed++

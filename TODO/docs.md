@@ -789,3 +789,47 @@ gh run view on 9784821 --json jobs     8 jobs
 gh release view wsl-toolkit-v7.0.0     22 assets: 2 wsl-toolkit, 4 text-tool, 4 herdr,
                                        SHA256SUMS, and a cosign bundle for each
 ```
+
+## DOC-14. The skills tell an agent things the tool does not do
+
+**Source** the review of the three skills, 2026-10-21, and the operator, 2026-10-21: "have the skill files been updated/cleaned"
+**Category** docs, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+The review found claims the tool contradicts, passages that send a reader with only
+the file into a wrong or destructive step, history in live text, and 7.0.0 behaviour
+not mentioned. The worst: `base ensure` offered as the answer to most problems, though
+it can restart and rebuild a base; `--instance base` never explained; an agents
+snippet whose `adapters` key is refused where it is shown; a prompt, read and wait
+order that races; and an exit-code table for `text-tool` that does not match it. The
+installed copies predate 7.0.0.
+
+## Premise
+
+Measured on 2026-10-21: every command, flag and message checked against the installed 7.0.0 and the code.
+
+## Approach
+
+Apply each fix the review lists, add what 7.1.0 adds once it is merged, and
+install the copies the operator's agents read, by the skills manager's own update.
+
+## Consumers
+
+None in this tree. An agent the operator runs reads the installed copies.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh skills
+```
+
+Exit 0, and the installed copies match the tree.
+
+---
+
+## Closing
+
+Open.

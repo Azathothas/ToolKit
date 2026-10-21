@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, on the operator's request to rewrite the record to the model, sync the methodology, refresh the skills and finish all WSL work
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: the record rewritten, the methodology synced, 58 entries filed and 9 closed; seven builders running
-entries         total 216  open 44  blocked 5  done 167
+entries         total 221  open 48  blocked 5  done 168
 this session    ruling 31
 ```
 
@@ -80,10 +80,11 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    (F5b).
 3. **The old record's open findings**: adapters `WSL-139`, `WSL-141`, `WSL-144`,
    `WSL-157` (F6a); fixes `WSL-149`, `WSL-151`, `WSL-152`, `WSL-154`, `WSL-156`,
-   `WSL-160`, `WSL-162`, `WSL-163` (F6b); and here `WSL-132`, `WSL-142`,
+   `WSL-160`, `WSL-162`, `WSL-163`, `WSL-164` (F6b); and here `WSL-132`, `WSL-142`,
    `WSL-145` and `WSL-148`.
-4. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-34`, `TOOL-36` and `TOOL-37`.
-5. **The skills**, reviewed against what the tool does once the builders are
+4. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-37` and `TOOL-38`, and `text-tool`'s
+   `WSL-165`.
+5. **The skills**, `DOC-14`, reviewed against what the tool does once the builders are
    merged, and installed.
 6. **`wsl-toolkit-v7.1.0`**: every branch merged and gated, CI's Linux jobs in
    containers, three reviews, CI green, published, this host moved to it by
@@ -91,7 +92,7 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    instance.
 7. **This host**, ruling 31: the package's copy emptied, the operator's
    `qemu-binfmt-restore.service` retired, the installed skills updated.
-8. **Not this release**, ruling 31: `WSL-127`, the distinct exit code, which is a
+8. **Not this release**, ruling 31: `WSL-127` and `WSL-166`, exit codes that change, each a
    break.
 9. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
    `WSL-158` and `WSL-159`.

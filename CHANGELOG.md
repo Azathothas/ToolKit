@@ -23,6 +23,15 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-21
 
+### 2026-10-21T13:59:00Z: `text-tool eol` creates nothing at a path that does not exist
+
+**Record:** `WSL-165` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and the entries the skills review filed: `WSL-164`, `WSL-166`, `TOOL-38` and `DOC-14`.
+**Deployed:** ⛔ **no deploy.** It reaches a release with `wsl-toolkit-v7.1.0`.
+
+⭐ **A mistyped path no longer leaves an empty file behind.** `eol` reports the path
+as missing in its text and JSON answers and on stderr. Its exit code is still 0 in a
+minor release, and `WSL-166` carries the change to 1.
+
 ### 2026-10-21T09:48:21Z: the record is rewritten to the model, the methodology is synced from TEMPLATE, and two checks hold what they claimed
 
 **Record:** `DOC-10`, `DOC-09` and `DOC-13` in [`TODO/docs.md`](TODO/docs.md); `TOOL-29`, `TOOL-30`, `TOOL-31`, `TOOL-34`, `TOOL-35` and `TOOL-36` in [`TODO/tooling.md`](TODO/tooling.md); ruling 31 in [`TODO/RULES.md`](TODO/RULES.md).

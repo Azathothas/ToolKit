@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 216  open 44  blocked 5  done 167
+total 221  open 48  blocked 5  done 168
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
 | P1 | 3 | 0 | 80 | 83 |
-| P2 | 28 | 2 | 72 | 102 |
-| P3 | 13 | 3 | 11 | 27 |
-| **all** | **44** | **5** | **167** | **216** |
+| P2 | 30 | 2 | 73 | 105 |
+| P3 | 15 | 3 | 11 | 29 |
+| **all** | **48** | **5** | **168** | **221** |
 
 ---
 
@@ -53,6 +53,7 @@ total 216  open 44  blocked 5  done 167
 | DOC-11 | P3 | S | open | Lessons the old record held have no live page | [`docs.md`](docs.md) |
 | DOC-12 | P3 | S | open | The muse-code guide starts an agent named `muse` and then prompts `work` | [`docs.md`](docs.md) |
 | DOC-13 | P3 | S | done | The router and the rules count the release and CI wrong | [`docs.md`](docs.md) |
+| DOC-14 | P2 | M | open | The skills tell an agent things the tool does not do | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
@@ -90,6 +91,7 @@ total 216  open 44  blocked 5  done 167
 | TOOL-35 | P3 | S | done | The gate's own list says the analyzer covers `scripts/` alone | [`tooling.md`](tooling.md) |
 | TOOL-36 | P3 | S | done | A changelog stamp later than the clock passes the gate | [`tooling.md`](tooling.md) |
 | TOOL-37 | P3 | S | open | A nightly whose upload fails loses the whole prerelease | [`tooling.md`](tooling.md) |
+| TOOL-38 | P3 | M | open | The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -253,6 +255,9 @@ total 216  open 44  blocked 5  done 167
 | WSL-161 | P1 | S | open | A configuration that leaves out `systemd` turns systemd off | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-162 | P3 | S | open | Nothing holds a job container's log driver | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-163 | P3 | S | open | `resources --host-engine` calls the engine outside the deadline door | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-164 | P2 | S | open | `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-165 | P2 | S | done | `text-tool eol` creates an empty file at a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-166 | P3 | S | open | `text-tool eol` answers 0 for a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

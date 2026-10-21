@@ -836,3 +836,31 @@ func TestTheReportNamesTheOperationThatRan(t *testing.T) {
 		})
 	}
 }
+
+// TestEolCreatesNothingAtAMissingPath is WSL-165: a mistyped path was written as
+// a new empty file, and the run read "left unchanged" with exit 0. The exit code
+// stays 0 until a major release, which WSL-166 carries; the file must not appear.
+func TestEolCreatesNothingAtAMissingPath(t *testing.T) {
+	dir := t.TempDir()
+	real := write(t, dir, "real.txt", []byte("a\r\nb\r\n"))
+	missing := filepath.Join(dir, "nope.txt")
+	for _, args := range [][]string{
+		{"eol", real, missing, "--lf"},
+		{"eol", real, missing, "--lf", "--dry-run"},
+		{"eol", missing, "--lf", "--json"},
+	} {
+		code, out, err := run(t, args...)
+		if code != 0 || err != nil {
+			t.Fatalf("%v exited %d: %v", args, code, err)
+		}
+		if _, statErr := os.Lstat(missing); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("%v created %s", args, missing)
+		}
+		if !strings.Contains(out, "nope.txt") || !(strings.Contains(out, "no such file") || strings.Contains(out, `"missing": true`)) {
+			t.Fatalf("%v did not say the path is missing:\n%s", args, out)
+		}
+	}
+	if got := string(read(t, real)); got != "a\nb\n" {
+		t.Fatalf("the real file was not converted beside the missing one: %q", got)
+	}
+}

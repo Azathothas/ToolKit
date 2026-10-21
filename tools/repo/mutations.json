@@ -2,6 +2,33 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "text-tool: eol creates nothing at a missing path",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif o.mode == \"eol\" && before == nil && !exists(p) {\n",
+      "replace": "\t\tif false && o.mode == \"eol\" && before == nil && !exists(p) {\n",
+      "run": "TestEolCreatesNothingAtAMissingPath",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: a path eol skipped is not written",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif skip[i] {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestEolCreatesNothingAtAMissingPath",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
+      "label": "text-tool: eol names a missing path in its answer",
+      "file": "internal/edit/edit.go",
+      "find": "\t\tif f.Missing {\n",
+      "replace": "\t\tif f.Missing && false {\n",
+      "run": "TestEolCreatesNothingAtAMissingPath",
+      "module": "tools/text-tool",
+      "args": []
+    },
+    {
       "label": "docs: a cited path is checked at all",
       "file": "internal/checks/docs.go",
       "find": "\t\tif pathsBind && !recordsHistory(f) {\n",

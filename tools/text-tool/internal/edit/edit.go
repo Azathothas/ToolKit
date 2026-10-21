@@ -44,6 +44,9 @@ type FileReport struct {
 	Changed bool   `json:"changed"`
 	// BOM says the file began with a UTF-8 byte order mark BEFORE this ran.
 	BOM bool `json:"bom,omitempty"`
+	// Missing says `eol` was named a path that does not exist, and created
+	// nothing there. WSL-165.
+	Missing bool `json:"missing,omitempty"`
 	// Lines are the 1-based line numbers the operation touched, at most
 	// maxReportedLines of them, so a caller can see WHERE without reading the
 	// file back.
@@ -139,12 +142,24 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 
 	rep := Report{Schema: Schema, Mode: o.mode, Op: o.operation(), DryRun: o.dryRun || o.count}
 	staged := make([][]byte, len(o.paths))
-	var unmatched []string
+	var unmatched, missing []string
+	skip := make([]bool, len(o.paths))
 
 	for i, p := range o.paths {
 		before, err := readFile(p)
 		if err != nil {
 			return 2, err
+		}
+		// ⛔ `eol` CONVERTS A FILE; IT NEVER MAKES ONE. readFile answers a missing
+		// path with no bytes, which is right for `write` and `append`, and `eol`
+		// then wrote those no bytes: a mistyped path left a new empty file behind
+		// and the run read "left unchanged" with exit 0. The exit code stays 0
+		// until a major release, which WSL-166 carries. WSL-165.
+		if o.mode == "eol" && before == nil && !exists(p) {
+			skip[i] = true
+			missing = append(missing, p)
+			rep.Files = append(rep.Files, FileReport{Path: p, EOL: o.eol, Missing: true})
+			continue
 		}
 		eol := detectEOL(before, o.eol)
 		after, matches, lines, err := o.apply(before, eol)
@@ -200,9 +215,13 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 			rep.Files[i].Changed = false
 		}
 		emit(out, o.asJSON, "would change", rep)
+		noteMissing(errOut, missing)
 		return 0, nil
 	}
 	for i, p := range o.paths {
+		if skip[i] {
+			continue
+		}
 		if err := writeAtomic(p, staged[i]); err != nil {
 			return 2, err
 		}
@@ -212,7 +231,22 @@ func Run(args []string, out, errOut io.Writer, stdin io.Reader) (int, error) {
 		verb = "left unchanged"
 	}
 	emit(out, o.asJSON, verb, rep)
+	noteMissing(errOut, missing)
 	return 0, nil
+}
+
+// exists reports whether p names anything at all.
+func exists(p string) bool {
+	_, err := os.Lstat(p)
+	return err == nil
+}
+
+// noteMissing says which paths `eol` was given that do not exist. WSL-165.
+func noteMissing(errOut io.Writer, missing []string) {
+	if len(missing) > 0 {
+		fmt.Fprintf(errOut, "text-tool: %d path(s) do not exist, and eol created nothing there: %s\n",
+			len(missing), strings.Join(missing, ", "))
+	}
 }
 
 // emit reports what happened. ⛔ THE VERB IS PASSED IN RATHER THAN INFERRED.
@@ -247,11 +281,22 @@ func emit(out io.Writer, asJSON bool, verb string, r Report) {
 		if r.Op == "between" && len(f.Lines) == 2 {
 			where = fmt.Sprintf(", lines %d-%d (%d line(s))", f.Lines[0], f.Lines[1], f.Lines[1]-f.Lines[0]+1)
 		}
+		if f.Missing {
+			fmt.Fprintf(out, "missing %s: no such file, nothing created\n", f.Path)
+			continue
+		}
 		fmt.Fprintf(out, "%s %s: %d match(es)%s, %d -> %d bytes, %s endings\n",
 			verb, f.Path, f.Matches, where, f.Before, f.After, f.EOL)
 	}
+	// A missing path is not counted among the files the verb applied to.
+	present := 0
+	for _, f := range r.Files {
+		if !f.Missing {
+			present++
+		}
+	}
 	if len(r.Files) > 1 {
-		fmt.Fprintf(out, "%s %d file(s): %d match(es) in total\n", verb, len(r.Files), r.Matches)
+		fmt.Fprintf(out, "%s %d file(s): %d match(es) in total\n", verb, present, r.Matches)
 	}
 }
 
