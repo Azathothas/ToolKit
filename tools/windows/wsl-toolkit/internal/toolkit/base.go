@@ -1862,10 +1862,12 @@ func verifyError(user string, code int, stdout, stderr string) error {
 			return fmt.Errorf("the base does not match its configuration, checked as %s: %s", user, refusal)
 		}
 	}
-	detail := firstLine(strings.Join(append(guestLines(stderr), guestLines(stdout)...), "\n"))
-	if detail == "" {
-		detail = firstLine(stderr + stdout)
-	}
+	// ⛔ THROUGH guestFailure, which steps over podman's warning as well as
+	// wsl.exe's own line. Finding 15: fedora's `newuidmap: write to uid_map
+	// failed` sat behind a shared-mount warning, and this took the FIRST guest
+	// line, which was the warning. The last guest line is the engine's reason.
+	// WSL-152.
+	detail := guestFailure(stderr, stdout)
 	return fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, detail)
 }
 

@@ -607,6 +607,18 @@ func TestAVerifierRefusalIsReadPastWslsOwnLines(t *testing.T) {
 	if only := verifyError("agent", 1, "", session+"\n"); only == nil || only.Error() != "a container did not run as agent (exit 1): "+session {
 		t.Errorf("a failure with nothing but wsl.exe's line named nothing: %v", only)
 	}
+	// ⛔ WSL-152, finding 15: podman prints a warning BEFORE its error, so the
+	// first guest line is the warning and the reason is the last. fedora's real
+	// refusal sat behind a shared-mount warning and needed a diagnostic build to
+	// read; guestFailure takes the last guest line and names it.
+	const (
+		podmanWarn = "WARN[0000] \"/\" is not a shared mount, this could cause issues or missing mounts with rootless containers"
+		newuidmap  = "newuidmap: write to uid_map failed: Operation not permitted"
+	)
+	warned := verifyError("agent", 126, "", podmanWarn+"\n"+newuidmap+"\n")
+	if warned == nil || warned.Error() != "a container did not run as agent (exit 126): "+newuidmap {
+		t.Errorf("a failure behind a podman warning named the warning rather than the error: %v", warned)
+	}
 }
 
 // TestTheWindowsDriveMountsAreReadFromTheMountTable holds the root shell's source.

@@ -97,6 +97,13 @@ var doorsRequired = []string{
 	"priv.unshare-netns",
 	"priv.unshare-userns",
 	"priv.unshare-user-plus-net",
+	// ⛔ ONE ATTEMPT PER PARAVIRT DEVICE NODE, as the account, finding 22 then 38.
+	// They carry a verdict (the attempt got through, was refused, or the guest
+	// had no compiler to make it), so losing one costs a conclusion and they are
+	// required here. WSL-156.
+	"plumbing.kvm-create-vm",
+	"plumbing.vsock-connect-host",
+	"plumbing.dxg-ioctl",
 }
 
 // doorClaim is a door this tool's own configuration says is shut, and the

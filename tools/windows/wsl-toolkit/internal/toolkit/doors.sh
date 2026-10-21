@@ -182,6 +182,164 @@ for p in /init /run/WSL /dev/kvm /dev/dxg /dev/vsock; do
 done
 say plumbing.netns info "net=$(readlink /proc/self/ns/net 2>/dev/null) pid=$(readlink /proc/self/ns/pid 2>/dev/null)"
 
+# ----------------------------------------------------- the paravirt devices --
+# ⛔ ONE ATTEMPT PER DEVICE NODE, as the account, reported like interop.exec-pe.
+# /dev/kvm, /dev/dxg and /dev/vsock read crw-rw-rw- on every base this tool has
+# built, and findings 22 then 38 named them reported-but-never-attacked. The
+# attempt is a KVM_CREATE_VM on /dev/kvm, a vsock connect to the host, and a
+# /dev/dxg ioctl, none of which a POSIX shell can make, so it goes through a C
+# program the guest compiles on the spot. ⛔ A guest with no compiler reports
+# `unknown`, which is nothing-tried and NOT `closed`, as the TCP probe does when
+# it has no way to open a socket. WSL-156.
+dev_cc=
+if command -v cc >/dev/null 2>&1; then
+  dev_cc=cc
+elif command -v gcc >/dev/null 2>&1; then
+  dev_cc=gcc
+fi
+dev_dir=/tmp/doors-$TK_DOORS_MARK-dev
+mkdir -p "$dev_dir" 2>/dev/null
+dev_done=0
+if [ -n "$dev_cc" ]; then
+  cat > "$dev_dir/probe.c" <<'DEVC'
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+
+/* Constants are defined here so no kernel headers are needed to build this. */
+#ifndef KVM_CREATE_VM
+#define KVM_CREATE_VM 0xAE01 /* _IO(0xAE, 0x01) */
+#endif
+#ifndef AF_VSOCK
+#define AF_VSOCK 40
+#endif
+#define TK_CID_HOST 2
+
+struct tk_sockaddr_vm {
+    unsigned short svm_family;
+    unsigned short svm_reserved1;
+    unsigned int   svm_port;
+    unsigned int   svm_cid;
+    unsigned char  svm_zero[4];
+};
+
+static void row(const char *id, const char *verdict, const char *detail) {
+    printf("%s %s %s\n", id, verdict, detail);
+}
+
+static void on_alarm(int sig) { (void)sig; }
+
+int main(void) {
+    char d[200];
+
+    /* /dev/kvm: one KVM_CREATE_VM as the account. */
+    {
+        int fd = open("/dev/kvm", O_RDWR | O_CLOEXEC);
+        if (fd < 0) {
+            snprintf(d, sizeof d, "open /dev/kvm: %s", strerror(errno));
+            row("kvm", errno == ENOENT ? "absent" : "closed", d);
+        } else {
+            long vm = ioctl(fd, KVM_CREATE_VM, 0);
+            if (vm >= 0) {
+                row("kvm", "open", "the account created a KVM virtual machine");
+                close((int)vm);
+            } else {
+                snprintf(d, sizeof d, "KVM_CREATE_VM refused: %s", strerror(errno));
+                row("kvm", "closed", d);
+            }
+            close(fd);
+        }
+    }
+
+    /* /dev/vsock: one connect to the host context id. */
+    {
+        int s = socket(AF_VSOCK, SOCK_STREAM, 0);
+        if (s < 0) {
+            snprintf(d, sizeof d, "AF_VSOCK socket: %s", strerror(errno));
+            row("vsock", errno == EAFNOSUPPORT ? "absent" : "closed", d);
+        } else {
+            struct tk_sockaddr_vm a;
+            memset(&a, 0, sizeof a);
+            a.svm_family = AF_VSOCK;
+            a.svm_port = 1024;
+            a.svm_cid = TK_CID_HOST;
+            signal(SIGALRM, on_alarm);
+            alarm(6);
+            if (connect(s, (struct sockaddr *)&a, sizeof a) == 0) {
+                row("vsock", "open", "an AF_VSOCK channel to the host context id was opened");
+            } else {
+                snprintf(d, sizeof d, "host context id not reached: %s", strerror(errno));
+                row("vsock", "closed", d);
+            }
+            alarm(0);
+            close(s);
+        }
+    }
+
+    /* /dev/dxg: open and one ioctl, to see what the account reaches. */
+    {
+        int fd = open("/dev/dxg", O_RDWR | O_CLOEXEC);
+        if (fd < 0) {
+            snprintf(d, sizeof d, "open /dev/dxg: %s", strerror(errno));
+            row("dxg", errno == ENOENT ? "absent" : "closed", d);
+        } else {
+            /* _IOWR(0x47, 0x01, 24): dxgkrnl's own family. The point is reaching
+               the driver from the account, not a real operation. */
+            unsigned long req = (3UL << 30) | (24UL << 16) | (0x47UL << 8) | 0x01UL;
+            unsigned char buf[24];
+            int rc;
+            memset(buf, 0, sizeof buf);
+            rc = ioctl(fd, req, buf);
+            if (rc == 0)
+                snprintf(d, sizeof d, "opened /dev/dxg and the driver accepted an ioctl");
+            else
+                snprintf(d, sizeof d, "opened /dev/dxg and the driver answered an ioctl: %s", strerror(errno));
+            row("dxg", "open", d);
+            close(fd);
+        }
+    }
+    return 0;
+}
+DEVC
+  if "$dev_cc" -O0 -w -o "$dev_dir/probe" "$dev_dir/probe.c" 2>"$dev_dir/cc.err"; then
+    "$dev_dir/probe" > "$dev_dir/out" 2>/dev/null
+    while read -r d_name d_verdict d_detail; do
+      case "$d_name" in
+        kvm)   say plumbing.kvm-create-vm "$d_verdict" "$d_detail" ;;
+        vsock) say plumbing.vsock-connect-host "$d_verdict" "$d_detail" ;;
+        dxg)   say plumbing.dxg-ioctl "$d_verdict" "$d_detail" ;;
+      esac
+    done < "$dev_dir/out"
+    # ⛔ ALL THREE, OR NONE: a probe that built and ran but printed fewer than its
+    # three rows (a crash part way) is not a measurement, and the fallback below
+    # names every one it owes as `unknown` rather than leaving a required door out.
+    if [ "$(grep -cE '^(kvm|vsock|dxg) ' "$dev_dir/out" 2>/dev/null)" = 3 ]; then
+      dev_done=1
+    fi
+  fi
+fi
+if [ "$dev_done" = 0 ]; then
+  dev_why='no cc or gcc in this guest to make a syscall a shell cannot'
+  if [ -n "$dev_cc" ]; then
+    dev_why="$dev_cc could not build or run the probe: $(sed -n 1p "$dev_dir/cc.err" 2>/dev/null | cut -c1-120)"
+  fi
+  for dev_pair in kvm-create-vm:/dev/kvm vsock-connect-host:/dev/vsock dxg-ioctl:/dev/dxg; do
+    dev_id=${dev_pair%%:*}
+    dev_node=${dev_pair#*:}
+    if [ "$dev_id" = vsock-connect-host ] || [ -e "$dev_node" ]; then
+      say "plumbing.$dev_id" unknown "$dev_node is reachable and $dev_why"
+    else
+      say "plumbing.$dev_id" absent "no $dev_node in this guest"
+    fi
+  done
+fi
+rm -rf "$dev_dir" 2>/dev/null
+
 # --------------------------------------------------------------- network -----
 say net.addresses info "$(ip -4 -o addr show 2>/dev/null | awk '{printf "%s=%s ", $2, $4}')"
 say net.default-route info "$(ip -4 route show default 2>/dev/null | head -1)"

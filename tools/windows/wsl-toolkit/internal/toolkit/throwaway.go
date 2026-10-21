@@ -1039,8 +1039,10 @@ func (t *Throwaways) smoke(ctx context.Context, name string, timeout time.Durati
 		Timeout: timeout, Stdout: outBuf, Stderr: errBuf})
 	out, stderr := outBuf.String(), errBuf.String()
 	if err != nil || code != 0 || !strings.Contains(out, smokeMarker) {
+		// ⛔ guestFailure, not firstLine: wsl.exe writes its own line before the
+		// guest says anything, and the real reason is the last guest line. WSL-152.
 		return "", fmt.Errorf("%s was imported and cannot run a command (exit %d): %s. The rootfs needs a POSIX shell at /bin/sh, and "+
-			"the command channel needs /dev/fd", name, code, firstLine(stderr+out))
+			"the command channel needs /dev/fd", name, code, guestFailure(stderr, out))
 	}
 	osName := "unknown"
 	for _, line := range strings.Split(out, "\n") {
@@ -1067,7 +1069,8 @@ func (t *Throwaways) enableSystemd(ctx context.Context, name string, timeout tim
 	out, stderr, code, err := t.wsl.Capture(ctx, name, "root", []byte("cat /proc/1/comm\n"), timeout)
 	pid1 := strings.TrimSpace(out)
 	if err != nil || code != 0 {
-		return fmt.Errorf("%s restarted and PID 1 could not be read (exit %d): %s", name, code, firstLine(stderr+out))
+		// ⛔ guestFailure steps over wsl.exe's restart line to the guest's own. WSL-152.
+		return fmt.Errorf("%s restarted and PID 1 could not be read (exit %d): %s", name, code, guestFailure(stderr, out))
 	}
 	if pid1 != "systemd" {
 		return fmt.Errorf("--systemd was asked for and PID 1 in %s is %q. The image does not ship systemd, which most do not. "+

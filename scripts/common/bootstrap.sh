@@ -900,6 +900,18 @@ install_powershell_upstream() {
     ps_flavour=musl-x64
   fi
 
+  # ⛔ A DRY RUN RETURNS BEFORE THE RELEASE-TAG LOOKUP, which needs curl. A dry
+  # run installs nothing, so curl is not on PATH yet, and resolving the tag over
+  # a redirect fails on an image whose own packages carry curl but whose base
+  # does not. WSL-149, findings 4 and 19: `--dry-run --toolset agent` exited 1 on
+  # debian:latest and 0 in golang:1.25, which is the image carrying curl or not,
+  # over powershell's upstream route alone. A real run resolves the tag below,
+  # after curl is installed.
+  if [ "$DRY_RUN" = 1 ]; then
+    step "would resolve the current powershell release and install powershell-$ps_flavour below $PREFIX/share/powershell"
+    return 0
+  fi
+
   ps_landed=$(redirect_target 'https://github.com/PowerShell/PowerShell/releases/latest')
   ps_tag=${ps_landed##*/}
   case "$ps_tag" in
@@ -913,11 +925,6 @@ install_powershell_upstream() {
   ps_file="powershell-$ps_version-linux-$ps_flavour.tar.gz"
   ps_base="https://github.com/PowerShell/PowerShell/releases/download/$ps_tag"
   step "powershell resolves to $ps_version, $ps_file"
-
-  if [ "$DRY_RUN" = 1 ]; then
-    step "would install $ps_file below $PREFIX/share/powershell"
-    return 0
-  fi
 
   ps_work="$PREFIX/.bootstrap-work.$$"
   rm -rf "$ps_work"

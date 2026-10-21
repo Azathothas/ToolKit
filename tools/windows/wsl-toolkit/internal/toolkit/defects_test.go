@@ -1831,6 +1831,21 @@ func TestPlatformAndLifecycleReachPodman(t *testing.T) {
 	}
 }
 
+// TestTheJobContainerNamesItsLogDriver holds finding 81: a page claimed the tool
+// named `k8s-file` on the runs it owns, and `git grep log-driver` over the code
+// answered zero, so every job took the base default and `podman logs` answered
+// nothing. The driver is named now, and this is the case the page never had.
+// WSL-162.
+func TestTheJobContainerNamesItsLogDriver(t *testing.T) {
+	runner := &Runner{}
+	script := string(runner.containerScript(JobSpec{
+		Image: "docker.io/library/alpine:latest", ContainerLifecycle: ContainerPersistent,
+	}, "wtk-log", jobLayout("/home/toolkit", "log"), "marker"))
+	if want := "'--log-driver' '" + ContainerLogDriver + "'"; !strings.Contains(script, want) {
+		t.Fatalf("the job container does not name its log driver as %q: %s", want, script)
+	}
+}
+
 func TestBinfmtCountIsMeasured(t *testing.T) {
 	got := parseBinfmt("engine podman version 6.1.1\nbinfmt-handlers 9\n")
 	if got == nil || got.Handlers != 9 || !got.Ready {

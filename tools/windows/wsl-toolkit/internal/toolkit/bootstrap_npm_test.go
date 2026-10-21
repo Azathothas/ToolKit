@@ -10,13 +10,17 @@ import (
 	"testing"
 )
 
-// The cases below read scripts/common/bootstrap.sh from the tree, as
-// TestNativeInventoryCoversStandaloneProbe reads the doctor probe. ⚠ No mutation row
-// can hold them: `repo mutate` copies a module, and that file is in none.
-
+// The cases below read the module's OWN shipped copy of bootstrap.sh.
+//
+// ⛔ WSL-154, finding 17. They read `../../../../../scripts/common/bootstrap.sh`,
+// five levels up and OUTSIDE this module, so a `repo mutate` row naming one of
+// them reported the file unreadable rather than a guard's verdict, and no row
+// could name one. The shipped copy is inside the module, the gate's `shipped`
+// check keeps it byte for byte with the source, and now a row can mutate it and
+// see a case go red.
 func bootstrapSource(t *testing.T) string {
 	t.Helper()
-	b, err := os.ReadFile("../../../../../scripts/common/bootstrap.sh")
+	b, err := os.ReadFile(filepath.Join("shipped", "bootstrap.sh"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -341,6 +345,53 @@ func TestTheCarriedBootstrapRunsFromItsPayload(t *testing.T) {
 		if !strings.Contains(got, c.count) {
 			t.Errorf("%s: the script saw %q, want %q", c.name, strings.TrimSpace(got), c.count)
 		}
+	}
+}
+
+// TestBootstrapDryRunReturnsBeforeTheReleaseLookup is WSL-149, findings 4 and 19.
+//
+// ⛔ A DRY RUN INSTALLS NOTHING, SO curl IS NOT ON PATH YET, and the powershell
+// upstream route resolved the release tag over a redirect before it checked for
+// a dry run. On an image whose packages carry curl but whose base does not, that
+// lookup failed and `--dry-run --toolset agent` exited 1: debian:latest exited 1
+// and golang:1.25 exited 0, which is the image carrying curl or not. The dry run
+// returns BEFORE the lookup now, so it reports what it would do and fails on
+// nothing. The redirect helper is stood in for and must never be reached.
+func TestBootstrapDryRunReturnsBeforeTheReleaseLookup(t *testing.T) {
+	dash := dashFor(t)
+	src := bootstrapSource(t)
+	harness := strings.Join([]string{
+		"set -eu",
+		`warn() { printf 'warn: %s\n' "$*" >&2; }`,
+		`step() { printf 'step: %s\n' "$*" >&2; }`,
+		`fail() { printf 'fail: %s\n' "$*" >&2; FAILURES=$((FAILURES + 1)); }`,
+		"FAILURES=0",
+		"UPSTREAM=1",
+		"DRY_RUN=1",
+		"ARCH=x86_64",
+		"LIBC=glibc",
+		"PREFIX=/opt/tk",
+		"EXPECT_SHA256=",
+		"UPSTREAM_DONE=",
+		`uname() { printf 'Linux'; }`,
+		// ⛔ The release lookup needs curl, and a dry run has none. If it is
+		// reached at all, it announces itself and the case fails.
+		`redirect_target() { printf 'REACHED-THE-LOOKUP\n' >&2; printf ''; }`,
+		bootstrapFunction(t, src, "install_powershell_upstream"),
+		`if install_powershell_upstream; then printf 'rc=0\n'; else printf 'rc=1 failures=%s\n' "$FAILURES"; fi`,
+	}, "\n") + "\n"
+	cmd := exec.Command(dash, "-c", harness)
+	cmd.Env = []string{"PATH=/usr/bin:/bin"}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("the harness exited: %v; stderr %q", err, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "rc=0") {
+		t.Fatalf("a dry run without curl answered %q, want rc=0; stderr %q", stdout.String(), stderr.String())
+	}
+	if strings.Contains(stderr.String(), "REACHED-THE-LOOKUP") {
+		t.Fatalf("the dry run reached the release-tag lookup, which needs curl: stderr %q", stderr.String())
 	}
 }
 

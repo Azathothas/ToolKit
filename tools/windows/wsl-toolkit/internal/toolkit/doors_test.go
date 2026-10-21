@@ -245,6 +245,36 @@ func TestEveryRequiredDoorIsEmittedByTheEmbeddedProbe(t *testing.T) {
 	}
 }
 
+// TestTheParavirtDevicesAreAttackedNotJustListed is WSL-156, findings 22 and 38.
+//
+// ⛔ THE PROBE REPORTED /dev/kvm, /dev/dxg AND /dev/vsock WITH THEIR MODES AND
+// ATTACKED NONE, so what an unprivileged account reached through any of them was
+// unmeasured. Each now gets one attempt as the account, compiled on the spot
+// because a POSIX shell cannot make the syscall. This asserts both that the
+// verdict row is emitted and that the attempt's own mechanism is in the probe,
+// so deleting the C that makes it is caught here rather than only on a live base.
+func TestTheParavirtDevicesAreAttackedNotJustListed(t *testing.T) {
+	script := string(doorsScript)
+	for _, c := range []struct{ id, mechanism string }{
+		{"plumbing.kvm-create-vm", "KVM_CREATE_VM"},
+		{"plumbing.vsock-connect-host", "AF_VSOCK"},
+		{"plumbing.dxg-ioctl", "/dev/dxg"},
+	} {
+		if !strings.Contains(script, "say "+c.id+" ") {
+			t.Errorf("the probe emits no verdict row for %s", c.id)
+		}
+		if !strings.Contains(script, c.mechanism) {
+			t.Errorf("the probe carries no %s attempt for %s", c.mechanism, c.id)
+		}
+	}
+	// ⛔ THE ATTEMPT NEEDS A COMPILER, and a guest with none reports unknown, not
+	// closed. The build is what makes the three rows a measurement rather than a
+	// reading.
+	if !strings.Contains(script, "command -v cc") && !strings.Contains(script, "command -v gcc") {
+		t.Error("the probe no longer looks for a compiler to make the device attempts")
+	}
+}
+
 // ⚠ The script's own refusal of a bad marker is a shell-level guard, and this
 // asserts only that it is still there: the case that RUNS it needs a guest.
 func TestTheDoorsProbeRefusesAMarkerThatIsNotHexadecimal(t *testing.T) {

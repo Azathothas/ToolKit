@@ -41,6 +41,14 @@ func cmdDistro(ctx context.Context, args []string) (int, error) {
 		fmt.Fprint(os.Stderr, distroUsage)
 		return exitCannot, nil
 	}
+	// ⛔ ASKING A GROUP FOR HELP IS NOT AN UNKNOWN SUBCOMMAND. `distro --help`
+	// fell through to the default arm and exited 2 saying `"--help" is not a
+	// distro subcommand`, where `base --help` and every subcommand answer 0.
+	// WSL-164.
+	if isGroupHelp(args) {
+		fmt.Fprint(os.Stderr, distroUsage)
+		return exitOK, flag.ErrHelp
+	}
 	sub, rest := args[0], args[1:]
 	var run func(context.Context, []string) (int, error)
 	switch sub {
