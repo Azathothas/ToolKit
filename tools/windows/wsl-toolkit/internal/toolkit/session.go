@@ -41,6 +41,9 @@ type SessionRecord struct {
 	Dir       string    `json:"dir"`
 	Started   time.Time `json:"started"`
 	TimeoutMS int64     `json:"timeout_ms,omitempty"`
+	// ArtifactDir is the host directory the session's out directory is delivered
+	// to, by `wait` or `logs --follow` once it ends. WSL-124.
+	ArtifactDir string `json:"artifact_dir,omitempty"`
 }
 
 // ReadSessionRecord reads jobs/ID/session.json, if there is one.
@@ -110,6 +113,12 @@ type SessionStart struct {
 	Payload []byte // the command, repaired, with any environment prefixed
 	Timeout time.Duration
 	Grace   time.Duration
+	// Inputs go to the session's in directory, ArtifactDir names the host
+	// directory its out directory is delivered to, and Stdin is what the payload
+	// reads, nil for /dev/null. WSL-124.
+	Inputs      []JobInput
+	ArtifactDir string
+	Stdin       []byte
 }
 
 // SessionPayload is what a detached session runs: the request's environment as
@@ -143,24 +152,26 @@ func StartSession(ctx context.Context, w *Wsl, home string, s SessionStart) (Ses
 		return rec, err
 	}
 	rec = SessionRecord{Schema: SessionSchema, ID: id, Distro: s.Distro, User: s.User, GuestDir: guestDir,
-		Dir: s.Dir, Started: time.Now().UTC(), TimeoutMS: s.Timeout.Milliseconds()}
+		Dir: s.Dir, Started: time.Now().UTC(), TimeoutMS: s.Timeout.Milliseconds(), ArtifactDir: s.ArtifactDir}
 	// ⭐ RECORDED BEFORE ANYTHING EXISTS in the guest, for the reason a job's
 	// ledger record is: a start that dies half way still leaves a record that
 	// names where its leftovers are.
 	if err := writeSessionRecord(home, rec); err != nil {
 		return rec, fmt.Errorf("the session record: %w", err)
 	}
+	made := []string{"/bin/mkdir", "-p", guestDir}
+	if s.ArtifactDir != "" {
+		made = append(made, guestDir+"/out")
+	}
 	errBuf := &boundedBuffer{max: 64 << 10}
-	if code, err := w.ExecDirect(ctx, s.Distro, s.User, "", []string{"/bin/mkdir", "-p", guestDir}, nil, io.Discard, errBuf, 2*time.Minute); err != nil || code != 0 {
+	if code, err := w.ExecDirect(ctx, s.Distro, s.User, "", made, nil, io.Discard, errBuf, 2*time.Minute); err != nil || code != 0 {
 		return rec, fmt.Errorf("could not create %s in the guest (exit %d): %s", guestDir, code, guestFailure(errBuf.String()))
 	}
+	files := sessionFiles(guestDir, s)
 	errBuf = &boundedBuffer{max: 64 << 10}
 	if _, err := pumpArchive(
 		func(pw io.Writer) (WorkspaceUpload, error) {
-			payload := []JobInput{
-				{Name: "payload.sh", Bytes: s.Payload},
-			}
-			return writeInputsTar(pw, payload)
+			return writeInputsTar(pw, files)
 		},
 		func(pr io.Reader) (int, error) {
 			return w.ExecDirect(ctx, s.Distro, s.User, "", []string{"/bin/tar", "-xf", "-", "-C", guestDir}, pr, io.Discard, errBuf, 5*time.Minute)
@@ -177,6 +188,32 @@ func StartSession(ctx context.Context, w *Wsl, home string, s SessionStart) (Ses
 		return rec, fmt.Errorf("the session did not start (exit %d): %s", code, guestFailure(stderr, out))
 	}
 	return rec, nil
+}
+
+// sessionFiles is what one archive places in a session's directory: the payload,
+// with the in and out directories it has exported in front, each input under
+// in/, and the bytes its stdin reads. WSL-124.
+//
+// ⛔ THE EXPORTS GO IN FRONT OF THE CALLER'S OWN ASSIGNMENTS, so a --env that
+// names one of the two wins, as a caller's explicit value does everywhere else.
+func sessionFiles(guestDir string, s SessionStart) []JobInput {
+	var exports strings.Builder
+	if len(s.Inputs) > 0 {
+		exports.WriteString(ExecInEnv + "=" + shellQuote(guestDir+"/in") + "; export " + ExecInEnv + "\n")
+	}
+	if s.ArtifactDir != "" {
+		exports.WriteString(ExecOutEnv + "=" + shellQuote(guestDir+"/out") + "; export " + ExecOutEnv + "\n")
+	}
+	files := []JobInput{
+		{Name: "payload.sh", Bytes: append([]byte(exports.String()), s.Payload...)},
+	}
+	for _, in := range s.Inputs {
+		files = append(files, JobInput{Name: "in/" + in.Name, Path: in.Path, Bytes: in.Bytes})
+	}
+	if s.Stdin != nil {
+		files = append(files, JobInput{Name: "stdin", Bytes: s.Stdin})
+	}
+	return files
 }
 
 // accountHome asks the guest where an account's home is. It is read, never
@@ -198,7 +235,9 @@ func accountHome(ctx context.Context, w *Wsl, distro, user string) (string, erro
 // The supervisor, in its own session:
 //
 //	payload.sh    runs under setsid, so its process group is its own and a stop
-//	              reaches it and its children without reaching the supervisor
+//	              reaches it and its children without reaching the supervisor.
+//	              Its stdin is the session's stdin file where there is one, and
+//	              /dev/null otherwise. WSL-124
 //	watchdog      TERM at the deadline, KILL a grace later; it marks timedout
 //	exit          written last, through a rename, so a reader never sees half
 func sessionLaunchScript(guestDir, dir string, timeout, grace time.Duration) []byte {
@@ -227,7 +266,8 @@ func sessionLaunchScript(guestDir, dir string, timeout, grace time.Duration) []b
 d=$1; to=$2; grace=$3
 printf "%s\n" "$$" > "$d/supervisor.pid"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$d/started"
-setsid /bin/sh "$d/payload.sh" </dev/null >"$d/stdout" 2>"$d/stderr" &
+i=/dev/null; if [ -f "$d/stdin" ]; then i="$d/stdin"; fi
+setsid /bin/sh "$d/payload.sh" <"$i" >"$d/stdout" 2>"$d/stderr" &
 p=$!
 printf "%s\n" "$p" > "$d/payload.pid"
 w=
@@ -515,6 +555,61 @@ while :; do
   sleep 1
 done
 `)
+}
+
+// SessionDelivery is what became of a session's out directory once it ended.
+// WSL-124.
+type SessionDelivery struct {
+	To        string          `json:"to"`
+	Delivered int             `json:"delivered"`
+	Attempted int             `json:"attempted"`
+	Bytes     int64           `json:"bytes"`
+	List      []ArtifactEntry `json:"list,omitempty"`
+	Unlisted  int             `json:"unlisted,omitempty"`
+	Error     string          `json:"error,omitempty"`
+	// Earlier says an earlier `wait` or `logs --follow` delivered it, and this is
+	// that delivery's record rather than a second copy.
+	Earlier bool `json:"earlier,omitempty"`
+}
+
+const sessionDeliveryName = "artifacts.json"
+
+// DeliverSessionArtifacts copies an ended session's out directory to the host
+// directory its record names, once. Nil where the session asked for none.
+//
+// ⭐ THE FIRST DELIVERY THAT SUCCEEDS IS RECORDED, and a later `wait` reads the
+// record rather than writing the files again over whatever the caller did with
+// them. A delivery that failed is not recorded, so the next one tries again.
+//
+// ⚠ NOBODY HAS TO WAIT, AND THEN NOTHING IS DELIVERED. The output stays in the
+// guest with the session, and `gc` removes it with the session.
+func DeliverSessionArtifacts(ctx context.Context, w *Wsl, home string, rec SessionRecord, st SessionState) *SessionDelivery {
+	if rec.ArtifactDir == "" {
+		return nil
+	}
+	recordPath := filepath.Join(home, "jobs", rec.ID, sessionDeliveryName)
+	if b, err := os.ReadFile(recordPath); err == nil {
+		var earlier SessionDelivery
+		if json.Unmarshal(b, &earlier) == nil {
+			earlier.Earlier = true
+			return &earlier
+		}
+	}
+	d := &SessionDelivery{To: rec.ArtifactDir}
+	if st.Gone {
+		d.Error = "the guest holds nothing for this session, so its output went with it"
+		return d
+	}
+	got, err := w.FetchArtifacts(ctx, rec.Distro, rec.User, rec.GuestDir+"/out", rec.ArtifactDir, DefaultWorkspaceLimits(), nil)
+	d.Delivered, d.Attempted, d.Bytes, d.List, d.Unlisted = got.Delivered, got.Attempted, got.Bytes, got.List, got.Unlisted
+	if err != nil {
+		d.Error = err.Error()
+		return d
+	}
+	if b, err := json.MarshalIndent(d, "", "  "); err == nil {
+		_ = writeFileAtomic(recordPath, append(b, '\n'), 0o600)
+	}
+	return d
 }
 
 // RemoveSession removes one ended session's guest directory, checking

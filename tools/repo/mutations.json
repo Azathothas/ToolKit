@@ -2,6 +2,402 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: base exec refuses a --dir the command cannot enter",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "\t\tif gate.Refused() {\n\t\t\treturn res, dirRefusal(e)\n\t\t}\n\t\tres.Exit = code\n\t\treturn res, runErr\n",
+      "replace": "\t\tres.Exit = code\n\t\treturn res, runErr\n",
+      "run": "TestADirectoryTheCommandCannotEnterIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec enters its own --dir and says whether it could",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "\tif entersItself(e.Dir) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestADirectoryTheCommandCannotEnterIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec takes the start word out of the command's stderr",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "rest := append(append([]byte(nil), g.buf[:i]...), g.buf[i+len(word):]...)",
+      "replace": "rest := g.buf",
+      "run": "TestTheStartGateTakesItsWordOutAndHoldsNothingAfter|TestACommandThatEntersItsDirectoryAnswersWithItsOwnExit",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec's start gate holds a bounded amount",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "\tif len(g.buf) > maxGateHold {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheStartGateTakesItsWordOutAndHoldsNothingAfter",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec --input exports the input directory",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "\t\texports.WriteString(ExecInEnv + \"=\" + shellQuote(paths.in) + \"; export \" + ExecInEnv + \"\\n\")\n",
+      "replace": "",
+      "run": "TestInputsAndArtifactsGetADirectoryOfTheCommandsOwn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec keeps the guest copy of artifacts it could not deliver",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "\t\t\tkeep = true\n",
+      "replace": "",
+      "run": "TestAFailedTransferKeepsTheCallsDirectoryForARetry",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec --stdin sends the command as a file",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "\tif e.Stdin != nil {\n\t\tcode, runErr = w.execFile(",
+      "replace": "\tif false {\n\t\tcode, runErr = w.execFile(",
+      "run": "TestStdinReachesACommandThatTravelsAsAFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an account name is checked before the base is asked",
+      "file": "internal/toolkit/baseexec.go",
+      "find": "\tif err := ValidateAccountName(name); err != nil {\n\t\treturn 0, false, err\n\t}\n\tout, stderr, code, err := w.Capture(",
+      "replace": "\tout, stderr, code, err := w.Capture(",
+      "run": "TestAnAccountIsAskedForBeforeTheCommandRuns",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an empty /out makes no host directory",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\trealDest, err := resolveExisting(hostDir)\n",
+      "replace": "\t_ = os.MkdirAll(hostDir, 0o700)\n\trealDest, err := resolveExisting(hostDir)\n",
+      "run": "TestAnEmptyOutputDirectoryMakesNoHostDirectory|TestARunListsItsArtifactsAndAnEmptyOutMakesNoDirectory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper route makes no directory for an empty set",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\tdest, err := resolveExisting(hostDir)\n",
+      "replace": "\t_ = WriteJobTranscript(hostDir, &JobResult{})\n\tdest, err := resolveExisting(hostDir)\n",
+      "run": "TestTheHelperRouteMakesNoDirectoryForAnEmptySet",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an artifact transfer lists each file it delivers",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\tgot.listed(rel, \"file\", written)\n",
+      "replace": "",
+      "run": "TestTheArtifactListIsBoundedAndTheCountStaysExact|TestAnEmptyOutputDirectoryMakesNoHostDirectory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the artifact list is bounded",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\tif len(t.List) >= MaxListedArtifacts {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheArtifactListIsBoundedAndTheCountStaysExact",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a run's answer carries the artifact list",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\tres.ArtifactList, res.ArtifactsUnlisted = got.List, got.Unlisted\n",
+      "replace": "",
+      "run": "TestARunListsItsArtifactsAndAnEmptyOutMakesNoDirectory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the line for an empty artifact set says nothing was written",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\tif got.Delivered == 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAnEmptyOutputDirectoryMakesNoHostDirectory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session exports its input directory",
+      "file": "internal/toolkit/session.go",
+      "find": "\t\texports.WriteString(ExecInEnv + \"=\" + shellQuote(guestDir+\"/in\") + \"; export \" + ExecInEnv + \"\\n\")\n",
+      "replace": "",
+      "run": "TestASessionsOneArchiveCarriesItsInputsAndItsStdin",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's payload reads the session's stdin file",
+      "file": "internal/toolkit/session.go",
+      "find": "i=/dev/null; if [ -f \"$d/stdin\" ]; then i=\"$d/stdin\"; fi",
+      "replace": "i=/dev/null",
+      "run": "TestASessionsOneArchiveCarriesItsInputsAndItsStdin",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's output is delivered once",
+      "file": "internal/toolkit/session.go",
+      "find": "\tif b, err := os.ReadFile(recordPath); err == nil {\n",
+      "replace": "\tif b, err := os.ReadFile(recordPath); false && err == nil {\n",
+      "run": "TestASessionsOutputIsDeliveredOnce",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed session delivery fails a command that succeeded",
+      "file": "cmd_jobs.go",
+      "find": "\tif d != nil && d.Error != \"\" && verdict == exitOK {\n",
+      "replace": "\tif false {\n",
+      "run": "TestADetachedSessionsDeliveryFailureFailsASucceededCommand",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the private shell's launcher removes its own directory",
+      "file": "internal/toolkit/private_net.go",
+      "find": "content := append([]byte(\"rm -rf \"+shellQuote(dir)+\"\\n\"), shellAssignments(env)...)",
+      "replace": "content := append([]byte{}, shellAssignments(env)...)",
+      "run": "TestThePrivateShellsLauncherRemovesItselfAndCarriesTheWrapper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a private payload removes the wrapper's work directory",
+      "file": "internal/toolkit/private-net.sh",
+      "find": "{ printf '%s\\n' 'rm -rf -- \"${0%/*}\"'; cat \"$WORK/payload.sh\"; } > \"$WORK/enter.sh.payload\"",
+      "replace": "cp \"$WORK/payload.sh\" \"$WORK/enter.sh.payload\"",
+      "run": "TestTheWrappersPayloadRemovesTheWorkDirectory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base shell reads --private-net",
+      "file": "cmd_base.go",
+      "find": "\"shell\":    {\"root\", \"here\", \"private-net\", \"via-helper\"},",
+      "replace": "\"shell\":    {\"root\", \"here\", \"via-helper\"},",
+      "run": "TestAPrivateShellIsRefusedToRoot|TestEverySharedSetPublishesAndAcceptsOnlyWhatEachSubcommandReads",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a private base shell is refused to root",
+      "file": "cmd_base.go",
+      "find": "\tif f.privateNet && f.asRoot {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAPrivateShellIsRefusedToRoot",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec refuses --root beside --user",
+      "file": "cmd_base_exec.go",
+      "find": "\tcase e.asRoot && e.user != \"\":\n\t\treturn \"\", errors.New(\"--root and --user both name who the command runs as. --root is --user root, so pass one\")\n",
+      "replace": "",
+      "run": "TestBaseExecRunsAsTheAccountItNames",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec --private-net is refused to --user root",
+      "file": "cmd_base_exec.go",
+      "find": "\t\tif user == \"root\" {\n",
+      "replace": "\t\tif e.asRoot {\n",
+      "run": "TestBaseExecRunsAsTheAccountItNames",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec refuses an account the base lacks or a uid 0 namespace",
+      "file": "cmd_base_exec.go",
+      "find": "\tif privateNet && uid == 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestBaseExecRunsAsTheAccountItNames",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec --dir maps a Windows directory",
+      "file": "cmd_base_exec.go",
+      "find": "\tif windowsDirArg(dir) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAWindowsDirectoryIsMappedToWhereTheBaseSeesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec --here starts where the base sees this directory",
+      "file": "cmd_base_exec.go",
+      "find": "\t\treturn windowsDirInGuest(cfg, cwd, \"--here\")\n",
+      "replace": "\t\treturn dir, nil\n",
+      "run": "TestAWindowsDirectoryIsMappedToWhereTheBaseSeesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a directory no grant covers is refused with its grant",
+      "file": "cmd_base_exec.go",
+      "find": "\tif errors.Is(err, toolkit.ErrNotGranted) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAWindowsDirectoryIsMappedToWhereTheBaseSeesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec --stdin is refused from a terminal",
+      "file": "cmd_base_exec.go",
+      "find": "\tcase console:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestStdinIsPassedOnlyWhereItIsAPipeOrAFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base agent --env reaches the agent's payload",
+      "file": "cmd_base_agent.go",
+      "find": "\treturn toolkit.ComposePayload(toolkit.AgentScript(command, passed), pairs, false)\n",
+      "replace": "\treturn toolkit.AgentScript(command, passed)\n",
+      "run": "TestAnAgentsEnvironmentComesBeforeItsName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync refuses the account's home itself",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase clean == home:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestASyncWritesADirectoryOfItsOwnUnderTheHome",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync refuses this tool's own directory",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase clean == own || strings.HasPrefix(clean, own+\"/\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestASyncWritesADirectoryOfItsOwnUnderTheHome",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync outside the home needs --force",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase !force && !strings.HasPrefix(clean, home+\"/\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestASyncWritesADirectoryOfItsOwnUnderTheHome",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync refuses a Windows directory in the guest",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase windowsMountTypes[sv.fs]:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestASyncRefusesAWindowsDirectoryAndChangesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync reads its target through links",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase !s.Force && sv.real != sv.home && !strings.HasPrefix(sv.real+\"/\", sv.home+\"/\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestASyncRefusesAWindowsDirectoryAndChangesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync compares a file's executable bit",
+      "file": "internal/toolkit/sync.go",
+      "find": " && g.mtime == hostMTime(e.info) && (g.mode&0o111 != 0) == (e.mode&0o111 != 0):",
+      "replace": " && g.mtime == hostMTime(e.info):",
+      "run": "TestAFileTravelsWhenOnlyItsExecutableBitChanged",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync compares a file's time as the archive rounds it",
+      "file": "internal/toolkit/sync.go",
+      "find": "\treturn info.ModTime().Round(time.Second).Unix()\n",
+      "replace": "\treturn info.ModTime().Unix()\n",
+      "run": "TestAFileTimeIsComparedAsTheArchiveCarriesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync keeps what is under a directory it keeps",
+      "file": "internal/toolkit/sync.go",
+      "find": "\t\tcase under(rel, stays):\n\t\t\tp.kept++\n",
+      "replace": "",
+      "run": "TestASyncSendsWhatChangedAndRemovesOnlyWhatDeleteMay",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync removes nothing without --delete",
+      "file": "internal/toolkit/sync.go",
+      "find": "\t\tcase !del || keep(rel, guest[rel].isDir()):\n",
+      "replace": "\t\tcase keep(rel, guest[rel].isDir()):\n",
+      "run": "TestASyncSendsWhatChangedAndRemovesOnlyWhatDeleteMay",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync refuses a kind change without --delete",
+      "file": "internal/toolkit/sync.go",
+      "find": "\t\t\tcase g.isDir() && !del:\n\t\t\t\tp.conflicts = append(p.conflicts, e.rel)\n\t\t\tdefault:\n\t\t\t\tp.remove = append(p.remove, e.rel)\n\t\t\t\tremoved[e.rel] = true\n\t\t\t\tp.replaced++\n\t\t\t\tp.send = append(p.send, e)\n\t\t\t\tp.sentBytes += e.info.Size()\n",
+      "replace": "\t\t\tdefault:\n\t\t\t\tp.remove = append(p.remove, e.rel)\n\t\t\t\tremoved[e.rel] = true\n\t\t\t\tp.replaced++\n\t\t\t\tp.send = append(p.send, e)\n\t\t\t\tp.sentBytes += e.info.Size()\n",
+      "run": "TestAKindChangeIsReplacedOnlyWhereItMayBe",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: git is asked about a guest directory with a trailing slash",
+      "file": "internal/toolkit/sync.go",
+      "find": "\t\t\tif rels[p] {\n\t\t\t\tq += \"/\"\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestGitDecidesWhatDeleteKeeps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: git is asked in the repository nested around a path",
+      "file": "internal/toolkit/sync.go",
+      "find": "\t\t\tif strings.HasPrefix(rel, n+\"/\") {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestGitDecidesWhatDeleteKeeps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync removes what --delete takes away",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tif len(plan.remove) > 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestASyncSendsTheChangeAndRemovesTheStray",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync is in the base usage",
+      "file": "cmd_base.go",
+      "find": "shell|exec|sync|agent",
+      "replace": "shell|exec|agent",
+      "run": "TestTheBaseUsageAndTheManualNameTheSameSubcommands",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grants write keeps another configuration's ledger rows",
       "file": "internal/toolkit/grants.sh",
       "find": "        if [ -n \"$kept_target\" ] && [ \"$kept_key\" != \"$TK_GRANT_OWNER\" ] &&\n",

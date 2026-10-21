@@ -62,6 +62,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 	if j.artifactDir != "" && artifactsID != "" && res.ArtifactError == "" {
 		got, err := c.DownloadArtifacts(ctx, artifactsID, j.artifactDir, j.limits())
 		res.Artifacts, res.ArtifactsAttempted = got.Delivered, got.Attempted
+		res.ArtifactList, res.ArtifactsUnlisted = got.List, got.Unlisted
 		if err != nil {
 			// ⛔ A FIELD ON THE RESULT, NOT AN ERROR RETURNED PAST IT. Returning
 			// an error here made the caller report exit 2 for a job that ran and

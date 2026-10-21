@@ -146,6 +146,7 @@ var helpFormArgs = map[string]string{
 	"stop":            " JOB-ID",
 	"inspect":         " [JOB-ID]",
 	"artifacts retry": " ID",
+	"base sync":       " HOST-DIR GUEST-DIR",
 	"shipped cat":     " NAME",
 	"shipped write":   " NAME",
 }

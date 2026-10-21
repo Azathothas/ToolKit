@@ -136,6 +136,14 @@ func grantCommand(dir string) string {
 	return "wsl-toolkit " + instance + "base grant --source " + quoteForDisplay(dir) + " --mode rw"
 }
 
+// GrantCommand is the line that grants a directory to the selected instance's
+// base, for a refusal outside this file to name. WSL-124.
+func GrantCommand(dir string) string { return grantCommand(dir) }
+
+// QuoteForDisplay is quoteForDisplay, for a command line printed outside this
+// file. WSL-124.
+func QuoteForDisplay(p string) string { return quoteForDisplay(p) }
+
 // quoteForDisplay quotes a Windows path for a line a person pastes into PowerShell.
 func quoteForDisplay(p string) string {
 	if strings.ContainsAny(p, " '\t") {
