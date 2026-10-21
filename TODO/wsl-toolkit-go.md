@@ -12038,6 +12038,13 @@ herdr installer had been rewriting its unit on every ensure on such a base.
 
 3 mutation rows, 3 of 3 red.
 
+⚠ **Amended 2026-10-21T06:35:44Z: the contract review of the release corrected two claims.** A
+base that no ensure of 7.0.0 has run on has no recorded set, so `binfmt.ready` still
+counts every distribution's handlers there. The manual and
+[`../docs/consumers.md`](../docs/consumers.md) say so now. A gone or unrecorded
+handler is an `advisory` finding, which `ready` lists and never names as the way
+forward.
+
 
 ## WSL-106. A grant whose Windows directory is gone refuses every command, `base revoke` included
 
@@ -12133,6 +12140,16 @@ directory was removed:
 failed unmutated under the harness's 8.3 temporary directory: a present source
 resolves to the long form, and a gone one cannot be resolved at all. The case now
 resolves its directory before it removes it.
+
+⚠ **Amended 2026-10-21T06:35:44Z: the reviews of the release found three gaps, each fixed with a
+case.** With two grants gone, each revoke's live step refused over the other, so
+neither could be removed; the live step now renders only grants whose source exists.
+The verifier refused a gone grant's stale mount, so `--probe` called the base
+unhealthy; it is told of each gone grant now. A grant gone while `base ensure` ran
+made it remove the base before a rebuild that then refused; the refusal is returned
+instead.
+
+4 mutation rows, 4 of 4 red.
 
 
 ## WSL-107. `base ensure` stops at the first adapter whose read-back finds a problem, and a probe calls an adapter installed that never was
@@ -12296,6 +12313,13 @@ first**: the case passed `--force` after the name into an empty directory, where
 dropped `--force` changes nothing. The case now writes a different file there first,
 so `--force` has to be read.
 
+⚠ **Amended 2026-10-21T06:35:44Z: the contract review found half of the defect left.** `shipped cat
+--help` printed no NAME, and the manual listed the form as one with no options. Its
+help prints the usage that names NAME now, and both manuals name each form's
+argument.
+
+2 mutation rows, 2 of 2 red.
+
 
 ## WSL-109. The space a base frees comes back only with `base recreate`
 
@@ -12405,6 +12429,15 @@ trimmed`, and busybox's.
 5 mutation rows, 5 of 5 red. The one for the remediation skips on Linux, where the
 attribute is not read.
 
+⚠ **Amended 2026-10-21T06:35:44Z: the contract review found a defect this entry made.** Its
+`disk-not-sparse` remediation is repairable and came first, so `ready` named `base
+reclaim` for a base whose engine refused to start. A finding the base works without
+is marked `advisory` now: a disk that is not sparse, a leftover adapter, and a gone
+or unrecorded QEMU handler. `ready` lists each in its notes with its command, and
+never names one as the way forward.
+
+5 mutation rows, 5 of 5 red, and one row moved with its code.
+
 
 ## WSL-110. WSL's own container tool is on this host, and this tool does not know it
 
@@ -12508,6 +12541,10 @@ the 7.2.0 kernel `.wslconfig` names. A session is its own VM.
 
 3 mutation rows, 3 of 3 red.
 
+⚠ **Amended 2026-10-21T06:35:44Z: the contract review corrected one claim.** The manual said a
+machine with podman or docker keeps it. An engine whose `info` fails is passed over,
+which is how this entry was driven, and the manual says so now.
+
 
 ## WSL-111. A Git Bash caller bridges every call through PowerShell
 
@@ -12595,6 +12632,11 @@ the same, with no MSYS_NO_PATHCONV      exit 2; refused, naming Git Bash's rewri
 
 7 mutation rows, 7 of 7 red.
 
+⚠ **Amended 2026-10-21T06:35:44Z: the contract review found two readings in one command.** `base
+exec` read a relative `--script` from the current directory and a relative
+`--env-file` from the project. Both are read from the current directory now, and the
+manual's list of relative paths names `--env-file`.
+
 
 ## WSL-112. A workspace copy takes what git ignores, so each project keeps its own exclude list
 
@@ -12669,6 +12711,15 @@ prefix". A workspace its repository ignores is now refused by name, before git i
 asked for its list.
 
 6 mutation rows, 6 of 6 red.
+
+⚠ **Amended 2026-10-21T06:35:44Z: the reviews of the release found two gaps, each fixed with a
+case.** git's list does not look inside a nested repository or a submodule, so a
+credential that repository's own `.gitignore` names travelled; each one is asked for
+its own rules now. An explicit `--gitignore=false` parsed and the project's
+`jobs.gitignore` then overruled it; the command line wins now. `WSL-119`, from the
+same review, keeps git out of a tree a container or a helper client wrote.
+
+2 mutation rows, 2 of 2 red, and two rows moved with their code.
 
 
 ## WSL-113. Nothing stops two jobs of one project from running at once
@@ -12752,6 +12803,19 @@ side.
 
 3 mutation rows, 3 of 3 red.
 
+⚠ **Amended 2026-10-21T06:35:44Z: the reviews of the release found four gaps, each fixed with a
+case.**
+
+- The helper route this process chose, because it could not reach wsl.exe, ran the
+  job with no lock and no word. Both helper entry points refuse `--exclusive` first.
+- A `stop` sent to a job waiting for its name was not read until the wait ended. The
+  wait reads it at every poll, and the job ends with 130.
+- The holder file named no instance, so a refusal's `wait` reached the refused
+  caller's instance. The holder's instance is recorded and named.
+- An empty `--exclusive ""` held nothing, and is refused now.
+
+5 mutation rows, 5 of 5 red, and two rows moved with their code.
+
 
 ## WSL-114. `gc` cannot be limited to one project's jobs
 
@@ -12824,6 +12888,12 @@ gc --job ID --workspace .               exit 2: pass one
 ```
 
 8 mutation rows, 8 of 8 red.
+
+⚠ **Amended 2026-10-21T06:35:44Z: the safety review found an empty value widening the cleanup.**
+`gc --workspace ""` read as the flag not given and cleaned every project's jobs, and
+`gc --job ""` did the same. An empty value of either is refused now, with exit 2.
+
+1 mutation row, 1 of 1 red.
 
 
 ## WSL-115. `gc --job` with an id nothing here belongs to exits 0, having removed nothing
@@ -12900,6 +12970,14 @@ the same, with --via-helper             exit 2, with "no such job" said once
 
 5 mutation rows, 5 of 5 red.
 
+⚠ **Amended 2026-10-21T06:35:44Z: the correctness review found the refusal skipped.** An instance
+whose base is not registered returned exit 0 before the refusal ran, so an id from
+another instance read as cleaned up there. The host's own record of the job is read
+first now. The helper protocol moves to `wsl-toolkit-helper/6`, so a 6.x helper that
+would answer exit 0 is refused until it is restarted.
+
+1 mutation row, 1 of 1 red.
+
 
 ## WSL-116. A printed command drops `--instance`, so it reaches the default instance
 
@@ -12971,6 +13049,13 @@ the printed wait, run as printed        job 01362ef91e9da6c1 ended. Exit 0
 ```
 
 4 mutation rows, 4 of 4 red.
+
+⚠ **Amended 2026-10-21T06:35:44Z: the contract review found one advice left.** The advice for a
+refused wsl.exe named `helper serve --detach` and `helper status` with no instance,
+and a helper lives in its instance's state. Both carry the instance now, and the
+acceptance case that reads the job hint expects it too.
+
+1 mutation row, 1 of 1 red.
 
 
 ## WSL-117. `gc --apply` cannot remove a job's host directory when Windows redirects the state directory
@@ -13121,3 +13206,77 @@ config, from the PowerShell tool    copy ... a process Windows redirects into th
 ```
 
 3 mutation rows, 3 of 3 red.
+
+
+## WSL-119. git runs in a tree a container or a helper client wrote, and a setting there runs a program
+
+**Source** the safety review of the 7.0.0 change set, on 2026-10-21.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The workspace copy reads executable bits from git when the tree, or a directory
+above it, holds `.git`. The helper packs two trees it did not write: a job's `/out`,
+extracted from the container, and a workspace a client uploaded. A `.git` in either
+can name `core.fsmonitor`, a program git runs on `ls-files`. So a job, or a sandboxed
+client, could run a program on this machine as the helper's user. The read arrived
+in `d67c1e6`.
+
+## Premise
+
+⭐ **Measured on 2026-10-21 with git 2.55.0.windows.3**: a `core.fsmonitor` hook
+in a repository's own configuration ran on `ls-files -s`, on `check-ignore -q .` and
+on `ls-files --others --ignored --directory`. `-c core.fsmonitor=false` stopped all
+three. git's ownership check does not block it, because the helper owns the files it
+wrote.
+
+Read: `newExecBits` and `gitIgnored` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/execbit.go`](../tools/windows/wsl-toolkit/internal/toolkit/execbit.go),
+and the artifact and upload handlers in
+[`../tools/windows/wsl-toolkit/internal/toolkit/helper.go`](../tools/windows/wsl-toolkit/internal/toolkit/helper.go).
+
+## Approach
+
+- A tree a container or a helper client wrote is marked untrusted, and git is never
+  run in it. An upload's executable bits come from the archive that wrote it.
+- Every other git call runs with `-c core.fsmonitor=false`.
+- The helper protocol moves to version 6, so a helper of an earlier release is
+  refused until it is restarted.
+
+## Consumers
+
+The protocol version is a break, and
+[`../docs/consumers.md`](../docs/consumers.md) lists it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that plants a hook and asserts it never runs.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T06:35:44Z.** `WorkspaceFilter.Untrusted` marks a tree a container or a helper
+client wrote, and `writeWorkspaceTar` never gives such a tree to git. The helper
+packs `/out` that way, and re-packs an upload with the executable bits its archive
+carried, recorded as it was extracted. Every other git call goes through `gitArgs`,
+which turns `core.fsmonitor` off.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 75 s
+  ok     go
+```
+
+⭐ **The defect was driven before the fix was believed.** In a scratch repository
+with a `core.fsmonitor` hook, `git ls-files -s -z` ran the hook, and `git -c
+core.fsmonitor=false ls-files -s -z` did not. The case plants the same hook.
+
+4 mutation rows, 4 of 4 red.

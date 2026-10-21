@@ -29,6 +29,10 @@ func StateRoot() (string, error) {
 // name.
 var ErrExclusiveHeld = errors.New("another job holds this --exclusive name")
 
+// ErrStoppedWaiting is a job that `wsl-toolkit stop` ended while it waited for
+// its --exclusive name.
+var ErrStoppedWaiting = errors.New("stopped by wsl-toolkit stop while it waited for its --exclusive name")
+
 var exclusiveNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
 // ValidateExclusiveName refuses a name that cannot be a file name on every host.
@@ -60,7 +64,12 @@ const (
 //
 // ⚠ wait 0 refuses at once. A positive wait polls, says every 30 seconds that it
 // is still waiting and for whom, and refuses when it runs out.
-func AcquireExclusive(ctx context.Context, name, jobID string, wait time.Duration, log func(string)) (func(), error) {
+//
+// ⛔ stopped IS ASKED AT EVERY POLL, and nil means nothing can stop the wait but
+// its context. A `stop` sent to a waiting job was recorded and not read: the job
+// waited out its whole --exclusive-wait, then ran or failed with exit 2, where
+// `stop` promised 130.
+func AcquireExclusive(ctx context.Context, name, jobID string, wait time.Duration, log func(string), stopped func() bool) (func(), error) {
 	if err := ValidateExclusiveName(name); err != nil {
 		return nil, err
 	}
@@ -79,20 +88,23 @@ func AcquireExclusive(ctx context.Context, name, jobID string, wait time.Duratio
 	for {
 		release, err := lockExclusive(lock)
 		if err == nil {
-			// ⚠ BEST EFFORT. The lock is the fact; the name beside it is only
-			// what a refused job reads to say who it waited for.
-			_ = writeFileAtomic(holder, []byte(jobID+"\n"), 0o600)
+			// ⚠ BEST EFFORT. The lock is the fact; the names beside it are only
+			// what a refused job reads to say who it waited for, and where.
+			_ = writeFileAtomic(holder, []byte(jobID+"\n"+SelectedInstance.Name+"\n"), 0o600)
 			return release, nil
 		}
 		if !errors.Is(err, errLockHeld) {
 			return nil, fmt.Errorf("--exclusive %s: %w", name, err)
 		}
-		by := exclusiveHolder(holder)
+		by := readLockHolder(holder)
+		if stopped != nil && stopped() {
+			return nil, fmt.Errorf("%w: %s is held by %s", ErrStoppedWaiting, name, by)
+		}
 		if !time.Now().Before(deadline) {
 			if wait > 0 {
 				return nil, fmt.Errorf("%w: %s is held by %s, and it was not let go within %s", ErrExclusiveHeld, name, by, wait)
 			}
-			return nil, fmt.Errorf("%w: %s is held by %s. %s", ErrExclusiveHeld, name, by, ExclusiveAdvice(by))
+			return nil, fmt.Errorf("%w: %s is held by %s. %s", ErrExclusiveHeld, name, by, by.advice())
 		}
 		if log != nil && time.Since(lastSaid) >= exclusiveSay {
 			log(fmt.Sprintf("still waiting for --exclusive %s, held by %s", name, by))
@@ -106,43 +118,67 @@ func AcquireExclusive(ctx context.Context, name, jobID string, wait time.Duratio
 	}
 }
 
-// exclusiveHolder is what a lock names as its holder: "job ID", a fleet, or a
-// phrase saying none is recorded.
-func exclusiveHolder(path string) string {
+// lockHolder is what a lock's holder file names: the job or the fleet that holds
+// it, and the instance that one runs in.
+//
+// ⛔ THE INSTANCE IS RECORDED BESIDE THE ID. Every instance shares the lock, so a
+// refused caller built the `wait` for the holder under its OWN instance, and a
+// job held from another one answered that `wait` with "no such job". A
+// correctness review found it. WSL-116.
+type lockHolder struct{ id, instance string }
+
+// readLockHolder reads a holder file. A file that is not there, or names
+// nothing, reads as a holder that recorded no id.
+func readLockHolder(path string) lockHolder {
 	b, err := os.ReadFile(path)
-	id := strings.TrimSpace(string(b))
-	switch {
-	case err != nil || id == "":
-		return "a job that recorded no id"
-	case jobIDRE.MatchString(id):
-		return "job " + id
+	if err != nil {
+		return lockHolder{}
 	}
-	return id
+	lines := strings.SplitN(strings.TrimSpace(string(b)), "\n", 2)
+	h := lockHolder{id: strings.TrimSpace(lines[0])}
+	if len(lines) == 2 {
+		h.instance = strings.TrimSpace(lines[1])
+	}
+	return h
+}
+
+// String is the holder as a refusal names it.
+func (h lockHolder) String() string {
+	switch {
+	case h.id == "":
+		return "a job that recorded no id"
+	case !jobIDRE.MatchString(h.id):
+		return h.id
+	case h.instance != "" && h.instance != DefaultInstance:
+		return "job " + h.id + " of instance " + h.instance
+	}
+	return "job " + h.id
 }
 
 var jobIDRE = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
-// ExclusiveAdvice is the step a refused caller takes: wait for the job that
-// holds the name where it is one, or pass --exclusive-wait.
-func ExclusiveAdvice(holder string) string {
-	if id, ok := strings.CutPrefix(holder, "job "); ok && jobIDRE.MatchString(id) {
-		return "Wait for it with: " + ToolCommand("wait "+id) + ", or pass --exclusive-wait to wait for it"
+// advice is the step a refused caller takes: wait for the job that holds the
+// name, in the instance that holds it, or pass --exclusive-wait.
+func (h lockHolder) advice() string {
+	if jobIDRE.MatchString(h.id) {
+		return "Wait for it with: " + ToolCommandFor(h.instance, "wait "+h.id) + ", or pass --exclusive-wait to wait for it"
 	}
 	return "Pass --exclusive-wait to wait for it"
 }
 
-// ExclusiveHeld answers whether a job holds name now, and which, for a caller
-// that refuses before it starts anything. ⚠ It is a probe and not a claim:
-// AcquireExclusive in the job's owner is what decides.
-func ExclusiveHeld(name string) (bool, string) {
+// ExclusiveRefusal is the refusal a job gets while another holds name, and nil
+// while none does, for a caller that refuses before it starts anything. ⚠ It is
+// a probe and not a claim: AcquireExclusive in the job's owner is what decides.
+func ExclusiveRefusal(name string) error {
 	root, err := StateRoot()
 	if err != nil || ValidateExclusiveName(name) != nil {
-		return false, ""
+		return nil
 	}
 	dir := filepath.Join(root, "locks")
 	held, _, err := lockProbe(filepath.Join(dir, name+".lock"))
 	if err != nil || !held {
-		return false, ""
+		return nil
 	}
-	return true, exclusiveHolder(filepath.Join(dir, name+".holder"))
+	by := readLockHolder(filepath.Join(dir, name+".holder"))
+	return fmt.Errorf("%w: %s is held by %s. %s", ErrExclusiveHeld, name, by, by.advice())
 }

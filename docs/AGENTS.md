@@ -196,11 +196,16 @@ these is held to.
 | ⭐ start a job and come back to it from another process | `wsl-toolkit run --detach`, then `logs ID --follow`, `wait ID` or `stop ID` | a wrapper that holds the client open, which dies with the harness that started it |
 | keep a command running in the base after its client exits | ⭐ `wsl-toolkit base exec --detach` | `nohup` or `setsid` inside `base exec -c`, which leaves nothing to follow, wait on or stop |
 | give a job a device node or a second file | `run --device /dev/kvm`, `run --input NAME=FILE` | copying the file into the workspace, where two jobs collide on its name |
+| ⭐ call the tool from Git Bash | export `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` once, then call it directly: `--workspace "$PWD"` and `--script -` are read | a PowerShell bridge around every call |
+| leave a build tree and a credential out of a workspace copy | `run --gitignore`, or `jobs.gitignore` in the project's `wsl-toolkit.json` | `--exclude` patterns kept in a shell string, where an unquoted one globs |
+| keep one project's builds from running at once | `run --exclusive NAME`, and `--exclusive-wait D` to queue | a lock directory of your own, which a killed run leaves behind |
+| clean up one project's jobs and no other's | `wsl-toolkit gc --workspace . --apply` | `gc --apply`, which takes every project's |
+| give back the space a base's disk freed | `wsl-toolkit base reclaim` | `base recreate` |
 | prove every guard in the mutation table is real | `repo mutate` in `tools/repo`. Minutes, not seconds; [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) has the measurement | the gate's `mutations` check, which asserts the table still POINTS at code and proves no guard |
 | find out what a distro would reach this host at | ⭐ `wsl-toolkit hostaddress` | creating a distro and decoding `/proc/net/route` |
 | find out what podman and WSL are holding | `wsl-toolkit resources` | a hand-rolled sequence of `podman` reports |
 | fetch and run that tool from another project | download a versioned executable release asset, verify `SHA256SUMS` and its `.cosign.bundle`, then run the file | a download piped into a shell |
-| find out why a cross-architecture container will not run | `scripts/common/check-binfmt.sh` | `systemctl status systemd-binfmt`, which reports success over zero handlers |
+| find out why a cross-architecture container will not run | ⭐ in a base, `wsl-toolkit base status --probe`, which reads the base's own QEMU handlers, then `base ensure` to register them again. Elsewhere, `scripts/common/check-binfmt.sh` | `systemctl status systemd-binfmt`, which reports success over zero handlers, or a count of every distribution's handlers, which another distribution can satisfy |
 | write a licence file | `scripts/common/fill-license.sh` | copying a text and editing the notice, which corrupts five of the twelve |
 | see what a tree ships that addresses an agent | `scripts/common/deslop.sh` | a grep |
 | check what an open issue or pull request actually asserts | `scripts/common/check-remote-items.sh` | the item's own description |

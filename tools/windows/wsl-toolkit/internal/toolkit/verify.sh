@@ -300,6 +300,21 @@ while [ "$#" -gt 0 ]; do
 done
 printf 'mount-count %s\n' "$mount_count"
 
+# ⛔ A GRANT WHOSE WINDOWS DIRECTORY IS GONE can still be mounted until the next
+# restart. base status names it with its revoke, so it is allowed here and not
+# checked: refusing it called a working base unhealthy. WSL-106.
+# shellcheck disable=SC2086
+for gone_b64 in ${TK_MOUNT_GONE:-}; do
+  printf '%s' "$gone_b64" > "$mount_decode"
+  if ! gone_target=$(base64 -d "$mount_decode"); then
+    rm -f "$mount_decode"
+    printf 'verify: a gone mount target could not be decoded\n' >&2
+    exit 3
+  fi
+  rm -f "$mount_decode"
+  printf '%s\n' "$gone_target" >> "$mount_allowlist"
+done
+
 # With drive automount disabled, every live DrvFS mount must be one of the
 # configured targets. This catches a grant removed from configuration but still
 # present in the running guest, forcing ensure to rewrite fstab and restart.

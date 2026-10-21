@@ -509,6 +509,7 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 	local := map[string]string{
 		"excludes":      "applied by the client while it builds the upload, so the helper never sees a glob",
 		"gitignore":     "applied by the client while it builds the upload, from git on the client's own machine",
+		"gitignoreSet":  "whether the command line named --gitignore, read where the project's default is merged",
 		"exclusive":     "held by the process that owns the job, and refused with --via-helper",
 		"exclusiveWait": "how long that process waits for the name",
 		"asJSON":        "how this process renders its own answer",

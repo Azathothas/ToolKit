@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -39,12 +40,20 @@ func TestAnMsysHostPathIsReadTheWayMsysMapsIt(t *testing.T) {
 		}
 	}
 	// ⭐ AND THE ONE RESOLVER EVERY JOB FLAG GOES THROUGH APPLIES IT. A drive path
-	// is absolute only on Windows, so the half that resolves is read there.
-	if runtime.GOOS == "windows" {
-		got, err := pathFromProject(toolkit.Config{}, "/c/src/podssh")
-		if err != nil || got != `C:\src\podssh` {
-			t.Errorf("pathFromProject read /c/src/podssh as %q, %v", got, err)
+	// is absolute only on Windows, so elsewhere it resolves under the working
+	// directory: the translated spelling, not /c/src/podssh, is what proves it.
+	// ⛔ READ ON EVERY HOST. Read on Windows alone, a resolver that skipped the
+	// translation stayed green in CI's Linux mutation run.
+	want := `C:\src\podssh`
+	if runtime.GOOS != "windows" {
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
 		}
+		want = filepath.Join(cwd, "C:/src/podssh")
+	}
+	if got, err := pathFromProject(toolkit.Config{}, "/c/src/podssh"); err != nil || got != want {
+		t.Errorf("pathFromProject read /c/src/podssh as %q, %v; want %q", got, err, want)
 	}
 	t.Setenv("MSYSTEM", "")
 	if got := msysHostPath("/c/src/op"); got != "/c/src/op" {
@@ -194,6 +203,59 @@ func TestAProjectsJobSettingsReachEveryJob(t *testing.T) {
 
 // -- WSL-113: the flags a caller can get wrong ---------------------------------
 
+// ⛔ The route this process chose for itself, because it cannot reach wsl.exe,
+// is refused as the caller's --via-helper is: the helper owns a job it runs, so
+// the lock would be held by nothing. Both entry points ask before they use the
+// helper, so neither is given one here. A correctness review found it.
+func TestTheHelperRouteRefusesExclusiveHoweverItWasChosen(t *testing.T) {
+	var j jobFlags
+	j.exclusive = "build"
+	ctx := context.Background()
+	if _, err := helperRunJob(ctx, nil, j, "alpine", "alpine", []byte("true"), nil, nil, nil); err == nil || !strings.Contains(err.Error(), "cannot reach wsl.exe") {
+		t.Errorf("a job the helper would run kept --exclusive: %v", err)
+	}
+	if _, err := helperRunMatrix(ctx, nil, j, []string{"alpine"}, 1, []byte("true"), nil, nil, nil, ""); err == nil || !strings.Contains(err.Error(), "cannot reach wsl.exe") {
+		t.Errorf("a fleet the helper would run kept --exclusive: %v", err)
+	}
+	j.viaHelper = true
+	if err := j.helperRouteRefusal(); err == nil || !strings.Contains(err.Error(), "without --via-helper") {
+		t.Errorf("an explicit --via-helper answered %v", err)
+	}
+	j.exclusive = ""
+	if err := j.helperRouteRefusal(); err != nil {
+		t.Errorf("a job with no --exclusive was refused the helper: %v", err)
+	}
+}
+
+// ⛔ The command line wins over a project's jobs.gitignore, false included: an
+// explicit --gitignore=false parsed and was then overruled. A correctness review
+// found it.
+func TestAnExplicitGitignoreFalseBeatsTheProjects(t *testing.T) {
+	cfg := toolkit.DefaultConfig()
+	cfg.Jobs.Gitignore = true
+	for _, c := range []struct {
+		args []string
+		want bool
+	}{
+		{nil, true},
+		{[]string{"--gitignore=false"}, false},
+		{[]string{"--gitignore"}, true},
+	} {
+		var j jobFlags
+		fs := newFlagSet("run-gitignore-check")
+		j.bind(fs)
+		if err := fs.Parse(c.args); err != nil {
+			t.Fatal(err)
+		}
+		if err := j.applyConfig(cfg); err != nil {
+			t.Fatal(err)
+		}
+		if j.gitignore != c.want {
+			t.Errorf("%v beside jobs.gitignore true read as %v; want %v", c.args, j.gitignore, c.want)
+		}
+	}
+}
+
 func TestExclusiveFlagsRefuseWhatCannotHold(t *testing.T) {
 	base := func() jobFlags {
 		var j jobFlags
@@ -215,6 +277,12 @@ func TestExclusiveFlagsRefuseWhatCannotHold(t *testing.T) {
 	j.exclusive, j.exclusiveWait = "build", -time.Second
 	if err := j.check(); err == nil || !strings.Contains(err.Error(), "negative") {
 		t.Errorf("a negative wait answered %v", err)
+	}
+	fs := newFlagSet("run-exclusive-empty")
+	j = jobFlags{}
+	j.bind(fs)
+	if err := fs.Parse([]string{"--exclusive", ""}); err == nil || !strings.Contains(err.Error(), "empty value is refused") {
+		t.Errorf("an empty --exclusive answered %v; want a refusal rather than no lock", err)
 	}
 	j = base()
 	j.exclusive = "not a name"

@@ -34,7 +34,11 @@ reads it again.
 | --- | --- | --- |
 | `Azathothas/TEMPLATE`, at `docs/containers.md` and `docs/agent-tooling.md` | describes the tool as a PowerShell product and an executable, with a launcher | rewrite its guide from the latest manual |
 | `Azathothas/bit-cli`, at `scripts/wsl-tool.ps1` and `docs/containers.md` | its wrapper runs the deleted launcher at a pinned commit with SHA-256 pins, and its guide fetches `wsl-ephemeral.ps1` by raw URL at a commit it resolves | keep its current pin until it chooses to move, then choose an executable release, verify it, and translate its own invocation from the latest manual |
-| `Azathothas/podbox`, at `docs/containers.md`, `docs/agent-tooling.md` and `experiments/` | calls an installed executable with `--instance podbox`: `run --script`, `base status --probe`, `base ensure --probe`, `resources`, `gc --apply --older-than`, `hostaddress`. Reads the three skills from `main` by raw URL | read the latest manual, then replace the wrappers written around a job that outlives its client with `run --detach`, `logs ID --follow`, `wait ID`, `stop ID` and `base exec --detach`, and pass a device and a second file with `--device` and `--input` |
+| `Azathothas/podbox`, at `docs/containers.md`, `docs/agent-tooling.md` and `experiments/` | calls an installed executable with `--instance podbox`: `run --script`, `base status --probe`, `base ensure --probe`, `resources`, `gc --apply --older-than`, `gc --job ID --apply`, `hostaddress`. Reads the three skills from `main` by raw URL | read the latest manual, then replace the wrappers written around a job that outlives its client with `run --detach`, `logs ID --follow`, `wait ID`, `stop ID` and `base exec --detach`, and pass a device and a second file with `--device` and `--input`. Before `wsl-toolkit-v7.0.0`, read its breaks below: `gc --job` exits 2 for an id this instance does not hold, `base ensure` registers QEMU handlers, and printed commands name `--instance podbox` |
+| `Azathothas/podssh`, at `scripts/dev-wsl.sh` and `scripts/dev.sh` | bridges every call from Git Bash through PowerShell, keeps seven `--exclude` patterns in a shell string, holds its builds apart with a lock directory of its own, and its `clean` removes nothing, because `gc` took every project's jobs | read the latest manual, then call the tool from Git Bash with `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` exported, pass `--workspace "$PWD"`, `--script -` and `--gitignore`, hold builds with `--exclusive`, and clean with `gc --workspace .` |
+| `Azathothas/pg-toolkit`, at `cmd/pg-devenv` | calls an installed executable with `--instance pg-toolkit`: `config --json`, `config --write`, `base ensure`, `base exec --dir`, `base shell`, `base status`, `base remove --yes`, `resources`, `selfupdate --check` and `version` | read the breaks below before `wsl-toolkit-v7.0.0`: its `base ensure` registers QEMU handlers and can exit 2 over them, and a grant whose directory is gone makes `base status` exit 1 where `config` refused before |
+| `Azathothas/agent-box`, at `xtask/src/linux.rs` | runs `run --image IMAGE --workspace DIR -c COMMAND`, with `--device /dev/kvm` where asked, from `PATH` | nothing for `wsl-toolkit-v7.0.0`. `--gitignore` can shrink its workspace copy |
+| `Azathothas/dash.vpn.ajam.dev`, at `docs/operations/linux.md` | a recipe an operator follows from PowerShell: `run`, `base shell`, `base exec`, `distro new`, `stop` and `gc --apply` | nothing for `wsl-toolkit-v7.0.0`. Its rule against Git Bash can become the two variables the manual names |
 | `pkgforge-dev/cross-libc-dlopen`, at `scripts/wsl-ephemeral.ps1` | carries a vendored copy and fetches nothing from ToolKit | nothing here can update it; its owner decides whether to replace the copy |
 
 ⭐ **The published executable CARRIES the three fetched scripts**, so a machine with
@@ -83,6 +87,27 @@ A change breaks a caller when a correct existing call behaves differently:
 Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
+
+### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
+
+A major version, so a consumer that pins by major is not moved across it silently.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `binfmt.ready` in `base status --probe --json` reads the base's own QEMU handlers once an ensure of this release has recorded them, and every handler in the kernel until then. `WSL-105` | reads `ready: true` while another distribution's handlers were the only ones | runs `base ensure` once after the update, and reads `binfmt.recorded`, `binfmt.own` and `binfmt.missing` |
+| `base ensure` registers the base's QEMU handlers on every base and exits 2 when it cannot. A systemd base gains `wsl-toolkit-binfmt.service`. `WSL-105` | expects exit 0 from a base that verified, or no unit of this tool's beside its own | reads the refusal's words, and leaves the unit to this tool |
+| a grant whose Windows directory is gone no longer refuses the configuration. `config` and `config validate` exit 0, and `base status` exits 1 naming the revoke. `WSL-106` | gates on `config validate` failing for a gone grant | reads `access.mounts[].missing`, or `base status` |
+| `gc --job ID` refuses an id that is not 16 lowercase hex characters, or that nothing in the instance belongs to, with exit 2 and no plan. `WSL-115` | runs it with a shortened id, or for a job already cleaned up, and reads exit 0 | passes the id `run --json` printed, and reads exit 2 as an id this instance does not hold |
+| `gc --images` beside `--job` or `--workspace` is refused, exit 2. `WSL-114` | narrows a cleanup and prunes every image in the same call | runs `gc --images` on its own |
+| an empty `gc --job ""`, `gc --workspace ""` or `run --exclusive ""` is refused, exit 2 | passes a variable that can be empty and relies on it reading as not given | passes the flag only with a value |
+| under `--instance NAME`, every printed command carries `--instance NAME`, the `follow`, `wait` and `stop` of `wsl-toolkit-detached/1` included. `WSL-116` | parses those strings for a fixed prefix | runs them as printed, or reads `id` |
+| the helper protocol is `wsl-toolkit-helper/6`, and a 6.x helper and a 7.x client refuse each other | leaves a 6.x helper running after the update | stops it and starts it again: `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach`, each with the `--instance` it serves |
+| `base status`'s `binfmt` row names the base's own handlers and the kernel's total | parses the text | reads `--json` |
+
+Everything else in 7.0.0 adds or corrects: `--script -`, `--env-file`, `--gitignore`,
+`--exclusive`, `gc --workspace`, `base reclaim`, `wslc` as a host engine, a host path
+in MSYS's spelling from Git Bash, an `advisory` mark on a remediation, and the copies
+of the state directory `doctor` and `config` name.
 
 ### ⛔ What `wsl-toolkit-v6.0.0` breaks, and what a caller does
 

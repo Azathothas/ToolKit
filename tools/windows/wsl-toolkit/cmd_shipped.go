@@ -46,6 +46,9 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 	// generated from the registered sets, and a help form with none is a form the
 	// manual cannot describe. A test refuses that, and it refused this.
 	fs := newFlagSet("shipped " + sub)
+	// ⛔ `shipped cat --help` printed the flag set's own header and no NAME, so the
+	// help for a form that takes a name never said it took one. WSL-108.
+	fs.Usage = func() { fmt.Fprint(os.Stderr, shippedUsage) }
 	// ⛔ EACH SUBCOMMAND REGISTERS ONLY WHAT IT READS. Registering all three on all
 	// three gave `shipped cat --json` and `shipped write --json`, which parse and
 	// do nothing: a flag no code reads is a lie about a capability, and the manual

@@ -689,6 +689,7 @@ func leftoverRemediation(l AdapterLeftover) Remediation {
 			"and builds it again from the configuration",
 		Command:    ToolCommand("base recreate"),
 		Repairable: true,
+		Advisory:   true,
 	}
 }
 

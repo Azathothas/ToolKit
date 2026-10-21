@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 157  open 0  blocked 0  done 157
+total 158  open 0  blocked 0  done 158
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 0 | 0 | 76 | 76 |
+| P1 | 0 | 0 | 77 | 77 |
 | P2 | 0 | 0 | 70 | 70 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **0** | **0** | **157** | **157** |
+| **all** | **0** | **0** | **158** | **158** |
 
 ---
 
@@ -167,6 +167,7 @@ total 157  open 0  blocked 0  done 157
 | WSL-116 | P2 | S | done | A printed command drops `--instance`, so it reaches the default instance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-117 | P1 | S | done | `gc --apply` cannot remove a job's host directory when Windows redirects the state directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-118 | P1 | S | done | A caller Windows redirects keeps a second state directory, and nothing says so | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-119 | P1 | S | done | git runs in a tree a container or a helper client wrote, and a setting there runs a program | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

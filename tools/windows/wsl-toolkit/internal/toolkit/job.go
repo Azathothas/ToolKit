@@ -118,7 +118,12 @@ type JobSpec struct {
 	// WorkspaceOrigin is the host directory a fleet staged StagedFrom from, so
 	// each row records the project it copied as a single job does. WSL-114.
 	WorkspaceOrigin string
-	Excludes        []string
+	// Uploaded says a helper client wrote Workspace, and UploadExec names the
+	// files its archive marked executable. ⛔ Git is not run in such a tree:
+	// see WorkspaceFilter.Untrusted.
+	Uploaded   bool
+	UploadExec map[string]bool
+	Excludes   []string
 	// Gitignore leaves out of the workspace copy what git ignores in it. WSL-112.
 	Gitignore          bool
 	ArtifactDir        string // a host directory to write /out back to. Empty means none.
@@ -638,7 +643,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			return res
 		}
 	case spec.Workspace != "":
-		up, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, user, guestWork, spec.Workspace, limits, WorkspaceFilter{Excludes: spec.Excludes, Gitignore: spec.Gitignore}, r.log)
+		up, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, user, guestWork, spec.Workspace, limits, WorkspaceFilter{Excludes: spec.Excludes, Gitignore: spec.Gitignore, Untrusted: spec.Uploaded, Exec: spec.UploadExec}, r.log)
 		// ⛔ RECORDED BEFORE THE ERROR IS READ. A partial upload that then
 		// failed still left entries out, and a caller reading the result of a
 		// failed job is exactly who wants to know which ones.

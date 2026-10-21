@@ -163,8 +163,9 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	images := fs.Bool("images", false, "also prune images the engine in the base is holding. Refused beside --job or --workspace, since an image is not one job's")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
-	job := fs.String("job", "", "clean up one job id and leave the rest of the store alone. An id nothing in this instance belongs to is refused")
-	workspace := fs.String("workspace", "", "clean up only the jobs that copied this directory, read as run --workspace reads it. A job that recorded no workspace is left alone")
+	job, workspace := new(string), new(string)
+	fs.Var(nonEmpty{job}, "job", "clean up one job id and leave the rest of the store alone. An id nothing in this instance belongs to is refused")
+	fs.Var(nonEmpty{workspace}, "workspace", "clean up only the jobs that copied this directory, read as run --workspace reads it. A job that recorded no workspace is left alone")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -218,6 +219,13 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if !st.Registered {
+		home, err := toolkit.Home()
+		if err != nil {
+			return exitCannot, err
+		}
+		if err := unregisteredJobRefusal(home, policy); err != nil {
+			return exitCannot, err
+		}
 		logf("  %s is not registered, so there is nothing inside it to clean up", st.Name)
 		if *asJSON {
 			return exitOK, writeJSON(toolkit.CleanupPlan{Schema: toolkit.CleanupSchema, DryRun: !*apply})
@@ -226,6 +234,23 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	}
 	plan, err := runner.Cleanup(ctx, *apply, policy, *images)
 	return finishGC(plan, err, *asJSON)
+}
+
+// unregisteredJobRefusal refuses a --job that nothing in this instance belongs
+// to, for an instance whose base is not registered and so has no guest to ask.
+//
+// ⛔ THE REFUSAL WAS MADE ONLY FROM WHAT THE GUEST HOLDS. An instance with no
+// base returned before it was asked, so an id from another instance exited 0
+// there, which is WSL-115's own defect. A correctness review found it.
+func unregisteredJobRefusal(home string, policy toolkit.CleanupPolicy) error {
+	if policy.Job == "" {
+		return nil
+	}
+	if js, err := toolkit.ReadJobState(home, policy.Job); err == nil && js.Known {
+		return nil
+	}
+	_, err := policy.Unmatched(nil)
+	return err
 }
 
 // finishGC renders a cleanup and turns it into an exit code.

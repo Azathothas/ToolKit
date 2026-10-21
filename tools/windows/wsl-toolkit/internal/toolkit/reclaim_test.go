@@ -53,7 +53,7 @@ func TestALeftoverAdapterIsOneThatIsInstalledOrTakesSpace(t *testing.T) {
 		t.Fatal("a probe that named no footprint read as a measurement")
 	}
 	r := leftoverRemediation(AdapterLeftover{Name: "pi", Bytes: 471859200})
-	if !strings.HasSuffix(r.Command, "base recreate") || !strings.Contains(r.What, "450.0 MiB") {
+	if !strings.HasSuffix(r.Command, "base recreate") || !strings.Contains(r.What, "450.0 MiB") || !r.Advisory {
 		t.Fatalf("a leftover earned %+v", r)
 	}
 }
@@ -93,7 +93,7 @@ func TestADiskThatIsNotSparseEarnsTheReclaim(t *testing.T) {
 	}
 	st := BaseState{DiskPath: disk}
 	r, ok := diskSparseFacts(&st)
-	if !ok || r.ID != "disk-not-sparse" || !strings.HasSuffix(r.Command, "base reclaim") {
+	if !ok || r.ID != "disk-not-sparse" || !strings.HasSuffix(r.Command, "base reclaim") || !r.Advisory {
 		t.Fatalf("a disk that is not sparse earned %+v, %v", r, ok)
 	}
 	if st.DiskSparse != "no" || st.DiskAllocated <= 0 || st.WslConfigSparseVhd != "unset" {

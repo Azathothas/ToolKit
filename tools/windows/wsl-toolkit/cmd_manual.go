@@ -64,7 +64,7 @@ func renderManPage(ctx context.Context) (string, error) {
 			if !ok {
 				return "", fmt.Errorf("the %q help form did not register a flag set", form)
 			}
-			out.WriteString(".TP\n.B " + roffEscape("wsl-toolkit "+form) + "\n")
+			out.WriteString(".TP\n.B " + roffEscape("wsl-toolkit "+form+helpFormArgs[form]) + "\n")
 			flags := flagsInNameOrder(fs)
 			if len(flags) == 0 {
 				out.WriteString("This form has no options.\n")
@@ -115,7 +115,7 @@ func renderManualText(ctx context.Context) (string, error) {
 			if !ok {
 				return "", fmt.Errorf("the %q help form did not register a flag set", form)
 			}
-			out.WriteString("\n  wsl-toolkit " + form + "\n")
+			out.WriteString("\n  wsl-toolkit " + form + helpFormArgs[form] + "\n")
 			for _, f := range flagsInNameOrder(fs) {
 				out.WriteString("    " + flagDashes(f.Name) + f.Name + "\n")
 				out.WriteString("        " + strings.TrimSpace(f.Usage))
@@ -132,6 +132,22 @@ func renderManualText(ctx context.Context) (string, error) {
 		out.WriteString("    " + example.Command + "\n")
 	}
 	return out.String(), nil
+}
+
+// helpFormArgs are the arguments a help form takes beside its flags, so the manual
+// names them where it names the form.
+//
+// ⛔ THE FORM SAID NOTHING OF THEM. `shipped cat` read as a form with no options
+// and no argument, so a reader of the manual could not tell it took a name.
+// WSL-108.
+var helpFormArgs = map[string]string{
+	"logs":            " [JOB-ID]",
+	"wait":            " JOB-ID",
+	"stop":            " JOB-ID",
+	"inspect":         " [JOB-ID]",
+	"artifacts retry": " ID",
+	"shipped cat":     " NAME",
+	"shipped write":   " NAME",
 }
 
 func isTerminal(file *os.File) bool { return isConsole(file) }

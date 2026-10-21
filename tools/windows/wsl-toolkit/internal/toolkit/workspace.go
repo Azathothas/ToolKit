@@ -328,6 +328,15 @@ type WorkspaceFilter struct {
 	Excludes []string
 	// Gitignore leaves out what git ignores in the workspace. WSL-112.
 	Gitignore bool
+	// Untrusted says a container or a helper client wrote the tree, and Exec
+	// names the files that arrive executable in it.
+	//
+	// ⛔ GIT IS NOT RUN IN SUCH A TREE. Its .git is not the caller's, and a
+	// configuration in it names a program git runs, so a job writing /out/.git,
+	// or a sandboxed client uploading one, ran a program on this machine through
+	// the helper. A safety review found it.
+	Untrusted bool
+	Exec      map[string]bool
 }
 
 func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter WorkspaceFilter) (WorkspaceUpload, error) {
@@ -341,12 +350,21 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter 
 	// walked rather than another spelling of it. WSL-112.
 	var ignored map[string]bool
 	if filter.Gitignore {
+		if filter.Untrusted {
+			return up, errors.New("--gitignore reads git, and git is not run in a tree a container or a helper client wrote. The caller's own copy applies it before it uploads")
+		}
 		if ignored, err = gitIgnored(context.Background(), realRoot); err != nil {
 			return up, err
 		}
 	}
 	bits := &execBits{index: map[string]bool{}}
-	if isGitWorkspace(root) {
+	switch {
+	case filter.Untrusted:
+		for p := range filter.Exec {
+			bits.index[p] = true
+		}
+		bits.from = "the archive that wrote it"
+	case isGitWorkspace(root):
 		bits = newExecBits(context.Background(), root)
 	}
 	entries := 0
@@ -378,6 +396,21 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter 
 				return filepath.SkipDir
 			}
 			return nil
+		}
+		// ⛔ A NESTED REPOSITORY IS ASKED FOR ITS OWN RULES. git's list for the
+		// workspace does not look inside a submodule or an embedded repository,
+		// so a credential that repository's own .gitignore keeps out travelled. A
+		// safety review found it. WSL-112.
+		if filter.Gitignore && d.IsDir() {
+			if _, statErr := os.Lstat(filepath.Join(p, ".git")); statErr == nil {
+				nested, err := gitIgnored(context.Background(), p)
+				if err != nil {
+					return err
+				}
+				for q := range nested {
+					ignored[slashRel+"/"+q] = true
+				}
+			}
 		}
 		info, err := d.Info()
 		if err != nil {
@@ -610,6 +643,10 @@ type ArtifactTransfer struct {
 	Attempted int   `json:"attempted"`
 	Delivered int   `json:"delivered"`
 	Bytes     int64 `json:"bytes"`
+	// Exec are the slash-relative files whose header marked them executable.
+	// A host that keeps no mode, as Windows does, loses the bit on extraction,
+	// and the helper hands this set on in place of asking git.
+	Exec map[string]bool `json:"-"`
 }
 
 func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, log func(string)) (ArtifactTransfer, error) {
@@ -857,6 +894,12 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 			}
 			if written != hdr.Size {
 				return got, fmt.Errorf("%w: %s declared %d bytes and %d arrived", ErrWorkspaceRefused, rel, hdr.Size, written)
+			}
+			if hdr.Mode&0o111 != 0 {
+				if got.Exec == nil {
+					got.Exec = map[string]bool{}
+				}
+				got.Exec[filepath.ToSlash(rel)] = true
 			}
 			got.Delivered++
 		case tar.TypeSymlink, tar.TypeLink:

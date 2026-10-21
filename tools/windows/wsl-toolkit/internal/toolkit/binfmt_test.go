@@ -32,11 +32,11 @@ func TestReadinessIsTheBasesOwnSetAndNotTheKernelsTotal(t *testing.T) {
 
 func TestAGoneHandlerIsARemediationNamingBaseEnsure(t *testing.T) {
 	r, ok := binfmtRemediation(parseBinfmt("binfmt-handlers 0\nbinfmt-own 8\nbinfmt-missing qemu-aarch64\n"))
-	if !ok || r.ID != "binfmt-handlers-gone" || !strings.HasSuffix(r.Command, "base ensure") || !strings.Contains(r.What, "qemu-aarch64") {
+	if !ok || r.ID != "binfmt-handlers-gone" || !strings.HasSuffix(r.Command, "base ensure") || !strings.Contains(r.What, "qemu-aarch64") || !r.Advisory {
 		t.Fatalf("a gone handler earned %+v, %v", r, ok)
 	}
 	r, ok = binfmtRemediation(parseBinfmt("binfmt-handlers 9\nbinfmt-own unrecorded\n"))
-	if !ok || r.ID != "binfmt-handlers-unrecorded" {
+	if !ok || r.ID != "binfmt-handlers-unrecorded" || !r.Advisory {
 		t.Fatalf("an unrecorded base earned %+v, %v", r, ok)
 	}
 	if _, ok := binfmtRemediation(parseBinfmt("binfmt-handlers 8\nbinfmt-own 8\nbinfmt-missing\n")); ok {

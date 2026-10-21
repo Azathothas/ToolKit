@@ -351,10 +351,16 @@ func (r *ReadyReport) fillBase(ctx context.Context, cfg toolkit.Config, cfgErr e
 func readyNotes(rems []toolkit.Remediation) []string {
 	var notes []string
 	for _, rem := range rems {
-		if rem.Repairable {
+		switch {
+		case rem.Advisory:
+			// ⭐ An advisory finding is never the remediation, so it is said
+			// here, with its command.
+			notes = append(notes, rem.What+". "+rem.Costs+". Run: "+rem.Command)
+		case rem.Repairable:
 			continue
+		default:
+			notes = append(notes, rem.What+". "+rem.Costs)
 		}
-		notes = append(notes, rem.What+". "+rem.Costs)
 	}
 	return notes
 }
@@ -368,7 +374,7 @@ func readyNotes(rems []toolkit.Remediation) []string {
 // is the failure this whole shape exists to remove.
 func baseRemediationFor(st toolkit.BaseState, err error) string {
 	for _, rem := range st.Remediations {
-		if rem.Repairable {
+		if rem.Repairable && !rem.Advisory {
 			return rem.Command
 		}
 	}

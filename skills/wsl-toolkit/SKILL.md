@@ -60,9 +60,11 @@ file, the field and the command that fixes it.
 
 ## 3. Two rules that hold on every call
 
-⛔ **RUN IT FROM POWERSHELL, NOT GIT BASH.** MSYS rewrites a guest path such as
+⛔ **FROM GIT BASH, EXPORT TWO VARIABLES FIRST.** MSYS rewrites a guest path such as
 `--dir /workspaces/proj` into `C:/Program Files/Git/workspaces/proj` before the tool
-starts, and the tool refuses the rewrite. Every example here is PowerShell.
+starts, and the tool refuses the rewrite. `export MSYS_NO_PATHCONV=1
+MSYS2_ARG_CONV_EXCL='*'` stops it, and the tool then reads a host path such as
+`"$PWD"` in MSYS's spelling. Every example here is PowerShell.
 
 ⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** `cmd | Select-Object`
 gives you the pipeline's status, not the tool's. Read `$LASTEXITCODE` on the line
@@ -184,6 +186,10 @@ by id.
 `detached` or `no owner`. A job gets a device node with `--device /dev/kvm`, and a
 file from Windows at `/in/NAME` with `--input NAME=FILE`.
 
+`run --exclusive NAME` refuses a second job with the same NAME, and
+`--exclusive-wait 30m` queues it instead. `gc --workspace . --apply` removes this
+project's jobs and no other project's.
+
 ---
 
 ## 7. When it is broken
@@ -195,7 +201,8 @@ file from Windows at `/in/NAME` with `--input NAME=FILE`.
 | the base is registered and nothing works | `wsl-toolkit --instance NAME base ensure --repair` |
 | Windows restarted WSL under it | the same `--repair`. It clears the stale boot id. ⛔ **`wsl --shutdown` breaks EVERY instance holding an engine**, so the remediation names the others and gives each one its command: repair the one that complained and the next session meets the rest |
 | a Windows launcher says it is another build | `base ensure` rewrites it |
-| a helper that `declares schema` another version | a helper from an older release is still running. `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach` |
+| `no such job` for a job another shell started | the two shells may hold two state directories. `wsl-toolkit config` names a copy and which side this shell is on |
+| a helper that `declares schema` another version | a helper from an older release is still running. Each instance has its own: `wsl-toolkit --instance NAME helper stop`, then `wsl-toolkit --instance NAME helper serve --detach` |
 | `produced nothing for 4m and was given up` | ⭐ **a STALL, not a slow link.** Every host-engine call carries a total ceiling and a silence deadline, so a pull or an export that has stopped is given up in minutes rather than waited out. The line says where to look, and it differs for a pull and an export |
 
 ⭐ **The tool keeps a complete transcript of every job it runs:**

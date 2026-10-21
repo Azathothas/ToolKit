@@ -94,6 +94,37 @@ func TestGitignoreLeavesOutWhatGitIgnoresAndNothingElse(t *testing.T) {
 	}
 }
 
+// ⛔ A nested repository's own rules apply inside it. git's list for the outer
+// tree does not look inside, so sub/secrets.env travelled although sub's own
+// .gitignore names it. A safety review found it.
+func TestGitignoreAppliesANestedRepositorysOwnRules(t *testing.T) {
+	root := gitWorkTree(t)
+	git, _ := exec.LookPath("git")
+	sub := filepath.Join(root, "vendor", "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(git, "-C", sub, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	for name, body := range map[string]string{".gitignore": "secrets.env\n", "secrets.env": "TOKEN=x\n", "lib.rs": "pub fn f() {}\n"} {
+		if err := os.WriteFile(filepath.Join(sub, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), WorkspaceFilter{Gitignore: true, Excludes: []string{".git"}}); err != nil {
+		t.Fatal(err)
+	}
+	got := " " + strings.Join(tarNames(t, buf.Bytes()), " ") + " "
+	if strings.Contains(got, " vendor/sub/secrets.env ") {
+		t.Errorf("a file the nested repository ignores travelled; the copy holds:%s", got)
+	}
+	if !strings.Contains(got, " vendor/sub/lib.rs ") {
+		t.Errorf("the nested repository's own file did not travel; the copy holds:%s", got)
+	}
+}
+
 func TestGitignoreOutsideAGitWorkTreeIsRefused(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git on PATH")

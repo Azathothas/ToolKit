@@ -4,8 +4,10 @@ package toolkit
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -93,6 +95,96 @@ func TestAGoneGrantCanBeRevokedAndTheRestStillMounts(t *testing.T) {
 	checks, err := presentGrantChecks(cfg)
 	if err != nil || strings.Count(checks, "\n")+1 != 1 || checks == "" {
 		t.Fatalf("the verifier's read-back for a base with a gone grant is %q, %v; want the one grant that exists", checks, err)
+	}
+}
+
+// ⛔ Two grants gone: the live step of each revoke refused over the other, each
+// refusal naming the other's revoke, so neither could be removed. A correctness
+// review found it.
+func TestEachOfTwoGoneGrantsCanBeRevoked(t *testing.T) {
+	cfg, _, kept := goneGrantConfig(t)
+	parent, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := filepath.Join(parent, "GONE2")
+	if err := os.Mkdir(second, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Base.Mounts = append(cfg.Base.Mounts, BaseMount{Source: second, Target: "/workspaces/GONE2", Mode: "ro"})
+	if err := os.Remove(second); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"/workspaces/EPHM", "/workspaces/GONE2"} {
+		change, err := PlanRevoke(cfg, target)
+		if err != nil {
+			t.Fatalf("planning the revoke of %s refused: %v", target, err)
+		}
+		fstab64, checks, err := liveMountPayloads(change.Next)
+		if err != nil {
+			t.Fatalf("the live step of revoking %s refused: %v", target, err)
+		}
+		fstab, err := base64.StdEncoding.DecodeString(fstab64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Count(checks, "\n")+1 != 1 || strings.Contains(string(fstab), "GONE2") || strings.Contains(string(fstab), "EPHM") ||
+			!strings.Contains(string(fstab), "/workspaces/kept") {
+			t.Fatalf("revoking %s renders %q and checks %q; want the one grant that exists, %s, and no gone one", target, fstab, checks, kept)
+		}
+	}
+	if _, _, _, err := baseMountPayloads(cfg); !errors.Is(err, ErrGrantSourceGone) {
+		t.Fatalf("base ensure's rendering answered %v beside two gone grants; want the refusal", err)
+	}
+}
+
+// ⛔ A gone grant's mount can outlive its directory until the base restarts. The
+// verifier is told of it, allows it and checks nothing in it, and still refuses
+// any other Windows mount it was not told of. A correctness review found it.
+func TestTheVerifierAllowsAGoneGrantsMountAndNoOther(t *testing.T) {
+	cfg, _, _ := goneGrantConfig(t)
+	gone, err := goneGrantTargets(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target, err := base64.StdEncoding.DecodeString(gone); err != nil || string(target) != "/workspaces/EPHM" {
+		t.Fatalf("the gone targets are %q (%v); want /workspaces/EPHM alone", gone, err)
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX shell on this host")
+	}
+	dir := t.TempDir()
+	mounts := filepath.Join(dir, "mounts")
+	if err := os.WriteFile(mounts, []byte("drvfs /workspaces/EPHM drvfs rw 0 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	block := mustExtract(t, "verify.sh", "mount_count=0", "done < /proc/mounts") + "\nfi\n"
+	script := strings.ReplaceAll(block, "/proc/mounts", filepath.ToSlash(mounts))
+	run := func(goneVar string) (string, error) {
+		cmd := exec.Command(sh, "-c", script)
+		cmd.Env = append(os.Environ(), "TK_AUTOMOUNT=off", "TK_MOUNT_CHECKS=", "TK_MOUNT_GONE="+goneVar, "TMPDIR="+filepath.ToSlash(dir))
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run(""); err == nil || !strings.Contains(out, "unconfigured Windows directory is mounted at /workspaces/EPHM") {
+		t.Fatalf("a Windows mount nobody named answered %v: %s", err, out)
+	}
+	if out, err := run(gone); err != nil {
+		t.Fatalf("a gone grant's mount was refused: %v: %s", err, out)
+	}
+}
+
+// ⛔ A grant gone mid-ensure is not a broken base: removing the base to rebuild it
+// would lose it, and the rebuild refuses over the same grant.
+func TestAGrantGoneWhileEnsureRunsDoesNotCostTheBase(t *testing.T) {
+	cfg, _, _ := goneGrantConfig(t)
+	_, _, _, err := baseMountPayloads(cfg)
+	if provisionFailureRebuilds(err) {
+		t.Fatalf("the gone-grant refusal %v would remove the base to rebuild it", err)
+	}
+	if !provisionFailureRebuilds(errors.New("the engine did not start")) {
+		t.Fatal("another failure no longer rebuilds")
 	}
 }
 

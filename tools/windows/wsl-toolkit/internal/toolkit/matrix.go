@@ -11,11 +11,15 @@ import (
 
 // MatrixSpec is one command run across a set of images.
 type MatrixSpec struct {
-	Images             []Image
-	Script             []byte
-	Workspace          string
-	Excludes           []string
-	Gitignore          bool
+	Images    []Image
+	Script    []byte
+	Workspace string
+	Excludes  []string
+	Gitignore bool
+	// Uploaded and UploadExec are JobSpec's: a fleet whose workspace a helper
+	// client wrote. They are applied where the fleet stages it.
+	Uploaded           bool
+	UploadExec         map[string]bool
 	ArtifactDir        string
 	Env                map[string]string
 	Timeout            time.Duration // per row
@@ -183,7 +187,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 				r.log("could not close the staging record: " + err.Error())
 			}
 		}()
-		if _, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, r.cfg.Base.User, staged, spec.Workspace, limits, WorkspaceFilter{Excludes: spec.Excludes, Gitignore: spec.Gitignore}, r.log); err != nil {
+		if _, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, r.cfg.Base.User, staged, spec.Workspace, limits, WorkspaceFilter{Excludes: spec.Excludes, Gitignore: spec.Gitignore, Untrusted: spec.Uploaded, Exec: spec.UploadExec}, r.log); err != nil {
 			return report, err
 		}
 	}

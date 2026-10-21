@@ -27,7 +27,13 @@ const (
 
 // applyGrants runs grants.sh in the base for a configuration's grants.
 func (b *Base) applyGrants(ctx context.Context, cfg Config, mode string) (string, error) {
-	fstab, checks, _, err := baseMountPayloads(cfg)
+	var fstab, checks string
+	var err error
+	if mode == GrantsLive {
+		fstab, checks, err = liveMountPayloads(cfg)
+	} else {
+		fstab, checks, _, err = baseMountPayloads(cfg)
+	}
 	if err != nil {
 		return "", err
 	}

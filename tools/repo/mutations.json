@@ -2,6 +2,231 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the live step of a revoke leaves every gone grant out",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif !m.Missing {\n\t\t\tpresent = append(present, m)\n",
+      "replace": "\t\tif true {\n\t\t\tpresent = append(present, m)\n",
+      "run": "TestEachOfTwoGoneGrantsCanBeRevoked",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job the helper would run is refused --exclusive however the route was chosen",
+      "file": "helper_route.go",
+      "find": "\tif err := j.helperRouteRefusal(); err != nil {\n\t\treturn toolkit.JobResult{}, err\n\t}\n",
+      "replace": "",
+      "run": "TestTheHelperRouteRefusesExclusiveHoweverItWasChosen",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet the helper would run is refused --exclusive however the route was chosen",
+      "file": "helper_route.go",
+      "find": "\tif err := j.helperRouteRefusal(); err != nil {\n\t\treturn toolkit.MatrixReport{}, err\n\t}\n",
+      "replace": "",
+      "run": "TestTheHelperRouteRefusesExclusiveHoweverItWasChosen",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop ends a job that waits for its --exclusive name",
+      "file": "internal/toolkit/exclusive.go",
+      "find": "\t\tif stopped != nil && stopped() {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAStopEndsAJobWaitingForItsName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an instance with no base refuses an unknown gc --job",
+      "file": "cmd_admin.go",
+      "find": "\tif js, err := toolkit.ReadJobState(home, policy.Job); err == nil && js.Known {\n\t\treturn nil\n\t}\n",
+      "replace": "\tif true {\n\t\treturn nil\n\t}\n",
+      "run": "TestAnInstanceWithNoBaseStillRefusesAnUnknownJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an --exclusive holder records its instance",
+      "file": "internal/toolkit/exclusive.go",
+      "find": "_ = writeFileAtomic(holder, []byte(jobID+\"\\n\"+SelectedInstance.Name+\"\\n\"), 0o600)",
+      "replace": "_ = writeFileAtomic(holder, []byte(jobID+\"\\n\"), 0o600)",
+      "run": "TestAHolderInAnotherInstanceIsWaitedForThere",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the wait for a holder names the holder's instance",
+      "file": "internal/toolkit/exclusive.go",
+      "find": "ToolCommandFor(h.instance, \"wait \"+h.id)",
+      "replace": "ToolCommand(\"wait \"+h.id)",
+      "run": "TestAHolderInAnotherInstanceIsWaitedForThere",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an explicit --gitignore=false beats the project's",
+      "file": "cmd_run.go",
+      "find": "\tfs.Var(boolFlag{&j.gitignore, &j.gitignoreSet}, \"gitignore\",",
+      "replace": "\tfs.Var(boolFlag{&j.gitignore, new(bool)}, \"gitignore\",",
+      "run": "TestAnExplicitGitignoreFalseBeatsTheProjects",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier allows a gone grant's mount",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  printf '%s\\n' \"$gone_target\" >> \"$mount_allowlist\"\n",
+      "replace": "  :\n",
+      "run": "TestTheVerifierAllowsAGoneGrantsMountAndNoOther",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier is told each gone grant",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif m.Missing {\n\t\t\tout = append(out, base64.StdEncoding.EncodeToString([]byte(m.Target)))\n",
+      "replace": "\t\tif false {\n\t\t\tout = append(out, base64.StdEncoding.EncodeToString([]byte(m.Target)))\n",
+      "run": "TestTheVerifierAllowsAGoneGrantsMountAndNoOther",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the advice for a refused wsl.exe names the instance",
+      "file": "main.go",
+      "find": "         ` + toolkit.ToolCommand(\"helper serve --detach\") + `\n       Later commands find it automatically and need no further approval.\n       ` + toolkit.ToolCommand(\"helper status\") + ` says whether one is listening.`",
+      "replace": "         wsl-toolkit helper serve --detach\n       Later commands find it automatically and need no further approval.\n       wsl-toolkit helper status says whether one is listening.`",
+      "run": "TestAJobHintNamesTheInstanceItWasPrintedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a help form names the argument it takes",
+      "file": "cmd_manual.go",
+      "find": "\t\"shipped cat\":     \" NAME\",\n",
+      "replace": "",
+      "run": "TestGeneratedManPageIsCurrent",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: shipped cat --help names its NAME",
+      "file": "cmd_shipped.go",
+      "find": "\tfs.Usage = func() { fmt.Fprint(os.Stderr, shippedUsage) }\n",
+      "replace": "",
+      "run": "TestShippedCatHelpSaysItTakesAName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "ready never names an advisory finding as the way forward",
+      "file": "cmd_ready.go",
+      "find": "\t\tif rem.Repairable && !rem.Advisory {\n\t\t\treturn rem.Command\n",
+      "replace": "\t\tif rem.Repairable {\n\t\t\treturn rem.Command\n",
+      "run": "TestReadyAnswersWithTheCommandThatHelps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "ready says an advisory finding as a note, with its command",
+      "file": "cmd_ready.go",
+      "find": "\t\tcase rem.Advisory:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestReadyAnswersWithTheCommandThatHelps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a disk that is not sparse is an advisory finding",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tCommand:    ToolCommand(\"base reclaim\"),\n\t\tRepairable: true,\n\t\tAdvisory:   true,\n",
+      "replace": "\t\tCommand:    ToolCommand(\"base reclaim\"),\n\t\tRepairable: true,\n",
+      "run": "TestADiskThatIsNotSparseEarnsTheReclaim",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a gone QEMU handler is an advisory finding",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tCommand:    ToolCommand(\"base ensure\"),\n\t\t\tRepairable: true,\n\t\t\tAdvisory:   true,\n\t\t}, true\n\tcase !bf.Recorded:",
+      "replace": "\t\t\tCommand:    ToolCommand(\"base ensure\"),\n\t\t\tRepairable: true,\n\t\t}, true\n\tcase !bf.Recorded:",
+      "run": "TestAGoneHandlerIsARemediationNamingBaseEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter leftover is an advisory finding",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tCommand:    ToolCommand(\"base recreate\"),\n\t\tRepairable: true,\n\t\tAdvisory:   true,\n",
+      "replace": "\t\tCommand:    ToolCommand(\"base recreate\"),\n\t\tRepairable: true,\n",
+      "run": "TestALeftoverAdapterIsOneThatIsInstalledOrTakesSpace",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every git call runs with core.fsmonitor off",
+      "file": "internal/toolkit/execbit.go",
+      "find": "\treturn append([]string{\"-c\", \"core.fsmonitor=false\", \"-C\", root}, args...)\n",
+      "replace": "\treturn append([]string{\"-C\", root}, args...)\n",
+      "run": "TestTheCallersOwnTreeIsReadWithTheHookOff",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an untrusted tree takes its executable bits from its archive, not git",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\tcase filter.Untrusted:\n\t\tfor p := range filter.Exec {\n",
+      "replace": "\tcase false:\n\t\tfor p := range filter.Exec {\n",
+      "run": "TestGitIsNotRunInATreeAContainerOrAClientWrote",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --gitignore is refused on an untrusted tree",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\tif filter.Untrusted {\n\t\t\treturn up, errors.New(\"--gitignore reads git",
+      "replace": "\t\tif false {\n\t\t\treturn up, errors.New(\"--gitignore reads git",
+      "run": "TestGitIsNotRunInATreeAContainerOrAClientWrote",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an upload records what its archive marked executable",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\t\tif hdr.Mode&0o111 != 0 {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestAnUploadRecordsTheFilesItsArchiveMarkedExecutable",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --gitignore applies a nested repository's own rules",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\tif filter.Gitignore && d.IsDir() {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestGitignoreAppliesANestedRepositorysOwnRules",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an empty value for a narrowing flag is refused",
+      "file": "cmd_run.go",
+      "find": "\tif strings.TrimSpace(s) == \"\" {\n\t\treturn errors.New(\"an empty value is refused",
+      "replace": "\tif false {\n\t\treturn errors.New(\"an empty value is refused",
+      "run": "TestGCRefusesANarrowingItCannotHonour",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant gone mid-ensure does not cost the base",
+      "file": "internal/toolkit/base.go",
+      "find": "func provisionFailureRebuilds(err error) bool { return !errors.Is(err, ErrGrantSourceGone) }",
+      "replace": "func provisionFailureRebuilds(err error) bool { return true }",
+      "run": "TestAGrantGoneWhileEnsureRunsDoesNotCostTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a tree the first removal cannot open is removed entry by entry",
       "file": "internal/toolkit/paths.go",
       "find": "\t\t} else if walkErr := removeByPath(target); walkErr != nil {\n",
@@ -211,8 +436,8 @@
     {
       "label": "wsl-toolkit: --exclusive through the helper is refused",
       "file": "cmd_run.go",
-      "find": "\tif j.exclusive != \"\" && j.viaHelper {\n",
-      "replace": "\tif j.exclusive != \"\" && j.viaHelper && false {\n",
+      "find": "\tif j.viaHelper {\n\t\tif err := j.helperRouteRefusal(); err != nil {\n",
+      "replace": "\tif false {\n\t\tif err := j.helperRouteRefusal(); err != nil {\n",
       "run": "TestExclusiveFlagsRefuseWhatCannotHold",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -220,8 +445,8 @@
     {
       "label": "wsl-toolkit: a refused --exclusive is offered a wait only for a real job",
       "file": "internal/toolkit/exclusive.go",
-      "find": "\tif id, ok := strings.CutPrefix(holder, \"job \"); ok && jobIDRE.MatchString(id) {\n",
-      "replace": "\tif id, ok := strings.CutPrefix(holder, \"job \"); ok || jobIDRE.MatchString(id) || true {\n",
+      "find": "\tif jobIDRE.MatchString(h.id) {\n\t\treturn \"Wait for it with: \"",
+      "replace": "\tif true {\n\t\treturn \"Wait for it with: \"",
       "run": "TestAnExclusiveNameMustBeAFileName",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -229,8 +454,8 @@
     {
       "label": "wsl-toolkit: --gitignore on a workspace its repository ignores is refused",
       "file": "internal/toolkit/execbit.go",
-      "find": "\tif exec.CommandContext(ctx, git, \"-C\", root, \"check-ignore\", \"-q\", \".\").Run() == nil {\n",
-      "replace": "\tif exec.CommandContext(ctx, git, \"-C\", root, \"check-ignore\", \"-q\", \".\").Run() == nil && false {\n",
+      "find": "\tif exec.CommandContext(ctx, git, gitArgs(root, \"check-ignore\", \"-q\", \".\")...).Run() == nil {\n",
+      "replace": "\tif exec.CommandContext(ctx, git, gitArgs(root, \"check-ignore\", \"-q\", \".\")...).Run() == nil && false {\n",
       "run": "TestGitignoreOnAWorkspaceItsRepositoryIgnoresIsRefused",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -274,7 +499,7 @@
     {
       "label": "wsl-toolkit: a job takes its project's jobs.gitignore",
       "file": "cmd_run.go",
-      "find": "\tif cfg.Jobs.Gitignore {\n\t\tj.gitignore = true\n",
+      "find": "\tif cfg.Jobs.Gitignore && !j.gitignoreSet {\n\t\tj.gitignore = true\n",
       "replace": "\tif cfg.Jobs.Gitignore && false {\n\t\tj.gitignore = true\n",
       "run": "TestAProjectsJobSettingsReachEveryJob",
       "module": "tools/windows/wsl-toolkit",
@@ -2635,7 +2860,7 @@
       "label": "ready answering with the command that helps and not the one that refused",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_ready.go",
-      "find": "\tfor _, rem := range st.Remediations {\n\t\tif rem.Repairable {\n\t\t\treturn rem.Command\n\t\t}\n\t}",
+      "find": "\tfor _, rem := range st.Remediations {\n\t\tif rem.Repairable && !rem.Advisory {\n\t\t\treturn rem.Command\n\t\t}\n\t}",
       "replace": "\tfor _, rem := range st.Remediations {\n\t\tif false {\n\t\t\treturn rem.Command\n\t\t}\n\t}",
       "run": "TestReadyAnswersWithTheCommandThatHelps",
       "args": []

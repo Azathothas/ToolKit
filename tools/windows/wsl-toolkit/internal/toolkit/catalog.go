@@ -817,9 +817,13 @@ func GoneGrantsError(mounts []BaseMount) error {
 
 // ToolCommand is a command line for this tool under the instance this process
 // selected, so a command a message hands to a reader runs against the same base.
-func ToolCommand(args string) string {
-	if SelectedInstance.Name != "" && SelectedInstance.Name != DefaultInstance {
-		return "wsl-toolkit --instance " + SelectedInstance.Name + " " + args
+func ToolCommand(args string) string { return ToolCommandFor(SelectedInstance.Name, args) }
+
+// ToolCommandFor is a command line for this tool under a named instance, for a
+// thing another instance holds.
+func ToolCommandFor(instance, args string) string {
+	if instance != "" && instance != DefaultInstance {
+		return "wsl-toolkit --instance " + instance + " " + args
 	}
 	return "wsl-toolkit " + args
 }
