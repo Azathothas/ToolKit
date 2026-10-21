@@ -21,10 +21,36 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-21
 
+### 2026-10-21T07:56:49Z: `wsl-toolkit-v7.0.0` published, and issues 35 and 37 closed
+
+**Record:** work order item 14 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.0`, **22 assets**. All 8 release
+jobs green, including the smoke that fetches the release and drives it.
+
+⭐ **Driven after the publish.** The executable's digest matches `SHA256SUMS`, and
+cosign verifies its bundle against this repository's release workflow. `selfupdate`
+put 7.0.0 on this host, and the acceptance suite passed 102 of 102 with it against a
+fresh scratch instance. `base ensure` on the operator's base recorded its 8 QEMU
+handlers and started the watcher.
+
+⭐ **Issues 35 and 37 are closed**, each with a comment that maps its items to their
+entries and names the commits and the release. Pull request 36 is merged.
+
+### 2026-10-21T07:23:34Z: upload-artifact moves to v7.0.2, and download-artifact to v8.0.2
+
+**Record:** commit `d81910f`, and pull request 36, which it squashed.
+**Deployed:** ⛔ **no deploy.** A workflow pin change takes effect on the next run,
+and `wsl-toolkit-v7.0.0` was the first release built with it.
+
+⚠ **The bump's own claims were re-derived rather than read.** Each pin is what its
+tag resolves to, and each `action.yml` at it declares `node24`. The pull request
+covers all three call sites.
+
 ### 2026-10-21T06:35:44Z: `wsl-toolkit` is 7.0.0, git never runs in a tree a job wrote, and three reviews' findings are fixed
 
 **Record:** `WSL-119`, and the amendments to `WSL-105` to `WSL-116`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), [`docs/consumers.md`](docs/consumers.md), and work order item 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
-**Deployed:** no deploy yet. `wsl-toolkit-v7.0.0` is cut from this commit.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.0`, tagged on `d81910f`, the merge of
+pull request 36 above this commit. Amended 2026-10-21T07:56:49Z.
 
 ⛔ **The helper ran git in a tree a container or a helper client wrote.** A `.git`
 there can name `core.fsmonitor`, a program git runs on `ls-files`, so a job that
@@ -45,7 +71,7 @@ does.
 ### 2026-10-21T05:25:50Z: a Git Bash script calls the tool directly, and `gc` cleans one project's jobs
 
 **Record:** `WSL-111` to `WSL-118` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and work order item 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
-**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.0`. Amended 2026-10-21T07:56:49Z.
 
 ⭐ **What `podssh`'s wrapper did, the tool now does.** A Git Bash script exports
 `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` once and calls the tool directly.
@@ -71,7 +97,7 @@ time. `doctor` and `config` name such a copy and say which side the caller is on
 ### 2026-10-21T04:08:52Z: a base gets its QEMU handlers back, says what its disk holds, and can be built with `wslc`
 
 **Record:** `WSL-105`, `WSL-109` and `WSL-110` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), [`docs/reference-sweeps/wslc.md`](docs/reference-sweeps/wslc.md), and work order item 12 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
-**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.0`. Amended 2026-10-21T07:56:49Z.
 
 ⭐ **Issue 37's last two items, and issue 35.** The Podman machine empties the
 kernel's QEMU handler table as it stops, the base's handlers included. Every `base
@@ -101,7 +127,7 @@ now.
 ### 2026-10-21T03:26:51Z: `shipped cat` takes its name, a gone grant can be revoked, and one adapter no longer stops the rest
 
 **Record:** `WSL-108`, `WSL-106` and `WSL-107` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `TOOL-28` in [`TODO/tooling.md`](TODO/tooling.md), and work order items 12 and 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
-**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.0`. Amended 2026-10-21T07:56:49Z.
 
 ⭐ **Three of issue 37's five items.** `shipped cat NAME` and `shipped write NAME`
 could never succeed, because the guard every subcommand shares refused the one name

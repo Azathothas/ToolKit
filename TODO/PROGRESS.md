@@ -8,25 +8,23 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-10-21T02:36:37Z, on the operator's request to resolve issues 35 and 37 and pull request 36
 baseline        d52040b, gate 24 of 24
-head            this commit; WSL-111 to WSL-118 closed, so every entry ruling 30 filed is closed
+head            this commit; wsl-toolkit-v7.0.0 published from d81910f, issues 35 and 37 closed, pull request 36 merged
 entries         total 158  open 0  blocked 0  done 158
-this session    issue 37's five items, issue 35's wslc, four changes that retire a consumer's wrapper, and a release
+this session    issue 37's five items, issue 35's wslc, the wrapper a consumer no longer needs, three reviews, and a release
 ```
 
 ## Active work
 
-⭐ **EVERY ENTRY FILED UNDER RULING 30 IS CLOSED, and the release is what is
-left.** `WSL-105` to `WSL-109` are issue 37's five items, `WSL-110` is issue 35,
-`WSL-111` to `WSL-114` remove what `podssh`'s `scripts/dev-wsl.sh` works around,
-and `TOOL-28` was found reading the muse probe. `WSL-115` and `WSL-116` are the
-consumer survey's, and `WSL-117` and `WSL-118` were found driving `WSL-114`. Pull
-request 36 is Dependabot's bump of the two artifact actions, its two pins
-re-derived against their tags.
+⭐ **NOTHING IS OPEN.** Every entry ruling 30 filed is closed, `wsl-toolkit-v7.0.0` is
+published, this host runs it, and issues 35 and 37 and pull request 36 are closed.
+⚠ **What the consumer survey found and this release did not take on** is findings
+104 to 115 below. Each names the consumers and the sites, and filing any of them is
+the operator's call.
 
 ⛔ **A shell the Claude desktop app starts may write this tool's state into the
-package's own copy**, `WSL-118`. Here the Bash tool's processes do and the
-PowerShell tool's do not, so a step that must change the operator's real state runs
-from PowerShell.
+package's own copy**, `WSL-118`. Here the Bash tool's processes do and the PowerShell
+tool's do not, so a step that must change the operator's real state runs from
+PowerShell. `wsl-toolkit config` says which side a shell is on.
 
 ⚠ **One instance on this host is still tied to a terminal**: the operator's
 `avalyn` profile, started from a Windows Terminal tab on 2026-10-10, and not by
@@ -71,9 +69,9 @@ is closed, and the issue gets a comment naming the commits.
     `WSL-113` and `WSL-114`, with `TOOL-28` found on the way. The consumer survey
     added `WSL-115` and `WSL-116`, and driving `WSL-114` found `WSL-117` and
     `WSL-118`. The three reviews of the release found `WSL-119`.
-14. **The release:** pull request 36 merged, `wsl-toolkit-v7.0.0` cut under ruling
-    30, this host moved to it by `selfupdate` and driven, and issues 35 and 37
-    closed with comments naming the commits.
+14. ⭐ **Closed:** pull request 36 merged, `wsl-toolkit-v7.0.0` cut under ruling 30
+    and published, this host moved to it by `selfupdate` and driven, and issues 35
+    and 37 closed with comments naming the commits.
 
 ## Rulings in force
 
@@ -345,9 +343,42 @@ new file FIRST, then run the gate.**
 | `3290937` | the session stop case reads the payload's background child, which proves the whole group is reached; `wsl-toolkit-v5.0.0` is tagged on this commit |
 | `f9560bb` | `WSL-104`: one parser for every group whose subcommands share a flag set, so `helper` and `config` refuse what they never read, and `--help` and the manual list only what a command reads, `base revoke` included; the TERM a stop or a deadline sends is proved by the payload's own trap; `TOOL-26` closed; 5.0.0's publish recorded; 7 mutation rows added and 3 moved with their code, 512 in the table; `wsl-toolkit-v6.0.0` is tagged on this commit |
 | `8a7e03e` | ⭐ **`wsl-toolkit-v6.0.0` IS PUBLISHED**, 22 assets, all 7 release jobs green; verified, installed by `selfupdate` and driven, 102 of 102; issue 34 closed with its comment; the scratch instance removed; the session summary |
-| this commit | ⭐ **`TOOL-27`: `cc_profile`, the Claude desktop app as isolated profiles**, with its suite. Each profile has its own app data and its own Claude Code folder, and a launch has no console and no live parent, and leaves a job that allows it, which the live cases prove by closing a pseudo-console terminal, killing a terminal's tree and closing a kill-on-close job. Three reviews found 39 defects and gaps, all fixed, 37 with a case; the suite 67 of 67 cases with `-Live` and 53 of 53 mutation rows proved |
+| `d52040b` | ⭐ **`TOOL-27`: `cc_profile`, the Claude desktop app as isolated profiles**, with its suite. Each profile has its own app data and its own Claude Code folder, and a launch has no console and no live parent, and leaves a job that allows it, which the live cases prove by closing a pseudo-console terminal, killing a terminal's tree and closing a kill-on-close job. Three reviews found 39 defects and gaps, all fixed, 37 with a case; the suite 67 of 67 cases with `-Live` and 53 of 53 mutation rows proved |
+| `c2c619a` | issue 37's `WSL-108`, `WSL-106` and `WSL-107`: `shipped cat NAME`, a gone grant that loads marked and can be revoked, and every adapter applied; `TOOL-28`, a carriage return inside a line; ruling 30 recorded |
+| `19e34f4` | `WSL-105`, `WSL-109` and `WSL-110`: the QEMU handlers recorded and watched, `base reclaim` and the disk facts, and `wslc` as the third host engine with its analysis in the tree |
+| `54547dd` | `WSL-111` to `WSL-118`: Git Bash calls the tool directly, `--gitignore`, `--exclusive`, `gc --workspace`, `gc --job` that refuses an id it does not hold, hints that name the instance, a removal that works in a redirected state directory, and the copies `doctor` and `config` name. CI found two rows THEATRE on Linux |
+| `4361680` | three reviews of the release, each finding fixed with a case; `WSL-119`, git never run in a tree a job or a client wrote; the helper protocol at version 6; the version 7.0.0 and the consumers' breaks table |
+| `d81910f` | pull request 36, squashed: `upload-artifact` v7.0.2 and `download-artifact` v8.0.2, each pin re-derived. `wsl-toolkit-v7.0.0` is tagged on this commit |
+| this commit | ⭐ **`wsl-toolkit-v7.0.0` IS PUBLISHED**, 22 assets, 8 of 8 release jobs green; verified, installed by `selfupdate` and driven; issues 35 and 37 closed with their comments; the scratch instances removed; the session's record and summary |
 
 ## Measurements
+
+On Windows 11 Pro 26300, PowerShell 7.6.7, WSL 3.0.3.0, git 2.55.0.windows.3, Go
+1.27.0 here and Go 1.25.0 in the release, in the session that started on 2026-10-21:
+
+- **At the start:** the gate 24 of 24 at `d52040b`, in 245 s.
+- **The gate:** 131 s at `54547dd` once its 17 problems were fixed, and 145 s at
+  `4361680`. **`check-go.ps1`:** 72 s and 75 s, with `TEMP` at the 8.3 path of
+  `.tmp\go-tmp`.
+- **CI's Linux jobs in containers, before each push:** `golang:1.25` check-go 68 s
+  and 82 s; ShellCheck 0.9.0, 30 s and 43 s.
+- **The acceptance suite, quick:** 98 of 102 on `s110`, whose own configuration
+  outranks the config cases' project files; 101 of 102 on a fresh `accp7` while the
+  machine also ran mutation rows; 102 of 102 on it idle, in 611 s; and 102 of 102
+  with the installed 7.0.0, in 399 s.
+- **The mutation table:** 512 rows at the start and 600 at the end. Each row this
+  session added went red here, and its 89 rows ran in `golang:1.25` in 837 s with
+  none THEATRE. CI on `54547dd` found two THEATRE on Linux; `4361680` and `d81910f`
+  are green on all 8 jobs.
+- **The release:** `wsl-toolkit-v7.0.0` at 2026-10-21T07:56:49Z, 22 assets, 8 of 8
+  jobs green. The Windows amd64 executable is `84b2cee663e6…`, its digest in
+  `SHA256SUMS`, and cosign answers `Verified OK`.
+- **On this host:** `selfupdate` 6.0.0 to 7.0.0 in 2 s; `base ensure` on
+  `wsl-toolkit-base` in 8 s, reading 8 of its 8 QEMU handlers held and the watcher
+  active; on the jobs base in 3 s, 8 of 8 and no watcher.
+- **`WSL-118`:** from the Bash tool and from the PowerShell tool alike,
+  `GetCurrentPackageFullName` answers 15700. A write under `%LOCALAPPDATA%\wsl-toolkit`
+  from the first lands in the package's copy, and from the second does not.
 
 On Windows 11 Pro 26200, PowerShell 7.6.6 and Claude 2.26454.2.0, in the session
 that started on 2026-10-08:
@@ -1804,6 +1835,46 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
      is what stops it costing a release next time, and it has not itself
      published anything yet.
 
+
+104. ⚠ **IDS AND ANSWERS ARE STILL HARD TO USE, survey P3.** 7.0.0 refuses a shortened
+     `gc --job` id and names the instance in every hint. A unique prefix, the `wtk-`
+     container form, one-line JSON and structured `gc` entries are not taken. podbox
+     carries the workarounds.
+105. ⚠ **RETENTION, P5.** An ephemeral job still keeps its host record, and a killed
+     client leaves its job running. A cancel-on-exit option is the ask, with open
+     records closed when the owner lock is free.
+106. ⚠ **NOTHING IS CACHED BETWEEN JOBS, P7.** Each job installs its toolchain again.
+     A named cache, `--cache NAME:/path`, would save about 25 s and 53 MB a podbox job.
+107. ⚠ **NON-ROOT JOBS, P8.** The `--user` account must exist in the image, `/work` is
+     root's, and `base exec` has no `--user`. A `--create-user` and a `base exec
+     --user` are the asks.
+108. ⚠ **`base exec` LACKS WHAT `run` HAS, P9.** No `--input`, artifacts, `--user` or
+     stdin, and `--dir` takes guest paths only. 7.0.0 added `--env` and `--env-file`.
+109. ⚠ **A 9P GRANT IS SLOW, P10.** pg-toolkit copies its checkout into ext4 by hand.
+     A git-aware `base sync` is the ask.
+110. ⚠ **`stop` DOES NOT REACH A SESSION'S ESCAPED CHILDREN, P13.** podbox runs its own
+     watchdog. A cgroup or a systemd scope per session would let `stop` and a deadline
+     end all of it.
+111. ⚠ **THE TOOL'S EXIT 2 IS A JOB'S EXIT 2, P14.** Without `--json` a caller cannot
+     tell "could not run" from a job that exited 2. A distinct code is the ask, and it
+     would be a break.
+112. ⚠ **AN INPUT FILE KEEPS CRLF AND NO EXECUTABLE BIT, P15.** Wrappers write a runner
+     that picks a shell. An executable input form that normalises line endings is the
+     ask.
+113. ⚠ **A VERSION FLOOR, P16.** Every wrapper checks the tool is on `PATH`, and
+     pg-toolkit gates its version. A `requires` floor in a project's configuration is
+     the ask.
+114. ⚠ **ENGINES INSIDE A BASE, P18.** Root podman needs cgroupfs, `/dev/kvm`
+     permissions reset at each boot, and host images are loaded by hand.
+115. ⚠ **JOB DEFAULTS IN A PROJECT'S CONFIGURATION, P20.** 7.0.0 added `jobs.exclude`
+     and `jobs.gitignore`. Image, timeout, env, user and a version floor are still set
+     in each wrapper.
+116. ⚠ **TWO ACCEPTANCE CASES ARE NOT ISOLATED FROM WHAT THEY RUN BESIDE.** The tick
+     case failed while the machine also ran mutation rows and `check-go`, and passed
+     idle. The marker case writes the instance's own `config.json`, so on an instance
+     whose configuration asks for systemd it left the base booted without it, and
+     `ready` then failed. A fresh scratch instance passes 102 of 102.
+
 ## Review findings
 
 ⭐ **2026-10-21, three reviews of the 7.0.0 change set**, everything since
@@ -2519,11 +2590,44 @@ software.
    seconds, with no cause found. Finding 84. If it happens again with a session
    watching, the readings to take are in that finding.
 
+7. ⭐ **New on 2026-10-21: the package's copy of the state directory**, `WSL-118`. Keep
+   it, remove it, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` for every caller.
+   The tool names the copy and does not move its state on its own. Nothing waits on
+   the answer.
+8. ⭐ **New on 2026-10-21: two binfmt watchers in `wsl-toolkit-base`.** The operator's
+   own `qemu-binfmt-restore.service` and the tool's `wsl-toolkit-binfmt.service` both
+   check every 30 seconds. Retiring the first is the operator's.
+9. ⭐ **New on 2026-10-21: neither base's disk is sparse.** `base reclaim` names `wsl
+   --shutdown` as the operator's step, because it stops every distribution on the
+   machine. Run it when nothing else is running, then `base reclaim` on each base.
+
 Answered on 2026-09-15 and recorded as rulings 13 to 15: whether herdr builds are
 published here, the targets, how the adapter takes a nightly, and where the
 development server ran for `--machine`.
 
 ## Host state
+
+⭐ **WHAT THE SESSION OF 2026-10-21 CHANGED ON THIS MACHINE, and how to undo each.**
+
+- ⭐ **`%USERPROFILE%\bin\wsl-toolkit.exe` is 7.0.0**, put there by `selfupdate` from
+  the published release. `.wsl-toolkit-previous-6.0.0.exe` beside it is the build it
+  replaced; the next `selfupdate` removes it.
+- ⭐ **`wsl-toolkit-base` runs `wsl-toolkit-binfmt.service`** and records its 8 QEMU
+  handlers at `/var/lib/wsl-toolkit/binfmt-handlers`. The undo is `systemctl disable
+  --now wsl-toolkit-binfmt.service` as root in the base. The jobs base records its 8
+  handlers too, and runs no watcher.
+- ⚠ **The Podman machine was started and stopped** to drive `WSL-105`. It is stopped.
+- ⭐ **Two scratch instances were built and removed**: `wsl-toolkit-s110`, built with
+  `wslc` for `WSL-110`, and `wsl-toolkit-accp7`, the acceptance suite's. Their state
+  under `.tmp` is removed.
+- ⭐ **This session's 20 job directories were removed by id**, 12 from the state
+  directory and 8 from the package's copy. Earlier sessions' directories are kept.
+- ⛔ **`%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\wsl-toolkit` is
+  a second state directory**, `WSL-118`. The desktop app's Bash tool writes there. It
+  holds 503 job directories from earlier sessions, a `config.json`, a `base.json` and
+  a ledger. Open question 7 asks what to do with it.
+- ⚠ **`wslc` holds the Arch preset and `alpine:latest`**, which `WSL-110`'s drive
+  pulled. `wslc image prune` removes what no container uses.
 
 ⭐ **WHAT THE SESSION OF 2026-10-08 TO 2026-10-10 CHANGED ON THIS MACHINE, and how to
 undo each.**
