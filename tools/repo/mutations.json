@@ -2,6 +2,267 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a session runs in its own scope where the user manager answers",
+      "file": "internal/toolkit/session.go",
+      "find": "if [ -n \"$u\" ]; then\n  setsid systemd-run --user --scope",
+      "replace": "if false; then\n  setsid systemd-run --user --scope",
+      "run": "TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted|TestASessionInAScopeIsReachedWholeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session stop signals its scope",
+      "file": "internal/toolkit/session.go",
+      "find": "if [ -n \"$u\" ]; then systemctl --user kill --signal=TERM \"$u\" >/dev/null 2>&1; fi\nkill -TERM \"-$pg\"",
+      "replace": "kill -TERM \"-$pg\"",
+      "run": "TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted|TestASessionInAScopeIsReachedWholeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session deadline KILLs its scope after the grace",
+      "file": "internal/toolkit/session.go",
+      "find": "    if [ -n \"$u\" ]; then systemctl --user kill --signal=KILL \"$u\" >/dev/null 2>&1; fi ) </dev/null",
+      "replace": "    : ) </dev/null",
+      "run": "TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted|TestASessionInAScopeIsReachedWholeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a timed-out session in a scope keeps its watchdog to the KILL",
+      "file": "internal/toolkit/session.go",
+      "find": "if [ -n \"$w\" ] && { [ -z \"$u\" ] || [ ! -e \"$d/timedout\" ]; }; then kill \"$w\" 2>/dev/null; fi",
+      "replace": "if [ -n \"$w\" ]; then kill \"$w\" 2>/dev/null; fi",
+      "run": "TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted|TestASessionInAScopeIsReachedWholeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session records only its own scope from the launch",
+      "file": "internal/toolkit/session.go",
+      "find": "ok && v == sessionUnit(id)",
+      "replace": "ok",
+      "run": "TestASessionRecordsOnlyItsOwnScope",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session record naming another unit is refused",
+      "file": "internal/toolkit/session.go",
+      "find": "\tcase rec.Unit != \"\" && rec.Unit != sessionUnit(id):",
+      "replace": "\tcase false:",
+      "run": "TestASessionRecordsOnlyItsOwnScope",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: what an ended session left is read from its line",
+      "file": "internal/toolkit/session.go",
+      "find": "\t\tcase \"LEFT|ended\":\n\t\t\treturn true, false, nil",
+      "replace": "\t\tcase \"LEFT|ended\":\n\t\t\treturn false, false, nil",
+      "run": "TestWhatAnEndedSessionLeftIsReadFromOneLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's limits reach podman",
+      "file": "internal/toolkit/job.go",
+      "find": "\targs = append(args, limitsArgs(spec.Resources)...)\n",
+      "replace": "",
+      "run": "TestAJobsLimitsReachPodmanAndTheWrapperReadsThem",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's wrapper reads its cgroup when a limit was asked for",
+      "file": "internal/toolkit/job.go",
+      "find": " + limitsCheck(spec.Resources, token) + ",
+      "replace": " + ",
+      "run": "TestAJobsLimitsReachPodmanAndTheWrapperReadsThem",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a memory limit file reading max is a measured no",
+      "file": "internal/toolkit/limits.go",
+      "find": "b.WriteString(\"  case \\\"$m\\\" in ''|max) v=no ;; esac\\n\")",
+      "replace": "b.WriteString(\"\")",
+      "run": "TestAJobsLimitsReachPodmanAndTheWrapperReadsThem|TestTheWrapperReadsTheContainersOwnCgroupInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a size with no unit is bytes",
+      "file": "internal/toolkit/limits.go",
+      "find": "\tif m[2] != \"\" {\n\t\tshift = strings.Index(\"kmgt\", strings.ToLower(m[2])) + 1\n\t}",
+      "replace": "\tshift = strings.Index(\"kmgt\", strings.ToLower(m[2])) + 1",
+      "run": "TestAJobsLimitsAreReadAsPodmanReadsThem",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a memory limit under podman's floor is refused",
+      "file": "internal/toolkit/limits.go",
+      "find": "\tif bytes < MinMemoryBytes {",
+      "replace": "\tif false {",
+      "run": "TestAJobsLimitsAreReadAsPodmanReadsThem",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the limits line is read as the container wrote it",
+      "file": "internal/toolkit/limits.go",
+      "find": "\tcase l.yes.Seen():\n\t\treturn LimitsEnforced",
+      "replace": "\tcase false:\n\t\treturn LimitsEnforced",
+      "run": "TestTheLimitsLineIsStrippedAndRead",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a project's memory limit reaches a job",
+      "file": "cmd_run.go",
+      "find": "\tif j.memory == \"\" {\n\t\tj.memory = cfg.Jobs.Memory\n\t}\n",
+      "replace": "",
+      "run": "TestAProjectsLimitsReachAJobAndTheCommandLineWins",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper route refuses a limit",
+      "file": "cmd_run.go",
+      "find": "\tif j.memory != \"\" || j.cpus != \"\" {",
+      "replace": "\tif false {",
+      "run": "TestTheHelperRouteRefusesALimit",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.memory survives loading",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif stored.Jobs.Memory != \"\" {\n\t\tcfg.Jobs.Memory = stored.Jobs.Memory\n\t}\n",
+      "replace": "",
+      "run": "TestAProjectsLimitsLoadAndAreHeldToTheGrammar",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base.kvm needs systemd",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif c.Base.Kvm && !c.Base.Systemd {",
+      "replace": "\tif false {",
+      "run": "TestKvmNeedsSystemdAndIsReadByOpeningIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base.kvm survives loading",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tcfg.Base.Kvm = stored.Base.Kvm\n",
+      "replace": "",
+      "run": "TestEveryStoredBaseFieldSurvivesLoading",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh is told the kvm setting",
+      "file": "internal/toolkit/engines.go",
+      "find": "\t\t\t\"TK_KVM\":         strconv.FormatBool(b.cfg.Base.Kvm),\n",
+      "replace": "\t\t\t\"TK_KVM\":         \"false\",\n",
+      "run": "TestTheEnginesRunAsRootWithTheConfigurationsSettings",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a kvm node asked for and unusable is a problem",
+      "file": "internal/toolkit/engines.go",
+      "find": "\tcase !configured || measured == \"\" || measured == KvmUsable:",
+      "replace": "\tcase true:",
+      "run": "TestKvmNeedsSystemdAndIsReadByOpeningIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account's engine moves to the systemd manager only behind its bus",
+      "file": "internal/toolkit/engines.sh",
+      "find": "if [ -S \"/run/user/$uid/bus\" ] && systemctl is-active --quiet \"user@$uid.service\" && write_manager write; then",
+      "replace": "if write_manager write; then",
+      "run": "TestEachEnginesSettingOwnsItsFiles",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier measures delegation where the engine makes cgroups",
+      "file": "internal/toolkit/verify.sh",
+      "find": "if [ -d \"$cg_user\" ] && mkdir \"$cg_user/wsl-toolkit-delegation-probe.$$\" 2>/dev/null; then",
+      "replace": "if false; then",
+      "run": "TestTheVerifierMeasuresDelegationWhereTheEngineMakesCgroups",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: inspect measures delegation where the engine makes cgroups",
+      "file": "internal/toolkit/inspect.go",
+      "find": "if mkdir \"$cguser\" 2>/dev/null; then",
+      "replace": "if false; then",
+      "run": "TestTheVerifierMeasuresDelegationWhereTheEngineMakesCgroups",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engine's cgroup manager is read from the verifier",
+      "file": "internal/toolkit/base.go",
+      "find": "\"cgroup-manager\", \"cgroup-account-controllers\",",
+      "replace": "",
+      "run": "TestTheVerifierMeasuresDelegationWhereTheEngineMakesCgroups",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a systemd base with no delegation names its user manager and D-Bus",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif systemd {\n\t\tr.What = ",
+      "replace": "\tif false {\n\t\tr.What = ",
+      "run": "TestCgroupFindingIsReportedAndNotRepairable",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec names the engine's runtime directory when asked",
+      "file": "cmd_base_exec.go",
+      "find": "\tif cfg.Base.RuntimeDir && !e.asRoot {",
+      "replace": "\tif false {",
+      "run": "TestBaseExecNamesTheEnginesRuntimeDirWhenAsked",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec as root keeps root's own runtime directory",
+      "file": "cmd_base_exec.go",
+      "find": "cfg.Base.RuntimeDir && !e.asRoot",
+      "replace": "cfg.Base.RuntimeDir",
+      "run": "TestBaseExecNamesTheEnginesRuntimeDirWhenAsked",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base image load reads each image podman names",
+      "file": "internal/toolkit/imageload.go",
+      "find": "\t\t\tif ref = strings.TrimSpace(ref); ref != \"\" {",
+      "replace": "\t\t\tif ref != \"\" {",
+      "run": "TestTheImagesALoadNamedAreReadFromItsOutput",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base image load reads a file before a reference",
+      "file": "cmd_base_image.go",
+      "find": "\tif info, statErr := os.Stat(p); statErr == nil {",
+      "replace": "\tif info, statErr := os.Stat(p); false && statErr == nil {",
+      "run": "TestBaseImageLoadReadsAFileFirstAndAReferenceOtherwise",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: status names the disk WSL registered, not this home's empty folder",
       "file": "internal/toolkit/base.go",
       "find": "\t\tst.DiskPath = filepath.Join(at, \"ext4.vhdx\")\n",

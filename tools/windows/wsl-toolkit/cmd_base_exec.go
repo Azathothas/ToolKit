@@ -26,7 +26,9 @@ const baseExecUsage = `wsl-toolkit base exec (-c COMMAND | --command-base64 BASE
   --detach starts it with no client attached and answers with a session id.
   The base runs it in a process group of its own, keeps its two streams and
   its exit code, and holds --timeout itself. wsl-toolkit logs ID --follow,
-  wait ID and stop ID reach it.
+  wait ID and stop ID reach it. Where the account's systemd user manager
+  answers, it also runs in a scope of its own, so a stop and the deadline
+  reach a child that left the group. The answer says which, as contained_by.
 `
 
 type baseExecFlags struct {
@@ -72,6 +74,12 @@ func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) 
 		return toolkit.ExecRequest{}, err
 	}
 	payload = toolkit.ComposePayload(payload, pairs, false)
+	// ⭐ base.runtime_dir: the account's command names the runtime directory its
+	// engine keeps its state in, as a job's does, so podman in it reads that
+	// state. Root's engine keeps its own elsewhere. WSL-130.
+	if cfg.Base.RuntimeDir && !e.asRoot {
+		payload = append(toolkit.RuntimeDirPrologue(), payload...)
+	}
 	if e.timeout < 0 {
 		return toolkit.ExecRequest{}, fmt.Errorf("--timeout %s is negative. Pass 0 for no deadline, or a positive duration", e.timeout)
 	}
@@ -187,18 +195,33 @@ func detachSession(ctx context.Context, w *toolkit.Wsl, req toolkit.ExecRequest,
 	}
 	followCmd, waitCmd, stopCmd := jobHints(rec.ID)
 	if opts.asJSON {
-		return exitOK, writeJSON(map[string]any{
+		doc := map[string]any{
 			"schema": DetachedSchema, "id": rec.ID, "kind": "session",
 			"distro": rec.Distro, "user": rec.User, "guest_dir": rec.GuestDir,
 			"follow": followCmd,
 			"wait":   waitCmd,
 			"stop":   stopCmd,
-		})
+			// ⭐ WHAT A STOP WILL REACH, said when it is decided. WSL-126.
+			"contained_by": rec.Containment(),
+		}
+		if rec.Unit != "" {
+			doc["unit"] = rec.Unit
+		}
+		return exitOK, writeJSON(doc)
 	}
 	fmt.Println(rec.ID)
 	logf("  session %s runs in %s as %s, with no client attached. Follow: %s. Wait: %s. Stop: %s",
 		rec.ID, rec.Distro, rec.User, followCmd, waitCmd, stopCmd)
+	logf("  %s", sessionContainmentLine(rec))
 	return exitOK, nil
+}
+
+// sessionContainmentLine says what a stop and the deadline will reach. WSL-126.
+func sessionContainmentLine(rec toolkit.SessionRecord) string {
+	if rec.Unit != "" {
+		return "it runs in the systemd scope " + rec.Unit + ", so a stop and its deadline reach every process it starts"
+	}
+	return "no systemd user manager answered, so a stop and its deadline reach its process group, and a child that calls setsid leaves it"
 }
 
 // baseExecResult forwards the guest's own exit status silently and surfaces

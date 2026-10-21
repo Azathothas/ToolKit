@@ -41,7 +41,9 @@ const stopUsage = `wsl-toolkit stop JOB-ID
   A job's container gets TERM, then KILL once --grace passes, and the process
   that owns the job reports it stopped with exit 130. A job still being
   prepared never starts its container. A session's process group gets the same
-  two signals.
+  two signals, and so does its systemd scope where the base runs one, which
+  holds a child that left the group. What an ended session left in its scope
+  is ended the same way. --json says which reached it, as contained_by.
 
   --grace D      time between TERM and KILL (default 10s)
   --json         write a structured answer
@@ -92,7 +94,7 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 		if err != nil {
 			return exitCannot, err
 		}
-		rep = toolkit.StopReport{Schema: toolkit.StopSchema, ID: id, Kind: "session"}
+		rep = toolkit.StopReport{Schema: toolkit.StopSchema, ID: id, Kind: "session", ContainedBy: rec.Containment(), Unit: rec.Unit}
 		switch {
 		case before.Gone:
 			rep.Before, rep.Note = "gone", "the guest holds nothing for this session, so nothing was stopped"
@@ -100,6 +102,24 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 			rep.Before, rep.Note = "ended", "the session had already ended, so nothing was stopped"
 			v := before.Verdict()
 			rep.Exit = &v
+			// ⭐ WHAT THE SESSION LEFT IN ITS SCOPE IS STILL ITS OWN, and a stop
+			// reaches it: a daemon the payload started and did not wait for.
+			// WSL-126.
+			//
+			// ⚠ A SCOPE THAT CANNOT BE READ IS SAID, AND THE ENDED SESSION'S ANSWER
+			// STANDS: the session itself is not running either way.
+			held, still, err := toolkit.StopSessionLeftovers(ctx, w, rec, *grace)
+			if err != nil {
+				rep.Note += ". What it left in its scope could not be read: " + err.Error()
+			}
+			if held {
+				rep.Leftovers, rep.After = "ended", "ended"
+				rep.Note = "the session had already ended, and the processes it left in its scope were ended"
+				if still {
+					rep.Leftovers, rep.After = "running", "running"
+					rep.Note = "the session had already ended, and the processes it left in its scope did not end"
+				}
+			}
 		default:
 			rep.Before, rep.Stopped = "running", true
 			after, err := toolkit.StopSession(ctx, w, rec, *grace)
@@ -186,7 +206,21 @@ func renderStop(rep toolkit.StopReport, asJSON bool) (int, error) {
 	if rep.Note != "" {
 		logf("  %s", rep.Note)
 	}
+	if hint := containmentHint(rep); hint != "" {
+		logf("  %s", hint)
+	}
 	return code, nil
+}
+
+// containmentHint says what a session's stop reached. WSL-126.
+func containmentHint(rep toolkit.StopReport) string {
+	switch rep.ContainedBy {
+	case toolkit.ContainedByScope:
+		return "its scope " + rep.Unit + " was signalled, so every process the session started was reached, a child that called setsid included"
+	case toolkit.ContainedByGroup:
+		return "its process group was signalled, because no systemd user manager answered when it started. A child that called setsid is not reached"
+	}
+	return ""
 }
 
 const waitUsage = `wsl-toolkit wait JOB-ID

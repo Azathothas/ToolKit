@@ -148,6 +148,7 @@ var helpFormArgs = map[string]string{
 	"artifacts retry": " ID",
 	"shipped cat":     " NAME",
 	"shipped write":   " NAME",
+	"base image":      " load FILE|IMAGE",
 }
 
 func isTerminal(file *os.File) bool { return isConsole(file) }

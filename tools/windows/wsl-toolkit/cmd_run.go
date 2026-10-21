@@ -48,6 +48,11 @@ type jobFlags struct {
 	ensure        bool
 	viaHelper     bool
 	tick          time.Duration
+	// memory and cpus are --memory and --cpus as typed, and resources what they
+	// read as once check has run. WSL-136.
+	memory    string
+	cpus      string
+	resources toolkit.ResourceLimits
 }
 
 // boolFlag is a boolean flag that also records that the command line named it,
@@ -119,6 +124,8 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before lifecycle cleanup; the row reports 124")
 	fs.DurationVar(&j.tick, "tick", 0, "emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it")
 	fs.BoolVar(&j.noNetwork, "no-network", false, "run with no network at all")
+	fs.StringVar(&j.memory, "memory", "", "a memory limit for the container, such as 512m or 2g, in podman's meaning. jobs.memory sets one for a project. The answer's limits block says whether the base enforced it")
+	fs.StringVar(&j.cpus, "cpus", "", "a processor limit for the container, such as 1.5. jobs.cpus sets one for a project. The answer's limits block says whether the base enforced it")
 	fs.StringVar(&j.user, "user", "", "what the container runs as: a name, a uid, or uid:gid. Empty means the image's default")
 	fs.StringVar(&j.platform, "platform", "", "the Linux OCI platform. Empty uses jobs.platform, then the native platform")
 	fs.StringVar(&j.lifecycle, "container-lifecycle", "", "persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent")
@@ -316,6 +323,11 @@ func (j *jobFlags) check() error {
 	if j.maxOutput < 0 {
 		return fmt.Errorf("--max-output %d is negative. Pass 0 for the default, or a positive number of bytes", j.maxOutput)
 	}
+	resources, err := toolkit.ParseResourceLimits(j.memory, j.cpus)
+	if err != nil {
+		return err
+	}
+	j.resources = resources
 	if j.exclusive != "" {
 		if err := toolkit.ValidateExclusiveName(j.exclusive); err != nil {
 			return err
@@ -347,6 +359,12 @@ func (j *jobFlags) check() error {
 // useHelper chose, because this process cannot reach wsl.exe, ran the job with no
 // lock and no word, until both helper entry points asked this first. WSL-113.
 func (j jobFlags) helperRouteRefusal() error {
+	// ⛔ A LIMIT IS READ BACK INSIDE THE CONTAINER BY THE PROCESS THAT RUNS IT,
+	// and the helper protocol carries neither the limit nor the answer, so a job
+	// through it would run unlimited and say nothing. WSL-136.
+	if j.memory != "" || j.cpus != "" {
+		return errors.New("--memory and --cpus, or jobs.memory and jobs.cpus, do not cross the helper: the job would run with no limit. Run it where wsl.exe can be called, without --via-helper")
+	}
 	switch {
 	case j.exclusive == "":
 		return nil
@@ -364,6 +382,13 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 	}
 	if j.platform == "" {
 		j.platform = cfg.Jobs.Platform
+	}
+	// ⭐ A PROJECT'S LIMITS APPLY WHERE THE COMMAND LINE NAMES NONE. WSL-136.
+	if j.memory == "" {
+		j.memory = cfg.Jobs.Memory
+	}
+	if j.cpus == "" {
+		j.cpus = toolkit.FormatCPUs(cfg.Jobs.CPUs)
 	}
 	if j.workspace == "" && cfg.Jobs.Workspace != "" {
 		j.workspace = cfg.Jobs.Workspace
@@ -653,6 +678,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		Limits: j.limits(), Label: *image, User: j.user, Devices: devices, Inputs: inputs,
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 		OnTick: jobTick(j, relay), TickEvery: j.tick, Log: relay,
+		Resources: j.resources,
 	})
 	// ⛔ SEALED AND RECORDED BEFORE IT IS RENDERED, so a follower reading the
 	// record and this process reporting it name one verdict.
@@ -834,11 +860,41 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 	if res.Container != "" {
 		logf("  container %s is kept with its job directory. Remove it with: %s", res.Container, toolkit.ToolCommand("gc --job "+res.ID+" --apply"))
 	}
+	if line := limitsLine(res.Limits); line != "" {
+		logf("  %s", line)
+	}
 	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
 	if hint := transcriptHint(res); hint != "" {
 		logf("  %s", hint)
 	}
 	return jobVerdict(res), nil
+}
+
+// limitsLine says what a job's limits were and whether its container was held
+// to them. WSL-136.
+//
+// ⛔ A LIMIT NOT ENFORCED IS SAID AS LOUDLY AS AN ERROR. A job that asked for
+// 64 MiB and got none ran on a promise, and its caller reads the job as bounded.
+func limitsLine(l *toolkit.LimitsReport) string {
+	if l == nil {
+		return ""
+	}
+	var asked []string
+	if l.MemoryBytes > 0 {
+		asked = append(asked, "memory "+toolkit.HumanBytes(l.MemoryBytes))
+	}
+	if l.CPUs > 0 {
+		asked = append(asked, toolkit.FormatCPUs(l.CPUs)+" cpus")
+	}
+	what := strings.Join(asked, " and ")
+	switch l.Enforced {
+	case toolkit.LimitsEnforced:
+		return "limits " + what + ": enforced, read in the container's own cgroup"
+	case toolkit.LimitsUnenforced:
+		return "! limits " + what + ": NOT enforced, the container's cgroup carries no such limit. " +
+			toolkit.ToolCommand("base status --probe") + " names the base's cgroup mechanism"
+	}
+	return "limits " + what + ": whether they were enforced is unknown, because the container did not say"
 }
 
 // transcriptHint is the one line that makes `logs` reachable.
@@ -967,6 +1023,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		Limits: j.limits(), Transcripts: *transcripts, User: j.user, Devices: devices, Inputs: inputs,
 		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
 		OnTick: tickPrinter(j), TickEvery: j.tick,
+		Resources: j.resources,
 	})
 	if err != nil {
 		return exitCannot, err

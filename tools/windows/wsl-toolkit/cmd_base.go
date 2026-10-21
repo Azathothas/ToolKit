@@ -11,7 +11,7 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove|shell|exec|agent|herdr|bootstrap|grant|revoke|attach|presets>
+const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove|shell|exec|agent|herdr|bootstrap|grant|revoke|attach|presets|image>
 
   status     is it registered, and can it actually run a container
   doors      attack its doors from the inside and report what got through
@@ -30,6 +30,8 @@ const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove
   revoke     unmount one, now, and take it out of the configuration
   attach     print the commands that reach its herdr server, from Windows and inside
   presets    the rootfs choices, what each one measured here, and which is live
+  image      load an image archive, or an image this machine's engine holds,
+             into the base's engine: base image load FILE|IMAGE
 
   --preset ID   build from a preset, or from any fully qualified reference.
                 arch (default, glibc) alpine (musl, smallest) debian fedora
@@ -83,6 +85,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	}
 	if sub == "bootstrap" {
 		return cmdBaseBootstrap(ctx, rest)
+	}
+	if sub == "image" {
+		return cmdBaseImage(ctx, rest)
 	}
 	flags, err := parseBaseFlags(sub, rest)
 	if err != nil {
@@ -411,6 +416,8 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	fmt.Fprintf(out, "  sudo        passwordless %v\n", st.Access.PasswordlessSudo)
 	fmt.Fprintf(out, "  toolset     %s\n", st.Access.Toolset)
 	fmt.Fprintf(out, "  shared wsl  /mnt/wsl %s\n", st.Access.SharedTmpfs)
+	// WSL-130.
+	fmt.Fprintf(out, "  engines     root engine %v, runtime dir %v, kvm %v\n", st.Access.RootEngine, st.Access.RuntimeDir, st.Access.Kvm)
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}
@@ -457,6 +464,10 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		// through this same row rather than needing a second one. WSL-60.
 		fmt.Fprintf(out, "  cgroup      %s via %s\n", cg.Version, cg.Mechanism)
 		fmt.Fprintf(out, "  limits      enforced: %s   stats usable: %s\n", cg.Enforced, cg.StatsUsable)
+		// ⭐ WHO MAKES A CONTAINER'S CGROUP, AND WITH WHAT. WSL-136.
+		if cg.Manager != "" {
+			fmt.Fprintf(out, "  cgroup mgr  %s, delegated to the account: %s\n", cg.Manager, valueOrNone(cg.AccountControllers))
+		}
 	} else if probed {
 		// ⚠ NOT MEASURED IS NOT THE SAME AS NO, and this is the row that says
 		// which one this is.
@@ -477,6 +488,9 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		}
 	} else if probed {
 		fmt.Fprintf(out, "  binfmt      not measured by this guest\n")
+	}
+	if st.Kvm != "" {
+		fmt.Fprintf(out, "  kvm         /dev/kvm %s to the account\n", st.Kvm)
 	}
 	for _, a := range st.Adapters {
 		verdict := "healthy"

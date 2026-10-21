@@ -536,3 +536,18 @@ func podmanWorkingConnection(ctx context.Context, exe string) string {
 	}
 	return ""
 }
+
+// SaveImage writes an image this machine's engine holds to an archive file, for
+// `base image load` to carry into the base. WSL-130.
+//
+// ⚠ NO STALL DEADLINE, because `docker save` writes its archive and prints
+// nothing while it does, so a quiet save is a working one. The transfer ceiling
+// still bounds it. `-o` is the spelling all three engines read.
+func (e *Engine) SaveImage(ctx context.Context, ref, path string) error {
+	_, stderr, err := (engineCall{Timeout: EngineTransferTimeout, What: e.Name + " save " + ref}).
+		run(ctx, e.Path, "save", "-o", path, ref)
+	if err != nil {
+		return fmt.Errorf("%s save %s: %w: %s", e.Name, ref, err, guestFailure(stderr))
+	}
+	return nil
+}

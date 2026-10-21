@@ -285,6 +285,7 @@ func TestEveryMatrixFieldReachesItsRows(t *testing.T) {
 	spec.Env = map[string]string{"A": "b"}
 	spec.Script = []byte("true")
 	spec.OnTick = func(TickEvent) {}
+	spec.Resources = ResourceLimits{MemoryBytes: 64 << 20, CPUs: 1.5}
 	row := rowSpec(spec, Image{ID: "alpine", Ref: "docker.io/library/alpine:latest"}, "/staged", "", DefaultWorkspaceLimits())
 	rv := reflect.ValueOf(row)
 	for i := 0; i < sv.NumField(); i++ {

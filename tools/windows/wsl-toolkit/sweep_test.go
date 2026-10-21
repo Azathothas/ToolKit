@@ -124,6 +124,7 @@ var sweptElsewhere = map[string]string{
 	"base recreate":   "it destroys and rebuilds the base, which every later case needs",
 	"base grant":      "it mounts a Windows directory into the base and writes the configuration, which the sweep's shared base must not gain",
 	"base revoke":     "it unmounts a grant and writes the configuration, and the sweep's shared base has none to take away",
+	"base image":      "it loads an image archive into the base's engine, and the sweep carries no archive. Its parser has a case, and WSL-130's drive loaded a real one",
 	"helper serve":    "it starts a process. `helper status` is the readable surface and is swept",
 	"selfupdate":      "it reaches the network and can replace this executable",
 	"matrix":          "it runs a fleet. Its own cases cover the document it produces",
@@ -237,7 +238,7 @@ func jsonSurfaces(t *testing.T) []string {
 	for _, sub := range [][]string{
 		{"base", "ensure"}, {"base", "status"}, {"base", "recreate"}, {"base", "remove"},
 		{"base", "shell"}, {"base", "presets"}, {"base", "grant"}, {"base", "revoke"},
-		{"base", "exec"}, {"base", "doors"}, {"base", "attach"},
+		{"base", "exec"}, {"base", "doors"}, {"base", "attach"}, {"base", "image"},
 		{"helper", "serve"}, {"helper", "status"}, {"helper", "stop"},
 		{"images", "warm"}, {"images", "pull"},
 		{"artifacts", "retry"}, {"config", "validate"},

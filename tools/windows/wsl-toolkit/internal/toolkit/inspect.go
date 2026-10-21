@@ -329,10 +329,16 @@ done
 # Measured on 2026-09-10: /sys/fs/cgroup here is mounted rw with nsdelegate and
 # is still root:root 555, so both of the cheap reads say "delegated" and both
 # are wrong. This costs one mkdir and it is the only answer that is true.
+#
+# ⭐ THE ACCOUNT'S USER MANAGER FIRST, which is where the engine makes a
+# container's cgroup on a base with systemd, as verify.sh's own row reads it.
+# WSL-136.
 cgrel=$(head -1 /proc/self/cgroup 2>/dev/null | sed 's/^0:://')
 case "$cgrel" in /*) ;; *) cgrel=/ ;; esac
 cgdir="/sys/fs/cgroup${cgrel%/}/wsl-toolkit-inspect-probe.$$"
-if mkdir "$cgdir" 2>/dev/null; then printf 'yes\n'; rmdir "$cgdir" 2>/dev/null || true
+cguser="/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/wsl-toolkit-inspect-probe.$$"
+if mkdir "$cguser" 2>/dev/null; then printf 'yes\n'; rmdir "$cguser" 2>/dev/null || true
+elif mkdir "$cgdir" 2>/dev/null; then printf 'yes\n'; rmdir "$cgdir" 2>/dev/null || true
 elif [ -d /sys/fs/cgroup ]; then printf 'no\n'
 else printf 'unknown\n'; fi
 printf 'DISK\n'

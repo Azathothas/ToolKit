@@ -385,9 +385,9 @@ says every 30 seconds whom it waits for. `WSL-113`
 - ⚠ The lock is in the state directory. A caller Windows redirects has a state
   directory of its own, so it holds the name only against callers on its side. `WSL-118`
 
-⚠ **It bounds how many, not how much.** The jobs base enforces no memory limit,
-which `base status --probe` reads as `limits_enforced`, so a project whose builds are
-heavy gives them one name.
+⚠ **It bounds how many, not how much.** How much is `--memory` and `--cpus`, below,
+which a base enforces only where `base status --probe` reads `limits_enforced` as
+`yes`.
 
 ---
 
@@ -412,6 +412,17 @@ guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
   answers 130. `stop --grace` sets the time between the two signals.
 - ⚠ `--timeout` defaults to 30 minutes, as for `base exec`. Pass `--timeout 0`
   for a command that runs until something stops it.
+- ⭐ **Where the account's systemd user manager answers, the command also runs in
+  a scope of its own**, `wtk-session-ID.scope`. A child that calls `setsid` or
+  forks itself away leaves the process group and stays in the scope. So a stop
+  and the deadline reach it, and the KILL after the grace reaches a child that
+  ignores TERM. `WSL-126`
+- A stop of a session that has already ended still ends what it left in its
+  scope, such as a daemon its command started. `stop --json` says so as
+  `leftovers`, and the session's exit code is its own.
+- Without a user manager, the process group is all a stop reaches, as before. The
+  answer says which: `contained_by` is `systemd-scope` or `process-group` in
+  `base exec --detach --json` and in `stop --json`, with `unit` beside a scope.
 - `logs ID` reads the session's streams from the base, and `resources` lists
   each session with its state.
 - `--json` answers `wsl-toolkit-detached/1` with `kind` `session`. Without
@@ -444,6 +455,71 @@ most 2 MiB together. `WSL-97`
 
 `run`, `matrix` and the helper take both. `run`, `matrix`, `base exec`,
 `bsd run` and `distro` take `--command-base64`.
+
+---
+
+## ⭐ Memory and processors
+
+```powershell
+wsl-toolkit run --image alpine --memory 512m --cpus 1.5 -c 'make -j2'
+```
+
+`--memory SIZE` and `--cpus N` ask the job's container to be held to a limit, in
+podman's own meaning: a memory limit lets the container use as much again in
+swap. `jobs.memory`, a size such as `"2g"`, and `jobs.cpus`, a number such as
+`1.5`, set them for a project, and a flag on the command line wins. `run` and
+`matrix` take both. `WSL-136`
+
+⛔ **An engine that accepts a limit has not enforced it.** So the job's own
+container reads its cgroup before the command starts, and the answer carries
+`limits` with `enforced`: `yes`, `no`, or `unknown` where the container did not
+say. A limit not enforced is printed as a warning beside the exit code.
+
+⭐ **A base that runs systemd enforces them.** `base ensure` delegates `cpu`,
+`cpuset`, `io`, `memory` and `pids` to the account's user manager, keeps that
+manager running at every start, and points the account's engine at it. `base
+status --probe` reads the result back: `cgroup v2 via systemd`, `limits enforced:
+yes`, and the controllers the account was given. A base without systemd enforces
+nothing, and its finding names `base.systemd` as the remedy.
+
+- ⚠ The account's engine moves to the systemd cgroup manager only where its
+  session bus answers. Without one, podman would warn on every call and fall back.
+- ⛔ **A base with systemd and no D-Bus has no user manager to delegate to.**
+  Measured on a Debian 13 base: provisioning installs systemd without D-Bus, so
+  its limits stay unenforced, and the finding names D-Bus rather than claiming a
+  repair. This tool does not install it. Root's podman there needs
+  `base.root_engine`, below.
+- ⛔ The helper route refuses `--memory`, `--cpus` and the two keys, because it
+  carries neither the limit nor the answer.
+
+---
+
+## ⭐ The base's own engines
+
+Three opt-in settings, applied by `base ensure` to a new base and to one an earlier
+release built. Each one turned off removes what it wrote. `WSL-130`
+
+| setting | what `base ensure` does |
+| --- | --- |
+| `base.root_engine: true` | root's podman gets the file event log the account has, and the `cgroupfs` manager where the base has no system bus to ask. Without it, such a base refuses root's every run with `crun: cannot open sd-bus`, and `base ensure` fails registering the QEMU handlers, as measured on a Debian base with systemd |
+| `base.runtime_dir: true` | the account's login shells and its `base exec` commands name `/tmp/wsl-toolkit-run-UID` as `XDG_RUNTIME_DIR`, the directory its jobs' engine uses. podman there then reads the jobs' state, rather than refusing it with `database configuration mismatch` |
+| `base.kvm: true` | the account joins the `kvm` group, and `wsl-toolkit-kvm.service` opens `/dev/kvm` to that group at every start. It never narrows a node that is open wider. It needs `base.systemd`, and `base status --probe` reads the node as `usable` by opening it |
+
+```powershell
+wsl-toolkit base image load .\image.tar
+wsl-toolkit base image load docker.io/library/busybox:latest --root --json
+```
+
+⭐ **`base image load FILE|IMAGE` puts an image in the base's engine with no
+registry.** FILE is an archive on this machine, as `podman save` or `docker save`
+writes one. IMAGE is a fully qualified reference this machine's own engine holds:
+it is saved, loaded, and its archive removed. A name that is a file is read as
+FILE. `--root` loads into root's engine. `--json` answers `wsl-toolkit-image-load/1`.
+
+⚠ **A job still asks the registry about a loaded image.** Every job passes
+`--platform`, and podman 6.1.4 then looks the reference up again even where it holds
+the image, measured with both archive formats. With `base.runtime_dir` on, `base
+exec -c 'podman run --pull=never ...'` runs a loaded image with no registry.
 
 ---
 
@@ -1468,7 +1544,7 @@ security boundary**, and no page here says otherwise.
 
 | limit | kind | what it means |
 | --- | --- | --- |
-| the base enforces no per-container resource bounds | host | rootless podman under `init` with no cgroup delegation makes no cgroup per container. `--memory` is accepted and not applied, and `podman stats` reads `0B`. ⭐ `base status` reports this. A job bounded on this base is not bounded. `WSL-60` |
+| a base without systemd enforces no per-container resource bounds | host | rootless podman under `init` with no cgroup delegation makes no cgroup per container. `--memory` is accepted and not applied, and `podman stats` reads `0B`. ⭐ `base status` reports this, and a job's `limits` answer says `no`. A base with systemd enforces them once `base ensure` has run. `WSL-60`, `WSL-136` |
 | `podman logs` needs a log driver that stores | host | the engine's default driver on the base is `journald`, and nothing serves a journal there. This tool names `k8s-file` on each job it starts, so `podman logs` answers for them. The first line podman shows is this tool's own start marker, and `logs --follow` strips it. A caller driving podman directly names a driver too |
 | `bsd run` boots and powers off a guest per call, about 23 seconds each | host | nothing keeps a guest running between runs |
 | nothing a payload installs survives its `bsd run` | decision | a run writes to an overlay it removes, so no panic can damage the shared image |

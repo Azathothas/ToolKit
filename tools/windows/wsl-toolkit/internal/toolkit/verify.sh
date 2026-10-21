@@ -441,7 +441,20 @@ printf 'cgroup-self %s\n' "$cg_self"
 cg_rel=${cg_self#0::}
 case "$cg_rel" in /*) ;; *) cg_rel=/ ;; esac
 cg_probe="/sys/fs/cgroup${cg_rel%/}/wsl-toolkit-delegation-probe.$$"
-if mkdir "$cg_probe" 2>/dev/null; then
+# ⭐ THE ACCOUNT'S USER MANAGER IS ASKED FIRST, because that is where the engine
+# makes a container's cgroup. Measured on an Arch base with systemd: WSL starts
+# this script in /non-systemd, which the account cannot write, and podman's
+# containers landed under user@UID.service, which the account owns. Probing only
+# the script's own cgroup reported `none` over limits that were enforced. WSL-136.
+cg_uid=$(id -u)
+cg_user="/sys/fs/cgroup/user.slice/user-$cg_uid.slice/user@$cg_uid.service"
+cg_under=none
+if [ -d "$cg_user" ] && mkdir "$cg_user/wsl-toolkit-delegation-probe.$$" 2>/dev/null; then
+  rmdir "$cg_user/wsl-toolkit-delegation-probe.$$" 2>/dev/null || true
+  printf 'cgroup-delegated yes\n'
+  cg_under=systemd
+  printf 'cgroup-account-controllers %s\n' "$(cat "$cg_user/cgroup.controllers" 2>/dev/null || echo -)"
+elif mkdir "$cg_probe" 2>/dev/null; then
   printf 'cgroup-delegated yes\n'
   rmdir "$cg_probe" 2>/dev/null || true
 else
@@ -449,9 +462,10 @@ else
 fi
 
 case "$cg_self" in
-  *user@*.service*|*user.slice*) printf 'cgroup-under systemd\n' ;;
-  *)                             printf 'cgroup-under none\n' ;;
+  *user@*.service*|*user.slice*) cg_under=systemd ;;
 esac
+printf 'cgroup-under %s\n' "$cg_under"
+printf 'cgroup-manager %s\n' "$(podman info --format '{{.Host.CgroupManager}}' 2>/dev/null || echo unknown)"
 printf 'engine-rootless %s\n' "$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null || echo unknown)"
 
 binfmt_handlers=0
@@ -507,3 +521,15 @@ cg_limit=$(podman run --rm --pull=missing --timeout 30 --memory 64m "$TK_IMAGE" 
   elif [ -r /sys/fs/cgroup/memory.max ]; then cat /sys/fs/cgroup/memory.max
   else echo missing; fi' 2>/dev/null || echo unreadable)
 printf 'cgroup-limit %s\n' "$(printf '%s' "$cg_limit" | tr -d '\r\n' | head -c 32)"
+
+# >>> kvm: begin
+# ⭐ WHETHER THE ACCOUNT OPENS /dev/kvm, read by opening it and not off its mode
+# bits: a group the account joined counts only in a session started after it
+# joined, which this one is. Opening the node creates nothing. WSL-130.
+if [ -c /dev/kvm ]; then
+  if (exec 3<>/dev/kvm) 2>/dev/null; then kvm=usable; else kvm=unusable; fi
+else
+  kvm=absent
+fi
+printf 'kvm %s\n' "$kvm"
+# <<< kvm: end

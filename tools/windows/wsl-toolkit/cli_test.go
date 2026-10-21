@@ -515,6 +515,10 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 		"asJSON":        "how this process renders its own answer",
 		"ensure":        "the client calls BaseEnsure itself before it sends the job",
 		"viaHelper":     "the routing decision, which is what chose this path",
+		// WSL-136.
+		"memory":    "refused with the helper route, which carries neither the limit nor the answer",
+		"cpus":      "refused with the helper route, which carries neither the limit nor the answer",
+		"resources": "what --memory and --cpus read as, and refused with the helper route with them",
 	}
 
 	spec := reflect.TypeOf(jobFlags{})

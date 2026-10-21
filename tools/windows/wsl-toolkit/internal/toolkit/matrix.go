@@ -33,6 +33,8 @@ type MatrixSpec struct {
 	Devices            []JobDevice
 	Inputs             []JobInput
 	MaxOutput          int64
+	// Resources are each row's memory and processor limits. WSL-136.
+	Resources ResourceLimits
 	// OnRow is called once per row, THE MOMENT IT FINISHES rather than when the
 	// fleet does.
 	//
@@ -65,6 +67,7 @@ func rowSpec(spec MatrixSpec, img Image, staged, artifacts string, limits Worksp
 		Platform: spec.Platform, ContainerLifecycle: spec.ContainerLifecycle,
 		Label: img.ID, User: spec.User, Devices: spec.Devices, Inputs: spec.Inputs, MaxOutput: spec.MaxOutput,
 		OnTick: spec.OnTick, TickEvery: spec.TickEvery,
+		Resources: spec.Resources,
 	}
 }
 
