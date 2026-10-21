@@ -2,6 +2,204 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a status that ran a container says it probed",
+      "file": "internal/toolkit/base.go",
+      "find": "\tst.Probed = true\n",
+      "replace": "",
+      "run": "TestAStatusSaysWhetherItRanAContainer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a status without --probe carries probed false in its JSON",
+      "file": "internal/toolkit/base.go",
+      "find": "Probed bool `json:\"probed\"`",
+      "replace": "Probed bool `json:\"probed,omitempty\"`",
+      "run": "TestAStatusSaysWhetherItRanAContainer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier refuses an account /etc/passwd holds no entry for",
+      "file": "internal/toolkit/verify.sh",
+      "find": "if [ \"$pw_found\" != yes ]; then",
+      "replace": "if false; then",
+      "run": "TestTheVerifierChecksTheAccountsPasswdEntry",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only an account on /bin/sh earns the login shell remediation",
+      "file": "internal/toolkit/loginshell.go",
+      "find": "if acct == nil || acct.LoginShell != \"/bin/sh\" || acct.Bash == \"\" {",
+      "replace": "if acct == nil || acct.Bash == \"\" {",
+      "run": "TestTheAccountRowsAreReadAndOnlySlashBinShEarnsTheRemediation",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every ensure holds the account's login shell to bash",
+      "file": "internal/toolkit/base.go",
+      "find": "\tb.applyLoginShell(ctx)\n",
+      "replace": "",
+      "run": "TestEveryEnsureHoldsTheAccountToBash",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a login shell somebody chose is left as it is",
+      "file": "internal/toolkit/loginshell.sh",
+      "find": "    if [ \"$als_now\" != /bin/sh ]; then",
+      "replace": "    if false; then",
+      "run": "TestApplyLoginShellMovesOnlySlashBinSh",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a re-provisioning holds an existing account to the chosen login shell",
+      "file": "internal/toolkit/provision.sh",
+      "find": "login_said=$(apply_login_shell \"$TK_USER\")",
+      "replace": "login_said=$(printf '%s' \"$TK_USER\")",
+      "run": "TestEveryEnsureHoldsTheAccountToBash",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a login shell WSL cannot start is named with its repair",
+      "file": "internal/toolkit/loginshell.go",
+      "find": "case strings.Contains(msg, \"execvpe(\") && strings.Contains(msg, \"failed\"):",
+      "replace": "case false:",
+      "run": "TestAnAccountWSLCannotStartNamesTheRepair",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status carries an account WSL cannot start",
+      "file": "internal/toolkit/base.go",
+      "find": "if r, ok := accountStartRemediation(verifyErr.Error()); ok {",
+      "replace": "if r, ok := accountStartRemediation(\"\"); ok {",
+      "run": "TestAnAccountWSLCannotStartNamesTheRepair",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engine packages get three attempts",
+      "file": "internal/toolkit/provision.sh",
+      "find": "ENGINE_ATTEMPTS=3\n",
+      "replace": "ENGINE_ATTEMPTS=1\n",
+      "run": "TestTheEnginePackagesAreAskedAgainAndTheStallNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed engine package attempt names the line that ended it",
+      "file": "internal/toolkit/provision.sh",
+      "find": "attempt $engine_attempt of $ENGINE_ATTEMPTS: $engine_why. Trying again",
+      "replace": "attempt $engine_attempt of $ENGINE_ATTEMPTS. Trying again",
+      "run": "TestTheEnginePackagesAreAskedAgainAndTheStallNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the carried bootstrap puts its prefix after the system path",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "  ip_line=\"export PATH=\\\"\\$PATH:$PREFIX/bin\\\"\"",
+      "replace": "  ip_line=\"export PATH=\\\"$PREFIX/bin:\\$PATH\\\"\"",
+      "run": "TestBootstrapPutsItsPrefixAfterTheSystemPath",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the carried bootstrap rewrites the prefix line an earlier run wrote",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "    replace_once \"$ip_file\" \"$ip_before\" \"$ip_line\"\n",
+      "replace": "    RO_REPLACED=0\n",
+      "run": "TestBootstrapPutsItsPrefixAfterTheSystemPath",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an agent probe names the remedy for a shadowed wrapper",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": ". Run: base bootstrap, which moves its own line after the system path. A line the account wrote itself is moved by hand\"",
+      "replace": "\"",
+      "run": "TestEveryAgentProbeNamesTheRemedyForAShadowedWrapper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed create is rolled back without its marker",
+      "file": "internal/toolkit/base.go",
+      "find": "\tb.unmarked = true\n",
+      "replace": "",
+      "run": "TestAFailedCreateIsRolledBackWithoutItsMarker",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build records its ownership before the import",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := b.recordBuildStart(); err != nil {",
+      "replace": "\tif err := error(nil); err != nil {",
+      "run": "TestAFailedCreateIsRolledBackWithoutItsMarker",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base remove removes a build killed before its marker",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif errors.Is(err, ErrNoIdentity) {\n\t\t\trec, ok, why := b.interruptedBuild(ctx)",
+      "replace": "\t\tif false {\n\t\t\trec, ok, why := b.interruptedBuild(ctx)",
+      "run": "TestABuildKilledBeforeItsMarkerCanBeRemovedLater",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure removes a build killed before its marker and builds again",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif rec, ok, _ := b.interruptedBuild(ctx); ok {\n\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")",
+      "replace": "\t\tif rec, ok, _ := b.interruptedBuild(ctx); ok && false {\n\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")",
+      "run": "TestEnsureRemovesAnInterruptedBuildAndBuildsAgain",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an interrupted build is removed only where WSL keeps its disk in the instance",
+      "file": "internal/toolkit/interrupted.go",
+      "find": "\tif !samePath(disk, b.Dir()) {",
+      "replace": "\tif false {",
+      "run": "TestABuildKilledBeforeItsMarkerCanBeRemovedLater",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unmarked distribution's refusal names wsl --unregister rather than base recreate",
+      "file": "internal/toolkit/interrupted.go",
+      "find": "`wsl --unregister %s` removes it and its disk",
+      "replace": "`base recreate %.0s` removes it and its disk",
+      "run": "TestAnUnmarkedDistributionWithNoRecordNamesTheCommandThatRemovesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: automount off is swept after the restart that applies it",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif automount == AutomountOff {\n\t\treturn b.sweepDriveMountPoints(ctx)\n\t}\n",
+      "replace": "",
+      "run": "TestDriveMountPointsAreSweptAfterTheRestart",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the sweep removes the empty drive letters",
+      "file": "internal/toolkit/drives.sh",
+      "find": "  rmdir \"$drive_dir\" 2>/dev/null || die",
+      "replace": "  : \"$drive_dir\" || die",
+      "run": "TestTheSweepRemovesOnlyEmptyDriveLetters",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: status names the disk WSL registered, not this home's empty folder",
       "file": "internal/toolkit/base.go",
       "find": "\t\tst.DiskPath = filepath.Join(at, \"ext4.vhdx\")\n",
@@ -4875,9 +5073,9 @@
     {
       "label": "automount off removing the drive mount points it left",
       "module": "tools/windows/wsl-toolkit",
-      "file": "internal/toolkit/provision.sh",
-      "find": "    rmdir \"$drive_dir\" 2>/dev/null || die",
-      "replace": "    : \"$drive_dir\" 2>/dev/null || die",
+      "file": "internal/toolkit/drives.sh",
+      "find": "  rmdir \"$drive_dir\" 2>/dev/null || die",
+      "replace": "  : \"$drive_dir\" 2>/dev/null || die",
       "run": "TestAutomountOffLeavesNoDriveMountPoints",
       "args": []
     },

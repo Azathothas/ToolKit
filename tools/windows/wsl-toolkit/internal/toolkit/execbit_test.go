@@ -395,15 +395,19 @@ func TestTheVerifierReadsTheEngineVersionFromStdoutAlone(t *testing.T) {
 // and listed nothing, which is not what the setting promises. Measured on a
 // rebuilt Arch base on 2026-09-13.
 func TestAutomountOffLeavesNoDriveMountPoints(t *testing.T) {
-	provision := string(provisionScript)
+	if !strings.Contains(string(provisionScript), "\ncd /\n") {
+		t.Error("the provisioner does not leave the directory WSL started it in")
+	}
+	// ⚠ THE SWEEP IS drives.sh's, run after the restart. WSL-153, WSL-155.
+	sweep := string(drivesScript)
 	for _, want := range []string{
 		"\ncd /\n",
 		`for drive_dir in /mnt/?; do`,
 		`umount "$drive_dir" 2>/dev/null || umount -l "$drive_dir"`,
 		`rmdir "$drive_dir" 2>/dev/null || die`,
 	} {
-		if !strings.Contains(provision, want) {
-			t.Errorf("the provisioner does not carry %q", want)
+		if !strings.Contains(sweep, want) {
+			t.Errorf("drives.sh does not carry %q", want)
 		}
 	}
 	if !strings.Contains(string(verifyScript), `if [ -e "$drive_dir" ]; then`) {

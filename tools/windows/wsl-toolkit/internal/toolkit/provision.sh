@@ -126,48 +126,95 @@ say "package manager: $FAMILY on $OS_ID"
 # optional package would turn a working base into no base at all.
 # >>> engine packages: begin
 case "$FAMILY" in
-  apk)
-    apk update >/dev/null
-    apk add --no-cache podman crun fuse-overlayfs slirp4netns shadow shadow-uidmap \
-      iptables ip6tables ca-certificates tar iproute2 >/dev/null
-    apk add --no-cache passt >/dev/null 2>&1 || :
-    ;;
-  pacman)
-    # ⛔ ARCH DOES NOT SUPPORT PARTIAL UPGRADES. Refreshing the package database
-    # with -Sy and installing into an older rootfs produced an unsatisfiable
-    # dependency set on a fresh base on 2026-09-12. Upgrade the rootfs and
-    # install from one synchronized transaction.
-    pacman -Syu --noconfirm --needed podman crun fuse-overlayfs slirp4netns shadow \
-      iptables-nft ca-certificates tar iproute2 >/dev/null
-    pacman -S --noconfirm --needed passt >/dev/null 2>&1 || :
-    ;;
-  apt)
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq >/dev/null
-    # ⛔ nftables SUPPLIES nft, AND netavark SHELLS OUT TO IT BY THAT NAME.
-    # Measured on this host on 2026-09-15: a Debian base carrying no firewall
-    # package refused the QEMU binary-format installer's rootful run with
-    # `netavark: nftables error: unable to execute nft: No such file or
-    # directory`, and the build rolled the distribution back. The apk arm carries
-    # iptables and the pacman arm iptables-nft; this arm carried neither. WSL-86.
-    apt-get install -y -qq --no-install-recommends podman uidmap fuse-overlayfs \
-      slirp4netns ca-certificates iproute2 nftables >/dev/null
-    apt-get install -y -qq --no-install-recommends passt >/dev/null 2>&1 || :
-    ;;
-  dnf)
-    dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs \
-      slirp4netns shadow-utils iproute tar >/dev/null
-    dnf -y --setopt=install_weak_deps=False install passt >/dev/null 2>&1 || :
-    ;;
-  tdnf)
-    tdnf install -y podman shadow-utils tar iproute2 >/dev/null
-    tdnf install -y passt >/dev/null 2>&1 || :
-    ;;
-  xbps)
-    xbps-install -Sy podman crun fuse-overlayfs slirp4netns shadow \
-      iproute2 ca-certificates tar >/dev/null
-    xbps-install -Sy passt >/dev/null 2>&1 || :
-    ;;
+  apt) export DEBIAN_FRONTEND=noninteractive ;;
+esac
+
+# engine_transaction is one attempt at the family's engine packages, the index
+# refresh included where the family has one.
+engine_transaction() {
+  case "$FAMILY" in
+    apk)
+      apk update >/dev/null &&
+        apk add --no-cache podman crun fuse-overlayfs slirp4netns shadow shadow-uidmap \
+          iptables ip6tables ca-certificates tar iproute2 >/dev/null
+      ;;
+    pacman)
+      # ⛔ ARCH DOES NOT SUPPORT PARTIAL UPGRADES. Refreshing the package database
+      # with -Sy and installing into an older rootfs produced an unsatisfiable
+      # dependency set on a fresh base on 2026-09-12. Upgrade the rootfs and
+      # install from one synchronized transaction.
+      pacman -Syu --noconfirm --needed podman crun fuse-overlayfs slirp4netns shadow \
+        iptables-nft ca-certificates tar iproute2 >/dev/null
+      ;;
+    apt)
+      # ⛔ nftables SUPPLIES nft, AND netavark SHELLS OUT TO IT BY THAT NAME.
+      # Measured on this host on 2026-09-15: a Debian base carrying no firewall
+      # package refused the QEMU binary-format installer's rootful run with
+      # `netavark: nftables error: unable to execute nft: No such file or
+      # directory`, and the build rolled the distribution back. The apk arm carries
+      # iptables and the pacman arm iptables-nft; this arm carried neither. WSL-86.
+      apt-get update -qq >/dev/null &&
+        apt-get install -y -qq --no-install-recommends podman uidmap fuse-overlayfs \
+          slirp4netns ca-certificates iproute2 nftables >/dev/null
+      ;;
+    dnf)
+      dnf -y --setopt=install_weak_deps=False install podman fuse-overlayfs \
+        slirp4netns shadow-utils iproute tar >/dev/null
+      ;;
+    tdnf)
+      tdnf install -y podman shadow-utils tar iproute2 >/dev/null
+      ;;
+    xbps)
+      xbps-install -Sy podman crun fuse-overlayfs slirp4netns shadow \
+        iproute2 ca-certificates tar >/dev/null
+      ;;
+  esac
+}
+
+# ⛔ A STALLED MIRROR IS ASKED AGAIN, AND NAMED. Two builds from nothing on
+# 2026-09-14 failed in pacman on `geo.mirror.pkgbuild.com : Operation too slow`
+# and rolled their distributions back, and the next attempt passed. Finding 10,
+# WSL-140. So each family's transaction gets three attempts, the manager's last
+# line names what stopped each one, and the pause between them grows.
+#
+# ⚠ The manager's stderr is relayed after each attempt rather than as it comes,
+# because the last line of it is what names a stall. stdin is /dev/null: this
+# script arrives on stdin, and a manager that read it would eat the rest.
+ENGINE_ATTEMPTS=3
+engine_attempt=1
+while :; do
+  engine_status=0
+  engine_said=$(engine_transaction 2>&1 >/dev/null </dev/null) || engine_status=$?
+  if [ -n "$engine_said" ]; then
+    printf '%s\n' "$engine_said" >&2
+  fi
+  if [ "$engine_status" -eq 0 ]; then
+    break
+  fi
+  engine_why='it printed no reason'
+  while IFS= read -r engine_line; do
+    if [ -n "$engine_line" ]; then
+      engine_why=$engine_line
+    fi
+  done <<ENGINE_SAID
+$engine_said
+ENGINE_SAID
+  if [ "$engine_attempt" -ge "$ENGINE_ATTEMPTS" ]; then
+    die "the engine packages did not install through $FAMILY in $ENGINE_ATTEMPTS attempts. The last one ended: $engine_why"
+  fi
+  engine_pause=$((engine_attempt * 15))
+  say "the engine packages did not install, attempt $engine_attempt of $ENGINE_ATTEMPTS: $engine_why. Trying again in ${engine_pause}s"
+  sleep "$engine_pause"
+  engine_attempt=$((engine_attempt + 1))
+done
+
+case "$FAMILY" in
+  apk)    apk add --no-cache passt >/dev/null 2>&1 || : ;;
+  pacman) pacman -S --noconfirm --needed passt >/dev/null 2>&1 || : ;;
+  apt)    apt-get install -y -qq --no-install-recommends passt >/dev/null 2>&1 || : ;;
+  dnf)    dnf -y --setopt=install_weak_deps=False install passt >/dev/null 2>&1 || : ;;
+  tdnf)   tdnf install -y passt >/dev/null 2>&1 || : ;;
+  xbps)   xbps-install -Sy passt >/dev/null 2>&1 || : ;;
 esac
 # <<< engine packages: end
 
@@ -332,18 +379,26 @@ done
 # the watcher that registers them again. WSL-105.
 
 # -- the unprivileged account -------------------------------------------------
+# ⭐ CREATED WITH bash WHERE THE GUEST HAS BASH. wanted_login_shell is
+# loginshell.sh's, which arrives ahead of this script, and `base ensure` moves an
+# account an older release created with /bin/sh. Finding 44. WSL-143.
 if id -u "$TK_USER" >/dev/null 2>&1; then
   say "account $TK_USER already exists"
 else
+  TK_LOGIN_SHELL=$(wanted_login_shell)
   if command -v useradd >/dev/null 2>&1; then
-    useradd --create-home --uid "$TK_UID" --shell /bin/sh "$TK_USER"
+    useradd --create-home --uid "$TK_UID" --shell "$TK_LOGIN_SHELL" "$TK_USER"
   elif command -v adduser >/dev/null 2>&1; then
-    adduser -D -u "$TK_UID" -s /bin/sh "$TK_USER"
+    adduser -D -u "$TK_UID" -s "$TK_LOGIN_SHELL" "$TK_USER"
   else
     die "no useradd and no adduser"
   fi
-  say "created $TK_USER as uid $TK_UID"
+  say "created $TK_USER as uid $TK_UID, login shell $TK_LOGIN_SHELL"
 fi
+# ⚠ AN ACCOUNT THAT ALREADY EXISTS IS MOVED HERE TOO, so a re-provisioning repairs
+# a login shell the verifier refused because nothing can start it.
+login_said=$(apply_login_shell "$TK_USER") || login_said="the login shell of $TK_USER was not set"
+say "$login_said"
 TK_HOME=$(getent passwd "$TK_USER" 2>/dev/null | cut -d: -f6) || TK_HOME=
 [ -n "$TK_HOME" ] || TK_HOME=/home/$TK_USER
 [ -d "$TK_HOME" ] || { mkdir -p "$TK_HOME"; chown "$TK_USER" "$TK_HOME"; }
@@ -593,31 +648,9 @@ say "/etc/wsl.conf: $wsl_conf"
 printf 'wsl-conf %s\n' "$wsl_conf"
 
 # -- the drive mount points automount leaves behind ---------------------------
-# ⛔ AN EMPTY /mnt/c IS NOT AN ABSENT ONE. The first start of a fresh import
-# automounts every Windows drive before this script has written `automount off`,
-# and the restart that applies the setting leaves each mount point behind as an
-# empty 0777 directory. Nothing is reachable through them, but `ls /mnt/c`
-# succeeds, the host's drive letters are listed, and guest root has a place ready
-# to mount one. Measured on a rebuilt Arch base on 2026-09-13: nine of them.
-# ⚠ Only a single-letter directory, only when it is empty, and a live drive
-# mount is unmounted first: on a first start this runs before that restart.
-if [ "$TK_AUTOMOUNT" = off ]; then
-  drive_points=0
-  for drive_dir in /mnt/?; do
-    [ -d "$drive_dir" ] || continue
-    while read -r _source live_target live_type live_options _rest; do
-      [ "$live_target" = "$drive_dir" ] || continue
-      case "$live_type:$live_options" in
-        drvfs:*|9p:*aname=drvfs*)
-          umount "$drive_dir" 2>/dev/null || umount -l "$drive_dir" ||
-            die "the automounted drive at $drive_dir could not be unmounted"
-          ;;
-      esac
-    done < /proc/mounts
-    rmdir "$drive_dir" 2>/dev/null || die "$drive_dir is not an empty directory, so it was left and automount off cannot be true"
-    drive_points=$((drive_points + 1))
-  done
-  say "drive mount points removed: $drive_points"
-fi
+# ⛔ NOT HERE ANY MORE. drives.sh removes them after the restart that applies
+# `automount off`. Swept here, a drive mounted after the sweep was left behind,
+# and every session before the restart relayed one `wsl: Failed to translate`
+# line per Windows PATH entry. Findings 13 and 18, WSL-153 and WSL-155.
 
 printf 'provision-complete\n'

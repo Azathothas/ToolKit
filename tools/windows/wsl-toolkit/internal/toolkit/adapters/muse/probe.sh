@@ -100,7 +100,9 @@ else
     printf 'wrapper_on_login_path yes\n'
   else
     printf 'wrapper_on_login_path no\n'
-    problem "a login shell resolves muse to $pane_path, which is not this tool's wrapper, so the configured model and reasoning effort reach no session started from a pane. The account's own prefix is ahead of /usr/local/bin, which bootstrap.sh puts there"
+    # ⭐ THE PROBLEM NAMES ITS REMEDY. bootstrap.sh now puts its prefix after the
+    # system path and rewrites the line an earlier run wrote. WSL-147.
+    problem "a login shell resolves muse to $pane_path, which is not this tool's wrapper, so the configured model and reasoning effort reach no session started from a pane. The account's own prefix is ahead of /usr/local/bin, which an earlier bootstrap.sh put there. Run: base bootstrap, which moves its own line after the system path. A line the account wrote itself is moved by hand"
   fi
 fi
 

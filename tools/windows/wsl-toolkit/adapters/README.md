@@ -102,13 +102,14 @@ found`, and `herdr agent start` waits for an agent that cannot appear. `WSL-88`
    ⚠ A probe that reads the name on the adapter's own curated PATH passes over an
    agent herdr cannot start. The probe asks the question herdr asks.
 
-⛔ **AND IT HAS TO RESOLVE TO THE WRAPPER, NOT MERELY RESOLVE.** `bootstrap.sh` writes
-`export PATH="$HOME/.local/bin:$PATH"` into the account's profile, so after
-`base bootstrap` a login shell finds the vendor's own launcher first, and the wrapper
-on the system path is not reached. ⭐ **So an agent adapter's probe reads the
-resolved file and refuses one that does not carry this tool's marker**, and it reads
-it through `runuser -l`. ⚠ `as_account` has a curated PATH, so a probe that asks
-through it cannot see this.
+⛔ **AND IT HAS TO RESOLVE TO THE WRAPPER, NOT MERELY RESOLVE.** An earlier
+`bootstrap.sh` wrote `export PATH="$HOME/.local/bin:$PATH"` into the account's
+profile, so after `base bootstrap` a login shell found the vendor's own launcher
+first, and the wrapper on the system path was not reached. It now puts the prefix
+last and rewrites that line. ⭐ **So an agent adapter's probe reads the resolved file
+and refuses one that does not carry this tool's marker**, and it reads it through
+`runuser -l`. Its problem names `base bootstrap` as the remedy. ⚠ `as_account` has a
+curated PATH, so a probe that asks through it cannot see this.
 
 ## The files
 

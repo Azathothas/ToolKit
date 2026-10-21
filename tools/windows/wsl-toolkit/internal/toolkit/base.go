@@ -35,8 +35,12 @@ var packagesScript []byte
 // names that knew six managers where the table knew twelve, and a distribution that
 // renamed a package had to be fixed in both. WSL-70.
 func provisionPayload() []byte {
-	payload := make([]byte, 0, len(packagesScript)+1+len(provisionScript))
+	payload := make([]byte, 0, len(packagesScript)+len(loginShellScript)+2+len(provisionScript))
 	payload = append(payload, packagesScript...)
+	payload = append(payload, '\n')
+	// ⭐ loginshell.sh's functions come next, so the account is created with the
+	// shell every later `base ensure` holds it to. WSL-143.
+	payload = append(payload, loginShellScript...)
 	payload = append(payload, '\n')
 	return append(payload, provisionScript...)
 }
@@ -87,6 +91,10 @@ type BaseState struct {
 	DiskPath   string `json:"disk_path,omitempty"`
 	DiskBytes  int64  `json:"disk_bytes,omitempty"`
 	DiskKnown  bool   `json:"disk_known"`
+	// Probed is true when this answer ran a container in the base. ⛔ Without
+	// --probe it is false, and `healthy: false` beside it is no verdict: a base
+	// that is registered and cannot run anything reads the same. WSL-137.
+	Probed bool `json:"probed"`
 	// DiskSparse is yes or no where the disk could be read, and DiskAllocated the
 	// bytes it takes on its volume. ⚠ A disk that is not sparse keeps every byte
 	// its guest ever wrote, whatever the guest frees. WSL-109.
@@ -109,6 +117,9 @@ type BaseState struct {
 	// older than the probe, which is not the same as a tree that can do nothing.
 	Cgroup *CgroupState `json:"cgroup,omitempty"`
 	Binfmt *BinfmtState `json:"binfmt,omitempty"`
+	// Account is the managed account's passwd entry, read back under --probe:
+	// its login shell, and where bash is. WSL-143.
+	Account *AccountState `json:"account,omitempty"`
 	// Access is the configured access state. Under --probe a healthy result
 	// means the configured account verified these settings after WSL restarted,
 	// and AutomountGuest carries what the guest's drives are.
@@ -171,6 +182,10 @@ type Base struct {
 	// base, so nothing owner-only runs for it. ⛔ Set by the helper from the
 	// request, and it only ever narrows what runs. WSL-167.
 	guest bool
+	// archive writes the rootfs archive a new build imports, in place of the host
+	// engine. ⚠ Nil, which every real Base has, means the engine. A case sets it to
+	// drive a build with no engine. WSL-150.
+	archive func(ctx context.Context, tarPath string) error
 }
 
 // NewBase binds the lifecycle to this host.
@@ -344,15 +359,33 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 			return st, nil
 		}
 	} else if errors.Is(err, ErrNoIdentity) {
-		st.Problems = append(st.Problems, fmt.Sprintf(
-			"%s carries no identity marker, so this tool cannot confirm it built it. `base ensure` adopts one it has a record for", b.cfg.Base.Name))
+		if rec, ok, _ := b.interruptedBuild(ctx); ok {
+			if by, running := b.buildRunning(); running {
+				// ⛔ A LIVE BUILD IS NOT ADVISED AWAY. It holds the base's lock until
+				// it stamps its marker. WSL-150.
+				st.Problems = append(st.Problems, fmt.Sprintf(
+					"%s carries no identity marker yet, and it is being changed by %s, which may be its build. Run this again once that ends",
+					b.cfg.Base.Name, by))
+			} else {
+				// ⭐ WSL-150: this tool's own build, stopped before its marker.
+				st.Problems = append(st.Problems, interruptedBuildNote(b.cfg.Base.Name, rec)+
+					". Run "+ToolCommand("base ensure")+" to build it again, or "+ToolCommand("base remove")+" to remove it")
+			}
+		} else {
+			st.Problems = append(st.Problems, fmt.Sprintf(
+				"%s carries no identity marker, so this tool cannot confirm it built it. `base ensure` adopts one it has a record for", b.cfg.Base.Name))
+		}
 	} else {
 		st.Problems = append(st.Problems, err.Error())
 	}
+	// ⭐ THE ANSWER SAYS IT RAN A CONTAINER. Without --probe `healthy` is false
+	// and is no verdict, and a caller reading JSON could not tell. WSL-137.
+	st.Probed = true
 	report, verifyErr := b.verify(ctx)
 	st.Engine = report.Engine
 	st.Cgroup = report.Cgroup
 	st.Binfmt = report.Binfmt
+	st.Account = report.Account
 	st.Access.AutomountGuest = report.Automount
 	if verifyErr != nil {
 		st.Problems = append(st.Problems, verifyErr.Error())
@@ -361,6 +394,9 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		// A report that names the condition and not the command is the half of
 		// this that was already there.
 		if r, ok := staleRunStateRemediation(verifyErr.Error()); ok {
+			st.Remediations = append(st.Remediations, r)
+		}
+		if r, ok := accountStartRemediation(verifyErr.Error()); ok {
 			st.Remediations = append(st.Remediations, r)
 		}
 		return st, nil
@@ -373,6 +409,12 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		st.Remediations = append(st.Remediations, r)
 	}
 	if r, ok := binfmtRemediation(report.Binfmt); ok {
+		st.Remediations = append(st.Remediations, r)
+	}
+	if r, ok := loginShellRemediation(report.Account); ok {
+		st.Remediations = append(st.Remediations, r)
+	}
+	if r, ok := accountPasswdRemediation(report.Account); ok {
 		st.Remediations = append(st.Remediations, r)
 	}
 	// ⚠ AN ADAPTER'S PROBLEM IS A PROBLEM, NOT AN UNUSABLE BASE. `healthy` answers
@@ -645,6 +687,21 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 		}
 		st.Registered = false
 	}
+	// ⭐ A BUILD OF THIS TOOL'S KILLED BEFORE ITS MARKER IS REMOVED AND BUILT
+	// AGAIN, as its own rollback would have done had the process lived. WSL-150.
+	//
+	// ⛔ UNDER THE LOCK THIS ENSURE HOLDS, so a build that is still running holds
+	// it too and is never read here as a killed one. remove, not Remove, which
+	// would wait on this process's own lock.
+	if st.Registered {
+		if rec, ok, _ := b.interruptedBuild(ctx); ok {
+			b.log(interruptedBuildNote(b.cfg.Base.Name, rec) + ". Removing it and building again")
+			if err := b.remove(ctx); err != nil {
+				return st, err
+			}
+			st.Registered = false
+		}
+	}
 	if st.Registered {
 		// ⭐ SAID FIRST, AND SAID PLAINLY, because the reader is usually an
 		// agent that has just asked for a base and is about to be told it
@@ -794,6 +851,7 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 		return st, b.rollbackImported(err)
 	}
 	b.imported = false
+	b.closeBuildRecord("stamped with its identity marker")
 	report, err := b.verify(ctx)
 	if err != nil {
 		return st, fmt.Errorf("built and it does not verify: %w", err)
@@ -850,6 +908,9 @@ func (b *Base) builtImage(ctx context.Context) string {
 // works and the record is written by the time this runs, so the caller is told
 // both what failed and what the base is.
 func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error) {
+	// ⭐ EVERY ENSURE HOLDS THE ACCOUNT TO bash WHERE THE GUEST HAS IT, so a base
+	// an older release built with /bin/sh is moved by its next ensure. WSL-143.
+	b.applyLoginShell(ctx)
 	// ⭐ THE HANDLERS COME FIRST AND THEIR FAILURE STOPS NOTHING ELSE. They are
 	// registered in every ensure, because another distribution can empty the table
 	// while this one runs, and a base whose handlers could not be registered is
@@ -1029,9 +1090,11 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 		}
 		rec, recErr := b.readRecord()
 		if recErr != nil {
-			return fmt.Errorf("%s is registered, carries no wsl-toolkit identity marker and has no record here either, "+
-				"so this tool cannot tell whether it built it. Remove it yourself, or run: %s",
-				b.cfg.Base.Name, ToolCommand("base recreate"))
+			// ⛔ THIS NAMED `base recreate`, which demands the same marker and
+			// refused it too. WSL-150.
+			_, _, why := b.interruptedBuild(ctx)
+			return fmt.Errorf("%s is registered, carries no wsl-toolkit identity marker and has no record here either, and %s",
+				b.cfg.Base.Name, unmarkedAdvice(b.cfg.Base.Name, why))
 		}
 		b.log(b.cfg.Base.Name + " predates the identity marker and this tool's own record describes it; stamping it")
 		if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
@@ -1212,15 +1275,16 @@ func (b *Base) create(ctx context.Context, rootfs string) error {
 		return err
 	}
 	if rootfs == "" {
-		engine, err := FindEngine(ctx)
-		if err != nil {
-			return fmt.Errorf("the base is built from an OCI image, so a host engine is required: %w", err)
-		}
-		b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
-		if rootfs, err = b.exportRootfs(ctx, engine, 0); err != nil {
+		var err error
+		if rootfs, err = b.freshRootfs(ctx); err != nil {
 			return err
 		}
 		defer b.dropRootfs(rootfs)
+	}
+	// ⛔ OWNERSHIP IS RECORDED BEFORE THE IMPORT REGISTERS ANYTHING, so a build
+	// killed before its marker is still this tool's to remove. WSL-150.
+	if err := b.recordBuildStart(); err != nil {
+		return fmt.Errorf("could not record the build before importing it: %w", err)
 	}
 	b.log("importing as WSL2 distribution " + b.cfg.Base.Name)
 	if err := b.wsl.Import(ctx, b.cfg.Base.Name, dir, rootfs); err != nil {
@@ -1232,6 +1296,9 @@ func (b *Base) create(ctx context.Context, rootfs string) error {
 		// a name alone is not. WSL-172.
 		if b.importedInto(dir) {
 			b.imported = true
+		} else {
+			// Nothing was registered, so the record names no build. WSL-150.
+			b.closeBuildRecord("the import registered nothing")
 		}
 		return err
 	}
@@ -1280,6 +1347,36 @@ func (b *Base) clearLeftover(dir string) error {
 	}
 	b.log("⚠ moved a leftover disk aside to " + aside + ". No registered distribution keeps it. Delete it once nothing in it is needed")
 	return nil
+}
+
+// freshRootfs exports the configured image into an archive of this process's own
+// for a new build, which removed nothing, and answers the archive.
+func (b *Base) freshRootfs(ctx context.Context) (string, error) {
+	if b.archive != nil {
+		if _, err := EnsureHome(); err != nil {
+			return "", err
+		}
+		f, err := os.CreateTemp(b.home, "base-rootfs-*.tar")
+		if err != nil {
+			return "", err
+		}
+		rootfs := f.Name()
+		if err := f.Close(); err != nil {
+			b.dropRootfs(rootfs)
+			return "", err
+		}
+		if err := b.archive(ctx, rootfs); err != nil {
+			b.dropRootfs(rootfs)
+			return "", err
+		}
+		return rootfs, nil
+	}
+	engine, err := FindEngine(ctx)
+	if err != nil {
+		return "", fmt.Errorf("the base is built from an OCI image, so a host engine is required: %w", err)
+	}
+	b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
+	return b.exportRootfs(ctx, engine, 0)
 }
 
 // assertImportSpace is the one preflight in front of every `wsl --import`: a
@@ -1382,7 +1479,9 @@ func (b *Base) provision(ctx context.Context) (bool, error) {
 	if !owed && !startSettingsChanged(said, grants) {
 		b.log("/etc/wsl.conf and the fstab block are as they were, so the base is not restarted")
 		b.restartPaid()
-		return false, nil
+		// ⚠ THE SWEEP STILL RUNS, as it did inside provision.sh on every run
+		// before it moved to drives.sh. WSL-153.
+		return false, b.sweepDrivesWhenOff(ctx)
 	}
 	return true, b.restart(ctx)
 }
@@ -1425,7 +1524,10 @@ func (b *Base) restart(ctx context.Context) error {
 		return err
 	}
 	b.restartPaid()
-	return nil
+	// ⛔ THE DRIVE MOUNT POINTS ARE SWEPT AFTER THE RESTART, NOT BEFORE IT, and
+	// before the verifier reads them. drives.sh says what sweeping first cost.
+	// WSL-153, WSL-155.
+	return b.sweepDrivesWhenOff(ctx)
 }
 
 // startSettingsChanged says whether provisioning changed what WSL reads when the
@@ -1651,9 +1753,10 @@ func nativePlatformArch(value string) string {
 
 // verifyReport is what verify.sh printed, each row read by its name.
 type verifyReport struct {
-	Engine string
-	Cgroup *CgroupState
-	Binfmt *BinfmtState
+	Engine  string
+	Cgroup  *CgroupState
+	Binfmt  *BinfmtState
+	Account *AccountState
 	// Automount is what the guest's drives are, from the script's `automount` row.
 	Automount string
 	// Held are the live mounts the grant ledger gives another configuration file,
@@ -1710,7 +1813,8 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	}
 	// ⚠ `engine ` MATCHES BEFORE `engine-rootless ` DOES NOT, and it does not:
 	// the prefix compared carries a trailing space and that row's key does not.
-	return verifyReport{Engine: engine, Cgroup: parseCapabilities(out), Binfmt: parseBinfmt(out), Automount: drives, Held: parseHeldMounts(out)}, nil
+	return verifyReport{Engine: engine, Cgroup: parseCapabilities(out), Binfmt: parseBinfmt(out),
+		Account: parseAccount(out), Automount: drives, Held: parseHeldMounts(out)}, nil
 }
 
 // verifyEnv is what verify.sh is handed for a configuration, with the two halves
@@ -2105,7 +2209,18 @@ func (b *Base) remove(ctx context.Context) error {
 		// ⚠ The marker is DEMANDED unless this tool is clearing up a build of
 		// its own that never got far enough to write one. `b.imported` is set by
 		// the one path that knows that: this process's own import.
-		if err := b.wsl.Unregister(ctx, b.cfg.Base.Name, !b.imported); err != nil {
+		err := b.wsl.Unregister(ctx, b.cfg.Base.Name, !b.imported)
+		// ⭐ OR BY A LATER PROCESS, where the build that knew it was killed. The
+		// ledger's record and WSL's registration of the disk prove it. WSL-150.
+		if errors.Is(err, ErrNoIdentity) {
+			rec, ok, why := b.interruptedBuild(ctx)
+			if !ok {
+				return fmt.Errorf("%w, and %s", err, unmarkedAdvice(b.cfg.Base.Name, why))
+			}
+			b.log(interruptedBuildNote(b.cfg.Base.Name, rec))
+			err = b.wsl.Unregister(ctx, b.cfg.Base.Name, false)
+		}
+		if err != nil {
 			return err
 		}
 	}
@@ -2144,6 +2259,9 @@ func (b *Base) remove(ctx context.Context) error {
 	if err := RemoveInside(b.home, b.recordPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	// The distribution the build record named is gone, so the record closes.
+	// WSL-150.
+	b.closeBuildRecord("the distribution was removed")
 	// ⭐ A WAY IN TO A DISTRIBUTION THAT IS GONE GOES WITH IT. The Host block and
 	// the known host key would otherwise name a distribution that no longer exists,
 	// and then the next one built under that name, with a different host key.

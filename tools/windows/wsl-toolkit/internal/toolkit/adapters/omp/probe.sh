@@ -109,7 +109,9 @@ if [ -n "$pane_path" ]; then
     printf 'wrapper_on_login_path yes\n'
   else
     printf 'wrapper_on_login_path no\n'
-    problem "a login shell resolves omp to $pane_path, which is not this tool's wrapper. The account's own prefix is ahead of /usr/local/bin, which bootstrap.sh puts there, so the wrapper and everything it sets are bypassed"
+    # ⭐ THE PROBLEM NAMES ITS REMEDY. bootstrap.sh now puts its prefix after the
+    # system path and rewrites the line an earlier run wrote. WSL-147.
+    problem "a login shell resolves omp to $pane_path, which is not this tool's wrapper. The account's own prefix is ahead of /usr/local/bin, which an earlier bootstrap.sh put there, so the wrapper and everything it sets are bypassed. Run: base bootstrap, which moves its own line after the system path. A line the account wrote itself is moved by hand"
   fi
 fi
 version=$(as_account omp --version 2>/dev/null | tr -d '\r' | head -1)
