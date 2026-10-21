@@ -3090,7 +3090,7 @@ the ruling named. The adapter is `WSL-59`.
 ⛔ **THE SOURCE DOCUMENT NO LONGER EXISTS.** `Aseem0xff/mockup` answers 404 and
 is not in the Wayback Machine; the operator supplied a local copy on the day this
 ran. ⚠ Nothing in this tree had ever copied its claims, which is the failure
-[`../docs/methodology/references.md`](../docs/methodology/references.md) exists
+[`../docs/methodology/references.md`](../docs/methodology/research.md) exists
 to prevent: the citation was tracked and the content was not. The sixteen claims
 are below in full, so this entry no longer depends on a document that has already
 vanished once.

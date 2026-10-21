@@ -20,7 +20,7 @@ import (
 // It fired for real on 2026-09-17: `wsl-toolkit-v3.0.0` published green and its
 // release-smoke job then failed, because consumer.ps1 wrote a configuration
 // shape `WSL-74` had made a refusal months of commits earlier. Nothing between
-// that commit and that tag could have said so. TODO/PROGRESS.md finding 70,
+// that commit and that tag could have said so. docs/HISTORY/record.md finding 70,
 // WSL-91.
 //
 // ⭐ THIS CHECK IS THE OTHER HALF. It builds the working tree and drives the

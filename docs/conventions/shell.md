@@ -127,6 +127,11 @@ pwsh -NoProfile -File scripts/check-thing.ps1
 Not `check | grep`, not `check | Select-String`, not `check | tee`. Run it,
 read `$?` or `$LASTEXITCODE`, then look at the output separately if you need to.
 
+⚠ **In PowerShell, which side sets `$LASTEXITCODE` depends on the shape.** After a
+pipe into a cmdlet it is still the native command's code; after a pipe into
+another native command it is the last one's. The rule does not change: read it
+unpiped, because a reader cannot see which shape a line has.
+
 The same rule in PowerShell has a second edge: `-ErrorAction SilentlyContinue`
 suppresses the error *output* while the cmdlet failure still sets a failing
 status. To make a failure genuinely non-fatal, promote it and swallow it:
@@ -477,21 +482,130 @@ a different field.
 ⚠ **Do not end a turn to wait for something.** The conversation idles, the
 harness times out, and the session dies mid-operation with state half-changed.
 
-Hold in the foreground with a loop that ticks, and keep the tick under four
-minutes so progress is visible and nothing looks hung:
+⛔ **And a scheduler, a monitor or a wake-up facility does not do the waiting
+either.** Each of them ends the turn by design: they work by giving control back
+and being re-invoked later. Substituting one is not holding, it is the thing
+this section forbids, wearing a different name.
+
+⚠ **This is the rule agents break most, and the reason is specific.** Many
+harnesses block a foreground `sleep`. A session that has learned "hold with a
+sleep loop", finds `sleep` refused, and concludes the rule cannot be followed
+here, goes looking for a built-in that can wait. The conclusion is wrong: the
+rule was never about `sleep`.
+
+---
+
+### ⭐ Wait on the work, not on the clock
+
+**The best hold has no timer in it at all.** A blocking read costs no CPU,
+needs no `sleep`, and ticks exactly when there is something to say.
+
+**If the job prints anything, run it in the foreground and let its own output
+be the tick.** There is nothing else to write:
+
+```bash
+long_running_thing 2>&1
+```
+
+The turn cannot idle while a process is writing to it, and every line is
+progress a reader can see.
+
+**If the job is already in the background, block on its log.** Measured on one
+Windows 11 machine, Git Bash:
+
+```bash
+: > run.log
+long_running_thing > run.log 2>&1 &
+JOB=$!
+tail -n +1 -f --pid="$JOB" run.log
+wait "$JOB"
+printf 'exit=%s\n' "$?"
+```
+
+⭐ `--pid` is what makes this stop: `tail` stops when that process does,
+so the hold ends by itself when the work does. Without it the pipeline outlives
+the job and the session hangs on a command that will never return.
+
+⚠ **The heartbeat belongs to the JOB, not to the waiter.** A job that can go
+quiet for a long time prints its own progress line; the foreground just relays
+it. That puts the interval where the knowledge is.
+
+### ⛔ The trap that costs a whole turn
+
+```bash
+producer | while IFS= read -r line; do
+  printf 'tick: %s\n' "$line"
+  case "$line" in done) break ;; esac      # ⛔ does not stop `producer`
+done
+```
+
+**Each side of a pipeline runs in its own subshell, so `break` leaves the loop
+and nothing tells the producer to stop.** The producer keeps writing into a
+pipe nobody is reading, and the command never returns.
+
+Measured here: this exact shape ran to a two-minute tool timeout while its
+output showed every tick arriving correctly. ⭐ **It looks like it worked right
+up until it does not finish**, which is why it is worth a box rather than a
+sentence.
+
+The fix is to make the producer's own end the loop's end, which is what
+`--pid` above does.
+
+---
+
+### When there genuinely is no signal to block on
+
+Something outside this machine, with nothing local to read, is the only case
+that needs a timer. `sleep` is one spelling of a timer and not the only one.
+All of these were measured on the same machine and day, asked for 3 seconds:
+
+| | elapsed | needs |
+| --- | --- | --- |
+| `sleep 3` | 3s | ⚠ blocked outright by some harnesses |
+| `timeout 3 tail -f /dev/null` | 3s | coreutils `timeout` |
+| `timeout 3 cat` | 3s | coreutils `timeout`, and a stdin nothing writes to |
+| `perl -e 'select(undef,undef,undef,3)'` | 4s | perl |
+| `[System.Threading.Thread]::Sleep(3000)` | 5s | ⚠ pwsh, and about 2s of that is pwsh starting |
+
+⚠ **The last row is why a PowerShell tick is not free.** Starting `pwsh` per
+tick costs roughly two seconds on this machine, so a loop of short ticks spends
+most of its time launching a shell. Hold inside one `pwsh` process instead of
+starting one per tick.
+
+⚠ **`read -t` is not a portable answer.** It is a bash builtin; `/bin/sh` here
+is dash and dash's `read` has no `-t`. And reading from `/dev/null` returns at
+once on end-of-file rather than waiting, so it is not a timer even where the
+flag exists.
+
+⚠ **`ping` is not a portable timer either.** `-c` counts on POSIX and `-n`
+counts on Windows, and against localhost the replies return instantly: `ping -c
+3 127.0.0.1` finished in **0s** here.
+
+The shape, when a timer really is needed:
 
 ```bash
 i=0
 while [ $i -lt 8 ]; do
-  sleep 45; i=$((i + 1))
-  printf 'tick %s  %s  %s\n' "$i" "$(date -u +%H:%M:%SZ)" "$(some_cheap_check)"
+  timeout 45 tail -f /dev/null
+  i=$((i + 1))
+  printf 'tick %s  %s\n' "$i" "$(date -u +%H:%M:%SZ)"
   if some_done_condition; then printf 'complete\n'; break; fi
 done
 ```
 
-A background job and a foreground hold loop are not alternatives. Use both: the
-job's notification tells you the instant it finished, and the hold loop is what
-keeps the session alive long enough to receive it.
+⚠ **Keep a tick under four minutes** so progress is visible and nothing looks
+hung, and note that the ceiling is per tick rather than per wait. A
+forty-five-minute operation is ten holds that each print progress, never one
+forty-five-minute wait.
 
-⚠ The ceiling is per tick, not per wait. A forty-five minute operation is ten
-holds that each print progress, never one forty-five minute sleep.
+---
+
+### The summary
+
+| the situation | hold with |
+| --- | --- |
+| ⭐ the job prints | run it in the foreground. Nothing else. |
+| the job is backgrounded | `tail -f --pid=$JOB` on its log, then `wait` |
+| the job is silent | make the job print, then as above |
+| ⚠ waiting on something off this machine | a bounded timer loop, from the table |
+| ⛔ any of the above | never a scheduler, a monitor or a wake-up facility |

@@ -51,7 +51,8 @@ func Shellcheck(t *Tree) Result {
 	return r
 }
 
-// PowerShell parses every tracked .ps1 and runs PSScriptAnalyzer over scripts/.
+// PowerShell parses every tracked .ps1 and runs PSScriptAnalyzer over each one.
+// TOOL-35: this line said scripts/ alone after the analyzer was widened.
 //
 // ⛔ BOTH HALVES, and the analyzer is the one that catches what a parse cannot:
 // a case-shadowed parameter, a state-changing verb with no ShouldProcess, a

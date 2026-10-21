@@ -24,7 +24,8 @@ Trust artefacts, verify claims.
 4. **Re-measure the baseline** rather than trusting the recorded one. Run the
    checks and read what they say today.
 5. **Read what the task routes you to**, per the project's own router. Not
-   everything, and not less than the routing table names.
+   everything, and not less than the routing table names. ⭐ Where a file is
+   named as required reading, **read the bytes, end to end**, and see below.
 6. **Restate the plan and its decisions in a few bullets** before touching
    anything. This is not ceremony: it reloads the design into working memory
    and catches a misreading before it becomes a wrong build.
@@ -34,6 +35,78 @@ Trust artefacts, verify claims.
 ```bash
 date -u +%Y-%m-%dT%H:%M:%SZ
 ```
+
+8. ⭐ **Write the resume file, before doing any work.** Below.
+
+---
+
+## ⛔ Required reading is read, and the receipt is how anyone can tell
+
+⚠ **Agents skip it and then agree that they skipped it.** The observed shape is
+consistent: the file is grepped or skimmed, often described as being read "in
+parallel" with doing the work, the session proceeds on what it expected the
+file to say, and when challenged it opens with agreement and re-reads. The
+agreement costs nothing and the wrong work has already been done.
+
+⭐ **The fix is not a stronger instruction. It is a receipt**, because an
+instruction cannot be checked and a receipt can.
+
+**Before acting on required reading, report for each file:** its line count,
+and the heading of its last section.
+
+```bash
+wc -l FILE && grep -c '^#' FILE && grep '^#' FILE | tail -1
+```
+
+⚠ **Both halves matter.** A line count alone is available from a listing. The
+last heading is not: reaching it means reaching the end of the file, which is
+exactly the part a skim drops.
+
+⛔ **A receipt for a file that was not read is a fabricated measurement**, and
+that is a more serious defect than skipping the reading. Say "I did not read
+this" instead. That is a normal thing to report and it costs one line.
+
+⚠ **This applies to a bootstrap, an adoption and any session whose prompt names
+required reading.** It does not apply to routine work: a routine session reads
+what its task routes it to, and the routing table is the contract there.
+
+---
+
+## ⭐ The resume file, written at the START
+
+⛔ **A session that dies does not run its ending.** An agent stopped
+unexpectedly mid-task and there was no session log, no progress file and no
+resume prompt anywhere. The whole session's work was lost and another session
+started it again from nothing.
+
+Everything else in this document is written at the end, which is exactly the
+moment an interrupted session never reaches. So one artefact is written at the
+**start** and refreshed as the session goes.
+
+`RESUME.md`, beside the record, ⛔ **overwritten every session, never
+appended to.** It is a dead man's switch, not a history.
+
+What it carries, and nothing else:
+
+| | |
+| --- | --- |
+| the task | what this session was asked to do, in one or two lines |
+| the resume point | the next thing that has not been done |
+| in flight | what is half-done right now, and which files are open in it |
+| ⚠ the state of the tree | dirty or clean, and which checks were red when this was last written |
+| the paste | a short prompt a fresh session can be given verbatim |
+
+⭐ **Refresh it whenever the answer to "what is in flight" changes**, which is
+usually a few times a session. A refresh is a rewrite of five lines and it
+costs nothing next to losing the session.
+
+⚠ **It is not the record and it is not the work order.** The record holds
+those, is tracked, and is read first anyway. This file exists only so that a
+session that ended badly still hands over something.
+
+⚠ **Whether it is committed is the project's decision.** Committed, it survives
+a machine going away; ignored, it stays out of the history. Either is fine and
+the project's rules say which. ⛔ What is not fine is not having one.
 
 ---
 
@@ -97,6 +170,20 @@ what the last one actually did.
 
 Printed in chat, in a fenced block, ⛔ **never written into a file.**
 
+⚠ **This is not in tension with the resume file above, and the difference is
+worth stating because it looks like one.** They are different artefacts with
+different lifetimes:
+
+| | the next prompt | ⭐ `RESUME.md` |
+| --- | --- | --- |
+| written | at a clean end | at the **start**, refreshed as work moves |
+| carries | the reading list and the framing for the next unit of work | what is in flight right now |
+| lives | in chat | on disk, overwritten each session |
+| exists because | a file copy of the work order goes stale | ⛔ a session that dies never reaches its end |
+
+⛔ **Neither one carries the work order.** That is the record's, which is where
+it is already correct.
+
 **Which prompt depends on one thing: did this session finish what it was
 given?**
 
@@ -150,6 +237,70 @@ When the operator's validation fails, they get a prompt listing each issue as
 **what I did, what happened, what I expected**, and instructing: reproduce each
 one first, fix the root cause with no workarounds, add a regression test per
 issue, re-run the full gate, update the handoff.
+
+---
+
+## ⛔ A wall is a routing problem, not a verdict
+
+⛔ **A constraint closes a ROUTE. It does not close the QUESTION.** Confusing
+the two is the most expensive mistake available in a session, and it looks like
+diligence, which is why forbidding it needs saying rather than implying.
+
+⚠ **This is an incident, not a preference.** A session was told that a runner
+has no IPv6 egress, which is true and is not going to change, and stopped: it
+recorded the liveness of every IPv6-only host as unknowable. The operator's
+answer was that the closed route was one socket, not the question. The project
+that came out of it lists five other routes to the same answer, none of which
+needs IPv6 from the runner: a public translation gateway, a permitted relay,
+correlation with an observer that does have IPv6, evidence from peers, and
+checking whether the host is dual-stack after all. ⭐ Told that in writing, the
+same session ran for about five more hours, finished the work it had called
+impossible, and produced a method that answered several other categories at
+once. ⚠ The hours and the outcome are the operator's account of that session,
+not a measurement taken here.
+
+**So the standard is: before recording anything as not-doable, name at least
+three routes you considered and why each failed.** If you cannot name three,
+you have not looked. A route that costs a dependency, a slower path or a
+second-hand source is still a route: evaluate it, record the trade, and do not
+reject it reflexively.
+
+⛔ **"Blocked" means somebody outside this session must act.** It does not mean
+hard, large, slow, unclear, expensive, or easier if somebody decided something.
+An unclear item is one you make a defensible call on, record with the rejected
+alternatives, and continue.
+
+⚠ **"Unmeasurable" is a statement about what was measured, not permission to
+stop.** It is the honest label on the data. It is never the reason an item
+closes.
+
+⭐ **A technique that unlocks many items at once is worth more than finishing
+any single one, even if you finish none.** Look for the lever: a method that
+answers a class of questions, an instrument that turns a one-off answer into a
+standing check, a structural change that makes a class of defect
+unrepresentable rather than merely tested for, or a refutation that deletes
+work nobody now has to do. When you find one, say so and let it reorder the
+work.
+
+### ⛔ Do not write a rule that lobotomises the next session
+
+This applies to what you leave behind as much as to what you do.
+
+⚠ **A limit stated as a fact is inherited as a fact.** "This cannot be
+detected", "the polite thing is to identify ourselves", "this is out of scope":
+each reads as settled to a session that was not in the room, and each has been
+wrong. One of those three was wrong in practice for the opposite reason it was
+written: the identifying string it recommended is the one that gets a client
+refused.
+
+⭐ **Write the constraint and the evidence, never the conclusion alone.** "No
+IPv6 egress from this runner, measured on DATE" is a fact the next session can
+route around. "IPv6 liveness cannot be established" is a wall somebody else
+built for them.
+
+⚠ **Pivot rather than halt.** A blocker on one item is not a reason to end a
+session; it is a reason to work a different one and record on the one you left
+what was tried, which routes failed, and what would open it.
 
 ---
 
@@ -219,5 +370,6 @@ have had capabilities this one lacks, or the reverse.
 session that dies with state half-changed.
 
 ⭐ [`../conventions/shell.md`](../conventions/shell.md) section 10 owns this
-rule: what goes wrong, the hold loop that avoids it, and the ceiling on a tick.
-Read it there rather than a second version of it here.
+rule: what goes wrong, the hold that avoids it, and the ceiling on a tick. It
+also says why a scheduler, a monitor or a wake-up facility is not a hold. Read
+it there rather than a second version of it here.

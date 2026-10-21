@@ -2,6 +2,141 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "docs: a cited path is checked at all",
+      "file": "internal/checks/docs.go",
+      "find": "\t\tif pathsBind && !recordsHistory(f) {\n",
+      "replace": "\t\tif false && pathsBind && !recordsHistory(f) {\n",
+      "run": "TestACitedPathAndLineMustExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "docs: a cited path that does not exist is refused",
+      "file": "internal/checks/docs.go",
+      "find": "\t\t\t\tdefault:\n\t\t\t\t\tr.bad(\"%s:%d: cited path does not exist -> `%s`\", f, ln.N, tok)\n",
+      "replace": "\t\t\t\tdefault:\n",
+      "run": "TestACitedPathAndLineMustExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "docs: a cited line past the end of the file is refused",
+      "file": "internal/checks/docs.go",
+      "find": "\t\t\t\t\tif n := len(Lines(t.Read(tok))); line > n {\n",
+      "replace": "\t\t\t\t\tif n := len(Lines(t.Read(tok))); line > n && false {\n",
+      "run": "TestACitedPathAndLineMustExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "docs: a cited line is read off before the path resolves",
+      "file": "internal/checks/docs.go",
+      "find": "\t\t\t\ttok = strings.TrimSuffix(tok, m[0])\n",
+      "replace": "",
+      "run": "TestACitedPathAndLineMustExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "docs: entry files and reference sweeps carry history",
+      "file": "internal/checks/docs.go",
+      "find": "\treturn strings.HasPrefix(f, RecordDir) || strings.HasPrefix(f, \"docs/reference-sweeps/\")\n",
+      "replace": "\treturn false\n",
+      "run": "TestACitedPathAndLineMustExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "docs: the live record is bound by the cited-path rule",
+      "file": "internal/checks/docs.go",
+      "find": "\tcase RecordDir + \"PROGRESS.md\", RecordDir + \"RULES.md\", RecordDir + \"INDEX.md\", RecordDir + \"SUMMARY.md\":\n\t\treturn false\n",
+      "replace": "",
+      "run": "TestACitedPathAndLineMustExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "docs: a line about another project's tree is not this tree's claim",
+      "file": "internal/checks/docs.go",
+      "find": "\t\tif namesUpstream(ln.Text, topLevel) {\n",
+      "replace": "\t\tif false && namesUpstream(ln.Text, topLevel) {\n",
+      "run": "TestACitedPathAndLineMustExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "changelog: a stamp later than the clock is refused",
+      "file": "internal/checks/changelog.go",
+      "find": "\t\t\t\tif future(d, changelogNow()) {\n",
+      "replace": "\t\t\t\tif future(d, changelogNow()) && false {\n",
+      "run": "TestAChangelogStampLaterThanTheClockIsRefused",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "changelog: a date alone is late only after its day",
+      "file": "internal/checks/changelog.go",
+      "find": "\t\treturn t.After(limit.Truncate(24 * time.Hour))\n",
+      "replace": "\t\treturn t.After(limit.Truncate(24 * time.Hour)) && false\n",
+      "run": "TestAChangelogStampLaterThanTheClockIsRefused",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "changelog: the skew allows a stamp read on a fast clock",
+      "file": "internal/checks/changelog.go",
+      "find": "\tlimit := now.UTC().Add(changelogSkew)\n",
+      "replace": "\tlimit := now.UTC()\n",
+      "run": "TestAChangelogStampLaterThanTheClockIsRefused",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "record: PROGRESS.md carries only the model's sections",
+      "file": "internal/checks/record.go",
+      "find": "\t\tif !progressSection.MatchString(ln.Text) {\n",
+      "replace": "\t\tif !progressSection.MatchString(ln.Text) && false {\n",
+      "run": "TestTheRecordCarriesOnlyTheModelsSections",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "record: PROGRESS.md stays under its ceiling",
+      "file": "internal/checks/record.go",
+      "find": "\tif len(lines) > progressMaxLines {\n",
+      "replace": "\tif len(lines) > progressMaxLines && false {\n",
+      "run": "TestTheRecordCarriesOnlyTheModelsSections",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "record: a heading in a fence is not a section",
+      "file": "internal/checks/record.go",
+      "find": "\t\tif ln.Fence || !strings.HasPrefix(ln.Text, \"## \") {\n",
+      "replace": "\t\tif !strings.HasPrefix(ln.Text, \"## \") {\n",
+      "run": "TestTheRecordCarriesOnlyTheModelsSections",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "record: SUMMARY.md carries one session",
+      "file": "internal/checks/record.go",
+      "find": "\tif sessions > 1 {\n",
+      "replace": "\tif sessions > 1 && false {\n",
+      "run": "TestTheRecordCarriesOnlyTheModelsSections",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "record: the shape rule runs",
+      "file": "internal/checks/record.go",
+      "find": "\tcheckRecordShape(&r, t)\n",
+      "replace": "",
+      "run": "TestTheRecordIsCheckedForItsShape",
+      "module": "tools/check",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the live step of a revoke leaves every gone grant out",
       "file": "internal/toolkit/base.go",
       "find": "\t\tif !m.Missing {\n\t\t\tpresent = append(present, m)\n",

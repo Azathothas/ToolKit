@@ -44,6 +44,21 @@ sentences the live pages used to carry.
 
 ---
 
+## ⛔ Claims this repository published and withdrew
+
+Read this before trusting a sentence elsewhere in the tree. Each row is a claim a
+page or a record made, what is true instead, and the entry that corrected it.
+
+| the claim | where it was | what is true | corrected by |
+| --- | --- | --- | --- |
+| every cited path in every document resolves, and the gate asserts it | the record's review of 2026-09-18 | the gate's cited-path rule had an empty body from 2026-09-09; links were checked, cited paths were not | `TOOL-30` |
+| the full gate runs in about 30 seconds | `check-gate.sh` and its twin; `docs/AGENTS.md` said under a minute | 131 to 245 seconds on the host that measured it | `TOOL-31` |
+| findings 12, 13 and 15 are fixed | the record's finding 95, and a comment in `base.go` | four guest errors were still named by their first line | `WSL-152` |
+| ephemeral removes the container and the job directory | `run --help` | it removed the container, and the host record stayed until `gc` | `WSL-121` |
+| the release ran 8 jobs; CI makes six runs | the 7.0.0 session table; `TODO/RULES.md` | 7 release jobs; 8 CI runs | `DOC-13` |
+| `TOOL-14` removed `check-twins` | the record's finding 3 | it kept it, and CI runs it | the record's rewrite, `DOC-10` |
+| the adapter contract stops an agent's binary being found before its wrapper | the record's finding 49 | its own example probe passes with no wrapper | `WSL-145` |
+
 ## The pages
 
 | file | what it holds |
@@ -52,6 +67,7 @@ sentences the live pages used to carry.
 | [`consumers.md`](consumers.md) | how each consumer pin came to move, and what was measured while moving it. The live page keeps the pin STATE, which is the part a consumer's owner acts on. |
 | [`scripts.md`](scripts.md) | what `check-markers` and `check-one-home` counted the day each was first armed |
 | [`dated-passages.md`](dated-passages.md) | every dated paragraph and measurement table the live pages carried until `DOC-08`, verbatim |
+| [`record.md`](record.md) | `TODO/PROGRESS.md` as it stood until it was rewritten to the model, with the index's ordering argument and four session tables, verbatim. A `finding N` or a `ruling N` cited in code or an entry is a numbered item there. `DOC-10` |
 
 ⭐ **`DOC-06` closed on 2026-08-30 and the purge is applied**, so the four files
 it named carry constraints and no longer carry diaries.

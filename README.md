@@ -67,7 +67,11 @@ not this one**, before using it.
 | [`docs/methodology/sessions.md`](docs/methodology/sessions.md) | what a session owes at its start and its end |
 | [`docs/methodology/authoring.md`](docs/methodology/authoring.md) | how an idea becomes an approved unit of work |
 | [`docs/methodology/work-todo.md`](docs/methodology/work-todo.md) | the work model: an index, a record, entries that close in place |
-| [`docs/methodology/references.md`](docs/methodology/references.md) | how to study somebody else's project |
+| [`docs/methodology/research.md`](docs/methodology/research.md) | how to study somebody else's project |
+| [`docs/methodology/history.md`](docs/methodology/history.md) | where superseded wording goes, and what does not |
+| [`docs/methodology/template-sync.md`](docs/methodology/template-sync.md) | taking a later TEMPLATE into this repository without overwriting its own edits |
+| [`docs/methodology/vendoring.md`](docs/methodology/vendoring.md) | carrying somebody else's material inside this tree |
+| [`docs/methodology/lean-adoption.md`](docs/methodology/lean-adoption.md) | taking part of TEMPLATE rather than all of it |
 | [`docs/methodology/initialize.md`](docs/methodology/initialize.md) | how to start a project that does not exist yet |
 | [`docs/conventions/prose.md`](docs/conventions/prose.md) | how documents are written here |
 | [`docs/conventions/docs.md`](docs/conventions/docs.md) | which documents exist and what makes them trustworthy |

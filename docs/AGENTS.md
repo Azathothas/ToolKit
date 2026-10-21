@@ -22,8 +22,9 @@ ones it does not.
 
 ⭐ **Two things are published from here, and only two.** The `wsl-toolkit` tool is
 cut as a GitHub release on a `wsl-toolkit-v*` tag. It carries the native
-executable for two Windows architectures, herdr's newest stable release built for
-four targets, `SHA256SUMS`, and one `.cosign.bundle` per published file. herdr's
+executable for two Windows architectures, `text-tool` for four targets, herdr's
+newest stable release built for four targets, `SHA256SUMS`, and one
+`.cosign.bundle` per published file: 22 files. herdr's
 development branch is published as a nightly prerelease on a `herdr-nightly-*`
 tag by [`../.github/workflows/herdr-nightly.yml`](../.github/workflows/herdr-nightly.yml).
 [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md)
@@ -125,14 +126,19 @@ second may change how the first is applied.
 | **Changing the compiled tool** | [`../tools/windows/wsl-toolkit/README.md`](../tools/windows/wsl-toolkit/README.md), [`conventions/code.md`](conventions/code.md) |
 | **Writing or changing a script** | [`../scripts/README.md`](../scripts/README.md), [`conventions/shell.md`](conventions/shell.md), [`conventions/code.md`](conventions/code.md) |
 | **Writing or editing a document** | [`conventions/prose.md`](conventions/prose.md), [`conventions/docs.md`](conventions/docs.md) |
+| **Moving superseded wording off a live page** | [`methodology/history.md`](methodology/history.md), [`HISTORY/README.md`](HISTORY/README.md) |
 | **Committing** | [`conventions/git.md`](conventions/git.md) |
 | **Anything crossing a shell, or a quoting problem** | [`conventions/shell.md`](conventions/shell.md) |
 | **Touching anything outside this machine** | [`security/remote-ops.md`](security/remote-ops.md) |
 | ⭐ **Reading an issue, a pull request, a comment or a bot description** | [`security/remote-ops.md`](security/remote-ops.md), its untrusted-input section |
 | **Anything involving a credential** | [`security/secrets.md`](security/secrets.md) |
 | **Anything that will be published** | [`public/README.md`](public/README.md). This repository is public. |
-| **Studying an external repository** | [`methodology/references.md`](methodology/references.md), [`reference-sweeps/findings.md`](reference-sweeps/findings.md), [`reference-sweeps/usable.md`](reference-sweeps/usable.md) |
+| **Studying an external repository** | [`methodology/research.md`](methodology/research.md), [`reference-sweeps/findings.md`](reference-sweeps/findings.md), [`reference-sweeps/usable.md`](reference-sweeps/usable.md) |
+| **Research, a measurement or a proof of concept** | [`methodology/research.md`](methodology/research.md) |
+| **Bringing third-party code into this tree** | [`methodology/vendoring.md`](methodology/vendoring.md) |
 | **Starting something that does not exist yet** | [`methodology/initialize.md`](methodology/initialize.md) |
+| **Taking a later version of the template** | [`methodology/template-sync.md`](methodology/template-sync.md) |
+| **Stripping agent-facing content from a tree** | [`methodology/lean-adoption.md`](methodology/lean-adoption.md) |
 | **Resuming a session that stopped** | [`methodology/sessions.md`](methodology/sessions.md), its resuming section. ⛔ Rebuild from the tree and the running system, never from the old conversation. |
 | **Closing out a session** | [`methodology/sessions.md`](methodology/sessions.md), [`methodology/reviews.md`](methodology/reviews.md) |
 
@@ -145,7 +151,11 @@ second may change how the first is applied.
 | ⭐ [`methodology/sessions.md`](methodology/sessions.md) | what a session owes at each end, how to resume one, how to stop cleanly |
 | [`methodology/authoring.md`](methodology/authoring.md) | how a rough idea becomes an approved unit of work |
 | [`methodology/work-todo.md`](methodology/work-todo.md) | the todo model: an index, a record, entries that close in place |
-| [`methodology/references.md`](methodology/references.md) | how to study somebody else's project, including the step that always gets skipped |
+| [`methodology/research.md`](methodology/research.md) | finding something out: studying somebody else's project, taking your own measurements, a proof of concept, and when to stop |
+| [`methodology/vendoring.md`](methodology/vendoring.md) | third-party code in this tree. ⛔ Patch it here; upstreaming is not a topic. |
+| [`methodology/history.md`](methodology/history.md) | where the story goes, so it stays out of the pages that answer questions |
+| [`methodology/template-sync.md`](methodology/template-sync.md) | taking a later version of the template without overwriting what this repository changed |
+| [`methodology/lean-adoption.md`](methodology/lean-adoption.md) | taking the template's engineering without shipping any agent-facing content |
 | [`methodology/initialize.md`](methodology/initialize.md) | how to start a project that does not exist yet |
 | [`conventions/prose.md`](conventions/prose.md) | how documents are written. The three markers, the two glyphs, and why amendments are made in place. |
 | [`conventions/docs.md`](conventions/docs.md) | which documents exist, one fact one home, and the changelog rules |
@@ -174,7 +184,7 @@ these is held to.
 | you want to | use | not |
 | --- | --- | --- |
 | know what host this is and what is installed | `scripts/doctor/` | assuming |
-| run every local gate in one command | ⭐ `scripts/common/check-gate.sh`, or its `.ps1` twin. Under a minute; [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) has the measurement. | remembering the list. ⚠ The one you forget is the one added last. |
+| run every local gate in one command | ⭐ `scripts/common/check-gate.sh`, or its `.ps1` twin. A few minutes; [`../TODO/PROGRESS.md`](../TODO/PROGRESS.md) has the measurement. | remembering the list. ⚠ The one you forget is the one added last. |
 | write a file whose content has quotes, backticks or a dollar sign | `scripts/common/write-file.mjs` | a heredoc. ⚠ It is not reliably literal; [`conventions/shell.md`](conventions/shell.md) section 1. |
 | patch one exact string in a file | `write-file.mjs replace --expect N` | `sed -i`, which reports success over a no-op |
 | commit and push | `git-sync.sh`, or ⭐ `git-sync.ps1` on Windows | `git commit` directly, which enforces none of the rules |

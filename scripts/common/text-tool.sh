@@ -29,7 +29,7 @@ set -u
 command -v git >/dev/null 2>&1 || { printf 'text: git not found\n' >&2; exit 2; }
 
 # THE REPOSITORY IS RESOLVED FROM THIS FILE, NOT FROM THE CALLER'S DIRECTORY,
-# for the reason findings 3 and 34 in TODO/PROGRESS.md state.
+# for the reason findings 3 and 34 in docs/HISTORY/record.md state.
 HERE=$(cd -- "$(dirname -- "$0")" && pwd) || { printf 'text: could not resolve this script\n' >&2; exit 2; }
 git -C "$HERE" rev-parse --show-toplevel >/dev/null 2>&1 || { printf 'text: not a git repository\n' >&2; exit 2; }
 REPO_ROOT=$(git -C "$HERE" rev-parse --show-toplevel)

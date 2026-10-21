@@ -91,10 +91,37 @@ A fourth and fifth are welcome. Two that pay often:
 - **"What did the driven pass show that the suite could not?"** Naturally
   distinct from the door sweep, because it starts from the user rather than
   from the code.
+- **"What does this cost, and who pays it?"** The resource lens: time on every
+  push, runner minutes, disk. It found that most of a 26-minute guard job was
+  copying a module, not testing it.
+- **"What would a fresh reader do wrong with what I wrote?"** It starts from
+  the reader rather than the code. It found one stall message shared by every
+  engine call, which sent a reader of a stalled export to check a registry.
+
+⚠ **A review of documents, the record or the skills uses lenses fit for its
+subject.** A door sweep over a page is not a door sweep. Ask instead whether a
+rule just learned has a home, whether the router routes to what exists, and
+whether a cold reader ends up somewhere wrong.
 
 ⛔ **What is not acceptable is three headings over one sweep.** Each pass must
 be able to name what it looked at that the others did not, and the handoff says
 so per pass.
+
+---
+
+## ⛔ Before any lens: do not stop at the first explanation that fits
+
+**A lens finds a candidate. It does not finish the job.** The discipline for
+getting from a candidate to a conclusion is in
+[`research.md`](research.md) section 2, with the measured pair of runs that
+paid for it: enumerate three explanations before testing one, test to refute,
+let no line of inquiry suppress another, and read it once more afterwards
+looking only for what is not on your list.
+
+⚠ **It belongs there rather than here because it governs every conclusion**, not
+only the ones a review reaches. A review that skips it produces three lenses
+over one hypothesis, which is the same defect this page already names in
+another costume.
 
 ---
 
@@ -106,6 +133,11 @@ Three passes reporting nothing is a weaker result than one pass reporting a
 real defect. If a pass genuinely found nothing, the handoff says **what would
 have had to be true for it to fire.** That sentence is the evidence the pass
 happened at all.
+
+⚠ **That is not a licence to invent one.** An empty result beats a manufactured
+one, and the sentence above is precisely what distinguishes a pass that ran and
+found nothing from a pass that did not run. Padding a lens to look diligent
+costs the next reader their trust in the ones that did fire.
 
 ---
 

@@ -2,7 +2,7 @@
 // finished.
 //
 // ⛔ THE CASES BELOW ARE THE TWO REAL INCIDENTS, not invented shapes.
-// `TODO/PROGRESS.md`'s finding 29 is the first: an item read "`WSL-67` has
+// `docs/HISTORY/record.md`'s finding 29 is the first: an item read "`WSL-67` has
 // left: driving `pkgin` and `pkg_add`" for a whole session after the entry had
 // closed, and a resuming session was sent to re-ask for an approval already
 // given. Finding 29 names this check as the fix and says it is not written.
@@ -145,6 +145,85 @@ func TestTheWorkOrderMustAgreeWithTheIndexAboutWhatIsFinished(t *testing.T) {
 				t.Fatalf("no finding said %q: %s", c.wantDetail, strings.Join(r.Detail, " | "))
 			}
 		})
+	}
+}
+
+// treeWithRecord writes record files by their names under TODO/ and returns a
+// Tree over them.
+func treeWithRecord(t *testing.T, files map[string]string) *Tree {
+	t.Helper()
+	root := t.TempDir()
+	dir := filepath.Join(root, "TODO")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("could not make %s: %v", dir, err)
+	}
+	tree := &Tree{Root: root, cache: map[string][]byte{}}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatalf("could not write %s: %v", name, err)
+		}
+		tree.Files = append(tree.Files, "TODO/"+name)
+	}
+	return tree
+}
+
+// TestTheRecordCarriesOnlyTheModelsSections holds rules 8 and 9.
+//
+// ⛔ THE CASES ARE THE INCIDENT'S OWN SHAPES. The record of 2026-10-21 carried
+// "## Found, and not filed", "## Rulings in force" and "## Host state" beside
+// the model's sections, it was 2,776 lines, and SUMMARY.md held four sessions.
+func TestTheRecordCarriesOnlyTheModelsSections(t *testing.T) {
+	const model = "# PROGRESS.md\n\n## State\n\n```text\nentries total 1  open 0  blocked 0  done 1\n## not a section, it is in the fence\n```\n\n" +
+		"## Baseline\n\n## This session\n\n## In progress\n\n## The work order, set by the operator\n\n1. ⭐ **Closed:** `WSL-01`.\n\n## Open questions for the operator\n"
+	long := model + strings.Repeat("a line of the record\n", progressMaxLines)
+	one := "# SUMMARY.md\n\n## the last session\n\n| row | measured |\n"
+	two := one + "\n## the session before it\n"
+
+	cases := []struct {
+		name       string
+		files      map[string]string
+		want       int
+		wantDetail string
+	}{
+		{name: "the model's sections and one summary", files: map[string]string{"PROGRESS.md": model, "SUMMARY.md": one}, want: 0},
+		{name: "a findings list", files: map[string]string{"PROGRESS.md": model + "\n## Found, and not filed\n\n1. a defect\n"}, want: 1, wantDetail: "Found, and not filed"},
+		{name: "rulings and host state", files: map[string]string{"PROGRESS.md": model + "\n## Rulings in force\n\n## Host state\n"}, want: 2, wantDetail: "Host state"},
+		{name: "a record over the ceiling", files: map[string]string{"PROGRESS.md": long}, want: 1, wantDetail: "the ceiling is"},
+		{name: "a summary of two sessions", files: map[string]string{"PROGRESS.md": model, "SUMMARY.md": two}, want: 1, wantDetail: "carries 2 sessions"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := Result{Extra: map[string]any{}}
+			checkRecordShape(&r, treeWithRecord(t, c.files))
+			if r.Problems != c.want {
+				t.Fatalf("problems = %d, want %d: %s", r.Problems, c.want, strings.Join(r.Detail, " | "))
+			}
+			if c.wantDetail != "" && !strings.Contains(strings.Join(r.Detail, " | "), c.wantDetail) {
+				t.Fatalf("no finding said %q: %s", c.wantDetail, strings.Join(r.Detail, " | "))
+			}
+		})
+	}
+}
+
+// TestTheRecordIsCheckedForItsShape runs the whole check, so the shape rule is
+// proved to be called and not only to work when called.
+func TestTheRecordIsCheckedForItsShape(t *testing.T) {
+	index := "# INDEX.md\n\n```text\ntotal 1  open 0  blocked 0  done 1\n```\n\n" +
+		"| priority | open | blocked | done | total |\n| --- | --- | --- | --- | --- |\n" +
+		"| P0 | 0 | 0 | 0 | 0 |\n| P1 | 0 | 0 | 1 | 1 |\n| P2 | 0 | 0 | 0 | 0 |\n| P3 | 0 | 0 | 0 | 0 |\n| **all** | **0** | **0** | **1** | **1** |\n\n" +
+		"| id | pri | eff | status | title | file |\n| --- | --- | --- | --- | --- | --- |\n" +
+		"| WSL-01 | P1 | S | done | a title | [`wsl.md`](wsl.md) |\n"
+	entry := "## WSL-01. a title\n\n**Category** wsl, **Priority** P1, **Effort** S, **Status** done\n"
+	progress := "# PROGRESS.md\n\n## State\n\n```text\nentries total 1  open 0  blocked 0  done 1\n```\n\n" +
+		"## The work order\n\n1. ⭐ **Closed:** `WSL-01`.\n"
+
+	clean := Record(treeWithRecord(t, map[string]string{"INDEX.md": index, "wsl.md": entry, "PROGRESS.md": progress}))
+	if clean.Problems != 0 {
+		t.Fatalf("a record in the model's shape was refused: %s", strings.Join(clean.Detail, " | "))
+	}
+	r := Record(treeWithRecord(t, map[string]string{"INDEX.md": index, "wsl.md": entry, "PROGRESS.md": progress + "\n## Found, and not filed\n"}))
+	if !strings.Contains(strings.Join(r.Detail, " | "), "Found, and not filed") {
+		t.Fatalf("the whole check did not read the record's shape: %s", strings.Join(r.Detail, " | "))
 	}
 }
 

@@ -3069,3 +3069,444 @@ sh scripts/common/check.sh control-bytes      exit 1
 1 mutation row, red. ⚠ **`gofmt` from Go 1.27 rewrote two single quotes in a doc
 comment into a typographic quote**, so the case's comment says what the byte did in
 words instead.
+
+## TOOL-29. `PROGRESS.md` grew to 2,776 lines and no check fired
+
+**Source** the operator, 2026-10-21: "why & how did PROGRESS.md get this large, it violates [work-todo.md]"
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The model rewrites `PROGRESS.md` every session and gives it no history. Sessions
+appended to it from 2026-09-15 on, until it held 116 findings, every review, every
+session's measurements and host changes, and 30 rulings. `SUMMARY.md`, which is
+overwritten, held four sessions.
+
+## Premise
+
+Measured on 2026-10-21 from git: 93 to 233 lines up to 2026-09-14, 468 on
+09-15, 1,128 on 09-17, 2,506 on 09-27, 2,776 at `9784821`, over 162 commits. The record
+check read the counts line and the work order, and nothing else of the file.
+
+## Approach
+
+Two rules in `tools/check/internal/checks/record.go`: the record carries the
+model's sections and nothing else, under a ceiling of 200 lines, and the summary carries
+one session.
+
+## Consumers
+
+None: the gate is this repository's own.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh record
+```
+
+Exit 0 on the rewritten record, and each of the five new rows red.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** Rules 8 and 9 of the record check: `PROGRESS.md` carries the
+State, Baseline, This session, In progress, The work order and Open questions sections
+and nothing else, under 200 lines, and `SUMMARY.md` carries one session. A heading in a
+code fence is not a section.
+
+```text
+sh scripts/common/check.sh record, on the record as it stood     exit 1
+  FAIL   TODO/PROGRESS.md is 2776 lines and the ceiling is 200
+  FAIL   8 sections the model does not have, "Found, and not filed" among them
+  FAIL   TODO/SUMMARY.md carries 4 sessions
+record: 10 problems
+sh scripts/common/check.sh record, on the rewritten record       exit 0
+  ok     record
+repo mutate --only 'record: '                                     10 of 10 guards proved
+```
+
+5 mutation rows, 5 of 5 red, and a case that runs the whole check so the rule is
+proved to be called.
+
+
+## TOOL-30. The docs check's cited-path rule never ran, and it carried another project's rules
+
+**Source** found on 2026-10-21 while syncing the methodology
+**Category** tooling, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`docs/conventions/prose.md` says every cited path exists. The block that checks a
+path named in backticks was empty, so a page could cite a file that moved a month ago.
+The check also carried another project's tool families, experiment counts, archive
+accounting and methodology provenance, none of which applies here, and four numbered
+rules that were comments with no code.
+
+## Premise
+
+Read on 2026-10-21: `if pathsBind {}` in `docs.go`, and `citedPaths`,
+`citedCommits`, `methodologyLinks` and `countDefects` have no caller. `git log -S`
+finds no commit that ever called them: the port to one binary on 2026-09-09 arrived this
+way. Armed against the tree, the rule reported 74 problems.
+
+## Approach
+
+Wire the rule for live pages, read a cited line and check the file has it, and
+leave out the files that carry history: the changelog, the entries and the reference
+sweeps. Delete what never ran. Fix the live pages it finds.
+
+## Consumers
+
+None: the gate is this repository's own.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh docs
+```
+
+Exit 0, with a case per kind of citation and the rows red.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** The cited-path rule runs for every live page: a path in
+backticks headed by one of this tree's directories is tracked, and a `path:N` or
+`path:N-M` names a line the file has. The changelog, the entries and the reference
+sweeps carry history and are left out, as `docs/HISTORY/` already was. What never ran
+is deleted: another project's tool families, experiment and POC numbering and counts,
+archive accounting, methodology provenance, an empty loop, and four numbered rules that
+were comments. The shell parser's name is reported, as its comment always said.
+
+```text
+the rule armed, before any page was fixed                        docs: 74 problems
+  history the rule now leaves alone: the changelog 13, the entries 43,
+  the reference sweeps 11; the old record 2; the resume file 1
+  live pages naming a path that does not exist on purpose: 4, reworded
+sh scripts/common/check.sh docs                                   exit 0
+go test ./internal/checks/ -run TestACitedPathAndLineMustExist    14 cases, ok
+repo mutate --only 'docs: '                                       9 of 9 guards proved
+```
+
+7 mutation rows, 7 of 7 red. ⚠ One came back BROKEN first, because removing the call
+left `topLevel` unused; it now disables the rule's condition instead.
+
+
+## TOOL-31. The gate's documented time is 30 seconds, and it takes minutes
+
+**Source** found while measuring the old record's baseline, 2026-10-21
+**Category** tooling, **Priority** P3, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`check-gate.sh` and its twin say the full run is about 30 seconds, and
+`docs/AGENTS.md` says under a minute. The measured runs took 131 to 245 seconds.
+
+## Premise
+
+Read on 2026-10-21; the times are in the old record's measurements.
+
+## Approach
+
+The scripts drop the number, and the router points at the measurement in `PROGRESS.md`.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** `check-gate.sh` and its twin no longer state a time, and
+`docs/AGENTS.md` says a few minutes and points at the measurement in `PROGRESS.md`.
+
+```text
+pwsh -NoProfile -File scripts/common/check-gate.ps1     exit 0, 24 of 24, in 654 s
+```
+
+⚠ **The 654 s is a loaded machine**, with seven builders compiling beside it, so it is
+the reason not to type a number rather than a new number to type.
+
+
+## TOOL-32. A workflow's own shell has no case
+
+**Source** the old record's finding 33, and its review findings of 2026-09-17
+**Category** tooling, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`release.yml` stages, counts and signs the assets, `herdr-nightly.yml` prunes old
+prereleases, and the publish reads back what it uploaded. All of it is shell inside YAML,
+with no case and no mutation row, and a defect in it has shipped once.
+
+## Premise
+
+Read at `9784821`: `release.yml:165-185` and :249, `herdr-nightly.yml:183-197`.
+
+## Approach
+
+Move that logic into a script with cases and rows, and have the workflows call
+it.
+
+## Consumers
+
+None outside the workflows.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0, with each new row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## TOOL-33. A Go case that passes only on Windows can reach `main`, because the Linux checks are run by hand
+
+**Source** the old record's finding 42, met twice, and again on 2026-10-21
+**Category** tooling, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+CI runs the Go tests and the mutation table on Linux. Locally they run on Windows,
+and the container runs that copy CI are a step a session can skip. Three cases have
+reached `main` green here and red on Linux.
+
+## Premise
+
+Read at `9784821`: `.githooks` holds `commit-msg` alone.
+
+## Approach
+
+A `pre-push` hook runs CI's Linux Go job and ShellCheck in containers through
+the installed `wsl-toolkit`, and refuses the push when either fails or cannot run.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+git push --dry-run
+```
+
+The hook runs both containers and its exit decides the push.
+
+---
+
+## Closing
+
+Open.
+
+
+## TOOL-34. A PowerShell runner that cannot run can still exit 1
+
+**Source** the old record's finding 34
+**Category** tooling, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+Under `$ErrorActionPreference = 'Stop'`, `Write-Error` before `exit 2` ends the
+script with 1, which means a check failed. `herdr-remote-probe.ps1` still does it, and a
+throw during setup in `acceptance.ps1` or `consumer.ps1` ends with 1 as well.
+
+## Premise
+
+Read at `9784821`: `herdr-remote-probe.ps1:397-399`, `acceptance.ps1:262` and :274, `consumer.ps1:370-405`.
+
+## Approach
+
+Each runner exits 2 when it cannot run, a setup throw included, and a
+forbidden-patterns row names the trap.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0, and each runner's cannot-run path exits 2.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** `herdr-remote-probe.ps1` calls `Exit-Cannot` where it wrote an
+error before `exit 2`. `acceptance.ps1` and `consumer.ps1` trap a throw during setup and
+turn it into `Exit-Cannot`, and let a throw after setup through unchanged. A
+forbidden-patterns row names the trap.
+
+```text
+the trap cut from acceptance.ps1, driven in a child pwsh
+a throw during setup   exit 2 want 2 ok
+a throw after setup    exit 1 want 1 ok
+sh scripts/common/check.sh powershell                    exit 0
+```
+
+⚠ The first edit put a marker character in two files that were ASCII, and the analyzer
+refused both for a missing BOM; the comments are ASCII again.
+
+
+## TOOL-35. The gate's own list says the analyzer covers `scripts/` alone
+
+**Source** the old record's finding 82
+**Category** tooling, **Priority** P3, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The analyzer reads every tracked `.ps1`, and two strings still say it reads `scripts/` only.
+
+## Premise
+
+Read at `9784821`: `tools/check/main.go:54` and `tools.go:54`.
+
+## Approach
+
+Both strings say what the analyzer reads.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** `tools/check/main.go` and `tools.go` say the analyzer reads
+every tracked `.ps1`.
+
+```text
+sh scripts/common/check.sh powershell                    exit 0
+```
+
+
+## TOOL-36. A changelog stamp later than the clock passes the gate
+
+**Source** the old record's finding 89: five stamps were typed rather than read, and two were in the future
+**Category** tooling, **Priority** P3, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The changelog check reads each stamp's shape and order, never whether it is in the future.
+
+## Premise
+
+Read at `9784821`: no check calls `time.Now`.
+
+## Approach
+
+The changelog check refuses a stamp later than the clock, with a small allowance for skew.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0, and a planted future stamp refused.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** Rule 5 of the changelog check refuses a heading stamped later
+than the clock, with ten minutes for a clock that runs fast, and a date alone only
+after its day. `CHANGELOG.md`'s header lists the fifth rule.
+
+```text
+go test ./internal/checks/ -run TestAChangelogStampLaterThanTheClockIsRefused   5 cases, ok
+sh scripts/common/check.sh changelog                                            exit 0
+repo mutate --only 'changelog: '                                                3 of 3 guards proved
+```
+
+3 mutation rows, 3 of 3 red; one came back BROKEN first and was repointed.
+
+
+## TOOL-37. A nightly whose upload fails loses the whole prerelease
+
+**Source** the old record's finding 103
+**Category** tooling, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`gh release create` uploads inside the call that creates, and a failed upload
+deletes the release. `release.yml` was fixed; the nightly still uploads that way, and
+its read-back never fails.
+
+## Premise
+
+Read at `9784821`: `herdr-nightly.yml:168-171`.
+
+## Approach
+
+The nightly creates empty, uploads each asset, and fails when the read-back is short, as `release.yml` does.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0, and the next nightly's run green.
+
+---
+
+## Closing
+
+Open.

@@ -9,8 +9,9 @@
 # ran both halves of every sh/PowerShell pair and compared their answers, and
 # which was most of a gate taking about twelve minutes on this host. The rules
 # implementation now, so there are no halves to compare and no reason to skip
-# anything: the full run is about 30 seconds. A caller still passing --fast is
-# told that rather than silently getting something different.
+# anything. TODO/PROGRESS.md carries the full run's measured time, which grows
+# with the checks. A caller still passing --fast is told that rather than
+# silently getting something different.
 #
 # Usage:
 #   sh scripts/common/check-gate.sh

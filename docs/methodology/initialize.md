@@ -120,7 +120,7 @@ URL" is a required output, not a failure to hide. A plan built as though you
 read something you could not is a plan resting on a claim you never verified.
 If an unreachable reference is load-bearing, that is a blocker to raise.
 
-[`references.md`](references.md) is the procedure for studying one properly.
+[`research.md`](research.md) is the procedure for studying one properly.
 
 ---
 

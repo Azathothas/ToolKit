@@ -45,7 +45,7 @@ if (-not $git) { [Console]::Error.WriteLine('repo: git not found'); exit 2 }
 # Measured 2026-09-17 from a git repository with no tools/repo: this half ended 1
 # where the twin ended 2, because $ErrorActionPreference = 'Stop' made
 # Push-Location's failure terminating and the exit 2 below was never reached.
-# TODO/PROGRESS.md findings 3 and 34.
+# docs/HISTORY/record.md findings 3 and 34.
 $repoRoot = (& $git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) { [Console]::Error.WriteLine('repo: not a git repository'); exit 2 }
 $repoRoot = $repoRoot.Trim()

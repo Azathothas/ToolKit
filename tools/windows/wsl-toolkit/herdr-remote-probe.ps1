@@ -395,8 +395,7 @@ finally {
 # than it claims and its exit code means nothing.
 $expected = 7
 if ($signals.Count -ne $expected) {
-    Write-Error "the probe recorded $($signals.Count) signals and must record $expected"
-    exit 2
+    Exit-Cannot "the probe recorded $($signals.Count) signals and must record $expected"
 }
 $result.signals = $signals
 $result.measurable = ($expected - 1)

@@ -7,7 +7,7 @@ read, what each one is worth, and the reasoning behind each verdict.
 reads. This file carries the verdicts and the argument; that one carries the
 commands.
 
-⛔ **Read [`../methodology/references.md`](../methodology/references.md) before
+⛔ **Read [`../methodology/research.md`](../methodology/research.md) before
 adding to this file.** It is binding on any task whose verb is clone, mine,
 survey or investigate.
 
@@ -18,7 +18,7 @@ survey or investigate.
 ⚠ **Nothing here was cloned**, so there is no commit to record for most rows.
 These are published artefacts and a tracker, read over HTTPS on **2026-08-27**.
 Where a row has no commit, the date is the only provenance and a later session
-re-reads rather than trusting it. [`references.md`](../methodology/references.md)
+re-reads rather than trusting it. [`research.md`](../methodology/research.md)
 trap 7: projects move.
 
 | # | reference | reached | depth |
@@ -35,11 +35,11 @@ trap 7: projects move.
   verdict below rests on published artefacts, a tracker, and local measurement.
 - `runj` and `ocijail` were checked for **liveness only**, not read. Neither
   verdict below depends on their internals.
-- The four-pass reading in `references.md` was not taken over any of these.
+- The four-pass reading in `research.md` was not taken over any of these.
   ⚠ Four passes is for a codebase being mined for a mechanism. R1, R3 and R4 are
   documents and R5 is a tracker; a second pass over a directory listing would be
   the same pass written twice. R5 got the tracker pass, which is the one
-  `references.md` says gets skipped, and it is where the decisive evidence was.
+  `research.md` says gets skipped, and it is where the decisive evidence was.
 
 ---
 
@@ -68,7 +68,7 @@ the SIGSEGV below, and having the question stated is what makes the answer
 worth writing down.
 
 ⚠ **The operator's URL was `podman-container-tools/podman`, which resolves.**
-The issue was read from `containers/podman`, the upstream. `references.md` trap
+The issue was read from `containers/podman`, the upstream. `research.md` trap
 3 says resolve a cited reference before repeating it; both point at the same
 issue number and the same content.
 
@@ -126,7 +126,7 @@ FreeBSD host exists, and that is `BSD-01` Track A, not this sweep.
 ## The measurement that outranks every reference
 
 ⭐ **All five references together do not settle the question. One command
-does**, and it is why `references.md` puts measurement above reading.
+does**, and it is why `research.md` puts measurement above reading.
 
 Running the official FreeBSD image on this Windows machine's Linux podman
 machine exits **139**, which is 128 + 11, a SIGSEGV.
@@ -235,7 +235,7 @@ section.
 one row was an organisation query. ⭐ **Every one was reached.** No row is
 recorded as gone.
 
-⛔ **Read [`../methodology/references.md`](../methodology/references.md) first.**
+⛔ **Read [`../methodology/research.md`](../methodology/research.md) first.**
 This sweep took its tracker step, and the tracker is where most of what follows
 came from.
 
@@ -498,7 +498,7 @@ directly" avenue `bsd.md` lists and nobody had costed.
 
 ### ⚠ `R6` anti-pattern exhibit: three defects readable in the source
 
-Kept on purpose, per [`../methodology/references.md`](../methodology/references.md).
+Kept on purpose, per [`../methodology/research.md`](../methodology/research.md).
 Each is a row this repository's own table already has:
 
 - `WslCoreInstance.cpp` declares `ULONG port = 600000;`. ⛔ **Six digits.** The
@@ -819,7 +819,7 @@ says the universal option is possible on `x86_64` and impossible on arm64.
 - ⚠ **The four-pass reading was taken over two references only**, `R6` and
   `R18`, which are the two whose source was read in depth. For the others a
   second pass over a README and a tracker would be the same pass written twice,
-  which [`../methodology/references.md`](../methodology/references.md) says is
+  which [`../methodology/research.md`](../methodology/research.md) says is
   worse than admitting three.
 - ⚠ **`cbsd`'s tracker was capped at 200 items** and its 90 comment threads are
   the most recent. A repository with 774 stars and eight years of history has
@@ -863,7 +863,7 @@ than trusting this**.
 ⛔ **What this sweep did not do:**
 
 - **No tracker was read.** ⚠ This is the step
-  [`../methodology/references.md`](../methodology/references.md) says always gets
+  [`../methodology/research.md`](../methodology/research.md) says always gets
   skipped, and here it is skipped on purpose with a reason: S1 and S5 are a paste
   and a dotfile with no tracker of their own, and S2 to S4 live in one
   `devscripts` repository whose tracker is about the several hundred scripts in it
@@ -1207,7 +1207,7 @@ says so itself. Anything this repository builds on it inherits that caveat.
 | `windows-beta.mdx` | "`herdr --remote` and saved SSH machines to Linux/macOS/Windows hosts \| **supported**" |
 | `connecting-machines.mdx` | "**Multi-machine connections are not yet verified or supported on Windows**; standalone `herdr --remote` remains supported on Windows. Native Windows servers are not supported as SSH targets." |
 
-⚠ This is trap 2 in [`../methodology/references.md`](../methodology/references.md)
+⚠ This is trap 2 in [`../methodology/research.md`](../methodology/research.md)
 in its plainest form. The capability table is a summary; the page about the
 feature carries the caveat. ⛔ **Neither was measured here**, and `WSL-76` closes
 on a measurement taken on this host, not on either sentence.

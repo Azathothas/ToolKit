@@ -258,6 +258,16 @@ function Get-StateDir {
     return $StateHome
 }
 
+# A THROW BEFORE THE FIRST CASE IS "COULD NOT RUN", AND THAT IS EXIT 2. Under
+# $ErrorActionPreference = 'Stop' an unhandled throw ends the script with 1, which
+# reads as a case that failed. The trap turns a throw during setup into a refusal,
+# and lets one after setup through unchanged. TOOL-34.
+$script:SettingUp = $true
+trap {
+    if ($script:SettingUp) { Exit-Cannot "setup failed: $_" }
+    break
+}
+
 # -- setup -------------------------------------------------------------------
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 if (-not $Binary) { $Binary = Join-Path $repoRoot '.tmp\wsl-toolkit.exe' }
@@ -284,6 +294,7 @@ if ($before.Code -eq 0) {
         $script:PreExisting = @($d.wsl.distros | Where-Object { -not $_.owned } | ForEach-Object { $_.name })
     }
 }
+$script:SettingUp = $false
 
 try {
     Write-Line "acceptance: $script:Binary"

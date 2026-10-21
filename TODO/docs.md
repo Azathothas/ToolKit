@@ -542,3 +542,250 @@ double-backtick span is read first; two more rows prove both.
 ⚠ **Not in scope, and said so on `prose.md`:** a comment in code keeps its
 dates. It is the maintainer's record beside the code, not a page a reader
 follows.
+
+## DOC-09. The methodology is a month behind TEMPLATE
+
+**Source** the operator, 2026-10-21, ruling 31
+**Category** docs, **Priority** P2, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+`docs/methodology/` was taken from TEMPLATE at `3191d08`. TEMPLATE has since
+added pages, among them `history.md` and `template-sync.md`, renamed `references.md`, and
+changed five pages this repository also edited, `sessions.md` gaining a resume file
+written at the start.
+
+## Premise
+
+Measured on 2026-10-21: each page diffed against TEMPLATE at `3191d08` and at `a970fe5`.
+
+## Approach
+
+TEMPLATE's own sync procedure: take the pages missing here, take a page unchanged
+here, merge a page this repository edited, never restore a page the bootstrap dropped,
+and pin the commit taken in `RULES.md`.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** TEMPLATE's own procedure, three-way, with the adopted commit
+as the base. `gate.md`, `initialize.md`, `reviews.md` and `sessions.md` are merged:
+the first two cleanly, the rest with one conflict each, resolved toward this
+repository's edit where it was the considered one. `work-todo.md` keeps this
+repository's side. Section 10 of `docs/conventions/shell.md` is taken whole, unchanged
+here since adoption. `history.md`, `lean-adoption.md`, `template-sync.md` and
+`vendoring.md` are new, and `research.md` replaces `references.md` with this
+repository's one edit carried over. The stage model, the model chooser and the ingest
+page stay out: the bootstrap dropped them, and the procedure forbids restoring them.
+`RULES.md` pins the commit taken.
+
+```text
+for c in docs ste markers one-home secrets placeholders skills: exit 0 each
+pwsh -NoProfile -File scripts/common/check-gate.ps1     exit 0, 24 of 24
+```
+
+⚠ **Adapted, and said where.** TEMPLATE's text was changed where it named a file this
+repository does not have, a flag its gate does not take, a date in a live page, or a
+word the prose check refuses. `history.md` says this repository's checks exempt
+`docs/HISTORY/` from three more rules than TEMPLATE's do. `vendoring.md`'s pointer to
+the tracker section said 3.4 and is 3.3. ⛔ **Two differences are left as decisions**:
+`research.md` asks for a corpus to be kept, and `.gitignore` keeps the clones out of
+the tree while the derived write-ups are tracked, which is this repository's own rule;
+and `research.md`'s `mine-repo.sh` stays TEMPLATE's helper, not this repository's.
+
+
+## DOC-10. The record carries history, a findings list and every session's measurements
+
+**Source** the operator, 2026-10-21: "clean this up and follow TODO properly from now on"
+**Category** docs, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`PROGRESS.md` was 2,776 lines, and the work order a reader needs was 41 of
+them. Its "Found, and not filed" list was the deferral the model forbids, and the index
+and the summary carried history too.
+
+## Premise
+
+Measured on 2026-10-21; `TOOL-29` has the numbers.
+
+## Approach
+
+Rewrite `PROGRESS.md` to the model's parts, file every finding still open as an
+entry, move the old text word for word to `docs/HISTORY/record.md`, move the rulings in
+force to `RULES.md` section 8, and overwrite `SUMMARY.md`.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh record
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** `PROGRESS.md` carries the model's parts and is 110 lines. The
+old one, the index's ordering argument and four session tables are in
+`docs/HISTORY/record.md` word for word, headings one level down and links rewritten
+to resolve. Five read-only passes sorted the old record against the tree; every
+finding still open is one of 58 entries, and the rulings in force are `RULES.md`
+section 8 under the same numbers. `SUMMARY.md` carries the last session alone, and
+the index argues the current order. 51 comments and pages citing the old record by
+path point at its new home, except three in files the builders are changing, done
+when those merge. `docs/HISTORY/README.md` lists the claims this repository withdrew.
+
+```text
+sh scripts/common/check.sh record     exit 0
+  ok     record
+wc -l TODO/PROGRESS.md               110
+```
+
+
+## DOC-11. Lessons the old record held have no live page
+
+**Source** the classification of the old record, 2026-10-21
+**Category** docs, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Several rules the old record learned live nowhere a reader follows: an assertion
+that needs a program the image may lack, `agent wait --until idle` on an agent already
+idle, `$LASTEXITCODE` after a pipe into a native command, a StrictMode read that disarms
+a cleanup, three review lenses, and a durable record that says "this session".
+
+## Premise
+
+Read on 2026-10-21 by the classification; each has its finding in `docs/HISTORY/record.md`.
+
+## Approach
+
+Each becomes a row or a sentence on the live page that owns its subject.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-gate.ps1
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+Open.
+
+
+## DOC-12. The muse-code guide starts an agent named `muse` and then prompts `work`
+
+**Source** found while classifying the old record's finding 61
+**Category** docs, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A reader following the guide prompts an agent that does not exist.
+
+## Premise
+
+Read at `9784821`: `examples/muse-code/README.md:278` and :290-291.
+
+## Approach
+
+One name throughout.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh docs
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+Open.
+
+
+## DOC-13. The router and the rules count the release and CI wrong
+
+**Source** found while measuring the old record's baseline, 2026-10-21
+**Category** docs, **Priority** P3, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`RULES.md` said CI makes six runs and that `main` requires three of six; it makes
+eight. It and `docs/AGENTS.md` leave `text-tool`'s eight assets out of what a release
+publishes.
+
+## Premise
+
+Measured on 2026-10-21: `gh run view` lists 8 jobs, and `gh release view` 22 assets.
+
+## Approach
+
+Both pages say what the API answers.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+gh release view wsl-toolkit-v7.0.0 --json assets
+```
+
+22 assets, as the pages say.
+
+---
+
+## Closing
+
+**Closed 2026-10-21T09:46:45Z.** `RULES.md` says CI makes eight runs and `main` requires three,
+and it and `docs/AGENTS.md` count `text-tool`'s assets, 22 in all.
+
+```text
+gh run view on 9784821 --json jobs     8 jobs
+gh release view wsl-toolkit-v7.0.0     22 assets: 2 wsl-toolkit, 4 text-tool, 4 herdr,
+                                       SHA256SUMS, and a cosign bundle for each
+```

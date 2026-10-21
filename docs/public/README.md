@@ -140,7 +140,7 @@ time, by search engines, and by agents.
 ## 7. Issue and pull request templates
 
 Worth having once anyone other than the operator opens one, and not before.
-They live under `.github/ISSUE_TEMPLATE/` when they exist.
+They live in an `ISSUE_TEMPLATE/` directory under `.github/` when they exist.
 
 ⚠ **Do not ask for information you will not use.** A long form on a project
 with three open issues costs the reporter and buys nothing.

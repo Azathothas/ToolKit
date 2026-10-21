@@ -65,8 +65,9 @@ The dependency on `pkgforge-dev/docker-bsd` runs the other way: it publishes
 BSD images that ToolKit names. It is not a consumer row.
 
 ⛔ **The PowerShell product, its launcher and `wsl-toolkit script` are
-deleted.** A raw fetch of any file under `scripts/windows/wsl-toolkit/` at a
-commit after the deletion returns 404, and a commit before it still serves it.
+deleted.** A raw fetch of
+`raw.githubusercontent.com/Azathothas/ToolKit/REF/scripts/windows/wsl-toolkit/FILE`
+at a commit after the deletion returns 404, and a commit before it still serves it.
 No release publishes a script. The `distro` and `hostaddress` commands carry what
 the product did. [`HISTORY/consumers.md`](HISTORY/consumers.md) keeps the
 pin-state table and the release history.

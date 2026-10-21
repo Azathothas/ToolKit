@@ -3,9 +3,9 @@
 What shipped, when, and where the evidence is. One entry per shipped unit of
 work, pointing at the record that carries the detail.
 
-Four rules, and
+Five rules, and
 [`scripts/common/check-changelog.sh`](scripts/common/check-changelog.sh) holds
-all four:
+all five:
 
 1. ⛔ **Newest first.** A new entry goes at the top of its section.
 2. ⛔ **Every heading carries a date**, as an ISO 8601 UTC stamp.
@@ -13,6 +13,8 @@ all four:
    evidence.
 4. ⛔ **Every entry says whether it deployed.** "No deploy" is a complete and
    common answer. Silence is not.
+5. ⛔ **No stamp is later than the clock.** A stamp is read with `date -u`, never
+   typed.
 
 ⛔ Do not tidy this file while shipping something else, and do not delete an
 entry. A superseded one is amended in place with a dated note.
@@ -20,6 +22,23 @@ entry. A superseded one is amended in place with a dated note.
 ---
 
 ## 2026-10-21
+
+### 2026-10-21T09:48:21Z: the record is rewritten to the model, the methodology is synced from TEMPLATE, and two checks hold what they claimed
+
+**Record:** `DOC-10`, `DOC-09` and `DOC-13` in [`TODO/docs.md`](TODO/docs.md); `TOOL-29`, `TOOL-30`, `TOOL-31`, `TOOL-34`, `TOOL-35` and `TOOL-36` in [`TODO/tooling.md`](TODO/tooling.md); ruling 31 in [`TODO/RULES.md`](TODO/RULES.md).
+**Deployed:** ⛔ **no deploy.** Nothing here is in a release; the checks hold every
+commit from this one on.
+
+⭐ **`TODO/PROGRESS.md` is the record the model describes again**: 110 lines, where it
+was 2,776. The old text is in `docs/HISTORY/record.md` word for word, every finding
+still open is an entry, 58 in all, and the rulings in force are `RULES.md` section 8.
+
+⭐ **The record check refuses a section the model does not have**, a record over 200
+lines, and a summary of more than one session. **The docs check's cited-path rule runs
+for the first time**: its block was empty since the gate became one binary.
+
+⭐ **The methodology is TEMPLATE's current one**, merged by its own procedure, and a
+changelog stamp later than the clock is refused.
 
 ### 2026-10-21T07:56:49Z: `wsl-toolkit-v7.0.0` published, and issues 35 and 37 closed
 
@@ -1361,7 +1380,7 @@ the defect.
 
 ⚠ **The document those claims came from is 404 now**, and was never archived.
 The claims are copied into the entry, which is what
-[`docs/methodology/references.md`](docs/methodology/references.md) asks for and
+[`docs/methodology/references.md`](docs/methodology/research.md) asks for and
 what nobody had done.
 
 ### 2026-09-10T13:45:00Z: actions/setup-go moves to v7.0.0

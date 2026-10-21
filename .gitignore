@@ -63,13 +63,20 @@ test-results/
 
 # ── agent and assistant local files ────────────────────────────────────────
 .claude/settings.local.json
+# Worktrees an agent tool makes for parallel work, each a whole checkout.
+.claude/worktrees/
 CLAUDE.local.md
 .aider*
 .cursorignore
 
+# ── the session's resume file ──────────────────────────────────────────────
+# Rewritten as a session moves, so a session that dies hands something over on
+# this machine. It is not history. TODO/RULES.md section 7.
+TODO/RESUME.md
+
 # ── reference material cloned for study ────────────────────────────────────
 # The trees are re-clonable from the URL every write-up records. The DERIVED
-# write-up is tracked; the clone is not. See docs/methodology/references.md.
+# write-up is tracked; the clone is not. See docs/methodology/research.md.
 reference/
 references/
 reference_attachments/

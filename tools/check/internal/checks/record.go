@@ -22,7 +22,7 @@ const RecordDir = "TODO/"
 // never pushed again, so the published state said those entries were open
 // beside entries saying done for the whole of the next session.
 //
-// Seven rules, and the arithmetic ones exist because a count is the part a
+// Nine rules, and the arithmetic ones exist because a count is the part a
 // careful person gets wrong:
 //
 //  1. every row in the index has an entry heading somewhere under TODO/;
@@ -31,7 +31,10 @@ const RecordDir = "TODO/"
 //  4. every entry has a row, so nothing is worked on off the books;
 //  5. the index's own total line agrees with its rows;
 //  6. the per-priority table agrees, and so does PROGRESS.md's state line;
-//  7. PROGRESS.md's work order agrees with the index about what is finished.
+//  7. PROGRESS.md's work order agrees with the index about what is finished;
+//  8. PROGRESS.md carries the model's sections and nothing else, under a
+//     ceiling;
+//  9. SUMMARY.md carries one session's table.
 func Record(t *Tree) Result {
 	r := Result{Extra: map[string]any{}}
 
@@ -163,6 +166,7 @@ func Record(t *Tree) Result {
 		status[row.id] = strings.ToLower(row.status)
 	}
 	checkWorkOrder(&r, t, status)
+	checkRecordShape(&r, t)
 
 	// The per-priority table.
 	//
@@ -206,7 +210,7 @@ func Record(t *Tree) Result {
 // index and the entry both read `done` throughout, so the record disagreed with
 // itself and only the work order was wrong. On 2026-09-17 a prompt sent a
 // session to `WSL-68`'s "four remaining items, which need nobody" after three
-// had closed and the operator had deferred the fourth. `TODO/PROGRESS.md`'s own
+// had closed and the operator had deferred the fourth. `docs/HISTORY/record.md`'s
 // finding 29 names this check as the fix.
 //
 // The rule, in two halves, because each catches the other's blind spot:
@@ -315,6 +319,57 @@ func checkWorkOrder(r *Result, t *Tree, status map[string]string) {
 	}
 }
 
+// progressMaxLines is the most a rewritten PROGRESS.md needs. The model's seven
+// parts and a work order of a dozen items fit in about a hundred and fifty.
+const progressMaxLines = 200
+
+// checkRecordShape asserts that PROGRESS.md carries the model's sections and
+// nothing else, under a ceiling, and that SUMMARY.md carries one session.
+//
+// ⛔ THE RECORD GREW TO 2,776 LINES AND NO CHECK FIRED. work-todo.md says
+// PROGRESS.md is rewritten every session and carries no history. From
+// 2026-09-15 to 2026-10-21 each session appended instead: a numbered list of
+// 116 findings under "Found, and not filed", every review's write-up, each
+// session's measurements and host changes, and 30 rulings. The list's own
+// name was the deferral the model forbids. SUMMARY.md, which RULES.md says is
+// overwritten, held four sessions. Rules 6 and 7 read one line and one section
+// of the file, so its shape was never read at all.
+//
+// ⚠ A HEADING IN A CODE FENCE IS NOT A SECTION, so the state block can quote
+// anything.
+func checkRecordShape(r *Result, t *Tree) {
+	progress := RecordDir + "PROGRESS.md"
+	lines := Lines(t.Read(progress))
+	if len(lines) == 0 {
+		return
+	}
+	if len(lines) > progressMaxLines {
+		r.bad("%s", sprintf("%s is %d lines and the ceiling is %d: it is rewritten each session and carries no history, so a finding is an entry and a story is %s",
+			progress, len(lines), progressMaxLines, HistoryDir))
+	}
+	for _, ln := range lines {
+		if ln.Fence || !strings.HasPrefix(ln.Text, "## ") {
+			continue
+		}
+		if !progressSection.MatchString(ln.Text) {
+			r.bad("%s", sprintf("%s:%d: %q is not one of the record's sections (State, Baseline, This session, In progress, The work order, Open questions)",
+				progress, ln.N, ln.Text))
+		}
+	}
+
+	summary := RecordDir + "SUMMARY.md"
+	sessions := 0
+	for _, ln := range Lines(t.Read(summary)) {
+		if !ln.Fence && strings.HasPrefix(ln.Text, "## ") {
+			sessions++
+		}
+	}
+	if sessions > 1 {
+		r.bad("%s", sprintf("%s carries %d sessions; it is overwritten with the last session's table, and the git log holds the others",
+			summary, sessions))
+	}
+}
+
 // checkCounts compares one file's declared state line against the rows.
 func checkCounts(r *Result, t *Tree, file, index string, total int, counts map[string]int) {
 	for _, ln := range Lines(t.Read(file)) {
@@ -381,8 +436,11 @@ var (
 	// ⚠ THE HEADING IS MATCHED ON ITS STEM, not its whole text: it carries the
 	// date the operator set the order, and that date moves.
 	workOrderHeading = regexp.MustCompile(`^##\s+The work order\b`)
-	orderedItem      = regexp.MustCompile(`^([0-9]+)\.\s`)
-	workOrderClosed  = regexp.MustCompile(`\*\*Closed:\*\*`)
+	// progressSection is every section work-todo.md gives the record, matched
+	// on its stem for the same reason.
+	progressSection = regexp.MustCompile(`^##\s+(State|Baseline|This session|In progress|The work order|Open questions)\b`)
+	orderedItem     = regexp.MustCompile(`^([0-9]+)\.\s`)
+	workOrderClosed = regexp.MustCompile(`\*\*Closed:\*\*`)
 	// ⛔ BACKTICKED ONLY. An id in prose without them is a mention; the order
 	// names the entries it is about in code spans, and reading bare text would
 	// pull ids out of the corrections written underneath an item.

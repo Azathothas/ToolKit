@@ -151,7 +151,7 @@ has a row for.
 | --- | --- |
 | `adopt` | ⭐ Read the exit code, not the error text. 139 versus `Exec format error` is the difference between "needs binfmt" and "architecturally impossible". The text looked adjacent to a problem already solved; the number said otherwise. |
 | `adopt` | A podman connection is just SSH. Check `podman system connection list` before writing anything that manages podman. |
-| `adopt` | ⭐ Read the tracker. The maintainer's two refusals and the stalled pull request are the whole cost picture, and none of it is in any README. `references.md` calls this the step that gets skipped, and it was the highest-value hour of the sweep. |
+| `adopt` | ⭐ Read the tracker. The maintainer's two refusals and the stalled pull request are the whole cost picture, and none of it is in any README. `research.md` calls this the step that gets skipped, and it was the highest-value hour of the sweep. |
 | `avoid` | Do not build FreeBSD OCI images. The FreeBSD project publishes them at the same registry the plan intended to push to. |
 | `avoid` | Do not plan around `containers/podman#19939`. Open, unmerged, and refused twice by the maintainer. |
 | `avoid` | Do not follow the `podman machine init --image` suggestion literally. It requires Ignition, which FreeBSD does not have, so it starts with porting a CoreOS provisioning system. |

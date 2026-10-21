@@ -150,6 +150,10 @@ jobs:
               "dist/$name"
           done
 
+      # ⛔ CREATED EMPTY, THEN EACH ASSET UPLOADED AND READ BACK, as release.yml
+      # does and says why. `gh release create TAG dist/*` uploads inside the call
+      # that creates, and an upload that fails deletes the release it just made.
+      # The count this step used to print never failed the run. TOOL-37.
       - name: publish the prerelease
         shell: bash
         env:
@@ -165,10 +169,25 @@ jobs:
             echo
             echo "herdr is licensed under Apache-2.0; each Windows zip carries its licence."
           } > notes.md
-          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --prerelease \
-            --title "$TAG" --notes-file notes.md --target "$GITHUB_SHA"
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isPrerelease,assets \
-            --jq '"prerelease \(.isPrerelease), \(.assets | length) assets"'
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
+              --title "$TAG" --notes-file notes.md --target "$GITHUB_SHA"
+          fi
+          staged=0
+          for f in dist/*; do
+            [ -f "$f" ] || continue
+            gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber
+            staged=$((staged + 1))
+          done
+          [ "$staged" -gt 0 ] || { echo "dist holds no asset to upload" >&2; exit 1; }
+          on=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+          missing=""
+          for f in dist/*; do
+            name=${f##*/}
+            printf '%s\n' "$on" | grep -qxF -- "$name" || missing="$missing $name"
+          done
+          [ -z "$missing" ] || { echo "the prerelease is missing:$missing" >&2; exit 1; }
+          echo "published $TAG with $staged asset(s), each read back"
 
       # ⛔ KEEP THE NEWEST SEVEN, and nothing but a herdr-nightly- tag is ever deleted.
       #

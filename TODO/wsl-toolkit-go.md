@@ -13280,3 +13280,1856 @@ with a `core.fsmonitor` hook, `git ls-files -s -z` ran the hook, and `git -c
 core.fsmonitor=false ls-files -s -z` did not. The case plants the same hook.
 
 4 mutation rows, 4 of 4 red.
+
+## WSL-120. A job id is hard to use: a prefix, the container name and one-line JSON are all refused
+
+**Source** the consumer survey of 2026-10-21, P3, and the old record's finding 104
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`logs`, `wait`, `stop`, `inspect`, `artifacts` and `gc --job` take the 16-hex id
+and nothing else. A caller holding the 12-hex prefix podman prints, or the container
+name `wtk-ID`, is refused. Every `--json` answer is indented over many lines, so a
+caller that reads one line per answer loses it. `gc --json` lists what it removed as
+display strings, so a caller cannot tell which job, instance or project a line was.
+
+## Premise
+
+Read at `9784821`: `ValidJobID` is checked separately at six call sites, and
+`writeJSON` in `main.go` indents. podbox measured `gc --job 0b769b3dcc81`, and lost a
+session id parsing `base exec --detach --json`. `jobIDFromContainer` already strips
+`wtk-`, so the form is known to the tool.
+
+## Approach
+
+One resolver beside `ValidJobID` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/jobowner.go`](../tools/windows/wsl-toolkit/internal/toolkit/jobowner.go)
+takes the id, `wtk-ID`, or a unique prefix of at least four hex characters, and every
+command calls it first. A full id passes through unchanged. A global `--json-compact`
+and `WSL_TOOLKIT_JSON=compact` put each answer on one line. `gc --json` gains a
+structured list beside its display strings.
+
+## Consumers
+
+Additive. A full id, the indented default and every existing JSON field keep their meaning.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0 with a case per form: a prefix, `wtk-`, no match, two matches, another
+instance's job. Then `logs` by a prefix and `gc --json --json-compact` on a real job.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-121. An ephemeral job keeps its host record, and a killed caller leaves its job running
+
+**Source** the consumer survey of 2026-10-21, P5, and the old record's finding 105
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`run --container-lifecycle ephemeral` says in its help that it removes both the
+container and the job directory. It removes the container only, and the host record
+stays until `gc`. A caller killed hard leaves its job running until the engine's own
+timeout. And a job record whose owner died reads as running until something sweeps
+it.
+
+## Premise
+
+Read at `9784821`: `ephemeral` only adds `--rm` (`job.go:962-964`), and the help at
+`cmd_run.go:124` says "ephemeral removes both". `ownerGone` in `cleanup_run.go`
+already detects a free owner lock, and nothing closes the record when it does.
+
+## Approach
+
+Ephemeral removes the host directory once the answer and any artifacts are
+delivered, and the answer says what is kept. `run --cancel-on-exit` makes the detached
+owner wait on the caller's process and stop the job, as `stop` does, when the caller
+goes first. A record still open whose owner lock is free is closed when it is next
+read, with the reason.
+
+## Consumers
+
+The ephemeral change makes the tool do what its help has always said. Nothing a
+caller reads disappears before the answer is written. `--cancel-on-exit` is new.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then on a real base: an ephemeral job leaves no host directory, a job
+started with `--cancel-on-exit` stops when its caller is killed, and a planted record
+with a free lock reads as closed.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-122. Nothing is cached between jobs, so each job installs its toolchain again
+
+**Source** the consumer survey of 2026-10-21, P7, and the old record's finding 106
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+A job that needs a toolchain installs it every time. podbox measured about 25
+seconds and 53 MB a job, spent again on every run.
+
+## Premise
+
+Read at `9784821`: `containerScript` in `job.go` mounts `/work`, `/out`,
+`/job.sh` and `/in` and nothing that outlives the job. `resources` already counts
+unused volumes.
+
+## Approach
+
+`run --cache NAME:/path` and `matrix --cache` mount a podman volume
+`wtk-cache-NAME`, created on first use and kept between jobs. `jobs.cache` is a default
+list. `resources` lists the cache volumes, and `gc --caches --apply` removes them.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0. Then two jobs on one cache: the second reads what the first wrote, and
+`gc --caches --apply` removes the volume.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-123. A job cannot run as an account its image lacks, and `base exec` cannot run as another account
+
+**Source** the consumer survey of 2026-10-21, P8, and the old record's finding 107
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`run --user NAME` needs NAME in the image, `/work` belongs to root, and HOME is
+wrong. podbox installs sudo, runs `useradd` and `chown -R /work`, and drops privileges
+itself. `base exec` runs as the base account or as root, and nothing else.
+
+## Premise
+
+Read at `9784821`: `--user` reaches podman with `:U` on the mounts
+(`job.go:949-992`), and the payload wrapper already runs as that user. `ExecRequest.User`
+is the field a `base exec --user` would set.
+
+## Approach
+
+`run --user NAME --create-user [--sudo]` creates the account for the job,
+preferring podman's own passwd and group entries over dropping privileges inside the
+image, with HOME and `/work` owned by it. `--sudo` grants it passwordless sudo through a
+read-only file. `base exec --user NAME` runs as that account of the base.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0. Then `whoami`, `id` and a write to `/work` as a created user on
+`debian`, `ubuntu:24.04`, `alpine` and `archlinux`, and `base exec --user`.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-124. `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only
+
+**Source** the consumer survey of 2026-10-21, P9 and P17, and the old record's finding 108
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`base exec` takes no `--input`, no `--artifacts`, no `--user`, and reads no stdin.
+`--dir` takes only a guest path, so a caller translates its Windows checkout itself, and
+a directory the command cannot enter runs it in `/` without a word. `run --artifacts`
+creates an empty host directory when the job leaves nothing.
+
+## Premise
+
+Read at `9784821`: `cmd_base_exec.go:78-84` accepts `~` or `/`, and its usage says
+stdin is `/dev/null`. pg-toolkit's `grantFor` and podbox's KVM lane carry the
+workarounds.
+
+## Approach
+
+`base exec` gains `--input`, `--artifacts`, `--user`, stdin when it is not a
+terminal, and a `--dir` or `--here` mapped through the base's grants, on the attached and
+the detached path. A directory the command cannot enter is refused. `run --artifacts`
+makes no directory for nothing, and `--json` lists what it copied.
+
+## Consumers
+
+Additive, except that a `--dir` the command cannot enter is refused where it ran in
+`/`. That run never did what was asked, so the refusal is a fix.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then each flag driven on a base with a grant.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-125. A 9P grant is slow, and nothing copies a checkout into the base
+
+**Source** the consumer survey of 2026-10-21, P10, and the old record's finding 109
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+A grant is a 9P mount, and a build over it takes minutes where the same build in
+the base's own filesystem takes about a second. pg-toolkit copies its checkout in by
+hand and keeps its own list of what changed.
+
+## Premise
+
+Read at `9784821`: `SendWorkspace` already packs a git-aware file list with exec
+bits from the index, for jobs. It extracts in full and never deletes.
+
+## Approach
+
+`base sync HOST-DIR GUEST-DIR` sends the workspace copy's file list into the base,
+only what changed by size or time, and `--delete` removes what left the list.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0. Then two syncs of one checkout: the second sends only the changed file,
+and `--delete` removes a deleted one.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-126. `stop` does not reach a session's child that left the process group
+
+**Source** the consumer survey of 2026-10-21, P13, and the old record's finding 110
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`stop` and a session's deadline signal the session's process group. A child that
+calls `setsid` or daemonizes outlives both, and podbox runs its own watchdog to end
+it.
+
+## Premise
+
+Read at `9784821`: `sessionLaunchScript` and `stopSessionScript` in `session.go`
+signal the recorded group alone.
+
+## Approach
+
+On a base that runs systemd, a detached session runs in its own scope or
+transient unit, and `stop` and the deadline end the unit. Without systemd the old
+behaviour stays, and the answer says which ran.
+
+## Consumers
+
+Additive: a session ends more completely, and the answer gains a field.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then a session whose child calls `setsid`: after `stop`, no process of it is left.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-127. The tool's own exit 2 cannot be told from a job's exit 2
+
+**Source** the consumer survey of 2026-10-21, P14, and the old record's finding 111
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Without `--json`, a caller cannot tell "the tool could not run the job" from a job
+that exited 2. agent-box, podbox and dash.vpn each work around it.
+
+## Premise
+
+Read at `9784821`: `JobResult.Verdict` passes the container's code through, and
+2 is also the tool's code for a refusal.
+
+## Approach
+
+A distinct and configurable code for the tool's own failure, and a `--json`
+field that always says whether the job started.
+
+## Decision
+
+⛔ **Ruled out of `wsl-toolkit-v7.1.0` by the operator, ruling 31**: it changes
+what an exit code means, which [`../docs/consumers.md`](../docs/consumers.md) calls a
+break, and the release is a minor. It stays open for the next major.
+
+## Consumers
+
+⛔ A break by the register's definition. It ships only in a major, with the breaks table.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0 with a case for each code.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-128. An input file keeps CRLF and no executable bit
+
+**Source** the consumer survey of 2026-10-21, P15, and the old record's finding 112
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A script passed with `--input` arrives with Windows line endings and mode 0644, so
+podbox and others write a runner that strips CR and picks a shell.
+
+## Premise
+
+Read at `9784821`: `writeInputsTar` writes every input at 0644, byte for byte.
+`RepairGuestScript` already repairs a `--script`.
+
+## Approach
+
+`--input-exec NAME=FILE`, on `run`, `matrix` and `base exec`, normalises CRLF to LF
+and sets mode 0755, so the job runs it by its shebang. `--input` stays byte for byte.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then a CRLF script run as `/in/NAME` by its shebang.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-129. A project cannot say which version of the tool it needs
+
+**Source** the consumer survey of 2026-10-21, P16, and the old record's finding 113, and the residual of finding 43
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+pg-toolkit checks the tool's version itself, and an older tool reading a
+configuration a newer one wrote refuses with "not readable" and no hint why.
+
+## Premise
+
+Read at `9784821`: `LoadConfig` refuses unknown fields, and `CompareVersions`
+compares dotted versions.
+
+## Approach
+
+A configuration's `requires` names a floor; a tool older than it refuses with its
+own version, the floor, the file and `selfupdate`. An unknown field adds that a newer
+build may have written the file.
+
+## Consumers
+
+Additive. A release before this one refuses `requires` as an unknown field, which is still a refusal.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then a configuration with a floor above the build, refused with exit 2.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-130. An engine inside a base is set up by hand
+
+**Source** the consumer survey of 2026-10-21, P18, and the old record's finding 114
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+Root's podman in a base needs its cgroup manager set by hand, `XDG_RUNTIME_DIR`
+must match, `/dev/kvm` loses its permissions at each boot, images move from the host
+by hand, and a job cannot be given a capability it needs.
+
+## Premise
+
+Read at `9784821`: `provision.sh:409-424` writes the account's containers.conf
+only. Nothing loads an image into a base. binfmt.sh and its unit are the pattern for a
+rule that runs at every boot.
+
+## Approach
+
+`base ensure` sets root's podman up like the account's, exports
+`XDG_RUNTIME_DIR` for the account's sessions, and installs a rule that keeps `/dev/kvm`
+usable after a boot. `base image load FILE|IMAGE` loads an image. `run --cap-add CAP`
+grants a job a capability.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then each part on a scratch base, `/dev/kvm` after `wsl --terminate` of that base alone.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-131. Job defaults are repeated in every wrapper
+
+**Source** the consumer survey of 2026-10-21, P20, and the old record's finding 115
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Image, timeout, env and user are passed on every call by podbox, podssh and
+agent-box. A project's `wsl-toolkit.json` is not read for jobs once a named instance has
+its own configuration, and a relative grant source resolves against the working
+directory.
+
+## Premise
+
+Read at `9784821`: `JobConfig` has five fields, copied by name in `LoadConfig`.
+`ResolveConfig` reads a named instance's own file before the working directory's, so the
+project's file is not read at all.
+
+## Approach
+
+`jobs` gains image, timeout, env, env file, user, size limits and caches, a flag
+always winning. A project's `wsl-toolkit.json` contributes `jobs` and `requires` under a
+named instance too. A relative `mounts[].source` resolves against its own file.
+
+## Consumers
+
+Additive: a configuration without the new keys behaves as before.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then a job that takes its image and timeout from a project file.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-132. Two acceptance cases are not isolated from what they run beside
+
+**Source** the old record's finding 116, met on 2026-10-21
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The tick case failed while the machine also ran mutation rows, and passed idle.
+The marker case writes the instance's own configuration with three keys, and left an
+instance whose configuration asked for systemd without it.
+
+## Premise
+
+Measured on 2026-10-21 on `s110` and under load. The marker half is caused by
+`WSL-161`.
+
+## Approach
+
+The marker case changes only the key it is about, and restores the file byte for
+byte even when it fails. The tick case asserts what a loaded machine still guarantees.
+
+## Consumers
+
+None: the suite is this repository's own.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary BINARY -Quick -Instance NAME
+```
+
+All cases pass on an instance whose configuration asks for systemd, with the configuration unchanged after.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-133. `base shell` has no `--private-net`
+
+**Source** `WSL-68`, which closed without it under ruling 23
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`base exec --private-net` runs a command in its own network namespace. The
+interactive form does not exist, so a sealed base's shell shares the network.
+
+## Premise
+
+Read at `9784821`: `cmd_base.go:308` gives `shell` only `--root`, `--here` and `--via-helper`.
+
+## Approach
+
+`base shell --private-net` wraps the shell as `base exec --private-net` wraps its command.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then `ip link` in the shell lists the namespace's own interfaces.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-134. A real window's focus event was never produced for herdr's `--remote` signals
+
+**Source** `WSL-76`, which closed without it under ruling 23, and the old record's question 2
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** blocked
+
+---
+
+## Problem
+
+Signal 7 of the six `--remote` signals is a focus event, which only a real
+Windows Terminal window produces. The probe reports it as `operator` rather than
+pretending.
+
+## Premise
+
+Measured on 2026-09-17: a pseudo console has no window, so no focus event
+reaches the client.
+
+## Approach
+
+The operator runs the client `base attach` prints in a real window, with
+`herdr-remote-probe.ps1`, and the result closes this.
+
+## Decision
+
+⚠ **Blocked on the operator**: it needs a real window at the operator's desktop
+and keyboard. No session can produce the event.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/herdr-remote-probe.ps1
+```
+
+Signal 7 reports `seen` in a real window.
+
+---
+
+## Closing
+
+Blocked; the Decision names on what.
+
+
+## WSL-135. The muse-code guide was never run as one ordered pass from an empty host
+
+**Source** `WSL-78`, which closed without it under ruling 23, and the old record's question 4
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** blocked
+
+---
+
+## Problem
+
+Every command in the guide has been run, but never as one pass in its own order
+from an empty host, so an ordering mistake could survive.
+
+## Premise
+
+Measured on 2026-09-17: step 5 is three sign-ins, each the operator's credential.
+
+## Approach
+
+The operator runs the guide from an empty host, signing in at step 5, and a
+session records the transcript.
+
+## Decision
+
+⚠ **Blocked on the operator**: the sign-ins are the operator's credentials.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+examples/muse-code/README.md, every step in order
+```
+
+Every step's command exits as the guide says.
+
+---
+
+## Closing
+
+Blocked; the Decision names on what.
+
+
+## WSL-136. A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run
+
+**Source** the consumer survey of 2026-10-21, P11, and the old record's finding 24
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Podman in a base accepts `--memory` and `--cpus` and enforces neither, because
+no cgroup controller is delegated to the account. `run` has no limit flags. Builds run
+one at a time by convention, because nothing caps them.
+
+## Premise
+
+Read at `9784821`: `provision.sh:423` sets `cgroup_manager = "cgroupfs"`, and
+`verify.sh:380-383` reports no delegation. `WSL-60` closed the reporting half only.
+
+## Approach
+
+`base ensure` delegates the cgroup v2 controllers to the account, read back by
+the existing row. `run --memory` and `--cpus`, and `jobs.memory` and `jobs.cpus`, pass
+limits, and the answer says whether they held. `jobs.max_running` and `run
+--max-running` cap the running jobs.
+
+## Decision
+
+The delegation half was unruled since `WSL-60`. Ruling 31, "every open finding
+is built", rules it.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then a job over `--memory 64m` is killed by the limit, and a job over the cap waits.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-137. A base stops running containers after a host restart until someone repairs it
+
+**Source** the consumer survey of 2026-10-21, P12
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+After `wsl --shutdown` or a reboot, podman's boot id is stale and every container
+fails until `base ensure --repair`. A broken passwd entry goes unnoticed. `base status`
+without `--probe` reads like a probed answer.
+
+## Premise
+
+Read at `9784821`: the repair runs in `base ensure --repair` alone, and
+`siblingRepairNote` names it.
+
+## Approach
+
+`run` and `base exec` clear a stale boot id before they start. verify.sh checks
+the account's passwd entry. `base status` without `--probe` says it did not probe.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then a job runs on a scratch base straight after `wsl --terminate` of it.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-138. An adapter installs from npm where the provider publishes an official installer
+
+**Source** ruling 20, which has had no entry since it was made
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** blocked
+
+---
+
+## Problem
+
+`pi` and `omp` install from npm. The operator ruled that an adapter prefers the
+provider's official installer and falls back to this repository's route.
+
+## Premise
+
+Read on 2026-09-17: omp's installer defaults to a prebuilt release binary and
+needs no Bun.
+
+## Approach
+
+Each adapter downloads the official installer or release asset, checks it
+against an approved digest, runs it from the file it read, and falls back to npm.
+
+## Decision
+
+⚠ **Blocked on the operator**: ruling 20 says each installer's digest is an
+operator approval, as ruling 4 was for Muse. The session measures each digest and asks.
+
+## Consumers
+
+None outside the base.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then `base ensure` on a scratch base installs `pi` and `omp` the official way.
+
+---
+
+## Closing
+
+Blocked; the Decision names on what.
+
+
+## WSL-139. `base ensure` leaves older herdr nightly clients on disk
+
+**Source** the old record's finding 36
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Each nightly client is kept under the instance's state directory, and the old ones
+are removed only when a new one is written.
+
+## Premise
+
+Read at `9784821`: `ensureHerdrClient` returns at `herdr_nightly.go:193-195`
+before the prune at :244-254.
+
+## Approach
+
+The prune runs on both paths. A case plants a decoy directory.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the decoy case red before the fix.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-140. A base build fails when one package mirror stalls, and nothing retries
+
+**Source** the old record's finding 10, met three times
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+One stalled Arch mirror fails the whole build, which then rolls back.
+
+## Premise
+
+Read at `9784821`: `provision.sh:135-142` is one `pacman -Syu` with no retry.
+
+## Approach
+
+A bounded retry of the engine-package transaction for every family, naming the stall.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that fails the first transaction.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-141. The herdr adapter installs 0.9.0 when this repository publishes 0.9.5
+
+**Source** found while measuring the old record's baseline, 2026-10-21
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`wsl-toolkit-v7.0.0` publishes herdr 0.9.5, and the adapter's default stable pin
+is still 0.9.0. Whether 0.9.5 carries herdr's #4038 repaint fix is unmeasured.
+
+## Premise
+
+Read at `9784821`: `adapters/herdr/install.sh:37`.
+
+## Approach
+
+The pin moves to 0.9.5, with the digest from this repository's own published
+`SHA256SUMS`. `herdr-remote-probe.ps1` answers #4038, recorded in
+`examples/common/herdr.md`.
+
+## Consumers
+
+The adapter's default changes to a newer release this repository already publishes.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh adapters
+```
+
+Exit 0, then `base ensure` on a scratch base installs 0.9.5 at its digest.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-142. `base doors --via-helper`'s refusal was never run against a live helper
+
+**Source** the old record's review findings of 2026-09-17
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The refusal is proved by a case alone; no run has met it from a helper that is really serving.
+
+## Premise
+
+Read at `9784821`: `cmd_base_doors.go:43-47`, and the acceptance suite runs `base doors --json` with no helper.
+
+## Approach
+
+An acceptance case starts the instance's helper, runs `base doors --via-helper`, and reads the refusal.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary BINARY -Quick -Instance NAME
+```
+
+The new case passes.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-143. The base account's login shell is `/bin/sh`
+
+**Source** the old record's finding 44
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`base shell` prefers bash, and every other route into the base lands in `/bin/sh`,
+because the account is created with it. The manual says a herdr pane lands in sh, which
+herdr's own configuration contradicts.
+
+## Premise
+
+Read at `9784821`: `provision.sh:339,341` pass `--shell /bin/sh`, and `wsl-toolkit.md:569-570`.
+
+## Approach
+
+The account's shell is bash where bash exists, on new bases and through `base
+ensure` on existing ones, read back by verify.sh. The manual is corrected.
+
+## Consumers
+
+Additive: a login lands in bash where it landed in sh.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then `getent passwd` in a scratch base names bash.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-144. An agent pane cannot be started in the project directory
+
+**Source** the old record's finding 46
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+herdr ignored `tab create --cwd PATH`, so an agent pane starts in the home
+directory. Every guide passes `--cwd '~'`, which hides it.
+
+## Premise
+
+Measured on 2026-09-17 on that day's nightly; not measured since.
+
+## Approach
+
+Re-measure on the current nightly. If it still ignores the path, every guide that
+starts an agent pane adds a `cd` step, and the limit is written with the upstream issue.
+
+## Decision
+
+⚠ The fix in herdr itself is upstream's. What this repository owns is the guides.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+wsl-toolkit --instance NAME base herdr -- tab create --cwd /workspaces/NAME
+```
+
+The pane's working directory, read in the pane.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-145. The adapter contract's example probe passes with no wrapper
+
+**Source** the old record's finding 49
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`adapters/README.md` tells an adapter author to probe with `as_account sh -lc
+'command -v NAME'`, which finds the npm binary first and passes with no wrapper.
+
+## Premise
+
+Read at `9784821`: `adapters/README.md:97-99`, while the three probes use `runuser -l`.
+
+## Approach
+
+The contract's snippet becomes the `runuser -l` form the probes use, and says why.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh docs
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-146. No channel gives an agent an environment variable
+
+**Source** the old record's finding 51
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+An agent herdr starts inherits the herdr service's environment, and `base agent`
+sends none, so a variable an agent needs has no route.
+
+## Premise
+
+Read at `9784821`: `cmd_base_agent.go:99` sends no Env, though `ExecRequest.Env` exists.
+
+## Approach
+
+`base agent --env NAME=VALUE` reaches the agent, or the guide documents herdr's own route if it is the only one.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then the agent reads the variable.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-147. After `base bootstrap`, agents bypass this tool's wrappers
+
+**Source** the old record's finding 62
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`base bootstrap` puts `~/.local/bin` first on PATH, so `muse`, `pi` and `omp`
+resolve to npm's binaries, which lose the model, the effort and the account guard. `base
+ensure` then fails, and its problem names no remedy.
+
+## Premise
+
+Read at `9784821`: `install_path_line` in `scripts/common/bootstrap.sh:1327-1335` prepends.
+
+## Approach
+
+The wrappers stay first after `base bootstrap`, by appending rather than prepending
+or by a repair in `base ensure`, and the probe names the remedy.
+
+## Consumers
+
+`bootstrap.sh` is fetched by URL. Appending keeps every tool on PATH, and only a
+name that exists twice resolves differently.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then `base bootstrap` and `base ensure` on a scratch base with an agent adapter.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-148. After a cancelled approval, herdr refuses every prompt, and no guide says how out
+
+**Source** the old record's finding 65
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Muse fires no hook when an approval is cancelled, so herdr keeps the agent
+`blocked` and refuses every prompt. The guides say not to send keys to a pane, which is
+the way out.
+
+## Premise
+
+Measured on 2026-09-17 in `WSL-76`; Muse Code 1.3.0.
+
+## Approach
+
+The agents skill and `examples/common/herdr.md` name the trap and the recovery.
+
+## Decision
+
+⚠ The missing hook is Muse's. What this repository owns is the guidance.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh docs
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-149. `bootstrap.sh --dry-run` reports a failure on an image without curl
+
+**Source** the old record's findings 4 and 19
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A dry run on `debian:latest` exits 1, and on `golang:1.25` exits 0. The only
+difference is curl, which the real run installs first.
+
+## Premise
+
+Read at `9784821`: the release-tag lookup at `bootstrap.sh:903-909` runs before the dry-run check at :917.
+
+## Approach
+
+The dry run returns before the lookup, and a case runs it with no curl on PATH.
+
+## Consumers
+
+`bootstrap.sh` is fetched by URL; a dry run stops reporting a failure that was not one.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then the dry run in `debian:latest` exits 0.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-150. A base build killed before its marker leaves a distribution only `wsl --unregister` can remove
+
+**Source** the old record's finding 5
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+A build killed before the marker is written leaves an unmarked distribution. `base
+remove` and `base recreate` both refuse it, and the refusal's advice runs the same
+removal.
+
+## Premise
+
+Read at `9784821`: `rollbackUnmarked` has no case, and `base.go:716-718` advises `base recreate`.
+
+## Approach
+
+Ownership is recorded before create, the advice is corrected, and a fake-WSL case drives a failed create.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the failed-create case.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-151. A cancelled `bsd run` says its budget ran out and exits 2
+
+**Source** the old record's finding 9
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Ctrl+C during a `bsd run` reports a spent budget and exits 2, where `distro run` exits 130.
+
+## Premise
+
+Read at `9784821`: `bsd.go:569-570` and :978-980, and `cmd_bsd.go:314-315`.
+
+## Approach
+
+A cancelled context is reported as cancelled, and the command exits 130.
+
+## Consumers
+
+An interrupted run exits 130 rather than 2, which is what the register calls a cancelled run.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the case.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-152. Four guest errors are named by the wrong line
+
+**Source** the old record's findings 12 and 15; finding 95 said they were fixed, and they were not
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A failed verification, two throwaway errors and one adapter error take the guest's
+first line, which is often a podman warning rather than the failure.
+
+## Premise
+
+Read at `9784821`: `base.go:1215`, `throwaway.go:1043` and :1070, `adapters.go:622`.
+
+## Approach
+
+All four go through `guestFailure`, with a case that puts a warning before the real error.
+
+## Consumers
+
+None: a message gets more accurate.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the case.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-153. An automount-off build logs one translate failure per Windows PATH entry
+
+**Source** the old record's finding 13
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A build with automount off relayed 93 `wsl: Failed to translate` lines.
+
+## Premise
+
+Read at `9784821`: `applyGrants` runs after the drives are unmounted, and the relay filters nothing.
+
+## Approach
+
+Those lines are dropped from the provisioning relay, or the order is changed.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then an automount-off scratch build logs none.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-154. bootstrap.sh's cases read it from outside the module, so no mutation row can hold one
+
+**Source** the old record's finding 17
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The cases read `scripts/common/bootstrap.sh` five levels up, which a module copy does not have.
+
+## Premise
+
+Read at `9784821`: `bootstrap_npm_test.go:19`; the module carries `shipped/bootstrap.sh`.
+
+## Approach
+
+The cases read the shipped copy, and gain rows.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, and each new row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-155. A drive WSL mounts during a long build fails the new base
+
+**Source** the old record's finding 18
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The provisioner sweeps the empty drive mount points once. A drive mounted after it
+leaves `/mnt/X`, and verify refuses the base.
+
+## Premise
+
+Read at `9784821`: the sweep at `provision.sh:581-597`, and `verify.sh:81-83`.
+
+## Approach
+
+The sweep runs again after the restart that applies `automount off`.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then an automount-off scratch build with a drive mounted late.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-156. `base doors` lists three world-writable device nodes and tries none of them
+
+**Source** the old record's findings 22 and 38
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+`/dev/kvm`, `/dev/dxg` and `/dev/vsock` are `crw-rw-rw-` in a zero-grant base, and
+`base doors` reports their mode only. What each reaches is unmeasured.
+
+## Premise
+
+Read at `9784821`: `doors.sh:170-182`, and the manual at `wsl-toolkit.md:1247`.
+
+## Approach
+
+One attempt per node as the account, reported like `interop.exec-pe`, and the manual says what each reached.
+
+## Consumers
+
+Additive: `base doors --json` gains rows.
+
+## Prove
+
+```bash
+wsl-toolkit --instance NAME base doors --json
+```
+
+Each node reports what the attempt reached.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-157. The muse probe calls the herdr reporter registered without Muse ever running it
+
+**Source** the old record's finding 26
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The probe reads the hooks back out of Muse's settings with jq. That proves the file
+it wrote, which forbidden-patterns.md forbids by name.
+
+## Premise
+
+Read at `9784821`: `adapters/muse/probe.sh:144-155`.
+
+## Approach
+
+The probe runs Muse and requires a hook event to reach the reporter.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh adapters
+```
+
+Exit 0, then the probe on a scratch base with Muse.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-158. Without the reporter, herdr shows a Muse pane as idle
+
+**Source** the old record's finding 27
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** blocked
+
+---
+
+## Problem
+
+herdr's Muse manifest matches no rule on Muse Code 1.3.0's screen.
+
+## Premise
+
+Measured on 2026-09-17; the muse adapter's reporter covers it.
+
+## Approach
+
+Re-measure with `herdr agent explain` on each nightly, and drop the reporter when a rule matches.
+
+## Decision
+
+⚠ **Blocked upstream**: the manifest rule is herdr's.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+wsl-toolkit --instance NAME base herdr -- agent explain AGENT
+```
+
+A rule matches Muse's screen.
+
+---
+
+## Closing
+
+Blocked; the Decision names on what.
+
+
+## WSL-159. An agent started through herdr runs in the shared network namespace
+
+**Source** the old record's finding 40 and question 3
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** blocked
+
+---
+
+## Problem
+
+`base exec --private-net` puts a command in its own namespace. An agent herdr
+starts is a child of the herdr service, so a flag on `base agent` cannot move it.
+
+## Premise
+
+Measured on 2026-09-17: a base cannot both put the account's processes in their
+own namespace and run containers as that account.
+
+## Approach
+
+Either the herdr service runs in a private namespace, which gives up rootless
+containers for the account, or the agents stay in the shared one.
+
+## Decision
+
+⚠ **Blocked on the operator's ruling**, the old record's question 3, which
+`WSL-68` left unanswered. Nothing else waits on it.
+
+## Consumers
+
+Depends on the ruling.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then an agent's `ip link` shows the namespace.
+
+---
+
+## Closing
+
+Blocked; the Decision names on what.
+
+
+## WSL-160. Three command groups keep two lists of their subcommands that nothing compares
+
+**Source** found while classifying the old record's finding 39
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`base`'s usage list and the manual's help forms are compared by a case. `distro`,
+`helper` and `shipped` keep the same two lists, and nothing compares them.
+
+## Premise
+
+Read at `9784821`: `sweep_test.go:72` covers `base` only. The lists agree today.
+
+## Approach
+
+The case covers every group.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, and a row that drops a subcommand from one list goes red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-161. A configuration that leaves out `systemd` turns systemd off
+
+**Source** found while classifying the old record's finding 116
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A `config.json` naming only the base's name, image and user is read as asking for
+no systemd and no passwordless sudo, and the next `base ensure` takes both away.
+
+## Premise
+
+Read at `9784821`: `catalog.go:494-495` copies both booleans whether or not the
+file names them. The acceptance suite's marker case met it on `s110`.
+
+## Approach
+
+An absent key keeps its default, for every boolean the loader copies, with a case.
+
+## Consumers
+
+A file that names a key reads exactly as before. A file that leaves one out gets
+the default its documentation promises.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the case red before the fix.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-162. Nothing holds a job container's log driver
+
+**Source** the old record's finding 81
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`job.go:972` names the log driver, and no case or row would notice it removed.
+
+## Premise
+
+Read at `9784821`: no case names `--log-driver`.
+
+## Approach
+
+A case reads the container script for it, and a row removes it.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, and the row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-163. `resources --host-engine` calls the engine outside the deadline door
+
+**Source** the old record's finding 90
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Every host-engine call goes through `engineCall`, with a total and a stall
+deadline, except one, which has its own two-minute limit.
+
+## Premise
+
+Read at `9784821`: `ReadHostEngineHolding` in `resources.go:130-137`; the guard case reads `engine.go` only.
+
+## Approach
+
+It goes through `engineCall`, and the guard reads every non-test file.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, and the widened guard red against the old call.
+
+---
+
+## Closing
+
+Open.

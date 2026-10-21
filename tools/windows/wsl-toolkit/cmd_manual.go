@@ -232,8 +232,8 @@ func roffEscape(value string) string {
 // ONES, so `-c` was published as `--c` in six places. Go's flag package accepts
 // either spelling, which is why nothing broke and why nobody noticed: the page
 // was wrong and the command still worked. ⚠ Every example in this tree writes
-// `-c`, so the manual disagreed with the examples beside it. `TODO/PROGRESS.md`
-// finding 6.
+// `-c`, so the manual disagreed with the examples beside it.
+// `docs/HISTORY/record.md` finding 6.
 func flagDashes(name string) string {
 	if len(name) == 1 {
 		return "-"

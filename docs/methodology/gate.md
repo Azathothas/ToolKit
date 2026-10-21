@@ -20,6 +20,19 @@ Typecheck, lint, format, the full test suite, and this unit's own acceptance
 checks. Green means green: a pre-existing failure is a debt to fix or to raise,
 never a line to wave past.
 
+⭐ **Run it with one command, not from memory.** This part is a LIST, and a
+list run by hand is run in the order somebody recalls it. One session ran its
+gate five times and typed a different subset each time; nothing failed, and it
+was simply not the same gate twice.
+
+```bash
+sh scripts/common/check-gate.sh
+```
+
+⛔ **A skipped check is reported as a skip, never as a pass**, and the runner
+prints that on its own line. A tool that is not installed means nothing about
+its subject was verified.
+
 Two disciplines that catch what a naive pass count hides:
 
 ⛔ **Count the test files the runner reports against the files on disk.** A
@@ -87,7 +100,8 @@ including the three lenses and what makes a pass real, is
 
 ⭐ **Silence from a pass is a result about the pass, not about the code.**
 [`reviews.md`](reviews.md) says what that means and what a pass with no findings
-owes instead.
+owes instead. Say what each pass swept, and where one genuinely found nothing,
+say what would have had to be true for it to fire.
 
 ---
 

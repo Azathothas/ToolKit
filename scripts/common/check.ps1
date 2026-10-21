@@ -41,7 +41,7 @@ if (-not $git) { [Console]::Error.WriteLine('check: git not found'); exit 2 }
 # for the reason its sh twin states. Measured on 2026-09-17 from a git repository
 # with no tools/check: this half ended 1 where the twin ended 2, because
 # $ErrorActionPreference = 'Stop' made Push-Location's failure terminating and the
-# exit 2 below was never reached. TODO/PROGRESS.md findings 3 and 34.
+# exit 2 below was never reached. docs/HISTORY/record.md findings 3 and 34.
 $repoRoot = (& $git -C $PSScriptRoot rev-parse --show-toplevel 2>$null)
 if ($LASTEXITCODE -ne 0 -or -not $repoRoot) { [Console]::Error.WriteLine('check: not a git repository'); exit 2 }
 $repoRoot = $repoRoot.Trim()
@@ -62,7 +62,7 @@ $checkDir = Join-Path $repoRoot 'tools/check'
 # Push-Location onto a missing directory is a TERMINATING error, so pwsh ends 1
 # and the exit 2 this file documents is never reached - which merges "could not
 # run" into "a check failed", and is what this half did where its sh twin
-# answered 2. TODO/PROGRESS.md finding 34.
+# answered 2. docs/HISTORY/record.md finding 34.
 if (-not (Test-Path -LiteralPath $checkDir -PathType Container)) {
     [Console]::Error.WriteLine("check: $checkDir does not exist, so the gate cannot be built")
     exit 2

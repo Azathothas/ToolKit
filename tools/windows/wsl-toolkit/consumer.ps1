@@ -283,7 +283,7 @@ function Get-ReleaseAssets {
       digests; dropping them to save the bandwidth would delete that check and
       nothing would replace it. What the page describes is what a consumer
       NEEDS, and the case named below is what proves that smaller set is
-      actually enough. TODO/PROGRESS.md finding 31.
+      actually enough. docs/HISTORY/record.md finding 31.
     #>
     param([Parameter(Mandatory = $true)][string]$Into)
     $gh = Get-Command gh -CommandType Application -ErrorAction SilentlyContinue
@@ -336,6 +336,16 @@ function Resolve-LatestTag {
         Where-Object { $_ -like 'wsl-toolkit-v*' })
     if ($tags.Count -eq 0) { return '' }
     return $tags[0]
+}
+
+# A THROW BEFORE THE FIRST CASE IS "COULD NOT RUN", AND THAT IS EXIT 2. Under
+# $ErrorActionPreference = 'Stop' an unhandled throw ends the script with 1, which
+# reads as a case that failed. The trap turns a throw during setup into a refusal,
+# and lets one after setup through unchanged. TOOL-34.
+$script:SettingUp = $true
+trap {
+    if ($script:SettingUp) { Exit-Cannot "setup failed: $_" }
+    break
 }
 
 # -- setup -------------------------------------------------------------------
@@ -479,6 +489,7 @@ if (Test-Path -LiteralPath $sumsFile) {
         if ($parts.Count -eq 2) { $script:SignedAssets += $parts[1].TrimStart('*') }
     }
 }
+$script:SettingUp = $false
 
 try {
     # -- what the release itself claims --------------------------------------

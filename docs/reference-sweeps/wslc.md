@@ -874,7 +874,7 @@ which is not a shim.
    `observe.go`, which is already engine-agnostic. Prove the podman path is
    unchanged before writing a line of wslc. ⛔ **A note against my own
    recommendation**: an interface with one implementation is the
-   speculative-abstraction case, and this repository's own `references.md` says
+   speculative-abstraction case, and this repository's own `research.md` says
    to adopt mechanisms rather than architectures. The mitigation is the guard in
    the sentence above, and the mitigation is load-bearing.
 4. **Do not build an adapter for wslc-remote.** section 7.4 is the record.

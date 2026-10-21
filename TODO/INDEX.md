@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 158  open 0  blocked 0  done 158
+total 216  open 44  blocked 5  done 167
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 0 | 0 | 77 | 77 |
-| P2 | 0 | 0 | 70 | 70 |
-| P3 | 0 | 0 | 7 | 7 |
-| **all** | **0** | **0** | **158** | **158** |
+| P1 | 3 | 0 | 80 | 83 |
+| P2 | 28 | 2 | 72 | 102 |
+| P3 | 13 | 3 | 11 | 27 |
+| **all** | **44** | **5** | **167** | **216** |
 
 ---
 
@@ -48,6 +48,11 @@ total 158  open 0  blocked 0  done 158
 | DOC-06 | P1 | M | done | The documents carry the story of their own fixes | [`docs.md`](docs.md) |
 | DOC-07 | P2 | S | done | There are two AGENTS.md files | [`docs.md`](docs.md) |
 | DOC-08 | P2 | L | done | The live pages carry dated measurements and the story of their own work again | [`docs.md`](docs.md) |
+| DOC-09 | P2 | M | done | The methodology is a month behind TEMPLATE | [`docs.md`](docs.md) |
+| DOC-10 | P1 | S | done | The record carries history, a findings list and every session's measurements | [`docs.md`](docs.md) |
+| DOC-11 | P3 | S | open | Lessons the old record held have no live page | [`docs.md`](docs.md) |
+| DOC-12 | P3 | S | open | The muse-code guide starts an agent named `muse` and then prompts `work` | [`docs.md`](docs.md) |
+| DOC-13 | P3 | S | done | The router and the rules count the release and CI wrong | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
@@ -76,6 +81,15 @@ total 158  open 0  blocked 0  done 158
 | TOOL-26 | P1 | S | done | The job that proves every guard cannot finish the table it proves | [`tooling.md`](tooling.md) |
 | TOOL-27 | P2 | M | done | The Claude desktop app runs one account per user, and a second instance shares everything with the first | [`tooling.md`](tooling.md) |
 | TOOL-28 | P2 | S | done | A carriage return inside a line passes the control-bytes rule | [`tooling.md`](tooling.md) |
+| TOOL-29 | P1 | S | done | `PROGRESS.md` grew to 2,776 lines and no check fired | [`tooling.md`](tooling.md) |
+| TOOL-30 | P1 | S | done | The docs check's cited-path rule never ran, and it carried another project's rules | [`tooling.md`](tooling.md) |
+| TOOL-31 | P3 | S | done | The gate's documented time is 30 seconds, and it takes minutes | [`tooling.md`](tooling.md) |
+| TOOL-32 | P2 | M | open | A workflow's own shell has no case | [`tooling.md`](tooling.md) |
+| TOOL-33 | P2 | S | open | A Go case that passes only on Windows can reach `main`, because the Linux checks are run by hand | [`tooling.md`](tooling.md) |
+| TOOL-34 | P2 | S | done | A PowerShell runner that cannot run can still exit 1 | [`tooling.md`](tooling.md) |
+| TOOL-35 | P3 | S | done | The gate's own list says the analyzer covers `scripts/` alone | [`tooling.md`](tooling.md) |
+| TOOL-36 | P3 | S | done | A changelog stamp later than the clock passes the gate | [`tooling.md`](tooling.md) |
+| TOOL-37 | P3 | S | open | A nightly whose upload fails loses the whole prerelease | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -107,6 +121,33 @@ total 158  open 0  blocked 0  done 158
 | WSL-29 | P3 | S | done | Every run imports, even when a distro from the same image is registered | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-30 | P2 | XL | done | The mockup's other two thirds: a podman adapter | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-31 | P1 | XL | done | A portable entry point for isolated Linux jobs on Windows | [`issue-6.md`](issue-6.md) |
+| WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-35 | P1 | L | done | Output is bounded without saying so and arrives only at the end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-36 | P1 | M | done | `gc` removes every container before it checks any age | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-37 | P2 | M | done | The helper never releases an upload or an artifact set | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-38 | P2 | S | done | The CLI accepts a trailing word and silently drops what follows it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-39 | P2 | M | done | An image that could not be pulled counts as a job that ran and failed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-40 | P1 | M | done | What a second reading of the core found | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-41 | P1 | M | done | What a failure is allowed to hide | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-42 | P1 | L | done | What this tool owns, and how it proves it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-43 | P1 | L | done | Many agents, many bases | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-44 | P1 | L | done | What a long-lived helper freezes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-45 | P1 | M | done | A deadline that bounds the caller's wall time | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-46 | P1 | M | done | The answer is exactly what happened | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-47 | P1 | M | done | The boundary the manual promises | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-48 | P1 | M | done | The embedded script tells the truth | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-49 | P1 | L | done | One command to readiness | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-50 | P1 | L | done | Diagnostics and a heartbeat for the base and what runs inside it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-51 | P1 | L | done | A config the agent does not have to write | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-52 | P2 | L | done | The six commands that make an answer actionable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-53 | P1 | M | done | The tool updates itself, and readiness says whether it should | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-54 | P2 | S | done | The three answers a diagnostic has to tell apart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-55 | P2 | S | done | A report that creates the thing it is describing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-56 | P2 | M | done | What a failed job leaves a reader to ask the machine by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-57 | P1 | S | done | Two selftest cases were written against one host's environment | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-58 | P2 | M | done | `inspect` is the one report the helper route cannot serve | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-59 | P2 | L | done | the podman adapter, on what the matrix says it can be built | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-60 | P2 | M | done | the base accepts a memory limit and does not enforce it | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-61 | P2 | S | done | `base ensure` cannot recover a base whose engine has stale run state | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
@@ -168,33 +209,50 @@ total 158  open 0  blocked 0  done 158
 | WSL-117 | P1 | S | done | `gc --apply` cannot remove a job's host directory when Windows redirects the state directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-118 | P1 | S | done | A caller Windows redirects keeps a second state directory, and nothing says so | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-119 | P1 | S | done | git runs in a tree a container or a helper client wrote, and a setting there runs a program | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-35 | P1 | L | done | Output is bounded without saying so and arrives only at the end | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-36 | P1 | M | done | `gc` removes every container before it checks any age | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-37 | P2 | M | done | The helper never releases an upload or an artifact set | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-38 | P2 | S | done | The CLI accepts a trailing word and silently drops what follows it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-39 | P2 | M | done | An image that could not be pulled counts as a job that ran and failed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-40 | P1 | M | done | What a second reading of the core found | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-41 | P1 | M | done | What a failure is allowed to hide | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-42 | P1 | L | done | What this tool owns, and how it proves it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-43 | P1 | L | done | Many agents, many bases | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-44 | P1 | L | done | What a long-lived helper freezes | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-45 | P1 | M | done | A deadline that bounds the caller's wall time | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-46 | P1 | M | done | The answer is exactly what happened | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-47 | P1 | M | done | The boundary the manual promises | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-48 | P1 | M | done | The embedded script tells the truth | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-49 | P1 | L | done | One command to readiness | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-50 | P1 | L | done | Diagnostics and a heartbeat for the base and what runs inside it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-51 | P1 | L | done | A config the agent does not have to write | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-52 | P2 | L | done | The six commands that make an answer actionable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-53 | P1 | M | done | The tool updates itself, and readiness says whether it should | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-54 | P2 | S | done | The three answers a diagnostic has to tell apart | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-55 | P2 | S | done | A report that creates the thing it is describing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-56 | P2 | M | done | What a failed job leaves a reader to ask the machine by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-57 | P1 | S | done | Two selftest cases were written against one host's environment | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-58 | P2 | M | done | `inspect` is the one report the helper route cannot serve | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-120 | P2 | M | open | A job id is hard to use: a prefix, the container name and one-line JSON are all refused | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-121 | P1 | M | open | An ephemeral job keeps its host record, and a killed caller leaves its job running | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-122 | P2 | M | open | Nothing is cached between jobs, so each job installs its toolchain again | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-123 | P2 | M | open | A job cannot run as an account its image lacks, and `base exec` cannot run as another account | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-124 | P2 | M | open | `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-125 | P2 | M | open | A 9P grant is slow, and nothing copies a checkout into the base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-126 | P2 | M | open | `stop` does not reach a session's child that left the process group | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-127 | P2 | M | open | The tool's own exit 2 cannot be told from a job's exit 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-128 | P2 | S | open | An input file keeps CRLF and no executable bit | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-129 | P2 | S | open | A project cannot say which version of the tool it needs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-130 | P2 | L | open | An engine inside a base is set up by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-131 | P2 | M | open | Job defaults are repeated in every wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-132 | P2 | S | open | Two acceptance cases are not isolated from what they run beside | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-133 | P3 | S | open | `base shell` has no `--private-net` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-134 | P3 | S | blocked | A real window's focus event was never produced for herdr's `--remote` signals | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-135 | P3 | S | blocked | The muse-code guide was never run as one ordered pass from an empty host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-136 | P2 | M | open | A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-137 | P2 | M | open | A base stops running containers after a host restart until someone repairs it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-138 | P2 | M | blocked | An adapter installs from npm where the provider publishes an official installer | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-139 | P3 | S | open | `base ensure` leaves older herdr nightly clients on disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-140 | P2 | S | open | A base build fails when one package mirror stalls, and nothing retries | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-141 | P2 | S | open | The herdr adapter installs 0.9.0 when this repository publishes 0.9.5 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-142 | P3 | S | open | `base doors --via-helper`'s refusal was never run against a live helper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-143 | P3 | S | open | The base account's login shell is `/bin/sh` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-144 | P2 | S | open | An agent pane cannot be started in the project directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-145 | P2 | S | open | The adapter contract's example probe passes with no wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-146 | P3 | S | open | No channel gives an agent an environment variable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-147 | P1 | S | open | After `base bootstrap`, agents bypass this tool's wrappers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-148 | P2 | S | open | After a cancelled approval, herdr refuses every prompt, and no guide says how out | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-149 | P2 | S | open | `bootstrap.sh --dry-run` reports a failure on an image without curl | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-150 | P2 | M | open | A base build killed before its marker leaves a distribution only `wsl --unregister` can remove | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-151 | P2 | S | open | A cancelled `bsd run` says its budget ran out and exits 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-152 | P2 | S | open | Four guest errors are named by the wrong line | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-153 | P3 | S | open | An automount-off build logs one translate failure per Windows PATH entry | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-154 | P3 | S | open | bootstrap.sh's cases read it from outside the module, so no mutation row can hold one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-155 | P2 | S | open | A drive WSL mounts during a long build fails the new base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-156 | P2 | M | open | `base doors` lists three world-writable device nodes and tries none of them | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-157 | P2 | S | open | The muse probe calls the herdr reporter registered without Muse ever running it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-158 | P3 | S | blocked | Without the reporter, herdr shows a Muse pane as idle | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-159 | P2 | M | blocked | An agent started through herdr runs in the shared network namespace | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-160 | P3 | S | open | Three command groups keep two lists of their subcommands that nothing compares | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-161 | P1 | S | open | A configuration that leaves out `systemd` turns systemd off | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-162 | P3 | S | open | Nothing holds a job container's log driver | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-163 | P3 | S | open | `resources --host-engine` calls the engine outside the deadline door | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 
@@ -218,56 +276,30 @@ Defined once, here, and meant.
 
 ---
 
-## ⭐ The argument behind the order these were worked in
+## ⭐ The argument behind the current order
 
-Written down so a later session can re-derive it rather than re-argue it.
-⚠ **This is a record of an ordering, not a live work order.** Every entry is
-closed, and [`PROGRESS.md`](PROGRESS.md) is where the next one will be.
+Written down so a later session can re-derive it rather than re-argue it. The
+order itself is in [`PROGRESS.md`](PROGRESS.md), ruling 31's. The orderings of
+earlier batches are in
+[`../docs/HISTORY/record.md`](../docs/HISTORY/record.md).
 
-### The 2026-08-29 batch, ordered by what unlocked what
+⭐ **The record and its checks first** (`DOC-10`, `TOOL-29`, `TOOL-30`,
+`DOC-09`). Every later commit is checked by them, so a rule armed late lets the
+commits before it through unchecked. `TOOL-30` armed a rule that had never run,
+and it found live pages citing paths that had moved.
 
-⭐ **`TOOL-04` first, and it is not the most important entry.** It arms the two
-checks that MEASURE the defects `DOC-02` and `DOC-03` are about. Working those
-two first would have meant fixing what could be seen by reading, declaring it
-done, and leaving whatever a reading missed. The instrument comes before the
-count.
+⭐ **The survey's asks in parallel, split by code area rather than by priority.**
+Seven builders work at once, each in its own worktree, and a split by file keeps
+their merges mechanical. Two builders that must touch one file keep their changes
+in separate hunks.
 
-**`TOOL-05` next because it is small and it was making a whole workflow lie.**
-An unread issue was reported as a failed check, so the weekly pass had been red
-since the first issue was filed. It is unrelated to everything else in the
-batch, which is exactly why it goes early rather than being carried.
+⚠ **`WSL-121`, `WSL-147` and `WSL-161` are P1 inside that work.** Each is a
+documented behaviour the tool does not have today, and `WSL-161` takes systemd away
+from a base whose configuration leaves the key out. A builder takes them first
+within its share.
 
-**Then `DOC-02`, `DOC-04`, `DOC-03`, in that order.** `DOC-02` is mechanical and
-touches every file, so it goes before anything that would have to be written
-twice. `DOC-04` removes nine files, and seven of `DOC-03`'s seventeen findings
-were in them, so removing first makes the remaining ten the real list rather
-than a list of things about to be deleted.
+⚠ **The tooling after the asks**, because `TOOL-33`'s pre-push hook makes every
+later push slower, and the builders' branches are merged before it lands.
 
-**`TOOL-06`, `TOOL-07` and `TOOL-08` are where they are because each was found
-by doing the one before it.** `TOOL-06` came out of wiring `TOOL-04`'s checks
-into both halves of the gate; `TOOL-07` restored a twin comparison that had been
-removed with the files it compared; `TOOL-08` came out of validating a change to
-the workflow `TOOL-04` had just edited. ⚠ None of the three was in the plan, and
-each is a P1 or a P2 the plan would not have found.
-
-**`WSL-13`, `WSL-14` and `WSL-15` last**, because they change a file other
-repositories fetch. Everything before them is internal, so a mistake there
-costs this tree a commit; a mistake here costs a caller nobody can reach.
-⭐ `WSL-15` is last of the three: it wraps the script the other two change, and
-wrapping a moving target is how a wrapper drifts.
-
-### The 2026-08-27 batch, kept because the reasoning still holds
-
-**`WSL-01` outranked everything regardless of size.** It was the only entry
-where the software reported success over a failure. Every other entry costs
-someone time; that one cost them a wrong belief, and the documented CI example
-was the affected path.
-
-**`TOOL-01` came next despite being infrastructure**, because it protects the
-record every other entry is tracked in, and the failure it prevents is the one
-`work-todo.md` says was actually paid for.
-
-**`BSD-01` was P1 and sat behind the `WSL-*` work**, not because it was blocked
-but because the half of it that was going to be built here belonged elsewhere.
-⚠ **`BSD-02` was P3 and small**, written so nobody re-derives the same negative
-answer in six months.
+⛔ **`WSL-127` waits for a major**, by ruling 31, and the five blocked entries wait
+on what each one names. None of them blocks anything else.

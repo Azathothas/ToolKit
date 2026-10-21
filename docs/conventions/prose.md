@@ -153,6 +153,10 @@ heading shown as an example, and stays.
 and the reference sweeps are evidence of what was believed on a date, and they
 keep their dates.
 
+⚠ **The record says when by a stamp, never by "this session".** A sentence that
+says "at the start of this session" is true for one reader, and after the
+rewrite nobody can tell which session it meant.
+
 ⚠ **A comment in code is the maintainer's record beside the code**, and this
 rule does not reach it.
 
