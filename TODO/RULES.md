@@ -325,6 +325,12 @@ related work". Four forks, answered before any change:
   operator's own `qemu-binfmt-restore.service` is retired in
   `wsl-toolkit-base`, and the installed skills are updated from the tree.
 
+**32.** ⭐ **2026-10-21: one base, under a name that cannot be mistaken.** The operator:
+"remove the `wsl-toolkit-base` and have a canonical name, so agents don't confuse
+`wsl-toolkit` & `wsl-toolkit-base` ever again, record for now, fix properly after session
+limit resets". Recorded at the pause and built after it, `WSL-167`. ⚠ **It amends ruling
+2**, which named `wsl-toolkit-base` the one base for every agent.
+
 ## 9. Before every push
 
 ⭐ **A green local gate is not CI.** Run the Go tests with `TEMP` and `TMP` at an

@@ -15275,3 +15275,60 @@ Exit 0 with the case.
 ## Closing
 
 Open.
+
+## WSL-167. Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other
+
+**Source** the operator, 2026-10-21, ruling 32: "remove the `wsl-toolkit-base` and have a canonical name, so agents don't confuse `wsl-toolkit` & `wsl-toolkit-base` ever again"
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+This host has the default instance's jobs base, a distribution called `wsl-toolkit`,
+and the instance `base`, a distribution called `wsl-toolkit-base`. Each name reads like the
+other's. An agent that drops `--instance base` acts on the jobs base, one that types
+`--instance base` where it does not exist builds a new `wsl-toolkit-base`, and the skills
+review found a reader cannot tell which is which from the skill alone.
+
+## Premise
+
+Measured on 2026-10-21: `wsl -l -v` lists both, `InstanceDistro` names an instance's
+distribution `wsl-toolkit-NAME`, and the default instance's is `wsl-toolkit` itself. Read:
+`internal/toolkit/instance.go:79`.
+
+## Approach
+
+Remove `wsl-toolkit-base`, the operator's base, by ruling 32. Give the default
+instance's base one canonical name that cannot be read as an instance suffix, and give an
+instance's distribution a name that cannot be read as the default's, so a name alone says
+which it is. The tool, the manual, the skills, the examples and `RULES.md` ruling 2 move
+together. An existing base keeps working: its recorded name is read, and the tool says how
+to move to the canonical one.
+
+## Decision
+
+Ruled by the operator, ruling 32, recorded on 2026-10-21T15:12:03Z and built after
+the pause. ⚠ The removal deletes the base and its disk, so it runs in the same change as
+the rename, not before it. Which names to choose, and whether renaming an existing
+distribution is offered or refused, is this entry's to settle with a recommendation.
+
+## Consumers
+
+A break by the register's definition if the default distribution's name changes
+for an existing caller. The approach keeps an existing base's recorded name, so it is
+additive unless the entry finds it cannot be.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then `wsl -l -v` lists one base whose name says what it is, and the skills name it.
+
+---
+
+## Closing
+
+Open.

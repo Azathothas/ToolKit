@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 221  open 47  blocked 5  done 169
+total 222  open 48  blocked 5  done 169
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 3 | 0 | 80 | 83 |
+| P1 | 4 | 0 | 80 | 84 |
 | P2 | 30 | 2 | 73 | 105 |
 | P3 | 14 | 3 | 12 | 29 |
-| **all** | **47** | **5** | **169** | **221** |
+| **all** | **48** | **5** | **169** | **222** |
 
 ---
 
@@ -258,6 +258,7 @@ total 221  open 47  blocked 5  done 169
 | WSL-164 | P2 | S | open | `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-165 | P2 | S | done | `text-tool eol` creates an empty file at a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-166 | P3 | S | open | `text-tool eol` answers 0 for a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-167 | P1 | M | open | Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

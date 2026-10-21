@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, on the operator's request to rewrite the record to the model, sync the methodology, refresh the skills and finish all WSL work
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: the record rewritten, the methodology synced, 63 entries filed and 11 closed; the builders paused on wip/ branches
-entries         total 221  open 47  blocked 5  done 169
+entries         total 222  open 48  blocked 5  done 169
 this session    ruling 31
 ```
 
@@ -36,13 +36,13 @@ Measured on this host unless a row says read.
 
 | | what is there, and how to undo it |
 | --- | --- |
-| the tool | `%USERPROFILE%\bin\wsl-toolkit.exe` 7.0.0, from `selfupdate`; the next `selfupdate` replaces it |
-| distributions | `podman-machine-default`, stopped and WSL's default; `wsl-toolkit`, the jobs base, 58.4 GB; `wsl-toolkit-base`, the operator's base, 1.9 GB, rebuilt on 2026-10-21 with the herdr adapter alone. ⚠ Neither base disk is sparse |
+| the tool | `%USERPROFILE%\bin\wsl-toolkit.exe` 7.0.0, from `selfupdate`; the next `selfupdate` replaces it. `gc --include-live --apply` and `gc --images --apply` on 2026-10-21 left the jobs base with no job, session or image of this work |
+| distributions | `podman-machine-default`, stopped and WSL's default; `wsl-toolkit`, the jobs base, 58.4 GB; `wsl-toolkit-base`, the operator's base, 1.9 GB, rebuilt on 2026-10-21 with the herdr adapter alone. All three are stopped: the operator asked for `wsl --shutdown` at the pause. ⚠ Neither base disk is sparse |
 | the podman connection | `podman-machine-default-root`, because the machine's rootless socket is dead (finding 76 of the old record). Undo with `podman system connection default podman-machine-default` once that socket works |
-| the package's copy of the state directory | `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\wsl-toolkit`, `WSL-118`: 503 job directories, a configuration, a `base.json` and a ledger. Ruling 31 empties it this session. The job that explains finding 8 is copied to `.tmp/finding8-4e94faa38b4c9c1c` |
+| the package's copy of the state directory | removed on 2026-10-21 under ruling 31, with its 503 job directories, `WSL-118`. A Bash shell this desktop app starts recreates it when it runs the tool. The job that explains finding 8 is kept at `.tmp/finding8-4e94faa38b4c9c1c` |
 | `wsl-toolkit-base` | runs `wsl-toolkit-binfmt.service` and the operator's own `qemu-binfmt-restore.service`; ruling 31 retires the second. It holds the test grant `.tmp/wsl78/proj` at `/workspaces/proj` |
-| `wslc` | holds `archlinux:latest` and `alpine:latest` from `WSL-110`'s drive, beside two images that are the operator's. Remove the two by name; `wslc image prune` would take the operator's too |
-| scratch under `.tmp` | herdr's source and builds and a verified nightly, about 1.1 GB, kept from 2026-09-17; each removable by its literal path |
+| `wslc` | the Arch and Alpine images this work pulled are removed. The `debian`, `wgcf-connector` and `rust` images are not this work's and stay |
+| scratch under `.tmp` | emptied on 2026-10-21, 2.9 GB, except `finding8-4e94faa38b4c9c1c`, `bsd67-driver` (kept by `WSL-67`), the test grant `wsl78` and the empty `go-tmp` |
 
 ## This session
 
@@ -109,7 +109,9 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    `qemu-binfmt-restore.service` retired, the installed skills updated.
 8. **Not this release**, ruling 31: `WSL-127` and `WSL-166`, exit codes that change, each a
    break.
-9. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
+9. **One base under a canonical name**, ruling 32: `WSL-167`, which removes
+   `wsl-toolkit-base`. First after the pause, before the builders' merges.
+10. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
    `WSL-158` and `WSL-159`.
 
 ## Open questions for the operator
