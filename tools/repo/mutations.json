@@ -2,6 +2,123 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "herdr nightly: an ensure that finds its client still prunes the older ones",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/herdr_nightly.go",
+      "find": "\t\tif err := pruneHerdrClients(dir, tag, log); err != nil {\n\t\t\treturn \"\", err\n\t\t}\n\t\treturn exe, nil\n",
+      "replace": "\t\treturn exe, nil\n",
+      "run": "TestAnEnsureThatFindsItsClientStillPrunesTheOlderOnes",
+      "args": []
+    },
+    {
+      "label": "herdr nightly: the prune leaves a directory that is not a nightly's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/herdr_nightly.go",
+      "find": "\t\tif e.IsDir() && e.Name() != keep && herdrNightlyTagRE.MatchString(e.Name()) {\n",
+      "replace": "\t\tif e.IsDir() && e.Name() != keep {\n",
+      "run": "TestAnEnsureThatFindsItsClientStillPrunesTheOlderOnes",
+      "args": []
+    },
+    {
+      "label": "muse: a SessionStart that never reached the reporter is a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "      problem \"Muse ran session $session and its SessionStart never reached the herdr reporter at $HOOK, so Muse does not run the hook $MUSE_SETTINGS registers. Run: base ensure\"\n",
+      "replace": "      printf 'herdr_reporter_session_start missing\\n'\n",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: the reporter's line is this session's, not any SessionStart",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "grep -qF \"SessionStart for $session \" \"$REPORTER_LOG\"",
+      "replace": "grep -qF \"SessionStart for \" \"$REPORTER_LOG\"",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: the probe's Muse session runs in a fresh directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "session_out=$(cd \"$scratch/work\" && as_account",
+      "replace": "session_out=$(cd \"$TK_HOME\" && as_account",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: the probe's Muse session reads nothing from stdin",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "      'wsl-toolkit probe' </dev/null 2>\"$scratch/stderr\")\n",
+      "replace": "      'wsl-toolkit probe' 2>\"$scratch/stderr\")\n",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: the probe's Muse session keeps its data and cache in the scratch directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "as_account XDG_DATA_HOME=\"$scratch/data\" XDG_CACHE_HOME=\"$scratch/cache\" \\\n",
+      "replace": "as_account \\\n",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: the probe removes its scratch directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "    rm -rf \"$scratch\"\n",
+      "replace": "",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: a Muse that cannot run its echo session is a problem naming why",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "    if [ \"$ran\" -ne 0 ]; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: an echo session whose answer names no session is a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "    elif [ -z \"$session\" ]; then\n",
+      "replace": "    elif false; then\n",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "herdr: the default release is the build this repository published",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "HERDR_URL_BASE=https://github.com/Azathothas/ToolKit/releases/download/wsl-toolkit-v7.0.0\n",
+      "replace": "HERDR_URL_BASE=https://github.com/herdrdev/herdr/releases/download/v$HERDR_VERSION\n",
+      "run": "TestTheDefaultHerdrIsTheBuildThisRepositoryPublished",
+      "args": []
+    },
+    {
+      "label": "herdr: the default asset carries its version, as release.yml names it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "HERDR_ASSET_STEM=herdr-$HERDR_VERSION\n",
+      "replace": "HERDR_ASSET_STEM=herdr\n",
+      "run": "TestTheDefaultHerdrIsTheBuildThisRepositoryPublished",
+      "args": []
+    },
+    {
+      "label": "herdr: a configured version still downloads herdr's own release",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "  HERDR_URL_BASE=https://github.com/herdrdev/herdr/releases/download/v$HERDR_VERSION\n  HERDR_ASSET_STEM=herdr\n",
+      "replace": "",
+      "run": "TestTheDefaultHerdrIsTheBuildThisRepositoryPublished",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grants write keeps another configuration's ledger rows",
       "file": "internal/toolkit/grants.sh",
       "find": "        if [ -n \"$kept_target\" ] && [ \"$kept_key\" != \"$TK_GRANT_OWNER\" ] &&\n",

@@ -154,3 +154,64 @@ if [ -f "$MUSE_SETTINGS" ] && command -v jq >/dev/null 2>&1; then
     "$MUSE_SETTINGS" 2>/dev/null)
   printf 'herdr_reporter_events %s\n' "${registered:-none}"
 fi
+
+# -- and Muse runs it ----------------------------------------------------------------
+# ⛔ THE LINE ABOVE READS THE FILE install.sh WROTE, AND THAT PROVES install.sh WROTE IT.
+# A hook in a file Muse does not read, or outside a matcher group, read back as six
+# registered events and never ran. So the probe runs one session of Muse's credential-free
+# echo provider, and looks for that session's SessionStart in the reporter's own log.
+# Finding 26, WSL-157.
+#
+# ⛔ IN A DIRECTORY NO PANE HAS. The reporter binds a session to the herdr pane whose
+# working directory is the session's, so a session started in the account's home could
+# claim one of the operator's panes. A fresh directory is no pane's, so the reporter
+# logs the session and reports nothing to herdr.
+#
+# ⭐ AND IT LEAVES NOTHING OF MUSE'S. --no-session-log keeps the session out of the
+# account's history, and Muse's data and cache directories are the scratch directory's,
+# which goes when the session ends. Measured on Muse Code 1.4.11: the reporter's log
+# line was then the only change under the account's home.
+# ⛔ THE CONFIGURATION AND STATE DIRECTORIES STAY THE ACCOUNT'S. The first is where the
+# hook is registered, and the reporter writes its log under the second.
+#
+# ⚠ STDIN IS /dev/null. This script reaches the shell on its stdin, and a command that
+# read stdin would take the rest of it.
+REPORTER_LOG=$TK_HOME/.local/state/wsl-toolkit/herdr-muse/log
+if [ ! -x "$HOOK" ] || [ ! -x "$LAUNCHER" ]; then
+  # Nothing to run, and the lines above have said why.
+  :
+elif ! command -v herdr >/dev/null 2>&1 && [ ! -x /usr/local/bin/herdr ]; then
+  printf 'herdr_reporter_session_start unmeasured: no herdr in this base to report to\n'
+elif ! command -v jq >/dev/null 2>&1; then
+  printf 'herdr_reporter_session_start unmeasured: no jq to read Muse with\n'
+else
+  scratch=$(as_account mktemp -d /tmp/wsl-toolkit-muse-probe.XXXXXX 2>/dev/null) || scratch=
+  case $scratch in
+    /tmp/wsl-toolkit-muse-probe.?*) ;;
+    *) scratch= ;;
+  esac
+  if [ -z "$scratch" ] || ! as_account mkdir "$scratch/work" "$scratch/data" "$scratch/cache"; then
+    problem "no scratch directory for a Muse session in /tmp, so whether Muse runs the herdr reporter is unproved"
+  else
+    deadline=
+    command -v timeout >/dev/null 2>&1 && deadline='timeout 60'
+    # shellcheck disable=SC2086  # $deadline is a command and its argument, or nothing
+    session_out=$(cd "$scratch/work" && as_account XDG_DATA_HOME="$scratch/data" XDG_CACHE_HOME="$scratch/cache" \
+      MUSE_NO_AUTO_UPDATE=1 $deadline "$LAUNCHER" exec --json --provider echo --no-session-log \
+      'wsl-toolkit probe' </dev/null 2>"$scratch/stderr")
+    ran=$?
+    said=$(head -1 "$scratch/stderr" 2>/dev/null)
+    # ⚠ EVERY RECORD CARRIES THE SESSION'S STREAM, and the hook's payload names the same id.
+    session=$(printf '%s\n' "$session_out" | jq -rR 'fromjson? | select(.stream.kind? == "session") | .stream.id' 2>/dev/null | head -1)
+    rm -rf "$scratch"
+    if [ "$ran" -ne 0 ]; then
+      problem "Muse could not run a session of its echo provider, exit $ran: ${said:-it said nothing}. So whether it runs the herdr reporter is unproved"
+    elif [ -z "$session" ]; then
+      problem "Muse ran a session of its echo provider and its answer named no session, so whether it runs the herdr reporter is unproved"
+    elif grep -qF "SessionStart for $session " "$REPORTER_LOG" 2>/dev/null; then
+      printf 'herdr_reporter_session_start reached\n'
+    else
+      problem "Muse ran session $session and its SessionStart never reached the herdr reporter at $HOOK, so Muse does not run the hook $MUSE_SETTINGS registers. Run: base ensure"
+    fi
+  fi
+fi

@@ -287,8 +287,8 @@ of the same kind needs another name.
 Send it a turn, and read the answer:
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent prompt work "Answer with only the number of files git tracks here."
-wsl-toolkit --instance base base herdr -- agent read work --lines 40
+wsl-toolkit --instance base base herdr -- agent prompt muse "Answer with only the number of files git tracks here."
+wsl-toolkit --instance base base herdr -- agent read muse --lines 40
 ```
 
 Use `--kind pi` or `--kind omp` for the other two.

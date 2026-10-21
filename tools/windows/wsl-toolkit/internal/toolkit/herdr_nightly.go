@@ -180,6 +180,10 @@ func herdrClientArch() (string, error) {
 //
 // ⛔ NOTHING IS WRITTEN UNTIL THE ZIP'S DIGEST MATCHES THE NIGHTLY'S SHA256SUMS, and an
 // entry that would land outside the client's directory refuses the whole zip.
+//
+// ⛔ THE OLDER CLIENTS GO ON BOTH PATHS. The prune used to run only after a client was
+// written, so an ensure that found the current one already in place returned before it
+// and every older nightly's directory stayed. Finding 36, WSL-139.
 func ensureHerdrClient(ctx context.Context, home, tag string, log func(string)) (string, error) {
 	if !herdrNightlyTagRE.MatchString(tag) {
 		return "", fmt.Errorf("the base reports herdr release %q, which is not a nightly's tag. Run: %s", tag, ToolCommand("base ensure"))
@@ -192,6 +196,9 @@ func ensureHerdrClient(ctx context.Context, home, tag string, log func(string)) 
 	target := filepath.Join(dir, tag)
 	exe := filepath.Join(target, "herdr.exe")
 	if st, ok := readHerdrClient(home); ok && st.Release == tag && st.Path == exe {
+		if err := pruneHerdrClients(dir, tag, log); err != nil {
+			return "", err
+		}
 		return exe, nil
 	}
 	name := "herdr-windows-" + arch + ".zip"
@@ -240,20 +247,31 @@ func ensureHerdrClient(ctx context.Context, home, tag string, log func(string)) 
 	if err := writeFileAtomic(herdrClientStampPath(home), append(stamp, '\n'), 0o644); err != nil {
 		return "", err
 	}
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	if err := pruneHerdrClients(dir, tag, log); err != nil {
 		return "", err
 	}
+	log("wrote herdr's Windows client from " + tag + ", " + exe)
+	return exe, nil
+}
+
+// pruneHerdrClients removes the client of every nightly but keep from dir.
+//
+// ⚠ ONLY A DIRECTORY NAMED AS A NIGHTLY'S TAG IS REMOVED. Anything else under dir is
+// not this tool's to judge, so a name it does not recognise stays where it is.
+func pruneHerdrClients(dir, keep string, log func(string)) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
 	for _, e := range entries {
-		if e.IsDir() && e.Name() != tag && herdrNightlyTagRE.MatchString(e.Name()) {
+		if e.IsDir() && e.Name() != keep && herdrNightlyTagRE.MatchString(e.Name()) {
 			if err := RemoveInside(dir, filepath.Join(dir, e.Name())); err != nil {
-				return "", err
+				return err
 			}
 			log("removed the herdr client of " + e.Name())
 		}
 	}
-	log("wrote herdr's Windows client from " + tag + ", " + exe)
-	return exe, nil
+	return nil
 }
 
 // extractZipInside writes every file of a zip under root.

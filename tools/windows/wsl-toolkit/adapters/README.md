@@ -18,7 +18,9 @@ the runs for `pi` and `omp`. ⭐ **The muse adapter's herdr reporter is driven**
 against herdr 0.9.0 and Muse Code 1.3.0, through Muse's credential-free `--provider
 echo`: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` with its release, and
 the adoption of a resumed session. ⚠ `PreToolUse` and `PermissionRequest` are
-registered and not yet driven, because the echo provider calls no tool.
+registered and not yet driven, because the echo provider calls no tool. ⭐ **The muse
+probe drives `SessionStart` itself**, with one echo session per probe, so a hook Muse
+stops running is a problem. Measured with herdr 0.9.5 and Muse Code 1.4.11. `WSL-157`
 
 ⭐ **`base ensure` installs every adapter it is given, in order, and one that fails
 does not stop the rest.** The ensure then answers one error naming each adapter that

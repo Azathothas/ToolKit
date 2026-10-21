@@ -7,25 +7,30 @@ agent on Windows drives the same server through `wsl-toolkit base herdr`. The ba
 [`../../wsl-toolkit.md`](../../wsl-toolkit.md) says what that adapter writes.
 
 ⚠ **Where a line says what herdr does on this host, it is driven with herdr 0.9.0
-on both sides.** `WSL-76` holds those measurements. The rest is read from herdr's
-documentation for 0.9.0. [`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md)
+on both sides, unless it names another release.** `WSL-76` holds those measurements,
+and `WSL-141` the 0.9.5 ones. The rest is read from herdr's documentation for 0.9.0. [`../../../../../docs/reference-sweeps/usable.md`](../../../../../docs/reference-sweeps/usable.md)
 carries the sweep and its commits; this page carries only what an operator does.
 
 ---
 
-## ⛔ Two things to know before the first attach
+## ⛔ Three things to know before the first attach
 
 1. ⛔ **herdr 0.9.0's Windows `--remote` client is reported to repaint only on
    window activation and to apply no prefix command.** That is
    `herdrdev/herdr#4176`, closed `not_planned` as a duplicate of `#4038`, which herdr
-   closed as fixed on its development branch. ⛔ **Whether a stable release after
-   0.9.0 carries that fix is not measured here**, and `herdr-remote-probe.ps1` is
-   what settles it. ⭐ **What this repository ships and drives is the nightly**, built
-   from the development branch where herdr closed `#4038` as fixed. ⭐
-   **Measure the repaint before concluding anything about SSH**: a client that
-   repaints only on window activation looks exactly like a connection that is not
-   working.
-2. ⚠ **herdr's Linux release binary is static and carries its own musl allocator,
+   closed as fixed on its development branch. ⭐ **herdr 0.9.5 carries the fix**,
+   measured with `herdr-remote-probe.ps1` and 0.9.5 on both sides. Its client drew
+   98.7 per cent of its paint before any input, ran typed text and applied a prefix
+   command. `WSL-141`
+2. ⛔ **The defect is in the client, so the server's release does not cure it.** A
+   0.9.0 client against a 0.9.5 server drew 9 per cent of its paint before focus, and
+   ran neither the typed text nor the prefix command. ⭐ **The herdr adapter pins
+   0.9.5**, as this repository's `wsl-toolkit-v7.0.0` release publishes it, and that
+   release carries the 0.9.5 Windows client beside it. Use that client, or a newer
+   one, with a base on the default. ⭐ **Measure the repaint before concluding
+   anything about SSH**: a client that repaints only on window activation looks
+   exactly like a connection that is not working.
+3. ⚠ **herdr's Linux release binary is static and carries its own musl allocator,
    whatever the base's libc is.** `herdrdev/herdr#4174`, open, is a heap corruption
    that allocator detected inside a 0.9.0 server, so a glibc base does not avoid it.
    The base is `arch` because the adapters are measured on that preset alone.
@@ -146,6 +151,15 @@ wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $p
 | `--kind` | which agent this is. herdr's list includes `muse`, `pi` and `omp` |
 | `--pane` | a pane already at its interactive shell prompt |
 | `--timeout` | how long to wait for readiness. Default 30000 ms, maximum 300000 |
+
+⭐ **`--cwd` is where the pane's shell starts**, so an agent can start in a granted
+project: `workspace create --cwd /workspaces/project`. On herdr 0.9.5 and on this
+repository's newest nightly, `workspace create` and `tab create` both place it, and the
+kernel's working directory agrees with herdr's answer. `WSL-144`
+
+⛔ **A directory that does not exist is not refused.** The create exits 0 and the
+shell starts in the account's home, which is `herdrdev/herdr#4935`, open upstream.
+So read `.result.root_pane.cwd` from the answer before you start an agent there.
 
 ⭐ **The name is also the target of every later command**, so `agent prompt`,
 `agent read` and `agent wait` all take it:
