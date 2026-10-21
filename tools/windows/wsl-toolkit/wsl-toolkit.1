@@ -258,6 +258,12 @@ a directory on this machine to receive whatever the container leaves in /out
 \fB-c\fR
 the shell command to run in the container
 .TP
+\fB--cache\fR
+NAME:/path: a named cache, the podman volume wtk-cache-NAME in the base, made on first use, mounted at /path and kept between jobs. Repeatable, and added to jobs.cache. gc --caches --apply removes it
+.TP
+\fB--cap-add\fR
+a Linux capability the container gets, such as NET_ADMIN, or ALL. Repeatable, and none is added without it
+.TP
 \fB--color\fR
 colour the live prefix: auto, always or never. A file is never coloured. Default: auto.
 .TP
@@ -266,6 +272,9 @@ the command as base64 of its bytes, for a caller that must keep every shell away
 .TP
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--create-user\fR
+with --user NAME, run as NAME where the image has no such account: podman writes it, with a home at /home/NAME. An image that has NAME uses its own
 .TP
 \fB--detach\fR
 start the job and answer with its id at once. A detached copy of this program owns the job; wsl-toolkit logs ID --follow, wait ID and stop ID reach it
@@ -277,10 +286,10 @@ a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. R
 build the base first when it is missing or unusable. Default: true.
 .TP
 \fB--env\fR
-NAME=VALUE passed to the container. Repeatable
+NAME=VALUE passed to the container. Repeatable, and it wins over jobs.env
 .TP
 \fB--env-file\fR
-a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins
+a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins. jobs.env_file and jobs.env come before both
 .TP
 \fB--event-log\fR
 append one wsl-toolkit-event/1 JSON record per line, per event, to this file
@@ -298,10 +307,13 @@ with --exclusive, wait this long for the name rather than refusing at once. Defa
 leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree, and one its own repository ignores is refused. jobs.gitignore sets it for a project, and --gitignore=false turns it off
 .TP
 \fB--image\fR
-a catalog id or a fully qualified reference
+a catalog id or a fully qualified reference. Empty uses jobs.image
 .TP
 \fB--input\fR
 NAME=FILE: a file on this machine the container reads at /in/NAME, read-only and byte for byte. Repeatable
+.TP
+\fB--input-exec\fR
+NAME=FILE: as --input, but the copy has CRLF turned into LF and mode 0755, so the job runs /in/NAME by its shebang. FILE must start with #!. Repeatable
 .TP
 \fB--json\fR
 write a structured answer
@@ -310,10 +322,10 @@ write a structured answer
 raw, human, ci, forensic or wall. Empty forwards the command's streams unchanged. Flags passed beside a profile win over it
 .TP
 \fB--max-bytes\fR
-refuse a workspace or an artifact set larger than this. Default: 1073741824.
+refuse a workspace or an artifact set larger than this. jobs.max_bytes sets the default. Default: 1073741824.
 .TP
 \fB--max-entries\fR
-refuse a workspace or an artifact set with more entries than this. Default: 200000.
+refuse a workspace or an artifact set with more entries than this. jobs.max_entries sets the default. Default: 200000.
 .TP
 \fB--max-line-bytes\fR
 cut a line after this many bytes, at a character boundary, and say how many went. 0 never cuts
@@ -345,6 +357,9 @@ append the rendered, uncoloured lines to this file
 \fB--stream-log-overwrite\fR
 replace the --stream-log file when the command starts, rather than appending
 .TP
+\fB--sudo\fR
+with --user, mount a read-only rule in /etc/sudoers.d that grants that account passwordless sudo. It needs sudo in the image
+.TP
 \fB--tick\fR
 emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it. Default: 0s.
 .TP
@@ -352,7 +367,7 @@ emit a heartbeat for each running job at this interval. 0 is off, and anything u
 silence thresholds at which the heartbeat says more, comma separated, or none. Defaults to 2m,5m,15m whenever a heartbeat is on
 .TP
 \fB--timeout\fR
-how long one container may run before lifecycle cleanup; the row reports 124. Default: 30m0s.
+how long one container may run before lifecycle cleanup; the row reports 124. jobs.timeout sets the default. Default: 30m0s.
 .TP
 \fB--timestamp-column\fR
 a timestamp column: rel, delta, wall, iso or epoch. Repeatable; a comma list is accepted
@@ -367,7 +382,7 @@ one timestamp column: rel, delta, wall, iso or epoch
 the text between the timestamp columns and the tag. Default:  .
 .TP
 \fB--user\fR
-what the container runs as: a name, a uid, or uid:gid. Empty means the image's default
+what the container runs as: a name, a uid, or uid:gid. Empty uses jobs.user, then the image's default
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
@@ -385,11 +400,20 @@ a directory on this machine to receive whatever the container leaves in /out
 \fB-c\fR
 the shell command to run in the container
 .TP
+\fB--cache\fR
+NAME:/path: a named cache, the podman volume wtk-cache-NAME in the base, made on first use, mounted at /path and kept between jobs. Repeatable, and added to jobs.cache. gc --caches --apply removes it
+.TP
+\fB--cap-add\fR
+a Linux capability the container gets, such as NET_ADMIN, or ALL. Repeatable, and none is added without it
+.TP
 \fB--command-base64\fR
 the command as base64 of its bytes, for a caller that must keep every shell away from it
 .TP
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--create-user\fR
+with --user NAME, run as NAME where the image has no such account: podman writes it, with a home at /home/NAME. An image that has NAME uses its own
 .TP
 \fB--device\fR
 a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it
@@ -398,10 +422,10 @@ a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. R
 build the base first when it is missing or unusable. Default: true.
 .TP
 \fB--env\fR
-NAME=VALUE passed to the container. Repeatable
+NAME=VALUE passed to the container. Repeatable, and it wins over jobs.env
 .TP
 \fB--env-file\fR
-a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins
+a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins. jobs.env_file and jobs.env come before both
 .TP
 \fB--exclude\fR
 a glob to leave out of the workspace copy, matched against the whole relative path, against the base name at any depth, and as a directory and everything under it. * does not cross a slash. Repeatable, and added to jobs.exclude
@@ -421,14 +445,17 @@ catalog ids, libc:musl, kind:legacy or all. Comma separated. Empty means the con
 \fB--input\fR
 NAME=FILE: a file on this machine the container reads at /in/NAME, read-only and byte for byte. Repeatable
 .TP
+\fB--input-exec\fR
+NAME=FILE: as --input, but the copy has CRLF turned into LF and mode 0755, so the job runs /in/NAME by its shebang. FILE must start with #!. Repeatable
+.TP
 \fB--json\fR
 write a structured answer
 .TP
 \fB--max-bytes\fR
-refuse a workspace or an artifact set larger than this. Default: 1073741824.
+refuse a workspace or an artifact set larger than this. jobs.max_bytes sets the default. Default: 1073741824.
 .TP
 \fB--max-entries\fR
-refuse a workspace or an artifact set with more entries than this. Default: 200000.
+refuse a workspace or an artifact set with more entries than this. jobs.max_entries sets the default. Default: 200000.
 .TP
 \fB--max-output\fR
 how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says
@@ -445,17 +472,20 @@ the Linux OCI platform. Empty uses jobs.platform, then the native platform
 \fB--script\fR
 a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
+\fB--sudo\fR
+with --user, mount a read-only rule in /etc/sudoers.d that grants that account passwordless sudo. It needs sudo in the image
+.TP
 \fB--tick\fR
 emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it. Default: 0s.
 .TP
 \fB--timeout\fR
-how long one container may run before lifecycle cleanup; the row reports 124. Default: 30m0s.
+how long one container may run before lifecycle cleanup; the row reports 124. jobs.timeout sets the default. Default: 30m0s.
 .TP
 \fB--transcripts\fR
 a directory to write one transcript per row into
 .TP
 \fB--user\fR
-what the container runs as: a name, a uid, or uid:gid. Empty means the image's default
+what the container runs as: a name, a uid, or uid:gid. Empty uses jobs.user, then the image's default
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
@@ -485,6 +515,9 @@ report or remove resources that this tool owns
 .TP
 \fB--apply\fR
 actually remove. Without it this reports what it would remove and changes nothing
+.TP
+\fB--caches\fR
+clean up the named caches run --cache made, and nothing else: list them, and remove them with --apply. A cache a container names is kept
 .TP
 \fB--images\fR
 also prune images the engine in the base is holding. Refused beside --job or --workspace, since an image is not one job's

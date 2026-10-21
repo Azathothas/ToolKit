@@ -122,6 +122,48 @@ type JobInput struct {
 	Name  string `json:"name"`
 	Path  string `json:"-"`
 	Bytes []byte `json:"-"`
+	// Exec makes it an executable input: the copy has CRLF turned into LF and
+	// mode 0755, so the job runs /in/NAME by its shebang. WSL-128.
+	Exec bool `json:"exec,omitempty"`
+}
+
+// maxExecInput bounds an executable input, which is a script read whole so its
+// line endings can be repaired. A larger file travels as a plain input.
+const maxExecInput = 64 << 20
+
+// execInputBytes is what an executable input arrives as: its bytes with the
+// repair every command gets. WSL-128.
+//
+// ⛔ A FILE WITH NO SHEBANG IS REFUSED. It cannot be run by one, and a program
+// whose bytes hold CR LF by chance would arrive changed. Such a file travels as
+// --input, byte for byte, and the job makes it executable itself.
+func execInputBytes(in JobInput) ([]byte, error) {
+	raw := in.Bytes
+	if in.Path != "" {
+		info, err := os.Stat(deviceSafePath(in.Path))
+		if err != nil {
+			return nil, fmt.Errorf("--input-exec %s=%s: %w", in.Name, in.Path, err)
+		}
+		if info.Size() > maxExecInput {
+			return nil, fmt.Errorf("--input-exec %s=%s holds %s, and an executable input is a script of at most %s. Pass it with --input",
+				in.Name, in.Path, HumanBytes(info.Size()), HumanBytes(maxExecInput))
+		}
+		if raw, err = os.ReadFile(deviceSafePath(in.Path)); err != nil {
+			return nil, fmt.Errorf("--input-exec %s=%s: %w", in.Name, in.Path, err)
+		}
+	}
+	if len(raw) > maxExecInput {
+		return nil, fmt.Errorf("--input-exec %s holds %s, and an executable input is a script of at most %s. Pass it with --input",
+			in.Name, HumanBytes(int64(len(raw))), HumanBytes(maxExecInput))
+	}
+	out, err := RepairGuestScript(raw)
+	if err != nil {
+		return nil, fmt.Errorf("--input-exec %s: %w", in.Name, err)
+	}
+	if !strings.HasPrefix(string(out), "#!") {
+		return nil, fmt.Errorf("--input-exec %s does not start with #!, so nothing can run it by its shebang. Pass it with --input, which keeps its bytes as they are", in.Name)
+	}
+	return out, nil
 }
 
 // MaxHelperInputBytes bounds the inputs one job sends over the helper protocol.
@@ -167,6 +209,16 @@ func CheckInputs(inputs []JobInput, limits WorkspaceLimits) error {
 		}
 		names[in.Name] = true
 		size := int64(len(in.Bytes))
+		// ⭐ An executable input is read here, so its refusal comes before the
+		// job is claimed, on both routes. WSL-128.
+		if in.Exec {
+			b, err := execInputBytes(in)
+			if err != nil {
+				return err
+			}
+			total += int64(len(b))
+			continue
+		}
 		if in.Path != "" {
 			info, err := os.Stat(deviceSafePath(in.Path))
 			if err != nil {
@@ -196,8 +248,9 @@ func CheckInputs(inputs []JobInput, limits WorkspaceLimits) error {
 }
 
 // writeInputsTar writes the inputs as one archive, each file mode 0644 with its
-// directories made first. A host file travels through the member writer the
-// workspace uses, so it gets the same bound and the same naming of a failure.
+// directories made first, and an executable input 0755. A host file travels
+// through the member writer the workspace uses, so it gets the same bound and
+// the same naming of a failure.
 func writeInputsTar(w io.Writer, inputs []JobInput) (WorkspaceUpload, error) {
 	var up WorkspaceUpload
 	tw := tar.NewWriter(w)
@@ -214,6 +267,23 @@ func writeInputsTar(w io.Writer, inputs []JobInput) (WorkspaceUpload, error) {
 			if err := tw.WriteHeader(&tar.Header{Name: dir + "/", Typeflag: tar.TypeDir, Mode: 0o755, ModTime: now}); err != nil {
 				return up, memberError("/in/"+dir+"/", "writing its archive header", err)
 			}
+		}
+		// ⭐ AN EXECUTABLE INPUT IS REPAIRED AND MADE 0755 HERE, the one place both
+		// routes write an input from. WSL-128.
+		if in.Exec {
+			b, err := execInputBytes(in)
+			if err != nil {
+				return up, err
+			}
+			if err := tw.WriteHeader(&tar.Header{Name: in.Name, Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(b)), ModTime: now}); err != nil {
+				return up, memberError("/in/"+in.Name, "writing its archive header", err)
+			}
+			if _, err := tw.Write(b); err != nil {
+				return up, memberError("/in/"+in.Name, "copying its bytes", err)
+			}
+			up.Entries++
+			up.Bytes += int64(len(b))
+			continue
 		}
 		if in.Path != "" {
 			info, err := os.Stat(deviceSafePath(in.Path))

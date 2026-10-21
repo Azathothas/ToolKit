@@ -69,6 +69,9 @@ type ReadyReport struct {
 	// should know about is not the same as a reason it cannot work, and
 	// `r.Ready` is computed from Problems: anything written there is a refusal.
 	Notes []string `json:"notes,omitempty"`
+	// floor says the configuration requires a newer build, which every command
+	// that reads it answers with exit 2. WSL-129.
+	floor bool
 }
 
 type readyConfig struct {
@@ -144,9 +147,27 @@ func cmdReady(ctx context.Context, args []string) (int, error) {
 	return readyVerdict(r), nil
 }
 
+// noteConfigRefusal records a configuration LoadConfig refused, with the
+// command that moves it forward.
+func (r *ReadyReport) noteConfigRefusal(err error) {
+	r.Config.Reason = err.Error()
+	r.Problems = append(r.Problems, err.Error())
+	if errors.Is(err, toolkit.ErrVersionFloor) {
+		// WSL-129: the remedy is a newer build, not a change to the file, and
+		// the answer is exit 2, as from every command that reads the file.
+		r.floor = true
+		r.Remediation = append(r.Remediation, toolkit.ToolCommandFor(toolkit.DefaultInstance, "selfupdate"))
+		return
+	}
+	r.Remediation = append(r.Remediation, toolkit.ToolCommand("config"))
+}
+
 func readyVerdict(r ReadyReport) int {
 	if r.Ready {
 		return exitOK
+	}
+	if r.floor {
+		return exitCannot
 	}
 	return exitFailed
 }
@@ -171,9 +192,7 @@ func assembleReady(ctx context.Context, smoke, ensure, wantUpdate bool) ReadyRep
 	}
 	cfg, cfgErr := toolkit.LoadConfig()
 	if cfgErr != nil {
-		r.Config.Reason = cfgErr.Error()
-		r.Problems = append(r.Problems, cfgErr.Error())
-		r.Remediation = append(r.Remediation, toolkit.ToolCommand("config"))
+		r.noteConfigRefusal(cfgErr)
 	} else {
 		r.Config.Valid = true
 	}

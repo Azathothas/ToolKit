@@ -21,6 +21,10 @@ import (
 // stop it removing the rest; stopping at the first failure would hide the state
 // of everything after it.
 func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, includeImages bool) (CleanupPlan, error) {
+	// ⭐ `gc --caches` IS THE CACHES ALONE, and no job's leftovers. WSL-122.
+	if policy.Caches {
+		return r.cleanupCaches(ctx, apply)
+	}
 	plan := CleanupPlan{Schema: CleanupSchema, DryRun: !apply}
 	guestHome, err := r.guestHome(ctx)
 	if err != nil {

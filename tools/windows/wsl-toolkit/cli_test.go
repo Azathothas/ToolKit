@@ -504,6 +504,12 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 		"tick":        "TickMS",
 		"devices":     "Devices",
 		"inputs":      "Inputs",
+		// WSL-122, WSL-128, WSL-123, WSL-130.
+		"caches":     "Caches",
+		"inputExecs": "Inputs",
+		"createUser": "CreateUser",
+		"sudo":       "Sudo",
+		"capAdd":     "CapAdd",
 	}
 	// Fields that are the CLIENT's own business and correctly never sent.
 	local := map[string]string{
@@ -515,6 +521,7 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 		"asJSON":        "how this process renders its own answer",
 		"ensure":        "the client calls BaseEnsure itself before it sends the job",
 		"viaHelper":     "the routing decision, which is what chose this path",
+		"named":         "which flags the command line gave, read where the project's defaults are merged. WSL-131",
 	}
 
 	spec := reflect.TypeOf(jobFlags{})

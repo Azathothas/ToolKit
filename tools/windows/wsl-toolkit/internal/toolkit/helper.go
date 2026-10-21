@@ -481,6 +481,13 @@ type HelperRunRequest struct {
 	// honours and the other drops has now happened twice in this tool, which is
 	// why TestEveryJobFlagCrossesTheWire exists.
 	TickMS int64 `json:"tick_ms,omitempty"`
+	// Caches are --cache values, NAME:/path, parsed again here. CreateUser and
+	// Sudo are --create-user and --sudo, and CapAdd each --cap-add. On the wire
+	// because the direct path has them. WSL-122, WSL-123, WSL-130.
+	Caches     []string `json:"caches,omitempty"`
+	CreateUser bool     `json:"create_user,omitempty"`
+	Sudo       bool     `json:"sudo,omitempty"`
+	CapAdd     []string `json:"cap_add,omitempty"`
 	// Config is the EFFECTIVE configuration the client already read and
 	// validated, and it is what the helper acts on.
 	//
@@ -494,10 +501,12 @@ type HelperRunRequest struct {
 	Config *Config `json:"config,omitempty"`
 }
 
-// HelperInput is one --input file on the wire.
+// HelperInput is one --input file on the wire. Exec marks an --input-exec, whose
+// bytes are repaired where the helper writes them. WSL-128.
 type HelperInput struct {
 	Name string `json:"name"`
 	B64  string `json:"b64"`
+	Exec bool   `json:"exec,omitempty"`
 }
 
 // jobExtras decodes a request's devices and inputs, holding them to the rules
@@ -522,12 +531,30 @@ func (req HelperRunRequest) jobExtras() ([]JobDevice, []JobInput, error) {
 		if total > MaxHelperInputBytes {
 			return nil, nil, fmt.Errorf("the inputs pass %s, which is what one request carries", HumanBytes(MaxHelperInputBytes))
 		}
-		inputs = append(inputs, JobInput{Name: in.Name, Bytes: b})
+		inputs = append(inputs, JobInput{Name: in.Name, Bytes: b, Exec: in.Exec})
 	}
 	if err := CheckInputs(inputs, req.limits()); err != nil {
 		return nil, nil, err
 	}
 	return devices, inputs, nil
+}
+
+// jobOptions decodes a request's caches and capabilities, held to the rules the
+// direct path applies. WSL-122, WSL-130.
+func (req HelperRunRequest) jobOptions() ([]JobCache, []string, error) {
+	caches, err := ParseCaches(req.Caches, "--cache")
+	if err != nil {
+		return nil, nil, err
+	}
+	var caps []string
+	for _, v := range req.CapAdd {
+		c, err := ParseCapability(v)
+		if err != nil {
+			return nil, nil, err
+		}
+		caps = append(caps, c)
+	}
+	return caches, caps, nil
 }
 
 // HelperMatrixRequest is the wire shape of a fleet run.
@@ -587,6 +614,11 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	caches, caps, err := req.jobOptions()
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	staged, err := h.stagedDir(req.StagingID)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -626,6 +658,7 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		ContainerLifecycle: effectiveJobLifecycle(req, effective),
 		Limits:             req.limits(), ArtifactDir: h.artifactDir(artifactID, req.Artifacts),
 		User: req.User, MaxOutput: req.MaxOutput, Devices: devices, Inputs: inputs,
+		Caches: caches, CreateUser: req.CreateUser, Sudo: req.Sudo, CapAdd: caps,
 		Stdout:    &chunkWriter{out: events, kind: "stdout"},
 		Stderr:    &chunkWriter{out: events, kind: "stderr"},
 		TickEvery: time.Duration(req.TickMS) * time.Millisecond,
@@ -676,6 +709,11 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	caches, caps, err := req.HelperRunRequest.jobOptions()
+	if err != nil {
+		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
 	runner, effective, err := h.runnerFor(req.Config)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -721,6 +759,10 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		Devices:     devices,
 		Inputs:      inputs,
 		MaxOutput:   req.MaxOutput,
+		Caches:      caches,
+		CreateUser:  req.CreateUser,
+		Sudo:        req.Sudo,
+		CapAdd:      caps,
 		// ⛔ A ROW IS SENT WHEN IT FINISHES, not when the fleet does. A
 		// caller watching twelve images can see eleven succeed while the
 		// twelfth is still pulling, which is the difference between a fleet
@@ -969,6 +1011,8 @@ type HelperGCRequest struct {
 	Images      bool   `json:"images"`
 	IncludeLive bool   `json:"include_live,omitempty"`
 	Job         string `json:"job,omitempty"`
+	// Caches is gc --caches. WSL-122.
+	Caches bool `json:"caches,omitempty"`
 }
 
 // policy is the cleanup a request asks for, with the job held to the shape an
@@ -981,6 +1025,7 @@ func (req HelperGCRequest) policy() (CleanupPolicy, error) {
 		OlderThan:   time.Duration(req.OlderThanMS) * time.Millisecond,
 		IncludeLive: req.IncludeLive,
 		Job:         req.Job,
+		Caches:      req.Caches,
 	}, nil
 }
 

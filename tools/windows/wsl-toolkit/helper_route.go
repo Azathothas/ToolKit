@@ -32,6 +32,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
 		Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
 		User: j.user, MaxOutput: j.maxOutput, TickMS: j.tick.Milliseconds(),
+		Caches: j.caches, CreateUser: j.createUser, Sudo: j.sudo, CapAdd: j.capAdd,
 	}
 	if j.workspace != "" {
 		note("uploading the workspace to the helper")
@@ -94,6 +95,7 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 			Platform: j.platform, ContainerLifecycle: j.lifecycle,
 			Artifacts: j.artifactDir != "", MaxBytes: j.maxBytes, MaxEntries: j.maxEntries,
 			User: j.user, MaxOutput: j.maxOutput, TickMS: j.tick.Milliseconds(),
+			Caches: j.caches, CreateUser: j.createUser, Sudo: j.sudo, CapAdd: j.capAdd,
 		},
 		Images: images, Parallel: parallel,
 	}
@@ -167,7 +169,8 @@ func helperInputs(inputs []toolkit.JobInput) ([]toolkit.HelperInput, error) {
 			return nil, fmt.Errorf("the inputs pass %s, which is what one request to the helper carries. A larger file travels in the workspace",
 				toolkit.HumanBytes(toolkit.MaxHelperInputBytes))
 		}
-		out = append(out, toolkit.HelperInput{Name: in.Name, B64: base64.StdEncoding.EncodeToString(b)})
+		// WSL-128: an --input-exec travels as it is, and the helper repairs it.
+		out = append(out, toolkit.HelperInput{Name: in.Name, B64: base64.StdEncoding.EncodeToString(b), Exec: in.Exec})
 	}
 	return out, nil
 }

@@ -132,6 +132,64 @@ config` names the file that is in effect.
 
 ---
 
+## ⭐ A project's job defaults, and the oldest build it takes
+
+```json
+{
+  "schema": "wsl-toolkit-config/1",
+  "requires": "7.1.0",
+  "jobs": {
+    "image": "docker.io/library/rust:1",
+    "timeout": "45m",
+    "env": { "CARGO_TERM_COLOR": "never" },
+    "env_file": "ci.env",
+    "user": "1000:1000",
+    "max_bytes": 5368709120,
+    "cache": ["cargo:/usr/local/cargo/registry"]
+  }
+}
+```
+
+⭐ **`jobs` carries the defaults a job takes where its command line names
+nothing.** `image` is `run`'s, and `timeout`, `env`, `env_file`, `user`, `max_bytes`,
+`max_entries` and `cache` are `run`'s and `matrix`'s. A flag the command line gives
+always wins, even one whose value is the flag's own default. `WSL-131`
+
+- `jobs.env_file` is read first, then `jobs.env`, then `--env-file`, then `--env`,
+  so a value the command line gives wins name by name.
+- `timeout` is a duration such as `45m`, and `0` means no deadline.
+- A relative `workspace` or `env_file` resolves against the file that names it.
+- Each value is held where the file is read, so an unusable one is refused there.
+
+⭐ **A named instance takes a working tree's jobs too.** Its own configuration still
+says what the base is. The nearest `wsl-toolkit.json` from the working directory up
+lends that instance its `jobs`, key by key, and its `requires`. A key the project
+leaves out keeps the instance's value. `wsl-toolkit config` names the file as
+`project`, and the search order it prints is unchanged.
+
+- ⛔ The project's `base` is not read under a named instance.
+- ⛔ A write to the instance's file stores the instance's own jobs, never the
+  project's. `config --write`, `base grant` and a saved preset write that file.
+
+⭐ **`requires` is the oldest build that may read the file.** An older one refuses
+every command that reads it with exit 2, naming its own version, the floor, the file
+and `wsl-toolkit selfupdate`. The floor is read before anything else in the file.
+`WSL-129`
+
+- ⚠ A build older than this one does not know the key. It refuses the file as
+  `unknown field "requires"`, exit 2, which still stops it.
+- ⭐ A key this build does not know is refused naming the likely cause: a newer
+  build may have written the file, and `selfupdate` is the remedy.
+- `doctor` reports the refusal and goes on, since a survey is not a gate.
+
+⛔ **A boolean a file leaves out keeps what is beneath it.** `systemd`,
+`passwordless_sudo` and `jobs.gitignore` were copied whether the file named them or
+not, so a key left out read as false. The compiled-in defaults are false, so a file
+read alone is unchanged. A project lending a named instance its jobs no longer turns
+the instance's `jobs.gitignore` off. `WSL-161`
+
+---
+
 ## Container lifecycle
 
 ⭐ **The default is `persistent`.** A job keeps its stopped container and its
@@ -364,8 +422,98 @@ inputs never collide in the workspace. NAME is a relative path of plain parts.
 The same NAME twice is refused. Through the helper, the inputs of one job are at
 most 2 MiB together. `WSL-97`
 
-`run`, `matrix` and the helper take both. `run`, `matrix`, `base exec`,
+```powershell
+wsl-toolkit run --image debian --input-exec run.sh=.\run.sh -c '/in/run.sh --fast'
+```
+
+⭐ **`--input-exec NAME=FILE` is an input the job runs by its shebang.** The copy
+has CRLF turned into LF and a byte order mark left out, and it is mode 0755. The
+file on disk is never written to, and `--input` keeps its bytes as they are.
+`WSL-128`
+
+- ⛔ A file that does not start with `#!` is refused, and so is UTF-16. Such a
+  file cannot run by a shebang, and a program holding CR LF by chance would
+  arrive changed. Pass it with `--input` and make it executable in the job.
+- An executable input is at most 64 MiB, and one NAME is one input across both
+  flags.
+
+`run`, `matrix` and the helper take all three. `run`, `matrix`, `base exec`,
 `bsd run` and `distro` take `--command-base64`.
+
+⭐ **`--cap-add CAP` gives the container one Linux capability**, such as
+`NET_ADMIN`, with or without `CAP_` and in any case, or `ALL`. It is repeatable,
+and a job gets none without it. A name the kernel does not have is refused
+before the job is claimed. ⚠ The capability is the container's, inside the base
+account's user namespace. It is not one over the base, or over this machine.
+`WSL-130`
+
+---
+
+## ⭐ A cache kept between jobs
+
+```powershell
+wsl-toolkit run --image docker.io/library/rust:1 --cache cargo:/usr/local/cargo/registry --workspace . -c 'cargo build'
+wsl-toolkit resources                 # each cache, its size and the containers that name it
+wsl-toolkit gc --caches               # what --apply would remove, and nothing else
+wsl-toolkit gc --caches --apply
+```
+
+`--cache NAME:/path` mounts the podman volume `wtk-cache-NAME` in the base at
+`/path`. The volume is made with this tool's label on its first use and kept
+after the job. A toolchain one job installs is there for the next. It is
+repeatable, and one cache may be mounted at several paths. `WSL-122`
+
+- NAME is `[a-z0-9][a-z0-9_.-]*`, at most 63 characters. The path is absolute
+  and clean. `/work`, `/out`, `/in`, `/job.sh` and a kernel filesystem are
+  refused. A path below `/work` or `/out` is taken.
+- With `--user`, the volume is re-owned to that user, as the job's own mounts
+  are.
+- `jobs.cache` in the configuration is a list of the same spelling. A command
+  line adds to it, and a cache it names at the same path wins.
+- `matrix` takes it too, and every row mounts the same volume.
+- ⛔ **`gc --caches` cleans up the caches and nothing else**, and removes them only
+  with `--apply`. Beside `--job`, `--workspace`, `--images`, `--older-than` or
+  `--include-live` it is refused, because those choose among jobs.
+- ⚠ A cache a container names, running or stopped, is kept and the plan names
+  the container. A cache's last use is not recorded, so no age spares one.
+
+---
+
+## ⭐ A job as an account its image does not have
+
+```powershell
+wsl-toolkit run --image debian --user dev --create-user --workspace . -c 'id; make test'
+wsl-toolkit run --image debian --user dev --create-user --sudo -c 'sudo apt-get install -y make'
+```
+
+⭐ **`--create-user` makes the account `--user NAME` names, where the image has
+none.** podman writes its passwd and group entries and gives it a home at
+`/home/NAME`. Nothing in the image changes, and the job never runs as root.
+`/work`, `/out` and each cache belong to the account. `WSL-123`
+
+- An image that has NAME uses its own account as the image defines it.
+- ⛔ A made account takes the first id from 1000 that the image holds as neither
+  a user nor a group. podman writes no entry for an id the image has, so on
+  `ubuntu:24.04` a job told to be `dev` at 1000 would run as `ubuntu`. There it
+  is 1001.
+- The home is a tmpfs, gone with the job. A cache at a path below it is kept.
+- The image's accounts are read first, in a container of their own made from the
+  job's image and platform. The job's deadline bounds that read.
+- NAME is `[a-z_][a-z0-9_-]*`, at most 32 characters. A uid is refused, since it
+  names no account to make.
+
+⭐ **`--sudo` mounts a rule granting the `--user` account passwordless sudo**, at
+`/etc/sudoers.d/wsl-toolkit-job`, read-only, mode 0440. It belongs to root in the
+container, since sudo reads no other rule. So it is the one mount not re-owned to
+the user. Either flag without `--user` is refused.
+
+- ⚠ The rule needs sudo in the image, and the catalog's images carry none. Where
+  `--create-user` read the image and found no sudo, the job says so.
+- A uid or `uid:gid` is granted by its number.
+
+The base's podman decides whether this works, since `--passwd-entry` and
+`--group-entry` are its own. The Arch base runs podman 6.1.4, which has both.
+`wsl-toolkit base exec -c 'podman --version'` reads it.
 
 ---
 
@@ -470,7 +618,9 @@ in.** When `%LOCALAPPDATA%\wsl-toolkit\instances\NAME\config.json` exists,
 `--instance NAME` reads it from any directory. So one base serves every project,
 and a project's `wsl-toolkit.json` does not change it. The project's file still
 applies to the default instance and to a named one with no file of its own.
-`--config` comes before both.
+`--config` comes before both. ⭐ The project's file still lends the instance its
+`jobs` and its `requires`, as [its section](#-a-projects-job-defaults-and-the-oldest-build-it-takes)
+says. `WSL-131`
 
 ⭐ **A process this tool starts resolves the instance once.** `helper serve
 --detach` and `run --detach` start a copy of this program with the instance's own
@@ -947,8 +1097,14 @@ architecture is named at pull and create time rather than checked afterwards.
 With a project configuration in play, a relative `--workspace`, `--script`,
 `--env-file`, `--artifacts`, `--input` or matrix transcript path of `run` or `matrix`
 resolves against the directory holding that configuration. A relative
-`jobs.workspace` always resolves against its own configuration file. `base exec`
+`jobs.workspace` or `jobs.env_file` always resolves against the file that names it,
+which is a working tree's own where it lends a named instance its jobs. `base exec`
 reads a relative `--script` and `--env-file` from the current directory.
+
+⭐ **A relative grant source resolves against its file on every route.** A file's
+path does not cross the helper protocol, so the client sends each `base.mounts`
+source resolved. It resolved against the helper's own working directory before.
+`WSL-131`
 
 Without one, a relative path resolves against the current directory, and the
 resolved value is printed when the workspace is copied.

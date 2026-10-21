@@ -142,6 +142,18 @@ type JobSpec struct {
 	Devices []JobDevice
 	// Inputs are files the container reads at /in/NAME, read-only. WSL-97.
 	Inputs []JobInput
+	// Caches are named volumes the job mounts, kept between jobs. WSL-122.
+	Caches []JobCache
+	// CreateUser makes the account User names where the image has none, and
+	// Sudo mounts a rule granting it passwordless sudo. WSL-123.
+	CreateUser bool
+	Sudo       bool
+	// CapAdd are Linux capabilities the container is given, in podman's
+	// spelling. WSL-130.
+	CapAdd []string
+	// account is what CreateUser resolved, which Run reads from the image
+	// before the container starts.
+	account *jobAccount
 	// Stdout and Stderr receive the container's bytes AS THEY ARRIVE.
 	//
 	// ⛔ Nil means nothing is written live, which is what a caller wants when
@@ -496,6 +508,11 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			fmt.Sprintf("container lifecycle %q must be %q or %q", spec.ContainerLifecycle, ContainerPersistent, ContainerEphemeral), true
 		return res
 	}
+	// WSL-123: held here too, for a request that arrived over the helper.
+	if err := ValidateJobUser(spec.User, spec.CreateUser, spec.Sudo); err != nil {
+		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+		return res
+	}
 	id := spec.ID
 	if id == "" {
 		fresh, err := newJobID()
@@ -671,6 +688,31 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	if err := r.sendFile(ctx, user, guestJob, "job.sh", spec.Script); err != nil {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 		return res
+	}
+
+	// ⭐ --create-user READS THE IMAGE'S ACCOUNTS BEFORE THE CONTAINER, with the
+	// job's own image, platform and pull, so an account the image has is used as
+	// it is and a made one takes an id the image does not. WSL-123.
+	if spec.CreateUser {
+		acct, err := r.resolveAccount(ctx, spec, id)
+		if err != nil {
+			res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+			return res
+		}
+		if spec.Sudo && !acct.HasSudo {
+			r.log("--sudo: " + spec.Image + " carries no sudo, so the rule mounted at " + SudoersMount + " grants nothing")
+		}
+		spec.account = &acct
+	}
+	if spec.Sudo {
+		rule, err := sudoersRule(spec.User)
+		if err == nil {
+			err = r.sendFileMode(ctx, user, guestJob, "sudoers", []byte(rule), 0o440)
+		}
+		if err != nil {
+			res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+			return res
+		}
 	}
 
 	// ⛔ A STOP THAT ARRIVED WHILE THE JOB WAS PREPARED IS HONOURED HERE, before
@@ -928,12 +970,14 @@ type jobPaths struct {
 	out    string // what the container hands back, /out
 	in     string // the job's input files, /in, read-only
 	script string // the payload, /job.sh, read-only
+	// sudoers is the rule --sudo mounts, read-only and root's. WSL-123.
+	sudoers string
 }
 
 func jobLayout(guestHome, id string) jobPaths {
 	root := guestHome + "/" + GuestRoot + "/jobs"
 	dir := root + "/" + id
-	return jobPaths{root: root, dir: dir, work: dir + "/work", out: dir + "/out", in: dir + "/in", script: dir + "/job.sh"}
+	return jobPaths{root: root, dir: dir, work: dir + "/work", out: dir + "/out", in: dir + "/in", script: dir + "/job.sh", sudoers: dir + "/sudoers"}
 }
 
 // sendInputs places a job's input files in its own directory, through the pump
@@ -1002,17 +1046,32 @@ func (r *Runner) containerScript(spec JobSpec, container string, paths jobPaths,
 	if len(spec.Inputs) > 0 {
 		args = append(args, "--volume", paths.in+":/in:ro"+strings.Replace(opts, ":", ",", 1))
 	}
+	// ⭐ A CACHE IS A NAMED VOLUME, kept between jobs, and re-owned for --user as
+	// the job's own directories are. WSL-122.
+	for _, c := range spec.Caches {
+		args = append(args, "--volume", c.Volume()+":"+c.Path+opts)
+	}
+	if spec.Sudo {
+		args = append(args, "--volume", paths.sudoers+":"+SudoersMount+":ro,Z")
+	}
 	if spec.Platform != "" {
 		args = append(args, "--platform", spec.Platform)
 	}
 	if !spec.Network {
 		args = append(args, "--network", "none")
 	}
-	if spec.User != "" {
+	if spec.account != nil {
+		// WSL-123: the account --create-user resolved.
+		args = append(args, spec.account.podmanArgs()...)
+	} else if spec.User != "" {
 		args = append(args, "--user", spec.User)
 	}
 	for _, d := range spec.Devices {
 		args = append(args, "--device", d.String())
+	}
+	// WSL-130: a capability is given only where the caller named it.
+	for _, c := range spec.CapAdd {
+		args = append(args, "--cap-add", c)
 	}
 	if spec.Timeout > 0 {
 		// ⛔ THE ENGINE HOLDS THE DEADLINE TOO, so a job whose owner is gone still
@@ -1042,6 +1101,7 @@ func (r *Runner) containerScript(spec JobSpec, container string, paths jobPaths,
 	var b strings.Builder
 	b.WriteString("set -u\n")
 	b.WriteString(deviceCheckScript(spec.Devices))
+	b.WriteString(cacheCreateScript(spec.Caches))
 	b.WriteString("exec podman")
 	for _, a := range args {
 		b.WriteString(" ")
@@ -1054,11 +1114,17 @@ func (r *Runner) containerScript(spec JobSpec, container string, paths jobPaths,
 // sendFile puts one file into a guest directory through the archive channel,
 // so it carries the same guarantees a workspace does.
 func (r *Runner) sendFile(ctx context.Context, user, guestDir, name string, content []byte) error {
+	return r.sendFileMode(ctx, user, guestDir, name, content, 0o644)
+}
+
+// sendFileMode is sendFile with the file's mode, for the --sudo rule, which is
+// written 0440 as sudo's own rules are. WSL-123.
+func (r *Runner) sendFileMode(ctx context.Context, user, guestDir, name string, content []byte, mode int64) error {
 	pr, pw := io.Pipe()
 	go func() {
 		tw := tar.NewWriter(pw)
 		err := tw.WriteHeader(&tar.Header{
-			Name: name, Typeflag: tar.TypeReg, Mode: 0o644,
+			Name: name, Typeflag: tar.TypeReg, Mode: mode,
 			Size: int64(len(content)), ModTime: time.Now(),
 		})
 		if err == nil {

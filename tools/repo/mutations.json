@@ -2,6 +2,672 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a boolean a file leaves out keeps what is beneath it",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif named {\n\t\t*dst = stored\n\t}\n",
+      "replace": "\t*dst = stored\n",
+      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base.systemd goes through the rule for a boolean",
+      "file": "internal/toolkit/catalog.go",
+      "find": "keepUnlessNamed(&cfg.Base.Systemd, stored.Base.Systemd, keys.named(\"base\", \"systemd\"))",
+      "replace": "cfg.Base.Systemd = stored.Base.Systemd",
+      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base.passwordless_sudo goes through the rule for a boolean",
+      "file": "internal/toolkit/catalog.go",
+      "find": "keepUnlessNamed(&cfg.Base.PasswordlessSudo, stored.Base.PasswordlessSudo, keys.named(\"base\", \"passwordless_sudo\"))",
+      "replace": "cfg.Base.PasswordlessSudo = stored.Base.PasswordlessSudo",
+      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.gitignore a project leaves out keeps the instance's",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "keepUnlessNamed(&dst.Gitignore, stored.Gitignore, named[\"gitignore\"])",
+      "replace": "dst.Gitignore = stored.Gitignore",
+      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt|TestAProjectLendsItsJobsToANamedInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a floor newer than this build is refused",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif CompareVersions(Version, want) < 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAFloorNewerThanThisBuildIsRefusedNamingTheRemedy|TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the floor is read before the strict decode",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif err := checkFloor(path, b); err != nil {\n\t\treturn stored, nil, err\n\t}\n",
+      "replace": "",
+      "run": "TestAFloorNewerThanThisBuildIsRefusedNamingTheRemedy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a floor that is not a version is refused",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\t\tif p == \"\" || strings.Trim(p, \"0123456789\") != \"\" {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAFloorNewerThanThisBuildIsRefusedNamingTheRemedy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unknown key names a newer build and selfupdate",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif !strings.HasPrefix(err.Error(), \"json: unknown field \") {\n",
+      "replace": "\tif true {\n",
+      "run": "TestAnUnknownKeyNamesANewerBuildAndSelfupdate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: config validate answers a floor with exit 2",
+      "file": "cmd_actionable.go",
+      "find": "\tif errors.Is(err, toolkit.ErrVersionFloor) {\n\t\tcode = exitCannot\n\t}\n",
+      "replace": "",
+      "run": "TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: ready answers a floor with exit 2",
+      "file": "cmd_ready.go",
+      "find": "\tif r.floor {\n\t\treturn exitCannot\n\t}\n",
+      "replace": "",
+      "run": "TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: ready names selfupdate for a floor",
+      "file": "cmd_ready.go",
+      "find": "\t\tr.Remediation = append(r.Remediation, toolkit.ToolCommandFor(toolkit.DefaultInstance, \"selfupdate\"))\n\t\treturn\n",
+      "replace": "",
+      "run": "TestAFloorIsExitTwoFromEveryCommandThatReadsTheConfiguration",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a named instance finds the working tree's file",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\t\tsrc.Project = nearestProjectConfig()\n",
+      "replace": "",
+      "run": "TestAProjectLendsItsJobsToANamedInstance|TestAProjectsWorkspaceResolvesAgainstItsOwnFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a working tree's file lends a named instance its jobs",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif src.Project != \"\" {\n\t\tif err := cfg.contribute(src.Project); err != nil {\n",
+      "replace": "\tif false {\n\t\tif err := cfg.contribute(src.Project); err != nil {\n",
+      "run": "TestAProjectLendsItsJobsToANamedInstance|TestEveryJobFieldAProjectWritesReachesTheInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a named instance takes the project's floor",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tc.Requires = higherFloor(c.Requires, stored.Requires)\n",
+      "replace": "",
+      "run": "TestAProjectLendsItsJobsToANamedInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a config write stores the instance's own jobs",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif c.own != nil {\n\t\tc.Jobs, c.Requires = c.own.jobs, c.own.requires\n\t}\n",
+      "replace": "",
+      "run": "TestAProjectLendsItsJobsToANamedInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant's write stores the instance's own jobs",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif c.own != nil {\n\t\tc.Jobs, c.Requires = c.own.jobs, c.own.requires\n\t}\n",
+      "replace": "",
+      "run": "TestAProjectLendsItsJobsToANamedInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every jobs key reaches a named instance from a project",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif stored.Image != \"\" {\n\t\tdst.Image = stored.Image\n\t}\n",
+      "replace": "",
+      "run": "TestEveryJobFieldAProjectWritesReachesTheInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a jobs path resolves against the file that named it",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif c.project != \"\" && c.projectKeys[key] {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAProjectLendsItsJobsToANamedInstance|TestAProjectsWorkspaceResolvesAgainstItsOwnFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run reads jobs.workspace against the file that named it",
+      "file": "cmd_run.go",
+      "find": "\t\t\tj.workspace, err = pathFromJobs(cfg, \"workspace\", j.workspace)\n",
+      "replace": "\t\t\tj.workspace, err = pathFromConfig(cfg, j.workspace)\n",
+      "run": "TestAProjectsWorkspaceResolvesAgainstItsOwnFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a configuration's job defaults are held where they are read",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif err := validateJobDefaults(c.Jobs, c.Catalog()); err != nil {\n\t\treturn err\n\t}\n",
+      "replace": "",
+      "run": "TestJobDefaultsAreHeldWhereTheyAreWritten",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a configuration's floor is held to a version wherever it came from",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif c.Requires != \"\" {\n\t\tif _, err := parseFloor(c.Requires); err != nil {\n",
+      "replace": "\tif false {\n\t\tif _, err := parseFloor(c.Requires); err != nil {\n",
+      "run": "TestJobDefaultsAreHeldWhereTheyAreWritten",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.timeout yields to --timeout",
+      "file": "cmd_run.go",
+      "find": "\tif !j.named[\"timeout\"] {\n",
+      "replace": "\tif true {\n",
+      "run": "TestAProjectsJobDefaultsYieldToTheCommandLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.user yields to --user",
+      "file": "cmd_run.go",
+      "find": "\tif !j.named[\"user\"] && cfg.Jobs.User != \"\" {\n",
+      "replace": "\tif cfg.Jobs.User != \"\" {\n",
+      "run": "TestAProjectsJobDefaultsYieldToTheCommandLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.max_bytes yields to --max-bytes",
+      "file": "cmd_run.go",
+      "find": "\tif !j.named[\"max-bytes\"] && cfg.Jobs.MaxBytes > 0 {\n",
+      "replace": "\tif cfg.Jobs.MaxBytes > 0 {\n",
+      "run": "TestAProjectsJobDefaultsYieldToTheCommandLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.max_entries yields to --max-entries",
+      "file": "cmd_run.go",
+      "find": "\tif !j.named[\"max-entries\"] && cfg.Jobs.MaxEntries > 0 {\n",
+      "replace": "\tif cfg.Jobs.MaxEntries > 0 {\n",
+      "run": "TestAProjectsJobDefaultsYieldToTheCommandLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.env reaches a job",
+      "file": "cmd_run.go",
+      "find": "\tfor name, value := range cfg.Jobs.Env {\n\t\tout[name] = value\n\t}\n",
+      "replace": "",
+      "run": "TestTheProjectsEnvironmentComesFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.env_file reaches a job",
+      "file": "cmd_run.go",
+      "find": "\tif cfg.Jobs.EnvFile != \"\" {\n\t\tpath, err := pathFromJobs(cfg, \"env_file\", cfg.Jobs.EnvFile)\n",
+      "replace": "\tif false {\n\t\tpath, err := pathFromJobs(cfg, \"env_file\", cfg.Jobs.EnvFile)\n",
+      "run": "TestTheProjectsEnvironmentComesFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run takes jobs.image where --image names none",
+      "file": "cmd_run.go",
+      "find": "\tif cfg.Jobs.Image != \"\" {\n\t\treturn cfg.Jobs.Image, nil\n\t}\n",
+      "replace": "",
+      "run": "TestRunTakesItsImageFromTheProject",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a relative grant source crosses the helper resolved",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tc.Base.Mounts = resolved\n\treturn c\n",
+      "replace": "\treturn c\n",
+      "run": "TestAGrantsSourceCrossesTheHelperResolved",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper client sends its grants resolved",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\t\tcfg: cfg.Portable(),\n",
+      "replace": "\t\tcfg: cfg,\n",
+      "run": "TestAGrantsSourceCrossesTheHelperResolved",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache is mounted as its volume",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\targs = append(args, \"--volume\", c.Volume()+\":\"+c.Path+opts)\n",
+      "replace": "",
+      "run": "TestACacheIsMadeWithTheLabelAndMountedForTheUser",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache's volume is made before the engine",
+      "file": "internal/toolkit/job.go",
+      "find": "\tb.WriteString(cacheCreateScript(spec.Caches))\n",
+      "replace": "",
+      "run": "TestACacheIsMadeWithTheLabelAndMountedForTheUser",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache's volume carries this tool's label",
+      "file": "internal/toolkit/jobcache.go",
+      "find": "podman volume create --label %s --label %s %s 2>&1 >/dev/null",
+      "replace": "podman volume create %.0s%.0s%s 2>&1 >/dev/null",
+      "run": "TestACacheIsMadeWithTheLabelAndMountedForTheUser|TestTheCacheCheckMakesAMissingVolumeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache another job made first is not a refusal",
+      "file": "internal/toolkit/jobcache.go",
+      "find": "2>&1 >/dev/null) && ! podman volume exists %s; then\\n\",",
+      "replace": "2>&1 >/dev/null)%.0s; then\\n\",",
+      "run": "TestTheCacheCheckMakesAMissingVolumeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache's name is held to its alphabet",
+      "file": "internal/toolkit/jobcache.go",
+      "find": "\tif err := ValidateCacheName(name); err != nil {\n\t\treturn JobCache{}, err\n\t}\n",
+      "replace": "",
+      "run": "TestACacheIsNamedAndMountedWhereAJobCanUseIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache over the job's own mounts is refused",
+      "file": "internal/toolkit/jobcache.go",
+      "find": "if p == own || (own != \"/work\" && own != \"/out\" && strings.HasPrefix(p, own+\"/\")) {",
+      "replace": "if false {",
+      "run": "TestACacheIsNamedAndMountedWhereAJobCanUseIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache over a kernel filesystem is refused",
+      "file": "internal/toolkit/jobcache.go",
+      "find": "if p == kernel || strings.HasPrefix(p, kernel+\"/\") {",
+      "replace": "if false {",
+      "run": "TestACacheIsNamedAndMountedWhereAJobCanUseIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: two caches at one path are refused",
+      "file": "internal/toolkit/jobcache.go",
+      "find": "\t\tif other, ok := at[c.Path]; ok {\n",
+      "replace": "\t\tif other, ok := at[c.Path]; ok && false {\n",
+      "run": "TestACacheIsNamedAndMountedWhereAJobCanUseIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cache a container names is kept by gc --caches",
+      "file": "internal/toolkit/cachestore.go",
+      "find": "\t\tif len(c.Containers) > 0 {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestACacheAContainerNamesIsKept",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only a cache's own volume is read as one",
+      "file": "internal/toolkit/cachestore.go",
+      "find": "if len(f) != 5 || f[0] != \"cache\" || !strings.HasPrefix(f[1], CacheVolumePrefix) {",
+      "replace": "if len(f) != 5 || f[0] != \"cache\" {",
+      "run": "TestCacheVolumesAreReadFromTheirLines",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --caches is refused beside a job narrowing",
+      "file": "cmd_admin.go",
+      "find": "\t\t\tif other.given {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestGcCachesIsTheCachesAlone",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a project's cache yields to one the command line mounts at its path",
+      "file": "cmd_run.go",
+      "find": "\t\tif _, p, ok := strings.Cut(d, \":\"); ok && taken[p] {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestAProjectsJobDefaultsYieldToTheCommandLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: resources names each cache",
+      "file": "internal/toolkit/resources.go",
+      "find": "\tfor _, c := range rep.Owned.Caches {\n\t\tsize := \"not measured\"\n",
+      "replace": "\tfor _, c := range rep.Owned.Caches[:0] {\n\t\tsize := \"not measured\"\n",
+      "run": "TestACacheIsReportedAndNarrowedToTheJobThatNamesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: resources --job keeps the caches that job names",
+      "file": "cmd_actionable.go",
+      "find": "\t\t\tif strings.Contains(name, id) {\n\t\t\t\tout.Owned.Caches = append(out.Owned.Caches, c)\n",
+      "replace": "\t\t\tif true {\n\t\t\t\tout.Owned.Caches = append(out.Owned.Caches, c)\n",
+      "run": "TestACacheIsReportedAndNarrowedToTheJobThatNamesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet's rows take its caches, account and capabilities",
+      "file": "internal/toolkit/matrix.go",
+      "find": "\t\tCaches: spec.Caches, CreateUser: spec.CreateUser, Sudo: spec.Sudo, CapAdd: spec.CapAdd,\n",
+      "replace": "",
+      "run": "TestEveryMatrixFieldReachesItsRows",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper reads caches as the direct path does",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tcaches, err := ParseCaches(req.Caches, \"--cache\")\n\tif err != nil {\n\t\treturn nil, nil, err\n\t}\n",
+      "replace": "\tvar caches []JobCache\n\tfor _, s := range req.Caches {\n\t\tname, p, _ := strings.Cut(s, \":\")\n\t\tcaches = append(caches, JobCache{Name: name, Path: p})\n\t}\n",
+      "run": "TestCachesAndCapabilitiesCrossTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper reads a capability as the direct path does",
+      "file": "internal/toolkit/helper.go",
+      "find": "\t\tc, err := ParseCapability(v)\n",
+      "replace": "\t\tc, err := v, error(nil)\n",
+      "run": "TestCachesAndCapabilitiesCrossTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a made account skips a uid the image holds",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\tcase uids[id]:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestAnAccountTheImageLacksTakesAnIDTheImageDoesNotHave",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an account the image has is used as it is",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\tif f[0] == name {\n\t\t\ta.Exists = true\n\t\t\treturn a, nil\n\t\t}\n",
+      "replace": "",
+      "run": "TestAnAccountTheImageLacksTakesAnIDTheImageDoesNotHave",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a made account takes the group of its name",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\tcase named >= 0:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestAnAccountTheImageLacksTakesAnIDTheImageDoesNotHave",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a made account skips a gid the image holds",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\tcase !gids[id]:\n",
+      "replace": "\t\tcase true:\n",
+      "run": "TestAnAccountTheImageLacksTakesAnIDTheImageDoesNotHave",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a made account reaches podman as its passwd entry",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\t\"--passwd-entry\", fmt.Sprintf(\"%s:*:%d:%d:%s:/home/%s:/bin/sh\", a.Name, a.UID, a.GID, a.Name, a.Name),\n",
+      "replace": "",
+      "run": "TestAMadeAccountReachesPodmanAsItsOwnEntries",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a made account gets a group entry where the image has none",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\tif a.NewGroup {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAMadeAccountReachesPodmanAsItsOwnEntries",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a made account gets a home it owns",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\treturn append(args, \"--tmpfs\", \"/home/\"+a.Name+\":rw,exec,nosuid,nodev,mode=0700,U\")\n",
+      "replace": "\treturn args\n",
+      "run": "TestAMadeAccountReachesPodmanAsItsOwnEntries",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the job runs as the account --create-user resolved",
+      "file": "internal/toolkit/job.go",
+      "find": "\tif spec.account != nil {\n\t\t// WSL-123: the account --create-user resolved.\n\t\targs = append(args, spec.account.podmanArgs()...)\n\t} else if spec.User != \"\" {\n",
+      "replace": "\tif spec.User != \"\" {\n",
+      "run": "TestAMadeAccountReachesPodmanAsItsOwnEntries",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account probe runs the job's own platform",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\tif spec.Platform != \"\" {\n\t\targs = append(args, \"--platform\", spec.Platform)\n\t}\n\targs = append(args, spec.Image, \"-c\",\n",
+      "replace": "\targs = append(args, spec.Image, \"-c\",\n",
+      "run": "TestTheAccountProbeRunsTheJobsOwnImage",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --create-user without --user is refused",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\tif user == \"\" {\n\t\t\treturn errors.New(\"--create-user makes",
+      "replace": "\t\tif false {\n\t\t\treturn errors.New(\"--create-user makes",
+      "run": "TestCreateUserAndSudoNameAnAccount|TestCreateUserSudoAndCapabilitiesAreReadWhereTheyAreTyped",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --sudo without --user is refused",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\tif user == \"\" {\n\t\t\treturn errors.New(\"--sudo grants",
+      "replace": "\t\tif false {\n\t\t\treturn errors.New(\"--sudo grants",
+      "run": "TestCreateUserAndSudoNameAnAccount|TestAJobFromTheHelperIsHeldToTheAccountRules",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --create-user makes a name and nothing else",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\tif err := ValidateAccountName(user); err != nil {\n\t\t\treturn fmt.Errorf(\"--create-user: %w\", err)\n\t\t}\n",
+      "replace": "",
+      "run": "TestCreateUserAndSudoNameAnAccount",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the sudo rule names a uid by its number",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\t\treturn \"#\" + who + \" ALL=(ALL:ALL) NOPASSWD: ALL\\n\", nil\n",
+      "replace": "\t\treturn who + \" ALL=(ALL:ALL) NOPASSWD: ALL\\n\", nil\n",
+      "run": "TestCreateUserAndSudoNameAnAccount",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run holds --create-user and --sudo to --user",
+      "file": "cmd_run.go",
+      "find": "\tif err := toolkit.ValidateJobUser(j.user, j.createUser, j.sudo); err != nil {\n\t\treturn err\n\t}\n",
+      "replace": "",
+      "run": "TestCreateUserSudoAndCapabilitiesAreReadWhereTheyAreTyped",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job from the helper is held to the account rules",
+      "file": "internal/toolkit/job.go",
+      "find": "\tif err := ValidateJobUser(spec.User, spec.CreateUser, spec.Sudo); err != nil {\n",
+      "replace": "\tif err := error(nil); err != nil {\n",
+      "run": "TestAJobFromTheHelperIsHeldToTheAccountRules",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the sudo rule is mounted root's and read-only",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\targs = append(args, \"--volume\", paths.sudoers+\":\"+SudoersMount+\":ro,Z\")\n",
+      "replace": "\t\targs = append(args, \"--volume\", paths.sudoers+\":\"+SudoersMount+\":ro\"+strings.Replace(opts, \":\", \",\", 1))\n",
+      "run": "TestTheSudoRuleIsMountedReadOnlyAndRoots",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an executable input arrives at mode 0755",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "Typeflag: tar.TypeReg, Mode: 0o755, Size: int64(len(b))",
+      "replace": "Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(b))",
+      "run": "TestAnExecutableInputArrivesRepairedAndRunnable",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an executable input arrives repaired",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\t\tif in.Exec {\n\t\t\tb, err := execInputBytes(in)\n\t\t\tif err != nil {\n\t\t\t\treturn up, err\n",
+      "replace": "\t\tif false {\n\t\t\tb, err := execInputBytes(in)\n\t\t\tif err != nil {\n\t\t\t\treturn up, err\n",
+      "run": "TestAnExecutableInputArrivesRepairedAndRunnable",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an executable input with no shebang is refused",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\tif !strings.HasPrefix(string(out), \"#!\") {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAnExecutableInputThatCannotRunByItsShebangIsRefused|TestAnExecutableInputCrossesTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an executable input is checked before the job is claimed",
+      "file": "internal/toolkit/jobinput.go",
+      "find": "\t\tif in.Exec {\n\t\t\tb, err := execInputBytes(in)\n\t\t\tif err != nil {\n\t\t\t\treturn err\n",
+      "replace": "\t\tif false {\n\t\t\tb, err := execInputBytes(in)\n\t\t\tif err != nil {\n\t\t\t\treturn err\n",
+      "run": "TestAnExecutableInputThatCannotRunByItsShebangIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper reads an executable input as one",
+      "file": "internal/toolkit/helper.go",
+      "find": "JobInput{Name: in.Name, Bytes: b, Exec: in.Exec}",
+      "replace": "JobInput{Name: in.Name, Bytes: b}",
+      "run": "TestAnExecutableInputCrossesTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an executable input is sent to the helper as one",
+      "file": "helper_route.go",
+      "find": "B64: base64.StdEncoding.EncodeToString(b), Exec: in.Exec})",
+      "replace": "B64: base64.StdEncoding.EncodeToString(b)})",
+      "run": "TestAnExecutableInputIsReadAsNameThenFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --input-exec is read as an executable input",
+      "file": "cmd_run.go",
+      "find": "out = append(out, toolkit.JobInput{Name: name, Path: p, Exec: true})",
+      "replace": "out = append(out, toolkit.JobInput{Name: name, Path: p})",
+      "run": "TestAnExecutableInputIsReadAsNameThenFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --cap-add reaches podman",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\targs = append(args, \"--cap-add\", c)\n",
+      "replace": "",
+      "run": "TestACapabilityIsReadInPodmansSpelling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a capability the kernel does not name is refused",
+      "file": "internal/toolkit/jobcache.go",
+      "find": "\t\tif c == name {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestACapabilityIsReadInPodmansSpelling",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run reads --cap-add into podman's spelling",
+      "file": "cmd_run.go",
+      "find": "\t\tc, err := toolkit.ParseCapability(v)\n",
+      "replace": "\t\tc, err := v, error(nil)\n",
+      "run": "TestCreateUserSudoAndCapabilitiesAreReadWhereTheyAreTyped",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the loader keeps a project's jobs.exclude",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif stored.Exclude != nil {\n\t\tdst.Exclude = stored.Exclude\n",
+      "replace": "\tif stored.Exclude == nil {\n\t\tdst.Exclude = stored.Exclude\n",
+      "run": "TestAProjectsJobSettingsReachEveryJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grants write keeps another configuration's ledger rows",
       "file": "internal/toolkit/grants.sh",
       "find": "        if [ -n \"$kept_target\" ] && [ \"$kept_key\" != \"$TK_GRANT_OWNER\" ] &&\n",
@@ -1897,15 +2563,6 @@
       "find": "\t\tif _, err := path.Match(pat, \"\"); err != nil {\n",
       "replace": "\t\tif _, err := path.Match(\"x\", \"\"); err != nil {\n",
       "run": "TestAProjectsExcludePatternIsReadAndABadOneRefused",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: the loader keeps a project's jobs.exclude",
-      "file": "internal/toolkit/catalog.go",
-      "find": "\tif stored.Jobs.Exclude != nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
-      "replace": "\tif stored.Jobs.Exclude == nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
-      "run": "TestAProjectsJobSettingsReachEveryJob",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

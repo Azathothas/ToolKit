@@ -59,6 +59,9 @@ type OwnedResources struct {
 	// Sessions are the detached base sessions this state directory records,
 	// running or ended. `gc` removes an ended one. WSL-95.
 	Sessions []HeldSession `json:"sessions,omitempty"`
+	// Caches are the named caches the base's engine holds, with what each one
+	// holds. `gc --caches --apply` removes them, and nothing else does. WSL-122.
+	Caches []CacheVolume `json:"caches,omitempty"`
 }
 
 // HostStage is one directory the helper is keeping for a client.
@@ -253,6 +256,12 @@ func (r *Runner) Resources(ctx context.Context) ResourceReport {
 			rep.Machine.EngineName = "podman inside " + r.cfg.Base.Name
 			rep.Machine.EngineSummary = engineSummary
 		}
+		// WSL-122: each named cache, with what it holds.
+		if caches, err := r.cacheVolumes(ctx); err != nil {
+			rep.Warnings = append(rep.Warnings, err.Error())
+		} else {
+			rep.Owned.Caches = caches
+		}
 	}
 	return rep
 }
@@ -372,6 +381,8 @@ type CleanupPlan struct {
 	Images   []string `json:"images,omitempty"`
 	Removed  []string `json:"removed,omitempty"`
 	Failed   []string `json:"failed,omitempty"`
+	// Caches are the named caches it removes, only under --caches. WSL-122.
+	Caches []string `json:"caches,omitempty"`
 	// Kept is what was spared and why. ⛔ A DRY RUN THAT ONLY LISTS WHAT IT
 	// WOULD REMOVE cannot be checked: the caller sees an empty plan and cannot
 	// tell "nothing is here" from "everything here is in use".
@@ -475,6 +486,20 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 	}
 	for _, c := range rep.Owned.Containers {
 		if err := p("  container         %s %s\n", c.Name, c.Detail); err != nil {
+			return err
+		}
+	}
+	// WSL-122: a cache is kept on purpose, so the line names what removes it.
+	for _, c := range rep.Owned.Caches {
+		size := "not measured"
+		if c.Bytes >= 0 {
+			size = HumanBytes(c.Bytes)
+		}
+		used := ""
+		if len(c.Containers) > 0 {
+			used = ", named by " + strings.Join(c.Containers, ", ")
+		}
+		if err := p("  cache             %-12s %s in volume %s%s. %s removes it once no container names it\n", size, c.Name, c.Volume, used, ToolCommand("gc --caches --apply")); err != nil {
 			return err
 		}
 	}
