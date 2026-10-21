@@ -1,6 +1,6 @@
 ---
 name: wsl-toolkit-agents
-description: "Drive coding agents through herdr in a wsl-toolkit base: start Muse Code, pi or omp in a pane, send a turn, read the answer back, and set the model and the reasoning effort each one begins on. Works from Windows across the wsl-toolkit bridge and from a shell inside the base. Use when the user asks to run, steer, watch or configure an agent in a base, or names herdr, muse, pi or omp. Do not use for an agent that is not running under herdr."
+description: "Drive coding agents through herdr in a wsl-toolkit base. Start Muse Code, pi or omp in a pane, send a turn, and read the answer back. Set the model and the reasoning effort each one begins on. Works from Windows across the wsl-toolkit bridge and from a shell inside the base. Use when the user asks to run, steer, watch or configure an agent in a base, or names herdr, muse, pi or omp. Do not use for an agent that is not running under herdr."
 ---
 
 # Driving agents under herdr
@@ -10,8 +10,9 @@ runs inside a wsl-toolkit base. Agents run in its panes, and you steer them from
 Windows without opening anything.
 
 ⛔ **The Windows client and the Linux server share no local IPC.** herdr's socket is a
-Unix socket on Linux and a named pipe on Windows. SSH is the only bridge, and the
-base's `herdr` adapter installs it.
+Unix socket on Linux and a named pipe on Windows. `wsl-toolkit base herdr` reaches the
+server through `wsl.exe`. herdr's own Windows client, `herdr --remote`, reaches it
+over SSH, through the door the base's `herdr` adapter installs.
 
 ---
 
@@ -23,9 +24,10 @@ base's `herdr` adapter installs it.
 wsl-toolkit --version
 ```
 
-If the command is not found, the executable is not on `PATH`. It is one file. The
-user downloads it from the repository's releases and puts it in a directory on
-`PATH`, usually `%USERPROFILE%\bin`.
+If the command is not found, the executable is not on `PATH`. The user downloads
+`wsl-toolkit-windows-amd64.exe`, or `wsl-toolkit-windows-arm64.exe` on ARM, from the
+newest `wsl-toolkit-v*` release of `Azathothas/ToolKit`. The user renames it to
+`wsl-toolkit.exe` and puts it in a `PATH` directory such as `%USERPROFILE%\bin`.
 
 To move it to the newest release:
 
@@ -33,14 +35,15 @@ To move it to the newest release:
 wsl-toolkit selfupdate
 ```
 
-⚠ **An old executable cannot read a newer configuration.** The refusal names the
-field it does not know. `selfupdate` is the fix.
+⚠ **A configuration field the tool does not know is refused**, as
+`FILE is not readable as wsl-toolkit-config/1: json: unknown field "X"`. A field in
+the wrong place gives the same message. Compare the field with `config --effective`.
+If its name and place are right, run `selfupdate`.
 
 ⛔ **FROM GIT BASH, EXPORT TWO VARIABLES FIRST.** MSYS rewrites a guest path, so
-`--dir /workspaces/proj` arrived inside the tool as
-`C:/Program Files/Git/workspaces/proj`. `export MSYS_NO_PATHCONV=1
-MSYS2_ARG_CONV_EXCL='*'` stops it. Every example here is PowerShell, and several of
-them pipe into `ConvertFrom-Json`, which is PowerShell only.
+`--cwd /workspaces/proj` reaches herdr as `C:/Program Files/Git/workspaces/proj`.
+`export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` stops it. Every example here is
+PowerShell, and one example pipes into `ConvertFrom-Json`, which is PowerShell only.
 
 ⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** A pipeline reports
 its own status and not the tool's. Read `$LASTEXITCODE` on the line after the
@@ -74,11 +77,13 @@ test "${HERDR_ENV:-}" = 1
 wsl-toolkit --instance base base herdr -- agent list
 ```
 
-⭐ **Everything after `--` is herdr's, argument for argument**, so a prompt carrying
-quotes or a dollar sign is never read by a shell. Every answer is JSON.
+⭐ **Everything after `--` is herdr's, argument for argument.** No shell in the base
+reads it. Your own PowerShell still does, so single-quote a prompt in PowerShell.
+Most answers are JSON.
 
-⚠ Replace `base` with the instance the user actually has. `wsl-toolkit --instance NAME
-config` prints what is configured.
+⚠ **`base` here is an instance name.** Replace it with the instance the user has.
+`doctor --json` lists every distribution in `host.wsl_distros`, and
+`wsl-toolkit-NAME` is `--instance NAME`.
 
 ---
 
@@ -102,23 +107,19 @@ terminal UI and blocks. Print a group instead.
 Make a pane, read its id back from the command that made it, and start an agent in it:
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit --instance base base herdr -- workspace create --cwd /workspaces/proj --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
 wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $pane --timeout 120000
 ```
 
-| part | what it is |
-| --- | --- |
-| the first argument | the NAME you address the agent by afterwards |
-| `--kind` | which agent: `muse`, `pi`, `omp`, and others herdr knows |
-| `--pane` | a pane already at its interactive shell prompt |
-| `--timeout` | milliseconds to wait for readiness. Default 30000, maximum 300000 |
+⚠ **`--cwd` takes an absolute guest path.** herdr does not expand `~`. Use a granted
+directory under `/workspaces`, or the account's home by its full path.
+
+The first argument to `agent start` is the NAME you address the agent by afterwards.
+`agent start --help` names every other flag and the agents herdr knows.
 
 ⚠ **Read the pane id from the command output.** The base may already hold workspaces,
 so a guessed id points at someone else's work.
-
-⚠ **This page is not the authority for the flags above.** herdr moves. If one is
-refused, ask the CLI, as the section before this one says, and use what it answers.
 
 ⛔ **The name must be free.** A second start under a name in use answers
 `agent_name_taken` and names the pane already holding it. Pick another name.
@@ -128,19 +129,20 @@ refused, ask the CLI, as the section before this one says, and use what it answe
 ## 5. Send a turn, and read the answer
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent prompt work "Answer with only the number of files git tracks here."
+wsl-toolkit --instance base base herdr -- agent prompt work 'Answer with only the number of files git tracks here.' --wait --timeout 300000
 wsl-toolkit --instance base base herdr -- agent read work --source recent --lines 40
 ```
 
+`--wait` returns when the agent reaches `idle`, `done` or `blocked` after the
+submission, so the read comes after the turn. ⚠ herdr does not track turns: if the
+agent was already working, the end of that turn can match instead.
+
 ⛔ **Submit with `agent prompt`, not with `pane send-text` plus `pane send-keys
 enter`.** With Muse Code 1.3.0 the two pane commands leave the text in the input
-with a newline after it, and only `agent prompt` submits it.
+with a newline after it, and only `agent prompt` submits it. Section 9 names the
+one exception.
 
 ⛔ **Every wait needs a `--timeout`.** A wait has no default and can wait for ever.
-
-```powershell
-wsl-toolkit --instance base base herdr -- agent wait work --until idle --timeout 300000
-```
 
 ---
 
@@ -173,19 +175,28 @@ setting is right:
 ## 7. Set the model and the effort a session begins on
 
 ⛔ **AN ENVIRONMENT VARIABLE CANNOT DO THIS.** An agent herdr starts inherits the
-herdr **service's** environment, not a login shell's. A value exported in `~/.profile`
-or `~/.bashrc` never reaches it: `/proc/PID/environ` of every pane process shows it.
+herdr **service's** environment. A value exported in `~/.profile` never reaches it.
 
-⭐ **Set it in the base's configuration and let the tool write each agent's own file:**
+⭐ **Set it in the base's configuration and let the tool write each agent's own file.**
+The fields go under `base`, beside the file's `schema` and its other fields.
+`wsl-toolkit --instance base config --write` puts the whole file on disk to edit:
 
 ```json
-"adapters": [
-  { "name": "herdr", "channel": "nightly" },
-  { "name": "muse", "model": "MODEL", "effort": "max" },
-  { "name": "pi",   "model": "PROVIDER/MODEL", "effort": "max" },
-  { "name": "omp",  "model": "MODEL", "effort": "max" }
-]
+{
+  "base": {
+    "systemd": true,
+    "adapters": [
+      { "name": "herdr" },
+      { "name": "muse", "model": "MODEL", "effort": "max" },
+      { "name": "pi",   "model": "PROVIDER/MODEL", "effort": "max" },
+      { "name": "omp",  "model": "MODEL", "effort": "max" }
+    ]
+  }
+}
 ```
+
+⚠ `herdr` needs `"systemd": true`, and every adapter needs the `arch` image preset,
+which is the default image.
 
 Then:
 
@@ -193,14 +204,18 @@ Then:
 wsl-toolkit --instance base base ensure
 ```
 
+⛔ **`base ensure` can restart and rebuild the base.** Ask the user before you run it
+on a base that holds work. ⛔ **A Muse installer whose digest nobody approved stops it
+with exit 2.** The ensure keeps the installer and prints how to read it. Approving it
+is the user's decision, after reading it. Never add `installer_sha256` yourself.
+
 | field | what it does |
 | --- | --- |
 | `model` | the model a session nobody passed a flag to begins on. Empty leaves the agent's own default alone. A value with a slash is `provider/id`, for an agent that reaches a model through a named provider |
 | `effort` | the reasoning effort. **`max` when a configuration names none** |
 
-⚠ **Each agent's effort vocabulary is its own**, and a word an agent does not take is
-refused rather than sent to it. `wsl-toolkit man --no-pager` carries the three lists
-and where each value is written.
+⚠ **Each agent's effort vocabulary is its own.** A word an agent does not take is
+refused rather than sent to it, and the refusal names the words that agent takes.
 
 **To change either by hand**, per agent:
 
@@ -208,11 +223,11 @@ and where each value is written.
 | --- | --- |
 | pi | `~/.pi/agent/settings.json`: `defaultProvider`, `defaultModel`, `defaultThinkingLevel` |
 | omp | `omp config set modelRoles` for the `default` role, and `omp config set defaultThinkingLevel` |
-| muse | ⛔ no settings key exists. `/usr/local/bin/muse` passes `--model` and `--reasoning-effort` |
+| muse | ⛔ Muse Code 1.3.0 has no settings key for either. `/usr/local/bin/muse` passes `--model` and `--reasoning-effort` |
 
-⛔ **Muse refuses a root option in front of a subcommand**, and refuses a repeated
-`--model`. So `muse --model M config status` exits 2, and the wrapper adds nothing at
-all to `muse login`.
+⛔ **Muse Code 1.3.0 refuses a root option in front of a subcommand**, and refuses a
+repeated `--model`. So `muse --model M config status` exits 2, and the wrapper adds
+nothing at all to `muse login`.
 
 ---
 
@@ -222,8 +237,9 @@ all to `muse login`.
 wsl-toolkit --instance base base attach
 ```
 
-It prints the exact line for this machine and runs nothing. Nothing needs starting
-first. Leave with the prefix, `ctrl+b`, then `q`; every pane and agent keeps running.
+It prints three commands for this machine and runs none of them: one from Windows,
+one from inside the base, and one for an agent. Nothing needs starting first. Leave
+with the prefix, `ctrl+b`, then `q`; every pane and agent keeps running.
 
 From inside the base, `wsl-toolkit --instance base base shell`, then `herdr`.
 
@@ -231,14 +247,16 @@ From inside the base, `wsl-toolkit --instance base base shell`, then `herdr`.
 
 ## 9. Traps
 
-⛔ **An agent must be on the PATH a PANE has**, which is a login shell's and does not
-include `~/.local/bin`. The adapters write a wrapper on the system path for this. If
-`agent start` times out with `command not found` in the pane, run `base ensure`.
+⛔ **An agent must be on the PATH a pane has, and that PATH does not include
+`~/.local/bin`.** The adapters write a wrapper on the system path for this, and check
+it on a login shell. If `agent start` times out with `command not found` in the pane,
+run `base ensure`. ⚠ This holds for PATH only: an exported variable still never
+reaches the agent, as section 7 says.
 
 ⛔ **Running the bootstrap puts the account's own prefix AHEAD of that wrapper.** After
 `base bootstrap`, a login shell finds each agent's vendor launcher first, and an agent
-whose default lives in the wrapper then starts without it. Run `base status --probe`
-after any bootstrap: it refuses a base whose login shell does not reach the wrapper.
+whose default lives in the wrapper then starts without it. `base status --probe`
+refuses such a base. Report it to the user rather than editing the account's profile.
 
 ⛔ **tmux inside a herdr pane hides the agent.** herdr then sees `tmux` as the pane
 process. Never start a multiplexer inside a pane.
@@ -249,5 +267,15 @@ pane's foreground process.
 ⛔ **Signing an agent in is the user's.** Never ask for, print, copy or store a
 credential, a code or a sign-in URL.
 
-⚠ **`herdr agent prompt` answers `agent_prompt_stalled` for an agent with no turn to
-run**, which is not a failure of the prompt.
+⚠ **`agent prompt --wait` answers `agent_prompt_stalled`** when no `working` or
+`blocked` state appears within 5 seconds. herdr says that does not prove nothing was
+sent. Read the agent before you send the prompt again.
+
+⚠ **`agent wait --until idle` can time out on an agent that is already idle**, because
+the turn ended before the wait began. Read the agent's state first, with `agent get`.
+
+⛔ **A cancelled approval in Muse Code 1.3.0 leaves the agent `blocked`**, and
+`agent prompt` then refuses every prompt with `agent_blocked`. This is the one place
+for the pane commands. Send one turn with `pane send-text PANE 'TEXT'`, then
+`pane send-keys PANE enter`. herdr's screen detection moves the agent off `blocked`,
+and `agent prompt` is accepted again. Read the agent to confirm it.

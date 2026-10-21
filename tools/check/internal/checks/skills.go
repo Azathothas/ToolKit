@@ -74,6 +74,7 @@ func skillFile(r *Result, path string, raw []byte, manual string, textTool map[s
 		r.bad("%s", sprintf("%s: the description is %d characters, and it is the only thing a harness reads when it decides whether to load this skill", path, len(d)))
 	}
 
+	forms := manualForms(manual)
 	inFence := false
 	for _, ln := range lines {
 		trimmed := strings.TrimSpace(ln.Text)
@@ -97,6 +98,19 @@ func skillFile(r *Result, path string, raw []byte, manual string, textTool map[s
 		for _, cmd := range skillCommands(ln.Text) {
 			if !manualHas(manual, cmd) {
 				r.bad("%s", sprintf("%s:%d: names `wsl-toolkit %s`, which %s does not document. A weak agent runs what the page says and reports the task impossible", path, ln.N, cmd, ManualPath))
+				continue
+			}
+			// ⛔ A FLAG THE FORM DOES NOT TAKE IS THE SAME DEFECT ONE WORD LATER:
+			// the command exists and the call still exits 2. The command was
+			// checked and its flags were not, so a renamed flag passed. TOOL-38.
+			known := forms[cmd]
+			if known == nil {
+				continue
+			}
+			for _, fl := range skillCommandFlags(ln.Text) {
+				if !known[fl] {
+					r.bad("%s", sprintf("%s:%d: passes `%s` to `wsl-toolkit %s`, which %s does not list for that form", path, ln.N, fl, cmd, ManualPath))
+				}
 			}
 		}
 		for _, fl := range skillTextToolFlags(ln.Text) {
@@ -147,6 +161,83 @@ func skillCommands(line string) []string {
 
 var skillFlagTakesValue = map[string]bool{"--instance": true, "--home": true, "--config": true}
 
+// manualForms reads, for each form the manual documents, the flags it lists. A
+// form is a `.B wsl-toolkit ...` line, named by its lowercase words, and its
+// flags are the `\fB--flag\fR` lines up to the next form or command.
+func manualForms(manual string) map[string]map[string]bool {
+	forms := map[string]map[string]bool{}
+	var current map[string]bool
+	for _, line := range strings.Split(manual, "\n") {
+		line = strings.ReplaceAll(strings.TrimSpace(line), `\-`, "-")
+		switch {
+		case strings.HasPrefix(line, ".SS "):
+			current = nil
+		case strings.HasPrefix(line, ".B wsl-toolkit"):
+			words := []string{}
+			for _, w := range strings.Fields(strings.TrimPrefix(line, ".B wsl-toolkit")) {
+				if !skillWord.MatchString(w) || len(words) == 2 {
+					break
+				}
+				words = append(words, w)
+			}
+			if len(words) == 0 {
+				current = nil
+				continue
+			}
+			key := strings.Join(words, " ")
+			if forms[key] == nil {
+				forms[key] = map[string]bool{"--help": true}
+			}
+			current = forms[key]
+		case current != nil:
+			if m := manualFlag.FindStringSubmatch(line); m != nil {
+				current[m[1]] = true
+			}
+		}
+	}
+	return forms
+}
+
+// skillCommandFlags returns the long flags one fenced line passes after its
+// command, with any `=VALUE` cut off.
+//
+// ⚠ IT STOPS AT THE PAYLOAD. After `-c`, `--`, or a quoted word, a dashed word
+// belongs to the command being run in the base, not to this tool.
+func skillCommandFlags(line string) []string {
+	fields := strings.Fields(line)
+	start := -1
+	for i, f := range fields {
+		if f == "wsl-toolkit" || strings.HasSuffix(f, `\wsl-toolkit.exe`) {
+			start = i + 1
+			break
+		}
+	}
+	if start < 0 {
+		return nil
+	}
+	rest := fields[start:]
+	for len(rest) > 0 && strings.HasPrefix(rest[0], "-") {
+		flag := rest[0]
+		rest = rest[1:]
+		if skillFlagTakesValue[flag] && len(rest) > 0 {
+			rest = rest[1:]
+		}
+	}
+	var out []string
+	for _, f := range rest {
+		if f == "-c" || f == "--" || strings.HasPrefix(f, "'") || strings.HasPrefix(f, `"`) {
+			break
+		}
+		if strings.HasPrefix(f, "--") {
+			if i := strings.Index(f, "="); i > 0 {
+				f = f[:i]
+			}
+			out = append(out, strings.TrimRight(f, ",;"))
+		}
+	}
+	return out
+}
+
 // manualHas asks the generated manual whether a command or a form exists.
 func manualHas(manual, cmd string) bool {
 	if strings.Contains(cmd, " ") {
@@ -182,8 +273,9 @@ func frontMatterValue(body, key string) string {
 }
 
 var (
-	skillLink = regexp.MustCompile(`\]\(([^)]+)\)`)
-	skillWord = regexp.MustCompile(`^[a-z][a-z-]*$`)
+	skillLink  = regexp.MustCompile(`\]\(([^)]+)\)`)
+	skillWord  = regexp.MustCompile(`^[a-z][a-z-]*$`)
+	manualFlag = regexp.MustCompile(`^\\fB(--[a-z0-9][a-z0-9-]*)\\fR`)
 )
 
 // TextToolMain is where text-tool's usage text lives, and the usage text is the
@@ -245,7 +337,7 @@ func skillTextToolFlags(line string) []string {
 	}
 	first := fields[0]
 	if first != "text-tool" && first != "text-tool.exe" &&
-		!strings.HasSuffix(first, "/text-tool") && !strings.HasSuffix(first, "\text-tool.exe") {
+		!strings.HasSuffix(first, "/text-tool") && !strings.HasSuffix(first, `\text-tool.exe`) {
 		return nil
 	}
 	var out []string

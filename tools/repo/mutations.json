@@ -2,6 +2,42 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "skills: a flag the form does not take is refused",
+      "file": "internal/checks/skills.go",
+      "find": "\t\t\t\tif !known[fl] {\n",
+      "replace": "\t\t\t\tif !known[fl] && false {\n",
+      "run": "TestASkillPassesOnlyFlagsTheFormTakes",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "skills: the flag rule runs",
+      "file": "internal/checks/skills.go",
+      "find": "\t\t\tfor _, fl := range skillCommandFlags(ln.Text) {\n",
+      "replace": "\t\t\tfor _, fl := range skillCommandFlags(\"\") {\n",
+      "run": "TestASkillPassesOnlyFlagsTheFormTakes",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "skills: a payload's own flags are not this tool's",
+      "file": "internal/checks/skills.go",
+      "find": "\t\tif f == \"-c\" || f == \"--\" || strings.HasPrefix(f, \"'\") || strings.HasPrefix(f, `\"`) {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestASkillPassesOnlyFlagsTheFormTakes",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "skills: a Windows full path to text-tool is read",
+      "file": "internal/checks/skills.go",
+      "find": "!strings.HasSuffix(first, `\\text-tool.exe`) {",
+      "replace": "!strings.HasSuffix(first, \"\\text-tool.exe\") {",
+      "run": "TestASkillNamesOnlyTextToolFlagsThatExist",
+      "module": "tools/check",
+      "args": []
+    },
+    {
       "label": "text-tool: eol creates nothing at a missing path",
       "file": "internal/edit/edit.go",
       "find": "\t\tif o.mode == \"eol\" && before == nil && !exists(p) {\n",

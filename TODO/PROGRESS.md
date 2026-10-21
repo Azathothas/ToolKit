@@ -12,8 +12,8 @@ standing rules and the rulings in force, and history is in git, the entries and
 ```text
 session started 2026-10-21T08:31:38Z, on the operator's request to rewrite the record to the model, sync the methodology, refresh the skills and finish all WSL work
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
-head            this commit: the record rewritten, the methodology synced, 58 entries filed and 9 closed; seven builders running
-entries         total 221  open 48  blocked 5  done 168
+head            this commit: the record rewritten, the methodology synced, 63 entries filed and 11 closed; the builders paused on wip/ branches
+entries         total 221  open 47  blocked 5  done 169
 this session    ruling 31
 ```
 
@@ -59,10 +59,25 @@ Measured on this host unless a row says read.
 
 ## In progress
 
-- The methodology sync from TEMPLATE, `DOC-09`, by a background pass in this tree.
-- Seven builders, each in its own worktree branch from `9784821`, by the table in
-  the work order below. Each branch is merged, gated and driven here before its
-  entries close.
+⛔ **Paused by the operator on 2026-10-21**, because the parallel builds kept Defender
+scanning. Every builder is stopped, its worktree removed, and its work committed on a
+local branch, unpushed. None is merged or gated yet:
+
+| branch | entries | state |
+| --- | --- | --- |
+| `wip/f6a-adapters` | `WSL-139`, `WSL-141`, `WSL-144`, `WSL-157`, `DOC-12` | finished and driven on a scratch base, 13 rows red; merge, gate, close |
+| `wip/f1-jobs` | `WSL-120`, `WSL-121`, the cap in `WSL-136` | unfinished |
+| `wip/f2-run-config` | `WSL-122`, `WSL-123`, `WSL-128`, `WSL-129`, `WSL-131`, `WSL-161`, `--cap-add` | unfinished |
+| `wip/f4-base-exec` | `WSL-123`'s `base exec`, `WSL-124`, `WSL-125`, `WSL-133`, `WSL-146` | unfinished, rows being run |
+| `wip/f5a-base-runtime` | `WSL-126`, `WSL-130`, the limits in `WSL-136` | unfinished |
+| `wip/f5b-base-build` | `WSL-137`, `WSL-140`, `WSL-143`, `WSL-147`, `WSL-150`, `WSL-153`, `WSL-155` | unfinished, at its combined drive |
+| `wip/f6b-fixes` | `WSL-149` to `WSL-164`, F6b's share | unfinished, at `check-go` |
+| `wip/f7-tooling` | `TOOL-32`, `TOOL-33` | unfinished, wiring `main.go` |
+
+⚠ **Resume one or two builders at a time**, not seven: each runs Go builds and a scratch
+base, and seven together loaded the machine. A builder's brief is the session's
+`specs.md`, `seams.md` and `specs-f7.md`; a fresh session reads the entry instead.
+The scratch distributions `wsl-toolkit-f4`, `-f5a` and `-f5b` are unregistered.
 
 ## The work order, set by the operator on 2026-10-21
 

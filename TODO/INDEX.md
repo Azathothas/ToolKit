@@ -20,7 +20,7 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 221  open 48  blocked 5  done 168
+total 221  open 47  blocked 5  done 169
 ```
 
 | priority | open | blocked | done | total |
@@ -28,8 +28,8 @@ total 221  open 48  blocked 5  done 168
 | P0 | 0 | 0 | 4 | 4 |
 | P1 | 3 | 0 | 80 | 83 |
 | P2 | 30 | 2 | 73 | 105 |
-| P3 | 15 | 3 | 11 | 29 |
-| **all** | **48** | **5** | **168** | **221** |
+| P3 | 14 | 3 | 12 | 29 |
+| **all** | **47** | **5** | **169** | **221** |
 
 ---
 
@@ -91,7 +91,7 @@ total 221  open 48  blocked 5  done 168
 | TOOL-35 | P3 | S | done | The gate's own list says the analyzer covers `scripts/` alone | [`tooling.md`](tooling.md) |
 | TOOL-36 | P3 | S | done | A changelog stamp later than the clock passes the gate | [`tooling.md`](tooling.md) |
 | TOOL-37 | P3 | S | open | A nightly whose upload fails loses the whole prerelease | [`tooling.md`](tooling.md) |
-| TOOL-38 | P3 | M | open | The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag | [`tooling.md`](tooling.md) |
+| TOOL-38 | P3 | M | done | The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-03 | P1 | S | done | Pass `--platform` to pull and create | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

@@ -1,6 +1,6 @@
 ---
 name: text-tool
-description: Write and edit files from a shell without the shell ever touching the payload. Use when a harness has no file-write tool, when a heredoc or quoting has mangled content, when a substitution must assert how many places it changed, or when converting line endings and byte order marks in place of dos2unix and unix2dos.
+description: Write and edit files from a shell without the shell ever touching the payload. Use when a harness has no file-write tool, or when a heredoc or quoting has mangled content. Use when a substitution must assert how many places it changed. Use to convert line endings and byte order marks in place of dos2unix and unix2dos.
 ---
 
 # text-tool
@@ -17,7 +17,7 @@ convert line endings, and carry bytes that are not valid text.
 
 ## 1. Get it
 
-Download the asset for your host from the latest release of
+Download the asset for your host from the newest `wsl-toolkit-v*` release of
 `Azathothas/ToolKit`, put it on `PATH`, and check it answers.
 
 ```bash
@@ -30,15 +30,18 @@ The published names are `text-tool-windows-amd64.exe`,
 `text-tool.exe`) so every example here works as written. On Linux make it
 executable with `chmod +x`.
 
+⭐ **`text-tool --help` is the manual, and the authority for its flags.** It is
+the text your copy prints, so it cannot describe another build.
+
 ⛔ **READ THE EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** `text-tool ... |
 head` gives you `head`'s exit code, and the refusal you needed to see is the one
 you will miss.
 
 | code | what it means |
 | --- | --- |
-| 0 | it did what you asked |
-| 1 | it REFUSED, and nothing was written |
-| 2 | it could not run: a bad flag, a missing file |
+| 0 | it did what you asked. ⚠ `eol` on a path that does not exist also answers 0, and creates the file empty |
+| 1 | it REFUSED a count or a match, and nothing was written. `edit` on a missing file is a count of 0, so it answers 1 |
+| 2 | a usage refusal, such as a flag it does not take or a missing `--expect`. A `--from` or `--files-from` file it cannot open answers 2 too. Nothing was written |
 
 ## 2. The four modes
 
@@ -51,7 +54,7 @@ text-tool eol PATH --lf
 
 `write` replaces the whole file and creates parent directories. `append` adds to
 the end. `edit` changes one part. `eol` converts line endings and the byte order
-mark, and is the whole of what `dos2unix` and `unix2dos` do.
+mark, and covers the common use of `dos2unix` and `unix2dos`.
 
 ## 3. Get the payload past your shell
 
@@ -107,9 +110,10 @@ text-tool write x.go --b64 Ly9kb3VibGUtc2xhc2g=
 ```
 
 ⚠ **This is not something the tool can fix.** The mangling happens before the
-program runs, so the only defence is a channel the shell has no opinion about.
-Reach for `--b64` or `--from` for any payload that starts with a slash, and for
-Go, C or JavaScript comments in particular.
+program runs. The first defence is a channel the shell has no opinion about:
+reach for `--b64` or `--from` for any payload that starts with a slash, and for
+Go, C or JavaScript comments in particular. The second is to stop the rewrite in
+Git Bash with `export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'` before the call.
 
 ⚠ **`--text` is read literally.** `--text 'a\nb'` writes a backslash and an `n`,
 not a newline. For a real newline use `--b64` or `--from`. The tool prints a
@@ -126,8 +130,8 @@ asked for, and it is the kind nobody notices.
 text-tool edit config.json --replace '"debug": true' --text '"debug": false' --expect 1
 ```
 
-⛔ **A SEARCH WITHOUT `--expect` IS REFUSED OUTRIGHT**, and that is `--replace`,
-`--after`, `--before` and `--between` alike. If you do not know the
+⛔ **A SEARCH WITHOUT `--expect` IS REFUSED OUTRIGHT**, with exit 2, and that is
+`--replace`, `--after`, `--before` and `--between` alike. If you do not know the
 number, ask first:
 
 ```bash
@@ -148,6 +152,8 @@ the real number.
 
 ## 5. The operations
 
+These are the common forms. `text-tool --help` lists every flag your copy takes.
+
 ```bash
 text-tool edit PATH --replace 'FIND' --text 'NEW' --expect 1
 text-tool edit PATH --after '## Heading' --text 'a new line' --expect 1
@@ -167,8 +173,7 @@ tool.
 
 ⛔ **`--between` NEEDS `--expect`, AND IT REPORTS THE LINES IT TOOK.** It is the
 widest operation here: it deletes a whole region rather than one line.
-`text-tool --help` names what your copy requires, and a build older than
-`wsl-toolkit-v4.0.0` does not require the count. `WSL-93`
+`text-tool --help` names what your copy requires.
 
 ⚠ **A count is still not enough on its own.** An anchor that also appears earlier
 in the file pairs the FIRST copy with the closing anchor. That is exactly one
@@ -220,6 +225,8 @@ thing in each, so they take as many files as you like.
 
 ## 7. Line endings and the byte order mark
 
+These are the common forms. `text-tool --help` lists every flag your copy takes.
+
 ```bash
 text-tool eol PATH --lf
 text-tool eol PATH --crlf
@@ -232,6 +239,9 @@ the long spellings. `--bom` takes `keep` (the default), `strip` or `add`.
 ⚠ **The count is endings CONVERTED, not lines in the file.** A file already in
 the wanted ending answers 0, so you can tell "nothing to do" from "everything
 moved" without comparing byte totals.
+
+⛔ **CONFIRM THE PATH EXISTS FIRST.** A mistyped path also answers `left
+unchanged` and exit 0, and `eol` creates the file empty.
 
 ⚠ **A lone carriage return is left alone.** Only a CR that is followed by an LF
 is a line ending here. Rewriting a bare CR would edit data inside a quoted
@@ -277,18 +287,18 @@ sets `lines_truncated`, so the two numbers disagreeing is never a mystery.
 
 ## 10. When it refuses
 
-Every refusal writes nothing and exits 1. Read the message; it names the number
-it found and what to do.
+A count or match refusal exits 1. A usage refusal exits 2. Neither writes. Read
+the message; it names what it found and what to do.
 
-| message | do this |
-| --- | --- |
-| `--expect N and this matches M times` | run `--count`, decide whether you meant M, then say M |
-| `needs --expect N` | you used `--replace`, `--after`, `--before` or `--between` without it |
-| `file(s) matched nothing` | check the path for a typo; the file may have drifted; `--allow-unmatched` if you meant it |
-| `names a place in ONE file` | run it once per file, or use `--replace` |
-| `takes one operation and N were given` | pick one |
-| `eol needs a target` | add `--lf`, `--crlf` or `--bom` |
-| `--between takes two patterns` | pass them as two arguments, not one with a comma |
+| message | exit | do this |
+| --- | --- | --- |
+| `--expect N and this matches M times` | 1 | run `--count`, decide whether you meant M, then say M |
+| `file(s) matched nothing` | 1 | check the path for a typo; the file may have drifted; `--allow-unmatched` if you meant it |
+| `need --expect N` | 2 | you used `--replace`, `--after`, `--before` or `--between` without it |
+| `names a place in ONE file` | 2 | run it once per file, or use `--replace` |
+| `takes one operation and N were given` | 2 | pick one |
+| `eol needs --to lf` | 2 | add `--lf`, `--crlf` or `--bom` |
+| `--between takes two patterns`, or `"X" is not a flag this takes` after `--between` | 2 | pass the two patterns as two arguments, not one with a comma |
 
 ⛔ **DO NOT WORK AROUND A REFUSAL BY REACHING FOR A HEREDOC.** The refusal is the
 tool telling you the edit you described is not the edit you meant. Writing the

@@ -21,7 +21,7 @@ import (
 
 // steManual is the shape this check reads out of the generated manual: a
 // top-level command is a .SS line and a form is a .B line.
-const steManual = ".SH COMMAND REFERENCE\n.SS base\n.TP\n.B wsl-toolkit base status\n.SS man\n.TP\n.B wsl-toolkit man\n"
+const steManual = ".SH COMMAND REFERENCE\n.SS base\n.TP\n.B wsl-toolkit base status\n.TP\n\\fB--probe\\fR\nstatus runs a real container\n.SS man\n.TP\n.B wsl-toolkit man\n"
 
 func skillRun(t *testing.T, path, body string) Result {
 	t.Helper()
@@ -133,6 +133,8 @@ func TestASkillNamesOnlyTextToolFlagsThatExist(t *testing.T) {
 		{"prose naming the tool passes no flags", "run text-tool when --teleport is needed", vocab, 0},
 		{"a full path still counts", "/usr/local/bin/text-tool write x --teleport", vocab, 1},
 		{"the Windows name still counts", "text-tool.exe write x --teleport", vocab, 1},
+		// TOOL-38: the suffix was written with a tab escape, so this never matched.
+		{"a Windows full path still counts", `C:\tools\text-tool.exe write x --teleport`, vocab, 1},
 		// ⚠ A LINE THAT NAMES NO INVOCATION AT ALL, such as the tool's own
 		// output quoted back inside a fenced block, passes no flags.
 		{"output quoted back is not an invocation", "refused x: --expect 1 and this matches 0", vocab, 0},
@@ -183,5 +185,38 @@ func TestTheTextToolVocabularyComesFromTheRealUsageText(t *testing.T) {
 	// nothing rather than refuse everything.
 	if v := textToolVocabulary(treeWithFile(t, TextToolMain, "package main\n")); v != nil {
 		t.Fatalf("a file with no usage text gave a vocabulary: %v", v)
+	}
+}
+
+// TestASkillPassesOnlyFlagsTheFormTakes is TOOL-38: the check held each command
+// name to the manual and none of its flags, so a renamed flag passed.
+func TestASkillPassesOnlyFlagsTheFormTakes(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want int
+	}{
+		{"a flag the form takes", "wsl-toolkit base status --probe", 0},
+		{"a flag behind a global flag", "wsl-toolkit --instance base base status --probe", 0},
+		{"a flag with its value joined", "wsl-toolkit base status --probe=true", 0},
+		{"help on any form", "wsl-toolkit base status --help", 0},
+		{"a flag the form does not take", "wsl-toolkit base status --teleport", 1},
+		{"a payload's own flags", "wsl-toolkit base status -c 'ls --all'", 0},
+		{"after a double dash", "wsl-toolkit base status -- --anything", 0},
+		{"a full Windows path to the tool", `C:\bin\wsl-toolkit.exe base status --vanish`, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := skillRun(t, "skills/wsl-toolkit/SKILL.md", skillHead+"```powershell\n"+c.line+"\n```\n")
+			got := 0
+			for _, d := range r.Detail {
+				if strings.Contains(d, "does not list for that form") {
+					got++
+				}
+			}
+			if got != c.want {
+				t.Fatalf("%d finding(s), want %d: %s", got, c.want, strings.Join(r.Detail, " | "))
+			}
+		})
 	}
 }

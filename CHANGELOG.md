@@ -23,6 +23,15 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-21
 
+### 2026-10-21T14:55:07Z: the skills say what the tool does, and the skills check reads every flag
+
+**Record:** `TOOL-38` in [`TODO/tooling.md`](TODO/tooling.md), and `DOC-14` in [`TODO/docs.md`](TODO/docs.md), which stays open for 7.1.0's additions and the installed copies.
+**Deployed:** ⛔ **no deploy.** The installed skills are updated after the release.
+
+⭐ **The three skills are corrected against the tool**, line by line, from a review that
+ran every command they name. ⭐ **A flag a skill passes is held to the manual's list for
+that form**, and a full-path `text-tool` call is read.
+
 ### 2026-10-21T13:59:00Z: `text-tool eol` creates nothing at a path that does not exist
 
 **Record:** `WSL-165` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and the entries the skills review filed: `WSL-164`, `WSL-166`, `TOOL-38` and `DOC-14`.

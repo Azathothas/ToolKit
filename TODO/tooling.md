@@ -3514,7 +3514,7 @@ Open.
 ## TOOL-38. The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag
 
 **Source** the review of the three skills, 2026-10-21
-**Category** tooling, **Priority** P3, **Effort** M, **Status** open
+**Category** tooling, **Priority** P3, **Effort** M, **Status** done
 
 ---
 
@@ -3549,4 +3549,19 @@ Exit 0, with a case for a full-path call and one for an unknown flag.
 
 ## Closing
 
-Open.
+**Closed 2026-10-21T14:18:03Z.** The suffix is a raw string, so a call by its full
+Windows path is read. Every long flag a fenced `wsl-toolkit` line passes after its
+command is held to the flags the manual lists under that form, up to the payload: a
+dashed word after `-c`, after `--`, or inside quotes is the base command's, not this
+tool's. `--help` is accepted on every form. `skills/README.md` says what the check now
+reads.
+
+```text
+a planted `wsl-toolkit gc --workspace . --bogus-flag` in skills/wsl-toolkit/SKILL.md
+  FAIL   skills/wsl-toolkit/SKILL.md:24: passes `--bogus-flag` to `wsl-toolkit gc`,
+         which tools/windows/wsl-toolkit/wsl-toolkit.1 does not list for that form
+the file restored byte for byte; sh scripts/common/check.sh skills     exit 0
+repo mutate --only 'skills: '                                          8 of 8 guards proved
+```
+
+4 mutation rows, 4 of 4 red, and 9 new cases.
