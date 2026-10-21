@@ -37,7 +37,7 @@ const inspectUsage = `wsl-toolkit inspect [JOB-ID]
 
   An id nothing on this machine has heard of is a refusal, not an empty
   answer. wsl-toolkit logs lists the jobs this machine still has.
-`
+` + jobIDForms
 
 func cmdInspect(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("inspect")
@@ -55,6 +55,12 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	if *since <= 0 {
 		return exitCannot, fmt.Errorf("--since %s would read no journal at all. Pass a positive duration", *since)
 	}
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES. WSL-120.
+	resolved, err := resolveJobID("inspect", args, id)
+	if err != nil {
+		return exitCannot, err
+	}
+	id = resolved
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err

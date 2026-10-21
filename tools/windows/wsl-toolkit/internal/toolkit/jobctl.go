@@ -39,6 +39,16 @@ type StopReport struct {
 	Note    string `json:"note,omitempty"`
 }
 
+// ContainerFound says whether a stop found the job's container, whatever state
+// it was in. WSL-121.
+func (r StopReport) ContainerFound() bool {
+	switch r.Before {
+	case "", "gone", "ended", "not started":
+		return false
+	}
+	return true
+}
+
 // EndedByStop says whether a job's exit is a stop's doing: the engine's TERM or
 // KILL, with a stop in the ledger.
 //
@@ -112,6 +122,37 @@ func stopRecordedIn(l *Ledger, id string) (bool, error) {
 	return false, nil
 }
 
+// CancelOnExitNote begins the note of a stop --cancel-on-exit asked for, and
+// what follows it says which process exited. WSL-121.
+const CancelOnExitNote = "requested by --cancel-on-exit: "
+
+// stopNoteIn is the note of the first stop recorded for a job, or "".
+func stopNoteIn(l *Ledger, id string) string {
+	entries, err := l.All()
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.Event == "stop" && e.ID == id && e.Kind == "job" {
+			return e.Note
+		}
+	}
+	return ""
+}
+
+// stopError is what a stopped job's result says: who stopped it, and, for
+// --cancel-on-exit, which process ended first. when places the stop.
+//
+// ⛔ A STOP BY `wsl-toolkit stop` READS EXACTLY AS IT DID, because a caller may
+// match on it. Only a stop this tool asked for itself says something new.
+// WSL-121.
+func (r *Runner) stopError(id, when string) string {
+	if why, ok := strings.CutPrefix(stopNoteIn(r.ledger, id), CancelOnExitNote); ok {
+		return "the job was stopped by --cancel-on-exit" + when + ": " + why
+	}
+	return "the job was stopped by wsl-toolkit stop" + when
+}
+
 // StopJob stops one container job.
 //
 // ⛔ THE REQUEST IS RECORDED BEFORE THE ENGINE IS ASKED. The owner reads the
@@ -124,20 +165,70 @@ func stopRecordedIn(l *Ledger, id string) (bool, error) {
 // from a validated id, and the label is checked as well, so no stop can reach a
 // container this tool did not start.
 func (r *Runner) StopJob(ctx context.Context, id string, grace time.Duration) (StopReport, error) {
+	return r.stopJob(ctx, id, grace, "requested by wsl-toolkit stop", true)
+}
+
+// StopForCancelOnExit stops a job as StopJob does, for the watcher
+// --cancel-on-exit starts, and records why: which process exited before the
+// job ended. WSL-121.
+//
+// ⚠ IT DOES NOT ASK WHETHER THIS STATE DIRECTORY KNOWS THE JOB. A fleet's row
+// may not be claimed yet, and the recorded stop is what keeps it from starting.
+func (r *Runner) StopForCancelOnExit(ctx context.Context, id string, grace time.Duration, why string) (StopReport, error) {
+	return r.stopJob(ctx, id, grace, CancelOnExitNote+why, false)
+}
+
+// StopContainerOf stops a job's container if it exists and runs, and records
+// nothing, for a watcher that already recorded the stop. WSL-121.
+func (r *Runner) StopContainerOf(ctx context.Context, id string, grace time.Duration) (StopReport, error) {
 	rep := StopReport{Schema: StopSchema, ID: id, Kind: "job"}
 	if !ValidJobID(id) {
 		return rep, fmt.Errorf("%q is not a job id: an id is 16 lowercase hex characters", id)
 	}
-	known, err := r.jobKnown(id)
-	if err != nil {
-		return rep, err
+	err := r.stopContainerScript(ctx, &rep, id, grace)
+	return rep, err
+}
+
+func (r *Runner) stopJob(ctx context.Context, id string, grace time.Duration, note string, mustBeKnown bool) (StopReport, error) {
+	rep := StopReport{Schema: StopSchema, ID: id, Kind: "job"}
+	if !ValidJobID(id) {
+		return rep, fmt.Errorf("%q is not a job id: an id is 16 lowercase hex characters", id)
 	}
-	if !known {
-		return rep, fmt.Errorf("%w: %s. %s lists the jobs this machine still has", ErrUnknownJob, id, ToolCommand("logs"))
+	if mustBeKnown {
+		known, err := r.jobKnown(id)
+		if err != nil {
+			return rep, err
+		}
+		if !known {
+			return rep, fmt.Errorf("%w: %s. %s lists the jobs this machine still has", ErrUnknownJob, id, ToolCommand("logs"))
+		}
 	}
-	if err := r.ledger.Append(LedgerEntry{Event: "stop", Kind: "job", ID: id, Note: "requested by wsl-toolkit stop"}); err != nil {
+	if err := r.ledger.Append(LedgerEntry{Event: "stop", Kind: "job", ID: id, Note: note}); err != nil {
 		return rep, fmt.Errorf("could not record the stop before acting on it: %w", err)
 	}
+	if err := r.stopContainerScript(ctx, &rep, id, grace); err != nil {
+		return rep, err
+	}
+	if rep.Before == "gone" {
+		st, _ := ReadJobState(r.home, id)
+		switch {
+		case st.Result != nil:
+			rep.Before, rep.Note = "ended", "the job had already ended, so nothing was stopped"
+			v := st.Result.Verdict()
+			rep.Exit = &v
+		case st.Owned:
+			rep.Before, rep.Note = "not started", "the job's owner is still preparing it or creating its container. The stop is recorded, and the owner ends the job before its container starts or as it starts"
+			rep.Stopped = true
+		default:
+			rep.Note = "no container holds this job and no process owns it, so nothing was stopped"
+		}
+	}
+	return rep, nil
+}
+
+// stopContainerScript asks the engine to stop a job's container, TERM then KILL
+// after grace, and reads what it found and left into rep.
+func (r *Runner) stopContainerScript(ctx context.Context, rep *StopReport, id string, grace time.Duration) error {
 	g := int64(grace.Round(time.Second) / time.Second)
 	if g < 0 {
 		g = 0
@@ -158,24 +249,10 @@ printf 'AFTER|%s\n' "$after"
 	budget := grace + 2*time.Minute
 	out, stderr, code, err := r.baseCapture(ctx, []byte(script), budget)
 	if err != nil || code != 0 {
-		return rep, fmt.Errorf("could not stop job %s (exit %d): %s", id, code, guestFailure(stderr, out))
+		return fmt.Errorf("could not stop job %s (exit %d): %s", id, code, guestFailure(stderr, out))
 	}
-	readStopOutput(&rep, out)
-	if rep.Before == "gone" {
-		st, _ := ReadJobState(r.home, id)
-		switch {
-		case st.Result != nil:
-			rep.Before, rep.Note = "ended", "the job had already ended, so nothing was stopped"
-			v := st.Result.Verdict()
-			rep.Exit = &v
-		case st.Owned:
-			rep.Before, rep.Note = "not started", "the job's owner is still preparing it or creating its container. The stop is recorded, and the owner ends the job before its container starts or as it starts"
-			rep.Stopped = true
-		default:
-			rep.Note = "no container holds this job and no process owns it, so nothing was stopped"
-		}
-	}
-	return rep, nil
+	readStopOutput(rep, out)
+	return nil
 }
 
 // readStopOutput reads the stop script's two lines. ⭐ A function with no
@@ -425,12 +502,52 @@ func (r *Runner) FollowContainer(ctx context.Context, id string, tail int, stdou
 		return nil, true, ctx.Err()
 	}
 	_ = filter.Flush()
-	out, _, code, err = r.baseCapture(ctx, []byte("podman inspect --type container --format '{{.State.ExitCode}}' "+n+" 2>/dev/null || :\n"), 2*time.Minute)
-	if err != nil || code != 0 {
-		return nil, true, nil
+	// ⛔ THE LOG CAN END BEFORE THE CONTAINER DOES. A stop puts a container in
+	// its grace, and the engine's follow ends there, while the container still
+	// runs. Its exit code then reads 0, so `wait` recorded a job the stop's KILL
+	// ended with 137 as one that exited 0. Measured driving --cancel-on-exit, and
+	// any stop of a job whose owner is gone meets it. WSL-121.
+	deadline := time.Now().Add(containerEndLimit)
+	for {
+		out, _, code, err = r.baseCapture(ctx, []byte("podman inspect --type container --format '{{.State.Status}}|{{.State.ExitCode}}' "+n+" 2>/dev/null || :\n"), 2*time.Minute)
+		if err != nil || code != 0 {
+			return nil, true, nil
+		}
+		exit, ended := containerEnd(out)
+		if ended || !time.Now().Before(deadline) {
+			return exit, true, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, true, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
 	}
-	if v, perr := strconv.Atoi(strings.TrimSpace(out)); perr == nil {
-		return &v, true, nil
+}
+
+// containerEndLimit bounds the wait for a container whose log has ended and
+// which still runs. It is longer than any grace this tool gives a stop.
+const containerEndLimit = 10 * time.Minute
+
+// containerEnd reads a container's `status|exit`: its exit once it is no
+// longer running, and false while it runs, stops or is paused.
+func containerEnd(out string) (*int, bool) {
+	status, code, _ := strings.Cut(strings.TrimSpace(firstLine(out)), "|")
+	switch strings.TrimSpace(status) {
+	case "running", "stopping", "paused":
+		return nil, false
 	}
-	return nil, true, nil
+	if v, err := strconv.Atoi(strings.TrimSpace(code)); err == nil {
+		return &v, true
+	}
+	return nil, true
+}
+
+// StoppedBy names what asked for a job's stop, as a reader of its end says:
+// `wsl-toolkit stop`, or --cancel-on-exit with the process that exited. WSL-121.
+func (r *Runner) StoppedBy(id string) string {
+	if why, found := strings.CutPrefix(stopNoteIn(r.ledger, id), CancelOnExitNote); found {
+		return "--cancel-on-exit, because " + why + ","
+	}
+	return "wsl-toolkit stop"
 }

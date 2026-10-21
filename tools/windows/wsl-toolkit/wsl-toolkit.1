@@ -35,6 +35,8 @@ Global: --instance N  one isolated instance: distribution wsl-toolkit-N and
         --home DIR    the state directory (also WSL_TOOLKIT_HOME)
         --config F    a configuration file, ahead of every search step
         --quiet       progress off. Answers still go to stdout
+        --json-compact  each --json answer on one line. Also
+                      WSL_TOOLKIT_JSON=compact
 
 Every command takes --json where an answer has structure.
 Progress goes to stderr; stdout carries the answer alone.
@@ -258,6 +260,9 @@ a directory on this machine to receive whatever the container leaves in /out
 \fB-c\fR
 the shell command to run in the container
 .TP
+\fB--cancel-on-exit\fR
+stop the job, TERM then KILL after 10s, when the process that started this command, or one above it, exits before the job ends. A detached watcher waits on them and on the job's owner
+.TP
 \fB--color\fR
 colour the live prefix: auto, always or never. A file is never coloured. Default: auto.
 .TP
@@ -321,6 +326,12 @@ cut a line after this many bytes, at a character boundary, and say how many went
 \fB--max-output\fR
 how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says
 .TP
+\fB--max-running\fR
+hold this job until fewer than N jobs run on this machine, in every instance. 0 lifts the cap jobs.max_running sets
+.TP
+\fB--max-running-wait\fR
+with a running cap, wait this long for a running job to end rather than refusing at once. jobs.max_running_wait sets it for a project. Default: 0s.
+.TP
 \fB--no-network\fR
 run with no network at all
 .TP
@@ -335,6 +346,9 @@ consume a line that is this token, whitespace and a percentage with an optional 
 .TP
 \fB--redact\fR
 a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
+.TP
+\fB--remove-record\fR
+with --container-lifecycle ephemeral, also remove the job's host record once its answer is ready, so the job leaves nothing. jobs.remove_record sets it for a project, and --remove-record=false turns it off
 .TP
 \fB--script\fR
 a file on this machine whose bytes are the command, or - to read them from stdin
@@ -384,6 +398,9 @@ a directory on this machine to receive whatever the container leaves in /out
 .TP
 \fB-c\fR
 the shell command to run in the container
+.TP
+\fB--cancel-on-exit\fR
+stop the job, TERM then KILL after 10s, when the process that started this command, or one above it, exits before the job ends. A detached watcher waits on them and on the job's owner
 .TP
 \fB--command-base64\fR
 the command as base64 of its bytes, for a caller that must keep every shell away from it
@@ -442,6 +459,9 @@ how many rows run at once. Default: 4.
 \fB--platform\fR
 the Linux OCI platform. Empty uses jobs.platform, then the native platform
 .TP
+\fB--remove-record\fR
+with --container-lifecycle ephemeral, also remove the job's host record once its answer is ready, so the job leaves nothing. jobs.remove_record sets it for a project, and --remove-record=false turns it off
+.TP
 \fB--script\fR
 a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
@@ -471,7 +491,7 @@ report resources that this tool owns
 also report what the host's own container engine holds, which distro new --image pulls into, and print the commands that would free it without running any
 .TP
 \fB--job\fR
-narrow every row to one job id
+narrow every row to one job id: the id, its container's name wtk-ID, or a unique prefix of four or more characters
 .TP
 \fB--json\fR
 write a structured answer
@@ -493,7 +513,7 @@ also prune images the engine in the base is holding. Refused beside --job or --w
 also remove work that is running right now. Without it a live job is listed as kept and left alone
 .TP
 \fB--job\fR
-clean up one job id and leave the rest of the store alone. An id nothing in this instance belongs to is refused
+clean up one job id and leave the rest of the store alone. The id, its container's name wtk-ID, or a unique prefix of four or more characters. An id nothing in this instance belongs to is refused
 .TP
 \fB--json\fR
 write a structured answer

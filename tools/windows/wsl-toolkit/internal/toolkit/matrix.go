@@ -49,6 +49,10 @@ type MatrixSpec struct {
 	OnTick func(TickEvent)
 	// TickEvery overrides the interval. Zero means the default.
 	TickEvery time.Duration
+	// RowIDs are the ids the rows run under, in the order of Images, where the
+	// caller drew them first: the watcher of --cancel-on-exit names every row
+	// before any is claimed. Empty draws one per row. WSL-121.
+	RowIDs []string
 }
 
 // rowSpec is one row's job: the fleet's settings, this row's image, and the
@@ -66,6 +70,16 @@ func rowSpec(spec MatrixSpec, img Image, staged, artifacts string, limits Worksp
 		Label: img.ID, User: spec.User, Devices: spec.Devices, Inputs: spec.Inputs, MaxOutput: spec.MaxOutput,
 		OnTick: spec.OnTick, TickEvery: spec.TickEvery,
 	}
+}
+
+// rowAt is row i's job, under the id the caller drew for it where it drew one.
+// WSL-121.
+func rowAt(spec MatrixSpec, i int, img Image, staged, artifacts string, limits WorkspaceLimits) JobSpec {
+	row := rowSpec(spec, img, staged, artifacts, limits)
+	if i < len(spec.RowIDs) {
+		row.ID = spec.RowIDs[i]
+	}
+	return row
 }
 
 // MatrixReport is what a fleet run produced.
@@ -206,7 +220,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 			if spec.ArtifactDir != "" {
 				artifacts = joinHostPath(spec.ArtifactDir, img.ID)
 			}
-			rows[i] = r.Run(ctx, rowSpec(spec, img, staged, artifacts, limits))
+			rows[i] = r.Run(ctx, rowAt(spec, i, img, staged, artifacts, limits))
 			if spec.Transcripts != "" {
 				if err := r.WriteTranscript(spec.Transcripts, &rows[i]); err != nil {
 					r.log("could not write the transcript for " + img.ID + ": " + err.Error())

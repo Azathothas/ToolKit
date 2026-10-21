@@ -90,6 +90,10 @@ works. `WSL-111`
   out is a second explicit act, through `/out` and `--artifacts`.
 - Progress goes to stderr. The answer goes to stdout, alone. Every command that
   has a structured answer takes `--json`.
+- ⭐ `--json-compact`, a global flag written before the command, puts each
+  `--json` answer on one line, and `WSL_TOOLKIT_JSON=compact` does the same for
+  every call. The default stays indented, and any other value of the variable
+  is refused. `WSL-120`
 - `resources` reports what the tool holds. `gc` prints a plan, and `gc --apply`
   carries it out.
 
@@ -151,6 +155,24 @@ Pass `--container-lifecycle ephemeral` when a job must leave nothing, which is
 normally the right choice in CI. `jobs.container_lifecycle` sets the default for
 a machine or a project.
 
+⚠ **An ephemeral job still keeps its host record.** That is the job's directory in
+the state directory: its transcript, its result and its owner's lock. `logs ID`,
+`wait ID` and `gc --job ID` read it, and the answer says it stays. `WSL-121`
+
+⭐ **`--remove-record` removes it too**, once the answer is ready, so the job leaves
+nothing. `jobs.remove_record` sets it for a project, and `--remove-record=false`
+turns it off for one job. `matrix` takes it for every row.
+
+- The answer says `job ID left nothing`, `--json` sets `record_removed`, and the
+  `transcript` field is left out.
+- A record that holds something the answer does not is kept, and `record_kept`
+  says why. That is an answer whose copy of the output was cut, or artifacts that
+  were not delivered.
+- It is refused beside a persistent container and beside `--detach`, whose answer
+  is the record. A project's default does not apply to either.
+- ⛔ It is opt-in because a caller of an earlier release reads `logs ID` and runs
+  `gc --job ID` after an ephemeral job, and both would then be refused.
+
 A timeout stops a persistent container, removes an ephemeral one, and exits
 124. A cancellation does the same and exits 130.
 
@@ -190,6 +212,23 @@ effect. A `matrix` row records the workspace its fleet copied. `WSL-114`
 Its plan lists them under `kept`. Without them, the next probe and the next ensure
 would need the registry. `WSL-174`
 
+⭐ **`gc --json` carries `entries`, one object per target**, beside the lists of display
+strings, which keep their shape. Each object names its `kind`, its `job`, its
+`instance`, its recorded `workspace`, its `path`, its `action` and its `result`.
+`WSL-120`
+
+| field | values |
+| --- | --- |
+| `kind` | `container`, `guest-dir`, `host-dir`, `session` or `image` |
+| `job` | the job or session id, and empty for a helper's upload or artifact set, or an image |
+| `instance` | the instance whose state it is, empty for the default one |
+| `action` | `remove`, `keep`, or `prune` for an image under `--images` |
+| `result` | `planned` in a dry run, then `removed`, `failed`, `kept` or `unknown` |
+| `reason` | why it is kept, or why its removal failed |
+
+⚠ A target no step reported on reads `unknown`, never `removed`. An image the prune
+left, because a container uses it, reads `kept`.
+
 ---
 
 ## ⭐ A job from a second process
@@ -213,6 +252,19 @@ wsl-toolkit logs                      # every job and session, with its state
 | `stop ID` | exit 0 once the job no longer runs, 1 when it could not be stopped, 2 for an id this machine does not know. `--json` answers `wsl-toolkit-stop/1` |
 | `logs` | each job and session, newest first: its kind, its state, its exit code and its bytes |
 | `inspect ID` | the state, the recorded exit, and what the machine was running |
+
+⭐ **A job is named by its id, its container's name, or a prefix.** `wtk-ID` is read
+as `ID`. Four or more characters that start one job alone, with `wtk-` or without
+it, name that job. `logs`, `wait`, `stop`, `inspect`, `artifacts retry`, `gc --job`
+and `resources --job` all read the three forms. `WSL-120`
+
+- A full id passes through unchanged, so a refusal for an unknown one reads as it
+  did.
+- A prefix that names no job, or several, is refused with exit 2. The refusal names
+  `logs`, or lists the jobs the prefix starts.
+- A job another instance ran is refused with the command that reaches it, under
+  that instance's `--instance`. The job's own record says whose it is, and a prefix
+  of another instance's job is found there too.
 
 The state is one of four words:
 
@@ -265,6 +317,12 @@ the job's deadline too, 30 seconds after the owner's own. `wait` and
 `logs --follow` read the container's log and exit code from the engine, report
 `orphaned`, and record the end so a second reader gets the same answer.
 
+⭐ **Its open record is closed as soon as something reads it.** The owner closes a
+job's ledger record when it ends, so a killed one left it open, and `resources`
+reported a run that was interrupted for ever. `logs`, `logs ID`, `wait`,
+`logs ID --follow` and `gc --apply` now close a record whose owner's lock is free
+and whose job recorded no end. The close says the owner was lost. `WSL-121`
+
 ⚠ **Windows can refuse to release the owner.** `run --detach` starts the owner
 outside the job object this process runs in. A job object that forbids that
 keeps the owner inside it, and the owner then ends when that object closes. The
@@ -310,6 +368,68 @@ says every 30 seconds whom it waits for. `WSL-113`
 ⚠ **It bounds how many, not how much.** The jobs base enforces no memory limit,
 which `base status --probe` reads as `limits_enforced`, so a project whose builds are
 heavy gives them one name.
+
+---
+
+## ⭐ A cap on running jobs
+
+```powershell
+wsl-toolkit run --max-running 2 --image docker.io/library/rust:1 --workspace . -c 'cargo build'
+wsl-toolkit run --max-running 2 --max-running-wait 30m --image docker.io/library/rust:1 --workspace . -c 'cargo test'
+```
+
+`--max-running N` holds a job until fewer than N jobs run on this machine, in every
+instance. Without a wait it is refused at once, with exit 2, naming the jobs that
+run. `--max-running-wait D` waits instead, says every 30 seconds whom it waits for,
+and is refused when D runs out. `WSL-136`
+
+- `jobs.max_running` and `jobs.max_running_wait`, a duration such as `30m`, set
+  both for a project. `--max-running 0` lifts the project's cap for one job.
+- A running job is one whose owner holds its lock and which got past its own
+  waits. A job still waiting for its name or its turn is not counted, and neither
+  is a killed one.
+- Every job counts, a `matrix` row and a helper's job included. A job of a release
+  before this one does not.
+- The job holds its name first, then waits for its turn, and copies nothing while
+  it waits. A `stop` ends the wait with 130.
+- `run --detach` refuses at once, before it starts an owner, when the cap is full
+  and no wait is given.
+- ⛔ A job the helper would run is refused with it, because the helper owns that
+  job. A project's cap names `--max-running 0`.
+
+---
+
+## ⭐ A job that ends with its caller
+
+```powershell
+wsl-toolkit run --cancel-on-exit --image docker.io/library/alpine:latest -c 'make test'
+wsl-toolkit run --detach --cancel-on-exit --image docker.io/library/alpine:latest -c 'make test'
+```
+
+`--cancel-on-exit` stops the job, as `stop` does, when a process it is tied to exits
+before the job ends. It is tied to the job's owner and to the chain of processes
+that started the command. `run` and `matrix` take it. `WSL-121`
+
+⭐ **A watcher does the stopping, and it is a process of its own.** The owner starts
+it as a detached copy of this program, outside the owner's job object where Windows
+allows that. It waits on a handle to each process, so a kill that reaches the
+whole tree cannot reach it.
+
+- The stop is TERM, then KILL after 10 seconds. The job answers 130 with `stopped`
+  set, and its error names the process that exited.
+- An owner that is gone too has its end recorded by the watcher, so `wait` answers
+  at once. Its container is looked for for 15 minutes, in case it starts late.
+- The chain is the process that ran the command, the one that started that, and so
+  on, up to the desktop's own processes. ⚠ Git Bash runs a Windows program under a
+  stub of its own, which outlives a killed script, so the script is the stub's
+  parent.
+- Under `--detach` the chain is the one above the command that detached. The
+  answer names it, as `cancel_on_exit` under `--json`.
+- A `matrix` row its caller left behind never starts its container. A killed
+  `matrix` process has its running rows stopped, since it owns them.
+- ⚠ Where Windows keeps the watcher in the job object, the answer says so, and a
+  kill of that object ends the watcher with it.
+- ⛔ It is refused through the helper, which owns the job it runs.
 
 ---
 

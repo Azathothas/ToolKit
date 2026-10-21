@@ -231,6 +231,11 @@ type JobResult struct {
 	TimedOut     bool   `json:"timed_out"`
 	Unreached    bool   `json:"unreached"`
 	Transcript   string `json:"transcript,omitempty"`
+	// RecordRemoved is true where --remove-record removed the job's host record
+	// once its answer was ready, and RecordKept says why it kept the record it
+	// was asked to remove. WSL-121.
+	RecordRemoved bool   `json:"record_removed,omitempty"`
+	RecordKept    string `json:"record_kept,omitempty"`
 	// Workspace is the project this job copied, as WorkspaceKey spells it and
 	// `gc --workspace` matches it. WSL-114.
 	Workspace string `json:"workspace,omitempty"`
@@ -545,6 +550,11 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			}
 		}()
 	}
+	// ⭐ A JOB THAT REACHES HERE RUNS, whatever owns it, so the machine-wide cap
+	// counts it. A job --max-running held was marked when it was let in. WSL-136.
+	if err := markAdmitted(r.home, id); err != nil {
+		r.log("could not mark job " + id + " as running, so --max-running will not count it: " + err.Error())
+	}
 
 	user := r.cfg.Base.User
 	guestHome, err := r.guestHome(ctx)
@@ -687,7 +697,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	}
 	if stopped {
 		res.Cancelled, res.Stopped, res.Exit = true, true, 130
-		res.Error = "the job was stopped by wsl-toolkit stop before its container started"
+		res.Error = r.stopError(id, " before its container started")
 		return res
 	}
 
@@ -821,7 +831,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		// TERM or KILL. A payload that finished on its own as the stop arrived
 		// keeps its own exit code.
 		res.Cancelled, res.Stopped, res.Exit = true, true, 130
-		res.Error = "the job was stopped by wsl-toolkit stop"
+		res.Error = r.stopError(id, "")
 	case !marker.Seen() && (code != 0 || execErr != nil):
 		// ⛔ NOTHING RAN, so this is not the payload's exit code. The engine
 		// could not acquire the image, could not create the container, or could
