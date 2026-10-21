@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -33,11 +34,35 @@ func TestGCRefusesANarrowingItCannotHonour(t *testing.T) {
 		{"a job and a project", []string{"--job", cliJobID, "--workspace", "."}, "Pass one"},
 		{"images for one job", []string{"--job", cliJobID, "--images"}, "not one job's or one project's"},
 		{"images for one project", []string{"--workspace", ".", "--images"}, "not one job's or one project's"},
+		// ⛔ An unset variable in a wrapper cleaned up every project's jobs.
+		{"an empty project", []string{"--workspace", ""}, "empty value is refused"},
+		{"an empty job", []string{"--job", ""}, "empty value is refused"},
 	} {
 		code, err := cmdGC(ctx, append(c.args, "--via-helper"))
 		if code != exitCannot || err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%s answered %d, %v; want %d and %q", c.name, code, err, exitCannot, c.want)
 		}
+	}
+}
+
+// ⛔ An instance with no base still refuses an id nothing in it belongs to, and
+// still answers for one it holds. A correctness review found the first exit 0.
+func TestAnInstanceWithNoBaseStillRefusesAnUnknownJob(t *testing.T) {
+	home := t.TempDir()
+	policy := toolkit.CleanupPolicy{Job: cliJobID}
+	if err := unregisteredJobRefusal(home, policy); !errors.Is(err, toolkit.ErrUnknownJob) {
+		t.Fatalf("an id nothing here belongs to answered %v", err)
+	}
+	owner, err := toolkit.ClaimJob(home, cliJobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner.Release()
+	if err := unregisteredJobRefusal(home, policy); err != nil {
+		t.Fatalf("an id this instance holds was refused: %v", err)
+	}
+	if err := unregisteredJobRefusal(home, toolkit.CleanupPolicy{}); err != nil {
+		t.Fatalf("a cleanup naming no job was refused: %v", err)
 	}
 }
 

@@ -231,6 +231,20 @@ func TestReadyAnswersWithTheCommandThatHelps(t *testing.T) {
 	if got := baseRemediationFor(toolkit.BaseState{}, nil); got != "wsl-toolkit base ensure" {
 		t.Errorf("the plain case moved: %q", got)
 	}
+
+	// ⛔ AN ADVISORY FINDING LISTED FIRST IS NOT THE WAY FORWARD. A disk that is
+	// not sparse is every base's, and `ready` named `base reclaim` for a base the
+	// engine refused. A contract review found it.
+	both := toolkit.BaseState{Remediations: []toolkit.Remediation{
+		{ID: "disk-not-sparse", Command: "wsl-toolkit base reclaim", Repairable: true, Advisory: true},
+		{ID: "stale-run-state", Command: "wsl-toolkit base ensure --repair", Repairable: true},
+	}}
+	if got := baseRemediationFor(both, nil); got != "wsl-toolkit base ensure --repair" {
+		t.Errorf("an advisory finding became the next command: %q", got)
+	}
+	if notes := strings.Join(readyNotes(both.Remediations), " | "); !strings.Contains(notes, "Run: wsl-toolkit base reclaim") || strings.Contains(notes, "--repair") {
+		t.Errorf("the notes are %q; want the advisory finding with its command and not the remediation", notes)
+	}
 }
 
 // TestAFindingGoesInTheBucketThatDoesNotRefuse covers the CALL SITE, which the

@@ -249,7 +249,7 @@ func TestEveryMatrixFieldReachesItsRows(t *testing.T) {
 	// A row takes the STAGED copy, its own artifact directory and the resolved
 	// limits, each an argument of rowSpec, and the excludes and the gitignore
 	// rule were applied when the fleet staged the workspace every row copies.
-	rowOwn := map[string]bool{"Workspace": true, "ArtifactDir": true, "Limits": true, "Excludes": true, "Gitignore": true}
+	rowOwn := map[string]bool{"Workspace": true, "ArtifactDir": true, "Limits": true, "Excludes": true, "Gitignore": true, "Uploaded": true, "UploadExec": true}
 	var spec MatrixSpec
 	sv := reflect.ValueOf(&spec).Elem()
 	jt := reflect.TypeOf(JobSpec{})

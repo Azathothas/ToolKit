@@ -49,6 +49,11 @@ func TestGCWorkspaceSelectsOneOfTwoProjects(t *testing.T) {
 			t.Errorf("Windows compares paths without case, and another spelling chose %d", len(remove))
 		}
 	}
+	// ⛔ ON EVERY HOST a trailing separator is the same directory. Checked on
+	// Windows alone, a comparison by bytes stayed green in CI's Linux mutation run.
+	if remove, _ := (CleanupPolicy{Workspace: mine + string(filepath.Separator)}).Select(targets, now); len(remove) != 3 {
+		t.Errorf("the project spelled with a trailing separator chose %d", len(remove))
+	}
 }
 
 // ⛔ A live job of the named project is spared as it is in a whole cleanup:

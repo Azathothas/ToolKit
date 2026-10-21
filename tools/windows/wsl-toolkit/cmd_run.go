@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,7 @@ type jobFlags struct {
 	artifactDir   string
 	excludes      stringList
 	gitignore     bool
+	gitignoreSet  bool
 	exclusive     string
 	exclusiveWait time.Duration
 	env           stringList
@@ -48,6 +50,53 @@ type jobFlags struct {
 	tick          time.Duration
 }
 
+// boolFlag is a boolean flag that also records that the command line named it,
+// so a project's default yields to what a caller said, false included. WSL-112.
+type boolFlag struct{ value, set *bool }
+
+func (b boolFlag) String() string {
+	if b.value == nil {
+		return "false"
+	}
+	return strconv.FormatBool(*b.value)
+}
+
+func (b boolFlag) Set(s string) error {
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	*b.value, *b.set = v, true
+	return nil
+}
+
+// IsBoolFlag lets --gitignore stand alone, as a flag.BoolVar does.
+func (b boolFlag) IsBoolFlag() bool { return true }
+
+// nonEmpty is a string flag that refuses an empty value, for a flag whose empty
+// value would widen what it exists to narrow.
+//
+// ⛔ AN EMPTY VALUE READ AS THE FLAG NOT GIVEN. `gc --workspace "$PROJECT"
+// --apply` with PROJECT unset cleaned up every project's jobs, and `run
+// --exclusive "$NAME"` with NAME unset held nothing. A safety review found the
+// first.
+type nonEmpty struct{ value *string }
+
+func (n nonEmpty) String() string {
+	if n.value == nil {
+		return ""
+	}
+	return *n.value
+}
+
+func (n nonEmpty) Set(s string) error {
+	if strings.TrimSpace(s) == "" {
+		return errors.New("an empty value is refused: it would read as the flag not given, and widen what the flag narrows")
+	}
+	*n.value = s
+	return nil
+}
+
 type stringList []string
 
 func (s *stringList) String() string     { return strings.Join(*s, ",") }
@@ -60,9 +109,9 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&j.workspace, "workspace", "", "a directory on this machine, COPIED into the container as /work")
 	fs.StringVar(&j.artifactDir, "artifacts", "", "a directory on this machine to receive whatever the container leaves in /out")
 	fs.Var(&j.excludes, "exclude", "a glob to leave out of the workspace copy, matched against the whole relative path, against the base name at any depth, and as a directory and everything under it. * does not cross a slash. Repeatable, and added to jobs.exclude")
-	fs.StringVar(&j.exclusive, "exclusive", "", "hold this name, machine-wide, for the whole job, and refuse to start while another job holds it. A project names its builds so two cannot run at once")
+	fs.Var(nonEmpty{&j.exclusive}, "exclusive", "hold this name for the whole job, across every instance of this state directory, and refuse to start while another job holds it. A project names its builds so two cannot run at once")
 	fs.DurationVar(&j.exclusiveWait, "exclusive-wait", 0, "with --exclusive, wait this long for the name rather than refusing at once")
-	fs.BoolVar(&j.gitignore, "gitignore", false, "leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree. jobs.gitignore sets it for a project")
+	fs.Var(boolFlag{&j.gitignore, &j.gitignoreSet}, "gitignore", "leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree, and one its own repository ignores is refused. jobs.gitignore sets it for a project, and --gitignore=false turns it off")
 	fs.Var(&j.env, "env", "NAME=VALUE passed to the container. Repeatable")
 	fs.StringVar(&j.envFile, "env-file", "", "a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins")
 	fs.Var(&j.devices, "device", "a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it")
@@ -280,13 +329,31 @@ func (j *jobFlags) check() error {
 	}
 	// ⛔ THE HELPER RUNS THE JOB, so the lock would be held by a process that is
 	// not the job's owner. Refused, as --detach is. WSL-113.
-	if j.exclusive != "" && j.viaHelper {
-		return errors.New("--exclusive is held by the process that owns the job, and a job through the helper is owned by the helper. Run it without --via-helper")
+	if j.viaHelper {
+		if err := j.helperRouteRefusal(); err != nil {
+			return err
+		}
 	}
 	if j.lifecycle != "" && j.lifecycle != toolkit.ContainerPersistent && j.lifecycle != toolkit.ContainerEphemeral {
 		return fmt.Errorf("--container-lifecycle %q must be %q or %q", j.lifecycle, toolkit.ContainerPersistent, toolkit.ContainerEphemeral)
 	}
 	return nil
+}
+
+// helperRouteRefusal answers a flag the helper route cannot honour.
+//
+// ⛔ THE HELPER OWNS A JOB IT RUNS, so an --exclusive lock would be held by no
+// process at all. check() refuses an explicit --via-helper at once. The route
+// useHelper chose, because this process cannot reach wsl.exe, ran the job with no
+// lock and no word, until both helper entry points asked this first. WSL-113.
+func (j jobFlags) helperRouteRefusal() error {
+	switch {
+	case j.exclusive == "":
+		return nil
+	case j.viaHelper:
+		return errors.New("--exclusive is held by the process that owns the job, and a job through the helper is owned by the helper. Run it without --via-helper")
+	}
+	return errors.New("--exclusive is held by the process that owns the job, and this process cannot reach wsl.exe, so the job would go through the helper, which owns it. Run it where wsl.exe can be called, or without --exclusive")
 }
 
 // applyConfig selects job defaults and resolves host paths before a job starts.
@@ -306,7 +373,10 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 	// and a command line adds to it. A list in a shell string was how a consumer
 	// met both of its globbing traps. WSL-112.
 	j.excludes = append(append(stringList(nil), cfg.Jobs.Exclude...), j.excludes...)
-	if cfg.Jobs.Gitignore {
+	// ⛔ THE COMMAND LINE WINS, false included. The project's true replaced an
+	// explicit --gitignore=false, which parsed and was then ignored. A correctness
+	// review found it.
+	if cfg.Jobs.Gitignore && !j.gitignoreSet {
 		j.gitignore = true
 	}
 	platform, err := toolkit.NormalizePlatform(j.platform)
@@ -474,8 +544,8 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		// The owner holds the lock; this is a probe so a refusal is not a log line
 		// somebody has to go and read. WSL-113.
 		if j.exclusive != "" && j.exclusiveWait == 0 {
-			if held, by := toolkit.ExclusiveHeld(j.exclusive); held {
-				return exitCannot, fmt.Errorf("%w: %s is held by %s. %s", toolkit.ErrExclusiveHeld, j.exclusive, by, toolkit.ExclusiveAdvice(by))
+			if err := toolkit.ExclusiveRefusal(j.exclusive); err != nil {
+				return exitCannot, err
 			}
 		}
 		var fromStdin []byte
@@ -534,7 +604,18 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	// ⭐ HELD BY THE PROCESS THAT OWNS THE JOB, attached or detached, for the
 	// job's whole life, and let go by Windows however this process ends. WSL-113.
 	if j.exclusive != "" {
-		release, err := toolkit.AcquireExclusive(ctx, j.exclusive, owner.ID, j.exclusiveWait, note)
+		// ⛔ A STOP IS READ WHILE THE JOB WAITS FOR ITS NAME, and the job then ends
+		// as a stopped job does, with 130, rather than waiting out --exclusive-wait.
+		release, err := toolkit.AcquireExclusive(ctx, j.exclusive, owner.ID, j.exclusiveWait, note,
+			func() bool { return toolkit.StopRecorded(owner.ID) })
+		if errors.Is(err, toolkit.ErrStoppedWaiting) {
+			res := toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: 130, Cancelled: true, Stopped: true, Error: err.Error()}
+			res.Seal()
+			if ferr := owner.Finish(res); ferr != nil {
+				logf("  ! could not record the end of job %s: %s", res.ID, ferr.Error())
+			}
+			return reportJob(res, j.asJSON)
+		}
 		if err != nil {
 			return refuse(err)
 		}
@@ -861,7 +942,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	// ⭐ A FLEET HOLDS THE NAME ONCE, for every row, because its rows run in this
 	// one process. WSL-113.
 	if j.exclusive != "" {
-		release, err := toolkit.AcquireExclusive(ctx, j.exclusive, fmt.Sprintf("matrix (process %d)", os.Getpid()), j.exclusiveWait, note)
+		release, err := toolkit.AcquireExclusive(ctx, j.exclusive, fmt.Sprintf("matrix (process %d)", os.Getpid()), j.exclusiveWait, note, nil)
 		if err != nil {
 			return exitCannot, err
 		}

@@ -50,8 +50,21 @@ func (r *Runner) EndedByStop(id string, exit int) bool {
 }
 
 // stopRequested says whether the ledger holds a stop for a job.
-func (r *Runner) stopRequested(id string) bool {
-	entries, err := r.ledger.All()
+func (r *Runner) stopRequested(id string) bool { return stopRecordedIn(r.ledger, id) }
+
+// StopRecorded says whether this instance's ledger holds a stop for a job, for an
+// owner that has no runner yet: one waiting for its --exclusive name. WSL-113.
+func StopRecorded(id string) bool {
+	l, err := OpenLedger()
+	if err != nil {
+		return false
+	}
+	return stopRecordedIn(l, id)
+}
+
+// stopRecordedIn is the one rule both read: a stop event for the job's id.
+func stopRecordedIn(l *Ledger, id string) bool {
+	entries, err := l.All()
 	if err != nil {
 		return false
 	}

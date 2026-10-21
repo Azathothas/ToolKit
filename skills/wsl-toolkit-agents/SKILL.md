@@ -36,10 +36,11 @@ wsl-toolkit selfupdate
 ⚠ **An old executable cannot read a newer configuration.** The refusal names the
 field it does not know. `selfupdate` is the fix.
 
-⛔ **RUN IT FROM POWERSHELL, NOT GIT BASH.** MSYS rewrites a guest path, so
+⛔ **FROM GIT BASH, EXPORT TWO VARIABLES FIRST.** MSYS rewrites a guest path, so
 `--dir /workspaces/proj` arrived inside the tool as
-`C:/Program Files/Git/workspaces/proj`. Every example here is PowerShell, and
-several of them pipe into `ConvertFrom-Json`, which is PowerShell only.
+`C:/Program Files/Git/workspaces/proj`. `export MSYS_NO_PATHCONV=1
+MSYS2_ARG_CONV_EXCL='*'` stops it. Every example here is PowerShell, and several of
+them pipe into `ConvertFrom-Json`, which is PowerShell only.
 
 ⛔ **READ AN EXIT CODE FROM THE PROCESS, NOT THROUGH A PIPE.** A pipeline reports
 its own status and not the tool's. Read `$LASTEXITCODE` on the line after the

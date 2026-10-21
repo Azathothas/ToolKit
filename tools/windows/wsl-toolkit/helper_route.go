@@ -18,6 +18,9 @@ import (
 // the same validation, so the helper never opens a path a caller named.
 
 func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref, label string, payload []byte, env map[string]string, devices []toolkit.JobDevice, inputs []toolkit.JobInput) (toolkit.JobResult, error) {
+	if err := j.helperRouteRefusal(); err != nil {
+		return toolkit.JobResult{}, err
+	}
 	wireInputs, err := helperInputs(inputs)
 	if err != nil {
 		return toolkit.JobResult{}, err
@@ -76,6 +79,9 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 }
 
 func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, images []string, parallel int, payload []byte, env map[string]string, devices []toolkit.JobDevice, inputs []toolkit.JobInput, transcripts string) (toolkit.MatrixReport, error) {
+	if err := j.helperRouteRefusal(); err != nil {
+		return toolkit.MatrixReport{}, err
+	}
 	wireInputs, err := helperInputs(inputs)
 	if err != nil {
 		return toolkit.MatrixReport{}, err

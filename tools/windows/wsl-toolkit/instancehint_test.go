@@ -3,8 +3,12 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"flag"
+	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -28,6 +32,9 @@ func TestAJobHintNamesTheInstanceItWasPrintedFor(t *testing.T) {
 		"stop":           stop,
 		"not registered": errNotRegistered("wsl-toolkit-podbox").Error(),
 		"transcript":     transcriptHint(toolkit.JobResult{ID: cliJobID, Transcript: "x"}),
+		// ⛔ A helper lives in its instance's state, and the advice for a refused
+		// wsl.exe started the default one's. A contract review found it.
+		"denied advice": deniedAdvice(),
 	}
 	for name, h := range hints {
 		if !strings.Contains(h, want) {
@@ -55,6 +62,27 @@ func TestAJobHintNamesTheInstanceItWasPrintedFor(t *testing.T) {
 	toolkit.SelectedInstance = toolkit.Instance{Name: toolkit.DefaultInstance}
 	if follow, _, _ := jobHints(cliJobID); follow != "wsl-toolkit logs "+cliJobID+" --follow" {
 		t.Errorf("the default instance's follow hint became %q", follow)
+	}
+}
+
+// ⛔ `shipped cat --help` printed no NAME, so the help for a form that takes a
+// name never said it took one. WSL-108, and a contract review.
+func TestShippedCatHelpSaysItTakesAName(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	code, runErr := cmdShipped(context.Background(), []string{"cat", "--help"})
+	_ = w.Close()
+	os.Stderr = old
+	out, _ := io.ReadAll(r)
+	if runErr != nil && !errors.Is(runErr, flag.ErrHelp) {
+		t.Fatalf("shipped cat --help answered %d, %v", code, runErr)
+	}
+	if !strings.Contains(string(out), "cat NAME") {
+		t.Fatalf("shipped cat --help printed %q, which names no NAME", out)
 	}
 }
 

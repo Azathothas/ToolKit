@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -218,7 +219,11 @@ func baseExecResult(code int, runErr error) (int, error) {
 func (e baseExecFlags) envPairs(cfg toolkit.Config) ([]toolkit.EnvPair, error) {
 	var pairs []toolkit.EnvPair
 	if e.envFile != "" {
-		path, err := pathFromProject(cfg, e.envFile)
+		// ⚠ READ AS ITS --script IS, from the current directory. `base exec` is
+		// not a job, and a relative --env-file that followed the project while
+		// its --script did not named two directories in one command. A contract
+		// review found it.
+		path, err := filepath.Abs(msysHostPath(e.envFile))
 		if err != nil {
 			return nil, fmt.Errorf("--env-file: %w", err)
 		}

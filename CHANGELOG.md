@@ -21,6 +21,27 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-21
 
+### 2026-10-21T06:35:44Z: `wsl-toolkit` is 7.0.0, git never runs in a tree a job wrote, and three reviews' findings are fixed
+
+**Record:** `WSL-119`, and the amendments to `WSL-105` to `WSL-116`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), [`docs/consumers.md`](docs/consumers.md), and work order item 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy yet. `wsl-toolkit-v7.0.0` is cut from this commit.
+
+⛔ **The helper ran git in a tree a container or a helper client wrote.** A `.git`
+there can name `core.fsmonitor`, a program git runs on `ls-files`, so a job that
+wrote `/out/.git` could run a program on this machine. git is never run in such a
+tree now, and every other git call runs with the setting off. `WSL-119`
+
+⭐ **Three reviews of the release, and each finding is fixed with a case.** Two gone
+grants no longer block each other's revoke, and `stop` ends a job waiting for its
+`--exclusive` name. The helper route refuses `--exclusive` however it was chosen.
+`--gitignore` reads a nested repository's own rules, and `gc --workspace ""` is
+refused rather than cleaning every job. `ready` no longer sends a base whose engine
+refused to `base reclaim`.
+
+⛔ **A MAJOR**, because `binfmt.ready`, `gc --job` and the helper protocol change
+meaning. [`docs/consumers.md`](docs/consumers.md) lists each break and what a caller
+does.
+
 ### 2026-10-21T05:25:50Z: a Git Bash script calls the tool directly, and `gc` cleans one project's jobs
 
 **Record:** `WSL-111` to `WSL-118` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and work order item 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).

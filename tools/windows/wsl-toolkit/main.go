@@ -222,7 +222,7 @@ func run(ctx context.Context, args []string) int {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
 		if errors.Is(err, toolkit.ErrWslDenied) {
-			fmt.Fprintln(os.Stderr, deniedAdvice)
+			fmt.Fprintln(os.Stderr, deniedAdvice())
 		}
 		if code == exitOK {
 			code = exitCannot
@@ -324,7 +324,12 @@ func describeInstance(name string) string {
 
 // deniedAdvice names the two ways forward. A caller meeting E_ACCESSDENIED from
 // wsl.exe cannot tell a sandbox from a broken install, and Windows says neither.
-const deniedAdvice = `
+//
+// ⛔ A FUNCTION AND NOT A CONSTANT, so its commands name the instance. A helper
+// lives in its instance's state, and the constant started the default one's.
+// WSL-116.
+func deniedAdvice() string {
+	return `
   This process may call wsl.exe and was refused. That is a property of how this
   process was started, not of WSL: the same call made through the approval path
   a harness offers usually succeeds.
@@ -332,9 +337,10 @@ const deniedAdvice = `
   Two ways forward, and both are supported:
     1. Make this call the way this session normally asks for permission.
     2. Start the helper ONCE through that path and let it do the WSL work:
-         wsl-toolkit helper serve --detach
+         ` + toolkit.ToolCommand("helper serve --detach") + `
        Later commands find it automatically and need no further approval.
-       wsl-toolkit helper status says whether one is listening.`
+       ` + toolkit.ToolCommand("helper status") + ` says whether one is listening.`
+}
 
 // flagSets records every flag set this process built, so a test can ask what the
 // surface actually is rather than restating it.

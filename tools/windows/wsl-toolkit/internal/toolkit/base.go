@@ -378,6 +378,7 @@ func diskSparseFacts(st *BaseState) (Remediation, bool) {
 			"WSL makes it sparse only while its VM is stopped, and base reclaim names that step",
 		Command:    ToolCommand("base reclaim"),
 		Repairable: true,
+		Advisory:   true,
 	}, true
 }
 
@@ -549,6 +550,9 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 			b.log("re-provisioning in place")
 		}
 		if err := b.provision(ctx); err != nil {
+			if !provisionFailureRebuilds(err) {
+				return st, err
+			}
 			b.log("re-provisioning failed: " + err.Error())
 			b.log("removing and rebuilding")
 			if err := b.Remove(ctx); err != nil {
@@ -899,6 +903,15 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 	}
 }
 
+// provisionFailureRebuilds says whether a failed re-provision is a broken base,
+// which `base ensure` removes and builds again.
+//
+// ⛔ A GRANT WHOSE DIRECTORY WENT AWAY WHILE ENSURE RAN IS NOT ONE. Removing the
+// base would lose it, and the rebuild refuses over the same grant, so nothing is
+// left. The check before ensure starts cannot see a directory removed after it.
+// A safety review found it. WSL-106.
+func provisionFailureRebuilds(err error) bool { return !errors.Is(err, ErrGrantSourceGone) }
+
 // baseMountPayloads renders explicit grants for /etc/fstab and for the
 // post-restart probe. Both are encoded before they cross into the guest, so a
 // Windows path never becomes shell source.
@@ -907,11 +920,10 @@ func baseMountPayloads(cfg Config) (fstab64, checks string, mounts []BaseMount, 
 	if err != nil {
 		return "", "", nil, err
 	}
-	// ⛔ EVERY PATH THAT MOUNTS THE GRANTS COMES THROUGH HERE: provisioning,
-	// `base ensure`, and the live step of `base grant` and `base revoke`. A source
-	// that is gone cannot be mounted or read back, so the one refusal is here
-	// rather than at each caller. Revoking the gone grant itself leaves it out of
-	// the configuration this renders, so that revoke still runs. WSL-106.
+	// ⛔ PROVISIONING AND `base ensure` COME THROUGH HERE, and a source that is
+	// gone cannot be mounted or read back, so the one refusal for them is here
+	// rather than at each caller. The live step of `base grant` and `base revoke`
+	// renders through liveMountPayloads instead. WSL-106.
 	if err := GoneGrantsError(mounts); err != nil {
 		return "", "", nil, err
 	}
@@ -927,9 +939,43 @@ func baseMountPayloads(cfg Config) (fstab64, checks string, mounts []BaseMount, 
 // report: `base status` names it with its revoke, and a probe that failed the
 // whole engine over it would call a working base unusable. WSL-106.
 func presentGrantChecks(cfg Config) (string, error) {
+	_, checks, err := liveMountPayloads(cfg)
+	return checks, err
+}
+
+// goneGrantTargets are the targets of grants whose Windows directory is gone,
+// base64 each and space-separated, for the verifier to tolerate and not check.
+//
+// ⛔ A GONE GRANT'S MOUNT CAN OUTLIVE ITS DIRECTORY until the base restarts,
+// and with automount off the verifier refused every Windows mount it was not
+// told of, so `base status --probe` called a working base unhealthy over a grant
+// it already reported with its revoke. A correctness review found it. WSL-106.
+func goneGrantTargets(cfg Config) (string, error) {
 	mounts, err := cfg.ResolvedBaseMounts()
 	if err != nil {
 		return "", err
+	}
+	var out []string
+	for _, m := range mounts {
+		if m.Missing {
+			out = append(out, base64.StdEncoding.EncodeToString([]byte(m.Target)))
+		}
+	}
+	return strings.Join(out, " "), nil
+}
+
+// liveMountPayloads renders the grants whose sources exist, for the live step of
+// `base grant` and `base revoke` and for the verifier.
+//
+// ⛔ A GONE GRANT IS LEFT OUT HERE AND NOT REFUSED. It cannot be mounted, and
+// refusing over it made every revoke refuse while two grants were gone, each
+// refusal naming the other's revoke, so neither could be removed. `base grant`
+// still refuses beside a gone grant, in PlanGrant, before it reaches this.
+// WSL-106.
+func liveMountPayloads(cfg Config) (fstab64, checks string, err error) {
+	mounts, err := cfg.ResolvedBaseMounts()
+	if err != nil {
+		return "", "", err
 	}
 	present := mounts[:0:0]
 	for _, m := range mounts {
@@ -937,8 +983,7 @@ func presentGrantChecks(cfg Config) (string, error) {
 			present = append(present, m)
 		}
 	}
-	_, checks, err := renderBaseMounts(present)
-	return checks, err
+	return renderBaseMounts(present)
 }
 
 // renderBaseMounts writes the fstab block and the read-back lines for a set of
@@ -1103,6 +1148,10 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	if err != nil {
 		return verifyReport{}, err
 	}
+	gone, err := goneGrantTargets(b.cfg)
+	if err != nil {
+		return verifyReport{}, err
+	}
 	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, map[string]string{
 		"TK_IMAGE":             VerifyImage,
 		"TK_M1":                m1,
@@ -1114,6 +1163,7 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 		"TK_TOOLSET":           toolset,
 		"TK_SHARED_TMPFS":      sharedTmpfs,
 		"TK_MOUNT_CHECKS":      checks,
+		"TK_MOUNT_GONE":        gone,
 	}, 20*time.Minute)
 	drives := parseAutomount(out)
 	if err != nil || code != 0 {
@@ -1537,6 +1587,7 @@ func binfmtRemediation(bf *BinfmtState) (Remediation, bool) {
 				"Another distribution removed them; the Podman machine does when it stops",
 			Command:    ToolCommand("base ensure"),
 			Repairable: true,
+			Advisory:   true,
 		}, true
 	case !bf.Recorded:
 		return Remediation{
@@ -1545,6 +1596,7 @@ func binfmtRemediation(bf *BinfmtState) (Remediation, bool) {
 			Costs:      "a handler of this base's can be gone while another distribution's keeps it reading ready",
 			Command:    ToolCommand("base ensure"),
 			Repairable: true,
+			Advisory:   true,
 		}, true
 	}
 	return Remediation{}, false
@@ -1568,6 +1620,12 @@ type Remediation struct {
 	Costs      string `json:"costs"`
 	Command    string `json:"command"`
 	Repairable bool   `json:"repairable"`
+	// Advisory says the base runs a native job without it: space, tidiness,
+	// or a foreign architecture. ⛔ `ready` NEVER NAMES ONE AS THE WAY FORWARD.
+	// Every remediation 7.0 added is repairable and was listed before stale run
+	// state, so `ready` sent a base the engine refused to `base reclaim`. A
+	// contract review found it.
+	Advisory bool `json:"advisory,omitempty"`
 }
 
 // parseCapabilities reads the rows verify.sh prints after its marker.

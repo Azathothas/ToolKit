@@ -109,8 +109,15 @@ wsl-toolkit run --image docker.io/library/rust:1 --workspace . --gitignore --exc
 
 ⭐ **`--gitignore` leaves out what git ignores in the workspace**, read from git
 itself, so a build tree, a log or a credential git keeps out of the repository stays
-out of the copy too. The workspace must be in a git work tree, or the job is refused.
-`.git` is not ignored by git, so it travels unless an `--exclude` names it. `WSL-112`
+out of the copy too. A nested repository or a submodule is asked for its own rules.
+The workspace must be in a git work tree, and one its own repository ignores is
+refused. `.git` is not ignored by git, so it travels unless an `--exclude` names it.
+The copy's report and its `ignored` field count what was left out. `WSL-112`
+
+⛔ **git is never run in a tree a container or a helper client wrote**, and every
+other git call runs with `core.fsmonitor` off. A `.git` there can name a program git
+runs, so a job that wrote `/out/.git` would have run it on this machine through the
+helper. An upload keeps the executable bits its archive carried.
 
 `--exclude PATTERN` leaves out an entry whose whole relative path matches, whose base
 name matches at any depth, or which is under a directory the pattern names. `*` does
@@ -120,7 +127,8 @@ anchored rule.
 
 ⭐ **A project states this once.** `jobs.exclude`, a list, and `jobs.gitignore`, true or
 false, in the project's `wsl-toolkit.json` apply to every job, and a command line adds
-to them. `wsl-toolkit config` names the file that is in effect.
+to them. `--gitignore=false` turns the project's rule off for one job. `wsl-toolkit
+config` names the file that is in effect.
 
 ---
 
@@ -166,6 +174,9 @@ effect. A `matrix` row records the workspace its fleet copied. `WSL-114`
 - A running job is spared, as in any cleanup. `--include-live` is still the one way
   past that.
 - A project with nothing left to remove gets a note and exit 0.
+- A job's result carries its record as `workspace`.
+- An empty `--workspace ""` or `--job ""` is refused. Read as not given, it widened
+  the cleanup to every job.
 - ⚠ It is refused through the helper. The helper's jobs record the upload it
   unpacked, not this machine's directory.
 - `--images` is refused beside `--workspace` or `--job`, because an image is not one
@@ -265,7 +276,12 @@ says every 30 seconds whom it waits for. `WSL-113`
   remove.
 - `run --detach` refuses at once when the name is held, before it starts an owner.
 - `matrix` holds the name once, for every row.
-- ⛔ A job through the helper is refused with it, because the helper owns that job.
+- A `stop` sent to a job that waits for its name ends it within 2 seconds, with 130.
+- A holder in another instance is named with it, and so is the `wait` for it.
+- An empty `--exclusive ""` is refused, rather than holding nothing.
+- ⛔ A job the helper would run is refused with it, because the helper owns that job.
+  That holds when `--via-helper` chose the helper and when this process could not
+  reach wsl.exe.
 - ⚠ The lock is in the state directory. A caller Windows redirects has a state
   directory of its own, so it holds the name only against callers on its side. `WSL-118`
 
@@ -528,6 +544,12 @@ granted differently is refused with the revoke to run first. A grant a process
 stands in stays mounted, with its configuration and fstab entry untouched, and
 the revoke answers exit 1 naming `target is busy`.
 
+⚠ **A grant whose Windows directory is gone is kept and marked, not refused.** `base
+status` names it with the `base revoke` that removes it, and `--json` carries it as
+`access.mounts[].missing`. `base ensure` and `base grant` refuse beside it before they
+change anything. The verifier allows its stale mount until the base restarts, and
+each of several gone grants can be revoked. `WSL-106`
+
 ### The shell `base shell` gives you
 
 ⭐ **bash, as a LOGIN shell, where the guest has one.** `wsl.exe -d NAME -u USER`
@@ -555,7 +577,8 @@ and is not a containment boundary.
 
 A base's `adapters` list names the software `base ensure` installs for its agents,
 after provisioning and in order. [`adapters/README.md`](adapters/README.md) is the
-contract for writing one.
+contract for writing one. ⭐ Every adapter is applied, and `base ensure` reports each
+one's problem rather than stopping at the first. `WSL-107`
 
 ```json
 "adapters": [{ "name": "herdr" }]
@@ -817,6 +840,11 @@ systemd, `wsl-toolkit-binfmt.service` registers the base's handlers again within
 seconds. `base status --probe` reads the base's own set: `ready` is false while any
 of it is gone, and the kernel's total stands beside it. `WSL-105`
 
+⚠ **A base that no ensure of this release has run on has no recorded set.**
+`binfmt.recorded` is false there, and `ready` counts every distribution's handlers, as
+it did before. Run `base ensure` once. `--json` carries `binfmt.own`, `binfmt.missing`,
+`binfmt.recorded` and `binfmt.watch`.
+
 ⛔ **Every job names a platform, including one that asked for nothing.** With no
 `--platform`, podman runs whatever variant of the image its local store holds.
 After one `linux/arm64` run, a native run of the same image answers `aarch64` on
@@ -835,9 +863,10 @@ architecture is named at pull and create time rather than checked afterwards.
 ## Relative paths, and the directory you are actually in
 
 With a project configuration in play, a relative `--workspace`, `--script`,
-`--artifacts`, `--input` or matrix transcript path resolves against the directory
-holding that configuration. A relative `jobs.workspace` always resolves against
-its own configuration file.
+`--env-file`, `--artifacts`, `--input` or matrix transcript path of `run` or `matrix`
+resolves against the directory holding that configuration. A relative
+`jobs.workspace` always resolves against its own configuration file. `base exec`
+reads a relative `--script` and `--env-file` from the current directory.
 
 Without one, a relative path resolves against the current directory, and the
 resolved value is printed when the workspace is copied.
@@ -1168,11 +1197,16 @@ space before and after.
 
 ⭐ **`sparseVhd=true` under `[experimental]` in `%USERPROFILE%\.wslconfig` makes WSL
 create each new disk sparse**, from the next start of its VM. `base status` reports
-what the file sets.
+what the file sets. Its `--json` carries `disk_sparse`, `disk_allocated_bytes` and
+`wslconfig_sparse_vhd`, and `base reclaim --json` answers `wsl-toolkit-reclaim/1`.
 
 `base status --probe` also names each adapter the configuration no longer names
-that left files in the base, with their size. `base recreate` removes them, with
-everything else made in the base.
+that left files in the base, with their size, as `leftovers`. `base recreate` removes
+them, with everything else made in the base.
+
+⭐ **A finding the base works without is marked `advisory`**: a disk that is not
+sparse, a leftover adapter, a gone or unrecorded QEMU handler. `ready` lists it in
+its notes with its command, and never names it as the way forward.
 
 ---
 
@@ -1251,7 +1285,7 @@ security boundary**, and no page here says otherwise.
 | an agent behind a launcher may be invisible to herdr | host | herdr reads a pane's foreground process, and `base agent` and a `NAME.exe` launcher are wrappers. herdr's own remedy is `HERDR_AGENT=<agent>` set on the wrapper command **on the herdr side**. This is herdr's documentation, not a measurement here |
 | a base carrying both pi and omp can be configured so herdr refuses one | decision | the omp adapter refuses first, naming both paths and the variable |
 | a detached owner inside a job object that forbids a breakaway | host | the owner ends when that object closes. The answer warns, and a base session does not depend on it |
-| ⛔ a caller Windows redirects has a state directory of its own | host | a process a packaged app starts can have its writes under `%LOCALAPPDATA%` kept in that package's own copy. Measured here: the Claude desktop app's Bash tool. Its jobs, ledger, `--exclusive` locks and configuration are then invisible to a terminal, and the terminal's to it. `doctor` and `config` name each copy and which side the caller is on. Call the tool from one kind of shell, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` for every caller. `WSL-118` |
+| ⛔ a caller Windows redirects has a state directory of its own | host | a process a packaged app starts can have its writes under `%LOCALAPPDATA%` kept in that package's own copy. Measured here: the Claude desktop app's Bash tool. Its jobs, ledger, `--exclusive` locks and configuration are then invisible to a terminal, and the terminal's to it. `doctor` and `config` name each copy and which side the caller is on. Call the tool from one kind of shell, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` for every caller. `config --json` carries them as `state_copies`, and `doctor --json` as `host.state_copies`. `WSL-118` |
 | ⛔ a base is not a sandbox | host | `/mnt/wsl` closes with `base.shared_tmpfs: "off"`. The internet answers, the Windows host answers ICMP, and the account can make a private network namespace with no privilege. Run `base doors` for this host's own list. `WSL-68` |
 
 ---
@@ -1261,7 +1295,7 @@ security boundary**, and no page here says otherwise.
 | thing | needed for |
 | --- | --- |
 | Windows 10 2004+ or Windows 11, with WSL2 | everything |
-| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, so a machine with podman or docker keeps it. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110` |
+| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, and one whose `info` fails is passed over, so podman with its machine stopped gives way to the next. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110` |
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 

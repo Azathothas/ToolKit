@@ -1,9 +1,9 @@
-.TH WSL-TOOLKIT 1 "" "wsl-toolkit 6.0.0" "User Commands"
+.TH WSL-TOOLKIT 1 "" "wsl-toolkit 7.0.0" "User Commands"
 .SH NAME
 wsl-toolkit \- run isolated Linux container jobs from Windows
 .SH SYNOPSIS
 .nf
-wsl-toolkit 6.0.0
+wsl-toolkit 7.0.0
 
   doctor      report the host and the tools that can run
   base        manage the WSL distribution that this tool owns
@@ -289,13 +289,13 @@ append one wsl-toolkit-event/1 JSON record per line, per event, to this file
 a glob to leave out of the workspace copy, matched against the whole relative path, against the base name at any depth, and as a directory and everything under it. * does not cross a slash. Repeatable, and added to jobs.exclude
 .TP
 \fB--exclusive\fR
-hold this name, machine-wide, for the whole job, and refuse to start while another job holds it. A project names its builds so two cannot run at once
+hold this name for the whole job, across every instance of this state directory, and refuse to start while another job holds it. A project names its builds so two cannot run at once
 .TP
 \fB--exclusive-wait\fR
 with --exclusive, wait this long for the name rather than refusing at once. Default: 0s.
 .TP
 \fB--gitignore\fR
-leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree. jobs.gitignore sets it for a project
+leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree, and one its own repository ignores is refused. jobs.gitignore sets it for a project, and --gitignore=false turns it off
 .TP
 \fB--image\fR
 a catalog id or a fully qualified reference
@@ -407,13 +407,13 @@ a file on this machine of NAME=VALUE lines passed to the container. --env is app
 a glob to leave out of the workspace copy, matched against the whole relative path, against the base name at any depth, and as a directory and everything under it. * does not cross a slash. Repeatable, and added to jobs.exclude
 .TP
 \fB--exclusive\fR
-hold this name, machine-wide, for the whole job, and refuse to start while another job holds it. A project names its builds so two cannot run at once
+hold this name for the whole job, across every instance of this state directory, and refuse to start while another job holds it. A project names its builds so two cannot run at once
 .TP
 \fB--exclusive-wait\fR
 with --exclusive, wait this long for the name rather than refusing at once. Default: 0s.
 .TP
 \fB--gitignore\fR
-leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree. jobs.gitignore sets it for a project
+leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree, and one its own repository ignores is refused. jobs.gitignore sets it for a project, and --gitignore=false turns it off
 .TP
 \fB--images\fR
 catalog ids, libc:musl, kind:legacy or all. Comma separated. Empty means the configured default
@@ -509,7 +509,7 @@ clean up only the jobs that copied this directory, read as run --workspace reads
 .SS logs
 list jobs, read one job's complete output, or follow a running one
 .TP
-.B wsl-toolkit logs
+.B wsl-toolkit logs [JOB-ID]
 .TP
 \fB--both\fR
 write both streams, the output first
@@ -528,7 +528,7 @@ only the last N lines. 0 means all of it
 .SS wait
 wait for one job or detached session to end, and answer with its exit code
 .TP
-.B wsl-toolkit wait
+.B wsl-toolkit wait JOB-ID
 .TP
 \fB--json\fR
 write a structured answer
@@ -538,7 +538,7 @@ stop waiting after this long. 0 waits for as long as the job runs. Default: 0s.
 .SS stop
 stop one job or detached session
 .TP
-.B wsl-toolkit stop
+.B wsl-toolkit stop JOB-ID
 .TP
 \fB--grace\fR
 time between TERM and KILL. Default: 10s.
@@ -551,7 +551,7 @@ stop a job through the local helper
 .SS inspect
 inspect one job or detached session and its recorded host state
 .TP
-.B wsl-toolkit inspect
+.B wsl-toolkit inspect [JOB-ID]
 .TP
 \fB--json\fR
 write a structured answer
@@ -991,7 +991,7 @@ a specific release tag, so a caller can move down as well as up
 .SS artifacts
 retrieve an artifact copy that a failed transfer retained
 .TP
-.B wsl-toolkit artifacts retry
+.B wsl-toolkit artifacts retry ID
 .TP
 \fB--json\fR
 write a structured answer
@@ -1006,10 +1006,10 @@ the general-purpose files this executable carries, so a machine with the binary 
 \fB--json\fR
 write a structured answer
 .TP
-.B wsl-toolkit shipped cat
+.B wsl-toolkit shipped cat NAME
 This form has no options.
 .TP
-.B wsl-toolkit shipped write
+.B wsl-toolkit shipped write NAME
 .TP
 \fB--dir\fR
 where the file is put. Default: the working directory

@@ -41,12 +41,27 @@ type execBits struct {
 	index   map[string]bool // slash-relative paths the git index marks 100755
 	fromGit int
 	fromHdr int
+	// from names where index came from, for the report. Empty means the git
+	// index; an untrusted tree's comes from the archive that wrote it.
+	from string
 }
 
 // gitIndexTimeout bounds the one external call. ⚠ A repository large enough to
 // be slow here is a repository whose copy is slower still, so the bound is
 // generous rather than tight.
 const gitIndexTimeout = 60 * time.Second
+
+// gitArgs are the arguments every git call here starts with.
+//
+// ⛔ core.fsmonitor IS OFF ON EVERY CALL. A repository's own configuration
+// names a program, and git ran it on `ls-files -s`, on `check-ignore` and on
+// `ls-files --others --ignored`: measured with git 2.55 by a safety review. A
+// .git the caller did not write is how a job or a sandboxed client would run a
+// program on this machine. A tree a container or a helper client wrote is never
+// given to git at all; this is the second guard, for the caller's own.
+func gitArgs(root string, args ...string) []string {
+	return append([]string{"-c", "core.fsmonitor=false", "-C", root}, args...)
+}
 
 // newExecBits reads the git index for root. An error is never returned: an
 // unreadable index means an empty set, which degrades to the shebang pass.
@@ -60,7 +75,7 @@ func newExecBits(ctx context.Context, root string) *execBits {
 	defer cancel()
 	// -z, because a path with a newline or a quote in it is reported escaped
 	// and re-quoted without it, and the escaped form is not a path.
-	cmd := exec.CommandContext(ctx, git, "-C", root, "ls-files", "-s", "-z")
+	cmd := exec.CommandContext(ctx, git, gitArgs(root, "ls-files", "-s", "-z")...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = nil
@@ -104,12 +119,20 @@ func (b *execBits) report() string {
 	case b.fromGit == 0 && b.fromHdr == 0:
 		return ""
 	case b.fromHdr == 0:
-		return plural(b.fromGit, "file") + carries(b.fromGit) + " the executable bit from the git index"
+		return plural(b.fromGit, "file") + carries(b.fromGit) + " the executable bit from " + b.source()
 	case b.fromGit == 0:
-		return plural(b.fromHdr, "file") + carries(b.fromHdr) + " the executable bit from a shebang, and " + isAre(b.fromHdr) + " in no git index"
+		return plural(b.fromHdr, "file") + carries(b.fromHdr) + " the executable bit from a shebang, and " + isAre(b.fromHdr) + " in no " + strings.TrimPrefix(b.source(), "the ")
 	}
-	return plural(b.fromGit, "file") + carries(b.fromGit) + " the executable bit from the git index, and " +
+	return plural(b.fromGit, "file") + carries(b.fromGit) + " the executable bit from " + b.source() + ", and " +
 		plural(b.fromHdr, "file") + " from a shebang"
+}
+
+// source is where index came from, as the report names it.
+func (b *execBits) source() string {
+	if b.from != "" {
+		return b.from
+	}
+	return "the git index"
 }
 
 // carries agrees the verb with the count, because a report that reads as
@@ -188,7 +211,7 @@ func gitIgnored(ctx context.Context, root string) (map[string]bool, error) {
 	// ⛔ GIT ANSWERS WHETHER THIS IS A WORK TREE, not a walk for a `.git` above
 	// it. git honours GIT_CEILING_DIRECTORIES, a worktree's `.git` file and
 	// GIT_DIR, and a walk does not, so the two could disagree about one directory.
-	probe := exec.CommandContext(ctx, git, "-C", root, "rev-parse", "--is-inside-work-tree")
+	probe := exec.CommandContext(ctx, git, gitArgs(root, "rev-parse", "--is-inside-work-tree")...)
 	if out, err := probe.Output(); err != nil || strings.TrimSpace(string(out)) != "true" {
 		return nil, fmt.Errorf("--gitignore reads git's own rules, and %s is not in a git work tree", root)
 	}
@@ -196,10 +219,10 @@ func gitIgnored(ctx context.Context, root string) (map[string]bool, error) {
 	// leave out all of it, and git ls-files --directory then fails with "internal
 	// error - directory entry not superset of prefix", measured with git 2.55 on a
 	// directory under this repository's ignored .tmp.
-	if exec.CommandContext(ctx, git, "-C", root, "check-ignore", "-q", ".").Run() == nil {
+	if exec.CommandContext(ctx, git, gitArgs(root, "check-ignore", "-q", ".")...).Run() == nil {
 		return nil, fmt.Errorf("--gitignore reads git's own rules, and %s is itself ignored by the repository it is in, so they would leave out all of it", root)
 	}
-	cmd := exec.CommandContext(ctx, git, "-C", root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
+	cmd := exec.CommandContext(ctx, git, gitArgs(root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")...)
 	var out, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &stderr
 	if err := cmd.Run(); err != nil {

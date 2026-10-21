@@ -58,7 +58,12 @@ import (
 // not travel with the command it completes.
 // ⚠ VERSION 5 ADDS /v1/job/stop, and devices, inputs and a gc job filter on the
 // wire. WSL-94, WSL-96, WSL-97, WSL-102.
-const HelperSchema = "wsl-toolkit-helper/5"
+// ⛔ VERSION 6 CHANGES WHAT A HELPER DOES, NOT WHAT IT SAYS. It marks a gc of a
+// job it does not hold as unknown, and it re-packs an upload from the modes its
+// archive carried rather than from a .git the client sent. A version 5 helper
+// left running answers that gc with exit 0 and runs git in the upload, so a
+// client refuses it until it is restarted. WSL-115, and a safety review.
+const HelperSchema = "wsl-toolkit-helper/6"
 
 // HelperEndpoint is what a client reads to find a listening helper.
 type HelperEndpoint struct {
@@ -110,10 +115,12 @@ type HelperServer struct {
 	log    func(string)
 	token  string
 	stage  map[string]string
-	mu     sync.Mutex
-	server *http.Server
-	stop   chan struct{}
-	once   sync.Once
+	// stageExec is each upload's executable files, read from its archive.
+	stageExec map[string]map[string]bool
+	mu        sync.Mutex
+	server    *http.Server
+	stop      chan struct{}
+	once      sync.Once
 	// runners holds one Runner per effective configuration, keyed by that
 	// configuration's fingerprint.
 	//
@@ -153,10 +160,11 @@ func NewHelperServer(cfg Config, log func(string)) (*HelperServer, error) {
 	}
 	h := &HelperServer{
 		cfg: cfg, runner: runner, log: log,
-		token:   hex.EncodeToString(raw[:]),
-		stage:   map[string]string{},
-		stop:    make(chan struct{}),
-		runners: map[string]*Runner{},
+		token:     hex.EncodeToString(raw[:]),
+		stage:     map[string]string{},
+		stageExec: map[string]map[string]bool{},
+		stop:      make(chan struct{}),
+		runners:   map[string]*Runner{},
 	}
 	h.runners[cfg.Fingerprint()] = runner
 	return h, nil
@@ -406,6 +414,7 @@ func (h *HelperServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	}
 	h.mu.Lock()
 	h.stage[id] = dir
+	h.stageExec[id] = got.Exec
 	h.mu.Unlock()
 	// ⛔ RECORDED, so cleanup can see it without this process. The map is a
 	// convenience for the running helper; the ledger is what survives it being
@@ -417,6 +426,13 @@ func (h *HelperServer) handleWorkspace(w http.ResponseWriter, r *http.Request) {
 	writeHelperJSON(w, http.StatusOK, map[string]any{
 		"schema": HelperSchema, "id": id, "entries": got.Delivered, "bytes": got.Bytes,
 	})
+}
+
+// stagedExec is the executable files an upload's archive named.
+func (h *HelperServer) stagedExec(id string) map[string]bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.stageExec[id]
 }
 
 func (h *HelperServer) stagedDir(id string) (string, error) {
@@ -604,6 +620,7 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	events := newEventWriter(w)
 	res := runner.Run(r.Context(), JobSpec{
 		Image: req.Image, Script: payload, Workspace: staged, Env: req.Env,
+		Uploaded: staged != "", UploadExec: h.stagedExec(req.StagingID),
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
 		Platform:           platform,
 		ContainerLifecycle: effectiveJobLifecycle(req, effective),
@@ -694,6 +711,7 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 	events := newEventWriter(w)
 	report, err := runner.RunMatrix(r.Context(), MatrixSpec{
 		Images: selected, Script: payload, Workspace: staged, Env: req.Env,
+		Uploaded: staged != "", UploadExec: h.stagedExec(req.StagingID),
 		Timeout: time.Duration(req.TimeoutMS) * time.Millisecond, Network: req.Network,
 		Platform:           platform,
 		ContainerLifecycle: effectiveJobLifecycle(req.HelperRunRequest, effective),
@@ -770,7 +788,8 @@ func (h *HelperServer) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-tar")
-	if _, err := writeWorkspaceTar(w, dir, DefaultWorkspaceLimits(), WorkspaceFilter{}); err != nil {
+	// ⛔ A CONTAINER WROTE THIS TREE, so git is never run in it. WorkspaceFilter.
+	if _, err := writeWorkspaceTar(w, dir, DefaultWorkspaceLimits(), WorkspaceFilter{Untrusted: true}); err != nil {
 		h.log("streaming artifacts " + id + ": " + err.Error())
 	}
 }
@@ -788,6 +807,7 @@ func (h *HelperServer) releaseStaging(id string) {
 	h.mu.Lock()
 	dir, ok := h.stage[id]
 	delete(h.stage, id)
+	delete(h.stageExec, id)
 	h.mu.Unlock()
 	if !ok {
 		return

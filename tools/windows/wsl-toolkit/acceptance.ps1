@@ -912,7 +912,13 @@ try {
     Test-Case 'a run says the command that reads its output back' 'True' {
         $r = Invoke-Tool @('run', '--image', 'alpine', '-c', 'printf FIND-ME')
         if ($r.Code -ne 0) { return "the job exited $($r.Code): $($r.Err)" }
-        (($r.Err + $r.Out) -match 'wsl-toolkit logs [0-9a-f]{16}').ToString()
+        # WSL-116: under a named instance the command names it, so it reaches the
+        # same jobs when it is run as printed.
+        $prefix = 'wsl-toolkit '
+        if ($script:Instance -and $script:Instance -ne 'default') {
+            $prefix = 'wsl-toolkit --instance ' + [regex]::Escape($script:Instance) + ' '
+        }
+        (($r.Err + $r.Out) -match ($prefix + 'logs [0-9a-f]{16}')).ToString()
     }
 
     # issue 13: the refusals the CLI was not making.

@@ -9,7 +9,7 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 session started 2026-10-21T02:36:37Z, on the operator's request to resolve issues 35 and 37 and pull request 36
 baseline        d52040b, gate 24 of 24
 head            this commit; WSL-111 to WSL-118 closed, so every entry ruling 30 filed is closed
-entries         total 157  open 0  blocked 0  done 157
+entries         total 158  open 0  blocked 0  done 158
 this session    issue 37's five items, issue 35's wslc, four changes that retire a consumer's wrapper, and a release
 ```
 
@@ -70,7 +70,7 @@ is closed, and the issue gets a comment naming the commits.
 13. ⭐ **Closed:** the wrapper a consumer no longer needs, `WSL-111`, `WSL-112`,
     `WSL-113` and `WSL-114`, with `TOOL-28` found on the way. The consumer survey
     added `WSL-115` and `WSL-116`, and driving `WSL-114` found `WSL-117` and
-    `WSL-118`.
+    `WSL-118`. The three reviews of the release found `WSL-119`.
 14. **The release:** pull request 36 merged, `wsl-toolkit-v7.0.0` cut under ruling
     30, this host moved to it by `selfupdate` and driven, and issues 35 and 37
     closed with comments naming the commits.
@@ -1805,6 +1805,29 @@ On Windows 11 Pro 26200, WSL 2.7.12, on 2026-09-15:
      published anything yet.
 
 ## Review findings
+
+⭐ **2026-10-21, three reviews of the 7.0.0 change set**, everything since
+`d52040b`: correctness, safety, and the contract with the documents. Each finding was
+read back against the code before it was fixed, and each fix carries a case and a
+mutation row where a case could hold it. Every entry a finding touched carries a
+dated amendment.
+
+- **Correctness, six and one plausible, all real.** Two gone grants blocked each
+  other's revoke. `--exclusive` was dropped on a helper route the process chose. A
+  `stop` was not read while a job waited for its name. `gc --job` exited 0 on an
+  instance with no base. A `wait` named the wrong instance. `--gitignore=false` was
+  overruled, and a gone grant's mount failed the verifier.
+- **Safety, four.** git ran in a tree a container or a helper client wrote, which is
+  `WSL-119` and dates from `d67c1e6`. A nested repository's own ignore rules were not
+  read. An empty narrowing value cleaned every job, and a grant gone mid-ensure could
+  cost the base.
+- **Contract.** Six claims of the manual the code did not keep, JSON fields the manual
+  never named, `ready` naming `base reclaim` for a base whose engine refused, and the
+  breaks table, which it completed.
+
+⛔ **Two rows came back THEATRE in CI's Linux run of `54547dd`, and red here.** Their
+cases asserted on Windows alone. Both assert on every host now, and this session's
+rows ran in `golang:1.25` before the next push.
 
 ⭐ **2026-09-18, three reviews of the DOCUMENTS, three of the RECORD and three
 of the SKILLS**, asked for by name. ⚠ **Each set uses lenses suited to its
