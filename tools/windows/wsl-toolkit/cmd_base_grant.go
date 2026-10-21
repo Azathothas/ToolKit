@@ -89,7 +89,7 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 		if g.source == "" {
 			return exitCannot, errors.New("base grant needs --source, the Windows directory to grant")
 		}
-		change, err = toolkit.PlanGrant(cfg, g.source, g.target, g.mode)
+		change, err = toolkit.PlanGrant(cfg, msysHostPath(g.source), g.target, g.mode)
 	case "revoke":
 		if g.target == "" {
 			return exitCannot, errors.New("base revoke needs --target, the /workspaces path of the grant to take away")
@@ -157,7 +157,16 @@ func renderGrant(ans baseGrantAnswer, cfg toolkit.Config, asJSON bool) (int, err
 		return exitOK, writeJSON(ans)
 	}
 	for _, g := range grants {
-		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s\n", g.Mode, g.Target, g.Source)
+		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s%s\n", g.Mode, g.Target, g.Source, goneMark(g))
 	}
 	return exitOK, nil
+}
+
+// goneMark is what a grant line adds when the grant's source no longer exists.
+// WSL-106.
+func goneMark(g toolkit.BaseMount) string {
+	if !g.Missing {
+		return ""
+	}
+	return ". ⛔ The directory no longer exists. Run: " + toolkit.ToolCommand("base revoke --target "+g.Target)
 }

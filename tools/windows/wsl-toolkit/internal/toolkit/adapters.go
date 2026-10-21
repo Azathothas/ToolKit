@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -446,7 +447,9 @@ func parseAdapterProbe(name, out string) AdapterState {
 			st.Facts[key] = value
 		}
 	}
-	if st.Version == "" {
+	// ⚠ AN ADAPTER THAT IS NOT INSTALLED HAS NO VERSION TO NAME, and its probe has
+	// already said what is wrong; a second line saying so is noise. WSL-107.
+	if st.Version == "" && st.Facts["installed"] != "no" {
 		st.Problems = append(st.Problems, "the probe named no version")
 	}
 	st.Healthy = len(st.Problems) == 0
@@ -528,55 +531,80 @@ func (b *Base) applyAdapters(ctx context.Context) error {
 			}
 		}
 	}
-	for _, a := range b.cfg.Base.Adapters {
-		spec, ok := lookupAdapter(a.Name)
-		if !ok {
-			return fmt.Errorf("this executable carries no adapter %q", a.Name)
+	// ⛔ ONE ADAPTER DOES NOT STOP THE OTHERS. This returned at the first install
+	// that failed and at the first read-back that found a problem, so a startup
+	// model missing from pi's catalogue left omp never installed, and the probe then
+	// reported five problems for an omp that was never there. Every adapter is tried
+	// in order, each failure is kept, and the answer names all of them. WSL-107,
+	// issue 37.
+	return applyEach(b.cfg.Base.Adapters, b.log, func(a BaseAdapter) error { return b.applyAdapter(ctx, a) })
+}
+
+// applyEach applies every adapter in order, keeps each failure, and answers one
+// error naming all of them, or nil.
+func applyEach(adapters []BaseAdapter, log func(string), apply func(BaseAdapter) error) error {
+	var failed []error
+	for _, a := range adapters {
+		if err := apply(a); err != nil {
+			log("adapter " + a.Name + ": FAILED, and the adapters after it are still installed: " + err.Error())
+			failed = append(failed, err)
 		}
-		b.log("adapter " + a.Name + ": installing")
-		install, err := adapterScript(a.Name, "install.sh")
-		if err != nil {
-			return err
-		}
-		env, err := adapterInstallEnv(b.cfg, a)
-		if err != nil {
-			return err
-		}
-		if spec.Host != nil {
-			extra, err := spec.Host.prepare(ctx, b)
-			if err != nil {
-				return fmt.Errorf("adapter %s: %w", a.Name, err)
-			}
-			for k, v := range extra {
-				env[k] = v
-			}
-		}
-		out := &prefixWriter{prefix: "", to: b.logWriter()}
-		code, err := b.wsl.Exec(ctx, ExecRequest{
-			Distro: b.cfg.Base.Name, User: "root", Script: install, Env: env,
-			Timeout: 20 * time.Minute, Stdout: out, Stderr: out,
-		})
-		out.Flush()
-		if err != nil || code != 0 {
-			return fmt.Errorf("adapter %s: install exited %d: %w", a.Name, code, err)
-		}
-		if !strings.Contains(out.seen.String(), adapterCompleteLine(a.Name)) {
-			return fmt.Errorf("adapter %s: install exited 0 without reaching its last line", a.Name)
-		}
-		st := b.probeAdapter(ctx, spec)
-		if spec.Host != nil && st.Facts != nil {
-			if err := spec.Host.apply(ctx, b, st.Facts); err != nil {
-				return fmt.Errorf("adapter %s: %w", a.Name, err)
-			}
-			hostProblems, hostNotes := spec.Host.check(ctx, b, st.Facts)
-			st.Problems = append(st.Problems, hostProblems...)
-			st.Notes = append(st.Notes, hostNotes...)
-		}
-		if len(st.Problems) > 0 {
-			return fmt.Errorf("adapter %s is installed, and reading it back found: %s", a.Name, strings.Join(st.Problems, "; "))
-		}
-		b.log("adapter " + a.Name + ": healthy, version " + st.Version)
 	}
+	if len(failed) > 0 {
+		return fmt.Errorf("%d of %d adapter(s) did not finish: %w", len(failed), len(adapters), errors.Join(failed...))
+	}
+	return nil
+}
+
+// applyAdapter installs one adapter and reads it back, both halves.
+func (b *Base) applyAdapter(ctx context.Context, a BaseAdapter) error {
+	spec, ok := lookupAdapter(a.Name)
+	if !ok {
+		return fmt.Errorf("this executable carries no adapter %q", a.Name)
+	}
+	b.log("adapter " + a.Name + ": installing")
+	install, err := adapterScript(a.Name, "install.sh")
+	if err != nil {
+		return err
+	}
+	env, err := adapterInstallEnv(b.cfg, a)
+	if err != nil {
+		return err
+	}
+	if spec.Host != nil {
+		extra, err := spec.Host.prepare(ctx, b)
+		if err != nil {
+			return fmt.Errorf("adapter %s: %w", a.Name, err)
+		}
+		for k, v := range extra {
+			env[k] = v
+		}
+	}
+	out := &prefixWriter{prefix: "", to: b.logWriter()}
+	code, err := b.wsl.Exec(ctx, ExecRequest{
+		Distro: b.cfg.Base.Name, User: "root", Script: install, Env: env,
+		Timeout: 20 * time.Minute, Stdout: out, Stderr: out,
+	})
+	out.Flush()
+	if err != nil || code != 0 {
+		return fmt.Errorf("adapter %s: install exited %d: %w", a.Name, code, err)
+	}
+	if !strings.Contains(out.seen.String(), adapterCompleteLine(a.Name)) {
+		return fmt.Errorf("adapter %s: install exited 0 without reaching its last line", a.Name)
+	}
+	st := b.probeAdapter(ctx, spec)
+	if spec.Host != nil && st.Facts != nil {
+		if err := spec.Host.apply(ctx, b, st.Facts); err != nil {
+			return fmt.Errorf("adapter %s: %w", a.Name, err)
+		}
+		hostProblems, hostNotes := spec.Host.check(ctx, b, st.Facts)
+		st.Problems = append(st.Problems, hostProblems...)
+		st.Notes = append(st.Notes, hostNotes...)
+	}
+	if len(st.Problems) > 0 {
+		return fmt.Errorf("adapter %s is installed, and reading it back found: %s", a.Name, strings.Join(st.Problems, "; "))
+	}
+	b.log("adapter " + a.Name + ": healthy, version " + st.Version)
 	return nil
 }
 
@@ -594,6 +622,74 @@ func (b *Base) probeAdapter(ctx context.Context, spec adapterSpec) AdapterState 
 		return AdapterState{Name: spec.Name, Problems: []string{fmt.Sprintf("the probe exited %d: %s", code, firstLine(errOut))}}
 	}
 	return parseAdapterProbe(spec.Name, out)
+}
+
+// AdapterLeftover is an adapter the configuration no longer names whose files
+// are still in the base, and the bytes they take there.
+type AdapterLeftover struct {
+	Name  string `json:"name"`
+	Bytes int64  `json:"bytes"`
+}
+
+// adapterLeftovers asks each adapter the configuration does not name what it
+// left in the base. WSL-109.
+//
+// ⚠ THE GUEST HALF STAYS BY DESIGN, and that is why this exists: removing an
+// adapter from a configuration takes this machine's half away and leaves what it
+// installed, about 450 MB for three agents on the operator's base, until `base
+// recreate`. A probe run with TK_PROBE_FOOTPRINT=1 answers two facts and stops.
+func (b *Base) adapterLeftovers(ctx context.Context) []AdapterLeftover {
+	named := map[string]bool{}
+	for _, a := range b.cfg.Base.Adapters {
+		named[a.Name] = true
+	}
+	var out []AdapterLeftover
+	for _, spec := range adapterSpecs {
+		if named[spec.Name] {
+			continue
+		}
+		probe, err := adapterScript(spec.Name, "probe.sh")
+		if err != nil {
+			continue
+		}
+		answer, _, code, err := b.captureAs(ctx, "root", probe, map[string]string{
+			"TK_USER": b.cfg.Base.User, "TK_DISTRO": b.cfg.Base.Name, "TK_PROBE_FOOTPRINT": "1",
+		}, 2*time.Minute)
+		if err != nil || code != 0 {
+			continue
+		}
+		if l, ok := parseLeftover(spec.Name, answer); ok {
+			out = append(out, l)
+		}
+	}
+	return out
+}
+
+// parseLeftover reads a footprint probe's two facts. An adapter that is not
+// installed and takes nothing is no leftover.
+func parseLeftover(name, answer string) (AdapterLeftover, bool) {
+	st := parseAdapterProbe(name, answer)
+	bytes, err := strconv.ParseInt(st.Facts["footprint"], 10, 64)
+	if err != nil {
+		return AdapterLeftover{}, false
+	}
+	if st.Facts["installed"] != "yes" && bytes == 0 {
+		return AdapterLeftover{}, false
+	}
+	return AdapterLeftover{Name: name, Bytes: bytes}, true
+}
+
+// leftoverRemediation is what a leftover adapter earns: the space, and the one
+// command that removes it, with what that command costs.
+func leftoverRemediation(l AdapterLeftover) Remediation {
+	return Remediation{
+		ID:   "adapter-leftover",
+		What: fmt.Sprintf("the %s adapter is not configured, and its files take %s in the base", l.Name, HumanBytes(l.Bytes)),
+		Costs: "the space stays until the base is rebuilt. base recreate removes the base and everything made in it, " +
+			"and builds it again from the configuration",
+		Command:    ToolCommand("base recreate"),
+		Repairable: true,
+	}
 }
 
 // probeAdapters reads back every adapter the configuration names, both halves.
@@ -805,15 +901,15 @@ func (h *herdrHost) check(ctx context.Context, b *Base, facts map[string]string)
 	}
 	known, _ := readOptional(p.knownHosts)
 	if hostKey := facts["ssh-host-key"]; hostKey == "" || !knownHostIs(known, alias, hostKey) {
-		problems = append(problems, p.knownHosts+" does not carry the base's host key. Run: wsl-toolkit base ensure")
+		problems = append(problems, p.knownHosts+" does not carry the base's host key. Run: "+ToolCommand("base ensure"))
 	}
 	current, _ := readOptional(p.config)
 	if found, ok := markedBlock(current, alias); !ok || !equalLines(found, herdrHostBlock(alias, b.cfg.Base.User, b.wsl.Path, p)) {
-		problems = append(problems, p.config+" does not carry this base's Host block as this tool writes it. Run: wsl-toolkit base ensure")
+		problems = append(problems, p.config+" does not carry this base's Host block as this tool writes it. Run: "+ToolCommand("base ensure"))
 	}
 	if herdrChannel(b.cfg) == AdapterChannelNightly {
 		if st, ok := readHerdrClient(b.home); !ok || st.Release != facts["release"] {
-			problems = append(problems, "this machine has no herdr client for the base's "+facts["release"]+". Run: wsl-toolkit base ensure")
+			problems = append(problems, "this machine has no herdr client for the base's "+facts["release"]+". Run: "+ToolCommand("base ensure"))
 		}
 	}
 	if len(problems) > 0 {

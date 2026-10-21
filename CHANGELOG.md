@@ -19,6 +19,89 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-10-21
+
+### 2026-10-21T05:25:50Z: a Git Bash script calls the tool directly, and `gc` cleans one project's jobs
+
+**Record:** `WSL-111` to `WSL-118` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and work order item 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+
+⭐ **What `podssh`'s wrapper did, the tool now does.** A Git Bash script exports
+`MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` once and calls the tool directly.
+`--workspace "$PWD"` is read in MSYS's spelling, `--script -` reads the command from
+stdin, and `--env-file` reads a job's variables from a file. `--gitignore` leaves out
+of the copy what git ignores, and a project's `wsl-toolkit.json` can say it once.
+
+⭐ **One job per name, and one project's cleanup.** `run --exclusive NAME` refuses a
+second job with the same NAME, or waits for it with `--exclusive-wait`. A job records
+the workspace it copies, and `gc --workspace DIR` removes that project's jobs and no
+other project's.
+
+⛔ **`gc --job` refuses an id that nothing in the instance belongs to**, with exit 2.
+A shortened id exited 0 having removed nothing, and that is a break. Every command
+the tool prints now names the instance it was printed for.
+
+⛔ **Driving `gc` found two defects in a shell the Claude desktop app starts.** Windows
+kept that shell's writes under `%LOCALAPPDATA%` in the app's own copy. Go's
+`os.RemoveAll` cannot open a directory there, so `gc --apply` left every job's host
+directory behind, on 6.0.0 too, and the removal now falls back to one entry at a
+time. `doctor` and `config` name such a copy and say which side the caller is on.
+
+### 2026-10-21T04:08:52Z: a base gets its QEMU handlers back, says what its disk holds, and can be built with `wslc`
+
+**Record:** `WSL-105`, `WSL-109` and `WSL-110` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), [`docs/reference-sweeps/wslc.md`](docs/reference-sweeps/wslc.md), and work order item 12 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+
+⭐ **Issue 37's last two items, and issue 35.** The Podman machine empties the
+kernel's QEMU handler table as it stops, the base's handlers included. Every `base
+ensure` now registers them again and records which are the base's own, and a systemd
+base runs `wsl-toolkit-binfmt.service`, which put them back 5 seconds after a real
+Podman machine stop. `binfmt.ready` reads the base's own set rather than every
+distribution's, which is a break: a base with its own handlers gone read ready.
+
+⭐ **`base reclaim`, and a disk that says whether it is sparse.** WSL refuses
+`--set-sparse` while its VM runs, which is while any distribution runs, so the
+command names `wsl --shutdown` as the operator's step and never runs it. `base
+status` reports the sparse attribute, the space the disk takes, and `.wslconfig`'s
+`sparseVhd`, and `--probe` names what a removed adapter left in the base.
+
+⭐ **`wslc`, WSL's own container tool, is the third host engine**, after podman and
+docker, so a machine with only WSL 3.0.1 or later can build a base. A scratch base
+was built with it in 119 seconds. The 2026-09-30 analysis of `wslc` is in the tree
+now, with what WSL 3.0.3 measured: `wslc` publishes a port with no elevation, which
+the manual's port-forwarding limit now says.
+
+⛔ **The driven passes found two defects the cases could not.** WSL answers a running
+distribution's disk as `WSL_E_DISTRO_NOT_STOPPED`, which `base reclaim` first read as
+an unknown failure. And `cmp` is missing from a base with no toolset, so the new
+script and three adapter installers read every file as changed; they compare digests
+now.
+
+### 2026-10-21T03:26:51Z: `shipped cat` takes its name, a gone grant can be revoked, and one adapter no longer stops the rest
+
+**Record:** `WSL-108`, `WSL-106` and `WSL-107` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), `TOOL-28` in [`TODO/tooling.md`](TODO/tooling.md), and work order items 12 and 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+
+⭐ **Three of issue 37's five items.** `shipped cat NAME` and `shipped write NAME`
+could never succeed, because the guard every subcommand shares refused the one name
+they need; each now takes it before, between or after its flags. A grant whose
+Windows directory was deleted refused every command as the configuration loaded,
+`base revoke` included; it now loads marked `missing`, `base status` names the
+revoke, and `base revoke` removes it. `base ensure` installs every adapter it is
+given and names each one that failed, and an agent probe says an agent is not
+installed rather than reporting five problems about one that never was.
+
+⛔ **The dead grant's fix had a trap in it.** With the load no longer refusing, a
+registered base whose re-provisioning fails is removed and rebuilt, so `base ensure`
+would have spent the whole base on a directory that went away. The refusal now
+comes first, from the configuration alone.
+
+⚠ **Found on the way and fixed**: the muse probe carried a literal carriage return
+that read as `tr -d` with empty quotes, and the control-bytes rule passed it,
+because every `\r` passed. The rule now refuses one that no line feed follows. The
+adapters README said `pi` and `omp` were never run, which `WSL-88` and `WSL-89` had
+falsified.
+
 ## 2026-10-10
 
 ### 2026-10-10T08:22:19Z: `cc_profile` runs the Claude desktop app as isolated profiles, and a terminal cannot end them

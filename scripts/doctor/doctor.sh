@@ -469,6 +469,7 @@ docker|container|docker|--version
 podman|container|podman|--version
 kubectl|container|kubectl|version --client
 wsl|container|wsl|@none
+wslc|container|wslc|version
 make|build|make|--version
 cmake|build|cmake|--version
 ninja|build|ninja|--version

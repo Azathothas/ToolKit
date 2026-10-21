@@ -84,7 +84,7 @@ func cmdArtifacts(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	dest, err := filepath.Abs(*to)
+	dest, err := filepath.Abs(msysHostPath(*to))
 	if err != nil {
 		return exitCannot, err
 	}
@@ -190,6 +190,7 @@ var examples = []struct{ What, Command string }{
 	{"a command no shell may touch, as base64 of its bytes", "wsl-toolkit run --image alpine --command-base64 ZWNobyBoaQo="},
 	{"why a job failed, after the container is gone", "wsl-toolkit inspect JOB-ID"},
 	{"inspect and remove one retained job", "wsl-toolkit inspect JOB-ID ; wsl-toolkit gc --job JOB-ID --apply"},
+	{"remove this project's jobs, and no other project's", "wsl-toolkit gc --workspace . --apply"},
 	{"two agents, isolated from each other", "wsl-toolkit --instance two ready --ensure"},
 	{"what this tool is holding, and release it", "wsl-toolkit resources ; wsl-toolkit gc --apply"},
 	{"a whole throwaway distribution, removed when its command ends", `wsl-toolkit distro new --image alpine --ephemeral -c 'cat /etc/os-release'`},

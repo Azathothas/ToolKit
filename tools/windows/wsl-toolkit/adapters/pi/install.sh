@@ -22,6 +22,13 @@ cd /
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'pi adapter: %s\n' "$*" >&2; exit 3; }
+# same_file A B is true when B exists and holds A's bytes. ⚠ NOT cmp: cmp is
+# diffutils, which a base with no toolset does not carry, and a missing cmp read
+# as "the files differ" on every run. WSL-105.
+same_file() {
+  [ -f "$2" ] || return 1
+  [ "$(sha256sum < "$1")" = "$(sha256sum < "$2")" ]
+}
 
 # -- what this adapter installs ------------------------------------------------------
 # ⚠ THE PACKAGE IS NAMED HERE AND THE VERSION IS NOT PINNED, and that is a
@@ -143,7 +150,7 @@ if [ -n "${TK_ADAPTER_MODEL:-}${TK_ADAPTER_EFFORT:-}" ]; then
         | (if $model == "" then . else .defaultModel = $model end)
         | (if $effort == "" then . else .defaultThinkingLevel = $effort end)
       ' "$pi_settings" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
-      if cmp -s "$settings_tmp" "$pi_settings"; then
+      if same_file "$settings_tmp" "$pi_settings"; then
         rm -f "$settings_tmp"
       else
         install -o "$TK_USER" -g "$TK_GROUP" -m 0600 "$settings_tmp" "$pi_settings"

@@ -3,6 +3,7 @@
 package toolkit
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -18,6 +19,16 @@ func TestEveryCleanupFieldCrossesTheWire(t *testing.T) {
 	v := reflect.ValueOf(&p).Elem()
 	for i := 0; i < v.NumField(); i++ {
 		f := v.Field(i)
+		name := v.Type().Field(i).Name
+		if why, ok := cleanupLocalOnly[name]; ok {
+			// ⛔ A field kept off the wire must be refused there, or it is dropped.
+			one := CleanupPolicy{}
+			reflect.ValueOf(&one).Elem().Field(i).SetString("C:/src/a")
+			if _, err := (&HelperClient{}).Cleanup(context.Background(), false, one, false); err == nil {
+				t.Errorf("CleanupPolicy.%s is kept off the wire (%s) and the client sent it anyway", name, why)
+			}
+			continue
+		}
 		switch f.Kind() {
 		case reflect.Bool:
 			f.SetBool(true)
@@ -47,6 +58,12 @@ func TestEveryCleanupFieldCrossesTheWire(t *testing.T) {
 	if !req.Apply || !req.Images {
 		t.Errorf("apply and images did not cross: %+v", req)
 	}
+}
+
+// cleanupLocalOnly are the fields the client refuses rather than sends, each
+// with its reason.
+var cleanupLocalOnly = map[string]string{
+	"Workspace": "WSL-114: the helper's jobs record its uploads, and an older helper would drop it",
 }
 
 func TestTheHelperRefusesAJobThatIsNotAnID(t *testing.T) {

@@ -54,7 +54,7 @@ func cmdBaseDoors(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if !exists {
-		return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
+		return exitCannot, errNotRegistered(cfg.Base.Name)
 	}
 	base, err := toolkit.NewBase(cfg, note)
 	if err != nil {

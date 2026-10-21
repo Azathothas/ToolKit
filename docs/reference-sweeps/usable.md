@@ -1340,3 +1340,24 @@ its UNRELEASED version.** herdr keeps the pages for each release under
 | 8, trap 4 | update herdr before concluding anything about SSH | ⛔ **no update exists.** `#4176` was closed as a duplicate of `#4038`, which herdr closed as fixed on its development branch; the four fix commits it names are 20 to 51 commits after `v0.9.0`, and 18 to 49 after the newest preview |
 | 8, trap 5 | a wrapper hides the agent from herdr | ⚠ **not for this tool's wrappers.** Every hop from `/usr/local/bin/muse` to `muse-bin-*` `exec`s, so herdr saw Muse; `muse.exe` and `base agent` never put Muse in a pane at all |
 | 8, trap 6 | WSL may not expose a foreground process group | ✅ **it does.** `pane process-info` and the kernel's `tpgid` named the same group, so `child-groups` is not needed |
+
+---
+
+## `wslc`, as a host engine
+
+⭐ **Measured on WSL 3.0.3, and [`wslc.md`](wslc.md) section 10 carries the runs.**
+The four calls a root filesystem needs, each in `wslc`'s own spelling:
+
+```powershell
+wslc pull docker.io/library/alpine:latest
+wslc image inspect --format json docker.io/library/alpine:latest
+wslc create docker.io/library/alpine:latest
+wslc export CONTAINER-ID
+```
+
+- ⛔ **No `--platform` on the pull or the create.** Read `Architecture` and `Os` back
+  from the inspect before anything is created.
+- `wslc create` prints the id alone, and `wslc export` writes the archive to stdout,
+  the same bytes `-o FILE` writes.
+- ⚠ A session is its own VM, with the stock WSL kernel, so it shares no
+  `binfmt_misc` table with the WSL distributions on the machine.

@@ -118,7 +118,7 @@ var (
 func registeredCommandSpecs() []commandSpec {
 	return []commandSpec{
 		{Name: "doctor", Summary: "report the host and the tools that can run", Run: cmdDoctor, HelpForms: []string{"doctor"}},
-		{Name: "base", Summary: "manage the WSL distribution that this tool owns", Run: cmdBase, HelpForms: []string{"base status", "base doors", "base ensure", "base recreate", "base remove", "base shell", "base exec", "base agent", "base herdr", "base bootstrap", "base grant", "base revoke", "base attach", "base presets"}},
+		{Name: "base", Summary: "manage the WSL distribution that this tool owns", Run: cmdBase, HelpForms: []string{"base status", "base doors", "base ensure", "base recreate", "base reclaim", "base remove", "base shell", "base exec", "base agent", "base herdr", "base bootstrap", "base grant", "base revoke", "base attach", "base presets"}},
 		{Name: "images", Summary: "list, check, or pull catalog images", Run: cmdImages, HelpForms: []string{"images", "images warm", "images pull"}},
 		{Name: "run", Summary: "run one command in one container", Run: cmdRun, HelpForms: []string{"run"}},
 		{Name: "matrix", Summary: "run one command across a set of images", Run: cmdMatrix, HelpForms: []string{"matrix"}},
@@ -176,9 +176,9 @@ func run(ctx context.Context, args []string) int {
 				return exitCannot
 			}
 			i++
-			toolkit.ExplicitConfigPath = args[i]
+			toolkit.ExplicitConfigPath = msysHostPath(args[i])
 		case strings.HasPrefix(args[i], "--config="):
-			toolkit.ExplicitConfigPath = strings.TrimPrefix(args[i], "--config=")
+			toolkit.ExplicitConfigPath = msysHostPath(strings.TrimPrefix(args[i], "--config="))
 		default:
 			rest = append(rest, args[i])
 			// ⛔ Everything after the subcommand belongs to it. A command's own
@@ -299,7 +299,7 @@ func applyInstance(ctx context.Context, asked string) (int, error) {
 // instance home it resolved to. A child whose WSL_TOOLKIT_HOME is that home
 // resolves from the root instead.
 const (
-	instanceRootEnv = "WSL_TOOLKIT_INSTANCE_ROOT"
+	instanceRootEnv = toolkit.InstanceRootEnv
 	instanceHomeEnv = "WSL_TOOLKIT_INSTANCE_HOME"
 )
 
@@ -384,6 +384,31 @@ func parseArgs(fs *flag.FlagSet, args []string) error {
 		msg += fmt.Sprintf(". Everything after it was never parsed, starting with %q", extra[1])
 	}
 	return errors.New(msg)
+}
+
+// parseOneName parses a subcommand that takes ONE name beside its flags, and
+// answers the name, or an empty one when none was given.
+//
+// ⚠ flag.Parse STOPS AT THE FIRST WORD THAT IS NOT A FLAG, so a name written
+// between flags leaves every flag after it unparsed. The name is taken from the
+// front, or from where the parse stopped, and the rest is parsed again, so the
+// name may stand before, between or after the flags. A second word is still a
+// refusal: one name means one. WSL-108.
+func parseOneName(fs *flag.FlagSet, args []string) (string, error) {
+	name, rest := splitLogsArgs(args)
+	if err := fs.Parse(rest); err != nil {
+		return "", err
+	}
+	if name == "" && len(fs.Args()) > 0 {
+		name = fs.Args()[0]
+		if err := fs.Parse(fs.Args()[1:]); err != nil {
+			return "", err
+		}
+	}
+	if extra := fs.Args(); len(extra) > 0 {
+		return "", fmt.Errorf("%s takes one name, and %q is a second", fs.Name(), extra[0])
+	}
+	return name, nil
 }
 
 // writeJSON puts a structured answer on stdout. It is the only thing in this

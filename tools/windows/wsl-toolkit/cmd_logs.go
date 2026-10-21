@@ -64,11 +64,11 @@ func cmdLogs(ctx context.Context, args []string) (int, error) {
 		// owner is gone without saying. WSL-94.
 		switch {
 		case id == "":
-			return exitCannot, errors.New("--follow reads one job: wsl-toolkit logs JOB-ID --follow")
+			return exitCannot, errors.New("--follow reads one job: " + toolkit.ToolCommand("logs JOB-ID --follow"))
 		case *wantErr || *both:
 			return exitCannot, errors.New("--follow writes both streams, each to its own, so --stderr and --both have nothing to choose")
 		case *asJSON:
-			return exitCannot, errors.New("--follow writes the job's streams as they arrive, which is not a document. wsl-toolkit wait JOB-ID --json answers how it ended")
+			return exitCannot, errors.New("--follow writes the job's streams as they arrive, which is not a document. " + toolkit.ToolCommand("wait JOB-ID --json") + " answers how it ended")
 		}
 		end, err := jobEnd(ctx, id, *tail, os.Stdout, os.Stderr)
 		if err != nil {
@@ -108,7 +108,7 @@ func cmdLogs(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if _, err := os.Stat(dir); err != nil {
-		return exitCannot, fmt.Errorf("no transcript for job %q. wsl-toolkit logs lists what is still here", id)
+		return exitCannot, fmt.Errorf("no transcript for job %q. %s lists what is still here", id, toolkit.ToolCommand("logs"))
 	}
 	names := []string{"stdout.log"}
 	switch {
@@ -279,6 +279,6 @@ func listTranscripts(home string, asJSON bool) (int, error) {
 		fmt.Printf("  %-18s %-8s %-9s %5s %-20s %10s %10s\n", r.ID, r.Kind, r.State, exit, r.Modified.Format("2006-01-02 15:04:05"),
 			toolkit.HumanBytes(r.Stdout), toolkit.HumanBytes(r.Stderr))
 	}
-	fmt.Fprintf(os.Stderr, "\n  %d job(s). wsl-toolkit logs ID writes one; --follow follows one that is running.\n", len(rows))
+	fmt.Fprintf(os.Stderr, "\n  %d job(s). %s writes one; --follow follows one that is running.\n", len(rows), toolkit.ToolCommand("logs ID"))
 	return exitOK, nil
 }

@@ -15,6 +15,7 @@ type MatrixSpec struct {
 	Script             []byte
 	Workspace          string
 	Excludes           []string
+	Gitignore          bool
 	ArtifactDir        string
 	Env                map[string]string
 	Timeout            time.Duration // per row
@@ -54,7 +55,7 @@ type MatrixSpec struct {
 // which a literal inside a goroutine could drop with nothing to say so.
 func rowSpec(spec MatrixSpec, img Image, staged, artifacts string, limits WorkspaceLimits) JobSpec {
 	return JobSpec{
-		Image: img.Ref, Script: spec.Script, StagedFrom: staged,
+		Image: img.Ref, Script: spec.Script, StagedFrom: staged, WorkspaceOrigin: spec.Workspace,
 		Workspace: "", ArtifactDir: artifacts, Env: spec.Env,
 		Timeout: spec.Timeout, Network: spec.Network, Limits: limits,
 		Platform: spec.Platform, ContainerLifecycle: spec.ContainerLifecycle,
@@ -182,7 +183,7 @@ func (r *Runner) RunMatrix(ctx context.Context, spec MatrixSpec) (MatrixReport, 
 				r.log("could not close the staging record: " + err.Error())
 			}
 		}()
-		if _, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, r.cfg.Base.User, staged, spec.Workspace, limits, spec.Excludes, r.log); err != nil {
+		if _, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, r.cfg.Base.User, staged, spec.Workspace, limits, WorkspaceFilter{Excludes: spec.Excludes, Gitignore: spec.Gitignore}, r.log); err != nil {
 			return report, err
 		}
 	}
@@ -275,7 +276,7 @@ func RenderMatrix(w io.Writer, report MatrixReport) error {
 	// followed by twelve paths is a table nobody reads, and the id of each row is
 	// what `logs` with no arguments lists.
 	if TranscriptsKept(report) {
-		if _, err := fmt.Fprintf(w, "  each row's complete output is kept: wsl-toolkit logs\n"); err != nil {
+		if _, err := fmt.Fprintf(w, "  each row's complete output is kept: %s\n", ToolCommand("logs")); err != nil {
 			return err
 		}
 	}

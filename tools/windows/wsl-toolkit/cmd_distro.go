@@ -94,7 +94,7 @@ func newThrowaways() (*toolkit.Throwaways, error) {
 // else about the name is changed.
 func targetName(value string) (string, error) {
 	if strings.TrimSpace(value) == "" {
-		return "", errors.New("--name is required. wsl-toolkit distro list names the throwaway distributions")
+		return "", errors.New("--name is required. " + toolkit.ToolCommand("distro list") + " names the throwaway distributions")
 	}
 	name, _, err := toolkit.ThrowawayName(value, "")
 	return name, err
@@ -214,7 +214,7 @@ type commandFlags struct {
 func (c *commandFlags) bind(fs *flag.FlagSet, defaultTimeout time.Duration) {
 	fs.StringVar(&c.command, "c", "", "the POSIX shell command to run, as a login shell whose stdin is /dev/null")
 	fs.StringVar(&c.commandB64, "command-base64", "", "the command as base64 of its bytes, for a caller that must keep every shell away from it")
-	fs.StringVar(&c.scriptFile, "script", "", "a file on this machine whose bytes are the command")
+	fs.StringVar(&c.scriptFile, "script", "", "a file on this machine whose bytes are the command, or - to read them from stdin")
 	fs.BoolVar(&c.verbatim, "verbatim", false, "send the command's bytes exactly, without turning CRLF into LF or dropping a byte order mark")
 	fs.Var(&c.env, "env", "NAME=VALUE assigned before the command. Repeatable, applied after --env-file; @hostaddress in VALUE is resolved at run time")
 	fs.StringVar(&c.envFile, "env-file", "", "a file of NAME=VALUE lines assigned before the command. Blank lines and lines starting with # are skipped, and @hostaddress in VALUE is resolved as it is for --env")
@@ -276,6 +276,12 @@ func (c *commandFlags) payload(cfg toolkit.Config) (commandPayload, error) {
 			return p, fmt.Errorf("--command-base64 is not valid base64: %w", err)
 		}
 		p.source, raw = "the --command-base64 command", decoded
+	case c.scriptFile == stdinScript:
+		read, err := readStdinScript()
+		if err != nil {
+			return p, err
+		}
+		raw, p.source = read, "the command read from stdin"
 	default:
 		path, err := pathFromProject(cfg, c.scriptFile)
 		if err != nil {
@@ -479,7 +485,7 @@ func cmdDistroNew(ctx context.Context, args []string) (int, error) {
 	}
 	if res.Command == nil {
 		if !*asJSON {
-			logf("  %s is ready. Run in it with: wsl-toolkit distro run --name %s -c 'uname -a'", res.Name, res.Name)
+			logf("  %s is ready. Run in it with: %s", res.Name, toolkit.ToolCommand("distro run --name "+res.Name+" -c 'uname -a'"))
 		}
 		return exitOK, nil
 	}

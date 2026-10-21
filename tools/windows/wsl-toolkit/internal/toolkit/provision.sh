@@ -40,7 +40,6 @@ die() { printf 'provision: %s\n' "$*" >&2; exit 3; }
 
 : "${TK_USER:?TK_USER is required}"
 : "${TK_UID:?TK_UID is required}"
-: "${TK_BINFMT_IMAGE:?TK_BINFMT_IMAGE is required}"
 : "${TK_AUTOMOUNT:?TK_AUTOMOUNT is required}"
 : "${TK_INTEROP:?TK_INTEROP is required}"
 : "${TK_SYSTEMD:?TK_SYSTEMD is required}"
@@ -326,16 +325,11 @@ done
 # <<< rootless id mapping: end
 
 # -- other Linux architectures ----------------------------------------------
-# The WSL kernel is common to its distributions. These handlers let the
-# rootless engine run a Linux image for another architecture. The installer
-# container is privileged because it writes the kernel's binfmt_misc table. It
-# is removed when registration is complete.
-say "registering QEMU binary formats from $TK_BINFMT_IMAGE"
-podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all >/dev/null || \
-  die "the QEMU binary-format installer did not complete"
-set -- /proc/sys/fs/binfmt_misc/qemu-*
-[ -e "$1" ] || die "the QEMU binary-format installer created no handlers"
-say "QEMU binary formats: $# handler(s)"
+# ⛔ NOT HERE ANY MORE. The handlers live in a table every distribution shares,
+# and another distribution can empty it while this one runs, so registering them
+# once at provisioning left a base that never got them back. binfmt.sh registers
+# them in every `base ensure`, after this script, and on a systemd base installs
+# the watcher that registers them again. WSL-105.
 
 # -- the unprivileged account -------------------------------------------------
 if id -u "$TK_USER" >/dev/null 2>&1; then

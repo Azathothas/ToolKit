@@ -86,7 +86,7 @@ func TestEveryGuestDoorRefusesARewrite(t *testing.T) {
 		t.Error("run, matrix, base exec and bsd run: a rewritten -c was accepted")
 	}
 	j := jobFlags{env: stringList{"X=" + rewritten}}
-	if _, err := j.envMap(); err == nil {
+	if _, err := j.envMap(toolkit.Config{}); err == nil {
 		t.Error("run and matrix: a rewritten --env value was accepted")
 	}
 	// ⚠ The absolute-path rule refuses this --dir too, so the case reads the

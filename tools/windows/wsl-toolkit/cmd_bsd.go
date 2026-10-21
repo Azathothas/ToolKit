@@ -64,7 +64,7 @@ func cmdBsdStatus(ctx context.Context, args []string) (int, error) {
 	if !st.Ready {
 		return exitCannot, nil
 	}
-	logf("\n  wsl-toolkit bsd run -c 'uname -a' runs one command in it.")
+	logf("\n  %s runs one command in it.", toolkit.ToolCommand("bsd run -c 'uname -a'"))
 	return exitOK, nil
 }
 
@@ -137,7 +137,7 @@ func cmdBsdFetch(ctx context.Context, args []string) (int, error) {
 		})
 	}
 	fmt.Println(target)
-	logf("  %s expanded. wsl-toolkit bsd run -c 'uname -a' runs one command in it.", toolkit.HumanBytes(info.Size()))
+	logf("  %s expanded. %s runs one command in it.", toolkit.HumanBytes(info.Size()), toolkit.ToolCommand("bsd run -c 'uname -a'"))
 	return exitOK, nil
 }
 
@@ -268,7 +268,7 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("bsd run")
 	command := fs.String("c", "", "the command to run at a root shell in the guest")
 	commandB64 := fs.String("command-base64", "", "the command as base64 of its bytes, for a caller that must keep every shell away from it")
-	scriptFile := fs.String("script", "", "a file whose contents run at a root shell in the guest")
+	scriptFile := fs.String("script", "", "a file whose contents run at a root shell in the guest, or - to read them from stdin")
 	timeout := fs.Duration("timeout", 15*time.Minute, "the whole session, the boot included")
 	network := fs.Bool("network", false, "give the guest outbound user-mode networking. Nothing is forwarded inward")
 	mem := fs.Int("memory", 2048, "guest memory in MiB")
@@ -306,7 +306,7 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 		fmt.Println(res.Output)
 	}
 	if res.RootNotDismounted != "" {
-		logf("  ⚠ the image's root filesystem was not properly dismounted when this run booted it: %s. What a run checks or repairs goes with its overlay, so every run boots on it until `wsl-toolkit bsd fetch --force` restores the published image", res.RootNotDismounted)
+		logf("  ⚠ the image's root filesystem was not properly dismounted when this run booted it: %s. What a run checks or repairs goes with its overlay, so every run boots on it until `%s` restores the published image", res.RootNotDismounted, toolkit.ToolCommand("bsd fetch --force"))
 	}
 	if res.ShutdownPanic != "" {
 		logf("  ⚠ the guest's kernel panicked while it powered off: %s. The payload had already answered, and what the panic wrote went with the run's overlay", res.ShutdownPanic)

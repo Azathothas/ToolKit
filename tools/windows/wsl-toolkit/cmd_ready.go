@@ -167,13 +167,13 @@ func assembleReady(ctx context.Context, smoke, ensure, wantUpdate bool) ReadyRep
 	if srcErr != nil {
 		r.Config.Reason = srcErr.Error()
 		r.Problems = append(r.Problems, srcErr.Error())
-		r.Remediation = append(r.Remediation, "wsl-toolkit config")
+		r.Remediation = append(r.Remediation, toolkit.ToolCommand("config"))
 	}
 	cfg, cfgErr := toolkit.LoadConfig()
 	if cfgErr != nil {
 		r.Config.Reason = cfgErr.Error()
 		r.Problems = append(r.Problems, cfgErr.Error())
-		r.Remediation = append(r.Remediation, "wsl-toolkit config")
+		r.Remediation = append(r.Remediation, toolkit.ToolCommand("config"))
 	} else {
 		r.Config.Valid = true
 	}
@@ -237,7 +237,7 @@ func assembleReady(ctx context.Context, smoke, ensure, wantUpdate bool) ReadyRep
 		// ⛔ ONE EXACT COMMAND, and it is the approval path rather than a
 		// suggestion that this process try harder. It cannot self-elevate and
 		// saying otherwise would be the lie this whole product exists to avoid.
-		r.Remediation = append(r.Remediation, "wsl-toolkit helper serve --detach")
+		r.Remediation = append(r.Remediation, toolkit.ToolCommand("helper serve --detach"))
 	}
 
 	// -- the base ------------------------------------------------------------
@@ -285,7 +285,7 @@ func (r *ReadyReport) fillBase(ctx context.Context, cfg toolkit.Config, cfgErr e
 	st, err := read(true)
 	if err != nil {
 		r.Problems = append(r.Problems, err.Error())
-		r.Remediation = append(r.Remediation, "wsl-toolkit base status --probe")
+		r.Remediation = append(r.Remediation, toolkit.ToolCommand("base status --probe"))
 		return
 	}
 	if !st.Healthy && ensure {
@@ -377,7 +377,7 @@ func baseRemediationFor(st toolkit.BaseState, err error) string {
 			return rem.Command
 		}
 	}
-	return "wsl-toolkit base ensure"
+	return toolkit.ToolCommand("base ensure")
 }
 
 // readySmokeScript is deliberately one line per fact, so a partial answer says

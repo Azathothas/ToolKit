@@ -20,6 +20,13 @@ cd /
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'muse adapter: %s\n' "$*" >&2; exit 3; }
+# same_file A B is true when B exists and holds A's bytes. ⚠ NOT cmp: cmp is
+# diffutils, which a base with no toolset does not carry, and a missing cmp read
+# as "the files differ" on every run. WSL-105.
+same_file() {
+  [ -f "$2" ] || return 1
+  [ "$(sha256sum < "$1")" = "$(sha256sum < "$2")" ]
+}
 
 # -- what this adapter pins ----------------------------------------------------------
 # ⛔ THE INSTALLER RUNS ONLY WHILE ITS DIGEST IS APPROVED. The operator approved this
@@ -256,7 +263,7 @@ if [ -n "\$tk_model\$tk_effort" ]; then
 fi
 exec "$LAUNCHER" "\$@"
 WRAPPER
-if cmp -s "$wrapper_tmp" "$WRAPPER"; then
+if same_file "$wrapper_tmp" "$WRAPPER"; then
   rm -f "$wrapper_tmp"
 else
   install -d -m 0755 "$(dirname "$WRAPPER")"
@@ -379,7 +386,7 @@ else
     rm -f "$hook_tmp"
     die "the herdr reporter failed its own self-test in this base, so it was not installed"
   fi
-  if cmp -s "$hook_tmp" "$HOOK"; then
+  if same_file "$hook_tmp" "$HOOK"; then
     rm -f "$hook_tmp"
   else
     install -o "$TK_USER" -g "$(tk_group)" -m 0755 "$hook_tmp" "$HOOK"
@@ -423,7 +430,7 @@ else
                           else . end))
                    + [{"matcher":"","hooks":[{"type":"command","command":$hook}]}])))
     ' "$MUSE_SETTINGS" > "$settings_tmp" 2>/dev/null && [ -s "$settings_tmp" ]; then
-    if cmp -s "$settings_tmp" "$MUSE_SETTINGS"; then
+    if same_file "$settings_tmp" "$MUSE_SETTINGS"; then
       rm -f "$settings_tmp"
       say "Muse already reports to herdr on $(printf '%s' "$HOOK_EVENTS" | wc -w) events"
     else

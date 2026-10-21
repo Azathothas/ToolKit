@@ -2,6 +2,573 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a tree the first removal cannot open is removed entry by entry",
+      "file": "internal/toolkit/paths.go",
+      "find": "\t\t} else if walkErr := removeByPath(target); walkErr != nil {\n",
+      "replace": "\t\t} else if walkErr := error(nil); walkErr != nil {\n",
+      "run": "TestRemoveInsideRemovesATreeTheFirstRemovalCannotOpen",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the entry-by-entry removal does not follow a link",
+      "file": "internal/toolkit/paths.go",
+      "find": "\tif fi.IsDir() && fi.Mode()&(os.ModeSymlink|os.ModeIrregular) == 0 {\n",
+      "replace": "\tif fi.IsDir() || fi.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {\n",
+      "run": "TestTheFallbackRemovesALinkAndKeepsItsTarget",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a package's own copy of the state directory is found",
+      "file": "internal/toolkit/statecopy.go",
+      "find": "\t\tpath := filepath.Join(local, \"Packages\", p.Name(), \"LocalCache\", \"Local\", rel)\n",
+      "replace": "\t\tpath := filepath.Join(local, \"Packages\", p.Name(), \"LocalState\", \"Local\", rel)\n",
+      "run": "TestACopyThisProcessDoesNotWriteIsNamedAsAnothers",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: whether this process writes the copy is read by file identity",
+      "file": "internal/toolkit/statecopy.go",
+      "find": "\t\t\tc.ThisProcess = os.SameFile(mine, theirs)\n",
+      "replace": "\t\t\tc.ThisProcess = mine.Name() == theirs.Name()\n",
+      "run": "TestACopyThisProcessDoesNotWriteIsNamedAsAnothers",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the copy note says which side this process is on",
+      "file": "internal/toolkit/statecopy.go",
+      "find": "\tif c.ThisProcess {\n",
+      "replace": "\tif !c.ThisProcess {\n",
+      "run": "TestACopyThisProcessDoesNotWriteIsNamedAsAnothers",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --workspace takes only the named project's jobs",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\t\tcase p.Workspace != \"\" && (t.Workspace == \"\" || !SameWorkspace(t.Workspace, p.Workspace)):\n",
+      "replace": "\t\tcase p.Workspace != \"\" && false:\n",
+      "run": "TestGCWorkspaceSelectsOneOfTwoProjects",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --workspace leaves a job that recorded no workspace",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\t\tcase p.Workspace != \"\" && (t.Workspace == \"\" || !SameWorkspace(t.Workspace, p.Workspace)):\n",
+      "replace": "\t\tcase p.Workspace != \"\" && t.Workspace != \"\" && !SameWorkspace(t.Workspace, p.Workspace):\n",
+      "run": "TestGCWorkspaceSelectsOneOfTwoProjects",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a workspace key compares as this host compares paths",
+      "file": "internal/toolkit/paths.go",
+      "find": "func SameWorkspace(a, b string) bool { return pathEqual(a, b) }\n",
+      "replace": "func SameWorkspace(a, b string) bool { return a == b }\n",
+      "run": "TestGCWorkspaceSelectsOneOfTwoProjects",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job records its workspace beside its lock",
+      "file": "internal/toolkit/jobowner.go",
+      "find": "\treturn writeFileAtomic(filepath.Join(o.Dir, workspaceRecordName), []byte(key+\"\\n\"), 0o600)\n",
+      "replace": "\treturn nil\n",
+      "run": "TestAJobRecordsItsWorkspaceWithItsClaim",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a recorded workspace reads back without its newline",
+      "file": "internal/toolkit/jobowner.go",
+      "find": "\treturn strings.TrimSuffix(string(b), \"\\n\")\n",
+      "replace": "\treturn string(b)\n",
+      "run": "TestAJobRecordsItsWorkspaceWithItsClaim",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --job with an id nothing here belongs to is refused",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\tif p.Job != \"\" && !slices.ContainsFunc(targets, func(t CleanupTarget) bool { return t.JobID == p.Job }) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestANarrowingNothingSatisfiesIsAnsweredAsItsKind",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --job holds an id to its shape",
+      "file": "cmd_admin.go",
+      "find": "\tif *job != \"\" && !toolkit.ValidJobID(*job) {\n",
+      "replace": "\tif *job != \"\" && false {\n",
+      "run": "TestGCRefusesANarrowingItCannotHonour",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --images with --job or --workspace is refused",
+      "file": "cmd_admin.go",
+      "find": "\tif *images && (*job != \"\" || *workspace != \"\") {\n",
+      "replace": "\tif *images && false {\n",
+      "run": "TestGCRefusesANarrowingItCannotHonour",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --job and --workspace together are refused",
+      "file": "cmd_admin.go",
+      "find": "\tif *job != \"\" && *workspace != \"\" {\n",
+      "replace": "\tif false {\n",
+      "run": "TestGCRefusesANarrowingItCannotHonour",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refused cleanup prints no plan and exits 2",
+      "file": "cmd_admin.go",
+      "find": "\tif errors.Is(err, toolkit.ErrUnknownJob) || errors.Is(err, toolkit.ErrWorkspaceViaHelper) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestARefusedCleanupExitsTwoAndPrintsNoPlan",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper client refuses gc --workspace",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\tif policy.Workspace != \"\" {\n\t\treturn CleanupPlan{Schema: CleanupSchema, DryRun: !apply}, ErrWorkspaceViaHelper\n",
+      "replace": "\tif false {\n\t\treturn CleanupPlan{Schema: CleanupSchema, DryRun: !apply}, ErrWorkspaceViaHelper\n",
+      "run": "TestTheHelperIsNotAskedForOneProjectsCleanup",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper's unknown job is the direct route's refusal",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\t\tif out.Unknown {\n\t\t\treturn out.Plan, fmt.Errorf(\"%w: %s\", ErrUnknownJob, strings.TrimPrefix(out.Error, ErrUnknownJob.Error()+\": \"))\n",
+      "replace": "\t\tif false {\n\t\t\treturn out.Plan, fmt.Errorf(\"%w: %s\", ErrUnknownJob, strings.TrimPrefix(out.Error, ErrUnknownJob.Error()+\": \"))\n",
+      "run": "TestTheHelpersUnknownJobIsTheDirectRoutesRefusal",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper's unknown job is not repeated in its words",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\t\t\treturn out.Plan, fmt.Errorf(\"%w: %s\", ErrUnknownJob, strings.TrimPrefix(out.Error, ErrUnknownJob.Error()+\": \"))\n",
+      "replace": "\t\t\treturn out.Plan, fmt.Errorf(\"%w: %s\", ErrUnknownJob, strings.TrimPrefix(out.Error, \"\"))\n",
+      "run": "TestTheHelpersUnknownJobIsTheDirectRoutesRefusal",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job hint names its instance",
+      "file": "cmd_jobs.go",
+      "find": "\treturn toolkit.ToolCommand(\"logs \" + id + \" --follow\"), toolkit.ToolCommand(\"wait \" + id), toolkit.ToolCommand(\"stop \" + id)\n",
+      "replace": "\treturn \"wsl-toolkit logs \" + id + \" --follow\", \"wsl-toolkit wait \" + id, \"wsl-toolkit stop \" + id\n",
+      "run": "TestAJobHintNamesTheInstanceItWasPrintedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base that is not built names this instance's ensure",
+      "file": "cmd_jobs.go",
+      "find": "\treturn fmt.Errorf(\"%s is not registered. Build it with: %s\", name, toolkit.ToolCommand(\"base ensure\"))\n",
+      "replace": "\treturn fmt.Errorf(\"%s is not registered. Build it with: wsl-toolkit base ensure\", name)\n",
+      "run": "TestAJobHintNamesTheInstanceItWasPrintedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the transcript hint names its instance",
+      "file": "cmd_run.go",
+      "find": "\treturn \"the complete output is kept: \" + toolkit.ToolCommand(\"logs \"+res.ID)\n",
+      "replace": "\treturn \"the complete output is kept: wsl-toolkit logs \" + res.ID\n",
+      "run": "TestAJobHintNamesTheInstanceItWasPrintedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unknown job names where this instance's jobs are listed",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\t\treturn \"\", fmt.Errorf(\"%w: %s. Nothing in this instance belongs to it, and %s lists the jobs it has\", ErrUnknownJob, p.Job, ToolCommand(\"logs\"))\n",
+      "replace": "\t\treturn \"\", fmt.Errorf(\"%w: %s. Nothing in this instance belongs to it, and %s lists the jobs it has\", ErrUnknownJob, p.Job, \"wsl-toolkit logs\")\n",
+      "run": "TestAnUnknownJobNamesWhereThisInstancesJobsAreListed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an --exclusive name is held, so a second job is refused",
+      "file": "internal/toolkit/exclusive.go",
+      "find": "\t\trelease, err := lockExclusive(lock)\n",
+      "replace": "\t\trelease, err := func() {}, error(nil)\n\t\t_ = lock\n",
+      "run": "TestASecondJobWithTheSameExclusiveNameIsRefusedNamingTheFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --exclusive through the helper is refused",
+      "file": "cmd_run.go",
+      "find": "\tif j.exclusive != \"\" && j.viaHelper {\n",
+      "replace": "\tif j.exclusive != \"\" && j.viaHelper && false {\n",
+      "run": "TestExclusiveFlagsRefuseWhatCannotHold",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refused --exclusive is offered a wait only for a real job",
+      "file": "internal/toolkit/exclusive.go",
+      "find": "\tif id, ok := strings.CutPrefix(holder, \"job \"); ok && jobIDRE.MatchString(id) {\n",
+      "replace": "\tif id, ok := strings.CutPrefix(holder, \"job \"); ok || jobIDRE.MatchString(id) || true {\n",
+      "run": "TestAnExclusiveNameMustBeAFileName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --gitignore on a workspace its repository ignores is refused",
+      "file": "internal/toolkit/execbit.go",
+      "find": "\tif exec.CommandContext(ctx, git, \"-C\", root, \"check-ignore\", \"-q\", \".\").Run() == nil {\n",
+      "replace": "\tif exec.CommandContext(ctx, git, \"-C\", root, \"check-ignore\", \"-q\", \".\").Run() == nil && false {\n",
+      "run": "TestGitignoreOnAWorkspaceItsRepositoryIgnoresIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --gitignore leaves out what git ignores",
+      "file": "internal/toolkit/workspace.go",
+      "find": "\t\tgitSkips := ignored[slashRel] || (d.IsDir() && ignored[slashRel+\"/\"])\n",
+      "replace": "\t\tgitSkips := ignored[slashRel+\"never\"]\n",
+      "run": "TestGitignoreLeavesOutWhatGitIgnoresAndNothingElse",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --gitignore outside a git work tree is refused",
+      "file": "internal/toolkit/execbit.go",
+      "find": "\tif out, err := probe.Output(); err != nil || strings.TrimSpace(string(out)) != \"true\" {\n",
+      "replace": "\tif out, err := probe.Output(); false && (err != nil || strings.TrimSpace(string(out)) != \"true\") {\n",
+      "run": "TestGitignoreOutsideAGitWorkTreeIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a jobs.exclude pattern path.Match cannot read is refused",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\tif _, err := path.Match(pat, \"\"); err != nil {\n",
+      "replace": "\t\tif _, err := path.Match(\"x\", \"\"); err != nil {\n",
+      "run": "TestAProjectsExcludePatternIsReadAndABadOneRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the loader keeps a project's jobs.exclude",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif stored.Jobs.Exclude != nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
+      "replace": "\tif stored.Jobs.Exclude == nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
+      "run": "TestAProjectsJobSettingsReachEveryJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job takes its project's jobs.gitignore",
+      "file": "cmd_run.go",
+      "find": "\tif cfg.Jobs.Gitignore {\n\t\tj.gitignore = true\n",
+      "replace": "\tif cfg.Jobs.Gitignore && false {\n\t\tj.gitignore = true\n",
+      "run": "TestAProjectsJobSettingsReachEveryJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an MSYS drive path is read as the drive",
+      "file": "gitbash.go",
+      "find": "\tif len(head) == 1 && ((head[0] >= 'a' && head[0] <= 'z') || (head[0] >= 'A' && head[0] <= 'Z')) {\n",
+      "replace": "\tif len(head) == 99 && ((head[0] >= 'a' && head[0] <= 'z') || (head[0] >= 'A' && head[0] <= 'Z')) {\n",
+      "run": "TestAnMsysHostPathIsReadTheWayMsysMapsIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the job path resolver reads an MSYS spelling",
+      "file": "cmd_run.go",
+      "find": "func pathFromProject(cfg toolkit.Config, value string) (string, error) {\n\tvalue = msysHostPath(value)\n",
+      "replace": "func pathFromProject(cfg toolkit.Config, value string) (string, error) {\n\tvalue = msysHostPath(\"\") + value\n",
+      "run": "TestAnMsysHostPathIsReadTheWayMsysMapsIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --script - reads the command from stdin",
+      "file": "cmd_run.go",
+      "find": "\tcase scriptFile == stdinScript:\n\t\traw, err := readStdinScript()\n",
+      "replace": "\tcase scriptFile == \"never a script\":\n\t\traw, err := readStdinScript()\n",
+      "run": "TestScriptDashReadsTheCommandFromStdin",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an empty stdin is no command",
+      "file": "cmd_run.go",
+      "find": "\tif len(bytes.TrimSpace(raw)) == 0 {\n",
+      "replace": "\tif len(bytes.TrimSpace(raw)) < 0 {\n",
+      "run": "TestScriptDashReadsTheCommandFromStdin",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a detached owner is given the stdin command as a file",
+      "file": "cmd_run.go",
+      "find": "\t\t\tout = append(out, a, file)\n\t\t\ti++\n",
+      "replace": "\t\t\tout = append(out, a, args[i+1])\n\t\t\ti++\n",
+      "run": "TestADetachedOwnerGetsTheStdinCommandAsAFile",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job reads its --env-file",
+      "file": "cmd_run.go",
+      "find": "\tif j.envFile != \"\" {\n\t\tpath, err := pathFromProject(cfg, j.envFile)\n",
+      "replace": "\tif j.envFile == \"never a file\" {\n\t\tpath, err := pathFromProject(cfg, j.envFile)\n",
+      "run": "TestAnEnvFileIsReadAndAnEnvAfterItWins",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base exec's variables are part of its command",
+      "file": "cmd_base_exec.go",
+      "find": "\tpayload = toolkit.ComposePayload(payload, pairs, false)\n",
+      "replace": "\tpayload = toolkit.ComposePayload(payload, pairs[:0], false)\n",
+      "run": "TestBaseExecVariablesArePartOfTheCommand",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wslc is the host engine tried last",
+      "file": "internal/toolkit/engine.go",
+      "find": "var hostEngineNames = []string{\"podman\", \"docker\", \"wslc\"}",
+      "replace": "var hostEngineNames = []string{\"wslc\", \"podman\", \"docker\"}",
+      "run": "TestWslcIsTheHostEngineTriedLast",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wslc is pulled from with no --platform, which it does not take",
+      "file": "internal/toolkit/engine.go",
+      "find": "func (e *Engine) pullArgs(ref string) []string {\n\tif e.Name == \"wslc\" {\n",
+      "replace": "func (e *Engine) pullArgs(ref string) []string {\n\tif e.Name == \"never an engine\" {\n",
+      "run": "TestWslcIsAskedInItsOwnSpellingAndTheOthersInTheirs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an image wslc pulled for another architecture is refused",
+      "file": "internal/toolkit/engine.go",
+      "find": "\tif !strings.EqualFold(img.Os, \"linux\") || !strings.EqualFold(img.Architecture, want) {\n",
+      "replace": "\tif !strings.EqualFold(img.Os, \"linux\") {\n",
+      "run": "TestAnImageWslcPulledForAnotherArchitectureIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a .wslconfig key is read from its own section",
+      "file": "internal/toolkit/hostaddr.go",
+      "find": "\t\tif section != strings.ToLower(wantSection) {\n",
+      "replace": "\t\tif section == \"never a section\" {\n",
+      "run": "TestSparseVhdIsReadFromItsOwnSectionAndTheLastLineWins",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: fstrim's busybox spelling is read",
+      "file": "internal/toolkit/reclaim.go",
+      "find": "regexp.MustCompile(`\\((\\d+) bytes\\) trimmed|(\\d+) bytes trimmed`)",
+      "replace": "regexp.MustCompile(`\\((\\d+) bytes\\) trimmed|(\\d+) bytes trimmed nowhere`)",
+      "run": "TestTrimmedBytesAreReadInBothSpellings",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter that left files and is not installed is still a leftover",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif st.Facts[\"installed\"] != \"yes\" && bytes == 0 {\n",
+      "replace": "\tif st.Facts[\"installed\"] != \"yes\" {\n",
+      "run": "TestALeftoverAdapterIsOneThatIsInstalledOrTakesSpace",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a running distribution's disk held by WSL is named as held",
+      "file": "internal/toolkit/reclaim.go",
+      "find": "var diskHeldCodes = []string{\"WSL_E_DISTRO_NOT_STOPPED\", \"ERROR_SHARING_VIOLATION\"}",
+      "replace": "var diskHeldCodes = []string{\"ERROR_SHARING_VIOLATION\"}",
+      "run": "TestWslHoldingTheDiskIsNamedWithTheOperatorsStep",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a disk that is not sparse earns the reclaim",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif sparse {\n\t\tst.DiskSparse = \"yes\"\n",
+      "replace": "\tif !sparse || sparse {\n\t\tst.DiskSparse = \"yes\"\n",
+      "run": "TestADiskThatIsNotSparseEarnsTheReclaim",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt readiness is the base's own set, not the kernel's total",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tst.Ready = len(st.Missing) == 0\n",
+      "replace": "\t\tst.Ready = count > 0\n",
+      "run": "TestReadinessIsTheBasesOwnSetAndNotTheKernelsTotal",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a gone handler of the base's own is a remediation naming base ensure",
+      "file": "internal/toolkit/base.go",
+      "find": "\tcase bf.Recorded && len(bf.Missing) > 0:\n",
+      "replace": "\tcase bf.Recorded && len(bf.Missing) > 99:\n",
+      "run": "TestAGoneHandlerIsARemediationNamingBaseEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the binfmt watcher registers again what is gone",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "      if register && [ -z \"$(missing)\" ]; then\n",
+      "replace": "      if true && [ -z \"$(missing)\" ]; then\n",
+      "run": "TestTheHandlersAreRegisteredByEveryEnsureAndWatched",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "check: a carriage return inside a line is a control byte",
+      "file": "internal/checks/bytes.go",
+      "find": "\t\t\tif c == '\\r' && (i+1 >= len(b) || b[i+1] != '\\n') {\n",
+      "replace": "\t\t\tif c == '\\r' && (i+1 >= len(b) || b[i+1] == 0) {\n",
+      "run": "TestTheControlByteRuleRefusesACarriageReturnInsideALine",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter that fails does not stop the adapters after it",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\t\tlog(\"adapter \" + a.Name + \": FAILED, and the adapters after it are still installed: \" + err.Error())\n\t\t\tfailed = append(failed, err)\n",
+      "replace": "\t\t\tlog(\"adapter \" + a.Name + \": FAILED, and the adapters after it are still installed: \" + err.Error())\n\t\t\treturn err\n",
+      "run": "TestEveryAdapterIsTriedWhenOneBeforeItFails",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter that is not installed is one problem, with no version line",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif st.Version == \"\" && st.Facts[\"installed\"] != \"no\" {\n",
+      "replace": "\tif st.Version == \"\" && st.Facts[\"installed\"] != \"never\" {\n",
+      "run": "TestAnAdapterThatIsNotInstalledIsOneProblemAndNotFive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the omp probe stops at not installed, before its bun and login-shell checks",
+      "file": "internal/toolkit/adapters/omp/probe.sh",
+      "find": "  problem \"omp is not installed in this base. Run: base ensure\"\n  exit 0\n",
+      "replace": "  problem \"omp is not installed in this base. Run: base ensure\"\n",
+      "run": "TestEachAgentProbeAsksWhetherItIsInstalledFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant whose source is gone loads, marked, rather than refusing the file",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\tif errors.Is(err, fs.ErrNotExist) {\n\t\t\t// ⛔ A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
+      "replace": "\t\tif false && errors.Is(err, fs.ErrNotExist) {\n\t\t\t// ⛔ A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
+      "run": "TestAGrantWhoseSourceIsGoneIsKeptAndMarkedRatherThanRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: rendering the grants refuses a gone source by its revoke",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := GoneGrantsError(mounts); err != nil {\n\t\treturn \"\", \"\", nil, err\n\t}\n",
+      "replace": "\tif err := GoneGrantsError(nil); err != nil {\n\t\treturn \"\", \"\", nil, err\n\t}\n",
+      "run": "TestEverythingThatMountsTheGrantsRefusesAGoneOneByItsRevoke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base grant refuses beside a gone grant before anything changes",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif err := GoneGrantsError(current); err != nil {\n",
+      "replace": "\tif err := GoneGrantsError(nil); err != nil {\n",
+      "run": "TestEverythingThatMountsTheGrantsRefusesAGoneOneByItsRevoke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure refuses a gone grant before it can remove and rebuild",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := GoneGrantsError(st.Access.Mounts); err != nil {\n",
+      "replace": "\tif err := GoneGrantsError(nil); err != nil {\n",
+      "run": "TestEverythingThatMountsTheGrantsRefusesAGoneOneByItsRevoke",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier reads back only the grants that exist",
+      "file": "internal/toolkit/base.go",
+      "find": "\tfor _, m := range mounts {\n\t\tif !m.Missing {\n\t\t\tpresent = append(present, m)\n",
+      "replace": "\tfor _, m := range mounts {\n\t\tif true {\n\t\t\tpresent = append(present, m)\n",
+      "run": "TestAGoneGrantCanBeRevokedAndTheRestStillMounts",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stored configuration does not carry a grant's missing mark",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t// not stored.\n\tfor i := range resolved {\n\t\tresolved[i].Missing = false\n\t}\n",
+      "replace": "\t// not stored.\n\tfor i := range resolved[:0] {\n\t\tresolved[i].Missing = false\n\t}\n",
+      "run": "TestAGoneMarkIsNeitherStoredNorFingerprinted",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant's missing mark does not move the fingerprint",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t// a grant whose directory went away does not change the fingerprint.\n\tfor i := range resolved {\n",
+      "replace": "\t// a grant whose directory went away does not change the fingerprint.\n\tfor i := range resolved[:0] {\n",
+      "run": "TestAGoneMarkIsNeitherStoredNorFingerprinted",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: shipped cat and write take their name rather than refusing it",
+      "file": "cmd_shipped.go",
+      "find": "\tcase \"cat\", \"write\":\n\t\tname, err = parseOneName(fs, rest)\n",
+      "replace": "\tcase \"cat\", \"write\":\n\t\terr = parseArgs(fs, rest)\n",
+      "run": "TestShippedCatWritesTheCarriedBytes",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a shipped name between flags leaves no flag unparsed",
+      "file": "main.go",
+      "find": "\t\tif err := fs.Parse(fs.Args()[1:]); err != nil {\n\t\t\treturn \"\", err\n\t\t}\n",
+      "replace": "\t\tif err := fs.Parse(nil); err != nil {\n\t\t\treturn \"\", err\n\t\t}\n",
+      "run": "TestShippedWriteTakesItsNameOnEitherSideOfItsFlags",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a shipped second name is a refusal",
+      "file": "main.go",
+      "find": "\tif extra := fs.Args(); len(extra) > 0 {\n\t\treturn \"\", fmt.Errorf(\"%s takes one name, and %q is a second\", fs.Name(), extra[0])\n\t}\n",
+      "replace": "\tif extra := fs.Args(); len(extra) > 99 {\n\t\treturn \"\", fmt.Errorf(\"%s takes one name, and %q is a second\", fs.Name(), extra[0])\n\t}\n",
+      "run": "TestShippedRefusesASecondNameAndListRefusesAny",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base revoke reads --target alone of grant's names",
       "file": "cmd_base_grant.go",
       "find": "\t\t\t\"revoke\": {\"target\", \"json\", \"via-helper\"},\n",
@@ -1445,8 +2012,8 @@
       "label": "a job flag added and never put on the wire",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_run.go",
-      "find": "\tmaxOutput   int64\n",
-      "replace": "\tmaxOutput   int64\n\tnewFlagNobodySent string\n",
+      "find": "\tmaxOutput     int64\n",
+      "replace": "\tmaxOutput     int64\n\tnewFlagNobodySent string\n",
       "run": "TestEveryJobFlagCrossesTheWire",
       "args": []
     },
@@ -1609,7 +2176,7 @@
       "label": "the job id on a run that kept its output",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_run.go",
-      "find": "\treturn \"the complete output is kept: wsl-toolkit logs \" + res.ID",
+      "find": "\treturn \"the complete output is kept: \" + toolkit.ToolCommand(\"logs \"+res.ID)",
       "replace": "\treturn \"\"",
       "run": "TestTranscriptHintMakesLogsReachable",
       "args": []
@@ -1780,7 +2347,7 @@
       "label": "the host half refusing an id nothing on this machine has heard of",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/inspect.go",
-      "find": "\tif len(job.Known) == 0 {\n\t\treturn rep, fmt.Errorf(\"%w: %s. `wsl-toolkit logs` lists the jobs this machine still has\", ErrUnknownJob, id)\n\t}",
+      "find": "\tif len(job.Known) == 0 {\n\t\treturn rep, fmt.Errorf(\"%w: %s. `%s` lists the jobs this machine still has\", ErrUnknownJob, id, ToolCommand(\"logs\"))\n\t}",
       "replace": "\tif false {\n\t\treturn rep, nil\n\t}",
       "run": "TestTheHostHalfStillRefusesAnIdItHasNeverHeardOf",
       "args": []
@@ -2653,8 +3220,8 @@
       "label": "hostaddress: a key outside the wsl2 section",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/hostaddr.go",
-      "find": "\t\tif section != \"wsl2\" {\n",
-      "replace": "\t\tif section != \"wsl2\" && false {\n",
+      "find": "\t\tif section != strings.ToLower(wantSection) {\n",
+      "replace": "\t\tif section != strings.ToLower(wantSection) && false {\n",
       "run": "TestTheWslConfigParserReadsOnlyTheLiveSetting",
       "args": []
     },

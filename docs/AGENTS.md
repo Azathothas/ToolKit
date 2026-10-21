@@ -160,6 +160,7 @@ second may change how the first is applied.
 | ⛔ [`HISTORY/README.md`](HISTORY/README.md) | superseded wording and the story of fixes that have shipped. **Nothing there is read to do work**, and a session that opens it is reading what was true once. |
 | [`reference-sweeps/findings.md`](reference-sweeps/findings.md) | what external repositories were read, and what was true in them |
 | [`reference-sweeps/usable.md`](reference-sweeps/usable.md) | which of those findings this repository can actually use |
+| [`reference-sweeps/wslc.md`](reference-sweeps/wslc.md) | WSL's own container tool beside this one: what it does, what it cannot, and the one mechanism adopted |
 
 ---
 

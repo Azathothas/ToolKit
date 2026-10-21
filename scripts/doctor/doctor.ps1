@@ -461,6 +461,8 @@ $toolTable = @(
     # wsl.exe writes UTF-16LE, which a redirected stdout reads as empty or as
     # mojibake, so no version can honestly be taken from it. Presence only.
     @('wsl','container','wsl',@()),
+    # WSL's own container tool, from WSL 3.0.1. WSL-110.
+    @('wslc','container','wslc',@('version')),
     @('make','build','make',@('--version')),
     @('cmake','build','cmake',@('--version')),
     @('ninja','build','ninja',@('--version')),

@@ -30,7 +30,7 @@ func ToolCatalog() []ToolSpec {
 		{"compiler", "gcc clang cl"},
 		{"pkg-lang", "npm pnpm yarn pip pipx uv poetry cargo rustup gem composer maven gradle"},
 		{"pkg-system", "scoop choco winget brew apt dnf pacman apk zypper nix"},
-		{"container", "docker podman kubectl wsl"},
+		{"container", "docker podman kubectl wsl wslc"},
 		{"build", "make cmake ninja just task msbuild"},
 		{"quality", "shellcheck shfmt ruff eslint prettier golangci-lint"},
 		{"cli", "jq yq rg fd curl wget aria2c tar 7z sqlite3 scc tokei hyperfine"},
@@ -41,7 +41,7 @@ func ToolCatalog() []ToolSpec {
 	custom := map[string][]string{
 		"cl": nil, "scoop": nil, "7z": nil, "wsl": nil,
 		"java": {"-version"}, "go": {"version"}, "zig": {"version"},
-		"lua": {"-v"}, "kubectl": {"version", "--client"},
+		"lua": {"-v"}, "kubectl": {"version", "--client"}, "wslc": {"version"},
 		"msbuild": {"-version"}, "flyctl": {"version"},
 		"powershell": {"-NoProfile", "-Command", "$PSVersionTable.PSVersion.ToString()"},
 	}
@@ -406,6 +406,16 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 		}
 	}
 	report.Host["shell"] = hostShell()
+	// ⛔ A SECOND STATE DIRECTORY IS A SECOND MACHINE to this tool. Read
+	// without writing, so this report still creates no file. WSL-118.
+	if root, err := StateRoot(); err == nil {
+		if copies := StateCopies(root); len(copies) > 0 {
+			report.Host["state_copies"] = copies
+			for _, c := range copies {
+				report.Notes = append(report.Notes, StateCopyNote(c))
+			}
+		}
+	}
 	report.Notes = append(report.Notes,
 		"Writable temporary storage was not probed: this report creates no files.",
 		"The resolved column is what would actually run. A scoop shim, a node .ps1 wrapper and a .cmd launcher all answer to --version and only one can be handed to CreateProcess.")

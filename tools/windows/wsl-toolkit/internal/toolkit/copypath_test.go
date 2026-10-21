@@ -64,7 +64,7 @@ func TestAGuestThatStopsReadingSpeaksFirstAndNothingWaitsForEver(t *testing.T) {
 	go func() {
 		up, err := pumpArchive(
 			func(w io.Writer) (WorkspaceUpload, error) {
-				return writeWorkspaceTar(w, root, DefaultWorkspaceLimits(), nil)
+				return writeWorkspaceTar(w, root, DefaultWorkspaceLimits(), WorkspaceFilter{})
 			},
 			func(r io.Reader) (int, error) {
 				// The guest reads one record and stops, as a tar that failed does.
@@ -197,7 +197,7 @@ func TestAFileNamedLikeADeviceTravelsWithItsBytes(t *testing.T) {
 	// device instead of the file and fails the case.
 	t.Cleanup(func() { _ = os.Remove(long) })
 	var archive bytes.Buffer
-	if _, err := writeWorkspaceTar(&archive, root, DefaultWorkspaceLimits(), nil); err != nil {
+	if _, err := writeWorkspaceTar(&archive, root, DefaultWorkspaceLimits(), WorkspaceFilter{}); err != nil {
 		t.Fatalf("the copy refused a file it can read: %v", err)
 	}
 	tr := tar.NewReader(&archive)

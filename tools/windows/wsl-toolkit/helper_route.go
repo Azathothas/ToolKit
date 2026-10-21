@@ -32,7 +32,7 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 	}
 	if j.workspace != "" {
 		note("uploading the workspace to the helper")
-		id, err := c.UploadWorkspace(ctx, j.workspace, j.limits(), toolkit.SortedExcludes(j.excludes))
+		id, err := c.UploadWorkspace(ctx, j.workspace, j.limits(), j.filter())
 		if err != nil {
 			return toolkit.JobResult{}, err
 		}
@@ -93,7 +93,7 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 	}
 	if j.workspace != "" {
 		note("uploading the workspace to the helper")
-		id, err := c.UploadWorkspace(ctx, j.workspace, j.limits(), toolkit.SortedExcludes(j.excludes))
+		id, err := c.UploadWorkspace(ctx, j.workspace, j.limits(), j.filter())
 		if err != nil {
 			return toolkit.MatrixReport{}, err
 		}

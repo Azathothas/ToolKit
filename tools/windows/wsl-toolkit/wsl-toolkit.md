@@ -56,6 +56,31 @@ command reads. `WSL-100`, `WSL-104`.
 
 ---
 
+## ⭐ From Git Bash, with no bridge
+
+```bash
+export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
+wsl-toolkit run --image docker.io/library/alpine:latest --workspace "$PWD" -c 'ls /work'
+printf '%s\n' 'set -u' 'uname -a' | wsl-toolkit run --image docker.io/library/alpine:latest --script -
+wsl-toolkit base exec --dir /workspaces/proj --env-file ./job.env -c 'make test'
+```
+
+With those two variables exported once, MSYS rewrites nothing, so a guest path, a
+`-c` command and `--dir` arrive as typed. ⭐ **A host path written the MSYS way is
+read the way MSYS maps it**: `/c/...` on drive C, `/tmp/...` in the temporary
+directory, and any other `/...` under the Git install. So `--workspace "$PWD"`
+works. `WSL-111`
+
+- `--script -` reads the command from stdin, so a generated script needs no file.
+  An empty stdin is refused. `run`, `matrix`, `base exec`, `distro` and `bsd run`
+  take it, and `run --detach` hands it to its owner as a file in the job's
+  directory.
+- `--env-file FILE` carries values no shell touches, a `NAME=VALUE` line each.
+  `run` and `matrix` pass them to the container, and `base exec` exports them to
+  its command. `--env` is applied after the file, so a `--env` wins.
+
+---
+
 ## Operating model
 
 - The tool owns the `wsl-toolkit` distribution, the throwaway distributions whose
@@ -73,6 +98,29 @@ it.** A command given to `wsl.exe` as an ARGUMENT is expanded before the guest
 sees it, and the result is parsed a second time. A backtick in the payload runs,
 and the command can still report exit 0. This tool sends a payload on stdin or
 as a file.
+
+---
+
+## What the workspace copy leaves out
+
+```powershell
+wsl-toolkit run --image docker.io/library/rust:1 --workspace . --gitignore --exclude .git -c 'cargo test'
+```
+
+⭐ **`--gitignore` leaves out what git ignores in the workspace**, read from git
+itself, so a build tree, a log or a credential git keeps out of the repository stays
+out of the copy too. The workspace must be in a git work tree, or the job is refused.
+`.git` is not ignored by git, so it travels unless an `--exclude` names it. `WSL-112`
+
+`--exclude PATTERN` leaves out an entry whose whole relative path matches, whose base
+name matches at any depth, or which is under a directory the pattern names. `*` does
+not cross a slash, there is no `**`, and the match is case-sensitive. ⚠ So `--exclude
+target` also leaves out `src/target`, where `--gitignore` follows the project's own
+anchored rule.
+
+⭐ **A project states this once.** `jobs.exclude`, a list, and `jobs.gitignore`, true or
+false, in the project's `wsl-toolkit.json` apply to every job, and a command line adds
+to them. `wsl-toolkit config` names the file that is in effect.
 
 ---
 
@@ -97,6 +145,35 @@ a machine or a project.
 
 A timeout stops a persistent container, removes an ephemeral one, and exits
 124. A cancellation does the same and exits 130.
+
+---
+
+## ⭐ One project's cleanup
+
+```powershell
+wsl-toolkit gc --workspace .            # what --apply would remove of this project's jobs
+wsl-toolkit gc --workspace . --apply    # remove it, and leave every other project's
+```
+
+A job records the workspace it copies when it is claimed, as this machine's resolved
+path. `gc --workspace DIR` plans and removes only the jobs whose record is `DIR`: their
+containers, their guest directories and their host directories. `DIR` is read as `run
+--workspace` reads it, relative to the project's `wsl-toolkit.json` where one is in
+effect. A `matrix` row records the workspace its fleet copied. `WSL-114`
+
+- ⛔ A job that recorded no workspace is not selected. A job from a release before
+  `wsl-toolkit-v7.0.0` recorded none, and `gc --job ID` removes it.
+- A running job is spared, as in any cleanup. `--include-live` is still the one way
+  past that.
+- A project with nothing left to remove gets a note and exit 0.
+- ⚠ It is refused through the helper. The helper's jobs record the upload it
+  unpacked, not this machine's directory.
+- `--images` is refused beside `--workspace` or `--job`, because an image is not one
+  project's.
+
+⛔ **`gc --job ID` refuses an id that nothing in this instance belongs to**, with exit
+2. A shortened id, or one from another instance, exited 0 having removed nothing.
+`WSL-115`
 
 ---
 
@@ -164,6 +241,37 @@ depend on it.
 ⛔ **`--detach` does not cross the helper.** A job through the helper ends with
 its client, so `run --detach --via-helper` is refused. `stop --via-helper` stops
 a job the helper runs.
+
+⭐ **A printed command names the instance it is for.** Under `--instance NAME`, every
+hint and the `follow`, `wait` and `stop` of a detached answer carry `--instance NAME`.
+Run as printed, each reaches the same jobs. `WSL-116`
+
+---
+
+## ⭐ One job per name
+
+```powershell
+wsl-toolkit run --exclusive podssh-build --image docker.io/library/rust:1 --workspace . -c 'cargo build'
+wsl-toolkit run --exclusive podssh-build --exclusive-wait 30m --image docker.io/library/rust:1 --workspace . -c 'cargo test'
+```
+
+`--exclusive NAME` holds NAME for the whole job, across every instance on this
+machine. A second job with the same NAME is refused at once, naming the job that
+holds it and the `wait` for it. `--exclusive-wait D` waits for the name instead, and
+says every 30 seconds whom it waits for. `WSL-113`
+
+- The process that owns the job holds the name, a detached owner included, and
+  Windows lets it go however that process ends. A killed job leaves nothing to
+  remove.
+- `run --detach` refuses at once when the name is held, before it starts an owner.
+- `matrix` holds the name once, for every row.
+- ⛔ A job through the helper is refused with it, because the helper owns that job.
+- ⚠ The lock is in the state directory. A caller Windows redirects has a state
+  directory of its own, so it holds the name only against callers on its side. `WSL-118`
+
+⚠ **It bounds how many, not how much.** The jobs base enforces no memory limit,
+which `base status --probe` reads as `limits_enforced`, so a project whose builds are
+heavy gives them one name.
 
 ---
 
@@ -698,9 +806,16 @@ guide for the same durable session, including how it is reached from Windows.
 wsl-toolkit run --image alpine --platform linux/arm64 -c 'uname -m'
 ```
 
-Architecture shorthand such as `arm64` is accepted. The base registers QEMU
-binfmt handlers for a foreign architecture, and restores a handler that WSL
-discarded when its VM stopped.
+Architecture shorthand such as `arm64` is accepted. Every `base ensure` registers
+the base's QEMU binfmt handlers and records which ones are its own: the emulators
+the pinned image carries that the kernel then holds. A job registers its own
+platform's handler again when it is gone.
+
+⛔ **The handler table is every distribution's, and another distribution can empty
+it while this base runs.** The Podman machine does as it stops. ⭐ On a base with
+systemd, `wsl-toolkit-binfmt.service` registers the base's handlers again within 30
+seconds. `base status --probe` reads the base's own set: `ready` is false while any
+of it is gone, and the kernel's total stands beside it. `WSL-105`
 
 ⛔ **Every job names a platform, including one that asked for nothing.** With no
 `--platform`, podman runs whatever variant of the image its local store holds.
@@ -837,7 +952,7 @@ wsl-toolkit distro remove --name build-box --yes
 
 - Every name starts with `eph-`, and every `--name` adds the prefix when it is
   left off. A name in the wrong case is refused rather than lowered.
-- `distro new --image` needs a host engine, podman or docker, and pulls for this
+- `distro new --image` needs a host engine, podman, docker or `wslc`, and pulls for this
   host's platform. The import is refused before it starts when the volume lacks
   256 MiB beyond twice the archive. `--probe-timeout` bounds the questions the
   tool asks the new distribution for itself: the smoke probe, whether PID 1 is
@@ -1033,6 +1148,34 @@ the boot line is a bare path with no shell in it.
 | the doors that stay open | `net.windows-host-icmp`, `net.internet`, `priv.unshare-userns`, `priv.unshare-user-plus-net` |
 | ⛔ the unmount taken out of the boot script by hand | `base doors` exit 1 naming the claim, and `base status --probe` exit 1, `usable false`, naming the setting |
 
+## The space a base gives back
+
+```powershell
+wsl-toolkit base status      # the disk, the space it takes, and whether it is sparse
+wsl-toolkit base reclaim     # make it sparse, then trim what the guest freed
+```
+
+⛔ **A disk that is not sparse only grows.** A build deleted in the base keeps its
+space in `ext4.vhdx` on this machine, and a trim inside the guest changes nothing.
+A sparse disk gives the space back when the guest trims it. `WSL-109`
+
+⚠ **WSL makes a disk sparse only while its VM is stopped**, and the VM runs while
+any distribution runs. So on a busy machine `base reclaim` changes nothing, exits 1,
+and names `wsl --shutdown` as the operator's step. That command stops every
+distribution on the machine, the Podman machine too, and this tool never runs it.
+Once the disk is sparse, `base reclaim` trims in the running base and reports the
+space before and after.
+
+⭐ **`sparseVhd=true` under `[experimental]` in `%USERPROFILE%\.wslconfig` makes WSL
+create each new disk sparse**, from the next start of its VM. `base status` reports
+what the file sets.
+
+`base status --probe` also names each adapter the configuration no longer names
+that left files in the base, with their size. `base recreate` removes them, with
+everything else made in the base.
+
+---
+
 ## The safety model
 
 Removal is constrained, and every destructive path goes through the same gate.
@@ -1103,10 +1246,12 @@ security boundary**, and no page here says otherwise.
 | no BSD container endpoint | open | a long-running podman service panics the FreeBSD guest kernel. [`../../../TODO/bsd.md`](../../../TODO/bsd.md) tracks it |
 | `--oci-env` carries `ENV` and `WORKDIR` only | decision | `USER` and `ENTRYPOINT` are not carried: WSL fixes the login account per call, and a login shell has no entrypoint |
 | a throwaway distribution's command gets no stdin | decision | its stdin is `/dev/null`, because a pipe that carries the script cannot also carry input. `distro enter` is interactive |
-| there is no port forwarding | decision | forwarding a port on Windows needs an elevated session and leaves a rule behind. `hostaddress` answers the question it was wanted for |
+| there is no port forwarding | decision | a job's container publishes no port, and a service in the base is reached at the address `hostaddress` answers. ⚠ It is a choice and not a limit of Windows: `wslc` publishes a port with no elevation, through a process of its own that keeps running while the port answers. `WSL-110` |
+| a disk becomes sparse only while WSL's VM is stopped | host | `base reclaim` names `wsl --shutdown` as the operator's step and never runs it, because it stops every distribution on the machine. `WSL-109` |
 | an agent behind a launcher may be invisible to herdr | host | herdr reads a pane's foreground process, and `base agent` and a `NAME.exe` launcher are wrappers. herdr's own remedy is `HERDR_AGENT=<agent>` set on the wrapper command **on the herdr side**. This is herdr's documentation, not a measurement here |
 | a base carrying both pi and omp can be configured so herdr refuses one | decision | the omp adapter refuses first, naming both paths and the variable |
 | a detached owner inside a job object that forbids a breakaway | host | the owner ends when that object closes. The answer warns, and a base session does not depend on it |
+| ⛔ a caller Windows redirects has a state directory of its own | host | a process a packaged app starts can have its writes under `%LOCALAPPDATA%` kept in that package's own copy. Measured here: the Claude desktop app's Bash tool. Its jobs, ledger, `--exclusive` locks and configuration are then invisible to a terminal, and the terminal's to it. `doctor` and `config` name each copy and which side the caller is on. Call the tool from one kind of shell, or set `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%` for every caller. `WSL-118` |
 | ⛔ a base is not a sandbox | host | `/mnt/wsl` closes with `base.shared_tmpfs: "off"`. The internet answers, the Windows host answers ICMP, and the account can make a private network namespace with no privilege. Run `base doors` for this host's own list. `WSL-68` |
 
 ---
@@ -1116,7 +1261,7 @@ security boundary**, and no page here says otherwise.
 | thing | needed for |
 | --- | --- |
 | Windows 10 2004+ or Windows 11, with WSL2 | everything |
-| a container engine on the host | `base ensure`, once, to export the base rootfs, and `distro new --image` |
+| a container engine on the host: podman, docker, or `wslc`, which WSL 3.0.1 and later carries | `base ensure`, once, to export the base rootfs, and `distro new --image`. ⭐ They are tried in that order, so a machine with podman or docker keeps it. `wslc` takes no `--platform`, so what it pulls is read back and an image for another architecture is refused. `WSL-110` |
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 
@@ -1128,6 +1273,7 @@ security boundary**, and no page here says otherwise.
 wsl-toolkit ready --smoke                          # the whole route, including one container
 wsl-toolkit run --image alpine -c 'uname -a'       # one job, container retained
 wsl-toolkit gc --job JOB-ID --apply                # and removed again
+wsl-toolkit gc --workspace . --apply               # this project's jobs, and no other's
 ```
 
 ```powershell

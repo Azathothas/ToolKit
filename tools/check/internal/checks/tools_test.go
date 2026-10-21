@@ -25,7 +25,7 @@ func requirePwsh(t *testing.T) {
 func treeOf(t *testing.T, files map[string]string) *Tree {
 	t.Helper()
 	root := t.TempDir()
-	tree := &Tree{Root: root}
+	tree := &Tree{Root: root, cache: map[string][]byte{}}
 	for name, body := range files {
 		full := filepath.Join(root, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {

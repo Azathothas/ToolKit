@@ -865,7 +865,7 @@ func (r *RunLog) escalate(now, silent time.Duration, grew *int64, state string) 
 		r.emit("note", "inf", "after "+FormatSpan(silent)+" of silence: "+verdict+". because: "+because, false, now)
 		if len(r.fired) >= 2 {
 			r.emit("note", "obs", "to bound a run like this, pass --timeout: the distribution is terminated and the answer is 124. "+
-				"To see what is registered right now, from another shell: wsl-toolkit distro list", false, now)
+				"To see what is registered right now, from another shell: "+ToolCommand("distro list"), false, now)
 		}
 	}
 }

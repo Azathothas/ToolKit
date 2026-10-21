@@ -229,7 +229,7 @@ func TestAWorkspaceSymlinkPointingOutOfTheTreeIsLeftOutAndNamed(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	up, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), nil)
+	up, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), WorkspaceFilter{})
 	if err != nil {
 		t.Fatalf("one stray link failed the whole upload: %v", err)
 	}

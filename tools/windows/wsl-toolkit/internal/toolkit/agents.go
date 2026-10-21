@@ -311,7 +311,7 @@ func (h *agentLauncherHost) check(_ context.Context, _ *Base, _ map[string]strin
 	}
 	switch {
 	case !fileExists(path):
-		problems = append(problems, "this machine has no "+h.agent+" launcher at "+path+". Run: wsl-toolkit base ensure")
+		problems = append(problems, "this machine has no "+h.agent+" launcher at "+path+". Run: "+ToolCommand("base ensure"))
 	case !isToolBuild(path):
 		problems = append(problems, path+" is not a build of wsl-toolkit")
 	default:
@@ -320,7 +320,7 @@ func (h *agentLauncherHost) check(_ context.Context, _ *Base, _ map[string]strin
 		case err != nil:
 			problems = append(problems, err.Error())
 		case !sameFileBytes(path, self):
-			problems = append(problems, path+" is another build of wsl-toolkit than this one. Run: wsl-toolkit base ensure")
+			problems = append(problems, path+" is another build of wsl-toolkit than this one. Run: "+ToolCommand("base ensure"))
 		}
 	}
 	// ⭐ AND THE NAME HAS TO REACH IT, whatever the answers above were. Finding 69.

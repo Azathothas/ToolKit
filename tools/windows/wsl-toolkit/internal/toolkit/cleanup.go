@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"time"
 )
@@ -32,6 +33,17 @@ type CleanupPolicy struct {
 	// the only way past that and naming one job is not a way of saying it.
 	// WSL-52, and WSL-36 is the ruling it obeys.
 	Job string
+	// Workspace narrows everything to the jobs that recorded this project, as
+	// WorkspaceKey spells it. Empty means every project. WSL-114.
+	//
+	// ⛔ A JOB THAT RECORDED NO WORKSPACE IS NOT SELECTED. One project's cleanup
+	// that took a job nothing ties to that project is the whole-store cleanup a
+	// consumer wrote a wrapper to avoid.
+	//
+	// ⚠ IT DOES NOT CROSS TO THE HELPER, and HelperClient.Cleanup refuses it. A
+	// helper's job records the upload it unpacked, never the caller's directory,
+	// and a helper older than this field would drop it and clean every job.
+	Workspace string
 }
 
 // ForJob narrows a policy to one job.
@@ -55,6 +67,9 @@ type CleanupTarget struct {
 	// Unknown is why its state could not be read. Such a target is kept, even
 	// under --include-live, because nothing says what removing it would end.
 	Unknown string `json:"unknown,omitempty"`
+	// Workspace is the project the target's job recorded, where it recorded
+	// one. WSL-114.
+	Workspace string `json:"workspace,omitempty"`
 }
 
 // Spared is one target cleanup did not touch, and why.
@@ -78,6 +93,10 @@ func (p CleanupPolicy) Select(targets []CleanupTarget, now time.Time) (remove []
 			// something this run declined to remove would make one job's cleanup
 			// report look like a refusal to clean the rest.
 			continue
+		case p.Workspace != "" && (t.Workspace == "" || !SameWorkspace(t.Workspace, p.Workspace)):
+			// ⚠ Not spared either, for the same reason: another project's job was
+			// never a candidate. WSL-114.
+			continue
 		case t.Unknown != "":
 			spared = append(spared, Spared{Target: t, Reason: "its state could not be read, so it is kept: " + t.Unknown})
 		case t.Live && !p.IncludeLive:
@@ -96,6 +115,25 @@ func (p CleanupPolicy) Select(targets []CleanupTarget, now time.Time) (remove []
 	}
 	sort.SliceStable(remove, func(i, j int) bool { return cleanupOrder(remove[i]) < cleanupOrder(remove[j]) })
 	return remove, spared
+}
+
+// Unmatched answers a narrowing that nothing here satisfies.
+//
+// ⛔ A JOB NOTHING HERE BELONGS TO IS A REFUSAL AND NOT AN EMPTY PLAN. `gc
+// --job` with a shortened id, or one from another instance, exited 0 having
+// removed nothing, and its caller read that as its job cleaned up. WSL-115.
+//
+// ⚠ A PROJECT WITH NOTHING HERE IS A NOTE AND NOT A REFUSAL. A project whose
+// jobs were all cleaned up already is the normal state a cleanup leaves, and a
+// routine `gc --workspace` must not fail on it. WSL-114.
+func (p CleanupPolicy) Unmatched(targets []CleanupTarget) (note string, err error) {
+	if p.Job != "" && !slices.ContainsFunc(targets, func(t CleanupTarget) bool { return t.JobID == p.Job }) {
+		return "", fmt.Errorf("%w: %s. Nothing in this instance belongs to it, and %s lists the jobs it has", ErrUnknownJob, p.Job, ToolCommand("logs"))
+	}
+	if p.Workspace != "" && !slices.ContainsFunc(targets, func(t CleanupTarget) bool { return t.Workspace != "" && SameWorkspace(t.Workspace, p.Workspace) }) {
+		return "no job in this instance recorded " + p.Workspace + " as its workspace, so none of that project's is here to clean up", nil
+	}
+	return "", nil
 }
 
 // cleanupOrder puts containers first. ⛔ A directory a container still has open

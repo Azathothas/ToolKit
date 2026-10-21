@@ -62,7 +62,7 @@ func ReadWslFacts(ctx context.Context, cfg Config) WslFacts {
 		if f.Denied {
 			f.Advice = append(f.Advice,
 				"wsl.exe is installed and THIS process is not allowed to call it. That is a property of how this process was started, not of WSL",
-				"either make the call through this session's own approval path, or start the helper once through it: wsl-toolkit helper serve --detach")
+				"either make the call through this session's own approval path, or start the helper once through it: "+ToolCommand("helper serve --detach"))
 		}
 	} else {
 		f.Callable = true
@@ -73,7 +73,7 @@ func ReadWslFacts(ctx context.Context, cfg Config) WslFacts {
 			}
 		}
 		if !f.BaseExists {
-			f.Advice = append(f.Advice, "the base distribution is not registered. Build it with: wsl-toolkit base ensure")
+			f.Advice = append(f.Advice, "the base distribution is not registered. Build it with: "+ToolCommand("base ensure"))
 		}
 	}
 	if ep, err := ReadHelperEndpoint(); err == nil {

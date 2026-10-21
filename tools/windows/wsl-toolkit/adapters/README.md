@@ -10,17 +10,27 @@ one.
 | --- | --- | --- |
 | [`herdr/`](herdr/) | herdr, its server as a system unit, a tracked configuration, and an SSH door for the Windows herdr client | the `arch` preset, with systemd |
 | [`muse/`](muse/) | Muse Code for the base's account, from Meta's own installer while its digest is approved, `/usr/local/bin/muse`, a `muse.exe` launcher on this machine, and ⭐ a herdr reporter for its lifecycle | the `arch` preset |
-| [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | ⛔ **written, never run** |
-| [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | ⛔ **written, never run** |
+| [`pi/`](pi/) | the Pi coding agent from npm with `--ignore-scripts`, and **herdr's own** pi integration | the `arch` preset |
+| [`omp/`](omp/) | Oh My Pi from npm, **herdr's own** omp integration, and a refusal when it and pi resolve to one extension directory | the `arch` preset |
 
-⛔ **"Written, never run" means exactly that.** No base has installed `pi` or
-`omp`, so their install and probe scripts have executed nowhere. `WSL-88` and
-`WSL-89` carry the passing conditions each still owes. ⭐ **The muse adapter's herdr
-reporter is driven** against herdr 0.9.0 and Muse Code 1.3.0, through Muse's
-credential-free `--provider echo`: `SessionStart`, `UserPromptSubmit`, `Stop`,
-`SessionEnd` with its release, and the adoption of a resumed session. ⚠
-`PreToolUse` and `PermissionRequest` are registered and not yet driven, because the
-echo provider calls no tool.
+⭐ **All four are driven**, on one base with herdr: `WSL-88` and `WSL-89` carry
+the runs for `pi` and `omp`. ⭐ **The muse adapter's herdr reporter is driven**
+against herdr 0.9.0 and Muse Code 1.3.0, through Muse's credential-free `--provider
+echo`: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` with its release, and
+the adoption of a resumed session. ⚠ `PreToolUse` and `PermissionRequest` are
+registered and not yet driven, because the echo provider calls no tool.
+
+⭐ **`base ensure` installs every adapter it is given, in order, and one that fails
+does not stop the rest.** The ensure then answers one error naming each adapter that
+did not finish. ⛔ **Each agent probe asks first whether its agent is in the base at
+all.** An agent that is not there answers one problem, `NAME is not installed in this
+base`. The checks that only mean something for an installed agent do not run.
+`WSL-107`
+
+⭐ **A probe run with `TK_PROBE_FOOTPRINT=1` answers two facts and stops**:
+`installed`, and `footprint`, the bytes its files take in the base. `base status
+--probe` asks it of each adapter the configuration no longer names, because the base
+keeps that adapter's files until `base recreate`. `WSL-109`
 
 ## ⭐ How a version moves without an edit to this tree
 

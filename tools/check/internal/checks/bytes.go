@@ -35,6 +35,14 @@ func ControlBytes(t *Tree) Result {
 				line++
 				continue
 			}
+			// ⛔ A CARRIAGE RETURN IS A LINE ENDING ONLY WHEN A LINE FEED FOLLOWS IT.
+			// Every `\r` used to pass, because a CRLF file is legitimate here, so
+			// `tr -d '<CR>'` in a probe read as `tr -d ''` on screen and in a diff
+			// and nothing said so. TOOL-28.
+			if c == '\r' && (i+1 >= len(b) || b[i+1] != '\n') {
+				r.bad("%s:%d: a carriage return inside a line at offset %d, which a reader cannot see; write it as an escape", f, line, i)
+				break
+			}
 			if c == '\t' || c == '\r' || c >= 0x20 {
 				continue
 			}

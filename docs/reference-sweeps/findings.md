@@ -1277,3 +1277,17 @@ carries both as rows.
    the thing `WSL-76` needs, with its two tracker lessons already applied.
 3. **H1's tracker** - because `#4176` decides whether the operator's installed
    version can do the job at all.
+
+---
+
+## Fifth sweep, 2026-09-30 and 2026-10-21: WSL's own containers, `wslc`, and `wslc-remote`
+
+⭐ **[`wslc.md`](wslc.md) is the whole sweep**, and it stands alone: the comparison of
+`microsoft/WSL` 3.0.1's `wslc` with this tool, read from source on 2026-09-30, and the
+community shim `craigloewen-msft/WSLc-remote` at `e53d9a8`. Its section 10 is what a
+WSL 3.0.3 host then measured.
+
+| reference | verdict |
+| --- | --- |
+| `microsoft/WSL`, `wslc` | ⭐ **adopt one mechanism**: the export of an image as a root filesystem, as this tool's third host engine. ⛔ Not as the engine jobs run in: no `--platform`, no `--device`, and no account, toolset or door to attach the base's work to. `WSL-110` |
+| `craigloewen-msft/WSLc-remote` | ⛔ **refused**, for section 7.4's five reasons, the first being that it accelerates a host bind mount and this tool never mounts the host into a job |

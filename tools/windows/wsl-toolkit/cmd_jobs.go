@@ -18,6 +18,22 @@ import (
 // Job control from a second process. A job id reaches a running job, a detached
 // one, and one whose owner is gone. WSL-94, WSL-95.
 
+// jobHints are the three commands that reach a job or a session, spelled for
+// the instance it belongs to.
+//
+// ⛔ THEY NAMED NO INSTANCE. A job started with --instance was followed, waited
+// on and stopped in the default instance's store, which has never heard of it,
+// so the command a caller was told to run answered "no such job". WSL-116.
+func jobHints(id string) (follow, wait, stop string) {
+	return toolkit.ToolCommand("logs " + id + " --follow"), toolkit.ToolCommand("wait " + id), toolkit.ToolCommand("stop " + id)
+}
+
+// errNotRegistered refuses a base command whose base is not built, naming the
+// command that builds this instance's base and not the default one's. WSL-116.
+func errNotRegistered(name string) error {
+	return fmt.Errorf("%s is not registered. Build it with: %s", name, toolkit.ToolCommand("base ensure"))
+}
+
 const stopUsage = `wsl-toolkit stop JOB-ID
 
   Stop one job or one detached base session.
@@ -49,7 +65,7 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if id == "" {
-		return exitCannot, errors.New("stop takes a job id first: wsl-toolkit stop JOB-ID. wsl-toolkit logs lists the jobs this machine has")
+		return exitCannot, errors.New("stop takes a job id first: " + toolkit.ToolCommand("stop JOB-ID") + ". " + toolkit.ToolCommand("logs") + " lists the jobs this machine has")
 	}
 	if !toolkit.ValidJobID(id) {
 		return exitCannot, fmt.Errorf("%q is not a job id: an id is 16 lowercase hex characters", id)
@@ -128,7 +144,7 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 			rep.Exit = &v
 			rep.Note = "the owner recorded the job's end"
 		} else if st.Owned {
-			rep.Note = "the owner is still finishing: wsl-toolkit wait " + id
+			rep.Note = "the owner is still finishing: " + toolkit.ToolCommand("wait "+id)
 		}
 	}
 	return renderStop(rep, *asJSON)
@@ -196,7 +212,7 @@ func cmdWait(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if id == "" {
-		return exitCannot, errors.New("wait takes a job id first: wsl-toolkit wait JOB-ID")
+		return exitCannot, errors.New("wait takes a job id first: " + toolkit.ToolCommand("wait JOB-ID"))
 	}
 	if *timeout < 0 {
 		return exitCannot, fmt.Errorf("--timeout %s is negative. Pass 0 to wait for as long as the job runs", *timeout)
@@ -212,7 +228,7 @@ func cmdWait(ctx context.Context, args []string) (int, error) {
 		if *asJSON {
 			return exitTimeout, writeJSON(map[string]any{"schema": "wsl-toolkit-wait/1", "id": id, "running": true})
 		}
-		logf("  job %s is still running after %s. It keeps running; wait again or stop it with: wsl-toolkit stop %s", id, *timeout, id)
+		logf("  job %s is still running after %s. It keeps running; wait again or stop it with: %s", id, *timeout, toolkit.ToolCommand("stop "+id))
 		return exitTimeout, nil
 	}
 	if err != nil {
@@ -255,7 +271,7 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 		return out, err
 	}
 	if !st.Known {
-		return out, fmt.Errorf("%w: %s. wsl-toolkit logs lists the jobs this machine has", toolkit.ErrUnknownJob, id)
+		return out, fmt.Errorf("%w: %s. %s lists the jobs this machine has", toolkit.ErrUnknownJob, id, toolkit.ToolCommand("logs"))
 	}
 	if st.Session != nil {
 		return sessionEnd(ctx, *st.Session, tail, stdout, stderr)

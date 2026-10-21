@@ -189,7 +189,7 @@ func InspectHostOnly(id, reason string) (InspectReport, error) {
 	}
 	rep.Job = job
 	if len(job.Known) == 0 {
-		return rep, fmt.Errorf("%w: %s. `wsl-toolkit logs` lists the jobs this machine still has", ErrUnknownJob, id)
+		return rep, fmt.Errorf("%w: %s. `%s` lists the jobs this machine still has", ErrUnknownJob, id, ToolCommand("logs"))
 	}
 	return rep, nil
 }
@@ -243,7 +243,7 @@ func (r *Runner) Inspect(ctx context.Context, id string, since time.Duration) (I
 	if rep.Job != nil && len(rep.Job.Known) == 0 {
 		// ⛔ Reached only when nothing on this machine has heard of the id: no
 		// transcript, no ledger line, no container in the journal, no directory.
-		return rep, fmt.Errorf("%w: %s. `wsl-toolkit logs` lists the jobs this machine still has", ErrUnknownJob, id)
+		return rep, fmt.Errorf("%w: %s. `%s` lists the jobs this machine still has", ErrUnknownJob, id, ToolCommand("logs"))
 	}
 	return rep, nil
 }

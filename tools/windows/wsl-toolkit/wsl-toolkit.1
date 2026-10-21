@@ -118,6 +118,11 @@ ensure and recreate also store the preset as the default for later commands
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
 .TP
+.B wsl-toolkit base reclaim
+.TP
+\fB--json\fR
+write a structured answer
+.TP
 .B wsl-toolkit base remove
 .TP
 \fB--via-helper\fR
@@ -151,6 +156,12 @@ start the command with no client attached and answer with a session id. wsl-tool
 \fB--dir\fR
 working directory inside the guest. Default is its home. Default: ~.
 .TP
+\fB--env\fR
+NAME=VALUE exported to the command. Repeatable, and applied after --env-file
+.TP
+\fB--env-file\fR
+a file on this machine of NAME=VALUE lines exported to the command
+.TP
 \fB--json\fR
 with --detach, write the session as a structured answer
 .TP
@@ -161,7 +172,7 @@ run in a network namespace of the account's own, with the Windows host and the p
 run as root instead of the configured account
 .TP
 \fB--script\fR
-a file on this machine whose bytes are the command
+a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
 \fB--timeout\fR
 how long the command may run. 0 means no deadline. Default: 30m0s.
@@ -268,11 +279,23 @@ build the base first when it is missing or unusable. Default: true.
 \fB--env\fR
 NAME=VALUE passed to the container. Repeatable
 .TP
+\fB--env-file\fR
+a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins
+.TP
 \fB--event-log\fR
 append one wsl-toolkit-event/1 JSON record per line, per event, to this file
 .TP
 \fB--exclude\fR
-a glob to leave out of the workspace copy. Repeatable
+a glob to leave out of the workspace copy, matched against the whole relative path, against the base name at any depth, and as a directory and everything under it. * does not cross a slash. Repeatable, and added to jobs.exclude
+.TP
+\fB--exclusive\fR
+hold this name, machine-wide, for the whole job, and refuse to start while another job holds it. A project names its builds so two cannot run at once
+.TP
+\fB--exclusive-wait\fR
+with --exclusive, wait this long for the name rather than refusing at once. Default: 0s.
+.TP
+\fB--gitignore\fR
+leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree. jobs.gitignore sets it for a project
 .TP
 \fB--image\fR
 a catalog id or a fully qualified reference
@@ -314,7 +337,7 @@ consume a line that is this token, whitespace and a percentage with an optional 
 a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
 .TP
 \fB--script\fR
-a file on this machine whose bytes are the command
+a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
 \fB--stream-log\fR
 append the rendered, uncoloured lines to this file
@@ -377,8 +400,20 @@ build the base first when it is missing or unusable. Default: true.
 \fB--env\fR
 NAME=VALUE passed to the container. Repeatable
 .TP
+\fB--env-file\fR
+a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins
+.TP
 \fB--exclude\fR
-a glob to leave out of the workspace copy. Repeatable
+a glob to leave out of the workspace copy, matched against the whole relative path, against the base name at any depth, and as a directory and everything under it. * does not cross a slash. Repeatable, and added to jobs.exclude
+.TP
+\fB--exclusive\fR
+hold this name, machine-wide, for the whole job, and refuse to start while another job holds it. A project names its builds so two cannot run at once
+.TP
+\fB--exclusive-wait\fR
+with --exclusive, wait this long for the name rather than refusing at once. Default: 0s.
+.TP
+\fB--gitignore\fR
+leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree. jobs.gitignore sets it for a project
 .TP
 \fB--images\fR
 catalog ids, libc:musl, kind:legacy or all. Comma separated. Empty means the configured default
@@ -408,7 +443,7 @@ how many rows run at once. Default: 4.
 the Linux OCI platform. Empty uses jobs.platform, then the native platform
 .TP
 \fB--script\fR
-a file on this machine whose bytes are the command
+a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
 \fB--tick\fR
 emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it. Default: 0s.
@@ -452,13 +487,13 @@ report or remove resources that this tool owns
 actually remove. Without it this reports what it would remove and changes nothing
 .TP
 \fB--images\fR
-also prune images the engine in the base is holding
+also prune images the engine in the base is holding. Refused beside --job or --workspace, since an image is not one job's
 .TP
 \fB--include-live\fR
 also remove work that is running right now. Without it a live job is listed as kept and left alone
 .TP
 \fB--job\fR
-clean up one job id and leave the rest of the store alone
+clean up one job id and leave the rest of the store alone. An id nothing in this instance belongs to is refused
 .TP
 \fB--json\fR
 write a structured answer
@@ -468,6 +503,9 @@ only remove something untouched for at least this long. It applies to containers
 .TP
 \fB--via-helper\fR
 go through the local helper even when this process could call wsl.exe itself
+.TP
+\fB--workspace\fR
+clean up only the jobs that copied this directory, read as run --workspace reads it. A job that recorded no workspace is left alone
 .SS logs
 list jobs, read one job's complete output, or follow a running one
 .TP
@@ -630,7 +668,7 @@ a regular expression whose matches become *** before any sink sees a line. Repea
 run in the newest distribution this state directory built from the same --image rather than importing another, and say so
 .TP
 \fB--script\fR
-a file on this machine whose bytes are the command
+a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
 \fB--stream-log\fR
 append the rendered, uncoloured lines to this file
@@ -719,7 +757,7 @@ consume a line that is this token, whitespace and a percentage with an optional 
 a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
 .TP
 \fB--script\fR
-a file on this machine whose bytes are the command
+a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
 \fB--stream-log\fR
 append the rendered, uncoloured lines to this file
@@ -917,7 +955,7 @@ give the guest outbound user-mode networking. Nothing is forwarded inward
 do not mirror the guest console while it boots
 .TP
 \fB--script\fR
-a file whose contents run at a root shell in the guest
+a file whose contents run at a root shell in the guest, or - to read them from stdin
 .TP
 \fB--timeout\fR
 the whole session, the boot included. Default: 15m0s.
@@ -1082,6 +1120,11 @@ wsl-toolkit inspect JOB-ID
 inspect and remove one retained job
 .nf
 wsl-toolkit inspect JOB-ID ; wsl-toolkit gc --job JOB-ID --apply
+.fi
+.TP
+remove this project's jobs, and no other project's
+.nf
+wsl-toolkit gc --workspace . --apply
 .fi
 .TP
 two agents, isolated from each other

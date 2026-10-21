@@ -69,16 +69,16 @@ func cmdBaseHerdr(ctx context.Context, args []string) (int, error) {
 	// route beats a command that hangs with nothing to draw on.
 	if herdrWantsATerminal(passed) {
 		return exitCannot, fmt.Errorf("herdr %s wants a terminal, and this channel has none. Attach instead:\n"+
-			"  wsl-toolkit base attach\n"+
+			"  %s\n"+
 			"Then run it in the pane. Every other herdr command works here, for example: base herdr -- agent list",
-			strings.Join(passed, " "))
+			strings.Join(passed, " "), toolkit.ToolCommand("base attach"))
 	}
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
 	}
 	if !toolkit.ConfigNamesAdapter(cfg, "herdr") {
-		return exitCannot, fmt.Errorf("%s does not name the herdr adapter, so it has no herdr to run. Add {\"name\": \"herdr\"} to base.adapters and run: wsl-toolkit base ensure", cfg.Base.Name)
+		return exitCannot, fmt.Errorf("%s does not name the herdr adapter, so it has no herdr to run. Add {\"name\": \"herdr\"} to base.adapters and run: %s", cfg.Base.Name, toolkit.ToolCommand("base ensure"))
 	}
 	if c, err := useHelper(ctx, false); err != nil {
 		return exitCannot, err
@@ -94,7 +94,7 @@ func cmdBaseHerdr(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if !registered {
-		return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
+		return exitCannot, errNotRegistered(cfg.Base.Name)
 	}
 	return baseExecResult(w.Exec(ctx, toolkit.ExecRequest{
 		Distro:  cfg.Base.Name,

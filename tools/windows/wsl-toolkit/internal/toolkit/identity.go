@@ -157,8 +157,8 @@ func AssertOwnedDistro(name string) error {
 	}
 	if !IsOwnedName(name) {
 		return fmt.Errorf("%w: REFUSING to touch %q. This tool owns %s and %s-<instance> and nothing else. "+
-			"A throwaway distribution is removed with wsl-toolkit distro remove",
-			ErrNotOwned, name, OwnedPrefix, OwnedPrefix)
+			"A throwaway distribution is removed with %s",
+			ErrNotOwned, name, OwnedPrefix, OwnedPrefix, ToolCommand("distro remove"))
 	}
 	return nil
 }

@@ -160,10 +160,11 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	apply := fs.Bool("apply", false, "actually remove. Without it this reports what it would remove and changes nothing")
 	olderThan := fs.Duration("older-than", 0, "only remove something untouched for at least this long. It applies to containers as well as directories")
 	includeLive := fs.Bool("include-live", false, "also remove work that is running right now. Without it a live job is listed as kept and left alone")
-	images := fs.Bool("images", false, "also prune images the engine in the base is holding")
+	images := fs.Bool("images", false, "also prune images the engine in the base is holding. Refused beside --job or --workspace, since an image is not one job's")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
-	job := fs.String("job", "", "clean up one job id and leave the rest of the store alone")
+	job := fs.String("job", "", "clean up one job id and leave the rest of the store alone. An id nothing in this instance belongs to is refused")
+	workspace := fs.String("workspace", "", "clean up only the jobs that copied this directory, read as run --workspace reads it. A job that recorded no workspace is left alone")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -174,27 +175,39 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	if *olderThan < 0 {
 		return exitCannot, fmt.Errorf("--older-than %s is negative. Pass 0 for no age limit, or a positive duration", *olderThan)
 	}
-	if *job != "" {
-		if err := toolkit.AssertArgvSafe([]string{*job}); err != nil {
-			return exitCannot, err
+	// ⛔ AN ID IS HELD TO ITS SHAPE HERE, as the helper already held it. A
+	// shortened id narrowed the plan to nothing and exited 0. WSL-115.
+	if *job != "" && !toolkit.ValidJobID(*job) {
+		return exitCannot, fmt.Errorf("--job %q is not a job id: an id is 16 lowercase hex characters, as run --json and logs print it", *job)
+	}
+	if *job != "" && *workspace != "" {
+		return exitCannot, errors.New("--job and --workspace both choose what gc cleans up. Pass one")
+	}
+	// ⛔ AN IMAGE IS NOT ONE JOB'S OR ONE PROJECT'S. The prune takes every image
+	// no container is using, so with a narrowing flag it cleaned the whole
+	// store's cache. WSL-114.
+	if *images && (*job != "" || *workspace != "") {
+		return exitCannot, errors.New("--images prunes every image the base holds, which is not one job's or one project's. Run gc --images without --job or --workspace")
+	}
+	key := ""
+	if *workspace != "" {
+		dir, err := pathFromProject(cfg, *workspace)
+		if err == nil {
+			key, err = toolkit.WorkspaceKey(dir)
+		}
+		if err != nil {
+			return exitCannot, fmt.Errorf("--workspace: %w", err)
 		}
 	}
 	// ⚠ NAMING A JOB IS NOT A WAY OF SAYING --include-live. A job that is still
 	// running is spared exactly as it would be without --job, which is what
 	// WSL-36 settled for the whole store and applies unchanged to one row of it.
-	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive, Job: *job}
+	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive, Job: *job, Workspace: key}
 	if c, err := useHelper(ctx, *viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
 		plan, err := c.Cleanup(ctx, *apply, policy, *images)
-		if *asJSON {
-			if writeErr := writeJSON(plan); writeErr != nil {
-				return exitCannot, writeErr
-			}
-		} else {
-			renderCleanup(plan)
-		}
-		return gcVerdict(plan, err)
+		return finishGC(plan, err, *asJSON)
 	}
 	runner, err := toolkit.NewRunner(cfg, note)
 	if err != nil {
@@ -212,13 +225,24 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 		return exitOK, nil
 	}
 	plan, err := runner.Cleanup(ctx, *apply, policy, *images)
-	if *asJSON {
+	return finishGC(plan, err, *asJSON)
+}
+
+// finishGC renders a cleanup and turns it into an exit code.
+//
+// ⛔ A REFUSAL PRINTS NO PLAN. Nothing was attempted, and an empty document
+// beside the refusal reads as a cleanup that found nothing to do. WSL-115.
+func finishGC(plan toolkit.CleanupPlan, err error, asJSON bool) (int, error) {
+	if errors.Is(err, toolkit.ErrUnknownJob) || errors.Is(err, toolkit.ErrWorkspaceViaHelper) {
+		return exitCannot, err
+	}
+	if asJSON {
 		if writeErr := writeJSON(plan); writeErr != nil {
 			return exitCannot, writeErr
 		}
-		return gcVerdict(plan, err)
+	} else {
+		renderCleanup(plan)
 	}
-	renderCleanup(plan)
 	return gcVerdict(plan, err)
 }
 
@@ -296,7 +320,7 @@ func cmdConfig(args []string) (int, error) {
 		return exitCannot, err
 	}
 	if sub == "validate" {
-		return runConfigValidate(c.asJSON, c.path)
+		return runConfigValidate(c.asJSON, msysHostPath(c.path))
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -336,6 +360,12 @@ func cmdConfig(args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	// ⛔ A SECOND STATE DIRECTORY IS A SECOND MACHINE to this tool, so the
+	// report that names home names every copy of it. WSL-118.
+	var copies []toolkit.StateCopy
+	if root, err := toolkit.StateRoot(); err == nil {
+		copies = toolkit.StateCopies(root)
+	}
 	if c.effective {
 		// ⛔ THE EFFECTIVE CONFIGURATION AND NOTHING ELSE, so a caller can pipe
 		// it into a file, edit it and pass it back with --config. `config
@@ -347,25 +377,29 @@ func cmdConfig(args []string) (int, error) {
 	}
 	if c.asJSON {
 		return exitOK, writeJSON(map[string]any{
-			"schema":      "wsl-toolkit-config-report/1",
-			"path":        resolved,
-			"exists":      fileExists(resolved),
-			"from":        src.From,
-			"searched":    src.Searched,
-			"home":        home,
-			"instance":    toolkit.SelectedInstance.Name,
-			"base":        cfg.Base,
-			"jobs":        cfg.Jobs,
-			"images":      cfg.Catalog(),
-			"matrix":      cfg.MatrixDefault(),
-			"builtin":     len(cfg.Images) == 0,
-			"fingerprint": cfg.Fingerprint(),
+			"schema":       "wsl-toolkit-config-report/1",
+			"path":         resolved,
+			"exists":       fileExists(resolved),
+			"from":         src.From,
+			"searched":     src.Searched,
+			"home":         home,
+			"state_copies": copies,
+			"instance":     toolkit.SelectedInstance.Name,
+			"base":         cfg.Base,
+			"jobs":         cfg.Jobs,
+			"images":       cfg.Catalog(),
+			"matrix":       cfg.MatrixDefault(),
+			"builtin":      len(cfg.Images) == 0,
+			"fingerprint":  cfg.Fingerprint(),
 		})
 	}
 	fmt.Println(resolved)
 	fmt.Fprintf(os.Stderr, "  exists      %v\n", fileExists(resolved))
 	renderConfigSearch(src)
 	fmt.Fprintf(os.Stderr, "  home        %s\n", home)
+	for _, sc := range copies {
+		fmt.Fprintf(os.Stderr, "  ⚠ copy      %s\n", toolkit.StateCopyNote(sc))
+	}
 	if toolkit.SelectedInstance.Name != toolkit.DefaultInstance {
 		fmt.Fprintf(os.Stderr, "  instance    %s\n", toolkit.SelectedInstance.Name)
 	}
@@ -389,7 +423,7 @@ func cmdConfig(args []string) (int, error) {
 		return exitCannot, err
 	}
 	for _, mount := range mounts {
-		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
+		fmt.Fprintf(os.Stderr, "  grant       %s %s <- %s%s\n", mount.Mode, mount.Target, mount.Source, goneMark(mount))
 	}
 	for _, adapter := range cfg.Base.Adapters {
 		if adapter.InstallerSHA256 != "" {
@@ -411,7 +445,7 @@ func cmdConfig(args []string) (int, error) {
 	fmt.Fprintf(os.Stderr, "  catalog     %d image(s), %s\n", len(cfg.Catalog()), builtinOrStored(cfg))
 	fmt.Fprintf(os.Stderr, "  matrix      %d image(s) by default\n", len(cfg.MatrixDefault()))
 	fmt.Fprintf(os.Stderr, "  fingerprint %s\n", cfg.Fingerprint())
-	fmt.Fprintf(os.Stderr, "\n  wsl-toolkit config --write puts the effective configuration on disk to edit.\n")
+	fmt.Fprintf(os.Stderr, "\n  %s puts the effective configuration on disk to edit.\n", toolkit.ToolCommand("config --write"))
 	return exitOK, nil
 }
 

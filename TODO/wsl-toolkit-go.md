@@ -11902,3 +11902,1222 @@ rows, for `base remove`, `base shell` and `helper stop`: each was listed as a
 typed now. Planted by hand, the case fails at its answer check in 0.01 s, and
 the helper that the missing refusal starts stops at once in the case's own
 state directory.
+
+## WSL-105. Another distribution empties the QEMU handler table, and only a job gets its handler back
+
+**Source** [Issue 37](https://github.com/Azathothas/ToolKit/issues/37) item 1,
+filed by the operator against the published `wsl-toolkit-v6.0.0` on
+2026-10-21. Approved in ruling 30, "Watcher + ensure".
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+`binfmt_misc` is one table for every distribution in the WSL kernel. When the
+Podman machine stops, its shutdown unregisters every entry in that table, the
+base's own handlers included, while the WSL VM and the base keep running. From
+then on a foreign-architecture container in `base exec`, `base shell`, a herdr
+pane or an agent fails `Exec format error`, and `base status --probe` reads
+`binfmt 0 QEMU handler(s), ready: false`. `base ensure` on that base exits 0 and
+leaves the table empty. And `ready` counts every `qemu-*` entry in the kernel,
+so it follows another distribution's lifetime: 31 right after a build with the
+Podman machine running, of which 8 are the base's own.
+
+## Premise
+
+⛔ **Read, and the issue's measurements are the operator's.** Re-derived against
+the tree at `d52040b`:
+
+- `EnsurePlatform` in
+  [`../tools/windows/wsl-toolkit/internal/toolkit/base.go`](../tools/windows/wsl-toolkit/internal/toolkit/base.go)
+  registers one platform's handler, and only `run` and the helper's two job paths
+  call it. Its comment, and the manual's "Container platform" section, say WSL
+  removes a registration when its VM stops; the issue shows another
+  distribution removing them with the VM running.
+- `provision.sh` registers the handlers once, at its `other Linux
+  architectures` step, and nothing runs that step on a base that verifies.
+- `verify.sh` counts every `/proc/sys/fs/binfmt_misc/qemu-*`, and
+  `parseBinfmt` sets `Ready` to `count > 0`.
+
+⭐ **Measured on 2026-10-21 in the operator's base**, which runs the operator's
+own watcher from the issue: the pinned installer, run again over a table that
+holds its handlers, exits 0 and changes nothing, and lists 8 emulators. The image
+carries 9, `qemu-i386` among them, and registers 8 on this `amd64` host, because
+the kernel runs `386` itself. So the base's own set is what the image carries
+and the kernel then holds, and it can be derived rather than typed.
+
+## Approach
+
+One guest script, `binfmt.sh`, embedded beside `provision.sh`, with one rule and
+three callers:
+
+1. It registers the image's handlers when any of the base's own set is missing,
+   and records that set at `/var/lib/wsl-toolkit/binfmt-handlers`: the
+   emulators the image carries that the kernel holds after the install.
+2. `base ensure` runs it on every base, built or registered, before the
+   adapters. So a plain `base ensure` restores an emptied table.
+3. On a base with systemd it installs itself as `wsl-toolkit-binfmt.service`,
+   which checks every 30 seconds and registers again when one of the recorded
+   names is gone. It writes to the journal only when it registers.
+
+`verify.sh` reads the record. `binfmt` in `base status` keeps `handlers`, every
+`qemu-*` in the kernel, and gains the base's own count, the names missing from
+it, and whether the watcher runs. `ready` is true when none of the base's own
+set is missing.
+
+⛔ It must not count a handler another distribution registered as the base's,
+and it must not run `wsl --shutdown`.
+
+## Decision
+
+Ruled on 2026-10-21, ruling 30, the recommended option: a watcher on a systemd
+base and a registration in every `base ensure`. The alternatives were `base
+ensure` alone, which leaves `base exec` and every pane broken until somebody
+runs it, and a check on every `base exec`, which adds a guest round trip to
+each call. A base with no systemd keeps `EnsurePlatform` on the job path and
+gets the `base ensure` half.
+
+## Consumers
+
+⛔ **A break**: `binfmt.ready` reads false on a base whose own handlers are gone
+and another distribution's are present, where it read true. That was a false
+pass, and fixing one is still a break by
+[`../docs/consumers.md`](../docs/consumers.md). `handlers` keeps its meaning.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for the record's parse and the readiness rule. Then, on a
+scratch base with systemd: empty the table by hand, read the watcher register it
+again within a minute, and read `base status --probe` before and after.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T04:08:52Z.** `binfmt.sh` is the one rule: it registers the
+image's handlers when one of the base's own is gone, records the own set at
+`/var/lib/wsl-toolkit/binfmt-handlers`, and on a systemd base installs itself as
+`wsl-toolkit-binfmt.service`. `base ensure` runs it on every base before the
+adapters, and the provisioner no longer registers once. `binfmt.ready` is the own
+set, and `base status --probe` prints the own count, what is gone, the kernel's
+total and the watcher.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 89 s
+  ok     go
+```
+
+⭐ **Driven, on a scratch systemd base, `wsl-toolkit-s110`, built for this:**
+
+```text
+base ensure, first                      QEMU binary formats: 8 handler(s) of this base's own; the watcher wsl-toolkit-binfmt.service is active
+base ensure, again                      5 s, nothing registered, and the watcher's start time unchanged
+echo -1 > .../qemu-riscv64              back after 12 s; journal: binfmt: registered again
+podman machine start                    31 handlers in the kernel
+podman machine stop                     0 a moment after; back after 5 s with 8; journal: binfmt: registered again
+base status --probe                     binfmt  8 of this base's 8 QEMU handler(s) held, 8 in the kernel, ready: true, watcher: active
+```
+
+That is issue 37's own sequence, reproduced: 31, then 0 a moment after the stop.
+⚠ The operator's own watcher in `wsl-toolkit-base` checks every 30 seconds too, so
+which one registered first after the stop is not certain. The single handler
+removed by hand is certain: the operator's watcher looks for `qemu-aarch64` alone.
+
+⛔ **The driven pass found a defect, and three adapters carried it too.** The first
+ensure printed `cmp: command not found` twice: `cmp` is diffutils, and a base with no
+toolset has none, so the script read every file as changed and restarted its watcher.
+`binfmt.sh` and the herdr, muse and pi installers compare with `sha256sum` now. The
+herdr installer had been rewriting its unit on every ensure on such a base.
+
+3 mutation rows, 3 of 3 red.
+
+
+## WSL-106. A grant whose Windows directory is gone refuses every command, `base revoke` included
+
+**Source** [Issue 37](https://github.com/Azathothas/ToolKit/issues/37) item 2.
+Approved in ruling 30.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+When the Windows directory of a grant is deleted, `config`, `base status` and
+`base revoke --target` all exit 2 with `base.mounts[N].source ... is not
+accessible`. The refusal comes when the configuration loads, before any command
+runs, so the one command that removes the grant cannot run. The operator's way
+out was to create an empty directory at the old path, revoke, and delete it.
+
+## Premise
+
+⭐ **Measured on 2026-10-21 with the published 6.0.0**, against a scratch
+instance whose configuration grants a directory that was then removed: `config`,
+`config --effective`, `base status` and `base revoke --target /workspaces/gone`
+each exit 2 with that sentence. Read: `loadConfigFile` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/catalog.go`](../tools/windows/wsl-toolkit/internal/toolkit/catalog.go)
+calls `ResolvedBaseMounts`, which refuses a source `EvalSymlinks` cannot
+resolve, and so do `Config.Write`, `Fingerprint`, `PlanGrant` and `PlanRevoke`.
+
+## Approach
+
+`ResolvedBaseMounts` keeps a grant whose source does not exist and marks it
+missing. Any other failure to resolve a source is still a refusal. Then:
+
+- loading, `config`, `config validate`, `Fingerprint` and `Config.Write` accept
+  it, and the file keeps the grant as it was written;
+- `base status` reports it as a problem and a remediation naming the `base
+  revoke --target` line;
+- `base revoke` removes it;
+- `base ensure` and `base grant` refuse while one is missing, naming the same
+  revoke, because neither can mount it or read it back.
+
+## Consumers
+
+A changed exit: those commands exit 0 where they exited 2. Every caller that
+met the old refusal was blocked by it, so nothing that worked changes. No row
+of [`../docs/consumers.md`](../docs/consumers.md) reads the refusal.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that loads a configuration whose grant source is gone,
+revokes it, and refuses `ensure` and `grant` while it is there. Then the same
+four commands driven against a scratch instance.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T03:26:51Z.** `ResolvedBaseMounts` keeps a grant whose source
+does not exist, marked `missing`, and refuses every other failure to resolve one.
+`GoneGrantsError` is the one refusal, in `baseMountPayloads`, which every path that
+mounts the grants goes through. `base ensure` asks it first, from the configuration
+alone, before anything that can remove or build a base. `base grant` asks it before
+anything changes. The verifier reads back only the grants that exist.
+
+⛔ **The order in `base ensure` is the finding of this entry.** With the load no
+longer refusing, a registered base with a gone grant would have failed to verify,
+failed to re-provision, and been REMOVED AND REBUILT by the path below it. And an
+unregistered base would have been built. The refusal now comes before both.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 75 s
+  ok     go
+```
+
+Driven with a build of this tree against a scratch instance whose grant's
+directory was removed:
+
+```text
+--instance dg config                         exit 0
+  grant  ro /workspaces/gone <- ...\gone. ⛔ The directory no longer exists. Run: wsl-toolkit --instance dg base revoke --target /workspaces/gone
+--instance dg base status                    exit 1, the problem and the remediation
+--instance dg base ensure                    exit 2, before anything else
+  a grant's Windows directory no longer exists, so it cannot be mounted: /workspaces/gone from ...\gone, which no longer exists. Run: wsl-toolkit --instance dg base revoke --target /workspaces/gone
+--instance dg base revoke --target /workspaces/gone    exit 0, and the file no longer names the grant
+```
+
+7 mutation rows, 7 of 7 red. ⚠ **Two came back BROKEN first**, because their case
+failed unmutated under the harness's 8.3 temporary directory: a present source
+resolves to the long form, and a gone one cannot be resolved at all. The case now
+resolves its directory before it removes it.
+
+
+## WSL-107. `base ensure` stops at the first adapter whose read-back finds a problem, and a probe calls an adapter installed that never was
+
+**Source** [Issue 37](https://github.com/Azathothas/ToolKit/issues/37) item 3.
+Approved in ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+With `herdr`, `muse`, `pi` and `omp` configured, pi's read-back found its
+startup model missing from pi's catalogue, and `base ensure` exited 2 there.
+omp's install never ran, and `base status --probe` then reported omp with five
+problems, among them `omp is a Bun program and this base has no bun the account
+can run` and `omp is installed and a login shell cannot find it`. The first is
+a step the adapter does itself, and the second says installed about a program
+that was never installed.
+
+## Premise
+
+Read: `applyAdapters` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/adapters.go`](../tools/windows/wsl-toolkit/internal/toolkit/adapters.go)
+returns at the first install failure and at the first read-back problem. The
+`pi`, `omp` and `muse` probes print `NAME is installed and a login shell cannot
+find it` whenever `command -v NAME` fails on a login shell, and none asks first
+whether the adapter put anything in the base.
+
+## Approach
+
+- `applyAdapters` installs and reads back every configured adapter in order,
+  keeps each failure, and answers one error naming every adapter that failed.
+  An install that fails stops that adapter and not the ones after it.
+- Each agent probe asks first whether the adapter's files are in the base. When
+  they are not, it reports one problem, `NAME is not installed in this base`,
+  with `base ensure`, and skips the checks that only mean something for an
+  installed agent.
+
+## Consumers
+
+None by the definition: `base ensure` still exits non-zero when an adapter
+fails, and the probe's lines are prose a caller reads.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where the first of two adapters fails and the second still
+installs, and the answer names the first.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T03:26:51Z.** `applyEach` tries every adapter in order, keeps
+each failure, and answers one error naming them. The `pi`, `omp` and `muse` probes
+ask first whether the agent is in the base; one that is not answers one problem
+and stops, and omp's bun check comes after that question. A probe answers
+`installed` in every run, and `footprint` when `TK_PROBE_FOOTPRINT=1`, which
+`WSL-109` reads.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 75 s
+  ok     go
+```
+
+Driven, the three probes run as root in the jobs base, which has none of them:
+
+```text
+pi     installed no / problem pi is not installed in this base. Run: base ensure    rc 0
+omp    installed no / problem omp is not installed in this base. Run: base ensure   rc 0
+muse   installed no / problem Muse is not installed in this base. Run: base ensure  rc 0
+TK_PROBE_FOOTPRINT=1, each:   installed no / footprint 0
+herdr, footprint, in the operator's base:   installed yes / footprint 31293440
+```
+
+3 mutation rows, 3 of 3 red. ⚠ **What is not driven here**: an ensure where one
+adapter really fails and the next still installs. `applyEach` is the whole of that
+behaviour and its case drives it; a real failure needs a base with an agent that
+fails its read-back.
+
+⭐ **A second finding on the way**: `adapters/README.md` said `pi` and `omp` were
+"written, never run", which `WSL-88` and `WSL-89` had falsified. Corrected.
+
+
+## WSL-108. `shipped cat NAME` and `shipped write NAME` can never succeed
+
+**Source** [Issue 37](https://github.com/Azathothas/ToolKit/issues/37) item 4.
+Approved in ruling 30.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`wsl-toolkit shipped cat bootstrap.sh` exits 2 with `shipped cat takes flags, not
+positional arguments, and "bootstrap.sh" is one`, and `shipped cat --help`
+lists no flag that names a file. The manual, the README and `docs/AGENTS.md`
+send a reader to both commands.
+
+## Premise
+
+⭐ **Measured on 2026-10-21 with the published 6.0.0**: `shipped cat
+bootstrap.sh` exits 2 as above, and `shipped write bootstrap.sh --dir DIR` exits 2
+naming `--dir` as never parsed. Read: `cmdShipped` in
+[`../tools/windows/wsl-toolkit/cmd_shipped.go`](../tools/windows/wsl-toolkit/cmd_shipped.go)
+parses through `parseArgs`, which refuses any positional argument, and then
+`cat` and `write` require exactly one.
+
+## Approach
+
+`cat` and `write` take their one name before or after their flags, through the
+splitter `logs` and `inspect` already use for an id. Anything beyond one name
+is still refused.
+
+## Consumers
+
+Additive: a call that could only fail now works.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that runs `shipped cat bootstrap.sh` and compares the bytes
+with the carried file, and `shipped write` with the name on both sides of
+`--dir`.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T03:26:51Z.** `cat` and `write` parse through `parseOneName`,
+which takes the name before, between or after the flags and refuses a second. The
+acceptance:
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 75 s
+  ok     go
+```
+
+Driven with a build of this tree:
+
+```text
+shipped cat bootstrap.sh > FILE           exit 0, sha256 19fb0454...ec92fe27
+scripts/common/bootstrap.sh               sha256 19fb0454...ec92fe27
+shipped write --dir DIR bootstrap.sh      exit 0, the same digest, which shipped list --json names
+shipped cat bootstrap.sh tmux.conf        exit 2, shipped cat takes one name, and "tmux.conf" is a second
+```
+
+3 mutation rows, 3 of 3 red. ⚠ **The row for a name between flags came back THEATRE
+first**: the case passed `--force` after the name into an empty directory, where a
+dropped `--force` changes nothing. The case now writes a different file there first,
+so `--force` has to be read.
+
+
+## WSL-109. The space a base frees comes back only with `base recreate`
+
+**Source** [Issue 37](https://github.com/Azathothas/ToolKit/issues/37) item 5.
+Approved in ruling 30, "Report + base reclaim".
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+A 14 GB build in the base, deleted afterwards, and about 450 MB that removed
+adapters left, gave a guest using 1.7 GB on an `ext4.vhdx` of 18.7 GiB. `fstrim
+-v /` trimmed 991 GiB and the file stayed 18.7 GiB, because it is not sparse.
+Only `base recreate` gave the space back. And nothing reports what a removed
+adapter left in the base.
+
+## Premise
+
+⭐ **Measured on 2026-10-21, on WSL 3.0.3 and Windows 11 26300**, on two
+throwaway distributions this session imported and removed. `wsl --manage NAME
+--set-sparse true` answered `Wsl/Service/ERROR_SHARING_VIOLATION`, "the VHD is
+currently in use", right after `wsl --import`, again after `wsl --terminate`,
+and again over 100 seconds of retries. It answered the same for a distribution
+that was started and then stopped. `fsutil sparse setflag` on the file answered
+error 32. So WSL holds a distribution's disk while its VM runs, and the VM runs
+while any distribution does. ⛔ **The issue's ask, sparse at import, cannot be
+done by this tool**, which never runs `wsl --shutdown`. The operator's
+`.wslconfig` carries `sparseVhd=true` commented out, which would make WSL create
+each new disk sparse.
+
+The jobs base on this host, `wsl-toolkit`, reads `disk_bytes` 58,429,800,448 in
+`base status --probe --json`.
+
+## Approach
+
+- `base status` reports, from this machine and with no guest call, whether the
+  disk is sparse, its size, the space it takes, and what `.wslconfig` sets for
+  `sparseVhd`. A disk that is not sparse is a remediation naming `base reclaim`.
+- `base status --probe` reports each adapter the configuration no longer names
+  that left files in the base, with their size, and `base recreate` as what
+  removes them.
+- `base reclaim` gives space back. On a disk that is not sparse it asks WSL to
+  make it sparse; when WSL holds the disk, it changes nothing, exits 1, and names
+  `wsl --shutdown` as the operator's step, with what that stops. On a sparse
+  disk it runs `fstrim` in the base and reports the space before and after.
+
+⛔ It never runs `wsl --shutdown`, and never writes `.wslconfig`.
+
+## Decision
+
+Ruled on 2026-10-21, ruling 30: report and `base reclaim`, over a report alone.
+
+## Consumers
+
+Additive: new fields, a new remediation and a new command.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for the sparse read, the `.wslconfig` read and the reclaim's
+refusal. Then `base reclaim` driven against a scratch base on this host, where
+WSL holds every disk, and its answer read.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T04:08:52Z.** `base status` reports the disk's sparse attribute,
+the space it takes, and what `.wslconfig` sets for `sparseVhd`, with a remediation
+naming `base reclaim` for a disk that is not sparse. `base status --probe` names each
+adapter the configuration no longer names that left files, with its size, through
+the probes' `TK_PROBE_FOOTPRINT=1` answer. `base reclaim` asks WSL to make the disk
+sparse, and trims in the guest once it is.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 89 s
+  ok     go
+```
+
+Driven, with a build of this tree:
+
+```text
+base status                       disk 54.4 GiB; disk space  takes 54.4 GiB, sparse no, .wslconfig sparseVhd unset
+--instance base base status --probe   the same three facts for the operator's base, and DISK-NOT-SPARSE with its command
+base reclaim                      exit 1
+  ⛔ WSL holds a distribution's disk while its VM runs, ... Stop it with `wsl --shutdown`, which stops EVERY
+     distribution on this machine, the Podman machine too, then run wsl-toolkit base reclaim again. This tool never runs it.
+base reclaim --json               exit 1, wsl-toolkit-reclaim/1 with sparse_before false and refused set
+```
+
+⛔ **The driven pass found a defect the case could not.** The first build answered
+exit 2 and a line naming nothing, because WSL answers a RUNNING distribution with
+`WSL_E_DISTRO_NOT_STOPPED` and a stopped one with `ERROR_SHARING_VIOLATION`, and the
+case carried the second alone. Both are read as the disk being held now.
+
+⚠ **What is not driven**: the sparse half. No disk on this host is sparse and none
+can be made so while its VM runs, which is this entry's own finding. The trim and its
+reading are cases: util-linux's line from issue 37, `991 GiB (1064071028736 bytes)
+trimmed`, and busybox's.
+
+5 mutation rows, 5 of 5 red. The one for the remediation skips on Linux, where the
+attribute is not read.
+
+
+## WSL-110. WSL's own container tool is on this host, and this tool does not know it
+
+**Source** [Issue 35](https://github.com/Azathothas/ToolKit/issues/35), the
+operator's analysis of 2026-09-30, which the issue carries as its attachment
+and this tree held untracked at `.tmp/wslc-analysis-2026-09-30.md`. Approved in
+ruling 30, "Record + host engine".
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
+
+---
+
+## Problem
+
+WSL 3.0.1 ships `wslc.exe`, a container CLI with its own VMs. The analysis
+compared it with this tool from source, on a host with no `wslc`, and left its
+runtime questions open. This host now runs WSL 3.0.3 with `wslc 3.0.3.0` at
+`C:\Program Files\WSL\wslc.exe`. Three things follow, and none is done:
+
+- the analysis is outside the tree, so nothing that reads the tree has it;
+- `base ensure` and `distro new --image` need podman or docker on the host to
+  turn an image into a rootfs, and a machine whose only engine is `wslc` cannot
+  build a base;
+- `doctor` does not report `wslc`, and the manual's port-forwarding limit cites a
+  reason the analysis calls contestable.
+
+## Premise
+
+⭐ **Measured on 2026-10-21**: `wsl --version` answers `3.0.3.0`, `where wslc`
+answers `C:\Program Files\WSL\wslc.exe`, and `wslc version` answers `wslc
+3.0.3.0`. `wslc pull --help` lists `--all-tags` and `--quiet` and no
+`--platform`, `wslc create --help` lists no `--platform`, and `wslc export`
+writes a container's filesystem as a tar archive, to a file with `-o`.
+
+Read: `FindEngine` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/engine.go`](../tools/windows/wsl-toolkit/internal/toolkit/engine.go)
+tries `podman` and then `docker`, and `ExportRootfs` pulls, creates, exports and
+removes with `--platform` named on the pull and the create.
+
+## Approach
+
+- The analysis moves into `docs/reference-sweeps/`, with what this host now
+  measures written under it as corrections and answers, not edits.
+- `wslc` is a third host engine, tried after podman and docker. With no
+  `--platform` on its pull or create, the pulled image's architecture is read
+  back and a foreign one is refused before anything is exported.
+- `doctor` reports `wslc` and its version.
+- The manual's port-forwarding row states what `wslc` does with no elevation.
+
+⛔ `wslc` does not become the engine jobs run in. The analysis says why, and
+nothing measured here changes it.
+
+## Decision
+
+Ruled on 2026-10-21, ruling 30: record the analysis and add `wslc` as a host
+engine after podman and docker, over recording alone and over preferring `wslc`.
+
+## Consumers
+
+Additive: a machine with podman or docker uses the same engine as before.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for the engine order and the architecture refusal. Then a
+base built with `wslc` as the only engine this tool can find, on a scratch
+instance.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T04:08:52Z.** `wslc` is the third host engine, tried after podman
+and docker, in its own spelling: no `--platform` on its pull or create, the pulled
+image's `Architecture` and `Os` read back from `wslc image inspect --format json` and
+a foreign one refused, its image configuration read from the same JSON for
+`--oci-env`, and `resources --host-engine` asking it in its own words. `doctor`, both
+standalone probes and the Go one report it. The analysis is
+[`../docs/reference-sweeps/wslc.md`](../docs/reference-sweeps/wslc.md), with its
+section 10 measured on this host, and the manual's port-forwarding limit says what
+that section found.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 89 s
+  ok     go
+```
+
+⭐ **Driven**: with the Podman machine stopped, `--instance s110 base ensure` on a
+scratch configuration answered `host engine: wslc, platform linux/amd64`, exported a
+544.1 MiB root filesystem, and finished usable in 119 seconds. `doctor`'s three probes
+each answer `wslc 3.0.3.0`. Section 10 of the sweep carries the export, the mounts,
+the kernel and the port measured by hand.
+
+⚠ **A finding the analysis could not have made**: a `wslc` session runs the stock
+WSL kernel, `6.18.54.1-microsoft-standard-WSL2`, while this host's distributions run
+the 7.2.0 kernel `.wslconfig` names. A session is its own VM.
+
+3 mutation rows, 3 of 3 red.
+
+
+## WSL-111. A Git Bash caller bridges every call through PowerShell
+
+**Source** the operator, on 2026-10-21, in ruling 30: the wrappers projects like
+`podssh` write around this tool should not be necessary. `podssh`'s
+`scripts/dev-wsl.sh` is the example. Approved in ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+A script in Git Bash cannot pass a guest path, because MSYS rewrites it and this
+tool refuses the rewrite. With `MSYS_NO_PATHCONV=1` it cannot pass a host path in
+its own spelling either: `--workspace "$PWD"` arrives as `/c/Users/...`, which
+Windows reads as a path on the current drive's root. `podssh` solved both with a
+PowerShell bridge that carries every argument as base64 in one environment
+variable, a `win_path` function, and a scratch file per `--script`, because
+Git Bash's `/tmp` is not a path PowerShell can open.
+
+## Premise
+
+Read: `gitBashRewrite` and `msysOrigin` in
+[`../tools/windows/wsl-toolkit/gitbash.go`](../tools/windows/wsl-toolkit/gitbash.go)
+already know where MSYS maps `/` and `/tmp`. `pathFromProject` and
+`pathFromConfig` in
+[`../tools/windows/wsl-toolkit/cmd_run.go`](../tools/windows/wsl-toolkit/cmd_run.go)
+resolve `run`'s host paths with `filepath.Abs`. `podssh` at `3ad3203`,
+`scripts/dev-wsl.sh`, carries the bridge and the measurements behind it.
+
+## Approach
+
+- Where `MSYSTEM` is set, a host path written the MSYS way is read the way MSYS
+  would map it: `/c/...` on drive C, `/tmp/...` in the temporary directory, any
+  other `/...` under the MSYS root. A guest value is still refused when MSYS
+  rewrote it.
+- `--script -` reads the command from stdin, on every command that takes
+  `--script`.
+- The manual gains a section for a Git Bash caller: export
+  `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` once, then call the tool
+  directly.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for each spelling. Then a job driven from Git Bash with
+`MSYS_NO_PATHCONV=1`, `--workspace "$PWD"` and `--script -`.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** Where `MSYSTEM` is set, `msysHostPath` reads a host path in
+MSYS's spelling: `/c/...` on its drive, `/tmp/...` in `TEMP`, and any other `/...`
+under the MSYS root. Every host-path flag reads through it. `--script -` reads the
+command from stdin on every command that takes `--script`, and a detached owner gets
+it as a file in the job's directory. `run` and `base exec` gained `--env-file`, and
+the manual's Git Bash section names the two variables to export once.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven from Git Bash, with `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'`
+exported:**
+
+```text
+run --workspace "$PWD"                  exit 0; 2 entries, 74 B copied from .tmp\s111\proj
+printf ... | run --script -             exit 0; the piped command ran and saw its workspace
+run --env-file ./job.env                exit 0; both variables set, the MSYS-looking value untouched
+printf ... | run --detach --script -    exit 0; logs --follow printed both lines and exited 0
+--instance s110 base exec --dir /tmp    exit 0; --env-file applied, then --env over it
+the same, with no MSYS_NO_PATHCONV      exit 2; refused, naming Git Bash's rewrite of /tmp/
+```
+
+7 mutation rows, 7 of 7 red.
+
+
+## WSL-112. A workspace copy takes what git ignores, so each project keeps its own exclude list
+
+**Source** the operator, on 2026-10-21, as `WSL-111`. Approved in ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+A Rust checkout on Windows carries an 848 MB `target/`, which passes the 1 GiB
+copy limit, and `podssh` keeps seven `--exclude` patterns in a shell string,
+with two traps written up beside them: an unquoted split globs `target/**`
+into every file under it, and one quoted word reaches this tool as positional
+arguments. Most of what it excludes, git already ignores.
+
+## Premise
+
+Read: `writeWorkspaceTar` and `matchesAny` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/workspace.go`](../tools/windows/wsl-toolkit/internal/toolkit/workspace.go).
+A pattern matches the whole relative path, or the base name at any depth, or a
+directory and everything under it, through `path.Match`, which is case
+sensitive and has no `**`. `JobConfig` has no exclude list.
+
+## Approach
+
+- `--gitignore` leaves out what git ignores in the workspace, read from `git
+  ls-files --others --ignored --exclude-standard --directory`. A workspace that
+  is not a git work tree is refused.
+- `jobs.exclude` and `jobs.gitignore` in a project's `wsl-toolkit.json` apply to
+  every job, beside what the command line adds.
+- `run --help` and the manual state how a pattern matches.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case over a git work tree whose ignored directory stays out and
+whose untracked file goes in.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `--gitignore` asks git what it ignores in the workspace, with
+`ls-files --others --ignored --exclude-standard --directory`, and leaves that out of
+the copy. A workspace outside a git work tree is refused, and so is one its own
+repository ignores. `jobs.exclude` and `jobs.gitignore` in a project's
+`wsl-toolkit.json` apply to every job, beside what the command line adds, and `run
+--help` and the manual say how a pattern matches.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on this repository's own checkout**: `run --workspace "$PWD" --gitignore
+--exclude .git` copied 454 entries, 5.9 MiB, and left out the 3 paths git ignores,
+`.tmp` and `.codegraph` among them.
+
+⚠ **The mutation run found a case the design needed.** A temporary directory under
+this repository's ignored `.tmp` made git fail with "directory entry not superset of
+prefix". A workspace its repository ignores is now refused by name, before git is
+asked for its list.
+
+6 mutation rows, 6 of 6 red.
+
+
+## WSL-113. Nothing stops two jobs of one project from running at once
+
+**Source** the operator, on 2026-10-21, as `WSL-111`. Approved in ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+Three uncapped builds at once nearly exhausted the memory of the operator's
+machine through WSL, and the jobs base enforces no memory limit. `podssh`
+serializes its own runs with a lock directory it makes and removes itself,
+which a killed run leaves behind.
+
+## Premise
+
+Read: `lockExclusive` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/ownerlock_windows.go`](../tools/windows/wsl-toolkit/internal/toolkit/ownerlock_windows.go)
+opens a file with no sharing, and Windows lets it go when the process ends,
+however it ends. `owner.lock` already uses it for a job's liveness.
+⭐ **Measured on 2026-10-21**: `base status --probe --json` on the jobs base
+reads `limits_enforced` `no`.
+
+## Approach
+
+`run --exclusive NAME` holds a machine-wide lock named NAME for the whole job,
+in the process that owns the job, a detached owner included. A second job with
+the same NAME is refused, naming the job that holds it, unless
+`--exclusive-wait D` gives it time to wait. Windows releases the lock when its
+owner ends, so a killed job leaves nothing to remove.
+
+⛔ Not through the helper: a job the helper runs is held by the helper, and
+`--exclusive --via-helper` is refused, as `--detach` is.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where a second holder is refused and one that waits takes
+the lock when it is let go.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `run --exclusive NAME` holds `locks/NAME.lock` under the state
+root for the job's whole life, in the process that owns the job, and writes the
+holder's id beside it. A second job is refused at once, naming the first and the
+`wait` for it, unless `--exclusive-wait D` gives it time. `run --detach` refuses
+before it starts an owner, a `matrix` holds the name once, and the helper route is
+refused.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on the jobs base:**
+
+```text
+run --detach --exclusive s113-build     exit 0, job 0178547fd5b10b18
+a second, attached                      exit 2: held by job 0178547fd5b10b18, and the wait for it
+a second, detached                      exit 2 before its owner started, in the same words
+a waiter with --exclusive-wait          exit 0 after 26 s, once the first let the name go
+wait 0178547fd5b10b18                   exit 0
+```
+
+⚠ **`WSL-118` bounds it.** The lock is in the state root, and a caller Windows
+redirects has a root of its own, so it holds the name only against callers on its
+side.
+
+3 mutation rows, 3 of 3 red.
+
+
+## WSL-114. `gc` cannot be limited to one project's jobs
+
+**Source** the operator, on 2026-10-21, as `WSL-111`. Approved in ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`gc` plans a cleanup of every job on the machine, so a project that wants its
+own leftovers gone either removes every other project's too or keeps a dry run.
+`podssh`'s `dev.sh clean` says so in its output and removes nothing.
+
+## Premise
+
+Read: `cmdGC` in
+[`../tools/windows/wsl-toolkit/cmd_admin.go`](../tools/windows/wsl-toolkit/cmd_admin.go)
+narrows only by `--job` and `--older-than`, and a job's record does not carry
+its workspace.
+
+## Approach
+
+A job records the workspace it copied, as this machine's resolved path. `gc
+--workspace DIR` plans and removes only the jobs whose recorded workspace is
+DIR. A job with no recorded workspace is not selected.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where `gc --workspace` selects one of two jobs.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** A job records the workspace it copies in `jobs/ID/workspace`,
+written with the claim, so a job refused or killed before it finished is found too.
+The result carries it as `workspace`, and a `matrix` row records its fleet's.
+`gc --workspace DIR` reads DIR as `run --workspace` does and selects only the jobs
+whose record is DIR. A job with no record is not selected, a project with nothing
+left gets a note and exit 0, and the helper route is refused. `--images` is refused
+beside `--workspace` or `--job`, because a prune takes every image.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on the jobs base, with two projects:**
+
+```text
+run --workspace .tmp/s114/a, then b     two persistent jobs; jobs/ID/workspace names each project
+gc --workspace .tmp/s114/a --json       1 container, 1 guest directory, 1 host directory: a's alone
+the same, from inside a, as .           3 targets
+gc --workspace .tmp/s114/b --apply      b's container and both directories removed, exit 0
+matrix alpine,debian --workspace a      each row's result names a; the plan is 2, 2 and 2
+gc --workspace a --via-helper           exit 2: it does not cross the helper
+gc --workspace . --images               exit 2
+gc --job ID --workspace .               exit 2: pass one
+```
+
+8 mutation rows, 8 of 8 red.
+
+
+## WSL-115. `gc --job` with an id nothing here belongs to exits 0, having removed nothing
+
+**Source** the consumer survey of ruling 30: `podbox` measured `gc --job
+0b769b3dcc81`, a shortened id, exit 0 with nothing removed. Folded in under ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`gc --job ID` narrows the plan to the targets of job ID. An id with no target
+narrows it to nothing, and an empty plan exits 0. So a shortened id, a typo or an
+id from another instance reads as a job cleaned up. The direct route held the id
+only to the argument alphabet, where the helper route held it to an id's shape.
+
+## Premise
+
+Read: `cmdGC` in
+[`../tools/windows/wsl-toolkit/cmd_admin.go`](../tools/windows/wsl-toolkit/cmd_admin.go)
+checks `--job` with `AssertArgvSafe` alone. `CleanupPolicy.Select` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/cleanup.go`](../tools/windows/wsl-toolkit/internal/toolkit/cleanup.go)
+skips every target of another job. `HelperGCRequest.policy` refuses an id that is
+not 16 lowercase hex characters.
+
+## Approach
+
+- `gc --job` refuses an id that is not a job id, with exit 2, on both routes.
+- An id that no container, guest directory or host directory in this instance
+  belongs to is refused with exit 2, naming where the instance's jobs are listed.
+- A refusal prints no plan, so `--json` writes nothing to stdout.
+- The helper marks the refusal, so the helper route exits 2 with the same words.
+
+## Consumers
+
+⛔ A break: a `gc --job` for a job already cleaned up exited 0, and exits 2 now.
+[`../docs/consumers.md`](../docs/consumers.md) lists it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for a shortened id, an unknown id on each route, and a refusal
+that prints no plan.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `gc --job` holds an id to 16 lowercase hex characters on the
+direct route, as the helper did, and `CleanupPolicy.Unmatched` refuses an id that no
+container, guest directory or host directory belongs to. `finishGC` exits 2 for it
+and prints no plan. The helper marks the refusal `unknown`, so the helper route
+exits 2 too, with the words said once.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven:**
+
+```text
+gc --job 0b769b3dcc81                   exit 2: not a job id
+gc --job bbf7491ba3aa45ef, once gone    exit 2: no such job, and wsl-toolkit logs lists the jobs
+the same, with --json                   exit 2, and 0 bytes on stdout
+the same, with --via-helper             exit 2, with "no such job" said once
+```
+
+5 mutation rows, 5 of 5 red.
+
+
+## WSL-116. A printed command drops `--instance`, so it reaches the default instance
+
+**Source** the consumer survey of ruling 30: `podbox` makes every call with
+`--instance podbox`, and the commands this tool prints name no instance. Folded in
+under ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The commands this tool prints for a caller to run next name no instance. Under
+`--instance podbox`, the `logs`, `wait` and `stop` hints, the `follow`, `wait` and
+`stop` of a detached answer, and "Build it with: wsl-toolkit base ensure" all reach
+the default instance. Run as printed, a job hint answers "no such job", and the
+ensure hint builds another base.
+
+## Premise
+
+Read: `ToolCommand` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/catalog.go`](../tools/windows/wsl-toolkit/internal/toolkit/catalog.go)
+prefixes `--instance NAME` for a selected instance, and `WSL-106` used it for one
+remediation. `cmdRun`, `reportDetached`, `cmdBaseExec`, `cmdStop`, `cmdWait`,
+`cmdLogs` and the remediations in the toolkit spell their commands as literals.
+
+## Approach
+
+Every printed command a caller is told to run goes through `ToolCommand`. Help text,
+the examples table, and the machine-wide `selfupdate`, `version`, `doctor` and `man`
+keep their spelling.
+
+## Consumers
+
+Additive: the default instance's spelling does not change.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case under a selected instance for the job hints, the detached
+answer, the ensure hint and the unknown-job refusal.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `jobHints` and `errNotRegistered` spell the job, session and
+base hints through `ToolCommand`, and the other runnable hints go through it where
+they are: 72 sites in 31 files. Help text, the examples table and the machine-wide
+commands keep their spelling.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on the scratch instance `s110`:**
+
+```text
+--instance s110 run --detach --json     follow, wait and stop each begin wsl-toolkit --instance s110
+the printed wait, run as printed        job 01362ef91e9da6c1 ended. Exit 0
+--instance s110 run, attached           Follow it with: wsl-toolkit --instance s110 logs ...
+--instance s110 gc --job DEFAULT-ID     exit 2, naming wsl-toolkit --instance s110 logs
+```
+
+4 mutation rows, 4 of 4 red.
+
+
+## WSL-117. `gc --apply` cannot remove a job's host directory when Windows redirects the state directory
+
+**Source** found while driving `WSL-114` on 2026-10-21, from a shell the Claude
+desktop app starts.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`gc --apply` removed a job's container and guest directory, then failed on its host
+directory with `openfdat ...: too many levels of symbolic links`, and exited 1. The
+installed `6.0.0` failed the same way, as `unlinkat ...: is a directory`. Every job
+run from such a shell leaves its host directory behind, and no `gc` collects it.
+
+## Premise
+
+⭐ **Measured on 2026-10-21**: from the app's Bash tool, a job's host directory is
+in a package's own copy of `%LOCALAPPDATA%`, `WSL-118`. `os.Lstat` reads it as a
+plain directory and `os.RemoveAll` refuses it. `os.Remove` of each entry, then of
+the directory, removes it. Go's `os.RemoveAll` opens each directory relative to its
+parent and refuses to follow a link, and the redirected directory answers that open
+as one.
+
+Read: `RemoveInside` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/paths.go`](../tools/windows/wsl-toolkit/internal/toolkit/paths.go)
+is the one deletion, and it calls `os.RemoveAll` alone.
+
+## Approach
+
+When `os.RemoveAll` fails and the target is still there, `RemoveInside` removes it
+entry by entry, by path, deepest first. A symbolic link or a junction is removed
+itself and never descended into. The read-back after it does not change.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where the first removal fails and one where the tree holds a
+link. Then `gc --apply` from the app's Bash tool, on a job it ran.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `RemoveInside` removes entry by entry, by path, when
+`os.RemoveAll` fails and the target is still there. `removeByPath` never descends into
+a symbolic link or a junction, and removes the link itself.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven from the app's Bash tool:**
+
+```text
+6.0.0 gc --job a712a5a85392832a --apply     exit 1: unlinkat ...: is a directory
+this build, before the fix, another job     exit 1: openfdat ...: too many levels of symbolic links
+this build, after it, both and four more    exit 0: ok host directory, each one
+```
+
+2 mutation rows, 2 of 2 red.
+
+
+## WSL-118. A caller Windows redirects keeps a second state directory, and nothing says so
+
+**Source** found while driving `WSL-114` on 2026-10-21.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+A process the Claude desktop app's Bash tool starts writes this tool's state into
+`%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\wsl-toolkit`, and
+reads it back through `%LOCALAPPDATA%\wsl-toolkit`. A process outside that
+redirection, such as a terminal, sees none of it. Neither sees the other's jobs,
+ledger, `--exclusive` locks or configuration. So the two are two machines to this
+tool, and nothing it prints says so.
+
+## Premise
+
+⭐ **Measured on 2026-10-21**: a file written from the Bash tool under
+`%LOCALAPPDATA%\wsl-toolkit` is in the package's copy and not in the real directory,
+and the PowerShell tool sees only the real one. Neither has package identity:
+`GetCurrentPackageFullName` answers 15700 for both. The copy holds its own
+`config.json`, `base.json`, `ledger.jsonl`, `locks` and `jobs`. Through the
+redirected view every entry of the copy is the same file as home's, by
+`os.SameFile`, and through the plain view none is.
+
+## Approach
+
+`StateCopies` finds each package that keeps a copy of the state root, writing
+nothing, and reads by file identity which side this process is on. `doctor` and
+`config` name each copy, the side, and the two ways out: one kind of shell for
+every caller, or `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%`.
+
+⛔ The tool does not move its state on its own. A home it moved would be a third
+directory, and a terminal would not follow it.
+
+## Consumers
+
+Additive: `doctor --json` gains `host.state_copies`, and `config --json` gains
+`state_copies`.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for a copy on each side and for a home outside
+`%LOCALAPPDATA%`. Then `config` from each shell.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `StateCopies` reads `%LOCALAPPDATA%\Packages\*\LocalCache\Local\`
+for a copy of the state root, writing nothing, and `os.SameFile` decides which side
+this process is on. `doctor` carries `host.state_copies` with a note for each copy,
+and `config` prints a line under `home` and carries `state_copies`. The manual's
+known limits and its `--exclusive` section say what it bounds.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven:**
+
+```text
+config, from the Bash tool          copy ... THIS process writes there
+config, from the PowerShell tool    copy ... a process Windows redirects into that package writes there, and this one does not
+```
+
+3 mutation rows, 3 of 3 red.

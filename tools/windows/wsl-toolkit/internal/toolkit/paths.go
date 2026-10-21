@@ -114,6 +114,54 @@ func resolveExisting(path string) (string, error) {
 	}
 }
 
+// removeTree is the first removal RemoveInside tries. A test replaces it to make
+// it fail as it fails on a redirected directory.
+var removeTree = os.RemoveAll
+
+// removeByPath removes a tree entry by entry, by path, deepest first.
+//
+// ⛔ IT NEVER FOLLOWS A LINK. A symbolic link or a junction is removed
+// itself, and what it points at is left alone: Lstat reports a junction as
+// irregular, and neither kind is descended into. WSL-117.
+func removeByPath(p string) error {
+	fi, err := os.Lstat(p)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if fi.IsDir() && fi.Mode()&(os.ModeSymlink|os.ModeIrregular) == 0 {
+		entries, err := os.ReadDir(p)
+		if err != nil {
+			return err
+		}
+		var first error
+		for _, e := range entries {
+			if err := removeByPath(filepath.Join(p, e.Name())); err != nil && first == nil {
+				first = err
+			}
+		}
+		if first != nil {
+			return first
+		}
+	}
+	if err := os.Remove(p); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// WorkspaceKey is how a job records the workspace it copies and how `gc
+// --workspace` compares one: absolute, with every link in the part that exists
+// resolved, so "." and "$PWD" and a junction to the directory name one project.
+// ⚠ A directory removed since still has a key, the path as it was given, so a
+// deleted project's jobs can still be cleaned up by name. WSL-114.
+func WorkspaceKey(path string) (string, error) { return resolveExisting(path) }
+
+// SameWorkspace compares two keys as this host compares paths.
+func SameWorkspace(a, b string) bool { return pathEqual(a, b) }
+
 func pathEqual(a, b string) bool {
 	a = strings.TrimRight(a, `\/`)
 	b = strings.TrimRight(b, `\/`)
@@ -158,8 +206,21 @@ func RemoveInside(root, path string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(target); err != nil {
-		return err
+	if err := removeTree(target); err != nil {
+		// ⛔ GO'S REMOVAL CANNOT OPEN A REDIRECTED DIRECTORY. It opens each
+		// directory relative to its parent and refuses to follow a link, and a
+		// directory Windows redirected into a package's own copy answers that
+		// open as a link: "too many levels of symbolic links", or "is a
+		// directory" from Go 1.25. `gc --apply` then left every job's host
+		// directory behind. The same tree removes entry by entry, by path.
+		// WSL-117.
+		if _, statErr := os.Lstat(target); statErr != nil {
+			if !errors.Is(statErr, os.ErrNotExist) {
+				return err
+			}
+		} else if walkErr := removeByPath(target); walkErr != nil {
+			return fmt.Errorf("%w, and entry by entry: %w", err, walkErr)
+		}
 	}
 	if _, err := os.Lstat(target); err == nil {
 		return fmt.Errorf("%s is still on disk after the removal", target)

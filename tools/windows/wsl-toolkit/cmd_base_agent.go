@@ -94,7 +94,7 @@ func cmdBaseAgent(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if !registered {
-		return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
+		return exitCannot, errNotRegistered(cfg.Base.Name)
 	}
 	return baseExecResult(w.Exec(ctx, toolkit.ExecRequest{
 		Distro:  cfg.Base.Name,

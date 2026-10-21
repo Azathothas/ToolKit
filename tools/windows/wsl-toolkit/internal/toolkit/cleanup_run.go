@@ -32,6 +32,13 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 	if err != nil {
 		return plan, err
 	}
+	note, err := policy.Unmatched(targets)
+	if err != nil {
+		return plan, err
+	}
+	if note != "" {
+		r.log(note)
+	}
 	if includeImages {
 		for _, i := range images {
 			plan.Images = append(plan.Images, i.Name)
@@ -119,6 +126,18 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 	for id := range openIDs {
 		liveJob[id] = true
 	}
+	// ⭐ EACH JOB'S PROJECT, read once from the record its claim wrote, so its
+	// container and its two directories answer `gc --workspace` together.
+	// WSL-114.
+	recorded := map[string]string{}
+	workspaceOf := func(id string) string {
+		ws, ok := recorded[id]
+		if !ok {
+			ws = RecordedWorkspace(r.home, id)
+			recorded[id] = ws
+		}
+		return ws
+	}
 	var targets []CleanupTarget
 	for _, c := range containers {
 		id := jobIDFromContainer(c.Name)
@@ -128,7 +147,7 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 		}
 		targets = append(targets, CleanupTarget{
 			Kind: "container", Name: c.Name + " (" + c.ID + ")", JobID: id,
-			Live: live, ModTime: dirTime[id],
+			Live: live, ModTime: dirTime[id], Workspace: workspaceOf(id),
 		})
 	}
 
@@ -136,7 +155,7 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 		id := jobIDFromPath(j.Path)
 		targets = append(targets, CleanupTarget{
 			Kind: "guest-dir", Name: j.Path, JobID: id,
-			Live: liveJob[id], ModTime: j.ModTime,
+			Live: liveJob[id], ModTime: j.ModTime, Workspace: workspaceOf(id),
 		})
 	}
 
@@ -158,7 +177,7 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 			owned, _, _ := lockProbe(filepath.Join(dir, ownerLockName))
 			targets = append(targets, CleanupTarget{
 				Kind: "host-dir", Name: dir, JobID: e.Name(),
-				Live: liveJob[e.Name()] || owned, ModTime: info.ModTime(),
+				Live: liveJob[e.Name()] || owned, ModTime: info.ModTime(), Workspace: workspaceOf(e.Name()),
 			})
 		}
 	}

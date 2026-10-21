@@ -330,7 +330,7 @@ func (c *ContainerObserver) Diagnose(code int, f TickFacts) string {
 		if f.Feeds[FeedResources] == FeedAbsent {
 			return "exit 137 is 128+9, SIGKILL. ⚠ This base has no per-container cgroup, so an " +
 				"out-of-memory kill CANNOT be told apart from any other SIGKILL here, and the engine's " +
-				"OOMKilled flag is false for both. Read `wsl-toolkit base status --probe` for the mechanism"
+				"OOMKilled flag is false for both. Read `" + ToolCommand("base status --probe") + "` for the mechanism"
 		}
 		return "exit 137 is 128+9, SIGKILL, and the engine does not report this container as OOMKilled"
 	case code > 128 && code < 160:
