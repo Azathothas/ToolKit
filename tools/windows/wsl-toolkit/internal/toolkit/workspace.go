@@ -82,6 +82,9 @@ type WorkspaceUpload struct {
 	// filesystem could not carry, and where each one came from. Empty when
 	// nothing was restored.
 	ExecRestored string `json:"exec_restored,omitempty"`
+	// Ignored counts the entries left out because git ignores them, under
+	// --gitignore. ⚠ A wholly ignored directory is one entry. WSL-112.
+	Ignored int `json:"ignored,omitempty"`
 }
 
 // note records an omission, keeping every count and the first few reasons.
@@ -174,7 +177,7 @@ func (w *Wsl) ExecDirect(ctx context.Context, distro, user, cwd string, argv []s
 // SendWorkspace copies a host directory into a guest directory as an archive.
 // The guest directory is created empty first, so a job never runs against a
 // merge of its own workspace and somebody else's leftovers.
-func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, excludes []string, log func(string)) (WorkspaceUpload, error) {
+func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, filter WorkspaceFilter, log func(string)) (WorkspaceUpload, error) {
 	var zero WorkspaceUpload
 	if err := AssertArgvSafe([]string{guestDir}); err != nil {
 		return zero, err
@@ -194,7 +197,7 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 
 	errBuf = &boundedBuffer{max: 64 << 10}
 	up, err := pumpArchive(
-		func(pw io.Writer) (WorkspaceUpload, error) { return writeWorkspaceTar(pw, hostDir, limits, excludes) },
+		func(pw io.Writer) (WorkspaceUpload, error) { return writeWorkspaceTar(pw, hostDir, limits, filter) },
 		func(pr io.Reader) (int, error) {
 			return w.ExecDirect(ctx, distro, user, "", []string{"/bin/tar", "-xf", "-", "-C", guestDir}, pr, io.Discard, errBuf, 60*time.Minute)
 		},
@@ -208,6 +211,9 @@ func (w *Wsl) SendWorkspace(ctx context.Context, distro, user, guestDir, hostDir
 		// only way a caller can tell which tree actually travelled is to be told
 		// which one it was.
 		log(fmt.Sprintf("workspace: %d entries, %s copied from %s to %s", up.Entries, HumanBytes(up.Bytes), hostDir, guestDir))
+		if up.Ignored > 0 {
+			log(fmt.Sprintf("workspace: %d path(s) git ignores were left out, by --gitignore", up.Ignored))
+		}
 		// ⭐ SAID OUT LOUD AT THE POINT IT HAPPENS, as well as carried on the
 		// result. A caller reading only the human output learns the same fact.
 		for _, o := range up.Omission {
@@ -316,12 +322,28 @@ func deviceSafePath(p string) string {
 	return p
 }
 
-func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, excludes []string) (WorkspaceUpload, error) {
+// WorkspaceFilter is what a workspace copy leaves out.
+type WorkspaceFilter struct {
+	// Excludes are globs, matched as matchesAny says.
+	Excludes []string
+	// Gitignore leaves out what git ignores in the workspace. WSL-112.
+	Gitignore bool
+}
+
+func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter WorkspaceFilter) (WorkspaceUpload, error) {
 	var up WorkspaceUpload
 	tw := tar.NewWriter(w)
 	realRoot, err := resolveExisting(root)
 	if err != nil {
 		return up, err
+	}
+	// ⚠ GIT IS ASKED ABOUT THE RESOLVED PATH, so its answer names the tree that is
+	// walked rather than another spelling of it. WSL-112.
+	var ignored map[string]bool
+	if filter.Gitignore {
+		if ignored, err = gitIgnored(context.Background(), realRoot); err != nil {
+			return up, err
+		}
 	}
 	bits := &execBits{index: map[string]bool{}}
 	if isGitWorkspace(root) {
@@ -345,7 +367,13 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, exclude
 			return nil
 		}
 		slashRel := filepath.ToSlash(rel)
-		if matchesAny(slashRel, excludes) {
+		// ⭐ GIT'S OWN LIST IS EXACT PATHS, not globs, so a directory git ignores
+		// at the root does not take a tracked one of the same name elsewhere.
+		gitSkips := ignored[slashRel] || (d.IsDir() && ignored[slashRel+"/"])
+		if gitSkips || matchesAny(slashRel, filter.Excludes) {
+			if gitSkips {
+				up.Ignored++
+			}
 			if d.IsDir() {
 				return filepath.SkipDir
 			}

@@ -8,19 +8,25 @@ Current work lives here; [INDEX.md](INDEX.md) owns the entry list and
 ```text
 session started 2026-10-21T02:36:37Z, on the operator's request to resolve issues 35 and 37 and pull request 36
 baseline        d52040b, gate 24 of 24
-head            this commit; WSL-105 to WSL-114 and TOOL-28 filed under ruling 30
-entries         total 153  open 4  blocked 0  done 149
+head            this commit; WSL-111 to WSL-118 closed, so every entry ruling 30 filed is closed
+entries         total 157  open 0  blocked 0  done 157
 this session    issue 37's five items, issue 35's wslc, four changes that retire a consumer's wrapper, and a release
 ```
 
 ## Active work
 
-⭐ **ELEVEN ENTRIES ARE OPEN, all filed under ruling 30 and worked in this
-session.** `WSL-105` to `WSL-109` are issue 37's five items, `WSL-110` is issue
-35, `WSL-111` to `WSL-114` remove what `podssh`'s `scripts/dev-wsl.sh` works
-around, and `TOOL-28` was found reading the muse probe. Pull request 36 is
-Dependabot's bump of the two artifact actions, its two pins re-derived against
-their tags.
+⭐ **EVERY ENTRY FILED UNDER RULING 30 IS CLOSED, and the release is what is
+left.** `WSL-105` to `WSL-109` are issue 37's five items, `WSL-110` is issue 35,
+`WSL-111` to `WSL-114` remove what `podssh`'s `scripts/dev-wsl.sh` works around,
+and `TOOL-28` was found reading the muse probe. `WSL-115` and `WSL-116` are the
+consumer survey's, and `WSL-117` and `WSL-118` were found driving `WSL-114`. Pull
+request 36 is Dependabot's bump of the two artifact actions, its two pins
+re-derived against their tags.
+
+⛔ **A shell the Claude desktop app starts may write this tool's state into the
+package's own copy**, `WSL-118`. Here the Bash tool's processes do and the
+PowerShell tool's do not, so a step that must change the operator's real state runs
+from PowerShell.
 
 ⚠ **One instance on this host is still tied to a terminal**: the operator's
 `avalyn` profile, started from a Windows Terminal tab on 2026-10-10, and not by
@@ -61,8 +67,10 @@ is closed, and the issue gets a comment naming the commits.
     on `PATH`.
 12. ⭐ **Closed:** issue 37's `WSL-108`, `WSL-106`, `WSL-107`, `WSL-105` and
     `WSL-109`, smallest first, and issue 35's `WSL-110`.
-13. **The wrapper a consumer no longer needs:** `WSL-111`, `WSL-112`, `WSL-113`
-    and `WSL-114`, and `TOOL-28`, found on the way.
+13. ⭐ **Closed:** the wrapper a consumer no longer needs, `WSL-111`, `WSL-112`,
+    `WSL-113` and `WSL-114`, with `TOOL-28` found on the way. The consumer survey
+    added `WSL-115` and `WSL-116`, and driving `WSL-114` found `WSL-117` and
+    `WSL-118`.
 14. **The release:** pull request 36 merged, `wsl-toolkit-v7.0.0` cut under ruling
     30, this host moved to it by `selfupdate` and driven, and issues 35 and 37
     closed with comments naming the commits.

@@ -176,9 +176,9 @@ func run(ctx context.Context, args []string) int {
 				return exitCannot
 			}
 			i++
-			toolkit.ExplicitConfigPath = args[i]
+			toolkit.ExplicitConfigPath = msysHostPath(args[i])
 		case strings.HasPrefix(args[i], "--config="):
-			toolkit.ExplicitConfigPath = strings.TrimPrefix(args[i], "--config=")
+			toolkit.ExplicitConfigPath = msysHostPath(strings.TrimPrefix(args[i], "--config="))
 		default:
 			rest = append(rest, args[i])
 			// ⛔ Everything after the subcommand belongs to it. A command's own
@@ -299,7 +299,7 @@ func applyInstance(ctx context.Context, asked string) (int, error) {
 // instance home it resolved to. A child whose WSL_TOOLKIT_HOME is that home
 // resolves from the root instead.
 const (
-	instanceRootEnv = "WSL_TOOLKIT_INSTANCE_ROOT"
+	instanceRootEnv = toolkit.InstanceRootEnv
 	instanceHomeEnv = "WSL_TOOLKIT_INSTANCE_HOME"
 )
 

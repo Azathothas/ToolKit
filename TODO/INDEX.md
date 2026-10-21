@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 153  open 4  blocked 0  done 149
+total 157  open 0  blocked 0  done 157
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 4 | 4 |
-| P1 | 0 | 0 | 74 | 74 |
-| P2 | 4 | 0 | 64 | 68 |
+| P1 | 0 | 0 | 76 | 76 |
+| P2 | 0 | 0 | 70 | 70 |
 | P3 | 0 | 0 | 7 | 7 |
-| **all** | **4** | **0** | **149** | **153** |
+| **all** | **0** | **0** | **157** | **157** |
 
 ---
 
@@ -159,10 +159,14 @@ total 153  open 4  blocked 0  done 149
 | WSL-108 | P1 | S | done | `shipped cat NAME` and `shipped write NAME` can never succeed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-109 | P2 | M | done | The space a base frees comes back only with `base recreate` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-110 | P2 | M | done | WSL's own container tool is on this host, and this tool does not know it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-111 | P2 | S | open | A Git Bash caller bridges every call through PowerShell | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-112 | P2 | S | open | A workspace copy takes what git ignores, so each project keeps its own exclude list | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-113 | P2 | S | open | Nothing stops two jobs of one project from running at once | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-114 | P2 | S | open | `gc` cannot be limited to one project's jobs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-111 | P2 | S | done | A Git Bash caller bridges every call through PowerShell | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-112 | P2 | S | done | A workspace copy takes what git ignores, so each project keeps its own exclude list | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-113 | P2 | S | done | Nothing stops two jobs of one project from running at once | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-114 | P2 | S | done | `gc` cannot be limited to one project's jobs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-115 | P2 | S | done | `gc --job` with an id nothing here belongs to exits 0, having removed nothing | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-116 | P2 | S | done | A printed command drops `--instance`, so it reaches the default instance | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-117 | P1 | S | done | `gc --apply` cannot remove a job's host directory when Windows redirects the state directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-118 | P1 | S | done | A caller Windows redirects keeps a second state directory, and nothing says so | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-32 | P1 | M | done | Helper routing asks whether `wsl.exe` resolves, not whether it answers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-33 | P1 | M | done | A failed artifact transfer exits 0 and the output is then destroyed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-34 | P1 | M | done | Two artifact names that differ only in case become one file | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -227,7 +227,7 @@ func BsdProbe(ctx context.Context) BsdStatus {
 		st.Image, st.ImageBytes = img, info.Size()
 	} else {
 		st.Problems = append(st.Problems,
-			"the guest image is not on this machine. Run: wsl-toolkit bsd fetch")
+			"the guest image is not on this machine. Run: "+ToolCommand("bsd fetch"))
 	}
 	st.Ready = len(st.Problems) == 0
 	return st
@@ -328,11 +328,11 @@ func createBsdOverlay(ctx context.Context, qemuImg, dir, overlay string, size in
 func bsdGuestDisk(image string, want int64) (int64, error) {
 	have, ok := FileSize(image)
 	if !ok {
-		return 0, fmt.Errorf("the guest image is not on this machine. Run: wsl-toolkit bsd fetch")
+		return 0, fmt.Errorf("the guest image is not on this machine. Run: %s", ToolCommand("bsd fetch"))
 	}
 	if have > want {
-		return have, fmt.Errorf("the image is %s and this run asks for a %s disk. A disk smaller than the image cuts off the filesystem inside it. Pass --disk %d or larger, or run `wsl-toolkit bsd fetch --force` to start again from the published image",
-			HumanBytes(have), HumanBytes(want), (have+(1<<30)-1)>>30)
+		return have, fmt.Errorf("the image is %s and this run asks for a %s disk. A disk smaller than the image cuts off the filesystem inside it. Pass --disk %d or larger, or run `%s` to start again from the published image",
+			HumanBytes(have), HumanBytes(want), (have+(1<<30)-1)>>30, ToolCommand("bsd fetch --force"))
 	}
 	return want, nil
 }
@@ -497,7 +497,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 		return res, err
 	}
 	if _, err := os.Stat(img); err != nil {
-		return res, fmt.Errorf("the guest image is not on this machine. Run: wsl-toolkit bsd fetch")
+		return res, fmt.Errorf("the guest image is not on this machine. Run: %s", ToolCommand("bsd fetch"))
 	}
 	qemu, err := FindQemu()
 	if err != nil {
@@ -570,7 +570,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 		res.Error = "the guest did not reach a login prompt within " + spec.Timeout.String()
 		if failure != "" {
 			res.Error = "the guest cannot boot, and stopped at: " + failure +
-				". If the image is damaged, `wsl-toolkit bsd fetch --force` restores the published one"
+				". If the image is damaged, `" + ToolCommand("bsd fetch --force") + "` restores the published one"
 		}
 		res.Duration = time.Since(started)
 		return res, errors.New(res.Error)

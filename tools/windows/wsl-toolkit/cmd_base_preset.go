@@ -74,7 +74,7 @@ func cmdPresets(args []string) (int, error) {
 		fmt.Printf("* %-8s %-6s %s\n", "custom", "-", cfg.Base.Image)
 	}
 	fmt.Fprintf(os.Stderr, "\n  * is what the base is built from now.\n")
-	fmt.Fprintf(os.Stderr, "  Switch with: wsl-toolkit base ensure --preset ID [--save]\n")
+	fmt.Fprintf(os.Stderr, "  Switch with: %s\n", toolkit.ToolCommand("base ensure --preset ID [--save]"))
 	fmt.Fprintf(os.Stderr, "  A fully qualified reference works anywhere a preset id does.\n")
 	return exitOK, nil
 }

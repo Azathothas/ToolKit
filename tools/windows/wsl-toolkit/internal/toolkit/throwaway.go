@@ -532,7 +532,7 @@ func ownedIn(rep ThrowawayReport, name, distrosDir string) (ThrowawayDistro, err
 			return ThrowawayDistro{}, throwawayOwnership(d.Name, d.Disk, distrosDir)
 		}
 	}
-	return ThrowawayDistro{}, refuse("%s is not a registered throwaway distribution. wsl-toolkit distro list names the ones this tool made", name)
+	return ThrowawayDistro{}, refuse("%s is not a registered throwaway distribution. %s names the ones this tool made", name, ToolCommand("distro list"))
 }
 
 func (t *Throwaways) readOrigin(name string) *ThrowawayOrigin {
@@ -920,7 +920,7 @@ func (t *Throwaways) resolveTarball(value string) (path, snapshot string, err er
 		}
 	}
 	return "", "", refuse("--tarball %q is neither a file nor a snapshot tag this state directory holds. "+
-		"wsl-toolkit distro list names the snapshots", value)
+		"%s names the snapshots", value, ToolCommand("distro list"))
 }
 
 // claim decides the name and takes it, by creating the directory its disk will

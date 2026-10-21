@@ -149,7 +149,7 @@ func ReadHelperEvents(body io.Reader, fn func(HelperEvent) error) error {
 		return fmt.Errorf("the helper's answer stopped early: %w", err)
 	}
 	if !seenFinal {
-		return errors.New("the helper's answer ended without a result, so the job's outcome is unknown. Check that the helper is still running with: wsl-toolkit helper status")
+		return errors.New("the helper's answer ended without a result, so the job's outcome is unknown. Check that the helper is still running with: " + ToolCommand("helper status"))
 	}
 	return nil
 }

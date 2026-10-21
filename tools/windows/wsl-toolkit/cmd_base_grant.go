@@ -89,7 +89,7 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 		if g.source == "" {
 			return exitCannot, errors.New("base grant needs --source, the Windows directory to grant")
 		}
-		change, err = toolkit.PlanGrant(cfg, g.source, g.target, g.mode)
+		change, err = toolkit.PlanGrant(cfg, msysHostPath(g.source), g.target, g.mode)
 	case "revoke":
 		if g.target == "" {
 			return exitCannot, errors.New("base revoke needs --target, the /workspaces path of the grant to take away")

@@ -105,6 +105,36 @@ func (o *JobOwner) Finish(res JobResult) error {
 	return writeFileAtomic(filepath.Join(o.Dir, resultFileName), append(doc, '\n'), 0o600)
 }
 
+// workspaceRecordName holds the workspace a job copies, as WorkspaceKey spells
+// it. WSL-114.
+const workspaceRecordName = "workspace"
+
+// RecordWorkspace writes the project this job copies beside its lock. An empty
+// key records nothing.
+//
+// ⭐ WRITTEN WITH THE CLAIM AND NOT WITH THE RESULT, so `gc --workspace` finds a
+// job whose owner was killed, or was refused before it copied anything, as
+// surely as one that finished. WSL-114.
+func (o *JobOwner) RecordWorkspace(key string) error {
+	if o == nil || key == "" {
+		return nil
+	}
+	return writeFileAtomic(filepath.Join(o.Dir, workspaceRecordName), []byte(key+"\n"), 0o600)
+}
+
+// RecordedWorkspace is the workspace job id recorded under home, or empty where
+// it recorded none.
+func RecordedWorkspace(home, id string) string {
+	if home == "" || !ValidJobID(id) {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(home, "jobs", id, workspaceRecordName))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSuffix(string(b), "\n")
+}
+
 // Release lets the lock go without a result. A reader then finds a job whose
 // owner ended without saying how, which is the truth.
 func (o *JobOwner) Release() {

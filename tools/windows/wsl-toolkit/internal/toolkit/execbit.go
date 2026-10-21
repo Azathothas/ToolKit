@@ -3,6 +3,8 @@ package toolkit
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -163,4 +165,51 @@ func isGitWorkspace(root string) bool {
 		}
 		dir = parent
 	}
+}
+
+// gitIgnored answers the slash-relative paths git ignores under root, a
+// directory with a trailing slash, for a workspace copy that leaves them out.
+//
+// ⭐ GIT DECIDES, NOT A SECOND READER OF .gitignore. A project's ignore rules
+// nest, negate and anchor, and a second implementation of them is the second
+// copy that drifts. `--directory` names a wholly ignored directory once rather
+// than every file in it. WSL-112.
+//
+// ⛔ UNLIKE THE INDEX READ ABOVE, THIS FAILS LOUD. A caller who asked for git's
+// rules and got none would copy every ignored build tree and be refused for its
+// size, or copy a credential git keeps out of the repository.
+func gitIgnored(ctx context.Context, root string) (map[string]bool, error) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return nil, errors.New("--gitignore reads git's own rules, and no git is on PATH")
+	}
+	ctx, cancel := context.WithTimeout(ctx, gitIndexTimeout)
+	defer cancel()
+	// ⛔ GIT ANSWERS WHETHER THIS IS A WORK TREE, not a walk for a `.git` above
+	// it. git honours GIT_CEILING_DIRECTORIES, a worktree's `.git` file and
+	// GIT_DIR, and a walk does not, so the two could disagree about one directory.
+	probe := exec.CommandContext(ctx, git, "-C", root, "rev-parse", "--is-inside-work-tree")
+	if out, err := probe.Output(); err != nil || strings.TrimSpace(string(out)) != "true" {
+		return nil, fmt.Errorf("--gitignore reads git's own rules, and %s is not in a git work tree", root)
+	}
+	// ⛔ A WORKSPACE ITS OWN REPOSITORY IGNORES is refused by name. git's rules
+	// leave out all of it, and git ls-files --directory then fails with "internal
+	// error - directory entry not superset of prefix", measured with git 2.55 on a
+	// directory under this repository's ignored .tmp.
+	if exec.CommandContext(ctx, git, "-C", root, "check-ignore", "-q", ".").Run() == nil {
+		return nil, fmt.Errorf("--gitignore reads git's own rules, and %s is itself ignored by the repository it is in, so they would leave out all of it", root)
+	}
+	cmd := exec.CommandContext(ctx, git, "-C", root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory")
+	var out, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &stderr
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("git ls-files could not list what git ignores in %s: %w: %s", root, err, firstLine(stderr.String()))
+	}
+	ignored := map[string]bool{}
+	for _, rec := range strings.Split(out.String(), "\x00") {
+		if rec != "" {
+			ignored[rec] = true
+		}
+	}
+	return ignored, nil
 }

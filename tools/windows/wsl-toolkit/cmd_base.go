@@ -203,7 +203,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			return exitCannot, err
 		}
 		if !exists {
-			return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
+			return exitCannot, errNotRegistered(cfg.Base.Name)
 		}
 		shellArgs := []string{"-d", cfg.Base.Name, "-u", user}
 		var extraEnv []string
@@ -510,7 +510,7 @@ func hereRefusal(distro, automount string, drives []toolkit.WindowsDriveMount, r
 	if readErr != nil || len(drives) > 0 {
 		return nil
 	}
-	return fmt.Errorf("--here needs a Windows drive mounted, and %s has none although base.automount is %s. Run: wsl-toolkit base ensure", distro, automount)
+	return fmt.Errorf("--here needs a Windows drive mounted, and %s has none although base.automount is %s. Run: %s", distro, automount, toolkit.ToolCommand("base ensure"))
 }
 
 // hereMarker is the variable name `base shell --here` sets in the guest, and that

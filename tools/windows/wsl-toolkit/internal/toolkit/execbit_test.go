@@ -73,7 +73,7 @@ func TestTheExecutableBitSurvivesAFilesystemThatCannotHoldIt(t *testing.T) {
 	git("update-index", "--chmod=+x", "run.sh")
 
 	var buf bytes.Buffer
-	if _, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), []string{".git"}); err != nil {
+	if _, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), WorkspaceFilter{Excludes: []string{".git"}}); err != nil {
 		t.Fatalf("the upload failed: %v", err)
 	}
 	modes := tarModes(t, buf.Bytes())
@@ -104,7 +104,7 @@ func TestAnUnstagedScriptStillArrivesRunnable(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf bytes.Buffer
-	up, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), nil)
+	up, err := writeWorkspaceTar(&buf, root, DefaultWorkspaceLimits(), WorkspaceFilter{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -733,7 +733,7 @@ func TestASubdirectoryWorkspaceReadsItsOwnPaths(t *testing.T) {
 
 	// The workspace is the SUBDIRECTORY, not the repository root.
 	var buf bytes.Buffer
-	if _, err := writeWorkspaceTar(&buf, sub, DefaultWorkspaceLimits(), nil); err != nil {
+	if _, err := writeWorkspaceTar(&buf, sub, DefaultWorkspaceLimits(), WorkspaceFilter{}); err != nil {
 		t.Fatal(err)
 	}
 	if got := tarModes(t, buf.Bytes())["deep.sh"]; got&0o111 == 0 {

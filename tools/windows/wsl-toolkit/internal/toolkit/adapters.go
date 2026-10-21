@@ -901,15 +901,15 @@ func (h *herdrHost) check(ctx context.Context, b *Base, facts map[string]string)
 	}
 	known, _ := readOptional(p.knownHosts)
 	if hostKey := facts["ssh-host-key"]; hostKey == "" || !knownHostIs(known, alias, hostKey) {
-		problems = append(problems, p.knownHosts+" does not carry the base's host key. Run: wsl-toolkit base ensure")
+		problems = append(problems, p.knownHosts+" does not carry the base's host key. Run: "+ToolCommand("base ensure"))
 	}
 	current, _ := readOptional(p.config)
 	if found, ok := markedBlock(current, alias); !ok || !equalLines(found, herdrHostBlock(alias, b.cfg.Base.User, b.wsl.Path, p)) {
-		problems = append(problems, p.config+" does not carry this base's Host block as this tool writes it. Run: wsl-toolkit base ensure")
+		problems = append(problems, p.config+" does not carry this base's Host block as this tool writes it. Run: "+ToolCommand("base ensure"))
 	}
 	if herdrChannel(b.cfg) == AdapterChannelNightly {
 		if st, ok := readHerdrClient(b.home); !ok || st.Release != facts["release"] {
-			problems = append(problems, "this machine has no herdr client for the base's "+facts["release"]+". Run: wsl-toolkit base ensure")
+			problems = append(problems, "this machine has no herdr client for the base's "+facts["release"]+". Run: "+ToolCommand("base ensure"))
 		}
 	}
 	if len(problems) > 0 {

@@ -770,7 +770,7 @@ func (h *HelperServer) handleArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/x-tar")
-	if _, err := writeWorkspaceTar(w, dir, DefaultWorkspaceLimits(), nil); err != nil {
+	if _, err := writeWorkspaceTar(w, dir, DefaultWorkspaceLimits(), WorkspaceFilter{}); err != nil {
 		h.log("streaming artifacts " + id + ": " + err.Error())
 	}
 }
@@ -981,6 +981,8 @@ func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
 	payload := map[string]any{"schema": HelperSchema, "plan": plan}
 	if err != nil {
 		payload["error"] = err.Error()
+		// ⭐ Named apart, so the caller exits as the direct route does. WSL-115.
+		payload["unknown"] = errors.Is(err, ErrUnknownJob)
 	}
 	writeHelperJSON(w, http.StatusOK, payload)
 }

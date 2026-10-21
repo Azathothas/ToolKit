@@ -21,6 +21,32 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-21
 
+### 2026-10-21T05:25:50Z: a Git Bash script calls the tool directly, and `gc` cleans one project's jobs
+
+**Record:** `WSL-111` to `WSL-118` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), and work order item 13 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).
+**Deployed:** no deploy, and no tag. The next `wsl-toolkit` release carries it.
+
+⭐ **What `podssh`'s wrapper did, the tool now does.** A Git Bash script exports
+`MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'` once and calls the tool directly.
+`--workspace "$PWD"` is read in MSYS's spelling, `--script -` reads the command from
+stdin, and `--env-file` reads a job's variables from a file. `--gitignore` leaves out
+of the copy what git ignores, and a project's `wsl-toolkit.json` can say it once.
+
+⭐ **One job per name, and one project's cleanup.** `run --exclusive NAME` refuses a
+second job with the same NAME, or waits for it with `--exclusive-wait`. A job records
+the workspace it copies, and `gc --workspace DIR` removes that project's jobs and no
+other project's.
+
+⛔ **`gc --job` refuses an id that nothing in the instance belongs to**, with exit 2.
+A shortened id exited 0 having removed nothing, and that is a break. Every command
+the tool prints now names the instance it was printed for.
+
+⛔ **Driving `gc` found two defects in a shell the Claude desktop app starts.** Windows
+kept that shell's writes under `%LOCALAPPDATA%` in the app's own copy. Go's
+`os.RemoveAll` cannot open a directory there, so `gc --apply` left every job's host
+directory behind, on 6.0.0 too, and the removal now falls back to one entry at a
+time. `doctor` and `config` name such a copy and say which side the caller is on.
+
 ### 2026-10-21T04:08:52Z: a base gets its QEMU handlers back, says what its disk holds, and can be built with `wslc`
 
 **Record:** `WSL-105`, `WSL-109` and `WSL-110` in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md), [`docs/reference-sweeps/wslc.md`](docs/reference-sweeps/wslc.md), and work order item 12 in [`TODO/PROGRESS.md`](TODO/PROGRESS.md).

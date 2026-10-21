@@ -406,6 +406,16 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 		}
 	}
 	report.Host["shell"] = hostShell()
+	// ⛔ A SECOND STATE DIRECTORY IS A SECOND MACHINE to this tool. Read
+	// without writing, so this report still creates no file. WSL-118.
+	if root, err := StateRoot(); err == nil {
+		if copies := StateCopies(root); len(copies) > 0 {
+			report.Host["state_copies"] = copies
+			for _, c := range copies {
+				report.Notes = append(report.Notes, StateCopyNote(c))
+			}
+		}
+	}
 	report.Notes = append(report.Notes,
 		"Writable temporary storage was not probed: this report creates no files.",
 		"The resolved column is what would actually run. A scoop shim, a node .ps1 wrapper and a .cmd launcher all answer to --version and only one can be handed to CreateProcess.")

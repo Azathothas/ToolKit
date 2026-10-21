@@ -114,8 +114,13 @@ type JobSpec struct {
 	// StagedFrom is a guest directory a fleet already unpacked the workspace
 	// into, copied locally instead of sent again. ⛔ It is a GUEST path and
 	// never a host one: a host path here would be a mount by another name.
-	StagedFrom         string
-	Excludes           []string
+	StagedFrom string
+	// WorkspaceOrigin is the host directory a fleet staged StagedFrom from, so
+	// each row records the project it copied as a single job does. WSL-114.
+	WorkspaceOrigin string
+	Excludes        []string
+	// Gitignore leaves out of the workspace copy what git ignores in it. WSL-112.
+	Gitignore          bool
 	ArtifactDir        string // a host directory to write /out back to. Empty means none.
 	Env                map[string]string
 	Timeout            time.Duration
@@ -221,6 +226,9 @@ type JobResult struct {
 	TimedOut     bool   `json:"timed_out"`
 	Unreached    bool   `json:"unreached"`
 	Transcript   string `json:"transcript,omitempty"`
+	// Workspace is the project this job copied, as WorkspaceKey spells it and
+	// `gc --workspace` matches it. WSL-114.
+	Workspace string `json:"workspace,omitempty"`
 	// WorkspaceOmitted is how many entries the upload LEFT OUT, and
 	// WorkspaceOmission names the first few with the reason.
 	//
@@ -497,6 +505,17 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		return res
 	}
 	res.ID = id
+	// ⭐ THE PROJECT THIS JOB COPIES, as `gc --workspace` compares it. A fleet's
+	// row names the directory its staged copy came from. WSL-114.
+	origin := spec.Workspace
+	if origin == "" {
+		origin = spec.WorkspaceOrigin
+	}
+	if origin != "" {
+		if key, err := WorkspaceKey(origin); err == nil {
+			res.Workspace = key
+		}
+	}
 	// ⭐ A JOB HAS ONE OWNER, and it is this process unless the caller already
 	// claimed it. The owner's lock and result are what a second process follows,
 	// waits on and stops by. WSL-94.
@@ -505,6 +524,10 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		if err != nil {
 			res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 			return res
+		}
+		// ⚠ A caller that claimed the job recorded its project with the claim.
+		if err := owner.RecordWorkspace(res.Workspace); err != nil {
+			r.log("could not record the workspace of job " + id + ", so gc --workspace will not find it: " + err.Error())
 		}
 		// ⚠ Deferred calls run in reverse, and this one runs before the one that
 		// sets the duration, so it measures its own.
@@ -553,7 +576,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			note := "the job finished and its directory was kept"
 			if keepGuest {
 				r.log("the job directory is kept because its artifacts could not be fetched: " + guestJob)
-				r.log("fetch them by hand, then: wsl-toolkit gc --apply")
+				r.log("fetch them by hand, then: " + ToolCommand("gc --apply"))
 				note += ": its artifacts could not be fetched"
 			}
 			if keepContainer {
@@ -615,7 +638,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 			return res
 		}
 	case spec.Workspace != "":
-		up, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, user, guestWork, spec.Workspace, limits, spec.Excludes, r.log)
+		up, err := r.wsl.SendWorkspace(ctx, r.cfg.Base.Name, user, guestWork, spec.Workspace, limits, WorkspaceFilter{Excludes: spec.Excludes, Gitignore: spec.Gitignore}, r.log)
 		// ⛔ RECORDED BEFORE THE ERROR IS READ. A partial upload that then
 		// failed still left entries out, and a caller reading the result of a
 		// failed job is exactly who wants to know which ones.
@@ -1205,7 +1228,7 @@ func (r *Runner) RetainedGuestDir(id string) (string, string) {
 	case guestDir == "":
 		return "", "no job with that id was recorded here"
 	case closed && !kept:
-		return "", "that job was torn down, so nothing was retained. Its transcript is still readable with: wsl-toolkit logs " + id
+		return "", "that job was torn down, so nothing was retained. Its transcript is still readable with: " + ToolCommand("logs "+id)
 	default:
 		return guestDir, ""
 	}

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -131,10 +132,10 @@ func (c *HelperClient) call(ctx context.Context, method, path string, body any, 
 
 // UploadWorkspace sends a host directory to the helper as an archive and returns
 // the id a run refers to it by.
-func (c *HelperClient) UploadWorkspace(ctx context.Context, hostDir string, limits WorkspaceLimits, excludes []string) (string, error) {
+func (c *HelperClient) UploadWorkspace(ctx context.Context, hostDir string, limits WorkspaceLimits, filter WorkspaceFilter) (string, error) {
 	pr, pw := io.Pipe()
 	go func() {
-		_, err := writeWorkspaceTar(pw, hostDir, limits, excludes)
+		_, err := writeWorkspaceTar(pw, hostDir, limits, filter)
 		_ = pw.CloseWithError(err)
 	}()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+c.endpoint.Address+"/v1/workspace", pr)
@@ -364,18 +365,30 @@ func (c *HelperClient) Inspect(ctx context.Context, id string, since time.Durati
 // Cleanup asks the helper to remove what this tool made.
 func (c *HelperClient) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, images bool) (CleanupPlan, error) {
 	var out struct {
-		Plan  CleanupPlan `json:"plan"`
-		Error string      `json:"error"`
+		Plan    CleanupPlan `json:"plan"`
+		Error   string      `json:"error"`
+		Unknown bool        `json:"unknown"`
+	}
+	// ⛔ REFUSED HERE AND NOT DROPPED. The helper's jobs record the uploads it
+	// unpacked, and a helper older than the field would clean every job. WSL-114.
+	if policy.Workspace != "" {
+		return CleanupPlan{Schema: CleanupSchema, DryRun: !apply}, ErrWorkspaceViaHelper
 	}
 	body := gcRequest(apply, policy, images)
 	if err := c.call(ctx, http.MethodPost, "/v1/gc", body, &out); err != nil {
 		return out.Plan, err
 	}
 	if out.Error != "" {
+		if out.Unknown {
+			return out.Plan, fmt.Errorf("%w: %s", ErrUnknownJob, strings.TrimPrefix(out.Error, ErrUnknownJob.Error()+": "))
+		}
 		return out.Plan, errors.New(out.Error)
 	}
 	return out.Plan, nil
 }
+
+// ErrWorkspaceViaHelper is `gc --workspace` asked of the helper. WSL-114.
+var ErrWorkspaceViaHelper = errors.New("gc --workspace does not cross the helper: the helper's jobs record the uploads it unpacked, not this machine's directories. Run it where wsl.exe can be called, or name one job with --job")
 
 // StopJob asks the helper to stop a job it ran. WSL-94.
 func (c *HelperClient) StopJob(ctx context.Context, id string, grace time.Duration) (StopReport, error) {

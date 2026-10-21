@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
@@ -20,27 +21,31 @@ import (
 // jobFlags are what run and matrix share, so the two cannot drift into
 // accepting different spellings of the same thing.
 type jobFlags struct {
-	command     string
-	commandB64  string
-	scriptFile  string
-	workspace   string
-	artifactDir string
-	excludes    stringList
-	env         stringList
-	devices     stringList
-	inputs      stringList
-	timeout     time.Duration
-	noNetwork   bool
-	user        string
-	platform    string
-	lifecycle   string
-	maxBytes    int64
-	maxEntries  int
-	maxOutput   int64
-	asJSON      bool
-	ensure      bool
-	viaHelper   bool
-	tick        time.Duration
+	command       string
+	commandB64    string
+	scriptFile    string
+	workspace     string
+	artifactDir   string
+	excludes      stringList
+	gitignore     bool
+	exclusive     string
+	exclusiveWait time.Duration
+	env           stringList
+	envFile       string
+	devices       stringList
+	inputs        stringList
+	timeout       time.Duration
+	noNetwork     bool
+	user          string
+	platform      string
+	lifecycle     string
+	maxBytes      int64
+	maxEntries    int
+	maxOutput     int64
+	asJSON        bool
+	ensure        bool
+	viaHelper     bool
+	tick          time.Duration
 }
 
 type stringList []string
@@ -51,11 +56,15 @@ func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }
 func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&j.command, "c", "", "the shell command to run in the container")
 	fs.StringVar(&j.commandB64, "command-base64", "", "the command as base64 of its bytes, for a caller that must keep every shell away from it")
-	fs.StringVar(&j.scriptFile, "script", "", "a file on this machine whose bytes are the command")
+	fs.StringVar(&j.scriptFile, "script", "", "a file on this machine whose bytes are the command, or - to read them from stdin")
 	fs.StringVar(&j.workspace, "workspace", "", "a directory on this machine, COPIED into the container as /work")
 	fs.StringVar(&j.artifactDir, "artifacts", "", "a directory on this machine to receive whatever the container leaves in /out")
-	fs.Var(&j.excludes, "exclude", "a glob to leave out of the workspace copy. Repeatable")
+	fs.Var(&j.excludes, "exclude", "a glob to leave out of the workspace copy, matched against the whole relative path, against the base name at any depth, and as a directory and everything under it. * does not cross a slash. Repeatable, and added to jobs.exclude")
+	fs.StringVar(&j.exclusive, "exclusive", "", "hold this name, machine-wide, for the whole job, and refuse to start while another job holds it. A project names its builds so two cannot run at once")
+	fs.DurationVar(&j.exclusiveWait, "exclusive-wait", 0, "with --exclusive, wait this long for the name rather than refusing at once")
+	fs.BoolVar(&j.gitignore, "gitignore", false, "leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree. jobs.gitignore sets it for a project")
 	fs.Var(&j.env, "env", "NAME=VALUE passed to the container. Repeatable")
+	fs.StringVar(&j.envFile, "env-file", "", "a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins")
 	fs.Var(&j.devices, "device", "a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it")
 	fs.Var(&j.inputs, "input", "NAME=FILE: a file on this machine the container reads at /in/NAME, read-only and byte for byte. Repeatable")
 	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before lifecycle cleanup; the row reports 124")
@@ -115,8 +124,14 @@ func guestScript(command, commandB64, scriptFile string) ([]byte, error) {
 			return nil, fmt.Errorf("--command-base64 is not valid base64: %w", err)
 		}
 		return toolkit.RepairGuestScript(decoded)
+	case scriptFile == stdinScript:
+		raw, err := readStdinScript()
+		if err != nil {
+			return nil, err
+		}
+		return toolkit.RepairGuestScript(raw)
 	case scriptFile != "":
-		raw, err := os.ReadFile(scriptFile)
+		raw, err := os.ReadFile(msysHostPath(scriptFile))
 		if err != nil {
 			return nil, err
 		}
@@ -125,8 +140,56 @@ func guestScript(command, commandB64, scriptFile string) ([]byte, error) {
 	return nil, errors.New("nothing to run: pass -c COMMAND, --command-base64 BASE64 or --script FILE")
 }
 
-func (j *jobFlags) envMap() (map[string]string, error) {
+// stdinScript is the --script value that reads the command from this process's
+// own stdin. WSL-111.
+const stdinScript = "-"
+
+// maxStdinScript bounds a command read from stdin, as a file is bounded by its
+// size on disk.
+const maxStdinScript = 64 << 20
+
+// readStdinScript reads the command a caller piped in.
+//
+// ⭐ IT IS WHAT REMOVES A SCRATCH FILE PER SCRIPT. A Git Bash caller wrote each
+// generated script to a file under its own /tmp, which is not a path a Windows
+// program can open, and translated the path to hand it over. A pipe has no path.
+// ⛔ AN EMPTY PIPE IS A REFUSAL, not an empty command that exits 0.
+func readStdinScript() ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(os.Stdin, maxStdinScript+1))
+	if err != nil {
+		return nil, fmt.Errorf("--script -: reading stdin: %w", err)
+	}
+	if len(raw) > maxStdinScript {
+		return nil, fmt.Errorf("--script -: stdin carried more than %s, which is more than a command", toolkit.HumanBytes(maxStdinScript))
+	}
+	if len(bytes.TrimSpace(raw)) == 0 {
+		return nil, errors.New("--script - read nothing from stdin, so there is no command to run. Pipe the script in, or pass -c")
+	}
+	return raw, nil
+}
+
+func (j *jobFlags) envMap(cfg toolkit.Config) (map[string]string, error) {
 	out := map[string]string{}
+	// ⭐ A FILE CARRIES VALUES NO SHELL REACHES. MSYS rewrites the value of an
+	// argument that looks like a path, and a file's bytes travel untouched. The
+	// reader is the one `distro --env-file` uses, so both read one format. WSL-111.
+	if j.envFile != "" {
+		path, err := pathFromProject(cfg, j.envFile)
+		if err != nil {
+			return nil, fmt.Errorf("--env-file: %w", err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("--env-file: %w", err)
+		}
+		pairs, err := toolkit.ParseEnvFile(data, path)
+		if err != nil {
+			return nil, fmt.Errorf("--env-file %w", err)
+		}
+		for _, pair := range pairs {
+			out[pair.Name] = pair.Value
+		}
+	}
 	for _, pair := range j.env {
 		name, value, ok := strings.Cut(pair, "=")
 		if !ok {
@@ -204,6 +267,22 @@ func (j *jobFlags) check() error {
 	if j.maxOutput < 0 {
 		return fmt.Errorf("--max-output %d is negative. Pass 0 for the default, or a positive number of bytes", j.maxOutput)
 	}
+	if j.exclusive != "" {
+		if err := toolkit.ValidateExclusiveName(j.exclusive); err != nil {
+			return err
+		}
+	}
+	if j.exclusiveWait < 0 {
+		return fmt.Errorf("--exclusive-wait %s is negative. Pass 0 to refuse at once, or a positive duration", j.exclusiveWait)
+	}
+	if j.exclusiveWait > 0 && j.exclusive == "" {
+		return errors.New("--exclusive-wait waits for an --exclusive name, and none was given")
+	}
+	// ⛔ THE HELPER RUNS THE JOB, so the lock would be held by a process that is
+	// not the job's owner. Refused, as --detach is. WSL-113.
+	if j.exclusive != "" && j.viaHelper {
+		return errors.New("--exclusive is held by the process that owns the job, and a job through the helper is owned by the helper. Run it without --via-helper")
+	}
 	if j.lifecycle != "" && j.lifecycle != toolkit.ContainerPersistent && j.lifecycle != toolkit.ContainerEphemeral {
 		return fmt.Errorf("--container-lifecycle %q must be %q or %q", j.lifecycle, toolkit.ContainerPersistent, toolkit.ContainerEphemeral)
 	}
@@ -222,6 +301,13 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 	if j.workspace == "" && cfg.Jobs.Workspace != "" {
 		j.workspace = cfg.Jobs.Workspace
 		workspaceFromConfig = true
+	}
+	// ⭐ A PROJECT STATES WHAT ITS COPY LEAVES OUT ONCE, in its own configuration,
+	// and a command line adds to it. A list in a shell string was how a consumer
+	// met both of its globbing traps. WSL-112.
+	j.excludes = append(append(stringList(nil), cfg.Jobs.Exclude...), j.excludes...)
+	if cfg.Jobs.Gitignore {
+		j.gitignore = true
 	}
 	platform, err := toolkit.NormalizePlatform(j.platform)
 	if err != nil {
@@ -251,7 +337,7 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 			return err
 		}
 	}
-	if j.scriptFile != "" {
+	if j.scriptFile != "" && j.scriptFile != stdinScript {
 		j.scriptFile, err = pathFromProject(cfg, j.scriptFile)
 		if err != nil {
 			return fmt.Errorf("--script: %w", err)
@@ -273,13 +359,17 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 }
 
 func pathFromConfig(cfg toolkit.Config, value string) (string, error) {
+	value = msysHostPath(value)
 	if filepath.IsAbs(value) {
 		return filepath.Clean(value), nil
 	}
 	return filepath.Abs(filepath.Join(filepath.Dir(cfg.Path()), value))
 }
 
+// pathFromProject is the one resolver for a host path a job command was given.
+// ⭐ An MSYS spelling from Git Bash is read here, once, for every flag. WSL-111.
 func pathFromProject(cfg toolkit.Config, value string) (string, error) {
+	value = msysHostPath(value)
 	if filepath.IsAbs(value) {
 		return filepath.Clean(value), nil
 	}
@@ -329,7 +419,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if *image == "" {
-		return exitCannot, errors.New("--image is required. wsl-toolkit images lists the catalog")
+		return exitCannot, errors.New("--image is required. " + toolkit.ToolCommand("images") + " lists the catalog")
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -345,7 +435,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	env, err := j.envMap()
+	env, err := j.envMap(cfg)
 	if err != nil {
 		return exitCannot, err
 	}
@@ -377,7 +467,22 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 			return exitCannot, errors.New("--detach starts a copy of this program that owns the job and reaches wsl.exe itself, and a job through the helper ends with its client. " +
 				"Start it through the session's WSL approval path, or run it attached with --via-helper")
 		}
-		return detachRun(ctx, j.asJSON)
+		// ⛔ A COMMAND READ FROM STDIN IS HANDED OVER AS A FILE. The owner is a
+		// copy of this program run with the same arguments and no stdin, so a second
+		// `--script -` would read nothing there. WSL-111.
+		// ⭐ REFUSED HERE, AT ONCE, while the caller is still attached to hear it.
+		// The owner holds the lock; this is a probe so a refusal is not a log line
+		// somebody has to go and read. WSL-113.
+		if j.exclusive != "" && j.exclusiveWait == 0 {
+			if held, by := toolkit.ExclusiveHeld(j.exclusive); held {
+				return exitCannot, fmt.Errorf("%w: %s is held by %s. %s", toolkit.ErrExclusiveHeld, j.exclusive, by, toolkit.ExclusiveAdvice(by))
+			}
+		}
+		var fromStdin []byte
+		if j.scriptFile == stdinScript {
+			fromStdin = payload
+		}
+		return detachRun(ctx, j.asJSON, fromStdin)
 	}
 	if c, err := useHelper(ctx, j.viaHelper); err != nil {
 		return exitCannot, err
@@ -394,7 +499,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		// silently ignored is the dead-config row; a refusal names the reason.
 		if s.Active() {
 			return exitCannot, errors.New("the observation flags do not cross the helper: the job runs on the helper's machine and its container cannot be watched from here. " +
-				"Run without --via-helper, or read the job afterwards with: wsl-toolkit inspect JOB")
+				"Run without --via-helper, or read the job afterwards with: " + toolkit.ToolCommand("inspect JOB"))
 		}
 		res, err := helperRunJob(ctx, c, j, ref, *image, payload, env, devices, inputs)
 		if err != nil {
@@ -413,7 +518,28 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		_ = owner.Finish(toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot})
 		return exitCannot, err
 	}
-	logf("  job %s. Follow it with: wsl-toolkit logs %s --follow. Stop it with: wsl-toolkit stop %s", owner.ID, owner.ID, owner.ID)
+	// ⭐ THE PROJECT IS RECORDED WITH THE CLAIM, so `gc --workspace` finds even a
+	// job refused before it copied anything. WSL-114.
+	if j.workspace != "" {
+		key, err := toolkit.WorkspaceKey(j.workspace)
+		if err == nil {
+			err = owner.RecordWorkspace(key)
+		}
+		if err != nil {
+			logf("  ! could not record the workspace of job %s, so gc --workspace will not find it: %s", owner.ID, err.Error())
+		}
+	}
+	followCmd, _, stopCmd := jobHints(owner.ID)
+	logf("  job %s. Follow it with: %s. Stop it with: %s", owner.ID, followCmd, stopCmd)
+	// ⭐ HELD BY THE PROCESS THAT OWNS THE JOB, attached or detached, for the
+	// job's whole life, and let go by Windows however this process ends. WSL-113.
+	if j.exclusive != "" {
+		release, err := toolkit.AcquireExclusive(ctx, j.exclusive, owner.ID, j.exclusiveWait, note)
+		if err != nil {
+			return refuse(err)
+		}
+		defer release()
+	}
 	runner, err := toolkit.NewRunner(cfg, note)
 	if err != nil {
 		return refuse(err)
@@ -440,7 +566,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	}
 	res := runner.Run(ctx, toolkit.JobSpec{
 		ID: owner.ID, Owner: owner,
-		Image: ref, Script: payload, Workspace: j.workspace, Excludes: toolkit.SortedExcludes(j.excludes),
+		Image: ref, Script: payload, Workspace: j.workspace, Excludes: toolkit.SortedExcludes(j.excludes), Gitignore: j.gitignore,
 		ArtifactDir: j.artifactDir, Env: env, Timeout: j.timeout, Network: !j.noNetwork,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
 		Limits: j.limits(), Label: *image, User: j.user, Devices: devices, Inputs: inputs,
@@ -485,7 +611,7 @@ const DetachedSchema = "wsl-toolkit-detached/1"
 // run, so artifacts, teardown and the verdict do not change. It learns its id
 // and that it is detached from two variables, never from a flag a caller could
 // pass. Its own progress goes to owner.log beside the transcript.
-func detachRun(ctx context.Context, asJSON bool) (int, error) {
+func detachRun(ctx context.Context, asJSON bool, fromStdin []byte) (int, error) {
 	home, err := toolkit.Home()
 	if err != nil {
 		return exitCannot, err
@@ -507,8 +633,20 @@ func detachRun(ctx context.Context, asJSON bool) (int, error) {
 		_ = logFile.Close()
 		return exitCannot, err
 	}
+	args := os.Args[1:]
+	if fromStdin != nil {
+		script := filepath.Join(home, "jobs", id, "stdin-script.sh")
+		if err := os.WriteFile(script, fromStdin, 0o600); err != nil {
+			_ = logFile.Close()
+			return exitCannot, fmt.Errorf("could not hand the command read from stdin to the detached owner: %w", err)
+		}
+		if args, err = replaceStdinScript(args, script); err != nil {
+			_ = logFile.Close()
+			return exitCannot, err
+		}
+	}
 	cmd, leftJobObject, err := toolkit.StartDetached(func() *exec.Cmd {
-		c := exec.Command(exe, os.Args[1:]...)
+		c := exec.Command(exe, args...)
 		c.Env = append(os.Environ(), toolkit.JobIDEnv+"="+id, toolkit.DetachedEnv+"=1")
 		c.Stdout, c.Stderr = logFile, logFile
 		return c
@@ -537,7 +675,7 @@ func detachRun(ctx context.Context, asJSON bool) (int, error) {
 		case <-ctx.Done():
 			// ⚠ THE OWNER IS ALREADY STARTED, and the interrupt does not reach it.
 			// The id is named so the caller can still find the job.
-			return 130, fmt.Errorf("interrupted while the detached owner took job %s. The job can still run: wsl-toolkit logs %s", id, id)
+			return 130, fmt.Errorf("interrupted while the detached owner took job %s. The job can still run: %s", id, toolkit.ToolCommand("logs "+id))
 		case <-time.After(100 * time.Millisecond):
 		}
 		if time.Now().After(deadline) {
@@ -557,13 +695,14 @@ const jobObjectWarning = "the job object this process runs in refused to release
 	"base exec --detach runs in the base and does not depend on it"
 
 func reportDetached(home, id string, leftJobObject, asJSON bool) (int, error) {
+	followCmd, waitCmd, stopCmd := jobHints(id)
 	if asJSON {
 		doc := map[string]any{
 			"schema": DetachedSchema, "id": id, "kind": "job",
 			"owner_log": toolkit.OwnerLogPath(home, id),
-			"follow":    "wsl-toolkit logs " + id + " --follow",
-			"wait":      "wsl-toolkit wait " + id,
-			"stop":      "wsl-toolkit stop " + id,
+			"follow":    followCmd,
+			"wait":      waitCmd,
+			"stop":      stopCmd,
 		}
 		if !leftJobObject {
 			doc["warning"] = jobObjectWarning
@@ -571,7 +710,7 @@ func reportDetached(home, id string, leftJobObject, asJSON bool) (int, error) {
 		return exitOK, writeJSON(doc)
 	}
 	fmt.Println(id)
-	logf("  job %s runs detached. Follow: wsl-toolkit logs %s --follow. Wait: wsl-toolkit wait %s. Stop: wsl-toolkit stop %s", id, id, id, id)
+	logf("  job %s runs detached. Follow: %s. Wait: %s. Stop: %s", id, followCmd, waitCmd, stopCmd)
 	if !leftJobObject {
 		logf("  ! %s", jobObjectWarning)
 	}
@@ -612,7 +751,7 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 		}
 	}
 	if res.Container != "" {
-		logf("  container %s is kept with its job directory. Remove it with: wsl-toolkit gc --job %s --apply", res.Container, res.ID)
+		logf("  container %s is kept with its job directory. Remove it with: %s", res.Container, toolkit.ToolCommand("gc --job "+res.ID+" --apply"))
 	}
 	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
 	if hint := transcriptHint(res); hint != "" {
@@ -641,7 +780,7 @@ func transcriptHint(res toolkit.JobResult) string {
 		// Already said, with the path, by the line about the capture limit.
 		return ""
 	}
-	return "the complete output is kept: wsl-toolkit logs " + res.ID
+	return "the complete output is kept: " + toolkit.ToolCommand("logs "+res.ID)
 }
 
 // jobVerdict is toolkit.JobResult.Verdict, kept as a name this file already
@@ -676,7 +815,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	env, err := j.envMap()
+	env, err := j.envMap(cfg)
 	if err != nil {
 		return exitCannot, err
 	}
@@ -719,6 +858,15 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		}
 		return reportMatrix(report, j.asJSON)
 	}
+	// ⭐ A FLEET HOLDS THE NAME ONCE, for every row, because its rows run in this
+	// one process. WSL-113.
+	if j.exclusive != "" {
+		release, err := toolkit.AcquireExclusive(ctx, j.exclusive, fmt.Sprintf("matrix (process %d)", os.Getpid()), j.exclusiveWait, note)
+		if err != nil {
+			return exitCannot, err
+		}
+		defer release()
+	}
 	runner, err := toolkit.NewRunner(cfg, note)
 	if err != nil {
 		return exitCannot, err
@@ -732,7 +880,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	logf("  %d image(s), %d at a time, %s per row", len(selected), *parallel, j.timeout)
 	report, err := runner.RunMatrix(ctx, toolkit.MatrixSpec{
 		Images: selected, Script: payload, Workspace: j.workspace,
-		Excludes: toolkit.SortedExcludes(j.excludes), ArtifactDir: j.artifactDir,
+		Excludes: toolkit.SortedExcludes(j.excludes), Gitignore: j.gitignore, ArtifactDir: j.artifactDir,
 		Env: env, Timeout: j.timeout, Network: !j.noNetwork, Parallel: *parallel,
 		Platform: j.platform, ContainerLifecycle: j.lifecycle,
 		Limits: j.limits(), Transcripts: *transcripts, User: j.user, Devices: devices, Inputs: inputs,
@@ -838,7 +986,7 @@ func ensureBase(ctx context.Context, runner *toolkit.Runner, allowed bool) error
 		return nil
 	}
 	if !allowed {
-		return fmt.Errorf("%s is not registered and --ensure-base is off. Build it with: wsl-toolkit base ensure", st.Name)
+		return fmt.Errorf("%s is not registered and --ensure-base is off. Build it with: %s", st.Name, toolkit.ToolCommand("base ensure"))
 	}
 	logf("==> %s is not registered; building it first", st.Name)
 	if _, err := runner.EnsureBase(ctx, false); err != nil {
@@ -857,4 +1005,34 @@ func resolveImage(cfg toolkit.Config, name string) (string, error) {
 		return "", fmt.Errorf("%q is not a catalog id and not a usable reference: %w", name, err)
 	}
 	return name, nil
+}
+
+// replaceStdinScript names a file where a command line reads its script from
+// stdin, in whichever spelling the caller used. WSL-111.
+func replaceStdinScript(args []string, file string) ([]string, error) {
+	out := make([]string, 0, len(args))
+	found := false
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		switch {
+		case (a == "--script" || a == "-script") && i+1 < len(args) && args[i+1] == stdinScript:
+			out = append(out, a, file)
+			i++
+			found = true
+		case a == "--script="+stdinScript || a == "-script="+stdinScript:
+			out = append(out, strings.SplitN(a, "=", 2)[0]+"="+file)
+			found = true
+		default:
+			out = append(out, a)
+		}
+	}
+	if !found {
+		return nil, errors.New("--script - was read and the command line that names it was not found, so the detached owner would have read an empty stdin")
+	}
+	return out, nil
+}
+
+// filter is what the workspace copy leaves out, as one value both routes send.
+func (j *jobFlags) filter() toolkit.WorkspaceFilter {
+	return toolkit.WorkspaceFilter{Excludes: toolkit.SortedExcludes(j.excludes), Gitignore: j.gitignore}
 }

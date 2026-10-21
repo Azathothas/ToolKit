@@ -495,7 +495,7 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 		if d.DiskKnown {
 			size = HumanBytes(d.DiskBytes)
 		}
-		if err := p("  throwaway distro  %-12s %s. wsl-toolkit distro purge removes it\n", size, d.Name); err != nil {
+		if err := p("  throwaway distro  %-12s %s. %s removes it\n", size, d.Name, ToolCommand("distro purge")); err != nil {
 			return err
 		}
 	}
@@ -510,7 +510,7 @@ func RenderResources(w io.Writer, rep ResourceReport) error {
 		}
 	}
 	if len(rep.Owned.OpenRecords) > 0 {
-		if err := p("  open records      %d, so a run was interrupted. wsl-toolkit gc --apply clears them\n", len(rep.Owned.OpenRecords)); err != nil {
+		if err := p("  open records      %d, so a run was interrupted. %s clears them\n", len(rep.Owned.OpenRecords), ToolCommand("gc --apply")); err != nil {
 			return err
 		}
 	}

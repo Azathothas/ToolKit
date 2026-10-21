@@ -108,7 +108,7 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 		}
 		target := ""
 		if dir != nil {
-			target = *dir
+			target = msysHostPath(*dir)
 		}
 		if target == "" {
 			target, err = os.Getwd()
@@ -188,7 +188,7 @@ func cmdBaseBootstrap(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if !registered {
-		return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
+		return exitCannot, errNotRegistered(cfg.Base.Name)
 	}
 	note("running the bootstrap this executable carries, " + shippedDigestNote(body))
 	return baseExecResult(w.Exec(ctx, toolkit.ExecRequest{

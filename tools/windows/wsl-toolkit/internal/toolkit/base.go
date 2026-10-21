@@ -281,7 +281,7 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		}
 	}
 	if !st.Registered {
-		st.Problems = append(st.Problems, "not registered. Create it with: wsl-toolkit base ensure")
+		st.Problems = append(st.Problems, "not registered. Create it with: "+ToolCommand("base ensure"))
 		return st, nil
 	}
 	if !probe {
@@ -406,8 +406,8 @@ func managedAccountDrift(built, configured string) string {
 	}
 	return fmt.Sprintf(
 		"this distribution was built for account %q and the configuration says %q. "+
-			"Changing the managed account requires: wsl-toolkit base recreate",
-		built, configured)
+			"Changing the managed account requires: %s",
+		built, configured, ToolCommand("base recreate"))
 }
 
 type baseRecord struct {
@@ -700,7 +700,7 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 			// already exists for the case where they want one.
 			b.log(fmt.Sprintf("this distribution was built from %s and the configuration says %s",
 				id.Image, b.cfg.Base.Image))
-			b.log("run `wsl-toolkit base recreate` to rebuild it, or change the configuration back")
+			b.log("run `" + ToolCommand("base recreate") + "` to rebuild it, or change the configuration back")
 		}
 		return nil
 
@@ -710,8 +710,8 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 		rec, recErr := b.readRecord()
 		if recErr != nil {
 			return fmt.Errorf("%s is registered, carries no wsl-toolkit identity marker and has no record here either, "+
-				"so this tool cannot tell whether it built it. Remove it yourself, or run: wsl-toolkit base recreate",
-				b.cfg.Base.Name)
+				"so this tool cannot tell whether it built it. Remove it yourself, or run: %s",
+				b.cfg.Base.Name, ToolCommand("base recreate"))
 		}
 		b.log(b.cfg.Base.Name + " predates the identity marker and this tool's own record describes it; stamping it")
 		if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
@@ -1672,7 +1672,7 @@ func cgroupRemediation(cg *CgroupState) (Remediation, bool) {
 			", so podman creates no cgroup per container",
 		Costs: "a memory or cpu limit is ACCEPTED AND NOT ENFORCED, `podman stats` reports 0B, " +
 			"and an out-of-memory kill cannot be told apart from any other exit 137",
-		Command:    "wsl-toolkit base status --probe --json  # the cgroup block carries the mechanism",
+		Command:    ToolCommand("base status --probe --json") + "  # the cgroup block carries the mechanism",
 		Repairable: false,
 	}, true
 }
@@ -1696,7 +1696,7 @@ func staleRunStateRemediation(msg string) (Remediation, bool) {
 		ID:         "stale-run-state",
 		What:       "the engine's cached boot id is not this boot's, so every container is refused before it starts",
 		Costs:      "nothing runs. Re-provisioning does not clear it, because the state is the engine's and not the distribution's",
-		Command:    "wsl-toolkit base ensure --repair",
+		Command:    ToolCommand("base ensure --repair"),
 		Repairable: true,
 	}
 	// ⛔ THE CONDITION IS HOST-WIDE AND THIS USED TO ANSWER FOR ONE BASE.

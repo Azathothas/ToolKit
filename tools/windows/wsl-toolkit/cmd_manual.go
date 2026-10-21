@@ -26,7 +26,7 @@ func cmdMan(ctx context.Context, args []string) (int, error) {
 		if err != nil {
 			return exitCannot, err
 		}
-		if err := os.WriteFile(*output, []byte(page), 0o644); err != nil {
+		if err := os.WriteFile(msysHostPath(*output), []byte(page), 0o644); err != nil {
 			return exitCannot, err
 		}
 		return exitOK, nil

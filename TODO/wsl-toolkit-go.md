@@ -12514,7 +12514,7 @@ the 7.2.0 kernel `.wslconfig` names. A session is its own VM.
 **Source** the operator, on 2026-10-21, in ruling 30: the wrappers projects like
 `podssh` write around this tool should not be necessary. `podssh`'s
 `scripts/dev-wsl.sh` is the example. Approved in ruling 30.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -12565,10 +12565,41 @@ Exit 0, with cases for each spelling. Then a job driven from Git Bash with
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** Where `MSYSTEM` is set, `msysHostPath` reads a host path in
+MSYS's spelling: `/c/...` on its drive, `/tmp/...` in `TEMP`, and any other `/...`
+under the MSYS root. Every host-path flag reads through it. `--script -` reads the
+command from stdin on every command that takes `--script`, and a detached owner gets
+it as a file in the job's directory. `run` and `base exec` gained `--env-file`, and
+the manual's Git Bash section names the two variables to export once.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven from Git Bash, with `MSYS_NO_PATHCONV=1` and `MSYS2_ARG_CONV_EXCL='*'`
+exported:**
+
+```text
+run --workspace "$PWD"                  exit 0; 2 entries, 74 B copied from .tmp\s111\proj
+printf ... | run --script -             exit 0; the piped command ran and saw its workspace
+run --env-file ./job.env                exit 0; both variables set, the MSYS-looking value untouched
+printf ... | run --detach --script -    exit 0; logs --follow printed both lines and exited 0
+--instance s110 base exec --dir /tmp    exit 0; --env-file applied, then --env over it
+the same, with no MSYS_NO_PATHCONV      exit 2; refused, naming Git Bash's rewrite of /tmp/
+```
+
+7 mutation rows, 7 of 7 red.
+
+
 ## WSL-112. A workspace copy takes what git ignores, so each project keeps its own exclude list
 
 **Source** the operator, on 2026-10-21, as `WSL-111`. Approved in ruling 30.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -12612,10 +12643,38 @@ whose untracked file goes in.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `--gitignore` asks git what it ignores in the workspace, with
+`ls-files --others --ignored --exclude-standard --directory`, and leaves that out of
+the copy. A workspace outside a git work tree is refused, and so is one its own
+repository ignores. `jobs.exclude` and `jobs.gitignore` in a project's
+`wsl-toolkit.json` apply to every job, beside what the command line adds, and `run
+--help` and the manual say how a pattern matches.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on this repository's own checkout**: `run --workspace "$PWD" --gitignore
+--exclude .git` copied 454 entries, 5.9 MiB, and left out the 3 paths git ignores,
+`.tmp` and `.codegraph` among them.
+
+⚠ **The mutation run found a case the design needed.** A temporary directory under
+this repository's ignored `.tmp` made git fail with "directory entry not superset of
+prefix". A workspace its repository ignores is now refused by name, before git is
+asked for its list.
+
+6 mutation rows, 6 of 6 red.
+
+
 ## WSL-113. Nothing stops two jobs of one project from running at once
 
 **Source** the operator, on 2026-10-21, as `WSL-111`. Approved in ruling 30.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -12661,10 +12720,43 @@ the lock when it is let go.
 
 ---
 
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `run --exclusive NAME` holds `locks/NAME.lock` under the state
+root for the job's whole life, in the process that owns the job, and writes the
+holder's id beside it. A second job is refused at once, naming the first and the
+`wait` for it, unless `--exclusive-wait D` gives it time. `run --detach` refuses
+before it starts an owner, a `matrix` holds the name once, and the helper route is
+refused.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on the jobs base:**
+
+```text
+run --detach --exclusive s113-build     exit 0, job 0178547fd5b10b18
+a second, attached                      exit 2: held by job 0178547fd5b10b18, and the wait for it
+a second, detached                      exit 2 before its owner started, in the same words
+a waiter with --exclusive-wait          exit 0 after 26 s, once the first let the name go
+wait 0178547fd5b10b18                   exit 0
+```
+
+⚠ **`WSL-118` bounds it.** The lock is in the state root, and a caller Windows
+redirects has a root of its own, so it holds the name only against callers on its
+side.
+
+3 mutation rows, 3 of 3 red.
+
+
 ## WSL-114. `gc` cannot be limited to one project's jobs
 
 **Source** the operator, on 2026-10-21, as `WSL-111`. Approved in ruling 30.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -12698,3 +12790,334 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 ```
 
 Exit 0, with a case where `gc --workspace` selects one of two jobs.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** A job records the workspace it copies in `jobs/ID/workspace`,
+written with the claim, so a job refused or killed before it finished is found too.
+The result carries it as `workspace`, and a `matrix` row records its fleet's.
+`gc --workspace DIR` reads DIR as `run --workspace` does and selects only the jobs
+whose record is DIR. A job with no record is not selected, a project with nothing
+left gets a note and exit 0, and the helper route is refused. `--images` is refused
+beside `--workspace` or `--job`, because a prune takes every image.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on the jobs base, with two projects:**
+
+```text
+run --workspace .tmp/s114/a, then b     two persistent jobs; jobs/ID/workspace names each project
+gc --workspace .tmp/s114/a --json       1 container, 1 guest directory, 1 host directory: a's alone
+the same, from inside a, as .           3 targets
+gc --workspace .tmp/s114/b --apply      b's container and both directories removed, exit 0
+matrix alpine,debian --workspace a      each row's result names a; the plan is 2, 2 and 2
+gc --workspace a --via-helper           exit 2: it does not cross the helper
+gc --workspace . --images               exit 2
+gc --job ID --workspace .               exit 2: pass one
+```
+
+8 mutation rows, 8 of 8 red.
+
+
+## WSL-115. `gc --job` with an id nothing here belongs to exits 0, having removed nothing
+
+**Source** the consumer survey of ruling 30: `podbox` measured `gc --job
+0b769b3dcc81`, a shortened id, exit 0 with nothing removed. Folded in under ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`gc --job ID` narrows the plan to the targets of job ID. An id with no target
+narrows it to nothing, and an empty plan exits 0. So a shortened id, a typo or an
+id from another instance reads as a job cleaned up. The direct route held the id
+only to the argument alphabet, where the helper route held it to an id's shape.
+
+## Premise
+
+Read: `cmdGC` in
+[`../tools/windows/wsl-toolkit/cmd_admin.go`](../tools/windows/wsl-toolkit/cmd_admin.go)
+checks `--job` with `AssertArgvSafe` alone. `CleanupPolicy.Select` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/cleanup.go`](../tools/windows/wsl-toolkit/internal/toolkit/cleanup.go)
+skips every target of another job. `HelperGCRequest.policy` refuses an id that is
+not 16 lowercase hex characters.
+
+## Approach
+
+- `gc --job` refuses an id that is not a job id, with exit 2, on both routes.
+- An id that no container, guest directory or host directory in this instance
+  belongs to is refused with exit 2, naming where the instance's jobs are listed.
+- A refusal prints no plan, so `--json` writes nothing to stdout.
+- The helper marks the refusal, so the helper route exits 2 with the same words.
+
+## Consumers
+
+⛔ A break: a `gc --job` for a job already cleaned up exited 0, and exits 2 now.
+[`../docs/consumers.md`](../docs/consumers.md) lists it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for a shortened id, an unknown id on each route, and a refusal
+that prints no plan.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `gc --job` holds an id to 16 lowercase hex characters on the
+direct route, as the helper did, and `CleanupPolicy.Unmatched` refuses an id that no
+container, guest directory or host directory belongs to. `finishGC` exits 2 for it
+and prints no plan. The helper marks the refusal `unknown`, so the helper route
+exits 2 too, with the words said once.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven:**
+
+```text
+gc --job 0b769b3dcc81                   exit 2: not a job id
+gc --job bbf7491ba3aa45ef, once gone    exit 2: no such job, and wsl-toolkit logs lists the jobs
+the same, with --json                   exit 2, and 0 bytes on stdout
+the same, with --via-helper             exit 2, with "no such job" said once
+```
+
+5 mutation rows, 5 of 5 red.
+
+
+## WSL-116. A printed command drops `--instance`, so it reaches the default instance
+
+**Source** the consumer survey of ruling 30: `podbox` makes every call with
+`--instance podbox`, and the commands this tool prints name no instance. Folded in
+under ruling 30.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+The commands this tool prints for a caller to run next name no instance. Under
+`--instance podbox`, the `logs`, `wait` and `stop` hints, the `follow`, `wait` and
+`stop` of a detached answer, and "Build it with: wsl-toolkit base ensure" all reach
+the default instance. Run as printed, a job hint answers "no such job", and the
+ensure hint builds another base.
+
+## Premise
+
+Read: `ToolCommand` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/catalog.go`](../tools/windows/wsl-toolkit/internal/toolkit/catalog.go)
+prefixes `--instance NAME` for a selected instance, and `WSL-106` used it for one
+remediation. `cmdRun`, `reportDetached`, `cmdBaseExec`, `cmdStop`, `cmdWait`,
+`cmdLogs` and the remediations in the toolkit spell their commands as literals.
+
+## Approach
+
+Every printed command a caller is told to run goes through `ToolCommand`. Help text,
+the examples table, and the machine-wide `selfupdate`, `version`, `doctor` and `man`
+keep their spelling.
+
+## Consumers
+
+Additive: the default instance's spelling does not change.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case under a selected instance for the job hints, the detached
+answer, the ensure hint and the unknown-job refusal.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `jobHints` and `errNotRegistered` spell the job, session and
+base hints through `ToolCommand`, and the other runnable hints go through it where
+they are: 72 sites in 31 files. Help text, the examples table and the machine-wide
+commands keep their spelling.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven on the scratch instance `s110`:**
+
+```text
+--instance s110 run --detach --json     follow, wait and stop each begin wsl-toolkit --instance s110
+the printed wait, run as printed        job 01362ef91e9da6c1 ended. Exit 0
+--instance s110 run, attached           Follow it with: wsl-toolkit --instance s110 logs ...
+--instance s110 gc --job DEFAULT-ID     exit 2, naming wsl-toolkit --instance s110 logs
+```
+
+4 mutation rows, 4 of 4 red.
+
+
+## WSL-117. `gc --apply` cannot remove a job's host directory when Windows redirects the state directory
+
+**Source** found while driving `WSL-114` on 2026-10-21, from a shell the Claude
+desktop app starts.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+`gc --apply` removed a job's container and guest directory, then failed on its host
+directory with `openfdat ...: too many levels of symbolic links`, and exited 1. The
+installed `6.0.0` failed the same way, as `unlinkat ...: is a directory`. Every job
+run from such a shell leaves its host directory behind, and no `gc` collects it.
+
+## Premise
+
+⭐ **Measured on 2026-10-21**: from the app's Bash tool, a job's host directory is
+in a package's own copy of `%LOCALAPPDATA%`, `WSL-118`. `os.Lstat` reads it as a
+plain directory and `os.RemoveAll` refuses it. `os.Remove` of each entry, then of
+the directory, removes it. Go's `os.RemoveAll` opens each directory relative to its
+parent and refuses to follow a link, and the redirected directory answers that open
+as one.
+
+Read: `RemoveInside` in
+[`../tools/windows/wsl-toolkit/internal/toolkit/paths.go`](../tools/windows/wsl-toolkit/internal/toolkit/paths.go)
+is the one deletion, and it calls `os.RemoveAll` alone.
+
+## Approach
+
+When `os.RemoveAll` fails and the target is still there, `RemoveInside` removes it
+entry by entry, by path, deepest first. A symbolic link or a junction is removed
+itself and never descended into. The read-back after it does not change.
+
+## Consumers
+
+Additive.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where the first removal fails and one where the tree holds a
+link. Then `gc --apply` from the app's Bash tool, on a job it ran.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `RemoveInside` removes entry by entry, by path, when
+`os.RemoveAll` fails and the target is still there. `removeByPath` never descends into
+a symbolic link or a junction, and removes the link itself.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven from the app's Bash tool:**
+
+```text
+6.0.0 gc --job a712a5a85392832a --apply     exit 1: unlinkat ...: is a directory
+this build, before the fix, another job     exit 1: openfdat ...: too many levels of symbolic links
+this build, after it, both and four more    exit 0: ok host directory, each one
+```
+
+2 mutation rows, 2 of 2 red.
+
+
+## WSL-118. A caller Windows redirects keeps a second state directory, and nothing says so
+
+**Source** found while driving `WSL-114` on 2026-10-21.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
+
+---
+
+## Problem
+
+A process the Claude desktop app's Bash tool starts writes this tool's state into
+`%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Local\wsl-toolkit`, and
+reads it back through `%LOCALAPPDATA%\wsl-toolkit`. A process outside that
+redirection, such as a terminal, sees none of it. Neither sees the other's jobs,
+ledger, `--exclusive` locks or configuration. So the two are two machines to this
+tool, and nothing it prints says so.
+
+## Premise
+
+⭐ **Measured on 2026-10-21**: a file written from the Bash tool under
+`%LOCALAPPDATA%\wsl-toolkit` is in the package's copy and not in the real directory,
+and the PowerShell tool sees only the real one. Neither has package identity:
+`GetCurrentPackageFullName` answers 15700 for both. The copy holds its own
+`config.json`, `base.json`, `ledger.jsonl`, `locks` and `jobs`. Through the
+redirected view every entry of the copy is the same file as home's, by
+`os.SameFile`, and through the plain view none is.
+
+## Approach
+
+`StateCopies` finds each package that keeps a copy of the state root, writing
+nothing, and reads by file identity which side this process is on. `doctor` and
+`config` name each copy, the side, and the two ways out: one kind of shell for
+every caller, or `WSL_TOOLKIT_HOME` outside `%LOCALAPPDATA%`.
+
+⛔ The tool does not move its state on its own. A home it moved would be a third
+directory, and a terminal would not follow it.
+
+## Consumers
+
+Additive: `doctor --json` gains `host.state_copies`, and `config --json` gains
+`state_copies`.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for a copy on each side and for a home outside
+`%LOCALAPPDATA%`. Then `config` from each shell.
+
+---
+
+---
+
+## Closing
+
+**Closed 2026-10-21T05:25:50Z.** `StateCopies` reads `%LOCALAPPDATA%\Packages\*\LocalCache\Local\`
+for a copy of the state root, writing nothing, and `os.SameFile` decides which side
+this process is on. `doctor` carries `host.state_copies` with a note for each copy,
+and `config` prints a line under `home` and carries `state_copies`. The manual's
+known limits and its `--exclusive` section say what it bounds.
+
+```text
+pwsh -NoProfile -File scripts/common/check-go.ps1     exit 0 in 72 s
+  ok     go
+```
+
+⭐ **Driven:**
+
+```text
+config, from the Bash tool          copy ... THIS process writes there
+config, from the PowerShell tool    copy ... a process Windows redirects into that package writes there, and this one does not
+```
+
+3 mutation rows, 3 of 3 red.

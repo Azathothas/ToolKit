@@ -84,7 +84,7 @@ func (r *Runner) StopJob(ctx context.Context, id string, grace time.Duration) (S
 		return rep, err
 	}
 	if !known {
-		return rep, fmt.Errorf("%w: %s. wsl-toolkit logs lists the jobs this machine still has", ErrUnknownJob, id)
+		return rep, fmt.Errorf("%w: %s. %s lists the jobs this machine still has", ErrUnknownJob, id, ToolCommand("logs"))
 	}
 	if err := r.ledger.Append(LedgerEntry{Event: "stop", Kind: "job", ID: id, Note: "requested by wsl-toolkit stop"}); err != nil {
 		return rep, fmt.Errorf("could not record the stop before acting on it: %w", err)

@@ -32,6 +32,8 @@ type baseExecFlags struct {
 	command    string
 	commandB64 string
 	scriptFile string
+	env        stringList
+	envFile    string
 	dir        string
 	timeout    time.Duration
 	asRoot     bool
@@ -44,7 +46,9 @@ type baseExecFlags struct {
 func (e *baseExecFlags) bind(fs *flag.FlagSet) {
 	fs.StringVar(&e.command, "c", "", "the POSIX shell command to run in the base")
 	fs.StringVar(&e.commandB64, "command-base64", "", "the command as base64 of its bytes, for a caller that must keep every shell away from it")
-	fs.StringVar(&e.scriptFile, "script", "", "a file on this machine whose bytes are the command")
+	fs.StringVar(&e.scriptFile, "script", "", "a file on this machine whose bytes are the command, or - to read them from stdin")
+	fs.Var(&e.env, "env", "NAME=VALUE exported to the command. Repeatable, and applied after --env-file")
+	fs.StringVar(&e.envFile, "env-file", "", "a file on this machine of NAME=VALUE lines exported to the command")
 	fs.StringVar(&e.dir, "dir", "~", "working directory inside the guest. Default is its home")
 	fs.DurationVar(&e.timeout, "timeout", 30*time.Minute, "how long the command may run. 0 means no deadline")
 	fs.BoolVar(&e.asRoot, "root", false, "run as root instead of the configured account")
@@ -59,6 +63,14 @@ func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) 
 	if err != nil {
 		return toolkit.ExecRequest{}, err
 	}
+	// ⭐ THE VARIABLES BECOME PART OF THE COMMAND, through the one writer `distro`
+	// uses, so they reach it the same way attached, detached and in a private
+	// namespace, and no value is ever typed into a shell. WSL-111.
+	pairs, err := e.envPairs(cfg)
+	if err != nil {
+		return toolkit.ExecRequest{}, err
+	}
+	payload = toolkit.ComposePayload(payload, pairs, false)
 	if e.timeout < 0 {
 		return toolkit.ExecRequest{}, fmt.Errorf("--timeout %s is negative. Pass 0 for no deadline, or a positive duration", e.timeout)
 	}
@@ -141,7 +153,7 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	if !exists {
-		return exitCannot, fmt.Errorf("%s is not registered. Build it with: wsl-toolkit base ensure", cfg.Base.Name)
+		return exitCannot, errNotRegistered(cfg.Base.Name)
 	}
 	if opts.detach {
 		return detachSession(ctx, w, req, opts)
@@ -167,18 +179,19 @@ func detachSession(ctx context.Context, w *toolkit.Wsl, req toolkit.ExecRequest,
 	if err != nil {
 		return exitCannot, err
 	}
+	followCmd, waitCmd, stopCmd := jobHints(rec.ID)
 	if opts.asJSON {
 		return exitOK, writeJSON(map[string]any{
 			"schema": DetachedSchema, "id": rec.ID, "kind": "session",
 			"distro": rec.Distro, "user": rec.User, "guest_dir": rec.GuestDir,
-			"follow": "wsl-toolkit logs " + rec.ID + " --follow",
-			"wait":   "wsl-toolkit wait " + rec.ID,
-			"stop":   "wsl-toolkit stop " + rec.ID,
+			"follow": followCmd,
+			"wait":   waitCmd,
+			"stop":   stopCmd,
 		})
 	}
 	fmt.Println(rec.ID)
-	logf("  session %s runs in %s as %s, with no client attached. Follow: wsl-toolkit logs %s --follow. Wait: wsl-toolkit wait %s. Stop: wsl-toolkit stop %s",
-		rec.ID, rec.Distro, rec.User, rec.ID, rec.ID, rec.ID)
+	logf("  session %s runs in %s as %s, with no client attached. Follow: %s. Wait: %s. Stop: %s",
+		rec.ID, rec.Distro, rec.User, followCmd, waitCmd, stopCmd)
 	return exitOK, nil
 }
 
@@ -198,4 +211,36 @@ func baseExecResult(code int, runErr error) (int, error) {
 		return code, nil
 	}
 	return code, runErr
+}
+
+// envPairs reads --env-file, then every --env, in that order, so a later value
+// for a name wins the way a shell would make it win.
+func (e baseExecFlags) envPairs(cfg toolkit.Config) ([]toolkit.EnvPair, error) {
+	var pairs []toolkit.EnvPair
+	if e.envFile != "" {
+		path, err := pathFromProject(cfg, e.envFile)
+		if err != nil {
+			return nil, fmt.Errorf("--env-file: %w", err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("--env-file: %w", err)
+		}
+		filePairs, err := toolkit.ParseEnvFile(data, path)
+		if err != nil {
+			return nil, fmt.Errorf("--env-file %w", err)
+		}
+		pairs = append(pairs, filePairs...)
+	}
+	for _, raw := range e.env {
+		if err := gitBashRewrite("--env", raw, guestText); err != nil {
+			return nil, err
+		}
+		p, err := toolkit.ParseEnvPair(raw)
+		if err != nil {
+			return nil, fmt.Errorf("--env %w", err)
+		}
+		pairs = append(pairs, p)
+	}
+	return pairs, nil
 }

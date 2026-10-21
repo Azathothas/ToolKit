@@ -50,7 +50,41 @@ func gitBashRewrite(flagName, value string, path bool) error {
 	}
 	return fmt.Errorf("%s %q is Git Bash's rewrite%s: MSYS turns an argument that begins with / into a Windows path before this program starts, "+
 		"and the guest has no such path. Pass MSYS_NO_PATHCONV=1 and MSYS2_ARG_CONV_EXCL='*' on the call, "+
-		"or pass the command as --command-base64 or --script", flagName, value, of)
+		"or pass the command as --command-base64 or --script. With the two set, a host path in MSYS's spelling, such as --workspace \"$PWD\", is still read", flagName, value, of)
+}
+
+// msysHostPath is a HOST path a caller in Git Bash wrote the MSYS way, read the
+// way MSYS would have rewritten it: `/c/x` on drive C, `/tmp/x` in the temporary
+// directory, and any other `/x` under the MSYS root. Anything else, and anything
+// outside an MSYS program, is returned unchanged.
+//
+// ⭐ IT IS WHAT LETS A GIT BASH SCRIPT CALL THIS TOOL DIRECTLY. With
+// MSYS_NO_PATHCONV=1 a guest path survives, and `--workspace "$PWD"` arrives as
+// `/c/Users/...`, which Windows reads as a directory on the current drive's root.
+// The podssh project carried a PowerShell bridge, a `win_path` and a scratch file
+// per script to get past exactly that. WSL-111.
+//
+// ⛔ HOST PATHS ONLY. A guest value that begins with `/` is the guest's own path
+// and is never translated.
+func msysHostPath(value string) string {
+	if strings.TrimSpace(os.Getenv("MSYSTEM")) == "" || !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") {
+		return value
+	}
+	rest := value[1:]
+	head, tail, _ := strings.Cut(rest, "/")
+	if len(head) == 1 && ((head[0] >= 'a' && head[0] <= 'z') || (head[0] >= 'A' && head[0] <= 'Z')) {
+		return strings.ToUpper(head) + ":/" + tail
+	}
+	if head == "tmp" {
+		if t := forwardSlashed(os.Getenv("TEMP")); t != "" {
+			return strings.TrimSuffix(t+"/"+tail, "/")
+		}
+		return value
+	}
+	if root := msysRoot(); root != "" {
+		return root + "/" + rest
+	}
+	return value
 }
 
 // gitBashRewriteAny applies gitBashRewrite to each value of a repeatable flag

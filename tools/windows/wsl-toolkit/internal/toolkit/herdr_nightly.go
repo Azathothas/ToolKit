@@ -182,7 +182,7 @@ func herdrClientArch() (string, error) {
 // entry that would land outside the client's directory refuses the whole zip.
 func ensureHerdrClient(ctx context.Context, home, tag string, log func(string)) (string, error) {
 	if !herdrNightlyTagRE.MatchString(tag) {
-		return "", fmt.Errorf("the base reports herdr release %q, which is not a nightly's tag. Run: wsl-toolkit base ensure", tag)
+		return "", fmt.Errorf("the base reports herdr release %q, which is not a nightly's tag. Run: %s", tag, ToolCommand("base ensure"))
 	}
 	arch, err := herdrClientArch()
 	if err != nil {

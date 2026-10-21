@@ -78,7 +78,7 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 				})
 			}
 			logf("  no helper is answering: %s", err.Error())
-			logf("  start one with: wsl-toolkit helper serve --detach")
+			logf("  start one with: %s", toolkit.ToolCommand("helper serve --detach"))
 			return exitFailed, nil
 		}
 		st, err := c.Status(ctx)

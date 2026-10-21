@@ -222,6 +222,10 @@ type JobConfig struct {
 	ContainerLifecycle string `json:"container_lifecycle"`
 	Platform           string `json:"platform,omitempty"`
 	Workspace          string `json:"workspace,omitempty"`
+	// Exclude and Gitignore are what every job's workspace copy leaves out, beside
+	// what a command line adds. WSL-112.
+	Exclude   []string `json:"exclude,omitempty"`
+	Gitignore bool     `json:"gitignore,omitempty"`
 }
 
 // Config is the stored configuration. Every field has a compiled-in default, so
@@ -514,6 +518,10 @@ func LoadConfig() (Config, error) {
 	if stored.Jobs.Workspace != "" {
 		cfg.Jobs.Workspace = stored.Jobs.Workspace
 	}
+	if stored.Jobs.Exclude != nil {
+		cfg.Jobs.Exclude = stored.Jobs.Exclude
+	}
+	cfg.Jobs.Gitignore = stored.Jobs.Gitignore
 	cfg.Images = stored.Images
 	cfg.Matrix = stored.Matrix
 	if err := cfg.Validate(); err != nil {
@@ -661,6 +669,16 @@ func (c Config) Validate() error {
 	}
 	if _, err := NormalizePlatform(c.Jobs.Platform); err != nil {
 		return fmt.Errorf("jobs.platform: %w", err)
+	}
+	// ⛔ A PATTERN path.Match CANNOT READ MATCHES NOTHING AND SAYS NOTHING, so the
+	// copy it was meant to trim goes out whole. It is refused where it is written.
+	for i, pat := range c.Jobs.Exclude {
+		if strings.TrimSpace(pat) == "" {
+			return fmt.Errorf("jobs.exclude[%d] is empty, which excludes nothing", i)
+		}
+		if _, err := path.Match(pat, ""); err != nil {
+			return fmt.Errorf("jobs.exclude[%d] %q is not a pattern: %w", i, pat, err)
+		}
 	}
 	seen := map[string]bool{}
 	for _, img := range c.Images {

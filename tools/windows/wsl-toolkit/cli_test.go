@@ -327,19 +327,19 @@ func TestJobFlagsRefuseValuesThatMeanSomethingElse(t *testing.T) {
 func TestEnvNamesAreRefusedWhereTheyAreTyped(t *testing.T) {
 	var j jobFlags
 	j.env = stringList{"BAD-NAME=must-not-drop"}
-	if _, err := j.envMap(); err == nil {
+	if _, err := j.envMap(toolkit.Config{}); err == nil {
 		t.Fatal("--env BAD-NAME=x was accepted. It was then dropped when the container was invoked, so the job ran without it and nothing said so")
 	} else if !strings.Contains(err.Error(), "BAD-NAME") {
 		t.Errorf("the refusal does not name the variable the caller typed: %v", err)
 	}
 
 	j.env = stringList{"NOT_A_PAIR"}
-	if _, err := j.envMap(); err == nil {
+	if _, err := j.envMap(toolkit.Config{}); err == nil {
 		t.Error("--env NOT_A_PAIR was accepted")
 	}
 
 	j.env = stringList{"GOOD_NAME=1", "_also_good=", "A1=x"}
-	got, err := j.envMap()
+	got, err := j.envMap(toolkit.Config{})
 	if err != nil {
 		t.Fatalf("legitimate names were refused: %v", err)
 	}
@@ -492,6 +492,7 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 		"workspace":   "StagingID",
 		"artifactDir": "Artifacts",
 		"env":         "Env",
+		"envFile":     "Env",
 		"timeout":     "TimeoutMS",
 		"noNetwork":   "Network",
 		"user":        "User",
@@ -506,10 +507,13 @@ func TestEveryJobFlagCrossesTheWire(t *testing.T) {
 	}
 	// Fields that are the CLIENT's own business and correctly never sent.
 	local := map[string]string{
-		"excludes":  "applied by the client while it builds the upload, so the helper never sees a glob",
-		"asJSON":    "how this process renders its own answer",
-		"ensure":    "the client calls BaseEnsure itself before it sends the job",
-		"viaHelper": "the routing decision, which is what chose this path",
+		"excludes":      "applied by the client while it builds the upload, so the helper never sees a glob",
+		"gitignore":     "applied by the client while it builds the upload, from git on the client's own machine",
+		"exclusive":     "held by the process that owns the job, and refused with --via-helper",
+		"exclusiveWait": "how long that process waits for the name",
+		"asJSON":        "how this process renders its own answer",
+		"ensure":        "the client calls BaseEnsure itself before it sends the job",
+		"viaHelper":     "the routing decision, which is what chose this path",
 	}
 
 	spec := reflect.TypeOf(jobFlags{})
