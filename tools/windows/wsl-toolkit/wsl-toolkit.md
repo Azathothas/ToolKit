@@ -242,6 +242,10 @@ the failed read is logged and the job runs on. When it exits, the failed read is
 logged and the container's own exit code stands. A job waiting
 for its `--exclusive` name reads again on its next poll. `WSL-173`
 
+⭐ **Lines a killed write left behind do not refuse a job.** The lines that parse
+are searched for a stop, and a stop among them is honoured. The next record
+starts on its own line. `WSL-173`
+
 ⭐ **One lock serializes every write to the ledger, across processes.** A `gc --apply`
 in one process loses no record a `run` or the helper writes in another. `WSL-185`
 

@@ -2,11 +2,38 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a stop among unreadable ledger lines is read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\tentries, err := l.All()\n\tfor _, e := range entries {\n",
+      "replace": "\tentries, err := l.All()\n\tif err != nil {\n\t\treturn false, err\n\t}\n\tfor _, e := range entries {\n",
+      "run": "TestAStopAmongUnreadableLinesIsRead",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job runs over a ledger with mostly unreadable lines",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\tif err != nil && !errors.As(err, &unreliable) {\n",
+      "replace": "\tif err != nil && unreliable == nil {\n",
+      "run": "TestAJobRunsOverALedgerWithMostlyUnreadableLines",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a ledger append ends a torn line before its record",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\tif torn {\n\t\tline = append([]byte{'\\n'}, line...)\n\t}\n",
+      "replace": "\t_ = torn\n",
+      "run": "TestARecordAppendedAfterATornLineIsRead",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: an unreadable ledger is an error to the stop check, not no stop",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/jobctl.go",
-      "find": "\tentries, err := l.All()\n\tif err != nil {\n\t\treturn false, err\n",
-      "replace": "\tentries, err := l.All()\n\tif err != nil {\n\t\treturn false, nil\n",
+      "find": "\tif err != nil && !errors.As(err, &unreliable) {\n\t\treturn false, err\n",
+      "replace": "\tif err != nil && !errors.As(err, &unreliable) {\n\t\treturn false, nil\n",
       "run": "TestAnUnreadableLedgerIsNotReadAsNoStop",
       "args": []
     },
@@ -32,8 +59,8 @@
       "label": "wsl-toolkit: a ledger read waits out a rewrite holding the file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/ledger.go",
-      "find": "\t\tif data, err = os.ReadFile(path); err == nil || !ledgerReadBusy(err) {\n",
-      "replace": "\t\tif data, err = os.ReadFile(path); err == nil || true {\n",
+      "find": "\t\tif data, err = ledgerReadFile(path); err == nil || !ledgerReadBusy(err) {\n",
+      "replace": "\t\tif data, err = ledgerReadFile(path); err == nil || true {\n",
       "run": "TestAStopIsReadWhileARewriteHoldsTheLedger",
       "args": []
     },

@@ -3,6 +3,7 @@
 package toolkit
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -80,8 +81,11 @@ func TestAStopSurvivesCompactionWhileItsJobDirectoryExists(t *testing.T) {
 
 // ⚠ THE HOLD IS AN OPEN WITH NO SHARING, which is what a rename does to the file
 // it replaces on Windows. Elsewhere the hold is an advisory lock no read sees,
-// so these cases prove nothing there and pass.
+// so these cases skip there rather than pass without proving anything.
 func TestAStopIsReadWhileARewriteHoldsTheLedger(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("only a Windows open refuses a read")
+	}
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	l, err := OpenLedger()
 	if err != nil {
@@ -134,22 +138,40 @@ func TestALedgerReadHeldPastItsRetriesFails(t *testing.T) {
 	}
 }
 
-// unreadableLedger is a ledger whose lines mostly do not parse, which All
-// reports as an error on any host. It stands in for a read refused past its
-// retries, which only Windows can stage.
-func unreadableLedger(t *testing.T, home string) *Ledger {
+// refusedLedger is a ledger whose every read is refused, as a read held past its
+// retries is. Only Windows can stage that for real, so the read itself answers
+// the refusal here, on any host.
+func refusedLedger(t *testing.T, home string) *Ledger {
 	t.Helper()
 	path := filepath.Join(home, "ledger.jsonl")
-	if err := os.WriteFile(path, []byte(strings.Repeat("not a record\n", 5)), 0o600); err != nil {
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { ledgerReadFile = os.ReadFile })
+	ledgerReadFile = func(string) ([]byte, error) { return nil, errors.New("the read was refused") }
 	return &Ledger{path: path}
+}
+
+// mostlyUnreadableLedger is a ledger that reads, with more lines that do not
+// parse than lines that do: what killed writes leave behind.
+func mostlyUnreadableLedger(t *testing.T, home string, records ...LedgerEntry) *Ledger {
+	t.Helper()
+	l := &Ledger{path: filepath.Join(home, "ledger.jsonl")}
+	if err := os.WriteFile(l.path, []byte(strings.Repeat("not a record\n", 5)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range records {
+		if err := l.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return l
 }
 
 // ⛔ A LEDGER THAT CANNOT BE READ IS NOT "NO STOP". Every reader of the stop got
 // false for an error, so a stopped job ran on. WSL-173.
 func TestAnUnreadableLedgerIsNotReadAsNoStop(t *testing.T) {
-	l := unreadableLedger(t, t.TempDir())
+	l := refusedLedger(t, t.TempDir())
 	if _, err := l.All(); err == nil {
 		t.Fatal("the staged ledger read without an error, so this case proves nothing")
 	}
@@ -174,7 +196,7 @@ func TestAJobWhoseLedgerCannotBeReadIsNotStarted(t *testing.T) {
 	t.Setenv(staleFakeWslEnv, dir)
 	t.Setenv("WSL_TOOLKIT_HOME", home)
 	cfg := Config{Base: BaseConfig{Name: "wsl-toolkit-stale", Image: "docker.io/library/alpine:latest", User: "agent"}}
-	r := &Runner{cfg: cfg, wsl: &Wsl{Path: self}, home: home, ledger: unreadableLedger(t, home), log: func(string) {}}
+	r := &Runner{cfg: cfg, wsl: &Wsl{Path: self}, home: home, ledger: refusedLedger(t, home), log: func(string) {}}
 	res := r.Run(t.Context(), JobSpec{
 		Image: "docker.io/library/alpine:latest", Script: []byte("true\n"),
 		ContainerLifecycle: ContainerEphemeral,
@@ -198,12 +220,79 @@ func TestAJobWhoseLedgerCannotBeReadIsNotStarted(t *testing.T) {
 // SAID. It was silently read as no stop. WSL-173.
 func TestAnExitReadWithoutTheLedgerSaysWhy(t *testing.T) {
 	var said []string
-	r := &Runner{ledger: unreadableLedger(t, t.TempDir()), log: func(s string) { said = append(said, s) }}
+	r := &Runner{ledger: refusedLedger(t, t.TempDir()), log: func(s string) { said = append(said, s) }}
 	if r.EndedByStop(testJobID, 143) {
 		t.Fatal("an exit read without the ledger was taken as a stop")
 	}
 	if !strings.Contains(strings.Join(said, "\n"), "could not read whether job "+testJobID+" was stopped") {
 		t.Fatalf("the failed read was not said: %q", said)
+	}
+}
+
+// -- WSL-173: a ledger with mostly unreadable lines still answers a stop -------
+
+// ⛔ A STOP THAT PARSED IS HONOURED AMONG LINES THAT DID NOT. The lines that
+// parsed were thrown away with the error, and a stopped job answered exit 2.
+func TestAStopAmongUnreadableLinesIsRead(t *testing.T) {
+	l := mostlyUnreadableLedger(t, t.TempDir(), LedgerEntry{Event: "stop", Kind: "job", ID: testJobID})
+	if _, err := l.All(); err == nil {
+		t.Fatal("the staged ledger read without an error, so this case proves nothing")
+	}
+	if got, err := stopRecordedIn(l, testJobID); err != nil || !got {
+		t.Fatalf("a stop that parsed answered stopped %v: %v", got, err)
+	}
+}
+
+// ⛔ LINES THAT DO NOT PARSE ARE NOT A FAILED READ, and the job runs as it did
+// before the check. A torn line refused every job until the file was edited by
+// hand. WSL-173.
+func TestAJobRunsOverALedgerWithMostlyUnreadableLines(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(staleFakeWslEnv, dir)
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	cfg := Config{Base: BaseConfig{Name: "wsl-toolkit-stale", Image: "docker.io/library/alpine:latest", User: "agent"}}
+	r := &Runner{cfg: cfg, wsl: &Wsl{Path: self}, home: home, ledger: mostlyUnreadableLedger(t, home), log: func(string) {}}
+	res := r.Run(t.Context(), JobSpec{
+		Image: "docker.io/library/alpine:latest", Script: []byte("true\n"),
+		ContainerLifecycle: ContainerEphemeral,
+	})
+	if res.Unreached || res.Stopped {
+		t.Fatalf("a job over a ledger with unreadable lines answered exit %d, unreached %v, stopped %v: %s", res.Exit, res.Unreached, res.Stopped, res.Error)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "job@") {
+		t.Fatalf("the container never ran; calls %v", strings.Fields(string(data)))
+	}
+}
+
+// ⛔ A RECORD APPENDED AFTER A TORN LINE IS ITS OWN LINE. It joined the torn line,
+// so the next job's open record was unreadable and cleanup missed it. WSL-173.
+func TestARecordAppendedAfterATornLineIsRead(t *testing.T) {
+	l := &Ledger{path: filepath.Join(t.TempDir(), "ledger.jsonl")}
+	torn := `{"schema":"` + LedgerSchema + `","event":"op`
+	if err := os.WriteFile(l.path, []byte(torn), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Append(LedgerEntry{Event: "open", Kind: "job", ID: testJobID}); err != nil {
+		t.Fatal(err)
+	}
+	open, err := l.Open()
+	if err != nil {
+		t.Fatalf("the ledger after one torn line and one record did not read: %v", err)
+	}
+	if len(open) != 1 || open[0].ID != testJobID {
+		t.Fatalf("the record appended after a torn line was lost: %+v", open)
 	}
 }
 
