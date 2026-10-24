@@ -2,6 +2,132 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: only the owner's ensure applies the engines",
+      "file": "internal/toolkit/engines.go",
+      "find": "\tif err := b.assertOwner(\"changed\", \"base ensure\"); err != nil {\n\t\tb.log(\"the engines are left",
+      "replace": "\tif err := b.assertOwner(\"changed\", \"base ensure\"); false && err != nil {\n\t\tb.log(\"the engines are left",
+      "run": "TestOnlyTheOwnersEnsureAppliesTheEngines",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed engines step fails the ensure with its state",
+      "file": "internal/toolkit/engines.go",
+      "find": "\tif err != nil || code != 0 {\n\t\treturn fmt.Errorf(\"the engines: engines.sh exited",
+      "replace": "\tif false && (err != nil || code != 0) {\n\t\treturn fmt.Errorf(\"the engines: engines.sh exited",
+      "run": "TestAFailedEnginesStepFailsTheEnsureWithTheState",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop that signalled nothing does not say it did",
+      "file": "cmd_jobs.go",
+      "find": "\tif !rep.Stopped && rep.Leftovers == \"\" {\n\t\treturn \"\"\n\t}\n",
+      "replace": "",
+      "run": "TestAStopOfAnEndedSessionSaysOnlyWhatItReached",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop of an ended session keeps exit 0 over its leftovers",
+      "file": "cmd_jobs.go",
+      "find": "\t\trep.Leftovers = \"running\"\n",
+      "replace": "\t\trep.Leftovers, rep.After = \"running\", \"running\"\n",
+      "run": "TestAStopOfAnEndedSessionSaysOnlyWhatItReached",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a matrix row says its limits under it",
+      "file": "cmd_run.go",
+      "find": "\tif line := limitsLine(row.Limits); line != \"\" {\n\t\tlines = append(lines,",
+      "replace": "\tif line := limitsLine(row.Limits); false && line != \"\" {\n\t\tlines = append(lines,",
+      "run": "TestAMatrixRowSaysWhetherItsLimitsHeld",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed image load under --json writes its document",
+      "file": "cmd_base_image.go",
+      "find": "\t\trep.Error = err.Error()\n\t\t_ = writeJSON(rep)\n",
+      "replace": "\t\t_ = rep\n",
+      "run": "TestAFailedImageLoadAnswersItsJSON",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's deadline reaches what an ended payload left in its scope",
+      "file": "internal/toolkit/session.go",
+      "find": "{ [ ! -e \"$d/timedout\" ] && ! systemctl --user is-active --quiet \"$u\" 2>/dev/null; }",
+      "replace": "[ ! -e \"$d/timedout\" ]",
+      "run": "TestASessionInAScopeIsReachedWholeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a payload that ended before its deadline is not read as timed out",
+      "file": "internal/toolkit/session.go",
+      "find": "if [ -e \"$d/exit\" ]; then late=1; else",
+      "replace": "if false; then late=1; else",
+      "run": "TestASessionInAScopeIsReachedWholeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: root's engine takes cgroupfs where there is no system bus",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  if [ \"$systemd_up\" != true ] || [ ! -S /run/dbus/system_bus_socket ]; then\n    manager=cgroupfs",
+      "replace": "  if false; then\n    manager=cgroupfs",
+      "run": "TestEnginesShWritesEachSettingsFileInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: root's engine always takes the file event log",
+      "file": "internal/toolkit/engines.sh",
+      "find": "    printf '%s\\n' 'events_logger = \"file\"'\n",
+      "replace": "    :\n",
+      "run": "TestEnginesShWritesEachSettingsFileInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the runtime-dir profile names the jobs' runtime directory",
+      "file": "internal/toolkit/engines.sh",
+      "find": "    XDG_RUNTIME_DIR=\\$_wtk_run; export XDG_RUNTIME_DIR\n",
+      "replace": "    :\n",
+      "run": "TestEnginesShWritesEachSettingsFileInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the kvm unit opens /dev/kvm to its group",
+      "file": "internal/toolkit/engines.sh",
+      "find": "ExecStart=chmod g+rw /dev/kvm\n",
+      "replace": "",
+      "run": "TestEnginesShWritesEachSettingsFileInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the delegation hands the account cpuset and io as well",
+      "file": "internal/toolkit/engines.sh",
+      "find": "'[Service]' 'Delegate=cpu cpuset io memory pids'",
+      "replace": "'[Service]' 'Delegate=cpu memory pids'",
+      "run": "TestEnginesShWritesEachSettingsFileInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh waits for a session bus only where one can start",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  i=10\n  for unit in",
+      "replace": "  i=0\n  for unit in",
+      "run": "TestEnginesShWritesEachSettingsFileInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a session runs in its own scope where the user manager answers",
       "file": "internal/toolkit/session.go",
       "find": "if [ -n \"$u\" ]; then\n  setsid systemd-run --user --scope",
@@ -31,7 +157,7 @@
     {
       "label": "wsl-toolkit: a timed-out session in a scope keeps its watchdog to the KILL",
       "file": "internal/toolkit/session.go",
-      "find": "if [ -n \"$w\" ] && { [ -z \"$u\" ] || [ ! -e \"$d/timedout\" ]; }; then kill \"$w\" 2>/dev/null; fi",
+      "find": "if [ -n \"$w\" ] && { [ -z \"$u\" ] || { [ ! -e \"$d/timedout\" ] && ! systemctl --user is-active --quiet \"$u\" 2>/dev/null; }; }; then kill \"$w\" 2>/dev/null; fi",
       "replace": "if [ -n \"$w\" ]; then kill \"$w\" 2>/dev/null; fi",
       "run": "TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted|TestASessionInAScopeIsReachedWholeInARealShell",
       "module": "tools/windows/wsl-toolkit",

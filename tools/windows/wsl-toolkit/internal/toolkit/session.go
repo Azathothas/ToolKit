@@ -297,15 +297,16 @@ w=
 if [ "$to" -gt 0 ]; then
   ( trap "kill \$s 2>/dev/null; exit 0" TERM
     sleep "$to" & s=$!; wait "$s"
-    : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null
+    late=
+    if [ -e "$d/exit" ]; then late=1; else : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null; fi
     if [ -n "$u" ]; then systemctl --user kill --signal=TERM "$u" >/dev/null 2>&1; fi
     sleep "$grace" & s=$!; wait "$s"
-    kill -KILL "-$p" 2>/dev/null
+    if [ -z "$late" ]; then kill -KILL "-$p" 2>/dev/null; fi
     if [ -n "$u" ]; then systemctl --user kill --signal=KILL "$u" >/dev/null 2>&1; fi ) </dev/null >/dev/null 2>&1 &
   w=$!
 fi
 wait "$p"; code=$?
-if [ -n "$w" ] && { [ -z "$u" ] || [ ! -e "$d/timedout" ]; }; then kill "$w" 2>/dev/null; fi
+if [ -n "$w" ] && { [ -z "$u" ] || { [ ! -e "$d/timedout" ] && ! systemctl --user is-active --quiet "$u" 2>/dev/null; }; }; then kill "$w" 2>/dev/null; fi
 date -u +%Y-%m-%dT%H:%M:%SZ > "$d/ended"
 printf "%s\n" "$code" > "$d/exit.tmp" && mv -f "$d/exit.tmp" "$d/exit"
 ' wtk-session "$d" ` + strconv.FormatInt(to, 10) + " " + strconv.FormatInt(g, 10) + ` "$u" </dev/null >/dev/null 2>&1 &
@@ -325,6 +326,11 @@ if [ -n "$u" ]; then printf 'UNIT|%s\n' "$u"; fi
 // ⛔ THE WATCHDOG IS LEFT RUNNING PAST A DEADLINE ONLY IN A SCOPE. There its KILL
 // after the grace reaches what ignored the TERM and outlived the payload's own
 // shell; a process group keeps the behaviour it had. WSL-126.
+//
+// ⛔ AND IN A SCOPE IT OUTLIVES A PAYLOAD THAT ENDED FIRST, while the scope still
+// holds a process. A daemon the payload left there outlived the deadline until
+// someone ran stop. At the deadline it signals the scope alone: the session's
+// own answer stands, and timedout is not written. WSL-126.
 const sessionScopeProbe = `u=
 if command -v systemd-run >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 &&
   systemd-run --user --scope --quiet --collect -- true </dev/null >/dev/null 2>&1; then

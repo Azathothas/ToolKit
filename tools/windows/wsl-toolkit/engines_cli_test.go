@@ -5,6 +5,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,7 +79,42 @@ func TestAJobsAnswerSaysWhetherItsLimitsHeld(t *testing.T) {
 	}
 }
 
+// ⛔ A MATRIX ROW SAYS ITS LIMITS UNDER IT, AND A ROW WITH NONE PRINTS ONE LINE,
+// as before. WSL-136.
+func TestAMatrixRowSaysWhetherItsLimitsHeld(t *testing.T) {
+	row := toolkit.JobResult{Label: "alpine", Exit: 0}
+	if got := rowLines(row); len(got) != 1 || !strings.Contains(got[0], "ok") || !strings.Contains(got[0], "alpine") {
+		t.Fatalf("a row with no limit prints %q", got)
+	}
+	row.Limits = &toolkit.LimitsReport{MemoryBytes: 64 << 20, Enforced: toolkit.LimitsUnenforced}
+	got := rowLines(row)
+	if len(got) != 2 || !strings.Contains(got[1], "! limits memory 64.0 MiB: NOT enforced") {
+		t.Fatalf("a row whose limit went unenforced prints %q", got)
+	}
+}
+
 // -- WSL-130: base image load and base.runtime_dir ------------------------------
+
+// ⛔ A FAILED LOAD UNDER --json STILL WRITES ITS DOCUMENT, with the reason in
+// error, and keeps its exit code. WSL-130.
+func TestAFailedImageLoadAnswersItsJSON(t *testing.T) {
+	rep := toolkit.ImageLoad{Schema: toolkit.ImageLoadSchema, Source: "docker.io/library/alpine:3.20", Kind: toolkit.ImageSourceHost, Distro: "wsl-toolkit", User: "toolkit"}
+	var code int
+	var err error
+	out := captureStdout(t, func() {
+		code, err = imageLoadFailed(rep, true, exitFailed, errors.New("wslc save docker.io/library/alpine:3.20: exit status 1"))
+	})
+	var got toolkit.ImageLoad
+	if jerr := json.Unmarshal([]byte(out), &got); jerr != nil {
+		t.Fatalf("a failed load under --json wrote %q: %v", out, jerr)
+	}
+	if code != exitFailed || err == nil || got.Schema != toolkit.ImageLoadSchema || !strings.Contains(got.Error, "wslc save") {
+		t.Fatalf("a failed load answered %d, %v, %+v", code, err, got)
+	}
+	if out := captureStdout(t, func() { _, _ = imageLoadFailed(rep, false, exitFailed, errors.New("x")) }); out != "" {
+		t.Fatalf("a failed load without --json wrote %q to stdout", out)
+	}
+}
 
 func TestBaseImageLoadReadsAFileFirstAndAReferenceOtherwise(t *testing.T) {
 	dir := t.TempDir()
@@ -144,15 +181,48 @@ func TestASessionsAnswerSaysWhatAStopReaches(t *testing.T) {
 	if got := sessionContainmentLine(toolkit.SessionRecord{ID: rec.ID}); !strings.Contains(got, "process group") || !strings.Contains(got, "setsid") {
 		t.Errorf("a session with no scope says %q", got)
 	}
-	scoped := toolkit.StopReport{Kind: "session", ContainedBy: toolkit.ContainedByScope, Unit: rec.Unit}
+	scoped := toolkit.StopReport{Kind: "session", ContainedBy: toolkit.ContainedByScope, Unit: rec.Unit, Stopped: true}
 	if got := containmentHint(scoped); !strings.Contains(got, rec.Unit) {
 		t.Errorf("a stop through a scope says %q", got)
 	}
-	grouped := toolkit.StopReport{Kind: "session", ContainedBy: toolkit.ContainedByGroup}
+	grouped := toolkit.StopReport{Kind: "session", ContainedBy: toolkit.ContainedByGroup, Stopped: true}
 	if got := containmentHint(grouped); !strings.Contains(got, "not reached") {
 		t.Errorf("a stop through a group says %q", got)
 	}
 	if got := containmentHint(toolkit.StopReport{Kind: "job"}); got != "" {
 		t.Errorf("a job's stop says %q", got)
+	}
+}
+
+// ⛔ A STOP THAT SIGNALLED NOTHING DOES NOT SAY IT SIGNALLED SOMETHING, and a
+// stop of an ended session keeps exit 0 and no after, as 7.0.0 answered, when
+// what its scope held did not end. WSL-126.
+func TestAStopOfAnEndedSessionSaysOnlyWhatItReached(t *testing.T) {
+	unit := "wtk-session-0123456789abcdef.scope"
+	for _, before := range []string{"gone", "ended"} {
+		rep := toolkit.StopReport{Kind: "session", ContainedBy: toolkit.ContainedByScope, Unit: unit, Before: before}
+		if got := containmentHint(rep); got != "" {
+			t.Errorf("a stop of a %s session that signalled nothing says %q", before, got)
+		}
+		rep.ContainedBy = toolkit.ContainedByGroup
+		if got := containmentHint(rep); got != "" {
+			t.Errorf("a stop of a %s session with no scope that signalled nothing says %q", before, got)
+		}
+	}
+	rep := toolkit.StopReport{Kind: "session", ContainedBy: toolkit.ContainedByScope, Unit: unit, Before: "ended"}
+	applyLeftovers(&rep, true, true, nil)
+	if rep.Leftovers != "running" || rep.After != "" || !strings.Contains(rep.Note, "did not end") {
+		t.Fatalf("leftovers that did not end answered %+v", rep)
+	}
+	if code, err := renderStop(rep, true); err != nil || code != exitOK {
+		t.Fatalf("a stop of an ended session exited %d, %v; it exits 0", code, err)
+	}
+	if got := containmentHint(rep); !strings.Contains(got, unit) {
+		t.Errorf("a stop that reached a scope's leftovers says %q", got)
+	}
+	quiet := toolkit.StopReport{Kind: "session", ContainedBy: toolkit.ContainedByScope, Unit: unit, Before: "ended", Note: "x"}
+	applyLeftovers(&quiet, false, false, nil)
+	if quiet.Leftovers != "" || quiet.Note != "x" {
+		t.Fatalf("a scope that held nothing changed the answer: %+v", quiet)
 	}
 }

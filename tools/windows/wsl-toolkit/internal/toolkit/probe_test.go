@@ -89,6 +89,14 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 			fmt.Fprintln(os.Stderr, "verify-pull: "+unexpectedEOF)
 			return verifyNotJudged, true
 		}
+	case bytes.Contains(script, []byte(`: "${TK_ROOT_ENGINE:?TK_ROOT_ENGINE is required}"`)):
+		// ⭐ engines.sh completes unless a case stages its failure. WSL-130.
+		if answers["engines"] == "refused" {
+			fmt.Fprintln(os.Stderr, "engines: base.kvm keeps /dev/kvm usable through a systemd unit, and this base does not run systemd")
+			return 3, true
+		}
+		fmt.Println("engines-complete")
+		return 0, true
 	case bytes.Contains(script, []byte(`: "${TK_BINFMT_IMAGE:?TK_BINFMT_IMAGE is required}"`)):
 		if arch := assigned(script, "TK_ARCH"); arch != "" {
 			fmt.Println("binfmt-ready " + assigned(script, "TK_HANDLER"))

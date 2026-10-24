@@ -31,7 +31,9 @@ func TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted(t *testing.T) {
 		`if [ -n "$u" ]; then printf 'UNIT|%s\n' "$u"; fi`,
 		// ⛔ Past a deadline in a scope the watchdog is left to KILL what ignored
 		// the TERM; a process group keeps the behaviour it had.
-		`if [ -n "$w" ] && { [ -z "$u" ] || [ ! -e "$d/timedout" ]; }; then kill "$w" 2>/dev/null; fi`,
+		// ⛔ And while the scope holds what a payload that ended first left.
+		`if [ -n "$w" ] && { [ -z "$u" ] || { [ ! -e "$d/timedout" ] && ! systemctl --user is-active --quiet "$u" 2>/dev/null; }; }; then kill "$w" 2>/dev/null; fi`,
+		`if [ -e "$d/exit" ]; then late=1; else : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null; fi`,
 	} {
 		if !strings.Contains(launch, want) {
 			t.Errorf("the launch script does not carry %q:\n%s", want, launch)
@@ -232,6 +234,21 @@ func TestASessionInAScopeIsReachedWholeInARealShell(t *testing.T) {
 	}
 	if st := state(dir); !st.TimedOut || st.Verdict() != ExitTimeout {
 		t.Fatalf("a session past its deadline reads as %+v", st)
+	}
+
+	// ⛔ The deadline reaches what a payload that ended first left in its scope,
+	// and the session's own answer stands. WSL-126.
+	dir, _ = start(scoped, "daemon", "setsid sh -c 'echo $$ > daemon.pid; exec sleep 30' </dev/null >/dev/null 2>&1 &\n", 2*time.Second, time.Second)
+	child = pidOf("daemon")
+	for i := 0; i < 100 && state(dir).Exit == nil; i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !gone(child, 10*time.Second) {
+		_, _, _ = run("/nonexistent", []byte("kill -KILL "+child+"\n"))
+		t.Fatal("a daemon the payload left in its scope outlived the session's deadline")
+	}
+	if st := state(dir); st.TimedOut || st.Verdict() != 0 {
+		t.Fatalf("a payload that ended before its deadline reads as %+v", st)
 	}
 
 	// What an ended session left in its scope is ended by the leftovers stop.

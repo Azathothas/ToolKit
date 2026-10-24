@@ -114,7 +114,13 @@ if [ "$systemd_up" = true ]; then
   # ⚠ --no-block, and the wait below is bounded: a manager that cannot start
   # must not hold the ensure.
   systemctl start --no-block "user@$uid.service" >/dev/null 2>&1 || :
-  i=0
+  # ⚠ THE WAIT IS ONLY WHERE A SESSION BUS CAN APPEAR. A base with no user
+  # dbus.socket, such as Debian without dbus-user-session, never gets one, and
+  # waited 10 seconds in every ensure for it.
+  i=10
+  for unit in /etc/systemd/user/dbus.socket /usr/lib/systemd/user/dbus.socket /lib/systemd/user/dbus.socket; do
+    if [ -e "$unit" ]; then i=0; break; fi
+  done
   while [ ! -S "/run/user/$uid/bus" ] && [ "$i" -lt 10 ]; do sleep 1; i=$((i+1)); done
   delegated=$(cat "/sys/fs/cgroup/user.slice/user-$uid.slice/user@$uid.service/cgroup.controllers" 2>/dev/null) || delegated=
   if [ -S "/run/user/$uid/bus" ] && systemctl is-active --quiet "user@$uid.service" && write_manager write; then
@@ -136,6 +142,8 @@ fi
 # SYSTEM BUS. A base with systemd and no bus fails root's every run with `crun:
 # cannot open sd-bus`, which pg-toolkit measured. So root gets cgroupfs where
 # there is no bus or no systemd, and the file event log the account has.
+# ⚠ binfmt.sh does not need this: it passes both on its own command line,
+# WSL-168. This is for what the operator runs as root, `base exec --root`.
 ROOT_CONF=/etc/containers/containers.conf.d/50-wsl-toolkit-root.conf
 if [ "$TK_ROOT_ENGINE" = true ]; then
   manager=systemd

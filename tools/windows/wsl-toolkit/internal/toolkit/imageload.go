@@ -35,6 +35,8 @@ type ImageLoad struct {
 	User       string   `json:"user"`
 	Bytes      int64    `json:"bytes"`
 	Images     []string `json:"images"`
+	// Error is why the load failed, and empty where it succeeded.
+	Error string `json:"error,omitempty"`
 }
 
 // The two kinds of source a load reads.

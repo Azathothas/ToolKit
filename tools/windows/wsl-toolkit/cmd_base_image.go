@@ -76,7 +76,7 @@ func cmdBaseImage(ctx context.Context, args []string) (int, error) {
 	rep := toolkit.ImageLoad{Schema: toolkit.ImageLoadSchema, Source: source, Distro: cfg.Base.Name, User: user}
 	archive, kind, err := imageSource(source)
 	if err != nil {
-		return exitCannot, err
+		return imageLoadFailed(rep, *asJSON, exitCannot, err)
 	}
 	rep.Kind = kind
 	if kind == toolkit.ImageSourceHost {
@@ -84,7 +84,7 @@ func cmdBaseImage(ctx context.Context, args []string) (int, error) {
 		saved, engine, cleanup, err := toolkit.SaveHostImage(ctx, source)
 		rep.HostEngine = engine
 		if err != nil {
-			return exitFailed, err
+			return imageLoadFailed(rep, *asJSON, exitFailed, err)
 		}
 		defer cleanup()
 		archive = saved
@@ -93,7 +93,7 @@ func cmdBaseImage(ctx context.Context, args []string) (int, error) {
 	images, sent, err := base.LoadImageArchive(ctx, archive, user)
 	rep.Bytes, rep.Images = sent, images
 	if err != nil {
-		return exitFailed, err
+		return imageLoadFailed(rep, *asJSON, exitFailed, err)
 	}
 	if *asJSON {
 		return exitOK, writeJSON(rep)
@@ -103,6 +103,19 @@ func cmdBaseImage(ctx context.Context, args []string) (int, error) {
 	}
 	logf("  loaded %d image(s), %s, into %s's engine as %s", len(images), toolkit.HumanBytes(sent), cfg.Base.Name, user)
 	return exitOK, nil
+}
+
+// imageLoadFailed answers a load that failed once its source was named.
+//
+// ⛔ --json WRITES ITS DOCUMENT ON A FAILURE TOO, with the reason in error, as
+// base ensure renders its state before its error. A caller reading --json got
+// nothing on stdout, and only the exit code said the load failed. WSL-130.
+func imageLoadFailed(rep toolkit.ImageLoad, asJSON bool, code int, err error) (int, error) {
+	if asJSON {
+		rep.Error = err.Error()
+		_ = writeJSON(rep)
+	}
+	return code, err
 }
 
 // imageSource reads what base image load was given: a file on this machine, or

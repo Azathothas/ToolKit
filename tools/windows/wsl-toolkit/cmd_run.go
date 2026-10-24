@@ -1104,15 +1104,30 @@ func rowPrinter() func(toolkit.JobResult) {
 		mu.Lock()
 		defer mu.Unlock()
 		done++
-		mark := "ok"
-		switch {
-		case row.Unreached:
-			mark = "unreached"
-		case row.Failed():
-			mark = "FAILED"
+		for _, line := range rowLines(row) {
+			logf("%s", line)
 		}
-		logf("  %-9s %-14s exit %-3d %s", mark, row.Label, row.Exit, row.Duration.Round(time.Millisecond))
 	}
+}
+
+// rowLines is what one finished matrix row prints.
+//
+// ⛔ A ROW'S LIMITS ARE SAID UNDER IT, as run says a job's. Only each JSON row
+// carried them, so a matrix read by eye did not say that a limit went
+// unenforced. WSL-136.
+func rowLines(row toolkit.JobResult) []string {
+	mark := "ok"
+	switch {
+	case row.Unreached:
+		mark = "unreached"
+	case row.Failed():
+		mark = "FAILED"
+	}
+	lines := []string{fmt.Sprintf("  %-9s %-14s exit %-3d %s", mark, row.Label, row.Exit, row.Duration.Round(time.Millisecond))}
+	if line := limitsLine(row.Limits); line != "" {
+		lines = append(lines, "            "+line)
+	}
+	return lines
 }
 
 func ensureBase(ctx context.Context, runner *toolkit.Runner, allowed bool) error {

@@ -27,6 +27,14 @@ var enginesScript []byte
 // ensureEngines applies engines.sh to the base. engines.sh carries the rules;
 // this only runs it.
 func (b *Base) ensureEngines(ctx context.Context) error {
+	// ⛔ NOT FROM A STATE DIRECTORY THAT DOES NOT OWN THE BASE, as applyAdapters
+	// rules. Each opt-in setting turned off removes its file, so a guest's
+	// configuration, which names none of them, took away what the owner turned
+	// on. Said once, and not an error, so that ensure still succeeds. WSL-130.
+	if err := b.assertOwner("changed", "base ensure"); err != nil {
+		b.log("the engines are left as they are: " + err.Error())
+		return nil
+	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
 	code, err := b.wsl.Exec(ctx, b.enginesRequest(out))
 	out.Flush()

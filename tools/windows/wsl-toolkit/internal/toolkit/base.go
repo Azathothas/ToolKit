@@ -870,9 +870,10 @@ func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error
 	// while this one runs, and a base whose handlers could not be registered is
 	// still a base whose adapters should be installed. WSL-105.
 	//
-	// ⛔ THE ENGINES COME BEFORE BOTH, because binfmt.sh runs root's podman and
-	// root_engine is what lets it run on a base with no system bus. A failed
-	// engines step is returned with the adapters' error. WSL-130.
+	// ⭐ THE ENGINES COME BEFORE BOTH, and their failure stops neither. binfmt.sh
+	// names root's cgroup manager and events backend itself, WSL-168, so it does
+	// not wait on root_engine. A failed engines step is returned with the
+	// adapters' error, because only an opt-in setting fails it. WSL-130.
 	enginesErr := b.ensureEngines(ctx)
 	// ⛔ THE HANDLERS FAIL NO ENSURE. A registry that refused the installer, or a base
 	// whose root podman could not start it, made every `base ensure` exit 2 over a

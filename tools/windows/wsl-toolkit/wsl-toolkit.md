@@ -419,7 +419,11 @@ guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
   ignores TERM. `WSL-126`
 - A stop of a session that has already ended still ends what it left in its
   scope, such as a daemon its command started. `stop --json` says so as
-  `leftovers`, and the session's exit code is its own.
+  `leftovers`, `ended` or `running`. The session's exit code is its own, and
+  `stop` still exits 0 for a session that had ended.
+- ⛔ **The deadline reaches what a command that ended first left in its scope.**
+  The session's answer stays its own exit, and it is not read as timed out.
+- A stop prints which of the two it reached only where it signalled something.
 - Without a user manager, the process group is all a stop reaches, as before. The
   answer says which: `contained_by` is `systemd-scope` or `process-group` in
   `base exec --detach --json` and in `stop --json`, with `unit` beside a scope.
@@ -468,7 +472,7 @@ wsl-toolkit run --image alpine --memory 512m --cpus 1.5 -c 'make -j2'
 podman's own meaning: a memory limit lets the container use as much again in
 swap. `jobs.memory`, a size such as `"2g"`, and `jobs.cpus`, a number such as
 `1.5`, set them for a project, and a flag on the command line wins. `run` and
-`matrix` take both. `WSL-136`
+`matrix` take both, and `matrix` prints each row's limits under it. `WSL-136`
 
 ⛔ **An engine that accepts a limit has not enforced it.** So the job's own
 container reads its cgroup before the command starts, and the answer carries
@@ -499,9 +503,12 @@ nothing, and its finding names `base.systemd` as the remedy.
 Three opt-in settings, applied by `base ensure` to a new base and to one an earlier
 release built. Each one turned off removes what it wrote. `WSL-130`
 
+⛔ **Only the base's owner applies them.** An ensure from a state directory that
+does not own the base leaves them as they are, as it leaves the adapters.
+
 | setting | what `base ensure` does |
 | --- | --- |
-| `base.root_engine: true` | root's podman gets the file event log the account has, and the `cgroupfs` manager where the base has no system bus to ask. Without it, such a base refuses root's every run with `crun: cannot open sd-bus`, and `base ensure` fails registering the QEMU handlers, as measured on a Debian base with systemd |
+| `base.root_engine: true` | root's podman gets the file event log the account has, and the `cgroupfs` manager where the base has no system bus to ask. Without it, such a base refuses root's every run with `crun: cannot open sd-bus`, as measured on a Debian base with systemd. The QEMU step names both options itself, so `base ensure` does not need this setting. `WSL-168` |
 | `base.runtime_dir: true` | the account's login shells and its `base exec` commands name `/tmp/wsl-toolkit-run-UID` as `XDG_RUNTIME_DIR`, the directory its jobs' engine uses. podman there then reads the jobs' state, rather than refusing it with `database configuration mismatch` |
 | `base.kvm: true` | the account joins the `kvm` group, and `wsl-toolkit-kvm.service` opens `/dev/kvm` to that group at every start. It never narrows a node that is open wider. It needs `base.systemd`, and `base status --probe` reads the node as `usable` by opening it |
 
@@ -516,10 +523,9 @@ writes one. IMAGE is a fully qualified reference this machine's own engine holds
 it is saved, loaded, and its archive removed. A name that is a file is read as
 FILE. `--root` loads into root's engine. `--json` answers `wsl-toolkit-image-load/1`.
 
-⚠ **A job still asks the registry about a loaded image.** Every job passes
-`--platform`, and podman 6.1.4 then looks the reference up again even where it holds
-the image, measured with both archive formats. With `base.runtime_dir` on, `base
-exec -c 'podman run --pull=never ...'` runs a loaded image with no registry.
+⭐ **A job runs a loaded image with no registry.** Measured with podman 6.1.4: a
+reference that only the base's engine holds ran as a job, and through `base exec`
+with `--pull=never`. A host image was saved through `wslc`.
 
 ---
 
