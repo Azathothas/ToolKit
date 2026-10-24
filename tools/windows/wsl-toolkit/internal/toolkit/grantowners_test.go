@@ -231,7 +231,7 @@ func TestTheGrantAndVerifyStepsAreToldTheirConfigurationFile(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		key = strings.ToLower(key)
 	}
-	genv, err := grantsEnv(cfg, GrantsLive, "/workspaces/mine")
+	genv, err := grantsEnv(cfg, GrantsLive, BaseMount{Target: "/workspaces/mine"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -280,4 +280,199 @@ func TestASecondGrantWaitsForTheFirst(t *testing.T) {
 		t.Fatalf("the lock was not free once the first let go: %v", err)
 	}
 	second()
+}
+
+// TestAGrantDoesNotClaimAMountTheLedgerDoesNotGiveIt drives a grant onto a target
+// already live from the same directory, in the same mode, with no ledger entry, as
+// every mount made before 7.0.2 is. ⛔ It answered "unchanged" and recorded this
+// file as the mount's owner, so the file that made it was refused its own revoke
+// and this file's revoke unmounted that file's checkout. It is refused, and the
+// ledger is left as it was. WSL-179.
+func TestAGrantDoesNotClaimAMountTheLedgerDoesNotGiveIt(t *testing.T) {
+	posixShell(t)
+	src := t.TempDir()
+	shared := BaseMount{Source: src, Target: "/workspaces/p", Mode: "rw"}
+	live := liveLine(src, shared.Target, "rw")
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, "kept\n", live, "")
+	out, err := grantsDrive(t, dir, []BaseMount{shared}, b64(shared.Target))
+	if err == nil || !strings.Contains(out, "the grant ledger does not say this configuration mounted it") {
+		t.Fatalf("a grant over an unrecorded mount answered %v:\n%s", err, out)
+	}
+	if read("log") != "" || read("mounts") != live || read("fstab") != "kept\n" || read("owners") != "" {
+		t.Fatalf("a refused grant changed the base:\nlog:\n%s\nmounts:\n%s\nfstab:\n%s\nowners:\n%s", read("log"), read("mounts"), read("fstab"), read("owners"))
+	}
+}
+
+// TestARevokeLeavesAMountFromAnotherDirectory drives a revoke whose target is live
+// from a directory other than the one the caller's configuration granted there.
+// ⛔ The ledger refusal needs an entry naming another file. With none, as before
+// 7.0.2, or a stale one naming this file after a restart mounted another file's
+// block, the revoke unmounted that other file's checkout. WSL-179.
+func TestARevokeLeavesAMountFromAnotherDirectory(t *testing.T) {
+	posixShell(t)
+	mine, theirs := t.TempDir(), t.TempDir()
+	target := "/workspaces/x"
+	live := liveLine(theirs, target, "rw")
+	for label, owners := range map[string]string{
+		"no ledger entry":           "",
+		"a stale entry naming mine": target + " " + b64(grantsMine) + " " + b64(grantsMine) + "\n",
+	} {
+		dir := t.TempDir()
+		read := grantsSeed(t, dir, "kept\n", live, owners)
+		out, err := grantsDriveFrom(t, dir, GrantsLive, nil, b64(target), grantsMine, fstabEscape(filepath.ToSlash(mine)))
+		if err == nil || !strings.Contains(out, "so it stays mounted") {
+			t.Fatalf("a revoke over a mount from another directory, %s, answered %v:\n%s", label, err, out)
+		}
+		if read("log") != "" || read("mounts") != live || read("fstab") != "kept\n" || read("owners") != owners {
+			t.Fatalf("a refused revoke, %s, changed the base:\nlog:\n%s\nmounts:\n%s\nowners:\n%s", label, read("log"), read("mounts"), read("owners"))
+		}
+	}
+	// ⭐ The other half: from the directory it granted, the revoke unmounts.
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, "kept\n", live, "")
+	if out, err := grantsDriveFrom(t, dir, GrantsLive, nil, b64(target), grantsMine, fstabEscape(filepath.ToSlash(theirs))); err != nil || read("log") != "umount "+target+"\n" {
+		t.Fatalf("a revoke from the directory it granted answered %v:\n%s\nlog:\n%s", err, out, read("log"))
+	}
+}
+
+// TestTheHeldStepNamesMountsAnotherFileHolds drives grants.sh's held mode. It
+// changes nothing, and names each live mount the ledger gives another file: not
+// one that file holds and nothing mounts, and not this file's own. WSL-179.
+func TestTheHeldStepNamesMountsAnotherFileHolds(t *testing.T) {
+	posixShell(t)
+	src := t.TempDir()
+	theirs := "/cfg/theirs.json"
+	mounts := liveLine(src, "/workspaces/theirs", "rw") + liveLine(src, "/workspaces/mine", "ro")
+	owners := "/workspaces/theirs " + b64(theirs) + " " + b64(theirs) + "\n" +
+		"/workspaces/gone " + b64(theirs) + " " + b64(theirs) + "\n" +
+		"/workspaces/mine " + b64(grantsMine) + " " + b64(grantsMine) + "\n"
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, "kept\n", mounts, owners)
+	out, err := grantsDriveIn(t, dir, GrantsHeld, nil, "")
+	if err != nil || !strings.Contains(out, "grants-complete") {
+		t.Fatalf("the held step failed: %v\n%s", err, out)
+	}
+	if got := parseHeldGrants(out); len(got) != 1 || got[0] != (HeldGrant{Target: "/workspaces/theirs", File: theirs}) {
+		t.Fatalf("the held step named %v from:\n%s", got, out)
+	}
+	if read("log") != "" || read("mounts") != mounts || read("fstab") != "kept\n" || read("owners") != owners {
+		t.Fatalf("the held step changed the base:\nlog:\n%s\nfstab:\n%s\nowners:\n%s", read("log"), read("fstab"), read("owners"))
+	}
+}
+
+// TestAGrantWaitsForTheGuestsGrantLock holds a grant behind another run of
+// grants.sh in the same guest. ⛔ The host's lock is per state root, and the
+// WSL-118 package copy and a --home split each resolve another one, so two grants
+// through two routes each wrote a ledger without the other's entry. WSL-179.
+func TestAGrantWaitsForTheGuestsGrantLock(t *testing.T) {
+	posixShell(t)
+	flock, err := exec.LookPath("flock")
+	if err != nil {
+		t.Skip("this host has no flock, and the guest's lock takes one")
+	}
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, "", "", "")
+	lock := filepath.Join(dir, "grants.lock")
+	holder := exec.Command(flock, lock, "/bin/sh", "-c", "read x")
+	stdin, err := holder.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := holder.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stdin.Close(); _ = holder.Wait() }()
+	for i := 0; exec.Command(flock, "-n", lock, "true").Run() == nil; i++ {
+		if i > 100 {
+			t.Fatal("the holder never took the lock")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
+	done := make(chan string, 1)
+	go func() {
+		out, err := grantsDriveFrom(t, dir, GrantsLive, []BaseMount{mine}, b64(mine.Target), grantsMine, fstabEscape(filepath.ToSlash(mine.Source)))
+		if err != nil {
+			out += "\n" + err.Error()
+		}
+		done <- out
+	}()
+	select {
+	case out := <-done:
+		t.Fatalf("a grant ran while another held the guest's grant lock:\n%s\nlog:\n%s", out, read("log"))
+	case <-time.After(1500 * time.Millisecond):
+	}
+	if read("log") != "" || read("owners") != "" {
+		t.Fatalf("a waiting grant changed the base:\nlog:\n%s\nowners:\n%s", read("log"), read("owners"))
+	}
+	_ = stdin.Close()
+	select {
+	case out := <-done:
+		if !strings.Contains(out, "grants-complete") || read("log") != "mount /workspaces/mine\n" {
+			t.Fatalf("the grant did not run once the lock was free:\n%s\nlog:\n%s", out, read("log"))
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the grant never ran once the lock was free")
+	}
+}
+
+// TestALiveGrantIsHandedItsSource holds what a revoke compares a live mount with:
+// the grant's Windows directory, spelled as the fstab block spells it. WSL-179.
+func TestALiveGrantIsHandedItsSource(t *testing.T) {
+	cfg := grantBase(t)
+	src := t.TempDir()
+	env, err := grantsEnv(cfg, GrantsLive, BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := b64(fstabEscape(filepath.ToSlash(src))); env["TK_GRANT_SOURCE"] != want {
+		t.Fatalf("a live change handed TK_GRANT_SOURCE %q, want %q", env["TK_GRANT_SOURCE"], want)
+	}
+}
+
+// TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant drives an ensure whose
+// base does not verify while another configuration file holds a live grant. ⛔ It
+// re-provisioned and restarted the base, which dropped that file's checkout and
+// ended every agent there, and that file's next ensure did the same back. It
+// refuses, naming the grant, its file and its revoke, and --repair restarts over
+// it. It waits for the grant lock first. WSL-179.
+func TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant(t *testing.T) {
+	h := newFakeHost(t)
+	b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	h.engine(t, false)
+	theirs := "/cfg/theirs.json"
+	held := "held-mount /workspaces/theirs " + b64(theirs) + "\ngrants-complete\n"
+	if err := os.WriteFile(filepath.Join(h.state, "held"), []byte(held), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := LockGrants(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	_, err = b.EnsureWith(ctx, false, false)
+	cancel()
+	first()
+	if err == nil || !strings.Contains(err.Error(), "waiting for another grant or revoke") {
+		t.Fatalf("an ensure under another grant's lock answered %v", err)
+	}
+
+	_, err = b.EnsureWith(context.Background(), false, false)
+	if err == nil || !strings.Contains(err.Error(), "/workspaces/theirs, granted by "+theirs) ||
+		!strings.Contains(err.Error(), "wsl-toolkit --config "+theirs+" base revoke --target /workspaces/theirs") ||
+		!strings.Contains(err.Error(), "base ensure --repair") {
+		t.Fatalf("an ensure over another file's live grant answered %v", err)
+	}
+	if s.said("re-provisioning") || callAt(h.calls(t), "wsl --terminate") >= 0 {
+		t.Fatalf("a refused ensure re-provisioned or restarted the base: %v\n%v", s.lines, h.calls(t))
+	}
+	assertKept(t, h, b, disk)
+
+	_, _ = b.EnsureWith(context.Background(), false, true)
+	if !s.said("restarting over another configuration's grant, as asked: /workspaces/theirs, granted by "+theirs) || !s.said("re-provisioning in place") {
+		t.Fatalf("--repair did not re-provision over the held grant: %v", s.lines)
+	}
+	assertKept(t, h, b, disk)
 }

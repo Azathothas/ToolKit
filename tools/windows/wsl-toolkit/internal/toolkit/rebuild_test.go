@@ -113,6 +113,12 @@ func fakeWslMain(state string, args []string) int {
 		return 0
 	}
 	script, _ := io.ReadAll(os.Stdin)
+	// ⚠ AN ANSWERED SCRIPT: grants.sh asked which live grants another file
+	// holds, when the case has written the answer to state/held. WSL-179.
+	if held, err := os.ReadFile(filepath.Join(state, "held")); err == nil && strings.Contains(string(script), "TK_GRANTS_MODE='held'") {
+		_, _ = os.Stdout.Write(held)
+		return 0
+	}
 	// ⚠ A CASE MAY STAGE AN ANSWER for the verifier, binfmt.sh or uname, and
 	// fakeGuestScript gives it. WSL-174, WSL-181.
 	if code, ok := fakeGuestScript(state, script); ok {

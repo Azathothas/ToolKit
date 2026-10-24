@@ -8,9 +8,9 @@
 # provisioning runs it to write the block before the restart that mounts it.
 #
 # It runs as root, delivered on stdin. TK_USER, TK_GRANTS_MODE, TK_FSTAB_B64,
-# TK_MOUNT_CHECKS, TK_GRANT_TARGET, TK_GRANT_OWNER and TK_GRANT_OWNER_NAME arrive as
-# exported variables, and every path in them is base64 made by Go, so none of it
-# becomes shell source.
+# TK_MOUNT_CHECKS, TK_GRANT_TARGET, TK_GRANT_SOURCE, TK_GRANT_OWNER and
+# TK_GRANT_OWNER_NAME arrive as exported variables, and every path in them is
+# base64 made by Go, so none of it becomes shell source.
 #
 # The owners ledger, /var/lib/wsl-toolkit/grant-owners, says which configuration
 # file made each live grant: one line of target, owner key and owner name, the two
@@ -20,6 +20,8 @@
 #   TK_GRANTS_MODE=live    rewrite the block, unmount or mount TK_GRANT_TARGET alone,
 #                          as the block names it, and read it back as the account
 #   TK_GRANTS_MODE=block   rewrite the block alone: no directory made, no mount changed
+#   TK_GRANTS_MODE=held    change nothing, and name each live mount the ledger gives
+#                          another configuration file
 set -eu
 umask 022
 cd /
@@ -29,6 +31,7 @@ cd /
 : "${TK_FSTAB_B64?TK_FSTAB_B64 is required, and may be empty}"
 : "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
 : "${TK_GRANT_TARGET:=}"
+: "${TK_GRANT_SOURCE:=}"
 : "${TK_GRANT_OWNER:=}"
 : "${TK_GRANT_OWNER_NAME:=}"
 
@@ -36,15 +39,34 @@ say() { printf '  * %s\n' "$*"; }
 die() { printf 'grants: %s\n' "$*" >&2; exit 3; }
 
 case "$TK_GRANTS_MODE" in
-  write|live|block) ;;
-  *) die "TK_GRANTS_MODE is $TK_GRANTS_MODE; it must be write, live or block" ;;
+  write|live|block|held) ;;
+  *) die "TK_GRANTS_MODE is $TK_GRANTS_MODE; it must be write, live, block or held" ;;
 esac
 
 FSTAB_BEGIN='# wsl-toolkit mounts begin'
 FSTAB_END='# wsl-toolkit mounts end'
 OWNERS=/var/lib/wsl-toolkit/grant-owners
+LOCK=/var/lib/wsl-toolkit/grants.lock
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' 0 1 2 15
+
+# ⛔ ONE RUN AT A TIME IN THE GUEST, WHICHEVER HOST ROUTE IT CAME BY. The host's
+# grant lock lives under the state root, and the WSL-118 package copy and a
+# --home split each resolve another one. Two grants through two routes each wrote
+# a ledger without the other's entry, and that mount became unconfigured. ⚠ Not
+# `flock -w`: BusyBox's flock takes no timeout, so the wait is polled with -n, as
+# repair.sh does. A base with no flock runs as it did before the lock. WSL-179.
+if command -v flock >/dev/null 2>&1; then
+  mkdir -p "${LOCK%/*}"
+  exec 9>>"$LOCK"
+  tk_waited=0
+  until flock -n 9 2>/dev/null; do
+    [ "$tk_waited" -lt 120 ] ||
+      die "another grant held the base's grant lock for 120s, so nothing was changed. Run this again once it has finished"
+    sleep 1
+    tk_waited=$((tk_waited + 1))
+  done
+fi
 
 # decode64 NAME VALUE: base64 read from a file, so its exit code is not hidden by a
 # pipeline, into $WORK/NAME.
@@ -100,6 +122,28 @@ if [ "$TK_GRANTS_MODE" = block ]; then
   exit 0
 fi
 
+# ⭐ HELD, NOTHING IS CHANGED. It names each live DrvFS mount the ledger gives a
+# file other than TK_GRANT_OWNER, one `held-mount TARGET FILE64` row each, for
+# `base ensure` to refuse the restart that would drop them. It reads under the
+# lock, so a grant still running is read once it has finished. WSL-179.
+if [ "$TK_GRANTS_MODE" = held ]; then
+  if [ -f "$OWNERS" ]; then
+    while read -r held_target held_key held_name _rest; do
+      if [ -z "$held_target" ] || [ "$held_key" = "$TK_GRANT_OWNER" ]; then
+        continue
+      fi
+      while read -r _source live_target live_type live_options _live_rest; do
+        [ "$live_target" = "$held_target" ] || continue
+        case "$live_type:$live_options" in
+          drvfs:*|9p:*aname=drvfs*) printf 'held-mount %s %s\n' "$held_target" "$held_name"; break ;;
+        esac
+      done < /proc/mounts
+    done < "$OWNERS"
+  fi
+  printf 'grants-complete\n'
+  exit 0
+fi
+
 # -- the targets the configuration names ------------------------------------------
 : > "$WORK/targets"
 # The payload is a validated sequence of base64-target/mode pairs.
@@ -143,6 +187,13 @@ case "$OWN" in
   /workspaces/?*) ;;
   *) die "the live target $OWN is not under /workspaces" ;;
 esac
+# GRANT_FROM is the Windows directory this call's grant names, as fstab escapes
+# it: the grant's own for a grant, and the one taken away for a revoke.
+GRANT_FROM=
+if [ -n "$TK_GRANT_SOURCE" ]; then
+  decode64 grant_from "$TK_GRANT_SOURCE"
+  GRANT_FROM=$(cat "$WORK/grant_from")
+fi
 
 # ⛔ LIVE, THE BLOCK IS WRITTEN ONLY ONCE NOTHING CAN STILL REFUSE THE REMOVALS, and
 # a failure after it puts the old block back. Written first, a revoke refused over a
@@ -256,6 +307,14 @@ while IFS= read -r old; do
   [ -n "$old" ] || continue
   [ "$old" = "$OWN" ] || continue
   if ! cut -d' ' -f2- "$WORK/targets" | grep -Fxq "$old"; then
+    # ⛔ ONLY A MOUNT FROM THE DIRECTORY THIS CONFIGURATION GRANTED IS UNMOUNTED.
+    # The ledger refusal above needs an entry. A mount made before the ledger has
+    # none, and one a restart mounted from another file's block has a stale one,
+    # and a revoke then unmounted that other file's checkout. WSL-179.
+    old_from=$(live_source "$old")
+    if [ -z "$GRANT_FROM" ] || [ "$(source_key "$old_from")" != "$(source_key "$GRANT_FROM")" ]; then
+      fail_back "$old is mounted from $old_from, not from ${GRANT_FROM:-the directory this configuration granted}, so it stays mounted. Revoke it with the file that granted it"
+    fi
     # ⛔ NOT A LAZY UNMOUNT. A process standing in the directory keeps it busy, and
     # detaching the mount under it would leave that process editing a directory
     # nobody can see is still mounted.
@@ -282,6 +341,14 @@ while read -r mode target; do
     want_from=$(block_source "$target")
     [ "$(source_key "$live_from")" = "$(source_key "$want_from")" ] ||
       fail_back "$target is already mounted from $live_from, not from $want_from, so it stays as it is. Revoke it where it was granted first"
+  fi
+  # ⛔ A MOUNT ALREADY AS ASKED IS NOT CLAIMED UNLESS THE LEDGER GIVES IT THIS FILE.
+  # A mount made before the ledger has no entry. This file was recorded as its
+  # owner, the file that made it was refused its own revoke, and this file's
+  # revoke unmounted that file's checkout. WSL-179.
+  if [ -n "$current" ] && [ "$current" = "$mode" ] &&
+    { [ -z "$TK_GRANT_OWNER" ] || [ "$held_key" != "$TK_GRANT_OWNER" ]; }; then
+    fail_back "$target is already mounted $current from $live_from, and the grant ledger does not say this configuration mounted it, so it stays as it is. Revoke it with the file that granted it, or grant this directory at another --target"
   fi
   if [ -n "$current" ] && [ "$current" != "$mode" ]; then
     # ⛔ ONLY THIS CONFIGURATION'S OWN MOUNT IS REMOUNTED. A mount in another mode

@@ -572,15 +572,24 @@ mount stays. `WSL-179`
 keeps a ledger of which configuration file made each live grant. A grant or a
 revoke of a target another file holds is refused, naming that file and its
 revoke. A target already mounted from another Windows directory is refused too. So
-is one mounted in the other mode that this configuration did not mount. Grants and
-revokes on one instance take a lock, and each reads its file under it. `WSL-179`
+is one mounted in the other mode that this configuration did not mount. `WSL-179`
 
-⚠ **A mount another configuration holds lasts until the next restart.**
-`base ensure` names it and leaves it, where it used to re-provision over it. The fstab
-block holds only the last caller's grants, so a restart drops the other mounts. A
-re-provision for any other reason restarts the base and drops them too. After a
-restart, `base ensure` from the file that names them mounts them again, through
-one more restart.
+⛔ **A mount the ledger does not give this file is not claimed.** A mount made
+before 7.0.2 has no ledger entry. A grant of that same directory at that target is
+refused rather than recorded as this file's. Grant it at another `--target`. A
+revoke unmounts only a mount from the directory its own file granted there.
+`WSL-179`
+
+⭐ **One grant at a time.** Grants and revokes on one instance take a lock, and
+each reads its file under it. The base takes its own lock too, so a grant made
+through another state root waits as well. `WSL-179`
+
+⛔ **`base ensure` does not restart over another configuration's live grant.** A
+verified base names such a mount and leaves it. A base that needs re-provisioning
+is refused instead, because the restart drops the other file's mounts. The
+refusal names each mount, its file and its revoke. `base ensure --repair`
+restarts over them. ⚠ The fstab block holds only the last caller's grants, so a
+Windows restart still drops the other mounts.
 
 ⛔ **Neither replaces what it would disturb.** A directory or a target already
 granted differently is refused with the revoke to run first. A grant a process

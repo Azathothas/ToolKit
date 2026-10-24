@@ -27,24 +27,36 @@ const (
 	// GrantsBlock rewrites the tool-owned fstab block alone. It creates no
 	// directory and changes no mount. WSL-179.
 	GrantsBlock = "block"
+	// GrantsHeld changes nothing. It names each live mount the guest's ledger
+	// gives another configuration file. WSL-179.
+	GrantsHeld = "held"
 )
 
 // grantsEnv is what grants.sh is handed for a configuration's grants. In live
-// mode target is the one grant the call makes or takes away.
+// mode grant is the one grant the call makes or takes away: its target, and the
+// Windows directory it names.
 //
-// ⛔ LIVE, ONLY target IS UNMOUNTED OR MOUNTED. Every /workspaces mount the
-// caller's configuration did not name was unmounted, and another caller's
-// configuration, such as a project file or another copy of the home, can hold
-// one. That caller's checkout went, and its writes landed in the guest. WSL-179.
-func grantsEnv(cfg Config, mode, target string) (map[string]string, error) {
-	var fstab, checks, target64 string
+// ⛔ LIVE, ONLY THE GRANT'S TARGET IS UNMOUNTED OR MOUNTED. Every /workspaces
+// mount the caller's configuration did not name was unmounted, and another
+// caller's configuration, such as a project file or another copy of the home, can
+// hold one. That caller's checkout went, and its writes landed in the guest.
+// WSL-179.
+func grantsEnv(cfg Config, mode string, grant BaseMount) (map[string]string, error) {
+	var fstab, checks, target64, source64 string
 	var err error
 	if mode == GrantsLive {
-		clean, targetErr := normalizeBaseMountTarget(target)
+		clean, targetErr := normalizeBaseMountTarget(grant.Target)
 		if targetErr != nil {
 			return nil, fmt.Errorf("a live grant change names its one target: %w", targetErr)
 		}
 		target64 = base64.StdEncoding.EncodeToString([]byte(clean))
+		// ⛔ THE SOURCE TOO, SO A REVOKE UNMOUNTS ONLY A MOUNT FROM IT. A revoke
+		// with no ledger entry to stop it unmounted whatever was mounted at its
+		// target, another file's checkout included. Spelled as the block spells
+		// it. WSL-179.
+		if grant.Source != "" {
+			source64 = base64.StdEncoding.EncodeToString([]byte(fstabEscape(filepath.ToSlash(grant.Source))))
+		}
 	}
 	// ⚠ A TAKE-BACK'S BLOCK IS THE ONE A LIVE CHANGE WRITES, so it renders the
 	// same way, with a gone grant left out rather than refused.
@@ -60,8 +72,8 @@ func grantsEnv(cfg Config, mode, target string) (map[string]string, error) {
 	return map[string]string{
 		"TK_USER": cfg.Base.User, "TK_GRANTS_MODE": mode,
 		"TK_FSTAB_B64": fstab, "TK_MOUNT_CHECKS": checks,
-		"TK_GRANT_TARGET": target64, "TK_GRANT_OWNER": ownerKey,
-		"TK_GRANT_OWNER_NAME": ownerName,
+		"TK_GRANT_TARGET": target64, "TK_GRANT_SOURCE": source64,
+		"TK_GRANT_OWNER": ownerKey, "TK_GRANT_OWNER_NAME": ownerName,
 	}, nil
 }
 
@@ -85,10 +97,10 @@ func grantOwner(cfg Config) (key, name string) {
 	return enc([]byte(k)), enc([]byte(p))
 }
 
-// applyGrants runs grants.sh in the base for a configuration's grants. target is
+// applyGrants runs grants.sh in the base for a configuration's grants. grant is
 // read in live mode alone.
-func (b *Base) applyGrants(ctx context.Context, cfg Config, mode, target string) (string, error) {
-	env, err := grantsEnv(cfg, mode, target)
+func (b *Base) applyGrants(ctx context.Context, cfg Config, mode string, grant BaseMount) (string, error) {
+	env, err := grantsEnv(cfg, mode, grant)
 	if err != nil {
 		return "", err
 	}
@@ -240,16 +252,17 @@ func sameSourcePath(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
 }
 
-// ChangeGrantsLive makes the live mount at target what next names, mounted or
-// not, and reads it back. Every other mount stays as it is. The configuration
-// file is the caller's to write afterwards. changed is false when target was
-// already as next names it, so nothing was mounted or unmounted. WSL-179.
-func (b *Base) ChangeGrantsLive(ctx context.Context, next Config, target string) (changed bool, err error) {
-	out, err := b.applyGrants(ctx, next, GrantsLive, target)
+// ChangeGrantsLive makes the live mount at grant's target what next names,
+// mounted or not, and reads it back. Every other mount stays as it is. The
+// configuration file is the caller's to write afterwards. changed is false when
+// the target was already as next names it, so nothing was mounted or unmounted.
+// WSL-179.
+func (b *Base) ChangeGrantsLive(ctx context.Context, next Config, grant BaseMount) (changed bool, err error) {
+	out, err := b.applyGrants(ctx, next, GrantsLive, grant)
 	if err != nil {
 		return false, err
 	}
-	return liveGrantChanged(out, target), nil
+	return liveGrantChanged(out, grant.Target), nil
 }
 
 // liveGrantChanged reads whether a live run of grants.sh mounted or unmounted
@@ -279,11 +292,72 @@ func grantsTakeBackMode(changed bool) string {
 }
 
 // TakeGrantsBack undoes a live change whose configuration file could not be
-// written. prev is the configuration the file still holds, and changed is what
-// ChangeGrantsLive answered.
-func (b *Base) TakeGrantsBack(ctx context.Context, prev Config, target string, changed bool) error {
-	_, err := b.applyGrants(ctx, prev, grantsTakeBackMode(changed), target)
+// written. prev is the configuration the file still holds, grant is the one the
+// change made or took away, and changed is what ChangeGrantsLive answered.
+func (b *Base) TakeGrantsBack(ctx context.Context, prev Config, grant BaseMount, changed bool) error {
+	_, err := b.applyGrants(ctx, prev, grantsTakeBackMode(changed), grant)
 	return err
+}
+
+// HeldGrant is a live mount the guest's ledger gives another configuration file.
+type HeldGrant struct {
+	Target string
+	File   string
+}
+
+// heldGrants asks the guest which live mounts its ledger gives a configuration
+// file other than this base's. It reads under the guest's grant lock, so a grant
+// still running is read once it has finished. WSL-179.
+func (b *Base) heldGrants(ctx context.Context) ([]HeldGrant, error) {
+	env, err := grantsEnv(b.cfg, GrantsHeld, BaseMount{})
+	if err != nil {
+		return nil, err
+	}
+	out := &boundedBuffer{max: 1 << 20}
+	errBuf := &boundedBuffer{max: 64 << 10}
+	code, err := b.wsl.Exec(ctx, ExecRequest{
+		Distro: b.cfg.Base.Name, User: "root", Script: grantsScript,
+		Env: env, Timeout: 5 * time.Minute, Stdout: out, Stderr: errBuf,
+	})
+	if err != nil || code != 0 {
+		return nil, fmt.Errorf("exited %d: %s", code, guestFailure(out.String(), errBuf.String()))
+	}
+	if !strings.Contains(out.String(), "grants-complete") {
+		return nil, errors.New("the grants step exited 0 without reaching its last line")
+	}
+	return parseHeldGrants(out.String()), nil
+}
+
+// parseHeldGrants reads grants.sh's and verify.sh's `held-mount TARGET FILE64` rows.
+func parseHeldGrants(out string) []HeldGrant {
+	var held []HeldGrant
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 || f[0] != "held-mount" {
+			continue
+		}
+		name, err := base64.StdEncoding.DecodeString(f[2])
+		if err != nil {
+			continue
+		}
+		held = append(held, HeldGrant{Target: f[1], File: string(name)})
+	}
+	return held
+}
+
+// HeldGrantsError is the refusal of a restart over live mounts another
+// configuration file holds, or nil when there are none. WSL-179.
+func HeldGrantsError(name string, held []HeldGrant) error {
+	if len(held) == 0 {
+		return nil
+	}
+	var each, revoke []string
+	for _, h := range held {
+		each = append(each, h.Target+", granted by "+h.File)
+		revoke = append(revoke, "wsl-toolkit --config "+h.File+" base revoke --target "+h.Target)
+	}
+	return fmt.Errorf("%s would be re-provisioned and restarted, and the restart drops grants another configuration holds live: %s. Nothing was changed. Revoke each with its file first: %s. Or run base ensure --repair to restart over them",
+		name, strings.Join(each, "; "), strings.Join(revoke, "; "))
 }
 
 // grantLockPoll is how often a grant or a revoke waiting for another asks again,

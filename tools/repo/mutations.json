@@ -2,6 +2,69 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a grant does not claim a mount the ledger does not give it",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    { [ -z \"$TK_GRANT_OWNER\" ] || [ \"$held_key\" != \"$TK_GRANT_OWNER\" ]; }; then\n",
+      "replace": "    false; then\n",
+      "run": "TestAGrantDoesNotClaimAMountTheLedgerDoesNotGiveIt",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live revoke unmounts only a mount from its own directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    if [ -z \"$GRANT_FROM\" ] || [ \"$(source_key \"$old_from\")\" != \"$(source_key \"$GRANT_FROM\")\" ]; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestARevokeLeavesAMountFromAnotherDirectory",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: grants.sh runs under the guest's grant lock",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  until flock -n 9 2>/dev/null; do\n",
+      "replace": "  until true; do\n",
+      "run": "TestAGrantWaitsForTheGuestsGrantLock",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the held step names only another file's live mounts",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "      if [ -z \"$held_target\" ] || [ \"$held_key\" = \"$TK_GRANT_OWNER\" ]; then\n",
+      "replace": "      if [ -z \"$held_target\" ]; then\n",
+      "run": "TestTheHeldStepNamesMountsAnotherFileHolds",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure refuses a restart over another file's live grant",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\t\tif !repair {\n\t\t\t\t\treturn st, refusal\n\t\t\t\t}\n",
+      "replace": "\t\t\t\tif false {\n\t\t\t\t\treturn st, refusal\n\t\t\t\t}\n",
+      "run": "TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure takes the grant lock before it re-provisions",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\trelease, err := LockGrants(ctx, b.log)\n",
+      "replace": "\t\t\trelease, err := func() {}, error(nil)\n",
+      "run": "TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live change hands grants.sh the grant's source",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\tif grant.Source != \"\" {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestALiveGrantIsHandedItsSource",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a stop among unreadable ledger lines is read",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/jobctl.go",
@@ -311,8 +374,8 @@
       "label": "wsl-toolkit: grants.sh is told its configuration file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/grants.go",
-      "find": "\t\t\"TK_GRANT_TARGET\": target64, \"TK_GRANT_OWNER\": ownerKey,\n",
-      "replace": "\t\t\"TK_GRANT_TARGET\": target64, \"TK_GRANT_OWNER\": ownerKey[:0],\n",
+      "find": "\t\t\"TK_GRANT_OWNER\": ownerKey, \"TK_GRANT_OWNER_NAME\": ownerName,\n",
+      "replace": "\t\t\"TK_GRANT_OWNER\": ownerKey[:0], \"TK_GRANT_OWNER_NAME\": ownerName,\n",
       "run": "TestTheGrantAndVerifyStepsAreToldTheirConfigurationFile",
       "args": []
     },
@@ -347,8 +410,8 @@
       "label": "wsl-toolkit: the command takes back what its live step did",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_base_grant.go",
-      "find": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed); backErr != nil {\n",
-      "replace": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed || true); backErr != nil {\n",
+      "find": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount, changed); backErr != nil {\n",
+      "replace": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount, changed || true); backErr != nil {\n",
       "run": "TestAFileThatCannotBeWrittenTakesBackWhatTheStepDid",
       "args": []
     },
@@ -356,8 +419,8 @@
       "label": "wsl-toolkit: the command takes back its grant's own target",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_base_grant.go",
-      "find": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed); backErr != nil {\n",
-      "replace": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, \"\", changed); backErr != nil {\n",
+      "find": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount, changed); backErr != nil {\n",
+      "replace": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, toolkit.BaseMount{}, changed); backErr != nil {\n",
       "run": "TestAFileThatCannotBeWrittenTakesBackWhatTheStepDid",
       "args": []
     },
