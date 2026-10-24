@@ -2,6 +2,96 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: an unknown probe pull failure is not judged",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\treturn true\n\t\t}\n\t}\n\treturn false\n}\n\n// trustPullMarks",
+      "replace": "\t\t\treturn true\n\t\t}\n\t}\n\treturn true\n}\n\n// trustPullMarks",
+      "run": "TestAPullFailureIsJudgedByItsCause|TestAnUnknownPullFailureKeepsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a network word outranks a base word in a probe pull failure",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\treturn false\n\t\t}\n\t}\n\tfor _, mark := range basePullMarks {\n",
+      "replace": "\t\t\t_ = mark\n\t\t}\n\t}\n\tfor _, mark := range basePullMarks {\n",
+      "run": "TestAPullFailureIsJudgedByItsCause",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a not judged refusal over trust names where to look in the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\tfor _, mark := range trustPullMarks {\n",
+      "replace": "\tfor _, mark := range trustPullMarks[:0] {\n",
+      "run": "TestATrustRefusalNamesWhereToLookInTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: verify.sh reads BusyBox's 143 and 137 as the probe pull bound",
+      "file": "internal/toolkit/verify.sh",
+      "find": "      case $probe_code in 124 | 137 | 143) probe_timed=1 ;; esac\n",
+      "replace": "      case $probe_code in 124) probe_timed=1 ;; esac\n",
+      "run": "TestTheProbeImagePullIsItsOwnBoundedStep",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: verify.sh reads a probe pull that took the whole bound as the bound",
+      "file": "internal/toolkit/verify.sh",
+      "find": "        *) [ $((probe_end - probe_start)) -lt 120 ] || probe_timed=1 ;;\n",
+      "replace": "        *) : ;;\n",
+      "run": "TestTheProbeImagePullIsItsOwnBoundedStep",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh reads BusyBox's 143 and 137 as the installer pull bound",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "    case $fetch_code in 124 | 137 | 143) fetch_timed=1 ;; esac\n",
+      "replace": "    case $fetch_code in 124) fetch_timed=1 ;; esac\n",
+      "run": "TestAJobsPlatformPullIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh reads an installer pull that took the whole bound as the bound",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "      *) [ $((fetch_end - fetch_start)) -lt 120 ] || fetch_timed=1 ;;\n",
+      "replace": "      *) : ;;\n",
+      "run": "TestAJobsPlatformPullIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed QEMU step is on the answer",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\ts.Remediations = append(s.Remediations, binfmtStepRemediation(binfmtErr))\n",
+      "replace": "",
+      "run": "TestAFailedQEMUStepIsAnAdvisoryAndNotAFailedEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed QEMU step's finding is advisory",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tAdvisory:   true,\n\t}\n}\n\n// binfmtRemediation is",
+      "replace": "\t\tAdvisory:   false,\n\t}\n}\n\n// binfmtRemediation is",
+      "run": "TestAFailedQEMUStepIsAnAdvisoryAndNotAFailedEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed QEMU step is an advisory and not a problem",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\ts.Remediations = append(s.Remediations, binfmtStepRemediation(binfmtErr))\n",
+      "replace": "\t\t\ts.Remediations = append(s.Remediations, binfmtStepRemediation(binfmtErr))\n\t\t\ts.Problems = append(s.Problems, binfmtErr.Error())\n",
+      "run": "TestAFailedQEMUStepIsAnAdvisoryAndNotAFailedEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grant does not claim a mount the ledger does not give it",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/grants.sh",
@@ -92,29 +182,11 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: only a registry's pull failure is not judged",
-      "file": "internal/toolkit/base.go",
-      "find": "\tif !ok || !registryPullFailure(reason) {\n",
-      "replace": "\tif !ok {\n",
-      "run": "TestAPullFailureIsJudgedByItsCause|TestAPullTheBaseBrokeStillReProvisions",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
       "label": "wsl-toolkit: a pull the base broke is named as the base's",
       "file": "internal/toolkit/base.go",
       "find": "\t\tif local, ok := probePullFailure(VerifyImage, code, stderr); ok {\n",
       "replace": "\t\tif local, ok := probePullFailure(VerifyImage, code, stderr); false && ok {\n",
       "run": "TestAPullTheBaseBrokeStillReProvisions",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a timed out probe pull is a registry failure",
-      "file": "internal/toolkit/base.go",
-      "find": "\t\"did not finish within\",\n",
-      "replace": "",
-      "run": "TestAPullFailureIsJudgedByItsCause",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -202,8 +274,8 @@
     {
       "label": "wsl-toolkit: a not judged probe needs the verifier's exit code",
       "file": "internal/toolkit/base.go",
-      "find": "func probeNotJudged(image string, code int, stderr string) (*ProbeNotJudgedError, bool) {\n\tif code != verifyNotJudged {\n",
-      "replace": "func probeNotJudged(image string, code int, stderr string) (*ProbeNotJudgedError, bool) {\n\tif false {\n",
+      "find": "(*ProbeNotJudgedError, bool) {\n\tif code != verifyNotJudged {\n",
+      "replace": "(*ProbeNotJudgedError, bool) {\n\tif false {\n",
       "run": "TestANotJudgedProbeNeedsItsCodeAndItsLine",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -258,16 +330,7 @@
       "file": "internal/toolkit/base.go",
       "find": "\tprobed, err := b.Status(ctx, true)\n\treturn withBinfmt(probed), err\n",
       "replace": "\tprobed, err := b.Status(ctx, true)\n\treturn withBinfmt(probed), errors.Join(err, binfmtErr)\n",
-      "run": "TestAFailedQEMUStepIsAProblemAndNotAFailedEnsure",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a failed QEMU step is a problem on the answer",
-      "file": "internal/toolkit/base.go",
-      "find": "\t\t\ts.Problems = append(s.Problems, binfmtErr.Error())\n",
-      "replace": "",
-      "run": "TestAFailedQEMUStepIsAProblemAndNotAFailedEnsure",
+      "run": "TestAFailedQEMUStepIsAnAdvisoryAndNotAFailedEnsure",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

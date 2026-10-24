@@ -672,16 +672,20 @@ func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error
 	//
 	// ⛔ AND IT FAILS NO ENSURE. A registry that refused the installer, or a base
 	// whose root podman could not start it, made every `base ensure` exit 2 over a
-	// base whose engine had just run a container, native work included. The
-	// failure is a problem on the answer, named, and a job that asks for a
-	// foreign platform still registers its own handler. WSL-181.
+	// base whose engine had just run a container, native work included. A job
+	// that asks for a foreign platform still registers its own handler. WSL-181.
+	//
+	// ⛔ AN ADVISORY, NOT A PROBLEM. The first repair made it a problem, and a
+	// problem is a verdict: `base ensure` still exited 1, and `ready --ensure`
+	// read a base that runs native containers as not ready. It is a capability
+	// finding, which is a note, as WSL-60 rules. WSL-181.
 	binfmtErr := b.ensureBinfmt(ctx)
 	if binfmtErr != nil {
 		b.log(binfmtErr.Error())
 	}
 	withBinfmt := func(s BaseState) BaseState {
 		if binfmtErr != nil {
-			s.Problems = append(s.Problems, binfmtErr.Error())
+			s.Remediations = append(s.Remediations, binfmtStepRemediation(binfmtErr))
 		}
 		return s
 	}
@@ -1359,12 +1363,18 @@ func (e *ProbeNotJudgedError) Error() string {
 // `insufficient UIDs or GIDs`, and a full disk answers `no space left on
 // device`. Both are the base's, and both keep the re-provisioning they had.
 // WSL-174.
+//
+// ⛔ AN UNKNOWN REASON IS NOT JUDGED. The first repair listed the registry's
+// words and judged every other reason against the base, so `unexpected EOF`, a
+// GOAWAY or `context deadline exceeded` re-provisioned, and a provisioning that
+// failed too removed the base. The base's own causes are the short, known list,
+// and anything else refuses and keeps the base. WSL-174.
 func probeNotJudged(image string, code int, stderr string) (*ProbeNotJudgedError, bool) {
 	if code != verifyNotJudged {
 		return nil, false
 	}
 	reason, ok := lastPrefixed(stderr, "verify-pull: ")
-	if !ok || !registryPullFailure(reason) {
+	if !ok || basePullFailure(reason) {
 		return nil, false
 	}
 	return &ProbeNotJudgedError{Image: image, Registry: imageRegistry(image), Reason: reason}, true
@@ -1377,37 +1387,49 @@ func probePullFailure(image string, code int, stderr string) (error, bool) {
 		return nil, false
 	}
 	reason, ok := lastPrefixed(stderr, "verify-pull: ")
-	if !ok {
+	if !ok || !basePullFailure(reason) {
 		return nil, false
 	}
 	return fmt.Errorf("the health probe could not pull %s, and the cause is in the base, not the registry: %s", image, reason), true
 }
 
-// registryPullMarks are the words of a pull that failed at the network or at the
-// registry, lower case: the name, the connection, TLS, and the registry's own
-// refusals. verify.sh's own bound says "did not finish within". WSL-174.
-var registryPullMarks = []string{
-	"did not finish within",
-	"pinging container registry",
-	"no such host", "server misbehaving", "temporary failure in name resolution",
-	"dial tcp", "connection refused", "connection reset", "network is unreachable",
-	"no route to host", "i/o timeout", "net/http:", "tls:", "x509:",
-	"toomanyrequests", "too many requests", "unauthorized", "authentication required",
-	"requested access to the resource is denied", "manifest unknown", "name unknown",
-	"unexpected http status",
+// basePullMarks are the words of a pull the base broke itself, lower case: its
+// ID ranges, its disk, and its own storage and configuration files. Re-provisioning
+// repairs each. WSL-174.
+var basePullMarks = []string{
+	"insufficient uids or gids", "newuidmap", "newgidmap",
+	"no space left on device", "disk quota exceeded", "read-only file system",
+	"permission denied", "operation not permitted", "no such file or directory",
 }
 
-// registryPullFailure is true when a pull's reason names the network or the
-// registry, and false for anything the base itself answers.
-func registryPullFailure(reason string) bool {
+// networkPullMarks are the words of a pull that failed on the way to the
+// registry. ⚠ They outrank a base mark: `dial tcp ...: permission denied` is a
+// connection refused on the way out, not storage this base cannot write.
+var networkPullMarks = []string{
+	"pinging container registry", "dial tcp", "net/http", "lookup ",
+}
+
+// basePullFailure is true only when a pull's reason names a cause the base
+// itself answers, and nothing on the way to the registry.
+func basePullFailure(reason string) bool {
 	lower := strings.ToLower(reason)
-	for _, mark := range registryPullMarks {
+	for _, mark := range networkPullMarks {
+		if strings.Contains(lower, mark) {
+			return false
+		}
+	}
+	for _, mark := range basePullMarks {
 		if strings.Contains(lower, mark) {
 			return true
 		}
 	}
 	return false
 }
+
+// trustPullMarks are the words of a pull refused over trust: a certificate the
+// base did not accept, or credentials the registry did not. Each can be the
+// base's own, a CA bundle that was removed or an auth.json gone stale. WSL-174.
+var trustPullMarks = []string{"x509:", "tls:", "unauthorized", "authentication required"}
 
 // imageRegistry is the registry host a reference names, or docker.io where the
 // first component is not a host, as an engine reads it.
@@ -1421,9 +1443,25 @@ func imageRegistry(ref string) string {
 
 // notJudgedRefusal is what Ensure answers when the probe was not judged: the
 // probe's words, and that nothing was changed.
+//
+// ⛔ A REFUSAL OVER TRUST NAMES WHERE TO LOOK IN THE BASE. A certificate or a
+// credential the registry refused can be the base's own, and waiting for the
+// registry then never ends, which left `base recreate`, a removal, as the only
+// way on. The refusal names the two files and the shell that reaches them, and
+// nothing that removes the base. WSL-174.
 func (b *Base) notJudgedRefusal(nj *ProbeNotJudgedError) error {
-	return fmt.Errorf("%w. %s was NOT re-provisioned, restarted or rebuilt. Run %s again once %s answers",
+	err := fmt.Errorf("%w. %s was NOT re-provisioned, restarted or rebuilt. Run %s again once %s answers",
 		nj, b.cfg.Base.Name, ToolCommand("base ensure"), nj.Registry)
+	lower := strings.ToLower(nj.Reason)
+	for _, mark := range trustPullMarks {
+		if strings.Contains(lower, mark) {
+			return fmt.Errorf("%w. If %s answers other machines, the cause can be in this base: "+
+				"its CA bundle under /etc/ssl/certs, or the account's containers/auth.json under "+
+				"$XDG_RUNTIME_DIR or ~/.config. Read both with %s, then run %s again. Neither needs a rebuild",
+				err, nj.Registry, ToolCommand("base shell --root"), ToolCommand("base ensure"))
+		}
+	}
+	return err
 }
 
 // verifyError is what a verification that did not pass says.
@@ -1810,6 +1848,20 @@ func parseBinfmt(out string) *BinfmtState {
 	// records the set, and `base status` names it as the step that is missing.
 	st.Ready = count > 0
 	return st
+}
+
+// binfmtStepRemediation is the finding an ensure whose QEMU step failed earns:
+// advisory, as native work runs without it. WSL-181.
+func binfmtStepRemediation(err error) Remediation {
+	return Remediation{
+		ID:   "binfmt-step-failed",
+		What: "the QEMU step of this ensure did not complete: " + err.Error(),
+		Costs: "a container for another architecture fails `Exec format error` until its handler is registered. " +
+			"A job that asks for a foreign platform registers its own",
+		Command:    ToolCommand("base ensure"),
+		Repairable: true,
+		Advisory:   true,
+	}
 }
 
 // binfmtRemediation is the finding a base whose own handlers are gone earns.

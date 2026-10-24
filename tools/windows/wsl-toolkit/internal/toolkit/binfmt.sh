@@ -80,13 +80,29 @@ fetch() {
   fetch_said=''
   root_podman image exists "$TK_BINFMT_IMAGE" >/dev/null 2>&1 && return 0
   fetch_code=0
+  fetch_bound=0
+  fetch_start=$(date +%s 2>/dev/null) || fetch_start=''
   if command -v timeout >/dev/null 2>&1; then
+    fetch_bound=1
     fetch_out=$(timeout 120 podman --cgroup-manager=cgroupfs --events-backend=file pull -q "$TK_BINFMT_IMAGE" 2>&1 >/dev/null) || fetch_code=$?
   else
     fetch_out=$(root_podman pull -q "$TK_BINFMT_IMAGE" 2>&1 >/dev/null) || fetch_code=$?
   fi
   [ "$fetch_code" = 0 ] && return 0
-  if [ "$fetch_code" = 124 ]; then
+  # ⛔ 124 IS GNU's ANSWER ONLY. BusyBox `timeout` signals podman in its own
+  # place, so the shell sees 143, or 137 for a KILL, and a failure that took the
+  # whole bound is the bound too. WSL-182.
+  fetch_timed=0
+  if [ "$fetch_bound" = 1 ]; then
+    case $fetch_code in 124 | 137 | 143) fetch_timed=1 ;; esac
+    fetch_end=$(date +%s 2>/dev/null) || fetch_end=''
+    case "$fetch_start" in '' | *[!0-9]*) fetch_end='' ;; esac
+    case "$fetch_end" in
+      '' | *[!0-9]*) ;;
+      *) [ $((fetch_end - fetch_start)) -lt 120 ] || fetch_timed=1 ;;
+    esac
+  fi
+  if [ "$fetch_timed" = 1 ]; then
     fetch_said="the pull of $TK_BINFMT_IMAGE did not finish within 120 seconds"
   else
     fetch_said=$(printf '%s\n' "$fetch_out" | sed '/^[[:space:]]*$/d' | tail -n 1)

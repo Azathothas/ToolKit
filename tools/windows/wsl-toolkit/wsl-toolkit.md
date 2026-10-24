@@ -899,8 +899,9 @@ them, root's podman on a Debian base with systemd and no D-Bus answered
 `cannot open sd-bus`, and `base ensure` exited 2. `WSL-168`
 
 ⚠ **A QEMU step that fails does not fail `base ensure`.** The base has run a
-container by then, so native work is unaffected. The failure is a problem on the
-answer, which exits 1 and names it. A job that asks for a foreign platform still
+container by then, so native work is unaffected. The failure is an advisory
+finding, `binfmt-step-failed`, and `base ensure` exits 0. `ready` lists it under
+`notes` and still reads ready. A job that asks for a foreign platform still
 registers its own handler, through the same script and the same root podman.
 `WSL-181`
 
@@ -918,7 +919,8 @@ nothing. `WSL-182`
 
 ⚠ **The installer is pulled only when it is absent, with a bound of 120 seconds.**
 The run itself never pulls. A registry that stalls costs one ensure two minutes,
-and the problem names the bound. `WSL-182`
+and the finding names the bound. The bound is read from GNU's code 124, from
+BusyBox's 143 or 137, and from a pull that took the whole 120 seconds. `WSL-182`
 
 ⚠ **A base that no ensure of this release has run on has no recorded set.**
 `binfmt.recorded` is false there, and `ready` counts every distribution's handlers, as
@@ -1423,15 +1425,25 @@ removal. `WSL-169`
 
 ⛔ **A probe image that cannot be pulled is not a broken base.** The health probe
 runs `docker.io/library/alpine:latest`. Where that image is absent, it is pulled
-first, with a bound of 120 seconds. A pull the network or the registry failed
-answers `not judged: registry docker.io unreachable`, with the registry's own reason.
-`base ensure` then exits 2 and changes nothing: no provisioning, no restart and no
-rebuild. `base status --probe` exits 1 with the same problem. `WSL-174`
+first, with a bound of 120 seconds. A pull that failed answers `not judged:
+registry docker.io unreachable`, with the registry's own reason. `base ensure` then
+exits 2 and changes nothing: no provisioning, no restart and no rebuild. `base status
+--probe` exits 1 with the same problem. `WSL-174`
+
+⛔ **A reason the tool does not know is not judged.** A blob fetch cut off with `EOF`,
+a `GOAWAY` or `context deadline exceeded` keeps the base. Only the base's own causes
+re-provision it. A BusyBox `timeout` that ends the pull reads as the bound. `WSL-174`
 
 ⚠ **A pull the base itself broke is still a verify failure.** A lost `/etc/subuid`
 range answers `insufficient UIDs or GIDs`, and a full disk answers `no space left on
-device`. These say `the cause is in the base, not the registry`. `base ensure` then
-re-provisions in place, which repairs them, as it did before. `WSL-174`
+device`. A read-only file system, a denied permission and a missing file count too.
+These say `the cause is in the base, not the registry`. `base ensure` then
+re-provisions in place, which repairs them, as it did before. A reason that also names
+the connection, such as `dial tcp`, stays the network's. `WSL-174`
+
+⚠ **A refusal over trust names where to look in the base.** An `x509:` or `tls:`
+failure, or `unauthorized`, can be the base's own CA bundle or a stale `auth.json`.
+The refusal names both and `base shell --root`, and neither needs a rebuild. `WSL-174`
 
 ---
 
