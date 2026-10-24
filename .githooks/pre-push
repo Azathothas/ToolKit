@@ -5,9 +5,11 @@
 # CI runs the Go tests and ShellCheck on Linux; a session here runs them on
 # Windows. Three cases reached main green here and red on Linux. TOOL-33.
 #
-# ⭐ IT RUNS NOTHING SLOW. The proof is made beforehand by `repo linux-proof`,
-# which runs CI's Linux jobs in containers and files a proof keyed by the tree
-# under git's common directory. This hook only looks the proof up:
+# ⭐ A PUSHED TREE WITH NO PROOF IS PROVED HERE. The hook runs CI's Linux
+# jobs over the pushed commit, in containers through wsl-toolkit, or natively
+# on a Linux host, and the push waits minutes for them. A proof keyed by the
+# tree is filed under git's common directory, so the next push of that tree is
+# immediate. To make the proof ahead of the push:
 #
 #   pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof
 #   sh scripts/common/repo.sh linux-proof
@@ -18,7 +20,8 @@
 #
 # ⛔ INSTALL IT, as commit-msg is installed: git config core.hooksPath .githooks
 #
-# Exit codes: 0 the push may go, 1 it is refused, 2 the check could not run.
+# Exit codes: 0 the push may go, 1 it is refused or a job failed, 2 the check
+# could not run.
 # git refuses the push on either non-zero answer.
 #
 # SPDX-License-Identifier: 0BSD

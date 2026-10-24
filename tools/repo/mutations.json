@@ -2,6 +2,285 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "release-stage: the sign count reaches GITHUB_ENV",
+      "file": "internal/workflow/stage.go",
+      "find": "\t_, werr := fmt.Fprintln(f, line)\n",
+      "replace": "\t_, werr := fmt.Fprint(f, \"\")\n",
+      "run": "TestStageWritesTheSumsAndTheSignCountForTheLaterSteps",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: a failed build stops staging",
+      "file": "internal/workflow/stage.go",
+      "find": "\t\tif err := build(b, opts.Root, filepath.Join(dist, b.Name)); err != nil {\n",
+      "replace": "\t\tif err := build(b, opts.Root, filepath.Join(dist, b.Name)); err != nil && false {\n",
+      "run": "TestStageWritesTheSumsAndTheSignCountForTheLaterSteps",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: a herdr build that was not downloaded is named",
+      "file": "internal/workflow/stage.go",
+      "find": "\t\tif err := copyFile(filepath.Join(opts.HerdrFrom, name), filepath.Join(dist, name)); err != nil {\n",
+      "replace": "\t\tif err := copyFile(filepath.Join(opts.HerdrFrom, name), filepath.Join(dist, name)); err != nil && false {\n",
+      "run": "TestStageWritesTheSumsAndTheSignCountForTheLaterSteps",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: every build is trimmed",
+      "file": "internal/workflow/stage.go",
+      "find": "\"build\", \"-trimpath\", \"-o\", out, \".\"",
+      "replace": "\"build\", \"-o\", out, \".\"",
+      "run": "TestEveryBuildIsTrimmedAndCgoFree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: every build has cgo off",
+      "file": "internal/workflow/stage.go",
+      "find": ", \"CGO_ENABLED=0\"}",
+      "replace": "}",
+      "run": "TestEveryBuildIsTrimmedAndCgoFree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-readback: a release short of an asset exits 1",
+      "file": "main.go",
+      "find": "\t\tfmt.Fprintf(os.Stderr, \"release-readback: %v\\n\", err)\n\t\treturn 1\n",
+      "replace": "\t\tfmt.Fprintf(os.Stderr, \"release-readback: %v\\n\", err)\n\t\treturn 0\n",
+      "run": "TestReleaseReadbackAnswersByExitCode",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: --delete needs --repo",
+      "file": "main.go",
+      "find": "\tif *del && *ghRepo == \"\" {\n",
+      "replace": "\tif false {\n",
+      "run": "TestNightlyPruneDeletesOnlyWithARepository",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: one build record per build",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif len(records) != len(builds) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: BUILD-INFO.json is one of the staged assets",
+      "file": "internal/workflow/nightly.go",
+      "find": "\texpected := NightlyExpected()\n",
+      "replace": "\texpected := HerdrAssets(NightlyLabel)\n",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: the sign count reaches GITHUB_ENV",
+      "file": "internal/workflow/nightly.go",
+      "find": "\treturn appendEnv(opts.GitHubEnv, line)\n",
+      "replace": "\treturn nil\n",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: an empty tag is refused",
+      "file": "internal/workflow/nightly.go",
+      "find": "map[string]string{\"--tag\": opts.Tag, \"--commit\": opts.Commit, \"--run\": opts.Run}",
+      "replace": "map[string]string{\"--commit\": opts.Commit, \"--run\": opts.Run}",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: BUILD-INFO.json keeps every record value",
+      "file": "internal/workflow/nightly.go",
+      "find": "\t\t\tbuilds = append(builds, v)\n",
+      "replace": "\t\t\t_ = v\n",
+      "run": "TestBuildInfoKeepsTheShapeJqWrote",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: BUILD-INFO.json escapes no HTML, as jq did",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tenc.SetEscapeHTML(false)\n",
+      "replace": "",
+      "run": "TestBuildInfoKeepsTheShapeJqWrote",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: the prerelease is created empty",
+      "file": "internal/workflow/nightly.go",
+      "find": "\"--title\", opts.Tag, \"--notes-file\", opts.NotesFile, \"--target\", opts.Target); err != nil {\n",
+      "replace": "\"--title\", opts.Tag, \"--notes-file\", opts.NotesFile, \"--target\", opts.Target, opts.Dist); err != nil {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: an existing prerelease is not created again",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif _, err := gh(\"release\", \"view\", opts.Tag, \"--repo\", opts.Repo); err != nil {\n",
+      "replace": "\tif _, err := gh(\"release\", \"view\", opts.Tag, \"--repo\", opts.Repo); err != nil || true {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: a failed upload stops the run",
+      "file": "internal/workflow/nightly.go",
+      "find": "\"--repo\", opts.Repo, \"--clobber\"); err != nil {\n",
+      "replace": "\"--repo\", opts.Repo, \"--clobber\"); err != nil && false {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: a short read-back fails the run",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif err := ReadBack(staged, names); err != nil {\n",
+      "replace": "\tif err := ReadBack(staged, names); err != nil && false {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: only a herdr-nightly- tag is published",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif !strings.HasPrefix(opts.Tag, NightlyPrefix) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: --repo is required",
+      "file": "internal/workflow/nightly.go",
+      "find": "\"--tag\": opts.Tag, \"--repo\": opts.Repo, ",
+      "replace": "\"--tag\": opts.Tag, ",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a proof that never ran an added row does not cover it",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif !have[n] {\n",
+      "replace": "\t\tif false && !have[n] {\n",
+      "run": "TestAProofWithoutTheAddedRowsDoesNotCoverThem",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: rows are counted from the remote ref",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\t\t\tbase = u.RemoteSHA\n",
+      "replace": "",
+      "run": "TestAProofWithoutTheAddedRowsDoesNotCoverThem",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a new ref counts rows from the newest commit the remote holds",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\t\tbase = repo.Base(u.LocalSHA, remote)\n",
+      "replace": "",
+      "run": "TestAProofWithoutTheAddedRowsDoesNotCoverThem",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job checks its copy is the proved tree",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tb.WriteString(` && test \"$(git rev-parse 'HEAD^{tree}')\" = ` + ShellQuote(tree))\n",
+      "replace": "",
+      "run": "TestTheScriptChecksTheTreeItUnpacked|TestAProofIsFiledForTheTreeEveryJobPassedOn",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a tracked file git ignores is still in the copy",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "git init -q && git add -A -f\")",
+      "replace": "git init -q && git add -A\")",
+      "run": "TestTheScriptChecksTheTreeItUnpacked",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a container job installs its setup, a native one does not",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tif container && j.Setup != \"\" {\n",
+      "replace": "\tif j.Setup != \"\" {\n",
+      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a Linux host with no wsl-toolkit named proves natively",
+      "file": "internal/linuxproof/run.go",
+      "find": "\treturn tool == \"\" && goos != \"windows\"\n",
+      "replace": "\treturn false\n",
+      "run": "TestALinuxHostProvesNatively",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the copy is the archive of the commit proved",
+      "file": "internal/linuxproof/run.go",
+      "find": "req.Repo.Git(\"archive\", \"--format=tar\", \"-o\", tarPath, req.Commit)",
+      "replace": "req.Repo.Git(\"archive\", \"--format=tar\", \"-o\", tarPath, \"HEAD\")",
+      "run": "TestRevProvesTheNamedCommit",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the proof records the rows it ran",
+      "file": "internal/linuxproof/run.go",
+      "find": "Jobs: names, RowsSince: req.RowsSince, Rows: req.Rows}",
+      "replace": "Jobs: names, RowsSince: req.RowsSince}",
+      "run": "TestRowsSinceRunsTheRowsAddedSinceTheRef",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: rows are counted from what origin holds by default",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tsince = gitRepo{repo: repo, common: common}.Base(commit, remote)\n",
+      "replace": "",
+      "run": "TestRowsSinceRunsTheRowsAddedSinceTheRef",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a failed job refuses the push",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif code != 0 {\n\t\t\tfmt.Fprintf(errOut, \"pre-push: %s is refused, because",
+      "replace": "\t\tif code != 0 && false {\n\t\t\tfmt.Fprintf(errOut, \"pre-push: %s is refused, because",
+      "run": "TestThePushRunsTheJobsForAnUnprovedTree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: two refs on one tree are proved once",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif p, ok := g.Proof(n.Tree); ok && len(Unrun(p.Rows, n.Rows)) == 0 {\n",
+      "replace": "\t\tif p, ok := g.Proof(n.Tree); false && ok && len(Unrun(p.Rows, n.Rows)) == 0 {\n",
+      "run": "TestThePushRunsTheJobsForAnUnprovedTree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grants write keeps another configuration's ledger rows",
       "file": "internal/toolkit/grants.sh",
       "find": "        if [ -n \"$kept_target\" ] && [ \"$kept_key\" != \"$TK_GRANT_OWNER\" ] &&\n",
@@ -1030,8 +1309,8 @@
     {
       "label": "wsl-toolkit: stale run state: run on the helper route asks through the passing ensure",
       "file": "cmd_run.go",
-      "find": "\t\t\tif err := helperEnsureBase(ctx, c.BaseEnsure); err != nil {\n\t\t\t\treturn exitCannot, err\n\t\t\t}\n\t\t}\n\t\t// ⛔ THE HELPER ROUTE CANNOT CARRY THE RELAY",
-      "replace": "\t\t\tif _, err := c.BaseEnsure(ctx, false); err != nil {\n\t\t\t\treturn exitCannot, err\n\t\t\t}\n\t\t}\n\t\t// ⛔ THE HELPER ROUTE CANNOT CARRY THE RELAY",
+      "find": "\t\t\tif err := helperEnsureBase(ctx, c.BaseEnsure); err != nil {\n\t\t\t\treturn exitCannot, err\n\t\t\t}\n\t\t}\n\t\t// \u26d4 THE HELPER ROUTE CANNOT CARRY THE RELAY",
+      "replace": "\t\t\tif _, err := c.BaseEnsure(ctx, false); err != nil {\n\t\t\t\treturn exitCannot, err\n\t\t\t}\n\t\t}\n\t\t// \u26d4 THE HELPER ROUTE CANNOT CARRY THE RELAY",
       "run": "TestRunAndMatrixAskTheHelperThroughThePassingEnsure",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -1480,8 +1759,8 @@
     {
       "label": "linux-proof: a proof names the tree it is filed under",
       "file": "internal/linuxproof/linuxproof.go",
-      "find": "\treturn p.Schema == Schema && p.Tree == tree\n",
-      "replace": "\treturn p.Schema == Schema\n",
+      "find": "\treturn p, p.Schema == Schema && p.Tree == tree\n",
+      "replace": "\treturn p, p.Schema == Schema\n",
       "run": "TestAProofIsFoundForItsOwnTreeAlone",
       "module": "tools/repo",
       "args": []
@@ -1489,8 +1768,8 @@
     {
       "label": "linux-proof: a file with no proof schema is not a proof",
       "file": "internal/linuxproof/linuxproof.go",
-      "find": "\treturn p.Schema == Schema && p.Tree == tree\n",
-      "replace": "\treturn p.Tree == tree\n",
+      "find": "\treturn p, p.Schema == Schema && p.Tree == tree\n",
+      "replace": "\treturn p, p.Tree == tree\n",
       "run": "TestAProofIsFoundForItsOwnTreeAlone",
       "module": "tools/repo",
       "args": []
@@ -1532,33 +1811,6 @@
       "args": []
     },
     {
-      "label": "linux-proof: the copy leaves .git out",
-      "file": "internal/linuxproof/linuxproof.go",
-      "find": "\"--exclude\", \".git\", ",
-      "replace": "",
-      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
-      "label": "linux-proof: the copy leaves .claude out",
-      "file": "internal/linuxproof/linuxproof.go",
-      "find": ", \"--exclude\", \".claude\",\n",
-      "replace": ",\n",
-      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
-      "label": "linux-proof: the copy leaves what git ignores out",
-      "file": "internal/linuxproof/linuxproof.go",
-      "find": "\"--workspace\", \".\", \"--gitignore\",\n",
-      "replace": "\"--workspace\", \".\",\n",
-      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
       "label": "pre-push: a deleted ref needs no proof",
       "file": "internal/linuxproof/linuxproof.go",
       "find": "\t\tif Zero(u.LocalSHA) {\n\t\t\tcontinue\n\t\t}\n",
@@ -1570,8 +1822,8 @@
     {
       "label": "pre-push: a tree git cannot name is refused",
       "file": "internal/linuxproof/linuxproof.go",
-      "find": "\t\tif !ok {\n\t\t\tout = append(out, Refusal{Ref: u.RemoteRef, Reason: \"git cannot name",
-      "replace": "\t\tif false && !ok {\n\t\t\tout = append(out, Refusal{Ref: u.RemoteRef, Reason: \"git cannot name",
+      "find": "\t\tif !ok {\n\t\t\trefusals = append(refusals, Refusal{Ref: u.RemoteRef, Reason: \"git cannot name",
+      "replace": "\t\tif false && !ok {\n\t\t\trefusals = append(refusals, Refusal{Ref: u.RemoteRef, Reason: \"git cannot name",
       "run": "TestTheHookRefusesATreeGitCannotName",
       "module": "tools/repo",
       "args": []
@@ -1588,8 +1840,8 @@
     {
       "label": "pre-push: a tree the remote ref already carries needs no proof",
       "file": "internal/linuxproof/linuxproof.go",
-      "find": "ok && was == tree {",
-      "replace": "ok && was == tree && false {",
+      "find": "\t\t\t\tif was == tree {\n",
+      "replace": "\t\t\t\tif was == tree && false {\n",
       "run": "TestTheHookLetsATreeTheRemoteHoldsGo",
       "module": "tools/repo",
       "args": []
@@ -1597,9 +1849,9 @@
     {
       "label": "pre-push: a proved tree may go",
       "file": "internal/linuxproof/linuxproof.go",
-      "find": "\t\tif repo.Proved(tree) {\n\t\t\tcontinue\n\t\t}\n",
-      "replace": "",
-      "run": "TestTheHookRefusesAnUnprovedTree",
+      "find": "\t\tif p, ok := repo.Proof(tree); ok && len(Unrun(p.Rows, rows)) == 0 {\n",
+      "replace": "\t\tif p, ok := repo.Proof(tree); false && ok && len(Unrun(p.Rows, rows)) == 0 {\n",
+      "run": "TestTheHookProvesAnUnprovedTree",
       "module": "tools/repo",
       "args": []
     },
@@ -1617,16 +1869,7 @@
       "file": "internal/linuxproof/run.go",
       "find": "\treturn err == nil && strings.TrimSpace(out) == \"\"\n",
       "replace": "\treturn err == nil && strings.TrimSpace(out) == \"\" && false\n",
-      "run": "TestPrePushAnswersFromARealCheckout",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
-      "label": "linux-proof: a dirty tree runs nothing",
-      "file": "internal/linuxproof/run.go",
-      "find": "\t} else if dirty {\n",
-      "replace": "\t} else if false && dirty {\n",
-      "run": "TestADirtyTreeRunsNothing",
+      "run": "TestThePushRunsTheJobsForAnUnprovedTree",
       "module": "tools/repo",
       "args": []
     },
@@ -1640,28 +1883,10 @@
       "args": []
     },
     {
-      "label": "linux-proof: an edit made during the run files no proof",
-      "file": "internal/linuxproof/run.go",
-      "find": "\tif dirty, err := repo.Dirty(); err != nil || dirty {\n",
-      "replace": "\tif dirty, err := repo.Dirty(); err != nil || (dirty && false) {\n",
-      "run": "TestATreeThatChangedDuringTheRunFilesNoProof",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
-      "label": "linux-proof: a commit made during the run files no proof",
-      "file": "internal/linuxproof/run.go",
-      "find": "err != nil || now != tree {",
-      "replace": "err != nil || (now != tree && false) {",
-      "run": "TestATreeThatChangedDuringTheRunFilesNoProof",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
       "label": "linux-proof: --rows-since reads the table at the ref",
       "file": "internal/linuxproof/run.go",
-      "find": "\tbefore, err := repo.Git(\"show\", ref+\":\"+TableRel)\n",
-      "replace": "\tbefore, err := repo.Git(\"show\", \"HEAD:\"+TableRel)\n",
+      "find": "\tbefore, err := repo.Git(\"show\", base+\":\"+TableRel)\n",
+      "replace": "\tbefore, err := repo.Git(\"show\", rev+\":\"+TableRel)\n",
       "run": "TestRowsSinceRunsTheRowsAddedSinceTheRef",
       "module": "tools/repo",
       "args": []
@@ -2533,8 +2758,8 @@
     {
       "label": "wsl-toolkit: a grant whose source is gone loads, marked, rather than refusing the file",
       "file": "internal/toolkit/catalog.go",
-      "find": "\t\tif errors.Is(err, fs.ErrNotExist) {\n\t\t\t// ⛔ A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
-      "replace": "\t\tif false && errors.Is(err, fs.ErrNotExist) {\n\t\t\t// ⛔ A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
+      "find": "\t\tif errors.Is(err, fs.ErrNotExist) {\n\t\t\t// \u26d4 A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
+      "replace": "\t\tif false && errors.Is(err, fs.ErrNotExist) {\n\t\t\t// \u26d4 A SOURCE THAT IS GONE IS A GRANT TO REVOKE",
       "run": "TestAGrantWhoseSourceIsGoneIsKeptAndMarkedRatherThanRefused",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -3091,8 +3316,8 @@
     {
       "label": "wsl-toolkit: the engine holds a job's deadline",
       "file": "internal/toolkit/job.go",
-      "find": "\tif spec.Timeout > 0 {\n\t\t// ⛔ THE ENGINE HOLDS THE DEADLINE TOO",
-      "replace": "\tif spec.Timeout > 0 && spec.Timeout < 0 {\n\t\t// ⛔ THE ENGINE HOLDS THE DEADLINE TOO",
+      "find": "\tif spec.Timeout > 0 {\n\t\t// \u26d4 THE ENGINE HOLDS THE DEADLINE TOO",
+      "replace": "\tif spec.Timeout > 0 && spec.Timeout < 0 {\n\t\t// \u26d4 THE ENGINE HOLDS THE DEADLINE TOO",
       "run": "TestDevicesInputsAndTheEngineDeadlineReachPodman",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -4570,7 +4795,7 @@
       "label": "the verdict a caller reads is the code the process returns",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/job.go",
-      "find": "\tcase j.ArtifactError != \"\":\n\t\t// ⛔ The command succeeded and what it was asked to deliver did not\n\t\t// arrive. Exiting 0 here is how a green pipeline lost its build output.\n\t\treturn ExitFailed",
+      "find": "\tcase j.ArtifactError != \"\":\n\t\t// \u26d4 The command succeeded and what it was asked to deliver did not\n\t\t// arrive. Exiting 0 here is how a green pipeline lost its build output.\n\t\treturn ExitFailed",
       "replace": "\tcase false:\n\t\treturn ExitFailed",
       "run": "TestVerdictCarriesWhatTheProcessReturns",
       "args": []
@@ -6037,7 +6262,7 @@
       "label": "bsd: the payload disk follows the root disk",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// ⚠ AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
+      "find": "\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n\t\t// \u26a0 AFTER the root disk, which is what makes it vtbd1 in the guest.\n\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n",
       "replace": "\t\t\"-drive\", \"if=none,file=\" + payloadName + \",format=raw,id=payload0,readonly=on\",\n\t\t\"-device\", \"virtio-blk-pci,drive=payload0\",\n\t\t\"-drive\", \"if=none,file=\" + overlayName + \",format=qcow2,id=root0\",\n\t\t\"-device\", \"virtio-blk-pci,drive=root0\",\n",
       "run": "TestTheGuestBootsWithoutTheHyperVWait",
       "args": []
@@ -6073,8 +6298,8 @@
       "label": "bsd: a command's wait ends when the console closes",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/bsd.go",
-      "find": "\t\tcase <-g.gone:\n\t\t\t// ⚠ One more look.",
-      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\t// ⚠ One more look.",
+      "find": "\t\tcase <-g.gone:\n\t\t\t// \u26a0 One more look.",
+      "replace": "\t\tcase <-make(chan struct{}):\n\t\t\t// \u26a0 One more look.",
       "run": "TestAGuestWhoseConsoleClosesIsNotWaitedOn",
       "args": []
     },

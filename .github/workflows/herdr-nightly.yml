@@ -125,26 +125,16 @@ jobs:
           merge-multiple: true
 
       # ⛔ THE COUNT IS ASSERTED, as release.yml asserts its own. A nightly missing a
-      # target would otherwise look complete.
+      # target would otherwise look complete. `repo nightly-stage` holds the one
+      # list the copy, the record count, SHA256SUMS and SIGN_COUNT all read. TOOL-32.
       - name: stage the four builds, BUILD-INFO.json and SHA256SUMS
         shell: bash
         run: |
           set -eu
-          mkdir -p dist
-          for name in herdr-windows-x86_64.zip herdr-windows-aarch64.zip herdr-linux-x86_64 herdr-linux-aarch64; do
-            [ -f "artifacts/out/$name" ] || { echo "artifacts/out/$name was not built" >&2; exit 1; }
-            cp "artifacts/out/$name" "dist/$name"
-          done
-          infos=$(find artifacts -maxdepth 1 -name 'buildinfo-*.json' | sort)
-          [ "$(printf '%s\n' "$infos" | grep -c .)" = 4 ] || { echo "expected 4 build records" >&2; exit 1; }
-          jq -n --arg sha "$HERDR_SHA" --arg tag "$TAG" \
-            --arg run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            --slurpfile builds <(cat $infos) \
-            '{schema: "herdr-nightly-build/1", tag: $tag, herdr: {repository: "herdrdev/herdr", commit: $sha}, run: $run, builds: $builds}' \
-            > dist/BUILD-INFO.json
-          (cd dist && sha256sum -- * > SHA256SUMS)
-          cat dist/SHA256SUMS
-          [ "$(grep -c . dist/SHA256SUMS)" = 5 ] || { echo "SHA256SUMS covers $(grep -c . dist/SHA256SUMS) files and must cover 5" >&2; exit 1; }
+          "$RUNNER_TEMP/repo" nightly-stage --builds artifacts/out --records artifacts --dist dist \
+            --tag "$TAG" --commit "$HERDR_SHA" \
+            --run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            --github-env "$GITHUB_ENV"
 
       # ⚠ THE COSIGN VERSION IS PINNED, as release.yml and release-smoke.yml pin theirs.
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
@@ -158,7 +148,7 @@ jobs:
         run: |
           set -eu
           files=$(cd dist && ls -1)
-          [ "$(printf '%s\n' "$files" | grep -c .)" = 6 ] || { echo "expected 6 files to sign" >&2; exit 1; }
+          [ "$(printf '%s\n' "$files" | grep -c .)" = "$SIGN_COUNT" ] || { echo "expected $SIGN_COUNT files to sign" >&2; exit 1; }
           for name in $files; do
             cosign sign-blob --yes --bundle "dist/$name.cosign.bundle" "dist/$name"
           done
@@ -171,9 +161,8 @@ jobs:
           done
 
       # ⛔ CREATED EMPTY, THEN EACH ASSET UPLOADED AND READ BACK, as release.yml
-      # does and says why. `gh release create TAG dist/*` uploads inside the call
-      # that creates, and an upload that fails deletes the release it just made.
-      # The count this step used to print never failed the run. TOOL-37.
+      # does. `repo nightly-publish` holds the order and the read-back, with
+      # cases, and says why each is there. TOOL-37.
       - name: publish the prerelease
         shell: bash
         env:
@@ -189,22 +178,8 @@ jobs:
             echo
             echo "herdr is licensed under Apache-2.0; each Windows zip carries its licence."
           } > notes.md
-          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease \
-              --title "$TAG" --notes-file notes.md --target "$GITHUB_SHA"
-          fi
-          staged=0
-          for f in dist/*; do
-            [ -f "$f" ] || continue
-            gh release upload "$TAG" "$f" --repo "$GITHUB_REPOSITORY" --clobber
-            staged=$((staged + 1))
-          done
-          [ "$staged" -gt 0 ] || { echo "dist holds no asset to upload" >&2; exit 1; }
-          # ⛔ READ BACK, as release.yml does: `repo release-readback` names each
-          # staged file the prerelease lacks, and refuses an empty dist.
-          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > "$RUNNER_TEMP/on-release.txt"
-          "$RUNNER_TEMP/repo" release-readback --dist dist --reported "$RUNNER_TEMP/on-release.txt"
-          echo "published $TAG with $staged asset(s), each read back"
+          "$RUNNER_TEMP/repo" nightly-publish --tag "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --notes-file notes.md --dist dist
 
       # ⛔ KEEP THE NEWEST SEVEN, and nothing but a herdr-nightly- tag is ever deleted.
       # ⛔ NEWEST BY published_at, NEVER created_at, because `--target SHA` dates a

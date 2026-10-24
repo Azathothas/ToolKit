@@ -186,23 +186,21 @@ rotated first and the rewrite does not un-publish it. See
   failing: a stale toolchain is not a reason to stop working.
 - ⛔ **A push is proved on Linux before it leaves.** CI runs the Go tests and
   ShellCheck on Linux, and this host is Windows. Cases green here and red there
-  have reached `main` three times. `repo linux-proof` runs those jobs in
-  containers and files a proof keyed by the commit's tree. The tracked
-  `.githooks/pre-push` refuses a pushed tree with no proof and names the
-  command. A deleted ref, and a commit or tree the remote already holds, need
-  none.
+  have reached `main` three times. The tracked `.githooks/pre-push` runs those
+  jobs over each pushed commit's tree, in containers through `wsl-toolkit`. It
+  also runs every mutation row the push adds. A failure refuses the push. A
+  pass files a proof keyed by the tree, so the next push of it is immediate. A
+  deleted ref, and a commit or tree the remote already holds, need none.
 
-  The proof needs a clean tree, so a session commits, proves, then pushes:
+  `git-sync` commits and pushes in one call as before, and the push waits for
+  the jobs. To prove a commit ahead of its push:
 
   ```powershell
-  pwsh -NoProfile -File scripts/common/git-sync.ps1 -Message 'SUBJECT' -BodyFile message.txt -NoPush
-  pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof --rows-since origin/main
-  pwsh -NoProfile -File scripts/common/git-sync.ps1 -PushOnly
+  pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof
   ```
 
-  `git-sync.sh` takes the same three steps. A run of `git-sync` that commits
-  and pushes in one call is refused at the push, because nothing proved the
-  tree it just committed.
+  ⚠ The hook needs Go on PATH to build itself, and `wsl-toolkit` with a working
+  default base. Without either it exits 2, and git refuses the push.
 - ⚠ **A documentation-only push that skips CI must actually be
   documentation-only.** A "docs" push carrying a source file is exactly the one
   that needed the run. `.github/` is never safe to skip, because a workflow

@@ -65,10 +65,12 @@ func commands() []command {
 		{"deslop", "which files in this tree address a reader as an agent", runDeslop},
 		{"git-sync", "commit and push, with the identity and attribution rules enforced", runGitSync},
 		{"license", "write LICENSE from a template, with the holder filled in", runLicense},
-		{"linux-proof", "run CI's Linux jobs in containers and record a proof of HEAD's tree for the pre-push hook", runLinuxProof},
+		{"linux-proof", "run CI's Linux jobs over a commit's tree and record a proof of it for the pre-push hook", runLinuxProof},
 		{"mutate", "delete each guard in the table and confirm the test named for it goes red", runMutate},
 		{"nightly-prune", "the herdr nightlies older than the newest seven, by published_at, and optionally delete them", runNightlyPrune},
-		{"pre-push", "the pre-push hook's decision: refuse a pushed tree that has no Linux proof", runPrePush},
+		{"nightly-publish", "create a herdr nightly empty, upload each staged file, and read the set back", runNightlyPublish},
+		{"nightly-stage", "stage a herdr nightly's four builds and BUILD-INFO.json, assert the set, write SHA256SUMS and the sign count", runNightlyStage},
+		{"pre-push", "the pre-push hook: prove each pushed tree that has no Linux proof, and refuse the push when that fails", runPrePush},
 		{"remote-items", "what is open against this repository, and does it survive checking", runRemote},
 		{"release", "verify and optionally tag a native wsl-toolkit release", runRelease},
 		{"release-readback", "every staged asset is on the published release, by name", runReleaseReadback},
@@ -414,12 +416,63 @@ func runNightlyPrune(args []string) int {
 	return 0
 }
 
-// runLinuxProof proves HEAD's tree on Linux before it is pushed. TOOL-33.
+// runNightlyStage is herdr-nightly.yml's staging step. TOOL-32.
+func runNightlyStage(args []string) int {
+	fs := newFlagSet("nightly-stage")
+	var opts workflow.NightlyStageOptions
+	fs.StringVar(&opts.Builds, "builds", "artifacts/out", "where herdr's four builds were downloaded to")
+	fs.StringVar(&opts.Records, "records", "artifacts", "where the four buildinfo-*.json records were downloaded to")
+	fs.StringVar(&opts.Dist, "dist", "dist", "the staging directory")
+	fs.StringVar(&opts.Tag, "tag", "", "the nightly's tag, as herdr-nightly-20261024-abc1234")
+	fs.StringVar(&opts.Commit, "commit", "", "the herdr commit the nightly was built from")
+	fs.StringVar(&opts.Run, "run", "", "the URL of the workflow run that built it")
+	fs.StringVar(&opts.GitHubEnv, "github-env", "", "a file to append SIGN_COUNT=N to, as GITHUB_ENV. Empty prints it only")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	if err := workflow.NightlyStage(opts, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "nightly-stage: %v. Nothing is published from a staging step that failed.\n", err)
+		return 1
+	}
+	return 0
+}
+
+// runNightlyPublish is herdr-nightly.yml's publish step. TOOL-37.
+func runNightlyPublish(args []string) int {
+	fs := newFlagSet("nightly-publish")
+	var opts workflow.NightlyPublishOptions
+	fs.StringVar(&opts.Tag, "tag", "", "the nightly's tag")
+	fs.StringVar(&opts.Repo, "repo", "", "OWNER/NAME, which gh is handed")
+	fs.StringVar(&opts.Target, "target", "", "the commit the tag is made on when the prerelease is created")
+	fs.StringVar(&opts.NotesFile, "notes-file", "", "the prerelease's notes")
+	fs.StringVar(&opts.Dist, "dist", "dist", "the staging directory whose every file is uploaded")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	gh := func(a ...string) (string, error) {
+		cmd := exec.Command("gh", a...)
+		var out, errBuf strings.Builder
+		cmd.Stdout, cmd.Stderr = &out, &errBuf
+		if err := cmd.Run(); err != nil {
+			return "", fmt.Errorf("gh %s: %w: %s", strings.Join(a[:2], " "), err, strings.TrimSpace(errBuf.String()))
+		}
+		return out.String(), nil
+	}
+	if err := workflow.NightlyPublish(opts, gh, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "nightly-publish: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// runLinuxProof proves a commit's tree on Linux before it is pushed. TOOL-33.
 func runLinuxProof(args []string) int {
 	fs := newFlagSet("linux-proof")
 	var opts linuxproof.Options
-	fs.StringVar(&opts.RowsSince, "rows-since", "", "also run every mutation row added to tools/repo/mutations.json between this ref and HEAD, in golang:1.25")
-	fs.StringVar(&opts.WSLToolkit, "wsl-toolkit", "", "the wsl-toolkit executable the jobs run through. Empty finds wsl-toolkit on PATH")
+	fs.StringVar(&opts.Rev, "rev", "HEAD", "the commit whose tree is proved")
+	fs.StringVar(&opts.RowsSince, "rows-since", "", "run every mutation row added to tools/repo/mutations.json between this ref and --rev. Empty counts them from the newest commit --remote is known to hold, as the pre-push hook does")
+	fs.StringVar(&opts.Remote, "remote", "origin", "the remote whose tracked refs the added rows are counted from")
+	fs.StringVar(&opts.WSLToolkit, "wsl-toolkit", "", "the wsl-toolkit executable the jobs run through. Empty finds wsl-toolkit on PATH, or on a Linux host runs them natively")
 	if code, done := exitFor(parseArgs(fs, args)); done {
 		return code
 	}
@@ -434,8 +487,8 @@ func runLinuxProof(args []string) int {
 func runPrePush(args []string) int {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
 		fmt.Fprintln(os.Stderr, "repo pre-push REMOTE [URL] < git's update lines")
-		fmt.Fprintln(os.Stderr, "  Refuses a pushed tree with no proof from repo linux-proof. Called by .githooks/pre-push.")
+		fmt.Fprintln(os.Stderr, "  Proves each pushed tree that has no proof from repo linux-proof, and refuses the push when that fails. Called by .githooks/pre-push.")
 		return 0
 	}
-	return linuxproof.PrePush(args, os.Stdin, os.Stderr)
+	return linuxproof.PrePush(args, os.Stdin, os.Stdout, os.Stderr, "")
 }

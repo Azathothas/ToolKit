@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -42,12 +43,12 @@ func TestAProofIsFoundForItsOwnTreeAlone(t *testing.T) {
 	if Has(common, treeA) {
 		t.Fatal("a tree with no proof file was reported proved")
 	}
-	path, err := Write(common, Proof{Tree: treeA, Commit: treeB, Jobs: []string{"go", "shellcheck"}})
+	path, err := Write(common, Proof{Tree: treeA, Commit: treeB, Jobs: []string{"go", "shellcheck"}, Rows: []string{"r"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !Has(common, treeA) {
-		t.Fatal("the tree just proved was not found")
+	if p, ok := Load(common, treeA); !ok || strings.Join(p.Rows, ",") != "r" {
+		t.Fatalf("the tree just proved was not found with its rows: %+v, %v", p, ok)
 	}
 	if Has(common, treeB) {
 		t.Fatal("a different tree was reported proved")
@@ -77,42 +78,83 @@ func TestAProofIsFoundForItsOwnTreeAlone(t *testing.T) {
 type fakeRepo struct {
 	trees    map[string]string
 	onRemote map[string]bool
-	proved   map[string]bool
+	proofs   map[string]Proof
+	base     map[string]string
+	rows     map[string][]string
 }
 
 func (f fakeRepo) Tree(rev string) (string, bool) { t, ok := f.trees[rev]; return t, ok }
 func (f fakeRepo) OnRemote(rev, remote string) bool {
 	return remote == "origin" && f.onRemote[rev]
 }
-func (f fakeRepo) Proved(tree string) bool { return f.proved[tree] }
+func (f fakeRepo) Base(rev, remote string) string {
+	if remote != "origin" {
+		return ""
+	}
+	return f.base[rev]
+}
+func (f fakeRepo) AddedRows(base, rev string) ([]string, error) { return f.rows[base+".."+rev], nil }
+func (f fakeRepo) Proof(tree string) (Proof, bool) {
+	p, ok := f.proofs[tree]
+	return p, ok
+}
 
-func refs(rs []Refusal) string {
+func refs(ns []Need) string {
 	var out []string
-	for _, r := range rs {
-		out = append(out, r.Ref)
+	for _, n := range ns {
+		out = append(out, n.Ref)
 	}
 	return strings.Join(out, ",")
 }
 
-// TestTheHookRefusesAnUnprovedTree and accepts a proved one.
-func TestTheHookRefusesAnUnprovedTree(t *testing.T) {
+// TestTheHookProvesAnUnprovedTree and lets a proved one go.
+func TestTheHookProvesAnUnprovedTree(t *testing.T) {
 	c1, c2 := strings.Repeat("1", 40), strings.Repeat("2", 40)
-	repo := fakeRepo{trees: map[string]string{c1: treeA, c2: treeB}, proved: map[string]bool{treeA: true}}
-	got := Decide([]Update{
+	repo := fakeRepo{trees: map[string]string{c1: treeA, c2: treeB}, proofs: map[string]Proof{treeA: {Tree: treeA}}}
+	needs, refused := Decide([]Update{
 		{"refs/heads/a", c1, "refs/heads/a", zero},
 		{"refs/heads/b", c2, "refs/heads/b", zero},
 	}, "origin", repo)
-	if refs(got) != "refs/heads/b" || got[0].Tree != treeB {
-		t.Fatalf("Decide = %+v; want refs/heads/b refused for tree B alone", got)
+	if len(refused) != 0 || refs(needs) != "refs/heads/b" || needs[0].Tree != treeB || needs[0].Commit != c2 {
+		t.Fatalf("Decide = %+v, %+v; want refs/heads/b to prove for tree B alone", needs, refused)
+	}
+}
+
+// TestAProofWithoutTheAddedRowsDoesNotCoverThem. ⛔ A row the push adds is
+// proved on Linux like a case, and the rows are counted from the remote ref,
+// or for a new ref from the newest commit the remote holds.
+func TestAProofWithoutTheAddedRowsDoesNotCoverThem(t *testing.T) {
+	c1, was, base := strings.Repeat("1", 40), strings.Repeat("5", 40), strings.Repeat("6", 40)
+	repo := fakeRepo{
+		trees:  map[string]string{c1: treeA, was: treeB},
+		proofs: map[string]Proof{treeA: {Tree: treeA, Rows: []string{"old"}}},
+		base:   map[string]string{c1: base},
+		rows:   map[string][]string{was + ".." + c1: {"old", "new"}, base + ".." + c1: {"old"}},
+	}
+	needs, _ := Decide([]Update{{"refs/heads/m", c1, "refs/heads/m", was}}, "origin", repo)
+	if len(needs) != 1 || strings.Join(needs[0].Rows, ",") != "old,new" || needs[0].Base != was {
+		t.Fatalf("a push adding a row the proof never ran: %+v", needs)
+	}
+	needs, _ = Decide([]Update{{"refs/heads/n", c1, "refs/heads/n", zero}}, "origin", repo)
+	if len(needs) != 0 {
+		t.Fatalf("a new ref whose added rows the proof ran: %+v", needs)
+	}
+	repo.rows[base+".."+c1] = []string{"new"}
+	needs, _ = Decide([]Update{{"refs/heads/n", c1, "refs/heads/n", zero}}, "origin", repo)
+	if len(needs) != 1 || needs[0].Base != base || strings.Join(needs[0].Rows, ",") != "new" {
+		t.Fatalf("a new ref counted from the remote's newest commit: %+v", needs)
+	}
+	if got := Unrun([]string{"a", "b"}, []string{"b", "c"}); strings.Join(got, ",") != "c" {
+		t.Fatalf("Unrun = %v", got)
 	}
 }
 
 // TestTheHookLetsADeletedRefGo. A deletion pushes no tree to prove.
 func TestTheHookLetsADeletedRefGo(t *testing.T) {
 	c1 := strings.Repeat("1", 40)
-	got := Decide([]Update{{"(delete)", zero, "refs/heads/gone", c1}}, "origin", fakeRepo{})
-	if len(got) != 0 {
-		t.Fatalf("a deleted ref was refused: %+v", got)
+	needs, refused := Decide([]Update{{"(delete)", zero, "refs/heads/gone", c1}}, "origin", fakeRepo{})
+	if len(needs)+len(refused) != 0 {
+		t.Fatalf("a deleted ref was not let go: %+v %+v", needs, refused)
 	}
 }
 
@@ -124,15 +166,15 @@ func TestTheHookLetsATreeTheRemoteHoldsGo(t *testing.T) {
 		trees:    map[string]string{tag: treeA, amended: treeB, was: treeB},
 		onRemote: map[string]bool{tag: true},
 	}
-	if got := Decide([]Update{{"refs/tags/v1", tag, "refs/tags/v1", zero}}, "origin", repo); len(got) != 0 {
-		t.Fatalf("a tag on a commit the remote holds was refused: %+v", got)
+	if got, _ := Decide([]Update{{"refs/tags/v1", tag, "refs/tags/v1", zero}}, "origin", repo); len(got) != 0 {
+		t.Fatalf("a tag on a commit the remote holds needs a proof: %+v", got)
 	}
-	if got := Decide([]Update{{"refs/heads/m", amended, "refs/heads/m", was}}, "origin", repo); len(got) != 0 {
-		t.Fatalf("an amended commit with the remote ref's own tree was refused: %+v", got)
+	if got, _ := Decide([]Update{{"refs/heads/m", amended, "refs/heads/m", was}}, "origin", repo); len(got) != 0 {
+		t.Fatalf("an amended commit with the remote ref's own tree needs a proof: %+v", got)
 	}
 	// ⛔ The same tag pushed to a remote this checkout does not track is new
 	// there, and needs its proof.
-	if got := Decide([]Update{{"refs/tags/v1", tag, "refs/tags/v1", zero}}, "elsewhere", repo); len(got) != 1 {
+	if got, _ := Decide([]Update{{"refs/tags/v1", tag, "refs/tags/v1", zero}}, "elsewhere", repo); len(got) != 1 {
 		t.Fatalf("a tag new to another remote went unproved: %+v", got)
 	}
 }
@@ -140,7 +182,7 @@ func TestTheHookLetsATreeTheRemoteHoldsGo(t *testing.T) {
 // TestTheHookRefusesATreeGitCannotName rather than waving it through.
 func TestTheHookRefusesATreeGitCannotName(t *testing.T) {
 	c1 := strings.Repeat("1", 40)
-	got := Decide([]Update{{"refs/heads/x", c1, "refs/heads/x", zero}}, "origin", fakeRepo{proved: map[string]bool{"": true}})
+	_, got := Decide([]Update{{"refs/heads/x", c1, "refs/heads/x", zero}}, "origin", fakeRepo{proofs: map[string]Proof{"": {}}})
 	if len(got) != 1 || !strings.Contains(got[0].Reason, "cannot name") {
 		t.Fatalf("an unnamed tree was accepted: %+v", got)
 	}
@@ -187,24 +229,33 @@ func TestAddedRowsAreNewOrChangedRows(t *testing.T) {
 // TestTheJobsAreCIsLinuxJobsWithTheAddedRows, each label one sh word however
 // it is spelt.
 func TestTheJobsAreCIsLinuxJobsWithTheAddedRows(t *testing.T) {
-	if got := Jobs(nil); len(got) != 2 || got[0].Name != "go" || got[1].Name != "shellcheck" {
-		t.Fatalf("Jobs(nil) = %+v; want the go and shellcheck jobs", got)
+	if got := Jobs(nil); len(got) != 2 || got[0].Name != "shellcheck" || got[1].Name != "go" {
+		t.Fatalf("Jobs(nil) = %+v; want the shellcheck and go jobs", got)
 	}
 	jobs := Jobs([]string{"a project's row", "plain"})
 	if len(jobs) != 3 || jobs[2].Image != "docker.io/library/golang:1.25" {
 		t.Fatalf("Jobs(rows) = %+v; want a mutations job in golang:1.25", jobs)
 	}
-	if !strings.Contains(jobs[2].Script, `mutate --only 'a project'\''s row' && sh scripts/common/repo.sh mutate --only 'plain'`) {
-		t.Fatalf("the mutations script does not select each row as one word: %s", jobs[2].Script)
+	if !strings.Contains(jobs[2].Body, `mutate --only 'a project'\''s row' && sh scripts/common/repo.sh mutate --only 'plain'`) {
+		t.Fatalf("the mutations script does not select each row as one word: %s", jobs[2].Body)
 	}
-	if strings.Contains(jobs[0].Script, "mutate") || !strings.Contains(jobs[0].Script, "check-go.sh") {
-		t.Fatalf("the go job is not CI's go job: %s", jobs[0].Script)
+	if strings.Contains(jobs[1].Body, "mutate") || !strings.Contains(jobs[1].Body, "check-go.sh") {
+		t.Fatalf("the go job is not CI's go job: %s", jobs[1].Body)
 	}
-	args := strings.Join(RunArgs(jobs[0]), " ")
-	for _, want := range []string{"--container-lifecycle ephemeral", "--gitignore", "--exclude .git ", "--exclude .claude", "--workspace ."} {
-		if !strings.Contains(args, want) {
-			t.Errorf("RunArgs lacks %q: %s", want, args)
+	ws := filepath.Join("C:", "x", ".tmp", "linux-proof-1")
+	args := RunArgs(jobs[0], ws, treeA)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"--container-lifecycle ephemeral", "--workspace " + ws, "--image docker.io/library/ubuntu:24.04"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("RunArgs lacks %q: %s", want, joined)
 		}
+	}
+	script := args[len(args)-1]
+	if !strings.HasPrefix(script, jobs[0].Setup+" && ") || !strings.Contains(script, ContainerTar) {
+		t.Errorf("the container script does not install and unpack first: %s", script)
+	}
+	if native := Script(jobs[0], "/t/tree.tar", "/t/src", treeA, false); strings.Contains(native, "apt-get") {
+		t.Errorf("a native script installs packages on the host: %s", native)
 	}
 	if sh, err := exec.LookPath("sh"); err == nil {
 		out, err := exec.Command(sh, "-c", "printf %s "+ShellQuote(`it's "x" $HOME`)).Output()
@@ -214,68 +265,71 @@ func TestTheJobsAreCIsLinuxJobsWithTheAddedRows(t *testing.T) {
 	}
 }
 
+// TestALinuxHostProvesNatively and Windows always through wsl-toolkit.
+func TestALinuxHostProvesNatively(t *testing.T) {
+	if !Native("linux", "") || Native("windows", "") || Native("linux", "/x/wsl-toolkit") {
+		t.Fatal("Native does not answer a Linux host with no wsl-toolkit named, alone")
+	}
+}
+
+// TestTheScriptChecksTheTreeItUnpacked runs Script with sh over a real
+// archive. ⛔ A copy whose tree is not the one the proof is filed under fails
+// before the check runs, so it cannot file a proof of a different tree.
+func TestTheScriptChecksTheTreeItUnpacked(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the script runs on Linux alone, and git on Windows records no executable bit from the unpacked files")
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh on PATH")
+	}
+	for _, tool := range []string{"git", "tar"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("no %s on PATH", tool)
+		}
+	}
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	gitIn(t, root, "init", "-q", work)
+	if err := os.WriteFile(filepath.Join(work, "run.sh"), []byte("echo hi\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, ".gitignore"), []byte("ignored\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "ignored"), []byte("tracked anyway\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, work, "add", "-A")
+	gitIn(t, work, "add", "-f", "ignored")
+	gitIn(t, work, "update-index", "--chmod=+x", "run.sh")
+	gitIn(t, work, "commit", "-q", "-m", "one")
+	tree := gitIn(t, work, "rev-parse", "HEAD^{tree}")
+	tarPath := filepath.Join(root, TarName)
+	gitIn(t, work, "archive", "--format=tar", "-o", tarPath, "HEAD")
+	run := func(src, want string) (string, error) {
+		job := Job{Name: "t", Body: "echo checked"}
+		// ⚠ Relative paths, because GNU tar on Windows reads `C:` as a host.
+		cmd := exec.Command(sh, "-c", Script(job, TarName, src, want, false))
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run("src-good", tree); err != nil || !strings.Contains(out, "checked") {
+		t.Fatalf("the archive of the tree did not unpack to that tree: %v\n%s", err, out)
+	}
+	if out, err := run("src-bad", treeA); err == nil || strings.Contains(out, "checked") {
+		t.Fatalf("a copy checked against another tree ran the check: %v\n%s", err, out)
+	}
+}
+
 func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
-	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@invalid", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null"}, args...)...)
+	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@invalid", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "core.autocrlf=false"}, args...)...)
 	var out, errBuf bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errBuf
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, errBuf.String())
 	}
 	return strings.TrimSpace(out.String())
-}
-
-// TestPrePushAnswersFromARealCheckout drives the hook's own entry point
-// against a real repository and a bare remote, so the git half of each
-// decision is read from git rather than from a fake.
-func TestPrePushAnswersFromARealCheckout(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git is not on PATH, and the hook reads git")
-	}
-	root := t.TempDir()
-	work, bare := filepath.Join(root, "work"), filepath.Join(root, "bare.git")
-	gitIn(t, root, "init", "-q", "--bare", bare)
-	gitIn(t, root, "init", "-q", work)
-	if err := os.WriteFile(filepath.Join(work, "f"), []byte("one\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	gitIn(t, work, "add", "f")
-	gitIn(t, work, "commit", "-q", "-m", "one")
-	gitIn(t, work, "remote", "add", "origin", bare)
-	head := gitIn(t, work, "rev-parse", "HEAD")
-	tree := gitIn(t, work, "rev-parse", "HEAD^{tree}")
-	t.Chdir(work)
-
-	push := func(line string) (int, string) {
-		var errOut bytes.Buffer
-		code := PrePush([]string{"origin", bare}, strings.NewReader(line+"\n"), &errOut)
-		return code, errOut.String()
-	}
-	line := "refs/heads/main " + head + " refs/heads/main " + zero
-	code, msg := push(line)
-	if code != 1 || !strings.Contains(msg, tree) || !strings.Contains(msg, "linux-proof") {
-		t.Fatalf("an unproved tree: exit %d, %q; want 1 naming the tree and the command", code, msg)
-	}
-	common := gitIn(t, work, "rev-parse", "--absolute-git-dir")
-	if _, err := Write(common, Proof{Tree: tree, Commit: head}); err != nil {
-		t.Fatal(err)
-	}
-	if code, msg := push(line); code != 0 {
-		t.Fatalf("a proved tree: exit %d, %q", code, msg)
-	}
-	if err := os.Remove(filepath.Join(common, ProofDirName, tree+".json")); err != nil {
-		t.Fatal(err)
-	}
-	// ⭐ Once the commit is on the remote's tracked refs, a tag on it needs no
-	// proof: this is `repo release --publish` pushing a tag on a pushed main.
-	gitIn(t, work, "push", "-q", "origin", "HEAD:refs/heads/main")
-	gitIn(t, work, "fetch", "-q", "origin")
-	gitIn(t, work, "tag", "-a", "v1", "-m", "v1")
-	tag := gitIn(t, work, "rev-parse", "v1")
-	if code, msg := push("refs/tags/v1 " + tag + " refs/tags/v1 " + zero); code != 0 {
-		t.Fatalf("a tag on a pushed commit: exit %d, %q", code, msg)
-	}
-	if code := PrePush([]string{"origin"}, strings.NewReader("not a line\n"), &bytes.Buffer{}); code != 2 {
-		t.Fatalf("unreadable input: exit %d, want 2", code)
-	}
 }

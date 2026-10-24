@@ -186,6 +186,31 @@ type StageOptions struct {
 	HerdrLabel string
 	HerdrFrom  string
 	GitHubEnv  string
+	// Build makes one executable at out. Nil runs GoBuild, and a case hands a
+	// fake so the staging around the compiler is proved without it.
+	Build func(b Build, root, out string) error
+}
+
+// GoBuildArgs is the go command line and the environment one build runs with.
+//
+// ⛔ -trimpath, AND NO BUILD STAMP. Two builds of one commit produce identical
+// bytes, so a consumer can rebuild and compare rather than trusting the
+// publisher. A path or a timestamp compiled in would make every build unique
+// and that property unavailable. ⚠ CGO off, so a cross build needs nothing
+// installed.
+func GoBuildArgs(b Build, out string) (args, env []string) {
+	return []string{"build", "-trimpath", "-o", out, "."},
+		[]string{"GOOS=" + b.OS, "GOARCH=" + b.Arch, "CGO_ENABLED=0"}
+}
+
+// GoBuild runs GoBuildArgs in b's module.
+func GoBuild(b Build, root, out string, log io.Writer) error {
+	args, env := GoBuildArgs(b, out)
+	cmd := exec.Command("go", args...)
+	cmd.Dir = filepath.Join(root, filepath.FromSlash(b.Module))
+	cmd.Env = append(os.Environ(), env...)
+	cmd.Stdout, cmd.Stderr = log, log
+	return cmd.Run()
 }
 
 // Files lists the regular files directly in dir, as Get-ChildItem -File did.
@@ -205,12 +230,8 @@ func Files(dir string) ([]string, error) {
 }
 
 // Stage builds every executable, copies herdr's four builds, asserts the set,
-// writes SHA256SUMS and appends the sign count to GITHUB_ENV.
-//
-// ⛔ -trimpath, AND NO BUILD STAMP. Two builds of one commit produce identical
-// bytes, so a consumer can rebuild and compare rather than trusting the
-// publisher. A path or a timestamp compiled in would make every build unique
-// and that property unavailable.
+// writes SHA256SUMS and appends the sign count to GITHUB_ENV. Each build runs
+// with GoBuildArgs, which says why.
 func Stage(opts StageOptions, out io.Writer) error {
 	if opts.HerdrLabel == "" {
 		return fmt.Errorf("--herdr-label is empty, so herdr's builds cannot be named")
@@ -222,12 +243,12 @@ func Stage(opts StageOptions, out io.Writer) error {
 	if err := os.MkdirAll(dist, 0o755); err != nil {
 		return err
 	}
+	build := opts.Build
+	if build == nil {
+		build = func(b Build, root, to string) error { return GoBuild(b, root, to, out) }
+	}
 	for _, b := range ReleaseBuilds() {
-		cmd := exec.Command("go", "build", "-trimpath", "-o", filepath.Join(dist, b.Name), ".")
-		cmd.Dir = filepath.Join(opts.Root, filepath.FromSlash(b.Module))
-		cmd.Env = append(os.Environ(), "GOOS="+b.OS, "GOARCH="+b.Arch, "CGO_ENABLED=0")
-		cmd.Stdout, cmd.Stderr = out, out
-		if err := cmd.Run(); err != nil {
+		if err := build(b, opts.Root, filepath.Join(dist, b.Name)); err != nil {
 			return fmt.Errorf("the %s %s/%s build failed: %w", b.Module, b.OS, b.Arch, err)
 		}
 	}
@@ -256,20 +277,27 @@ func Stage(opts StageOptions, out io.Writer) error {
 	}
 	line := SignCountLine(expected)
 	fmt.Fprintln(out, line)
-	if opts.GitHubEnv != "" {
-		f, err := os.OpenFile(opts.GitHubEnv, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
-		}
-		_, werr := fmt.Fprintln(f, line)
-		if cerr := f.Close(); werr == nil {
-			werr = cerr
-		}
-		if werr != nil {
-			return werr
-		}
+	return appendEnv(opts.GitHubEnv, line)
+}
+
+// appendEnv adds line to the GITHUB_ENV file at path. An empty path prints only.
+//
+// ⛔ THE LATER STEPS ASSERT WHAT THIS WRITES. A count printed and never
+// appended leaves SIGN_COUNT unset, and the signing step then compares against
+// nothing.
+func appendEnv(path, line string) error {
+	if path == "" {
+		return nil
 	}
-	return nil
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	_, werr := fmt.Fprintln(f, line)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	return werr
 }
 
 func copyFile(from, to string) error {

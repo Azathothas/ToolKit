@@ -69,22 +69,24 @@ $env:TMP = $env:TEMP
 Linux, so a push is proved there first, in containers on the default base:
 
 ```powershell
-pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof --rows-since origin/main
+pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof
 ```
 
-It refuses a tree with uncommitted changes, so commit first. It runs CI's `go`
-job in `golang:1.25` over every module, and the ShellCheck CI's `checks` job
-installs, in `ubuntu:24.04`. `--rows-since REF` adds every mutation row
-`tools/repo/mutations.json` gained since REF, in `golang:1.25`. The jobs run
-through the `wsl-toolkit` on PATH. `--wsl-toolkit PATH` names another, such as
+It proves the committed tree of HEAD, from `git archive`, so an uncommitted
+change is not in it. It runs the ShellCheck CI's `checks` job installs, in
+`ubuntu:24.04`, and CI's `go` job over every module, in `golang:1.25`. A third
+job runs every mutation row `tools/repo/mutations.json` gained since the newest
+commit `origin` holds, in `golang:1.25`. `--rows-since REF` counts them from REF
+instead, and `--rev REV` proves another commit. The jobs run through the
+`wsl-toolkit` on PATH. `--wsl-toolkit PATH` names another, such as
 `.tmp/wsl-toolkit.exe` when a job needs a flag no release carries yet.
 
-⛔ **A push of an unproved tree is refused.** On success the proof is filed
-under git's common directory, keyed by `git rev-parse HEAD^{tree}`. The tracked
-`.githooks/pre-push` refuses a pushed commit whose tree has none, and names the
-command above. A deleted ref, and a commit or tree the remote already holds,
-need no proof. The command lines each job runs are in
-`tools/repo/internal/linuxproof/linuxproof.go`.
+⛔ **A push runs the jobs itself when its tree has no proof.** On success the
+proof is filed under git's common directory, keyed by the tree. The tracked
+`.githooks/pre-push` runs the jobs for a pushed commit whose tree has none, or
+whose proof never ran a row the push adds. A failure refuses the push. A
+deleted ref, and a commit or tree the remote already holds, need no proof. The
+command lines each job runs are in `tools/repo/internal/linuxproof/linuxproof.go`.
 
 Add a test for every refusal and a row in
 [`../../repo/mutations.json`](../../repo/mutations.json) for every new guard
