@@ -73,7 +73,7 @@ func cmdBaseAgent(ctx context.Context, args []string) (int, error) {
 	if toolkit.AgentInteractive(passed) {
 		instance := ""
 		if toolkit.SelectedInstance.Name != toolkit.DefaultInstance {
-			instance = "--instance " + toolkit.SelectedInstance.Name + " "
+			instance = toolkit.InstanceArgs(toolkit.SelectedInstance.Name) + " "
 		}
 		return exitCannot, fmt.Errorf("%s's own screen needs a terminal, so it runs in a herdr pane in %s and not here. This prints the lines that reach the pane:\n"+
 			"  wsl-toolkit %sbase attach\n"+

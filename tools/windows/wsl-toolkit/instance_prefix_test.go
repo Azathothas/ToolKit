@@ -61,9 +61,10 @@ func TestAPrefixedInstanceWarnsOnceWhenItIsMade(t *testing.T) {
 	if got := os.Getenv(toolkit.InstanceEnv); got != "demo" {
 		t.Fatalf("the instance handed on is %q, want demo", got)
 	}
-	// The instance now exists, and the same name reaches it quietly.
-	if err := os.MkdirAll(filepath.Join(root, "instances", "demo"), 0o700); err != nil {
-		t.Fatal(err)
+	// The warning recorded the name in the instance it made, and the same name
+	// reaches it quietly.
+	if _, err := os.Stat(filepath.Join(root, "instances", "demo", "prefixed-from")); err != nil {
+		t.Fatalf("the warning recorded nothing: %v", err)
 	}
 	t.Setenv("WSL_TOOLKIT_HOME", root)
 	t.Setenv(toolkit.InstanceEnv, "")

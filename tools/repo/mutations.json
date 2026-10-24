@@ -2,6 +2,78 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a prefixed instance name that becomes auto is refused",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif rest == InstanceAuto {\n",
+      "replace": "\t\tif rest == InstanceAuto && asked == \"\" {\n",
+      "run": "TestAPrefixedNameThatBecomesAutoIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registered prefixed distribution keeps its instance name",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif distroRegistered(ctx, InstanceDistro(asked)) {\n",
+      "replace": "\t\tif distroRegistered(ctx, InstanceDistro(asked)) && asked == \"\" {\n",
+      "run": "TestARegisteredPrefixedDistributionKeepsItsName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefixed name reaching an existing instance warns",
+      "file": "internal/toolkit/instance.go",
+      "find": "\tif i.StrippedFrom == \"\" || i.Recorded {\n",
+      "replace": "\tif i.StrippedFrom == \"\" || i.Recorded || !i.Fresh {\n",
+      "run": "TestAPrefixedNameReachingAnUnrecordedInstanceWarns",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a recorded prefixed name is read back",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tinst.Recorded = prefixRecorded(home, inst.StrippedFrom)\n",
+      "replace": "\t\tinst.Recorded = false\n",
+      "run": "TestTheSamePrefixedNameReachesTheSameInstanceQuietly",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the prefix warning records its name in the instance",
+      "file": "main.go",
+      "find": "\t\tif err := inst.RecordPrefix(); err != nil {\n",
+      "replace": "\t\tif err := error(nil); err != nil {\n",
+      "run": "TestAPrefixedInstanceWarnsOnceWhenItIsMade",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a printed prefixed instance carries --literal-instance",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\treturn LiteralInstanceFlag + \" --instance \" + name\n",
+      "replace": "\t\treturn \"--instance \" + name\n",
+      "run": "TestAPrintedCommandKeepsAPrefixedInstanceLiteral",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a printed tool command uses the instance selection",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\t\treturn \"wsl-toolkit \" + InstanceArgs(instance) + \" \" + args\n",
+      "replace": "\t\treturn \"wsl-toolkit --instance \" + instance + \" \" + args\n",
+      "run": "TestAPrintedCommandKeepsAPrefixedInstanceLiteral",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mismatched configuration suggests a literal prefixed instance",
+      "file": "internal/toolkit/catalog.go",
+      "find": "implied = \"pass \" + InstanceArgs(strings.TrimPrefix(name, OwnedPrefix+\"-\"))",
+      "replace": "implied = \"pass --instance \" + strings.TrimPrefix(name, OwnedPrefix+\"-\")",
+      "run": "TestAPrintedCommandKeepsAPrefixedInstanceLiteral",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a new wsl- prefixed instance drops the prefix",
       "file": "internal/toolkit/instance.go",
       "find": "\t\treturn rest, nil\n",
@@ -29,9 +101,9 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: the prefix warning is said once, when the instance is new",
+      "label": "wsl-toolkit: the prefix warning is said once for each prefixed name",
       "file": "internal/toolkit/instance.go",
-      "find": "\tif i.StrippedFrom == \"\" || !i.Fresh {\n",
+      "find": "\tif i.StrippedFrom == \"\" || i.Recorded {\n",
       "replace": "\tif i.StrippedFrom == \"\" {\n",
       "run": "TestTheSamePrefixedNameReachesTheSameInstanceQuietly",
       "module": "tools/windows/wsl-toolkit",

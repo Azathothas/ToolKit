@@ -135,7 +135,7 @@ func beneath(parent, child string) (string, bool) {
 func grantCommand(dir string) string {
 	instance := ""
 	if SelectedInstance.Name != DefaultInstance {
-		instance = "--instance " + SelectedInstance.Name + " "
+		instance = InstanceArgs(SelectedInstance.Name) + " "
 	}
 	return "wsl-toolkit " + instance + "base grant --source " + quoteForDisplay(dir) + " --mode rw"
 }

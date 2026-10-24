@@ -116,7 +116,7 @@ changes meaning for it.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
-| a NEW instance named `wsl-NAME` or `wsl-toolkit-NAME` is made as `NAME`, distribution `wsl-toolkit-NAME`, with one warning on stderr. `wsl-`, `wsl-toolkit-`, `wsl-toolkit`, `wsl-base` and `wsl-jobs` are refused | creates such an instance on a new host and then names its distribution `wsl-toolkit-wsl-NAME` directly | reads the name from `base status --json`, or passes `--literal-instance` |
+| a NEW instance named `wsl-NAME` or `wsl-toolkit-NAME` is made as `NAME`, distribution `wsl-toolkit-NAME`, with one warning on stderr. `wsl-`, `wsl-toolkit-`, `wsl-toolkit`, `wsl-base`, `wsl-jobs` and `wsl-auto` are refused | creates such an instance on a new host and then names its distribution `wsl-toolkit-wsl-NAME` directly | reads the name from `base status --json`, or passes `--literal-instance` |
 
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 

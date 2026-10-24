@@ -18,6 +18,9 @@ func prefixCase(t *testing.T) string {
 	t.Setenv("WSL_TOOLKIT_HOME", home)
 	t.Setenv(InstanceEnv, "")
 	t.Setenv(InstanceLiteralEnv, "")
+	registered := distroRegistered
+	t.Cleanup(func() { distroRegistered = registered })
+	distroRegistered = func(context.Context, string) bool { return false }
 	return home
 }
 
@@ -43,8 +46,12 @@ func TestANewPrefixedInstanceDropsThePrefix(t *testing.T) {
 
 // ⚠ The warning is said when the instance is made, and not after.
 func TestTheSamePrefixedNameReachesTheSameInstanceQuietly(t *testing.T) {
-	home := prefixCase(t)
-	if err := os.MkdirAll(filepath.Join(home, "instances", "errand-box"), 0o700); err != nil {
+	prefixCase(t)
+	first, err := ResolveInstance(context.Background(), "wsl-errand-box")
+	if err != nil || first.PrefixWarning() == "" {
+		t.Fatalf("the first call reached %+v, %v, and should have warned", first, err)
+	}
+	if err := first.RecordPrefix(); err != nil {
 		t.Fatal(err)
 	}
 	inst, err := ResolveInstance(context.Background(), "wsl-errand-box")
@@ -52,7 +59,63 @@ func TestTheSamePrefixedNameReachesTheSameInstanceQuietly(t *testing.T) {
 		t.Fatalf("the same name again reached %+v, %v", inst, err)
 	}
 	if w := inst.PrefixWarning(); w != "" {
-		t.Fatalf("an instance that exists was warned about again: %q", w)
+		t.Fatalf("an instance that recorded the name was warned about again: %q", w)
+	}
+}
+
+// ⛔ A prefixed name reaching an instance made under another name is said, once.
+func TestAPrefixedNameReachingAnUnrecordedInstanceWarns(t *testing.T) {
+	home := prefixCase(t)
+	if err := os.MkdirAll(filepath.Join(home, "instances", "box"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	inst, err := ResolveInstance(context.Background(), "wsl-box")
+	if err != nil || inst.Name != "box" {
+		t.Fatalf("wsl-box reached %+v, %v", inst, err)
+	}
+	if w := inst.PrefixWarning(); !strings.Contains(w, "reaches the existing instance") {
+		t.Fatalf("wsl-box reached the existing box and warned %q", w)
+	}
+}
+
+// ⛔ A prefixed instance whose distribution is registered keeps its name, even
+// where this home holds no state directory for it.
+func TestARegisteredPrefixedDistributionKeepsItsName(t *testing.T) {
+	prefixCase(t)
+	distroRegistered = func(_ context.Context, distro string) bool { return distro == "wsl-toolkit-wsl-box" }
+	inst, err := ResolveInstance(context.Background(), "wsl-box")
+	if err != nil || inst.Name != "wsl-box" || inst.Distro != "wsl-toolkit-wsl-box" {
+		t.Fatalf("a registered prefixed instance resolved to %+v, %v", inst, err)
+	}
+}
+
+// ❌ `wsl-auto` would be the allocation keyword, which a child resolves again.
+func TestAPrefixedNameThatBecomesAutoIsRefused(t *testing.T) {
+	prefixCase(t)
+	for _, asked := range []string{"wsl-auto", "wsl-toolkit-auto"} {
+		_, err := ResolveInstance(context.Background(), asked)
+		if err == nil || !strings.Contains(err.Error(), "allocates") {
+			t.Fatalf("%q answered %v; want a refusal naming the keyword", asked, err)
+		}
+	}
+}
+
+// ⛔ A printed command for a prefixed instance keeps the name literal, so it
+// reaches that instance before its state directory exists.
+func TestAPrintedCommandKeepsAPrefixedInstanceLiteral(t *testing.T) {
+	prefixCase(t)
+	if got := ToolCommandFor("wsl-box", "base ensure"); got != "wsl-toolkit --literal-instance --instance wsl-box base ensure" {
+		t.Fatalf("ToolCommandFor printed %q", got)
+	}
+	if got := ToolCommandFor("box", "base ensure"); got != "wsl-toolkit --instance box base ensure" {
+		t.Fatalf("ToolCommandFor printed %q", got)
+	}
+	previous := SelectedInstance
+	t.Cleanup(func() { SelectedInstance = previous })
+	SelectedInstance = Instance{Name: "other"}
+	err := instanceMatches("wsl-toolkit-wsl-box", "config.json")
+	if err == nil || !strings.Contains(err.Error(), "pass --literal-instance --instance wsl-box") {
+		t.Fatalf("a configuration naming wsl-toolkit-wsl-box advised %v", err)
 	}
 }
 

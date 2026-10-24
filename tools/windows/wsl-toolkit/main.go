@@ -298,6 +298,9 @@ func applyInstance(ctx context.Context, asked string) (int, error) {
 	// other than the one the caller spelled. WSL-193.
 	if warning := inst.PrefixWarning(); warning != "" {
 		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+warning)
+		if err := inst.RecordPrefix(); err != nil {
+			return exitCannot, fmt.Errorf("cannot record that instance %s was reached as %s: %w", inst.Name, inst.StrippedFrom, err)
+		}
 	}
 	os.Setenv("WSL_TOOLKIT_HOME", inst.Home)
 	os.Setenv(toolkit.InstanceEnv, inst.Name)
