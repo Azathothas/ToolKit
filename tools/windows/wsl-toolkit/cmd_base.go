@@ -202,7 +202,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			}
 		}
 		if err := base.Remove(ctx); err != nil {
-			return exitFailed, err
+			return removalExit(err), err
 		}
 		logf("  removed %s", cfg.Base.Name)
 		return exitOK, nil
@@ -648,4 +648,15 @@ func cmdBaseReclaim(ctx context.Context, base *toolkit.Base, asJSON bool) (int, 
 		logf("  after       sparse %v, takes %s; %s", res.SparseAfter, toolkit.HumanBytes(res.AllocatedAfter), trimmed)
 	}
 	return code, err
+}
+
+// removalExit is the exit code a failed `base remove` answers.
+//
+// ⛔ A REFUSAL BY OWNERSHIP IS EXIT 2, as every other refusal of a change is. It
+// changed nothing, and exit 1 says something was tried and failed. WSL-167.
+func removalExit(err error) int {
+	if errors.Is(err, toolkit.ErrNotOwner) {
+		return exitCannot
+	}
+	return exitFailed
 }

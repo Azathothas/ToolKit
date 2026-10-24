@@ -280,6 +280,12 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		}
 	}
 	st.DiskPath = filepath.Join(b.Dir(), "ext4.vhdx")
+	// ⛔ THE DISK WSL NAMES, NOT THIS HOME'S FOLDER. A state directory that uses a
+	// base it does not own reported a disk in its own empty folder as not measured.
+	// WSL-167.
+	if at, registered, err := b.diskFolder(); err == nil && registered && at != "" {
+		st.DiskPath = filepath.Join(at, "ext4.vhdx")
+	}
 	if size, ok := FileSize(st.DiskPath); ok {
 		st.DiskBytes, st.DiskKnown = size, true
 		if r, ok := diskSparseFacts(&st); ok {

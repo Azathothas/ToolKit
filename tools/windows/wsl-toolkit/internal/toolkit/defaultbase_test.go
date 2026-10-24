@@ -250,6 +250,9 @@ func TestAHomeThatDoesNotOwnTheBaseUsesItAndChangesNothing(t *testing.T) {
 			if err != nil || !st.Registered || st.Naming == nil || st.Naming.Owner || st.Naming.Disk != cleanBasePath(owner) {
 				t.Fatalf("status from a scratch home reads %+v, %v; want registered, its disk named, and not the owner", st.Naming, err)
 			}
+			if want := filepath.Join(cleanBasePath(owner), "ext4.vhdx"); st.DiskPath != want || !st.DiskKnown {
+				t.Fatalf("status from a scratch home names the disk %q, measured %v; want the owner's %q", st.DiskPath, st.DiskKnown, want)
+			}
 			sshConfig := filepath.Join(os.Getenv(SSHDirEnv), "config")
 			owners := withMarkedBlock(nil, name, []string{"Host " + name})
 			if err := os.WriteFile(sshConfig, owners, 0o600); err != nil {

@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: status names the disk WSL registered, not this home's empty folder",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tst.DiskPath = filepath.Join(at, \"ext4.vhdx\")\n",
+      "replace": "",
+      "run": "TestAHomeThatDoesNotOwnTheBaseUsesItAndChangesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a removal refused by ownership exits 2",
+      "file": "cmd_base.go",
+      "find": "\tif errors.Is(err, toolkit.ErrNotOwner) {\n\t\treturn exitCannot\n\t}\n",
+      "replace": "",
+      "run": "TestARemovalRefusedByOwnershipExitsTwo",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a stale default name off the helper's wire is checked again at the build",
       "file": "internal/toolkit/defaultbase.go",
       "find": "\treturn NameFromRegistered\n}\n",
