@@ -167,7 +167,23 @@ func newFakeHost(t *testing.T) *fakeHost {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bin := t.TempDir()
+	// ⚠ NOT t.TempDir. On a GitHub Windows runner a fake that has just exited
+	// stays locked for longer than t.TempDir's cleanup waits, and that cleanup
+	// then fails a case whose every assertion passed. The fakes are not what is
+	// under test, so their removal waits longer and only logs.
+	bin, err := os.MkdirTemp("", "fakehost-bin-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		deadline := time.Now().Add(30 * time.Second)
+		for os.RemoveAll(bin) != nil && time.Now().Before(deadline) {
+			time.Sleep(500 * time.Millisecond)
+		}
+		if _, err := os.Stat(bin); err == nil {
+			t.Logf("the fakes in %s were still locked after 30s and are left behind", bin)
+		}
+	})
 	ext := ""
 	if runtime.GOOS == "windows" {
 		ext = ".exe"
