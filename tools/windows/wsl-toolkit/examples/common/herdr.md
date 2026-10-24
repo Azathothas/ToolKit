@@ -166,7 +166,8 @@ kernel's working directory agrees with herdr's answer. `WSL-144`
 
 ⛔ **A directory that does not exist is not refused.** The create exits 0 and the
 shell starts in the account's home, which is `herdrdev/herdr#4935`, open upstream.
-So read `.result.root_pane.cwd` from the answer before you start an agent there.
+So read `.result.root_pane.cwd` from the answer before you start an agent there. On
+0.9.5 it reads the home in that case, not the path you asked for. `WSL-144`
 
 ⭐ **The name is also the target of every later command**, so `agent prompt`,
 `agent read` and `agent wait` all take it:

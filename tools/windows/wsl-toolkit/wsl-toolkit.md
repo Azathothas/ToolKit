@@ -662,7 +662,7 @@ Put the 0.9.5 one there: `herdr-0.9.5-windows-x86_64.zip` or
 ⚠ **A base built before the 0.9.5 pin keeps serving the herdr it started with.** `base
 ensure` installs 0.9.5 and never restarts a running server, so it says the server keeps
 the old one. Restart it when no pane is needed, because a restart ends every pane:
-`base exec --root -- systemctl restart wsl-toolkit-herdr.service`. `WSL-141`
+`base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'`. `WSL-141`
 
 ⚠ **A `version` and `sha256` on the herdr entry name one of herdr's own releases.**
 That release is downloaded from herdr's project under herdr's own asset names, as

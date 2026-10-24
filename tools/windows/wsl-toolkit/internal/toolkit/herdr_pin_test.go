@@ -161,7 +161,7 @@ func TestTheDefaultHerdrIsTheBuildThisRepositoryPublished(t *testing.T) {
 		t.Fatal(err)
 	}
 	code, out, _ = run("x86_64", "TK_ADAPTER_VERSION=0.10.1", served, "STUB_ACTIVE=yes")
-	if code != 7 || !strings.Contains(out, kept) || !strings.Contains(out, "systemctl restart wsl-toolkit-herdr.service") {
+	if code != 7 || !strings.Contains(out, kept) || !strings.Contains(out, "base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'") {
 		t.Fatalf("a release installed under a running server answered exit %d, and it says the server keeps the old herdr and how to restart it:\n%s", code, out)
 	}
 	code, out, _ = run("x86_64", "TK_ADAPTER_VERSION=0.10.1", served, "STUB_ACTIVE=yes")
