@@ -109,6 +109,15 @@ not the instance `base`, which ruling 33 removes.
 ⚠ **The register's rows list no call that names `wsl-toolkit` as a distribution or
 the instance `base`.** Their own trees were not read again for this change, so each row
 is read before the release.
+### ⚠ What the instance prefix changes, and what a caller does
+
+`WSL-193`. Not released yet. An existing instance keeps its name, so no working call
+changes meaning for it.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a NEW instance named `wsl-NAME` or `wsl-toolkit-NAME` is made as `NAME`, distribution `wsl-toolkit-NAME`, with one warning on stderr. `wsl-`, `wsl-toolkit-`, `wsl-toolkit`, `wsl-base` and `wsl-jobs` are refused | creates such an instance on a new host and then names its distribution `wsl-toolkit-wsl-NAME` directly | reads the name from `base status --json`, or passes `--literal-instance` |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

@@ -34,7 +34,13 @@ Global: --instance N  one isolated instance: distribution wsl-toolkit-N and
                       Also WSL_TOOLKIT_INSTANCE. `base` and `jobs` are
                       reserved. Without it, the default base is
                       wsl-toolkit-jobs, or wsl-toolkit where one was
-                      built under that older name.
+                      built under that older name. A NEW instance named
+                      wsl-NAME or wsl-toolkit-NAME drops the prefix and
+                      warns: --instance wsl-box makes box, distribution
+                      wsl-toolkit-box. An existing one keeps its name.
+        --literal-instance
+                      keep the --instance name as given, prefix and all
+                      (also WSL_TOOLKIT_INSTANCE_LITERAL=1)
         --home DIR    the state directory (also WSL_TOOLKIT_HOME)
         --config F    a configuration file, ahead of every search step
         --quiet       progress off. Answers still go to stdout

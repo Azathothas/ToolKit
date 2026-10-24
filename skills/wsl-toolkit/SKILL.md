@@ -91,6 +91,9 @@ own state. `doctor --json` lists every distribution in `host.wsl_distros`. ⛔ W
 instance does not exist, `base ensure` builds a new one, so use the name the user has.
 ⛔ **`base` and `jobs` are reserved instance names.** A new instance under either is
 refused.
+⚠ **A new instance named `wsl-NAME` or `wsl-toolkit-NAME` is made as `NAME`.** Its
+distribution is `wsl-toolkit-NAME`, and stderr warns once. An existing instance keeps
+its name. `--literal-instance` keeps the name as given.
 
 One base is one JSON configuration. When the instance's own `config.json` exists in
 its state directory, `--instance NAME` reads it from any directory. Otherwise the

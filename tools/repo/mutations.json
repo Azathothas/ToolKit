@@ -2,6 +2,114 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a new wsl- prefixed instance drops the prefix",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\treturn rest, nil\n",
+      "replace": "\t\treturn asked, nil\n",
+      "run": "TestANewPrefixedInstanceDropsThePrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the longer instance prefix is tried first",
+      "file": "internal/toolkit/instance.go",
+      "find": "var instancePrefixes = []string{OwnedPrefix + \"-\", \"wsl-\"}",
+      "replace": "var instancePrefixes = []string{\"wsl-\", OwnedPrefix + \"-\"}",
+      "run": "TestANewPrefixedInstanceDropsThePrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stripped instance name is warned about on stderr",
+      "file": "main.go",
+      "find": "\t\tfmt.Fprintln(os.Stderr, \"wsl-toolkit: \"+warning)\n",
+      "replace": "",
+      "run": "TestAPrefixedInstanceWarnsOnceWhenItIsMade",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the prefix warning is said once, when the instance is new",
+      "file": "internal/toolkit/instance.go",
+      "find": "\tif i.StrippedFrom == \"\" || !i.Fresh {\n",
+      "replace": "\tif i.StrippedFrom == \"\" {\n",
+      "run": "TestTheSamePrefixedNameReachesTheSameInstanceQuietly",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an existing prefixed instance keeps its name",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\t\tif _, statErr := os.Stat(home); statErr == nil {\n\t\t\t\treturn asked, nil\n",
+      "replace": "\t\t\tif _, statErr := os.Stat(home); statErr == nil && false {\n\t\t\t\treturn asked, nil\n",
+      "run": "TestAnExistingPrefixedInstanceKeepsItsName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: WSL_TOOLKIT_INSTANCE_LITERAL keeps an instance name as given",
+      "file": "internal/toolkit/instance.go",
+      "find": "os.Getenv(InstanceLiteralEnv) == \"1\"",
+      "replace": "false",
+      "run": "TestTheLiteralOptionKeepsTheNameAsGiven",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --literal-instance keeps an instance name as given",
+      "file": "main.go",
+      "find": "\t\t\tos.Setenv(toolkit.InstanceLiteralEnv, \"1\")\n",
+      "replace": "",
+      "run": "TestTheLiteralFlagKeepsTheNameAsGiven",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an instance name that is only wsl-toolkit is refused",
+      "file": "internal/toolkit/instance.go",
+      "find": "\tif asked == OwnedPrefix {\n",
+      "replace": "\tif false {\n",
+      "run": "TestABarePrefixIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an instance name that is only a dashed prefix is refused",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif rest == \"\" {\n\t\t\treturn \"\", barePrefixRefusal(asked)\n\t\t}\n",
+      "replace": "",
+      "run": "TestABarePrefixIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefixed instance name that becomes reserved is refused",
+      "file": "internal/toolkit/instance.go",
+      "find": "\tif inst.StrippedFrom != \"\" && IsReservedInstance(asked) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAPrefixedNameThatBecomesReservedIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stripped instance name that still carries a prefix is refused",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif strings.HasPrefix(rest, \"wsl-\") {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAPrefixedNameThatStaysUnusableIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unusable stripped instance name says what it became",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif inst.StrippedFrom != \"\" {\n\t\t\treturn inst, fmt.Errorf(\"instance %q becomes %q without its prefix, and %w.",
+      "replace": "\t\tif false {\n\t\t\treturn inst, fmt.Errorf(\"instance %q becomes %q without its prefix, and %w.",
+      "run": "TestAPrefixedNameThatStaysUnusableIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: status names the disk WSL registered, not this home's empty folder",
       "file": "internal/toolkit/base.go",
       "find": "\t\tst.DiskPath = filepath.Join(at, \"ext4.vhdx\")\n",
