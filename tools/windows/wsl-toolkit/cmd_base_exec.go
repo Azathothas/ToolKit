@@ -136,8 +136,8 @@ func (e baseExecFlags) request(cfg toolkit.Config) (toolkit.ExecRequest, error) 
 		Env:     env,
 		Dir:     dir,
 		Timeout: e.timeout,
-		// ⛔ FRAMED, so a command that reads stdin cannot eat the lines after it.
-		Payload: true,
+		// ⚠ NOT FRAMED HERE. RunBaseExec frames the attached command, and a
+		// session sends its command as a file. WSL-124.
 	}, nil
 }
 

@@ -96,10 +96,7 @@ func RunBaseExec(ctx context.Context, w *Wsl, e BaseExec) (BaseExecResult, error
 		dir, stderr = "~", gate
 	}
 	if len(e.Inputs) == 0 && e.ArtifactDir == "" && e.Stdin == nil {
-		code, runErr := w.Exec(ctx, ExecRequest{
-			Distro: e.Distro, User: e.User, Script: script, Env: e.Env, Dir: dir,
-			Timeout: e.Timeout, Stdout: e.Stdout, Stderr: stderr, Payload: true,
-		})
+		code, runErr := w.Exec(ctx, e.framed(script, dir, stderr))
 		if ferr := gate.Flush(); ferr != nil && runErr == nil {
 			runErr = ferr
 		}
@@ -110,6 +107,19 @@ func RunBaseExec(ctx context.Context, w *Wsl, e BaseExec) (BaseExecResult, error
 		return res, runErr
 	}
 	return runBaseExecInDir(ctx, w, e, script, dir, stderr, gate)
+}
+
+// framed is the request that sends the command on stdin, with or without a
+// directory of its own.
+//
+// ⛔ FRAMED, so a command that reads stdin cannot eat the lines of the script
+// after it. ONE PLACE sets it for both paths, so neither can lose it. WSL-124.
+func (e BaseExec) framed(script []byte, dir string, stderr io.Writer) ExecRequest {
+	return ExecRequest{
+		Distro: e.Distro, User: e.User, Script: script, Env: e.Env, Dir: dir,
+		Timeout: e.Timeout, Stdout: e.Stdout, Stderr: stderr,
+		Payload: true,
+	}
 }
 
 // entersItself says whether a command's directory is entered by the command, and
@@ -222,10 +232,7 @@ func runBaseExecInDir(ctx context.Context, w *Wsl, e BaseExec, script []byte, di
 	if e.Stdin != nil {
 		code, runErr = w.execFile(ctx, e.Distro, e.User, dir, paths.dir+"/payload.sh", e.Stdin, e.Stdout, stderr, e.Timeout)
 	} else {
-		code, runErr = w.Exec(ctx, ExecRequest{
-			Distro: e.Distro, User: e.User, Script: script, Env: e.Env, Dir: dir,
-			Timeout: e.Timeout, Stdout: e.Stdout, Stderr: stderr, Payload: true,
-		})
+		code, runErr = w.Exec(ctx, e.framed(script, dir, stderr))
 	}
 	if ferr := gate.Flush(); ferr != nil && runErr == nil {
 		runErr = ferr

@@ -36,6 +36,10 @@ func TestASyncWritesADirectoryOfItsOwnUnderTheHome(t *testing.T) {
 		{"/", true, "", "the guest's root"},
 		{"~/.wsl-toolkit", true, "", "keeps its jobs and sessions"},
 		{"~/.wsl-toolkit/sessions/x", true, "", "keeps its jobs and sessions"},
+		// ⛔ A parent of the home holds it, and --delete would remove it. WSL-125.
+		{"/home", true, "", "holds the account's home"},
+		{"/home/", true, "", "holds the account's home"},
+		{"/mnt", true, "/mnt", ""},
 		{"~/src/../../etc", true, "", "climbs"},
 		{"src/p", true, "", "not a guest path"},
 		{`C:\src\x`, true, "", "not a guest path"},
@@ -80,6 +84,18 @@ func TestTheGuestsListIsReadLineByLine(t *testing.T) {
 	}
 	if l := s.entries["l"]; !l.isLink() || l.link != "a|b.txt" {
 		t.Errorf("the link reads %+v", l)
+	}
+	// ⛔ A Windows mount is read with its escapes undone, and found at or under
+	// the directory only. WSL-125.
+	w := parseSyncSurvey([]byte("REAL|/mnt\nW|/mnt/my\\040drive|drvfs\nW|/workspaces/p|9p\nSTATE|dir\n"))
+	if len(w.windows) != 2 || w.windows[0] != "/mnt/my drive (drvfs)" || w.windowsUnder() != "/mnt/my drive (drvfs)" {
+		t.Errorf("the Windows mounts read %q, and under /mnt %q", w.windows, w.windowsUnder())
+	}
+	for real, want := range map[string]string{"/": "/mnt/my drive (drvfs)", "/workspaces/p": "/workspaces/p (9p)", "/workspaces/pq": "", "/home/user": ""} {
+		w.real = real
+		if got := w.windowsUnder(); got != want {
+			t.Errorf("under %s: %q, want %q", real, got, want)
+		}
 	}
 }
 
@@ -302,7 +318,7 @@ func TestASyncRefusesAWindowsDirectoryAndChangesNothing(t *testing.T) {
 		{"REAL|/workspaces/p\nHOME|/home/user\nFS|9p\nSTATE|dir\n", "on a Windows directory (9p"},
 		{"REAL|/opt\nHOME|/home/user\nFS|ext4\nSTATE|missing\n", "leads through a link to /opt"},
 		{"REAL|/home/user\nHOME|/home/user\nFS|ext4\nSTATE|link\n", "is a link"},
-		{"REAL|/home/user\nHOME|/home/user\nFS|ext4\nSTATE|dir\nE|81a4|1|1|./a.txt\n", "stopped before its end"},
+		{"REAL|/home/user/p\nHOME|/home/user\nFS|ext4\nSTATE|dir\nE|81a4|1|1|./a.txt\n", "stopped before its end"},
 	} {
 		if err := os.WriteFile(survey, []byte(c.answer), 0o600); err != nil {
 			t.Fatal(err)
@@ -318,6 +334,36 @@ func TestASyncRefusesAWindowsDirectoryAndChangesNothing(t *testing.T) {
 	}
 }
 
+// TestAForcedDeleteNeverReachesTheHomeOrADrive is the defect: `--force --delete`
+// into /home removed the account's home, and into /mnt the Windows files a drive
+// carried, because only the directory's own filesystem was read. WSL-125.
+func TestAForcedDeleteNeverReachesTheHomeOrADrive(t *testing.T) {
+	g := newExecFakeGuest(t)
+	survey := filepath.Join(t.TempDir(), "survey")
+	t.Setenv(execFakeSurveyEnv, survey)
+	host, _, _ := syncHostTree(t, map[string]string{"a.txt": "a"})
+	for _, c := range []struct{ guest, answer, want string }{
+		{"/home", "", "holds the account's home /home/user"},
+		{"/mnt", "REAL|/mnt\nHOME|/home/user\nFS|ext4\nW|/mnt/c|drvfs\nSTATE|dir\nE|41ed|0|1|./c\nEND\n", "holds a Windows directory at /mnt/c (drvfs)"},
+		{"/workspaces", "REAL|/workspaces\nHOME|/home/user\nFS|ext4\nW|/workspaces/p|9p\nSTATE|dir\nE|41ed|0|1|./p\nEND\n", "holds a Windows directory at /workspaces/p (9p)"},
+		{"/srv/up", "REAL|/home\nHOME|/home/user\nFS|ext4\nSTATE|dir\nE|41ed|0|1|./user\nEND\n", "which is or holds the account's home /home/user"},
+	} {
+		if err := os.WriteFile(survey, []byte(c.answer), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		before := len(g.callsOrNone(t))
+		_, err := SyncBase(context.Background(), g.wsl, SyncSpec{Distro: "wsl-toolkit", User: "toolkit", HostDir: host, GuestDir: c.guest, Force: true, Delete: true})
+		if err == nil || !strings.Contains(err.Error(), c.want) || errors.Is(err, ErrSyncIncomplete) {
+			t.Errorf("%s answered %v, want a refusal naming %q", c.guest, err, c.want)
+		}
+		for _, call := range g.callsOrNone(t)[before:] {
+			if strings.Contains(call.Stdin, "rm -rf") || len(call.Files) > 0 {
+				t.Errorf("%s: a refused sync still wrote the guest: %+v", c.guest, call)
+			}
+		}
+	}
+}
+
 // TestASyncSendsTheChangeAndRemovesTheStray drives the whole sync through the
 // fake wsl.exe.
 func TestASyncSendsTheChangeAndRemovesTheStray(t *testing.T) {
@@ -325,7 +371,7 @@ func TestASyncSendsTheChangeAndRemovesTheStray(t *testing.T) {
 	host, by, _ := syncHostTree(t, map[string]string{"same.txt": "same", "new.txt": "n"})
 	same := regAs(by["same.txt"])
 	survey := filepath.Join(t.TempDir(), "survey")
-	answer := "REAL|/home/user\nHOME|/home/user\nFS|ext4\nSTATE|dir\n" +
+	answer := "REAL|/home/user/p\nHOME|/home/user\nFS|ext4\nSTATE|dir\n" +
 		fmt.Sprintf("E|%x|%d|%d|./same.txt\n", same.mode, same.size, same.mtime) +
 		"E|81a4|1|1|./stray.txt\nEND\n"
 	if err := os.WriteFile(survey, []byte(answer), 0o600); err != nil {

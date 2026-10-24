@@ -111,6 +111,10 @@ func syncTarget(given, home string, force bool) (string, error) {
 		return "", fmt.Errorf("GUEST-DIR is %s, the account's home itself. A sync writes a directory of its own under it, such as ~/src/project", home)
 	case clean == own || strings.HasPrefix(clean, own+"/"):
 		return "", fmt.Errorf("GUEST-DIR %s is inside %s, where this tool keeps its jobs and sessions", clean, own)
+	// ⛔ A PARENT OF THE HOME IS THE HOME too, for --delete: `--force --delete
+	// C:\empty /home` removed the account's home and the jobs running in it.
+	case strings.HasPrefix(home+"/", clean+"/"):
+		return "", fmt.Errorf("GUEST-DIR %s holds the account's home %s, and a sync writes a directory of its own", clean, home)
 	case !force && !strings.HasPrefix(clean, home+"/"):
 		return "", fmt.Errorf("GUEST-DIR %s is outside the account's home %s. Pass --force to write there", clean, home)
 	}
@@ -126,8 +130,12 @@ var windowsMountTypes = map[string]bool{"9p": true, "v9fs": true, "drvfs": true,
 
 // syncSurveyScript reads, for one guest directory: the filesystem of the nearest
 // directory that exists on its path, read through links; the account's home
-// read the same way; whether the directory exists; and, where it does, every
-// entry under it with its mode, size, modification time and a link's target.
+// read the same way; every Windows mount the guest holds; whether the directory
+// exists; and, where it does, every entry under it with its mode, size,
+// modification time and a link's target.
+//
+// ⛔ THE LIST STAYS ON ONE FILESYSTEM (-xdev), so a mount below the directory is
+// never listed, and so never removed by --delete. WSL-125.
 //
 // ⭐ ONE CALL, and a line per entry, so the cost of a sync with nothing to send
 // is one walk of the guest's own disk.
@@ -140,6 +148,7 @@ best=; fs=
 while read -r _dev mnt type _rest; do
   case "$mnt" in /) m= ;; *) m=$mnt ;; esac
   case "$real/" in "$m"/*) if [ "${#m}" -ge "${#best}" ]; then best=$m; fs=$type; fi ;; esac
+  case "$type" in 9p|v9fs|drvfs|virtiofs) printf 'W|%s|%s\n' "$mnt" "$type" ;; esac
 done < /proc/mounts
 printf 'REAL|%s\nHOME|%s\nFS|%s\n' "$real" "$home" "$fs"
 if [ -L "$d" ]; then printf 'STATE|link\n'; exit 0; fi
@@ -148,8 +157,8 @@ if [ ! -d "$d" ]; then printf 'STATE|notdir\n'; exit 0; fi
 printf 'STATE|dir\n'
 case "$fs" in 9p|v9fs|drvfs|virtiofs) exit 0 ;; esac
 cd "$d" || exit 3
-find . -mindepth 1 -exec stat -c 'E|%f|%s|%Y|%n' {} + || exit 3
-find . -mindepth 1 -type l -exec sh -c 'for l; do printf "L|%s\nT|%s\n" "$l" "$(readlink "$l")"; done' sh {} + || exit 3
+find . -xdev -mindepth 1 -exec stat -c 'E|%f|%s|%Y|%n' {} + || exit 3
+find . -xdev -mindepth 1 -type l -exec sh -c 'for l; do printf "L|%s\nT|%s\n" "$l" "$(readlink "$l")"; done' sh {} + || exit 3
 printf 'END\n'
 `)
 }
@@ -171,6 +180,42 @@ type syncSurvey struct {
 	real, home, fs, state string
 	entries               map[string]guestEntry
 	ended                 bool
+	// windows are the guest's Windows mounts, each a mount point, a space and its
+	// type in brackets.
+	windows []string
+}
+
+// windowsUnder names the first Windows mount at or under the surveyed directory,
+// and is empty where there is none.
+//
+// ⛔ THE FILESYSTEM OF THE DIRECTORY IS NOT ENOUGH: /mnt is the root filesystem,
+// and `rm -rf ./c` under it removed the Windows files a drive carried. WSL-125.
+func (s syncSurvey) windowsUnder() string {
+	root := strings.TrimSuffix(s.real, "/") + "/"
+	for _, w := range s.windows {
+		mnt, _, _ := strings.Cut(w, " (")
+		if mnt+"/" == root || strings.HasPrefix(mnt, root) {
+			return w
+		}
+	}
+	return ""
+}
+
+// unescapeMount reads a mount point as /proc/mounts writes it: a space, a tab, a
+// newline and a backslash as three octal digits after a backslash.
+func unescapeMount(m string) string {
+	var b strings.Builder
+	for i := 0; i < len(m); i++ {
+		if m[i] == '\\' && i+4 <= len(m) {
+			if n, err := strconv.ParseUint(m[i+1:i+4], 8, 8); err == nil {
+				b.WriteByte(byte(n))
+				i += 3
+				continue
+			}
+		}
+		b.WriteByte(m[i])
+	}
+	return b.String()
 }
 
 // parseSyncSurvey reads the survey's lines. ⭐ A function with no process in it,
@@ -202,6 +247,10 @@ func parseSyncSurvey(out []byte) syncSurvey {
 			s.fs = rest
 		case "STATE":
 			s.state = rest
+		case "W":
+			if i := strings.LastIndex(rest, "|"); i > 0 {
+				s.windows = append(s.windows, unescapeMount(rest[:i])+" ("+rest[i+1:]+")")
+			}
 		case "E":
 			f := strings.SplitN(rest, "|", 4)
 			if len(f) != 4 || !strings.HasPrefix(f[3], "./") {
@@ -494,6 +543,12 @@ func SyncBase(ctx context.Context, w *Wsl, s SyncSpec) (SyncReport, error) {
 		return rep, fmt.Errorf("the guest gave no answer for %s", guest)
 	case windowsMountTypes[sv.fs]:
 		return rep, fmt.Errorf("GUEST-DIR %s is on a Windows directory (%s, through %s), and a sync writes the base's own disk. Writing there would write the Windows files it reads", guest, sv.fs, sv.real)
+	case sv.state == "dir" && sv.windowsUnder() != "":
+		return rep, fmt.Errorf("GUEST-DIR %s holds a Windows directory at %s, and a sync writes the base's own disk. Writing there would write the Windows files it reads", guest, sv.windowsUnder())
+	// ⛔ READ THROUGH LINKS too: a GUEST-DIR whose parent links to the root holds
+	// the home as surely as /home does. WSL-125.
+	case sv.state == "dir" && strings.HasPrefix(sv.home+"/", strings.TrimSuffix(sv.real, "/")+"/"):
+		return rep, fmt.Errorf("GUEST-DIR %s leads to %s, which is or holds the account's home %s, and a sync writes a directory of its own", guest, sv.real, sv.home)
 	case !s.Force && sv.real != sv.home && !strings.HasPrefix(sv.real+"/", sv.home+"/"):
 		return rep, fmt.Errorf("GUEST-DIR %s leads through a link to %s, which is outside the account's home %s. Pass --force to write there", guest, sv.real, sv.home)
 	case sv.state == "link":

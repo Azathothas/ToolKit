@@ -705,6 +705,9 @@ a tree over 9P takes minutes where the base's own disk takes about a second. `WS
   The home itself, the root, `~/.wsl-toolkit` and a Windows directory seen through a
   grant or a drive are refused whatever `--force` says. A link as `GUEST-DIR` is
   refused too.
+- ⛔ A `GUEST-DIR` that holds any of those is refused the same way, such as `/home`,
+  `/mnt` or `/workspaces`. The guest list never crosses into another filesystem, so
+  `--delete` never removes a mount below `GUEST-DIR`.
 - `--json` answers `wsl-toolkit-base-sync/1`: `entries` and `bytes` for the list,
   `sent` and `sent_bytes`, `unchanged`, `deleted`, `replaced`, `kept` and `created`.
 - Exit 2 is a refusal, and nothing in the guest changed. Exit 1 is a sync that

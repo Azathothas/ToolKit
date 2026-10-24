@@ -54,7 +54,7 @@ func cmdBaseSync(ctx context.Context, args []string) (int, error) {
 	fs.Var(&excludes, "exclude", "a glob to leave out of the list, matched as run's --exclude matches it. Repeatable, and added to jobs.exclude")
 	fs.Var(boolFlag{&gitignore, &gitignoreSet}, "gitignore", "leave out of the list what git ignores in HOST-DIR, read from git itself. jobs.gitignore sets it for a project, and --gitignore=false turns it off")
 	del := fs.Bool("delete", false, "remove guest entries the list no longer holds. A path an --exclude names or git ignores stays")
-	force := fs.Bool("force", false, "let GUEST-DIR be outside the account's home. The home itself, the root, this tool's own directory and a Windows directory stay refused")
+	force := fs.Bool("force", false, "let GUEST-DIR be outside the account's home. The home itself, the root, this tool's own directory, a Windows directory and a directory holding one of them stay refused")
 	maxBytes := fs.Int64("max-bytes", toolkit.DefaultWorkspaceLimits().MaxBytes, "refuse a list whose files hold more than this many bytes")
 	maxEntries := fs.Int("max-entries", toolkit.DefaultWorkspaceLimits().MaxEntries, "refuse a list with more entries than this")
 	asJSON := fs.Bool("json", false, "write a structured answer")

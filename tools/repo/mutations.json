@@ -2,6 +2,42 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: base sync refuses a GUEST-DIR that holds the home",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase strings.HasPrefix(home+\"/\", clean+\"/\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestASyncWritesADirectoryOfItsOwnUnderTheHome|TestAForcedDeleteNeverReachesTheHomeOrADrive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync refuses a GUEST-DIR that holds a Windows mount",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase sv.state == \"dir\" && sv.windowsUnder() != \"\":\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAForcedDeleteNeverReachesTheHomeOrADrive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync refuses a GUEST-DIR that leads to the home's parent",
+      "file": "internal/toolkit/sync.go",
+      "find": "\tcase sv.state == \"dir\" && strings.HasPrefix(sv.home+\"/\", strings.TrimSuffix(sv.real, \"/\")+\"/\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAForcedDeleteNeverReachesTheHomeOrADrive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base sync reads the guest's Windows mounts",
+      "file": "internal/toolkit/sync.go",
+      "find": "\t\t\t\ts.windows = append(s.windows, unescapeMount(rest[:i])+\" (\"+rest[i+1:]+\")\")\n",
+      "replace": "",
+      "run": "TestTheGuestsListIsReadLineByLine|TestAForcedDeleteNeverReachesTheHomeOrADrive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base shell --private-net sweeps a launcher no shell ran",
       "file": "internal/toolkit/private_net.go",
       "find": "\t_, _, _, _ = w.Capture(ctx, distro, user, staleShellSweep(shells), 2*time.Minute)\n",
@@ -5379,10 +5415,10 @@
     {
       "label": "channel: base exec sends its command framed",
       "module": "tools/windows/wsl-toolkit",
-      "file": "cmd_base_exec.go",
+      "file": "internal/toolkit/baseexec.go",
       "find": "\t\tPayload: true,\n",
       "replace": "\t\tPayload: false,\n",
-      "run": "TestBaseExecDefaultsToGuestHome",
+      "run": "TestAnAttachedCommandTravelsFramedOnEveryPath",
       "args": []
     },
     {

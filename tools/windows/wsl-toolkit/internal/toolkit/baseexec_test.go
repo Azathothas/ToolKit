@@ -244,6 +244,46 @@ func TestStdinReachesACommandThatTravelsAsAFile(t *testing.T) {
 	}
 }
 
+// TestAnAttachedCommandTravelsFramedOnEveryPath is the 7.0 channel guard on the
+// attached `base exec`: a command that reads stdin must not eat the lines of its
+// own script. The home, a --dir the command enters, and --input each send the
+// command framed, and the frame closes on its own delimiter. WSL-124.
+func TestAnAttachedCommandTravelsFramedOnEveryPath(t *testing.T) {
+	const marker = "echo tk-framed-marker\n"
+	for _, c := range []struct {
+		name string
+		e    BaseExec
+	}{
+		{"the home", BaseExec{Dir: "~"}},
+		{"a --dir", BaseExec{Dir: "/srv/there"}},
+		{"an --input", BaseExec{Dir: "/srv/there", Inputs: []JobInput{
+			{Name: "a.txt", Bytes: []byte("a")},
+		}}},
+	} {
+		g := newExecFakeGuest(t)
+		e := c.e
+		e.Distro, e.User, e.Script = "wsl-toolkit", "toolkit", []byte(marker)
+		if _, err := RunBaseExec(context.Background(), g.wsl, e); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		found := false
+		for _, call := range g.calls(t) {
+			if !strings.Contains(call.Stdin, marker) {
+				continue
+			}
+			found = true
+			_, rest, ok := strings.Cut(call.Stdin, "{ . /dev/fd/9; } 9<<'")
+			delim, _, ok2 := strings.Cut(rest, "'")
+			if !ok || !ok2 || delim == "" || !strings.HasSuffix(call.Stdin, marker+delim+"\n") {
+				t.Errorf("%s: the command went unframed:\n%s", c.name, call.Stdin)
+			}
+		}
+		if !found {
+			t.Errorf("%s: no call carried the command", c.name)
+		}
+	}
+}
+
 // -- WSL-124: run --artifacts makes no empty directory, and lists what arrived ----
 
 func TestAnEmptyOutputDirectoryMakesNoHostDirectory(t *testing.T) {
