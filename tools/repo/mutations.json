@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a lending project's older jobs keys are read",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tc.projectHeld = heldKeys(b)\n",
+      "replace": "",
+      "run": "TestTheOlderKeysALendingProjectWritesAreNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only the older keys a project writes are named",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\t\tif written[k] {\n",
+      "replace": "\t\tif written[k] || k != \"\" {\n",
+      "run": "TestTheOlderKeysALendingProjectWritesAreNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job names the keys a lending project does not give",
+      "file": "cmd_run.go",
+      "find": "\tif n := cfg.ProjectHeldNote(); n != \"\" {\n\t\tnote(n)\n\t}\n",
+      "replace": "",
+      "run": "TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: config names the keys a lending project does not give",
+      "file": "cmd_admin.go",
+      "find": "\tif n := cfg.ProjectHeldNote(); n != \"\" {\n\t\tfmt.Fprintf(os.Stderr, \"  %s\\n\", n)\n\t}\n",
+      "replace": "",
+      "run": "TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: config --json lists project_held",
+      "file": "cmd_admin.go",
+      "find": "\t\t\tdoc[\"project_held\"] = held\n",
+      "replace": "\t\t\t_ = held\n",
+      "run": "TestTheConfigReportNamesTheProjectAndTheFloor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a cache with no label is still listed",
       "file": "internal/toolkit/cachestore.go",
       "find": "\treturn `podman volume ls --format '{{.Name}}' 2>/dev/null | while IFS= read -r v; do\n",

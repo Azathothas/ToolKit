@@ -444,6 +444,11 @@ func cmdConfig(args []string) (int, error) {
 		if cfg.Project() != "" {
 			doc["project"] = cfg.Project()
 		}
+		// ⛔ WSL-131: the older jobs keys the project writes, which this instance
+		// did not take, are named rather than dropped unsaid.
+		if held := cfg.ProjectHeld(); len(held) > 0 {
+			doc["project_held"] = held
+		}
 		if cfg.Requires != "" {
 			doc["requires"] = cfg.Requires
 		}
@@ -454,6 +459,9 @@ func cmdConfig(args []string) (int, error) {
 	renderConfigSearch(src)
 	if cfg.Project() != "" {
 		fmt.Fprintf(os.Stderr, "  project     %s lends this instance its job defaults and requires\n", cfg.Project())
+	}
+	if n := cfg.ProjectHeldNote(); n != "" {
+		fmt.Fprintf(os.Stderr, "  %s\n", n)
 	}
 	if cfg.Requires != "" {
 		fmt.Fprintf(os.Stderr, "  requires    wsl-toolkit %s or newer, and this is %s\n", cfg.Requires, toolkit.Version)

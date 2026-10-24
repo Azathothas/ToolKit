@@ -181,6 +181,33 @@ func TestAProjectThatIsTheConfigurationLendsNothing(t *testing.T) {
 	}
 }
 
+// TestTheOlderKeysALendingProjectWritesAreNamed is WSL-131. A project that lends
+// a named instance its image and also writes jobs.exclude had the image taken
+// and the exclude ignored unsaid. The keys the instance keeps are now named.
+func TestTheOlderKeysALendingProjectWritesAreNamed(t *testing.T) {
+	_, projectFile := namedInstance(t, `{"schema":"wsl-toolkit-config/1"}`,
+		`{"schema":"wsl-toolkit-config/1","jobs":{"image":"alpine","EXCLUDE":["x"],"workspace":"..","platform":null,"gitignore":false}}`)
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(cfg.ProjectHeld(), " "); got != "jobs.workspace jobs.exclude jobs.gitignore" {
+		t.Errorf("the held keys read as %q", got)
+	}
+	if n := cfg.ProjectHeldNote(); !strings.Contains(n, projectFile) || !strings.Contains(n, "jobs.workspace, jobs.exclude, jobs.gitignore") {
+		t.Errorf("the note reads %q", n)
+	}
+	if err := os.WriteFile(projectFile, []byte(`{"schema":"wsl-toolkit-config/1","jobs":{"image":"alpine"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = LoadConfig(); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.ProjectHeld()) != 0 || cfg.ProjectHeldNote() != "" {
+		t.Errorf("a project that writes no older key was reported: %v, %q", cfg.ProjectHeld(), cfg.ProjectHeldNote())
+	}
+}
+
 // TestEveryJobFieldAProjectWritesReachesTheInstance holds the one copy both
 // layers share. Every JobConfig field is either a job default a working tree
 // lends a named instance, and reaches it, or an older key, and does not.
@@ -194,7 +221,10 @@ func TestEveryJobFieldAProjectWritesReachesTheInstance(t *testing.T) {
 		Env: map[string]string{"A": "1"}, EnvFile: "job.env", User: "1000:1000",
 		MaxBytes: 4096, MaxEntries: 9, Cache: []string{"pip:/root/.cache/pip"},
 	}
-	older := map[string]bool{"container_lifecycle": true, "platform": true, "workspace": true, "exclude": true, "gitignore": true}
+	older := map[string]bool{}
+	for _, k := range heldJobKeys {
+		older[k] = true
+	}
 	lent := map[string]bool{}
 	for _, k := range jobDefaultKeys {
 		lent[k] = true

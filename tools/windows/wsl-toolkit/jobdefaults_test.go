@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -237,30 +238,7 @@ func TestACacheIsReportedAndNarrowedToTheJobThatNamesIt(t *testing.T) {
 // and requires where there are, and keeps its shape where there are not.
 // WSL-129, WSL-131.
 func TestTheConfigReportNamesTheProjectAndTheFloor(t *testing.T) {
-	home := filepath.Join(t.TempDir(), "instances", "f2")
-	tree := t.TempDir()
-	if err := os.MkdirAll(home, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	project := filepath.Join(tree, toolkit.WorkingConfigName)
-	if err := os.WriteFile(project, []byte(`{"schema":"wsl-toolkit-config/1","requires":"1.0","jobs":{"image":"alpine"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("WSL_TOOLKIT_HOME", home)
-	previous := toolkit.SelectedInstance
-	t.Cleanup(func() { toolkit.SelectedInstance = previous })
-	toolkit.SelectedInstance = toolkit.Instance{Name: "f2", Distro: "wsl-toolkit-f2", Home: home}
-	was, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(tree); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(was) })
+	project := lendingInstance(t, `{"schema":"wsl-toolkit-config/1","requires":"1.0","jobs":{"image":"alpine","workspace":"..","exclude":["x"]}}`)
 	report := func() map[string]any {
 		t.Helper()
 		var doc map[string]any
@@ -278,6 +256,10 @@ func TestTheConfigReportNamesTheProjectAndTheFloor(t *testing.T) {
 	if doc["project"] != project || doc["requires"] != "1.0" {
 		t.Errorf("the report names project %v and requires %v", doc["project"], doc["requires"])
 	}
+	// ⛔ The older keys the project writes are named, not dropped unsaid.
+	if held, _ := json.Marshal(doc["project_held"]); string(held) != `["jobs.workspace","jobs.exclude"]` {
+		t.Errorf("the report names the held keys as %s", held)
+	}
 	if err := os.Remove(project); err != nil {
 		t.Fatal(err)
 	}
@@ -285,8 +267,104 @@ func TestTheConfigReportNamesTheProjectAndTheFloor(t *testing.T) {
 	if _, ok := doc["project"]; ok {
 		t.Errorf("a report with no project carries the key: %v", doc["project"])
 	}
+	if _, ok := doc["project_held"]; ok {
+		t.Errorf("a report with no project names held keys: %v", doc["project_held"])
+	}
 	if _, ok := doc["requires"]; ok {
 		t.Errorf("a report with no floor carries the key: %v", doc["requires"])
+	}
+}
+
+// lendingInstance selects a scratch instance with its own file, standing in a
+// working tree whose wsl-toolkit.json holds project, and answers that file.
+func lendingInstance(t *testing.T, project string) string {
+	t.Helper()
+	home := filepath.Join(t.TempDir(), "instances", "f2")
+	tree := t.TempDir()
+	if err := os.MkdirAll(home, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "config.json"), []byte(`{"schema":"wsl-toolkit-config/1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(tree, toolkit.WorkingConfigName)
+	if err := os.WriteFile(path, []byte(project), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	previous := toolkit.SelectedInstance
+	t.Cleanup(func() { toolkit.SelectedInstance = previous })
+	toolkit.SelectedInstance = toolkit.Instance{Name: "f2", Distro: "wsl-toolkit-f2", Home: home}
+	was, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tree); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(was) })
+	return path
+}
+
+// captureStderr is what fn writes to stderr.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	done := make(chan struct{})
+	go func() { _, _ = buf.ReadFrom(r); close(done) }()
+	fn()
+	_ = w.Close()
+	os.Stderr = old
+	<-done
+	return buf.String()
+}
+
+// TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive is WSL-131. Under a
+// named instance a project lends only the job defaults this release added. A
+// file that also writes jobs.exclude had its image taken and its exclude
+// ignored, and nothing said so. `config`, run and matrix now name such keys.
+func TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive(t *testing.T) {
+	project := lendingInstance(t, `{"schema":"wsl-toolkit-config/1","jobs":{"image":"alpine","exclude":["x"],"container_lifecycle":"ephemeral"}}`)
+	cfg, err := toolkit.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "writes jobs.container_lifecycle, jobs.exclude, which a named instance does not take"
+	j := parsedJob(t)
+	said := captureStderr(t, func() {
+		if err := j.applyConfig(cfg); err != nil {
+			t.Error(err)
+		}
+	})
+	if !strings.Contains(said, project) || !strings.Contains(said, want) {
+		t.Errorf("a job under a lending project said:\n%s", said)
+	}
+	said = captureStderr(t, func() {
+		_ = captureStdout(t, func() {
+			if code, err := cmdConfig(nil); code != exitOK || err != nil {
+				t.Errorf("config answered %d, %v", code, err)
+			}
+		})
+	})
+	if !strings.Contains(said, want) {
+		t.Errorf("config under a lending project said:\n%s", said)
+	}
+	// ⭐ A project that writes only what it lends says nothing more.
+	if err := os.WriteFile(project, []byte(`{"schema":"wsl-toolkit-config/1","jobs":{"image":"alpine"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err = toolkit.LoadConfig(); err != nil {
+		t.Fatal(err)
+	}
+	j = parsedJob(t)
+	if said := captureStderr(t, func() { _ = j.applyConfig(cfg) }); strings.Contains(said, "does not take") {
+		t.Errorf("a project that lends all it writes was reported:\n%s", said)
 	}
 }
 

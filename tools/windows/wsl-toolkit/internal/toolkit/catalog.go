@@ -260,9 +260,11 @@ type Config struct {
 	source   string
 	// project is a working tree's wsl-toolkit.json whose job defaults and requires a
 	// named instance's own configuration took, and projectKeys the job defaults it
-	// wrote. own is the instance's own, which a write stores. WSL-131.
+	// wrote. projectHeld is each older jobs key it wrote, which the instance did
+	// not take. own is the instance's own, which a write stores. WSL-131.
 	project     string
 	projectKeys map[string]bool
+	projectHeld []string
 	own         *ownLayer
 }
 

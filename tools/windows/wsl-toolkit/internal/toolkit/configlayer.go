@@ -26,12 +26,22 @@ import (
 // not do. A case walks JobConfig, so a key added later is put on one side.
 var jobDefaultKeys = []string{"image", "timeout", "env", "env_file", "user", "max_bytes", "max_entries", "cache"}
 
+// heldJobKeys are the older jobs keys, which a named instance keeps as its own
+// file says, whatever a lending working tree's file writes. WSL-131.
+var heldJobKeys = []string{"container_lifecycle", "platform", "workspace", "exclude", "gitignore"}
+
 // lentKeys reads which job default keys a file writes, and whether it writes
 // requires. A file that does not parse as an object writes none.
 //
 // ⚠ The decoder matches a key in any case, so the keys are compared in lower
 // case. A key written as null is one the decoder leaves alone.
 func lentKeys(b []byte) (jobs map[string]bool, requires bool) {
+	return writtenKeys(b, jobDefaultKeys)
+}
+
+// writtenKeys reads which of keys a file writes under jobs, and whether it
+// writes requires.
+func writtenKeys(b []byte, keys []string) (jobs map[string]bool, requires bool) {
 	jobs = map[string]bool{}
 	var top map[string]json.RawMessage
 	if json.Unmarshal(b, &top) != nil {
@@ -48,7 +58,7 @@ func lentKeys(b []byte) (jobs map[string]bool, requires bool) {
 				continue
 			}
 			for k, v := range inner {
-				for _, lent := range jobDefaultKeys {
+				for _, lent := range keys {
 					if strings.ToLower(k) == lent && set(v) {
 						jobs[lent] = true
 					}
@@ -57,6 +67,19 @@ func lentKeys(b []byte) (jobs map[string]bool, requires bool) {
 		}
 	}
 	return jobs, requires
+}
+
+// heldKeys is each older jobs key a file writes, as jobs.KEY in heldJobKeys'
+// order. WSL-131.
+func heldKeys(b []byte) []string {
+	written, _ := writtenKeys(b, heldJobKeys)
+	var held []string
+	for _, k := range heldJobKeys {
+		if written[k] {
+			held = append(held, "jobs."+k)
+		}
+	}
+	return held
 }
 
 // overlayJobDefaults lays a file's job defaults over what is beneath them, key by
@@ -255,6 +278,7 @@ func (c *Config) contribute(path string) error {
 	c.Requires = higherFloor(c.Requires, stored.Requires)
 	c.project = path
 	c.projectKeys, _ = lentKeys(b)
+	c.projectHeld = heldKeys(b)
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("%s, whose job defaults this instance takes: %w", path, err)
 	}
@@ -284,6 +308,24 @@ func (c Config) Portable() Config {
 // Project is the working tree's file whose job defaults and requires a named
 // instance's configuration took, or empty. WSL-131.
 func (c Config) Project() string { return c.project }
+
+// ProjectHeld is each older jobs key the lending working tree's file writes, as
+// jobs.KEY, which this instance did not take. WSL-131.
+func (c Config) ProjectHeld() []string { return c.projectHeld }
+
+// ProjectHeldNote names the keys ProjectHeld lists, and is empty where there are
+// none.
+//
+// ⛔ A KEY THE FILE WRITES IS NEVER DROPPED UNSAID. A project that writes
+// jobs.image and jobs.exclude had its image taken and its exclude ignored, and
+// nothing said so. `config`, `run` and `matrix` print this line. WSL-131.
+func (c Config) ProjectHeldNote() string {
+	if c.project == "" || len(c.projectHeld) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("⚠ %s writes %s, which a named instance does not take from a working tree. This instance keeps its own. WSL-131",
+		c.project, strings.Join(c.projectHeld, ", "))
+}
 
 // JobsDir is the directory a relative path in jobs.KEY resolves against: that of
 // the file that named the key. WSL-131.

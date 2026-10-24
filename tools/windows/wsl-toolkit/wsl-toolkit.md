@@ -171,6 +171,9 @@ is unchanged. `WSL-131`
 - ⛔ Only those keys cross. The project's `base`, and its `container_lifecycle`,
   `platform`, `workspace`, `exclude` and `gitignore`, are not read under a named
   instance, as before this release.
+- ⚠ A lending file that writes one of those older keys is named, not ignored
+  unsaid. `config`, `run` and `matrix` print a ⚠ line on stderr that names each
+  key the instance keeps. `config --json` lists them as `project_held`.
 - ⛔ A project file that names none of those keys and no `requires` is not read at
   all. A file there that is broken, or written by a newer build, refuses nothing.
 - A file that lends is read whole and strictly, so its fault is a refusal.
@@ -445,7 +448,8 @@ file on disk is never written to, and `--input` keeps its bytes as they are.
 and a job gets none without it. A name the kernel does not have is refused
 before the job is claimed. ⚠ The capability is the container's, inside the base
 account's user namespace. It is not one over the base, or over this machine.
-`WSL-130`
+A drive on a base measured it: `ip addr add` on `lo` is refused without
+`--cap-add NET_ADMIN` and succeeds with it. `WSL-130`
 
 ⚠ **A helper older than this release refuses a job that uses `--cache`,
 `--create-user`, `--sudo`, `--cap-add` or `--input-exec`.** It reads each request
