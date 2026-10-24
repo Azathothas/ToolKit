@@ -2,6 +2,240 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a live grant compares the live mount's source",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    [ \"$(source_key \"$live_from\")\" = \"$(source_key \"$want_from\")\" ] ||\n",
+      "replace": "    true ||\n",
+      "run": "TestALiveGrantRefusesATargetLiveFromAnotherDirectory",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant remounts only its own configuration's mount",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    if [ -z \"$TK_GRANT_OWNER\" ] || [ \"$held_key\" != \"$TK_GRANT_OWNER\" ]; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestALiveGrantRefusesToRemountATargetItDidNotMount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a mode switch records its unmount for the fail-back",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    printf '%s\\n' \"$target\" >> \"$WORK/unmounted\"\n",
+      "replace": "    :\n",
+      "run": "TestAFailedModeSwitchMountsTheOldOneBack",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live change refuses a target the ledger gives another file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ -n \"$held\" ] && [ -n \"$TK_GRANT_OWNER\" ] && [ \"$held_key\" != \"$TK_GRANT_OWNER\" ] &&\n",
+      "replace": "if false &&\n",
+      "run": "TestALiveChangeRefusesATargetTheLedgerGivesAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant records its owner in the ledger",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    printf '%s %s %s\\n' \"$OWN\" \"$TK_GRANT_OWNER\" \"$TK_GRANT_OWNER_NAME\" >> \"$WORK/owners\"\n",
+      "replace": "    :\n",
+      "run": "TestTheLedgerSaysWhichFileMadeEachGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a provisioning write makes the ledger its configuration's grants",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "        printf '%s %s %s\\n' \"$target\" \"$TK_GRANT_OWNER\" \"$TK_GRANT_OWNER_NAME\" >> \"$WORK/owners\"\n",
+      "replace": "        :\n",
+      "run": "TestTheLedgerSaysWhichFileMadeEachGrant",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier leaves a mount the ledger gives another file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "            if [ \"$held_target\" = \"$live_target\" ] && [ \"$held_key\" != \"$TK_CONFIG_OWNER\" ]; then\n",
+      "replace": "            if false; then\n",
+      "run": "TestTheVerifierLeavesAMountTheLedgerGivesAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier refuses a mount the ledger gives its own file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/verify.sh",
+      "find": "            if [ \"$held_target\" = \"$live_target\" ] && [ \"$held_key\" != \"$TK_CONFIG_OWNER\" ]; then\n",
+      "replace": "            if [ \"$held_target\" = \"$live_target\" ]; then\n",
+      "run": "TestTheVerifierLeavesAMountTheLedgerGivesAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the held-mount rows are read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif len(f) != 3 || f[0] != \"held-mount\" {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestTheVerifierLeavesAMountTheLedgerGivesAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: grants.sh is told its configuration file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\t\"TK_GRANT_TARGET\": target64, \"TK_GRANT_OWNER\": ownerKey,\n",
+      "replace": "\t\t\"TK_GRANT_TARGET\": target64, \"TK_GRANT_OWNER\": ownerKey[:0],\n",
+      "run": "TestTheGrantAndVerifyStepsAreToldTheirConfigurationFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: verify.sh is told its configuration file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\"TK_CONFIG_OWNER\":      owner,\n",
+      "replace": "\t\t\"TK_CONFIG_OWNER\":      owner[:0],\n",
+      "run": "TestTheGrantAndVerifyStepsAreToldTheirConfigurationFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a second grant waits for the first's lock",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\tif !errors.Is(err, errLockHeld) {\n\t\t\treturn nil, fmt.Errorf(\"the grant lock %s: %w\", lock, err)\n\t\t}\n",
+      "replace": "\t\tif !errors.Is(err, errLockHeld) {\n\t\t\treturn nil, fmt.Errorf(\"the grant lock %s: %w\", lock, err)\n\t\t}\n\t\treturn func() {}, nil\n",
+      "run": "TestASecondGrantWaitsForTheFirst",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a grant loads its configuration under the lock",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_grant.go",
+      "find": "\trelease, err := toolkit.LockGrants(ctx, note)\n",
+      "replace": "\trelease, err := func() {}, error(nil)\n",
+      "run": "TestAGrantLoadsItsConfigurationUnderTheLock",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the command takes back what its live step did",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_grant.go",
+      "find": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed); backErr != nil {\n",
+      "replace": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed || true); backErr != nil {\n",
+      "run": "TestAFileThatCannotBeWrittenTakesBackWhatTheStepDid",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the command takes back its grant's own target",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_grant.go",
+      "find": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed); backErr != nil {\n",
+      "replace": "\t\tif backErr := base.TakeGrantsBack(ctx, cfg, \"\", changed); backErr != nil {\n",
+      "run": "TestAFileThatCannotBeWrittenTakesBackWhatTheStepDid",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step that mounted nothing is taken back by its block alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif changed {\n\t\treturn GrantsLive\n\t}\n\treturn GrantsBlock\n",
+      "replace": "\treturn GrantsLive\n",
+      "run": "TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step's unchanged line is read as no change",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\tif strings.TrimSpace(line) == \"unchanged \"+clean {\n",
+      "replace": "\t\tif false && strings.TrimSpace(line) == \"unchanged \"+clean {\n",
+      "run": "TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step that mounted nothing says so",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ \"$changed\" = false ]; then\n  printf 'unchanged %s\\n' \"$OWN\"\nfi\n",
+      "replace": "",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a block take-back touches no live mount",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ \"$TK_GRANTS_MODE\" = block ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step that mounted its target is a change",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "$(head -1 \"$WORK/mount.err\")\"\n    changed=true\n",
+      "replace": "$(head -1 \"$WORK/mount.err\")\"\n",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step that unmounted its target is a change",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    changed=true\n    say \"unmounted $old\"\n",
+      "replace": "    say \"unmounted $old\"\n",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant change hands grants.sh its one target",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\ttarget64 = base64.StdEncoding.EncodeToString([]byte(clean))\n",
+      "replace": "\t\ttarget64 = base64.StdEncoding.EncodeToString([]byte(clean[:0]))\n",
+      "run": "TestALiveGrantChangeNamesItsOneTarget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant or revoke unmounts its own target alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  [ \"$old\" = \"$OWN\" ] || continue\n",
+      "replace": "",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant mounts its own target alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  [ \"$target\" = \"$OWN\" ] || continue\n  current=$(live_mode \"$target\")\n",
+      "replace": "  current=$(live_mode \"$target\")\n",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant reads its own target back alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  [ \"$target\" = \"$OWN\" ] || continue\n  [ \"$(live_mode \"$target\")\" = \"$mode\" ]",
+      "replace": "  [ \"$(live_mode \"$target\")\" = \"$mode\" ]",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live change with no target is refused in the guest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "[ -n \"$TK_GRANT_TARGET\" ] || die \"TK_GRANT_TARGET is required in live mode\"\n",
+      "replace": "",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: an unreadable ledger is an error to the stop check, not no stop",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/jobctl.go",

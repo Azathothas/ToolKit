@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,36 +16,86 @@ import (
 	"time"
 )
 
-// The two ways grants.sh runs.
+// The three ways grants.sh runs.
 const (
 	// GrantsWrite rewrites the tool-owned fstab block and creates each target,
 	// for the restart that follows provisioning.
 	GrantsWrite = "write"
-	// GrantsLive also unmounts what the block no longer names and mounts what it
-	// does, now, and reads each grant back as the account.
+	// GrantsLive also unmounts or mounts one target now, as the block names it,
+	// and reads it back as the account.
 	GrantsLive = "live"
+	// GrantsBlock rewrites the tool-owned fstab block alone. It creates no
+	// directory and changes no mount. WSL-179.
+	GrantsBlock = "block"
 )
 
-// applyGrants runs grants.sh in the base for a configuration's grants.
-func (b *Base) applyGrants(ctx context.Context, cfg Config, mode string) (string, error) {
-	var fstab, checks string
+// grantsEnv is what grants.sh is handed for a configuration's grants. In live
+// mode target is the one grant the call makes or takes away.
+//
+// ⛔ LIVE, ONLY target IS UNMOUNTED OR MOUNTED. Every /workspaces mount the
+// caller's configuration did not name was unmounted, and another caller's
+// configuration, such as a project file or another copy of the home, can hold
+// one. That caller's checkout went, and its writes landed in the guest. WSL-179.
+func grantsEnv(cfg Config, mode, target string) (map[string]string, error) {
+	var fstab, checks, target64 string
 	var err error
 	if mode == GrantsLive {
-		fstab, checks, err = liveMountPayloads(cfg)
-	} else {
-		fstab, checks, _, err = baseMountPayloads(cfg)
+		clean, targetErr := normalizeBaseMountTarget(target)
+		if targetErr != nil {
+			return nil, fmt.Errorf("a live grant change names its one target: %w", targetErr)
+		}
+		target64 = base64.StdEncoding.EncodeToString([]byte(clean))
 	}
+	// ⚠ A TAKE-BACK'S BLOCK IS THE ONE A LIVE CHANGE WRITES, so it renders the
+	// same way, with a gone grant left out rather than refused.
+	if mode == GrantsWrite {
+		fstab, checks, _, err = baseMountPayloads(cfg)
+	} else {
+		fstab, checks, err = liveMountPayloads(cfg)
+	}
+	if err != nil {
+		return nil, err
+	}
+	ownerKey, ownerName := grantOwner(cfg)
+	return map[string]string{
+		"TK_USER": cfg.Base.User, "TK_GRANTS_MODE": mode,
+		"TK_FSTAB_B64": fstab, "TK_MOUNT_CHECKS": checks,
+		"TK_GRANT_TARGET": target64, "TK_GRANT_OWNER": ownerKey,
+		"TK_GRANT_OWNER_NAME": ownerName,
+	}, nil
+}
+
+// grantOwner is how the guest's grant ledger names a configuration file: a key
+// compared as Windows compares paths, and the file's own spelling to show. Both are
+// base64, and both are empty for a configuration with no file. WSL-179.
+func grantOwner(cfg Config) (key, name string) {
+	p := cfg.Path()
+	if p == "" {
+		return "", ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	p = filepath.Clean(p)
+	k := p
+	if runtime.GOOS == "windows" {
+		k = strings.ToLower(p)
+	}
+	enc := base64.StdEncoding.EncodeToString
+	return enc([]byte(k)), enc([]byte(p))
+}
+
+// applyGrants runs grants.sh in the base for a configuration's grants. target is
+// read in live mode alone.
+func (b *Base) applyGrants(ctx context.Context, cfg Config, mode, target string) (string, error) {
+	env, err := grantsEnv(cfg, mode, target)
 	if err != nil {
 		return "", err
 	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
 	code, err := b.wsl.Exec(ctx, ExecRequest{
 		Distro: cfg.Base.Name, User: "root", Script: grantsScript,
-		Env: map[string]string{
-			"TK_USER": cfg.Base.User, "TK_GRANTS_MODE": mode,
-			"TK_FSTAB_B64": fstab, "TK_MOUNT_CHECKS": checks,
-		},
-		Timeout: 5 * time.Minute, Stdout: out, Stderr: out,
+		Env: env, Timeout: 5 * time.Minute, Stdout: out, Stderr: out,
 	})
 	out.Flush()
 	seen := out.seen.String()
@@ -189,10 +240,105 @@ func sameSourcePath(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
 }
 
-// ChangeGrantsLive makes the base's live mounts what next names, and reads them
-// back. The configuration file is the caller's to write afterwards.
-func (b *Base) ChangeGrantsLive(ctx context.Context, next Config) (string, error) {
-	return b.applyGrants(ctx, next, GrantsLive)
+// ChangeGrantsLive makes the live mount at target what next names, mounted or
+// not, and reads it back. Every other mount stays as it is. The configuration
+// file is the caller's to write afterwards. changed is false when target was
+// already as next names it, so nothing was mounted or unmounted. WSL-179.
+func (b *Base) ChangeGrantsLive(ctx context.Context, next Config, target string) (changed bool, err error) {
+	out, err := b.applyGrants(ctx, next, GrantsLive, target)
+	if err != nil {
+		return false, err
+	}
+	return liveGrantChanged(out, target), nil
+}
+
+// liveGrantChanged reads whether a live run of grants.sh mounted or unmounted
+// target. The script prints "unchanged TARGET" when it did neither.
+func liveGrantChanged(out, target string) bool {
+	clean, err := normalizeBaseMountTarget(target)
+	if err != nil {
+		return true
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "unchanged "+clean {
+			return false
+		}
+	}
+	return true
+}
+
+// grantsTakeBackMode is how a live change the file could not record is taken
+// back. ⛔ A CHANGE THAT MOUNTED NOTHING TAKES BACK THE BLOCK ALONE. Its target
+// was already live as asked, so another configuration had mounted it, and a
+// live take-back by the previous configuration unmounted that mount. WSL-179.
+func grantsTakeBackMode(changed bool) string {
+	if changed {
+		return GrantsLive
+	}
+	return GrantsBlock
+}
+
+// TakeGrantsBack undoes a live change whose configuration file could not be
+// written. prev is the configuration the file still holds, and changed is what
+// ChangeGrantsLive answered.
+func (b *Base) TakeGrantsBack(ctx context.Context, prev Config, target string, changed bool) error {
+	_, err := b.applyGrants(ctx, prev, grantsTakeBackMode(changed), target)
+	return err
+}
+
+// grantLockPoll is how often a grant or a revoke waiting for another asks again,
+// and grantLockWait how long it waits before it refuses. The live step's own
+// limit is 5 minutes, so a holder that is working lets go well within it.
+var (
+	grantLockPoll = 200 * time.Millisecond
+	grantLockWait = 10 * time.Minute
+)
+
+// LockGrants holds the selected instance's grant lock until the returned release
+// runs or this process ends. `base grant` and `base revoke` read the configuration
+// file under it, change the base, and write the file before letting it go.
+//
+// ⛔ TWO GRANTS AT ONCE EACH WROTE A FILE WITHOUT THE OTHER'S GRANT. Each loaded
+// the file, mounted its own target, and wrote back what it had loaded plus its
+// own, so the last write won and the other grant became an unconfigured live
+// mount. WSL-179.
+func LockGrants(ctx context.Context, log func(string)) (func(), error) {
+	root, err := StateRoot()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(root, "locks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	name := SelectedInstance.Name
+	if name == "" {
+		name = DefaultInstance
+	}
+	lock := filepath.Join(dir, "grants-"+name+".lock")
+	deadline := time.Now().Add(grantLockWait)
+	said := false
+	for {
+		release, err := lockExclusive(lock)
+		if err == nil {
+			return release, nil
+		}
+		if !errors.Is(err, errLockHeld) {
+			return nil, fmt.Errorf("the grant lock %s: %w", lock, err)
+		}
+		if !time.Now().Before(deadline) {
+			return nil, fmt.Errorf("another grant or revoke on instance %s held its lock for %s, so nothing was changed. Run this again once it has finished", name, grantLockWait)
+		}
+		if !said && log != nil {
+			log("waiting for another grant or revoke on instance " + name + " to finish")
+			said = true
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("waiting for another grant or revoke on instance %s: %w", name, ctx.Err())
+		case <-time.After(grantLockPoll):
+		}
+	}
 }
 
 // WriteTo stores the configuration at a path, atomically, in the tool's own

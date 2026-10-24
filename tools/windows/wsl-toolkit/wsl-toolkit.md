@@ -549,9 +549,30 @@ wsl-toolkit --instance base base revoke --target /workspaces/project
 
 `base grant` mounts one Windows directory at `/workspaces/` and its own name, or at
 `--target`, read-only unless `--mode rw`. `base revoke` unmounts one. Each changes
-the running base first, reads every grant back as the account, and then writes the
-configuration file in effect, so a later restart and `base ensure` mount the same
+the running base first, reads its grant back as the account, and then writes the
+configuration file in effect. So a later restart and `base ensure` mount the same
 directories. Nothing restarts, so nothing running in the base stops. `WSL-75`
+
+⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
+configuration does not name stays mounted, because another configuration may hold
+it. A project's `wsl-toolkit.json` beside the home's own file is one. A
+configuration file that cannot be written takes the change back. A grant whose
+target was already mounted as asked takes back its fstab block alone, so that
+mount stays. `WSL-179`
+
+⛔ **A target another configuration holds is refused, not replaced.** The base
+keeps a ledger of which configuration file made each live grant. A grant or a
+revoke of a target another file holds is refused, naming that file and its
+revoke. A target already mounted from another Windows directory is refused too. So
+is one mounted in the other mode that this configuration did not mount. Grants and
+revokes on one instance take a lock, and each reads its file under it. `WSL-179`
+
+⚠ **A mount another configuration holds lasts until the next restart.**
+`base ensure` names it and leaves it, where it used to re-provision over it. The fstab
+block holds only the last caller's grants, so a restart drops the other mounts. A
+re-provision for any other reason restarts the base and drops them too. After a
+restart, `base ensure` from the file that names them mounts them again, through
+one more restart.
 
 ⛔ **Neither replaces what it would disturb.** A directory or a target already
 granted differently is refused with the revoke to run first. A grant a process

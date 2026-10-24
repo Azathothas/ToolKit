@@ -79,10 +79,11 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	if err := gitBashRewrite("--target", g.target, guestPath); err != nil {
 		return exitCannot, err
 	}
-	cfg, err := loadConfig()
+	cfg, release, err := lockedGrantConfig(ctx)
 	if err != nil {
 		return exitCannot, err
 	}
+	defer release()
 	var change toolkit.GrantChange
 	switch sub {
 	case "grant":
@@ -122,26 +123,65 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 		if err != nil {
 			return exitCannot, err
 		}
-		if _, err := base.ChangeGrantsLive(ctx, change.Next); err != nil {
-			// ⚠ NOTHING WAS WRITTEN. The file still says what the base had.
-			return exitFailed, fmt.Errorf("%s. %s is unchanged", strings.TrimRight(err.Error(), "."), cfg.Path())
+		if code, err := changeGrantLive(ctx, base, cfg, change); err != nil {
+			return code, err
 		}
 		ans.Live = true
 	} else {
 		note(cfg.Base.Name + " is not registered, so only the configuration changes. base ensure mounts what it names")
-	}
-	if err := change.Next.WriteTo(cfg.Path()); err != nil {
-		if registered {
-			if base, baseErr := toolkit.NewBase(cfg, note); baseErr == nil {
-				if _, backErr := base.ChangeGrantsLive(ctx, cfg); backErr != nil {
-					return exitCannot, fmt.Errorf("%s could not be written (%v), and taking the live change back failed too: %w", cfg.Path(), err, backErr)
-				}
-			}
+		if err := change.Next.WriteTo(cfg.Path()); err != nil {
+			return exitCannot, fmt.Errorf("%s could not be written: %w", cfg.Path(), err)
 		}
-		return exitCannot, fmt.Errorf("%s could not be written, so the live change was taken back: %w", cfg.Path(), err)
 	}
 	logf("  %s %s %s <- %s, written to %s", sub, change.Mount.Mode, change.Mount.Target, change.Mount.Source, cfg.Path())
 	return renderGrant(ans, change.Next, g.asJSON)
+}
+
+// lockedGrantConfig loads the configuration under the instance's grant lock, and
+// the caller holds the lock until it has written the file.
+//
+// ⛔ LOADED UNDER THE LOCK, NOT BEFORE IT. Two grants that each loaded the file
+// first each wrote it back without the other's grant, so one grant stayed live
+// with no file naming it. WSL-179.
+func lockedGrantConfig(ctx context.Context) (toolkit.Config, func(), error) {
+	release, err := toolkit.LockGrants(ctx, note)
+	if err != nil {
+		return toolkit.Config{}, nil, err
+	}
+	cfg, err := loadConfig()
+	if err != nil {
+		release()
+		return cfg, nil, err
+	}
+	return cfg, release, nil
+}
+
+// grantLiveBase is what a grant or a revoke asks of a registered base.
+type grantLiveBase interface {
+	ChangeGrantsLive(ctx context.Context, next toolkit.Config, target string) (bool, error)
+	TakeGrantsBack(ctx context.Context, prev toolkit.Config, target string, changed bool) error
+}
+
+// changeGrantLive changes the running base first and the file second, and takes
+// the live step back when the file cannot be written.
+func changeGrantLive(ctx context.Context, base grantLiveBase, cfg toolkit.Config, change toolkit.GrantChange) (int, error) {
+	// changed is whether the live step mounted or unmounted the target, and it
+	// decides how a file that cannot be written takes the step back. WSL-179.
+	changed, err := base.ChangeGrantsLive(ctx, change.Next, change.Mount.Target)
+	if err != nil {
+		// ⚠ NOTHING WAS WRITTEN. The file still says what the base had.
+		return exitFailed, fmt.Errorf("%s. %s is unchanged", strings.TrimRight(err.Error(), "."), cfg.Path())
+	}
+	if err := change.Next.WriteTo(cfg.Path()); err != nil {
+		// ⛔ A STEP THAT MOUNTED NOTHING TAKES BACK ITS BLOCK ALONE. The target was
+		// already live, from another configuration, and a live take-back unmounted
+		// that configuration's checkout. WSL-179.
+		if backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed); backErr != nil {
+			return exitCannot, fmt.Errorf("%s could not be written (%v), and taking the live change back failed too: %w", cfg.Path(), err, backErr)
+		}
+		return exitCannot, fmt.Errorf("%s could not be written, so the live change was taken back: %w", cfg.Path(), err)
+	}
+	return exitOK, nil
 }
 
 func renderGrant(ans baseGrantAnswer, cfg toolkit.Config, asJSON bool) (int, error) {
