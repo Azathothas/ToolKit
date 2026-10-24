@@ -70,7 +70,7 @@ func TestAWindowsDirectoryIsMappedToWhereTheBaseSeesIt(t *testing.T) {
 	}
 	ro := toolkit.DefaultConfig()
 	ro.Base.Automount = toolkit.AutomountReadOnly
-	if got, err := windowsDirInGuest(ro, `C:\Users\x\proj`, "--dir"); err != nil || got != "/mnt/c/Users/x/proj" {
+	if got, err := windowsDirInGuest(ro, `C:\src\x\proj`, "--dir"); err != nil || got != "/mnt/c/src/x/proj" {
 		t.Errorf("with the drives mounted, a Windows directory maps to %q, %v", got, err)
 	}
 	// ⭐ THROUGH THE REQUEST, on any host: a drive path is read by its own grammar.
@@ -184,7 +184,8 @@ func TestStdinIsPassedOnlyWhereItIsAPipeOrAFile(t *testing.T) {
 // failed artifact copy turns a success into 1 but never hides a failure. WSL-124.
 func TestAnAttachedExecAnswersTheExitItsOutcomeMeans(t *testing.T) {
 	refused := fmt.Errorf("%w: /srv/nope", toolkit.ErrDirNotEntered)
-	if code, err := attachedExecExit(toolkit.BaseExecResult{Exit: 2}, refused, true, ""); code != exitCannot || !errors.Is(err, toolkit.ErrDirNotEntered) {
+	// RunBaseExec reports no exit for a command that never ran, so the 2 is this verdict's.
+	if code, err := attachedExecExit(toolkit.BaseExecResult{}, refused, true, ""); code != exitCannot || !errors.Is(err, toolkit.ErrDirNotEntered) {
 		t.Errorf("a directory the command could not enter answered %d, %v", code, err)
 	}
 	kept := toolkit.BaseExecResult{ArtifactError: "the copy stopped", Retained: "/home/user/.wsl-toolkit/jobs/x", ID: "x"}

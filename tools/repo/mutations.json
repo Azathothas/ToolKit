@@ -302,7 +302,7 @@
       "label": "wsl-toolkit: base exec --here starts where the base sees this directory",
       "file": "cmd_base_exec.go",
       "find": "\t\treturn windowsDirInGuest(cfg, cwd, \"--here\")\n",
-      "replace": "\t\treturn dir, nil\n",
+      "replace": "\t\t_ = cwd\n\t\treturn dir, nil\n",
       "run": "TestAWindowsDirectoryIsMappedToWhereTheBaseSeesIt",
       "module": "tools/windows/wsl-toolkit",
       "args": []

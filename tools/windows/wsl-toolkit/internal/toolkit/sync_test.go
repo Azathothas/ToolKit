@@ -38,8 +38,9 @@ func TestASyncWritesADirectoryOfItsOwnUnderTheHome(t *testing.T) {
 		{"~/.wsl-toolkit/sessions/x", true, "", "keeps its jobs and sessions"},
 		{"~/src/../../etc", true, "", "climbs"},
 		{"src/p", true, "", "not a guest path"},
-		{`C:\Users\x`, true, "", "not a guest path"},
-		{"/home/toolkitx/p", false, "", "Pass --force"},
+		{`C:\src\x`, true, "", "not a guest path"},
+		// A sibling whose name starts with the home's is outside it.
+		{home + "x/p", false, "", "Pass --force"},
 		{"~/a b", false, "", "outside the alphabet"},
 	} {
 		got, err := syncTarget(c.given, home, c.force)
@@ -260,7 +261,9 @@ func TestGitDecidesWhatDeleteKeeps(t *testing.T) {
 		}
 	}
 	run(root, "init", "-q")
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("target/\n*.log\n"), 0o600); err != nil {
+	// ⚠ *.c IS THE CHECKOUT'S RULE AND NOT THE NESTED REPOSITORY'S, so a path in
+	// the nested one asked of the checkout reads as ignored, and the case sees it.
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("target/\n*.log\n*.c\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	nested := filepath.Join(root, "vendor", "lib")

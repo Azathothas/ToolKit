@@ -1356,6 +1356,7 @@ once it is an hour old. `WSL-133`
 | --- | --- | --- |
 | a terminal, and job control | `/dev/pts/1`, `himBHs` | `/dev/pts/1`, `himBHs` |
 | the network namespace | the shared one | ⭐ its own |
+| `ip -o link` | `lo`, `eth0` and the engine's `veth` pair | ⭐ `lo` and pasta's own `eth0` alone |
 | the Windows host, ICMP | answered | ⭐ **refused** |
 | `id -u` | the account's | `0`, pasta's user namespace, with no privilege the account lacks |
 | the shell's exit code | its own | ⭐ its own |
