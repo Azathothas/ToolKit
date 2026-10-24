@@ -220,7 +220,7 @@ func (w *Watchdog) Run(ctx context.Context) (WatchOutcome, error) {
 //
 // ⚠ A JOB NOT CLAIMED YET IS NOT ENDED. A fleet claims its rows as each one
 // starts, so a row this watch has never seen is a row still to come, and one it
-// has seen whose directory is gone ended and was removed by --remove-record.
+// has seen whose directory is gone ended and was removed, as an ephemeral job is.
 func (w *Watchdog) allEnded() bool {
 	ended := true
 	for _, id := range w.IDs {

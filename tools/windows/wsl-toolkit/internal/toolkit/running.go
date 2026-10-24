@@ -166,6 +166,7 @@ func AdmitRunning(ctx context.Context, owner *JobOwner, limit int, wait time.Dur
 	home := filepath.Dir(filepath.Dir(owner.Dir))
 	deadline := started.Add(wait)
 	lastSaid := time.Time{}
+	held := false
 	for {
 		release, err := holdBriefly(ctx, lock)
 		if err != nil {
@@ -178,13 +179,19 @@ func AdmitRunning(ctx context.Context, owner *JobOwner, limit int, wait time.Dur
 			if err != nil {
 				return time.Since(started), fmt.Errorf("--max-running: the mark that counts this job as running: %w", err)
 			}
+			// ⚠ A JOB LET IN AT ITS FIRST COUNT WAITED NOT AT ALL, and answers zero
+			// rather than the length of one count. WSL-136.
+			if !held {
+				return 0, nil
+			}
 			waited := time.Since(started)
-			if log != nil && !lastSaid.IsZero() {
+			if log != nil {
 				log(fmt.Sprintf("job %s runs after waiting %s for a running slot", owner.ID, waited.Round(time.Second)))
 			}
 			return waited, nil
 		}
 		release()
+		held = true
 		if stopped != nil && stopped() {
 			return time.Since(started), fmt.Errorf("%w: %d of %d ran (%s)", ErrStoppedWaitingToRun, len(running), limit, runningList(running))
 		}

@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"path/filepath"
@@ -17,12 +18,12 @@ import (
 
 // -- WSL-121 and WSL-136: what the owning process does beyond the job ----------
 
-// parsedOwner binds and parses the owner flags as run binds them.
-func parsedOwner(t *testing.T, run bool, args ...string) ownerFlags {
+// parsedOwner binds and parses the owner flags as run and matrix bind them.
+func parsedOwner(t *testing.T, args ...string) ownerFlags {
 	t.Helper()
 	var o ownerFlags
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
-	o.bind(fs, run)
+	o.bind(fs)
 	if err := fs.Parse(args); err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +31,7 @@ func parsedOwner(t *testing.T, run bool, args ...string) ownerFlags {
 }
 
 // ⛔ Each owner flag the helper cannot honour is refused on that route, and a
-// value the project's file set names the flag that lifts it.
+// cap the project's file set is dropped there with a note, so the job runs.
 func TestOwnerFlagsAreRefusedThroughTheHelper(t *testing.T) {
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	ctx := context.Background()
@@ -39,7 +40,6 @@ func TestOwnerFlagsAreRefusedThroughTheHelper(t *testing.T) {
 		want string
 	}{
 		{[]string{"--cancel-on-exit"}, "--cancel-on-exit starts a watcher"},
-		{[]string{"--remove-record", "--container-lifecycle", "ephemeral"}, "--remove-record removes the record"},
 		{[]string{"--max-running", "2"}, "--max-running is held by the process that owns the job"},
 	} {
 		code, err := cmdRun(ctx, append([]string{"--image", "alpine", "-c", "true", "--via-helper"}, c.args...))
@@ -47,54 +47,42 @@ func TestOwnerFlagsAreRefusedThroughTheHelper(t *testing.T) {
 			t.Errorf("run %v --via-helper answered %d, %v; want %q", c.args, code, err, c.want)
 		}
 	}
-	code, err := cmdMatrix(ctx, []string{"-c", "true", "--via-helper", "--cancel-on-exit"})
-	if code != exitCannot || err == nil || !strings.Contains(err.Error(), "--cancel-on-exit starts a watcher") {
-		t.Errorf("matrix --cancel-on-exit --via-helper answered %d, %v", code, err)
+	for _, args := range [][]string{{"--cancel-on-exit"}, {"--max-running", "2"}} {
+		code, err := cmdMatrix(ctx, append([]string{"-c", "true", "--via-helper"}, args...))
+		if code != exitCannot || err == nil || !strings.Contains(err.Error(), args[0]) {
+			t.Errorf("matrix %v --via-helper answered %d, %v", args, code, err)
+		}
 	}
-	fromFile := ownerFlags{removeRecord: true, removeFromConfig: true}
-	if err := fromFile.helperRefusal(false); err == nil || !strings.Contains(err.Error(), "--remove-record=false") {
-		t.Errorf("a project's remove_record through the helper answered %v", err)
-	}
-	capped := ownerFlags{maxRunning: 2, capFromConfig: true}
-	if err := capped.helperRefusal(false); err == nil || !strings.Contains(err.Error(), "--max-running 0") {
-		t.Errorf("a project's max_running through the helper answered %v", err)
+	capped := ownerFlags{maxRunning: 2, maxRunningWait: time.Minute, capFromConfig: true}
+	if err := capped.helperRefusal(false); err != nil || capped.maxRunning != 0 || capped.maxRunningWait != 0 {
+		t.Errorf("a project's max_running through the helper answered %v and left a cap of %d", err, capped.maxRunning)
 	}
 }
 
 // ⛔ The owner flags refuse a value that cannot mean what it says, and the
-// command line wins over the project's file, false and 0 included.
+// command line wins over the project's file, 0 included.
 func TestOwnerFlagsRefuseWhatCannotMeanWhatItSays(t *testing.T) {
 	cfg := toolkit.DefaultConfig()
-	o := parsedOwner(t, true, "--remove-record")
-	if err := o.settle(cfg, toolkit.ContainerPersistent, false); err == nil {
-		t.Error("--remove-record beside a persistent container was accepted")
-	}
-	o = parsedOwner(t, true, "--remove-record")
-	if err := o.settle(cfg, toolkit.ContainerEphemeral, true); err == nil {
-		t.Error("--remove-record beside --detach was accepted")
-	}
-
 	project := toolkit.DefaultConfig()
-	project.Jobs.RemoveRecord, project.Jobs.MaxRunning, project.Jobs.MaxRunningWait = true, 2, "10m"
-	o = parsedOwner(t, true)
-	if err := o.settle(project, toolkit.ContainerPersistent, false); err != nil || o.removeRecord {
-		t.Errorf("a project's remove_record on a persistent job answered %v and stays %v; it applies to ephemeral jobs", err, o.removeRecord)
+	project.Jobs.MaxRunning, project.Jobs.MaxRunningWait = 2, "10m"
+	o := parsedOwner(t)
+	if err := o.settle(project, toolkit.ContainerPersistent); err != nil {
+		t.Fatal(err)
 	}
 	if o.maxRunning != 2 || o.maxRunningWait != 10*time.Minute || !o.capFromConfig {
 		t.Errorf("the project's cap reads %d and %s", o.maxRunning, o.maxRunningWait)
 	}
-	o = parsedOwner(t, true, "--max-running", "0", "--remove-record=false")
-	if err := o.settle(project, toolkit.ContainerEphemeral, false); err != nil || o.maxRunning != 0 || o.removeRecord {
-		t.Errorf("--max-running 0 and --remove-record=false left a cap of %d and removal %v: %v", o.maxRunning, o.removeRecord, err)
+	if o.lifecycle != toolkit.ContainerPersistent {
+		t.Errorf("the job's lifecycle reads %q", o.lifecycle)
 	}
-	o = parsedOwner(t, true)
-	if err := o.settle(project, toolkit.ContainerEphemeral, true); err != nil || o.removeRecord {
-		t.Errorf("a project's remove_record on a detached job answered %v and stays %v", err, o.removeRecord)
+	o = parsedOwner(t, "--max-running", "0")
+	if err := o.settle(project, toolkit.ContainerEphemeral); err != nil || o.maxRunning != 0 {
+		t.Errorf("--max-running 0 left a cap of %d: %v", o.maxRunning, err)
 	}
 
 	for _, args := range [][]string{{"--max-running", "-1"}, {"--max-running-wait", "-1s", "--max-running", "1"}, {"--max-running-wait", "1m"}} {
-		o := parsedOwner(t, true, args...)
-		if err := o.settle(cfg, toolkit.ContainerEphemeral, false); err == nil {
+		o := parsedOwner(t, args...)
+		if err := o.settle(cfg, toolkit.ContainerEphemeral); err == nil {
 			t.Errorf("%v was accepted", args)
 		}
 	}
@@ -182,7 +170,7 @@ func TestAJobTheCapRefusesRecordsItsEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 	o := ownerFlags{maxRunning: 1}
-	ended, code, err := o.admit(context.Background(), me, "alpine", "docker.io/library/alpine:latest", false)
+	_, ended, code, err := o.admit(context.Background(), me, "alpine", "docker.io/library/alpine:latest", false)
 	if !ended || code != exitCannot || err == nil || !strings.Contains(err.Error(), "refused at once") {
 		t.Fatalf("a job over the cap answered %v, %d, %v", ended, code, err)
 	}
@@ -190,8 +178,105 @@ func TestAJobTheCapRefusesRecordsItsEnd(t *testing.T) {
 	if err != nil || st.Owned || st.Result == nil || st.Result.Verdict() != exitCannot {
 		t.Fatalf("the refused job reads as %+v, %v", st, err)
 	}
-	if ended, _, _ := (&ownerFlags{}).admit(context.Background(), nil, "", "", false); ended {
+	if _, ended, _, _ := (&ownerFlags{}).admit(context.Background(), nil, "", "", false); ended {
 		t.Error("a job with no cap was held")
+	}
+}
+
+// ⛔ An ended ephemeral job leaves nothing: its host record goes once its end
+// is recorded, and the answer says so. A persistent job keeps its record, and a
+// detached ephemeral one keeps it and says why, because wait reads it. WSL-121.
+func TestAnEphemeralJobLeavesNothing(t *testing.T) {
+	for _, c := range []struct {
+		name      string
+		lifecycle string
+		detached  bool
+		removed   bool
+	}{
+		{"attached ephemeral", toolkit.ContainerEphemeral, false, true},
+		{"persistent", toolkit.ContainerPersistent, false, false},
+		{"detached ephemeral", toolkit.ContainerEphemeral, true, false},
+	} {
+		home := t.TempDir()
+		t.Setenv("WSL_TOOLKIT_HOME", home)
+		detached := ""
+		if c.detached {
+			detached = "1"
+		}
+		t.Setenv(toolkit.DetachedEnv, detached)
+		owner, err := toolkit.ClaimJob(home, cliJobID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dir := filepath.Join(home, "jobs", cliJobID)
+		o := ownerFlags{lifecycle: c.lifecycle}
+		res := toolkit.JobResult{ID: cliJobID, ContainerLifecycle: c.lifecycle, Transcript: dir}
+		res.Seal()
+		o.finish(owner, &res)
+		_, statErr := os.Stat(dir)
+		if gone := statErr != nil; gone != c.removed || res.RecordRemoved != c.removed {
+			t.Errorf("%s: the record is gone %v and reads removed %v; want %v", c.name, gone, res.RecordRemoved, c.removed)
+		}
+		if c.removed && !strings.Contains(keptLine(res), "left nothing") {
+			t.Errorf("%s: the answer says %q", c.name, keptLine(res))
+		}
+		if c.detached {
+			st, err := toolkit.ReadJobState(home, cliJobID)
+			if err != nil || st.Result == nil || st.Result.RecordKept != toolkit.DetachedRecordKept {
+				t.Errorf("%s: the recorded end does not say why the record stays: %+v, %v", c.name, st.Result, err)
+			}
+		}
+	}
+}
+
+// ⛔ A fleet is held by the cap a project sets: matrix reads jobs.max_running
+// and holds each row, as run holds its job. WSL-136.
+func TestAFleetIsHeldByTheProjectsCap(t *testing.T) {
+	project := toolkit.DefaultConfig()
+	project.Jobs.MaxRunning = 1
+	o := parsedOwner(t)
+	if err := o.settle(project, toolkit.ContainerEphemeral); err != nil {
+		t.Fatal(err)
+	}
+	if o.rowAdmit() == nil {
+		t.Fatal("a fleet under a project's cap holds no row")
+	}
+	root := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", root)
+	selectInstance(t, toolkit.DefaultInstance)
+	busy, err := toolkit.ClaimJob(root, "aaaaaaaaaaaaaaaa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Release()
+	if err := os.WriteFile(filepath.Join(root, "jobs", "aaaaaaaaaaaaaaaa", "admitted"), []byte("now\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	row, err := toolkit.ClaimJob(root, cliJobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer row.Release()
+	if _, err := o.rowAdmit()(context.Background(), row); !errors.Is(err, toolkit.ErrOverRunningCap) {
+		t.Errorf("a row over the project's cap answered %v", err)
+	}
+	if (&ownerFlags{}).rowAdmit() != nil {
+		t.Error("a fleet with no cap holds its rows")
+	}
+}
+
+// ⭐ The answer says how long the cap held a job, and nothing where it did not.
+func TestAnAnswerSaysHowLongTheCapHeldTheJob(t *testing.T) {
+	res := toolkit.JobResult{ID: cliJobID, WaitedToRun: 90 * time.Second}
+	if line := waitedLine(res); !strings.Contains(line, "waited 1m30s for a running slot") {
+		t.Errorf("a held job's line is %q", line)
+	}
+	out := captureStdout(t, func() { _, _ = reportJob(res, true) })
+	if !strings.Contains(out, `"waited_to_run_ns": 90000000000`) {
+		t.Errorf("the answer does not carry the wait: %s", out)
+	}
+	if line := waitedLine(toolkit.JobResult{ID: cliJobID}); line != "" {
+		t.Errorf("a job let in at once has the line %q", line)
 	}
 }
 

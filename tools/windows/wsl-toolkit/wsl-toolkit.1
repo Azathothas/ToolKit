@@ -327,7 +327,7 @@ cut a line after this many bytes, at a character boundary, and say how many went
 how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says
 .TP
 \fB--max-running\fR
-hold this job until fewer than N jobs run on this machine, in every instance. 0 lifts the cap jobs.max_running sets
+hold each job until fewer than N jobs run on this machine, in every instance. 0 lifts the cap jobs.max_running sets
 .TP
 \fB--max-running-wait\fR
 with a running cap, wait this long for a running job to end rather than refusing at once. jobs.max_running_wait sets it for a project. Default: 0s.
@@ -346,9 +346,6 @@ consume a line that is this token, whitespace and a percentage with an optional 
 .TP
 \fB--redact\fR
 a regular expression whose matches become *** before any sink sees a line. Repeatable; a comma list is accepted, and [,] is a literal comma
-.TP
-\fB--remove-record\fR
-with --container-lifecycle ephemeral, also remove the job's host record once its answer is ready, so the job leaves nothing. jobs.remove_record sets it for a project, and --remove-record=false turns it off
 .TP
 \fB--script\fR
 a file on this machine whose bytes are the command, or - to read them from stdin
@@ -450,6 +447,12 @@ refuse a workspace or an artifact set with more entries than this. Default: 2000
 \fB--max-output\fR
 how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says
 .TP
+\fB--max-running\fR
+hold each job until fewer than N jobs run on this machine, in every instance. 0 lifts the cap jobs.max_running sets
+.TP
+\fB--max-running-wait\fR
+with a running cap, wait this long for a running job to end rather than refusing at once. jobs.max_running_wait sets it for a project. Default: 0s.
+.TP
 \fB--no-network\fR
 run with no network at all
 .TP
@@ -458,9 +461,6 @@ how many rows run at once. Default: 4.
 .TP
 \fB--platform\fR
 the Linux OCI platform. Empty uses jobs.platform, then the native platform
-.TP
-\fB--remove-record\fR
-with --container-lifecycle ephemeral, also remove the job's host record once its answer is ready, so the job leaves nothing. jobs.remove_record sets it for a project, and --remove-record=false turns it off
 .TP
 \fB--script\fR
 a file on this machine whose bytes are the command, or - to read them from stdin

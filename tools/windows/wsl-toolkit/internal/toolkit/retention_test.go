@@ -75,12 +75,12 @@ func endedEphemeral(t *testing.T, home string) JobResult {
 	return JobResult{ID: testJobID, ContainerLifecycle: ContainerEphemeral, Transcript: filepath.Join(home, "jobs", testJobID)}
 }
 
-// ⭐ --remove-record removes an ended ephemeral job's record and says so, and
-// keeps one that holds what the answer does not.
+// ⭐ An ended ephemeral job's record is removed and the answer says so, and one
+// that holds what the answer does not is kept, with its own cause.
 func TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy(t *testing.T) {
 	home := t.TempDir()
 	res := endedEphemeral(t, home)
-	RemoveJobRecord(home, &res)
+	RemoveJobRecord(home, res.ContainerLifecycle, &res)
 	if !res.RecordRemoved || res.Transcript != "" || res.RecordKept != "" {
 		t.Fatalf("the answer after the removal is %+v", res)
 	}
@@ -97,7 +97,7 @@ func TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy(t *testing.T) {
 		home := t.TempDir()
 		res := endedEphemeral(t, home)
 		change(&res)
-		RemoveJobRecord(home, &res)
+		RemoveJobRecord(home, res.ContainerLifecycle, &res)
 		if res.RecordRemoved {
 			t.Errorf("%s: the record was removed", name)
 		}
@@ -107,6 +107,29 @@ func TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy(t *testing.T) {
 		if res.ContainerLifecycle == ContainerEphemeral && res.RecordKept == "" {
 			t.Errorf("%s: the answer does not say why the record was kept", name)
 		}
+	}
+}
+
+// ⛔ A guest directory left behind is named as itself, never as artifacts that
+// were not delivered: a job that asked for none could not have had that cause.
+func TestAKeptRecordNamesItsOwnCause(t *testing.T) {
+	home := t.TempDir()
+	res := endedEphemeral(t, home)
+	res.GuestDir = "/guest/jobs/" + testJobID
+	RemoveJobRecord(home, ContainerEphemeral, &res)
+	if strings.Contains(res.RecordKept, "artifacts") || !strings.Contains(res.RecordKept, res.GuestDir) {
+		t.Errorf("a left guest directory keeps the record because %q", res.RecordKept)
+	}
+	// ⚠ A reason already given stands, and nothing is removed under it.
+	home = t.TempDir()
+	res = endedEphemeral(t, home)
+	res.RecordKept = DetachedRecordKept
+	RemoveJobRecord(home, ContainerEphemeral, &res)
+	if res.RecordRemoved || res.RecordKept != DetachedRecordKept {
+		t.Errorf("a detached job's record reads %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(home, "jobs", testJobID)); err != nil {
+		t.Errorf("a detached job's record is gone: %v", err)
 	}
 }
 

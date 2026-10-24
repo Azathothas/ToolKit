@@ -487,7 +487,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	detach := fs.Bool("detach", false, "start the job and answer with its id at once. A detached copy of this program owns the job; wsl-toolkit logs ID --follow, wait ID and stop ID reach it")
 	// WSL-121 and WSL-136: what the owning process does beyond running the job.
 	var o ownerFlags
-	o.bind(fs, true)
+	o.bind(fs)
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -504,7 +504,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err := j.check(); err != nil {
 		return exitCannot, err
 	}
-	if err := o.settle(cfg, j.lifecycle, *detach); err != nil {
+	if err := o.settle(cfg, j.lifecycle); err != nil {
 		return exitCannot, err
 	}
 	if j.viaHelper {
@@ -615,7 +615,8 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	refuse := func(err error) (int, error) {
-		_ = owner.Finish(toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot})
+		res := toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot}
+		o.finish(owner, &res)
 		return exitCannot, err
 	}
 	// ⭐ THE PROJECT IS RECORDED WITH THE CLAIM, so `gc --workspace` finds even a
@@ -652,9 +653,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		if errors.Is(err, toolkit.ErrStoppedWaiting) {
 			res := toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: 130, Cancelled: true, Stopped: true, Error: err.Error()}
 			res.Seal()
-			if ferr := owner.Finish(res); ferr != nil {
-				logf("  ! could not record the end of job %s: %s", res.ID, ferr.Error())
-			}
+			o.finish(owner, &res)
 			return reportJob(res, j.asJSON)
 		}
 		if err != nil {
@@ -664,7 +663,8 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	}
 	// ⭐ HELD AFTER ITS NAME AND BEFORE ANYTHING IS SPENT ON IT, so a job waiting
 	// for its turn copies nothing and holds no running slot. WSL-136.
-	if ended, code, err := o.admit(ctx, owner, *image, ref, j.asJSON); ended {
+	waited, ended, code, err := o.admit(ctx, owner, *image, ref, j.asJSON)
+	if ended {
 		return code, err
 	}
 	runner, err := toolkit.NewRunner(cfg, note)
@@ -700,19 +700,13 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 		OnTick: jobTick(j, relay), TickEvery: j.tick, Log: relay,
 	})
+	res.WaitedToRun = waited
 	// ⛔ SEALED AND RECORDED BEFORE IT IS RENDERED, so a follower reading the
 	// record and this process reporting it name one verdict.
 	res.Seal()
-	if err := owner.Finish(res); err != nil {
-		logf("  ! could not record the end of job %s: %s", res.ID, err.Error())
-	}
-	// ⭐ THE RECORD GOES ONCE THE ANSWER IS READY, and the answer says so.
-	// WSL-121.
-	if o.removeRecord {
-		if home, err := toolkit.Home(); err == nil {
-			toolkit.RemoveJobRecord(home, &res)
-		}
-	}
+	// ⭐ AN EPHEMERAL JOB'S RECORD GOES ONCE THE ANSWER IS READY, and the answer
+	// says so. WSL-121.
+	o.finish(owner, &res)
 	return reportJob(res, j.asJSON)
 }
 
@@ -904,6 +898,9 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 	if line := keptLine(res); line != "" {
 		logf("  %s", line)
 	}
+	if line := waitedLine(res); line != "" {
+		logf("  %s", line)
+	}
 	return jobVerdict(res), nil
 }
 
@@ -944,7 +941,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	transcripts := fs.String("transcripts", "", "a directory to write one transcript per row into")
 	// WSL-121: what the owning process does beyond running the rows.
 	var o ownerFlags
-	o.bind(fs, false)
+	o.bind(fs)
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -961,7 +958,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if *parallel < 1 {
 		return exitCannot, fmt.Errorf("--parallel %d would run no rows at all. Pass 1 or more", *parallel)
 	}
-	if err := o.settle(cfg, j.lifecycle, false); err != nil {
+	if err := o.settle(cfg, j.lifecycle); err != nil {
 		return exitCannot, err
 	}
 	if j.viaHelper {
@@ -1064,14 +1061,14 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		Limits: j.limits(), Transcripts: *transcripts, User: j.user, Devices: devices, Inputs: inputs,
 		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
 		OnTick: tickPrinter(j), TickEvery: j.tick,
-		RowIDs: rows,
+		RowIDs: rows, Admit: o.rowAdmit(),
 	})
 	if err != nil {
 		return exitCannot, err
 	}
-	if o.removeRecord {
-		removeRowRecords(&report)
-	}
+	// ⭐ EACH EPHEMERAL ROW'S RECORD GOES ONCE THE FLEET'S ANSWER IS READY.
+	// WSL-121.
+	o.leaveRows(&report)
 	return reportMatrix(report, j.asJSON)
 }
 

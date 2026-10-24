@@ -33,6 +33,20 @@ var ErrJobPrefix = errors.New("a job id prefix that names no single job")
 // ErrJobOfAnotherInstance is a job another instance than the selected one ran.
 var ErrJobOfAnotherInstance = errors.New("a job of another instance")
 
+// ErrNoJobHere is a prefix that no job in this state directory, or in another
+// instance's, starts. It is an ErrJobPrefix too. A command that goes through
+// the helper hands the prefix on, because the helper's jobs are in the
+// helper's state directory. WSL-120.
+var ErrNoJobHere = errors.New("a job id prefix no job in this state directory starts")
+
+// noJobHereError is a refusal that is both ErrJobPrefix and ErrNoJobHere.
+type noJobHereError struct{ msg string }
+
+func (e *noJobHereError) Error() string { return e.msg }
+func (e *noJobHereError) Is(target error) bool {
+	return target == ErrJobPrefix || target == ErrNoJobHere
+}
+
 // instanceRecordName holds the instance that claimed a job first. WSL-120.
 const instanceRecordName = "instance"
 
@@ -62,6 +76,9 @@ func ResolveJobID(home, raw string, again func(instance, id string) string) (str
 	matches, err := jobsStartingWith(filepath.Join(home, "jobs"), prefix)
 	if err != nil {
 		return "", err
+	}
+	if len(matches) == 0 {
+		matches = openJobsStartingWith(home, prefix)
 	}
 	switch len(matches) {
 	case 0:
@@ -112,6 +129,31 @@ func jobsStartingWith(dir, prefix string) ([]string, error) {
 	return out, nil
 }
 
+// openJobsStartingWith lists the jobs whose record is open in home's ledger
+// and whose id starts with prefix, in order.
+//
+// ⛔ A JOB WHOSE HOST DIRECTORY IS GONE CAN STILL HOLD A CONTAINER. Its open
+// record is what names it, and a prefix found nothing to reach it by but the
+// whole id. It is asked only when no host directory matched, so a record left
+// open does not make a prefix that names one directory ambiguous. WSL-120.
+func openJobsStartingWith(home, prefix string) []string {
+	led := &Ledger{path: filepath.Join(home, "ledger.jsonl")}
+	open, err := led.Open()
+	if err != nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, e := range open {
+		if e.Kind == "job" && ValidJobID(e.ID) && strings.HasPrefix(e.ID, prefix) && !seen[e.ID] {
+			seen[e.ID] = true
+			out = append(out, e.ID)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // noJobStartsWith is the refusal for a prefix nothing here starts.
 //
 // ⭐ ANOTHER INSTANCE IS ASKED BEFORE THE REFUSAL IS WRITTEN. A job started
@@ -122,8 +164,8 @@ func noJobStartsWith(raw, prefix string, again func(instance, id string) string)
 	elsewhere := jobsElsewhere(prefix)
 	switch len(elsewhere) {
 	case 0:
-		return fmt.Errorf("%w: %q is not a job id here: no job in this state directory starts with it. %s lists the jobs it has",
-			ErrJobPrefix, raw, ToolCommand("logs"))
+		return &noJobHereError{msg: fmt.Sprintf("%v: %q is not a job id here: no job in this state directory starts with it. %s lists the jobs it has",
+			ErrJobPrefix, raw, ToolCommand("logs"))}
 	case 1:
 		return ofAnotherInstance(elsewhere[0].id, elsewhere[0].instance, again)
 	}

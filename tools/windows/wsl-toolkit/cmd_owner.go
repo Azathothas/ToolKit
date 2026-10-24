@@ -17,37 +17,42 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-// ownerFlags are about the process that owns a job and what the job leaves:
-// --cancel-on-exit and --remove-record on run and matrix, and the running cap
-// on run. WSL-121, WSL-136.
+// ownerFlags are about the process that owns a job: --cancel-on-exit and the
+// running cap, on run and matrix. WSL-121, WSL-136.
 //
 // ⚠ A STRUCT OF THEIR OWN AND NOT jobFlags, because none of them crosses the
 // helper: the helper owns a job it runs, so each is refused on that route.
 // TestEveryJobFlagCrossesTheWire holds jobFlags to the wire, and
 // TestOwnerFlagsAreRefusedThroughTheHelper holds these to the refusal.
 type ownerFlags struct {
-	fs              *flag.FlagSet
-	cancelOnExit    bool
-	removeRecord    bool
-	removeRecordSet bool
-	maxRunning      int
-	maxRunningWait  time.Duration
-	// The project's file set it, which a refusal names with the override.
-	removeFromConfig, capFromConfig bool
+	fs             *flag.FlagSet
+	cancelOnExit   bool
+	maxRunning     int
+	maxRunningWait time.Duration
+	// capFromConfig is a cap the project's file set, which the helper route
+	// drops with a note rather than refusing the job over it.
+	capFromConfig bool
+	// lifecycle is the job's container lifecycle, which decides what an ended
+	// job leaves on this machine. WSL-121.
+	lifecycle string
 }
 
 // watchGrace is the time between the TERM and the KILL of a stop the watcher
 // makes, which is `stop`'s own default.
 const watchGrace = 10 * time.Second
 
-func (o *ownerFlags) bind(fs *flag.FlagSet, run bool) {
+// sweepEvery is how often a watcher whose job's owner was lost looks again for
+// the container that owner's last call may still start.
+//
+// ⚠ EACH LOOK IS ONE wsl.exe CALL. A look every 10 seconds was 90 calls over
+// the sweep's 15 minutes; one every 30 seconds is 30. WSL-121.
+const sweepEvery = 30 * time.Second
+
+func (o *ownerFlags) bind(fs *flag.FlagSet) {
 	o.fs = fs
 	fs.BoolVar(&o.cancelOnExit, "cancel-on-exit", false, "stop the job, TERM then KILL after 10s, when the process that started this command, or one above it, exits before the job ends. A detached watcher waits on them and on the job's owner")
-	fs.Var(boolFlag{&o.removeRecord, &o.removeRecordSet}, "remove-record", "with --container-lifecycle ephemeral, also remove the job's host record once its answer is ready, so the job leaves nothing. jobs.remove_record sets it for a project, and --remove-record=false turns it off")
-	if run {
-		fs.IntVar(&o.maxRunning, "max-running", 0, "hold this job until fewer than N jobs run on this machine, in every instance. 0 lifts the cap jobs.max_running sets")
-		fs.DurationVar(&o.maxRunningWait, "max-running-wait", 0, "with a running cap, wait this long for a running job to end rather than refusing at once. jobs.max_running_wait sets it for a project")
-	}
+	fs.IntVar(&o.maxRunning, "max-running", 0, "hold each job until fewer than N jobs run on this machine, in every instance. 0 lifts the cap jobs.max_running sets")
+	fs.DurationVar(&o.maxRunningWait, "max-running-wait", 0, "with a running cap, wait this long for a running job to end rather than refusing at once. jobs.max_running_wait sets it for a project")
 }
 
 // passed says whether the command line named a flag.
@@ -62,39 +67,18 @@ func (o *ownerFlags) passed(name string) bool {
 // settle takes the project's defaults where the command line named none, and
 // refuses the values that cannot mean what they say.
 //
-// ⛔ THE COMMAND LINE WINS, false and 0 included, as it does for --gitignore.
-func (o *ownerFlags) settle(cfg toolkit.Config, lifecycle string, detach bool) error {
-	if !o.removeRecordSet && cfg.Jobs.RemoveRecord {
-		o.removeRecord, o.removeFromConfig = true, true
+// ⛔ THE COMMAND LINE WINS, 0 included, as it does for --gitignore.
+func (o *ownerFlags) settle(cfg toolkit.Config, lifecycle string) error {
+	o.lifecycle = lifecycle
+	if !o.passed("max-running") && cfg.Jobs.MaxRunning > 0 {
+		o.maxRunning, o.capFromConfig = cfg.Jobs.MaxRunning, true
 	}
-	if o.fs != nil && o.fs.Lookup("max-running") != nil {
-		if !o.passed("max-running") && cfg.Jobs.MaxRunning > 0 {
-			o.maxRunning, o.capFromConfig = cfg.Jobs.MaxRunning, true
+	if !o.passed("max-running-wait") {
+		wait, err := cfg.Jobs.RunningWait()
+		if err != nil {
+			return err
 		}
-		if !o.passed("max-running-wait") {
-			wait, err := cfg.Jobs.RunningWait()
-			if err != nil {
-				return err
-			}
-			o.maxRunningWait = wait
-		}
-	}
-	if o.removeRecord && lifecycle != toolkit.ContainerEphemeral {
-		if o.removeFromConfig {
-			// A project's default is for its ephemeral jobs; a persistent one
-			// keeps its record with its container.
-			o.removeRecord = false
-		} else {
-			return errors.New("--remove-record removes the host record of an ephemeral job, and this job's container is persistent, which keeps its record with it. Pass --container-lifecycle ephemeral")
-		}
-	}
-	if o.removeRecord && detach {
-		if !o.removeFromConfig {
-			return errors.New("--remove-record removes a record once its answer is ready, and a detached job's answer is its record, which wait and logs --follow read. Run it attached, or remove it with " +
-				toolkit.ToolCommand("gc --job ID --apply"))
-		}
-		o.removeRecord = false
-		note("jobs.remove_record does not apply to a detached job, whose answer is its record. " + toolkit.ToolCommand("gc --job ID --apply") + " removes it")
+		o.maxRunningWait = wait
 	}
 	if o.maxRunning < 0 {
 		return fmt.Errorf("--max-running %d is negative. Pass 0 for no cap, or the most jobs that may run at once", o.maxRunning)
@@ -112,10 +96,12 @@ func (o *ownerFlags) settle(cfg toolkit.Config, lifecycle string, detach bool) e
 // helperRouteRefusal does for --exclusive.
 //
 // ⛔ THE HELPER OWNS A JOB IT RUNS. A watcher started here would watch a process
-// that owns nothing, a record removed here is the helper's to remove, and a cap
-// held here would be held by no process at all. A value the project's file set
-// is refused too, naming the flag that lifts it for one job.
-func (o ownerFlags) helperRefusal(viaHelper bool) error {
+// that owns nothing, and a cap held here would be held by no process at all.
+//
+// ⚠ A CAP THE PROJECT'S FILE SET IS DROPPED ON THIS ROUTE, WITH A NOTE, and the
+// job runs. A sandboxed caller reaches wsl.exe only through the helper, and a
+// refusal there stopped every job of a project that set the key. WSL-136.
+func (o *ownerFlags) helperRefusal(viaHelper bool) error {
 	route := "this process cannot reach wsl.exe, so the job would go through the helper, which owns it"
 	if viaHelper {
 		route = "a job through the helper is owned by the helper"
@@ -123,12 +109,9 @@ func (o ownerFlags) helperRefusal(viaHelper bool) error {
 	switch {
 	case o.cancelOnExit:
 		return errors.New("--cancel-on-exit starts a watcher beside the process that owns the job, and " + route + ". Run it where wsl.exe can be called")
-	case o.removeRecord && o.removeFromConfig:
-		return errors.New("jobs.remove_record removes the record the owning process writes, and " + route + ". Pass --remove-record=false for this job")
-	case o.removeRecord:
-		return errors.New("--remove-record removes the record the owning process writes, and " + route + ". Run it where wsl.exe can be called")
 	case o.maxRunning > 0 && o.capFromConfig:
-		return errors.New("jobs.max_running is held by the process that owns the job, and " + route + ". Pass --max-running 0 for this job")
+		note("jobs.max_running is held by the process that owns the job, and " + route + ", so the cap does not hold this job")
+		o.maxRunning, o.maxRunningWait, o.capFromConfig = 0, 0, false
 	case o.maxRunning > 0:
 		return errors.New("--max-running is held by the process that owns the job, and " + route + ". Run it where wsl.exe can be called")
 	}
@@ -299,7 +282,7 @@ func runWatchdog(ctx context.Context, ids []string) int {
 			rep, err := r.StopContainerOf(ctx, id, watchGrace)
 			return rep.ContainerFound(), err
 		},
-		SweepFor: 15 * time.Minute, SweepEvery: 10 * time.Second,
+		SweepFor: 15 * time.Minute, SweepEvery: sweepEvery,
 	}
 	if _, err := w.Run(ctx); err != nil {
 		return exitFailed
@@ -324,43 +307,105 @@ func rowIDs(n int) ([]string, error) {
 // -- the running cap ---------------------------------------------------------
 
 // admit holds a claimed job until the machine runs fewer jobs than the cap,
-// and ends it when it is refused or stopped while it waits. ended is true where
-// the job is over and code and err are the answer. WSL-136.
-func (o *ownerFlags) admit(ctx context.Context, owner *toolkit.JobOwner, label, ref string, asJSON bool) (ended bool, code int, err error) {
+// and ends it when it is refused or stopped while it waits. waited is how long
+// it was held, ended is true where the job is over, and code and err are then
+// the answer. WSL-136.
+func (o *ownerFlags) admit(ctx context.Context, owner *toolkit.JobOwner, label, ref string, asJSON bool) (waited time.Duration, ended bool, code int, err error) {
 	if o.maxRunning <= 0 {
-		return false, exitOK, nil
+		return 0, false, exitOK, nil
 	}
-	_, err = toolkit.AdmitRunning(ctx, owner, o.maxRunning, o.maxRunningWait, note,
+	waited, err = toolkit.AdmitRunning(ctx, owner, o.maxRunning, o.maxRunningWait, note,
 		func() bool { return toolkit.StopRecorded(owner.ID) })
 	switch {
 	case err == nil:
-		return false, exitOK, nil
+		return waited, false, exitOK, nil
 	case errors.Is(err, toolkit.ErrStoppedWaitingToRun):
-		res := toolkit.JobResult{ID: owner.ID, Label: label, Image: ref, Exit: 130, Cancelled: true, Stopped: true, Error: err.Error()}
+		res := toolkit.JobResult{ID: owner.ID, Label: label, Image: ref, Exit: 130, Cancelled: true, Stopped: true, Error: err.Error(), WaitedToRun: waited}
 		res.Seal()
-		if ferr := owner.Finish(res); ferr != nil {
-			logf("  ! could not record the end of job %s: %s", res.ID, ferr.Error())
-		}
+		o.finish(owner, &res)
 		code, err = reportJob(res, asJSON)
-		return true, code, err
+		return waited, true, code, err
 	}
-	_ = owner.Finish(toolkit.JobResult{ID: owner.ID, Label: label, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot})
-	return true, exitCannot, err
+	res := toolkit.JobResult{ID: owner.ID, Label: label, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot, WaitedToRun: waited}
+	o.finish(owner, &res)
+	return waited, true, exitCannot, err
+}
+
+// rowAdmit is the cap as a fleet holds it: each row is held as its runner
+// claims it, and nil is no cap. WSL-136.
+//
+// ⛔ A FLEET'S ROWS ARE JOBS THE CAP COUNTS, so a fleet is held by it too.
+// jobs.max_running was read by run alone, and a project's matrix ran every
+// row at once beside it.
+func (o *ownerFlags) rowAdmit() func(context.Context, *toolkit.JobOwner) (time.Duration, error) {
+	if o.maxRunning <= 0 {
+		return nil
+	}
+	limit, wait := o.maxRunning, o.maxRunningWait
+	return func(ctx context.Context, owner *toolkit.JobOwner) (time.Duration, error) {
+		return toolkit.AdmitRunning(ctx, owner, limit, wait, note,
+			func() bool { return toolkit.StopRecorded(owner.ID) })
+	}
+}
+
+// waitedLine says how long the cap held a job, or "" where it held it not at
+// all. WSL-136.
+func waitedLine(res toolkit.JobResult) string {
+	if res.WaitedToRun <= 0 || res.ID == "" {
+		return ""
+	}
+	return fmt.Sprintf("job %s waited %s for a running slot before it ran", res.ID, res.WaitedToRun.Round(time.Second))
 }
 
 // -- what a job leaves -------------------------------------------------------
 
-// removeRowRecords removes each ephemeral row's host record once the fleet's
-// answer is ready, as --remove-record does for one job. WSL-121.
-func removeRowRecords(report *toolkit.MatrixReport) {
+// ⭐ AN EPHEMERAL JOB LEAVES NOTHING, as the help of --container-lifecycle has
+// always said: its container, its guest directory and, once its answer is
+// ready, its host record. A caller that needs the record runs the job
+// persistent. WSL-121, as ruled.
+
+// finish records a job's end and then removes what an ephemeral job leaves.
+//
+// ⛔ A DETACHED EPHEMERAL JOB KEEPS ITS RECORD, and says why before its end is
+// recorded. Its answer is the record, which `wait ID` and `logs ID --follow`
+// read after this process is gone.
+func (o *ownerFlags) finish(owner *toolkit.JobOwner, res *toolkit.JobResult) {
+	detached := os.Getenv(toolkit.DetachedEnv) != ""
+	if detached && o.lifecycle == toolkit.ContainerEphemeral && res.ID != "" {
+		res.RecordKept = toolkit.DetachedRecordKept
+	}
+	if err := owner.Finish(*res); err != nil {
+		logf("  ! could not record the end of job %s: %s", res.ID, err.Error())
+	}
+	if !detached {
+		o.leave(res)
+	}
+}
+
+// leave removes an ended ephemeral job's host record, and says on the result
+// what it did.
+func (o *ownerFlags) leave(res *toolkit.JobResult) {
+	if o.lifecycle != toolkit.ContainerEphemeral || res.ID == "" {
+		return
+	}
 	home, err := toolkit.Home()
 	if err != nil {
+		res.RecordKept = "the state directory could not be named: " + err.Error()
+		return
+	}
+	toolkit.RemoveJobRecord(home, o.lifecycle, res)
+}
+
+// leaveRows removes each ephemeral row's host record once the fleet's answer
+// is ready, as one ephemeral job does. WSL-121.
+func (o *ownerFlags) leaveRows(report *toolkit.MatrixReport) {
+	if o.lifecycle != toolkit.ContainerEphemeral {
 		return
 	}
 	removed := 0
 	for i := range report.Rows {
 		row := &report.Rows[i]
-		toolkit.RemoveJobRecord(home, row)
+		o.leave(row)
 		switch {
 		case row.RecordRemoved:
 			removed++
@@ -377,8 +422,8 @@ func removeRowRecords(report *toolkit.MatrixReport) {
 // another line already does. WSL-121.
 //
 // ⛔ AN EPHEMERAL JOB SAID ONLY "the complete output is kept". Its container and
-// guest directory are removed and its host record is not, and a caller reading
-// the line could not tell which.
+// guest directory were removed and its host record was not, and a caller
+// reading the line could not tell which.
 func keptLine(res toolkit.JobResult) string {
 	switch {
 	case res.ID == "" || res.Unreached && res.Transcript == "" && !res.RecordRemoved:
@@ -388,6 +433,7 @@ func keptLine(res toolkit.JobResult) string {
 	case res.RecordKept != "":
 		return "the host record of job " + res.ID + " is kept: " + res.RecordKept + ". Remove it with: " + toolkit.ToolCommand("gc --job "+res.ID+" --apply")
 	case res.ContainerLifecycle == toolkit.ContainerEphemeral && res.Container == "" && res.GuestDir == "" && res.Transcript != "":
+		// ⚠ A helper of an earlier release removes no record.
 		return "job " + res.ID + " removed its container and its guest directory. Its host record stays until " + toolkit.ToolCommand("gc --job "+res.ID+" --apply")
 	}
 	return ""

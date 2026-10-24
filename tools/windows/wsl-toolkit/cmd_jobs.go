@@ -74,13 +74,15 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 	if id == "" {
 		return exitCannot, errors.New("stop takes a job id first: " + toolkit.ToolCommand("stop JOB-ID") + ". " + toolkit.ToolCommand("logs") + " lists the jobs this machine has")
 	}
-	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES. WSL-120.
-	resolved, err := resolveJobID("stop", args, id)
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES, and one
+	// nothing here starts is handed to the helper, whose jobs are its own.
+	// WSL-120.
+	resolved, notHere, err := resolveRoutedJobID("stop", args, id)
 	if err != nil {
 		return exitCannot, err
 	}
 	id = resolved
-	if !toolkit.ValidJobID(id) {
+	if notHere == nil && !toolkit.ValidJobID(id) {
 		return exitCannot, fmt.Errorf("%q is not a job id: an id is 16 lowercase hex characters", id)
 	}
 	if *grace < 0 {
@@ -132,10 +134,15 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	if c, err := useHelper(ctx, *viaHelper); err != nil {
+	if c, err := useHelper(ctx, *viaHelper); notHere != nil && (err != nil || c == nil) {
+		return exitCannot, notHere
+	} else if err != nil {
 		return exitCannot, err
 	} else if c != nil {
 		rep, err = c.StopJob(ctx, id, *grace)
+		if toolkit.ValidJobID(rep.ID) {
+			id = rep.ID
+		}
 	} else {
 		runner, rerr := toolkit.NewRunner(cfg, note)
 		if rerr != nil {

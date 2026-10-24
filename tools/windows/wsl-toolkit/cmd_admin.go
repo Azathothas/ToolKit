@@ -108,11 +108,13 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES. WSL-120.
-	resolved, err := resolveJobID("resources", args, *job)
-	if err != nil {
-		return exitCannot, err
+	//
+	// ⛔ ONE THAT NAMES NO SINGLE JOB HERE NARROWS AS IT DID, and is not refused.
+	// `resources --job` matched any text inside a row and exited 0, so a
+	// refusal of a prefix there would change a verdict a caller reads.
+	if resolved, err := resolveJobID("resources", args, *job); err == nil {
+		*job = resolved
 	}
-	*job = resolved
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
@@ -176,8 +178,10 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES, and one that
-	// names nothing or several is refused before anything is planned. WSL-120.
-	resolved, err := resolveJobID("gc", args, *job)
+	// names nothing or several is refused before anything is planned. One that
+	// nothing here starts is handed to the helper, whose jobs are its own.
+	// WSL-120.
+	resolved, notHere, err := resolveRoutedJobID("gc", args, *job)
 	if err != nil {
 		return exitCannot, err
 	}
@@ -191,7 +195,7 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	}
 	// ⛔ AN ID IS HELD TO ITS SHAPE HERE, as the helper already held it. A
 	// shortened id narrowed the plan to nothing and exited 0. WSL-115.
-	if *job != "" && !toolkit.ValidJobID(*job) {
+	if *job != "" && notHere == nil && !toolkit.ValidJobID(*job) {
 		return exitCannot, fmt.Errorf("--job %q is not a job id: an id is 16 lowercase hex characters, as run --json and logs print it", *job)
 	}
 	if *job != "" && *workspace != "" {
@@ -217,7 +221,9 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	// running is spared exactly as it would be without --job, which is what
 	// WSL-36 settled for the whole store and applies unchanged to one row of it.
 	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive, Job: *job, Workspace: key}
-	if c, err := useHelper(ctx, *viaHelper); err != nil {
+	if c, err := useHelper(ctx, *viaHelper); notHere != nil && (err != nil || c == nil) {
+		return exitCannot, notHere
+	} else if err != nil {
 		return exitCannot, err
 	} else if c != nil {
 		plan, err := c.Cleanup(ctx, *apply, policy, *images)
@@ -480,17 +486,14 @@ func cmdConfig(args []string) (int, error) {
 	if cfg.Jobs.Workspace != "" {
 		fmt.Fprintf(os.Stderr, "  workspace   %s, relative to %s\n", cfg.Jobs.Workspace, filepath.Dir(resolved))
 	}
-	// WSL-136 and WSL-121: a cap and a removal change what a run does, so the
-	// report names them where they are set.
+	// WSL-136: a cap changes what a run does, so the report names it where it
+	// is set.
 	if cfg.Jobs.MaxRunning > 0 {
 		wait := "refused at once over it"
 		if cfg.Jobs.MaxRunningWait != "" {
 			wait = "waiting up to " + cfg.Jobs.MaxRunningWait + " under it"
 		}
 		fmt.Fprintf(os.Stderr, "  running     at most %d job(s) on this machine, a run %s\n", cfg.Jobs.MaxRunning, wait)
-	}
-	if cfg.Jobs.RemoveRecord {
-		fmt.Fprintf(os.Stderr, "  record      an ephemeral job's host record is removed once its answer is ready\n")
 	}
 	fmt.Fprintf(os.Stderr, "  catalog     %d image(s), %s\n", len(cfg.Catalog()), builtinOrStored(cfg))
 	fmt.Fprintf(os.Stderr, "  matrix      %d image(s) by default\n", len(cfg.MatrixDefault()))

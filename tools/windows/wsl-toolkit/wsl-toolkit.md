@@ -92,8 +92,8 @@ works. `WSL-111`
   has a structured answer takes `--json`.
 - ⭐ `--json-compact`, a global flag written before the command, puts each
   `--json` answer on one line, and `WSL_TOOLKIT_JSON=compact` does the same for
-  every call. The default stays indented, and any other value of the variable
-  is refused. `WSL-120`
+  every call. The default stays indented. Any other value of the variable is
+  named on stderr, and the answer stays indented. `WSL-120`
 - `resources` reports what the tool holds. `gc` prints a plan, and `gc --apply`
   carries it out.
 
@@ -155,23 +155,23 @@ Pass `--container-lifecycle ephemeral` when a job must leave nothing, which is
 normally the right choice in CI. `jobs.container_lifecycle` sets the default for
 a machine or a project.
 
-⚠ **An ephemeral job still keeps its host record.** That is the job's directory in
-the state directory: its transcript, its result and its owner's lock. `logs ID`,
-`wait ID` and `gc --job ID` read it, and the answer says it stays. `WSL-121`
-
-⭐ **`--remove-record` removes it too**, once the answer is ready, so the job leaves
-nothing. `jobs.remove_record` sets it for a project, and `--remove-record=false`
-turns it off for one job. `matrix` takes it for every row.
+⛔ **An ephemeral job leaves nothing, its host record included.** The host record
+is the job's directory in the state directory: its transcript, its result and
+its owner's lock. It is removed once the answer is ready. The help always said
+that ephemeral removes both, and the record stayed until `gc`. `WSL-121`
 
 - The answer says `job ID left nothing`, `--json` sets `record_removed`, and the
-  `transcript` field is left out.
+  `transcript` field is left out. A `matrix` row, and a job the helper runs, do the
+  same.
+- ⚠ `logs ID`, `wait ID` and `gc --job ID` then find no job. A caller that reads
+  the record after the answer runs the job `persistent`.
 - A record that holds something the answer does not is kept, and `record_kept`
-  says why. That is an answer whose copy of the output was cut, or artifacts that
-  were not delivered.
-- It is refused beside a persistent container and beside `--detach`, whose answer
-  is the record. A project's default does not apply to either.
-- ⛔ It is opt-in because a caller of an earlier release reads `logs ID` and runs
-  `gc --job ID` after an ephemeral job, and both would then be refused.
+  says why. That is an answer whose copy of the output was cut, artifacts that
+  were not delivered, or a guest directory that was not removed.
+- A job started with `--detach` keeps its record, because its answer is the
+  record that `wait` and `logs --follow` read. Its `record_kept` says so.
+- ⚠ A helper of an earlier release removes no record, and the answer then says
+  the record stays until `gc --job ID --apply`.
 
 A timeout stops a persistent container, removes an ephemeral one, and exits
 124. A cancellation does the same and exits 130.
@@ -227,7 +227,11 @@ strings, which keep their shape. Each object names its `kind`, its `job`, its
 | `reason` | why it is kept, or why its removal failed |
 
 ⚠ A target no step reported on reads `unknown`, never `removed`. An image the prune
-left, because a container uses it, reads `kept`.
+left, because a container uses it, reads `kept`. The two images `gc --images`
+keeps read `keep` and `kept`, with the reason its `kept` list gives.
+
+⚠ A helper of an earlier release writes no `entries`, so the field is `null`
+through it. An empty list means the plan held nothing.
 
 ---
 
@@ -260,8 +264,16 @@ and `resources --job` all read the three forms. `WSL-120`
 
 - A full id passes through unchanged, so a refusal for an unknown one reads as it
   did.
+- A prefix is looked up among the job directories of this state directory. Where
+  none matches, the jobs whose ledger record is still open are asked, so a
+  container that outlived its directory is found too.
 - A prefix that names no job, or several, is refused with exit 2. The refusal names
   `logs`, or lists the jobs the prefix starts.
+- ⚠ `resources --job` matched any text inside a row before, and still does where a
+  prefix names no single job. It is not refused there.
+- ⭐ Through the helper, a prefix this process found nothing for is handed on, and
+  the helper reads it among its own jobs. `stop`, `inspect` and `gc --job` do this,
+  because a sandboxed client can run under a state directory of its own.
 - A job another instance ran is refused with the command that reaches it, under
   that instance's `--instance`. The job's own record says whose it is, and a prefix
   of another instance's job is found there too.
@@ -389,13 +401,18 @@ and is refused when D runs out. `WSL-136`
   waits. A job still waiting for its name or its turn is not counted, and neither
   is a killed one.
 - Every job counts, a `matrix` row and a helper's job included. A job of a release
-  before this one does not.
+  before this one does not. A `base exec` session is not a job, and is not
+  counted.
+- ⭐ `matrix` takes both flags and both keys, and holds each row as it starts. A
+  row the cap refuses ends with exit 2 and is counted as not run.
 - The job holds its name first, then waits for its turn, and copies nothing while
   it waits. A `stop` ends the wait with 130.
+- A job that waited says how long, and `--json` carries it as `waited_to_run_ns`.
+  A job let in at once carries no such field.
 - `run --detach` refuses at once, before it starts an owner, when the cap is full
   and no wait is given.
-- ⛔ A job the helper would run is refused with it, because the helper owns that
-  job. A project's cap names `--max-running 0`.
+- ⛔ `--max-running` is refused through the helper, because the helper owns that
+  job. A project's cap is not applied there: a note says so, and the job runs.
 
 ---
 
@@ -418,11 +435,14 @@ whole tree cannot reach it.
 - The stop is TERM, then KILL after 10 seconds. The job answers 130 with `stopped`
   set, and its error names the process that exited.
 - An owner that is gone too has its end recorded by the watcher, so `wait` answers
-  at once. Its container is looked for for 15 minutes, in case it starts late.
+  at once. Its container is looked for every 30 seconds for 15 minutes, in case
+  it starts late.
 - The chain is the process that ran the command, the one that started that, and so
   on, up to the desktop's own processes. ⚠ Git Bash runs a Windows program under a
   stub of its own, which outlives a killed script, so the script is the stub's
   parent.
+- ⚠ Every process in the chain counts, eight at most. A terminal or an editor that
+  started the command and exits before the job ends stops it too.
 - Under `--detach` the chain is the one above the command that detached. The
   answer names it, as `cancel_on_exit` under `--json`.
 - A `matrix` row its caller left behind never starts its container. A killed

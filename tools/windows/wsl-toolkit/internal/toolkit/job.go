@@ -171,6 +171,10 @@ type JobSpec struct {
 	// nil means this Run claims the job and records its end. WSL-94.
 	ID    string
 	Owner *JobOwner
+	// Admit holds a job this Run claimed until the running cap lets it in, and
+	// answers how long it waited. Nil is no cap. A fleet holds each row so, and
+	// a caller that claimed the job itself holds it before Run. WSL-136.
+	Admit func(context.Context, *JobOwner) (time.Duration, error)
 	// Log is the observation relay: the timestamp layer, the silence heartbeat,
 	// the event log and the exit reading. Nil means none, which is what a caller
 	// that named no renderer and no sink passes.
@@ -231,11 +235,14 @@ type JobResult struct {
 	TimedOut     bool   `json:"timed_out"`
 	Unreached    bool   `json:"unreached"`
 	Transcript   string `json:"transcript,omitempty"`
-	// RecordRemoved is true where --remove-record removed the job's host record
-	// once its answer was ready, and RecordKept says why it kept the record it
-	// was asked to remove. WSL-121.
+	// RecordRemoved is true where an ephemeral job's host record was removed
+	// once its answer was ready, and RecordKept says why an ephemeral job kept
+	// its record. WSL-121.
 	RecordRemoved bool   `json:"record_removed,omitempty"`
 	RecordKept    string `json:"record_kept,omitempty"`
+	// WaitedToRun is how long the running cap held the job before it ran, and
+	// zero where it was let in at once. WSL-136.
+	WaitedToRun time.Duration `json:"waited_to_run_ns,omitempty"`
 	// Workspace is the project this job copied, as WorkspaceKey spells it and
 	// `gc --workspace` matches it. WSL-114.
 	Workspace string `json:"workspace,omitempty"`
@@ -549,6 +556,20 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 				r.log("could not record the end of job " + id + ": " + err.Error())
 			}
 		}()
+		// ⭐ HELD AFTER ITS CLAIM AND BEFORE ANYTHING IS SPENT ON IT, as `run`
+		// holds a job it claimed. WSL-136.
+		if spec.Admit != nil {
+			waited, err := spec.Admit(ctx, owner)
+			res.WaitedToRun = waited
+			switch {
+			case errors.Is(err, ErrStoppedWaitingToRun):
+				res.Cancelled, res.Stopped, res.Exit, res.Error = true, true, 130, err.Error()
+				return res
+			case err != nil:
+				res.Exit, res.Error, res.Unreached = 2, err.Error(), true
+				return res
+			}
+		}
 	}
 	// ⭐ A JOB THAT REACHES HERE RUNS, whatever owns it, so the machine-wide cap
 	// counts it. A job --max-running held was marked when it was let in. WSL-136.

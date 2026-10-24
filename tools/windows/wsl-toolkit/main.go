@@ -206,8 +206,7 @@ func run(ctx context.Context, args []string) int {
 		}
 	}
 	if err := readJSONEnv(); err != nil {
-		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
-		return exitCannot
+		fmt.Fprintln(os.Stderr, "wsl-toolkit: ! "+err.Error())
 	}
 	watchIDs, watchdog := toolkit.WatchdogJobs(os.Getenv(toolkit.WatchdogEnv))
 	if !watchdog && (len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h") {
@@ -457,8 +456,10 @@ func writeJSON(v any) error {
 
 // readJSONEnv reads WSL_TOOLKIT_JSON. compact is its one value.
 //
-// ⛔ ANY OTHER VALUE IS REFUSED, not ignored. A layout a caller asked for and
-// silently did not get is a setting nobody can see. WSL-120.
+// ⛔ ANY OTHER VALUE IS SAID OUT LOUD, and the answer keeps the indented
+// default. A layout a caller asked for and silently did not get is a setting
+// nobody can see. A refusal was no better: the variable was read by nothing
+// before, so a value left in a shell made every command exit 2. WSL-120.
 func readJSONEnv() error {
 	v := strings.TrimSpace(os.Getenv(jsonEnv))
 	switch strings.ToLower(v) {
@@ -468,7 +469,7 @@ func readJSONEnv() error {
 		jsonCompact = true
 		return nil
 	}
-	return fmt.Errorf("%s=%q is not a layout this build writes. Its one value is compact; leave it unset for the indented default", jsonEnv, v)
+	return fmt.Errorf("%s=%q is not a layout this build writes, so the answer stays indented. Its one value is compact", jsonEnv, v)
 }
 
 func cmdVersion(args []string) (int, error) {

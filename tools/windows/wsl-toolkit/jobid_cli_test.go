@@ -64,12 +64,18 @@ func TestEveryJobCommandReadsAPrefix(t *testing.T) {
 			return cmdArtifacts(ctx, []string{"retry", "beef1234", "--to", filepath.Join(home, "out")})
 		}},
 		{"gc --job", func() (int, error) { return cmdGC(ctx, []string{"--job", "beef1234", "--via-helper"}) }},
-		{"resources --job", func() (int, error) { return cmdResources(ctx, []string{"--job", "beef1234", "--via-helper"}) }},
 	} {
 		code, err := c.run()
 		if code != exitCannot || err == nil || !strings.Contains(err.Error(), "starts with it") || !strings.Contains(err.Error(), "logs") {
 			t.Errorf("%s with a prefix of no job answered %d, %v; want exit 2 and the resolver's refusal", c.name, code, err)
 		}
+	}
+	// ⛔ resources --job narrowed by any text and exited 0 before, so a prefix
+	// that names no job here narrows as it did: here it reaches the absent
+	// helper, and is not refused by the resolver.
+	code, err := cmdResources(ctx, []string{"--job", "beef1234", "--via-helper"})
+	if err == nil || strings.Contains(err.Error(), "starts with it") {
+		t.Errorf("resources --job with a prefix of no job answered %d, %v; want it to narrow as before", code, err)
 	}
 }
 
@@ -136,8 +142,13 @@ func TestAnAnswerIsOneLineWhenAskedFor(t *testing.T) {
 	if out, _ := lines("version", "--json"); strings.Count(out, "\n") != 1 {
 		t.Errorf("%s=compact wrote %q", jsonEnv, out)
 	}
+	// ⛔ ANY OTHER VALUE IS SAID AND NOT REFUSED. The variable was read by nothing
+	// before, so a refusal made every command exit 2 in a shell that set it.
 	t.Setenv(jsonEnv, "pretty")
-	if code := run(context.Background(), []string{"version"}); code != exitCannot {
-		t.Errorf("%s=pretty answered %d; want a refusal", jsonEnv, code)
+	if out, code := lines("version", "--json"); code != exitOK || strings.Count(out, "\n") < 3 {
+		t.Errorf("%s=pretty answered %d and wrote %q; want exit 0 and the indented default", jsonEnv, code, out)
+	}
+	if err := readJSONEnv(); err == nil || !strings.Contains(err.Error(), "stays indented") {
+		t.Errorf("%s=pretty is said as %v", jsonEnv, err)
 	}
 }

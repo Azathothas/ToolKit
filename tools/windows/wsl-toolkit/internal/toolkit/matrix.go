@@ -53,6 +53,9 @@ type MatrixSpec struct {
 	// caller drew them first: the watcher of --cancel-on-exit names every row
 	// before any is claimed. Empty draws one per row. WSL-121.
 	RowIDs []string
+	// Admit holds each row as its runner claims it, until the running cap lets
+	// it in. Nil is no cap. WSL-136.
+	Admit func(context.Context, *JobOwner) (time.Duration, error)
 }
 
 // rowSpec is one row's job: the fleet's settings, this row's image, and the
@@ -68,7 +71,7 @@ func rowSpec(spec MatrixSpec, img Image, staged, artifacts string, limits Worksp
 		Timeout: spec.Timeout, Network: spec.Network, Limits: limits,
 		Platform: spec.Platform, ContainerLifecycle: spec.ContainerLifecycle,
 		Label: img.ID, User: spec.User, Devices: spec.Devices, Inputs: spec.Inputs, MaxOutput: spec.MaxOutput,
-		OnTick: spec.OnTick, TickEvery: spec.TickEvery,
+		OnTick: spec.OnTick, TickEvery: spec.TickEvery, Admit: spec.Admit,
 	}
 }
 

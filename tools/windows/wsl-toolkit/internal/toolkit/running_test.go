@@ -176,7 +176,7 @@ func TestTheRunningCapIsReadFromAProjectsConfiguration(t *testing.T) {
 func TestTheNewJobsKeysSurviveLoading(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "wsl-toolkit.json")
-	body := `{"schema": "` + ConfigSchema + `", "jobs": {"container_lifecycle": "ephemeral", "max_running": 3, "max_running_wait": "10m", "remove_record": true}}`
+	body := `{"schema": "` + ConfigSchema + `", "jobs": {"container_lifecycle": "ephemeral", "max_running": 3, "max_running_wait": "10m"}}`
 	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,66 @@ func TestTheNewJobsKeysSurviveLoading(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Jobs.MaxRunning != 3 || cfg.Jobs.MaxRunningWait != "10m" || !cfg.Jobs.RemoveRecord {
+	if cfg.Jobs.MaxRunning != 3 || cfg.Jobs.MaxRunningWait != "10m" {
 		t.Errorf("loading kept jobs %+v", cfg.Jobs)
+	}
+}
+
+// ⭐ A job let in at its first count waited not at all, and answers zero.
+func TestAJobLetInAtOnceWaitedNotAtAll(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", root)
+	t.Setenv(InstanceRootEnv, root)
+	selectInstance(t, DefaultInstance)
+	me, err := ClaimJob(root, testJobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer me.Release()
+	waited, err := AdmitRunning(context.Background(), me, 1, time.Minute, nil, nil)
+	if err != nil || waited != 0 {
+		t.Errorf("a job with a free slot waited %s, %v; want 0", waited, err)
+	}
+}
+
+// ⛔ A row a runner claims is held by the cap its fleet carries: refused, it
+// ends unreached with the refusal; stopped while it waits, it ends with 130.
+// jobs.max_running was read by run alone. WSL-136.
+func TestARowTheRunnerClaimsIsHeldByTheCap(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		err     error
+		stopped bool
+	}{
+		{"refused", ErrOverRunningCap, false},
+		{"stopped", ErrStoppedWaitingToRun, true},
+	} {
+		home := t.TempDir()
+		r := &Runner{cfg: DefaultConfig(), wsl: &Wsl{Path: filepath.Join(home, "no-wsl.exe")}, home: home, log: func(string) {}}
+		asked := false
+		spec := MatrixSpec{
+			ContainerLifecycle: ContainerEphemeral, Platform: "linux/amd64", RowIDs: []string{testJobID},
+			Admit: func(_ context.Context, o *JobOwner) (time.Duration, error) {
+				asked = o != nil && o.ID == testJobID
+				return 3 * time.Second, c.err
+			},
+		}
+		res := r.Run(context.Background(), rowAt(spec, 0, Image{ID: "alpine", Ref: "docker.io/library/alpine:latest"}, "", "", WorkspaceLimits{}))
+		if !asked {
+			t.Fatalf("%s: the row was not held by the cap", c.name)
+		}
+		if res.Stopped != c.stopped || res.Unreached == c.stopped || !strings.Contains(res.Error, c.err.Error()) {
+			t.Errorf("%s: the row ended as %+v", c.name, res)
+		}
+		if res.WaitedToRun != 3*time.Second {
+			t.Errorf("%s: the row says it waited %s", c.name, res.WaitedToRun)
+		}
+		st, err := ReadJobState(home, testJobID)
+		if err != nil || st.Result == nil || st.Result.Error != res.Error {
+			t.Errorf("%s: the row's end is recorded as %+v, %v", c.name, st.Result, err)
+		}
+		if _, err := os.Stat(filepath.Join(home, "jobs", testJobID, admittedName)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s: a row the cap did not let in carries a running mark: %v", c.name, err)
+		}
 	}
 }

@@ -55,8 +55,10 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	if *since <= 0 {
 		return exitCannot, fmt.Errorf("--since %s would read no journal at all. Pass a positive duration", *since)
 	}
-	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES. WSL-120.
-	resolved, err := resolveJobID("inspect", args, id)
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES, and one
+	// nothing here starts is handed to the helper, whose jobs are its own.
+	// WSL-120.
+	resolved, notHere, err := resolveRoutedJobID("inspect", args, id)
 	if err != nil {
 		return exitCannot, err
 	}
@@ -73,7 +75,9 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	// had the door. That is the one-gated-door class, in the tool that keeps
 	// finding it. WSL-58.
 	var rep toolkit.InspectReport
-	if c, hErr := useHelper(ctx, *viaHelper); hErr != nil {
+	if c, hErr := useHelper(ctx, *viaHelper); notHere != nil && (hErr != nil || c == nil) {
+		return exitCannot, notHere
+	} else if hErr != nil {
 		return exitCannot, hErr
 	} else if c != nil {
 		rep, err = c.Inspect(ctx, id, *since)

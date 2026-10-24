@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -27,6 +28,18 @@ func resolveJobID(sub string, args []string, raw string) (string, error) {
 	return toolkit.ResolveJobID(home, raw, func(instance, id string) string {
 		return toolkit.ToolCommandFor(instance, sub+" "+commandWords(withJobID(args, raw, id)))
 	})
+}
+
+// resolveRoutedJobID is resolveJobID for a command that may go through the
+// helper. A prefix nothing in this state directory starts is answered as
+// itself, with the refusal the direct route gives it in notHere, so the helper
+// can read it among its own jobs. WSL-120.
+func resolveRoutedJobID(sub string, args []string, raw string) (id string, notHere, err error) {
+	id, err = resolveJobID(sub, args, raw)
+	if errors.Is(err, toolkit.ErrNoJobHere) {
+		return raw, err, nil
+	}
+	return id, nil, err
 }
 
 // withJobID is a command's arguments with the id a caller passed replaced by

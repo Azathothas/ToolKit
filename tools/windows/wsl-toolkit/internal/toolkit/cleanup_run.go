@@ -58,12 +58,10 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 	// ⭐ THE SAME SETS, ONE OBJECT PER TARGET. Entry i of the first len(remove)
 	// is remove[i], so the apply below settles each in place. WSL-120.
 	plan.Entries = cleanupEntries(remove, spared, SelectedInstance.Name)
+	var pruned []int
 	var imageIDs []string
 	if includeImages {
-		for _, i := range images {
-			plan.Entries = append(plan.Entries, CleanupEntry{Kind: "image", Instance: SelectedInstance.Name, Path: i.Name, Action: CleanupPrune, Result: CleanupPlanned})
-			imageIDs = append(imageIDs, i.ID)
-		}
+		plan.Entries, pruned, imageIDs = appendImageEntries(plan.Entries, images, SelectedInstance.Name)
 	}
 
 	if !apply {
@@ -98,8 +96,8 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 			settleFrom(e, hostDone, t.Name)
 		}
 	}
-	if includeImages {
-		r.settleImages(ctx, plan.Entries[len(remove)+len(spared):], imageIDs)
+	if len(pruned) > 0 {
+		r.settleImages(ctx, plan.Entries, pruned, imageIDs)
 	}
 
 	r.closeStaleRecords(ctx, &plan)
@@ -511,22 +509,55 @@ func readGuestCleanup(plan *CleanupPlan, out string) map[string]error {
 	return done
 }
 
+// appendImageEntries adds one entry per image `gc --images` lists, and answers
+// the indexes of those it prunes and their ids. WSL-120.
+//
+// ⛔ THE TWO IMAGES `gc --images` KEEPS READ AS KEPT, as its `kept` list says,
+// and never as pruned. WSL-174.
+func appendImageEntries(entries []CleanupEntry, images []OwnedThing, instance string) ([]CleanupEntry, []int, []string) {
+	var at []int
+	var ids []string
+	for _, i := range images {
+		if why, ok := keptImageReason(i.Name); ok {
+			entries = append(entries, CleanupEntry{Kind: "image", Instance: instance, Path: i.Name, Action: CleanupKeep, Result: CleanupKept, Reason: why})
+			continue
+		}
+		at = append(at, len(entries))
+		entries = append(entries, CleanupEntry{Kind: "image", Instance: instance, Path: i.Name, Action: CleanupPrune, Result: CleanupPlanned})
+		ids = append(ids, i.ID)
+	}
+	return entries, at, ids
+}
+
 // settleImages reads which images the prune left, for the plan's image
-// entries.
+// entries at the indexes in at, whose ids are ids.
 //
 // ⚠ THE PRUNE REMOVES WHAT NO CONTAINER USES and says nothing per image, so the
 // engine is asked again rather than the prune's success being read as each
 // image's removal.
+func (r *Runner) settleImages(ctx context.Context, entries []CleanupEntry, at []int, ids []string) {
+	_, images, _, err := r.engineHolding(ctx)
+	settleImageEntries(entries, at, ids, images, err)
+}
+
+// settleImageEntries writes each pruned image's result from what the engine
+// still holds. ⭐ A function with no process in it, so its case runs on any
+// host. WSL-120.
 //
 // ⚠ MATCHED BY ID, because every dangling image is named `<none>:<none>`.
-func (r *Runner) settleImages(ctx context.Context, entries []CleanupEntry, ids []string) {
-	_, images, _, err := r.engineHolding(ctx)
+//
+// ⛔ ONLY THE ENTRIES AT at ARE SETTLED. An image `gc --images` keeps is
+// already an entry that reads kept, and the prune never touched it. WSL-174.
+func settleImageEntries(entries []CleanupEntry, at []int, ids []string, held []OwnedThing, err error) {
 	left := map[string]bool{}
-	for _, i := range images {
+	for _, i := range held {
 		left[i.ID] = true
 	}
-	for k := range entries {
-		e := &entries[k]
+	for k, idx := range at {
+		if idx < 0 || idx >= len(entries) {
+			continue
+		}
+		e := &entries[idx]
 		switch {
 		case err != nil:
 			e.Result, e.Reason = CleanupUnknown, "the engine could not be asked what it holds after the prune: "+err.Error()
