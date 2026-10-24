@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a ledger compaction keeps a stop while its job is open",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\t\tif e.Event == \"stop\" && !kept[key] && (live[key] || l.jobDirExists(e)) {\n",
+      "replace": "\t\tif e.Event == \"stop\" && !kept[key] && (false || l.jobDirExists(e)) {\n",
+      "run": "TestAStopSurvivesCompactionWhileItsJobIsOpen",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a ledger compaction keeps a stop while its job's directory exists",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\t\tif e.Event == \"stop\" && !kept[key] && (live[key] || l.jobDirExists(e)) {\n",
+      "replace": "\t\tif e.Event == \"stop\" && !kept[key] && (live[key] || false) {\n",
+      "run": "TestAStopSurvivesCompactionWhileItsJobDirectoryExists",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a ledger write waits for the lock another process holds",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\t\trelease, err := lockExclusive(lock)\n",
+      "replace": "\t\trelease, err := func() {}, error(nil)\n",
+      "run": "TestACompactionWaitsForTheLedgerLockAnotherProcessHolds",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a ledger append holds the lock across processes",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\trelease, err := l.lockAcross()\n\tif err != nil {\n\t\treturn err\n\t}\n\tdefer release()\n",
+      "replace": "",
+      "run": "TestTwoProcessesCompactingLoseNoRecordAnotherAppends",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a ledger compaction holds the lock across processes",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\trelease, err := l.lockAcross()\n\tif err != nil {\n\t\treturn 0, err\n\t}\n\tdefer release()\n",
+      "replace": "",
+      "run": "TestTwoProcessesCompactingLoseNoRecordAnotherAppends",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a refused preset switch under --save says base recreate switches it now",
       "file": "cmd_base_preset.go",
       "find": "\tif err == nil || !switched || !saved {\n",
