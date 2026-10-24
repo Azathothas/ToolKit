@@ -118,10 +118,15 @@ fi
 # that has an answer on every base: will it hand a PE image to an interpreter at
 # all? Measured: with no handler the exec is refused outright and the shell falls
 # back to reading the file as a script.
+#
+# ⛔ STDIN IS /dev/null FOR BOTH WINDOWS ATTEMPTS. This file reaches the guest
+# shell on stdin, and an interop launch reads it. On a base with interop on,
+# cmd.exe took the rest of the probe, so `base doors` exited 2 with no reason.
+# Measured while driving WSL-156.
 stub=/tmp/doors-$TK_DOORS_MARK.exe
 printf 'MZ' > "$stub" 2>/dev/null
 chmod +x "$stub" 2>/dev/null
-stub_out=$("$stub" 2>&1)
+stub_out=$("$stub" 2>&1 </dev/null)
 stub_rc=$?
 rm -f "$stub" 2>/dev/null
 case "$stub_rc:$stub_out" in
@@ -151,7 +156,7 @@ if [ -z "$winexe" ]; then
 fi
 if [ -z "$winexe" ]; then
   say interop.run-exe unknown 'no Windows executable is reachable from this guest, so none was run'
-elif out=$("$winexe" /c echo DOORS 2>&1); then
+elif out=$("$winexe" /c echo DOORS 2>&1 </dev/null); then
   say interop.run-exe open "$winexe ran: $(printf '%s' "$out" | tr -d '\r' | head -1)"
 else
   say interop.run-exe closed "$winexe did not run: $(printf '%s' "$out" | tr -d '\r' | head -1)"

@@ -157,6 +157,44 @@ chmod 755 "$out"`
 	}
 }
 
+// TestTheWindowsAttemptsLeaveTheProbesStdinAlone runs doors.sh's own two
+// Windows launches with a stand-in that reads stdin, and with the rest of a
+// script waiting there.
+//
+// ⛔ THE PROBE ARRIVES ON STDIN. On a base with interop on, cmd.exe read the rest
+// of it, and `base doors` exited 2 saying only `exit status 1`. Measured on a
+// scratch base while driving WSL-156.
+func TestTheWindowsAttemptsLeaveTheProbesStdinAlone(t *testing.T) {
+	sh := posixShell(t)
+	s := strings.ReplaceAll(string(doorsScript), "\r\n", "\n")
+	var launches []string
+	for _, line := range strings.Split(s, "\n") {
+		switch {
+		case strings.HasPrefix(line, `stub_out=$("$stub" `):
+			launches = append(launches, line)
+		case strings.HasPrefix(line, `elif out=$("$winexe" `):
+			launches = append(launches, "if "+strings.TrimPrefix(line, "elif ")+" :; fi")
+		}
+	}
+	if len(launches) != 2 {
+		t.Fatalf("doors.sh has %d Windows launches this case knows, want 2: %q", len(launches), launches)
+	}
+	dir := t.TempDir()
+	reader := filepath.Join(dir, "reader")
+	writeStandIn(t, dir, "reader", "while read -r line; do :; done")
+	for _, launch := range launches {
+		cmd := exec.Command(sh, "-c", "stub="+reader+"\nwinexe="+reader+"\n"+launch+"\nread -r left || left=\nprintf 'left=%s\\n' \"$left\"\n")
+		cmd.Stdin = strings.NewReader("the rest of the probe\n")
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%s: %v", launch, err)
+		}
+		if got := strings.TrimSpace(string(out)); got != "left=the rest of the probe" {
+			t.Errorf("%s took the probe's stdin: %q", launch, got)
+		}
+	}
+}
+
 // doorsFakeLibc stands in for the kernel under the compiled probe: every device
 // opens, ioctl answers the errno the case names, and connect blocks in a read
 // that only a signal ends, or is refused at once.

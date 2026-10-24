@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "doors: the PE attempt leaves the probe's stdin alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "stub_out=$(\"$stub\" 2>&1 </dev/null)\n",
+      "replace": "stub_out=$(\"$stub\" 2>&1)\n",
+      "run": "TestTheWindowsAttemptsLeaveTheProbesStdinAlone",
+      "args": []
+    },
+    {
+      "label": "doors: the cmd.exe attempt leaves the probe's stdin alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "elif out=$(\"$winexe\" /c echo DOORS 2>&1 </dev/null); then\n",
+      "replace": "elif out=$(\"$winexe\" /c echo DOORS 2>&1); then\n",
+      "run": "TestTheWindowsAttemptsLeaveTheProbesStdinAlone",
+      "args": []
+    },
+    {
       "label": "doors: a dxg query the driver does not answer is unknown, not open",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/doors.sh",
