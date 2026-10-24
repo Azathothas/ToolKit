@@ -2,6 +2,87 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a session directory gc removed is late at the deadline",
+      "file": "internal/toolkit/session.go",
+      "find": " || [ ! -d \"$d\" ]; then late=1;",
+      "replace": "; then late=1;",
+      "run": "TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted|TestASessionInAScopeIsReachedWholeInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's removal ends what it left in its scope first",
+      "file": "internal/toolkit/session.go",
+      "find": "_, still, err := StopSessionLeftovers(ctx, w, rec, SessionGrace)",
+      "replace": "_, still, err := false, false, error(nil)",
+      "run": "TestARemovedSessionEndsWhatItLeftInItsScopeFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session whose scope outlives its removal is kept",
+      "file": "internal/toolkit/session.go",
+      "find": "\t\tif still {\n\t\t\treturn fmt.Errorf(\"session %s left processes",
+      "replace": "\t\tif false && still {\n\t\t\treturn fmt.Errorf(\"session %s left processes",
+      "run": "TestARemovedSessionEndsWhatItLeftInItsScopeFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a user manager beside cgroupfs is not delegation",
+      "file": "internal/toolkit/base.go",
+      "find": "viaAccount := rows[\"cgroup-account-delegated\"] == \"yes\" && cg.Manager == \"systemd\"",
+      "replace": "viaAccount := rows[\"cgroup-account-delegated\"] == \"yes\"",
+      "run": "TestAUserManagerTheEngineDoesNotUseIsNotDelegation",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the finding names a manager the engine uses instead of the user manager",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif systemd && cg.accountUnused {",
+      "replace": "\tif false && systemd && cg.accountUnused {",
+      "run": "TestAUserManagerTheEngineDoesNotUseIsNotDelegation",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier answers for the user manager on its own row",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  printf 'cgroup-account-delegated yes\\n'",
+      "replace": "  printf 'cgroup-delegated yes\\n'",
+      "run": "TestTheVerifierMeasuresDelegationWhereTheEngineMakesCgroups",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: inspect counts the user manager only beside a systemd engine",
+      "file": "internal/toolkit/inspect.go",
+      "find": "if [ \"${cgmgr:-}\" = systemd ] && mkdir \"$cguser\"",
+      "replace": "if mkdir \"$cguser\"",
+      "run": "TestTheVerifierMeasuresDelegationWhereTheEngineMakesCgroups",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unchanged base's status prints no engines row",
+      "file": "cmd_base.go",
+      "find": "if a := st.Access; a.RootEngine || a.RuntimeDir || a.Kvm {",
+      "replace": "if a := st.Access; true || a.RootEngine || a.RuntimeDir || a.Kvm {",
+      "run": "TestAnUnchangedBasesStatusPrintsNoNewRow",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unchanged base's status prints no kvm row",
+      "file": "cmd_base.go",
+      "find": "if st.Kvm != \"\" && st.Access.Kvm {",
+      "replace": "if st.Kvm != \"\" {",
+      "run": "TestAnUnchangedBasesStatusPrintsNoNewRow",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: only the owner's ensure applies the engines",
       "file": "internal/toolkit/engines.go",
       "find": "\tif err := b.assertOwner(\"changed\", \"base ensure\"); err != nil {\n\t\tb.log(\"the engines are left",
@@ -67,8 +148,8 @@
     {
       "label": "wsl-toolkit: a payload that ended before its deadline is not read as timed out",
       "file": "internal/toolkit/session.go",
-      "find": "if [ -e \"$d/exit\" ]; then late=1; else",
-      "replace": "if false; then late=1; else",
+      "find": "if [ -e \"$d/exit\" ] || [ ! -d \"$d\" ]; then late=1; else",
+      "replace": "if [ ! -d \"$d\" ]; then late=1; else",
       "run": "TestASessionInAScopeIsReachedWholeInARealShell",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -328,7 +409,7 @@
     {
       "label": "wsl-toolkit: inspect measures delegation where the engine makes cgroups",
       "file": "internal/toolkit/inspect.go",
-      "find": "if mkdir \"$cguser\" 2>/dev/null; then",
+      "find": "if [ \"${cgmgr:-}\" = systemd ] && mkdir \"$cguser\" 2>/dev/null; then",
       "replace": "if false; then",
       "run": "TestTheVerifierMeasuresDelegationWhereTheEngineMakesCgroups",
       "module": "tools/windows/wsl-toolkit",

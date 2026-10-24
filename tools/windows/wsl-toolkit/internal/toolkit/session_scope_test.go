@@ -33,7 +33,7 @@ func TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted(t *testing.T) {
 		// the TERM; a process group keeps the behaviour it had.
 		// ⛔ And while the scope holds what a payload that ended first left.
 		`if [ -n "$w" ] && { [ -z "$u" ] || { [ ! -e "$d/timedout" ] && ! systemctl --user is-active --quiet "$u" 2>/dev/null; }; }; then kill "$w" 2>/dev/null; fi`,
-		`if [ -e "$d/exit" ]; then late=1; else : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null; fi`,
+		`if [ -e "$d/exit" ] || [ ! -d "$d" ]; then late=1; else : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null; fi`,
 	} {
 		if !strings.Contains(launch, want) {
 			t.Errorf("the launch script does not carry %q:\n%s", want, launch)
@@ -103,6 +103,49 @@ func TestWhatAnEndedSessionLeftIsReadFromOneLine(t *testing.T) {
 	}
 	if held, _, err := StopSessionLeftovers(context.Background(), nil, SessionRecord{}, time.Second); held || err != nil {
 		t.Errorf("a session with no scope asked the guest: %v %v", held, err)
+	}
+}
+
+// TestARemovedSessionEndsWhatItLeftInItsScopeFirst: gc removes an ended
+// session's record, and the record is the only place its scope's name is kept.
+// ⛔ A removal that what the scope holds outlives is refused. WSL-126.
+func TestARemovedSessionEndsWhatItLeftInItsScopeFirst(t *testing.T) {
+	h := newFakeHost(t)
+	h.say(t, "registered", fakeBaseName)
+	home := t.TempDir()
+	const id = "0123456789abcdef"
+	rec := SessionRecord{ID: id, Distro: fakeBaseName, User: "toolkit", GuestDir: "/home/toolkit/" + GuestRoot + "/sessions/" + id, Unit: sessionUnit(id)}
+	w := &Wsl{Path: h.wsl}
+	ctx := context.Background()
+
+	h.stageGuest(t, "leftovers=running", "remove=ok")
+	err := RemoveSession(ctx, w, home, rec)
+	if err == nil || !strings.Contains(err.Error(), rec.Unit) || !strings.Contains(err.Error(), "kept for stop") {
+		t.Fatalf("a session whose scope still holds a process was removed: %v", err)
+	}
+	scripts := h.guestScripts(t)
+	if !strings.Contains(scripts, "echo 'LEFT|none'") {
+		t.Fatal("the removal did not end what the session left in its scope")
+	}
+	if strings.Contains(scripts, "printf 'removed\\n'") {
+		t.Fatal("the removal went ahead over a scope that still holds a process")
+	}
+
+	h.stageGuest(t, "leftovers=ended", "remove=ok")
+	if err := RemoveSession(ctx, w, home, rec); err != nil {
+		t.Fatalf("a session whose leftovers ended was not removed: %v", err)
+	}
+
+	// ⚠ A session with no scope asks nothing first, as before.
+	if err := os.Remove(filepath.Join(h.state, "scripts")); err != nil {
+		t.Fatal(err)
+	}
+	rec.Unit = ""
+	if err := RemoveSession(ctx, w, home, rec); err != nil {
+		t.Fatalf("a session with no scope was not removed: %v", err)
+	}
+	if strings.Contains(h.guestScripts(t), "echo 'LEFT|none'") {
+		t.Error("a session with no scope asked about its scope")
 	}
 }
 
@@ -249,6 +292,31 @@ func TestASessionInAScopeIsReachedWholeInARealShell(t *testing.T) {
 	}
 	if st := state(dir); st.TimedOut || st.Verdict() != 0 {
 		t.Fatalf("a payload that ended before its deadline reads as %+v", st)
+	}
+
+	// ⛔ A session directory gc removed before the deadline is late too. The
+	// deadline reaches the scope, and never the ended payload's process group,
+	// whose id another process may hold by then. The child below stands for that
+	// process: it is in the group and out of the scope. WSL-126.
+	dir, _ = start(scoped, "removed", "setsid sh -c 'echo $$ > kept.pid; exec sleep 30' </dev/null >/dev/null 2>&1 &\n"+
+		"env -u FAKE_UNIT sh -c 'trap \"echo > grouped.term; exit 0\" TERM; echo $$ > grouped.pid; while :; do sleep 1; done' </dev/null >/dev/null 2>&1 &\n",
+		3*time.Second, time.Second)
+	kept, grouped := pidOf("kept"), pidOf("grouped")
+	for i := 0; i < 100 && state(dir).Exit == nil; i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if !gone(kept, 10*time.Second) {
+		_, _, _ = run("/nonexistent", []byte("kill -KILL "+kept+" "+grouped+"\n"))
+		t.Fatal("a daemon left in the scope of a removed session outlived its deadline")
+	}
+	time.Sleep(3 * time.Second)
+	_, _, alive := run("/nonexistent", []byte("kill -0 "+grouped+" 2>/dev/null\n"))
+	_, _, _ = run("/nonexistent", []byte("kill -KILL "+grouped+" 2>/dev/null\n"))
+	if _, err := os.Stat(filepath.Join(home, "grouped.term")); err == nil || alive != 0 {
+		t.Fatal("the deadline of a session whose directory was removed signalled the ended payload's process group")
 	}
 
 	// What an ended session left in its scope is ended by the leftovers stop.

@@ -285,23 +285,58 @@ func TestKvmNeedsSystemdAndIsReadByOpeningIt(t *testing.T) {
 func TestTheVerifierMeasuresDelegationWhereTheEngineMakesCgroups(t *testing.T) {
 	src := string(verifyScript)
 	user := strings.Index(src, `if [ -d "$cg_user" ] && mkdir "$cg_user/wsl-toolkit-delegation-probe.$$" 2>/dev/null; then`)
-	own := strings.Index(src, `elif mkdir "$cg_probe" 2>/dev/null; then`)
+	own := strings.Index(src, `if mkdir "$cg_probe" 2>/dev/null; then`)
 	if user < 0 || own < 0 || user > own {
 		t.Fatal("the verifier does not ask the account's user manager before its own cgroup")
 	}
+	// ⛔ The user manager's answer is a row of its own, so the parser can weigh it
+	// against the engine's manager.
+	if block := src[user:own]; !strings.Contains(block, "printf 'cgroup-account-delegated yes\\n'") ||
+		strings.Contains(block, "cgroup-delegated yes") {
+		t.Fatalf("the user manager's probe does not answer on its own row:\n%s", block)
+	}
 	// Measured on wsl-toolkit-f5a once base ensure had delegated it.
 	measured := "cgroup-version v2\ncgroup-controllers cpuset cpu io memory hugetlb pids misc\ncgroup-self 0::/non-systemd\n" +
-		"cgroup-delegated yes\ncgroup-account-controllers cpuset cpu io memory pids\ncgroup-under systemd\n" +
+		"cgroup-account-delegated yes\ncgroup-account-controllers cpuset cpu io memory pids\ncgroup-delegated no\ncgroup-under none\n" +
 		"cgroup-manager systemd\nengine-rootless true\ncgroup-limit 67108864\n"
 	cg := parseCapabilities(measured)
-	if cg.Mechanism != "systemd" || cg.Enforced != "yes" || cg.StatsUsable != "yes" || cg.Manager != "systemd" ||
+	if !cg.Delegated || cg.Mechanism != "systemd" || cg.Enforced != "yes" || cg.StatsUsable != "yes" || cg.Manager != "systemd" ||
 		cg.AccountControllers != "cpuset cpu io memory pids" {
 		t.Fatalf("the delegated base reads as %+v", cg)
 	}
-	first := strings.Index(engineInfoScript, `if mkdir "$cguser" 2>/dev/null; then`)
+	first := strings.Index(engineInfoScript, `if [ "${cgmgr:-}" = systemd ] && mkdir "$cguser" 2>/dev/null; then`)
 	then := strings.Index(engineInfoScript, `elif mkdir "$cgdir" 2>/dev/null; then`)
 	if first < 0 || then < 0 || first > then {
-		t.Error("inspect's delegation row does not ask the account's user manager before its own cgroup")
+		t.Error("inspect's delegation row does not ask the account's user manager, beside a systemd engine, before its own cgroup")
+	}
+	if !strings.Contains(engineInfoScript, "case $f in *CgroupManager*) cgmgr=$v ;; esac") {
+		t.Error("inspect does not keep the engine's cgroup manager to weigh the user manager's probe")
+	}
+}
+
+// TestAUserManagerTheEngineDoesNotUseIsNotDelegation is the base 7.0.0 built
+// with systemd and no session bus: user@UID.service runs and the account can
+// write it, and podman keeps cgroupfs, so a container's limit is missing.
+// ⛔ Stats and limits stand or fall together, so delegated is false, and the
+// finding names the engine's manager. WSL-136.
+func TestAUserManagerTheEngineDoesNotUseIsNotDelegation(t *testing.T) {
+	out := "cgroup-version v2\ncgroup-self 0::/non-systemd\n" +
+		"cgroup-account-delegated yes\ncgroup-account-controllers cpu memory pids\ncgroup-delegated no\ncgroup-under none\n" +
+		"cgroup-manager cgroupfs\nengine-rootless true\ncgroup-limit missing\n"
+	cg := parseCapabilities(out)
+	if cg.Delegated || cg.Mechanism != "none" || cg.StatsUsable != "no" || cg.Enforced != "no" {
+		t.Fatalf("a user manager beside cgroupfs reads as %+v", cg)
+	}
+	r, ok := cgroupRemediation(cg, true)
+	if !ok || !strings.Contains(r.What, "cgroupfs") || strings.Contains(r.What, "holds no delegated cgroup") {
+		t.Fatalf("its finding is %+v", r)
+	}
+	// ⭐ The script's own cgroup still counts as it did in 7.0.x, whatever the
+	// engine's manager.
+	own := parseCapabilities("cgroup-version v2\ncgroup-account-delegated no\ncgroup-delegated yes\ncgroup-under none\n" +
+		"cgroup-manager cgroupfs\nengine-rootless true\ncgroup-limit 67108864\n")
+	if !own.Delegated || own.Mechanism != "delegated" || own.StatsUsable != "yes" {
+		t.Fatalf("a delegated own cgroup reads as %+v", own)
 	}
 }
 

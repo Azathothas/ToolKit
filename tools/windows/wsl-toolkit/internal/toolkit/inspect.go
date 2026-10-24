@@ -323,7 +323,9 @@ for f in '{{.Version.Version}}' '{{.Host.OCIRuntime.Name}}' '{{.Store.GraphDrive
          '{{index .Store.GraphStatus "Backing Filesystem"}}' '{{.Store.GraphRoot}}' \
          '{{.Host.CgroupsVersion}}' '{{.Host.CgroupManager}}' '{{.Host.Security.Rootless}}' \
          '{{.Host.EventLogger}}' '{{.Host.LogDriver}}'; do
-  printf '%s\n' "$(podman info --format "$f" 2>/dev/null | head -1)"
+  v=$(podman info --format "$f" 2>/dev/null | head -1)
+  printf '%s\n' "$v"
+  case $f in *CgroupManager*) cgmgr=$v ;; esac
 done
 # ⛔ PROVED BY CREATING A CGROUP, not by reading a mode bit or a mount option.
 # Measured on 2026-09-10: /sys/fs/cgroup here is mounted rw with nsdelegate and
@@ -332,12 +334,13 @@ done
 #
 # ⭐ THE ACCOUNT'S USER MANAGER FIRST, which is where the engine makes a
 # container's cgroup on a base with systemd, as verify.sh's own row reads it.
-# WSL-136.
+# ⛔ ONLY WHERE THE ENGINE'S MANAGER IS systemd: with cgroupfs a writable
+# user@UID.service gives no container a cgroup. WSL-136.
 cgrel=$(head -1 /proc/self/cgroup 2>/dev/null | sed 's/^0:://')
 case "$cgrel" in /*) ;; *) cgrel=/ ;; esac
 cgdir="/sys/fs/cgroup${cgrel%/}/wsl-toolkit-inspect-probe.$$"
 cguser="/sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/wsl-toolkit-inspect-probe.$$"
-if mkdir "$cguser" 2>/dev/null; then printf 'yes\n'; rmdir "$cguser" 2>/dev/null || true
+if [ "${cgmgr:-}" = systemd ] && mkdir "$cguser" 2>/dev/null; then printf 'yes\n'; rmdir "$cguser" 2>/dev/null || true
 elif mkdir "$cgdir" 2>/dev/null; then printf 'yes\n'; rmdir "$cgdir" 2>/dev/null || true
 elif [ -d /sys/fs/cgroup ]; then printf 'no\n'
 else printf 'unknown\n'; fi

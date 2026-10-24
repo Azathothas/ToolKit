@@ -441,20 +441,26 @@ printf 'cgroup-self %s\n' "$cg_self"
 cg_rel=${cg_self#0::}
 case "$cg_rel" in /*) ;; *) cg_rel=/ ;; esac
 cg_probe="/sys/fs/cgroup${cg_rel%/}/wsl-toolkit-delegation-probe.$$"
-# ⭐ THE ACCOUNT'S USER MANAGER IS ASKED FIRST, because that is where the engine
+# ⭐ THE ACCOUNT'S USER MANAGER IS ASKED TOO, because that is where the engine
 # makes a container's cgroup. Measured on an Arch base with systemd: WSL starts
 # this script in /non-systemd, which the account cannot write, and podman's
 # containers landed under user@UID.service, which the account owns. Probing only
 # the script's own cgroup reported `none` over limits that were enforced. WSL-136.
+#
+# ⛔ ITS ANSWER IS A ROW OF ITS OWN, NOT `cgroup-delegated`. podman's cgroups
+# land under the user manager only where podman's manager is systemd. With
+# cgroupfs a writable user@UID.service gives no container a cgroup, so base.go
+# counts this row only beside `cgroup-manager systemd`.
 cg_uid=$(id -u)
 cg_user="/sys/fs/cgroup/user.slice/user-$cg_uid.slice/user@$cg_uid.service"
-cg_under=none
 if [ -d "$cg_user" ] && mkdir "$cg_user/wsl-toolkit-delegation-probe.$$" 2>/dev/null; then
   rmdir "$cg_user/wsl-toolkit-delegation-probe.$$" 2>/dev/null || true
-  printf 'cgroup-delegated yes\n'
-  cg_under=systemd
+  printf 'cgroup-account-delegated yes\n'
   printf 'cgroup-account-controllers %s\n' "$(cat "$cg_user/cgroup.controllers" 2>/dev/null || echo -)"
-elif mkdir "$cg_probe" 2>/dev/null; then
+else
+  printf 'cgroup-account-delegated no\n'
+fi
+if mkdir "$cg_probe" 2>/dev/null; then
   printf 'cgroup-delegated yes\n'
   rmdir "$cg_probe" 2>/dev/null || true
 else
@@ -462,9 +468,9 @@ else
 fi
 
 case "$cg_self" in
-  *user@*.service*|*user.slice*) cg_under=systemd ;;
+  *user@*.service*|*user.slice*) printf 'cgroup-under systemd\n' ;;
+  *)                             printf 'cgroup-under none\n' ;;
 esac
-printf 'cgroup-under %s\n' "$cg_under"
 printf 'cgroup-manager %s\n' "$(podman info --format '{{.Host.CgroupManager}}' 2>/dev/null || echo unknown)"
 printf 'engine-rootless %s\n' "$(podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null || echo unknown)"
 

@@ -2325,6 +2325,10 @@ type CgroupState struct {
 	// AccountControllers what the account's user manager was delegated. WSL-136.
 	Manager            string `json:"manager,omitempty"`
 	AccountControllers string `json:"account_controllers,omitempty"`
+	// accountUnused is a user manager the account could make a cgroup in,
+	// beside an engine whose manager is not systemd. Only the remediation reads
+	// it. WSL-136.
+	accountUnused bool
 }
 
 // BinfmtState is what the WSL kernel's QEMU handler table holds for this base.
@@ -2460,7 +2464,7 @@ func parseCapabilities(out string) *CgroupState {
 		for _, key := range []string{
 			"cgroup-version", "cgroup-controllers", "cgroup-self",
 			"cgroup-delegated", "cgroup-under", "cgroup-limit", "engine-rootless",
-			"cgroup-manager", "cgroup-account-controllers",
+			"cgroup-manager", "cgroup-account-controllers", "cgroup-account-delegated",
 		} {
 			if strings.HasPrefix(line, key+" ") {
 				rows[key] = strings.TrimSpace(strings.TrimPrefix(line, key+" "))
@@ -2480,11 +2484,22 @@ func parseCapabilities(out string) *CgroupState {
 		Manager:            strings.TrimSpace(strings.TrimSuffix(rows["cgroup-manager"], "unknown")),
 		AccountControllers: strings.TrimSpace(strings.TrimSuffix(rows["cgroup-account-controllers"], "-")),
 	}
+	// ⛔ THE ACCOUNT'S USER MANAGER COUNTS ONLY WHERE THE ENGINE USES IT. A
+	// writable user@UID.service beside podman's cgroupfs manager gives no
+	// container a cgroup, and reading it as delegation said `delegated` and
+	// `stats usable` over a limit the container never got. WSL-136.
+	cg.accountUnused = rows["cgroup-account-delegated"] == "yes" && cg.Manager != "systemd"
+	viaAccount := rows["cgroup-account-delegated"] == "yes" && cg.Manager == "systemd"
+	if viaAccount {
+		cg.Delegated = true
+	}
 	rootless := rows["engine-rootless"]
 	switch {
 	case rootless == "false":
 		cg.Mechanism = "rootful"
 	case cg.Delegated && rows["cgroup-under"] == "systemd":
+		cg.Mechanism = "systemd"
+	case viaAccount:
 		cg.Mechanism = "systemd"
 	case cg.Delegated:
 		cg.Mechanism = "delegated"
@@ -2563,6 +2578,14 @@ func cgroupRemediation(cg *CgroupState, systemd bool) (Remediation, bool) {
 		r.What = "this base runs systemd and its account's user manager holds no delegated cgroup, so podman creates no cgroup per container"
 		r.Costs = "a memory or cpu limit is ACCEPTED AND NOT ENFORCED, and `podman stats` reports 0B. " +
 			"The user manager runs only where the base has D-Bus, and base ensure delegates to it once it does"
+	}
+	// ⛔ A DELEGATED USER MANAGER THE ENGINE DOES NOT USE IS SAID AS THAT, not
+	// as one that holds nothing. WSL-136.
+	if systemd && cg.accountUnused {
+		r.What = "this base's account holds a delegated cgroup under its user manager, and its podman uses the " +
+			valueOr(cg.Manager, "unknown") + " manager, so podman creates no cgroup per container"
+		r.Costs = "a memory or cpu limit is ACCEPTED AND NOT ENFORCED, and `podman stats` reports 0B. " +
+			"base ensure gives podman the systemd manager once the account's user manager has a session bus"
 	}
 	return r, true
 }

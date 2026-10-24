@@ -226,3 +226,44 @@ func TestAStopOfAnEndedSessionSaysOnlyWhatItReached(t *testing.T) {
 		t.Fatalf("a scope that held nothing changed the answer: %+v", quiet)
 	}
 }
+
+// -- WSL-130, WSL-136: a MINOR release adds no line to an unchanged base -------
+
+// TestAnUnchangedBasesStatusPrintsNoNewRow: the engines and kvm rows print only
+// where a setting asks for them, and the cgroup manager is in --json alone. A
+// base none of the three is set for gets the rows 7.0.x printed.
+func TestAnUnchangedBasesStatusPrintsNoNewRow(t *testing.T) {
+	st := toolkit.BaseState{Name: "wsl-toolkit", Kvm: "absent",
+		Cgroup: &toolkit.CgroupState{Version: "v2", Mechanism: "none", Manager: "cgroupfs", AccountControllers: "cpu memory pids"}}
+	out := captureStderr(t, func() { renderBaseState(st, true) })
+	for _, row := range []string{"  engines ", "  kvm ", "cgroup mgr", "cgroupfs"} {
+		if strings.Contains(out, row) {
+			t.Errorf("a base with no engine setting printed %q:\n%s", row, out)
+		}
+	}
+	st.Access.Kvm = true
+	out = captureStderr(t, func() { renderBaseState(st, true) })
+	for _, row := range []string{"  engines     root engine false, runtime dir false, kvm true", "  kvm         /dev/kvm absent to the account"} {
+		if !strings.Contains(out, row) {
+			t.Errorf("a base with base.kvm on did not print %q:\n%s", row, out)
+		}
+	}
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	var buf bytes.Buffer
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+	done := make(chan struct{})
+	go func() { _, _ = buf.ReadFrom(r); close(done) }()
+	fn()
+	_ = w.Close()
+	os.Stderr = old
+	<-done
+	return buf.String()
+}

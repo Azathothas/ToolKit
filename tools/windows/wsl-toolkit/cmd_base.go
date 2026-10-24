@@ -416,8 +416,12 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	fmt.Fprintf(out, "  sudo        passwordless %v\n", st.Access.PasswordlessSudo)
 	fmt.Fprintf(out, "  toolset     %s\n", st.Access.Toolset)
 	fmt.Fprintf(out, "  shared wsl  /mnt/wsl %s\n", st.Access.SharedTmpfs)
-	// WSL-130.
-	fmt.Fprintf(out, "  engines     root engine %v, runtime dir %v, kvm %v\n", st.Access.RootEngine, st.Access.RuntimeDir, st.Access.Kvm)
+	// ⛔ ONLY WHERE ONE OF THE THREE IS ON. A base none of them is set for
+	// prints what it printed in 7.0.x: a MINOR release adds no line to an
+	// unchanged base's report. WSL-130.
+	if a := st.Access; a.RootEngine || a.RuntimeDir || a.Kvm {
+		fmt.Fprintf(out, "  engines     root engine %v, runtime dir %v, kvm %v\n", a.RootEngine, a.RuntimeDir, a.Kvm)
+	}
 	for _, mount := range st.Access.Mounts {
 		fmt.Fprintf(out, "  grant       %s %s <- %s\n", mount.Mode, mount.Target, mount.Source)
 	}
@@ -464,10 +468,9 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 		// through this same row rather than needing a second one. WSL-60.
 		fmt.Fprintf(out, "  cgroup      %s via %s\n", cg.Version, cg.Mechanism)
 		fmt.Fprintf(out, "  limits      enforced: %s   stats usable: %s\n", cg.Enforced, cg.StatsUsable)
-		// ⭐ WHO MAKES A CONTAINER'S CGROUP, AND WITH WHAT. WSL-136.
-		if cg.Manager != "" {
-			fmt.Fprintf(out, "  cgroup mgr  %s, delegated to the account: %s\n", cg.Manager, valueOrNone(cg.AccountControllers))
-		}
+		// ⚠ THE ENGINE'S MANAGER AND THE ACCOUNT'S CONTROLLERS ARE IN --json
+		// ALONE, and the finding names the manager where it is why a limit is
+		// not enforced. A row here was a line every probed base gained. WSL-136.
 	} else if probed {
 		// ⚠ NOT MEASURED IS NOT THE SAME AS NO, and this is the row that says
 		// which one this is.
@@ -489,7 +492,9 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	} else if probed {
 		fmt.Fprintf(out, "  binfmt      not measured by this guest\n")
 	}
-	if st.Kvm != "" {
+	// ⛔ ONLY WHERE base.kvm ASKS FOR THE NODE, for the reason the engines row
+	// gives. --json carries it on every probed base. WSL-130.
+	if st.Kvm != "" && st.Access.Kvm {
 		fmt.Fprintf(out, "  kvm         /dev/kvm %s to the account\n", st.Kvm)
 	}
 	for _, a := range st.Adapters {

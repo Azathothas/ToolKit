@@ -67,6 +67,14 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 		_ = f.Close()
 	}
 	switch {
+	// ⭐ A SESSION'S LEFTOVERS AND ITS REMOVAL, each with the line its script
+	// prints. WSL-126.
+	case bytes.Contains(script, []byte("echo 'LEFT|none'")) && answers["leftovers"] != "":
+		fmt.Println("LEFT|" + answers["leftovers"])
+		return 0, true
+	case bytes.Contains(script, []byte("printf 'removed\\n'")) && answers["remove"] == "ok":
+		fmt.Println("removed")
+		return 0, true
 	case bytes.HasSuffix(script, []byte("uname -m\n")):
 		fmt.Println("x86_64")
 		return 0, true

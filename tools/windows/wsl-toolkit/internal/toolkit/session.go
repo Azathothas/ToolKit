@@ -298,7 +298,7 @@ if [ "$to" -gt 0 ]; then
   ( trap "kill \$s 2>/dev/null; exit 0" TERM
     sleep "$to" & s=$!; wait "$s"
     late=
-    if [ -e "$d/exit" ]; then late=1; else : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null; fi
+    if [ -e "$d/exit" ] || [ ! -d "$d" ]; then late=1; else : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null; fi
     if [ -n "$u" ]; then systemctl --user kill --signal=TERM "$u" >/dev/null 2>&1; fi
     sleep "$grace" & s=$!; wait "$s"
     if [ -z "$late" ]; then kill -KILL "-$p" 2>/dev/null; fi
@@ -331,6 +331,10 @@ if [ -n "$u" ]; then printf 'UNIT|%s\n' "$u"; fi
 // holds a process. A daemon the payload left there outlived the deadline until
 // someone ran stop. At the deadline it signals the scope alone: the session's
 // own answer stands, and timedout is not written. WSL-126.
+//
+// ⛔ A SESSION DIRECTORY THAT IS GONE AT THE DEADLINE IS LATE TOO. gc removes an
+// ended session's directory, exit file included, and the watchdog then signalled
+// the ended payload's process-group id, which another process may hold. WSL-126.
 const sessionScopeProbe = `u=
 if command -v systemd-run >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 &&
   systemd-run --user --scope --quiet --collect -- true </dev/null >/dev/null 2>&1; then
@@ -678,6 +682,16 @@ func RemoveSession(ctx context.Context, w *Wsl, home string, rec SessionRecord) 
 		return fmt.Errorf("could not ask whether %s is registered: %w", rec.Distro, err)
 	}
 	if registered {
+		// ⛔ WHAT THE SESSION LEFT IN ITS SCOPE IS ENDED FIRST, and a removal it
+		// outlives is refused. The record holds the scope's name, and without it
+		// stop could no longer reach a daemon the payload left there. WSL-126.
+		_, still, err := StopSessionLeftovers(ctx, w, rec, SessionGrace)
+		if err != nil {
+			return fmt.Errorf("%w, so session %s is kept for stop to reach it", err, rec.ID)
+		}
+		if still {
+			return fmt.Errorf("session %s left processes in its scope %s that did not end, so it is kept for stop to reach them", rec.ID, rec.Unit)
+		}
 		out, stderr, code, err := w.Capture(ctx, rec.Distro, rec.User, []byte(GuestRemoveScript(sessionsRoot(rec), rec.GuestDir)), 2*time.Minute)
 		if err != nil || code != 0 || !strings.Contains(out, "removed") {
 			return fmt.Errorf("could not remove session %s in the guest (exit %d): %s", rec.ID, code, guestFailure(stderr, out))

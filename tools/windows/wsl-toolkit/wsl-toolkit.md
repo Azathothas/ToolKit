@@ -423,6 +423,9 @@ guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
   `stop` still exits 0 for a session that had ended.
 - ⛔ **The deadline reaches what a command that ended first left in its scope.**
   The session's answer stays its own exit, and it is not read as timed out.
+- ⛔ **`gc` ends what an ended session left in its scope before it removes the
+  session.** A process that outlives that keeps the session, so `stop` can still
+  reach it. A deadline after the removal reaches the scope alone.
 - A stop prints which of the two it reached only where it signalled something.
 - Without a user manager, the process group is all a stop reaches, as before. The
   answer says which: `contained_by` is `systemd-scope` or `process-group` in
@@ -482,9 +485,14 @@ say. A limit not enforced is printed as a warning beside the exit code.
 ⭐ **A base that runs systemd enforces them.** `base ensure` delegates `cpu`,
 `cpuset`, `io`, `memory` and `pids` to the account's user manager, keeps that
 manager running at every start, and points the account's engine at it. `base
-status --probe` reads the result back: `cgroup v2 via systemd`, `limits enforced:
-yes`, and the controllers the account was given. A base without systemd enforces
-nothing, and its finding names `base.systemd` as the remedy.
+status --probe` reads the result back: `cgroup v2 via systemd` and `limits enforced:
+yes`. Its `--json` adds the engine's `manager` and the controllers the account was
+given. A base without systemd enforces nothing, and its finding names
+`base.systemd` as the remedy.
+
+- ⛔ **A user manager counts as delegation only where podman uses it.** With the
+  `cgroupfs` manager no container gets a cgroup there, so `cgroup.delegated` stays
+  false and the finding names the manager. `WSL-136`
 
 - ⚠ The account's engine moves to the systemd cgroup manager only where its
   session bus answers. Without one, podman would warn on every call and fall back.
