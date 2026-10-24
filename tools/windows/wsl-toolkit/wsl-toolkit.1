@@ -274,7 +274,7 @@ the command as base64 of its bytes, for a caller that must keep every shell away
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
 .TP
 \fB--create-user\fR
-with --user NAME, run as NAME where the image has no such account: podman writes it, with a home at /home/NAME. An image that has NAME uses its own
+with --user NAME, run as NAME where the image has no such account: podman writes it, with a home of its own under /home. An image that has NAME uses its own
 .TP
 \fB--detach\fR
 start the job and answer with its id at once. A detached copy of this program owns the job; wsl-toolkit logs ID --follow, wait ID and stop ID reach it
@@ -413,7 +413,7 @@ the command as base64 of its bytes, for a caller that must keep every shell away
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
 .TP
 \fB--create-user\fR
-with --user NAME, run as NAME where the image has no such account: podman writes it, with a home at /home/NAME. An image that has NAME uses its own
+with --user NAME, run as NAME where the image has no such account: podman writes it, with a home of its own under /home. An image that has NAME uses its own
 .TP
 \fB--device\fR
 a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it

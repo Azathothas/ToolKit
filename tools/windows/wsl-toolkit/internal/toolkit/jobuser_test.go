@@ -44,21 +44,21 @@ func TestAnAccountTheImageLacksTakesAnIDTheImageDoesNotHave(t *testing.T) {
 // account the image has named as it is.
 func TestAMadeAccountReachesPodmanAsItsOwnEntries(t *testing.T) {
 	runner := &Runner{}
-	spec := JobSpec{Image: "docker.io/library/ubuntu:24.04", ContainerLifecycle: ContainerEphemeral, User: "dev", CreateUser: true}
-	spec.account = &jobAccount{Name: "dev", UID: 1001, GID: 1001, NewGroup: true}
+	spec := JobSpec{Image: "docker.io/library/ubuntu:24.04", ContainerLifecycle: ContainerEphemeral, User: "runner", CreateUser: true}
+	spec.account = &jobAccount{Name: "runner", UID: 1001, GID: 1001, NewGroup: true}
 	script := string(runner.containerScript(spec, "wtk-one", jobLayout("/home/toolkit", "one"), "marker"))
 	for _, want := range []string{
 		"'--user' '1001:1001'",
-		"'--passwd-entry' 'dev:*:1001:1001:dev:/home/dev:/bin/sh'",
-		"'--group-entry' 'dev:x:1001:'",
-		"'--tmpfs' '/home/dev:rw,exec,nosuid,nodev,mode=0700,U'",
+		"'--passwd-entry' 'runner:*:1001:1001:runner:/home/runner:/bin/sh'",
+		"'--group-entry' 'runner:x:1001:'",
+		"'--tmpfs' '/home/runner:rw,exec,nosuid,nodev,mode=0700,U'",
 		"'--volume' '/home/toolkit/.wsl-toolkit/jobs/one/work:/work:U,Z'",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("the podman command does not carry %s:\n%s", want, script)
 		}
 	}
-	if strings.Contains(script, "'--user' 'dev'") {
+	if strings.Contains(script, "'--user' 'runner'") {
 		t.Errorf("a made account is also passed by its name, which the image cannot resolve:\n%s", script)
 	}
 	spec.account = &jobAccount{Name: "ubuntu", Exists: true}

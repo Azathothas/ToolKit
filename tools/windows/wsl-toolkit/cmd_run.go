@@ -142,7 +142,7 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 	// WSL-122, WSL-128, WSL-123, WSL-130.
 	fs.Var(&j.caches, "cache", "NAME:/path: a named cache, the podman volume wtk-cache-NAME in the base, made on first use, mounted at /path and kept between jobs. Repeatable, and added to jobs.cache. gc --caches --apply removes it")
 	fs.Var(&j.inputExecs, "input-exec", "NAME=FILE: as --input, but the copy has CRLF turned into LF and mode 0755, so the job runs /in/NAME by its shebang. FILE must start with #!. Repeatable")
-	fs.BoolVar(&j.createUser, "create-user", false, "with --user NAME, run as NAME where the image has no such account: podman writes it, with a home at /home/NAME. An image that has NAME uses its own")
+	fs.BoolVar(&j.createUser, "create-user", false, "with --user NAME, run as NAME where the image has no such account: podman writes it, with a home of its own under /home. An image that has NAME uses its own")
 	fs.BoolVar(&j.sudo, "sudo", false, "with --user, mount a read-only rule in /etc/sudoers.d that grants that account passwordless sudo. It needs sudo in the image")
 	fs.Var(&j.capAdd, "cap-add", "a Linux capability the container gets, such as NET_ADMIN, or ALL. Repeatable, and none is added without it")
 }

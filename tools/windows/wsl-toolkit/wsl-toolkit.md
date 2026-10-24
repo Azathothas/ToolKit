@@ -500,8 +500,8 @@ wsl-toolkit run --image debian --user dev --create-user --sudo -c 'sudo apt-get 
 ```
 
 ⭐ **`--create-user` makes the account `--user NAME` names, where the image has
-none.** podman writes its passwd and group entries and gives it a home at
-`/home/NAME`. Nothing in the image changes, and the job never runs as root.
+none.** podman writes its passwd and group entries and gives it a home of its own
+under `/home`. Nothing in the image changes, and the job never runs as root.
 `/work`, `/out` and each cache belong to the account. `WSL-123`
 
 - An image that has NAME uses its own account as the image defines it.
