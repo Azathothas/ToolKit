@@ -93,15 +93,21 @@ func StopRecorded(id string) bool {
 // ⛔ A LEDGER IT CANNOT READ IS AN ERROR, NEVER "NO STOP". A read refused past its
 // retries answered false, and a job somebody stopped ran to completion. Each
 // caller decides what an unreadable ledger means where it reads it. WSL-173.
+//
+// ⛔ A LEDGER READ WITH MOSTLY UNREADABLE LINES IS NOT A FAILED READ. The lines
+// that parsed are searched, and a stop among them is honoured. That error was
+// taken as a failed read, so a torn line refused every job until the file was
+// edited by hand, and a recorded stop answered exit 2. WSL-173.
 func stopRecordedIn(l *Ledger, id string) (bool, error) {
 	entries, err := l.All()
-	if err != nil {
-		return false, err
-	}
 	for _, e := range entries {
 		if e.Event == "stop" && e.Kind == "job" && e.ID == id {
 			return true, nil
 		}
+	}
+	var unreliable *ledgerUnreliableError
+	if err != nil && !errors.As(err, &unreliable) {
+		return false, err
 	}
 	return false, nil
 }

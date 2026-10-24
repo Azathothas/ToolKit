@@ -88,16 +88,42 @@ func (l *Ledger) Append(e LedgerEntry) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+	f, err := os.OpenFile(l.path, os.O_CREATE|os.O_APPEND|os.O_RDWR, 0o600)
 	if err != nil {
 		return err
 	}
-	_, writeErr := f.Write(append(b, '\n'))
+	// ⛔ A LINE A KILLED WRITE LEFT UNFINISHED IS ENDED FIRST. A record appended
+	// onto it joined it, so the open record of the next job was unreadable too
+	// and cleanup could not see that job. WSL-173.
+	line := append(b, '\n')
+	torn, err := endsTorn(f)
+	if err != nil {
+		_ = f.Close()
+		return err
+	}
+	if torn {
+		line = append([]byte{'\n'}, line...)
+	}
+	_, writeErr := f.Write(line)
 	closeErr := f.Close()
 	if writeErr != nil {
 		return writeErr
 	}
 	return closeErr
+}
+
+// endsTorn says whether the ledger's last line has no newline: a write killed
+// part way.
+func endsTorn(f *os.File) (bool, error) {
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return false, err
+	}
+	last := make([]byte, 1)
+	if _, err := f.ReadAt(last, info.Size()-1); err != nil {
+		return false, err
+	}
+	return last[0] != '\n', nil
 }
 
 // Open reports every resource with an open record and no close.
@@ -211,9 +237,24 @@ func (l *Ledger) allLocked() ([]LedgerEntry, error) {
 		out = append(out, e)
 	}
 	if bad > 0 && bad > len(out) {
-		return out, fmt.Errorf("%s: %d of %d lines are unreadable, so this is not a reliable list of what to clean up", l.path, bad, bad+len(out))
+		return out, &ledgerUnreliableError{path: l.path, bad: bad, total: bad + len(out)}
 	}
 	return out, nil
+}
+
+// ledgerUnreliableError is a ledger that was read but whose lines mostly do not
+// parse. All still returns the lines that did.
+//
+// ⚠ IT IS A REASON NOT TO CLEAN UP, NOT A FAILED READ. Cleanup acts on what the
+// ledger lacks, so a list that is mostly missing is refused there. A stop lookup
+// acts on what the ledger holds, and the lines that parsed answer it. WSL-173.
+type ledgerUnreliableError struct {
+	path       string
+	bad, total int
+}
+
+func (e *ledgerUnreliableError) Error() string {
+	return fmt.Sprintf("%s: %d of %d lines are unreadable, so this is not a reliable list of what to clean up", e.path, e.bad, e.total)
 }
 
 // readLedgerFile reads the ledger, waiting out a rewrite that holds it.
@@ -233,7 +274,7 @@ func readLedgerFile(path string) ([]byte, error) {
 	var err error
 	for i := 0; i < attempts; i++ {
 		var data []byte
-		if data, err = os.ReadFile(path); err == nil || !ledgerReadBusy(err) {
+		if data, err = ledgerReadFile(path); err == nil || !ledgerReadBusy(err) {
 			return data, err
 		}
 		time.Sleep(delay)
@@ -243,6 +284,13 @@ func readLedgerFile(path string) ([]byte, error) {
 	}
 	return nil, fmt.Errorf("reading %s after %d attempts: %w", filepath.Base(path), attempts, err)
 }
+
+// ledgerReadFile is the read readLedgerFile retries.
+//
+// ⚠ A VARIABLE SO A CASE CAN REFUSE THE READ ON ANY HOST. A refused read is
+// staged for real only on Windows, and the suite also runs as root on Linux,
+// where no file mode refuses one.
+var ledgerReadFile = os.ReadFile
 
 // Path is where the ledger lives, for a report that names it.
 func (l *Ledger) Path() string { return l.path }
