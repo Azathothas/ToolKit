@@ -83,9 +83,10 @@ works. `WSL-111`
 
 ## Operating model
 
-- The tool owns the `wsl-toolkit` distribution, the throwaway distributions whose
-  disks are in its state directory, and that directory. It manages nothing else,
-  and `podman-machine-default` is somebody else's.
+- The tool owns the default base, `wsl-toolkit-jobs`, each instance's base, the
+  throwaway distributions whose disks are in its state directory, and that
+  directory. It manages nothing else, and `podman-machine-default` is somebody
+  else's.
 - ⛔ **A job gets a copy of its workspace, never a mount.** Getting anything back
   out is a second explicit act, through `/out` and `--artifacts`.
 - Progress goes to stderr. The answer goes to stdout, alone. Every command that
@@ -98,6 +99,83 @@ it.** A command given to `wsl.exe` as an ARGUMENT is expanded before the guest
 sees it, and the result is parsed a second time. A backtick in the payload runs,
 and the command can still report exit 0. This tool sends a payload on stdin or
 as a file.
+
+---
+
+## ⭐ The default base, and its name
+
+A command with no `--instance` acts on the default base. ⭐ **It is the agents' base
+too.** Its canonical name is `wsl-toolkit-jobs`, and a new default base is built
+under that name.
+
+⚠ **An older default base may still be named `wsl-toolkit`.** It keeps that name and
+keeps working, with every command. The name comes from the configuration and from
+WSL's registrations, and from nothing else:
+
+| step | what decides |
+| --- | --- |
+| 1 | `base.name` in the configuration in effect |
+| 2 | the one of the two names that is registered as a default base |
+| 3 | ⛔ a refusal, when both are registered |
+| 4 | `wsl-toolkit-jobs`, when neither is, or the registry cannot be read |
+
+⭐ **Every caller on a host with one base uses it.** A scratch `WSL_TOOLKIT_HOME`, or a
+shell whose `%LOCALAPPDATA%` Windows redirects, runs jobs on the host's base. It
+builds no second one.
+
+⛔ **Two candidates are refused, never guessed between.** Every command exits 2, naming
+both and the folders of their disks. Set `base.name` to choose. `doctor` names both
+in its `base distro` row, and in `wsl.candidates` under `--json`.
+
+⚠ **An instance `jobs` is not a default base.** One made before the reservation is
+registered as `wsl-toolkit-jobs`, with its disk under `instances\jobs\base`. While it
+is registered, every default command still loads. `base status` names the instance in
+its `held by` row, and `naming.instance` under `--json`. `doctor` reports no default base.
+An ensure, and so a build or a job that would use it, is refused, naming how to
+remove the instance.
+
+⛔ **Only the state directory that owns the base changes it.** It owns the base when
+WSL keeps the base's disk in that directory's `base` folder. Links and junctions are
+resolved before the two are compared. A caller that does not own the base may run
+jobs in it, and is refused these:
+
+- `base remove`, `base recreate`, and a `--preset` switch that rebuilds;
+- a re-provision in place, and `base ensure --repair`, healthy base or not;
+- writing `base.json`, and stamping the guest's identity marker.
+
+Each refusal comes before anything changes. It names the disk folder and the command
+to run from the state directory that owns it. A disk moved with `wsl --manage --move`
+is in no state directory, and the refusal says to run `wsl --unregister NAME` yourself.
+⚠ A registry that cannot be read, and a registration with no disk folder, prove no
+owner, so both refuse. A process whose writes Windows redirects into a package is
+refused the same changes. Run those from PowerShell or a terminal outside the app.
+
+⛔ **The helper route is held to the same rule.** A client tells the helper whether its
+own state directory owns the base. The helper then refuses it what its own ensure
+would be refused, at the same points. `base status` through the helper says whether
+the client's state directory owns the base, not the helper's.
+
+⚠ **A caller that does not own the base leaves its adapters alone.** Its `base ensure`
+installs none and takes no SSH Host block away, says so in one line, and still exits 0.
+
+⚠ **No guest marker is read to choose the name.** Reading one starts the
+distribution on every command.
+`base status` says which name the base has, where its disk is, and whether this
+state directory owns it, in its `older name`, `disk in` and `owner` rows. Under `--json`,
+`naming` carries `canonical`, `legacy`, `from`, `disk`, `owner` and `instance`. ⛔ **Moving is your choice, and the tool never renames on its
+own.** To move, run `wsl-toolkit base remove --yes`, then `wsl-toolkit base ensure`.
+That deletes the base's disk, with its home, images and credentials. It builds a new
+base from the image, and the configuration's grants are kept. ⛔ Run the move from
+the state directory that owns the base.
+
+⚠ **No in-place rename is offered.** A copy by `wsl --export` and `wsl --import`
+doubles the disk while it runs. It also carries the marker of the old name, which
+every guard reads as a copied disk.
+
+⛔ **The instance names `base` and `jobs` are reserved.** A new instance under either
+name is refused, because its distribution would read as the default base. An instance
+that already exists under one stays reachable, so it can be removed. It is never
+built again.
 
 ---
 
@@ -461,7 +539,7 @@ wsl-toolkit --instance muse --config C:\path\to\project\wsl-toolkit.json base ex
 ⛔ **An instance and its configuration name one distribution.** A configuration
 whose `base.name` is not the selected instance's distribution is refused with exit
 2, whichever file the search resolved. `wsl-toolkit-muse` belongs to `--instance
-muse`, and `wsl-toolkit` to no instance at all. The message names the file, both
+muse`, and `wsl-toolkit-jobs` or `wsl-toolkit` to no instance at all. The message names the file, both
 distributions, and the `--instance` or `--config` that agrees. `wsl-toolkit
 config` still prints which file won and where it looked.
 
@@ -551,8 +629,8 @@ says.
 ### Grants that change live
 
 ```powershell
-wsl-toolkit --instance base base grant --source C:\path\to\project --mode rw
-wsl-toolkit --instance base base revoke --target /workspaces/project
+wsl-toolkit base grant --source C:\path\to\project --mode rw
+wsl-toolkit base revoke --target /workspaces/project
 ```
 
 `base grant` mounts one Windows directory at `/workspaces/` and its own name, or at
@@ -654,11 +732,11 @@ Anything that can reach the door could already run `wsl.exe` as this Windows
 account.
 
 ```powershell
-wsl-toolkit --instance base base attach
+wsl-toolkit base attach
 ```
 
 `base attach` prints the commands with the values filled in, and runs none of them:
-`herdr --remote wsl-toolkit-base --remote-keybindings server` from Windows, the
+`herdr --remote wsl-toolkit-jobs --remote-keybindings server` from Windows, the
 `base shell` line for a client inside, and a `base herdr` line for an agent.
 `--json` answers the same as a document, with exit 1 and the reason when this
 machine's half is missing. [`examples/common/herdr.md`](examples/common/herdr.md) is
@@ -839,15 +917,17 @@ the acceptance runner uses; herdr's own client does not read it.
 ### Agents from Windows
 
 ```powershell
-wsl-toolkit --instance base base grant --source C:\path\to\project --mode rw
+wsl-toolkit base grant --source C:\path\to\project --mode rw
 Set-Location C:\path\to\project
 muse --version
 ```
 
 ⭐ **An agent runs in the base, and Windows reaches it from the project it stands
-in.** The `muse` adapter writes `muse.exe` into `%USERPROFILE%\bin` for the instance
-`base`, and `muse-NAME.exe` for any other instance, as a copy of this executable.
-Started under that name it is `wsl-toolkit --instance base base agent muse -- ARGS`.
+in.** The `muse` adapter writes `muse.exe` into `%USERPROFILE%\bin` for the default
+base, and `muse-NAME.exe` for any other instance, as a copy of this executable.
+Started under that name it is `wsl-toolkit base agent muse -- ARGS`.
+⛔ `muse.exe` reached the instance `base` before `WSL-167`. It now reaches the default
+base, and neither `WSL_TOOLKIT_INSTANCE` nor a working tree's pointer moves it.
 It finds the grant that covers the working directory, runs `muse ARGS` as the base's
 account at the guest path that directory is granted at, through the framed channel
 `base exec` uses, and answers Muse's own exit code. Each argument is single-quoted
@@ -1136,8 +1216,8 @@ printed. Mirrored mode answers 127.0.0.1, and any other mode is refused.
 ## ⭐ The doors, attacked rather than read
 
 ```powershell
-wsl-toolkit --instance base base doors
-wsl-toolkit --instance base base doors --json
+wsl-toolkit base doors
+wsl-toolkit base doors --json
 ```
 
 `base doors` runs a probe inside the base, **as its unprivileged account**, that
@@ -1183,7 +1263,7 @@ about a base is made of what was tried rather than of settings.
 ### ⭐ A network namespace of the account's own
 
 ```powershell
-wsl-toolkit --instance base base exec --private-net -c 'curl -sS https://example.com'
+wsl-toolkit base exec --private-net -c 'curl -sS https://example.com'
 ```
 
 `--private-net` runs one payload in a network namespace the **account** makes, with
@@ -1328,7 +1408,8 @@ stops nothing, and the engine's own refusal follows as before.
 
 Removal is constrained, and every destructive path goes through the same gate.
 
-1. The base is a distribution named `wsl-toolkit` or `wsl-toolkit-INSTANCE`.
+1. The base is a distribution named `wsl-toolkit-jobs`, `wsl-toolkit` or
+   `wsl-toolkit-INSTANCE`.
    Removing one that was ever usable also demands the identity marker its
    provisioning wrote inside the guest.
 2. A throwaway distribution is this tool's only when its registered disk is

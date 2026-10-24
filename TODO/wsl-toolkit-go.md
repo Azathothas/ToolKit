@@ -15326,7 +15326,7 @@ Open.
 ## WSL-167. Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other
 
 **Source** the operator, 2026-10-21, ruling 32: "remove the `wsl-toolkit-base` and have a canonical name, so agents don't confuse `wsl-toolkit` & `wsl-toolkit-base` ever again"
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -15372,6 +15372,16 @@ A break by the register's definition if the default distribution's name changes
 for an existing caller. The approach keeps an existing base's recorded name, so it is
 additive unless the entry finds it cannot be.
 
+⛔ The name comes from `base.name` and WSL's registrations alone, so every state directory
+on a host with one base uses it. Only the state directory whose `base` folder holds the
+disk changes it: removal, rebuild, re-provision, `--repair`, the record and the marker. A
+scratch `--home` that removed or rebuilt the host's base before is now refused: a break
+row in `docs/consumers.md`. A process Windows redirects is refused the same set, its row
+beside it. The helper route carries the client's step and its ownership, so neither
+route lets a non-owner change the base. An old instance `jobs` registered as
+`wsl-toolkit-jobs` is refused at the ensure, not at the load, so status, logs and gc
+still answer.
+
 ## Prove
 
 ```bash
@@ -15384,7 +15394,22 @@ Exit 0, then `wsl -l -v` lists one base whose name says what it is, and the skil
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `feat/wsl-167-canonical-base`, for the next release.** Four repair rounds on a record-based rule did not converge, so the entry was rebuilt on a smaller rule. The name comes from the WSL registry alone: `base.name` wins, then the one registered default base, and a fresh host gets `wsl-toolkit-jobs`. Ownership decides only what changes the base: a state directory owns it when the registered disk is its own `base` folder, after links and case are folded. A non-owner may use the base and is refused every change, before anything happens. The instance names `base` and `jobs` are refused for new instances.
+
+```text
+default home:  base status   name wsl-toolkit, owner yes, this state directory           exit 0
+scratch home:  base status   name wsl-toolkit, owner no                                  exit 0
+               base remove --yes   wsl-toolkit was NOT removed ... run this from the owner   exit 2
+               wsl -l -v before and after: identical
+ruling 33, the same change:  --instance base base remove --yes
+  unregistering wsl-toolkit-base; removed the Host block; removed the herdr client     exit 0
+  wsl -l -v: podman-machine-default, wsl-toolkit
+afterwards:    --instance base base status   instance "base" is reserved ...           exit 2
+               ready --smoke on the jobs base                                           exit 0
+gate 24 of 24; every row red on Windows and in golang:1.25
+```
+
+⚠ A break by `docs/consumers.md`, recorded there: a caller naming `wsl-toolkit` on a host whose first base is built after the update, and a non-owner that removed, rebuilt or re-provisioned the base, are refused where 7.0.2 allowed them. The `wsl-` prefix on a new instance's name is `WSL-193`.
 
 ## WSL-168. `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus
 

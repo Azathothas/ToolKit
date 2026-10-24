@@ -89,6 +89,26 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⛔ What the canonical default base name breaks, and what a caller does
+
+`WSL-167`, ruling 33. Not released yet. A break by the table above, so the release
+that carries it is a major one. ⭐ A host that already has a default base keeps
+using it, under its old name, from every state directory.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a NEW default base is registered as `wsl-toolkit-jobs`. A base built before keeps its name, `wsl-toolkit` | names the distribution `wsl-toolkit` directly, on a host whose first default base is built after the update | reads the name from `base status --json`, or runs the tool's own commands |
+| removal, rebuild, re-provision in place and `--repair` are refused, exit 2, from a state directory that does not own the base, directly or through the helper. The refusal names the disk folder and the command to run from its owner | removed, rebuilt, re-provisioned or repaired the host's base from a scratch `WSL_TOOLKIT_HOME` or `--home`, which 7.0.2 allowed | runs the command the refusal names, from the state directory that owns the base |
+| the same set is refused to a process whose writes under `%LOCALAPPDATA%` Windows redirects into a package's copy, such as the Claude desktop app's shell. Its `base ensure` installs no adapter and removes none, and still exits 0 | removed, rebuilt, re-provisioned, repaired or stamped the base from inside the app, or relied on its `base ensure` installing a configured adapter, which 7.0.2 allowed | runs those from PowerShell or a terminal outside the app |
+
+⚠ **Refusals that break no working caller.** Both default names registered is refused
+by name, and `base.name` chooses. A new instance named `base` or `jobs` is refused. An
+existing one stays reachable. `muse.exe`, `pi.exe` and `omp.exe` reach the default base,
+not the instance `base`, which ruling 33 removes.
+
+⚠ **The register's rows list no call that names `wsl-toolkit` as a distribution or
+the instance `base`.** Their own trees were not read again for this change, so each row
+is read before the release.
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

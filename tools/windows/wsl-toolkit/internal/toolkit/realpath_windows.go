@@ -27,6 +27,15 @@ func RealPath(path string) (string, error) {
 	if p, err := filepath.EvalSymlinks(path); err == nil {
 		return p, nil
 	}
+	return finalPath(path)
+}
+
+// finalPath is what the filesystem says an open handle on path refers to: a
+// junction, a symbolic link, a mount point and a short name all resolved.
+//
+// ⚠ NOT AFTER EvalSymlinks. It answers a junction as the junction itself, with no
+// error, so the two spellings of one folder compared as two. WSL-167.
+func finalPath(path string) (string, error) {
 	p16, err := syscall.UTF16PtrFromString(path)
 	if err != nil {
 		return "", err

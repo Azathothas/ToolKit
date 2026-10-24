@@ -2,6 +2,465 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: status names the disk WSL registered, not this home's empty folder",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tst.DiskPath = filepath.Join(at, \"ext4.vhdx\")\n",
+      "replace": "",
+      "run": "TestAHomeThatDoesNotOwnTheBaseUsesItAndChangesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a removal refused by ownership exits 2",
+      "file": "cmd_base.go",
+      "find": "\tif errors.Is(err, toolkit.ErrNotOwner) {\n\t\treturn exitCannot\n\t}\n",
+      "replace": "",
+      "run": "TestARemovalRefusedByOwnershipExitsTwo",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stale default name off the helper's wire is checked again at the build",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\treturn NameFromRegistered\n}\n",
+      "replace": "\treturn NameFromConfig\n}\n",
+      "run": "TestAStaleNameOffTheHelpersWireIsRefusedAtTheBuild",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base.name the client's file set crosses the helper's wire as the configuration's",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif sent == NameFromConfig {\n\t\treturn NameFromConfig\n\t}\n",
+      "replace": "",
+      "run": "TestTheHelperReadsWhichStepChoseTheName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the client sends the step that chose its base name to the helper's ensure",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\"name_from\": c.cfg.nameFrom, \"guest\": helperGuest(c.cfg),",
+      "replace": "\"guest\": helperGuest(c.cfg),",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the client tells the helper it does not own the base",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\"name_from\": c.cfg.nameFrom, \"guest\": helperGuest(c.cfg),",
+      "replace": "\"name_from\": c.cfg.nameFrom,",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the owner is no helper guest",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif b.owns() {\n\t\treturn false\n\t}\n",
+      "replace": "",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a client with nothing registered is no helper guest",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\treturn b.redirected() != \"\"\n",
+      "replace": "\t\treturn true\n",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper's guest is refused every owner-only change",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif b.guest {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAHelperGuestChangesNothingOnlyTheOwnerMay",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper's base runs as the caller's guest",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tr.base.guest = guest\n",
+      "replace": "",
+      "run": "TestAHelpersRunnerForAGuestIsAGuests",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a runner cached for the owner is never lent to a guest",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tkey := fmt.Sprintf(\"%s|%s|%t\", effective.Fingerprint(), effective.nameFrom, guest)\n",
+      "replace": "\tkey := effective.Fingerprint()\n",
+      "run": "TestAHelpersRunnerForAGuestIsAGuests",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure refuses an instance's registered wsl-toolkit-jobs",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := b.assertCanonicalFree(); err != nil {\n",
+      "replace": "\tif err := b.assertCanonicalFree(); false && err != nil {\n",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: status names the instance holding the canonical name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\tn.Instance, _ = instanceOf(at)\n",
+      "replace": "",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor does not survey an instance's wsl-toolkit-jobs as the default base",
+      "file": "internal/toolkit/doctor_render.go",
+      "find": "\tf.BaseExists = false\n\tf.Held = held.Error()\n",
+      "replace": "\tf.Held = held.Error()\n",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: one registered default name is used from every home",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tcase legacy:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestOneRegisteredDefaultNameIsUsedFromEveryHome",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registered wsl-toolkit-jobs is the default from every home",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tcase canonical:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestOneRegisteredDefaultNameIsUsedFromEveryHome",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: both default names registered are refused by name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tcase legacy && canonical:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestBothDefaultNamesRegisteredAreRefusedByName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a host with neither default name builds wsl-toolkit-jobs",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t}\n\treturn DefaultBaseName, NameFromCanonical, nil\n}\n",
+      "replace": "\t}\n\treturn LegacyBaseName, NameFromCanonical, nil\n}\n",
+      "run": "TestAFreshHostBuildsWslToolkitJobs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an instance's wsl-toolkit-jobs is no default candidate",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif _, instance := instanceOf(at); instance {\n\t\treturn \"\", false\n\t}\n",
+      "replace": "",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registered jobs instance refuses the default's canonical name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif _, instance := instanceOf(at); !instance {\n",
+      "replace": "\tif _, instance := instanceOf(at); instance || !instance {\n",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner never removes the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif err := b.assertOwner(\"removed\", \"base remove --yes\"); err != nil {\n",
+      "replace": "\t\tif err := error(nil); err != nil {\n",
+      "run": "TestARemovalFromANonOwnerIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner never rebuilds the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif err := b.assertOwner(\"rebuilt\", \"base recreate\"); err != nil {\n",
+      "replace": "\t\tif err := error(nil); err != nil {\n",
+      "run": "TestARebuildFromANonOwnerIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner never re-provisions the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tif err := b.assertOwner(\"re-provisioned\", \"base ensure\"); err != nil {\n",
+      "replace": "\t\t\tif err := error(nil); err != nil {\n",
+      "run": "TestARepairInPlaceFromANonOwnerIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner is refused --repair up front",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif repair && st.Registered {\n",
+      "replace": "\tif false {\n",
+      "run": "TestRepairFromANonOwnerIsRefusedUpFront",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner never stamps the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif err := b.assertOwner(\"stamped\", \"base ensure\"); err != nil {\n",
+      "replace": "\t\tif err := error(nil); err != nil {\n",
+      "run": "TestAStampFromANonOwnerIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner writes no record",
+      "file": "internal/toolkit/base.go",
+      "find": "\t// that only used it claimed a base another home built. WSL-167.\n\tif !b.owns() {\n",
+      "replace": "\t// that only used it claimed a base another home built. WSL-167.\n\tif false {\n",
+      "run": "TestARecordIsWrittenOnlyByTheOwner",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner writes no record from the guest's marker",
+      "file": "internal/toolkit/base.go",
+      "find": "func (b *Base) writeRecordFrom(id Identity) error {\n\tif !b.owns() {\n",
+      "replace": "func (b *Base) writeRecordFrom(id Identity) error {\n\tif false {\n",
+      "run": "TestAHomeThatDoesNotOwnTheBaseUsesItAndChangesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner leaves the owner's adapter host halves",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\tif err := b.assertOwner(\"changed\", \"base ensure\"); err != nil {\n\t\tb.log(\"the adapters are left",
+      "replace": "\tif err := error(nil); err != nil {\n\t\tb.log(\"the adapters are left",
+      "run": "TestAHomeThatDoesNotOwnTheBaseUsesItAndChangesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the owner through a junction is the owner",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif samePlace(at, b.Dir()) {\n",
+      "replace": "\tif pathEqual(at, b.Dir()) {\n",
+      "run": "TestAnOwnerReachedThroughALinkIsTheOwner",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registration with no disk folder proves no owner",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif !registered || at == \"\" {\n",
+      "replace": "\tif !registered {\n",
+      "run": "TestAnUnprovenOwnerIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a registry that cannot be read proves no owner",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tat, registered, err := b.diskFolder()\n\tif err != nil {\n",
+      "replace": "\tat, registered, err := b.diskFolder()\n\tif err != nil && false {\n",
+      "run": "TestAnUnprovenOwnerIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a process Windows redirects is refused the changes",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\tif c.ThisProcess {\n",
+      "replace": "\t\tif false && c.ThisProcess {\n",
+      "run": "TestARedirectedProcessIsRefusedTheChanges",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a new build reads the default name again under the lock",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := b.assertNameStillDefault(rootfs); err != nil {\n",
+      "replace": "\tif err := error(nil); err != nil {\n",
+      "run": "TestABuildReadsTheDefaultNameAgain",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the leftover guard folds links",
+      "file": "internal/toolkit/base.go",
+      "find": "if at := cleanBasePath(registered[name]); at != \"\" && samePlace(at, dir) {\n",
+      "replace": "if at := cleanBasePath(registered[name]); at != \"\" && pathEqual(at, cleanBasePath(dir)) {\n",
+      "run": "TestTheLeftoverGuardSeesThroughALink",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status says whether this state directory owns the base",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\tn.Owner = b.owns()\n",
+      "replace": "\t\tn.Owner = false\n",
+      "run": "TestTheHomeHoldingTheDiskOwnsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status names the base under the older name and how to move",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tNaming: b.naming(),\n",
+      "replace": "\t\tNaming: nil,\n",
+      "run": "TestTheHomeHoldingTheDiskOwnsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refusal names an instance's command",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif instance, ok := instanceOf(at); ok {\n",
+      "replace": "\tif instance, ok := instanceOf(at); ok && false {\n",
+      "run": "TestTheOwnerAdviceNamesTheCommandToRun",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refusal names the default state directory as such",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "samePlace(home, holder) {\n",
+      "replace": "false && samePlace(home, holder) {\n",
+      "run": "TestTheOwnerAdviceNamesTheCommandToRun",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a moved disk is named as one no state directory owns",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif !strings.EqualFold(filepath.Base(at), \"base\") {\n\t\t// ⚠ MOVED",
+      "replace": "\tif false {\n\t\t// ⚠ MOVED",
+      "run": "TestTheOwnerAdviceNamesTheCommandToRun",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper reads which step chose a name off the wire",
+      "file": "internal/toolkit/helper.go",
+      "find": "\teffective.nameFrom = helperNameFrom(effective, nameFrom)\n",
+      "replace": "",
+      "run": "TestTheHelperReadsWhichStepChoseTheName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor reports an ambiguous default base",
+      "file": "internal/toolkit/doctor_render.go",
+      "find": "\tif !errors.Is(o.Unresolved, ErrDefaultBaseAmbiguous) {\n",
+      "replace": "\tif !errors.Is(o.Unresolved, ErrDefaultBaseAmbiguous) || true {\n",
+      "run": "TestDoctorReportsAnAmbiguousDefaultBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only cat naming the missing marker is an absence",
+      "file": "internal/toolkit/identity.go",
+      "find": "\tif code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {\n",
+      "replace": "\tif code != 0 || err != nil {\n",
+      "run": "TestAMarkerReadThatCouldNotAskIsNotAnAbsence",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter on wsl-toolkit-jobs names the tool with no --instance",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "  wsl-toolkit | wsl-toolkit-jobs) tool=wsl-toolkit ;;\n",
+      "replace": "",
+      "run": "TestAdaptersNameTheDefaultBaseWithNoInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: muse.exe reaches the default base, not the instance base",
+      "file": "internal/toolkit/agents.go",
+      "find": "const launcherBaseInstance = DefaultInstance\n",
+      "replace": "const launcherBaseInstance = \"base\"\n",
+      "run": "TestALauncherNameCarriesItsInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unsuffixed launcher is not moved by the environment or a pointer",
+      "file": "cmd_base_agent.go",
+      "find": "\tif instance == toolkit.DefaultInstance {\n\t\tos.Unsetenv(toolkit.InstanceEnv)\n\t} else if code",
+      "replace": "\tif false {\n\t} else if code",
+      "run": "TestAnUnsuffixedLauncherReachesTheDefaultBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a new default base is registered as wsl-toolkit-jobs",
+      "file": "internal/toolkit/catalog.go",
+      "find": "const DefaultBaseName = \"wsl-toolkit-jobs\"\n",
+      "replace": "const DefaultBaseName = \"wsl-toolkit\"\n",
+      "run": "TestAFreshDefaultBaseIsNamedJobs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a configuration may keep the default base on wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif SelectedInstance.Name == DefaultInstance && name == LegacyBaseName {\n",
+      "replace": "\tif false && SelectedInstance.Name == DefaultInstance && name == LegacyBaseName {\n",
+      "run": "TestBothDefaultNamesRegisteredAreRefusedByName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a new instance named base or jobs is refused",
+      "file": "internal/toolkit/instance.go",
+      "find": "\tif IsReservedInstance(asked) {\n",
+      "replace": "\tif false && IsReservedInstance(asked) {\n",
+      "run": "TestReservedInstancesAreRefusedForCreationNotUse",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an existing reserved instance stays reachable",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif _, statErr := os.Stat(home); statErr != nil {\n",
+      "replace": "\t\tif _, statErr := os.Stat(home); statErr != nil || true {\n",
+      "run": "TestReservedInstancesAreRefusedForCreationNotUse",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a reserved instance's recreate is refused before it removes the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif IsReservedInstance(SelectedInstance.Name) && (!st.Registered || force) {\n",
+      "replace": "\tif false && IsReservedInstance(SelectedInstance.Name) && (!st.Registered || force) {\n",
+      "run": "TestAReservedInstanceIsNeverRebuilt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a reserved instance is never imported",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif IsReservedInstance(SelectedInstance.Name) {\n\t\treturn reservedRefusal(SelectedInstance.Name)\n\t}\n",
+      "replace": "",
+      "run": "TestAReservedInstanceIsNeverRebuilt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grants write keeps another configuration's ledger rows",
       "file": "internal/toolkit/grants.sh",
       "find": "        if [ -n \"$kept_target\" ] && [ \"$kept_key\" != \"$TK_GRANT_OWNER\" ] &&\n",

@@ -99,7 +99,9 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-
 `wsl-toolkit-NAME` and that instance's state, and builds the base when there is
 none. With `WSL_TOOLKIT_HOME` at a scratch directory, nothing it writes lands in
 the operator's own state. `base remove --yes` under the same selection removes
-the base afterwards.
+the base afterwards. ⛔ Without `-Instance`, a scratch `WSL_TOOLKIT_HOME` still runs its jobs on the
+host's own default base. It does not own that base, so removing, rebuilding or
+repairing it is refused, naming the state directory that does.
 
 The runner inventories pre-existing distributions and checks the names again at
 teardown. Its throwaway-distribution cases import and remove their own

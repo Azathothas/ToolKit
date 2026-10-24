@@ -46,7 +46,7 @@ func TestASkillNamesOnlyCommandsThatExist(t *testing.T) {
 		},
 		{
 			name: "a global flag before the command is skipped",
-			body: skillHead + "```powershell\nwsl-toolkit --instance base base status\n```\n",
+			body: skillHead + "```powershell\nwsl-toolkit --instance podbox base status\n```\n",
 			want: 0,
 		},
 		{
@@ -197,7 +197,7 @@ func TestASkillPassesOnlyFlagsTheFormTakes(t *testing.T) {
 		want int
 	}{
 		{"a flag the form takes", "wsl-toolkit base status --probe", 0},
-		{"a flag behind a global flag", "wsl-toolkit --instance base base status --probe", 0},
+		{"a flag behind a global flag", "wsl-toolkit --instance podbox base status --probe", 0},
 		{"a flag with its value joined", "wsl-toolkit base status --probe=true", 0},
 		{"help on any form", "wsl-toolkit base status --help", 0},
 		{"a flag the form does not take", "wsl-toolkit base status --teleport", 1},

@@ -123,7 +123,7 @@ func skillFile(r *Result, path string, raw []byte, manual string, textTool map[s
 
 // skillCommands pulls the command and any subcommand out of one fenced line.
 //
-// ⚠ GLOBAL FLAGS ARE SKIPPED, NOT PARSED. `--instance base` sits between the
+// ⚠ GLOBAL FLAGS ARE SKIPPED, NOT PARSED. `--instance podbox` sits between the
 // program and its command, and a reader of this line wants the command.
 func skillCommands(line string) []string {
 	fields := strings.Fields(line)

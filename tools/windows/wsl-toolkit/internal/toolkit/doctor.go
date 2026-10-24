@@ -82,6 +82,9 @@ type DoctorOptions struct {
 	// group of tools rather than about the machine.
 	SkipWsl bool
 	Config  Config
+	// Unresolved is why the configuration could not be loaded, where Config is
+	// then the defaults. WSL-167.
+	Unresolved error
 }
 type DoctorReport struct {
 	Schema    string          `json:"schema"`
@@ -398,7 +401,7 @@ func Doctor(ctx context.Context, o DoctorOptions) (DoctorReport, error) {
 		}
 	}
 	if !o.SkipWsl && o.Group == "" {
-		facts := ReadWslFacts(ctx, o.Config)
+		facts := wslFactsFor(ctx, o)
 		report.Wsl = &facts
 		if runtime.GOOS == "windows" {
 			throwaway := ReadThrowawayFacts(ctx, o.Fast)

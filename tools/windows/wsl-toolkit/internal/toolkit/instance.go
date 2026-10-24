@@ -51,10 +51,9 @@ const InstanceAuto = "auto"
 
 // DefaultInstance is what a caller naming nothing gets.
 //
-// ⛔ THE EMPTY NAME, so the distribution is the bare `wsl-toolkit` and the state
-// directory is the bare one. Every existing caller, every manual line and every
-// acceptance case keeps working unchanged, which is the compatibility promise
-// this entry makes.
+// ⛔ THE EMPTY NAME, so the state directory is the bare one. Its distribution is
+// `wsl-toolkit-jobs` on a fresh host, and an existing base keeps the name it was
+// built under, `wsl-toolkit` included: defaultbase.go is that rule. WSL-167.
 const DefaultInstance = ""
 
 // maxAutoInstances bounds the search for a free `wsl-toolkit-<N>`.
@@ -76,11 +75,15 @@ type Instance struct {
 }
 
 // InstanceDistro is the distribution name for an instance suffix.
+//
+// ⚠ FOR THE DEFAULT IT IS THE CANONICAL NAME, the one a NEW default base takes.
+// An existing default base may run under `wsl-toolkit`, and the configuration
+// says which. WSL-167.
 func InstanceDistro(name string) string {
 	if name == DefaultInstance {
 		return DefaultBaseName
 	}
-	return DefaultBaseName + "-" + name
+	return OwnedPrefix + "-" + name
 }
 
 // ValidateInstanceName refuses a name that could not be both a distribution
@@ -119,12 +122,20 @@ func ResolveInstance(ctx context.Context, asked string) (Instance, error) {
 	if err := ValidateInstanceName(asked); err != nil {
 		return inst, err
 	}
-	inst.Name = asked
-	inst.Distro = InstanceDistro(asked)
 	home, err := instanceHome(asked)
 	if err != nil {
 		return inst, err
 	}
+	// ⛔ A RESERVED NAME IS REFUSED FOR A NEW INSTANCE AND NOT FOR AN EXISTING ONE.
+	// An instance made before the reservation has to stay reachable, or nothing
+	// could remove it. Its state directory is the proof it exists. WSL-167.
+	if IsReservedInstance(asked) {
+		if _, statErr := os.Stat(home); statErr != nil {
+			return inst, reservedRefusal(asked)
+		}
+	}
+	inst.Name = asked
+	inst.Distro = InstanceDistro(asked)
 	inst.Home = home
 	return inst, nil
 }

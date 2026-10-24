@@ -121,6 +121,9 @@ type BaseState struct {
 	// base's half and this machine's. ⚠ Nil without --probe, which is not the same
 	// as none configured: Access.Adapters says what is configured.
 	Adapters []AdapterState `json:"adapters,omitempty"`
+	// Naming says, for the default instance, which name the base runs under, why,
+	// and how to move to the canonical one. ⚠ Nil for a named instance. WSL-167.
+	Naming *BaseNaming `json:"naming,omitempty"`
 }
 
 // BaseAccessState is what the base is configured to reach on Windows.
@@ -164,6 +167,10 @@ type Base struct {
 	// disks answers WSL's registrations, each distribution's name and the
 	// directory of its disk. Nil reads the registry. WSL-177.
 	disks func() (map[string]string, error)
+	// guest says the caller that sent this through the helper does not own the
+	// base, so nothing owner-only runs for it. ⛔ Set by the helper from the
+	// request, and it only ever narrows what runs. WSL-167.
+	guest bool
 }
 
 // NewBase binds the lifecycle to this host.
@@ -234,6 +241,7 @@ func (b *Base) configuredState() (BaseState, error) {
 			PasswordlessSudo: b.cfg.Base.PasswordlessSudo, Toolset: toolset,
 			SharedTmpfs: sharedTmpfs, Mounts: mounts,
 		},
+		Naming: b.naming(),
 	}
 	for _, a := range b.cfg.Base.Adapters {
 		st.Access.Adapters = append(st.Access.Adapters, a.Name)
@@ -272,6 +280,12 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		}
 	}
 	st.DiskPath = filepath.Join(b.Dir(), "ext4.vhdx")
+	// ⛔ THE DISK WSL NAMES, NOT THIS HOME'S FOLDER. A state directory that uses a
+	// base it does not own reported a disk in its own empty folder as not measured.
+	// WSL-167.
+	if at, registered, err := b.diskFolder(); err == nil && registered && at != "" {
+		st.DiskPath = filepath.Join(at, "ext4.vhdx")
+	}
 	if size, ok := FileSize(st.DiskPath); ok {
 		st.DiskBytes, st.DiskKnown = size, true
 		if r, ok := diskSparseFacts(&st); ok {
@@ -467,6 +481,11 @@ func RecordedBaseImage(cfg Config) string {
 }
 
 func (b *Base) writeRecord() error {
+	// ⛔ ONLY BY THE STATE DIRECTORY THAT OWNS THE BASE. A record written by a home
+	// that only used it claimed a base another home built. WSL-167.
+	if !b.owns() {
+		return nil
+	}
 	if _, err := EnsureHome(); err != nil {
 		return err
 	}
@@ -586,10 +605,36 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 			force = true
 		}
 	}
+	// ⛔ A RESERVED INSTANCE IS USED AND REMOVED, AND NEVER BUILT. The refusal comes
+	// before a rebuild removes anything, so a recreate cannot cost the base it then
+	// may not build again. WSL-167.
+	if IsReservedInstance(SelectedInstance.Name) && (!st.Registered || force) {
+		return st, reservedRefusal(SelectedInstance.Name)
+	}
+	// ⛔ THE DEFAULT NEVER BUILDS OR TAKES OVER AN INSTANCE'S `wsl-toolkit-jobs`. An
+	// instance `jobs` made before the reservation is registered under the default's
+	// canonical name. Refused here, where an ensure would use or build it, and not
+	// where the configuration loads, so status, logs and gc still answer. WSL-167.
+	if err := b.assertCanonicalFree(); err != nil {
+		return st, err
+	}
+	// ⛔ --repair DELETES THE ENGINE'S RUN STATE AND MAY RE-PROVISION, so only the
+	// owner asks for it, healthy base or not. Refused before anything is read from
+	// the guest. WSL-167.
+	if repair && st.Registered {
+		if err := b.assertOwner("repaired", "base ensure --repair"); err != nil {
+			return st, err
+		}
+	}
 	// rootfs is the archive a rebuild exported before it removed the base it
 	// replaces, and empty where nothing was removed. WSL-169.
 	var rootfs string
 	if st.Registered && force {
+		// ⛔ ONLY THE OWNER REBUILDS. Before prepareRebuild, so nothing is
+		// exported, unregistered or imported. WSL-167.
+		if err := b.assertOwner("rebuilt", "base recreate"); err != nil {
+			return st, err
+		}
 		if rootfs, err = b.prepareRebuild(ctx); err != nil {
 			return st, err
 		}
@@ -696,6 +741,13 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 				for _, h := range held {
 					b.log("restarting over another configuration's grant, as asked: " + h.Target + ", granted by " + h.File)
 				}
+			}
+			// ⛔ ONLY THE OWNER RE-PROVISIONS. It writes the guest's settings from
+			// this configuration and restarts the base under every job. After the
+			// refusals above, which change nothing, so their diagnoses still show.
+			// WSL-167.
+			if err := b.assertOwner("re-provisioned", "base ensure"); err != nil {
+				return st, err
 			}
 			b.log("re-provisioning in place")
 		}
@@ -969,6 +1021,12 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 	case errors.Is(err, ErrNoIdentity):
 		// The upgrade path, and it is part of this entry rather than a follow-up:
 		// a base built before markers existed has none.
+		// ⛔ ONLY THE OWNER STAMPS. A home that only used the base stamped it from
+		// a record of its own, and the owner then took that marker as the truth.
+		// WSL-167.
+		if err := b.assertOwner("stamped", "base ensure"); err != nil {
+			return err
+		}
 		rec, recErr := b.readRecord()
 		if recErr != nil {
 			return fmt.Errorf("%s is registered, carries no wsl-toolkit identity marker and has no record here either, "+
@@ -991,7 +1049,12 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 
 // writeRecordFrom writes the host record from what the GUEST said, so the two
 // cannot drift apart by the record following the configuration.
+//
+// ⛔ AND ONLY BY THE STATE DIRECTORY THAT OWNS THE BASE. WSL-167.
 func (b *Base) writeRecordFrom(id Identity) error {
+	if !b.owns() {
+		return nil
+	}
 	if _, err := EnsureHome(); err != nil {
 		return err
 	}
@@ -1117,6 +1180,14 @@ func (b *Base) dropRootfs(rootfs string) {
 // exported before it removed anything; empty means nothing was removed, and the
 // archive is made here.
 func (b *Base) create(ctx context.Context, rootfs string) error {
+	// ⛔ A RESERVED INSTANCE IS NEVER BUILT. One made before the reservation stays
+	// reachable so it can be removed, and building it again is creation. WSL-167.
+	if IsReservedInstance(SelectedInstance.Name) {
+		return reservedRefusal(SelectedInstance.Name)
+	}
+	if err := b.assertNameStillDefault(rootfs); err != nil {
+		return err
+	}
 	// ⭐ THE FIRST THING THAT WRITES, so this is where the state directory is
 	// brought into existence. Everything above it reads.
 	if _, err := EnsureHome(); err != nil {
@@ -2021,6 +2092,14 @@ func (b *Base) remove(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	// ⛔ ONLY THE OWNER REMOVES, and nothing below runs for anyone else: no
+	// unregister, no deletion, no SSH Host block dropped. ⚠ Not for this process's
+	// own import, which it is clearing up. WSL-167.
+	if exists && !b.imported {
+		if err := b.assertOwner("removed", "base remove --yes"); err != nil {
+			return err
+		}
+	}
 	if exists {
 		b.log("unregistering " + b.cfg.Base.Name)
 		// ⚠ The marker is DEMANDED unless this tool is clearing up a build of
@@ -2077,11 +2156,7 @@ func (b *Base) remove(ctx context.Context) error {
 // ⛔ AN UNREADABLE REGISTRY IS A REFUSAL, NOT AN EMPTY ONE. Reading it as nothing
 // registered would delete the disk the check exists to protect.
 func (b *Base) assertNoDiskAt(dir string) error {
-	disks := b.disks
-	if disks == nil {
-		disks = registeredDisks
-	}
-	registered, err := disks()
+	registered, err := b.registrations()
 	if err != nil {
 		return fmt.Errorf("%s was NOT deleted: WSL's registrations could not be read, so nothing proves no distribution keeps its disk there: %w", dir, err)
 	}
@@ -2091,7 +2166,8 @@ func (b *Base) assertNoDiskAt(dir string) error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if at := cleanBasePath(registered[name]); at != "" && pathEqual(at, cleanBasePath(dir)) {
+		// ⚠ FOLDED, so a disk reached through a junction is still found. WSL-167.
+		if at := cleanBasePath(registered[name]); at != "" && samePlace(at, dir) {
 			return fmt.Errorf("%s was NOT deleted: WSL has %s registered with its disk there, and the configuration names %s. "+
 				"If %s is this base under another name, set base.name to it",
 				dir, name, b.cfg.Base.Name, name)

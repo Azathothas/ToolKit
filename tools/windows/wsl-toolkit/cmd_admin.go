@@ -30,6 +30,9 @@ func cmdDoctor(ctx context.Context, args []string) (int, error) {
 		// out why something is wrong.
 		logf("  the configuration could not be read, so the WSL section uses the defaults: %s", cfgErr.Error())
 		opts.Config = toolkit.DefaultConfig()
+		// ⛔ AN AMBIGUOUS DEFAULT BASE IS REPORTED AS ONE, with both names and
+		// their disks, not surveyed under the canonical name alone. WSL-167.
+		opts.Unresolved = cfgErr
 	}
 	report, err := toolkit.Doctor(ctx, opts)
 	if err != nil {

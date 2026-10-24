@@ -1,6 +1,6 @@
 ---
 name: wsl-toolkit
-description: "Build and operate a named Linux base on Windows with wsl-toolkit. A base is one WSL distribution the tool owns, with rootless Podman, and it can have systemd and a toolset. Windows directories are granted to it one at a time. Use when the user asks to make, inspect, repair, grant a directory to, or attack a wsl-toolkit base. Use it to run a job or a base command that outlives the call, then follow, wait on or stop it. Use it when the user names wsl-toolkit, a wsl-toolkit instance, or wsl-toolkit-base. Do not use for ordinary WSL work that does not involve this tool."
+description: "Build and operate a named Linux base on Windows with wsl-toolkit. A base is one WSL distribution the tool owns, with rootless Podman, and it can have systemd and a toolset. Windows directories are granted to it one at a time. Use when the user asks to make, inspect, repair, grant a directory to, or attack a wsl-toolkit base. Use it to run a job or a base command that outlives the call, then follow, wait on or stop it. Use it when the user names wsl-toolkit, a wsl-toolkit instance, or the default base wsl-toolkit-jobs. Do not use for ordinary WSL work that does not involve this tool."
 ---
 
 # wsl-toolkit
@@ -81,11 +81,16 @@ after the command.
 
 ## 4. The shape of a base
 
-⭐ **`base` in every example here is an instance name.** `--instance NAME` acts on
-the distribution `wsl-toolkit-NAME`, and `doctor --json` lists every distribution in
-`host.wsl_distros`. With no `--instance`, a command acts on the default base,
-`wsl-toolkit`. ⛔ Where the instance does not exist, `base ensure` builds a new one,
-so use the name the user has.
+⭐ **Every example here acts on the default base, so none passes `--instance`.** The
+default base is the agents' base too. Its canonical name is `wsl-toolkit-jobs`. ⚠ An
+older default base may still be named `wsl-toolkit`, and it keeps working under that
+name. `base status` says which name it has, and how to move.
+
+`--instance NAME` acts on another base, the distribution `wsl-toolkit-NAME`, with its
+own state. `doctor --json` lists every distribution in `host.wsl_distros`. ⛔ Where the
+instance does not exist, `base ensure` builds a new one, so use the name the user has.
+⛔ **`base` and `jobs` are reserved instance names.** A new instance under either is
+refused.
 
 One base is one JSON configuration. When the instance's own `config.json` exists in
 its state directory, `--instance NAME` reads it from any directory. Otherwise the
@@ -93,7 +98,7 @@ search starts at `wsl-toolkit.json` in the working directory and above it. `conf
 names the file that won:
 
 ```powershell
-wsl-toolkit --instance base config
+wsl-toolkit config
 ```
 
 That prints the file in effect, the places it searched, and what it resolves to.
@@ -116,12 +121,12 @@ Start there whenever something is unexpected.
 | `exclude` | globs a workspace copy leaves out, for every job of the project |
 | `gitignore` | `true` leaves out of a workspace copy what git ignores |
 
-To edit it, write the effective configuration to the instance's own `config.json`,
+To edit it, write the effective configuration to the state directory's own `config.json`,
 change that file, and validate it:
 
 ```powershell
-wsl-toolkit --instance base config --write
-wsl-toolkit --instance base config validate
+wsl-toolkit config --write
+wsl-toolkit config validate
 ```
 
 ---
@@ -129,7 +134,7 @@ wsl-toolkit --instance base config validate
 ## 5. The commands that do the work
 
 ```powershell
-wsl-toolkit --instance base base ensure
+wsl-toolkit base ensure
 ```
 
 Builds, provisions, installs every adapter, and prints the state. A second run
@@ -140,7 +145,7 @@ user before you run it on a base that holds work. ⚠ Building a base needs a co
 engine on Windows: podman, docker or `wslc`, tried in that order.
 
 ```powershell
-wsl-toolkit --instance base base status --probe
+wsl-toolkit base status --probe
 ```
 
 ⛔ **`registered` is not `usable`.** Without `--probe` this reads the configuration.
@@ -151,7 +156,7 @@ Exit 0 means healthy; exit 1 lists each problem, and each problem names its fix.
 on, `base grant` is refused.
 
 ```powershell
-wsl-toolkit --instance base base grant --source . --mode rw
+wsl-toolkit base grant --source . --mode rw
 ```
 
 Grants **one** Windows directory, live, under `/workspaces`. Use `--mode ro` when the
@@ -162,7 +167,7 @@ working. Do not widen a grant to make a step pass.** Report it instead.
 To take one away:
 
 ```powershell
-wsl-toolkit --instance base base revoke --target /workspaces/NAME
+wsl-toolkit base revoke --target /workspaces/NAME
 ```
 
 ⛔ **`revoke` takes `--target` alone**, the path the base sees it at, not the Windows
@@ -170,9 +175,9 @@ directory. The mount goes at once and an empty directory is left behind, reachin
 nothing.
 
 ```powershell
-wsl-toolkit --instance base base exec -c 'COMMAND'
-wsl-toolkit --instance base base exec --script LOCAL-FILE.sh
-wsl-toolkit --instance base base shell
+wsl-toolkit base exec -c 'COMMAND'
+wsl-toolkit base exec --script LOCAL-FILE.sh
+wsl-toolkit base shell
 ```
 
 `base exec` runs one command as the account and returns its exit code. `--script`
@@ -185,11 +190,11 @@ person, and an agent uses `base exec`.
 sees, ask one, where ACCOUNT is `base.user`:
 
 ```powershell
-wsl-toolkit --instance base base exec --root -c "runuser -l ACCOUNT -c 'COMMAND'"
+wsl-toolkit base exec --root -c "runuser -l ACCOUNT -c 'COMMAND'"
 ```
 
 ```powershell
-wsl-toolkit --instance base base doors
+wsl-toolkit base doors
 ```
 
 Attacks the base from the unprivileged account and reports every door it finds open.
@@ -199,7 +204,7 @@ that could not run. ⛔ **Run this rather than believing any page about what a b
 cannot reach.**
 
 ```powershell
-wsl-toolkit --instance base base reclaim
+wsl-toolkit base reclaim
 ```
 
 Makes the base's disk sparse, then trims what the guest freed. ⚠ WSL makes a disk
@@ -214,10 +219,10 @@ exits 1 and names `wsl --shutdown`, which is the user's step.
 and any later call reaches it by its id:
 
 ```powershell
-$id = wsl-toolkit --instance base run --detach --image alpine --workspace . -c 'make test'
-wsl-toolkit --instance base logs $id --follow
-wsl-toolkit --instance base wait $id --timeout 30m
-wsl-toolkit --instance base stop $id
+$id = wsl-toolkit run --detach --image alpine --workspace . -c 'make test'
+wsl-toolkit logs $id --follow
+wsl-toolkit wait $id --timeout 30m
+wsl-toolkit stop $id
 ```
 
 `--workspace` puts a copy of the directory in the container at `/work`. Nothing comes
@@ -230,7 +235,7 @@ code alone. When `wait --timeout` runs out, it answers 124 and the job keeps run
 its own code.
 
 ```powershell
-$sid = wsl-toolkit --instance base base exec --detach --timeout 0 -c './serve.sh'
+$sid = wsl-toolkit base exec --detach --timeout 0 -c './serve.sh'
 ```
 
 `base exec --detach` runs the command in the base with no client attached, and
@@ -239,7 +244,7 @@ answers with a session id that `logs`, `wait`, `stop` and `inspect` take. It hol
 ⛔ **Do not wrap a long command in `nohup` or `setsid` inside `base exec -c`**: nothing
 then keeps its output or its exit code, and nothing can stop it by id.
 
-`wsl-toolkit --instance base logs` lists every job and session of that instance with
+`wsl-toolkit logs` lists every job and session of that instance with
 its state: `running`, `ended`, `detached` or `no owner`. With no `--instance`, it
 lists the default base's jobs. A job gets a device node with `--device /dev/kvm`, and
 a file from Windows at `/in/NAME` with `--input NAME=FILE`.
@@ -281,7 +286,7 @@ It is refused through the helper.
 the job:
 
 ```powershell
-wsl-toolkit --instance base logs JOB-ID
+wsl-toolkit logs JOB-ID
 ```
 
 ---

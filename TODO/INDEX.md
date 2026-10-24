@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 249  open 62  blocked 5  done 182
+total 249  open 61  blocked 5  done 183
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
-| P1 | 7 | 0 | 88 | 95 |
+| P1 | 6 | 0 | 89 | 95 |
 | P2 | 40 | 2 | 74 | 116 |
 | P3 | 15 | 3 | 12 | 30 |
-| **all** | **62** | **5** | **182** | **249** |
+| **all** | **61** | **5** | **183** | **249** |
 
 ---
 
@@ -259,7 +259,7 @@ total 249  open 62  blocked 5  done 182
 | WSL-164 | P2 | S | open | `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-165 | P2 | S | done | `text-tool eol` creates an empty file at a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-166 | P3 | S | open | `text-tool eol` answers 0 for a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-167 | P1 | M | open | Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-167 | P1 | M | done | Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-168 | P0 | S | done | `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-169 | P1 | S | done | `base ensure --force` unregisters a working base before it knows it can build one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-170 | P1 | M | open | A job that runs podman inside its container can stop the whole base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

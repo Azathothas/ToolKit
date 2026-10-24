@@ -2,6 +2,7 @@ package toolkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"runtime"
@@ -41,6 +42,14 @@ type WslFacts struct {
 	BaseExists bool     `json:"base_exists"`
 	Helper     string   `json:"helper"`
 	Advice     []string `json:"advice,omitempty"`
+	// Ambiguous is the refusal that left the default base with no one name, and
+	// Candidates each default name registered on this host with its disk folder.
+	// WSL-167.
+	Ambiguous  string            `json:"ambiguous,omitempty"`
+	Candidates map[string]string `json:"candidates,omitempty"`
+	// Held is why the registered `wsl-toolkit-jobs` is an instance's and not the
+	// default base. WSL-167.
+	Held string `json:"held,omitempty"`
 }
 
 // ReadWslFacts asks, without changing anything.
@@ -80,6 +89,78 @@ func ReadWslFacts(ctx context.Context, cfg Config) WslFacts {
 		f.Helper = ep.Address
 	}
 	return f
+}
+
+// wslFactsFor is the WSL section for a survey, with the default base's ambiguity
+// where the configuration could not resolve one name.
+//
+// ⛔ NOT THE CANONICAL NAME ALONE. A refused resolution fell back to the defaults,
+// and the survey reported `wsl-toolkit-jobs` as not registered, with `base ensure`
+// as the advice, on a host whose bases are refused by name. WSL-167.
+func wslFactsFor(ctx context.Context, o DoctorOptions) WslFacts {
+	f := ReadWslFacts(ctx, o.Config)
+	if !errors.Is(o.Unresolved, ErrDefaultBaseAmbiguous) {
+		return heldByInstance(f)
+	}
+	f.BaseName, f.BaseExists, f.Ambiguous = "", false, o.Unresolved.Error()
+	advice := []string{"the default base has no one name, so none is surveyed: " + o.Unresolved.Error()}
+	for _, a := range f.Advice {
+		if !strings.HasPrefix(a, "the base distribution is not registered") {
+			advice = append(advice, a)
+		}
+	}
+	f.Advice = advice
+	if disks, err := readRegistrations(); err == nil {
+		for _, name := range []string{LegacyBaseName, DefaultBaseName} {
+			if at, ok := candidateAt(disks, name); ok {
+				if f.Candidates == nil {
+					f.Candidates = map[string]string{}
+				}
+				f.Candidates[name] = diskWords(at)
+			}
+		}
+	}
+	return f
+}
+
+// heldByInstance is the WSL section where the default's canonical name is an
+// instance's registration.
+//
+// ⛔ AN OLD INSTANCE `jobs` IS NOT THE DEFAULT BASE. The survey reported its
+// distribution as the default base, registered, on a host that has none. WSL-167.
+func heldByInstance(f WslFacts) WslFacts {
+	if !f.BaseExists || !isDefaultSelection() {
+		return f
+	}
+	disks, err := readRegistrations()
+	if err != nil {
+		return f
+	}
+	held := canonicalHeldIn(disks, f.BaseName)
+	if held == nil {
+		return f
+	}
+	f.BaseExists = false
+	f.Held = held.Error()
+	f.Advice = append([]string{"the default base is not registered, and the instance's is not it: " + held.Error()}, f.Advice...)
+	return f
+}
+
+// ambiguousLine is the base distro row for a default base with no one name.
+func ambiguousLine(candidates map[string]string) string {
+	if len(candidates) == 0 {
+		return "ambiguous, see the advice"
+	}
+	names := make([]string, 0, len(candidates))
+	for name := range candidates {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, name := range names {
+		parts = append(parts, name+" (disk in "+candidates[name]+")")
+	}
+	return "ambiguous: " + strings.Join(parts, ", ")
 }
 
 // WriteDoctorText renders the survey for a person.
@@ -137,7 +218,11 @@ func WriteDoctorText(w io.Writer, r DoctorReport) error {
 				return err
 			}
 		}
-		if err := p("  %-14s %s (%s)\n", "base distro", r.Wsl.BaseName, registeredWord(r.Wsl.BaseExists)); err != nil {
+		if r.Wsl.Ambiguous != "" {
+			if err := p("  %-14s %s\n", "base distro", ambiguousLine(r.Wsl.Candidates)); err != nil {
+				return err
+			}
+		} else if err := p("  %-14s %s (%s)\n", "base distro", r.Wsl.BaseName, registeredWord(r.Wsl.BaseExists)); err != nil {
 			return err
 		}
 		if err := p("  %-14s %s\n", "local helper", r.Wsl.Helper); err != nil {

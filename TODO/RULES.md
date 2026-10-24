@@ -194,7 +194,10 @@ stays a generic fallback. `WSL-76` quotes the operator.
 **2.** **2026-09-14: one base for every agent.** `wsl-toolkit-base`, the instance
 `base`, configured under the operator's account, with the Linux account
 `herdr`, passwordless sudo and no standing grant. Test grants name directories
-under this repository's `.tmp`. In `WSL-75`.
+under this repository's `.tmp`. In `WSL-75`. ⚠ **Amended by rulings 32 and 33,
+built in `WSL-167`:** the agents' base is the default base, with no `--instance`. A
+new one is named `wsl-toolkit-jobs`, and an older one keeps `wsl-toolkit`. The
+instance names `base` and `jobs` are reserved for new instances.
 
 **3.** **2026-09-14, the entries' decisions:** `WSL-75` live grants of a project or of
 a parent directory; `WSL-76` OpenSSH through `wsl.exe` with nothing listening

@@ -17,7 +17,7 @@ refuses the rewrite and names it.
 
 | part | what it is |
 | --- | --- |
-| the base | one Arch distribution, `wsl-toolkit-base`, with systemd and rootless Podman |
+| the base | the default base, one Arch distribution named `wsl-toolkit-jobs`, with systemd and rootless Podman |
 | the grant | one Windows directory the agents can read and write. Nothing else |
 | herdr | the multiplexer. One server in the base, and two ways in |
 | muse, pi, omp | three agents, each on `PATH`, each known to herdr |
@@ -52,13 +52,25 @@ wsl-toolkit man --no-pager
 
 ## 2. Write the configuration
 
-[`wsl-toolkit-base.json`](wsl-toolkit-base.json) is the profile. Copy it to the
-instance's own state directory:
+[`wsl-toolkit-base.json`](wsl-toolkit-base.json) is the profile. It names no
+distribution. Copy it to the state directory of the default base:
 
 ```powershell
-New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\wsl-toolkit\instances\base" | Out-Null
-Copy-Item wsl-toolkit-base.json "$env:LOCALAPPDATA\wsl-toolkit\instances\base\config.json"
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\wsl-toolkit" | Out-Null
+Copy-Item wsl-toolkit-base.json "$env:LOCALAPPDATA\wsl-toolkit\config.json"
 ```
+
+⭐ **Every command below acts on the default base, so none passes `--instance`.** A new
+default base is named `wsl-toolkit-jobs`. An older one may still be named
+`wsl-toolkit`, and it keeps working under that name. `base status` says which name
+yours has.
+
+⚠ **An existing default base built for another account needs a rebuild.** The profile
+names the account `herdr`. `base status` names the difference and the `base recreate`
+that settles it.
+
+⛔ **Do not make an instance called `base` for this.** That name and `jobs` are
+reserved, and the manual says why.
 
 ⛔ **Do not point `--config` at the file in this directory.** `base grant` writes the
 configuration in effect. It would edit the example.
@@ -66,7 +78,7 @@ configuration in effect. It would edit the example.
 Read back the configuration in effect:
 
 ```powershell
-wsl-toolkit --instance base config
+wsl-toolkit config
 ```
 
 ---
@@ -74,7 +86,7 @@ wsl-toolkit --instance base config
 ## 3. Build the base
 
 ```powershell
-wsl-toolkit --instance base base ensure
+wsl-toolkit base ensure
 ```
 
 This builds the distribution, provisions it, and installs the four adapters. A second
@@ -94,14 +106,14 @@ The last lines print the state. Every adapter must read `healthy`.
 Go to the checkout you want an agent to work in. Grant it:
 
 ```powershell
-wsl-toolkit --instance base base grant --source . --mode rw
+wsl-toolkit base grant --source . --mode rw
 ```
 
 The grant is live. No restart is needed. The base sees the directory under
 `/workspaces`:
 
 ```powershell
-wsl-toolkit --instance base base exec -c 'ls /workspaces'
+wsl-toolkit base exec -c 'ls /workspaces'
 ```
 
 ⛔ **A directory no grant covers is refused.** The refusal prints the `base grant` line
@@ -112,7 +124,7 @@ that would cover it. That is the profile working.
 Take a grant away by the path the base sees it at:
 
 ```powershell
-wsl-toolkit --instance base base revoke --target /workspaces/demoproj
+wsl-toolkit base revoke --target /workspaces/demoproj
 ```
 
 ⛔ **`base revoke` takes `--target` alone.** A grant is named by where the base sees
@@ -128,7 +140,7 @@ behind and reaches nothing.
 ### Muse Code
 
 ```powershell
-wsl-toolkit --instance base base shell
+wsl-toolkit base shell
 ```
 
 Then, in the base:
@@ -226,7 +238,7 @@ It names the account and the quota left.
 ## 6. Prove the base
 
 ```powershell
-wsl-toolkit --instance base base status --probe --json
+wsl-toolkit base status --probe --json
 ```
 
 ⛔ **`registered` is not `usable`.** `--probe` runs a container and reads the adapters
@@ -242,7 +254,7 @@ Exit 0 means every adapter is healthy. Exit 1 lists each problem.
 ### From Windows
 
 ```powershell
-wsl-toolkit --instance base base attach
+wsl-toolkit base attach
 ```
 
 `base attach` prints the exact line for this machine. Run that line. Nothing needs
@@ -256,7 +268,7 @@ To leave, press the prefix, `ctrl+b`, then `q`. Every pane and agent keeps runni
 ### From inside the base
 
 ```powershell
-wsl-toolkit --instance base base shell
+wsl-toolkit base shell
 ```
 
 Then run `herdr`.
@@ -273,9 +285,9 @@ Nothing has to be open. Make a workspace, read the pane id back, and start an ag
 it:
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
-wsl-toolkit --instance base base herdr -- agent start muse --kind muse --pane $pane --timeout 120000
+wsl-toolkit base herdr -- agent start muse --kind muse --pane $pane --timeout 120000
 ```
 
 ⚠ **Read the pane id from the command that made it.** The base may already hold
@@ -287,8 +299,8 @@ of the same kind needs another name.
 Send it a turn, and read the answer:
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent prompt work "Answer with only the number of files git tracks here."
-wsl-toolkit --instance base base herdr -- agent read work --lines 40
+wsl-toolkit base herdr -- agent prompt work "Answer with only the number of files git tracks here."
+wsl-toolkit base herdr -- agent read work --lines 40
 ```
 
 Use `--kind pi` or `--kind omp` for the other two.
@@ -323,7 +335,7 @@ The profile sets both for all three agents:
 **To change either, edit the configuration and run `base ensure` again.**
 
 ```powershell
-wsl-toolkit --instance base base ensure
+wsl-toolkit base ensure
 ```
 
 ⭐ `effort` is `max` when a configuration names none.
@@ -356,7 +368,7 @@ half.** It adds the languages and CodeGraph into the account's home, which is wh
 persists with the base:
 
 ```powershell
-wsl-toolkit --instance base base bootstrap -- --toolset agent
+wsl-toolkit base bootstrap -- --toolset agent
 ```
 
 ⭐ **Nothing is copied and nothing is fetched.** The executable carries the bootstrap.
@@ -390,7 +402,7 @@ toolset name resolves to.
 ⭐ **Attack the base rather than trusting this page:**
 
 ```powershell
-wsl-toolkit --instance base base doors
+wsl-toolkit base doors
 ```
 
 It runs 30 attacks as the unprivileged account and reports every door it found open.

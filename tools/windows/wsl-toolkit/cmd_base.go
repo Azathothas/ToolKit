@@ -127,6 +127,11 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			if err != nil {
 				return exitCannot, err
 			}
+			// ⛔ OWNERSHIP IS THIS STATE DIRECTORY'S, not the helper's, whose home
+			// may be the owner's. WSL-167.
+			if st.Naming != nil {
+				st.Naming.Owner = toolkit.OwnsBase(cfg)
+			}
 			return verdictFor(st), renderBase(st, flags.asJSON, flags.probe)
 		case "ensure", "recreate":
 			st, err := c.BaseEnsureWith(ctx, sub == "recreate", flags.repair)
@@ -197,7 +202,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			}
 		}
 		if err := base.Remove(ctx); err != nil {
-			return exitFailed, err
+			return removalExit(err), err
 		}
 		logf("  removed %s", cfg.Base.Name)
 		return exitOK, nil
@@ -373,6 +378,28 @@ func renderBase(st toolkit.BaseState, asJSON, probed bool) error {
 func renderBaseState(st toolkit.BaseState, probed bool) {
 	out := os.Stderr
 	fmt.Fprintf(out, "  name        %s\n", st.Name)
+	// ⭐ A BASE UNDER THE OLDER NAME SAYS SO, AND HOW TO MOVE. Moving is the
+	// operator's call, so this names it and changes nothing. WSL-167.
+	if n := st.Naming; n != nil && n.Legacy {
+		fmt.Fprintf(out, "  older name  %s\n", n.Move)
+	}
+	// ⭐ WHERE THE DISK IS, AND WHETHER THIS STATE DIRECTORY MAY CHANGE IT. A
+	// caller that does not own the base uses it, and is refused its removal,
+	// rebuild and re-provisioning. WSL-167.
+	if n := st.Naming; n != nil && n.Disk != "" {
+		fmt.Fprintf(out, "  disk in     %s\n", n.Disk)
+		owner := "no. This state directory uses the base, and never removes, rebuilds or re-provisions it"
+		if n.Owner {
+			owner = "yes, this state directory"
+		}
+		fmt.Fprintf(out, "  owner       %s\n", owner)
+	}
+	// ⚠ AN OLD INSTANCE `jobs` HOLDS THE CANONICAL NAME. It is not the default
+	// base, and an ensure is refused until it is removed. WSL-167.
+	if n := st.Naming; n != nil && n.Instance != "" {
+		fmt.Fprintf(out, "  held by     the instance %s, not the default base: %s\n", n.Instance,
+			toolkit.ToolCommandFor(n.Instance, "base remove --yes"))
+	}
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)
@@ -621,4 +648,15 @@ func cmdBaseReclaim(ctx context.Context, base *toolkit.Base, asJSON bool) (int, 
 		logf("  after       sparse %v, takes %s; %s", res.SparseAfter, toolkit.HumanBytes(res.AllocatedAfter), trimmed)
 	}
 	return code, err
+}
+
+// removalExit is the exit code a failed `base remove` answers.
+//
+// ⛔ A REFUSAL BY OWNERSHIP IS EXIT 2, as every other refusal of a change is. It
+// changed nothing, and exit 1 says something was tried and failed. WSL-167.
+func removalExit(err error) int {
+	if errors.Is(err, toolkit.ErrNotOwner) {
+		return exitCannot
+	}
+	return exitFailed
 }

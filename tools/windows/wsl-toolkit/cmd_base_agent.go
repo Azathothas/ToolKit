@@ -111,7 +111,11 @@ func cmdBaseAgent(ctx context.Context, args []string) (int, error) {
 // command, for the instance the name carries, with every argument the agent's.
 func runLauncher(ctx context.Context, agent, instance string, args []string) int {
 	quiet = true
-	if code, err := applyInstance(ctx, instance); err != nil {
+	// ⛔ A NAME WITH NO SUFFIX SELECTS THE DEFAULT BASE, so neither the environment
+	// nor a working tree's pointer moves it to another instance. WSL-167.
+	if instance == toolkit.DefaultInstance {
+		os.Unsetenv(toolkit.InstanceEnv)
+	} else if code, err := applyInstance(ctx, instance); err != nil {
 		fmt.Fprintln(os.Stderr, agent+": "+err.Error())
 		return code
 	}

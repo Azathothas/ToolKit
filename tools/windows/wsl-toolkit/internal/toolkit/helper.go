@@ -176,15 +176,19 @@ func NewHelperServer(cfg Config, log func(string)) (*HelperServer, error) {
 // ⛔ The client has already validated it, and it is validated again here. A
 // helper that trusted a config off the wire because a client said it was fine
 // would be taking a caller's word for a distribution name.
-func (h *HelperServer) runnerFor(cfg *Config) (*Runner, Config, error) {
+func (h *HelperServer) runnerFor(cfg *Config, nameFrom string, guest bool) (*Runner, Config, error) {
 	if cfg == nil {
 		return h.runner, h.cfg, nil
 	}
 	effective := *cfg
+	effective.nameFrom = helperNameFrom(effective, nameFrom)
 	if err := effective.Validate(); err != nil {
 		return nil, effective, fmt.Errorf("the configuration sent with this request is not usable: %w", err)
 	}
-	key := effective.Fingerprint()
+	// ⛔ THE STEP AND THE CALLER'S OWNERSHIP ARE PART OF THE KEY. A runner cached for
+	// the owner, or for a name the configuration chose, served a later request that
+	// was neither. WSL-167.
+	key := fmt.Sprintf("%s|%s|%t", effective.Fingerprint(), effective.nameFrom, guest)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if r, ok := h.runners[key]; ok {
@@ -194,6 +198,7 @@ func (h *HelperServer) runnerFor(cfg *Config) (*Runner, Config, error) {
 	if err != nil {
 		return nil, effective, err
 	}
+	r.base.guest = guest
 	if len(h.runners) >= maxHelperRunners {
 		h.runners = map[string]*Runner{}
 	}
@@ -220,7 +225,7 @@ func (h *HelperServer) runnerForBody(r *http.Request) (*Runner, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("config_b64 does not parse: %w", err)
 	}
-	runner, _, err := h.runnerFor(&cfg)
+	runner, _, err := h.runnerFor(&cfg, r.URL.Query().Get("name_from"), false)
 	return runner, err
 }
 
@@ -492,6 +497,10 @@ type HelperRunRequest struct {
 	// issue 17. A request that omits this is served from the helper's own
 	// config, which is what an older client sends.
 	Config *Config `json:"config,omitempty"`
+	// NameFrom is the step that chose the client's base name. ⛔ Without it the
+	// helper read a stale default name as the configuration's, and built it.
+	// WSL-167.
+	NameFrom string `json:"name_from,omitempty"`
 }
 
 // HelperInput is one --input file on the wire.
@@ -603,7 +612,7 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 	// cleanup could see.
 	defer h.releaseStaging(req.StagingID)
 
-	runner, effective, err := h.runnerFor(req.Config)
+	runner, effective, err := h.runnerFor(req.Config, req.NameFrom, false)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -676,7 +685,7 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	runner, effective, err := h.runnerFor(req.Config)
+	runner, effective, err := h.runnerFor(req.Config, req.NameFrom, false)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -846,6 +855,10 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 		Force  bool    `json:"force"`
 		Repair bool    `json:"repair,omitempty"`
 		Config *Config `json:"config,omitempty"`
+		// NameFrom is the step that chose the client's base name, and Guest says
+		// the client does not own the base. WSL-167.
+		NameFrom string `json:"name_from,omitempty"`
+		Guest    bool   `json:"guest,omitempty"`
 	}
 	if r.ContentLength > 0 {
 		if err := decodeHelperBody(r, &req); err != nil {
@@ -853,7 +866,9 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	runner, _, err := h.runnerFor(req.Config)
+	// ⛔ A CALLER THAT DOES NOT OWN THE BASE IS REFUSED WHAT ITS OWN ENSURE WOULD BE,
+	// at the same points: the helper's base runs as the caller's guest. WSL-167.
+	runner, _, err := h.runnerFor(req.Config, req.NameFrom, req.Guest)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

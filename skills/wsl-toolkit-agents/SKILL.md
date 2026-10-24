@@ -74,16 +74,18 @@ test "${HERDR_ENV:-}" = 1
 **On Windows, outside herdr**, every herdr command goes through the bridge:
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent list
+wsl-toolkit base herdr -- agent list
 ```
 
 ⭐ **Everything after `--` is herdr's, argument for argument.** No shell in the base
 reads it. Your own PowerShell still does, so single-quote a prompt in PowerShell.
 Most answers are JSON.
 
-⚠ **`base` here is an instance name.** Replace it with the instance the user has.
-`doctor --json` lists every distribution in `host.wsl_distros`, and
-`wsl-toolkit-NAME` is `--instance NAME`.
+⭐ **The agents run in the default base, so no example here passes `--instance`.** Its
+canonical name is `wsl-toolkit-jobs`. ⚠ An older default base may still be named
+`wsl-toolkit`, and it keeps working. `wsl-toolkit base status` says which name it has.
+For another base, `wsl-toolkit-NAME` is `--instance NAME`. ⛔ `base` and `jobs` are
+reserved instance names.
 
 ---
 
@@ -92,9 +94,9 @@ Most answers are JSON.
 ⛔ **Do not guess a herdr flag.** herdr moves quickly and a pasted flag list rots:
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent --help
-wsl-toolkit --instance base base herdr -- agent start --help
-wsl-toolkit --instance base base herdr -- api schema --json
+wsl-toolkit base herdr -- agent --help
+wsl-toolkit base herdr -- agent start --help
+wsl-toolkit base herdr -- api schema --json
 ```
 
 ⛔ **Never run bare `herdr` to find out what it does.** It launches or attaches the
@@ -107,9 +109,9 @@ terminal UI and blocks. Print a group instead.
 Make a pane, read its id back from the command that made it, and start an agent in it:
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd /workspaces/proj --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit base herdr -- workspace create --cwd /workspaces/proj --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
-wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $pane --timeout 120000
+wsl-toolkit base herdr -- agent start work --kind muse --pane $pane --timeout 120000
 ```
 
 ⚠ **`--cwd` takes an absolute guest path.** herdr does not expand `~`. Use a granted
@@ -129,8 +131,8 @@ so a guessed id points at someone else's work.
 ## 5. Send a turn, and read the answer
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent prompt work 'Answer with only the number of files git tracks here.' --wait --timeout 300000
-wsl-toolkit --instance base base herdr -- agent read work --source recent --lines 40
+wsl-toolkit base herdr -- agent prompt work 'Answer with only the number of files git tracks here.' --wait --timeout 300000
+wsl-toolkit base herdr -- agent read work --source recent --lines 40
 ```
 
 `--wait` returns when the agent reaches `idle`, `done` or `blocked` after the
@@ -152,7 +154,7 @@ one exception.
 on.** Read the agent's own status line:
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent read work --lines 5
+wsl-toolkit base herdr -- agent read work --lines 5
 ```
 
 | agent | what its status line looks like |
@@ -179,7 +181,7 @@ herdr **service's** environment. A value exported in `~/.profile` never reaches 
 
 ⭐ **Set it in the base's configuration and let the tool write each agent's own file.**
 The fields go under `base`, beside the file's `schema` and its other fields.
-`wsl-toolkit --instance base config --write` puts the whole file on disk to edit:
+`wsl-toolkit config --write` puts the whole file on disk to edit:
 
 ```json
 {
@@ -201,7 +203,7 @@ which is the default image.
 Then:
 
 ```powershell
-wsl-toolkit --instance base base ensure
+wsl-toolkit base ensure
 ```
 
 ⛔ **`base ensure` can restart and rebuild the base.** Ask the user before you run it
@@ -234,14 +236,14 @@ nothing at all to `muse login`.
 ## 8. Attach, when a person wants to watch
 
 ```powershell
-wsl-toolkit --instance base base attach
+wsl-toolkit base attach
 ```
 
 It prints three commands for this machine and runs none of them: one from Windows,
 one from inside the base, and one for an agent. Nothing needs starting first. Leave
 with the prefix, `ctrl+b`, then `q`; every pane and agent keeps running.
 
-From inside the base, `wsl-toolkit --instance base base shell`, then `herdr`.
+From inside the base, `wsl-toolkit base shell`, then `herdr`.
 
 ---
 
