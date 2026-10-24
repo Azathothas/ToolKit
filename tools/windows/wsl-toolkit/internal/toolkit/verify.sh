@@ -357,11 +357,26 @@ if [ "$probe_have" = 1 ]; then
     probe_bound='timeout 120'
   fi
   probe_code=0
+  probe_start=$(date +%s 2>/dev/null) || probe_start=''
   # The bound is a command and its argument, or nothing.
   # shellcheck disable=SC2086
   probe_said=$($probe_bound podman pull -q "$TK_IMAGE" 2>&1 >/dev/null) || probe_code=$?
   if [ "$probe_code" != 0 ]; then
-    if [ "$probe_code" = 124 ] && [ -n "$probe_bound" ]; then
+    # ⛔ 124 IS GNU's ANSWER ONLY. BusyBox `timeout` runs podman in its own place
+    # and signals it, so the shell sees 143, or 137 for a KILL, and podman can
+    # answer a signal with a code of its own. A failure that took the whole bound
+    # is the bound too. WSL-174.
+    probe_timed=0
+    if [ -n "$probe_bound" ]; then
+      case $probe_code in 124 | 137 | 143) probe_timed=1 ;; esac
+      probe_end=$(date +%s 2>/dev/null) || probe_end=''
+      case "$probe_start" in '' | *[!0-9]*) probe_end='' ;; esac
+      case "$probe_end" in
+        '' | *[!0-9]*) ;;
+        *) [ $((probe_end - probe_start)) -lt 120 ] || probe_timed=1 ;;
+      esac
+    fi
+    if [ "$probe_timed" = 1 ]; then
       probe_reason='the pull did not finish within 120 seconds'
     else
       probe_reason=$(printf '%s\n' "$probe_said" | sed '/^[[:space:]]*$/d' | tail -n 1)

@@ -84,6 +84,10 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 			fmt.Println("automount ro")
 			fmt.Fprintln(os.Stderr, "verify-pull: "+insufficientIDs)
 			return verifyNotJudged, true
+		case "eofpull":
+			fmt.Println("automount ro")
+			fmt.Fprintln(os.Stderr, "verify-pull: "+unexpectedEOF)
+			return verifyNotJudged, true
 		}
 	case bytes.Contains(script, []byte(`: "${TK_BINFMT_IMAGE:?TK_BINFMT_IMAGE is required}"`)):
 		if arch := assigned(script, "TK_ARCH"); arch != "" {
@@ -165,10 +169,72 @@ func TestAPullTheBaseBrokeStillReProvisions(t *testing.T) {
 	assertKept(t, h, b, disk)
 }
 
-// ⛔ The cause decides. The registry's failures are not judged; the base's own
-// are an ordinary verify failure that names the pull. WSL-174.
+// unexpectedEOF is a blob fetch the registry's CDN cut off: no mark of the
+// network or the registry is in it.
+const unexpectedEOF = `Error: copying system image from manifest list: reading blob sha256:0123: Get "https://production.cloudflare.docker.com/registry-v2/docker/registry/v2/blobs/sha256/01/0123/data": EOF`
+
+// ⛔ WSL-174, THE SECOND REPAIR. A reason that named neither the base nor a known
+// registry word was judged against the base, so a blob fetch the CDN cut off
+// re-provisioned the base, and a provisioning that failed too removed it. An
+// unknown reason now refuses and keeps the base.
+func TestAnUnknownPullFailureKeepsTheBase(t *testing.T) {
+	h := newFakeHost(t)
+	b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	h.engine(t, true)
+	h.stageGuest(t, "verify=eofpull")
+	_, err := b.EnsureWith(context.Background(), false, false)
+	var nj *ProbeNotJudgedError
+	if !errors.As(err, &nj) || !strings.Contains(err.Error(), "EOF") {
+		t.Fatalf("a pull the CDN cut off answered %v; want a ProbeNotJudgedError carrying its reason", err)
+	}
+	if s.said("re-provisioning") {
+		t.Fatalf("an unknown pull failure led to re-provisioning: %v", s.lines)
+	}
+	if i := callAt(h.calls(t), "wsl --terminate"); i >= 0 {
+		t.Fatalf("an unknown pull failure restarted the base: %v", h.calls(t))
+	}
+	assertKept(t, h, b, disk)
+}
+
+// ⛔ A REFUSAL OVER TRUST NAMES WHERE TO LOOK IN THE BASE, and no removal. A
+// broken CA bundle or a stale auth.json is the base's, and waiting on the
+// registry never ends. WSL-174.
+func TestATrustRefusalNamesWhereToLookInTheBase(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, _ := fakeBuiltBase(t, h, DefaultBaseImage)
+	for _, reason := range []string{
+		`Error: pinging container registry registry-1.docker.io: Get "https://registry-1.docker.io/v2/": tls: failed to verify certificate: x509: certificate signed by unknown authority`,
+		"Error: reading manifest latest in docker.io/library/alpine: unauthorized: authentication required",
+	} {
+		msg := b.notJudgedRefusal(&ProbeNotJudgedError{Image: VerifyImage, Registry: "docker.io", Reason: reason}).Error()
+		for _, want := range []string{"/etc/ssl/certs", "containers/auth.json", ToolCommand("base shell --root"), "Neither needs a rebuild"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("the refusal over %q does not say %q: %s", reason, want, msg)
+			}
+		}
+		if strings.Contains(msg, "recreate") || strings.Contains(msg, "--force") {
+			t.Errorf("the refusal over %q names a removal: %s", reason, msg)
+		}
+	}
+	plain := b.notJudgedRefusal(&ProbeNotJudgedError{Image: VerifyImage, Registry: "docker.io", Reason: "no such host"}).Error()
+	if strings.Contains(plain, "auth.json") {
+		t.Errorf("a refusal over the name sends the operator to the base's files: %s", plain)
+	}
+}
+
+// ⛔ The cause decides. The base's own causes are an ordinary verify failure that
+// names the pull; every other reason is not judged. WSL-174.
 func TestAPullFailureIsJudgedByItsCause(t *testing.T) {
 	registry := []string{
+		unexpectedEOF,
+		"Error: copying system image from manifest list: reading blob sha256:0123: unexpected EOF",
+		`Error: copying system image from manifest list: reading blob sha256:0123: Get "https://production.cloudflare.docker.com/blob": http2: server sent GOAWAY and closed the connection`,
+		"Error: copying system image from manifest list: reading blob sha256:0123: context deadline exceeded",
+		"Error: copying system image from manifest list: reading blob sha256:0123: context canceled",
+		"Error: reading blob sha256:0123: stream error: stream ID 3; INTERNAL_ERROR",
+		"Error: reading blob sha256:0123: read tcp 10.0.0.2:41234->104.16.1.1:443: read: connection timed out",
+		`Error: Get "https://registry-1.docker.io/v2/": dial tcp 1.2.3.4:443: connect: permission denied`,
+		"podman pull exited 143",
 		`Error: initializing source docker://alpine:latest: pinging container registry registry-1.docker.io: Get "https://registry-1.docker.io/v2/": dial tcp: lookup registry-1.docker.io: no such host`,
 		"the pull did not finish within 120 seconds",
 		"Error: initializing source docker://alpine:latest: reading manifest latest in docker.io/library/alpine: toomanyrequests: You have reached your unauthenticated pull rate limit",
@@ -182,6 +248,7 @@ func TestAPullFailureIsJudgedByItsCause(t *testing.T) {
 		`Error: copying system image from manifest list: writing blob: storing blob to file "/var/tmp/storage123/1": write /var/tmp/storage123/1: no space left on device`,
 		"Error: open /etc/containers/policy.json: no such file or directory",
 		`Error: creating overlay mount to /home/agent/.local/share/containers/storage/overlay/0123/merged: permission denied`,
+		`Error: writing blob: mkdir /home/agent/.local/share/containers/storage/overlay/0123: read-only file system`,
 	}
 	for _, reason := range registry {
 		stderr := "verify-pull: " + reason + "\n"
@@ -242,21 +309,41 @@ func TestTheProbeImagePullIsItsOwnBoundedStep(t *testing.T) {
 	sh := posixShell(t)
 	const image = "docker.io/library/alpine:latest"
 	const refused = `echo 'Error: initializing source docker://alpine:latest: pinging container registry registry-1.docker.io: dial tcp: lookup registry-1.docker.io: no such host' >&2; exit 125`
+	// ⚠ BusyBox `timeout` signals podman in its own place, so a bound that fires
+	// there ends in 143, or 137 for a KILL, and never in GNU's 124. WSL-174.
+	const busyboxBound = `echo 'Error: copying system image: context canceled' >&2; exit 143`
 	cases := []struct {
 		name, exists, pull, timeout string
 		exit                        int
 		reason                      string
 		pulled                      bool
+		clock                       bool
 	}{
-		{"present: no pull", "exit 0", "exit 0", "", 0, "", false},
-		{"absent and pulled", "exit 1", "exit 0", "", 0, "", true},
-		{"absent and the registry refuses, the measured defect", "exit 1", refused, "", verifyNotJudged, "lookup registry-1.docker.io: no such host", true},
-		{"absent and the pull outlives its bound", "exit 1", "exit 0", "exit 124", verifyNotJudged, "the pull did not finish within 120 seconds", false},
-		{"the engine fails: left to the run", "echo 'Error: current system boot ID differs from cached boot ID' >&2; exit 125", refused, "", 0, "", false},
+		{"present: no pull", "exit 0", "exit 0", "", 0, "", false, false},
+		{"absent and pulled", "exit 1", "exit 0", "", 0, "", true, false},
+		{"absent and the registry refuses, the measured defect", "exit 1", refused, "", verifyNotJudged, "lookup registry-1.docker.io: no such host", true, false},
+		{"absent and the pull outlives its bound", "exit 1", "exit 0", "exit 124", verifyNotJudged, "the pull did not finish within 120 seconds", false, false},
+		{"absent and BusyBox's bound fires: 143", "exit 1", "exit 0", busyboxBound, verifyNotJudged, "the pull did not finish within 120 seconds", false, false},
+		{"absent and BusyBox's bound fires: 137", "exit 1", "exit 0", "exit 137", verifyNotJudged, "the pull did not finish within 120 seconds", false, false},
+		{"absent and podman answers the signal with its own code after the whole bound", "exit 1", "echo 'Error: context canceled' >&2; exit 125", "", verifyNotJudged, "the pull did not finish within 120 seconds", true, true},
+		{"absent and refused at once: the clock is not the bound", "exit 1", refused, "", verifyNotJudged, "no such host", true, false},
+		{"the engine fails: left to the run", "echo 'Error: current system boot ID differs from cached boot ID' >&2; exit 125", refused, "", 0, "", false, false},
 	}
 	for _, c := range cases {
 		dir := t.TempDir()
 		log := filepath.Join(dir, "calls")
+		// ⚠ The clock moves 121 seconds a call where the case says the pull took
+		// the whole bound, and 1 second otherwise.
+		step := "1"
+		if c.clock {
+			step = "121"
+		}
+		writeStandIn(t, dir, "date", `n=$(cat "$TK_CLOCK" 2>/dev/null) || n=1000; echo "$n"; echo $((n + `+step+`)) > "$TK_CLOCK"`)
+		for _, tool := range []string{"cat"} {
+			if p, err := exec.LookPath(tool); err == nil {
+				writeStandIn(t, dir, tool, "exec "+p+" \"$@\"")
+			}
+		}
 		podman := logStandIn + "\ncase \"$1 $2\" in\n  'image exists') " + c.exists + " ;;\n  'pull -q') " + c.pull + " ;;\nesac\nexit 0"
 		writeStandIn(t, dir, "podman", podman)
 		for _, tool := range []string{"sed", "tail"} {
@@ -270,7 +357,7 @@ func TestTheProbeImagePullIsItsOwnBoundedStep(t *testing.T) {
 		}
 		writeStandIn(t, dir, "timeout", logStandIn+"\n"+timeout)
 		cmd := exec.Command(sh, "-c", probeImageSection(t))
-		cmd.Env = []string{"PATH=" + dir, "TK_IMAGE=" + image, "TK_LOG=" + log}
+		cmd.Env = []string{"PATH=" + dir, "TK_IMAGE=" + image, "TK_LOG=" + log, "TK_CLOCK=" + filepath.Join(dir, "clock")}
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &stdout, &stderr
 		code := 0
@@ -361,9 +448,10 @@ func TestTheGcImagesPlanListsTheKeptImagesAsKept(t *testing.T) {
 // -- WSL-181: the QEMU step fails no ensure ------------------------------------
 
 // ⛔ THE DEFECT: a registry that refused the QEMU installer made every ensure exit
-// 2 over a base whose engine had just run a container. It is a problem on the
-// answer now, and the base reads usable.
-func TestAFailedQEMUStepIsAProblemAndNotAFailedEnsure(t *testing.T) {
+// 2 over a base whose engine had just run a container. ⛔ AND THE FIRST REPAIR
+// MADE IT A PROBLEM, which still exited 1 and read not ready. It is an advisory
+// finding now, the base reads usable, and the answer has no problem.
+func TestAFailedQEMUStepIsAnAdvisoryAndNotAFailedEnsure(t *testing.T) {
 	h := newFakeHost(t)
 	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.stageGuest(t, "verify=ok", "binfmt=refused")
@@ -374,9 +462,18 @@ func TestAFailedQEMUStepIsAProblemAndNotAFailedEnsure(t *testing.T) {
 	if !st.Healthy {
 		t.Fatalf("a base whose container ran read unusable: %+v", st)
 	}
-	joined := strings.Join(st.Problems, "\n")
-	if !strings.Contains(joined, "the QEMU handlers: binfmt.sh exited 3: the QEMU binary-format installer did not complete") {
-		t.Fatalf("the QEMU step's failure is not on the answer: %q", joined)
+	if len(st.Problems) > 0 {
+		t.Fatalf("a refused QEMU installer is a problem, which exits 1 and reads not ready: %q", st.Problems)
+	}
+	var step *Remediation
+	for i := range st.Remediations {
+		if st.Remediations[i].ID == "binfmt-step-failed" {
+			step = &st.Remediations[i]
+		}
+	}
+	if step == nil || !step.Advisory || !strings.HasSuffix(step.Command, "base ensure") ||
+		!strings.Contains(step.What, "the QEMU handlers: binfmt.sh exited 3: the QEMU binary-format installer did not complete") {
+		t.Fatalf("the QEMU step's failure is not an advisory finding on the answer: %+v", st.Remediations)
 	}
 	if !strings.Contains(h.guestScripts(t), "TK_BINFMT_IMAGE='"+BinfmtImage+"'") {
 		t.Fatal("the case never reached the QEMU step")
@@ -502,17 +599,26 @@ func TestAJobsPlatformPullIsBounded(t *testing.T) {
 		name, exists, pull, timeout string
 		pulled, ran                 bool
 		said                        string
+		slow                        bool
 	}{
-		{"present: no pull", "exit 0", "exit 0", "", false, true, "was not registered"},
-		{"absent and pulled", "exit 1", "exit 0", "", true, true, "was not registered"},
-		{"absent and the pull outlives its bound", "exit 1", "exit 0", "exit 124", false, false, "did not finish within 120 seconds"},
-		{"absent and the registry refuses", "exit 1", "echo 'Error: toomanyrequests: rate limit' >&2; exit 125", "", true, false, "toomanyrequests"},
+		{"present: no pull", "exit 0", "exit 0", "", false, true, "was not registered", false},
+		{"absent and pulled", "exit 1", "exit 0", "", true, true, "was not registered", false},
+		{"absent and the pull outlives its bound", "exit 1", "exit 0", "exit 124", false, false, "did not finish within 120 seconds", false},
+		{"absent and BusyBox's bound fires: 143", "exit 1", "exit 0", "echo 'Error: context canceled' >&2; exit 143", false, false, "did not finish within 120 seconds", false},
+		{"absent and the registry refuses", "exit 1", "echo 'Error: toomanyrequests: rate limit' >&2; exit 125", "", true, false, "toomanyrequests", false},
+		{"absent and podman answers the signal with its own code after the whole bound", "exit 1", "echo 'Error: context canceled' >&2; exit 125", "", true, false, "did not finish within 120 seconds", true},
 	}
 	for _, c := range cases {
 		dir := t.TempDir()
 		log := filepath.Join(dir, "calls")
 		writeStandIn(t, dir, "podman", logStandIn+"\ncase \"$*\" in\n  *' image exists '*) "+c.exists+" ;;\n  *' pull -q '*) "+c.pull+" ;;\nesac\nexit 0")
-		for _, tool := range []string{"sed", "tail"} {
+		// ⚠ The clock moves 121 seconds a call where the pull took the whole bound.
+		step := "1"
+		if c.slow {
+			step = "121"
+		}
+		writeStandIn(t, dir, "date", `n=$(cat "$TK_CLOCK" 2>/dev/null) || n=1000; echo "$n"; echo $((n + `+step+`)) > "$TK_CLOCK"`)
+		for _, tool := range []string{"sed", "tail", "cat"} {
 			if p, err := exec.LookPath(tool); err == nil {
 				writeStandIn(t, dir, tool, "exec "+p+" \"$@\"")
 			}
@@ -523,7 +629,7 @@ func TestAJobsPlatformPullIsBounded(t *testing.T) {
 		}
 		writeStandIn(t, dir, "timeout", logStandIn+"\n"+timeout)
 		cmd := exec.Command(sh, "-c", string(binfmtScript))
-		cmd.Env = []string{"PATH=" + dir, "TK_LOG=" + log, "TK_BINFMT_IMAGE=" + image,
+		cmd.Env = []string{"PATH=" + dir, "TK_LOG=" + log, "TK_BINFMT_IMAGE=" + image, "TK_CLOCK=" + filepath.Join(dir, "clock"),
 			"TK_ARCH=s390x", "TK_HANDLER=qemu-wsl-toolkit-absent"}
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
