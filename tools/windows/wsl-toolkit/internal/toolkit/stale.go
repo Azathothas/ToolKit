@@ -13,7 +13,7 @@ import (
 //go:embed stale.sh
 var staleScript []byte
 
-// staleRunStateBudget bounds the check: the lock stale.sh waits on for 120s, and
+// staleRunStateBudget bounds the check: the lock repair.sh waits on for 120s, and
 // the deletion after it.
 const staleRunStateBudget = 3 * time.Minute
 

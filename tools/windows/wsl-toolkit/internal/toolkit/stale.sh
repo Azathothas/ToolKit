@@ -21,10 +21,11 @@
 # record before it starts anything and refuses while it names another boot, so
 # while it does, nothing of this boot is running on the state removed here.
 #
-# ⛔ THE CHECK IS MADE AGAIN UNDER THE LOCK `base ensure --repair` TAKES. A
-# matrix starts its rows at once, and without the lock a second row could clear
-# the state a first row's container had just started on. A caller that waited
-# finds the record gone, or rewritten for this boot, and removes nothing.
+# ⛔ THE CHECK IS MADE AGAIN UNDER THE LOCK `base ensure --repair` TAKES, and
+# repair.sh takes it and makes it. A matrix starts its rows at once, and without
+# the lock a second row could clear the state a first row's container had just
+# started on. A caller that waited finds the record gone, or rewritten for this
+# boot, and removes nothing.
 set -eu
 
 tk_stale_root=${XDG_RUNTIME_DIR:-}
@@ -49,23 +50,11 @@ if ! stale_boot_id; then
 fi
 printf 'run-state stale: the engine recorded another boot of WSL\n'
 
-# ⛔ NO LOCK, NO DELETION. flock is util-linux's and busybox's, and every preset
-# carries one. A base without it keeps the state, and `base ensure --repair` is
-# still the way through.
+# ⛔ NO LOCK, NO DELETION. A base without flock keeps the state, and `base
+# ensure --repair` is still the way through. ⚠ BusyBox's flock counts: repair.sh
+# waits with `flock -n`, which it takes, and not with -w, which it does not.
 if ! command -v flock >/dev/null 2>&1; then
   printf 'run-state kept: this base has no flock to clear it safely\n'
-  exit 0
-fi
-# ⚠ THE SAME FILE repair.sh LOCKS, and on the same descriptor, so repair.sh finds
-# the lock already held by this payload and does not wait on itself.
-exec 9>>"$tk_stale_root/.wsl-toolkit-run-state.lock"
-if ! flock -w 120 9; then
-  echo "repair: another caller held the run-state lock for 120s, so nothing was removed" >&2
-  exit 1
-fi
-# The second read, under the lock. Another caller cleared it while this one waited.
-if ! stale_boot_id; then
-  printf 'run-state current: another caller cleared it first\n'
   exit 0
 fi
 

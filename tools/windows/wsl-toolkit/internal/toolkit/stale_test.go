@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -371,16 +372,19 @@ func TestTheStaleCheckClearsOnlyRunStateFromAnotherBoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// ⚠ THE FIRST READ ALONE ANSWERS over a state that is not stale, so a job
+	// neither waits on the lock nor reaches repair.sh. repair.sh's second read
+	// would keep the state too, and these cases would not see the first one go.
 	current := newStaleHarness(t, string(now), "")
 	out, _, code = current.run(t)
-	if code != 0 || !strings.Contains(out, "run-state current") || !current.present("containers") || !current.present("libpod/tmp/alive") {
+	if code != 0 || out != "run-state current\n" || !current.present("containers") || !current.present("libpod/tmp/alive") {
 		t.Fatalf("this boot's record was cleared or misread: exit %d, out %q", code, out)
 	}
 
 	for name, alive := range map[string]string{"a missing record": "", "an empty record": "\n"} {
 		h := newStaleHarness(t, alive, "")
 		out, _, code = h.run(t)
-		if code != 0 || !strings.Contains(out, "run-state current") || !h.present("containers") || !h.present("libpod/tmp") {
+		if code != 0 || out != "run-state current\n" || !h.present("containers") || !h.present("libpod/tmp") {
 			t.Fatalf("%s was not read as current: exit %d, out %q", name, code, out)
 		}
 	}
@@ -418,39 +422,48 @@ func TestTheStaleCheckKeepsTheStateWithoutFlock(t *testing.T) {
 // TestTheStaleCheckReadsItsRecordAgainUnderTheLock stands in for a second caller
 // that holds the lock and clears the state first, as a matrix's first row does
 // while its second waits. ⛔ The waiting caller reads the record again under the
-// lock and removes nothing. WSL-137.
+// lock and removes nothing, whether the first caller's engine has rewritten the
+// record for this boot or has not started and left no record. WSL-137.
 func TestTheStaleCheckReadsItsRecordAgainUnderTheLock(t *testing.T) {
-	h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
-	release := h.holdLock(t)
-	outPath := filepath.Join(t.TempDir(), "out")
-	outFile, err := os.Create(outPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer outFile.Close()
-	var stderr bytes.Buffer
-	cmd := h.command(staleOnlyPayload(), outFile, &stderr)
-	if err := cmd.Start(); err != nil {
-		t.Fatal(err)
-	}
-	waitFor(t, outPath, "run-state stale")
-	// The first caller cleared it and its engine has started, so the record now
-	// names this boot.
 	now, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	if err != nil {
-		t.Fatal(err)
+		posixShell(t)
+		t.Skip("this host has no boot id to compare against")
 	}
-	if err := os.WriteFile(h.root+"/libpod/tmp/alive", now, 0o644); err != nil {
-		t.Fatal(err)
+	// What the first caller left while the second waited.
+	firstCaller := map[string]func(h staleHarness) error{
+		"a record naming this boot": func(h staleHarness) error {
+			return os.WriteFile(h.root+"/libpod/tmp/alive", now, 0o644)
+		},
+		"no record": func(h staleHarness) error { return os.RemoveAll(h.root + "/libpod/tmp") },
 	}
-	release()
-	code := exitOf(t, cmd.Wait())
-	out, _ := os.ReadFile(outPath)
-	if code != 0 || !strings.Contains(string(out), "another caller cleared it first") || strings.Contains(string(out), "repaired") {
-		t.Fatalf("a caller that waited for the lock: exit %d, out %q, stderr %q", code, out, stderr.String())
-	}
-	if !h.present("containers") || !h.present("libpod/tmp/alive") {
-		t.Error("a caller that waited for the lock removed the state a live engine had just started on")
+	for name, clear := range firstCaller {
+		h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
+		release := h.holdLock(t)
+		outPath := filepath.Join(t.TempDir(), "out")
+		outFile, err := os.Create(outPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var stderr bytes.Buffer
+		cmd := h.command(staleOnlyPayload(), outFile, &stderr)
+		if err := cmd.Start(); err != nil {
+			t.Fatal(err)
+		}
+		waitFor(t, outPath, "run-state stale")
+		if err := clear(h); err != nil {
+			t.Fatal(err)
+		}
+		release()
+		code := exitOf(t, cmd.Wait())
+		_ = outFile.Close()
+		out, _ := os.ReadFile(outPath)
+		if code != 0 || !strings.Contains(string(out), "another caller cleared it first") || strings.Contains(string(out), "repaired") {
+			t.Fatalf("%s: a caller that waited for the lock: exit %d, out %q, stderr %q", name, code, out, stderr.String())
+		}
+		if !h.present("containers") {
+			t.Errorf("%s: a caller that waited for the lock removed the state a live engine had just started on", name)
+		}
 	}
 }
 
@@ -488,5 +501,181 @@ func TestRepairTakesTheRunStateLock(t *testing.T) {
 	}
 	if h.leaked() {
 		t.Error("podman was handed the run-state lock's descriptor by repair.sh")
+	}
+}
+
+// TestBaseEnsureRepairReadsWhatRepairShSaid holds `base ensure --repair` to
+// repair.sh's own lines: a clear, or a record another caller had already cleared
+// and an engine had rewritten for this boot. Both go on to the probe. WSL-137.
+func TestBaseEnsureRepairReadsWhatRepairShSaid(t *testing.T) {
+	if err := repairRunStateVerdict("run-base /tmp/r (from the engine)\nremoved /tmp/r/containers\nremoved /tmp/r/libpod/tmp\nrepaired run-state\n", "", 0, nil); err != nil {
+		t.Errorf("a clear was refused: %v", err)
+	}
+	// ⛔ Another caller cleared it first and its engine is live, so repair.sh
+	// removed nothing. That is not a failed --repair.
+	if err := repairRunStateVerdict("run-state current: another caller cleared it first\n", "", 0, nil); err != nil {
+		t.Errorf("a state another caller had cleared first failed --repair: %v", err)
+	}
+	if err := repairRunStateVerdict("", "", 0, nil); err == nil || !strings.Contains(err.Error(), "without saying what it did") {
+		t.Errorf("a zero exit that said nothing: %v", err)
+	}
+	if err := repairRunStateVerdict("still-present /tmp/r/containers\n", "repair: at least one directory is still there\n", 1, nil); err == nil || !strings.Contains(err.Error(), "repair exited 1") {
+		t.Errorf("a failed clear: %v", err)
+	}
+	if err := repairRunStateVerdict("run-state current: another caller cleared it first\n", "", 1, nil); err == nil {
+		t.Error("a non-zero exit was read as a state another caller cleared")
+	}
+}
+
+// busyboxFlock is a stand-in for BusyBox's flock applet, the one an alpine base
+// carries: it takes -s -x -u and -n, refuses anything else as BusyBox does, and
+// locks with this host's own flock.
+func busyboxFlock(t *testing.T, bin string) {
+	t.Helper()
+	flockPath, err := exec.LookPath("flock")
+	if err != nil {
+		t.Skip("this host has no flock")
+	}
+	writeStandIn(t, bin, "flock", `for a in "$@"; do
+  case $a in
+    -[sxun]) ;;
+    -*) echo "Usage: flock [-sxun] FD | { FILE [-c] PROG ARGS }" >&2; exit 1 ;;
+  esac
+done
+exec '`+flockPath+`' "$@"`)
+}
+
+// TestTheClearWorksWithBusyBoxFlock holds both ways in to a flock with no -w.
+// ⛔ `flock -w 120 9` failed at once on an alpine base, so `base ensure --repair`,
+// which cleared in 7.0.0, exited 1 blaming a lock nobody held, and the automatic
+// clear never ran. WSL-137.
+func TestTheClearWorksWithBusyBoxFlock(t *testing.T) {
+	for name, payload := range map[string][]byte{"base ensure --repair": repairScript, "the stale check": staleOnlyPayload()} {
+		h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
+		busyboxFlock(t, h.bin)
+		ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+		var stdout, stderr bytes.Buffer
+		cmd := exec.CommandContext(ctx, "/bin/sh", "-s")
+		cmd.Stdin = bytes.NewReader(payload)
+		cmd.Env = h.env()
+		cmd.Stdout, cmd.Stderr = &stdout, &stderr
+		err := cmd.Run()
+		cancel()
+		if err != nil || !strings.Contains(stdout.String(), "repaired run-state") || h.present("containers") || h.present("libpod/tmp") {
+			t.Errorf("%s with BusyBox's flock: %v, out %q, stderr %q", name, err, stdout.String(), stderr.String())
+		}
+	}
+}
+
+// TestRepairKeepsAStateAnotherCallerClearedFirst stands in for a job that took
+// the lock, cleared, and started its container while `base ensure --repair`
+// waited. ⛔ repair.sh reads the record again under the lock, finds it naming this
+// boot, and removes nothing under that engine. ⚠ A missing record still clears,
+// as it did in 7.0.0. WSL-137.
+func TestRepairKeepsAStateAnotherCallerClearedFirst(t *testing.T) {
+	h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
+	release := h.holdLock(t)
+	var stdout, stderr bytes.Buffer
+	cmd := h.command(append([]byte{}, repairScript...), &stdout, &stderr)
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	time.Sleep(1500 * time.Millisecond)
+	now, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(h.root+"/libpod/tmp/alive", now, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	release()
+	var code int
+	select {
+	case err := <-done:
+		code = exitOf(t, err)
+	case <-time.After(30 * time.Second):
+		t.Fatal("repair.sh did not finish after the lock was let go")
+	}
+	if code != 0 || !strings.Contains(stdout.String(), "another caller cleared it first") || strings.Contains(stdout.String(), "removed") {
+		t.Fatalf("repair.sh after another caller's clear: exit %d, out %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+	if !h.present("containers") || !h.present("libpod/tmp/alive") {
+		t.Error("base ensure --repair removed the state a live engine of this boot had just started on")
+	}
+
+	missing := newStaleHarness(t, "", "")
+	stdout.Reset()
+	stderr.Reset()
+	code = exitOf(t, missing.command(append([]byte{}, repairScript...), &stdout, &stderr).Run())
+	if code != 0 || !strings.Contains(stdout.String(), "repaired run-state") || missing.present("containers") {
+		t.Errorf("base ensure --repair over a missing record no longer clears: exit %d, out %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+}
+
+// TestTheClearStopsAtTheFirstDirectoryStillThere stands in for a run root that
+// will not go. ⛔ libpod/tmp, which holds the stale record, is left, so every
+// later check still names the state instead of reading a missing record as
+// current over a half-removed run root. WSL-137.
+func TestTheClearStopsAtTheFirstDirectoryStillThere(t *testing.T) {
+	h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
+	rmPath, err := exec.LookPath("rm")
+	if err != nil {
+		t.Skip("this host has no rm")
+	}
+	writeStandIn(t, h.bin, "rm", `case "$*" in
+  */containers) exit 1 ;;
+esac
+exec '`+rmPath+`' "$@"`)
+	out, stderr, code := h.run(t)
+	if code == 0 || !strings.Contains(out, "still-present "+h.root+"/containers") {
+		t.Fatalf("a run root that would not go: exit %d, out %q, stderr %q", code, out, stderr)
+	}
+	if !h.present("libpod/tmp/alive") {
+		t.Error("the stale record was removed after the run root failed to go, so later checks read the state as current")
+	}
+	again, _, _ := h.run(t)
+	if !strings.Contains(again, "run-state stale") {
+		t.Errorf("the next check no longer names the stale state: %q", again)
+	}
+}
+
+// TestAHungEngineDoesNotHoldTheLock stands in for a `podman info` that never
+// answers. ⛔ repair.sh asks it while it holds the run-state lock, and the call
+// that sent it kills wsl.exe and not this shell, so an unbounded ask held the
+// lock and every later job waited 120s. The ask is bounded, and the stand-in
+// timeout shortens the bound to a second. WSL-137.
+func TestAHungEngineDoesNotHoldTheLock(t *testing.T) {
+	h := newStaleHarness(t, "00000000-0000-0000-0000-000000000000\n", "")
+	timeoutPath, err := exec.LookPath("timeout")
+	if err != nil {
+		t.Skip("this host has no timeout")
+	}
+	writeStandIn(t, h.bin, "podman", "exec sleep 600")
+	writeStandIn(t, h.bin, "timeout", `printf '%s\n' "$1" >> "$TK_FD_LOG.timeout"
+shift
+exec '`+timeoutPath+`' 1 "$@"`)
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	cmd := exec.CommandContext(ctx, "/bin/sh", "-s")
+	cmd.Stdin = bytes.NewReader(staleOnlyPayload())
+	cmd.Env = h.env()
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	// ⚠ A killed shell leaves the stand-in's sleep holding stdout.
+	cmd.WaitDelay = 2 * time.Second
+	err = cmd.Run()
+	if ctx.Err() != nil {
+		t.Fatalf("repair.sh was still asking a hung engine after 20s: out %q, stderr %q", stdout.String(), stderr.String())
+	}
+	if err != nil || !strings.Contains(stdout.String(), "(from the environment)") || !strings.Contains(stdout.String(), "repaired run-state") {
+		t.Fatalf("a hung engine: %v, out %q, stderr %q", err, stdout.String(), stderr.String())
+	}
+	if b, _ := os.ReadFile(h.fdLog + ".timeout"); strings.TrimSpace(string(b)) != "60" {
+		t.Errorf("the ask was bounded by %q, want 60", b)
+	}
+	if exec.Command("flock", "-n", h.lock(), "true").Run() != nil {
+		t.Error("the run-state lock is still held after repair.sh ended")
 	}
 }
