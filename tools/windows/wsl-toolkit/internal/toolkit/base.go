@@ -369,7 +369,7 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 			} else {
 				// ⭐ WSL-150: this tool's own build, stopped before its marker.
 				st.Problems = append(st.Problems, interruptedBuildNote(b.cfg.Base.Name, rec)+
-					". Run "+ToolCommand("base ensure")+" to build it again, or "+ToolCommand("base remove")+" to remove it")
+					". Run "+ToolCommand("base remove --yes")+" to remove it, and then "+ToolCommand("base ensure")+" to build it again")
 			}
 		} else {
 			st.Problems = append(st.Problems, fmt.Sprintf(
@@ -686,21 +686,6 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 			return st, err
 		}
 		st.Registered = false
-	}
-	// ⭐ A BUILD OF THIS TOOL'S KILLED BEFORE ITS MARKER IS REMOVED AND BUILT
-	// AGAIN, as its own rollback would have done had the process lived. WSL-150.
-	//
-	// ⛔ UNDER THE LOCK THIS ENSURE HOLDS, so a build that is still running holds
-	// it too and is never read here as a killed one. remove, not Remove, which
-	// would wait on this process's own lock.
-	if st.Registered {
-		if rec, ok, _ := b.interruptedBuild(ctx); ok {
-			b.log(interruptedBuildNote(b.cfg.Base.Name, rec) + ". Removing it and building again")
-			if err := b.remove(ctx); err != nil {
-				return st, err
-			}
-			st.Registered = false
-		}
 	}
 	if st.Registered {
 		// ⭐ SAID FIRST, AND SAID PLAINLY, because the reader is usually an
@@ -1088,6 +1073,15 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 		if err := b.assertOwner("stamped", "base ensure"); err != nil {
 			return err
 		}
+		// ⛔ A BUILD OF THIS TOOL'S KILLED BEFORE ITS MARKER IS REFUSED, NOT
+		// ADOPTED AND NOT REMOVED HERE. It never finished provisioning, so a
+		// stamp would name a base that was never built, and a removal is the
+		// caller's to ask for (WSL-171). The refusal names the command that
+		// removes it. WSL-150.
+		if build, ok, _ := b.interruptedBuild(ctx); ok {
+			return fmt.Errorf("%s. It is not used as it is. Run %s to remove it, and then %s to build it again",
+				interruptedBuildNote(b.cfg.Base.Name, build), ToolCommand("base remove --yes"), ToolCommand("base ensure"))
+		}
 		rec, recErr := b.readRecord()
 		if recErr != nil {
 			// ⛔ THIS NAMED `base recreate`, which demands the same marker and
@@ -1294,11 +1288,16 @@ func (b *Base) create(ctx context.Context, rootfs string) error {
 		// unmarked, and so did `base remove`. The disk in the directory this
 		// process just made, under the lock, is the proof the import was its own;
 		// a name alone is not. WSL-172.
+		//
+		// ⛔ THE BUILD RECORD STAYS OPEN WHEN THIS ANSWERS NO. No is also what an
+		// unreadable registry answers, and what a registration the service has
+		// not finished yet answers. A record closed here left that late
+		// registration unmarked and unrecorded, which only `wsl --unregister`
+		// removed. An open record over nothing registered removes nothing, since
+		// interruptedBuild also demands WSL's registration of the disk here. The
+		// next build's stamp, or a removal, closes it. WSL-150.
 		if b.importedInto(dir) {
 			b.imported = true
-		} else {
-			// Nothing was registered, so the record names no build. WSL-150.
-			b.closeBuildRecord("the import registered nothing")
 		}
 		return err
 	}

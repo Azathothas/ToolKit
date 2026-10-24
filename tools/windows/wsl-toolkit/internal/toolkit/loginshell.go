@@ -153,6 +153,14 @@ func accountStartRemediation(msg string) (Remediation, bool) {
 // ⚠ A FAILURE IS LOGGED AND STOPS NOTHING. The base runs containers whatever its
 // account's shell is, and `base status --probe` names the shell it still has.
 func (b *Base) applyLoginShell(ctx context.Context) {
+	// ⛔ NOT FROM A STATE DIRECTORY THAT DOES NOT OWN THE BASE, nor from a helper
+	// guest. The account named is the caller's configuration's, and a state
+	// directory uses a base it does not own and never changes it. Said once, and
+	// not an error, as applyAdapters says it. WSL-143, WSL-167.
+	if err := b.assertOwner("changed", "base ensure"); err != nil {
+		b.log("the account's login shell is left as it is: " + err.Error())
+		return
+	}
 	script := append([]byte("set -eu\n"), loginShellScript...)
 	script = append(script, []byte("\napply_login_shell \"$TK_USER\"\n")...)
 	out, stderr, code, err := b.captureAs(ctx, "root", script, map[string]string{"TK_USER": b.cfg.Base.User}, 2*time.Minute)

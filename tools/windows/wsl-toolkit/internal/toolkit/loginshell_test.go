@@ -66,6 +66,33 @@ func TestEveryEnsureHoldsTheAccountToBash(t *testing.T) {
 	}
 }
 
+// TestANonOwnerEnsureLeavesTheLoginShell holds the owner gate. ⛔ The account is
+// named by the caller's configuration, and an ensure from a state directory that
+// does not own the base changed it in the owner's base as root. WSL-143, WSL-167.
+func TestANonOwnerEnsureLeavesTheLoginShell(t *testing.T) {
+	f := newBuildFakeWsl(t)
+	var logged []string
+	b := f.base(buildFakeConfig("wsl-toolkit-notmine", AutomountReadOnly), func(s string) { logged = append(logged, s) })
+	b.archive = writeTinyArchive
+	if _, err := b.EnsureWith(t.Context(), false, false); err != nil {
+		t.Fatal(err)
+	}
+	f.update(func(s *buildFakeState) {
+		s.Distros["wsl-toolkit-notmine"].Dir = filepath.Join(f.dir, "owner", "wsl-toolkit-notmine")
+		s.Calls = nil
+	})
+	logged = nil
+	if _, err := b.EnsureWith(t.Context(), false, false); err != nil {
+		t.Fatalf("an ensure from a state directory that uses the base failed: %v; calls %v", err, f.state().scripts())
+	}
+	if at := indexOf(f.state().scripts(), "loginshell@root"); at >= 0 {
+		t.Fatalf("a non-owner ensure changed the account's login shell; calls %v", f.state().scripts())
+	}
+	if !strings.Contains(strings.Join(logged, "\n"), "the account's login shell is left as it is") {
+		t.Errorf("the ensure did not say it left the login shell: %q", logged)
+	}
+}
+
 // TestAStatusSaysWhetherItRanAContainer holds the label. ⛔ `healthy: false`
 // without --probe is no verdict, and a caller reading JSON could not tell it from a
 // base that cannot run anything. WSL-137.

@@ -8,7 +8,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
 // writeTinyArchive is a build's rootfs step with no host engine: a file the
@@ -97,6 +96,11 @@ func TestABuildKilledBeforeItsMarkerCanBeRemovedLater(t *testing.T) {
 	if !strings.Contains(strings.Join(st.Problems, "\n"), "stopped before its identity marker was written") {
 		t.Errorf("status did not name the interrupted build: %q", st.Problems)
 	}
+	// ⛔ AND IT NAMES THE COMMAND THAT REMOVES IT. `base ensure` refuses this
+	// build, so advice that named it alone led nowhere. WSL-150.
+	if !strings.Contains(strings.Join(st.Problems, "\n"), "Run "+ToolCommand("base remove --yes")+" to remove it") {
+		t.Errorf("status did not name base remove: %q", st.Problems)
+	}
 
 	if err := b.Remove(t.Context()); err != nil {
 		t.Fatalf("the interrupted build was refused: %v", err)
@@ -144,29 +148,32 @@ func TestABuildKilledBeforeItsMarkerCanBeRemovedLater(t *testing.T) {
 	}
 }
 
-// TestEnsureRemovesAnInterruptedBuildAndBuildsAgain holds `base ensure`'s half:
-// the build its own rollback would have removed is removed, and the build runs
-// again. WSL-150.
-func TestEnsureRemovesAnInterruptedBuildAndBuildsAgain(t *testing.T) {
+// TestEnsureRefusesAnInterruptedBuildAndNamesBaseRemove holds `base ensure`'s
+// half. ⛔ It neither stamps the build nor removes it: a stamp names a base that
+// never finished provisioning, and a removal is the caller's to ask for
+// (WSL-171). The refusal names `base remove --yes`, which removes it. WSL-150.
+func TestEnsureRefusesAnInterruptedBuildAndNamesBaseRemove(t *testing.T) {
 	f := newBuildFakeWsl(t)
-	var logged []string
-	b := f.base(buildFakeConfig("wsl-toolkit-again", AutomountReadOnly), func(s string) { logged = append(logged, s) })
+	b := f.base(buildFakeConfig("wsl-toolkit-again", AutomountReadOnly), nil)
 	stageInterruptedBuild(t, f, b)
-	stop := errors.New("no engine in this case")
-	b.archive = func(context.Context, string) error { return stop }
-	// ⛔ BOUNDED, because the removal runs under the lock this ensure holds, and a
-	// removal that took the lock again would wait on itself until the deadline.
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
-	_, err := b.EnsureWith(ctx, false, false)
-	if !errors.Is(err, stop) {
-		t.Fatalf("ensure did not go on to build again: %v", err)
+	_, err := b.EnsureWith(t.Context(), false, false)
+	if err == nil || !strings.Contains(err.Error(), "stopped before its identity marker was written") ||
+		!strings.Contains(err.Error(), ToolCommand("base remove --yes")) {
+		t.Fatalf("ensure over an interrupted build answered %v", err)
+	}
+	st := f.state()
+	d := st.Distros["wsl-toolkit-again"]
+	if d == nil {
+		t.Fatal("ensure removed the interrupted build that nobody asked it to remove")
+	}
+	if d.Marker != "" {
+		t.Fatal("ensure stamped a build that never finished provisioning")
+	}
+	if err := b.Remove(t.Context()); err != nil {
+		t.Fatalf("the command the refusal names refused: %v", err)
 	}
 	if len(f.state().Distros) != 0 {
 		t.Fatal("the interrupted build is still registered")
-	}
-	if !strings.Contains(strings.Join(logged, "\n"), "Removing it and building again") {
-		t.Errorf("ensure did not say what it removed: %q", logged)
 	}
 }
 
@@ -237,21 +244,59 @@ func TestAStampedBuildClosesItsRecord(t *testing.T) {
 	}
 }
 
-// TestAnImportThatRegisteredNothingClosesItsRecord holds the record's other
-// close. ⚠ A record left open names a build that registered nothing, and every
-// later ensure reads it. WSL-150.
-func TestAnImportThatRegisteredNothingClosesItsRecord(t *testing.T) {
+// TestAFailedImportKeepsItsRecordForALateRegistration holds the record a failed
+// import leaves. ⛔ It was closed when the registry showed nothing, and the
+// service can finish an import after wsl.exe is killed, so the late registration
+// was unmarked and unrecorded, and only `wsl --unregister` removed it. WSL-150.
+func TestAFailedImportKeepsItsRecordForALateRegistration(t *testing.T) {
 	f := newBuildFakeWsl(t)
 	f.update(func(s *buildFakeState) { s.RefuseImport = true })
-	b := f.base(buildFakeConfig("wsl-toolkit-refused", AutomountReadOnly), nil)
+	b := f.base(buildFakeConfig("wsl-toolkit-late", AutomountReadOnly), nil)
 	b.archive = writeTinyArchive
 	if _, err := b.EnsureWith(t.Context(), false, false); err == nil {
 		t.Fatal("a refused import answered no error")
 	}
-	if got := strings.Join(buildRecords(t, f.home(), "wsl-toolkit-refused"), ","); got != "open,close" {
+	if _, open := b.openBuildRecord(); !open {
+		t.Fatal("a failed import closed its build record")
+	}
+	// The service finishes the import after the check.
+	f.update(func(s *buildFakeState) {
+		s.RefuseImport = false
+		s.Distros["wsl-toolkit-late"] = &buildFakeDistro{Name: "wsl-toolkit-late", Dir: b.Dir()}
+	})
+	if err := b.Remove(t.Context()); err != nil {
+		t.Fatalf("the late registration was refused: %v", err)
+	}
+	if len(f.state().Distros) != 0 {
+		t.Fatal("the late registration is still registered")
+	}
+	if got := strings.Join(buildRecords(t, f.home(), "wsl-toolkit-late"), ","); got != "open,close" {
 		t.Errorf("the build's ledger records read %q, want open,close", got)
 	}
-	if _, open := b.openBuildRecord(); open {
-		t.Error("an import that registered nothing left its build record open")
+}
+
+// TestAnUnreadableRegistryAfterAFailedImportKeepsItsRecord holds the other no.
+// ⚠ A registry that could not be read proves nothing was registered no more than
+// a late one does, so the record stays and a later removal is still possible.
+// WSL-150.
+func TestAnUnreadableRegistryAfterAFailedImportKeepsItsRecord(t *testing.T) {
+	f := newBuildFakeWsl(t)
+	f.update(func(s *buildFakeState) { s.FailImport = true })
+	b := f.base(buildFakeConfig("wsl-toolkit-unread", AutomountReadOnly), nil)
+	b.archive = writeTinyArchive
+	readable := b.disks
+	b.disks = func() (map[string]string, error) { return nil, errors.New("the registry could not be read") }
+	if _, err := b.EnsureWith(t.Context(), false, false); err == nil {
+		t.Fatal("a failed import answered no error")
+	}
+	if _, open := b.openBuildRecord(); !open {
+		t.Fatal("a failed import over an unreadable registry closed its build record")
+	}
+	b.disks = readable
+	if err := b.Remove(t.Context()); err != nil {
+		t.Fatalf("the registered build was refused once the registry could be read: %v", err)
+	}
+	if len(f.state().Distros) != 0 {
+		t.Fatal("the build is still registered")
 	}
 }

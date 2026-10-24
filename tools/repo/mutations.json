@@ -2,11 +2,47 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
-      "label": "wsl-toolkit: base ensure removes an interrupted build under the lock it holds",
+      "label": "wsl-toolkit: base ensure refuses a build killed before its marker and names base remove",
       "file": "internal/toolkit/base.go",
-      "find": "\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")\n\t\t\tif err := b.remove(ctx); err != nil {\n",
-      "replace": "\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")\n\t\t\tif err := b.Remove(ctx); err != nil {\n",
-      "run": "TestEnsureRemovesAnInterruptedBuildAndBuildsAgain",
+      "find": "\t\tif build, ok, _ := b.interruptedBuild(ctx); ok {\n",
+      "replace": "\t\tif build, ok, _ := b.interruptedBuild(ctx); ok && false {\n",
+      "run": "TestEnsureRefusesAnInterruptedBuildAndNamesBaseRemove",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status names base remove for a build killed before its marker",
+      "file": "internal/toolkit/base.go",
+      "find": "\". Run \"+ToolCommand(\"base remove --yes\")+\" to remove it, and then \"",
+      "replace": "\". Run \"+ToolCommand(\"base ensure\")+\" to remove it, and then \"",
+      "run": "TestABuildKilledBeforeItsMarkerCanBeRemovedLater",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed import keeps its build record for a late registration",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif b.importedInto(dir) {\n\t\t\tb.imported = true\n\t\t}\n\t\treturn err\n",
+      "replace": "\t\tif b.importedInto(dir) {\n\t\t\tb.imported = true\n\t\t} else {\n\t\t\tb.closeBuildRecord(\"the import registered nothing\")\n\t\t}\n\t\treturn err\n",
+      "run": "TestAFailedImportKeepsItsRecordForALateRegistration",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed import over an unreadable registry keeps its build record",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif b.importedInto(dir) {\n\t\t\tb.imported = true\n\t\t}\n\t\treturn err\n",
+      "replace": "\t\tif b.importedInto(dir) {\n\t\t\tb.imported = true\n\t\t} else {\n\t\t\tb.closeBuildRecord(\"the import registered nothing\")\n\t\t}\n\t\treturn err\n",
+      "run": "TestAnUnreadableRegistryAfterAFailedImportKeepsItsRecord",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a non-owner ensure leaves the account's login shell",
+      "file": "internal/toolkit/loginshell.go",
+      "find": "\tif err := b.assertOwner(\"changed\", \"base ensure\"); err != nil {\n\t\tb.log(\"the account's login shell is left as it is: \" + err.Error())\n",
+      "replace": "\tif err := error(nil); err != nil {\n\t\tb.log(\"the account's login shell is left as it is: \" + err.Error())\n",
+      "run": "TestANonOwnerEnsureLeavesTheLoginShell",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -61,15 +97,6 @@
       "find": "\tb.closeBuildRecord(\"stamped with its identity marker\")\n",
       "replace": "",
       "run": "TestAStampedBuildClosesItsRecord",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: an import that registered nothing closes its build record",
-      "file": "internal/toolkit/base.go",
-      "find": "\t\t\tb.closeBuildRecord(\"the import registered nothing\")\n",
-      "replace": "",
-      "run": "TestAnImportThatRegisteredNothingClosesItsRecord",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -220,8 +247,8 @@
     {
       "label": "wsl-toolkit: a failed create is rolled back without its marker",
       "file": "internal/toolkit/base.go",
-      "find": "\t\tif b.importedInto(dir) {\n\t\t\tb.imported = true\n\t\t} else {\n",
-      "replace": "\t\tif false {\n\t\t\tb.imported = true\n\t\t} else {\n",
+      "find": "\t\tif b.importedInto(dir) {\n\t\t\tb.imported = true\n\t\t}\n",
+      "replace": "\t\tif false {\n\t\t\tb.imported = true\n\t\t}\n",
       "run": "TestAFailedCreateIsRolledBackWithoutItsMarker",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -241,15 +268,6 @@
       "find": "\t\tif errors.Is(err, ErrNoIdentity) {\n\t\t\trec, ok, why := b.interruptedBuild(ctx)",
       "replace": "\t\tif false {\n\t\t\trec, ok, why := b.interruptedBuild(ctx)",
       "run": "TestABuildKilledBeforeItsMarkerCanBeRemovedLater",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: base ensure removes a build killed before its marker and builds again",
-      "file": "internal/toolkit/base.go",
-      "find": "\t\tif rec, ok, _ := b.interruptedBuild(ctx); ok {\n\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")",
-      "replace": "\t\tif rec, ok, _ := b.interruptedBuild(ctx); ok && false {\n\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")",
-      "run": "TestEnsureRemovesAnInterruptedBuildAndBuildsAgain",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

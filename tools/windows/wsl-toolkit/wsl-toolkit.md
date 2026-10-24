@@ -1431,7 +1431,8 @@ verifier runs. `base status --probe` names that as `account-cannot-start`, and
 ⭐ **The account's login shell is bash where the guest has bash.** `--json` carries
 `account.login_shell` and `account.bash`. A base still on `/bin/sh` beside bash
 reports the advisory `login-shell-not-bash`, and its next `base ensure` moves it.
-Only `/bin/sh`, or a shell that is no program, is replaced. `WSL-143`
+Only `/bin/sh`, or a shell that is no program, is replaced. ⛔ Only an ensure from
+the state directory that owns the base moves it. `WSL-143`
 
 ⭐ **A stalled package mirror is asked again.** Provisioning gives each package
 manager's engine transaction three tries, 15 and then 30 seconds apart, and
@@ -1439,10 +1440,12 @@ names the line that ended each one. `WSL-140`
 
 ⭐ **A build stopped before its identity marker is still this tool's to remove.**
 The build records itself in the ledger before its import registers anything.
-`base remove` and `base ensure` remove it on that record and on WSL's registration
-of its disk in this instance's `base` folder, and `base ensure` then builds again.
-`resources` lists the record while it is open. ⛔ A distribution neither fact covers
-is refused, naming `wsl --unregister` as a person's own step. `WSL-150`
+`base remove --yes` removes it on that record and on WSL's registration of its disk
+in this instance's `base` folder. ⛔ `base ensure` refuses it and names
+`base remove --yes`, so a removal stays the caller's own request. A failed import
+keeps its record open, because WSL can finish that import later. `resources` lists
+the record while it is open. ⛔ A distribution neither fact covers is refused,
+naming `wsl --unregister` as a person's own step. `WSL-150`
 
 ⛔ **A build that is still running is never removed as a stopped one.** A build
 holds the base's lock from before its import until after its marker, and every
