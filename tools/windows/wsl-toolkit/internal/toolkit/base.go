@@ -478,7 +478,13 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 	if err != nil {
 		return st, err
 	}
+	// engine is the host engine a rebuild exports with, asked before the base
+	// it replaces is removed, and nil where nothing was removed. WSL-169.
+	var engine *Engine
 	if st.Registered && force {
+		if engine, err = b.rebuildEngine(ctx); err != nil {
+			return st, err
+		}
 		b.log("rebuilding from nothing, as asked")
 		if err := b.Remove(ctx); err != nil {
 			return st, err
@@ -554,6 +560,13 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 				return st, err
 			}
 			b.log("re-provisioning failed: " + err.Error())
+			// ⛔ THE SAME QUESTION BEFORE THE SAME REMOVAL. A base that will not
+			// provision is still the only one there is, and removing it with no
+			// engine to build the next one from leaves the caller none. WSL-169.
+			var engineErr error
+			if engine, engineErr = b.rebuildEngine(ctx); engineErr != nil {
+				return st, engineErr
+			}
 			b.log("removing and rebuilding")
 			if err := b.Remove(ctx); err != nil {
 				return st, err
@@ -570,7 +583,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 	// ⛔ FROM HERE THIS PROCESS OWNS THE DISTRIBUTION IT IS BUILDING, marker or
 	// not, so a build that dies before stamping can still be cleared up.
 	b.unmarked = true
-	if err := b.create(ctx); err != nil {
+	if err := b.create(ctx, engine); err != nil {
 		return st, b.rollbackUnmarked(err)
 	}
 	if err := b.provision(ctx); err != nil {
@@ -756,7 +769,37 @@ func toolVersion() string {
 	return Version
 }
 
-func (b *Base) create(ctx context.Context) error {
+// rebuildEngine answers the host engine a rebuild will export with, or refuses
+// the rebuild while nothing has been removed.
+//
+// ⛔ THE REMOVAL CAME FIRST AND THE ENGINE SECOND. A rebuild unregistered the
+// base, then asked for a host engine, and an engine that did not answer left
+// the caller with no base at all. podssh lost its jobs base this way and built
+// it again by hand. So the engine is asked here, through the same resolution
+// and the same deadline the export uses, and create is handed the one that
+// answered. WSL-169.
+//
+// ⚠ THE IMAGE REFERENCE IS READ FIRST, because the export refuses one that is
+// not fully qualified and reading it costs nothing. What cannot be known
+// before the removal is whether the pull succeeds and whether the volume holds
+// the import: the space check needs the archive's size, and the removal itself
+// frees the old disk.
+func (b *Base) rebuildEngine(ctx context.Context) (*Engine, error) {
+	if err := ValidateImageRef(b.cfg.Base.Image); err != nil {
+		return nil, fmt.Errorf("%s was NOT removed: base.image cannot be exported: %w", b.cfg.Base.Name, err)
+	}
+	b.log("asking the host engine before " + b.cfg.Base.Name + " is removed")
+	engine, err := FindEngine(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("%s was NOT removed: a rebuild exports its rootfs through a host engine, and %w", b.cfg.Base.Name, err)
+	}
+	return engine, nil
+}
+
+// create imports the base from its image. ⭐ `engine` is the one a rebuild
+// asked before it removed anything; nil means nothing was removed, and the
+// engine is found here.
+func (b *Base) create(ctx context.Context, engine *Engine) error {
 	// ⭐ THE FIRST THING THAT WRITES, so this is where the state directory is
 	// brought into existence. Everything above it reads.
 	if _, err := EnsureHome(); err != nil {
@@ -774,9 +817,12 @@ func (b *Base) create(ctx context.Context) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	engine, err := FindEngine(ctx)
-	if err != nil {
-		return fmt.Errorf("the base is built from an OCI image, so a host engine is required: %w", err)
+	if engine == nil {
+		found, err := FindEngine(ctx)
+		if err != nil {
+			return fmt.Errorf("the base is built from an OCI image, so a host engine is required: %w", err)
+		}
+		engine = found
 	}
 	b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
 

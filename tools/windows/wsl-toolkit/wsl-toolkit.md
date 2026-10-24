@@ -1299,6 +1299,13 @@ security boundary**, and no page here says otherwise.
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 
+⛔ **A rebuild asks the host engine before it removes the base.** `base recreate`
+does, and so does `base ensure` before it rebuilds a base that will not provision.
+With no engine answering, each exits 2 with the engine's reason, and the base stays
+registered. A `base.image` that is not fully qualified is refused the same way.
+⚠ A pull that fails and a volume too small for the import are still found after the
+removal. `WSL-169`
+
 ---
 
 ## Examples
