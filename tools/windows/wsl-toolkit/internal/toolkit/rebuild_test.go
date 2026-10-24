@@ -428,6 +428,8 @@ func fakeBuiltBase(t *testing.T, h *fakeHost, image string) (*Base, *sayings, st
 	if err := os.WriteFile(disk, []byte("the disk of a working base"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// ⚠ REGISTERED BEFORE ITS RECORD IS WRITTEN: only the owner records. WSL-167.
+	h.say(t, "disks", fakeBaseName+"\t"+b.Dir())
 	if err := b.writeRecord(); err != nil {
 		t.Fatal(err)
 	}

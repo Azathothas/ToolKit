@@ -26,8 +26,8 @@ func TestAnUnsuffixedLauncherReachesTheDefaultBase(t *testing.T) {
 	previous, previousQuiet := toolkit.SelectedInstance, quiet
 	t.Cleanup(func() { toolkit.SelectedInstance, quiet = previous, previousQuiet })
 	toolkit.SelectedInstance = toolkit.Instance{}
-	// ⚠ THE DEFAULT BASE'S NAME IS THIS HOST'S. A state directory with no record
-	// acts on the host's registered base, so the name is read, not assumed.
+	// ⚠ THE DEFAULT BASE'S NAME IS THIS HOST'S. Every state directory acts on the
+	// host's registered base, so the name is read, not assumed.
 	cfg, err := toolkit.LoadConfig()
 	if err != nil {
 		t.Fatal(err)

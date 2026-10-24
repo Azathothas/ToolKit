@@ -10,26 +10,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
 
-// -- WSL-167: the default base's canonical name, and an existing one kept -----
+// -- WSL-167: the default base's two names, and which home may change it -------
 
-// defaultBaseCase is a state directory and a host the resolution asks, both the
-// case's own. ⚠ The registry and the marker are answered here, so no case reads
-// this machine's WSL.
+// ⛔ NO CASE READS THIS MACHINE'S REGISTRY. A developer's host has its own base
+// registered, and every default load would resolve to it. A case that wants a
+// registration says so.
+func init() {
+	readRegistrations = func() (map[string]string, error) { return map[string]string{}, nil }
+}
+
+// defaultBaseCase is a state directory and a fake registry, both the case's own.
 type defaultBaseCase struct {
 	home  string
 	disks map[string]string
-}
-
-// ⛔ NO CASE READS THIS MACHINE'S REGISTRY FOR THE DEFAULT NAME. A developer's host
-// has its own base registered, and every unrecorded state directory would then
-// resolve to it. A case that wants a registration says so.
-func init() {
-	defaultBaseHost.disks = func() (map[string]string, error) { return map[string]string{}, nil }
 }
 
 func newDefaultBaseCase(t *testing.T) *defaultBaseCase {
@@ -38,22 +37,13 @@ func newDefaultBaseCase(t *testing.T) *defaultBaseCase {
 	t.Setenv("WSL_TOOLKIT_HOME", c.home)
 	t.Setenv(InstanceEnv, "")
 	t.Chdir(t.TempDir())
-	previousHost, previousSelection, previousExplicit := defaultBaseHost, SelectedInstance, ExplicitConfigPath
+	previousRead, previousSelection, previousExplicit := readRegistrations, SelectedInstance, ExplicitConfigPath
 	t.Cleanup(func() {
-		defaultBaseHost, SelectedInstance, ExplicitConfigPath = previousHost, previousSelection, previousExplicit
+		readRegistrations, SelectedInstance, ExplicitConfigPath = previousRead, previousSelection, previousExplicit
 	})
 	SelectedInstance, ExplicitConfigPath = Instance{}, ""
-	defaultBaseHost.disks = func() (map[string]string, error) { return c.disks, nil }
+	readRegistrations = func() (map[string]string, error) { return c.disks, nil }
 	return c
-}
-
-func (c *defaultBaseCase) record(t *testing.T, name string) {
-	t.Helper()
-	b := &Base{cfg: Config{Base: BaseConfig{Name: name, Image: DefaultBaseImage, User: DefaultBaseUser}}, home: c.home,
-		disks: func() (map[string]string, error) { return c.disks, nil }}
-	if err := b.writeRecord(); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func (c *defaultBaseCase) load(t *testing.T) Config {
@@ -65,216 +55,522 @@ func (c *defaultBaseCase) load(t *testing.T) Config {
 	return cfg
 }
 
+// writeConfig gives the case's home a configuration file.
+func (c *defaultBaseCase) writeConfig(t *testing.T, body string) {
+	t.Helper()
+	own, err := ConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(own, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // ⭐ A FRESH HOST GETS THE CANONICAL NAME, and says where it came from.
 func TestAFreshDefaultBaseIsNamedJobs(t *testing.T) {
 	c := newDefaultBaseCase(t)
 	cfg := c.load(t)
-	if cfg.Base.Name != "wsl-toolkit-jobs" {
-		t.Fatalf("a fresh default base is named %q, want wsl-toolkit-jobs", cfg.Base.Name)
+	if cfg.Base.Name != "wsl-toolkit-jobs" || cfg.nameFrom != NameFromCanonical {
+		t.Fatalf("a fresh default base is named %q from %q, want wsl-toolkit-jobs from the canonical step", cfg.Base.Name, cfg.nameFrom)
 	}
 	st, err := (&Base{cfg: cfg, home: c.home}).configuredState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Naming == nil || st.Naming.Legacy || st.Naming.From != NameFromCanonical || st.Naming.Canonical != "wsl-toolkit-jobs" {
+	if st.Naming == nil || st.Naming.Legacy || st.Naming.From != NameFromCanonical || st.Naming.Canonical != "wsl-toolkit-jobs" || st.Naming.Disk != "" {
 		t.Fatalf("a fresh base reports its naming as %+v", st.Naming)
 	}
 }
 
-// ⛔ THE HOST THIS WAS BUILT ON: a base recorded as `wsl-toolkit` keeps that name,
-// and status says how to move.
-func TestAnExistingDefaultBaseKeepsItsRecordedName(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	c.record(t, "wsl-toolkit")
-	c.disks["wsl-toolkit"] = filepath.Join(c.home, "base")
-	cfg := c.load(t)
-	if cfg.Base.Name != "wsl-toolkit" {
-		t.Fatalf("a base recorded as wsl-toolkit resolved to %q", cfg.Base.Name)
+// ⭐ ONE CANDIDATE, ANY HOME: the registered name is the default's, wherever its
+// disk is, and whichever state directory asks.
+func TestOneRegisteredDefaultNameIsUsedFromEveryHome(t *testing.T) {
+	for _, name := range []string{"wsl-toolkit", "wsl-toolkit-jobs"} {
+		t.Run(name, func(t *testing.T) {
+			c := newDefaultBaseCase(t)
+			c.disks[name] = filepath.Join(t.TempDir(), "base")
+			if cfg := c.load(t); cfg.Base.Name != name || cfg.nameFrom != NameFromRegistered {
+				t.Fatalf("one registered %s resolved to %q from %q", name, cfg.Base.Name, cfg.nameFrom)
+			}
+			t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+			if cfg := c.load(t); cfg.Base.Name != name {
+				t.Fatalf("a second home resolved one registered %s to %q", name, cfg.Base.Name)
+			}
+		})
 	}
-	st, err := (&Base{cfg: cfg, home: c.home}).configuredState()
-	if err != nil {
+}
+
+// ⛔ BOTH NAMES REGISTERED: REFUSED BY NAME, each disk named, and base.name chooses.
+func TestBothDefaultNamesRegisteredAreRefusedByName(t *testing.T) {
+	c := newDefaultBaseCase(t)
+	legacy, canonical := filepath.Join(c.home, "base"), filepath.Join(t.TempDir(), "base")
+	c.disks["wsl-toolkit"] = legacy
+	c.disks["wsl-toolkit-jobs"] = canonical
+	_, err := LoadConfig()
+	if !errors.Is(err, ErrDefaultBaseAmbiguous) || !strings.Contains(err.Error(), "wsl-toolkit,") ||
+		!strings.Contains(err.Error(), "wsl-toolkit-jobs") || !strings.Contains(err.Error(), "base.name") ||
+		!strings.Contains(err.Error(), cleanBasePath(legacy)) || !strings.Contains(err.Error(), cleanBasePath(canonical)) {
+		t.Fatalf("both names registered answered %v; want a refusal naming both, their disks, and base.name", err)
+	}
+	c.writeConfig(t, `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"}}`)
+	if cfg := c.load(t); cfg.Base.Name != "wsl-toolkit" || cfg.nameFrom != NameFromConfig {
+		t.Fatalf("an explicit base.name did not choose: %q from %q", cfg.Base.Name, cfg.nameFrom)
+	}
+}
+
+// ⛔ AN INSTANCE `jobs` IS NOT A DEFAULT BASE, though it is registered as
+// `wsl-toolkit-jobs`. Beside the host's `wsl-toolkit` it is no second candidate,
+// and alone it refuses the canonical name by its registration.
+func TestAnInstancesWslToolkitJobsIsNoDefaultCandidate(t *testing.T) {
+	c := newDefaultBaseCase(t)
+	root := t.TempDir()
+	c.disks["wsl-toolkit"] = filepath.Join(t.TempDir(), "base")
+	c.disks["wsl-toolkit-jobs"] = filepath.Join(root, "instances", "jobs", "base")
+	if cfg := c.load(t); cfg.Base.Name != "wsl-toolkit" {
+		t.Fatalf("a legacy base beside the jobs instance resolved to %q", cfg.Base.Name)
+	}
+	delete(c.disks, "wsl-toolkit")
+	_, err := LoadConfig()
+	want := "$env:WSL_TOOLKIT_HOME='" + root + "'; wsl-toolkit --instance jobs base remove --yes"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("the canonical name beside a registered jobs instance answered %v; want a refusal naming %s", err, want)
+	}
+	c.writeConfig(t, `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-jobs"}}`)
+	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "--instance jobs base remove --yes") {
+		t.Fatalf("a file naming wsl-toolkit-jobs beside a registered jobs instance answered %v", err)
+	}
+}
+
+// ⭐ A DIRECTORY IS NOT A REGISTRATION. An instance `jobs` with state and no
+// distribution leaves the canonical name free.
+func TestAJobsInstanceDirectoryAloneDoesNotRefuseTheCanonicalName(t *testing.T) {
+	c := newDefaultBaseCase(t)
+	if err := os.MkdirAll(filepath.Join(c.home, "instances", "jobs"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	n := st.Naming
-	if n == nil || !n.Legacy || n.From != NameFromRecord || n.Elsewhere != "" ||
-		!strings.Contains(n.Move, "base remove --yes") || !strings.Contains(n.Move, "base ensure") ||
-		!strings.Contains(n.Move, "wsl-toolkit-jobs") {
-		t.Fatalf("a base under the older name reports %+v; want legacy, from the record, and the move", n)
-	}
-	for _, p := range st.Problems {
-		if strings.Contains(p, "older name") {
-			t.Fatalf("the older name was made a problem, which fails base status: %q", p)
-		}
+	if cfg := c.load(t); cfg.Base.Name != "wsl-toolkit-jobs" {
+		t.Fatalf("an unregistered jobs instance changed the default to %q", cfg.Base.Name)
 	}
 }
 
-// ⭐ A BASE BUILT BEFORE ITS RECORD: registered as `wsl-toolkit`, its disk in this
-// state directory, and no record. It is kept by its name, as before WSL-167.
-func TestAnUnrecordedWslToolkitWithItsDiskHereIsKept(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	c.disks["wsl-toolkit"] = filepath.Join(c.home, "base")
-	cfg := c.load(t)
-	if cfg.Base.Name != "wsl-toolkit" || cfg.nameFrom != NameFromRegistered || cfg.nameAt != "" {
-		t.Fatalf("an unrecorded wsl-toolkit with its disk here resolved to %q from %q at %q", cfg.Base.Name, cfg.nameFrom, cfg.nameAt)
-	}
-}
+// -- the fake host: a base another state directory owns ------------------------
 
-// adoptedBase is a home with no record on a host whose `wsl-toolkit` has its disk,
-// its marker and its SSH way in elsewhere, as the operator's own home built it.
-func adoptedBase(t *testing.T) (*fakeHost, *defaultBaseCase, string, string) {
+// ownedElsewhere is a host whose one default base, under name, has its disk, its
+// marker and its SSH way in under another state directory, and a scratch home c.
+func ownedElsewhere(t *testing.T, name string) (*fakeHost, *defaultBaseCase, string, string) {
 	t.Helper()
 	h := newFakeHost(t)
 	c := newDefaultBaseCase(t)
 	t.Setenv(SSHDirEnv, t.TempDir())
 	t.Setenv(BinDirEnv, t.TempDir())
-	defaultBaseHost.disks = h.registry
-	other := filepath.Join(t.TempDir(), "base")
-	if err := os.MkdirAll(other, 0o700); err != nil {
+	readRegistrations = h.registry
+	owner := filepath.Join(t.TempDir(), "base")
+	if err := os.MkdirAll(owner, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	disk := filepath.Join(other, "ext4.vhdx")
-	if err := os.WriteFile(disk, []byte("the operator's base"), 0o600); err != nil {
+	disk := filepath.Join(owner, "ext4.vhdx")
+	if err := os.WriteFile(disk, []byte("the owner's base"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	h.say(t, "registered", "wsl-toolkit")
-	h.say(t, "disks", "wsl-toolkit\t"+other)
+	h.say(t, "registered", name)
+	h.say(t, "disks", name+"\t"+owner)
 	marker, err := json.Marshal(Identity{
-		Schema: IdentitySchema, Name: "wsl-toolkit", Image: DefaultBaseImage, User: DefaultBaseUser, Built: time.Now().UTC(),
+		Schema: IdentitySchema, Name: name, Image: DefaultBaseImage, User: DefaultBaseUser, Built: time.Now().UTC(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h.say(t, "identity.json", string(marker))
-	return h, c, other, disk
+	return h, c, owner, disk
 }
 
-// adoptedFrom is the base a home with no record acts on, as the commands build it.
-func (c *defaultBaseCase) adoptedFrom(t *testing.T, h *fakeHost) (*Base, *sayings) {
+// from is the base the scratch home acts on, as the commands build it.
+func (c *defaultBaseCase) from(t *testing.T, h *fakeHost) (*Base, *sayings) {
 	t.Helper()
 	s := &sayings{}
 	return &Base{cfg: c.load(t), home: c.home, wsl: &Wsl{Path: h.wsl}, log: s.log, disks: h.registry}, s
 }
 
-// assertUntouched fails a case that unregistered, imported or exported anything.
-func assertUntouched(t *testing.T, h *fakeHost, disk string) {
+// assertUntouched fails a case that unregistered, imported, exported, stamped or
+// recorded anything.
+func assertUntouched(t *testing.T, h *fakeHost, c *defaultBaseCase, disk string) {
 	t.Helper()
 	data, _ := os.ReadFile(filepath.Join(h.state, "calls"))
 	for _, call := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
 		if strings.HasPrefix(call, "wsl --unregister") || strings.HasPrefix(call, "wsl --import") || strings.HasPrefix(call, "podman") {
-			t.Fatalf("a home with no record changed the host's base: %q in %s", call, data)
+			t.Fatalf("a home that does not own the base changed it: %q in %s", call, data)
 		}
 	}
+	if strings.Contains(h.guestScripts(t), "provision-complete") {
+		t.Fatal("a home that does not own the base re-provisioned it")
+	}
 	if _, err := os.Stat(disk); err != nil {
-		t.Fatalf("the host's base's disk is gone: %v", err)
+		t.Fatalf("the owner's disk is gone: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(c.home, "base.json")); !os.IsNotExist(err) {
+		t.Fatalf("a home that does not own the base wrote a base.json about it: %v", err)
 	}
 }
 
-// ⛔ THE DEFECT: A STATE DIRECTORY WITH NO RECORD BUILT A SECOND BASE. A caller
-// Windows redirects (WSL-118) has a state directory of its own, and the host's
-// `wsl-toolkit` has its disk in the real one. Before WSL-167 it used that base,
-// so it still does: by its name, with no marker read and nothing imported.
-//
-// ⛔ AND IT WRITES NO RECORD ABOUT IT. An ensure read the base's marker and wrote
-// a base.json naming it, and every later load from that home was refused as
-// ambiguous. WSL-167.
-func TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs(t *testing.T) {
-	h, c, other, disk := adoptedBase(t)
-	if _, err := os.Stat(filepath.Join(h.state, "calls")); !os.IsNotExist(err) {
-		t.Fatalf("the case called WSL before the load: %v", h.calls(t))
+// ⛔ THE DEFECT THE NAME RULE IS FOR: A SECOND HOME BUILT A SECOND BASE. A home
+// with no record uses the host's one base by its name, imports nothing, writes no
+// record, and leaves the owner's SSH way in. WSL-167.
+func TestAHomeThatDoesNotOwnTheBaseUsesItAndChangesNothing(t *testing.T) {
+	for _, name := range []string{"wsl-toolkit", "wsl-toolkit-jobs"} {
+		t.Run(name, func(t *testing.T) {
+			h, c, owner, disk := ownedElsewhere(t, name)
+			b, s := c.from(t, h)
+			if b.cfg.Base.Name != name {
+				t.Fatalf("a scratch home beside the host's %s resolved to %q", name, b.cfg.Base.Name)
+			}
+			st, err := b.Status(context.Background(), false)
+			if err != nil || !st.Registered || st.Naming == nil || st.Naming.Owner || st.Naming.Disk != cleanBasePath(owner) {
+				t.Fatalf("status from a scratch home reads %+v, %v; want registered, its disk named, and not the owner", st.Naming, err)
+			}
+			sshConfig := filepath.Join(os.Getenv(SSHDirEnv), "config")
+			owners := withMarkedBlock(nil, name, []string{"Host " + name})
+			if err := os.WriteFile(sshConfig, owners, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			h.stageGuest(t, "verify=ok", "binfmt=ok")
+			if _, err := b.EnsureWith(context.Background(), false, false); err != nil {
+				t.Fatalf("an ensure from a scratch home over the host's healthy base failed: %v", err)
+			}
+			if got, err := os.ReadFile(sshConfig); err != nil || string(got) != string(owners) {
+				t.Fatalf("an ensure from a scratch home changed the owner's SSH config to %q, %v", got, err)
+			}
+			if !s.said("the adapters are left as they are") {
+				t.Fatal("a scratch home's ensure skipped the adapters without saying so")
+			}
+			assertUntouched(t, h, c, disk)
+		})
 	}
-	b, _ := c.adoptedFrom(t, h)
-	if b.cfg.Base.Name != "wsl-toolkit" || b.cfg.nameFrom != NameFromRegistered {
-		t.Fatalf("a home with no record beside the host's wsl-toolkit resolved to %q from %q", b.cfg.Base.Name, b.cfg.nameFrom)
-	}
-	if _, err := os.Stat(filepath.Join(h.state, "calls")); !os.IsNotExist(err) {
-		t.Fatalf("resolving the name called WSL, which starts it on every command: %v", h.calls(t))
-	}
+}
+
+// ⭐ THE OWNER IS THE OWNER, and status says so.
+func TestTheHomeHoldingTheDiskOwnsTheBase(t *testing.T) {
+	h, c, owner, _ := ownedElsewhere(t, "wsl-toolkit")
+	t.Setenv("WSL_TOOLKIT_HOME", filepath.Dir(owner))
+	c.home = filepath.Dir(owner)
+	b, _ := c.from(t, h)
 	st, err := b.Status(context.Background(), false)
-	if err != nil || !st.Registered {
-		t.Fatalf("the host's wsl-toolkit reads as %+v, %v; want registered, so run builds nothing", st, err)
+	if err != nil || st.Naming == nil || !st.Naming.Owner || !st.Naming.Legacy || !strings.Contains(st.Naming.Move, "base remove --yes") {
+		t.Fatalf("the owner's status reads %+v, %v; want the owner, under the older name, with the move", st.Naming, err)
 	}
-	n := st.Naming
-	if n == nil || n.Elsewhere != cleanBasePath(other) || !strings.Contains(n.ElsewhereNote(st.Name), cleanBasePath(other)) ||
-		!strings.Contains(n.Move, "from the state directory whose base folder is "+cleanBasePath(other)) {
-		t.Fatalf("status says %+v; want the other directory named, and the move sent there", n)
+}
+
+// ⛔ A HOME THAT DOES NOT OWN THE BASE NEVER REMOVES IT, and is told where to run
+// the removal from. WSL-167.
+func TestARemovalFromANonOwnerIsRefused(t *testing.T) {
+	h, c, owner, disk := ownedElsewhere(t, "wsl-toolkit")
+	b, _ := c.from(t, h)
+	err := b.Remove(context.Background())
+	want := "$env:WSL_TOOLKIT_HOME='" + filepath.Dir(owner) + "'; wsl-toolkit base remove --yes"
+	if !errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), "wsl-toolkit was NOT removed") ||
+		!strings.Contains(err.Error(), cleanBasePath(owner)) || !strings.Contains(err.Error(), want) {
+		t.Fatalf("a removal from a non-owner answered %v; want the refusal naming %s", err, want)
 	}
-	// ⚠ THE OWNER'S WAY IN, which this home's configuration does not name.
-	sshConfig := filepath.Join(os.Getenv(SSHDirEnv), "config")
-	owners := withMarkedBlock(nil, "wsl-toolkit", []string{"Host wsl-toolkit"})
-	if err := os.WriteFile(sshConfig, owners, 0o600); err != nil {
+	assertUntouched(t, h, c, disk)
+}
+
+// ⛔ A HOME THAT DOES NOT OWN THE BASE NEVER REBUILDS IT: not by recreate, and not
+// by a preset switch. Refused before the export. WSL-167.
+func TestARebuildFromANonOwnerIsRefused(t *testing.T) {
+	h, c, owner, disk := ownedElsewhere(t, "wsl-toolkit")
+	h.engine(t, true)
+	roomyVolume(t, 1<<40)
+	b, _ := c.from(t, h)
+	want := "$env:WSL_TOOLKIT_HOME='" + filepath.Dir(owner) + "'; wsl-toolkit base recreate"
+	_, err := b.EnsureWith(context.Background(), true, false)
+	if !errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), "wsl-toolkit was NOT rebuilt") || !strings.Contains(err.Error(), want) {
+		t.Fatalf("a recreate from a non-owner answered %v; want the refusal naming %s", err, want)
+	}
+	b.cfg.Base.Image = "docker.io/library/debian:trixie"
+	if _, err := b.EnsureSwitch(context.Background(), false); !errors.Is(err, ErrNotOwner) {
+		t.Fatalf("a preset switch from a non-owner answered %v", err)
+	}
+	assertUntouched(t, h, c, disk)
+}
+
+// ⛔ A HOME THAT DOES NOT OWN THE BASE NEVER RE-PROVISIONS IT. A base that does not
+// verify was re-provisioned from the scratch configuration, and restarted under
+// every job. WSL-167.
+func TestARepairInPlaceFromANonOwnerIsRefused(t *testing.T) {
+	h, c, _, disk := ownedElsewhere(t, "wsl-toolkit")
+	h.stageGuest(t, "binfmt=ok")
+	b, _ := c.from(t, h)
+	_, err := b.EnsureWith(context.Background(), false, false)
+	if !errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), "wsl-toolkit was NOT re-provisioned") {
+		t.Fatalf("a re-provision from a non-owner answered %v; want the refusal", err)
+	}
+	assertUntouched(t, h, c, disk)
+}
+
+// ⛔ --repair FROM A HOME THAT DOES NOT OWN THE BASE IS REFUSED UP FRONT, over a
+// healthy base and a failing one. WSL-167.
+func TestRepairFromANonOwnerIsRefusedUpFront(t *testing.T) {
+	for _, guest := range [][]string{{"verify=ok", "binfmt=ok"}, {"binfmt=ok"}} {
+		t.Run(strings.Join(guest, ","), func(t *testing.T) {
+			h, c, _, disk := ownedElsewhere(t, "wsl-toolkit")
+			h.stageGuest(t, guest...)
+			b, _ := c.from(t, h)
+			_, err := b.EnsureWith(context.Background(), false, true)
+			if !errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), "wsl-toolkit was NOT repaired") ||
+				!strings.Contains(err.Error(), "base ensure --repair") {
+				t.Fatalf("--repair from a non-owner answered %v; want the refusal", err)
+			}
+			if strings.Contains(h.guestScripts(t), "TK_M1") {
+				t.Fatal("--repair from a non-owner asked the guest before it refused")
+			}
+			assertUntouched(t, h, c, disk)
+		})
+	}
+}
+
+// ⛔ A HOME THAT DOES NOT OWN THE BASE NEVER STAMPS IT. A marker written from a
+// scratch home's record became the owner's truth. WSL-167.
+func TestAStampFromANonOwnerIsRefused(t *testing.T) {
+	h, c, _, disk := ownedElsewhere(t, "wsl-toolkit")
+	if err := os.Remove(filepath.Join(h.state, "identity.json")); err != nil {
 		t.Fatal(err)
 	}
 	h.stageGuest(t, "verify=ok", "binfmt=ok")
-	if _, err := b.EnsureWith(context.Background(), false, false); err != nil {
-		t.Fatalf("an ensure from a home with no record over the host's marked base failed: %v", err)
+	b, _ := c.from(t, h)
+	_, err := b.EnsureWith(context.Background(), false, false)
+	if !errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), "wsl-toolkit was NOT stamped") {
+		t.Fatalf("an unmarked base from a non-owner answered %v; want the refusal", err)
 	}
-	if got, err := os.ReadFile(sshConfig); err != nil || string(got) != string(owners) {
-		t.Fatalf("an ensure from a home with no record changed the owner's SSH config to %q, %v", got, err)
+	assertUntouched(t, h, c, disk)
+}
+
+// ⛔ A RECORD IS WRITTEN ONLY BY THE OWNER. writeRecord from a scratch home wrote
+// nothing, and from the owner it writes. WSL-167.
+func TestARecordIsWrittenOnlyByTheOwner(t *testing.T) {
+	h, c, owner, _ := ownedElsewhere(t, "wsl-toolkit")
+	b, _ := c.from(t, h)
+	if err := b.writeRecord(); err != nil {
+		t.Fatal(err)
 	}
-	if callAt(h.calls(t), "wsl -d wsl-toolkit") < 0 {
-		t.Fatalf("the ensure never asked the host's base: %v", h.calls(t))
-	}
-	assertUntouched(t, h, disk)
 	if _, err := os.Stat(filepath.Join(c.home, "base.json")); !os.IsNotExist(err) {
-		t.Fatalf("an ensure from a home with no record wrote a base.json about the host's base: %v", err)
+		t.Fatalf("a non-owner wrote a record: %v", err)
 	}
-	// ⭐ THE NEXT COMMAND FROM THE SAME HOME RESOLVES THE SAME BASE.
-	if again := c.load(t); again.Base.Name != "wsl-toolkit" || again.nameFrom != NameFromRegistered || again.nameAt != cleanBasePath(other) {
-		t.Fatalf("the second load resolved %q from %q at %q", again.Base.Name, again.nameFrom, again.nameAt)
+	b.home = filepath.Dir(owner)
+	if err := b.writeRecord(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(b.home, "base.json")); err != nil {
+		t.Fatalf("the owner wrote no record: %v", err)
 	}
 }
 
-// ⛔ A HOME THAT DID NOT BUILD THE BASE NEVER REMOVES IT. `base remove --yes` from
-// a scratch home unregistered the operator's base and dropped its SSH Host block.
-// ⚠ A configured base.name or a version before WSL-167 chose the name with no word
-// of its disk, so the registry is read at the removal. WSL-167.
-func TestARemovalFromAHomeThatDidNotBuildTheBaseIsRefused(t *testing.T) {
-	h, c, other, disk := adoptedBase(t)
-	b, _ := c.adoptedFrom(t, h)
-	err := b.Remove(context.Background())
-	want := "$env:WSL_TOOLKIT_HOME='" + filepath.Dir(other) + "'; wsl-toolkit base remove --yes"
-	if !errors.Is(err, ErrBaseElsewhere) || !strings.Contains(err.Error(), "wsl-toolkit was NOT removed") ||
-		!strings.Contains(err.Error(), cleanBasePath(other)) || !strings.Contains(err.Error(), want) {
-		t.Fatalf("a removal from a home with no record answered %v; want the refusal naming %s", err, want)
+// ⛔ CLOSED: A REGISTRY THAT CANNOT BE READ, OR A REGISTRATION WITH NO DISK
+// FOLDER, PROVES NO OWNER. WSL-167.
+func TestAnUnprovenOwnerIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		why   string
+		disks func() (map[string]string, error)
+	}{
+		{"could not be read", func() (map[string]string, error) { return nil, errors.New("access denied") }},
+		{"names no disk folder", func() (map[string]string, error) { return map[string]string{fakeBaseName: ""}, nil }},
+	} {
+		t.Run(tc.why, func(t *testing.T) {
+			h := newFakeHost(t)
+			b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+			b.disks = tc.disks
+			if err := b.Remove(context.Background()); !errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), tc.why) {
+				t.Fatalf("a removal whose owner is not proven answered %v; want the refusal saying it %s", err, tc.why)
+			}
+			h.engine(t, true)
+			if _, err := b.EnsureWith(context.Background(), true, false); !errors.Is(err, ErrNotOwner) {
+				t.Fatalf("a recreate whose owner is not proven answered %v", err)
+			}
+			assertKept(t, h, b, disk)
+		})
 	}
-	assertUntouched(t, h, disk)
-
-	// ⛔ THE NAME FROM THE CONFIGURATION, with no resolution to say where its disk is.
-	b.cfg.nameAt = ""
-	if err := b.Remove(context.Background()); !errors.Is(err, ErrBaseElsewhere) {
-		t.Fatalf("a removal of a configured name whose disk is elsewhere answered %v", err)
-	}
-	assertUntouched(t, h, disk)
 }
 
-// ⛔ A HOME THAT DID NOT BUILD THE BASE NEVER REBUILDS IT. `base recreate` from a
-// scratch home exported, unregistered the operator's base and imported a new one
-// into the scratch home. A preset switch that becomes a rebuild is the same.
-// Refused before the export. WSL-167.
-func TestARebuildFromAHomeThatDidNotBuildTheBaseIsRefused(t *testing.T) {
-	h, c, other, disk := adoptedBase(t)
+// ⭐ THE OWNER THROUGH A JUNCTION IS THE OWNER. WSL records the folder's real
+// path, and the home was named by a link to it. WSL-167.
+func TestAnOwnerReachedThroughALinkIsTheOwner(t *testing.T) {
+	real, link := filepath.Join(t.TempDir(), "real"), filepath.Join(t.TempDir(), "link")
+	if err := os.MkdirAll(filepath.Join(real, "base"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command(os.Getenv("ComSpec"), "/c", "mklink", "/J", link, real).CombinedOutput(); err != nil {
+			t.Fatalf("no junction could be made: %v: %s", err, out)
+		}
+	} else if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	h := newFakeHost(t)
+	b, _, _ := fakeBuiltBase(t, h, DefaultBaseImage)
+	t.Setenv("WSL_TOOLKIT_HOME", link)
+	b.home = link
+	h.say(t, "disks", fakeBaseName+"\t"+filepath.Join(real, "base"))
+	if err := b.assertOwner("removed", "base remove --yes"); err != nil {
+		t.Fatalf("the owner through a link was refused its own removal: %v", err)
+	}
+	// ⚠ THE REMOVAL ITSELF, up to the unregister. Deleting a folder through a
+	// link is RemoveInside's own refusal, and not this rule's.
+	_ = b.Remove(context.Background())
+	if callAt(h.calls(t), "wsl --unregister "+fakeBaseName) < 0 {
+		t.Fatalf("the owner's removal unregistered nothing: %v", h.calls(t))
+	}
+}
+
+// ⛔ THE LEFTOVER GUARD SEES THROUGH A LINK TOO. A home named by a junction held a
+// registered disk, and a string compare called it a leftover to clear. WSL-177.
+func TestTheLeftoverGuardSeesThroughALink(t *testing.T) {
+	real, link := filepath.Join(t.TempDir(), "real"), filepath.Join(t.TempDir(), "link")
+	if err := os.MkdirAll(filepath.Join(real, "base"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command(os.Getenv("ComSpec"), "/c", "mklink", "/J", link, real).CombinedOutput(); err != nil {
+			t.Fatalf("no junction could be made: %v: %s", err, out)
+		}
+	} else if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	disk := filepath.Join(real, "base", "ext4.vhdx")
+	if err := os.WriteFile(disk, []byte("a registered base's disk"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h := newFakeHost(t)
 	h.engine(t, true)
 	roomyVolume(t, 1<<40)
-	b, _ := c.adoptedFrom(t, h)
-	want := "$env:WSL_TOOLKIT_HOME='" + filepath.Dir(other) + "'; wsl-toolkit base recreate"
-	_, err := b.EnsureWith(context.Background(), true, false)
-	if !errors.Is(err, ErrBaseElsewhere) || !strings.Contains(err.Error(), "wsl-toolkit was NOT rebuilt") || !strings.Contains(err.Error(), want) {
-		t.Fatalf("a recreate from a home with no record answered %v; want the refusal naming %s", err, want)
+	t.Setenv("WSL_TOOLKIT_HOME", link)
+	h.say(t, "registered", fakeBaseName)
+	h.say(t, "disks", fakeBaseName+"\t"+filepath.Join(real, "base"))
+	cfg := DefaultConfig()
+	cfg.Base.Name = "wsl-toolkit-wsl170"
+	b := &Base{cfg: cfg, home: link, wsl: &Wsl{Path: h.wsl}, log: func(string) {}, disks: h.registry}
+	if err := b.create(context.Background(), ""); err == nil || !strings.Contains(err.Error(), "was NOT deleted") {
+		t.Fatalf("a build over a registered disk reached through a link answered %v; want the refusal", err)
 	}
-	assertUntouched(t, h, disk)
-	b.cfg.Base.Image = "docker.io/library/debian:trixie"
-	if _, err := b.EnsureSwitch(context.Background(), false); !errors.Is(err, ErrBaseElsewhere) {
-		t.Fatalf("a preset switch from a home with no record answered %v", err)
-	}
-	assertUntouched(t, h, disk)
-	if _, err := os.Stat(filepath.Join(c.home, "base.json")); !os.IsNotExist(err) {
-		t.Fatalf("a refused rebuild left a base.json: %v", err)
+	if _, err := os.Stat(disk); err != nil {
+		t.Fatalf("the registered disk was moved or deleted: %v", err)
 	}
 }
 
-// ⛔ AN AMBIGUOUS DEFAULT BASE IS SURVEYED AS ONE. doctor fell back to the
-// defaults and reported `wsl-toolkit-jobs` as not registered, advising `base
-// ensure`, on a host where both names are. WSL-167.
+// ⛔ A CONFIGURATION OFF THE HELPER'S WIRE CARRIES NO STEP, so the helper reads it
+// again. A name the rule gives now is the rule's, and any other is the
+// configuration's, which a new build then keeps. WSL-167.
+func TestTheHelperReadsWhichStepChoseTheName(t *testing.T) {
+	_ = newFakeHost(t)
+	c := newDefaultBaseCase(t)
+	c.disks["wsl-toolkit"] = filepath.Join(t.TempDir(), "base")
+	h := &HelperServer{log: func(string) {}, runners: map[string]*Runner{}}
+	for name, want := range map[string]string{"wsl-toolkit": NameFromRegistered, "wsl-toolkit-jobs": NameFromConfig} {
+		cfg := DefaultConfig()
+		cfg.Base.Name = name
+		_, effective, err := h.runnerFor(&cfg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if effective.nameFrom != want {
+			t.Fatalf("the helper read %s as chosen by %q; want %q", name, effective.nameFrom, want)
+		}
+	}
+}
+
+// ⛔ A PROCESS WINDOWS REDIRECTS INTO A PACKAGE'S COPY OF THE STATE DIRECTORY IS
+// REFUSED THE CHANGES. Its home is the real one by name, so the path says owner,
+// and its writes land in the copy. WSL-167, WSL-118.
+func TestARedirectedProcessIsRefusedTheChanges(t *testing.T) {
+	h := newFakeHost(t)
+	local := os.Getenv("LOCALAPPDATA")
+	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	home := filepath.Join(local, "wsl-toolkit")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	b.home = home
+	if err := os.MkdirAll(b.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	disk = filepath.Join(b.Dir(), "ext4.vhdx")
+	if err := os.WriteFile(disk, []byte("the disk of a working base"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.say(t, "disks", fakeBaseName+"\t"+b.Dir())
+	if err := b.writeRecord(); err != nil {
+		t.Fatal(err)
+	}
+	copyDir := filepath.Join(local, "Packages", "Claude_test", "LocalCache", "Local", "wsl-toolkit")
+	if err := os.MkdirAll(copyDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(filepath.Join(home, "base.json"), filepath.Join(copyDir, "base.json")); err != nil {
+		t.Skipf("no hard link to stand in for the redirect: %v", err)
+	}
+	err := b.Remove(context.Background())
+	if !errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), "PowerShell") || !strings.Contains(err.Error(), copyDir) {
+		t.Fatalf("a redirected removal answered %v; want the refusal naming the copy and PowerShell", err)
+	}
+	assertKept(t, h, b, disk)
+}
+
+// ⛔ A NEW BUILD READS THE NAME AGAIN UNDER THE LOCK. A home that loaded the
+// host's `wsl-toolkit`, and reached its build after the owner removed it, imported
+// a second `wsl-toolkit` into itself. WSL-167.
+func TestABuildReadsTheDefaultNameAgain(t *testing.T) {
+	h, c, _, _ := ownedElsewhere(t, "wsl-toolkit")
+	h.engine(t, true)
+	roomyVolume(t, 1<<40)
+	b, _ := c.from(t, h)
+	h.say(t, "registered", "")
+	h.say(t, "disks", "")
+	_, err := b.EnsureWith(context.Background(), false, false)
+	if err == nil || !strings.Contains(err.Error(), "the default base is now wsl-toolkit-jobs") || !strings.Contains(err.Error(), "Run it again") {
+		t.Fatalf("a build under a name read before the owner removed it answered %v; want the refusal", err)
+	}
+	if i := callAt(h.calls(t), "wsl --import"); i >= 0 {
+		t.Fatalf("a build under a stale name imported: %v", h.calls(t))
+	}
+}
+
+// ⭐ NEITHER NAME REGISTERED: THE CANONICAL NAME IS BUILT, in this home.
+func TestAFreshHostBuildsWslToolkitJobs(t *testing.T) {
+	h := newFakeHost(t)
+	c := newDefaultBaseCase(t)
+	readRegistrations = h.registry
+	h.engine(t, true)
+	roomyVolume(t, 1<<40)
+	b, _ := c.from(t, h)
+	_, _ = b.EnsureWith(context.Background(), false, false)
+	if callAt(h.calls(t), "wsl --import wsl-toolkit-jobs "+b.Dir()) < 0 {
+		t.Fatalf("a fresh host did not build wsl-toolkit-jobs in this home: %v", h.calls(t))
+	}
+}
+
+// ⭐ THE COMMAND A REFUSAL NAMES, in each of its forms.
+func TestTheOwnerAdviceNamesTheCommandToRun(t *testing.T) {
+	_ = newFakeHost(t)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	home, err := defaultHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	for at, want := range map[string]string{
+		filepath.Join(home, "base"):                       "with WSL_TOOLKIT_HOME unset, the default state directory: wsl-toolkit base remove --yes",
+		filepath.Join(home, "instances", "jobs", "base"):  "with WSL_TOOLKIT_HOME unset, the default state directory: wsl-toolkit --instance jobs base remove --yes",
+		filepath.Join(other, "base"):                      "$env:WSL_TOOLKIT_HOME='" + other + "'; wsl-toolkit base remove --yes",
+		filepath.Join(other, "instances", "muse", "base"): "$env:WSL_TOOLKIT_HOME='" + other + "'; wsl-toolkit --instance muse base remove --yes",
+		filepath.Join(other, "moved-disk"):                "wsl --unregister wsl-toolkit",
+	} {
+		if got := ownerAdvice("wsl-toolkit", at, "base remove --yes"); !strings.Contains(got, want) {
+			t.Fatalf("the advice for a disk in %s reads %q; want %q", at, got, want)
+		}
+	}
+}
+
+// ⛔ AN AMBIGUOUS DEFAULT BASE IS SURVEYED AS ONE, with both candidates, and an
+// instance's `wsl-toolkit-jobs` is none of them. WSL-167.
 func TestDoctorReportsAnAmbiguousDefaultBase(t *testing.T) {
 	_ = newFakeHost(t)
 	c := newDefaultBaseCase(t)
@@ -283,7 +579,7 @@ func TestDoctorReportsAnAmbiguousDefaultBase(t *testing.T) {
 	c.disks["wsl-toolkit-jobs"] = canonical
 	_, unresolved := LoadConfig()
 	if !errors.Is(unresolved, ErrDefaultBaseAmbiguous) {
-		t.Fatalf("both names with no record loaded with %v", unresolved)
+		t.Fatalf("both names loaded with %v", unresolved)
 	}
 	f := wslFactsFor(context.Background(), DoctorOptions{Config: DefaultConfig(), Unresolved: unresolved})
 	if f.Ambiguous == "" || f.BaseName != "" || f.Candidates["wsl-toolkit"] != cleanBasePath(legacy) ||
@@ -298,129 +594,6 @@ func TestDoctorReportsAnAmbiguousDefaultBase(t *testing.T) {
 	line := ambiguousLine(f.Candidates)
 	if !strings.Contains(line, "wsl-toolkit (disk in "+cleanBasePath(legacy)+")") || !strings.Contains(line, "wsl-toolkit-jobs (disk in "+cleanBasePath(canonical)+")") {
 		t.Fatalf("the base distro row reads %q", line)
-	}
-}
-
-// ⭐ A NEW HOST'S `wsl-toolkit-jobs` IS SHARED THE SAME WAY. The operator's own
-// home built it, and a state directory with no record uses it.
-func TestAnUnrecordedHomeUsesTheHostsCanonicalBaseWhereverItsDiskIs(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	other := filepath.Join(t.TempDir(), "base")
-	c.disks["wsl-toolkit-jobs"] = other
-	cfg := c.load(t)
-	if cfg.Base.Name != "wsl-toolkit-jobs" || cfg.nameFrom != NameFromRegistered || cfg.nameAt != cleanBasePath(other) {
-		t.Fatalf("a home with no record beside the host's wsl-toolkit-jobs resolved to %q from %q at %q", cfg.Base.Name, cfg.nameFrom, cfg.nameAt)
-	}
-}
-
-// ⛔ BOTH NAMES ON THE HOST AND NO RECORD: REFUSED BY NAME, and base.name chooses.
-func TestBothNamesRegisteredWithNoRecordAreRefusedByName(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	legacy, canonical := filepath.Join(t.TempDir(), "base"), filepath.Join(t.TempDir(), "base")
-	c.disks["wsl-toolkit"] = legacy
-	c.disks["wsl-toolkit-jobs"] = canonical
-	_, err := LoadConfig()
-	if !errors.Is(err, ErrDefaultBaseAmbiguous) || !strings.Contains(err.Error(), "wsl-toolkit,") ||
-		!strings.Contains(err.Error(), "wsl-toolkit-jobs") || !strings.Contains(err.Error(), "base.name") ||
-		!strings.Contains(err.Error(), cleanBasePath(legacy)) || !strings.Contains(err.Error(), cleanBasePath(canonical)) {
-		t.Fatalf("both names with no record answered %v; want a refusal naming both, their disks, and base.name", err)
-	}
-}
-
-// ⭐ NEITHER NAME ON THE HOST AND NO RECORD: the canonical name, to be built.
-func TestNeitherNameRegisteredWithNoRecordIsTheCanonicalName(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	c.disks["wsl-toolkit-errand-box"] = filepath.Join(t.TempDir(), "base")
-	cfg := c.load(t)
-	if cfg.Base.Name != "wsl-toolkit-jobs" || cfg.nameFrom != NameFromCanonical || cfg.nameAt != "" {
-		t.Fatalf("a host with neither name resolved to %q from %q at %q", cfg.Base.Name, cfg.nameFrom, cfg.nameAt)
-	}
-}
-
-// ⛔ A BASE IN ANOTHER STATE DIRECTORY MAKES THIS ONE NO AMBIGUITY. The operator's
-// recorded `wsl-toolkit` stays the default when a scratch home built a
-// `wsl-toolkit-jobs`.
-func TestACanonicalBaseInAnotherHomeLeavesTheRecordedOneDefault(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	c.record(t, "wsl-toolkit")
-	c.disks["wsl-toolkit"] = filepath.Join(c.home, "base")
-	c.disks["wsl-toolkit-jobs"] = filepath.Join(t.TempDir(), "base")
-	if cfg := c.load(t); cfg.Base.Name != "wsl-toolkit" || cfg.nameFrom != NameFromRecord {
-		t.Fatalf("a recorded wsl-toolkit beside another home's wsl-toolkit-jobs resolved to %q from %q", cfg.Base.Name, cfg.nameFrom)
-	}
-}
-
-// ⛔ A RECORD NAMING A BASE WHOSE DISK IS IN ANOTHER DIRECTORY IS REFUSED. An
-// older version acting from a scratch home wrote such records about the
-// operator's base.
-func TestARecordNamingAnotherHomesBaseIsRefused(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	c.record(t, "wsl-toolkit")
-	other := filepath.Join(t.TempDir(), "base")
-	c.disks["wsl-toolkit"] = other
-	_, err := LoadConfig()
-	if !errors.Is(err, ErrDefaultBaseAmbiguous) || !strings.Contains(err.Error(), other) ||
-		!strings.Contains(err.Error(), filepath.Join(c.home, "base")) {
-		t.Fatalf("a record naming another home's base answered %v; want a refusal naming both directories", err)
-	}
-	// ⭐ AN UNREGISTERED RECORD IS A REMOVED BASE, and the next one is new.
-	delete(c.disks, "wsl-toolkit")
-	if cfg := c.load(t); cfg.Base.Name != "wsl-toolkit-jobs" {
-		t.Fatalf("a record of a removed wsl-toolkit resolved to %q", cfg.Base.Name)
-	}
-}
-
-// ⛔ A FILE NAMING THE CANONICAL NAME MEETS THE JOBS GUARD TOO.
-func TestAFileNamingTheCanonicalNameBesideAJobsInstanceIsRefused(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	if err := os.MkdirAll(filepath.Join(c.home, "instances", "jobs"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	own, err := ConfigPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(own, []byte(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-jobs"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "instance jobs") {
-		t.Fatalf("a file naming wsl-toolkit-jobs beside a jobs instance answered %v", err)
-	}
-}
-
-// ⛔ TWO CANDIDATES ARE REFUSED BY NAME, and an explicit base.name chooses. ⚠ With
-// a record of one, because two disks in one base folder outweigh the record.
-func TestTwoDefaultBasesAreRefusedByName(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	c.record(t, "wsl-toolkit")
-	c.disks["wsl-toolkit"] = filepath.Join(c.home, "base")
-	c.disks["wsl-toolkit-jobs"] = filepath.Join(c.home, "base")
-	_, err := LoadConfig()
-	if !errors.Is(err, ErrDefaultBaseAmbiguous) || !strings.Contains(err.Error(), "wsl-toolkit,") ||
-		!strings.Contains(err.Error(), "wsl-toolkit-jobs") || !strings.Contains(err.Error(), "base.name") {
-		t.Fatalf("two candidate bases answered %v; want a refusal naming both and the way to choose", err)
-	}
-	own, err := ConfigPath()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(own, []byte(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit"}}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	cfg := c.load(t)
-	if cfg.Base.Name != "wsl-toolkit" || cfg.nameFrom != NameFromConfig {
-		t.Fatalf("an explicit base.name did not choose: %q from %q", cfg.Base.Name, cfg.nameFrom)
-	}
-}
-
-// ⛔ THE INSTANCE `jobs` WOULD SHARE THE CANONICAL NAME, so its state refuses it.
-func TestAnExistingJobsInstanceRefusesTheCanonicalName(t *testing.T) {
-	c := newDefaultBaseCase(t)
-	if err := os.MkdirAll(filepath.Join(c.home, "instances", "jobs"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "instance jobs") {
-		t.Fatalf("a jobs instance beside the canonical name answered %v", err)
 	}
 }
 
@@ -461,8 +634,8 @@ func TestAReservedInstanceIsNeverRebuilt(t *testing.T) {
 }
 
 // ⛔ ONLY `cat` SAYING THE FILE IS MISSING IS AN ABSENCE. A guest that did not
-// start is a failure to ask, and reading it as an absence demoted a recorded base
-// and stamped a guest nobody reached.
+// start is a failure to ask, and reading it as an absence stamped a guest nobody
+// reached.
 func TestAMarkerReadThatCouldNotAskIsNotAnAbsence(t *testing.T) {
 	h := newFakeHost(t)
 	_, _, _ = fakeBuiltBase(t, h, DefaultBaseImage)

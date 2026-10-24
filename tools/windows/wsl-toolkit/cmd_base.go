@@ -378,10 +378,16 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	if n := st.Naming; n != nil && n.Legacy {
 		fmt.Fprintf(out, "  older name  %s\n", n.Move)
 	}
-	// ⭐ A STATE DIRECTORY WITH NO RECORD ACTS ON THE HOST'S BASE, and says whose
-	// disk that is. WSL-167, WSL-118.
-	if note := st.Naming.ElsewhereNote(st.Name); note != "" {
-		fmt.Fprintf(out, "  disk in     %s\n", note)
+	// ⭐ WHERE THE DISK IS, AND WHETHER THIS STATE DIRECTORY MAY CHANGE IT. A
+	// caller that does not own the base uses it, and is refused its removal,
+	// rebuild and re-provisioning. WSL-167.
+	if n := st.Naming; n != nil && n.Disk != "" {
+		fmt.Fprintf(out, "  disk in     %s\n", n.Disk)
+		owner := "no. This state directory uses the base, and never removes, rebuilds or re-provisions it"
+		if n.Owner {
+			owner = "yes, this state directory"
+		}
+		fmt.Fprintf(out, "  owner       %s\n", owner)
 	}
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {

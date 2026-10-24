@@ -5,75 +5,52 @@ package toolkit
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
 
-// ⛔ THE DEFAULT INSTANCE'S BASE HAS TWO NAMES, AND THIS FILE DECIDES WHICH ONE A
-// STATE DIRECTORY MEANS. WSL-167, rulings 32 and 33.
+// ⛔ THE DEFAULT INSTANCE'S BASE HAS TWO NAMES. THIS FILE SAYS WHICH ONE IS MEANT,
+// AND WHICH STATE DIRECTORY MAY CHANGE IT. WSL-167, rulings 32 and 33.
 //
 // The default base was `wsl-toolkit`, and the instance `base` was
-// `wsl-toolkit-base`. Each read like the other's, and agents acted on one while
-// meaning the other. A NEW default base is now `wsl-toolkit-jobs`. An EXISTING one
-// keeps the name it was built under, because renaming a distribution is a copy of
-// its whole disk and the operator decides when to pay for that.
+// `wsl-toolkit-base`. Each read like the other's. A NEW default base is now
+// `wsl-toolkit-jobs`, and an existing one keeps the name it was built under.
 //
-// The order, and why each step is where it is:
+// NAMING reads the configuration and WSL's registrations, and nothing else:
 //
-//	1  base.name in the configuration in effect     the operator's own choice
-//	2  both names with their disk in this
-//	   directory's base folder                       a refusal, never a guess
-//	3  the state directory's base.json, its name
-//	   registered with its disk here                 the record of what this directory built
-//	4  no record: the ONE name of the two that is
-//	   registered, wherever its disk is              the host's existing base
-//	5  no record, both names registered              a refusal, never a guess
-//	6  no record, neither name registered            `wsl-toolkit-jobs`, a fresh host
+//	1  base.name in the configuration in effect      the operator's own choice
+//	2  one of the two names registered as a default  that name, from every home
+//	3  both registered                               a refusal by name
+//	4  neither, or a registry that cannot be read    `wsl-toolkit-jobs`
 //
-// ⭐ A HOST THAT ALREADY HAS A BASE SEES NO CHANGE. Before WSL-167 every state
-// directory acted on the registered `wsl-toolkit`, wherever its disk was. A caller
-// Windows redirects keeps a second state directory with no record (WSL-118), and
-// it must use the host's base, not build a second one. Step 4 is that, for either
-// name, so a new host's `wsl-toolkit-jobs` is shared the same way.
+// ⭐ EVERY CALLER ON A HOST WITH ONE BASE USES IT, whatever its state directory.
+// Before WSL-167 every caller acted on the registered `wsl-toolkit`, and a caller
+// Windows redirects (WSL-118) still finds the same one.
 //
-// ⛔ USED, AND NEVER OWNED. A base adopted by step 4 gets no base.json here, and
-// is never removed or rebuilt from here: assertDiskHere and recordsHere below.
+// ⛔ OWNERSHIP decides what changes the base. A state directory owns it when WSL
+// keeps its disk in that directory's base folder, as the filesystem resolves both.
+// A caller that does not own it uses it, and never removes, rebuilds,
+// re-provisions, repairs, stamps or records it.
 //
-// ⛔ A RECORD STILL TIES A NAME TO ITS DIRECTORY BY THE DISK. A record naming a base
-// whose disk is in another state directory is refused by name, because the record
-// says this directory built it and the disk says it did not.
-//
-// ⚠ NOTHING HERE STARTS WSL. Registrations are read from the registry, and no
-// guest marker is read: reading one starts the distribution on every command, and
-// the name alone decided before WSL-167 too.
+// ⚠ NOTHING HERE STARTS WSL. Registrations are read from the registry.
 
-// DefaultNameFrom says which step chose the default instance's distribution.
+// The ways the default instance's name was chosen.
 const (
 	NameFromConfig     = "configuration"
-	NameFromRecord     = "record"
 	NameFromRegistered = "registered"
 	NameFromCanonical  = "canonical"
 )
 
-// ErrDefaultBaseAmbiguous is what a state directory with two candidate bases is
-// refused with.
+// ErrDefaultBaseAmbiguous is what a host with both default names is refused with.
 var ErrDefaultBaseAmbiguous = errors.New("the default base is ambiguous")
 
-// defaultBaseHost is what the resolution asks of this host. ⚠ A variable so a
-// case can answer for a host it does not have; production reads the registry.
-var defaultBaseHost = struct {
-	disks func() (map[string]string, error)
-}{
-	disks: registeredDisks,
-}
+// ErrNotOwner is what a change to a base this state directory does not own is
+// refused with. WSL-167.
+var ErrNotOwner = errors.New("this state directory does not own the base")
 
-// defaultChoice is the name the default instance's base runs under, which step
-// chose it, and the base folder holding its disk where that is another state
-// directory's.
-type defaultChoice struct {
-	name, from, at string
-}
+// readRegistrations answers WSL's registrations. ⚠ A variable so a case can
+// answer for a host it does not have; production reads the registry.
+var readRegistrations = registeredDisks
 
 // IsDefaultBaseName reports whether a distribution name is one the default
 // instance's base may run under: the canonical one or the older one.
@@ -86,101 +63,6 @@ func isDefaultSelection() bool {
 	return SelectedInstance.Name == DefaultInstance && SelectedInstance.Distro == ""
 }
 
-// resolveDefaultDistro is steps 2 to 6 for the state directory home.
-func resolveDefaultDistro(home string) (defaultChoice, error) {
-	recorded := ""
-	if rec, err := (&Base{home: home}).readRecord(); err == nil {
-		switch {
-		case strings.EqualFold(rec.Name, LegacyBaseName):
-			recorded = LegacyBaseName
-		case strings.EqualFold(rec.Name, DefaultBaseName):
-			recorded = DefaultBaseName
-		}
-	}
-	choice, err := pickDefaultDistro(home, recorded)
-	if err != nil {
-		return defaultChoice{}, err
-	}
-	if choice.name == DefaultBaseName {
-		if err := assertNoJobsInstance(home); err != nil {
-			return defaultChoice{}, err
-		}
-	}
-	return choice, nil
-}
-
-func pickDefaultDistro(home, recorded string) (defaultChoice, error) {
-	disks, err := defaultBaseHost.disks()
-	if err != nil {
-		// ⚠ A HOST WITH NO REGISTRY TO READ HAS NO SECOND CANDIDATE TO FIND. The
-		// record still names what this directory built.
-		if recorded != "" {
-			return defaultChoice{name: recorded, from: NameFromRecord}, nil
-		}
-		return defaultChoice{name: DefaultBaseName, from: NameFromCanonical}, nil
-	}
-	ownDir := filepath.Join(home, "base")
-	// where says whether a name is registered, and whether its disk is in this
-	// state directory's base folder.
-	where := func(name string) (at string, registered, here bool) {
-		at, registered = registeredAt(disks, name)
-		return at, registered, registered && pathEqual(cleanBasePath(at), cleanBasePath(ownDir))
-	}
-	legacyAt, legacyRegistered, legacyHere := where(LegacyBaseName)
-	canonicalAt, canonicalRegistered, canonicalHere := where(DefaultBaseName)
-
-	// ⛔ STEP 2: TWO CANDIDATES IN THIS DIRECTORY, REFUSED BY NAME, record or not.
-	if legacyHere && canonicalHere {
-		return defaultChoice{}, fmt.Errorf("%w: %s, the older name, and %s, the canonical name, both have their disk in %s. "+
-			"Nothing runs, because acting on either would be a guess. "+
-			"Choose one by setting base.name to it in the configuration",
-			ErrDefaultBaseAmbiguous, LegacyBaseName, DefaultBaseName, ownDir)
-	}
-
-	// ⭐ STEP 3: THE RECORD. Where the recorded name is registered with its disk
-	// here, it is this directory's base.
-	if recorded != "" {
-		at, registered, here := where(recorded)
-		if registered && here {
-			return defaultChoice{name: recorded, from: NameFromRecord}, nil
-		}
-		if registered {
-			// ⛔ THE NAME IS GLOBAL TO THE HOST AND THE RECORD IS NOT. This
-			// directory's record says it built a base whose disk is elsewhere, so
-			// one of the two is wrong, and neither is guessed at.
-			return defaultChoice{}, fmt.Errorf("%w: this state directory's record names %s, and %s is registered with its disk in %s, "+
-				"not in %s. That base belongs to another state directory. Nothing runs. "+
-				"Point WSL_TOOLKIT_HOME at the directory that built it, or delete %s here",
-				ErrDefaultBaseAmbiguous, recorded, recorded, cleanBasePath(at), ownDir, filepath.Join(home, "base.json"))
-		}
-		// An unregistered record is a base that was removed: the steps below decide.
-	}
-
-	// elsewhere is the folder holding a disk, where it is not this directory's.
-	elsewhere := func(at string, here bool) string {
-		if here {
-			return ""
-		}
-		return cleanBasePath(at)
-	}
-	switch {
-	// ⛔ STEP 5: BOTH NAMES ON THE HOST AND NO RECORD TO CHOOSE, REFUSED BY NAME.
-	case legacyRegistered && canonicalRegistered:
-		return defaultChoice{}, fmt.Errorf("%w: this state directory, %s, has no record, and both %s, the older name, with its disk in %s, "+
-			"and %s, the canonical name, with its disk in %s, are registered. "+
-			"Nothing runs, because acting on either would be a guess. "+
-			"Choose one by setting base.name to it in the configuration",
-			ErrDefaultBaseAmbiguous, home, LegacyBaseName, cleanBasePath(legacyAt), DefaultBaseName, cleanBasePath(canonicalAt))
-	// ⭐ STEP 4: THE HOST'S ONE BASE, WHEREVER ITS DISK IS. No marker is read.
-	case legacyRegistered:
-		return defaultChoice{name: LegacyBaseName, from: NameFromRegistered, at: elsewhere(legacyAt, legacyHere)}, nil
-	case canonicalRegistered:
-		return defaultChoice{name: DefaultBaseName, from: NameFromRegistered, at: elsewhere(canonicalAt, canonicalHere)}, nil
-	}
-	// ⭐ STEP 6: A FRESH HOST, under the canonical name.
-	return defaultChoice{name: DefaultBaseName, from: NameFromCanonical}, nil
-}
-
 // registeredAt finds a distribution in a registry answer, as WSL compares names.
 func registeredAt(disks map[string]string, name string) (string, bool) {
 	for n, at := range disks {
@@ -191,192 +73,272 @@ func registeredAt(disks map[string]string, name string) (string, bool) {
 	return "", false
 }
 
-// assertNoJobsInstance refuses the canonical name while an instance called `jobs`
-// already has state under home.
+// instanceOf answers the instance whose base folder at is, `<root>\instances\<name>\base`.
+func instanceOf(at string) (string, bool) {
+	at = cleanBasePath(at)
+	if at == "" || !strings.EqualFold(filepath.Base(at), "base") {
+		return "", false
+	}
+	holder := filepath.Dir(at)
+	if !strings.EqualFold(filepath.Base(filepath.Dir(holder)), "instances") {
+		return "", false
+	}
+	return filepath.Base(holder), true
+}
+
+// candidateAt says whether name is registered as a default base, and where.
 //
-// ⛔ THAT INSTANCE'S DISTRIBUTION IS `wsl-toolkit-jobs` TOO. Before the rename it
-// was an ordinary instance name, so a host may hold one, and the default would then
-// take over its base.
-func assertNoJobsInstance(home string) error {
-	dir, err := instanceHomeUnder(home, "jobs")
+// ⛔ AN INSTANCE IS NOT A DEFAULT BASE. An instance `jobs` made before the
+// reservation is registered as `wsl-toolkit-jobs` with its disk under
+// `instances\jobs\base`.
+func candidateAt(disks map[string]string, name string) (string, bool) {
+	at, ok := registeredAt(disks, name)
+	if !ok {
+		return "", false
+	}
+	if _, instance := instanceOf(at); instance {
+		return "", false
+	}
+	return cleanBasePath(at), true
+}
+
+// resolveDefaultName is steps 2 to 4: the name, and which step chose it.
+func resolveDefaultName() (string, string, error) {
+	return resolveDefaultNameIn(readRegistrations())
+}
+
+// resolveDefaultNameIn is resolveDefaultName over a registry answer.
+func resolveDefaultNameIn(disks map[string]string, err error) (string, string, error) {
 	if err != nil {
-		return err
+		// ⚠ NO REGISTRY TO READ: a host that is not Windows, or a case.
+		return DefaultBaseName, NameFromCanonical, nil
 	}
-	if _, err := os.Stat(dir); err == nil {
-		return fmt.Errorf("the default base would be %s, and the instance jobs at %s holds that name already. "+
-			"Remove that instance with %s, or set base.name to %s to keep the default on the older name",
-			DefaultBaseName, dir, "wsl-toolkit --instance jobs base remove --yes", LegacyBaseName)
+	legacyAt, legacy := candidateAt(disks, LegacyBaseName)
+	canonicalAt, canonical := candidateAt(disks, DefaultBaseName)
+	switch {
+	case legacy && canonical:
+		return "", "", fmt.Errorf("%w: both %s, with its disk in %s, and %s, with its disk in %s, are registered. "+
+			"Nothing runs, because acting on either would be a guess. "+
+			"Choose one by setting base.name to it in the configuration",
+			ErrDefaultBaseAmbiguous, LegacyBaseName, diskWords(legacyAt), DefaultBaseName, diskWords(canonicalAt))
+	case legacy:
+		return LegacyBaseName, NameFromRegistered, nil
+	case canonical:
+		return DefaultBaseName, NameFromRegistered, nil
 	}
-	return nil
+	return DefaultBaseName, NameFromCanonical, nil
 }
 
-// BaseNaming says which name the default instance's base runs under, and how to
-// move to the canonical one. WSL-167.
-type BaseNaming struct {
-	// Canonical is the name a new default base is registered as.
-	Canonical string `json:"canonical"`
-	// From is which step chose the name: configuration, record, registered or
-	// canonical.
-	From string `json:"from"`
-	// Legacy is true where the base runs under the older name.
-	Legacy bool `json:"legacy"`
-	// Elsewhere is the base folder of another state directory that holds this
-	// base's disk. This state directory has no record, and acts on that base.
-	Elsewhere string `json:"elsewhere,omitempty"`
-	// Move is how to rebuild under the canonical name, and what that costs.
-	Move string `json:"move,omitempty"`
+// diskWords is a disk folder as a message names it.
+func diskWords(at string) string {
+	if at == "" {
+		return "no folder WSL names"
+	}
+	return at
 }
 
-// ElsewhereNote is what `base status` says about a base whose disk is in another
-// state directory, or nothing where its disk is here.
-func (n *BaseNaming) ElsewhereNote(name string) string {
-	if n == nil || n.Elsewhere == "" {
-		return ""
-	}
-	return fmt.Sprintf("this state directory has no record, so it acts on %s, whose disk is in %s, "+
-		"another state directory's base folder. Nothing is built here", name, n.Elsewhere)
-}
-
-// moveAdvice is what `base status` says to a base under the older name.
-//
-// ⚠ NOT A RENAME, AND NOT OFFERED AS ONE. A copy by `wsl --export` and
-// `--import` carries the marker of the old name, which every guard then reads as
-// a copied disk, and it doubles the disk while it runs.
-func moveAdvice(from, elsewhere string) string {
-	steps := ToolCommand("base remove --yes") + ", then " + ToolCommand("base ensure")
-	if from == NameFromConfig {
-		steps = "remove base.name from the configuration, then " + steps
-	}
-	if elsewhere != "" {
-		// ⛔ THE MOVE BELONGS TO THE DIRECTORY THAT HOLDS THE DISK. Run from here,
-		// it would build the new base in this directory and leave that one's record.
-		steps = "from the state directory whose base folder is " + elsewhere + ", " + steps
-	}
-	return fmt.Sprintf("this base runs under the older name %s, and a new one is named %s. "+
-		"To move: %s. That deletes this base's disk, with its home, images and credentials, "+
-		"and builds a new one from the image. The grants in the configuration are kept. "+
-		"Nothing moves until you run it", LegacyBaseName, DefaultBaseName, steps)
-}
-
-// naming is the BaseNaming for a configuration, or nil for a named instance.
-func (c Config) naming() *BaseNaming {
-	if !isDefaultSelection() || !IsDefaultBaseName(c.Base.Name) {
+// assertCanonicalFree refuses the default's canonical name while an instance is
+// registered under it. ⚠ Only a registration counts, never a directory. WSL-167.
+func assertCanonicalFree(name string) error {
+	if !strings.EqualFold(name, DefaultBaseName) {
 		return nil
 	}
-	from := c.nameFrom
-	if from == "" {
-		from = NameFromCanonical
-	}
-	n := &BaseNaming{Canonical: DefaultBaseName, From: from, Elsewhere: c.nameAt}
-	if strings.EqualFold(c.Base.Name, LegacyBaseName) {
-		n.Legacy = true
-		n.Move = moveAdvice(from, c.nameAt)
-	}
-	return n
-}
-
-// -- a base this state directory did not build ---------------------------------
-
-// ErrBaseElsewhere is what a removal or a rebuild of a base whose disk is in
-// another state directory is refused with. WSL-167.
-var ErrBaseElsewhere = errors.New("the base's disk is in another state directory")
-
-// diskElsewhere answers the folder holding the disk of the configured
-// distribution, where WSL has it registered with its disk outside this state
-// directory's base folder, and an empty string where its disk is here or it is not
-// registered.
-//
-// ⛔ THE REGISTRY IS READ NOW, NOT ONLY THE NAME'S RESOLUTION. A base.name in the
-// configuration, a named instance, or a version before WSL-167 chose a name with
-// no word of where its disk is, and a scratch home acted on the operator's base.
-//
-// ⚠ AN UNREADABLE REGISTRY answers what the resolution found, with the error.
-func (b *Base) diskElsewhere() (string, error) {
-	disks := b.disks
-	if disks == nil {
-		disks = registeredDisks
-	}
-	registered, err := disks()
+	disks, err := readRegistrations()
 	if err != nil {
-		return b.cfg.nameAt, err
+		return nil
 	}
-	at, ok := registeredAt(registered, b.cfg.Base.Name)
+	at, ok := registeredAt(disks, DefaultBaseName)
 	if !ok {
-		return "", nil
+		return nil
 	}
-	if cleanBasePath(at) == "" {
-		return b.cfg.nameAt, nil
+	if _, instance := instanceOf(at); !instance {
+		return nil
 	}
-	if pathEqual(cleanBasePath(at), cleanBasePath(b.Dir())) {
-		return "", nil
-	}
-	return cleanBasePath(at), nil
+	return fmt.Errorf("the default base would be %s, and an instance with its disk in %s is registered under that name. "+
+		"Nothing runs. Remove that instance, %s, or set base.name to %s",
+		DefaultBaseName, cleanBasePath(at), holderCommand(at, "base remove --yes"), LegacyBaseName)
 }
 
-// assertDiskHere refuses to remove or rebuild a registered base whose disk is not
-// in this state directory's base folder, and while that cannot be read. WSL-167.
+// assertNameStillDefault reads the default name again, under the base's lock,
+// before a new default base is built. WSL-167.
 //
-// ⛔ A STATE DIRECTORY MAY USE A BASE IT DID NOT BUILD, AND NOTHING MORE. A home
-// with no record adopts the host's base by its name, so `base remove --yes` from a
-// scratch home unregistered the operator's base and deleted its SSH Host block.
-// `base recreate` exported, unregistered and imported it again into the scratch
-// home. The refusal comes before anything is unregistered, exported or deleted.
-func (b *Base) assertDiskHere(verb string) error {
-	at, err := b.diskElsewhere()
-	if at != "" {
-		return b.elsewhereRefusal(verb, at)
+// ⛔ THE NAME WAS READ WHEN THE CONFIGURATION LOADED. A home that loaded the host's
+// `wsl-toolkit`, and reached its build after the owner removed it, imported a
+// second `wsl-toolkit` into itself. Only the name the rule gives now is built.
+//
+// ⚠ A NEW BUILD ONLY. A rebuild, with its rootfs exported, has just removed the
+// base it replaces, under the name it keeps.
+func (b *Base) assertNameStillDefault(rootfs string) error {
+	if rootfs != "" || !isDefaultSelection() || b.cfg.nameFrom == NameFromConfig || !IsDefaultBaseName(b.cfg.Base.Name) {
+		return nil
 	}
+	disks, readErr := b.registrations()
+	name, _, err := resolveDefaultNameIn(disks, readErr)
 	if err != nil {
-		return fmt.Errorf("%s was NOT %s: WSL's registrations could not be read, so nothing proves its disk is in %s: %w",
-			b.cfg.Base.Name, verb, b.Dir(), err)
+		return fmt.Errorf("%s was NOT built: %w", b.cfg.Base.Name, err)
 	}
-	return nil
+	if !strings.EqualFold(name, b.cfg.Base.Name) {
+		return fmt.Errorf("%s was NOT built: WSL's registrations changed while this waited, and the default base is now %s. "+
+			"Nothing was built. Run it again", b.cfg.Base.Name, name)
+	}
+	if _, registered := registeredAt(disks, name); readErr == nil && registered {
+		return fmt.Errorf("%s was NOT built: it was registered while this waited. Nothing was built. Run it again", name)
+	}
+	return assertCanonicalFree(name)
 }
 
-// elsewhereRefusal names the state directory that holds the disk, and the command
-// that acts on the base from it.
-func (b *Base) elsewhereRefusal(verb, at string) error {
-	args := "base remove --yes"
-	if verb != "removed" {
-		args = "base recreate"
+// helperNameFrom is which step chose a name that came over the helper's wire,
+// where the step does not travel: the resolution's own where the two agree, and
+// the configuration's where they do not.
+func helperNameFrom(cfg Config) string {
+	if !isDefaultSelection() || !IsDefaultBaseName(cfg.Base.Name) {
+		return ""
+	}
+	if name, from, err := resolveDefaultName(); err == nil && strings.EqualFold(name, cfg.Base.Name) {
+		return from
+	}
+	return NameFromConfig
+}
+
+// -- ownership -----------------------------------------------------------------
+
+// registrations is WSL's registrations, as this base reads them.
+func (b *Base) registrations() (map[string]string, error) {
+	if b.disks != nil {
+		return b.disks()
+	}
+	return readRegistrations()
+}
+
+// diskFolder is the folder WSL keeps the configured base's disk in, and whether
+// the name is registered there.
+func (b *Base) diskFolder() (string, bool, error) {
+	disks, err := b.registrations()
+	if err != nil {
+		return "", false, err
+	}
+	at, ok := registeredAt(disks, b.cfg.Base.Name)
+	return cleanBasePath(at), ok, nil
+}
+
+// assertOwner refuses a change to the configured base unless this state directory
+// owns it. verb says what was not done, and args is the command that does it.
+//
+// ⛔ BEFORE ANYTHING CHANGES, AND CLOSED. A registry that cannot be read, and a
+// registration with no disk folder, prove nothing, so both refuse.
+func (b *Base) assertOwner(verb, args string) error {
+	name := b.cfg.Base.Name
+	// ⛔ A REDIRECTED PROCESS WRITES INTO A PACKAGE'S COPY OF THE STATE DIRECTORY,
+	// so its records and locks are not the ones the base's owner keeps. WSL-118.
+	for _, c := range StateCopies(b.home) {
+		if c.ThisProcess {
+			return fmt.Errorf("%w: %s was NOT %s. Windows redirects this process's writes under %%LOCALAPPDATA%% into %s, "+
+				"so its locks and records are not the owner's. Run it from PowerShell or a terminal outside the app",
+				ErrNotOwner, name, verb, c.Path)
+		}
+	}
+	at, registered, err := b.diskFolder()
+	if err != nil {
+		return fmt.Errorf("%w: %s was NOT %s. WSL's registrations could not be read, so nothing proves this state directory, %s, owns it: %v",
+			ErrNotOwner, name, verb, b.home, err)
+	}
+	if !registered || at == "" {
+		return fmt.Errorf("%w: %s was NOT %s. WSL names no disk folder for it, so nothing proves this state directory, %s, owns it",
+			ErrNotOwner, name, verb, b.home)
+	}
+	if samePlace(at, b.Dir()) {
+		return nil
 	}
 	return fmt.Errorf("%w: %s was NOT %s. Its disk is in %s, and this state directory is %s. "+
-		"A state directory may use a base it did not build, and never removes or rebuilds it. "+
-		"Run this from the state directory that holds the disk: %s",
-		ErrBaseElsewhere, b.cfg.Base.Name, verb, at, b.home, holderCommand(at, args))
+		"A state directory uses a base it does not own, and never changes it. %s",
+		ErrNotOwner, name, verb, at, b.home, ownerAdvice(name, at, args))
+}
+
+// owns says whether this state directory owns the configured base. ⚠ Closed: any
+// doubt answers no.
+func (b *Base) owns() bool { return b.assertOwner("changed", "base ensure") == nil }
+
+// ownerAdvice says where to run args from, for a disk in the folder at.
+func ownerAdvice(name, at, args string) string {
+	if !strings.EqualFold(filepath.Base(at), "base") {
+		// ⚠ MOVED WITH `wsl --manage --move`, or placed by hand: no state
+		// directory's base folder holds it.
+		return fmt.Sprintf("This tool did not place that disk, so no state directory owns it. "+
+			"To remove it, losing its disk, run it yourself: wsl --unregister %s", name)
+	}
+	return "Run this from the state directory that owns it: " + holderCommand(at, args)
 }
 
 // holderCommand is the command line that runs args from the state directory whose
 // base folder is at. ⚠ An instance's base folder is under its root's instances
 // folder, so the command names the instance and the root.
 func holderCommand(at, args string) string {
-	holder := filepath.Dir(at)
+	holder := filepath.Dir(cleanBasePath(at))
 	cmd := ToolCommandFor(DefaultInstance, args)
-	if parent := filepath.Dir(holder); strings.EqualFold(filepath.Base(parent), "instances") {
-		cmd = ToolCommandFor(filepath.Base(holder), args)
-		holder = filepath.Dir(parent)
+	if instance, ok := instanceOf(at); ok {
+		cmd = ToolCommandFor(instance, args)
+		holder = filepath.Dir(filepath.Dir(holder))
 	}
-	if home, err := defaultHome(); err == nil && pathEqual(cleanBasePath(home), cleanBasePath(holder)) {
+	if home, err := defaultHome(); err == nil && samePlace(home, holder) {
 		return "with WSL_TOOLKIT_HOME unset, the default state directory: " + cmd
 	}
 	return "$env:WSL_TOOLKIT_HOME='" + holder + "'; " + cmd
 }
 
-// recordsHere says whether this state directory may write a base.json about the
-// configured base: not where its disk is in another state directory's base folder.
-//
-// ⛔ AN ADOPTED BASE GETS NO RECORD HERE. The record says this directory built the
-// base, so the next load from a home that only used it was refused as ambiguous.
-// WSL-167.
-func (b *Base) recordsHere() bool {
-	if at, _ := b.diskElsewhere(); at != "" {
-		if b.log == nil {
-			return false
-		}
-		b.log("no base.json is written in " + b.home + ": " + b.cfg.Base.Name + " has its disk in " + at + ", and that state directory keeps its record")
-		return false
+// -- what base status says -----------------------------------------------------
+
+// BaseNaming says which name the default instance's base runs under, where its
+// disk is, and whether this state directory owns it. WSL-167.
+type BaseNaming struct {
+	// Canonical is the name a new default base is registered as.
+	Canonical string `json:"canonical"`
+	// Legacy is true where the base runs under the older name.
+	Legacy bool `json:"legacy"`
+	// From is which step chose the name: configuration, registered or canonical.
+	From string `json:"from"`
+	// Disk is the folder WSL keeps the base's disk in, and empty where it is not
+	// registered or the registry could not be read.
+	Disk string `json:"disk,omitempty"`
+	// Owner is true where that folder is this state directory's base folder.
+	Owner bool `json:"owner"`
+	// Move is how to rebuild under the canonical name, and what that costs.
+	Move string `json:"move,omitempty"`
+}
+
+// naming is the BaseNaming for this base, or nil for a named instance.
+func (b *Base) naming() *BaseNaming {
+	if !isDefaultSelection() || !IsDefaultBaseName(b.cfg.Base.Name) {
+		return nil
 	}
-	return true
+	from := b.cfg.nameFrom
+	if from == "" {
+		from = NameFromCanonical
+	}
+	n := &BaseNaming{Canonical: DefaultBaseName, From: from}
+	if at, registered, err := b.diskFolder(); err == nil && registered {
+		n.Disk = at
+		n.Owner = b.owns()
+	}
+	if strings.EqualFold(b.cfg.Base.Name, LegacyBaseName) {
+		n.Legacy = true
+		n.Move = moveAdvice(from)
+	}
+	return n
+}
+
+// moveAdvice is what `base status` says to a base under the older name.
+//
+// ⚠ NOT A RENAME, AND NOT OFFERED AS ONE. A copy by `wsl --export` and `--import`
+// carries the marker of the old name, and it doubles the disk while it runs.
+func moveAdvice(from string) string {
+	steps := ToolCommand("base remove --yes") + ", then " + ToolCommand("base ensure")
+	if from == NameFromConfig {
+		steps = "remove base.name from the configuration, then " + steps
+	}
+	return fmt.Sprintf("this base runs under the older name %s, and a new one is named %s. "+
+		"To move, from the state directory that owns it: %s. That deletes this base's disk, with its home, images and credentials, "+
+		"and builds a new one from the image. The grants in the configuration are kept. "+
+		"Nothing moves until you run it", LegacyBaseName, DefaultBaseName, steps)
 }
 
 // -- reserved instance names -------------------------------------------------

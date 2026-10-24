@@ -181,6 +181,7 @@ func (h *HelperServer) runnerFor(cfg *Config) (*Runner, Config, error) {
 		return h.runner, h.cfg, nil
 	}
 	effective := *cfg
+	effective.nameFrom = helperNameFrom(effective)
 	if err := effective.Validate(); err != nil {
 		return nil, effective, fmt.Errorf("the configuration sent with this request is not usable: %w", err)
 	}

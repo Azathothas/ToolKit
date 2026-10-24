@@ -160,11 +160,6 @@ func instanceHome(name string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return instanceHomeUnder(base, name)
-}
-
-// instanceHomeUnder is instanceHome under a state root that is already known.
-func instanceHomeUnder(base, name string) (string, error) {
 	if name == DefaultInstance {
 		return base, nil
 	}

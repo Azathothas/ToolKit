@@ -109,55 +109,56 @@ too.** Its canonical name is `wsl-toolkit-jobs`, and a new default base is built
 under that name.
 
 ⚠ **An older default base may still be named `wsl-toolkit`.** It keeps that name and
-keeps working, with every command. The tool reads which name a state directory's
-base has, in this order:
+keeps working, with every command. The name comes from the configuration and from
+WSL's registrations, and from nothing else:
 
 | step | what decides |
 | --- | --- |
 | 1 | `base.name` in the configuration in effect |
-| 2 | ⛔ a refusal, when both names have their disk in this state directory |
-| 3 | the state directory's `base.json`, when that name is registered with its disk here |
-| 4 | with no record, the one name of the two that is registered, wherever its disk is |
-| 5 | ⛔ a refusal, when there is no record and both names are registered |
-| 6 | `wsl-toolkit-jobs`, when there is no record and neither name is registered |
+| 2 | the one of the two names that is registered as a default base |
+| 3 | ⛔ a refusal, when both are registered |
+| 4 | `wsl-toolkit-jobs`, when neither is, or the registry cannot be read |
 
-⛔ **Two candidates are refused, never guessed between.** When both names have their
-disk in this state directory, every command exits 2 and names both. With no record and
-both names registered anywhere, the same holds. Set `base.name` to choose.
+⭐ **Every caller on a host with one base uses it.** A scratch `WSL_TOOLKIT_HOME`, or a
+shell whose `%LOCALAPPDATA%` Windows redirects, runs jobs on the host's base. It
+builds no second one.
 
-⭐ **A host that already has a base keeps using it.** A state directory with no
-`base.json` uses the host's registered base, under either name, wherever its disk
-is. So a scratch `WSL_TOOLKIT_HOME`, or a shell whose `%LOCALAPPDATA%` Windows
-redirects, runs jobs on the host's base and builds no second one. `base status` says
-so in a `disk in` row, and in `naming.elsewhere` under `--json`, naming the folder
-that holds the disk.
+⛔ **Two candidates are refused, never guessed between.** Every command exits 2, naming
+both and the folders of their disks. Set `base.name` to choose. `doctor` names both
+in its `base distro` row, and in `wsl.candidates` under `--json`.
 
-⛔ **A state directory may use a base it did not build, and nothing more.** Where the
-base's disk is in another state directory, this one never writes a `base.json` about
-it, and never takes an adapter's SSH Host block away. `base remove`, `base recreate` and a `--preset` switch that rebuilds are refused
-before anything is unregistered, exported or deleted. The refusal names the state
-directory that holds the disk, and the command to run from it. ⚠ This is stricter
-than before `wsl-toolkit-jobs`, when a scratch `--home` could remove or rebuild the
-host's base. `WSL-167`
+⚠ **An instance `jobs` is not a default base.** One made before the reservation is
+registered as `wsl-toolkit-jobs`, with its disk under `instances\jobs\base`. While it
+is registered, the default refuses that name and says how to remove the instance.
 
-⚠ **`doctor` reports an ambiguous default base as one.** Where both names are
-refused, its `base distro` row names both and their disk folders, and `--json`
-carries them in `wsl.candidates`.
+⛔ **Only the state directory that owns the base changes it.** It owns the base when
+WSL keeps the base's disk in that directory's `base` folder. Links and junctions are
+resolved before the two are compared. A caller that does not own the base may run
+jobs in it, and is refused these:
 
-⛔ **A record ties a base to its state directory by the disk.** A `base.json` that
-names a base registered with its disk in another state directory is refused by name.
-A base built in a scratch state directory has its record there, and does not make
-your own state directory ambiguous.
+- `base remove`, `base recreate`, and a `--preset` switch that rebuilds;
+- a re-provision in place, and `base ensure --repair`, healthy base or not;
+- writing `base.json`, and stamping the guest's identity marker.
+
+Each refusal comes before anything changes. It names the disk folder and the command
+to run from the state directory that owns it. A disk moved with `wsl --manage --move`
+is in no state directory, and the refusal says to run `wsl --unregister NAME` yourself.
+⚠ A registry that cannot be read, and a registration with no disk folder, prove no
+owner, so both refuse. A process whose writes Windows redirects into a package is
+refused the same changes. Run those from PowerShell or a terminal outside the app.
+
+⚠ **A caller that does not own the base leaves its adapters alone.** Its `base ensure`
+installs none and takes no SSH Host block away, says so in one line, and still exits 0.
 
 ⚠ **No guest marker is read to choose the name.** Reading one starts the
 distribution on every command.
-
-`base status` says which name the base has, in the `older name` row and in
-`naming` under `--json`. ⛔ **Moving is your choice, and the tool never renames on its
+`base status` says which name the base has, where its disk is, and whether this
+state directory owns it, in its `older name`, `disk in` and `owner` rows. Under `--json`,
+`naming` carries `canonical`, `legacy`, `from`, `disk` and `owner`. ⛔ **Moving is your choice, and the tool never renames on its
 own.** To move, run `wsl-toolkit base remove --yes`, then `wsl-toolkit base ensure`.
 That deletes the base's disk, with its home, images and credentials. It builds a new
 base from the image, and the configuration's grants are kept. ⛔ Run the move from
-the state directory that holds the base's disk, which `base status` names.
+the state directory that owns the base.
 
 ⚠ **No in-place rename is offered.** A copy by `wsl --export` and `wsl --import`
 doubles the disk while it runs. It also carries the marker of the old name, which

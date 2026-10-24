@@ -167,6 +167,43 @@ func WorkspaceKey(path string) (string, error) { return resolveExisting(path) }
 // SameWorkspace compares two keys as this host compares paths.
 func SameWorkspace(a, b string) bool { return pathEqual(a, b) }
 
+// foldPath is a disk folder as this host compares two of them: absolute, cleaned,
+// with links and junctions resolved as far as the path exists.
+//
+// ⛔ NOT THE STRING WSL RECORDED. A state directory reached through a junction is
+// the same folder under another spelling, and a string compare took its own base
+// away from it. WSL-167.
+func foldPath(p string) string {
+	c := cleanBasePath(p)
+	if c == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(c); err == nil {
+		c = abs
+	}
+	// ⚠ AS FAR AS THE PATH EXISTS. A base folder not made yet still folds by the
+	// state directory that holds it.
+	var tail []string
+	for cur := c; ; {
+		if resolved, err := finalPath(cur); err == nil {
+			return filepath.Clean(filepath.Join(append([]string{resolved}, tail...)...))
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return c
+		}
+		tail = append([]string{filepath.Base(cur)}, tail...)
+		cur = parent
+	}
+}
+
+// samePlace says whether two disk folders are one after folding. ⚠ An empty one
+// is no folder, and is the same as nothing.
+func samePlace(a, b string) bool {
+	fa, fb := foldPath(a), foldPath(b)
+	return fa != "" && fb != "" && pathEqual(fa, fb)
+}
+
 func pathEqual(a, b string) bool {
 	a = strings.TrimRight(a, `\/`)
 	b = strings.TrimRight(b, `\/`)

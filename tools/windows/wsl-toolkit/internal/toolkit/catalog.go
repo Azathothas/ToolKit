@@ -251,10 +251,8 @@ type Config struct {
 	path   string
 	source string
 	// nameFrom is which step chose the default instance's base name. WSL-167.
+	// ⚠ It does not travel to the helper, which reads it again: helperNameFrom.
 	nameFrom string
-	// nameAt is the base folder of another state directory that holds the disk
-	// of the base this one acts on, and empty where the disk is here. WSL-167.
-	nameAt string
 }
 
 // Path is the file this configuration was read from, and Source is which step
@@ -561,12 +559,8 @@ func loadConfigFile(path, from string) (Config, error) {
 	// ⛔ A FILE NAMING THE CANONICAL NAME MEETS THE SAME GUARD as a resolved one.
 	// An instance `jobs` made before the reservation runs under that name too, and
 	// the default would share its distribution. WSL-167.
-	if isDefaultSelection() && strings.EqualFold(cfg.Base.Name, DefaultBaseName) {
-		home, err := Home()
-		if err != nil {
-			return cfg, err
-		}
-		if err := assertNoJobsInstance(home); err != nil {
+	if isDefaultSelection() {
+		if err := assertCanonicalFree(cfg.Base.Name); err != nil {
 			return cfg, fmt.Errorf("%s: %w", path, err)
 		}
 	}
@@ -583,15 +577,14 @@ func withDefaultDistro(cfg Config) (Config, error) {
 	if !isDefaultSelection() {
 		return cfg, nil
 	}
-	home, err := Home()
+	name, from, err := resolveDefaultName()
 	if err != nil {
 		return cfg, err
 	}
-	choice, err := resolveDefaultDistro(home)
-	if err != nil {
+	if err := assertCanonicalFree(name); err != nil {
 		return cfg, err
 	}
-	cfg.Base.Name, cfg.nameFrom, cfg.nameAt = choice.name, choice.from, choice.at
+	cfg.Base.Name, cfg.nameFrom = name, from
 	return cfg, nil
 }
 

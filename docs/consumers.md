@@ -93,29 +93,21 @@ depend on it.
 
 `WSL-167`, ruling 33. Not released yet. A break by the table above, so the release
 that carries it is a major one. ⭐ A host that already has a default base keeps
-using it: a state directory with no record runs jobs on it, under its old name,
-wherever its disk is.
-
-⛔ **A state directory with no record may use that base, and nothing more.** It never
-removes, recreates or rebuilds it, never writes a `base.json` about it, and never takes
-an adapter's SSH Host block away. That is
-stricter than before `WSL-167`, when a scratch `WSL_TOOLKIT_HOME` could remove or
-rebuild the host's base. The last row below is that break.
+using it, under its old name, from every state directory.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
 | a NEW default base is registered as `wsl-toolkit-jobs`. A base built before keeps its name, `wsl-toolkit` | names the distribution `wsl-toolkit` directly, on a host whose first default base is built after the update | reads the name from `base status --json`, or runs the tool's own commands |
-| a state directory where both names have their disk is refused, exit 2, naming both | built a second default base beside the first | sets `base.name` to the one it uses |
-| a state directory with no record, on a host where both names are registered, is refused, exit 2, naming both and their disks | runs from a scratch `WSL_TOOLKIT_HOME` on a host with two default bases | sets `base.name` to the one it uses |
-| a `base.json` naming a base registered with its disk in another state directory is refused, exit 2, naming both directories | kept a record an older version wrote in a scratch directory about the host's base | deletes that `base.json`, as the refusal says |
-| a new instance named `base` or `jobs` is refused, exit 2. An existing one stays reachable and is never built again | creates either instance | names its instance for what it holds |
-| `muse.exe`, `pi.exe` and `omp.exe` reach the default base, not the instance `base` | runs a launcher against the instance `base` | configures the agents' adapters on the default base and runs `base ensure` |
-| `base remove`, `base recreate` and a `--preset` switch that rebuilds are refused, with a nonzero exit, where the base's disk is in another state directory. The refusal names that directory and the command to run from it | removed or rebuilt the host's base from a scratch `WSL_TOOLKIT_HOME` or `--home` | runs the command the refusal names, from the state directory that holds the disk |
+| removal, rebuild, re-provision in place and `--repair` are refused, exit 2, from a state directory that does not own the base. The refusal names the disk folder and the command to run from its owner | removed, rebuilt, re-provisioned or repaired the host's base from a scratch `WSL_TOOLKIT_HOME` or `--home`, which 7.0.2 allowed | runs the command the refusal names, from the state directory that owns the base |
+
+⚠ **Refusals that break no working caller.** Both default names registered is refused
+by name, and `base.name` chooses. A new instance named `base` or `jobs` is refused. An
+existing one stays reachable. `muse.exe`, `pi.exe` and `omp.exe` reach the default base,
+not the instance `base`, which ruling 33 removes.
 
 ⚠ **The register's rows list no call that names `wsl-toolkit` as a distribution or
 the instance `base`.** Their own trees were not read again for this change, so each row
 is read before the release.
-
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

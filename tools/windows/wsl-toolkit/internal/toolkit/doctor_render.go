@@ -107,13 +107,13 @@ func wslFactsFor(ctx context.Context, o DoctorOptions) WslFacts {
 		}
 	}
 	f.Advice = advice
-	if disks, err := defaultBaseHost.disks(); err == nil {
+	if disks, err := readRegistrations(); err == nil {
 		for _, name := range []string{LegacyBaseName, DefaultBaseName} {
-			if at, ok := registeredAt(disks, name); ok {
+			if at, ok := candidateAt(disks, name); ok {
 				if f.Candidates == nil {
 					f.Candidates = map[string]string{}
 				}
-				f.Candidates[name] = cleanBasePath(at)
+				f.Candidates[name] = diskWords(at)
 			}
 		}
 	}

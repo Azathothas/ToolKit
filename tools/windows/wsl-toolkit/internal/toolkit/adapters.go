@@ -517,16 +517,20 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 // applyAdapters installs every adapter the configuration names, in order, and
 // proves each one, and takes the machine half of every other one away.
 func (b *Base) applyAdapters(ctx context.Context) error {
+	// ⛔ NOT FROM A STATE DIRECTORY THAT DOES NOT OWN THE BASE. Its configuration
+	// names none of the adapters the owner installed, so an ensure from a scratch
+	// home took the owner's SSH Host block and known host away. Said once, and not
+	// an error, so that ensure still succeeds. WSL-167.
+	if err := b.assertOwner("changed", "base ensure"); err != nil {
+		b.log("the adapters are left as they are, on this machine and in the base: " + err.Error())
+		return nil
+	}
 	named := map[string]bool{}
 	for _, a := range b.cfg.Base.Adapters {
 		named[a.Name] = true
 	}
-	// ⛔ NOT FROM A STATE DIRECTORY THAT DID NOT BUILD THE BASE. Its configuration
-	// names none of the adapters the owning one installed, so an ensure from a
-	// scratch home took the owner's SSH Host block and known host away. WSL-167.
-	adopted, _ := b.diskElsewhere()
 	for _, spec := range adapterSpecs {
-		if !named[spec.Name] && spec.Host != nil && adopted == "" {
+		if !named[spec.Name] && spec.Host != nil {
 			// ⚠ THE GUEST HALF STAYS. Removing an adapter from a configuration
 			// takes away this machine's way in; what it installed in the base goes
 			// with `base recreate`, and the manual says so.
