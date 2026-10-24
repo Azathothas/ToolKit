@@ -85,7 +85,8 @@ Most answers are JSON.
 canonical name is `wsl-toolkit-jobs`. ⚠ An older default base may still be named
 `wsl-toolkit`, and it keeps working. `wsl-toolkit base status` says which name it has.
 For another base, `wsl-toolkit-NAME` is `--instance NAME`. ⛔ `base` and `jobs` are
-reserved instance names.
+reserved instance names. ⚠ A new instance named `wsl-NAME` is made as `NAME`, with a
+warning. `--literal-instance` keeps the name as given.
 
 ---
 

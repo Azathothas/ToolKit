@@ -177,6 +177,29 @@ name is refused, because its distribution would read as the default base. An ins
 that already exists under one stays reachable, so it can be removed. It is never
 built again.
 
+⭐ **A new instance named after its distribution drops the prefix.** `--instance
+wsl-errand-box` makes the instance `errand-box`, distribution `wsl-toolkit-errand-box`,
+not `wsl-toolkit-wsl-errand-box`. `wsl-toolkit-` is tried before `wsl-`. `WSL-193`
+
+| asked | what happens |
+| --- | --- |
+| `wsl-NAME` or `wsl-toolkit-NAME`, no instance yet | ⚠ the instance is `NAME`, and one warning on stderr names both |
+| the same name again | it reaches `NAME` with no warning, because the first call recorded the name there |
+| `wsl-NAME` where `NAME` was made under its own name | ⚠ it reaches `NAME`, and one warning says it is an existing instance |
+| a name whose instance already exists | ✅ it keeps that name, with no warning |
+| a name whose distribution `wsl-toolkit-wsl-NAME` is registered | ✅ it keeps that name, under any state home |
+| `wsl-`, `wsl-toolkit-` or `wsl-toolkit` | ❌ refused: it is only a prefix |
+| `wsl-base`, `wsl-jobs` | ❌ refused: what remains is reserved |
+| `wsl-auto` | ❌ refused: `auto` allocates a new instance in every process |
+| `wsl-wsl-NAME` | ❌ refused: what remains still carries a prefix |
+
+⭐ **`--literal-instance` keeps the name as given**, as does `WSL_TOOLKIT_INSTANCE_LITERAL=1`.
+`--instance auto` and a launcher the tool wrote are unaffected. The warning is not
+silenced by `--quiet`. A warning records the name it was said for in `prefixed-from`, in the
+instance's state directory, so it is said once. A literal instance exists once its state
+directory does, which `base ensure` makes. Until then, pass `--literal-instance` on each
+call. Every command the tool prints for a prefixed instance carries it.
+
 ---
 
 ## What the workspace copy leaves out

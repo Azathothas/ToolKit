@@ -16671,7 +16671,7 @@ Open.
 ## WSL-193. An instance name that starts with `wsl-` doubles the prefix in its distribution name
 
 **Source** the operator, 2026-10-24, after `--instance wsl-errand-box` registered `wsl-toolkit-wsl-errand-box`: "show a warning to user and say `wsl-toolkit-errand-box` was created instead of the `wsl-toolkit-wsl-errand-box` whenever name begins with `wsl-*`, and add/extend an option to do this anyway"
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16707,4 +16707,11 @@ Exit 0, with cases for the strip and its warning, the literal option, an existin
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `feat/wsl-193-instance-prefix`, for the next release.** A new instance named `wsl-NAME` or `wsl-toolkit-NAME` is made as `NAME`, and stderr says so once, even under `--quiet`. An existing prefixed instance keeps its name. `--literal-instance` and `WSL_TOOLKIT_INSTANCE_LITERAL=1` keep the name as given, and the printed next steps carry the option. A bare prefix, a name that strips to a reserved name or to `auto`, and a name that still carries a prefix after the strip are refused. Reviewed once; its one high finding and two mediums are fixed.
+
+```text
+scratch home:  --instance wsl-demo base status
+  wsl-toolkit: ⚠ instance "wsl-demo" is made as "demo", distribution wsl-toolkit-demo, rather than wsl-toolkit-wsl-demo ...
+  instance demo: distribution wsl-toolkit-demo
+the cases' rows: red on Windows and in golang:1.25
+```

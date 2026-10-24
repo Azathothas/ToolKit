@@ -612,7 +612,7 @@ func instanceMatches(name, path string) error {
 	// `wsl-toolkit-<instance>` in lower case, so the suffix is an instance name.
 	implied := "run it without --instance"
 	if !IsDefaultBaseName(name) {
-		implied = "pass --instance " + strings.TrimPrefix(name, OwnedPrefix+"-")
+		implied = "pass " + InstanceArgs(strings.TrimPrefix(name, OwnedPrefix+"-"))
 	}
 	selected := fmt.Sprintf("no instance is selected, so the distribution is %q", want)
 	if SelectedInstance.Name != DefaultInstance {
@@ -872,7 +872,7 @@ func ToolCommand(args string) string { return ToolCommandFor(SelectedInstance.Na
 // thing another instance holds.
 func ToolCommandFor(instance, args string) string {
 	if instance != "" && instance != DefaultInstance {
-		return "wsl-toolkit --instance " + instance + " " + args
+		return "wsl-toolkit " + InstanceArgs(instance) + " " + args
 	}
 	return "wsl-toolkit " + args
 }

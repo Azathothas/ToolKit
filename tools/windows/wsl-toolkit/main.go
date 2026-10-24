@@ -88,7 +88,13 @@ func usage() string {
 		"                      Also WSL_TOOLKIT_INSTANCE. `base` and `jobs` are",
 		"                      reserved. Without it, the default base is",
 		"                      wsl-toolkit-jobs, or wsl-toolkit where one was",
-		"                      built under that older name.",
+		"                      built under that older name. A NEW instance named",
+		"                      wsl-NAME or wsl-toolkit-NAME drops the prefix and",
+		"                      warns: --instance wsl-box makes box, distribution",
+		"                      wsl-toolkit-box. An existing one keeps its name.",
+		"        --literal-instance",
+		"                      keep the --instance name as given, prefix and all",
+		"                      (also WSL_TOOLKIT_INSTANCE_LITERAL=1)",
 		"        --home DIR    the state directory (also WSL_TOOLKIT_HOME)",
 		"        --config F    a configuration file, ahead of every search step",
 		"        --quiet       progress off. Answers still go to stdout",
@@ -173,6 +179,10 @@ func run(ctx context.Context, args []string) int {
 			instance = args[i]
 		case strings.HasPrefix(args[i], "--instance="):
 			instance = strings.TrimPrefix(args[i], "--instance=")
+		case args[i] == toolkit.LiteralInstanceFlag:
+			// ⭐ Set as the environment, as --home is, so a process this one
+			// starts keeps the name as given too. WSL-193.
+			os.Setenv(toolkit.InstanceLiteralEnv, "1")
 		case args[i] == "--config":
 			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, "wsl-toolkit: --config needs a file")
@@ -283,6 +293,14 @@ func applyInstance(ctx context.Context, asked string) (int, error) {
 	}
 	if inst.Name == toolkit.DefaultInstance {
 		return exitOK, nil
+	}
+	// ⚠ NOT SILENCED BY --quiet. It is not progress: it names a distribution
+	// other than the one the caller spelled. WSL-193.
+	if warning := inst.PrefixWarning(); warning != "" {
+		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+warning)
+		if err := inst.RecordPrefix(); err != nil {
+			return exitCannot, fmt.Errorf("cannot record that instance %s was reached as %s: %w", inst.Name, inst.StrippedFrom, err)
+		}
 	}
 	os.Setenv("WSL_TOOLKIT_HOME", inst.Home)
 	os.Setenv(toolkit.InstanceEnv, inst.Name)

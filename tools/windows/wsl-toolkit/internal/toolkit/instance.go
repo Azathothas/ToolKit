@@ -72,6 +72,14 @@ type Instance struct {
 	// Home is the state directory: transcripts, the ledger, the helper
 	// endpoint, the base disk.
 	Home string `json:"home"`
+	// StrippedFrom is the name the caller gave when a prefix was dropped from
+	// it, empty otherwise. WSL-193.
+	StrippedFrom string `json:"-"`
+	// Fresh says the state directory did not exist when the name was resolved.
+	Fresh bool `json:"-"`
+	// Recorded says the instance's state directory already records that it was
+	// reached by StrippedFrom, so the caller was told once. WSL-193.
+	Recorded bool `json:"-"`
 }
 
 // InstanceDistro is the distribution name for an instance suffix.
@@ -119,12 +127,35 @@ func ResolveInstance(ctx context.Context, asked string) (Instance, error) {
 		}
 		asked = name
 	}
+	stripped, err := stripInstancePrefix(ctx, asked)
+	if err != nil {
+		return inst, err
+	}
+	if stripped != asked {
+		inst.StrippedFrom = asked
+		asked = stripped
+	}
 	if err := ValidateInstanceName(asked); err != nil {
+		if inst.StrippedFrom != "" {
+			return inst, fmt.Errorf("instance %q becomes %q without its prefix, and %w. %s keeps the name as given",
+				inst.StrippedFrom, asked, err, LiteralInstanceFlag)
+		}
 		return inst, err
 	}
 	home, err := instanceHome(asked)
 	if err != nil {
 		return inst, err
+	}
+	if _, statErr := os.Stat(home); statErr != nil {
+		inst.Fresh = true
+	} else if inst.StrippedFrom != "" {
+		inst.Recorded = prefixRecorded(home, inst.StrippedFrom)
+	}
+	if inst.StrippedFrom != "" && IsReservedInstance(asked) {
+		return inst, fmt.Errorf("instance %q becomes %q without its prefix, and %q is reserved: its distribution "+
+			"would be %s, which reads as the default instance's base. Name the instance for what it holds, "+
+			"or pass %s to keep %q as given", inst.StrippedFrom, asked, asked, InstanceDistro(asked),
+			LiteralInstanceFlag, inst.StrippedFrom)
 	}
 	// ⛔ A RESERVED NAME IS REFUSED FOR A NEW INSTANCE AND NOT FOR AN EXISTING ONE.
 	// An instance made before the reservation has to stay reachable, or nothing
@@ -138,6 +169,195 @@ func ResolveInstance(ctx context.Context, asked string) (Instance, error) {
 	inst.Distro = InstanceDistro(asked)
 	inst.Home = home
 	return inst, nil
+}
+
+// -- the prefix a caller may type -------------------------------------------
+
+// InstanceLiteralEnv, set to 1, keeps an instance's name as given. WSL-193.
+const InstanceLiteralEnv = "WSL_TOOLKIT_INSTANCE_LITERAL"
+
+// LiteralInstanceFlag is the global option that does the same.
+const LiteralInstanceFlag = "--literal-instance"
+
+// instancePrefixes are what a caller types when naming an instance after the
+// distribution it wants. The longer one is tried first, so `wsl-toolkit-x`
+// becomes `x` and never `toolkit-x`.
+var instancePrefixes = []string{OwnedPrefix + "-", "wsl-"}
+
+// stripInstancePrefix is the name a NEW instance takes when the caller wrote a
+// distribution's prefix into it.
+//
+// ⭐ `--instance wsl-errand-box` MAKES `errand-box`, distribution
+// `wsl-toolkit-errand-box`. The caller named the distribution they wanted, and
+// the literal name would register `wsl-toolkit-wsl-errand-box`, which nobody
+// asked for. The operator ruled to strip and warn. WSL-193.
+//
+// ⛔ AN INSTANCE THAT ALREADY EXISTS UNDER THE PREFIXED NAME KEEPS IT. Its state
+// directory is the proof, as it is for a reserved name, and an instance this
+// stopped reaching would be one nothing could remove.
+//
+// ⚠ THE REMAINDER MAY NOT CARRY A PREFIX OF ITS OWN. Stripping once more would
+// surprise a caller, and stripping only once leaves a name a child process
+// would strip again. Refusing keeps one resolution for one name.
+//
+// ⛔ SO DOES ONE WHOSE DISTRIBUTION IS REGISTERED. A state directory is proof
+// only under the home this call reads, and a base made under another --home, or
+// whose state directory is gone, is still `wsl-toolkit-<asked>`. Stripping would
+// point `base remove` at a different distribution. WSL is asked once, and only
+// for a name that carries a prefix.
+//
+// ❌ `auto` IS NEVER A REMAINDER. It is the allocation keyword, so a child process
+// handed the instance `auto` would allocate a new numeric instance and serve a
+// different base from its parent.
+func stripInstancePrefix(ctx context.Context, asked string) (string, error) {
+	if asked == DefaultInstance || os.Getenv(InstanceLiteralEnv) == "1" {
+		return asked, nil
+	}
+	if !hasInstancePrefix(asked) {
+		return asked, nil
+	}
+	if ValidateInstanceName(asked) == nil {
+		if home, err := instanceHome(asked); err == nil {
+			if _, statErr := os.Stat(home); statErr == nil {
+				return asked, nil
+			}
+		}
+		if distroRegistered(ctx, InstanceDistro(asked)) {
+			return asked, nil
+		}
+	}
+	if asked == OwnedPrefix {
+		return "", barePrefixRefusal(asked)
+	}
+	for _, prefix := range instancePrefixes {
+		rest, found := strings.CutPrefix(asked, prefix)
+		if !found {
+			continue
+		}
+		if rest == "" {
+			return "", barePrefixRefusal(asked)
+		}
+		if rest == InstanceAuto {
+			return "", fmt.Errorf("instance %q becomes %q without its prefix, and %q is the keyword that allocates "+
+				"a new numeric instance, so every process started from it would reach a different base. "+
+				"Pass --instance auto for that, name the instance for what it holds, or pass %s to keep %q as given",
+				asked, rest, rest, LiteralInstanceFlag, asked)
+		}
+		if strings.HasPrefix(rest, "wsl-") {
+			return "", fmt.Errorf("instance %q still starts with a prefix after %q is dropped from it, "+
+				"so its distribution would still double the prefix. Name it without one, "+
+				"or pass %s to keep it as given", asked, prefix, LiteralInstanceFlag)
+		}
+		return rest, nil
+	}
+	return asked, nil
+}
+
+// hasInstancePrefix says a name carries one of the prefixes a caller may type,
+// or is the owned prefix itself.
+func hasInstancePrefix(name string) bool {
+	return name == OwnedPrefix || strings.HasPrefix(name, "wsl-")
+}
+
+// InstanceArgs is the selection a printed command line carries for an
+// instance.
+//
+// ⛔ A PREFIXED NAME CARRIES --literal-instance. Until its base is made, such an
+// instance may have no state directory, so the same line run without the option
+// would strip the name and reach a different instance. With it, the line means
+// one instance whether or not that one exists yet. WSL-193.
+func InstanceArgs(name string) string {
+	if hasInstancePrefix(name) {
+		return LiteralInstanceFlag + " --instance " + name
+	}
+	return "--instance " + name
+}
+
+// distroRegistered says WSL has a distribution of this name. It answers no
+// where WSL cannot be asked, so a host without it strips as the rule says.
+var distroRegistered = func(ctx context.Context, distro string) bool {
+	w, err := FindWsl()
+	if err != nil {
+		return false
+	}
+	names, err := w.listNames(ctx)
+	if err != nil {
+		return false
+	}
+	for _, n := range names {
+		if strings.EqualFold(strings.TrimSpace(n), distro) {
+			return true
+		}
+	}
+	return false
+}
+
+func barePrefixRefusal(asked string) error {
+	return fmt.Errorf("instance %q is only a prefix and names nothing: its distribution would be %s. "+
+		"Name the instance for what it holds, as --instance errand-box does for %s",
+		asked, OwnedPrefix+"-"+asked, InstanceDistro("errand-box"))
+}
+
+// PrefixWarning is what a caller is told when a prefix was dropped from the
+// name it gave, and empty once the instance records that name.
+//
+// ⚠ IT IS SAID ONCE FOR EACH PREFIXED NAME. RecordPrefix writes the name into
+// the instance's state directory, and later calls with it stay quiet, because
+// repeating the warning would be noise about a choice already made.
+//
+// ⛔ AN INSTANCE THAT EXISTS AND NEVER RECORDED THE NAME IS WARNED ABOUT TOO.
+// `--instance wsl-box` reaching a `box` made with `--instance box` maps the
+// caller onto a base it may not know, and saying nothing hid exactly that.
+func (i Instance) PrefixWarning() string {
+	if i.StrippedFrom == "" || i.Recorded {
+		return ""
+	}
+	verb := "is made as"
+	if !i.Fresh {
+		verb = "reaches the existing instance"
+	}
+	return fmt.Sprintf("⚠ instance %q %s %q, distribution %s, rather than %s. "+
+		"Pass %s or set %s=1 to keep %q as given",
+		i.StrippedFrom, verb, i.Name, i.Distro, OwnedPrefix+"-"+i.StrippedFrom,
+		LiteralInstanceFlag, InstanceLiteralEnv, i.StrippedFrom)
+}
+
+// prefixRecordFile lists, one per line, the prefixed names that have reached an
+// instance.
+const prefixRecordFile = "prefixed-from"
+
+// RecordPrefix writes the prefixed name into the instance's state directory, so
+// the warning is said once. It makes that directory, which claims the
+// instance as `--instance auto` claims one.
+func (i Instance) RecordPrefix() error {
+	if i.StrippedFrom == "" || i.Recorded || i.Home == "" {
+		return nil
+	}
+	if err := os.MkdirAll(i.Home, 0o700); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(filepath.Join(i.Home, prefixRecordFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(f, i.StrippedFrom)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+func prefixRecorded(home, asked string) bool {
+	data, err := os.ReadFile(filepath.Join(home, prefixRecordFile))
+	if err != nil || asked == "" {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) == asked {
+			return true
+		}
+	}
+	return false
 }
 
 // instanceHome is where an instance's state lives.
