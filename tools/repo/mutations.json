@@ -2,6 +2,96 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: only a registry's pull failure is not judged",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif !ok || !registryPullFailure(reason) {\n",
+      "replace": "\tif !ok {\n",
+      "run": "TestAPullFailureIsJudgedByItsCause|TestAPullTheBaseBrokeStillReProvisions",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a pull the base broke is named as the base's",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif local, ok := probePullFailure(VerifyImage, code, stderr); ok {\n",
+      "replace": "\t\tif local, ok := probePullFailure(VerifyImage, code, stderr); false && ok {\n",
+      "run": "TestAPullTheBaseBrokeStillReProvisions",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a timed out probe pull is a registry failure",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\"did not finish within\",\n",
+      "replace": "",
+      "run": "TestAPullFailureIsJudgedByItsCause",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh fetches the installer before its run",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "  fetch || return\n",
+      "replace": "  :\n",
+      "run": "TestTheQEMUInstallerIsPulledBoundedAndOnlyWhenAbsent",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh bounds the installer pull",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "    fetch_out=$(timeout 120 podman --cgroup-manager=cgroupfs --events-backend=file pull -q",
+      "replace": "    fetch_out=$(podman --cgroup-manager=cgroupfs --events-backend=file pull -q",
+      "run": "TestTheQEMUInstallerIsPulledBoundedAndOnlyWhenAbsent|TestAJobsPlatformPullIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh pulls the installer only when it is absent",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "  root_podman image exists \"$TK_BINFMT_IMAGE\" >/dev/null 2>&1 && return 0\n",
+      "replace": "",
+      "run": "TestTheQEMUInstallerIsPulledBoundedAndOnlyWhenAbsent|TestAJobsPlatformPullIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's platform fetches the installer before its run",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "    fetch || die \"the QEMU installer image was not pulled: $fetch_said\"\n",
+      "replace": "",
+      "run": "TestAJobsPlatformPullIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's platform run does not pull",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "    root_podman run --rm --privileged --pull=never \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
+      "replace": "    root_podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
+      "run": "TestTheQEMUInstallerIsPulledBoundedAndOnlyWhenAbsent|TestAJobsPlatformPullIsBounded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh records the watcher state root measured",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "note_watch \"${watch_state:-unknown}\"\n",
+      "replace": "",
+      "run": "TestTheWatcherStateIsRecordedByRoot",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier reads root's watcher state when systemd is silent",
+      "file": "internal/toolkit/verify.sh",
+      "find": "if [ -z \"$binfmt_watch\" ] && [ -r /var/lib/wsl-toolkit/binfmt-watch ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestTheVerifierReadsRootsWatcherStateWhenSystemdIsSilent",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a probe that was not judged refuses the ensure and keeps the base",
       "file": "internal/toolkit/base.go",
       "find": "\t\t\tif errors.As(last, &nj) {\n",
@@ -175,8 +265,8 @@
     {
       "label": "wsl-toolkit: binfmt.sh installs the QEMU handlers through root_podman",
       "file": "internal/toolkit/binfmt.sh",
-      "find": "  root_podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install all",
-      "replace": "  podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install all",
+      "find": "  root_podman run --rm --privileged --pull=never \"$TK_BINFMT_IMAGE\" --install all",
+      "replace": "  podman run --rm --privileged --pull=never \"$TK_BINFMT_IMAGE\" --install all",
       "run": "TestRootsPodmanInABaseNeedsNoDBus",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -193,8 +283,8 @@
     {
       "label": "wsl-toolkit: a job's platform handler runs root's podman with cgroupfs and the file events backend",
       "file": "internal/toolkit/binfmt.sh",
-      "find": "    root_podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
-      "replace": "    podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
+      "find": "    root_podman run --rm --privileged --pull=never \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
+      "replace": "    podman run --rm --privileged --pull=never \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
       "run": "TestRootsPodmanInABaseNeedsNoDBus",
       "module": "tools/windows/wsl-toolkit",
       "args": []

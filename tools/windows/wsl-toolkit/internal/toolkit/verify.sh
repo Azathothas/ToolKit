@@ -445,8 +445,17 @@ if [ -r /var/lib/wsl-toolkit/binfmt-handlers ]; then
 else
   printf 'binfmt-own unrecorded\n'
 fi
+# >>> the watcher state: begin
+# ⛔ THIS RUNS AS THE ACCOUNT, and on a systemd base with no D-Bus its systemctl
+# cannot reach the manager and answers nothing. The state binfmt.sh measured as
+# root at the last ensure is then the answer, so a watcher root started does not
+# read `none`. WSL-181.
 binfmt_watch=$(systemctl is-active wsl-toolkit-binfmt.service 2>/dev/null) || :
+if [ -z "$binfmt_watch" ] && [ -r /var/lib/wsl-toolkit/binfmt-watch ]; then
+  binfmt_watch=$(head -n 1 /var/lib/wsl-toolkit/binfmt-watch)
+fi
 printf 'binfmt-watch %s\n' "${binfmt_watch:-none}"
+# <<< the watcher state: end
 
 # ⭐ THE ENFORCEMENT CLAIM IS THE ONE A CALLER ACTS ON, so it is measured inside
 # a container and not derived from the rows above. A separate run from the

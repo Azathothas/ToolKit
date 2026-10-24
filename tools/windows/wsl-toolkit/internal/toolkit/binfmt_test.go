@@ -97,8 +97,9 @@ func TestRootsPodmanInABaseNeedsNoDBus(t *testing.T) {
 	// ⚠ binfmt.sh's podman is ONE function, so the loop above reads its body once.
 	// Each command of the script that reaches the engine goes through it.
 	for _, want := range []string{
-		`root_podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install "$TK_ARCH"`,
-		`root_podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all`,
+		`root_podman run --rm --privileged --pull=never "$TK_BINFMT_IMAGE" --install "$TK_ARCH"`,
+		`root_podman run --rm --privileged --pull=never "$TK_BINFMT_IMAGE" --install all`,
+		`root_podman image exists "$TK_BINFMT_IMAGE"`,
 		`mnt=$(root_podman image mount "$TK_BINFMT_IMAGE")`,
 		`root_podman image unmount "$TK_BINFMT_IMAGE"`,
 	} {

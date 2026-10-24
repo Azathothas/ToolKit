@@ -1246,6 +1246,9 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 		if nj, ok := probeNotJudged(VerifyImage, code, stderr); ok {
 			return verifyReport{Automount: drives}, nj
 		}
+		if local, ok := probePullFailure(VerifyImage, code, stderr); ok {
+			return verifyReport{Automount: drives}, local
+		}
 		return verifyReport{Automount: drives}, verifyError(b.cfg.Base.User, code, out, stderr)
 	}
 	// ⛔ Compared with whitespace removed: a tty wraps a long line, so a marker
@@ -1293,7 +1296,27 @@ func (e *ProbeNotJudgedError) Error() string {
 
 // probeNotJudged reads verify.sh's pull failure: its own exit code and its own
 // `verify-pull:` line, both, as a refusal needs both. WSL-174.
+//
+// ⛔ ONLY THE REGISTRY'S OWN FAILURE IS NOT JUDGED. Every failed pull read as
+// "registry unreachable", and Ensure then refused the re-provisioning that
+// repairs a pull the base broke itself: a lost /etc/subuid range answers
+// `insufficient UIDs or GIDs`, and a full disk answers `no space left on
+// device`. Both are the base's, and both keep the re-provisioning they had.
+// WSL-174.
 func probeNotJudged(image string, code int, stderr string) (*ProbeNotJudgedError, bool) {
+	if code != verifyNotJudged {
+		return nil, false
+	}
+	reason, ok := lastPrefixed(stderr, "verify-pull: ")
+	if !ok || !registryPullFailure(reason) {
+		return nil, false
+	}
+	return &ProbeNotJudgedError{Image: image, Registry: imageRegistry(image), Reason: reason}, true
+}
+
+// probePullFailure is verify.sh's pull failure whose cause is the base, which an
+// ordinary verify failure reports so that Ensure re-provisions. WSL-174.
+func probePullFailure(image string, code int, stderr string) (error, bool) {
 	if code != verifyNotJudged {
 		return nil, false
 	}
@@ -1301,7 +1324,33 @@ func probeNotJudged(image string, code int, stderr string) (*ProbeNotJudgedError
 	if !ok {
 		return nil, false
 	}
-	return &ProbeNotJudgedError{Image: image, Registry: imageRegistry(image), Reason: reason}, true
+	return fmt.Errorf("the health probe could not pull %s, and the cause is in the base, not the registry: %s", image, reason), true
+}
+
+// registryPullMarks are the words of a pull that failed at the network or at the
+// registry, lower case: the name, the connection, TLS, and the registry's own
+// refusals. verify.sh's own bound says "did not finish within". WSL-174.
+var registryPullMarks = []string{
+	"did not finish within",
+	"pinging container registry",
+	"no such host", "server misbehaving", "temporary failure in name resolution",
+	"dial tcp", "connection refused", "connection reset", "network is unreachable",
+	"no route to host", "i/o timeout", "net/http:", "tls:", "x509:",
+	"toomanyrequests", "too many requests", "unauthorized", "authentication required",
+	"requested access to the resource is denied", "manifest unknown", "name unknown",
+	"unexpected http status",
+}
+
+// registryPullFailure is true when a pull's reason names the network or the
+// registry, and false for anything the base itself answers.
+func registryPullFailure(reason string) bool {
+	lower := strings.ToLower(reason)
+	for _, mark := range registryPullMarks {
+		if strings.Contains(lower, mark) {
+			return true
+		}
+	}
+	return false
 }
 
 // imageRegistry is the registry host a reference names, or docker.io where the

@@ -856,11 +856,21 @@ answer, which exits 1 and names it. A job that asks for a foreign platform still
 registers its own handler, through the same script and the same root podman.
 `WSL-181`
 
+⭐ **The watcher's state is root's measure.** `base ensure` records the state root
+reads for `wsl-toolkit-binfmt.service`. The probe runs as the account, and on a base
+with no D-Bus its `systemctl` reaches no manager. It then reports the recorded state,
+so a running watcher no longer reads `none`. `WSL-181`
+
 ⛔ **The installer is pinned by digest, because it runs privileged.** Its reference
 carries the tag for a reader and the `sha256` digest the engine resolves. A tag
 pushed again cannot change what registers the handlers. ⚠ The first ensure after
 an update registers the handlers once more, because the recorded image changed.
-`WSL-182`
+A store that holds the old tag already resolves the digest, so that ensure pulls
+nothing. `WSL-182`
+
+⚠ **The installer is pulled only when it is absent, with a bound of 120 seconds.**
+The run itself never pulls. A registry that stalls costs one ensure two minutes,
+and the problem names the bound. `WSL-182`
 
 ⚠ **A base that no ensure of this release has run on has no recorded set.**
 `binfmt.recorded` is false there, and `ready` counts every distribution's handlers, as
@@ -1365,10 +1375,15 @@ removal. `WSL-169`
 
 ⛔ **A probe image that cannot be pulled is not a broken base.** The health probe
 runs `docker.io/library/alpine:latest`. Where that image is absent, it is pulled
-first, with a bound of 120 seconds. A failed pull answers `not judged: registry
-docker.io unreachable`, with the registry's own reason. `base ensure` then exits 2
-and changes nothing: no provisioning, no restart and no rebuild. `base status
---probe` exits 1 with the same problem. `WSL-174`
+first, with a bound of 120 seconds. A pull the network or the registry failed
+answers `not judged: registry docker.io unreachable`, with the registry's own reason.
+`base ensure` then exits 2 and changes nothing: no provisioning, no restart and no
+rebuild. `base status --probe` exits 1 with the same problem. `WSL-174`
+
+⚠ **A pull the base itself broke is still a verify failure.** A lost `/etc/subuid`
+range answers `insufficient UIDs or GIDs`, and a full disk answers `no space left on
+device`. These say `the cause is in the base, not the registry`. `base ensure` then
+re-provisions in place, which repairs them, as it did before. `WSL-174`
 
 ---
 
