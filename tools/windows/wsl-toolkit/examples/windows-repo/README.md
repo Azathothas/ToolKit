@@ -55,7 +55,7 @@ for a password every time.
 ## 2. Grant the clone to the base
 
 ```powershell
-wsl-toolkit --instance base base grant --source . --mode rw
+wsl-toolkit base grant --source . --mode rw
 ```
 
 One Windows directory, mounted live under `/workspaces`. ⭐ **The grant is the
@@ -83,9 +83,9 @@ and starts the agent at the matching guest path. From a directory with no grant 
 refuses and prints the command that fixes it:
 
 ```text
-muse: C:\...\REPO is not granted to wsl-toolkit-base, so an agent there cannot
+muse: C:\...\REPO is not granted to wsl-toolkit-jobs, so an agent there cannot
 see it. Grant it, then run the agent again:
-  wsl-toolkit --instance base base grant --source C:\...\REPO --mode rw
+  wsl-toolkit base grant --source C:\...\REPO --mode rw
 ```
 
 ⚠ **Check which program the name reaches before you trust it.** A native Windows
@@ -142,8 +142,8 @@ section is a measurement.
 ## 4. Watch or steer the agent, without opening anything
 
 ```powershell
-wsl-toolkit --instance base base attach
-wsl-toolkit --instance base base herdr -- agent list
+wsl-toolkit base attach
+wsl-toolkit base herdr -- agent list
 ```
 
 `base attach` prints the exact line for this machine and starts nothing.
@@ -186,7 +186,7 @@ the work in the tree and do step 5 yourself.
 inside the base. It is a name and an address, not a secret:
 
 ```powershell
-wsl-toolkit --instance base base exec -c 'cd /workspaces/REPO && git config user.name "NAME" && git config user.email "ADDRESS"'
+wsl-toolkit base exec -c 'cd /workspaces/REPO && git config user.name "NAME" && git config user.email "ADDRESS"'
 ```
 
 ⛔ **Do not give the base a credential.** A commit needs an identity and a push
@@ -214,7 +214,7 @@ needs no credential. A push needs one, and the base has none.
 ## Taking the grant away
 
 ```powershell
-wsl-toolkit --instance base base revoke --target /workspaces/REPO
+wsl-toolkit base revoke --target /workspaces/REPO
 ```
 
 ⛔ **`revoke` takes `--target` alone**, which is the path the base sees, and not

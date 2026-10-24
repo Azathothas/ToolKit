@@ -121,6 +121,9 @@ type BaseState struct {
 	// base's half and this machine's. ⚠ Nil without --probe, which is not the same
 	// as none configured: Access.Adapters says what is configured.
 	Adapters []AdapterState `json:"adapters,omitempty"`
+	// Naming says, for the default instance, which name the base runs under, why,
+	// and how to move to the canonical one. ⚠ Nil for a named instance. WSL-167.
+	Naming *BaseNaming `json:"naming,omitempty"`
 }
 
 // BaseAccessState is what the base is configured to reach on Windows.
@@ -234,6 +237,7 @@ func (b *Base) configuredState() (BaseState, error) {
 			PasswordlessSudo: b.cfg.Base.PasswordlessSudo, Toolset: toolset,
 			SharedTmpfs: sharedTmpfs, Mounts: mounts,
 		},
+		Naming: b.cfg.naming(),
 	}
 	for _, a := range b.cfg.Base.Adapters {
 		st.Access.Adapters = append(st.Access.Adapters, a.Name)
@@ -585,6 +589,12 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 		} else {
 			force = true
 		}
+	}
+	// ⛔ A RESERVED INSTANCE IS USED AND REMOVED, AND NEVER BUILT. The refusal comes
+	// before a rebuild removes anything, so a recreate cannot cost the base it then
+	// may not build again. WSL-167.
+	if IsReservedInstance(SelectedInstance.Name) && (!st.Registered || force) {
+		return st, reservedRefusal(SelectedInstance.Name)
 	}
 	// rootfs is the archive a rebuild exported before it removed the base it
 	// replaces, and empty where nothing was removed. WSL-169.
@@ -1117,6 +1127,11 @@ func (b *Base) dropRootfs(rootfs string) {
 // exported before it removed anything; empty means nothing was removed, and the
 // archive is made here.
 func (b *Base) create(ctx context.Context, rootfs string) error {
+	// ⛔ A RESERVED INSTANCE IS NEVER BUILT. One made before the reservation stays
+	// reachable so it can be removed, and building it again is creation. WSL-167.
+	if IsReservedInstance(SelectedInstance.Name) {
+		return reservedRefusal(SelectedInstance.Name)
+	}
 	// ⭐ THE FIRST THING THAT WRITES, so this is where the state directory is
 	// brought into existence. Everything above it reads.
 	if _, err := EnsureHome(); err != nil {

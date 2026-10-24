@@ -21,12 +21,21 @@ import (
 // format with no version mis-reads silently the day its shape changes.
 const ConfigSchema = "wsl-toolkit-config/1"
 
-// DefaultBaseName is the WSL distribution this executable owns. ⚠ No `eph-`
-// prefix on purpose: that prefix names throwaway distributions, and a purge of
-// those must never reach the base. Copies of this tool's retired PowerShell
-// predecessor purge by that prefix alone, and they still run on machines this
-// tree cannot see.
-const DefaultBaseName = "wsl-toolkit"
+// DefaultBaseName is the WSL distribution a NEW default base is registered as.
+// ⚠ No `eph-` prefix on purpose: that prefix names throwaway distributions, and a
+// purge of those must never reach the base. Copies of this tool's retired
+// PowerShell predecessor purge by that prefix alone, and they still run on
+// machines this tree cannot see.
+//
+// ⛔ IT WAS `wsl-toolkit`, AND AN EXISTING BASE KEEPS THAT NAME. `wsl-toolkit` and
+// the instance `base`, `wsl-toolkit-base`, were mistaken for each other, so the
+// operator gave the default a name that says what it is for. defaultbase.go reads
+// which name a state directory's base runs under. WSL-167, ruling 33.
+const DefaultBaseName = "wsl-toolkit-jobs"
+
+// LegacyBaseName is the name the default base had before WSL-167. A base built
+// under it keeps working under it.
+const LegacyBaseName = "wsl-toolkit"
 
 // DefaultBaseUser is the unprivileged account jobs run as inside the base.
 // Root is used to provision the distribution and never afterwards.
@@ -241,6 +250,8 @@ type Config struct {
 	Matrix []string `json:"matrix,omitempty"`
 	path   string
 	source string
+	// nameFrom is which step chose the default instance's base name. WSL-167.
+	nameFrom string
 }
 
 // Path is the file this configuration was read from, and Source is which step
@@ -469,7 +480,7 @@ func loadConfigFile(path, from string) (Config, error) {
 	cfg.source = from
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return cfg, nil
+		return withDefaultDistro(cfg)
 	}
 	if err != nil {
 		return cfg, err
@@ -485,6 +496,7 @@ func loadConfigFile(path, from string) (Config, error) {
 	}
 	if stored.Base.Name != "" {
 		cfg.Base.Name = stored.Base.Name
+		cfg.nameFrom = NameFromConfig
 	}
 	if stored.Base.Image != "" {
 		cfg.Base.Image = stored.Base.Image
@@ -540,6 +552,31 @@ func loadConfigFile(path, from string) (Config, error) {
 	if _, err := cfg.ResolvedBaseMounts(); err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
 	}
+	if stored.Base.Name == "" {
+		return withDefaultDistro(cfg)
+	}
+	return cfg, nil
+}
+
+// withDefaultDistro gives the default instance's configuration the name its base
+// runs under, where no file named one. WSL-167.
+//
+// ⛔ EVERY LOAD GOES THROUGH HERE, so run, matrix, every base subcommand, ready,
+// gc and the helper all act on the one name. A command that read the canonical
+// name while the base ran under the older one would build a second base.
+func withDefaultDistro(cfg Config) (Config, error) {
+	if !isDefaultSelection() {
+		return cfg, nil
+	}
+	home, err := Home()
+	if err != nil {
+		return cfg, err
+	}
+	name, from, err := resolveDefaultDistro(home)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.Base.Name, cfg.nameFrom = name, from
 	return cfg, nil
 }
 
@@ -566,11 +603,16 @@ func instanceMatches(name, path string) error {
 	if name == want {
 		return nil
 	}
+	// ⛔ THE DEFAULT HAS TWO NAMES. A base built before WSL-167 runs under
+	// `wsl-toolkit`, and a file naming it is the operator keeping it there.
+	if SelectedInstance.Name == DefaultInstance && name == LegacyBaseName {
+		return nil
+	}
 	// Validate has already held the name to `wsl-toolkit` or
 	// `wsl-toolkit-<instance>` in lower case, so the suffix is an instance name.
 	implied := "run it without --instance"
-	if name != DefaultBaseName {
-		implied = "pass --instance " + strings.TrimPrefix(name, DefaultBaseName+"-")
+	if !IsDefaultBaseName(name) {
+		implied = "pass --instance " + strings.TrimPrefix(name, OwnedPrefix+"-")
 	}
 	selected := fmt.Sprintf("no instance is selected, so the distribution is %q", want)
 	if SelectedInstance.Name != DefaultInstance {

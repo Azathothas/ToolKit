@@ -26,9 +26,13 @@ import (
 // toolModulePath is this tool's module, which a launcher's build information carries.
 const toolModulePath = "github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit"
 
-// launcherBaseInstance is the instance a launcher with no suffix reaches: the one base
-// the operator's ruling of 2026-09-14 names.
-const launcherBaseInstance = "base"
+// launcherBaseInstance is the instance a launcher with no suffix reaches: the default
+// base.
+//
+// ⛔ IT WAS THE INSTANCE `base`, by the ruling of 2026-09-14. Ruling 33 removes that
+// base and makes its name reserved, so a `muse.exe` that still reached it would reach
+// nothing once the operator removed it. The agents' base is the default one. WSL-167.
+const launcherBaseInstance = DefaultInstance
 
 // BinDirEnv names a directory that stands in for the account's bin directory.
 //
@@ -167,13 +171,11 @@ func AgentInteractive(args []string) bool {
 	return len(args) == 0 || args[0] == "resume"
 }
 
-// LauncherFile answers the file name of an agent's launcher for an instance, or "" for
-// the default instance, which has none.
+// LauncherFile answers the file name of an agent's launcher for an instance: the
+// agent's own name for the default instance, and the name and the instance for any
+// other.
 func LauncherFile(agent, instance string) string {
-	switch instance {
-	case DefaultInstance:
-		return ""
-	case launcherBaseInstance:
+	if instance == launcherBaseInstance {
 		return agent + ".exe"
 	}
 	return agent + "-" + instance + ".exe"

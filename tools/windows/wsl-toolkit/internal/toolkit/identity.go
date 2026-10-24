@@ -37,7 +37,11 @@ import (
 // OwnedPrefix is the name every distribution this tool may own starts with.
 //
 // ⚠ NO `eph-` PREFIX, deliberately: DefaultBaseName carries the reason.
-const OwnedPrefix = DefaultBaseName
+//
+// ⛔ IT IS THE OLDER DEFAULT NAME AND NOT THE CANONICAL ONE. `wsl-toolkit` is
+// both the prefix and a base this tool may still own, and `wsl-toolkit-jobs` is
+// owned as a name after the prefix. WSL-167.
+const OwnedPrefix = LegacyBaseName
 
 // IdentityPath is where the marker lives inside the guest.
 //

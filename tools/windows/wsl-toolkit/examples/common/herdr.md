@@ -37,9 +37,12 @@ carries the sweep and its commits; this page carries only what an operator does.
 herdr's Windows client must be on `PATH`. Ask the tool for the line, then run it:
 
 ```powershell
-wsl-toolkit --instance base base attach
-herdr --remote wsl-toolkit-base --remote-keybindings server
+wsl-toolkit base attach
+herdr --remote wsl-toolkit-jobs --remote-keybindings server
 ```
+
+⚠ **An older default base is named `wsl-toolkit`**, and `base attach` then prints that
+name. Run the line it prints.
 
 ⭐ **Nothing needs starting first.** The first connection starts the base if it has
 stopped, the base starts herdr's server, and herdr puts the workspaces back.
@@ -66,9 +69,9 @@ Unix control socket on Windows, so a key with a passphrase is loaded with
 ## ⭐ Watch the agents without opening anything
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent list
-wsl-toolkit --instance base base herdr -- pane list
-wsl-toolkit --instance base base herdr -- agent prompt w1:p1 "summarise what you just changed"
+wsl-toolkit base herdr -- agent list
+wsl-toolkit base herdr -- pane list
+wsl-toolkit base herdr -- agent prompt w1:p1 "summarise what you just changed"
 ```
 
 Every herdr command answers in JSON, and each argument reaches herdr as an argument,
@@ -78,7 +81,7 @@ so a prompt carrying quotes or a dollar sign is not read by any shell.
 | --- | --- |
 | 0.9.0, `herdr --machine base agent list` | ⛔ exit 2, `unknown option: --machine`. 0.9.0 has no such prefix |
 | a build of herdr's development branch, `--machine base agent list`, against a 0.9.0 server | exit 1, `remote Herdr does not support machine API forwarding` |
-| `herdr machine add wsl-toolkit-base --label base` | exit 0. It saves the profile in `%LOCALAPPDATA%\herdr\client\endpoints.json`, installs nothing in the base, starts no second server, and creates a workspace on a server that has none |
+| `herdr machine add wsl-toolkit-jobs --label base` | exit 0. It saves the profile in `%LOCALAPPDATA%\herdr\client\endpoints.json`, installs nothing in the base, starts no second server, and creates a workspace on a server that has none |
 | a development build on both sides, `--machine base agent list` | exit 0, with no terminal UI open |
 
 ⭐ **`--machine` needs a development build on both sides.** Set the base's herdr adapter
@@ -96,7 +99,7 @@ pages call not yet verified or supported on a Windows client. Remove one with
 ## From a shell inside the base
 
 ```powershell
-wsl-toolkit --instance base base shell
+wsl-toolkit base shell
 ```
 
 Then run `herdr`. Detach the same way.
@@ -113,10 +116,10 @@ Read a pane's id from the command that made it rather than guessing one, because
 the base may already hold workspaces:
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
-wsl-toolkit --instance base base herdr -- pane run $pane 'git status --short'
-wsl-toolkit --instance base base herdr -- pane read $pane --source recent --lines 40
+wsl-toolkit base herdr -- pane run $pane 'git status --short'
+wsl-toolkit base herdr -- pane read $pane --source recent --lines 40
 ```
 
 ⚠ **The pane runs the command and returns at once.** `herdr pane wait-output PANE
@@ -135,9 +138,9 @@ pane commands in its input, a new line after it, unsent. `agent prompt` sends it
 ## ⭐ Starting an agent, and reading what it says
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
-wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $pane --timeout 120000
+wsl-toolkit base herdr -- agent start work --kind muse --pane $pane --timeout 120000
 ```
 
 | part | what it is |
@@ -151,8 +154,8 @@ wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $p
 `agent read` and `agent wait` all take it:
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent prompt work "summarise what you just changed"
-wsl-toolkit --instance base base herdr -- agent read work --source recent --lines 40
+wsl-toolkit base herdr -- agent prompt work "summarise what you just changed"
+wsl-toolkit base herdr -- agent read work --source recent --lines 40
 ```
 
 ⭐ **`agent read` is how you check what an agent is really doing**, including which
@@ -172,7 +175,7 @@ only in that line. `WSL-88`
 agent rather than from a guess about its screen:
 
 ```powershell
-wsl-toolkit --instance base base herdr -- agent explain work
+wsl-toolkit base herdr -- agent explain work
 ```
 
 It answers `screen_detection_skip_reason: full_lifecycle_hook_authority` for those two.

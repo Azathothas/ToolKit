@@ -2,6 +2,132 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: muse.exe reaches the default base, not the instance base",
+      "file": "internal/toolkit/agents.go",
+      "find": "const launcherBaseInstance = DefaultInstance\n",
+      "replace": "const launcherBaseInstance = \"base\"\n",
+      "run": "TestALauncherNameCarriesItsInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unsuffixed launcher is not moved by the environment or a pointer",
+      "file": "cmd_base_agent.go",
+      "find": "\tif instance == toolkit.DefaultInstance {\n\t\tos.Unsetenv(toolkit.InstanceEnv)\n\t} else if code",
+      "replace": "\tif false {\n\t} else if code",
+      "run": "TestAnUnsuffixedLauncherReachesTheDefaultBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a new default base is registered as wsl-toolkit-jobs",
+      "file": "internal/toolkit/catalog.go",
+      "find": "const DefaultBaseName = \"wsl-toolkit-jobs\"\n",
+      "replace": "const DefaultBaseName = \"wsl-toolkit\"\n",
+      "run": "TestAFreshDefaultBaseIsNamedJobs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a default base recorded as wsl-toolkit keeps that name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif recorded != \"\" {\n\t\treturn recorded, NameFromRecord, nil\n\t}\n\tif legacyHere {\n",
+      "replace": "\tif legacyHere {\n",
+      "run": "TestAnExistingDefaultBaseKeepsItsRecordedName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a marked wsl-toolkit with its disk in this state directory and no record is kept",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\t\treturn LegacyBaseName, NameFromRegistered, nil\n",
+      "replace": "\t\t\treturn DefaultBaseName, NameFromRegistered, nil\n",
+      "run": "TestARegisteredMarkedDefaultBaseWithNoRecordIsKept",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a scratch state directory does not adopt another directory's wsl-toolkit",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "(recorded == LegacyBaseName || pathEqual(cleanBasePath(legacyAt), cleanBasePath(ownDir)))\n",
+      "replace": "(recorded == LegacyBaseName || legacyAt != \"\" || ownDir == \"\")\n",
+      "run": "TestAScratchHomeDoesNotAdoptTheHostsOlderBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wsl-toolkit and wsl-toolkit-jobs both registered are refused by name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif legacyHere && canonicalRegistered {\n",
+      "replace": "\tif false && legacyHere && canonicalRegistered {\n",
+      "run": "TestTwoDefaultBasesAreRefusedByName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a configuration may keep the default base on wsl-toolkit",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif SelectedInstance.Name == DefaultInstance && name == LegacyBaseName {\n",
+      "replace": "\tif false && SelectedInstance.Name == DefaultInstance && name == LegacyBaseName {\n",
+      "run": "TestTwoDefaultBasesAreRefusedByName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an existing jobs instance refuses the canonical default name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\tif err := assertNoJobsInstance(home); err != nil {\n",
+      "replace": "\t\tif err := error(nil); err != nil {\n",
+      "run": "TestAnExistingJobsInstanceRefusesTheCanonicalName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status says a base runs under the older name and how to move",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tNaming: b.cfg.naming(),\n",
+      "replace": "\t\tNaming: nil,\n",
+      "run": "TestAnExistingDefaultBaseKeepsItsRecordedName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a new instance named base or jobs is refused",
+      "file": "internal/toolkit/instance.go",
+      "find": "\tif IsReservedInstance(asked) {\n",
+      "replace": "\tif false && IsReservedInstance(asked) {\n",
+      "run": "TestReservedInstancesAreRefusedForCreationNotUse",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an existing reserved instance stays reachable",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif _, statErr := os.Stat(home); statErr != nil {\n",
+      "replace": "\t\tif _, statErr := os.Stat(home); statErr != nil || true {\n",
+      "run": "TestReservedInstancesAreRefusedForCreationNotUse",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a reserved instance's recreate is refused before it removes the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif IsReservedInstance(SelectedInstance.Name) && (!st.Registered || force) {\n",
+      "replace": "\tif false && IsReservedInstance(SelectedInstance.Name) && (!st.Registered || force) {\n",
+      "run": "TestAReservedInstanceIsNeverRebuilt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a reserved instance is never imported",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif IsReservedInstance(SelectedInstance.Name) {\n\t\treturn reservedRefusal(SelectedInstance.Name)\n\t}\n",
+      "replace": "",
+      "run": "TestAReservedInstanceIsNeverRebuilt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a grants write keeps another configuration's ledger rows",
       "file": "internal/toolkit/grants.sh",
       "find": "        if [ -n \"$kept_target\" ] && [ \"$kept_key\" != \"$TK_GRANT_OWNER\" ] &&\n",

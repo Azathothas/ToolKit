@@ -99,22 +99,24 @@ func TestAnAgentsOwnScreenIsNotStartedWithoutATerminal(t *testing.T) {
 }
 
 // TestALauncherNameCarriesItsInstance holds the launcher's identity in both directions:
-// muse.exe reaches the base instance and muse-NAME.exe the instance NAME, the default
-// instance has no launcher, and a name that is not an agent's is not a launcher.
+// muse.exe reaches the default base and muse-NAME.exe the instance NAME, and a name
+// that is not an agent's is not a launcher. ⛔ muse.exe reached the instance `base`
+// until WSL-167, which made the default base the agents' one.
 func TestALauncherNameCarriesItsInstance(t *testing.T) {
-	if got := LauncherFile("muse", "base"); got != "muse.exe" {
-		t.Errorf("the base instance's launcher is %q", got)
+	if got := LauncherFile("muse", DefaultInstance); got != "muse.exe" {
+		t.Errorf("the default instance's launcher is %q", got)
 	}
 	if got := LauncherFile("muse", "m78"); got != "muse-m78.exe" {
 		t.Errorf("a named instance's launcher is %q", got)
 	}
-	if got := LauncherFile("muse", DefaultInstance); got != "" {
-		t.Errorf("the default instance got a launcher, %q", got)
+	if got := LauncherFile("muse", "base"); got != "muse-base.exe" {
+		t.Errorf("the instance base's launcher is %q", got)
 	}
 	for argv0, want := range map[string][2]string{
-		`C:\Users\runner\bin\MUSE.EXE`: {"muse", "base"},
+		`C:\Users\runner\bin\MUSE.EXE`: {"muse", DefaultInstance},
 		"muse-m78.exe":                 {"muse", "m78"},
-		"/usr/local/bin/muse":          {"muse", "base"},
+		"/usr/local/bin/muse":          {"muse", DefaultInstance},
+		"muse-base.exe":                {"muse", "base"},
 	} {
 		agent, instance, ok := LauncherIdentity(argv0)
 		if !ok || agent != want[0] || instance != want[1] {
@@ -275,7 +277,7 @@ func TestTheLauncherCheckReportsEveryFactRatherThanTheFirst(t *testing.T) {
 	h := &agentLauncherHost{agent: "omp", dir: dir, self: path}
 
 	previous := SelectedInstance.Name
-	SelectedInstance.Name = "base"
+	SelectedInstance.Name = DefaultInstance
 	t.Cleanup(func() { SelectedInstance.Name = previous })
 
 	problems, _ := h.check(context.Background(), nil, nil)

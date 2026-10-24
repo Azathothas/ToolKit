@@ -8,8 +8,12 @@
 # `herdr 0.9.0`. WSL-90, and herdrdev/herdr#4176 and #4038.
 #
 # WHAT IT REQUIRES: a Windows host, a running wsl-toolkit base whose herdr server
-# answers, and a herdr client binary to drive. `wsl-toolkit --instance NAME base
-# attach` prints the client matching the server the base runs.
+# answers, and a herdr client binary to drive. `wsl-toolkit base attach` prints
+# the client matching the server the base runs.
+#
+# THE DEFAULT BASE BY DEFAULT. It is the agents' base, WSL-167. -Instance NAME
+# drives another one. The distribution is read from `base status --json`, because
+# an older default base is named wsl-toolkit and a new one wsl-toolkit-jobs.
 #
 # HARD RULE: IT TYPES ONLY INTO A WORKSPACE IT MADE. The probe creates its own
 # herdr workspace, sends every keystroke there, reads every result back from the
@@ -40,8 +44,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Herdr,
     [Parameter(Mandatory = $true)][string]$Label,
     [string]$Binary = '',
-    [string]$Instance = 'base',
-    [string]$Distribution = 'wsl-toolkit-base',
+    [string]$Instance = '',
+    [string]$Distribution = '',
     [string]$OutDir = '',
     [switch]$Json
 )
@@ -192,11 +196,23 @@ public sealed class HerdrProbePty : IDisposable {
 '@
 if (-not ('HerdrProbePty' -as [type])) { Add-Type -TypeDefinition $source -Language CSharp }
 
+# -- which base, and its distribution -------------------------------------------
+
+$instanceArgs = @()
+if ($Instance) { $instanceArgs = @('--instance', $Instance) }
+if (-not $Distribution) {
+    # base status exits 1 over a problem and still prints the state.
+    $status = (& $Binary @instanceArgs base status --json 2>$null | Out-String)
+    try { $Distribution = ($status | ConvertFrom-Json).name }
+    catch { Exit-Cannot "base status --json printed no state to read the distribution from" }
+    if (-not $Distribution) { Exit-Cannot "base status --json names no distribution" }
+}
+
 # -- the server side, which is where every result is read from -----------------
 
 function Invoke-Herdr {
     param([string[]]$HerdrArgs)
-    $out = & $Binary --instance $Instance base herdr -- @HerdrArgs 2>$null
+    $out = & $Binary @instanceArgs base herdr -- @HerdrArgs 2>$null
     return [pscustomobject]@{ Exit = $LASTEXITCODE; Text = (@($out) -join "`n") }
 }
 
@@ -246,7 +262,7 @@ $rootPane = $null
 function Exit-Created {
     param([string]$Why)
     if ($ws) {
-        $null = & $Binary --instance $Instance base herdr -- workspace close $ws --group 2>$null
+        $null = & $Binary @instanceArgs base herdr -- workspace close $ws --group 2>$null
         [Console]::Error.WriteLine("closed the probe's workspace $ws")
     }
     Exit-Cannot $Why
@@ -272,7 +288,7 @@ $ws = Read-Field $created 'workspace' 'workspace_id'
 $rootPane = Read-Field $created 'root_pane' 'pane_id'
 if (-not $ws) {
     Exit-Cannot ("the server answered workspace create with no workspace id. A workspace MAY have been made: " +
-        "list with `"$Binary --instance $Instance base herdr -- workspace list`" and close any labelled probe-$Label")
+        "list with `"$Binary $($instanceArgs -join ' ') base herdr -- workspace list`" and close any labelled probe-$Label")
 }
 if (-not $rootPane) { Exit-Created "the server created workspace $ws with no root pane" }
 $result.workspace = $ws

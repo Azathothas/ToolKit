@@ -837,8 +837,8 @@ func TestAnInstanceIsANameAndADirectoryTogether(t *testing.T) {
 		distro string
 	}{
 		{DefaultInstance, DefaultBaseName},
-		{"two", DefaultBaseName + "-two"},
-		{"2", DefaultBaseName + "-2"},
+		{"two", OwnedPrefix + "-two"},
+		{"2", OwnedPrefix + "-2"},
 	} {
 		inst, err := ResolveInstance(context.Background(), c.name)
 		if err != nil {
@@ -984,7 +984,7 @@ func TestAConfigurationNamingAnotherInstancesDistributionIsRefused(t *testing.T)
 	t.Setenv("WSL_TOOLKIT_HOME", root)
 	SelectedInstance = Instance{}
 	refused("no instance against a file naming an instance's distribution",
-		file, `"wsl-toolkit-muse"`, `"wsl-toolkit"`, "pass --instance muse")
+		file, `"wsl-toolkit-muse"`, `"wsl-toolkit-jobs"`, "pass --instance muse")
 }
 
 // WSL-74: the refusal of a state directory's own file points at the file rather

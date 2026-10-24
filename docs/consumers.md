@@ -89,6 +89,22 @@ Fixing a false pass is still a break and should still be fixed. Record it where
 the work closes; do not keep a defective surface solely because a caller may
 depend on it.
 
+### ⛔ What the canonical default base name breaks, and what a caller does
+
+`WSL-167`, ruling 33. Not released yet. A break by the table above, so the release
+that carries it is a major one.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a NEW default base is registered as `wsl-toolkit-jobs`. A base built before keeps its recorded name, `wsl-toolkit` | names the distribution `wsl-toolkit` directly, on a host whose default base is built after the update | reads the name from `base status --json`, or runs the tool's own commands |
+| a state directory with a marked `wsl-toolkit` and a registered `wsl-toolkit-jobs` is refused, exit 2, naming both | built a second default base beside the first | sets `base.name` to the one it uses, or removes the other |
+| a new instance named `base` or `jobs` is refused, exit 2. An existing one stays reachable and is never built again | creates either instance | names its instance for what it holds |
+| `muse.exe`, `pi.exe` and `omp.exe` reach the default base, not the instance `base` | runs a launcher against the instance `base` | configures the agents' adapters on the default base and runs `base ensure` |
+
+⚠ **The register's rows list no call that names `wsl-toolkit` as a distribution or
+the instance `base`.** Their own trees were not read again for this change, so each row
+is read before the release.
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

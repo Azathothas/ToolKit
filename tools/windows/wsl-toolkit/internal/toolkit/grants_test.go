@@ -25,7 +25,7 @@ func TestANamedInstanceReadsItsOwnConfigurationFirst(t *testing.T) {
 	ownFile := filepath.Join(home, "config.json")
 	writeImage := func(path, image string) {
 		t.Helper()
-		body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-base","image":"` + image + `"}}`
+		body := `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-podbox","image":"` + image + `"}}`
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -37,7 +37,7 @@ func TestANamedInstanceReadsItsOwnConfigurationFirst(t *testing.T) {
 	previous, previousExplicit := SelectedInstance, ExplicitConfigPath
 	t.Cleanup(func() { SelectedInstance, ExplicitConfigPath = previous, previousExplicit })
 	t.Setenv("WSL_TOOLKIT_HOME", home)
-	SelectedInstance = Instance{Name: "base", Distro: "wsl-toolkit-base", Home: home}
+	SelectedInstance = Instance{Name: "podbox", Distro: "wsl-toolkit-podbox", Home: home}
 	ExplicitConfigPath = ""
 
 	loads := func(label, wantPath, wantImage string) {

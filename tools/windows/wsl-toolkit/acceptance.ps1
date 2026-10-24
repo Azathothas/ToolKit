@@ -50,7 +50,10 @@ $ErrorActionPreference = 'Stop'
 # inherit the selection through the environment, as a caller's would.
 if ($Instance) { $env:WSL_TOOLKIT_INSTANCE = $Instance }
 $script:Instance = if ($env:WSL_TOOLKIT_INSTANCE) { $env:WSL_TOOLKIT_INSTANCE.Trim() } else { '' }
-$script:BaseName = if ($script:Instance -and $script:Instance -ne 'default') { 'wsl-toolkit-' + $script:Instance } else { 'wsl-toolkit' }
+# The default base is read from the tool below, once the executable is known:
+# wsl-toolkit-jobs on a fresh host, and wsl-toolkit where one was built under that
+# older name. WSL-167.
+$script:BaseName = if ($script:Instance -and $script:Instance -ne 'default') { 'wsl-toolkit-' + $script:Instance } else { '' }
 
 $script:Cases = @()
 $script:Failed = 0
@@ -282,6 +285,10 @@ if ($PSVersionTable.PSEdition -ne 'Core') {
 }
 $script:Scratch = Join-Path $repoRoot ('.tmp\acceptance.' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 $null = New-Item -ItemType Directory -Path $script:Scratch -Force
+if (-not $script:BaseName) {
+    # base status exits 1 over a base that is not registered, and still answers.
+    $script:BaseName = (Read-ToolJson -Stdout (Invoke-Tool @('base', 'status', '--json')).Out -What 'base status').name
+}
 
 # What this machine had before anything ran. The last case asserts every one of
 # them is still there, which is the operator's constraint stated as a reading
@@ -1383,7 +1390,7 @@ try {
                 # Each sees exactly its own distribution.
                 $s1 = Read-ToolJson -Stdout (Invoke-Tool @('base', 'status', '--json')).Out -What 'base status'
                 $s2 = Read-ToolJson -Stdout (Invoke-Tool @('--instance', 'acc', 'base', 'status', '--json')).Out -What 'base status'
-                if ($s1.name -ne 'wsl-toolkit' -or $s2.name -ne 'wsl-toolkit-acc') { return "names: $($s1.name) / $($s2.name)" }
+                if ($s1.name -ne $script:BaseName -or $s2.name -ne 'wsl-toolkit-acc') { return "names: $($s1.name) / $($s2.name)" }
 
                 # And gc on one leaves the other whole.
                 $g = Invoke-Tool @('--instance', 'acc', 'gc', '--apply', '--json')

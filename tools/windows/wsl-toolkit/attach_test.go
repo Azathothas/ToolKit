@@ -16,19 +16,19 @@ import (
 func TestTheAttachLineUsesTheServersKeys(t *testing.T) {
 	prevInstance, prevConfig := toolkit.SelectedInstance, toolkit.ExplicitConfigPath
 	t.Cleanup(func() { toolkit.SelectedInstance, toolkit.ExplicitConfigPath = prevInstance, prevConfig })
-	toolkit.SelectedInstance = toolkit.Instance{Name: "base", Distro: "wsl-toolkit-base"}
+	toolkit.SelectedInstance = toolkit.Instance{Name: "podbox", Distro: "wsl-toolkit-podbox"}
 	toolkit.ExplicitConfigPath = ""
 
 	cfg := toolkit.DefaultConfig()
-	cfg.Base.Name = "wsl-toolkit-base"
+	cfg.Base.Name = "wsl-toolkit-podbox"
 	cfg.Base.User = "herdr"
 	herdr := toolkit.BaseAdapter{Name: "herdr"}
 	cfg.Base.Adapters = []toolkit.BaseAdapter{herdr}
 	ans := attachAnswer(cfg)
-	if ans.Windows != "herdr --remote wsl-toolkit-base --remote-keybindings server" {
+	if ans.Windows != "herdr --remote wsl-toolkit-podbox --remote-keybindings server" {
 		t.Fatalf("the Windows line is %q", ans.Windows)
 	}
-	if ans.Linux[0] != "wsl-toolkit --instance base base shell" || !strings.HasPrefix(ans.Agents, "wsl-toolkit --instance base base herdr -- ") {
+	if ans.Linux[0] != "wsl-toolkit --instance podbox base shell" || !strings.HasPrefix(ans.Agents, "wsl-toolkit --instance podbox base herdr -- ") {
 		t.Fatalf("the other lines do not carry the instance: %q, %q", ans.Linux, ans.Agents)
 	}
 }

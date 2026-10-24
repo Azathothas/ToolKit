@@ -373,6 +373,11 @@ func renderBase(st toolkit.BaseState, asJSON, probed bool) error {
 func renderBaseState(st toolkit.BaseState, probed bool) {
 	out := os.Stderr
 	fmt.Fprintf(out, "  name        %s\n", st.Name)
+	// ⭐ A BASE UNDER THE OLDER NAME SAYS SO, AND HOW TO MOVE. Moving is the
+	// operator's call, so this names it and changes nothing. WSL-167.
+	if n := st.Naming; n != nil && n.Legacy {
+		fmt.Fprintf(out, "  older name  %s\n", n.Move)
+	}
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)

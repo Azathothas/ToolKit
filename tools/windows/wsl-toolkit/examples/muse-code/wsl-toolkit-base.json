@@ -1,7 +1,6 @@
 {
   "schema": "wsl-toolkit-config/1",
   "base": {
-    "name": "wsl-toolkit-base",
     "image": "ghcr.io/pkgforge-dev/archlinux:latest",
     "user": "herdr",
     "automount": "off",
