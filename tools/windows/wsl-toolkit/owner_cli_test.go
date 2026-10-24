@@ -229,6 +229,91 @@ func TestAnEphemeralJobLeavesNothing(t *testing.T) {
 	}
 }
 
+// ⛔ Each ephemeral row of a fleet leaves nothing once the fleet's answer is
+// ready, as one ephemeral job does, and a persistent fleet keeps its rows.
+func TestAnEphemeralFleetLeavesNothing(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	t.Setenv(toolkit.DetachedEnv, "")
+	var report toolkit.MatrixReport
+	for _, id := range []string{cliJobID, "fedcba9876543210"} {
+		owner, err := toolkit.ClaimJob(home, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res := toolkit.JobResult{ID: id, ContainerLifecycle: toolkit.ContainerEphemeral}
+		res.Seal()
+		if err := owner.Finish(res); err != nil {
+			t.Fatal(err)
+		}
+		report.Rows = append(report.Rows, res)
+	}
+	kept := report
+	kept.Rows = append([]toolkit.JobResult{}, report.Rows...)
+	(&ownerFlags{lifecycle: toolkit.ContainerPersistent}).leaveRows(&kept)
+	if _, err := os.Stat(filepath.Join(home, "jobs", cliJobID)); err != nil || kept.Rows[0].RecordRemoved {
+		t.Fatalf("a persistent fleet's row lost its record: %v", err)
+	}
+	(&ownerFlags{lifecycle: toolkit.ContainerEphemeral}).leaveRows(&report)
+	for _, row := range report.Rows {
+		if _, err := os.Stat(filepath.Join(home, "jobs", row.ID)); err == nil || !row.RecordRemoved {
+			t.Errorf("row %s left its record, and reads removed %v", row.ID, row.RecordRemoved)
+		}
+	}
+}
+
+// ⚠ The watcher's look for a late container costs one wsl.exe call each time,
+// and it makes 30 of them at most, not 90. WSL-121.
+func TestTheWatchersSweepIsThirtyCallsAtMost(t *testing.T) {
+	if n := int(sweepFor / sweepEvery); n > 30 || sweepEvery < 30*time.Second {
+		t.Errorf("the sweep looks every %s for %s, %d calls", sweepEvery, sweepFor, n)
+	}
+}
+
+// ⛔ An ephemeral job the helper left nothing of leaves no local copy of its
+// streams either; one whose record the helper kept keeps its copy. Measured:
+// record_removed was true and the client had filed the streams under the id.
+func TestAHelperRunEphemeralJobLeavesNoLocalCopy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	local := filepath.Join(home, "jobs", cliJobID)
+	if err := os.MkdirAll(local, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(local, "stdout.log"), []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := spoolLeft(toolkit.JobResult{ID: cliJobID}, local); got != local {
+		t.Fatalf("a record the helper kept left the local copy as %q", got)
+	}
+	if _, err := os.Stat(local); err != nil {
+		t.Fatalf("a record the helper kept lost its local copy: %v", err)
+	}
+	if got := spoolLeft(toolkit.JobResult{ID: cliJobID, RecordRemoved: true}, local); got != "" {
+		t.Errorf("a record the helper removed left the local copy as %q", got)
+	}
+	if _, err := os.Stat(local); err == nil {
+		t.Error("the local copy of a job the helper left nothing of is still there")
+	}
+}
+
+// ⭐ A prefix nothing in this state directory starts is answered as itself,
+// with the refusal the direct route gives, so the helper can read it among its
+// own jobs. WSL-120.
+func TestAPrefixNothingHereStartsIsHandedOn(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	selectInstance(t, toolkit.DefaultInstance)
+	id, notHere, err := resolveRoutedJobID("stop", []string{"beef1234"}, "beef1234")
+	if err != nil || id != "beef1234" || !errors.Is(notHere, toolkit.ErrNoJobHere) {
+		t.Errorf("a prefix of no job here answered %q, %v, %v", id, notHere, err)
+	}
+	endedJob(t, home, cliJobID, 0)
+	if id, notHere, err := resolveRoutedJobID("stop", []string{"0123"}, "0123"); err != nil || notHere != nil || id != cliJobID {
+		t.Errorf("a prefix of a job here answered %q, %v, %v", id, notHere, err)
+	}
+}
+
 // ⛔ A fleet is held by the cap a project sets: matrix reads jobs.max_running
 // and holds each row, as run holds its job. WSL-136.
 func TestAFleetIsHeldByTheProjectsCap(t *testing.T) {

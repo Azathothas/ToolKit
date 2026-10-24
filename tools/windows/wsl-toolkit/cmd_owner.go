@@ -48,6 +48,10 @@ const watchGrace = 10 * time.Second
 // the sweep's 15 minutes; one every 30 seconds is 30. WSL-121.
 const sweepEvery = 30 * time.Second
 
+// sweepFor is how long that look goes on: longer than the owner's own wsl.exe
+// call takes to pull an image and start a container.
+const sweepFor = 15 * time.Minute
+
 func (o *ownerFlags) bind(fs *flag.FlagSet) {
 	o.fs = fs
 	fs.BoolVar(&o.cancelOnExit, "cancel-on-exit", false, "stop the job, TERM then KILL after 10s, when the process that started this command, or one above it, exits before the job ends. A detached watcher waits on them and on the job's owner")
@@ -282,7 +286,7 @@ func runWatchdog(ctx context.Context, ids []string) int {
 			rep, err := r.StopContainerOf(ctx, id, watchGrace)
 			return rep.ContainerFound(), err
 		},
-		SweepFor: 15 * time.Minute, SweepEvery: sweepEvery,
+		SweepFor: sweepFor, SweepEvery: sweepEvery,
 	}
 	if _, err := w.Run(ctx); err != nil {
 		return exitFailed

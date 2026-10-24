@@ -518,7 +518,7 @@ func appendImageEntries(entries []CleanupEntry, images []OwnedThing, instance st
 	var at []int
 	var ids []string
 	for _, i := range images {
-		if why, ok := keptImageReason(i.Name); ok {
+		if why, kept := keptImageReason(i.Name); kept {
 			entries = append(entries, CleanupEntry{Kind: "image", Instance: instance, Path: i.Name, Action: CleanupKeep, Result: CleanupKept, Reason: why})
 			continue
 		}
