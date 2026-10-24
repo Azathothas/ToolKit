@@ -63,13 +63,13 @@ type grantRecorder struct {
 	prevPath string
 }
 
-func (r *grantRecorder) ChangeGrantsLive(context.Context, toolkit.Config, string) (bool, error) {
+func (r *grantRecorder) ChangeGrantsLive(context.Context, toolkit.Config, toolkit.BaseMount) (bool, error) {
 	return r.changed, nil
 }
 
-func (r *grantRecorder) TakeGrantsBack(_ context.Context, prev toolkit.Config, target string, changed bool) error {
+func (r *grantRecorder) TakeGrantsBack(_ context.Context, prev toolkit.Config, grant toolkit.BaseMount, changed bool) error {
 	r.backs++
-	r.target, r.asked, r.prevPath = target, changed, prev.Path()
+	r.target, r.asked, r.prevPath = grant.Target, changed, prev.Path()
 	return nil
 }
 

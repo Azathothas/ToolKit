@@ -186,17 +186,17 @@ func TestADefaultTargetIsTheDirectorysOwnName(t *testing.T) {
 func TestALiveGrantChangeNamesItsOneTarget(t *testing.T) {
 	cfg := grantBase(t)
 	cfg.Base.Mounts = []BaseMount{{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}}
-	env, err := grantsEnv(cfg, GrantsLive, "/workspaces/mine")
+	env, err := grantsEnv(cfg, GrantsLive, BaseMount{Target: "/workspaces/mine"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got, err := base64.StdEncoding.DecodeString(env["TK_GRANT_TARGET"]); err != nil || string(got) != "/workspaces/mine" {
 		t.Fatalf("a live grant handed TK_GRANT_TARGET %q (%v), want /workspaces/mine", env["TK_GRANT_TARGET"], err)
 	}
-	if _, err := grantsEnv(cfg, GrantsLive, ""); err == nil || !strings.Contains(err.Error(), "names its one target") {
+	if _, err := grantsEnv(cfg, GrantsLive, BaseMount{}); err == nil || !strings.Contains(err.Error(), "names its one target") {
 		t.Fatalf("a live change with no target answered %v, want a refusal", err)
 	}
-	if env, err := grantsEnv(cfg, GrantsWrite, ""); err != nil || env["TK_GRANT_TARGET"] != "" {
+	if env, err := grantsEnv(cfg, GrantsWrite, BaseMount{}); err != nil || env["TK_GRANT_TARGET"] != "" {
 		t.Fatalf("write mode answered %q, %v; want no target", env["TK_GRANT_TARGET"], err)
 	}
 }
@@ -220,9 +220,37 @@ func grantsDriveIn(t *testing.T, dir, mode string, mounts []BaseMount, target st
 	return grantsDriveAs(t, dir, mode, mounts, target, grantsMine)
 }
 
-// grantsDriveAs is grantsDriveIn for the configuration file owner.
+// grantsDriveAs is grantsDriveIn for the configuration file owner. The grant's
+// source is the one mounts names at target, and for a revoke, which names none,
+// the one live at target: the directory the caller's configuration granted there.
 func grantsDriveAs(t *testing.T, dir, mode string, mounts []BaseMount, target, owner string) (string, error) {
 	t.Helper()
+	want, _ := base64.StdEncoding.DecodeString(target)
+	from := ""
+	for _, m := range mounts {
+		if m.Target == string(want) {
+			from = fstabEscape(filepath.ToSlash(m.Source))
+		}
+	}
+	if from == "" && len(want) > 0 {
+		live, _ := os.ReadFile(filepath.Join(dir, "mounts"))
+		for _, line := range strings.Split(string(live), "\n") {
+			if f := strings.Fields(line); len(f) > 1 && f[1] == string(want) {
+				from = f[0]
+			}
+		}
+	}
+	return grantsDriveFrom(t, dir, mode, mounts, target, owner, from)
+}
+
+// grantsDriveFrom is grantsDriveAs with the grant's source named, as fstab
+// escapes it.
+func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target, owner, from string) (string, error) {
+	t.Helper()
+	source64 := ""
+	if from != "" {
+		source64 = b64(from)
+	}
 	fstab64, checks, err := renderBaseMounts(mounts)
 	if err != nil {
 		t.Fatal(err)
@@ -251,11 +279,12 @@ umount() {
 	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", dir+"/fstab")
 	script = strings.ReplaceAll(script, "/proc/mounts", dir+"/mounts")
 	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", dir+"/owners")
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", dir+"/grants.lock")
 	script = strings.Replace(script, "set -eu\n", "set -eu\n"+standIns, 1)
 	cmd := exec.Command(posixShell(t), "-c", script)
 	cmd.Env = append(os.Environ(), "TK_TEST_DIR="+dir, "TK_USER=agent", "TK_GRANTS_MODE="+mode,
 		"TK_FSTAB_B64="+fstab64, "TK_MOUNT_CHECKS="+checks, "TK_GRANT_TARGET="+target,
-		"TK_GRANT_OWNER="+b64(owner), "TK_GRANT_OWNER_NAME="+b64(owner))
+		"TK_GRANT_SOURCE="+source64, "TK_GRANT_OWNER="+b64(owner), "TK_GRANT_OWNER_NAME="+b64(owner))
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -337,24 +366,29 @@ func TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone(t *testing.T) {
 	}
 	cfg := grantBase(t)
 	cfg.Base.Mounts = []BaseMount{{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}}
-	if env, err := grantsEnv(cfg, GrantsBlock, "/workspaces/shared"); err != nil || env["TK_GRANTS_MODE"] != GrantsBlock || env["TK_FSTAB_B64"] == "" {
+	if env, err := grantsEnv(cfg, GrantsBlock, BaseMount{Target: "/workspaces/shared"}); err != nil || env["TK_GRANTS_MODE"] != GrantsBlock || env["TK_FSTAB_B64"] == "" {
 		t.Fatalf("block mode answered %v, %v; want the block and no refusal", env, err)
 	}
 }
 
 // TestATakeBackLeavesAMountItsChangeDidNotMake drives grants.sh over a target
-// another configuration has mounted rw. A grant of the same target rw mounts
-// nothing and says so, and the block take-back leaves the mount and rewrites
-// the block. ⛔ The live take-back unmounted it. WSL-179.
+// already mounted rw that the ledger gives this file, though its configuration no
+// longer names it. A grant of the same target rw mounts nothing and says so, and
+// the block take-back leaves the mount, the ledger, and rewrites the block. ⛔ The
+// live take-back unmounted it. WSL-179.
 func TestATakeBackLeavesAMountItsChangeDidNotMake(t *testing.T) {
 	posixShell(t)
 	dir := t.TempDir()
 	src := t.TempDir()
 	theirs := fstabEscape(filepath.ToSlash(src)) + " /workspaces/shared drvfs rw,noatime 0 0\n"
+	owners := "/workspaces/shared " + b64(grantsMine) + " " + b64(grantsMine) + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "mounts"), []byte(theirs), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "fstab"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "owners"), []byte(owners), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
@@ -378,8 +412,8 @@ func TestATakeBackLeavesAMountItsChangeDidNotMake(t *testing.T) {
 	if err != nil || !strings.Contains(out, "grants-complete") {
 		t.Fatalf("the block take-back failed: %v\n%s", err, out)
 	}
-	if read("log") != "" || !strings.Contains(read("mounts"), theirs) {
-		t.Fatalf("the block take-back touched a live mount:\nlog:\n%s\nmounts:\n%s", read("log"), read("mounts"))
+	if read("log") != "" || !strings.Contains(read("mounts"), theirs) || read("owners") != owners {
+		t.Fatalf("the block take-back touched a live mount or the ledger:\nlog:\n%s\nmounts:\n%s\nowners:\n%s", read("log"), read("mounts"), read("owners"))
 	}
 	if fstab := read("fstab"); strings.Contains(fstab, " /workspaces/shared ") || !strings.Contains(fstab, " /workspaces/mine ") {
 		t.Fatalf("the block take-back did not write the previous configuration's block:\n%s", fstab)

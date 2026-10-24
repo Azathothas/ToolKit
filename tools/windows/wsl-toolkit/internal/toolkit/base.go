@@ -556,6 +556,27 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 					b.log("it still cannot after the repair: " + err.Error())
 				}
 			}
+			// ⛔ NO RESTART OVER ANOTHER CONFIGURATION'S LIVE GRANTS UNLESS ASKED.
+			// Its grant is not in this file's block, so the restart dropped its
+			// checkout and ended every agent in the base, and that file's next
+			// ensure did the same back. The grant lock is held through the
+			// provisioning, so no grant lands between the read and the restart.
+			// WSL-179.
+			release, err := LockGrants(ctx, b.log)
+			if err != nil {
+				return st, err
+			}
+			defer release()
+			if held, err := b.heldGrants(ctx); err != nil {
+				b.log("the grant ledger could not be read (" + err.Error() + "), so no grant is known to be held")
+			} else if refusal := HeldGrantsError(b.cfg.Base.Name, held); refusal != nil {
+				if !repair {
+					return st, refusal
+				}
+				for _, h := range held {
+					b.log("restarting over another configuration's grant, as asked: " + h.Target + ", granted by " + h.File)
+				}
+			}
 			b.log("re-provisioning in place")
 		}
 		if err := b.provision(ctx); err != nil {
@@ -917,7 +938,7 @@ func (b *Base) provision(ctx context.Context) error {
 	}
 	// ⭐ THE BLOCK IS WRITTEN BY THE SCRIPT `base grant` RUNS LIVE, so provisioning
 	// and a live grant cannot write two different blocks.
-	if _, err := b.applyGrants(ctx, b.cfg, GrantsWrite, ""); err != nil {
+	if _, err := b.applyGrants(ctx, b.cfg, GrantsWrite, BaseMount{}); err != nil {
 		return err
 	}
 	// WSL reads /etc/wsl.conf at start, so without this restart the settings

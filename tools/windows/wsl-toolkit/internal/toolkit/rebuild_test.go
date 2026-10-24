@@ -111,7 +111,13 @@ func fakeWslMain(state string, args []string) int {
 		_, _ = os.Stdout.Write(marker)
 		return 0
 	}
-	_, _ = io.Copy(io.Discard, os.Stdin)
+	script, _ := io.ReadAll(os.Stdin)
+	// ⚠ THE ONE ANSWERED SCRIPT: grants.sh asked which live grants another file
+	// holds, when the case has written the answer to state/held. WSL-179.
+	if held, err := os.ReadFile(filepath.Join(state, "held")); err == nil && strings.Contains(string(script), "TK_GRANTS_MODE='held'") {
+		_, _ = os.Stdout.Write(held)
+		return 0
+	}
 	fmt.Fprintln(os.Stderr, "the fake WSL runs no guest script")
 	return 1
 }

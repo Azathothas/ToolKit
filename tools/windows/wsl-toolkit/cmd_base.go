@@ -36,7 +36,8 @@ const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove
   --save        also make that preset the stored default for later commands
   --json        a structured answer
   --probe       status runs a real container to find out. Off by default
-  --repair      ensure may clear engine run state a reboot invalidated.
+  --repair      ensure may clear engine run state a reboot invalidated, and
+                restart a base over another configuration's live grants.
                 Off by default: without it, a base needing repair is REFUSED
                 with the exact command printed rather than quietly fixed
   --root        shell attaches as root instead
@@ -314,7 +315,7 @@ var baseShared = sharedFlags[baseFlags]{group: "base", order: baseSubcommands, r
 func (f *baseFlags) bind(fs *flag.FlagSet) {
 	fs.BoolVar(&f.asJSON, "json", false, "write a structured answer")
 	fs.BoolVar(&f.probe, "probe", false, "status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag")
-	fs.BoolVar(&f.repair, "repair", false, "ensure and recreate may clear engine run state a reboot invalidated. Off by default")
+	fs.BoolVar(&f.repair, "repair", false, "ensure and recreate may clear engine run state a reboot invalidated, and restart a base over another configuration's live grants. Off by default")
 	fs.BoolVar(&f.asRoot, "root", false, "shell attaches as root")
 	fs.BoolVar(&f.here, "here", false, "shell starts in this Windows directory instead of the guest account's home")
 	fs.BoolVar(&f.yes, "yes", false, "remove does not ask before removing")

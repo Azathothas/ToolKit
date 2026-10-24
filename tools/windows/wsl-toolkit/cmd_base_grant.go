@@ -158,8 +158,8 @@ func lockedGrantConfig(ctx context.Context) (toolkit.Config, func(), error) {
 
 // grantLiveBase is what a grant or a revoke asks of a registered base.
 type grantLiveBase interface {
-	ChangeGrantsLive(ctx context.Context, next toolkit.Config, target string) (bool, error)
-	TakeGrantsBack(ctx context.Context, prev toolkit.Config, target string, changed bool) error
+	ChangeGrantsLive(ctx context.Context, next toolkit.Config, grant toolkit.BaseMount) (bool, error)
+	TakeGrantsBack(ctx context.Context, prev toolkit.Config, grant toolkit.BaseMount, changed bool) error
 }
 
 // changeGrantLive changes the running base first and the file second, and takes
@@ -167,7 +167,7 @@ type grantLiveBase interface {
 func changeGrantLive(ctx context.Context, base grantLiveBase, cfg toolkit.Config, change toolkit.GrantChange) (int, error) {
 	// changed is whether the live step mounted or unmounted the target, and it
 	// decides how a file that cannot be written takes the step back. WSL-179.
-	changed, err := base.ChangeGrantsLive(ctx, change.Next, change.Mount.Target)
+	changed, err := base.ChangeGrantsLive(ctx, change.Next, change.Mount)
 	if err != nil {
 		// ⚠ NOTHING WAS WRITTEN. The file still says what the base had.
 		return exitFailed, fmt.Errorf("%s. %s is unchanged", strings.TrimRight(err.Error(), "."), cfg.Path())
@@ -176,7 +176,7 @@ func changeGrantLive(ctx context.Context, base grantLiveBase, cfg toolkit.Config
 		// ⛔ A STEP THAT MOUNTED NOTHING TAKES BACK ITS BLOCK ALONE. The target was
 		// already live, from another configuration, and a live take-back unmounted
 		// that configuration's checkout. WSL-179.
-		if backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed); backErr != nil {
+		if backErr := base.TakeGrantsBack(ctx, cfg, change.Mount, changed); backErr != nil {
 			return exitCannot, fmt.Errorf("%s could not be written (%v), and taking the live change back failed too: %w", cfg.Path(), err, backErr)
 		}
 		return exitCannot, fmt.Errorf("%s could not be written, so the live change was taken back: %w", cfg.Path(), err)
