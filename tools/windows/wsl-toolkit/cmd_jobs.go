@@ -142,6 +142,11 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 		rep, err = c.StopJob(ctx, id, *grace)
 		if toolkit.ValidJobID(rep.ID) {
 			id = rep.ID
+		} else if err != nil && notHere != nil {
+			// ⛔ A HELPER THAT NAMED NO JOB FOR THE PREFIX LEAVES THE REFUSAL HERE.
+			// A 7.0 helper refuses a prefix with a plain 400, which read as a failed
+			// stop and exited 1, where 7.0.2 refused it here with exit 2. WSL-120.
+			return exitCannot, notHere
 		}
 	} else {
 		runner, rerr := toolkit.NewRunner(cfg, note)
@@ -176,6 +181,11 @@ func waitForResult(ctx context.Context, home, id string, limit time.Duration) to
 	deadline := time.Now().Add(limit)
 	for {
 		st, err := toolkit.ReadJobState(home, id)
+		// ⚠ AN EPHEMERAL JOB'S RECORD GOES ONCE ITS ANSWER IS READY, and the
+		// answer is read from the copy kept beside it. WSL-121.
+		if res, ok := toolkit.EndedAnswer(home, id); err == nil && !st.Known && ok {
+			st.Result = &res
+		}
 		if err != nil || st.Result != nil || !st.Owned || time.Now().After(deadline) {
 			return st
 		}
@@ -296,6 +306,12 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 		return out, err
 	}
 	if !st.Known {
+		// ⚠ A READER THAT CAME JUST AFTER THE RECORD WENT gets the answer kept
+		// beside it, as one that came just before does. WSL-121.
+		if res, ok := toolkit.EndedAnswer(home, id); ok {
+			out.Result, out.verdict = &res, res.Verdict()
+			return out, nil
+		}
 		return out, fmt.Errorf("%w: %s. %s lists the jobs this machine has", toolkit.ErrUnknownJob, id, toolkit.ToolCommand("logs"))
 	}
 	if st.Session != nil {
@@ -318,6 +334,13 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 		}
 		if st.Result != nil {
 			out.Result, out.verdict = st.Result, st.Result.Verdict()
+			return out, nil
+		}
+		// ⛔ AN OWNED JOB WHOSE RECORD WENT IS AN ENDED EPHEMERAL JOB, never an
+		// orphan. Its owner removed the record once the answer was ready, and
+		// this read came after, so the answer is the copy kept beside it. WSL-121.
+		if res, ok := toolkit.EndedAnswer(home, id); ok && !st.Known {
+			out.Result, out.verdict = &res, res.Verdict()
 			return out, nil
 		}
 	} else if st.Result != nil {

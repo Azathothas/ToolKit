@@ -350,6 +350,65 @@ func TestAFleetIsHeldByTheProjectsCap(t *testing.T) {
 	}
 }
 
+// ⛔ A fleet under a cap of 1 and no wait runs its rows one after another: a
+// row its own fleet holds the slot for waits, and is not refused. WSL-136.
+func TestAFleetUnderACapOfOneRunsItsRowsInTurn(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", root)
+	selectInstance(t, toolkit.DefaultInstance)
+	o := ownerFlags{maxRunning: 1}
+	admit := o.rowAdmit()
+	ids := []string{"aaaaaaaaaaaaaaa1", "aaaaaaaaaaaaaaa2", "aaaaaaaaaaaaaaa3"}
+	rows := make([]*toolkit.JobOwner, len(ids))
+	for i, id := range ids {
+		row, err := toolkit.ClaimJob(root, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows[i] = row
+		t.Cleanup(row.Release)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if _, err := admit(ctx, rows[0]); err != nil {
+		t.Fatalf("the first row was refused: %v", err)
+	}
+	admitted := make(chan int, 2)
+	for i := 1; i < 3; i++ {
+		go func(i int) {
+			if _, err := admit(ctx, rows[i]); err != nil {
+				t.Errorf("row %d was refused: %v", i+1, err)
+				admitted <- -1
+				return
+			}
+			admitted <- i
+		}(i)
+	}
+	select {
+	case i := <-admitted:
+		t.Fatalf("row %d was let in while the first ran", i+1)
+	case <-time.After(500 * time.Millisecond):
+	}
+	if err := rows[0].Finish(toolkit.JobResult{ID: ids[0]}); err != nil {
+		t.Fatal(err)
+	}
+	next := <-admitted
+	if next < 0 {
+		t.FailNow()
+	}
+	select {
+	case i := <-admitted:
+		t.Fatalf("row %d was let in beside row %d", i+1, next+1)
+	case <-time.After(500 * time.Millisecond):
+	}
+	if err := rows[next].Finish(toolkit.JobResult{ID: ids[next]}); err != nil {
+		t.Fatal(err)
+	}
+	if last := <-admitted; last < 0 {
+		t.FailNow()
+	}
+}
+
 // ⭐ The answer says how long the cap held a job, and nothing where it did not.
 func TestAnAnswerSaysHowLongTheCapHeldTheJob(t *testing.T) {
 	res := toolkit.JobResult{ID: cliJobID, WaitedToRun: 90 * time.Second}

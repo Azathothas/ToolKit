@@ -34,10 +34,12 @@ const (
 	watchdogMark = "wsl-toolkit-watchdog/1:"
 )
 
-// The two roles a watched process has.
+// The roles a watched process has. RoleClient is the client that detached the
+// job: its exit is no reason to stop it.
 const (
 	RoleCaller = "caller"
 	RoleOwner  = "owner"
+	RoleClient = "client"
 )
 
 // maxCallers bounds the chain of processes a job is tied to.
@@ -177,7 +179,14 @@ type Watchdog struct {
 	// Settle is how long past Grace an owner that is alive has to record the end
 	// of a job this watch stopped. Zero means two minutes.
 	Settle time.Duration
-	seen   map[string]bool
+	// Watched is what Watch waits on, and Rewatch opens a new wait on a set of
+	// processes. They are used once the detaching client exits.
+	Watched []ProcessIdentity
+	Rewatch func([]ProcessIdentity) (ProcessWatch, error)
+	// ClientSettle is how long after the client exits a caller that ends too
+	// is taken to have lived only as long as the client. Zero means 2 seconds.
+	ClientSettle time.Duration
+	seen         map[string]bool
 }
 
 func (w *Watchdog) log(s string) {
@@ -205,6 +214,12 @@ func (w *Watchdog) Run(ctx context.Context) (WatchOutcome, error) {
 		if err != nil {
 			return out, err
 		}
+		if gone != nil && gone.Role == RoleClient {
+			if err := w.clientLeft(ctx); err != nil {
+				return out, err
+			}
+			continue
+		}
 		if gone != nil {
 			out.Exited = gone
 			w.cancel(ctx, *gone, &out)
@@ -214,6 +229,64 @@ func (w *Watchdog) Run(ctx context.Context) (WatchOutcome, error) {
 			return out, err
 		}
 	}
+}
+
+// clientLeft drops the client that detached the job from the watch, with each
+// nearest caller that ended with it, and waits on the rest. WSL-121.
+//
+// ⛔ A DETACHING CLIENT EXITS AT ONCE, AND SO DOES WHAT RAN ONLY FOR IT. Git
+// Bash runs a Windows program under a stub that exits with the program, and
+// `cmd /c` does the same. The chain began at that stub, so a job started with
+// --detach --cancel-on-exit from Git Bash was stopped as soon as it detached.
+// A caller still alive ClientSettle after the client is the one the job is
+// tied to, and so is every caller above it.
+func (w *Watchdog) clientLeft(ctx context.Context) error {
+	settle := w.ClientSettle
+	if settle <= 0 {
+		settle = 2 * time.Second
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(settle):
+	}
+	var owners, callers []ProcessIdentity
+	for _, p := range w.Watched {
+		switch p.Role {
+		case RoleClient:
+		case RoleOwner:
+			owners = append(owners, p)
+		default:
+			callers = append(callers, p)
+		}
+	}
+	if w.Rewatch == nil {
+		return errors.New("the detaching client exited, and this watch cannot open another wait")
+	}
+	for len(callers) > 0 {
+		one, err := w.Rewatch(callers[:1])
+		if err != nil {
+			return err
+		}
+		gone, err := one.Exited(0)
+		one.Close()
+		if err != nil {
+			return err
+		}
+		if gone == nil {
+			break
+		}
+		w.log(gone.String() + " ended with the client that detached the job, so it is not watched")
+		callers = callers[1:]
+	}
+	kept := append(append([]ProcessIdentity{}, owners...), callers...)
+	next, err := w.Rewatch(kept)
+	if err != nil {
+		return err
+	}
+	w.Watch.Close()
+	w.Watch, w.Watched = next, kept
+	return nil
 }
 
 // allEnded says whether every job recorded its end, or was removed after it.

@@ -240,6 +240,9 @@ type JobResult struct {
 	// its record. WSL-121.
 	RecordRemoved bool   `json:"record_removed,omitempty"`
 	RecordKept    string `json:"record_kept,omitempty"`
+	// TeardownError is why the teardown after the job failed, so its guest
+	// directory or container may still be there. WSL-121.
+	TeardownError string `json:"teardown_error,omitempty"`
 	// WaitedToRun is how long the running cap held the job before it ran, and
 	// zero where it was let in at once. WSL-136.
 	WaitedToRun time.Duration `json:"waited_to_run_ns,omitempty"`
@@ -648,6 +651,9 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		trace.Mark("teardown")
 		if err != nil {
 			r.log("cleanup after job " + id + ": " + err.Error())
+			// ⛔ SAID ON THE RESULT, so an ephemeral job keeps the record whose lock
+			// tells gc its owner is gone, and its answer claims no removal. WSL-121.
+			res.TeardownError = err.Error()
 			return
 		}
 		if err := r.ledger.Append(LedgerEntry{Event: "close", Kind: "job", ID: id}); err != nil {

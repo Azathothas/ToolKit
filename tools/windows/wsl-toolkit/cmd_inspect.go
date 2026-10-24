@@ -74,13 +74,24 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	// own last exit, the guest's disk - was unreachable while its sibling report
 	// had the door. That is the one-gated-door class, in the tool that keeps
 	// finding it. WSL-58.
+	//
+	// ⛔ A PREFIX NOTHING KNOWS IS AN UNKNOWN JOB ON BOTH ROUTES, exit 1, as
+	// 7.0.2 answered it. The direct route refused it with exit 2 while the
+	// helper's unknown_job answered 1. WSL-120.
 	var rep toolkit.InspectReport
+	var unknown error
+	if notHere != nil {
+		unknown = fmt.Errorf("%w: %w", toolkit.ErrUnknownJob, notHere)
+	}
 	if c, hErr := useHelper(ctx, *viaHelper); notHere != nil && (hErr != nil || c == nil) {
-		return exitCannot, notHere
+		return renderInspectResult(rep, unknown, *asJSON)
 	} else if hErr != nil {
 		return exitCannot, hErr
 	} else if c != nil {
 		rep, err = c.Inspect(ctx, id, *since)
+		if err != nil && unknown != nil && !errors.Is(err, toolkit.ErrUnknownJob) {
+			err = unknown
+		}
 		return renderInspectResult(rep, err, *asJSON)
 	}
 

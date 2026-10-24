@@ -91,6 +91,69 @@ func TestACallerThatExitsFirstStopsTheJob(t *testing.T) {
 	}
 }
 
+// liveWatch answers the first of its processes that alive says has ended.
+type liveWatch struct {
+	ids   []ProcessIdentity
+	alive func(pid int) bool
+}
+
+func (l *liveWatch) Exited(time.Duration) (*ProcessIdentity, error) {
+	for i := range l.ids {
+		if !l.alive(l.ids[i].PID) {
+			return &l.ids[i], nil
+		}
+	}
+	time.Sleep(time.Millisecond)
+	return nil, nil
+}
+
+func (l *liveWatch) Close() {}
+
+// ⛔ The client that detached a job exits at once, and so does the stub Git Bash
+// ran it under. Neither stops the job: the script above them does. WSL-121.
+func TestAClientThatDetachedAndItsStubDoNotStopTheJob(t *testing.T) {
+	home := t.TempDir()
+	owner, err := ClaimJob(home, testJobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := ProcessIdentity{PID: 44, Start: 1, Name: "wsl-toolkit.exe", Role: RoleClient}
+	stub := ProcessIdentity{PID: 45, Start: 1, Name: "bash.exe", Role: RoleCaller}
+	script := ProcessIdentity{PID: 46, Start: 1, Name: "bash.exe", Role: RoleCaller}
+	var mu sync.Mutex
+	dead := map[int]bool{44: true, 45: true}
+	alive := func(pid int) bool { mu.Lock(); defer mu.Unlock(); return !dead[pid] }
+	stops := &stopsRecorded{found: true, then: func(string) { owner.Release() }}
+	w := Watchdog{Home: home, IDs: []string{testJobID}, Watch: &fakeWatch{gone: &client}, Stop: stops.stop,
+		Watched:      []ProcessIdentity{anOwner, client, stub, script},
+		Rewatch:      func(ps []ProcessIdentity) (ProcessWatch, error) { return &liveWatch{ids: ps, alive: alive}, nil },
+		ClientSettle: time.Millisecond, Settle: 5 * time.Second, Poll: time.Millisecond}
+	done := make(chan WatchOutcome, 1)
+	go func() {
+		out, err := w.Run(context.Background())
+		if err != nil {
+			t.Error(err)
+		}
+		done <- out
+	}()
+	select {
+	case out := <-done:
+		t.Fatalf("the job was stopped when its client detached: %+v, %v", out, stops.why)
+	case <-time.After(300 * time.Millisecond):
+	}
+	mu.Lock()
+	dead[46] = true
+	mu.Unlock()
+	select {
+	case out := <-done:
+		if out.Exited == nil || out.Exited.PID != 46 || len(stops.ids) != 1 {
+			t.Errorf("the script's exit answered %+v and stopped %v", out, stops.ids)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the script's exit did not stop the job")
+	}
+}
+
 // ⛔ A job that ended before any watched process exited is left alone.
 func TestAJobThatEndedFirstIsNotStopped(t *testing.T) {
 	home := t.TempDir()

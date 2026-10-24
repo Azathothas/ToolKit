@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -151,12 +152,21 @@ func callersOf() ([]toolkit.ProcessIdentity, error) {
 // ⛔ THE CLIENT'S CHAIN AND NOT THE OWNER'S. The owner's own parent is the
 // client, which answers with the job's id and exits at once, so a watch over
 // it would stop every job in its first second.
+//
+// ⚠ THE CLIENT IS HANDED OVER TOO, as itself. Its exit is no stop: the watcher
+// then drops each nearest caller that ended with it, as the stub Git Bash runs
+// a Windows program under does. WSL-121.
 func callersEnv() ([]toolkit.ProcessIdentity, string, error) {
 	callers, err := toolkit.Callers()
 	if err != nil {
 		return nil, "", fmt.Errorf("--cancel-on-exit could not read which process started this one: %w", err)
 	}
-	value, err := toolkit.EncodeWatched(callers)
+	client, err := toolkit.Self()
+	if err != nil {
+		return nil, "", fmt.Errorf("--cancel-on-exit: this process could not be named to its owner: %w", err)
+	}
+	client.Role = toolkit.RoleClient
+	value, err := toolkit.EncodeWatched(append([]toolkit.ProcessIdentity{client}, callers...))
 	if err != nil {
 		return nil, "", err
 	}
@@ -212,7 +222,13 @@ func startWatchdog(ids []string, callers []toolkit.ProcessIdentity) error {
 }
 
 // cancelLine names what a watcher waits on, for the line that says so.
-func cancelLine(ids string, callers []toolkit.ProcessIdentity) string {
+func cancelLine(ids string, all []toolkit.ProcessIdentity) string {
+	var callers []toolkit.ProcessIdentity
+	for _, c := range all {
+		if c.Role != toolkit.RoleClient {
+			callers = append(callers, c)
+		}
+	}
 	if len(callers) == 0 {
 		return "--cancel-on-exit: job " + ids + " stops if its owner exits first. No process above this one could be waited on"
 	}
@@ -287,6 +303,7 @@ func runWatchdog(ctx context.Context, ids []string) int {
 			return rep.ContainerFound(), err
 		},
 		SweepFor: sweepFor, SweepEvery: sweepEvery,
+		Watched: watched, Rewatch: toolkit.WatchProcesses,
 	}
 	if _, err := w.Run(ctx); err != nil {
 		return exitFailed
@@ -346,9 +363,21 @@ func (o *ownerFlags) rowAdmit() func(context.Context, *toolkit.JobOwner) (time.D
 		return nil
 	}
 	limit, wait := o.maxRunning, o.maxRunningWait
+	// ⭐ THE FLEET'S OWN ROWS HOLD ITS NEXT ROW AND DO NOT REFUSE IT, so a cap
+	// of 1 runs a matrix one row after another. WSL-136.
+	var mu sync.Mutex
+	rows := map[string]bool{}
+	ours := func(j toolkit.RunningJob) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return rows[j.ID]
+	}
 	return func(ctx context.Context, owner *toolkit.JobOwner) (time.Duration, error) {
-		return toolkit.AdmitRunning(ctx, owner, limit, wait, note,
-			func() bool { return toolkit.StopRecorded(owner.ID) })
+		mu.Lock()
+		rows[owner.ID] = true
+		mu.Unlock()
+		return toolkit.AdmitRunningBeside(ctx, owner, limit, wait, note,
+			func() bool { return toolkit.StopRecorded(owner.ID) }, ours)
 	}
 }
 

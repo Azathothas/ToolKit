@@ -227,6 +227,12 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	} else if c != nil {
 		plan, err := c.Cleanup(ctx, *apply, policy, *images)
+		// ⛔ A HELPER THAT SENT NO PLAN FOR THE PREFIX LEAVES THE REFUSAL HERE. A
+		// 7.0 helper refuses a prefix with a plain 400, which exited 1 beside an
+		// empty plan, where 7.0.2 refused it here with exit 2. WSL-120.
+		if err != nil && notHere != nil && plan.Schema == "" && !errors.Is(err, toolkit.ErrUnknownJob) {
+			return exitCannot, notHere
+		}
 		return finishGC(plan, err, *asJSON)
 	}
 	runner, err := toolkit.NewRunner(cfg, note)

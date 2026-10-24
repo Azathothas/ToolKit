@@ -5,10 +5,16 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
@@ -59,10 +65,6 @@ func TestEveryJobCommandReadsAPrefix(t *testing.T) {
 		{"logs --follow", func() (int, error) { return cmdLogs(ctx, []string{"beef1234", "--follow"}) }},
 		{"wait", func() (int, error) { return cmdWait(ctx, []string{"beef1234"}) }},
 		{"stop", func() (int, error) { return cmdStop(ctx, []string{"wtk-beef1234"}) }},
-		{"inspect", func() (int, error) { return cmdInspect(ctx, []string{"beef1234", "--via-helper"}) }},
-		{"artifacts retry", func() (int, error) {
-			return cmdArtifacts(ctx, []string{"retry", "beef1234", "--to", filepath.Join(home, "out")})
-		}},
 		{"gc --job", func() (int, error) { return cmdGC(ctx, []string{"--job", "beef1234", "--via-helper"}) }},
 	} {
 		code, err := c.run()
@@ -70,10 +72,22 @@ func TestEveryJobCommandReadsAPrefix(t *testing.T) {
 			t.Errorf("%s with a prefix of no job answered %d, %v; want exit 2 and the resolver's refusal", c.name, code, err)
 		}
 	}
+	// ⛔ inspect answers a prefix nothing knows as an unknown job, exit 1, on
+	// both routes, as 7.0.2 did, and still in the resolver's words.
+	code, err := cmdInspect(ctx, []string{"beef1234", "--via-helper"})
+	if code != exitFailed || !errors.Is(err, toolkit.ErrUnknownJob) || !strings.Contains(err.Error(), "starts with it") {
+		t.Errorf("inspect with a prefix of no job answered %d, %v; want exit 1, an unknown job", code, err)
+	}
+	// ⛔ artifacts retry goes on with an id nothing here starts, as 7.0.2 did,
+	// and is not refused by the resolver.
+	code, err = cmdArtifacts(ctx, []string{"retry", "beef1234", "--to", filepath.Join(home, "out")})
+	if err != nil && strings.Contains(err.Error(), "starts with it") || runtime.GOOS == "windows" && code != exitFailed {
+		t.Errorf("artifacts retry with a prefix of no job answered %d, %v; want nothing retained, exit 1", code, err)
+	}
 	// ⛔ resources --job narrowed by any text and exited 0 before, so a prefix
 	// that names no job here narrows as it did: here it reaches the absent
 	// helper, and is not refused by the resolver.
-	code, err := cmdResources(ctx, []string{"--job", "beef1234", "--via-helper"})
+	code, err = cmdResources(ctx, []string{"--job", "beef1234", "--via-helper"})
 	if err == nil || strings.Contains(err.Error(), "starts with it") {
 		t.Errorf("resources --job with a prefix of no job answered %d, %v; want it to narrow as before", code, err)
 	}
@@ -150,5 +164,82 @@ func TestAnAnswerIsOneLineWhenAskedFor(t *testing.T) {
 	}
 	if err := readJSONEnv(); err == nil || !strings.Contains(err.Error(), "stays indented") {
 		t.Errorf("%s=pretty is said as %v", jsonEnv, err)
+	}
+}
+
+// ⛔ A helper of 7.0 refuses a prefix with a plain 400. stop and gc --job then
+// answer the refusal this side gives, exit 2, as 7.0.2 did, and gc writes no
+// plan. WSL-120.
+func TestAPrefixAnOldHelperRefusesIsRefusedHere(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	selectInstance(t, toolkit.DefaultInstance)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/status" {
+			_, _ = fmt.Fprintf(w, `{"schema":"x","version":"7.0.2","pid":%d}`, os.Getpid())
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"\"beef1234\" is not a job id: an id is 16 lowercase hex characters"}`))
+	}))
+	defer srv.Close()
+	ep, err := json.Marshal(toolkit.HelperEndpoint{Schema: toolkit.HelperSchema, Address: strings.TrimPrefix(srv.URL, "http://"), Token: "t", PID: os.Getpid()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "helper.json"), ep, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	code, err := cmdStop(ctx, []string{"beef1234", "--via-helper"})
+	if code != exitCannot || !errors.Is(err, toolkit.ErrNoJobHere) {
+		t.Errorf("stop of a prefix an old helper refused answered %d, %v; want exit 2 and the refusal here", code, err)
+	}
+	var got int
+	out := captureStdout(t, func() { got, err = cmdGC(ctx, []string{"--job", "beef1234", "--via-helper", "--json"}) })
+	if got != exitCannot || !errors.Is(err, toolkit.ErrNoJobHere) || strings.TrimSpace(out) != "" {
+		t.Errorf("gc --job of a prefix an old helper refused answered %d, %v and wrote %q; want exit 2 and no plan", got, err, out)
+	}
+}
+
+// ⛔ An attached ephemeral job followed from a second process answers its own
+// verdict, though its owner removed the record once the answer was ready, and
+// a stop reads that verdict too. WSL-121.
+func TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	selectInstance(t, toolkit.DefaultInstance)
+	owner, err := toolkit.ClaimJob(home, cliJobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	type ended struct {
+		out jobEndOutcome
+		err error
+	}
+	done := make(chan ended, 1)
+	go func() {
+		out, err := jobEnd(ctx, cliJobID, 0, nil, nil)
+		done <- ended{out, err}
+	}()
+	time.Sleep(300 * time.Millisecond)
+	res := toolkit.JobResult{ID: cliJobID, Exit: 3, ContainerLifecycle: toolkit.ContainerEphemeral}
+	res.Seal()
+	if err := owner.Finish(res); err != nil {
+		t.Fatal(err)
+	}
+	toolkit.RemoveJobRecord(home, toolkit.ContainerEphemeral, &res)
+	if !res.RecordRemoved {
+		t.Fatalf("the record was kept: %s", res.RecordKept)
+	}
+	got := <-done
+	if got.err != nil || got.out.Orphaned || got.out.verdict != 3 || got.out.Result == nil || !got.out.Result.RecordRemoved {
+		t.Errorf("the follower answered %+v, %v; want the job's own 3", got.out, got.err)
+	}
+	if st := waitForResult(ctx, home, cliJobID, time.Second); st.Result == nil || st.Result.Verdict() != 3 {
+		t.Errorf("a stop's read of the ended job found %+v", st.Result)
 	}
 }

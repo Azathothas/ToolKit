@@ -110,6 +110,45 @@ func TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy(t *testing.T) {
 	}
 }
 
+// ⛔ An ephemeral job whose teardown failed keeps its record and its owner's
+// lock, so gc reads its owner as gone, and its answer claims no removal.
+// WSL-121.
+func TestAnEphemeralJobWhoseTeardownFailedKeepsItsRecord(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "teardown-fails"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(staleFakeWslEnv, dir)
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	cfg := Config{Base: BaseConfig{Name: "wsl-toolkit-stale", Image: "docker.io/library/alpine:latest", User: "agent"}}
+	r := &Runner{cfg: cfg, wsl: &Wsl{Path: self}, home: home, ledger: &Ledger{path: filepath.Join(home, "ledger.jsonl")}, log: func(string) {}}
+	res := r.Run(t.Context(), JobSpec{
+		Image: "docker.io/library/alpine:latest", Script: []byte("true\n"),
+		ContainerLifecycle: ContainerEphemeral,
+	})
+	if res.Unreached || res.TeardownError == "" {
+		t.Fatalf("a failed teardown is not on the result: %+v", res)
+	}
+	RemoveJobRecord(home, ContainerEphemeral, &res)
+	if res.RecordRemoved || !strings.Contains(res.RecordKept, "teardown failed") {
+		t.Fatalf("a job whose teardown failed reads removed %v, kept %q", res.RecordRemoved, res.RecordKept)
+	}
+	if _, err := os.Stat(filepath.Join(home, "jobs", res.ID, ownerLockName)); err != nil {
+		t.Fatalf("the owner's lock is gone: %v", err)
+	}
+	if !ownerGone(home, res.ID) {
+		t.Error("gc does not read the owner of a job whose teardown failed as gone")
+	}
+}
+
 // ⛔ A guest directory left behind is named as itself, never as artifacts that
 // were not delivered: a job that asked for none could not have had that cause.
 func TestAKeptRecordNamesItsOwnCause(t *testing.T) {

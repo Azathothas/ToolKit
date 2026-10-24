@@ -163,11 +163,16 @@ that ephemeral removes both, and the record stayed until `gc`. `WSL-121`
 - The answer says `job ID left nothing`, `--json` sets `record_removed`, and the
   `transcript` field is left out. A `matrix` row, and a job the helper runs, do the
   same.
-- ⚠ `logs ID`, `wait ID` and `gc --job ID` then find no job. A caller that reads
-  the record after the answer runs the job `persistent`.
+- ⚠ `logs ID` and `gc --job ID` then find no job. A caller that reads the record
+  after the answer runs the job `persistent`.
+- ⭐ The answer alone outlives the record by 10 minutes, in the `ended` folder of
+  the state directory. `wait ID`, `logs ID --follow` and `stop ID` read the job's
+  own verdict from it.
 - A record that holds something the answer does not is kept, and `record_kept`
   says why. That is an answer whose copy of the output was cut, artifacts that
   were not delivered, or a guest directory that was not removed.
+- ⛔ A teardown that failed keeps the record too, and `teardown_error` says why. Its
+  owner's lock tells `gc` that the owner is gone.
 - A job started with `--detach` keeps its record, because its answer is the
   record that `wait` and `logs --follow` read. Its `record_kept` says so.
 - ⚠ A helper of an earlier release removes no record, and the answer then says
@@ -269,11 +274,16 @@ and `resources --job` all read the three forms. `WSL-120`
   container that outlived its directory is found too.
 - A prefix that names no job, or several, is refused with exit 2. The refusal names
   `logs`, or lists the jobs the prefix starts.
+- ⚠ `inspect` answers a prefix that names no job as an unknown job, exit 1, on both
+  routes. `artifacts retry` goes on with it and answers that nothing was retained,
+  exit 1. Both answered so before.
 - ⚠ `resources --job` matched any text inside a row before, and still does where a
   prefix names no single job. It is not refused there.
 - ⭐ Through the helper, a prefix this process found nothing for is handed on, and
   the helper reads it among its own jobs. `stop`, `inspect` and `gc --job` do this,
   because a sandboxed client can run under a state directory of its own.
+- A helper of an earlier release refuses a prefix. `stop` and `gc --job` then give
+  the refusal of this process, exit 2, and `gc` writes no plan.
 - A job another instance ran is refused with the command that reaches it, under
   that instance's `--instance`. The job's own record says whose it is, and a prefix
   of another instance's job is found there too.
@@ -404,7 +414,10 @@ and is refused when D runs out. `WSL-136`
   before this one does not. A `base exec` session is not a job, and is not
   counted.
 - ⭐ `matrix` takes both flags and both keys, and holds each row as it starts. A
-  row the cap refuses ends with exit 2 and is counted as not run.
+  row waits while a row of its own fleet holds the slot, whatever the wait. So a
+  cap of 1 runs the rows one after another.
+- A row that jobs outside its fleet keep out ends with exit 2 and is counted as not
+  run.
 - The job holds its name first, then waits for its turn, and copies nothing while
   it waits. A `stop` ends the wait with 130.
 - A job that waited says how long, and `--json` carries it as `waited_to_run_ns`.
@@ -445,6 +458,9 @@ whole tree cannot reach it.
   started the command and exits before the job ends stops it too.
 - Under `--detach` the chain is the one above the command that detached. The
   answer names it, as `cancel_on_exit` under `--json`.
+- ⭐ The command that detached exits at once, and that is no stop. A caller that
+  ended within 2 seconds of it is dropped from the chain. That is the stub of Git
+  Bash, or a `cmd /c` around the command.
 - A `matrix` row its caller left behind never starts its container. A killed
   `matrix` process has its running rows stopped, since it owns them.
 - ⚠ Where Windows keeps the watcher in the job object, the answer says so, and a

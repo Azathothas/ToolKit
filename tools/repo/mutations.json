@@ -2,6 +2,105 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the client that detached a job and its stub do not stop it",
+      "file": "internal/toolkit/watch.go",
+      "find": "\t\tif gone != nil && gone.Role == RoleClient {\n",
+      "replace": "\t\tif gone != nil && gone.Role == \"never\" {\n",
+      "run": "TestAClientThatDetachedAndItsStubDoNotStopTheJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a follower of an ephemeral job reads the answer kept after its record",
+      "file": "cmd_jobs.go",
+      "find": "\t\tif res, ok := toolkit.EndedAnswer(home, id); ok && !st.Known {\n",
+      "replace": "\t\tif res, ok := toolkit.EndedAnswer(home, id); ok && false {\n",
+      "run": "TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop reads the answer kept after an ephemeral job's record",
+      "file": "cmd_jobs.go",
+      "find": "\t\tif res, ok := toolkit.EndedAnswer(home, id); err == nil && !st.Known && ok {\n",
+      "replace": "\t\tif res, ok := toolkit.EndedAnswer(home, id); err == nil && false && ok {\n",
+      "run": "TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ephemeral job's answer is kept when its record goes",
+      "file": "internal/toolkit/record.go",
+      "find": "\tres, ok, err := readJobResult(dir)\n\tif err != nil || !ok {\n",
+      "replace": "\tres, ok, err := readJobResult(dir)\n\tif err != nil || ok {\n",
+      "run": "TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed teardown is said on the result",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\t\tres.TeardownError = err.Error()\n",
+      "replace": "\t\t\t_ = err\n",
+      "run": "TestAnEphemeralJobWhoseTeardownFailedKeepsItsRecord",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job whose teardown failed keeps its record",
+      "file": "internal/toolkit/record.go",
+      "find": "\tcase res.TeardownError != \"\":\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAnEphemeralJobWhoseTeardownFailedKeepsItsRecord",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stop gives its own refusal for a prefix an old helper refused",
+      "file": "cmd_jobs.go",
+      "find": "\t\t} else if err != nil && notHere != nil {\n",
+      "replace": "\t\t} else if false {\n",
+      "run": "TestAPrefixAnOldHelperRefusesIsRefusedHere",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --job gives its own refusal for a prefix an old helper refused",
+      "file": "cmd_admin.go",
+      "find": "\t\tif err != nil && notHere != nil && plan.Schema == \"\" && !errors.Is(err, toolkit.ErrUnknownJob) {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAPrefixAnOldHelperRefusesIsRefusedHere",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: inspect answers a prefix nothing knows as an unknown job",
+      "file": "cmd_inspect.go",
+      "find": "\t\treturn renderInspectResult(rep, unknown, *asJSON)\n",
+      "replace": "\t\treturn exitCannot, notHere\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: artifacts retry goes on with an id nothing here starts",
+      "file": "cmd_actionable.go",
+      "find": "\tcase errors.Is(err, toolkit.ErrNoJobHere):\n\t\tresolved = id\n",
+      "replace": "\tcase false:\n\t\tresolved = id\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet's own rows hold its next row and do not refuse it",
+      "file": "internal/toolkit/running.go",
+      "find": "\t\tcase ownHeld:\n\t\t\tdeadline = time.Now().Add(wait)\n",
+      "replace": "\t\tcase false:\n\t\t\tdeadline = time.Now().Add(wait)\n",
+      "run": "TestAFleetUnderACapOfOneRunsItsRowsInTurn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a helper-run job the helper left nothing of leaves no local copy",
       "file": "helper_route.go",
       "find": "\tif !res.RecordRemoved || local == \"\" {\n\t\treturn local\n",

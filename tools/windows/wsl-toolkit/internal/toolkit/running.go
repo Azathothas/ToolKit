@@ -150,6 +150,18 @@ func capRefusedAtOnce(limit int, running []RunningJob) error {
 // every 30 seconds that it still waits and for whom, and refuses when it runs
 // out. stopped is asked at every count, so a stop ends the wait with 130.
 func AdmitRunning(ctx context.Context, owner *JobOwner, limit int, wait time.Duration, log func(string), stopped func() bool) (time.Duration, error) {
+	return AdmitRunningBeside(ctx, owner, limit, wait, log, stopped, nil)
+}
+
+// AdmitRunningBeside is AdmitRunning for one row of a fleet, and ours says
+// whether a running job is a row of the same fleet.
+//
+// ⛔ A FLEET'S OWN ROWS DO NOT REFUSE ITS NEXT ROW, they hold it. With a cap of
+// 1 and no wait, a matrix of four refused three of its rows with exit 2, where
+// the cap exists to run builds one at a time. While a row of its own fleet runs,
+// a row waits for it whatever the wait, and its wait starts again after.
+// WSL-136.
+func AdmitRunningBeside(ctx context.Context, owner *JobOwner, limit int, wait time.Duration, log func(string), stopped func() bool, ours func(RunningJob) bool) (time.Duration, error) {
 	started := time.Now()
 	if owner == nil || limit <= 0 {
 		return 0, nil
@@ -195,15 +207,24 @@ func AdmitRunning(ctx context.Context, owner *JobOwner, limit int, wait time.Dur
 		if stopped != nil && stopped() {
 			return time.Since(started), fmt.Errorf("%w: %d of %d ran (%s)", ErrStoppedWaitingToRun, len(running), limit, runningList(running))
 		}
-		if wait <= 0 {
-			return time.Since(started), capRefusedAtOnce(limit, running)
+		ownHeld := false
+		for _, j := range running {
+			ownHeld = ownHeld || ours != nil && ours(j)
 		}
-		if !time.Now().Before(deadline) {
+		switch {
+		case ownHeld:
+			deadline = time.Now().Add(wait)
+		case !time.Now().Before(deadline):
+			if wait <= 0 {
+				return time.Since(started), capRefusedAtOnce(limit, running)
+			}
 			return time.Since(started), fmt.Errorf("%w: %d of %d still run after it waited %s (%s), so this job is refused",
 				ErrOverRunningCap, len(running), limit, wait, runningList(running))
 		}
 		if log != nil && (lastSaid.IsZero() || time.Since(lastSaid) >= runningSay) {
-			if lastSaid.IsZero() {
+			if lastSaid.IsZero() && ownHeld {
+				log(fmt.Sprintf("job %s waits for a running slot its own fleet holds: %d of %d run now (%s)", owner.ID, len(running), limit, runningList(running)))
+			} else if lastSaid.IsZero() {
 				log(fmt.Sprintf("job %s waits for a running slot: %d of %d run now (%s). It waits up to %s", owner.ID, len(running), limit, runningList(running), wait))
 			} else {
 				log(fmt.Sprintf("job %s still waits for a running slot: %d of %d run now (%s)", owner.ID, len(running), limit, runningList(running)))

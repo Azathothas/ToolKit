@@ -83,8 +83,15 @@ func cmdArtifacts(ctx context.Context, args []string) (int, error) {
 	}
 	// ⭐ A JOB'S PREFIX OR ITS CONTAINER'S NAME IS READ AS THE JOB, and a whole
 	// artifact set id passes through untouched. WSL-120.
+	//
+	// ⛔ AN ID NOTHING HERE STARTS GOES ON AS ITSELF, to the helper's sets and
+	// then to the guest, and ends as 7.0.2 ended it: nothing was retained, exit 1.
+	// WSL-120.
 	resolved, err := resolveJobID("artifacts", args, id)
-	if err != nil {
+	switch {
+	case errors.Is(err, toolkit.ErrNoJobHere):
+		resolved = id
+	case err != nil:
 		return exitCannot, err
 	}
 	id = resolved
