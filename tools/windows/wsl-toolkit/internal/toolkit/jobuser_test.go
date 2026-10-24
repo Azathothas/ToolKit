@@ -32,6 +32,11 @@ func TestAnAccountTheImageLacksTakesAnIDTheImageDoesNotHave(t *testing.T) {
 	if err != nil || a.UID != 1000 || a.GID != 4242 || a.NewGroup {
 		t.Errorf("an image with a dev group resolved to %+v, %v", a, err)
 	}
+	// ⚠ A uid the image holds is passed over where its gid is free.
+	a, _ = readAccounts("dev", "root:x:0:0::/root:/bin/sh\nbuild:x:1000:5000::/b:/bin/sh\n", "root:x:0:\nbuild:x:5000:\n")
+	if a.UID != 1001 || a.GID != 1001 {
+		t.Errorf("a taken uid 1000 resolved to %+v", a)
+	}
 	// ⚠ A gid the image holds is passed over as well as a uid.
 	a, _ = readAccounts("dev", "root:x:0:0::/root:/bin/sh\n", "root:x:0:\nstaff:x:1000:\n")
 	if a.UID != 1001 || a.GID != 1001 {

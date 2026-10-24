@@ -216,6 +216,7 @@ func TestACacheIsReportedAndNarrowedToTheJobThatNamesIt(t *testing.T) {
 	rep.Owned.Caches = []toolkit.CacheVolume{
 		{Name: "cargo", Volume: "wtk-cache-cargo", Bytes: 2048, Containers: []string{"wtk-0123456789abcdef"}},
 		{Name: "pip", Volume: "wtk-cache-pip", Bytes: -1},
+		{Name: "other", Volume: "wtk-cache-other", Bytes: 1, Containers: []string{"wtk-ffffffffffffffff"}},
 	}
 	var b strings.Builder
 	if err := toolkit.RenderResources(&b, rep); err != nil {

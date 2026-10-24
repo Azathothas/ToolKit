@@ -40,8 +40,8 @@
     {
       "label": "wsl-toolkit: a working tree's file that lends nothing is not read under a named instance",
       "file": "internal/toolkit/configlayer.go",
-      "find": "\t\t\tif jobs, requires := lentKeys(b); len(jobs) == 0 && !requires {\n\t\t\t\treturn \"\"\n\t\t\t}\n",
-      "replace": "",
+      "find": "\t\t\tif jobs, requires := lentKeys(b); len(jobs) == 0 && !requires {\n",
+      "replace": "\t\t\tif jobs, requires := lentKeys(b); false && len(jobs) == 0 && !requires {\n",
       "run": "TestAProjectThatLendsNothingIsNotRead",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -68,7 +68,7 @@
       "label": "wsl-toolkit: a floor that is not a version is refused",
       "file": "internal/toolkit/configlayer.go",
       "find": "\t\tif p == \"\" || strings.Trim(p, \"0123456789\") != \"\" {\n",
-      "replace": "\t\tif false {\n",
+      "replace": "\t\tif p == \"\" || false {\n",
       "run": "TestAFloorNewerThanThisBuildIsRefusedNamingTheRemedy",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -275,7 +275,7 @@
       "label": "wsl-toolkit: a cache is mounted as its volume",
       "file": "internal/toolkit/job.go",
       "find": "\t\targs = append(args, \"--volume\", c.Volume()+\":\"+c.Path+opts)\n",
-      "replace": "",
+      "replace": "\t\t_ = c\n",
       "run": "TestACacheIsMadeWithTheLabelAndMountedForTheUser",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -392,7 +392,7 @@
       "label": "wsl-toolkit: resources --job keeps the caches that job names",
       "file": "cmd_actionable.go",
       "find": "\t\t\tif strings.Contains(name, id) {\n\t\t\t\tout.Owned.Caches = append(out.Owned.Caches, c)\n",
-      "replace": "\t\t\tif true {\n\t\t\t\tout.Owned.Caches = append(out.Owned.Caches, c)\n",
+      "replace": "\t\t\tif strings.Contains(name, id) || true {\n\t\t\t\tout.Owned.Caches = append(out.Owned.Caches, c)\n",
       "run": "TestACacheIsReportedAndNarrowedToTheJobThatNamesIt",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -635,7 +635,7 @@
       "label": "wsl-toolkit: --cap-add reaches podman",
       "file": "internal/toolkit/job.go",
       "find": "\t\targs = append(args, \"--cap-add\", c)\n",
-      "replace": "",
+      "replace": "\t\t_ = c\n",
       "run": "TestACapabilityIsReadInPodmansSpelling",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -644,7 +644,7 @@
       "label": "wsl-toolkit: a capability the kernel does not name is refused",
       "file": "internal/toolkit/jobcache.go",
       "find": "\t\tif c == name {\n",
-      "replace": "\t\tif true {\n",
+      "replace": "\t\tif c == name || true {\n",
       "run": "TestACapabilityIsReadInPodmansSpelling",
       "module": "tools/windows/wsl-toolkit",
       "args": []
