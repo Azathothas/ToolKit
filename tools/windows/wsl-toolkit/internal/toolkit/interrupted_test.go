@@ -70,7 +70,7 @@ func TestAFailedCreateIsRolledBackWithoutItsMarker(t *testing.T) {
 func stageInterruptedBuild(t *testing.T, f *buildFakeWsl, b *Base) {
 	t.Helper()
 	name := b.cfg.Base.Name
-	f.update(func(s *buildFakeState) { s.Distros[strings.ToLower(name)] = &buildFakeDistro{Name: name} })
+	f.update(func(s *buildFakeState) { s.Distros[strings.ToLower(name)] = &buildFakeDistro{Name: name, Dir: b.Dir()} })
 	if err := os.MkdirAll(b.Dir(), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,6 @@ func TestABuildKilledBeforeItsMarkerCanBeRemovedLater(t *testing.T) {
 	f := newBuildFakeWsl(t)
 	b := f.base(buildFakeConfig("wsl-toolkit-killed", AutomountReadOnly), nil)
 	stageInterruptedBuild(t, f, b)
-	b.disks = func() (map[string]string, error) { return map[string]string{"wsl-toolkit-killed": b.Dir()}, nil }
 
 	st, err := b.Status(t.Context(), true)
 	if err != nil {
@@ -108,21 +107,38 @@ func TestABuildKilledBeforeItsMarkerCanBeRemovedLater(t *testing.T) {
 		t.Errorf("the build's ledger records read %q, want open,close", got)
 	}
 
-	// ⛔ THE DISK ELSEWHERE IS NOT THIS BUILD, record or none.
+	// ⛔ THE DISK ELSEWHERE IS NOT THIS BUILD, record or none. `base remove`
+	// refuses it as another home's base first (WSL-167), and the build check
+	// that `base status` and `base ensure` read answers no on its own.
 	g := newBuildFakeWsl(t)
 	other := g.base(buildFakeConfig("wsl-toolkit-killed", AutomountReadOnly), nil)
 	stageInterruptedBuild(t, g, other)
-	other.disks = func() (map[string]string, error) {
-		return map[string]string{"wsl-toolkit-killed": `D:\somebody\else`}, nil
+	g.update(func(s *buildFakeState) { s.Distros["wsl-toolkit-killed"].Dir = `D:\somebody\else` })
+	if _, ok, why := other.interruptedBuild(t.Context()); ok || !strings.Contains(why, "WSL keeps its disk at") {
+		t.Errorf("a distribution whose disk is elsewhere read as this home's interrupted build: %v, %q", ok, why)
 	}
-	err = other.Remove(t.Context())
+	if err := other.Remove(t.Context()); err == nil {
+		t.Fatal("a distribution whose disk is elsewhere was not refused")
+	}
+	if len(g.state().Distros) != 1 {
+		t.Fatal("a distribution nothing proved was removed")
+	}
+
+	// ⛔ NOR IS ONE THIS HOME'S LEDGER NEVER RECORDED, disk here or not. The
+	// refusal names the person's own step, not `base recreate`.
+	h := newBuildFakeWsl(t)
+	stray := h.base(buildFakeConfig("wsl-toolkit-killed", AutomountReadOnly), nil)
+	h.update(func(s *buildFakeState) {
+		s.Distros["wsl-toolkit-killed"] = &buildFakeDistro{Name: "wsl-toolkit-killed", Dir: stray.Dir()}
+	})
+	err = stray.Remove(t.Context())
 	if err == nil || !errors.Is(err, ErrNoIdentity) {
-		t.Fatalf("a distribution whose disk is elsewhere was not refused: %v", err)
+		t.Fatalf("a distribution no build record covers was not refused: %v", err)
 	}
 	if strings.Contains(err.Error(), "base recreate") || !strings.Contains(err.Error(), "wsl --unregister wsl-toolkit-killed") {
 		t.Errorf("the refusal named the wrong way through: %v", err)
 	}
-	if len(g.state().Distros) != 1 {
+	if len(h.state().Distros) != 1 {
 		t.Fatal("a distribution nothing proved was removed")
 	}
 }
@@ -135,7 +151,6 @@ func TestEnsureRemovesAnInterruptedBuildAndBuildsAgain(t *testing.T) {
 	var logged []string
 	b := f.base(buildFakeConfig("wsl-toolkit-again", AutomountReadOnly), func(s string) { logged = append(logged, s) })
 	stageInterruptedBuild(t, f, b)
-	b.disks = func() (map[string]string, error) { return map[string]string{"wsl-toolkit-again": b.Dir()}, nil }
 	stop := errors.New("no engine in this case")
 	b.archive = func(context.Context, string) error { return stop }
 	_, err := b.EnsureWith(t.Context(), false, false)
@@ -156,7 +171,9 @@ func TestEnsureRemovesAnInterruptedBuildAndBuildsAgain(t *testing.T) {
 func TestAnUnmarkedDistributionWithNoRecordNamesTheCommandThatRemovesIt(t *testing.T) {
 	f := newBuildFakeWsl(t)
 	b := f.base(buildFakeConfig("wsl-toolkit-stray", AutomountReadOnly), nil)
-	f.update(func(s *buildFakeState) { s.Distros["wsl-toolkit-stray"] = &buildFakeDistro{Name: "wsl-toolkit-stray"} })
+	f.update(func(s *buildFakeState) {
+		s.Distros["wsl-toolkit-stray"] = &buildFakeDistro{Name: "wsl-toolkit-stray", Dir: b.Dir()}
+	})
 	_, err := b.EnsureWith(t.Context(), false, false)
 	if err == nil {
 		t.Fatal("an unmarked distribution with no record was adopted")
@@ -166,5 +183,70 @@ func TestAnUnmarkedDistributionWithNoRecordNamesTheCommandThatRemovesIt(t *testi
 	}
 	if len(f.state().Distros) != 1 {
 		t.Fatal("an unmarked distribution nothing proved was removed")
+	}
+}
+
+// TestAStatusDoesNotAdviseALiveBuildAway holds `base status --probe` during a
+// build that has imported and not stamped yet. ⛔ It holds no lock, so it reads
+// an open record and an unmarked guest exactly as a killed build leaves them, and
+// it advised `base remove` over a build still running. WSL-150.
+func TestAStatusDoesNotAdviseALiveBuildAway(t *testing.T) {
+	f := newBuildFakeWsl(t)
+	b := f.base(buildFakeConfig("wsl-toolkit-live", AutomountReadOnly), nil)
+	stageInterruptedBuild(t, f, b)
+	release, err := lockBaseAt(t.Context(), b.home, "base ensure", func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := b.Status(t.Context(), true)
+	release()
+	if err != nil {
+		t.Fatal(err)
+	}
+	said := strings.Join(st.Problems, "\n")
+	if strings.Contains(said, "base remove") || !strings.Contains(said, "running `base ensure`") {
+		t.Fatalf("a status during a live build said %q", st.Problems)
+	}
+	// ⭐ AND ONCE THE LOCK IS FREE, THE SAME BASE IS A KILLED BUILD.
+	st, err = b.Status(t.Context(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(strings.Join(st.Problems, "\n"), "stopped before its identity marker was written") {
+		t.Fatalf("a status after the build ended said %q", st.Problems)
+	}
+}
+
+// TestAStampedBuildClosesItsRecord holds the close every finished build owes.
+// ⛔ A record left open beside a stamped base is one transient guest failure away
+// from that base being read as a killed build. WSL-150.
+func TestAStampedBuildClosesItsRecord(t *testing.T) {
+	f := newBuildFakeWsl(t)
+	b := f.base(buildFakeConfig("wsl-toolkit-stamped", AutomountReadOnly), nil)
+	b.archive = writeTinyArchive
+	if _, err := b.EnsureWith(t.Context(), false, false); err != nil {
+		t.Fatalf("the build failed: %v; calls %v", err, f.state().scripts())
+	}
+	if got := strings.Join(buildRecords(t, f.home(), "wsl-toolkit-stamped"), ","); got != "open,close" {
+		t.Errorf("the build's ledger records read %q, want open,close", got)
+	}
+}
+
+// TestAnImportThatRegisteredNothingClosesItsRecord holds the record's other
+// close. ⚠ A record left open names a build that registered nothing, and every
+// later ensure reads it. WSL-150.
+func TestAnImportThatRegisteredNothingClosesItsRecord(t *testing.T) {
+	f := newBuildFakeWsl(t)
+	f.update(func(s *buildFakeState) { s.RefuseImport = true })
+	b := f.base(buildFakeConfig("wsl-toolkit-refused", AutomountReadOnly), nil)
+	b.archive = writeTinyArchive
+	if _, err := b.EnsureWith(t.Context(), false, false); err == nil {
+		t.Fatal("a refused import answered no error")
+	}
+	if got := strings.Join(buildRecords(t, f.home(), "wsl-toolkit-refused"), ","); got != "open,close" {
+		t.Errorf("the build's ledger records read %q, want open,close", got)
+	}
+	if _, open := b.openBuildRecord(); open {
+		t.Error("an import that registered nothing left its build record open")
 	}
 }

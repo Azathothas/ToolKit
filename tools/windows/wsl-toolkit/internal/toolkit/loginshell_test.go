@@ -116,6 +116,8 @@ func TestApplyLoginShellMovesOnlySlashBinSh(t *testing.T) {
 	type shellCase struct {
 		name, now, want, says string
 		bash                  bool
+		// last says the account's line is the file's last, with no newline.
+		last bool
 	}
 	cases := []shellCase{
 		{name: "the shell older releases gave it", now: "/bin/sh", want: "BASH", bash: true, says: "was /bin/sh"},
@@ -124,6 +126,7 @@ func TestApplyLoginShellMovesOnlySlashBinSh(t *testing.T) {
 		{name: "a guest with no bash", now: "/bin/sh", want: "/bin/sh", says: "has no bash"},
 		{name: "a shell that is not a program any more", now: "/bin/no-such-shell", want: "BASH", bash: true, says: "was /bin/no-such-shell"},
 		{name: "a broken shell where the guest has no bash", now: "/bin/no-such-shell", want: "/bin/sh", says: "was /bin/no-such-shell"},
+		{name: "a last line with no newline", now: "/bin/sh", want: "BASH", bash: true, says: "was /bin/sh", last: true},
 	}
 	for _, c := range cases {
 		dir := t.TempDir()
@@ -140,7 +143,10 @@ func TestApplyLoginShellMovesOnlySlashBinSh(t *testing.T) {
 		writeStandIn(t, bin, "usermod", standInUsermod)
 		subst := strings.NewReplacer("BASH", bash, "ZSH", zsh)
 		passwd := filepath.Join(dir, "passwd")
-		body := "root:x:0:0:root:/root:/bin/sh\nagent:x:1000:1000::/var/lib/agent:" + subst.Replace(c.now) + "\n"
+		body := "root:x:0:0:root:/root:/bin/sh\nagent:x:1000:1000::/var/lib/agent:" + subst.Replace(c.now)
+		if !c.last {
+			body += "\n"
+		}
 		if err := os.WriteFile(passwd, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -240,11 +246,16 @@ func TestTheVerifierChecksTheAccountsPasswdEntry(t *testing.T) {
 		return fmt.Sprintf("agent:x:%s:%s::%s:%s\n", uid, uid, home, shell)
 	}
 	out, stderr, code := run(entry(home, "/bin/sh"))
-	if code != 0 || !strings.Contains(out, "login-shell /bin/sh\n") || !strings.Contains(out, "login-bash ") {
+	if code != 0 || !strings.Contains(out, "account-passwd ok\n") || !strings.Contains(out, "login-shell /bin/sh\n") || !strings.Contains(out, "login-bash ") {
 		t.Fatalf("a whole entry answered exit %d, %q, %q", code, out, stderr)
 	}
-	if _, stderr, code := run(""); code != 3 || !strings.Contains(stderr, "holds no entry for uid "+uid) {
-		t.Errorf("no entry for the account: exit %d, %q", code, stderr)
+	// ⚠ A LAST LINE WITH NO NEWLINE IS STILL THE ACCOUNT'S ENTRY.
+	if out, stderr, code := run(strings.TrimSuffix(entry(home, "/bin/sh"), "\n")); code != 0 || !strings.Contains(out, "account-passwd ok\n") {
+		t.Errorf("an entry on a last line with no newline answered exit %d, %q, %q", code, out, stderr)
+	}
+	// ⛔ A ROW, NOT A REFUSAL: the verifier goes on, and the verdict is unchanged.
+	if out, stderr, code := run(""); code != 0 || !strings.Contains(out, "account-passwd no-entry "+uid+"\n") {
+		t.Errorf("no entry for the account: exit %d, %q, %q", code, out, stderr)
 	}
 	// ⚠ ROOT READS A FILE OF ANY MODE, so the unreadable file is staged only where
 	// this process is not root. The scratch base measured it as the account.
@@ -255,9 +266,50 @@ func TestTheVerifierChecksTheAccountsPasswdEntry(t *testing.T) {
 		}
 		cmd := exec.Command("/bin/sh", "-c", "set -eu\n"+passwdSection(t, passwd))
 		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + home}
-		if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "cannot read /etc/passwd") {
+		if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "account-passwd unreadable\n") {
 			t.Errorf("an unreadable passwd file answered %v, %q", err, out)
 		}
+	}
+}
+
+// TestAnAccountThatCannotReadItsEntryIsAnAdvisory holds the finding and the
+// verdict beside it. ⛔ A base whose account cannot read /etc/passwd runs its
+// containers, and it answered `usable true` before this release, so it still
+// does: the finding is advisory and names the command. WSL-137.
+func TestAnAccountThatCannotReadItsEntryIsAnAdvisory(t *testing.T) {
+	acct := parseAccount("account-passwd unreadable\nlogin-bash /usr/bin/bash\n")
+	if acct == nil || acct.Passwd != "unreadable" || acct.LoginShell != "" {
+		t.Fatalf("the rows read as %+v", acct)
+	}
+	r, ok := accountPasswdRemediation(acct)
+	if !ok || r.ID != "account-passwd" || !r.Advisory || !strings.Contains(r.Command, "chmod 0644 /etc/passwd") {
+		t.Fatalf("an account that cannot read /etc/passwd earned %+v, %v", r, ok)
+	}
+	if r, ok := accountPasswdRemediation(parseAccount("account-passwd no-entry 1000\n")); !ok || !r.Advisory || r.Repairable {
+		t.Errorf("an account with no entry earned %+v, %v", r, ok)
+	}
+	if _, ok := accountPasswdRemediation(parseAccount("account-passwd ok\nlogin-shell /bin/bash\n")); ok {
+		t.Error("an account that reads its entry earned a finding")
+	}
+	f := newBuildFakeWsl(t)
+	b := f.base(buildFakeConfig("wsl-toolkit-passwd", AutomountReadOnly), nil)
+	f.update(func(s *buildFakeState) {
+		s.Distros["wsl-toolkit-passwd"] = &buildFakeDistro{Name: "wsl-toolkit-passwd"}
+		s.Passwd = "unreadable"
+	})
+	if err := f.w.WriteIdentity(t.Context(), "wsl-toolkit-passwd", Identity{Image: b.cfg.Base.Image, User: "agent"}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := b.Status(t.Context(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, r := range st.Remediations {
+		found = found || r.ID == "account-passwd"
+	}
+	if !st.Healthy || !found || st.Account == nil || st.Account.Passwd != "unreadable" {
+		t.Fatalf("an account that cannot read /etc/passwd reads healthy %v, account %+v, remediations %+v", st.Healthy, st.Account, st.Remediations)
 	}
 }
 

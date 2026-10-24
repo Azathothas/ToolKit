@@ -1356,15 +1356,7 @@ func (b *Base) freshRootfs(ctx context.Context) (string, error) {
 		if _, err := EnsureHome(); err != nil {
 			return "", err
 		}
-		f, err := os.CreateTemp(b.home, "base-rootfs-*.tar")
-		if err != nil {
-			return "", err
-		}
-		rootfs := f.Name()
-		if err := f.Close(); err != nil {
-			b.dropRootfs(rootfs)
-			return "", err
-		}
+		rootfs := filepath.Join(b.home, fmt.Sprintf("base-rootfs-case-%d.tar", os.Getpid()))
 		if err := b.archive(ctx, rootfs); err != nil {
 			b.dropRootfs(rootfs)
 			return "", err

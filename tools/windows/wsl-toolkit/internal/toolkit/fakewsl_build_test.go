@@ -40,15 +40,24 @@ type buildFakeState struct {
 	// FailImport registers the distribution and then fails, as an import that
 	// broke after WSL had recorded it.
 	FailImport bool `json:"fail_import,omitempty"`
+	// RefuseImport fails the import before WSL records anything.
+	RefuseImport bool `json:"refuse_import,omitempty"`
+	// Unchanged makes provisioning and the grants say wsl.conf and the fstab
+	// block are as they were, so no restart is owed. WSL-175.
+	Unchanged bool `json:"unchanged,omitempty"`
+	// VerifyRefusals is how many verifications are refused before they pass.
+	VerifyRefusals int `json:"verify_refusals,omitempty"`
 	// FailProvision answers the provisioning run with exit 1.
 	FailProvision bool `json:"fail_provision,omitempty"`
 	// VerifyRefusal is what WSL answers in place of the verifier, where set.
 	VerifyRefusal string `json:"verify_refusal,omitempty"`
+	// Passwd is what the verifier's account-passwd row says: ok where unset.
+	Passwd string `json:"passwd,omitempty"`
 	// LoginShell and Bash are what the verifier's account rows say.
-	LoginShell string         `json:"login_shell,omitempty"`
-	Bash       string         `json:"bash,omitempty"`
-	Calls      []buildFakeCall  `json:"calls"`
-	Stale      buildFakeStale `json:"stale"`
+	LoginShell string          `json:"login_shell,omitempty"`
+	Bash       string          `json:"bash,omitempty"`
+	Calls      []buildFakeCall `json:"calls"`
+	Stale      buildFakeStale  `json:"stale"`
 }
 
 // buildFakeStale is what the stale run state check answers.
@@ -59,6 +68,8 @@ type buildFakeStale struct {
 type buildFakeDistro struct {
 	Name   string `json:"name"`
 	Marker string `json:"marker,omitempty"`
+	// Dir is the directory WSL's registry names for the disk.
+	Dir string `json:"dir,omitempty"`
 }
 
 // buildFakeCall is one call: its arguments, the account, and which script it sent.
@@ -134,7 +145,11 @@ func buildFakeWslMain(dir string, args []string, stdin io.Reader, stdout, stderr
 		return 0
 	case "--import":
 		name := args[1]
-		st.Distros[strings.ToLower(name)] = &buildFakeDistro{Name: name}
+		if st.RefuseImport {
+			fmt.Fprintln(stderr, "fake: the import was refused")
+			return 1
+		}
+		st.Distros[strings.ToLower(name)] = &buildFakeDistro{Name: name, Dir: args[2]}
 		for _, e := range buildFakeOpenLedger() {
 			if e.Kind == baseBuildKind && strings.EqualFold(e.ID, name) {
 				call.LedgerOpenBase = true
@@ -203,13 +218,24 @@ func buildFakeWslMain(dir string, args []string, stdin io.Reader, stdout, stderr
 			fmt.Fprintln(stderr, "provision: fake failure")
 			return 1
 		}
+		if st.Unchanged {
+			fmt.Fprintln(stdout, "wsl-conf unchanged")
+		}
 		fmt.Fprintln(stdout, "provision-complete")
 	case "grants":
+		if st.Unchanged {
+			fmt.Fprintln(stdout, "fstab unchanged")
+		}
 		fmt.Fprintln(stdout, "grants-complete")
 	case "drives":
 		fmt.Fprintln(stdout, "  * drive mount points removed: 0")
 		fmt.Fprintln(stdout, "drives-complete")
 	case "verify":
+		if st.VerifyRefusals > 0 {
+			st.VerifyRefusals--
+			fmt.Fprintln(stderr, "Error: the fake engine is not answering yet")
+			return 1
+		}
 		if st.VerifyRefusal != "" {
 			fmt.Fprintln(stderr, st.VerifyRefusal)
 			return 1
@@ -219,8 +245,8 @@ func buildFakeWslMain(dir string, args []string, stdin io.Reader, stdout, stderr
 			env[m[1]] = m[2]
 		}
 		shell := valueOr(st.LoginShell, "/bin/bash")
-		fmt.Fprintf(stdout, "automount %s\nlogin-shell %s\nlogin-bash %s\nengine podman version 9.9.9\n%s%s\n",
-			env["TK_AUTOMOUNT"], shell, valueOr(st.Bash, "none"), env["TK_M1"], env["TK_M2"])
+		fmt.Fprintf(stdout, "automount %s\naccount-passwd %s\nlogin-shell %s\nlogin-bash %s\nengine podman version 9.9.9\n%s%s\n",
+			env["TK_AUTOMOUNT"], valueOr(st.Passwd, "ok"), shell, valueOr(st.Bash, "none"), env["TK_M1"], env["TK_M2"])
 	case "stale":
 		fmt.Fprintln(stdout, valueOr(st.Stale.Answer, "run-state current"))
 	case "loginshell":
@@ -265,6 +291,7 @@ func newBuildFakeWsl(t *testing.T) *buildFakeWsl {
 	dir := t.TempDir()
 	t.Setenv(buildFakeWslEnv, dir)
 	t.Setenv("WSL_TOOLKIT_HOME", filepath.Join(dir, "home"))
+	t.Setenv(InstanceRootEnv, filepath.Join(dir, "home"))
 	t.Setenv(SSHDirEnv, filepath.Join(dir, "ssh"))
 	t.Setenv(BinDirEnv, filepath.Join(dir, "bin"))
 	return &buildFakeWsl{t: t, dir: dir, w: &Wsl{Path: self}}
@@ -289,7 +316,17 @@ func (f *buildFakeWsl) base(cfg Config, log func(string)) *Base {
 	if err := os.MkdirAll(f.home(), 0o700); err != nil {
 		f.t.Fatal(err)
 	}
-	return &Base{cfg: cfg, home: f.home(), wsl: f.w, log: log}
+	b := &Base{cfg: cfg, home: f.home(), wsl: f.w, log: log}
+	// ⭐ WSL's registry is the fake's: each registered name and its disk's
+	// directory, so an unregister is seen by the next read.
+	b.disks = func() (map[string]string, error) {
+		out := map[string]string{}
+		for _, d := range f.state().Distros {
+			out[d.Name] = d.Dir
+		}
+		return out, nil
+	}
+	return b
 }
 
 // buildFakeConfig is a configuration the fake can build: no grants, no adapters.

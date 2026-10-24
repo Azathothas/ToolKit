@@ -69,9 +69,10 @@ else
 fi
 
 # ⛔ AND IT MUST RESOLVE TO THIS TOOL'S WRAPPER, NOT MERELY RESOLVE. Measured on
-# 2026-09-17: `bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the
-# account's profile, so after `base bootstrap` a login shell finds the vendor's own
-# launcher FIRST and the wrapper on the system path is never reached. pi keeps its startup model and effort in its own settings file, so those survive; the account guard does not.
+# 2026-09-17: `bootstrap.sh` wrote `export PATH="$HOME/.local/bin:$PATH"` into the
+# account's profile, so after `base bootstrap` a login shell found the vendor's own
+# launcher FIRST and the wrapper on the system path was never reached. It now puts
+# its prefix last and rewrites that line. WSL-147. pi keeps its startup model and effort in its own settings file, so those survive; the account guard does not.
 # ⚠ A probe that only asked whether the name resolved called that base healthy.
 if [ -n "$pane_path" ]; then
   if head -3 "$pane_path" 2>/dev/null | grep -q "wsl-toolkit's pi adapter"; then

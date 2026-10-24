@@ -2,6 +2,87 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the verifier names an account that cannot read /etc/passwd",
+      "file": "internal/toolkit/verify.sh",
+      "find": "  printf 'account-passwd unreadable\\n'\n",
+      "replace": "  printf 'account-passwd ok\\n'\n",
+      "run": "TestTheVerifierChecksTheAccountsPasswdEntry",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier reads a passwd entry on a last line with no newline",
+      "file": "internal/toolkit/verify.sh",
+      "find": "_pw_home pw_line_shell || [ -n \"$pw_name\" ]; do",
+      "replace": "_pw_home pw_line_shell; do",
+      "run": "TestTheVerifierChecksTheAccountsPasswdEntry",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account-passwd row is read",
+      "file": "internal/toolkit/loginshell.go",
+      "find": "\t\t\taccount().Passwd = state\n",
+      "replace": "\t\t\t_ = state\n",
+      "run": "TestAnAccountThatCannotReadItsEntryIsAnAdvisory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status carries the account-passwd advisory",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif r, ok := accountPasswdRemediation(report.Account); ok {\n\t\tst.Remediations = append(st.Remediations, r)\n\t}\n",
+      "replace": "",
+      "run": "TestAnAccountThatCannotReadItsEntryIsAnAdvisory",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the login shell is moved on a last passwd line with no newline",
+      "file": "internal/toolkit/loginshell.sh",
+      "find": "_als_home als_shell || [ -n \"$als_name\" ]; do\n    if [ \"$als_name\" = \"$als_user\" ]; then\n      als_now=$als_shell\n",
+      "replace": "_als_home als_shell; do\n    if [ \"$als_name\" = \"$als_user\" ]; then\n      als_now=$als_shell\n",
+      "run": "TestApplyLoginShellMovesOnlySlashBinSh",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stamped build closes its build record",
+      "file": "internal/toolkit/base.go",
+      "find": "\tb.closeBuildRecord(\"stamped with its identity marker\")\n",
+      "replace": "",
+      "run": "TestAStampedBuildClosesItsRecord",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an import that registered nothing closes its build record",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tb.closeBuildRecord(\"the import registered nothing\")\n",
+      "replace": "",
+      "run": "TestAnImportThatRegisteredNothingClosesItsRecord",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status does not advise a live build away",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tif by, running := b.buildRunning(); running {\n",
+      "replace": "\t\t\tif by, running := \"\", false; running {\n",
+      "run": "TestAStatusDoesNotAdviseALiveBuildAway",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a re-provision that owes no restart still sweeps the drive mount points",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\treturn false, b.sweepDrivesWhenOff(ctx)\n",
+      "replace": "\t\treturn false, nil\n",
+      "run": "TestAReprovisionThatOwesNoRestartStillSweeps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a status that ran a container says it probed",
       "file": "internal/toolkit/base.go",
       "find": "\tst.Probed = true\n",
@@ -20,10 +101,10 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: the verifier refuses an account /etc/passwd holds no entry for",
+      "label": "wsl-toolkit: the verifier names an account /etc/passwd holds no entry for",
       "file": "internal/toolkit/verify.sh",
-      "find": "if [ \"$pw_found\" != yes ]; then",
-      "replace": "if false; then",
+      "find": "    printf 'account-passwd no-entry %s\\n' \"$pw_uid\"\n",
+      "replace": "    printf 'account-passwd ok\\n'\n",
       "run": "TestTheVerifierChecksTheAccountsPasswdEntry",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -130,8 +211,8 @@
     {
       "label": "wsl-toolkit: a failed create is rolled back without its marker",
       "file": "internal/toolkit/base.go",
-      "find": "\tb.unmarked = true\n",
-      "replace": "",
+      "find": "\t\tif b.importedInto(dir) {\n\t\t\tb.imported = true\n\t\t} else {\n",
+      "replace": "\t\tif false {\n\t\t\tb.imported = true\n\t\t} else {\n",
       "run": "TestAFailedCreateIsRolledBackWithoutItsMarker",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -166,7 +247,7 @@
     {
       "label": "wsl-toolkit: an interrupted build is removed only where WSL keeps its disk in the instance",
       "file": "internal/toolkit/interrupted.go",
-      "find": "\tif !samePath(disk, b.Dir()) {",
+      "find": "\tif !registered || disk == \"\" || !samePlace(disk, b.Dir()) {",
       "replace": "\tif false {",
       "run": "TestABuildKilledBeforeItsMarkerCanBeRemovedLater",
       "module": "tools/windows/wsl-toolkit",
@@ -184,8 +265,8 @@
     {
       "label": "wsl-toolkit: automount off is swept after the restart that applies it",
       "file": "internal/toolkit/base.go",
-      "find": "\tif automount == AutomountOff {\n\t\treturn b.sweepDriveMountPoints(ctx)\n\t}\n",
-      "replace": "",
+      "find": "\t// WSL-153, WSL-155.\n\treturn b.sweepDrivesWhenOff(ctx)\n",
+      "replace": "\t// WSL-153, WSL-155.\n\treturn nil\n",
       "run": "TestDriveMountPointsAreSweptAfterTheRestart",
       "module": "tools/windows/wsl-toolkit",
       "args": []

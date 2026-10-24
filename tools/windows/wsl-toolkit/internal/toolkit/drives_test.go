@@ -57,6 +57,40 @@ func TestDriveMountPointsAreSweptAfterTheRestart(t *testing.T) {
 	}
 }
 
+// TestAReprovisionThatOwesNoRestartStillSweeps re-provisions a registered base
+// whose start settings did not change, so WSL-175 skips its restart. ⚠ The sweep
+// ran inside provision.sh on every run before it moved to drives.sh, so it still
+// runs on that path, before the base is verified again. WSL-153.
+func TestAReprovisionThatOwesNoRestartStillSweeps(t *testing.T) {
+	f := newBuildFakeWsl(t)
+	b := f.base(buildFakeConfig("wsl-toolkit-keep", AutomountOff), nil)
+	f.update(func(s *buildFakeState) {
+		s.Distros["wsl-toolkit-keep"] = &buildFakeDistro{Name: "wsl-toolkit-keep", Dir: b.Dir()}
+		s.Unchanged = true
+		s.VerifyRefusals = 1
+	})
+	if err := f.w.WriteIdentity(t.Context(), "wsl-toolkit-keep", Identity{Image: b.cfg.Base.Image, User: "agent"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.EnsureWith(t.Context(), false, false); err != nil {
+		t.Fatalf("the re-provision failed: %v; calls %v", err, f.state().scripts())
+	}
+	calls := f.state().scripts()
+	if indexOf(calls, "--terminate") >= 0 {
+		t.Fatalf("a re-provision that changed no start setting restarted the base; calls %v", calls)
+	}
+	grants, sweep := indexOf(calls, "grants@root"), indexOf(calls, "drives@root")
+	last := -1
+	for i, c := range calls {
+		if c == "verify@agent" {
+			last = i
+		}
+	}
+	if grants < 0 || sweep < grants || last < sweep {
+		t.Fatalf("grants at %d, the sweep at %d and the last verify at %d; calls %v", grants, sweep, last, calls)
+	}
+}
+
 // TestTheSweepRemovesOnlyEmptyDriveLetters runs drives.sh in a real shell over a
 // staged /mnt and mounts table.
 func TestTheSweepRemovesOnlyEmptyDriveLetters(t *testing.T) {
