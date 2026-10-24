@@ -369,6 +369,9 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 		for _, p := range a.Problems {
 			st.Problems = append(st.Problems, "adapter "+a.Name+": "+p)
 		}
+		if r, ok := herdrStaleRemediation(a); ok {
+			st.Remediations = append(st.Remediations, r)
+		}
 	}
 	st.Leftovers = b.adapterLeftovers(ctx)
 	for _, l := range st.Leftovers {
@@ -822,14 +825,15 @@ func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error
 		}
 		return s
 	}
-	if err := b.applyAdapters(ctx); err != nil {
+	ensured, err := b.applyAdapters(ctx)
+	if err != nil {
 		if probed, statusErr := b.Status(ctx, true); statusErr == nil {
-			return withBinfmt(probed), err
+			return withBinfmt(keepEnsureFindings(probed, ensured)), err
 		}
 		return withBinfmt(st), err
 	}
 	probed, err := b.Status(ctx, true)
-	return withBinfmt(probed), err
+	return withBinfmt(keepEnsureFindings(probed, ensured)), err
 }
 
 // ensureBinfmt registers the base's QEMU handlers when any is gone, records the

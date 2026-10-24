@@ -77,13 +77,35 @@ func TestTheMuseProbeAsksMuseWhetherItRunsTheReporter(t *testing.T) {
 	herdr := filepath.Join(bin, "herdr")
 	write(herdr, "#!/bin/sh\nif [ \"$1 $2\" = 'workspace list' ]; then echo '{\"result\":{\"workspaces\":[]}}'; fi\nexit 0\n", 0o755)
 	write(filepath.Join(bin, "getent"), "#!/bin/sh\nprintf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n", 0o755)
-	write(filepath.Join(bin, "runuser"), "#!/bin/sh\n[ \"$1\" = -u ] && [ \"$2\" = herdr ] && [ \"$3\" = -- ] || exit 9\nshift 3\nexec \"$@\"\n", 0o755)
+	// ⛔ IN plant MODE, THE ACCOUNT RACES ROOT. Right after the account makes the
+	// probe's scratch directories, a process of the account puts a link named stderr
+	// in its own directory, pointing at a file it cannot write. Root's shell must
+	// never open it. WSL-157.
+	mode, seen := filepath.Join(root, "mode"), filepath.Join(root, "seen")
+	target := filepath.Join(root, "roots-own-file")
+	const targetBody = "a file only root may write\n"
+	write(target, targetBody, 0o644)
+	write(filepath.Join(bin, "runuser"), `#!/bin/sh
+[ "$1" = -u ] && [ "$2" = herdr ] && [ "$3" = -- ] || exit 9
+shift 3
+case " $* " in
+  *" mkdir "*/work" "*)
+    if [ "$(cat `+mode+`)" = plant ]; then
+      "$@" || exit $?
+      for last; do :; done
+      ln -s `+target+` "${last%/cache}/stderr"
+      exit 0
+    fi
+    ;;
+esac
+exec "$@"
+`, 0o755)
 
 	// The stand-in for Muse. It answers a version, and for an echo session it prints a
 	// record naming its session, writes down how it was started, and, while the mode file
 	// says so, runs each SessionStart hook the settings file registers with Muse's
-	// payload, in the cleared environment Muse gives a hook.
-	mode, seen := filepath.Join(root, "mode"), filepath.Join(root, "seen")
+	// payload, in the cleared environment Muse gives a hook. In async mode it runs them
+	// after it has answered, as a Muse that does not wait for its hooks would.
 	write(filepath.Join(home, ".local", "bin", "muse"), `#!/bin/sh
 if [ "$1" = --version ]; then echo 'Muse Code 9.9.9 (9.9.9-R1)'; exit 0; fi
 [ "$1" = exec ] || exit 64
@@ -101,16 +123,22 @@ case $(cat `+mode+`) in
   silent) printf '{"schema_version":1,"stream":{"kind":"run","id":"r1"}}\n'; exit 0 ;;
 esac
 printf '{"schema_version":1,"stream":{"kind":"session","id":"%s"},"payload_type":"run.lifecycle.started"}\n' "$sid"
-if [ "$(cat `+mode+`)" = runs ]; then
+echo 'muse: the echo provider answered' >&2
+hooks() {
   jq -r '.hooks.SessionStart[]?.hooks[]?.command' "$HOME/.config/muse/settings.json" | while read -r cmd; do
     printf '{"hook_event_name":"SessionStart","session_id":"%s","cwd":"%s","source":"startup"}' "$sid" "$PWD" |
       env -i HOME="$HOME" PATH="$PATH" WSL_TOOLKIT_HERDR_BIN=`+herdr+` sh "$cmd"
   done
-fi
+}
+case $(cat `+mode+`) in
+  runs|plant) hooks ;;
+  async) (sleep 1; hooks) </dev/null >/dev/null 2>&1 & ;;
+esac
 exit 0
 `, 0o755)
 
-	run := func(behaviour string) (AdapterState, map[string]string) {
+	// read runs the probe as `base status --probe` and `ready` do, run as `base ensure` does.
+	read := func(behaviour string, session bool) (AdapterState, map[string]string) {
 		t.Helper()
 		write(mode, behaviour+"\n", 0o644)
 		_ = os.Remove(seen)
@@ -118,7 +146,10 @@ exit 0
 		cmd.Stdin = strings.NewReader(string(probe))
 		cmd.Env = append(os.Environ(),
 			"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-			"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base", "STUB_HOME="+home)
+			"TK_USER=herdr", "TK_DISTRO=wsl-toolkit-base", "STUB_HOME="+home, "TK_PROBE_SESSION=")
+		if session {
+			cmd.Env = append(cmd.Env, "TK_PROBE_SESSION=1")
+		}
 		out, err := cmd.CombinedOutput()
 		var exited *exec.ExitError
 		if err != nil && !errors.As(err, &exited) {
@@ -135,6 +166,10 @@ exit 0
 			}
 		}
 		return parseAdapterProbe("muse", string(out)), started
+	}
+	run := func(behaviour string) (AdapterState, map[string]string) {
+		t.Helper()
+		return read(behaviour, true)
 	}
 	about := func(st AdapterState, word string) []string {
 		var found []string
@@ -166,13 +201,59 @@ exit 0
 		t.Fatalf("the probe left its scratch directory %s behind (%v)", scratch, err)
 	}
 
+	// ⛔ A MUSE THAT RAN NO HOOK OVER A FILE REGISTERING IT IS A NOTE NAMING ITS VERSION.
+	// `base ensure` writes the same file again and cannot cure it, so as a problem it
+	// failed every ensure with a remedy that loops. WSL-157.
 	st, _ = run("quiet")
 	if st.Facts["herdr_reporter_events"] == "none" {
 		t.Fatal("the fixture registers no event, so this run cannot show the file disagreeing with Muse")
 	}
-	if st.Facts["herdr_reporter_session_start"] == "reached" || len(about(st, "never reached the herdr reporter")) != 1 {
+	if st.Facts["herdr_reporter_session_start"] != "missing" || len(about(st, "SessionStart")) != 0 {
 		t.Fatalf("a Muse that ran no hook over a file registering it was read as %q with %v",
 			st.Facts["herdr_reporter_session_start"], st.Problems)
+	}
+	if len(st.Notes) != 1 || !strings.Contains(st.Notes[0], "Muse 9.9.9 (9.9.9-R1) ran session ") ||
+		!strings.Contains(st.Notes[0], "base ensure cannot cure this") || strings.Contains(st.Notes[0], "Run: base ensure") {
+		t.Fatalf("a Muse that ran no hook earned notes %q; want one naming its version and that ensure cannot cure it", st.Notes)
+	}
+
+	// ⛔ AND OVER A FILE THAT DOES NOT REGISTER IT, base ensure DOES CURE IT, so it is a
+	// problem naming that remedy.
+	write(settings, `{"schema_version":1,"hooks":{"Stop":`+group+`}}`+"\n", 0o600)
+	st, _ = run("quiet")
+	if found := about(st, "does not register it for SessionStart. Run: base ensure"); len(found) != 1 || len(st.Notes) != 0 {
+		t.Fatalf("a settings file that does not register SessionStart was read as %v with notes %q", st.Problems, st.Notes)
+	}
+	write(settings, `{"schema_version":1,"hooks":{`+strings.Join(registered, ",")+`}}`+"\n", 0o600)
+
+	// ⚠ A HOOK THAT RUNS AFTER exec RETURNS STILL COUNTS, read again for a few seconds.
+	st, _ = run("async")
+	if st.Facts["herdr_reporter_session_start"] != "reached" {
+		t.Fatalf("a Muse that runs the hook just after it answers was read as %q with %q",
+			st.Facts["herdr_reporter_session_start"], st.Notes)
+	}
+
+	// ⛔ ROOT NEVER OPENS A FILE IN THE ACCOUNT'S DIRECTORY. A link the account put there
+	// would have turned root's write onto any file on the base. WSL-157.
+	st, _ = run("plant")
+	if got, err := os.ReadFile(target); err != nil || string(got) != targetBody {
+		t.Fatalf("root wrote through a link the account planted in the scratch directory: %q (%v)", got, err)
+	}
+	if st.Facts["herdr_reporter_session_start"] != "reached" {
+		t.Fatalf("the planted run was read as %q", st.Facts["herdr_reporter_session_start"])
+	}
+	if left, _ := filepath.Glob("/tmp/wsl-toolkit-muse-probe-stderr.*"); len(left) != 0 {
+		t.Fatalf("the probe left its stderr file behind: %v", left)
+	}
+
+	// ⛔ A READ STARTS NO SESSION. `base status --probe` and `ready` read; only `base
+	// ensure` asks for the session, which runs the account's hooks. WSL-157.
+	st, started = read("runs", false)
+	if len(started) != 0 {
+		t.Fatalf("a read started a Muse session: %v", started)
+	}
+	if got, ok := st.Facts["herdr_reporter_session_start"]; ok || len(st.Notes) != 0 || len(about(st, "session")) != 0 {
+		t.Fatalf("a read answered a session it never ran: %q %q %v", got, st.Notes, st.Problems)
 	}
 
 	// ⛔ A MUSE THAT CANNOT ANSWER THE QUESTION LEAVES IT UNMEASURED, AND FAILS NOTHING.

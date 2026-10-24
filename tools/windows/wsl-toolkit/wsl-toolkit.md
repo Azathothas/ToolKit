@@ -663,6 +663,8 @@ Put the 0.9.5 one there: `herdr-0.9.5-windows-x86_64.zip` or
 ensure` installs 0.9.5 and never restarts a running server, so it says the server keeps
 the old one. Restart it when no pane is needed, because a restart ends every pane:
 `base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'`. `WSL-141`
+`base status --probe`, `ready` and the state `base ensure` answers carry it as the
+advisory remediation `herdr-server-stale`, with that command. `WSL-141`
 
 ⚠ **A `version` and `sha256` on the herdr entry name one of herdr's own releases.**
 That release is downloaded from herdr's project under herdr's own asset names, as
@@ -751,16 +753,28 @@ when the session ends. ⛔ A settings file that is not a JSON object carrying
 start over one. `base status --probe` reports the events the hook is registered for
 and runs its self-test. `WSL-88`
 
-⛔ **`base status --probe` also asks Muse itself.** It runs one session of Muse's
+⛔ **`base ensure` also asks Muse itself.** It runs one session of Muse's
 credential-free echo provider in a scratch directory under `/tmp`. It then looks for
 that session's `SessionStart` in the hook's own log. A file that names the hook proves only
-that `base ensure` wrote it. The fact is `herdr_reporter_session_start reached`, and a
-session the hook never saw is a problem. `WSL-157`
+that `base ensure` wrote it. The fact is `herdr_reporter_session_start reached`, on the
+state the ensure answers, over the helper too. `WSL-157`
 
+- ⚠ The session runs every `SessionStart`, `Stop` and `SessionEnd` hook in the
+  account's `~/.config/muse/settings.json`, your own included. It can take up to a
+  minute of the ensure.
+- ⭐ So only `base ensure` runs it. `base status --probe` and `ready` start no session,
+  and their answer has no `herdr_reporter_session_start`.
 - ⭐ The session leaves nothing in Muse's own files. It keeps no session log, and
   Muse's data and cache directories are the scratch directory's, which goes with it.
+- ⛔ Root writes nothing in that directory. The directory is the account's, and the
+  session's error output goes to a file root makes.
 - ⚠ No herdr pane has that directory, so the hook logs the session and reports nothing
   to herdr.
+- ⚠ A hook the session never ran, over a file that registers it, fails nothing. The
+  fact reads `missing`, and a note names the Muse version. Another `base ensure`
+  cannot cure it, because it writes the same file. Report it with that version.
+- ⛔ A file that does not register the hook for `SessionStart` is a problem, and
+  `base ensure` cures it.
 - ⚠ A Muse that cannot run the echo session, or names no session, fails nothing. The
   fact reads `herdr_reporter_session_start unmeasured:` and the reason, because Muse's
   version is not pinned and a later one may drop a flag. `WSL-157`
