@@ -251,7 +251,8 @@ type Config struct {
 	path   string
 	source string
 	// nameFrom is which step chose the default instance's base name. WSL-167.
-	// ⚠ It does not travel to the helper, which reads it again: helperNameFrom.
+	// ⚠ It crosses the helper's wire as name_from, beside the configuration:
+	// helperNameFrom.
 	nameFrom string
 }
 
@@ -556,14 +557,6 @@ func loadConfigFile(path, from string) (Config, error) {
 	if stored.Base.Name == "" {
 		return withDefaultDistro(cfg)
 	}
-	// ⛔ A FILE NAMING THE CANONICAL NAME MEETS THE SAME GUARD as a resolved one.
-	// An instance `jobs` made before the reservation runs under that name too, and
-	// the default would share its distribution. WSL-167.
-	if isDefaultSelection() {
-		if err := assertCanonicalFree(cfg.Base.Name); err != nil {
-			return cfg, fmt.Errorf("%s: %w", path, err)
-		}
-	}
 	return cfg, nil
 }
 
@@ -581,9 +574,8 @@ func withDefaultDistro(cfg Config) (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	if err := assertCanonicalFree(name); err != nil {
-		return cfg, err
-	}
+	// ⚠ AN INSTANCE'S `wsl-toolkit-jobs` IS NOT REFUSED HERE. The ensure refuses it,
+	// so a command that builds nothing still answers. WSL-167.
 	cfg.Base.Name, cfg.nameFrom = name, from
 	return cfg, nil
 }

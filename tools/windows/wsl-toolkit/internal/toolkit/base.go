@@ -167,6 +167,10 @@ type Base struct {
 	// disks answers WSL's registrations, each distribution's name and the
 	// directory of its disk. Nil reads the registry. WSL-177.
 	disks func() (map[string]string, error)
+	// guest says the caller that sent this through the helper does not own the
+	// base, so nothing owner-only runs for it. ⛔ Set by the helper from the
+	// request, and it only ever narrows what runs. WSL-167.
+	guest bool
 }
 
 // NewBase binds the lifecycle to this host.
@@ -600,6 +604,13 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 	// may not build again. WSL-167.
 	if IsReservedInstance(SelectedInstance.Name) && (!st.Registered || force) {
 		return st, reservedRefusal(SelectedInstance.Name)
+	}
+	// ⛔ THE DEFAULT NEVER BUILDS OR TAKES OVER AN INSTANCE'S `wsl-toolkit-jobs`. An
+	// instance `jobs` made before the reservation is registered under the default's
+	// canonical name. Refused here, where an ensure would use or build it, and not
+	// where the configuration loads, so status, logs and gc still answer. WSL-167.
+	if err := b.assertCanonicalFree(); err != nil {
+		return st, err
 	}
 	// ⛔ --repair DELETES THE ENGINE'S RUN STATE AND MAY RE-PROVISION, so only the
 	// owner asks for it, healthy base or not. Refused before anything is read from

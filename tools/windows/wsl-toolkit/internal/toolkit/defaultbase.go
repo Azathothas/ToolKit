@@ -137,14 +137,10 @@ func diskWords(at string) string {
 	return at
 }
 
-// assertCanonicalFree refuses the default's canonical name while an instance is
+// canonicalHeldIn refuses the default's canonical name while an instance is
 // registered under it. ⚠ Only a registration counts, never a directory. WSL-167.
-func assertCanonicalFree(name string) error {
+func canonicalHeldIn(disks map[string]string, name string) error {
 	if !strings.EqualFold(name, DefaultBaseName) {
-		return nil
-	}
-	disks, err := readRegistrations()
-	if err != nil {
 		return nil
 	}
 	at, ok := registeredAt(disks, DefaultBaseName)
@@ -157,6 +153,23 @@ func assertCanonicalFree(name string) error {
 	return fmt.Errorf("the default base would be %s, and an instance with its disk in %s is registered under that name. "+
 		"Nothing runs. Remove that instance, %s, or set base.name to %s",
 		DefaultBaseName, cleanBasePath(at), holderCommand(at, "base remove --yes"), LegacyBaseName)
+}
+
+// assertCanonicalFree is canonicalHeldIn for the default instance's base.
+//
+// ⛔ AT THE ENSURE, NOT AT THE LOAD. Refused while the configuration loaded, it
+// took status, logs, ready, gc and the helper from a host whose only toolkit
+// registration was an old `jobs` instance. ⚠ A registry that cannot be read
+// refuses nothing here, as before.
+func (b *Base) assertCanonicalFree() error {
+	if !isDefaultSelection() {
+		return nil
+	}
+	disks, err := b.registrations()
+	if err != nil {
+		return nil
+	}
+	return canonicalHeldIn(disks, b.cfg.Base.Name)
 }
 
 // assertNameStillDefault reads the default name again, under the base's lock,
@@ -184,20 +197,27 @@ func (b *Base) assertNameStillDefault(rootfs string) error {
 	if _, registered := registeredAt(disks, name); readErr == nil && registered {
 		return fmt.Errorf("%s was NOT built: it was registered while this waited. Nothing was built. Run it again", name)
 	}
-	return assertCanonicalFree(name)
+	return canonicalHeldIn(disks, name)
 }
 
-// helperNameFrom is which step chose a name that came over the helper's wire,
-// where the step does not travel: the resolution's own where the two agree, and
-// the configuration's where they do not.
-func helperNameFrom(cfg Config) string {
+// helperNameFrom is which step chose a name that came over the helper's wire.
+// sent is the step the client read, which travels beside its configuration.
+//
+// ⛔ ONLY THE CLIENT'S FILE MAKES A NAME THE CONFIGURATION'S. A default name the
+// rule no longer gives was read before the registry changed, and a build refuses
+// it in assertNameStillDefault. Called the configuration's, it skipped that
+// check, and a stale `wsl-toolkit` was imported into the helper's home.
+func helperNameFrom(cfg Config, sent string) string {
 	if !isDefaultSelection() || !IsDefaultBaseName(cfg.Base.Name) {
 		return ""
+	}
+	if sent == NameFromConfig {
+		return NameFromConfig
 	}
 	if name, from, err := resolveDefaultName(); err == nil && strings.EqualFold(name, cfg.Base.Name) {
 		return from
 	}
-	return NameFromConfig
+	return NameFromRegistered
 }
 
 // -- ownership -----------------------------------------------------------------
@@ -228,14 +248,22 @@ func (b *Base) diskFolder() (string, bool, error) {
 // registration with no disk folder, prove nothing, so both refuse.
 func (b *Base) assertOwner(verb, args string) error {
 	name := b.cfg.Base.Name
+	// ⛔ A REQUEST FROM A CALLER THAT DOES NOT OWN THE BASE stays one through the
+	// helper. The helper's home may own it, and the configuration is the caller's.
+	if b.guest {
+		advice := "Run it from the state directory that owns it"
+		if at, registered, err := b.diskFolder(); err == nil && registered && at != "" {
+			advice = ownerAdvice(name, at, args)
+		}
+		return fmt.Errorf("%w: %s was NOT %s. The caller that sent this through the helper does not own it, "+
+			"so its configuration does not change it. %s", ErrNotOwner, name, verb, advice)
+	}
 	// ⛔ A REDIRECTED PROCESS WRITES INTO A PACKAGE'S COPY OF THE STATE DIRECTORY,
 	// so its records and locks are not the ones the base's owner keeps. WSL-118.
-	for _, c := range StateCopies(b.home) {
-		if c.ThisProcess {
-			return fmt.Errorf("%w: %s was NOT %s. Windows redirects this process's writes under %%LOCALAPPDATA%% into %s, "+
-				"so its locks and records are not the owner's. Run it from PowerShell or a terminal outside the app",
-				ErrNotOwner, name, verb, c.Path)
-		}
+	if copyAt := b.redirected(); copyAt != "" {
+		return fmt.Errorf("%w: %s was NOT %s. Windows redirects this process's writes under %%LOCALAPPDATA%% into %s, "+
+			"so its locks and records are not the owner's. Run it from PowerShell or a terminal outside the app",
+			ErrNotOwner, name, verb, copyAt)
 	}
 	at, registered, err := b.diskFolder()
 	if err != nil {
@@ -257,6 +285,59 @@ func (b *Base) assertOwner(verb, args string) error {
 // owns says whether this state directory owns the configured base. ⚠ Closed: any
 // doubt answers no.
 func (b *Base) owns() bool { return b.assertOwner("changed", "base ensure") == nil }
+
+// redirected is the package copy this process's writes land in, or empty.
+func (b *Base) redirected() string {
+	for _, c := range StateCopies(b.home) {
+		if c.ThisProcess {
+			return c.Path
+		}
+	}
+	return ""
+}
+
+// clientBase is the base as a helper's client sees it: its own home and the
+// registry, with no wsl.exe, which such a client may not reach.
+func clientBase(cfg Config) (*Base, error) {
+	home, err := Home()
+	if err != nil {
+		return nil, err
+	}
+	return &Base{cfg: cfg, home: home, log: func(string) {}}, nil
+}
+
+// OwnsBase says whether this process's state directory owns the configured base.
+func OwnsBase(cfg Config) bool {
+	b, err := clientBase(cfg)
+	return err == nil && b.owns()
+}
+
+// helperGuest says whether the helper must run this client's ensure as a guest's,
+// one that changes nothing only the owner may change. WSL-167.
+//
+// ⛔ THE HELPER CHECKS OWNERSHIP AGAINST ITS OWN HOME. A caller that does not own
+// the base, or whose writes Windows redirects, had the helper rebuild, repair and
+// re-provision it, and drop the owner's adapters, from the caller's
+// configuration. ⚠ Any doubt answers yes.
+func helperGuest(cfg Config) bool {
+	b, err := clientBase(cfg)
+	if err != nil {
+		return true
+	}
+	return b.helperGuest()
+}
+
+func (b *Base) helperGuest() bool {
+	if b.owns() {
+		return false
+	}
+	// ⚠ NOTHING REGISTERED IS NOTHING TO CHANGE, so the build goes ahead as
+	// before. A redirected caller still installs no adapter.
+	if _, registered, err := b.diskFolder(); err == nil && !registered {
+		return b.redirected() != ""
+	}
+	return true
+}
 
 // ownerAdvice says where to run args from, for a disk in the folder at.
 func ownerAdvice(name, at, args string) string {
@@ -301,6 +382,9 @@ type BaseNaming struct {
 	Disk string `json:"disk,omitempty"`
 	// Owner is true where that folder is this state directory's base folder.
 	Owner bool `json:"owner"`
+	// Instance names the instance whose distribution is registered under the
+	// name, where it is one: an old `jobs`, and not the default base.
+	Instance string `json:"instance,omitempty"`
 	// Move is how to rebuild under the canonical name, and what that costs.
 	Move string `json:"move,omitempty"`
 }
@@ -318,6 +402,7 @@ func (b *Base) naming() *BaseNaming {
 	if at, registered, err := b.diskFolder(); err == nil && registered {
 		n.Disk = at
 		n.Owner = b.owns()
+		n.Instance, _ = instanceOf(at)
 	}
 	if strings.EqualFold(b.cfg.Base.Name, LegacyBaseName) {
 		n.Legacy = true

@@ -47,6 +47,9 @@ type WslFacts struct {
 	// WSL-167.
 	Ambiguous  string            `json:"ambiguous,omitempty"`
 	Candidates map[string]string `json:"candidates,omitempty"`
+	// Held is why the registered `wsl-toolkit-jobs` is an instance's and not the
+	// default base. WSL-167.
+	Held string `json:"held,omitempty"`
 }
 
 // ReadWslFacts asks, without changing anything.
@@ -97,7 +100,7 @@ func ReadWslFacts(ctx context.Context, cfg Config) WslFacts {
 func wslFactsFor(ctx context.Context, o DoctorOptions) WslFacts {
 	f := ReadWslFacts(ctx, o.Config)
 	if !errors.Is(o.Unresolved, ErrDefaultBaseAmbiguous) {
-		return f
+		return heldByInstance(f)
 	}
 	f.BaseName, f.BaseExists, f.Ambiguous = "", false, o.Unresolved.Error()
 	advice := []string{"the default base has no one name, so none is surveyed: " + o.Unresolved.Error()}
@@ -117,6 +120,29 @@ func wslFactsFor(ctx context.Context, o DoctorOptions) WslFacts {
 			}
 		}
 	}
+	return f
+}
+
+// heldByInstance is the WSL section where the default's canonical name is an
+// instance's registration.
+//
+// ⛔ AN OLD INSTANCE `jobs` IS NOT THE DEFAULT BASE. The survey reported its
+// distribution as the default base, registered, on a host that has none. WSL-167.
+func heldByInstance(f WslFacts) WslFacts {
+	if !f.BaseExists || !isDefaultSelection() {
+		return f
+	}
+	disks, err := readRegistrations()
+	if err != nil {
+		return f
+	}
+	held := canonicalHeldIn(disks, f.BaseName)
+	if held == nil {
+		return f
+	}
+	f.BaseExists = false
+	f.Held = held.Error()
+	f.Advice = append([]string{"the default base is not registered, and the instance's is not it: " + held.Error()}, f.Advice...)
 	return f
 }
 

@@ -129,7 +129,10 @@ in its `base distro` row, and in `wsl.candidates` under `--json`.
 
 ⚠ **An instance `jobs` is not a default base.** One made before the reservation is
 registered as `wsl-toolkit-jobs`, with its disk under `instances\jobs\base`. While it
-is registered, the default refuses that name and says how to remove the instance.
+is registered, every default command still loads. `base status` names the instance in
+its `held by` row, and `naming.instance` under `--json`. `doctor` reports no default base.
+An ensure, and so a build or a job that would use it, is refused, naming how to
+remove the instance.
 
 ⛔ **Only the state directory that owns the base changes it.** It owns the base when
 WSL keeps the base's disk in that directory's `base` folder. Links and junctions are
@@ -147,6 +150,11 @@ is in no state directory, and the refusal says to run `wsl --unregister NAME` yo
 owner, so both refuse. A process whose writes Windows redirects into a package is
 refused the same changes. Run those from PowerShell or a terminal outside the app.
 
+⛔ **The helper route is held to the same rule.** A client tells the helper whether its
+own state directory owns the base. The helper then refuses it what its own ensure
+would be refused, at the same points. `base status` through the helper says whether
+the client's state directory owns the base, not the helper's.
+
 ⚠ **A caller that does not own the base leaves its adapters alone.** Its `base ensure`
 installs none and takes no SSH Host block away, says so in one line, and still exits 0.
 
@@ -154,7 +162,7 @@ installs none and takes no SSH Host block away, says so in one line, and still e
 distribution on every command.
 `base status` says which name the base has, where its disk is, and whether this
 state directory owns it, in its `older name`, `disk in` and `owner` rows. Under `--json`,
-`naming` carries `canonical`, `legacy`, `from`, `disk` and `owner`. ⛔ **Moving is your choice, and the tool never renames on its
+`naming` carries `canonical`, `legacy`, `from`, `disk`, `owner` and `instance`. ⛔ **Moving is your choice, and the tool never renames on its
 own.** To move, run `wsl-toolkit base remove --yes`, then `wsl-toolkit base ensure`.
 That deletes the base's disk, with its home, images and credentials. It builds a new
 base from the image, and the configuration's grants are kept. ⛔ Run the move from

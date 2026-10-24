@@ -2,6 +2,114 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a stale default name off the helper's wire is checked again at the build",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\treturn NameFromRegistered\n}\n",
+      "replace": "\treturn NameFromConfig\n}\n",
+      "run": "TestAStaleNameOffTheHelpersWireIsRefusedAtTheBuild",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a base.name the client's file set crosses the helper's wire as the configuration's",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif sent == NameFromConfig {\n\t\treturn NameFromConfig\n\t}\n",
+      "replace": "",
+      "run": "TestTheHelperReadsWhichStepChoseTheName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the client sends the step that chose its base name to the helper's ensure",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\"name_from\": c.cfg.nameFrom, \"guest\": helperGuest(c.cfg),",
+      "replace": "\"guest\": helperGuest(c.cfg),",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the client tells the helper it does not own the base",
+      "file": "internal/toolkit/helper_client.go",
+      "find": "\"name_from\": c.cfg.nameFrom, \"guest\": helperGuest(c.cfg),",
+      "replace": "\"name_from\": c.cfg.nameFrom,",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the owner is no helper guest",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif b.owns() {\n\t\treturn false\n\t}\n",
+      "replace": "",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a client with nothing registered is no helper guest",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\treturn b.redirected() != \"\"\n",
+      "replace": "\t\treturn true\n",
+      "run": "TestTheClientTellsTheHelperItIsAGuest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper's guest is refused every owner-only change",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif b.guest {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAHelperGuestChangesNothingOnlyTheOwnerMay",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper's base runs as the caller's guest",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tr.base.guest = guest\n",
+      "replace": "",
+      "run": "TestAHelpersRunnerForAGuestIsAGuests",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a runner cached for the owner is never lent to a guest",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tkey := fmt.Sprintf(\"%s|%s|%t\", effective.Fingerprint(), effective.nameFrom, guest)\n",
+      "replace": "\tkey := effective.Fingerprint()\n",
+      "run": "TestAHelpersRunnerForAGuestIsAGuests",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ensure refuses an instance's registered wsl-toolkit-jobs",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := b.assertCanonicalFree(); err != nil {\n",
+      "replace": "\tif err := b.assertCanonicalFree(); false && err != nil {\n",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: status names the instance holding the canonical name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\tn.Instance, _ = instanceOf(at)\n",
+      "replace": "",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor does not survey an instance's wsl-toolkit-jobs as the default base",
+      "file": "internal/toolkit/doctor_render.go",
+      "find": "\tf.BaseExists = false\n\tf.Held = held.Error()\n",
+      "replace": "\tf.Held = held.Error()\n",
+      "run": "TestAnInstancesWslToolkitJobsIsNoDefaultCandidate",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: one registered default name is used from every home",
       "file": "internal/toolkit/defaultbase.go",
       "find": "\tcase legacy:\n",
@@ -229,7 +337,7 @@
     {
       "label": "wsl-toolkit: the helper reads which step chose a name off the wire",
       "file": "internal/toolkit/helper.go",
-      "find": "\teffective.nameFrom = helperNameFrom(effective)\n",
+      "find": "\teffective.nameFrom = helperNameFrom(effective, nameFrom)\n",
       "replace": "",
       "run": "TestTheHelperReadsWhichStepChoseTheName",
       "module": "tools/windows/wsl-toolkit",

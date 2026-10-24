@@ -15376,7 +15376,11 @@ additive unless the entry finds it cannot be.
 on a host with one base uses it. Only the state directory whose `base` folder holds the
 disk changes it: removal, rebuild, re-provision, `--repair`, the record and the marker. A
 scratch `--home` that removed or rebuilt the host's base before is now refused: a break
-row in `docs/consumers.md`.
+row in `docs/consumers.md`. A process Windows redirects is refused the same set, its row
+beside it. The helper route carries the client's step and its ownership, so neither
+route lets a non-owner change the base. An old instance `jobs` registered as
+`wsl-toolkit-jobs` is refused at the ensure, not at the load, so status, logs and gc
+still answer.
 
 ## Prove
 

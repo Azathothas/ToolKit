@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -120,25 +122,45 @@ func TestBothDefaultNamesRegisteredAreRefusedByName(t *testing.T) {
 }
 
 // ⛔ AN INSTANCE `jobs` IS NOT A DEFAULT BASE, though it is registered as
-// `wsl-toolkit-jobs`. Beside the host's `wsl-toolkit` it is no second candidate,
-// and alone it refuses the canonical name by its registration.
+// `wsl-toolkit-jobs`. Beside the host's `wsl-toolkit` it is no second candidate.
+// Alone, the default still loads, status and doctor say whose it is, and an
+// ensure is refused before it uses or builds anything. WSL-167.
 func TestAnInstancesWslToolkitJobsIsNoDefaultCandidate(t *testing.T) {
+	h := newFakeHost(t)
 	c := newDefaultBaseCase(t)
 	root := t.TempDir()
+	at := filepath.Join(root, "instances", "jobs", "base")
 	c.disks["wsl-toolkit"] = filepath.Join(t.TempDir(), "base")
-	c.disks["wsl-toolkit-jobs"] = filepath.Join(root, "instances", "jobs", "base")
+	c.disks["wsl-toolkit-jobs"] = at
 	if cfg := c.load(t); cfg.Base.Name != "wsl-toolkit" {
 		t.Fatalf("a legacy base beside the jobs instance resolved to %q", cfg.Base.Name)
 	}
-	delete(c.disks, "wsl-toolkit")
-	_, err := LoadConfig()
+	readRegistrations = h.registry
+	h.say(t, "registered", "wsl-toolkit-jobs")
+	h.say(t, "disks", "wsl-toolkit-jobs\t"+at)
 	want := "$env:WSL_TOOLKIT_HOME='" + root + "'; wsl-toolkit --instance jobs base remove --yes"
-	if err == nil || !strings.Contains(err.Error(), want) {
-		t.Fatalf("the canonical name beside a registered jobs instance answered %v; want a refusal naming %s", err, want)
+	for _, file := range []string{"", `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-jobs"}}`} {
+		if file != "" {
+			c.writeConfig(t, file)
+		}
+		b, _ := c.from(t, h)
+		st, err := b.Status(context.Background(), false)
+		if err != nil || st.Naming == nil || st.Naming.Instance != "jobs" || st.Naming.Owner {
+			t.Fatalf("status beside a registered jobs instance read %+v, %v; want the instance named", st.Naming, err)
+		}
+		if _, err := b.EnsureWith(context.Background(), false, false); err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("an ensure beside a registered jobs instance answered %v; want a refusal naming %s", err, want)
+		}
 	}
-	c.writeConfig(t, `{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit-jobs"}}`)
-	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "--instance jobs base remove --yes") {
-		t.Fatalf("a file naming wsl-toolkit-jobs beside a registered jobs instance answered %v", err)
+	if i := callAt(h.calls(t), "wsl --import"); i >= 0 {
+		t.Fatalf("the default built beside a registered jobs instance: %v", h.calls(t))
+	}
+	if strings.Contains(h.guestScripts(t), "provision-complete") {
+		t.Fatal("the default provisioned the jobs instance's distribution")
+	}
+	f := heldByInstance(WslFacts{BaseName: "wsl-toolkit-jobs", BaseExists: true})
+	if f.BaseExists || !strings.Contains(f.Held, want) || len(f.Advice) == 0 || !strings.Contains(f.Advice[0], want) {
+		t.Fatalf("doctor surveyed the jobs instance as %+v; want it said to be the instance's, not the default base", f)
 	}
 }
 
@@ -455,23 +477,150 @@ func TestTheLeftoverGuardSeesThroughALink(t *testing.T) {
 	}
 }
 
-// ⛔ A CONFIGURATION OFF THE HELPER'S WIRE CARRIES NO STEP, so the helper reads it
-// again. A name the rule gives now is the rule's, and any other is the
-// configuration's, which a new build then keeps. WSL-167.
+// ⛔ THE STEP CROSSES THE HELPER'S WIRE. Only the client's file makes a name the
+// configuration's, and a default name the rule no longer gives is not. WSL-167.
 func TestTheHelperReadsWhichStepChoseTheName(t *testing.T) {
 	_ = newFakeHost(t)
 	c := newDefaultBaseCase(t)
 	c.disks["wsl-toolkit"] = filepath.Join(t.TempDir(), "base")
 	h := &HelperServer{log: func(string) {}, runners: map[string]*Runner{}}
-	for name, want := range map[string]string{"wsl-toolkit": NameFromRegistered, "wsl-toolkit-jobs": NameFromConfig} {
+	for _, tc := range []struct{ name, sent, want string }{
+		{"wsl-toolkit", "", NameFromRegistered},
+		{"wsl-toolkit", NameFromRegistered, NameFromRegistered},
+		{"wsl-toolkit-jobs", NameFromCanonical, NameFromRegistered},
+		{"wsl-toolkit-jobs", "", NameFromRegistered},
+		{"wsl-toolkit-jobs", NameFromConfig, NameFromConfig},
+	} {
 		cfg := DefaultConfig()
-		cfg.Base.Name = name
+		cfg.Base.Name = tc.name
 		// ⚠ THE RUNNER ITSELF NEEDS wsl.exe, which a Linux host has not. The step is
 		// read before the runner is made, and is what this case asks about.
-		_, effective, _ := h.runnerFor(&cfg)
-		if effective.nameFrom != want {
-			t.Fatalf("the helper read %s as chosen by %q; want %q", name, effective.nameFrom, want)
+		_, effective, _ := h.runnerFor(&cfg, tc.sent, false)
+		if effective.nameFrom != tc.want {
+			t.Fatalf("the helper read %s, sent as %q, as chosen by %q; want %q", tc.name, tc.sent, effective.nameFrom, tc.want)
 		}
+	}
+}
+
+// ⛔ A STALE NAME OFF THE HELPER'S WIRE IS REFUSED AT THE BUILD. A client loaded
+// `wsl-toolkit`, the owner removed it, and the helper imported a second
+// `wsl-toolkit` into its own home. WSL-167.
+func TestAStaleNameOffTheHelpersWireIsRefusedAtTheBuild(t *testing.T) {
+	h, c, _, _ := ownedElsewhere(t, "wsl-toolkit")
+	h.engine(t, true)
+	roomyVolume(t, 1<<40)
+	b, _ := c.from(t, h)
+	h.say(t, "registered", "")
+	h.say(t, "disks", "")
+	b.cfg.nameFrom = helperNameFrom(b.cfg, NameFromRegistered)
+	_, err := b.EnsureWith(context.Background(), false, false)
+	if err == nil || !strings.Contains(err.Error(), "the default base is now wsl-toolkit-jobs") || !strings.Contains(err.Error(), "Run it again") {
+		t.Fatalf("a stale name off the wire answered %v; want the refusal", err)
+	}
+	if i := callAt(h.calls(t), "wsl --import"); i >= 0 {
+		t.Fatalf("a stale name off the wire was imported: %v", h.calls(t))
+	}
+}
+
+// ⛔ A HELPER'S GUEST CHANGES NOTHING ONLY THE OWNER MAY. The helper's home owns
+// the base, and the caller that sent the request does not: no rebuild, no
+// repair, no re-provision, and the owner's adapters stay. WSL-167.
+func TestAHelperGuestChangesNothingOnlyTheOwnerMay(t *testing.T) {
+	for _, tc := range []struct {
+		why           string
+		guest         []string
+		force, repair bool
+		refused       string
+	}{
+		{"recreate", []string{"verify=ok", "binfmt=ok"}, true, false, "NOT rebuilt"},
+		{"repair", []string{"verify=ok", "binfmt=ok"}, false, true, "NOT repaired"},
+		{"re-provision", []string{"binfmt=ok"}, false, false, "NOT re-provisioned"},
+		{"adapters", []string{"verify=ok", "binfmt=ok"}, false, false, ""},
+	} {
+		t.Run(tc.why, func(t *testing.T) {
+			h := newFakeHost(t)
+			b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+			if !b.owns() {
+				t.Fatal("the helper's own home does not own the base it built")
+			}
+			h.engine(t, true)
+			roomyVolume(t, 1<<40)
+			sshConfig := filepath.Join(os.Getenv(SSHDirEnv), "config")
+			owners := withMarkedBlock(nil, fakeBaseName, []string{"Host " + fakeBaseName})
+			if err := os.WriteFile(sshConfig, owners, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			h.stageGuest(t, tc.guest...)
+			b.guest = true
+			_, err := b.EnsureWith(context.Background(), tc.force, tc.repair)
+			if tc.refused != "" && (!errors.Is(err, ErrNotOwner) || !strings.Contains(err.Error(), tc.refused)) {
+				t.Fatalf("a guest's %s answered %v; want the refusal", tc.why, err)
+			}
+			if tc.refused == "" && (err != nil || !s.said("the adapters are left as they are")) {
+				t.Fatalf("a guest's ensure answered %v, and skipped the adapters without saying so", err)
+			}
+			if got, err := os.ReadFile(sshConfig); err != nil || string(got) != string(owners) {
+				t.Fatalf("a guest's %s changed the owner's SSH config to %q, %v", tc.why, got, err)
+			}
+			if strings.Contains(h.guestScripts(t), "provision-complete") {
+				t.Fatalf("a guest's %s re-provisioned the base", tc.why)
+			}
+			assertKept(t, h, b, disk)
+		})
+	}
+}
+
+// ⛔ THE HELPER'S BASE RUNS AS THE CALLER'S GUEST, and a runner cached for the
+// owner is never lent to one. WSL-167.
+func TestAHelpersRunnerForAGuestIsAGuests(t *testing.T) {
+	_ = newFakeHost(t)
+	_ = newDefaultBaseCase(t)
+	cfg := DefaultConfig()
+	cfg.Base.Name = "wsl-toolkit-jobs"
+	h := &HelperServer{log: func(string) {}, runners: map[string]*Runner{}}
+	owners := &Runner{base: &Base{cfg: cfg}}
+	// ⚠ THE KEY A CACHE WITHOUT THE STEP OR THE CALLER'S OWNERSHIP USED.
+	h.runners[cfg.Fingerprint()] = owners
+	r, _, err := h.runnerFor(&cfg, "", true)
+	if r == owners {
+		t.Fatal("the owner's cached runner was lent to a guest")
+	}
+	if runtime.GOOS != "windows" {
+		// ⚠ A Linux host has no wsl.exe, so no runner is made at all.
+		return
+	}
+	if err != nil || r == nil || !r.base.guest {
+		t.Fatalf("a guest's runner is %+v, %v; want a guest's base", r, err)
+	}
+}
+
+// ⛔ THE CLIENT SAYS WHETHER IT OWNS THE BASE, and the helper is told. A scratch
+// home is a guest, the owner is not, and nothing registered is nothing to
+// guard. WSL-167.
+func TestTheClientTellsTheHelperItIsAGuest(t *testing.T) {
+	h, c, owner, _ := ownedElsewhere(t, "wsl-toolkit")
+	cfg := c.load(t)
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"schema":"` + HelperSchema + `","state":{}}`))
+	}))
+	defer srv.Close()
+	client := &HelperClient{endpoint: HelperEndpoint{Address: strings.TrimPrefix(srv.URL, "http://"), Token: "t"}, http: srv.Client(), cfg: cfg}
+	_, _ = client.BaseEnsureWith(context.Background(), false, false)
+	if body["guest"] != true || body["name_from"] != NameFromRegistered {
+		t.Fatalf("a scratch home's ensure crossed the wire as %v; want a guest, with the step", body)
+	}
+	t.Setenv("WSL_TOOLKIT_HOME", filepath.Dir(owner))
+	if helperGuest(cfg) {
+		t.Fatal("the owner was sent to the helper as a guest")
+	}
+	h.say(t, "registered", "")
+	h.say(t, "disks", "")
+	t.Setenv("WSL_TOOLKIT_HOME", c.home)
+	if helperGuest(cfg) {
+		t.Fatal("a home with nothing registered was sent as a guest, and the build would install no adapter")
 	}
 }
 

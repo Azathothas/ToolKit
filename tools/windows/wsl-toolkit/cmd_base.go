@@ -127,6 +127,11 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 			if err != nil {
 				return exitCannot, err
 			}
+			// ⛔ OWNERSHIP IS THIS STATE DIRECTORY'S, not the helper's, whose home
+			// may be the owner's. WSL-167.
+			if st.Naming != nil {
+				st.Naming.Owner = toolkit.OwnsBase(cfg)
+			}
 			return verdictFor(st), renderBase(st, flags.asJSON, flags.probe)
 		case "ensure", "recreate":
 			st, err := c.BaseEnsureWith(ctx, sub == "recreate", flags.repair)
@@ -388,6 +393,12 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 			owner = "yes, this state directory"
 		}
 		fmt.Fprintf(out, "  owner       %s\n", owner)
+	}
+	// ⚠ AN OLD INSTANCE `jobs` HOLDS THE CANONICAL NAME. It is not the default
+	// base, and an ensure is refused until it is removed. WSL-167.
+	if n := st.Naming; n != nil && n.Instance != "" {
+		fmt.Fprintf(out, "  held by     the instance %s, not the default base: %s\n", n.Instance,
+			toolkit.ToolCommandFor(n.Instance, "base remove --yes"))
 	}
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {

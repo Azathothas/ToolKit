@@ -259,6 +259,9 @@ func (c *HelperClient) BaseStatus(ctx context.Context, probe bool) (BaseState, e
 	// GET carrying a body is something an intermediary may drop.
 	if raw, err := json.Marshal(c.cfg); err == nil {
 		path += sep + "config_b64=" + url.QueryEscape(base64.StdEncoding.EncodeToString(raw))
+		if c.cfg.nameFrom != "" {
+			path += "&name_from=" + url.QueryEscape(c.cfg.nameFrom)
+		}
 	}
 	err := c.call(ctx, http.MethodGet, path, nil, &out)
 	return out.State, err
@@ -286,7 +289,14 @@ func (c *HelperClient) BaseEnsureWith(ctx context.Context, force, repair bool) (
 		State BaseState `json:"state"`
 		Error string    `json:"error"`
 	}
-	body := map[string]any{"force": force, "repair": repair, "config": c.cfg}
+	// ⛔ THE STEP AND THE OWNERSHIP GO WITH IT. The helper re-checks a stale default
+	// name only when it knows the name was not the configuration's, and refuses an
+	// owner-only change only when it knows this caller does not own the base.
+	// WSL-167.
+	body := map[string]any{
+		"force": force, "repair": repair, "config": c.cfg,
+		"name_from": c.cfg.nameFrom, "guest": helperGuest(c.cfg),
+	}
 	if err := c.call(ctx, http.MethodPost, "/v1/base/ensure", body, &out); err != nil {
 		return out.State, err
 	}
@@ -346,6 +356,9 @@ func (c *HelperClient) Inspect(ctx context.Context, id string, since time.Durati
 		return out.Report, err
 	}
 	q.Set("config_b64", base64.StdEncoding.EncodeToString(cfg))
+	if c.cfg.nameFrom != "" {
+		q.Set("name_from", c.cfg.nameFrom)
+	}
 	if err := c.call(ctx, http.MethodGet, "/v1/inspect?"+q.Encode(), nil, &out); err != nil {
 		return out.Report, err
 	}

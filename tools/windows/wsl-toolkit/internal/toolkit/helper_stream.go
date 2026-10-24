@@ -242,7 +242,7 @@ func (c *HelperClient) RunStream(ctx context.Context, req HelperRunRequest, sink
 	// ⛔ ATTACHED HERE, not by the caller. Every job that reaches a helper goes
 	// through this function or MatrixStream, so this is the one door where the
 	// effective configuration joins the request. WSL-44.
-	req.Config = &c.cfg
+	req.Config, req.NameFrom = &c.cfg, c.cfg.nameFrom
 	err := c.stream(ctx, "/v1/run", req, func(ev HelperEvent) error {
 		if ev.Kind == "result" && ev.Result != nil {
 			res, artifacts = *ev.Result, ev.ArtifactsID
@@ -258,7 +258,7 @@ func (c *HelperClient) RunStream(ctx context.Context, req HelperRunRequest, sink
 func (c *HelperClient) MatrixStream(ctx context.Context, req HelperMatrixRequest, sinks HelperSinks) (MatrixReport, string, error) {
 	var report MatrixReport
 	var artifacts string
-	req.Config = &c.cfg
+	req.Config, req.NameFrom = &c.cfg, c.cfg.nameFrom
 	err := c.stream(ctx, "/v1/matrix", req, func(ev HelperEvent) error {
 		if ev.Kind == "report" && ev.Report != nil {
 			report, artifacts = *ev.Report, ev.ArtifactsID
