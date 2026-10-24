@@ -65,7 +65,7 @@ func commands() []command {
 		{"deslop", "which files in this tree address a reader as an agent", runDeslop},
 		{"git-sync", "commit and push, with the identity and attribution rules enforced", runGitSync},
 		{"license", "write LICENSE from a template, with the holder filled in", runLicense},
-		{"linux-proof", "run CI's Linux jobs over a commit's tree and record a proof of it for the pre-push hook", runLinuxProof},
+		{"linux-proof", "run ShellCheck, the go job and the added rows on Linux over a commit's tree, and record a proof for the pre-push hook", runLinuxProof},
 		{"mutate", "delete each guard in the table and confirm the test named for it goes red", runMutate},
 		{"nightly-prune", "the herdr nightlies older than the newest seven, by published_at, and optionally delete them", runNightlyPrune},
 		{"nightly-publish", "create a herdr nightly empty, upload each staged file, and read the set back", runNightlyPublish},

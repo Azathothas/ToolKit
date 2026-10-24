@@ -2,6 +2,42 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "linux-proof: a job runs without git's repository variables",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tcmd.Env = JobEnv(os.Environ())\n",
+      "replace": "",
+      "run": "TestAJobGetsNoGitRepositoryVariable|TestANativeJobLeavesThePushedRepositoryAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: GIT_DIR is a repository variable a job does not get",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif slices.Contains(gitRepoVars, name) ||",
+      "replace": "\t\tif false && slices.Contains(gitRepoVars, name) ||",
+      "run": "TestAJobGetsNoGitRepositoryVariable",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job that exits 2 could not run",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\tif ee.ExitCode() == 2 {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestAJobThatCouldNotRunIsExitTwo",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job tool that cannot start could not run",
+      "file": "internal/linuxproof/run.go",
+      "find": "could not be started: %v. No proof was written for tree %s\\n\", j.Name, err, req.Tree)\n\t\t\t\treturn 2\n",
+      "replace": "could not be started: %v. No proof was written for tree %s\\n\", j.Name, err, req.Tree)\n\t\t\t\treturn 1\n",
+      "run": "TestAJobThatCouldNotRunIsExitTwo",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
       "label": "release-stage: the sign count reaches GITHUB_ENV",
       "file": "internal/workflow/stage.go",
       "find": "\t_, werr := fmt.Fprintln(f, line)\n",

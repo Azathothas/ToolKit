@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -31,10 +32,21 @@ func TestMain(m *testing.M) {
 			os.Exit(90)
 		}
 		args := os.Args[1:]
-		f.WriteString(strings.Join(args, "\x1f") + "\x1e" + strings.Join(archived(args), ",") + "\n")
+		// ⚠ A git repository variable the job inherited is logged with the
+		// arguments, so a case can say it reached the job. TOOL-33.
+		for _, v := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} {
+			if val, ok := os.LookupEnv(v); ok {
+				args = append(args, "LEAKED "+v+"="+val)
+			}
+		}
+		f.WriteString(strings.Join(args, "\x1f") + "\x1e" + strings.Join(archived(os.Args[1:]), ",") + "\n")
 		f.Close()
-		if os.Getenv(fakeModeEnv) == "fail" {
+		switch os.Getenv(fakeModeEnv) {
+		case "fail":
 			os.Exit(3)
+		case "cannot":
+			// wsl-toolkit's answer for a base it cannot use.
+			os.Exit(2)
 		}
 		os.Exit(0)
 	}
@@ -192,6 +204,93 @@ func TestAFailedJobFilesNoProof(t *testing.T) {
 	}
 	if got := c.calls(t); len(got) != 1 {
 		t.Fatalf("the jobs after a failed one still ran: %q", got)
+	}
+}
+
+// TestAJobThatCouldNotRunIsExitTwo. ⚠ A job tool that answers 2, as wsl-toolkit
+// does for a broken base, or that cannot be started, is "could not run" and
+// not a failed check. The push is refused either way. TOOL-33.
+func TestAJobThatCouldNotRunIsExitTwo(t *testing.T) {
+	c := newProofCase(t)
+	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
+	t.Setenv(fakeModeEnv, "cannot")
+	if code, msg := c.run(t, Options{}); code != 2 || Has(c.common, tree) || !strings.Contains(msg, "exited 2") {
+		t.Fatalf("a job tool that could not run: exit %d, proved %v, %q; want 2 and no proof", code, Has(c.common, tree), msg)
+	}
+	head := gitIn(t, c.work, "rev-parse", "HEAD")
+	var out bytes.Buffer
+	if code := PrePush([]string{"origin"}, strings.NewReader("refs/heads/main "+head+" refs/heads/main "+zero+"\n"), &out, &out, c.tool); code != 2 || !strings.Contains(out.String(), "Nothing was pushed") {
+		t.Fatalf("a push whose job could not run: exit %d, %q; want 2 and refused", code, out.String())
+	}
+	t.Setenv(fakeModeEnv, "pass")
+	c.tool = filepath.Join(c.work, "no-such-wsl-toolkit")
+	if code, msg := c.run(t, Options{}); code != 2 || Has(c.common, tree) || !strings.Contains(msg, "could not be started") {
+		t.Fatalf("a job tool that cannot start: exit %d, %q; want 2 and no proof", code, msg)
+	}
+}
+
+// TestAJobGetsNoGitRepositoryVariable. ⛔ git exports GIT_DIR to a hook pushed
+// from a linked worktree, and a job that inherits it runs its git calls on the
+// pushed repository instead of its copy. TOOL-33.
+func TestAJobGetsNoGitRepositoryVariable(t *testing.T) {
+	c := newProofCase(t)
+	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
+	t.Setenv("GIT_DIR", c.common)
+	t.Setenv("GIT_WORK_TREE", c.work)
+	if code, msg := c.run(t, Options{}); code != 0 || !Has(c.common, tree) {
+		t.Fatalf("a run with GIT_DIR set: exit %d, %q", code, msg)
+	}
+	for _, call := range c.calls(t) {
+		if strings.Contains(call, "LEAKED ") {
+			t.Fatalf("the job inherited git's repository variables: %q", call)
+		}
+	}
+	env := JobEnv([]string{"PATH=/bin", "GIT_DIR=/x", "git_index_file=/y", "GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0=/z", "GIT_EXEC_PATH=/e"})
+	if strings.Join(env, ",") != "PATH=/bin,GIT_EXEC_PATH=/e" {
+		t.Fatalf("JobEnv kept %q; want PATH and GIT_EXEC_PATH alone", env)
+	}
+}
+
+// TestANativeJobLeavesThePushedRepositoryAlone runs Prove natively from a
+// linked worktree with GIT_DIR set, as git sets it for the hook. ⛔ The
+// worktree's branch and index stay as they were, and the proof is filed.
+func TestANativeJobLeavesThePushedRepositoryAlone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("a Windows host never proves natively")
+	}
+	for _, tool := range []string{"sh", "tar"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("no %s on PATH", tool)
+		}
+	}
+	c := newProofCase(t)
+	jobs, needs := jobsFor, nativeNeeds
+	t.Cleanup(func() { jobsFor, nativeNeeds = jobs, needs })
+	jobsFor = func([]string) []Job { return []Job{{Name: "t", Body: "echo checked"}} }
+	nativeNeeds = []string{"sh", "tar", "git"}
+	wt := filepath.Join(filepath.Dir(c.work), "wt")
+	gitIn(t, c.work, "worktree", "add", "-q", "-b", "side", wt)
+	if err := os.WriteFile(filepath.Join(wt, "second"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, wt, "add", "second")
+	gitIn(t, wt, "commit", "-q", "-m", "two")
+	head := gitIn(t, wt, "rev-parse", "HEAD")
+	base := gitIn(t, wt, "rev-parse", "base^{tree}")
+	gitDir := gitIn(t, wt, "rev-parse", "--absolute-git-dir")
+	t.Chdir(wt)
+	t.Setenv("GIT_DIR", gitDir)
+	var out bytes.Buffer
+	code := Run(Options{Rev: "base"}, &out, &out)
+	os.Unsetenv("GIT_DIR")
+	if code != 0 || !Has(c.common, base) || !strings.Contains(out.String(), "checked") {
+		t.Fatalf("a native proof with GIT_DIR set: exit %d, proved %v, %q", code, Has(c.common, base), out.String())
+	}
+	if now := gitIn(t, wt, "rev-parse", "HEAD"); now != head {
+		t.Fatalf("the native job committed onto the pushed worktree's branch: HEAD %s, was %s", now, head)
+	}
+	if st := gitIn(t, wt, "status", "--porcelain"); st != "" {
+		t.Fatalf("the native job rewrote the pushed worktree's index: %q", st)
 	}
 }
 

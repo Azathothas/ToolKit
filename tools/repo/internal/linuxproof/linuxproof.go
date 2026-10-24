@@ -1,5 +1,7 @@
-// Package linuxproof runs CI's Linux checks in containers before a push, and
-// answers the pre-push hook's one question: was this tree proved?
+// Package linuxproof runs ShellCheck, CI's go job and the added mutation rows
+// on Linux before a push, and answers the pre-push hook's one question: was
+// this tree proved? ⚠ It is not all of CI: the gate, the doctor probe and every
+// existing row run in CI alone. TOOL-33.
 //
 // ⛔ WHY IT EXISTS. CI runs the Go tests and the mutation table on Linux, and a
 // session here runs them on Windows. The container runs that copy CI's Linux
@@ -368,6 +370,10 @@ func Script(j Job, tarPath, src, tree string, container bool) string {
 // the go job takes many. The third, when rows are named, is the `mutations`
 // job restricted to the rows this push adds. ⛔ This is now the one home of
 // those command lines; the README describes them and points here.
+//
+// ⚠ IT IS NOT ALL OF CI. The `checks` job also runs the doctor probe and the
+// gate, and the sharded `mutations` job runs every row. Those run in CI alone,
+// and the README and docs/conventions/git.md say so.
 func Jobs(rows []string) []Job {
 	jobs := []Job{
 		{Name: "shellcheck", Image: "docker.io/library/ubuntu:24.04", Setup: `apt-get update -qq && apt-get install -y -qq shellcheck git >/dev/null`, Body: `shellcheck --version && git ls-files -z "*.sh" | xargs -0 shellcheck -s sh`},

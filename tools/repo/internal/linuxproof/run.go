@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/repo/internal/gitrepo"
@@ -86,7 +87,43 @@ func Native(goos, tool string) bool {
 }
 
 // nativeNeeds is what a native proof runs, each checked before anything runs.
-var nativeNeeds = []string{"sh", "tar", "git", "go", "shellcheck"}
+// jobsFor is Jobs, and a case swaps it for a check that runs anywhere.
+var (
+	nativeNeeds = []string{"sh", "tar", "git", "go", "shellcheck"}
+	jobsFor     = Jobs
+)
+
+// gitRepoVars are git's variables that name a repository, its index or its
+// configuration. `git rev-parse --local-env-vars` lists the same set.
+var gitRepoVars = []string{
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_COMMON_DIR", "GIT_CONFIG", "GIT_CONFIG_COUNT",
+	"GIT_CONFIG_PARAMETERS", "GIT_DIR", "GIT_GRAFT_FILE", "GIT_IMPLICIT_WORK_TREE",
+	"GIT_INDEX_FILE", "GIT_INTERNAL_SUPER_PREFIX", "GIT_NO_REPLACE_OBJECTS",
+	"GIT_OBJECT_DIRECTORY", "GIT_PREFIX", "GIT_REPLACE_REF_BASE", "GIT_SHALLOW_FILE",
+	"GIT_WORK_TREE",
+}
+
+// JobEnv is env without git's repository variables. TOOL-33.
+//
+// ⛔ git EXPORTS GIT_DIR TO A HOOK pushed from a linked worktree, naming that
+// worktree's repository. A native job that inherits it runs `git init`, `git
+// add` and `git commit` on the checkout being pushed, not on its copy. The same
+// tree then fails with "nothing to commit", and another tree is committed onto
+// the checked-out branch. Every git call in check-go.sh and `repo mutate`
+// would inherit it too. A container job gets no host variable, and the scrub
+// costs nothing there.
+func JobEnv(env []string) []string {
+	var out []string
+	for _, kv := range env {
+		name, _, _ := strings.Cut(kv, "=")
+		name = strings.ToUpper(name)
+		if slices.Contains(gitRepoVars, name) || strings.HasPrefix(name, "GIT_CONFIG_KEY_") || strings.HasPrefix(name, "GIT_CONFIG_VALUE_") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return out
+}
 
 // Request is one tree to prove.
 type Request struct {
@@ -102,7 +139,10 @@ type Request struct {
 
 // Prove runs every job over the commit's tree and files the proof.
 //
-// Exit codes: 0 proved, 1 a job failed, 2 nothing could be run or recorded.
+// Exit codes: 0 proved, 1 a job ran and failed, 2 nothing could be run or
+// recorded. ⚠ A job that exits 2 could not run either. wsl-toolkit answers 2
+// for a base it cannot use or an image it cannot pull. check-go.sh, ShellCheck
+// and `repo mutate` answer 2 for a check they could not run. TOOL-33.
 func Prove(req Request, out, errOut io.Writer) int {
 	tool := req.Tool
 	native := Native(runtime.GOOS, tool)
@@ -138,7 +178,7 @@ func Prove(req Request, out, errOut io.Writer) int {
 		fmt.Fprintf(errOut, "linux-proof: git archive of %s: %v. Nothing was run.\n", req.Commit, err)
 		return 2
 	}
-	jobs := Jobs(req.Rows)
+	jobs := jobsFor(req.Rows)
 	var names []string
 	for _, j := range jobs {
 		var cmd *exec.Cmd
@@ -151,13 +191,20 @@ func Prove(req Request, out, errOut io.Writer) int {
 			cmd = exec.Command(tool, RunArgs(j, ws, req.Tree)...)
 			cmd.Dir = req.Repo.Root
 		}
+		cmd.Env = JobEnv(os.Environ())
 		cmd.Stdout, cmd.Stderr = out, errOut
 		if err := cmd.Run(); err != nil {
-			code := 2
-			if ee, ok := err.(*exec.ExitError); ok {
-				code = ee.ExitCode()
+			ee, ok := err.(*exec.ExitError)
+			if !ok {
+				fmt.Fprintf(errOut, "linux-proof: the %s job could not be started: %v. No proof was written for tree %s\n", j.Name, err, req.Tree)
+				return 2
 			}
-			fmt.Fprintf(errOut, "linux-proof: the %s job exited %d, so no proof was written for tree %s\n", j.Name, code, req.Tree)
+			fmt.Fprintf(errOut, "linux-proof: the %s job exited %d, so no proof was written for tree %s\n", j.Name, ee.ExitCode(), req.Tree)
+			// ⚠ 2 IS "COULD NOT RUN", NOT A FAILED CHECK. A broken base is
+			// not a red job, and the hook's exit code keeps the difference.
+			if ee.ExitCode() == 2 {
+				return 2
+			}
 			return 1
 		}
 		names = append(names, j.Name)
@@ -321,7 +368,7 @@ func PrePush(args []string, in io.Reader, out, errOut io.Writer, tool string) in
 		if p, ok := g.Proof(n.Tree); ok && len(Unrun(p.Rows, n.Rows)) == 0 {
 			continue
 		}
-		fmt.Fprintf(errOut, "pre-push: %s carries tree %s, which has no Linux proof with its %d added row(s). Running CI's Linux jobs now.\n", n.Ref, n.Tree, len(n.Rows))
+		fmt.Fprintf(errOut, "pre-push: %s carries tree %s, which has no Linux proof with its %d added row(s). Running ShellCheck, the go job and the added rows now.\n", n.Ref, n.Tree, len(n.Rows))
 		code := Prove(Request{Repo: repo, Common: common, Commit: n.Commit, Tree: n.Tree, Rows: n.Rows, RowsSince: n.Base, Tool: tool}, out, errOut)
 		if code != 0 {
 			fmt.Fprintf(errOut, "pre-push: %s is refused, because its tree was not proved on Linux. Nothing was pushed.\n", n.Ref)
