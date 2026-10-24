@@ -339,6 +339,40 @@ printf 'engine %s\n' "$(podman --version 2>/dev/null | head -1)"
 printf 'runtime-dir %s\n' "${XDG_RUNTIME_DIR:-unset}"
 printf 'user %s uid %s\n' "$(id -un)" "$(id -u)"
 
+# >>> the probe image: begin
+# ⛔ THE PULL IS ITS OWN STEP, BOUNDED, AND ITS FAILURE IS NOT A VERDICT. The run
+# below pulled with --pull=missing, so a registry that refused or did not answer
+# read as an engine that cannot run a container, and `base ensure` re-provisioned
+# and restarted a base that worked. Exit 4 with a `verify-pull:` line says the
+# base was not judged. WSL-174.
+#
+# ⚠ ONLY AN ANSWER OF 1 IS ABSENT. `podman image exists` answers 125 when the
+# engine itself fails, stale run state included, and the run below then reports
+# the engine's own words as it always did.
+probe_have=0
+podman image exists "$TK_IMAGE" >/dev/null 2>&1 || probe_have=$?
+if [ "$probe_have" = 1 ]; then
+  probe_bound=''
+  if command -v timeout >/dev/null 2>&1; then
+    probe_bound='timeout 120'
+  fi
+  probe_code=0
+  # The bound is a command and its argument, or nothing.
+  # shellcheck disable=SC2086
+  probe_said=$($probe_bound podman pull -q "$TK_IMAGE" 2>&1 >/dev/null) || probe_code=$?
+  if [ "$probe_code" != 0 ]; then
+    if [ "$probe_code" = 124 ] && [ -n "$probe_bound" ]; then
+      probe_reason='the pull did not finish within 120 seconds'
+    else
+      probe_reason=$(printf '%s\n' "$probe_said" | sed '/^[[:space:]]*$/d' | tail -n 1)
+    fi
+    [ -n "$probe_reason" ] || probe_reason="podman pull exited $probe_code"
+    printf 'verify-pull: %s\n' "$probe_reason" >&2
+    exit 4
+  fi
+fi
+# <<< the probe image: end
+
 # ⛔ THE MARKER IS NEVER WRITTEN WHOLE ON THIS COMMAND LINE. The two halves go in
 # as separate variables and the container joins them, so the command's own echo
 # cannot satisfy the test. A console check that searched its captured output for

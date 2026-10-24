@@ -2,6 +2,114 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a probe that was not judged refuses the ensure and keeps the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tif errors.As(last, &nj) {\n",
+      "replace": "\t\t\tif false && errors.As(last, &nj) {\n",
+      "run": "TestAProbeImageThatCannotBePulledKeepsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier's pull failure is read as not judged",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif nj, ok := probeNotJudged(VerifyImage, code, stderr); ok {\n",
+      "replace": "\t\tif nj, ok := probeNotJudged(VerifyImage, code, stderr); false && ok {\n",
+      "run": "TestAProbeImageThatCannotBePulledKeepsTheBase|TestAStatusSaysAProbeThatCannotPullWasNotJudged",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a not judged probe needs the verifier's exit code",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif code != verifyNotJudged {\n",
+      "replace": "\tif false {\n",
+      "run": "TestANotJudgedProbeNeedsItsCodeAndItsLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: verify.sh exits 4 when the probe image cannot be pulled",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    printf 'verify-pull: %s\\n' \"$probe_reason\" >&2\n    exit 4\n",
+      "replace": "    printf 'verify-pull: %s\\n' \"$probe_reason\" >&2\n",
+      "run": "TestTheProbeImagePullIsItsOwnBoundedStep",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: verify.sh bounds the probe image pull",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    probe_bound='timeout 120'\n",
+      "replace": "    probe_bound=''\n",
+      "run": "TestTheProbeImagePullIsItsOwnBoundedStep",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: verify.sh leaves an engine failure to the run and pulls only an absent image",
+      "file": "internal/toolkit/verify.sh",
+      "find": "if [ \"$probe_have\" = 1 ]; then\n",
+      "replace": "if [ \"$probe_have\" != 0 ]; then\n",
+      "run": "TestTheProbeImagePullIsItsOwnBoundedStep",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --images holds the probe and QEMU images through the prune",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "var keptImages = []string{VerifyImage, BinfmtImage}\n",
+      "replace": "var keptImages = []string{}\n",
+      "run": "TestGcImagesKeepsTheProbeAndTheQEMUImages|TestTheGcImagesPlanListsTheKeptImagesAsKept",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the gc --images plan lists the kept images as kept",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "\t\tif why, ok := keptImageReason(i.Name); ok {\n",
+      "replace": "\t\tif why, ok := keptImageReason(i.Name); false && ok {\n",
+      "run": "TestTheGcImagesPlanListsTheKeptImagesAsKept",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed QEMU step does not fail the ensure",
+      "file": "internal/toolkit/base.go",
+      "find": "\tprobed, err := b.Status(ctx, true)\n\treturn withBinfmt(probed), err\n",
+      "replace": "\tprobed, err := b.Status(ctx, true)\n\treturn withBinfmt(probed), errors.Join(err, binfmtErr)\n",
+      "run": "TestAFailedQEMUStepIsAProblemAndNotAFailedEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed QEMU step is a problem on the answer",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\ts.Problems = append(s.Problems, binfmtErr.Error())\n",
+      "replace": "",
+      "run": "TestAFailedQEMUStepIsAProblemAndNotAFailedEnsure",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's platform registers through binfmt.sh",
+      "file": "internal/toolkit/base.go",
+      "find": "\tout, stderr, code, runErr = b.captureAs(ctx, \"root\", binfmtScript, map[string]string{\n",
+      "replace": "\tout, stderr, code, runErr = b.captureAs(ctx, \"root\", []byte(\"podman run --rm --privileged --pull=missing \\\"$TK_BINFMT_IMAGE\\\" --install \\\"$TK_ARCH\\\"\\n\"), map[string]string{\n",
+      "run": "TestAJobsPlatformRegistersThroughBinfmtSh",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the privileged QEMU installer is pinned by digest",
+      "file": "internal/toolkit/base.go",
+      "find": "const BinfmtImage = \"docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@\" + binfmtPinnedDigest\n",
+      "replace": "const BinfmtImage = \"docker.io/tonistiigi/binfmt:qemu-v10.2.3-68\"\n",
+      "run": "TestThePrivilegedQEMUInstallerIsPinnedByDigest",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a refused preset switch under --save says base recreate switches it now",
       "file": "cmd_base_preset.go",
       "find": "\tif err == nil || !switched || !saved {\n",
@@ -67,8 +175,8 @@
     {
       "label": "wsl-toolkit: binfmt.sh installs the QEMU handlers through root_podman",
       "file": "internal/toolkit/binfmt.sh",
-      "find": "  root_podman run --rm --privileged --pull=missing",
-      "replace": "  podman run --rm --privileged --pull=missing",
+      "find": "  root_podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install all",
+      "replace": "  podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install all",
       "run": "TestRootsPodmanInABaseNeedsNoDBus",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -84,9 +192,9 @@
     },
     {
       "label": "wsl-toolkit: a job's platform handler runs root's podman with cgroupfs and the file events backend",
-      "file": "internal/toolkit/base.go",
-      "find": "podman --cgroup-manager=cgroupfs --events-backend=file run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\"\n",
-      "replace": "podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\"\n",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "    root_podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
+      "replace": "    podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\" || exit\n",
       "run": "TestRootsPodmanInABaseNeedsNoDBus",
       "module": "tools/windows/wsl-toolkit",
       "args": []

@@ -40,9 +40,7 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 		r.log(note)
 	}
 	if includeImages {
-		for _, i := range images {
-			plan.Images = append(plan.Images, i.Name)
-		}
+		plan.Images, plan.Kept = planImages(images)
 	}
 
 	// ⭐ ONE SET, FILTERED ONCE. The plan below and the apply underneath it read
@@ -344,6 +342,70 @@ func containerNameOf(rendered string) string {
 	return rendered
 }
 
+// keptImages are the images `gc --images` leaves in the base: the health probe's
+// and the QEMU installer's.
+//
+// ⛔ PRUNING THEM MADE THE NEXT PROBE A PULL. With the probe image gone, a
+// registry that refused one pull read as a broken base, and the QEMU step failed
+// on every ensure after a restart of WSL. WSL-174.
+var keptImages = []string{VerifyImage, BinfmtImage}
+
+// keptImagePin names the container that holds keptImages[i] through a prune.
+func keptImagePin(i int) string { return fmt.Sprintf("wsl-toolkit-gc-keep-%d", i) }
+
+// keptImagesPrune is the prune `gc --images` runs, with each kept image held by
+// a container that is created and never started, and removed again after.
+//
+// ⚠ A CONTAINER AND NOT A FILTER. `podman image prune -a` removes every image no
+// container uses, and it has no filter by reference, so a container that uses
+// the image is what keeps it. The pins carry no job label, so no plan lists them.
+func keptImagesPrune() string {
+	var b strings.Builder
+	for i, ref := range keptImages {
+		pin := shellQuote(keptImagePin(i))
+		b.WriteString("podman rm -f " + pin + " >/dev/null 2>&1 || :\n")
+		b.WriteString("if podman image exists " + shellQuote(ref) + " >/dev/null 2>&1; then podman create --name " + pin + " " + shellQuote(ref) + " >/dev/null 2>&1 || :; fi\n")
+	}
+	b.WriteString("podman image prune -a -f >/dev/null 2>&1 || :\n")
+	for i := range keptImages {
+		b.WriteString("podman rm -f " + shellQuote(keptImagePin(i)) + " >/dev/null 2>&1 || :\n")
+	}
+	return b.String()
+}
+
+// keptImageReason says why a listed image survives `gc --images`, or nothing.
+//
+// ⚠ A DIGEST REFERENCE IS LISTED BY ITS TAG, so the tag is read as the kept image.
+func keptImageReason(listed string) (string, bool) {
+	for _, ref := range keptImages {
+		name, _, _ := strings.Cut(ref, "@")
+		if listed == ref || listed == name {
+			use := "the health probe runs it"
+			if ref == BinfmtImage {
+				use = "the QEMU handlers are installed from it"
+			}
+			return "image " + listed + ": kept, as " + use, true
+		}
+	}
+	return "", false
+}
+
+// planImages splits the base's images into what `gc --images` removes and what
+// it keeps, with the reason.
+//
+// ⭐ THE PLAN SPARES WHAT THE PRUNE SPARES, so a dry run does not list an image
+// the apply keeps. WSL-174.
+func planImages(images []OwnedThing) (remove, kept []string) {
+	for _, i := range images {
+		if why, ok := keptImageReason(i.Name); ok {
+			kept = append(kept, why)
+			continue
+		}
+		remove = append(remove, i.Name)
+	}
+	return remove, kept
+}
+
 // applyGuestCleanup removes exactly the named containers and directories.
 //
 // ⛔ IT IS GIVEN A LIST AND DOES NOT ENUMERATE. The script this replaced globbed
@@ -352,7 +414,7 @@ func containerNameOf(rendered string) string {
 func (r *Runner) applyGuestCleanup(ctx context.Context, plan *CleanupPlan, root string, remove []CleanupTarget, pruneImages bool) error {
 	var b strings.Builder
 	if pruneImages {
-		b.WriteString("podman image prune -a -f >/dev/null 2>&1 || :\n")
+		b.WriteString(keptImagesPrune())
 	}
 	b.WriteString("root=" + shellQuote(root) + "\n")
 	b.WriteString("removed=0\n")

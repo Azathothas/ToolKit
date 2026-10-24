@@ -10,7 +10,8 @@
 # It runs as root, delivered on stdin by `base ensure`, which passes the image as
 # TK_BINFMT_IMAGE, whether the base runs systemd as TK_SYSTEMD, and this script's
 # own bytes as TK_SELF_B64. With `watch` as its first argument it is the
-# watcher's body: the copy the ensure installed, run by systemd.
+# watcher's body: the copy the ensure installed, run by systemd. With TK_ARCH and
+# TK_HANDLER it registers one job's platform and nothing else.
 #
 # ⭐ THE BASE'S OWN SET IS DERIVED, NOT TYPED: the emulators the image carries
 # that the kernel holds after the install. The image carries qemu-i386, and on
@@ -88,6 +89,21 @@ record() {
   chmod 0644 "$tmp"
   mv "$tmp" "$RECORD"
 }
+
+# -- one platform, for the job that asked for it ---------------------------------
+# ⭐ TK_ARCH NAMES ONE PLATFORM, and EnsurePlatform sends it with the handler that
+# platform needs. Its root podman was a second inline copy in base.go, which had
+# to be given the WSL-168 options a second time. This is now its one home. WSL-181.
+if [ -n "${TK_ARCH:-}" ]; then
+  : "${TK_HANDLER:?TK_HANDLER is required with TK_ARCH}"
+  if [ ! -e "$DIR/$TK_HANDLER" ]; then
+    # ⚠ podman's own failure is the last line, and its code is the exit.
+    root_podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install "$TK_ARCH" || exit
+  fi
+  [ -e "$DIR/$TK_HANDLER" ] || die "handler $TK_HANDLER was not registered"
+  printf 'binfmt-ready %s\n' "$TK_HANDLER"
+  exit 0
+fi
 
 if [ "${1:-}" = watch ]; then
   # ⚠ EVERY 30 SECONDS, AND SILENT UNTIL IT ACTS. A handler cannot be watched
