@@ -83,6 +83,29 @@ func fakeWslMain(state string, args []string) int {
 		}
 		return 0
 	}
+	// disks is the fake registry: each registered name and its disk's directory,
+	// kept beside the listing as WSL keeps its own.
+	disks := filepath.Join(state, "disks")
+	keepDisks := func(drop, addName, addDir string) int {
+		data, _ := os.ReadFile(disks)
+		var kept []string
+		for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+			if name, _, ok := strings.Cut(line, "\t"); ok && !strings.EqualFold(name, drop) {
+				kept = append(kept, line)
+			}
+		}
+		if addName != "" {
+			kept = append(kept, addName+"\t"+addDir)
+		}
+		if err := os.WriteFile(disks, []byte(strings.Join(kept, "\n")), 0o600); err != nil {
+			return 96
+		}
+		return 0
+	}
+	said := func(name string) (string, bool) {
+		data, err := os.ReadFile(filepath.Join(state, name))
+		return string(data), err == nil
+	}
 	switch {
 	case len(args) == 2 && args[0] == "--list" && args[1] == "--quiet":
 		for _, n := range registered {
@@ -98,9 +121,23 @@ func fakeWslMain(state string, args []string) int {
 				kept = append(kept, n)
 			}
 		}
-		return write(kept)
-	case len(args) >= 2 && args[0] == "--import":
-		return write(append(registered, args[1]))
+		if code := write(kept); code != 0 {
+			return code
+		}
+		return keepDisks(args[1], "", "")
+	case len(args) >= 3 && args[0] == "--import":
+		// ⚠ A RACE, WHEN THE CASE ASKS FOR ONE: another process registers the
+		// name first, and this import fails over it.
+		if how, ok := said("import"); ok && strings.TrimSpace(how) == "race" {
+			_ = write(append(registered, args[1]))
+			_ = keepDisks("", args[1], filepath.Join(state, "another-process"))
+			fmt.Fprintln(os.Stderr, "A distribution with the supplied name already exists.")
+			return 1
+		}
+		if code := write(append(registered, args[1])); code != 0 {
+			return code
+		}
+		return keepDisks("", args[1], args[2])
 	case len(args) == 2 && args[0] == "--terminate":
 		return 0
 	case len(args) > 2 && args[0] == "-d" && args[len(args)-1] == IdentityPath && has(args[1]):
@@ -111,7 +148,21 @@ func fakeWslMain(state string, args []string) int {
 		_, _ = os.Stdout.Write(marker)
 		return 0
 	}
-	_, _ = io.Copy(io.Discard, os.Stdin)
+	script, _ := io.ReadAll(os.Stdin)
+	// ⭐ TWO GUEST SCRIPTS ANSWER WHEN THE CASE GIVES THEM AN ANSWER: the
+	// provisioner and the grants step, each with the lines a case wrote for it.
+	for _, guest := range []struct{ last, answer string }{
+		{"provision-complete", "provision.out"},
+		{"grants-complete", "grants.out"},
+	} {
+		if !strings.Contains(string(script), guest.last) {
+			continue
+		}
+		if out, ok := said(guest.answer); ok {
+			fmt.Print(out)
+			return 0
+		}
+	}
 	fmt.Fprintln(os.Stderr, "the fake WSL runs no guest script")
 	return 1
 }
@@ -138,7 +189,12 @@ func fakeEngineMain(state, role string, args []string) int {
 	switch args[0] {
 	case "info":
 		fmt.Println(runtime.GOARCH)
-	case "pull", "rm":
+	case "pull":
+		if refused, _ := os.ReadFile(filepath.Join(state, "pull")); strings.TrimSpace(string(refused)) == "refused" {
+			fmt.Fprintln(os.Stderr, "Error: initializing source: reading manifest: manifest unknown")
+			return 125
+		}
+	case "rm":
 	case "create":
 		fmt.Println("0123456789abcdef0123456789abcdef")
 	case "export":
@@ -203,6 +259,30 @@ func (h *fakeHost) engine(t *testing.T, up bool) {
 		state = "up"
 	}
 	if err := os.WriteFile(filepath.Join(h.state, "engine"), []byte(state), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// registry is the fake WSL's registrations, as registeredDisks answers them.
+func (h *fakeHost) registry() (map[string]string, error) {
+	data, err := os.ReadFile(filepath.Join(h.state, "disks"))
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+	out := map[string]string{}
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if name, dir, ok := strings.Cut(line, "\t"); ok {
+			out[name] = dir
+		}
+	}
+	return out, nil
+}
+
+// say writes what one fake answers: a guest script's lines, a refused pull, a
+// raced import or the registry.
+func (h *fakeHost) say(t *testing.T, name, what string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(h.state, name), []byte(what), 0o600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -280,7 +360,7 @@ func fakeBuiltBase(t *testing.T, h *fakeHost, image string) (*Base, *sayings, st
 	cfg.Base.Name = fakeBaseName
 	cfg.Base.Image = image
 	s := &sayings{}
-	b := &Base{cfg: cfg, home: home, wsl: &Wsl{Path: h.wsl}, log: s.log}
+	b := &Base{cfg: cfg, home: home, wsl: &Wsl{Path: h.wsl}, log: s.log, disks: h.registry}
 	disk := filepath.Join(b.Dir(), "ext4.vhdx")
 	if err := os.MkdirAll(b.Dir(), 0o700); err != nil {
 		t.Fatal(err)
@@ -303,6 +383,7 @@ func fakeBuiltBase(t *testing.T, h *fakeHost, image string) (*Base, *sayings, st
 	if err := os.WriteFile(filepath.Join(h.state, "registered"), []byte(fakeBaseName), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	h.say(t, "disks", fakeBaseName+"\t"+b.Dir())
 	return b, s, disk
 }
 
@@ -346,8 +427,10 @@ func TestAForcedRebuildWithNoEngineKeepsTheBase(t *testing.T) {
 	}
 }
 
-// ⭐ The other half: an engine that answers is asked first, and then the base is
-// removed and built as it always was, by that same engine.
+// ⭐ The other half: an engine that answers is asked first, the image is pulled
+// and exported by that same engine, and only then is the base removed and built.
+// ⛔ The removal came before the pull until WSL-169's widening: prepare, then
+// commit.
 func TestAForcedRebuildAsksTheEngineBeforeItRemoves(t *testing.T) {
 	h := newFakeHost(t)
 	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
@@ -362,8 +445,8 @@ func TestAForcedRebuildAsksTheEngineBeforeItRemoves(t *testing.T) {
 	removed := callAt(calls, "wsl --unregister "+fakeBaseName)
 	pulled := callAt(calls, "podman pull --platform linux/"+runtime.GOARCH+" "+DefaultBaseImage)
 	exported := callAt(calls, "podman export")
-	if asked < 0 || removed < 0 || pulled < 0 || exported < 0 || asked > removed || removed > pulled || pulled > exported {
-		t.Fatalf("want the engine asked, then the base removed, then the image pulled and exported; the calls were %v", calls)
+	if asked < 0 || removed < 0 || pulled < 0 || exported < 0 || asked > pulled || pulled > exported || exported > removed {
+		t.Fatalf("want the engine asked, then the image pulled and exported, then the base removed; the calls were %v", calls)
 	}
 	asks := 0
 	for _, c := range calls {
@@ -397,17 +480,18 @@ func TestAForcedRebuildWithAnUnqualifiedImageKeepsTheBase(t *testing.T) {
 }
 
 // ⛔ The same removal behind a failed re-provisioning: a base that will not
-// provision is still the only one there is.
+// provision is still the only one there is. ⚠ Since WSL-171 nothing is rebuilt
+// there at all, so the engine is not asked either.
 func TestAFailedProvisioningWithNoEngineKeepsTheBase(t *testing.T) {
 	h := newFakeHost(t)
 	b, s, disk := fakeBuiltBase(t, h, DefaultBaseImage)
 	h.engine(t, false)
 	_, err := b.EnsureWith(context.Background(), false, false)
-	if err == nil || !strings.Contains(err.Error(), fakeBaseName+" was NOT removed") {
+	if err == nil || !strings.Contains(err.Error(), fakeBaseName+" failed, and it was NOT removed") {
 		t.Fatalf("a failed re-provisioning with no engine answered %v; want the refusal naming the base", err)
 	}
-	if !s.said("re-provisioning failed") {
-		t.Fatalf("the case did not reach the rebuild it is about: %v", s.lines)
+	if !s.said("re-provisioning in place") {
+		t.Fatalf("the case did not reach the re-provisioning it is about: %v", s.lines)
 	}
 	assertKept(t, h, b, disk)
 }

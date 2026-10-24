@@ -2,6 +2,186 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a failed re-provision keeps the base and names base recreate",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\treturn st, reprovisionFailed(b.cfg.Base.Name, err)\n",
+      "replace": "\t\t\t_ = b.remove(ctx)\n\t\t\treturn st, err\n",
+      "run": "TestAFailedReprovisionKeepsTheBaseAndNamesTheRebuild",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a forced rebuild pulls and exports before it removes the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\trootfs, err := b.exportRootfs(ctx, engine, b.diskBytes())\n",
+      "replace": "\trootfs, err := \"\", error(nil)\n",
+      "run": "TestAForcedRebuildWithAnUnreachableImageKeepsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a forced rebuild checks the space before it removes the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := assertImportSpaceFreeing(b.Dir(), rootfs, BaseSpaceFloor, freed, b.log); err != nil {\n",
+      "replace": "\tif err := assertImportSpaceFreeing(b.Dir(), rootfs, BaseSpaceFloor, freed, b.log); false && err != nil {\n",
+      "run": "TestAForcedRebuildTheVolumeCannotHoldKeepsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a rebuild counts the old disk as free",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif free+freed < need {\n",
+      "replace": "\t\tif free < need {\n",
+      "run": "TestTheOldDiskCountsAsFreeForARebuild",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --preset is compared with the image the base was built from",
+      "file": "cmd_base_preset.go",
+      "find": "\tif recorded := toolkit.RecordedBaseImage(*cfg); recorded != \"\" {\n",
+      "replace": "\tif recorded := toolkit.RecordedBaseImage(*cfg); false && recorded != \"\" {\n",
+      "run": "TestAPresetIsComparedWithTheImageTheBaseWasBuiltFrom",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: each build exports into a rootfs archive of its own",
+      "file": "internal/toolkit/base.go",
+      "find": "\tf, err := os.CreateTemp(b.home, \"base-rootfs-*.tar\")\n",
+      "replace": "\tf, err := os.Create(filepath.Join(b.home, \"base-rootfs.tar\"))\n",
+      "run": "TestTheRootfsArchiveIsThisProcesssOwn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build owns the distribution only after its own import",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := b.wsl.Import(ctx, b.cfg.Base.Name, dir, rootfs); err != nil {\n",
+      "replace": "\tb.imported = true\n\tif err := b.wsl.Import(ctx, b.cfg.Base.Name, dir, rootfs); err != nil {\n",
+      "run": "TestARollbackLeavesADistributionThisProcessDidNotImport",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a rollback removes nothing this process did not import",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif !b.imported {\n\t\treturn cause\n\t}\n",
+      "replace": "",
+      "run": "TestARollbackLeavesADistributionThisProcessDidNotImport",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure and recreate hold the base's lock",
+      "file": "internal/toolkit/base.go",
+      "find": "\trelease, err := b.lock(ctx, what)\n",
+      "replace": "\trelease, err := func() {}, error(nil)\n\t_ = what\n",
+      "run": "TestEnsureWaitsForTheBasesLockAndNamesItsHolder",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base remove holds the base's lock",
+      "file": "internal/toolkit/base.go",
+      "find": "\trelease, err := b.lock(ctx, \"base remove\")\n",
+      "replace": "\trelease, err := func() {}, error(nil)\n",
+      "run": "TestRemoveWaitsForTheBasesLock",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base grant and revoke hold the base's lock across the configuration",
+      "file": "cmd_base_grant.go",
+      "find": "\trelease, err := toolkit.LockBase(ctx, \"base \"+sub, note)\n",
+      "replace": "\trelease, err := func() {}, error(nil)\n",
+      "run": "TestAGrantWaitsForTheBasesLock",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a removal leaves a disk another registered distribution keeps",
+      "file": "internal/toolkit/base.go",
+      "find": "whoever's disk it was. WSL's own registrations decide. WSL-177.\n\t\tif err := b.assertNoDiskAt(dir); err != nil {\n",
+      "replace": "whoever's disk it was. WSL's own registrations decide. WSL-177.\n\t\tif err := b.assertNoDiskAt(dir); false && err != nil {\n",
+      "run": "TestARemovalLeavesADiskAnotherDistributionKeeps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build leaves a disk another registered distribution keeps",
+      "file": "internal/toolkit/base.go",
+      "find": "delete one a registered distribution keeps its disk in. WSL-177.\n\t\tif err := b.assertNoDiskAt(dir); err != nil {\n",
+      "replace": "delete one a registered distribution keeps its disk in. WSL-177.\n\t\tif err := b.assertNoDiskAt(dir); false && err != nil {\n",
+      "run": "TestABuildLeavesADiskAnotherDistributionKeeps",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unreadable registry refuses the disk's removal",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err != nil {\n\t\treturn fmt.Errorf(\"%s was NOT deleted: WSL's registrations could not be read",
+      "replace": "\tif false {\n\t\treturn fmt.Errorf(\"%s was NOT deleted: WSL's registrations could not be read",
+      "run": "TestARemovalRefusesWhileTheRegistryCannotBeRead",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a re-provision that changed nothing WSL reads does not restart the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif !owed && !startSettingsChanged(said, grants) {\n",
+      "replace": "\tif false && !owed && !startSettingsChanged(said, grants) {\n",
+      "run": "TestAReprovisionRestartsTheBaseOnlyWhenWhatWslReadsChanged",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a restart a failed provisioning run owed is still owed",
+      "file": "internal/toolkit/base.go",
+      "find": "\towed := b.oweRestart()\n",
+      "replace": "\towed := b.oweRestart() && false\n",
+      "run": "TestARestartAFailedRunOwedIsStillOwed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a changed fstab block still restarts the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\treturn !hasLine(provisionOut, \"wsl-conf unchanged\") || !hasLine(grantsOut, \"fstab unchanged\")\n",
+      "replace": "\treturn !hasLine(provisionOut, \"wsl-conf unchanged\")\n",
+      "run": "TestAReprovisionRestartsTheBaseOnlyWhenWhatWslReadsChanged",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a re-provision that did not restart restarts when it does not verify",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif err != nil && !restarted {\n",
+      "replace": "\t\tif false && err != nil && !restarted {\n",
+      "run": "TestAReprovisionThatChangedNothingStillRestartsWhenItDoesNotVerify",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the provisioner says wsl.conf is unchanged only when its bytes are",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  if [ -f \"$2\" ] && [ \"$(cat \"$1\"; printf x)\" = \"$(cat \"$2\"; printf x)\" ]; then\n",
+      "replace": "  if [ -f \"$2\" ]; then\n",
+      "run": "TestInstallChangedSaysWhetherTheFileChanged",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the grants step says the fstab block is unchanged only when it is",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  if [ -f /etc/fstab ] && [ \"$(cat \"$WORK/fstab\"; printf x)\" = \"$(cat /etc/fstab; printf x)\" ]; then\n",
+      "replace": "  if [ -f /etc/fstab ]; then\n",
+      "run": "TestTheGrantsBlockSaysWhetherItChanged",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a refused preset switch under --save says base recreate switches it now",
       "file": "cmd_base_preset.go",
       "find": "\tif err == nil || !switched || !saved {\n",
@@ -13,18 +193,9 @@
     {
       "label": "wsl-toolkit: a forced rebuild asks the host engine before it removes the base",
       "file": "internal/toolkit/base.go",
-      "find": "\t\tif engine, err = b.rebuildEngine(ctx); err != nil {\n\t\t\treturn st, err\n\t\t}\n",
-      "replace": "",
+      "find": "\t\tif rootfs, err = b.prepareRebuild(ctx); err != nil {\n\t\t\treturn st, err\n\t\t}\n",
+      "replace": "\t\trootfs, _ = b.prepareRebuild(ctx)\n",
       "run": "TestAForcedRebuildWithNoEngineKeepsTheBase",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a rebuild after a failed provisioning asks the host engine first",
-      "file": "internal/toolkit/base.go",
-      "find": "\t\t\tif engine, engineErr = b.rebuildEngine(ctx); engineErr != nil {\n",
-      "replace": "\t\t\tif engine, engineErr = b.rebuildEngine(ctx); false && engineErr != nil {\n",
-      "run": "TestAFailedProvisioningWithNoEngineKeepsTheBase",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -40,7 +211,7 @@
     {
       "label": "wsl-toolkit: a rebuild exports with the engine it asked before the removal",
       "file": "internal/toolkit/base.go",
-      "find": "\tif engine == nil {\n",
+      "find": "\tif rootfs == \"\" {\n",
       "replace": "\tif true {\n",
       "run": "TestAForcedRebuildAsksTheEngineBeforeItRemoves",
       "module": "tools/windows/wsl-toolkit",
@@ -715,8 +886,8 @@
     {
       "label": "wsl-toolkit: a grant gone mid-ensure does not cost the base",
       "file": "internal/toolkit/base.go",
-      "find": "func provisionFailureRebuilds(err error) bool { return !errors.Is(err, ErrGrantSourceGone) }",
-      "replace": "func provisionFailureRebuilds(err error) bool { return true }",
+      "find": "\tif errors.Is(err, ErrGrantSourceGone) {\n\t\treturn err\n\t}\n",
+      "replace": "",
       "run": "TestAGrantGoneWhileEnsureRunsDoesNotCostTheBase",
       "module": "tools/windows/wsl-toolkit",
       "args": []

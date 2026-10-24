@@ -12,8 +12,7 @@ import (
 
 // WSL-169. `base ensure --preset X --save` writes X before the rebuild runs, so
 // a refused rebuild leaves the old base under a configuration that already
-// names X. The same command run again finds no switch, so the refusal says
-// that `base recreate` is what switches it now.
+// names X. The refusal says so, and that the base was not switched.
 func TestARefusedPresetSwitchSaysTheConfigurationIsAlreadyWritten(t *testing.T) {
 	cfg := toolkit.Config{Base: toolkit.BaseConfig{Name: "wsl-toolkit-wsl169", Image: "docker.io/library/debian:trixie"}}
 	refused := errors.New("wsl-toolkit-wsl169 was NOT removed: a rebuild exports its rootfs through a host engine, and no engine answered")
@@ -22,7 +21,7 @@ func TestARefusedPresetSwitchSaysTheConfigurationIsAlreadyWritten(t *testing.T) 
 	if !errors.Is(err, refused) {
 		t.Fatalf("the rebuild's own refusal is not carried: %v", err)
 	}
-	for _, want := range []string{"already builds wsl-toolkit-wsl169 from docker.io/library/debian:trixie", "will not switch it", "base recreate"} {
+	for _, want := range []string{"already builds wsl-toolkit-wsl169 from docker.io/library/debian:trixie", "the base was not switched", "run this command again", "base recreate"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("a refused switch under --save does not say %q:\n%v", want, err)
 		}

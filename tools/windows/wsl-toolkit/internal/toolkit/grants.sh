@@ -89,7 +89,15 @@ count=$(grep -c . "$WORK/targets" || :)
 say "explicit Windows directories: ${count:-0}"
 
 if [ "$TK_GRANTS_MODE" = write ]; then
-  install_fstab "$WORK/fstab"
+  # ⛔ SAID WHETHER IT CHANGED, because provisioning restarts the base only when
+  # this block or wsl.conf did. The x keeps a trailing newline that command
+  # substitution would strip. WSL-175.
+  if [ -f /etc/fstab ] && [ "$(cat "$WORK/fstab"; printf x)" = "$(cat /etc/fstab; printf x)" ]; then
+    printf 'fstab unchanged\n'
+  else
+    install_fstab "$WORK/fstab"
+    printf 'fstab changed\n'
+  fi
   printf 'grants-complete\n'
   exit 0
 fi

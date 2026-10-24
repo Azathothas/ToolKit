@@ -549,7 +549,10 @@ fi
 # it left on, every Windows PATH entry is appended to the guest's, so a guest
 # `find` on PATH can resolve to a Windows executable and a tool an agent
 # installed inside is shadowed by one it did not.
-cat > /etc/wsl.conf <<CONF
+# ⛔ WRITTEN BESIDE IT AND COMPARED, so the executable restarts the base only when
+# this file changed. Every re-provision used to end in a restart, which stopped
+# every job and agent in the base over settings that had not moved. WSL-175.
+cat > /etc/wsl.conf.wsl-toolkit.new <<CONF
 # Written by wsl-toolkit.
 [user]
 default=$TK_USER
@@ -567,7 +570,24 @@ enabled=$INTEROP_ENABLED
 appendWindowsPath=false
 $RESOLV_BLOCK
 CONF
-say "wrote /etc/wsl.conf"
+# >>> install_changed: begin
+# install_changed NEW DEST: DEST becomes NEW unless it already holds the same bytes,
+# and the answer is `changed` or `unchanged`. ⚠ The x keeps a trailing newline
+# that command substitution would strip, so two files differing only there differ.
+install_changed() {
+  if [ -f "$2" ] && [ "$(cat "$1"; printf x)" = "$(cat "$2"; printf x)" ]; then
+    rm -f "$1"
+    printf 'unchanged\n'
+    return 0
+  fi
+  mv "$1" "$2"
+  printf 'changed\n'
+}
+# <<< install_changed: end
+wsl_conf=$(install_changed /etc/wsl.conf.wsl-toolkit.new /etc/wsl.conf) ||
+  die "/etc/wsl.conf could not be written"
+say "/etc/wsl.conf: $wsl_conf"
+printf 'wsl-conf %s\n' "$wsl_conf"
 
 # -- the drive mount points automount leaves behind ---------------------------
 # ⛔ AN EMPTY /mnt/c IS NOT AN ABSENT ONE. The first start of a fresh import

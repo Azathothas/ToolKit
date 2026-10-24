@@ -176,15 +176,18 @@ func TestTheVerifierAllowsAGoneGrantsMountAndNoOther(t *testing.T) {
 }
 
 // ⛔ A grant gone mid-ensure is not a broken base: removing the base to rebuild it
-// would lose it, and the rebuild refuses over the same grant.
+// would lose it, and the rebuild refuses over the same grant. Its refusal names
+// the revoke and not the rebuild. ⚠ Since WSL-171 no failed re-provision removes
+// the base; the others name `base recreate`.
 func TestAGrantGoneWhileEnsureRunsDoesNotCostTheBase(t *testing.T) {
 	cfg, _, _ := goneGrantConfig(t)
 	_, _, _, err := baseMountPayloads(cfg)
-	if provisionFailureRebuilds(err) {
-		t.Fatalf("the gone-grant refusal %v would remove the base to rebuild it", err)
+	if got := reprovisionFailed(cfg.Base.Name, err); got != err {
+		t.Fatalf("the gone-grant refusal %v was rewritten as %v", err, got)
 	}
-	if !provisionFailureRebuilds(errors.New("the engine did not start")) {
-		t.Fatal("another failure no longer rebuilds")
+	other := errors.New("the engine did not start")
+	if got := reprovisionFailed(cfg.Base.Name, other); !errors.Is(got, other) || !strings.Contains(got.Error(), "base recreate") {
+		t.Fatalf("another failure answered %v; want its own error and the rebuild named", got)
 	}
 }
 
