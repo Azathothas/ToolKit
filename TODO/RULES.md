@@ -331,6 +331,14 @@ related work". Four forks, answered before any change:
 limit resets". Recorded at the pause and built after it, `WSL-167`. ⚠ **It amends ruling
 2**, which named `wsl-toolkit-base` the one base for every agent.
 
+**33.** ⭐ **2026-10-24: the default base takes a new canonical name, and
+`wsl-toolkit-base` goes with no copy.** Asked how ruling 32's name should look, with three
+shapes offered, the operator chose "Rename the default": the default instance's base gets a
+new canonical distribution name, offered as `wsl-toolkit-jobs`, accepting that a caller
+naming `wsl-toolkit` directly must move, a break by the register. An existing base keeps
+its recorded name. Asked whether to export `wsl-toolkit-base` before it is unregistered,
+the operator chose "No backup". `WSL-167`.
+
 ## 9. Before every push
 
 ⭐ **A green local gate is not CI.** Run the Go tests with `TEMP` and `TMP` at an

@@ -15360,6 +15360,12 @@ the pause. ⚠ The removal deletes the base and its disk, so it runs in the same
 the rename, not before it. Which names to choose, and whether renaming an existing
 distribution is offered or refused, is this entry's to settle with a recommendation.
 
+⭐ **Ruled 2026-10-24T13:27:06Z, ruling 33.** The default instance's base takes a new
+canonical distribution name, `wsl-toolkit-jobs`. An existing base keeps its recorded name and
+keeps working, and the tool says how to move. The instance names `base` and `jobs` are reserved,
+so no instance can read as the default's. `wsl-toolkit-base` is unregistered with no copy, in the
+same change as the rename.
+
 ## Consumers
 
 A break by the register's definition if the default distribution's name changes
