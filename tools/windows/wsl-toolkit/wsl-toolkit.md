@@ -233,8 +233,14 @@ can run for a moment. A stopped job answers exit 130 with `stopped` set.
 
 ⭐ **`gc --apply` keeps a stop its job can still read.** It compacts the state
 directory's ledger, and a stop stays while its job's record is open or its
-directory exists. A read during that rewrite waits for it, and never answers no stop
-for a job that has one. `WSL-173`
+directory exists. A read during that rewrite waits up to about a second for it.
+`WSL-173`
+
+⛔ **A ledger that cannot be read is never taken as no stop.** Before its container
+starts, the job is refused with exit 2 and nothing runs. As the container starts,
+the failed read is logged and the job runs on. When it exits, the failed read is
+logged and the container's own exit code stands. A job waiting
+for its `--exclusive` name reads again on its next poll. `WSL-173`
 
 ⭐ **One lock serializes every write to the ledger, across processes.** A `gc --apply`
 in one process loses no record a `run` or the helper writes in another. `WSL-185`

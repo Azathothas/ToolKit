@@ -171,7 +171,7 @@ func TestAStopIsFoundInTheLedger(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := &Runner{ledger: led}
-	if r.stopRequested(testJobID) {
+	if got, _ := r.stopRequested(testJobID); got {
 		t.Fatal("an empty ledger holds a stop")
 	}
 	for _, e := range []LedgerEntry{
@@ -182,13 +182,13 @@ func TestAStopIsFoundInTheLedger(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if r.stopRequested(testJobID) {
+	if got, _ := r.stopRequested(testJobID); got {
 		t.Fatal("another job's stop was read as this one's")
 	}
 	if err := led.Append(LedgerEntry{Event: "stop", Kind: "job", ID: testJobID}); err != nil {
 		t.Fatal(err)
 	}
-	if !r.stopRequested(testJobID) {
+	if got, _ := r.stopRequested(testJobID); !got {
 		t.Fatal("the stop in the ledger was not found")
 	}
 	// ⭐ THE ONE RULE both the owner and `wait` read: a stop's signal, and a stop.

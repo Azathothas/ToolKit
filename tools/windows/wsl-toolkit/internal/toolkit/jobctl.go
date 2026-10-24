@@ -45,35 +45,65 @@ type StopReport struct {
 // ⛔ ONE RULE FOR THE OWNER AND FOR A SECOND PROCESS. The owner reads it when
 // its container exits, and `wait` reads it for a job whose owner is gone, so
 // the two answer one verdict for one ending.
+//
+// ⚠ AN UNREADABLE LEDGER LEAVES THE CONTAINER'S OWN EXIT, AND THE FAILED READ IS
+// SAID. The job has already ended, so nothing runs on, and a stopped verdict on
+// a failed read would be a guess. WSL-173.
 func (r *Runner) EndedByStop(id string, exit int) bool {
-	return stoppedBySignal(exit) && r.stopRequested(id)
+	if !stoppedBySignal(exit) {
+		return false
+	}
+	stopped, err := r.stopRequested(id)
+	if err != nil {
+		r.say("could not read whether job " + id + " was stopped, so its exit code stands: " + err.Error())
+		return false
+	}
+	return stopped
 }
 
-// stopRequested says whether the ledger holds a stop for a job.
-func (r *Runner) stopRequested(id string) bool { return stopRecordedIn(r.ledger, id) }
+// stopRequested says whether the ledger holds a stop for a job, or why it could
+// not be read.
+func (r *Runner) stopRequested(id string) (bool, error) { return stopRecordedIn(r.ledger, id) }
+
+// say logs a line where the runner has a log. A runner built by hand in a case
+// may have none.
+func (r *Runner) say(s string) {
+	if r.log != nil {
+		r.log(s)
+	}
+}
 
 // StopRecorded says whether this instance's ledger holds a stop for a job, for an
 // owner that has no runner yet: one waiting for its --exclusive name. WSL-113.
+//
+// ⚠ A LEDGER IT CANNOT READ ANSWERS NO STOP FOR THIS POLL ONLY. The waiter asks
+// again on its next poll, and honours the stop once a read succeeds. WSL-173.
 func StopRecorded(id string) bool {
 	l, err := OpenLedger()
 	if err != nil {
 		return false
 	}
-	return stopRecordedIn(l, id)
+	stopped, err := stopRecordedIn(l, id)
+	return err == nil && stopped
 }
 
-// stopRecordedIn is the one rule both read: a stop event for the job's id.
-func stopRecordedIn(l *Ledger, id string) bool {
+// stopRecordedIn is the one rule every reader applies: a stop event for the
+// job's id.
+//
+// ⛔ A LEDGER IT CANNOT READ IS AN ERROR, NEVER "NO STOP". A read refused past its
+// retries answered false, and a job somebody stopped ran to completion. Each
+// caller decides what an unreadable ledger means where it reads it. WSL-173.
+func stopRecordedIn(l *Ledger, id string) (bool, error) {
 	entries, err := l.All()
 	if err != nil {
-		return false
+		return false, err
 	}
 	for _, e := range entries {
 		if e.Event == "stop" && e.Kind == "job" && e.ID == id {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 
 // StopJob stops one container job.

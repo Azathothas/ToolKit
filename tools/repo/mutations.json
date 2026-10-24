@@ -2,6 +2,33 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: an unreadable ledger is an error to the stop check, not no stop",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\tentries, err := l.All()\n\tif err != nil {\n\t\treturn false, err\n",
+      "replace": "\tentries, err := l.All()\n\tif err != nil {\n\t\treturn false, nil\n",
+      "run": "TestAnUnreadableLedgerIsNotReadAsNoStop",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job whose ledger cannot be read is refused before its container",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\tstopped, err := r.stopRequested(id)\n\tif err != nil {\n",
+      "replace": "\tstopped, err := r.stopRequested(id)\n\tif err != nil && false {\n",
+      "run": "TestAJobWhoseLedgerCannotBeReadIsNotStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an exit read without the ledger says the failed read",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\t\tr.say(\"could not read whether job \" + id + \" was stopped, so its exit code stands: \" + err.Error())\n",
+      "replace": "\t\t_ = err\n",
+      "run": "TestAnExitReadWithoutTheLedgerSaysWhy",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a ledger read waits out a rewrite holding the file",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/ledger.go",

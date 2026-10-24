@@ -101,7 +101,7 @@ func TestAStopIsReadWhileARewriteHoldsTheLedger(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		release()
 	}()
-	if !stopRecordedIn(l, testJobID) {
+	if got, err := stopRecordedIn(l, testJobID); err != nil || !got {
 		t.Fatal("a read during a rewrite answered no stop for a job that has one, so the job runs as if nobody stopped it")
 	}
 }
@@ -131,6 +131,79 @@ func TestALedgerReadHeldPastItsRetriesFails(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "after 20 attempts") {
 		t.Fatalf("the error does not say how often the read was tried: %v", err)
+	}
+}
+
+// unreadableLedger is a ledger whose lines mostly do not parse, which All
+// reports as an error on any host. It stands in for a read refused past its
+// retries, which only Windows can stage.
+func unreadableLedger(t *testing.T, home string) *Ledger {
+	t.Helper()
+	path := filepath.Join(home, "ledger.jsonl")
+	if err := os.WriteFile(path, []byte(strings.Repeat("not a record\n", 5)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return &Ledger{path: path}
+}
+
+// ⛔ A LEDGER THAT CANNOT BE READ IS NOT "NO STOP". Every reader of the stop got
+// false for an error, so a stopped job ran on. WSL-173.
+func TestAnUnreadableLedgerIsNotReadAsNoStop(t *testing.T) {
+	l := unreadableLedger(t, t.TempDir())
+	if _, err := l.All(); err == nil {
+		t.Fatal("the staged ledger read without an error, so this case proves nothing")
+	}
+	if _, err := stopRecordedIn(l, testJobID); err == nil {
+		t.Fatal("a ledger that could not be read answered no stop and no error")
+	}
+}
+
+// ⛔ THE CHECK BEFORE THE CONTAINER STARTS REFUSES THE JOB, and nothing runs. The
+// job is driven through the fake WSL, so the container's call is what is
+// counted. WSL-173.
+func TestAJobWhoseLedgerCannotBeReadIsNotStarted(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	home := filepath.Join(dir, "home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(staleFakeWslEnv, dir)
+	t.Setenv("WSL_TOOLKIT_HOME", home)
+	cfg := Config{Base: BaseConfig{Name: "wsl-toolkit-stale", Image: "docker.io/library/alpine:latest", User: "agent"}}
+	r := &Runner{cfg: cfg, wsl: &Wsl{Path: self}, home: home, ledger: unreadableLedger(t, home), log: func(string) {}}
+	res := r.Run(t.Context(), JobSpec{
+		Image: "docker.io/library/alpine:latest", Script: []byte("true\n"),
+		ContainerLifecycle: ContainerEphemeral,
+	})
+	if res.Exit != 2 || !res.Unreached || res.Stopped {
+		t.Fatalf("a job whose stop could not be read answered exit %d, unreached %v, stopped %v: %s", res.Exit, res.Unreached, res.Stopped, res.Error)
+	}
+	if !strings.Contains(res.Error, "could not read whether the job was stopped") {
+		t.Errorf("the refusal does not say why: %s", res.Error)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "calls"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "job@") {
+		t.Fatalf("the container ran although its stop could not be read; calls %v", strings.Fields(string(data)))
+	}
+}
+
+// ⚠ AN EXIT READ WITHOUT THE LEDGER KEEPS ITS OWN CODE, AND THE FAILED READ IS
+// SAID. It was silently read as no stop. WSL-173.
+func TestAnExitReadWithoutTheLedgerSaysWhy(t *testing.T) {
+	var said []string
+	r := &Runner{ledger: unreadableLedger(t, t.TempDir()), log: func(s string) { said = append(said, s) }}
+	if r.EndedByStop(testJobID, 143) {
+		t.Fatal("an exit read without the ledger was taken as a stop")
+	}
+	if !strings.Contains(strings.Join(said, "\n"), "could not read whether job "+testJobID+" was stopped") {
+		t.Fatalf("the failed read was not said: %q", said)
 	}
 }
 

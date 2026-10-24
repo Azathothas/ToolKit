@@ -675,7 +675,17 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 
 	// ⛔ A STOP THAT ARRIVED WHILE THE JOB WAS PREPARED IS HONOURED HERE, before
 	// the container exists, rather than by starting it and stopping it.
-	if r.stopRequested(id) {
+	//
+	// ⛔ A LEDGER THAT CANNOT BE READ HERE REFUSES THE JOB. Starting it could run
+	// a job somebody stopped, and nothing has run yet. WSL-173.
+	stopped, err := r.stopRequested(id)
+	if err != nil {
+		res.Exit, res.Unreached = 2, true
+		res.Error = "could not read whether the job was stopped, so its container was not started: " + err.Error() +
+			". Run it again once " + r.ledger.Path() + " can be read"
+		return res
+	}
+	if stopped {
 		res.Cancelled, res.Stopped, res.Exit = true, true, 130
 		res.Error = "the job was stopped by wsl-toolkit stop before its container started"
 		return res
@@ -718,7 +728,14 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		lateStop.Add(1)
 		go func() {
 			defer lateStop.Done()
-			if r.stopRequested(id) {
+			// ⚠ AN UNREADABLE LEDGER IS SAID, NOT STOPPED ON. The container is
+			// running, and ending it on a failed read could stop a job nobody
+			// stopped. The read after it exits tries again. WSL-173.
+			stopped, err := r.stopRequested(id)
+			if err != nil {
+				r.say("could not read whether job " + id + " was stopped as its container started: " + err.Error())
+			}
+			if stopped {
 				r.stopContainer(ctx, container)
 			}
 		}()
