@@ -552,6 +552,9 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 		return res
 	}
+	// ⭐ RUN STATE A RESTART OF WSL LEFT STALE IS CLEARED BEFORE THE JOB STARTS,
+	// and nothing else is. stale.sh says how staleness is proved. WSL-137.
+	ClearStaleRunState(ctx, r.wsl, r.cfg.Base.Name, user, r.log)
 	paths := jobLayout(guestHome, id)
 	jobsRoot, guestJob, guestWork, guestOut := paths.root, paths.dir, paths.work, paths.out
 	container := "wtk-" + id

@@ -14,6 +14,15 @@
 # command and takes no deletion, because a tool that removes engine state to make
 # a probe pass is one deletion away from removing something else.
 #
+# ⚠ THE ONE OTHER WAY IN IS stale.sh, which `run`, `matrix` and `base exec` send
+# ahead of this file, and it reaches here only when the engine's own alive record
+# names another boot of WSL. It sets TK_STALE_BASE, and rule 5 holds the deletion
+# to the root that record was read under. WSL-137.
+#
+# ⛔ BOTH WAYS IN TAKE ONE LOCK before anything is removed, so neither clears the
+# state the other has just let an engine start on. stale.sh takes it first and
+# reads its record again under it; here it is taken, or found already held.
+#
 # ⚠ THE ROOT COMES FROM THE ENGINE, NOT FROM $XDG_RUNTIME_DIR, AND THAT IS A
 # MEASUREMENT AND NOT A PREFERENCE. Measured in this distribution on 2026-09-10:
 # $XDG_RUNTIME_DIR is /mnt/wslg/runtime-dir, which WSLg owns, while podman's own
@@ -38,10 +47,27 @@
 #      around.
 set -eu
 
+# THE LOCK, the file stale.sh locks and on the same descriptor. Where stale.sh
+# holds it already, flock answers at once, because the lock is this payload's
+# own. A base with no flock clears as it did before the lock existed. WSL-137.
+if [ -n "${XDG_RUNTIME_DIR:-}" ] && command -v flock >/dev/null 2>&1; then
+  if [ -z "${TK_STALE_BASE:-}" ]; then
+    exec 9>>"$XDG_RUNTIME_DIR/.wsl-toolkit-run-state.lock"
+  fi
+  if ! flock -w 120 9; then
+    echo "repair: another caller held the run-state lock for 120s, so nothing was removed" >&2
+    exit 1
+  fi
+fi
+
 # RULE 1. Ask the engine. ⚠ `podman info` still answers in the stale-boot-id
 # state, which is the only state this script runs in: podman refuses to RUN a
 # container and remains happy to describe itself.
-runroot=$(podman info --format '{{.Store.RunRoot}}' 2>/dev/null || echo '')
+#
+# ⛔ IT IS NOT HANDED THE LOCK. A rootless engine can start a process that
+# outlives this call, and one that held descriptor 9 would keep the lock after
+# this script ended, so every later caller would wait 120s and remove nothing.
+runroot=$(podman info --format '{{.Store.RunRoot}}' 9>&- 2>/dev/null || echo '')
 source=engine
 if [ -z "$runroot" ]; then
   # ⚠ THE FALLBACK IS NAMED IN THE OUTPUT rather than used silently, because it
@@ -64,6 +90,14 @@ esac
 case "$base" in
   *..*) echo "repair: the engine's run base contains '..', which is refused" >&2; exit 1 ;;
 esac
+
+# RULE 5, for stale.sh alone. ⛔ The stale record was read under one root and the
+# engine named this one, so a disagreement removes nothing: the state under the
+# engine's root was never shown to be stale. WSL-137.
+if [ -n "${TK_STALE_BASE:-}" ] && [ "$base" != "$TK_STALE_BASE" ]; then
+  echo "repair: the engine's run base is $base and the stale boot id was read under $TK_STALE_BASE, so nothing was removed" >&2
+  exit 1
+fi
 
 printf 'run-base %s (from the %s)\n' "$base" "$source"
 

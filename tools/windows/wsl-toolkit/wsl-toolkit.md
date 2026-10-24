@@ -1210,6 +1210,27 @@ its notes with its command, and never names it as the way forward.
 
 ---
 
+## ⭐ After a restart of WSL
+
+⭐ **`run`, `matrix` and `base exec` clear engine state that a restart of WSL
+left stale.** After `wsl --shutdown` or a Windows restart, podman refuses every
+container with `current system boot ID differs from cached boot ID`. Before the
+first container, the base compares the boot id podman recorded with the one the
+kernel holds now. Where they differ, it removes the two directories podman names,
+and stderr says what it removed. `WSL-137`
+
+⛔ **Nothing is removed on a guess.** A record that names this boot, an empty one
+and a missing one are left alone. The check is made again under the lock
+`base ensure --repair` takes, so a second caller removes nothing the first has
+started on. A base with no `flock` keeps the state, and stderr names
+`base ensure --repair`.
+
+⚠ **`base ensure` still clears it only with `--repair`.** The check is one more
+call into the base for each job and each `base exec`. A check that cannot run
+stops nothing, and the engine's own refusal follows as before.
+
+---
+
 ## The safety model
 
 Removal is constrained, and every destructive path goes through the same gate.

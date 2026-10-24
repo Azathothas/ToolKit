@@ -1,0 +1,77 @@
+#!/bin/sh
+# Clear the engine's run state when, and only when, a restart of WSL left it
+# stale. `run`, `matrix` and `base exec` send this before their first container
+# or engine call. WSL-137.
+#
+# It runs as TK_USER inside the owned distribution, after the runtime prologue
+# has set XDG_RUNTIME_DIR, and repair.sh follows it in the same payload. Where
+# the state is current this exits 0 before repair.sh is reached.
+#
+# ⛔ WHY IT IS AUTOMATIC HERE AND OPT IN FOR `base ensure`. `wsl --shutdown` and
+# a Windows restart start a new boot of WSL, and podman then refuses every
+# container with `current system boot ID differs from cached boot ID` in every
+# base that holds an engine. Only `base ensure --repair` cleared it, one base at
+# a time, so every job after a restart failed until somebody ran that by hand.
+# This removes nothing on a guess. It acts only on the engine's OWN record: the
+# boot id podman wrote into its alive file, read beside the one the kernel holds
+# now. That is the exact condition podman refuses over and prescribes the
+# deletion for.
+#
+# ⛔ NO ENGINE OF THIS BOOT IS LIVE ON A STALE RECORD. podman reads the same
+# record before it starts anything and refuses while it names another boot, so
+# while it does, nothing of this boot is running on the state removed here.
+#
+# ⛔ THE CHECK IS MADE AGAIN UNDER THE LOCK `base ensure --repair` TAKES. A
+# matrix starts its rows at once, and without the lock a second row could clear
+# the state a first row's container had just started on. A caller that waited
+# finds the record gone, or rewritten for this boot, and removes nothing.
+set -eu
+
+tk_stale_root=${XDG_RUNTIME_DIR:-}
+tk_stale_alive=$tk_stale_root/libpod/tmp/alive
+
+# ⚠ An absent record, an empty one and one naming this boot all read as current.
+# podman writes the record itself when it starts on no record, and a record this
+# cannot read as another boot's is never a reason to delete.
+stale_boot_id() {
+  [ -n "$tk_stale_root" ] || return 1
+  [ -s "$tk_stale_alive" ] || return 1
+  sbi_now=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null) || return 1
+  [ -n "$sbi_now" ] || return 1
+  sbi_cached=$(cat "$tk_stale_alive" 2>/dev/null) || return 1
+  [ -n "$sbi_cached" ] || return 1
+  [ "$sbi_cached" != "$sbi_now" ]
+}
+
+if ! stale_boot_id; then
+  printf 'run-state current\n'
+  exit 0
+fi
+printf 'run-state stale: the engine recorded another boot of WSL\n'
+
+# ⛔ NO LOCK, NO DELETION. flock is util-linux's and busybox's, and every preset
+# carries one. A base without it keeps the state, and `base ensure --repair` is
+# still the way through.
+if ! command -v flock >/dev/null 2>&1; then
+  printf 'run-state kept: this base has no flock to clear it safely\n'
+  exit 0
+fi
+# ⚠ THE SAME FILE repair.sh LOCKS, and on the same descriptor, so repair.sh finds
+# the lock already held by this payload and does not wait on itself.
+exec 9>>"$tk_stale_root/.wsl-toolkit-run-state.lock"
+if ! flock -w 120 9; then
+  echo "repair: another caller held the run-state lock for 120s, so nothing was removed" >&2
+  exit 1
+fi
+# The second read, under the lock. Another caller cleared it while this one waited.
+if ! stale_boot_id; then
+  printf 'run-state current: another caller cleared it first\n'
+  exit 0
+fi
+
+# repair.sh refuses to remove anything outside this root. Its own rule 1 asks
+# podman where its run state is, and its rule 5 holds the two to agree. ⚠ It is
+# read by repair.sh, which follows in the same shell, and nothing here reads it.
+# shellcheck disable=SC2034
+TK_STALE_BASE=$tk_stale_root
+# repair.sh follows in the same payload, and its last line is `repaired run-state`.

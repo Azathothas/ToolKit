@@ -156,6 +156,11 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 	if !exists {
 		return exitCannot, errNotRegistered(cfg.Base.Name)
 	}
+	// ⭐ THE ACCOUNT'S ENGINE STATE IS CLEARED FIRST WHERE A RESTART OF WSL LEFT
+	// IT STALE, attached or detached, so a command that reaches the engine this
+	// tool's jobs run on is not refused. It is that account's engine whichever
+	// account runs the command. WSL-137.
+	toolkit.ClearStaleRunState(ctx, w, cfg.Base.Name, cfg.Base.User, note)
 	if opts.detach {
 		return detachSession(ctx, w, req, opts)
 	}

@@ -2,6 +2,132 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: stale run state: run clears it before its container",
+      "file": "internal/toolkit/job.go",
+      "find": "\tClearStaleRunState(ctx, r.wsl, r.cfg.Base.Name, user, r.log)\n",
+      "replace": "",
+      "run": "TestRunClearsAStaleBootIDBeforeItsContainer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: base exec clears it before its command",
+      "file": "cmd_base_exec.go",
+      "find": "\ttoolkit.ClearStaleRunState(ctx, w, cfg.Base.Name, cfg.Base.User, note)\n",
+      "replace": "",
+      "run": "TestBaseExecClearsAStaleBootIDBeforeItsCommand",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: the check runs with the account's runtime directory",
+      "file": "internal/toolkit/stale.go",
+      "find": "\tpayload := append([]byte{}, guestRuntimePrologue()...)\n",
+      "replace": "\tpayload := []byte{}\n",
+      "run": "TestRunClearsAStaleBootIDBeforeItsContainer",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: a clear is read from repair.sh's own last line",
+      "file": "internal/toolkit/stale.go",
+      "find": "case !failed && strings.Contains(out, \"repaired run-state\"):",
+      "replace": "case !failed:",
+      "run": "TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: a clear names what it removed",
+      "file": "internal/toolkit/stale.go",
+      "find": "\" would have: \" + removedRunState(out)",
+      "replace": "\" would have\"",
+      "run": "TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: a state still there names base ensure --repair",
+      "file": "internal/toolkit/stale.go",
+      "find": "\tcase strings.Contains(out, \"run-state stale\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: only a record naming another boot is stale",
+      "file": "internal/toolkit/stale.sh",
+      "find": "  [ \"$sbi_cached\" != \"$sbi_now\" ]\n",
+      "replace": "  [ -n \"$sbi_cached\" ]\n",
+      "run": "TestTheStaleCheckClearsOnlyRunStateFromAnotherBoot",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: an empty record is not stale",
+      "file": "internal/toolkit/stale.sh",
+      "find": "  [ -n \"$sbi_cached\" ] || return 1\n",
+      "replace": "",
+      "run": "TestTheStaleCheckClearsOnlyRunStateFromAnotherBoot",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: nothing outside the root the record was read under is removed",
+      "file": "internal/toolkit/repair.sh",
+      "find": "if [ -n \"${TK_STALE_BASE:-}\" ] && [ \"$base\" != \"$TK_STALE_BASE\" ]; then",
+      "replace": "if false; then",
+      "run": "TestTheStaleCheckClearsOnlyRunStateFromAnotherBoot",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: no flock, no deletion",
+      "file": "internal/toolkit/stale.sh",
+      "find": "if ! command -v flock >/dev/null 2>&1; then",
+      "replace": "if false; then",
+      "run": "TestTheStaleCheckKeepsTheStateWithoutFlock",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: the check waits for the lock before it reads again",
+      "file": "internal/toolkit/stale.sh",
+      "find": "if ! flock -w 120 9; then",
+      "replace": "if false; then",
+      "run": "TestTheStaleCheckReadsItsRecordAgainUnderTheLock",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: the record is read again under the lock",
+      "file": "internal/toolkit/stale.sh",
+      "find": "# The second read, under the lock. Another caller cleared it while this one waited.\nif ! stale_boot_id; then\n",
+      "replace": "# The second read, under the lock. Another caller cleared it while this one waited.\nif false; then\n",
+      "run": "TestTheStaleCheckReadsItsRecordAgainUnderTheLock",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: base ensure --repair takes the same lock",
+      "file": "internal/toolkit/repair.sh",
+      "find": "if [ -n \"${XDG_RUNTIME_DIR:-}\" ] && command -v flock >/dev/null 2>&1; then",
+      "replace": "if false; then",
+      "run": "TestRepairTakesTheRunStateLock",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stale run state: the engine is not handed the lock",
+      "file": "internal/toolkit/repair.sh",
+      "find": "podman info --format '{{.Store.RunRoot}}' 9>&- 2>/dev/null",
+      "replace": "podman info --format '{{.Store.RunRoot}}' 2>/dev/null",
+      "run": "TestTheStaleCheckClearsOnlyRunStateFromAnotherBoot",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "skills: a flag the form does not take is refused",
       "file": "internal/checks/skills.go",
       "find": "\t\t\t\tif !known[fl] {\n",
