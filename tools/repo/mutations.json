@@ -112,8 +112,8 @@
     {
       "label": "wsl-toolkit: a not judged probe needs the verifier's exit code",
       "file": "internal/toolkit/base.go",
-      "find": "\tif code != verifyNotJudged {\n",
-      "replace": "\tif false {\n",
+      "find": "(*ProbeNotJudgedError, bool) {\n\tif code != verifyNotJudged {\n",
+      "replace": "(*ProbeNotJudgedError, bool) {\n\tif false {\n",
       "run": "TestANotJudgedProbeNeedsItsCodeAndItsLine",
       "module": "tools/windows/wsl-toolkit",
       "args": []
