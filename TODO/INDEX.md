@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 249  open 60  blocked 5  done 184
+total 249  open 57  blocked 5  done 187
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 6 | 0 | 89 | 95 |
-| P2 | 39 | 2 | 75 | 116 |
-| P3 | 15 | 3 | 12 | 30 |
-| **all** | **60** | **5** | **184** | **249** |
+| P2 | 37 | 2 | 77 | 116 |
+| P3 | 14 | 3 | 13 | 30 |
+| **all** | **57** | **5** | **187** | **249** |
 
 ---
 
@@ -86,12 +86,12 @@ total 249  open 60  blocked 5  done 184
 | TOOL-29 | P1 | S | done | `PROGRESS.md` grew to 2,776 lines and no check fired | [`tooling.md`](tooling.md) |
 | TOOL-30 | P1 | S | done | The docs check's cited-path rule never ran, and it carried another project's rules | [`tooling.md`](tooling.md) |
 | TOOL-31 | P3 | S | done | The gate's documented time is 30 seconds, and it takes minutes | [`tooling.md`](tooling.md) |
-| TOOL-32 | P2 | M | open | A workflow's own shell has no case | [`tooling.md`](tooling.md) |
-| TOOL-33 | P2 | S | open | A Go case that passes only on Windows can reach `main`, because the Linux checks are run by hand | [`tooling.md`](tooling.md) |
+| TOOL-32 | P2 | M | done | A workflow's own shell has no case | [`tooling.md`](tooling.md) |
+| TOOL-33 | P2 | S | done | A Go case that passes only on Windows can reach `main`, because the Linux checks are run by hand | [`tooling.md`](tooling.md) |
 | TOOL-34 | P2 | S | done | A PowerShell runner that cannot run can still exit 1 | [`tooling.md`](tooling.md) |
 | TOOL-35 | P3 | S | done | The gate's own list says the analyzer covers `scripts/` alone | [`tooling.md`](tooling.md) |
 | TOOL-36 | P3 | S | done | A changelog stamp later than the clock passes the gate | [`tooling.md`](tooling.md) |
-| TOOL-37 | P3 | S | open | A nightly whose upload fails loses the whole prerelease | [`tooling.md`](tooling.md) |
+| TOOL-37 | P3 | S | done | A nightly whose upload fails loses the whole prerelease | [`tooling.md`](tooling.md) |
 | TOOL-38 | P3 | M | done | The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

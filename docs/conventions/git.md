@@ -184,6 +184,27 @@ rotated first and the rewrite does not un-publish it. See
   installs the current release on every run and gains lints with every version.
   Report the local toolchain version and warn when it is older, rather than
   failing: a stale toolchain is not a reason to stop working.
+- ⛔ **A push is proved on Linux before it leaves.** CI runs the Go tests and
+  ShellCheck on Linux, and this host is Windows. Cases green here and red there
+  have reached `main` three times. The tracked `.githooks/pre-push` runs
+  ShellCheck, CI's `go` job and every mutation row the push adds, in containers
+  through `wsl-toolkit`, over each pushed commit's tree. A failure refuses the
+  push. A pass files a proof keyed by the tree, so the next push of it is
+  immediate. A deleted ref, and a commit or tree the remote already holds, need
+  none.
+
+  `git-sync` commits and pushes in one call as before, and the push waits for
+  the jobs. To prove a commit ahead of its push:
+
+  ```powershell
+  pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof
+  ```
+
+  ⚠ The hook needs Go on PATH to build itself, and `wsl-toolkit` with a working
+  default base. Without either it exits 2, and git refuses the push.
+
+  ⚠ The hook does not replace CI. The doctor probe, the whole gate and the rows
+  already in the table run in CI alone.
 - ⚠ **A documentation-only push that skips CI must actually be
   documentation-only.** A "docs" push carrying a source file is exactly the one
   that needed the run. `.github/` is never safe to skip, because a workflow

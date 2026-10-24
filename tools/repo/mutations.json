@@ -2,6 +2,681 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "linux-proof: a job runs without git's repository variables",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tcmd.Env = JobEnv(os.Environ())\n",
+      "replace": "",
+      "run": "TestAJobGetsNoGitRepositoryVariable|TestANativeJobLeavesThePushedRepositoryAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: GIT_DIR is a repository variable a job does not get",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif slices.Contains(gitRepoVars, name) ||",
+      "replace": "\t\tif false && slices.Contains(gitRepoVars, name) ||",
+      "run": "TestAJobGetsNoGitRepositoryVariable",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job that exits 2 could not run",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\tif ee.ExitCode() == 2 {\n",
+      "replace": "\t\t\tif false {\n",
+      "run": "TestAJobThatCouldNotRunIsExitTwo",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job tool that cannot start could not run",
+      "file": "internal/linuxproof/run.go",
+      "find": "could not be started: %v. No proof was written for tree %s\\n\", j.Name, err, req.Tree)\n\t\t\t\treturn 2\n",
+      "replace": "could not be started: %v. No proof was written for tree %s\\n\", j.Name, err, req.Tree)\n\t\t\t\treturn 1\n",
+      "run": "TestAJobThatCouldNotRunIsExitTwo",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: the sign count reaches GITHUB_ENV",
+      "file": "internal/workflow/stage.go",
+      "find": "\t_, werr := fmt.Fprintln(f, line)\n",
+      "replace": "\t_, werr := fmt.Fprint(f, \"\")\n",
+      "run": "TestStageWritesTheSumsAndTheSignCountForTheLaterSteps",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: a failed build stops staging",
+      "file": "internal/workflow/stage.go",
+      "find": "\t\tif err := build(b, opts.Root, filepath.Join(dist, b.Name)); err != nil {\n",
+      "replace": "\t\tif err := build(b, opts.Root, filepath.Join(dist, b.Name)); err != nil && false {\n",
+      "run": "TestStageWritesTheSumsAndTheSignCountForTheLaterSteps",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: a herdr build that was not downloaded is named",
+      "file": "internal/workflow/stage.go",
+      "find": "\t\tif err := copyFile(filepath.Join(opts.HerdrFrom, name), filepath.Join(dist, name)); err != nil {\n",
+      "replace": "\t\tif err := copyFile(filepath.Join(opts.HerdrFrom, name), filepath.Join(dist, name)); err != nil && false {\n",
+      "run": "TestStageWritesTheSumsAndTheSignCountForTheLaterSteps",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: every build is trimmed",
+      "file": "internal/workflow/stage.go",
+      "find": "\"build\", \"-trimpath\", \"-o\", out, \".\"",
+      "replace": "\"build\", \"-o\", out, \".\"",
+      "run": "TestEveryBuildIsTrimmedAndCgoFree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: every build has cgo off",
+      "file": "internal/workflow/stage.go",
+      "find": ", \"CGO_ENABLED=0\"}",
+      "replace": "}",
+      "run": "TestEveryBuildIsTrimmedAndCgoFree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-readback: a release short of an asset exits 1",
+      "file": "main.go",
+      "find": "\t\tfmt.Fprintf(os.Stderr, \"release-readback: %v\\n\", err)\n\t\treturn 1\n",
+      "replace": "\t\tfmt.Fprintf(os.Stderr, \"release-readback: %v\\n\", err)\n\t\treturn 0\n",
+      "run": "TestReleaseReadbackAnswersByExitCode",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: --delete needs --repo",
+      "file": "main.go",
+      "find": "\tif *del && *ghRepo == \"\" {\n",
+      "replace": "\tif false {\n",
+      "run": "TestNightlyPruneDeletesOnlyWithARepository",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: one build record per build",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif len(records) != len(builds) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: BUILD-INFO.json is one of the staged assets",
+      "file": "internal/workflow/nightly.go",
+      "find": "\texpected := NightlyExpected()\n",
+      "replace": "\texpected := HerdrAssets(NightlyLabel)\n",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: the sign count reaches GITHUB_ENV",
+      "file": "internal/workflow/nightly.go",
+      "find": "\treturn appendEnv(opts.GitHubEnv, line)\n",
+      "replace": "\treturn nil\n",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: an empty tag is refused",
+      "file": "internal/workflow/nightly.go",
+      "find": "map[string]string{\"--tag\": opts.Tag, \"--commit\": opts.Commit, \"--run\": opts.Run}",
+      "replace": "map[string]string{\"--commit\": opts.Commit, \"--run\": opts.Run}",
+      "run": "TestTheNightlyStagesFourBuildsAndItsRecord",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: BUILD-INFO.json keeps every record value",
+      "file": "internal/workflow/nightly.go",
+      "find": "\t\t\tbuilds = append(builds, v)\n",
+      "replace": "\t\t\t_ = v\n",
+      "run": "TestBuildInfoKeepsTheShapeJqWrote",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-stage: BUILD-INFO.json escapes no HTML, as jq did",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tenc.SetEscapeHTML(false)\n",
+      "replace": "",
+      "run": "TestBuildInfoKeepsTheShapeJqWrote",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: the prerelease is created empty",
+      "file": "internal/workflow/nightly.go",
+      "find": "\"--title\", opts.Tag, \"--notes-file\", opts.NotesFile, \"--target\", opts.Target); err != nil {\n",
+      "replace": "\"--title\", opts.Tag, \"--notes-file\", opts.NotesFile, \"--target\", opts.Target, opts.Dist); err != nil {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: an existing prerelease is not created again",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif _, err := gh(\"release\", \"view\", opts.Tag, \"--repo\", opts.Repo); err != nil {\n",
+      "replace": "\tif _, err := gh(\"release\", \"view\", opts.Tag, \"--repo\", opts.Repo); err != nil || true {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: a failed upload stops the run",
+      "file": "internal/workflow/nightly.go",
+      "find": "\"--repo\", opts.Repo, \"--clobber\"); err != nil {\n",
+      "replace": "\"--repo\", opts.Repo, \"--clobber\"); err != nil && false {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: a short read-back fails the run",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif err := ReadBack(staged, names); err != nil {\n",
+      "replace": "\tif err := ReadBack(staged, names); err != nil && false {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: only a herdr-nightly- tag is published",
+      "file": "internal/workflow/nightly.go",
+      "find": "\tif !strings.HasPrefix(opts.Tag, NightlyPrefix) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-publish: --repo is required",
+      "file": "internal/workflow/nightly.go",
+      "find": "\"--tag\": opts.Tag, \"--repo\": opts.Repo, ",
+      "replace": "\"--tag\": opts.Tag, ",
+      "run": "TestTheNightlyIsCreatedEmptyThenUploadedAndReadBack",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a proof that never ran an added row does not cover it",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif !have[n] {\n",
+      "replace": "\t\tif false && !have[n] {\n",
+      "run": "TestAProofWithoutTheAddedRowsDoesNotCoverThem",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: rows are counted from the remote ref",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\t\t\tbase = u.RemoteSHA\n",
+      "replace": "",
+      "run": "TestAProofWithoutTheAddedRowsDoesNotCoverThem",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a new ref counts rows from the newest commit the remote holds",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\t\tbase = repo.Base(u.LocalSHA, remote)\n",
+      "replace": "",
+      "run": "TestAProofWithoutTheAddedRowsDoesNotCoverThem",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job checks its copy is the proved tree",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tb.WriteString(` && test \"$(git rev-parse 'HEAD^{tree}')\" = ` + ShellQuote(tree))\n",
+      "replace": "",
+      "run": "TestTheScriptChecksTheTreeItUnpacked|TestAProofIsFiledForTheTreeEveryJobPassedOn",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a tracked file git ignores is still in the copy",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "git init -q && git add -A -f\")",
+      "replace": "git init -q && git add -A\")",
+      "run": "TestTheScriptChecksTheTreeItUnpacked",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a container job installs its setup, a native one does not",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tif container && j.Setup != \"\" {\n",
+      "replace": "\tif j.Setup != \"\" {\n",
+      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a Linux host with no wsl-toolkit named proves natively",
+      "file": "internal/linuxproof/run.go",
+      "find": "\treturn tool == \"\" && goos != \"windows\"\n",
+      "replace": "\treturn false\n",
+      "run": "TestALinuxHostProvesNatively",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the copy is the archive of the commit proved",
+      "file": "internal/linuxproof/run.go",
+      "find": "req.Repo.Git(\"archive\", \"--format=tar\", \"-o\", tarPath, req.Commit)",
+      "replace": "req.Repo.Git(\"archive\", \"--format=tar\", \"-o\", tarPath, \"HEAD\")",
+      "run": "TestRevProvesTheNamedCommit",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the proof records the rows it ran",
+      "file": "internal/linuxproof/run.go",
+      "find": "Jobs: names, RowsSince: req.RowsSince, Rows: req.Rows}",
+      "replace": "Jobs: names, RowsSince: req.RowsSince}",
+      "run": "TestRowsSinceRunsTheRowsAddedSinceTheRef",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: rows are counted from what origin holds by default",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tsince = gitRepo{repo: repo, common: common}.Base(commit, remote)\n",
+      "replace": "",
+      "run": "TestRowsSinceRunsTheRowsAddedSinceTheRef",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a failed job refuses the push",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif code != 0 {\n\t\t\tfmt.Fprintf(errOut, \"pre-push: %s is refused, because",
+      "replace": "\t\tif code != 0 && false {\n\t\t\tfmt.Fprintf(errOut, \"pre-push: %s is refused, because",
+      "run": "TestThePushRunsTheJobsForAnUnprovedTree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: two refs on one tree are proved once",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif p, ok := g.Proof(n.Tree); ok && len(Unrun(p.Rows, n.Rows)) == 0 {\n",
+      "replace": "\t\tif p, ok := g.Proof(n.Tree); false && ok && len(Unrun(p.Rows, n.Rows)) == 0 {\n",
+      "run": "TestThePushRunsTheJobsForAnUnprovedTree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: an expected asset that was not staged is refused",
+      "file": "internal/workflow/stage.go",
+      "find": "\t\tif !have[e] {\n\t\t\tmissing = append(missing, e)\n\t\t}\n",
+      "replace": "",
+      "run": "TestStagingRefusesAShortSetAndAStrayFile",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: a staged file that is not a release asset is refused",
+      "file": "internal/workflow/stage.go",
+      "find": "\t\tif !want[p] {\n",
+      "replace": "\t\tif false && !want[p] {\n",
+      "run": "TestStagingRefusesAShortSetAndAStrayFile",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: SHA256SUMS digests the bytes in dist",
+      "file": "internal/workflow/stage.go",
+      "find": "Digest: hex.EncodeToString(h.Sum(nil))",
+      "replace": "Digest: hex.EncodeToString(sha256.New().Sum(nil))",
+      "run": "TestSHA256SUMSIsWrittenFromTheBytesThatAreThere",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: SHA256SUMS is written in name order",
+      "file": "internal/workflow/stage.go",
+      "find": "\tsort.Strings(sorted)\n\tvar out []Sum\n",
+      "replace": "\tvar out []Sum\n",
+      "run": "TestSHA256SUMSIsWrittenFromTheBytesThatAreThere",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: the sign count covers SHA256SUMS too",
+      "file": "internal/workflow/stage.go",
+      "find": "len(expected)+1)",
+      "replace": "len(expected))",
+      "run": "TestTheReleaseCarriesElevenAssetsUnderOneList",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: text-tool ships for both hosts",
+      "file": "internal/workflow/stage.go",
+      "find": "for _, goos := range []string{\"windows\", \"linux\"} {",
+      "replace": "for _, goos := range []string{\"windows\"} {",
+      "run": "TestTheReleaseCarriesElevenAssetsUnderOneList",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-stage: a directory in dist is not an asset",
+      "file": "internal/workflow/stage.go",
+      "find": "\t\tif e.Type().IsRegular() {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestFilesListsRegularFilesOnly",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-readback: a staged asset the release lacks is named",
+      "file": "internal/workflow/publish.go",
+      "find": "\t\tif !on[s] {\n",
+      "replace": "\t\tif false && !on[s] {\n",
+      "run": "TestTheReadBackNamesWhatTheReleaseLacks",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-readback: nothing staged is a failure, not a pass",
+      "file": "internal/workflow/publish.go",
+      "find": "\tif len(staged) == 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheReadBackNamesWhatTheReleaseLacks",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "release-readback: the BOM a PowerShell step writes is dropped",
+      "file": "internal/workflow/publish.go",
+      "find": "\t\t\tline = strings.TrimPrefix(line, bom)\n",
+      "replace": "\t\t\t_ = bom\n",
+      "run": "TestNamesAreReadAsAPowerShellStepWritesThem",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: newest by published_at, never created_at",
+      "file": "internal/workflow/publish.go",
+      "find": "\t\tif r.PublishedAt != \"\" {\n\t\t\tt, err := time.Parse(time.RFC3339, r.PublishedAt)\n",
+      "replace": "\t\tif r.CreatedAt != \"\" {\n\t\t\tt, err := time.Parse(time.RFC3339, r.CreatedAt)\n",
+      "run": "TestThePruneKeepsTheNewestByPublishedAt",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: the newest sort first",
+      "file": "internal/workflow/publish.go",
+      "find": "nightlies[i].at.After(nightlies[j].at)",
+      "replace": "nightlies[i].at.Before(nightlies[j].at)",
+      "run": "TestThePruneKeepsTheNewestByPublishedAt",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: the newest keep are kept",
+      "file": "internal/workflow/publish.go",
+      "find": "\tfor i := keep; i < len(nightlies); i++ {\n",
+      "replace": "\tfor i := keep - 1; i < len(nightlies); i++ {\n",
+      "run": "TestThePruneKeepsTheNewestByPublishedAt",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: keep below one is refused",
+      "file": "internal/workflow/publish.go",
+      "find": "\tif keep < 1 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestThePruneKeepsTheNewestByPublishedAt",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: only a prerelease is pruned",
+      "file": "internal/workflow/publish.go",
+      "find": "\t\tif !r.Prerelease || !strings.HasPrefix(r.Tag, NightlyPrefix) {\n",
+      "replace": "\t\tif !strings.HasPrefix(r.Tag, NightlyPrefix) {\n",
+      "run": "TestThePruneTouchesNightlyPrereleasesAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: only a herdr-nightly- tag is selected",
+      "file": "internal/workflow/publish.go",
+      "find": "\t\tif !r.Prerelease || !strings.HasPrefix(r.Tag, NightlyPrefix) {\n",
+      "replace": "\t\tif !r.Prerelease {\n",
+      "run": "TestThePruneTouchesNightlyPrereleasesAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: an unreadable published_at is refused",
+      "file": "internal/workflow/publish.go",
+      "find": "\t\t\tif err != nil {\n\t\t\t\treturn nil, fmt.Errorf(\"%s has published_at",
+      "replace": "\t\t\tif err != nil && false {\n\t\t\t\treturn nil, fmt.Errorf(\"%s has published_at",
+      "run": "TestThePruneTouchesNightlyPrereleasesAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: every tag is checked before any is deleted",
+      "file": "internal/workflow/publish.go",
+      "find": "\tfor _, tag := range tags {\n\t\tif err := Deletable(tag); err != nil {\n\t\t\treturn err\n\t\t}\n\t}\n",
+      "replace": "",
+      "run": "TestNothingButANightlyIsEverDeleted",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "nightly-prune: a tag without the herdr-nightly- prefix is refused",
+      "file": "internal/workflow/publish.go",
+      "find": "\tif !strings.HasPrefix(tag, NightlyPrefix) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestNothingButANightlyIsEverDeleted",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a proof key is a full object name by length",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tif len(name) != 40 && len(name) != 64 {\n",
+      "replace": "\tif len(name) == 0 {\n",
+      "run": "TestAProofIsKeyedByAFullTreeName",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a proof key holds lower-case hex alone",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif (c < '0' || c > '9') && (c < 'a' || c > 'f') {\n",
+      "replace": "\t\tif false && ((c < '0' || c > '9') && (c < 'a' || c > 'f')) {\n",
+      "run": "TestAProofIsKeyedByAFullTreeName",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a name that is not a tree keys no proof path",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tif !ValidObject(tree) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAProofIsKeyedByAFullTreeName",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a proof names the tree it is filed under",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\treturn p, p.Schema == Schema && p.Tree == tree\n",
+      "replace": "\treturn p, p.Schema == Schema\n",
+      "run": "TestAProofIsFoundForItsOwnTreeAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a file with no proof schema is not a proof",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\treturn p, p.Schema == Schema && p.Tree == tree\n",
+      "replace": "\treturn p, p.Tree == tree\n",
+      "run": "TestAProofIsFoundForItsOwnTreeAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a row held unchanged is not proved again",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tb, _ := json.Marshal(r)\n\t\tseen[string(b)] = true\n",
+      "replace": "\t\tlabel, _ := r[\"label\"].(string)\n\t\tseen[label] = true\n",
+      "run": "TestAddedRowsAreNewOrChangedRows",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: an added row with no label is refused",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif label == \"\" {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAddedRowsAreNewOrChangedRows",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: each row label is one sh word",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "strings.ReplaceAll(s, \"'\", `'\\''`)",
+      "replace": "s",
+      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the added rows get a mutations job",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tif len(rows) > 0 {\n\t\tvar parts []string\n",
+      "replace": "\tif false {\n\t\tvar parts []string\n",
+      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a deleted ref needs no proof",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif Zero(u.LocalSHA) {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestTheHookLetsADeletedRefGo",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a tree git cannot name is refused",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif !ok {\n\t\t\trefusals = append(refusals, Refusal{Ref: u.RemoteRef, Reason: \"git cannot name",
+      "replace": "\t\tif false && !ok {\n\t\t\trefusals = append(refusals, Refusal{Ref: u.RemoteRef, Reason: \"git cannot name",
+      "run": "TestTheHookRefusesATreeGitCannotName",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a commit the remote holds needs no proof",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif repo.OnRemote(u.LocalSHA, remote) {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "",
+      "run": "TestTheHookLetsATreeTheRemoteHoldsGo",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a tree the remote ref already carries needs no proof",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\t\t\tif was == tree {\n",
+      "replace": "\t\t\t\tif was == tree && false {\n",
+      "run": "TestTheHookLetsATreeTheRemoteHoldsGo",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a proved tree may go",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif p, ok := repo.Proof(tree); ok && len(Unrun(p.Rows, rows)) == 0 {\n",
+      "replace": "\t\tif p, ok := repo.Proof(tree); false && ok && len(Unrun(p.Rows, rows)) == 0 {\n",
+      "run": "TestTheHookProvesAnUnprovedTree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: a line that is not four fields is refused",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\t\treturn nil, fmt.Errorf(\"git handed the hook %q, which is not four fields\", line)\n",
+      "replace": "\t\t\tcontinue\n",
+      "run": "TestTheHookRefusesInputItCannotRead",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "pre-push: the checkout's tracked refs say what the remote holds",
+      "file": "internal/linuxproof/run.go",
+      "find": "\treturn err == nil && strings.TrimSpace(out) == \"\"\n",
+      "replace": "\treturn err == nil && strings.TrimSpace(out) == \"\" && false\n",
+      "run": "TestThePushRunsTheJobsForAnUnprovedTree",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a failed job files no proof",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\treturn 1\n\t\t}\n\t\tnames = append(names, j.Name)\n",
+      "replace": "\t\t}\n\t\tnames = append(names, j.Name)\n",
+      "run": "TestAFailedJobFilesNoProof",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: --rows-since reads the table at the ref",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tbefore, err := repo.Git(\"show\", base+\":\"+TableRel)\n",
+      "replace": "\tbefore, err := repo.Git(\"show\", rev+\":\"+TableRel)\n",
+      "run": "TestRowsSinceRunsTheRowsAddedSinceTheRef",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the proof is filed in git's common directory",
+      "file": "internal/linuxproof/run.go",
+      "find": "\"rev-parse\", \"--git-common-dir\"",
+      "replace": "\"rev-parse\", \"--absolute-git-dir\"",
+      "run": "TestAProofMadeInAWorktreeServesTheMainCheckout",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "hooks: the pre-push hook is tracked",
+      "file": "internal/checks/hooks.go",
+      "find": "\tcase !t.Tracked(push):\n\t\tr.bad(\"%s is not tracked, so a push carries no proof that CI's Linux jobs pass on its tree\", push)\n",
+      "replace": "",
+      "run": "TestHooksRefusesATreeWithNoPrePushHook",
+      "module": "tools/check",
+      "args": []
+    },
+    {
+      "label": "hooks: the pre-push hook hands git's arguments to repo pre-push",
+      "file": "internal/checks/hooks.go",
+      "find": "\tcase !strings.Contains(string(t.Read(push)), \"pre-push \\\"$@\\\"\"):\n",
+      "replace": "\tcase false:\n",
+      "run": "TestHooksRefusesATreeWithNoPrePushHook",
+      "module": "tools/check",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a prefixed instance name that becomes auto is refused",
       "file": "internal/toolkit/instance.go",
       "find": "\t\tif rest == InstanceAuto {\n",

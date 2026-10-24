@@ -111,78 +111,36 @@ jobs:
         shell: bash
         run: sh scripts/common/check-go.sh
 
+      # ⭐ THE DECISIONS THIS JOB MAKES ARE IN tools/repo, with cases and mutation
+      # rows: staging, its count and SHA256SUMS, and the read-back after the
+      # upload. A `run:` block has neither, and a defect in one shipped. TOOL-32.
+      - name: build this repository's tool box
+        shell: pwsh
+        run: |
+          Push-Location tools\repo
+          & go build -o "$env:RUNNER_TEMP\repo.exe" .
+          if ($LASTEXITCODE -ne 0) { Write-Output 'tools/repo did not build'; exit 1 }
+          Pop-Location
+
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: herdr-build-${{ needs.herdr-stable-ref.outputs.label }}-*
           path: herdr-artifacts
           merge-multiple: true
 
-      # ⭐ THE DIGESTS ARE COMPUTED OVER THE BYTES THAT ARE UPLOADED, in this
-      # checkout, so a consumer verifying a download against SHA256SUMS is
-      # checking the same object. A digest computed anywhere else would be a
-      # digest of a different line ending.
-      #
-      # ⛔ -trimpath, AND NO BUILD STAMP. Two builds of one commit produce
-      # identical bytes, so a consumer can rebuild and compare rather than
-      # trusting the publisher. A path or a timestamp compiled in would make
-      # every build unique and that property unavailable.
+      # ⭐ `repo release-stage` BUILDS, STAGES AND COUNTS, and
+      # tools/repo/internal/workflow/stage.go carries each reason beside the
+      # code that holds it: one list both builds and asserts the assets,
+      # -trimpath with no build stamp, every expected asset staged and no
+      # other, SHA256SUMS digested over the bytes in dist, and the SIGN_COUNT
+      # the later steps assert written to GITHUB_ENV from that same list.
       - name: stage the assets and write SHA256SUMS
         shell: pwsh
         env:
           HERDR_LABEL: ${{ needs.herdr-stable-ref.outputs.label }}
         run: |
-          New-Item -ItemType Directory -Path dist -Force | Out-Null
-          Push-Location tools\windows\wsl-toolkit
-          foreach ($arch in @('amd64', 'arm64')) {
-            $env:GOOS = 'windows'; $env:GOARCH = $arch; $env:CGO_ENABLED = '0'
-            $out = "..\..\..\dist\wsl-toolkit-windows-$arch.exe"
-            & go build -trimpath -o $out .
-            if ($LASTEXITCODE -ne 0) { Write-Output "the $arch build failed"; exit 1 }
-          }
-          Pop-Location
-          # ⭐ text-tool SHIPS FOR BOTH HOSTS, because the agent that needs it
-          # runs on Windows and inside the base, and a tool that writes files
-          # without a shell in the path is no use only on one of them. Pure Go,
-          # CGO off, so the cross builds need nothing installed.
-          Push-Location tools\text-tool
-          $textTool = @()
-          foreach ($os in @('windows', 'linux')) {
-            foreach ($arch in @('amd64', 'arm64')) {
-              $env:GOOS = $os; $env:GOARCH = $arch; $env:CGO_ENABLED = '0'
-              $name = if ($os -eq 'windows') { "text-tool-$os-$arch.exe" } else { "text-tool-$os-$arch" }
-              & go build -trimpath -o "..\..\dist\$name" .
-              if ($LASTEXITCODE -ne 0) { Write-Output "the text-tool $os/$arch build failed"; exit 1 }
-              $textTool += $name
-            }
-          }
-          Pop-Location
-          $herdr = @('windows-x86_64.zip', 'windows-aarch64.zip', 'linux-x86_64', 'linux-aarch64') | ForEach-Object { "$env:HERDR_LABEL-$_" }
-          foreach ($name in $herdr) {
-            $built = Join-Path 'herdr-artifacts\out' $name
-            if (-not (Test-Path -LiteralPath $built)) { Write-Output "$built was not built"; exit 1 }
-            Copy-Item -LiteralPath $built -Destination (Join-Path 'dist' $name)
-          }
-          # ⛔ THE COUNT IS ASSERTED. A staging step that produced fewer assets
-          # than expected and exited 0 would publish a release missing the thing
-          # a consumer came for, and the release would look complete.
-          $expected = @('wsl-toolkit-windows-amd64.exe', 'wsl-toolkit-windows-arm64.exe') + $herdr + $textTool
-          foreach ($name in $expected) {
-            if (-not (Test-Path -LiteralPath "dist\$name")) { Write-Output "dist\$name was not staged"; exit 1 }
-          }
-          $lines = @()
-          foreach ($f in (Get-ChildItem dist -File | Sort-Object Name)) {
-            $h = (Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-            $lines += ($h + '  ' + $f.Name)
-            Write-Output ($h + '  ' + $f.Name + '  (' + $f.Length + ' bytes)')
-          }
-          if ($lines.Count -ne $expected.Count) { Write-Output "staged $($lines.Count) assets and expected $($expected.Count)"; exit 1 }
-          [IO.File]::WriteAllText('dist\SHA256SUMS', (($lines -join "`n") + "`n"), (New-Object Text.UTF8Encoding $false))
-          # ⛔ THE COUNT THE LATER STEPS ASSERT COMES FROM HERE, and it used to be
-          # typed into each of them. Adding text-tool moved it from 7 to 11 and
-          # the staging list was updated while two literal 7s were not, so the
-          # release failed at signing having built every asset correctly. One
-          # home: the list above, plus the SHA256SUMS this line just wrote.
-          "SIGN_COUNT=$($expected.Count + 1)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          & "$env:RUNNER_TEMP\repo.exe" release-stage --dist dist --herdr-label $env:HERDR_LABEL --herdr-from herdr-artifacts/out --github-env $env:GITHUB_ENV
+          if ($LASTEXITCODE -ne 0) { Write-Output "staging exited $LASTEXITCODE"; exit 1 }
 
       # ⛔ THE PUBLISHED BINARY IS RUN BEFORE IT IS PUBLISHED, and it is asked
       # the one question whose answer proves it carries the tag's version.
@@ -338,15 +296,14 @@ jobs:
           }
           # ⛔ READ BACK WHAT IS ACTUALLY ON THE RELEASE. Every step above can
           # report success and still leave a release short, which is the whole
-          # class this workflow keeps meeting; the count staging asserted is the
-          # number that has to be there.
+          # class this workflow keeps meeting. `repo release-readback` names
+          # each staged asset the release lacks, and refuses an empty dist.
           $onRelease = @(gh release view $tag --json assets --jq '.assets[].name')
           if ($LASTEXITCODE -ne 0) { Write-Output "could not read back $tag"; exit 1 }
-          $missing = @($files | Where-Object { $onRelease -notcontains $_.Name } | ForEach-Object { $_.Name })
-          if ($missing.Count -gt 0) {
-            Write-Output "the release is missing $($missing.Count) asset(s): $($missing -join ', ')"
-            exit 1
-          }
+          $reported = Join-Path $env:RUNNER_TEMP 'on-release.txt'
+          [IO.File]::WriteAllLines($reported, [string[]]$onRelease)
+          & "$env:RUNNER_TEMP\repo.exe" release-readback --dist dist --reported $reported
+          if ($LASTEXITCODE -ne 0) { Write-Output "the read-back of $tag exited $LASTEXITCODE"; exit 1 }
           Write-Output "published $tag with $($onRelease.Count) asset(s)"
 
   # ⛔ THE PUBLISH IS NOT THE LAST WORD. Everything above runs against the tree

@@ -3248,7 +3248,7 @@ the reason not to type a number rather than a new number to type.
 ## TOOL-32. A workflow's own shell has no case
 
 **Source** the old record's finding 33, and its review findings of 2026-09-17
-**Category** tooling, **Priority** P2, **Effort** M, **Status** open
+**Category** tooling, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -3283,13 +3283,15 @@ Exit 0, with each new row red.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f7-tooling`, for the next release.** The release and nightly shell moved to Go with cases: `release-stage` takes its compiler as a parameter so its staging, `SHA256SUMS` and `GITHUB_ENV` line have a case, and every build is trimmed and CGO-free. The nightly's typed counts moved to `repo nightly-stage`, which writes `BUILD-INFO.json` in jq's shape and `SIGN_COUNT`; the sign step checks it. Built, reviewed twice, repaired once; its rows red on Windows and in golang:1.25; gate 24 of 24 on the merge.
+
+⚠ No workflow has run on a GitHub runner yet: the first real runs are the next release and the next herdr nightly.
 
 
 ## TOOL-33. A Go case that passes only on Windows can reach `main`, because the Linux checks are run by hand
 
 **Source** the old record's finding 42, met twice, and again on 2026-10-21
-**Category** tooling, **Priority** P2, **Effort** S, **Status** open
+**Category** tooling, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -3324,7 +3326,9 @@ The hook runs both containers and its exit decides the push.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f7-tooling`, for the next release.** The pre-push hook runs CI's Linux jobs itself for a tree with no proof: ShellCheck in `ubuntu:24.04`, `check-go.sh` in `golang:1.25`, then every mutation row the push adds. A failure refuses the push; a pass files a proof keyed by the tree, so the next push of that tree is immediate. Each job checks a `git archive` of the commit and compares the copy's tree with the proved one. A Linux host proves natively. Driven with `git push --dry-run` against a throwaway bare remote: a passing tree, a cached tree and a ShellCheck failure.
+
+⚠ Not additive for a developer: every push of a new tree runs the containers, about 94 seconds, and needs Go, `wsl-toolkit` and a working default base. Without them the push exits 2.
 
 
 ## TOOL-34. A PowerShell runner that cannot run can still exit 1
@@ -3475,7 +3479,7 @@ repo mutate --only 'changelog: '                                                
 ## TOOL-37. A nightly whose upload fails loses the whole prerelease
 
 **Source** the old record's finding 103
-**Category** tooling, **Priority** P3, **Effort** S, **Status** open
+**Category** tooling, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -3509,7 +3513,9 @@ Exit 0, and the next nightly's run green.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f7-tooling`, for the next release.** The nightly's publish step is `repo nightly-publish`, with a fake-gh case and six rows: the create carries no asset, an existing prerelease is not created again, a failed upload stops the run, a short read-back fails it, only a `herdr-nightly-` tag is published, and `--repo` is required. `herdr-nightly.yml` calls it.
+
+⚠ The entry's Prove asks for the next nightly run green, which this host cannot run.
 
 ## TOOL-38. The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag
 

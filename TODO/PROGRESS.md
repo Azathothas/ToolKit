@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
-entries         total 249  open 60  blocked 5  done 184
+entries         total 249  open 57  blocked 5  done 187
 this session    ruling 31
 ```
 
@@ -106,7 +106,7 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    `WSL-160`, `WSL-162`, `WSL-163`, `WSL-164` (F6b); and here `WSL-132`, `WSL-142`,
    `WSL-145` and `WSL-148`.
 6. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-37` and `TOOL-38`, and `text-tool`'s
-   `WSL-165`.
+   `WSL-165`. **Closed:** all five done; the last three merged from `rb/f7-tooling`.
 7. **The skills**, `DOC-14`, reviewed against what the tool does once the builders are
    merged, and installed.
 8. **`wsl-toolkit-v7.1.0`**: every branch merged and gated, CI's Linux jobs in

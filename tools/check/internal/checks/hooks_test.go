@@ -5,7 +5,9 @@
 package checks
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -44,6 +46,49 @@ func TestSameHookPathRefusesSomebodyElsesHooks(t *testing.T) {
 		if sameHookPath(root, b) {
 			t.Errorf("sameHookPath accepted %q, which is not the tracked hooks directory", b)
 		}
+	}
+}
+
+// TestHooksRefusesATreeWithNoPrePushHook. ⛔ The pre-push hook is the one place
+// a push is refused for a tree CI's Linux jobs never ran on, and one that does
+// not call `repo pre-push` holds its own copy of that rule.
+func TestHooksRefusesATreeWithNoPrePushHook(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(HooksDir+"/commit-msg", "\"$BIN\" commit-msg \"$1\"\n")
+	mentions := func(got Result, word string) bool {
+		for _, d := range got.Detail {
+			if strings.Contains(d, word) {
+				return true
+			}
+		}
+		return false
+	}
+
+	missing := Hooks(&Tree{Root: root, Files: []string{HooksDir + "/commit-msg"}, cache: map[string][]byte{}})
+	if !mentions(missing, "pre-push is not tracked") {
+		t.Fatalf("a tree with no pre-push hook was not refused for it: %v", missing.Detail)
+	}
+
+	write(HooksDir+"/pre-push", "#!/bin/sh\nexit 0\n")
+	own := Hooks(&Tree{Root: root, Files: []string{HooksDir + "/commit-msg", HooksDir + "/pre-push"}, cache: map[string][]byte{}})
+	if !mentions(own, "repo pre-push") {
+		t.Fatalf("a pre-push hook deciding by itself was not refused: %v", own.Detail)
+	}
+
+	write(HooksDir+"/pre-push", "exec \"$BIN\" pre-push \"$@\"\n")
+	good := Hooks(&Tree{Root: root, Files: []string{HooksDir + "/commit-msg", HooksDir + "/pre-push"}, cache: map[string][]byte{}})
+	if mentions(good, "pre-push") {
+		t.Fatalf("a pre-push hook that calls repo pre-push was refused: %v", good.Detail)
 	}
 }
 

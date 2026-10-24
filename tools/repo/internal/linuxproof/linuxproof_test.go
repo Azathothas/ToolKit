@@ -1,0 +1,351 @@
+// SPDX-License-Identifier: 0BSD
+
+package linuxproof
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+var (
+	treeA = strings.Repeat("a", 40)
+	treeB = strings.Repeat("b", 40)
+	zero  = strings.Repeat("0", 40)
+)
+
+// TestAProofIsKeyedByAFullTreeName. ⛔ The key becomes a file name, so a name
+// that is not a full object name is refused before it is joined to a path.
+func TestAProofIsKeyedByAFullTreeName(t *testing.T) {
+	common := t.TempDir()
+	path, err := ProofPath(common, treeA)
+	if err != nil || path != filepath.Join(common, ProofDirName, treeA+".json") {
+		t.Fatalf("ProofPath = %q, %v", path, err)
+	}
+	if _, err := ProofPath(common, strings.Repeat("c", 64)); err != nil {
+		t.Fatalf("a SHA-256 tree name was refused: %v", err)
+	}
+	for _, bad := range []string{"", "HEAD", "../" + treeA[:37], strings.ToUpper(treeA), treeA[:39], treeA + "a"} {
+		if _, err := ProofPath(common, bad); err == nil {
+			t.Errorf("ProofPath accepted %q as a tree", bad)
+		}
+	}
+}
+
+// TestAProofIsFoundForItsOwnTreeAlone. ⛔ A proof copied under another tree's
+// name names the tree it was made for, and that is not this one.
+func TestAProofIsFoundForItsOwnTreeAlone(t *testing.T) {
+	common := t.TempDir()
+	if Has(common, treeA) {
+		t.Fatal("a tree with no proof file was reported proved")
+	}
+	path, err := Write(common, Proof{Tree: treeA, Commit: treeB, Jobs: []string{"go", "shellcheck"}, Rows: []string{"r"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := Load(common, treeA); !ok || strings.Join(p.Rows, ",") != "r" {
+		t.Fatalf("the tree just proved was not found with its rows: %+v, %v", p, ok)
+	}
+	if Has(common, treeB) {
+		t.Fatal("a different tree was reported proved")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged, err := ProofPath(common, treeB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(forged, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if Has(common, treeB) {
+		t.Fatal("tree A's proof, copied under tree B's name, proved tree B")
+	}
+	if err := os.WriteFile(forged, []byte(`{"tree":"`+treeB+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if Has(common, treeB) {
+		t.Fatal("a file with no proof schema was taken for a proof")
+	}
+}
+
+type fakeRepo struct {
+	trees    map[string]string
+	onRemote map[string]bool
+	proofs   map[string]Proof
+	base     map[string]string
+	rows     map[string][]string
+}
+
+func (f fakeRepo) Tree(rev string) (string, bool) { t, ok := f.trees[rev]; return t, ok }
+func (f fakeRepo) OnRemote(rev, remote string) bool {
+	return remote == "origin" && f.onRemote[rev]
+}
+func (f fakeRepo) Base(rev, remote string) string {
+	if remote != "origin" {
+		return ""
+	}
+	return f.base[rev]
+}
+func (f fakeRepo) AddedRows(base, rev string) ([]string, error) { return f.rows[base+".."+rev], nil }
+func (f fakeRepo) Proof(tree string) (Proof, bool) {
+	p, ok := f.proofs[tree]
+	return p, ok
+}
+
+func refs(ns []Need) string {
+	var out []string
+	for _, n := range ns {
+		out = append(out, n.Ref)
+	}
+	return strings.Join(out, ",")
+}
+
+// TestTheHookProvesAnUnprovedTree and lets a proved one go.
+func TestTheHookProvesAnUnprovedTree(t *testing.T) {
+	c1, c2 := strings.Repeat("1", 40), strings.Repeat("2", 40)
+	repo := fakeRepo{trees: map[string]string{c1: treeA, c2: treeB}, proofs: map[string]Proof{treeA: {Tree: treeA}}}
+	needs, refused := Decide([]Update{
+		{"refs/heads/a", c1, "refs/heads/a", zero},
+		{"refs/heads/b", c2, "refs/heads/b", zero},
+	}, "origin", repo)
+	if len(refused) != 0 || refs(needs) != "refs/heads/b" || needs[0].Tree != treeB || needs[0].Commit != c2 {
+		t.Fatalf("Decide = %+v, %+v; want refs/heads/b to prove for tree B alone", needs, refused)
+	}
+}
+
+// TestAProofWithoutTheAddedRowsDoesNotCoverThem. ⛔ A row the push adds is
+// proved on Linux like a case, and the rows are counted from the remote ref,
+// or for a new ref from the newest commit the remote holds.
+func TestAProofWithoutTheAddedRowsDoesNotCoverThem(t *testing.T) {
+	c1, was, base := strings.Repeat("1", 40), strings.Repeat("5", 40), strings.Repeat("6", 40)
+	repo := fakeRepo{
+		trees:  map[string]string{c1: treeA, was: treeB},
+		proofs: map[string]Proof{treeA: {Tree: treeA, Rows: []string{"old"}}},
+		base:   map[string]string{c1: base},
+		rows:   map[string][]string{was + ".." + c1: {"old", "new"}, base + ".." + c1: {"old"}},
+	}
+	needs, _ := Decide([]Update{
+		{"refs/heads/m", c1, "refs/heads/m", was},
+	}, "origin", repo)
+	if len(needs) != 1 || strings.Join(needs[0].Rows, ",") != "old,new" || needs[0].Base != was {
+		t.Fatalf("a push adding a row the proof never ran: %+v", needs)
+	}
+	needs, _ = Decide([]Update{
+		{"refs/heads/n", c1, "refs/heads/n", zero},
+	}, "origin", repo)
+	if len(needs) != 0 {
+		t.Fatalf("a new ref whose added rows the proof ran: %+v", needs)
+	}
+	repo.rows[base+".."+c1] = []string{"new"}
+	needs, _ = Decide([]Update{
+		{"refs/heads/n", c1, "refs/heads/n", zero},
+	}, "origin", repo)
+	if len(needs) != 1 || needs[0].Base != base || strings.Join(needs[0].Rows, ",") != "new" {
+		t.Fatalf("a new ref counted from the remote's newest commit: %+v", needs)
+	}
+	if got := Unrun([]string{"a", "b"}, []string{"b", "c"}); strings.Join(got, ",") != "c" {
+		t.Fatalf("Unrun = %v", got)
+	}
+}
+
+// TestTheHookLetsADeletedRefGo. A deletion pushes no tree to prove.
+func TestTheHookLetsADeletedRefGo(t *testing.T) {
+	c1 := strings.Repeat("1", 40)
+	needs, refused := Decide([]Update{
+		{"(delete)", zero, "refs/heads/gone", c1},
+	}, "origin", fakeRepo{})
+	if len(needs)+len(refused) != 0 {
+		t.Fatalf("a deleted ref was not let go: %+v %+v", needs, refused)
+	}
+}
+
+// TestTheHookLetsATreeTheRemoteHoldsGo: a tag on a commit the remote already
+// has, and an amended commit whose tree the remote ref already carries.
+func TestTheHookLetsATreeTheRemoteHoldsGo(t *testing.T) {
+	tag, amended, was := strings.Repeat("3", 40), strings.Repeat("4", 40), strings.Repeat("5", 40)
+	repo := fakeRepo{
+		trees:    map[string]string{tag: treeA, amended: treeB, was: treeB},
+		onRemote: map[string]bool{tag: true},
+	}
+	if got, _ := Decide([]Update{
+		{"refs/tags/v1", tag, "refs/tags/v1", zero},
+	}, "origin", repo); len(got) != 0 {
+		t.Fatalf("a tag on a commit the remote holds needs a proof: %+v", got)
+	}
+	if got, _ := Decide([]Update{
+		{"refs/heads/m", amended, "refs/heads/m", was},
+	}, "origin", repo); len(got) != 0 {
+		t.Fatalf("an amended commit with the remote ref's own tree needs a proof: %+v", got)
+	}
+	// ⛔ The same tag pushed to a remote this checkout does not track is new
+	// there, and needs its proof.
+	if got, _ := Decide([]Update{
+		{"refs/tags/v1", tag, "refs/tags/v1", zero},
+	}, "elsewhere", repo); len(got) != 1 {
+		t.Fatalf("a tag new to another remote went unproved: %+v", got)
+	}
+}
+
+// TestTheHookRefusesATreeGitCannotName rather than waving it through.
+func TestTheHookRefusesATreeGitCannotName(t *testing.T) {
+	c1 := strings.Repeat("1", 40)
+	_, got := Decide([]Update{
+		{"refs/heads/x", c1, "refs/heads/x", zero},
+	}, "origin", fakeRepo{proofs: map[string]Proof{"": {}}})
+	if len(got) != 1 || !strings.Contains(got[0].Reason, "cannot name") {
+		t.Fatalf("an unnamed tree was accepted: %+v", got)
+	}
+}
+
+// TestTheHookRefusesInputItCannotRead. ⛔ A skipped line is an unproved ref.
+func TestTheHookRefusesInputItCannotRead(t *testing.T) {
+	c1 := strings.Repeat("1", 40)
+	got, err := ParseUpdates(strings.NewReader("refs/heads/a " + c1 + " refs/heads/a " + zero + "\n\n"))
+	if err != nil || len(got) != 1 || got[0].LocalSHA != c1 || got[0].RemoteSHA != zero {
+		t.Fatalf("ParseUpdates = %+v, %v", got, err)
+	}
+	if _, err := ParseUpdates(strings.NewReader("refs/heads/a " + c1 + "\n")); err == nil {
+		t.Fatal("a two-field line was skipped rather than refused")
+	}
+	if !Zero(zero) || !Zero(strings.Repeat("0", 64)) || Zero(c1) || Zero("") {
+		t.Fatal("Zero does not answer git's all-zeros name alone")
+	}
+}
+
+// TestAddedRowsAreNewOrChangedRows. ⛔ An edited row is a new claim.
+func TestAddedRowsAreNewOrChangedRows(t *testing.T) {
+	before := []byte(`{"schema":"repo-mutations/1","mutations":[
+		{"label":"kept","find":"x","replace":""},
+		{"label":"edited","find":"y","replace":""},
+		{"label":"removed","find":"z","replace":""}]}`)
+	after := []byte(`{"schema":"repo-mutations/1","mutations":[
+		{"label":"new one","find":"w","replace":""},
+		{"replace":"","find":"x","label":"kept"},
+		{"label":"edited","find":"y2","replace":""}]}`)
+	got, err := AddedRows(before, after)
+	if err != nil || strings.Join(got, "|") != "new one|edited" {
+		t.Fatalf("AddedRows = %q, %v; want the new row and the edited one", got, err)
+	}
+	all, err := AddedRows(nil, after)
+	if err != nil || len(all) != 3 {
+		t.Fatalf("a table absent before: %q, %v; want every row", all, err)
+	}
+	if _, err := AddedRows(nil, []byte(`{"mutations":[{"find":"x"}]}`)); err == nil {
+		t.Fatal("a row with no label was accepted, and it could not be selected")
+	}
+}
+
+// TestTheJobsAreCIsLinuxJobsWithTheAddedRows, each label one sh word however
+// it is spelt.
+func TestTheJobsAreCIsLinuxJobsWithTheAddedRows(t *testing.T) {
+	if got := Jobs(nil); len(got) != 2 || got[0].Name != "shellcheck" || got[1].Name != "go" {
+		t.Fatalf("Jobs(nil) = %+v; want the shellcheck and go jobs", got)
+	}
+	jobs := Jobs([]string{"a project's row", "plain"})
+	if len(jobs) != 3 || jobs[2].Image != "docker.io/library/golang:1.25" {
+		t.Fatalf("Jobs(rows) = %+v; want a mutations job in golang:1.25", jobs)
+	}
+	if !strings.Contains(jobs[2].Body, `mutate --only 'a project'\''s row' && sh scripts/common/repo.sh mutate --only 'plain'`) {
+		t.Fatalf("the mutations script does not select each row as one word: %s", jobs[2].Body)
+	}
+	if strings.Contains(jobs[1].Body, "mutate") || !strings.Contains(jobs[1].Body, "check-go.sh") {
+		t.Fatalf("the go job is not CI's go job: %s", jobs[1].Body)
+	}
+	ws := filepath.Join("C:", "x", ".tmp", "linux-proof-1")
+	args := RunArgs(jobs[0], ws, treeA)
+	joined := strings.Join(args, " ")
+	for _, want := range []string{"--container-lifecycle ephemeral", "--workspace " + ws, "--image docker.io/library/ubuntu:24.04"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("RunArgs lacks %q: %s", want, joined)
+		}
+	}
+	script := args[len(args)-1]
+	if !strings.HasPrefix(script, jobs[0].Setup+" && ") || !strings.Contains(script, ContainerTar) {
+		t.Errorf("the container script does not install and unpack first: %s", script)
+	}
+	if native := Script(jobs[0], "/t/tree.tar", "/t/src", treeA, false); strings.Contains(native, "apt-get") {
+		t.Errorf("a native script installs packages on the host: %s", native)
+	}
+	if sh, err := exec.LookPath("sh"); err == nil {
+		out, err := exec.Command(sh, "-c", "printf %s "+ShellQuote(`it's "x" $HOME`)).Output()
+		if err != nil || string(out) != `it's "x" $HOME` {
+			t.Fatalf("ShellQuote did not survive sh: %q, %v", out, err)
+		}
+	}
+}
+
+// TestALinuxHostProvesNatively and Windows always through wsl-toolkit.
+func TestALinuxHostProvesNatively(t *testing.T) {
+	if !Native("linux", "") || Native("windows", "") || Native("linux", "/x/wsl-toolkit") {
+		t.Fatal("Native does not answer a Linux host with no wsl-toolkit named, alone")
+	}
+}
+
+// TestTheScriptChecksTheTreeItUnpacked runs Script with sh over a real
+// archive. ⛔ A copy whose tree is not the one the proof is filed under fails
+// before the check runs, so it cannot file a proof of a different tree.
+func TestTheScriptChecksTheTreeItUnpacked(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the script runs on Linux alone, and git on Windows records no executable bit from the unpacked files")
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh on PATH")
+	}
+	for _, tool := range []string{"git", "tar"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("no %s on PATH", tool)
+		}
+	}
+	root := t.TempDir()
+	work := filepath.Join(root, "work")
+	gitIn(t, root, "init", "-q", work)
+	if err := os.WriteFile(filepath.Join(work, "run.sh"), []byte("echo hi\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, ".gitignore"), []byte("ignored\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "ignored"), []byte("tracked anyway\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, work, "add", "-A")
+	gitIn(t, work, "add", "-f", "ignored")
+	gitIn(t, work, "update-index", "--chmod=+x", "run.sh")
+	gitIn(t, work, "commit", "-q", "-m", "one")
+	tree := gitIn(t, work, "rev-parse", "HEAD^{tree}")
+	tarPath := filepath.Join(root, TarName)
+	gitIn(t, work, "archive", "--format=tar", "-o", tarPath, "HEAD")
+	run := func(src, want string) (string, error) {
+		job := Job{Name: "t", Body: "echo checked"}
+		// ⚠ Relative paths, because GNU tar on Windows reads `C:` as a host.
+		cmd := exec.Command(sh, "-c", Script(job, TarName, src, want, false))
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	if out, err := run("src-good", tree); err != nil || !strings.Contains(out, "checked") {
+		t.Fatalf("the archive of the tree did not unpack to that tree: %v\n%s", err, out)
+	}
+	if out, err := run("src-bad", treeA); err == nil || strings.Contains(out, "checked") {
+		t.Fatalf("a copy checked against another tree ran the check: %v\n%s", err, out)
+	}
+}
+
+func gitIn(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@invalid", "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "core.hooksPath=/dev/null", "-c", "core.autocrlf=false"}, args...)...)
+	var out, errBuf bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errBuf
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, errBuf.String())
+	}
+	return strings.TrimSpace(out.String())
+}
