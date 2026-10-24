@@ -124,7 +124,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		case "ensure", "recreate":
 			st, err := c.BaseEnsureWith(ctx, sub == "recreate", flags.repair)
 			if err != nil {
-				return exitCannot, err
+				return exitCannot, presetSwitchFailed(err, switched, flags.save, cfg)
 			}
 			return verdictFor(st), renderBase(st, flags.asJSON, true)
 		default:
@@ -160,7 +160,7 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	case "recreate":
 		st, err := base.EnsureWith(ctx, true, flags.repair)
 		if err != nil {
-			return exitCannot, err
+			return exitCannot, presetSwitchFailed(err, switched, flags.save, cfg)
 		}
 		return verdictFor(st), renderBase(st, flags.asJSON, true)
 

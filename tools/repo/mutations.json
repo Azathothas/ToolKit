@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a refused preset switch under --save says base recreate switches it now",
+      "file": "cmd_base_preset.go",
+      "find": "\tif err == nil || !switched || !saved {\n",
+      "replace": "\tif true {\n",
+      "run": "TestARefusedPresetSwitchSaysTheConfigurationIsAlreadyWritten",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a forced rebuild asks the host engine before it removes the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif engine, err = b.rebuildEngine(ctx); err != nil {\n\t\t\treturn st, err\n\t\t}\n",
+      "replace": "",
+      "run": "TestAForcedRebuildWithNoEngineKeepsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a rebuild after a failed provisioning asks the host engine first",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tif engine, engineErr = b.rebuildEngine(ctx); engineErr != nil {\n",
+      "replace": "\t\t\tif engine, engineErr = b.rebuildEngine(ctx); false && engineErr != nil {\n",
+      "run": "TestAFailedProvisioningWithNoEngineKeepsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a forced rebuild reads the image reference before it removes the base",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err := ValidateImageRef(b.cfg.Base.Image); err != nil {\n",
+      "replace": "\tif err := ValidateImageRef(b.cfg.Base.Image); false && err != nil {\n",
+      "run": "TestAForcedRebuildWithAnUnqualifiedImageKeepsTheBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a rebuild exports with the engine it asked before the removal",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif engine == nil {\n",
+      "replace": "\tif true {\n",
+      "run": "TestAForcedRebuildAsksTheEngineBeforeItRemoves",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: root's podman in binfmt.sh takes the cgroupfs cgroup manager",
       "file": "internal/toolkit/binfmt.sh",
       "find": "  podman --cgroup-manager=cgroupfs --events-backend=file \"$@\"\n",
