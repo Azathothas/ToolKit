@@ -1855,20 +1855,37 @@ func (b *Base) notJudgedRefusal(nj *ProbeNotJudgedError) error {
 // to start the systemd user session for 'agent'` ahead of the verifier's refusal,
 // and the first line named that: a passwordless sudo refusal read "a container did
 // not run as agent (exit 3): wsl: ...". WSL-85. The refusal is the last `verify:`
-// line, and any other failure is named by the first line that is not wsl.exe's.
+// line, and any other failure is named by guestReason: the last stderr line that
+// is not wsl.exe's. WSL-152.
 func verifyError(user string, code int, stdout, stderr string) error {
 	if code == verifyRefused {
 		if refusal, ok := lastPrefixed(stderr, "verify: "); ok {
 			return fmt.Errorf("the base does not match its configuration, checked as %s: %s", user, refusal)
 		}
 	}
-	// ⛔ THROUGH guestFailure, which steps over podman's warning as well as
+	// ⛔ THROUGH guestReason, which steps over podman's warning as well as
 	// wsl.exe's own line. Finding 15: fedora's `newuidmap: write to uid_map
 	// failed` sat behind a shared-mount warning, and this took the FIRST guest
 	// line, which was the warning. The last guest line is the engine's reason.
-	// WSL-152.
-	detail := guestFailure(stderr, stdout)
+	// ⚠ STDERR FIRST, NOT THE LAST LINE OF BOTH: verify.sh prints its rows on
+	// stdout before `podman run`, so a last line across both streams named a row
+	// and lost the `boot ID` words staleRunStateRemediation reads. WSL-152.
+	detail := guestReason(stderr, stdout)
 	return fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, detail)
+}
+
+// guestReason is the line worth reporting out of a guest command that writes
+// its report on stdout and its failure on stderr.
+//
+// ⛔ THE ERROR STREAM WINS. guestFailure takes the last guest line across every
+// stream it is given, so a stdout row printed before a failure beat the
+// engine's error. Here the last guest line of stderr is the reason, and stdout
+// is read only when stderr carries no guest line. WSL-152.
+func guestReason(stderr, stdout string) string {
+	if lines := guestLines(stderr); len(lines) > 0 {
+		return lines[len(lines)-1]
+	}
+	return guestFailure(stdout, stderr)
 }
 
 // guestLines are the lines of a guest command's stream that are not blank and not

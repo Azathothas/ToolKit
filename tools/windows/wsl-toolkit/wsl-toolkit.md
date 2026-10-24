@@ -1007,6 +1007,10 @@ on a second read-only disk and run from a copy in `/tmp`, so a comment, a blank 
 and a command split across lines run as written. Its stdin is `/dev/null`, and the
 exit code is the script's own.
 
+⛔ **A cancelled run exits 130**, as a cancelled `run` does. A Ctrl+C at any step
+stops the guest, and `--json` carries `cancelled: true` beside `exit: 130`. A run
+whose `--timeout` ran out still exits 2. `WSL-151`
+
 ⭐ **The guest disk is 12 GiB, which gives a root filesystem of about 10.6 GiB.**
 The published image is 6.0 GiB with a 4.8 GiB root, and a toolchain install fills
 that. `bsd run` gives the run's overlay a size of `--disk` GiB, 12 by default, then
@@ -1358,7 +1362,7 @@ that command is for. These are the doors it finds open on a base built with
 | ⛔ the Windows host | `445` and `3389` are refused and **ICMP answers**, so the host is reachable. The address is `hostaddress`'s answer |
 | ⭐ a private network namespace | `unshare -n` is refused and `unshare -Un` SUCCEEDS, so the account can make one with no privilege. ⚠ `pasta --config-net` alone still reaches the internet and the Windows host. ⭐ **An `nft` rule INSIDE that namespace refuses the host and the private ranges while the internet and DNS stay up**, which is what `base exec --private-net` runs |
 | ⛔ a PE handler this tool cannot remove | the `WSLInterop` `binfmt_misc` registration does not follow `[interop] enabled`. `base doors` reports `interop.exec-pe` and never claims it |
-| ⚠ `/dev/kvm`, `/dev/dxg`, `/dev/vsock` | all three are `crw-rw-rw-` in a zero-grant base. `base doors` now makes one attempt on each as the account and reports what it reached. The attempts are a `KVM_CREATE_VM`, a vsock connect to the host, and a `/dev/dxg` ioctl. A guest with no compiler to make them reports `unknown` |
+| ⚠ `/dev/kvm`, `/dev/dxg`, `/dev/vsock` | all three are `crw-rw-rw-` in a zero-grant base. `base doors` makes one attempt on each as the account and reports what it reached. The attempts are a `KVM_CREATE_VM`, a vsock connect to the host, and a `dxgkrnl` adapter query. A guest with no compiler to make them reports `unknown`. `WSL-156` |
 | ⚠ passwordless sudo, where it is on | guest root can mount a Windows path the configuration never granted. It is authority, not containment, and `base doors` reports it open |
 
 ⛔ **So the shape this tool builds is called zero grants and never a sandbox or a

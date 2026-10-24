@@ -268,10 +268,17 @@ int main(void) {
             a.svm_family = AF_VSOCK;
             a.svm_port = 1024;
             a.svm_cid = TK_CID_HOST;
-            signal(SIGALRM, on_alarm);
+            /* sigaction with no SA_RESTART, so the alarm ends the connect.
+               glibc's signal() restarts it, and the alarm bounded nothing. */
+            struct sigaction sa;
+            memset(&sa, 0, sizeof sa);
+            sa.sa_handler = on_alarm;
+            sigaction(SIGALRM, &sa, NULL);
             alarm(6);
             if (connect(s, (struct sockaddr *)&a, sizeof a) == 0) {
                 row("vsock", "open", "an AF_VSOCK channel to the host context id was opened");
+            } else if (errno == EINTR) {
+                row("vsock", "closed", "host context id not reached: no answer within 6 seconds");
             } else {
                 snprintf(d, sizeof d, "host context id not reached: %s", strerror(errno));
                 row("vsock", "closed", d);
@@ -281,25 +288,29 @@ int main(void) {
         }
     }
 
-    /* /dev/dxg: open and one ioctl, to see what the account reaches. */
+    /* /dev/dxg: one read-only question the driver answers, its adapter count.
+       LX_DXENUMADAPTERS2 is _IOWR(0x47, 0x14, 16). With no buffer, dxgkrnl
+       writes the count and changes nothing. A guessed request was refused
+       with ENOTTY and still read open, which claimed what was not measured. */
     {
         int fd = open("/dev/dxg", O_RDWR | O_CLOEXEC);
         if (fd < 0) {
             snprintf(d, sizeof d, "open /dev/dxg: %s", strerror(errno));
             row("dxg", errno == ENOENT ? "absent" : "closed", d);
         } else {
-            /* _IOWR(0x47, 0x01, 24): dxgkrnl's own family. The point is reaching
-               the driver from the account, not a real operation. */
-            unsigned long req = (3UL << 30) | (24UL << 16) | (0x47UL << 8) | 0x01UL;
-            unsigned char buf[24];
-            int rc;
-            memset(buf, 0, sizeof buf);
-            rc = ioctl(fd, req, buf);
-            if (rc == 0)
-                snprintf(d, sizeof d, "opened /dev/dxg and the driver accepted an ioctl");
-            else
-                snprintf(d, sizeof d, "opened /dev/dxg and the driver answered an ioctl: %s", strerror(errno));
-            row("dxg", "open", d);
+            struct { unsigned int num_adapters, reserved; unsigned long long adapters; } q;
+            unsigned long req = (3UL << 30) | ((unsigned long)sizeof q << 16) | (0x47UL << 8) | 0x14UL;
+            memset(&q, 0, sizeof q);
+            if (ioctl(fd, req, &q) == 0) {
+                snprintf(d, sizeof d, "the account asked dxgkrnl for its GPU adapters and was told %u", q.num_adapters);
+                row("dxg", "open", d);
+            } else if (errno == EACCES || errno == EPERM) {
+                snprintf(d, sizeof d, "dxgkrnl refused the adapter query: %s", strerror(errno));
+                row("dxg", "closed", d);
+            } else {
+                snprintf(d, sizeof d, "opened /dev/dxg and the adapter query answered %s, so what the driver serves is unmeasured", strerror(errno));
+                row("dxg", "unknown", d);
+            }
             close(fd);
         }
     }
@@ -307,7 +318,13 @@ int main(void) {
 }
 DEVC
   if "$dev_cc" -O0 -w -o "$dev_dir/probe" "$dev_dir/probe.c" 2>"$dev_dir/cc.err"; then
-    "$dev_dir/probe" > "$dev_dir/out" 2>/dev/null
+    # ⚠ BOUNDED FROM OUTSIDE TOO, as the TCP probes are. The alarm bounds the
+    # vsock connect, and `timeout` bounds a driver that never answers. WSL-156.
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 20 "$dev_dir/probe" > "$dev_dir/out" 2>/dev/null
+    else
+      "$dev_dir/probe" > "$dev_dir/out" 2>/dev/null
+    fi
     while read -r d_name d_verdict d_detail; do
       case "$d_name" in
         kvm)   say plumbing.kvm-create-vm "$d_verdict" "$d_detail" ;;

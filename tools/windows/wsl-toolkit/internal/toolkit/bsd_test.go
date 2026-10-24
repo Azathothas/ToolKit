@@ -326,6 +326,73 @@ func TestABsdCommandCancelledWhileTypingAnswersCancellation(t *testing.T) {
 	}
 }
 
+// fakeQemuImgEnv makes this test binary a qemu-img that never finishes, when it
+// is started under that name. WSL-151.
+const fakeQemuImgEnv = "TOOLKIT_FAKE_QEMU_IMG"
+
+// init is the fake qemu-img. ⚠ AN init AND NOT A CASE, because qemu-img's own
+// arguments are flags a test binary refuses before any case runs.
+func init() {
+	if os.Getenv(fakeQemuImgEnv) == "" {
+		return
+	}
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "qemu-img" {
+		time.Sleep(60 * time.Second)
+		os.Exit(1)
+	}
+}
+
+// TestABsdRunCancelledBeforeTheBootAnswersOneThreeZero is the step the first
+// WSL-151 build left at exit 2: a Ctrl+C while qemu-img makes the overlay. Every
+// step before the boot answered the caller's cancellation with its own error.
+func TestABsdRunCancelledBeforeTheBootAnswersOneThreeZero(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ NOT t.TempDir, for the reason newFakeHost gives: a fake that has just
+	// exited can stay locked on Windows. Removal is tried once, with no wait.
+	bin, err := os.MkdirTemp("", "fakeqemu-bin-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(bin); err != nil {
+			t.Logf("the fakes in %s are still locked and are left behind: %v", bin, err)
+		}
+	})
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	for _, name := range []string{"qemu-system-x86_64", "qemu-img"} {
+		linkOrCopyExecutable(t, self, filepath.Join(bin, name+ext))
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv(fakeQemuImgEnv, "hang")
+	cache := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_CACHE", cache)
+	if err := os.MkdirAll(filepath.Join(cache, "bsd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "bsd", BsdImageName), []byte("an image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(500*time.Millisecond, cancel)
+	started := time.Now()
+	res, err := BsdRun(ctx, BsdRunSpec{Script: []byte("true\n"), Timeout: time.Minute})
+	if !res.Cancelled || res.Exit != 130 {
+		t.Fatalf("a run cancelled while its overlay was made is cancelled=%v exit=%d, %v; want true and 130", res.Cancelled, res.Exit, err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("a run cancelled while its overlay was made said %v", err)
+	}
+	if waited := time.Since(started); waited > 30*time.Second {
+		t.Fatalf("the cancellation was noticed after %s", waited)
+	}
+}
+
 // TestABsdCancellationIsOneThreeZeroAndSaysSo holds the result a cancelled run
 // carries: 130, the cancelled flag, and a sentence that names the cancellation
 // rather than a deadline. WSL-151.

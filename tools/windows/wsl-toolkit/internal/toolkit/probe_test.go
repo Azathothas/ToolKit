@@ -45,6 +45,13 @@ func assigned(script []byte, name string) string {
 	return string(m[1])
 }
 
+// The three lines a fail=warned guest prints. WSL-152.
+const (
+	fakeGuestRow    = "a row the guest printed before it failed"
+	fakeGuestWarn   = "WARN[0000] \"/\" is not a shared mount, this could cause issues or missing mounts with rootless containers"
+	fakeGuestReason = "Error: the real reason the guest failed"
+)
+
 // fakeGuestScript answers a guest script the case staged an answer for, and ok is
 // false for any other, which the fake WSL then refuses.
 //
@@ -67,6 +74,16 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 		_ = f.Close()
 	}
 	switch {
+	// ⚠ fail=warned IS A GUEST THAT FAILS LOUDLY: a row on stdout, then a podman
+	// warning and the real reason on stderr. The wsl.conf write of `--systemd`
+	// lands, so the restart's read is the step that fails. WSL-152.
+	case answers["fail"] == "warned" && bytes.Contains(script, []byte("[boot]\nsystemd=true\n")):
+		return 0, true
+	case answers["fail"] == "warned":
+		fmt.Println(fakeGuestRow)
+		fmt.Fprintln(os.Stderr, fakeGuestWarn)
+		fmt.Fprintln(os.Stderr, fakeGuestReason)
+		return 125, true
 	case bytes.HasSuffix(script, []byte("uname -m\n")):
 		fmt.Println("x86_64")
 		return 0, true

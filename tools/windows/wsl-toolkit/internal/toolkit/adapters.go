@@ -619,9 +619,10 @@ func (b *Base) probeAdapter(ctx context.Context, spec adapterSpec) AdapterState 
 		"TK_USER": b.cfg.Base.User, "TK_DISTRO": b.cfg.Base.Name,
 	}, 2*time.Minute)
 	if err != nil || code != 0 {
-		// ⛔ guestFailure, not firstLine: wsl.exe can write its own line first, and
-		// the probe's real reason is the last guest line. WSL-152.
-		return AdapterState{Name: spec.Name, Problems: []string{fmt.Sprintf("the probe exited %d: %s", code, guestFailure(errOut, out))}}
+		// ⛔ guestReason, not firstLine: wsl.exe can write its own line first, and
+		// the probe's real reason is the last guest line of stderr. A probe
+		// prints its rows on stdout, so a row never names the failure. WSL-152.
+		return AdapterState{Name: spec.Name, Problems: []string{fmt.Sprintf("the probe exited %d: %s", code, guestReason(errOut, out))}}
 	}
 	return parseAdapterProbe(spec.Name, out)
 }

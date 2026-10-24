@@ -511,6 +511,17 @@ var bsdPromptRE = regexp.MustCompile(`root@[^\r\n]*# `)
 // BsdRun boots the guest, runs one payload at a root shell, and powers it off.
 func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	started := time.Now()
+	// ⛔ EVERY STEP A CTRL+C CAN LAND IN IS 130, not only the waits. The overlay's
+	// qemu-img, QEMU's start and the typed `root` login answered the caller's
+	// cancellation with their own error at exit 2. The caller's context is read
+	// rather than the run's, because the run's deadline is a budget and not a
+	// cancellation. This runs last, after the guest is stopped. WSL-151.
+	caller := ctx
+	defer func() {
+		if err != nil && !res.Cancelled && errors.Is(caller.Err(), context.Canceled) {
+			res, err = bsdCancelled(res, started)
+		}
+	}()
 	img, err := BsdImagePath()
 	if err != nil {
 		return res, err
@@ -613,6 +624,7 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	case <-time.After(750 * time.Millisecond):
 	}
 	if err := g.send(ctx, "root"); err != nil {
+		// ⚠ A cancellation here is answered by the deferred check above. WSL-151.
 		return res, err
 	}
 	if err := g.wait(ctx, bsdPromptRE); err != nil {

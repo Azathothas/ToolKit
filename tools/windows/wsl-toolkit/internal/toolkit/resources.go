@@ -133,7 +133,9 @@ func ReadHostEngineHolding(ctx context.Context) *HostEngineHolding {
 		// 90 named: a deadline chosen at a call site is one the next reader
 		// forgets. engineCall carries the ceiling and the stall watch, and the
 		// guard case now reads every non-test file so this cannot recur. WSL-163.
-		out, stderr, err := (engineCall{Timeout: 2 * time.Minute, What: e.Name + " " + strings.Join(args[:2], " ")}).run(ctx, e.Path, args...)
+		// ⚠ NO What: the refusal below names the operation, and a What would
+		// name it a second time inside the same sentence.
+		out, stderr, err := (engineCall{Timeout: 2 * time.Minute}).run(ctx, e.Path, args...)
 		if err != nil {
 			return "", fmt.Errorf("%s %s: %w: %s", e.Name, strings.Join(args[:2], " "), err, firstLine(stderr))
 		}
