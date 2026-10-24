@@ -21,6 +21,26 @@ entry. A superseded one is amended in place with a dated note.
 
 ---
 
+## 2026-10-24
+
+### 2026-10-24T07:48:54Z: `wsl-toolkit` is 7.0.1, the critical fixes for workloads blocked since the restart
+
+**Record:** `WSL-168`, and the 7.0.1 amendments to `WSL-137` and `WSL-169`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
+**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v7.0.1` from this commit.
+
+⛔ **After a reboot or `wsl --shutdown`, every container failed** until someone ran `base ensure
+--repair`. `run`, `matrix`, `base exec`, `ready --smoke` and the helper's jobs now clear a stale
+engine run state themselves, under a lock, and say what they removed. `WSL-137`
+
+⛔ **A Debian base with systemd could not be built**: 7.0.0 registered the QEMU handlers through
+root's podman, which needs D-Bus there. Root's podman now takes cgroupfs and the file events
+backend on its command line. `WSL-168`
+
+⛔ **A forced rebuild could remove a base and then fail to export its replacement.** It now asks
+the host engine first and keeps the base when the engine does not answer. `WSL-169`
+
+`text-tool eol` no longer creates an empty file at a path that does not exist. `WSL-165`
+
 ## 2026-10-21
 
 ### 2026-10-21T14:55:07Z: the skills say what the tool does, and the skills check reads every flag

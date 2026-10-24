@@ -140,7 +140,7 @@ func fakeEngineMain(state, role string, args []string) int {
 		fmt.Println(runtime.GOARCH)
 	case "pull", "rm":
 	case "create":
-		fmt.Println("0123456789abcdef0123456789abcdef")
+		fmt.Println("fake-export-container")
 	case "export":
 		fmt.Println("a rootfs of a few bytes")
 	default:

@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 224  open 50  blocked 5  done 169
+total 244  open 68  blocked 5  done 171
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
-| P0 | 1 | 0 | 4 | 5 |
-| P1 | 5 | 0 | 80 | 85 |
-| P2 | 30 | 2 | 73 | 105 |
-| P3 | 14 | 3 | 12 | 29 |
-| **all** | **50** | **5** | **169** | **224** |
+| P0 | 3 | 0 | 5 | 8 |
+| P1 | 12 | 0 | 81 | 93 |
+| P2 | 38 | 2 | 73 | 113 |
+| P3 | 15 | 3 | 12 | 30 |
+| **all** | **68** | **5** | **171** | **244** |
 
 ---
 
@@ -54,6 +54,7 @@ total 224  open 50  blocked 5  done 169
 | DOC-12 | P3 | S | open | The muse-code guide starts an agent named `muse` and then prompts `work` | [`docs.md`](docs.md) |
 | DOC-13 | P3 | S | done | The router and the rules count the release and CI wrong | [`docs.md`](docs.md) |
 | DOC-14 | P2 | M | open | The skills tell an agent things the tool does not do | [`docs.md`](docs.md) |
+| DOC-15 | P3 | S | open | The consumer register misses one consumer and describes another's call wrongly | [`docs.md`](docs.md) |
 | TOOL-01 | P1 | M | done | A record checker, so the counts cannot disagree with the rows | [`tooling.md`](tooling.md) |
 | TOOL-02 | P1 | S | done | One command that runs the whole local gate | [`tooling.md`](tooling.md) |
 | TOOL-03 | P0 | S | done | `git-sync.ps1` bound a gate string to the author identity | [`tooling.md`](tooling.md) |
@@ -252,15 +253,34 @@ total 224  open 50  blocked 5  done 169
 | WSL-158 | P3 | S | blocked | Without the reporter, herdr shows a Muse pane as idle | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-159 | P2 | M | blocked | An agent started through herdr runs in the shared network namespace | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-160 | P3 | S | open | Three command groups keep two lists of their subcommands that nothing compares | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-161 | P1 | S | open | A configuration that leaves out `systemd` turns systemd off | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-161 | P1 | S | done | A configuration that leaves out `systemd` turns systemd off | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-162 | P3 | S | open | Nothing holds a job container's log driver | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-163 | P3 | S | open | `resources --host-engine` calls the engine outside the deadline door | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-164 | P2 | S | open | `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-165 | P2 | S | done | `text-tool eol` creates an empty file at a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-166 | P3 | S | open | `text-tool eol` answers 0 for a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-167 | P1 | M | open | Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-168 | P0 | S | open | `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-168 | P0 | S | done | `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-169 | P1 | S | open | `base ensure --force` unregisters a working base before it knows it can build one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-170 | P1 | M | open | A job that runs podman inside its container can stop the whole base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-171 | P0 | S | open | A failed re-provision of a registered, marked base unregisters it and deletes its disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-172 | P0 | M | open | Nothing serializes base mutation: concurrent builds destroy each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-173 | P1 | S | open | `gc --apply` (even a scoped one) compacts the ledger and drops pending `stop` events, so a stopped job runs anyway | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-174 | P1 | M | open | The health probe depends on Docker Hub: a refusal reads as a broken base, which leads to `pacman -Syu`, terminate, and possibly #1 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-175 | P1 | S | open | Every re-provision ends in `wsl --terminate` whether or not anything changed | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-176 | P2 | S | open | The 4-minute pull "stall" is really a minimum bandwidth, and the message says it is not a slow link | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-177 | P0 | S | open | A build deletes `<home>\base` whenever the configured name is not listed, without asking whose disk it is | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-178 | P1 | M | open | The rootless run root lives on disk-backed `/tmp`, so every distribution or VM restart makes podman's state stale | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-179 | P1 | S | open | A grant or revoke in live mode unmounts every `/workspaces` mount the caller's config does not name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-180 | P2 | M | open | Nothing watches the host free space that the dynamic VHDX grows into | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-181 | P1 | S | open | The QEMU step is fatal on every ensure, and its root podman call is duplicated with the same D-Bus defect | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-182 | P1 | S | open | The privileged QEMU installer runs from a mutable Docker Hub tag | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-183 | P2 | S | open | A base that cannot start reads as "no identity marker", so remove and recreate refuse it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-184 | P2 | S | open | Session PIDs are trusted across base restarts | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-185 | P2 | S | open | Ledger compaction is serialized only within one process | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-186 | P2 | M | open | The default base is a tag rebuilt daily, and no digest is recorded | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-187 | P2 | S | open | `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-188 | P2 | M | open | Fourteen smaller hardcoded assumptions the audit found, each cheap to fix | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

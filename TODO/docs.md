@@ -833,3 +833,44 @@ Exit 0, and the installed copies match the tree.
 ## Closing
 
 Open.
+
+## DOC-15. The consumer register misses one consumer and describes another's call wrongly
+
+**Source** the triage of 2026-10-24
+**Category** docs, **Priority** P3, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`tcp.ts.relay.ajam.dev` runs commands as root in the jobs base through `wsl.exe -d
+wsl-toolkit` and is not in `docs/consumers.md`, so a change to that base is never checked
+against it. The register describes agent-box's call without the flags it really passes:
+`--command-base64`, five `--exclude`, `--env`, `--container-lifecycle`, `--timeout`, and
+`gc --older-than`.
+
+## Premise
+
+Read on 2026-10-24 from both checkouts.
+
+## Approach
+
+Add the missing row and correct agent-box's, each with the file and line it was read from.
+
+## Consumers
+
+None.
+
+## Prove
+
+```bash
+sh scripts/common/check.sh docs
+```
+
+Exit 0.
+
+---
+
+## Closing
+
+Open.

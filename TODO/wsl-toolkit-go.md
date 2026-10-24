@@ -14088,6 +14088,33 @@ Exit 0, then a job runs on a scratch base straight after `wsl --terminate` of it
 
 Open.
 
+⭐ **2026-10-24T07:48:08Z: the stale-state half shipped in `wsl-toolkit-v7.0.1`.** `run`, `matrix`
+(each row), `ready --smoke`, the helper's jobs and `base exec` (attached and detached) check
+podman's own record against this boot before their first container; a record naming another
+boot is cleared under the run-state lock and read again under it, then the command goes on.
+Two adversarial reviews found two high defects, both fixed before the merge: the helper route
+never reached the check, and BusyBox's `flock` has no `-w`, so the wait is polled with `-n`.
+
+```text
+the operator's jobs base, stale after the reboot of 2026-10-22 and the shutdown of 2026-10-21:
+installed 7.0.0:  run --image docker.io/library/alpine -c 'echo before'
+  Error: current system boot ID differs from cached boot ID; an unhandled reboot has occurred.
+  exit 2
+this fix:         run --image docker.io/library/alpine -c 'echo after'
+  the engine's run state named another boot of WSL, so it was cleared before this started,
+  as wsl-toolkit base ensure --repair would have: removed /tmp/wsl-toolkit-run-1000/containers
+  and /tmp/wsl-toolkit-run-1000/libpod/tmp
+  after
+  exit 0
+installed 7.0.0:  base status --probe --json      healthy=True, no stale-run-state remediation
+again on a scratch Alpine base with BusyBox flock, a planted stale record:   cleared, exit 0
+27 rows across both passes, each red on Windows or on Linux in golang:1.25
+```
+
+Still open here: the passwd check and the label on an unprobed `base status`, which 7.1.0 takes
+with `wip/f5b-base-build`, and ⚠ a cold start of the base that passes the 2-minute guest-home
+budget, met on the first 7.0.0 attempt above (exit 124).
+
 
 ## WSL-138. An adapter installs from npm where the provider publishes an official installer
 
@@ -15020,7 +15047,7 @@ Open.
 ## WSL-161. A configuration that leaves out `systemd` turns systemd off
 
 **Source** found while classifying the old record's finding 116
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -15055,7 +15082,27 @@ Exit 0, with the case red before the fix.
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T01:48:20Z, on a disproved premise, with no change to the code.**
+
+⛔ **The premise was wrong, and this is the correction.** It said a configuration that
+leaves out `systemd` turns systemd off, as if the default were on. The compiled default is
+off: `DefaultConfig` sets neither `systemd` nor `passwordless_sudo`, both carry `omitempty`
+(`catalog.go:74,78`), and the tool itself writes a false value by leaving the key out. So a
+file without the key gets the documented default, which is the loader working as written.
+What met `s110` was the acceptance suite's marker case, which overwrote an instance's own
+configuration that had asked for systemd. That is `WSL-132`'s to fix.
+
+⚠ **Turning the default on would be the break**, not the fix: every file this tool wrote
+with systemd off would read as on. The read-only review of `wip/f2-run-config` found the
+same, and its change for this entry does nothing in production, so it is not merged.
+
+```text
+grep -n 'Systemd\|PasswordlessSudo' internal/toolkit/catalog.go
+73:	// Systemd asks WSL to make systemd pid 1 for this distribution.
+74:	Systemd bool `json:"systemd,omitempty"`
+78:	PasswordlessSudo bool `json:"passwordless_sudo,omitempty"`
+494:	cfg.Base.Systemd = stored.Base.Systemd
+```
 
 
 ## WSL-162. Nothing holds a job container's log driver
@@ -15336,7 +15383,7 @@ Open.
 ## WSL-168. `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus
 
 **Source** the triage of 2026-10-24, from pg-toolkit's Windows lane; a regression of `WSL-105` in 7.0.0
-**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** done
 
 ---
 
@@ -15378,7 +15425,32 @@ Exit 0, then `base ensure` on a scratch Debian base with systemd exits 0 with it
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T07:48:08Z, in `wsl-toolkit-v7.0.1`.** Every podman the tool runs as root in a
+base takes `--cgroup-manager=cgroupfs --events-backend=file` on its command line: binfmt.sh's
+three calls, through one `root_podman` function, and `EnsurePlatform`'s script. So root's
+podman needs no D-Bus and no configuration file. A case holds each call, and five rows.
+
+```text
+pg-toolkit's own profile (Debian trixie, systemd), as scratch instance h2
+installed 7.0.0:  base ensure
+  wsl-toolkit: the QEMU handlers: binfmt.sh exited 3: the QEMU binary-format installer did not complete
+  exit 2
+this fix:         base ensure                                       exit 0
+  base status --probe --json, binfmt:
+  {"handlers":8,"own":8,"recorded":true,"watch":"none","ready":true}
+  the guest's record: image docker.io/tonistiigi/binfmt:qemu-v10.2.3-68, then qemu-aarch64,
+  qemu-arm, qemu-loongarch64, qemu-mips64, qemu-mips64el, qemu-ppc64le, qemu-riscv64, qemu-s390x
+root, the same image, without and with the options:
+  podman run --rm --privileged ... --install arm64                  crun: cannot open sd-bus
+  podman --cgroup-manager=cgroupfs --events-backend=file run ...    exit 0
+check-go.ps1 exit 0; the rows red on Windows; CI's Linux Go job green
+```
+
+⚠ **The options apply on a base with D-Bus too**, where root's podman used the systemd manager:
+one command line for every base, and the Arch default still exits 0. Two adversarial reviews
+found no defect above low. ⚠ The watcher's status is read as the account, so a no-D-Bus base
+shows `watch: none` while root's systemd runs the unit: a reporting defect, recorded in
+`WSL-181`'s scope. Fedora and Alpine presets were not driven.
 
 
 ## WSL-169. `base ensure --force` unregisters a working base before it knows it can build one
@@ -15404,6 +15476,15 @@ Before a forced rebuild removes anything, the tool asks the host engine it will
 export with whether it answers, and refuses with the engine's reason and no change when it
 does not.
 
+⚠ **Widened by the audit of 2026-10-24, finding 2.** An engine that answers is not
+enough: `base recreate`, `base ensure --force` and a `--preset` change all remove the base
+before the replacement is pulled, exported or space-checked (`base.go:481-485`, the export
+at :789, `assertSpace` at :792). Split `create()` into a prepare step (find the engine,
+export into a per-process tar, check space for the old disk and the new tar) and a commit
+step (remove, import, provision); fall back to a local image of the right architecture when
+the pull fails; compare `--preset` with the image the base recorded, not the configured
+one. The 7.0.1 hotfix delivers the engine check; the rest follows in 7.0.2.
+
 ## Consumers
 
 A fix: a rebuild that would have destroyed the base and failed now refuses and keeps it.
@@ -15415,6 +15496,909 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 ```
 
 Exit 0, with a case where the engine does not answer and the base is still registered after.
+
+---
+
+## Closing
+
+Open.
+
+⭐ **2026-10-24T07:48:08Z: the engine check shipped in `wsl-toolkit-v7.0.1`.** `base recreate`, and
+an `ensure --preset` switch that becomes one, ask the host engine they will export with before
+anything is removed, and refuse with exit 2 and the engine's reason when it does not answer.
+A refused switch under `--save` says the saved configuration already names the new image and
+that `base recreate` switches it.
+
+```text
+scratch Alpine base h3force, PATH holding only a podman that cannot connect:
+base recreate
+  asking the host engine before wsl-toolkit-h3force is removed
+  wsl-toolkit: wsl-toolkit-h3force was NOT removed: a rebuild exports its rootfs through a host
+  engine, and no usable container engine on this host: ...
+  exit 2
+wsl -l -v   still lists wsl-toolkit-h3force
+```
+
+⚠ `base ensure --force` is not a flag of this tool; the entry's wording named the forced
+rebuild, which is `base recreate`. What remains is the audit's widening above: prepare (pull,
+export, space) before commit, the local-image fallback and `--preset` against the recorded
+image. 7.0.2 takes it.
+
+## WSL-170. A job that runs podman inside its container can stop the whole base
+
+**Source** the triage of 2026-10-24, from podssh's record of 2026-10-13
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+podssh ran a rootless podman inside a gate job's container. The job died part way
+through, the whole WSL distribution running the jobs base stopped, and the next run could
+not start any container until the engine's run state was cleared. podssh removed its real
+runtime check and tests against stand-ins instead.
+
+## Premise
+
+Read on 2026-10-24 from podssh's record; not reproduced here. Which part stopped the
+distribution, the nested engine, a cgroup or namespace limit, or the interop call it was
+in, is unmeasured.
+
+## Approach
+
+Reproduce it on a scratch base with a job that runs `podman run` inside its
+container, find what stops the distribution, and either make the job's container able to
+run a nested engine safely or refuse the shape with a reason before it harms the base. The
+stale state it leaves is `WSL-137`'s.
+
+## Consumers
+
+Depends on the cause.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then a job that runs a nested podman on a scratch base leaves the base running.
+
+---
+
+## Closing
+
+Open.
+
+## WSL-171. A failed re-provision of a registered, marked base unregisters it and deletes its disk
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 1; verified by two skeptics. The audit's note on entries: NONE. WSL-169 covers `--force` only. WSL-106's closing excludes only gone grants. WSL-140 covers mirror retries only.
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** Any verify failure that is not a stale boot id (`base.go:1750`), followed by any provisioning failure.
+- Verify failures: Docker Hub refusing alpine (#5), a config change, a sealed base's DNS (`verify.sh:200`), a full disk.
+- Provisioning failures: offline, a stalled mirror (WSL-140), the 30m ceiling (`base.go:900`), a leftover `db.lck`, a concurrent ensure holding the lock (#3), a stale keyring (`provision.sh:140`, no `archlinux-keyring` step first), a dpkg conffile prompt (`provision.sh:153` has no `Dpkg::Options`, and `provisionRequest` at `base.go:886-903` is unframed), or a family misdetected from PATH (`packages.sh:226`).
+
+**Reached from.** `base ensure`, `ready --ensure` (`cmd_ready.go:289-303`), and helper-route `run`/`matrix` (`cmd_run.go:560-561, 927-928`, where `--ensure-base` defaults to true).
+
+**Cost.** - The base's home, agent credentials, herdr/Muse state, images, and adapter Host blocks (`removeAdapterHosts`) are lost.
+- The rebuild then needs ghcr. When it succeeds, ensure exits 0 with an empty base. When it fails, there is no base at all.
+
+## Premise
+
+**Assumption.** If re-provisioning fails, the base is broken and safe to throw away. `base.go:913` `func provisionFailureRebuilds(err error) bool { return !errors.Is(err, ErrGrantSourceGone) }`.
+
+**Where.** `base.go:552-559` (`b.log("removing and rebuilding")` / `if err := b.Remove(ctx)`). The doc comment at `base.go:451-452` states this as intended design.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- In the registered branch, return the provisioning error, keep the base, and name `base recreate`.
+- Allow `Remove` only when this process imported the base, or under `--force`.
+- Classify pacman signature errors, DNS errors and a family mismatch as errors that do not rebuild.
+- Correct the "exists to be wrecked" comment.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-172. Nothing serializes base mutation: concurrent builds destroy each other
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 3; verified by two skeptics. The audit's note on entries: NONE.
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** Two of `run --ensure-base`, `ready --ensure` or `base ensure` on an unbuilt instance or a base being rebuilt, or two `auto` callers, or two grants at once. WSL-62's closing records this ("Two processes running `base ensure` at once still both provision", `TODO/wsl-toolkit-go.md:3329`) and filed nothing.
+
+**Cost.** The loser unregisters the winner's base, even one already stamped and running jobs, or deletes its vhdx. One process truncates the other's tar. Two `auto` agents share one base. A grant is lost.
+
+## Premise
+
+**Where.** - `EnsureWith` takes no lock (`base.go:464`, `cmd_base.go:147-162`, `helper.go:861`).
+- One fixed archive name, `base.go:783` `tarPath := filepath.Join(b.home, "base-rootfs.tar")`, opened with `O_TRUNC` (`engine.go:281`).
+- `create()` deletes a "leftover" directory (`base.go:765-771`).
+- `b.unmarked = true` is set before import (`base.go:572`). Rollback then reaches `base.go:1368` `b.wsl.Unregister(ctx, b.cfg.Base.Name, !b.unmarked)` with no marker demanded.
+- `--instance auto` reserves nothing (`instance.go:185`).
+- `base grant` does read-modify-write of the config with no lock (`cmd_base_grant.go:82,133`).
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- Hold `lockExclusive(<home>\base.lock)` across `EnsureWith`, `Remove`, recreate, grant and revoke (including the config write). Re-read status under the lock and name the holder.
+- Create the tar with `os.CreateTemp`.
+- Set an `imported` flag only after this process's own Import succeeds, and gate both rollback's Unregister and the leftover removal on it.
+- Make `allocateInstance` claim with `os.Mkdir`, as `throwaway.go:951` does.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-173. `gc --apply` (even a scoped one) compacts the ledger and drops pending `stop` events, so a stopped job runs anyway
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 4; verified by two skeptics. The audit's note on entries: NONE.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** `stop JOB` during image pull or workspace copy, then any agent runs `gc --workspace . --apply`, as `docs/AGENTS.md:212` tells it to.
+
+**Cost.** A build or publish the operator cancelled runs to completion. `wait` reports 143/137 instead of 130.
+
+## Premise
+
+**Where.** - `ledger.go:115`: `openLocked` keeps `case "open":` only.
+- `ledger.go:205`: `writeFileAtomic`.
+- `cleanup_run.go:77`: `r.ledger.Compact()` runs on every apply.
+- `jobctl.go:72`: the stop is read back only from the ledger.
+- `ledger.go:187`: the comment `It is not run automatically.` is false.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+Keep `stop` events whose kind and id still have an open record, or move compaction behind `gc --compact-ledger`. Add a regression test: open, stop, Compact, then `StopRecorded` is still true.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-174. The health probe depends on Docker Hub: a refusal reads as a broken base, which leads to `pacman -Syu`, terminate, and possibly #1
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 5; verified by two skeptics. The audit's note on entries: NONE.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** Alpine has been pruned (PROGRESS shows `gc --images --apply` was run on 2026-10-21), and docker.io is rate-limited (`100;w=3600` per address, measured), down, offline or blocked.
+
+**Cost.** - An unrequested full upgrade, then `wsl --terminate`, which kills every job and agent, then exit 2.
+- If the mirrors fail at the same time, the base is deleted (#1).
+- A stalled in-guest pull holds the verifier for 20 minutes.
+- A binfmt pull refusal fails every ensure after `wsl --shutdown`.
+
+## Premise
+
+**Where.** - `base.go:1318` `const VerifyImage = "docker.io/library/alpine:latest"`.
+- `verify.sh:347` `podman run --rm --pull=missing`.
+- `gc --images` prunes alpine (`cleanup_run.go:355` `podman image prune -a -f`).
+- Only the `boot id` text is classified (`base.go:1750`).
+- Separately, `binfmt.sh:56` pulls `docker.io/tonistiigi/binfmt` in `finishEnsure` (`base.go:613`).
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- Run `podman image exists "$TK_IMAGE" || timeout 120 podman pull`. A pull failure gets its own exit code, which EnsureWith reports as "not judged, registry X unreachable". It must not lead to re-provision, terminate or rebuild.
+- Keep the probe image and the binfmt image from being pruned: a pin container that is never started, or exclusion from the prune, or a `podman save` into the base.
+- Consider mirroring both images to ghcr.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-175. Every re-provision ends in `wsl --terminate` whether or not anything changed
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 6; verified by two skeptics. The audit's note on entries: NONE. WSL-75 removed the restart for grants only.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** Any non-boot-id verify failure, including a transient one from #5 or a tool an agent removed, while other consumers' jobs, herdr or Muse agents are running. On the helper route, every `run` calls `BaseEnsure`.
+
+**Cost.** Hours of agent or job work killed mid-run, false failures in the job ledger, and stale container state.
+
+## Premise
+
+**Where.** `base.go:876-877`: `b.log("restarting so WSL re-reads /etc/wsl.conf"); if err := b.wsl.Terminate(...)`.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- `provision.sh` reports whether `/etc/wsl.conf` or the fstab block changed (`wsl-conf unchanged`), and Go terminates only on a change.
+- Before an automatic re-provision, refuse while the ledger shows running jobs, and name a flag to go ahead.
+- On the helper route, `run` ensures only when the base is unregistered, as the local `ensureBase` (`cmd_run.go:1066`) does.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-176. The 4-minute pull "stall" is really a minimum bandwidth, and the message says it is not a slow link
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 7; verified by two skeptics. The audit's note on entries: NONE.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** Any single layer that takes more than about 4 minutes. The default base is one 193.6 MB layer, which fails below about 6.5 Mbit/s. gentoo is one 427 MB layer, failing below about 14 Mbit/s. The operator's own measured pull took 221 s, about 20-40 s under the limit.
+
+**Cost.** `base ensure`, `recreate` and `distro new --image` are killed on every attempt, and each retry starts from zero. Combined with #2, the operator is left with no base.
+
+## Premise
+
+**Where.** - `enginecall.go:59` `const EngineStallTimeout = 4 * time.Minute`.
+- `engine.go:245-246`, the pull's `Stall: EngineStallTimeout`.
+- `enginecall.go:152`, the message "This is a STALL and not a slow link".
+- The rationale at `enginecall.go:53-58` is false for the non-TTY remote podman path: `pullProgress` is never set, so nothing is printed while a layer downloads.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- Size the pull's stall as max(4m, largest layer / 256 KiB/s) from `manifest inspect`, or use pullProgress=true over the libpod API.
+- Add a `WSL_TOOLKIT_PULL_STALL` override.
+- Keep 4m for the export.
+- Reword the message and correct the comment.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-177. A build deletes `<home>\base` whenever the configured name is not listed, without asking whose disk it is
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 8; verified by two skeptics. The audit's note on entries: WSL-167, which must carry this as a precondition.
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** - WSL-167's rename, in either direction, with a mixed-version host (pg-toolkit pins 7.0.0).
+- A rename through the Lxss registry.
+- A shared `WSL_TOOLKIT_HOME` across Windows accounts.
+- A rolled-back WSL that prints UTF-16.
+
+**Cost.** A stopped base's ext4.vhdx is deleted (57 GB on this host). The registration is left pointing at nothing.
+
+## Premise
+
+**Where.** - `base.go:765-771`: `create()` calls `RemoveInside(b.home, dir)` on a "leftover".
+- `base.go:1372-1386`: `Remove()` with `!exists` skips the identity-checked Unregister and deletes `Dir()`.
+- `base.go:173`: `Dir()` is name-independent.
+- `registeredDisks()` (`registry_windows.go:33`) is never consulted here.
+- `wsl.go:255` trims only outer NULs, so a UTF-16 listing never matches.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- Before every `RemoveInside(b.Dir())`, read `registeredDisks()`. Refuse when any BasePath matches (`cleanBasePath` + `pathEqual`), naming that distribution, and refuse when the registry cannot be read.
+- Refuse when base.json names a different distribution.
+- Move a truly orphaned directory aside instead of deleting it.
+- Make `nameQueryOnce` error on `\x00` in the output.
+- Ship this before WSL-167.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-178. The rootless run root lives on disk-backed `/tmp`, so every distribution or VM restart makes podman's state stale
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 9; verified by two skeptics. The audit's note on entries: WSL-137, as an addendum.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** - `wsl --shutdown`, a reboot, `--terminate`, or a distribution or VM idle stop. Stock vmIdleTimeout is 60 s; this host sets 100 min, which hides it.
+- On systemd Arch bases, more than 10 days of uptime lets the cleaner delete live state.
+
+**Cost.** podman refuses everything until repaired. The hotfix (d352135, unmerged) clears the state only for run, matrix, `ready --smoke`, the helper and `base exec`. herdr panes, `base shell`, direct podman and `status --probe` still fail.
+
+## Premise
+
+**Where.** - `base.go:1345` `_tk_run=/tmp/wsl-toolkit-run-$_tk_uid`, with a second copy at `userenv.go:10`.
+- No `/tmp` mount on the default base (measured).
+- Arch `tmp.conf` ages `/tmp` at 10 days.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- Move the run root to `/run/user/$uid`, a per-boot tmpfs: mode 0700, owned by the account's real uid, set up by a boot script merged into seal-boot and installed unconditionally.
+- Or add a boot `command=` that clears the stale tree.
+- Add `/etc/tmpfiles.d/wsl-toolkit.conf` with `x /tmp/wsl-toolkit-run-*`.
+- Use one Go constant for the path.
+- Compare alive's boot id directly instead of matching the `boot id` text.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-179. A grant or revoke in live mode unmounts every `/workspaces` mount the caller's config does not name
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 10; verified by two skeptics. The audit's note on entries: WSL-118 (partly); otherwise NONE.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** Concurrent grants, the WSL-118 split between a package copy and the real home, a project file listing other mounts, or the `--home` MSYS split (#18).
+
+**Cost.** - Another agent's checkout is unmounted. Writes then land silently in the guest rootfs, or the grant is refused as "still in use".
+- With automount off, the other side's `ensure` re-provisions and terminates the base (#6).
+
+## Premise
+
+**Where.** - `grants.sh:136-153`, `umount "$old"` at line 148. (The earlier citation of `grants.sh:396-412` was wrong; the file is 194 lines.)
+- For the default instance, a project's `wsl-toolkit.json` wins (`catalog.go:422`).
+- `verify.sh:321` refuses unconfigured mounts when automount is off.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- Unmount only `TK_REVOKE_TARGET`.
+- Record the granted set in the guest, and refuse grant, revoke and re-provision when the guest holds grants the resolved config lacks, naming them and the file.
+- Lock grant and revoke and re-load the config under the lock.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-180. Nothing watches the host free space that the dynamic VHDX grows into
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 11; verified by two skeptics. The audit's note on entries: NONE. WSL-06 checks only at import.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** C: fills up from pulls, job workspaces, caches or Windows. The jobs base is 58 GB and not sparse.
+
+**Cost.** Guest I/O errors and an ext4 read-only remount. The next ensure then hits #1.
+
+## Premise
+
+**Where.** - `FreeSpace` is called only in `assertImportSpace` (`base.go:817`) and `doctor_throwaway.go:47`.
+- The guest disk report (`inspect.go:140-150`) shows the virtual size.
+- The export writes before any space check (`base.go:789-792`, `throwaway.go:779-784`).
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- `base status`, `ready` and job start read `FreeSpace(filepath.Dir(DiskPath))` and warn below `BaseSpaceFloor`.
+- Check free space before `FindEngine` and before any `--force` Remove.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-181. The QEMU step is fatal on every ensure, and its root podman call is duplicated with the same D-Bus defect
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 12; verified by two skeptics. The audit's note on entries: WSL-168, widened to cover these.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** A Debian systemd base without dbus (WSL-168), or Docker Hub refusing the binfmt image.
+
+**Cost.** `pg-devenv up` exits 2 even for native-only work. Foreign-platform jobs fail. The watcher row shows `none` wrongly.
+
+## Premise
+
+**Where.** - `base.go:613` `errors.Join(b.ensureBinfmt(ctx), ...)`.
+- `base.go:1055`, EnsurePlatform's inline `podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install "$TK_ARCH"`.
+- `verify.sh:413-414` reads `systemctl` as the unprivileged account.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+- Put the root podman invocation in one place used by both scripts, with `--cgroup-manager=cgroupfs --events-backend=file`.
+- Optionally make the binfmt step advisory unless a foreign platform is configured.
+- Report the watcher state from the root-run script.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-182. The privileged QEMU installer runs from a mutable Docker Hub tag
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 13; verified by two skeptics. The audit's note on entries: NONE. Low likelihood, cheap fix.
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** The tag is re-pushed, most plausibly through account compromise, and a fresh or pruned host pulls it.
+
+**Cost.** A root container registers F-flag interpreters in the shared kernel, which reaches every distribution.
+
+## Premise
+
+**Where.** `base.go:63` `const BinfmtImage = "docker.io/tonistiigi/binfmt:qemu-v10.2.3-68"`, run `--privileged` at `binfmt.sh:56` and `base.go:1055`. The recorded ref is compared as a string (`binfmt.sh:70,101`).
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+Pin `...:qemu-v10.2.3-68@sha256:400a4873…b21166f0`, re-measuring the digest first. Add a gate check that every `--privileged` image ref carries `@sha256:`.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-183. A base that cannot start reads as "no identity marker", so remove and recreate refuse it
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 14; verified by two skeptics. The audit's note on entries: WSL-150, extended to the marked-but-unstartable case.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** A corrupt vhdx, or a vhdx held by AV or backup software.
+
+**Cost.** The diagnosis is wrong, and the operator falls back to a manual `wsl --unregister`.
+
+## Premise
+
+**Where.** `identity.go:197-198`: any nonzero exit means `ErrNoIdentity`. `wsl.go:342-345`.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+Treat only cat's "No such file" as `ErrNoIdentity`, and return a new `ErrGuestUnstartable` for other failures. Accept the registry BasePath as proof of ownership.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-184. Session PIDs are trusted across base restarts
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 15; verified by two skeptics. The audit's note on entries: NONE (adjacent to WSL-126). Low severity.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** A restart while a session runs, and PID reuse by the same account.
+
+**Cost.** `follow` loops forever. `stop` can signal an unrelated agent's process group.
+
+## Premise
+
+**Where.** `session.go:228,232` write the PIDs; `:293` `kill -0`; `:436` `kill -TERM "-$pg"`; `:512` (follow).
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+Record `/proc/sys/kernel/random/boot_id` and the supervisor's start time at launch. If either differs, report "gone without an exit" before any `kill`.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-185. Ledger compaction is serialized only within one process
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 16; verified by two skeptics. The audit's note on entries: NONE. Medium severity.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** A `run`, helper or spool appends during another process's `gc --apply`.
+
+**Cost.** The lost OPEN record means the next `gc --apply` deletes in-flight uploads or artifacts.
+
+## Premise
+
+**Where.** `ledger.go:189-205` (read, then temp file plus rename). `ledger.go:78` appends without a lock.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+Hold `lockExclusive(<home>\ledger.lock)` around both Append and Compact.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-186. The default base is a tag rebuilt daily, and no digest is recorded
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 17; verified by two skeptics. The audit's note on entries: NONE. Better filed as a note on WSL-169, since recording the old digest makes a rollback possible.
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+**Cost.** After a bad daily build, the working digest is unknown. Pinning by digest already works (`ValidateImageRef`, `catalog.go:850`).
+
+## Premise
+
+**Where.** `catalog.go:260` `DefaultBaseImage = "ghcr.io/pkgforge-dev/archlinux:latest"`. `identity.go:57` has no digest field.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+Store the RepoDigest in the identity marker and base.json, and show it in `base status`.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-187. `--home` and `WSL_TOOLKIT_HOME` skip msysHostPath
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 18; verified by two skeptics. The audit's note on entries: WSL-111 (missed these two) and WSL-118. Low to medium. (The input was cut off here.)
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+**Trigger.** Git Bash (including the Claude desktop Bash tool) with `/d/wsl-toolkit`. Measured result: home `C:\c\...`.
+
+**Cost.** A second state root, splitting jobs, ledger, `--exclusive` locks, caches and grants (#10).
+
+## Premise
+
+**Where.** - `main.go:161,163` `os.Setenv("WSL_TOOLKIT_HOME", args[i])`.
+- `paths.go:24-25`.
+- Compare `main.go:179`, which does call `msysHostPath`.
+
+Read at `894f330` by the audit, and confirmed in the code by two independent skeptics; not reproduced on a base.
+
+## Approach
+
+Translate the value with msysHostPath and `filepath.Abs`, then re-export it so the helper and detached children inherit one spelling.
+
+## Consumers
+
+Each change keeps what works today working; a refusal replaces a destruction.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case that drives the trigger and fails without the fix, and a mutation row red.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-188. Fourteen smaller hardcoded assumptions the audit found, each cheap to fix
+
+**Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 19; verified by two skeptics
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Each row names an assumption that breaks on a host or an image it was not measured on:
+
+| item | where | fix |
+| --- | --- | --- |
+| uid 1000 forced; grant uid/gid and subuid range hardcoded  |  `base.go:892`, `base.go:999`, `provision.sh:339,405`  |  Use 1000 only when free. Render uid/gid from `id -u/-g`. Verify asserts the grant owner. |
+| omp `-Sy` then `-S` partial upgrade; herdr and muse bare `-S`  |  `adapters/omp/install.sh:136-137`, `herdr/install.sh:99`, `muse/install.sh:81,155`  |  `pacman -Syu --needed` |
+| Podman hint says restarting will not help when the machine is stopped  |  `engine.go:491-493`; `engine_test.go:162-168` enshrines it  |  Hint by running, stopped or unknown state |
+| amd64 binary on ARM treats amd64 as native  |  `catalog.go:893-896`, `engine.go:184`, `release.go:241`; `docs/consumers.md:185-187`  |  `IsWow64Process2` nativeArch |
+| Remote podman connection or Docker context builds elsewhere  |  `engine.go:186-193`, `:63`, `:96`, `:103`  |  Refuse when Arch differs from GOARCH; log the connection |
+| Docker in Windows-containers mode is chosen  |  `engine.go:186-189`  |  Read `{{.OSType}}` and skip unless linux |
+| Hung podman `info` costs 90 s per lookup  |  `engine.go:191-192`  |  About 20 s probe when another engine exists |
+| Export container leaks on kill; images never removed  |  `engine.go:224-312`  |  `--label wsl-toolkit.export=1` so `resources` can find leaks |
+| Re-provision overwrites the main registries.conf and containers.conf  |  `provision.sh:420-425`, `provision.sh:449`  |  Drop-ins named `99-`; host-side mirror/proxy config |
+| Missing runuser fails grants on apk; ro check passes silently  |  `grants.sh:182,186`; `provision.sh:131-132`  |  `command -v runuser` or a `su` fallback; check exit codes |
+| doors.sh hardcodes `/mnt`  |  `doors.sh:46,140,164`  |  Shared automount-root reader; add to the existing test |
+| Empty-machine check matches English text; doctor reads an empty or slow list as refused  |  `wsl.go:244`, `doctor.go:373-381`  |  Match the error code or the empty Lxss key; classify in doctor |
+| Preset measurements come from a non-default `.wslconfig` (custom 7.2.0 kernel, `cgroup_no_v1=all`, vmIdleTimeout, dnsTunneling)  |  `presets.go:20-24`  |  Record the settings in each Build string; one stock-host run before a public release |
+| Sealed base keeps an empty or old resolver; verify probes github.com  |  `provision.sh:508-519`, `verify.sh:200`  |  Poll for `/mnt/wsl/resolv.conf`; treat a DNS failure as non-rebuilding |
+
+## Premise
+
+Read at `894f330` by the audit, and confirmed by two skeptics; not reproduced.
+
+## Approach
+
+Fix each row as it says, with a case where one can hold it. A row that turns out to be larger is split into its own entry.
+
+## Consumers
+
+None of the fixes changes what works today.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, a case per row where a case can hold it.
 
 ---
 

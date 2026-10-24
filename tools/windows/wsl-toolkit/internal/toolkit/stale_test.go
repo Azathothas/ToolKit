@@ -121,7 +121,7 @@ func staleFakeWsl(dir string, args []string, stdin io.Reader, stdout io.Writer) 
 	}
 	switch kind {
 	case "home":
-		fmt.Fprintln(stdout, "/home/agent")
+		fmt.Fprintln(stdout, "/home/toolkit")
 	case "stale":
 		answer, err := os.ReadFile(filepath.Join(dir, "stale-answer"))
 		if err != nil {
