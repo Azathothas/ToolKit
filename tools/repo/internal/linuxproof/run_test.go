@@ -321,7 +321,12 @@ func TestThePushRunsTheJobsForAnUnprovedTree(t *testing.T) {
 
 	// ⭐ A tag on a commit the remote holds needs nothing: this is `repo
 	// release --publish` pushing a tag on a pushed main.
+	// ⚠ Its tree's proof is removed first, so only the remote's own refs can
+	// let it go.
 	gitIn(t, c.work, "tag", "-a", "v1", "-m", "v1", head)
+	if err := os.Remove(filepath.Join(c.common, ProofDirName, tree+".json")); err != nil {
+		t.Fatal(err)
+	}
 	before = len(c.calls(t))
 	if code, msg := push("refs/tags/v1 " + gitIn(t, c.work, "rev-parse", "v1") + " refs/tags/v1 " + zero); code != 0 || len(c.calls(t)) != before {
 		t.Fatalf("a tag on a pushed commit: exit %d, %q", code, msg)
