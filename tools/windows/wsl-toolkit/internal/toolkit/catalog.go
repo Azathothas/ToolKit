@@ -555,6 +555,18 @@ func loadConfigFile(path, from string) (Config, error) {
 	if stored.Base.Name == "" {
 		return withDefaultDistro(cfg)
 	}
+	// ⛔ A FILE NAMING THE CANONICAL NAME MEETS THE SAME GUARD as a resolved one.
+	// An instance `jobs` made before the reservation runs under that name too, and
+	// the default would share its distribution. WSL-167.
+	if isDefaultSelection() && strings.EqualFold(cfg.Base.Name, DefaultBaseName) {
+		home, err := Home()
+		if err != nil {
+			return cfg, err
+		}
+		if err := assertNoJobsInstance(home); err != nil {
+			return cfg, fmt.Errorf("%s: %w", path, err)
+		}
+	}
 	return cfg, nil
 }
 

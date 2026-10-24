@@ -2,6 +2,69 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: only cat naming the missing marker is an absence",
+      "file": "internal/toolkit/identity.go",
+      "find": "\tif code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {\n",
+      "replace": "\tif code != 0 || err != nil {\n",
+      "run": "TestAMarkerReadThatCouldNotAskIsNotAnAbsence",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unreadable marker never demotes an unrecorded wsl-toolkit",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\tcase !errors.Is(markErr, ErrNoIdentity):\n",
+      "replace": "\t\tcase errors.Is(markErr, ErrWslDenied):\n",
+      "run": "TestAnUnreadableMarkerNeverDemotesTheOlderBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a wsl-toolkit-jobs in another state directory is no second candidate",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tcanonicalAt, canonicalRegistered, canonicalHere := where(DefaultBaseName)\n",
+      "replace": "\tcanonicalAt, canonicalRegistered, _ := where(DefaultBaseName)\n\tcanonicalHere := canonicalRegistered\n",
+      "run": "TestACanonicalBaseInAnotherHomeLeavesTheRecordedOneDefault",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a record naming another state directory's base is refused",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t\tif registered {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestARecordNamingAnotherHomesBaseIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a scratch state directory does not adopt another directory's wsl-toolkit-jobs",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif canonicalRegistered && !canonicalHere {\n",
+      "replace": "\tif false && canonicalRegistered && !canonicalHere {\n",
+      "run": "TestAScratchHomeDoesNotAdoptTheHostsCanonicalBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a file naming wsl-toolkit-jobs meets the jobs instance guard",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif isDefaultSelection() && strings.EqualFold(cfg.Base.Name, DefaultBaseName) {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAFileNamingTheCanonicalNameBesideAJobsInstanceIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter on wsl-toolkit-jobs names the tool with no --instance",
+      "file": "internal/toolkit/adapters/pi/install.sh",
+      "find": "  wsl-toolkit | wsl-toolkit-jobs) tool=wsl-toolkit ;;\n",
+      "replace": "",
+      "run": "TestAdaptersNameTheDefaultBaseWithNoInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: muse.exe reaches the default base, not the instance base",
       "file": "internal/toolkit/agents.go",
       "find": "const launcherBaseInstance = DefaultInstance\n",
@@ -31,8 +94,8 @@
     {
       "label": "wsl-toolkit: a default base recorded as wsl-toolkit keeps that name",
       "file": "internal/toolkit/defaultbase.go",
-      "find": "\tif recorded != \"\" {\n\t\treturn recorded, NameFromRecord, nil\n\t}\n\tif legacyHere {\n",
-      "replace": "\tif legacyHere {\n",
+      "find": "\t\tif registered && here {\n",
+      "replace": "\t\tif here && false {\n",
       "run": "TestAnExistingDefaultBaseKeepsItsRecordedName",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -49,17 +112,17 @@
     {
       "label": "wsl-toolkit: a scratch state directory does not adopt another directory's wsl-toolkit",
       "file": "internal/toolkit/defaultbase.go",
-      "find": "(recorded == LegacyBaseName || pathEqual(cleanBasePath(legacyAt), cleanBasePath(ownDir)))\n",
-      "replace": "(recorded == LegacyBaseName || legacyAt != \"\" || ownDir == \"\")\n",
+      "find": "\t\treturn at, registered, registered && pathEqual(cleanBasePath(at), cleanBasePath(ownDir))\n",
+      "replace": "\t\treturn at, registered, registered\n",
       "run": "TestAScratchHomeDoesNotAdoptTheHostsOlderBase",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
     {
-      "label": "wsl-toolkit: wsl-toolkit and wsl-toolkit-jobs both registered are refused by name",
+      "label": "wsl-toolkit: wsl-toolkit and wsl-toolkit-jobs both with their disk here are refused by name",
       "file": "internal/toolkit/defaultbase.go",
-      "find": "\tif legacyHere && canonicalRegistered {\n",
-      "replace": "\tif false && legacyHere && canonicalRegistered {\n",
+      "find": "\tif legacyHere && canonicalHere {\n",
+      "replace": "\tif false && legacyHere && canonicalHere {\n",
       "run": "TestTwoDefaultBasesAreRefusedByName",
       "module": "tools/windows/wsl-toolkit",
       "args": []

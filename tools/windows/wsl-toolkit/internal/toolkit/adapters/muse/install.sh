@@ -53,6 +53,8 @@ fi
 LAUNCHER=$TK_HOME/.local/bin/muse
 
 case $TK_DISTRO in
+  # The default base: the canonical name and the older one. WSL-167.
+  wsl-toolkit | wsl-toolkit-jobs) tool=wsl-toolkit ;;
   wsl-toolkit-*) tool="wsl-toolkit --instance ${TK_DISTRO#wsl-toolkit-}" ;;
   *) tool=wsl-toolkit ;;
 esac

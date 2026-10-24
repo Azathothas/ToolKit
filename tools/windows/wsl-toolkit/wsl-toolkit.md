@@ -115,19 +115,24 @@ base has, in this order:
 | step | what decides |
 | --- | --- |
 | 1 | `base.name` in the configuration in effect |
-| 2 | ⛔ a refusal, when this state directory has two candidates |
-| 3 | the state directory's `base.json`, the record of the base it built |
+| 2 | ⛔ a refusal, when both names have their disk in this state directory |
+| 3 | the state directory's `base.json`, when that name is registered with its disk here |
 | 4 | a registered `wsl-toolkit` whose disk is in this state directory, with this tool's marker |
-| 5 | `wsl-toolkit-jobs` |
+| 5 | `wsl-toolkit-jobs`, unless another state directory's disk holds it |
 
-⛔ **Two candidates are refused, never guessed between.** When this state directory's
-`wsl-toolkit` carries the marker and `wsl-toolkit-jobs` is registered too, every
-command exits 2 and names both. Set `base.name` to choose, or remove the one you do
-not use.
+⛔ **Two candidates are refused, never guessed between.** When both names have their
+disk in this state directory, every command exits 2 and names both. Set `base.name`
+to choose.
 
-⭐ **A scratch state directory does not adopt the host's base.** A distribution name
-is global to the host. A `wsl-toolkit` counts only when this state directory's record
-names it or its disk is in this state directory.
+⭐ **A name counts only when its disk is in this state directory.** A distribution
+name is global to the host, and a state directory is not. A name registered with its
+disk in another state directory is refused by name and never acted on. So a scratch
+state directory does not adopt the host's base under either name. A base built in a
+scratch state directory does not make your own state directory ambiguous either.
+
+⚠ **Only a missing marker demotes a `wsl-toolkit` with no record.** When the marker
+cannot be read, because the guest does not start or the read times out, the command
+exits 2 and says so.
 
 `base status` says which name the base has, in the `older name` row and in
 `naming` under `--json`. ⛔ **Moving is your choice, and the tool never renames on its

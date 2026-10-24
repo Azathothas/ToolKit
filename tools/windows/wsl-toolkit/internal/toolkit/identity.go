@@ -76,6 +76,11 @@ var ErrNotOwned = errors.New("not a distribution this tool owns")
 // adoptable, and one built by somebody else is not.
 var ErrNoIdentity = errors.New("carries no wsl-toolkit identity marker")
 
+// ErrIdentityUnread says the marker could not be read at all: the guest did not
+// start, the read timed out, or wsl.exe failed. ⛔ It is not ErrNoIdentity,
+// because nothing was learned about the marker. WSL-167.
+var ErrIdentityUnread = errors.New("the wsl-toolkit identity marker could not be read")
+
 // IsOwnedName is the structural half: `wsl-toolkit`, or `wsl-toolkit-<suffix>`.
 //
 // ⚠ It is deliberately not "has the prefix". `wsl-toolkitorama` has the prefix
@@ -198,8 +203,16 @@ func (w *Wsl) ReadIdentity(ctx context.Context, name string) (Identity, error) {
 	if wslErr := classifyWslFailure(out.String(), errBuf.String(), err); wslErr != nil && errors.Is(wslErr, ErrWslDenied) {
 		return id, wslErr
 	}
-	if code != 0 || err != nil {
+	// ⛔ ONLY `cat` SAYING THE FILE IS MISSING IS AN ABSENCE. A timeout, a guest
+	// that would not start or a broken install also exit nonzero, and none of them
+	// says the marker is not there. Read as an absence, they demoted a base this
+	// tool built and stamped a guest it could not reach. `cat` names the path it
+	// could not open, and wsl.exe failing to start a guest does not. WSL-167.
+	if code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {
 		return id, fmt.Errorf("%s %w", name, ErrNoIdentity)
+	}
+	if code != 0 || err != nil {
+		return id, fmt.Errorf("%w: %s, exit %d: %s", ErrIdentityUnread, name, code, guestFailure(out.String(), errBuf.String()))
 	}
 	if err := json.Unmarshal([]byte(out.String()), &id); err != nil {
 		return id, fmt.Errorf("%s carries a %s that does not parse: %w", name, IdentityPath, err)

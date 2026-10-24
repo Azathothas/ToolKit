@@ -97,7 +97,9 @@ that carries it is a major one.
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
 | a NEW default base is registered as `wsl-toolkit-jobs`. A base built before keeps its recorded name, `wsl-toolkit` | names the distribution `wsl-toolkit` directly, on a host whose default base is built after the update | reads the name from `base status --json`, or runs the tool's own commands |
-| a state directory with a marked `wsl-toolkit` and a registered `wsl-toolkit-jobs` is refused, exit 2, naming both | built a second default base beside the first | sets `base.name` to the one it uses, or removes the other |
+| a state directory where both names have their disk is refused, exit 2, naming both | built a second default base beside the first | sets `base.name` to the one it uses |
+| a default base registered with its disk in another state directory is refused, exit 2, naming both directories. A record of it is refused too | points `WSL_TOOLKIT_HOME` at a scratch directory and acts on the host's own base | points `WSL_TOOLKIT_HOME` at the directory that built the base, or builds one in the scratch directory |
+| a `wsl-toolkit` with no record whose marker cannot be read is refused, where it was taken as unmarked | runs while the guest cannot start | starts the guest, or runs `base ensure` to write the record |
 | a new instance named `base` or `jobs` is refused, exit 2. An existing one stays reachable and is never built again | creates either instance | names its instance for what it holds |
 | `muse.exe`, `pi.exe` and `omp.exe` reach the default base, not the instance `base` | runs a launcher against the instance `base` | configures the agents' adapters on the default base and runs `base ensure` |
 

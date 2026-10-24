@@ -160,8 +160,17 @@ func fakeWslMain(state string, args []string) int {
 	case len(args) == 2 && args[0] == "--terminate":
 		return 0
 	case len(args) > 2 && args[0] == "-d" && args[len(args)-1] == IdentityPath && has(args[1]):
+		// ⚠ A MARKER THE CASE SAYS CANNOT BE READ: the guest did not start, as
+		// wsl.exe says it, with no word of the path. WSL-167.
+		if how, ok := said("identity"); ok && strings.TrimSpace(how) == "unreadable" {
+			fmt.Fprintln(os.Stderr, "The distribution failed to start.")
+			return 1
+		}
 		marker, err := os.ReadFile(filepath.Join(state, "identity.json"))
 		if err != nil {
+			// What `cat` says about a missing file: the path, so the read is
+			// an answer and not a failure to ask.
+			fmt.Fprintf(os.Stderr, "/bin/cat: %s: No such file or directory\n", IdentityPath)
 			return 1
 		}
 		_, _ = os.Stdout.Write(marker)
