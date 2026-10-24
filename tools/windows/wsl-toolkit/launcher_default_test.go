@@ -26,6 +26,14 @@ func TestAnUnsuffixedLauncherReachesTheDefaultBase(t *testing.T) {
 	previous, previousQuiet := toolkit.SelectedInstance, quiet
 	t.Cleanup(func() { toolkit.SelectedInstance, quiet = previous, previousQuiet })
 	toolkit.SelectedInstance = toolkit.Instance{}
+	// ⚠ THE DEFAULT BASE'S NAME IS THIS HOST'S. A state directory with no record
+	// acts on the host's registered base, so the name is read, not assumed.
+	cfg, err := toolkit.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := cfg.Base.Name
+	toolkit.SelectedInstance = toolkit.Instance{}
 
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -37,8 +45,8 @@ func TestAnUnsuffixedLauncherReachesTheDefaultBase(t *testing.T) {
 	_ = w.Close()
 	os.Stderr = old
 	out, _ := io.ReadAll(r)
-	if code == exitOK || !strings.Contains(string(out), toolkit.DefaultBaseName+"'s configuration names no agent adapter") {
-		t.Fatalf("muse.exe answered %d with %q; want the default base %s named", code, out, toolkit.DefaultBaseName)
+	if code == exitOK || !strings.Contains(string(out), want+"'s configuration names no agent adapter") {
+		t.Fatalf("muse.exe answered %d with %q; want the default base %s named", code, out, want)
 	}
 	if toolkit.SelectedInstance.Name != toolkit.DefaultInstance {
 		t.Fatalf("muse.exe selected the instance %q", toolkit.SelectedInstance.Name)

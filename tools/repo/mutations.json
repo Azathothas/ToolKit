@@ -11,15 +11,6 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: an unreadable marker never demotes an unrecorded wsl-toolkit",
-      "file": "internal/toolkit/defaultbase.go",
-      "find": "\t\tcase !errors.Is(markErr, ErrNoIdentity):\n",
-      "replace": "\t\tcase errors.Is(markErr, ErrWslDenied):\n",
-      "run": "TestAnUnreadableMarkerNeverDemotesTheOlderBase",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
       "label": "wsl-toolkit: a wsl-toolkit-jobs in another state directory is no second candidate",
       "file": "internal/toolkit/defaultbase.go",
       "find": "\tcanonicalAt, canonicalRegistered, canonicalHere := where(DefaultBaseName)\n",
@@ -34,15 +25,6 @@
       "find": "\t\tif registered {\n",
       "replace": "\t\tif false {\n",
       "run": "TestARecordNamingAnotherHomesBaseIsRefused",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a scratch state directory does not adopt another directory's wsl-toolkit-jobs",
-      "file": "internal/toolkit/defaultbase.go",
-      "find": "\tif canonicalRegistered && !canonicalHere {\n",
-      "replace": "\tif false && canonicalRegistered && !canonicalHere {\n",
-      "run": "TestAScratchHomeDoesNotAdoptTheHostsCanonicalBase",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -101,20 +83,65 @@
       "args": []
     },
     {
-      "label": "wsl-toolkit: a marked wsl-toolkit with its disk in this state directory and no record is kept",
+      "label": "wsl-toolkit: a state directory with no record uses the host's wsl-toolkit wherever its disk is",
       "file": "internal/toolkit/defaultbase.go",
-      "find": "\t\t\treturn LegacyBaseName, NameFromRegistered, nil\n",
-      "replace": "\t\t\treturn DefaultBaseName, NameFromRegistered, nil\n",
-      "run": "TestARegisteredMarkedDefaultBaseWithNoRecordIsKept",
+      "find": "\tcase legacyRegistered:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
     {
-      "label": "wsl-toolkit: a scratch state directory does not adopt another directory's wsl-toolkit",
+      "label": "wsl-toolkit: a state directory with no record uses the host's wsl-toolkit-jobs wherever its disk is",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tcase canonicalRegistered:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAnUnrecordedHomeUsesTheHostsCanonicalBaseWhereverItsDiskIs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: both default names registered with no record are refused by name",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tcase legacyRegistered && canonicalRegistered:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestBothNamesRegisteredWithNoRecordAreRefusedByName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: neither default name registered with no record is wsl-toolkit-jobs",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\t// ⭐ STEP 6: A FRESH HOST, under the canonical name.\n\treturn defaultChoice{name: DefaultBaseName, from: NameFromCanonical}, nil\n",
+      "replace": "\treturn defaultChoice{name: LegacyBaseName, from: NameFromCanonical}, nil\n",
+      "run": "TestNeitherNameRegisteredWithNoRecordIsTheCanonicalName",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base status names the other state directory that holds the base's disk",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tn := &BaseNaming{Canonical: DefaultBaseName, From: from, Elsewhere: c.nameAt}\n",
+      "replace": "\tn := &BaseNaming{Canonical: DefaultBaseName, From: from}\n",
+      "run": "TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the move of a base whose disk is elsewhere is sent to that state directory",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif elsewhere != \"\" {\n",
+      "replace": "\tif false {\n",
+      "run": "TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a recorded base counts as this state directory's only with its disk in the base folder",
       "file": "internal/toolkit/defaultbase.go",
       "find": "\t\treturn at, registered, registered && pathEqual(cleanBasePath(at), cleanBasePath(ownDir))\n",
       "replace": "\t\treturn at, registered, registered\n",
-      "run": "TestAScratchHomeDoesNotAdoptTheHostsOlderBase",
+      "run": "TestARecordNamingAnotherHomesBaseIsRefused",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

@@ -378,6 +378,11 @@ func renderBaseState(st toolkit.BaseState, probed bool) {
 	if n := st.Naming; n != nil && n.Legacy {
 		fmt.Fprintf(out, "  older name  %s\n", n.Move)
 	}
+	// ⭐ A STATE DIRECTORY WITH NO RECORD ACTS ON THE HOST'S BASE, and says whose
+	// disk that is. WSL-167, WSL-118.
+	if note := st.Naming.ElsewhereNote(st.Name); note != "" {
+		fmt.Fprintf(out, "  disk in     %s\n", note)
+	}
 	fmt.Fprintf(out, "  image       %s\n", st.Image)
 	if st.BuiltFrom != "" && st.BuiltFrom != st.Image {
 		fmt.Fprintf(out, "  built from  %s\n", st.BuiltFrom)

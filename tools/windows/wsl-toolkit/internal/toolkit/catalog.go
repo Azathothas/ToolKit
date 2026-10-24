@@ -252,6 +252,9 @@ type Config struct {
 	source string
 	// nameFrom is which step chose the default instance's base name. WSL-167.
 	nameFrom string
+	// nameAt is the base folder of another state directory that holds the disk
+	// of the base this one acts on, and empty where the disk is here. WSL-167.
+	nameAt string
 }
 
 // Path is the file this configuration was read from, and Source is which step
@@ -584,11 +587,11 @@ func withDefaultDistro(cfg Config) (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	name, from, err := resolveDefaultDistro(home)
+	choice, err := resolveDefaultDistro(home)
 	if err != nil {
 		return cfg, err
 	}
-	cfg.Base.Name, cfg.nameFrom = name, from
+	cfg.Base.Name, cfg.nameFrom, cfg.nameAt = choice.name, choice.from, choice.at
 	return cfg, nil
 }
 

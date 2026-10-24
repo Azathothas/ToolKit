@@ -117,28 +117,35 @@ base has, in this order:
 | 1 | `base.name` in the configuration in effect |
 | 2 | ⛔ a refusal, when both names have their disk in this state directory |
 | 3 | the state directory's `base.json`, when that name is registered with its disk here |
-| 4 | a registered `wsl-toolkit` whose disk is in this state directory, with this tool's marker |
-| 5 | `wsl-toolkit-jobs`, unless another state directory's disk holds it |
+| 4 | with no record, the one name of the two that is registered, wherever its disk is |
+| 5 | ⛔ a refusal, when there is no record and both names are registered |
+| 6 | `wsl-toolkit-jobs`, when there is no record and neither name is registered |
 
 ⛔ **Two candidates are refused, never guessed between.** When both names have their
-disk in this state directory, every command exits 2 and names both. Set `base.name`
-to choose.
+disk in this state directory, every command exits 2 and names both. With no record and
+both names registered anywhere, the same holds. Set `base.name` to choose.
 
-⭐ **A name counts only when its disk is in this state directory.** A distribution
-name is global to the host, and a state directory is not. A name registered with its
-disk in another state directory is refused by name and never acted on. So a scratch
-state directory does not adopt the host's base under either name. A base built in a
-scratch state directory does not make your own state directory ambiguous either.
+⭐ **A host that already has a base sees no change.** A state directory with no
+`base.json` acts on the host's registered base, under either name, wherever its disk
+is. That is what every state directory did before `wsl-toolkit-jobs`. So a scratch
+`WSL_TOOLKIT_HOME`, or a shell whose `%LOCALAPPDATA%` Windows redirects, uses the
+host's base and builds no second one. `base status` says so in a `disk in` row, and
+in `naming.elsewhere` under `--json`, naming the folder that holds the disk.
 
-⚠ **Only a missing marker demotes a `wsl-toolkit` with no record.** When the marker
-cannot be read, because the guest does not start or the read times out, the command
-exits 2 and says so.
+⛔ **A record ties a base to its state directory by the disk.** A `base.json` that
+names a base registered with its disk in another state directory is refused by name.
+A base built in a scratch state directory has its record there, and does not make
+your own state directory ambiguous.
+
+⚠ **No guest marker is read to choose the name.** Reading one starts the
+distribution on every command.
 
 `base status` says which name the base has, in the `older name` row and in
 `naming` under `--json`. ⛔ **Moving is your choice, and the tool never renames on its
 own.** To move, run `wsl-toolkit base remove --yes`, then `wsl-toolkit base ensure`.
 That deletes the base's disk, with its home, images and credentials. It builds a new
-base from the image, and the configuration's grants are kept.
+base from the image, and the configuration's grants are kept. ⛔ Run the move from
+the state directory that holds the base's disk, which `base status` names.
 
 ⚠ **No in-place rename is offered.** A copy by `wsl --export` and `wsl --import`
 doubles the disk while it runs. It also carries the marker of the old name, which
