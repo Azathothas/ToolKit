@@ -12,8 +12,8 @@ standing rules and the rulings in force, and history is in git, the entries and
 ```text
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
-head            this commit: wsl-toolkit 7.0.1 published from e3378be, installed and driven; 7.0.2 next
-entries         total 244  open 68  blocked 5  done 171
+head            this commit: wsl-toolkit 7.0.2, the audit's data-loss fixes merged; 7.0.1 is deployed
+entries         total 248  open 61  blocked 5  done 182
 this session    ruling 31
 ```
 
@@ -64,15 +64,11 @@ workloads blocked, so the critical fixes shipped first as `wsl-toolkit-v7.0.1`:
 `WSL-168`, and the first parts of `WSL-137` and `WSL-169`. It is installed on this
 host and driven on the jobs base.
 
-7.0.2 takes the audit's data-loss findings in four groups, each built in its own
-worktree, reviewed by two adversarial passes and repaired:
-
-- `hotfix/g1-base-lifecycle`: `WSL-171`, `WSL-177`, `WSL-172`, `WSL-175` and the
-  rest of `WSL-169`. Being rebuilt from a saved partial diff.
-- `hotfix/g2-ledger`: `WSL-173`, `WSL-185`. Reviewed and repaired, not merged.
-- `hotfix/g3-probe-qemu`: `WSL-174`, `WSL-181`, `WSL-182`. Reviewed and repaired,
-  not merged.
-- `hotfix/g4-grants`: `WSL-179`. Reviewed and repaired, not merged.
+7.0.2 takes the audit's data-loss findings in four groups. Each was built in its own
+worktree, reviewed by two adversarial passes a round, repaired and merged into
+`main`: `WSL-169`, `WSL-171` to `WSL-175`, `WSL-177`, `WSL-179`, `WSL-181`,
+`WSL-182` and `WSL-185`. The merge met G1 and G4 in the grant ledger, and a case
+holds the result. Next: CI green, publish, `selfupdate` and drive.
 
 The 7.1.0 work waits on local, unpushed branches, each unmerged and ungated:
 `wip/f6a-adapters` (finished; the triage found four things to fix before it merges),
@@ -92,7 +88,8 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
 2. ⛔ **Then `wsl-toolkit-v7.0.2`, the audit's data-loss fixes**, grouped by code area so
    the builders do not collide: the base's lifecycle `WSL-171`, `WSL-177`, `WSL-172`,
    `WSL-175` and the rest of `WSL-169`; the ledger `WSL-173` and `WSL-185`; the probe and
-   the QEMU step `WSL-174`, `WSL-181` and `WSL-182`; grants `WSL-179`.
+   the QEMU step `WSL-174`, `WSL-181` and `WSL-182`; grants `WSL-179`. **Closed:** all
+   eleven are done and merged; the release follows CI.
 3. **The record and the checks that hold it**, first, because every later commit
    is checked by them: `DOC-10`, `TOOL-29`, `TOOL-30`, `DOC-09`, `TOOL-31`,
    `TOOL-35`, `DOC-13`, `DOC-11` and `DOC-12`.

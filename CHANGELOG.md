@@ -23,6 +23,27 @@ entry. A superseded one is amended in place with a dated note.
 
 ## 2026-10-24
 
+### 2026-10-24T11:30:50Z: `wsl-toolkit` is 7.0.2, the audit's data-loss fixes
+
+**Record:** `WSL-169`, `WSL-171` to `WSL-175`, `WSL-177`, `WSL-179`, `WSL-181`, `WSL-182` and `WSL-185`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md). The work filed `WSL-189` to `WSL-192`.
+**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v7.0.2` from this commit.
+
+⛔ **A failed re-provision removed the base.** It now returns its error and keeps the base. Only `base recreate`, a preset switch or a rollback of this process's own import removes one. `WSL-171`
+
+⛔ **A build could delete a disk that a registered distribution still used.** The registry is read first, and a leftover disk is moved aside, not deleted. `WSL-177`
+
+⛔ **Two commands could change one base at once.** One lock now covers `ensure`, `remove`, `recreate`, `grant` and `revoke`, and a waiter names the holder. `WSL-172`
+
+⭐ **A re-provision restarts the base only when a start setting changed**, so a passing problem no longer stops every job. `WSL-175`
+
+⭐ **A forced rebuild pulls, exports and checks the space before it removes anything.** `WSL-169`
+
+⭐ **A grant from one configuration file leaves another file's mount alone**, and a guest ledger names who made each grant. `WSL-179`
+
+⭐ **A stop recorded during an image pull is no longer lost to compaction**, and the job ledger is locked across processes. `WSL-173`, `WSL-185`
+
+⭐ **A probe image the registry refuses no longer reads as a broken base**, and a failed QEMU step no longer fails `base ensure`. `WSL-174`, `WSL-181`, `WSL-182`
+
 ### 2026-10-24T07:48:54Z: `wsl-toolkit` is 7.0.1, the critical fixes for workloads blocked since the restart
 
 **Record:** `WSL-168`, and the 7.0.1 amendments to `WSL-137` and `WSL-169`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).

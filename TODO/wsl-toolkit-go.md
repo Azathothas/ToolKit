@@ -15456,7 +15456,7 @@ shows `watch: none` while root's systemd runs the unit: a reporting defect, reco
 ## WSL-169. `base ensure --force` unregisters a working base before it knows it can build one
 
 **Source** the triage of 2026-10-24, from podssh's record of 2026-10-13
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -15501,7 +15501,15 @@ Exit 0, with a case where the engine does not answer and the base is still regis
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g1-base-lifecycle`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. A forced rebuild prepares before it removes anything. It finds the engine, pulls, exports into its own archive and checks the space, with the old disk counted as freed. A `--preset` switch is decided under the lock from the record or the marker. So a second switch does not rebuild what the first one built.
+
+```text
+driven on scratch instance g1s: base recreate with an unreachable image
+  wsl-toolkit-g1s was NOT removed ...   exit 2
+  wsl -l still lists it, and the home file survived
+```
+
+⚠ The local-image fallback for a failed pull is `WSL-192`.
 
 ⭐ **2026-10-24T07:48:08Z: the engine check shipped in `wsl-toolkit-v7.0.1`.** `base recreate`, and
 an `ensure --preset` switch that becomes one, ask the host engine they will export with before
@@ -15572,7 +15580,7 @@ Open.
 ## WSL-171. A failed re-provision of a registered, marked base unregisters it and deletes its disk
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 1; verified by two skeptics. The audit's note on entries: NONE. WSL-169 covers `--force` only. WSL-106's closing excludes only gone grants. WSL-140 covers mirror retries only.
-**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** done
 
 ---
 
@@ -15618,13 +15626,20 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g1-base-lifecycle`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. A failed re-provision of a registered base returns its error, keeps the base and names `base recreate`. No failure removes a base now. Only `base recreate`, a `--preset` switch, or a rollback of this process's own import does.
+
+```text
+fake-WSL case: a re-provision fails on a registered, marked base
+  before: the base was unregistered and rebuilt
+  after:  the error is returned, wsl --unregister is never called, the disk and record stay
+its mutation row: red on Windows
+```
 
 
 ## WSL-172. Nothing serializes base mutation: concurrent builds destroy each other
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 3; verified by two skeptics. The audit's note on entries: NONE.
-**Category** wsl-toolkit-go, **Priority** P0, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** M, **Status** done
 
 ---
 
@@ -15668,13 +15683,21 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g1-base-lifecycle`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. One lock, `base.lock`, is held across `ensure`, `remove`, `recreate`, `grant` and `revoke`, with the configuration write inside it. Status and grants are read again under it. A waiter names the holder's process, command and start time. The rootfs archive comes from `os.CreateTemp`. A rollback unregisters only a distribution this process imported, and `--instance auto` claims its directory with `os.Mkdir`.
+
+```text
+driven on scratch instance g1s: a second base ensure waited, named base recreate as the holder,
+then found the base already registered and built nothing
+the group's 24 mutation rows: each red on Windows or in golang:1.25
+```
+
+⚠ The helper route still sends a forced rebuild for a preset switch: `WSL-191`.
 
 
 ## WSL-173. `gc --apply` (even a scoped one) compacts the ledger and drops pending `stop` events, so a stopped job runs anyway
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 4; verified by two skeptics. The audit's note on entries: NONE.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -15714,13 +15737,21 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g2-ledger`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. Compaction keeps a stop while its job has an open record or a host directory. A read that meets a Windows sharing violation during a rewrite retries. A ledger it cannot read is an error, never "no stop". A torn last line is ended before the next append.
+
+```text
+before: 119 to 171 failed reads in 9000 to 13000 under concurrent compaction
+after:  none in five runs
+six mutation rows; the sharing-violation row is proved on Windows, the only host that refuses the read
+```
+
+Not driven on a real base. Fake-WSL and ledger cases cover it.
 
 
 ## WSL-174. The health probe depends on Docker Hub: a refusal reads as a broken base, which leads to `pacman -Syu`, terminate, and possibly #1
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 5; verified by two skeptics. The audit's note on entries: NONE.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -15765,13 +15796,22 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g3-probe-qemu`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. A probe image the registry refuses is not a broken base. `base ensure` refuses and keeps the base unless a known base mark matches, and a network word outranks a base mark. A trust failure names the CA bundle, `auth.json` and `base shell --root`. `verify.sh` reads BusyBox's 143 and 137, and a pull that took the whole bound, as the bound.
+
+```text
+real BusyBox timeout:  timeout 2 sleep 10 -> 143;  timeout -s KILL 2 sleep 10 -> 137
+the real verify.sh probe section, with a podman whose pull sleeps 300 s:
+  exit 4 after 120s
+  verify-pull: the pull did not finish within 120 seconds
+```
+
+Not driven: a full `base ensure` against a stalled registry on a real base.
 
 
 ## WSL-175. Every re-provision ends in `wsl --terminate` whether or not anything changed
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 6; verified by two skeptics. The audit's note on entries: NONE. WSL-75 removed the restart for grants only.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -15809,7 +15849,15 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g1-base-lifecycle`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. `provision.sh` and `grants.sh` say whether `wsl.conf` and the fstab block changed. Go restarts the base only on a change, on a restart that an earlier failed run still owes (`base.restart-owed`), or when the base still does not verify. A new import always restarts.
+
+```text
+driven on scratch instance g1s:
+  nothing owed:  "are as they were, so the base is not restarted"; a running sleep (pid 428) survived
+  restart owed:  the base was restarted though both files were unchanged
+```
+
+⚠ The merge met `WSL-179` here. A provisioning write now keeps another configuration's ledger rows, because no restart may follow it. A case and a row, red in golang:1.25, hold it.
 
 
 ## WSL-176. The 4-minute pull "stall" is really a minimum bandwidth, and the message says it is not a slow link
@@ -15863,7 +15911,7 @@ Open.
 ## WSL-177. A build deletes `<home>\base` whenever the configured name is not listed, without asking whose disk it is
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 8; verified by two skeptics. The audit's note on entries: WSL-167, which must carry this as a precondition.
-**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** done
 
 ---
 
@@ -15910,7 +15958,13 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g1-base-lifecycle`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. Before any removal of the base's directory, the registry is read. A registered distribution whose disk is there refuses the delete and is named. An unreadable registry refuses, and a `base.json` that names another distribution refuses. A leftover disk is moved aside to `base.orphaned-<time>`, not deleted. A NUL in a listing name is an error.
+
+```text
+a fake-WSL case for each refusal, each with a mutation row red on Windows
+```
+
+⚠ An orphaned disk keeps its space until the operator deletes `base.orphaned-*`. `base remove` of an unregistered instance still deletes it, after both checks.
 
 
 ## WSL-178. The rootless run root lives on disk-backed `/tmp`, so every distribution or VM restart makes podman's state stale
@@ -15965,7 +16019,7 @@ Open.
 ## WSL-179. A grant or revoke in live mode unmounts every `/workspaces` mount the caller's config does not name
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 10; verified by two skeptics. The audit's note on entries: WSL-118 (partly); otherwise NONE.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -16006,7 +16060,16 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g4-grants`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. A live grant or revoke changes only its own target. A guest ledger, `/var/lib/wsl-toolkit/grant-owners`, records which configuration file made each grant. A target another file holds is refused, and the refusal names that file's revoke. `verify.sh` and `base ensure` leave such a mount, and an ensure refuses to restart over it unless `--repair` is given. A host lock and a guest lock serialize grants.
+
+```text
+driven on scratch instance g4r, two configuration files A and B:
+  A grants /workspaces/p, B grants /workspaces/o      exit 0, exit 0
+  B grants /workspaces/p                               refused, names A's revoke, exit 1
+  B revokes p after a hand edit to another source      refused, p stays mounted, exit 1
+```
+
+⚠ The fstab block still holds only the last caller's grants, so a restart drops another file's mount: `WSL-190`. A grant that fails after it mounts leaves that mount: `WSL-189`. Alpine's missing `runuser` is a row of `WSL-188`.
 
 
 ## WSL-180. Nothing watches the host free space that the dynamic VHDX grows into
@@ -16057,7 +16120,7 @@ Open.
 ## WSL-181. The QEMU step is fatal on every ensure, and its root podman call is duplicated with the same D-Bus defect
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 12; verified by two skeptics. The audit's note on entries: WSL-168, widened to cover these.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -16097,13 +16160,20 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g3-probe-qemu`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. A failed QEMU step is the advisory remediation `binfmt-step-failed`, not a problem. `base ensure` exits 0, and `ready` stays ready and lists it in its notes.
+
+```text
+toolkit case: a failed binfmt step leaves the problems empty and adds the advisory remediation
+its mutation row: red
+```
+
+No command-level case asserts the exit code. It follows from an empty problem list.
 
 
 ## WSL-182. The privileged QEMU installer runs from a mutable Docker Hub tag
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 13; verified by two skeptics. The audit's note on entries: NONE. Low likelihood, cheap fix.
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -16139,7 +16209,13 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g3-probe-qemu`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. The fetch in `binfmt.sh` reads 124, 137 and 143, and a pull that took the whole bound, as the bound. So the finding names the bound on BusyBox too.
+
+```text
+a Linux stand-in case for each exit code, each row red in golang:1.25
+```
+
+The fetch was not driven under real BusyBox. The probe's twin of it was.
 
 
 ## WSL-183. A base that cannot start reads as "no identity marker", so remove and recreate refuse it
@@ -16229,7 +16305,7 @@ Open.
 ## WSL-185. Ledger compaction is serialized only within one process
 
 **Source** the audit of hardcoded assumptions and single points of failure, 2026-10-24, finding 16; verified by two skeptics. The audit's note on entries: NONE. Medium severity.
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16265,7 +16341,12 @@ Exit 0, with a case that drives the trigger and fails without the fix, and a mut
 
 ## Closing
 
-Open.
+**Closed 2026-10-24T11:29:30Z, in `wsl-toolkit-v7.0.2`.** Built on `hotfix/g2-ledger`, reviewed by two adversarial passes a round, repaired, and merged into `main` at `a06fada`. `Append` and `Compact` hold an exclusive lock on `ledger.lock` across processes, waiting up to 30 seconds. It covers the append, and the read, compaction and atomic write.
+
+```text
+TestTwoProcessesCompactingLoseNoRecordAnotherAppends: two processes compact while a third appends
+three rows red on Windows and in golang:1.25
+```
 
 
 ## WSL-186. The default base is a tag rebuilt daily, and no digest is recorded
@@ -16399,6 +16480,156 @@ pwsh -NoProfile -File scripts/common/check-go.ps1
 ```
 
 Exit 0, a case per row where a case can hold it.
+
+---
+
+## Closing
+
+Open.
+
+## WSL-189. A grant that fails after it mounts leaves its new mount in place
+
+**Source** the 7.0.2 builders' reports, 2026-10-24, workflow wf_ac18d0b7-49c, group G4's real drive on scratch instance g4r
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+When a live grant fails after it mounts its target, `fail_back` puts the old fstab block back and mounts again what it unmounted. It does not unmount the mount it just made. That mount has no ledger row and is in no configuration, so the next `base ensure` reads it as unconfigured.
+
+## Premise
+
+Met on a scratch Alpine base, where the read-back failed with `runuser: not found` after the mount. Present at `081c724`, before the 7.0.2 grant work. Not reproduced since.
+
+## Approach
+
+`fail_back` unmounts a target this call mounted, when the call recorded that it mounted it. A case drives a read-back that fails after the mount and asserts the target is not mounted.
+
+## Consumers
+
+A failed grant leaves the base as it was. Nothing that works today changes.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with the new case red without the fix, and its mutation row red on Linux.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-190. The fstab block holds only the last caller's grants, so a restart drops another configuration's mount
+
+**Source** the 7.0.2 builders' reports, 2026-10-24, workflow wf_ac18d0b7-49c, group G4's report on `WSL-179`
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+
+---
+
+## Problem
+
+Since `WSL-179`, a live grant from one configuration file leaves another file's mount alone. But the fstab block is written from the caller's file alone. A restart for any reason mounts that block, so the other file's grant is gone. With automount off, a `base ensure` from a file that does not name the mount refuses, and with `--repair` it restarts over it.
+
+## Premise
+
+Read in `grants.sh` and `base.go` after the 7.0.2 merge. The manual's grant section says it as a warning. Not driven as a restart on a real base.
+
+## Approach
+
+Keep each file's fstab lines in the block, keyed by the grant ledger's owner, so a restart mounts every grant that a file still holds. Or record the granted set in the guest and build the block from it. Choose one in this entry's Decision before the work.
+
+## Consumers
+
+A grant made from a second file then survives a restart. No grant that works today stops working.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where two files grant, the base restarts, and both mounts come back.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-191. The helper protocol still sends a forced rebuild for a preset switch
+
+**Source** the 7.0.2 builders' reports, 2026-10-24, workflow wf_ac18d0b7-49c, group G1's report on `WSL-172` and `WSL-169`
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+A `--preset` switch through the CLI is now decided under the base's lock from the recorded image, so a second switch does not rebuild the base the first one built. Through the helper, `BaseEnsureWith` still sends `force=true`, so that race remains on the helper route.
+
+## Premise
+
+Read in the helper client after the 7.0.2 merge. Not driven.
+
+## Approach
+
+Add a conditional switch to the helper protocol that maps to `EnsureSwitch`, and send it for a preset switch. Keep `force` for `base recreate`.
+
+## Consumers
+
+A helper caller gets the CLI's switch. `base recreate` through the helper is unchanged.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a helper case that switches twice and builds once.
+
+---
+
+## Closing
+
+Open.
+
+## WSL-192. A rebuild whose pull fails does not fall back to a local image
+
+**Source** the 7.0.2 builders' reports, 2026-10-24, group G1's report on `WSL-169`
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+Since 7.0.2 a forced rebuild pulls and exports before it removes anything, so a failed pull keeps the base. But the rebuild then fails, even when the host engine already holds the image for the right architecture. A host with no registry access cannot rebuild at all.
+
+## Premise
+
+The audit's widening of `WSL-169` named the fallback. G1 did not build it. Read in `prepareRebuild` after the 7.0.2 merge.
+
+## Approach
+
+When the pull fails, ask the engine for a local image of that reference and architecture. Use it, and say that the base is built from a local copy and from which digest.
+
+## Consumers
+
+A rebuild that fails today can succeed. Nothing that works today changes.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a fake-engine case whose pull fails and whose local image builds the base.
 
 ---
 
