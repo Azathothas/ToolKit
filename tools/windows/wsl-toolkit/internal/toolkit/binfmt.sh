@@ -50,20 +50,34 @@ recorded_image() {
   sed -n 's/^image //p' "$RECORD" | head -1
 }
 
+# root_podman is every podman this script runs, and it runs them as root.
+#
+# ⛔ ROOT'S PODMAN IS TOLD ITS CGROUP MANAGER AND ITS EVENTS BACKEND ON THE
+# COMMAND LINE. On a base that boots systemd, root's podman picks the systemd
+# cgroup manager, which reaches systemd over D-Bus, and provision.sh installs
+# systemd without recommends, so a Debian base has no D-Bus. crun answered
+# `cannot open sd-bus` and every `base ensure` exited 2. cgroupfs and the file
+# backend need neither D-Bus nor journald, and a global option outranks whatever
+# /etc/containers says. The account's engine reads the same two from the
+# containers.conf provision.sh writes for it. WSL-168.
+root_podman() {
+  podman --cgroup-manager=cgroupfs --events-backend=file "$@"
+}
+
 # register runs the image's installer, which writes every handler it carries
 # that the kernel lacks, and leaves the ones that are there alone.
 register() {
-  podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all >/dev/null
+  root_podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all >/dev/null
 }
 
 # record writes the base's own set: the image's emulators the kernel now holds.
 record() {
-  mnt=$(podman image mount "$TK_BINFMT_IMAGE") || die "could not read the emulators $TK_BINFMT_IMAGE carries"
+  mnt=$(root_podman image mount "$TK_BINFMT_IMAGE") || die "could not read the emulators $TK_BINFMT_IMAGE carries"
   carried=''
   for f in "$mnt"/usr/bin/qemu-*; do
     [ -e "$f" ] && carried="$carried ${f##*/}"
   done
-  podman image unmount "$TK_BINFMT_IMAGE" >/dev/null 2>&1 || :
+  root_podman image unmount "$TK_BINFMT_IMAGE" >/dev/null 2>&1 || :
   [ -n "$carried" ] || die "$TK_BINFMT_IMAGE carries no qemu emulator under /usr/bin"
   mkdir -p "${RECORD%/*}"
   tmp=$(mktemp "$RECORD.XXXXXX") || die "no temporary file beside $RECORD"

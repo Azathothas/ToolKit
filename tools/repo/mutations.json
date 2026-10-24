@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: root's podman in binfmt.sh takes the cgroupfs cgroup manager",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "  podman --cgroup-manager=cgroupfs --events-backend=file \"$@\"\n",
+      "replace": "  podman --events-backend=file \"$@\"\n",
+      "run": "TestRootsPodmanInABaseNeedsNoDBus",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: root's podman in binfmt.sh takes the file events backend",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "  podman --cgroup-manager=cgroupfs --events-backend=file \"$@\"\n",
+      "replace": "  podman --cgroup-manager=cgroupfs \"$@\"\n",
+      "run": "TestRootsPodmanInABaseNeedsNoDBus",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh installs the QEMU handlers through root_podman",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "  root_podman run --rm --privileged --pull=missing",
+      "replace": "  podman run --rm --privileged --pull=missing",
+      "run": "TestRootsPodmanInABaseNeedsNoDBus",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: binfmt.sh reads the image's emulators through root_podman",
+      "file": "internal/toolkit/binfmt.sh",
+      "find": "  mnt=$(root_podman image mount \"$TK_BINFMT_IMAGE\")",
+      "replace": "  mnt=$(podman image mount \"$TK_BINFMT_IMAGE\")",
+      "run": "TestRootsPodmanInABaseNeedsNoDBus",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's platform handler runs root's podman with cgroupfs and the file events backend",
+      "file": "internal/toolkit/base.go",
+      "find": "podman --cgroup-manager=cgroupfs --events-backend=file run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\"\n",
+      "replace": "podman run --rm --privileged --pull=missing \"$TK_BINFMT_IMAGE\" --install \"$TK_ARCH\"\n",
+      "run": "TestRootsPodmanInABaseNeedsNoDBus",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "skills: a flag the form does not take is refused",
       "file": "internal/checks/skills.go",
       "find": "\t\t\t\tif !known[fl] {\n",

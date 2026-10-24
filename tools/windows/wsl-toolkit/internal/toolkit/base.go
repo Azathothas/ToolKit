@@ -1017,6 +1017,23 @@ func fstabEscape(value string) string {
 	return value
 }
 
+// platformScript registers one platform's handler as root, for the job that
+// asked for it.
+//
+// ⛔ ROOT'S PODMAN TAKES ITS CGROUP MANAGER AND ITS EVENTS BACKEND ON THE COMMAND
+// LINE, as binfmt.sh's does. On a systemd base with no D-Bus, root's podman picks
+// the systemd manager and crun answers `cannot open sd-bus`. WSL-168.
+var platformScript = []byte(`set -eu
+handler=/proc/sys/fs/binfmt_misc/$TK_HANDLER
+if [ -e "$handler" ]; then
+  printf 'binfmt-ready %s\n' "$TK_HANDLER"
+  exit 0
+fi
+podman --cgroup-manager=cgroupfs --events-backend=file run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install "$TK_ARCH"
+[ -e "$handler" ] || { printf 'handler %s was not registered\n' "$TK_HANDLER" >&2; exit 3; }
+printf 'binfmt-ready %s\n' "$TK_HANDLER"
+`)
+
 // EnsurePlatform restores the QEMU handler for one non-native Linux platform.
 //
 // ⚠ THE TABLE IS EVERY DISTRIBUTION'S, AND IT EMPTIES WHILE THIS BASE RUNS. A
@@ -1046,17 +1063,7 @@ func (b *Base) EnsurePlatform(ctx context.Context, platform string) error {
 	if nativePlatformArch(strings.TrimSpace(firstLine(out))) == target {
 		return nil
 	}
-	script := []byte(`set -eu
-handler=/proc/sys/fs/binfmt_misc/$TK_HANDLER
-if [ -e "$handler" ]; then
-  printf 'binfmt-ready %s\n' "$TK_HANDLER"
-  exit 0
-fi
-podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install "$TK_ARCH"
-[ -e "$handler" ] || { printf 'handler %s was not registered\n' "$TK_HANDLER" >&2; exit 3; }
-printf 'binfmt-ready %s\n' "$TK_HANDLER"
-`)
-	out, stderr, code, runErr = b.captureAs(ctx, "root", script, map[string]string{
+	out, stderr, code, runErr = b.captureAs(ctx, "root", platformScript, map[string]string{
 		"TK_ARCH": target, "TK_HANDLER": handler, "TK_BINFMT_IMAGE": BinfmtImage,
 	}, 20*time.Minute)
 	if runErr != nil || code != 0 {
