@@ -248,7 +248,7 @@
       "label": "wsl-toolkit: an interrupted build is removed only where WSL keeps its disk in the instance",
       "file": "internal/toolkit/interrupted.go",
       "find": "\tif !registered || disk == \"\" || !samePlace(disk, b.Dir()) {",
-      "replace": "\tif false {",
+      "replace": "\tif !registered || disk == \"\" {",
       "run": "TestABuildKilledBeforeItsMarkerCanBeRemovedLater",
       "module": "tools/windows/wsl-toolkit",
       "args": []

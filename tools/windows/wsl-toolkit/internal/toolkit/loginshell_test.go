@@ -257,18 +257,13 @@ func TestTheVerifierChecksTheAccountsPasswdEntry(t *testing.T) {
 	if out, stderr, code := run(""); code != 0 || !strings.Contains(out, "account-passwd no-entry "+uid+"\n") {
 		t.Errorf("no entry for the account: exit %d, %q, %q", code, out, stderr)
 	}
-	// ⚠ ROOT READS A FILE OF ANY MODE, so the unreadable file is staged only where
-	// this process is not root. The scratch base measured it as the account.
-	if uid != "0" {
-		passwd := filepath.Join(t.TempDir(), "passwd")
-		if err := os.WriteFile(passwd, []byte(others+entry(home, "/bin/sh")), 0o200); err != nil {
-			t.Fatal(err)
-		}
-		cmd := exec.Command("/bin/sh", "-c", "set -eu\n"+passwdSection(t, passwd))
-		cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + home}
-		if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "account-passwd unreadable\n") {
-			t.Errorf("an unreadable passwd file answered %v, %q", err, out)
-		}
+	// ⚠ ROOT READS A FILE OF ANY MODE, so a file this case cannot read is staged
+	// as one that is not there, which `-r` refuses for root too. The scratch base
+	// measured a 0600 file as the account.
+	cmd := exec.Command("/bin/sh", "-c", "set -eu\n"+passwdSection(t, filepath.Join(t.TempDir(), "no-passwd")))
+	cmd.Env = []string{"PATH=/usr/bin:/bin", "HOME=" + home}
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "account-passwd unreadable\n") {
+		t.Errorf("an unreadable passwd file answered %v, %q", err, out)
 	}
 }
 
