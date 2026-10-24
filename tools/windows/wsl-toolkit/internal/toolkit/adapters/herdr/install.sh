@@ -31,12 +31,17 @@ same_file() {
 }
 
 # -- what this adapter pins, and how a configuration moves it ------------------
-# ⛔ PINNED BY VERSION AND VERIFIED BY DIGEST BEFORE USE. The digests are the ones
-# GitHub publishes for the v0.9.0 release assets, read on 2026-09-14, and a file
-# that does not match is deleted without being run.
-HERDR_VERSION=0.9.0
-HERDR_X86_64_PINNED_SHA256=4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f
-HERDR_AARCH64_PINNED_SHA256=9c8db20fb7e7427b138d5367113f1621ffd319f2f65d6f009e2594029115f0d2
+# ⛔ PINNED BY VERSION AND VERIFIED BY DIGEST BEFORE USE, and a file that does not
+# match is deleted without being run. The release is herdr 0.9.5 as this repository's
+# wsl-toolkit-v7.0.0 publishes it: built by herdr-build.yml from herdr's v0.9.5 tag,
+# and each digest is the line that release's own SHA256SUMS carries. WSL-141.
+# ⚠ SO IT IS DOWNLOADED FROM THAT RELEASE, under the name release.yml gives it. herdr's
+# own aarch64 asset is a different build, and its digest is not this one.
+HERDR_VERSION=0.9.5
+HERDR_X86_64_PINNED_SHA256=14d9e8bc8b4a9e0118d77c32266f76d461f09b40342eb23752960bd89f59929d
+HERDR_AARCH64_PINNED_SHA256=c9b4b513f1e86426acf2313db2a8a0987899217ee45cc437e047e93a2da1e21e
+HERDR_URL_BASE=https://github.com/Azathothas/ToolKit/releases/download/wsl-toolkit-v7.0.0
+HERDR_ASSET_STEM=herdr-$HERDR_VERSION
 
 # ⭐ A NEWER RELEASE IS A CONFIGURATION CHANGE, NOT AN EDIT TO THIS FILE. `version`
 # and `sha256` on this adapter's entry in base.adapters arrive as TK_ADAPTER_VERSION
@@ -44,10 +49,14 @@ HERDR_AARCH64_PINNED_SHA256=9c8db20fb7e7427b138d5367113f1621ffd319f2f65d6f009e25
 # a moved version always brings its own digests. ⛔ An architecture the configuration
 # does not name is refused rather than falling back to a digest for a release this is
 # no longer installing.
+# ⛔ A CONFIGURED VERSION IS herdr's OWN RELEASE, under herdr's own asset names, as it
+# has been since the field existed. Only the default comes from this repository.
 if [ -n "${TK_ADAPTER_VERSION:-}" ]; then
   HERDR_VERSION=$TK_ADAPTER_VERSION
   HERDR_X86_64_PINNED_SHA256=${TK_ADAPTER_SHA256_X86_64:-}
   HERDR_AARCH64_PINNED_SHA256=${TK_ADAPTER_SHA256_AARCH64:-}
+  HERDR_URL_BASE=https://github.com/herdrdev/herdr/releases/download/v$HERDR_VERSION
+  HERDR_ASSET_STEM=herdr
 fi
 
 # ⭐ A NIGHTLY COMES FROM THIS REPOSITORY'S OWN RELEASES. For the `nightly` channel the
@@ -55,7 +64,6 @@ fi
 # version, each digest from that release's SHA256SUMS, and its download base; the digest
 # check below does not change. ⛔ Only a GitHub release download, and only beside the
 # version it belongs to. WSL-90.
-HERDR_URL_BASE=https://github.com/herdrdev/herdr/releases/download/v$HERDR_VERSION
 if [ -n "${TK_ADAPTER_URL_BASE:-}" ]; then
   [ -n "${TK_ADAPTER_VERSION:-}" ] ||
     die "a download base arrived without the version it belongs to"
@@ -65,7 +73,9 @@ if [ -n "${TK_ADAPTER_URL_BASE:-}" ]; then
   esac
 fi
 
-HERDR_BIN=/usr/local/bin/herdr
+# The one path this checks and writes the download at. A case in the suite points it
+# into a temporary directory, and nothing else sets it.
+HERDR_BIN=${TK_HERDR_BIN:-/usr/local/bin/herdr}
 # The release the installed binary came from, which probe.sh reports and this machine's
 # half reads to fetch the Windows client of the same build.
 HERDR_RELEASE_FILE=/usr/local/lib/wsl-toolkit/herdr-release
@@ -114,8 +124,8 @@ done
 
 # -- herdr ------------------------------------------------------------------------
 case "$(uname -m)" in
-  x86_64)  asset=herdr-linux-x86_64;  want=$HERDR_X86_64_PINNED_SHA256 ;;
-  aarch64) asset=herdr-linux-aarch64; want=$HERDR_AARCH64_PINNED_SHA256 ;;
+  x86_64)  asset=$HERDR_ASSET_STEM-linux-x86_64;  want=$HERDR_X86_64_PINNED_SHA256 ;;
+  aarch64) asset=$HERDR_ASSET_STEM-linux-aarch64; want=$HERDR_AARCH64_PINNED_SHA256 ;;
   *) die "herdr publishes no Linux build for $(uname -m)" ;;
 esac
 # ⛔ AN EMPTY DIGEST IS A REFUSAL, NOT AN UNCHECKED DOWNLOAD. It means a
@@ -139,6 +149,12 @@ else
   mv "$tmp" "$HERDR_BIN"
   trap - 0 1 2 15
   say "installed herdr $HERDR_VERSION from $asset, digest verified"
+  # ⚠ A RUNNING SERVER KEEPS THE herdr IT STARTED WITH. This file never restarts it, as
+  # the server step below says, so the release just installed serves nothing until the
+  # server next starts, and the ensure says so. WSL-141.
+  if systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+    say "the running herdr server keeps the herdr it started with until it restarts, which ends every pane. When no pane is needed, run: base exec --root -c 'systemctl restart $UNIT'"
+  fi
 fi
 install -d -m 0755 "${HERDR_RELEASE_FILE%/*}"
 printf '%s\n' "$HERDR_VERSION" > "$HERDR_RELEASE_FILE.tmp"

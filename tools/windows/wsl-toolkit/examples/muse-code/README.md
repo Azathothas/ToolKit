@@ -285,7 +285,7 @@ Nothing has to be open. Make a workspace, read the pane id back, and start an ag
 it:
 
 ```powershell
-$made = wsl-toolkit base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit base herdr -- workspace create --cwd /workspaces/demoproj --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
 wsl-toolkit base herdr -- agent start muse --kind muse --pane $pane --timeout 120000
 ```
@@ -293,14 +293,18 @@ wsl-toolkit base herdr -- agent start muse --kind muse --pane $pane --timeout 12
 ⚠ **Read the pane id from the command that made it.** The base may already hold
 workspaces.
 
+⚠ **`--cwd` is the project you granted in step 4, by its absolute path.** herdr does
+not expand `~`, and a directory that does not exist starts the pane in the home.
+`WSL-144`
+
 ⚠ **`agent start` takes a NAME and a `--kind`.** The name must be free. A second agent
 of the same kind needs another name.
 
 Send it a turn, and read the answer:
 
 ```powershell
-wsl-toolkit base herdr -- agent prompt work "Answer with only the number of files git tracks here."
-wsl-toolkit base herdr -- agent read work --lines 40
+wsl-toolkit base herdr -- agent prompt muse "Answer with only the number of files git tracks here."
+wsl-toolkit base herdr -- agent read muse --lines 40
 ```
 
 Use `--kind pi` or `--kind omp` for the other two.

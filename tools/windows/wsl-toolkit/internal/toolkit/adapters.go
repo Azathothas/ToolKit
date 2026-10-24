@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -439,6 +440,9 @@ func parseAdapterProbe(name, out string) AdapterState {
 		switch key {
 		case "problem":
 			st.Problems = append(st.Problems, value)
+		case "note":
+			// ⚠ TRUE AND STOPS NOTHING, as AdapterState.Notes says. WSL-157.
+			st.Notes = append(st.Notes, value)
 		case "version":
 			// ⚠ In the facts too, because the machine half compares against it.
 			st.Version = value
@@ -515,15 +519,16 @@ func adapterInstallEnv(cfg Config, a BaseAdapter) (map[string]string, error) {
 }
 
 // applyAdapters installs every adapter the configuration names, in order, and
-// proves each one, and takes the machine half of every other one away.
-func (b *Base) applyAdapters(ctx context.Context) error {
+// proves each one, and takes the machine half of every other one away. It answers
+// what each adapter's read-back found, by name, for keepEnsureFindings.
+func (b *Base) applyAdapters(ctx context.Context) (map[string]AdapterState, error) {
 	// ⛔ NOT FROM A STATE DIRECTORY THAT DOES NOT OWN THE BASE. Its configuration
 	// names none of the adapters the owner installed, so an ensure from a scratch
 	// home took the owner's SSH Host block and known host away. Said once, and not
 	// an error, so that ensure still succeeds. WSL-167.
 	if err := b.assertOwner("changed", "base ensure"); err != nil {
 		b.log("the adapters are left as they are, on this machine and in the base: " + err.Error())
-		return nil
+		return nil, nil
 	}
 	named := map[string]bool{}
 	for _, a := range b.cfg.Base.Adapters {
@@ -535,7 +540,7 @@ func (b *Base) applyAdapters(ctx context.Context) error {
 			// takes away this machine's way in; what it installed in the base goes
 			// with `base recreate`, and the manual says so.
 			if err := spec.Host.remove(b); err != nil {
-				return fmt.Errorf("adapter %s: %w", spec.Name, err)
+				return nil, fmt.Errorf("adapter %s: %w", spec.Name, err)
 			}
 		}
 	}
@@ -545,7 +550,9 @@ func (b *Base) applyAdapters(ctx context.Context) error {
 	// reported five problems for an omp that was never there. Every adapter is tried
 	// in order, each failure is kept, and the answer names all of them. WSL-107,
 	// issue 37.
-	return applyEach(b.cfg.Base.Adapters, b.log, func(a BaseAdapter) error { return b.applyAdapter(ctx, a) })
+	ensured := map[string]AdapterState{}
+	err := applyEach(b.cfg.Base.Adapters, b.log, func(a BaseAdapter) error { return b.applyAdapter(ctx, a, ensured) })
+	return ensured, err
 }
 
 // applyEach applies every adapter in order, keeps each failure, and answers one
@@ -564,8 +571,9 @@ func applyEach(adapters []BaseAdapter, log func(string), apply func(BaseAdapter)
 	return nil
 }
 
-// applyAdapter installs one adapter and reads it back, both halves.
-func (b *Base) applyAdapter(ctx context.Context, a BaseAdapter) error {
+// applyAdapter installs one adapter and reads it back, both halves, and keeps
+// what the read-back found in ensured.
+func (b *Base) applyAdapter(ctx context.Context, a BaseAdapter, ensured map[string]AdapterState) error {
 	spec, ok := lookupAdapter(a.Name)
 	if !ok {
 		return fmt.Errorf("this executable carries no adapter %q", a.Name)
@@ -600,7 +608,13 @@ func (b *Base) applyAdapter(ctx context.Context, a BaseAdapter) error {
 	if !strings.Contains(out.seen.String(), adapterCompleteLine(a.Name)) {
 		return fmt.Errorf("adapter %s: install exited 0 without reaching its last line", a.Name)
 	}
-	st := b.probeAdapter(ctx, spec)
+	// ⛔ THE ONE PROBE THAT MEASURES BY RUNNING. A probe may start the adapter's agent
+	// here and nowhere else, because a read must not start a session. WSL-157.
+	st := b.probeAdapter(ctx, spec, true)
+	ensured[a.Name] = st
+	for _, n := range st.Notes {
+		b.log("adapter " + a.Name + ": " + n)
+	}
 	if spec.Host != nil && st.Facts != nil {
 		if err := spec.Host.apply(ctx, b, st.Facts); err != nil {
 			return fmt.Errorf("adapter %s: %w", a.Name, err)
@@ -618,14 +632,20 @@ func (b *Base) applyAdapter(ctx context.Context, a BaseAdapter) error {
 
 // probeAdapter runs an adapter's probe in the base and reads it, without this
 // machine's half.
-func (b *Base) probeAdapter(ctx context.Context, spec adapterSpec) AdapterState {
+//
+// ⛔ session IS TRUE ONLY UNDER base ensure. It lets a probe start the agent it
+// reads, which runs the account's hooks and can take a minute, so `base status
+// --probe` and `ready` never pass it. WSL-157.
+func (b *Base) probeAdapter(ctx context.Context, spec adapterSpec, session bool) AdapterState {
 	probe, err := adapterScript(spec.Name, "probe.sh")
 	if err != nil {
 		return AdapterState{Name: spec.Name, Problems: []string{err.Error()}}
 	}
-	out, errOut, code, err := b.captureAs(ctx, "root", probe, map[string]string{
-		"TK_USER": b.cfg.Base.User, "TK_DISTRO": b.cfg.Base.Name,
-	}, 2*time.Minute)
+	env := map[string]string{"TK_USER": b.cfg.Base.User, "TK_DISTRO": b.cfg.Base.Name}
+	if session {
+		env["TK_PROBE_SESSION"] = "1"
+	}
+	out, errOut, code, err := b.captureAs(ctx, "root", probe, env, 2*time.Minute)
 	if err != nil || code != 0 {
 		return AdapterState{Name: spec.Name, Problems: []string{fmt.Sprintf("the probe exited %d: %s", code, firstLine(errOut))}}
 	}
@@ -701,6 +721,59 @@ func leftoverRemediation(l AdapterLeftover) Remediation {
 	}
 }
 
+// keepEnsureFindings carries what an ensure's own read-back of each adapter found
+// onto the state that ensure answers. WSL-157.
+//
+// ⛔ THE ANSWER IS A SECOND READ, AND IT DOES NOT START THE AGENT. A fact or a note
+// only the ensure's probe could measure stayed in the ensure's log, and the helper
+// route keeps that log in the helper. Each fact the second read lacks is added, and
+// each note it does not carry; what the second read measured stands.
+func keepEnsureFindings(st BaseState, ensured map[string]AdapterState) BaseState {
+	for i := range st.Adapters {
+		got, ok := ensured[st.Adapters[i].Name]
+		if !ok {
+			continue
+		}
+		a := &st.Adapters[i]
+		for k, v := range got.Facts {
+			if _, measured := a.Facts[k]; !measured {
+				if a.Facts == nil {
+					a.Facts = map[string]string{}
+				}
+				a.Facts[k] = v
+			}
+		}
+		for _, n := range got.Notes {
+			if !slices.Contains(a.Notes, n) {
+				a.Notes = append(a.Notes, n)
+			}
+		}
+	}
+	return st
+}
+
+// herdrStaleRemediation is what a herdr server still running a binary the base no
+// longer holds earns: advisory, with the restart that ends it. WSL-141.
+//
+// ⛔ A REMEDIATION AND NOT A LOG LINE. install.sh says it in the ensure's log, and
+// the helper route keeps that log in the helper, so a caller there read the new
+// version from the probe while the server still ran the old one. This crosses every
+// route on the state.
+func herdrStaleRemediation(a AdapterState) (Remediation, bool) {
+	if a.Name != "herdr" || a.Facts["server-binary-stale"] != "yes" {
+		return Remediation{}, false
+	}
+	return Remediation{
+		ID:   "herdr-server-stale",
+		What: "the herdr server still runs the herdr it started with, not the herdr " + a.Facts["version"] + " the base now holds",
+		Costs: "a client of the new release may not work with the old server until it restarts. " +
+			"The restart ends every herdr pane and the agent in it",
+		Command:    ToolCommand("base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'"),
+		Repairable: true,
+		Advisory:   true,
+	}, true
+}
+
 // probeAdapters reads back every adapter the configuration names, both halves.
 func (b *Base) probeAdapters(ctx context.Context) []AdapterState {
 	var states []AdapterState
@@ -710,7 +783,7 @@ func (b *Base) probeAdapters(ctx context.Context) []AdapterState {
 			states = append(states, AdapterState{Name: a.Name, Problems: []string{"this executable carries no such adapter"}})
 			continue
 		}
-		st := b.probeAdapter(ctx, spec)
+		st := b.probeAdapter(ctx, spec, false)
 		if spec.Host != nil && st.Facts != nil {
 			hostProblems, hostNotes := spec.Host.check(ctx, b, st.Facts)
 			st.Problems = append(st.Problems, hostProblems...)

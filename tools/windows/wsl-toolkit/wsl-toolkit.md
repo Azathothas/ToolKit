@@ -599,11 +599,12 @@ wsl-toolkit base herdr -- agent list            # one herdr command, its argumen
 wsl-toolkit base exec -c 'herdr agent list'     # the general channel
 ```
 
-⛔ **The herdr the base pins, 0.9.0, has no `--machine` prefix.** Its Windows client
-exits 2 on the flag, `unknown option: --machine`. A build of herdr's development
-branch has it, and refuses a 0.9.0 server with `remote Herdr does not support
-machine API forwarding`, so the prefix needs a newer herdr on both sides.
-`WSL-90`
+⛔ **herdr 0.9.0 has no `--machine` prefix.** Its Windows client exits 2 on the
+flag, `unknown option: --machine`. A build of herdr's development branch has it,
+and refuses a 0.9.0 server with `remote Herdr does not support machine API
+forwarding`, so the prefix needs a newer herdr on both sides. `WSL-90`
+⚠ 0.9.5, the release the base pins, lists the prefix in its own help for a machine
+saved in herdr's Windows client. This tool has not driven that route. `WSL-141`
 
 ⭐ **`base herdr` exists because the second line is a quoted shell string.** A
 herdr prompt is prose, and prose carries quotes, dollar signs and backticks.
@@ -738,8 +739,9 @@ one's problem rather than stopping at the first. `WSL-107`
 ```
 
 ⭐ **`herdr` puts the agents' multiplexer in the base, and a way in from Windows
-that listens on nothing.** In the base: herdr 0.9.0 from its release asset,
-digest-checked, at `/usr/local/bin/herdr`. Its server runs as the system unit
+that listens on nothing.** In the base: herdr 0.9.5 as this repository's
+`wsl-toolkit-v7.0.0` release publishes it, checked against that release's
+`SHA256SUMS`, at `/usr/local/bin/herdr`. Its server runs as the system unit
 `wsl-toolkit-herdr.service`, started with the base and never restarted by an
 ensure, because a restart ends every pane. The tracked configuration from
 [`adapters/herdr/config.toml`](adapters/herdr/config.toml) is written whole each
@@ -747,6 +749,31 @@ time. On this machine: a dedicated key at `%USERPROFILE%\.ssh\wsl-toolkit\id_ed2
 the base's host key in `known_hosts` beside it, and one marked `Host` block at the
 top of `%USERPROFILE%\.ssh\config`. Its `ProxyCommand` starts `sshd -i` through
 `wsl.exe` for one connection. `WSL-76`
+
+⛔ **A herdr 0.9.0 Windows client does not work against it.** It repaints only on focus
+and runs neither typed text nor a prefix command, whatever the server's release. The
+same release carries the 0.9.5 client, which passes all six measurable signals of
+`herdr-remote-probe.ps1`. `WSL-141`
+
+⚠ **On the default, `base attach` prints the `herdr` on `PATH`, and fetches no client.**
+Put the 0.9.5 one there: `herdr-0.9.5-windows-x86_64.zip` or
+`herdr-0.9.5-windows-aarch64.zip` from `wsl-toolkit-v7.0.0`, checked against its
+`SHA256SUMS`. Only the nightly channel writes a client for you. `WSL-141`
+
+⚠ **A base built before the 0.9.5 pin keeps serving the herdr it started with.** `base
+ensure` installs 0.9.5 and never restarts a running server, so it says the server keeps
+the old one. Restart it when no pane is needed, because a restart ends every pane:
+`base exec --root -c 'systemctl restart wsl-toolkit-herdr.service'`. `WSL-141`
+`base status --probe`, `ready` and the state `base ensure` answers carry it as the
+advisory remediation `herdr-server-stale`, with that command. `WSL-141`
+
+⚠ **A `version` and `sha256` on the herdr entry name one of herdr's own releases.**
+That release is downloaded from herdr's project under herdr's own asset names, as
+before. Only the default comes from this repository. `WSL-141`
+
+```json
+"adapters": [{ "name": "herdr", "version": "0.10.1", "sha256": { "x86_64": "SHA256" } }]
+```
 
 ⛔ **The door accepts that one key, for the base's account, and nothing listens.**
 The distribution's own `sshd` units are masked, the key carries `restrict`, and
@@ -826,6 +853,32 @@ when the session ends. ⛔ A settings file that is not a JSON object carrying
 `schema_version` stops the ensure with the file untouched, because Muse refuses to
 start over one. `base status --probe` reports the events the hook is registered for
 and runs its self-test. `WSL-88`
+
+⛔ **`base ensure` also asks Muse itself.** It runs one session of Muse's
+credential-free echo provider in a scratch directory under `/tmp`. It then looks for
+that session's `SessionStart` in the hook's own log. A file that names the hook proves only
+that `base ensure` wrote it. The fact is `herdr_reporter_session_start reached`, on the
+state the ensure answers, over the helper too. `WSL-157`
+
+- ⚠ The session runs every `SessionStart`, `Stop` and `SessionEnd` hook in the
+  account's `~/.config/muse/settings.json`, your own included. It can take up to a
+  minute of the ensure.
+- ⭐ So only `base ensure` runs it. `base status --probe` and `ready` start no session,
+  and their answer has no `herdr_reporter_session_start`.
+- ⭐ The session leaves nothing in Muse's own files. It keeps no session log, and
+  Muse's data and cache directories are the scratch directory's, which goes with it.
+- ⛔ Root writes nothing in that directory. The directory is the account's, and the
+  session's error output goes to a file root makes.
+- ⚠ No herdr pane has that directory, so the hook logs the session and reports nothing
+  to herdr.
+- ⚠ A hook the session never ran, over a file that registers it, fails nothing. The
+  fact reads `missing`, and a note names the Muse version. Another `base ensure`
+  cannot cure it, because it writes the same file. Report it with that version.
+- ⛔ A file that does not register the hook for `SessionStart` is a problem, and
+  `base ensure` cures it.
+- ⚠ A Muse that cannot run the echo session, or names no session, fails nothing. The
+  fact reads `herdr_reporter_session_start unmeasured:` and the reason, because Muse's
+  version is not pinned and a later one may drop a flag. `WSL-157`
 
 | what Muse does with a hook | result |
 | --- | --- |

@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 249  open 57  blocked 5  done 187
+total 249  open 54  blocked 5  done 190
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 6 | 0 | 89 | 95 |
-| P2 | 37 | 2 | 77 | 116 |
-| P3 | 14 | 3 | 13 | 30 |
-| **all** | **57** | **5** | **187** | **249** |
+| P2 | 35 | 2 | 79 | 116 |
+| P3 | 13 | 3 | 14 | 30 |
+| **all** | **54** | **5** | **190** | **249** |
 
 ---
 
@@ -231,12 +231,12 @@ total 249  open 57  blocked 5  done 187
 | WSL-136 | P2 | M | open | A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-137 | P2 | M | open | A base stops running containers after a host restart until someone repairs it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-138 | P2 | M | blocked | An adapter installs from npm where the provider publishes an official installer | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-139 | P3 | S | open | `base ensure` leaves older herdr nightly clients on disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-139 | P3 | S | done | `base ensure` leaves older herdr nightly clients on disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-140 | P2 | S | open | A base build fails when one package mirror stalls, and nothing retries | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-141 | P2 | S | open | The herdr adapter installs 0.9.0 when this repository publishes 0.9.5 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-142 | P3 | S | open | `base doors --via-helper`'s refusal was never run against a live helper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-143 | P3 | S | open | The base account's login shell is `/bin/sh` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-144 | P2 | S | open | An agent pane cannot be started in the project directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-144 | P2 | S | done | An agent pane cannot be started in the project directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-145 | P2 | S | open | The adapter contract's example probe passes with no wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-146 | P3 | S | open | No channel gives an agent an environment variable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-147 | P1 | S | open | After `base bootstrap`, agents bypass this tool's wrappers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -249,7 +249,7 @@ total 249  open 57  blocked 5  done 187
 | WSL-154 | P3 | S | open | bootstrap.sh's cases read it from outside the module, so no mutation row can hold one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-155 | P2 | S | open | A drive WSL mounts during a long build fails the new base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-156 | P2 | M | open | `base doors` lists three world-writable device nodes and tries none of them | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-157 | P2 | S | open | The muse probe calls the herdr reporter registered without Muse ever running it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-157 | P2 | S | done | The muse probe calls the herdr reporter registered without Muse ever running it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-158 | P3 | S | blocked | Without the reporter, herdr shows a Muse pane as idle | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-159 | P2 | M | blocked | An agent started through herdr runs in the shared network namespace | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-160 | P3 | S | open | Three command groups keep two lists of their subcommands that nothing compares | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

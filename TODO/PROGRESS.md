@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
-entries         total 249  open 57  blocked 5  done 187
+entries         total 249  open 54  blocked 5  done 190
 this session    ruling 31
 ```
 
@@ -136,3 +136,10 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    window, and three sign-ins.
 4. **The base disks are not sparse.** `base reclaim` needs `wsl --shutdown`
    first, which stops every distribution, so it is the operator's step.
+5. **The next release's version.** `WSL-167` renames a new host's default base to
+   `wsl-toolkit-jobs` and refuses changes from a state directory that does not own
+   the base. `docs/consumers.md` calls both a break, so the release is 8.0.0 unless
+   the operator rules 7.1.0.
+6. **`WSL-141`, ruling 31's exception.** The herdr default moves from 0.9.0 to
+   0.9.5, taken from this repository's release. It is built and merged, and it
+   ships only with the operator's exception.

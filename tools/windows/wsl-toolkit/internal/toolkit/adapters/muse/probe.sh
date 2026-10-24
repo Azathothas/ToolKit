@@ -154,3 +154,108 @@ if [ -f "$MUSE_SETTINGS" ] && command -v jq >/dev/null 2>&1; then
     "$MUSE_SETTINGS" 2>/dev/null)
   printf 'herdr_reporter_events %s\n' "${registered:-none}"
 fi
+
+# -- and Muse runs it ----------------------------------------------------------------
+# ⛔ THE LINE ABOVE READS THE FILE install.sh WROTE, AND THAT PROVES install.sh WROTE IT.
+# A hook in a file Muse does not read, or outside a matcher group, read back as six
+# registered events and never ran. So the probe runs one session of Muse's credential-free
+# echo provider, and looks for that session's SessionStart in the reporter's own log.
+# Finding 26, WSL-157.
+#
+# ⛔ IN A DIRECTORY NO PANE HAS. The reporter binds a session to the herdr pane whose
+# working directory is the session's, so a session started in the account's home could
+# claim one of the operator's panes. A fresh directory is no pane's, so the reporter
+# logs the session and reports nothing to herdr.
+#
+# ⭐ AND IT LEAVES NOTHING OF MUSE'S. --no-session-log keeps the session out of the
+# account's history, and Muse's data and cache directories are the scratch directory's,
+# which goes when the session ends. Measured on Muse Code 1.4.11: the reporter's log
+# line was then the only change under the account's home.
+# ⛔ THE CONFIGURATION AND STATE DIRECTORIES STAY THE ACCOUNT'S. The first is where the
+# hook is registered, and the reporter writes its log under the second.
+#
+# ⚠ STDIN IS /dev/null. This script reaches the shell on its stdin, and a command that
+# read stdin would take the rest of it.
+#
+# ⛔ A MUSE THAT CANNOT ANSWER IS UNMEASURED, AND ONE THAT ANSWERS AND RUNS NO HOOK IS A
+# NOTE. A Muse that cannot run the echo session, or answers no session id, leaves the
+# question unmeasured, and says why as a fact. One whose session ran over a file that
+# registers SessionStart, and never reached the reporter, is a note naming its version:
+# `base ensure` writes the same file again and cannot cure it. Muse comes from an
+# installer whose version is not pinned, so either one as a problem would fail every
+# `base ensure` a 7.0.0 tool passed, with a remedy that loops. WSL-157.
+#
+# ⛔ ONLY `base ensure` RUNS THE SESSION. It runs every hook the account's settings
+# register, the operator's own included, and it can take a minute. `base status --probe`
+# and `ready` are reads, so they answer without the fact, and `base ensure` carries it
+# on the state it answers. WSL-157.
+REPORTER_LOG=$TK_HOME/.local/state/wsl-toolkit/herdr-muse/log
+if [ "${TK_PROBE_SESSION:-}" != 1 ]; then
+  # A read: no session, and no fact that would read like a measurement.
+  :
+elif [ ! -x "$HOOK" ] || [ ! -x "$LAUNCHER" ]; then
+  # Nothing to run, and the lines above have said why.
+  :
+elif ! command -v herdr >/dev/null 2>&1 && [ ! -x /usr/local/bin/herdr ]; then
+  printf 'herdr_reporter_session_start unmeasured: no herdr in this base to report to\n'
+elif ! command -v jq >/dev/null 2>&1; then
+  printf 'herdr_reporter_session_start unmeasured: no jq to read Muse with\n'
+else
+  scratch=$(as_account mktemp -d /tmp/wsl-toolkit-muse-probe.XXXXXX 2>/dev/null) || scratch=
+  case $scratch in
+    /tmp/wsl-toolkit-muse-probe.?*) ;;
+    *) scratch= ;;
+  esac
+  # ⛔ ROOT OPENS NOTHING UNDER THE ACCOUNT'S DIRECTORY. This script runs as root, and
+  # the scratch directory is the account's, so a process of the account can put a link
+  # where root writes and turn the write onto any file. Muse's stderr goes to a file
+  # root's own mktemp makes, outside it. WSL-157.
+  errors=$(mktemp /tmp/wsl-toolkit-muse-probe-stderr.XXXXXX 2>/dev/null) || errors=
+  if [ -z "$scratch" ] || [ -z "$errors" ] || ! as_account mkdir "$scratch/work" "$scratch/data" "$scratch/cache"; then
+    printf 'herdr_reporter_session_start unmeasured: no scratch directory for a Muse session in /tmp\n'
+    [ -z "$scratch" ] || rm -rf "$scratch"
+    [ -z "$errors" ] || rm -f "$errors"
+  else
+    deadline=
+    command -v timeout >/dev/null 2>&1 && deadline='timeout 60'
+    # shellcheck disable=SC2086  # $deadline is a command and its argument, or nothing
+    session_out=$(cd "$scratch/work" && as_account XDG_DATA_HOME="$scratch/data" XDG_CACHE_HOME="$scratch/cache" \
+      MUSE_NO_AUTO_UPDATE=1 $deadline "$LAUNCHER" exec --json --provider echo --no-session-log \
+      'wsl-toolkit probe' </dev/null 2>"$errors")
+    ran=$?
+    said=$(head -1 "$errors" 2>/dev/null)
+    # ⚠ EVERY RECORD CARRIES THE SESSION'S STREAM, and the hook's payload names the same id.
+    session=$(printf '%s\n' "$session_out" | jq -rR 'fromjson? | select(.stream.kind? == "session") | .stream.id' 2>/dev/null | head -1)
+    rm -rf "$scratch"
+    rm -f "$errors"
+    # ⚠ A HOOK MAY STILL BE RUNNING when `exec` returns, so a miss is read again for a
+    # few seconds. The log is read as the account, whose file it is.
+    reached=no
+    if [ "$ran" -eq 0 ] && [ -n "$session" ]; then
+      for _ in 1 2 3 4; do
+        if as_account grep -qF "SessionStart for $session " "$REPORTER_LOG" 2>/dev/null; then
+          reached=yes
+          break
+        fi
+        sleep 1
+      done
+    fi
+    if [ "$ran" -ne 0 ]; then
+      printf 'herdr_reporter_session_start unmeasured: Muse could not run a session of its echo provider, exit %s: %s\n' "$ran" "${said:-it said nothing}"
+    elif [ -z "$session" ]; then
+      printf 'herdr_reporter_session_start unmeasured: Muse ran a session of its echo provider and its answer named no session\n'
+    elif [ "$reached" = yes ]; then
+      printf 'herdr_reporter_session_start reached\n'
+    else
+      case ",${registered:-}," in
+        *,SessionStart,*)
+          printf 'herdr_reporter_session_start missing\n'
+          printf 'note %s\n' "Muse ${version:-of no version} ran session $session, and its SessionStart never reached the herdr reporter at $HOOK, so herdr shows no state for Muse. $MUSE_SETTINGS registers the hook as install.sh writes it, so base ensure cannot cure this: Muse's installer is not pinned, and this Muse runs its hooks some other way. Report it with this Muse version, WSL-157"
+          ;;
+        *)
+          problem "Muse ran session $session and its SessionStart never reached the herdr reporter at $HOOK, because $MUSE_SETTINGS does not register it for SessionStart. Run: base ensure"
+          ;;
+      esac
+    fi
+  fi
+fi

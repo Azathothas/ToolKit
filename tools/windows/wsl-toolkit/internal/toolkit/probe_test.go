@@ -104,8 +104,30 @@ func fakeGuestScript(state string, script []byte) (int, bool) {
 			return 3, true
 		}
 	}
+	// ⚠ AN ADAPTER ANSWERS ONLY WHEN THE CASE STAGED IT, muse=ok or herdr=stale.
+	// The muse probe answers its session's fact and note only when it was asked to
+	// start a session, as probe.sh does. WSL-157, WSL-141.
+	switch {
+	case answers["muse"] == "ok" && bytes.Contains(script, []byte("# muse adapter, install:")):
+		fmt.Println(adapterCompleteLine("muse"))
+		return 0, true
+	case answers["muse"] == "ok" && bytes.Contains(script, []byte("# muse adapter, probe:")):
+		fmt.Print("installed yes\nversion 9.9.9\nresolves /usr/local/bin/muse\n")
+		if assigned(script, "TK_PROBE_SESSION") == "1" {
+			fmt.Println("herdr_reporter_session_start missing")
+			fmt.Println("note " + fakeMuseSessionNote)
+		}
+		return 0, true
+	case answers["herdr"] == "stale" && bytes.Contains(script, []byte("# herdr adapter, probe:")):
+		fmt.Print("version 0.9.5\nrelease 0.9.5\nserver active\nserver-answers running\nserver-binary-stale yes\n")
+		return 0, true
+	}
 	return 0, false
 }
+
+// fakeMuseSessionNote is the note the fake muse probe answers for a session whose
+// SessionStart never reached the reporter.
+const fakeMuseSessionNote = "Muse 9.9.9 ran session s1, and its SessionStart never reached the herdr reporter"
 
 // -- WSL-174: a probe image that cannot be pulled is not a broken base ---------
 

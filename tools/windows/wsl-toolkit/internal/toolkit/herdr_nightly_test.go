@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -222,6 +223,101 @@ func TestTheWindowsClientIsWrittenOnlyOverAMatchingDigest(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(home, "herdr", first)); err == nil {
 		t.Fatalf("the older nightly's client is still under %s", herdrClientDir(home))
+	}
+}
+
+// TestAnEnsureThatFindsItsClientStillPrunesTheOlderOnes plants what finding 36 planted on
+// a real base: a decoy nightly's client beside the current one, and a directory that is
+// not a nightly's. An ensure that finds the current client in place downloads nothing,
+// removes the decoy and says so, and leaves the directory it does not recognise.
+// WSL-139.
+func TestAnEnsureThatFindsItsClientStillPrunesTheOlderOnes(t *testing.T) {
+	arch, err := herdrClientArch()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	name := "herdr-windows-" + arch + ".zip"
+	s := newNightlyServer(t)
+	home := t.TempDir()
+	const current = "herdr-nightly-20260915-052779c4159e"
+	s.publish(current, map[string][]byte{name: clientZip(t, map[string]string{"herdr.exe": "client"})})
+	exe, err := ensureHerdrClient(context.Background(), home, current, func(string) {})
+	if err != nil {
+		t.Fatalf("the current nightly's client was refused: %v", err)
+	}
+
+	dir := herdrClientDir(home)
+	decoy := filepath.Join(dir, "herdr-nightly-20260901-aaaaaaaaaaaa")
+	unrecognised := filepath.Join(dir, "not-a-nightly-dir")
+	for _, d := range []string{decoy, unrecognised} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(d, "herdr.exe"), []byte("planted"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var said []string
+	before := s.downloads[current+"/"+name]
+	again, err := ensureHerdrClient(context.Background(), home, current, func(line string) { said = append(said, line) })
+	if err != nil || again != exe {
+		t.Fatalf("a second ensure of the same nightly answered %q, %v", again, err)
+	}
+	if s.downloads[current+"/"+name] != before {
+		t.Fatalf("a client already in place was downloaded %d more time(s)", s.downloads[current+"/"+name]-before)
+	}
+	if _, err := os.Stat(decoy); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the older nightly's client is still under %s after an ensure that found the current one (%v)", dir, err)
+	}
+	if !strings.Contains(strings.Join(said, "\n"), "removed the herdr client of herdr-nightly-20260901-aaaaaaaaaaaa") {
+		t.Fatalf("the ensure removed the decoy and said %q", said)
+	}
+	if _, err := os.Stat(filepath.Join(unrecognised, "herdr.exe")); err != nil {
+		t.Fatalf("a directory that is not a nightly's was removed: %v", err)
+	}
+	if _, err := os.Stat(exe); err != nil {
+		t.Fatalf("the current client went with the decoy: %v", err)
+	}
+}
+
+// TestAPruneThatFailsOverAClientInPlaceStillAnswersTheClient holds the path that writes
+// nothing to what 7.0.0 answered there. An older client that cannot be removed, as one
+// Windows holds open while it runs, is said and left for the next ensure, and the
+// current client is still the answer. WSL-139.
+func TestAPruneThatFailsOverAClientInPlaceStillAnswersTheClient(t *testing.T) {
+	arch, err := herdrClientArch()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	name := "herdr-windows-" + arch + ".zip"
+	s := newNightlyServer(t)
+	home := t.TempDir()
+	const current = "herdr-nightly-20260915-052779c4159e"
+	s.publish(current, map[string][]byte{name: clientZip(t, map[string]string{"herdr.exe": "client"})})
+	exe, err := ensureHerdrClient(context.Background(), home, current, func(string) {})
+	if err != nil {
+		t.Fatalf("the current nightly's client was refused: %v", err)
+	}
+	held := filepath.Join(herdrClientDir(home), "herdr-nightly-20260901-aaaaaaaaaaaa")
+	if err := os.MkdirAll(held, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	previous := removeHerdrClient
+	t.Cleanup(func() { removeHerdrClient = previous })
+	removeHerdrClient = func(root, path string) error {
+		return fmt.Errorf("remove %s: The process cannot access the file because it is being used by another process", path)
+	}
+
+	var said []string
+	again, err := ensureHerdrClient(context.Background(), home, current, func(line string) { said = append(said, line) })
+	if err != nil || again != exe {
+		t.Fatalf("an ensure that found its client in place answered %q, %v, and 7.0.0 answered the client", again, err)
+	}
+	if !strings.Contains(strings.Join(said, "\n"), "an older herdr client stays under") {
+		t.Fatalf("the prune failed and the ensure said %q", said)
+	}
+	if _, err := os.Stat(held); err != nil {
+		t.Fatalf("the held client was removed after all: %v", err)
 	}
 }
 

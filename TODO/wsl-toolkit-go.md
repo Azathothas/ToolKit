@@ -14165,7 +14165,7 @@ Blocked; the Decision names on what.
 ## WSL-139. `base ensure` leaves older herdr nightly clients on disk
 
 **Source** the old record's finding 36
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14199,7 +14199,9 @@ Exit 0, with the decoy case red before the fix.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6a-adapters`, for the next release.** Built from `wip/f6a-adapters` onto main, the triage's four defects fixed, reviewed twice and repaired once. Its cases and rows pass on Windows and in `golang:1.25`; ShellCheck clean in `ubuntu:24.04`; gate 24 of 24 on the merge.
+
+⚠ Not driven on a real adapter base: fake-WSL and POSIX stand-in cases cover it.
 
 
 ## WSL-140. A base build fails when one package mirror stalls, and nothing retries
@@ -14279,6 +14281,8 @@ Exit 0, then `base ensure` on a scratch base installs 0.9.5 at its digest.
 ## Closing
 
 Open.
+
+⭐ **2026-10-25: built and merged from `rb/f6a-adapters`, waiting on one ruling.** A stale herdr server now earns the advisory remediation `herdr-server-stale` with its restart command, on every route that carries the state. ⚠ The change moves what the herdr default means, from 0.9.0 to 0.9.5 from this repository's release, and ruling 31 lets that ship only with the operator's exception. The question is in `PROGRESS.md`. On the stable channel `base attach` still prints the bare herdr, and nothing compares the client's version with the server's.
 
 
 ## WSL-142. `base doors --via-helper`'s refusal was never run against a live helper
@@ -14363,7 +14367,7 @@ Open.
 ## WSL-144. An agent pane cannot be started in the project directory
 
 **Source** the old record's finding 46
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14401,7 +14405,7 @@ The pane's working directory, read in the pane.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6a-adapters`, for the next release.** A documentation change, reviewed twice; the gate's docs, STE and markers checks pass on the merge.
 
 
 ## WSL-145. The adapter contract's example probe passes with no wrapper
@@ -14881,7 +14885,7 @@ Open.
 ## WSL-157. The muse probe calls the herdr reporter registered without Muse ever running it
 
 **Source** the old record's finding 26
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14914,7 +14918,15 @@ Exit 0, then the probe on a scratch base with Muse.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6a-adapters`, for the next release.** Root's capture moved out of the account's directory, and the reporter log is read as the account. Only `base ensure` starts a Muse session, and its fact and note reach the ensure's answer. A missed SessionStart over a file that registers it is a note naming the Muse version, not a problem; a file that does not register it is a problem whose remedy is `base ensure`. Probe note lines are notes.
+
+```text
+golang:1.25 with jq: --- PASS: TestTheMuseProbeAsksMuseWhetherItRunsTheReporter; 23 of 23 guards proved; ok go
+ubuntu:24.04: ShellCheck exit 0
+merge: TestOnlyEnsureStartsAMuseSessionAndItsAnswerCarriesTheFinding green once the launcher's directory is on PATH
+```
+
+⚠ Not driven against a real Muse and herdr; the stand-in Muse covers it. Consumers: an ensure's answer carries one more note where a session's hook did not report, and `base status --probe` and `ready` no longer start a Muse session.
 
 
 ## WSL-158. Without the reporter, herdr shows a Muse pane as idle
