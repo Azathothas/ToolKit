@@ -266,7 +266,11 @@ func TestANativeJobLeavesThePushedRepositoryAlone(t *testing.T) {
 	c := newProofCase(t)
 	jobs, needs := jobsFor, nativeNeeds
 	t.Cleanup(func() { jobsFor, nativeNeeds = jobs, needs })
-	jobsFor = func([]string) []Job { return []Job{{Name: "t", Body: "echo checked"}} }
+	jobsFor = func([]string) []Job {
+		return []Job{
+			{Name: "t", Body: "echo checked"},
+		}
+	}
 	nativeNeeds = []string{"sh", "tar", "git"}
 	wt := filepath.Join(filepath.Dir(c.work), "wt")
 	gitIn(t, c.work, "worktree", "add", "-q", "-b", "side", wt)

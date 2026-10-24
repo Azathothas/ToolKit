@@ -80,9 +80,10 @@ commit `origin` holds, in `golang:1.25`. `--rows-since REF` counts them from REF
 instead, and `--rev REV` proves another commit. The jobs run through the
 `wsl-toolkit` on PATH. `--wsl-toolkit PATH` names another, such as
 `.tmp/wsl-toolkit.exe` when a job needs a flag no release carries yet.
-⚠ It is not all of CI. The gate, the doctor probe and every existing row run
-in CI alone. A job that could not run, such as one on a broken default base,
-answers exit 2.
+
+⚠ **These jobs are not all of CI.** CI alone runs the gate, the doctor probe and
+the rows the table held before. A job that could not run, such as one on a
+broken default base, answers exit 2.
 
 ⛔ **A push runs the jobs itself when its tree has no proof.** On success the
 proof is filed under git's common directory, keyed by the tree. The tracked
