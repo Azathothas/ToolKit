@@ -466,10 +466,9 @@ func TestTheHelperReadsWhichStepChoseTheName(t *testing.T) {
 	for name, want := range map[string]string{"wsl-toolkit": NameFromRegistered, "wsl-toolkit-jobs": NameFromConfig} {
 		cfg := DefaultConfig()
 		cfg.Base.Name = name
-		_, effective, err := h.runnerFor(&cfg)
-		if err != nil {
-			t.Fatal(err)
-		}
+		// ⚠ THE RUNNER ITSELF NEEDS wsl.exe, which a Linux host has not. The step is
+		// read before the runner is made, and is what this case asks about.
+		_, effective, _ := h.runnerFor(&cfg)
 		if effective.nameFrom != want {
 			t.Fatalf("the helper read %s as chosen by %q; want %q", name, effective.nameFrom, want)
 		}
