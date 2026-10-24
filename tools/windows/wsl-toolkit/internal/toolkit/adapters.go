@@ -521,8 +521,12 @@ func (b *Base) applyAdapters(ctx context.Context) error {
 	for _, a := range b.cfg.Base.Adapters {
 		named[a.Name] = true
 	}
+	// ⛔ NOT FROM A STATE DIRECTORY THAT DID NOT BUILD THE BASE. Its configuration
+	// names none of the adapters the owning one installed, so an ensure from a
+	// scratch home took the owner's SSH Host block and known host away. WSL-167.
+	adopted, _ := b.diskElsewhere()
 	for _, spec := range adapterSpecs {
-		if !named[spec.Name] && spec.Host != nil {
+		if !named[spec.Name] && spec.Host != nil && adopted == "" {
 			// ⚠ THE GUEST HALF STAYS. Removing an adapter from a configuration
 			// takes away this machine's way in; what it installed in the base goes
 			// with `base recreate`, and the manual says so.

@@ -2,6 +2,60 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a home that did not build the base leaves its owner's adapter hosts",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\t\tif !named[spec.Name] && spec.Host != nil && adopted == \"\" {\n",
+      "replace": "\t\tif !named[spec.Name] && spec.Host != nil && adopted != \"-\" {\n",
+      "run": "TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a home that did not build the base writes no record about it",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif at, _ := b.diskElsewhere(); at != \"\" {\n\t\tif b.log == nil {\n",
+      "replace": "\tif at, _ := b.diskElsewhere(); at == \"-\" {\n\t\tif b.log == nil {\n",
+      "run": "TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a home that did not build the base never removes it",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif exists && !b.imported {\n",
+      "replace": "\tif false {\n",
+      "run": "TestARemovalFromAHomeThatDidNotBuildTheBaseIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the disk of the base to remove is read from the registry",
+      "file": "internal/toolkit/defaultbase.go",
+      "find": "\tif pathEqual(cleanBasePath(at), cleanBasePath(b.Dir())) {\n\t\treturn \"\", nil\n\t}\n\treturn cleanBasePath(at), nil\n",
+      "replace": "\treturn b.cfg.nameAt, nil\n",
+      "run": "TestARemovalFromAHomeThatDidNotBuildTheBaseIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a home that did not build the base never rebuilds it",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif err := b.assertDiskHere(\"rebuilt\"); err != nil {\n",
+      "replace": "\t\tif err := error(nil); err != nil {\n",
+      "run": "TestARebuildFromAHomeThatDidNotBuildTheBaseIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: doctor reports an ambiguous default base",
+      "file": "internal/toolkit/doctor_render.go",
+      "find": "\tif !errors.Is(o.Unresolved, ErrDefaultBaseAmbiguous) {\n",
+      "replace": "\tif !errors.Is(o.Unresolved, ErrDefaultBaseAmbiguous) || true {\n",
+      "run": "TestDoctorReportsAnAmbiguousDefaultBase",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: only cat naming the missing marker is an absence",
       "file": "internal/toolkit/identity.go",
       "find": "\tif code == 1 && bounded.Err() == nil && strings.Contains(errBuf.String(), IdentityPath) {\n",

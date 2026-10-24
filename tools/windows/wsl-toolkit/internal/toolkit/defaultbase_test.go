@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // -- WSL-167: the default base's canonical name, and an existing one kept -----
@@ -47,7 +49,8 @@ func newDefaultBaseCase(t *testing.T) *defaultBaseCase {
 
 func (c *defaultBaseCase) record(t *testing.T, name string) {
 	t.Helper()
-	b := &Base{cfg: Config{Base: BaseConfig{Name: name, Image: DefaultBaseImage, User: DefaultBaseUser}}, home: c.home}
+	b := &Base{cfg: Config{Base: BaseConfig{Name: name, Image: DefaultBaseImage, User: DefaultBaseUser}}, home: c.home,
+		disks: func() (map[string]string, error) { return c.disks, nil }}
 	if err := b.writeRecord(); err != nil {
 		t.Fatal(err)
 	}
@@ -116,29 +119,76 @@ func TestAnUnrecordedWslToolkitWithItsDiskHereIsKept(t *testing.T) {
 	}
 }
 
-// ⛔ THE DEFECT: A STATE DIRECTORY WITH NO RECORD BUILT A SECOND BASE. A caller
-// Windows redirects (WSL-118) has a state directory of its own, and the host's
-// `wsl-toolkit` has its disk in the real one. Before WSL-167 it used that base,
-// so it still does: by its name, with no marker read and nothing imported.
-func TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs(t *testing.T) {
+// adoptedBase is a home with no record on a host whose `wsl-toolkit` has its disk,
+// its marker and its SSH way in elsewhere, as the operator's own home built it.
+func adoptedBase(t *testing.T) (*fakeHost, *defaultBaseCase, string, string) {
+	t.Helper()
 	h := newFakeHost(t)
 	c := newDefaultBaseCase(t)
 	t.Setenv(SSHDirEnv, t.TempDir())
 	t.Setenv(BinDirEnv, t.TempDir())
 	defaultBaseHost.disks = h.registry
 	other := filepath.Join(t.TempDir(), "base")
+	if err := os.MkdirAll(other, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	disk := filepath.Join(other, "ext4.vhdx")
+	if err := os.WriteFile(disk, []byte("the operator's base"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	h.say(t, "registered", "wsl-toolkit")
 	h.say(t, "disks", "wsl-toolkit\t"+other)
+	marker, err := json.Marshal(Identity{
+		Schema: IdentitySchema, Name: "wsl-toolkit", Image: DefaultBaseImage, User: DefaultBaseUser, Built: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.say(t, "identity.json", string(marker))
+	return h, c, other, disk
+}
 
-	cfg := c.load(t)
-	if cfg.Base.Name != "wsl-toolkit" || cfg.nameFrom != NameFromRegistered {
-		t.Fatalf("a home with no record beside the host's wsl-toolkit resolved to %q from %q", cfg.Base.Name, cfg.nameFrom)
+// adoptedFrom is the base a home with no record acts on, as the commands build it.
+func (c *defaultBaseCase) adoptedFrom(t *testing.T, h *fakeHost) (*Base, *sayings) {
+	t.Helper()
+	s := &sayings{}
+	return &Base{cfg: c.load(t), home: c.home, wsl: &Wsl{Path: h.wsl}, log: s.log, disks: h.registry}, s
+}
+
+// assertUntouched fails a case that unregistered, imported or exported anything.
+func assertUntouched(t *testing.T, h *fakeHost, disk string) {
+	t.Helper()
+	data, _ := os.ReadFile(filepath.Join(h.state, "calls"))
+	for _, call := range strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n") {
+		if strings.HasPrefix(call, "wsl --unregister") || strings.HasPrefix(call, "wsl --import") || strings.HasPrefix(call, "podman") {
+			t.Fatalf("a home with no record changed the host's base: %q in %s", call, data)
+		}
+	}
+	if _, err := os.Stat(disk); err != nil {
+		t.Fatalf("the host's base's disk is gone: %v", err)
+	}
+}
+
+// ⛔ THE DEFECT: A STATE DIRECTORY WITH NO RECORD BUILT A SECOND BASE. A caller
+// Windows redirects (WSL-118) has a state directory of its own, and the host's
+// `wsl-toolkit` has its disk in the real one. Before WSL-167 it used that base,
+// so it still does: by its name, with no marker read and nothing imported.
+//
+// ⛔ AND IT WRITES NO RECORD ABOUT IT. An ensure read the base's marker and wrote
+// a base.json naming it, and every later load from that home was refused as
+// ambiguous. WSL-167.
+func TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs(t *testing.T) {
+	h, c, other, disk := adoptedBase(t)
+	if _, err := os.Stat(filepath.Join(h.state, "calls")); !os.IsNotExist(err) {
+		t.Fatalf("the case called WSL before the load: %v", h.calls(t))
+	}
+	b, _ := c.adoptedFrom(t, h)
+	if b.cfg.Base.Name != "wsl-toolkit" || b.cfg.nameFrom != NameFromRegistered {
+		t.Fatalf("a home with no record beside the host's wsl-toolkit resolved to %q from %q", b.cfg.Base.Name, b.cfg.nameFrom)
 	}
 	if _, err := os.Stat(filepath.Join(h.state, "calls")); !os.IsNotExist(err) {
 		t.Fatalf("resolving the name called WSL, which starts it on every command: %v", h.calls(t))
 	}
-	s := &sayings{}
-	b := &Base{cfg: cfg, home: c.home, wsl: &Wsl{Path: h.wsl}, log: s.log, disks: h.registry}
 	st, err := b.Status(context.Background(), false)
 	if err != nil || !st.Registered {
 		t.Fatalf("the host's wsl-toolkit reads as %+v, %v; want registered, so run builds nothing", st, err)
@@ -148,11 +198,106 @@ func TestAnUnrecordedHomeUsesTheHostsOlderBaseWhereverItsDiskIs(t *testing.T) {
 		!strings.Contains(n.Move, "from the state directory whose base folder is "+cleanBasePath(other)) {
 		t.Fatalf("status says %+v; want the other directory named, and the move sent there", n)
 	}
-	_, _ = b.EnsureWith(context.Background(), false, false)
-	for _, call := range h.calls(t) {
-		if strings.HasPrefix(call, "wsl --import") || strings.HasPrefix(call, "wsl --unregister") {
-			t.Fatalf("an ensure from a home with no record changed the host's base: %v", h.calls(t))
+	// ⚠ THE OWNER'S WAY IN, which this home's configuration does not name.
+	sshConfig := filepath.Join(os.Getenv(SSHDirEnv), "config")
+	owners := withMarkedBlock(nil, "wsl-toolkit", []string{"Host wsl-toolkit"})
+	if err := os.WriteFile(sshConfig, owners, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.stageGuest(t, "verify=ok", "binfmt=ok")
+	if _, err := b.EnsureWith(context.Background(), false, false); err != nil {
+		t.Fatalf("an ensure from a home with no record over the host's marked base failed: %v", err)
+	}
+	if got, err := os.ReadFile(sshConfig); err != nil || string(got) != string(owners) {
+		t.Fatalf("an ensure from a home with no record changed the owner's SSH config to %q, %v", got, err)
+	}
+	if callAt(h.calls(t), "wsl -d wsl-toolkit") < 0 {
+		t.Fatalf("the ensure never asked the host's base: %v", h.calls(t))
+	}
+	assertUntouched(t, h, disk)
+	if _, err := os.Stat(filepath.Join(c.home, "base.json")); !os.IsNotExist(err) {
+		t.Fatalf("an ensure from a home with no record wrote a base.json about the host's base: %v", err)
+	}
+	// ⭐ THE NEXT COMMAND FROM THE SAME HOME RESOLVES THE SAME BASE.
+	if again := c.load(t); again.Base.Name != "wsl-toolkit" || again.nameFrom != NameFromRegistered || again.nameAt != cleanBasePath(other) {
+		t.Fatalf("the second load resolved %q from %q at %q", again.Base.Name, again.nameFrom, again.nameAt)
+	}
+}
+
+// ⛔ A HOME THAT DID NOT BUILD THE BASE NEVER REMOVES IT. `base remove --yes` from
+// a scratch home unregistered the operator's base and dropped its SSH Host block.
+// ⚠ A configured base.name or a version before WSL-167 chose the name with no word
+// of its disk, so the registry is read at the removal. WSL-167.
+func TestARemovalFromAHomeThatDidNotBuildTheBaseIsRefused(t *testing.T) {
+	h, c, other, disk := adoptedBase(t)
+	b, _ := c.adoptedFrom(t, h)
+	err := b.Remove(context.Background())
+	want := "$env:WSL_TOOLKIT_HOME='" + filepath.Dir(other) + "'; wsl-toolkit base remove --yes"
+	if !errors.Is(err, ErrBaseElsewhere) || !strings.Contains(err.Error(), "wsl-toolkit was NOT removed") ||
+		!strings.Contains(err.Error(), cleanBasePath(other)) || !strings.Contains(err.Error(), want) {
+		t.Fatalf("a removal from a home with no record answered %v; want the refusal naming %s", err, want)
+	}
+	assertUntouched(t, h, disk)
+
+	// ⛔ THE NAME FROM THE CONFIGURATION, with no resolution to say where its disk is.
+	b.cfg.nameAt = ""
+	if err := b.Remove(context.Background()); !errors.Is(err, ErrBaseElsewhere) {
+		t.Fatalf("a removal of a configured name whose disk is elsewhere answered %v", err)
+	}
+	assertUntouched(t, h, disk)
+}
+
+// ⛔ A HOME THAT DID NOT BUILD THE BASE NEVER REBUILDS IT. `base recreate` from a
+// scratch home exported, unregistered the operator's base and imported a new one
+// into the scratch home. A preset switch that becomes a rebuild is the same.
+// Refused before the export. WSL-167.
+func TestARebuildFromAHomeThatDidNotBuildTheBaseIsRefused(t *testing.T) {
+	h, c, other, disk := adoptedBase(t)
+	h.engine(t, true)
+	roomyVolume(t, 1<<40)
+	b, _ := c.adoptedFrom(t, h)
+	want := "$env:WSL_TOOLKIT_HOME='" + filepath.Dir(other) + "'; wsl-toolkit base recreate"
+	_, err := b.EnsureWith(context.Background(), true, false)
+	if !errors.Is(err, ErrBaseElsewhere) || !strings.Contains(err.Error(), "wsl-toolkit was NOT rebuilt") || !strings.Contains(err.Error(), want) {
+		t.Fatalf("a recreate from a home with no record answered %v; want the refusal naming %s", err, want)
+	}
+	assertUntouched(t, h, disk)
+	b.cfg.Base.Image = "docker.io/library/debian:trixie"
+	if _, err := b.EnsureSwitch(context.Background(), false); !errors.Is(err, ErrBaseElsewhere) {
+		t.Fatalf("a preset switch from a home with no record answered %v", err)
+	}
+	assertUntouched(t, h, disk)
+	if _, err := os.Stat(filepath.Join(c.home, "base.json")); !os.IsNotExist(err) {
+		t.Fatalf("a refused rebuild left a base.json: %v", err)
+	}
+}
+
+// ⛔ AN AMBIGUOUS DEFAULT BASE IS SURVEYED AS ONE. doctor fell back to the
+// defaults and reported `wsl-toolkit-jobs` as not registered, advising `base
+// ensure`, on a host where both names are. WSL-167.
+func TestDoctorReportsAnAmbiguousDefaultBase(t *testing.T) {
+	_ = newFakeHost(t)
+	c := newDefaultBaseCase(t)
+	legacy, canonical := filepath.Join(t.TempDir(), "base"), filepath.Join(t.TempDir(), "base")
+	c.disks["wsl-toolkit"] = legacy
+	c.disks["wsl-toolkit-jobs"] = canonical
+	_, unresolved := LoadConfig()
+	if !errors.Is(unresolved, ErrDefaultBaseAmbiguous) {
+		t.Fatalf("both names with no record loaded with %v", unresolved)
+	}
+	f := wslFactsFor(context.Background(), DoctorOptions{Config: DefaultConfig(), Unresolved: unresolved})
+	if f.Ambiguous == "" || f.BaseName != "" || f.Candidates["wsl-toolkit"] != cleanBasePath(legacy) ||
+		f.Candidates["wsl-toolkit-jobs"] != cleanBasePath(canonical) {
+		t.Fatalf("doctor surveyed %+v; want the ambiguity with both names and their disks", f)
+	}
+	for _, a := range f.Advice {
+		if strings.HasPrefix(a, "the base distribution is not registered") {
+			t.Fatalf("doctor advised building a base on a host with two: %q", f.Advice)
 		}
+	}
+	line := ambiguousLine(f.Candidates)
+	if !strings.Contains(line, "wsl-toolkit (disk in "+cleanBasePath(legacy)+")") || !strings.Contains(line, "wsl-toolkit-jobs (disk in "+cleanBasePath(canonical)+")") {
+		t.Fatalf("the base distro row reads %q", line)
 	}
 }
 

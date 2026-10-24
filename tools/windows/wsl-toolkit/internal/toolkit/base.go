@@ -471,6 +471,10 @@ func RecordedBaseImage(cfg Config) string {
 }
 
 func (b *Base) writeRecord() error {
+	// ⛔ NOT ABOUT A BASE WHOSE DISK IS ELSEWHERE. WSL-167.
+	if !b.recordsHere() {
+		return nil
+	}
 	if _, err := EnsureHome(); err != nil {
 		return err
 	}
@@ -600,6 +604,12 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 	// replaces, and empty where nothing was removed. WSL-169.
 	var rootfs string
 	if st.Registered && force {
+		// ⛔ A BASE WHOSE DISK IS IN ANOTHER STATE DIRECTORY IS NEVER REBUILT FROM
+		// THIS ONE. Before prepareRebuild, so nothing is exported, unregistered or
+		// imported. WSL-167.
+		if err := b.assertDiskHere("rebuilt"); err != nil {
+			return st, err
+		}
 		if rootfs, err = b.prepareRebuild(ctx); err != nil {
 			return st, err
 		}
@@ -980,6 +990,12 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 		// The upgrade path, and it is part of this entry rather than a follow-up:
 		// a base built before markers existed has none.
 		rec, recErr := b.readRecord()
+		if at, _ := b.diskElsewhere(); recErr != nil && at != "" {
+			// ⚠ NOT `base recreate`, which is refused from here. WSL-167.
+			return fmt.Errorf("%s is registered with its disk in %s and carries no wsl-toolkit identity marker. "+
+				"This state directory did not build it and does not stamp it. Run this from the one that did: %s",
+				b.cfg.Base.Name, at, holderCommand(at, "base ensure"))
+		}
 		if recErr != nil {
 			return fmt.Errorf("%s is registered, carries no wsl-toolkit identity marker and has no record here either, "+
 				"so this tool cannot tell whether it built it. Remove it yourself, or run: %s",
@@ -1001,7 +1017,14 @@ func (b *Base) reconcileIdentity(ctx context.Context) error {
 
 // writeRecordFrom writes the host record from what the GUEST said, so the two
 // cannot drift apart by the record following the configuration.
+//
+// ⛔ AND ONLY WHERE THE DISK IS HERE. An ensure from a home with no record read
+// the marker of the host's base and recorded it, and every later command from that
+// home was refused as ambiguous. WSL-167.
 func (b *Base) writeRecordFrom(id Identity) error {
+	if !b.recordsHere() {
+		return nil
+	}
 	if _, err := EnsureHome(); err != nil {
 		return err
 	}
@@ -2035,6 +2058,15 @@ func (b *Base) remove(ctx context.Context) error {
 	exists, err := b.wsl.Exists(ctx, b.cfg.Base.Name)
 	if err != nil {
 		return err
+	}
+	// ⛔ A BASE WHOSE DISK IS IN ANOTHER STATE DIRECTORY IS NEVER REMOVED FROM THIS
+	// ONE, and nothing below runs: no unregister, no deletion, no SSH Host block
+	// dropped. ⚠ Not for this process's own import, whose disk it just put here.
+	// WSL-167.
+	if exists && !b.imported {
+		if err := b.assertDiskHere("removed"); err != nil {
+			return err
+		}
 	}
 	if exists {
 		b.log("unregistering " + b.cfg.Base.Name)

@@ -15372,6 +15372,12 @@ A break by the register's definition if the default distribution's name changes
 for an existing caller. The approach keeps an existing base's recorded name, so it is
 additive unless the entry finds it cannot be.
 
+⛔ A state directory with no record uses the host's base and nothing more. It writes no
+`base.json` about it, and `base remove`, `base recreate` and a rebuilding `--preset` switch
+are refused there, naming the state directory that holds the disk. A scratch `--home`
+that removed or rebuilt the host's base before is now refused: a break row in
+`docs/consumers.md`.
+
 ## Prove
 
 ```bash

@@ -125,12 +125,24 @@ base has, in this order:
 disk in this state directory, every command exits 2 and names both. With no record and
 both names registered anywhere, the same holds. Set `base.name` to choose.
 
-⭐ **A host that already has a base sees no change.** A state directory with no
-`base.json` acts on the host's registered base, under either name, wherever its disk
-is. That is what every state directory did before `wsl-toolkit-jobs`. So a scratch
-`WSL_TOOLKIT_HOME`, or a shell whose `%LOCALAPPDATA%` Windows redirects, uses the
-host's base and builds no second one. `base status` says so in a `disk in` row, and
-in `naming.elsewhere` under `--json`, naming the folder that holds the disk.
+⭐ **A host that already has a base keeps using it.** A state directory with no
+`base.json` uses the host's registered base, under either name, wherever its disk
+is. So a scratch `WSL_TOOLKIT_HOME`, or a shell whose `%LOCALAPPDATA%` Windows
+redirects, runs jobs on the host's base and builds no second one. `base status` says
+so in a `disk in` row, and in `naming.elsewhere` under `--json`, naming the folder
+that holds the disk.
+
+⛔ **A state directory may use a base it did not build, and nothing more.** Where the
+base's disk is in another state directory, this one never writes a `base.json` about
+it, and never takes an adapter's SSH Host block away. `base remove`, `base recreate` and a `--preset` switch that rebuilds are refused
+before anything is unregistered, exported or deleted. The refusal names the state
+directory that holds the disk, and the command to run from it. ⚠ This is stricter
+than before `wsl-toolkit-jobs`, when a scratch `--home` could remove or rebuild the
+host's base. `WSL-167`
+
+⚠ **`doctor` reports an ambiguous default base as one.** Where both names are
+refused, its `base distro` row names both and their disk folders, and `--json`
+carries them in `wsl.candidates`.
 
 ⛔ **A record ties a base to its state directory by the disk.** A `base.json` that
 names a base registered with its disk in another state directory is refused by name.

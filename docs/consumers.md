@@ -92,9 +92,15 @@ depend on it.
 ### ⛔ What the canonical default base name breaks, and what a caller does
 
 `WSL-167`, ruling 33. Not released yet. A break by the table above, so the release
-that carries it is a major one. ⭐ A host that already has a default base sees no
-change: every state directory with no record acts on it, under its old name, wherever
-its disk is.
+that carries it is a major one. ⭐ A host that already has a default base keeps
+using it: a state directory with no record runs jobs on it, under its old name,
+wherever its disk is.
+
+⛔ **A state directory with no record may use that base, and nothing more.** It never
+removes, recreates or rebuilds it, never writes a `base.json` about it, and never takes
+an adapter's SSH Host block away. That is
+stricter than before `WSL-167`, when a scratch `WSL_TOOLKIT_HOME` could remove or
+rebuild the host's base. The last row below is that break.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
@@ -104,6 +110,7 @@ its disk is.
 | a `base.json` naming a base registered with its disk in another state directory is refused, exit 2, naming both directories | kept a record an older version wrote in a scratch directory about the host's base | deletes that `base.json`, as the refusal says |
 | a new instance named `base` or `jobs` is refused, exit 2. An existing one stays reachable and is never built again | creates either instance | names its instance for what it holds |
 | `muse.exe`, `pi.exe` and `omp.exe` reach the default base, not the instance `base` | runs a launcher against the instance `base` | configures the agents' adapters on the default base and runs `base ensure` |
+| `base remove`, `base recreate` and a `--preset` switch that rebuilds are refused, with a nonzero exit, where the base's disk is in another state directory. The refusal names that directory and the command to run from it | removed or rebuilt the host's base from a scratch `WSL_TOOLKIT_HOME` or `--home` | runs the command the refusal names, from the state directory that holds the disk |
 
 ⚠ **The register's rows list no call that names `wsl-toolkit` as a distribution or
 the instance `base`.** Their own trees were not read again for this change, so each row

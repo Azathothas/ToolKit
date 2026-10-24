@@ -100,7 +100,9 @@ pwsh -NoProfile -File tools/windows/wsl-toolkit/acceptance.ps1 -Binary .tmp/wsl-
 none. With `WSL_TOOLKIT_HOME` at a scratch directory, nothing it writes lands in
 the operator's own state. `base remove --yes` under the same selection removes
 the base afterwards. ⛔ Without `-Instance`, a scratch `WSL_TOOLKIT_HOME` with no
-record still acts on the host's own default base.
+record still runs its jobs on the host's own default base. It never removes,
+recreates or rebuilds that base, and writes no `base.json` about it. Those
+commands are refused, naming the state directory that holds the disk.
 
 The runner inventories pre-existing distributions and checks the names again at
 teardown. Its throwaway-distribution cases import and remove their own

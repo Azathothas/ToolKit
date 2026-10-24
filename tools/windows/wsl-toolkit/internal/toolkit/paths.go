@@ -24,6 +24,11 @@ func Home() (string, error) {
 	if v := strings.TrimSpace(os.Getenv("WSL_TOOLKIT_HOME")); v != "" {
 		return filepath.Abs(v)
 	}
+	return defaultHome()
+}
+
+// defaultHome is the state directory a process with no WSL_TOOLKIT_HOME uses.
+func defaultHome() (string, error) {
 	if runtime.GOOS == "windows" {
 		if v := strings.TrimSpace(os.Getenv("LOCALAPPDATA")); v != "" {
 			return filepath.Join(v, "wsl-toolkit"), nil

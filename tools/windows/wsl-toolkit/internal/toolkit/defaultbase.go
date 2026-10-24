@@ -37,6 +37,9 @@ import (
 // it must use the host's base, not build a second one. Step 4 is that, for either
 // name, so a new host's `wsl-toolkit-jobs` is shared the same way.
 //
+// ⛔ USED, AND NEVER OWNED. A base adopted by step 4 gets no base.json here, and
+// is never removed or rebuilt from here: assertDiskHere and recordsHere below.
+//
 // ⛔ A RECORD STILL TIES A NAME TO ITS DIRECTORY BY THE DISK. A record naming a base
 // whose disk is in another state directory is refused by name, because the record
 // says this directory built it and the disk says it did not.
@@ -270,6 +273,110 @@ func (c Config) naming() *BaseNaming {
 		n.Move = moveAdvice(from, c.nameAt)
 	}
 	return n
+}
+
+// -- a base this state directory did not build ---------------------------------
+
+// ErrBaseElsewhere is what a removal or a rebuild of a base whose disk is in
+// another state directory is refused with. WSL-167.
+var ErrBaseElsewhere = errors.New("the base's disk is in another state directory")
+
+// diskElsewhere answers the folder holding the disk of the configured
+// distribution, where WSL has it registered with its disk outside this state
+// directory's base folder, and an empty string where its disk is here or it is not
+// registered.
+//
+// ⛔ THE REGISTRY IS READ NOW, NOT ONLY THE NAME'S RESOLUTION. A base.name in the
+// configuration, a named instance, or a version before WSL-167 chose a name with
+// no word of where its disk is, and a scratch home acted on the operator's base.
+//
+// ⚠ AN UNREADABLE REGISTRY answers what the resolution found, with the error.
+func (b *Base) diskElsewhere() (string, error) {
+	disks := b.disks
+	if disks == nil {
+		disks = registeredDisks
+	}
+	registered, err := disks()
+	if err != nil {
+		return b.cfg.nameAt, err
+	}
+	at, ok := registeredAt(registered, b.cfg.Base.Name)
+	if !ok {
+		return "", nil
+	}
+	if cleanBasePath(at) == "" {
+		return b.cfg.nameAt, nil
+	}
+	if pathEqual(cleanBasePath(at), cleanBasePath(b.Dir())) {
+		return "", nil
+	}
+	return cleanBasePath(at), nil
+}
+
+// assertDiskHere refuses to remove or rebuild a registered base whose disk is not
+// in this state directory's base folder, and while that cannot be read. WSL-167.
+//
+// ⛔ A STATE DIRECTORY MAY USE A BASE IT DID NOT BUILD, AND NOTHING MORE. A home
+// with no record adopts the host's base by its name, so `base remove --yes` from a
+// scratch home unregistered the operator's base and deleted its SSH Host block.
+// `base recreate` exported, unregistered and imported it again into the scratch
+// home. The refusal comes before anything is unregistered, exported or deleted.
+func (b *Base) assertDiskHere(verb string) error {
+	at, err := b.diskElsewhere()
+	if at != "" {
+		return b.elsewhereRefusal(verb, at)
+	}
+	if err != nil {
+		return fmt.Errorf("%s was NOT %s: WSL's registrations could not be read, so nothing proves its disk is in %s: %w",
+			b.cfg.Base.Name, verb, b.Dir(), err)
+	}
+	return nil
+}
+
+// elsewhereRefusal names the state directory that holds the disk, and the command
+// that acts on the base from it.
+func (b *Base) elsewhereRefusal(verb, at string) error {
+	args := "base remove --yes"
+	if verb != "removed" {
+		args = "base recreate"
+	}
+	return fmt.Errorf("%w: %s was NOT %s. Its disk is in %s, and this state directory is %s. "+
+		"A state directory may use a base it did not build, and never removes or rebuilds it. "+
+		"Run this from the state directory that holds the disk: %s",
+		ErrBaseElsewhere, b.cfg.Base.Name, verb, at, b.home, holderCommand(at, args))
+}
+
+// holderCommand is the command line that runs args from the state directory whose
+// base folder is at. ⚠ An instance's base folder is under its root's instances
+// folder, so the command names the instance and the root.
+func holderCommand(at, args string) string {
+	holder := filepath.Dir(at)
+	cmd := ToolCommandFor(DefaultInstance, args)
+	if parent := filepath.Dir(holder); strings.EqualFold(filepath.Base(parent), "instances") {
+		cmd = ToolCommandFor(filepath.Base(holder), args)
+		holder = filepath.Dir(parent)
+	}
+	if home, err := defaultHome(); err == nil && pathEqual(cleanBasePath(home), cleanBasePath(holder)) {
+		return "with WSL_TOOLKIT_HOME unset, the default state directory: " + cmd
+	}
+	return "$env:WSL_TOOLKIT_HOME='" + holder + "'; " + cmd
+}
+
+// recordsHere says whether this state directory may write a base.json about the
+// configured base: not where its disk is in another state directory's base folder.
+//
+// ⛔ AN ADOPTED BASE GETS NO RECORD HERE. The record says this directory built the
+// base, so the next load from a home that only used it was refused as ambiguous.
+// WSL-167.
+func (b *Base) recordsHere() bool {
+	if at, _ := b.diskElsewhere(); at != "" {
+		if b.log == nil {
+			return false
+		}
+		b.log("no base.json is written in " + b.home + ": " + b.cfg.Base.Name + " has its disk in " + at + ", and that state directory keeps its record")
+		return false
+	}
+	return true
 }
 
 // -- reserved instance names -------------------------------------------------
