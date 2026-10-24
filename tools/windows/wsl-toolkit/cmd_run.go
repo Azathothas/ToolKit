@@ -558,7 +558,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	} else if c != nil {
 		if j.ensure {
-			if _, err := c.BaseEnsure(ctx, false); err != nil {
+			if err := helperEnsureBase(ctx, c.BaseEnsure); err != nil {
 				return exitCannot, err
 			}
 		}
@@ -925,7 +925,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	} else if c != nil {
 		if j.ensure {
-			if _, err := c.BaseEnsure(ctx, false); err != nil {
+			if err := helperEnsureBase(ctx, c.BaseEnsure); err != nil {
 				return exitCannot, err
 			}
 		}
@@ -1074,6 +1074,28 @@ func ensureBase(ctx context.Context, runner *toolkit.Runner, allowed bool) error
 		return err
 	}
 	return nil
+}
+
+// helperEnsureBase is the helper route's ensure, asked before `run` or `matrix`
+// sends its job.
+//
+// ⛔ A STALE BOOT ID IS PASSED, NOT RETURNED. The helper's unflagged ensure
+// probes with a container, meets the refusal a restart of WSL leaves, and
+// answers with it. Returning it stopped the job before the helper's Runner.Run,
+// which is where the state is cleared, so after `wsl --shutdown` this route
+// still exited 2. Plain `base ensure` still clears only with --repair. WSL-137.
+//
+// ⚠ What the helper removed is named in the helper's own log, not here.
+func helperEnsureBase(ctx context.Context, ensure func(context.Context, bool) (toolkit.BaseState, error)) error {
+	_, err := ensure(ctx, false)
+	if err == nil {
+		return nil
+	}
+	if _, stale := toolkit.StaleRunStateRemediation(err.Error()); stale {
+		note("the base's engine state names another boot of WSL, so the helper clears it before the job's container, and the helper's log names what it removed")
+		return nil
+	}
+	return err
 }
 
 func resolveImage(cfg toolkit.Config, name string) (string, error) {

@@ -1210,6 +1210,38 @@ its notes with its command, and never names it as the way forward.
 
 ---
 
+## ⭐ After a restart of WSL
+
+⭐ **`run`, `matrix` and `base exec` clear engine state that a restart of WSL
+left stale.** After `wsl --shutdown` or a Windows restart, podman refuses every
+container with `current system boot ID differs from cached boot ID`. Before the
+first container, the base compares the boot id podman recorded with the one the
+kernel holds now. Where they differ, it removes the two directories podman names,
+and stderr says what it removed. `WSL-137`
+
+⚠ **On the helper route the helper clears it.** The helper's ensure refuses a
+stale boot id, and `run` and `matrix` send the job anyway. The helper clears the
+state before the job's container. What it removed is in the helper's log, not on
+this stderr.
+
+⛔ **Nothing is removed on a guess.** The automatic clear leaves alone a record
+that names this boot, an empty one and a missing one. Every clear,
+`base ensure --repair` included, takes one lock and reads the record again under
+it. A record
+that now names this boot stops it, so no caller clears what another has started
+on. A base with no `flock` keeps the state, and stderr names
+`base ensure --repair`. BusyBox's `flock`, which an alpine base has, works.
+
+⛔ **A clear stops at the first directory still there.** The record of the other
+boot is then kept, so the next check still names the stale state. The base has
+60 seconds to say where its state is, so a hung engine never holds the lock.
+
+⚠ **`base ensure` still clears it only with `--repair`.** The check is one more
+call into the base for each job and each `base exec`. A check that cannot run
+stops nothing, and the engine's own refusal follows as before.
+
+---
+
 ## The safety model
 
 Removal is constrained, and every destructive path goes through the same gate.

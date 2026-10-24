@@ -1832,19 +1832,33 @@ func managedInstances() []string {
 // TODO/RULES.md section 3 is the rule that says where that line is drawn.
 func (b *Base) repairRunState(ctx context.Context) (string, error) {
 	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, repairScript, nil, 2*time.Minute)
+	return out, repairRunStateVerdict(out, stderr, code, err)
+}
+
+// repairRunStateVerdict reads what repair.sh printed for `base ensure --repair`.
+//
+// ⭐ A FUNCTION WITH NO PROCESS IN IT, so every answer has a case on any host.
+func repairRunStateVerdict(out, stderr string, code int, err error) error {
 	if err != nil {
-		return out, err
+		return err
 	}
 	if code != 0 {
-		return out, fmt.Errorf("repair exited %d: %s", code, guestFailure(stderr, out))
+		return fmt.Errorf("repair exited %d: %s", code, guestFailure(stderr, out))
 	}
 	// ⛔ THE EFFECT IS ASSERTED, not inferred from the exit code. repair.sh
 	// reads every removal back and refuses to exit 0 over one that is still
 	// there, and this refuses to report a repair the script did not announce.
-	if !strings.Contains(out, "repaired run-state") {
-		return out, fmt.Errorf("repair exited 0 without saying what it did: %s", guestFailure(out, stderr))
+	if strings.Contains(out, "repaired run-state") {
+		return nil
 	}
-	return out, nil
+	// ⭐ ANOTHER CALLER CLEARED IT FIRST. repair.sh read the record again under
+	// the run-state lock and found it naming this boot, so it removed nothing
+	// under the engine that caller started. The probe after this answers whether
+	// the base works, as it does after a clear. WSL-137.
+	if strings.Contains(out, "run-state current: another caller cleared it first") {
+		return nil
+	}
+	return fmt.Errorf("repair exited 0 without saying what it did: %s", guestFailure(out, stderr))
 }
 
 // StaleRefusalError is the error Ensure returns when it will not repair.
