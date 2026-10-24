@@ -197,6 +197,25 @@ func TestARollbackLeavesADistributionThisProcessDidNotImport(t *testing.T) {
 	}
 }
 
+// ⛔ WSL-172. The rollback's own guard, alone: with the owner check satisfied (the
+// registry puts the disk in this home's base folder), a build that imported
+// nothing still removes nothing. The race above cannot show it, because a racing
+// importer runs in another state directory and the owner check refuses first.
+func TestARollbackOfNoImportRemovesNothingEvenFromTheOwner(t *testing.T) {
+	h := newFakeHost(t)
+	b, _, disk := fakeBuiltBase(t, h, DefaultBaseImage)
+	previous := readRegistrations
+	t.Cleanup(func() { readRegistrations = previous })
+	readRegistrations = h.registry
+	h.say(t, "disks", fakeBaseName+"\t"+b.Dir())
+	h.say(t, "calls", "")
+	cause := errors.New("the build failed before its import")
+	if err := b.rollbackImported(cause); !errors.Is(err, cause) {
+		t.Fatalf("a rollback of no import answered %v; want the build's own cause", err)
+	}
+	assertKept(t, h, b, disk)
+}
+
 // ⛔ WSL-172. Nothing serialized a change to the base. A second caller now waits
 // for the lock, reads nothing before it holds it, and names whom it waits for.
 func TestEnsureWaitsForTheBasesLockAndNamesItsHolder(t *testing.T) {

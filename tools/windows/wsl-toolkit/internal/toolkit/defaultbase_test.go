@@ -589,8 +589,10 @@ func TestAHelpersRunnerForAGuestIsAGuests(t *testing.T) {
 		t.Fatal("the owner's cached runner was lent to a guest")
 	}
 	if runtime.GOOS != "windows" {
-		// ⚠ A Linux host has no wsl.exe, so no runner is made at all.
-		return
+		// ⚠ A Linux host has no wsl.exe, so no runner is made at all, and the
+		// guest flag cannot be read. Skipped, so its row is unproved here
+		// rather than passing with the guard removed.
+		t.Skip("no wsl.exe on this host, so the helper makes no runner")
 	}
 	if err != nil || r == nil || !r.base.guest {
 		t.Fatalf("a guest's runner is %+v, %v; want a guest's base", r, err)

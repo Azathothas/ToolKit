@@ -609,7 +609,7 @@
       "file": "internal/toolkit/base.go",
       "find": "\tif !b.imported {\n\t\treturn cause\n\t}\n",
       "replace": "",
-      "run": "TestARollbackLeavesADistributionThisProcessDidNotImport",
+      "run": "TestARollbackOfNoImportRemovesNothingEvenFromTheOwner",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
