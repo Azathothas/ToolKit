@@ -12,7 +12,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 ```text
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
-head            this commit: wsl-toolkit 7.0.2, the audit's data-loss fixes merged; 7.0.1 is deployed
+head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
 entries         total 248  open 61  blocked 5  done 182
 this session    ruling 31
 ```
@@ -29,14 +29,14 @@ Measured on this host unless a row says read.
 | mutation rows | 600 at `9784821` | `tools/repo/mutations.json` |
 | CI | 8 runs, 3 of them required; one guard shard 9 to 17 min | `gh run view` on `9784821` and `d81910f` |
 | the acceptance suite | 102 cases quick, 109 full; 399 s with the installed 7.0.0 | `acceptance.ps1`; the last run |
-| the last release | `wsl-toolkit-v7.0.1`, 28 assets, 7 release jobs green | `gh release view`, `gh run view` |
+| the last release | `wsl-toolkit-v7.0.2`, 22 assets, 7 release jobs green | `gh release view`, `gh run view` |
 | this host | Windows 11 Pro 26300, PowerShell 7.6.7, WSL 3.0.3.0, git 2.55.0, Go 1.27.0 | the doctor |
 
 ### This host's state
 
 | | what is there, and how to undo it |
 | --- | --- |
-| the tool | `%USERPROFILE%\bin\wsl-toolkit.exe` 7.0.1, from `selfupdate`; the next `selfupdate` replaces it. `gc --include-live --apply` and `gc --images --apply` on 2026-10-21 left the jobs base with no job, session or image of this work |
+| the tool | `%USERPROFILE%\bin\wsl-toolkit.exe` 7.0.2, from `selfupdate`; the next `selfupdate` replaces it. `gc --include-live --apply` and `gc --images --apply` on 2026-10-21 left the jobs base with no job, session or image of this work |
 | distributions | `podman-machine-default`, stopped and WSL's default; `wsl-toolkit`, the jobs base, 58.4 GB; `wsl-toolkit-base`, the operator's base, 1.9 GB, rebuilt on 2026-10-21 with the herdr adapter alone. All three are stopped: the operator asked for `wsl --shutdown` at the pause. ⚠ Neither base disk is sparse |
 | the podman connection | `podman-machine-default-root`, because the machine's rootless socket is dead (finding 76 of the old record). Undo with `podman system connection default podman-machine-default` once that socket works |
 | the package's copy of the state directory | removed on 2026-10-21 under ruling 31, with its 503 job directories, `WSL-118`. A Bash shell this desktop app starts recreates it when it runs the tool. The job that explains finding 8 is kept at `.tmp/finding8-4e94faa38b4c9c1c` |
@@ -68,7 +68,7 @@ host and driven on the jobs base.
 worktree, reviewed by two adversarial passes a round, repaired and merged into
 `main`: `WSL-169`, `WSL-171` to `WSL-175`, `WSL-177`, `WSL-179`, `WSL-181`,
 `WSL-182` and `WSL-185`. The merge met G1 and G4 in the grant ledger, and a case
-holds the result. Next: CI green, publish, `selfupdate` and drive.
+holds the result. It is published from `a031bcf`, installed on this host and driven.
 
 The 7.1.0 work waits on local, unpushed branches, each unmerged and ungated:
 `wip/f6a-adapters` (finished; the triage found four things to fix before it merges),

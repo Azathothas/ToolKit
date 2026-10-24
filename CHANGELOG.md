@@ -26,7 +26,15 @@ entry. A superseded one is amended in place with a dated note.
 ### 2026-10-24T11:30:50Z: `wsl-toolkit` is 7.0.2, the audit's data-loss fixes
 
 **Record:** `WSL-169`, `WSL-171` to `WSL-175`, `WSL-177`, `WSL-179`, `WSL-181`, `WSL-182` and `WSL-185`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md). The work filed `WSL-189` to `WSL-192`.
-**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v7.0.2` from this commit.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.2` from `a031bcf`, **22 assets** with a cosign
+bundle each and `SHA256SUMS`. All 7 release jobs green, including the smoke that fetches the
+release and drives it. Amended 2026-10-24T13:20:26Z: the merge commits were red on CI. G1's
+grants case wrote under `/var/lib` on Linux, and a 30-second cleanup wait in the fake host took
+the Windows package past its 10-minute limit. Three commits fixed both, and the tag followed CI green.
+
+⭐ **Driven after the publish.** `selfupdate` put 7.0.2 on this host. `base ensure` on the
+operator's jobs base exited 0 in 4 seconds with no rebuild and no restart. A `run` exited 0, and
+`base status --probe` answers healthy.
 
 ⛔ **A failed re-provision removed the base.** It now returns its error and keeps the base. Only `base recreate`, a preset switch or a rollback of this process's own import removes one. `WSL-171`
 
@@ -47,7 +55,7 @@ entry. A superseded one is amended in place with a dated note.
 ### 2026-10-24T07:48:54Z: `wsl-toolkit` is 7.0.1, the critical fixes for workloads blocked since the restart
 
 **Record:** `WSL-168`, and the 7.0.1 amendments to `WSL-137` and `WSL-169`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
-**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.1` from `e3378be`, **28 assets** with a cosign
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.1` from `e3378be`, **22 assets** with a cosign
 bundle each and `SHA256SUMS`. All 7 release jobs green, including the smoke that fetches the
 release and drives it. Amended 2026-10-24T09:31:04Z: the first commit, `8183c8c`, was red on
 the Windows runners, where a fake engine stayed locked past its test's cleanup; two commits
