@@ -82,6 +82,11 @@ func TestAStopSurvivesCompactionWhileItsJobDirectoryExists(t *testing.T) {
 // it replaces on Windows. Elsewhere the hold is an advisory lock no read sees,
 // so these cases prove nothing there and pass.
 func TestAStopIsReadWhileARewriteHoldsTheLedger(t *testing.T) {
+	// ⚠ Elsewhere the lock never refuses a read, so this case would pass with
+	// the retry gone and prove nothing.
+	if runtime.GOOS != "windows" {
+		t.Skip("only a Windows open refuses a read")
+	}
 	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
 	l, err := OpenLedger()
 	if err != nil {
