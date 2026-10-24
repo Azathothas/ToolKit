@@ -131,16 +131,22 @@ func TestAProofWithoutTheAddedRowsDoesNotCoverThem(t *testing.T) {
 		base:   map[string]string{c1: base},
 		rows:   map[string][]string{was + ".." + c1: {"old", "new"}, base + ".." + c1: {"old"}},
 	}
-	needs, _ := Decide([]Update{{"refs/heads/m", c1, "refs/heads/m", was}}, "origin", repo)
+	needs, _ := Decide([]Update{
+		{"refs/heads/m", c1, "refs/heads/m", was},
+	}, "origin", repo)
 	if len(needs) != 1 || strings.Join(needs[0].Rows, ",") != "old,new" || needs[0].Base != was {
 		t.Fatalf("a push adding a row the proof never ran: %+v", needs)
 	}
-	needs, _ = Decide([]Update{{"refs/heads/n", c1, "refs/heads/n", zero}}, "origin", repo)
+	needs, _ = Decide([]Update{
+		{"refs/heads/n", c1, "refs/heads/n", zero},
+	}, "origin", repo)
 	if len(needs) != 0 {
 		t.Fatalf("a new ref whose added rows the proof ran: %+v", needs)
 	}
 	repo.rows[base+".."+c1] = []string{"new"}
-	needs, _ = Decide([]Update{{"refs/heads/n", c1, "refs/heads/n", zero}}, "origin", repo)
+	needs, _ = Decide([]Update{
+		{"refs/heads/n", c1, "refs/heads/n", zero},
+	}, "origin", repo)
 	if len(needs) != 1 || needs[0].Base != base || strings.Join(needs[0].Rows, ",") != "new" {
 		t.Fatalf("a new ref counted from the remote's newest commit: %+v", needs)
 	}
@@ -152,7 +158,9 @@ func TestAProofWithoutTheAddedRowsDoesNotCoverThem(t *testing.T) {
 // TestTheHookLetsADeletedRefGo. A deletion pushes no tree to prove.
 func TestTheHookLetsADeletedRefGo(t *testing.T) {
 	c1 := strings.Repeat("1", 40)
-	needs, refused := Decide([]Update{{"(delete)", zero, "refs/heads/gone", c1}}, "origin", fakeRepo{})
+	needs, refused := Decide([]Update{
+		{"(delete)", zero, "refs/heads/gone", c1},
+	}, "origin", fakeRepo{})
 	if len(needs)+len(refused) != 0 {
 		t.Fatalf("a deleted ref was not let go: %+v %+v", needs, refused)
 	}
@@ -166,15 +174,21 @@ func TestTheHookLetsATreeTheRemoteHoldsGo(t *testing.T) {
 		trees:    map[string]string{tag: treeA, amended: treeB, was: treeB},
 		onRemote: map[string]bool{tag: true},
 	}
-	if got, _ := Decide([]Update{{"refs/tags/v1", tag, "refs/tags/v1", zero}}, "origin", repo); len(got) != 0 {
+	if got, _ := Decide([]Update{
+		{"refs/tags/v1", tag, "refs/tags/v1", zero},
+	}, "origin", repo); len(got) != 0 {
 		t.Fatalf("a tag on a commit the remote holds needs a proof: %+v", got)
 	}
-	if got, _ := Decide([]Update{{"refs/heads/m", amended, "refs/heads/m", was}}, "origin", repo); len(got) != 0 {
+	if got, _ := Decide([]Update{
+		{"refs/heads/m", amended, "refs/heads/m", was},
+	}, "origin", repo); len(got) != 0 {
 		t.Fatalf("an amended commit with the remote ref's own tree needs a proof: %+v", got)
 	}
 	// ⛔ The same tag pushed to a remote this checkout does not track is new
 	// there, and needs its proof.
-	if got, _ := Decide([]Update{{"refs/tags/v1", tag, "refs/tags/v1", zero}}, "elsewhere", repo); len(got) != 1 {
+	if got, _ := Decide([]Update{
+		{"refs/tags/v1", tag, "refs/tags/v1", zero},
+	}, "elsewhere", repo); len(got) != 1 {
 		t.Fatalf("a tag new to another remote went unproved: %+v", got)
 	}
 }
@@ -182,7 +196,9 @@ func TestTheHookLetsATreeTheRemoteHoldsGo(t *testing.T) {
 // TestTheHookRefusesATreeGitCannotName rather than waving it through.
 func TestTheHookRefusesATreeGitCannotName(t *testing.T) {
 	c1 := strings.Repeat("1", 40)
-	_, got := Decide([]Update{{"refs/heads/x", c1, "refs/heads/x", zero}}, "origin", fakeRepo{proofs: map[string]Proof{"": {}}})
+	_, got := Decide([]Update{
+		{"refs/heads/x", c1, "refs/heads/x", zero},
+	}, "origin", fakeRepo{proofs: map[string]Proof{"": {}}})
 	if len(got) != 1 || !strings.Contains(got[0].Reason, "cannot name") {
 		t.Fatalf("an unnamed tree was accepted: %+v", got)
 	}

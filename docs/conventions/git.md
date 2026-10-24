@@ -187,8 +187,8 @@ rotated first and the rewrite does not un-publish it. See
 - ⛔ **A push is proved on Linux before it leaves.** CI runs the Go tests and
   ShellCheck on Linux, and this host is Windows. Cases green here and red there
   have reached `main` three times. The tracked `.githooks/pre-push` runs those
-  jobs over each pushed commit's tree, in containers through `wsl-toolkit`. It
-  also runs every mutation row the push adds. A failure refuses the push. A
+  jobs and every mutation row the push adds, in containers through
+  `wsl-toolkit`, over each pushed commit's tree. A failure refuses the push. A
   pass files a proof keyed by the tree, so the next push of it is immediate. A
   deleted ref, and a commit or tree the remote already holds, need none.
 
