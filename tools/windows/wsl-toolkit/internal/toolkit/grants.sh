@@ -161,11 +161,29 @@ count=$(grep -c . "$WORK/targets" || :)
 say "explicit Windows directories: ${count:-0}"
 
 if [ "$TK_GRANTS_MODE" = write ]; then
-  install_fstab "$WORK/fstab"
-  # ⭐ THE RESTART THAT FOLLOWS MOUNTS THIS BLOCK ALONE, so the ledger becomes this
-  # configuration's grants. Another configuration's live grant ends with it. WSL-179.
+  # ⛔ SAID WHETHER IT CHANGED, because provisioning restarts the base only when
+  # this block or wsl.conf did. The x keeps a trailing newline that command
+  # substitution would strip. WSL-175.
+  if [ -f /etc/fstab ] && [ "$(cat "$WORK/fstab"; printf x)" = "$(cat /etc/fstab; printf x)" ]; then
+    printf 'fstab unchanged\n'
+  else
+    install_fstab "$WORK/fstab"
+    printf 'fstab changed\n'
+  fi
+  # ⭐ THIS CONFIGURATION'S ROWS ARE REPLACED AND ANOTHER'S ARE KEPT. A restart
+  # follows only when a start setting changed, so another configuration's live
+  # grant can outlive this step; `held` reads a row only while its target is
+  # mounted, so a row a restart ended answers nothing. WSL-175, WSL-179.
   if [ -n "$TK_GRANT_OWNER" ]; then
     : > "$WORK/owners"
+    if [ -f "$OWNERS" ]; then
+      while read -r kept_target kept_key kept_name _rest; do
+        if [ -n "$kept_target" ] && [ "$kept_key" != "$TK_GRANT_OWNER" ] &&
+          ! cut -d' ' -f2- "$WORK/targets" | grep -Fxq "$kept_target"; then
+          printf '%s %s %s\n' "$kept_target" "$kept_key" "$kept_name" >> "$WORK/owners"
+        fi
+      done < "$OWNERS"
+    fi
     while read -r _mode target; do
       if [ -n "$target" ]; then
         printf '%s %s %s\n' "$target" "$TK_GRANT_OWNER" "$TK_GRANT_OWNER_NAME" >> "$WORK/owners"

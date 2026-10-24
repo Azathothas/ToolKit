@@ -170,7 +170,9 @@ func TestTheLedgerSaysWhichFileMadeEachGrant(t *testing.T) {
 	if out, err := grantsDriveIn(t, dir, GrantsWrite, []BaseMount{mine, named}, ""); err != nil {
 		t.Fatalf("the write failed: %v\n%s", err, out)
 	}
-	if got := read("owners"); got != own(mine.Target)+own(named.Target) {
+	// ⛔ A WRITE KEEPS ANOTHER FILE'S ROW. No restart follows an unchanged block,
+	// so that file's grant can still be live. WSL-175, WSL-179.
+	if got := read("owners"); got != theirs+own(mine.Target)+own(named.Target) {
 		t.Fatalf("after a write the ledger is:\n%s", got)
 	}
 }

@@ -149,7 +149,11 @@ func TestARevokeTakesOneGrantAndKeepsTheRestAsWritten(t *testing.T) {
 func TestALiveGrantChangesTheBlockOnlyWhenNothingCanStillRefuse(t *testing.T) {
 	script := string(grantsScript)
 	removal := strings.Index(script, `umount "$old"`)
-	write := strings.Index(script, "if [ \"$TK_GRANTS_MODE\" = write ]; then\n  install_fstab \"$WORK/fstab\"\n")
+	// ⚠ Write mode installs the block only where it changed, and says which. WSL-175.
+	write := strings.Index(script, "if [ \"$TK_GRANTS_MODE\" = write ]; then\n")
+	if !strings.Contains(script[max(write, 0):], "    install_fstab \"$WORK/fstab\"\n    printf 'fstab changed\\n'\n") {
+		write = -1
+	}
 	live := strings.LastIndex(script, "\ninstall_fstab \"$WORK/fstab\"\n")
 	if removal < 0 || write < 0 || live < 0 || live < removal {
 		t.Fatalf("the live block is not written after the removals: removal at %d, write-mode block at %d, live block at %d", removal, write, live)

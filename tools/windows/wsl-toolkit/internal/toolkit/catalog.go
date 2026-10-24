@@ -457,9 +457,16 @@ func LoadConfig() (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	path := src.Path
+	return loadConfigFile(src.Path, src.From)
+}
+
+// loadConfigFile is LoadConfig for a file already found: the defaults, with what
+// the file at path sets. A base reads its own file through here again under its
+// lock. WSL-172.
+func loadConfigFile(path, from string) (Config, error) {
+	cfg := DefaultConfig()
 	cfg.path = path
-	cfg.source = src.From
+	cfg.source = from
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil

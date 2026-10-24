@@ -1413,15 +1413,55 @@ security boundary**, and no page here says otherwise.
 | `qemu-system-x86_64` and the Windows Hypervisor Platform | `bsd` only |
 | `xz` | `bsd fetch` only |
 
-⛔ **A rebuild asks the host engine before it removes the base.** `base recreate`
-does, and so does `base ensure` before it rebuilds a base that will not provision.
-`base ensure --preset` does too when the preset switches the image.
-With no engine answering, each exits 2 with the engine's reason, and the base stays
-registered. A `base.image` that is not fully qualified is refused the same way.
-⚠ `--save` has already written the new image by then, so the same command run again
-switches nothing. The refusal says so, and `base recreate` is what switches it.
-⚠ A pull that fails and a volume too small for the import are still found after the
-removal. `WSL-169`
+⛔ **A rebuild prepares everything before it removes the base.** `base recreate`
+does, and so does `base ensure --preset` when the preset switches the image. Each
+asks the host engine, pulls the image, exports its rootfs and checks the volume
+first. The space check counts the old disk as freed. When any step fails, each
+exits 2 with the reason, and the base stays registered. A `base.image` that is not
+fully qualified is refused the same way. `WSL-169`
+
+⭐ **`--preset` is compared with the image the base was built from.** This machine's
+record of the base answers, and the configuration answers where there is no record.
+So a preset the base already has rebuilds nothing. The comparison is made again under
+the base's lock. A second switch that waited finds the base the first one built, and
+keeps it. ⚠ `--save` writes the new image
+before the rebuild runs, so a refused rebuild leaves a configuration naming it. The
+refusal says so, and the same command run again switches the base. `WSL-169`
+
+⛔ **A failed re-provision keeps the base.** `base ensure`, `ready --ensure` and
+`run --ensure-base` re-provision a registered base that does not verify. When that
+fails, each exits 2 with the reason and names `base recreate`. Nothing is removed,
+so the base's home, credentials and images stay. Only `base recreate`, a `--preset`
+switch and `base remove` remove a registered base. `WSL-171`
+
+⭐ **A re-provision restarts the base only when what WSL reads at start changed.**
+That is `/etc/wsl.conf` or the tool's block in `/etc/fstab`. When neither changed,
+running jobs and agents keep running. A base that still does not verify is then
+restarted once. ⚠ A run that failed before its restart leaves `base.restart-owed`
+in the state directory, so the next run restarts the base. `WSL-175`
+
+⛔ **One process at a time changes a base.** `base ensure`, `base recreate`,
+`base remove`, `base grant` and `base revoke` hold `base.lock` in the instance's
+state directory. A grant reads and writes the configuration inside it. A second
+caller waits, says every 30 seconds which process holds it, and reads the base again
+once it has it. A build that waited reads the grants again, so a grant revoked
+meanwhile stays revoked. `WSL-172`
+
+⭐ **Each build cleans up only its own.** Each build exports into an archive of its
+own. A build that fails removes only a distribution its own import registered. An
+import that failed but still registered the base, with its disk in that build's own
+directory, counts as its own. `--instance auto` claims its number by creating the
+instance's state directory, so two callers at once get two instances. `WSL-172`
+
+⛔ **A disk another distribution keeps is never deleted.** Before the instance's
+disk directory is deleted, WSL's registry is read. A registered distribution with
+its disk there refuses the deletion, and the refusal names it. A registry that
+cannot be read refuses it too. So does a `base.json` that names another distribution.
+A listing in UTF-16 is refused, not read as no distribution. `WSL-177`
+
+⭐ **An orphaned disk is moved aside, not deleted.** A build that finds a disk no
+registered distribution keeps moves it to `base.orphaned-<time>` in the state
+directory, and says where. Delete it once nothing in it is needed. `WSL-177`
 
 ⛔ **A probe image that cannot be pulled is not a broken base.** The health probe
 runs `docker.io/library/alpine:latest`. Where that image is absent, it is pulled

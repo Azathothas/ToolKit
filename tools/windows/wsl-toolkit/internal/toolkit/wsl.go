@@ -256,6 +256,13 @@ func (w *Wsl) nameQueryOnce(ctx context.Context, args ...string) ([]string, erro
 		if name == "" {
 			continue
 		}
+		// ⛔ A NUL INSIDE A NAME IS A LISTING THIS CANNOT READ, NOT A NAME. A WSL
+		// that prints UTF-16 leaves one between every letter, so no configured
+		// name ever matched, and a registered base read as absent: the build path
+		// then treated its disk as a leftover. WSL-177.
+		if strings.ContainsRune(name, 0) {
+			return nil, fmt.Errorf("wsl.exe %s printed a listing this cannot read: a NUL inside a name, which is UTF-16 output. Nothing was decided from it", strings.Join(args, " "))
+		}
 		names = append(names, name)
 	}
 	return names, nil

@@ -11,6 +11,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -149,11 +150,20 @@ type Base struct {
 	home string
 	wsl  *Wsl
 	log  func(string)
-	// unmarked says this process built the distribution now registered and did
-	// not get as far as stamping it, so Remove may unregister it without the
-	// guest's proof. ⛔ It is set by the build path and by nothing else: a
-	// flag a caller could set would be a way past the guard.
-	unmarked bool
+	// imported says THIS PROCESS's own `wsl --import` registered the distribution
+	// now under the name, and it has not been stamped yet, so a rollback may
+	// unregister it without the guest's proof. ⛔ It is set by the build path, after
+	// the import succeeded, and by nothing else: a flag a caller could set would be
+	// a way past the guard.
+	//
+	// ⛔ AFTER THE IMPORT, NOT BEFORE IT. It was set before the build started, so a
+	// build whose import failed because another process had just registered the
+	// name rolled back by unregistering THAT process's base, with no marker
+	// demanded. WSL-172.
+	imported bool
+	// disks answers WSL's registrations, each distribution's name and the
+	// directory of its disk. Nil reads the registry. WSL-177.
+	disks func() (map[string]string, error)
 }
 
 // NewBase binds the lifecycle to this host.
@@ -441,6 +451,21 @@ func (b *Base) readRecord() (baseRecord, error) {
 	return rec, jsonUnmarshal(data, &rec)
 }
 
+// RecordedBaseImage is the image this machine's record says the configured base
+// was built from, or an empty string where there is no record for that name. It
+// reads and creates nothing beyond the record.
+func RecordedBaseImage(cfg Config) string {
+	home, err := Home()
+	if err != nil {
+		return ""
+	}
+	rec, err := (&Base{cfg: cfg, home: home}).readRecord()
+	if err != nil || !strings.EqualFold(rec.Name, cfg.Base.Name) {
+		return ""
+	}
+	return rec.Image
+}
+
 func (b *Base) writeRecord() error {
 	if _, err := EnsureHome(); err != nil {
 		return err
@@ -459,9 +484,15 @@ func (b *Base) writeRecord() error {
 // Ensure brings the base into a state where a job can run, doing the least that
 // achieves it.
 //
-// ⭐ The recovery path as well as the create path. The base exists to be wrecked:
-// a registered-but-unusable distribution is re-provisioned in place, and only
-// one that will not provision is removed and rebuilt.
+// ⭐ The recovery path as well as the create path. A registered-but-unusable
+// distribution is re-provisioned in place.
+//
+// ⛔ A REGISTERED BASE IS NEVER REMOVED HERE UNLESS THE CALLER ASKED FOR A REBUILD.
+// This comment used to say "the base exists to be wrecked", and the code removed
+// and rebuilt every base whose re-provisioning failed: a stalled mirror, a full
+// disk or a leftover package lock cost the base's home, credentials and images.
+// A failed re-provision now returns its error, keeps the base and names
+// `base recreate`. WSL-171.
 func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 	return b.EnsureWith(ctx, force, false)
 }
@@ -473,31 +504,98 @@ func (b *Base) Ensure(ctx context.Context, force bool) (BaseState, error) {
 // engine state to make a probe pass is one deletion away from removing something
 // else. Ruled 2026-09-10. WSL-61.
 func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, error) {
+	if force {
+		return b.ensure(ctx, rebuildAlways, repair)
+	}
+	return b.ensure(ctx, rebuildNever, repair)
+}
+
+// EnsureSwitch is Ensure for a `--preset` switch: it rebuilds a registered base
+// only when, read under the base's lock, the base was not built from the
+// configured image.
+//
+// ⛔ THE SWITCH WAS DECIDED BEFORE THE LOCK. Two `base ensure --preset X` calls
+// both read the old record and both became a rebuild, so the second waited, then
+// removed and rebuilt the base the first had just built from X, with whatever a
+// job had started in it since. WSL-169, WSL-172.
+func (b *Base) EnsureSwitch(ctx context.Context, repair bool) (BaseState, error) {
+	return b.ensure(ctx, rebuildSwitch, repair)
+}
+
+// rebuild says when an ensure removes a registered base and builds it again.
+type rebuild int
+
+const (
+	// rebuildNever keeps a registered base: `base ensure`.
+	rebuildNever rebuild = iota
+	// rebuildAlways rebuilds it: `base recreate`, which the caller asked for.
+	rebuildAlways
+	// rebuildSwitch rebuilds it unless it is built from the configured image.
+	rebuildSwitch
+)
+
+func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState, error) {
 	st, err := b.configuredState()
 	if err != nil {
 		return st, err
 	}
 	// ⛔ BEFORE ANYTHING ELSE, AND THE ORDER IS THE SAFETY OF IT. A grant whose
-	// source is gone fails the provisioner, and below, a registered base whose
-	// re-provisioning fails is REMOVED AND REBUILT, as is every base under
-	// --force. So refusing any later would have spent the whole base on a
-	// directory that went away. WSL-106.
+	// source is gone fails the provisioner, and below, every base under --force
+	// is REMOVED AND REBUILT. So refusing any later would have spent the whole
+	// base on a directory that went away. WSL-106.
 	if err := GoneGrantsError(st.Access.Mounts); err != nil {
 		return st, err
 	}
+	what := "base ensure"
+	switch mode {
+	case rebuildAlways:
+		what = "base recreate"
+	case rebuildSwitch:
+		what = "base ensure --preset"
+	}
+	release, err := b.lock(ctx, what)
+	if err != nil {
+		return st, err
+	}
+	defer release()
+	// ⛔ THE GRANTS ARE READ AGAIN UNDER THE LOCK. `base grant` and `base revoke`
+	// change them while holding it, so a build that waited for one went on with
+	// the grants it read before: a revoked grant was written back into the fstab
+	// block and mounted again at the next start. WSL-172.
+	if changed, err := b.adoptStoredGrants(); err != nil {
+		return st, err
+	} else if changed {
+		if st, err = b.configuredState(); err != nil {
+			return st, err
+		}
+		if gone := GoneGrantsError(st.Access.Mounts); gone != nil {
+			return st, gone
+		}
+	}
+	// ⛔ READ UNDER THE LOCK. A status read before it describes a base another
+	// process may have built, rebuilt or removed while this one waited. WSL-172.
 	st, err = b.statusFrom(ctx, st, false)
 	if err != nil {
 		return st, err
 	}
-	// engine is the host engine a rebuild exports with, asked before the base
-	// it replaces is removed, and nil where nothing was removed. WSL-169.
-	var engine *Engine
+	force := mode == rebuildAlways
+	if mode == rebuildSwitch && st.Registered {
+		if built := b.builtImage(ctx); built == b.cfg.Base.Image {
+			b.log(b.cfg.Base.Name + " is already built from " + built + ", so it is not rebuilt")
+		} else {
+			force = true
+		}
+	}
+	// rootfs is the archive a rebuild exported before it removed the base it
+	// replaces, and empty where nothing was removed. WSL-169.
+	var rootfs string
 	if st.Registered && force {
-		if engine, err = b.rebuildEngine(ctx); err != nil {
+		if rootfs, err = b.prepareRebuild(ctx); err != nil {
 			return st, err
 		}
+		defer b.dropRootfs(rootfs)
 		b.log("rebuilding from nothing, as asked")
-		if err := b.Remove(ctx); err != nil {
+		if err := b.remove(ctx); err != nil {
 			return st, err
 		}
 		st.Registered = false
@@ -601,39 +699,39 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 			}
 			b.log("re-provisioning in place")
 		}
-		if err := b.provision(ctx); err != nil {
-			if !provisionFailureRebuilds(err) {
-				return st, err
-			}
-			b.log("re-provisioning failed: " + err.Error())
-			// ⛔ THE SAME QUESTION BEFORE THE SAME REMOVAL. A base that will not
-			// provision is still the only one there is, and removing it with no
-			// engine to build the next one from leaves the caller none. WSL-169.
-			var engineErr error
-			if engine, engineErr = b.rebuildEngine(ctx); engineErr != nil {
-				return st, engineErr
-			}
-			b.log("removing and rebuilding")
-			if err := b.Remove(ctx); err != nil {
-				return st, err
-			}
-		} else {
-			if report, err := b.verify(ctx); err != nil {
-				return st, fmt.Errorf("re-provisioned and it still does not verify: %w", err)
-			} else {
-				b.log("the engine answers: " + report.Engine)
-			}
-			return b.finishEnsure(ctx, st)
+		restarted, err := b.provision(ctx)
+		if err != nil {
+			return st, reprovisionFailed(b.cfg.Base.Name, err)
 		}
+		report, err := b.verify(ctx)
+		if err != nil && !restarted {
+			// ⚠ A RESTART IS STILL THE ANSWER WHEN NOTHING ELSE WAS. Provisioning
+			// left wsl.conf and the fstab block as they were, so it did not stop
+			// the base; a base that still does not verify gets the restart every
+			// re-provision used to end in. WSL-175.
+			b.log("it still cannot: " + err.Error())
+			if err := b.restart(ctx); err != nil {
+				return st, err
+			}
+			report, err = b.verify(ctx)
+		}
+		if err != nil {
+			return st, fmt.Errorf("re-provisioned and it still does not verify: %w", err)
+		}
+		b.log("the engine answers: " + report.Engine)
+		return b.finishEnsure(ctx, st)
 	}
-	// ⛔ FROM HERE THIS PROCESS OWNS THE DISTRIBUTION IT IS BUILDING, marker or
-	// not, so a build that dies before stamping can still be cleared up.
-	b.unmarked = true
-	if err := b.create(ctx, engine); err != nil {
-		return st, b.rollbackUnmarked(err)
+	if err := b.create(ctx, rootfs); err != nil {
+		return st, b.rollbackImported(err)
 	}
-	if err := b.provision(ctx); err != nil {
-		return st, b.rollbackUnmarked(err)
+	// ⚠ A NEW IMPORT IS RESTARTED WHATEVER THE SCRIPTS SAID. Nothing runs in it
+	// yet, and its first start ran before any of its settings were written.
+	restarted, err := b.provision(ctx)
+	if err == nil && !restarted {
+		err = b.restart(ctx)
+	}
+	if err != nil {
+		return st, b.rollbackImported(err)
 	}
 	// ⭐ STAMPED BEFORE IT IS VERIFIED. The marker says what this tool BUILT,
 	// which is a fact by the time provisioning has finished; whether it can run
@@ -641,9 +739,9 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 	if err := b.wsl.WriteIdentity(ctx, b.cfg.Base.Name, Identity{
 		Image: b.cfg.Base.Image, User: b.cfg.Base.User, Tool: toolVersion(),
 	}); err != nil {
-		return st, b.rollbackUnmarked(err)
+		return st, b.rollbackImported(err)
 	}
-	b.unmarked = false
+	b.imported = false
 	report, err := b.verify(ctx)
 	if err != nil {
 		return st, fmt.Errorf("built and it does not verify: %w", err)
@@ -655,9 +753,44 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 	return b.finishEnsure(ctx, st)
 }
 
-// rollbackUnmarked removes a distribution this process imported but did not
-// stamp. A fresh context is deliberate: cancellation of the build must not
-// cancel the operation that prevents a nameless disk being stranded.
+// adoptStoredGrants replaces the grants this base was handed with the ones its
+// configuration file names now, and says whether they differed. A base with no
+// file keeps what it was handed. WSL-172.
+//
+// ⚠ ONLY THE GRANTS. They are the one part of the file another command changes
+// under the base's lock; the image a `--preset` gave this call is its own.
+func (b *Base) adoptStoredGrants() (bool, error) {
+	path := b.cfg.Path()
+	if path == "" {
+		return false, nil
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	stored, err := loadConfigFile(path, b.cfg.Source())
+	if err != nil {
+		return false, fmt.Errorf("the configuration could not be read again under the base's lock: %w", err)
+	}
+	if reflect.DeepEqual(stored.Base.Mounts, b.cfg.Base.Mounts) {
+		return false, nil
+	}
+	b.log("the grants changed while this waited; using the ones " + path + " names now")
+	b.cfg.Base.Mounts = stored.Base.Mounts
+	return true, nil
+}
+
+// builtImage is the image the base was built from: its record's, or else its
+// marker's, or an empty string where neither answers.
+func (b *Base) builtImage(ctx context.Context) string {
+	if rec, err := b.readRecord(); err == nil && strings.EqualFold(rec.Name, b.cfg.Base.Name) && rec.Image != "" {
+		return rec.Image
+	}
+	if id, err := b.wsl.ReadIdentity(ctx, b.cfg.Base.Name); err == nil {
+		return id.Image
+	}
+	return ""
+}
+
 // finishEnsure applies the configured adapters to a base whose engine answers,
 // and reads the base back.
 //
@@ -735,16 +868,62 @@ func lastToolLine(seen, prefix string) string {
 	return reason
 }
 
-func (b *Base) rollbackUnmarked(cause error) error {
+// rollbackImported removes a distribution this process imported but did not
+// stamp. A fresh context is deliberate: cancellation of the build must not
+// cancel the operation that prevents a nameless disk being stranded.
+//
+// ⛔ NOTHING THIS PROCESS DID NOT IMPORT. A build that failed before its own
+// import succeeded registered nothing, and whatever is registered under the name
+// now is another process's, so it is left alone, disk and all. WSL-172.
+func (b *Base) rollbackImported(cause error) error {
+	if !b.imported {
+		return cause
+	}
 	b.log("the new base did not finish; removing the incomplete distribution")
 	cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if err := b.Remove(cleanupCtx); err != nil {
+	if err := b.remove(cleanupCtx); err != nil {
 		return fmt.Errorf("%w; the incomplete distribution could not be removed: %v", cause, err)
 	}
-	b.unmarked = false
+	b.imported = false
 	b.log("removed the incomplete distribution")
 	return cause
+}
+
+// importedInto says whether WSL now has the configured name registered with its
+// disk in dir. ⚠ An unreadable registry answers no, which leaves the
+// distribution where it is, as before. WSL-172.
+func (b *Base) importedInto(dir string) bool {
+	disks := b.disks
+	if disks == nil {
+		disks = registeredDisks
+	}
+	registered, err := disks()
+	if err != nil {
+		return false
+	}
+	for name, at := range registered {
+		if strings.EqualFold(name, b.cfg.Base.Name) && at != "" && pathEqual(cleanBasePath(at), cleanBasePath(dir)) {
+			return true
+		}
+	}
+	return false
+}
+
+// reprovisionFailed is what a failed re-provision of a registered base answers.
+//
+// ⛔ THE BASE IS KEPT AND THE REBUILD IS NAMED. A rebuild costs the base's home,
+// its credentials and its images, so it is the caller's to ask for. WSL-171.
+//
+// ⚠ A GRANT WHOSE DIRECTORY WENT AWAY WHILE ENSURE RAN keeps its own refusal,
+// which names the revoke: a rebuild would refuse over the same grant. WSL-106.
+func reprovisionFailed(name string, err error) error {
+	if errors.Is(err, ErrGrantSourceGone) {
+		return err
+	}
+	return fmt.Errorf("re-provisioning %s failed, and it was NOT removed: %w. Its home, credentials and images are as they were. "+
+		"Fix the cause and run this again, or rebuild it from nothing, losing them, with: %s",
+		name, err, ToolCommand("base recreate"))
 }
 
 // reconcileIdentity compares what the guest says it is against the record and
@@ -846,10 +1025,7 @@ func toolVersion() string {
 // answered. WSL-169.
 //
 // ⚠ THE IMAGE REFERENCE IS READ FIRST, because the export refuses one that is
-// not fully qualified and reading it costs nothing. What cannot be known
-// before the removal is whether the pull succeeds and whether the volume holds
-// the import: the space check needs the archive's size, and the removal itself
-// frees the old disk.
+// not fully qualified and reading it costs nothing.
 func (b *Base) rebuildEngine(ctx context.Context) (*Engine, error) {
 	if err := ValidateImageRef(b.cfg.Base.Image); err != nil {
 		return nil, fmt.Errorf("%s was NOT removed: base.image cannot be exported: %w", b.cfg.Base.Name, err)
@@ -862,10 +1038,85 @@ func (b *Base) rebuildEngine(ctx context.Context) (*Engine, error) {
 	return engine, nil
 }
 
-// create imports the base from its image. ⭐ `engine` is the one a rebuild
-// asked before it removed anything; nil means nothing was removed, and the
-// engine is found here.
-func (b *Base) create(ctx context.Context, engine *Engine) error {
+// prepareRebuild does everything a rebuild can do before the base it replaces is
+// removed, and answers the rootfs archive the import will take.
+//
+// ⛔ PREPARE, THEN COMMIT. An engine that answers was not enough: the rebuild
+// removed the base and only then pulled the image, exported it and measured the
+// space, so a registry that refused the pull or a volume too small for the
+// import left no base at all. The pull, the export and the space check come
+// first now, and any of them refusing keeps the base. WSL-169.
+//
+// ⚠ THE OLD DISK COUNTS AS FREE. The removal frees it before the import, so a
+// rebuild that fits today is not refused for the space the base it replaces holds.
+func (b *Base) prepareRebuild(ctx context.Context) (string, error) {
+	engine, err := b.rebuildEngine(ctx)
+	if err != nil {
+		return "", err
+	}
+	b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
+	rootfs, err := b.exportRootfs(ctx, engine, b.diskBytes())
+	if err != nil {
+		return "", fmt.Errorf("%s was NOT removed: %w", b.cfg.Base.Name, err)
+	}
+	return rootfs, nil
+}
+
+// diskBytes is what the base's disk takes on its volume, or its size where that
+// cannot be read, or 0.
+func (b *Base) diskBytes() int64 {
+	disk := filepath.Join(b.Dir(), "ext4.vhdx")
+	if _, allocated, ok := DiskAllocation(disk); ok {
+		return allocated
+	}
+	if size, ok := FileSize(disk); ok {
+		return size
+	}
+	return 0
+}
+
+// exportRootfs exports the configured image into an archive of this process's
+// own and checks the volume holds its import, with `freed` bytes about to be
+// given back. It answers the archive, or removes it and refuses.
+//
+// ⛔ ONE ARCHIVE PER PROCESS. Every build wrote `base-rootfs.tar` in the state
+// directory, truncating it, so a second build truncated the first one's archive
+// under its import and then deleted it. WSL-172.
+func (b *Base) exportRootfs(ctx context.Context, engine *Engine, freed int64) (string, error) {
+	if _, err := EnsureHome(); err != nil {
+		return "", err
+	}
+	f, err := os.CreateTemp(b.home, "base-rootfs-*.tar")
+	if err != nil {
+		return "", err
+	}
+	rootfs := f.Name()
+	if err := f.Close(); err != nil {
+		b.dropRootfs(rootfs)
+		return "", err
+	}
+	if err := engine.ExportRootfs(ctx, b.cfg.Base.Image, rootfs, b.log); err != nil {
+		b.dropRootfs(rootfs)
+		return "", err
+	}
+	if err := assertImportSpaceFreeing(b.Dir(), rootfs, BaseSpaceFloor, freed, b.log); err != nil {
+		b.dropRootfs(rootfs)
+		return "", err
+	}
+	return rootfs, nil
+}
+
+// dropRootfs removes an archive exportRootfs made, and says so where it cannot.
+func (b *Base) dropRootfs(rootfs string) {
+	if err := os.Remove(rootfs); err != nil && !errors.Is(err, os.ErrNotExist) {
+		b.log("the rootfs archive is still on disk: " + rootfs)
+	}
+}
+
+// create imports the base from its image. ⭐ `rootfs` is the archive a rebuild
+// exported before it removed anything; empty means nothing was removed, and the
+// archive is made here.
+func (b *Base) create(ctx context.Context, rootfs string) error {
 	// ⭐ THE FIRST THING THAT WRITES, so this is where the state directory is
 	// brought into existence. Everything above it reads.
 	if _, err := EnsureHome(); err != nil {
@@ -874,59 +1125,111 @@ func (b *Base) create(ctx context.Context, engine *Engine) error {
 	dir := b.Dir()
 	if _, err := os.Stat(dir); err == nil {
 		// ⛔ Never import over a leftover directory: wsl --import into one that
-		// already holds a disk is how two distributions share one file.
-		if err := RemoveInside(b.home, dir); err != nil {
-			return fmt.Errorf("%s is left over from an earlier build and could not be removed: %w", dir, err)
+		// already holds a disk is how two distributions share one file. And never
+		// delete one a registered distribution keeps its disk in. WSL-177.
+		if err := b.assertNoDiskAt(dir); err != nil {
+			return fmt.Errorf("%s is left over from an earlier build: %w", dir, err)
 		}
-		b.log("removed a leftover " + dir)
+		if err := b.assertRecordNames(dir); err != nil {
+			return fmt.Errorf("%s is left over from an earlier build: %w", dir, err)
+		}
+		if err := b.clearLeftover(dir); err != nil {
+			return fmt.Errorf("%s is left over from an earlier build and could not be cleared: %w", dir, err)
+		}
 	}
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	if engine == nil {
-		found, err := FindEngine(ctx)
+	if rootfs == "" {
+		engine, err := FindEngine(ctx)
 		if err != nil {
 			return fmt.Errorf("the base is built from an OCI image, so a host engine is required: %w", err)
 		}
-		engine = found
-	}
-	b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
-
-	tarPath := filepath.Join(b.home, "base-rootfs.tar")
-	defer func() {
-		if err := os.Remove(tarPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			b.log("the rootfs archive is still on disk: " + tarPath)
+		b.log(fmt.Sprintf("host engine: %s, platform %s", engine.Name, engine.Platform()))
+		if rootfs, err = b.exportRootfs(ctx, engine, 0); err != nil {
+			return err
 		}
-	}()
-	if err := engine.ExportRootfs(ctx, b.cfg.Base.Image, tarPath, b.log); err != nil {
-		return err
-	}
-	if err := b.assertSpace(tarPath); err != nil {
-		return err
+		defer b.dropRootfs(rootfs)
 	}
 	b.log("importing as WSL2 distribution " + b.cfg.Base.Name)
-	if err := b.wsl.Import(ctx, b.cfg.Base.Name, dir, tarPath); err != nil {
+	if err := b.wsl.Import(ctx, b.cfg.Base.Name, dir, rootfs); err != nil {
+		// ⚠ AN IMPORT THAT FAILED CAN STILL HAVE REGISTERED. wsl.exe killed by
+		// its bound or by a cancel leaves the service to finish it, and nothing
+		// then cleared the distribution up: the next ensure refused it as
+		// unmarked, and so did `base remove`. The disk in the directory this
+		// process just made, under the lock, is the proof the import was its own;
+		// a name alone is not. WSL-172.
+		if b.importedInto(dir) {
+			b.imported = true
+		}
 		return err
 	}
+	// ⛔ FROM HERE THIS PROCESS OWNS THE DISTRIBUTION IT IS BUILDING, marker or
+	// not, so a build that dies before stamping can still be cleared up. WSL-172.
+	b.imported = true
 	return nil
 }
 
-// assertSpace refuses an import the volume cannot hold, BEFORE anything is
-// registered.
-func (b *Base) assertSpace(tarPath string) error {
-	return assertImportSpace(b.Dir(), tarPath, BaseSpaceFloor, b.log)
+// assertRecordNames refuses to clear dir while this machine's record says the
+// base in it is a distribution other than the configured one. WSL-177.
+//
+// ⛔ THE RECORD NAMES WHOSE DISK IT IS. A rename, or a configuration naming
+// another distribution, left the configured name unlisted, and the disk of the
+// base the record describes was deleted as a leftover.
+func (b *Base) assertRecordNames(dir string) error {
+	rec, err := b.readRecord()
+	if err != nil || rec.Name == "" || strings.EqualFold(rec.Name, b.cfg.Base.Name) {
+		return nil
+	}
+	return fmt.Errorf("%s was NOT deleted: %s records it as the disk of %s, and the configuration names %s. "+
+		"If %s is this base under another name, set base.name to it",
+		dir, b.recordPath(), rec.Name, b.cfg.Base.Name, rec.Name)
+}
+
+// leftoverDisk is the file a leftover directory holds that makes it a disk.
+const leftoverDisk = "ext4.vhdx"
+
+// clearLeftover makes way for an import in dir. ⚠ A directory holding a disk
+// is moved aside and the new name said, and anything else is deleted as before.
+//
+// ⛔ AN ORPHANED DISK IS MOVED, NOT DELETED. Nothing registered keeps it, but it
+// can still be a base whose registration was lost, with a home, credentials and
+// images in it. The build needs the directory, not the disk gone. WSL-177.
+func (b *Base) clearLeftover(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, leftoverDisk)); err != nil {
+		if err := RemoveInside(b.home, dir); err != nil {
+			return err
+		}
+		b.log("removed a leftover " + dir)
+		return nil
+	}
+	aside := filepath.Join(b.home, "base.orphaned-"+time.Now().UTC().Format("20060102T150405Z"))
+	if err := os.Rename(dir, aside); err != nil {
+		return err
+	}
+	b.log("⚠ moved a leftover disk aside to " + aside + ". No registered distribution keeps it. Delete it once nothing in it is needed")
+	return nil
 }
 
 // assertImportSpace is the one preflight in front of every `wsl --import`: a
 // floor plus twice the rootfs archive, measured on the volume that will hold the
 // disk.
 func assertImportSpace(dir, tarPath string, floor int64, log func(string)) error {
+	return assertImportSpaceFreeing(dir, tarPath, floor, 0, log)
+}
+
+// freeSpace is FreeSpace, and a case's stand-in for it.
+var freeSpace = FreeSpace
+
+// assertImportSpaceFreeing is assertImportSpace for an import that follows a
+// removal giving `freed` bytes back to the same volume.
+func assertImportSpaceFreeing(dir, tarPath string, floor, freed int64, log func(string)) error {
 	size, ok := FileSize(tarPath)
 	if !ok {
 		return fmt.Errorf("cannot measure %s", tarPath)
 	}
 	need := floor + 2*size
-	free, ok, err := FreeSpace(dir)
+	free, ok, err := freeSpace(dir)
 	if err != nil {
 		return err
 	}
@@ -934,6 +1237,15 @@ func assertImportSpace(dir, tarPath string, floor int64, log func(string)) error
 		// ⚠ "could not measure" is a third answer, and treating it as either of
 		// the other two is a lie or a needless refusal.
 		log("free space on this volume could not be read; importing anyway")
+		return nil
+	}
+	if freed > 0 {
+		log(fmt.Sprintf("space: %s wanted, %s free and %s more once the old disk is removed",
+			HumanBytes(need), HumanBytes(free), HumanBytes(freed)))
+		if free+freed < need {
+			return fmt.Errorf("NOT ENOUGH DISK SPACE for %s. About %s is wanted, and %s is free on the volume holding it with %s more once the old disk is removed",
+				dir, HumanBytes(need), HumanBytes(free), HumanBytes(freed))
+		}
 		return nil
 	}
 	log(fmt.Sprintf("space: %s wanted, %s free", HumanBytes(need), HumanBytes(free)))
@@ -944,52 +1256,124 @@ func assertImportSpace(dir, tarPath string, floor int64, log func(string)) error
 	return nil
 }
 
-func (b *Base) provision(ctx context.Context) error {
+// provision runs the provisioner and writes the grants block, and answers whether
+// it restarted the distribution to apply them.
+func (b *Base) provision(ctx context.Context) (bool, error) {
 	b.log("provisioning: a rootless engine and the " + b.cfg.Base.User + " account")
 	automount, err := NormalizeAutomount(b.cfg.Base.Automount)
 	if err != nil {
-		return err
+		return false, err
 	}
 	interop, err := NormalizeBaseInterop(b.cfg.Base.Interop)
 	if err != nil {
-		return err
+		return false, err
 	}
 	toolset, err := NormalizeBaseToolset(b.cfg.Base.Toolset)
 	if err != nil {
-		return err
+		return false, err
 	}
 	sharedTmpfs, err := NormalizeSharedTmpfs(b.cfg.Base.SharedTmpfs)
 	if err != nil {
-		return err
+		return false, err
 	}
 	// ⚠ Resolved before anything runs, so a grant whose source is gone refuses the
 	// provisioning rather than half of it.
 	if _, _, _, err := baseMountPayloads(b.cfg); err != nil {
-		return err
+		return false, err
 	}
+	// ⛔ A RESTART AN EARLIER RUN OWED IS STILL OWED. A run that wrote wsl.conf or
+	// the fstab block and then failed before its restart left them as this run
+	// writes them, so this run would read "unchanged" over settings WSL never read.
+	// The note is written before anything runs and only a restart clears it. WSL-175.
+	owed := b.oweRestart()
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
 	code, err := b.wsl.Exec(ctx, b.provisionRequest(automount, interop, toolset, sharedTmpfs, out))
 	out.Flush()
 	if err != nil || code != 0 {
-		return fmt.Errorf("provisioning exited %d: %w", code, err)
+		return false, fmt.Errorf("provisioning exited %d: %w", code, err)
 	}
-	if !strings.Contains(out.seen.String(), "provision-complete") {
+	said := out.seen.String()
+	if !strings.Contains(said, "provision-complete") {
 		// ⛔ The script prints that line last, so its absence over a zero exit is
 		// a step that exited 0 having done nothing.
-		return errors.New("provisioning exited 0 without reaching its last line")
+		return false, errors.New("provisioning exited 0 without reaching its last line")
 	}
 	// ⭐ THE BLOCK IS WRITTEN BY THE SCRIPT `base grant` RUNS LIVE, so provisioning
 	// and a live grant cannot write two different blocks.
-	if _, err := b.applyGrants(ctx, b.cfg, GrantsWrite, BaseMount{}); err != nil {
-		return err
+	grants, err := b.applyGrants(ctx, b.cfg, GrantsWrite, BaseMount{})
+	if err != nil {
+		return false, err
 	}
+	// ⛔ ONLY WHAT WSL READS AT START IS A REASON TO STOP THE BASE. Every
+	// re-provision ended in a restart, so a transient verify failure stopped every
+	// job and agent running in the base over settings that had not changed. The
+	// scripts say whether wsl.conf or the fstab block changed. WSL-175.
+	if !owed && !startSettingsChanged(said, grants) {
+		b.log("/etc/wsl.conf and the fstab block are as they were, so the base is not restarted")
+		b.restartPaid()
+		return false, nil
+	}
+	return true, b.restart(ctx)
+}
+
+// restartOwedName is the note, in the instance's state directory, that a
+// provisioning run started and no restart has followed it yet. WSL-175.
+const restartOwedName = "base.restart-owed"
+
+// oweRestart notes that this provisioning run may change what WSL reads at
+// start, and answers whether an earlier run left a restart owed.
+//
+// ⚠ A NOTE THAT CANNOT BE WRITTEN OWES THE RESTART, as every re-provision did
+// before WSL-175.
+func (b *Base) oweRestart() bool {
+	note := filepath.Join(b.home, restartOwedName)
+	_, statErr := os.Stat(note)
+	if err := os.MkdirAll(b.home, 0o700); err != nil {
+		return true
+	}
+	if err := writeFileAtomic(note, []byte(b.cfg.Base.Name+"\n"), 0o600); err != nil {
+		return true
+	}
+	return statErr == nil
+}
+
+// restartPaid clears the note once nothing is owed.
+func (b *Base) restartPaid() {
+	if err := os.Remove(filepath.Join(b.home, restartOwedName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		b.log("the note that a restart is owed is still on disk: " + err.Error())
+	}
+}
+
+// restart stops the distribution so WSL reads /etc/wsl.conf and /etc/fstab again
+// at its next start.
+func (b *Base) restart(ctx context.Context) error {
 	// WSL reads /etc/wsl.conf at start, so without this restart the settings
 	// just written appear to have been applied and are not.
 	b.log("restarting so WSL re-reads /etc/wsl.conf")
 	if err := b.wsl.Terminate(ctx, b.cfg.Base.Name); err != nil {
 		return err
 	}
+	b.restartPaid()
 	return nil
+}
+
+// startSettingsChanged says whether provisioning changed what WSL reads when the
+// distribution starts.
+//
+// ⚠ A SCRIPT THAT DID NOT SAY COUNTS AS A CHANGE. Only the two lines that say
+// nothing changed keep the base running; anything else restarts it, as before.
+func startSettingsChanged(provisionOut, grantsOut string) bool {
+	return !hasLine(provisionOut, "wsl-conf unchanged") || !hasLine(grantsOut, "fstab unchanged")
+}
+
+// hasLine says whether out carries line as a whole line.
+func hasLine(out, line string) bool {
+	for _, l := range strings.Split(out, "\n") {
+		if strings.TrimSpace(l) == line {
+			return true
+		}
+	}
+	return false
 }
 
 // provisionRequest is the one provisioning run: the payload, as root, with the
@@ -1014,15 +1398,6 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 		Stderr:  out,
 	}
 }
-
-// provisionFailureRebuilds says whether a failed re-provision is a broken base,
-// which `base ensure` removes and builds again.
-//
-// ⛔ A GRANT WHOSE DIRECTORY WENT AWAY WHILE ENSURE RAN IS NOT ONE. Removing the
-// base would lose it, and the rebuild refuses over the same grant, so nothing is
-// left. The check before ensure starts cannot see a directory removed after it.
-// A safety review found it. WSL-106.
-func provisionFailureRebuilds(err error) bool { return !errors.Is(err, ErrGrantSourceGone) }
 
 // baseMountPayloads renders explicit grants for /etc/fstab and for the
 // post-restart probe. Both are encoded before they cross into the guest, so a
@@ -1630,8 +2005,18 @@ unset _tk_uid _tk_run
 `)
 }
 
-// Remove unregisters the base and deletes its disk.
+// Remove unregisters the base and deletes its disk, under the base's lock.
 func (b *Base) Remove(ctx context.Context) error {
+	release, err := b.lock(ctx, "base remove")
+	if err != nil {
+		return err
+	}
+	defer release()
+	return b.remove(ctx)
+}
+
+// remove is Remove for a caller that already holds the base's lock.
+func (b *Base) remove(ctx context.Context) error {
 	exists, err := b.wsl.Exists(ctx, b.cfg.Base.Name)
 	if err != nil {
 		return err
@@ -1639,14 +2024,28 @@ func (b *Base) Remove(ctx context.Context) error {
 	if exists {
 		b.log("unregistering " + b.cfg.Base.Name)
 		// ⚠ The marker is DEMANDED unless this tool is clearing up a build of
-		// its own that never got far enough to write one. `b.unmarked` is set by
-		// the one path that knows that: a provisioning run that failed.
-		if err := b.wsl.Unregister(ctx, b.cfg.Base.Name, !b.unmarked); err != nil {
+		// its own that never got far enough to write one. `b.imported` is set by
+		// the one path that knows that: this process's own import.
+		if err := b.wsl.Unregister(ctx, b.cfg.Base.Name, !b.imported); err != nil {
 			return err
 		}
 	}
 	dir := b.Dir()
 	if _, err := os.Stat(dir); err == nil {
+		// ⛔ THE DIRECTORY IS NAME-INDEPENDENT AND THE LISTING IS NOT. A base whose
+		// configured name is not listed, after a rename or under a shared state
+		// directory, had its disk deleted here with no unregister in front of it,
+		// whoever's disk it was. WSL's own registrations decide. WSL-177.
+		if err := b.assertNoDiskAt(dir); err != nil {
+			return err
+		}
+		// ⚠ ONLY WHERE NOTHING WAS UNREGISTERED. A marked base under the
+		// configured name has just proved whose disk this is. WSL-177.
+		if !exists {
+			if err := b.assertRecordNames(dir); err != nil {
+				return err
+			}
+		}
 		// wsl --unregister releases the disk asynchronously, so a removal right
 		// afterwards can lose the race against a handle about to close.
 		var lastErr error
@@ -1670,6 +2069,35 @@ func (b *Base) Remove(ctx context.Context) error {
 	// the known host key would otherwise name a distribution that no longer exists,
 	// and then the next one built under that name, with a different host key.
 	return b.removeAdapterHosts()
+}
+
+// assertNoDiskAt refuses to delete dir while WSL has any distribution registered
+// with its disk there, and while WSL's registrations cannot be read. WSL-177.
+//
+// ⛔ AN UNREADABLE REGISTRY IS A REFUSAL, NOT AN EMPTY ONE. Reading it as nothing
+// registered would delete the disk the check exists to protect.
+func (b *Base) assertNoDiskAt(dir string) error {
+	disks := b.disks
+	if disks == nil {
+		disks = registeredDisks
+	}
+	registered, err := disks()
+	if err != nil {
+		return fmt.Errorf("%s was NOT deleted: WSL's registrations could not be read, so nothing proves no distribution keeps its disk there: %w", dir, err)
+	}
+	names := make([]string, 0, len(registered))
+	for name := range registered {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if at := cleanBasePath(registered[name]); at != "" && pathEqual(at, cleanBasePath(dir)) {
+			return fmt.Errorf("%s was NOT deleted: WSL has %s registered with its disk there, and the configuration names %s. "+
+				"If %s is this base under another name, set base.name to it",
+				dir, name, b.cfg.Base.Name, name)
+		}
+	}
+	return nil
 }
 
 // prefixWriter relays a child's output through the logger and keeps a copy, so

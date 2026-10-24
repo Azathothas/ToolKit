@@ -27,7 +27,16 @@ func applyPreset(ctx context.Context, cfg *toolkit.Config, preset string, save b
 	if err != nil {
 		return false, err
 	}
-	changed := ref != cfg.Base.Image
+	// ⛔ COMPARED WITH WHAT THE BASE WAS BUILT FROM, NOT WITH THE CONFIGURATION.
+	// The two differ after a `--preset` without `--save`, or after a saved switch
+	// whose rebuild was refused, and the configuration then decided wrongly both
+	// ways: a preset the base already had rebuilt it, and the one it lacked did
+	// not. The record answers where there is one. WSL-169.
+	built := cfg.Base.Image
+	if recorded := toolkit.RecordedBaseImage(*cfg); recorded != "" {
+		built = recorded
+	}
+	changed := ref != built
 	cfg.Base.Image = ref
 	if save {
 		if err := cfg.Write(); err != nil {
@@ -48,14 +57,18 @@ func applyPreset(ctx context.Context, cfg *toolkit.Config, preset string, save b
 //
 // ⛔ --save WRITES THE IMAGE BEFORE THE REBUILD RUNS. A rebuild that is refused
 // keeps the old base, as it must, but the stored configuration already names
-// the new image. Running the same command again then compares the preset with
-// that configuration, finds no switch, and keeps the old base. So the caller is
-// told that `base recreate` is what switches it now. WSL-169.
+// the new image, and a reader of the configuration would believe it switched.
+// So the caller is told what the file says and that the base was not switched.
+// WSL-169.
+//
+// ⚠ RUNNING THE SAME COMMAND AGAIN SWITCHES IT NOW. The preset is compared with
+// the image the base was built from, not with the configuration, so this no
+// longer says that only `base recreate` can.
 func presetSwitchFailed(err error, switched, saved bool, cfg toolkit.Config) error {
 	if err == nil || !switched || !saved {
 		return err
 	}
-	return fmt.Errorf("%w. The stored configuration already builds %s from %s, so running this command again will not switch it. Run `%s` once that is fixed",
+	return fmt.Errorf("%w. The stored configuration already builds %s from %s, and the base was not switched. Once that is fixed, run this command again or `%s`",
 		err, cfg.Base.Name, cfg.Base.Image, toolkit.ToolCommand("base recreate"))
 }
 

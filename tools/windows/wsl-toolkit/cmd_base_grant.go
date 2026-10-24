@@ -79,6 +79,17 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	if err := gitBashRewrite("--target", g.target, guestPath); err != nil {
 		return exitCannot, err
 	}
+	// ⛔ THE CONFIGURATION IS READ AND WRITTEN UNDER THE BASE'S LOCK. Two grants
+	// at once each read the file, each added its own and each wrote it back, so
+	// the first was lost while it stayed mounted; and a grant beside a build
+	// changed a base the build was replacing. WSL-172.
+	releaseBase, err := toolkit.LockBase(ctx, "base "+sub, note)
+	if err != nil {
+		return exitCannot, err
+	}
+	defer releaseBase()
+	// ⚠ THE BASE'S LOCK, THEN THE GRANTS' LOCK, the order an ensure takes them
+	// in, so neither ever waits on the other. WSL-172, WSL-179.
 	cfg, release, err := lockedGrantConfig(ctx)
 	if err != nil {
 		return exitCannot, err

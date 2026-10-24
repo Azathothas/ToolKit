@@ -101,7 +101,13 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	if switched && sub == "ensure" {
+	// presetSwitch is an ensure the preset turned into a rebuild. ⛔ It rebuilds
+	// only when the base, read again under its lock, is still not built from the
+	// preset: a second switch that waited for the first found the base it had
+	// just built and removed it anyway. An explicit `base recreate` stays
+	// unconditional. WSL-169, WSL-172.
+	presetSwitch := switched && sub == "ensure"
+	if presetSwitch {
 		// ⛔ A DISTRIBUTION'S ROOTFS CANNOT BE CHANGED UNDERNEATH IT. Switching
 		// preset means rebuilding, and saying so beats a caller discovering it
 		// from a build they did not expect.
@@ -159,7 +165,13 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		return verdictFor(st), renderBase(st, flags.asJSON, true)
 
 	case "recreate":
-		st, err := base.EnsureWith(ctx, true, flags.repair)
+		ensure := func(ctx context.Context, repair bool) (toolkit.BaseState, error) {
+			return base.EnsureWith(ctx, true, repair)
+		}
+		if presetSwitch {
+			ensure = base.EnsureSwitch
+		}
+		st, err := ensure(ctx, flags.repair)
 		if err != nil {
 			return exitCannot, presetSwitchFailed(err, switched, flags.save, cfg)
 		}
