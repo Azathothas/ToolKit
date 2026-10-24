@@ -535,9 +535,13 @@ wsl-toolkit --instance base base revoke --target /workspaces/project
 
 `base grant` mounts one Windows directory at `/workspaces/` and its own name, or at
 `--target`, read-only unless `--mode rw`. `base revoke` unmounts one. Each changes
-the running base first, reads every grant back as the account, and then writes the
-configuration file in effect, so a later restart and `base ensure` mount the same
+the running base first, reads its grant back as the account, and then writes the
+configuration file in effect. So a later restart and `base ensure` mount the same
 directories. Nothing restarts, so nothing running in the base stops. `WSL-75`
+
+⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
+configuration does not name stays mounted, because another configuration may hold
+it. A project's `wsl-toolkit.json` beside the home's own file is one. `WSL-179`
 
 ⛔ **Neither replaces what it would disturb.** A directory or a target already
 granted differently is refused with the revoke to run first. A grant a process

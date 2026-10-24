@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,31 +21,52 @@ const (
 	// GrantsWrite rewrites the tool-owned fstab block and creates each target,
 	// for the restart that follows provisioning.
 	GrantsWrite = "write"
-	// GrantsLive also unmounts what the block no longer names and mounts what it
-	// does, now, and reads each grant back as the account.
+	// GrantsLive also unmounts or mounts one target now, as the block names it,
+	// and reads it back as the account.
 	GrantsLive = "live"
 )
 
-// applyGrants runs grants.sh in the base for a configuration's grants.
-func (b *Base) applyGrants(ctx context.Context, cfg Config, mode string) (string, error) {
-	var fstab, checks string
+// grantsEnv is what grants.sh is handed for a configuration's grants. In live
+// mode target is the one grant the call makes or takes away.
+//
+// ⛔ LIVE, ONLY target IS UNMOUNTED OR MOUNTED. Every /workspaces mount the
+// caller's configuration did not name was unmounted, and another caller's
+// configuration, such as a project file or another copy of the home, can hold
+// one. That caller's checkout went, and its writes landed in the guest. WSL-179.
+func grantsEnv(cfg Config, mode, target string) (map[string]string, error) {
+	var fstab, checks, target64 string
 	var err error
 	if mode == GrantsLive {
+		clean, targetErr := normalizeBaseMountTarget(target)
+		if targetErr != nil {
+			return nil, fmt.Errorf("a live grant change names its one target: %w", targetErr)
+		}
+		target64 = base64.StdEncoding.EncodeToString([]byte(clean))
 		fstab, checks, err = liveMountPayloads(cfg)
 	} else {
 		fstab, checks, _, err = baseMountPayloads(cfg)
 	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		"TK_USER": cfg.Base.User, "TK_GRANTS_MODE": mode,
+		"TK_FSTAB_B64": fstab, "TK_MOUNT_CHECKS": checks,
+		"TK_GRANT_TARGET": target64,
+	}, nil
+}
+
+// applyGrants runs grants.sh in the base for a configuration's grants. target is
+// read in live mode alone.
+func (b *Base) applyGrants(ctx context.Context, cfg Config, mode, target string) (string, error) {
+	env, err := grantsEnv(cfg, mode, target)
 	if err != nil {
 		return "", err
 	}
 	out := &prefixWriter{prefix: "", to: b.logWriter()}
 	code, err := b.wsl.Exec(ctx, ExecRequest{
 		Distro: cfg.Base.Name, User: "root", Script: grantsScript,
-		Env: map[string]string{
-			"TK_USER": cfg.Base.User, "TK_GRANTS_MODE": mode,
-			"TK_FSTAB_B64": fstab, "TK_MOUNT_CHECKS": checks,
-		},
-		Timeout: 5 * time.Minute, Stdout: out, Stderr: out,
+		Env: env, Timeout: 5 * time.Minute, Stdout: out, Stderr: out,
 	})
 	out.Flush()
 	seen := out.seen.String()
@@ -189,10 +211,11 @@ func sameSourcePath(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
 }
 
-// ChangeGrantsLive makes the base's live mounts what next names, and reads them
-// back. The configuration file is the caller's to write afterwards.
-func (b *Base) ChangeGrantsLive(ctx context.Context, next Config) (string, error) {
-	return b.applyGrants(ctx, next, GrantsLive)
+// ChangeGrantsLive makes the live mount at target what next names, mounted or
+// not, and reads it back. Every other mount stays as it is. The configuration
+// file is the caller's to write afterwards. WSL-179.
+func (b *Base) ChangeGrantsLive(ctx context.Context, next Config, target string) (string, error) {
+	return b.applyGrants(ctx, next, GrantsLive, target)
 }
 
 // WriteTo stores the configuration at a path, atomically, in the tool's own

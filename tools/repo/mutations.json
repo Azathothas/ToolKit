@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a live grant change hands grants.sh its one target",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\ttarget64 = base64.StdEncoding.EncodeToString([]byte(clean))\n",
+      "replace": "\t\ttarget64 = base64.StdEncoding.EncodeToString([]byte(clean[:0]))\n",
+      "run": "TestALiveGrantChangeNamesItsOneTarget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant or revoke unmounts its own target alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  [ \"$old\" = \"$OWN\" ] || continue\n",
+      "replace": "",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant mounts its own target alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  [ \"$target\" = \"$OWN\" ] || continue\n  current=$(live_mode \"$target\")\n",
+      "replace": "  current=$(live_mode \"$target\")\n",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant reads its own target back alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  [ \"$target\" = \"$OWN\" ] || continue\n  [ \"$(live_mode \"$target\")\" = \"$mode\" ]",
+      "replace": "  [ \"$(live_mode \"$target\")\" = \"$mode\" ]",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live change with no target is refused in the guest",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "[ -n \"$TK_GRANT_TARGET\" ] || die \"TK_GRANT_TARGET is required in live mode\"\n",
+      "replace": "",
+      "run": "TestALiveGrantOrRevokeLeavesAnotherCallersMount",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a refused preset switch under --save says base recreate switches it now",
       "file": "cmd_base_preset.go",
       "find": "\tif err == nil || !switched || !saved {\n",

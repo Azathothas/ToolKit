@@ -7,13 +7,13 @@
 # work already running there. `base grant` and `base revoke` run this live, and
 # provisioning runs it to write the block before the restart that mounts it.
 #
-# It runs as root, delivered on stdin. TK_USER, TK_GRANTS_MODE, TK_FSTAB_B64 and
-# TK_MOUNT_CHECKS arrive as exported variables, and every Windows path in them is
-# base64 made by Go, so none of it becomes shell source.
+# It runs as root, delivered on stdin. TK_USER, TK_GRANTS_MODE, TK_FSTAB_B64,
+# TK_MOUNT_CHECKS and TK_GRANT_TARGET arrive as exported variables, and every path
+# in them is base64 made by Go, so none of it becomes shell source.
 #
 #   TK_GRANTS_MODE=write   rewrite the block and create each target, and mount nothing
-#   TK_GRANTS_MODE=live    rewrite the block, unmount what it no longer names, mount
-#                          what it names, and read every grant back as the account
+#   TK_GRANTS_MODE=live    rewrite the block, unmount or mount TK_GRANT_TARGET alone,
+#                          as the block names it, and read it back as the account
 set -eu
 umask 022
 cd /
@@ -22,6 +22,7 @@ cd /
 : "${TK_GRANTS_MODE:?TK_GRANTS_MODE is required}"
 : "${TK_FSTAB_B64?TK_FSTAB_B64 is required, and may be empty}"
 : "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
+: "${TK_GRANT_TARGET:=}"
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'grants: %s\n' "$*" >&2; exit 3; }
@@ -94,6 +95,17 @@ if [ "$TK_GRANTS_MODE" = write ]; then
   exit 0
 fi
 
+# ⛔ LIVE, ONE TARGET IS CHANGED: the grant or the revoke this call makes. Another
+# caller's configuration can hold a grant this one does not name, and a sweep of
+# every unnamed /workspaces mount unmounted that caller's checkout. WSL-179.
+[ -n "$TK_GRANT_TARGET" ] || die "TK_GRANT_TARGET is required in live mode"
+decode64 own "$TK_GRANT_TARGET"
+OWN=$(cat "$WORK/own")
+case "$OWN" in
+  /workspaces/?*) ;;
+  *) die "the live target $OWN is not under /workspaces" ;;
+esac
+
 # ⛔ LIVE, THE BLOCK IS WRITTEN ONLY ONCE NOTHING CAN STILL REFUSE THE REMOVALS, and
 # a failure after it puts the old block back. Written first, a revoke refused over a
 # busy directory left that grant mounted, still in the configuration, and gone from
@@ -127,7 +139,7 @@ live_mode() {
   return 0
 }
 
-# -- unmount what the configuration no longer names -----------------------------------
+# -- unmount this call's target, when the configuration no longer names it -----------
 # ⛔ READ FROM THE LIVE MOUNTS, NOT FROM THE OLD BLOCK. A block that had drifted from
 # what was mounted, as one did on 2026-09-14, answered "nothing to unmount" and the
 # revoke exited 0 over a directory that stayed mounted. ⚠ Only under /workspaces,
@@ -141,6 +153,7 @@ while read -r _source live_target live_type live_options _rest; do
 done < /proc/mounts
 while IFS= read -r old; do
   [ -n "$old" ] || continue
+  [ "$old" = "$OWN" ] || continue
   if ! cut -d' ' -f2- "$WORK/targets" | grep -Fxq "$old"; then
     # ⛔ NOT A LAZY UNMOUNT. A process standing in the directory keeps it busy, and
     # detaching the mount under it would leave that process editing a directory
@@ -154,9 +167,10 @@ done < "$WORK/live-targets"
 
 install_fstab "$WORK/fstab"
 
-# -- mount what it names, in the mode it names ----------------------------------------
+# -- mount this call's target, when the configuration names it ------------------------
 while read -r mode target; do
   [ -n "$target" ] || continue
+  [ "$target" = "$OWN" ] || continue
   current=$(live_mode "$target")
   if [ -n "$current" ] && [ "$current" != "$mode" ]; then
     umount "$target" 2>"$WORK/umount.err" ||
@@ -169,9 +183,10 @@ while read -r mode target; do
   fi
 done < "$WORK/targets"
 
-# -- read every grant back, as the account --------------------------------------------
+# -- read this call's grant back, as the account ---------------------------------------
 while read -r mode target; do
   [ -n "$target" ] || continue
+  [ "$target" = "$OWN" ] || continue
   [ "$(live_mode "$target")" = "$mode" ] || fail_back "$target is not a live $mode Windows mount after mounting it"
   probe="$target/.wsl-toolkit-write-probe.$$"
   # The probe path reaches the account's shell as $1, so no Windows path is ever

@@ -914,7 +914,7 @@ func (b *Base) provision(ctx context.Context) error {
 	}
 	// ⭐ THE BLOCK IS WRITTEN BY THE SCRIPT `base grant` RUNS LIVE, so provisioning
 	// and a live grant cannot write two different blocks.
-	if _, err := b.applyGrants(ctx, b.cfg, GrantsWrite); err != nil {
+	if _, err := b.applyGrants(ctx, b.cfg, GrantsWrite, ""); err != nil {
 		return err
 	}
 	// WSL reads /etc/wsl.conf at start, so without this restart the settings
