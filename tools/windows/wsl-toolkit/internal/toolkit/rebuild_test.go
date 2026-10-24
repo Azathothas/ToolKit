@@ -256,20 +256,18 @@ func newFakeHost(t *testing.T) *fakeHost {
 		t.Fatal(err)
 	}
 	// ⚠ NOT t.TempDir. On a GitHub Windows runner a fake that has just exited
-	// stays locked for longer than t.TempDir's cleanup waits, and that cleanup
-	// then fails a case whose every assertion passed. The fakes are not what is
-	// under test, so their removal waits longer and only logs.
+	// stays locked past t.TempDir's cleanup, which then fails a case whose every
+	// assertion passed. The fakes are not what is under test, so their removal is
+	// tried once and a locked directory is left to the runner's temp.
+	// ⛔ NEVER A WAIT. A 30-second retry here cost every case that runner's full
+	// 30 seconds, and the package passed go test's 10-minute limit.
 	bin, err := os.MkdirTemp("", "fakehost-bin-")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		deadline := time.Now().Add(30 * time.Second)
-		for os.RemoveAll(bin) != nil && time.Now().Before(deadline) {
-			time.Sleep(500 * time.Millisecond)
-		}
-		if _, err := os.Stat(bin); err == nil {
-			t.Logf("the fakes in %s were still locked after 30s and are left behind", bin)
+		if err := os.RemoveAll(bin); err != nil {
+			t.Logf("the fakes in %s are still locked and are left behind: %v", bin, err)
 		}
 	})
 	ext := ""
