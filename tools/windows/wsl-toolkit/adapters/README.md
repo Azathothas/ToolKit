@@ -20,7 +20,7 @@ echo`: `SessionStart`, `UserPromptSubmit`, `Stop`, `SessionEnd` with its release
 the adoption of a resumed session. ⚠ `PreToolUse` and `PermissionRequest` are
 registered and not yet driven, because the echo provider calls no tool. ⭐ **The muse
 probe drives `SessionStart` itself**, with one echo session per probe, so a hook Muse
-stops running is a problem. Measured with herdr 0.9.5 and Muse Code 1.4.11. `WSL-157`
+stops running is a problem. A Muse that cannot run the session leaves it unmeasured. Measured with herdr 0.9.5 and Muse Code 1.4.11. `WSL-157`
 
 ⭐ **`base ensure` installs every adapter it is given, in order, and one that fails
 does not stop the rest.** The ensure then answers one error naming each adapter that

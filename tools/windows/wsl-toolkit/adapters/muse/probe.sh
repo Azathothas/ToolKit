@@ -176,6 +176,12 @@ fi
 #
 # ⚠ STDIN IS /dev/null. This script reaches the shell on its stdin, and a command that
 # read stdin would take the rest of it.
+#
+# ⛔ ONLY A SESSION THAT RAN AND NEVER REACHED THE REPORTER IS A PROBLEM. A Muse that
+# cannot run the echo session, or answers no session id, leaves the question unmeasured,
+# and says why as a fact. Muse comes from an installer whose version is not pinned, so a
+# later Muse that drops a flag would otherwise fail every `base ensure` a 7.0.0 tool
+# passed, with a remedy that cannot cure it. WSL-157.
 REPORTER_LOG=$TK_HOME/.local/state/wsl-toolkit/herdr-muse/log
 if [ ! -x "$HOOK" ] || [ ! -x "$LAUNCHER" ]; then
   # Nothing to run, and the lines above have said why.
@@ -191,7 +197,7 @@ else
     *) scratch= ;;
   esac
   if [ -z "$scratch" ] || ! as_account mkdir "$scratch/work" "$scratch/data" "$scratch/cache"; then
-    problem "no scratch directory for a Muse session in /tmp, so whether Muse runs the herdr reporter is unproved"
+    printf 'herdr_reporter_session_start unmeasured: no scratch directory for a Muse session in /tmp\n'
   else
     deadline=
     command -v timeout >/dev/null 2>&1 && deadline='timeout 60'
@@ -205,9 +211,9 @@ else
     session=$(printf '%s\n' "$session_out" | jq -rR 'fromjson? | select(.stream.kind? == "session") | .stream.id' 2>/dev/null | head -1)
     rm -rf "$scratch"
     if [ "$ran" -ne 0 ]; then
-      problem "Muse could not run a session of its echo provider, exit $ran: ${said:-it said nothing}. So whether it runs the herdr reporter is unproved"
+      printf 'herdr_reporter_session_start unmeasured: Muse could not run a session of its echo provider, exit %s: %s\n' "$ran" "${said:-it said nothing}"
     elif [ -z "$session" ]; then
-      problem "Muse ran a session of its echo provider and its answer named no session, so whether it runs the herdr reporter is unproved"
+      printf 'herdr_reporter_session_start unmeasured: Muse ran a session of its echo provider and its answer named no session\n'
     elif grep -qF "SessionStart for $session " "$REPORTER_LOG" 2>/dev/null; then
       printf 'herdr_reporter_session_start reached\n'
     else

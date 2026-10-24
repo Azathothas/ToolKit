@@ -175,13 +175,22 @@ exit 0
 			st.Facts["herdr_reporter_session_start"], st.Problems)
 	}
 
-	st, _ = run("refuse")
-	if len(about(st, "exit 2: error: unknown provider echo")) != 1 {
-		t.Fatalf("a Muse that could not run the echo session was read as %v", st.Problems)
+	// ⛔ A MUSE THAT CANNOT ANSWER THE QUESTION LEAVES IT UNMEASURED, AND FAILS NOTHING.
+	// Muse's version is not pinned, so a later one that drops a flag the probe passes
+	// must not fail a `base ensure` that 7.0.0 passed. The fact says why. WSL-157.
+	unmeasured := func(name, why string, st AdapterState) {
+		t.Helper()
+		got := st.Facts["herdr_reporter_session_start"]
+		if !strings.HasPrefix(got, "unmeasured: ") || !strings.Contains(got, why) {
+			t.Fatalf("%s was read as %q, and it is unmeasured naming %q", name, got, why)
+		}
+		if found := about(st, "session"); len(found) != 0 {
+			t.Fatalf("%s was read as a problem, and a Muse that cannot run the probe's session fails nothing: %v", name, found)
+		}
 	}
+	st, _ = run("refuse")
+	unmeasured("a Muse that could not run the echo session", "exit 2: error: unknown provider echo", st)
 
 	st, _ = run("silent")
-	if len(about(st, "named no session")) != 1 {
-		t.Fatalf("a Muse whose answer named no session was read as %v", st.Problems)
-	}
+	unmeasured("a Muse whose answer named no session", "named no session", st)
 }

@@ -654,6 +654,16 @@ and runs neither typed text nor a prefix command, whatever the server's release.
 same release carries the 0.9.5 client, which passes all six measurable signals of
 `herdr-remote-probe.ps1`. `WSL-141`
 
+⚠ **On the default, `base attach` prints the `herdr` on `PATH`, and fetches no client.**
+Put the 0.9.5 one there: `herdr-0.9.5-windows-x86_64.zip` or
+`herdr-0.9.5-windows-aarch64.zip` from `wsl-toolkit-v7.0.0`, checked against its
+`SHA256SUMS`. Only the nightly channel writes a client for you. `WSL-141`
+
+⚠ **A base built before the 0.9.5 pin keeps serving the herdr it started with.** `base
+ensure` installs 0.9.5 and never restarts a running server, so it says the server keeps
+the old one. Restart it when no pane is needed, because a restart ends every pane:
+`base exec --root -- systemctl restart wsl-toolkit-herdr.service`. `WSL-141`
+
 ⚠ **A `version` and `sha256` on the herdr entry name one of herdr's own releases.**
 That release is downloaded from herdr's project under herdr's own asset names, as
 before. Only the default comes from this repository. `WSL-141`
@@ -751,6 +761,9 @@ session the hook never saw is a problem. `WSL-157`
   Muse's data and cache directories are the scratch directory's, which goes with it.
 - ⚠ No herdr pane has that directory, so the hook logs the session and reports nothing
   to herdr.
+- ⚠ A Muse that cannot run the echo session, or names no session, fails nothing. The
+  fact reads `herdr_reporter_session_start unmeasured:` and the reason, because Muse's
+  version is not pinned and a later one may drop a flag. `WSL-157`
 
 | what Muse does with a hook | result |
 | --- | --- |

@@ -2,10 +2,46 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "herdr nightly: a prune that fails over a client in place still answers the client",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/herdr_nightly.go",
+      "find": "\t\t\tlog(\"an older herdr client stays under \" + dir + \", and the next ensure removes it: \" + err.Error())\n",
+      "replace": "\t\t\treturn \"\", err\n",
+      "run": "TestAPruneThatFailsOverAClientInPlaceStillAnswersTheClient",
+      "args": []
+    },
+    {
+      "label": "herdr: a release installed under a running server says the server keeps the old one",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/herdr/install.sh",
+      "find": "  if systemctl is-active --quiet \"$UNIT\" 2>/dev/null; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheDefaultHerdrIsTheBuildThisRepositoryPublished",
+      "args": []
+    },
+    {
+      "label": "muse: a Muse that cannot run the echo session leaves the reporter unmeasured, not a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "      printf 'herdr_reporter_session_start unmeasured: Muse could not run a session of its echo provider, exit %s: %s\\n' \"$ran\" \"${said:-it said nothing}\"\n",
+      "replace": "      problem \"Muse could not run a session of its echo provider, exit $ran: ${said:-it said nothing}\"\n",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
+      "label": "muse: an echo session that names no session leaves the reporter unmeasured, not a problem",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/muse/probe.sh",
+      "find": "      printf 'herdr_reporter_session_start unmeasured: Muse ran a session of its echo provider and its answer named no session\\n'\n",
+      "replace": "      problem \"Muse ran a session of its echo provider and its answer named no session\"\n",
+      "run": "TestTheMuseProbeAsksMuseWhetherItRunsTheReporter",
+      "args": []
+    },
+    {
       "label": "herdr nightly: an ensure that finds its client still prunes the older ones",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/herdr_nightly.go",
-      "find": "\t\tif err := pruneHerdrClients(dir, tag, log); err != nil {\n\t\t\treturn \"\", err\n\t\t}\n\t\treturn exe, nil\n",
+      "find": "\t\tif err := pruneHerdrClients(dir, tag, log); err != nil {\n\t\t\tlog(\"an older herdr client stays under \" + dir + \", and the next ensure removes it: \" + err.Error())\n\t\t}\n\t\treturn exe, nil\n",
       "replace": "\t\treturn exe, nil\n",
       "run": "TestAnEnsureThatFindsItsClientStillPrunesTheOlderOnes",
       "args": []
@@ -74,7 +110,7 @@
       "args": []
     },
     {
-      "label": "muse: a Muse that cannot run its echo session is a problem naming why",
+      "label": "muse: a Muse that cannot run its echo session is unmeasured, naming why",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/probe.sh",
       "find": "    if [ \"$ran\" -ne 0 ]; then\n",
@@ -83,7 +119,7 @@
       "args": []
     },
     {
-      "label": "muse: an echo session whose answer names no session is a problem",
+      "label": "muse: an echo session whose answer names no session is not read as a hook that never ran",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/probe.sh",
       "find": "    elif [ -z \"$session\" ]; then\n",

@@ -280,6 +280,47 @@ func TestAnEnsureThatFindsItsClientStillPrunesTheOlderOnes(t *testing.T) {
 	}
 }
 
+// TestAPruneThatFailsOverAClientInPlaceStillAnswersTheClient holds the path that writes
+// nothing to what 7.0.0 answered there. An older client that cannot be removed, as one
+// Windows holds open while it runs, is said and left for the next ensure, and the
+// current client is still the answer. WSL-139.
+func TestAPruneThatFailsOverAClientInPlaceStillAnswersTheClient(t *testing.T) {
+	arch, err := herdrClientArch()
+	if err != nil {
+		t.Skip(err.Error())
+	}
+	name := "herdr-windows-" + arch + ".zip"
+	s := newNightlyServer(t)
+	home := t.TempDir()
+	const current = "herdr-nightly-20260915-052779c4159e"
+	s.publish(current, map[string][]byte{name: clientZip(t, map[string]string{"herdr.exe": "client"})})
+	exe, err := ensureHerdrClient(context.Background(), home, current, func(string) {})
+	if err != nil {
+		t.Fatalf("the current nightly's client was refused: %v", err)
+	}
+	held := filepath.Join(herdrClientDir(home), "herdr-nightly-20260901-aaaaaaaaaaaa")
+	if err := os.MkdirAll(held, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	previous := removeHerdrClient
+	t.Cleanup(func() { removeHerdrClient = previous })
+	removeHerdrClient = func(root, path string) error {
+		return fmt.Errorf("remove %s: The process cannot access the file because it is being used by another process", path)
+	}
+
+	var said []string
+	again, err := ensureHerdrClient(context.Background(), home, current, func(line string) { said = append(said, line) })
+	if err != nil || again != exe {
+		t.Fatalf("an ensure that found its client in place answered %q, %v, and 7.0.0 answered the client", again, err)
+	}
+	if !strings.Contains(strings.Join(said, "\n"), "an older herdr client stays under") {
+		t.Fatalf("the prune failed and the ensure said %q", said)
+	}
+	if _, err := os.Stat(held); err != nil {
+		t.Fatalf("the held client was removed after all: %v", err)
+	}
+}
+
 // TestTheNightlyChannelReachesInstallThroughTheHostHalf holds the seam between the two:
 // the herdr host half hands install.sh the channel's variables beside the door's key, and
 // a base on no channel asks for none.

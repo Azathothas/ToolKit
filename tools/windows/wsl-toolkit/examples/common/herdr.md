@@ -39,7 +39,10 @@ carries the sweep and its commits; this page carries only what an operator does.
 
 ## Attach from Windows
 
-herdr's Windows client must be on `PATH`. Ask the tool for the line, then run it:
+herdr's Windows client must be on `PATH`, and it must be 0.9.5 or newer. On the default,
+take `herdr-0.9.5-windows-x86_64.zip` from `wsl-toolkit-v7.0.0`. `WSL-141`
+
+Ask the tool for the line, then run it:
 
 ```powershell
 wsl-toolkit --instance base base attach
@@ -118,11 +121,15 @@ Read a pane's id from the command that made it rather than guessing one, because
 the base may already hold workspaces:
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit --instance base base herdr -- workspace create --cwd /workspaces/project --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
 wsl-toolkit --instance base base herdr -- pane run $pane 'git status --short'
 wsl-toolkit --instance base base herdr -- pane read $pane --source recent --lines 40
 ```
+
+⚠ **`--cwd` takes an absolute guest path, and herdr does not expand `~`.**
+`/workspaces/project` stands for a directory `base grant` gave the base. The account's
+home works by its full path. `WSL-144`
 
 ⚠ **The pane runs the command and returns at once.** `herdr pane wait-output PANE
 --regex TEXT --timeout MS` waits for what the command prints.
@@ -140,7 +147,7 @@ pane commands in its input, a new line after it, unsent. `agent prompt` sends it
 ## ⭐ Starting an agent, and reading what it says
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit --instance base base herdr -- workspace create --cwd /workspaces/project --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
 wsl-toolkit --instance base base herdr -- agent start work --kind muse --pane $pane --timeout 120000
 ```

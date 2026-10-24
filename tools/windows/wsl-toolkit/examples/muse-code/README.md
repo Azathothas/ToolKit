@@ -273,13 +273,17 @@ Nothing has to be open. Make a workspace, read the pane id back, and start an ag
 it:
 
 ```powershell
-$made = wsl-toolkit --instance base base herdr -- workspace create --cwd '~' --label work --no-focus | ConvertFrom-Json
+$made = wsl-toolkit --instance base base herdr -- workspace create --cwd /workspaces/demoproj --label work --no-focus | ConvertFrom-Json
 $pane = $made.result.root_pane.pane_id
 wsl-toolkit --instance base base herdr -- agent start muse --kind muse --pane $pane --timeout 120000
 ```
 
 ⚠ **Read the pane id from the command that made it.** The base may already hold
 workspaces.
+
+⚠ **`--cwd` is the project you granted in step 4, by its absolute path.** herdr does
+not expand `~`, and a directory that does not exist starts the pane in the home.
+`WSL-144`
 
 ⚠ **`agent start` takes a NAME and a `--kind`.** The name must be free. A second agent
 of the same kind needs another name.

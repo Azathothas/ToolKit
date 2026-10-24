@@ -184,6 +184,11 @@ func herdrClientArch() (string, error) {
 // ⛔ THE OLDER CLIENTS GO ON BOTH PATHS. The prune used to run only after a client was
 // written, so an ensure that found the current one already in place returned before it
 // and every older nightly's directory stayed. Finding 36, WSL-139.
+//
+// ⚠ ON THE PATH THAT WRITES NOTHING, A PRUNE THAT FAILS IS SAID, NOT RETURNED. That
+// path returned success in 7.0.0, and an older client Windows still holds open, because
+// it is running, would otherwise fail the host half of `base ensure`. The next ensure
+// tries again. WSL-139.
 func ensureHerdrClient(ctx context.Context, home, tag string, log func(string)) (string, error) {
 	if !herdrNightlyTagRE.MatchString(tag) {
 		return "", fmt.Errorf("the base reports herdr release %q, which is not a nightly's tag. Run: %s", tag, ToolCommand("base ensure"))
@@ -197,7 +202,7 @@ func ensureHerdrClient(ctx context.Context, home, tag string, log func(string)) 
 	exe := filepath.Join(target, "herdr.exe")
 	if st, ok := readHerdrClient(home); ok && st.Release == tag && st.Path == exe {
 		if err := pruneHerdrClients(dir, tag, log); err != nil {
-			return "", err
+			log("an older herdr client stays under " + dir + ", and the next ensure removes it: " + err.Error())
 		}
 		return exe, nil
 	}
@@ -254,6 +259,10 @@ func ensureHerdrClient(ctx context.Context, home, tag string, log func(string)) 
 	return exe, nil
 }
 
+// removeHerdrClient is how the prune removes one older client. A case replaces it to
+// make it fail as it fails over a herdr.exe that Windows holds open.
+var removeHerdrClient = RemoveInside
+
 // pruneHerdrClients removes the client of every nightly but keep from dir.
 //
 // ⚠ ONLY A DIRECTORY NAMED AS A NIGHTLY'S TAG IS REMOVED. Anything else under dir is
@@ -265,7 +274,7 @@ func pruneHerdrClients(dir, keep string, log func(string)) error {
 	}
 	for _, e := range entries {
 		if e.IsDir() && e.Name() != keep && herdrNightlyTagRE.MatchString(e.Name()) {
-			if err := RemoveInside(dir, filepath.Join(dir, e.Name())); err != nil {
+			if err := removeHerdrClient(dir, filepath.Join(dir, e.Name())); err != nil {
 				return err
 			}
 			log("removed the herdr client of " + e.Name())

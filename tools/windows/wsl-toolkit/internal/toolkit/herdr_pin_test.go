@@ -77,7 +77,11 @@ func TestTheDefaultHerdrIsTheBuildThisRepositoryPublished(t *testing.T) {
 	write("cat", "if [ \"$1\" = /proc/1/comm ]; then echo systemd; exit 0; fi\nexec "+found["cat"]+" \"$@\"\n")
 	write("getent", "printf 'herdr:x:1000:1000::%s:/bin/bash\\n' \"$STUB_HOME\"\n")
 	write("id", "if [ \"$1\" = -gn ]; then echo herdr; exit 0; fi\nexec "+found["id"]+" \"$@\"\n")
-	write("systemctl", "if [ \"$1\" = is-enabled ]; then echo masked; fi\nexit 0\n")
+	write("systemctl", "if [ \"$1\" = is-active ]; then [ \"${STUB_ACTIVE:-}\" = yes ]; exit; fi\n"+
+		"if [ \"$1\" = is-enabled ]; then echo masked; fi\nexit 0\n")
+	// ⚠ install IS THE FIRST STEP AFTER THE BINARY, and this one stops the script there, so
+	// a run whose download matches writes nothing outside the case's own directory.
+	write("install", "echo 'install: stopped here by the case' >&2\nexit 7\n")
 	write("uname", "if [ \"$1\" = -m ]; then echo \"$STUB_ARCH\"; exit 0; fi\nexec "+found["uname"]+" \"$@\"\n")
 	// curl records the URL it was asked for and serves bytes no digest matches.
 	write("curl", "out=\nfor a in \"$@\"; do\n  case $a in https://*) printf '%s\\n' \"$a\" > \"$STUB_ASKED\" ;; esac\ndone\n"+
@@ -140,5 +144,28 @@ func TestTheDefaultHerdrIsTheBuildThisRepositoryPublished(t *testing.T) {
 	refused("a nightly", code, out, configured)
 	if want := nightly + "/herdr-linux-aarch64"; url != want {
 		t.Fatalf("a nightly downloads %q, and the nightly publishes %s", url, want)
+	}
+
+	// ⛔ A RELEASE INSTALLED UNDER A RUNNING SERVER IS SAID TO SERVE NOTHING YET. The
+	// server is never restarted by an ensure, so an existing base that moves to the new
+	// pin keeps serving the herdr it started with, and the ensure has to say so. The
+	// stand-in curl's bytes are the release here, so the download passes its digest.
+	// WSL-141.
+	const kept = "the running herdr server keeps the herdr it started with until it restarts"
+	served := "TK_ADAPTER_SHA256_X86_64=" + sha256Hex([]byte("not herdr\n"))
+	code, out, _ = run("x86_64", "TK_ADAPTER_VERSION=0.10.1", served)
+	if code != 7 || strings.Contains(out, kept) {
+		t.Fatalf("a first install with no server running answered exit %d, and it reaches the stop with nothing to say about a server:\n%s", code, out)
+	}
+	if err := os.Remove(filepath.Join(dest, "herdr")); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ = run("x86_64", "TK_ADAPTER_VERSION=0.10.1", served, "STUB_ACTIVE=yes")
+	if code != 7 || !strings.Contains(out, kept) || !strings.Contains(out, "systemctl restart wsl-toolkit-herdr.service") {
+		t.Fatalf("a release installed under a running server answered exit %d, and it says the server keeps the old herdr and how to restart it:\n%s", code, out)
+	}
+	code, out, _ = run("x86_64", "TK_ADAPTER_VERSION=0.10.1", served, "STUB_ACTIVE=yes")
+	if code != 7 || strings.Contains(out, kept) || !strings.Contains(out, "matches its pinned digest") {
+		t.Fatalf("an ensure that installed nothing answered exit %d, and a server already running the installed herdr is not stale:\n%s", code, out)
 	}
 }

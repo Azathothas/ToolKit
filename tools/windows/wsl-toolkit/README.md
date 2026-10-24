@@ -109,8 +109,8 @@ build `wsl-toolkit-accp` the same way, grant it a checkout under the runner's
 `podman-machine-default`, or another distribution it did not create.
 
 ⭐ **A herdr `--remote` client is proved by its own probe**, because nothing in the
-Go suite can see it: both builds answer `herdr 0.9.0`, so `--version` tells them
-apart from nothing.
+Go suite can see it: a release and a development build of it answer the same
+`--version`, so the version tells them apart from nothing. `WSL-141`
 
 ```powershell
 pwsh -NoProfile -File tools/windows/wsl-toolkit/herdr-remote-probe.ps1 -Herdr CLIENT -Label NAME

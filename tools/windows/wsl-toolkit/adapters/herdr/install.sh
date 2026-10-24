@@ -149,6 +149,12 @@ else
   mv "$tmp" "$HERDR_BIN"
   trap - 0 1 2 15
   say "installed herdr $HERDR_VERSION from $asset, digest verified"
+  # ⚠ A RUNNING SERVER KEEPS THE herdr IT STARTED WITH. This file never restarts it, as
+  # the server step below says, so the release just installed serves nothing until the
+  # server next starts, and the ensure says so. WSL-141.
+  if systemctl is-active --quiet "$UNIT" 2>/dev/null; then
+    say "the running herdr server keeps the herdr it started with until it restarts, which ends every pane. When no pane is needed, run: base exec --root -- systemctl restart $UNIT"
+  fi
 fi
 install -d -m 0755 "${HERDR_RELEASE_FILE%/*}"
 printf '%s\n' "$HERDR_VERSION" > "$HERDR_RELEASE_FILE.tmp"
