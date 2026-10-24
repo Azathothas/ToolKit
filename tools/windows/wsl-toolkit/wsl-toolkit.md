@@ -840,6 +840,12 @@ systemd, `wsl-toolkit-binfmt.service` registers the base's handlers again within
 seconds. `base status --probe` reads the base's own set: `ready` is false while any
 of it is gone, and the kernel's total stands beside it. `WSL-105`
 
+⚠ **Root's podman registers the handlers, and it needs no D-Bus.** Every podman this
+tool runs as root in a base takes the cgroupfs cgroup manager and the file events
+backend as global options. A flag outranks whatever `/etc/containers` says. Without
+them, root's podman on a Debian base with systemd and no D-Bus answered
+`cannot open sd-bus`, and `base ensure` exited 2. `WSL-168`
+
 ⚠ **A base that no ensure of this release has run on has no recorded set.**
 `binfmt.recorded` is false there, and `ready` counts every distribution's handlers, as
 it did before. Run `base ensure` once. `--json` carries `binfmt.own`, `binfmt.missing`,

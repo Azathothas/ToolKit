@@ -3,6 +3,7 @@
 package toolkit
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -72,4 +73,58 @@ func TestTheHandlersAreRegisteredByEveryEnsureAndWatched(t *testing.T) {
 	if !strings.Contains(string(verifyScript), "/var/lib/wsl-toolkit/binfmt-handlers") {
 		t.Error("the verifier does not read the base's own set")
 	}
+}
+
+// -- WSL-168: root's podman in a base needs no D-Bus ---------------------------
+
+// ⛔ ROOT'S PODMAN PICKED THE SYSTEMD CGROUP MANAGER on a Debian base with systemd
+// and no D-Bus, crun answered `cannot open sd-bus`, and every `base ensure` exited
+// 2 at the QEMU handlers. Every podman this tool runs as root in a base takes
+// cgroupfs and the file events backend as global options, before its subcommand.
+func TestRootsPodmanInABaseNeedsNoDBus(t *testing.T) {
+	const global = "podman --cgroup-manager=cgroupfs --events-backend=file "
+	for _, s := range []struct {
+		name   string
+		script []byte
+	}{{"binfmt.sh", binfmtScript}, {"EnsurePlatform's script", platformScript}} {
+		calls := podmanCalls(string(s.script))
+		if len(calls) == 0 {
+			t.Errorf("%s runs no podman, so this case read nothing", s.name)
+		}
+		for _, call := range calls {
+			if !strings.HasPrefix(call, global) {
+				t.Errorf("%s runs root's podman without cgroupfs and the file events backend as global options: %s", s.name, call)
+			}
+		}
+	}
+	// ⚠ binfmt.sh's podman is ONE function, so the loop above reads its body once.
+	// Each command of the script that reaches the engine goes through it.
+	for _, want := range []string{
+		`root_podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all`,
+		`mnt=$(root_podman image mount "$TK_BINFMT_IMAGE")`,
+		`root_podman image unmount "$TK_BINFMT_IMAGE"`,
+	} {
+		if !strings.Contains(string(binfmtScript), want) {
+			t.Errorf("binfmt.sh does not carry %q", want)
+		}
+	}
+}
+
+// podmanWord is the word podman at a command's start: `root_podman` holds the
+// word and is a name, not a call of the engine.
+var podmanWord = regexp.MustCompile(`(?:^|[^A-Za-z0-9_-])(podman)[ \t]`)
+
+// podmanCalls is each podman command in a script's code, from the word podman to
+// the end of its line. A comment line is not code.
+func podmanCalls(script string) []string {
+	var calls []string
+	for _, line := range strings.Split(script, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		for _, m := range podmanWord.FindAllStringSubmatchIndex(line, -1) {
+			calls = append(calls, line[m[2]:])
+		}
+	}
+	return calls
 }
