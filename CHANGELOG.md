@@ -26,7 +26,14 @@ entry. A superseded one is amended in place with a dated note.
 ### 2026-10-24T07:48:54Z: `wsl-toolkit` is 7.0.1, the critical fixes for workloads blocked since the restart
 
 **Record:** `WSL-168`, and the 7.0.1 amendments to `WSL-137` and `WSL-169`, in [`TODO/wsl-toolkit-go.md`](TODO/wsl-toolkit-go.md).
-**Deployed:** ⛔ **not yet**; it is published as `wsl-toolkit-v7.0.1` from this commit.
+**Deployed:** ⭐ **yes**, as `wsl-toolkit-v7.0.1` from `e3378be`, **28 assets** with a cosign
+bundle each and `SHA256SUMS`. All 7 release jobs green, including the smoke that fetches the
+release and drives it. Amended 2026-10-24T09:31:04Z: the first commit, `8183c8c`, was red on
+the Windows runners, where a fake engine stayed locked past its test's cleanup; two commits
+fixed the test and the go check's report, and the tag followed CI green.
+
+⭐ **Driven after the publish.** `selfupdate` verified the digest and put 7.0.1 on this host. A
+`run` on the operator's jobs base exited 0 in 7 seconds, and `base status --probe` answers healthy.
 
 ⛔ **After a reboot or `wsl --shutdown`, every container failed** until someone ran `base ensure
 --repair`. `run`, `matrix`, `base exec`, `ready --smoke` and the helper's jobs now clear a stale

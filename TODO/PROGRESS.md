@@ -12,7 +12,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 ```text
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
-head            this commit: wsl-toolkit 7.0.1, the three critical fixes merged; 7.0.2 next
+head            this commit: wsl-toolkit 7.0.1 published from e3378be, installed and driven; 7.0.2 next
 entries         total 244  open 68  blocked 5  done 171
 this session    ruling 31
 ```
@@ -29,14 +29,14 @@ Measured on this host unless a row says read.
 | mutation rows | 600 at `9784821` | `tools/repo/mutations.json` |
 | CI | 8 runs, 3 of them required; one guard shard 9 to 17 min | `gh run view` on `9784821` and `d81910f` |
 | the acceptance suite | 102 cases quick, 109 full; 399 s with the installed 7.0.0 | `acceptance.ps1`; the last run |
-| the last release | `wsl-toolkit-v7.0.0`, 22 assets, 7 release jobs green | `gh release view`, `gh run view` |
+| the last release | `wsl-toolkit-v7.0.1`, 28 assets, 7 release jobs green | `gh release view`, `gh run view` |
 | this host | Windows 11 Pro 26300, PowerShell 7.6.7, WSL 3.0.3.0, git 2.55.0, Go 1.27.0 | the doctor |
 
 ### This host's state
 
 | | what is there, and how to undo it |
 | --- | --- |
-| the tool | `%USERPROFILE%\bin\wsl-toolkit.exe` 7.0.0, from `selfupdate`; the next `selfupdate` replaces it. `gc --include-live --apply` and `gc --images --apply` on 2026-10-21 left the jobs base with no job, session or image of this work |
+| the tool | `%USERPROFILE%\bin\wsl-toolkit.exe` 7.0.1, from `selfupdate`; the next `selfupdate` replaces it. `gc --include-live --apply` and `gc --images --apply` on 2026-10-21 left the jobs base with no job, session or image of this work |
 | distributions | `podman-machine-default`, stopped and WSL's default; `wsl-toolkit`, the jobs base, 58.4 GB; `wsl-toolkit-base`, the operator's base, 1.9 GB, rebuilt on 2026-10-21 with the herdr adapter alone. All three are stopped: the operator asked for `wsl --shutdown` at the pause. ⚠ Neither base disk is sparse |
 | the podman connection | `podman-machine-default-root`, because the machine's rootless socket is dead (finding 76 of the old record). Undo with `podman system connection default podman-machine-default` once that socket works |
 | the package's copy of the state directory | removed on 2026-10-21 under ruling 31, with its 503 job directories, `WSL-118`. A Bash shell this desktop app starts recreates it when it runs the tool. The job that explains finding 8 is kept at `.tmp/finding8-4e94faa38b4c9c1c` |
@@ -60,18 +60,19 @@ Measured on this host unless a row says read.
 ## In progress
 
 ⭐ **Resumed 2026-10-24T01:18:23Z.** A read-only triage of every consumer found
-workloads blocked today, so the critical fixes ship first as `wsl-toolkit-v7.0.1`:
+workloads blocked, so the critical fixes shipped first as `wsl-toolkit-v7.0.1`:
+`WSL-168`, and the first parts of `WSL-137` and `WSL-169`. It is installed on this
+host and driven on the jobs base.
 
-- `hotfix/h1-stale-run-state`: `WSL-137`'s stale-state half. `run`, `matrix` and
-  `base exec` clear a stale podman run state. The jobs base holds one now: its probe
-  answers `current system boot ID differs from cached boot ID`.
-- `hotfix/h2-binfmt-dbus`: `WSL-168`. `base ensure` on a Debian base with systemd.
-- `hotfix/h3-force-engine-first`: `WSL-169`. `base ensure --force` checks the engine
-  before it removes anything.
+7.0.2 takes the audit's data-loss findings in four groups, each built in its own
+worktree, reviewed by two adversarial passes and repaired:
 
-Each is built in its own worktree, reviewed by two adversarial passes, and repaired
-before it merges. A read-only audit of hardcoded assumptions and single points of
-failure runs beside it.
+- `hotfix/g1-base-lifecycle`: `WSL-171`, `WSL-177`, `WSL-172`, `WSL-175` and the
+  rest of `WSL-169`. Being rebuilt from a saved partial diff.
+- `hotfix/g2-ledger`: `WSL-173`, `WSL-185`. Reviewed and repaired, not merged.
+- `hotfix/g3-probe-qemu`: `WSL-174`, `WSL-181`, `WSL-182`. Reviewed and repaired,
+  not merged.
+- `hotfix/g4-grants`: `WSL-179`. Reviewed and repaired, not merged.
 
 The 7.1.0 work waits on local, unpushed branches, each unmerged and ungated:
 `wip/f6a-adapters` (finished; the triage found four things to fix before it merges),
