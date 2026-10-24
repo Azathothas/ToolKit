@@ -97,7 +97,11 @@ func TestTheHelperReadsAPrefixOfItsOwnJobs(t *testing.T) {
 // ⛔ The two images `gc --images` keeps read as kept in its entries, never as
 // pruned, and the settle after the prune leaves them so. WSL-174 and WSL-120.
 func TestAKeptImageReadsKeptInTheEntries(t *testing.T) {
-	images := []OwnedThing{{ID: "kept0001", Name: VerifyImage}, {ID: "gone0001", Name: "docker.io/library/old:1"}}
+	kept := OwnedThing{ID: "kept0001", Name: VerifyImage}
+	images := []OwnedThing{
+		kept,
+		{ID: "gone0001", Name: "docker.io/library/old:1"},
+	}
 	entries, at, ids := appendImageEntries(nil, images, DefaultInstance)
 	if len(entries) != 2 || entries[0].Action != CleanupKeep || entries[0].Result != CleanupKept || entries[0].Reason == "" {
 		t.Fatalf("the probe's image reads %+v", entries)
@@ -105,7 +109,7 @@ func TestAKeptImageReadsKeptInTheEntries(t *testing.T) {
 	if len(at) != 1 || at[0] != 1 || len(ids) != 1 || ids[0] != "gone0001" || entries[1].Action != CleanupPrune {
 		t.Fatalf("the pruned image reads %+v at %v with %v", entries[1], at, ids)
 	}
-	settleImageEntries(entries, at, ids, []OwnedThing{{ID: "kept0001", Name: VerifyImage}}, nil)
+	settleImageEntries(entries, at, ids, []OwnedThing{kept}, nil)
 	if entries[0].Result != CleanupKept || entries[1].Result != CleanupRemoved {
 		t.Errorf("after the prune the entries read %+v", entries)
 	}
