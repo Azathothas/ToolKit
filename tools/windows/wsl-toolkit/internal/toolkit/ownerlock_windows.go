@@ -51,3 +51,10 @@ func lockProbe(path string) (held, exists bool, err error) {
 	}
 	return false, true, err
 }
+
+// ledgerReadBusy says whether a failed read of the ledger is a rewrite holding
+// it. ⚠ ONLY A SHARING VIOLATION: it is the one refusal a rename was measured to
+// cause, and retrying a real access denial would only delay its report.
+func ledgerReadBusy(err error) bool {
+	return errors.Is(err, errSharingViolation)
+}

@@ -968,7 +968,7 @@ func TestAConfigWithADotIdIsRefusedWhenItIsRead(t *testing.T) {
 // defect is worse than no test, so this one does not claim to cover it.
 //
 // ⭐ The invariant is held by STRUCTURE instead: Compact takes the lock once
-// and calls openLocked, so its read and its write cannot be separated. That is
+// and reads with allLocked, so its read and its write cannot be separated. That is
 // checkable by reading nine lines, and it is what a reviewer should check.
 func TestLedgerSurvivesConcurrentUse(t *testing.T) {
 	dir := t.TempDir()

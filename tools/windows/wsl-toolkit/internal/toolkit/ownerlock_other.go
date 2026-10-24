@@ -47,3 +47,6 @@ func lockProbe(path string) (held, exists bool, err error) {
 	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 	return false, true, nil
 }
+
+// ledgerReadBusy is false here: a rename never refuses a reader's open.
+func ledgerReadBusy(error) bool { return false }
