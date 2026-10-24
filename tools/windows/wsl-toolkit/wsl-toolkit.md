@@ -524,8 +524,9 @@ under `/home`. Nothing in the image changes, and the job never runs as root.
 container, since sudo reads no other rule. So it is the one mount not re-owned to
 the user. Either flag without `--user` is refused.
 
-- ⚠ The rule needs sudo in the image, and the catalog's images carry none. Where
-  `--create-user` read the image and found no sudo, the job says so.
+- ⚠ The rule needs sudo in the image. Of the catalog, `fedora` carries it, and
+  `alpine`, `arch` and `opensuse` do not. Where `--create-user` read the
+  image and found no sudo, the job says so.
 - A uid or `uid:gid` is granted by its number.
 
 The base's podman decides whether this works, since `--passwd-entry` and

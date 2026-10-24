@@ -113,8 +113,8 @@ const (
 // readAccounts decides from an image's /etc/passwd and /etc/group.
 //
 // ⛔ AN ID THE IMAGE ALREADY HAS IS NOT TAKEN. podman writes no entry for a uid
-// the image's passwd holds, so the job ran as that account: on ubuntu:24.04 a
-// job told to be `dev` at 1000 ran as `ubuntu`. Measured here.
+// the image's passwd holds, so the job would run as that account: on
+// ubuntu:24.04, `dev` at 1000 is `ubuntu`. A drive made `dev` there at 1001.
 func readAccounts(name, passwd, group string) (jobAccount, error) {
 	a := jobAccount{Name: name}
 	uids := map[int]bool{}
