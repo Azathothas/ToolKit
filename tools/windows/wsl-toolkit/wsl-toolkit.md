@@ -1178,7 +1178,7 @@ on a base with no Windows path reachable, because there is no executable to try.
 | read-only | `fs.wsl-drivers`, 9p, a write refused |
 | ⛔ open, and no setting here closes them | `fs.mnt-wsl-shared`, `net.windows-host-icmp`, `net.internet`, `priv.passwordless-sudo`, `priv.unshare-userns`, `priv.unshare-user-plus-net`, `plumbing.kvm-create-vm`, `plumbing.dxg-ioctl`, and `interop.exec-pe` whenever the handler is live |
 
-⚠ **The three `plumbing` attempts need a C compiler in the base.** The probe
+⚠ **The three `plumbing` tries need a C compiler in the base.** The probe
 builds one small program with `cc` or `gcc`, runs it as the account and removes
 it. A base with no compiler reports all three `unknown`. On a scratch base, the
 account created a KVM virtual machine and was told the GPU adapter count. The
