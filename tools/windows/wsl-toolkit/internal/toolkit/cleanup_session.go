@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -134,6 +135,7 @@ func (s sessionSurvey) target() CleanupTarget {
 		return CleanupTarget{Kind: "session", Name: s.id, JobID: s.id, Unknown: s.unknown}
 	}
 	t := CleanupTarget{Kind: "session", Name: sessionTargetName(s.rec), JobID: s.rec.ID, ModTime: s.rec.Started, Unknown: s.unknown}
+	t.Path = s.rec.GuestDir
 	switch {
 	case s.unknown != "":
 	case s.st.Alive:
@@ -169,24 +171,31 @@ func sessionTargetName(rec SessionRecord) string {
 
 // removeSessions removes each selected session's guest and host directories.
 // A session that is still running is reached only through --include-live, and
-// it is stopped before its files are removed.
-func (r *Runner) removeSessions(ctx context.Context, plan *CleanupPlan, targets []CleanupTarget) {
+// it is stopped before its files are removed. It answers each session's
+// outcome by id, nil for removed. WSL-120.
+func (r *Runner) removeSessions(ctx context.Context, plan *CleanupPlan, targets []CleanupTarget) map[string]error {
+	done := map[string]error{}
 	for _, t := range targets {
 		rec, ok, err := ReadSessionRecord(r.home, t.JobID)
 		if err != nil || !ok {
 			plan.Failed = append(plan.Failed, "session "+t.JobID+": its record could not be read")
+			done[t.JobID] = errors.New("its record could not be read")
 			continue
 		}
 		if t.Live {
 			if _, err := StopSession(ctx, r.wsl, rec, SessionGrace); err != nil {
 				plan.Failed = append(plan.Failed, "session "+t.Name+": "+err.Error())
+				done[t.JobID] = err
 				continue
 			}
 		}
 		if err := RemoveSession(ctx, r.wsl, r.home, rec); err != nil {
 			plan.Failed = append(plan.Failed, "session "+t.Name+": "+err.Error())
+			done[t.JobID] = err
 			continue
 		}
+		done[t.JobID] = nil
 		plan.Removed = append(plan.Removed, "session "+t.Name)
 	}
+	return done
 }

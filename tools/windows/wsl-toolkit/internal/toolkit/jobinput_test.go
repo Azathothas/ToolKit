@@ -5,6 +5,7 @@ package toolkit
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -285,6 +286,7 @@ func TestEveryMatrixFieldReachesItsRows(t *testing.T) {
 	spec.Env = map[string]string{"A": "b"}
 	spec.Script = []byte("true")
 	spec.OnTick = func(TickEvent) {}
+	spec.Admit = func(_ context.Context, _ *JobOwner) (time.Duration, error) { return 0, nil }
 	row := rowSpec(spec, Image{ID: "alpine", Ref: "docker.io/library/alpine:latest"}, "/staged", "", DefaultWorkspaceLimits())
 	rv := reflect.ValueOf(row)
 	for i := 0; i < sv.NumField(); i++ {

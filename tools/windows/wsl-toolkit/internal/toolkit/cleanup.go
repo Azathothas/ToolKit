@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"fmt"
+	"path/filepath"
 	"slices"
 	"sort"
 	"time"
@@ -70,6 +71,95 @@ type CleanupTarget struct {
 	// Workspace is the project the target's job recorded, where it recorded
 	// one. WSL-114.
 	Workspace string `json:"workspace,omitempty"`
+	// Path is the container's name or the directory alone, where Name says
+	// more. Empty means Name is the path. WSL-120.
+	Path string `json:"path,omitempty"`
+}
+
+// CleanupEntry is one target of a cleanup as a program reads it: what it is,
+// whose it is, and what this run did to it. WSL-120.
+//
+// ⭐ IT STANDS BESIDE THE DISPLAY STRINGS AND REPLACES NONE OF THEM. A caller
+// split `kept` on ": " to find a job id, and podbox's gate reported one error
+// per line it could not parse.
+type CleanupEntry struct {
+	// Kind is container, guest-dir, host-dir, session or image.
+	Kind string `json:"kind"`
+	// Job is the job or session id a target belongs to, and empty for a
+	// helper's upload or artifact set, or an image.
+	Job string `json:"job,omitempty"`
+	// Instance is the instance whose state the target is, empty for the
+	// default one.
+	Instance  string `json:"instance"`
+	Workspace string `json:"workspace,omitempty"`
+	// Path is a container's name, a directory, or an image's reference.
+	Path string `json:"path"`
+	// Action is remove, keep or prune, and Result is planned, removed, failed,
+	// kept or unknown.
+	Action string `json:"action"`
+	Result string `json:"result"`
+	// Reason is why a target is kept, or why its removal failed.
+	Reason string `json:"reason,omitempty"`
+}
+
+// The actions and results a cleanup entry carries.
+const (
+	CleanupRemove  = "remove"
+	CleanupKeep    = "keep"
+	CleanupPrune   = "prune"
+	CleanupPlanned = "planned"
+	CleanupRemoved = "removed"
+	CleanupFailed  = "failed"
+	CleanupKept    = "kept"
+	CleanupUnknown = "unknown"
+)
+
+// cleanupEntries is the plan's structured list: each target this policy
+// removes, then each it spares, in the order the plan names them.
+func cleanupEntries(remove []CleanupTarget, spared []Spared, instance string) []CleanupEntry {
+	out := make([]CleanupEntry, 0, len(remove)+len(spared))
+	for _, t := range remove {
+		e := entryOf(t, instance)
+		e.Action, e.Result = CleanupRemove, CleanupPlanned
+		out = append(out, e)
+	}
+	for _, s := range spared {
+		e := entryOf(s.Target, instance)
+		e.Action, e.Result, e.Reason = CleanupKeep, CleanupKept, s.Reason
+		out = append(out, e)
+	}
+	return out
+}
+
+func entryOf(t CleanupTarget, instance string) CleanupEntry {
+	e := CleanupEntry{Kind: t.Kind, Instance: instance, Workspace: t.Workspace, Path: t.Path}
+	if e.Path == "" {
+		e.Path = t.Name
+	}
+	// ⚠ A HELPER'S UPLOAD OR ARTIFACT SET IS NAMED BY ITS OWN ID, not a job's, so
+	// only a job's host directory carries the id as a job.
+	if t.Kind != "host-dir" || filepath.Base(filepath.Dir(t.Name)) == "jobs" {
+		e.Job = t.JobID
+	}
+	return e
+}
+
+// settleFrom writes what happened to one planned removal, from the outcomes a
+// step reported by key: nil for removed, an error for failed.
+//
+// ⛔ A TARGET NO STEP REPORTED IS UNKNOWN, NOT REMOVED. A guest script cut off
+// half way reports the first half, and an entry read as removed by default
+// would be the false success the plan's own `failed` list exists to prevent.
+func settleFrom(e *CleanupEntry, done map[string]error, key string) {
+	err, reported := done[key]
+	switch {
+	case !reported:
+		e.Result, e.Reason = CleanupUnknown, "the cleanup did not report what happened to it"
+	case err != nil:
+		e.Result, e.Reason = CleanupFailed, err.Error()
+	default:
+		e.Result = CleanupRemoved
+	}
 }
 
 // Spared is one target cleanup did not touch, and why.

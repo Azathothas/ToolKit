@@ -48,6 +48,10 @@ const artifactsUsage = `wsl-toolkit artifacts <retry> ID --to DIR
 
   It does NOT re-run the job. When nothing was retained it says so rather than
   offering to produce the output again.
+
+  A job id may also be its container's name wtk-ID, or the first four or more
+  characters of either when one job alone starts with them. An artifact set
+  id is passed whole.
 `
 
 func cmdArtifacts(ctx context.Context, args []string) (int, error) {
@@ -77,6 +81,20 @@ func cmdArtifacts(ctx context.Context, args []string) (int, error) {
 	if *to == "" {
 		return exitCannot, errors.New("artifacts retry needs --to DIR, because it writes files and will not guess where")
 	}
+	// ⭐ A JOB'S PREFIX OR ITS CONTAINER'S NAME IS READ AS THE JOB, and a whole
+	// artifact set id passes through untouched. WSL-120.
+	//
+	// ⛔ AN ID NOTHING HERE STARTS GOES ON AS ITSELF, to the helper's sets and
+	// then to the guest, and ends as 7.0.2 ended it: nothing was retained, exit 1.
+	// WSL-120.
+	resolved, err := resolveJobID("artifacts", args, id)
+	switch {
+	case errors.Is(err, toolkit.ErrNoJobHere):
+		resolved = id
+	case err != nil:
+		return exitCannot, err
+	}
+	id = resolved
 	if err := toolkit.AssertArgvSafe([]string{id}); err != nil {
 		return exitCannot, err
 	}

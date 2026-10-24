@@ -235,6 +235,11 @@ type JobConfig struct {
 	// what a command line adds. WSL-112.
 	Exclude   []string `json:"exclude,omitempty"`
 	Gitignore bool     `json:"gitignore,omitempty"`
+	// MaxRunning holds a run until fewer than this many jobs run on the machine,
+	// and MaxRunningWait is how long it waits, a duration such as 30m. Zero and
+	// empty are no cap and no wait. WSL-136.
+	MaxRunning     int    `json:"max_running,omitempty"`
+	MaxRunningWait string `json:"max_running_wait,omitempty"`
 }
 
 // Config is the stored configuration. Every field has a compiled-in default, so
@@ -543,6 +548,9 @@ func loadConfigFile(path, from string) (Config, error) {
 		cfg.Jobs.Exclude = stored.Jobs.Exclude
 	}
 	cfg.Jobs.Gitignore = stored.Jobs.Gitignore
+	// WSL-136: each new jobs key is copied by name, as above.
+	cfg.Jobs.MaxRunning = stored.Jobs.MaxRunning
+	cfg.Jobs.MaxRunningWait = stored.Jobs.MaxRunningWait
 	cfg.Images = stored.Images
 	cfg.Matrix = stored.Matrix
 	if err := cfg.Validate(); err != nil {
@@ -728,6 +736,12 @@ func (c Config) Validate() error {
 		if _, err := path.Match(pat, ""); err != nil {
 			return fmt.Errorf("jobs.exclude[%d] %q is not a pattern: %w", i, pat, err)
 		}
+	}
+	if _, err := c.Jobs.RunningWait(); err != nil {
+		return err
+	}
+	if c.Jobs.MaxRunning < 0 {
+		return fmt.Errorf("jobs.max_running %d is negative. Pass 0 for no cap, or the most jobs that may run at once", c.Jobs.MaxRunning)
 	}
 	seen := map[string]bool{}
 	for _, img := range c.Images {

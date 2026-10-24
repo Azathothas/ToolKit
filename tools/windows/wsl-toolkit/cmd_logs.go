@@ -38,7 +38,7 @@ const logsUsage = `wsl-toolkit logs [JOB-ID]
   wsl-toolkit gc under the same age policy as everything else, so an id
   that ran long enough ago will not be here. A detached base session keeps
   its streams in the base, and logs reads them there.
-`
+` + jobIDForms
 
 func cmdLogs(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("logs")
@@ -58,6 +58,12 @@ func cmdLogs(ctx context.Context, args []string) (int, error) {
 	if *tail < 0 {
 		return exitCannot, fmt.Errorf("--tail %d is negative. Pass 0 for all of it", *tail)
 	}
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES. WSL-120.
+	resolved, err := resolveJobID("logs", args, id)
+	if err != nil {
+		return exitCannot, err
+	}
+	id = resolved
 	if *follow {
 		// ⭐ ONE STATE MACHINE FOR --follow AND wait: the host's record first, a
 		// running owner's transcript next, and the engine only for a job whose
@@ -109,6 +115,9 @@ func cmdLogs(ctx context.Context, args []string) (int, error) {
 	}
 	if _, err := os.Stat(dir); err != nil {
 		return exitCannot, fmt.Errorf("no transcript for job %q. %s lists what is still here", id, toolkit.ToolCommand("logs"))
+	}
+	if toolkit.ValidJobID(id) {
+		closeLostOwners(home, id)
 	}
 	names := []string{"stdout.log"}
 	switch {
@@ -237,6 +246,10 @@ func listTranscripts(home string, asJSON bool) (int, error) {
 	if err != nil {
 		return exitCannot, fmt.Errorf("the transcripts in %s could not be listed: %w", root, err)
 	}
+	// ⭐ A RECORD WHOSE OWNER IS GONE IS CLOSED AS THE LIST READS IT, and the
+	// close says the owner was lost. It read as an interrupted run for ever.
+	// WSL-121.
+	closeLostOwners(home)
 	var rows []transcriptRow
 	for _, e := range entries {
 		if !e.IsDir() {

@@ -13284,7 +13284,7 @@ core.fsmonitor=false ls-files -s -z` did not. The case plants the same hook.
 ## WSL-120. A job id is hard to use: a prefix, the container name and one-line JSON are all refused
 
 **Source** the consumer survey of 2026-10-21, P3, and the old record's finding 104
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13329,13 +13329,15 @@ instance's job. Then `logs` by a prefix and `gc --json --json-compact` on a real
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f1-jobs`, for the next release.** One resolver takes a job's id, its container's name `wtk-ID` or a unique prefix, for `logs`, `wait`, `stop`, `inspect`, `artifacts retry`, `gc --job` and `resources --job`. A job whose host directory is gone is found through its open ledger record, and the helper resolves prefixes of its own jobs. `--json-compact` and `WSL_TOOLKIT_JSON=compact` put an answer on one line, and `gc --json` carries its entries. Built from `wip/f1-jobs`, reviewed twice, repaired once; rows red on Windows and in `golang:1.25`; gate 24 of 24 on the merge.
+
+⚠ A prefix from a client whose state directory differs from the helper's is proved by a case, not driven.
 
 
 ## WSL-121. An ephemeral job keeps its host record, and a killed caller leaves its job running
 
 **Source** the consumer survey of 2026-10-21, P5, and the old record's finding 105
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** M, **Status** done
 
 ---
 
@@ -13380,7 +13382,16 @@ with a free lock reads as closed.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f1-jobs`, for the next release.** Ruled: follow the documented help. An ephemeral job removes its host record once its answer is ready, on `run`, `matrix` rows and helper jobs; its answer is kept for 10 minutes so `wait` and `logs --follow` still read its verdict. A job whose teardown failed keeps its record, so `gc` reads its owner as gone. A detached ephemeral job keeps its record. `--cancel-on-exit` stops a detached job when its caller exits.
+
+```text
+Git Bash script runs: run --detach --cancel-on-exit --image docker.io/library/alpine:latest -c 'sleep 300'
+  client exit 0; 20 s later the script is alive and the job running
+  the script is killed: job stopped, exit 130, 13 s later
+an ephemeral job leaves no directory, direct and through the helper
+```
+
+⚠ A break for a caller that reads an ephemeral job's record long after it ended; `docs/consumers.md` says what it does.
 
 
 ## WSL-122. Nothing is cached between jobs, so each job installs its toolchain again
@@ -14045,6 +14056,8 @@ Exit 0, then a job over `--memory 64m` is killed by the limit, and a job over th
 ## Closing
 
 Open.
+
+⭐ **2026-10-25: the running-jobs cap is merged from `rb/f1-jobs`.** `run` and `matrix` take `--max-running` and `--max-running-wait`, and `jobs.max_running` and `jobs.max_running_wait` set them for a project. A job over the cap is refused at once with exit 2, or waits and reports `waited_to_run_ns`. A matrix under a cap of one runs its own rows in turn. The `--memory` and `--cpus` limits are `rb/f5a-base-runtime`'s half.
 
 
 ## WSL-137. A base stops running containers after a host restart until someone repairs it

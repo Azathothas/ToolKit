@@ -485,6 +485,9 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	l.bindSinks(fs)
 	image := fs.String("image", "", "a catalog id or a fully qualified reference")
 	detach := fs.Bool("detach", false, "start the job and answer with its id at once. A detached copy of this program owns the job; wsl-toolkit logs ID --follow, wait ID and stop ID reach it")
+	// WSL-121 and WSL-136: what the owning process does beyond running the job.
+	var o ownerFlags
+	o.bind(fs)
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -500,6 +503,14 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	}
 	if err := j.check(); err != nil {
 		return exitCannot, err
+	}
+	if err := o.settle(cfg, j.lifecycle); err != nil {
+		return exitCannot, err
+	}
+	if j.viaHelper {
+		if err := o.helperRefusal(true); err != nil {
+			return exitCannot, err
+		}
 	}
 	payload, err := j.script()
 	if err != nil {
@@ -548,15 +559,34 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 				return exitCannot, err
 			}
 		}
+		// WSL-136: refused here too, at once, before an owner exists.
+		if o.maxRunning > 0 && o.maxRunningWait == 0 {
+			if err := toolkit.RunningCapRefusal(o.maxRunning); err != nil {
+				return exitCannot, err
+			}
+		}
+		// WSL-121: the owner watches this client's callers, which it cannot see.
+		var handOver []string
+		var callers []toolkit.ProcessIdentity
+		if o.cancelOnExit {
+			chain, kv, err := callersEnv()
+			if err != nil {
+				return exitCannot, err
+			}
+			callers, handOver = append([]toolkit.ProcessIdentity{}, chain...), []string{kv}
+		}
 		var fromStdin []byte
 		if j.scriptFile == stdinScript {
 			fromStdin = payload
 		}
-		return detachRun(ctx, j.asJSON, fromStdin)
+		return detachRun(ctx, j.asJSON, fromStdin, handOver, callers)
 	}
 	if c, err := useHelper(ctx, j.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
+		if err := o.helperRefusal(j.viaHelper); err != nil {
+			return exitCannot, err
+		}
 		if j.ensure {
 			if err := helperEnsureBase(ctx, c.BaseEnsure); err != nil {
 				return exitCannot, err
@@ -585,7 +615,8 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	refuse := func(err error) (int, error) {
-		_ = owner.Finish(toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot})
+		res := toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot}
+		o.finish(owner, &res)
 		return exitCannot, err
 	}
 	// ⭐ THE PROJECT IS RECORDED WITH THE CLAIM, so `gc --workspace` finds even a
@@ -601,6 +632,17 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	}
 	followCmd, _, stopCmd := jobHints(owner.ID)
 	logf("  job %s. Follow it with: %s. Stop it with: %s", owner.ID, followCmd, stopCmd)
+	// ⭐ THE WATCHER STARTS WITH THE CLAIM, so a caller that exits while the job
+	// waits for its name or its turn ends that wait too. WSL-121.
+	if o.cancelOnExit {
+		callers, err := callersOf()
+		if err == nil {
+			err = startWatchdog([]string{owner.ID}, callers)
+		}
+		if err != nil {
+			return refuse(err)
+		}
+	}
 	// ⭐ HELD BY THE PROCESS THAT OWNS THE JOB, attached or detached, for the
 	// job's whole life, and let go by Windows however this process ends. WSL-113.
 	if j.exclusive != "" {
@@ -611,15 +653,19 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		if errors.Is(err, toolkit.ErrStoppedWaiting) {
 			res := toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: 130, Cancelled: true, Stopped: true, Error: err.Error()}
 			res.Seal()
-			if ferr := owner.Finish(res); ferr != nil {
-				logf("  ! could not record the end of job %s: %s", res.ID, ferr.Error())
-			}
+			o.finish(owner, &res)
 			return reportJob(res, j.asJSON)
 		}
 		if err != nil {
 			return refuse(err)
 		}
 		defer release()
+	}
+	// ⭐ HELD AFTER ITS NAME AND BEFORE ANYTHING IS SPENT ON IT, so a job waiting
+	// for its turn copies nothing and holds no running slot. WSL-136.
+	waited, ended, code, err := o.admit(ctx, owner, *image, ref, j.asJSON)
+	if ended {
+		return code, err
 	}
 	runner, err := toolkit.NewRunner(cfg, note)
 	if err != nil {
@@ -654,12 +700,13 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 		OnTick: jobTick(j, relay), TickEvery: j.tick, Log: relay,
 	})
+	res.WaitedToRun = waited
 	// ⛔ SEALED AND RECORDED BEFORE IT IS RENDERED, so a follower reading the
 	// record and this process reporting it name one verdict.
 	res.Seal()
-	if err := owner.Finish(res); err != nil {
-		logf("  ! could not record the end of job %s: %s", res.ID, err.Error())
-	}
+	// ⭐ AN EPHEMERAL JOB'S RECORD GOES ONCE THE ANSWER IS READY, and the answer
+	// says so. WSL-121.
+	o.finish(owner, &res)
 	return reportJob(res, j.asJSON)
 }
 
@@ -692,7 +739,7 @@ const DetachedSchema = "wsl-toolkit-detached/1"
 // run, so artifacts, teardown and the verdict do not change. It learns its id
 // and that it is detached from two variables, never from a flag a caller could
 // pass. Its own progress goes to owner.log beside the transcript.
-func detachRun(ctx context.Context, asJSON bool, fromStdin []byte) (int, error) {
+func detachRun(ctx context.Context, asJSON bool, fromStdin []byte, handOver []string, watched []toolkit.ProcessIdentity) (int, error) {
 	home, err := toolkit.Home()
 	if err != nil {
 		return exitCannot, err
@@ -728,7 +775,7 @@ func detachRun(ctx context.Context, asJSON bool, fromStdin []byte) (int, error) 
 	}
 	cmd, leftJobObject, err := toolkit.StartDetached(func() *exec.Cmd {
 		c := exec.Command(exe, args...)
-		c.Env = append(os.Environ(), toolkit.JobIDEnv+"="+id, toolkit.DetachedEnv+"=1")
+		c.Env = append(append(os.Environ(), toolkit.JobIDEnv+"="+id, toolkit.DetachedEnv+"=1"), handOver...)
 		c.Stdout, c.Stderr = logFile, logFile
 		return c
 	})
@@ -750,7 +797,7 @@ func detachRun(ctx context.Context, asJSON bool, fromStdin []byte) (int, error) 
 		select {
 		case <-exited:
 			if st, _ := toolkit.ReadJobState(home, id); st.Result != nil {
-				return reportDetached(home, id, leftJobObject, asJSON)
+				return reportDetached(home, id, leftJobObject, asJSON, watched...)
 			}
 			return exitCannot, fmt.Errorf("the detached owner ended before it took the job. Its log: %s", logPath)
 		case <-ctx.Done():
@@ -763,7 +810,7 @@ func detachRun(ctx context.Context, asJSON bool, fromStdin []byte) (int, error) 
 			return exitCannot, fmt.Errorf("the detached owner did not take the job within %s. Its log: %s", detachClaimLimit, logPath)
 		}
 	}
-	return reportDetached(home, id, leftJobObject, asJSON)
+	return reportDetached(home, id, leftJobObject, asJSON, watched...)
 }
 
 // detachClaimLimit bounds the wait for a detached owner to take its job. The
@@ -775,7 +822,11 @@ const detachClaimLimit = 60 * time.Second
 const jobObjectWarning = "the job object this process runs in refused to release the detached owner, so the owner ends when that object closes. " +
 	"base exec --detach runs in the base and does not depend on it"
 
-func reportDetached(home, id string, leftJobObject, asJSON bool) (int, error) {
+// reportDetached answers with the id of a job a detached owner took.
+//
+// ⭐ watched are the callers --cancel-on-exit ties the job to, and the answer
+// names them, in `cancel_on_exit` under --json. WSL-121.
+func reportDetached(home, id string, leftJobObject, asJSON bool, watched ...toolkit.ProcessIdentity) (int, error) {
 	followCmd, waitCmd, stopCmd := jobHints(id)
 	if asJSON {
 		doc := map[string]any{
@@ -788,12 +839,18 @@ func reportDetached(home, id string, leftJobObject, asJSON bool) (int, error) {
 		if !leftJobObject {
 			doc["warning"] = jobObjectWarning
 		}
+		if watched != nil {
+			doc["cancel_on_exit"] = watched
+		}
 		return exitOK, writeJSON(doc)
 	}
 	fmt.Println(id)
 	logf("  job %s runs detached. Follow: %s. Wait: %s. Stop: %s", id, followCmd, waitCmd, stopCmd)
 	if !leftJobObject {
 		logf("  ! %s", jobObjectWarning)
+	}
+	if watched != nil {
+		logf("  %s", cancelLine(id, watched))
 	}
 	return exitOK, nil
 }
@@ -838,6 +895,12 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 	if hint := transcriptHint(res); hint != "" {
 		logf("  %s", hint)
 	}
+	if line := keptLine(res); line != "" {
+		logf("  %s", line)
+	}
+	if line := waitedLine(res); line != "" {
+		logf("  %s", line)
+	}
 	return jobVerdict(res), nil
 }
 
@@ -876,6 +939,9 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	images := fs.String("images", "", "catalog ids, libc:musl, kind:legacy or all. Comma separated. Empty means the configured default")
 	parallel := fs.Int("parallel", toolkit.DefaultParallel, "how many rows run at once")
 	transcripts := fs.String("transcripts", "", "a directory to write one transcript per row into")
+	// WSL-121: what the owning process does beyond running the rows.
+	var o ownerFlags
+	o.bind(fs)
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
@@ -891,6 +957,14 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	}
 	if *parallel < 1 {
 		return exitCannot, fmt.Errorf("--parallel %d would run no rows at all. Pass 1 or more", *parallel)
+	}
+	if err := o.settle(cfg, j.lifecycle); err != nil {
+		return exitCannot, err
+	}
+	if j.viaHelper {
+		if err := o.helperRefusal(true); err != nil {
+			return exitCannot, err
+		}
 	}
 	payload, err := j.script()
 	if err != nil {
@@ -924,6 +998,9 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if c, err := useHelper(ctx, j.viaHelper); err != nil {
 		return exitCannot, err
 	} else if c != nil {
+		if err := o.helperRefusal(j.viaHelper); err != nil {
+			return exitCannot, err
+		}
 		if j.ensure {
 			if err := helperEnsureBase(ctx, c.BaseEnsure); err != nil {
 				return exitCannot, err
@@ -938,6 +1015,23 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 			return exitCannot, err
 		}
 		return reportMatrix(report, j.asJSON)
+	}
+	// ⭐ A FLEET'S WATCHER KNOWS EVERY ROW BEFORE ANY RUNS, so a row its caller
+	// left behind never starts its container. WSL-121.
+	var rows []string
+	if o.cancelOnExit {
+		ids, err := rowIDs(len(selected))
+		if err != nil {
+			return exitCannot, err
+		}
+		callers, err := toolkit.Callers()
+		if err != nil {
+			return exitCannot, fmt.Errorf("--cancel-on-exit could not read which process started this one: %w", err)
+		}
+		if err := startWatchdog(ids, callers); err != nil {
+			return exitCannot, err
+		}
+		rows = ids
 	}
 	// ⭐ A FLEET HOLDS THE NAME ONCE, for every row, because its rows run in this
 	// one process. WSL-113.
@@ -967,10 +1061,14 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		Limits: j.limits(), Transcripts: *transcripts, User: j.user, Devices: devices, Inputs: inputs,
 		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
 		OnTick: tickPrinter(j), TickEvery: j.tick,
+		RowIDs: rows, Admit: o.rowAdmit(),
 	})
 	if err != nil {
 		return exitCannot, err
 	}
+	// ⭐ EACH EPHEMERAL ROW'S RECORD GOES ONCE THE FLEET'S ANSWER IS READY.
+	// WSL-121.
+	o.leaveRows(&report)
 	return reportMatrix(report, j.asJSON)
 }
 

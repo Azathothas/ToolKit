@@ -2,6 +2,807 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the client that detached a job and its stub do not stop it",
+      "file": "internal/toolkit/watch.go",
+      "find": "\t\tif gone != nil && gone.Role == RoleClient {\n",
+      "replace": "\t\tif gone != nil && gone.Role == \"never\" {\n",
+      "run": "TestAClientThatDetachedAndItsStubDoNotStopTheJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a follower of an ephemeral job reads the answer kept after its record",
+      "file": "cmd_jobs.go",
+      "find": "\t\tif res, ok := toolkit.EndedAnswer(home, id); ok && !st.Known {\n",
+      "replace": "\t\tif res, ok := toolkit.EndedAnswer(home, id); ok && false {\n",
+      "run": "TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop reads the answer kept after an ephemeral job's record",
+      "file": "cmd_jobs.go",
+      "find": "\t\tif res, ok := toolkit.EndedAnswer(home, id); err == nil && !st.Known && ok {\n",
+      "replace": "\t\tif res, ok := toolkit.EndedAnswer(home, id); err == nil && false && ok {\n",
+      "run": "TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ephemeral job's answer is kept when its record goes",
+      "file": "internal/toolkit/record.go",
+      "find": "\tres, ok, err := readJobResult(dir)\n\tif err != nil || !ok {\n",
+      "replace": "\tres, ok, err := readJobResult(dir)\n\tif err != nil || ok {\n",
+      "run": "TestAWaitOnAnEphemeralJobAnswersItsOwnVerdict",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed teardown is said on the result",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\t\tres.TeardownError = err.Error()\n",
+      "replace": "\t\t\t_ = err\n",
+      "run": "TestAnEphemeralJobWhoseTeardownFailedKeepsItsRecord",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job whose teardown failed keeps its record",
+      "file": "internal/toolkit/record.go",
+      "find": "\tcase res.TeardownError != \"\":\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAnEphemeralJobWhoseTeardownFailedKeepsItsRecord",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stop gives its own refusal for a prefix an old helper refused",
+      "file": "cmd_jobs.go",
+      "find": "\t\t} else if err != nil && notHere != nil {\n",
+      "replace": "\t\t} else if false {\n",
+      "run": "TestAPrefixAnOldHelperRefusesIsRefusedHere",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --job gives its own refusal for a prefix an old helper refused",
+      "file": "cmd_admin.go",
+      "find": "\t\tif err != nil && notHere != nil && plan.Schema == \"\" && !errors.Is(err, toolkit.ErrUnknownJob) {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAPrefixAnOldHelperRefusesIsRefusedHere",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: inspect answers a prefix nothing knows as an unknown job",
+      "file": "cmd_inspect.go",
+      "find": "\t\treturn renderInspectResult(rep, unknown, *asJSON)\n",
+      "replace": "\t\treturn exitCannot, notHere\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: artifacts retry goes on with an id nothing here starts",
+      "file": "cmd_actionable.go",
+      "find": "\tcase errors.Is(err, toolkit.ErrNoJobHere):\n\t\tresolved = id\n",
+      "replace": "\tcase false:\n\t\tresolved = id\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet's own rows hold its next row and do not refuse it",
+      "file": "internal/toolkit/running.go",
+      "find": "\t\tcase ownHeld:\n\t\t\tdeadline = time.Now().Add(wait)\n",
+      "replace": "\t\tcase false:\n\t\t\tdeadline = time.Now().Add(wait)\n",
+      "run": "TestAFleetUnderACapOfOneRunsItsRowsInTurn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a helper-run job the helper left nothing of leaves no local copy",
+      "file": "helper_route.go",
+      "find": "\tif !res.RecordRemoved || local == \"\" {\n\t\treturn local\n",
+      "replace": "\tif true {\n\t\treturn local\n",
+      "run": "TestAHelperRunEphemeralJobLeavesNoLocalCopy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a container's name is read as its job",
+      "file": "internal/toolkit/jobid.go",
+      "find": "\t\tprefix = strings.TrimPrefix(prefix, ContainerPrefix)\n",
+      "replace": "\t\tprefix = strings.TrimPrefix(prefix, \"\")\n",
+      "run": "TestAJobIsFoundByItsIDItsContainerAndAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefix of a job id is looked up",
+      "file": "internal/toolkit/jobid.go",
+      "find": "\tif !isJobIDPrefix(prefix) {\n",
+      "replace": "\tif true {\n",
+      "run": "TestAJobIsFoundByItsIDItsContainerAndAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefix that starts two jobs is refused",
+      "file": "internal/toolkit/jobid.go",
+      "find": "\tcase 1:\n\t\tid := matches[0]\n",
+      "replace": "\tcase 1, 2:\n\t\tid := matches[0]\n",
+      "run": "TestAPrefixThatNamesNoSingleJobIsRefused",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefix of another instance's job names the command that reaches it",
+      "file": "internal/toolkit/jobid.go",
+      "find": "known && ran != SelectedInstance.Name {",
+      "replace": "known && ran == \"never-an-instance\" {",
+      "run": "TestAJobOfAnotherInstanceIsRefusedWithItsCommand",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's first claim records its instance for good",
+      "file": "internal/toolkit/jobid.go",
+      "find": "\tif _, err := os.Stat(path); err == nil {\n\t\treturn nil\n\t}\n\treturn writeFileAtomic(path, []byte(SelectedInstance.Name",
+      "replace": "\tif _, err := os.Stat(path); err == nil && path == \"\" {\n\t\treturn nil\n\t}\n\treturn writeFileAtomic(path, []byte(SelectedInstance.Name",
+      "run": "TestAJobRecordsTheInstanceThatClaimedItFirst",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefix finds a job whose record is open after its directory went",
+      "file": "internal/toolkit/jobid.go",
+      "find": "\t\tmatches = openJobsStartingWith(home, prefix)\n",
+      "replace": "\t\tmatches = nil\n",
+      "run": "TestAnOpenRecordIsFoundByAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefix nothing here starts is told apart for the helper",
+      "file": "internal/toolkit/jobid.go",
+      "find": "\treturn target == ErrJobPrefix || target == ErrNoJobHere\n",
+      "replace": "\treturn target == ErrJobPrefix\n",
+      "run": "TestAPrefixNothingHereStartsIsNoJobHere",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper reads a prefix of its own jobs",
+      "file": "internal/toolkit/helper.go",
+      "find": "\tid, err := h.resolveJob(req.ID)\n",
+      "replace": "\tid, err := req.ID, error(nil)\n",
+      "run": "TestTheHelperReadsAPrefixOfItsOwnJobs",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a prefix nothing here starts is handed on to the helper",
+      "file": "cmd_jobid.go",
+      "find": "\tif errors.Is(err, toolkit.ErrNoJobHere) {\n",
+      "replace": "\tif errors.Is(err, nil) {\n",
+      "run": "TestAPrefixNothingHereStartsIsHandedOn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a printed command carries the job's full id",
+      "file": "cmd_jobid.go",
+      "find": "\t\t\tout[i] = strings.TrimSuffix(a, raw) + id\n",
+      "replace": "\t\t\tout[i] = a\n",
+      "run": "TestACommandIsPrintedAgainWithTheFullID",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: logs reads a job's prefix",
+      "file": "cmd_logs.go",
+      "find": "\tresolved, err := resolveJobID(\"logs\", args, id)\n",
+      "replace": "\tresolved, err := id, error(nil)\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wait reads a job's prefix",
+      "file": "cmd_jobs.go",
+      "find": "\tresolved, err := resolveJobID(\"wait\", args, id)\n",
+      "replace": "\tresolved, err := id, error(nil)\n",
+      "run": "TestAPrefixReachesTheJobItNames",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stop reads a job's prefix",
+      "file": "cmd_jobs.go",
+      "find": "\tresolved, notHere, err := resolveRoutedJobID(\"stop\", args, id)\n",
+      "replace": "\tresolved, notHere, err := id, error(nil), error(nil)\n",
+      "run": "TestAJobOfAnotherInstanceIsAnsweredWithTheCommandThatReachesIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: gc --job reads a job's prefix",
+      "file": "cmd_admin.go",
+      "find": "\tresolved, notHere, err := resolveRoutedJobID(\"gc\", args, *job)\n",
+      "replace": "\tresolved, notHere, err := *job, error(nil), error(nil)\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: inspect reads a job's prefix",
+      "file": "cmd_inspect.go",
+      "find": "\tresolved, notHere, err := resolveRoutedJobID(\"inspect\", args, id)\n",
+      "replace": "\tresolved, notHere, err := id, error(nil), error(nil)\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: artifacts retry reads a job's prefix",
+      "file": "cmd_actionable.go",
+      "find": "\tresolved, err := resolveJobID(\"artifacts\", args, id)\n",
+      "replace": "\tresolved, err := id, error(nil)\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: resources --job narrows by a prefix that names no job, as before",
+      "file": "cmd_admin.go",
+      "find": "\tif resolved, err := resolveJobID(\"resources\", args, *job); err == nil {\n\t\t*job = resolved\n\t}\n",
+      "replace": "\tif resolved, err := resolveJobID(\"resources\", args, *job); err == nil {\n\t\t*job = resolved\n\t} else {\n\t\treturn exitCannot, err\n\t}\n",
+      "run": "TestEveryJobCommandReadsAPrefix",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --json-compact puts an answer on one line",
+      "file": "main.go",
+      "find": "\t\tcase args[i] == \"--json-compact\":\n\t\t\tjsonCompact = true\n",
+      "replace": "\t\tcase args[i] == \"--json-compact\":\n\t\t\tjsonCompact = false\n",
+      "run": "TestAnAnswerIsOneLineWhenAskedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: WSL_TOOLKIT_JSON=compact puts an answer on one line",
+      "file": "main.go",
+      "find": "\tcase \"compact\":\n\t\tjsonCompact = true\n",
+      "replace": "\tcase \"compact\":\n\t\tjsonCompact = false\n",
+      "run": "TestAnAnswerIsOneLineWhenAskedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a compact answer is written without an indent",
+      "file": "main.go",
+      "find": "\tif !jsonCompact {\n\t\tenc.SetIndent",
+      "replace": "\tif true {\n\t\tenc.SetIndent",
+      "run": "TestAnAnswerIsOneLineWhenAskedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unknown WSL_TOOLKIT_JSON is said and not refused",
+      "file": "main.go",
+      "find": "\t\tfmt.Fprintln(os.Stderr, \"wsl-toolkit: ! \"+err.Error())\n\t}\n",
+      "replace": "\t\tfmt.Fprintln(os.Stderr, \"wsl-toolkit: ! \"+err.Error())\n\t\treturn exitCannot\n\t}\n",
+      "run": "TestAnAnswerIsOneLineWhenAskedFor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cleanup entry no step reported is unknown",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\tcase !reported:\n\t\te.Result, e.Reason = CleanupUnknown,",
+      "replace": "\tcase !reported:\n\t\te.Result, e.Reason = CleanupRemoved,",
+      "run": "TestACleanupEntryIsSettledFromWhatTheGuestReported",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cleanup entry is settled from the guest's removed line",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "\t\t\tdone[what] = nil\n",
+      "replace": "",
+      "run": "TestACleanupEntryIsSettledFromWhatTheGuestReported",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an upload's cleanup entry names no job",
+      "file": "internal/toolkit/cleanup.go",
+      "find": "\tif t.Kind != \"host-dir\" || filepath.Base(filepath.Dir(t.Name)) == \"jobs\" {\n",
+      "replace": "\tif t.Kind != \"\" || filepath.Base(filepath.Dir(t.Name)) == \"jobs\" {\n",
+      "run": "TestACleanupPlanCarriesOneEntryPerTarget",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an image gc --images keeps reads kept in its entries",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "\t\tif why, kept := keptImageReason(i.Name); kept {\n",
+      "replace": "\t\tif why, kept := keptImageReason(i.Name); kept && why == \"\" {\n",
+      "run": "TestAKeptImageReadsKeptInTheEntries",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ephemeral job's record goes once its answer is ready",
+      "file": "cmd_owner.go",
+      "find": "\tif !detached {\n\t\to.leave(res)\n",
+      "replace": "\tif detached {\n\t\to.leave(res)\n",
+      "run": "TestAnEphemeralJobLeavesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a detached ephemeral job says why it keeps its record",
+      "file": "cmd_owner.go",
+      "find": "\t\tres.RecordKept = toolkit.DetachedRecordKept\n",
+      "replace": "\t\tres.RecordKept = \"\"\n",
+      "run": "TestAnEphemeralJobLeavesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: each ephemeral row of a fleet leaves nothing",
+      "file": "cmd_owner.go",
+      "find": "\t\to.leave(row)\n",
+      "replace": "\t\t_ = row\n",
+      "run": "TestAnEphemeralFleetLeavesNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a persistent job keeps its record",
+      "file": "internal/toolkit/record.go",
+      "find": "lifecycle != ContainerEphemeral || res.RecordKept != \"\" {",
+      "replace": "lifecycle == \"\" || res.RecordKept != \"\" {",
+      "run": "TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a record holding the complete output is kept",
+      "file": "internal/toolkit/record.go",
+      "find": "\tcase res.StdoutTruncated || res.StderrTruncated:\n",
+      "replace": "\tcase res.StdoutTruncated && res.StderrTruncated:\n",
+      "run": "TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a record beside undelivered artifacts is kept",
+      "file": "internal/toolkit/record.go",
+      "find": "\tcase res.ArtifactError != \"\":\n",
+      "replace": "\tcase res.ArtifactError == \"never\":\n",
+      "run": "TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a kept record names a guest directory as itself",
+      "file": "internal/toolkit/record.go",
+      "find": "\t\treturn \"its guest directory \" + res.GuestDir + \" was not removed",
+      "replace": "\t\treturn \"its artifacts were not delivered \" + res.GuestDir + \" was not removed",
+      "run": "TestAKeptRecordNamesItsOwnCause",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a record a reason already keeps is not removed",
+      "file": "internal/toolkit/record.go",
+      "find": "lifecycle != ContainerEphemeral || res.RecordKept != \"\" {",
+      "replace": "lifecycle != ContainerEphemeral {",
+      "run": "TestAKeptRecordNamesItsOwnCause",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a removed record's transcript is left out of the answer",
+      "file": "internal/toolkit/record.go",
+      "find": "\t\tres.Transcript = \"\"\n",
+      "replace": "",
+      "run": "TestRemoveRecordLeavesNothingUnlessTheRecordIsTheOnlyCopy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the answer says what an ended job leaves",
+      "file": "cmd_owner.go",
+      "find": "\t\treturn \"job \" + res.ID + \" left nothing: its container, its guest directory and its host record are removed\"\n",
+      "replace": "\t\treturn \"\"\n",
+      "run": "TestAnAnswerSaysWhatTheJobLeaves",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the watcher's sweep makes thirty calls at most",
+      "file": "cmd_owner.go",
+      "find": "const sweepEvery = 30 * time.Second\n",
+      "replace": "const sweepEvery = 10 * time.Second\n",
+      "run": "TestTheWatchersSweepIsThirtyCallsAtMost",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a record whose owner's lock is free is closed",
+      "file": "internal/toolkit/lostowner.go",
+      "find": " || !ownerGone(home, e.ID) {",
+      "replace": " {",
+      "run": "TestARecordWhoseOwnerIsLostIsClosedWhenRead",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a record whose job recorded its end is not closed as lost",
+      "file": "internal/toolkit/lostowner.go",
+      "find": "err != nil || ended {",
+      "replace": "err != nil || ended && false {",
+      "run": "TestARecordWhoseOwnerIsLostIsClosedWhenRead",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the job list closes a record whose owner is lost",
+      "file": "cmd_logs.go",
+      "find": "\tcloseLostOwners(home)\n",
+      "replace": "",
+      "run": "TestAReaderClosesARecordWhoseOwnerIsLost",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: logs ID closes a record whose owner is lost",
+      "file": "cmd_logs.go",
+      "find": "\t\tcloseLostOwners(home, id)\n",
+      "replace": "",
+      "run": "TestAReaderClosesARecordWhoseOwnerIsLost",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wait closes a record whose owner is lost",
+      "file": "cmd_jobs.go",
+      "find": "\t\tcloseLostOwners(home, id)\n",
+      "replace": "",
+      "run": "TestAReaderClosesARecordWhoseOwnerIsLost",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a caller that exits first stops its job",
+      "file": "internal/toolkit/watch.go",
+      "find": "\t\t\tw.cancel(ctx, *gone, &out)\n",
+      "replace": "",
+      "run": "TestACallerThatExitsFirstStopsTheJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the watcher records the end of a job whose owner was lost",
+      "file": "internal/toolkit/watch.go",
+      "find": "\t\t\t\tif err := RecordLostEnd(w.Home, id, why); err != nil {\n",
+      "replace": "\t\t\t\tif err := error(nil); err == nil {\n",
+      "run": "TestACallerThatExitsFirstStopsTheJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job that ended first is not stopped",
+      "file": "internal/toolkit/watch.go",
+      "find": "\t\tif st.Result == nil && (st.Known || !w.seen[id]) {\n",
+      "replace": "\t\tif st.Known || !w.seen[id] {\n",
+      "run": "TestAJobThatEndedFirstIsNotStopped",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a row its lost fleet never claimed is not stopped",
+      "file": "internal/toolkit/watch.go",
+      "find": "\t\tcase !st.Known && ownerLost:\n",
+      "replace": "\t\tcase !st.Known && ownerLost && false:\n",
+      "run": "TestARowNotYetClaimedIsStoppedOnlyWhileItsFleetLives",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a container that starts after its owner was lost is swept",
+      "file": "internal/toolkit/watch.go",
+      "find": "\tw.sweep(ctx, out.Recorded, found)\n",
+      "replace": "",
+      "run": "TestAContainerThatStartsAfterItsOwnerWasLostIsStopped",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only the tool's own value starts a watcher",
+      "file": "internal/toolkit/watch.go",
+      "find": "\trest, ok := strings.CutPrefix(v, watchdogMark)\n",
+      "replace": "\trest, ok := strings.CutPrefix(v, \"\")\n",
+      "run": "TestOnlyThisToolsValueStartsAWatcher",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop --cancel-on-exit asked for says so",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\t\treturn \"the job was stopped by --cancel-on-exit\" + when + \": \" + why\n",
+      "replace": "\t\treturn \"the job was stopped by wsl-toolkit stop\" + when + why[:0]\n",
+      "run": "TestAStopSaysWhoAskedForIt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a container in its grace has no exit yet",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\tcase \"running\", \"stopping\", \"paused\":\n\t\treturn nil, false\n",
+      "replace": "\tcase \"running\", \"stopping\", \"paused\":\n\t\treturn nil, true\n",
+      "run": "TestAContainerInItsGraceHasNoExitYet",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a reader names --cancel-on-exit as what stopped a job",
+      "file": "internal/toolkit/jobctl.go",
+      "find": "\t\treturn \"--cancel-on-exit, because \" + why + \",\"\n",
+      "replace": "\t\treturn \"wsl-toolkit stop\" + why[:0]\n",
+      "run": "TestAReaderNamesWhatStoppedAJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a detached owner watches the chain its client handed it",
+      "file": "cmd_owner.go",
+      "find": "\tif os.Getenv(toolkit.DetachedEnv) != \"\" {\n\t\treturn toolkit.DecodeWatched",
+      "replace": "\tif os.Getenv(toolkit.DetachedEnv) == \"never\" {\n\t\treturn toolkit.DecodeWatched",
+      "run": "TestADetachedOwnerWatchesTheChainItWasHanded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a detached answer names what --cancel-on-exit watches",
+      "file": "cmd_run.go",
+      "find": "\t\t\tdoc[\"cancel_on_exit\"] = watched\n",
+      "replace": "",
+      "run": "TestADetachedAnswerNamesWhatItWatches",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --cancel-on-exit is refused through the helper",
+      "file": "cmd_owner.go",
+      "find": "\tcase o.cancelOnExit:\n",
+      "replace": "\tcase o.cancelOnExit && false:\n",
+      "run": "TestOwnerFlagsAreRefusedThroughTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a project's cap is dropped through the helper and the job runs",
+      "file": "cmd_owner.go",
+      "find": "\t\to.maxRunning, o.maxRunningWait, o.capFromConfig = 0, 0, false\n",
+      "replace": "\t\treturn errors.New(\"jobs.max_running is refused through the helper\")\n",
+      "run": "TestOwnerFlagsAreRefusedThroughTheHelper",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet's row runs under the id its caller drew",
+      "file": "internal/toolkit/matrix.go",
+      "find": "\t\trow.ID = spec.RowIDs[i]\n",
+      "replace": "\t\t_ = spec.RowIDs[i]\n",
+      "run": "TestARowRunsUnderTheIDItsFleetDrew",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the Windows watch reads a reused id as exited",
+      "file": "internal/toolkit/watch_windows.go",
+      "find": "\t\tif start, err := processStart(h); err != nil || start != p.Start {\n",
+      "replace": "\t\tif start, err := processStart(h); err != nil || start < 0 {\n",
+      "run": "TestTheWindowsWatchReadsAReusedIDAsExited",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the Windows watch sees a process exit",
+      "file": "internal/toolkit/watch_windows.go",
+      "find": "\tcase r < uintptr(len(w.handles)):\n",
+      "replace": "\tcase r == uintptr(len(w.handles))+1000:\n",
+      "run": "TestTheWindowsWatchSeesAProcessExit",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the Windows chain starts at the parent",
+      "file": "internal/toolkit/watch_windows.go",
+      "find": "\tpid, ok := parents[uint32(os.Getpid())]\n",
+      "replace": "\tpid, ok := uint32(os.Getpid()), true\n",
+      "run": "TestTheWindowsChainStartsAtTheParent",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the /proc watch reads a reused id as exited",
+      "file": "internal/toolkit/watch_other.go",
+      "find": "procStat(p.PID); !ok || start != p.Start {",
+      "replace": "procStat(p.PID); !ok || start < 0 {",
+      "run": "TestTheProcWatchReadsAReusedIDAsExited",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the /proc watch sees a process exit",
+      "file": "internal/toolkit/watch_other.go",
+      "find": "\t\t\t\tw.gone = &w.ids[i]\n\t\t\t\treturn w.gone, nil\n",
+      "replace": "\t\t\t\t_ = i\n\t\t\t\tcontinue\n",
+      "run": "TestTheProcWatchSeesAProcessExit",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the /proc chain starts at the parent",
+      "file": "internal/toolkit/watch_other.go",
+      "find": "\tpid := ppid\n",
+      "replace": "\tpid := os.Getpid() + ppid*0\n",
+      "run": "TestTheProcChainStartsAtTheParent",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only an admitted job counts as running",
+      "file": "internal/toolkit/running.go",
+      "find": "\t\t\tif _, err := os.Stat(filepath.Join(dir, admittedName)); err != nil {\n",
+      "replace": "\t\t\tif _, err := os.Stat(filepath.Join(dir, admittedName)); err != nil && false {\n",
+      "run": "TestOnlyAnAdmittedJobWithALiveOwnerCountsAsRunning",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a running job's owner holds its lock",
+      "file": "internal/toolkit/running.go",
+      "find": "err == nil && held {",
+      "replace": "err == nil && (held || !held) {",
+      "run": "TestOnlyAnAdmittedJobWithALiveOwnerCountsAsRunning",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an ended job's running mark goes with its end",
+      "file": "internal/toolkit/jobowner.go",
+      "find": "\tdefer func() { _ = os.Remove(filepath.Join(o.Dir, admittedName)) }()\n",
+      "replace": "",
+      "run": "TestAnEndedJobIsNotMarkedRunning",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job over the cap with no wait is refused at once",
+      "file": "internal/toolkit/running.go",
+      "find": "\t\tif wait <= 0 {\n",
+      "replace": "\t\tif wait < 0 {\n",
+      "run": "TestAJobOverTheCapWaitsOrIsRefusedAndSaysWhich",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop ends a wait for a running slot",
+      "file": "internal/toolkit/running.go",
+      "find": "\t\tif stopped != nil && stopped() {\n",
+      "replace": "\t\tif stopped != nil && false {\n",
+      "run": "TestAJobOverTheCapWaitsOrIsRefusedAndSaysWhich",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a detaching run is refused at once over the cap",
+      "file": "internal/toolkit/running.go",
+      "find": "\tif running := RunningJobs(); len(running) >= limit {\n",
+      "replace": "\tif running := RunningJobs(); len(running) > limit {\n",
+      "run": "TestAJobOverTheCapWaitsOrIsRefusedAndSaysWhich",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job let in at once waited not at all",
+      "file": "internal/toolkit/running.go",
+      "find": "\t\t\tif !held {\n",
+      "replace": "\t\t\tif !held && false {\n",
+      "run": "TestAJobLetInAtOnceWaitedNotAtAll",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a runner marks the job it runs as running",
+      "file": "internal/toolkit/job.go",
+      "find": "\tif err := markAdmitted(r.home, id); err != nil {\n",
+      "replace": "\tif err := error(nil); err != nil {\n",
+      "run": "TestARunnerMarksTheJobItRunsAsRunning",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a row its runner claims is held by the cap",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\tif spec.Admit != nil {\n",
+      "replace": "\t\tif spec.Admit != nil && false {\n",
+      "run": "TestARowTheRunnerClaimsIsHeldByTheCap",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet's cap reaches every row",
+      "file": "internal/toolkit/matrix.go",
+      "find": "TickEvery: spec.TickEvery, Admit: spec.Admit,",
+      "replace": "TickEvery: spec.TickEvery,",
+      "run": "TestEveryMatrixFieldReachesItsRows",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a fleet is held by a project's cap",
+      "file": "cmd_owner.go",
+      "find": "\tif o.maxRunning <= 0 {\n\t\treturn nil\n\t}\n",
+      "replace": "\tif o.maxRunning >= 0 {\n\t\treturn nil\n\t}\n",
+      "run": "TestAFleetIsHeldByTheProjectsCap",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a project's cap is read where the command line names none",
+      "file": "cmd_owner.go",
+      "find": "\t\to.maxRunning, o.capFromConfig = cfg.Jobs.MaxRunning, true\n",
+      "replace": "\t\to.capFromConfig = true\n",
+      "run": "TestOwnerFlagsRefuseWhatCannotMeanWhatItSays",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job the cap refuses records its end",
+      "file": "cmd_owner.go",
+      "find": "\to.finish(owner, &res)\n\treturn waited, true, exitCannot, err\n",
+      "replace": "\t_ = res\n\treturn waited, true, exitCannot, err\n",
+      "run": "TestAJobTheCapRefusesRecordsItsEnd",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the answer says how long the cap held a job",
+      "file": "cmd_owner.go",
+      "find": "\tif res.WaitedToRun <= 0 || res.ID == \"\" {\n",
+      "replace": "\tif res.WaitedToRun >= 0 || res.ID == \"\" {\n",
+      "run": "TestAnAnswerSaysHowLongTheCapHeldTheJob",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a negative jobs.max_running is refused",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif c.Jobs.MaxRunning < 0 {\n",
+      "replace": "\tif c.Jobs.MaxRunning < -1000 {\n",
+      "run": "TestTheRunningCapIsReadFromAProjectsConfiguration",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: jobs.max_running survives loading",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tcfg.Jobs.MaxRunning = stored.Jobs.MaxRunning\n",
+      "replace": "",
+      "run": "TestTheNewJobsKeysSurviveLoading",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "muse: root opens no file in the account's scratch directory",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/adapters/muse/probe.sh",
@@ -3307,8 +4108,8 @@
     {
       "label": "wsl-toolkit: gc --job holds an id to its shape",
       "file": "cmd_admin.go",
-      "find": "\tif *job != \"\" && !toolkit.ValidJobID(*job) {\n",
-      "replace": "\tif *job != \"\" && false {\n",
+      "find": "\tif *job != \"\" && notHere == nil && !toolkit.ValidJobID(*job) {\n",
+      "replace": "\tif *job != \"\" && notHere == nil && false {\n",
       "run": "TestGCRefusesANarrowingItCannotHonour",
       "module": "tools/windows/wsl-toolkit",
       "args": []

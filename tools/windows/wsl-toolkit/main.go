@@ -42,6 +42,17 @@ const (
 
 var quiet bool
 
+// jsonCompact puts each --json answer on one line: the global --json-compact
+// flag, or WSL_TOOLKIT_JSON=compact. WSL-120.
+//
+// ⛔ podbox lost a session id reading the indented answer of `base exec
+// --detach --json` one line at a time. The default stays indented, which is
+// what every caller of an earlier release parses.
+var jsonCompact bool
+
+// jsonEnv selects the answer's layout for every command of a process tree.
+const jsonEnv = "WSL_TOOLKIT_JSON"
+
 func init() {
 	commandSpecs = registeredCommandSpecs()
 	commands = make(map[string]func(context.Context, []string) (int, error), len(commandSpecs))
@@ -98,6 +109,8 @@ func usage() string {
 		"        --home DIR    the state directory (also WSL_TOOLKIT_HOME)",
 		"        --config F    a configuration file, ahead of every search step",
 		"        --quiet       progress off. Answers still go to stdout",
+		"        --json-compact  each --json answer on one line. Also",
+		"                      WSL_TOOLKIT_JSON=compact",
 		"",
 		"Every command takes --json where an answer has structure.",
 		"Progress goes to stderr; stdout carries the answer alone.",
@@ -161,6 +174,8 @@ func run(ctx context.Context, args []string) int {
 		switch {
 		case args[i] == "--quiet" || args[i] == "-q":
 			quiet = true
+		case args[i] == "--json-compact":
+			jsonCompact = true
 		case args[i] == "--home":
 			if i+1 >= len(args) {
 				fmt.Fprintln(os.Stderr, "wsl-toolkit: --home needs a directory")
@@ -203,7 +218,11 @@ func run(ctx context.Context, args []string) int {
 			}
 		}
 	}
-	if len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h" {
+	if err := readJSONEnv(); err != nil {
+		fmt.Fprintln(os.Stderr, "wsl-toolkit: ! "+err.Error())
+	}
+	watchIDs, watchdog := toolkit.WatchdogJobs(os.Getenv(toolkit.WatchdogEnv))
+	if !watchdog && (len(rest) == 0 || rest[0] == "help" || rest[0] == "--help" || rest[0] == "-h") {
 		fmt.Fprintln(os.Stderr, usage())
 		return exitOK
 	}
@@ -214,6 +233,11 @@ func run(ctx context.Context, args []string) int {
 	if code, err := applyInstance(ctx, instance); err != nil {
 		fmt.Fprintln(os.Stderr, "wsl-toolkit: "+err.Error())
 		return code
+	}
+	// ⭐ THE WATCHER OF --cancel-on-exit IS THIS PROGRAM, started by the owner
+	// of a job with the same selection and no command of its own. WSL-121.
+	if watchdog {
+		return runWatchdog(ctx, watchIDs)
 	}
 	cmd, cmdArgs := rest[0], rest[1:]
 	if cmd == "--version" {
@@ -440,10 +464,33 @@ func parseOneName(fs *flag.FlagSet, args []string) (string, error) {
 
 // writeJSON puts a structured answer on stdout. It is the only thing in this
 // program that writes there, apart from a forwarded child's own stream.
+//
+// ⭐ ONE LINE UNDER --json-compact, so a caller reading lines reads one
+// document per line. The bytes inside the document do not change. WSL-120.
 func writeJSON(v any) error {
 	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
+	if !jsonCompact {
+		enc.SetIndent("", "  ")
+	}
 	return enc.Encode(v)
+}
+
+// readJSONEnv reads WSL_TOOLKIT_JSON. compact is its one value.
+//
+// ⛔ ANY OTHER VALUE IS SAID OUT LOUD, and the answer keeps the indented
+// default. A layout a caller asked for and silently did not get is a setting
+// nobody can see. A refusal was no better: the variable was read by nothing
+// before, so a value left in a shell made every command exit 2. WSL-120.
+func readJSONEnv() error {
+	v := strings.TrimSpace(os.Getenv(jsonEnv))
+	switch strings.ToLower(v) {
+	case "":
+		return nil
+	case "compact":
+		jsonCompact = true
+		return nil
+	}
+	return fmt.Errorf("%s=%q is not a layout this build writes, so the answer stays indented. Its one value is compact", jsonEnv, v)
 }
 
 func cmdVersion(args []string) (int, error) {

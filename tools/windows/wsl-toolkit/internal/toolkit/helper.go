@@ -640,6 +640,9 @@ func (h *HelperServer) handleRun(w http.ResponseWriter, r *http.Request) {
 		TickEvery: time.Duration(req.TickMS) * time.Millisecond,
 		OnTick:    req.tickSink(events),
 	})
+	// ⭐ AN EPHEMERAL JOB LEAVES NOTHING HERE EITHER. The helper owns the record,
+	// so the helper removes it, before the answer that says so. WSL-121.
+	RemoveJobRecord(runner.home, res.ContainerLifecycle, &res)
 	events.send(HelperEvent{Kind: "result", Result: &res, ArtifactsID: artifactID})
 }
 
@@ -749,6 +752,10 @@ func (h *HelperServer) handleMatrix(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		events.send(HelperEvent{Kind: "error", Text: err.Error()})
 		return
+	}
+	// ⭐ EACH EPHEMERAL ROW'S RECORD GOES BEFORE THE FLEET'S ANSWER. WSL-121.
+	for i := range report.Rows {
+		RemoveJobRecord(runner.home, report.Rows[i].ContainerLifecycle, &report.Rows[i])
 	}
 	events.send(HelperEvent{Kind: "report", Report: &report, ArtifactsID: artifactID})
 }
@@ -914,6 +921,13 @@ func (h *HelperServer) handleInspect(w http.ResponseWriter, r *http.Request) {
 			writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
+		// ⭐ A PREFIX OF ONE OF THE HELPER'S JOBS IS READ HERE. WSL-120.
+		resolved, err := h.resolveJob(id)
+		if err != nil {
+			writeHelperJSON(w, http.StatusOK, map[string]any{"schema": HelperSchema, "report": InspectReport{}, "unknown_job": true, "error": err.Error()})
+			return
+		}
+		id = resolved
 	}
 	since := 24 * time.Hour
 	if raw := r.URL.Query().Get("since_ms"); raw != "" {
@@ -960,6 +974,12 @@ func (h *HelperServer) handleJobStop(w http.ResponseWriter, r *http.Request) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	id, err := h.resolveJob(req.ID)
+	if err != nil {
+		writeHelperJSON(w, http.StatusOK, map[string]any{"schema": HelperSchema, "report": StopReport{Schema: StopSchema, ID: req.ID, Kind: "job"}, "error": err.Error(), "unknown": true})
+		return
+	}
+	req.ID = id
 	if !ValidJobID(req.ID) {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": fmt.Sprintf("%q is not a job id", req.ID)})
 		return
@@ -971,6 +991,17 @@ func (h *HelperServer) handleJobStop(w http.ResponseWriter, r *http.Request) {
 		payload["unknown"] = errors.Is(err, ErrUnknownJob)
 	}
 	writeHelperJSON(w, http.StatusOK, payload)
+}
+
+// resolveJob reads a job a client named, in any form ResolveJobID reads, in the
+// helper's own state directory. WSL-120.
+//
+// ⛔ THE CLIENT CANNOT RESOLVE A PREFIX OF THE HELPER'S JOBS. A client that
+// cannot reach wsl.exe may run under a state directory of its own, and the
+// helper's jobs are in the helper's. A client hands on a prefix it found
+// nothing for, and the helper reads it here.
+func (h *HelperServer) resolveJob(raw string) (string, error) {
+	return ResolveJobID(h.runner.home, raw, nil)
 }
 
 // HelperGCRequest is the wire shape of one cleanup. It carries every field of
@@ -1006,6 +1037,14 @@ func (h *HelperServer) handleGC(w http.ResponseWriter, r *http.Request) {
 			writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
 		}
+	}
+	if req.Job != "" {
+		id, err := h.resolveJob(req.Job)
+		if err != nil {
+			writeHelperJSON(w, http.StatusOK, map[string]any{"schema": HelperSchema, "plan": CleanupPlan{Schema: CleanupSchema, DryRun: !req.Apply, Entries: []CleanupEntry{}}, "error": err.Error(), "unknown": true})
+			return
+		}
+		req.Job = id
 	}
 	policy, err := req.policy()
 	if err != nil {

@@ -55,8 +55,10 @@ func helperRunJob(ctx context.Context, c *toolkit.HelperClient, j jobFlags, ref,
 		spool.Discard()
 		return res, err
 	}
-	if local := spool.Finish(res.ID); local != "" {
+	if local := spoolLeft(res, spool.Finish(res.ID)); local != "" {
 		res.Transcript = local
+	} else if res.RecordRemoved {
+		res.Transcript = ""
 	}
 	res.Label = label
 	if j.artifactDir != "" && artifactsID != "" && res.ArtifactError == "" {
@@ -137,6 +139,29 @@ func helperRunMatrix(ctx context.Context, c *toolkit.HelperClient, j jobFlags, i
 		}
 	}
 	return report, nil
+}
+
+// spoolLeft is the local transcript a helper-run job keeps on this machine:
+// local, or "" where the helper removed the job's record and this copy went
+// with it. WSL-121.
+//
+// ⛔ AN EPHEMERAL JOB THE HELPER LEFT NOTHING OF LEAVES NOTHING HERE EITHER. The
+// helper removed its record and answered record_removed, and this process then
+// filed its own copy of the streams under the job's id, so the directory the
+// answer said was gone was there.
+func spoolLeft(res toolkit.JobResult, local string) string {
+	if !res.RecordRemoved || local == "" {
+		return local
+	}
+	home, err := toolkit.Home()
+	if err == nil {
+		err = toolkit.RemoveInside(home, local)
+	}
+	if err != nil {
+		note("the local copy of the job's output could not be removed: " + err.Error())
+		return local
+	}
+	return ""
 }
 
 // helperDevices is each --device in podman's spelling, which the helper parses

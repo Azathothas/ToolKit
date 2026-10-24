@@ -37,7 +37,7 @@ const inspectUsage = `wsl-toolkit inspect [JOB-ID]
 
   An id nothing on this machine has heard of is a refusal, not an empty
   answer. wsl-toolkit logs lists the jobs this machine still has.
-`
+` + jobIDForms
 
 func cmdInspect(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("inspect")
@@ -55,6 +55,14 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	if *since <= 0 {
 		return exitCannot, fmt.Errorf("--since %s would read no journal at all. Pass a positive duration", *since)
 	}
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES, and one
+	// nothing here starts is handed to the helper, whose jobs are its own.
+	// WSL-120.
+	resolved, notHere, err := resolveRoutedJobID("inspect", args, id)
+	if err != nil {
+		return exitCannot, err
+	}
+	id = resolved
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
@@ -66,11 +74,24 @@ func cmdInspect(ctx context.Context, args []string) (int, error) {
 	// own last exit, the guest's disk - was unreachable while its sibling report
 	// had the door. That is the one-gated-door class, in the tool that keeps
 	// finding it. WSL-58.
+	//
+	// ⛔ A PREFIX NOTHING KNOWS IS AN UNKNOWN JOB ON BOTH ROUTES, exit 1, as
+	// 7.0.2 answered it. The direct route refused it with exit 2 while the
+	// helper's unknown_job answered 1. WSL-120.
 	var rep toolkit.InspectReport
-	if c, hErr := useHelper(ctx, *viaHelper); hErr != nil {
+	var unknown error
+	if notHere != nil {
+		unknown = fmt.Errorf("%w: %w", toolkit.ErrUnknownJob, notHere)
+	}
+	if c, hErr := useHelper(ctx, *viaHelper); notHere != nil && (hErr != nil || c == nil) {
+		return renderInspectResult(rep, unknown, *asJSON)
+	} else if hErr != nil {
 		return exitCannot, hErr
 	} else if c != nil {
 		rep, err = c.Inspect(ctx, id, *since)
+		if err != nil && unknown != nil && !errors.Is(err, toolkit.ErrUnknownJob) {
+			err = unknown
+		}
 		return renderInspectResult(rep, err, *asJSON)
 	}
 

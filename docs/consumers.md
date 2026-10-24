@@ -118,6 +118,15 @@ changes meaning for it.
 | --- | --- | --- |
 | a NEW instance named `wsl-NAME` or `wsl-toolkit-NAME` is made as `NAME`, distribution `wsl-toolkit-NAME`, with one warning on stderr. `wsl-`, `wsl-toolkit-`, `wsl-toolkit`, `wsl-base`, `wsl-jobs` and `wsl-auto` are refused | creates such an instance on a new host and then names its distribution `wsl-toolkit-wsl-NAME` directly | reads the name from `base status --json`, or passes `--literal-instance` |
 
+### ⚠ What an ephemeral job's record changes, and what a caller does
+
+`WSL-121`. Not released yet. The help always said an ephemeral job leaves nothing behind;
+now its host record goes too, once its answer is written.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| an attached ephemeral job removes its host record when it ends. Its answer is kept for 10 minutes, so `wait ID` and `logs ID --follow` still answer its verdict | reads `logs ID`, `inspect ID` or `gc --job ID` for an ephemeral job long after it ended | reads the answer `run` printed, or runs the job without `--container-lifecycle ephemeral`, which keeps the record |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

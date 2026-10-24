@@ -129,6 +129,9 @@ func staleFakeWsl(dir string, args []string, stdin io.Reader, stdout io.Writer) 
 		}
 		fmt.Fprint(stdout, string(answer))
 	case "teardown":
+		if _, err := os.Stat(filepath.Join(dir, "teardown-fails")); err == nil {
+			return 1
+		}
 		fmt.Fprintln(stdout, "removed")
 	}
 	return 0

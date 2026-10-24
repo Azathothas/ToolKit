@@ -376,6 +376,9 @@ type CleanupPlan struct {
 	// WOULD REMOVE cannot be checked: the caller sees an empty plan and cannot
 	// tell "nothing is here" from "everything here is in use".
 	Kept []string `json:"kept,omitempty"`
+	// Entries is one object per target, beside the strings above: its kind,
+	// job, instance, workspace, path, action and result. WSL-120.
+	Entries []CleanupEntry `json:"entries"`
 }
 
 // CleanupSchema versions the plan.

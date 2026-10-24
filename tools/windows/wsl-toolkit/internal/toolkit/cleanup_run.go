@@ -4,6 +4,7 @@ package toolkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ import (
 // stop it removing the rest; stopping at the first failure would hide the state
 // of everything after it.
 func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, includeImages bool) (CleanupPlan, error) {
-	plan := CleanupPlan{Schema: CleanupSchema, DryRun: !apply}
+	plan := CleanupPlan{Schema: CleanupSchema, DryRun: !apply, Entries: []CleanupEntry{}}
 	guestHome, err := r.guestHome(ctx)
 	if err != nil {
 		return plan, err
@@ -54,21 +55,49 @@ func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, 
 	plan.GuestDirs = Names(Of(remove, "guest-dir"))
 	plan.HostDirs = Names(Of(remove, "host-dir"))
 	plan.Sessions = Names(Of(remove, "session"))
+	// ⭐ THE SAME SETS, ONE OBJECT PER TARGET. Entry i of the first len(remove)
+	// is remove[i], so the apply below settles each in place. WSL-120.
+	plan.Entries = cleanupEntries(remove, spared, SelectedInstance.Name)
+	var pruned []int
+	var imageIDs []string
+	if includeImages {
+		plan.Entries, pruned, imageIDs = appendImageEntries(plan.Entries, images, SelectedInstance.Name)
+	}
 
 	if !apply {
 		return plan, nil
 	}
 
-	if err := r.applyGuestCleanup(ctx, &plan, root, remove, includeImages); err != nil {
+	guestDone, err := r.applyGuestCleanup(ctx, &plan, root, remove, includeImages)
+	if err != nil {
 		return plan, err
 	}
-	r.removeSessions(ctx, &plan, Of(remove, "session"))
+	sessionDone := r.removeSessions(ctx, &plan, Of(remove, "session"))
+	hostDone := map[string]error{}
 	for _, t := range Of(remove, "host-dir") {
 		if err := RemoveInside(r.home, t.Name); err != nil {
 			plan.Failed = append(plan.Failed, "host directory "+t.Name+": "+err.Error())
+			hostDone[t.Name] = err
 			continue
 		}
+		hostDone[t.Name] = nil
 		plan.Removed = append(plan.Removed, "host directory "+t.Name)
+	}
+	for i, t := range remove {
+		e := &plan.Entries[i]
+		switch t.Kind {
+		case "container":
+			settleFrom(e, guestDone, "container "+containerNameOf(t.Name))
+		case "guest-dir":
+			settleFrom(e, guestDone, "directory "+t.Name)
+		case "session":
+			settleFrom(e, sessionDone, t.JobID)
+		case "host-dir":
+			settleFrom(e, hostDone, t.Name)
+		}
+	}
+	if len(pruned) > 0 {
+		r.settleImages(ctx, plan.Entries, pruned, imageIDs)
 	}
 
 	r.closeStaleRecords(ctx, &plan)
@@ -145,7 +174,7 @@ func (r *Runner) cleanupTargets(ctx context.Context) ([]CleanupTarget, []OwnedTh
 		}
 		targets = append(targets, CleanupTarget{
 			Kind: "container", Name: c.Name + " (" + c.ID + ")", JobID: id,
-			Live: live, ModTime: dirTime[id], Workspace: workspaceOf(id),
+			Live: live, ModTime: dirTime[id], Workspace: workspaceOf(id), Path: c.Name,
 		})
 	}
 
@@ -411,7 +440,7 @@ func planImages(images []OwnedThing) (remove, kept []string) {
 // ⛔ IT IS GIVEN A LIST AND DOES NOT ENUMERATE. The script this replaced globbed
 // the guest again at the moment of removal, so whatever the plan had decided was
 // irrelevant by the time anything was deleted.
-func (r *Runner) applyGuestCleanup(ctx context.Context, plan *CleanupPlan, root string, remove []CleanupTarget, pruneImages bool) error {
+func (r *Runner) applyGuestCleanup(ctx context.Context, plan *CleanupPlan, root string, remove []CleanupTarget, pruneImages bool) (map[string]error, error) {
 	var b strings.Builder
 	if pruneImages {
 		b.WriteString(keptImagesPrune())
@@ -441,22 +470,103 @@ func (r *Runner) applyGuestCleanup(ctx context.Context, plan *CleanupPlan, root 
 	b.WriteString(`printf 'cleanup-complete %s\n' "$removed"` + "\n")
 
 	out, stderr, code, err := r.baseCapture(ctx, []byte(b.String()), 20*time.Minute)
+	done := readGuestCleanup(plan, out)
+	if err != nil || code != 0 {
+		return done, fmt.Errorf("cleanup in the guest exited %d: %s", code, guestFailure(stderr, out))
+	}
+	if !strings.Contains(out, "cleanup-complete") {
+		return done, fmt.Errorf("cleanup exited 0 without reaching its last line")
+	}
+	return done, nil
+}
+
+// readGuestCleanup reads the guest's lines into the plan's strings, and answers
+// each target's outcome by its line's key: "container NAME" or "directory
+// PATH", nil for removed. ⭐ A function with no process in it, so its case runs
+// on any host. WSL-120.
+func readGuestCleanup(plan *CleanupPlan, out string) map[string]error {
+	done := map[string]error{}
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case strings.HasPrefix(line, "removed "):
-			plan.Removed = append(plan.Removed, strings.TrimPrefix(line, "removed "))
+			what := strings.TrimPrefix(line, "removed ")
+			plan.Removed = append(plan.Removed, what)
+			done[what] = nil
 		case strings.HasPrefix(line, "FAILED "):
-			plan.Failed = append(plan.Failed, strings.TrimPrefix(line, "FAILED "))
+			what := strings.TrimPrefix(line, "FAILED ")
+			plan.Failed = append(plan.Failed, what)
+			switch {
+			case strings.HasPrefix(what, "refused "):
+				done["directory "+strings.TrimPrefix(what, "refused ")] = errors.New("the guest refused it: it is not under this tool's job directories")
+			case strings.HasPrefix(what, "container "):
+				done[what] = errors.New("the engine could not remove it")
+			default:
+				done[what] = errors.New("it is still there after the removal")
+			}
 		}
 	}
-	if err != nil || code != 0 {
-		return fmt.Errorf("cleanup in the guest exited %d: %s", code, guestFailure(stderr, out))
+	return done
+}
+
+// appendImageEntries adds one entry per image `gc --images` lists, and answers
+// the indexes of those it prunes and their ids. WSL-120.
+//
+// ⛔ THE TWO IMAGES `gc --images` KEEPS READ AS KEPT, as its `kept` list says,
+// and never as pruned. WSL-174.
+func appendImageEntries(entries []CleanupEntry, images []OwnedThing, instance string) ([]CleanupEntry, []int, []string) {
+	var at []int
+	var ids []string
+	for _, i := range images {
+		if why, kept := keptImageReason(i.Name); kept {
+			entries = append(entries, CleanupEntry{Kind: "image", Instance: instance, Path: i.Name, Action: CleanupKeep, Result: CleanupKept, Reason: why})
+			continue
+		}
+		at = append(at, len(entries))
+		entries = append(entries, CleanupEntry{Kind: "image", Instance: instance, Path: i.Name, Action: CleanupPrune, Result: CleanupPlanned})
+		ids = append(ids, i.ID)
 	}
-	if !strings.Contains(out, "cleanup-complete") {
-		return fmt.Errorf("cleanup exited 0 without reaching its last line")
+	return entries, at, ids
+}
+
+// settleImages reads which images the prune left, for the plan's image
+// entries at the indexes in at, whose ids are ids.
+//
+// ⚠ THE PRUNE REMOVES WHAT NO CONTAINER USES and says nothing per image, so the
+// engine is asked again rather than the prune's success being read as each
+// image's removal.
+func (r *Runner) settleImages(ctx context.Context, entries []CleanupEntry, at []int, ids []string) {
+	_, images, _, err := r.engineHolding(ctx)
+	settleImageEntries(entries, at, ids, images, err)
+}
+
+// settleImageEntries writes each pruned image's result from what the engine
+// still holds. ⭐ A function with no process in it, so its case runs on any
+// host. WSL-120.
+//
+// ⚠ MATCHED BY ID, because every dangling image is named `<none>:<none>`.
+//
+// ⛔ ONLY THE ENTRIES AT at ARE SETTLED. An image `gc --images` keeps is
+// already an entry that reads kept, and the prune never touched it. WSL-174.
+func settleImageEntries(entries []CleanupEntry, at []int, ids []string, held []OwnedThing, err error) {
+	left := map[string]bool{}
+	for _, i := range held {
+		left[i.ID] = true
 	}
-	return nil
+	for k, idx := range at {
+		if idx < 0 || idx >= len(entries) {
+			continue
+		}
+		e := &entries[idx]
+		switch {
+		case err != nil:
+			e.Result, e.Reason = CleanupUnknown, "the engine could not be asked what it holds after the prune: "+err.Error()
+		case k < len(ids) && left[ids[k]]:
+			e.Result, e.Reason = CleanupKept, "a container still uses it, so the prune left it"
+		default:
+			e.Result = CleanupRemoved
+		}
+	}
 }
 
 // closeStaleRecords closes a record whose resource is gone.
@@ -499,6 +609,15 @@ func (r *Runner) closeStaleRecords(ctx context.Context, plan *CleanupPlan) {
 			continue
 		}
 		plan.Removed = append(plan.Removed, "record "+e.Kind+"/"+e.ID)
+	}
+	// ⭐ AND A RECORD WHOSE OWNER IS GONE, whatever is left of its job. Its lock
+	// is free and it recorded no end, so nothing will ever close it. WSL-121.
+	lost, err := CloseLostOwners(r.home)
+	if err != nil {
+		plan.Failed = append(plan.Failed, "the records whose owner was lost could not be closed: "+err.Error())
+	}
+	for _, id := range lost {
+		plan.Removed = append(plan.Removed, "record job/"+id+": its owner was lost")
 	}
 }
 

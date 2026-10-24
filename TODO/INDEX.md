@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 249  open 54  blocked 5  done 190
+total 249  open 52  blocked 5  done 192
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
-| P1 | 6 | 0 | 89 | 95 |
-| P2 | 35 | 2 | 79 | 116 |
+| P1 | 5 | 0 | 90 | 95 |
+| P2 | 34 | 2 | 80 | 116 |
 | P3 | 13 | 3 | 14 | 30 |
-| **all** | **54** | **5** | **190** | **249** |
+| **all** | **52** | **5** | **192** | **249** |
 
 ---
 
@@ -212,8 +212,8 @@ total 249  open 54  blocked 5  done 190
 | WSL-117 | P1 | S | done | `gc --apply` cannot remove a job's host directory when Windows redirects the state directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-118 | P1 | S | done | A caller Windows redirects keeps a second state directory, and nothing says so | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-119 | P1 | S | done | git runs in a tree a container or a helper client wrote, and a setting there runs a program | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-120 | P2 | M | open | A job id is hard to use: a prefix, the container name and one-line JSON are all refused | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-121 | P1 | M | open | An ephemeral job keeps its host record, and a killed caller leaves its job running | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-120 | P2 | M | done | A job id is hard to use: a prefix, the container name and one-line JSON are all refused | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-121 | P1 | M | done | An ephemeral job keeps its host record, and a killed caller leaves its job running | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-122 | P2 | M | open | Nothing is cached between jobs, so each job installs its toolchain again | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-123 | P2 | M | open | A job cannot run as an account its image lacks, and `base exec` cannot run as another account | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-124 | P2 | M | open | `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

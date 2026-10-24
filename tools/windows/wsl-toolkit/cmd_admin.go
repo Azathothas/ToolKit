@@ -105,10 +105,18 @@ func cmdResources(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("resources")
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
-	job := fs.String("job", "", "narrow every row to one job id")
+	job := fs.String("job", "", "narrow every row to one job id: the id, its container's name wtk-ID, or a unique prefix of four or more characters")
 	hostEngine := fs.Bool("host-engine", false, "also report what the host's own container engine holds, which distro new --image pulls into, and print the commands that would free it without running any")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
+	}
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES. WSL-120.
+	//
+	// ⛔ ONE THAT NAMES NO SINGLE JOB HERE NARROWS AS IT DID, and is not refused.
+	// `resources --job` matched any text inside a row and exited 0, so a
+	// refusal of a prefix there would change a verdict a caller reads.
+	if resolved, err := resolveJobID("resources", args, *job); err == nil {
+		*job = resolved
 	}
 	cfg, err := loadConfig()
 	if err != nil {
@@ -167,11 +175,20 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	asJSON := fs.Bool("json", false, "write a structured answer")
 	viaHelper := fs.Bool("via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
 	job, workspace := new(string), new(string)
-	fs.Var(nonEmpty{job}, "job", "clean up one job id and leave the rest of the store alone. An id nothing in this instance belongs to is refused")
+	fs.Var(nonEmpty{job}, "job", "clean up one job id and leave the rest of the store alone. The id, its container's name wtk-ID, or a unique prefix of four or more characters. An id nothing in this instance belongs to is refused")
 	fs.Var(nonEmpty{workspace}, "workspace", "clean up only the jobs that copied this directory, read as run --workspace reads it. A job that recorded no workspace is left alone")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES, and one that
+	// names nothing or several is refused before anything is planned. One that
+	// nothing here starts is handed to the helper, whose jobs are its own.
+	// WSL-120.
+	resolved, notHere, err := resolveRoutedJobID("gc", args, *job)
+	if err != nil {
+		return exitCannot, err
+	}
+	*job = resolved
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
@@ -181,7 +198,7 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	}
 	// ⛔ AN ID IS HELD TO ITS SHAPE HERE, as the helper already held it. A
 	// shortened id narrowed the plan to nothing and exited 0. WSL-115.
-	if *job != "" && !toolkit.ValidJobID(*job) {
+	if *job != "" && notHere == nil && !toolkit.ValidJobID(*job) {
 		return exitCannot, fmt.Errorf("--job %q is not a job id: an id is 16 lowercase hex characters, as run --json and logs print it", *job)
 	}
 	if *job != "" && *workspace != "" {
@@ -207,10 +224,18 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	// running is spared exactly as it would be without --job, which is what
 	// WSL-36 settled for the whole store and applies unchanged to one row of it.
 	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive, Job: *job, Workspace: key}
-	if c, err := useHelper(ctx, *viaHelper); err != nil {
+	if c, err := useHelper(ctx, *viaHelper); notHere != nil && (err != nil || c == nil) {
+		return exitCannot, notHere
+	} else if err != nil {
 		return exitCannot, err
 	} else if c != nil {
 		plan, err := c.Cleanup(ctx, *apply, policy, *images)
+		// ⛔ A HELPER THAT SENT NO PLAN FOR THE PREFIX LEAVES THE REFUSAL HERE. A
+		// 7.0 helper refuses a prefix with a plain 400, which exited 1 beside an
+		// empty plan, where 7.0.2 refused it here with exit 2. WSL-120.
+		if err != nil && notHere != nil && plan.Schema == "" && !errors.Is(err, toolkit.ErrUnknownJob) {
+			return exitCannot, notHere
+		}
 		return finishGC(plan, err, *asJSON)
 	}
 	runner, err := toolkit.NewRunner(cfg, note)
@@ -231,7 +256,7 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 		}
 		logf("  %s is not registered, so there is nothing inside it to clean up", st.Name)
 		if *asJSON {
-			return exitOK, writeJSON(toolkit.CleanupPlan{Schema: toolkit.CleanupSchema, DryRun: !*apply})
+			return exitOK, writeJSON(toolkit.CleanupPlan{Schema: toolkit.CleanupSchema, DryRun: !*apply, Entries: []toolkit.CleanupEntry{}})
 		}
 		return exitOK, nil
 	}
@@ -469,6 +494,15 @@ func cmdConfig(args []string) (int, error) {
 		cfg.Jobs.ContainerLifecycle, orNative(cfg.Jobs.Platform))
 	if cfg.Jobs.Workspace != "" {
 		fmt.Fprintf(os.Stderr, "  workspace   %s, relative to %s\n", cfg.Jobs.Workspace, filepath.Dir(resolved))
+	}
+	// WSL-136: a cap changes what a run does, so the report names it where it
+	// is set.
+	if cfg.Jobs.MaxRunning > 0 {
+		wait := "refused at once over it"
+		if cfg.Jobs.MaxRunningWait != "" {
+			wait = "waiting up to " + cfg.Jobs.MaxRunningWait + " under it"
+		}
+		fmt.Fprintf(os.Stderr, "  running     at most %d job(s) on this machine, a run %s\n", cfg.Jobs.MaxRunning, wait)
 	}
 	fmt.Fprintf(os.Stderr, "  catalog     %d image(s), %s\n", len(cfg.Catalog()), builtinOrStored(cfg))
 	fmt.Fprintf(os.Stderr, "  matrix      %d image(s) by default\n", len(cfg.MatrixDefault()))

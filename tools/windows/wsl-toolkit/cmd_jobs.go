@@ -49,6 +49,13 @@ const stopUsage = `wsl-toolkit stop JOB-ID
 
   Exit 0: the job is no longer running. 1: it could not be stopped.
   2: the id is not a job this state directory knows.
+` + jobIDForms
+
+// jobIDForms is what every command that takes a job id says about it. WSL-120.
+const jobIDForms = `
+  JOB-ID is the id a job printed, its container's name wtk-ID, or the
+  first four or more characters of either when one job alone starts with
+  them. A prefix that names none, or several, is refused with exit 2.
 `
 
 func cmdStop(ctx context.Context, args []string) (int, error) {
@@ -67,7 +74,15 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 	if id == "" {
 		return exitCannot, errors.New("stop takes a job id first: " + toolkit.ToolCommand("stop JOB-ID") + ". " + toolkit.ToolCommand("logs") + " lists the jobs this machine has")
 	}
-	if !toolkit.ValidJobID(id) {
+	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES, and one
+	// nothing here starts is handed to the helper, whose jobs are its own.
+	// WSL-120.
+	resolved, notHere, err := resolveRoutedJobID("stop", args, id)
+	if err != nil {
+		return exitCannot, err
+	}
+	id = resolved
+	if notHere == nil && !toolkit.ValidJobID(id) {
 		return exitCannot, fmt.Errorf("%q is not a job id: an id is 16 lowercase hex characters", id)
 	}
 	if *grace < 0 {
@@ -119,10 +134,20 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
-	if c, err := useHelper(ctx, *viaHelper); err != nil {
+	if c, err := useHelper(ctx, *viaHelper); notHere != nil && (err != nil || c == nil) {
+		return exitCannot, notHere
+	} else if err != nil {
 		return exitCannot, err
 	} else if c != nil {
 		rep, err = c.StopJob(ctx, id, *grace)
+		if toolkit.ValidJobID(rep.ID) {
+			id = rep.ID
+		} else if err != nil && notHere != nil {
+			// ⛔ A HELPER THAT NAMED NO JOB FOR THE PREFIX LEAVES THE REFUSAL HERE.
+			// A 7.0 helper refuses a prefix with a plain 400, which read as a failed
+			// stop and exited 1, where 7.0.2 refused it here with exit 2. WSL-120.
+			return exitCannot, notHere
+		}
 	} else {
 		runner, rerr := toolkit.NewRunner(cfg, note)
 		if rerr != nil {
@@ -156,6 +181,11 @@ func waitForResult(ctx context.Context, home, id string, limit time.Duration) to
 	deadline := time.Now().Add(limit)
 	for {
 		st, err := toolkit.ReadJobState(home, id)
+		// ⚠ AN EPHEMERAL JOB'S RECORD GOES ONCE ITS ANSWER IS READY, and the
+		// answer is read from the copy kept beside it. WSL-121.
+		if res, ok := toolkit.EndedAnswer(home, id); err == nil && !st.Known && ok {
+			st.Result = &res
+		}
 		if err != nil || st.Result != nil || !st.Owned || time.Now().After(deadline) {
 			return st
 		}
@@ -197,7 +227,7 @@ const waitUsage = `wsl-toolkit wait JOB-ID
   --timeout D   stop waiting after D. The answer is then 124, and --json
                 says the job is still running
   --json        write a structured answer
-`
+` + jobIDForms
 
 func cmdWait(ctx context.Context, args []string) (int, error) {
 	fs := newFlagSet("wait")
@@ -214,6 +244,11 @@ func cmdWait(ctx context.Context, args []string) (int, error) {
 	if id == "" {
 		return exitCannot, errors.New("wait takes a job id first: " + toolkit.ToolCommand("wait JOB-ID"))
 	}
+	resolved, err := resolveJobID("wait", args, id)
+	if err != nil {
+		return exitCannot, err
+	}
+	id = resolved
 	if *timeout < 0 {
 		return exitCannot, fmt.Errorf("--timeout %s is negative. Pass 0 to wait for as long as the job runs", *timeout)
 	}
@@ -271,10 +306,19 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 		return out, err
 	}
 	if !st.Known {
+		// ⚠ A READER THAT CAME JUST AFTER THE RECORD WENT gets the answer kept
+		// beside it, as one that came just before does. WSL-121.
+		if res, ok := toolkit.EndedAnswer(home, id); ok {
+			out.Result, out.verdict = &res, res.Verdict()
+			return out, nil
+		}
 		return out, fmt.Errorf("%w: %s. %s lists the jobs this machine has", toolkit.ErrUnknownJob, id, toolkit.ToolCommand("logs"))
 	}
 	if st.Session != nil {
 		return sessionEnd(ctx, *st.Session, tail, stdout, stderr)
+	}
+	if !st.Owned && st.Result == nil {
+		closeLostOwners(home, id)
 	}
 	dir := filepath.Join(home, "jobs", id)
 	if st.Result == nil && st.Owned {
@@ -290,6 +334,13 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 		}
 		if st.Result != nil {
 			out.Result, out.verdict = st.Result, st.Result.Verdict()
+			return out, nil
+		}
+		// ⛔ AN OWNED JOB WHOSE RECORD WENT IS AN ENDED EPHEMERAL JOB, never an
+		// orphan. Its owner removed the record once the answer was ready, and
+		// this read came after, so the answer is the copy kept beside it. WSL-121.
+		if res, ok := toolkit.EndedAnswer(home, id); ok && !st.Known {
+			out.Result, out.verdict = &res, res.Verdict()
 			return out, nil
 		}
 	} else if st.Result != nil {
@@ -323,7 +374,7 @@ func jobEnd(ctx context.Context, id string, tail int, stdout, stderr io.Writer) 
 	switch {
 	case exit != nil && runner.EndedByStop(id, *exit):
 		res.Cancelled, res.Stopped, res.Exit = true, true, 130
-		out.Note = "no process owned this job when wsl-toolkit stop ended its container"
+		out.Note = "no process owned this job when " + runner.StoppedBy(id) + " ended its container"
 		out.verdict = 130
 	case exit != nil:
 		res.Exit = *exit

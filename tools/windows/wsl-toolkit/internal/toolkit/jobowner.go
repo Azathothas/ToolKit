@@ -76,7 +76,11 @@ func ClaimJob(home, id string) (*JobOwner, error) {
 	for {
 		release, err := lockExclusive(lock)
 		if err == nil {
-			return &JobOwner{ID: id, Dir: dir, release: release}, nil
+			owner := &JobOwner{ID: id, Dir: dir, release: release}
+			// ⭐ WHOSE JOB IT IS, written once, so a prefix resolved in a state
+			// directory another selection reaches is refused there. WSL-120.
+			_ = owner.RecordInstance()
+			return owner, nil
 		}
 		if !errors.Is(err, errLockHeld) || time.Now().After(deadline) {
 			if errors.Is(err, errLockHeld) {
@@ -95,6 +99,9 @@ func (o *JobOwner) Finish(res JobResult) error {
 		return nil
 	}
 	defer o.Release()
+	// ⚠ AN ENDED JOB IS NOT COUNTED AS RUNNING, so its mark goes with its end.
+	// The free lock already says so; this keeps the count from probing it. WSL-136.
+	defer func() { _ = os.Remove(filepath.Join(o.Dir, admittedName)) }()
 	doc, err := json.MarshalIndent(struct {
 		Schema string    `json:"schema"`
 		Result JobResult `json:"result"`
