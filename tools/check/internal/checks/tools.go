@@ -190,7 +190,7 @@ func GoModules(t *Tree) Result {
 			r.bad("%s: go vet: %s", m, firstFinding(out))
 		}
 		if out, err := runIn(dir, goBin, "test", "./..."); err != nil {
-			r.bad("%s: go test: %s", m, firstFinding(out))
+			r.bad("%s: go test: %s", m, testFailure(out))
 		}
 		// ⚠ gofmt reports by PRINTING, not by exiting non-zero. Reading its
 		// exit code would report a tree that needs formatting as clean.
@@ -224,6 +224,30 @@ func findPwsh() string {
 
 // firstFinding is the first line that reads like a problem, so a wall of
 // output does not arrive in a summary table.
+// testFailure is firstFinding with the failed case's own lines after it.
+//
+// ⛔ THE CASE'S MESSAGE IS THE FINDING. `--- FAIL: TestX` alone names the case
+// and not what it saw, so a failure only a CI runner meets could not be read
+// from the log and had to be guessed at.
+func testFailure(out string) string {
+	lines := strings.Split(out, "\n")
+	for i, ln := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(ln), "--- FAIL") {
+			continue
+		}
+		said := []string{strings.TrimSpace(ln)}
+		for _, next := range lines[i+1:] {
+			next = strings.TrimRight(next, "\r")
+			if len(said) > 8 || !strings.HasPrefix(next, " ") || strings.TrimSpace(next) == "" {
+				break
+			}
+			said = append(said, strings.TrimSpace(next))
+		}
+		return strings.Join(said, " | ")
+	}
+	return firstFinding(out)
+}
+
 func firstFinding(out string) string {
 	var first string
 	for _, ln := range strings.Split(out, "\n") {

@@ -178,6 +178,11 @@ func newFakeHost(t *testing.T) *fakeHost {
 	h := &fakeHost{state: t.TempDir(), wsl: filepath.Join(bin, "wsl"+ext)}
 	t.Setenv(fakeHostEnv, h.state)
 	t.Setenv("PATH", bin)
+	// ⚠ ResolveExecutable also looks in fixed directories under these roots,
+	// so they are the case's own and only the fakes can be found there.
+	for _, root := range []string{"USERPROFILE", "ProgramData", "ProgramFiles", "LOCALAPPDATA"} {
+		t.Setenv(root, t.TempDir())
+	}
 	return h
 }
 

@@ -77,3 +77,16 @@ func TestThePowerShellCheckRefusesASessionThatParsedNothing(t *testing.T) {
 		t.Fatalf("the check reported parsing %v of 2 scripts; it must report what it actually read", got)
 	}
 }
+
+// ⛔ A failed case is reported with what it said, not only its name.
+func TestAFailedGoTestCarriesTheCaseMessage(t *testing.T) {
+	out := "--- FAIL: TestX (1.59s)\r\n    x_test.go:12: the base was removed\r\n        and its disk with it\r\nFAIL\r\nFAIL\tmod/pkg\t2.1s\r\n"
+	got := testFailure(out)
+	want := "--- FAIL: TestX (1.59s) | x_test.go:12: the base was removed | and its disk with it"
+	if got != want {
+		t.Fatalf("testFailure said %q, want %q", got, want)
+	}
+	if got := testFailure("ok\nsomething else failed\n"); got != "something else failed" {
+		t.Fatalf("with no failed case it said %q, want firstFinding's answer", got)
+	}
+}
