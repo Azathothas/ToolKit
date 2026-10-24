@@ -2,6 +2,78 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: an ensure reads the grants again under the base's lock",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif changed, err := b.adoptStoredGrants(); err != nil {\n",
+      "replace": "\tif changed, err := false, error(nil); err != nil {\n",
+      "run": "TestEnsureReadsTheGrantsAgainUnderTheLock",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a preset switch decides its rebuild under the base's lock",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif built := b.builtImage(ctx); built == b.cfg.Base.Image {\n",
+      "replace": "\t\tif built := b.builtImage(ctx); false && built == b.cfg.Base.Image {\n",
+      "run": "TestAPresetSwitchThatWaitedKeepsTheBaseTheFirstBuilt",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an import that failed after registering in its own directory is rolled back",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\tif b.importedInto(dir) {\n",
+      "replace": "\t\tif false && b.importedInto(dir) {\n",
+      "run": "TestAnImportThatFailedAfterRegisteringIsRolledBack",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a UTF-16 listing is refused, not read as no distribution",
+      "file": "internal/toolkit/wsl.go",
+      "find": "\t\tif strings.ContainsRune(name, 0) {\n",
+      "replace": "\t\tif false && strings.ContainsRune(name, 0) {\n",
+      "run": "TestAUTF16ListingIsRefusedNotReadAsEmpty",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a record naming another distribution keeps its disk",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif err != nil || rec.Name == \"\" || strings.EqualFold(rec.Name, b.cfg.Base.Name) {\n",
+      "replace": "\tif true || err != nil || rec.Name == \"\" || strings.EqualFold(rec.Name, b.cfg.Base.Name) {\n",
+      "run": "TestARecordNamingAnotherDistributionKeepsItsDisk",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a build moves an orphaned disk aside",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif _, err := os.Stat(filepath.Join(dir, leftoverDisk)); err != nil {\n",
+      "replace": "\tif _, err := os.Stat(filepath.Join(dir, leftoverDisk)); true || err != nil {\n",
+      "run": "TestABuildMovesAnOrphanedDiskAside",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --instance auto claims its name by creating its directory",
+      "file": "internal/toolkit/instance.go",
+      "find": "\t\tif err := os.Mkdir(home, 0o700); err == nil {\n",
+      "replace": "\t\tif _, err := os.Stat(home); errors.Is(err, os.ErrNotExist) {\n",
+      "run": "TestTwoAutoInstancesClaimTwoNames",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: install_changed fails when its mv does",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  mv \"$1\" \"$2\" || return 1\n",
+      "replace": "  mv \"$1\" \"$2\"\n",
+      "run": "TestInstallChangedFailsWhenTheFileCannotBeWritten",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a failed re-provision keeps the base and names base recreate",
       "file": "internal/toolkit/base.go",
       "find": "\t\t\treturn st, reprovisionFailed(b.cfg.Base.Name, err)\n",

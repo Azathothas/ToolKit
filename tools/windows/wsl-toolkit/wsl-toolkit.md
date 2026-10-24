@@ -1346,7 +1346,9 @@ fully qualified is refused the same way. `WSL-169`
 
 ⭐ **`--preset` is compared with the image the base was built from.** This machine's
 record of the base answers, and the configuration answers where there is no record.
-So a preset the base already has rebuilds nothing. ⚠ `--save` writes the new image
+So a preset the base already has rebuilds nothing. The comparison is made again under
+the base's lock. A second switch that waited finds the base the first one built, and
+keeps it. ⚠ `--save` writes the new image
 before the rebuild runs, so a refused rebuild leaves a configuration naming it. The
 refusal says so, and the same command run again switches the base. `WSL-169`
 
@@ -1366,13 +1368,24 @@ in the state directory, so the next run restarts the base. `WSL-175`
 `base remove`, `base grant` and `base revoke` hold `base.lock` in the instance's
 state directory. A grant reads and writes the configuration inside it. A second
 caller waits, says every 30 seconds which process holds it, and reads the base again
-once it has it. Each build exports into an archive of its own. A build that fails
-removes only a distribution its own import registered. `WSL-172`
+once it has it. A build that waited reads the grants again, so a grant revoked
+meanwhile stays revoked. `WSL-172`
+
+⭐ **Each build cleans up only its own.** Each build exports into an archive of its
+own. A build that fails removes only a distribution its own import registered. An
+import that failed but still registered the base, with its disk in that build's own
+directory, counts as its own. `--instance auto` claims its number by creating the
+instance's state directory, so two callers at once get two instances. `WSL-172`
 
 ⛔ **A disk another distribution keeps is never deleted.** Before the instance's
 disk directory is deleted, WSL's registry is read. A registered distribution with
 its disk there refuses the deletion, and the refusal names it. A registry that
-cannot be read refuses it too. `WSL-177`
+cannot be read refuses it too. So does a `base.json` that names another distribution.
+A listing in UTF-16 is refused, not read as no distribution. `WSL-177`
+
+⭐ **An orphaned disk is moved aside, not deleted.** A build that finds a disk no
+registered distribution keeps moves it to `base.orphaned-<time>` in the state
+directory, and says where. Delete it once nothing in it is needed. `WSL-177`
 
 ---
 

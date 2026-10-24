@@ -108,6 +108,16 @@ func fakeWslMain(state string, args []string) int {
 	}
 	switch {
 	case len(args) == 2 && args[0] == "--list" && args[1] == "--quiet":
+		// ⚠ A ROLLED-BACK WSL, WHEN THE CASE ASKS FOR ONE: the listing in
+		// UTF-16, a NUL after every letter.
+		if how, ok := said("listing"); ok && strings.TrimSpace(how) == "utf16" {
+			for _, n := range registered {
+				for _, r := range n + "\r\n" {
+					_, _ = os.Stdout.Write([]byte{byte(r), 0})
+				}
+			}
+			return 0
+		}
 		for _, n := range registered {
 			fmt.Println(n)
 		}
@@ -132,6 +142,14 @@ func fakeWslMain(state string, args []string) int {
 			_ = write(append(registered, args[1]))
 			_ = keepDisks("", args[1], filepath.Join(state, "another-process"))
 			fmt.Fprintln(os.Stderr, "A distribution with the supplied name already exists.")
+			return 1
+		}
+		// ⚠ AN IMPORT KILLED AFTER THE SERVICE REGISTERED IT: the name is
+		// registered with its disk where this import put it, and the call fails.
+		if how, ok := said("import"); ok && strings.TrimSpace(how) == "killed" {
+			_ = write(append(registered, args[1]))
+			_ = keepDisks("", args[1], args[2])
+			fmt.Fprintln(os.Stderr, "the operation was cancelled")
 			return 1
 		}
 		if code := write(append(registered, args[1])); code != 0 {
@@ -159,6 +177,8 @@ func fakeWslMain(state string, args []string) int {
 			continue
 		}
 		if out, ok := said(guest.answer); ok {
+			// ⭐ KEPT, so a case can read what the guest script was handed.
+			_ = os.WriteFile(filepath.Join(state, guest.answer+".script"), script, 0o600)
 			fmt.Print(out)
 			return 0
 		}

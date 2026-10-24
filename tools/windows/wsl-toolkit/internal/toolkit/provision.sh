@@ -574,13 +574,16 @@ CONF
 # install_changed NEW DEST: DEST becomes NEW unless it already holds the same bytes,
 # and the answer is `changed` or `unchanged`. ⚠ The x keeps a trailing newline
 # that command substitution would strip, so two files differing only there differ.
+# ⛔ EACH STEP RETURNS ITS OWN FAILURE. The caller runs this inside `$(...) ||`,
+# where bash, the default base's /bin/sh, suspends errexit, so a failed mv went on
+# to say `changed` over a file it never wrote. WSL-175.
 install_changed() {
   if [ -f "$2" ] && [ "$(cat "$1"; printf x)" = "$(cat "$2"; printf x)" ]; then
-    rm -f "$1"
+    rm -f "$1" || return 1
     printf 'unchanged\n'
     return 0
   fi
-  mv "$1" "$2"
+  mv "$1" "$2" || return 1
   printf 'changed\n'
 }
 # <<< install_changed: end

@@ -173,6 +173,17 @@ func allocateInstance(ctx context.Context) (string, error) {
 	for _, n := range names {
 		registered[strings.ToLower(strings.TrimSpace(n))] = true
 	}
+	return claimInstance(registered)
+}
+
+// claimInstance claims the lowest `<N>` with no distribution registered under
+// its name, by creating its state directory.
+//
+// ⛔ THE DIRECTORY IS THE CLAIM. A free name was only looked at, so two
+// `--instance auto` callers at once both chose the same one and shared one base.
+// os.Mkdir lets exactly one of them have it, as a throwaway's claim does.
+// WSL-172.
+func claimInstance(registered map[string]bool) (string, error) {
 	for i := 1; i <= maxAutoInstances; i++ {
 		name := strconv.Itoa(i)
 		if registered[strings.ToLower(InstanceDistro(name))] {
@@ -182,12 +193,14 @@ func allocateInstance(ctx context.Context) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if _, err := os.Stat(home); err == nil {
-			continue
-		} else if !errors.Is(err, os.ErrNotExist) {
+		if err := os.MkdirAll(filepath.Dir(home), 0o700); err != nil {
 			return "", err
 		}
-		return name, nil
+		if err := os.Mkdir(home, 0o700); err == nil {
+			return name, nil
+		} else if !errors.Is(err, os.ErrExist) {
+			return "", err
+		}
 	}
 	return "", fmt.Errorf("every instance from 1 to %d is taken, which is a machine where something is looping. "+
 		"wsl-toolkit resources says what is held; wsl-toolkit gc --apply releases it", maxAutoInstances)
