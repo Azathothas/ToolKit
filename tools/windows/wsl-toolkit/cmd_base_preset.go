@@ -43,6 +43,22 @@ func applyPreset(ctx context.Context, cfg *toolkit.Config, preset string, save b
 	return true, nil
 }
 
+// presetSwitchFailed is the error a rebuild that a preset switch asked for
+// returns, with what the switch has already written.
+//
+// ⛔ --save WRITES THE IMAGE BEFORE THE REBUILD RUNS. A rebuild that is refused
+// keeps the old base, as it must, but the stored configuration already names
+// the new image. Running the same command again then compares the preset with
+// that configuration, finds no switch, and keeps the old base. So the caller is
+// told that `base recreate` is what switches it now. WSL-169.
+func presetSwitchFailed(err error, switched, saved bool, cfg toolkit.Config) error {
+	if err == nil || !switched || !saved {
+		return err
+	}
+	return fmt.Errorf("%w. The stored configuration already builds %s from %s, so running this command again will not switch it. Run `%s` once that is fixed",
+		err, cfg.Base.Name, cfg.Base.Image, toolkit.ToolCommand("base recreate"))
+}
+
 func cmdPresets(args []string) (int, error) {
 	fs := newFlagSet("base presets")
 	asJSON := fs.Bool("json", false, "write a structured answer")

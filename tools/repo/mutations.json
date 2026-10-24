@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a refused preset switch under --save says base recreate switches it now",
+      "file": "cmd_base_preset.go",
+      "find": "\tif err == nil || !switched || !saved {\n",
+      "replace": "\tif true {\n",
+      "run": "TestARefusedPresetSwitchSaysTheConfigurationIsAlreadyWritten",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a forced rebuild asks the host engine before it removes the base",
       "file": "internal/toolkit/base.go",
       "find": "\t\tif engine, err = b.rebuildEngine(ctx); err != nil {\n\t\t\treturn st, err\n\t\t}\n",

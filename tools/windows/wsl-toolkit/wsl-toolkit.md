@@ -1301,8 +1301,11 @@ security boundary**, and no page here says otherwise.
 
 ⛔ **A rebuild asks the host engine before it removes the base.** `base recreate`
 does, and so does `base ensure` before it rebuilds a base that will not provision.
+`base ensure --preset` does too when the preset switches the image.
 With no engine answering, each exits 2 with the engine's reason, and the base stays
 registered. A `base.image` that is not fully qualified is refused the same way.
+⚠ `--save` has already written the new image by then, so the same command run again
+switches nothing. The refusal says so, and `base recreate` is what switches it.
 ⚠ A pull that fails and a volume too small for the import are still found after the
 removal. `WSL-169`
 
