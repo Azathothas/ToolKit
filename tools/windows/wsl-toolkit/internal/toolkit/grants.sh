@@ -14,6 +14,7 @@
 #   TK_GRANTS_MODE=write   rewrite the block and create each target, and mount nothing
 #   TK_GRANTS_MODE=live    rewrite the block, unmount or mount TK_GRANT_TARGET alone,
 #                          as the block names it, and read it back as the account
+#   TK_GRANTS_MODE=block   rewrite the block alone: no directory made, no mount changed
 set -eu
 umask 022
 cd /
@@ -28,8 +29,8 @@ say() { printf '  * %s\n' "$*"; }
 die() { printf 'grants: %s\n' "$*" >&2; exit 3; }
 
 case "$TK_GRANTS_MODE" in
-  write|live) ;;
-  *) die "TK_GRANTS_MODE is $TK_GRANTS_MODE; it must be write or live" ;;
+  write|live|block) ;;
+  *) die "TK_GRANTS_MODE is $TK_GRANTS_MODE; it must be write, live or block" ;;
 esac
 
 FSTAB_BEGIN='# wsl-toolkit mounts begin'
@@ -73,6 +74,15 @@ install_fstab() {
   mv /etc/fstab.wsl-toolkit.new /etc/fstab
 }
 
+# ⛔ BLOCK, NOTHING LIVE IS TOUCHED. It takes back the block of a live change that
+# mounted and unmounted nothing, because its target was already as asked. A live
+# take-back unmounted that target, and another configuration had mounted it. WSL-179.
+if [ "$TK_GRANTS_MODE" = block ]; then
+  install_fstab "$WORK/fstab"
+  printf 'grants-complete\n'
+  exit 0
+fi
+
 # -- the targets the configuration names ------------------------------------------
 : > "$WORK/targets"
 # The payload is a validated sequence of base64-target/mode pairs.
@@ -115,6 +125,10 @@ if [ -f /etc/fstab ]; then
   cp /etc/fstab "$WORK/fstab.before"
 fi
 : > "$WORK/unmounted"
+# changed is whether this run unmounted or mounted its target. ⛔ A run that did
+# neither says so, and its take-back then leaves the target alone: another
+# configuration may hold that mount. WSL-179.
+changed=false
 
 # fail_back MESSAGE: the old block back, what this run unmounted mounted again from
 # it, and the reason.
@@ -161,6 +175,7 @@ while IFS= read -r old; do
     umount "$old" 2>"$WORK/umount.err" ||
       fail_back "$old is still in use, so it stays mounted: $(head -1 "$WORK/umount.err")"
     printf '%s\n' "$old" >> "$WORK/unmounted"
+    changed=true
     say "unmounted $old"
   fi
 done < "$WORK/live-targets"
@@ -179,6 +194,7 @@ while read -r mode target; do
   fi
   if [ -z "$current" ]; then
     mount "$target" 2>"$WORK/mount.err" || fail_back "$target could not be mounted: $(head -1 "$WORK/mount.err")"
+    changed=true
     say "mounted $target $mode"
   fi
 done < "$WORK/targets"
@@ -206,4 +222,7 @@ while read -r mode target; do
   esac
   printf 'grant %s %s\n' "$mode" "$target"
 done < "$WORK/targets"
+if [ "$changed" = false ]; then
+  printf 'unchanged %s\n' "$OWN"
+fi
 printf 'grants-complete\n'

@@ -541,7 +541,17 @@ directories. Nothing restarts, so nothing running in the base stops. `WSL-75`
 
 ⛔ **Each changes its own target alone.** A mount under `/workspaces` that this
 configuration does not name stays mounted, because another configuration may hold
-it. A project's `wsl-toolkit.json` beside the home's own file is one. `WSL-179`
+it. A project's `wsl-toolkit.json` beside the home's own file is one. A
+configuration file that cannot be written takes the change back. A grant whose
+target was already mounted as asked takes back its fstab block alone, so that
+mount stays. `WSL-179`
+
+⚠ **A mount another configuration holds still costs a restart.** With
+`base.automount` off, `base ensure` from a configuration that does not name it
+reads it as unconfigured. It re-provisions and restarts the base, which stops
+everything running there. The fstab block holds only the last caller's grants, so
+the restart drops that mount. Grant the same directories in each configuration to
+avoid it.
 
 ⛔ **Neither replaces what it would disturb.** A directory or a target already
 granted differently is refused with the revoke to run first. A grant a process

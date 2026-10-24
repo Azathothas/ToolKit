@@ -117,12 +117,15 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	if err != nil {
 		return exitCannot, err
 	}
+	// changed is whether the live step mounted or unmounted the target, and it
+	// decides how a file that cannot be written takes the step back. WSL-179.
+	changed := false
 	if registered {
 		base, err := toolkit.NewBase(change.Next, note)
 		if err != nil {
 			return exitCannot, err
 		}
-		if _, err := base.ChangeGrantsLive(ctx, change.Next, change.Mount.Target); err != nil {
+		if changed, err = base.ChangeGrantsLive(ctx, change.Next, change.Mount.Target); err != nil {
 			// ⚠ NOTHING WAS WRITTEN. The file still says what the base had.
 			return exitFailed, fmt.Errorf("%s. %s is unchanged", strings.TrimRight(err.Error(), "."), cfg.Path())
 		}
@@ -133,7 +136,10 @@ func cmdBaseGrant(ctx context.Context, sub string, args []string) (int, error) {
 	if err := change.Next.WriteTo(cfg.Path()); err != nil {
 		if registered {
 			if base, baseErr := toolkit.NewBase(cfg, note); baseErr == nil {
-				if _, backErr := base.ChangeGrantsLive(ctx, cfg, change.Mount.Target); backErr != nil {
+				// ⛔ A STEP THAT MOUNTED NOTHING TAKES BACK ITS BLOCK ALONE. The
+				// target was already live, from another configuration, and a live
+				// take-back unmounted that configuration's checkout. WSL-179.
+				if backErr := base.TakeGrantsBack(ctx, cfg, change.Mount.Target, changed); backErr != nil {
 					return exitCannot, fmt.Errorf("%s could not be written (%v), and taking the live change back failed too: %w", cfg.Path(), err, backErr)
 				}
 			}

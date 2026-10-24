@@ -206,6 +206,12 @@ func TestALiveGrantChangeNamesItsOneTarget(t *testing.T) {
 // adds the target to the mounts file in the mode the fstab gives it.
 func grantsDrive(t *testing.T, dir string, mounts []BaseMount, target string) (string, error) {
 	t.Helper()
+	return grantsDriveIn(t, dir, GrantsLive, mounts, target)
+}
+
+// grantsDriveIn is grantsDrive in any mode.
+func grantsDriveIn(t *testing.T, dir, mode string, mounts []BaseMount, target string) (string, error) {
+	t.Helper()
 	fstab64, checks, err := renderBaseMounts(mounts)
 	if err != nil {
 		t.Fatal(err)
@@ -229,7 +235,7 @@ umount() {
 	script = strings.ReplaceAll(script, "/proc/mounts", dir+"/mounts")
 	script = strings.Replace(script, "set -eu\n", "set -eu\n"+standIns, 1)
 	cmd := exec.Command(posixShell(t), "-c", script)
-	cmd.Env = append(os.Environ(), "TK_TEST_DIR="+dir, "TK_USER=agent", "TK_GRANTS_MODE=live",
+	cmd.Env = append(os.Environ(), "TK_TEST_DIR="+dir, "TK_USER=agent", "TK_GRANTS_MODE="+mode,
 		"TK_FSTAB_B64="+fstab64, "TK_MOUNT_CHECKS="+checks, "TK_GRANT_TARGET="+target)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -285,5 +291,87 @@ func TestALiveGrantOrRevokeLeavesAnotherCallersMount(t *testing.T) {
 
 	if out, err := grantsDrive(t, dir, []BaseMount{named}, ""); err == nil || !strings.Contains(out, "TK_GRANT_TARGET is required") {
 		t.Fatalf("a live change with no target answered %v:\n%s", err, out)
+	}
+}
+
+// TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone holds how a grant
+// whose file cannot be written is taken back. ⛔ A live step whose target another
+// configuration had already mounted, as asked, mounted nothing, and the live
+// take-back by the previous configuration unmounted that configuration's
+// checkout. The block alone is taken back instead. WSL-179.
+func TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone(t *testing.T) {
+	out := "  * explicit Windows directories: 2\ngrant rw /workspaces/shared\nunchanged /workspaces/shared\ngrants-complete\n"
+	if liveGrantChanged(out, "/workspaces/shared") {
+		t.Fatalf("a live step that printed unchanged read as a change:\n%s", out)
+	}
+	if !liveGrantChanged("  * mounted /workspaces/shared rw\ngrants-complete\n", "/workspaces/shared") {
+		t.Fatal("a live step that mounted its target read as no change")
+	}
+	if !liveGrantChanged(out, "/workspaces/other") {
+		t.Fatal("another target's unchanged line was read as this one's")
+	}
+	if got := grantsTakeBackMode(false); got != GrantsBlock {
+		t.Fatalf("a step that mounted nothing is taken back in %q, want %q", got, GrantsBlock)
+	}
+	if got := grantsTakeBackMode(true); got != GrantsLive {
+		t.Fatalf("a step that mounted its target is taken back in %q, want %q", got, GrantsLive)
+	}
+	cfg := grantBase(t)
+	cfg.Base.Mounts = []BaseMount{{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}}
+	if env, err := grantsEnv(cfg, GrantsBlock, "/workspaces/shared"); err != nil || env["TK_GRANTS_MODE"] != GrantsBlock || env["TK_FSTAB_B64"] == "" {
+		t.Fatalf("block mode answered %v, %v; want the block and no refusal", env, err)
+	}
+}
+
+// TestATakeBackLeavesAMountItsChangeDidNotMake drives grants.sh over a target
+// another configuration has mounted rw. A grant of the same target rw mounts
+// nothing and says so, and the block take-back leaves the mount and rewrites
+// the block. ⛔ The live take-back unmounted it. WSL-179.
+func TestATakeBackLeavesAMountItsChangeDidNotMake(t *testing.T) {
+	posixShell(t)
+	dir := t.TempDir()
+	theirs := "drvfs /workspaces/shared drvfs rw,noatime 0 0\n"
+	if err := os.WriteFile(filepath.Join(dir, "mounts"), []byte(theirs), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "fstab"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
+	shared := BaseMount{Source: src, Target: "/workspaces/shared", Mode: "rw"}
+	own := base64.StdEncoding.EncodeToString([]byte(shared.Target))
+	read := func(name string) string {
+		t.Helper()
+		body, _ := os.ReadFile(filepath.Join(dir, name))
+		return string(body)
+	}
+
+	out, err := grantsDrive(t, dir, []BaseMount{mine, shared}, own)
+	if err != nil || !strings.Contains(out, "grants-complete") {
+		t.Fatalf("the grant failed: %v\n%s", err, out)
+	}
+	if liveGrantChanged(out, shared.Target) || read("log") != "" {
+		t.Fatalf("a grant over a target already live as asked did not say it changed nothing:\n%s\nlog:\n%s", out, read("log"))
+	}
+
+	out, err = grantsDriveIn(t, dir, GrantsBlock, []BaseMount{mine}, own)
+	if err != nil || !strings.Contains(out, "grants-complete") {
+		t.Fatalf("the block take-back failed: %v\n%s", err, out)
+	}
+	if read("log") != "" || !strings.Contains(read("mounts"), theirs) {
+		t.Fatalf("the block take-back touched a live mount:\nlog:\n%s\nmounts:\n%s", read("log"), read("mounts"))
+	}
+	if fstab := read("fstab"); strings.Contains(fstab, " /workspaces/shared ") || !strings.Contains(fstab, " /workspaces/mine ") {
+		t.Fatalf("the block take-back did not write the previous configuration's block:\n%s", fstab)
+	}
+
+	out, err = grantsDrive(t, dir, []BaseMount{mine, shared}, base64.StdEncoding.EncodeToString([]byte(mine.Target)))
+	if err != nil || !liveGrantChanged(out, mine.Target) {
+		t.Fatalf("a grant that mounted its target read as no change: %v\n%s", err, out)
+	}
+	out, err = grantsDrive(t, dir, []BaseMount{shared}, base64.StdEncoding.EncodeToString([]byte(mine.Target)))
+	if err != nil || !liveGrantChanged(out, mine.Target) {
+		t.Fatalf("a revoke that unmounted its target read as no change: %v\n%s", err, out)
 	}
 }

@@ -2,6 +2,60 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a live step that mounted nothing is taken back by its block alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\tif changed {\n\t\treturn GrantsLive\n\t}\n\treturn GrantsBlock\n",
+      "replace": "\treturn GrantsLive\n",
+      "run": "TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step's unchanged line is read as no change",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.go",
+      "find": "\t\tif strings.TrimSpace(line) == \"unchanged \"+clean {\n",
+      "replace": "\t\tif false && strings.TrimSpace(line) == \"unchanged \"+clean {\n",
+      "run": "TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step that mounted nothing says so",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ \"$changed\" = false ]; then\n  printf 'unchanged %s\\n' \"$OWN\"\nfi\n",
+      "replace": "",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a block take-back touches no live mount",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ \"$TK_GRANTS_MODE\" = block ]; then\n",
+      "replace": "if false; then\n",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step that mounted its target is a change",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "$(head -1 \"$WORK/mount.err\")\"\n    changed=true\n",
+      "replace": "$(head -1 \"$WORK/mount.err\")\"\n",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live step that unmounted its target is a change",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    changed=true\n    say \"unmounted $old\"\n",
+      "replace": "    say \"unmounted $old\"\n",
+      "run": "TestATakeBackLeavesAMountItsChangeDidNotMake",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a live grant change hands grants.sh its one target",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/grants.go",

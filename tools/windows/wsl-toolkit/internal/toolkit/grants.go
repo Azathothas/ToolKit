@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-// The two ways grants.sh runs.
+// The three ways grants.sh runs.
 const (
 	// GrantsWrite rewrites the tool-owned fstab block and creates each target,
 	// for the restart that follows provisioning.
@@ -24,6 +24,9 @@ const (
 	// GrantsLive also unmounts or mounts one target now, as the block names it,
 	// and reads it back as the account.
 	GrantsLive = "live"
+	// GrantsBlock rewrites the tool-owned fstab block alone. It creates no
+	// directory and changes no mount. WSL-179.
+	GrantsBlock = "block"
 )
 
 // grantsEnv is what grants.sh is handed for a configuration's grants. In live
@@ -42,9 +45,13 @@ func grantsEnv(cfg Config, mode, target string) (map[string]string, error) {
 			return nil, fmt.Errorf("a live grant change names its one target: %w", targetErr)
 		}
 		target64 = base64.StdEncoding.EncodeToString([]byte(clean))
-		fstab, checks, err = liveMountPayloads(cfg)
-	} else {
+	}
+	// ⚠ A TAKE-BACK'S BLOCK IS THE ONE A LIVE CHANGE WRITES, so it renders the
+	// same way, with a gone grant left out rather than refused.
+	if mode == GrantsWrite {
 		fstab, checks, _, err = baseMountPayloads(cfg)
+	} else {
+		fstab, checks, err = liveMountPayloads(cfg)
 	}
 	if err != nil {
 		return nil, err
@@ -213,9 +220,48 @@ func sameSourcePath(a, b string) bool {
 
 // ChangeGrantsLive makes the live mount at target what next names, mounted or
 // not, and reads it back. Every other mount stays as it is. The configuration
-// file is the caller's to write afterwards. WSL-179.
-func (b *Base) ChangeGrantsLive(ctx context.Context, next Config, target string) (string, error) {
-	return b.applyGrants(ctx, next, GrantsLive, target)
+// file is the caller's to write afterwards. changed is false when target was
+// already as next names it, so nothing was mounted or unmounted. WSL-179.
+func (b *Base) ChangeGrantsLive(ctx context.Context, next Config, target string) (changed bool, err error) {
+	out, err := b.applyGrants(ctx, next, GrantsLive, target)
+	if err != nil {
+		return false, err
+	}
+	return liveGrantChanged(out, target), nil
+}
+
+// liveGrantChanged reads whether a live run of grants.sh mounted or unmounted
+// target. The script prints "unchanged TARGET" when it did neither.
+func liveGrantChanged(out, target string) bool {
+	clean, err := normalizeBaseMountTarget(target)
+	if err != nil {
+		return true
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.TrimSpace(line) == "unchanged "+clean {
+			return false
+		}
+	}
+	return true
+}
+
+// grantsTakeBackMode is how a live change the file could not record is taken
+// back. ⛔ A CHANGE THAT MOUNTED NOTHING TAKES BACK THE BLOCK ALONE. Its target
+// was already live as asked, so another configuration had mounted it, and a
+// live take-back by the previous configuration unmounted that mount. WSL-179.
+func grantsTakeBackMode(changed bool) string {
+	if changed {
+		return GrantsLive
+	}
+	return GrantsBlock
+}
+
+// TakeGrantsBack undoes a live change whose configuration file could not be
+// written. prev is the configuration the file still holds, and changed is what
+// ChangeGrantsLive answered.
+func (b *Base) TakeGrantsBack(ctx context.Context, prev Config, target string, changed bool) error {
+	_, err := b.applyGrants(ctx, prev, grantsTakeBackMode(changed), target)
+	return err
 }
 
 // WriteTo stores the configuration at a path, atomically, in the tool's own
