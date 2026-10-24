@@ -231,6 +231,22 @@ func findPwsh() string {
 // from the log and had to be guessed at.
 func testFailure(out string) string {
 	lines := strings.Split(out, "\n")
+	// ⛔ A TIMEOUT PRINTS NO `--- FAIL`, only a panic and the cases still running,
+	// so a hang on a runner was reported as the package's FAIL line alone.
+	for i, ln := range lines {
+		if !strings.HasPrefix(strings.TrimSpace(ln), "panic: test timed out") {
+			continue
+		}
+		said := []string{strings.TrimSpace(ln)}
+		for _, next := range lines[i+1:] {
+			next = strings.TrimSpace(strings.TrimRight(next, "\r"))
+			if len(said) > 8 || next == "" {
+				break
+			}
+			said = append(said, next)
+		}
+		return strings.Join(said, " | ")
+	}
 	for i, ln := range lines {
 		if !strings.HasPrefix(strings.TrimSpace(ln), "--- FAIL") {
 			continue

@@ -434,6 +434,9 @@ func TestTheGrantsBlockSaysWhetherItChanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", fstab)
+	// ⚠ The guest's grant lock and owners ledger live under /var/lib, which a
+	// case run as an ordinary account cannot write. WSL-179.
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit", filepath.ToSlash(t.TempDir()))
 	run := func() string {
 		t.Helper()
 		cmd := exec.Command(sh, "-s")

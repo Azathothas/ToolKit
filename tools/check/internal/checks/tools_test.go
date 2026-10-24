@@ -86,6 +86,10 @@ func TestAFailedGoTestCarriesTheCaseMessage(t *testing.T) {
 	if got != want {
 		t.Fatalf("testFailure said %q, want %q", got, want)
 	}
+	hung := "panic: test timed out after 10m0s\r\n\trunning tests:\r\n\t\tTestAHang (9m59s)\r\n\r\ngoroutine 1 [running]:\r\n"
+	if got := testFailure(hung); got != "panic: test timed out after 10m0s | running tests: | TestAHang (9m59s)" {
+		t.Fatalf("a timeout was reported as %q, want the panic and the case still running", got)
+	}
 	if got := testFailure("ok\nsomething else failed\n"); got != "something else failed" {
 		t.Fatalf("with no failed case it said %q, want firstFinding's answer", got)
 	}
