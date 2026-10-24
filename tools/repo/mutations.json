@@ -545,7 +545,7 @@
       "label": "wsl-toolkit: the /proc watch sees a process exit",
       "file": "internal/toolkit/watch_other.go",
       "find": "\t\t\t\tw.gone = &w.ids[i]\n\t\t\t\treturn w.gone, nil\n",
-      "replace": "\t\t\t\tcontinue\n",
+      "replace": "\t\t\t\t_ = i\n\t\t\t\tcontinue\n",
       "run": "TestTheProcWatchSeesAProcessExit",
       "module": "tools/windows/wsl-toolkit",
       "args": []
