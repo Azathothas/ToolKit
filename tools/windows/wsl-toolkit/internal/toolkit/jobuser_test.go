@@ -5,6 +5,7 @@ package toolkit
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 // The accounts ubuntu:24.04 carries, as measured on the base: uid 1000 is
@@ -75,6 +76,22 @@ func TestTheAccountProbeRunsTheJobsOwnImage(t *testing.T) {
 	for _, want := range []string{"'--rm'", "'--label' 'wsl-toolkit.owner=wsl-toolkit'", "'--pull=missing'", "'--platform' 'linux/arm64'", "'--user' '0:0'", "'docker.io/library/debian:latest'", accountGroupMark, accountSudoMark} {
 		if !strings.Contains(script, want) {
 			t.Errorf("the probe does not carry %s:\n%s", want, script)
+		}
+	}
+}
+
+// TestTheAccountProbeSpendsTheJobsDeadline: the probe's pull is the pull the
+// container would have made inside its deadline, so the container gets what is
+// left, never less than a second, and a job with no deadline keeps none.
+func TestTheAccountProbeSpendsTheJobsDeadline(t *testing.T) {
+	for _, c := range []struct{ timeout, spent, want time.Duration }{
+		{10 * time.Minute, 4 * time.Minute, 6 * time.Minute},
+		{10 * time.Minute, 0, 10 * time.Minute},
+		{time.Minute, 2 * time.Minute, time.Second},
+		{0, time.Minute, 0},
+	} {
+		if got := jobBudget(c.timeout, c.spent); got != c.want {
+			t.Errorf("jobBudget(%s, %s) = %s, want %s", c.timeout, c.spent, got, c.want)
 		}
 	}
 }

@@ -258,8 +258,8 @@ type Config struct {
 	Requires string `json:"requires,omitempty"`
 	path     string
 	source   string
-	// project is a working tree's wsl-toolkit.json whose jobs and requires a
-	// named instance's own configuration took, and projectKeys the jobs keys it
+	// project is a working tree's wsl-toolkit.json whose job defaults and requires a
+	// named instance's own configuration took, and projectKeys the job defaults it
 	// wrote. own is the instance's own, which a write stores. WSL-131.
 	project     string
 	projectKeys map[string]bool
@@ -387,8 +387,8 @@ type ConfigSource struct {
 	Path     string   `json:"path"`
 	From     string   `json:"from"`
 	Searched []string `json:"searched"`
-	// Project is the working tree's wsl-toolkit.json whose jobs and requires a
-	// named instance's own file takes, found from the working directory up.
+	// Project is the working tree's wsl-toolkit.json whose job defaults and requires a
+	// named instance's own file takes, found from the working directory up, where it writes one.
 	// Empty where none is, or where the file found is the one read. WSL-131.
 	Project string `json:"project,omitempty"`
 }
@@ -410,7 +410,7 @@ type ConfigSource struct {
 // to the instance and not to whichever checkout a command happens to run from.
 // Before this, a project's file won from inside that project, and the instance's own
 // file never applied there. WSL-75. The nearest working tree's file still lends that
-// instance its jobs and its requires, and Project names it. WSL-131.
+// instance its job defaults and its requires, and Project names it. WSL-131.
 func ResolveConfig() (ConfigSource, error) {
 	var src ConfigSource
 	if p := strings.TrimSpace(ExplicitConfigPath); p != "" {
@@ -435,9 +435,9 @@ func ResolveConfig() (ConfigSource, error) {
 		src.Searched = append(src.Searched, own)
 		if _, err := os.Stat(own); err == nil {
 			src.Path, src.From = own, "the instance's own configuration, which a named instance reads before the working directory"
-			// ⭐ THE WORKING TREE'S FILE IS STILL FOUND, for its jobs and its
-			// floor. The search order above is unchanged. WSL-131.
-			src.Project = nearestProjectConfig()
+			// ⭐ THE WORKING TREE'S FILE IS STILL FOUND, for its job defaults
+			// and its floor. The search order above is unchanged. WSL-131.
+			src.Project = lendingProjectConfig()
 			return src, nil
 		}
 	}
@@ -479,20 +479,25 @@ func ResolveConfig() (ConfigSource, error) {
 	return src, nil
 }
 
-// compiledDefaults is what LoadConfig starts from. A test replaces it to put a
-// true beneath a file that leaves a boolean out. WSL-161.
-var compiledDefaults = DefaultConfig
-
 // LoadConfig reads the configuration, or returns the defaults when there is no
 // file. ⛔ A malformed file is a REFUSAL: silently ignoring somebody's
 // configuration is how a setting nobody can see takes effect.
 func LoadConfig() (Config, error) {
-	cfg := compiledDefaults()
+	cfg := DefaultConfig()
 	src, err := ResolveConfig()
 	if err != nil {
 		return cfg, err
 	}
-	return loadConfigFile(src.Path, src.From)
+	cfg, err = loadConfigFile(src.Path, src.From)
+	if err != nil || src.Project == "" {
+		return cfg, err
+	}
+	// ⭐ A WORKING TREE'S FILE STILL STATES ITS JOB DEFAULTS under a named
+	// instance's own configuration, and its floor. WSL-131.
+	if err := cfg.contribute(src.Project); err != nil {
+		return cfg, err
+	}
+	return cfg, nil
 }
 
 // loadConfigFile is LoadConfig for a file already found: the defaults, with what
@@ -510,7 +515,7 @@ func loadConfigFile(path, from string) (Config, error) {
 		return cfg, err
 	}
 	// ⭐ THE FLOOR IS READ FIRST, and an unknown key names the remedy. WSL-129.
-	stored, keys, err := decodeStored(path, b)
+	stored, err := decodeStored(path, b)
 	if err != nil {
 		return cfg, err
 	}
@@ -529,9 +534,8 @@ func loadConfigFile(path, from string) (Config, error) {
 	if stored.Base.Interop != "" {
 		cfg.Base.Interop = stored.Base.Interop
 	}
-	// ⛔ A BOOLEAN THE FILE LEAVES OUT KEEPS WHAT IS BENEATH IT. WSL-161.
-	keepUnlessNamed(&cfg.Base.Systemd, stored.Base.Systemd, keys.named("base", "systemd"))
-	keepUnlessNamed(&cfg.Base.PasswordlessSudo, stored.Base.PasswordlessSudo, keys.named("base", "passwordless_sudo"))
+	cfg.Base.Systemd = stored.Base.Systemd
+	cfg.Base.PasswordlessSudo = stored.Base.PasswordlessSudo
 	if stored.Base.Toolset != "" {
 		cfg.Base.Toolset = stored.Base.Toolset
 	}
@@ -548,21 +552,27 @@ func loadConfigFile(path, from string) (Config, error) {
 	if stored.Base.Adapters != nil {
 		cfg.Base.Adapters = stored.Base.Adapters
 	}
-	// The jobs go through the copy a working tree's file contributes with.
+	if stored.Jobs.ContainerLifecycle != "" {
+		cfg.Jobs.ContainerLifecycle = stored.Jobs.ContainerLifecycle
+	}
+	if stored.Jobs.Platform != "" {
+		cfg.Jobs.Platform = stored.Jobs.Platform
+	}
+	if stored.Jobs.Workspace != "" {
+		cfg.Jobs.Workspace = stored.Jobs.Workspace
+	}
+	if stored.Jobs.Exclude != nil {
+		cfg.Jobs.Exclude = stored.Jobs.Exclude
+	}
+	cfg.Jobs.Gitignore = stored.Jobs.Gitignore
+	// The job defaults go through the copy a working tree's file lends with.
 	// WSL-131.
-	overlayJobs(&cfg.Jobs, stored.Jobs, keys["jobs"])
+	overlayJobDefaults(&cfg.Jobs, stored.Jobs)
 	cfg.Images = stored.Images
 	cfg.Matrix = stored.Matrix
 	cfg.Requires = stored.Requires
 	if err := cfg.Validate(); err != nil {
 		return cfg, fmt.Errorf("%s: %w", path, err)
-	}
-	// ⭐ A WORKING TREE'S FILE STILL STATES ITS JOBS under a named instance's own
-	// configuration, and its floor. WSL-131.
-	if src.Project != "" {
-		if err := cfg.contribute(src.Project); err != nil {
-			return cfg, err
-		}
 	}
 	if err := instanceMatches(cfg.Base.Name, path); err != nil {
 		return cfg, err

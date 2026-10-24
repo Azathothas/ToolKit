@@ -152,6 +152,40 @@ func TestTheCacheCheckMakesAMissingVolumeInARealShell(t *testing.T) {
 	}
 }
 
+// TestACacheWithNoLabelIsStillListed runs the listing against a stand-in
+// engine. A volume podman made itself, after `gc --caches --apply` removed the
+// one a job had just made, carries no label, and it is still a cache. WSL-122.
+func TestACacheWithNoLabelIsStillListed(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the listing is POSIX shell, and this host has none to run it in")
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh on this host")
+	}
+	dir := t.TempDir()
+	fake := "#!/bin/sh\ncase \"$1 $2\" in\n" +
+		"  'volume ls') case \"$*\" in *--filter*) echo wtk-cache-labelled ;; *) printf 'wtk-cache-labelled\\nwtk-cache-bare\\nsomebody\\n' ;; esac ;;\n" +
+		"  'volume inspect') echo " + shellQuote(dir) + " ;;\n" +
+		"  'unshare du') shift; exec \"$@\" ;;\nesac\n"
+	if err := os.WriteFile(filepath.Join(dir, "podman"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(sh, "-c", cacheListScript())
+	cmd.Env = append(os.Environ(), "PATH="+dir+":"+os.Getenv("PATH"))
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("the listing failed: %v\n%s", err, out)
+	}
+	var names []string
+	for _, c := range parseCacheVolumes(string(out)) {
+		names = append(names, c.Volume)
+	}
+	if strings.Join(names, " ") != "wtk-cache-labelled wtk-cache-bare" {
+		t.Errorf("the listing read %v, want both caches and nothing else:\n%s", names, out)
+	}
+}
+
 // TestCacheVolumesAreReadFromTheirLines reads the guest's listing, and keeps
 // nothing that is not a cache's own volume.
 func TestCacheVolumesAreReadFromTheirLines(t *testing.T) {

@@ -328,7 +328,18 @@ func (r *Runner) openHostDirs() map[string]bool {
 }
 
 // jobIDFromContainer recovers the job id a container name carries.
-func jobIDFromContainer(name string) string { return strings.TrimPrefix(name, "wtk-") }
+//
+// ⛔ A JOB'S OWN PROBE IS THAT JOB'S. --create-user reads the image's accounts
+// in `wtk-ID-accounts`, and a client killed during that probe leaves it. Read as
+// the id `ID-accounts`, it was spared by no live job and named by no `gc --job
+// ID`. WSL-123.
+func jobIDFromContainer(name string) string {
+	id := strings.TrimPrefix(name, "wtk-")
+	if head, _, ok := strings.Cut(id, "-"); ok && ValidJobID(head) {
+		return head
+	}
+	return id
+}
 
 // jobIDFromPath recovers the job id a guest directory is named for.
 func jobIDFromPath(p string) string {

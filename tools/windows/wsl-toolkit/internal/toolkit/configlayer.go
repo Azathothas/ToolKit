@@ -14,73 +14,59 @@ import (
 
 // How a configuration file is laid over what is beneath it. LoadConfig reads one
 // file over the compiled-in defaults; a named instance's own file can then have a
-// working tree's file laid over its jobs.
+// working tree's file laid over its job defaults.
 
-// fileKeys is which keys a configuration file itself wrote, section by section.
+// jobDefaultKeys are the jobs keys this release added: the defaults a job takes
+// where its command line names nothing. WSL-122, WSL-131.
 //
-// ⛔ A KEY A FILE LEAVES OUT IS NOT A KEY IT SETS TO ITS ZERO VALUE. The loader
-// copied `systemd`, `passwordless_sudo` and `jobs.gitignore` whatever the file
-// said, so a file that left one out read as a file that turned it off. WSL-161.
-// ⚠ The decoder matches a key in any case, so the keys are kept in lower case.
-type fileKeys map[string]map[string]bool
+// ⛔ ONLY THESE CROSS FROM A WORKING TREE TO A NAMED INSTANCE. The older keys,
+// container_lifecycle, platform, workspace, exclude and gitignore, were never
+// read from a working tree under a named instance with its own file. Lending
+// them would change jobs a correct call runs today, which a minor release does
+// not do. A case walks JobConfig, so a key added later is put on one side.
+var jobDefaultKeys = []string{"image", "timeout", "env", "env_file", "user", "max_bytes", "max_entries", "cache"}
 
-// readFileKeys reads which keys a file wrote. A file that does not parse yields
-// none; the strict decode that runs first has already refused it.
-func readFileKeys(b []byte) fileKeys {
-	keys := fileKeys{}
+// lentKeys reads which job default keys a file writes, and whether it writes
+// requires. A file that does not parse as an object writes none.
+//
+// ⚠ The decoder matches a key in any case, so the keys are compared in lower
+// case. A key written as null is one the decoder leaves alone.
+func lentKeys(b []byte) (jobs map[string]bool, requires bool) {
+	jobs = map[string]bool{}
 	var top map[string]json.RawMessage
 	if json.Unmarshal(b, &top) != nil {
-		return keys
+		return jobs, false
 	}
-	for section, raw := range top {
-		var inner map[string]json.RawMessage
-		if json.Unmarshal(raw, &inner) != nil {
-			continue
-		}
-		named := map[string]bool{}
-		for k, v := range inner {
-			// ⚠ A key written as null is one the decoder leaves alone, so it is
-			// not a key the file set.
-			if strings.TrimSpace(string(v)) != "null" {
-				named[strings.ToLower(k)] = true
+	set := func(v json.RawMessage) bool { return strings.TrimSpace(string(v)) != "null" }
+	for key, raw := range top {
+		switch strings.ToLower(key) {
+		case "requires":
+			requires = requires || set(raw)
+		case "jobs":
+			var inner map[string]json.RawMessage
+			if json.Unmarshal(raw, &inner) != nil {
+				continue
+			}
+			for k, v := range inner {
+				for _, lent := range jobDefaultKeys {
+					if strings.ToLower(k) == lent && set(v) {
+						jobs[lent] = true
+					}
+				}
 			}
 		}
-		keys[strings.ToLower(section)] = named
 	}
-	return keys
+	return jobs, requires
 }
 
-// named answers whether the file wrote one key of one section.
-func (k fileKeys) named(section, key string) bool { return k[section][key] }
-
-// keepUnlessNamed is the rule for a boolean: what the file says where it says
-// it, and what is beneath the file where it does not. WSL-161.
-func keepUnlessNamed(dst *bool, stored, named bool) {
-	if named {
-		*dst = stored
-	}
-}
-
-// overlayJobs lays a file's jobs over the jobs beneath it, key by key.
+// overlayJobDefaults lays a file's job defaults over what is beneath them, key by
+// key.
 //
 // ⛔ ONE COPY FOR BOTH LAYERS. The file the search resolved and a working tree's
-// file contributing to a named instance go through this one list, so a key one
-// of them carries cannot be dropped by the other. A case sets every field in a
-// contributing file and reads it back. WSL-131.
-func overlayJobs(dst *JobConfig, stored JobConfig, named map[string]bool) {
-	if stored.ContainerLifecycle != "" {
-		dst.ContainerLifecycle = stored.ContainerLifecycle
-	}
-	if stored.Platform != "" {
-		dst.Platform = stored.Platform
-	}
-	if stored.Workspace != "" {
-		dst.Workspace = stored.Workspace
-	}
-	if stored.Exclude != nil {
-		dst.Exclude = stored.Exclude
-	}
-	keepUnlessNamed(&dst.Gitignore, stored.Gitignore, named["gitignore"])
+// file lending to a named instance go through this one list, so a key one of
+// them carries cannot be dropped by the other. A case sets every field in a
+// lending file and reads it back. WSL-131.
+func overlayJobDefaults(dst *JobConfig, stored JobConfig) {
 	if stored.Image != "" {
 		dst.Image = stored.Image
 	}
@@ -107,22 +93,21 @@ func overlayJobs(dst *JobConfig, stored JobConfig, named map[string]bool) {
 	}
 }
 
-// decodeStored reads one configuration file strictly, and says which keys it
-// wrote.
-func decodeStored(path string, b []byte) (Config, fileKeys, error) {
+// decodeStored reads one configuration file strictly.
+func decodeStored(path string, b []byte) (Config, error) {
 	var stored Config
 	if err := checkFloor(path, b); err != nil {
-		return stored, nil, err
+		return stored, err
 	}
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&stored); err != nil {
-		return stored, nil, unreadable(path, err)
+		return stored, unreadable(path, err)
 	}
 	if stored.Schema != ConfigSchema {
-		return stored, nil, fmt.Errorf("%s declares schema %q and this build reads %q", path, stored.Schema, ConfigSchema)
+		return stored, fmt.Errorf("%s declares schema %q and this build reads %q", path, stored.Schema, ConfigSchema)
 	}
-	return stored, readFileKeys(b), nil
+	return stored, nil
 }
 
 // -- WSL-129: a version floor --------------------------------------------------
@@ -213,9 +198,15 @@ type ownLayer struct {
 	requires string
 }
 
-// nearestProjectConfig is the working tree's wsl-toolkit.json nearest the
-// working directory, or empty when there is none. WSL-131.
-func nearestProjectConfig() string {
+// lendingProjectConfig is the working tree's wsl-toolkit.json nearest the
+// working directory where that file writes a job default or requires, and empty
+// otherwise. WSL-131.
+//
+// ⛔ A FILE THAT WRITES NEITHER IS NOT READ, as before this release. A named
+// instance with its own file ignored the working tree's file whole, so one that
+// does not parse, or carries a key this build does not know, refused nothing.
+// It still refuses nothing. Only a file that lends is held strictly.
+func lendingProjectConfig() string {
 	dir, err := os.Getwd()
 	if err != nil {
 		return ""
@@ -223,6 +214,13 @@ func nearestProjectConfig() string {
 	for {
 		candidate := filepath.Join(dir, WorkingConfigName)
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			b, err := os.ReadFile(candidate)
+			if err != nil {
+				return ""
+			}
+			if jobs, requires := lentKeys(b); len(jobs) == 0 && !requires {
+				return ""
+			}
 			return candidate
 		}
 		parent := filepath.Dir(dir)
@@ -234,30 +232,31 @@ func nearestProjectConfig() string {
 }
 
 // contribute lays a working tree's file over a named instance's configuration:
-// its jobs, key by key, and its requires. WSL-131.
+// its job defaults, key by key, and its requires. WSL-131.
 //
 // ⭐ ONE BASE SERVES EVERY PROJECT, AND A PROJECT STILL STATES ITS JOBS. The
 // instance's own file says what the base is, which WSL-75 settled. Before this,
-// a project's image, timeout, environment and excludes were ignored under a
-// named instance, so every wrapper passed them on each call.
+// a project's image, timeout and environment were ignored under a named
+// instance, so every wrapper passed them on each call.
 //
-// ⛔ ITS BASE IS NOT READ. The instance's own file says what the base is, and a
-// project's base section is the default instance's business.
+// ⛔ ITS BASE IS NOT READ, AND NEITHER ARE THE OLDER JOBS KEYS. The instance's
+// own file says what the base is, and jobDefaultKeys says why the rest stay.
 func (c *Config) contribute(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("%s: %w", path, err)
 	}
-	stored, keys, err := decodeStored(path, b)
+	stored, err := decodeStored(path, b)
 	if err != nil {
 		return err
 	}
 	c.own = &ownLayer{jobs: c.Jobs, requires: c.Requires}
-	overlayJobs(&c.Jobs, stored.Jobs, keys["jobs"])
+	overlayJobDefaults(&c.Jobs, stored.Jobs)
 	c.Requires = higherFloor(c.Requires, stored.Requires)
-	c.project, c.projectKeys = path, keys["jobs"]
+	c.project = path
+	c.projectKeys, _ = lentKeys(b)
 	if err := c.Validate(); err != nil {
-		return fmt.Errorf("%s, whose jobs this instance takes: %w", path, err)
+		return fmt.Errorf("%s, whose job defaults this instance takes: %w", path, err)
 	}
 	return nil
 }
@@ -282,8 +281,8 @@ func (c Config) Portable() Config {
 	return c
 }
 
-// Project is the working tree's file whose jobs and requires a named instance's
-// configuration took, or empty. WSL-131.
+// Project is the working tree's file whose job defaults and requires a named
+// instance's configuration took, or empty. WSL-131.
 func (c Config) Project() string { return c.project }
 
 // JobsDir is the directory a relative path in jobs.KEY resolves against: that of

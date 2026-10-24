@@ -26,7 +26,7 @@ func ValidateJobUser(user string, create, sudo bool) error {
 		if user == "" {
 			return errors.New("--create-user makes the account --user names, and no --user was given. Pass --user NAME")
 		}
-		if err := ValidateAccountName(user); err != nil {
+		if err := validateMadeAccountName(user); err != nil {
 			return fmt.Errorf("--create-user: %w", err)
 		}
 	}
@@ -41,9 +41,12 @@ func ValidateJobUser(user string, create, sudo bool) error {
 	return nil
 }
 
-// ValidateAccountName holds a name --create-user makes to what every image's
+// validateMadeAccountName holds a name --create-user makes to what every image's
 // tools read as an account: [a-z_][a-z0-9_-]*, at most 32.
-func ValidateAccountName(name string) error {
+//
+// ⚠ IT IS THE RULE FOR AN ACCOUNT THIS TOOL WRITES, so it is stricter than one
+// for an account a base or an image already holds, and named apart from it.
+func validateMadeAccountName(name string) error {
 	if name == "" || len(name) > 32 {
 		return fmt.Errorf("%q is not an account name: a name is 1 to 32 characters", name)
 	}
@@ -206,6 +209,22 @@ func accountProbeScript(spec JobSpec, id string) []byte {
 	}
 	b.WriteString("\n")
 	return []byte(b.String())
+}
+
+// jobBudget is what a job's deadline leaves for its container once the account
+// probe has run.
+//
+// ⛔ ONE DEADLINE FOR THE PULL AND THE RUN. Without --create-user the pull is
+// inside `podman run`, and so inside the deadline. The probe makes that pull
+// first, and the job then had its whole deadline again. WSL-123.
+func jobBudget(timeout, spent time.Duration) time.Duration {
+	if timeout <= 0 {
+		return timeout
+	}
+	if left := timeout - spent; left > time.Second {
+		return left
+	}
+	return time.Second
 }
 
 // resolveAccount asks the image which accounts it has, and decides.

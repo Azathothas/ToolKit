@@ -255,7 +255,7 @@ func (j *jobFlags) envMap(cfg toolkit.Config) (map[string]string, error) {
 		}
 		pairs, err := toolkit.ParseEnvFile(data, path)
 		if err != nil {
-			return nil, fmt.Errorf("jobs.env_file %w", err)
+			return nil, fmt.Errorf("jobs.env_file: %w", err)
 		}
 		for _, pair := range pairs {
 			out[pair.Name] = pair.Value
@@ -514,7 +514,7 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 	j.platform = platform
 	if j.workspace != "" {
 		if workspaceFromConfig {
-			j.workspace, err = pathFromJobs(cfg, "workspace", j.workspace)
+			j.workspace, err = pathFromConfig(cfg, j.workspace)
 		} else {
 			j.workspace, err = pathFromProject(cfg, j.workspace)
 		}

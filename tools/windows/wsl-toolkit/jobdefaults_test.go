@@ -85,10 +85,10 @@ func TestTheProjectsEnvironmentComesFirst(t *testing.T) {
 	}
 }
 
-// TestAProjectsWorkspaceResolvesAgainstItsOwnFile: under a named instance a
-// working tree's jobs.workspace resolves against that tree's file, not against
-// the instance's own. WSL-131.
-func TestAProjectsWorkspaceResolvesAgainstItsOwnFile(t *testing.T) {
+// TestAProjectsEnvFileResolvesAgainstItsOwnFile: under a named instance a
+// working tree's jobs.env_file resolves against that tree's file, not against
+// the instance's own or the working directory. WSL-131.
+func TestAProjectsEnvFileResolvesAgainstItsOwnFile(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "instances", "f2")
 	tree := t.TempDir()
 	for dir, file := range map[string]string{home: "config.json", tree: toolkit.WorkingConfigName} {
@@ -97,11 +97,14 @@ func TestAProjectsWorkspaceResolvesAgainstItsOwnFile(t *testing.T) {
 		}
 		body := `{"schema":"wsl-toolkit-config/1"}`
 		if dir == tree {
-			body = `{"schema":"wsl-toolkit-config/1","jobs":{"workspace":"src"}}`
+			body = `{"schema":"wsl-toolkit-config/1","jobs":{"env_file":"job.env"}}`
 		}
 		if err := os.WriteFile(filepath.Join(dir, file), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if err := os.WriteFile(filepath.Join(tree, "job.env"), []byte("FROM=project\n"), 0o600); err != nil {
+		t.Fatal(err)
 	}
 	inner := filepath.Join(tree, "src")
 	if err := os.MkdirAll(inner, 0o755); err != nil {
@@ -124,11 +127,9 @@ func TestAProjectsWorkspaceResolvesAgainstItsOwnFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	j := testJobFlags()
-	if err := j.applyConfig(cfg); err != nil {
-		t.Fatal(err)
-	}
-	if !sameHostPath(j.workspace, inner) {
-		t.Errorf("the project's jobs.workspace resolved to %q, want %q beside its own file", j.workspace, inner)
+	got, err := j.envMap(cfg)
+	if err != nil || got["FROM"] != "project" {
+		t.Errorf("the project's jobs.env_file read as %v, %v; want the file beside its own configuration", got, err)
 	}
 }
 

@@ -161,13 +161,19 @@ always wins, even one whose value is the flag's own default. `WSL-131`
 - A relative `workspace` or `env_file` resolves against the file that names it.
 - Each value is held where the file is read, so an unusable one is refused there.
 
-⭐ **A named instance takes a working tree's jobs too.** Its own configuration still
-says what the base is. The nearest `wsl-toolkit.json` from the working directory up
-lends that instance its `jobs`, key by key, and its `requires`. A key the project
-leaves out keeps the instance's value. `wsl-toolkit config` names the file as
-`project`, and the search order it prints is unchanged.
+⭐ **A named instance takes a working tree's job defaults too.** Its own
+configuration still says what the base is. The nearest `wsl-toolkit.json` from the
+working directory up lends that instance the keys above, one by one, and its
+`requires`. A key the project leaves out keeps the instance's value.
+`wsl-toolkit config` names the file as `project`, and the search order it prints
+is unchanged. `WSL-131`
 
-- ⛔ The project's `base` is not read under a named instance.
+- ⛔ Only those keys cross. The project's `base`, and its `container_lifecycle`,
+  `platform`, `workspace`, `exclude` and `gitignore`, are not read under a named
+  instance, as before this release.
+- ⛔ A project file that names none of those keys and no `requires` is not read at
+  all. A file there that is broken, or written by a newer build, refuses nothing.
+- A file that lends is read whole and strictly, so its fault is a refusal.
 - ⛔ A write to the instance's file stores the instance's own jobs, never the
   project's. `config --write`, `base grant` and a saved preset write that file.
 
@@ -181,12 +187,6 @@ and `wsl-toolkit selfupdate`. The floor is read before anything else in the file
 - ⭐ A key this build does not know is refused naming the likely cause: a newer
   build may have written the file, and `selfupdate` is the remedy.
 - `doctor` reports the refusal and goes on, since a survey is not a gate.
-
-⛔ **A boolean a file leaves out keeps what is beneath it.** `systemd`,
-`passwordless_sudo` and `jobs.gitignore` were copied whether the file named them or
-not, so a key left out read as false. The compiled-in defaults are false, so a file
-read alone is unchanged. A project lending a named instance its jobs no longer turns
-the instance's `jobs.gitignore` off. `WSL-161`
 
 ---
 
@@ -447,6 +447,11 @@ before the job is claimed. ⚠ The capability is the container's, inside the bas
 account's user namespace. It is not one over the base, or over this machine.
 `WSL-130`
 
+⚠ **A helper older than this release refuses a job that uses `--cache`,
+`--create-user`, `--sudo`, `--cap-add` or `--input-exec`.** It reads each request
+strictly, so it refuses the flag rather than dropping it. Start the helper again
+after an update.
+
 ---
 
 ## ⭐ A cache kept between jobs
@@ -467,7 +472,15 @@ repeatable, and one cache may be mounted at several paths. `WSL-122`
   and clean. `/work`, `/out`, `/in`, `/job.sh` and a kernel filesystem are
   refused. A path below `/work` or `/out` is taken.
 - With `--user`, the volume is re-owned to that user, as the job's own mounts
-  are.
+  are. ⚠ podman re-owns every file in it at each such job, so a large cache costs
+  time at each start. Two jobs as different users on one cache take it from each
+  other.
+- ⚠ A cache belongs to the base, not to a project. Any job on that base that
+  names it reads and writes it, so a cache is shared trust. Give a project's
+  caches names of their own.
+- A volume named `wtk-cache-NAME` is a cache whether or not it carries the
+  label. podman makes one without it when `gc --caches --apply` removed the
+  volume while a job started.
 - `jobs.cache` in the configuration is a list of the same spelling. A command
   line adds to it, and a cache it names at the same path wins.
 - `matrix` takes it too, and every row mounts the same volume.
@@ -498,7 +511,11 @@ none.** podman writes its passwd and group entries and gives it a home at
   is 1001.
 - The home is a tmpfs, gone with the job. A cache at a path below it is kept.
 - The image's accounts are read first, in a container of their own made from the
-  job's image and platform. The job's deadline bounds that read.
+  job's image and platform. That read pulls the image, and its time comes out of
+  the job's deadline, as the pull inside a job does.
+- ⚠ That read runs `/bin/sh` in the image, so an image without one cannot use
+  `--create-user`. A probe a killed client leaves is its job's, and `gc` removes
+  it with that job.
 - NAME is `[a-z_][a-z0-9_-]*`, at most 32 characters. A uid is refused, since it
   names no account to make.
 
@@ -619,7 +636,7 @@ in.** When `%LOCALAPPDATA%\wsl-toolkit\instances\NAME\config.json` exists,
 and a project's `wsl-toolkit.json` does not change it. The project's file still
 applies to the default instance and to a named one with no file of its own.
 `--config` comes before both. ⭐ The project's file still lends the instance its
-`jobs` and its `requires`, as [its section](#-a-projects-job-defaults-and-the-oldest-build-it-takes)
+job defaults and its `requires`, as [its section](#-a-projects-job-defaults-and-the-oldest-build-it-takes)
 says. `WSL-131`
 
 ⭐ **A process this tool starts resolves the instance once.** `helper serve
@@ -1097,8 +1114,8 @@ architecture is named at pull and create time rather than checked afterwards.
 With a project configuration in play, a relative `--workspace`, `--script`,
 `--env-file`, `--artifacts`, `--input` or matrix transcript path of `run` or `matrix`
 resolves against the directory holding that configuration. A relative
-`jobs.workspace` or `jobs.env_file` always resolves against the file that names it,
-which is a working tree's own where it lends a named instance its jobs. `base exec`
+`jobs.workspace` or `jobs.env_file` always resolves against the file that names it.
+That is a working tree's own where it lends a named instance its `env_file`. `base exec`
 reads a relative `--script` and `--env-file` from the current directory.
 
 ⭐ **A relative grant source resolves against its file on every route.** A file's

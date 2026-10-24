@@ -693,8 +693,11 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	// ⭐ --create-user READS THE IMAGE'S ACCOUNTS BEFORE THE CONTAINER, with the
 	// job's own image, platform and pull, so an account the image has is used as
 	// it is and a made one takes an id the image does not. WSL-123.
+	var probeSpent time.Duration
 	if spec.CreateUser {
+		probeStart := time.Now()
 		acct, err := r.resolveAccount(ctx, spec, id)
+		probeSpent = time.Since(probeStart)
 		if err != nil {
 			res.Exit, res.Error, res.Unreached = 2, err.Error(), true
 			return res
@@ -803,7 +806,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	runCtx := ctx
 	if spec.Timeout > 0 {
 		var cancel context.CancelFunc
-		runCtx, cancel = context.WithTimeout(ctx, spec.Timeout)
+		runCtx, cancel = context.WithTimeout(ctx, jobBudget(spec.Timeout, probeSpent))
 		defer cancel()
 	}
 	code, execErr := r.wsl.Exec(runCtx, ExecRequest{

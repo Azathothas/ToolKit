@@ -13,93 +13,6 @@ import (
 	"testing"
 )
 
-// everyBool sets every boolean field of a struct to v and answers the JSON key
-// of each, so a boolean added to the struct later is walked without a list.
-func everyBool(t *testing.T, ptr any, v bool) []string {
-	t.Helper()
-	rv := reflect.ValueOf(ptr).Elem()
-	var keys []string
-	for i := 0; i < rv.NumField(); i++ {
-		f := rv.Field(i)
-		if f.Kind() != reflect.Bool {
-			continue
-		}
-		f.SetBool(v)
-		key, _, _ := strings.Cut(rv.Type().Field(i).Tag.Get("json"), ",")
-		keys = append(keys, key)
-	}
-	return keys
-}
-
-// TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt is WSL-161. The loader copied
-// every boolean a file decoded, named or not, so a file that left `systemd` out
-// read as a file that turned it off. Every boolean the loader copies is set true
-// beneath a file that names none of them, and must stay true; a file naming each
-// one false must still turn it off.
-func TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("WSL_TOOLKIT_HOME", home)
-	restore := chdir(t, t.TempDir())
-	defer restore()
-	previous := compiledDefaults
-	t.Cleanup(func() { compiledDefaults = previous })
-	var baseKeys, jobKeys []string
-	compiledDefaults = func() Config {
-		c := previous()
-		baseKeys = everyBool(t, &c.Base, true)
-		jobKeys = everyBool(t, &c.Jobs, true)
-		return c
-	}
-	file := filepath.Join(home, "config.json")
-	write := func(body string) {
-		t.Helper()
-		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	write(`{"schema":"wsl-toolkit-config/1","base":{"name":"wsl-toolkit","image":"docker.io/library/alpine:latest","user":"toolkit"}}`)
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(baseKeys) < 2 || len(jobKeys) < 1 {
-		t.Fatalf("the walk found base %v and jobs %v, and the loader copies more booleans than that", baseKeys, jobKeys)
-	}
-	check := func(label string, ptr any, want bool) {
-		t.Helper()
-		rv := reflect.ValueOf(ptr).Elem()
-		for i := 0; i < rv.NumField(); i++ {
-			if f := rv.Field(i); f.Kind() == reflect.Bool && f.Bool() != want {
-				t.Errorf("%s: %s.%s is %v, want %v", label, rv.Type().Name(), rv.Type().Field(i).Name, f.Bool(), want)
-			}
-		}
-	}
-	check("a file that leaves every boolean out", &cfg.Base, true)
-	check("a file that leaves every boolean out", &cfg.Jobs, true)
-
-	// ⚠ AND NAMING ONE STILL WINS, false included.
-	base := map[string]any{"name": "wsl-toolkit", "image": "docker.io/library/alpine:latest", "user": "toolkit"}
-	for _, k := range baseKeys {
-		base[k] = false
-	}
-	jobs := map[string]any{}
-	for _, k := range jobKeys {
-		jobs[k] = false
-	}
-	body, err := json.Marshal(map[string]any{"schema": ConfigSchema, "base": base, "jobs": jobs})
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(string(body))
-	cfg, err = LoadConfig()
-	if err != nil {
-		t.Fatal(err)
-	}
-	check("a file that names every boolean false", &cfg.Base, false)
-	check("a file that names every boolean false", &cfg.Jobs, false)
-}
-
 // namedInstance selects a scratch instance whose own file holds own, standing
 // in a working tree whose wsl-toolkit.json holds project, and answers the two
 // paths.
@@ -141,12 +54,12 @@ func sameDir(a, b string) bool {
 // TestAProjectLendsItsJobsToANamedInstance is WSL-131. A named instance's own
 // file wins for the base, and before this the working tree's file was then
 // ignored whole, so a project's image, timeout and environment reached no job.
-// It lends its jobs key by key and its floor; a key it leaves out keeps the
-// instance's, a boolean included (WSL-161); and a write stores the instance's own.
+// It lends its job defaults key by key and its floor. The older jobs keys stay
+// the instance's, as they were. A write stores the instance's own.
 func TestAProjectLendsItsJobsToANamedInstance(t *testing.T) {
 	ownFile, projectFile := namedInstance(t,
-		`{"schema":"wsl-toolkit-config/1","base":{"image":"docker.io/library/alpine:latest"},"jobs":{"container_lifecycle":"persistent","gitignore":true,"timeout":"20m","exclude":["own"]}}`,
-		`{"schema":"wsl-toolkit-config/1","requires":"1.0.0","base":{"name":"wsl-toolkit","image":"docker.io/library/debian:latest"},"jobs":{"container_lifecycle":"ephemeral","image":"docker.io/library/rust:1","timeout":"45m","env":{"A":"1"},"workspace":"..","env_file":"job.env","cache":["cargo:/usr/local/cargo"]}}`)
+		`{"schema":"wsl-toolkit-config/1","base":{"image":"docker.io/library/alpine:latest"},"jobs":{"container_lifecycle":"persistent","gitignore":true,"timeout":"20m","user":"own","exclude":["own"]}}`,
+		`{"schema":"wsl-toolkit-config/1","requires":"1.0.0","base":{"name":"wsl-toolkit","image":"docker.io/library/debian:latest"},"jobs":{"container_lifecycle":"ephemeral","image":"docker.io/library/rust:1","timeout":"45m","env":{"A":"1"},"workspace":"..","exclude":["project"],"env_file":"job.env","cache":["cargo:/usr/local/cargo"]}}`)
 	src, err := ResolveConfig()
 	if err != nil {
 		t.Fatal(err)
@@ -164,21 +77,26 @@ func TestAProjectLendsItsJobsToANamedInstance(t *testing.T) {
 		t.Errorf("the base came from the project: %s from %s", cfg.Base.Name, cfg.Base.Image)
 	}
 	j := cfg.Jobs
-	if j.ContainerLifecycle != ContainerEphemeral || j.Image != "docker.io/library/rust:1" || j.Timeout != "45m" || j.Env["A"] != "1" || len(j.Cache) != 1 {
-		t.Errorf("the project's jobs did not reach the instance: %+v", j)
+	if j.Image != "docker.io/library/rust:1" || j.Timeout != "45m" || j.Env["A"] != "1" || len(j.Cache) != 1 || j.EnvFile != "job.env" {
+		t.Errorf("the project's job defaults did not reach the instance: %+v", j)
 	}
-	if !j.Gitignore || strings.Join(j.Exclude, " ") != "own" {
-		t.Errorf("a key the project leaves out lost the instance's value: gitignore %v, exclude %v", j.Gitignore, j.Exclude)
+	if j.User != "own" {
+		t.Errorf("a job default the project leaves out lost the instance's value: user %q", j.User)
+	}
+	// ⛔ THE OLDER KEYS STAY THE INSTANCE'S, as a correct call before this
+	// release ran them.
+	if j.ContainerLifecycle != ContainerPersistent || !j.Gitignore || strings.Join(j.Exclude, " ") != "own" || j.Workspace != "" {
+		t.Errorf("an older jobs key came from the project: %+v", j)
 	}
 	if cfg.Requires != "1.0.0" || cfg.Project() != projectFile {
 		t.Errorf("requires %q from %q; want the project's floor and its file", cfg.Requires, cfg.Project())
 	}
 	// ⭐ A relative path resolves against the file that named it.
-	if got := cfg.JobsDir("workspace"); !sameDir(got, filepath.Dir(projectFile)) {
-		t.Errorf("jobs.workspace resolves against %q, want the project's directory", got)
+	if got := cfg.JobsDir("env_file"); !sameDir(got, filepath.Dir(projectFile)) {
+		t.Errorf("jobs.env_file resolves against %q, want the project's directory", got)
 	}
-	if got := cfg.JobsDir("exclude"); !sameDir(got, filepath.Dir(ownFile)) {
-		t.Errorf("a key only the instance wrote anchors at %q, want the instance's directory", got)
+	if got := cfg.JobsDir("workspace"); !sameDir(got, filepath.Dir(ownFile)) {
+		t.Errorf("a key the project does not lend anchors at %q, want the instance's directory", got)
 	}
 	// ⛔ A write stores the instance's own jobs, not what the project lent.
 	if err := cfg.Write(); err != nil {
@@ -196,6 +114,45 @@ func TestAProjectLendsItsJobsToANamedInstance(t *testing.T) {
 	}
 	if written, _ := os.ReadFile(ownFile); strings.Contains(string(written), "rust") {
 		t.Errorf("a grant's write stored the project's jobs:\n%s", written)
+	}
+}
+
+// TestAProjectThatLendsNothingIsNotRead holds the additive half of WSL-131.
+// Under a named instance with its own file, 7.0 never read the working tree's
+// file, so a file there that does not parse, carries a key this build does not
+// know, or names only the older jobs keys, still changes and refuses nothing.
+func TestAProjectThatLendsNothingIsNotRead(t *testing.T) {
+	for label, project := range map[string]string{
+		"older keys only": `{"schema":"wsl-toolkit-config/1","jobs":{"container_lifecycle":"ephemeral","exclude":["x"],"gitignore":true,"platform":"linux/arm64","workspace":".."}}`,
+		"not JSON":        `{"schema":`,
+		"an unknown key":  `{"schema":"wsl-toolkit-config/1","jobs":{"a_key_from_later":1}}`,
+		"another schema":  `{"schema":"wsl-toolkit-config/0","base":{"name":"wsl-toolkit"}}`,
+		"null defaults":   `{"schema":"wsl-toolkit-config/1","requires":null,"jobs":{"image":null}}`,
+	} {
+		t.Run(label, func(t *testing.T) {
+			namedInstance(t, `{"schema":"wsl-toolkit-config/1","jobs":{"exclude":["own"]}}`, project)
+			src, err := ResolveConfig()
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := LoadConfig()
+			if err != nil {
+				t.Fatalf("a working tree's file that lends nothing refused the instance: %v", err)
+			}
+			if src.Project != "" || cfg.Project() != "" {
+				t.Errorf("the file was read as lending: %q, %q", src.Project, cfg.Project())
+			}
+			def := DefaultConfig().Jobs
+			if cfg.Jobs.ContainerLifecycle != def.ContainerLifecycle || cfg.Jobs.Gitignore || cfg.Jobs.Platform != "" ||
+				cfg.Jobs.Workspace != "" || strings.Join(cfg.Jobs.Exclude, " ") != "own" {
+				t.Errorf("the instance's jobs changed: %+v", cfg.Jobs)
+			}
+		})
+	}
+	// ⚠ A file that lends is read strictly, and its fault is the refusal.
+	namedInstance(t, `{"schema":"wsl-toolkit-config/1"}`, `{"schema":"wsl-toolkit-config/1","jobs":{"image":"docker.io/library/rust:1","a_key_from_later":1}}`)
+	if _, err := LoadConfig(); err == nil || !strings.Contains(err.Error(), "a_key_from_later") {
+		t.Errorf("a lending file with an unknown key answered %v", err)
 	}
 }
 
@@ -225,8 +182,11 @@ func TestAProjectThatIsTheConfigurationLendsNothing(t *testing.T) {
 }
 
 // TestEveryJobFieldAProjectWritesReachesTheInstance holds the one copy both
-// layers share: every JobConfig field set in a working tree's file reaches a
-// named instance's configuration.
+// layers share. Every JobConfig field is either a job default a working tree
+// lends a named instance, and reaches it, or an older key, and does not.
+//
+// ⛔ A FIELD ADDED LATER IS PUT ON ONE SIDE. The fixture sets every field, so a
+// new one left empty fails here, and one set and not listed fails below.
 func TestEveryJobFieldAProjectWritesReachesTheInstance(t *testing.T) {
 	jobs := JobConfig{
 		ContainerLifecycle: ContainerEphemeral, Platform: "linux/amd64", Workspace: ".",
@@ -234,10 +194,19 @@ func TestEveryJobFieldAProjectWritesReachesTheInstance(t *testing.T) {
 		Env: map[string]string{"A": "1"}, EnvFile: "job.env", User: "1000:1000",
 		MaxBytes: 4096, MaxEntries: 9, Cache: []string{"pip:/root/.cache/pip"},
 	}
+	older := map[string]bool{"container_lifecycle": true, "platform": true, "workspace": true, "exclude": true, "gitignore": true}
+	lent := map[string]bool{}
+	for _, k := range jobDefaultKeys {
+		lent[k] = true
+	}
 	v := reflect.ValueOf(jobs)
 	for i := 0; i < v.NumField(); i++ {
+		key, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
 		if v.Field(i).IsZero() {
-			t.Fatalf("the fixture leaves jobs.%s empty, so this case cannot see it dropped", v.Type().Field(i).Name)
+			t.Fatalf("the fixture leaves jobs.%s empty, so this case cannot see it dropped", key)
+		}
+		if lent[key] == older[key] {
+			t.Fatalf("jobs.%s is neither a job default a project lends nor an older key: put it on one side", key)
 		}
 	}
 	body, err := json.Marshal(map[string]any{"schema": ConfigSchema, "jobs": jobs})
@@ -249,8 +218,16 @@ func TestEveryJobFieldAProjectWritesReachesTheInstance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(cfg.Jobs, jobs) {
-		t.Fatalf("the instance took the project's jobs as\n %+v\nwant\n %+v", cfg.Jobs, jobs)
+	got, def := reflect.ValueOf(cfg.Jobs), reflect.ValueOf(DefaultConfig().Jobs)
+	for i := 0; i < v.NumField(); i++ {
+		key, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
+		want := v.Field(i)
+		if older[key] {
+			want = def.Field(i)
+		}
+		if !reflect.DeepEqual(got.Field(i).Interface(), want.Interface()) {
+			t.Errorf("jobs.%s reached the instance as %v, want %v", key, got.Field(i).Interface(), want.Interface())
+		}
 	}
 }
 

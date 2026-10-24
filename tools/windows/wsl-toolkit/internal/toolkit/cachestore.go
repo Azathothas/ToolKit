@@ -27,12 +27,23 @@ type CacheVolume struct {
 }
 
 // cacheVolumes lists every cache volume this tool made.
-//
-// ⛔ ONLY A VOLUME CARRYING THIS TOOL'S LABEL AND NAME IS ONE. A volume an image
-// declared, or one somebody made by hand, is not this tool's to report as held
-// or to remove.
 func (r *Runner) cacheVolumes(ctx context.Context) ([]CacheVolume, error) {
-	script := `podman volume ls --filter label=` + JobLabel + ` --format '{{.Name}}' 2>/dev/null | while IFS= read -r v; do
+	out, stderr, code, err := r.baseCapture(ctx, []byte(cacheListScript()), 5*time.Minute)
+	if err != nil || code != 0 || !strings.Contains(out, "caches-listed") {
+		return nil, fmt.Errorf("the caches could not be listed (exit %d): %s", code, guestFailure(stderr, out))
+	}
+	return parseCacheVolumes(out), nil
+}
+
+// cacheListScript prints one line for each cache volume, then caches-listed.
+//
+// ⛔ A CACHE IS FOUND BY ITS NAME, NOT BY ITS LABEL. `gc --caches --apply` can
+// remove a volume between a job's create and its `podman run`, and podman then
+// makes the volume itself, with no label. Read by label, that volume was in no
+// listing and no cleanup. A name under the prefix is this tool's, which is what
+// the prefix is for. WSL-122.
+func cacheListScript() string {
+	return `podman volume ls --format '{{.Name}}' 2>/dev/null | while IFS= read -r v; do
   case "$v" in ` + CacheVolumePrefix + `*) : ;; *) continue ;; esac
   mp=$(podman volume inspect --format '{{.Mountpoint}}' "$v" 2>/dev/null) || mp=
   kb=
@@ -44,11 +55,6 @@ func (r *Runner) cacheVolumes(ctx context.Context) ([]CacheVolume, error) {
 done
 printf 'caches-listed\n'
 `
-	out, stderr, code, err := r.baseCapture(ctx, []byte(script), 5*time.Minute)
-	if err != nil || code != 0 || !strings.Contains(out, "caches-listed") {
-		return nil, fmt.Errorf("the caches could not be listed (exit %d): %s", code, guestFailure(stderr, out))
-	}
-	return parseCacheVolumes(out), nil
 }
 
 // parseCacheVolumes reads cacheVolumes' lines.

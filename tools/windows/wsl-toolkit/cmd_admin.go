@@ -453,7 +453,7 @@ func cmdConfig(args []string) (int, error) {
 	fmt.Fprintf(os.Stderr, "  exists      %v\n", fileExists(resolved))
 	renderConfigSearch(src)
 	if cfg.Project() != "" {
-		fmt.Fprintf(os.Stderr, "  project     %s lends this instance its jobs and requires\n", cfg.Project())
+		fmt.Fprintf(os.Stderr, "  project     %s lends this instance its job defaults and requires\n", cfg.Project())
 	}
 	if cfg.Requires != "" {
 		fmt.Fprintf(os.Stderr, "  requires    wsl-toolkit %s or newer, and this is %s\n", cfg.Requires, toolkit.Version)
@@ -502,12 +502,7 @@ func cmdConfig(args []string) (int, error) {
 	fmt.Fprintf(os.Stderr, "  jobs        %s containers, platform %s\n",
 		cfg.Jobs.ContainerLifecycle, orNative(cfg.Jobs.Platform))
 	if cfg.Jobs.Workspace != "" {
-		anchor := filepath.Dir(resolved)
-		if cfg.Project() != "" {
-			// WSL-131: the file that named it, which a working tree's can be.
-			anchor = cfg.JobsDir("workspace")
-		}
-		fmt.Fprintf(os.Stderr, "  workspace   %s, relative to %s\n", cfg.Jobs.Workspace, anchor)
+		fmt.Fprintf(os.Stderr, "  workspace   %s, relative to %s\n", cfg.Jobs.Workspace, filepath.Dir(resolved))
 	}
 	renderJobDefaults(cfg)
 	fmt.Fprintf(os.Stderr, "  catalog     %d image(s), %s\n", len(cfg.Catalog()), builtinOrStored(cfg))

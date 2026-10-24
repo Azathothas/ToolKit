@@ -2,38 +2,47 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
-      "label": "wsl-toolkit: a boolean a file leaves out keeps what is beneath it",
+      "label": "wsl-toolkit: a cache with no label is still listed",
+      "file": "internal/toolkit/cachestore.go",
+      "find": "\treturn `podman volume ls --format '{{.Name}}' 2>/dev/null | while IFS= read -r v; do\n",
+      "replace": "\treturn `podman volume ls --filter label=wsl-toolkit.owner=wsl-toolkit --format '{{.Name}}' 2>/dev/null | while IFS= read -r v; do\n",
+      "run": "TestACacheWithNoLabelIsStillListed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account probe spends the job's deadline",
+      "file": "internal/toolkit/jobuser.go",
+      "find": "\tif left := timeout - spent; left > time.Second {\n",
+      "replace": "\tif left := timeout; left > time.Second {\n",
+      "run": "TestTheAccountProbeSpendsTheJobsDeadline",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the account probe a killed client leaves is its job's",
+      "file": "internal/toolkit/cleanup_run.go",
+      "find": "\tif head, _, ok := strings.Cut(id, \"-\"); ok && ValidJobID(head) {\n\t\treturn head\n\t}\n",
+      "replace": "",
+      "run": "TestJobIDRecovery",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a named instance keeps its older jobs keys under a working tree's file",
       "file": "internal/toolkit/configlayer.go",
-      "find": "\tif named {\n\t\t*dst = stored\n\t}\n",
-      "replace": "\t*dst = stored\n",
-      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt",
+      "find": "\toverlayJobDefaults(&c.Jobs, stored.Jobs)\n",
+      "replace": "\toverlayJobDefaults(&c.Jobs, stored.Jobs)\n\tif stored.Jobs.Exclude != nil {\n\t\tc.Jobs.Exclude = stored.Jobs.Exclude\n\t}\n",
+      "run": "TestAProjectLendsItsJobsToANamedInstance|TestEveryJobFieldAProjectWritesReachesTheInstance",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
     {
-      "label": "wsl-toolkit: base.systemd goes through the rule for a boolean",
-      "file": "internal/toolkit/catalog.go",
-      "find": "keepUnlessNamed(&cfg.Base.Systemd, stored.Base.Systemd, keys.named(\"base\", \"systemd\"))",
-      "replace": "cfg.Base.Systemd = stored.Base.Systemd",
-      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: base.passwordless_sudo goes through the rule for a boolean",
-      "file": "internal/toolkit/catalog.go",
-      "find": "keepUnlessNamed(&cfg.Base.PasswordlessSudo, stored.Base.PasswordlessSudo, keys.named(\"base\", \"passwordless_sudo\"))",
-      "replace": "cfg.Base.PasswordlessSudo = stored.Base.PasswordlessSudo",
-      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: jobs.gitignore a project leaves out keeps the instance's",
+      "label": "wsl-toolkit: a working tree's file that lends nothing is not read under a named instance",
       "file": "internal/toolkit/configlayer.go",
-      "find": "keepUnlessNamed(&dst.Gitignore, stored.Gitignore, named[\"gitignore\"])",
-      "replace": "dst.Gitignore = stored.Gitignore",
-      "run": "TestABooleanAFileLeavesOutKeepsWhatIsBeneathIt|TestAProjectLendsItsJobsToANamedInstance",
+      "find": "\t\t\tif jobs, requires := lentKeys(b); len(jobs) == 0 && !requires {\n\t\t\t\treturn \"\"\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestAProjectThatLendsNothingIsNotRead",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -49,7 +58,7 @@
     {
       "label": "wsl-toolkit: the floor is read before the strict decode",
       "file": "internal/toolkit/configlayer.go",
-      "find": "\tif err := checkFloor(path, b); err != nil {\n\t\treturn stored, nil, err\n\t}\n",
+      "find": "\tif err := checkFloor(path, b); err != nil {\n\t\treturn stored, err\n\t}\n",
       "replace": "",
       "run": "TestAFloorNewerThanThisBuildIsRefusedNamingTheRemedy",
       "module": "tools/windows/wsl-toolkit",
@@ -103,17 +112,17 @@
     {
       "label": "wsl-toolkit: a named instance finds the working tree's file",
       "file": "internal/toolkit/catalog.go",
-      "find": "\t\t\tsrc.Project = nearestProjectConfig()\n",
+      "find": "\t\t\tsrc.Project = lendingProjectConfig()\n",
       "replace": "",
-      "run": "TestAProjectLendsItsJobsToANamedInstance|TestAProjectsWorkspaceResolvesAgainstItsOwnFile",
+      "run": "TestAProjectLendsItsJobsToANamedInstance|TestAProjectsEnvFileResolvesAgainstItsOwnFile",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
     {
-      "label": "wsl-toolkit: a working tree's file lends a named instance its jobs",
+      "label": "wsl-toolkit: a working tree's file lends a named instance its job defaults",
       "file": "internal/toolkit/catalog.go",
-      "find": "\tif src.Project != \"\" {\n\t\tif err := cfg.contribute(src.Project); err != nil {\n",
-      "replace": "\tif false {\n\t\tif err := cfg.contribute(src.Project); err != nil {\n",
+      "find": "\tif err := cfg.contribute(src.Project); err != nil {\n",
+      "replace": "\tif err := error(nil); err != nil {\n",
       "run": "TestAProjectLendsItsJobsToANamedInstance|TestEveryJobFieldAProjectWritesReachesTheInstance",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -159,16 +168,7 @@
       "file": "internal/toolkit/configlayer.go",
       "find": "\tif c.project != \"\" && c.projectKeys[key] {\n",
       "replace": "\tif false {\n",
-      "run": "TestAProjectLendsItsJobsToANamedInstance|TestAProjectsWorkspaceResolvesAgainstItsOwnFile",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: run reads jobs.workspace against the file that named it",
-      "file": "cmd_run.go",
-      "find": "\t\t\tj.workspace, err = pathFromJobs(cfg, \"workspace\", j.workspace)\n",
-      "replace": "\t\t\tj.workspace, err = pathFromConfig(cfg, j.workspace)\n",
-      "run": "TestAProjectsWorkspaceResolvesAgainstItsOwnFile",
+      "run": "TestAProjectLendsItsJobsToANamedInstance|TestAProjectsEnvFileResolvesAgainstItsOwnFile",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -526,7 +526,7 @@
     {
       "label": "wsl-toolkit: --create-user makes a name and nothing else",
       "file": "internal/toolkit/jobuser.go",
-      "find": "\t\tif err := ValidateAccountName(user); err != nil {\n\t\t\treturn fmt.Errorf(\"--create-user: %w\", err)\n\t\t}\n",
+      "find": "\t\tif err := validateMadeAccountName(user); err != nil {\n\t\t\treturn fmt.Errorf(\"--create-user: %w\", err)\n\t\t}\n",
       "replace": "",
       "run": "TestCreateUserAndSudoNameAnAccount",
       "module": "tools/windows/wsl-toolkit",
@@ -660,9 +660,9 @@
     },
     {
       "label": "wsl-toolkit: the loader keeps a project's jobs.exclude",
-      "file": "internal/toolkit/configlayer.go",
-      "find": "\tif stored.Exclude != nil {\n\t\tdst.Exclude = stored.Exclude\n",
-      "replace": "\tif stored.Exclude == nil {\n\t\tdst.Exclude = stored.Exclude\n",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\tif stored.Jobs.Exclude != nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
+      "replace": "\tif stored.Jobs.Exclude == nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
       "run": "TestAProjectsJobSettingsReachEveryJob",
       "module": "tools/windows/wsl-toolkit",
       "args": []
