@@ -83,24 +83,23 @@ func TestTheHandlersAreRegisteredByEveryEnsureAndWatched(t *testing.T) {
 // cgroupfs and the file events backend as global options, before its subcommand.
 func TestRootsPodmanInABaseNeedsNoDBus(t *testing.T) {
 	const global = "podman --cgroup-manager=cgroupfs --events-backend=file "
-	for _, s := range []struct {
-		name   string
-		script []byte
-	}{{"binfmt.sh", binfmtScript}, {"EnsurePlatform's script", platformScript}} {
-		calls := podmanCalls(string(s.script))
-		if len(calls) == 0 {
-			t.Errorf("%s runs no podman, so this case read nothing", s.name)
-		}
-		for _, call := range calls {
-			if !strings.HasPrefix(call, global) {
-				t.Errorf("%s runs root's podman without cgroupfs and the file events backend as global options: %s", s.name, call)
-			}
+	// ⭐ ONE SCRIPT RUNS ROOT'S PODMAN. EnsurePlatform runs binfmt.sh with TK_ARCH,
+	// so a job's platform and the ensure share one root podman. WSL-181.
+	calls := podmanCalls(string(binfmtScript))
+	if len(calls) == 0 {
+		t.Error("binfmt.sh runs no podman, so this case read nothing")
+	}
+	for _, call := range calls {
+		if !strings.HasPrefix(call, global) {
+			t.Errorf("binfmt.sh runs root's podman without cgroupfs and the file events backend as global options: %s", call)
 		}
 	}
 	// ⚠ binfmt.sh's podman is ONE function, so the loop above reads its body once.
 	// Each command of the script that reaches the engine goes through it.
 	for _, want := range []string{
-		`root_podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all`,
+		`root_podman run --rm --privileged --pull=never "$TK_BINFMT_IMAGE" --install "$TK_ARCH"`,
+		`root_podman run --rm --privileged --pull=never "$TK_BINFMT_IMAGE" --install all`,
+		`root_podman image exists "$TK_BINFMT_IMAGE"`,
 		`mnt=$(root_podman image mount "$TK_BINFMT_IMAGE")`,
 		`root_podman image unmount "$TK_BINFMT_IMAGE"`,
 	} {

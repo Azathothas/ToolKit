@@ -186,6 +186,10 @@ effect. A `matrix` row records the workspace its fleet copied. `WSL-114`
 2. A shortened id, or one from another instance, exited 0 having removed nothing.
 `WSL-115`
 
+⚠ **`gc --images` keeps two images**: the health probe's and the QEMU installer's.
+Its plan lists them under `kept`. Without them, the next probe and the next ensure
+would need the registry. `WSL-174`
+
 ---
 
 ## ⭐ A job from a second process
@@ -881,6 +885,28 @@ backend as global options. A flag outranks whatever `/etc/containers` says. With
 them, root's podman on a Debian base with systemd and no D-Bus answered
 `cannot open sd-bus`, and `base ensure` exited 2. `WSL-168`
 
+⚠ **A QEMU step that fails does not fail `base ensure`.** The base has run a
+container by then, so native work is unaffected. The failure is a problem on the
+answer, which exits 1 and names it. A job that asks for a foreign platform still
+registers its own handler, through the same script and the same root podman.
+`WSL-181`
+
+⭐ **The watcher's state is root's measure.** `base ensure` records the state root
+reads for `wsl-toolkit-binfmt.service`. The probe runs as the account, and on a base
+with no D-Bus its `systemctl` reaches no manager. It then reports the recorded state,
+so a running watcher no longer reads `none`. `WSL-181`
+
+⛔ **The installer is pinned by digest, because it runs privileged.** Its reference
+carries the tag for a reader and the `sha256` digest the engine resolves. A tag
+pushed again cannot change what registers the handlers. ⚠ The first ensure after
+an update registers the handlers once more, because the recorded image changed.
+A store that holds the old tag already resolves the digest, so that ensure pulls
+nothing. `WSL-182`
+
+⚠ **The installer is pulled only when it is absent, with a bound of 120 seconds.**
+The run itself never pulls. A registry that stalls costs one ensure two minutes,
+and the problem names the bound. `WSL-182`
+
 ⚠ **A base that no ensure of this release has run on has no recorded set.**
 `binfmt.recorded` is false there, and `ready` counts every distribution's handlers, as
 it did before. Run `base ensure` once. `--json` carries `binfmt.own`, `binfmt.missing`,
@@ -1381,6 +1407,18 @@ registered. A `base.image` that is not fully qualified is refused the same way.
 switches nothing. The refusal says so, and `base recreate` is what switches it.
 ⚠ A pull that fails and a volume too small for the import are still found after the
 removal. `WSL-169`
+
+⛔ **A probe image that cannot be pulled is not a broken base.** The health probe
+runs `docker.io/library/alpine:latest`. Where that image is absent, it is pulled
+first, with a bound of 120 seconds. A pull the network or the registry failed
+answers `not judged: registry docker.io unreachable`, with the registry's own reason.
+`base ensure` then exits 2 and changes nothing: no provisioning, no restart and no
+rebuild. `base status --probe` exits 1 with the same problem. `WSL-174`
+
+⚠ **A pull the base itself broke is still a verify failure.** A lost `/etc/subuid`
+range answers `insufficient UIDs or GIDs`, and a full disk answers `no space left on
+device`. These say `the cause is in the base, not the registry`. `base ensure` then
+re-provisions in place, which repairs them, as it did before. `WSL-174`
 
 ---
 

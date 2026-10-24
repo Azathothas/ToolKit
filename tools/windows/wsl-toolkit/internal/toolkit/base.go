@@ -59,8 +59,19 @@ var binfmtScript []byte
 // and a registered distribution that does not work.
 const BaseSpaceFloor = int64(6) << 30
 
+// binfmtPinnedDigest is the index digest the tag below named when it was
+// measured on 2026-10-24: the registry's answer and the sha256 of the manifest
+// it served agreed. WSL-182.
+const binfmtPinnedDigest = "sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0"
+
 // BinfmtImage installs QEMU interpreters in the WSL kernel.
-const BinfmtImage = "docker.io/tonistiigi/binfmt:qemu-v10.2.3-68"
+//
+// ⛔ PINNED BY DIGEST, BECAUSE IT RUNS PRIVILEGED. The installer runs as root
+// with --privileged and writes F-flag interpreters into the one handler table
+// every distribution shares. A tag can be pushed again, and a host with no copy
+// would then run whatever the tag names now. The tag stays for a reader; the
+// engine resolves the digest. WSL-182.
+const BinfmtImage = "docker.io/tonistiigi/binfmt:qemu-v10.2.3-68@" + binfmtPinnedDigest
 
 // BaseState is what `base status` answers.
 type BaseState struct {
@@ -515,6 +526,7 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 			return b.finishEnsure(ctx, st)
 		} else {
 			b.log("it cannot: " + err.Error())
+			last := err
 			// ⛔ RE-PROVISIONING CANNOT CLEAR STATE THAT IS THE ENGINE'S, and
 			// this used to try anyway, report honestly that it still could not
 			// run a container, and stop. That left the operator to run by hand a
@@ -554,7 +566,17 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 					return b.finishEnsure(ctx, st)
 				} else {
 					b.log("it still cannot after the repair: " + err.Error())
+					last = err
 				}
+			}
+			// ⛔ A PROBE THAT NEVER RAN ITS CONTAINER SAID NOTHING ABOUT THE BASE.
+			// Re-provisioning over a registry that refused the probe image ran a
+			// full upgrade, restarted WSL's VM under every job, and could end in a
+			// rebuild. This refuses and keeps the base as it is. WSL-174.
+			var nj *ProbeNotJudgedError
+			if errors.As(last, &nj) {
+				b.log("⛔ THE BASE WAS NOT JUDGED, so it is left as it is: " + nj.Error())
+				return st, b.notJudgedRefusal(nj)
 			}
 			b.log("re-provisioning in place")
 		}
@@ -626,14 +648,30 @@ func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error
 	// registered in every ensure, because another distribution can empty the table
 	// while this one runs, and a base whose handlers could not be registered is
 	// still a base whose adapters should be installed. WSL-105.
-	err := errors.Join(b.ensureBinfmt(ctx), b.applyAdapters(ctx))
-	if err != nil {
-		if probed, statusErr := b.Status(ctx, true); statusErr == nil {
-			return probed, err
-		}
-		return st, err
+	//
+	// ⛔ AND IT FAILS NO ENSURE. A registry that refused the installer, or a base
+	// whose root podman could not start it, made every `base ensure` exit 2 over a
+	// base whose engine had just run a container, native work included. The
+	// failure is a problem on the answer, named, and a job that asks for a
+	// foreign platform still registers its own handler. WSL-181.
+	binfmtErr := b.ensureBinfmt(ctx)
+	if binfmtErr != nil {
+		b.log(binfmtErr.Error())
 	}
-	return b.Status(ctx, true)
+	withBinfmt := func(s BaseState) BaseState {
+		if binfmtErr != nil {
+			s.Problems = append(s.Problems, binfmtErr.Error())
+		}
+		return s
+	}
+	if err := b.applyAdapters(ctx); err != nil {
+		if probed, statusErr := b.Status(ctx, true); statusErr == nil {
+			return withBinfmt(probed), err
+		}
+		return withBinfmt(st), err
+	}
+	probed, err := b.Status(ctx, true)
+	return withBinfmt(probed), err
 }
 
 // ensureBinfmt registers the base's QEMU handlers when any is gone, records the
@@ -1066,23 +1104,6 @@ func fstabEscape(value string) string {
 	return value
 }
 
-// platformScript registers one platform's handler as root, for the job that
-// asked for it.
-//
-// ⛔ ROOT'S PODMAN TAKES ITS CGROUP MANAGER AND ITS EVENTS BACKEND ON THE COMMAND
-// LINE, as binfmt.sh's does. On a systemd base with no D-Bus, root's podman picks
-// the systemd manager and crun answers `cannot open sd-bus`. WSL-168.
-var platformScript = []byte(`set -eu
-handler=/proc/sys/fs/binfmt_misc/$TK_HANDLER
-if [ -e "$handler" ]; then
-  printf 'binfmt-ready %s\n' "$TK_HANDLER"
-  exit 0
-fi
-podman --cgroup-manager=cgroupfs --events-backend=file run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install "$TK_ARCH"
-[ -e "$handler" ] || { printf 'handler %s was not registered\n' "$TK_HANDLER" >&2; exit 3; }
-printf 'binfmt-ready %s\n' "$TK_HANDLER"
-`)
-
 // EnsurePlatform restores the QEMU handler for one non-native Linux platform.
 //
 // ⚠ THE TABLE IS EVERY DISTRIBUTION'S, AND IT EMPTIES WHILE THIS BASE RUNS. A
@@ -1112,7 +1133,9 @@ func (b *Base) EnsurePlatform(ctx context.Context, platform string) error {
 	if nativePlatformArch(strings.TrimSpace(firstLine(out))) == target {
 		return nil
 	}
-	out, stderr, code, runErr = b.captureAs(ctx, "root", platformScript, map[string]string{
+	// ⭐ binfmt.sh registers one platform when TK_ARCH names it, with the root
+	// podman the ensure uses. WSL-181.
+	out, stderr, code, runErr = b.captureAs(ctx, "root", binfmtScript, map[string]string{
 		"TK_ARCH": target, "TK_HANDLER": handler, "TK_BINFMT_IMAGE": BinfmtImage,
 	}, 20*time.Minute)
 	if runErr != nil || code != 0 {
@@ -1194,6 +1217,12 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, env, 20*time.Minute)
 	drives := parseAutomount(out)
 	if err != nil || code != 0 {
+		if nj, ok := probeNotJudged(VerifyImage, code, stderr); ok {
+			return verifyReport{Automount: drives}, nj
+		}
+		if local, ok := probePullFailure(VerifyImage, code, stderr); ok {
+			return verifyReport{Automount: drives}, local
+		}
 		return verifyReport{Automount: drives}, verifyError(b.cfg.Base.User, code, out, stderr)
 	}
 	// ⛔ Compared with whitespace removed: a tty wraps a long line, so a marker
@@ -1276,6 +1305,105 @@ func parseHeldMounts(out string) []string {
 
 // verifyRefused is the exit code verify.sh gives its own refusals.
 const verifyRefused = 3
+
+// verifyNotJudged is the exit code verify.sh gives a probe image it could not
+// pull. WSL-174.
+const verifyNotJudged = 4
+
+// ProbeNotJudgedError is a health probe that never reached its container: the
+// image it runs was absent and the registry did not hand it over.
+//
+// ⛔ IT IS NOT A VERDICT ON THE BASE. The probe pulled inside the run, so Docker
+// Hub refusing one address read as a base that cannot run a container, and
+// `base ensure` answered it with a full upgrade, a restart of WSL's VM that
+// ended every job, and possibly a rebuild. Ensure refuses over this and keeps
+// the base, and a status reports it as a problem that names the registry. WSL-174.
+type ProbeNotJudgedError struct {
+	Image    string
+	Registry string
+	Reason   string
+}
+
+func (e *ProbeNotJudgedError) Error() string {
+	return fmt.Sprintf("not judged: registry %s unreachable, so the health probe could not pull %s: %s",
+		e.Registry, e.Image, e.Reason)
+}
+
+// probeNotJudged reads verify.sh's pull failure: its own exit code and its own
+// `verify-pull:` line, both, as a refusal needs both. WSL-174.
+//
+// ⛔ ONLY THE REGISTRY'S OWN FAILURE IS NOT JUDGED. Every failed pull read as
+// "registry unreachable", and Ensure then refused the re-provisioning that
+// repairs a pull the base broke itself: a lost /etc/subuid range answers
+// `insufficient UIDs or GIDs`, and a full disk answers `no space left on
+// device`. Both are the base's, and both keep the re-provisioning they had.
+// WSL-174.
+func probeNotJudged(image string, code int, stderr string) (*ProbeNotJudgedError, bool) {
+	if code != verifyNotJudged {
+		return nil, false
+	}
+	reason, ok := lastPrefixed(stderr, "verify-pull: ")
+	if !ok || !registryPullFailure(reason) {
+		return nil, false
+	}
+	return &ProbeNotJudgedError{Image: image, Registry: imageRegistry(image), Reason: reason}, true
+}
+
+// probePullFailure is verify.sh's pull failure whose cause is the base, which an
+// ordinary verify failure reports so that Ensure re-provisions. WSL-174.
+func probePullFailure(image string, code int, stderr string) (error, bool) {
+	if code != verifyNotJudged {
+		return nil, false
+	}
+	reason, ok := lastPrefixed(stderr, "verify-pull: ")
+	if !ok {
+		return nil, false
+	}
+	return fmt.Errorf("the health probe could not pull %s, and the cause is in the base, not the registry: %s", image, reason), true
+}
+
+// registryPullMarks are the words of a pull that failed at the network or at the
+// registry, lower case: the name, the connection, TLS, and the registry's own
+// refusals. verify.sh's own bound says "did not finish within". WSL-174.
+var registryPullMarks = []string{
+	"did not finish within",
+	"pinging container registry",
+	"no such host", "server misbehaving", "temporary failure in name resolution",
+	"dial tcp", "connection refused", "connection reset", "network is unreachable",
+	"no route to host", "i/o timeout", "net/http:", "tls:", "x509:",
+	"toomanyrequests", "too many requests", "unauthorized", "authentication required",
+	"requested access to the resource is denied", "manifest unknown", "name unknown",
+	"unexpected http status",
+}
+
+// registryPullFailure is true when a pull's reason names the network or the
+// registry, and false for anything the base itself answers.
+func registryPullFailure(reason string) bool {
+	lower := strings.ToLower(reason)
+	for _, mark := range registryPullMarks {
+		if strings.Contains(lower, mark) {
+			return true
+		}
+	}
+	return false
+}
+
+// imageRegistry is the registry host a reference names, or docker.io where the
+// first component is not a host, as an engine reads it.
+func imageRegistry(ref string) string {
+	host, _, ok := strings.Cut(ref, "/")
+	if ok && (strings.Contains(host, ".") || strings.Contains(host, ":") || host == "localhost") {
+		return host
+	}
+	return "docker.io"
+}
+
+// notJudgedRefusal is what Ensure answers when the probe was not judged: the
+// probe's words, and that nothing was changed.
+func (b *Base) notJudgedRefusal(nj *ProbeNotJudgedError) error {
+	return fmt.Errorf("%w. %s was NOT re-provisioned, restarted or rebuilt. Run %s again once %s answers",
+		nj, b.cfg.Base.Name, ToolCommand("base ensure"), nj.Registry)
+}
 
 // verifyError is what a verification that did not pass says.
 //
@@ -1402,7 +1530,8 @@ func parseAutomount(out string) string {
 }
 
 // VerifyImage is what the health check runs: small, in the catalog, and pulled
-// with --pull=missing so a warm base costs nothing.
+// only when it is absent, so a warm base costs nothing. The pull is its own
+// bounded step, and `gc --images` keeps the image. WSL-174.
 const VerifyImage = "docker.io/library/alpine:latest"
 
 // captureAs runs a script as an account inside the base with the runtime

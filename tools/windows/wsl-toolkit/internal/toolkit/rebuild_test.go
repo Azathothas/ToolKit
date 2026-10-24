@@ -64,7 +64,8 @@ func fakeHostMain(state, role string, args []string) int {
 //
 // ⛔ IT RUNS NO GUEST SCRIPT. Each one is read to its end and refused, so a build
 // stops at its first step inside the guest, and a verification fails as a base
-// whose engine does not answer fails.
+// whose engine does not answer fails. A case that staged an answer for a script
+// gets that answer instead, and still nothing runs.
 func fakeWslMain(state string, args []string) int {
 	path := filepath.Join(state, "registered")
 	data, _ := os.ReadFile(path)
@@ -111,7 +112,12 @@ func fakeWslMain(state string, args []string) int {
 		_, _ = os.Stdout.Write(marker)
 		return 0
 	}
-	_, _ = io.Copy(io.Discard, os.Stdin)
+	script, _ := io.ReadAll(os.Stdin)
+	// ⚠ A CASE MAY STAGE AN ANSWER for the verifier, binfmt.sh or uname, and
+	// fakeGuestScript gives it. WSL-174, WSL-181.
+	if code, ok := fakeGuestScript(state, script); ok {
+		return code
+	}
 	fmt.Fprintln(os.Stderr, "the fake WSL runs no guest script")
 	return 1
 }

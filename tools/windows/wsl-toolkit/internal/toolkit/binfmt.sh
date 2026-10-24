@@ -10,7 +10,8 @@
 # It runs as root, delivered on stdin by `base ensure`, which passes the image as
 # TK_BINFMT_IMAGE, whether the base runs systemd as TK_SYSTEMD, and this script's
 # own bytes as TK_SELF_B64. With `watch` as its first argument it is the
-# watcher's body: the copy the ensure installed, run by systemd.
+# watcher's body: the copy the ensure installed, run by systemd. With TK_ARCH and
+# TK_HANDLER it registers one job's platform and nothing else.
 #
 # ⭐ THE BASE'S OWN SET IS DERIVED, NOT TYPED: the emulators the image carries
 # that the kernel holds after the install. The image carries qemu-i386, and on
@@ -20,6 +21,7 @@ set -u
 
 DIR=/proc/sys/fs/binfmt_misc
 RECORD=/var/lib/wsl-toolkit/binfmt-handlers
+WATCH_RECORD=/var/lib/wsl-toolkit/binfmt-watch
 SELF=/usr/local/lib/wsl-toolkit/binfmt.sh
 UNIT=wsl-toolkit-binfmt.service
 
@@ -64,10 +66,55 @@ root_podman() {
   podman --cgroup-manager=cgroupfs --events-backend=file "$@"
 }
 
+# fetch makes the installer's image present, and fetch_said is why it could not.
+#
+# ⛔ THE PULL IS ITS OWN STEP, AND BOUNDED. The run pulled with --pull=missing
+# under the ensure's 20 minute ceiling, so a registry that stalled held every
+# `base ensure`, and on the helper route every `run`, for 20 minutes over a step
+# that fails no ensure. A stored image is never pulled again. WSL-182.
+#
+# ⚠ THE BOUND NAMES podman ITSELF, with root_podman's two options: timeout runs a
+# program, and root_podman is a function.
+fetch_said=''
+fetch() {
+  fetch_said=''
+  root_podman image exists "$TK_BINFMT_IMAGE" >/dev/null 2>&1 && return 0
+  fetch_code=0
+  if command -v timeout >/dev/null 2>&1; then
+    fetch_out=$(timeout 120 podman --cgroup-manager=cgroupfs --events-backend=file pull -q "$TK_BINFMT_IMAGE" 2>&1 >/dev/null) || fetch_code=$?
+  else
+    fetch_out=$(root_podman pull -q "$TK_BINFMT_IMAGE" 2>&1 >/dev/null) || fetch_code=$?
+  fi
+  [ "$fetch_code" = 0 ] && return 0
+  if [ "$fetch_code" = 124 ]; then
+    fetch_said="the pull of $TK_BINFMT_IMAGE did not finish within 120 seconds"
+  else
+    fetch_said=$(printf '%s\n' "$fetch_out" | sed '/^[[:space:]]*$/d' | tail -n 1)
+  fi
+  [ -n "$fetch_said" ] || fetch_said="the pull exited $fetch_code"
+  return "$fetch_code"
+}
+
 # register runs the image's installer, which writes every handler it carries
 # that the kernel lacks, and leaves the ones that are there alone.
 register() {
-  root_podman run --rm --privileged --pull=missing "$TK_BINFMT_IMAGE" --install all >/dev/null
+  fetch || return
+  root_podman run --rm --privileged --pull=never "$TK_BINFMT_IMAGE" --install all >/dev/null
+}
+
+# note_watch records the watcher's state as root measured it, for the verifier.
+#
+# ⛔ THE VERIFIER RUNS AS THE ACCOUNT, and on a systemd base with no D-Bus the
+# account's systemctl cannot reach the manager, so a watcher root started read
+# `none`. WSL-181. ⚠ ITS OWN FILE, NOT A LINE OF $RECORD: a watcher still running
+# an older copy of this script reads every line of $RECORD but `image` as a
+# handler, and would register again every 30 seconds.
+note_watch() {
+  mkdir -p "${WATCH_RECORD%/*}"
+  watch_tmp=$(mktemp "$WATCH_RECORD.XXXXXX") || return 0
+  printf '%s\n' "$1" > "$watch_tmp"
+  chmod 0644 "$watch_tmp"
+  mv "$watch_tmp" "$WATCH_RECORD"
 }
 
 # record writes the base's own set: the image's emulators the kernel now holds.
@@ -88,6 +135,22 @@ record() {
   chmod 0644 "$tmp"
   mv "$tmp" "$RECORD"
 }
+
+# -- one platform, for the job that asked for it ---------------------------------
+# ⭐ TK_ARCH NAMES ONE PLATFORM, and EnsurePlatform sends it with the handler that
+# platform needs. Its root podman was a second inline copy in base.go, which had
+# to be given the WSL-168 options a second time. This is now its one home. WSL-181.
+if [ -n "${TK_ARCH:-}" ]; then
+  : "${TK_HANDLER:?TK_HANDLER is required with TK_ARCH}"
+  if [ ! -e "$DIR/$TK_HANDLER" ]; then
+    fetch || die "the QEMU installer image was not pulled: $fetch_said"
+    # ⚠ podman's own failure is the last line, and its code is the exit.
+    root_podman run --rm --privileged --pull=never "$TK_BINFMT_IMAGE" --install "$TK_ARCH" || exit
+  fi
+  [ -e "$DIR/$TK_HANDLER" ] || die "handler $TK_HANDLER was not registered"
+  printf 'binfmt-ready %s\n' "$TK_HANDLER"
+  exit 0
+fi
 
 if [ "${1:-}" = watch ]; then
   # ⚠ EVERY 30 SECONDS, AND SILENT UNTIL IT ACTS. A handler cannot be watched
@@ -119,7 +182,7 @@ if [ "$(recorded_image)" != "$TK_BINFMT_IMAGE" ] || [ -n "$(missing)" ]; then
   else
     say "registering QEMU binary formats from $TK_BINFMT_IMAGE"
   fi
-  register || die "the QEMU binary-format installer did not complete"
+  register || die "the QEMU binary-format installer did not complete${fetch_said:+: $fetch_said}"
   record
 fi
 own=$(grep -cv '^image ' "$RECORD" 2>/dev/null || :)
@@ -131,6 +194,7 @@ say "QEMU binary formats: $own handler(s) of this base's own"
 # -- the watcher -----------------------------------------------------------------
 if [ "${TK_SYSTEMD:-false}" != true ] || [ ! -d /run/systemd/system ]; then
   say "no systemd, so no watcher: a job registers its own platform, and base ensure the rest"
+  note_watch none
   printf 'binfmt-complete\n'
   exit 0
 fi
@@ -175,6 +239,8 @@ if [ "$changed" = 1 ]; then
 else
   systemctl start "$UNIT" || die "systemctl could not start $UNIT"
 fi
-[ "$(systemctl is-active "$UNIT" 2>/dev/null)" = active ] || die "$UNIT is not active after it was started"
+watch_state=$(systemctl is-active "$UNIT" 2>/dev/null) || :
+note_watch "${watch_state:-unknown}"
+[ "$watch_state" = active ] || die "$UNIT is not active after it was started"
 say "the watcher $UNIT is active"
 printf 'binfmt-complete\n'
