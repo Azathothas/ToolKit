@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 // writeTinyArchive is a build's rootfs step with no host engine: a file the
@@ -153,7 +154,11 @@ func TestEnsureRemovesAnInterruptedBuildAndBuildsAgain(t *testing.T) {
 	stageInterruptedBuild(t, f, b)
 	stop := errors.New("no engine in this case")
 	b.archive = func(context.Context, string) error { return stop }
-	_, err := b.EnsureWith(t.Context(), false, false)
+	// ⛔ BOUNDED, because the removal runs under the lock this ensure holds, and a
+	// removal that took the lock again would wait on itself until the deadline.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	_, err := b.EnsureWith(ctx, false, false)
 	if !errors.Is(err, stop) {
 		t.Fatalf("ensure did not go on to build again: %v", err)
 	}

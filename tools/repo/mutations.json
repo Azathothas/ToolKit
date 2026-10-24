@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: base ensure removes an interrupted build under the lock it holds",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")\n\t\t\tif err := b.remove(ctx); err != nil {\n",
+      "replace": "\t\t\tb.log(interruptedBuildNote(b.cfg.Base.Name, rec) + \". Removing it and building again\")\n\t\t\tif err := b.Remove(ctx); err != nil {\n",
+      "run": "TestEnsureRemovesAnInterruptedBuildAndBuildsAgain",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the verifier names an account that cannot read /etc/passwd",
       "file": "internal/toolkit/verify.sh",
       "find": "  printf 'account-passwd unreadable\\n'\n",
