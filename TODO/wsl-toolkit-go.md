@@ -15332,3 +15332,92 @@ Exit 0, then `wsl -l -v` lists one base whose name says what it is, and the skil
 ## Closing
 
 Open.
+
+## WSL-168. `base ensure` fails registering the QEMU handlers on a base whose root podman has no D-Bus
+
+**Source** the triage of 2026-10-24, from pg-toolkit's Windows lane; a regression of `WSL-105` in 7.0.0
+**Category** wsl-toolkit-go, **Priority** P0, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+On a Debian base with systemd, pg-toolkit's own profile, every `base ensure` exits 2
+after the systemd restart, so `pg-devenv up` stops before `prepare` and no Windows workload
+can build its base. binfmt.sh runs `podman run --privileged` as root; root's podman picks the
+systemd cgroup manager, the base has no D-Bus, and crun answers `cannot open sd-bus`.
+
+## Premise
+
+Read at `6244aca`, identical at `wsl-toolkit-v7.0.0`: `internal/toolkit/binfmt.sh:56`
+runs root podman and :108 exits 3; `base.go` runs it on every ensure; `provision.sh:153,187`
+install podman and systemd without recommends, so no dbus; `provision.sh:409-424` writes
+cgroupfs for the account only. pg-toolkit measured `crun: cannot open sd-bus` on such a base
+(its `scripts/common/guest-setup.sh:224-229`). `WSL-105`'s drive used the Arch default, whose
+systemd brings dbus.
+
+## Approach
+
+binfmt.sh runs root's podman with the cgroupfs manager and the file events
+backend on the command line, so it needs no D-Bus and no configuration file. A case holds
+the flags; a scratch Debian base with systemd proves `base ensure` registers the handlers.
+
+## Consumers
+
+A fix: an ensure that exited 2 succeeds. Nothing that worked changes.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, then `base ensure` on a scratch Debian base with systemd exits 0 with its handlers recorded.
+
+---
+
+## Closing
+
+Open.
+
+
+## WSL-169. `base ensure --force` unregisters a working base before it knows it can build one
+
+**Source** the triage of 2026-10-24, from podssh's record of 2026-10-13
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+The full rebuild removes the registered base first and then reaches for a host
+engine to export the rootfs. When the engine does not answer, the caller is left with no base
+at all. podssh lost its jobs base this way and rebuilt it by hand.
+
+## Premise
+
+Read at `6244aca`: `base ensure --force` reaches Remove before the export's engine call.
+
+## Approach
+
+Before a forced rebuild removes anything, the tool asks the host engine it will
+export with whether it answers, and refuses with the engine's reason and no change when it
+does not.
+
+## Consumers
+
+A fix: a rebuild that would have destroyed the base and failed now refuses and keeps it.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with a case where the engine does not answer and the base is still registered after.
+
+---
+
+## Closing
+
+Open.

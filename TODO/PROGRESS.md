@@ -10,10 +10,10 @@ standing rules and the rulings in force, and history is in git, the entries and
 ## State
 
 ```text
-session started 2026-10-21T08:31:38Z, on the operator's request to rewrite the record to the model, sync the methodology, refresh the skills and finish all WSL work
+session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: the record rewritten, the methodology synced, 63 entries filed and 11 closed; the builders paused on wip/ branches
-entries         total 222  open 48  blocked 5  done 169
+entries         total 224  open 50  blocked 5  done 169
 this session    ruling 31
 ```
 
@@ -83,35 +83,39 @@ The scratch distributions `wsl-toolkit-f4`, `-f5a` and `-f5b` are unregistered.
 
 Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
 
-1. **The record and the checks that hold it**, first, because every later commit
+1. ⛔ **Hotfix `wsl-toolkit-v7.0.1` first**, because workloads are blocked today: `WSL-168`,
+   which stops every Debian base with systemd at `base ensure`; `WSL-169`, which can
+   destroy a base; and the half of `WSL-137` that clears a stale run state in `run`,
+   `matrix` and `base exec`, which every consumer of the jobs base meets after a reboot.
+2. **The record and the checks that hold it**, first, because every later commit
    is checked by them: `DOC-10`, `TOOL-29`, `TOOL-30`, `DOC-09`, `TOOL-31`,
    `TOOL-35`, `DOC-13`, `DOC-11` and `DOC-12`.
-2. **The survey's asks**, in parallel by code area: jobs `WSL-120`, `WSL-121`,
+3. **The survey's asks**, in parallel by code area: jobs `WSL-120`, `WSL-121`,
    and the cap in `WSL-136` (F1); `run` and the configuration `WSL-122`,
    `WSL-123`, `WSL-128`, `WSL-129`, `WSL-131`, `WSL-161` (F2); `base exec`
    `WSL-124`, `WSL-125`, `WSL-133`, `WSL-146` (F4); the base's runtime
    `WSL-126`, `WSL-130` and the limits in `WSL-136` (F5a); the base's build
    `WSL-137`, `WSL-140`, `WSL-143`, `WSL-147`, `WSL-150`, `WSL-153`, `WSL-155`
    (F5b).
-3. **The old record's open findings**: adapters `WSL-139`, `WSL-141`, `WSL-144`,
+4. **The old record's open findings**: adapters `WSL-139`, `WSL-141`, `WSL-144`,
    `WSL-157` (F6a); fixes `WSL-149`, `WSL-151`, `WSL-152`, `WSL-154`, `WSL-156`,
    `WSL-160`, `WSL-162`, `WSL-163`, `WSL-164` (F6b); and here `WSL-132`, `WSL-142`,
    `WSL-145` and `WSL-148`.
-4. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-37` and `TOOL-38`, and `text-tool`'s
+5. **The tooling**: `TOOL-32`, `TOOL-33`, `TOOL-37` and `TOOL-38`, and `text-tool`'s
    `WSL-165`.
-5. **The skills**, `DOC-14`, reviewed against what the tool does once the builders are
+6. **The skills**, `DOC-14`, reviewed against what the tool does once the builders are
    merged, and installed.
-6. **`wsl-toolkit-v7.1.0`**: every branch merged and gated, CI's Linux jobs in
+7. **`wsl-toolkit-v7.1.0`**: every branch merged and gated, CI's Linux jobs in
    containers, three reviews, CI green, published, this host moved to it by
    `selfupdate`, the new behaviour driven, and the acceptance suite on a fresh
    instance.
-7. **This host**, ruling 31: the package's copy emptied, the operator's
+8. **This host**, ruling 31: the package's copy emptied, the operator's
    `qemu-binfmt-restore.service` retired, the installed skills updated.
-8. **Not this release**, ruling 31: `WSL-127` and `WSL-166`, exit codes that change, each a
+9. **Not this release**, ruling 31: `WSL-127` and `WSL-166`, exit codes that change, each a
    break.
-9. **One base under a canonical name**, ruling 32: `WSL-167`, which removes
+10. **One base under a canonical name**, ruling 32: `WSL-167`, which removes
    `wsl-toolkit-base`. First after the pause, before the builders' merges.
-10. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
+11. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
    `WSL-158` and `WSL-159`.
 
 ## Open questions for the operator
