@@ -16642,3 +16642,44 @@ Exit 0, with a fake-engine case whose pull fails and whose local image builds th
 ## Closing
 
 Open.
+
+## WSL-193. An instance name that starts with `wsl-` doubles the prefix in its distribution name
+
+**Source** the operator, 2026-10-24, after `--instance wsl-errand-box` registered `wsl-toolkit-wsl-errand-box`: "show a warning to user and say `wsl-toolkit-errand-box` was created instead of the `wsl-toolkit-wsl-errand-box` whenever name begins with `wsl-*`, and add/extend an option to do this anyway"
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+An instance's distribution is `wsl-toolkit-NAME`. A caller who names the instance after the distribution they want, `--instance wsl-errand-box`, gets `wsl-toolkit-wsl-errand-box`, a name nobody asked for. The tool says nothing about it.
+
+## Premise
+
+Measured 2026-10-24: `wsl-toolkit --instance wsl-errand-box base ensure` registered `wsl-toolkit-wsl-errand-box`. Read: `InstanceDistro` in `internal/toolkit/instance.go`.
+
+## Approach
+
+A NEW instance whose name starts with `wsl-toolkit-` or `wsl-` drops that prefix: `--instance wsl-errand-box` makes the instance `errand-box`, distribution `wsl-toolkit-errand-box`. The tool warns on stderr, naming both the name asked for and the one made. Later calls with the same prefixed name reach the same instance. An instance that already exists under a prefixed name keeps it, so `wsl-errand-box` on this host still works. A global option, `--literal-instance` (and `WSL_TOOLKIT_INSTANCE_LITERAL=1`), keeps the name as given. A name that is only the prefix is refused. Build it after `WSL-167`, which changes the same code.
+
+## Decision
+
+Ruled by the operator, 2026-10-24: strip and warn by default, with an option to keep the name as given.
+
+## Consumers
+
+Additive for an existing instance. A caller that creates a new `wsl-`-prefixed instance and then names its distribution directly gets the shorter name: the warning says so.
+
+## Prove
+
+```bash
+pwsh -NoProfile -File scripts/common/check-go.ps1
+```
+
+Exit 0, with cases for the strip and its warning, the literal option, an existing prefixed instance, and a bare prefix, each with a mutation row red.
+
+---
+
+## Closing
+
+Open.

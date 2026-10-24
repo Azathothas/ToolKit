@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
-entries         total 248  open 61  blocked 5  done 182
+entries         total 249  open 62  blocked 5  done 182
 this session    ruling 31
 ```
 
@@ -118,7 +118,8 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
 10. **Not this release**, ruling 31: `WSL-127` and `WSL-166`, exit codes that change, each a
    break.
 11. **One base under a canonical name**, ruling 32: `WSL-167`, which removes
-   `wsl-toolkit-base`. First after the pause, before the builders' merges.
+   `wsl-toolkit-base`. First after the pause, before the builders' merges. Then
+   `WSL-193`, a `wsl-` prefix on a new instance's name, in the same code.
 12. **Blocked, each on what its entry names**: `WSL-134`, `WSL-135`, `WSL-138`,
    `WSL-158` and `WSL-159`.
 

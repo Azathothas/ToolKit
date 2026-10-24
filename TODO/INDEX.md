@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 248  open 61  blocked 5  done 182
+total 249  open 62  blocked 5  done 182
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 7 | 0 | 88 | 95 |
-| P2 | 39 | 2 | 74 | 115 |
+| P2 | 40 | 2 | 74 | 116 |
 | P3 | 15 | 3 | 12 | 30 |
-| **all** | **61** | **5** | **182** | **248** |
+| **all** | **62** | **5** | **182** | **249** |
 
 ---
 
@@ -285,6 +285,7 @@ total 248  open 61  blocked 5  done 182
 | WSL-190 | P1 | M | open | The fstab block holds only the last caller's grants, so a restart drops another configuration's mount | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-191 | P2 | S | open | The helper protocol still sends a forced rebuild for a preset switch | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-192 | P2 | S | open | A rebuild whose pull fails does not fall back to a local image | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-193 | P2 | S | open | An instance name that starts with `wsl-` doubles the prefix in its distribution name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 
