@@ -122,8 +122,9 @@ func (l *Ledger) Open() ([]LedgerEntry, error) {
 // upload or artifact set. Append and Compact both hold this lock, so a rewrite
 // and an append cannot interleave. WSL-185.
 //
-// ⚠ A READ TAKES NO LOCK. The rewrite is a rename, so a reader sees the old
-// file or the new one, never half of either.
+// ⚠ A READ TAKES NO LOCK, AND IT RETRIES THE SWAP. The rewrite is a rename, so
+// a reader never sees half of either file. On Windows the rename can still
+// refuse a reader's open for a moment, which readLedgerFile waits out.
 func (l *Ledger) lockAcross() (func(), error) {
 	lock := filepath.Join(filepath.Dir(l.path), ledgerLockName)
 	deadline := time.Now().Add(ledgerLockWait)
@@ -183,7 +184,7 @@ func (l *Ledger) All() ([]LedgerEntry, error) {
 }
 
 func (l *Ledger) allLocked() ([]LedgerEntry, error) {
-	data, err := os.ReadFile(l.path)
+	data, err := readLedgerFile(l.path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -213,6 +214,34 @@ func (l *Ledger) allLocked() ([]LedgerEntry, error) {
 		return out, fmt.Errorf("%s: %d of %d lines are unreadable, so this is not a reliable list of what to clean up", l.path, bad, bad+len(out))
 	}
 	return out, nil
+}
+
+// readLedgerFile reads the ledger, waiting out a rewrite that holds it.
+//
+// ⛔ ON WINDOWS A READ DURING A REWRITE CAN SEE NEITHER FILE. The rename opens
+// the ledger with no sharing, and a read in that moment answers a sharing
+// violation. A reader that took that as no ledger answered "no stop" for a job
+// somebody stopped, and the job ran to completion. Measured at about one read
+// in seventy against another process compacting 300 times. WSL-173.
+//
+// ⚠ THE RETRY IS BOUNDED AND THE LAST ERROR IS RETURNED WITH ITS ATTEMPT COUNT,
+// as renameReplacing does for the write. A rewrite holds the file for one
+// rename, so a refusal that outlasts the retries is a file something keeps open.
+func readLedgerFile(path string) ([]byte, error) {
+	const attempts = 20
+	delay := 2 * time.Millisecond
+	var err error
+	for i := 0; i < attempts; i++ {
+		var data []byte
+		if data, err = os.ReadFile(path); err == nil || !ledgerReadBusy(err) {
+			return data, err
+		}
+		time.Sleep(delay)
+		if delay < 40*time.Millisecond {
+			delay *= 2
+		}
+	}
+	return nil, fmt.Errorf("reading %s after %d attempts: %w", filepath.Base(path), attempts, err)
 }
 
 // Path is where the ledger lives, for a report that names it.

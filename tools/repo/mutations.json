@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a ledger read waits out a rewrite holding the file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/ledger.go",
+      "find": "\t\tif data, err = os.ReadFile(path); err == nil || !ledgerReadBusy(err) {\n",
+      "replace": "\t\tif data, err = os.ReadFile(path); err == nil || true {\n",
+      "run": "TestAStopIsReadWhileARewriteHoldsTheLedger",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a ledger compaction keeps a stop while its job is open",
       "module": "tools/windows/wsl-toolkit",
       "file": "internal/toolkit/ledger.go",

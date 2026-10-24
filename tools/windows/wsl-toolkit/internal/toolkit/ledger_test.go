@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -71,6 +73,64 @@ func TestAStopSurvivesCompactionWhileItsJobDirectoryExists(t *testing.T) {
 	}
 	if StopRecorded(testJobID) {
 		t.Fatal("a stop for a job with no open record and no directory survived compaction")
+	}
+}
+
+// -- WSL-173: a read waits out the moment a rewrite holds the ledger ----------
+
+// ⚠ THE HOLD IS AN OPEN WITH NO SHARING, which is what a rename does to the file
+// it replaces on Windows. Elsewhere the hold is an advisory lock no read sees,
+// so these cases prove nothing there and pass.
+func TestAStopIsReadWhileARewriteHoldsTheLedger(t *testing.T) {
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	l, err := OpenLedger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Append(LedgerEntry{Event: "open", Kind: "job", ID: testJobID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Append(LedgerEntry{Event: "stop", Kind: "job", ID: testJobID}); err != nil {
+		t.Fatal(err)
+	}
+	release, err := lockExclusive(l.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		release()
+	}()
+	if !stopRecordedIn(l, testJobID) {
+		t.Fatal("a read during a rewrite answered no stop for a job that has one, so the job runs as if nobody stopped it")
+	}
+}
+
+func TestALedgerReadHeldPastItsRetriesFails(t *testing.T) {
+	t.Setenv("WSL_TOOLKIT_HOME", t.TempDir())
+	l, err := OpenLedger()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Append(LedgerEntry{Event: "open", Kind: "job", ID: testJobID}); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		t.Skip("only a Windows open refuses a read")
+	}
+	release, err := lockExclusive(l.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	// ⛔ A FILE SOMETHING KEEPS OPEN IS AN ERROR, NOT AN EMPTY LEDGER. A reader
+	// that answered no records would let cleanup remove live work.
+	entries, err := l.All()
+	if err == nil {
+		t.Fatalf("a ledger held past every retry read as %d record(s) and no error", len(entries))
+	}
+	if !strings.Contains(err.Error(), "after 20 attempts") {
+		t.Fatalf("the error does not say how often the read was tried: %v", err)
 	}
 }
 
