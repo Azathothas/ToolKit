@@ -388,7 +388,7 @@ func (g *startGate) Refused() bool {
 // with `Wsl/WSL_E_USER_NOT_FOUND` and exit 0xffffffff, a code a caller cannot
 // tell from a command's own failure. WSL-123.
 func AccountUID(ctx context.Context, w *Wsl, distro, asker, name string) (int, bool, error) {
-	if err := ValidateAccountName(name); err != nil {
+	if err := ValidateBaseAccountName(name); err != nil {
 		return 0, false, err
 	}
 	out, stderr, code, err := w.Capture(ctx, distro, asker, []byte("id -u "+shellQuote(name)+" 2>/dev/null || exit 3\n"), 2*time.Minute)
@@ -405,10 +405,10 @@ func AccountUID(ctx context.Context, w *Wsl, distro, asker, name string) (int, b
 	return uid, true, nil
 }
 
-// ValidateAccountName refuses a name that is not a guest account's: letters,
+// ValidateBaseAccountName refuses a name that is not a guest account's: letters,
 // digits, dot, underscore and dash, starting with a letter or an underscore, at
 // most 32 characters. WSL-123.
-func ValidateAccountName(name string) error {
+func ValidateBaseAccountName(name string) error {
 	if name == "" || len(name) > 32 {
 		return fmt.Errorf("--user %q is not an account name: it is empty or longer than 32 characters", name)
 	}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -105,6 +106,21 @@ func TestAWindowsDirectoryIsMappedToWhereTheBaseSeesIt(t *testing.T) {
 	if _, err := (baseExecFlags{command: "pwd", dir: "/tmp", here: true}).request(off); err == nil || !strings.Contains(err.Error(), "--here and --dir") {
 		t.Errorf("--here beside --dir answered %v", err)
 	}
+	// ⭐ base shell --here takes the same grant when the drives are unmounted,
+	// and leaves a mounted base to its /mnt path.
+	cwd := func() (string, error) { return sub, nil }
+	if got, err := grantedHere(off, toolkit.AutomountOff, true, cwd); err != nil || got != "/workspaces/project/src" {
+		t.Errorf("base shell --here from inside the grant starts in %q, %v", got, err)
+	}
+	if got, err := grantedHere(off, toolkit.AutomountOff, false, cwd); err != nil || got != "" {
+		t.Errorf("base shell without --here starts in %q, %v", got, err)
+	}
+	if got, err := grantedHere(ro, toolkit.AutomountReadOnly, true, cwd); err != nil || got != "" {
+		t.Errorf("base shell --here on a mounted base starts in %q, %v", got, err)
+	}
+	if _, err := grantedHere(off, toolkit.AutomountOff, true, func() (string, error) { return outside, nil }); err == nil || !strings.Contains(err.Error(), "is not granted") {
+		t.Errorf("base shell --here outside every grant answered %v", err)
+	}
 	if runtime.GOOS == "windows" {
 		// A drive path names the directory on this machine.
 		req, err := baseExecFlags{command: "pwd", dir: sub}.request(off)
@@ -160,6 +176,40 @@ func TestStdinIsPassedOnlyWhereItIsAPipeOrAFile(t *testing.T) {
 	got, err := readDetachedStdin(strings.NewReader(""))
 	if err != nil || got == nil || len(got) != 0 {
 		t.Errorf("an empty stdin read as %v, %v, and a detached session needs an empty file rather than none", got, err)
+	}
+}
+
+// TestAnAttachedExecAnswersTheExitItsOutcomeMeans is cmdBaseExec's verdict after
+// the command: a directory it could not enter is 2, not the guest's exit, and a
+// failed artifact copy turns a success into 1 but never hides a failure. WSL-124.
+func TestAnAttachedExecAnswersTheExitItsOutcomeMeans(t *testing.T) {
+	refused := fmt.Errorf("%w: /srv/nope", toolkit.ErrDirNotEntered)
+	if code, err := attachedExecExit(toolkit.BaseExecResult{Exit: 2}, refused, true, ""); code != exitCannot || !errors.Is(err, toolkit.ErrDirNotEntered) {
+		t.Errorf("a directory the command could not enter answered %d, %v", code, err)
+	}
+	kept := toolkit.BaseExecResult{ArtifactError: "the copy stopped", Retained: "/home/user/.wsl-toolkit/jobs/x", ID: "x"}
+	if code, err := attachedExecExit(kept, nil, true, "out"); code != exitFailed || err != nil {
+		t.Errorf("a command that succeeded and delivered nothing answered %d, %v", code, err)
+	}
+	kept.Exit = 9
+	if code, err := attachedExecExit(kept, nil, false, "out"); code != 9 || err != nil {
+		t.Errorf("the command's own failure answered %d, %v; want 9", code, err)
+	}
+	if code, err := attachedExecExit(toolkit.BaseExecResult{}, nil, true, ""); code != exitOK || err != nil {
+		t.Errorf("a command that succeeded answered %d, %v", code, err)
+	}
+}
+
+// TestADetachedSessionReadsStdinOnlyWithTheFlag: --detach --stdin hands the
+// session the bytes, and without the flag the session keeps /dev/null. WSL-124.
+func TestADetachedSessionReadsStdinOnlyWithTheFlag(t *testing.T) {
+	got, err := (baseExecFlags{stdin: true}).detachedStdin(strings.NewReader("abc"))
+	if err != nil || string(got) != "abc" {
+		t.Errorf("--detach --stdin read %q, %v", got, err)
+	}
+	got, err = (baseExecFlags{}).detachedStdin(strings.NewReader("abc"))
+	if err != nil || got != nil {
+		t.Errorf("--detach without --stdin read %q, %v", got, err)
 	}
 }
 

@@ -391,7 +391,7 @@ wsl-toolkit run --image alpine --artifacts .\out --json -c 'cp build/app /out/'
 `--artifacts DIR` copies back what the container leaves in `/out`, with every entry
 checked before it is written. ⭐ **`DIR` is made by the first entry that arrives.** A
 job that leaves `/out` empty makes no directory, on the direct route and through the
-helper, and the line on stderr says nothing was written. `WSL-124`
+helper. The line on stderr keeps its form and reads `0 entries`. `WSL-124`
 
 ⭐ **`--json` lists what arrived.** `artifact_list` names each entry delivered, by
 its path under `DIR` in slashes, with `kind` `file`, `dir` or `link` and a file's
@@ -690,6 +690,9 @@ a tree over 9P takes minutes where the base's own disk takes about a second. `WS
 - The list is a job's workspace copy. `--exclude` and `--gitignore` are `run`'s, and
   `jobs.exclude` and `jobs.gitignore` are the defaults. The git index's executable
   bits travel, and so does a shebang's.
+- ⚠ The defaults come from the `wsl-toolkit.json` in effect where the command runs,
+  as for `run --workspace`, and not from `HOST-DIR`. Run it from the project, or pass
+  the rules on the command line.
 - A file travels when its size, its modification time to the second or its
   executable bit differs. A link travels when its target does, and a directory when
   the guest lacks it.
@@ -1345,7 +1348,9 @@ wsl-toolkit --instance base base shell --private-net
 ⭐ **`base shell --private-net` is the interactive form.** It runs the shell `base
 shell` chooses inside the same namespace, behind the same rule. The wrapper travels
 as a file through the archive channel, so the terminal stays the shell's stdin, and
-the file removes its own directory as its first line. `WSL-133`
+the file removes its own directory as its first line. A launcher no shell ran, because
+`wsl.exe` failed before the start, is removed by a later `base shell --private-net`
+once it is an hour old. `WSL-133`
 
 | measured in a pseudo console on an Arch base | `base shell` | `base shell --private-net` |
 | --- | --- | --- |

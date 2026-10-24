@@ -70,10 +70,16 @@ func PrivateShell(ctx context.Context, w *Wsl, distro, user string, shell []byte
 	if err != nil {
 		return "", err
 	}
-	dir := home + "/" + GuestRoot + "/shells/" + id
+	shells := home + "/" + GuestRoot + "/shells"
+	dir := shells + "/" + id
 	if err := AssertArgvSafe([]string{dir}); err != nil {
 		return "", err
 	}
+	// ⛔ A LAUNCHER NO SHELL EVER RAN STAYS, because only the launcher removes
+	// its directory and gc does not read this one. wsl.exe can fail between the
+	// placing and the start. So each call first removes a sibling older than an
+	// hour. ⚠ Advisory: a sweep that fails does not stop the shell. WSL-133.
+	_, _, _, _ = w.Capture(ctx, distro, user, staleShellSweep(shells), 2*time.Minute)
 	errBuf := &boundedBuffer{max: 64 << 10}
 	if code, err := w.ExecDirect(ctx, distro, user, "", []string{"/bin/mkdir", "-p", dir}, nil, io.Discard, errBuf, 2*time.Minute); err != nil || code != 0 {
 		return "", fmt.Errorf("could not create %s in the guest (exit %d): %s", dir, code, guestFailure(errBuf.String()))
@@ -94,6 +100,15 @@ func PrivateShell(ctx context.Context, w *Wsl, distro, user string, shell []byte
 		return "", fmt.Errorf("the private shell's launcher: %w", err)
 	}
 	return dir + "/" + privateShellName, nil
+}
+
+// staleShellSweep is the script that removes each launcher directory under
+// shells older than an hour. A shell starts within seconds of its launcher,
+// which removes itself first, so an hour old is one no shell ran. WSL-133.
+func staleShellSweep(shells string) []byte {
+	return []byte("d=" + shellQuote(shells) + "\n" +
+		`[ -d "$d" ] || exit 0` + "\n" +
+		`find "$d" -mindepth 1 -maxdepth 1 -type d -mmin +60 -exec rm -rf -- {} +` + "\n")
 }
 
 // privateShellName is the launcher's file name in its directory.

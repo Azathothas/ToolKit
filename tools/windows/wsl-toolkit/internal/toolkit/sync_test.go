@@ -291,9 +291,9 @@ func TestGitDecidesWhatDeleteKeeps(t *testing.T) {
 // fake wsl.exe: a guest directory on 9P is refused, and no step after the survey
 // runs.
 func TestASyncRefusesAWindowsDirectoryAndChangesNothing(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	survey := filepath.Join(t.TempDir(), "survey")
-	t.Setenv(fakeWslSurveyEnv, survey)
+	t.Setenv(execFakeSurveyEnv, survey)
 	host, _, _ := syncHostTree(t, map[string]string{"a.txt": "a"})
 	for _, c := range []struct{ answer, want string }{
 		{"REAL|/workspaces/p\nHOME|/home/user\nFS|9p\nSTATE|dir\n", "on a Windows directory (9p"},
@@ -318,7 +318,7 @@ func TestASyncRefusesAWindowsDirectoryAndChangesNothing(t *testing.T) {
 // TestASyncSendsTheChangeAndRemovesTheStray drives the whole sync through the
 // fake wsl.exe.
 func TestASyncSendsTheChangeAndRemovesTheStray(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	host, by, _ := syncHostTree(t, map[string]string{"same.txt": "same", "new.txt": "n"})
 	same := regAs(by["same.txt"])
 	survey := filepath.Join(t.TempDir(), "survey")
@@ -328,7 +328,7 @@ func TestASyncSendsTheChangeAndRemovesTheStray(t *testing.T) {
 	if err := os.WriteFile(survey, []byte(answer), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(fakeWslSurveyEnv, survey)
+	t.Setenv(execFakeSurveyEnv, survey)
 	rep, err := SyncBase(context.Background(), g.wsl, SyncSpec{Distro: "wsl-toolkit", User: "toolkit", HostDir: host, GuestDir: "~/p", Delete: true})
 	if err != nil {
 		t.Fatal(err)
@@ -353,7 +353,7 @@ func TestASyncSendsTheChangeAndRemovesTheStray(t *testing.T) {
 }
 
 // callsOrNone is calls, and none where the fake has not been called yet.
-func (g *fakeGuest) callsOrNone(t *testing.T) []fakeCall {
+func (g *execFakeGuest) callsOrNone(t *testing.T) []execFakeCall {
 	t.Helper()
 	if _, err := os.Stat(g.log); err != nil {
 		return nil

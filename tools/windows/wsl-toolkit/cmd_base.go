@@ -232,21 +232,13 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		if err != nil {
 			return exitCannot, err
 		}
-		if flags.here && automount == toolkit.AutomountOff {
-			// ⭐ THROUGH THE GRANT, where the base sees this directory with its
-			// drives unmounted. It was refused, and a project granted to the base
-			// had no way to start a shell in itself. A directory no grant covers is
-			// still refused, with the grant that covers it. WSL-124.
-			cwd, err := os.Getwd()
-			if err != nil {
-				return exitCannot, err
-			}
-			dir, err := windowsDirInGuest(cfg, cwd, "--here")
-			if err != nil {
-				return exitCannot, err
-			}
-			note("starting in " + dir + ", where this Windows directory is granted")
-			shellArgs = append(shellArgs, "--cd", dir)
+		granted, err := grantedHere(cfg, automount, flags.here, os.Getwd)
+		if err != nil {
+			return exitCannot, err
+		}
+		if granted != "" {
+			note("starting in " + granted + ", where this Windows directory is granted")
+			shellArgs = append(shellArgs, "--cd", granted)
 		} else if flags.here {
 			drives, readErr := toolkit.MountedWindowsDrives(ctx, w, cfg.Base.Name)
 			if err := hereRefusal(cfg.Base.Name, automount, drives, readErr); err != nil {
@@ -560,6 +552,25 @@ func rootDrivesNote(distro string, drives []toolkit.WindowsDriveMount, readErr e
 		msg += ". These Windows drives are mounted read-only: " + strings.Join(readOnly, " ")
 	}
 	return msg
+}
+
+// grantedHere is where `base shell --here` starts when base.automount is off:
+// the guest path of the grant that covers the working directory. It answers ""
+// without --here, and where the drives are mounted, which the caller handles.
+//
+// ⭐ THROUGH THE GRANT, where the base sees this directory with its drives
+// unmounted. It was refused, and a project granted to the base had no way to
+// start a shell in itself. A directory no grant covers is still refused, with
+// the grant that covers it. WSL-124.
+func grantedHere(cfg toolkit.Config, automount string, here bool, getwd func() (string, error)) (string, error) {
+	if !here || automount != toolkit.AutomountOff {
+		return "", nil
+	}
+	cwd, err := getwd()
+	if err != nil {
+		return "", err
+	}
+	return windowsDirInGuest(cfg, cwd, "--here")
 }
 
 // hereRefusal refuses `base shell --here` into a base with no Windows drive mounted.

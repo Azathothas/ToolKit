@@ -23,8 +23,8 @@ import (
 // --cd it cannot follow by starting in / and exiting 0. The command enters its
 // directory itself now, and a refusal is the tool's, not a guest exit.
 func TestADirectoryTheCommandCannotEnterIsRefused(t *testing.T) {
-	g := newFakeGuest(t)
-	t.Setenv(fakeWslMissingEnv, "/srv/nope")
+	g := newExecFakeGuest(t)
+	t.Setenv(execFakeMissingEnv, "/srv/nope")
 	var stderr bytes.Buffer
 	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
 		Distro: "wsl-toolkit", User: "toolkit", Dir: "/srv/nope", Script: []byte("pwd\n"), Stderr: &stderr,
@@ -45,8 +45,8 @@ func TestADirectoryTheCommandCannotEnterIsRefused(t *testing.T) {
 // the word the gate takes out never reaches the caller, and the exit is the
 // command's.
 func TestACommandThatEntersItsDirectoryAnswersWithItsOwnExit(t *testing.T) {
-	g := newFakeGuest(t)
-	t.Setenv(fakeWslExitEnv, "7")
+	g := newExecFakeGuest(t)
+	t.Setenv(execFakeExitEnv, "7")
 	var stderr bytes.Buffer
 	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
 		Distro: "wsl-toolkit", User: "toolkit", Dir: "/srv/there", Script: []byte("pwd\n"), Stderr: &stderr,
@@ -58,7 +58,7 @@ func TestACommandThatEntersItsDirectoryAnswersWithItsOwnExit(t *testing.T) {
 		t.Errorf("stderr is %q, want the command's own and nothing of the gate", stderr.String())
 	}
 	// ⭐ THE HOME IS wsl.exe's OWN DEFAULT, and nothing is added in front of it.
-	g2 := newFakeGuest(t)
+	g2 := newExecFakeGuest(t)
 	if _, err := RunBaseExec(context.Background(), g2.wsl, BaseExec{Distro: "wsl-toolkit", User: "toolkit", Dir: "~", Script: []byte("pwd\n")}); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +107,7 @@ func TestTheStartGateTakesItsWordOutAndHoldsNothingAfter(t *testing.T) {
 // path: the call's directory recorded, the inputs placed under it, both paths
 // exported to the command, the output fetched, and the directory removed.
 func TestInputsAndArtifactsGetADirectoryOfTheCommandsOwn(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	host := t.TempDir()
 	in := filepath.Join(host, "app.toml")
 	if err := os.WriteFile(in, []byte("name = 'x'\r\n"), 0o600); err != nil {
@@ -120,7 +120,7 @@ func TestInputsAndArtifactsGetADirectoryOfTheCommandsOwn(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(out, "d", "r.txt"), []byte("result"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(fakeWslOutEnv, out)
+	t.Setenv(execFakeOutEnv, out)
 	dest := filepath.Join(host, "delivered")
 	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
 		Distro: "wsl-toolkit", User: "toolkit", Dir: "~", Script: []byte("true\n"),
@@ -132,7 +132,7 @@ func TestInputsAndArtifactsGetADirectoryOfTheCommandsOwn(t *testing.T) {
 	if err != nil || res.ArtifactError != "" {
 		t.Fatalf("the call answered %v and %q", err, res.ArtifactError)
 	}
-	dir := fakeWslHome + "/" + GuestRoot + "/jobs/" + res.ID
+	dir := execFakeHome + "/" + GuestRoot + "/jobs/" + res.ID
 	var sent, framed, removed bool
 	for _, c := range g.calls(t) {
 		if body, ok := c.Files["in/conf/app.toml"]; ok && body == "name = 'x'\r\n" {
@@ -174,7 +174,7 @@ func TestInputsAndArtifactsGetADirectoryOfTheCommandsOwn(t *testing.T) {
 // TestAFailedTransferKeepsTheCallsDirectoryForARetry is a job's rule on the base
 // exec path: the guest copy is the only one left.
 func TestAFailedTransferKeepsTheCallsDirectoryForARetry(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	host := t.TempDir()
 	out := filepath.Join(host, "out")
 	if err := os.MkdirAll(out, 0o700); err != nil {
@@ -183,7 +183,7 @@ func TestAFailedTransferKeepsTheCallsDirectoryForARetry(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(out, "r.txt"), []byte("result"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(fakeWslOutEnv, out)
+	t.Setenv(execFakeOutEnv, out)
 	blocker := filepath.Join(host, "blocker")
 	if err := os.WriteFile(blocker, []byte("a file"), 0o600); err != nil {
 		t.Fatal(err)
@@ -191,7 +191,7 @@ func TestAFailedTransferKeepsTheCallsDirectoryForARetry(t *testing.T) {
 	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
 		Distro: "wsl-toolkit", User: "toolkit", Dir: "~", Script: []byte("true\n"), ArtifactDir: filepath.Join(blocker, "sub"),
 	})
-	if err != nil || res.ArtifactError == "" || res.Retained != fakeWslHome+"/"+GuestRoot+"/jobs/"+res.ID {
+	if err != nil || res.ArtifactError == "" || res.Retained != execFakeHome+"/"+GuestRoot+"/jobs/"+res.ID {
 		t.Fatalf("a failed transfer answered %v, %q, retained %q", err, res.ArtifactError, res.Retained)
 	}
 	for _, c := range g.calls(t) {
@@ -217,7 +217,7 @@ func mustLedger(t *testing.T) *Ledger {
 // TestStdinReachesACommandThatTravelsAsAFile is --stdin: the command is placed as
 // a file, so stdin is free to carry the caller's bytes.
 func TestStdinReachesACommandThatTravelsAsAFile(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	var stdout bytes.Buffer
 	res, err := RunBaseExec(context.Background(), g.wsl, BaseExec{
 		Distro: "wsl-toolkit", User: "toolkit", Dir: "/srv/there", Script: []byte("cat\n"),
@@ -229,7 +229,7 @@ func TestStdinReachesACommandThatTravelsAsAFile(t *testing.T) {
 	if stdout.String() != "piped\x00bytes" {
 		t.Fatalf("the command read %q from stdin", stdout.String())
 	}
-	file := fakeWslHome + "/" + GuestRoot + "/jobs/" + res.ID + "/payload.sh"
+	file := execFakeHome + "/" + GuestRoot + "/jobs/" + res.ID + "/payload.sh"
 	var placed, ranIt bool
 	for _, c := range g.calls(t) {
 		if body, ok := c.Files["payload.sh"]; ok && strings.HasPrefix(body, "TK_X='1'; export TK_X\n") && strings.Contains(body, "cd '/srv/there' || {") {
@@ -247,7 +247,7 @@ func TestStdinReachesACommandThatTravelsAsAFile(t *testing.T) {
 // -- WSL-124: run --artifacts makes no empty directory, and lists what arrived ----
 
 func TestAnEmptyOutputDirectoryMakesNoHostDirectory(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	dest := filepath.Join(t.TempDir(), "artifacts")
 	got, err := g.wsl.FetchArtifacts(context.Background(), "wsl-toolkit", "toolkit", "/home/user/out", dest, DefaultWorkspaceLimits(), nil)
 	if err != nil || got.Delivered != 0 {
@@ -256,14 +256,14 @@ func TestAnEmptyOutputDirectoryMakesNoHostDirectory(t *testing.T) {
 	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("an empty /out made %s: %v", dest, err)
 	}
-	if line := ArtifactsLine(got, dest); !strings.Contains(line, "nothing was written to "+dest) {
+	if line := ArtifactsLine(got, dest); line != "artifacts: 0 entries, 0 B written to "+dest {
 		t.Errorf("the line for an empty set reads %q", line)
 	}
 	out := t.TempDir()
 	if err := os.WriteFile(filepath.Join(out, "a.txt"), []byte("abc"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(fakeWslOutEnv, out)
+	t.Setenv(execFakeOutEnv, out)
 	got, err = g.wsl.FetchArtifacts(context.Background(), "wsl-toolkit", "toolkit", "/home/user/out", dest, DefaultWorkspaceLimits(), nil)
 	if err != nil || got.Delivered != 1 || len(got.List) != 1 || got.List[0] != (ArtifactEntry{Path: "a.txt", Kind: "file", Bytes: 3}) {
 		t.Fatalf("a set of one file answered %+v, %v", got, err)
@@ -273,7 +273,7 @@ func TestAnEmptyOutputDirectoryMakesNoHostDirectory(t *testing.T) {
 // TestARunListsItsArtifactsAndAnEmptyOutMakesNoDirectory drives Runner.Run, the
 // job path `run` takes, through the fake wsl.exe.
 func TestARunListsItsArtifactsAndAnEmptyOutMakesNoDirectory(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	home, err := EnsureHome()
 	if err != nil {
 		t.Fatal(err)
@@ -293,7 +293,7 @@ func TestARunListsItsArtifactsAndAnEmptyOutMakesNoDirectory(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(out, "app"), []byte("binary"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(fakeWslOutEnv, out)
+	t.Setenv(execFakeOutEnv, out)
 	res = r.Run(context.Background(), spec)
 	if res.Artifacts != 1 || len(res.ArtifactList) != 1 || res.ArtifactList[0] != (ArtifactEntry{Path: "app", Kind: "file", Bytes: 6}) || res.ArtifactsUnlisted != 0 {
 		t.Fatalf("a job's answer lists %+v for %d artifacts", res.ArtifactList, res.Artifacts)
@@ -330,6 +330,57 @@ func TestTheHelperRouteMakesNoDirectoryForAnEmptySet(t *testing.T) {
 	got, err = c.DownloadArtifacts(context.Background(), "0123456789abcdef", dest, DefaultWorkspaceLimits())
 	if err != nil || got.Delivered != 2 || len(got.List) != 2 {
 		t.Fatalf("a set of a file and a link answered %+v, %v", got, err)
+	}
+}
+
+// TestAnEmptySetThroughARealHelperIsAnsweredAndReleased runs a job that leaves
+// /out empty through the helper's own set directory and its own artifacts
+// handler. ⛔ The helper answered 404 for that set once the fetch stopped making
+// the directory, so the client released nothing and the set stayed open. WSL-124.
+func TestAnEmptySetThroughARealHelperIsAnsweredAndReleased(t *testing.T) {
+	g := newExecFakeGuest(t)
+	home, err := EnsureHome()
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := &Runner{cfg: DefaultConfig(), wsl: g.wsl, home: home, ledger: mustLedger(t), log: func(string) {}}
+	h := &HelperServer{runner: r, log: func(string) {}}
+	id, err := newJobID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res := r.Run(context.Background(), JobSpec{Image: "docker.io/library/alpine:latest", Script: []byte("true\n"),
+		ArtifactDir: h.artifactDir(id, true), ContainerLifecycle: ContainerEphemeral, Platform: "linux/amd64",
+		Limits: DefaultWorkspaceLimits()})
+	if res.Unreached || res.Exit != 0 || res.ArtifactError != "" {
+		t.Fatalf("a job that left /out empty answered %+v", res)
+	}
+	var answered []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		rec := httptest.NewRecorder()
+		h.handleArtifacts(rec, req)
+		answered = append(answered, fmt.Sprintf("%s %d", req.Method, rec.Code))
+		for k, v := range rec.Header() {
+			w.Header()[k] = v
+		}
+		w.WriteHeader(rec.Code)
+		_, _ = w.Write(rec.Body.Bytes())
+	}))
+	defer srv.Close()
+	c := &HelperClient{endpoint: HelperEndpoint{Address: strings.TrimPrefix(srv.URL, "http://"), Token: "t"}, http: srv.Client()}
+	dest := filepath.Join(t.TempDir(), "artifacts")
+	got, err := c.DownloadArtifacts(context.Background(), id, dest, DefaultWorkspaceLimits())
+	if err != nil || got.Delivered != 0 {
+		t.Fatalf("an empty set through the helper answered %+v, %v", got, err)
+	}
+	if strings.Join(answered, ", ") != "GET 200, DELETE 200" {
+		t.Fatalf("the helper answered %q for an empty set; it is fetched and then released", answered)
+	}
+	if _, err := os.Stat(dest); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("an empty set made %s through the helper: %v", dest, err)
+	}
+	if _, err := os.Stat(filepath.Join(home, "artifacts", id)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the helper kept the released set: %v", err)
 	}
 }
 
@@ -385,8 +436,8 @@ func listedTar(t *testing.T, members map[string]string, link, target string) []b
 // -- WSL-123: an account of the base -------------------------------------------
 
 func TestAnAccountIsAskedForBeforeTheCommandRuns(t *testing.T) {
-	g := newFakeGuest(t)
-	t.Setenv(fakeWslUsersEnv, "alice:1001,toor:0")
+	g := newExecFakeGuest(t)
+	t.Setenv(execFakeUsersEnv, "alice:1001,toor:0")
 	if uid, ok, err := AccountUID(context.Background(), g.wsl, "wsl-toolkit", "toolkit", "alice"); err != nil || !ok || uid != 1001 {
 		t.Errorf("alice answered %d, %v, %v", uid, ok, err)
 	}
@@ -407,12 +458,12 @@ func TestAnAccountIsAskedForBeforeTheCommandRuns(t *testing.T) {
 
 func TestAnAccountNameIsAnAccountsName(t *testing.T) {
 	for _, ok := range []string{"alice", "_svc", "build-bot", "a.b", "Admin2"} {
-		if err := ValidateAccountName(ok); err != nil {
+		if err := ValidateBaseAccountName(ok); err != nil {
 			t.Errorf("%q was refused: %v", ok, err)
 		}
 	}
 	for _, bad := range []string{"", "1abc", "-x", "a b", "a'b", "a$", strings.Repeat("a", 33), ".hidden"} {
-		if err := ValidateAccountName(bad); err == nil {
+		if err := ValidateBaseAccountName(bad); err == nil {
 			t.Errorf("%q was accepted", bad)
 		}
 	}
@@ -446,7 +497,7 @@ func TestASessionsOneArchiveCarriesItsInputsAndItsStdin(t *testing.T) {
 }
 
 func TestASessionsOutputIsDeliveredOnce(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	home, err := Home()
 	if err != nil {
 		t.Fatal(err)
@@ -455,11 +506,11 @@ func TestASessionsOutputIsDeliveredOnce(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(out, "r.txt"), []byte("result"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv(fakeWslOutEnv, out)
+	t.Setenv(execFakeOutEnv, out)
 	id := "0123456789abcdef"
 	dest := filepath.Join(t.TempDir(), "dest")
 	rec := SessionRecord{Schema: SessionSchema, ID: id, Distro: "wsl-toolkit", User: "toolkit",
-		GuestDir: fakeWslHome + "/" + GuestRoot + "/sessions/" + id, ArtifactDir: dest}
+		GuestDir: execFakeHome + "/" + GuestRoot + "/sessions/" + id, ArtifactDir: dest}
 	if err := writeSessionRecord(home, rec); err != nil {
 		t.Fatal(err)
 	}
@@ -491,20 +542,31 @@ func TestASessionsOutputIsDeliveredOnce(t *testing.T) {
 // -- WSL-133: the private shell's launcher ----------------------------------------
 
 func TestThePrivateShellsLauncherRemovesItselfAndCarriesTheWrapper(t *testing.T) {
-	g := newFakeGuest(t)
+	g := newExecFakeGuest(t)
 	path, err := PrivateShell(context.Background(), g.wsl, "wsl-toolkit", "toolkit", []byte("exec bash -l\n"), "172.23.96.1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	dir := strings.TrimSuffix(path, "/"+privateShellName)
-	if !strings.HasPrefix(dir, fakeWslHome+"/"+GuestRoot+"/shells/") || dir == path {
+	if !strings.HasPrefix(dir, execFakeHome+"/"+GuestRoot+"/shells/") || dir == path {
 		t.Fatalf("the launcher is at %q", path)
 	}
 	var body string
-	for _, c := range g.calls(t) {
+	swept, placed := -1, -1
+	for i, c := range g.calls(t) {
 		if b, ok := c.Files[privateShellName]; ok {
 			body = b
 		}
+		if strings.Contains(c.Stdin, string(staleShellSweep(dir[:strings.LastIndex(dir, "/")]))) && swept < 0 {
+			swept = i
+		}
+		if len(c.Argv) == 3 && c.Argv[0] == "/bin/mkdir" && c.Argv[2] == dir {
+			placed = i
+		}
+	}
+	// ⛔ A LAUNCHER NO SHELL RAN IS SWEPT BY THE NEXT CALL, before it places its own.
+	if swept < 0 || placed < swept {
+		t.Fatalf("the stale launchers under %s are swept at call %d and the launcher placed at call %d", dir[:strings.LastIndex(dir, "/")], swept, placed)
 	}
 	if !strings.HasPrefix(body, "rm -rf '"+dir+"'\n") {
 		t.Fatalf("the launcher does not remove its own directory first:\n%.200s", body)

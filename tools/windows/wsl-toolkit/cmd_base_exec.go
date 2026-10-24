@@ -150,7 +150,7 @@ func (e baseExecFlags) account(cfg toolkit.Config) (string, error) {
 	case e.asRoot:
 		return "root", nil
 	case e.user != "":
-		if err := toolkit.ValidateAccountName(e.user); err != nil {
+		if err := toolkit.ValidateBaseAccountName(e.user); err != nil {
 			return "", err
 		}
 		return e.user, nil
@@ -342,11 +342,9 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 	// account runs the command. WSL-137.
 	toolkit.ClearStaleRunState(ctx, w, cfg.Base.Name, cfg.Base.User, note)
 	if opts.detach {
-		var stdin []byte
-		if opts.stdin {
-			if stdin, err = readDetachedStdin(os.Stdin); err != nil {
-				return exitCannot, err
-			}
+		stdin, err := opts.detachedStdin(os.Stdin)
+		if err != nil {
+			return exitCannot, err
 		}
 		return detachSession(ctx, w, req, opts, inputs, artifactDir, stdin)
 	}
@@ -359,6 +357,14 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 		run.Stdin = os.Stdin
 	}
 	res, runErr := toolkit.RunBaseExec(ctx, w, run)
+	return attachedExecExit(res, runErr, req.User == cfg.Base.User, artifactDir)
+}
+
+// attachedExecExit is the exit an attached base exec answers: 2 for a directory
+// the command could not enter, the command's own exit, and 1 for a command that
+// succeeded and delivered nothing it was asked for. retryable says the account
+// is the base's own, whose kept output `artifacts retry` can fetch. WSL-124.
+func attachedExecExit(res toolkit.BaseExecResult, runErr error, retryable bool, artifactDir string) (int, error) {
 	if errors.Is(runErr, toolkit.ErrDirNotEntered) {
 		return exitCannot, runErr
 	}
@@ -366,7 +372,7 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 	if res.ArtifactError != "" {
 		logf("  ! artifacts: %s", res.ArtifactError)
 		retained := "  ! the output is still in the guest at " + res.Retained
-		if req.User == cfg.Base.User {
+		if retryable {
 			retained += ". Fetch it with: " + toolkit.ToolCommand("artifacts retry "+res.ID+" --to "+toolkit.QuoteForDisplay(artifactDir))
 		}
 		logf("%s", retained)
@@ -377,6 +383,15 @@ func cmdBaseExec(ctx context.Context, args []string) (int, error) {
 		}
 	}
 	return code, err
+}
+
+// detachedStdin is what a detached session's command reads: nil without
+// --stdin, so the session keeps /dev/null, and the whole of r with it. WSL-124.
+func (e baseExecFlags) detachedStdin(r io.Reader) ([]byte, error) {
+	if !e.stdin {
+		return nil, nil
+	}
+	return readDetachedStdin(r)
 }
 
 // checkExecAccount refuses an account the base does not have, and a private

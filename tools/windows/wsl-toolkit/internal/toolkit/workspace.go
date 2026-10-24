@@ -762,10 +762,11 @@ func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDi
 }
 
 // ArtifactsLine is what a caller reads about one delivered set.
+//
+// ⛔ ONE FORM FOR EVERY COUNT, the 7.0 line. An empty set reads "0 entries"
+// though no directory is made now: stderr is a stream a caller may parse, and a
+// MINOR release does not change it. WSL-124.
 func ArtifactsLine(got ArtifactTransfer, hostDir string) string {
-	if got.Delivered == 0 {
-		return "artifacts: the output directory was empty, so nothing was written to " + hostDir
-	}
 	return fmt.Sprintf("artifacts: %d entries, %s written to %s", got.Delivered, HumanBytes(got.Bytes), hostDir)
 }
 
