@@ -8,8 +8,13 @@
 # provisioning runs it to write the block before the restart that mounts it.
 #
 # It runs as root, delivered on stdin. TK_USER, TK_GRANTS_MODE, TK_FSTAB_B64,
-# TK_MOUNT_CHECKS and TK_GRANT_TARGET arrive as exported variables, and every path
-# in them is base64 made by Go, so none of it becomes shell source.
+# TK_MOUNT_CHECKS, TK_GRANT_TARGET, TK_GRANT_OWNER and TK_GRANT_OWNER_NAME arrive as
+# exported variables, and every path in them is base64 made by Go, so none of it
+# becomes shell source.
+#
+# The owners ledger, /var/lib/wsl-toolkit/grant-owners, says which configuration
+# file made each live grant: one line of target, owner key and owner name, the two
+# in base64. verify.sh reads it. WSL-179.
 #
 #   TK_GRANTS_MODE=write   rewrite the block and create each target, and mount nothing
 #   TK_GRANTS_MODE=live    rewrite the block, unmount or mount TK_GRANT_TARGET alone,
@@ -24,6 +29,8 @@ cd /
 : "${TK_FSTAB_B64?TK_FSTAB_B64 is required, and may be empty}"
 : "${TK_MOUNT_CHECKS?TK_MOUNT_CHECKS is required, and may be empty}"
 : "${TK_GRANT_TARGET:=}"
+: "${TK_GRANT_OWNER:=}"
+: "${TK_GRANT_OWNER_NAME:=}"
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'grants: %s\n' "$*" >&2; exit 3; }
@@ -35,6 +42,7 @@ esac
 
 FSTAB_BEGIN='# wsl-toolkit mounts begin'
 FSTAB_END='# wsl-toolkit mounts end'
+OWNERS=/var/lib/wsl-toolkit/grant-owners
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' 0 1 2 15
 
@@ -74,6 +82,15 @@ install_fstab() {
   mv /etc/fstab.wsl-toolkit.new /etc/fstab
 }
 
+# install_owners FILE: the owners ledger, through a rename, readable by the account
+# verify.sh runs as.
+install_owners() {
+  mkdir -p /var/lib/wsl-toolkit
+  cp "$1" "$OWNERS.new"
+  chmod 644 "$OWNERS.new"
+  mv "$OWNERS.new" "$OWNERS"
+}
+
 # ⛔ BLOCK, NOTHING LIVE IS TOUCHED. It takes back the block of a live change that
 # mounted and unmounted nothing, because its target was already as asked. A live
 # take-back unmounted that target, and another configuration had mounted it. WSL-179.
@@ -101,6 +118,17 @@ say "explicit Windows directories: ${count:-0}"
 
 if [ "$TK_GRANTS_MODE" = write ]; then
   install_fstab "$WORK/fstab"
+  # ⭐ THE RESTART THAT FOLLOWS MOUNTS THIS BLOCK ALONE, so the ledger becomes this
+  # configuration's grants. Another configuration's live grant ends with it. WSL-179.
+  if [ -n "$TK_GRANT_OWNER" ]; then
+    : > "$WORK/owners"
+    while read -r _mode target; do
+      if [ -n "$target" ]; then
+        printf '%s %s %s\n' "$target" "$TK_GRANT_OWNER" "$TK_GRANT_OWNER_NAME" >> "$WORK/owners"
+      fi
+    done < "$WORK/targets"
+    install_owners "$WORK/owners"
+  fi
   printf 'grants-complete\n'
   exit 0
 fi
@@ -153,6 +181,65 @@ live_mode() {
   return 0
 }
 
+# live_source TARGET: the Windows directory a live DrvFS mount at TARGET comes
+# from, as /proc/mounts escapes it, or nothing. Measured on 2026-10-24: a mount
+# from the block reads `C:/Users/x/A\040Dir/ToolKit`, the fstab field unchanged.
+live_source() {
+  while read -r live_from live_target live_type live_options _rest; do
+    [ "$live_target" = "$1" ] || continue
+    case "$live_type:$live_options" in
+      drvfs:*|9p:*aname=drvfs*) printf '%s\n' "$live_from"; return 0 ;;
+    esac
+  done < /proc/mounts
+  return 0
+}
+
+# block_source TARGET: the Windows directory the new block mounts at TARGET, as
+# fstab escapes it, or nothing.
+block_source() {
+  [ -f "$WORK/block" ] || return 0
+  while read -r block_from block_target _rest; do
+    if [ "$block_target" = "$1" ]; then
+      printf '%s\n' "$block_from"
+      return 0
+    fi
+  done < "$WORK/block"
+  return 0
+}
+
+# source_key PATH: an escaped Windows path in one spelling. fstab and /proc/mounts
+# escape differently, a separator can be either slash, and Windows compares
+# without case.
+source_key() {
+  printf '%s\n' "$1" |
+    sed -e 's/\\134/\//g' -e 's/\\043/#/g' -e 's/\\040/ /g' -e 's/\\011/	/g' \
+      -e 's/\\/\//g' -e 's/\/*$//' |
+    tr '[:upper:]' '[:lower:]'
+}
+
+# holder TARGET: the owner key and owner name the ledger gives TARGET, or nothing.
+holder() {
+  [ -f "$OWNERS" ] || return 0
+  while read -r held_target held_key held_name _rest; do
+    if [ "$held_target" = "$1" ]; then
+      printf '%s %s\n' "$held_key" "$held_name"
+      return 0
+    fi
+  done < "$OWNERS"
+  return 0
+}
+
+# ⛔ A LIVE TARGET ANOTHER CONFIGURATION HOLDS IS REFUSED, NOT CHANGED. The ledger
+# names the file that granted it, and a grant or a revoke from this one unmounted
+# or replaced that file's checkout. The refusal names the file. WSL-179.
+held=$(holder "$OWN")
+held_key=${held%% *}
+if [ -n "$held" ] && [ -n "$TK_GRANT_OWNER" ] && [ "$held_key" != "$TK_GRANT_OWNER" ] &&
+  [ -n "$(live_mode "$OWN")" ]; then
+  decode64 held_name "${held#* }"
+  die "$OWN is mounted for $(cat "$WORK/held_name"), another configuration, so it stays as it is. Revoke it with that file first: wsl-toolkit --config $(cat "$WORK/held_name") base revoke --target $OWN"
+fi
+
 # -- unmount this call's target, when the configuration no longer names it -----------
 # ⛔ READ FROM THE LIVE MOUNTS, NOT FROM THE OLD BLOCK. A block that had drifted from
 # what was mounted, as one did on 2026-09-14, answered "nothing to unmount" and the
@@ -187,9 +274,27 @@ while read -r mode target; do
   [ -n "$target" ] || continue
   [ "$target" = "$OWN" ] || continue
   current=$(live_mode "$target")
+  # ⛔ A LIVE MOUNT IS "AS ASKED" ONLY FROM THE SAME DIRECTORY. The mode alone was
+  # compared, so a grant over another configuration's checkout of the same name
+  # said "unchanged", and its agent wrote into that checkout. WSL-179.
+  if [ -n "$current" ]; then
+    live_from=$(live_source "$target")
+    want_from=$(block_source "$target")
+    [ "$(source_key "$live_from")" = "$(source_key "$want_from")" ] ||
+      fail_back "$target is already mounted from $live_from, not from $want_from, so it stays as it is. Revoke it where it was granted first"
+  fi
   if [ -n "$current" ] && [ "$current" != "$mode" ]; then
+    # ⛔ ONLY THIS CONFIGURATION'S OWN MOUNT IS REMOUNTED. A mount in another mode
+    # that the ledger does not give this file was unmounted and replaced. WSL-179.
+    if [ -z "$TK_GRANT_OWNER" ] || [ "$held_key" != "$TK_GRANT_OWNER" ]; then
+      fail_back "$target is already mounted $current, not $mode, and this configuration did not mount it, so it stays as it is. Revoke it where it was granted first"
+    fi
     umount "$target" 2>"$WORK/umount.err" ||
       fail_back "$target is mounted $current, is still in use, and cannot become $mode: $(head -1 "$WORK/umount.err")"
+    # ⛔ RECORDED, so a mount that then fails puts this one back from the old block.
+    # Unrecorded, a failed switch left the target unmounted. WSL-179.
+    printf '%s\n' "$target" >> "$WORK/unmounted"
+    changed=true
     current=
   fi
   if [ -z "$current" ]; then
@@ -222,6 +327,24 @@ while read -r mode target; do
   esac
   printf 'grant %s %s\n' "$mode" "$target"
 done < "$WORK/targets"
+# -- the ledger: this call's target, as this configuration now has it -----------------
+# ⭐ WRITTEN LAST, once nothing can still fail back, so it never names a grant the
+# base does not hold. WSL-179.
+if [ -n "$TK_GRANT_OWNER" ]; then
+  : > "$WORK/owners"
+  if [ -f "$OWNERS" ]; then
+    while IFS= read -r line; do
+      case "$line" in
+        "$OWN "*|'') ;;
+        *) printf '%s\n' "$line" >> "$WORK/owners" ;;
+      esac
+    done < "$OWNERS"
+  fi
+  if cut -d' ' -f2- "$WORK/targets" | grep -Fxq "$OWN"; then
+    printf '%s %s %s\n' "$OWN" "$TK_GRANT_OWNER" "$TK_GRANT_OWNER_NAME" >> "$WORK/owners"
+  fi
+  install_owners "$WORK/owners"
+fi
 if [ "$changed" = false ]; then
   printf 'unchanged %s\n' "$OWN"
 fi

@@ -318,10 +318,26 @@ done
 # With drive automount disabled, every live DrvFS mount must be one of the
 # configured targets. This catches a grant removed from configuration but still
 # present in the running guest, forcing ensure to rewrite fstab and restart.
+#
+# ⛔ A MOUNT THE GRANT LEDGER GIVES ANOTHER CONFIGURATION FILE IS THAT FILE'S, and
+# it is left alone and named. Refused, the next ensure from this file restarted the
+# base, which ended every agent there and dropped the other file's checkout. WSL-179.
 if [ "$TK_AUTOMOUNT" = off ]; then
   while read -r _source live_target live_type live_options _rest; do
     case "$live_type:$live_options" in
       drvfs:*|9p:*aname=drvfs*)
+        held_by=
+        if [ -n "${TK_CONFIG_OWNER:-}" ] && [ -r /var/lib/wsl-toolkit/grant-owners ]; then
+          while read -r held_target held_key held_name _held_rest; do
+            if [ "$held_target" = "$live_target" ] && [ "$held_key" != "$TK_CONFIG_OWNER" ]; then
+              held_by=$held_name
+            fi
+          done < /var/lib/wsl-toolkit/grant-owners
+        fi
+        if [ -n "$held_by" ]; then
+          printf 'held-mount %s %s\n' "$live_target" "$held_by"
+          continue
+        fi
         if ! grep -Fx "$live_target" "$mount_allowlist" >/dev/null 2>&1; then
           rm -f "$mount_allowlist"
           printf 'verify: unconfigured Windows directory is mounted at %s\n' "$live_target" >&2

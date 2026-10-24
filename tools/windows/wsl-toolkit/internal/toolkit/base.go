@@ -509,6 +509,9 @@ func (b *Base) EnsureWith(ctx context.Context, force, repair bool) (BaseState, e
 		}
 		if report, err := b.verify(ctx); err == nil {
 			b.log("the engine answers: " + report.Engine)
+			for _, h := range report.Held {
+				b.log("another configuration's grant stays mounted: " + h)
+			}
 			return b.finishEnsure(ctx, st)
 		} else {
 			b.log("it cannot: " + err.Error())
@@ -1159,6 +1162,9 @@ type verifyReport struct {
 	Binfmt *BinfmtState
 	// Automount is what the guest's drives are, from the script's `automount` row.
 	Automount string
+	// Held are the live mounts the grant ledger gives another configuration file,
+	// each "TARGET, granted by FILE". WSL-179.
+	Held []string
 }
 
 // verify runs a container as the unprivileged account and reads what came back.
@@ -1181,43 +1187,11 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 		return hex.EncodeToString(raw[:])
 	}
 	m1, m2 := half(), half()
-	automount, err := NormalizeAutomount(b.cfg.Base.Automount)
+	env, err := verifyEnv(b.cfg, m1, m2)
 	if err != nil {
 		return verifyReport{}, err
 	}
-	interop, err := NormalizeBaseInterop(b.cfg.Base.Interop)
-	if err != nil {
-		return verifyReport{}, err
-	}
-	toolset, err := NormalizeBaseToolset(b.cfg.Base.Toolset)
-	if err != nil {
-		return verifyReport{}, err
-	}
-	sharedTmpfs, err := NormalizeSharedTmpfs(b.cfg.Base.SharedTmpfs)
-	if err != nil {
-		return verifyReport{}, err
-	}
-	checks, err := presentGrantChecks(b.cfg)
-	if err != nil {
-		return verifyReport{}, err
-	}
-	gone, err := goneGrantTargets(b.cfg)
-	if err != nil {
-		return verifyReport{}, err
-	}
-	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, map[string]string{
-		"TK_IMAGE":             VerifyImage,
-		"TK_M1":                m1,
-		"TK_M2":                m2,
-		"TK_AUTOMOUNT":         automount,
-		"TK_INTEROP":           interop,
-		"TK_SYSTEMD":           strconv.FormatBool(b.cfg.Base.Systemd),
-		"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
-		"TK_TOOLSET":           toolset,
-		"TK_SHARED_TMPFS":      sharedTmpfs,
-		"TK_MOUNT_CHECKS":      checks,
-		"TK_MOUNT_GONE":        gone,
-	}, 20*time.Minute)
+	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, verifyScript, env, 20*time.Minute)
 	drives := parseAutomount(out)
 	if err != nil || code != 0 {
 		return verifyReport{Automount: drives}, verifyError(b.cfg.Base.User, code, out, stderr)
@@ -1236,7 +1210,68 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	}
 	// ⚠ `engine ` MATCHES BEFORE `engine-rootless ` DOES NOT, and it does not:
 	// the prefix compared carries a trailing space and that row's key does not.
-	return verifyReport{Engine: engine, Cgroup: parseCapabilities(out), Binfmt: parseBinfmt(out), Automount: drives}, nil
+	return verifyReport{Engine: engine, Cgroup: parseCapabilities(out), Binfmt: parseBinfmt(out), Automount: drives, Held: parseHeldMounts(out)}, nil
+}
+
+// verifyEnv is what verify.sh is handed for a configuration, with the two halves
+// of the marker its container joins.
+func verifyEnv(cfg Config, m1, m2 string) (map[string]string, error) {
+	automount, err := NormalizeAutomount(cfg.Base.Automount)
+	if err != nil {
+		return nil, err
+	}
+	interop, err := NormalizeBaseInterop(cfg.Base.Interop)
+	if err != nil {
+		return nil, err
+	}
+	toolset, err := NormalizeBaseToolset(cfg.Base.Toolset)
+	if err != nil {
+		return nil, err
+	}
+	sharedTmpfs, err := NormalizeSharedTmpfs(cfg.Base.SharedTmpfs)
+	if err != nil {
+		return nil, err
+	}
+	checks, err := presentGrantChecks(cfg)
+	if err != nil {
+		return nil, err
+	}
+	gone, err := goneGrantTargets(cfg)
+	if err != nil {
+		return nil, err
+	}
+	owner, _ := grantOwner(cfg)
+	return map[string]string{
+		"TK_IMAGE":             VerifyImage,
+		"TK_M1":                m1,
+		"TK_M2":                m2,
+		"TK_AUTOMOUNT":         automount,
+		"TK_INTEROP":           interop,
+		"TK_SYSTEMD":           strconv.FormatBool(cfg.Base.Systemd),
+		"TK_PASSWORDLESS_SUDO": strconv.FormatBool(cfg.Base.PasswordlessSudo),
+		"TK_TOOLSET":           toolset,
+		"TK_SHARED_TMPFS":      sharedTmpfs,
+		"TK_MOUNT_CHECKS":      checks,
+		"TK_MOUNT_GONE":        gone,
+		"TK_CONFIG_OWNER":      owner,
+	}, nil
+}
+
+// parseHeldMounts reads verify.sh's `held-mount TARGET FILE64` rows.
+func parseHeldMounts(out string) []string {
+	var held []string
+	for _, line := range strings.Split(out, "\n") {
+		f := strings.Fields(line)
+		if len(f) != 3 || f[0] != "held-mount" {
+			continue
+		}
+		name, err := base64.StdEncoding.DecodeString(f[2])
+		if err != nil {
+			continue
+		}
+		held = append(held, f[1]+", granted by "+string(name))
+	}
+	return held
 }
 
 // verifyRefused is the exit code verify.sh gives its own refusals.

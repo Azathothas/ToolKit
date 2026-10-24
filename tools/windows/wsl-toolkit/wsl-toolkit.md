@@ -546,12 +546,19 @@ configuration file that cannot be written takes the change back. A grant whose
 target was already mounted as asked takes back its fstab block alone, so that
 mount stays. `WSL-179`
 
-⚠ **A mount another configuration holds still costs a restart.** With
-`base.automount` off, `base ensure` from a configuration that does not name it
-reads it as unconfigured. It re-provisions and restarts the base, which stops
-everything running there. The fstab block holds only the last caller's grants, so
-the restart drops that mount. Grant the same directories in each configuration to
-avoid it.
+⛔ **A target another configuration holds is refused, not replaced.** The base
+keeps a ledger of which configuration file made each live grant. A grant or a
+revoke of a target another file holds is refused, naming that file and its
+revoke. A target already mounted from another Windows directory is refused too. So
+is one mounted in the other mode that this configuration did not mount. Grants and
+revokes on one instance take a lock, and each reads its file under it. `WSL-179`
+
+⚠ **A mount another configuration holds lasts until the next restart.**
+`base ensure` names it and leaves it, where it used to re-provision over it. The fstab
+block holds only the last caller's grants, so a restart drops the other mounts. A
+re-provision for any other reason restarts the base and drops them too. After a
+restart, `base ensure` from the file that names them mounts them again, through
+one more restart.
 
 ⛔ **Neither replaces what it would disturb.** A directory or a target already
 granted differently is refused with the revoke to run first. A grant a process

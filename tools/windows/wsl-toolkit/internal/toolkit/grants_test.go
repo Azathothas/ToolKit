@@ -203,14 +203,25 @@ func TestALiveGrantChangeNamesItsOneTarget(t *testing.T) {
 
 // grantsDrive runs grants.sh live under a POSIX shell, with /etc/fstab and
 // /proc/mounts in dir and mount, umount and runuser standing in. A stand-in mount
-// adds the target to the mounts file in the mode the fstab gives it.
+// adds the target to the mounts file from the source and in the mode the fstab
+// gives it, and fails once when dir holds mount.fail. The grant ledger is dir's
+// owners file, and the caller's configuration file is grantsMine.
 func grantsDrive(t *testing.T, dir string, mounts []BaseMount, target string) (string, error) {
 	t.Helper()
 	return grantsDriveIn(t, dir, GrantsLive, mounts, target)
 }
 
+// grantsMine is the configuration file a drive of grants.sh runs for.
+const grantsMine = "/cfg/mine.json"
+
 // grantsDriveIn is grantsDrive in any mode.
 func grantsDriveIn(t *testing.T, dir, mode string, mounts []BaseMount, target string) (string, error) {
+	t.Helper()
+	return grantsDriveAs(t, dir, mode, mounts, target, grantsMine)
+}
+
+// grantsDriveAs is grantsDriveIn for the configuration file owner.
+func grantsDriveAs(t *testing.T, dir, mode string, mounts []BaseMount, target, owner string) (string, error) {
 	t.Helper()
 	fstab64, checks, err := renderBaseMounts(mounts)
 	if err != nil {
@@ -222,8 +233,14 @@ chmod() { :; }
 runuser() { return 0; }
 mount() {
   printf 'mount %s\n' "$1" >> "$TK_TEST_DIR/log"
+  if [ -e "$TK_TEST_DIR/mount.fail" ]; then
+    rm -f "$TK_TEST_DIR/mount.fail"
+    printf 'the stand-in mount failed\n' >&2
+    return 1
+  fi
   m=$(grep " $1 drvfs " "$TK_TEST_DIR/fstab" | sed 's/.* drvfs metadata,\([a-z]*\),.*/\1/')
-  printf 'drvfs %s drvfs %s,noatime 0 0\n' "$1" "$m" >> "$TK_TEST_DIR/mounts"
+  s=$(grep " $1 drvfs " "$TK_TEST_DIR/fstab" | cut -d' ' -f1)
+  printf '%s %s drvfs %s,noatime 0 0\n' "$s" "$1" "$m" >> "$TK_TEST_DIR/mounts"
 }
 umount() {
   printf 'umount %s\n' "$1" >> "$TK_TEST_DIR/log"
@@ -233,10 +250,12 @@ umount() {
 `
 	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", dir+"/fstab")
 	script = strings.ReplaceAll(script, "/proc/mounts", dir+"/mounts")
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", dir+"/owners")
 	script = strings.Replace(script, "set -eu\n", "set -eu\n"+standIns, 1)
 	cmd := exec.Command(posixShell(t), "-c", script)
 	cmd.Env = append(os.Environ(), "TK_TEST_DIR="+dir, "TK_USER=agent", "TK_GRANTS_MODE="+mode,
-		"TK_FSTAB_B64="+fstab64, "TK_MOUNT_CHECKS="+checks, "TK_GRANT_TARGET="+target)
+		"TK_FSTAB_B64="+fstab64, "TK_MOUNT_CHECKS="+checks, "TK_GRANT_TARGET="+target,
+		"TK_GRANT_OWNER="+b64(owner), "TK_GRANT_OWNER_NAME="+b64(owner))
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -330,14 +349,14 @@ func TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone(t *testing.T) {
 func TestATakeBackLeavesAMountItsChangeDidNotMake(t *testing.T) {
 	posixShell(t)
 	dir := t.TempDir()
-	theirs := "drvfs /workspaces/shared drvfs rw,noatime 0 0\n"
+	src := t.TempDir()
+	theirs := fstabEscape(filepath.ToSlash(src)) + " /workspaces/shared drvfs rw,noatime 0 0\n"
 	if err := os.WriteFile(filepath.Join(dir, "mounts"), []byte(theirs), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "fstab"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	src := t.TempDir()
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
 	shared := BaseMount{Source: src, Target: "/workspaces/shared", Mode: "rw"}
 	own := base64.StdEncoding.EncodeToString([]byte(shared.Target))

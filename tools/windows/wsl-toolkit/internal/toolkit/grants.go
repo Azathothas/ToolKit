@@ -56,11 +56,33 @@ func grantsEnv(cfg Config, mode, target string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
+	ownerKey, ownerName := grantOwner(cfg)
 	return map[string]string{
 		"TK_USER": cfg.Base.User, "TK_GRANTS_MODE": mode,
 		"TK_FSTAB_B64": fstab, "TK_MOUNT_CHECKS": checks,
-		"TK_GRANT_TARGET": target64,
+		"TK_GRANT_TARGET": target64, "TK_GRANT_OWNER": ownerKey,
+		"TK_GRANT_OWNER_NAME": ownerName,
 	}, nil
+}
+
+// grantOwner is how the guest's grant ledger names a configuration file: a key
+// compared as Windows compares paths, and the file's own spelling to show. Both are
+// base64, and both are empty for a configuration with no file. WSL-179.
+func grantOwner(cfg Config) (key, name string) {
+	p := cfg.Path()
+	if p == "" {
+		return "", ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	p = filepath.Clean(p)
+	k := p
+	if runtime.GOOS == "windows" {
+		k = strings.ToLower(p)
+	}
+	enc := base64.StdEncoding.EncodeToString
+	return enc([]byte(k)), enc([]byte(p))
 }
 
 // applyGrants runs grants.sh in the base for a configuration's grants. target is
@@ -262,6 +284,61 @@ func grantsTakeBackMode(changed bool) string {
 func (b *Base) TakeGrantsBack(ctx context.Context, prev Config, target string, changed bool) error {
 	_, err := b.applyGrants(ctx, prev, grantsTakeBackMode(changed), target)
 	return err
+}
+
+// grantLockPoll is how often a grant or a revoke waiting for another asks again,
+// and grantLockWait how long it waits before it refuses. The live step's own
+// limit is 5 minutes, so a holder that is working lets go well within it.
+var (
+	grantLockPoll = 200 * time.Millisecond
+	grantLockWait = 10 * time.Minute
+)
+
+// LockGrants holds the selected instance's grant lock until the returned release
+// runs or this process ends. `base grant` and `base revoke` read the configuration
+// file under it, change the base, and write the file before letting it go.
+//
+// ⛔ TWO GRANTS AT ONCE EACH WROTE A FILE WITHOUT THE OTHER'S GRANT. Each loaded
+// the file, mounted its own target, and wrote back what it had loaded plus its
+// own, so the last write won and the other grant became an unconfigured live
+// mount. WSL-179.
+func LockGrants(ctx context.Context, log func(string)) (func(), error) {
+	root, err := StateRoot()
+	if err != nil {
+		return nil, err
+	}
+	dir := filepath.Join(root, "locks")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	name := SelectedInstance.Name
+	if name == "" {
+		name = DefaultInstance
+	}
+	lock := filepath.Join(dir, "grants-"+name+".lock")
+	deadline := time.Now().Add(grantLockWait)
+	said := false
+	for {
+		release, err := lockExclusive(lock)
+		if err == nil {
+			return release, nil
+		}
+		if !errors.Is(err, errLockHeld) {
+			return nil, fmt.Errorf("the grant lock %s: %w", lock, err)
+		}
+		if !time.Now().Before(deadline) {
+			return nil, fmt.Errorf("another grant or revoke on instance %s held its lock for %s, so nothing was changed. Run this again once it has finished", name, grantLockWait)
+		}
+		if !said && log != nil {
+			log("waiting for another grant or revoke on instance " + name + " to finish")
+			said = true
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("waiting for another grant or revoke on instance %s: %w", name, ctx.Err())
+		case <-time.After(grantLockPoll):
+		}
+	}
 }
 
 // WriteTo stores the configuration at a path, atomically, in the tool's own
