@@ -224,7 +224,9 @@ func TestTheVerifierLeavesAMountTheLedgerGivesAnotherFile(t *testing.T) {
 // key Windows compares without case. WSL-179.
 func TestTheGrantAndVerifyStepsAreToldTheirConfigurationFile(t *testing.T) {
 	cfg := grantBase(t)
-	cfg.Base.Mounts = []BaseMount{{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}}
+	cfg.Base.Mounts = []BaseMount{
+		{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"},
+	}
 	key := filepath.Clean(cfg.Path())
 	if runtime.GOOS == "windows" {
 		key = strings.ToLower(key)

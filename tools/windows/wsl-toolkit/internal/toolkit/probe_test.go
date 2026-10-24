@@ -181,7 +181,7 @@ func TestAPullFailureIsJudgedByItsCause(t *testing.T) {
 		insufficientIDs,
 		`Error: copying system image from manifest list: writing blob: storing blob to file "/var/tmp/storage123/1": write /var/tmp/storage123/1: no space left on device`,
 		"Error: open /etc/containers/policy.json: no such file or directory",
-		`Error: creating overlay mount to /home/agent/.local/share/containers/storage/overlay/0123/merged: permission denied`,
+		`Error: creating overlay mount to /home/toolkit/.local/share/containers/storage/overlay/0123/merged: permission denied`,
 	}
 	for _, reason := range registry {
 		stderr := "verify-pull: " + reason + "\n"

@@ -185,7 +185,9 @@ func TestADefaultTargetIsTheDirectorysOwnName(t *testing.T) {
 // Write mode, which provisioning uses, names none. WSL-179.
 func TestALiveGrantChangeNamesItsOneTarget(t *testing.T) {
 	cfg := grantBase(t)
-	cfg.Base.Mounts = []BaseMount{{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}}
+	cfg.Base.Mounts = []BaseMount{
+		{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"},
+	}
 	env, err := grantsEnv(cfg, GrantsLive, "/workspaces/mine")
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +338,9 @@ func TestALiveChangeThatMountedNothingIsTakenBackByItsBlockAlone(t *testing.T) {
 		t.Fatalf("a step that mounted its target is taken back in %q, want %q", got, GrantsLive)
 	}
 	cfg := grantBase(t)
-	cfg.Base.Mounts = []BaseMount{{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}}
+	cfg.Base.Mounts = []BaseMount{
+		{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"},
+	}
 	if env, err := grantsEnv(cfg, GrantsBlock, "/workspaces/shared"); err != nil || env["TK_GRANTS_MODE"] != GrantsBlock || env["TK_FSTAB_B64"] == "" {
 		t.Fatalf("block mode answered %v, %v; want the block and no refusal", env, err)
 	}

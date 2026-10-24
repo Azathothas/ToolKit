@@ -183,7 +183,7 @@ live_mode() {
 
 # live_source TARGET: the Windows directory a live DrvFS mount at TARGET comes
 # from, as /proc/mounts escapes it, or nothing. Measured on 2026-10-24: a mount
-# from the block reads `C:/Users/x/A\040Dir/ToolKit`, the fstab field unchanged.
+# from the block reads `D:/src/A\040Dir/ToolKit`, the fstab field unchanged.
 live_source() {
   while read -r live_from live_target live_type live_options _rest; do
     [ "$live_target" = "$1" ] || continue
