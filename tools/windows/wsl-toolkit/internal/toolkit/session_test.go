@@ -198,10 +198,19 @@ func TestASessionRunsStopsTimesOutAndIsFollowedInARealShell(t *testing.T) {
 		t.Skip("no setsid on this host")
 	}
 	home := t.TempDir()
+	// ⛔ THE PROCESS GROUP IS WHAT THIS CASE PROVES, so no session may get a scope.
+	// A host whose user manager answers puts a session in one, and the scope's own
+	// TERM then reaches the payload whatever the group's kill does: the rows on
+	// that kill stayed green on such a runner. A systemd-run that refuses makes
+	// the launcher's probe fail on every host. The scope has its own case. WSL-126.
+	noScope := t.TempDir()
+	if err := os.WriteFile(filepath.Join(noScope, "systemd-run"), []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	run := func(script []byte) (string, string, int) {
 		cmd := exec.Command(sh)
 		cmd.Stdin = bytes.NewReader(script)
-		cmd.Env = append(os.Environ(), "HOME="+home)
+		cmd.Env = append(os.Environ(), "HOME="+home, "PATH="+noScope+string(os.PathListSeparator)+os.Getenv("PATH"))
 		var out, errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &errb
 		err := cmd.Run()
