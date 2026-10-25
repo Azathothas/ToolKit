@@ -12,10 +12,13 @@
 // the first. So every row reports the case count and the build status separately:
 //
 //	ok       the guard is real: the mutation built, cases ran, and one it names failed
-//	THEATRE  it built, cases ran, and they stayed green
-//	SKIPPED  it built, and every case it names skipped itself on this host
+//	THEATRE  it built, cases ran, and they stayed green, or skipped where they
+//	         ran unmutated
+//	SKIPPED  it built, and every case it names skipped itself on this host,
+//	         unmutated too
 //	BROKEN   it did not build, or matched no case, or the find was not unique,
-//	         or something failed that is not a case it names
+//	         or something failed that is not a case it names, or its cases
+//	         flaked unmutated, or two runs of the mutation disagreed
 //
 // ⚠ SKIPPED IS THE FOURTH, AND IT WAS ADDED BECAUSE THIS HARNESS MADE EXACTLY
 // THE MISTAKE IT EXISTS TO CATCH. A case that calls t.Skip prints `=== RUN` and
@@ -135,6 +138,9 @@ type Selection struct {
 	Shard   Shard
 	// Jobs is how many rows run at once. Zero is DefaultJobs.
 	Jobs int
+	// heartbeat is how long the log may stay quiet before it names what is
+	// running. Zero is a minute. ⚠ Unexported: a case sets it shorter.
+	heartbeat time.Duration
 }
 
 // Shard is the K-th of N runners sharing one table. The zero value is the
@@ -168,7 +174,7 @@ func ParseShard(s string) (Shard, error) {
 
 // Run applies every selected mutation and reports one verdict each, in table
 // order. Progress is written to w as it goes, because a full pass takes minutes
-// and a silent one reads as a hang.
+// and a silent one reads as a hang. Each verdict prints as its row finishes.
 func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
 	rows, left, err := choose(t, sel)
 	if err != nil {
@@ -218,6 +224,12 @@ func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
 	if err != nil {
 		return nil, err
 	}
+	width := 0
+	for _, m := range t.Mutations {
+		width = max(width, len(m.Label))
+	}
+	p := newPrinter(w, width, len(mine), jobs)
+
 	var workers []*worker
 	defer func() {
 		for _, wk := range workers {
@@ -234,20 +246,22 @@ func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
 			s.release()
 			return nil, fmt.Errorf("no staging directory for worker %d: %w", k+1, err)
 		}
+		wk.id, wk.p = k, p
 		workers = append(workers, wk)
 	}
-
-	width := 0
-	for _, m := range t.Mutations {
-		width = max(width, len(m.Label))
-	}
-	p := &printer{w: w, width: width, done: make([]bool, len(mine)), got: make([]Verdict, len(mine))}
 
 	queue := make(chan group, len(here))
 	for _, g := range dispatchOrder(here) {
 		queue <- g
 	}
 	close(queue)
+
+	every := sel.heartbeat
+	if every <= 0 {
+		every = time.Minute
+	}
+	stop, stopped := make(chan struct{}), make(chan struct{})
+	go p.watch(every, stop, stopped)
 
 	var wg sync.WaitGroup
 	for _, wk := range workers {
@@ -257,9 +271,12 @@ func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
 			for g := range queue {
 				wk.group(t, g, func(row int, v Verdict) { p.put(at[row], v) })
 			}
+			wk.doing("")
 		}(wk)
 	}
 	wg.Wait()
+	close(stop)
+	<-stopped
 	return p.got, nil
 }
 
@@ -290,6 +307,47 @@ type baseline struct {
 	// pkgs are the packages the row's cases ran in, unmutated.
 	pkgs []string
 	why  string
+}
+
+// say is one row's run as a reader needs it named.
+func say(v Verdict) string {
+	if v.State == "BROKEN" {
+		return "BROKEN (" + v.Reason + ")"
+	}
+	return v.State
+}
+
+// askAgain is whether a verdict needs a second run of the mutation.
+//
+// ⛔ EVERY VERDICT THAT FAILS THE RUN IS SEEN TWICE. Some cases decide by a
+// window, as "nothing may happen within 500 ms while the lock is held". Such a
+// case stays green when a loaded machine runs the unguarded write late. One run
+// of that reads as THEATRE for a guard that is real. ⚠ A build failure is not
+// asked again, because the compiler answers the same twice. Nor is a skip: the
+// baseline already saw the same cases skip unmutated.
+//
+// ⚠ AN "ok" IS NOT ASKED AGAIN, and that is a measured trade. The whole table
+// is about 1,200 ok rows. A second run of each would add about three runs for
+// every five a CI shard makes now. A false ok needs a case that fails by chance
+// moments after it passed unmutated on the same worker. A baseline that has
+// failed by chance even once refuses its whole group.
+func askAgain(v Verdict, r testRun) bool {
+	return v.State == "THEATRE" || (v.State == "BROKEN" && len(r.buildFailed) == 0)
+}
+
+// agree is the verdict of two runs of one mutation.
+//
+// ⛔ TWO RUNS THAT DISAGREE ARE NEITHER ANSWER, so the row is BROKEN and names
+// both. Taking the red would let a case that fails by chance certify a guard,
+// and taking the green would accuse a case that catches it.
+func agree(first, second Verdict) Verdict {
+	if first.State == second.State {
+		return first
+	}
+	return Verdict{
+		Label: first.Label, State: "BROKEN", Cases: second.Cases, Skipped: second.Skipped,
+		Reason: fmt.Sprintf("two runs of the mutation disagree, %s and then %s, so neither is the answer. A case that decides by timing reads differently under load", say(first), say(second)),
+	}
 }
 
 // one runs the named cases against the mutated copy. The baseline has already
@@ -359,17 +417,28 @@ func (wk *worker) one(m Mutation, b baseline) Verdict {
 	args := []string{"-json", "-vet=off", "-count=1", "-run", m.Run}
 	args = append(args, b.pkgs...)
 	args = append(args, m.Args...)
+	wk.doing(strconv.Quote(m.Label))
 	r, err := wk.goTest(dest, args...)
-	return judge(v, r, err)
+	v = judge(v, b, r, err)
+	if !askAgain(v, r) {
+		return v
+	}
+	wk.doing(strconv.Quote(m.Label) + ", a second time")
+	r, err = wk.goTest(dest, args...)
+	return agree(v, judge(Verdict{Label: m.Label}, b, r, err))
 }
 
-// judge turns the mutated run into a verdict.
+// judge turns the mutated run into a verdict, against the unmutated run b.
 //
 // ⭐ A BUILD FAILURE IS STILL TOLD APART FROM A GUARD GOING RED, and the
 // baseline is why it can be. It proved the module compiles and the pattern
 // reaches a case UNMUTATED. So a case package that does not build now is the
 // mutation's doing.
-func judge(v Verdict, r testRun, err error) Verdict {
+//
+// ⛔ AND A CASE THAT STOPPED RUNNING IS TOO. The baseline proved this host runs
+// the cases. A mutation that makes them skip, or leaves none running, has hidden
+// the guard's absence. It used to read as SKIPPED, which exits 0.
+func judge(v Verdict, b baseline, r testRun, err error) Verdict {
 	v.State = "BROKEN"
 	v.Cases, v.Skipped = r.cases, r.skipped
 	switch {
@@ -381,11 +450,20 @@ func judge(v Verdict, r testRun, err error) Verdict {
 		v.Reason = "the MUTATED module does not compile, so this row proves nothing: " + buildFailure(r.text)
 	case r.failed > 0:
 		v.State = "ok"
+	case len(r.untied) > 0:
+		// ⛔ NOT "ok". The binary died while the case ran, and nothing in the
+		// death names the case: a goroutine init started, or an os.Exit.
+		v.Reason = fmt.Sprintf("the binary died while %s ran, and nothing ties the death to the case: %s", strings.Join(r.untied, ", "), deathLine(r.death))
 	case err != nil:
 		// ⛔ NOT "ok". Something failed, and it was not a case this row names:
 		// a TestMain, or a package init. The row should name what actually
 		// catches the mutation.
 		v.Reason = fmt.Sprintf("no case it names failed, yet the run did, after %d case(s): %s", r.cases, testFailure(r.text))
+	case r.cases == 0:
+		v.Reason = fmt.Sprintf("no case it names ran with the mutation in, and %d ran without it", b.cases)
+	case r.skipped >= r.cases && b.skipped < b.cases:
+		v.State = "THEATRE"
+		v.Reason = "its cases ran unmutated and skipped themselves with the guard gone, so the guard's absence reads as green"
 	case r.skipped >= r.cases:
 		// ⛔ BEFORE THE THEATRE BRANCH, because from here the two are the same
 		// output: cases ran and the process exited 0. A skip proves nothing
@@ -398,6 +476,17 @@ func judge(v Verdict, r testRun, err error) Verdict {
 	return v
 }
 
+// deathLine names how a binary died, for a reason.
+func deathLine(line string) string {
+	if line == "" {
+		return "it ended with no trace, as an os.Exit does"
+	}
+	if len(line) > 200 {
+		line = line[:200] + "..."
+	}
+	return line
+}
+
 // baseline runs the row's cases in an UNMUTATED copy, once per pattern group,
 // across the whole module, and records the packages they ran in.
 //
@@ -406,17 +495,20 @@ func judge(v Verdict, r testRun, err error) Verdict {
 // were baselines. That is why a shard never splits a group.
 func (wk *worker) baseline(dest string, m Mutation) baseline {
 	args := append([]string{"-json", "-vet=off", "-count=1", "-run", m.Run, "./..."}, m.Args...)
+	wk.doing("the baseline for " + strconv.Quote(m.Label))
 	r, err := wk.goTest(dest, args...)
+	var first *testRun
 	if err != nil {
-		// ⛔ ONE RETRY, AND ONLY ON A FAILURE. Measured on 2026-09-17: a
-		// baseline failed once inside a 21-row pass and passed alone moments
-		// later, with no code between the two runs. The staging churns a
-		// temporary directory hard, and a Windows delete is asynchronous, so a
-		// transient failure there turns a GOOD row into BROKEN.
+		// ⛔ ONE RETRY, AND ONLY ON A FAILURE. A baseline once failed inside a
+		// 21-row pass and passed alone moments later, with no code between the
+		// two runs. The staging churned a temporary directory hard, and a
+		// Windows delete is asynchronous.
 		//
 		// ⭐ IT CANNOT MASK A RED CASE. A case that genuinely fails, fails both
-		// times; retrying a negative only discards a flake. Retrying a PASS
-		// would be the dangerous direction and is not done.
+		// times. Retrying a PASS would be the dangerous direction and is not
+		// done.
+		was := r
+		first = &was
 		r, err = wk.goTest(dest, args...)
 	}
 	got := baseline{cases: r.cases, skipped: r.skipped, pkgs: r.pkgs}
@@ -428,8 +520,19 @@ func (wk *worker) baseline(dest string, m Mutation) baseline {
 		got.why = fmt.Sprintf("0 cases matched %q, so this row names no test", m.Run)
 	case err != nil:
 		got.why = "it fails unmutated, TWICE: " + testFailure(r.text)
+	case first != nil && first.failed > 0:
+		// ⛔ A CASE THAT FAILED AND THEN PASSED IS A FLAKE, AND ITS GROUP IS
+		// REFUSED. The retry used to file it as green. The row's one mutated
+		// run could then fail the same way and certify a guard nobody tested.
+		got.why = "a case it names failed unmutated and passed when run again, so a red after the mutation could be the same flake: " + testFailure(first.text)
 	default:
 		got.green = true
+		if first != nil {
+			// ⚠ GREEN, AND SAID SO. No case it names failed the first time,
+			// so a flake there cannot read as a red one. The line is kept,
+			// because a retry nobody sees is a flake nobody looks at.
+			wk.p.note(fmt.Sprintf("  retried: the baseline for %q failed once with no case it names failing, and passed when run again: %s\n", m.Label, testFailure(first.text)))
+		}
 	}
 	return got
 }
@@ -564,17 +667,19 @@ func copyTree(src, dest string) error {
 	})
 }
 
-// verdictLine is one row's line in the progress log.
+// verdictLine is one row's line in the progress log, after its place.
 func verdictLine(v Verdict, width int) string {
-	switch v.State {
-	case "ok":
-		return fmt.Sprintf("  ok       %-*s  %d case(s), went red\n", width, v.Label, v.Cases)
-	case "THEATRE":
-		return fmt.Sprintf("  THEATRE  %-*s  %d case(s), still green\n", width, v.Label, v.Cases)
-	case "SKIPPED":
-		return fmt.Sprintf("  SKIPPED  %-*s  %d case(s), all skipped here\n", width, v.Label, v.Cases)
+	switch {
+	case v.State == "ok":
+		return fmt.Sprintf("ok       %-*s  %d case(s), went red\n", width, v.Label, v.Cases)
+	case v.State == "THEATRE" && v.Reason != "":
+		return fmt.Sprintf("THEATRE  %-*s  %d case(s), %s\n", width, v.Label, v.Cases, v.Reason)
+	case v.State == "THEATRE":
+		return fmt.Sprintf("THEATRE  %-*s  %d case(s), still green\n", width, v.Label, v.Cases)
+	case v.State == "SKIPPED":
+		return fmt.Sprintf("SKIPPED  %-*s  %d case(s), all skipped here\n", width, v.Label, v.Cases)
 	}
-	return fmt.Sprintf("  BROKEN   %-*s  (%s)\n", width, v.Label, v.Reason)
+	return fmt.Sprintf("BROKEN   %-*s  (%s)\n", width, v.Label, v.Reason)
 }
 
 // Report writes the tally and returns the exit code.
@@ -600,6 +705,10 @@ func Report(w io.Writer, verdicts []Verdict) int {
 	}
 	fmt.Fprintf(w, "\n%d of %d guards proved.\n", proved, len(verdicts))
 	for _, v := range theatre {
+		if v.Reason != "" {
+			fmt.Fprintf(w, "  THEATRE: %s: %d case(s): %s\n", v.Label, v.Cases, v.Reason)
+			continue
+		}
 		fmt.Fprintf(w, "  THEATRE: %s: %d case(s) ran and stayed green with the guard removed\n", v.Label, v.Cases)
 	}
 	for _, v := range skipped {

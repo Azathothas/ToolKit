@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -68,6 +69,16 @@ func TestEachWorkerHasItsOwnState(t *testing.T) {
 	}
 	if v, _ := lastValue(envA, "PATH"); v != "/bin" {
 		t.Errorf("PATH is %q, and the toolchain is found through it", v)
+	}
+	// ⛔ THE ANCESTRY IS ASKED FOR, and a setting the parent had is kept
+	// before it. gotest.go ties a death to a case through it.
+	want := "tracebackancestors=" + strconv.Itoa(ancestry)
+	if v, _ := lastValue(envA, "GODEBUG"); v != want {
+		t.Errorf("GODEBUG is %q, want %q", v, want)
+	}
+	withOwn := workerEnv(append(parent, "GODEBUG=madvdontneed=1"), a, goEnv)
+	if v, _ := lastValue(withOwn, "GODEBUG"); v != "madvdontneed=1,"+want {
+		t.Errorf("GODEBUG is %q over a parent's madvdontneed=1, want both", v)
 	}
 }
 

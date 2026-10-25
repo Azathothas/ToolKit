@@ -6,11 +6,19 @@
 // that exit as "went red" and certified a guard nobody had tested. The events
 // say which package failed and which case, so the verdict is read from them.
 //
-// ⚠ A CASE THAT NEVER FINISHED IS A CASE THAT FAILED, when its package failed.
-// A panic on another goroutine, an os.Exit in the code under test and the
-// -timeout panic all kill the binary. None of them sends a `fail` event for the
-// case. Only cases the -run pattern selected were running, so a binary that
-// died mid-case died in one of them.
+// ⛔ A BINARY THAT DIED WHILE A CASE RAN DID NOT NECESSARILY DIE IN IT. A panic
+// on another goroutine, an os.Exit and the -timeout panic all kill the binary.
+// None of them sends a `fail` event for the case. This file used to count every
+// case still open as failed. A goroutine that init started could panic while a
+// case slept, and the row was certified for a guard the case never reached. So
+// an open case counts as failed only when the death names it. Either the dying
+// goroutine, or one that started it, ran in testing.tRunner, or the -timeout
+// panic lists the case as running. Any other death leaves the case untied, and
+// the row is BROKEN with the death's own line.
+//
+// ⚠ THE ANCESTRY COMES FROM GODEBUG=tracebackancestors, which pool.go sets for
+// every test process. Without it a goroutine the case started through the code
+// under test shows only its creator, and a real red reads as untied.
 //
 // SPDX-License-Identifier: 0BSD
 
@@ -18,6 +26,7 @@ package mutate
 
 import (
 	"encoding/json"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -37,9 +46,13 @@ type testRun struct {
 	// cases counts every case and subtest that started, and skipped those
 	// that skipped themselves. ⚠ Both, for the reason Verdict holds both.
 	cases, skipped int
-	// failed counts named cases that reported fail, or started and never
-	// finished in a package whose binary failed.
+	// failed counts named cases that reported fail, or were open when their
+	// binary died and the death is tied to them.
 	failed int
+	// untied are the named cases open when their binary died with nothing
+	// tying the death to them, and death is the line it died with.
+	untied []string
+	death  string
 	// pkgs are the packages a named case ran in, sorted.
 	pkgs []string
 	// buildFailed are the packages whose test binary did not build.
@@ -122,8 +135,17 @@ func readTestRun(stdout, stderr string) testRun {
 			}
 		}
 	}
-	for pkg := range failedPkg {
-		r.failed += len(open[pkg])
+	for _, pkg := range sortedKeys(failedPkg) {
+		still := sortedKeys(open[pkg])
+		if len(still) == 0 || output[pkg] == nil {
+			continue
+		}
+		tied, line := diedIn(output[pkg].String(), still)
+		r.failed += len(tied)
+		if len(tied) == 0 {
+			r.untied = append(r.untied, still...)
+			r.death = line
+		}
 	}
 	r.pkgs = sortedKeys(ran)
 	r.buildFailed = sortedKeys(broke)
@@ -140,6 +162,82 @@ func readTestRun(stdout, stderr string) testRun {
 	}
 	r.text = text.String()
 	return r
+}
+
+// goroutineHeader opens one goroutine's block in a trace.
+//
+// ⚠ A RUNTIME ERROR ADDS gp=, m= AND mp= TO THE HEADER, as GOTRACEBACK=system
+// does. A stack overflow is one, and it is what deleting a recursion's base
+// case gives. A header read without them missed the case's own goroutine, and
+// a real red read as untied.
+var goroutineHeader = regexp.MustCompile(`^goroutine \d+ (?:gp=\S+ m=\S+ (?:mp=\S+ )?)?\[`)
+
+// diedIn reads a dead binary's output. It returns the open cases the death is
+// tied to, and the line the binary died with.
+//
+// ⚠ THE LAST DEATH LINE AT THE LEFT MARGIN. A case can log text that reads like
+// a panic, and t.Log indents it. A nested panic indents its inner lines.
+func diedIn(out string, open []string) (tied []string, death string) {
+	lines := strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n")
+	at := -1
+	for i, ln := range lines {
+		if strings.HasPrefix(ln, "panic: ") || strings.HasPrefix(ln, "fatal error: ") {
+			at = i
+		}
+	}
+	if at < 0 {
+		// ⛔ NO TRACE AT ALL is an os.Exit, or a kill from outside the binary.
+		// Nothing in the output says where it came from.
+		return nil, ""
+	}
+	death = lines[at]
+	if strings.HasPrefix(death, "panic: test timed out after ") {
+		return timedOut(lines[at+1:], open), death
+	}
+	// ⛔ ONLY THE FIRST GOROUTINE AFTER THE DEATH LINE IS READ, because it is the
+	// one that died. Some deaths print every goroutine, and the main goroutine
+	// sits in testing.tRunner for as long as any case runs.
+	for i := at + 1; i < len(lines); i++ {
+		if !goroutineHeader.MatchString(lines[i]) {
+			continue
+		}
+		for _, ln := range lines[i+1:] {
+			if strings.TrimSpace(ln) == "" {
+				break
+			}
+			if strings.HasPrefix(ln, "testing.tRunner(") {
+				return open, death
+			}
+		}
+		break
+	}
+	return nil, death
+}
+
+// timedOut reads the -timeout panic's list of running tests and keeps the open
+// cases it names.
+func timedOut(after, open []string) []string {
+	running := map[string]bool{}
+	listing := false
+	for _, ln := range after {
+		t := strings.TrimSpace(ln)
+		if !listing {
+			listing = t == "running tests:"
+			continue
+		}
+		if t == "" {
+			break
+		}
+		name, _, _ := strings.Cut(t, " (")
+		running[name] = true
+	}
+	var tied []string
+	for _, c := range open {
+		if running[c] {
+			tied = append(tied, c)
+		}
+	}
+	return tied
 }
 
 func sortedKeys(m map[string]bool) []string {

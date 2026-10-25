@@ -11,6 +11,15 @@
 // would otherwise meet a neighbour's file. It would go red for a reason the
 // mutation did not cause.
 //
+// ⛔ AND NOR DO TWO THAT RUN ONE AFTER ANOTHER ON ONE WORKER. That state is
+// emptied before every test process. It used to be made once per run, so a
+// file one row's mutated run left behind reached whichever group the worker
+// took next. Which group that was depended on finishing times, so one table
+// gave different verdicts at different --jobs. Deleting a cleanup guard leaves
+// exactly such a file. ⚠ The staged copy is the exception, because the build
+// cache needs its path. Only the mutated file is put back there, so a case
+// writes its files under the temporary directory and never beside its source.
+//
 // ⭐ THE COPY SITS AT A FIXED PATH, w<k> under repo-mutate in the temporary
 // directory. Go's build cache keys a compile on the package's directory, so a
 // copy at a new random path recompiled every package on every run. The same
@@ -34,8 +43,10 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // DefaultJobs is half this host's processors, and at least one.
@@ -185,26 +196,91 @@ func workerEnv(parent []string, dir string, goEnv map[string]string) []string {
 			set = append(set, k+"="+v)
 		}
 	}
+	// ⛔ THE ANCESTRY IS WHAT TIES A DEATH TO A CASE. A goroutine the case
+	// started through the code under test names only its creator. Its own
+	// trace never reaches testing.tRunner, so gotest.go could not tell it from
+	// one that init started. A setting the parent already has is kept, and this
+	// one is added after it.
+	godebug := "tracebackancestors=" + strconv.Itoa(ancestry)
+	if v, ok := lookupEnv(parent, "GODEBUG"); ok && v != "" {
+		godebug = v + "," + godebug
+	}
+	set = append(set, "GODEBUG="+godebug)
 	// ⚠ APPENDED, NOT SPLICED. exec uses the last value of a repeated key,
 	// and on Windows it compares keys without regard to case.
 	return append(env, set...)
 }
 
+// ancestry is how many creating goroutines a trace names. A case goroutine is
+// one or two hops from any goroutine the code under test starts.
+const ancestry = 16
+
+// lookupEnv is the value a process started with env reads for key.
+func lookupEnv(env []string, key string) (string, bool) {
+	val, ok := "", false
+	for _, kv := range env {
+		k, v, _ := strings.Cut(kv, "=")
+		if k == key || (runtime.GOOS == "windows" && strings.EqualFold(k, key)) {
+			val, ok = v, true
+		}
+	}
+	return val, ok
+}
+
 // worker runs groups in its own slot.
 type worker struct {
-	root string
-	slot *slot
-	env  []string
-	dirs map[string]string
+	root   string
+	slot   *slot
+	parent []string
+	goEnv  map[string]string
+	env    []string
+	dirs   map[string]string
+	// gen numbers the state directory. It moves on only when the last one
+	// could not be emptied.
+	gen int
+	// id and p are where the worker says what it is running.
+	id int
+	p  *printer
 }
 
 func newWorker(root string, s *slot, goEnv map[string]string) (*worker, error) {
-	for _, d := range []string{"tmp", "home", "localappdata"} {
-		if err := os.MkdirAll(filepath.Join(s.dir, d), 0o700); err != nil {
-			return nil, err
-		}
+	wk := &worker{root: root, slot: s, parent: os.Environ(), goEnv: goEnv, dirs: map[string]string{}}
+	if err := wk.fresh(); err != nil {
+		return nil, err
 	}
-	return &worker{root: root, slot: s, env: workerEnv(os.Environ(), s.dir, goEnv), dirs: map[string]string{}}, nil
+	return wk, nil
+}
+
+// fresh empties the worker's own state before a test process starts.
+//
+// ⚠ A DIRECTORY THAT WILL NOT EMPTY IS LEFT FOR THE SLOT'S RELEASE, and the
+// next number is used. A process a case left running still holds its files on
+// Windows. A new directory beside it is just as empty.
+func (wk *worker) fresh() error {
+	var last error
+	for tries := 0; tries < 8; tries++ {
+		dir := filepath.Join(wk.slot.dir, "state"+strconv.Itoa(wk.gen))
+		if err := os.RemoveAll(dir); err != nil {
+			last = err
+			wk.gen++
+			continue
+		}
+		for _, d := range []string{"tmp", "home", "localappdata"} {
+			if err := os.MkdirAll(filepath.Join(dir, d), 0o700); err != nil {
+				return err
+			}
+		}
+		wk.env = workerEnv(wk.parent, dir, wk.goEnv)
+		return nil
+	}
+	return fmt.Errorf("the worker's own state could not be emptied: %w", last)
+}
+
+// doing tells the printer what the worker runs now.
+func (wk *worker) doing(what string) {
+	if wk.p != nil {
+		wk.p.start(wk.id, what)
+	}
 }
 
 // dir returns the worker's staged copy of the module, making it on first use.
@@ -233,8 +309,11 @@ func (wk *worker) drop(module string) {
 	}
 }
 
-// goTest runs `go test` in dir with the worker's environment.
+// goTest runs `go test` in dir with the worker's environment, emptied first.
 func (wk *worker) goTest(dir string, args ...string) (testRun, error) {
+	if err := wk.fresh(); err != nil {
+		return testRun{text: err.Error()}, err
+	}
 	cmd := exec.Command("go", append([]string{"test"}, args...)...)
 	cmd.Dir = dir
 	cmd.Env = wk.env
@@ -244,25 +323,96 @@ func (wk *worker) goTest(dir string, args ...string) (testRun, error) {
 	return readTestRun(stdout.String(), stderr.String()), err
 }
 
-// printer writes verdicts in table order as the finished prefix grows.
+// printer writes each verdict as its row finishes. When nothing has been
+// written for a while, it says what each worker is running.
 //
-// ⚠ TABLE ORDER, NOT FINISHING ORDER. Two runs of one table must print the
-// same lines in the same order, or a diff of two logs is noise.
+// ⛔ FINISHING ORDER, NOT TABLE ORDER. Groups are handed out heaviest first,
+// and the table opens with light rows. A printer that held each line until the
+// rows above it were done printed a CI shard's first verdict at 97% of the run.
+// A shard the time limit killed left no verdict in its log, and a hung row could
+// not be found. ⭐ Each line carries the row's place in the table, as [37/201].
+// Report lists every row that is not ok in table order, so two logs still
+// compare on that section.
 type printer struct {
 	mu    sync.Mutex
 	w     io.Writer
 	width int
-	done  []bool
 	got   []Verdict
-	next  int
+	done  int
+	last  time.Time
+	busy  []activity
 }
 
+// activity is what one worker runs, and since when.
+type activity struct {
+	what  string
+	since time.Time
+}
+
+func newPrinter(w io.Writer, width, rows, workers int) *printer {
+	return &printer{w: w, width: width, got: make([]Verdict, rows), busy: make([]activity, workers), last: time.Now()}
+}
+
+// put records row i's verdict and prints it now.
 func (p *printer) put(i int, v Verdict) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.got[i], p.done[i] = v, true
-	for p.next < len(p.done) && p.done[p.next] {
-		fmt.Fprint(p.w, verdictLine(p.got[p.next], p.width))
-		p.next++
+	p.got[i] = v
+	p.done++
+	n := len(p.got)
+	fmt.Fprintf(p.w, "  [%*d/%d] %s", len(strconv.Itoa(n)), i+1, n, verdictLine(v, p.width))
+	p.last = time.Now()
+}
+
+// note prints a line that is not a verdict.
+func (p *printer) note(line string) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	fmt.Fprint(p.w, line)
+	p.last = time.Now()
+}
+
+// start records what worker k runs from now on.
+func (p *printer) start(k int, what string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if k >= 0 && k < len(p.busy) {
+		p.busy[k] = activity{what: what, since: time.Now()}
+	}
+}
+
+// beat names what every worker runs, when nothing was printed for every.
+func (p *printer) beat(every time.Duration) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	now := time.Now()
+	if now.Sub(p.last) < every {
+		return
+	}
+	var running []string
+	for k, a := range p.busy {
+		if a.what != "" {
+			running = append(running, fmt.Sprintf("worker %d on %s for %s", k+1, a.what, now.Sub(a.since).Round(time.Second)))
+		}
+	}
+	fmt.Fprintf(p.w, "  still running, %d of %d row(s) done: %s\n", p.done, len(p.got), strings.Join(running, "; "))
+	p.last = now
+}
+
+// watch beats every interval until stop closes, and closes done after.
+func (p *printer) watch(every time.Duration, stop <-chan struct{}, done chan<- struct{}) {
+	defer close(done)
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-tick.C:
+			p.beat(every)
+		}
 	}
 }

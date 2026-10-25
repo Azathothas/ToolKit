@@ -55,7 +55,16 @@ Two shapes to test for specifically:
   the reference survives and the row can actually go red.
 - ⛔ **A red that came from somewhere else.** A harness that reads any non-zero
   exit as red certifies a guard when the mutation breaks a package the case
-  never imports. ⭐ Read which case failed, not whether the process did.
+  never imports. ⭐ Read which case failed, not whether the process did. ⚠ A
+  binary that died while the case ran did not necessarily die in it. Count the
+  death only when its trace reaches the case.
+- ⛔ **A skip the mutation caused.** A case that ran unmutated and skips with
+  the guard gone hides the guard's absence, and CI reads the skip as green.
+  ⭐ Judge the mutated run against the unmutated one.
+- ⚠ **A verdict seen once, on a busy machine.** A case that decides by a timing
+  window stays green when the unguarded write runs late. A case that failed and
+  then passed unmutated is a flake, and its red proves nothing. ⭐ See a failing
+  verdict twice, and refuse a group whose baseline flaked.
 - ⭐ **A row that comes back THEATRE may be telling you the CODE is redundant**,
   not that the case is weak: the guard cannot matter, because something earlier
   already decides the answer. Delete the redundancy rather than strengthening the

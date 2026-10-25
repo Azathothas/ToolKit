@@ -2,20 +2,218 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "mutate: a goroutine header with the runtime's gp= and m= is still read",
+      "module": "tools/repo",
+      "file": "internal/mutate/gotest.go",
+      "find": "`^goroutine \\d+ (?:gp=\\S+ m=\\S+ (?:mp=\\S+ )?)?\\[`",
+      "replace": "`^goroutine \\d+ \\[`",
+      "run": "TestACaseThatOverflowsItsStackIsRed",
+      "args": []
+    },
+    {
+      "label": "mutate: a death tied to an open case counts the case as failed",
+      "module": "tools/repo",
+      "file": "internal/mutate/gotest.go",
+      "find": "\t\tr.failed += len(tied)\n",
+      "replace": "",
+      "run": "TestACaseThatKillsItsBinaryIsRed",
+      "args": []
+    },
+    {
+      "label": "mutate: a death nothing ties to an open case leaves the case untied",
+      "module": "tools/repo",
+      "file": "internal/mutate/gotest.go",
+      "find": "\t\t\tr.untied = append(r.untied, still...)\n",
+      "replace": "",
+      "run": "TestADeathTheCaseDidNotCauseIsNotOk",
+      "args": []
+    },
+    {
+      "label": "mutate: an untied death is BROKEN with the line it died with",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase len(r.untied) > 0:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestADeathTheCaseDidNotCauseIsNotOk",
+      "args": []
+    },
+    {
+      "label": "mutate: only the goroutine that died is read for a case",
+      "module": "tools/repo",
+      "file": "internal/mutate/gotest.go",
+      "find": "\t\t\tif strings.TrimSpace(ln) == \"\" {\n\t\t\t\tbreak\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestADeathIsTiedToACaseOnlyByItsTrace",
+      "args": []
+    },
+    {
+      "label": "mutate: a trace through testing.tRunner ties the death to the case",
+      "module": "tools/repo",
+      "file": "internal/mutate/gotest.go",
+      "find": "if strings.HasPrefix(ln, \"testing.tRunner(\") {",
+      "replace": "if strings.HasPrefix(ln, \"testing.tRunner-never(\") {",
+      "run": "TestADeathIsTiedToACaseOnlyByItsTrace",
+      "args": []
+    },
+    {
+      "label": "mutate: a binary that ended with no trace is tied to no case",
+      "module": "tools/repo",
+      "file": "internal/mutate/gotest.go",
+      "find": "\t\treturn nil, \"\"\n",
+      "replace": "\t\treturn open, \"\"\n",
+      "run": "TestADeathIsTiedToACaseOnlyByItsTrace",
+      "args": []
+    },
+    {
+      "label": "mutate: the -timeout panic ties the cases it lists",
+      "module": "tools/repo",
+      "file": "internal/mutate/gotest.go",
+      "find": "\t\trunning[name] = true\n",
+      "replace": "\t\t_ = name\n",
+      "run": "TestADeathIsTiedToACaseOnlyByItsTrace",
+      "args": []
+    },
+    {
+      "label": "mutate: every test process records which goroutine started each one",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\tset = append(set, \"GODEBUG=\"+godebug)\n",
+      "replace": "",
+      "run": "TestEachWorkerHasItsOwnState",
+      "args": []
+    },
+    {
+      "label": "mutate: a worker keeps the parent's own GODEBUG",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tgodebug = v + \",\" + godebug\n",
+      "replace": "\t\tgodebug = \"\" + godebug\n",
+      "run": "TestEachWorkerHasItsOwnState",
+      "args": []
+    },
+    {
+      "label": "mutate: a mutation that makes its cases skip is THEATRE, not SKIPPED",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase r.skipped >= r.cases && b.skipped < b.cases:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAMutationThatMakesItsCasesSkipIsTheatre",
+      "args": []
+    },
+    {
+      "label": "mutate: a mutation that leaves no case running is BROKEN",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase r.cases == 0:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAMutationThatLeavesNoCaseRunningIsBroken",
+      "args": []
+    },
+    {
+      "label": "mutate: judge reads the baseline beside the mutated run",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tv = judge(v, b, r, err)\n",
+      "replace": "\tv = judge(v, baseline{}, r, err)\n",
+      "run": "TestAMutationThatMakesItsCasesSkipIsTheatre",
+      "args": []
+    },
+    {
+      "label": "mutate: a baseline that failed and then passed refuses its group",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase first != nil && first.failed > 0:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestAFlakyBaselineRefusesItsGroup",
+      "args": []
+    },
+    {
+      "label": "mutate: a retried baseline says so in the log",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "wk.p.note(fmt.Sprintf(\"  retried: ",
+      "replace": "_ = (fmt.Sprintf(\"  retried: ",
+      "run": "TestARetriedBaselineIsSaidSo",
+      "args": []
+    },
+    {
+      "label": "mutate: a verdict that fails the run is asked a second time",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\treturn v.State == \"THEATRE\" || (v.State == \"BROKEN\" && len(r.buildFailed) == 0)\n",
+      "replace": "\treturn false\n",
+      "run": "TestTwoRunsThatDisagreeAreBroken",
+      "args": []
+    },
+    {
+      "label": "mutate: two runs of a mutation that disagree are BROKEN",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tif first.State == second.State {\n",
+      "replace": "\tif first.State != \"\" {\n",
+      "run": "TestTwoRunsThatDisagreeAreBroken",
+      "args": []
+    },
+    {
+      "label": "mutate: a verdict prints as its row finishes",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\tfmt.Fprintf(p.w, \"  [%*d/%d] %s\", len(strconv.Itoa(n)), i+1, n, verdictLine(v, p.width))\n",
+      "replace": "\t_ = n\n",
+      "run": "TestAVerdictPrintsAsItsRowFinishes",
+      "args": []
+    },
+    {
+      "label": "mutate: a verdict line carries its row's place in the table",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "i+1, n, verdictLine(v, p.width)",
+      "replace": "p.done, n, verdictLine(v, p.width)",
+      "run": "TestAVerdictPrintsAsItsRowFinishes",
+      "args": []
+    },
+    {
+      "label": "mutate: verdicts come back in table order",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\tp.got[i] = v\n",
+      "replace": "\tp.got[p.done] = v\n",
+      "run": "TestAVerdictPrintsAsItsRowFinishes",
+      "args": []
+    },
+    {
+      "label": "mutate: a quiet log names what each worker runs",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tgo p.watch(every, stop, stopped)\n",
+      "replace": "\tclose(stopped)\n\t_ = every\n",
+      "run": "TestTheLogSaysWhatIsStillRunning",
+      "args": []
+    },
+    {
+      "label": "mutate: a worker's state is emptied before every test process",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\tif err := wk.fresh(); err != nil {\n\t\treturn testRun{text: err.Error()}, err\n\t}\n",
+      "replace": "",
+      "run": "TestAFileOneRowLeavesDoesNotReachTheNext",
+      "args": []
+    },
+    {
+      "label": "mutate: emptying a worker's state removes what the last process left",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tif err := os.RemoveAll(dir); err != nil {\n\t\t\tlast = err\n",
+      "replace": "\t\tif err := error(nil); err != nil {\n\t\t\tlast = err\n",
+      "run": "TestAFileOneRowLeavesDoesNotReachTheNext",
+      "args": []
+    },
+    {
       "label": "mutate: workers start with the heaviest group",
       "file": "internal/mutate/plan.go",
       "find": "\tsort.SliceStable(order, func(a, b int) bool { return order[a].cost > order[b].cost })\n",
       "replace": "",
       "run": "TestWorkersStartWithTheHeaviestGroup",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
-      "label": "mutate: a case that never finished in a failed package is a failed case",
-      "file": "internal/mutate/gotest.go",
-      "find": "\t\tr.failed += len(open[pkg])\n",
-      "replace": "\t\t_ = open[pkg]\n",
-      "run": "TestACaseThatKillsItsBinaryIsRed",
       "module": "tools/repo",
       "args": []
     },
@@ -61,15 +259,6 @@
       "find": "\tb := wk.baseline(dest, first)\n\tfor _, r := range g.rows {\n",
       "replace": "\tfor _, r := range g.rows {\n\t\tb := wk.baseline(dest, first)\n",
       "run": "TestAGroupsBaselineRunsOnce",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
-      "label": "mutate: verdicts print in table order",
-      "file": "internal/mutate/pool.go",
-      "find": "\tp.got[i], p.done[i] = v, true\n",
-      "replace": "\tp.got[i], p.done[i] = v, true\n\tfmt.Fprint(p.w, verdictLine(v, p.width))\n",
-      "run": "TestVerdictsPrintInTableOrder",
       "module": "tools/repo",
       "args": []
     },
