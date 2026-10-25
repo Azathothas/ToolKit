@@ -168,6 +168,11 @@ defined markers.
 links are written relative to where the file will live in a project. The
 prose rules still apply to them.
 
+⭐ **Every fenced shell block is parsed at once**, one `sh -n` per block, before
+any page is read. Each answer is read back for its own page and block, so a
+broken block is named at its own line. On this Windows host the check fell
+from 51 s to 21 s.
+
 ### `common/check-markers.sh`
 
 Are the only characters outside ASCII in this tree the five this repository
@@ -255,6 +260,10 @@ their answers.
 ⚠ **No `go` on PATH is exit 2, not exit 0.** A machine without a toolchain has
 not proved this tree builds.
 
+⭐ **Every module is checked at once, and each module's steps stay in order.**
+A module that does not build is not vetted or tested. The findings come back
+in module order, whichever module finished first.
+
 ⛔ **The module is not at the repository root** and this resolves it. `go build
 ./...` from the root finds no module and exits 1, which reads as a broken build
 and is a wrong directory.
@@ -281,6 +290,17 @@ PSScriptAnalyzer are not on every machine. A missing one is reported with what
 was missing rather than counted as agreement, and the exit code is still 0,
 because "this host cannot run that one" is not a failure of the tree.
 
+⭐ **The checks run at once, and the verdict prints them in list order.**
+Nothing is printed until every check has returned, so the output for a tree
+is the one a serial run gave. ⛔ Every child process a check starts holds one
+of a fixed number of slots, one per CPU, so the host bounds how much runs
+together. ⚠ A `go test` or a pwsh session holds one slot and can use more
+than one CPU.
+
+⭐ **`shellcheck` reads its scripts in batches, one process per slot.** A batch
+that fails is asked again one script at a time, and only a script that fails
+alone is named. Its finding is the text a run over it alone gives.
+
 ⛔ **`--fast` is refused with a message.** The rules are one program, so there
 is nothing to skip. Accepting the flag and doing something different is how a
 caller comes to believe they ran less than they did.
@@ -302,6 +322,11 @@ this repository fixes rather than excludes.
 
 ⚠ **`-Path` takes ONE path.** Handing it the file list refuses with `Cannot
 convert System.Object[] to System.String`, so the walk is one call per file.
+
+⭐ **A few sessions share the files and run at once.** There are as many as
+keep each share below the heaviest file, which sets the floor whatever the
+split. Every session's count is added, and the check refuses a total that is
+not the number of tracked scripts.
 
 ⚠ **The analyzer is a module, not part of PowerShell.** Without it this reports
 `SKIPPED` and exits 0. ⛔ **It never installs it**: a check that installs

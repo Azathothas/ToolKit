@@ -394,7 +394,7 @@ func CRuntime(t *Tree) Result {
 			`-DPGT_APPIMAGE_APPRUN_DEFAULT="x"`, filepath.Join(t.Root, filepath.FromSlash(f)))
 		cmd := exec.Command(cc, argv...)
 		cmd.Dir = filepath.Join(t.Root, filepath.FromSlash(path.Dir(f)))
-		if out, err := cmd.CombinedOutput(); err != nil {
+		if out, err := combined(cmd); err != nil {
 			r.bad("%s does not parse: %s", f, firstError(string(out)))
 		}
 	}

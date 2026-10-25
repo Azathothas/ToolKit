@@ -2,6 +2,105 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "gate: the checks run at once and print in list order",
+      "module": "tools/check",
+      "file": "main.go",
+      "find": "\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\trows[i] = gateRow{c.name, c.run(t)}\n",
+      "replace": "\t\tfunc() {\n\t\t\tdefer wg.Done()\n\t\t\trows[i] = gateRow{c.name, c.run(t)}\n",
+      "run": "TestTheGateRunsItsChecksAtOnceAndPrintsThemInListOrder",
+      "args": []
+    },
+    {
+      "label": "gate: each runs its calls at once",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\tworkers := min(n, cap(slots))\n",
+      "replace": "\tworkers := min(n, 1)\n",
+      "run": "TestEachRunsItsCallsAtOnce",
+      "args": []
+    },
+    {
+      "label": "gate: a child waits for a free slot",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\tslots <- struct{}{}\n\tdefer func() { <-slots }()\n\treturn call(cmd)\n",
+      "replace": "\treturn call(cmd)\n",
+      "run": "TestAChildWaitsForAFreeSlot",
+      "args": []
+    },
+    {
+      "label": "gate: every child a check starts takes a slot",
+      "module": "tools/check",
+      "file": "internal/checks/hooks.go",
+      "find": "out, err := output(exec.Command(\"git\", \"-C\", t.Root, \"config\", \"--get\", \"core.hooksPath\"))",
+      "replace": "out, err := exec.Command(\"git\", \"-C\", t.Root, \"config\", \"--get\", \"core.hooksPath\").Output()",
+      "run": "TestEveryChildTakesASlot",
+      "args": []
+    },
+    {
+      "label": "gate: balance deals every file to exactly one batch",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\tfor _, i := range order {\n",
+      "replace": "\tfor _, i := range order[1:] {\n",
+      "run": "TestBalanceDealsEveryFileOnce",
+      "args": []
+    },
+    {
+      "label": "gate: a shellcheck batch that passes is asked once",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\tif _, err := lint(batch); err == nil {\n",
+      "replace": "\t\tif _, err := lint(batch); err == nil && false {\n",
+      "run": "TestABatchThatPassesIsAskedOnce",
+      "args": []
+    },
+    {
+      "label": "gate: a failing shellcheck batch names only its failing file",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\t\tif out, err := lint([]string{batch[i]}); err != nil {\n",
+      "replace": "\t\t\tif out, err := lint(batch); err != nil {\n",
+      "run": "TestAFailingBatchNamesOnlyItsFailingFile",
+      "args": []
+    },
+    {
+      "label": "gate: every PowerShell session's count is added",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\t\tseen += n\n",
+      "replace": "\t\t\tseen = n\n",
+      "run": "TestEveryPowerShellSessionIsRead",
+      "args": []
+    },
+    {
+      "label": "gate: every PowerShell session's output is read",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\tlines = append(lines, strings.Split(string(out), \"\\n\")...)\n",
+      "replace": "\t\tlines = strings.Split(string(out), \"\\n\")\n",
+      "run": "TestEveryPowerShellSessionIsRead",
+      "args": []
+    },
+    {
+      "label": "gate: the Go modules are checked at once",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\teach(len(mods), func(i int) { found[i] = check(mods[i]) })\n",
+      "replace": "\tfor i := range mods {\n\t\tfound[i] = check(mods[i])\n\t}\n",
+      "run": "TestTheModulesAreCheckedAtOnce",
+      "args": []
+    },
+    {
+      "label": "gate: each fenced block's answer reaches its own block",
+      "module": "tools/check",
+      "file": "internal/checks/docs.go",
+      "find": "\t\tout[a.page][a.k] = errs[i]\n",
+      "replace": "\t\tout[a.page][0] = errs[i]\n",
+      "run": "TestEachFencedBlockIsAnsweredForItself",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a lent workspace resolves against the project's directory",
       "file": "cmd_run.go",
       "find": "\t\t\tj.workspace, err = pathFromJobs(cfg, \"workspace\", j.workspace)\n",

@@ -3,11 +3,80 @@
 package checks
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
+
+// TestABatchThatPassesIsAskedOnce is the point of batching shellcheck: a clean
+// batch costs one process, and no clean file is asked about again on its own.
+func TestABatchThatPassesIsAskedOnce(t *testing.T) {
+	withSlots(t, 2)
+	var calls atomic.Int64
+	found := lintInBatches([]string{"a.sh", "b.sh", "c.sh", "d.sh"}, []int64{1, 1, 1, 1},
+		func([]string) (string, error) {
+			calls.Add(1)
+			return "", nil
+		})
+	if len(found) != 0 {
+		t.Fatalf("a clean tree produced findings: %q", found)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("four clean files in two batches cost %d processes, want 2", n)
+	}
+}
+
+// TestAFailingBatchNamesOnlyItsFailingFile is the attribution half. A batch's
+// output runs every file's findings together, so each file in a failing batch
+// is asked again alone. Only a file that fails alone is named, with the text
+// its own run gave.
+func TestAFailingBatchNamesOnlyItsFailingFile(t *testing.T) {
+	withSlots(t, 2)
+	failed := errors.New("exit status 1")
+	found := lintInBatches([]string{"a.sh", "bad.sh", "c.sh", "d.sh"}, []int64{1, 1, 1, 1},
+		func(files []string) (string, error) {
+			if !slices.Contains(files, "bad.sh") {
+				return "", nil
+			}
+			if len(files) > 1 {
+				return "In a.sh line 1:\n  ^-- SC1000 (error): the batch's output, run together\n", failed
+			}
+			return "In bad.sh line 3:\n  ^-- SC1009 (error): bad.sh's own finding\n", failed
+		})
+	want := []string{"bad.sh: ^-- SC1009 (error): bad.sh's own finding"}
+	if !reflect.DeepEqual(found, want) {
+		t.Fatalf("a failing batch was reported as %q, want %q", found, want)
+	}
+}
+
+// TestEveryPowerShellSessionIsRead is the merge. Two sessions shared three
+// scripts, and what each wrote has to reach the result. Every finding arrives,
+// in the order one session gave them, and every count is added.
+func TestEveryPowerShellSessionIsRead(t *testing.T) {
+	scripts := []string{"a.ps1", "b.ps1", "c.ps1"}
+	first := "COUNT|2\r\nFILE|a.ps1\r\nFILE|c.ps1\r\nLINT|c.ps1:4|PSAvoidX: c's finding\r\n"
+	second := "PARSE|b.ps1|Missing closing '}'\r\nCOUNT|1\r\nFILE|b.ps1\r\nLINT|b.ps1:1|PSAvoidY: b's finding\r\n"
+	found, parsed, noAnalyzer := psRead(scripts, linesOf([][]byte{[]byte(first), []byte(second)}))
+	want := []string{
+		"b.ps1 does not parse: Missing closing '}'",
+		"b.ps1:1 PSAvoidY: b's finding",
+		"c.ps1:4 PSAvoidX: c's finding",
+	}
+	if !reflect.DeepEqual(found, want) {
+		t.Fatalf("the sessions were read as %q, want %q", found, want)
+	}
+	if parsed != "3" {
+		t.Fatalf("two sessions parsed 2 and 1 scripts and the check says %s; every count is added", parsed)
+	}
+	if noAnalyzer {
+		t.Fatal("no session said NOANALYZER and the check says the analyzer is missing")
+	}
+}
 
 // ⛔ ITS OWN TEST FUNCTION, ON PURPOSE. Both cases below need a real PowerShell,
 // and a host without one must report SKIPPED rather than pass. A skip folded into

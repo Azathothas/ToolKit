@@ -44,6 +44,12 @@ func Docs(t *Tree) Result {
 	links, blocks := 0, 0
 	linkedTo := map[string]bool{}
 
+	// ⭐ EVERY FENCED SHELL BLOCK IS ASKED AT ONCE, BEFORE ANY PAGE IS READ.
+	// One `sh -n` per block, one after another, was 345 children and most of
+	// a 51 s check on this host. Rule 5 below reads each answer where it used
+	// to ask, so the findings are the same ones in the same order.
+	parsed := parseShellBlocks(t, md)
+
 	for _, f := range md {
 		b := t.Read(f)
 		if len(b) == 0 {
@@ -97,7 +103,7 @@ func Docs(t *Tree) Result {
 		//    human reads <deployment-id> as "fill this in" and a shell reads
 		//    it as a redirect, so the reader gets a syntax error instead of an
 		//    obvious instruction.
-		for _, blk := range shellBlocks(lines) {
+		for k, blk := range shellBlocks(lines) {
 			blocks++
 			for _, ln := range blk.lines {
 				if i := strings.Index(ln.Text, "<"); i >= 0 {
@@ -109,7 +115,7 @@ func Docs(t *Tree) Result {
 					}
 				}
 			}
-			if err := shellParses(blk.body()); err != nil {
+			if err := parsed[f][k]; err != nil {
 				r.bad("%s:%d: fenced shell block does not parse (%v)", f, blk.start, err)
 			}
 		}
@@ -276,13 +282,39 @@ func ShellParserName() string {
 	return shellPath + " -n"
 }
 
+// parseShellBlocks asks shellParses about every fenced shell block of every
+// page at once. It returns each page's answers in the order shellBlocks gives
+// its blocks, so answer k is the answer for block k.
+func parseShellBlocks(t *Tree, md []string) map[string][]error {
+	type ask struct {
+		page string
+		k    int
+		body string
+	}
+	var asks []ask
+	out := map[string][]error{}
+	for _, f := range md {
+		blks := shellBlocks(Lines(t.Read(f)))
+		out[f] = make([]error, len(blks))
+		for k, blk := range blks {
+			asks = append(asks, ask{f, k, blk.body()})
+		}
+	}
+	errs := make([]error, len(asks))
+	each(len(asks), func(i int) { errs[i] = shellParses(asks[i].body) })
+	for i, a := range asks {
+		out[a.page][a.k] = errs[i]
+	}
+	return out
+}
+
 func shellParses(body string) error {
 	if shellPath == "" {
 		return structuralParse(body)
 	}
 	cmd := exec.Command(shellPath, "-n")
 	cmd.Stdin = strings.NewReader(body)
-	out, err := cmd.CombinedOutput()
+	out, err := combined(cmd)
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if msg == "" {

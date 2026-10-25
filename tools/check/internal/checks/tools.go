@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -31,24 +32,109 @@ func Shellcheck(t *Tree) Result {
 		r.Extra["skipped"] = "shellcheck is not on PATH"
 		return r
 	}
-	if v, err := exec.Command(bin, "--version").Output(); err == nil {
+	if v, err := output(exec.Command(bin, "--version")); err == nil {
 		for _, ln := range strings.Split(string(v), "\n") {
 			if strings.HasPrefix(ln, "version:") {
 				r.Extra["version"] = strings.TrimSpace(strings.TrimPrefix(ln, "version:"))
 			}
 		}
 	}
-	n := 0
-	for _, f := range WithExt(t.Ours(), ".sh") {
-		n++
-		cmd := exec.Command(bin, "-s", "sh", f)
+	scripts := WithExt(t.Ours(), ".sh")
+	lint := func(files []string) (string, error) {
+		cmd := exec.Command(bin, append([]string{"-s", "sh"}, files...)...)
 		cmd.Dir = t.Root
-		if out, err := cmd.CombinedOutput(); err != nil {
-			r.bad("%s: %s", f, firstFinding(string(out)))
+		out, err := combined(cmd)
+		return string(out), err
+	}
+	for _, f := range lintInBatches(scripts, weights(t, scripts), lint) {
+		r.bad("%s", f)
+	}
+	r.Extra["scripts"] = len(scripts)
+	return r
+}
+
+// lintInBatches runs lint over files in batches, one per slot, all at once.
+// It returns one finding per failing file, in the order files lists them.
+//
+// ⭐ ONE PROCESS PER BATCH, NOT PER FILE. On this host shellcheck took 25 s over
+// 53 scripts one at a time, and 19 s over all of them in one process. Most of
+// the cost is the analysis, so the batches run side by side.
+//
+// ⛔ A BATCH THAT FAILS IS ASKED AGAIN ONE FILE AT A TIME, and only those
+// answers are findings. A batch's output runs every file's findings together.
+// So a failing file is named with the text its own run gives, and a clean file
+// is never named for its neighbour's finding. A batch that passes needs no
+// second run, because shellcheck exits 0 only when no file it read has one.
+func lintInBatches(files []string, weight []int64, lint func([]string) (string, error)) []string {
+	if len(files) == 0 {
+		return nil
+	}
+	groups := balance(weight, cap(slots))
+	found := make([]string, len(files))
+	each(len(groups), func(g int) {
+		batch := make([]string, len(groups[g]))
+		for i, at := range groups[g] {
+			batch[i] = files[at]
+		}
+		if _, err := lint(batch); err == nil {
+			return
+		}
+		each(len(batch), func(i int) {
+			if out, err := lint([]string{batch[i]}); err != nil {
+				found[groups[g][i]] = batch[i] + ": " + firstFinding(out)
+			}
+		})
+	})
+	var out []string
+	for _, f := range found {
+		if f != "" {
+			out = append(out, f)
 		}
 	}
-	r.Extra["scripts"] = n
-	return r
+	return out
+}
+
+// weights is each file's size plus one, which is what balance deals by. The one
+// keeps an empty file from weighing nothing. A tree of empty files is then
+// dealt across every group, not into the first.
+func weights(t *Tree, files []string) []int64 {
+	w := make([]int64, len(files))
+	for i, f := range files {
+		w[i] = int64(len(t.Read(f))) + 1
+	}
+	return w
+}
+
+// balance deals the indices of weight into at most k groups, heaviest first.
+// Each goes to the group that holds the least so far. Every group's indices
+// come back in ascending order, and there is always at least one group.
+//
+// ⛔ EVERY INDEX LANDS IN EXACTLY ONE GROUP. A file dealt to no group is a file
+// no tool reads and no finding names, which is a pass over something unread.
+// TestBalanceDealsEveryFileOnce holds it.
+func balance(weight []int64, k int) [][]int {
+	k = max(1, min(k, len(weight)))
+	order := make([]int, len(weight))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool { return weight[order[a]] > weight[order[b]] })
+	groups := make([][]int, k)
+	load := make([]int64, k)
+	for _, i := range order {
+		g := 0
+		for j := 1; j < k; j++ {
+			if load[j] < load[g] {
+				g = j
+			}
+		}
+		groups[g] = append(groups[g], i)
+		load[g] += weight[i]
+	}
+	for _, g := range groups {
+		sort.Ints(g)
+	}
+	return groups
 }
 
 // PowerShell parses every tracked .ps1 and runs PSScriptAnalyzer over each one.
@@ -65,11 +151,15 @@ func PowerShell(t *Tree) Result {
 		return r
 	}
 	scripts := WithExt(t.Ours(), ".ps1")
-	parsed := "0"
 	r.Extra["scripts"] = len(scripts)
 
 	// One session for every file: starting pwsh per script is most of the cost
 	// of the check it replaced.
+	//
+	// ⭐ AND A FEW SESSIONS AT ONCE, each over its own share of the files. The
+	// analyzer's cost is per file and uneven. On this host one session took 42 s
+	// over all 26 files. With cc_profile.ps1 in a session of its own, the two
+	// sessions took 20 s. psSessions says how many share the work.
 	//
 	// ⛔ THE FILE LIST ARRIVES IN THE ENVIRONMENT, NEVER AS ARGUMENTS. `pwsh
 	// -Command <text> -- a.ps1 b.ps1` does NOT bind those names to $args the way
@@ -116,43 +206,45 @@ if (Get-Module -ListAvailable PSScriptAnalyzer) {
   # -Path TAKES ONE PATH. Handing it the array refuses with "Cannot convert
   # System.Object[] to System.String", so the loop is per file rather than one
   # call, and $seen above is what proves the list arrived at all.
+  #
+  # FILE NAMES THE SCRIPT THE LINT LINES AFTER IT ARE ABOUT. A lint line carries
+  # only the leaf name, and the caller merges several sessions.
   foreach ($f in $list.Split([char]10)) {
     $f = $f.Trim()
     if (-not $f) { continue }
+    Write-Output ("FILE|{0}" -f $f)
     foreach ($r in @(Invoke-ScriptAnalyzer -Path $f -Severity Error,Warning -ExcludeRule $exclude)) {
       Write-Output ("LINT|{0}:{1}|{2}: {3}" -f $r.ScriptName, $r.Line, $r.RuleName, $r.Message)
     }
   }
 } else { Write-Output "NOANALYZER" }
 `
-	cmd := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", parseAll)
-	cmd.Dir = t.Root
-	cmd.Env = append(os.Environ(), "CHECK_PS1_LIST="+strings.Join(scripts, "\n"))
-	out, err := cmd.CombinedOutput()
-	if err != nil && len(out) == 0 {
-		r.bad("PowerShell could not be driven: %v", err)
-		return r
-	}
-	for _, ln := range strings.Split(string(out), "\n") {
-		ln = strings.TrimRight(ln, "\r")
-		switch {
-		// ⛔ THE SEPARATOR IS THE ONE parseAll ABOVE ACTUALLY WRITES, a pipe.
-		// This read for "PARSE\t" and "LINT\t" until 2026-09-16, so no line it
-		// produced could ever match and the check reported ok over every broken
-		// script there was. It is the shape reviews.md calls theatre: green,
-		// trusted, and incapable of refusing. A tab is not usable here anyway,
-		// because PSScriptAnalyzer messages contain them.
-		case strings.HasPrefix(ln, "PARSE|"):
-			f := strings.SplitN(strings.TrimPrefix(ln, "PARSE|"), "|", 2)
-			r.bad("%s does not parse: %s", f[0], f[len(f)-1])
-		case strings.HasPrefix(ln, "LINT|"):
-			f := strings.SplitN(strings.TrimPrefix(ln, "LINT|"), "|", 2)
-			r.bad("%s %s", f[0], f[len(f)-1])
-		case strings.HasPrefix(ln, "COUNT|"):
-			parsed = strings.TrimPrefix(ln, "COUNT|")
-		case ln == "NOANALYZER":
-			r.Extra["analyzer"] = "not installed"
+	w := weights(t, scripts)
+	groups := balance(w, psSessions(w))
+	outs := make([][]byte, len(groups))
+	errs := make([]error, len(groups))
+	each(len(groups), func(g int) {
+		list := make([]string, len(groups[g]))
+		for i, at := range groups[g] {
+			list[i] = scripts[at]
 		}
+		cmd := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-Command", parseAll)
+		cmd.Dir = t.Root
+		cmd.Env = append(os.Environ(), "CHECK_PS1_LIST="+strings.Join(list, "\n"))
+		outs[g], errs[g] = combined(cmd)
+	})
+	for g := range groups {
+		if errs[g] != nil && len(outs[g]) == 0 {
+			r.bad("PowerShell could not be driven: %v", errs[g])
+			return r
+		}
+	}
+	found, parsed, noAnalyzer := psRead(scripts, linesOf(outs))
+	for _, f := range found {
+		r.bad("%s", f)
+	}
+	if noAnalyzer {
+		r.Extra["analyzer"] = "not installed"
 	}
 	// ⛔ A CHECK THAT READ NOTHING IS NOT A CHECK THAT AGREED.
 	r.Extra["parsed"] = parsed
@@ -165,7 +257,94 @@ if (Get-Module -ListAvailable PSScriptAnalyzer) {
 	return r
 }
 
+// psSessions is how many sessions share the scripts. It is enough that no share
+// outweighs the heaviest file, which sets the floor whatever the split, and it
+// is never more than the slots or the scripts. ⚠ Each session pays pwsh's start
+// and the analyzer's import, about 2.5 s here, so more would buy nothing.
+func psSessions(weight []int64) int {
+	var total, heaviest int64
+	for _, w := range weight {
+		total += w
+		heaviest = max(heaviest, w)
+	}
+	n := 1
+	if heaviest > 0 {
+		n = int((total + heaviest - 1) / heaviest)
+	}
+	return max(1, min(n, len(weight), cap(slots)))
+}
+
+// linesOf is what every session wrote as one list of lines, sessions in order.
+func linesOf(outs [][]byte) []string {
+	var lines []string
+	for _, out := range outs {
+		lines = append(lines, strings.Split(string(out), "\n")...)
+	}
+	return lines
+}
+
+// psRead reads the lines every session wrote, sessions in order. It returns the
+// findings in the order one session over every script gave them: each parse
+// failure by script, then each analyzer finding by script. parsed is the sum of
+// every session's count. It is a string because the JSON has always said it as
+// one.
+//
+// ⛔ EVERY SESSION'S LINES ARE READ AND EVERY COUNT IS ADDED. A merge that read
+// one session would call the others' scripts clean without reading what they
+// said. Its count would still look like a number.
+func psRead(scripts []string, lines []string) (found []string, parsed string, noAnalyzer bool) {
+	at := make(map[string]int, len(scripts))
+	for i, s := range scripts {
+		at[s] = i
+	}
+	// One bucket per script, and a last one for a line no script claims.
+	parse := make([][]string, len(scripts)+1)
+	lint := make([][]string, len(scripts)+1)
+	cur, seen := len(scripts), 0
+	for _, ln := range lines {
+		ln = strings.TrimRight(ln, "\r")
+		switch {
+		// ⛔ THE SEPARATOR IS THE ONE parseAll ABOVE ACTUALLY WRITES, a pipe.
+		// This read for "PARSE\t" and "LINT\t" until 2026-09-16, so no line it
+		// produced could ever match and the check reported ok over every broken
+		// script there was. It is the shape reviews.md calls theatre: green,
+		// trusted, and incapable of refusing. A tab is not usable here anyway,
+		// because PSScriptAnalyzer messages contain them.
+		case strings.HasPrefix(ln, "PARSE|"):
+			f := strings.SplitN(strings.TrimPrefix(ln, "PARSE|"), "|", 2)
+			i, ok := at[f[0]]
+			if !ok {
+				i = len(scripts)
+			}
+			parse[i] = append(parse[i], sprintf("%s does not parse: %s", f[0], f[len(f)-1]))
+		case strings.HasPrefix(ln, "FILE|"):
+			cur = len(scripts)
+			if i, ok := at[strings.TrimPrefix(ln, "FILE|")]; ok {
+				cur = i
+			}
+		case strings.HasPrefix(ln, "LINT|"):
+			f := strings.SplitN(strings.TrimPrefix(ln, "LINT|"), "|", 2)
+			lint[cur] = append(lint[cur], sprintf("%s %s", f[0], f[len(f)-1]))
+		case strings.HasPrefix(ln, "COUNT|"):
+			n, _ := strconv.Atoi(strings.TrimPrefix(ln, "COUNT|"))
+			seen += n
+		case ln == "NOANALYZER":
+			noAnalyzer = true
+		}
+	}
+	for _, p := range parse {
+		found = append(found, p...)
+	}
+	for _, l := range lint {
+		found = append(found, l...)
+	}
+	return found, strconv.Itoa(seen), noAnalyzer
+}
+
 // GoModules runs gofmt, vet, build and test over every Go module in the tree.
+//
+// ⭐ THE MODULES ARE CHECKED AT ONCE, and each module's own steps still run in
+// order. A module that does not build is not vetted or tested, as before.
 func GoModules(t *Tree) Result {
 	r := Result{Extra: map[string]any{}}
 	goBin, err := exec.LookPath("go")
@@ -180,33 +359,51 @@ func GoModules(t *Tree) Result {
 		}
 	}
 	r.Extra["modules"] = len(mods)
-	for _, m := range mods {
-		dir := filepath.Join(t.Root, filepath.FromSlash(m))
-		if out, err := runIn(dir, goBin, "build", "./..."); err != nil {
-			r.bad("%s: go build: %s", m, firstFinding(out))
-			continue
-		}
-		if out, err := runIn(dir, goBin, "vet", "./..."); err != nil {
-			r.bad("%s: go vet: %s", m, firstFinding(out))
-		}
-		if out, err := runIn(dir, goBin, "test", "./..."); err != nil {
-			r.bad("%s: go test: %s", m, testFailure(out))
-		}
-		// ⚠ gofmt reports by PRINTING, not by exiting non-zero. Reading its
-		// exit code would report a tree that needs formatting as clean.
-		if out, err := runIn(dir, goBin, "fmt", "-n", "./..."); err == nil && strings.TrimSpace(out) != "" {
-			if unformatted, err := runIn(dir, "gofmt", "-l", "."); err == nil && strings.TrimSpace(unformatted) != "" {
-				r.bad("%s: gofmt would rewrite: %s", m, strings.Join(strings.Fields(unformatted), " "))
-			}
-		}
+	for _, f := range goModules(mods, func(m string) []string { return goModule(t.Root, goBin, m) }) {
+		r.bad("%s", f)
 	}
 	return r
+}
+
+// goModules runs check over every module at once and returns what each found,
+// modules in the order mods lists them.
+func goModules(mods []string, check func(m string) []string) []string {
+	found := make([][]string, len(mods))
+	each(len(mods), func(i int) { found[i] = check(mods[i]) })
+	var out []string
+	for _, f := range found {
+		out = append(out, f...)
+	}
+	return out
+}
+
+// goModule is build, vet, test and gofmt over one module, in that order.
+func goModule(root, goBin, m string) []string {
+	var found []string
+	dir := filepath.Join(root, filepath.FromSlash(m))
+	if out, err := runIn(dir, goBin, "build", "./..."); err != nil {
+		return []string{sprintf("%s: go build: %s", m, firstFinding(out))}
+	}
+	if out, err := runIn(dir, goBin, "vet", "./..."); err != nil {
+		found = append(found, sprintf("%s: go vet: %s", m, firstFinding(out)))
+	}
+	if out, err := runIn(dir, goBin, "test", "./..."); err != nil {
+		found = append(found, sprintf("%s: go test: %s", m, testFailure(out)))
+	}
+	// ⚠ gofmt reports by PRINTING, not by exiting non-zero. Reading its
+	// exit code would report a tree that needs formatting as clean.
+	if out, err := runIn(dir, goBin, "fmt", "-n", "./..."); err == nil && strings.TrimSpace(out) != "" {
+		if unformatted, err := runIn(dir, "gofmt", "-l", "."); err == nil && strings.TrimSpace(unformatted) != "" {
+			found = append(found, sprintf("%s: gofmt would rewrite: %s", m, strings.Join(strings.Fields(unformatted), " ")))
+		}
+	}
+	return found
 }
 
 func runIn(dir, bin string, args ...string) (string, error) {
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
+	out, err := combined(cmd)
 	return string(out), err
 }
 

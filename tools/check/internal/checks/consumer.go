@@ -95,14 +95,14 @@ func Consumer(t *Tree) Result {
 	}
 	build := exec.Command(goBin, "build", "-o", out, ".")
 	build.Dir = filepath.Join(t.Root, filepath.FromSlash(consumerModule))
-	if msg, err := build.CombinedOutput(); err != nil {
+	if msg, err := combined(build); err != nil {
 		r.bad("the tool did not build, so nothing could be driven: %v: %s", err, firstLineOf(string(msg)))
 		return r
 	}
 
 	cmd := exec.Command(pwsh, "-NoProfile", "-NonInteractive", "-File", runner, "-Exe", out, "-Json")
 	cmd.Dir = t.Root
-	stdout, runErr := cmd.Output()
+	stdout, runErr := output(cmd)
 
 	// ⛔ THE DOCUMENT IS READ BEFORE THE EXIT CODE IS JUDGED. consumer.ps1 exits
 	// 1 when a case fails and 0 when none does, and the interesting half is

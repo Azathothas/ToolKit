@@ -53,7 +53,7 @@ func Shell(t *Tree) Result {
 		// check is one a reader has to translate.
 		cmd := exec.Command(sh, "-n", f)
 		cmd.Dir = t.Root
-		if out, err := cmd.CombinedOutput(); err != nil {
+		if out, err := combined(cmd); err != nil {
 			r.bad("%s does not parse: %s", f, firstError(string(out)))
 		}
 	}

@@ -121,7 +121,7 @@ func Load(root string) (*Tree, error) {
 	// a run from a subdirectory silently scopes itself to that subtree and
 	// reports clean over everything else: the scope of a guard must not depend
 	// on who called it.
-	top, err := exec.Command("git", "-C", abs, "rev-parse", "--show-toplevel").Output()
+	top, err := output(exec.Command("git", "-C", abs, "rev-parse", "--show-toplevel"))
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func Load(root string) (*Tree, error) {
 		{"-C", abs, "ls-files", "-z"},
 		{"-C", abs, "ls-files", "--others", "--exclude-standard", "-z"},
 	} {
-		out, err := exec.Command("git", args...).Output()
+		out, err := output(exec.Command("git", args...))
 		if err != nil {
 			return nil, err
 		}
