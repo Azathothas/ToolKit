@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 250  open 36  blocked 5  done 209
+total 250  open 35  blocked 5  done 210
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 5 | 0 | 90 | 95 |
-| P2 | 24 | 2 | 91 | 117 |
+| P2 | 23 | 2 | 92 | 117 |
 | P3 | 7 | 3 | 20 | 30 |
-| **all** | **36** | **5** | **209** | **250** |
+| **all** | **35** | **5** | **210** | **250** |
 
 ---
 
@@ -223,7 +223,7 @@ total 250  open 36  blocked 5  done 209
 | WSL-128 | P2 | S | open | An input file keeps CRLF and no executable bit | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-129 | P2 | S | done | A project cannot say which version of the tool it needs | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-130 | P2 | L | open | An engine inside a base is set up by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-131 | P2 | M | open | Job defaults are repeated in every wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-131 | P2 | M | done | Job defaults are repeated in every wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-132 | P2 | S | open | Two acceptance cases are not isolated from what they run beside | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-133 | P3 | S | done | `base shell` has no `--private-net` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-134 | P3 | S | blocked | A real window's focus event was never produced for herdr's `--remote` signals | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

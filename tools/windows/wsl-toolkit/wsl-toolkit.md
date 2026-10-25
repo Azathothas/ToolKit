@@ -268,18 +268,20 @@ always wins, even one whose value is the flag's own default. `WSL-131`
 
 ⭐ **A named instance takes a working tree's job defaults too.** Its own
 configuration still says what the base is. The nearest `wsl-toolkit.json` from the
-working directory up lends that instance the keys above, one by one, and its
-`requires`. A key the project leaves out keeps the instance's value.
-`wsl-toolkit config` names the file as `project`, and the search order it prints
-is unchanged. `WSL-131`
+working directory up lends that instance every `jobs` key it writes, one by one,
+and its `requires`. A key the project leaves out keeps the instance's value.
+`WSL-131`, ruling 34
 
-- ⛔ Only those keys cross. The project's `base`, and its `container_lifecycle`,
-  `platform`, `workspace`, `exclude` and `gitignore`, are not read under a named
-  instance, as before this release.
-- ⚠ A lending file that writes one of those older keys is named, not ignored
-  unsaid. `config`, `run` and `matrix` print a ⚠ line on stderr that names each
-  key the instance keeps. `config --json` lists them as `project_held`.
-- ⛔ A project file that names none of those keys and no `requires` is not read at
+- ⛔ Every `jobs` key crosses: `container_lifecycle`, `platform`, `workspace`,
+  `exclude`, `gitignore`, `max_running` and `max_running_wait` beside the keys
+  above. Only the project's `base` is not read.
+- ⭐ A value the project writes is taken, `false`, `0` and `[]` included. A key
+  written as `null`, or a text key written empty, keeps the instance's value.
+- `wsl-toolkit config` names the file and each key it lent. `config --json` carries
+  them as `project` and `project_lends`, and the search order it prints is unchanged.
+- ⚠ To keep an instance's own value for a key, leave the key out of the project's
+  file, or pass `--config` with the file to read.
+- ⛔ A project file that writes no `jobs` key and no `requires` is not read at
   all. A file there that is broken, or written by a newer build, refuses nothing.
 - A file that lends is read whole and strictly, so its fault is a refusal.
 - ⛔ A write to the instance's file stores the instance's own jobs, never the
@@ -929,8 +931,8 @@ in.** When `%LOCALAPPDATA%\wsl-toolkit\instances\NAME\config.json` exists,
 `--instance NAME` reads it from any directory. So one base serves every project,
 and a project's `wsl-toolkit.json` does not change it. The project's file still
 applies to the default instance and to a named one with no file of its own.
-`--config` comes before both. ⭐ The project's file still lends the instance its
-job defaults and its `requires`, as [its section](#-a-projects-job-defaults-and-the-oldest-build-it-takes)
+`--config` comes before both. ⭐ The project's file still lends the instance every
+`jobs` key it writes and its `requires`, as [its section](#-a-projects-job-defaults-and-the-oldest-build-it-takes)
 says. `WSL-131`
 
 ⭐ **A process this tool starts resolves the instance once.** `helper serve
@@ -1560,9 +1562,9 @@ With a project configuration in play, a relative `--workspace`, `--script`,
 `--env-file`, `--artifacts`, `--input` or matrix transcript path of `run` or `matrix`
 resolves against the directory holding that configuration. A relative
 `jobs.workspace` or `jobs.env_file` always resolves against the file that names it.
-That is a working tree's own where it lends a named instance its `env_file`. `base exec`
-reads a relative `--script`, `--env-file`, `--input` and `--artifacts` from the
-current directory, and so does `base sync` its `HOST-DIR`.
+That is a working tree's own where it lends a named instance its `workspace` or `env_file`.
+`base exec` reads a relative `--script`, `--env-file`, `--input` and `--artifacts`
+from the current directory, and so does `base sync` its `HOST-DIR`.
 
 ⭐ **A relative grant source resolves against its file on every route.** A file's
 path does not cross the helper protocol, so the client sends each `base.mounts`

@@ -256,9 +256,12 @@ func TestTheConfigReportNamesTheProjectAndTheFloor(t *testing.T) {
 	if doc["project"] != project || doc["requires"] != "1.0" {
 		t.Errorf("the report names project %v and requires %v", doc["project"], doc["requires"])
 	}
-	// ⛔ The older keys the project writes are named, not dropped unsaid.
-	if held, _ := json.Marshal(doc["project_held"]); string(held) != `["jobs.workspace","jobs.exclude"]` {
-		t.Errorf("the report names the held keys as %s", held)
+	// ⭐ Each key the project lent is named beside its file.
+	if lends, _ := json.Marshal(doc["project_lends"]); string(lends) != `["jobs.workspace","jobs.exclude","jobs.image","requires"]` {
+		t.Errorf("the report names the lent keys as %s", lends)
+	}
+	if _, ok := doc["project_held"]; ok {
+		t.Errorf("the report still names held keys: %v", doc["project_held"])
 	}
 	if err := os.Remove(project); err != nil {
 		t.Fatal(err)
@@ -267,8 +270,8 @@ func TestTheConfigReportNamesTheProjectAndTheFloor(t *testing.T) {
 	if _, ok := doc["project"]; ok {
 		t.Errorf("a report with no project carries the key: %v", doc["project"])
 	}
-	if _, ok := doc["project_held"]; ok {
-		t.Errorf("a report with no project names held keys: %v", doc["project_held"])
+	if _, ok := doc["project_lends"]; ok {
+		t.Errorf("a report with no project names lent keys: %v", doc["project_lends"])
 	}
 	if _, ok := doc["requires"]; ok {
 		t.Errorf("a report with no floor carries the key: %v", doc["requires"])
@@ -325,25 +328,27 @@ func captureStderr(t *testing.T, fn func()) string {
 	return buf.String()
 }
 
-// TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive is WSL-131. Under a
-// named instance a project lends only the job defaults this release added. A
-// file that also writes jobs.exclude had its image taken and its exclude
-// ignored, and nothing said so. `config`, run and matrix now name such keys.
-func TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive(t *testing.T) {
-	project := lendingInstance(t, `{"schema":"wsl-toolkit-config/1","jobs":{"image":"alpine","exclude":["x"],"container_lifecycle":"ephemeral"}}`)
+// TestAJobTakesTheOlderKeysALendingProjectWrites is ruling 34. Under a named
+// instance a project that writes jobs.exclude, container_lifecycle and
+// gitignore had them ignored, with a note. A job now takes them, and `config`
+// names each key beside the file.
+func TestAJobTakesTheOlderKeysALendingProjectWrites(t *testing.T) {
+	project := lendingInstance(t, `{"schema":"wsl-toolkit-config/1","jobs":{"image":"alpine","exclude":["x"],"container_lifecycle":"ephemeral","gitignore":true}}`)
 	cfg, err := toolkit.LoadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "writes jobs.container_lifecycle, jobs.exclude, which a named instance does not take"
 	j := parsedJob(t)
 	said := captureStderr(t, func() {
 		if err := j.applyConfig(cfg); err != nil {
 			t.Error(err)
 		}
 	})
-	if !strings.Contains(said, project) || !strings.Contains(said, want) {
-		t.Errorf("a job under a lending project said:\n%s", said)
+	if j.lifecycle != toolkit.ContainerEphemeral || !j.gitignore || strings.Join(j.excludes, " ") != "x" {
+		t.Errorf("a job under a lending project ran %s, gitignore %v, excluding %v", j.lifecycle, j.gitignore, j.excludes)
+	}
+	if strings.Contains(said, "does not take") {
+		t.Errorf("a job under a lending project still says a key is held:\n%s", said)
 	}
 	said = captureStderr(t, func() {
 		_ = captureStdout(t, func() {
@@ -352,19 +357,28 @@ func TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive(t *testing.T) {
 			}
 		})
 	})
+	want := project + " lends this instance jobs.container_lifecycle, jobs.exclude, jobs.gitignore, jobs.image"
 	if !strings.Contains(said, want) {
-		t.Errorf("config under a lending project said:\n%s", said)
+		t.Errorf("config under a lending project does not say %q:\n%s", want, said)
 	}
-	// ⭐ A project that writes only what it lends says nothing more.
-	if err := os.WriteFile(project, []byte(`{"schema":"wsl-toolkit-config/1","jobs":{"image":"alpine"}}`), 0o600); err != nil {
+}
+
+// TestALentWorkspaceResolvesAgainstTheProject is ruling 34: a relative
+// jobs.workspace a working tree lends a named instance is under that tree, not
+// under the instance's own directory.
+func TestALentWorkspaceResolvesAgainstTheProject(t *testing.T) {
+	project := lendingInstance(t, `{"schema":"wsl-toolkit-config/1","jobs":{"workspace":"sub"}}`)
+	cfg, err := toolkit.LoadConfig()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg, err = toolkit.LoadConfig(); err != nil {
+	j := parsedJob(t)
+	if err := j.applyConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
-	j = parsedJob(t)
-	if said := captureStderr(t, func() { _ = j.applyConfig(cfg) }); strings.Contains(said, "does not take") {
-		t.Errorf("a project that lends all it writes was reported:\n%s", said)
+	want := filepath.Join(filepath.Dir(project), "sub")
+	if !strings.EqualFold(filepath.Clean(j.workspace), filepath.Clean(want)) {
+		t.Errorf("a lent workspace resolved to %s, want %s", j.workspace, want)
 	}
 }
 

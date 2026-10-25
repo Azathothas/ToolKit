@@ -460,14 +460,7 @@ func (j jobFlags) helperRouteRefusal() error {
 }
 
 // applyConfig selects job defaults and resolves host paths before a job starts.
-//
-// ⚠ It names, on stderr, the older jobs keys a lending working tree's file
-// writes, which this instance did not take. run and matrix both come here, so
-// neither drops them unsaid. WSL-131.
 func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
-	if n := cfg.ProjectHeldNote(); n != "" {
-		note(n)
-	}
 	workspaceFromConfig := false
 	if j.lifecycle == "" {
 		j.lifecycle = cfg.Jobs.ContainerLifecycle
@@ -521,7 +514,10 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 	j.platform = platform
 	if j.workspace != "" {
 		if workspaceFromConfig {
-			j.workspace, err = pathFromConfig(cfg, j.workspace)
+			// ⛔ AGAINST THE FILE THAT NAMED IT. A working tree's file lends a named
+			// instance its workspace, and a relative one resolved against the
+			// instance's own directory instead. A review found it. WSL-131.
+			j.workspace, err = pathFromJobs(cfg, "workspace", j.workspace)
 		} else {
 			j.workspace, err = pathFromProject(cfg, j.workspace)
 		}

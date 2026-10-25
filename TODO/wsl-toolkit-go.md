@@ -13827,7 +13827,7 @@ Open.
 ## WSL-131. Job defaults are repeated in every wrapper
 
 **Source** the consumer survey of 2026-10-21, P20, and the old record's finding 115
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13866,7 +13866,19 @@ Exit 0, then a job that takes its image and timeout from a project file.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f2-run-config` and `feat/wsl-131-lend-every-key`, for 8.0.0.** Ruling 34: a working tree's `wsl-toolkit.json` lends a named instance every `jobs` key it writes, the older ones included. A key the project writes is taken as written, an explicit `false`, `0`, `[]` or `{}` included. A key it does not write, or writes as null, keeps the instance's value, and a text key written empty keeps what is beneath. A lent relative `workspace` or `env_file` resolves against the project's file. `config` names each lent key and `config --json` carries `project_lends`. The held-back note and `project_held` are gone. Built, reviewed once (one high finding: a lent `workspace` resolved against the instance's folder; fixed) and repaired.
+
+```text
+instance demo's file: container_lifecycle persistent, platform linux/arm64, exclude [own], gitignore true, timeout 20m
+project file:         container_lifecycle ephemeral, exclude [target], gitignore false, image rust:1
+config --json:        container_lifecycle ephemeral, platform linux/arm64, exclude [target], image rust:1, timeout 20m
+                      project_lends: jobs.container_lifecycle, jobs.exclude, jobs.gitignore, jobs.image
+19 rows red on Windows and in golang:1.25
+```
+
+⚠ A break for 8.0.0, recorded in `docs/consumers.md`.
+
+What was open before the ruling, superseded:
 
 ⭐ **2026-10-25: built and merged from `rb/f2-run-config`, waiting on one ruling.** A project's `wsl-toolkit.json` lends its job defaults to a named instance. Its older jobs keys are named, not dropped unsaid: a ⚠ line from `config`, `project_held` in `config --json`, and a note on `run` and `matrix`. ⚠ That a named instance takes only the new keys from a lending project is a choice the operator rules; the question is in `PROGRESS.md`.
 
