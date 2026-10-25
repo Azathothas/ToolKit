@@ -355,6 +355,12 @@ operator chose:
   named instance every jobs key, the older ones included, where it was built to
   lend only the new ones. A break, recorded in the register.
 
+**35.** ⭐ **2026-10-25: the exit-code breaks ride in 8.0.0.** Ruling 31 kept `WSL-127`
+and `WSL-166` out because each changes an exit code. With the release a major by
+ruling 34, the operator chose "Include both": the tool's own exit 2 is told apart from
+a job's, and `text-tool eol` refuses a path that does not exist. Each gets a break row
+in `docs/consumers.md`. ⚠ It amends ruling 31.
+
 ## 9. Before every push
 
 ⭐ **A green local gate is not CI.** Run the Go tests with `TEMP` and `TMP` at an

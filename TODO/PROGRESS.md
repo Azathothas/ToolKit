@@ -116,8 +116,8 @@ Ruling 31. The argument for the order is in [INDEX.md](INDEX.md).
    instance.
 9. **This host**, ruling 31: the package's copy emptied, the operator's
    `qemu-binfmt-restore.service` retired, the installed skills updated.
-10. **Not this release**, ruling 31: `WSL-127` and `WSL-166`, exit codes that change, each a
-   break.
+10. **Now this release**, ruling 35: `WSL-127` and `WSL-166`, exit codes that change, each a
+   break that rides in 8.0.0.
 11. **One base under a canonical name**, ruling 32: `WSL-167`, which removes
    `wsl-toolkit-base`. First after the pause, before the builders' merges. Then
    `WSL-193`, a `wsl-` prefix on a new instance's name, in the same code. **Closed:**
