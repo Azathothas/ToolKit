@@ -42,8 +42,8 @@ func LineEndings(t *Tree) Result {
 	// given, and asking it about 28,000 vendored files costs eight seconds to
 	// produce rows this check then discards. A gate people stop running
 	// because it is slow is a gate that never runs.
-	out, err := exec.Command("git", "-C", t.Root, "ls-files", "--eol", "--",
-		".", ":!references", ":!docs/history/oracle", ":!evidence").Output()
+	out, err := output(exec.Command("git", "-C", t.Root, "ls-files", "--eol", "--",
+		".", ":!references", ":!docs/history/oracle", ":!evidence"))
 	if err != nil {
 		r.bad("cannot read git ls-files --eol: %v", err)
 		return r

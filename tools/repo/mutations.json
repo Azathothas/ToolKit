@@ -2,6 +2,132 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "gate: a shellcheck run over many scripts that passes is not taken as final",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\tfound := make([]string, len(files))\n",
+      "replace": "\tif _, err := lint(files); err == nil {\n\t\treturn nil\n\t}\n\tfound := make([]string, len(files))\n",
+      "run": "TestTheShellcheckCheckFailsAScriptThatSourcesASibling",
+      "args": []
+    },
+    {
+      "label": "gate: each shellcheck script is linted alone, never in a batch",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\tif out, err := lint(files[i : i+1]); err != nil {\n",
+      "replace": "\t\tif out, err := lint(files); err != nil {\n",
+      "run": "TestEachScriptIsLintedAlone",
+      "args": []
+    },
+    {
+      "label": "gate: a failing shellcheck script is named with its own finding",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\t\tfound[i] = files[i] + \": \" + firstFinding(out)\n",
+      "replace": "\t\t\tfound[i] = files[0] + \": \" + firstFinding(out)\n",
+      "run": "TestEveryFailingScriptIsNamedWithItsOwnFinding",
+      "args": []
+    },
+    {
+      "label": "gate: each makes every call exactly once",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\t\t\t\ti := int(next.Add(1)) - 1\n",
+      "replace": "\t\t\t\ti := int(next.Add(1))\n",
+      "run": "TestEachMakesEveryCallOnce",
+      "args": []
+    },
+    {
+      "label": "gate: a child gives its slot back when it returns",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\tdefer func() { <-slots }()\n",
+      "replace": "",
+      "run": "TestAChildWaitsForAFreeSlot",
+      "args": []
+    },
+    {
+      "label": "gate: the checks run at once and print in list order",
+      "module": "tools/check",
+      "file": "main.go",
+      "find": "\t\tgo func() {\n\t\t\tdefer wg.Done()\n\t\t\trows[i] = gateRow{c.name, c.run(t)}\n",
+      "replace": "\t\tfunc() {\n\t\t\tdefer wg.Done()\n\t\t\trows[i] = gateRow{c.name, c.run(t)}\n",
+      "run": "TestTheGateRunsItsChecksAtOnceAndPrintsThemInListOrder",
+      "args": []
+    },
+    {
+      "label": "gate: each runs its calls at once",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\tworkers := min(n, cap(slots))\n",
+      "replace": "\tworkers := min(n, 1)\n",
+      "run": "TestEachRunsItsCallsAtOnce",
+      "args": []
+    },
+    {
+      "label": "gate: a child waits for a free slot",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\tslots <- struct{}{}\n\tdefer func() { <-slots }()\n\treturn call(cmd)\n",
+      "replace": "\treturn call(cmd)\n",
+      "run": "TestAChildWaitsForAFreeSlot",
+      "args": []
+    },
+    {
+      "label": "gate: every child a check starts takes a slot",
+      "module": "tools/check",
+      "file": "internal/checks/hooks.go",
+      "find": "out, err := output(exec.Command(\"git\", \"-C\", t.Root, \"config\", \"--get\", \"core.hooksPath\"))",
+      "replace": "out, err := exec.Command(\"git\", \"-C\", t.Root, \"config\", \"--get\", \"core.hooksPath\").Output()",
+      "run": "TestEveryChildTakesASlot",
+      "args": []
+    },
+    {
+      "label": "gate: balance deals every file to exactly one PowerShell session",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\tfor _, i := range order {\n",
+      "replace": "\tfor _, i := range order[1:] {\n",
+      "run": "TestBalanceDealsEveryFileOnce",
+      "args": []
+    },
+    {
+      "label": "gate: every PowerShell session's count is added",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\t\tseen += n\n",
+      "replace": "\t\t\tseen = n\n",
+      "run": "TestEveryPowerShellSessionIsRead",
+      "args": []
+    },
+    {
+      "label": "gate: every PowerShell session's output is read",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\tlines = append(lines, strings.Split(string(out), \"\\n\")...)\n",
+      "replace": "\t\tlines = strings.Split(string(out), \"\\n\")\n",
+      "run": "TestEveryPowerShellSessionIsRead",
+      "args": []
+    },
+    {
+      "label": "gate: the Go modules are checked at once",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\teach(len(mods), func(i int) { found[i] = check(mods[i]) })\n",
+      "replace": "\tfor i := range mods {\n\t\tfound[i] = check(mods[i])\n\t}\n",
+      "run": "TestTheModulesAreCheckedAtOnce",
+      "args": []
+    },
+    {
+      "label": "gate: each fenced block's answer reaches its own block",
+      "module": "tools/check",
+      "file": "internal/checks/docs.go",
+      "find": "\t\tout[a.page][a.k] = errs[i]\n",
+      "replace": "\t\tout[a.page][0] = errs[i]\n",
+      "run": "TestEachFencedBlockIsAnsweredForItself",
+      "args": []
+    },
+    {
       "label": "mutate: a test process's leftovers beside its source are put back",
       "module": "tools/repo",
       "file": "internal/mutate/pool.go",

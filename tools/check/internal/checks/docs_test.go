@@ -87,3 +87,24 @@ func TestACitedPathAndLineMustExist(t *testing.T) {
 		})
 	}
 }
+
+// TestEachFencedBlockIsAnsweredForItself holds the concurrent parse. Every block
+// is asked at once, and the answers come back by page and by block. So a broken
+// block is named at its own line and at no other.
+func TestEachFencedBlockIsAnsweredForItself(t *testing.T) {
+	page := "# a\n\n```sh\necho one\n```\n\n```sh\necho 'two\n```\n\n```sh\necho three\n```\n"
+	other := "# b\n\n```sh\necho four\n```\n"
+	r := Docs(treeWithPages(t, map[string]string{"README.md": page, "NOTES.md": other}))
+	var parse []string
+	for _, d := range r.Detail {
+		if strings.Contains(d, "does not parse") {
+			parse = append(parse, d)
+		}
+	}
+	if len(parse) != 1 || !strings.HasPrefix(parse[0], "README.md:7: fenced shell block does not parse") {
+		t.Fatalf("the broken block is the second in README.md, at line 7; the check said %q", parse)
+	}
+	if r.Extra["shell_blocks"] != 4 {
+		t.Fatalf("the check read %v shell blocks, want 4", r.Extra["shell_blocks"])
+	}
+}

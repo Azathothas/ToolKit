@@ -24,6 +24,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Azathothas/ToolKit/tools/check/internal/checks"
 )
@@ -222,11 +223,42 @@ type gateRow struct {
 }
 
 func gate(t *checks.Tree, asJSON bool) int {
-	var rows []gateRow
-	for _, c := range all {
-		rows = append(rows, gateRow{c.name, c.run(t)})
+	return renderGate(os.Stdout, runAll(t, all), asJSON)
+}
+
+// runAll runs every check at once and returns their rows in list order.
+//
+// ⭐ AT ONCE, because one after another the gate took the sum of its checks.
+// Four of them spend most of their time waiting on child processes. Every
+// child a check starts holds one of a fixed number of slots, one per CPU, so
+// the host bounds "at once" and the number of checks does not.
+//
+// ⚠ ON FOUR LINUX CPUS IT SAVES NOTHING. The go check sets the floor there, and
+// the other checks added little to it. On four Windows CPUs the gate finishes
+// sooner. A CI run waits on its slowest job either way, which is a mutation
+// shard. scripts/README.md has the figures.
+//
+// ⛔ THE ROWS ARE PRINTED IN LIST ORDER, NOT IN THE ORDER THEY FINISH. Row i
+// is check i, whatever finished first. Nothing is printed until every check
+// has returned, so the output for a tree is the one a serial run gave.
+//
+// ⚠ EVERY CHECK READS THE SAME TREE AT THE SAME TIME. Tree.Read guards its
+// cache with a mutex and Files is not written after Load. No check writes what
+// another reads: the one write, consumer's binary, goes under the ignored
+// .tmp. A check that breaks either is not safe in this list until it is
+// guarded.
+func runAll(t *checks.Tree, list []check) []gateRow {
+	rows := make([]gateRow, len(list))
+	var wg sync.WaitGroup
+	for i, c := range list {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rows[i] = gateRow{c.name, c.run(t)}
+		}()
 	}
-	return renderGate(os.Stdout, rows, asJSON)
+	wg.Wait()
+	return rows
 }
 
 // renderGate writes the verdict and returns the exit code. A skip still exits 0,

@@ -63,8 +63,8 @@ func Commits(t *Tree) Result {
 	// ⛔ NUL between the hash and the body and between records, because a
 	// commit body contains newlines and blank lines by design and any
 	// line-oriented split would tear one in half.
-	out, err := exec.Command("git", "-C", t.Root, "log",
-		"--format=%H%x00%s%x00%B%x00%x00").Output()
+	out, err := output(exec.Command("git", "-C", t.Root, "log",
+		"--format=%H%x00%s%x00%B%x00%x00"))
 	if err != nil {
 		// ⛔ The SAME finding as reading zero commits below, and deliberately
 		// one sentence rather than two. A repository with no commits reaches

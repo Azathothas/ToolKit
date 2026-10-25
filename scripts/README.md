@@ -168,6 +168,10 @@ defined markers.
 links are written relative to where the file will live in a project. The
 prose rules still apply to them.
 
+⭐ **Every fenced shell block is parsed at once**, one `sh -n` per block, before
+any page is read. Each answer is read back for its own page and block, so a
+broken block is named at its own line.
+
 ### `common/check-markers.sh`
 
 Are the only characters outside ASCII in this tree the five this repository
@@ -255,6 +259,17 @@ their answers.
 ⚠ **No `go` on PATH is exit 2, not exit 0.** A machine without a toolchain has
 not proved this tree builds.
 
+⭐ **Every module is checked at once, and each module's steps stay in order.**
+A module that does not build is not vetted or tested. The findings come back
+in module order, whichever module finished first.
+
+⚠ **On four CPUs with an empty build cache, as CI has, this is slower.** The
+slowest module sets the floor, and the others compete with it. Pinned to four
+CPUs in `golang:1.25`, the `go` check took a median of 107 s against 103 s one
+module after another. A second set gave 171 s against 139 s. Building the
+shared standard packages first did not shorten it either. Whether it helps a
+host with spare CPUs is not measured.
+
 ⛔ **The module is not at the repository root** and this resolves it. `go build
 ./...` from the root finds no module and exits 1, which reads as a broken build
 and is a wrong directory.
@@ -281,6 +296,45 @@ PSScriptAnalyzer are not on every machine. A missing one is reported with what
 was missing rather than counted as agreement, and the exit code is still 0,
 because "this host cannot run that one" is not a failure of the tree.
 
+⭐ **The checks run at once, and the verdict prints them in list order.**
+Nothing is printed until every check has returned, so the output for a tree
+is the one a serial run gave. ⛔ Every child process a check starts holds one
+of a fixed number of slots, one per CPU, so the host bounds how much runs
+together. ⚠ A `go test` or a pwsh session holds one slot and can use more
+than one CPU.
+
+⚠ **A CI run does not finish sooner for it.** Every CI job starts at once, and
+a run waits on its slowest job. In three runs on `main`, that was a mutation
+shard of 21 to 25 minutes. The serial gate's step took a median of 175 s on
+ubuntu and 195 s on Windows.
+
+⚠ **On four Linux CPUs it saves nothing.** The runs were pinned to four CPUs in
+`golang:1.25`, with an empty build cache as a runner has. Both gates took about
+as long as the `go` check alone. The old gate's medians were 106 s and 137 s
+in two sets of three alternating runs. The new gate's were 109 s and 143 s.
+
+⚠ **On four Windows CPUs it finishes sooner.** The median of three alternating
+runs was 254 s for the old gate and 187 s for the new one.
+
+⚠ **Every figure here comes from a host that other work loaded.** Runs of one
+binary spread by up to half. No CI run has timed the new gate yet.
+
+⭐ **`shellcheck` reads each script in a process of its own, all at once.**
+Each finding is the text a run over that script alone gives, and the findings
+come in file order.
+
+⛔ **A script is never linted beside another.** `shellcheck` follows a `.` or
+`source` only to a file that is also on its command line. Alone, a script that
+sources a sibling reports SC1091. Beside that sibling, the same script passes.
+Batches dealt by file size and CPU count could pass a tree on one host and fail
+it on another.
+
+⚠ **The lone runs cost little more than batches did.** On four CPUs in
+`golang:1.25`, the check took 1.7 s, against 1.5 s in batches and 4.6 s one
+script after another. A second set gave 5.5 s, 4.1 s and 16.3 s. On four CPUs
+of a Windows host, it took 3.4 s, 2.3 s and 7.5 s. Each figure is the median of
+three runs.
+
 ⛔ **`--fast` is refused with a message.** The rules are one program, so there
 is nothing to skip. Accepting the flag and doing something different is how a
 caller comes to believe they ran less than they did.
@@ -302,6 +356,11 @@ this repository fixes rather than excludes.
 
 ⚠ **`-Path` takes ONE path.** Handing it the file list refuses with `Cannot
 convert System.Object[] to System.String`, so the walk is one call per file.
+
+⭐ **A few sessions share the files and run at once.** There are as many as
+keep each share below the heaviest file, which sets the floor whatever the
+split. Every session's count is added, and the check refuses a total that is
+not the number of tracked scripts.
 
 ⚠ **The analyzer is a module, not part of PowerShell.** Without it this reports
 `SKIPPED` and exits 0. ⛔ **It never installs it**: a check that installs

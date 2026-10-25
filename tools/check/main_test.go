@@ -7,9 +7,52 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Azathothas/ToolKit/tools/check/internal/checks"
 )
+
+// TestTheGateRunsItsChecksAtOnceAndPrintsThemInListOrder is the case for the
+// gate's whole shape. The first check waits for the second to start, which a
+// serial gate can never give it. The second finishes first and is still
+// printed second.
+//
+// ⛔ IT DECIDES BY WHAT IT TESTS, NOT BY THE HOST'S TIMING. A correct gate
+// passes the moment the second check starts. Only a serial one waits out the
+// ten seconds, so a slow host cannot turn a serial gate green.
+func TestTheGateRunsItsChecksAtOnceAndPrintsThemInListOrder(t *testing.T) {
+	secondStarted := make(chan struct{})
+	list := []check{
+		{name: "first", run: func(*checks.Tree) checks.Result {
+			select {
+			case <-secondStarted:
+				return checks.Result{}
+			case <-time.After(10 * time.Second):
+				return checks.Result{Problems: 1, Detail: []string{"waited ten seconds for the second check, so the gate ran them one after another"}}
+			}
+		}},
+		{name: "second", run: func(*checks.Tree) checks.Result {
+			close(secondStarted)
+			return checks.Result{Problems: 1, Detail: []string{"the second check's own finding"}}
+		}},
+	}
+	rows := runAll(nil, list)
+	if len(rows) != 2 || rows[0].name != "first" || rows[1].name != "second" {
+		t.Fatalf("the rows are not in list order: %+v", rows)
+	}
+	if rows[0].res.Problems != 0 {
+		t.Fatalf("the checks did not run at once: %v", rows[0].res.Detail)
+	}
+	var out bytes.Buffer
+	if code := renderGate(&out, rows, false); code != 1 {
+		t.Fatalf("a gate with one problem exited %d", code)
+	}
+	text := out.String()
+	first, second := strings.Index(text, "ok     first"), strings.Index(text, "FAIL   second")
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("the verdict does not print first and then second:\n%s", text)
+	}
+}
 
 // TestAGateSkipIsReportedAsASkip is the case for two outputs that could not tell
 // a check that ran from one that could not. A host with no shellcheck and no Go

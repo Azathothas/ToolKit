@@ -85,7 +85,7 @@ func Hooks(t *Tree) Result {
 	// 3. THIS CHECKOUT runs it. ⚠ Not a skip when the answer is inconvenient:
 	// a checkout that is not running the hook is one where the rule is a
 	// preference, and that is the finding, not an exemption.
-	out, err := exec.Command("git", "-C", t.Root, "config", "--get", "core.hooksPath").Output()
+	out, err := output(exec.Command("git", "-C", t.Root, "config", "--get", "core.hooksPath"))
 	got := strings.TrimSpace(string(out))
 	switch {
 	case err != nil || got == "":
