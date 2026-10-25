@@ -278,12 +278,12 @@ type Config struct {
 	nameFrom string
 	// project is a working tree's wsl-toolkit.json whose job defaults and requires a
 	// named instance's own configuration took, and projectKeys the job defaults it
-	// wrote. projectHeld is each older jobs key it wrote, which the instance did
-	// not take. own is the instance's own, which a write stores. WSL-131.
-	project     string
-	projectKeys map[string]bool
-	projectHeld []string
-	own         *ownLayer
+	// wrote. projectLends names them for a report. own is the instance's own,
+	// which a write stores. WSL-131.
+	project      string
+	projectKeys  map[string]bool
+	projectLends []string
+	own          *ownLayer
 }
 
 // Path is the file this configuration was read from, and Source is which step
@@ -573,22 +573,10 @@ func loadConfigFile(path, from string) (Config, error) {
 	if stored.Base.Adapters != nil {
 		cfg.Base.Adapters = stored.Base.Adapters
 	}
-	if stored.Jobs.ContainerLifecycle != "" {
-		cfg.Jobs.ContainerLifecycle = stored.Jobs.ContainerLifecycle
-	}
-	if stored.Jobs.Platform != "" {
-		cfg.Jobs.Platform = stored.Jobs.Platform
-	}
-	if stored.Jobs.Workspace != "" {
-		cfg.Jobs.Workspace = stored.Jobs.Workspace
-	}
-	if stored.Jobs.Exclude != nil {
-		cfg.Jobs.Exclude = stored.Jobs.Exclude
-	}
-	cfg.Jobs.Gitignore = stored.Jobs.Gitignore
-	// The job defaults go through the copy a working tree's file lends with.
+	// Every jobs key goes through the copy a working tree's file lends with.
 	// WSL-131.
-	overlayJobDefaults(&cfg.Jobs, stored.Jobs)
+	written, _ := lentKeys(b)
+	overlayJobDefaults(&cfg.Jobs, stored.Jobs, written)
 	cfg.Images = stored.Images
 	cfg.Matrix = stored.Matrix
 	cfg.Requires = stored.Requires

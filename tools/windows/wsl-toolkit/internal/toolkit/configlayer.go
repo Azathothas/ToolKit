@@ -16,27 +16,27 @@ import (
 // file over the compiled-in defaults; a named instance's own file can then have a
 // working tree's file laid over its job defaults.
 
-// jobDefaultKeys are the jobs keys this release added: the defaults a job takes
-// where its command line names nothing. WSL-122, WSL-131.
+// jobKeys is every jobs key: the defaults a job takes where its command line
+// names nothing. A file lays each one it writes over what is beneath it, and a
+// working tree's file lends each one to a named instance. WSL-122, WSL-131.
 //
-// ⛔ ONLY THESE CROSS FROM A WORKING TREE TO A NAMED INSTANCE. The older keys,
-// container_lifecycle, platform, workspace, exclude and gitignore, were never
-// read from a working tree under a named instance with its own file. Lending
-// them would change jobs a correct call runs today, which a minor release does
-// not do. A case walks JobConfig, so a key added later is put on one side.
-var jobDefaultKeys = []string{"image", "timeout", "env", "env_file", "user", "max_bytes", "max_entries", "cache", "max_running", "max_running_wait"}
+// ⛔ EVERY KEY CROSSES, ruling 34. 7.1 lent a named instance only the keys it
+// added, and kept container_lifecycle, platform, workspace, exclude and
+// gitignore as the instance's own file said. A case walks JobConfig, so a key
+// added later must be listed here and must reach the instance.
+var jobKeys = []string{
+	"container_lifecycle", "platform", "workspace", "exclude", "gitignore",
+	"image", "timeout", "env", "env_file", "user", "max_bytes", "max_entries", "cache",
+	"max_running", "max_running_wait",
+}
 
-// heldJobKeys are the older jobs keys, which a named instance keeps as its own
-// file says, whatever a lending working tree's file writes. WSL-131.
-var heldJobKeys = []string{"container_lifecycle", "platform", "workspace", "exclude", "gitignore"}
-
-// lentKeys reads which job default keys a file writes, and whether it writes
-// requires. A file that does not parse as an object writes none.
+// lentKeys reads which jobs keys a file writes, and whether it writes requires.
+// A file that does not parse as an object writes none.
 //
 // ⚠ The decoder matches a key in any case, so the keys are compared in lower
 // case. A key written as null is one the decoder leaves alone.
 func lentKeys(b []byte) (jobs map[string]bool, requires bool) {
-	return writtenKeys(b, jobDefaultKeys)
+	return writtenKeys(b, jobKeys)
 }
 
 // writtenKeys reads which of keys a file writes under jobs, and whether it
@@ -69,58 +69,55 @@ func writtenKeys(b []byte, keys []string) (jobs map[string]bool, requires bool) 
 	return jobs, requires
 }
 
-// heldKeys is each older jobs key a file writes, as jobs.KEY in heldJobKeys'
-// order. WSL-131.
-func heldKeys(b []byte) []string {
-	written, _ := writtenKeys(b, heldJobKeys)
-	var held []string
-	for _, k := range heldJobKeys {
-		if written[k] {
-			held = append(held, "jobs."+k)
-		}
-	}
-	return held
-}
-
-// overlayJobDefaults lays a file's job defaults over what is beneath them, key by
-// key.
+// overlayJobDefaults lays the jobs keys a file writes over what is beneath them,
+// key by key. written is lentKeys' answer for that file.
+//
+// ⛔ WHAT THE FILE WRITES, NOT WHAT IS NONZERO. A project that writes gitignore
+// false, exclude [] or max_running 0 states a value, and the instance's own
+// gives way to it. A key the file leaves out keeps what is beneath. ⚠ An empty
+// string is not set, as validateJobDefaults reads it, so it keeps what is
+// beneath too.
 //
 // ⛔ ONE COPY FOR BOTH LAYERS. The file the search resolved and a working tree's
 // file lending to a named instance go through this one list, so a key one of
 // them carries cannot be dropped by the other. A case sets every field in a
 // lending file and reads it back. WSL-131.
-func overlayJobDefaults(dst *JobConfig, stored JobConfig) {
-	if stored.Image != "" {
-		dst.Image = stored.Image
+func overlayJobDefaults(dst *JobConfig, stored JobConfig, written map[string]bool) {
+	text := func(key, v string, to *string) {
+		if written[key] && v != "" {
+			*to = v
+		}
 	}
-	if stored.Timeout != "" {
-		dst.Timeout = stored.Timeout
+	text("container_lifecycle", stored.ContainerLifecycle, &dst.ContainerLifecycle)
+	text("platform", stored.Platform, &dst.Platform)
+	text("workspace", stored.Workspace, &dst.Workspace)
+	if written["exclude"] {
+		dst.Exclude = stored.Exclude
 	}
-	if stored.Env != nil {
+	if written["gitignore"] {
+		dst.Gitignore = stored.Gitignore
+	}
+	text("image", stored.Image, &dst.Image)
+	text("timeout", stored.Timeout, &dst.Timeout)
+	if written["env"] {
 		dst.Env = stored.Env
 	}
-	if stored.EnvFile != "" {
-		dst.EnvFile = stored.EnvFile
-	}
-	if stored.User != "" {
-		dst.User = stored.User
-	}
-	if stored.MaxBytes != 0 {
+	text("env_file", stored.EnvFile, &dst.EnvFile)
+	text("user", stored.User, &dst.User)
+	if written["max_bytes"] {
 		dst.MaxBytes = stored.MaxBytes
 	}
-	if stored.MaxEntries != 0 {
+	if written["max_entries"] {
 		dst.MaxEntries = stored.MaxEntries
 	}
-	if stored.Cache != nil {
+	if written["cache"] {
 		dst.Cache = stored.Cache
 	}
 	// WSL-136: the running-jobs cap is a project's to set, as the rest are.
-	if stored.MaxRunning != 0 {
+	if written["max_running"] {
 		dst.MaxRunning = stored.MaxRunning
 	}
-	if stored.MaxRunningWait != "" {
-		dst.MaxRunningWait = stored.MaxRunningWait
-	}
+	text("max_running_wait", stored.MaxRunningWait, &dst.MaxRunningWait)
 }
 
 // decodeStored reads one configuration file strictly.
@@ -229,7 +226,7 @@ type ownLayer struct {
 }
 
 // lendingProjectConfig is the working tree's wsl-toolkit.json nearest the
-// working directory where that file writes a job default or requires, and empty
+// working directory where that file writes a jobs key or requires, and empty
 // otherwise. WSL-131.
 //
 // ⛔ A FILE THAT WRITES NEITHER IS NOT READ, as before this release. A named
@@ -269,8 +266,8 @@ func lendingProjectConfig() string {
 // a project's image, timeout and environment were ignored under a named
 // instance, so every wrapper passed them on each call.
 //
-// ⛔ ITS BASE IS NOT READ, AND NEITHER ARE THE OLDER JOBS KEYS. The instance's
-// own file says what the base is, and jobDefaultKeys says why the rest stay.
+// ⛔ ITS BASE IS NOT READ. The instance's own file says what the base is. Every
+// jobs key it writes is lent, ruling 34, and jobKeys lists them.
 func (c *Config) contribute(path string) error {
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -281,11 +278,20 @@ func (c *Config) contribute(path string) error {
 		return err
 	}
 	c.own = &ownLayer{jobs: c.Jobs, requires: c.Requires}
-	overlayJobDefaults(&c.Jobs, stored.Jobs)
+	written, requires := lentKeys(b)
+	overlayJobDefaults(&c.Jobs, stored.Jobs, written)
 	c.Requires = higherFloor(c.Requires, stored.Requires)
 	c.project = path
-	c.projectKeys, _ = lentKeys(b)
-	c.projectHeld = heldKeys(b)
+	c.projectKeys = written
+	c.projectLends = nil
+	for _, k := range jobKeys {
+		if written[k] {
+			c.projectLends = append(c.projectLends, "jobs."+k)
+		}
+	}
+	if requires {
+		c.projectLends = append(c.projectLends, "requires")
+	}
 	if err := c.Validate(); err != nil {
 		return fmt.Errorf("%s, whose job defaults this instance takes: %w", path, err)
 	}
@@ -316,23 +322,9 @@ func (c Config) Portable() Config {
 // instance's configuration took, or empty. WSL-131.
 func (c Config) Project() string { return c.project }
 
-// ProjectHeld is each older jobs key the lending working tree's file writes, as
-// jobs.KEY, which this instance did not take. WSL-131.
-func (c Config) ProjectHeld() []string { return c.projectHeld }
-
-// ProjectHeldNote names the keys ProjectHeld lists, and is empty where there are
-// none.
-//
-// ⛔ A KEY THE FILE WRITES IS NEVER DROPPED UNSAID. A project that writes
-// jobs.image and jobs.exclude had its image taken and its exclude ignored, and
-// nothing said so. `config`, `run` and `matrix` print this line. WSL-131.
-func (c Config) ProjectHeldNote() string {
-	if c.project == "" || len(c.projectHeld) == 0 {
-		return ""
-	}
-	return fmt.Sprintf("⚠ %s writes %s, which a named instance does not take from a working tree. This instance keeps its own. WSL-131",
-		c.project, strings.Join(c.projectHeld, ", "))
-}
+// ProjectLends is each key Project lent this instance, as jobs.KEY in jobKeys'
+// order and then requires. `config` names them beside the file. WSL-131.
+func (c Config) ProjectLends() []string { return c.projectLends }
 
 // JobsDir is the directory a relative path in jobs.KEY resolves against: that of
 // the file that named the key. WSL-131.

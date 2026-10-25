@@ -127,6 +127,16 @@ now its host record goes too, once its answer is written.
 | --- | --- | --- |
 | an attached ephemeral job removes its host record when it ends. Its answer is kept for 10 minutes, so `wait ID` and `logs ID --follow` still answer its verdict | reads `logs ID`, `inspect ID` or `gc --job ID` for an ephemeral job long after it ended | reads the answer `run` printed, or runs the job without `--container-lifecycle ephemeral`, which keeps the record |
 
+### ⛔ What a project lending every `jobs` key breaks, and what a caller does
+
+`WSL-131`, ruling 34. Not released yet. A break by the table above, so it goes into
+`wsl-toolkit-v8.0.0`.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| under a named instance with its own file, a working tree's `wsl-toolkit.json` lends every `jobs` key it writes. An instance whose own file sets `container_lifecycle`, `platform`, `workspace`, `exclude` or `gitignore` now takes the project's value | runs a named instance from a working tree whose file writes one of those keys, and relies on the instance's own value | removes the key from the project's file, or names the file to read with `--config` |
+| `config --json` drops `project_held` and carries `project_lends`, each key the project lent. `config`, `run` and `matrix` print no ⚠ line about held keys | parses `project_held` or that line | reads `project_lends` |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

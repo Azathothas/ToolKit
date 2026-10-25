@@ -2,46 +2,145 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
-      "label": "wsl-toolkit: a lending project's older jobs keys are read",
+      "label": "wsl-toolkit: a lending project's container_lifecycle reaches the instance",
       "file": "internal/toolkit/configlayer.go",
-      "find": "\tc.projectHeld = heldKeys(b)\n",
+      "find": "\ttext(\"container_lifecycle\", stored.ContainerLifecycle, &dst.ContainerLifecycle)\n",
       "replace": "",
-      "run": "TestTheOlderKeysALendingProjectWritesAreNamed",
+      "run": "TestEachOlderKeyReachesTheInstanceFromAProject|TestEveryJobFieldAProjectWritesReachesTheInstance",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
     {
-      "label": "wsl-toolkit: only the older keys a project writes are named",
+      "label": "wsl-toolkit: a lending project's platform reaches the instance",
       "file": "internal/toolkit/configlayer.go",
-      "find": "\t\tif written[k] {\n",
-      "replace": "\t\tif written[k] || k != \"\" {\n",
-      "run": "TestTheOlderKeysALendingProjectWritesAreNamed",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a job names the keys a lending project does not give",
-      "file": "cmd_run.go",
-      "find": "\tif n := cfg.ProjectHeldNote(); n != \"\" {\n\t\tnote(n)\n\t}\n",
+      "find": "\ttext(\"platform\", stored.Platform, &dst.Platform)\n",
       "replace": "",
-      "run": "TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive",
+      "run": "TestEachOlderKeyReachesTheInstanceFromAProject|TestEveryJobFieldAProjectWritesReachesTheInstance",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
     {
-      "label": "wsl-toolkit: config names the keys a lending project does not give",
-      "file": "cmd_admin.go",
-      "find": "\tif n := cfg.ProjectHeldNote(); n != \"\" {\n\t\tfmt.Fprintf(os.Stderr, \"  %s\\n\", n)\n\t}\n",
+      "label": "wsl-toolkit: a lending project's workspace reaches the instance",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\ttext(\"workspace\", stored.Workspace, &dst.Workspace)\n",
       "replace": "",
-      "run": "TestAJobAndConfigNameTheKeysALendingProjectDoesNotGive",
+      "run": "TestEachOlderKeyReachesTheInstanceFromAProject|TestEveryJobFieldAProjectWritesReachesTheInstance",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
     {
-      "label": "wsl-toolkit: config --json lists project_held",
+      "label": "wsl-toolkit: a lending project's exclude reaches the instance",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif written[\"exclude\"] {\n\t\tdst.Exclude = stored.Exclude\n\t}\n",
+      "replace": "",
+      "run": "TestEachOlderKeyReachesTheInstanceFromAProject|TestEveryJobFieldAProjectWritesReachesTheInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a lending project's gitignore reaches the instance",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif written[\"gitignore\"] {\n\t\tdst.Gitignore = stored.Gitignore\n\t}\n",
+      "replace": "",
+      "run": "TestEachOlderKeyReachesTheInstanceFromAProject|TestEveryJobFieldAProjectWritesReachesTheInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every older jobs key is in the lent list",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\t\"container_lifecycle\", \"platform\", \"workspace\", \"exclude\", \"gitignore\",\n",
+      "replace": "\t\"container_lifecycle\", \"platform\", \"workspace\", \"exclude\",\n",
+      "run": "TestEachOlderKeyReachesTheInstanceFromAProject|TestEveryJobFieldAProjectWritesReachesTheInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an explicit gitignore false from a project is honoured",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif written[\"gitignore\"] {\n",
+      "replace": "\tif stored.Gitignore {\n",
+      "run": "TestAnExplicitZeroAProjectWritesIsHonoured|TestEachOlderKeyReachesTheInstanceFromAProject",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an explicit max_running 0 from a project is honoured",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif written[\"max_running\"] {\n",
+      "replace": "\tif stored.MaxRunning != 0 {\n",
+      "run": "TestAnExplicitZeroAProjectWritesIsHonoured",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an explicit empty exclude from a project is honoured",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif written[\"exclude\"] {\n",
+      "replace": "\tif len(stored.Exclude) > 0 {\n",
+      "run": "TestAnExplicitZeroAProjectWritesIsHonoured",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a gitignore the project does not write keeps the instance's",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif written[\"gitignore\"] {\n",
+      "replace": "\tif true {\n",
+      "run": "TestAKeyTheProjectDoesNotWriteKeepsTheInstances",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a text key the project does not write keeps the instance's",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\t\tif written[key] && v != \"\" {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestAKeyTheProjectDoesNotWriteKeepsTheInstances",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a text key written empty keeps what is beneath",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\t\tif written[key] && v != \"\" {\n",
+      "replace": "\t\tif written[key] {\n",
+      "run": "TestEveryJobFieldAProjectWritesReachesTheInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a configuration file's own jobs keys are read",
+      "file": "internal/toolkit/catalog.go",
+      "find": "\twritten, _ := lentKeys(b)\n\toverlayJobDefaults(&cfg.Jobs, stored.Jobs, written)\n",
+      "replace": "",
+      "run": "TestEveryJobFieldAProjectWritesReachesTheInstance",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: config names each key a project lends",
       "file": "cmd_admin.go",
-      "find": "\t\t\tdoc[\"project_held\"] = held\n",
-      "replace": "\t\t\t_ = held\n",
+      "find": "lends this instance %s\\n\", cfg.Project(), strings.Join(cfg.ProjectLends(), \", \"))\n",
+      "replace": "lends this instance its job defaults%s\\n\", cfg.Project(), \"\")\n",
+      "run": "TestAJobTakesTheOlderKeysALendingProjectWrites",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: config --json lists project_lends",
+      "file": "cmd_admin.go",
+      "find": "\t\t\tdoc[\"project_lends\"] = lends\n",
+      "replace": "\t\t\t_ = lends\n",
+      "run": "TestTheConfigReportNamesTheProjectAndTheFloor",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a project's floor is named among the keys it lends",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\t\tc.projectLends = append(c.projectLends, \"requires\")\n",
+      "replace": "",
       "run": "TestTheConfigReportNamesTheProjectAndTheFloor",
       "module": "tools/windows/wsl-toolkit",
       "args": []
@@ -70,15 +169,6 @@
       "find": "\tif head, _, ok := strings.Cut(id, \"-\"); ok && ValidJobID(head) {\n\t\treturn head\n\t}\n",
       "replace": "",
       "run": "TestJobIDRecovery",
-      "module": "tools/windows/wsl-toolkit",
-      "args": []
-    },
-    {
-      "label": "wsl-toolkit: a named instance keeps its older jobs keys under a working tree's file",
-      "file": "internal/toolkit/configlayer.go",
-      "find": "\toverlayJobDefaults(&c.Jobs, stored.Jobs)\n",
-      "replace": "\toverlayJobDefaults(&c.Jobs, stored.Jobs)\n\tif stored.Jobs.Exclude != nil {\n\t\tc.Jobs.Exclude = stored.Jobs.Exclude\n\t}\n",
-      "run": "TestAProjectLendsItsJobsToANamedInstance|TestEveryJobFieldAProjectWritesReachesTheInstance",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },
@@ -202,7 +292,7 @@
     {
       "label": "wsl-toolkit: every jobs key reaches a named instance from a project",
       "file": "internal/toolkit/configlayer.go",
-      "find": "\tif stored.Image != \"\" {\n\t\tdst.Image = stored.Image\n\t}\n",
+      "find": "\ttext(\"image\", stored.Image, &dst.Image)\n",
       "replace": "",
       "run": "TestEveryJobFieldAProjectWritesReachesTheInstance",
       "module": "tools/windows/wsl-toolkit",
@@ -1498,7 +1588,7 @@
     {
       "label": "wsl-toolkit: jobs.max_running survives loading",
       "file": "internal/toolkit/configlayer.go",
-      "find": "\tif stored.MaxRunning != 0 {\n\t\tdst.MaxRunning = stored.MaxRunning\n\t}\n",
+      "find": "\tif written[\"max_running\"] {\n\t\tdst.MaxRunning = stored.MaxRunning\n\t}\n",
       "replace": "",
       "run": "TestTheNewJobsKeysSurviveLoading",
       "module": "tools/windows/wsl-toolkit",
@@ -4971,9 +5061,9 @@
     },
     {
       "label": "wsl-toolkit: the loader keeps a project's jobs.exclude",
-      "file": "internal/toolkit/catalog.go",
-      "find": "\tif stored.Jobs.Exclude != nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
-      "replace": "\tif stored.Jobs.Exclude == nil {\n\t\tcfg.Jobs.Exclude = stored.Jobs.Exclude\n",
+      "file": "internal/toolkit/configlayer.go",
+      "find": "\tif written[\"exclude\"] {\n\t\tdst.Exclude = stored.Exclude\n",
+      "replace": "\tif !written[\"exclude\"] {\n\t\tdst.Exclude = stored.Exclude\n",
       "run": "TestAProjectsJobSettingsReachEveryJob",
       "module": "tools/windows/wsl-toolkit",
       "args": []
