@@ -3571,3 +3571,78 @@ repo mutate --only 'skills: '                                          8 of 8 gu
 ```
 
 4 mutation rows, 4 of 4 red, and 9 new cases.
+
+## TOOL-39. CI takes 23 minutes and a push up to 44, and a mutation row can be proved by a sibling's failure
+
+**Source** the operator, 2026-10-25: "what is so wrong that ci takes this long ... yes please fix it all", after a read-only analysis of CI's step timings
+**Category** tooling, **Priority** P1, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+CI run 40156974353 took 1,373 s, its six mutation shards 1,228 to 1,371 s each, and three shards had run out of their 30 minutes on 1,202 rows. The pre-push hook took 370, 886 and 2,651 s. Separately, the harness marked a row ok for any failing exit once a case ran, so a mutation that broke a sibling package proved a guard that never went red.
+
+## Premise
+
+Measured from GitHub's step timings. Each toolkit row recompiles a 57k-line package about twice, rows run one at a time, modulo shards repeat baselines, the gate runs its checks in sequence, and no job caches Go builds. Read: `tools/repo/internal/mutate/mutate.go:300` and `:319-320`.
+
+## Approach
+
+Per-package mutated runs with `-vet=off` and verdicts read from `go test -json`; a worker pool with isolated copies at fixed paths; cost-balanced shards that keep pattern groups whole, 12 of them; a concurrent gate; the probes job's halves at once; Go caches with `GOFLAGS=-count=1`; mutation proofs only for changed modules, with a nightly and a release full run; the `go` job without its duplicate tests; the pre-push hook in one harness process with its three jobs at once.
+
+## Consumers
+
+None outside this repository. A developer's push runs faster.
+
+## Prove
+
+```bash
+gh run view RUN --json jobs
+```
+
+A push that touches wsl-toolkit finishes CI in about 5 minutes with every row proved, and the verdicts match the old harness except named false-ok rows.
+
+---
+
+## Closing
+
+Open.
+
+
+## TOOL-40. Each mutation row's cost tracks the size of one 57k-line package and its serial tests
+
+**Source** the operator, 2026-10-25: "what is so wrong that ci takes this long ... yes please fix it all", after a read-only analysis of CI's step timings; step 8 of that plan, left for later
+**Category** tooling, **Priority** P3, **Effort** L, **Status** open
+
+---
+
+## Problem
+
+A toolkit row recompiles `internal/toolkit` whole, and its 849 tests run in one process with no `t.Parallel`, 30 of them taking a second or more. Both grow with every change.
+
+## Premise
+
+Measured in the same analysis: 85 of 128 s of the package's tests are in 30 cases; `t.Setenv` in 47 test files blocks `t.Parallel`.
+
+## Approach
+
+Split the compiled test binary across 2 to 4 processes in the `go` check; give embedded shell scripts a test-time override so their rows skip a recompile; consider splitting `internal/toolkit` along its seams. Each step proves the same verdicts before and after.
+
+## Consumers
+
+None outside this repository.
+
+## Prove
+
+```bash
+cd tools/windows/wsl-toolkit && go test ./internal/toolkit -count=1
+```
+
+The package's tests and a toolkit mutation row each take materially less time, with identical results.
+
+---
+
+## Closing
+
+Open.
