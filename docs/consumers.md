@@ -178,6 +178,22 @@ They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 | `bootstrap.sh` puts the account's prefix after the system path and rewrites the line an earlier run put first, so a name that exists in both resolves to the system path's | relies on the account's own copy of a name shadowing the system's | runs that copy by its full path |
 | `base ensure` refuses an interrupted build and names `base remove --yes`, where it removed and rebuilt it | expects ensure to recover an interrupted build alone | runs `base remove --yes`, then `base ensure` |
 
+### ⭐ What a restart of WSL changes, and what a caller reads
+
+`WSL-170`, `WSL-178` and `WSL-184`. Not released yet. No field a 7.0.2 document
+carries is removed. ⚠ Only a session the base restarted under answers another
+code. `wait` answers 1 where it waited or answered 124. `stop` exits 0 where it
+signalled another group and exited 1. Both ride in `wsl-toolkit-v8.0.0`.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a detached session the base restarted under reads as gone without an exit, after `wsl --terminate` as after a restart of WSL's VM. `wait` and `logs --follow` answer 1 at once, `inspect` prints `gone`, and `wait --json` adds `session.lost`, `restart` or `reused` | waited on such a session, which 7.0.2 did until whatever held its old supervisor id ended | reads `lost` |
+| `stop` of such a session signals nothing and exits 0. Its `--json` reads `before` `ended` and `exit` 1 | relied on that stop to end the process group its old id names, which may be another agent's | nothing: that group is not the session's |
+| every base gets `command=/usr/local/lib/wsl-toolkit/boot.sh` in `/etc/wsl.conf` at its next provisioning, which restarts it once | | nothing: provisioning always wrote that file whole |
+| `base ensure` writes `/usr/local/lib/wsl-toolkit/run-state.sh` and `/etc/tmpfiles.d/wsl-toolkit.conf`, and on a systemd base enables `wsl-toolkit-run-state.service` | expects no unit of this tool's beside its own | leaves the unit to this tool |
+| a probe that fails over another boot's record ends its problem with this tool's words naming the boot id | matches the problem's text exactly | reads the `stale-run-state` remediation |
+| `examples` and the man page add the nested engine shape | | nothing |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

@@ -323,6 +323,8 @@ func sessionLaunchScript(guestDir, dir string, timeout, grace time.Duration) []b
 	b.WriteString(sessionScopeProbe)
 	b.WriteString(`setsid /bin/sh -c '
 d=$1; to=$2; grace=$3; u=${4:-}
+` + sessionProcStart + `bootmark > "$d/boot" || rm -f "$d/boot"
+pstart "$$" > "$d/supervisor.start" || rm -f "$d/supervisor.start"
 printf "%s\n" "$$" > "$d/supervisor.pid"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$d/started"
 i=/dev/null; if [ -f "$d/stdin" ]; then i="$d/stdin"; fi
@@ -332,6 +334,7 @@ else
   setsid /bin/sh "$d/payload.sh" <"$i" >"$d/stdout" 2>"$d/stderr" &
 fi
 p=$!
+pstart "$p" > "$d/payload.start" || rm -f "$d/payload.start"
 printf "%s\n" "$p" > "$d/payload.pid"
 w=
 if [ "$to" -gt 0 ]; then
@@ -358,6 +361,63 @@ if [ -n "$u" ]; then printf 'UNIT|%s\n' "$u"; fi
 `)
 	return []byte(b.String())
 }
+
+// sessionProcStart defines pstart, which prints when a process started, in clock
+// ticks after boot: field 22 of /proc/PID/stat, counted after the name, which
+// may hold spaces. A reused process id names a process that started later.
+// WSL-184.
+//
+// It defines bootmark too, which names this start of the base: the kernel's boot
+// id, and when the distribution's own init started.
+//
+// ⛔ THE BOOT ID ALONE MISSES THE COMMON RESTART. `wsl --terminate`, and this
+// tool's own restart after provisioning, keep WSL's VM and its boot id. The
+// distribution's init starts again, and its process ids count up from the
+// bottom again, so init's start is what such a restart changes.
+//
+// ⚠ NO SINGLE QUOTE IN IT, because the supervisor's own text is one.
+const sessionProcStart = `pstart() {
+  ps_l=$(cat "/proc/$1/stat" 2>/dev/null) || return 1
+  ps_l=${ps_l##*") "}
+  set -f; set -- $ps_l; set +f
+  [ "$#" -ge 20 ] || return 1
+  printf "%s\n" "${20}"
+}
+bootmark() {
+  bm_b=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null) || return 1
+  bm_i=$(pstart 1) || return 1
+  [ -n "$bm_b" ] && [ -n "$bm_i" ] || return 1
+  printf "%s %s\n" "$bm_b" "$bm_i"
+}
+`
+
+// sessionOwnerRead is the guest half that holds a session's process ids to the
+// processes its launch recorded. sup answers whether the supervisor named in
+// supervisor.pid runs, and sets lost where it cannot be this session's: restart
+// where the base started again since the launch, reused where the id now names a
+// process that started later. WSL-184.
+//
+// ⛔ A RESTART ENDS EVERY SESSION AND KEEPS EVERY FILE. The pid files then name
+// whatever the account runs next under those ids, so `follow` waited forever on
+// an unrelated process and `stop` signalled its group. The start of the base and
+// the start of the process are what a reused id cannot carry.
+//
+// ⚠ A SESSION AN OLDER BUILD STARTED HAS NONE OF THESE FILES, and is read as
+// before.
+// ⚠ Its names carry a prefix: a shell function shares every variable with the
+// script that calls it, and the follow script's t is its tail.
+const sessionOwnerRead = sessionProcStart + `sup() {
+  lost=
+  sup_s=$(cat "$d/supervisor.pid" 2>/dev/null) || sup_s=
+  [ -n "$sup_s" ] || return 1
+  sup_b=$(cat "$d/boot" 2>/dev/null) || sup_b=
+  if [ -n "$sup_b" ] && sup_n=$(bootmark) && [ "$sup_b" != "$sup_n" ]; then lost=restart; return 1; fi
+  kill -0 "$sup_s" 2>/dev/null || return 1
+  sup_t=$(cat "$d/supervisor.start" 2>/dev/null) || sup_t=
+  if [ -n "$sup_t" ] && [ "$sup_t" != "$(pstart "$sup_s")" ]; then lost=reused; return 1; fi
+  return 0
+}
+`
 
 // sessionScopeProbe decides whether a session runs in a scope of its own: the
 // account's user manager must start a probe scope first. It sets u to the
@@ -403,6 +463,28 @@ type SessionState struct {
 	Stderr   int64  `json:"stderr_bytes"`
 	// Gone is true where the guest holds nothing for this session.
 	Gone bool `json:"gone,omitempty"`
+	// Lost says why a session with no exit is not this session any more:
+	// restart, where the base started again since its launch, or reused, where
+	// its id names a process that started later. WSL-184.
+	Lost string `json:"lost,omitempty"`
+}
+
+// The two answers SessionState.Lost carries. WSL-184.
+const (
+	SessionLostRestart = "restart"
+	SessionLostReused  = "reused"
+)
+
+// LostReason is the sentence a reader gets for a session that is gone without
+// an exit, or an empty string. WSL-184.
+func (s SessionState) LostReason() string {
+	switch s.Lost {
+	case SessionLostRestart:
+		return "the base started again after this session did, and its supervisor went without an exit"
+	case SessionLostReused:
+		return "its supervisor's process id now names another process, and the supervisor went without an exit"
+	}
+	return ""
 }
 
 // Verdict is the code a caller gets for a session, on the rules a job keeps:
@@ -423,14 +505,15 @@ func (s SessionState) Verdict() int {
 // headed by a DIR line, so one guest call answers for many sessions.
 func sessionStateScript(guestDirs ...string) []byte {
 	var b strings.Builder
+	b.WriteString(sessionOwnerRead)
 	b.WriteString(`yn() { if [ -e "$1" ]; then echo yes; else echo no; fi; }
 state() {
 d=$1
 printf 'DIR|%s\n' "$d"
 if [ ! -d "$d" ]; then echo 'GONE|yes'; return 0; fi
-s=$(cat "$d/supervisor.pid" 2>/dev/null)
-alive=no; if [ -n "$s" ] && kill -0 "$s" 2>/dev/null; then alive=yes; fi
+alive=no; if sup; then alive=yes; fi
 printf 'ALIVE|%s\n' "$alive"
+if [ -n "$lost" ] && [ ! -e "$d/exit" ]; then printf 'LOST|%s\n' "$lost"; fi
 printf 'EXIT|%s\n' "$(cat "$d/exit" 2>/dev/null)"
 printf 'TIMEDOUT|%s\n' "$(yn "$d/timedout")"
 printf 'STOPPED|%s\n' "$(yn "$d/stopped")"
@@ -522,6 +605,10 @@ func parseSessionState(out string) SessionState {
 			st.Gone = val == "yes"
 		case "ALIVE":
 			st.Alive = val == "yes"
+		case "LOST":
+			if v := strings.TrimSpace(val); v == SessionLostRestart || v == SessionLostReused {
+				st.Lost = v
+			}
 		case "EXIT":
 			if n, err := strconv.Atoi(strings.TrimSpace(val)); err == nil {
 				st.Exit = &n
@@ -566,15 +653,23 @@ func StopSession(ctx context.Context, w *Wsl, rec SessionRecord, grace time.Dura
 // ⭐ A SESSION IN A SCOPE IS SIGNALLED THROUGH THE SCOPE AS WELL, and the grace
 // runs until the scope is empty, so a child that left the group and ignores the
 // TERM still gets the KILL. WSL-126.
+//
+// ⛔ NOTHING IS SIGNALLED FOR A SESSION THE BASE OUTLIVED. A supervisor from
+// another boot, or one whose id now names a later process, makes the stop print
+// LOST and send nothing. A group whose leader started later than the payload
+// did is another process's group, and it is left alone too. WSL-184.
 func stopSessionScript(guestDir string, grace time.Duration) []byte {
 	g := int64(grace.Round(time.Second) / time.Second)
 	if g < 1 {
 		g = 1
 	}
-	return []byte("d=" + shellQuote(guestDir) + "\ng=" + strconv.FormatInt(g, 10) + "\n" + sessionUnitRead + `
+	return []byte("d=" + shellQuote(guestDir) + "\ng=" + strconv.FormatInt(g, 10) + "\n" + sessionUnitRead + sessionOwnerRead + `
 if [ -e "$d/exit" ]; then exit 0; fi
+if ! sup && [ -n "$lost" ]; then printf 'LOST|%s\n' "$lost"; exit 0; fi
 pg=$(cat "$d/payload.pid" 2>/dev/null)
 if [ -z "$pg" ]; then echo "wsl-toolkit: the session records no process group" >&2; exit 2; fi
+ps=$(cat "$d/payload.start" 2>/dev/null) || ps=
+if [ -n "$ps" ] && pn=$(pstart "$pg") && [ "$pn" != "$ps" ]; then printf 'LOST|%s\n' reused; exit 0; fi
 : > "$d/stopped"
 if [ -n "$u" ]; then systemctl --user kill --signal=TERM "$u" >/dev/null 2>&1; fi
 kill -TERM "-$pg" 2>/dev/null
@@ -689,8 +784,12 @@ func sessionStreamsScript(guestDir string, names []string, tail int) ([]byte, er
 // followSessionScript writes each stream's new bytes, once a second, until the
 // exit is recorded or the supervisor is gone. The last pass after the exit
 // reads what the payload wrote before it ended.
+//
+// ⛔ A SUPERVISOR IS GONE WHERE ITS ID NAMES ANOTHER PROCESS. `follow` across a
+// restart waited on whatever the account ran next under that id, forever.
+// WSL-184.
 func followSessionScript(guestDir string, tail int) []byte {
-	return []byte("d=" + shellQuote(guestDir) + "\nt=" + strconv.Itoa(tail) + "\n" + `
+	return []byte("d=" + shellQuote(guestDir) + "\nt=" + strconv.Itoa(tail) + "\n" + sessionOwnerRead + `
 size() { n=$(wc -c 2>/dev/null < "$1"); echo $((n + 0)); }
 start() {
   if [ "$t" -gt 0 ]; then k=$(tail -n "$t" "$1" 2>/dev/null | wc -c); echo $(($(size "$1") - k)); else echo 0; fi
@@ -703,8 +802,7 @@ while :; do
   n=$(size "$d/stderr")
   if [ "$n" -gt "$se" ]; then tail -c +$((se + 1)) "$d/stderr" | head -c $((n - se)) >&2; se=$n; fi
   if [ "$ended" = yes ]; then break; fi
-  s=$(cat "$d/supervisor.pid" 2>/dev/null)
-  if [ -z "$s" ] || ! kill -0 "$s" 2>/dev/null; then
+  if ! sup; then
     if [ ! -e "$d/exit" ]; then break; fi
   fi
   sleep 1

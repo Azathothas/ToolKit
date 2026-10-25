@@ -85,7 +85,7 @@ func (b *Base) loadArgv(ctx context.Context, user string) ([]string, error) {
 		return nil, fmt.Errorf("could not prepare %s's runtime directory (exit %d): %s", user, code, guestFailure(stderr, out))
 	}
 	run := strings.TrimSpace(firstLine(out))
-	if !strings.HasPrefix(run, "/tmp/wsl-toolkit-run-") {
+	if !strings.HasPrefix(run, guestRunRootPrefix) {
 		return nil, fmt.Errorf("the guest named %q as %s's runtime directory, which is not the engine's", run, user)
 	}
 	return []string{"/usr/bin/env", "XDG_RUNTIME_DIR=" + run, "podman", "load"}, nil

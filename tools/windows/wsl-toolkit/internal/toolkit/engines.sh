@@ -6,12 +6,13 @@
 # It runs as root, delivered on stdin. TK_USER names the account and TK_SYSTEMD
 # says whether the base is configured to run systemd. TK_ROOT_ENGINE,
 # TK_RUNTIME_DIR and TK_KVM are the configuration's opt-in settings, each true or
-# false.
+# false. TK_RUN_PREFIX names the engine's run directory, which the account's uid
+# ends, and TK_RUN_STATE_B64 is the check `run` sends for a stale one. WSL-178.
 #
 # ⭐ EVERY FILE HERE BELONGS TO ONE SETTING, and that setting turned off removes
-# it. The cgroup delegation is the one part that is not opt-in: it is what makes
-# a limit the engine accepts a limit the kernel enforces, and a base with no
-# systemd keeps what it had.
+# it. The cgroup delegation and the run state's upkeep are the parts that are not
+# opt-in: one makes a limit the engine accepts a limit the kernel enforces, and
+# the other keeps the engine able to start after a restart of WSL.
 #
 # ⛔ THE DELEGATION NEVER FAILS THE ENSURE. A base whose user manager does not
 # answer still runs containers, and `base status --probe` reports what it can
@@ -23,6 +24,8 @@ set -u
 : "${TK_ROOT_ENGINE:?TK_ROOT_ENGINE is required}"
 : "${TK_RUNTIME_DIR:?TK_RUNTIME_DIR is required}"
 : "${TK_KVM:?TK_KVM is required}"
+: "${TK_RUN_PREFIX:?TK_RUN_PREFIX is required}"
+: "${TK_RUN_STATE_B64:?TK_RUN_STATE_B64 is required}"
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'engines: %s\n' "$*" >&2; exit 3; }
@@ -137,6 +140,78 @@ else
   say "cgroup delegation: none, because this base does not run systemd"
 fi
 
+# -- the engine's run state, WSL-178 -----------------------------------------------
+# ⛔ THE RUN STATE IS PER BOOT AND IT LIVES ON THE DISK. podman keeps it under
+# $TK_RUN_PREFIX$uid, and /tmp is no tmpfs here: the default base has no /tmp
+# mount. So every restart of WSL's VM left a record naming another boot, and
+# podman refused every container until something cleared it. A job clears it
+# first, WSL-137; a login shell, a herdr pane and podman typed by hand did not.
+# So the job's own check runs at every start too, as the account, under its lock.
+# ⚠ Measured on a scratch Arch base: with systemd, tmp.mount puts a tmpfs on /tmp,
+# so the unit finds a current record there. Without systemd, /tmp is on the disk,
+# and the boot script found another boot's record and cleared it.
+#
+# ⛔ ROOT REMOVES NOTHING IN THE ACCOUNT'S DIRECTORY. The account owns that
+# directory and its name in /tmp, so a path root checked could be a symlink by
+# the time root removed it. The unit and the boot script run the check as the
+# account, which is what `run` does.
+#
+# ⛔ AND THE CLEANER LEAVES IT. Arch's tmp.conf ages /tmp at 10 days, which can
+# remove the state of a container that runs longer. The x line keeps that age
+# off it. A boot's own removal of /tmp, where a distribution's tmp.conf asks for
+# one, is not age, and it stays.
+RUN_STATE=/usr/local/lib/wsl-toolkit/run-state.sh
+RUN_UNIT=wsl-toolkit-run-state.service
+RUN_UNIT_PATH=/etc/systemd/system/$RUN_UNIT
+TMPFILES=/etc/tmpfiles.d/wsl-toolkit.conf
+mkdir -p "${RUN_STATE%/*}" || die "could not create ${RUN_STATE%/*}"
+tmp=$(mktemp "$RUN_STATE.XXXXXX") || die "no temporary file beside $RUN_STATE"
+printf '%s' "$TK_RUN_STATE_B64" | base64 -d > "$tmp" || die "could not write $RUN_STATE"
+install_file "$tmp" "$RUN_STATE" 0755 || :
+mkdir -p "${TMPFILES%/*}" || die "could not create ${TMPFILES%/*}"
+tmp=$(mktemp "$TMPFILES.XXXXXX") || die "no temporary file beside $TMPFILES"
+printf '%s\n' "# Written by wsl-toolkit: the engine's run state lives as long as its containers. WSL-178." \
+  "x $TK_RUN_PREFIX*" > "$tmp"
+install_file "$tmp" "$TMPFILES" 0644 || :
+if [ "$systemd_up" = true ]; then
+  tmp=$(mktemp "$RUN_UNIT_PATH.XXXXXX") || die "no temporary file for $RUN_UNIT"
+  cat > "$tmp" <<UNIT_FILE
+[Unit]
+Description=wsl-toolkit: clear the engine run state a restart of WSL left naming another boot
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=$TK_USER
+TimeoutStartSec=5min
+ExecStart=-/bin/sh $RUN_STATE
+
+[Install]
+WantedBy=multi-user.target
+UNIT_FILE
+  if install_file "$tmp" "$RUN_UNIT_PATH" 0644; then
+    systemctl daemon-reload >/dev/null 2>&1 || say "⚠ systemctl daemon-reload failed, so $RUN_UNIT waits for the next start"
+  fi
+  if systemctl enable "$RUN_UNIT" >/dev/null 2>&1; then
+    say "run state: $RUN_UNIT clears another boot's record at every start, and $TMPFILES keeps the cleaner off it"
+  else
+    say "⚠ run state: systemctl could not enable $RUN_UNIT, so only a job clears another boot's record"
+  fi
+else
+  if [ -f "$RUN_UNIT_PATH" ]; then
+    systemctl disable "$RUN_UNIT" >/dev/null 2>&1 || :
+    rm -f "$RUN_UNIT_PATH"
+  fi
+  # ⚠ WITHOUT systemd THE BOOT SCRIPT RUNS IT, and only provisioning writes the
+  # line in wsl.conf that names that script, so a base an earlier release built
+  # says which it has.
+  if grep -q '^command=/usr/local/lib/wsl-toolkit/boot.sh$' /etc/wsl.conf 2>/dev/null; then
+    say "run state: the boot script clears another boot's record at every start"
+  else
+    say "⚠ run state: /etc/wsl.conf names no boot script, so only a job clears another boot's record until base recreate writes one"
+  fi
+fi
+
 # -- root's engine, WSL-130 ------------------------------------------------------
 # ⛔ ROOT'S PODMAN WANTS THE SYSTEMD CGROUP MANAGER BY DEFAULT, AND THAT NEEDS A
 # SYSTEM BUS. A base with systemd and no bus fails root's every run with `crun:
@@ -180,7 +255,7 @@ if [ "$TK_RUNTIME_DIR" = true ]; then
 # Written by wsl-toolkit: the account's engine keeps its run state here, so its
 # login shells name the same directory its jobs do. WSL-130.
 if [ "\$(id -u 2>/dev/null)" = "$uid" ]; then
-  _wtk_run=/tmp/wsl-toolkit-run-$uid
+  _wtk_run=$TK_RUN_PREFIX$uid
   (umask 077; mkdir "\$_wtk_run") 2>/dev/null || :
   if [ -d "\$_wtk_run" ] && [ ! -L "\$_wtk_run" ] && [ "\$(stat -c %u "\$_wtk_run" 2>/dev/null)" = "$uid" ]; then
     chmod 700 "\$_wtk_run" 2>/dev/null || :
@@ -190,7 +265,7 @@ if [ "\$(id -u 2>/dev/null)" = "$uid" ]; then
 fi
 PROFILE_FILE
   install_file "$tmp" "$PROFILE" 0644 || :
-  say "runtime directory: /tmp/wsl-toolkit-run-$uid in $TK_USER's login shells"
+  say "runtime directory: $TK_RUN_PREFIX$uid in $TK_USER's login shells"
 else
   rm -f "$PROFILE"
 fi

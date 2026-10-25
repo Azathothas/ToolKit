@@ -2,6 +2,267 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a session's state holds its supervisor to the boot its launch recorded",
+      "file": "internal/toolkit/session.go",
+      "find": "then lost=restart; return 1; fi",
+      "replace": "then :; fi",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's state holds its supervisor to the start its launch recorded",
+      "file": "internal/toolkit/session.go",
+      "find": "then lost=reused; return 1; fi",
+      "replace": "then :; fi",
+      "run": "TestASessionIdThatNamesAnotherProcessIsNotItsOwn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's state reads its supervisor through its recorded identity",
+      "file": "internal/toolkit/session.go",
+      "find": "alive=no; if sup; then alive=yes; fi",
+      "replace": "alive=no; if kill -0 \"$(cat \"$d/supervisor.pid\" 2>/dev/null)\" 2>/dev/null; then alive=yes; fi",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled|TestASessionIdThatNamesAnotherProcessIsNotItsOwn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop of a session the base outlived signals nothing",
+      "file": "internal/toolkit/session.go",
+      "find": "if ! sup && [ -n \"$lost\" ]; then printf 'LOST|%s\\n' \"$lost\"; exit 0; fi\n",
+      "replace": "",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop leaves a group whose leader started after the payload",
+      "file": "internal/toolkit/session.go",
+      "find": "if [ -n \"$ps\" ] && pn=$(pstart \"$pg\") && [ \"$pn\" != \"$ps\" ]; then printf 'LOST|%s\\n' reused; exit 0; fi\n",
+      "replace": "",
+      "run": "TestASessionIdThatNamesAnotherProcessIsNotItsOwn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a follow ends where the supervisor's id is not its own",
+      "file": "internal/toolkit/session.go",
+      "find": "  if ! sup; then\n    if [ ! -e \"$d/exit\" ]; then break; fi\n  fi\n",
+      "replace": "  s=$(cat \"$d/supervisor.pid\" 2>/dev/null)\n  if [ -z \"$s\" ] || ! kill -0 \"$s\" 2>/dev/null; then\n    if [ ! -e \"$d/exit\" ]; then break; fi\n  fi\n",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled|TestASessionIdThatNamesAnotherProcessIsNotItsOwn",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's launch records its boot",
+      "file": "internal/toolkit/session.go",
+      "find": "bootmark > \"$d/boot\" || rm -f \"$d/boot\"\n",
+      "replace": "",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's start of the base carries init's start, which a restart of the distribution alone changes",
+      "file": "internal/toolkit/session.go",
+      "find": "  printf \"%s %s\\n\" \"$bm_b\" \"$bm_i\"\n",
+      "replace": "  printf \"%s\\n\" \"$bm_b\"\n",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's launch records when its supervisor started",
+      "file": "internal/toolkit/session.go",
+      "find": "pstart \"$$\" > \"$d/supervisor.start\" || rm -f \"$d/supervisor.start\"\n",
+      "replace": "",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's launch records when its payload started",
+      "file": "internal/toolkit/session.go",
+      "find": "pstart \"$p\" > \"$d/payload.start\" || rm -f \"$d/payload.start\"\n",
+      "replace": "",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a process's start is field 22 of its stat",
+      "file": "internal/toolkit/session.go",
+      "find": "printf \"%s\\n\" \"${20}\"",
+      "replace": "printf \"%s\\n\" \"${19}\"",
+      "run": "TestASessionFromAnotherBootIsGoneAndNotSignalled",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session's LOST line is read",
+      "file": "internal/toolkit/session.go",
+      "find": "\t\tcase \"LOST\":\n\t\t\tif v := strings.TrimSpace(val); v == SessionLostRestart || v == SessionLostReused {\n\t\t\t\tst.Lost = v\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestALostSessionIsReadAsGoneWithoutAnExit",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wait and stop say a session the base outlived as that",
+      "file": "cmd_jobs.go",
+      "find": "\tif why := st.LostReason(); why != \"\" {\n\t\treturn why\n\t}\n\treturn otherwise\n",
+      "replace": "\treturn otherwise\n",
+      "run": "TestASessionTheBaseOutlivedIsSaidAsThat",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: inspect says a session the base outlived is gone",
+      "file": "cmd_inspect.go",
+      "find": "\tcase st.LostReason() != \"\":\n",
+      "replace": "\tcase false:\n",
+      "run": "TestASessionTheBaseOutlivedIsSaidAsThat",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh installs the job's own run-state check",
+      "file": "internal/toolkit/engines.sh",
+      "find": "printf '%s' \"$TK_RUN_STATE_B64\" | base64 -d > \"$tmp\" || die \"could not write $RUN_STATE\"",
+      "replace": ": > \"$tmp\" || die \"could not write $RUN_STATE\"",
+      "run": "TestEnginesShKeepsTheRunStatePerBootInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh keeps the cleaner's age off the run directory",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  \"x $TK_RUN_PREFIX*\" > \"$tmp\"",
+      "replace": "  \"# x $TK_RUN_PREFIX*\" > \"$tmp\"",
+      "run": "TestEnginesShKeepsTheRunStatePerBootInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the run-state unit runs as the account",
+      "file": "internal/toolkit/engines.sh",
+      "find": "User=$TK_USER\nTimeoutStartSec=5min",
+      "replace": "TimeoutStartSec=5min",
+      "run": "TestEnginesShKeepsTheRunStatePerBootInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the run-state unit is enabled",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  if systemctl enable \"$RUN_UNIT\" >/dev/null 2>&1; then",
+      "replace": "  if true; then",
+      "run": "TestEnginesShKeepsTheRunStatePerBootInARealShell",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engines step is handed the job's own run-state check",
+      "file": "internal/toolkit/engines.go",
+      "find": "base64.StdEncoding.EncodeToString(staleRunStatePayload())",
+      "replace": "base64.StdEncoding.EncodeToString(staleScript)",
+      "run": "TestTheStartOfABootRunsTheJobsOwnCheck",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the engines step is handed the one run directory",
+      "file": "internal/toolkit/engines.go",
+      "find": "\"TK_RUN_PREFIX\":    guestRunRootPrefix,",
+      "replace": "\"TK_RUN_PREFIX\":    \"/tmp/wsl-toolkit-run2-\",",
+      "run": "TestTheRunRootIsNamedOnce",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the login profile takes the run directory it is handed",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  _wtk_run=$TK_RUN_PREFIX$uid",
+      "replace": "  _wtk_run=/tmp/wsl-toolkit-run-$uid",
+      "run": "TestTheRunRootIsNamedOnce",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the jobs' prologue names the run directory from the constant",
+      "file": "internal/toolkit/base.go",
+      "find": "_tk_run=` + guestRunRootPrefix + `$_tk_uid",
+      "replace": "_tk_run=/tmp/wsl-toolkit-run2-$_tk_uid",
+      "run": "TestTheRunRootIsNamedOnce",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the boot script checks the run state as the account",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    runuser -u \"$account\" -- /bin/sh \"$rs\" </dev/null || printf 'run state check exited %s\\n' \"$?\"",
+      "replace": "    /bin/sh \"$rs\" </dev/null || printf 'run state check exited %s\\n' \"$?\"",
+      "run": "TestTheBootScriptChecksTheRunStateAsTheAccount",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the boot script uses su where there is no runuser",
+      "file": "internal/toolkit/provision.sh",
+      "find": "    su -s /bin/sh -c \"/bin/sh $rs\" \"$account\" </dev/null || printf 'run state check exited %s\\n' \"$?\"",
+      "replace": "    printf 'run state not checked\\n'",
+      "run": "TestTheBootScriptChecksTheRunStateAsTheAccount",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the boot script closes the shared tmpfs only where it is off",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  if [ \"$seal\" = off ]; then",
+      "replace": "  if true; then",
+      "run": "TestTheBootScriptChecksTheRunStateAsTheAccount",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every base gets the boot script",
+      "file": "internal/toolkit/provision.sh",
+      "find": "BOOT_LINE=\"command=$BOOT_SCRIPT\"",
+      "replace": "BOOT_LINE=''",
+      "run": "TestEveryBaseGetsTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the verifier reads the run state's boot beside this one",
+      "file": "internal/toolkit/verify.sh",
+      "find": "    run_state=stale\n",
+      "replace": "    :\n",
+      "run": "TestTheVerifierReadsTheRunStatesBootBesideThisOne",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a probe over another boot's record is classified from the verifier's row",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif hasLine(stdout, \"run-state stale\") {",
+      "replace": "\tif false {",
+      "run": "TestAProbeFailureOverAnotherBootsRecordIsStaleWhateverPodmanSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: examples carry the nested engine shape measured on a scratch base",
+      "file": "cmd_actionable.go",
+      "find": "--user podman --device /dev/fuse -c 'podman run --rm docker.io/library/alpine echo nested'",
+      "replace": "--device /dev/fuse --cap-add SYS_ADMIN -c 'podman run --rm docker.io/library/alpine echo nested'",
+      "run": "TestTheNestedEngineExampleIsTheMeasuredShape",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a project's jobs.cpus reaches the instance",
       "file": "internal/toolkit/configlayer.go",
       "find": "\tif written[\"cpus\"] {\n\t\tdst.CPUs = stored.CPUs\n\t}\n",

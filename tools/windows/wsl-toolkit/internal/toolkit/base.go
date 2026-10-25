@@ -2063,8 +2063,21 @@ func verifyError(user string, code int, stdout, stderr string) error {
 	// stdout before `podman run`, so a last line across both streams named a row
 	// and lost the `boot ID` words staleRunStateRemediation reads. WSL-152.
 	detail := guestReason(stderr, stdout)
-	return fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, detail)
+	err := fmt.Errorf("a container did not run as %s (exit %d): %s", user, code, detail)
+	// ⭐ THE ENGINE'S RECORD, NOT ITS WORDS. verify.sh read the alive record beside
+	// this boot before the run, and a failure over another boot's record says so
+	// in this tool's words, which staleRunStateRemediation and `ready` read. A
+	// podman that words its refusal another way is still classified. WSL-178.
+	if hasLine(stdout, "run-state stale") {
+		return fmt.Errorf("%w; %s", err, staleRunStateWords)
+	}
+	return err
 }
+
+// staleRunStateWords is what a probe failure says where verify.sh read the
+// engine's record naming another boot. ⚠ It carries the two words
+// staleRunStateRemediation matches. WSL-178.
+const staleRunStateWords = "the engine's alive record names a boot id other than this boot's"
 
 // guestReason is the line worth reporting out of a guest command that writes
 // its report on stdout and its failure on stderr.
@@ -2196,6 +2209,21 @@ func (b *Base) captureAs(ctx context.Context, user string, script []byte, env ma
 	return out.String(), errBuf.String(), code, err
 }
 
+// guestRunRootPrefix names the directory the account's engine keeps its run
+// state in, and the account's uid ends it.
+//
+// ⛔ ONE PATH, NAMED ONCE. It was typed in the jobs' prologue, in `distro run
+// --user-env`'s, in the login profile and in `base image load`'s check. A copy
+// that moved alone would split the engine's state in two, which podman refuses
+// as `database configuration mismatch`. engines.sh is handed it as
+// TK_RUN_PREFIX. WSL-178.
+//
+// ⚠ IT STAYS ON /tmp, WHICH IS ON THE DISK HERE, AND THAT IS A CHOICE. podman's
+// database records the path, so moving it to a tmpfs refuses every base an
+// earlier release built. The state is made per boot instead: engines.sh clears
+// another boot's record at every start, and keeps the cleaner off it. WSL-178.
+const guestRunRootPrefix = "/tmp/wsl-toolkit-run-"
+
 // guestRuntimePrologue gives the account the runtime directory rootless podman
 // needs, which neither WSL nor runuser sets.
 //
@@ -2204,7 +2232,7 @@ func (b *Base) captureAs(ctx context.Context, user string, script []byte, env ma
 // where the account and the paths are known.
 func guestRuntimePrologue() []byte {
 	return []byte(`_tk_uid=$(id -u)
-_tk_run=/tmp/wsl-toolkit-run-$_tk_uid
+_tk_run=` + guestRunRootPrefix + `$_tk_uid
 (umask 077; mkdir "$_tk_run") 2>/dev/null || :
 if [ -L "$_tk_run" ] || [ ! -d "$_tk_run" ]; then
     echo "wsl-toolkit: $_tk_run is not a private directory" >&2; exit 2

@@ -5,6 +5,7 @@ package toolkit
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"net"
 	"os"
@@ -86,7 +87,7 @@ func newEnginesHost(t *testing.T) *enginesHost {
 	if runtime.GOOS == "windows" {
 		t.Skip("engines.sh is POSIX shell, and this host has none to run it in")
 	}
-	for _, tool := range []string{"sh", "sha256sum", "mktemp", "getent"} {
+	for _, tool := range []string{"sh", "sha256sum", "mktemp", "getent", "base64"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip("no " + tool + " on this host")
 		}
@@ -159,6 +160,7 @@ func (h *enginesHost) script() string {
 		{"/var/lib/systemd/linger", d + "/linger"},
 		{"/sys/fs/cgroup", d + "/sys"},
 		{"/tmp/wsl-toolkit-run-", d + "/tmp/wsl-toolkit-run-"},
+		{"/usr/local/lib/", d + "/usr/local/lib/"},
 		{"/etc/", d + "/etc/"},
 		{"/run/", d + "/run/"},
 	} {
@@ -182,7 +184,9 @@ func (h *enginesHost) run(rootEngine, runtimeDir, kvm bool) (string, time.Durati
 	cmd.Env = append(os.Environ(),
 		"PATH="+h.path("bin")+":"+os.Getenv("PATH"), "FAKE_LOG="+h.log,
 		"TK_USER="+h.user, "TK_SYSTEMD=true",
-		"TK_ROOT_ENGINE="+b(rootEngine), "TK_RUNTIME_DIR="+b(runtimeDir), "TK_KVM="+b(kvm))
+		"TK_ROOT_ENGINE="+b(rootEngine), "TK_RUNTIME_DIR="+b(runtimeDir), "TK_KVM="+b(kvm),
+		"TK_RUN_PREFIX="+filepath.ToSlash(h.dir)+"/tmp/wsl-toolkit-run-",
+		"TK_RUN_STATE_B64="+base64.StdEncoding.EncodeToString(staleRunStatePayload()))
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	start := time.Now()
