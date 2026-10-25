@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 252  open 26  blocked 5  done 221
+total 252  open 25  blocked 5  done 222
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
-| P1 | 5 | 0 | 91 | 96 |
+| P1 | 4 | 0 | 92 | 96 |
 | P2 | 15 | 2 | 100 | 117 |
 | P3 | 6 | 3 | 22 | 31 |
-| **all** | **26** | **5** | **221** | **252** |
+| **all** | **25** | **5** | **222** | **252** |
 
 ---
 
@@ -93,7 +93,7 @@ total 252  open 26  blocked 5  done 221
 | TOOL-36 | P3 | S | done | A changelog stamp later than the clock passes the gate | [`tooling.md`](tooling.md) |
 | TOOL-37 | P3 | S | done | A nightly whose upload fails loses the whole prerelease | [`tooling.md`](tooling.md) |
 | TOOL-38 | P3 | M | done | The skills check never matches a text-tool call by its full path, and checks no `wsl-toolkit` flag | [`tooling.md`](tooling.md) |
-| TOOL-39 | P1 | L | open | CI takes 23 minutes and a push up to 44, and a mutation row can be proved by a sibling's failure | [`tooling.md`](tooling.md) |
+| TOOL-39 | P1 | L | done | CI takes 23 minutes and a push up to 44, and a mutation row can be proved by a sibling's failure | [`tooling.md`](tooling.md) |
 | TOOL-40 | P3 | L | open | Each mutation row's cost tracks the size of one 57k-line package and its serial tests | [`tooling.md`](tooling.md) |
 | WSL-01 | P0 | S | done | `New -Command` must propagate the inner exit code | [`wsl-ephemeral.md`](wsl-ephemeral.md) |
 | WSL-02 | P1 | M | done | Carry the image's OCI configuration into the distro | [`wsl-ephemeral.md`](wsl-ephemeral.md) |

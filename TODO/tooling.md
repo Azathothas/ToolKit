@@ -3575,7 +3575,7 @@ repo mutate --only 'skills: '                                          8 of 8 gu
 ## TOOL-39. CI takes 23 minutes and a push up to 44, and a mutation row can be proved by a sibling's failure
 
 **Source** the operator, 2026-10-25: "what is so wrong that ci takes this long ... yes please fix it all", after a read-only analysis of CI's step timings
-**Category** tooling, **Priority** P1, **Effort** L, **Status** open
+**Category** tooling, **Priority** P1, **Effort** L, **Status** done
 
 ---
 
@@ -3607,7 +3607,16 @@ A push that touches wsl-toolkit finishes CI in about 5 minutes with every row pr
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, on `main` at `a0ec0f6`.** The four `perf/*` branches merged as `ba099fb`, `ef86cbd`, `f6d75f5` and `aecf7eb`, and two fixes followed.
+
+- **Harness.** Each row is judged from `go test -json`, and a row is ok only when a named case fails. A sibling's failure proves nothing now. On a 188-row Linux sample, the old and new harness gave the same verdict and case count on every row.
+- **CI.** Run 40242199502 proved every `wsl-toolkit` row in 465 s, against 1,373 s in run 40156974353. Its 12 shards took 241 to 421 s, against 1,228 to 1,371 s for six. The probes job took 371 s against 572 s, and the Windows job 206 s against 291 s.
+- **Kept proofs.** Run 40238416575 changed `tools/check` alone and finished in 335 s. Its shards took 32 to 69 s.
+- **Pre-push.** The push of the four merges proved 173 rows, ShellCheck and the go job in 408 s, against 370 to 2,651 s before. Two later pushes took 246 and 227 s.
+
+⚠ **The Prove's "about 5 minutes" is not met.** A `wsl-toolkit` push takes about 8 minutes, and its slowest shard sets that floor. `TOOL-40` holds the cost of each row that remains.
+
+⚠ **The probes job's halves now run at once, and that exposed two racing cases.** Two runs of `go test` shared the fake scope's mark, so one run's deadline killed the other's child. A detached client's case waited a fixed 300 ms, which a loaded host outran. `a0ec0f6` fixes both, each reproduced first. `8848d92` makes a `--json` check print its findings on stderr, so a disagreement names its case.
 
 
 ## TOOL-40. Each mutation row's cost tracks the size of one 57k-line package and its serial tests
@@ -3623,7 +3632,7 @@ A toolkit row recompiles `internal/toolkit` whole, and its 849 tests run in one 
 
 ## Premise
 
-Measured in the same analysis: 85 of 128 s of the package's tests are in 30 cases; `t.Setenv` in 47 test files blocks `t.Parallel`.
+Measured in the same analysis: 85 of 128 s of the package's tests are in 30 cases; `t.Setenv` in 47 test files blocks `t.Parallel`. After `TOOL-39`, CI run 40242199502's 12 shards took 241 to 421 s, and the slowest set the run's 465 s.
 
 ## Approach
 

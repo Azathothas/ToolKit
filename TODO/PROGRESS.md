@@ -13,7 +13,7 @@ standing rules and the rulings in force, and history is in git, the entries and
 session started 2026-10-21T08:31:38Z, resumed 2026-10-24T01:18:23Z: critical fixes first, as the operator asked, then the rest of ruling 31
 baseline        9784821, gate 24 of 24, 139,905 tracked lines, 600 mutation rows
 head            this commit: wsl-toolkit 7.0.2 published from a031bcf, installed and driven
-entries         total 252  open 26  blocked 5  done 221
+entries         total 252  open 25  blocked 5  done 222
 this session    ruling 31
 ```
 
@@ -26,8 +26,9 @@ Measured on this host unless a row says read.
 | the gate | 24 checks; 131 to 245 s a run | `tools/check/main.go`; the last three runs |
 | `check-go.ps1` | 72 to 75 s | the last two runs |
 | CI's Linux jobs in containers | Go 68 to 82 s, ShellCheck 0.9.0 over 52 scripts 30 to 43 s | the last two runs |
-| mutation rows | 600 at `9784821` | `tools/repo/mutations.json` |
-| CI | 11 runs, 3 of them required; 3 guard shards of 1,202 rows all ran out at 30 min, so the job is cut into 6 | `gh run view` on `9784821` and `d81910f` |
+| mutation rows | 1,458 at `a0ec0f6` | `tools/repo/mutations.json` |
+| CI | 8 jobs, 3 of them required; a `wsl-toolkit` push 465 s with 12 shards of 241 to 421 s; a `tools/check` push 335 s | `gh run view` on `a0ec0f6` and `8848d92` |
+| the pre-push proof | 173 rows, ShellCheck and the go job in 408 s; a push with no new row 227 s | the last three pushes |
 | the acceptance suite | 102 cases quick, 109 full; 399 s with the installed 7.0.0 | `acceptance.ps1`; the last run |
 | the last release | `wsl-toolkit-v7.0.2`, 22 assets, 7 release jobs green | `gh release view`, `gh run view` |
 | this host | Windows 11 Pro 26300, PowerShell 7.6.7, WSL 3.0.3.0, git 2.55.0, Go 1.27.0 | the doctor |
