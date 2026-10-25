@@ -65,6 +65,10 @@ Two shapes to test for specifically:
   window stays green when the unguarded write runs late. A case that failed and
   then passed unmutated is a flake, and its red proves nothing. ⭐ See a failing
   verdict twice, and refuse a group whose baseline flaked.
+- ⚠ **What one run left for the next.** Deleting a cleanup guard leaves a file
+  behind, and the next row the harness runs meets it. That row's verdict then
+  depends on which row ran first. ⭐ Empty every directory a case writes in
+  before each run, and put a reused copy of the source back as it was staged.
 - ⭐ **A row that comes back THEATRE may be telling you the CODE is redundant**,
   not that the case is weak: the guard cannot matter, because something earlier
   already decides the answer. Delete the redundancy rather than strengthening the

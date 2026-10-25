@@ -2,6 +2,87 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "mutate: a test process's leftovers beside its source are put back",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\twk.settle(dir, keep)\n",
+      "replace": "",
+      "run": "TestAFileOneRowLeavesBesideItsSourceDoesNotReachTheNext",
+      "args": []
+    },
+    {
+      "label": "mutate: a staged copy records what it held when it was made",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\twk.staged[dest] = &staging{module: module, src: src, stamps: stamps}\n",
+      "replace": "\t_ = stamps\n",
+      "run": "TestAFileOneRowLeavesBesideItsSourceDoesNotReachTheNext",
+      "args": []
+    },
+    {
+      "label": "mutate: a mutated run names the row's file as its own",
+      "module": "tools/repo",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tr, err := wk.goTest(dest, m.File, args...)\n",
+      "replace": "\tr, err := wk.goTest(dest, \"\", args...)\n",
+      "run": "TestAFileOneRowLeavesBesideItsSourceDoesNotReachTheNext",
+      "args": []
+    },
+    {
+      "label": "mutate: a path the staged copy did not hold is removed",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\tif err := os.RemoveAll(p); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestAStagedCopyIsPutBackAsItWasStaged",
+      "args": []
+    },
+    {
+      "label": "mutate: a staged file a test process changed is copied back from the tree",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tmoved = append(moved, rel)\n\t\treturn copyBack(from, p)\n",
+      "replace": "\t\tmoved = append(moved, rel)\n\t\treturn nil\n",
+      "run": "TestAStagedCopyIsPutBackAsItWasStaged",
+      "args": []
+    },
+    {
+      "label": "mutate: a staged path a test process removed is made again",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tif seen[rel] || rel == keep {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestAStagedCopyIsPutBackAsItWasStaged",
+      "args": []
+    },
+    {
+      "label": "mutate: a file rewritten with its own bytes is not named as put back",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\tif same {\n",
+      "replace": "\t\t\tif same && false {\n",
+      "run": "TestAStagedCopyIsPutBackAsItWasStaged",
+      "args": []
+    },
+    {
+      "label": "mutate: the row's own mutated file is left alone between its runs",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tcase rel == keep:\n",
+      "replace": "\t\tcase rel == keep+\"/\":\n",
+      "run": "TestAStagedCopyIsPutBackAsItWasStaged",
+      "args": []
+    },
+    {
+      "label": "mutate: a staged copy that will not go back is dropped",
+      "module": "tools/repo",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\twk.drop(s.module)\n",
+      "replace": "",
+      "run": "TestACopyThatWillNotGoBackIsStagedAgain",
+      "args": []
+    },
+    {
       "label": "mutate: a goroutine header with the runtime's gp= and m= is still read",
       "module": "tools/repo",
       "file": "internal/mutate/gotest.go",

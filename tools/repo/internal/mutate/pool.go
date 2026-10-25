@@ -16,9 +16,14 @@
 // file one row's mutated run left behind reached whichever group the worker
 // took next. Which group that was depended on finishing times, so one table
 // gave different verdicts at different --jobs. Deleting a cleanup guard leaves
-// exactly such a file. ⚠ The staged copy is the exception, because the build
-// cache needs its path. Only the mutated file is put back there, so a case
-// writes its files under the temporary directory and never beside its source.
+// exactly such a file.
+//
+// ⛔ THE STAGED COPY IS KEPT, BECAUSE THE BUILD CACHE NEEDS ITS PATH, AND SO IT
+// IS PUT BACK INSTEAD. A case runs with its package directory as its working
+// directory, and a mutated one can write there. Such a file reached every row
+// the worker ran in that module afterwards. So after every test process, a
+// path the copy did not hold is removed. A file that changed or went is copied
+// again from the tree. The row's own mutated file is left alone.
 //
 // ⭐ THE COPY SITS AT A FIXED PATH, w<k> under repo-mutate in the temporary
 // directory. Go's build cache keys a compile on the package's directory, so a
@@ -35,6 +40,7 @@
 package mutate
 
 import (
+	"bytes"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -43,6 +49,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -235,16 +242,35 @@ type worker struct {
 	goEnv  map[string]string
 	env    []string
 	dirs   map[string]string
+	// staged is what each copy held when it was made, by its directory.
+	staged map[string]*staging
 	// gen numbers the state directory. It moves on only when the last one
 	// could not be emptied.
 	gen int
-	// id and p are where the worker says what it is running.
-	id int
-	p  *printer
+	// id and p are where the worker says what it is running, and what is the
+	// run itself, for a note.
+	id   int
+	p    *printer
+	what string
+}
+
+// staging is what one staged copy held when it was made.
+type staging struct {
+	module string
+	// src is the module in the tree, where a path is copied back from.
+	src    string
+	stamps map[string]stamp
+}
+
+// stamp is one path of a staged copy as it was made.
+type stamp struct {
+	dir  bool
+	size int64
+	mod  time.Time
 }
 
 func newWorker(root string, s *slot, goEnv map[string]string) (*worker, error) {
-	wk := &worker{root: root, slot: s, parent: os.Environ(), goEnv: goEnv, dirs: map[string]string{}}
+	wk := &worker{root: root, slot: s, parent: os.Environ(), goEnv: goEnv, dirs: map[string]string{}, staged: map[string]*staging{}}
 	if err := wk.fresh(); err != nil {
 		return nil, err
 	}
@@ -278,6 +304,7 @@ func (wk *worker) fresh() error {
 
 // doing tells the printer what the worker runs now.
 func (wk *worker) doing(what string) {
+	wk.what = what
 	if wk.p != nil {
 		wk.p.start(wk.id, what)
 	}
@@ -292,11 +319,18 @@ func (wk *worker) dir(module string) (string, error) {
 	if err := os.RemoveAll(dest); err != nil {
 		return "", err
 	}
-	if err := copyTree(filepath.Join(wk.root, filepath.FromSlash(module)), dest); err != nil {
+	src := filepath.Join(wk.root, filepath.FromSlash(module))
+	if err := copyTree(src, dest); err != nil {
+		_ = os.RemoveAll(dest)
+		return "", err
+	}
+	stamps, err := stampTree(dest)
+	if err != nil {
 		_ = os.RemoveAll(dest)
 		return "", err
 	}
 	wk.dirs[module] = dest
+	wk.staged[dest] = &staging{module: module, src: src, stamps: stamps}
 	return dest, nil
 }
 
@@ -306,11 +340,13 @@ func (wk *worker) drop(module string) {
 	if d, ok := wk.dirs[module]; ok {
 		_ = os.RemoveAll(d)
 		delete(wk.dirs, module)
+		delete(wk.staged, d)
 	}
 }
 
 // goTest runs `go test` in dir with the worker's environment, emptied first.
-func (wk *worker) goTest(dir string, args ...string) (testRun, error) {
+// keep is the file the row changed on purpose, as the row names it, or empty.
+func (wk *worker) goTest(dir, keep string, args ...string) (testRun, error) {
 	if err := wk.fresh(); err != nil {
 		return testRun{text: err.Error()}, err
 	}
@@ -320,7 +356,155 @@ func (wk *worker) goTest(dir string, args ...string) (testRun, error) {
 	var stdout, stderr strings.Builder
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
+	wk.settle(dir, keep)
 	return readTestRun(stdout.String(), stderr.String()), err
+}
+
+// settle puts the copy at dir back the way it was staged, after a test process
+// ran in it.
+//
+// ⚠ A COPY THAT WILL NOT GO BACK IS DROPPED, and the next run stages a fresh
+// one. Both are said, because a row whose run wrote beside its source is worth
+// a look.
+func (wk *worker) settle(dir, keep string) {
+	s := wk.staged[dir]
+	if s == nil {
+		return
+	}
+	moved, err := putBack(dir, s, path.Clean(filepath.ToSlash(keep)))
+	if err != nil {
+		wk.drop(s.module)
+		wk.p.note(fmt.Sprintf("  restaged: the copy of %s could not be put back after %s, so the next run stages a fresh one: %v\n", s.module, wk.what, err))
+		return
+	}
+	if len(moved) > 0 {
+		wk.p.note(fmt.Sprintf("  put back: %s, which %s left changed beside the source of %s\n", strings.Join(moved, ", "), wk.what, s.module))
+	}
+}
+
+// stampTree records every directory and regular file under root, by its slash
+// path under root.
+func stampTree(root string) (map[string]stamp, error) {
+	stamps := map[string]stamp{}
+	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil || rel == "." {
+			return err
+		}
+		switch {
+		case info.IsDir():
+			stamps[filepath.ToSlash(rel)] = stamp{dir: true}
+		case info.Mode().IsRegular():
+			stamps[filepath.ToSlash(rel)] = stamp{size: info.Size(), mod: info.ModTime()}
+		}
+		return nil
+	})
+	return stamps, err
+}
+
+// putBack returns a staged copy to the way it was made and names, sorted, each
+// path it had to change. keep is the row's own mutated file, which one restores.
+//
+// ⚠ SIZE AND TIME ARE THE QUICK TEST. A compile sits between staging and any
+// write a case makes, and that is far longer than a filesystem's clock tick.
+// A file whose time moved is compared with the tree before it is called
+// changed. The restore of a mutated file writes the same bytes back, and that
+// is not a case writing beside its source.
+func putBack(dest string, s *staging, keep string) ([]string, error) {
+	var moved []string
+	seen := map[string]bool{}
+	err := filepath.Walk(dest, func(p string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dest, p)
+		if err != nil || rel == "." {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		was, held := s.stamps[rel]
+		switch {
+		case rel == keep:
+			seen[rel] = true
+			return nil
+		case !held || was.dir != info.IsDir() || (!was.dir && !info.Mode().IsRegular()):
+			// ⛔ A PATH THE COPY DID NOT HOLD IS REMOVED, with all under it.
+			moved = append(moved, rel)
+			if err := os.RemoveAll(p); err != nil {
+				return err
+			}
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		seen[rel] = true
+		if was.dir || (info.Size() == was.size && info.ModTime().Equal(was.mod)) {
+			return nil
+		}
+		from := filepath.Join(s.src, filepath.FromSlash(rel))
+		if info.Size() == was.size {
+			same, err := sameBytes(p, from)
+			if err != nil {
+				return err
+			}
+			if same {
+				s.stamps[rel] = stamp{size: info.Size(), mod: info.ModTime()}
+				return nil
+			}
+		}
+		moved = append(moved, rel)
+		return copyBack(from, p)
+	})
+	if err != nil {
+		return moved, err
+	}
+	// ⛔ A PATH THE COPY HELD AND LOST IS MADE AGAIN.
+	for rel, was := range s.stamps {
+		if seen[rel] || rel == keep {
+			continue
+		}
+		moved = append(moved, rel)
+		to := filepath.Join(dest, filepath.FromSlash(rel))
+		if was.dir {
+			err = os.MkdirAll(to, 0o700)
+		} else {
+			err = copyBack(filepath.Join(s.src, filepath.FromSlash(rel)), to)
+		}
+		if err != nil {
+			return moved, err
+		}
+	}
+	sort.Strings(moved)
+	return moved, nil
+}
+
+// sameBytes is whether two files hold the same bytes.
+func sameBytes(a, b string) (bool, error) {
+	x, err := os.ReadFile(a)
+	if err != nil {
+		return false, err
+	}
+	y, err := os.ReadFile(b)
+	if err != nil {
+		return false, err
+	}
+	return bytes.Equal(x, y), nil
+}
+
+// copyBack writes the tree's file over the staged one.
+func copyBack(from, to string) error {
+	b, err := os.ReadFile(from)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(to), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(to, b, 0o600)
 }
 
 // printer writes each verdict as its row finishes. When nothing has been

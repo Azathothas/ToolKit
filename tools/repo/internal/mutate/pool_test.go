@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // privateTemp points the temporary directory at a fresh one. The slots a case
@@ -148,6 +149,125 @@ func TestTheSweepSparesAHeldSlot(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "swept 1 slot") {
 		t.Fatalf("the sweep did not say what it did: %q", log.String())
+	}
+}
+
+// TestAStagedCopyIsPutBackAsItWasStaged: what a test process can leave in its
+// package directory, and the row's own file, which stays.
+//
+// ⛔ A FILE REWRITTEN WITH ITS OWN BYTES IS NOT NAMED. The restore of every
+// mutated file does that, and a note on every row is one nobody reads.
+func TestAStagedCopyIsPutBackAsItWasStaged(t *testing.T) {
+	src, dest := t.TempDir(), t.TempDir()
+	write := func(root, rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	read := func(rel string) string {
+		t.Helper()
+		b, err := os.ReadFile(filepath.Join(dest, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	write(src, "a.go", "package a\n")
+	write(src, "same.txt", "same\n")
+	write(src, "mutated.go", "package a\n")
+	write(src, "sub/b.txt", "bee\n")
+	write(src, "sub/c.txt", "sea\n")
+	if err := copyTree(src, dest); err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ STAGED AN HOUR AGO. A filesystem's clock can be coarser than the gap
+	// between two writes here, and a compile always sits between the two in a
+	// real run.
+	earlier := time.Now().Add(-time.Hour)
+	for _, rel := range []string{"a.go", "same.txt", "mutated.go", "sub/b.txt", "sub/c.txt"} {
+		if err := os.Chtimes(filepath.Join(dest, filepath.FromSlash(rel)), earlier, earlier); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stamps, err := stampTree(dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &staging{src: src, stamps: stamps}
+
+	write(dest, "left.txt", "a new file")
+	write(dest, "newdir/deep/f.txt", "a new directory")
+	write(dest, "a.go", "package a // longer\n")
+	write(dest, "sub/b.txt", "BEE\n")
+	if err := os.Remove(filepath.Join(dest, "sub", "c.txt")); err != nil {
+		t.Fatal(err)
+	}
+	write(dest, "same.txt", "same\n")
+	write(dest, "mutated.go", "package a // the row's own change\n")
+
+	moved, err := putBack(dest, s, "mutated.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := strings.Join(moved, ","), "a.go,left.txt,newdir,sub/b.txt,sub/c.txt"; got != want {
+		t.Errorf("put back %s, want %s", got, want)
+	}
+	for _, rel := range []string{"left.txt", "newdir"} {
+		if _, err := os.Stat(filepath.Join(dest, rel)); !os.IsNotExist(err) {
+			t.Errorf("%s the copy did not hold is still there: %v", rel, err)
+		}
+	}
+	for rel, want := range map[string]string{"a.go": "package a\n", "sub/b.txt": "bee\n", "sub/c.txt": "sea\n", "same.txt": "same\n", "mutated.go": "package a // the row's own change\n"} {
+		if got := read(rel); got != want {
+			t.Errorf("%s holds %q, want %q", rel, got, want)
+		}
+	}
+	if again, err := putBack(dest, s, "mutated.go"); err != nil || len(again) != 0 {
+		t.Errorf("a copy already put back was changed again: %v, %v", again, err)
+	}
+}
+
+// TestACopyThatWillNotGoBackIsStagedAgain: a test process changed a staged file
+// whose source has gone from the tree, so nothing can put it back.
+//
+// ⛔ THE COPY IS DROPPED, NOT KEPT. A copy left half put back is the one the
+// next row would run in, and it says so.
+func TestACopyThatWillNotGoBackIsStagedAgain(t *testing.T) {
+	root := t.TempDir()
+	tree := filepath.Join(root, "mod")
+	if err := os.MkdirAll(tree, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tree, "a.go"), []byte("package a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var log bytes.Buffer
+	wk := &worker{root: root, slot: &slot{dir: t.TempDir()}, dirs: map[string]string{}, staged: map[string]*staging{}, p: newPrinter(&log, 8, 1, 1)}
+	dest, err := wk.dir("mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, "a.go"), []byte("package a // changed by a case\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(tree, "a.go")); err != nil {
+		t.Fatal(err)
+	}
+	wk.doing(`"a row"`)
+	wk.settle(dest, "")
+	if _, ok := wk.dirs["mod"]; ok {
+		t.Fatal("a copy that could not be put back is still the one the next row runs in")
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("the dropped copy is still on disk: %v", err)
+	}
+	if !strings.Contains(log.String(), `restaged: the copy of mod could not be put back after "a row"`) {
+		t.Fatalf("the log does not say the copy was dropped:\n%s", log.String())
 	}
 }
 

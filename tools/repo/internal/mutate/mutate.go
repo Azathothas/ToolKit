@@ -418,13 +418,13 @@ func (wk *worker) one(m Mutation, b baseline) Verdict {
 	args = append(args, b.pkgs...)
 	args = append(args, m.Args...)
 	wk.doing(strconv.Quote(m.Label))
-	r, err := wk.goTest(dest, args...)
+	r, err := wk.goTest(dest, m.File, args...)
 	v = judge(v, b, r, err)
 	if !askAgain(v, r) {
 		return v
 	}
 	wk.doing(strconv.Quote(m.Label) + ", a second time")
-	r, err = wk.goTest(dest, args...)
+	r, err = wk.goTest(dest, m.File, args...)
 	return agree(v, judge(Verdict{Label: m.Label}, b, r, err))
 }
 
@@ -496,7 +496,7 @@ func deathLine(line string) string {
 func (wk *worker) baseline(dest string, m Mutation) baseline {
 	args := append([]string{"-json", "-vet=off", "-count=1", "-run", m.Run, "./..."}, m.Args...)
 	wk.doing("the baseline for " + strconv.Quote(m.Label))
-	r, err := wk.goTest(dest, args...)
+	r, err := wk.goTest(dest, "", args...)
 	var first *testRun
 	if err != nil {
 		// ⛔ ONE RETRY, AND ONLY ON A FAILURE. A baseline once failed inside a
@@ -509,7 +509,7 @@ func (wk *worker) baseline(dest string, m Mutation) baseline {
 		// done.
 		was := r
 		first = &was
-		r, err = wk.goTest(dest, args...)
+		r, err = wk.goTest(dest, "", args...)
 	}
 	got := baseline{cases: r.cases, skipped: r.skipped, pkgs: r.pkgs}
 	switch {

@@ -800,6 +800,42 @@ func TestAFileOneRowLeavesDoesNotReachTheNext(t *testing.T) {
 	}
 }
 
+// TestAFileOneRowLeavesBesideItsSourceDoesNotReachTheNext: row A deletes the
+// cleanup of a file written in the package directory. Row B, in another group,
+// changes a comment, and its case asserts no such file is there.
+//
+// ⛔ WHAT WAS WRONG. The staged copy is kept for the build cache, and only the
+// mutated file was put back. At --jobs 1, B's baseline ran in the copy A's run
+// had written in, and B was BROKEN.
+//
+// ⚠ AND THE ROW'S OWN FILE IS NOT NAMED. Its restore writes the same bytes
+// back, and a note on every row is one nobody reads.
+func TestAFileOneRowLeavesBesideItsSourceDoesNotReachTheNext(t *testing.T) {
+	t.Parallel()
+	root := fixtureWith(t, map[string]string{
+		"spill.go":      "package guard\n\nimport \"os\"\n\n// Spill writes a file in the working directory, and removes it.\nfunc Spill() string {\n\t_ = os.WriteFile(\"spilled.txt\", []byte(\"x\"), 0o600)\n\t_ = os.Remove(\"spilled.txt\")\n\treturn \"spilled.txt\"\n}\n",
+		"spill_test.go": "package guard\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestSpillCleansUp(t *testing.T) {\n\tif _, err := os.Stat(Spill()); err == nil {\n\t\tt.Fatal(\"the spilled file was left behind\")\n\t}\n}\n\nfunc TestNothingBesideTheSource(t *testing.T) {\n\tif _, err := os.Stat(\"spilled.txt\"); err == nil {\n\t\tt.Fatal(\"a file another process left is beside the source\")\n\t}\n}\n",
+	})
+	a := Mutation{Label: "the spilled file's cleanup", Module: "mod", File: "spill.go", Run: "TestSpillCleansUp", Find: "\t_ = os.Remove(\"spilled.txt\")\n", Replace: ""}
+	b := Mutation{Label: "a comment beside a spill", Module: "mod", File: "spill.go", Run: "TestNothingBesideTheSource", Find: "// Spill writes", Replace: "// Spill, unread, writes"}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{a, b}}, Selection{Jobs: 1})
+	if got[0].State != "ok" || got[1].State != "THEATRE" {
+		t.Fatalf("A is %s and B is %s (%s), want ok and THEATRE\n%s", got[0].State, got[1].State, got[1].Reason, log)
+	}
+	var notes []string
+	for _, ln := range strings.Split(log, "\n") {
+		if strings.Contains(ln, "put back: ") {
+			notes = append(notes, ln)
+		}
+	}
+	if len(notes) == 0 || !strings.Contains(notes[0], "put back: spilled.txt, which "+strconv.Quote(a.Label)) {
+		t.Fatalf("no line says the spilled file was put back after A's run:\n%s", log)
+	}
+	if joined := strings.Join(notes, "\n"); strings.Contains(joined, "spill.go") {
+		t.Fatalf("a row's own restored file was named as put back:\n%s", joined)
+	}
+}
+
 // TestACaseRunsInItsWorkersOwnState: the environment a worker is given is the
 // one its `go test` process gets.
 //
