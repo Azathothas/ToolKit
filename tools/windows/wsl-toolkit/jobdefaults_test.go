@@ -363,6 +363,25 @@ func TestAJobTakesTheOlderKeysALendingProjectWrites(t *testing.T) {
 	}
 }
 
+// TestALentWorkspaceResolvesAgainstTheProject is ruling 34: a relative
+// jobs.workspace a working tree lends a named instance is under that tree, not
+// under the instance's own directory.
+func TestALentWorkspaceResolvesAgainstTheProject(t *testing.T) {
+	project := lendingInstance(t, `{"schema":"wsl-toolkit-config/1","jobs":{"workspace":"sub"}}`)
+	cfg, err := toolkit.LoadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := parsedJob(t)
+	if err := j.applyConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(filepath.Dir(project), "sub")
+	if !strings.EqualFold(filepath.Clean(j.workspace), filepath.Clean(want)) {
+		t.Errorf("a lent workspace resolved to %s, want %s", j.workspace, want)
+	}
+}
+
 // TestGcCachesIsTheCachesAlone is WSL-122: beside a flag that chooses among jobs
 // or adds images, --caches is refused with exit 2 before anything is read.
 func TestGcCachesIsTheCachesAlone(t *testing.T) {

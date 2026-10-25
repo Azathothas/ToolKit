@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: a lent workspace resolves against the project's directory",
+      "file": "cmd_run.go",
+      "find": "\t\t\tj.workspace, err = pathFromJobs(cfg, \"workspace\", j.workspace)\n",
+      "replace": "\t\t\tj.workspace, err = pathFromConfig(cfg, j.workspace)\n",
+      "run": "TestALentWorkspaceResolvesAgainstTheProject",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a lending project's container_lifecycle reaches the instance",
       "file": "internal/toolkit/configlayer.go",
       "find": "\ttext(\"container_lifecycle\", stored.ContainerLifecycle, &dst.ContainerLifecycle)\n",

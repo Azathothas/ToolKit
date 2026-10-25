@@ -514,7 +514,10 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 	j.platform = platform
 	if j.workspace != "" {
 		if workspaceFromConfig {
-			j.workspace, err = pathFromConfig(cfg, j.workspace)
+			// ⛔ AGAINST THE FILE THAT NAMED IT. A working tree's file lends a named
+			// instance its workspace, and a relative one resolved against the
+			// instance's own directory instead. A review found it. WSL-131.
+			j.workspace, err = pathFromJobs(cfg, "workspace", j.workspace)
 		} else {
 			j.workspace, err = pathFromProject(cfg, j.workspace)
 		}
