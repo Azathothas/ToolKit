@@ -2,6 +2,123 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: an ensure refused over another file's grant says the restart ends its work",
+      "file": "internal/toolkit/grants.go",
+      "find": "the restart ends the work under grants another configuration holds live",
+      "replace": "the restart drops grants another configuration holds live",
+      "run": "TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the fstab block keeps another file's grants across a restart",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    if [ -n \"$kept_by\" ] && [ \"${kept_by%% *}\" != \"$TK_GRANT_OWNER\" ] &&\n",
+      "replace": "    if false &&\n",
+      "run": "TestARestartMountsEveryFilesGrants",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the fstab block keeps only a line the ledger gives another file",
+      "file": "internal/toolkit/grants.sh",
+      "find": "[ -n \"$kept_by\" ] && [ \"${kept_by%% *}\"",
+      "replace": "[ \"${kept_by%% *}\"",
+      "run": "TestALineTheLedgerGivesNoOtherFileIsReplaced",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a caller replaces its own lines in the fstab block",
+      "file": "internal/toolkit/grants.sh",
+      "find": " && [ \"${kept_by%% *}\" != \"$TK_GRANT_OWNER\" ]",
+      "replace": "",
+      "run": "TestALineTheLedgerGivesNoOtherFileIsReplaced",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a provisioning write takes the targets its configuration names",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    fstab_target \"$line\" >> \"$WORK/claimed\"\n",
+      "replace": "    :\n",
+      "run": "TestAWriteTakesTheTargetsItsConfigurationNames",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant or revoke takes its own target from another file's line",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  printf '%s\\n' \"$(cat \"$WORK/claim\")\" >> \"$WORK/claimed\"\n",
+      "replace": "  :\n",
+      "run": "TestALiveGrantTakesItsTargetFromAnotherFilesLine|TestARevokeTakesItsTargetsLineWithItsRow",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a kept line wins over the caller's own for its target",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  if grep -Fxq -e \"$at\" \"$WORK/kept-targets\"; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestAKeptLineWinsOverThisFilesOwnForItsTarget",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the fstab block keeps its order across each file's ensure",
+      "file": "internal/toolkit/grants.sh",
+      "find": "cat \"$WORK/old-block\" \"$WORK/block\" > \"$WORK/order\"\n",
+      "replace": "cat \"$WORK/kept\" \"$WORK/block\" > \"$WORK/order\"\n",
+      "run": "TestAnEnsureLeavesABlockTwoFilesShareAsItWas",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the fstab block names each target once",
+      "file": "internal/toolkit/grants.sh",
+      "find": "  if [ -z \"$at\" ] || grep -Fxq -e \"$at\" \"$WORK/placed\"; then\n",
+      "replace": "  if [ -z \"$at\" ]; then\n",
+      "run": "TestAnEnsureLeavesABlockTwoFilesShareAsItWas",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a caller with no file keeps no other file's line",
+      "file": "internal/toolkit/grants.sh",
+      "find": "if [ -n \"$TK_GRANT_OWNER\" ]; then\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    kept_to=$(fstab_target \"$line\")\n",
+      "replace": "if true; then\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    kept_to=$(fstab_target \"$line\")\n",
+      "run": "TestACallerWithNoFileWritesItsOwnGrantsAlone",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a live grant records the mount it made",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    printf '%s\\n' \"$target\" >> \"$WORK/mounted\"\n",
+      "replace": "",
+      "run": "TestAGrantWhoseReadBackFailsTakesItsMountAway",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed live grant unmounts what it mounted",
+      "file": "internal/toolkit/grants.sh",
+      "find": "    if [ -n \"$made\" ] && ! umount \"$made\" 2>\"$WORK/umount.err\"; then\n",
+      "replace": "    if false; then\n",
+      "run": "TestAGrantWhoseReadBackFailsTakesItsMountAway",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a failed live grant names a mount it could not take away",
+      "file": "internal/toolkit/grants.sh",
+      "find": "      fail_reason=\"$fail_reason. $made stays mounted, because it could not be unmounted: $(head -1 \"$WORK/umount.err\")\"\n",
+      "replace": "      :\n",
+      "run": "TestAMountAFailedGrantCannotTakeAwayIsNamed",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a project's jobs.cpus reaches the instance",
       "file": "internal/toolkit/configlayer.go",
       "find": "\tif written[\"cpus\"] {\n\t\tdst.CPUs = stored.CPUs\n\t}\n",

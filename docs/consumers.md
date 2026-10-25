@@ -178,6 +178,16 @@ They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 | `bootstrap.sh` puts the account's prefix after the system path and rewrites the line an earlier run put first, so a name that exists in both resolves to the system path's | relies on the account's own copy of a name shadowing the system's | runs that copy by its full path |
 | `base ensure` refuses an interrupted build and names `base remove --yes`, where it removed and rebuilt it | expects ensure to recover an interrupted build alone | runs `base remove --yes`, then `base ensure` |
 
+### ⚠ What a grant that survives a restart changes, and what a caller does
+
+`WSL-190`. Not released yet. No exit code changes, and a grant that works today
+keeps working.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| a restart mounts again each grant the guest's ledger gives another configuration file, after `base ensure --repair` too | relied on a restart, or on `--repair`, to drop a grant another file made | revokes it with that file: `wsl-toolkit --config FILE base revoke --target TARGET`. A file that is gone is written again, naming the grant, first |
+| an ensure refused over another file's live grant says the restart ends that work, where it said the restart drops the grants | parses the refusal's words | reads the targets, files and revokes it names, which are unchanged |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

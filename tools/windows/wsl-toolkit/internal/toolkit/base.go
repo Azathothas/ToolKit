@@ -782,11 +782,13 @@ func (b *Base) ensure(ctx context.Context, mode rebuild, repair bool) (BaseState
 				return st, b.notJudgedRefusal(nj)
 			}
 			// ⛔ NO RESTART OVER ANOTHER CONFIGURATION'S LIVE GRANTS UNLESS ASKED.
-			// Its grant is not in this file's block, so the restart dropped its
+			// Its grant was not in this file's block, so the restart dropped its
 			// checkout and ended every agent in the base, and that file's next
 			// ensure did the same back. The grant lock is held through the
 			// provisioning, so no grant lands between the read and the restart.
-			// WSL-179.
+			// WSL-179. ⚠ The block keeps that file's lines now, so the restart
+			// mounts them again, and it still ends the work running in them.
+			// WSL-190.
 			release, err := LockGrants(ctx, b.log)
 			if err != nil {
 				return st, err

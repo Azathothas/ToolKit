@@ -210,8 +210,9 @@ func TestALiveGrantChangeNamesItsOneTarget(t *testing.T) {
 // grantsDrive runs grants.sh live under a POSIX shell, with /etc/fstab and
 // /proc/mounts in dir and mount, umount and runuser standing in. A stand-in mount
 // adds the target to the mounts file from the source and in the mode the fstab
-// gives it, and fails once when dir holds mount.fail. The grant ledger is dir's
-// owners file, and the caller's configuration file is grantsMine.
+// gives it, and fails once when dir holds mount.fail. umount fails once when dir
+// holds umount.fail, and runuser fails while it holds runuser.fail. The grant
+// ledger is dir's owners file, and the caller's configuration file is grantsMine.
 func grantsDrive(t *testing.T, dir string, mounts []BaseMount, target string) (string, error) {
 	t.Helper()
 	return grantsDriveIn(t, dir, GrantsLive, mounts, target)
@@ -264,7 +265,7 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 	standIns := `
 mkdir() { :; }
 chmod() { :; }
-runuser() { return 0; }
+runuser() { [ ! -e "$TK_TEST_DIR/runuser.fail" ]; }
 mount() {
   printf 'mount %s\n' "$1" >> "$TK_TEST_DIR/log"
   if [ -e "$TK_TEST_DIR/mount.fail" ]; then
@@ -278,6 +279,11 @@ mount() {
 }
 umount() {
   printf 'umount %s\n' "$1" >> "$TK_TEST_DIR/log"
+  if [ -e "$TK_TEST_DIR/umount.fail" ]; then
+    rm -f "$TK_TEST_DIR/umount.fail"
+    printf 'the stand-in umount failed\n' >&2
+    return 1
+  fi
   grep -v " $1 drvfs " "$TK_TEST_DIR/mounts" > "$TK_TEST_DIR/mounts.new" || :
   mv "$TK_TEST_DIR/mounts.new" "$TK_TEST_DIR/mounts"
 }

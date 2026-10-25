@@ -1181,15 +1181,36 @@ through another state root waits as well. `WSL-179`
 
 ⛔ **`base ensure` does not restart over another configuration's live grant.** A
 verified base names such a mount and leaves it. A base that needs re-provisioning
-is refused instead, because the restart drops the other file's mounts. The
-refusal names each mount, its file and its revoke. `base ensure --repair`
-restarts over them. ⚠ The fstab block holds only the last caller's grants, so a
-Windows restart still drops the other mounts.
+is refused instead, because the restart ends the work in the other file's mounts.
+The refusal names each mount, its file and its revoke. `base ensure --repair`
+restarts over them. `WSL-179`
+
+⭐ **A restart mounts every configuration's grants again.** The fstab block keeps
+each line whose target the ledger gives another file. So a Windows restart, or a
+restart this tool makes, mounts every file's grants. `base ensure --repair` keeps
+them too. An ensure writes its own line at each target its file names, and the
+ledger row moves with it. A grant writes its own line at its target, and a revoke
+removes the line there, each with its ledger row. The block names each target once.
+`WSL-190`
+
+⚠ **A line no ledger row names is still replaced.** A grant made before 7.0.2 has
+no row, so another file's grant or ensure drops its line. An ensure through the
+helper sends no configuration file, so it writes its own grants alone, as before.
+`WSL-190`
+
+⚠ **A grant whose file is gone comes back at each restart.** No other file can
+revoke it while it is mounted. Write that file again, naming the grant, then run
+its revoke with `--config`. `WSL-190`
 
 ⛔ **Neither replaces what it would disturb.** A directory or a target already
 granted differently is refused with the revoke to run first. A grant a process
 stands in stays mounted, with its configuration and fstab entry untouched, and
 the revoke answers exit 1 naming `target is busy`.
+
+⛔ **A grant that fails leaves the base as it was.** A grant whose read-back fails
+after it mounted unmounts that mount first. It then puts the old fstab block back
+and mounts again what it unmounted. A mount that will not unmount is named in the
+refusal. `WSL-189`
 
 ⚠ **A grant whose Windows directory is gone is kept and marked, not refused.** `base
 status` names it with the `base revoke` that removes it, and `--json` carries it as

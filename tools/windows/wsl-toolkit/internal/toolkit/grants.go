@@ -347,6 +347,10 @@ func parseHeldGrants(out string) []HeldGrant {
 
 // HeldGrantsError is the refusal of a restart over live mounts another
 // configuration file holds, or nil when there are none. WSL-179.
+//
+// ⚠ IT SAYS THE RESTART ENDS THAT FILE'S WORK, NOT THAT IT DROPS ITS GRANTS. The
+// fstab block keeps each line the ledger gives another file, so a restart mounts
+// them again, and the work running in them still ends. WSL-190.
 func HeldGrantsError(name string, held []HeldGrant) error {
 	if len(held) == 0 {
 		return nil
@@ -356,7 +360,7 @@ func HeldGrantsError(name string, held []HeldGrant) error {
 		each = append(each, h.Target+", granted by "+h.File)
 		revoke = append(revoke, "wsl-toolkit --config "+h.File+" base revoke --target "+h.Target)
 	}
-	return fmt.Errorf("%s would be re-provisioned and restarted, and the restart drops grants another configuration holds live: %s. Nothing was changed. Revoke each with its file first: %s. Or run base ensure --repair to restart over them",
+	return fmt.Errorf("%s would be re-provisioned and restarted, and the restart ends the work under grants another configuration holds live: %s. Nothing was changed. Revoke each with its file first: %s. Or run base ensure --repair to restart over them",
 		name, strings.Join(each, "; "), strings.Join(revoke, "; "))
 }
 
