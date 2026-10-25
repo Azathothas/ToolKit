@@ -27,7 +27,7 @@ import (
 var jobKeys = []string{
 	"container_lifecycle", "platform", "workspace", "exclude", "gitignore",
 	"image", "timeout", "env", "env_file", "user", "max_bytes", "max_entries", "cache",
-	"max_running", "max_running_wait",
+	"max_running", "max_running_wait", "memory", "cpus",
 }
 
 // lentKeys reads which jobs keys a file writes, and whether it writes requires.
@@ -118,6 +118,11 @@ func overlayJobDefaults(dst *JobConfig, stored JobConfig, written map[string]boo
 		dst.MaxRunning = stored.MaxRunning
 	}
 	text("max_running_wait", stored.MaxRunningWait, &dst.MaxRunningWait)
+	// WSL-136: a project's memory and processor limits, as the rest are.
+	text("memory", stored.Memory, &dst.Memory)
+	if written["cpus"] {
+		dst.CPUs = stored.CPUs
+	}
 }
 
 // decodeStored reads one configuration file strictly.

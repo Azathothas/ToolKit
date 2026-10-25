@@ -154,6 +154,9 @@ type JobSpec struct {
 	// account is what CreateUser resolved, which Run reads from the image
 	// before the container starts.
 	account *jobAccount
+	// Resources are the memory and processor limits the container is asked for.
+	// Zero asks for none. WSL-136.
+	Resources ResourceLimits
 	// Stdout and Stderr receive the container's bytes AS THEY ARRIVE.
 	//
 	// ⛔ Nil means nothing is written live, which is what a caller wants when
@@ -302,6 +305,9 @@ type JobResult struct {
 	// Stopped is true where `wsl-toolkit stop` ended the job. Cancelled is true
 	// beside it and the verdict is 130, as for any cancellation. WSL-94.
 	Stopped bool `json:"stopped,omitempty"`
+	// Limits is what --memory and --cpus asked for and whether the container's
+	// own cgroup carried them. Nil where neither was asked for. WSL-136.
+	Limits *LimitsReport `json:"limits,omitempty"`
 }
 
 // Failed says whether this row counts against the run: the command's own
@@ -513,6 +519,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	}()
 	if res.Label == "" {
 		res.Label = spec.Image
+	}
+	// ⭐ THE ANSWER CARRIES WHAT WAS ASKED FOR FROM THE START, unknown until the
+	// container says otherwise, so a job refused before it ran still names it.
+	// WSL-136.
+	if spec.Resources.Any() {
+		res.Limits = &LimitsReport{MemoryBytes: spec.Resources.MemoryBytes, CPUs: spec.Resources.CPUs, Enforced: LimitsUnknown}
 	}
 	if err := ValidateImageRef(spec.Image); err != nil {
 		res.Exit, res.Error, res.Unreached = 2, err.Error(), true
@@ -803,6 +815,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 		}})
 	}
 	outSink, errSink := relaySinks(spec.Log, streams)
+	// ⭐ THE LIMITS LINE IS STRIPPED BEHIND THE MARKER, and only a job that asked
+	// for a limit has one to strip. WSL-136.
+	var limitsLine *limitsMarkers
+	if spec.Resources.Any() {
+		errSink, limitsLine = newLimitsMarkers(errSink, token)
+	}
 	marker := newMarkerStripper(errSink, token)
 	// ⛔ A STOP IS READ AGAIN WHEN THE CONTAINER ANNOUNCES ITSELF. A stop that
 	// arrives after the check above and before the container exists finds no
@@ -860,6 +878,12 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	tick.Stop()
 	if err := marker.Flush(); err != nil {
 		r.log("could not flush the job's error stream: " + err.Error())
+	}
+	if limitsLine != nil {
+		if err := limitsLine.Flush(); err != nil {
+			r.log("could not flush the job's error stream: " + err.Error())
+		}
+		res.Limits.Enforced = limitsLine.Verdict()
 	}
 	if spec.Log != nil {
 		// The command has ended, so its unterminated tails go to the copies now,
@@ -1118,6 +1142,7 @@ func (r *Runner) containerScript(spec JobSpec, container string, paths jobPaths,
 	for _, c := range spec.CapAdd {
 		args = append(args, "--cap-add", c)
 	}
+	args = append(args, limitsArgs(spec.Resources)...)
 	if spec.Timeout > 0 {
 		// ⛔ THE ENGINE HOLDS THE DEADLINE TOO, so a job whose owner is gone still
 		// ends. The owner's own deadline starts first and has no margin, so it
@@ -1140,7 +1165,7 @@ func (r *Runner) containerScript(spec JobSpec, container string, paths jobPaths,
 	// becoming --user, finding /bin/sh. The marker is written from INSIDE the
 	// container, so its presence is the one fact that separates an image that
 	// never ran from a program that exited 125.
-	wrapper := "printf '\\n%s\\n' '" + token + "' >&2\nexec /bin/sh /job.sh\n"
+	wrapper := "printf '\\n%s\\n' '" + token + "' >&2\n" + limitsCheck(spec.Resources, token) + "exec /bin/sh /job.sh\n"
 	args = append(args, spec.Image, "/bin/sh", "-c", wrapper)
 
 	var b strings.Builder

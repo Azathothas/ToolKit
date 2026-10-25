@@ -280,6 +280,14 @@ write a structured answer
 .TP
 \fB--json\fR
 write a structured answer
+.TP
+.B wsl-toolkit base image load FILE|IMAGE
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--root\fR
+load into root's engine instead of the account's
 .SS images
 list, check, or pull catalog images
 .TP
@@ -329,6 +337,9 @@ the command as base64 of its bytes, for a caller that must keep every shell away
 .TP
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
+.TP
+\fB--cpus\fR
+a processor limit for the container, such as 1.5. jobs.cpus sets one for a project. The answer's limits block says whether the base enforced it
 .TP
 \fB--create-user\fR
 with --user NAME, run as NAME where the image has no such account: podman writes it, with a home of its own under /home. An image that has NAME uses its own
@@ -395,6 +406,9 @@ hold each job until fewer than N jobs run on this machine, in every instance. 0 
 .TP
 \fB--max-running-wait\fR
 with a running cap, wait this long for a running job to end rather than refusing at once. jobs.max_running_wait sets it for a project. Default: 0s.
+.TP
+\fB--memory\fR
+a memory limit for the container, such as 512m or 2g, in podman's meaning. jobs.memory sets one for a project. The answer's limits block says whether the base enforced it
 .TP
 \fB--no-network\fR
 run with no network at all
@@ -478,6 +492,9 @@ the command as base64 of its bytes, for a caller that must keep every shell away
 \fB--container-lifecycle\fR
 persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent
 .TP
+\fB--cpus\fR
+a processor limit for the container, such as 1.5. jobs.cpus sets one for a project. The answer's limits block says whether the base enforced it
+.TP
 \fB--create-user\fR
 with --user NAME, run as NAME where the image has no such account: podman writes it, with a home of its own under /home. An image that has NAME uses its own
 .TP
@@ -531,6 +548,9 @@ hold each job until fewer than N jobs run on this machine, in every instance. 0 
 .TP
 \fB--max-running-wait\fR
 with a running cap, wait this long for a running job to end rather than refusing at once. jobs.max_running_wait sets it for a project. Default: 0s.
+.TP
+\fB--memory\fR
+a memory limit for the container, such as 512m or 2g, in podman's meaning. jobs.memory sets one for a project. The answer's limits block says whether the base enforced it
 .TP
 \fB--no-network\fR
 run with no network at all

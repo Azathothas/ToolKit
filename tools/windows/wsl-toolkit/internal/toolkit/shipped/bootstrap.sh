@@ -1331,12 +1331,56 @@ append_to_login_files() {
   done
 }
 
+# ⭐ ONE LINE THIS SCRIPT WROTE IS REWRITTEN, AND EVERY OTHER BYTE IS KEPT. The
+# file is written through its own name, so its mode, its owner and a link to it
+# all survive, and nothing is written when the line is not there.
+#
+# RO_REPLACED is 1 when the line was there and 0 when it was not.
+replace_once() {
+  ro_file=$1
+  ro_old=$2
+  ro_new=$3
+  RO_REPLACED=0
+  if [ ! -f "$ro_file" ]; then
+    return 0
+  fi
+  ro_body=''
+  while IFS= read -r ro_existing || [ -n "$ro_existing" ]; do
+    if [ "$ro_existing" = "$ro_old" ]; then
+      ro_existing=$ro_new
+      RO_REPLACED=1
+    fi
+    ro_body="$ro_body$ro_existing
+"
+  done < "$ro_file"
+  if [ "$RO_REPLACED" = 1 ]; then
+    printf '%s' "$ro_body" > "$ro_file"
+  fi
+  return 0
+}
+
+# ⛔ THE PREFIX GOES AFTER THE SYSTEM PATH, NOT AHEAD OF IT. A line that put it
+# first made a login shell find the vendor's own launcher in the prefix before a
+# wrapper on the system path, so on a wsl-toolkit base `base bootstrap` bypassed
+# every agent wrapper: Muse lost its model and its effort on every session, and pi
+# and omp lost the account guard. Measured on 2026-09-17. Finding 62, WSL-147.
+# A login file holding the line an earlier run wrote has that line rewritten.
+#
+# ⚠ THIS PROCESS STILL PUTS THE PREFIX FIRST, so the tools it installs there are
+# the ones its own report reads back.
 install_path_line() {
-  ip_line="export PATH=\"$PREFIX/bin:\$PATH\""
+  ip_line="export PATH=\"\$PATH:$PREFIX/bin\""
+  ip_before="export PATH=\"$PREFIX/bin:\$PATH\""
   if [ "$DRY_RUN" = 1 ]; then
     step "would make sure the login files carry $PREFIX/bin"
     return 0
   fi
+  for ip_file in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bash_login"; do
+    replace_once "$ip_file" "$ip_before" "$ip_line"
+    if [ "$RO_REPLACED" = 1 ]; then
+      step "moved $PREFIX/bin after the system path in $ip_file"
+    fi
+  done
   append_to_login_files "$ip_line" "$PREFIX/bin"
   PATH="$PREFIX/bin:$PATH"
   export PATH

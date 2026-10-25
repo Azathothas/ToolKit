@@ -147,6 +147,26 @@ now its host record goes too, once its answer is written.
 | a project file that writes only `container_lifecycle`, `platform`, `workspace`, `exclude` or `gitignore` is now read strictly under a named instance. A broken file, or one a newer build wrote, now refuses | runs a named instance from a working tree whose file was ignored before and is broken or newer | fixes the project's file, or names the file to read with `--config` |
 | `config --json` drops `project_held` and carries `project_lends`, each key the project lent. `config`, `run` and `matrix` print no ⚠ line about held keys | parses `project_held` or that line | reads `project_lends` |
 
+### ⭐ What the base runtime adds, and what a caller reads
+
+`WSL-126`, `WSL-130` and the limits in `WSL-136`. Not released yet. No exit
+code changes, and no field a 7.0.2 document carries is removed.
+
+| change | a caller that | the caller does |
+| --- | --- | --- |
+| `cgroup.delegated` and `cgroup.mechanism` in `base status --probe --json` also count the account's user manager, where podman's manager is `systemd` | read `false` and `none` on such a base while its limits held | reads `limits_enforced` and `stats_usable`, which a container measures |
+| beside the `cgroupfs` manager the user manager does not count, so those two fields read as in 7.0.2. The finding names the manager | | nothing |
+| `base status --probe --json` adds `cgroup.manager`, `cgroup.account_controllers`, `kvm` and `access.root_engine`, `access.runtime_dir`, `access.kvm` | | reads them, or ignores them |
+| `base status` prints its `engines` row only where one of the three settings is on, and its `kvm` row only where `base.kvm` is on | | nothing: an unchanged base prints the rows 7.0.2 printed |
+| `base exec --detach` prints a second stderr line that names what a stop reaches. `stop` of a session prints one where it signalled something | treats every stderr line of these two as one it knows | reads `contained_by` and `unit` from `--json` |
+| a session's deadline in a scope ends what a command that ended first left in that scope. The session's exit stays its own | relied on a daemon outliving its session's deadline | passes `--timeout 0`, or starts the daemon outside the session |
+| `stop` of an ended session ends what it left in its scope. It still exits 0 with no `after`, and `leftovers` says what happened | | reads `leftovers` |
+| `gc` ends what an ended session left in its scope before it removes the session. A process that outlives that keeps the session, listed as failed | | runs `stop ID`, then `gc` again |
+
+⚠ **The two stderr lines count as a break by the table above,** because an unflagged
+stream changes. Each is added on stderr and leaves stdout and `--json` unchanged.
+They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

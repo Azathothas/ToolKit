@@ -13598,7 +13598,7 @@ and `--delete` removes a deleted one.
 ## WSL-126. `stop` does not reach a session's child that left the process group
 
 **Source** the consumer survey of 2026-10-21, P13, and the old record's finding 110
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13635,7 +13635,16 @@ Exit 0, then a session whose child calls `setsid`: after `stop`, no process of i
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f5a-base-runtime`, for 8.0.0.** A detached session runs in `wtk-session-ID.scope` where the user manager answers, and in its process group otherwise; `contained_by` and `unit` are in the `base exec --detach --json` and `stop --json` answers. The deadline ends what a payload that ended first left in its scope; a stop of an ended session exits 0 and `leftovers` says what it ended; `gc` ends a scope's leftovers before it removes the session. A payload in a scope reads its stdin file.
+
+```text
+scratch Arch systemd base: systemd-run --user reached the user bus from the account's environment;
+  the scope was recorded; stop left no process of a setsid child;
+  the deadline ended a daemon left by a payload that exited 0 (wait still answered 0);
+  stop of an ended session ended its leftovers and exited 0
+```
+
+⚠ The process-group fallback is proved on Linux with a refusing systemd-run stand-in, not on a base without systemd. Two new stderr lines are a break for 8.0.0, recorded in `docs/consumers.md`.
 
 
 ## WSL-127. The tool's own exit 2 cannot be told from a job's exit 2
@@ -13780,7 +13789,7 @@ requires 99.0.0: run, config validate and the default instance's config validate
 ## WSL-130. An engine inside a base is set up by hand
 
 **Source** the consumer survey of 2026-10-21, P18, and the old record's finding 114
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** L, **Status** done
 
 ---
 
@@ -13819,7 +13828,16 @@ Exit 0, then each part on a scratch base, `/dev/kvm` after `wsl --terminate` of 
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f2-run-config` and `rb/f5a-base-runtime`, for 8.0.0.** `--cap-add` on `run`, `matrix` and the helper (F2). `base.root_engine`, `base.runtime_dir` and `base.kvm`, applied by `engines.sh` in every owner's ensure and removed when turned off; `base image load FILE|IMAGE` (F5a).
+
+```text
+scratch base: root engine 'systemd file', and root podman ran a container;
+  the account's login shell names its runtime directory and podman answers there;
+  kvm: after wsl --terminate of that base alone, wsl-toolkit-kvm.service active, toolkit in kvm, status --probe usable;
+  a host image saved by wslc save -o and loaded, 8720384 bytes; a wslc archive loaded into root's engine and run with --pull=never
+```
+
+⚠ This host's `/dev/kvm` was already 0666, so the drive shows the unit runs at boot, not that it widens a 0600 node.
 
 ⭐ **2026-10-25: `--cap-add` is merged from `rb/f2-run-config`.** On `run`, `matrix` and the helper. Driven on a scratch base: `ip addr add` on lo exits 2 without it and 0 with `--cap-add net_admin`; `ALL` gives CapEff 000001ffffffffff; an unknown name is refused with exit 2. The rest of the entry is `rb/f5a-base-runtime`'s.
 
@@ -14067,7 +14085,7 @@ Blocked; the Decision names on what.
 ## WSL-136. A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run
 
 **Source** the consumer survey of 2026-10-21, P11, and the old record's finding 24
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -14110,7 +14128,15 @@ Exit 0, then a job over `--memory 64m` is killed by the limit, and a job over th
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f1-jobs` and `rb/f5a-base-runtime`, for 8.0.0.** The running-jobs cap (F1). `--memory` and `--cpus`, and `jobs.memory` and `jobs.cpus`, reach podman, and the answer's `limits.enforced` is read inside the container; `base ensure` delegates cpu, cpuset, io, memory and pids to the account's user manager and keeps it lingering (F5a).
+
+```text
+run --memory 64m on a 300 MiB allocator: Killed, exit 137, limits enforced
+the same job with no --memory: ran, exit 0
+--memory 64m --cpus 0.5: memory.max 67108864, cpu.max 50000 100000, no manager warnings on stderr
+```
+
+⚠ A Debian systemd base with no D-Bus stays unenforced by design; its finding names D-Bus.
 
 ⭐ **2026-10-25: the running-jobs cap is merged from `rb/f1-jobs`.** `run` and `matrix` take `--max-running` and `--max-running-wait`, and `jobs.max_running` and `jobs.max_running_wait` set them for a project. A job over the cap is refused at once with exit 2, or waits and reports `waited_to_run_ns`. A matrix under a cap of one runs its own rows in turn. The `--memory` and `--cpus` limits are `rb/f5a-base-runtime`'s half.
 
@@ -14118,7 +14144,7 @@ Open.
 ## WSL-137. A base stops running containers after a host restart until someone repairs it
 
 **Source** the consumer survey of 2026-10-21, P12
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -14154,7 +14180,15 @@ Exit 0, then a job runs on a scratch base straight after `wsl --terminate` of it
 
 ## Closing
 
-Open.
+**Closed 2026-10-25: the stale half in `wsl-toolkit-v7.0.1`, the rest merged from `rb/f5b-base-build` for 8.0.0.** An unprobed `base status --json` says `probed` false. `verify.sh` reads the account's passwd entry as the account reads it and prints `account-passwd`, an advisory naming the chmod; `account-cannot-start` classifies WSL's refusal, and `base ensure` repairs it.
+
+```text
+scratch base: chmod 0600 on passwd: exit 0, healthy, the advisory
+an unstartable shell: account-cannot-start, then ensure re-provisions and repairs it
+a job straight after wsl --terminate: passes
+```
+
+⚠ The cold start past the guest-home budget, met once in 7.0.1's drive, was not touched.
 
 ⭐ **2026-10-24T07:48:08Z: the stale-state half shipped in `wsl-toolkit-v7.0.1`.** `run`, `matrix`
 (each row), `ready --smoke`, the helper's jobs and `base exec` (attached and detached) check
@@ -14275,7 +14309,7 @@ Exit 0, with the decoy case red before the fix.
 ## WSL-140. A base build fails when one package mirror stalls, and nothing retries
 
 **Source** the old record's finding 10, met three times
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14307,7 +14341,7 @@ Exit 0, with a case that fails the first transaction.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f5b-base-build`, for 8.0.0.** An engine transaction gets three attempts per package family, 15 s then 30 s, and the package manager's last line names a stall. Its two rows went red in `golang:1.25`. ⚠ No live stall was driven.
 
 
 ## WSL-141. The herdr adapter installs 0.9.0 when this repository publishes 0.9.5
@@ -14398,7 +14432,7 @@ Open.
 ## WSL-143. The base account's login shell is `/bin/sh`
 
 **Source** the old record's finding 44
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14433,7 +14467,7 @@ Exit 0, then `getent passwd` in a scratch base names bash.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f5b-base-build`, for 8.0.0.** The account's login shell is moved to bash in the owner's ensure only; a non-owner home or a helper guest never moves it. Its case runs in the Linux check-go.
 
 
 ## WSL-144. An agent pane cannot be started in the project directory
@@ -14563,7 +14597,7 @@ Exit 0, then the agent reads the variable.
 ## WSL-147. After `base bootstrap`, agents bypass this tool's wrappers
 
 **Source** the old record's finding 62
-**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P1, **Effort** S, **Status** done
 
 ---
 
@@ -14599,7 +14633,7 @@ Exit 0, then `base bootstrap` and `base ensure` on a scratch base with an agent 
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f5b-base-build`, for 8.0.0.** `bootstrap.sh` appends its PATH prefix and rewrites the line an earlier run wrote, and the shipped copy is identical. Driven: a planted prefix-first line in `.profile` and `.bash_profile` was moved, a login PATH ends with `~/.local/bin`, and `base ensure` after it exits 0. ⚠ Not driven with an agent adapter installed.
 
 
 ## WSL-148. After a cancelled approval, herdr refuses every prompt, and no guide says how out
@@ -14688,7 +14722,7 @@ Exit 0, then the dry run in `debian:latest` exits 0.
 ## WSL-150. A base build killed before its marker leaves a distribution only `wsl --unregister` can remove
 
 **Source** the old record's finding 5
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -14722,7 +14756,7 @@ Exit 0, with the failed-create case.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f5b-base-build`, for 8.0.0.** A failed import keeps its build record open, covering an unreadable registry and a late registration, and `base ensure` refuses an interrupted build, naming `base remove --yes`, where it used to remove and rebuild it. Fake-WSL cases cover a failed import, a late registration, an unreadable registry, a non-owner disk and a killed build. ⚠ No real killed build was driven.
 
 
 ## WSL-151. A cancelled `bsd run` says its budget ran out and exits 2
@@ -14805,7 +14839,7 @@ Exit 0, with the case.
 ## WSL-153. An automount-off build logs one translate failure per Windows PATH entry
 
 **Source** the old record's finding 13
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14837,7 +14871,11 @@ Exit 0, then an automount-off scratch build logs none.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f5b-base-build`, for 8.0.0.** The drive sweep moved to `drives.sh`, run as root after the restart and on the no-restart path.
+
+```text
+the same automount-off arch scratch build: installed 7.0.2 relayed 83 "Failed to translate" lines, this branch 0; both removed 9 mount points
+```
 
 
 ## WSL-154. bootstrap.sh's cases read it from outside the module, so no mutation row can hold one
@@ -14881,7 +14919,7 @@ Exit 0, and each new row red.
 ## WSL-155. A drive WSL mounts during a long build fails the new base
 
 **Source** the old record's finding 18
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14914,7 +14952,7 @@ Exit 0, then an automount-off scratch build with a drive mounted late.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f5b-base-build`, for 8.0.0.** The sweep runs after the restart that applies automount off, so a mount point that appears at that restart is removed before verify; the scratch build removed 9 after its restart. ⚠ A drive mounted late during a build was not reproduced live.
 
 
 ## WSL-156. `base doors` lists three world-writable device nodes and tries none of them

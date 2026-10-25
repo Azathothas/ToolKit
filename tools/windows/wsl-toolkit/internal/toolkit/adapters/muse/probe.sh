@@ -83,10 +83,10 @@ printf 'resolves %s\n' "${resolved:-nothing}"
 
 # ⛔ AND THE SAME QUESTION ON A LOGIN SHELL'S PATH, WHICH IS A DIFFERENT PATH. The
 # check above reads base exec's curated environment; a herdr pane and `base shell` read
-# a LOGIN shell's, and those two disagree the moment `base bootstrap` runs.
-# `bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the account's
-# profile, so the vendor's own launcher is found FIRST and this wrapper is never
-# reached. ⛔ Muse Code has no settings key for a model or a reasoning effort, so what
+# a LOGIN shell's, and those two disagreed once an earlier `base bootstrap` ran.
+# That `bootstrap.sh` wrote `export PATH="$HOME/.local/bin:$PATH"` into the
+# account's profile, so the vendor's own launcher was found FIRST and this wrapper
+# was never reached. It now puts its prefix last and rewrites that line. WSL-147. ⛔ Muse Code has no settings key for a model or a reasoning effort, so what
 # is lost is BOTH of them, on every session, with nothing said.
 #
 # ⚠ Finding 49's shape, a second time: a guard proved on a curated PATH is a guard
@@ -100,7 +100,9 @@ else
     printf 'wrapper_on_login_path yes\n'
   else
     printf 'wrapper_on_login_path no\n'
-    problem "a login shell resolves muse to $pane_path, which is not this tool's wrapper, so the configured model and reasoning effort reach no session started from a pane. The account's own prefix is ahead of /usr/local/bin, which bootstrap.sh puts there"
+    # ⭐ THE PROBLEM NAMES ITS REMEDY. bootstrap.sh now puts its prefix after the
+    # system path and rewrites the line an earlier run wrote. WSL-147.
+    problem "a login shell resolves muse to $pane_path, which is not this tool's wrapper, so the configured model and reasoning effort reach no session started from a pane. The account's own prefix is ahead of /usr/local/bin, which an earlier bootstrap.sh put there. Run: base bootstrap, which moves its own line after the system path. A line the account wrote itself is moved by hand"
   fi
 fi
 

@@ -551,9 +551,9 @@ says every 30 seconds whom it waits for. `WSL-113`
 - ⚠ The lock is in the state directory. A caller Windows redirects has a state
   directory of its own, so it holds the name only against callers on its side. `WSL-118`
 
-⚠ **It bounds how many, not how much.** The jobs base enforces no memory limit,
-which `base status --probe` reads as `limits_enforced`, so a project whose builds are
-heavy gives them one name.
+⚠ **It bounds how many, not how much.** How much is `--memory` and `--cpus`, below,
+which a base enforces only where `base status --probe` reads `limits_enforced` as
+`yes`.
 
 ---
 
@@ -666,6 +666,24 @@ guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
   answers 130. `stop --grace` sets the time between the two signals.
 - ⚠ `--timeout` defaults to 30 minutes, as for `base exec`. Pass `--timeout 0`
   for a command that runs until something stops it.
+- ⭐ **Where the account's systemd user manager answers, the command also runs in
+  a scope of its own**, `wtk-session-ID.scope`. A child that calls `setsid` or
+  forks itself away leaves the process group and stays in the scope. So a stop
+  and the deadline reach it, and the KILL after the grace reaches a child that
+  ignores TERM. `WSL-126`
+- A stop of a session that has already ended still ends what it left in its
+  scope, such as a daemon its command started. `stop --json` says so as
+  `leftovers`, `ended` or `running`. The session's exit code is its own, and
+  `stop` still exits 0 for a session that had ended.
+- ⛔ **The deadline reaches what a command that ended first left in its scope.**
+  The session's answer stays its own exit, and it is not read as timed out.
+- ⛔ **`gc` ends what an ended session left in its scope before it removes the
+  session.** A process that outlives that keeps the session, so `stop` can still
+  reach it. A deadline after the removal reaches the scope alone.
+- A stop prints which of the two it reached only where it signalled something.
+- Without a user manager, the process group is all a stop reaches, as before. The
+  answer says which: `contained_by` is `systemd-scope` or `process-group` in
+  `base exec --detach --json` and in `stop --json`, with `unit` beside a scope.
 - `logs ID` reads the session's streams from the base, and `resources` lists
   each session with its state.
 - `--json` answers `wsl-toolkit-detached/1` with `kind` `session`. Without
@@ -827,6 +845,78 @@ the user. Either flag without `--user` is refused.
 The base's podman decides whether this works, since `--passwd-entry` and
 `--group-entry` are its own. The Arch base runs podman 6.1.4, which has both.
 `wsl-toolkit base exec -c 'podman --version'` reads it.
+
+---
+
+## ⭐ Memory and processors
+
+```powershell
+wsl-toolkit run --image alpine --memory 512m --cpus 1.5 -c 'make -j2'
+```
+
+`--memory SIZE` and `--cpus N` ask the job's container to be held to a limit, in
+podman's own meaning: a memory limit lets the container use as much again in
+swap. `jobs.memory`, a size such as `"2g"`, and `jobs.cpus`, a number such as
+`1.5`, set them for a project, and a flag on the command line wins. `run` and
+`matrix` take both, and `matrix` prints each row's limits under it. `WSL-136`
+
+⛔ **An engine that accepts a limit has not enforced it.** So the job's own
+container reads its cgroup before the command starts, and the answer carries
+`limits` with `enforced`: `yes`, `no`, or `unknown` where the container did not
+say. A limit not enforced is printed as a warning beside the exit code.
+
+⭐ **A base that runs systemd enforces them.** `base ensure` delegates `cpu`,
+`cpuset`, `io`, `memory` and `pids` to the account's user manager, keeps that
+manager running at every start, and points the account's engine at it. `base
+status --probe` reads the result back: `cgroup v2 via systemd` and `limits enforced:
+yes`. Its `--json` adds the engine's `manager` and the controllers the account was
+given. A base without systemd enforces nothing, and its finding names
+`base.systemd` as the remedy.
+
+- ⛔ **A user manager counts as delegation only where podman uses it.** With the
+  `cgroupfs` manager no container gets a cgroup there, so `cgroup.delegated` stays
+  false and the finding names the manager. `WSL-136`
+
+- ⚠ The account's engine moves to the systemd cgroup manager only where its
+  session bus answers. Without one, podman would warn on every call and fall back.
+- ⛔ **A base with systemd and no D-Bus has no user manager to delegate to.**
+  Measured on a Debian 13 base: provisioning installs systemd without D-Bus, so
+  its limits stay unenforced, and the finding names D-Bus rather than claiming a
+  repair. This tool does not install it. Root's podman there needs
+  `base.root_engine`, below.
+- ⛔ The helper route refuses `--memory`, `--cpus` and the two keys, because it
+  carries neither the limit nor the answer.
+
+---
+
+## ⭐ The base's own engines
+
+Three opt-in settings, applied by `base ensure` to a new base and to one an earlier
+release built. Each one turned off removes what it wrote. `WSL-130`
+
+⛔ **Only the base's owner applies them.** An ensure from a state directory that
+does not own the base leaves them as they are, as it leaves the adapters.
+
+| setting | what `base ensure` does |
+| --- | --- |
+| `base.root_engine: true` | root's podman gets the file event log the account has, and the `cgroupfs` manager where the base has no system bus to ask. Without it, such a base refuses root's every run with `crun: cannot open sd-bus`, as measured on a Debian base with systemd. The QEMU step names both options itself, so `base ensure` does not need this setting. `WSL-168` |
+| `base.runtime_dir: true` | the account's login shells and its `base exec` commands name `/tmp/wsl-toolkit-run-UID` as `XDG_RUNTIME_DIR`, the directory its jobs' engine uses. podman there then reads the jobs' state, rather than refusing it with `database configuration mismatch` |
+| `base.kvm: true` | the account joins the `kvm` group, and `wsl-toolkit-kvm.service` opens `/dev/kvm` to that group at every start. It never narrows a node that is open wider. It needs `base.systemd`, and `base status --probe` reads the node as `usable` by opening it |
+
+```powershell
+wsl-toolkit base image load .\image.tar
+wsl-toolkit base image load docker.io/library/busybox:latest --root --json
+```
+
+⭐ **`base image load FILE|IMAGE` puts an image in the base's engine with no
+registry.** FILE is an archive on this machine, as `podman save` or `docker save`
+writes one. IMAGE is a fully qualified reference this machine's own engine holds:
+it is saved, loaded, and its archive removed. A name that is a file is read as
+FILE. `--root` loads into root's engine. `--json` answers `wsl-toolkit-image-load/1`.
+
+⭐ **A job runs a loaded image with no registry.** Measured with podman 6.1.4: a
+reference that only the base's engine holds ran as a job, and through `base exec`
+with `--pull=never`. A host image was saved through `wslc`.
 
 ---
 
@@ -1150,8 +1240,9 @@ a tree over 9P takes minutes where the base's own disk takes about a second. `WS
 ### The shell `base shell` gives you
 
 ⭐ **bash, as a LOGIN shell, where the guest has one.** `wsl.exe -d NAME -u USER`
-runs the account's passwd shell, which provisioning leaves at `/bin/sh`. So the
-guest is asked in the same call, and answers in three arms, each a login shell:
+runs the account's passwd shell, which a base an older release built still has at
+`/bin/sh`. So the guest is asked in the same call, and answers in three arms, each
+a login shell:
 
 | the guest has | `base shell` runs |
 | --- | --- |
@@ -1163,8 +1254,12 @@ guest is asked in the same call, and answers in three arms, each a login shell:
 `/etc/profile`, `~/.bash_profile`, `~/.bash_login` or `~/.profile` starts normally
 and reads nothing.
 
-⛔ **Only `base shell` chooses.** The account's configured shell is still `/bin/sh`,
-so a herdr pane, `base exec` and an SSH session all land in `sh`.
+⭐ **The account's own login shell is bash where the guest has bash.** Provisioning
+creates the account with it, and every `base ensure` moves an account an older
+release left on `/bin/sh`. So an SSH session and `wsl.exe -d NAME -u USER` with no
+command start in bash. A herdr pane starts in bash by herdr's own `default_shell`,
+and `base exec` runs its script with `/bin/sh` whatever the login shell is. A shell
+somebody else gave the account is left. `WSL-143`
 
 ⚠ `passwordless_sudo: true` gives the configured account unrestricted guest root.
 Guest root can mount Windows paths by hand, so this setting serves a trusted agent
@@ -1377,13 +1472,14 @@ a default exported in `~/.profile` never reaches it.
 | `model` | the model a session nobody passed a flag to begins on. Empty leaves the agent's own default alone, which a base with no provider serving a named model needs. A value carrying a slash is `provider/id`, for an agent that reaches a model through a named provider |
 | `effort` | the reasoning effort that session begins at. **`max` when a configuration names none**, because all three agents take it |
 
-⛔ **`base bootstrap` puts the account's prefix ahead of the wrapper.**
-`bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the account's
-profile, so a login shell then finds each agent's own launcher first and
-`/usr/local/bin/NAME` is not reached. ⛔ Muse then starts with neither the model nor
+⭐ **`base bootstrap` puts the account's prefix after the system path.**
+`bootstrap.sh` writes `export PATH="$PATH:$HOME/.local/bin"` into the account's
+profile, so a login shell finds `/usr/local/bin/NAME` before each agent's own
+launcher. An earlier `bootstrap.sh` put the prefix first, and running it again
+rewrites that line. ⛔ With the prefix first, Muse starts with neither the model nor
 the effort, because it has no settings key for either. ⭐ Every agent probe reads
 the name back on a LOGIN shell and refuses a resolution that is not this tool's
-wrapper, so `base status --probe` says so.
+wrapper, naming `base bootstrap`, so `base status --probe` says so. `WSL-147`
 
 ⚠ **The effort vocabulary is each agent's own**, read from its own `--help`, and a
 word an agent does not take is refused rather than sent to it:
@@ -1979,6 +2075,56 @@ stops nothing, and the engine's own refusal follows as before.
 
 ---
 
+## ⭐ A base that keeps itself usable
+
+⛔ **`base status` without `--probe` runs no container, and its answer says so.**
+The text says `usable not checked`, and `--json` carries `probed: false`, so
+`healthy: false` beside it is no verdict. Under `--probe`, `probed` is true once a
+container was asked to run. `WSL-137`
+
+⭐ **The verifier reads the managed account's passwd entry as the account reads
+it.** `--json` carries `account.passwd`: `ok`, `unreadable` or `no-entry`. A base
+whose account cannot read its entry reports the advisory `account-passwd` with the
+command that repairs it. ⚠ The verdict does not change, because a container runs
+either way. `WSL-137`
+
+⭐ **A login shell WSL cannot start is named.** WSL starts every command through
+the account's login shell, so a shell it cannot start stops everything before the
+verifier runs. `base status --probe` names that as `account-cannot-start`, and
+`base ensure` repairs it. `WSL-137`
+
+⭐ **The account's login shell is bash where the guest has bash.** `--json` carries
+`account.login_shell` and `account.bash`. A base still on `/bin/sh` beside bash
+reports the advisory `login-shell-not-bash`, and its next `base ensure` moves it.
+Only `/bin/sh`, or a shell that is no program, is replaced. ⛔ Only an ensure from
+the state directory that owns the base moves it. `WSL-143`
+
+⭐ **A stalled package mirror is asked again.** Provisioning gives each package
+manager's engine transaction three tries, 15 and then 30 seconds apart, and
+names the line that ended each one. `WSL-140`
+
+⭐ **A build stopped before its identity marker is still this tool's to remove.**
+The build records itself in the ledger before its import registers anything.
+`base remove --yes` removes it on that record and on WSL's registration of its disk
+in this instance's `base` folder. ⛔ `base ensure` refuses it and names
+`base remove --yes`, so a removal stays the caller's own request. A failed import
+keeps its record open, because WSL can finish that import later. `resources` lists
+the record while it is open. ⛔ A distribution neither fact covers is refused,
+naming `wsl --unregister` as a person's own step. `WSL-150`
+
+⛔ **A build that is still running is never removed as a stopped one.** A build
+holds the base's lock from before its import until after its marker, and every
+removal holds the same lock. `base status --probe` reads the lock and names the
+process that holds it. `WSL-150`
+
+⭐ **`automount off` is swept after the restart that applies it.** The empty drive
+mount points a first start leaves are removed after that restart, before the
+verifier reads the drives. Swept before it, a drive mounted late was left behind,
+and each session relayed one `wsl: Failed to translate` line per Windows PATH
+entry. `WSL-153`, `WSL-155`
+
+---
+
 ## The safety model
 
 Removal is constrained, and every destructive path goes through the same gate.
@@ -1986,7 +2132,8 @@ Removal is constrained, and every destructive path goes through the same gate.
 1. The base is a distribution named `wsl-toolkit-jobs`, `wsl-toolkit` or
    `wsl-toolkit-INSTANCE`.
    Removing one that was ever usable also demands the identity marker its
-   provisioning wrote inside the guest.
+   provisioning wrote inside the guest. A build that stopped before writing it is
+   removed only on its ledger record and WSL's registration of its disk. `WSL-150`
 2. A throwaway distribution is this tool's only when its registered disk is
    inside the state directory's `distros` folder.
 3. ⛔ **A container runtime's own distribution is refused by name**:
@@ -2043,7 +2190,7 @@ security boundary**, and no page here says otherwise.
 
 | limit | kind | what it means |
 | --- | --- | --- |
-| the base enforces no per-container resource bounds | host | rootless podman under `init` with no cgroup delegation makes no cgroup per container. `--memory` is accepted and not applied, and `podman stats` reads `0B`. ⭐ `base status` reports this. A job bounded on this base is not bounded. `WSL-60` |
+| a base without systemd enforces no per-container resource bounds | host | rootless podman under `init` with no cgroup delegation makes no cgroup per container. `--memory` is accepted and not applied, and `podman stats` reads `0B`. ⭐ `base status` reports this, and a job's `limits` answer says `no`. A base with systemd enforces them once `base ensure` has run. `WSL-60`, `WSL-136` |
 | `podman logs` needs a log driver that stores | host | the engine's default driver on the base is `journald`, and nothing serves a journal there. This tool names `k8s-file` on each job it starts, so `podman logs` answers for them. The first line podman shows is this tool's own start marker, and `logs --follow` strips it. A caller driving podman directly names a driver too |
 | `bsd run` boots and powers off a guest per call, about 23 seconds each | host | nothing keeps a guest running between runs |
 | nothing a payload installs survives its `bsd run` | decision | a run writes to an overlay it removes, so no panic can damage the shared image |

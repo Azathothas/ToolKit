@@ -1652,23 +1652,30 @@ func TestEngineRowDoesNotSwallowTheRootlessRow(t *testing.T) {
 // keep.
 func TestCgroupFindingIsReportedAndNotRepairable(t *testing.T) {
 	cg := parseCapabilities("cgroup-version v2\ncgroup-self 0::/\ncgroup-delegated no\ncgroup-under none\nengine-rootless true\ncgroup-limit max\n")
-	r, ok := cgroupRemediation(cg)
+	r, ok := cgroupRemediation(cg, false)
 	if !ok {
 		t.Fatal("a base with limits not enforced produced no finding")
 	}
 	if r.Repairable {
-		t.Fatal("the cgroup finding claims to be repairable, and nothing implements that")
+		t.Fatal("the cgroup finding on a base without systemd claims to be repairable, and only the configuration can turn systemd on")
 	}
 	if !strings.Contains(r.Costs, "NOT ENFORCED") {
 		t.Errorf("the cost does not say the limit is not enforced: %q", r.Costs)
 	}
+	// ⭐ A BASE THAT RUNS SYSTEMD AND ENFORCES NOTHING NAMES ITS USER MANAGER,
+	// and claims no repair: measured on Debian, it had no D-Bus and so no
+	// manager to delegate to. WSL-136.
+	r, ok = cgroupRemediation(cg, true)
+	if !ok || r.Repairable || !strings.Contains(r.What, "runs systemd") || !strings.Contains(r.Costs, "D-Bus") {
+		t.Fatalf("a systemd base that enforces nothing earns %+v, want the user manager and D-Bus named, and no repair claimed", r)
+	}
 	// ⛔ A base that enforces limits earns no finding at all. A report that fires
 	// on every base is a report nobody reads.
 	good := parseCapabilities("cgroup-version v2\ncgroup-delegated yes\ncgroup-under systemd\nengine-rootless true\ncgroup-limit 67108864\n")
-	if _, ok := cgroupRemediation(good); ok {
+	if _, ok := cgroupRemediation(good, true); ok {
 		t.Fatal("a base that enforces limits produced a finding")
 	}
-	if _, ok := cgroupRemediation(nil); ok {
+	if _, ok := cgroupRemediation(nil, true); ok {
 		t.Fatal("an unmeasured base produced a finding, which is a claim about something nobody looked at")
 	}
 }
