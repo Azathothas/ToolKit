@@ -283,7 +283,10 @@ type jobEndOutcome struct {
 	// engine's own, where it has one.
 	Orphaned bool   `json:"orphaned,omitempty"`
 	Note     string `json:"note,omitempty"`
-	verdict  int
+	// Artifacts is the delivery of a session's out directory, where it was
+	// started with --artifacts. WSL-124.
+	Artifacts *toolkit.SessionDelivery `json:"artifacts,omitempty"`
+	verdict   int
 }
 
 // jobEnd follows or waits on one job. With writers it writes the output as it
@@ -434,7 +437,42 @@ func sessionEnd(ctx context.Context, rec toolkit.SessionRecord, tail int, stdout
 	case st.Exit == nil:
 		out.Note = "the session's supervisor is gone and no exit was recorded"
 	}
+	// ⭐ THE SESSION'S OUTPUT IS DELIVERED HERE, by whoever reads its end, which
+	// is what makes `base exec --detach --artifacts` the attached command with
+	// nobody waiting. ⛔ A delivery that failed fails a command that succeeded, as
+	// a job's does. WSL-124.
+	if rec.ArtifactDir != "" && !st.Alive {
+		home, err := toolkit.Home()
+		if err != nil {
+			return out, err
+		}
+		out.Artifacts = toolkit.DeliverSessionArtifacts(ctx, w, home, rec, st)
+		out.verdict = deliveryVerdict(out.verdict, out.Artifacts)
+	}
 	return out, nil
+}
+
+// deliveryVerdict is a session's exit once its output was delivered, or was not:
+// the command's own failure first, and a failed delivery of a command that
+// succeeded is 1, as a job's is. WSL-124.
+func deliveryVerdict(verdict int, d *toolkit.SessionDelivery) int {
+	if d != nil && d.Error != "" && verdict == exitOK {
+		return exitFailed
+	}
+	return verdict
+}
+
+// artifactsNote is the line a reader gets about a session's delivered output.
+func artifactsNote(d *toolkit.SessionDelivery) string {
+	switch {
+	case d == nil:
+		return ""
+	case d.Error != "":
+		return "! artifacts: " + d.Error
+	case d.Earlier:
+		return fmt.Sprintf("artifacts: an earlier wait delivered %d entries to %s", d.Delivered, d.To)
+	}
+	return toolkit.ArtifactsLine(toolkit.ArtifactTransfer{Delivered: d.Delivered, Bytes: d.Bytes}, d.To)
 }
 
 // jobEndCode is the exit for a job-control call that could not answer.
@@ -462,6 +500,9 @@ func renderEnd(end jobEndOutcome, asJSON bool) (int, error) {
 	}
 	if end.Note != "" {
 		logf("  %s", end.Note)
+	}
+	if line := artifactsNote(end.Artifacts); line != "" {
+		logf("  %s", line)
 	}
 	return end.verdict, nil
 }

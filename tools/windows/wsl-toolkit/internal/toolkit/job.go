@@ -222,8 +222,12 @@ type JobResult struct {
 	// sibling, so the sibling is what this is.
 	Artifacts int `json:"artifacts"`
 	// ArtifactsAttempted is what the guest offered, delivered or not.
-	ArtifactsAttempted int    `json:"artifacts_attempted"`
-	Error              string `json:"error,omitempty"`
+	ArtifactsAttempted int `json:"artifacts_attempted"`
+	// ArtifactList names what was delivered, its first MaxListedArtifacts
+	// entries, and ArtifactsUnlisted counts the rest. WSL-124.
+	ArtifactList      []ArtifactEntry `json:"artifact_list,omitempty"`
+	ArtifactsUnlisted int             `json:"artifacts_unlisted,omitempty"`
+	Error             string          `json:"error,omitempty"`
 	// ArtifactError is the OUTPUT TRANSFER's outcome, separate from the
 	// command's. ⛔ The two were one field, and the verdict read the
 	// command's exit code alone, so a job that succeeded and could not deliver
@@ -918,6 +922,7 @@ func (r *Runner) Run(ctx context.Context, spec JobSpec) (res JobResult) {
 	if spec.ArtifactDir != "" && !res.Unreached {
 		got, err := r.wsl.FetchArtifacts(ctx, r.cfg.Base.Name, user, guestOut, spec.ArtifactDir, limits, nil)
 		res.Artifacts, res.ArtifactsAttempted = got.Delivered, got.Attempted
+		res.ArtifactList, res.ArtifactsUnlisted = got.List, got.Unlisted
 		if err != nil {
 			// ⛔ A FAILED TRANSFER IS ITS OWN FIELD. Folding it into Error left
 			// the verdict reading Exit alone, so a container that succeeded and

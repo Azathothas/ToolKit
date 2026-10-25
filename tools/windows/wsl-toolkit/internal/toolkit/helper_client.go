@@ -10,7 +10,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -197,9 +196,8 @@ func (c *HelperClient) DownloadArtifacts(ctx context.Context, id, hostDir string
 	if resp.StatusCode != http.StatusOK {
 		return ArtifactTransfer{}, fmt.Errorf("the helper answered %s for the artifacts", resp.Status)
 	}
-	if err := os.MkdirAll(hostDir, 0o700); err != nil {
-		return ArtifactTransfer{}, err
-	}
+	// ⛔ NOT MADE HERE. The first entry that arrives makes it, so an empty set
+	// leaves no directory behind, as on the direct route. WSL-124.
 	dest, err := resolveExisting(hostDir)
 	if err != nil {
 		return ArtifactTransfer{}, err

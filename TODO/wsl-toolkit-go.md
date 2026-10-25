@@ -13451,7 +13451,7 @@ Built from `wip/f2-run-config`, reviewed twice, repaired once; rows red on Windo
 ## WSL-123. A job cannot run as an account its image lacks, and `base exec` cannot run as another account
 
 **Source** the consumer survey of 2026-10-21, P8, and the old record's finding 107
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13491,7 +13491,7 @@ Exit 0. Then `whoami`, `id` and a write to `/work` as a created user on
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f2-run-config` and `rb/f4-base-exec`, for 8.0.0.** `run` and `matrix` take `--user NAME --create-user [--sudo]`, and `base exec` takes `--user`. Driven on debian, ubuntu:24.04, alpine and archlinux: `whoami` printed the account, and `/work` and HOME were writable by it; an image's own account is used as the image defines it; `--sudo` on fedora answered root; an image with no sudo warned.
 
 ⭐ **2026-10-25: the `run` half is merged from `rb/f2-run-config`.** `--user NAME --create-user [--sudo]` on `run` and `matrix`. Driven on debian, ubuntu:24.04, alpine and archlinux: `whoami` printed the account, and `/work` and HOME were writable by it. An image's own account is used as the image defines it. The `base exec --user` half is `rb/f4-base-exec`'s.
 
@@ -13499,7 +13499,7 @@ Open.
 ## WSL-124. `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only
 
 **Source** the consumer survey of 2026-10-21, P9 and P17, and the old record's finding 108
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13540,13 +13540,20 @@ Exit 0, then each flag driven on a base with a grant.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f4-base-exec`, for 8.0.0.** `base exec` takes `--input`, `--artifacts`, `--stdin`, `--user`, `--here` and a Windows `--dir` mapped through a grant or `/mnt`, attached and detached; a directory it cannot enter is refused with exit 2. The command travels framed on every attached path. `run --artifacts` makes no directory for an empty `/out`, and `--json` lists `artifact_list`. The triage's regression, an empty `/out` answered 404 through the helper, is fixed: the helper makes its own set directory.
+
+```text
+scratch base wsl-toolkit-f4x, a grant, automount off: every flag driven
+the helper route: an empty and a non-empty /out, both answered and released
+```
+
+⚠ Departures: `--stdin` is opt-in, because 7.0 promised `/dev/null`. An empty `/out` making no directory is a break, recorded in `docs/consumers.md`. A job killed before its fetch leaves an empty helper set, which cleanup collects by age.
 
 
 ## WSL-125. A 9P grant is slow, and nothing copies a checkout into the base
 
 **Source** the consumer survey of 2026-10-21, P10, and the old record's finding 109
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13583,7 +13590,9 @@ and `--delete` removes a deleted one.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f4-base-exec`, for 8.0.0.** `base sync HOST-DIR GUEST-DIR` with `--exclude`, `--gitignore`, `--delete`, `--force`, `--max-bytes`, `--max-entries` and `--json`. It refuses a target that is the home or a parent of it, resolves to one, or holds a Windows mount at or below it, and its survey stays on one filesystem. Driven: two syncs sent 0 and then 1 changed file, and `--delete` removed a deleted one.
+
+⚠ A `--force --delete` sync can still remove anything the base account can write outside its home; documented. The survey's one-filesystem flag and its mount line need a real 9p or drvfs mount to prove, so no row holds those two script lines.
 
 
 ## WSL-126. `stop` does not reach a session's child that left the process group
@@ -13909,7 +13918,7 @@ Open.
 ## WSL-133. `base shell` has no `--private-net`
 
 **Source** `WSL-68`, which closed without it under ruling 23
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -13942,7 +13951,14 @@ Exit 0, then `ip link` in the shell lists the namespace's own interfaces.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f4-base-exec`, for 8.0.0.** `base shell --private-net`. Its launcher removes itself, a later call removes launchers older than an hour that no shell ran, and the payload removes its work directory.
+
+```text
+ip -o link in the private shell: lo and pasta's eth0 only, against the shared namespace's lo, eth0 and a veth pair
+afterwards: ~/.wsl-toolkit/shells empty, /tmp/tmp.* count 0; --private-net --root refused, exit 2
+```
+
+⚠ Driven with piped commands, not a pseudo console, so the manual's pts and job-control rows are not re-measured.
 
 
 ## WSL-134. A real window's focus event was never produced for herdr's `--remote` signals
@@ -14494,7 +14510,7 @@ Open.
 ## WSL-146. No channel gives an agent an environment variable
 
 **Source** the old record's finding 51
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14527,7 +14543,9 @@ Exit 0, then the agent reads the variable.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f4-base-exec`, for 8.0.0.** `base agent --env NAME=VALUE ... NAME [--] ARGS`. Driven with a stand-in `pi` on a scratch base: the agent read `PI_PROBE=[k e$y]` and `MODEL=[one]` in its workspace with its own arguments intact; without `--env` both read unset; `1BAD` is refused with exit 2.
+
+⚠ Not driven with a real installed agent.
 
 
 ## WSL-147. After `base bootstrap`, agents bypass this tool's wrappers

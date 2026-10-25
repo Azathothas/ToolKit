@@ -83,6 +83,9 @@ func cmdLogs(ctx context.Context, args []string) (int, error) {
 		if end.Note != "" {
 			logf("  %s", end.Note)
 		}
+		if line := artifactsNote(end.Artifacts); line != "" {
+			logf("  %s", line)
+		}
 		return end.verdict, nil
 	}
 	// ⛔ Home, not EnsureHome. `logs` READS transcripts, and a reader that

@@ -342,19 +342,73 @@ type WorkspaceFilter struct {
 func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter WorkspaceFilter) (WorkspaceUpload, error) {
 	var up WorkspaceUpload
 	tw := tar.NewWriter(w)
+	if err := walkWorkspace(root, limits, filter, &up, func(e workspaceEntry) error {
+		return writeWorkspaceEntry(tw, &up, e)
+	}); err != nil {
+		return up, err
+	}
+	if err := tw.Close(); err != nil {
+		return up, fmt.Errorf("the workspace copy could not finish its archive: %w", err)
+	}
+	return up, nil
+}
+
+// workspaceEntry is one entry the workspace walk keeps: a directory, a link that
+// stays inside the tree, or a regular file with the archive mode it travels with.
+type workspaceEntry struct {
+	abs, rel string
+	info     fs.FileInfo
+	// link is a symbolic link's target as it was read, and mode a regular file's
+	// mode in the archive.
+	link string
+	mode int64
+}
+
+// writeWorkspaceEntry writes one kept entry into the workspace archive.
+func writeWorkspaceEntry(tw *tar.Writer, up *WorkspaceUpload, e workspaceEntry) error {
+	switch {
+	case e.info.IsDir():
+		if err := tw.WriteHeader(&tar.Header{
+			Name: e.rel + "/", Typeflag: tar.TypeDir, Mode: 0o755, ModTime: e.info.ModTime(),
+		}); err != nil {
+			return memberError(e.rel+"/", "writing its archive header", err)
+		}
+		return nil
+	case e.info.Mode()&fs.ModeSymlink != 0:
+		if err := tw.WriteHeader(&tar.Header{
+			Name: e.rel, Typeflag: tar.TypeSymlink, Linkname: filepath.ToSlash(e.link),
+			Mode: 0o777, ModTime: e.info.ModTime(),
+		}); err != nil {
+			return memberError(e.rel, "writing its archive header", err)
+		}
+		return nil
+	}
+	return writeRegularMember(tw, up, e.abs, e.rel, e.info, e.mode)
+}
+
+// walkWorkspace walks root as the workspace copy does, and hands every entry it
+// keeps to keep, in walk order. What the filter leaves out, a link out of the
+// tree and an entry that is neither a file, a directory nor a link are counted
+// on up rather than kept, and the limits refuse a tree past them. On success up
+// carries the entry count, the bytes and the executable-bit report.
+//
+// ⭐ ONE WALK, so `base sync` reads exactly the list a job's workspace copy
+// sends. A second walker would be a second reader of the same rules, and the
+// two would drift. WSL-125.
+func walkWorkspace(root string, limits WorkspaceLimits, filter WorkspaceFilter, up *WorkspaceUpload, keep func(workspaceEntry) error) error {
 	realRoot, err := resolveExisting(root)
 	if err != nil {
-		return up, err
+		return err
 	}
 	// ⚠ GIT IS ASKED ABOUT THE RESOLVED PATH, so its answer names the tree that is
 	// walked rather than another spelling of it. WSL-112.
 	var ignored map[string]bool
 	if filter.Gitignore {
 		if filter.Untrusted {
-			return up, errors.New("--gitignore reads git, and git is not run in a tree a container or a helper client wrote. The caller's own copy applies it before it uploads")
+			return errors.New("--gitignore reads git, and git is not run in a tree a container or a helper client wrote. The caller's own copy applies it before it uploads")
 		}
 		if ignored, err = gitIgnored(context.Background(), realRoot); err != nil {
-			return up, err
+			return err
 		}
 	}
 	bits := &execBits{index: map[string]bool{}}
@@ -422,12 +476,7 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter 
 		}
 		switch {
 		case d.IsDir():
-			if err := tw.WriteHeader(&tar.Header{
-				Name: slashRel + "/", Typeflag: tar.TypeDir, Mode: 0o755, ModTime: info.ModTime(),
-			}); err != nil {
-				return memberError(slashRel+"/", "writing its archive header", err)
-			}
-			return nil
+			return keep(workspaceEntry{abs: p, rel: slashRel, info: info})
 		case info.Mode()&fs.ModeSymlink != 0:
 			target, err := os.Readlink(p)
 			if err != nil {
@@ -449,19 +498,13 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter 
 				entries--
 				return nil
 			}
-			if err := tw.WriteHeader(&tar.Header{
-				Name: slashRel, Typeflag: tar.TypeSymlink, Linkname: filepath.ToSlash(target),
-				Mode: 0o777, ModTime: info.ModTime(),
-			}); err != nil {
-				return memberError(slashRel, "writing its archive header", err)
-			}
-			return nil
+			return keep(workspaceEntry{abs: p, rel: slashRel, info: info, link: target})
 		case info.Mode().IsRegular():
 			total += info.Size()
 			if total > limits.MaxBytes {
 				return fmt.Errorf("%w: the workspace passes %s at %s", ErrWorkspaceRefused, HumanBytes(limits.MaxBytes), slashRel)
 			}
-			return writeRegularMember(tw, &up, p, slashRel, info, bits.mode(info.Mode(), slashRel, p))
+			return keep(workspaceEntry{abs: p, rel: slashRel, info: info, mode: bits.mode(info.Mode(), slashRel, p)})
 		default:
 			// ⛔ A WINDOWS JUNCTION LANDS HERE, and it used to be dropped in
 			// silence beside the sockets and devices. Go reports one as
@@ -478,14 +521,11 @@ func writeWorkspaceTar(w io.Writer, root string, limits WorkspaceLimits, filter 
 		}
 	})
 	if walkErr != nil {
-		return up, walkErr
-	}
-	if err := tw.Close(); err != nil {
-		return up, fmt.Errorf("the workspace copy could not finish its archive: %w", err)
+		return walkErr
 	}
 	up.Entries, up.Bytes = entries, total
 	up.ExecRestored = bits.report()
-	return up, nil
+	return nil
 }
 
 // writeRegularMember puts one regular file into the archive.
@@ -647,14 +687,45 @@ type ArtifactTransfer struct {
 	// A host that keeps no mode, as Windows does, loses the bit on extraction,
 	// and the helper hands this set on in place of asking git.
 	Exec map[string]bool `json:"-"`
+	// List names each entry delivered, the first MaxListedArtifacts of them, and
+	// Unlisted counts the rest. WSL-124.
+	List     []ArtifactEntry `json:"list,omitempty"`
+	Unlisted int             `json:"unlisted,omitempty"`
 }
 
+// ArtifactEntry is one entry an artifact transfer delivered, by its path under
+// the destination in slashes. Kind is file, dir, or link for the record a link
+// becomes. WSL-124.
+type ArtifactEntry struct {
+	Path  string `json:"path"`
+	Kind  string `json:"kind"`
+	Bytes int64  `json:"bytes,omitempty"`
+}
+
+// MaxListedArtifacts bounds the entries one answer names.
+//
+// ⚠ THE COUNT IS ALWAYS EXACT and the list is its first part, as an omission
+// list is. A job that writes a whole tree to /out would otherwise put every
+// file of it in one answer.
+const MaxListedArtifacts = 1000
+
+// listed records one delivered entry.
+func (t *ArtifactTransfer) listed(rel, kind string, size int64) {
+	if len(t.List) >= MaxListedArtifacts {
+		t.Unlisted++
+		return
+	}
+	t.List = append(t.List, ArtifactEntry{Path: filepath.ToSlash(rel), Kind: kind, Bytes: size})
+}
+
+// FetchArtifacts copies a guest directory back to hostDir.
+//
+// ⛔ hostDir IS CREATED BY THE FIRST ENTRY THAT ARRIVES, NOT BEFORE THE FETCH.
+// A job that left /out empty gave its caller an empty directory nobody asked
+// for, and a caller testing for the directory read that as output. WSL-124.
 func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDir string, limits WorkspaceLimits, log func(string)) (ArtifactTransfer, error) {
 	var zero ArtifactTransfer
 	if err := AssertArgvSafe([]string{guestDir}); err != nil {
-		return zero, err
-	}
-	if err := os.MkdirAll(hostDir, 0o700); err != nil {
 		return zero, err
 	}
 	realDest, err := resolveExisting(hostDir)
@@ -685,9 +756,18 @@ func (w *Wsl) FetchArtifacts(ctx context.Context, distro, user, guestDir, hostDi
 		return res.got, err
 	}
 	if log != nil {
-		log(fmt.Sprintf("artifacts: %d entries, %s written to %s", res.got.Delivered, HumanBytes(res.got.Bytes), hostDir))
+		log(ArtifactsLine(res.got, hostDir))
 	}
 	return res.got, nil
+}
+
+// ArtifactsLine is what a caller reads about one delivered set.
+//
+// ⛔ ONE FORM FOR EVERY COUNT, the 7.0 line. An empty set reads "0 entries"
+// though no directory is made now: stderr is a stream a caller may parse, and a
+// MINOR release does not change it. WSL-124.
+func ArtifactsLine(got ArtifactTransfer, hostDir string) string {
+	return fmt.Sprintf("artifacts: %d entries, %s written to %s", got.Delivered, HumanBytes(got.Bytes), hostDir)
 }
 
 // fetchFailure decides which failure of an artifact fetch a caller is told
@@ -869,6 +949,7 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 				return got, artifactError(rel, "making its directory", err)
 			}
 			got.Delivered++
+			got.listed(rel, "dir", 0)
 		case tar.TypeReg:
 			if err := claim(rel, hdr.Name); err != nil {
 				return got, err
@@ -902,6 +983,7 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 				got.Exec[filepath.ToSlash(rel)] = true
 			}
 			got.Delivered++
+			got.listed(rel, "file", written)
 		case tar.TypeSymlink, tar.TypeLink:
 			// ⛔ A LINK THAT LEAVES THE TREE IS REFUSED, which is what the
 			// manual has always promised and the code did not do. It was
@@ -940,6 +1022,7 @@ func extractInto(r io.Reader, dest string, limits WorkspaceLimits) (ArtifactTran
 				return got, artifactError(rel+".link.txt", "writing the record of its link", err)
 			}
 			got.Delivered++
+			got.listed(rel+".link.txt", "link", int64(len(note)))
 		default:
 			// A device, a socket or a fifo is not an artifact.
 			continue

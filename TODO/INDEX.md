@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 250  open 41  blocked 5  done 204
+total 250  open 36  blocked 5  done 209
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 5 | 0 | 90 | 95 |
-| P2 | 27 | 2 | 88 | 117 |
-| P3 | 9 | 3 | 18 | 30 |
-| **all** | **41** | **5** | **204** | **250** |
+| P2 | 24 | 2 | 91 | 117 |
+| P3 | 7 | 3 | 20 | 30 |
+| **all** | **36** | **5** | **209** | **250** |
 
 ---
 
@@ -215,9 +215,9 @@ total 250  open 41  blocked 5  done 204
 | WSL-120 | P2 | M | done | A job id is hard to use: a prefix, the container name and one-line JSON are all refused | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-121 | P1 | M | done | An ephemeral job keeps its host record, and a killed caller leaves its job running | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-122 | P2 | M | done | Nothing is cached between jobs, so each job installs its toolchain again | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-123 | P2 | M | open | A job cannot run as an account its image lacks, and `base exec` cannot run as another account | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-124 | P2 | M | open | `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-125 | P2 | M | open | A 9P grant is slow, and nothing copies a checkout into the base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-123 | P2 | M | done | A job cannot run as an account its image lacks, and `base exec` cannot run as another account | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-124 | P2 | M | done | `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-125 | P2 | M | done | A 9P grant is slow, and nothing copies a checkout into the base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-126 | P2 | M | open | `stop` does not reach a session's child that left the process group | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-127 | P2 | M | open | The tool's own exit 2 cannot be told from a job's exit 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-128 | P2 | S | open | An input file keeps CRLF and no executable bit | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -225,7 +225,7 @@ total 250  open 41  blocked 5  done 204
 | WSL-130 | P2 | L | open | An engine inside a base is set up by hand | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-131 | P2 | M | open | Job defaults are repeated in every wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-132 | P2 | S | open | Two acceptance cases are not isolated from what they run beside | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-133 | P3 | S | open | `base shell` has no `--private-net` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-133 | P3 | S | done | `base shell` has no `--private-net` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-134 | P3 | S | blocked | A real window's focus event was never produced for herdr's `--remote` signals | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-135 | P3 | S | blocked | The muse-code guide was never run as one ordered pass from an empty host | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-136 | P2 | M | open | A memory or cpu limit is accepted in a base and enforced by nothing, and nothing caps how many jobs run | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -238,7 +238,7 @@ total 250  open 41  blocked 5  done 204
 | WSL-143 | P3 | S | open | The base account's login shell is `/bin/sh` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-144 | P2 | S | done | An agent pane cannot be started in the project directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-145 | P2 | S | open | The adapter contract's example probe passes with no wrapper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-146 | P3 | S | open | No channel gives an agent an environment variable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-146 | P3 | S | done | No channel gives an agent an environment variable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-147 | P1 | S | open | After `base bootstrap`, agents bypass this tool's wrappers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-148 | P2 | S | open | After a cancelled approval, herdr refuses every prompt, and no guide says how out | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-149 | P2 | S | done | `bootstrap.sh --dry-run` reports a failure on an image without curl | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

@@ -70,7 +70,14 @@ base64 -d "$WORK/payload.b64" > "$WORK/payload.sh" || die "the payload could not
   # shellcheck disable=SC2016
   printf 'exec /bin/sh "$0.payload"\n'
 } > "$WORK/enter.sh"
-cp "$WORK/payload.sh" "$WORK/enter.sh.payload"
+# ⛔ THE PAYLOAD'S FIRST LINE REMOVES $WORK. The `exec pasta` below replaces this
+# shell, so the trap above never runs, and every call left a directory in /tmp
+# holding the payload and whatever --env put in it. Measured on an Arch base: one
+# more /tmp/tmp.* per `base exec --private-net` and per `base shell
+# --private-net`. The shell running the payload holds it open, so removing the
+# file under it changes nothing it reads. WSL-133.
+# shellcheck disable=SC2016
+{ printf '%s\n' 'rm -rf -- "${0%/*}"'; cat "$WORK/payload.sh"; } > "$WORK/enter.sh.payload"
 chmod 0700 "$WORK/enter.sh" "$WORK/enter.sh.payload"
 
 # ⛔ --quiet, BECAUSE THIS WRAPS SOMEBODY ELSE'S COMMAND. Without it pasta writes

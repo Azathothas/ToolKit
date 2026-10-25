@@ -43,6 +43,10 @@ func TestBaseExecClearsAStaleBootIDBeforeItsCommand(t *testing.T) {
 					check = call.Pos()
 				case x.Name == "w" && fun.Sel.Name == "Exec" && attach == token.NoPos:
 					attach = call.Pos()
+				// ⭐ THE ATTACHED COMMAND STARTS IN RunBaseExec since WSL-124 gave it
+				// inputs, artifacts and a start gate.
+				case x.Name == "toolkit" && fun.Sel.Name == "RunBaseExec" && attach == token.NoPos:
+					attach = call.Pos()
 				}
 			}
 		case *ast.Ident:

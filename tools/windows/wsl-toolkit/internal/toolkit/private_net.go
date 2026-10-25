@@ -3,9 +3,13 @@
 package toolkit
 
 import (
+	"context"
 	_ "embed"
 	"encoding/base64"
 	"errors"
+	"fmt"
+	"io"
+	"time"
 )
 
 //go:embed private-net.sh
@@ -40,3 +44,72 @@ func PrivateNetPayload(payload []byte, hostAddress string) ([]byte, map[string]s
 	}
 	return privateNetScript, env, nil
 }
+
+// PrivateShell places the launcher `base shell --private-net` runs, and answers
+// its path in the guest: the private network wrapper with its variables in
+// front, around the given shell. WSL-133.
+//
+// ⛔ THE LAUNCHER IS A FILE, because the terminal is the shell's stdin. `base
+// exec --private-net` sends the wrapper on stdin, and an interactive shell cannot
+// read its terminal from a pipe that is carrying its own script. The file travels
+// through the archive channel a session's payload uses, never on a command line.
+//
+// ⭐ IT REMOVES ITS OWN DIRECTORY AS ITS FIRST LINE. The shell holds the file
+// open, so reading on is unaffected, and a client killed later leaves nothing
+// behind.
+func PrivateShell(ctx context.Context, w *Wsl, distro, user string, shell []byte, hostAddress string) (string, error) {
+	script, env, err := PrivateNetPayload(shell, hostAddress)
+	if err != nil {
+		return "", err
+	}
+	home, err := accountHome(ctx, w, distro, user)
+	if err != nil {
+		return "", err
+	}
+	id, err := newJobID()
+	if err != nil {
+		return "", err
+	}
+	shells := home + "/" + GuestRoot + "/shells"
+	dir := shells + "/" + id
+	if err := AssertArgvSafe([]string{dir}); err != nil {
+		return "", err
+	}
+	// ⛔ A LAUNCHER NO SHELL EVER RAN STAYS, because only the launcher removes
+	// its directory and gc does not read this one. wsl.exe can fail between the
+	// placing and the start. So each call first removes a sibling older than an
+	// hour. ⚠ Advisory: a sweep that fails does not stop the shell. WSL-133.
+	_, _, _, _ = w.Capture(ctx, distro, user, staleShellSweep(shells), 2*time.Minute)
+	errBuf := &boundedBuffer{max: 64 << 10}
+	if code, err := w.ExecDirect(ctx, distro, user, "", []string{"/bin/mkdir", "-p", dir}, nil, io.Discard, errBuf, 2*time.Minute); err != nil || code != 0 {
+		return "", fmt.Errorf("could not create %s in the guest (exit %d): %s", dir, code, guestFailure(errBuf.String()))
+	}
+	content := append([]byte("rm -rf "+shellQuote(dir)+"\n"), shellAssignments(env)...)
+	content = append(content, script...)
+	errBuf = &boundedBuffer{max: 64 << 10}
+	if _, err := pumpArchive(
+		func(pw io.Writer) (WorkspaceUpload, error) {
+			return writeInputsTar(pw, []JobInput{
+				{Name: privateShellName, Bytes: content},
+			})
+		},
+		func(pr io.Reader) (int, error) {
+			return w.ExecDirect(ctx, distro, user, "", []string{"/bin/tar", "-xf", "-", "-C", dir}, pr, io.Discard, errBuf, 2*time.Minute)
+		},
+		func() string { return errBuf.String() }); err != nil {
+		return "", fmt.Errorf("the private shell's launcher: %w", err)
+	}
+	return dir + "/" + privateShellName, nil
+}
+
+// staleShellSweep is the script that removes each launcher directory under
+// shells older than an hour. A shell starts within seconds of its launcher,
+// which removes itself first, so an hour old is one no shell ran. WSL-133.
+func staleShellSweep(shells string) []byte {
+	return []byte("d=" + shellQuote(shells) + "\n" +
+		`[ -d "$d" ] || exit 0` + "\n" +
+		`find "$d" -mindepth 1 -maxdepth 1 -type d -mmin +60 -exec rm -rf -- {} +` + "\n")
+}
+
+// privateShellName is the launcher's file name in its directory.
+const privateShellName = "enter.sh"

@@ -145,7 +145,10 @@ remove does not ask before removing
 .B wsl-toolkit base shell
 .TP
 \fB--here\fR
-shell starts in this Windows directory instead of the guest account's home
+shell starts in this Windows directory instead of the guest account's home: under /mnt, or at its grant when base.automount is off
+.TP
+\fB--private-net\fR
+shell runs in a network namespace of the account's own, with the Windows host and the private ranges refused. ⛔ No container can run inside it
 .TP
 \fB--root\fR
 shell attaches as root
@@ -154,6 +157,9 @@ shell attaches as root
 go through the local helper even when this process could call wsl.exe itself
 .TP
 .B wsl-toolkit base exec
+.TP
+\fB--artifacts\fR
+a directory on this machine to receive what the command leaves in the directory WSL_TOOLKIT_OUT names. It is made only when something arrives
 .TP
 \fB-c\fR
 the POSIX shell command to run in the base
@@ -165,13 +171,19 @@ the command as base64 of its bytes, for a caller that must keep every shell away
 start the command with no client attached and answer with a session id. wsl-toolkit logs ID --follow, wait ID and stop ID reach it
 .TP
 \fB--dir\fR
-working directory inside the guest. Default is its home. Default: ~.
+working directory: a guest path, or a Windows directory mapped to where the base sees it. Default is the guest home. A directory the command cannot enter is refused. Default: ~.
 .TP
 \fB--env\fR
 NAME=VALUE exported to the command. Repeatable, and applied after --env-file
 .TP
 \fB--env-file\fR
 a file on this machine of NAME=VALUE lines exported to the command
+.TP
+\fB--here\fR
+start in the guest directory this Windows directory is seen at: its grant, or its drive mount when base.automount is ro or rw
+.TP
+\fB--input\fR
+NAME=FILE: a file on this machine, read from the current directory, placed at NAME in a directory of the command's own that WSL_TOOLKIT_IN names. Repeatable
 .TP
 \fB--json\fR
 with --detach, write the session as a structured answer
@@ -185,14 +197,45 @@ run as root instead of the configured account
 \fB--script\fR
 a file on this machine whose bytes are the command, or - to read them from stdin
 .TP
+\fB--stdin\fR
+pass this process's stdin to the command, a pipe or a file. Refused when stdin is a terminal
+.TP
 \fB--timeout\fR
 how long the command may run. 0 means no deadline. Default: 30m0s.
+.TP
+\fB--user\fR
+run as this account of the base instead of the configured one. The base must have it
 .TP
 \fB--via-helper\fR
 prove the helper refusal for arbitrary base commands
 .TP
+.B wsl-toolkit base sync HOST-DIR GUEST-DIR
+.TP
+\fB--delete\fR
+remove guest entries the list no longer holds. A path an --exclude names or git ignores stays
+.TP
+\fB--exclude\fR
+a glob to leave out of the list, matched as run's --exclude matches it. Repeatable, and added to jobs.exclude
+.TP
+\fB--force\fR
+let GUEST-DIR be outside the account's home. The home itself, the root, this tool's own directory, a Windows directory and a directory holding one of them stay refused
+.TP
+\fB--gitignore\fR
+leave out of the list what git ignores in HOST-DIR, read from git itself. jobs.gitignore sets it for a project, and --gitignore=false turns it off
+.TP
+\fB--json\fR
+write a structured answer
+.TP
+\fB--max-bytes\fR
+refuse a list whose files hold more than this many bytes. Default: 1073741824.
+.TP
+\fB--max-entries\fR
+refuse a list with more entries than this. Default: 200000.
+.TP
 .B wsl-toolkit base agent
-This form has no options.
+.TP
+\fB--env\fR
+NAME=VALUE exported to the agent this command starts, written before the agent's name. Repeatable. An agent herdr starts in a pane does not get it
 .TP
 .B wsl-toolkit base herdr
 This form has no options.

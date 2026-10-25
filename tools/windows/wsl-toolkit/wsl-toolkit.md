@@ -645,8 +645,20 @@ keeps the two streams and the exit code in `~/.wsl-toolkit/sessions/ID` in the
 guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
 `WSL-95`
 
-- The command is the one `base exec` would send, `--private-net` and `--root`
-  included. `--dir` is where it starts.
+- The command is the one `base exec` would send, `--private-net`, `--root` and
+  `--user` included. `--dir` and `--here` are where it starts, and a directory it
+  cannot enter stops the start with exit 2.
+- ⭐ `--input` and `--artifacts` work here too. The inputs travel with the payload
+  into the session's directory, and `WSL_TOOLKIT_IN` and `WSL_TOOLKIT_OUT` name its
+  `in` and `out` directories. `WSL-124`
+- ⭐ **The first `wait ID` or `logs ID --follow` to see the session end delivers its
+  `--artifacts`.** `wait --json` carries the delivery as `artifacts`, and a later
+  `wait` reads that record rather than writing the files again. A delivery that
+  fails turns a command that exited 0 into exit 1.
+- ⚠ Nobody has to wait, and then nothing is delivered. The output stays in the
+  guest with the session, and `gc` removes it with the session.
+- `--stdin` reads this process's stdin whole, at most 64 MiB, and the session's
+  command reads it from a file in its directory.
 - `logs ID --follow`, `wait ID`, `stop ID`, `inspect ID` and `gc` reach it by id.
 - Its deadline sends TERM, then KILL after 10 seconds, and answers 124. A stop
   answers 130. `stop --grace` sets the time between the two signals.
@@ -698,7 +710,27 @@ file on disk is never written to, and `--input` keeps its bytes as they are.
   flags.
 
 `run`, `matrix` and the helper take all three. `run`, `matrix`, `base exec`,
-`bsd run` and `distro` take `--command-base64`.
+`bsd run` and `distro` take `--command-base64`. `base exec` takes `--input` too,
+as [its section](#base-exec-and-what-a-job-has) says.
+
+---
+
+## What a job leaves in /out
+
+```powershell
+wsl-toolkit run --image alpine --artifacts .\out --json -c 'cp build/app /out/'
+```
+
+`--artifacts DIR` copies back what the container leaves in `/out`, with every entry
+checked before it is written. ⭐ **`DIR` is made by the first entry that arrives.** A
+job that leaves `/out` empty makes no directory, on the direct route and through the
+helper. The line on stderr keeps its form and reads `0 entries`. `WSL-124`
+
+⭐ **`--json` lists what arrived.** `artifact_list` names each entry delivered, by
+its path under `DIR` in slashes, with `kind` `file`, `dir` or `link` and a file's
+`bytes`. A link is recorded as `NAME.link.txt` rather than made, so its `kind` is
+`link`. The list holds the first 1000 entries, `artifacts_unlisted` counts the rest,
+and `artifacts` stays the exact count.
 
 ⭐ **`--cap-add CAP` gives the container one Linux capability**, such as
 `NET_ADMIN`, with or without `CAP_` and in any case, or `ALL`. It is repeatable,
@@ -916,7 +948,9 @@ provisions it again, which restarts the distribution and stops what runs in it.
 
 `base shell` reads the same mounts. `--root` names each drive as read-only or
 writable, and `--here` into a base with no drive mounted is refused with exit 2
-and `base ensure`.
+and `base ensure`. ⭐ With `base.automount` off, `--here` starts at the grant that
+covers this Windows directory, and a directory no grant covers is refused with the
+`base grant` that covers it. `WSL-124`
 
 ## ⭐ Reaching herdr, and through it the agents
 
@@ -978,6 +1012,45 @@ exit status. `--root` is an explicit administrative variant. `--detach` runs the
 command apart from its client, as [the section above](#-a-command-in-the-base-that-outlives-its-client)
 says.
 
+### `base exec` and what a job has
+
+```powershell
+wsl-toolkit base exec --dir C:\path\to\project -c 'make test'
+wsl-toolkit base exec --input seed.sql=.\seed.sql --artifacts .\out -c 'psql -f "$WSL_TOOLKIT_IN/seed.sql" > "$WSL_TOOLKIT_OUT/run.txt"'
+Get-Content .\data.csv | wsl-toolkit base exec --stdin -c 'wc -l'
+```
+
+⭐ **`--dir` takes a Windows directory and maps it to where the base sees it.** With
+`base.automount` off that is the grant covering it, and with the drives mounted it is
+the drive's mount under `/mnt`. `--here` does the same for this Windows directory. A
+directory no grant covers is refused with the `base grant` that covers it. `WSL-124`
+
+⛔ **A directory the command cannot enter is refused, and the command does not
+run.** wsl.exe answers a `--cd` it cannot follow by starting in `/` and exiting 0, so
+`base exec --dir /nonexistent -c pwd` printed `/` and succeeded. The command enters
+its directory itself now, and exit 2 follows the shell's own reason.
+
+- `--user NAME` runs it as that account of the base. The base is asked for the
+  account first, and one it lacks is refused with exit 2 and the `useradd` that makes
+  it. `--root` and `--user` together are refused. `WSL-123`
+- `--input NAME=FILE` places a file at `NAME`, byte for byte, in a directory of the
+  command's own that `WSL_TOOLKIT_IN` names. The rules for `NAME` are `run`'s.
+- `--artifacts DIR` copies back what the command leaves in the directory
+  `WSL_TOOLKIT_OUT` names, with the checks a job's `/out` gets. `DIR` is made only
+  when something arrives. A transfer that fails turns exit 0 into exit 1, keeps the
+  guest copy, and names the `artifacts retry` that fetches it.
+- `--stdin` passes this process's stdin to the command, and then the command travels
+  as a file in its directory. A terminal is refused, and so is `--stdin` beside
+  `--script -`, which has read stdin already.
+- ⚠ `--input` and `--artifacts` read a relative path from the current directory, as
+  `--script` and `--env-file` do. The command's directory is a job's under the
+  account's `~/.wsl-toolkit/jobs`, with a ledger record, so `gc` collects what a killed
+  client leaves. Under another account's home, `gc` does not look.
+
+⚠ **Without `--stdin`, stdin is still `/dev/null`.** A `while read` loop that runs
+`base exec` would otherwise give it the rest of the loop's input, so passing stdin is
+asked for rather than assumed.
+
 ### Grants that change live
 
 ```powershell
@@ -1031,6 +1104,46 @@ status` names it with the `base revoke` that removes it, and `--json` carries it
 `access.mounts[].missing`. `base ensure` and `base grant` refuse beside it before they
 change anything. The verifier allows its stale mount until the base restarts, and
 each of several gone grants can be revoked. `WSL-106`
+
+### A checkout in the base's own filesystem
+
+```powershell
+wsl-toolkit base sync --gitignore --exclude .git C:\path\to\project '~/src/project'
+wsl-toolkit base exec -c 'cd ~/src/project && make test'
+wsl-toolkit base sync --gitignore --exclude .git --delete C:\path\to\project '~/src/project'
+```
+
+⭐ **`base sync HOST-DIR GUEST-DIR` copies a checkout onto the base's own disk, and
+the next call sends only what changed.** A grant is a 9P mount, and a build reading
+a tree over 9P takes minutes where the base's own disk takes about a second. `WSL-125`
+
+- The list is a job's workspace copy. `--exclude` and `--gitignore` are `run`'s, and
+  `jobs.exclude` and `jobs.gitignore` are the defaults. The git index's executable
+  bits travel, and so does a shebang's.
+- ⚠ The defaults come from the `wsl-toolkit.json` in effect where the command runs,
+  as for `run --workspace`, and not from `HOST-DIR`. Run it from the project, or pass
+  the rules on the command line.
+- A file travels when its size, its modification time to the second or its
+  executable bit differs. A link travels when its target does, and a directory when
+  the guest lacks it.
+- ⭐ `--delete` removes guest entries the list no longer holds. A path an `--exclude`
+  names or git ignores stays, so a build tree made in the base survives. git is asked
+  about each such path, in a nested repository by that repository's own rules.
+- A path that is a directory on one side and not on the other is refused, with
+  nothing changed, unless `--delete` replaces it.
+- ⛔ `GUEST-DIR` is under the account's home, read through links, unless `--force`.
+  The home itself, the root, `~/.wsl-toolkit` and a Windows directory seen through a
+  grant or a drive are refused whatever `--force` says. A link as `GUEST-DIR` is
+  refused too.
+- ⛔ A `GUEST-DIR` that holds any of those is refused the same way, such as `/home`,
+  `/mnt` or `/workspaces`. The guest list never crosses into another filesystem, so
+  `--delete` never removes a mount below `GUEST-DIR`.
+- `--json` answers `wsl-toolkit-base-sync/1`: `entries` and `bytes` for the list,
+  `sent` and `sent_bytes`, `unchanged`, `deleted`, `replaced`, `kept` and `created`.
+- Exit 2 is a refusal, and nothing in the guest changed. Exit 1 is a sync that
+  started and did not finish.
+- ⚠ From PowerShell, quote a `~` path. An unquoted `~` can arrive as the Windows home,
+  which is refused as not a guest path.
 
 ### The shell `base shell` gives you
 
@@ -1343,6 +1456,21 @@ for it. A grant covers its directory and what is beneath it, and never a sibling
 whose name starts the same way. ⛔ **Muse's own screen needs a terminal**, so `muse`
 alone and `muse resume` answer exit 2 with the herdr route.
 
+```powershell
+wsl-toolkit --instance base base agent --env HTTPS_PROXY=http://proxy:3128 muse -- exec --json PROMPT
+```
+
+⭐ **`base agent --env NAME=VALUE` exports a variable to the agent it starts.** It is
+repeatable, it goes before the agent's name, and a later value for a name wins. Each
+value is single-quoted in front of the agent's `exec`, through the writer `base exec
+--env` uses. A `--env` after the name is the agent's own argument. `WSL-146`
+
+⚠ **An agent herdr starts in a pane does not get it.** The pane inherits the herdr
+server's environment, a systemd unit that reads no profile, so neither `--env` nor a
+shell startup file reaches it. Such an agent's setting belongs in its own
+configuration, such as `~/.pi/agent/auth.json` for pi. A launcher such as `muse.exe`
+passes every argument as the agent's, so it takes no `--env` either.
+
 ⚠ **The launcher is a copy, so an update of this tool leaves it behind.** `base status
 --probe` names a launcher that is another build, and `base ensure` rewrites it. It
 never writes over, or removes, a file that is not a build of this tool, which it
@@ -1433,7 +1561,8 @@ With a project configuration in play, a relative `--workspace`, `--script`,
 resolves against the directory holding that configuration. A relative
 `jobs.workspace` or `jobs.env_file` always resolves against the file that names it.
 That is a working tree's own where it lends a named instance its `env_file`. `base exec`
-reads a relative `--script` and `--env-file` from the current directory.
+reads a relative `--script`, `--env-file`, `--input` and `--artifacts` from the
+current directory, and so does `base sync` its `HOST-DIR`.
 
 ⭐ **A relative grant source resolves against its file on every route.** A file's
 path does not cross the helper protocol, so the client sends each `base.mounts`
@@ -1715,9 +1844,33 @@ namespace it is put in, so the confinement would be a claim rather than a fact.
 | the payload's exit code | its own | ⭐ its own |
 | bytes the wrapper adds to stderr | | ⭐ **none** |
 
-⚠ **`base shell` does not take this flag.** The wrapper delivers its payload as a
-script, and an interactive attach through `pasta` is not proved, so it is not
-offered.
+```powershell
+wsl-toolkit --instance base base shell --private-net
+```
+
+⭐ **`base shell --private-net` is the interactive form.** It runs the shell `base
+shell` chooses inside the same namespace, behind the same rule. The wrapper travels
+as a file through the archive channel, so the terminal stays the shell's stdin, and
+the file removes its own directory as its first line. A launcher no shell ran, because
+`wsl.exe` failed before the start, is removed by a later `base shell --private-net`
+once it is an hour old. `WSL-133`
+
+| measured in a pseudo console on an Arch base | `base shell` | `base shell --private-net` |
+| --- | --- | --- |
+| a terminal, and job control | `/dev/pts/1`, `himBHs` | `/dev/pts/1`, `himBHs` |
+| the network namespace | the shared one | ⭐ its own |
+| `ip -o link` | `lo`, `eth0` and the engine's `veth` pair | ⭐ `lo` and pasta's own `eth0` alone |
+| the Windows host, ICMP | answered | ⭐ **refused** |
+| `id -u` | the account's | `0`, pasta's user namespace, with no privilege the account lacks |
+| the shell's exit code | its own | ⭐ its own |
+
+⚠ **The prompt reads root** and the host name reads `pasta-` and the machine's,
+because pasta's user namespace maps the account to uid 0. `--private-net` beside
+`--root` is refused, as it is for `base exec`.
+
+⭐ **A private payload leaves nothing in `/tmp` now.** The wrapper ends in `exec
+pasta`, which lost its cleanup, so every call left the payload and its `--env`
+values in a `/tmp` directory. The payload's first line removes it.
 
 ### ⭐ Closing the shared tmpfs, and what it costs
 

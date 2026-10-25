@@ -127,6 +127,14 @@ now its host record goes too, once its answer is written.
 | --- | --- | --- |
 | an attached ephemeral job removes its host record when it ends. Its answer is kept for 10 minutes, so `wait ID` and `logs ID --follow` still answer its verdict | reads `logs ID`, `inspect ID` or `gc --job ID` for an ephemeral job long after it ended | reads the answer `run` printed, or runs the job without `--container-lifecycle ephemeral`, which keeps the record |
 
+### ⚠ What an empty `/out` changes, and what a caller does
+
+`WSL-124`. Not released yet.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `run --artifacts DIR` makes `DIR` with the first entry that arrives, so a job that leaves `/out` empty makes no directory, on the direct route and through the helper | tests that `DIR` exists to learn that the job ran | reads `artifacts` in the `--json` answer, which is 0, or makes `DIR` itself first |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.

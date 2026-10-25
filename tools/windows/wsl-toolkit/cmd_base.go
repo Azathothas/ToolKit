@@ -11,7 +11,7 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
-const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove|shell|exec|agent|herdr|bootstrap|grant|revoke|attach|presets>
+const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove|shell|exec|sync|agent|herdr|bootstrap|grant|revoke|attach|presets>
 
   status     is it registered, and can it actually run a container
   doors      attack its doors from the inside and report what got through
@@ -23,6 +23,8 @@ const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove
   remove     unregister it and delete its disk
   shell      attach an interactive shell to it, as the unprivileged account
   exec       run a non-interactive POSIX script in it, as that account
+  sync       copy a Windows checkout into its own filesystem, sending only what
+             changed, the way a job's workspace copy chooses what goes
   agent      run one agent in it by name, with every argument the agent's own
   herdr      run one herdr command in it, with every argument herdr's own
   bootstrap  run the bootstrap this executable carries in it, as its account
@@ -31,19 +33,22 @@ const baseUsage = `wsl-toolkit base <status|doors|ensure|recreate|reclaim|remove
   attach     print the commands that reach its herdr server, from Windows and inside
   presets    the rootfs choices, what each one measured here, and which is live
 
-  --preset ID   build from a preset, or from any fully qualified reference.
-                arch (default, glibc) alpine (musl, smallest) debian fedora
-  --save        also make that preset the stored default for later commands
-  --json        a structured answer
-  --probe       status runs a real container to find out. Off by default
-  --repair      ensure may clear engine run state a reboot invalidated, and
-                restart a base over another configuration's live grants.
-                Off by default: without it, a base needing repair is REFUSED
-                with the exact command printed rather than quietly fixed
-  --root        shell attaches as root instead
-  --here        shell starts in this Windows directory, mounted under /mnt.
-                Without it a shell starts in the guest account's home
-  --yes         do not ask before removing
+  --preset ID     build from a preset, or from any fully qualified reference.
+                  arch (default, glibc) alpine (musl, smallest) debian fedora
+  --save          also make that preset the stored default for later commands
+  --json          a structured answer
+  --probe         status runs a real container to find out. Off by default
+  --repair        ensure may clear engine run state a reboot invalidated, and
+                  restart a base over another configuration's live grants.
+                  Off by default: without it, a base needing repair is REFUSED
+                  with the exact command printed rather than quietly fixed
+  --root          shell attaches as root instead
+  --here          shell starts in this Windows directory, mounted under /mnt,
+                  or at its grant when base.automount is off. Without it a
+                  shell starts in the guest account's home
+  --private-net   shell runs in a network namespace of the account's own, with
+                  the Windows host and the private ranges refused
+  --yes           do not ask before removing
 `
 
 func cmdBase(ctx context.Context, args []string) (int, error) {
@@ -68,6 +73,9 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	}
 	if sub == "exec" {
 		return cmdBaseExec(ctx, rest)
+	}
+	if sub == "sync" {
+		return cmdBaseSync(ctx, rest)
 	}
 	if sub == "doors" {
 		return cmdBaseDoors(ctx, rest)
@@ -225,14 +233,18 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		}
 		shellArgs := []string{"-d", cfg.Base.Name, "-u", user}
 		var extraEnv []string
-		if flags.here {
-			automount, err := toolkit.NormalizeAutomount(cfg.Base.Automount)
-			if err != nil {
-				return exitCannot, err
-			}
-			if automount == toolkit.AutomountOff {
-				return exitCannot, fmt.Errorf("--here cannot inherit a Windows working directory while base.automount is off. Start without --here, then use a configured /workspaces mount")
-			}
+		automount, err := toolkit.NormalizeAutomount(cfg.Base.Automount)
+		if err != nil {
+			return exitCannot, err
+		}
+		granted, err := grantedHere(cfg, automount, flags.here, os.Getwd)
+		if err != nil {
+			return exitCannot, err
+		}
+		if granted != "" {
+			note("starting in " + granted + ", where this Windows directory is granted")
+			shellArgs = append(shellArgs, "--cd", granted)
+		} else if flags.here {
 			drives, readErr := toolkit.MountedWindowsDrives(ctx, w, cfg.Base.Name)
 			if err := hereRefusal(cfg.Base.Name, automount, drives, readErr); err != nil {
 				return exitCannot, err
@@ -273,11 +285,24 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 		// and reads nothing; there is no arm for it because there is nothing to catch.
 		// What IS caught is a bash that cannot be executed at all: the `exec` fails,
 		// the script carries on, and the next arm runs.
-		shellArgs = append(shellArgs, "--", "/bin/sh", "-c",
-			`if command -v bash >/dev/null 2>&1; then exec bash -l; fi; `+
-				`s=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7); `+
-				`if [ -n "$s" ] && [ -x "$s" ]; then exec "$s" -l; fi; `+
-				`exec /bin/sh -l`)
+		if flags.privateNet {
+			// ⭐ THE SAME SHELL, IN THE NAMESPACE `base exec --private-net` MAKES.
+			// The wrapper reads its payload from a file, so the launcher travels as
+			// one and the terminal stays the shell's stdin. WSL-133.
+			host, hostErr := toolkit.ResolveHostAddress()
+			address := ""
+			if hostErr == nil {
+				address = host.Address
+			}
+			launcher, err := toolkit.PrivateShell(ctx, w, cfg.Base.Name, user, []byte(shellSelection+"\n"), address)
+			if err != nil {
+				return exitCannot, err
+			}
+			note("in a network namespace of the account's own: the Windows host and the private ranges are refused, and no container can run in it")
+			shellArgs = append(shellArgs, "--", "/bin/sh", launcher)
+		} else {
+			shellArgs = append(shellArgs, "--", "/bin/sh", "-c", shellSelection)
+		}
 
 		if flags.asRoot {
 			// ⭐ THE WARNING NAMES WHAT IS ACTUALLY REACHABLE, rather than
@@ -304,10 +329,20 @@ func cmdBase(ctx context.Context, args []string) (int, error) {
 	}
 }
 
+// shellSelection is the command `base shell` runs in the guest: bash as a login
+// shell where there is one, else the account's own shell, else /bin/sh, each a
+// login shell. The comment where it is used says why.
+const shellSelection = `if command -v bash >/dev/null 2>&1; then exec bash -l; fi; ` +
+	`s=$(getent passwd "$(id -un)" 2>/dev/null | cut -d: -f7); ` +
+	`if [ -n "$s" ] && [ -x "$s" ]; then exec "$s" -l; fi; ` +
+	`exec /bin/sh -l`
+
 // baseFlags are the values of the flag set the simple base subcommands share.
 type baseFlags struct {
 	asJSON, probe, repair, asRoot, here, yes, viaHelper, save bool
-	preset                                                    string
+	// privateNet is `base shell --private-net`. WSL-133.
+	privateNet bool
+	preset     string
 }
 
 // baseSubcommands are the subcommands that parse the shared set, in the order a
@@ -323,7 +358,7 @@ var baseFlagsRead = map[string][]string{
 	"recreate": {"json", "probe", "repair", "via-helper", "preset", "save"},
 	"reclaim":  {"json"},
 	"remove":   {"yes", "via-helper"},
-	"shell":    {"root", "here", "via-helper"},
+	"shell":    {"root", "here", "private-net", "via-helper"},
 	"attach":   {"json"},
 }
 
@@ -334,7 +369,8 @@ func (f *baseFlags) bind(fs *flag.FlagSet) {
 	fs.BoolVar(&f.probe, "probe", false, "status runs a real container to decide whether the base is usable. ensure and recreate always do, and accept the flag")
 	fs.BoolVar(&f.repair, "repair", false, "ensure and recreate may clear engine run state a reboot invalidated, and restart a base over another configuration's live grants. Off by default")
 	fs.BoolVar(&f.asRoot, "root", false, "shell attaches as root")
-	fs.BoolVar(&f.here, "here", false, "shell starts in this Windows directory instead of the guest account's home")
+	fs.BoolVar(&f.here, "here", false, "shell starts in this Windows directory instead of the guest account's home: under /mnt, or at its grant when base.automount is off")
+	fs.BoolVar(&f.privateNet, "private-net", false, "shell runs in a network namespace of the account's own, with the Windows host and the private ranges refused. ⛔ No container can run inside it")
 	fs.BoolVar(&f.yes, "yes", false, "remove does not ask before removing")
 	fs.BoolVar(&f.viaHelper, "via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
 	fs.StringVar(&f.preset, "preset", "", "ensure and recreate build from this preset id or fully qualified reference")
@@ -350,6 +386,11 @@ func parseBaseFlags(sub string, args []string) (baseFlags, error) {
 	}
 	if f.save && f.preset == "" {
 		return f, errors.New("--save stores the preset --preset names, and no --preset was given")
+	}
+	// ⛔ ROOT IS REFUSED A PRIVATE NAMESPACE, for the reason `base exec
+	// --private-net` refuses it: guest root can leave it. WSL-133.
+	if f.privateNet && f.asRoot {
+		return f, errors.New("--private-net and --root are contradictory: guest root can leave the namespace it is put in, so the confinement would be a claim rather than a fact")
 	}
 	return f, nil
 }
@@ -538,6 +579,25 @@ func rootDrivesNote(distro string, drives []toolkit.WindowsDriveMount, readErr e
 		msg += ". These Windows drives are mounted read-only: " + strings.Join(readOnly, " ")
 	}
 	return msg
+}
+
+// grantedHere is where `base shell --here` starts when base.automount is off:
+// the guest path of the grant that covers the working directory. It answers ""
+// without --here, and where the drives are mounted, which the caller handles.
+//
+// ⭐ THROUGH THE GRANT, where the base sees this directory with its drives
+// unmounted. It was refused, and a project granted to the base had no way to
+// start a shell in itself. A directory no grant covers is still refused, with
+// the grant that covers it. WSL-124.
+func grantedHere(cfg toolkit.Config, automount string, here bool, getwd func() (string, error)) (string, error) {
+	if !here || automount != toolkit.AutomountOff {
+		return "", nil
+	}
+	cwd, err := getwd()
+	if err != nil {
+		return "", err
+	}
+	return windowsDirInGuest(cfg, cwd, "--here")
 }
 
 // hereRefusal refuses `base shell --here` into a base with no Windows drive mounted.

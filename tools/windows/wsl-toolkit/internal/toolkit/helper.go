@@ -604,6 +604,14 @@ func (h *HelperServer) artifactDir(id string, want bool) string {
 	if err := h.runner.ledger.Append(LedgerEntry{Event: "open", Kind: "artifacts", ID: id, HostDir: dir}); err != nil {
 		h.log("could not record the artifact set " + id + ": " + err.Error())
 	}
+	// ⛔ THE HELPER MAKES ITS OWN SET DIRECTORY, because the fetch no longer
+	// does. A job that left /out empty otherwise left no set, so the client's
+	// download answered 404 and the open set was never released. The empty
+	// directory is the helper's own state; the client's DIR is made only by the
+	// first entry that arrives. WSL-124.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		h.log("could not make the artifact set " + id + ": " + err.Error())
+	}
 	return dir
 }
 
