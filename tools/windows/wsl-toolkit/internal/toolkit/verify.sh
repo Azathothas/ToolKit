@@ -209,6 +209,52 @@ esac
 printf 'shared-tmpfs %s\n' "$TK_SHARED_TMPFS"
 # <<< the shared tmpfs: end
 
+# >>> the account's passwd entry: begin
+# ⛔ THE ENTRY IS READ AS THIS ACCOUNT READS IT. A base whose passwd file had gone
+# bad answered `getpwnam` failures for root and for its account, and nothing here
+# had looked. Measured on a scratch base: with /etc/passwd at 0600 the account's
+# own lookups all failed, and the probe still answered `usable true`. WSL-137.
+#
+# ⛔ A ROW, NOT A REFUSAL. A container runs whatever the account can read, and a
+# base that answered `usable true` before this check keeps that answer: the
+# finding is the advisory `account-passwd`, which names the command. A refusal
+# here would have changed the exit code of `base status --probe`.
+#
+# ⚠ WSL READ THE ENTRY TO START THIS SCRIPT, through the login shell it names. So
+# an entry WSL cannot find, or a shell it cannot start, never reaches these lines:
+# `base status` classifies WSL's own refusal instead, as `account-cannot-start`.
+#
+# ⚠ THE LOGIN SHELL IS READ BACK, AND bash BESIDE IT IS A ROW AND NOT A REFUSAL.
+# `base ensure` gives the account bash where the guest has bash, and a base built
+# by an older release keeps /bin/sh until it does. `base status --probe` names that
+# as a remediation, because a container runs either way. WSL-143.
+#
+# ⚠ A LAST LINE WITH NO NEWLINE IS STILL READ: `read` fails on it and fills the
+# fields anyway, so the loop also runs while a name came back.
+if [ ! -r /etc/passwd ]; then
+  printf 'account-passwd unreadable\n'
+else
+  pw_uid=$(id -u)
+  pw_found=no
+  pw_shell=
+  while IFS=: read -r pw_name _pw_password pw_id _pw_gid _pw_gecos _pw_home pw_line_shell || [ -n "$pw_name" ]; do
+    if [ "$pw_id" = "$pw_uid" ]; then
+      pw_found=yes
+      pw_shell=$pw_line_shell
+      break
+    fi
+  done < /etc/passwd
+  if [ "$pw_found" = yes ]; then
+    printf 'account-passwd ok\n'
+    printf 'login-shell %s\n' "$pw_shell"
+  else
+    printf 'account-passwd no-entry %s\n' "$pw_uid"
+  fi
+fi
+login_bash=$(command -v bash 2>/dev/null || :)
+printf 'login-bash %s\n' "${login_bash:-none}"
+# <<< the account's passwd entry: end
+
 for xdg_dir in "$HOME/.config" "$HOME/.cache" "$HOME/.local/share" "$HOME/.local/state"; do
 
   if [ ! -d "$xdg_dir" ] || [ ! -w "$xdg_dir" ]; then

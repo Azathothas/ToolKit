@@ -1238,8 +1238,9 @@ a tree over 9P takes minutes where the base's own disk takes about a second. `WS
 ### The shell `base shell` gives you
 
 ⭐ **bash, as a LOGIN shell, where the guest has one.** `wsl.exe -d NAME -u USER`
-runs the account's passwd shell, which provisioning leaves at `/bin/sh`. So the
-guest is asked in the same call, and answers in three arms, each a login shell:
+runs the account's passwd shell, which a base an older release built still has at
+`/bin/sh`. So the guest is asked in the same call, and answers in three arms, each
+a login shell:
 
 | the guest has | `base shell` runs |
 | --- | --- |
@@ -1251,8 +1252,12 @@ guest is asked in the same call, and answers in three arms, each a login shell:
 `/etc/profile`, `~/.bash_profile`, `~/.bash_login` or `~/.profile` starts normally
 and reads nothing.
 
-⛔ **Only `base shell` chooses.** The account's configured shell is still `/bin/sh`,
-so a herdr pane, `base exec` and an SSH session all land in `sh`.
+⭐ **The account's own login shell is bash where the guest has bash.** Provisioning
+creates the account with it, and every `base ensure` moves an account an older
+release left on `/bin/sh`. So an SSH session and `wsl.exe -d NAME -u USER` with no
+command start in bash. A herdr pane starts in bash by herdr's own `default_shell`,
+and `base exec` runs its script with `/bin/sh` whatever the login shell is. A shell
+somebody else gave the account is left. `WSL-143`
 
 ⚠ `passwordless_sudo: true` gives the configured account unrestricted guest root.
 Guest root can mount Windows paths by hand, so this setting serves a trusted agent
@@ -1465,13 +1470,14 @@ a default exported in `~/.profile` never reaches it.
 | `model` | the model a session nobody passed a flag to begins on. Empty leaves the agent's own default alone, which a base with no provider serving a named model needs. A value carrying a slash is `provider/id`, for an agent that reaches a model through a named provider |
 | `effort` | the reasoning effort that session begins at. **`max` when a configuration names none**, because all three agents take it |
 
-⛔ **`base bootstrap` puts the account's prefix ahead of the wrapper.**
-`bootstrap.sh` writes `export PATH="$HOME/.local/bin:$PATH"` into the account's
-profile, so a login shell then finds each agent's own launcher first and
-`/usr/local/bin/NAME` is not reached. ⛔ Muse then starts with neither the model nor
+⭐ **`base bootstrap` puts the account's prefix after the system path.**
+`bootstrap.sh` writes `export PATH="$PATH:$HOME/.local/bin"` into the account's
+profile, so a login shell finds `/usr/local/bin/NAME` before each agent's own
+launcher. An earlier `bootstrap.sh` put the prefix first, and running it again
+rewrites that line. ⛔ With the prefix first, Muse starts with neither the model nor
 the effort, because it has no settings key for either. ⭐ Every agent probe reads
 the name back on a LOGIN shell and refuses a resolution that is not this tool's
-wrapper, so `base status --probe` says so.
+wrapper, naming `base bootstrap`, so `base status --probe` says so. `WSL-147`
 
 ⚠ **The effort vocabulary is each agent's own**, read from its own `--help`, and a
 word an agent does not take is refused rather than sent to it:
@@ -2067,6 +2073,56 @@ stops nothing, and the engine's own refusal follows as before.
 
 ---
 
+## ⭐ A base that keeps itself usable
+
+⛔ **`base status` without `--probe` runs no container, and its answer says so.**
+The text says `usable not checked`, and `--json` carries `probed: false`, so
+`healthy: false` beside it is no verdict. Under `--probe`, `probed` is true once a
+container was asked to run. `WSL-137`
+
+⭐ **The verifier reads the managed account's passwd entry as the account reads
+it.** `--json` carries `account.passwd`: `ok`, `unreadable` or `no-entry`. A base
+whose account cannot read its entry reports the advisory `account-passwd` with the
+command that repairs it. ⚠ The verdict does not change, because a container runs
+either way. `WSL-137`
+
+⭐ **A login shell WSL cannot start is named.** WSL starts every command through
+the account's login shell, so a shell it cannot start stops everything before the
+verifier runs. `base status --probe` names that as `account-cannot-start`, and
+`base ensure` repairs it. `WSL-137`
+
+⭐ **The account's login shell is bash where the guest has bash.** `--json` carries
+`account.login_shell` and `account.bash`. A base still on `/bin/sh` beside bash
+reports the advisory `login-shell-not-bash`, and its next `base ensure` moves it.
+Only `/bin/sh`, or a shell that is no program, is replaced. ⛔ Only an ensure from
+the state directory that owns the base moves it. `WSL-143`
+
+⭐ **A stalled package mirror is asked again.** Provisioning gives each package
+manager's engine transaction three tries, 15 and then 30 seconds apart, and
+names the line that ended each one. `WSL-140`
+
+⭐ **A build stopped before its identity marker is still this tool's to remove.**
+The build records itself in the ledger before its import registers anything.
+`base remove --yes` removes it on that record and on WSL's registration of its disk
+in this instance's `base` folder. ⛔ `base ensure` refuses it and names
+`base remove --yes`, so a removal stays the caller's own request. A failed import
+keeps its record open, because WSL can finish that import later. `resources` lists
+the record while it is open. ⛔ A distribution neither fact covers is refused,
+naming `wsl --unregister` as a person's own step. `WSL-150`
+
+⛔ **A build that is still running is never removed as a stopped one.** A build
+holds the base's lock from before its import until after its marker, and every
+removal holds the same lock. `base status --probe` reads the lock and names the
+process that holds it. `WSL-150`
+
+⭐ **`automount off` is swept after the restart that applies it.** The empty drive
+mount points a first start leaves are removed after that restart, before the
+verifier reads the drives. Swept before it, a drive mounted late was left behind,
+and each session relayed one `wsl: Failed to translate` line per Windows PATH
+entry. `WSL-153`, `WSL-155`
+
+---
+
 ## The safety model
 
 Removal is constrained, and every destructive path goes through the same gate.
@@ -2074,7 +2130,8 @@ Removal is constrained, and every destructive path goes through the same gate.
 1. The base is a distribution named `wsl-toolkit-jobs`, `wsl-toolkit` or
    `wsl-toolkit-INSTANCE`.
    Removing one that was ever usable also demands the identity marker its
-   provisioning wrote inside the guest.
+   provisioning wrote inside the guest. A build that stopped before writing it is
+   removed only on its ledger record and WSL's registration of its disk. `WSL-150`
 2. A throwaway distribution is this tool's only when its registered disk is
    inside the state directory's `distros` folder.
 3. ⛔ **A container runtime's own distribution is refused by name**:
