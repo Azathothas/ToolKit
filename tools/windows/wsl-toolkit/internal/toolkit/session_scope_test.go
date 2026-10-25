@@ -24,8 +24,9 @@ func TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted(t *testing.T) {
 	for _, want := range []string{
 		"systemd-run --user --scope --quiet --collect -- true",
 		`u="wtk-session-${d##*/}.scope"`,
-		"if [ -n \"$u\" ]; then\n  setsid systemd-run --user --scope --unit=\"$u\" --quiet --collect -- /bin/sh \"$d/payload.sh\"",
-		"else\n  setsid /bin/sh \"$d/payload.sh\"",
+		"if [ -n \"$u\" ]; then\n  setsid systemd-run --user --scope --unit=\"$u\" --quiet --collect -- /bin/sh \"$d/payload.sh\" <\"$i\" >\"$d/stdout\"",
+		// ⛔ A payload in a scope reads the session's stdin file, as one outside does.
+		"else\n  setsid /bin/sh \"$d/payload.sh\" <\"$i\" >\"$d/stdout\"",
 		`if [ -n "$u" ]; then systemctl --user kill --signal=TERM "$u" >/dev/null 2>&1; fi`,
 		`if [ -n "$u" ]; then systemctl --user kill --signal=KILL "$u" >/dev/null 2>&1; fi`,
 		`if [ -n "$u" ]; then printf 'UNIT|%s\n' "$u"; fi`,

@@ -713,6 +713,15 @@
       "args": []
     },
     {
+      "label": "wsl-toolkit: a session's payload in a scope reads the session's stdin file",
+      "file": "internal/toolkit/session.go",
+      "find": "--collect -- /bin/sh \"$d/payload.sh\" <\"$i\" >\"$d/stdout\"",
+      "replace": "--collect -- /bin/sh \"$d/payload.sh\" </dev/null >\"$d/stdout\"",
+      "run": "TestASessionAsksForItsOwnScopeOnlyAfterAProbeScopeStarted",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a session's output is delivered once",
       "file": "internal/toolkit/session.go",
       "find": "\tif b, err := os.ReadFile(recordPath); err == nil {\n",
