@@ -5,6 +5,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -72,5 +73,40 @@ func TestNightlyStageAndPublishRefuseAnEmptyName(t *testing.T) {
 	}
 	if code := runNightlyPublish([]string{"--dist", dist, "--repo", "o/r", "--target", "t", "--notes-file", "n"}); code != 1 {
 		t.Fatalf("nightly-publish with no --tag: exit %d, want 1", code)
+	}
+}
+
+// TestMutateReadsExactLabelsFromAFile: --labels-file and --label add up, and a
+// file written on Windows reads the same as one written on Linux.
+//
+// ⛔ A CALLER'S LIST OF ROWS IS THE WHOLE SELECTION. Dropping the file would run
+// the whole table, and keeping its CR would name rows that do not exist.
+func TestMutateReadsExactLabelsFromAFile(t *testing.T) {
+	list := writeIn(t, t.TempDir(), "labels", "first row\r\nsecond row\n")
+	_, sel, err := mutateFlags([]string{"--label", "named row", "--labels-file", list, "--jobs", "3"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(sel.Labels, "|"); got != "named row|first row|second row" {
+		t.Fatalf("the selection names %q", got)
+	}
+	if sel.Jobs != 3 {
+		t.Fatalf("--jobs 3 read as %d", sel.Jobs)
+	}
+	empty := writeIn(t, t.TempDir(), "labels", "\n")
+	if _, _, err := mutateFlags([]string{"--labels-file", empty}); err == nil {
+		t.Fatal("a labels file with no label was accepted, and it would select every row")
+	}
+}
+
+// TestMutateRefusesJobsBelowZero. ⚠ Zero means the default, and a number below
+// it is a typo that would quietly mean the same.
+//
+// ⚠ READ THROUGH mutateFlags, not runMutate. runMutate also refuses a
+// directory that is not a repository, and a staged copy is not one. An exit of
+// 2 there would not say which refusal answered.
+func TestMutateRefusesJobsBelowZero(t *testing.T) {
+	if _, _, err := mutateFlags([]string{"--jobs", "-1"}); err == nil || !strings.Contains(err.Error(), "--jobs -1") {
+		t.Fatalf("--jobs -1 answered %v", err)
 	}
 }

@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -78,6 +79,12 @@ func TestLoadRefusesAMissingTable(t *testing.T) {
 // fixture writes a tiny module with one guard and one case for it.
 func fixture(t *testing.T) string {
 	t.Helper()
+	return fixtureWith(t, nil)
+}
+
+// fixtureWith is fixture with more files in the module, by path under it.
+func fixtureWith(t *testing.T, extra map[string]string) string {
+	t.Helper()
 	root := t.TempDir()
 	dir := filepath.Join(root, "mod")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -92,12 +99,41 @@ func fixture(t *testing.T) string {
 		// is byte for byte a case that ran and passed.
 		"skip_test.go": "package guard\n\nimport \"testing\"\n\nfunc TestSkipsHere(t *testing.T) {\n\tt.Skip(\"this host cannot run it\")\n}\n",
 	}
+	for name, body := range extra {
+		files[name] = body
+	}
 	for name, body := range files {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return root
+}
+
+// runFixture runs tb over root with two workers and fails on a run error.
+//
+// ⭐ EVERY CASE THAT RUNS THE HARNESS OVER A FIXTURE IS PARALLEL. Each is a
+// whole run with its own fixture and its own locked slots, and one after
+// another they cost the gate minutes. ⚠ A case that calls t.Setenv cannot be,
+// and Go runs those first, alone.
+func runFixture(t *testing.T, root string, tb *Table, sel Selection) ([]Verdict, string) {
+	t.Helper()
+	if sel.Jobs == 0 {
+		sel.Jobs = 2
+	}
+	var log bytes.Buffer
+	got, err := Run(root, tb, sel, &log)
+	if err != nil {
+		t.Fatalf("%v\n%s", err, log.String())
+	}
+	if len(got) != len(tb.Mutations) && len(sel.Labels) == 0 && len(sel.Modules) == 0 && sel.Only == "" && sel.Shard.N <= 1 {
+		t.Fatalf("got %d verdicts for %d rows:\n%s", len(got), len(tb.Mutations), log.String())
+	}
+	return got, log.String()
 }
 
 // TestRunTellsTheFourOutcomesApart is the case for the whole design.
@@ -106,6 +142,7 @@ func fixture(t *testing.T) string {
 // added after a real row was reported as THEATRE on a host that could not run
 // its case at all.
 func TestRunTellsTheFourOutcomesApart(t *testing.T) {
+	t.Parallel()
 	root := fixture(t)
 	base := Mutation{Module: "mod", File: "guard.go", Run: "TestEmptyIsRefused"}
 
@@ -147,7 +184,7 @@ func TestRunTellsTheFourOutcomesApart(t *testing.T) {
 
 	tb := &Table{Schema: TableSchema, Mutations: []Mutation{real, theatre, broken, missing, noCase, skipped}}
 	var log bytes.Buffer
-	got, err := Run(root, tb, Selection{}, &log)
+	got, err := Run(root, tb, Selection{Jobs: 2}, &log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,26 +261,55 @@ func TestReportFailsOnEveryRowThatDisagrees(t *testing.T) {
 	}
 }
 
+// realTable is the tracked table, which is what CI shards.
+func realTable(t *testing.T) *Table {
+	t.Helper()
+	tb, err := Load(filepath.Join("..", "..", "mutations.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tb
+}
+
 // TestEveryRowBelongsToExactlyOneShard: N runners sharing one table prove the
 // whole of it, and none proves a row another already did.
+//
+// ⛔ AND A PATTERN GROUP IS NEVER SPLIT. Rows that share a baseline share a
+// shard, or that baseline runs once per shard holding one of them.
 func TestEveryRowBelongsToExactlyOneShard(t *testing.T) {
-	for _, n := range []int{1, 2, 3, 7} {
-		for i := 0; i < 50; i++ {
-			owners := 0
-			for k := 1; k <= n; k++ {
-				if (Shard{K: k, N: n}).Has(i) {
-					owners++
+	tb := realTable(t)
+	all := make([]int, len(tb.Mutations))
+	for i := range all {
+		all[i] = i
+	}
+	for _, n := range []int{1, 2, 3, 6, 7} {
+		owner := map[int]int{}
+		for k := 1; k <= n; k++ {
+			here, _ := splitShard(groupRows(tb, all), Shard{K: k, N: n})
+			for _, g := range here {
+				for _, r := range g.rows {
+					if was, dup := owner[r]; dup {
+						t.Fatalf("N=%d: row %d is in shard %d and shard %d", n, r, was, k)
+					}
+					owner[r] = k
 				}
 			}
-			if owners != 1 {
-				t.Fatalf("row %d is in %d of %d shards", i, owners, n)
+		}
+		if len(owner) != len(tb.Mutations) {
+			t.Fatalf("N=%d: %d of %d rows are in a shard", n, len(owner), len(tb.Mutations))
+		}
+		byPattern := map[string]int{}
+		for i, m := range tb.Mutations {
+			k := m.Module + "\x00" + m.Run + "\x00" + strings.Join(m.Args, "\x1f")
+			if s, ok := byPattern[k]; ok && s != owner[i] {
+				t.Fatalf("N=%d: the rows of pattern %q are in shards %d and %d", n, m.Run, s, owner[i])
 			}
+			byPattern[k] = owner[i]
 		}
 	}
-	for i := 0; i < 5; i++ {
-		if !(Shard{}).Has(i) {
-			t.Fatalf("the zero shard leaves out row %d, and it is the whole table", i)
-		}
+	whole, rest := splitShard(groupRows(tb, all), Shard{})
+	if len(rest) != 0 || len(groupRows(tb, all)) != len(whole) {
+		t.Fatal("the zero shard leaves out a group, and it is the whole table")
 	}
 }
 
@@ -292,6 +358,7 @@ func TestRunRefusesAFilterThatSelectsNothing(t *testing.T) {
 // is a harness reporting a result it did not measure, which is the exact class
 // it exists to catch.
 func TestARowWhoseCaseWasAlreadyRedIsRefused(t *testing.T) {
+	t.Parallel()
 	root := fixture(t)
 	// A second case in the same package that fails on its own, and a row whose
 	// -run pattern reaches it. The guard it names is real and its removal would
@@ -308,7 +375,7 @@ func TestARowWhoseCaseWasAlreadyRedIsRefused(t *testing.T) {
 	}
 	tb := &Table{Schema: TableSchema, Mutations: []Mutation{m}}
 	var log bytes.Buffer
-	got, err := Run(root, tb, Selection{}, &log)
+	got, err := Run(root, tb, Selection{Jobs: 2}, &log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,6 +406,7 @@ func TestARowWhoseCaseWasAlreadyRedIsRefused(t *testing.T) {
 // guard left the variable it read unused, and every time the session had to
 // reproduce the build by hand to find that out.
 func TestABrokenRowSaysWhatTheCompilerSaid(t *testing.T) {
+	t.Parallel()
 	root := fixture(t)
 	m := Mutation{
 		Label: "a mutation that does not compile", Module: "mod", File: "guard.go",
@@ -346,7 +414,7 @@ func TestABrokenRowSaysWhatTheCompilerSaid(t *testing.T) {
 	}
 	tb := &Table{Schema: TableSchema, Mutations: []Mutation{m}}
 	var log bytes.Buffer
-	got, err := Run(root, tb, Selection{}, &log)
+	got, err := Run(root, tb, Selection{Jobs: 2}, &log)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,5 +477,403 @@ func TestAKilledRunsStagedCopyIsSweptOnTheNextRun(t *testing.T) {
 	}
 	if !strings.Contains(log.String(), "swept 1") {
 		t.Fatalf("the sweep did not say what it did: %q", log.String())
+	}
+}
+
+// TestASiblingPackageThatStopsCompilingIsNotARedCase is the false "ok" this
+// harness gave before it read events.
+//
+// ⛔ WHAT WAS WRONG. The mutated run tested `./...` and read any non-zero exit
+// as "went red". A mutation that broke a package the case never imports exited
+// 1 while the case passed, and the row was certified. The case here is green
+// with the mutation in, so the row is THEATRE.
+func TestASiblingPackageThatStopsCompilingIsNotARedCase(t *testing.T) {
+	t.Parallel()
+	root := fixtureWith(t, map[string]string{
+		"other/other.go":      "package other\n\nfunc One() int { return 1 }\n",
+		"other/other_test.go": "package other\n\nimport \"testing\"\n\nfunc TestOne(t *testing.T) {\n\tif One() != 1 {\n\t\tt.Fatal(\"one\")\n\t}\n}\n",
+	})
+	m := Mutation{
+		Label: "a mutation that breaks a sibling package", Module: "mod", File: "other/other.go",
+		Run: "TestEmptyIsRefused", Find: "return 1 }", Replace: "return nope }",
+	}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{})
+	if got[0].State == "ok" {
+		t.Fatalf("a sibling package's build failure was read as the case going red:\n%s", log)
+	}
+	if got[0].State != "THEATRE" || got[0].Cases != 1 {
+		t.Fatalf("state %q with %d case(s), want THEATRE with 1 (%s)", got[0].State, got[0].Cases, got[0].Reason)
+	}
+}
+
+// TestAPackageThatFailsOutsideItsCasesIsNotOk: a TestMain that fails after
+// every named case passed is a failure, but not of a case this row names.
+//
+// ⛔ "ok" MEANS A NAMED CASE FAILED. Anything else that fails is a row naming
+// the wrong case, and it is BROKEN with the line that failed.
+func TestAPackageThatFailsOutsideItsCasesIsNotOk(t *testing.T) {
+	t.Parallel()
+	root := fixtureWith(t, map[string]string{
+		"tm/tm.go":      "package tm\n\nfunc Healthy() bool { return true }\n",
+		"tm/tm_test.go": "package tm\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) {\n\tcode := m.Run()\n\tif !Healthy() {\n\t\tos.Exit(1)\n\t}\n\tos.Exit(code)\n}\n\nfunc TestFineUnderTestMain(t *testing.T) {}\n",
+	})
+	m := Mutation{
+		Label: "a guard only TestMain notices", Module: "mod", File: "tm/tm.go",
+		Run: "TestFineUnderTestMain", Find: "return true }", Replace: "return false }",
+	}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{})
+	if got[0].State != "BROKEN" {
+		t.Fatalf("state %q, want BROKEN: the package failed and no named case did:\n%s", got[0].State, log)
+	}
+	if !strings.Contains(got[0].Reason, "no case it names failed") {
+		t.Fatalf("the reason does not say the failure was outside the cases: %q", got[0].Reason)
+	}
+}
+
+// TestAGroupsBaselineRunsOnce: three rows naming one case pay for one unmutated
+// run, not three.
+//
+// ⚠ COUNTED FROM INSIDE THE CASE. It appends a line to a file each time it
+// runs, so the count is what happened rather than what the harness says.
+func TestAGroupsBaselineRunsOnce(t *testing.T) {
+	t.Parallel()
+	ran := filepath.Join(t.TempDir(), "ran.log")
+	counted := "package guard\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestCounted(t *testing.T) {\n" +
+		"\tf, err := os.OpenFile(" + strconv.Quote(ran) + ", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)\n" +
+		"\tif err != nil {\n\t\tt.Fatal(err)\n\t}\n\t_, _ = f.WriteString(\"ran\\n\")\n\t_ = f.Close()\n" +
+		"\tif Allowed(\"\") {\n\t\tt.Fatal(\"the empty string was allowed\")\n\t}\n}\n"
+	root := fixtureWith(t, map[string]string{"counted_test.go": counted})
+	base := Mutation{Module: "mod", File: "guard.go", Run: "TestCounted"}
+	a, b, c := base, base, base
+	a.Label, a.Find, a.Replace = "the guard", "if s == \"\" {", "if false {"
+	b.Label, b.Find, b.Replace = "the refusal", "return false\n", "return true\n"
+	c.Label, c.Find, c.Replace = "the default", "return true\n", "return true // unread\n"
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{a, b, c}}, Selection{Jobs: 3})
+	for i, want := range []string{"ok", "ok", "THEATRE"} {
+		if got[i].State != want {
+			t.Fatalf("%q: state %q, want %q (%s)\n%s", got[i].Label, got[i].State, want, got[i].Reason, log)
+		}
+	}
+	body, err := os.ReadFile(ran)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ FIVE, NOT FOUR. The THEATRE row fails the run, so its mutation runs a
+	// second time before the verdict stands.
+	if n := strings.Count(string(body), "ran\n"); n != 5 {
+		t.Fatalf("the case ran %d times for three rows of one pattern, want 5: one baseline, one per row, and a second for the THEATRE row", n)
+	}
+}
+
+// counted is a case body that appends a line to path each time it runs and
+// reads the count as n. ⚠ The file sits outside the worker's own state, which
+// is emptied before every test process.
+func counted(path string) string { return countedOr(path, "t.Fatal(err)") }
+
+// countedOr is counted with its own answer to an error, for a TestMain.
+func countedOr(path, fail string) string {
+	return "\tf, err := os.OpenFile(" + strconv.Quote(path) + ", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)\n" +
+		"\tif err != nil {\n\t\t" + fail + "\n\t}\n\t_, _ = f.WriteString(\"ran\\n\")\n\t_ = f.Close()\n" +
+		"\tbody, err := os.ReadFile(" + strconv.Quote(path) + ")\n\tif err != nil {\n\t\t" + fail + "\n\t}\n" +
+		"\tn := strings.Count(string(body), \"ran\\n\")\n"
+}
+
+// countedImports opens a test file whose case uses counted.
+const countedImports = "import (\n\t\"os\"\n\t\"strings\"\n\t\"testing\"\n)\n\n"
+
+// TestAMutationThatMakesItsCasesSkipIsTheatre: the case ran unmutated, and the
+// mutation turned its own skip gate on.
+//
+// ⛔ WHAT WAS WRONG. The verdict was read from the mutated run alone. A case
+// that skipped itself there was SKIPPED, "this host cannot run it", and the run
+// exited 0. The baseline had just run it here. A guard whose absence makes its
+// case skip is not caught by it, and CI stays green.
+func TestAMutationThatMakesItsCasesSkipIsTheatre(t *testing.T) {
+	t.Parallel()
+	root := fixtureWith(t, map[string]string{
+		"tool.go":      "package guard\n\n// ToolPath is where the tool this package drives lives, or empty.\nfunc ToolPath() string { return \"tool\" }\n",
+		"tool_test.go": "package guard\n\nimport \"testing\"\n\nfunc TestDrivesTheTool(t *testing.T) {\n\tif ToolPath() == \"\" {\n\t\tt.Skip(\"no tool on this host\")\n\t}\n}\n",
+	})
+	m := Mutation{
+		Label: "a mutation that turns the case's skip on", Module: "mod", File: "tool.go",
+		Run: "TestDrivesTheTool", Find: "return \"tool\" }", Replace: "return \"\" }",
+	}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{})
+	if got[0].State != "THEATRE" || got[0].Skipped != 1 {
+		t.Fatalf("state %q with %d skip(s), want THEATRE with 1 (%s)\n%s", got[0].State, got[0].Skipped, got[0].Reason, log)
+	}
+	var out bytes.Buffer
+	if code := Report(&out, got); code != 1 {
+		t.Fatalf("Report returned %d over a row the mutation made skip, want 1:\n%s", code, out.String())
+	}
+}
+
+// TestAMutationThatLeavesNoCaseRunningIsBroken: a TestMain that ends before
+// m.Run when the code under test says the host is not ready.
+//
+// ⛔ ZERO CASES WITH EXIT 0 USED TO BE SKIPPED, because 0 skips is at least 0
+// cases. The baseline ran the case here, so nothing about this host stopped it.
+func TestAMutationThatLeavesNoCaseRunningIsBroken(t *testing.T) {
+	t.Parallel()
+	root := fixtureWith(t, map[string]string{
+		"gate/gate.go":      "package gate\n\n// Ready is whether this host can run the package's cases.\nfunc Ready() bool { return true }\n",
+		"gate/gate_test.go": "package gate\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestMain(m *testing.M) {\n\tif !Ready() {\n\t\tos.Exit(0)\n\t}\n\tos.Exit(m.Run())\n}\n\nfunc TestGated(t *testing.T) {}\n",
+	})
+	m := Mutation{
+		Label: "a mutation that leaves no case running", Module: "mod", File: "gate/gate.go",
+		Run: "TestGated", Find: "return true }", Replace: "return false }",
+	}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{})
+	if got[0].State != "BROKEN" || !strings.Contains(got[0].Reason, "no case it names ran") {
+		t.Fatalf("state %q (%s), want BROKEN saying no case ran\n%s", got[0].State, got[0].Reason, log)
+	}
+	var out bytes.Buffer
+	if code := Report(&out, got); code != 1 {
+		t.Fatalf("Report returned %d over a row that ran no case, want 1:\n%s", code, out.String())
+	}
+}
+
+// TestAFlakyBaselineRefusesItsGroup: a case that fails on every odd run.
+//
+// ⛔ WHAT WAS WRONG. The baseline failed, was retried, passed, and was filed as
+// green. The row's one mutated run was the third, failed the same way, and
+// certified a mutation that changes only a comment.
+func TestAFlakyBaselineRefusesItsGroup(t *testing.T) {
+	t.Parallel()
+	runs := filepath.Join(t.TempDir(), "runs.log")
+	flaky := "package guard\n\n" + countedImports + "func TestFlaky(t *testing.T) {\n" + counted(runs) +
+		"\tif n%2 == 1 {\n\t\tt.Fatal(\"an odd run\")\n\t}\n}\n"
+	root := fixtureWith(t, map[string]string{"flaky_test.go": flaky})
+	m := Mutation{
+		Label: "a comment, over a flaky case", Module: "mod", File: "guard.go",
+		Run: "TestFlaky", Find: "return true\n", Replace: "return true // unread\n",
+	}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{})
+	if got[0].State != "BROKEN" || !strings.Contains(got[0].Reason, "passed when run again") {
+		t.Fatalf("state %q (%s), want BROKEN naming the flake\n%s", got[0].State, got[0].Reason, log)
+	}
+	body, err := os.ReadFile(runs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⭐ AND THE MUTATION NEVER RAN. A refused group proves nothing, so it
+	// spends nothing.
+	if n := strings.Count(string(body), "ran\n"); n != 2 {
+		t.Fatalf("the case ran %d times, want 2: the baseline and its retry", n)
+	}
+}
+
+// TestARetriedBaselineIsSaidSo: a TestMain that fails its first run before any
+// case starts.
+//
+// ⚠ GREEN, BECAUSE NO CASE IT NAMES FAILED, and a flake there cannot read as a
+// red one. ⛔ BUT THE LOG SAYS SO. A retry nobody sees is a flake nobody looks
+// at.
+func TestARetriedBaselineIsSaidSo(t *testing.T) {
+	t.Parallel()
+	runs := filepath.Join(t.TempDir(), "runs.log")
+	once := "package once\n\n" + countedImports + "func TestMain(m *testing.M) {\n" +
+		countedOr(runs, "os.Exit(2)") + "\tif n == 1 {\n\t\tos.Exit(1)\n\t}\n\tos.Exit(m.Run())\n}\n\n" +
+		"func TestOnceGuard(t *testing.T) {\n\tif Allowed(\"\") {\n\t\tt.Fatal(\"the empty string was allowed\")\n\t}\n}\n"
+	root := fixtureWith(t, map[string]string{
+		"once/once.go":      "package once\n\nfunc Allowed(s string) bool {\n\tif s == \"\" {\n\t\treturn false\n\t}\n\treturn true\n}\n",
+		"once/once_test.go": once,
+	})
+	m := Mutation{
+		Label: "a guard whose first baseline failed outside it", Module: "mod", File: "once/once.go",
+		Run: "TestOnceGuard", Find: "if s == \"\" {", Replace: "if false {",
+	}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{})
+	if got[0].State != "ok" {
+		t.Fatalf("state %q (%s), want ok\n%s", got[0].State, got[0].Reason, log)
+	}
+	if !strings.Contains(log, "retried: the baseline for "+strconv.Quote(m.Label)) {
+		t.Fatalf("the log does not say the baseline was retried:\n%s", log)
+	}
+}
+
+// TestTwoRunsThatDisagreeAreBroken: a case green on its first two runs and red
+// on its third, under a mutation that changes only a comment.
+//
+// ⛔ ONE RUN WAS THE VERDICT. A case that decides by a timing window stays
+// green when a loaded machine runs the unguarded write late, and the row read
+// THEATRE. A verdict that fails the run is now seen twice, and two that differ
+// are neither.
+func TestTwoRunsThatDisagreeAreBroken(t *testing.T) {
+	t.Parallel()
+	runs := filepath.Join(t.TempDir(), "runs.log")
+	third := "package guard\n\n" + countedImports + "func TestRedOnTheThird(t *testing.T) {\n" + counted(runs) +
+		"\tif n == 3 {\n\t\tt.Fatal(\"the third run\")\n\t}\n}\n"
+	root := fixtureWith(t, map[string]string{"third_test.go": third})
+	m := Mutation{
+		Label: "a comment, over a case that changes its mind", Module: "mod", File: "guard.go",
+		Run: "TestRedOnTheThird", Find: "return true\n", Replace: "return true // unread\n",
+	}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{})
+	if got[0].State != "BROKEN" || !strings.Contains(got[0].Reason, "disagree, THEATRE and then ok") {
+		t.Fatalf("state %q (%s), want BROKEN naming both runs\n%s", got[0].State, got[0].Reason, log)
+	}
+}
+
+// TestAVerdictPrintsAsItsRowFinishes: the table's first row finishes last, and
+// the second row's line is in the log before it.
+//
+// ⛔ WHAT WAS WRONG. A line waited for every row above it in the table. Groups
+// go out heaviest first and the table opens with light rows, so a CI shard
+// printed its first verdict at 97% of the run.
+//
+// ⚠ ORDERED BY A FILE, NOT A CLOCK. The slow case waits until the fast row has
+// run twice, its baseline and its mutation.
+func TestAVerdictPrintsAsItsRowFinishes(t *testing.T) {
+	t.Parallel()
+	marker := filepath.Join(t.TempDir(), "fast.log")
+	fast := "package guard\n\n" + countedImports + "func TestFast(t *testing.T) {\n" + counted(marker) +
+		"\t_ = n\n\tif Allowed(\"\") {\n\t\tt.Fatal(\"the empty string was allowed\")\n\t}\n}\n"
+	slow := "package guard\n\nimport (\n\t\"os\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestWaitsForTheFastRow(t *testing.T) {\n" +
+		"\tfor end := time.Now().Add(2 * time.Minute); ; time.Sleep(20 * time.Millisecond) {\n" +
+		"\t\tbody, _ := os.ReadFile(" + strconv.Quote(marker) + ")\n" +
+		"\t\tif strings.Count(string(body), \"ran\\n\") >= 2 {\n\t\t\tbreak\n\t\t}\n" +
+		"\t\tif time.Now().After(end) {\n\t\t\tt.Fatal(\"the fast row never ran twice\")\n\t\t}\n\t}\n" +
+		"\tif Allowed(\"\") {\n\t\tt.Fatal(\"the empty string was allowed\")\n\t}\n}\n"
+	root := fixtureWith(t, map[string]string{"fast_test.go": fast, "slow_test.go": slow})
+	first := Mutation{Label: "row one, slow", Module: "mod", File: "guard.go", Run: "TestWaitsForTheFastRow", Find: "if s == \"\" {", Replace: "if false {"}
+	second := Mutation{Label: "row two, fast", Module: "mod", File: "guard.go", Run: "TestFast", Find: "if s == \"\" {", Replace: "if false {"}
+	tb := &Table{Schema: TableSchema, Mutations: []Mutation{first, second}}
+	got, log := runFixture(t, root, tb, Selection{Jobs: 2})
+	// ⭐ WHAT Run RETURNS IS STILL IN TABLE ORDER, and Report reads that.
+	for i, m := range tb.Mutations {
+		if got[i].Label != m.Label || got[i].State != "ok" {
+			t.Fatalf("verdict %d is %q %s, want %q ok (%s)\n%s", i, got[i].Label, got[i].State, m.Label, got[i].Reason, log)
+		}
+	}
+	slowAt, fastAt := strings.Index(log, "row one, slow"), strings.Index(log, "row two, fast")
+	if fastAt < 0 || slowAt < 0 || fastAt > slowAt {
+		t.Fatalf("the fast row's line is not before the slow row's:\n%s", log)
+	}
+	if !strings.Contains(log, "[2/2] ok       row two, fast") {
+		t.Fatalf("the fast row's line does not carry its place in the table:\n%s", log)
+	}
+}
+
+// TestTheLogSaysWhatIsStillRunning: a row slower than the heartbeat is named
+// while it runs.
+//
+// ⛔ A SHARD THE TIME LIMIT KILLED could not say which row hung, because no
+// line said what was running.
+func TestTheLogSaysWhatIsStillRunning(t *testing.T) {
+	t.Parallel()
+	slow := "package guard\n\nimport (\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestSlowly(t *testing.T) {\n\ttime.Sleep(1500 * time.Millisecond)\n" +
+		"\tif Allowed(\"\") {\n\t\tt.Fatal(\"the empty string was allowed\")\n\t}\n}\n"
+	root := fixtureWith(t, map[string]string{"slow_test.go": slow})
+	m := Mutation{Label: "a row slower than the heartbeat", Module: "mod", File: "guard.go", Run: "TestSlowly", Find: "if s == \"\" {", Replace: "if false {"}
+	_, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{Jobs: 1, heartbeat: 200 * time.Millisecond})
+	for _, ln := range strings.Split(log, "\n") {
+		if strings.Contains(ln, "still running") && strings.Contains(ln, m.Label) {
+			return
+		}
+	}
+	t.Fatalf("no line named the row while it ran:\n%s", log)
+}
+
+// TestAFileOneRowLeavesDoesNotReachTheNext: row A deletes a cleanup and leaves a
+// file in the temporary directory. Row B, in another group, changes a comment,
+// and its case asserts no such file is there.
+//
+// ⛔ WHAT WAS WRONG. A worker's state was made once per run. At --jobs 1, B's
+// baseline ran after A's mutation on the same worker, met A's file, and B was
+// BROKEN. At --jobs 2 it was THEATRE. One table, two verdicts, decided by
+// scheduling.
+func TestAFileOneRowLeavesDoesNotReachTheNext(t *testing.T) {
+	t.Parallel()
+	root := fixtureWith(t, map[string]string{
+		"leak.go":      "package guard\n\nimport (\n\t\"os\"\n\t\"path/filepath\"\n)\n\n// Scratch writes a file in the temporary directory, and removes it.\nfunc Scratch() string {\n\tp := filepath.Join(os.TempDir(), \"repo-mutate-leak-probe\")\n\t_ = os.WriteFile(p, []byte(\"x\"), 0o600)\n\t_ = os.Remove(p)\n\treturn p\n}\n",
+		"leak_test.go": "package guard\n\nimport (\n\t\"os\"\n\t\"path/filepath\"\n\t\"testing\"\n)\n\nfunc TestScratchCleansUp(t *testing.T) {\n\tif _, err := os.Stat(Scratch()); err == nil {\n\t\tt.Fatal(\"the scratch file was left behind\")\n\t}\n}\n\nfunc TestNothingLeftOver(t *testing.T) {\n\tif _, err := os.Stat(filepath.Join(os.TempDir(), \"repo-mutate-leak-probe\")); err == nil {\n\t\tt.Fatal(\"a file another process left is here\")\n\t}\n}\n",
+	})
+	a := Mutation{Label: "the scratch file's cleanup", Module: "mod", File: "leak.go", Run: "TestScratchCleansUp", Find: "\t_ = os.Remove(p)\n", Replace: ""}
+	b := Mutation{Label: "a comment nothing reads", Module: "mod", File: "leak.go", Run: "TestNothingLeftOver", Find: "// Scratch writes", Replace: "// Scratch, unread, writes"}
+	tb := &Table{Schema: TableSchema, Mutations: []Mutation{a, b}}
+	for _, jobs := range []int{1, 2} {
+		got, log := runFixture(t, root, tb, Selection{Jobs: jobs})
+		if got[0].State != "ok" || got[1].State != "THEATRE" {
+			t.Fatalf("--jobs %d: A is %s and B is %s (%s), want ok and THEATRE\n%s", jobs, got[0].State, got[1].State, got[1].Reason, log)
+		}
+	}
+}
+
+// TestAFileOneRowLeavesBesideItsSourceDoesNotReachTheNext: row A deletes the
+// cleanup of a file written in the package directory. Row B, in another group,
+// changes a comment, and its case asserts no such file is there.
+//
+// ⛔ WHAT WAS WRONG. The staged copy is kept for the build cache, and only the
+// mutated file was put back. At --jobs 1, B's baseline ran in the copy A's run
+// had written in, and B was BROKEN.
+//
+// ⚠ AND THE ROW'S OWN FILE IS NOT NAMED. Its restore writes the same bytes
+// back, and a note on every row is one nobody reads.
+func TestAFileOneRowLeavesBesideItsSourceDoesNotReachTheNext(t *testing.T) {
+	t.Parallel()
+	root := fixtureWith(t, map[string]string{
+		"spill.go":      "package guard\n\nimport \"os\"\n\n// Spill writes a file in the working directory, and removes it.\nfunc Spill() string {\n\t_ = os.WriteFile(\"spilled.txt\", []byte(\"x\"), 0o600)\n\t_ = os.Remove(\"spilled.txt\")\n\treturn \"spilled.txt\"\n}\n",
+		"spill_test.go": "package guard\n\nimport (\n\t\"os\"\n\t\"testing\"\n)\n\nfunc TestSpillCleansUp(t *testing.T) {\n\tif _, err := os.Stat(Spill()); err == nil {\n\t\tt.Fatal(\"the spilled file was left behind\")\n\t}\n}\n\nfunc TestNothingBesideTheSource(t *testing.T) {\n\tif _, err := os.Stat(\"spilled.txt\"); err == nil {\n\t\tt.Fatal(\"a file another process left is beside the source\")\n\t}\n}\n",
+	})
+	a := Mutation{Label: "the spilled file's cleanup", Module: "mod", File: "spill.go", Run: "TestSpillCleansUp", Find: "\t_ = os.Remove(\"spilled.txt\")\n", Replace: ""}
+	b := Mutation{Label: "a comment beside a spill", Module: "mod", File: "spill.go", Run: "TestNothingBesideTheSource", Find: "// Spill writes", Replace: "// Spill, unread, writes"}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{a, b}}, Selection{Jobs: 1})
+	if got[0].State != "ok" || got[1].State != "THEATRE" {
+		t.Fatalf("A is %s and B is %s (%s), want ok and THEATRE\n%s", got[0].State, got[1].State, got[1].Reason, log)
+	}
+	var notes []string
+	for _, ln := range strings.Split(log, "\n") {
+		if strings.Contains(ln, "put back: ") {
+			notes = append(notes, ln)
+		}
+	}
+	if len(notes) == 0 || !strings.Contains(notes[0], "put back: spilled.txt, which "+strconv.Quote(a.Label)) {
+		t.Fatalf("no line says the spilled file was put back after A's run:\n%s", log)
+	}
+	if joined := strings.Join(notes, "\n"); strings.Contains(joined, "spill.go") {
+		t.Fatalf("a row's own restored file was named as put back:\n%s", joined)
+	}
+}
+
+// TestACaseRunsInItsWorkersOwnState: the environment a worker is given is the
+// one its `go test` process gets.
+//
+// ⛔ CHECKED FROM INSIDE THE CASE. A worker environment that is built and then
+// never handed to the process isolates nothing, and every row still passes.
+//
+// ⚠ PINNED TO A DIRECTORY ONLY THIS RUN COULD HAVE MADE. This case also runs
+// inside a worker of an outer harness, whose own HOME and TMP sit side by side
+// just as a worker's do. A check of the shape alone passed on what it inherited.
+func TestACaseRunsInItsWorkersOwnState(t *testing.T) {
+	tmp := privateTemp(t)
+	own := "package guard\n\nimport (\n\t\"os\"\n\t\"path/filepath\"\n\t\"strings\"\n\t\"testing\"\n)\n\nfunc TestOwnState(t *testing.T) {\n" +
+		"\tslot := filepath.Dir(os.TempDir())\n" +
+		"\tfor _, k := range []string{\"HOME\", \"USERPROFILE\", \"LOCALAPPDATA\", \"WSL_TOOLKIT_HOME\"} {\n" +
+		"\t\tv := os.Getenv(k)\n" +
+		"\t\tif filepath.Dir(v) != slot || !strings.HasPrefix(v, " + strconv.Quote(tmp) + ") {\n\t\t\tt.Fatalf(\"%s is %q, outside %s\", k, v, slot)\n\t\t}\n\t}\n" +
+		"\tif Allowed(\"\") {\n\t\tt.Fatal(\"the empty string was allowed\")\n\t}\n}\n"
+	root := fixtureWith(t, map[string]string{"own_test.go": own})
+	m := Mutation{Label: "the guard, in its own state", Module: "mod", File: "guard.go", Run: "TestOwnState", Find: "if s == \"\" {", Replace: "if false {"}
+	got, log := runFixture(t, root, &Table{Schema: TableSchema, Mutations: []Mutation{m}}, Selection{Jobs: 1})
+	if got[0].State != "ok" {
+		t.Fatalf("state %q, want ok (%s)\n%s", got[0].State, got[0].Reason, log)
+	}
+}
+
+// TestRunSaysWhatItLeftOut: a row a filter or a shard does not select is
+// counted by module and printed with the reason.
+//
+// ⛔ NOTHING IS LEFT OUT IN SILENCE. A log that lists only what ran reads as
+// the whole table.
+func TestRunSaysWhatItLeftOut(t *testing.T) {
+	t.Parallel()
+	root := fixture(t)
+	real := Mutation{Label: "the empty-string guard", Module: "mod", File: "guard.go", Run: "TestEmptyIsRefused", Find: "if s == \"\" {", Replace: "if false {"}
+	away := Mutation{Label: "a row of another module", Module: "elsewhere", File: "x.go", Run: "TestX", Find: "x", Replace: "y"}
+	tb := &Table{Schema: TableSchema, Mutations: []Mutation{real, away}}
+	_, log := runFixture(t, root, tb, Selection{Modules: []string{"mod"}, Jobs: 1})
+	if !strings.Contains(log, "not run: 1 row(s) of elsewhere, because its module is not one --module names") {
+		t.Fatalf("the log does not say what --module left out:\n%s", log)
 	}
 }

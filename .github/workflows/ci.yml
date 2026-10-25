@@ -211,8 +211,8 @@ jobs:
   # -- the guards are guards. The instrument nobody was running -------------
   #
   # ⛔ WHY THIS IS A JOB AND NOT A GATE CHECK. `repo mutate` deletes each guard
-  # in tools/repo/mutations.json and runs the case named for it, one copied
-  # module and one `go test` per row. That takes minutes, and a gate that takes
+  # in tools/repo/mutations.json and runs the case named for it, one `go test`
+  # per row in a copy of its module. That takes minutes, and a gate that takes
   # minutes is a gate a session skips. The gate carries the cheap half instead,
   # `check mutations`, which asserts every row still POINTS at something; this
   # job carries the half that asks whether the case actually goes red.
@@ -227,8 +227,11 @@ jobs:
   # table of 503 rows inside the 30-minute limit, and three runners did not
   # finish 1,202, every share running out at 30 minutes. A limit raised to fit
   # makes every push wait on it, so the table is cut finer. `--shard K/N`
-  # gives runner K the rows whose place in the table is K modulo N, so every
-  # module's rows spread over all six and every row runs exactly once.
+  # gives each runner whole pattern groups, heaviest first, so a group's
+  # unmutated baseline runs once and every row runs exactly once. Each runner
+  # proves its rows on half its processors at once, in separate copies. Each
+  # verdict prints as its row finishes, so a share the limit stops still shows
+  # what it proved and what was running.
   mutations:
     name: the guards go red when the guard is gone (${{ matrix.shard }})
     runs-on: ubuntu-latest
