@@ -47,21 +47,42 @@ command -v go >/dev/null 2>&1 || {
   exit 2
 }
 
+cd "$REPO_ROOT" || { printf 'repo: cannot enter %s\n' "$REPO_ROOT" >&2; exit 2; }
+
+# ⭐ A CALLER THAT BUILT THE TOOL BOX ONCE HANDS IT DOWN, as
+# scripts/common/check.sh says of the gate. TOOLKIT_REPO_BIN names it.
+if [ -n "${TOOLKIT_REPO_BIN:-}" ]; then
+  [ -f "$TOOLKIT_REPO_BIN" ] || { printf 'repo: TOOLKIT_REPO_BIN names %s, which is not a file\n' "$TOOLKIT_REPO_BIN" >&2; exit 2; }
+  exec "$TOOLKIT_REPO_BIN" "$@"
+fi
+
 # ⚠ The binary goes under .tmp/, which is gitignored. Building it into the tree
 # would make a tool's own output a tracked file another tool then reads.
-BIN="$REPO_ROOT/.tmp/repo"
+EXE=''
 case "$(uname -s 2>/dev/null || echo unknown)" in
-  MINGW*|MSYS*|CYGWIN*|Windows_NT) BIN="$BIN.exe" ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) EXE='.exe' ;;
 esac
+BIN="$REPO_ROOT/.tmp/repo$EXE"
+OWN="$REPO_ROOT/.tmp/repo.$$$EXE"
 mkdir -p "$REPO_ROOT/.tmp" || { printf 'repo: cannot write to %s/.tmp\n' "$REPO_ROOT" >&2; exit 2; }
 
 # ⛔ REBUILT EVERY RUN, not cached by hand. Go's own build cache makes an
 # unchanged tree a fraction of a second, and a hand-rolled staleness test is how
 # a session ends up running the tool it had yesterday.
-if ! (cd "$REPO_ROOT/tools/repo" && go build -o "$BIN" . 2>&1); then
+# ⛔ BUILT INTO A COPY OF ITS OWN, THEN MOVED OVER THE BINARY WHOLE, as
+# scripts/common/check.sh says of the gate.
+[ -f "$BIN" ] && cp -p "$BIN" "$OWN" 2>/dev/null
+if ! (cd "$REPO_ROOT/tools/repo" && go build -o "$OWN" . 2>&1); then
+  rm -f "$OWN"
   printf 'repo: the tool box did not build\n' >&2
   exit 2
 fi
-
-cd "$REPO_ROOT" || { printf 'repo: cannot enter %s\n' "$REPO_ROOT" >&2; exit 2; }
-exec "$BIN" "$@"
+if mv -f "$OWN" "$BIN" 2>/dev/null; then
+  exec "$BIN" "$@"
+fi
+# ⚠ WINDOWS REFUSES TO REPLACE A BINARY THAT IS RUNNING, so a copy that could
+# not be moved runs where it is and goes when it ends.
+"$OWN" "$@"
+rc=$?
+rm -f "$OWN"
+exit "$rc"

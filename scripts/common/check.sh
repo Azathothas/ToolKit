@@ -48,21 +48,47 @@ command -v go >/dev/null 2>&1 || {
   exit 2
 }
 
+cd "$REPO_ROOT" || { printf 'check: cannot enter %s\n' "$REPO_ROOT" >&2; exit 2; }
+
+# ⭐ A CALLER THAT BUILT THE GATE ONCE HANDS IT DOWN. check-twins.sh runs both
+# halves of a pair at once, and each half used to build this binary into one
+# file at the same moment. TOOLKIT_CHECK_BIN names the binary that caller built
+# from this tree. ⛔ It is not a cache: the caller builds it in its own
+# temporary directory and removes it when it exits.
+if [ -n "${TOOLKIT_CHECK_BIN:-}" ]; then
+  [ -f "$TOOLKIT_CHECK_BIN" ] || { printf 'check: TOOLKIT_CHECK_BIN names %s, which is not a file\n' "$TOOLKIT_CHECK_BIN" >&2; exit 2; }
+  exec "$TOOLKIT_CHECK_BIN" "$@"
+fi
+
 # ⚠ The binary goes under .tmp/, which is gitignored. Building it into the tree
 # would make the gate's own output a tracked file the gate then reads.
-BIN="$REPO_ROOT/.tmp/check"
+EXE=''
 case "$(uname -s 2>/dev/null || echo unknown)" in
-  MINGW*|MSYS*|CYGWIN*|Windows_NT) BIN="$BIN.exe" ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) EXE='.exe' ;;
 esac
+BIN="$REPO_ROOT/.tmp/check$EXE"
+OWN="$REPO_ROOT/.tmp/check.$$$EXE"
 mkdir -p "$REPO_ROOT/.tmp" || { printf 'check: cannot write to %s/.tmp\n' "$REPO_ROOT" >&2; exit 2; }
 
 # ⛔ REBUILT EVERY RUN, not cached by hand. Go's own build cache makes an
 # unchanged tree a fraction of a second, and a hand-rolled staleness test is
 # how a session ends up running the gate it had yesterday.
-if ! (cd "$REPO_ROOT/tools/check" && go build -o "$BIN" . 2>&1); then
+# ⛔ BUILT INTO A COPY OF ITS OWN, THEN MOVED OVER THE BINARY WHOLE. Two
+# callers at once wrote one file together, and either could run it half
+# written. The copy starts as the current binary, so an unchanged tree still
+# costs only Go's own check.
+[ -f "$BIN" ] && cp -p "$BIN" "$OWN" 2>/dev/null
+if ! (cd "$REPO_ROOT/tools/check" && go build -o "$OWN" . 2>&1); then
+  rm -f "$OWN"
   printf 'check: the gate did not build\n' >&2
   exit 2
 fi
-
-cd "$REPO_ROOT" || { printf 'check: cannot enter %s\n' "$REPO_ROOT" >&2; exit 2; }
-exec "$BIN" "$@"
+if mv -f "$OWN" "$BIN" 2>/dev/null; then
+  exec "$BIN" "$@"
+fi
+# ⚠ WINDOWS REFUSES TO REPLACE A BINARY THAT IS RUNNING, so a copy that could
+# not be moved runs where it is and goes when it ends.
+"$OWN" "$@"
+rc=$?
+rm -f "$OWN"
+exit "$rc"

@@ -68,6 +68,12 @@ it was missing.
 ⚠ **It is not part of the gate.** It costs minutes and catches drift that only
 arrives when somebody edits one of those halves; CI runs it on every push.
 
+⭐ **Both halves of a pair run at once, and the two probes run beside the
+pairs.** It builds the gate and the tool box once, into its own temporary
+directory, and hands both to every half through `TOOLKIT_CHECK_BIN` and
+`TOOLKIT_REPO_BIN`. ⛔ What it compares is unchanged: each half's `--json`
+answer and exit code, read from that half's own process.
+
 ⚠ **It compares ANSWERS on the tree it is run against, not the rules.** A scope
 difference with nothing in the tree to exercise it is invisible: dropping `.py`
 from one twin's extension list changes no number here, because this repository
@@ -82,7 +88,7 @@ the language does.**
 | | |
 | --- | --- |
 | [`../tools/check/`](../tools/check/) | ⛔ **It cannot have one and must not.** It IS the answer to why twins existed: one implementation that runs natively on both hosts. A second one would recreate the drift it removed. |
-| [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync`, `mutate` and `release` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` and `release` have no wrapper and need none**: `repo.sh mutate` and `repo.sh release` reach them. The same holds for `linux-proof` and `pre-push`, which `.githooks/pre-push` calls. It also holds for the steps the release workflows call: `release-stage`, `release-readback`, `nightly-stage`, `nightly-publish` and `nightly-prune`. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules. |
+| [`../tools/repo/`](../tools/repo/) | ⛔ **The same answer, for the tools that are not rules.** `deslop`, `license`, `binfmt`, `remote-items`, `git-sync`, `mutate` and `release` live here as subcommands; the scripts named after the first five are wrappers. ⭐ **`mutate` and `release` have no wrapper and need none**: `repo.sh mutate` and `repo.sh release` reach them. The same holds for `linux-proof` and `pre-push`, which `.githooks/pre-push` calls. It also holds for the steps the release workflows call: `release-stage`, `release-readback`, `nightly-stage`, `nightly-publish` and `nightly-prune`. And for the three `ci.yml` mutation steps: `mutate-keys`, `mutate-plan` and `mutate-keep`. ⚠ It is deliberately NOT `tools/check`: that binary holds what this repository enforces over its own tree, and `check-gate` runs all of it. A commit path and a licence writer are not rules. |
 | [`common/set-record.mjs`](common/) and [`common/write-file.mjs`](common/) | ⛔ **Neither needs one.** They are node, and node is the same program on every host: no `sed`, no `sort`, no shell built-ins, no aliases. ⚠ A twin for `set-record` would be a second implementation of table arithmetic, in the one file whose whole job is that the arithmetic is right. ⚠ What they need instead is node, which is the one dependency anything under `scripts/` has. |
 | [`common/check-twins.sh`](common/) | ⛔ **It cannot have one.** It works by running both halves of every pair, so it needs a POSIX shell no matter what language it is written in. |
 | [`common/bootstrap.sh`](common/), [`common/tmux.conf`](common/) and [`common/shell-profile.sh`](common/) | ⛔ **No twin.** The job is to drive a Unix package manager inside a Unix userland, and to configure a Unix shell. A PowerShell half would have nothing to install and nowhere to install it, and none of the three is a check. |
@@ -275,6 +281,11 @@ sh scripts/common/check-gate.sh
 here to fall out of step with the list there. When it and
 `.github/workflows/ci.yml` disagree about what runs, CI gates the push and this
 one is the defect.
+
+⛔ **Two callers at once are safe.** `check.sh` builds into a copy of its own
+and moves it over `.tmp/check` whole, so no caller runs a binary another is
+writing. A caller that already built the gate hands it down in
+`TOOLKIT_CHECK_BIN`, and `repo.sh` reads `TOOLKIT_REPO_BIN` the same way.
 
 ⚠ **A skipped check is not a passed check.** `shellcheck`, `pwsh` and
 PSScriptAnalyzer are not on every machine. A missing one is reported with what

@@ -57,25 +57,53 @@ if (-not $go) {
     exit 2
 }
 
-$tmp = Join-Path $repoRoot '.tmp'
-if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp -Force }
-$bin = Join-Path $tmp ('repo' + $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }))
-
-$toolDir = Join-Path $repoRoot 'tools/repo'
-# TESTED RATHER THAN THROWN, so "could not run" stays 2 and does not become 1.
-if (-not (Test-Path -LiteralPath $toolDir -PathType Container)) {
-    [Console]::Error.WriteLine("repo: $toolDir does not exist, so the tool box cannot be built")
-    exit 2
+# A CALLER THAT BUILT THE TOOL BOX ONCE HANDS IT DOWN, as check.ps1 says of
+# the gate. TOOLKIT_REPO_BIN names it.
+$own = ''
+if ($env:TOOLKIT_REPO_BIN) {
+    $bin = $env:TOOLKIT_REPO_BIN
+    if (-not (Test-Path -LiteralPath $bin -PathType Leaf)) {
+        [Console]::Error.WriteLine("repo: TOOLKIT_REPO_BIN names $bin, which is not a file")
+        exit 2
+    }
 }
-Push-Location $toolDir
-try { & $go build -o $bin . }
-finally { Pop-Location }
-if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('repo: the tool box did not build'); exit 2 }
+else {
+    $tmp = Join-Path $repoRoot '.tmp'
+    if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp -Force }
+    $exe = $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' })
+    $bin = Join-Path $tmp ('repo' + $exe)
+    $own = Join-Path $tmp ('repo.' + $PID + $exe)
+
+    $toolDir = Join-Path $repoRoot 'tools/repo'
+    # TESTED RATHER THAN THROWN, so "could not run" stays 2 and does not become 1.
+    if (-not (Test-Path -LiteralPath $toolDir -PathType Container)) {
+        [Console]::Error.WriteLine("repo: $toolDir does not exist, so the tool box cannot be built")
+        exit 2
+    }
+    # BUILT INTO A COPY OF ITS OWN, THEN MOVED OVER THE BINARY WHOLE, as
+    # check.ps1 says of the gate.
+    if (Test-Path -LiteralPath $bin -PathType Leaf) { Copy-Item -LiteralPath $bin -Destination $own -Force -ErrorAction SilentlyContinue }
+    Push-Location $toolDir
+    try { & $go build -o $own . }
+    finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -LiteralPath $own -Force -ErrorAction SilentlyContinue
+        [Console]::Error.WriteLine('repo: the tool box did not build')
+        exit 2
+    }
+    # WINDOWS REFUSES TO REPLACE A BINARY THAT IS RUNNING, so a copy that could
+    # not be moved runs where it is and goes when it ends.
+    try { Move-Item -LiteralPath $own -Destination $bin -Force; $own = '' }
+    catch { $bin = $own }
+}
 
 Push-Location $repoRoot
 try {
     if ($Rest) { & $bin @Rest } else { & $bin }
     $code = $LASTEXITCODE
 }
-finally { Pop-Location }
+finally {
+    Pop-Location
+    if ($own) { Remove-Item -LiteralPath $own -Force -ErrorAction SilentlyContinue }
+}
 exit $code

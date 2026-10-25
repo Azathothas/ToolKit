@@ -53,29 +53,57 @@ if (-not $go) {
     exit 2
 }
 
-$tmp = Join-Path $repoRoot '.tmp'
-if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp -Force }
-$bin = Join-Path $tmp ('check' + $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' }))
-
-$checkDir = Join-Path $repoRoot 'tools/check'
-# TESTED RATHER THAN THROWN. Under $ErrorActionPreference = 'Stop' a
-# Push-Location onto a missing directory is a TERMINATING error, so pwsh ends 1
-# and the exit 2 this file documents is never reached - which merges "could not
-# run" into "a check failed", and is what this half did where its sh twin
-# answered 2. docs/HISTORY/record.md finding 34.
-if (-not (Test-Path -LiteralPath $checkDir -PathType Container)) {
-    [Console]::Error.WriteLine("check: $checkDir does not exist, so the gate cannot be built")
-    exit 2
+# A CALLER THAT BUILT THE GATE ONCE HANDS IT DOWN, for the reason its sh twin
+# states: check-twins.sh runs both halves of a pair at once.
+$own = ''
+if ($env:TOOLKIT_CHECK_BIN) {
+    $bin = $env:TOOLKIT_CHECK_BIN
+    if (-not (Test-Path -LiteralPath $bin -PathType Leaf)) {
+        [Console]::Error.WriteLine("check: TOOLKIT_CHECK_BIN names $bin, which is not a file")
+        exit 2
+    }
 }
-Push-Location $checkDir
-try { & $go build -o $bin . }
-finally { Pop-Location }
-if ($LASTEXITCODE -ne 0) { [Console]::Error.WriteLine('check: the gate did not build'); exit 2 }
+else {
+    $tmp = Join-Path $repoRoot '.tmp'
+    if (-not (Test-Path -LiteralPath $tmp)) { $null = New-Item -ItemType Directory -Path $tmp -Force }
+    $exe = $(if ($IsWindows -or $env:OS -eq 'Windows_NT') { '.exe' } else { '' })
+    $bin = Join-Path $tmp ('check' + $exe)
+    $own = Join-Path $tmp ('check.' + $PID + $exe)
+
+    $checkDir = Join-Path $repoRoot 'tools/check'
+    # TESTED RATHER THAN THROWN. Under $ErrorActionPreference = 'Stop' a
+    # Push-Location onto a missing directory is a TERMINATING error, so pwsh ends 1
+    # and the exit 2 this file documents is never reached - which merges "could not
+    # run" into "a check failed", and is what this half did where its sh twin
+    # answered 2. docs/HISTORY/record.md finding 34.
+    if (-not (Test-Path -LiteralPath $checkDir -PathType Container)) {
+        [Console]::Error.WriteLine("check: $checkDir does not exist, so the gate cannot be built")
+        exit 2
+    }
+    # BUILT INTO A COPY OF ITS OWN, THEN MOVED OVER THE BINARY WHOLE, for the
+    # reason its sh twin states.
+    if (Test-Path -LiteralPath $bin -PathType Leaf) { Copy-Item -LiteralPath $bin -Destination $own -Force -ErrorAction SilentlyContinue }
+    Push-Location $checkDir
+    try { & $go build -o $own . }
+    finally { Pop-Location }
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -LiteralPath $own -Force -ErrorAction SilentlyContinue
+        [Console]::Error.WriteLine('check: the gate did not build')
+        exit 2
+    }
+    # WINDOWS REFUSES TO REPLACE A BINARY THAT IS RUNNING, so a copy that could
+    # not be moved runs where it is and goes when it ends.
+    try { Move-Item -LiteralPath $own -Destination $bin -Force; $own = '' }
+    catch { $bin = $own }
+}
 
 Push-Location $repoRoot
 try {
     if ($Rest) { & $bin @Rest } else { & $bin }
     $code = $LASTEXITCODE
 }
-finally { Pop-Location }
+finally {
+    Pop-Location
+    if ($own) { Remove-Item -LiteralPath $own -Force -ErrorAction SilentlyContinue }
+}
 exit $code
