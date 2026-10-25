@@ -336,8 +336,8 @@ func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) 
 	return string(out), err
 }
 
-// grantsShell is the POSIX shell grants.sh and verify.sh are driven under, and on
-// Windows the directory its tools come from, or a skip.
+// grantsShell is the POSIX shell grants.sh and verify.sh are driven under, and the
+// directories its tools come from, or a skip.
 //
 // ⭐ ON WINDOWS IT IS GIT FOR WINDOWS' sh, found beside the git on PATH. A drive
 // needs sh, grep, sed, cut, awk, base64 and mktemp, which Git carries, and flock,
@@ -345,11 +345,12 @@ func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) 
 // and WSL-190 case passed with its fix reverted. WSL-189, WSL-190.
 //
 // ⚠ KEPT ONCE FOUND, so a case that puts the fake host's PATH in place first still
-// finds it. A miss is not kept.
+// finds it. A miss is not kept. ⚠ ELSEWHERE bin IS THE SYSTEM'S OWN DIRECTORIES:
+// the fake host's PATH holds its fakes alone, and the script found no mktemp.
 func grantsShell(t *testing.T) (sh, bin string) {
 	t.Helper()
 	if runtime.GOOS != "windows" {
-		return posixShell(t), ""
+		return posixShell(t), "/usr/local/bin:/usr/bin:/bin"
 	}
 	gitShell.mu.Lock()
 	defer gitShell.mu.Unlock()
@@ -377,7 +378,7 @@ var gitShell struct {
 	sh string
 }
 
-// shellEnv is this process's environment with bin first on PATH, where bin is set.
+// shellEnv is this process's environment with bin, a PATH list, first on PATH.
 // ⚠ A later PATH wins over the Path Windows names it, since exec drops a key's
 // earlier copies.
 func shellEnv(bin string) []string {
