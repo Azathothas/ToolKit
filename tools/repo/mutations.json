@@ -2,6 +2,276 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "mutate: workers start with the heaviest group",
+      "file": "internal/mutate/plan.go",
+      "find": "\tsort.SliceStable(order, func(a, b int) bool { return order[a].cost > order[b].cost })\n",
+      "replace": "",
+      "run": "TestWorkersStartWithTheHeaviestGroup",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a case that never finished in a failed package is a failed case",
+      "file": "internal/mutate/gotest.go",
+      "find": "\t\tr.failed += len(open[pkg])\n",
+      "replace": "\t\t_ = open[pkg]\n",
+      "run": "TestACaseThatKillsItsBinaryIsRed",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a package's own [build failed] line marks it as not built",
+      "file": "internal/mutate/gotest.go",
+      "find": "if e.Test == \"\" && (strings.Contains(e.Output, \"[build failed]\") || strings.Contains(e.Output, \"[setup failed]\")) {",
+      "replace": "if e.Test == \"\" && false {",
+      "run": "TestABrokenRowSaysWhatTheCompilerSaid",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: the mutated run tests only the packages that hold the cases",
+      "file": "internal/mutate/mutate.go",
+      "find": "\targs = append(args, b.pkgs...)\n",
+      "replace": "\targs = append(args, \"./...\")\n",
+      "run": "TestASiblingPackageThatStopsCompilingIsNotARedCase",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: ok needs a named case to fail, not a non-zero exit",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase r.failed > 0:\n",
+      "replace": "\tcase err != nil && r.cases > 0:\n",
+      "run": "TestAPackageThatFailsOutsideItsCasesIsNotOk",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a case package that does not build is BROKEN",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tcase len(r.buildFailed) > 0:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestABrokenRowSaysWhatTheCompilerSaid",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a group's baseline runs once, before its rows",
+      "file": "internal/mutate/mutate.go",
+      "find": "\tb := wk.baseline(dest, first)\n\tfor _, r := range g.rows {\n",
+      "replace": "\tfor _, r := range g.rows {\n\t\tb := wk.baseline(dest, first)\n",
+      "run": "TestAGroupsBaselineRunsOnce",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: verdicts print in table order",
+      "file": "internal/mutate/pool.go",
+      "find": "\tp.got[i], p.done[i] = v, true\n",
+      "replace": "\tp.got[i], p.done[i] = v, true\n\tfmt.Fprint(p.w, verdictLine(v, p.width))\n",
+      "run": "TestVerdictsPrintInTableOrder",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a case runs with its worker's environment",
+      "file": "internal/mutate/pool.go",
+      "find": "\tcmd.Env = wk.env\n",
+      "replace": "\t_ = wk.env\n",
+      "run": "TestACaseRunsInItsWorkersOwnState",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: each worker has its own HOME and USERPROFILE",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\"HOME=\" + home, \"USERPROFILE=\" + home,\n",
+      "replace": "\t\t\"UNUSED_HOME=\" + home,\n",
+      "run": "TestEachWorkerHasItsOwnState",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: each worker has its own temporary directory",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\"TMPDIR=\" + tmp, \"TMP=\" + tmp, \"TEMP=\" + tmp,\n",
+      "replace": "\t\t\"UNUSED_TMP=\" + tmp,\n",
+      "run": "TestEachWorkerHasItsOwnState",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: each worker has its own LOCALAPPDATA",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\"LOCALAPPDATA=\" + filepath.Join(dir, \"localappdata\"),\n",
+      "replace": "",
+      "run": "TestEachWorkerHasItsOwnState",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: each worker has its own wsl-toolkit state",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\"WSL_TOOLKIT_HOME=\" + filepath.Join(dir, \"wsl-toolkit\"),\n",
+      "replace": "",
+      "run": "TestEachWorkerHasItsOwnState",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a worker keeps the host's build cache",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tif v := goEnv[k]; v != \"\" {\n\t\t\tset = append(set, k+\"=\"+v)\n\t\t}\n",
+      "replace": "\t\t_ = goEnv[k]\n",
+      "run": "TestEachWorkerHasItsOwnState",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: the XDG directories follow the worker's HOME",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tif drop[strings.ToUpper(k)] {\n",
+      "replace": "\t\tif false && drop[strings.ToUpper(k)] {\n",
+      "run": "TestEachWorkerHasItsOwnState",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a slot is a fixed path",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\tdir := filepath.Join(root, fmt.Sprintf(\"w%d\", n))\n",
+      "replace": "\t\t\tdir := filepath.Join(root, fmt.Sprintf(\"w%d-%d\", n, os.Getpid()))\n",
+      "run": "TestASlotIsAFixedPath",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a slot another run holds is passed over",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\t\tunlock, ok := lockSlot(filepath.Join(root, fmt.Sprintf(\"w%d.lock\", n)))\n\t\t\tif !ok {\n\t\t\t\tcontinue\n\t\t\t}\n",
+      "replace": "\t\t\tunlock, _ := lockSlot(filepath.Join(root, fmt.Sprintf(\"w%d.lock\", n)))\n",
+      "run": "TestAHeldSlotIsPassedOver",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: the sweep spares a slot a live run holds",
+      "file": "internal/mutate/pool.go",
+      "find": "\t\tunlock, ok := lockSlot(filepath.Join(root, e.Name()+\".lock\"))\n\t\tif !ok {\n\t\t\tcontinue\n\t\t}\n",
+      "replace": "\t\tunlock, ok := lockSlot(filepath.Join(root, e.Name()+\".lock\"))\n\t\tif !ok {\n\t\t\tunlock = func() {}\n\t\t}\n",
+      "run": "TestTheSweepSparesAHeldSlot",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: the default is half the processors",
+      "file": "internal/mutate/pool.go",
+      "find": "\treturn max(1, runtime.NumCPU()/2)\n",
+      "replace": "\treturn max(1, runtime.NumCPU())\n",
+      "run": "TestDefaultJobsIsHalfTheProcessors",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a shard never splits a pattern group",
+      "file": "internal/mutate/plan.go",
+      "find": "\treturn m.Module + \"\\x00\" + m.Run + \"\\x00\" + strings.Join(m.Args, \"\\x1f\")\n",
+      "replace": "\treturn m.Label\n",
+      "run": "TestEveryRowBelongsToExactlyOneShard",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: the heaviest group is placed first",
+      "file": "internal/mutate/plan.go",
+      "find": "\t\treturn groups[order[a]].cost > groups[order[b]].cost\n",
+      "replace": "\t\treturn false\n",
+      "run": "TestTheHeaviestGroupIsPlacedFirst",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a toolkit row weighs the most",
+      "file": "internal/mutate/plan.go",
+      "find": "\tweightToolkit = 10\n",
+      "replace": "\tweightToolkit = 3\n",
+      "run": "TestAToolkitRowWeighsMost",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: an exact label selects that row alone",
+      "file": "internal/mutate/plan.go",
+      "find": "\t\tcase len(labels) > 0 && !labels[m.Label]:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestAnExactLabelSelectsThatRowAlone",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: an unknown exact label is an error naming it",
+      "file": "internal/mutate/plan.go",
+      "find": "\t\tif !known[l] {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAnUnknownExactLabelIsNamed",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a module filter keeps that module alone",
+      "file": "internal/mutate/plan.go",
+      "find": "\t\tcase len(modules) > 0 && !modules[m.Module]:\n",
+      "replace": "\t\tcase false:\n",
+      "run": "TestAModuleFilterKeepsThatModule",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a module no row names is an error",
+      "file": "internal/mutate/plan.go",
+      "find": "\t\tif !knownModules[m] {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAModuleFilterKeepsThatModule",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: a labels file with no label is an error",
+      "file": "internal/mutate/plan.go",
+      "find": "\tif len(out) == 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestALabelsFileReadsEitherLineEnding",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: the run prints the rows it left out",
+      "file": "internal/mutate/mutate.go",
+      "find": "\treportLeftOut(w, t, left)\n",
+      "replace": "",
+      "run": "TestRunSaysWhatItLeftOut",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: --labels-file adds its labels to the selection",
+      "file": "main.go",
+      "find": "\t\tlabels = append(labels, got...)\n",
+      "replace": "\t\t_ = got\n",
+      "run": "TestMutateReadsExactLabelsFromAFile",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
+      "label": "mutate: --jobs below zero is refused",
+      "file": "main.go",
+      "find": "\tif *jobs < 0 {\n",
+      "replace": "\tif false {\n",
+      "run": "TestMutateRefusesJobsBelowZero",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a lent workspace resolves against the project's directory",
       "file": "cmd_run.go",
       "find": "\t\t\tj.workspace, err = pathFromJobs(cfg, \"workspace\", j.workspace)\n",
@@ -6276,9 +6546,9 @@
     },
     {
       "label": "repo: a shard holds only its own rows",
-      "file": "internal/mutate/mutate.go",
-      "find": "\treturn s.N <= 1 || i%s.N == s.K-1\n",
-      "replace": "\treturn s.N >= 0\n",
+      "file": "internal/mutate/plan.go",
+      "find": "\t\tif plan[i] == s.K-1 {\n",
+      "replace": "\t\tif plan[i] >= 0 {\n",
       "run": "TestEveryRowBelongsToExactlyOneShard",
       "module": "tools/repo",
       "args": []
@@ -7927,7 +8197,7 @@
       "label": "telling a case that skipped from a case that stayed green",
       "module": "tools/repo",
       "file": "internal/mutate/mutate.go",
-      "find": "\tcase v.Skipped >= v.Cases:",
+      "find": "\tcase r.skipped >= r.cases:",
       "replace": "\tcase false:",
       "run": "TestRunTellsTheFourOutcomesApart",
       "args": []

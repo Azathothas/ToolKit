@@ -176,39 +176,72 @@ func runDeslop(args []string) int {
 // gitignored. Three records cited it as the command that closed them, and none
 // of those commands could be run by anyone reading the record afterwards.
 // Evidence that evaporates with the session is not evidence.
+//
+// ⚠ TWO WAYS TO NAME ROWS, AND THEY ARE NOT THE SAME. --only matches part of a
+// label, which suits a person at a prompt; one label can be part of another,
+// and then both run. --label and --labels-file match whole labels, for a caller
+// that computed the rows it wants.
 func runMutate(args []string) int {
-	fs := newFlagSet("mutate")
-	table := fs.String("table", "", "the mutation table. Empty reads tools/repo/mutations.json from the repository root")
-	only := fs.String("only", "", "run just the mutations whose label contains this")
-	shardFlag := fs.String("shard", "", "K/N: run the K-th of N shares of the table, so N runners prove it together")
-	if code, done := exitFor(parseArgs(fs, args)); done {
+	table, sel, err := mutateFlags(args)
+	if code, done := exitFor(err); done {
 		return code
-	}
-	shard, err := mutate.ParseShard(*shardFlag)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
-		return 2
 	}
 	repo, err := gitrepo.Open()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
 		return 2
 	}
-	path := *table
-	if path == "" {
-		path = filepath.Join(repo.Root, "tools", "repo", "mutations.json")
+	if table == "" {
+		table = filepath.Join(repo.Root, "tools", "repo", "mutations.json")
 	}
-	t, err := mutate.Load(path)
+	t, err := mutate.Load(table)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
 		return 2
 	}
-	verdicts, err := mutate.Run(repo.Root, t, mutate.Selection{Only: *only, Shard: shard}, os.Stdout)
+	verdicts, err := mutate.Run(repo.Root, t, sel, os.Stdout)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
 		return 2
 	}
 	return mutate.Report(os.Stdout, verdicts)
+}
+
+// mutateFlags reads mutate's command line into the table path and selection.
+// ⚠ Apart from runMutate so a case can read it with no repository around it.
+func mutateFlags(args []string) (string, mutate.Selection, error) {
+	fs := newFlagSet("mutate")
+	var labels, modules stringList
+	table := fs.String("table", "", "the mutation table. Empty reads tools/repo/mutations.json from the repository root")
+	only := fs.String("only", "", "run just the mutations whose label contains this")
+	fs.Var(&labels, "label", "run the row with exactly this label. Repeatable. An unknown label is an error")
+	labelsFile := fs.String("labels-file", "", "a file of exact labels, one per line, LF or CRLF")
+	fs.Var(&modules, "module", "run only this module's rows, as tools/check. Repeatable")
+	shardFlag := fs.String("shard", "", "K/N: run the K-th of N shares of the table, so N runners prove it together")
+	jobs := fs.Int("jobs", 0, fmt.Sprintf("how many rows run at once, each worker in its own staged copy. Zero is half this host's processors, %d here", mutate.DefaultJobs()))
+	if err := parseArgs(fs, args); err != nil {
+		return "", mutate.Selection{}, err
+	}
+	if *jobs < 0 {
+		return "", mutate.Selection{}, fmt.Errorf("mutate: --jobs %d is below zero", *jobs)
+	}
+	shard, err := mutate.ParseShard(*shardFlag)
+	if err != nil {
+		return "", mutate.Selection{}, fmt.Errorf("mutate: %w", err)
+	}
+	if *labelsFile != "" {
+		f, err := os.Open(*labelsFile)
+		if err != nil {
+			return "", mutate.Selection{}, fmt.Errorf("mutate: %w", err)
+		}
+		got, err := mutate.ReadLabels(f)
+		f.Close()
+		if err != nil {
+			return "", mutate.Selection{}, fmt.Errorf("mutate: --labels-file %s: %w", *labelsFile, err)
+		}
+		labels = append(labels, got...)
+	}
+	return *table, mutate.Selection{Only: *only, Labels: labels, Modules: modules, Shard: shard, Jobs: *jobs}, nil
 }
 
 func runLicense(args []string) int {

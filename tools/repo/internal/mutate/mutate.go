@@ -11,10 +11,11 @@
 // mutation that did not COMPILE. The last two prove nothing and must not read as
 // the first. So every row reports the case count and the build status separately:
 //
-//	ok       the guard is real: the mutation built, cases ran, and they went red
+//	ok       the guard is real: the mutation built, cases ran, and one it names failed
 //	THEATRE  it built, cases ran, and they stayed green
 //	SKIPPED  it built, and every case it names skipped itself on this host
-//	BROKEN   it did not build, or matched no case, or the find was not unique
+//	BROKEN   it did not build, or matched no case, or the find was not unique,
+//	         or something failed that is not a case it names
 //
 // ⚠ SKIPPED IS THE FOURTH, AND IT WAS ADDED BECAUSE THIS HARNESS MADE EXACTLY
 // THE MISTAKE IT EXISTS TO CATCH. A case that calls t.Skip prints `=== RUN` and
@@ -31,6 +32,13 @@
 // shape, which is to report absent rather than zero. ⭐ What makes that safe is
 // that the ubuntu CI job runs this table too, and nothing skips there.
 //
+// ⛔ "ok" IS READ FROM THE EVENTS OF `go test -json`, NEVER FROM ITS EXIT CODE.
+// The harness used to test `./...` and call any non-zero exit red once a case
+// had run. A mutation that broke a SIBLING package exited 1 while every named
+// case passed, and that row was certified. Now the baseline records which
+// packages hold the row's cases, and the mutated run tests only those. A row is
+// "ok" only when a case it names fails. gotest.go reads the events.
+//
 // ⚠ THE TABLE IS DATA, in mutations.json beside this module. A mutation is a
 // claim about one guard, and claims belong where they can be read without
 // recompiling the thing that checks them.
@@ -45,11 +53,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -113,26 +121,29 @@ func Load(path string) (*Table, error) {
 	return &t, nil
 }
 
-var runLine = regexp.MustCompile(`(?m)^=== RUN\s+Test`)
-
-// skipLine counts the cases that excused themselves. ⚠ `--- SKIP:` is indented
-// for a subtest, so the anchor is the marker rather than the start of the line.
-var skipLine = regexp.MustCompile(`(?m)^\s*--- SKIP:\s+Test`)
-
-// Selection is which rows one run proves: those whose label contains Only,
-// and of those, the ones in Shard.
+// Selection is which rows one run proves, and how many run at once. Every
+// filter that is set must agree, and of those rows, the ones in Shard run.
 type Selection struct {
-	Only  string
-	Shard Shard
+	// Only keeps the rows whose label CONTAINS it. ⚠ For a person at a
+	// prompt: one label can be part of another, and then both run.
+	Only string
+	// Labels keeps the rows whose label IS one of these. ⭐ For a caller that
+	// names rows it computed, such as the pre-push hook.
+	Labels []string
+	// Modules keeps the rows of these modules, as tools/check.
+	Modules []string
+	Shard   Shard
+	// Jobs is how many rows run at once. Zero is DefaultJobs.
+	Jobs int
 }
 
-// Shard is the K-th of N runners sharing one table. Row i of the table belongs
-// to runner i mod N + 1, so the rows of one module spread over every runner and
-// no runner waits on the biggest module alone. The zero value is the whole
-// table.
+// Shard is the K-th of N runners sharing one table. The zero value is the
+// whole table. plan.go deals whole pattern groups to the shards, heaviest
+// first, so each group's baseline runs once and the shares weigh about the
+// same.
 //
 // ⛔ EVERY ROW BELONGS TO EXACTLY ONE SHARD. The union of N shards is the table
-// and no row runs twice, which a case asserts over every K for several N.
+// and no row runs twice, which a case asserts over the real table for several N.
 type Shard struct {
 	K, N int
 }
@@ -155,103 +166,157 @@ func ParseShard(s string) (Shard, error) {
 	return Shard{K: kk, N: nn}, nil
 }
 
-// Has says whether row i of the table is in this shard.
-func (s Shard) Has(i int) bool {
-	return s.N <= 1 || i%s.N == s.K-1
-}
-
-// Run applies every selected mutation and reports one verdict each. Progress is
-// written to w as it goes, because a full pass takes minutes and a silent one
-// reads as a hang.
+// Run applies every selected mutation and reports one verdict each, in table
+// order. Progress is written to w as it goes, because a full pass takes minutes
+// and a silent one reads as a hang.
 func Run(root string, t *Table, sel Selection, w io.Writer) ([]Verdict, error) {
-	width := 0
-	for _, m := range t.Mutations {
-		if len(m.Label) > width {
-			width = len(m.Label)
+	rows, left, err := choose(t, sel)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		if sel.Only != "" {
+			return nil, fmt.Errorf("no mutation's label contains %q", sel.Only)
+		}
+		return nil, fmt.Errorf("no row is selected, so nothing would be proved")
+	}
+	here, others := splitShard(groupRows(t, rows), sel.Shard)
+	if len(here) == 0 {
+		return nil, fmt.Errorf("shard %d/%d holds none of the %d selected row(s), so it would prove nothing", sel.Shard.K, sel.Shard.N, len(rows))
+	}
+	for _, g := range others {
+		for _, r := range g.rows {
+			left = append(left, leftOut{r, fmt.Sprintf("the plan gives it to another of the %d shards", sel.Shard.N)})
 		}
 	}
-	var out []Verdict
+	sort.SliceStable(left, func(a, b int) bool { return left[a].row < left[b].row })
+	reportLeftOut(w, t, left)
+
+	// ⭐ THE ROWS THIS RUN PROVES, IN TABLE ORDER, and where each one prints.
+	var mine []int
+	for _, g := range here {
+		mine = append(mine, g.rows...)
+	}
+	sort.Ints(mine)
+	at := map[int]int{}
+	for p, r := range mine {
+		at[r] = p
+	}
+
+	jobs := sel.Jobs
+	if jobs <= 0 {
+		jobs = DefaultJobs()
+	}
+	jobs = min(jobs, len(here))
+	fmt.Fprintf(w, "  proving %d row(s) in %d pattern group(s), %d at a time\n", len(mine), len(here), jobs)
+
 	// ⛔ SWEPT BEFORE ANYTHING IS STAGED, because a killed run leaves its copy
 	// behind and nothing else collects it. Finding 32.
 	sweepStaleCopies(w)
-	// ⭐ ONE STAGED COPY PER MODULE, reused by every row that names it. The
-	// copy was 3.13 s of a 6.4 s row and was paid 419 times.
-	st := newStage(root)
-	defer st.cleanup()
-	base := &baselines{seen: map[string]baseline{}}
-	for i, m := range t.Mutations {
-		if sel.Only != "" && !strings.Contains(m.Label, sel.Only) {
-			continue
-		}
-		if !sel.Shard.Has(i) {
-			continue
-		}
-		v := one(m, base, st)
-		out = append(out, v)
-		switch v.State {
-		case "ok":
-			fmt.Fprintf(w, "  ok       %-*s  %d case(s), went red\n", width, v.Label, v.Cases)
-		case "THEATRE":
-			fmt.Fprintf(w, "  THEATRE  %-*s  %d case(s), still green\n", width, v.Label, v.Cases)
-		case "SKIPPED":
-			fmt.Fprintf(w, "  SKIPPED  %-*s  %d case(s), all skipped here\n", width, v.Label, v.Cases)
-		default:
-			fmt.Fprintf(w, "  BROKEN   %-*s  (%s)\n", width, v.Label, v.Reason)
-		}
+	sweepSlots(w)
+	goEnv, err := readGoEnv(root)
+	if err != nil {
+		return nil, err
 	}
-	if len(out) == 0 {
-		if sel.Shard.N > 1 {
-			return nil, fmt.Errorf("shard %d/%d holds no mutation whose label contains %q", sel.Shard.K, sel.Shard.N, sel.Only)
+	var workers []*worker
+	defer func() {
+		for _, wk := range workers {
+			wk.slot.release()
 		}
-		return nil, fmt.Errorf("no mutation's label contains %q", sel.Only)
+	}()
+	for k := 0; k < jobs; k++ {
+		s, err := takeSlot()
+		if err != nil {
+			return nil, fmt.Errorf("no staging directory for worker %d: %w", k+1, err)
+		}
+		wk, err := newWorker(root, s, goEnv)
+		if err != nil {
+			s.release()
+			return nil, fmt.Errorf("no staging directory for worker %d: %w", k+1, err)
+		}
+		workers = append(workers, wk)
 	}
-	return out, nil
+
+	width := 0
+	for _, m := range t.Mutations {
+		width = max(width, len(m.Label))
+	}
+	p := &printer{w: w, width: width, done: make([]bool, len(mine)), got: make([]Verdict, len(mine))}
+
+	queue := make(chan group, len(here))
+	for _, g := range dispatchOrder(here) {
+		queue <- g
+	}
+	close(queue)
+
+	var wg sync.WaitGroup
+	for _, wk := range workers {
+		wg.Add(1)
+		go func(wk *worker) {
+			defer wg.Done()
+			for g := range queue {
+				wk.group(t, g, func(row int, v Verdict) { p.put(at[row], v) })
+			}
+		}(wk)
+	}
+	wg.Wait()
+	return p.got, nil
 }
 
-// baselines remembers whether a row's cases pass UNMUTATED, keyed by the module
-// and the -run pattern, so a table where twenty rows name one case pays for it
-// once rather than twenty times.
-type baselines struct {
-	seen map[string]baseline
+// group proves one pattern group: its baseline once, then each row.
+//
+// ⛔ THE BASELINE RUNS BEFORE THE GROUP'S ROWS, IN THE SAME COPY, AND NEVER
+// BESIDE ONE OF THEM. One worker owns the whole group, so nothing of the same
+// pattern runs in that copy while the baseline does.
+func (wk *worker) group(t *Table, g group, put func(row int, v Verdict)) {
+	first := t.Mutations[g.rows[0]]
+	dest, err := wk.dir(first.Module)
+	if err != nil {
+		for _, r := range g.rows {
+			put(r, Verdict{Label: t.Mutations[r].Label, State: "BROKEN", Reason: "the module could not be staged: " + err.Error()})
+		}
+		return
+	}
+	b := wk.baseline(dest, first)
+	for _, r := range g.rows {
+		put(r, wk.one(t.Mutations[r], b))
+	}
 }
 
 type baseline struct {
 	green   bool
 	cases   int
 	skipped int
-	why     string
+	// pkgs are the packages the row's cases ran in, unmutated.
+	pkgs []string
+	why  string
 }
 
-func (b *baselines) key(m Mutation) string {
-	return m.Module + "\x00" + m.Run + "\x00" + strings.Join(m.Args, "\x1f")
-}
-
-// one copies the module, runs the named cases UNMUTATED, applies the change,
-// and asks them again.
+// one runs the named cases against the mutated copy. The baseline has already
+// run them UNMUTATED.
 //
 // ⛔ THE UNMUTATED RUN IS FINDING 1, AND IT IS THE OLDEST IN THE RECORD. Without
 // it a case that was ALREADY FAILING reported "went red" when the guard was
 // removed, because the harness only ever saw red and never asked what red meant.
 // That is a harness certifying a guard it never tested, which is the exact class
 // this harness exists to catch, in the instrument that catches it.
-func one(m Mutation, base *baselines, st *stage) Verdict {
+func (wk *worker) one(m Mutation, b baseline) Verdict {
 	v := Verdict{Label: m.Label, State: "BROKEN"}
 
-	dest, err := st.dir(m.Module)
-	if err != nil {
-		v.Reason = "the module could not be staged: " + err.Error()
-		return v
-	}
-
-	// ⛔ UNMUTATED FIRST, AND THE ROW IS REFUSED IF IT IS NOT GREEN. Finding 1.
+	// ⛔ THE ROW IS REFUSED IF ITS CASES WERE NOT GREEN UNMUTATED. Finding 1.
 	// A case already red reports "went red" the moment a guard is deleted, and
 	// there is no way to tell that from a guard that works.
-	if b := base.of(dest, m); !b.green {
+	if !b.green {
 		v.Cases, v.Skipped = b.cases, b.skipped
 		v.Reason = "the case was not green BEFORE the mutation: " + b.why
 		return v
 	}
 
+	dest, err := wk.dir(m.Module)
+	if err != nil {
+		v.Reason = "the module could not be staged: " + err.Error()
+		return v
+	}
 	path := filepath.Join(dest, filepath.FromSlash(m.File))
 	body, err := os.ReadFile(path)
 	if err != nil {
@@ -271,54 +336,57 @@ func one(m Mutation, base *baselines, st *stage) Verdict {
 		return v
 	}
 	// ⛔ RESTORED BEFORE THIS FUNCTION RETURNS, BY ANY ROUTE, and the restore is
-	// VERIFIED. The copy is shared with every other row naming this module, so
-	// a mutation left behind would be reported as the next row's guard failing.
-	// Where the restore does not take, the staged copy is dropped and the next
-	// row that needs it makes a fresh one rather than running on a dirty tree.
+	// VERIFIED. Every later row this worker runs in the module shares the copy,
+	// so a mutation left behind would be reported as the next row's guard
+	// failing. Where the restore does not take, the copy is dropped, and the
+	// next row makes a fresh one rather than run on a dirty tree.
 	defer func() {
 		if err := os.WriteFile(path, body, 0o600); err != nil {
-			st.drop(m.Module)
+			wk.drop(m.Module)
 			return
 		}
 		back, err := os.ReadFile(path)
 		if err != nil || !bytes.Equal(back, body) {
-			st.drop(m.Module)
+			wk.drop(m.Module)
 		}
 	}()
 
-	// ⛔ THERE IS NO SEPARATE `go build ./...` HERE ANY MORE, and the baseline
-	// above is what makes that safe. `go test` compiles the module itself, so
-	// building first compiled everything twice: measured on 2026-09-17, 1.34 s
-	// of a 2.85 s row, paid 419 times.
-	//
-	// ⭐ A BUILD FAILURE IS STILL TOLD APART FROM A GUARD GOING RED, and the
-	// baseline is why it can be. It has already proved that this module
-	// compiles and that this pattern reaches at least one case UNMUTATED, so
-	// after the mutation a run that fails having started NO case is a module
-	// that stopped compiling. Without the baseline the same output would be
-	// indistinguishable from a pattern that matches nothing.
-	args := append([]string{"test", "./...", "-run", m.Run, "-count=1", "-v"}, m.Args...)
-	out, testErr := run(dest, "go", args...)
-	v.Cases = len(runLine.FindAllString(out, -1))
-	v.Skipped = len(skipLine.FindAllString(out, -1))
+	// ⭐ ONLY THE PACKAGES THAT HOLD THE CASES, AND NO VET. Under `./...` a
+	// toolkit row compiled and vetted the plain package and its test variant,
+	// and linked two test binaries. Only one of them held a case. Measured: 7.3
+	// s of action graph down to 5.0 s. ⚠ Vet stays in the gate, which runs it
+	// over the tree as committed.
+	args := []string{"-json", "-vet=off", "-count=1", "-run", m.Run}
+	args = append(args, b.pkgs...)
+	args = append(args, m.Args...)
+	r, err := wk.goTest(dest, args...)
+	return judge(v, r, err)
+}
+
+// judge turns the mutated run into a verdict.
+//
+// ⭐ A BUILD FAILURE IS STILL TOLD APART FROM A GUARD GOING RED, and the
+// baseline is why it can be. It proved the module compiles and the pattern
+// reaches a case UNMUTATED. So a case package that does not build now is the
+// mutation's doing.
+func judge(v Verdict, r testRun, err error) Verdict {
+	v.State = "BROKEN"
+	v.Cases, v.Skipped = r.cases, r.skipped
 	switch {
-	case v.Cases == 0 && testErr != nil:
+	case len(r.buildFailed) > 0:
 		// Finding 41: the compiler's own line, because the ROW is what has to
 		// be rewritten. Deleting a guard regularly leaves the variable it read
 		// unused, and a row can avoid that by comparing against a value the
 		// setting never takes.
-		v.Reason = "the MUTATED module does not compile, so this row proves nothing: " + buildFailure(out)
-	// ⛔ THERE IS NO `case v.Cases == 0:` HERE ANY MORE, AND THE MUTATION
-	// HARNESS IS WHAT PROVED IT DEAD. The baseline above already refuses a row
-	// whose pattern matches no case, BEFORE anything is mutated, and a mutation
-	// changes source rather than test names - so a run that started no case
-	// after the mutation is a module that stopped compiling, which the branch
-	// above catches. The row aimed at the old branch came back THEATRE in CI on
-	// 2026-09-17, and this comment is what it bought. Finding 59 again: the fix
-	// is to delete the redundancy, not to strengthen a case around it.
-	case testErr != nil:
+		v.Reason = "the MUTATED module does not compile, so this row proves nothing: " + buildFailure(r.text)
+	case r.failed > 0:
 		v.State = "ok"
-	case v.Skipped >= v.Cases:
+	case err != nil:
+		// ⛔ NOT "ok". Something failed, and it was not a case this row names:
+		// a TestMain, or a package init. The row should name what actually
+		// catches the mutation.
+		v.Reason = fmt.Sprintf("no case it names failed, yet the run did, after %d case(s): %s", r.cases, testFailure(r.text))
+	case r.skipped >= r.cases:
 		// ⛔ BEFORE THE THEATRE BRANCH, because from here the two are the same
 		// output: cases ran and the process exited 0. A skip proves nothing
 		// about the guard and says nothing against the test.
@@ -330,36 +398,28 @@ func one(m Mutation, base *baselines, st *stage) Verdict {
 	return v
 }
 
-// of runs the row's cases in an UNMUTATED copy, once per module and pattern.
+// baseline runs the row's cases in an UNMUTATED copy, once per pattern group,
+// across the whole module, and records the packages they ran in.
 //
-// ⚠ IT COSTS ONE EXTRA TEST RUN PER DISTINCT PATTERN, not per row. The table
-// holds hundreds of rows over a few dozen patterns, so the run this adds is a
-// fraction of the pass rather than a doubling of it.
-func (b *baselines) of(dest string, m Mutation) baseline {
-	k := b.key(m)
-	if got, ok := b.seen[k]; ok {
-		return got
-	}
-	args := append([]string{"test", "./...", "-run", m.Run, "-count=1", "-v"}, m.Args...)
-	out, err := run(dest, "go", args...)
+// ⚠ IT COSTS ONE EXTRA TEST RUN PER DISTINCT PATTERN, not per row, and that is
+// not small. The table of 1,202 rows held 772 patterns, so two runs in five
+// were baselines. That is why a shard never splits a group.
+func (wk *worker) baseline(dest string, m Mutation) baseline {
+	args := append([]string{"-json", "-vet=off", "-count=1", "-run", m.Run, "./..."}, m.Args...)
+	r, err := wk.goTest(dest, args...)
 	if err != nil {
 		// ⛔ ONE RETRY, AND ONLY ON A FAILURE. Measured on 2026-09-17: a
 		// baseline failed once inside a 21-row pass and passed alone moments
 		// later, with no code between the two runs. The staging churns a
-		// temporary directory hard - a copy per row, and the sweep removing
-		// 122 MiB of an abandoned one - and a Windows delete is asynchronous,
-		// so a transient failure there turns a GOOD row into BROKEN.
+		// temporary directory hard, and a Windows delete is asynchronous, so a
+		// transient failure there turns a GOOD row into BROKEN.
 		//
 		// ⭐ IT CANNOT MASK A RED CASE. A case that genuinely fails, fails both
 		// times; retrying a negative only discards a flake. Retrying a PASS
 		// would be the dangerous direction and is not done.
-		out, err = run(dest, "go", args...)
+		r, err = wk.goTest(dest, args...)
 	}
-	got := baseline{
-		cases:   len(runLine.FindAllString(out, -1)),
-		skipped: len(skipLine.FindAllString(out, -1)),
-	}
-
+	got := baseline{cases: r.cases, skipped: r.skipped, pkgs: r.pkgs}
 	switch {
 	case got.cases == 0:
 		// ⛔ NAMED HERE RATHER THAN AFTER THE MUTATION. A pattern that matches
@@ -367,11 +427,10 @@ func (b *baselines) of(dest string, m Mutation) baseline {
 		// and finding that out before the mutation says so plainly.
 		got.why = fmt.Sprintf("0 cases matched %q, so this row names no test", m.Run)
 	case err != nil:
-		got.why = "it fails unmutated, TWICE: " + testFailure(out)
+		got.why = "it fails unmutated, TWICE: " + testFailure(r.text)
 	default:
 		got.green = true
 	}
-	b.seen[k] = got
 	return got
 }
 
@@ -424,11 +483,12 @@ func firstUseful(out, skipPrefix string) string {
 // sweepStaleCopies removes staged module copies that an earlier run was KILLED
 // before it could clean up.
 //
-// ⛔ FINDING 32. `one` stages with os.MkdirTemp and removes it with a defer,
-// which a killed process never runs, so the copy survives in whatever TEMP
-// named at the time. One was measured at 127 MiB, sitting since 2026-09-14.
-// `wsl-toolkit gc` does not cover it, because the directory is not that tool's
-// job state.
+// ⛔ FINDING 32. A copy made with os.MkdirTemp is removed by a defer, which a
+// killed process never runs. So the copy survives in whatever TEMP named. One
+// was measured at 127 MiB, sitting since 2026-09-14. `wsl-toolkit gc` does not
+// cover it, because the directory is not that tool's job state. The fixed slots
+// have their own sweep in pool.go. This one collects a worker's private
+// fallback copies, and those an older build left.
 //
 // ⚠ AN AGE THRESHOLD, because a concurrent run's copy is live. Anything this
 // process did not make and has not been touched for an hour was left behind.
@@ -471,72 +531,14 @@ func treeSize(root string) int64 {
 	return total
 }
 
-// stage is one module copied once and reused by every row that names it.
-//
-// ⛔ THE COPY WAS THE COST, AND IT WAS PAID 419 TIMES. Measured on 2026-09-17:
-// one `tools/windows/wsl-toolkit` row takes about 6.4 s, of which the copy is
-// 3.13 s, the build 1.34 s and the test 1.49 s. That module holds 332 of the
-// table's 419 rows, and the whole pass took about 26 minutes in CI on every
-// push.
-//
-// ⭐ ONE COPY PER MODULE, AND THE MUTATED FILE IS RESTORED BYTE FOR BYTE. The
-// row still runs against a copy and never against the tree, which is the
-// isolation the per-row copy was for; what changes is how often the copy is
-// made.
-//
-// ⛔ THE RESTORE IS VERIFIED AND A FAILURE RESTAGES. A row that left the copy
-// dirty would poison every row after it, and reporting the NEXT guard as
-// broken because this one did not clean up is exactly the kind of result this
-// harness exists to refuse. Cheap to check: the bytes are already in hand.
-type stage struct {
-	root string
-	dirs map[string]string
-}
-
-func newStage(root string) *stage { return &stage{root: root, dirs: map[string]string{}} }
-
-// dir returns a staged copy of the module, making it on first use.
-func (s *stage) dir(module string) (string, error) {
-	if d, ok := s.dirs[module]; ok {
-		return d, nil
-	}
-	tmp, err := os.MkdirTemp("", "mutate-")
-	if err != nil {
-		return "", err
-	}
-	dest := filepath.Join(tmp, "t")
-	if err := copyTree(filepath.Join(s.root, filepath.FromSlash(module)), dest); err != nil {
-		_ = os.RemoveAll(tmp)
-		return "", err
-	}
-	s.dirs[module] = dest
-	return dest, nil
-}
-
-// drop forgets a staged copy, so the next row that needs it makes a fresh one.
-func (s *stage) drop(module string) {
-	if d, ok := s.dirs[module]; ok {
-		_ = os.RemoveAll(filepath.Dir(d))
-		delete(s.dirs, module)
-	}
-}
-
-// cleanup removes every staged copy.
-func (s *stage) cleanup() {
-	for module := range s.dirs {
-		s.drop(module)
-	}
-}
-func run(dir, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
 // copyTree copies a module. ⚠ Regular files and directories only: a module
 // holds source, and following anything else would be copying whatever a symlink
 // happened to point at on this host.
+//
+// ⛔ THE COPY WAS THE COST, AND IT WAS PAID 419 TIMES. Measured on 2026-09-17:
+// the copy was 3.13 s of a 6.4 s wsl-toolkit row. So each worker copies a module
+// once and every row it runs there reuses it, restoring the mutated file byte
+// for byte. The row still runs against a copy and never against the tree.
 func copyTree(src, dest string) error {
 	return filepath.Walk(src, func(p string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -560,6 +562,19 @@ func copyTree(src, dest string) error {
 			return nil
 		}
 	})
+}
+
+// verdictLine is one row's line in the progress log.
+func verdictLine(v Verdict, width int) string {
+	switch v.State {
+	case "ok":
+		return fmt.Sprintf("  ok       %-*s  %d case(s), went red\n", width, v.Label, v.Cases)
+	case "THEATRE":
+		return fmt.Sprintf("  THEATRE  %-*s  %d case(s), still green\n", width, v.Label, v.Cases)
+	case "SKIPPED":
+		return fmt.Sprintf("  SKIPPED  %-*s  %d case(s), all skipped here\n", width, v.Label, v.Cases)
+	}
+	return fmt.Sprintf("  BROKEN   %-*s  (%s)\n", width, v.Label, v.Reason)
 }
 
 // Report writes the tally and returns the exit code.

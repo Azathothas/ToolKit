@@ -53,6 +53,9 @@ Two shapes to test for specifically:
   happens most often because deleting a guard leaves the variable it read
   unused. ⭐ Mutate to a value the setting never takes rather than deleting, so
   the reference survives and the row can actually go red.
+- ⛔ **A red that came from somewhere else.** A harness that reads any non-zero
+  exit as red certifies a guard when the mutation breaks a package the case
+  never imports. ⭐ Read which case failed, not whether the process did.
 - ⭐ **A row that comes back THEATRE may be telling you the CODE is redundant**,
   not that the case is weak: the guard cannot matter, because something earlier
   already decides the answer. Delete the redundancy rather than strengthening the
