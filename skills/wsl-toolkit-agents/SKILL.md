@@ -256,10 +256,12 @@ it on a login shell. If `agent start` times out with `command not found` in the 
 run `base ensure`. ⚠ This holds for PATH only: an exported variable still never
 reaches the agent, as section 7 says.
 
-⛔ **Running the bootstrap puts the account's own prefix AHEAD of that wrapper.** After
-`base bootstrap`, a login shell finds each agent's vendor launcher first, and an agent
-whose default lives in the wrapper then starts without it. `base status --probe`
-refuses such a base. Report it to the user rather than editing the account's profile.
+⛔ **A prefix ahead of that wrapper starts an agent without its defaults.** A login
+shell then finds the agent's vendor launcher first. `base bootstrap` puts the
+account's prefix after the system path and rewrites the line an earlier run put
+first, so run `base bootstrap` when `base status --probe` refuses the base over it.
+A line the account wrote itself is the user's to move: report it rather than
+editing the account's profile.
 
 ⛔ **tmux inside a herdr pane hides the agent.** herdr then sees `tmux` as the pane
 process. Never start a multiplexer inside a pane.

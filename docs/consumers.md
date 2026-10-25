@@ -167,6 +167,17 @@ code changes, and no field a 7.0.2 document carries is removed.
 stream changes. Each is added on stderr and leaves stdout and `--json` unchanged.
 They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 
+### ⚠ What the base build changes, and what a caller does
+
+`WSL-137`, `WSL-143`, `WSL-147` and `WSL-150`. Not released yet.
+
+| change | it breaks a caller that | the caller does |
+| --- | --- | --- |
+| `base status --json` adds `probed`, `account.passwd`, `account.login_shell` and `account.bash`, and the advisories `account-passwd`, `account-cannot-start` and `login-shell-not-bash` | | reads them, or ignores them |
+| an owner's `base ensure` moves the managed account's login shell from `/bin/sh` to bash where the guest has bash | runs scripts in the base that rely on the account's login shell being `sh` | names its shell, as `base exec` scripts already do |
+| `bootstrap.sh` puts the account's prefix after the system path and rewrites the line an earlier run put first, so a name that exists in both resolves to the system path's | relies on the account's own copy of a name shadowing the system's | runs that copy by its full path |
+| `base ensure` refuses an interrupted build and names `base remove --yes`, where it removed and rebuilt it | expects ensure to recover an interrupted build alone | runs `base remove --yes`, then `base ensure` |
+
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 
 A major version, so a consumer that pins by major is not moved across it silently.
