@@ -220,7 +220,7 @@ func TestEveryJobFieldAProjectWritesReachesTheInstance(t *testing.T) {
 		Exclude: []string{"target"}, Gitignore: true, Image: "alpine", Timeout: "5m",
 		Env: map[string]string{"A": "1"}, EnvFile: "job.env", User: "1000:1000",
 		MaxBytes: 4096, MaxEntries: 9, Cache: []string{"pip:/root/.cache/pip"},
-		MaxRunning: 2, MaxRunningWait: "30m",
+		MaxRunning: 2, MaxRunningWait: "30m", Memory: "512m", CPUs: 1.5,
 	}
 	older := map[string]bool{}
 	for _, k := range heldJobKeys {

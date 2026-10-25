@@ -109,6 +109,9 @@ type BaseState struct {
 	// older than the probe, which is not the same as a tree that can do nothing.
 	Cgroup *CgroupState `json:"cgroup,omitempty"`
 	Binfmt *BinfmtState `json:"binfmt,omitempty"`
+	// Kvm is what /dev/kvm is to the account under --probe: usable, unusable or
+	// absent. ⚠ Empty where it was not read. WSL-130.
+	Kvm string `json:"kvm,omitempty"`
 	// Access is the configured access state. Under --probe a healthy result
 	// means the configured account verified these settings after WSL restarted,
 	// and AutomountGuest carries what the guest's drives are.
@@ -145,6 +148,11 @@ type BaseAccessState struct {
 	SharedTmpfs string      `json:"shared_tmpfs"`
 	Mounts      []BaseMount `json:"mounts,omitempty"`
 	Adapters    []string    `json:"adapters,omitempty"`
+	// RootEngine, RuntimeDir and Kvm are WSL-130's opt-in settings, as
+	// configured.
+	RootEngine bool `json:"root_engine"`
+	RuntimeDir bool `json:"runtime_dir"`
+	Kvm        bool `json:"kvm"`
 }
 
 // Base is the owned distribution's lifecycle.
@@ -240,6 +248,7 @@ func (b *Base) configuredState() (BaseState, error) {
 			Automount: automount, Interop: interop, Systemd: b.cfg.Base.Systemd,
 			PasswordlessSudo: b.cfg.Base.PasswordlessSudo, Toolset: toolset,
 			SharedTmpfs: sharedTmpfs, Mounts: mounts,
+			RootEngine: b.cfg.Base.RootEngine, RuntimeDir: b.cfg.Base.RuntimeDir, Kvm: b.cfg.Base.Kvm,
 		},
 		Naming: b.naming(),
 	}
@@ -369,8 +378,14 @@ func (b *Base) statusFrom(ctx context.Context, st BaseState, probe bool) (BaseSt
 	// ⛔ A CAPABILITY FINDING IS NOT A HEALTH FAILURE. The base runs containers;
 	// what it cannot do is account for them, and reporting that as unusable would
 	// refuse work over a limitation most jobs never reach. WSL-60.
-	if r, ok := cgroupRemediation(report.Cgroup); ok {
+	if r, ok := cgroupRemediation(report.Cgroup, b.cfg.Base.Systemd); ok {
 		st.Remediations = append(st.Remediations, r)
+	}
+	// ⭐ WHAT /dev/kvm IS TO THE ACCOUNT, and a problem where it was asked to be
+	// usable and is not. WSL-130.
+	st.Kvm = report.Kvm
+	if p := kvmProblem(b.cfg.Base.Kvm, report.Kvm, b.cfg.Base.User); p != "" {
+		st.Problems = append(st.Problems, p)
 	}
 	if r, ok := binfmtRemediation(report.Binfmt); ok {
 		st.Remediations = append(st.Remediations, r)
@@ -853,12 +868,17 @@ func (b *Base) builtImage(ctx context.Context) string {
 // works and the record is written by the time this runs, so the caller is told
 // both what failed and what the base is.
 func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error) {
-	// ⭐ THE HANDLERS COME FIRST AND THEIR FAILURE STOPS NOTHING ELSE. They are
+	// ⭐ THE HANDLERS COME BEFORE THE ADAPTERS AND THEIR FAILURE STOPS NOTHING ELSE. They are
 	// registered in every ensure, because another distribution can empty the table
 	// while this one runs, and a base whose handlers could not be registered is
 	// still a base whose adapters should be installed. WSL-105.
 	//
-	// ⛔ AND IT FAILS NO ENSURE. A registry that refused the installer, or a base
+	// ⭐ THE ENGINES COME BEFORE BOTH, and their failure stops neither. binfmt.sh
+	// names root's cgroup manager and events backend itself, WSL-168, so it does
+	// not wait on root_engine. A failed engines step is returned with the
+	// adapters' error, because only an opt-in setting fails it. WSL-130.
+	enginesErr := b.ensureEngines(ctx)
+	// ⛔ THE HANDLERS FAIL NO ENSURE. A registry that refused the installer, or a base
 	// whose root podman could not start it, made every `base ensure` exit 2 over a
 	// base whose engine had just run a container, native work included. A job
 	// that asks for a foreign platform still registers its own handler. WSL-181.
@@ -877,8 +897,8 @@ func (b *Base) finishEnsure(ctx context.Context, st BaseState) (BaseState, error
 		}
 		return s
 	}
-	ensured, err := b.applyAdapters(ctx)
-	if err != nil {
+	ensured, adaptersErr := b.applyAdapters(ctx)
+	if err := errors.Join(enginesErr, adaptersErr); err != nil {
 		if probed, statusErr := b.Status(ctx, true); statusErr == nil {
 			return withBinfmt(keepEnsureFindings(probed, ensured)), err
 		}
@@ -1663,6 +1683,8 @@ type verifyReport struct {
 	// Held are the live mounts the grant ledger gives another configuration file,
 	// each "TARGET, granted by FILE". WSL-179.
 	Held []string
+	// Kvm is the script's `kvm` row. WSL-130.
+	Kvm string
 }
 
 // verify runs a container as the unprivileged account and reads what came back.
@@ -1714,7 +1736,7 @@ func (b *Base) verify(ctx context.Context) (verifyReport, error) {
 	}
 	// ⚠ `engine ` MATCHES BEFORE `engine-rootless ` DOES NOT, and it does not:
 	// the prefix compared carries a trailing space and that row's key does not.
-	return verifyReport{Engine: engine, Cgroup: parseCapabilities(out), Binfmt: parseBinfmt(out), Automount: drives, Held: parseHeldMounts(out)}, nil
+	return verifyReport{Engine: engine, Cgroup: parseCapabilities(out), Binfmt: parseBinfmt(out), Automount: drives, Held: parseHeldMounts(out), Kvm: parseKvm(out)}, nil
 }
 
 // verifyEnv is what verify.sh is handed for a configuration, with the two halves
@@ -2322,6 +2344,14 @@ type CgroupState struct {
 	// derived from the measurement above, never from the version number.
 	Enforced    string `json:"limits_enforced"` // yes, no, unknown
 	StatsUsable string `json:"stats_usable"`    // yes, no, unknown
+	// Manager is the engine's own cgroup manager, systemd or cgroupfs, and
+	// AccountControllers what the account's user manager was delegated. WSL-136.
+	Manager            string `json:"manager,omitempty"`
+	AccountControllers string `json:"account_controllers,omitempty"`
+	// accountUnused is a user manager the account could make a cgroup in,
+	// beside an engine whose manager is not systemd. Only the remediation reads
+	// it. WSL-136.
+	accountUnused bool
 }
 
 // BinfmtState is what the WSL kernel's QEMU handler table holds for this base.
@@ -2457,6 +2487,7 @@ func parseCapabilities(out string) *CgroupState {
 		for _, key := range []string{
 			"cgroup-version", "cgroup-controllers", "cgroup-self",
 			"cgroup-delegated", "cgroup-under", "cgroup-limit", "engine-rootless",
+			"cgroup-manager", "cgroup-account-controllers", "cgroup-account-delegated",
 		} {
 			if strings.HasPrefix(line, key+" ") {
 				rows[key] = strings.TrimSpace(strings.TrimPrefix(line, key+" "))
@@ -2472,12 +2503,26 @@ func parseCapabilities(out string) *CgroupState {
 		Self:        rows["cgroup-self"],
 		Limits:      valueOr(rows["cgroup-limit"], "unknown"),
 		Delegated:   rows["cgroup-delegated"] == "yes",
+		// WSL-136.
+		Manager:            strings.TrimSpace(strings.TrimSuffix(rows["cgroup-manager"], "unknown")),
+		AccountControllers: strings.TrimSpace(strings.TrimSuffix(rows["cgroup-account-controllers"], "-")),
+	}
+	// ⛔ THE ACCOUNT'S USER MANAGER COUNTS ONLY WHERE THE ENGINE USES IT. A
+	// writable user@UID.service beside podman's cgroupfs manager gives no
+	// container a cgroup, and reading it as delegation said `delegated` and
+	// `stats usable` over a limit the container never got. WSL-136.
+	cg.accountUnused = rows["cgroup-account-delegated"] == "yes" && cg.Manager != "systemd"
+	viaAccount := rows["cgroup-account-delegated"] == "yes" && cg.Manager == "systemd"
+	if viaAccount {
+		cg.Delegated = true
 	}
 	rootless := rows["engine-rootless"]
 	switch {
 	case rootless == "false":
 		cg.Mechanism = "rootful"
 	case cg.Delegated && rows["cgroup-under"] == "systemd":
+		cg.Mechanism = "systemd"
+	case viaAccount:
 		cg.Mechanism = "systemd"
 	case cg.Delegated:
 		cg.Mechanism = "delegated"
@@ -2532,24 +2577,40 @@ func valueOr(s, fallback string) string {
 
 // cgroupRemediation is the finding a base without delegation earns.
 //
-// ⛔ IT IS NOT REPAIRABLE AND IT SAYS SO. Handing the account a cgroup subtree
-// means a privileged write into a root-owned tree, and the ruling on 2026-09-10
-// was to report first and decide that separately. What this returns is the
-// finding and what it costs; what it deliberately does not return is a command
-// that would take it.
-func cgroupRemediation(cg *CgroupState) (Remediation, bool) {
+// ⛔ IT IS NOT REPAIRABLE HERE AND IT SAYS SO. The delegation is systemd's
+// user@.service, which `base ensure` hands cpuset and io to as well. A base
+// without systemd has nothing to delegate it. A base with systemd and no D-Bus
+// has no user manager at all, measured on a Debian 13 base 7.0.0 built, and
+// this tool does not install one. So the finding names what is missing rather
+// than a command that would not take it. WSL-136.
+func cgroupRemediation(cg *CgroupState, systemd bool) (Remediation, bool) {
 	if cg == nil || cg.Enforced != "no" {
 		return Remediation{}, false
 	}
-	return Remediation{
+	r := Remediation{
 		ID: "cgroup-delegation",
 		What: "this base has no cgroup delegation for " + "the engine's account" +
 			", so podman creates no cgroup per container",
 		Costs: "a memory or cpu limit is ACCEPTED AND NOT ENFORCED, `podman stats` reports 0B, " +
-			"and an out-of-memory kill cannot be told apart from any other exit 137",
+			"and an out-of-memory kill cannot be told apart from any other exit 137. " +
+			"A base with systemd delegates them once base.systemd is true and base ensure has run",
 		Command:    ToolCommand("base status --probe --json") + "  # the cgroup block carries the mechanism",
 		Repairable: false,
-	}, true
+	}
+	if systemd {
+		r.What = "this base runs systemd and its account's user manager holds no delegated cgroup, so podman creates no cgroup per container"
+		r.Costs = "a memory or cpu limit is ACCEPTED AND NOT ENFORCED, and `podman stats` reports 0B. " +
+			"The user manager runs only where the base has D-Bus, and base ensure delegates to it once it does"
+	}
+	// ⛔ A DELEGATED USER MANAGER THE ENGINE DOES NOT USE IS SAID AS THAT, not
+	// as one that holds nothing. WSL-136.
+	if systemd && cg.accountUnused {
+		r.What = "this base's account holds a delegated cgroup under its user manager, and its podman uses the " +
+			valueOr(cg.Manager, "unknown") + " manager, so podman creates no cgroup per container"
+		r.Costs = "a memory or cpu limit is ACCEPTED AND NOT ENFORCED, and `podman stats` reports 0B. " +
+			"base ensure gives podman the systemd manager once the account's user manager has a session bus"
+	}
+	return r, true
 }
 
 // StaleRunStateRemediation is exported so the command layer can answer with the

@@ -17,14 +17,14 @@ import (
 // working tree's file laid over its job defaults.
 
 // jobDefaultKeys are the jobs keys this release added: the defaults a job takes
-// where its command line names nothing. WSL-122, WSL-131.
+// where its command line names nothing. WSL-122, WSL-131, WSL-136.
 //
 // ⛔ ONLY THESE CROSS FROM A WORKING TREE TO A NAMED INSTANCE. The older keys,
 // container_lifecycle, platform, workspace, exclude and gitignore, were never
 // read from a working tree under a named instance with its own file. Lending
 // them would change jobs a correct call runs today, which a minor release does
 // not do. A case walks JobConfig, so a key added later is put on one side.
-var jobDefaultKeys = []string{"image", "timeout", "env", "env_file", "user", "max_bytes", "max_entries", "cache", "max_running", "max_running_wait"}
+var jobDefaultKeys = []string{"image", "timeout", "env", "env_file", "user", "max_bytes", "max_entries", "cache", "max_running", "max_running_wait", "memory", "cpus"}
 
 // heldJobKeys are the older jobs keys, which a named instance keeps as its own
 // file says, whatever a lending working tree's file writes. WSL-131.
@@ -120,6 +120,13 @@ func overlayJobDefaults(dst *JobConfig, stored JobConfig) {
 	}
 	if stored.MaxRunningWait != "" {
 		dst.MaxRunningWait = stored.MaxRunningWait
+	}
+	// WSL-136: a project's memory and processor limits, as the rest are.
+	if stored.Memory != "" {
+		dst.Memory = stored.Memory
+	}
+	if stored.CPUs != 0 {
+		dst.CPUs = stored.CPUs
 	}
 }
 

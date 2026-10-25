@@ -24,6 +24,14 @@ import (
 // outlives the client that started it, whether the client exits cleanly or is
 // killed with its whole tree, on a base with systemd and on one without. A
 // plain background process does not survive the killed client.
+//
+// ⛔ A PROCESS GROUP IS NOT A FENCE. A child that calls setsid, or a daemon
+// that double-forks, leaves the payload's group, so `stop` and the deadline
+// signalled the group and an emulator podbox started outlived both. Where the
+// account's systemd user manager answers, the payload runs in a scope of its
+// own, `wtk-session-ID.scope`, and every process it starts stays in that
+// scope's cgroup whatever it does to its session. Without one, the group is
+// still what is signalled, and the record says which. WSL-126.
 
 // SessionSchema versions a session's host record.
 const SessionSchema = "wsl-toolkit-session/1"
@@ -44,7 +52,26 @@ type SessionRecord struct {
 	// ArtifactDir is the host directory the session's out directory is delivered
 	// to, by `wait` or `logs --follow` once it ends. WSL-124.
 	ArtifactDir string `json:"artifact_dir,omitempty"`
+	// Unit is the systemd scope the payload runs in, where the account's user
+	// manager answered at the start. Empty means its process group is all a
+	// stop reaches. WSL-126.
+	Unit string `json:"unit,omitempty"`
 }
+
+// Containment names how a stop reaches a session: its systemd scope, or its
+// process group. WSL-126.
+func (rec SessionRecord) Containment() string {
+	if rec.Unit != "" {
+		return ContainedByScope
+	}
+	return ContainedByGroup
+}
+
+// The two answers Containment gives.
+const (
+	ContainedByScope = "systemd-scope"
+	ContainedByGroup = "process-group"
+)
 
 // ReadSessionRecord reads jobs/ID/session.json, if there is one.
 func ReadSessionRecord(home, id string) (SessionRecord, bool, error) {
@@ -84,9 +111,14 @@ func checkSessionRecord(id string, rec SessionRecord) error {
 		return fmt.Errorf("the session record for %s names %q, which is not a plain path", id, rec.GuestDir)
 	case rec.Distro == "" || rec.User == "":
 		return fmt.Errorf("the session record for %s names no distribution or no account", id)
+	case rec.Unit != "" && rec.Unit != sessionUnit(id):
+		return fmt.Errorf("the session record for %s names the unit %q, which is not its own scope", id, rec.Unit)
 	}
 	return nil
 }
+
+// sessionUnit is the one name a session's scope has. WSL-126.
+func sessionUnit(id string) string { return "wtk-session-" + id + ".scope" }
 
 // sessionsRoot is the guest directory every session of one account is under.
 func sessionsRoot(rec SessionRecord) string {
@@ -187,6 +219,14 @@ func StartSession(ctx context.Context, w *Wsl, home string, s SessionStart) (Ses
 	if err != nil || code != 0 || !strings.Contains(out, "SESSION|") {
 		return rec, fmt.Errorf("the session did not start (exit %d): %s", code, guestFailure(stderr, out))
 	}
+	// ⭐ THE SCOPE IS RECORDED ONCE IT EXISTS, so the answer and a later stop say
+	// which of the two reaches this session. WSL-126.
+	if unit := launchedUnit(out, id); unit != "" {
+		rec.Unit = unit
+		if err := writeSessionRecord(home, rec); err != nil {
+			return rec, fmt.Errorf("the session record: %w", err)
+		}
+	}
 	return rec, nil
 }
 
@@ -216,6 +256,17 @@ func sessionFiles(guestDir string, s SessionStart) []JobInput {
 	return files
 }
 
+// launchedUnit reads the scope the launch script says the payload runs in, and
+// accepts only this session's own. WSL-126.
+func launchedUnit(out, id string) string {
+	for _, line := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "UNIT|"); ok && v == sessionUnit(id) {
+			return v
+		}
+	}
+	return ""
+}
+
 // accountHome asks the guest where an account's home is. It is read, never
 // built from a convention, for the reason Runner.guestHome gives.
 func accountHome(ctx context.Context, w *Wsl, distro, user string) (string, error) {
@@ -238,8 +289,15 @@ func accountHome(ctx context.Context, w *Wsl, distro, user string) (string, erro
 //	              reaches it and its children without reaching the supervisor.
 //	              Its stdin is the session's stdin file where there is one, and
 //	              /dev/null otherwise. WSL-124
+//	scope         where the account's user manager answers, payload.sh runs in
+//	              wtk-session-ID.scope too, and a child that leaves the group
+//	              stays in it. The supervisor is outside it. WSL-126
 //	watchdog      TERM at the deadline, KILL a grace later; it marks timedout
 //	exit          written last, through a rename, so a reader never sees half
+//
+// ⚠ THE SCOPE IS ASKED FOR ONLY AFTER A PROBE SCOPE STARTED. A base with no
+// systemd, or one whose user manager does not answer, keeps the process group
+// alone, and the launch prints no UNIT line, so the record says which.
 func sessionLaunchScript(guestDir, dir string, timeout, grace time.Duration) []byte {
 	cd := `cd "$HOME"`
 	if dir != "" && dir != "~" {
@@ -262,35 +320,76 @@ func sessionLaunchScript(guestDir, dir string, timeout, grace time.Duration) []b
 	b.WriteString(`[ -f "$d/payload.sh" ] || { echo "wsl-toolkit: the session's payload is not in $d" >&2; exit 2; }` + "\n")
 	b.WriteString(`command -v setsid >/dev/null 2>&1 || { echo "wsl-toolkit: this base has no setsid, so a session cannot run apart from its client" >&2; exit 2; }` + "\n")
 	b.WriteString(cd + ` || { echo "wsl-toolkit: the session cannot start in its directory" >&2; exit 2; }` + "\n")
+	b.WriteString(sessionScopeProbe)
 	b.WriteString(`setsid /bin/sh -c '
-d=$1; to=$2; grace=$3
+d=$1; to=$2; grace=$3; u=${4:-}
 printf "%s\n" "$$" > "$d/supervisor.pid"
 date -u +%Y-%m-%dT%H:%M:%SZ > "$d/started"
 i=/dev/null; if [ -f "$d/stdin" ]; then i="$d/stdin"; fi
-setsid /bin/sh "$d/payload.sh" <"$i" >"$d/stdout" 2>"$d/stderr" &
+if [ -n "$u" ]; then
+  setsid systemd-run --user --scope --unit="$u" --quiet --collect -- /bin/sh "$d/payload.sh" <"$i" >"$d/stdout" 2>"$d/stderr" &
+else
+  setsid /bin/sh "$d/payload.sh" <"$i" >"$d/stdout" 2>"$d/stderr" &
+fi
 p=$!
 printf "%s\n" "$p" > "$d/payload.pid"
 w=
 if [ "$to" -gt 0 ]; then
   ( trap "kill \$s 2>/dev/null; exit 0" TERM
     sleep "$to" & s=$!; wait "$s"
-    : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null
+    late=
+    if [ -e "$d/exit" ] || [ ! -d "$d" ]; then late=1; else : > "$d/timedout"; kill -TERM "-$p" 2>/dev/null; fi
+    if [ -n "$u" ]; then systemctl --user kill --signal=TERM "$u" >/dev/null 2>&1; fi
     sleep "$grace" & s=$!; wait "$s"
-    kill -KILL "-$p" 2>/dev/null ) </dev/null >/dev/null 2>&1 &
+    if [ -z "$late" ]; then kill -KILL "-$p" 2>/dev/null; fi
+    if [ -n "$u" ]; then systemctl --user kill --signal=KILL "$u" >/dev/null 2>&1; fi ) </dev/null >/dev/null 2>&1 &
   w=$!
 fi
 wait "$p"; code=$?
-if [ -n "$w" ]; then kill "$w" 2>/dev/null; fi
+if [ -n "$w" ] && { [ -z "$u" ] || { [ ! -e "$d/timedout" ] && ! systemctl --user is-active --quiet "$u" 2>/dev/null; }; }; then kill "$w" 2>/dev/null; fi
 date -u +%Y-%m-%dT%H:%M:%SZ > "$d/ended"
 printf "%s\n" "$code" > "$d/exit.tmp" && mv -f "$d/exit.tmp" "$d/exit"
-' wtk-session "$d" ` + strconv.FormatInt(to, 10) + " " + strconv.FormatInt(g, 10) + ` </dev/null >/dev/null 2>&1 &
+' wtk-session "$d" ` + strconv.FormatInt(to, 10) + " " + strconv.FormatInt(g, 10) + ` "$u" </dev/null >/dev/null 2>&1 &
 i=0
 while [ ! -s "$d/payload.pid" ] && [ "$i" -lt 100 ]; do sleep 0.1 2>/dev/null || sleep 1; i=$((i+1)); done
 [ -s "$d/payload.pid" ] || { echo "wsl-toolkit: the session did not start" >&2; exit 2; }
 printf 'SESSION|%s\n' "$(cat "$d/payload.pid")"
+if [ -n "$u" ]; then printf 'UNIT|%s\n' "$u"; fi
 `)
 	return []byte(b.String())
 }
+
+// sessionScopeProbe decides whether a session runs in a scope of its own: the
+// account's user manager must start a probe scope first. It sets u to the
+// session's scope and records it in the guest directory, or leaves u empty.
+//
+// ⛔ THE WATCHDOG IS LEFT RUNNING PAST A DEADLINE ONLY IN A SCOPE. There its KILL
+// after the grace reaches what ignored the TERM and outlived the payload's own
+// shell; a process group keeps the behaviour it had. WSL-126.
+//
+// ⛔ AND IN A SCOPE IT OUTLIVES A PAYLOAD THAT ENDED FIRST, while the scope still
+// holds a process. A daemon the payload left there outlived the deadline until
+// someone ran stop. At the deadline it signals the scope alone: the session's
+// own answer stands, and timedout is not written. WSL-126.
+//
+// ⛔ A SESSION DIRECTORY THAT IS GONE AT THE DEADLINE IS LATE TOO. gc removes an
+// ended session's directory, exit file included, and the watchdog then signalled
+// the ended payload's process-group id, which another process may hold. WSL-126.
+const sessionScopeProbe = `u=
+if command -v systemd-run >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1 &&
+  systemd-run --user --scope --quiet --collect -- true </dev/null >/dev/null 2>&1; then
+  u="wtk-session-${d##*/}.scope"
+  printf '%s\n' "$u" > "$d/unit" || u=
+fi
+`
+
+// sessionUnitRead is the guest half that reads a session's scope back, and
+// accepts only a session's own scope name. live answers whether it still holds
+// a process. WSL-126.
+const sessionUnitRead = `u=$(cat "$d/unit" 2>/dev/null) || u=
+case "$u" in wtk-session-*.scope) ;; *) u= ;; esac
+live() { [ -n "$u" ] && systemctl --user is-active --quiet "$u" 2>/dev/null; }
+`
 
 // SessionState is what the guest says about one session.
 type SessionState struct {
@@ -463,20 +562,76 @@ func StopSession(ctx context.Context, w *Wsl, rec SessionRecord, grace time.Dura
 // /bin/sh of a Debian or Ubuntu base, reads `--` as a process id, refuses it
 // and signals nothing; `kill -TERM "-$pg"` is read as a group by dash, bash and
 // busybox alike.
+//
+// ⭐ A SESSION IN A SCOPE IS SIGNALLED THROUGH THE SCOPE AS WELL, and the grace
+// runs until the scope is empty, so a child that left the group and ignores the
+// TERM still gets the KILL. WSL-126.
 func stopSessionScript(guestDir string, grace time.Duration) []byte {
 	g := int64(grace.Round(time.Second) / time.Second)
 	if g < 1 {
 		g = 1
 	}
-	return []byte("d=" + shellQuote(guestDir) + "\ng=" + strconv.FormatInt(g, 10) + "\n" + `
+	return []byte("d=" + shellQuote(guestDir) + "\ng=" + strconv.FormatInt(g, 10) + "\n" + sessionUnitRead + `
 if [ -e "$d/exit" ]; then exit 0; fi
 pg=$(cat "$d/payload.pid" 2>/dev/null)
 if [ -z "$pg" ]; then echo "wsl-toolkit: the session records no process group" >&2; exit 2; fi
 : > "$d/stopped"
+if [ -n "$u" ]; then systemctl --user kill --signal=TERM "$u" >/dev/null 2>&1; fi
 kill -TERM "-$pg" 2>/dev/null
-i=0; while [ "$i" -lt "$g" ] && [ ! -e "$d/exit" ]; do sleep 1; i=$((i+1)); done
+i=0; while [ "$i" -lt "$g" ] && { [ ! -e "$d/exit" ] || live; }; do sleep 1; i=$((i+1)); done
 if [ ! -e "$d/exit" ]; then kill -KILL "-$pg" 2>/dev/null; fi
+if live; then systemctl --user kill --signal=KILL "$u" >/dev/null 2>&1; fi
 i=0; while [ "$i" -lt 10 ] && [ ! -e "$d/exit" ]; do sleep 1; i=$((i+1)); done
+`)
+}
+
+// StopSessionLeftovers ends what an ended session left running in its scope:
+// a daemon its payload started and did not wait for. It answers whether the
+// scope held anything, and whether it still does. WSL-126.
+//
+// ⚠ A SESSION WITH NO SCOPE HAS NOTHING TO ASK. Its process group was the only
+// handle, and the group ended with the payload's own shell.
+func StopSessionLeftovers(ctx context.Context, w *Wsl, rec SessionRecord, grace time.Duration) (held, still bool, err error) {
+	if rec.Unit == "" {
+		return false, false, nil
+	}
+	out, stderr, code, err := w.Capture(ctx, rec.Distro, rec.User, sessionLeftoversScript(rec.GuestDir, grace), grace+30*time.Second)
+	if err != nil || code != 0 {
+		return false, false, fmt.Errorf("could not end what session %s left in its scope (exit %d): %s", rec.ID, code, guestFailure(stderr, out))
+	}
+	return parseLeftovers(out)
+}
+
+// parseLeftovers reads the leftovers script's one line. ⭐ A function with no
+// process in it, so its case runs on any host.
+func parseLeftovers(out string) (held, still bool, err error) {
+	for _, line := range strings.Split(out, "\n") {
+		switch strings.TrimSpace(line) {
+		case "LEFT|none":
+			return false, false, nil
+		case "LEFT|ended":
+			return true, false, nil
+		case "LEFT|running":
+			return true, true, nil
+		}
+	}
+	return false, false, fmt.Errorf("the guest gave no answer about the session's scope: %s", guestFailure(out))
+}
+
+// sessionLeftoversScript TERMs a scope that still holds a process, KILLs it a
+// grace later, and says what is left.
+func sessionLeftoversScript(guestDir string, grace time.Duration) []byte {
+	g := int64(grace.Round(time.Second) / time.Second)
+	if g < 1 {
+		g = 1
+	}
+	return []byte("d=" + shellQuote(guestDir) + "\ng=" + strconv.FormatInt(g, 10) + "\n" + sessionUnitRead + `
+if ! live; then echo 'LEFT|none'; exit 0; fi
+systemctl --user kill --signal=TERM "$u" >/dev/null 2>&1
+i=0; while [ "$i" -lt "$g" ] && live; do sleep 1; i=$((i+1)); done
+if live; then systemctl --user kill --signal=KILL "$u" >/dev/null 2>&1; fi
+i=0; while [ "$i" -lt 10 ] && live; do sleep 1; i=$((i+1)); done
+if live; then echo 'LEFT|running'; else echo 'LEFT|ended'; fi
 `)
 }
 
@@ -622,6 +777,16 @@ func RemoveSession(ctx context.Context, w *Wsl, home string, rec SessionRecord) 
 		return fmt.Errorf("could not ask whether %s is registered: %w", rec.Distro, err)
 	}
 	if registered {
+		// ⛔ WHAT THE SESSION LEFT IN ITS SCOPE IS ENDED FIRST, and a removal it
+		// outlives is refused. The record holds the scope's name, and without it
+		// stop could no longer reach a daemon the payload left there. WSL-126.
+		_, still, err := StopSessionLeftovers(ctx, w, rec, SessionGrace)
+		if err != nil {
+			return fmt.Errorf("%w, so session %s is kept for stop to reach it", err, rec.ID)
+		}
+		if still {
+			return fmt.Errorf("session %s left processes in its scope %s that did not end, so it is kept for stop to reach them", rec.ID, rec.Unit)
+		}
 		out, stderr, code, err := w.Capture(ctx, rec.Distro, rec.User, []byte(GuestRemoveScript(sessionsRoot(rec), rec.GuestDir)), 2*time.Minute)
 		if err != nil || code != 0 || !strings.Contains(out, "removed") {
 			return fmt.Errorf("could not remove session %s in the guest (exit %d): %s", rec.ID, code, guestFailure(stderr, out))

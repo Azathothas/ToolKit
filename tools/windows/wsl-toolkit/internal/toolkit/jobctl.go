@@ -37,6 +37,13 @@ type StopReport struct {
 	// Stopped is true where this call ended something that was running.
 	Stopped bool   `json:"stopped"`
 	Note    string `json:"note,omitempty"`
+	// ContainedBy is how a session's processes were reached: its systemd scope,
+	// which Unit names, or its process group, which a child that called setsid
+	// leaves. Leftovers is what that scope still held once the session itself
+	// had ended: ended, or running where they would not end. WSL-126.
+	ContainedBy string `json:"contained_by,omitempty"`
+	Unit        string `json:"unit,omitempty"`
+	Leftovers   string `json:"leftovers,omitempty"`
 }
 
 // ContainerFound says whether a stop found the job's container, whatever state

@@ -408,9 +408,12 @@ for f in /etc/subuid /etc/subgid; do
 done
 
 # -- engine configuration, for this account -----------------------------------
-# cgroup_manager: cgroupfs works in both supported init modes. It is required
-# when systemd is off because there is no user slice, and avoids making rootless
-# containers depend on a lingering user manager when systemd is on.
+# cgroup_manager: cgroupfs works in both supported init modes, and is required
+# when systemd is off because there is no user slice. ⭐ On a systemd base,
+# engines.sh, which every `base ensure` runs, delegates the controllers to the
+# account's user manager, keeps that manager lingering, and switches the account
+# to the systemd manager with a drop-in beside this file once its session bus
+# answers. WSL-136.
 #
 # events_logger: journald is not running here either, and the default logger
 # fails closed rather than falling back, so every run ends in an error about a

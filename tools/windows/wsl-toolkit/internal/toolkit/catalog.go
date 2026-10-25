@@ -105,6 +105,18 @@ type BaseConfig struct {
 	// Adapters are the pieces of software `base ensure` installs for the base's
 	// agents, in order, after provisioning. adapters.go carries the contract.
 	Adapters []BaseAdapter `json:"adapters,omitempty"`
+	// RootEngine sets root's podman up as the account's is: the file event log,
+	// and the cgroupfs manager where the base has no system bus to ask. Opt-in,
+	// applied by `base ensure`. WSL-130.
+	RootEngine bool `json:"root_engine,omitempty"`
+	// RuntimeDir names the account engine's runtime directory as XDG_RUNTIME_DIR
+	// in the account's login shells and in what `base exec` runs, so podman there
+	// reads the state the jobs keep. Opt-in. WSL-130.
+	RuntimeDir bool `json:"runtime_dir,omitempty"`
+	// Kvm keeps /dev/kvm open to the account after each boot: the account joins
+	// the kvm group and a systemd unit opens the node to that group at every
+	// start. Opt-in, and it needs systemd. WSL-130.
+	Kvm bool `json:"kvm,omitempty"`
 }
 
 // BaseMount is one Windows directory made visible inside a base.
@@ -254,6 +266,11 @@ type JobConfig struct {
 	// Cache is the named caches every job mounts, NAME:/path each, beside what a
 	// command line adds. WSL-122.
 	Cache []string `json:"cache,omitempty"`
+	// Memory and CPUs are the limits every job asks its container for, where the
+	// command line names none: a size such as 512m, and a number of processors
+	// such as 1.5. WSL-136.
+	Memory string  `json:"memory,omitempty"`
+	CPUs   float64 `json:"cpus,omitempty"`
 }
 
 // Config is the stored configuration. Every field has a compiled-in default, so
@@ -573,6 +590,11 @@ func loadConfigFile(path, from string) (Config, error) {
 	if stored.Base.Adapters != nil {
 		cfg.Base.Adapters = stored.Base.Adapters
 	}
+	// ⭐ WSL-130's three settings are opt-in, so a file that leaves one out keeps
+	// it off, which is the default.
+	cfg.Base.RootEngine = stored.Base.RootEngine
+	cfg.Base.RuntimeDir = stored.Base.RuntimeDir
+	cfg.Base.Kvm = stored.Base.Kvm
 	if stored.Jobs.ContainerLifecycle != "" {
 		cfg.Jobs.ContainerLifecycle = stored.Jobs.ContainerLifecycle
 	}
@@ -760,6 +782,11 @@ func (c Config) Validate() error {
 	if err := validateAdapters(c); err != nil {
 		return err
 	}
+	// ⛔ A RULE THAT HAS TO RUN AT EVERY BOOT NEEDS SOMETHING THAT RUNS AT EVERY
+	// BOOT, and without systemd this base has nothing that could carry it. WSL-130.
+	if c.Base.Kvm && !c.Base.Systemd {
+		return errors.New("base.kvm requires base.systemd to be true: the rule that keeps /dev/kvm usable after each boot is a systemd unit")
+	}
 	if c.Jobs.ContainerLifecycle != ContainerPersistent && c.Jobs.ContainerLifecycle != ContainerEphemeral {
 		return fmt.Errorf("jobs.container_lifecycle %q must be %q or %q", c.Jobs.ContainerLifecycle, ContainerPersistent, ContainerEphemeral)
 	}
@@ -791,6 +818,9 @@ func (c Config) Validate() error {
 		if _, err := parseFloor(c.Requires); err != nil {
 			return err
 		}
+	}
+	if _, err := parseLimits("jobs.memory", c.Jobs.Memory, "jobs.cpus", FormatCPUs(c.Jobs.CPUs)); err != nil {
+		return err
 	}
 	seen := map[string]bool{}
 	for _, img := range c.Images {
