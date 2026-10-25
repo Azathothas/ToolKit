@@ -23,15 +23,45 @@ on:
   push:
     branches: [main]
   pull_request:
+  # ⭐ EVERY NIGHT, EVERY MUTATION ROW. A push proves only the modules whose
+  # proof key moved, and the key does not name the runner's image. A case that
+  # a new image turns red, or one that flakes, is found here.
+  schedule:
+    - cron: "41 2 * * *"
   workflow_dispatch:
+    inputs:
+      full:
+        description: run every mutation row, reading no kept proof
+        type: boolean
+        default: false
 
 # Least privilege. No job here needs more than reading the tree.
 permissions:
   contents: read
 
+# ⚠ THE NIGHTLY HAS A GROUP OF ITS OWN. It shares main's ref, and a push to
+# main would otherwise wait for every row of it to finish.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'schedule' && 'nightly' || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# ⛔ NO TEST RESULT COMES OUT OF A CACHE. The jobs below restore Go's build
+# cache, and that cache also holds test results. A case that reads something Go
+# does not track, such as a tool on PATH, would be reported green from a run
+# on another tree. `-count=1` reaches only commands that take it.
+env:
+  GOFLAGS: -count=1
+
+# ⭐ THE GO CACHES. Each job asks Go where its build and module caches are.
+# It restores both under a key of the Go version and every go.mod and go.sum.
+# The restore keys take the newest entry of an older version when the key moves.
+# ⚠ AN ENTRY IS WRITTEN ONCE PER KEY. A package changed since is compiled
+# fresh, so a stale entry costs time and never a wrong answer.
+# ⚠ ONLY THE GATE JOBS AND THE go JOB WRITE. The gate's `go test ./...` builds
+# what every mutation baseline builds, so the mutation jobs and the twins
+# restore its entry. A shard's own cache is full of mutated packages.
+# ⚠ actions/cache v6.1.0 declares node24. Resolve it again with:
+#   gh api repos/actions/cache/git/ref/tags/v6.1.0 --jq .object.sha
 
 jobs:
   # -- the POSIX half --------------------------------------------------------
@@ -57,9 +87,27 @@ jobs:
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version-file: tools/check/go.mod
           cache: false
+
+      - name: where Go keeps its caches
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
+            go-gate-${{ runner.os }}-
 
       - name: shellcheck, which the gate runs and this host has a different one of
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
@@ -126,18 +174,27 @@ jobs:
       # forgets to extend, and the script they forgot is the one that breaks.
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version-file: tools/check/go.mod
           cache: false
 
-      - name: the probe runs and emits valid json
-        shell: pwsh
+      - name: where Go keeps its caches
+        id: gocache
+        shell: bash
         run: |
-          pwsh -NoProfile -File scripts\doctor\doctor.ps1 -Json > ps.json
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          $d = Get-Content ps.json -Raw | ConvertFrom-Json
-          if ($d.schema -ne 'agent-doctor/1') { Write-Output "wrong schema: $($d.schema)"; exit 1 }
-          Write-Output ("schema " + $d.schema + ", " + $d.tools.Count + " tools")
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
+            go-gate-${{ runner.os }}-
 
       # ⭐ THE POINT OF THIS JOB. Each check has a PowerShell twin because the
       # sh one cannot be assumed to run on Windows: a native PowerShell session
@@ -152,16 +209,51 @@ jobs:
       - name: install the tracked hooks, like any other checkout
         run: git config core.hooksPath .githooks
 
-      - name: the gate, through the PowerShell entry point
+      # ⭐ THE PROBE RUNS BESIDE THE GATE, not before it. It took 84 seconds of
+      # a job the gate needs three minutes of. Its JSON goes to a file outside
+      # the tree, because the gate reads untracked files too.
+      # ⛔ BOTH EXIT CODES ARE READ, AND BOTH OUTPUTS ARE PRINTED. A probe that
+      # failed while the gate passed is a failed job, and the reverse too.
+      - name: the probe emits valid json, and the gate, side by side
         shell: pwsh
         run: |
+          $json = Join-Path $env:RUNNER_TEMP 'ps.json'
+          $err = Join-Path $env:RUNNER_TEMP 'ps.err'
+          $probe = Start-Job -WorkingDirectory (Get-Location).Path -ScriptBlock {
+            $out, $errOut = $using:json, $using:err
+            pwsh -NoProfile -File scripts\doctor\doctor.ps1 -Json > $out 2> $errOut
+            $LASTEXITCODE
+          }
           pwsh -NoProfile -File ./scripts/common/check-gate.ps1
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $gate = $LASTEXITCODE
+          $rc = @(Receive-Job $probe -Wait -AutoRemoveJob)[-1]
+          Write-Output "::group::the probe's json and its stderr"
+          Get-Content -LiteralPath $json -ErrorAction SilentlyContinue
+          Get-Content -LiteralPath $err -ErrorAction SilentlyContinue
+          Write-Output '::endgroup::'
+          Write-Output "gate exit=$gate probe exit=$rc"
+          $bad = ($gate -ne 0) -or ($rc -ne 0)
+          try {
+            $d = Get-Content -LiteralPath $json -Raw | ConvertFrom-Json
+            if ($d.schema -ne 'agent-doctor/1') { Write-Output "wrong schema: $($d.schema)"; $bad = $true }
+            else { Write-Output ("schema " + $d.schema + ", " + $d.tools.Count + " tools") }
+          } catch {
+            Write-Output "the probe's output is not json: $_"
+            $bad = $true
+          }
+          if ($bad) { exit 1 }
+          exit 0
 
   # -- the compiled half. Two hosts, because it is written for one and has to
   #    keep building on the other: the ubuntu job is what caught a guard that
   #    split a path with the RUNNING host's separators, on a tool that only ever
   #    runs on Windows.
+  #
+  # ⭐ IT BUILDS THE RELEASE TARGETS AND NOTHING ELSE. It used to run
+  # check-go.sh as well, which the gate runs on both hosts in the jobs above.
+  # ⛔ THAT HOLDS ONLY WHILE THE GO VERSIONS AGREE. The gate jobs read
+  # tools/check/go.mod and this one reads the module it builds, so a step
+  # below refuses a difference.
   go:
     name: go (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -182,19 +274,43 @@ jobs:
       #   gh api repos/actions/setup-go/git/ref/tags/v7.0.0 --jq .object.sha
       # It declares node24, which is current.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version-file: tools/windows/wsl-toolkit/go.mod
-          # ⛔ CACHING IS OFF. This module has no dependencies at all, so there
-          # is nothing to cache and a cache-dependency-path naming a go.sum that
-          # does not exist fails the step by name.
+          # ⛔ setup-go's own caching stays off. It names a go.sum, and no
+          # module here has one, so it fails the step by name. actions/cache
+          # below keys on go.mod as well.
           cache: false
 
-      # ⭐ THE SAME CHECK THE LOCAL GATE RUNS, not a second list of steps. When
-      # this and scripts/common/check-go.sh disagree about what is checked, this
-      # one is the defect.
-      - name: gofmt, vet, build and test
+      - name: where Go keeps its caches
+        id: gocache
         shell: bash
-        run: sh scripts/common/check-go.sh
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-cross-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          restore-keys: |
+            go-cross-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
+            go-cross-${{ runner.os }}-
+
+      - name: every go.mod a job reads asks for one Go
+        shell: bash
+        run: |
+          want=$(sed -n 's/^go //p' tools/windows/wsl-toolkit/go.mod | tr -d '\r')
+          for f in tools/check/go.mod tools/repo/go.mod; do
+            got=$(sed -n 's/^go //p' "$f" | tr -d '\r')
+            if [ "$got" != "$want" ]; then
+              echo "$f asks for go $got and tools/windows/wsl-toolkit/go.mod for go $want"
+              exit 1
+            fi
+          done
+          echo "tools/check, tools/repo and tools/windows/wsl-toolkit all ask for go $want"
 
       # ⭐ CROSS COMPILED HERE TOO, so a release cannot be the first time an
       # architecture is built. Nothing in this tool uses cgo, so both targets
@@ -210,12 +326,12 @@ jobs:
 
   # -- the guards are guards. The instrument nobody was running -------------
   #
-  # ⛔ WHY THIS IS A JOB AND NOT A GATE CHECK. `repo mutate` deletes each guard
+  # ⛔ WHY THESE ARE JOBS AND NOT A GATE CHECK. `repo mutate` deletes each guard
   # in tools/repo/mutations.json and runs the case named for it, one `go test`
   # per row in a copy of its module. That takes minutes, and a gate that takes
   # minutes is a gate a session skips. The gate carries the cheap half instead,
-  # `check mutations`, which asserts every row still POINTS at something; this
-  # job carries the half that asks whether the case actually goes red.
+  # `check mutations`, which asserts every row still POINTS at something; these
+  # jobs carry the half that asks whether the case actually goes red.
   #
   # ⭐ ON UBUNTU BECAUSE OF WHAT SKIPS ON WINDOWS. Creating a symbolic link there
   # needs developer mode or an elevated process, so the case for the workspace
@@ -223,42 +339,244 @@ jobs:
   # It runs here. ⚠ The harness reports such a row as SKIPPED rather than as
   # theatre, and it used to conflate the two.
   #
-  # ⭐ SIX SHARES OF ONE TABLE, ON SIX RUNNERS. One runner did not finish a
-  # table of 503 rows inside the 30-minute limit, and three runners did not
-  # finish 1,202, every share running out at 30 minutes. A limit raised to fit
-  # makes every push wait on it, so the table is cut finer. `--shard K/N`
-  # gives each runner whole pattern groups, heaviest first, so a group's
-  # unmutated baseline runs once and every row runs exactly once. Each runner
-  # proves its rows on half its processors at once, in separate copies. Each
-  # verdict prints as its row finishes, so a share the limit stops still shows
-  # what it proved and what was running.
-  mutations:
-    name: the guards go red when the guard is gone (${{ matrix.shard }})
+  # ⭐ THREE JOBS: A PLAN, THE SHARDS, AND A KEEP. The plan gives every module
+  # a proof key from its committed tree, its own rows, the harness and the Go
+  # version. A module whose proof is kept under its key is printed with that key
+  # and each row it holds unproved. None of its rows run. The shards prove the
+  # rest. The keep step saves the proof of each module whose every row
+  # passed. tools/repo/internal/mutate/proof.go carries each reason beside the
+  # code that holds it.
+  # ⛔ A PUSH THAT MOVES NO KEY RUNS NO SHARD, AND THE PLAN SAYS SO. The shard
+  # and keep jobs then show as skipped, never as passed.
+  # ⚠ FOUR SLOTS, ONE PER MODULE. A step can look up one cache key, and
+  # `repo mutate-keys --slots 4` refuses a table with a fifth module.
+  mutation-plan:
+    name: the guards go red when the guard is gone (plan)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
+    timeout-minutes: 10
+    env:
+      FULL: ${{ github.event_name == 'schedule' || inputs.full == true }}
+    outputs:
+      run: ${{ steps.plan.outputs.run }}
+      modules: ${{ steps.plan.outputs.modules }}
+      shards: ${{ steps.plan.outputs.shards }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
         with:
           go-version-file: tools/repo/go.mod
           cache: false
 
+      - name: where Go keeps its caches
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
+            go-gate-${{ runner.os }}-
+
+      - name: every module's proof key
+        id: keys
+        shell: bash
+        working-directory: tools/repo
+        run: go run . mutate-keys --slots 4 --github-output "$GITHUB_OUTPUT"
+
+      # ⚠ A FULL RUN LOOKS NOTHING UP, and the plan reads no proof either.
+      - name: the kept proof of module 1
+        if: steps.keys.outputs.key1 != '' && env.FULL != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keys.outputs.path1 }}
+          key: ${{ steps.keys.outputs.key1 }}
+
+      - name: the kept proof of module 2
+        if: steps.keys.outputs.key2 != '' && env.FULL != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keys.outputs.path2 }}
+          key: ${{ steps.keys.outputs.key2 }}
+
+      - name: the kept proof of module 3
+        if: steps.keys.outputs.key3 != '' && env.FULL != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keys.outputs.path3 }}
+          key: ${{ steps.keys.outputs.key3 }}
+
+      - name: the kept proof of module 4
+        if: steps.keys.outputs.key4 != '' && env.FULL != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keys.outputs.path4 }}
+          key: ${{ steps.keys.outputs.key4 }}
+
+      # ⭐ TWELVE SHARDS AT MOST, and never more than the rows that run have
+      # pattern groups, because the harness refuses a shard holding none.
+      - name: what a kept proof answers, and what runs
+        id: plan
+        shell: bash
+        working-directory: tools/repo
+        run: |
+          set --
+          if [ "$FULL" = true ]; then set -- --full; fi
+          go run . mutate-plan --slots 4 --shards 12 --github-output "$GITHUB_OUTPUT" "$@"
+
+  # ⭐ TWELVE SHARES OF THE ROWS THAT RUN, ON TWELVE RUNNERS, two rows at a time
+  # on each. Six runners took 1,228 to 1,371 seconds each over 1,262 rows,
+  # inside a 30-minute limit. `--shard K/N` gives each runner whole pattern
+  # groups, heaviest first, so a group's unmutated baseline runs once and every
+  # row runs exactly once. `--jobs 2` proves two rows at once in separate
+  # copies on these 4-processor runners. Two workers measured 1.8 times as fast
+  # as one, and four were slower. Each verdict prints as its row finishes, so a share the limit
+  # stops still shows what it proved and what was running.
+  mutations:
+    name: the guards go red when the guard is gone (${{ matrix.shard }})
+    needs: mutation-plan
+    if: needs.mutation-plan.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.mutation-plan.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⛔ THE VERSION COMES FROM go.mod, never from a number typed here.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
+        with:
+          go-version-file: tools/repo/go.mod
+          cache: false
+
+      - name: where Go keeps its caches
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
+            go-gate-${{ runner.os }}-
+
       # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped. The harness exits 1
       # on a theatre row and on a broken one, and 0 when the only unproved rows
-      # are ones this host could not reach - which here should be none.
-      - name: one share of the mutation table
+      # are ones this host could not reach. The verdict file is what the keep
+      # step reads, and it names each SKIPPED row too.
+      - name: one share of the rows the plan runs
         shell: bash
         env:
           SHARD: ${{ matrix.shard }}
+          MODULES: ${{ needs.mutation-plan.outputs.modules }}
         run: |
+          set --
+          for m in $MODULES; do set -- "$@" --module "$m"; done
           cd tools/repo
-          go run . mutate --shard "$SHARD"
+          go run . mutate --shard "$SHARD" --jobs 2 --verdicts "$RUNNER_TEMP/verdicts.json" "$@"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: mutate-verdicts-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/verdicts.json
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  # ⛔ A MODULE IS KEPT ONLY WHEN EVERY SHARD PASSED, because its rows are
+  # spread over all of them. `repo mutate-keep` keeps each module whose every
+  # row has one verdict, ok or SKIPPED, and fails on a module that ran and is
+  # not whole.
+  mutation-keep:
+    name: the guards go red when the guard is gone (kept)
+    needs: [mutation-plan, mutations]
+    if: needs.mutation-plan.outputs.run == 'true' && needs.mutations.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⛔ THE VERSION COMES FROM go.mod, and it is the plan's, so the keys
+      # this step recomputes are the ones the plan looked up.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
+        with:
+          go-version-file: tools/repo/go.mod
+          cache: false
+
+      - name: where Go keeps its caches
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
+            go-gate-${{ runner.os }}-
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: mutate-verdicts-*
+          path: ${{ runner.temp }}/verdicts
+
+      - name: the proof of every module whose rows all passed
+        id: keep
+        shell: bash
+        working-directory: tools/repo
+        run: go run . mutate-keep --slots 4 --verdicts "$RUNNER_TEMP/verdicts" --github-output "$GITHUB_OUTPUT"
+
+      - name: keep the proof of module 1
+        if: steps.keep.outputs.save1 != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keep.outputs.path1 }}
+          key: ${{ steps.keep.outputs.save1 }}
+
+      - name: keep the proof of module 2
+        if: steps.keep.outputs.save2 != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keep.outputs.path2 }}
+          key: ${{ steps.keep.outputs.save2 }}
+
+      - name: keep the proof of module 3
+        if: steps.keep.outputs.save3 != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keep.outputs.path3 }}
+          key: ${{ steps.keep.outputs.save3 }}
+
+      - name: keep the proof of module 4
+        if: steps.keep.outputs.save4 != ''
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.keep.outputs.path4 }}
+          key: ${{ steps.keep.outputs.save4 }}
 
   # -- the two probes must agree. The drift rule, with a machine behind it ----
   twins:
@@ -267,6 +585,31 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # ⛔ THE VERSION COMES FROM go.mod. Without it the image's own Go fetched
+      # the toolchain go.mod asks for on every run.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        id: go
+        with:
+          go-version-file: tools/check/go.mod
+          cache: false
+
+      - name: where Go keeps its caches
+        id: gocache
+        shell: bash
+        run: |
+          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
+            go-gate-${{ runner.os }}-
 
       - name: both probes, same machine, compared field by field
         shell: bash

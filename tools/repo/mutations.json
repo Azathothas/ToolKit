@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: a pinned action's commit is not reported as a fingerprint",
+      "module": "tools/check",
+      "file": "internal/checks/secrets.go",
+      "find": "return pinnedAction.MatchString(line) || declaredPinRe.MatchString(line)",
+      "replace": "return declaredPinRe.MatchString(line)",
+      "run": "TestAPinnedActionIsNotAFingerprint",
+      "args": []
+    },
+    {
+      "label": "check: an action in a directory of its repository is a pin too",
+      "module": "tools/check",
+      "file": "internal/checks/secrets.go",
+      "find": "+(?:/[A-Za-z0-9._-]+)*@[0-9a-f]{40}",
+      "replace": "+@[0-9a-f]{40}",
+      "run": "TestAPinnedActionIsNotAFingerprint",
+      "args": []
+    },
+    {
       "label": "mutate-keys: a module's key names its committed tree",
       "module": "tools/repo",
       "file": "internal/mutate/proof.go",

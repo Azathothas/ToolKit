@@ -187,11 +187,11 @@ rotated first and the rewrite does not un-publish it. See
 - ⛔ **A push is proved on Linux before it leaves.** CI runs the Go tests and
   ShellCheck on Linux, and this host is Windows. Cases green here and red there
   have reached `main` three times. The tracked `.githooks/pre-push` runs
-  ShellCheck, CI's `go` job and every mutation row the push adds, in containers
-  through `wsl-toolkit`, over each pushed commit's tree. A failure refuses the
-  push. A pass files a proof keyed by the tree, so the next push of it is
-  immediate. A deleted ref, and a commit or tree the remote already holds, need
-  none.
+  ShellCheck, the Go checks CI's gate runs on Linux and every mutation row the
+  push adds, in containers through `wsl-toolkit`, over each pushed commit's
+  tree. A failure refuses the push. A pass files a proof keyed by the tree, so
+  the next push of it is immediate. A deleted ref, and a commit or tree the
+  remote already holds, need none.
 
   `git-sync` commits and pushes in one call as before, and the push waits for
   the jobs. To prove a commit ahead of its push:
@@ -205,6 +205,13 @@ rotated first and the rewrite does not un-publish it. See
 
   ⚠ The hook does not replace CI. The doctor probe, the whole gate and the rows
   already in the table run in CI alone.
+- ⭐ **CI re-proves the guards of the modules a push changed, and no others.**
+  Its mutation plan keys each module's proof on the module's committed tree,
+  its own rows, the harness and the Go version. A module whose proof is kept
+  under that key is printed with the key and every row it holds unproved, and
+  none of its rows run. A push that moves no key runs no shard, and the plan
+  says so. ⚠ The key does not name the runner's image, so a nightly run and
+  every release run each row, reading no kept proof.
 - ⚠ **A documentation-only push that skips CI must actually be
   documentation-only.** A "docs" push carrying a source file is exactly the one
   that needed the run. `.github/` is never safe to skip, because a workflow

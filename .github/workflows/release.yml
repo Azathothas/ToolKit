@@ -60,9 +60,42 @@ jobs:
       ref: ${{ needs.herdr-stable-ref.outputs.tag }}
       label: ${{ needs.herdr-stable-ref.outputs.label }}
 
+  # ⛔ EVERY GUARD IS PROVED BEFORE ANYTHING IS PUBLISHED, and no kept proof
+  # answers for one. CI proves a push only where a module's proof key moved,
+  # and that key does not name the runner's image. A release reads no cache,
+  # so every row of tools/repo/mutations.json runs here, on twelve runners,
+  # two rows at a time on each. ci.yml carries why it is cut that way.
+  mutations:
+    name: the guards go red when the guard is gone (${{ matrix.shard }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/12', '2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '11/12', '12/12']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: tools/repo/go.mod
+          cache: false
+
+      # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped. A theatre row or a
+      # broken one fails the share, and the publish waits on every share.
+      - name: one share of every row
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          cd tools/repo
+          go run . mutate --shard "$SHARD" --jobs 2
+
   publish:
     name: publish wsl-toolkit
-    needs: [herdr-stable-ref, herdr-stable]
+    needs: [herdr-stable-ref, herdr-stable, mutations]
     runs-on: windows-latest
     timeout-minutes: 20
     # ⛔ Raised for this job alone. Every other job in this repository reads.

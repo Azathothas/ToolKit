@@ -74,10 +74,11 @@ pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof
 
 It proves the committed tree of HEAD, from `git archive`, so an uncommitted
 change is not in it. It runs the ShellCheck CI's `checks` job installs, in
-`ubuntu:24.04`, and CI's `go` job over every module, in `golang:1.25`. A third
-job runs every mutation row `tools/repo/mutations.json` gained since the newest
-commit `origin` holds, in `golang:1.25`. `--rows-since REF` counts them from REF
-instead, and `--rev REV` proves another commit. The jobs run through the
+`ubuntu:24.04`, and the Go checks CI's `checks` job runs over every module, in
+`golang:1.25`. A third job runs every mutation row `tools/repo/mutations.json`
+gained since the newest commit `origin` holds, in `golang:1.25`.
+`--rows-since REF` counts them from REF instead, and `--rev REV` proves another
+commit. The jobs run through the
 `wsl-toolkit` on PATH. `--wsl-toolkit PATH` names another, such as
 `.tmp/wsl-toolkit.exe` when a job needs a flag no release carries yet.
 

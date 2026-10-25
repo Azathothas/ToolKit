@@ -47,6 +47,31 @@ func TestAGenericWindowsHomeIsNotAFingerprint(t *testing.T) {
 	}
 }
 
+// TestAPinnedActionIsNotAFingerprint. ⚠ A commit pin is the hardening this
+// repository asks for, and a rule that fires on it is a rule somebody turns
+// off. ⛔ An action in a directory of its repository is pinned the same way.
+func TestAPinnedActionIsNotAFingerprint(t *testing.T) {
+	sha := strings.Repeat("5c", 20)
+	for _, s := range []string{
+		"      - uses: actions/cache@" + sha + " # v6.1.0",
+		"      - uses: actions/cache/restore@" + sha + " # v6.1.0",
+		"        uses: actions/cache/save@" + sha,
+	} {
+		if !declaredPin(s) {
+			t.Errorf("%q was not read as a pinned action", s)
+		}
+	}
+	// ⛔ AND A HEX THAT IS NOT A PIN IS STILL A FINDING.
+	for _, s := range []string{
+		"token: " + sha,
+		"uses: actions/cache@" + sha[:30],
+	} {
+		if declaredPin(s) {
+			t.Errorf("%q was read as a pinned action", s)
+		}
+	}
+}
+
 // at builds an address from parts, so this file carries no literal one.
 func at(local, domain string) string { return local + "@" + domain }
 
