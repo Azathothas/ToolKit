@@ -10,11 +10,15 @@
 # runs them in containers through wsl-toolkit, or natively on a Linux host, and
 # the push waits minutes for them. A proof keyed by the tree is filed under
 # git's common directory, so the next push of that tree is immediate.
-# ⭐ The three jobs run side by side, and the rows run in one `repo mutate`.
-# ⚠ On a machine short of memory, two settings of this checkout cut the load:
+# ⭐ The rows run in one `repo mutate`, at most two at once.
+# ⛔ The jobs run one after another, one container at a time, the shape that
+# was timed. Two settings of this checkout change that:
 #
-#   git config linux-proof.serial true       the jobs one after another
-#   git config linux-proof.mutate-jobs 2     at most two rows at once
+#   git config linux-proof.parallel true     the three jobs side by side
+#   git config linux-proof.mutate-jobs 4     that many rows at once
+#
+# ⚠ Side by side is three containers compiling at once, and no run of it has
+# been timed under a memory cap.
 # ⚠ It is not all of CI: the gate, the doctor probe and every existing row run
 # in CI alone. To make the proof ahead of the push:
 #

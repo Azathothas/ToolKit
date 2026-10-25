@@ -93,44 +93,54 @@ func Native(goos, tool string) bool {
 }
 
 // Settings are a checkout's own choices for its proofs, from git config.
+//
+// ⛔ THE ZERO VALUE IS THE SHAPE THAT WAS TIMED, and a checkout with nothing
+// set gets it. That is one container at a time, with at most two rows at once
+// in it. Parallel Go builds in containers once took a WSL VM to 19.5 GB, and
+// three containers at once, each compiling, is that load. No run of it has
+// been timed under a memory cap.
 type Settings struct {
 	// MutateJobs is linux-proof.mutate-jobs: how many rows run at once. Zero
-	// or unset is half the processors the rows job sees.
+	// or unset is DefaultMutateJobs.
 	MutateJobs int
-	// Serial is linux-proof.serial: the jobs run one after another and stop
-	// at the first that fails, for a machine with too little memory for all
-	// three at once.
-	Serial bool
+	// Parallel is linux-proof.parallel: the jobs run side by side, a container
+	// each at once. ⚠ Unset, they run one after another and stop at the first
+	// that does not pass.
+	Parallel bool
 }
 
 // Setting keys, as `git config` names them.
 const (
 	MutateJobsKey = "linux-proof.mutate-jobs"
-	SerialKey     = "linux-proof.serial"
+	ParallelKey   = "linux-proof.parallel"
 )
 
 // ReadSettings reads the settings through config, which answers a key's raw
 // value and false when it is unset.
 //
-// ⛔ A VALUE THAT DOES NOT READ IS REFUSED, NOT TAKEN AS UNSET. A memory cap
-// spelt wrong would otherwise run every row at once on the machine it was set
-// to protect.
+// ⛔ A VALUE THAT DOES NOT READ IS REFUSED, NOT TAKEN AS UNSET. Taken as
+// unset, a setting spelt wrong would be dropped without a word, and the run
+// would not be the one asked for.
+//
+// ⚠ A mutate-jobs of 0 IS REFUSED TOO. `repo mutate --jobs 0` is half the
+// processors a job sees, while zero here is the capped default. A number says
+// what it means.
 func ReadSettings(config func(key string) (string, bool)) (Settings, error) {
 	var s Settings
 	if v, ok := config(MutateJobsKey); ok {
 		n, err := strconv.Atoi(strings.TrimSpace(v))
-		if err != nil || n < 0 {
-			return s, fmt.Errorf("%s is %q, and it takes a whole number of rows, 0 or more", MutateJobsKey, v)
+		if err != nil || n < 1 {
+			return s, fmt.Errorf("%s is %q, and it takes a whole number of rows, 1 or more", MutateJobsKey, v)
 		}
 		s.MutateJobs = n
 	}
-	if v, ok := config(SerialKey); ok {
+	if v, ok := config(ParallelKey); ok {
 		switch strings.ToLower(strings.TrimSpace(v)) {
 		case "true", "yes", "on", "1":
-			s.Serial = true
+			s.Parallel = true
 		case "false", "no", "off", "0":
 		default:
-			return s, fmt.Errorf("%s is %q, and it takes true or false", SerialKey, v)
+			return s, fmt.Errorf("%s is %q, and it takes true or false", ParallelKey, v)
 		}
 	}
 	return s, nil
@@ -199,8 +209,8 @@ func NewRunner(tool string, s Settings, out, errOut io.Writer) (Runner, int) {
 			fmt.Fprintf(out, "linux-proof: %s has no run --cache, so each Go job starts with an empty build and module cache.\n", r.Tool)
 		}
 	}
-	if s.Serial {
-		fmt.Fprintf(out, "linux-proof: %s is set, so the jobs run one after another and stop at the first that fails.\n", SerialKey)
+	if s.Parallel {
+		fmt.Fprintf(out, "linux-proof: %s is set, so the jobs run side by side, a container each at once.\n", ParallelKey)
 	}
 	return r, 0
 }
@@ -269,13 +279,18 @@ func (e jobEnd) passed() bool { return e.ran && e.err == nil && e.code == 0 }
 
 // Prove runs every job over the commit's tree and files the proof.
 //
-// ⭐ THE JOBS RUN SIDE BY SIDE. ShellCheck, the go job and the rows share
-// nothing but the archive, and one after another the push waited for their
-// sum. Each line a job prints carries its name, so the outputs stay apart.
+// ⛔ THE JOBS RUN ONE AFTER ANOTHER UNLESS linux-proof.parallel IS SET. One
+// after another is the shape that was timed. A run stops at the first job that
+// does not pass, and names each job it never reached. Side by side, the push
+// waits for the longest job instead of the sum. ⚠ That is not measured, and
+// three containers compile at once. With named caches, the go and rows jobs
+// also share both cache volumes.
 //
-// ⛔ EVERY JOB IS WAITED FOR AND EVERY EXIT IS READ. The proof is filed only
-// when all of them passed. The first job in Jobs' order that did not pass
-// decides the exit code, which is the code a run one after another answered.
+// ⭐ Each line a job prints carries its name, so the outputs stay apart.
+//
+// ⛔ EVERY JOB THAT RAN IS WAITED FOR AND ITS EXIT IS READ. The proof is filed
+// only when all of them passed. The first job in Jobs' order that did not pass
+// decides the exit code, which is the code a run one after another answers.
 //
 // Exit codes: 0 proved, 1 a job ran and failed, 2 nothing could be run or
 // recorded. ⚠ A job that exits 2 could not run either. wsl-toolkit answers 2
@@ -375,14 +390,7 @@ func Prove(req Request, out, errOut io.Writer) int {
 			say(out, "linux-proof: the %s job passed in %s\n", j.Name, end.took)
 		}
 	}
-	if run.Settings.Serial {
-		for i := range jobs {
-			runJob(i)
-			if !ends[i].passed() {
-				break
-			}
-		}
-	} else {
+	if run.Settings.Parallel {
 		var wg sync.WaitGroup
 		for i := range jobs {
 			wg.Add(1)
@@ -392,6 +400,13 @@ func Prove(req Request, out, errOut io.Writer) int {
 			}()
 		}
 		wg.Wait()
+	} else {
+		for i := range jobs {
+			runJob(i)
+			if !ends[i].passed() {
+				break
+			}
+		}
 	}
 	var names []string
 	for i, j := range jobs {

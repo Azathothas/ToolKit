@@ -32,6 +32,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -398,10 +399,29 @@ type Plan struct {
 	Rows []string
 	// Labels is the file the rows job reads Rows from, as the job sees it.
 	Labels string
-	// MutateJobs is `repo mutate --jobs` in the rows job. ⭐ Zero is mutate's
-	// own default: half the processors the job sees, and at least one.
+	// MutateJobs is `repo mutate --jobs` in the rows job. ⛔ Zero is
+	// DefaultMutateJobs, never mutate's own default.
 	MutateJobs int
 }
+
+// DefaultMutateJobs is how many rows run at once on a host with cpus
+// processors: half of them, at least one and at most two.
+//
+// ⛔ AT MOST TWO. mutate's own default is half the processors a job sees, and
+// a container sees every thread of the host. That is ten workers on a host of
+// twenty, each compiling a module's test binary. Two at once is the shape the
+// hook was timed at. mutate measured two workers 1.8 times as fast as one on
+// four processors, and four slower than three.
+func DefaultMutateJobs(cpus int) int {
+	return min(2, max(1, cpus/2))
+}
+
+// labelsFileProbe answers 0 when the tree's own `repo mutate` reads
+// --labels-file.
+var labelsFileProbe = `sh scripts/common/repo.sh mutate -h 2>&1 | grep -q -e '-labels-file'`
+
+// olderMutateSays is what the rows job prints when the tree's mutate does not.
+var olderMutateSays = `echo 'linux-proof: the repo mutate in this tree takes no --labels-file, so each row runs alone through --only, which matches part of a label' >&2`
 
 // Jobs is what one proof runs, in the order their results are read.
 //
@@ -417,6 +437,13 @@ type Plan struct {
 // row's baseline again, and `--only` matches part of a label, so one label
 // could select two rows. Pushes waited 370 s, 886 s and 2,651 s.
 //
+// ⛔ AN OLDER TREE'S mutate TAKES NO --labels-file, and the hook is built from
+// the checkout that holds it, not from the pushed tree. A branch cut before
+// the flag would exit 2 there, and every push of it would be refused. So the
+// job asks the tree's own mutate first. An older one runs each row alone
+// through --only, as the hook did before, and says so. Every row runs, and the
+// first that did not pass decides the exit.
+//
 // ⚠ IT IS NOT ALL OF CI. The `checks` job also runs the doctor probe and the
 // gate, and the sharded `mutations` job runs every row. Those run in CI alone,
 // and the README and docs/conventions/git.md say so.
@@ -426,7 +453,14 @@ func Jobs(p Plan) []Job {
 		{Name: "go", Image: GoImage, Body: `sh scripts/common/check-go.sh`, Go: true},
 	}
 	if len(p.Rows) > 0 {
-		body := fmt.Sprintf("sh scripts/common/repo.sh mutate --jobs %d --labels-file %s", p.MutateJobs, ShellQuote(p.Labels))
+		n := p.MutateJobs
+		if n <= 0 {
+			n = DefaultMutateJobs(runtime.NumCPU())
+		}
+		labels := ShellQuote(p.Labels)
+		exact := fmt.Sprintf("sh scripts/common/repo.sh mutate --jobs %d --labels-file %s", n, labels)
+		older := `rc=0; while IFS= read -r l; do sh scripts/common/repo.sh mutate --only "$l" || { c=$?; [ "$rc" -ne 0 ] || rc=$c; }; done < ` + labels + `; (exit "$rc")`
+		body := fmt.Sprintf("if %s; then %s; else %s; %s; fi", labelsFileProbe, exact, olderMutateSays, older)
 		jobs = append(jobs, Job{Name: "mutations", Image: GoImage, Body: body, Go: true})
 	}
 	return jobs
@@ -452,7 +486,10 @@ type GoCache struct {
 // ⭐ A CONTAINER STARTS WITH NEITHER, so every run compiled every package and
 // fetched every module again. `run --cache NAME:/path` keeps a podman volume
 // in the base between jobs. Go's caches are safe to share between processes,
-// so the go job and the rows job mount the same two at once.
+// so the go and rows jobs mount the same two, even side by side.
+//
+// ⚠ WHAT THEY SAVE IS NOT MEASURED. Release 7.0.2 has no --cache, so no timed
+// run and no real push has mounted them yet.
 //
 // ⛔ AND NO TEST RESULT IS TAKEN FROM THEM. A kept build cache also keeps test
 // results, and a cached pass is not a run on this tree. GOFLAGS=-count=1 makes

@@ -4,6 +4,7 @@ package linuxproof
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -253,7 +254,7 @@ func TestTheJobsAreCIsLinuxJobsWithTheAddedRows(t *testing.T) {
 	if len(jobs) != 3 || jobs[2].Image != GoImage || !jobs[2].Go {
 		t.Fatalf("Jobs(rows) = %+v; want a mutations job in %s", jobs, GoImage)
 	}
-	if want := `sh scripts/common/repo.sh mutate --jobs 3 --labels-file '/w/it'\''s labels'`; jobs[2].Body != want {
+	if want := `then sh scripts/common/repo.sh mutate --jobs 3 --labels-file '/w/it'\''s labels';`; !strings.Contains(jobs[2].Body, want) {
 		t.Fatalf("the mutations script is %s; want one process, %s", jobs[2].Body, want)
 	}
 	if strings.Contains(jobs[1].Body, "mutate") || !strings.Contains(jobs[1].Body, "check-go.sh") {
@@ -285,6 +286,85 @@ func TestTheJobsAreCIsLinuxJobsWithTheAddedRows(t *testing.T) {
 		if err != nil || string(out) != `it's "x" $HOME` {
 			t.Fatalf("ShellQuote did not survive sh: %q, %v", out, err)
 		}
+	}
+}
+
+// TestTheRowsRunAtMostTwoAtOnceByDefault. ⛔ mutate's own default is half the
+// processors a job sees, and a container sees every thread of the host. With
+// nothing set, the rows job asks for half this host's, at least one and at
+// most two.
+func TestTheRowsRunAtMostTwoAtOnceByDefault(t *testing.T) {
+	for cpus, want := range map[int]int{1: 1, 2: 1, 3: 1, 4: 2, 5: 2, 20: 2, 64: 2} {
+		if got := DefaultMutateJobs(cpus); got != want {
+			t.Errorf("DefaultMutateJobs(%d) = %d, want %d", cpus, got, want)
+		}
+	}
+	body := Jobs(Plan{Rows: []string{"r"}, Labels: "/l"})[2].Body
+	if want := fmt.Sprintf("mutate --jobs %d --labels-file '/l'", DefaultMutateJobs(runtime.NumCPU())); !strings.Contains(body, want) {
+		t.Fatalf("a plan that names no --jobs runs %s; want %s", body, want)
+	}
+}
+
+// TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly. ⛔ The hook is
+// built from the checkout that holds it, and a tree cut before --labels-file
+// has a mutate without it. Its rows run one at a time through --only, every
+// one of them, and the first that did not pass decides the exit.
+func TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly(t *testing.T) {
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh on PATH")
+	}
+	// fake is a tree's repo.sh. It logs its arguments, answers -h with the
+	// flags its mutate takes, and exits 1 or 2 for a label that says so.
+	const fake = `printf '%s\n' "$*" >> calls
+case "$*" in
+"mutate -h") [ -f newer ] && echo '  -labels-file string' >&2; echo '  -only string' >&2; exit 0 ;;
+*fails*) exit 1 ;;
+*cannot*) exit 2 ;;
+esac
+`
+	run := func(newer bool, rows ...string) (int, []string, string) {
+		t.Helper()
+		dir := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(dir, "scripts", "common"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		files := map[string]string{"scripts/common/repo.sh": fake, LabelsName: strings.Join(rows, "\n") + "\n"}
+		if newer {
+			files["newer"] = ""
+		}
+		for name, body := range files {
+			if err := os.WriteFile(filepath.Join(dir, filepath.FromSlash(name)), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command(sh, "-c", Jobs(Plan{Rows: rows, Labels: LabelsName, MutateJobs: 2})[2].Body)
+		cmd.Dir = dir
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		code := 0
+		if err := cmd.Run(); err != nil {
+			ee, ok := err.(*exec.ExitError)
+			if !ok {
+				t.Fatal(err)
+			}
+			code = ee.ExitCode()
+		}
+		calls, _ := os.ReadFile(filepath.Join(dir, "calls"))
+		return code, strings.Split(strings.TrimSpace(string(calls)), "\n"), stderr.String()
+	}
+	if code, calls, _ := run(true, "a row", "it's a row"); code != 0 || strings.Join(calls, "|") != "mutate -h|mutate --jobs 2 --labels-file "+LabelsName {
+		t.Fatalf("a tree whose mutate takes --labels-file: exit %d, ran %q; want the rows in one process", code, calls)
+	}
+	code, calls, said := run(false, "a row", "it's a row")
+	if code != 0 || strings.Join(calls, "|") != "mutate -h|mutate --only a row|mutate --only it's a row" {
+		t.Fatalf("an older tree: exit %d, ran %q; want each row alone through --only", code, calls)
+	}
+	if !strings.Contains(said, "takes no --labels-file") {
+		t.Fatalf("an older tree's rows ran through --only and the job did not say why: %q", said)
+	}
+	if code, calls, _ := run(false, "this fails", "this cannot", "last"); code != 1 || len(calls) != 4 {
+		t.Fatalf("an older tree whose first row fails and second cannot run: exit %d, ran %q; want 1, and every row run", code, calls)
 	}
 }
 

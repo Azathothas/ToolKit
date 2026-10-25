@@ -203,19 +203,25 @@ rotated first and the rewrite does not un-publish it. See
   ⚠ The hook needs Go on PATH to build itself, and `wsl-toolkit` with a working
   default base. Without either it exits 2, and git refuses the push.
 
-  ⭐ The three jobs run side by side, and the rows run in one `repo mutate`,
-  half the container's processors at a time. A `wsl-toolkit` whose `run` takes
-  `--cache` keeps Go's build and module caches between pushes. One without it
-  is named, and each push then builds from nothing. On a machine short of
-  memory, two settings of the checkout cut the load:
+  ⭐ The rows run in one `repo mutate`, at most two at once. The jobs run one
+  after another, one container at a time, and stop at the first failure. That
+  is the shape that was timed. Two settings of the checkout change it:
 
   ```powershell
-  git config linux-proof.serial true
-  git config linux-proof.mutate-jobs 2
+  git config linux-proof.parallel true
+  git config linux-proof.mutate-jobs 4
   ```
 
-  The first runs the jobs one after another and stops at the first failure.
-  The second caps how many rows run at once.
+  The first runs the three jobs side by side. ⚠ That is three containers
+  compiling at once, and no run of it has been timed under a memory cap. The
+  second sets how many rows run at once.
+
+  A pushed tree whose `repo mutate` takes no `--labels-file` runs each row
+  alone through `--only`, as the hook did before, and the job says so.
+
+  A `wsl-toolkit` whose `run` takes `--cache` keeps Go's build and module
+  caches between pushes. ⚠ Release 7.0.2 has no `--cache`, so the hook names
+  it and each push builds from nothing. What the caches save is not measured.
 
   ⚠ The hook does not replace CI. The doctor probe, the whole gate and the rows
   already in the table run in CI alone.

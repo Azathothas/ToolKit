@@ -2,11 +2,101 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
-      "label": "linux-proof: the jobs run side by side",
+      "label": "linux-proof: the jobs run one after another unless linux-proof.parallel is set",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
-      "find": "\tif run.Settings.Serial {\n",
+      "find": "\tif run.Settings.Parallel {\n",
       "replace": "\tif true {\n",
+      "run": "TestTheJobsRunOneAfterAnotherByDefault",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the rows run at most two at once by default",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\treturn min(2, max(1, cpus/2))\n",
+      "replace": "\treturn max(1, cpus/2)\n",
+      "run": "TestTheRowsRunAtMostTwoAtOnceByDefault",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a plan that names no --jobs gets the capped default",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif n <= 0 {\n\t\t\tn = DefaultMutateJobs(runtime.NumCPU())\n",
+      "replace": "\t\tif false {\n\t\t\tn = DefaultMutateJobs(runtime.NumCPU())\n",
+      "run": "TestTheRowsRunAtMostTwoAtOnceByDefault|TestTheRowsRunInOneProcessFromExactLabels",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a mutate-jobs of 0 is refused",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif err != nil || n < 1 {\n",
+      "replace": "\t\tif err != nil || n < 0 {\n",
+      "run": "TestSettingsAreReadAndABadOneIsRefused",
+      "args": []
+    },
+    {
+      "label": "linux-proof: an older tree's mutate runs each row through --only",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "labelsFileProbe, exact, olderMutateSays, older)",
+      "replace": "labelsFileProbe, exact, olderMutateSays, exact); _ = older",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the rows job asks the tree's own mutate for --labels-file",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "var labelsFileProbe = `sh scripts/common/repo.sh mutate -h 2>&1 | grep -q -e '-labels-file'`",
+      "replace": "var labelsFileProbe = `false`",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: an older tree's rows job says why it runs --only",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "olderMutateSays = `echo 'linux-proof: the repo mutate in this tree",
+      "replace": "olderMutateSays = `true || echo 'linux-proof: the repo mutate in this tree",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: in an older tree the first row that did not pass decides the exit",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "[ \"$rc\" -ne 0 ] || rc=$c;",
+      "replace": "rc=$c;",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a row that does not pass in an older tree fails the job",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "; (exit \"$rc\")",
+      "replace": "; (exit 0)",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: every row of an older tree runs after one fails",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "--only \"$l\" || { c=$?;",
+      "replace": "--only \"$l\" || { c=$?; rc=$c; break;",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: linux-proof.parallel runs the jobs side by side",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tif run.Settings.Parallel {\n",
+      "replace": "\tif false {\n",
       "run": "TestTheJobsRunSideBySide",
       "args": []
     },
@@ -16,7 +106,7 @@
       "file": "internal/linuxproof/run.go",
       "find": "\t\twg.Wait()\n",
       "replace": "",
-      "run": "TestAProofIsFiledForTheTreeEveryJobPassedOn",
+      "run": "TestTheJobsRunSideBySide",
       "args": []
     },
     {
@@ -83,37 +173,37 @@
       "args": []
     },
     {
-      "label": "linux-proof: a serial run stops at the first job that did not pass",
+      "label": "linux-proof: a run one after another stops at the first job that did not pass",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
       "find": "\t\t\tif !ends[i].passed() {\n\t\t\t\tbreak\n\t\t\t}\n",
       "replace": "",
-      "run": "TestASerialRunStopsAtTheFirstFailure",
+      "run": "TestTheJobsRunOneAfterAnotherByDefault",
       "args": []
     },
     {
-      "label": "linux-proof: a job a serial run never reached is named",
+      "label": "linux-proof: a job a run one after another never reached is named",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
       "find": "\t\t\tsay(errOut, \"linux-proof: the %s job was not run, because a job before it did not pass\\n\", j.Name)\n",
       "replace": "",
-      "run": "TestASerialRunStopsAtTheFirstFailure",
+      "run": "TestTheJobsRunOneAfterAnotherByDefault",
       "args": []
     },
     {
-      "label": "linux-proof: a serial run says so",
+      "label": "linux-proof: a run side by side says so",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
-      "find": "\tif s.Serial {\n\t\tfmt.Fprintf(out",
+      "find": "\tif s.Parallel {\n\t\tfmt.Fprintf(out",
       "replace": "\tif false {\n\t\tfmt.Fprintf(out",
-      "run": "TestASerialRunStopsAtTheFirstFailure",
+      "run": "TestTheJobsRunSideBySide",
       "args": []
     },
     {
-      "label": "linux-proof: linux-proof.serial is read",
+      "label": "linux-proof: linux-proof.parallel is read",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
-      "find": "\t\t\ts.Serial = true\n",
+      "find": "\t\t\ts.Parallel = true\n",
       "replace": "",
       "run": "TestSettingsAreReadAndABadOneIsRefused",
       "args": []
@@ -122,16 +212,16 @@
       "label": "linux-proof: a mutate-jobs that does not read is refused",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
-      "find": "\t\tif err != nil || n < 0 {\n",
-      "replace": "\t\tif err != nil && false || n < 0 {\n",
+      "find": "\t\tif err != nil || n < 1 {\n",
+      "replace": "\t\tif false && (err != nil || n < 1) {\n",
       "run": "TestSettingsAreReadAndABadOneIsRefused",
       "args": []
     },
     {
-      "label": "linux-proof: a serial value that does not read is refused",
+      "label": "linux-proof: a parallel value that does not read is refused",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
-      "find": "\t\tdefault:\n\t\t\treturn s, fmt.Errorf(\"%s is %q, and it takes true or false\", SerialKey, v)\n",
+      "find": "\t\tdefault:\n\t\t\treturn s, fmt.Errorf(\"%s is %q, and it takes true or false\", ParallelKey, v)\n",
       "replace": "\t\tdefault:\n",
       "run": "TestSettingsAreReadAndABadOneIsRefused",
       "args": []
@@ -151,7 +241,7 @@
       "file": "internal/linuxproof/run.go",
       "find": "\t\tout, err := repo.Git(\"config\", \"--get\", key)\n",
       "replace": "\t\tout, err := repo.Git(\"config\", \"--get\", \"linux-proof.none\")\n",
-      "run": "TestASerialRunStopsAtTheFirstFailure",
+      "run": "TestTheJobsRunSideBySide",
       "args": []
     },
     {

@@ -285,10 +285,11 @@ func TestTheJobsCheckTheCommitNotTheWorkingTree(t *testing.T) {
 	}
 }
 
-// TestAFailedJobFilesNoProof. ⛔ Every job is waited for, so each failure is
-// read, and none of them files a proof.
+// TestAFailedJobFilesNoProof. ⛔ Side by side, every job is waited for, so
+// each failure is read, and none of them files a proof.
 func TestAFailedJobFilesNoProof(t *testing.T) {
 	c := newProofCase(t)
+	gitIn(t, c.work, "config", ParallelKey, "true")
 	t.Setenv(fakeModeEnv, "fail")
 	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
 	code, msg := c.run(t, Options{})
@@ -300,10 +301,11 @@ func TestAFailedJobFilesNoProof(t *testing.T) {
 	}
 }
 
-// TestOneFailedJobAmongPassingOnesFilesNoProof. ⛔ The jobs run side by side,
-// and the proof waits for the last of them and needs every one to pass.
+// TestOneFailedJobAmongPassingOnesFilesNoProof. ⛔ Side by side, the proof
+// waits for the last job and needs every one to pass.
 func TestOneFailedJobAmongPassingOnesFilesNoProof(t *testing.T) {
 	c := newProofCase(t)
+	gitIn(t, c.work, "config", ParallelKey, "true")
 	t.Setenv(fakeFailIf, GoImage)
 	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
 	code, msg := c.run(t, Options{})
@@ -338,6 +340,7 @@ func TestTheFirstJobThatDidNotPassDecidesTheExit(t *testing.T) {
 		}
 	}
 	c := newProofCase(t)
+	gitIn(t, c.work, "config", ParallelKey, "true")
 	t.Setenv(fakeCannotIf, ShellCheckImage)
 	t.Setenv(fakeFailIf, GoImage)
 	if code, msg := c.run(t, Options{}); code != 2 {
@@ -345,17 +348,22 @@ func TestTheFirstJobThatDidNotPassDecidesTheExit(t *testing.T) {
 	}
 }
 
-// TestTheJobsRunSideBySide holds each fake job until all three have started,
-// so a run that starts one after another never passes. ⭐ Each line a job
+// TestTheJobsRunSideBySide when linux-proof.parallel is set. It holds each
+// fake job until all three have started, so a run that starts one after
+// another never passes. The run says which shape it took. ⭐ Each line a job
 // prints carries its name, and a last line with no newline is still kept.
 func TestTheJobsRunSideBySide(t *testing.T) {
 	c := newProofCase(t)
 	c.write(t, filepath.ToSlash(TableRel), `{"schema":"repo-mutations/1","mutations":[{"label":"a new row","find":"y"},{"label":"old row","find":"x"}]}`)
 	gitIn(t, c.work, "commit", "-q", "-a", "-m", "two")
+	gitIn(t, c.work, "config", ParallelKey, "true")
 	t.Setenv(fakeTogether, "3")
 	code, msg := c.run(t, Options{RowsSince: "base"})
 	if code != 0 || len(c.calls(t)) != 3 {
 		t.Fatalf("three jobs held until all had started: exit %d, %d run, %q", code, len(c.calls(t)), msg)
+	}
+	if !strings.Contains(msg, ParallelKey+" is set, so the jobs run side by side") {
+		t.Errorf("a run side by side does not say so: %s", msg)
 	}
 	for name, image := range map[string]string{"shellcheck": ShellCheckImage, "go        ": GoImage} {
 		for _, want := range []string{name + " | fake ran in " + image + "\n", name + " | no newline after " + image + "\n"} {
@@ -391,26 +399,25 @@ func TestEachJobsLinesCarryItsNameAndStayWhole(t *testing.T) {
 	}
 }
 
-// TestASerialRunStopsAtTheFirstFailure. ⚠ linux-proof.serial is for a machine
-// that cannot hold the jobs at once. It runs them one after another, as the
-// hook did before, and names the job it never reached.
-func TestASerialRunStopsAtTheFirstFailure(t *testing.T) {
+// TestTheJobsRunOneAfterAnotherByDefault. ⛔ With nothing set, one container
+// runs at a time, the shape the hook was timed at. The run stops at the first
+// job that did not pass and names the job it never reached.
+func TestTheJobsRunOneAfterAnotherByDefault(t *testing.T) {
 	c := newProofCase(t)
-	gitIn(t, c.work, "config", SerialKey, "true")
 	t.Setenv(fakeModeEnv, "fail")
 	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
 	code, msg := c.run(t, Options{})
 	if code != 1 || Has(c.common, tree) || len(c.calls(t)) != 1 {
-		t.Fatalf("a serial run whose first job failed: exit %d, %d run, %q; want 1 and one run", code, len(c.calls(t)), msg)
+		t.Fatalf("a default run whose first job failed: exit %d, %d run, %q; want 1 and one run", code, len(c.calls(t)), msg)
 	}
-	if !strings.Contains(msg, "the go job was not run, because a job before it did not pass") || !strings.Contains(msg, "one after another") {
-		t.Fatalf("the job a serial run never reached is not named: %q", msg)
+	if !strings.Contains(msg, "the go job was not run, because a job before it did not pass") || strings.Contains(msg, "side by side") {
+		t.Fatalf("the job a default run never reached is not named: %q", msg)
 	}
 }
 
-// TestSettingsAreReadAndABadOneIsRefused. ⛔ A memory cap spelt wrong is not
-// taken as unset, which would run every row at once on the machine it was
-// set to protect.
+// TestSettingsAreReadAndABadOneIsRefused. ⛔ A setting spelt wrong is not
+// taken as unset, which would drop it without a word. ⚠ A mutate-jobs of 0 is
+// refused, because mutate reads 0 as half the processors.
 func TestSettingsAreReadAndABadOneIsRefused(t *testing.T) {
 	from := func(kv map[string]string) func(string) (string, bool) {
 		return func(k string) (string, bool) { v, ok := kv[k]; return v, ok }
@@ -418,15 +425,15 @@ func TestSettingsAreReadAndABadOneIsRefused(t *testing.T) {
 	if s, err := ReadSettings(from(nil)); err != nil || s != (Settings{}) {
 		t.Fatalf("unset settings = %+v, %v; want the zero value", s, err)
 	}
-	if s, err := ReadSettings(from(map[string]string{MutateJobsKey: "2", SerialKey: "Yes"})); err != nil || s.MutateJobs != 2 || !s.Serial {
-		t.Fatalf("mutate-jobs 2 and serial yes = %+v, %v", s, err)
+	if s, err := ReadSettings(from(map[string]string{MutateJobsKey: "2", ParallelKey: "Yes"})); err != nil || s.MutateJobs != 2 || !s.Parallel {
+		t.Fatalf("mutate-jobs 2 and parallel yes = %+v, %v", s, err)
 	}
 	for _, v := range []string{"on", "true", "1"} {
-		if s, err := ReadSettings(from(map[string]string{SerialKey: v})); err != nil || !s.Serial {
-			t.Errorf("serial %q = %+v, %v; want true", v, s, err)
+		if s, err := ReadSettings(from(map[string]string{ParallelKey: v})); err != nil || !s.Parallel {
+			t.Errorf("parallel %q = %+v, %v; want true", v, s, err)
 		}
 	}
-	for _, bad := range []map[string]string{{MutateJobsKey: "two"}, {MutateJobsKey: "-1"}, {SerialKey: "maybe"}} {
+	for _, bad := range []map[string]string{{MutateJobsKey: "two"}, {MutateJobsKey: "-1"}, {MutateJobsKey: "0"}, {ParallelKey: "maybe"}} {
 		if _, err := ReadSettings(from(bad)); err == nil {
 			t.Errorf("%v was taken as a setting", bad)
 		}
@@ -447,20 +454,22 @@ func TestTheRowsRunInOneProcessFromExactLabels(t *testing.T) {
 	gitIn(t, c.work, "commit", "-q", "-a", "-m", "two")
 	code, msg := c.run(t, Options{RowsSince: "base"})
 	rows := callWith(c.calls(t), "mutate ")
-	if code != 0 || !strings.Contains(rows, "sh scripts/common/repo.sh mutate --jobs 0 --labels-file '"+ContainerLabels+"'") {
-		t.Fatalf("exit %d; the rows job was %q; want one process at mutate's default --jobs", code, rows)
+	if want := fmt.Sprintf("sh scripts/common/repo.sh mutate --jobs %d --labels-file '%s'", DefaultMutateJobs(runtime.NumCPU()), ContainerLabels); code != 0 || !strings.Contains(rows, want) {
+		t.Fatalf("exit %d; the rows job was %q; want one process, %s", code, rows, want)
 	}
 	if !strings.HasSuffix(rows, ",labels=a new row|it's new|") {
 		t.Fatalf("the rows job's labels file is not the added labels exactly: %q", rows)
 	}
-	gitIn(t, c.work, "config", MutateJobsKey, "2")
+	// ⚠ Three, because the default is one or two, and a setting the job never
+	// got would read as the default.
+	gitIn(t, c.work, "config", MutateJobsKey, "3")
 	if err := os.Remove(filepath.Join(c.common, ProofDirName, gitIn(t, c.work, "rev-parse", "HEAD^{tree}")+".json")); err != nil {
 		t.Fatal(err)
 	}
 	before := len(c.calls(t))
 	code, msg = c.run(t, Options{RowsSince: "base"})
-	if rows := callWith(c.calls(t)[before:], "mutate "); code != 0 || !strings.Contains(rows, "mutate --jobs 2 --labels-file") {
-		t.Fatalf("linux-proof.mutate-jobs 2: exit %d, rows job %q, %q; want mutate --jobs 2", code, rows, msg)
+	if rows := callWith(c.calls(t)[before:], "mutate "); code != 0 || !strings.Contains(rows, "mutate --jobs 3 --labels-file") {
+		t.Fatalf("linux-proof.mutate-jobs 3: exit %d, rows job %q, %q; want mutate --jobs 3", code, rows, msg)
 	}
 }
 
