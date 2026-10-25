@@ -242,35 +242,42 @@ func TestAddedRowsAreNewOrChangedRows(t *testing.T) {
 	}
 }
 
-// TestTheJobsAreCIsLinuxJobsWithTheAddedRows, each label one sh word however
-// it is spelt.
+// TestTheJobsAreCIsLinuxJobsWithTheAddedRows, the rows in one process that
+// reads their labels from a file, and each path one sh word however it is
+// spelt.
 func TestTheJobsAreCIsLinuxJobsWithTheAddedRows(t *testing.T) {
-	if got := Jobs(nil); len(got) != 2 || got[0].Name != "shellcheck" || got[1].Name != "go" {
-		t.Fatalf("Jobs(nil) = %+v; want the shellcheck and go jobs", got)
+	if got := Jobs(Plan{}); len(got) != 2 || got[0].Name != "shellcheck" || got[1].Name != "go" || got[0].Go || !got[1].Go {
+		t.Fatalf("Jobs(no rows) = %+v; want the shellcheck job and the go job, which builds Go", got)
 	}
-	jobs := Jobs([]string{"a project's row", "plain"})
-	if len(jobs) != 3 || jobs[2].Image != "docker.io/library/golang:1.25" {
-		t.Fatalf("Jobs(rows) = %+v; want a mutations job in golang:1.25", jobs)
+	jobs := Jobs(Plan{Rows: []string{"a project's row", "plain"}, Labels: "/w/it's labels", MutateJobs: 3})
+	if len(jobs) != 3 || jobs[2].Image != GoImage || !jobs[2].Go {
+		t.Fatalf("Jobs(rows) = %+v; want a mutations job in %s", jobs, GoImage)
 	}
-	if !strings.Contains(jobs[2].Body, `mutate --only 'a project'\''s row' && sh scripts/common/repo.sh mutate --only 'plain'`) {
-		t.Fatalf("the mutations script does not select each row as one word: %s", jobs[2].Body)
+	if want := `sh scripts/common/repo.sh mutate --jobs 3 --labels-file '/w/it'\''s labels'`; jobs[2].Body != want {
+		t.Fatalf("the mutations script is %s; want one process, %s", jobs[2].Body, want)
 	}
 	if strings.Contains(jobs[1].Body, "mutate") || !strings.Contains(jobs[1].Body, "check-go.sh") {
 		t.Fatalf("the go job is not CI's go job: %s", jobs[1].Body)
 	}
 	ws := filepath.Join("C:", "x", ".tmp", "linux-proof-1")
-	args := RunArgs(jobs[0], ws, treeA)
+	args := RunArgs(jobs[0], ws, treeA, true)
 	joined := strings.Join(args, " ")
-	for _, want := range []string{"--container-lifecycle ephemeral", "--workspace " + ws, "--image docker.io/library/ubuntu:24.04"} {
+	for _, want := range []string{"--container-lifecycle ephemeral", "--workspace " + ws, "--image " + ShellCheckImage} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("RunArgs lacks %q: %s", want, joined)
 		}
+	}
+	if strings.Contains(joined, "--cache") {
+		t.Errorf("the shellcheck job mounts a Go cache: %s", joined)
+	}
+	if goArgs := strings.Join(RunArgs(jobs[1], ws, treeA, false), " "); strings.Contains(goArgs, "--cache") || strings.Contains(goArgs, "GOFLAGS") {
+		t.Errorf("a tool without --cache was handed one: %s", goArgs)
 	}
 	script := args[len(args)-1]
 	if !strings.HasPrefix(script, jobs[0].Setup+" && ") || !strings.Contains(script, ContainerTar) {
 		t.Errorf("the container script does not install and unpack first: %s", script)
 	}
-	if native := Script(jobs[0], "/t/tree.tar", "/t/src", treeA, false); strings.Contains(native, "apt-get") {
+	if native := Script(jobs[0], "/t/tree.tar", "/t/src", treeA, false); strings.Contains(native, "apk") {
 		t.Errorf("a native script installs packages on the host: %s", native)
 	}
 	if sh, err := exec.LookPath("sh"); err == nil {
@@ -278,6 +285,38 @@ func TestTheJobsAreCIsLinuxJobsWithTheAddedRows(t *testing.T) {
 		if err != nil || string(out) != `it's "x" $HOME` {
 			t.Fatalf("ShellQuote did not survive sh: %q, %v", out, err)
 		}
+	}
+}
+
+// TestTheShellCheckJobRunsCIsVersion. ⛔ The image is pinned by its tag, and
+// the job still checks the version it got, because another ShellCheck finds
+// other things than CI's. Any other version is "could not run".
+func TestTheShellCheckJobRunsCIsVersion(t *testing.T) {
+	sc := Jobs(Plan{})[0]
+	if !strings.HasSuffix(sc.Image, ":v"+ShellCheckVersion) || !strings.HasPrefix(sc.Setup, shellcheckVersionCheck+" && ") || !strings.Contains(sc.Setup, "apk add --no-cache git") {
+		t.Fatalf("the shellcheck job is %+v; want %s pinned, its version checked first, and git added", sc, ShellCheckVersion)
+	}
+	if native := Script(sc, "/t/tree.tar", "/t/src", treeA, false); strings.Contains(native, "version: ") || !strings.Contains(native, "shellcheck --version") {
+		t.Fatalf("a native proof, which runs the host's own ShellCheck, is held to the image's version: %s", native)
+	}
+	sh, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh on PATH")
+	}
+	run := func(version string) (int, string) {
+		fake := `shellcheck() { printf 'ShellCheck - shell script analysis tool\nversion: %s\nlicense: GPLv3\n' ` + ShellQuote(version) + `; }; `
+		cmd := exec.Command(sh, "-c", fake+shellcheckVersionCheck)
+		out, err := cmd.CombinedOutput()
+		if ee, ok := err.(*exec.ExitError); ok {
+			return ee.ExitCode(), string(out)
+		}
+		return 0, string(out)
+	}
+	if code, out := run(ShellCheckVersion); code != 0 {
+		t.Fatalf("ShellCheck %s: exit %d, %q; want 0", ShellCheckVersion, code, out)
+	}
+	if code, out := run("0.10.0"); code != 2 || !strings.Contains(out, "the version CI runs") {
+		t.Fatalf("ShellCheck 0.10.0: exit %d, %q; want 2", code, out)
 	}
 }
 

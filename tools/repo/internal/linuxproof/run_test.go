@@ -5,66 +5,147 @@ package linuxproof
 import (
 	"archive/tar"
 	"bytes"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // fakeEnv makes this test binary stand in for wsl-toolkit: it appends its
 // arguments and the names in the workspace's archive to the file the variable
 // names, then does what fakeModeEnv says.
+//
+// ⚠ The other variables steer one job at a time, because the jobs run side by
+// side and a case has to fail one of them alone. fakeFailIf exits 3 and
+// fakeCannotIf exits 2 for a job whose arguments hold the text. fakeTogether
+// holds each job until that many have started, and fakeCache answers `run
+// --help` with the --cache flag.
 const (
-	fakeEnv     = "LINUXPROOF_FAKE_LOG"
-	fakeModeEnv = "LINUXPROOF_FAKE_MODE"
+	fakeEnv       = "LINUXPROOF_FAKE_LOG"
+	fakeModeEnv   = "LINUXPROOF_FAKE_MODE"
+	fakeFailIf    = "LINUXPROOF_FAKE_FAIL_IF"
+	fakeCannotIf  = "LINUXPROOF_FAKE_CANNOT_IF"
+	fakeTogether  = "LINUXPROOF_FAKE_TOGETHER"
+	fakeCache     = "LINUXPROOF_FAKE_CACHE"
+	togetherLimit = 20 * time.Second
 )
 
 // TestMain lets the test binary answer as the fake. ⚠ It acts only when the
 // variable is set, which no ordinary `go test` run does.
 func TestMain(m *testing.M) {
 	if log := os.Getenv(fakeEnv); log != "" {
-		f, err := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			os.Exit(90)
-		}
-		args := os.Args[1:]
-		// ⚠ A git repository variable the job inherited is logged with the
-		// arguments, so a case can say it reached the job. TOOL-33.
-		for _, v := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} {
-			if val, ok := os.LookupEnv(v); ok {
-				args = append(args, "LEAKED "+v+"="+val)
-			}
-		}
-		f.WriteString(strings.Join(args, "\x1f") + "\x1e" + strings.Join(archived(os.Args[1:]), ",") + "\n")
-		f.Close()
-		switch os.Getenv(fakeModeEnv) {
-		case "fail":
-			os.Exit(3)
-		case "cannot":
-			// wsl-toolkit's answer for a base it cannot use.
-			os.Exit(2)
-		}
-		os.Exit(0)
+		os.Exit(fake(log, os.Args[1:]))
 	}
 	os.Exit(m.Run())
 }
 
-// archived lists the files in the workspace's archive, as the job would see
-// them, and names a workspace that holds anything else.
-func archived(args []string) []string {
-	ws := ""
-	for i, a := range args {
-		if a == "--workspace" && i+1 < len(args) {
-			ws = args[i+1]
+// fake is wsl-toolkit as the cases see it.
+func fake(log string, args []string) int {
+	if len(args) == 2 && args[0] == "run" && args[1] == "--help" {
+		fmt.Println("Usage of run:\n  -c string\n    \tthe shell command to run in the container")
+		if os.Getenv(fakeCache) != "" {
+			fmt.Println("  -cache value\n    \tNAME:/path: a named cache")
+		}
+		return 0
+	}
+	logged := args
+	// ⚠ A git repository variable the job inherited is logged with the
+	// arguments, so a case can say it reached the job. TOOL-33.
+	for _, v := range []string{"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} {
+		if val, ok := os.LookupEnv(v); ok {
+			logged = append(logged, "LEAKED "+v+"="+val)
 		}
 	}
+	appendLine(log, strings.Join(logged, "\x1f")+"\x1e"+strings.Join(archived(args), ","))
+	image := argAfter(args, "--image")
+	fmt.Printf("fake ran in %s\nno newline after %s", image, image)
+	if n, _ := strconv.Atoi(os.Getenv(fakeTogether)); n > 0 && !together(log+".started", n) {
+		fmt.Fprintf(os.Stderr, "%s ran alone: %d jobs never ran at once\n", image, n)
+		return 5
+	}
+	joined := strings.Join(args, " ")
+	if s := os.Getenv(fakeFailIf); s != "" && strings.Contains(joined, s) {
+		return 3
+	}
+	if s := os.Getenv(fakeCannotIf); s != "" && strings.Contains(joined, s) {
+		return 2
+	}
+	switch os.Getenv(fakeModeEnv) {
+	case "fail":
+		return 3
+	case "cannot":
+		// wsl-toolkit's answer for a base it cannot use.
+		return 2
+	}
+	return 0
+}
+
+// together marks this job started in dir and waits for n marks.
+func together(dir string, n int) bool {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false
+	}
+	if err := os.WriteFile(filepath.Join(dir, strconv.Itoa(os.Getpid())), nil, 0o644); err != nil {
+		return false
+	}
+	for deadline := time.Now().Add(togetherLimit); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		if entries, err := os.ReadDir(dir); err == nil && len(entries) >= n {
+			return true
+		}
+	}
+	return false
+}
+
+// appendLine adds one line to path, in one write, so jobs that log at once
+// do not split each other's lines.
+func appendLine(path, line string) {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		os.Exit(90)
+	}
+	f.WriteString(line + "\n")
+	f.Close()
+}
+
+func argAfter(args []string, flag string) string {
+	for i, a := range args {
+		if a == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// archived lists the files in the workspace's archive, as the job would see
+// them, and the rows file beside it. It names a workspace that holds
+// anything else.
+func archived(args []string) []string {
+	ws := argAfter(args, "--workspace")
 	entries, err := os.ReadDir(ws)
-	if err != nil || len(entries) != 1 || entries[0].Name() != TarName {
-		return []string{"WORKSPACE-NOT-THE-ARCHIVE-ALONE"}
+	if err != nil {
+		return []string{"NO-WORKSPACE"}
+	}
+	var labels []string
+	for _, e := range entries {
+		switch e.Name() {
+		case TarName:
+		case LabelsName:
+			body, err := os.ReadFile(filepath.Join(ws, LabelsName))
+			if err != nil {
+				return []string{"UNREADABLE-LABELS"}
+			}
+			labels = append(labels, "labels="+strings.ReplaceAll(string(body), "\n", "|"))
+		default:
+			return []string{"WORKSPACE-NOT-THE-ARCHIVE-ALONE"}
+		}
 	}
 	f, err := os.Open(filepath.Join(ws, TarName))
 	if err != nil {
@@ -86,7 +167,7 @@ func archived(args []string) []string {
 		}
 	}
 	sort.Strings(names)
-	return names
+	return append(names, labels...)
 }
 
 type proofCase struct {
@@ -166,12 +247,23 @@ func TestAProofIsFiledForTheTreeEveryJobPassedOn(t *testing.T) {
 		t.Fatalf("exit %d, proved %v: %s", code, Has(c.common, tree), msg)
 	}
 	got := c.calls(t)
-	if len(got) != 2 || !strings.Contains(got[0], "ubuntu:24.04") || !strings.Contains(got[1], "golang:1.25") {
-		t.Fatalf("the jobs run were %q; want shellcheck then go", got)
+	goJob := callWith(got, GoImage)
+	if len(got) != 2 || callWith(got, ShellCheckImage) == "" || goJob == "" {
+		t.Fatalf("the jobs run were %q; want shellcheck and go", got)
 	}
-	if !strings.Contains(got[1], tree) {
-		t.Fatalf("the job does not compare its copy with tree %s: %q", tree, got[1])
+	if !strings.Contains(goJob, tree) {
+		t.Fatalf("the job does not compare its copy with tree %s: %q", tree, goJob)
 	}
+}
+
+// callWith is the one fake run whose line holds s, and empty when none does.
+func callWith(calls []string, s string) string {
+	for _, c := range calls {
+		if strings.Contains(c, s) {
+			return c
+		}
+	}
+	return ""
 }
 
 // TestTheJobsCheckTheCommitNotTheWorkingTree. ⛔ The copy is `git archive` of
@@ -193,17 +285,237 @@ func TestTheJobsCheckTheCommitNotTheWorkingTree(t *testing.T) {
 	}
 }
 
-// TestAFailedJobFilesNoProof.
+// TestAFailedJobFilesNoProof. ⛔ Every job is waited for, so each failure is
+// read, and none of them files a proof.
 func TestAFailedJobFilesNoProof(t *testing.T) {
 	c := newProofCase(t)
 	t.Setenv(fakeModeEnv, "fail")
 	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
 	code, msg := c.run(t, Options{})
-	if code != 1 || Has(c.common, tree) || !strings.Contains(msg, "exited 3") {
+	if code != 1 || Has(c.common, tree) || !strings.Contains(msg, "the shellcheck job exited 3") || !strings.Contains(msg, "the go job exited 3") {
 		t.Fatalf("a failed job: exit %d, proved %v, %q", code, Has(c.common, tree), msg)
 	}
-	if got := c.calls(t); len(got) != 1 {
-		t.Fatalf("the jobs after a failed one still ran: %q", got)
+	if got := c.calls(t); len(got) != 2 {
+		t.Fatalf("the jobs run were %q; want both, each read", got)
+	}
+}
+
+// TestOneFailedJobAmongPassingOnesFilesNoProof. ⛔ The jobs run side by side,
+// and the proof waits for the last of them and needs every one to pass.
+func TestOneFailedJobAmongPassingOnesFilesNoProof(t *testing.T) {
+	c := newProofCase(t)
+	t.Setenv(fakeFailIf, GoImage)
+	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
+	code, msg := c.run(t, Options{})
+	if code != 1 || Has(c.common, tree) {
+		t.Fatalf("the go job failed beside a passing shellcheck job: exit %d, proved %v, %q", code, Has(c.common, tree), msg)
+	}
+	if !strings.Contains(msg, "the shellcheck job passed") || !strings.Contains(msg, "the go job exited 3") || len(c.calls(t)) != 2 {
+		t.Fatalf("each job's end is not read: %q", msg)
+	}
+}
+
+// TestTheFirstJobThatDidNotPassDecidesTheExit. ⚠ Side by side, more than one
+// job can fail. The first in Jobs' order decides, which is the job a run one
+// after another stopped at, so 1 and 2 keep their meaning.
+func TestTheFirstJobThatDidNotPassDecidesTheExit(t *testing.T) {
+	ok := jobEnd{ran: true}
+	failed, cannot := jobEnd{ran: true, code: 3}, jobEnd{ran: true, code: 2}
+	unstarted := jobEnd{ran: true, code: -1, err: os.ErrNotExist}
+	for _, tc := range []struct {
+		ends []jobEnd
+		want int
+	}{
+		{[]jobEnd{ok, ok, ok}, 0},
+		{[]jobEnd{ok, failed, cannot}, 1},
+		{[]jobEnd{ok, cannot, failed}, 2},
+		{[]jobEnd{unstarted, failed}, 2},
+		{[]jobEnd{failed, {}}, 1},
+		{[]jobEnd{ok, {}}, 1},
+	} {
+		if got := exitOf(tc.ends); got != tc.want {
+			t.Errorf("exitOf(%+v) = %d, want %d", tc.ends, got, tc.want)
+		}
+	}
+	c := newProofCase(t)
+	t.Setenv(fakeCannotIf, ShellCheckImage)
+	t.Setenv(fakeFailIf, GoImage)
+	if code, msg := c.run(t, Options{}); code != 2 {
+		t.Fatalf("shellcheck could not run and go failed: exit %d, %q; want 2, shellcheck's", code, msg)
+	}
+}
+
+// TestTheJobsRunSideBySide holds each fake job until all three have started,
+// so a run that starts one after another never passes. ⭐ Each line a job
+// prints carries its name, and a last line with no newline is still kept.
+func TestTheJobsRunSideBySide(t *testing.T) {
+	c := newProofCase(t)
+	c.write(t, filepath.ToSlash(TableRel), `{"schema":"repo-mutations/1","mutations":[{"label":"a new row","find":"y"},{"label":"old row","find":"x"}]}`)
+	gitIn(t, c.work, "commit", "-q", "-a", "-m", "two")
+	t.Setenv(fakeTogether, "3")
+	code, msg := c.run(t, Options{RowsSince: "base"})
+	if code != 0 || len(c.calls(t)) != 3 {
+		t.Fatalf("three jobs held until all had started: exit %d, %d run, %q", code, len(c.calls(t)), msg)
+	}
+	for name, image := range map[string]string{"shellcheck": ShellCheckImage, "go        ": GoImage} {
+		for _, want := range []string{name + " | fake ran in " + image + "\n", name + " | no newline after " + image + "\n"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("the output lacks %q: %s", want, msg)
+			}
+		}
+	}
+	if !strings.Contains(msg, "mutations  | fake ran in "+GoImage+"\n") {
+		t.Errorf("the rows job's lines do not carry its name: %s", msg)
+	}
+}
+
+// TestEachJobsLinesCarryItsNameAndStayWhole. ⛔ Two jobs write in pieces of
+// any size at once, and a piece written as it came would split a line.
+func TestEachJobsLinesCarryItsNameAndStayWhole(t *testing.T) {
+	var mu sync.Mutex
+	var out bytes.Buffer
+	a := &lineWriter{mu: &mu, w: &out, prefix: "a | "}
+	b := &lineWriter{mu: &mu, w: &out, prefix: "b | "}
+	a.Write([]byte("par"))
+	b.Write([]byte("whole\n"))
+	a.Write([]byte("tial\nlast with no newline"))
+	b.Close()
+	a.Close()
+	if want := "b | whole\na | partial\na | last with no newline\n"; out.String() != want {
+		t.Fatalf("the lines were %q; want %q", out.String(), want)
+	}
+	out.Reset()
+	a.Write(bytes.Repeat([]byte("x"), maxLine+5))
+	if got := out.String(); got != "a | "+strings.Repeat("x", maxLine+5)+"\n" {
+		t.Fatalf("a line that never ends was held back: %d bytes written", len(got))
+	}
+}
+
+// TestASerialRunStopsAtTheFirstFailure. ⚠ linux-proof.serial is for a machine
+// that cannot hold the jobs at once. It runs them one after another, as the
+// hook did before, and names the job it never reached.
+func TestASerialRunStopsAtTheFirstFailure(t *testing.T) {
+	c := newProofCase(t)
+	gitIn(t, c.work, "config", SerialKey, "true")
+	t.Setenv(fakeModeEnv, "fail")
+	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
+	code, msg := c.run(t, Options{})
+	if code != 1 || Has(c.common, tree) || len(c.calls(t)) != 1 {
+		t.Fatalf("a serial run whose first job failed: exit %d, %d run, %q; want 1 and one run", code, len(c.calls(t)), msg)
+	}
+	if !strings.Contains(msg, "the go job was not run, because a job before it did not pass") || !strings.Contains(msg, "one after another") {
+		t.Fatalf("the job a serial run never reached is not named: %q", msg)
+	}
+}
+
+// TestSettingsAreReadAndABadOneIsRefused. ⛔ A memory cap spelt wrong is not
+// taken as unset, which would run every row at once on the machine it was
+// set to protect.
+func TestSettingsAreReadAndABadOneIsRefused(t *testing.T) {
+	from := func(kv map[string]string) func(string) (string, bool) {
+		return func(k string) (string, bool) { v, ok := kv[k]; return v, ok }
+	}
+	if s, err := ReadSettings(from(nil)); err != nil || s != (Settings{}) {
+		t.Fatalf("unset settings = %+v, %v; want the zero value", s, err)
+	}
+	if s, err := ReadSettings(from(map[string]string{MutateJobsKey: "2", SerialKey: "Yes"})); err != nil || s.MutateJobs != 2 || !s.Serial {
+		t.Fatalf("mutate-jobs 2 and serial yes = %+v, %v", s, err)
+	}
+	for _, v := range []string{"on", "true", "1"} {
+		if s, err := ReadSettings(from(map[string]string{SerialKey: v})); err != nil || !s.Serial {
+			t.Errorf("serial %q = %+v, %v; want true", v, s, err)
+		}
+	}
+	for _, bad := range []map[string]string{{MutateJobsKey: "two"}, {MutateJobsKey: "-1"}, {SerialKey: "maybe"}} {
+		if _, err := ReadSettings(from(bad)); err == nil {
+			t.Errorf("%v was taken as a setting", bad)
+		}
+	}
+	c := newProofCase(t)
+	gitIn(t, c.work, "config", MutateJobsKey, "two")
+	if code, msg := c.run(t, Options{}); code != 2 || len(c.calls(t)) != 0 || !strings.Contains(msg, MutateJobsKey) {
+		t.Fatalf("a mutate-jobs that does not read: exit %d, %d run, %q; want 2 and nothing run", code, len(c.calls(t)), msg)
+	}
+}
+
+// TestTheRowsRunInOneProcessFromExactLabels. ⭐ One `repo mutate` builds the
+// tool once and runs the rows side by side, named exactly by a file, so a
+// label that is part of another selects one row.
+func TestTheRowsRunInOneProcessFromExactLabels(t *testing.T) {
+	c := newProofCase(t)
+	c.write(t, filepath.ToSlash(TableRel), `{"schema":"repo-mutations/1","mutations":[{"label":"a new row","find":"y"},{"label":"it's new","find":"z"},{"label":"old row","find":"x"}]}`)
+	gitIn(t, c.work, "commit", "-q", "-a", "-m", "two")
+	code, msg := c.run(t, Options{RowsSince: "base"})
+	rows := callWith(c.calls(t), "mutate ")
+	if code != 0 || !strings.Contains(rows, "sh scripts/common/repo.sh mutate --jobs 0 --labels-file '"+ContainerLabels+"'") {
+		t.Fatalf("exit %d; the rows job was %q; want one process at mutate's default --jobs", code, rows)
+	}
+	if !strings.HasSuffix(rows, ",labels=a new row|it's new|") {
+		t.Fatalf("the rows job's labels file is not the added labels exactly: %q", rows)
+	}
+	gitIn(t, c.work, "config", MutateJobsKey, "2")
+	if err := os.Remove(filepath.Join(c.common, ProofDirName, gitIn(t, c.work, "rev-parse", "HEAD^{tree}")+".json")); err != nil {
+		t.Fatal(err)
+	}
+	before := len(c.calls(t))
+	code, msg = c.run(t, Options{RowsSince: "base"})
+	if rows := callWith(c.calls(t)[before:], "mutate "); code != 0 || !strings.Contains(rows, "mutate --jobs 2 --labels-file") {
+		t.Fatalf("linux-proof.mutate-jobs 2: exit %d, rows job %q, %q; want mutate --jobs 2", code, rows, msg)
+	}
+}
+
+// TestALabelWithALineBreakIsRefused before anything runs, because the labels
+// file holds one label per line.
+func TestALabelWithALineBreakIsRefused(t *testing.T) {
+	c := newProofCase(t)
+	c.write(t, filepath.ToSlash(TableRel), `{"schema":"repo-mutations/1","mutations":[{"label":"two\nlines","find":"y"},{"label":"old row","find":"x"}]}`)
+	gitIn(t, c.work, "commit", "-q", "-a", "-m", "two")
+	if code, msg := c.run(t, Options{RowsSince: "base"}); code != 2 || len(c.calls(t)) != 0 || !strings.Contains(msg, "line break") {
+		t.Fatalf("a label holding a line break: exit %d, %d run, %q; want 2 and nothing run", code, len(c.calls(t)), msg)
+	}
+}
+
+// TestNamedGoCachesWhenTheToolHasThem. ⭐ A tool whose run takes --cache keeps
+// Go's build and module caches between runs, for the Go jobs alone, and no
+// test result is taken from them. ⚠ A tool without it is said once, however
+// many trees a push proves.
+func TestNamedGoCachesWhenTheToolHasThem(t *testing.T) {
+	c := newProofCase(t)
+	t.Setenv(fakeCache, "1")
+	if code, msg := c.run(t, Options{}); code != 0 || strings.Contains(msg, "has no run --cache") {
+		t.Fatalf("a tool with --cache: exit %d, %q", code, msg)
+	}
+	goJob, sc := callWith(c.calls(t), GoImage), callWith(c.calls(t), ShellCheckImage)
+	for _, want := range []string{"--cache\x1flinux-proof-go-build:/var/cache/linux-proof/go-build", "--env\x1fGOCACHE=/var/cache/linux-proof/go-build", "--cache\x1flinux-proof-go-mod:/var/cache/linux-proof/go-mod", "--env\x1fGOMODCACHE=/var/cache/linux-proof/go-mod", "--env\x1fGOFLAGS=-count=1"} {
+		if !strings.Contains(goJob, want) {
+			t.Errorf("the go job lacks %q: %q", want, goJob)
+		}
+	}
+	if strings.Contains(sc, "--cache") {
+		t.Errorf("the shellcheck job, which builds no Go, mounts a cache: %q", sc)
+	}
+
+	t.Setenv(fakeCache, "")
+	c.write(t, "second", "x\n")
+	gitIn(t, c.work, "add", "second")
+	gitIn(t, c.work, "commit", "-q", "-m", "another tree")
+	before := len(c.calls(t))
+	var out bytes.Buffer
+	in := "refs/heads/a " + gitIn(t, c.work, "rev-parse", "HEAD") + " refs/heads/a " + zero + "\nrefs/heads/b " + gitIn(t, c.work, "rev-parse", "base") + " refs/heads/b " + zero + "\n"
+	if err := os.Remove(filepath.Join(c.common, ProofDirName, gitIn(t, c.work, "rev-parse", "base^{tree}")+".json")); err != nil {
+		t.Fatal(err)
+	}
+	if code := PrePush([]string{"elsewhere"}, strings.NewReader(in), &out, &out, c.tool); code != 0 {
+		t.Fatalf("a push of two trees: exit %d, %q", code, out.String())
+	}
+	if got := c.calls(t)[before:]; len(got) != 4 || strings.Contains(strings.Join(got, "\n"), "--cache") {
+		t.Fatalf("a tool without --cache was asked for one, or the trees were not both proved: %q", got)
+	}
+	if n := strings.Count(out.String(), "has no run --cache"); n != 1 {
+		t.Fatalf("a tool without --cache was said %d times over two trees; want once: %q", n, out.String())
+	}
+	if !HasCacheFlag("  -c string\n  -cache value\n") || HasCacheFlag("  -cache-dir string\n  -gc\n    \tgc --caches --apply removes it\n") {
+		t.Fatal("HasCacheFlag does not answer the -cache flag alone")
 	}
 }
 
@@ -266,7 +578,7 @@ func TestANativeJobLeavesThePushedRepositoryAlone(t *testing.T) {
 	c := newProofCase(t)
 	jobs, needs := jobsFor, nativeNeeds
 	t.Cleanup(func() { jobsFor, nativeNeeds = jobs, needs })
-	jobsFor = func([]string) []Job {
+	jobsFor = func(Plan) []Job {
 		return []Job{
 			{Name: "t", Body: "echo checked"},
 		}
@@ -308,7 +620,7 @@ func TestRowsSinceRunsTheRowsAddedSinceTheRef(t *testing.T) {
 		t.Fatalf("exit %d, %q", code, msg)
 	}
 	got := c.calls(t)
-	if len(got) != 3 || !strings.Contains(got[2], "mutate --only 'a new row'") || strings.Contains(got[2], "old row") {
+	if rows := callWith(got, "mutate "); len(got) != 3 || !strings.HasSuffix(rows, ",labels=a new row|") {
 		t.Fatalf("the jobs run were %q; want a third running the new row alone", got)
 	}
 	if p, _ := Load(c.common, gitIn(t, c.work, "rev-parse", "HEAD^{tree}")); strings.Join(p.Rows, ",") != "a new row" {
@@ -418,7 +730,7 @@ func TestThePushRunsTheJobsForAnUnprovedTree(t *testing.T) {
 		t.Fatalf("a branch adding a row: exit %d, %q", code, msg)
 	}
 	got := c.calls(t)[before:]
-	if len(got) != 3 || !strings.Contains(got[2], "mutate --only 'a new row'") {
+	if len(got) != 3 || !strings.HasSuffix(callWith(got, "mutate "), ",labels=a new row|") {
 		t.Fatalf("a proof without the added row was taken as covering it: %q", got)
 	}
 

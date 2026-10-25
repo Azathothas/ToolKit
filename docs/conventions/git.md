@@ -203,6 +203,20 @@ rotated first and the rewrite does not un-publish it. See
   ⚠ The hook needs Go on PATH to build itself, and `wsl-toolkit` with a working
   default base. Without either it exits 2, and git refuses the push.
 
+  ⭐ The three jobs run side by side, and the rows run in one `repo mutate`,
+  half the container's processors at a time. A `wsl-toolkit` whose `run` takes
+  `--cache` keeps Go's build and module caches between pushes. One without it
+  is named, and each push then builds from nothing. On a machine short of
+  memory, two settings of the checkout cut the load:
+
+  ```powershell
+  git config linux-proof.serial true
+  git config linux-proof.mutate-jobs 2
+  ```
+
+  The first runs the jobs one after another and stops at the first failure.
+  The second caps how many rows run at once.
+
   ⚠ The hook does not replace CI. The doctor probe, the whole gate and the rows
   already in the table run in CI alone.
 - ⚠ **A documentation-only push that skips CI must actually be

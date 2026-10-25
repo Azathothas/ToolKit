@@ -10,6 +10,11 @@
 # runs them in containers through wsl-toolkit, or natively on a Linux host, and
 # the push waits minutes for them. A proof keyed by the tree is filed under
 # git's common directory, so the next push of that tree is immediate.
+# ⭐ The three jobs run side by side, and the rows run in one `repo mutate`.
+# ⚠ On a machine short of memory, two settings of this checkout cut the load:
+#
+#   git config linux-proof.serial true       the jobs one after another
+#   git config linux-proof.mutate-jobs 2     at most two rows at once
 # ⚠ It is not all of CI: the gate, the doctor probe and every existing row run
 # in CI alone. To make the proof ahead of the push:
 #

@@ -326,15 +326,23 @@ func ShellQuote(s string) string {
 type Job struct {
 	Name  string
 	Image string
-	// Setup installs what the image lacks. It runs in a container alone: a
-	// Linux host that proves natively already has what it needs, or is refused.
+	// Setup checks what the image pins and installs what it lacks. It runs in
+	// a container alone: a Linux host that proves natively already has what it
+	// needs, or is refused.
 	Setup string
 	// Body is the check itself, run in the unpacked tree.
 	Body string
+	// Go marks a job that builds Go, so it mounts the named Go caches when
+	// the tool can.
+	Go bool
 }
 
 // TarName is the tree's archive in the job's workspace.
 const TarName = "tree.tar"
+
+// LabelsName is the file beside the archive that names the rows to prove,
+// one exact label per line.
+const LabelsName = "labels"
 
 // Script is the sh script one job runs: unpack the tree from tar, make it a
 // git repository, prove it IS the tree, then run the check.
@@ -361,50 +369,115 @@ func Script(j Job, tarPath, src, tree string, container bool) string {
 	return b.String()
 }
 
-// Jobs is what one proof runs, in order.
+// ShellCheckImage is ShellCheck 0.9.0 on Alpine, pinned by its tag.
+//
+// ⛔ THE VERSION IS CI's. The `checks` job installs ShellCheck from
+// ubuntu-latest's apt, which is 0.9.0, and another version finds other things.
+// The container checks the version it got and answers 2 for any other,
+// because that is not the check CI runs. ⚠ A Linux host proving natively runs
+// its own ShellCheck, as before, and the job prints which.
+//
+// ⭐ IT IS PREINSTALLED, so a run no longer fetches apt's indexes and a 30 MB
+// package. Alpine has no git, which the job's tree check needs, and `apk add
+// git` takes seconds.
+const (
+	ShellCheckImage   = "docker.io/koalaman/shellcheck-alpine:v0.9.0"
+	ShellCheckVersion = "0.9.0"
+)
+
+// GoImage is the image the go job and the rows run in, CI's Go.
+const GoImage = "docker.io/library/golang:1.25"
+
+// shellcheckVersionCheck answers 2 for a ShellCheck that is not
+// ShellCheckVersion.
+var shellcheckVersionCheck = `{ shellcheck --version | grep -qx 'version: ` + ShellCheckVersion + `' || { echo 'linux-proof: this ShellCheck is not ` + ShellCheckVersion + `, the version CI runs' >&2; exit 2; }; }`
+
+// Plan is what one proof runs.
+type Plan struct {
+	// Rows are the mutation rows the push adds. None leaves the rows job out.
+	Rows []string
+	// Labels is the file the rows job reads Rows from, as the job sees it.
+	Labels string
+	// MutateJobs is `repo mutate --jobs` in the rows job. ⭐ Zero is mutate's
+	// own default: half the processors the job sees, and at least one.
+	MutateJobs int
+}
+
+// Jobs is what one proof runs, in the order their results are read.
 //
 // ⭐ THE FIRST TWO ARE CI's LINUX JOBS, the ones
 // tools/windows/wsl-toolkit/README.md "Build and local proof" used to list as
 // commands to paste: the ShellCheck CI's `checks` job installs, and the `go`
-// job over every module. ShellCheck goes first because it takes a minute and
-// the go job takes many. The third, when rows are named, is the `mutations`
+// job over every module. The third, when rows are named, is the `mutations`
 // job restricted to the rows this push adds. ⛔ This is now the one home of
 // those command lines; the README describes them and points here.
+//
+// ⭐ THE ROWS ARE ONE `repo mutate` PROCESS, named exactly by --labels-file.
+// The hook used to run one process per row. Each rebuilt the tool and ran its
+// row's baseline again, and `--only` matches part of a label, so one label
+// could select two rows. Pushes waited 370 s, 886 s and 2,651 s.
 //
 // ⚠ IT IS NOT ALL OF CI. The `checks` job also runs the doctor probe and the
 // gate, and the sharded `mutations` job runs every row. Those run in CI alone,
 // and the README and docs/conventions/git.md say so.
-func Jobs(rows []string) []Job {
+func Jobs(p Plan) []Job {
 	jobs := []Job{
-		{Name: "shellcheck", Image: "docker.io/library/ubuntu:24.04", Setup: `apt-get update -qq && apt-get install -y -qq shellcheck git >/dev/null`, Body: `shellcheck --version && git ls-files -z "*.sh" | xargs -0 shellcheck -s sh`},
-		{Name: "go", Image: "docker.io/library/golang:1.25", Body: `sh scripts/common/check-go.sh`},
+		{Name: "shellcheck", Image: ShellCheckImage, Setup: shellcheckVersionCheck + ` && apk add --no-cache git >/dev/null`, Body: `shellcheck --version && git ls-files -z "*.sh" | xargs -0 shellcheck -s sh`},
+		{Name: "go", Image: GoImage, Body: `sh scripts/common/check-go.sh`, Go: true},
 	}
-	if len(rows) > 0 {
-		var parts []string
-		for _, label := range rows {
-			parts = append(parts, "sh scripts/common/repo.sh mutate --only "+ShellQuote(label))
-		}
-		jobs = append(jobs, Job{Name: "mutations", Image: "docker.io/library/golang:1.25", Body: strings.Join(parts, " && ")})
+	if len(p.Rows) > 0 {
+		body := fmt.Sprintf("sh scripts/common/repo.sh mutate --jobs %d --labels-file %s", p.MutateJobs, ShellQuote(p.Labels))
+		jobs = append(jobs, Job{Name: "mutations", Image: GoImage, Body: body, Go: true})
 	}
 	return jobs
 }
 
 // ContainerTar and ContainerSrc are where a container job finds the archive
-// and unpacks it. The workspace is copied to /work.
+// and unpacks it, and ContainerLabels the rows it reads. The workspace is
+// copied to /work.
 const (
-	ContainerTar = "/work/" + TarName
-	ContainerSrc = "/src"
+	ContainerTar    = "/work/" + TarName
+	ContainerLabels = "/work/" + LabelsName
+	ContainerSrc    = "/src"
 )
 
+// GoCache is one named cache a Go job mounts, and the variable that points Go
+// at it.
+type GoCache struct {
+	Name, Path, Env string
+}
+
+// GoCaches are the build cache and the module cache, kept between runs.
+//
+// ⭐ A CONTAINER STARTS WITH NEITHER, so every run compiled every package and
+// fetched every module again. `run --cache NAME:/path` keeps a podman volume
+// in the base between jobs. Go's caches are safe to share between processes,
+// so the go job and the rows job mount the same two at once.
+//
+// ⛔ AND NO TEST RESULT IS TAKEN FROM THEM. A kept build cache also keeps test
+// results, and a cached pass is not a run on this tree. GOFLAGS=-count=1 makes
+// every `go test` run.
+var GoCaches = []GoCache{
+	{Name: "linux-proof-go-build", Path: "/var/cache/linux-proof/go-build", Env: "GOCACHE"},
+	{Name: "linux-proof-go-mod", Path: "/var/cache/linux-proof/go-mod", Env: "GOMODCACHE"},
+}
+
 // RunArgs is the wsl-toolkit command line for j over the workspace ws, which
-// holds the tree's archive alone.
+// holds the tree's archive and the rows' labels. caches mounts GoCaches for a
+// Go job, and only a tool whose run takes --cache can be asked to.
 //
 // ⚠ 45 MINUTES, because the go job runs every module's suite in one
 // container, and a job cut short proves nothing.
-func RunArgs(j Job, ws, tree string) []string {
-	return []string{
+func RunArgs(j Job, ws, tree string, caches bool) []string {
+	args := []string{
 		"run", "--image", j.Image, "--container-lifecycle", "ephemeral", "--timeout", "45m",
 		"--workspace", ws,
-		"-c", Script(j, ContainerTar, ContainerSrc, tree, true),
 	}
+	if caches && j.Go {
+		for _, c := range GoCaches {
+			args = append(args, "--cache", c.Name+":"+c.Path, "--env", c.Env+"="+c.Path)
+		}
+		args = append(args, "--env", "GOFLAGS=-count=1")
+	}
+	return append(args, "-c", Script(j, ContainerTar, ContainerSrc, tree, true))
 }
