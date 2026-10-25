@@ -3,10 +3,13 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Azathothas/ToolKit/tools/repo/internal/mutate"
 )
 
 func writeIn(t *testing.T, dir, name, body string) string {
@@ -83,10 +86,11 @@ func TestNightlyStageAndPublishRefuseAnEmptyName(t *testing.T) {
 // the whole table, and keeping its CR would name rows that do not exist.
 func TestMutateReadsExactLabelsFromAFile(t *testing.T) {
 	list := writeIn(t, t.TempDir(), "labels", "first row\r\nsecond row\n")
-	_, sel, err := mutateFlags([]string{"--label", "named row", "--labels-file", list, "--jobs", "3"})
+	a, err := mutateFlags([]string{"--label", "named row", "--labels-file", list, "--jobs", "3"})
 	if err != nil {
 		t.Fatal(err)
 	}
+	sel := a.sel
 	if got := strings.Join(sel.Labels, "|"); got != "named row|first row|second row" {
 		t.Fatalf("the selection names %q", got)
 	}
@@ -94,7 +98,7 @@ func TestMutateReadsExactLabelsFromAFile(t *testing.T) {
 		t.Fatalf("--jobs 3 read as %d", sel.Jobs)
 	}
 	empty := writeIn(t, t.TempDir(), "labels", "\n")
-	if _, _, err := mutateFlags([]string{"--labels-file", empty}); err == nil {
+	if _, err := mutateFlags([]string{"--labels-file", empty}); err == nil {
 		t.Fatal("a labels file with no label was accepted, and it would select every row")
 	}
 }
@@ -106,7 +110,48 @@ func TestMutateReadsExactLabelsFromAFile(t *testing.T) {
 // directory that is not a repository, and a staged copy is not one. An exit of
 // 2 there would not say which refusal answered.
 func TestMutateRefusesJobsBelowZero(t *testing.T) {
-	if _, _, err := mutateFlags([]string{"--jobs", "-1"}); err == nil || !strings.Contains(err.Error(), "--jobs -1") {
+	if _, err := mutateFlags([]string{"--jobs", "-1"}); err == nil || !strings.Contains(err.Error(), "--jobs -1") {
 		t.Fatalf("--jobs -1 answered %v", err)
+	}
+}
+
+// TestMutateWritesItsVerdictsBeforeTheTally. ⛔ CI's keep step reads every
+// shard's file. A shard that passed and wrote none leaves every module it
+// touched unkept, and every later push runs them again.
+func TestMutateWritesItsVerdictsBeforeTheTally(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "verdicts.json")
+	a, err := mutateFlags([]string{"--verdicts", file, "--shard", "1/2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := mutate.Mutation{Label: "a guard", Module: "tools/x"}
+	tb := &mutate.Table{Schema: mutate.TableSchema, Mutations: []mutate.Mutation{row}}
+	proved := mutate.Verdict{Label: "a guard", State: "ok", Cases: 1}
+	var out, errOut bytes.Buffer
+	if code := finishMutate(a, tb, []mutate.Verdict{proved}, &out, &errOut); code != 0 {
+		t.Fatalf("an ok row: exit %d\n%s%s", code, out.String(), errOut.String())
+	}
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatalf("no verdict file was written: %v", err)
+	}
+	if !strings.Contains(string(raw), `"module": "tools/x"`) || !strings.Contains(string(raw), `"shard": "1/2"`) {
+		t.Fatalf("the verdict file holds %s", raw)
+	}
+}
+
+// TestAKeepThatLeftAModuleShortFails. ⛔ Every shard passed, so a module that
+// ran and was not kept is a missing file, not a pass.
+func TestAKeepThatLeftAModuleShortFails(t *testing.T) {
+	keys := []mutate.ModuleKey{{Module: "tools/a", Key: "ka"}, {Module: "tools/b", Key: "kb"}}
+	lines, code := keepOutputs(keys, keys[:1], true, 3)
+	if code != 1 {
+		t.Fatalf("a module left short: exit %d, want 1", code)
+	}
+	if got := strings.Join(lines, "|"); got != "save1=ka|save2=|save3=" {
+		t.Fatalf("the slots to save read %s", got)
+	}
+	if _, code := keepOutputs(keys, keys, false, 2); code != 0 {
+		t.Fatalf("every module kept: exit %d", code)
 	}
 }

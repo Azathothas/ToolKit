@@ -2,6 +2,267 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "mutate-keys: a module's key names its committed tree",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tfmt.Fprintf(h, \"tree %s\\n\", strings.TrimSpace(tree))\n",
+      "replace": "\t\t_ = tree\n",
+      "run": "TestAProofKeyMovesWithItsOwnModuleAlone",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a module's key hashes its own rows and no other module's",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\t\tif r.Module != m {\n\t\t\t\tcontinue\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestAProofKeyMovesWithItsOwnModuleAlone",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: the harness is named without the table",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if !ok || p == harnessTable {",
+      "replace": "if !ok || p == \"\" {",
+      "run": "TestAProofKeyMovesWithItsOwnModuleAlone",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a module's key names its rows",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tfmt.Fprintf(h, \"rows %x\\n\", rh.Sum(nil))\n",
+      "replace": "",
+      "run": "TestAProofKeyMovesWithItsOwnModuleAlone",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a key names the harness",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\t_, _ = io.WriteString(h, entry+\"\\n\")\n",
+      "replace": "",
+      "run": "TestAProofKeyMovesWithTheHarnessAndTheGoVersion",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a key names the Go version",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tfmt.Fprintf(h, \"go %s\\n\", goVersion)\n",
+      "replace": "",
+      "run": "TestAProofKeyMovesWithTheHarnessAndTheGoVersion",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a module with uncommitted changes is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if strings.TrimSpace(dirty) != \"\" {",
+      "replace": "if false {",
+      "run": "TestAProofKeyRefusesUncommittedChanges",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: uncommitted changes to the harness are refused too",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "range append([]string{harnessModule}, Modules(t)...)",
+      "replace": "range Modules(t)",
+      "run": "TestAProofKeyRefusesUncommittedChanges",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: more modules than slots is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if len(keys) > slots {",
+      "replace": "if false {",
+      "run": "TestMoreModulesThanSlotsIsRefused",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a kept proof answers its module, which does not run",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\t\twriteKept(w, pr)\n\t\t\tcontinue\n",
+      "replace": "\t\t\twriteKept(w, pr)\n",
+      "run": "TestAKeptProofAnswersItsModule",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a kept proof's unproved rows are named again",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\tfor _, v := range skipped {\n\t\tfmt.Fprintf(w, \"    SKIPPED: %s: %s, so it is unproved rather than proved or theatre\\n\", v.Label, v.Reason)\n\t}\n",
+      "replace": "\t_ = skipped\n",
+      "run": "TestAKeptProofAnswersItsModule",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a full run reads no kept proof",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tif full {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAFullRunReadsNoKeptProof",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a kept proof a row short answers nothing",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\tif len(seen) != len(want) {",
+      "replace": "\tif false {",
+      "run": "TestAProofThatIsNotWholeAnswersNothing",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a kept proof holding a failed row answers nothing",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tcase v.State != \"ok\" && v.State != \"SKIPPED\":\n\t\t\treturn fmt.Sprintf(\"%q is %s\", v.Label, v.State)\n",
+      "replace": "",
+      "run": "TestAProofThatIsNotWholeAnswersNothing",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a proof kept under another key answers nothing",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "pr.Schema != ProofSchema || pr.Module != k.Module || pr.Key != k.Key",
+      "replace": "pr.Schema != ProofSchema || pr.Module != k.Module",
+      "run": "TestAProofThatIsNotWholeAnswersNothing",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: no more shards than the rows that run have pattern groups",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "p.Shards = min(maxShards, len(groupRows(t, rows)))",
+      "replace": "p.Shards = maxShards",
+      "run": "TestThePlanCutsWhatRunsIntoNoMoreShardsThanGroups",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a plan for no shards is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\tif maxShards < 1 {",
+      "replace": "\tif false {",
+      "run": "TestThePlanCutsWhatRunsIntoNoMoreShardsThanGroups",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a plan with nothing to run says so to the workflow",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\"run=\" + fmt.Sprint(len(p.Run) > 0),",
+      "replace": "\"run=true\",",
+      "run": "TestThePlanCutsWhatRunsIntoNoMoreShardsThanGroups",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a module a verdict short is not kept",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tif why := whole(t, k, got); why != \"\" {",
+      "replace": "\t\tif why := whole(t, k, got); false {",
+      "run": "TestKeepKeepsOnlyAWholeModule",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a module a verdict short is said to be short",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\t\tshort = true\n",
+      "replace": "",
+      "run": "TestKeepKeepsOnlyAWholeModule",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a row two shards claim is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\t\tif other, ok := seen[v.Label]; ok {",
+      "replace": "\t\t\tif other, ok := seen[v.Label]; false && ok {",
+      "run": "TestKeepRefusesARowTwoShardsClaim",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a row filed under another module is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if !ok || t.Mutations[i].Module != v.Module {",
+      "replace": "if !ok || i < 0 {",
+      "run": "TestKeepRefusesARowTwoShardsClaim",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a verdict file of another shape is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tif f.Schema != VerdictsSchema {",
+      "replace": "\t\tif false {",
+      "run": "TestKeepRefusesARowTwoShardsClaim",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a directory with no verdict file is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\tif len(out) == 0 {\n\t\treturn nil, fmt.Errorf(\"%s holds no verdict file",
+      "replace": "\tif false {\n\t\treturn nil, fmt.Errorf(\"%s holds no verdict file",
+      "run": "TestKeepRefusesARowTwoShardsClaim",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: no directory named is refused by name",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\tif dir == \"\" {\n\t\treturn nil, fmt.Errorf(\"no directory of verdict files was named",
+      "replace": "\tif false {\n\t\treturn nil, fmt.Errorf(\"no directory of verdict files was named",
+      "run": "TestKeepRefusesARowTwoShardsClaim",
+      "args": []
+    },
+    {
+      "label": "mutate: a verdict file names each row's module",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "RowVerdict{Label: v.Label, Module: m, State: v.State",
+      "replace": "RowVerdict{Label: v.Label, Module: m[:0], State: v.State",
+      "run": "TestAVerdictFileNamesEachRowsModule",
+      "args": []
+    },
+    {
+      "label": "mutate: a verdict for a row the table lacks is not written",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tif !ok {\n\t\t\treturn fmt.Errorf(\"%q is not a row of the table\", v.Label)",
+      "replace": "\t\tif false && !ok {\n\t\t\treturn fmt.Errorf(\"%q is not a row of the table\", v.Label)",
+      "run": "TestAVerdictFileNamesEachRowsModule",
+      "args": []
+    },
+    {
+      "label": "mutate: --verdicts writes the verdict file",
+      "module": "tools/repo",
+      "file": "main.go",
+      "find": "\tif a.verdicts != \"\" {\n\t\tif err := mutate.WriteVerdicts",
+      "replace": "\tif false {\n\t\tif err := mutate.WriteVerdicts",
+      "run": "TestMutateWritesItsVerdictsBeforeTheTally",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a module that ran and was not kept fails the step",
+      "module": "tools/repo",
+      "file": "main.go",
+      "find": "\tif short {\n\t\tcode = 1\n\t}\n",
+      "replace": "",
+      "run": "TestAKeepThatLeftAModuleShortFails",
+      "args": []
+    },
+    {
       "label": "mutate: a test process's leftovers beside its source are put back",
       "module": "tools/repo",
       "file": "internal/mutate/pool.go",
