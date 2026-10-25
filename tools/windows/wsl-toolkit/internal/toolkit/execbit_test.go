@@ -604,6 +604,11 @@ func TestAVerifierRefusalIsReadPastWslsOwnLines(t *testing.T) {
 	} else if _, ok := staleRunStateRemediation(failed.Error()); !ok {
 		t.Errorf("an engine failure after wsl.exe's own line lost the words its remediation reads: %v", failed)
 	}
+	// ⛔ WSL-152 made the reason the LAST guest line, so wsl.exe's own line written
+	// after the engine's error must still be left out, or it is named instead.
+	if after := verifyError("agent", 125, "", engine+"\n"+session+"\n"); after == nil || after.Error() != "a container did not run as agent (exit 125): "+engine {
+		t.Errorf("an engine failure followed by wsl.exe's own line read %v", after)
+	}
 	if only := verifyError("agent", 1, "", session+"\n"); only == nil || only.Error() != "a container did not run as agent (exit 1): "+session {
 		t.Errorf("a failure with nothing but wsl.exe's line named nothing: %v", only)
 	}
