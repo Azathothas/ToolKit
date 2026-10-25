@@ -124,9 +124,13 @@ func TestAClientThatDetachedAndItsStubDoNotStopTheJob(t *testing.T) {
 	dead := map[int]bool{44: true, 45: true}
 	alive := func(pid int) bool { mu.Lock(); defer mu.Unlock(); return !dead[pid] }
 	stops := &stopsRecorded{found: true, then: func(string) { owner.Release() }}
+	rewatched := make(chan []ProcessIdentity, 8)
 	w := Watchdog{Home: home, IDs: []string{testJobID}, Watch: &fakeWatch{gone: &client}, Stop: stops.stop,
-		Watched:      []ProcessIdentity{anOwner, client, stub, script},
-		Rewatch:      func(ps []ProcessIdentity) (ProcessWatch, error) { return &liveWatch{ids: ps, alive: alive}, nil },
+		Watched: []ProcessIdentity{anOwner, client, stub, script},
+		Rewatch: func(ps []ProcessIdentity) (ProcessWatch, error) {
+			rewatched <- ps
+			return &liveWatch{ids: ps, alive: alive}, nil
+		},
 		ClientSettle: time.Millisecond, Settle: 5 * time.Second, Poll: time.Millisecond}
 	done := make(chan WatchOutcome, 1)
 	go func() {
@@ -136,6 +140,21 @@ func TestAClientThatDetachedAndItsStubDoNotStopTheJob(t *testing.T) {
 		}
 		done <- out
 	}()
+	// ⛔ THE SCRIPT EXITS ONLY ONCE THE WATCH HOLDS IT, the wait that keeps the
+	// owner. A fixed wait let a loaded host's watch first look at a script
+	// already dead, drop it as ended with the client, and watch the owner alone.
+	for holds := false; !holds; {
+		select {
+		case out := <-done:
+			t.Fatalf("the job was stopped when its client detached: %+v, %v", out, stops.why)
+		case ps := <-rewatched:
+			for _, p := range ps {
+				holds = holds || p.Role == RoleOwner
+			}
+		case <-time.After(10 * time.Second):
+			t.Fatal("the watch never opened its wait on what the detached client left")
+		}
+	}
 	select {
 	case out := <-done:
 		t.Fatalf("the job was stopped when its client detached: %+v, %v", out, stops.why)

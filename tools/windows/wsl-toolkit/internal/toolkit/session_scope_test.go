@@ -194,7 +194,7 @@ func TestASessionInAScopeIsReachedWholeInARealShell(t *testing.T) {
 	run := func(bin string, script []byte) (string, string, int) {
 		cmd := exec.Command(sh)
 		cmd.Stdin = bytes.NewReader(script)
-		cmd.Env = append(os.Environ(), "HOME="+home, "PATH="+bin+":"+os.Getenv("PATH"))
+		cmd.Env = append(os.Environ(), "HOME="+home, "FAKE_SCOPE_OWNER="+home, "PATH="+bin+":"+os.Getenv("PATH"))
 		var out, errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &errb
 		err := cmd.Run()
@@ -354,6 +354,11 @@ func TestASessionInAScopeIsReachedWholeInARealShell(t *testing.T) {
 
 // fakeSystemdRun stands in for `systemd-run --user --scope`: it marks what it
 // starts with the unit's name, and a probe with no unit succeeds.
+//
+// ⛔ THE MARK CARRIES ITS TEST'S OWNER, FAKE_SCOPE_OWNER. The fake systemctl
+// reads every process on the host, and two `go test` runs of this package at
+// once use the same unit names. CI's probes job runs two, and one run's
+// deadline killed the other's child before its own deadline came.
 const fakeSystemdRun = `unit=probe
 while [ $# -gt 0 ]; do
   case $1 in
@@ -362,12 +367,12 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-FAKE_UNIT=$unit; export FAKE_UNIT
+FAKE_UNIT=${FAKE_SCOPE_OWNER:-}/$unit; export FAKE_UNIT
 exec "$@"
 `
 
 // fakeSystemctl stands in for `systemctl --user kill` and `is-active`: it finds
-// the processes the fake systemd-run marked.
+// the processes the fake systemd-run marked for its own test's owner.
 const fakeSystemctl = `#!/bin/sh
 op=; sig=TERM; unit=
 for a in "$@"; do
@@ -382,7 +387,7 @@ pids=
 for e in /proc/[0-9]*/environ; do
   p=${e#/proc/}; p=${p%/environ}
   [ "$p" = "$$" ] && continue
-  if tr '\0' '\n' < "$e" 2>/dev/null | grep -qx "FAKE_UNIT=$unit"; then pids="$pids $p"; fi
+  if tr '\0' '\n' < "$e" 2>/dev/null | grep -qxF "FAKE_UNIT=${FAKE_SCOPE_OWNER:-}/$unit"; then pids="$pids $p"; fi
 done
 case $op in
   kill) if [ -n "$pids" ]; then kill -s "$sig" $pids 2>/dev/null; fi; exit 0 ;;
