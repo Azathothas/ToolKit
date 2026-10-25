@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 249  open 50  blocked 5  done 194
+total 249  open 49  blocked 5  done 195
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 5 | 0 | 90 | 95 |
-| P2 | 32 | 2 | 82 | 116 |
+| P2 | 31 | 2 | 83 | 116 |
 | P3 | 13 | 3 | 14 | 30 |
-| **all** | **50** | **5** | **194** | **249** |
+| **all** | **49** | **5** | **195** | **249** |
 
 ---
 
@@ -233,7 +233,7 @@ total 249  open 50  blocked 5  done 194
 | WSL-138 | P2 | M | blocked | An adapter installs from npm where the provider publishes an official installer | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-139 | P3 | S | done | `base ensure` leaves older herdr nightly clients on disk | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-140 | P2 | S | open | A base build fails when one package mirror stalls, and nothing retries | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-141 | P2 | S | open | The herdr adapter installs 0.9.0 when this repository publishes 0.9.5 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-141 | P2 | S | done | The herdr adapter installs 0.9.0 when this repository publishes 0.9.5 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-142 | P3 | S | open | `base doors --via-helper`'s refusal was never run against a live helper | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-143 | P3 | S | open | The base account's login shell is `/bin/sh` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-144 | P2 | S | done | An agent pane cannot be started in the project directory | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |

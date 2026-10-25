@@ -342,6 +342,19 @@ naming `wsl-toolkit` directly must move, a break by the register. An existing ba
 its recorded name. Asked whether to export `wsl-toolkit-base` before it is unregistered,
 the operator chose "No backup". `WSL-167`.
 
+**34.** ⭐ **2026-10-25: the next release is 8.0.0, herdr's default moves to 0.9.5, and
+a project lends every jobs key.** Asked three questions with the trade-offs, the
+operator chose:
+- **8.0.0**, because `WSL-167` renames a new host's default base and refuses changes
+  from a state directory that does not own the base, which `docs/consumers.md`
+  counts as breaks.
+- **"Allow 0.9.5"**: ruling 31's exception for `WSL-141`. herdr's default moves from
+  0.9.0 to 0.9.5, this repository's own release, and a stale server says how to
+  restart.
+- **"Every jobs key"** for `WSL-131`: a working tree's `wsl-toolkit.json` lends a
+  named instance every jobs key, the older ones included, where it was built to
+  lend only the new ones. A break, recorded in the register.
+
 ## 9. Before every push
 
 ⭐ **A green local gate is not CI.** Run the Go tests with `TEMP` and `TMP` at an

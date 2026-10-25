@@ -13861,6 +13861,8 @@ Open.
 
 ⭐ **2026-10-25: built and merged from `rb/f2-run-config`, waiting on one ruling.** A project's `wsl-toolkit.json` lends its job defaults to a named instance. Its older jobs keys are named, not dropped unsaid: a ⚠ line from `config`, `project_held` in `config --json`, and a note on `run` and `matrix`. ⚠ That a named instance takes only the new keys from a lending project is a choice the operator rules; the question is in `PROGRESS.md`.
 
+⭐ **Ruled 2026-10-25, ruling 34: a project lends every jobs key.** The older keys are lent too, and the held-back note goes. Being built as `feat/wsl-131-lend-every-key`; a break for 8.0.0, recorded in the register.
+
 
 ## WSL-132. Two acceptance cases are not isolated from what they run beside
 
@@ -14283,7 +14285,7 @@ Open.
 ## WSL-141. The herdr adapter installs 0.9.0 when this repository publishes 0.9.5
 
 **Source** found while measuring the old record's baseline, 2026-10-21
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14318,7 +14320,11 @@ Exit 0, then `base ensure` on a scratch base installs 0.9.5 at its digest.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6a-adapters`, for 8.0.0.** Ruling 34 grants ruling 31's exception: herdr's default moves from 0.9.0 to 0.9.5, this repository's own release. A stale herdr server earns the advisory remediation `herdr-server-stale` with its restart command, on every route that carries the state. Built, reviewed twice, repaired once; rows red on Windows and in `golang:1.25`.
+
+⚠ On the stable channel `base attach` still prints the bare herdr, and nothing compares the client's version with the server's.
+
+What was open before the ruling:
 
 ⭐ **2026-10-25: built and merged from `rb/f6a-adapters`, waiting on one ruling.** A stale herdr server now earns the advisory remediation `herdr-server-stale` with its restart command, on every route that carries the state. ⚠ The change moves what the herdr default means, from 0.9.0 to 0.9.5 from this repository's release, and ruling 31 lets that ship only with the operator's exception. The question is in `PROGRESS.md`. On the stable channel `base attach` still prints the bare herdr, and nothing compares the client's version with the server's.
 
