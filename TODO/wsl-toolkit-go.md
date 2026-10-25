@@ -16812,7 +16812,7 @@ the cases' rows: red on Windows and in golang:1.25
 ## WSL-194. A grant case fails under load and passes alone
 
 **Source** the 7.1.0 integration builders' reports, 2026-10-24 and 2026-10-25: the F6B builder and a WSL-167 repair each met it
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -16844,4 +16844,10 @@ Exit 0, twenty of twenty, while a full `check-go` runs beside it.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25.** The case gave the whole ensure a 300 ms deadline and expected it to run out in the grant lock's wait. On a loaded host the fake guest calls before the lock spent it first, so the case failed with a timeout or a cancelled `wsl --list`. It now bounds the lock's own wait, `grantLockWait` 300 ms, and the ensure runs with no deadline; it expects the lock's refusal, `held its lock for`.
+
+```text
+under the integration builders' load, before: 3 of 3 failed alone, the same on main at 5c96989
+after: -count=10, 10 of 10 passed
+its two rows: red on Windows and in golang:1.25
+```

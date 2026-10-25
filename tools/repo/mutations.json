@@ -6396,7 +6396,7 @@
       "file": "internal/toolkit/jobctl.go",
       "find": "\t\tfor _, f := range streams {\n\t\t\tif err := f.copyNew(); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t}\n\t\tif !held {\n\t\t\treturn nil\n\t\t}\n",
       "replace": "\t\tif !held {\n\t\t\treturn nil\n\t\t}\n\t\tfor _, f := range streams {\n\t\t\tif err := f.copyNew(); err != nil {\n\t\t\t\treturn err\n\t\t\t}\n\t\t}\n",
-      "run": "TestFollowingATranscriptReadsUntilTheOwnerLetsGo",
+      "run": "TestFollowingAJobItsOwnerLetGoReadsWhatIsLeft",
       "module": "tools/windows/wsl-toolkit",
       "args": []
     },

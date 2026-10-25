@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 250  open 35  blocked 5  done 210
+total 250  open 34  blocked 5  done 211
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 5 | 0 | 90 | 95 |
-| P2 | 23 | 2 | 92 | 117 |
+| P2 | 22 | 2 | 93 | 117 |
 | P3 | 7 | 3 | 20 | 30 |
-| **all** | **35** | **5** | **210** | **250** |
+| **all** | **34** | **5** | **211** | **250** |
 
 ---
 
@@ -286,7 +286,7 @@ total 250  open 35  blocked 5  done 210
 | WSL-191 | P2 | S | open | The helper protocol still sends a forced rebuild for a preset switch | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-192 | P2 | S | open | A rebuild whose pull fails does not fall back to a local image | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-193 | P2 | S | done | An instance name that starts with `wsl-` doubles the prefix in its distribution name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-194 | P2 | S | open | A grant case fails under load and passes alone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-194 | P2 | S | done | A grant case fails under load and passes alone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

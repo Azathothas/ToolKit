@@ -267,6 +267,37 @@ func TestFollowingATranscriptReadsUntilTheOwnerLetsGo(t *testing.T) {
 	}
 }
 
+// ⛔ A FOLLOWER THAT FINDS THE OWNER GONE STILL READS WHAT IS LEFT. The case above
+// races its last write against a poll, so a follower that stopped on the release
+// could pass it. Here the owner has let go before the follower starts, so only
+// the read after the release can deliver the bytes. WSL-121.
+func TestFollowingAJobItsOwnerLetGoReadsWhatIsLeft(t *testing.T) {
+	home := t.TempDir()
+	owner, err := ClaimJob(home, testJobID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(home, "jobs", testJobID)
+	appendFile(t, filepath.Join(dir, "stdout.log"), "all of it\n")
+	appendFile(t, filepath.Join(dir, "stderr.log"), "err\n")
+	owner.Release()
+	f := follow(context.Background(), dir, 0)
+	select {
+	case err := <-f.done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the follower of a job its owner let go did not return")
+	}
+	if got := f.out.String(); got != "all of it\n" {
+		t.Errorf("stdout followed as %q; want what the owner left", got)
+	}
+	if got := f.err.String(); got != "err\n" {
+		t.Errorf("stderr followed as %q; want what the owner left", got)
+	}
+}
+
 func TestFollowingFromTheTailStartsAtTheLastLines(t *testing.T) {
 	home := t.TempDir()
 	owner, err := ClaimJob(home, testJobID)

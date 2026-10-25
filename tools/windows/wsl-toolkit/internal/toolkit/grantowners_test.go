@@ -453,11 +453,15 @@ func TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-	_, err = b.EnsureWith(ctx, false, false)
-	cancel()
+	// ⛔ THE LOCK'S OWN WAIT IS BOUNDED, NOT THE WHOLE ENSURE. A 300 ms deadline on
+	// the ensure ran out in the fake guest calls before the lock on a loaded host,
+	// and the case failed for the load. WSL-194.
+	wait, poll := grantLockWait, grantLockPoll
+	t.Cleanup(func() { grantLockWait, grantLockPoll = wait, poll })
+	grantLockWait, grantLockPoll = 300*time.Millisecond, 20*time.Millisecond
+	_, err = b.EnsureWith(context.Background(), false, false)
 	first()
-	if err == nil || !strings.Contains(err.Error(), "waiting for another grant or revoke") {
+	if err == nil || !strings.Contains(err.Error(), "another grant or revoke on instance") || !strings.Contains(err.Error(), "held its lock for") {
 		t.Fatalf("an ensure under another grant's lock answered %v", err)
 	}
 
