@@ -73,14 +73,21 @@ pwsh -NoProfile -File scripts/common/repo.ps1 linux-proof
 ```
 
 It proves the committed tree of HEAD, from `git archive`, so an uncommitted
-change is not in it. It runs the ShellCheck CI's `checks` job installs, in
-`ubuntu:24.04`, and the Go checks CI's `checks` job runs over every module, in
-`golang:1.25`. A third job runs every mutation row `tools/repo/mutations.json`
-gained since the newest commit `origin` holds, in `golang:1.25`.
-`--rows-since REF` counts them from REF instead, and `--rev REV` proves another
-commit. The jobs run through the
-`wsl-toolkit` on PATH. `--wsl-toolkit PATH` names another, such as
-`.tmp/wsl-toolkit.exe` when a job needs a flag no release carries yet.
+change is not in it. It runs ShellCheck 0.9.0, the version CI's `checks` job
+installs, in `koalaman/shellcheck-alpine:v0.9.0`, and the Go checks CI's `checks`
+job runs over every module, in `golang:1.25`. A third job runs every mutation row
+`tools/repo/mutations.json` gained since the newest commit `origin` holds, in
+`golang:1.25`. `--rows-since REF` counts them from REF instead, and `--rev REV`
+proves another commit. The jobs run through the `wsl-toolkit` on PATH.
+`--wsl-toolkit PATH` names another, such as `.tmp/wsl-toolkit.exe` when a job
+needs a flag no release carries yet.
+
+The jobs run one after another, one container at a time, and the rows run in
+one `repo mutate`, at most two at once. `git config linux-proof.parallel true`
+runs the jobs side by side, a shape not yet timed under a memory cap.
+`git config linux-proof.mutate-jobs N` sets how many rows run at once. A
+`wsl-toolkit` whose `run` takes `--cache` keeps Go's caches between runs, and
+what that saves is not measured either.
 
 ⚠ **These jobs are not all of CI.** CI alone runs the gate, the doctor probe and
 the rows the table held before. A job that could not run, such as one on a

@@ -2,6 +2,402 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "linux-proof: a row of an older tree cannot read the labels after it",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "--only \"$l\" </dev/null ||",
+      "replace": "--only \"$l\" ||",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the jobs run one after another unless linux-proof.parallel is set",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tif run.Settings.Parallel {\n",
+      "replace": "\tif true {\n",
+      "run": "TestTheJobsRunOneAfterAnotherByDefault",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the rows run at most two at once by default",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\treturn min(2, max(1, cpus/2))\n",
+      "replace": "\treturn max(1, cpus/2)\n",
+      "run": "TestTheRowsRunAtMostTwoAtOnceByDefault",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a plan that names no --jobs gets the capped default",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\tif n <= 0 {\n\t\t\tn = DefaultMutateJobs(runtime.NumCPU())\n",
+      "replace": "\t\tif false {\n\t\t\tn = DefaultMutateJobs(runtime.NumCPU())\n",
+      "run": "TestTheRowsRunAtMostTwoAtOnceByDefault|TestTheRowsRunInOneProcessFromExactLabels",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a mutate-jobs of 0 is refused",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif err != nil || n < 1 {\n",
+      "replace": "\t\tif err != nil || n < 0 {\n",
+      "run": "TestSettingsAreReadAndABadOneIsRefused",
+      "args": []
+    },
+    {
+      "label": "linux-proof: an older tree's mutate runs each row through --only",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "labelsFileProbe, exact, olderMutateSays, older)",
+      "replace": "labelsFileProbe, exact, olderMutateSays, exact); _ = older",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the rows job asks the tree's own mutate for --labels-file",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "var labelsFileProbe = `sh scripts/common/repo.sh mutate -h 2>&1 | grep -q -e '-labels-file'`",
+      "replace": "var labelsFileProbe = `false`",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: an older tree's rows job says why it runs --only",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "olderMutateSays = `echo 'linux-proof: the repo mutate in this tree",
+      "replace": "olderMutateSays = `true || echo 'linux-proof: the repo mutate in this tree",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: in an older tree the first row that did not pass decides the exit",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "[ \"$rc\" -ne 0 ] || rc=$c;",
+      "replace": "rc=$c;",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a row that does not pass in an older tree fails the job",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "; (exit \"$rc\")",
+      "replace": "; (exit 0)",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: every row of an older tree runs after one fails",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "--only \"$l\" </dev/null || { c=$?;",
+      "replace": "--only \"$l\" </dev/null || { c=$?; rc=$c; break;",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
+      "label": "linux-proof: linux-proof.parallel runs the jobs side by side",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tif run.Settings.Parallel {\n",
+      "replace": "\tif false {\n",
+      "run": "TestTheJobsRunSideBySide",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the proof waits for every job",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\twg.Wait()\n",
+      "replace": "",
+      "run": "TestTheJobsRunSideBySide",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job passes only when it exited 0",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "func (e jobEnd) passed() bool { return e.ran && e.err == nil && e.code == 0 }",
+      "replace": "func (e jobEnd) passed() bool { return e.ran }",
+      "run": "TestOneFailedJobAmongPassingOnesFilesNoProof",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the first job that did not pass decides the exit",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tfor _, e := range ends {\n",
+      "replace": "\tfor _, e := range slices.Backward(ends) {\n",
+      "run": "TestTheFirstJobThatDidNotPassDecidesTheExit",
+      "args": []
+    },
+    {
+      "label": "linux-proof: every job's end is said",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\tsay(out, \"linux-proof: the %s job passed in %s\\n\", j.Name, end.took)\n",
+      "replace": "",
+      "run": "TestOneFailedJobAmongPassingOnesFilesNoProof",
+      "args": []
+    },
+    {
+      "label": "linux-proof: each job's lines carry its name",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tio.WriteString(l.w, l.prefix)\n",
+      "replace": "",
+      "run": "TestEachJobsLinesCarryItsNameAndStayWhole",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job's line is written whole",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif i < 0 && len(l.buf) < maxLine {\n",
+      "replace": "\t\tif i < 0 && len(l.buf) == 0 {\n",
+      "run": "TestEachJobsLinesCarryItsNameAndStayWhole",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a last line with no newline is kept",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tl.emit(l.buf)\n\t\tl.buf = nil\n",
+      "replace": "\t\tl.buf = nil\n",
+      "run": "TestEachJobsLinesCarryItsNameAndStayWhole",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a line that never ends is written anyway",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif i < 0 {\n\t\t\ti = len(l.buf) - 1\n\t\t}\n",
+      "replace": "\t\tif i < 0 {\n\t\t\treturn len(p), nil\n\t\t}\n",
+      "run": "TestEachJobsLinesCarryItsNameAndStayWhole",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a run one after another stops at the first job that did not pass",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\tif !ends[i].passed() {\n\t\t\t\tbreak\n\t\t\t}\n",
+      "replace": "",
+      "run": "TestTheJobsRunOneAfterAnotherByDefault",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job a run one after another never reached is named",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\tsay(errOut, \"linux-proof: the %s job was not run, because a job before it did not pass\\n\", j.Name)\n",
+      "replace": "",
+      "run": "TestTheJobsRunOneAfterAnotherByDefault",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a run side by side says so",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tif s.Parallel {\n\t\tfmt.Fprintf(out",
+      "replace": "\tif false {\n\t\tfmt.Fprintf(out",
+      "run": "TestTheJobsRunSideBySide",
+      "args": []
+    },
+    {
+      "label": "linux-proof: linux-proof.parallel is read",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\ts.Parallel = true\n",
+      "replace": "",
+      "run": "TestSettingsAreReadAndABadOneIsRefused",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a mutate-jobs that does not read is refused",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif err != nil || n < 1 {\n",
+      "replace": "\t\tif false && (err != nil || n < 1) {\n",
+      "run": "TestSettingsAreReadAndABadOneIsRefused",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a parallel value that does not read is refused",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tdefault:\n\t\t\treturn s, fmt.Errorf(\"%s is %q, and it takes true or false\", ParallelKey, v)\n",
+      "replace": "\t\tdefault:\n",
+      "run": "TestSettingsAreReadAndABadOneIsRefused",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a setting that does not read runs nothing",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\tif err != nil {\n\t\tfmt.Fprintf(errOut, \"linux-proof: %v. Nothing was run.\\n\", err)\n\t\treturn Runner{}, 2\n",
+      "replace": "\tif false {\n\t\tfmt.Fprintf(errOut, \"linux-proof: %v. Nothing was run.\\n\", err)\n\t\treturn Runner{}, 2\n",
+      "run": "TestSettingsAreReadAndABadOneIsRefused",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the settings are the checkout's git config",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tout, err := repo.Git(\"config\", \"--get\", key)\n",
+      "replace": "\t\tout, err := repo.Git(\"config\", \"--get\", \"linux-proof.none\")\n",
+      "run": "TestTheJobsRunSideBySide",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the rows run in one process from an exact labels file",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\"sh scripts/common/repo.sh mutate --jobs %d --labels-file %s\"",
+      "replace": "\"sh scripts/common/repo.sh mutate --jobs %d --only %s\"",
+      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows|TestTheRowsRunInOneProcessFromExactLabels",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the labels file holds every added row",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "[]byte(strings.Join(req.Rows, \"\\n\")+\"\\n\")",
+      "replace": "[]byte(req.Rows[0]+\"\\n\")",
+      "run": "TestTheRowsRunInOneProcessFromExactLabels",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the rows job reads the labels where the container sees them",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "Labels: ContainerLabels, MutateJobs",
+      "replace": "Labels: LabelsName, MutateJobs",
+      "run": "TestTheRowsRunInOneProcessFromExactLabels",
+      "args": []
+    },
+    {
+      "label": "linux-proof: linux-proof.mutate-jobs reaches the rows job",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "MutateJobs: run.Settings.MutateJobs}",
+      "replace": "MutateJobs: 0}",
+      "run": "TestTheRowsRunInOneProcessFromExactLabels",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a label with a line break is refused",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif strings.ContainsAny(label, \"\\r\\n\") {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestALabelWithALineBreakIsRefused",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the shellcheck image is pinned to CI's version",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tShellCheckImage   = \"docker.io/koalaman/shellcheck-alpine:v0.9.0\"\n",
+      "replace": "\tShellCheckImage   = \"docker.io/koalaman/shellcheck-alpine:latest\"\n",
+      "run": "TestTheShellCheckJobRunsCIsVersion",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the shellcheck container checks its version",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "Setup: shellcheckVersionCheck + ` && apk add --no-cache git >/dev/null`",
+      "replace": "Setup: `apk add --no-cache git >/dev/null`",
+      "run": "TestTheShellCheckJobRunsCIsVersion",
+      "args": []
+    },
+    {
+      "label": "linux-proof: another ShellCheck version could not run",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "the version CI runs' >&2; exit 2; }; }`",
+      "replace": "the version CI runs' >&2; }; }`",
+      "run": "TestTheShellCheckJobRunsCIsVersion",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a Go job mounts the named caches",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tif caches && j.Go {\n",
+      "replace": "\tif false {\n",
+      "run": "TestNamedGoCachesWhenTheToolHasThem",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job that builds no Go mounts no cache",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\tif caches && j.Go {\n",
+      "replace": "\tif caches {\n",
+      "run": "TestNamedGoCachesWhenTheToolHasThem|TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
+      "args": []
+    },
+    {
+      "label": "linux-proof: no test result is taken from a kept cache",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "\t\targs = append(args, \"--env\", \"GOFLAGS=-count=1\")\n",
+      "replace": "",
+      "run": "TestNamedGoCachesWhenTheToolHasThem",
+      "args": []
+    },
+    {
+      "label": "linux-proof: the tool's run --help says whether it takes --cache",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tr.Caches = HasCacheFlag(string(help))\n",
+      "replace": "\t\tr.Caches = false && HasCacheFlag(string(help))\n",
+      "run": "TestNamedGoCachesWhenTheToolHasThem",
+      "args": []
+    },
+    {
+      "label": "linux-proof: --cache is that flag, not one that starts with it",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "`(?m)^\\s*--?cache(\\s|$)`",
+      "replace": "`(?m)^\\s*--?cache`",
+      "run": "TestNamedGoCachesWhenTheToolHasThem",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a tool without --cache is named",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif !r.Caches {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestNamedGoCachesWhenTheToolHasThem",
+      "args": []
+    },
+    {
+      "label": "pre-push: one runner serves every tree a push proves",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif runner == nil {\n",
+      "replace": "\t\tif true {\n",
+      "run": "TestNamedGoCachesWhenTheToolHasThem",
+      "args": []
+    },
+    {
+      "label": "linux-proof: each path in a job's script is one sh word",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "strings.ReplaceAll(s, \"'\", `'\\''`)",
+      "replace": "s",
+      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
+      "module": "tools/repo",
+      "args": []
+    },
+    {
       "label": "mutate-keys: a key names the runner's image",
       "module": "tools/repo",
       "file": "internal/mutate/proof.go",
@@ -4621,8 +5017,8 @@
     {
       "label": "linux-proof: a job that exits 2 could not run",
       "file": "internal/linuxproof/run.go",
-      "find": "\t\t\tif ee.ExitCode() == 2 {\n",
-      "replace": "\t\t\tif false {\n",
+      "find": "\t\tif e.err != nil || e.code == 2 {\n",
+      "replace": "\t\tif e.err != nil {\n",
       "run": "TestAJobThatCouldNotRunIsExitTwo",
       "module": "tools/repo",
       "args": []
@@ -4630,8 +5026,8 @@
     {
       "label": "linux-proof: a job tool that cannot start could not run",
       "file": "internal/linuxproof/run.go",
-      "find": "could not be started: %v. No proof was written for tree %s\\n\", j.Name, err, req.Tree)\n\t\t\t\treturn 2\n",
-      "replace": "could not be started: %v. No proof was written for tree %s\\n\", j.Name, err, req.Tree)\n\t\t\t\treturn 1\n",
+      "find": "\t\t\t\tend.code, end.err = -1, err\n",
+      "replace": "\t\t\t\tend.code = -1\n",
       "run": "TestAJobThatCouldNotRunIsExitTwo",
       "module": "tools/repo",
       "args": []
@@ -5150,19 +5546,10 @@
       "args": []
     },
     {
-      "label": "linux-proof: each row label is one sh word",
-      "file": "internal/linuxproof/linuxproof.go",
-      "find": "strings.ReplaceAll(s, \"'\", `'\\''`)",
-      "replace": "s",
-      "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
-      "module": "tools/repo",
-      "args": []
-    },
-    {
       "label": "linux-proof: the added rows get a mutations job",
       "file": "internal/linuxproof/linuxproof.go",
-      "find": "\tif len(rows) > 0 {\n\t\tvar parts []string\n",
-      "replace": "\tif false {\n\t\tvar parts []string\n",
+      "find": "\tif len(p.Rows) > 0 {\n",
+      "replace": "\tif false {\n",
       "run": "TestTheJobsAreCIsLinuxJobsWithTheAddedRows",
       "module": "tools/repo",
       "args": []
@@ -5233,8 +5620,8 @@
     {
       "label": "linux-proof: a failed job files no proof",
       "file": "internal/linuxproof/run.go",
-      "find": "\t\t\treturn 1\n\t\t}\n\t\tnames = append(names, j.Name)\n",
-      "replace": "\t\t}\n\t\tnames = append(names, j.Name)\n",
+      "find": "\tif code := exitOf(ends); code != 0 {\n",
+      "replace": "\tif code := exitOf(ends); false && code != 0 {\n",
       "run": "TestAFailedJobFilesNoProof",
       "module": "tools/repo",
       "args": []
