@@ -49,14 +49,7 @@ func DialHelper(ctx context.Context) (*HelperClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	c := &HelperClient{
-		endpoint: ep,
-		cfg:      cfg,
-		// No overall timeout: a matrix legitimately runs for an hour. The
-		// per-job deadline is where a runaway is bounded, and a client timeout
-		// here would report a network failure over a job that was working.
-		http: &http.Client{},
-	}
+	c := newHelperClient(ep, cfg)
 	bounded, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	var status struct {
@@ -71,6 +64,20 @@ func DialHelper(ctx context.Context) (*HelperClient, error) {
 		return nil, fmt.Errorf("something else is listening on %s: it reports pid %d and the endpoint file says %d", ep.Address, status.PID, ep.PID)
 	}
 	return c, nil
+}
+
+// newHelperClient is a client for one endpoint, carrying the configuration it
+// sends with each request.
+func newHelperClient(ep HelperEndpoint, cfg Config) *HelperClient {
+	return &HelperClient{
+		endpoint: ep,
+		// WSL-131: each grant's source resolved here, where its file is known.
+		cfg: cfg.Portable(),
+		// No overall timeout: a matrix legitimately runs for an hour. The
+		// per-job deadline is where a runaway is bounded, and a client timeout
+		// here would report a network failure over a job that was working.
+		http: &http.Client{},
+	}
 }
 
 // Endpoint is what this client is talking to, for a report that names it.
@@ -428,6 +435,7 @@ func gcRequest(apply bool, policy CleanupPolicy, images bool) HelperGCRequest {
 	return HelperGCRequest{
 		Apply: apply, OlderThanMS: policy.OlderThan.Milliseconds(), Images: images,
 		IncludeLive: policy.IncludeLive, Job: policy.Job,
+		Caches: policy.Caches,
 	}
 }
 

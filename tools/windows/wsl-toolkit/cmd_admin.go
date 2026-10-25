@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
@@ -177,8 +178,25 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	job, workspace := new(string), new(string)
 	fs.Var(nonEmpty{job}, "job", "clean up one job id and leave the rest of the store alone. The id, its container's name wtk-ID, or a unique prefix of four or more characters. An id nothing in this instance belongs to is refused")
 	fs.Var(nonEmpty{workspace}, "workspace", "clean up only the jobs that copied this directory, read as run --workspace reads it. A job that recorded no workspace is left alone")
+	caches := fs.Bool("caches", false, "clean up the named caches run --cache made, and nothing else: list them, and remove them with --apply. A cache a container names is kept")
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
+	}
+	// ⛔ --caches IS THE CACHES ALONE, so a flag that chooses among jobs or adds
+	// images has nothing to act on beside it, and is refused rather than
+	// ignored. A cache's last use is not recorded, so no age spares one. WSL-122.
+	if *caches {
+		for _, other := range []struct {
+			name  string
+			given bool
+		}{
+			{"--job", *job != ""}, {"--workspace", *workspace != ""}, {"--images", *images},
+			{"--older-than", *olderThan != 0}, {"--include-live", *includeLive},
+		} {
+			if other.given {
+				return exitCannot, fmt.Errorf("--caches cleans up the named caches alone, and %s chooses among jobs or adds images. Run gc --caches without it, and gc for the jobs", other.name)
+			}
+		}
 	}
 	// ⭐ A PREFIX OR A CONTAINER'S NAME IS READ AS THE JOB IT NAMES, and one that
 	// names nothing or several is refused before anything is planned. One that
@@ -224,6 +242,7 @@ func cmdGC(ctx context.Context, args []string) (int, error) {
 	// running is spared exactly as it would be without --job, which is what
 	// WSL-36 settled for the whole store and applies unchanged to one row of it.
 	policy := toolkit.CleanupPolicy{OlderThan: *olderThan, IncludeLive: *includeLive, Job: *job, Workspace: key}
+	policy.Caches = *caches
 	if c, err := useHelper(ctx, *viaHelper); notHere != nil && (err != nil || c == nil) {
 		return exitCannot, notHere
 	} else if err != nil {
@@ -338,6 +357,9 @@ func renderCleanup(plan toolkit.CleanupPlan) {
 	for _, i := range plan.Images {
 		fmt.Fprintf(out, "  image          %s\n", i)
 	}
+	for _, c := range plan.Caches {
+		fmt.Fprintf(out, "  cache          %s\n", c)
+	}
 	if !plan.DryRun {
 		for _, r := range plan.Removed {
 			fmt.Fprintf(out, "  ok             %s\n", r)
@@ -346,7 +368,7 @@ func renderCleanup(plan toolkit.CleanupPlan) {
 	for _, f := range plan.Failed {
 		fmt.Fprintf(out, "  ! could not remove %s\n", f)
 	}
-	if plan.DryRun && len(plan.Containers)+len(plan.GuestDirs)+len(plan.HostDirs)+len(plan.Sessions)+len(plan.Images) == 0 {
+	if plan.DryRun && len(plan.Containers)+len(plan.GuestDirs)+len(plan.HostDirs)+len(plan.Sessions)+len(plan.Images)+len(plan.Caches) == 0 {
 		fmt.Fprintln(out, "  nothing")
 	}
 	// ⭐ WHAT WAS SPARED, AND WHY. Without it an empty plan reads the same
@@ -429,7 +451,7 @@ func cmdConfig(args []string) (int, error) {
 		return exitOK, writeJSON(cfg)
 	}
 	if c.asJSON {
-		return exitOK, writeJSON(map[string]any{
+		doc := map[string]any{
 			"schema":       "wsl-toolkit-config-report/1",
 			"path":         resolved,
 			"exists":       fileExists(resolved),
@@ -444,11 +466,34 @@ func cmdConfig(args []string) (int, error) {
 			"matrix":       cfg.MatrixDefault(),
 			"builtin":      len(cfg.Images) == 0,
 			"fingerprint":  cfg.Fingerprint(),
-		})
+		}
+		// WSL-131, WSL-129: present only where there is one, so a report about a
+		// configuration without either reads as it did.
+		if cfg.Project() != "" {
+			doc["project"] = cfg.Project()
+		}
+		// ⛔ WSL-131: the older jobs keys the project writes, which this instance
+		// did not take, are named rather than dropped unsaid.
+		if held := cfg.ProjectHeld(); len(held) > 0 {
+			doc["project_held"] = held
+		}
+		if cfg.Requires != "" {
+			doc["requires"] = cfg.Requires
+		}
+		return exitOK, writeJSON(doc)
 	}
 	fmt.Println(resolved)
 	fmt.Fprintf(os.Stderr, "  exists      %v\n", fileExists(resolved))
 	renderConfigSearch(src)
+	if cfg.Project() != "" {
+		fmt.Fprintf(os.Stderr, "  project     %s lends this instance its job defaults and requires\n", cfg.Project())
+	}
+	if n := cfg.ProjectHeldNote(); n != "" {
+		fmt.Fprintf(os.Stderr, "  %s\n", n)
+	}
+	if cfg.Requires != "" {
+		fmt.Fprintf(os.Stderr, "  requires    wsl-toolkit %s or newer, and this is %s\n", cfg.Requires, toolkit.Version)
+	}
 	fmt.Fprintf(os.Stderr, "  home        %s\n", home)
 	for _, sc := range copies {
 		fmt.Fprintf(os.Stderr, "  ⚠ copy      %s\n", toolkit.StateCopyNote(sc))
@@ -495,6 +540,7 @@ func cmdConfig(args []string) (int, error) {
 	if cfg.Jobs.Workspace != "" {
 		fmt.Fprintf(os.Stderr, "  workspace   %s, relative to %s\n", cfg.Jobs.Workspace, filepath.Dir(resolved))
 	}
+	renderJobDefaults(cfg)
 	// WSL-136: a cap changes what a run does, so the report names it where it
 	// is set.
 	if cfg.Jobs.MaxRunning > 0 {
@@ -522,6 +568,42 @@ func renderConfigSearch(src toolkit.ConfigSource) {
 	fmt.Fprintf(os.Stderr, "  resolved    %s, from %s\n", src.Path, src.From)
 	for i, cand := range src.Searched {
 		fmt.Fprintf(os.Stderr, "    %d. %s\n", i+1, cand)
+	}
+}
+
+// renderJobDefaults writes each job default a configuration sets, to stderr,
+// one line each, and nothing where it sets none. WSL-122, WSL-131.
+func renderJobDefaults(cfg toolkit.Config) {
+	j := cfg.Jobs
+	if j.Image != "" {
+		fmt.Fprintf(os.Stderr, "  image       %s, where run names none\n", j.Image)
+	}
+	if j.Timeout != "" {
+		fmt.Fprintf(os.Stderr, "  timeout     %s\n", j.Timeout)
+	}
+	if j.User != "" {
+		fmt.Fprintf(os.Stderr, "  user        %s\n", j.User)
+	}
+	if len(j.Env) > 0 || j.EnvFile != "" {
+		names := make([]string, 0, len(j.Env))
+		for name := range j.Env {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		from := ""
+		if j.EnvFile != "" {
+			from = ", after the file " + j.EnvFile
+		}
+		fmt.Fprintf(os.Stderr, "  env         %s%s\n", strings.Join(names, " "), from)
+	}
+	if j.MaxBytes > 0 {
+		fmt.Fprintf(os.Stderr, "  max bytes   %d\n", j.MaxBytes)
+	}
+	if j.MaxEntries > 0 {
+		fmt.Fprintf(os.Stderr, "  max entries %d\n", j.MaxEntries)
+	}
+	for _, c := range j.Cache {
+		fmt.Fprintf(os.Stderr, "  cache       %s\n", c)
 	}
 }
 

@@ -45,6 +45,12 @@ type CleanupPolicy struct {
 	// helper's job records the upload it unpacked, never the caller's directory,
 	// and a helper older than this field would drop it and clean every job.
 	Workspace string
+	// Caches makes the cleanup the named caches and nothing else. WSL-122.
+	//
+	// ⛔ A CACHE IS KEPT ON PURPOSE. It outlives every job by design, so only a
+	// caller who names caches removes one, and a cache a container still names
+	// is kept.
+	Caches bool
 }
 
 // ForJob narrows a policy to one job.

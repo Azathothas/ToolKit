@@ -13397,7 +13397,7 @@ an ephemeral job leaves no directory, direct and through the helper
 ## WSL-122. Nothing is cached between jobs, so each job installs its toolchain again
 
 **Source** the consumer survey of 2026-10-21, P7, and the old record's finding 106
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -13435,7 +13435,17 @@ Exit 0. Then two jobs on one cache: the second reads what the first wrote, and
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f2-run-config`, for the next release.** `--cache NAME:/path` on `run` and `matrix`, `jobs.cache` in a configuration, a cache line in `resources`, and `gc --caches [--apply]`, refused beside `--job`, `--workspace`, `--images`, `--older-than` or `--include-live`. Caches are listed by name prefix, so an unlabelled volume is seen, and the manual states the trust and re-own cost.
+
+```text
+scratch base wsl-toolkit-f2rb:
+  a second job read what the first wrote
+  gc --caches --apply removed the volume; the next job saw it empty
+  a persistent job's stopped container kept the cache until gc --job ID --apply
+  a two-row matrix on one cache with --create-user exited 0
+```
+
+Built from `wip/f2-run-config`, reviewed twice, repaired once; rows red on Windows and in `golang:1.25`.
 
 
 ## WSL-123. A job cannot run as an account its image lacks, and `base exec` cannot run as another account
@@ -13482,6 +13492,8 @@ Exit 0. Then `whoami`, `id` and a write to `/work` as a created user on
 ## Closing
 
 Open.
+
+⭐ **2026-10-25: the `run` half is merged from `rb/f2-run-config`.** `--user NAME --create-user [--sudo]` on `run` and `matrix`. Driven on debian, ubuntu:24.04, alpine and archlinux: `whoami` printed the account, and `/work` and HOME were writable by it. An image's own account is used as the image defines it. The `base exec --user` half is `rb/f4-base-exec`'s.
 
 
 ## WSL-124. `base exec` lacks the inputs, artifacts, account and stdin `run` has, and its `--dir` takes guest paths only
@@ -13704,11 +13716,13 @@ Exit 0, then a CRLF script run as `/in/NAME` by its shebang.
 
 Open.
 
+⭐ **2026-10-25: the `run` half is merged from `rb/f2-run-config`.** `--input-exec NAME=FILE` on `run` and `matrix` and across the helper: a CRLF script arrived as `/in/run.sh` at mode 0755 with LF endings and ran by its shebang. ⚠ `base exec --input-exec` is not built; it belongs beside `base exec --input`.
+
 
 ## WSL-129. A project cannot say which version of the tool it needs
 
 **Source** the consumer survey of 2026-10-21, P16, and the old record's finding 113, and the residual of finding 43
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -13744,7 +13758,14 @@ Exit 0, then a configuration with a floor above the build, refused with exit 2.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f2-run-config`, for the next release.** A configuration may carry `requires`, the oldest build that may read it. It is read before the strict decode, so an unknown key names a newer build and `selfupdate`. Every command that reads the file exits 2 under the floor, `ready` included.
+
+```text
+requires 99.0.0: run, config validate and the default instance's config validate exit 2,
+  naming the running build, the floor, the file and wsl-toolkit selfupdate
+```
+
+⚠ The manual's own example names `7.1.0`, which this build refuses until the release sets its version.
 
 
 ## WSL-130. An engine inside a base is set up by hand
@@ -13791,6 +13812,8 @@ Exit 0, then each part on a scratch base, `/dev/kvm` after `wsl --terminate` of 
 
 Open.
 
+⭐ **2026-10-25: `--cap-add` is merged from `rb/f2-run-config`.** On `run`, `matrix` and the helper. Driven on a scratch base: `ip addr add` on lo exits 2 without it and 0 with `--cap-add net_admin`; `ALL` gives CapEff 000001ffffffffff; an unknown name is refused with exit 2. The rest of the entry is `rb/f5a-base-runtime`'s.
+
 
 ## WSL-131. Job defaults are repeated in every wrapper
 
@@ -13835,6 +13858,8 @@ Exit 0, then a job that takes its image and timeout from a project file.
 ## Closing
 
 Open.
+
+⭐ **2026-10-25: built and merged from `rb/f2-run-config`, waiting on one ruling.** A project's `wsl-toolkit.json` lends its job defaults to a named instance. Its older jobs keys are named, not dropped unsaid: a ⚠ line from `config`, `project_held` in `config --json`, and a note on `run` and `matrix`. ⚠ That a named instance takes only the new keys from a lending project is a choice the operator rules; the question is in `PROGRESS.md`.
 
 
 ## WSL-132. Two acceptance cases are not isolated from what they run beside

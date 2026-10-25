@@ -287,6 +287,10 @@ func TestEveryMatrixFieldReachesItsRows(t *testing.T) {
 	spec.Script = []byte("true")
 	spec.OnTick = func(TickEvent) {}
 	spec.Admit = func(_ context.Context, _ *JobOwner) (time.Duration, error) { return 0, nil }
+	spec.Caches = []JobCache{
+		{Name: "cargo", Path: "/cargo"},
+	}
+	spec.CapAdd = []string{"CAP_NET_ADMIN"}
 	row := rowSpec(spec, Image{ID: "alpine", Ref: "docker.io/library/alpine:latest"}, "/staged", "", DefaultWorkspaceLimits())
 	rv := reflect.ValueOf(row)
 	for i := 0; i < sv.NumField(); i++ {

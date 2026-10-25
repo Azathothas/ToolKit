@@ -335,12 +335,23 @@ func runConfigValidate(asJSON bool, path string) (int, error) {
 	if !ok {
 		code = exitFailed
 	}
+	// ⛔ A FLOOR THIS BUILD IS UNDER IS A REFUSAL, exit 2, as it is from every
+	// command that reads the file. The file may be fine; this build cannot say.
+	// WSL-129.
+	if errors.Is(err, toolkit.ErrVersionFloor) {
+		code = exitCannot
+	}
 	if asJSON {
-		return code, writeJSON(map[string]any{
+		doc := map[string]any{
 			"schema": "wsl-toolkit-config-validate/1", "valid": ok, "reason": reason,
 			"path": src.Path, "from": src.From, "searched": src.Searched,
 			"fingerprint": cfg.Fingerprint(),
-		})
+		}
+		// WSL-131: present only where a working tree's file lent its jobs.
+		if src.Project != "" {
+			doc["project"] = src.Project
+		}
+		return code, writeJSON(doc)
 	}
 	if ok {
 		logf("  %s is usable, fingerprint %s", src.Path, cfg.Fingerprint())
@@ -375,6 +386,17 @@ func narrowResourcesToJob(rep toolkit.ResourceReport, id string) toolkit.Resourc
 	for _, e := range rep.Owned.OpenRecords {
 		if e.ID == id {
 			out.Owned.OpenRecords = append(out.Owned.OpenRecords, e)
+		}
+	}
+	// WSL-122: a cache is no one job's, so it stays where the job's container
+	// names it.
+	out.Owned.Caches = nil
+	for _, c := range rep.Owned.Caches {
+		for _, name := range c.Containers {
+			if strings.Contains(name, id) {
+				out.Owned.Caches = append(out.Owned.Caches, c)
+				break
+			}
 		}
 	}
 	// ⚠ THE TOTALS ARE WITHHELD RATHER THAN RECOMPUTED. They measure the whole

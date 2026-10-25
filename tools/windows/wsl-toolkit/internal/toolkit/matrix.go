@@ -33,6 +33,12 @@ type MatrixSpec struct {
 	Devices            []JobDevice
 	Inputs             []JobInput
 	MaxOutput          int64
+	// Caches, CreateUser, Sudo and CapAdd are JobSpec's, for every row. A
+	// fleet's rows share each cache. WSL-122, WSL-123, WSL-130.
+	Caches     []JobCache
+	CreateUser bool
+	Sudo       bool
+	CapAdd     []string
 	// OnRow is called once per row, THE MOMENT IT FINISHES rather than when the
 	// fleet does.
 	//
@@ -72,6 +78,7 @@ func rowSpec(spec MatrixSpec, img Image, staged, artifacts string, limits Worksp
 		Platform: spec.Platform, ContainerLifecycle: spec.ContainerLifecycle,
 		Label: img.ID, User: spec.User, Devices: spec.Devices, Inputs: spec.Inputs, MaxOutput: spec.MaxOutput,
 		OnTick: spec.OnTick, TickEvery: spec.TickEvery, Admit: spec.Admit,
+		Caches: spec.Caches, CreateUser: spec.CreateUser, Sudo: spec.Sudo, CapAdd: spec.CapAdd,
 	}
 }
 

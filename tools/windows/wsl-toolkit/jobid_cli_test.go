@@ -84,6 +84,17 @@ func TestEveryJobCommandReadsAPrefix(t *testing.T) {
 	if err != nil && strings.Contains(err.Error(), "starts with it") || runtime.GOOS == "windows" && code != exitFailed {
 		t.Errorf("artifacts retry with a prefix of no job answered %d, %v; want nothing retained, exit 1", code, err)
 	}
+	// ⛔ AND A PREFIX OF TWO JOBS IS REFUSED BEFORE ANY ROUTE IS ASKED. Only the
+	// resolver can tell, so without it the retry would go on with the prefix.
+	for _, id := range []string{"cafe1234aaaaaaaa", "cafe1234bbbbbbbb"} {
+		if err := os.MkdirAll(filepath.Join(home, "jobs", id), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, err = cmdArtifacts(ctx, []string{"retry", "cafe1234", "--to", filepath.Join(home, "out")})
+	if code != exitCannot || !errors.Is(err, toolkit.ErrJobPrefix) {
+		t.Errorf("artifacts retry with a prefix of two jobs answered %d, %v; want exit 2 and the resolver's refusal", code, err)
+	}
 	// ⛔ resources --job narrowed by any text and exited 0 before, so a prefix
 	// that names no job here narrows as it did: here it reaches the absent
 	// helper, and is not refused by the resolver.

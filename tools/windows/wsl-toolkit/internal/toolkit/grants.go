@@ -420,6 +420,10 @@ func LockGrants(ctx context.Context, log func(string)) (func(), error) {
 // to the file it is written into.
 func (c Config) WriteTo(path string) error {
 	c.Schema = ConfigSchema
+	// ⛔ A working tree's jobs are not written into an instance's file. WSL-131.
+	if c.own != nil {
+		c.Jobs, c.Requires = c.own.jobs, c.own.requires
+	}
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err

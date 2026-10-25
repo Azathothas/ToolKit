@@ -484,6 +484,10 @@ func TestJobIDRecovery(t *testing.T) {
 	if got := jobIDFromContainer("not-ours"); got != "not-ours" {
 		t.Errorf("a name without the prefix should come back unchanged, got %q", got)
 	}
+	// WSL-123: the account probe a killed client leaves is its job's.
+	if got := jobIDFromContainer("wtk-8fa39b8bb07a0154-accounts"); got != "8fa39b8bb07a0154" {
+		t.Errorf("the account probe's container is read as job %q", got)
+	}
 }
 
 // -- WSL-35, issue 10: output is complete, and it says when a copy is not -----

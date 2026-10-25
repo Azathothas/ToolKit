@@ -48,6 +48,17 @@ type jobFlags struct {
 	ensure        bool
 	viaHelper     bool
 	tick          time.Duration
+
+	// WSL-122, WSL-128, WSL-123, WSL-130: named caches, executable inputs, an
+	// account the image need not have, and capabilities.
+	caches     stringList
+	inputExecs stringList
+	createUser bool
+	sudo       bool
+	capAdd     stringList
+	// named is every flag the command line gave, so a project's default yields
+	// to a flag even where its value is the flag's own default. WSL-131.
+	named map[string]bool
 }
 
 // boolFlag is a boolean flag that also records that the command line named it,
@@ -112,22 +123,34 @@ func (j *jobFlags) bind(fs *flag.FlagSet) {
 	fs.Var(nonEmpty{&j.exclusive}, "exclusive", "hold this name for the whole job, across every instance of this state directory, and refuse to start while another job holds it. A project names its builds so two cannot run at once")
 	fs.DurationVar(&j.exclusiveWait, "exclusive-wait", 0, "with --exclusive, wait this long for the name rather than refusing at once")
 	fs.Var(boolFlag{&j.gitignore, &j.gitignoreSet}, "gitignore", "leave out of the workspace copy what git ignores in it, read from git itself. The workspace must be in a git work tree, and one its own repository ignores is refused. jobs.gitignore sets it for a project, and --gitignore=false turns it off")
-	fs.Var(&j.env, "env", "NAME=VALUE passed to the container. Repeatable")
-	fs.StringVar(&j.envFile, "env-file", "", "a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins")
+	fs.Var(&j.env, "env", "NAME=VALUE passed to the container. Repeatable, and it wins over jobs.env")
+	fs.StringVar(&j.envFile, "env-file", "", "a file on this machine of NAME=VALUE lines passed to the container. --env is applied after it, so a --env wins. jobs.env_file and jobs.env come before both")
 	fs.Var(&j.devices, "device", "a device node in the base passed into the container, HOST[:CONTAINER[:PERMS]]. Repeatable. The base account must be able to read and write it")
 	fs.Var(&j.inputs, "input", "NAME=FILE: a file on this machine the container reads at /in/NAME, read-only and byte for byte. Repeatable")
-	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before lifecycle cleanup; the row reports 124")
+	fs.DurationVar(&j.timeout, "timeout", 30*time.Minute, "how long one container may run before lifecycle cleanup; the row reports 124. jobs.timeout sets the default")
 	fs.DurationVar(&j.tick, "tick", 0, "emit a heartbeat for each running job at this interval. 0 is off, and anything under 1s is raised to it")
 	fs.BoolVar(&j.noNetwork, "no-network", false, "run with no network at all")
-	fs.StringVar(&j.user, "user", "", "what the container runs as: a name, a uid, or uid:gid. Empty means the image's default")
+	fs.StringVar(&j.user, "user", "", "what the container runs as: a name, a uid, or uid:gid. Empty uses jobs.user, then the image's default")
 	fs.StringVar(&j.platform, "platform", "", "the Linux OCI platform. Empty uses jobs.platform, then the native platform")
 	fs.StringVar(&j.lifecycle, "container-lifecycle", "", "persistent keeps the stopped container and its job directory; ephemeral removes both. Empty uses jobs.container_lifecycle, whose default is persistent")
-	fs.Int64Var(&j.maxBytes, "max-bytes", toolkit.DefaultWorkspaceLimits().MaxBytes, "refuse a workspace or an artifact set larger than this")
-	fs.IntVar(&j.maxEntries, "max-entries", toolkit.DefaultWorkspaceLimits().MaxEntries, "refuse a workspace or an artifact set with more entries than this")
+	fs.Int64Var(&j.maxBytes, "max-bytes", toolkit.DefaultWorkspaceLimits().MaxBytes, "refuse a workspace or an artifact set larger than this. jobs.max_bytes sets the default")
+	fs.IntVar(&j.maxEntries, "max-entries", toolkit.DefaultWorkspaceLimits().MaxEntries, "refuse a workspace or an artifact set with more entries than this. jobs.max_entries sets the default")
 	fs.Int64Var(&j.maxOutput, "max-output", 0, "how many bytes of the command's output the ANSWER keeps. 0 uses the default. The transcript is complete whatever this says")
 	fs.BoolVar(&j.asJSON, "json", false, "write a structured answer")
 	fs.BoolVar(&j.ensure, "ensure-base", true, "build the base first when it is missing or unusable")
 	fs.BoolVar(&j.viaHelper, "via-helper", false, "go through the local helper even when this process could call wsl.exe itself")
+	// WSL-122, WSL-128, WSL-123, WSL-130.
+	fs.Var(&j.caches, "cache", "NAME:/path: a named cache, the podman volume wtk-cache-NAME in the base, made on first use, mounted at /path and kept between jobs. Repeatable, and added to jobs.cache. gc --caches --apply removes it")
+	fs.Var(&j.inputExecs, "input-exec", "NAME=FILE: as --input, but the copy has CRLF turned into LF and mode 0755, so the job runs /in/NAME by its shebang. FILE must start with #!. Repeatable")
+	fs.BoolVar(&j.createUser, "create-user", false, "with --user NAME, run as NAME where the image has no such account: podman writes it, with a home of its own under /home. An image that has NAME uses its own")
+	fs.BoolVar(&j.sudo, "sudo", false, "with --user, mount a read-only rule in /etc/sudoers.d that grants that account passwordless sudo. It needs sudo in the image")
+	fs.Var(&j.capAdd, "cap-add", "a Linux capability the container gets, such as NET_ADMIN, or ALL. Repeatable, and none is added without it")
+}
+
+// readNamed records which flags the command line gave. WSL-131.
+func (j *jobFlags) readNamed(fs *flag.FlagSet) {
+	j.named = map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { j.named[f.Name] = true })
 }
 
 // script reads the job payload, from -c or from a file.
@@ -219,6 +242,28 @@ func readStdinScript() ([]byte, error) {
 
 func (j *jobFlags) envMap(cfg toolkit.Config) (map[string]string, error) {
 	out := map[string]string{}
+	// ⭐ THE PROJECT'S DEFAULTS COME FIRST, its file and then its names, so every
+	// value the command line gives wins over them. WSL-131.
+	if cfg.Jobs.EnvFile != "" {
+		path, err := pathFromJobs(cfg, "env_file", cfg.Jobs.EnvFile)
+		if err != nil {
+			return nil, fmt.Errorf("jobs.env_file: %w", err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("jobs.env_file: %w", err)
+		}
+		pairs, err := toolkit.ParseEnvFile(data, path)
+		if err != nil {
+			return nil, fmt.Errorf("jobs.env_file: %w", err)
+		}
+		for _, pair := range pairs {
+			out[pair.Name] = pair.Value
+		}
+	}
+	for name, value := range cfg.Jobs.Env {
+		out[name] = value
+	}
 	// ⭐ A FILE CARRIES VALUES NO SHELL REACHES. MSYS rewrites the value of an
 	// argument that looks like a path, and a file's bytes travel untouched. The
 	// reader is the one `distro --env-file` uses, so both read one format. WSL-111.
@@ -293,8 +338,62 @@ func (j *jobFlags) jobInputs(cfg toolkit.Config) ([]toolkit.JobInput, error) {
 		}
 		out = append(out, toolkit.JobInput{Name: name, Path: p})
 	}
+	// ⭐ AN EXECUTABLE INPUT IS READ THE SAME WAY, and its copy is repaired and
+	// made 0755 where it is written. WSL-128.
+	for _, v := range j.inputExecs {
+		name, file, ok := strings.Cut(v, "=")
+		if !ok || file == "" {
+			return nil, fmt.Errorf("--input-exec %q is not NAME=FILE: a name under /in, one equals sign, then a file on this machine", v)
+		}
+		if err := toolkit.ValidateInputName(name); err != nil {
+			return nil, err
+		}
+		p, err := pathFromProject(cfg, file)
+		if err != nil {
+			return nil, fmt.Errorf("--input-exec %s: %w", v, err)
+		}
+		out = append(out, toolkit.JobInput{Name: name, Path: p, Exec: true})
+	}
 	if err := toolkit.CheckInputs(out, j.limits()); err != nil {
 		return nil, err
+	}
+	return out, nil
+}
+
+// jobCaches reads every cache the job mounts: jobs.cache and each --cache, which
+// applyConfig has merged. WSL-122.
+func (j *jobFlags) jobCaches() ([]toolkit.JobCache, error) {
+	return toolkit.ParseCaches(j.caches, "--cache")
+}
+
+// mergeCaches is a project's caches, less any at a path the command line names,
+// then the command line's. WSL-122, WSL-131.
+func mergeCaches(defaults, given []string) stringList {
+	taken := map[string]bool{}
+	for _, g := range given {
+		if _, p, ok := strings.Cut(g, ":"); ok {
+			taken[p] = true
+		}
+	}
+	var out stringList
+	for _, d := range defaults {
+		if _, p, ok := strings.Cut(d, ":"); ok && taken[p] {
+			continue
+		}
+		out = append(out, d)
+	}
+	return append(out, given...)
+}
+
+// jobCapabilities reads every --cap-add into podman's spelling. WSL-130.
+func (j *jobFlags) jobCapabilities() ([]string, error) {
+	var out []string
+	for _, v := range j.capAdd {
+		c, err := toolkit.ParseCapability(v)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, c)
 	}
 	return out, nil
 }
@@ -337,6 +436,10 @@ func (j *jobFlags) check() error {
 	if j.lifecycle != "" && j.lifecycle != toolkit.ContainerPersistent && j.lifecycle != toolkit.ContainerEphemeral {
 		return fmt.Errorf("--container-lifecycle %q must be %q or %q", j.lifecycle, toolkit.ContainerPersistent, toolkit.ContainerEphemeral)
 	}
+	// WSL-123: --create-user and --sudo name an account through --user.
+	if err := toolkit.ValidateJobUser(j.user, j.createUser, j.sudo); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -357,7 +460,14 @@ func (j jobFlags) helperRouteRefusal() error {
 }
 
 // applyConfig selects job defaults and resolves host paths before a job starts.
+//
+// ⚠ It names, on stderr, the older jobs keys a lending working tree's file
+// writes, which this instance did not take. run and matrix both come here, so
+// neither drops them unsaid. WSL-131.
 func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
+	if n := cfg.ProjectHeldNote(); n != "" {
+		note(n)
+	}
 	workspaceFromConfig := false
 	if j.lifecycle == "" {
 		j.lifecycle = cfg.Jobs.ContainerLifecycle
@@ -379,6 +489,24 @@ func (j *jobFlags) applyConfig(cfg toolkit.Config) error {
 	if cfg.Jobs.Gitignore && !j.gitignoreSet {
 		j.gitignore = true
 	}
+	// ⭐ A PROJECT'S JOB DEFAULTS, where the command line named nothing. A flag
+	// the command line gives wins even where its value is the flag's own
+	// default, so `--timeout 30m` beats a jobs.timeout of an hour. WSL-131.
+	if !j.named["timeout"] {
+		if d, ok := cfg.Jobs.JobTimeout(); ok {
+			j.timeout = d
+		}
+	}
+	if !j.named["user"] && cfg.Jobs.User != "" {
+		j.user = cfg.Jobs.User
+	}
+	if !j.named["max-bytes"] && cfg.Jobs.MaxBytes > 0 {
+		j.maxBytes = cfg.Jobs.MaxBytes
+	}
+	if !j.named["max-entries"] && cfg.Jobs.MaxEntries > 0 {
+		j.maxEntries = cfg.Jobs.MaxEntries
+	}
+	j.caches = mergeCaches(cfg.Jobs.Cache, j.caches)
 	platform, err := toolkit.NormalizePlatform(j.platform)
 	if err != nil {
 		return fmt.Errorf("--platform: %w", err)
@@ -436,6 +564,17 @@ func pathFromConfig(cfg toolkit.Config, value string) (string, error) {
 	return filepath.Abs(filepath.Join(filepath.Dir(cfg.Path()), value))
 }
 
+// pathFromJobs resolves a path a configuration's jobs.KEY names against the
+// file that named it, which is a working tree's own where that file lent its
+// jobs to a named instance. WSL-131.
+func pathFromJobs(cfg toolkit.Config, key, value string) (string, error) {
+	value = msysHostPath(value)
+	if filepath.IsAbs(value) {
+		return filepath.Clean(value), nil
+	}
+	return filepath.Abs(filepath.Join(cfg.JobsDir(key), value))
+}
+
 // pathFromProject is the one resolver for a host path a job command was given.
 // ⭐ An MSYS spelling from Git Bash is read here, once, for every flag. WSL-111.
 func pathFromProject(cfg toolkit.Config, value string) (string, error) {
@@ -483,7 +622,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	// per-row record is `--transcripts`; WSL-59 says so where a reader will look.
 	var l logFlags
 	l.bindSinks(fs)
-	image := fs.String("image", "", "a catalog id or a fully qualified reference")
+	image := fs.String("image", "", "a catalog id or a fully qualified reference. Empty uses jobs.image")
 	detach := fs.Bool("detach", false, "start the job and answer with its id at once. A detached copy of this program owns the job; wsl-toolkit logs ID --follow, wait ID and stop ID reach it")
 	// WSL-121 and WSL-136: what the owning process does beyond running the job.
 	var o ownerFlags
@@ -491,11 +630,12 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
-	if *image == "" {
-		return exitCannot, errors.New("--image is required. " + toolkit.ToolCommand("images") + " lists the catalog")
-	}
+	j.readNamed(fs)
 	cfg, err := loadConfig()
 	if err != nil {
+		return exitCannot, err
+	}
+	if *image, err = runImage(*image, cfg); err != nil {
 		return exitCannot, err
 	}
 	if err := j.applyConfig(cfg); err != nil {
@@ -525,6 +665,14 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	inputs, err := j.jobInputs(cfg)
+	if err != nil {
+		return exitCannot, err
+	}
+	caches, err := j.jobCaches()
+	if err != nil {
+		return exitCannot, err
+	}
+	caps, err := j.jobCapabilities()
 	if err != nil {
 		return exitCannot, err
 	}
@@ -699,6 +847,7 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		Limits: j.limits(), Label: *image, User: j.user, Devices: devices, Inputs: inputs,
 		Stdout: liveOut, Stderr: liveErr, MaxOutput: j.maxOutput,
 		OnTick: jobTick(j, relay), TickEvery: j.tick, Log: relay,
+		Caches: caches, CreateUser: j.createUser, Sudo: j.sudo, CapAdd: caps,
 	})
 	res.WaitedToRun = waited
 	// ⛔ SEALED AND RECORDED BEFORE IT IS RENDERED, so a follower reading the
@@ -708,6 +857,20 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 	// says so. WSL-121.
 	o.finish(owner, &res)
 	return reportJob(res, j.asJSON)
+}
+
+// runImage is the image `run` runs: --image, or the configuration's jobs.image.
+//
+// ⭐ IT IS READ AFTER THE CONFIGURATION, so a project's jobs.image is the default
+// a command line names nothing over. WSL-131.
+func runImage(given string, cfg toolkit.Config) (string, error) {
+	if given != "" {
+		return given, nil
+	}
+	if cfg.Jobs.Image != "" {
+		return cfg.Jobs.Image, nil
+	}
+	return "", errors.New("--image is required. " + toolkit.ToolCommand("images") + " lists the catalog, and jobs.image sets a default")
 }
 
 // claimRun takes the owner lock for the job this process is about to run, under
@@ -945,6 +1108,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 	if err := parseArgs(fs, args); err != nil {
 		return exitCannot, err
 	}
+	j.readNamed(fs)
 	cfg, err := loadConfig()
 	if err != nil {
 		return exitCannot, err
@@ -979,6 +1143,14 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	inputs, err := j.jobInputs(cfg)
+	if err != nil {
+		return exitCannot, err
+	}
+	caches, err := j.jobCaches()
+	if err != nil {
+		return exitCannot, err
+	}
+	caps, err := j.jobCapabilities()
 	if err != nil {
 		return exitCannot, err
 	}
@@ -1062,6 +1234,7 @@ func cmdMatrix(ctx context.Context, args []string) (int, error) {
 		MaxOutput: j.maxOutput, OnRow: rowPrinter(),
 		OnTick: tickPrinter(j), TickEvery: j.tick,
 		RowIDs: rows, Admit: o.rowAdmit(),
+		Caches: caches, CreateUser: j.createUser, Sudo: j.sudo, CapAdd: caps,
 	})
 	if err != nil {
 		return exitCannot, err

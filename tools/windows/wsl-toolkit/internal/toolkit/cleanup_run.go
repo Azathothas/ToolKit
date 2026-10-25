@@ -22,6 +22,10 @@ import (
 // stop it removing the rest; stopping at the first failure would hide the state
 // of everything after it.
 func (r *Runner) Cleanup(ctx context.Context, apply bool, policy CleanupPolicy, includeImages bool) (CleanupPlan, error) {
+	// ⭐ `gc --caches` IS THE CACHES ALONE, and no job's leftovers. WSL-122.
+	if policy.Caches {
+		return r.cleanupCaches(ctx, apply)
+	}
 	plan := CleanupPlan{Schema: CleanupSchema, DryRun: !apply, Entries: []CleanupEntry{}}
 	guestHome, err := r.guestHome(ctx)
 	if err != nil {
@@ -353,7 +357,18 @@ func (r *Runner) openHostDirs() map[string]bool {
 }
 
 // jobIDFromContainer recovers the job id a container name carries.
-func jobIDFromContainer(name string) string { return strings.TrimPrefix(name, "wtk-") }
+//
+// ⛔ A JOB'S OWN PROBE IS THAT JOB'S. --create-user reads the image's accounts
+// in `wtk-ID-accounts`, and a client killed during that probe leaves it. Read as
+// the id `ID-accounts`, it was spared by no live job and named by no `gc --job
+// ID`. WSL-123.
+func jobIDFromContainer(name string) string {
+	id := strings.TrimPrefix(name, "wtk-")
+	if head, _, ok := strings.Cut(id, "-"); ok && ValidJobID(head) {
+		return head
+	}
+	return id
+}
 
 // jobIDFromPath recovers the job id a guest directory is named for.
 func jobIDFromPath(p string) string {
