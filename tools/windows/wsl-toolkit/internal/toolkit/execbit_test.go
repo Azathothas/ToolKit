@@ -607,6 +607,41 @@ func TestAVerifierRefusalIsReadPastWslsOwnLines(t *testing.T) {
 	if only := verifyError("agent", 1, "", session+"\n"); only == nil || only.Error() != "a container did not run as agent (exit 1): "+session {
 		t.Errorf("a failure with nothing but wsl.exe's line named nothing: %v", only)
 	}
+	// ⛔ WSL-152, finding 15: podman prints a warning BEFORE its error, so the
+	// first guest line is the warning and the reason is the last. fedora's real
+	// refusal sat behind a shared-mount warning and needed a diagnostic build to
+	// read; guestReason takes the last guest line and names it.
+	const (
+		podmanWarn = "WARN[0000] \"/\" is not a shared mount, this could cause issues or missing mounts with rootless containers"
+		newuidmap  = "newuidmap: write to uid_map failed: Operation not permitted"
+	)
+	warned := verifyError("agent", 126, "", podmanWarn+"\n"+newuidmap+"\n")
+	if warned == nil || warned.Error() != "a container did not run as agent (exit 126): "+newuidmap {
+		t.Errorf("a failure behind a podman warning named the warning rather than the error: %v", warned)
+	}
+}
+
+// TestAVerifierFailureIsNamedByStderrNotByItsRows is the regression the first
+// WSL-152 build carried. verify.sh prints its rows on stdout before `podman run`,
+// so the last guest line across both streams was a row, and the engine's `boot ID`
+// words, which the stale run state remediation reads, were lost.
+func TestAVerifierFailureIsNamedByStderrNotByItsRows(t *testing.T) {
+	const (
+		rows   = "automount ro\nengine podman version 6.1.4\nuser agent uid 1000\n"
+		warn   = "WARN[0000] \"/\" is not a shared mount, this could cause issues or missing mounts with rootless containers"
+		engine = "Error: current system boot ID differs from cached boot ID; an unclean shutdown may have occurred."
+	)
+	failed := verifyError("agent", 125, rows, warn+"\n"+engine+"\n")
+	if failed == nil || failed.Error() != "a container did not run as agent (exit 125): "+engine {
+		t.Fatalf("an engine failure after the verifier's rows read %v", failed)
+	}
+	if _, ok := staleRunStateRemediation(failed.Error()); !ok {
+		t.Errorf("an engine failure after the verifier's rows lost the words its remediation reads: %v", failed)
+	}
+	// ⚠ NOTHING ON STDERR: the last stdout row is all there is, and it is said.
+	if quiet := verifyError("agent", 1, rows, ""); quiet == nil || quiet.Error() != "a container did not run as agent (exit 1): user agent uid 1000" {
+		t.Errorf("a failure with nothing on stderr read %v", quiet)
+	}
 }
 
 // TestTheWindowsDriveMountsAreReadFromTheMountTable holds the root shell's source.

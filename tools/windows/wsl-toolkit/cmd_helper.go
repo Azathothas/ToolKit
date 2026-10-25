@@ -32,6 +32,12 @@ func cmdHelper(ctx context.Context, args []string) (int, error) {
 		fmt.Fprint(os.Stderr, helperUsage)
 		return exitCannot, nil
 	}
+	// ⛔ `helper --help` exited 2 as an unknown subcommand, where `base` answers
+	// 0. WSL-164.
+	if isGroupHelp(args) {
+		fmt.Fprint(os.Stderr, helperUsage)
+		return exitOK, flag.ErrHelp
+	}
 	sub, rest := args[0], args[1:]
 	var h helperFlags
 	if err := helperShared.parse(sub, &h, rest); err != nil {

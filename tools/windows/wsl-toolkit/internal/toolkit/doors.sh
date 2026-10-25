@@ -118,10 +118,15 @@ fi
 # that has an answer on every base: will it hand a PE image to an interpreter at
 # all? Measured: with no handler the exec is refused outright and the shell falls
 # back to reading the file as a script.
+#
+# ⛔ STDIN IS /dev/null FOR BOTH WINDOWS ATTEMPTS. This file reaches the guest
+# shell on stdin, and an interop launch reads it. On a base with interop on,
+# cmd.exe took the rest of the probe, so `base doors` exited 2 with no reason.
+# Measured while driving WSL-156.
 stub=/tmp/doors-$TK_DOORS_MARK.exe
 printf 'MZ' > "$stub" 2>/dev/null
 chmod +x "$stub" 2>/dev/null
-stub_out=$("$stub" 2>&1)
+stub_out=$("$stub" 2>&1 </dev/null)
 stub_rc=$?
 rm -f "$stub" 2>/dev/null
 case "$stub_rc:$stub_out" in
@@ -151,7 +156,7 @@ if [ -z "$winexe" ]; then
 fi
 if [ -z "$winexe" ]; then
   say interop.run-exe unknown 'no Windows executable is reachable from this guest, so none was run'
-elif out=$("$winexe" /c echo DOORS 2>&1); then
+elif out=$("$winexe" /c echo DOORS 2>&1 </dev/null); then
   say interop.run-exe open "$winexe ran: $(printf '%s' "$out" | tr -d '\r' | head -1)"
 else
   say interop.run-exe closed "$winexe did not run: $(printf '%s' "$out" | tr -d '\r' | head -1)"
@@ -181,6 +186,181 @@ for p in /init /run/WSL /dev/kvm /dev/dxg /dev/vsock; do
   fi
 done
 say plumbing.netns info "net=$(readlink /proc/self/ns/net 2>/dev/null) pid=$(readlink /proc/self/ns/pid 2>/dev/null)"
+
+# ----------------------------------------------------- the paravirt devices --
+# ⛔ ONE ATTEMPT PER DEVICE NODE, as the account, reported like interop.exec-pe.
+# /dev/kvm, /dev/dxg and /dev/vsock read crw-rw-rw- on every base this tool has
+# built, and findings 22 then 38 named them reported-but-never-attacked. The
+# attempt is a KVM_CREATE_VM on /dev/kvm, a vsock connect to the host, and a
+# /dev/dxg ioctl, none of which a POSIX shell can make, so it goes through a C
+# program the guest compiles on the spot. ⛔ A guest with no compiler reports
+# `unknown`, which is nothing-tried and NOT `closed`, as the TCP probe does when
+# it has no way to open a socket. WSL-156.
+dev_cc=
+if command -v cc >/dev/null 2>&1; then
+  dev_cc=cc
+elif command -v gcc >/dev/null 2>&1; then
+  dev_cc=gcc
+fi
+dev_dir=/tmp/doors-$TK_DOORS_MARK-dev
+mkdir -p "$dev_dir" 2>/dev/null
+dev_done=0
+if [ -n "$dev_cc" ]; then
+  cat > "$dev_dir/probe.c" <<'DEVC'
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+
+/* Constants are defined here so no kernel headers are needed to build this. */
+#ifndef KVM_CREATE_VM
+#define KVM_CREATE_VM 0xAE01 /* _IO(0xAE, 0x01) */
+#endif
+#ifndef AF_VSOCK
+#define AF_VSOCK 40
+#endif
+#define TK_CID_HOST 2
+
+struct tk_sockaddr_vm {
+    unsigned short svm_family;
+    unsigned short svm_reserved1;
+    unsigned int   svm_port;
+    unsigned int   svm_cid;
+    unsigned char  svm_zero[4];
+};
+
+static void row(const char *id, const char *verdict, const char *detail) {
+    printf("%s %s %s\n", id, verdict, detail);
+}
+
+static void on_alarm(int sig) { (void)sig; }
+
+int main(void) {
+    char d[200];
+
+    /* /dev/kvm: one KVM_CREATE_VM as the account. */
+    {
+        int fd = open("/dev/kvm", O_RDWR | O_CLOEXEC);
+        if (fd < 0) {
+            snprintf(d, sizeof d, "open /dev/kvm: %s", strerror(errno));
+            row("kvm", errno == ENOENT ? "absent" : "closed", d);
+        } else {
+            long vm = ioctl(fd, KVM_CREATE_VM, 0);
+            if (vm >= 0) {
+                row("kvm", "open", "the account created a KVM virtual machine");
+                close((int)vm);
+            } else {
+                snprintf(d, sizeof d, "KVM_CREATE_VM refused: %s", strerror(errno));
+                row("kvm", "closed", d);
+            }
+            close(fd);
+        }
+    }
+
+    /* /dev/vsock: one connect to the host context id. */
+    {
+        int s = socket(AF_VSOCK, SOCK_STREAM, 0);
+        if (s < 0) {
+            snprintf(d, sizeof d, "AF_VSOCK socket: %s", strerror(errno));
+            row("vsock", errno == EAFNOSUPPORT ? "absent" : "closed", d);
+        } else {
+            struct tk_sockaddr_vm a;
+            memset(&a, 0, sizeof a);
+            a.svm_family = AF_VSOCK;
+            a.svm_port = 1024;
+            a.svm_cid = TK_CID_HOST;
+            /* sigaction with no SA_RESTART, so the alarm ends the connect.
+               glibc's signal() restarts it, and the alarm bounded nothing. */
+            struct sigaction sa;
+            memset(&sa, 0, sizeof sa);
+            sa.sa_handler = on_alarm;
+            sigaction(SIGALRM, &sa, NULL);
+            alarm(6);
+            if (connect(s, (struct sockaddr *)&a, sizeof a) == 0) {
+                row("vsock", "open", "an AF_VSOCK channel to the host context id was opened");
+            } else if (errno == EINTR) {
+                row("vsock", "closed", "host context id not reached: no answer within 6 seconds");
+            } else {
+                snprintf(d, sizeof d, "host context id not reached: %s", strerror(errno));
+                row("vsock", "closed", d);
+            }
+            alarm(0);
+            close(s);
+        }
+    }
+
+    /* /dev/dxg: one read-only question the driver answers, its adapter count.
+       LX_DXENUMADAPTERS2 is _IOWR(0x47, 0x14, 16). With no buffer, dxgkrnl
+       writes the count and changes nothing. A guessed request was refused
+       with ENOTTY and still read open, which claimed what was not measured. */
+    {
+        int fd = open("/dev/dxg", O_RDWR | O_CLOEXEC);
+        if (fd < 0) {
+            snprintf(d, sizeof d, "open /dev/dxg: %s", strerror(errno));
+            row("dxg", errno == ENOENT ? "absent" : "closed", d);
+        } else {
+            struct { unsigned int num_adapters, reserved; unsigned long long adapters; } q;
+            unsigned long req = (3UL << 30) | ((unsigned long)sizeof q << 16) | (0x47UL << 8) | 0x14UL;
+            memset(&q, 0, sizeof q);
+            if (ioctl(fd, req, &q) == 0) {
+                snprintf(d, sizeof d, "the account asked dxgkrnl for its GPU adapters and was told %u", q.num_adapters);
+                row("dxg", "open", d);
+            } else if (errno == EACCES || errno == EPERM) {
+                snprintf(d, sizeof d, "dxgkrnl refused the adapter query: %s", strerror(errno));
+                row("dxg", "closed", d);
+            } else {
+                snprintf(d, sizeof d, "opened /dev/dxg and the adapter query answered %s, so what the driver serves is unmeasured", strerror(errno));
+                row("dxg", "unknown", d);
+            }
+            close(fd);
+        }
+    }
+    return 0;
+}
+DEVC
+  if "$dev_cc" -O0 -w -o "$dev_dir/probe" "$dev_dir/probe.c" 2>"$dev_dir/cc.err"; then
+    # ⚠ BOUNDED FROM OUTSIDE TOO, as the TCP probes are. The alarm bounds the
+    # vsock connect, and `timeout` bounds a driver that never answers. WSL-156.
+    if command -v timeout >/dev/null 2>&1; then
+      timeout 20 "$dev_dir/probe" > "$dev_dir/out" 2>/dev/null
+    else
+      "$dev_dir/probe" > "$dev_dir/out" 2>/dev/null
+    fi
+    while read -r d_name d_verdict d_detail; do
+      case "$d_name" in
+        kvm)   say plumbing.kvm-create-vm "$d_verdict" "$d_detail" ;;
+        vsock) say plumbing.vsock-connect-host "$d_verdict" "$d_detail" ;;
+        dxg)   say plumbing.dxg-ioctl "$d_verdict" "$d_detail" ;;
+      esac
+    done < "$dev_dir/out"
+    # ⛔ ALL THREE, OR NONE: a probe that built and ran but printed fewer than its
+    # three rows (a crash part way) is not a measurement, and the fallback below
+    # names every one it owes as `unknown` rather than leaving a required door out.
+    if [ "$(grep -cE '^(kvm|vsock|dxg) ' "$dev_dir/out" 2>/dev/null)" = 3 ]; then
+      dev_done=1
+    fi
+  fi
+fi
+if [ "$dev_done" = 0 ]; then
+  dev_why='no cc or gcc in this guest to make a syscall a shell cannot'
+  if [ -n "$dev_cc" ]; then
+    dev_why="$dev_cc could not build or run the probe: $(sed -n 1p "$dev_dir/cc.err" 2>/dev/null | cut -c1-120)"
+  fi
+  for dev_pair in kvm-create-vm:/dev/kvm vsock-connect-host:/dev/vsock dxg-ioctl:/dev/dxg; do
+    dev_id=${dev_pair%%:*}
+    dev_node=${dev_pair#*:}
+    if [ "$dev_id" = vsock-connect-host ] || [ -e "$dev_node" ]; then
+      say "plumbing.$dev_id" unknown "$dev_node is reachable and $dev_why"
+    else
+      say "plumbing.$dev_id" absent "no $dev_node in this guest"
+    fi
+  done
+fi
+rm -rf "$dev_dir" 2>/dev/null
 
 # --------------------------------------------------------------- network -----
 say net.addresses info "$(ip -4 -o addr show 2>/dev/null | awk '{printf "%s=%s ", $2, $4}')"

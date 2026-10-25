@@ -85,6 +85,13 @@ func TestBsdGuestChild(t *testing.T) {
 	case "exit":
 		_, _ = os.Stdout.WriteString("Starting devd.\r\n")
 		os.Exit(3)
+	case "hang":
+		// ⚠ ALIVE AND SILENT, AND IT DRAINS ITS CONSOLE. A real guest reads what is
+		// typed at it, so the type completes and the command's wait is where the
+		// cancellation lands. It never prints the marker a wait looks for, so the
+		// only way that wait ends is the context. WSL-151's cases drive a cancel.
+		go func() { _, _ = io.Copy(io.Discard, os.Stdin) }()
+		time.Sleep(60 * time.Second)
 	case "poweroff-panic":
 		in := bufio.NewReader(os.Stdin)
 		for {
@@ -263,6 +270,142 @@ func TestAGuestWhoseConsoleClosesIsNotWaitedOn(t *testing.T) {
 	}
 	if waited := time.Since(started); waited > 15*time.Second {
 		t.Fatalf("a closed console was noticed after %s, which is the budget", waited)
+	}
+}
+
+// TestACancelledBsdWaitCarriesTheCancellation is WSL-151, finding 9, at the wait
+// the root shell's prompt and every command run through. A cancelled context
+// ended it with the context's own error, which a caller cannot tell from a
+// deadline; it carries errBsdCancelled now, and a deadline keeps
+// context.DeadlineExceeded.
+func TestACancelledBsdWaitCarriesTheCancellation(t *testing.T) {
+	g := startBsdGuestChild(t, "hang")
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(200*time.Millisecond, cancel)
+	err := g.waitFrom(ctx, bsdNeverRE, 0)
+	if !errors.Is(err, errBsdCancelled) {
+		t.Fatalf("a cancelled wait answered %v, want errBsdCancelled", err)
+	}
+}
+
+// TestACancelledBsdCommandAnswersCancellationNotABudget is the same defect one
+// level up: `g.run` read "the guest did not finish the command within the
+// budget" at exit 2 over a Ctrl+C, where `distro run` answers 130. The
+// cancellation carries up unchanged rather than being dressed as a budget.
+func TestACancelledBsdCommandAnswersCancellationNotABudget(t *testing.T) {
+	g := startBsdGuestChild(t, "hang")
+	ctx, cancel := context.WithCancel(context.Background())
+	// ⚠ LONG ENOUGH that the line is typed and the wait has it. A shorter window
+	// lands the cancel in g.send, which answers the same 130 by its own path.
+	time.AfterFunc(1500*time.Millisecond, cancel)
+	started := time.Now()
+	_, _, err := g.run(ctx, "true")
+	if !errors.Is(err, errBsdCancelled) {
+		t.Fatalf("a cancelled command answered %v, want errBsdCancelled", err)
+	}
+	if err != nil && strings.Contains(err.Error(), "budget") {
+		t.Fatalf("a cancelled command was reported as a budget that ran out: %v", err)
+	}
+	if waited := time.Since(started); waited > 15*time.Second {
+		t.Fatalf("the cancellation was noticed after %s, which is near the budget", waited)
+	}
+}
+
+// TestABsdCommandCancelledWhileTypingAnswersCancellation is the third place a
+// Ctrl+C lands: before the line is fully typed. g.send answers a cancelled
+// context with the context's own error, and that reached the caller as a
+// could-not-type error at exit 2. A context already cancelled makes it certain.
+// WSL-151.
+func TestABsdCommandCancelledWhileTypingAnswersCancellation(t *testing.T) {
+	g := startBsdGuestChild(t, "hang")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _, err := g.run(ctx, "true")
+	if !errors.Is(err, errBsdCancelled) {
+		t.Fatalf("a command cancelled while it was typed answered %v, want errBsdCancelled", err)
+	}
+}
+
+// fakeQemuImgEnv makes this test binary a qemu-img that never finishes, when it
+// is started under that name. WSL-151.
+const fakeQemuImgEnv = "TOOLKIT_FAKE_QEMU_IMG"
+
+// init is the fake qemu-img. ⚠ AN init AND NOT A CASE, because qemu-img's own
+// arguments are flags a test binary refuses before any case runs.
+func init() {
+	if os.Getenv(fakeQemuImgEnv) == "" {
+		return
+	}
+	if strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "qemu-img" {
+		time.Sleep(60 * time.Second)
+		os.Exit(1)
+	}
+}
+
+// TestABsdRunCancelledBeforeTheBootAnswersOneThreeZero is the step the first
+// WSL-151 build left at exit 2: a Ctrl+C while qemu-img makes the overlay. Every
+// step before the boot answered the caller's cancellation with its own error.
+func TestABsdRunCancelledBeforeTheBootAnswersOneThreeZero(t *testing.T) {
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ NOT t.TempDir, for the reason newFakeHost gives: a fake that has just
+	// exited can stay locked on Windows. Removal is tried once, with no wait.
+	bin, err := os.MkdirTemp("", "fakeqemu-bin-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.RemoveAll(bin); err != nil {
+			t.Logf("the fakes in %s are still locked and are left behind: %v", bin, err)
+		}
+	})
+	ext := ""
+	if runtime.GOOS == "windows" {
+		ext = ".exe"
+	}
+	for _, name := range []string{"qemu-system-x86_64", "qemu-img"} {
+		linkOrCopyExecutable(t, self, filepath.Join(bin, name+ext))
+	}
+	t.Setenv("PATH", bin)
+	t.Setenv(fakeQemuImgEnv, "hang")
+	cache := t.TempDir()
+	t.Setenv("WSL_TOOLKIT_CACHE", cache)
+	if err := os.MkdirAll(filepath.Join(cache, "bsd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cache, "bsd", BsdImageName), []byte("an image"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(500*time.Millisecond, cancel)
+	started := time.Now()
+	res, err := BsdRun(ctx, BsdRunSpec{Script: []byte("true\n"), Timeout: time.Minute})
+	if !res.Cancelled || res.Exit != 130 {
+		t.Fatalf("a run cancelled while its overlay was made is cancelled=%v exit=%d, %v; want true and 130", res.Cancelled, res.Exit, err)
+	}
+	if err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("a run cancelled while its overlay was made said %v", err)
+	}
+	if waited := time.Since(started); waited > 30*time.Second {
+		t.Fatalf("the cancellation was noticed after %s", waited)
+	}
+}
+
+// TestABsdCancellationIsOneThreeZeroAndSaysSo holds the result a cancelled run
+// carries: 130, the cancelled flag, and a sentence that names the cancellation
+// rather than a deadline. WSL-151.
+func TestABsdCancellationIsOneThreeZeroAndSaysSo(t *testing.T) {
+	res, err := bsdCancelled(BsdResult{Exit: 7, Output: "partial"}, time.Now().Add(-time.Second))
+	if res.Exit != 130 || !res.Cancelled {
+		t.Fatalf("a cancelled run is exit=%d cancelled=%v, want 130 and true", res.Exit, res.Cancelled)
+	}
+	if err == nil || !strings.Contains(err.Error(), "cancelled") {
+		t.Fatalf("a cancelled run did not say it was cancelled: %v", err)
+	}
+	if res.Duration <= 0 {
+		t.Fatalf("a cancelled run carries no duration: %s", res.Duration)
 	}
 }
 

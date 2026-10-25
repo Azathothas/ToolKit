@@ -85,27 +85,50 @@ func TestTheTotalCeilingAndTheStallAreToldApart(t *testing.T) {
 // this reads the SOURCE and refuses a host-engine invocation that did not go
 // through engineCall. ⚠ It is a textual rule, and it is worth it: the
 // alternative is remembering, and remembering is what failed.
+//
+// ⛔ EVERY NON-TEST FILE, NOT engine.go ALONE. Finding 90: ReadHostEngineHolding
+// reached the host engine in resources.go with a WithTimeout of its own, outside
+// the door, and a guard that read only engine.go could never have seen it. The
+// widened sweep is WSL-163. enginecall.go is the door itself, the one place the
+// raw helpers reach the engine with the ceiling and the stall watch in hand, so
+// it is the single exemption.
 func TestEveryEngineCallCarriesADeadline(t *testing.T) {
-	body, err := os.ReadFile(filepath.Join("engine.go"))
+	const door = "enginecall.go"
+	files, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i, line := range strings.Split(string(body), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "//") {
+	checked := 0
+	for _, path := range files {
+		if strings.HasSuffix(path, "_test.go") || path == door {
 			continue
 		}
-		// `e.Path` and `exe` are the host engine. Reaching either through the
-		// raw process helpers is the unbounded shape.
-		if !strings.Contains(trimmed, "e.Path") && !strings.Contains(trimmed, ", exe,") {
-			continue
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
 		}
-		for _, raw := range []string{"Output(", "runCommand(", "newCommand(", "outputRaw("} {
-			if strings.Contains(trimmed, raw) {
-				t.Errorf("engine.go:%d reaches the host engine through %s rather than engineCall, "+
-					"so it carries whatever deadline its caller happened to hold: %s", i+1, raw, trimmed)
+		checked++
+		for i, line := range strings.Split(string(body), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			// `e.Path` and `exe` are the host engine. Reaching either through the
+			// raw process helpers is the unbounded shape.
+			if !strings.Contains(trimmed, "e.Path") && !strings.Contains(trimmed, ", exe,") {
+				continue
+			}
+			for _, raw := range []string{"Output(", "runCommand(", "newCommand(", "outputRaw("} {
+				if strings.Contains(trimmed, raw) {
+					t.Errorf("%s:%d reaches the host engine through %s rather than engineCall, "+
+						"so it carries whatever deadline its caller happened to hold: %s", path, i+1, raw, trimmed)
+				}
 			}
 		}
+	}
+	// ⛔ A SWEEP THAT READ ALMOST NOTHING IS A SWEEP THAT PROVES ALMOST NOTHING.
+	if checked < 5 {
+		t.Fatalf("only %d non-test file(s) were read, so the widened guard is barely looking", checked)
 	}
 }
 

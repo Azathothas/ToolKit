@@ -1497,6 +1497,10 @@ on a second read-only disk and run from a copy in `/tmp`, so a comment, a blank 
 and a command split across lines run as written. Its stdin is `/dev/null`, and the
 exit code is the script's own.
 
+⛔ **A cancelled run exits 130**, as a cancelled `run` does. A Ctrl+C at any step
+stops the guest, and `--json` carries `cancelled: true` beside `exit: 130`. A run
+whose `--timeout` ran out still exits 2. `WSL-151`
+
 ⭐ **The guest disk is 12 GiB, which gives a root filesystem of about 10.6 GiB.**
 The published image is 6.0 GiB with a 4.8 GiB root, and a toolchain install fills
 that. `bsd run` gives the run's overlay a size of `--disk` GiB, 12 by default, then
@@ -1660,9 +1664,15 @@ on a base with no Windows path reachable, because there is no executable to try.
 
 | on a base with automount off, interop off and passwordless sudo on | `base doors` reports |
 | --- | --- |
-| closed, each by an attempt | `fs.windows-drives`, `fs.mount-drvfs` (`must be superuser to use mount`), `interop.windows-path`, `net.windows-host-smb`, `net.windows-host-rdp`, `priv.unshare-netns` |
+| closed, each by an attempt | `fs.windows-drives`, `fs.mount-drvfs` (`must be superuser to use mount`), `interop.windows-path`, `net.windows-host-smb`, `net.windows-host-rdp`, `priv.unshare-netns`, `plumbing.vsock-connect-host` |
 | read-only | `fs.wsl-drivers`, 9p, a write refused |
-| ⛔ open, and no setting here closes them | `fs.mnt-wsl-shared`, `net.windows-host-icmp`, `net.internet`, `priv.passwordless-sudo`, `priv.unshare-userns`, `priv.unshare-user-plus-net`, and `interop.exec-pe` whenever the handler is live |
+| ⛔ open, and no setting here closes them | `fs.mnt-wsl-shared`, `net.windows-host-icmp`, `net.internet`, `priv.passwordless-sudo`, `priv.unshare-userns`, `priv.unshare-user-plus-net`, `plumbing.kvm-create-vm`, `plumbing.dxg-ioctl`, and `interop.exec-pe` whenever the handler is live |
+
+⚠ **The three `plumbing` tries need a C compiler in the base.** The probe
+builds one small program with `cc` or `gcc`, runs it as the account and removes
+it. A base with no compiler reports all three `unknown`. On a scratch base, the
+account created a KVM virtual machine and was told the GPU adapter count. The
+vsock connect to the host timed out. `WSL-156`
 
 ⛔ **This is a report, not a boundary.** Nothing in this tree shows a WSL
 distribution to be a security boundary. This command exists so that a sentence
@@ -1849,7 +1859,7 @@ that command is for. These are the doors it finds open on a base built with
 | ⛔ the Windows host | `445` and `3389` are refused and **ICMP answers**, so the host is reachable. The address is `hostaddress`'s answer |
 | ⭐ a private network namespace | `unshare -n` is refused and `unshare -Un` SUCCEEDS, so the account can make one with no privilege. ⚠ `pasta --config-net` alone still reaches the internet and the Windows host. ⭐ **An `nft` rule INSIDE that namespace refuses the host and the private ranges while the internet and DNS stay up**, which is what `base exec --private-net` runs |
 | ⛔ a PE handler this tool cannot remove | the `WSLInterop` `binfmt_misc` registration does not follow `[interop] enabled`. `base doors` reports `interop.exec-pe` and never claims it |
-| ⚠ `/dev/kvm`, `/dev/dxg`, `/dev/vsock` | all three are `crw-rw-rw-` in a zero-grant base. **None is attacked by this probe**, so what an unprivileged account reaches through them is unmeasured |
+| ⚠ `/dev/kvm`, `/dev/dxg`, `/dev/vsock` | all three are `crw-rw-rw-` in a zero-grant base. `base doors` makes one attempt on each as the account and reports what it reached. The attempts are a `KVM_CREATE_VM`, a vsock connect to the host, and a `dxgkrnl` adapter query. A guest with no compiler to make them reports `unknown`. `WSL-156` |
 | ⚠ passwordless sudo, where it is on | guest root can mount a Windows path the configuration never granted. It is authority, not containment, and `base doors` reports it open |
 
 ⛔ **So the shape this tool builds is called zero grants and never a sandbox or a

@@ -20,16 +20,16 @@ only the order was wrong, so nothing fired.
 ## Counts
 
 ```text
-total 249  open 49  blocked 5  done 195
+total 250  open 41  blocked 5  done 204
 ```
 
 | priority | open | blocked | done | total |
 | --- | --- | --- | --- | --- |
 | P0 | 0 | 0 | 8 | 8 |
 | P1 | 5 | 0 | 90 | 95 |
-| P2 | 31 | 2 | 83 | 116 |
-| P3 | 13 | 3 | 14 | 30 |
-| **all** | **49** | **5** | **195** | **249** |
+| P2 | 27 | 2 | 88 | 117 |
+| P3 | 9 | 3 | 18 | 30 |
+| **all** | **41** | **5** | **204** | **250** |
 
 ---
 
@@ -241,22 +241,22 @@ total 249  open 49  blocked 5  done 195
 | WSL-146 | P3 | S | open | No channel gives an agent an environment variable | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-147 | P1 | S | open | After `base bootstrap`, agents bypass this tool's wrappers | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-148 | P2 | S | open | After a cancelled approval, herdr refuses every prompt, and no guide says how out | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-149 | P2 | S | open | `bootstrap.sh --dry-run` reports a failure on an image without curl | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-149 | P2 | S | done | `bootstrap.sh --dry-run` reports a failure on an image without curl | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-150 | P2 | M | open | A base build killed before its marker leaves a distribution only `wsl --unregister` can remove | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-151 | P2 | S | open | A cancelled `bsd run` says its budget ran out and exits 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-152 | P2 | S | open | Four guest errors are named by the wrong line | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-151 | P2 | S | done | A cancelled `bsd run` says its budget ran out and exits 2 | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-152 | P2 | S | done | Four guest errors are named by the wrong line | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-153 | P3 | S | open | An automount-off build logs one translate failure per Windows PATH entry | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-154 | P3 | S | open | bootstrap.sh's cases read it from outside the module, so no mutation row can hold one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-154 | P3 | S | done | bootstrap.sh's cases read it from outside the module, so no mutation row can hold one | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-155 | P2 | S | open | A drive WSL mounts during a long build fails the new base | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-156 | P2 | M | open | `base doors` lists three world-writable device nodes and tries none of them | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-156 | P2 | M | done | `base doors` lists three world-writable device nodes and tries none of them | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-157 | P2 | S | done | The muse probe calls the herdr reporter registered without Muse ever running it | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-158 | P3 | S | blocked | Without the reporter, herdr shows a Muse pane as idle | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-159 | P2 | M | blocked | An agent started through herdr runs in the shared network namespace | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-160 | P3 | S | open | Three command groups keep two lists of their subcommands that nothing compares | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-160 | P3 | S | done | Three command groups keep two lists of their subcommands that nothing compares | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-161 | P1 | S | done | A configuration that leaves out `systemd` turns systemd off | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-162 | P3 | S | open | Nothing holds a job container's log driver | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-163 | P3 | S | open | `resources --host-engine` calls the engine outside the deadline door | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
-| WSL-164 | P2 | S | open | `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-162 | P3 | S | done | Nothing holds a job container's log driver | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-163 | P3 | S | done | `resources --host-engine` calls the engine outside the deadline door | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-164 | P2 | S | done | `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help` | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-165 | P2 | S | done | `text-tool eol` creates an empty file at a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-166 | P3 | S | open | `text-tool eol` answers 0 for a path that does not exist | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-167 | P1 | M | done | Two bases named `wsl-toolkit` and `wsl-toolkit-base` are mistaken for each other | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
@@ -286,6 +286,7 @@ total 249  open 49  blocked 5  done 195
 | WSL-191 | P2 | S | open | The helper protocol still sends a forced rebuild for a preset switch | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-192 | P2 | S | open | A rebuild whose pull fails does not fall back to a local image | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 | WSL-193 | P2 | S | done | An instance name that starts with `wsl-` doubles the prefix in its distribution name | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
+| WSL-194 | P2 | S | open | A grant case fails under load and passes alone | [`wsl-toolkit-go.md`](wsl-toolkit-go.md) |
 
 ---
 

@@ -41,6 +41,12 @@ func cmdShipped(_ context.Context, args []string) (int, error) {
 		fmt.Fprint(os.Stderr, shippedUsage)
 		return exitCannot, nil
 	}
+	// ⛔ `shipped --help` exited 2 as an unknown subcommand, where `base` answers
+	// 0. WSL-164.
+	if isGroupHelp(args) {
+		fmt.Fprint(os.Stderr, shippedUsage)
+		return exitOK, flag.ErrHelp
+	}
 	sub, rest := args[0], args[1:]
 	// ⚠ ONE FLAG SET PER SUBCOMMAND, as `base` registers its own: the manual is
 	// generated from the registered sets, and a help form with none is a form the

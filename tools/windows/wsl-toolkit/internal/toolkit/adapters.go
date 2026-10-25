@@ -647,7 +647,10 @@ func (b *Base) probeAdapter(ctx context.Context, spec adapterSpec, session bool)
 	}
 	out, errOut, code, err := b.captureAs(ctx, "root", probe, env, 2*time.Minute)
 	if err != nil || code != 0 {
-		return AdapterState{Name: spec.Name, Problems: []string{fmt.Sprintf("the probe exited %d: %s", code, firstLine(errOut))}}
+		// ⛔ guestReason, not firstLine: wsl.exe can write its own line first, and
+		// the probe's real reason is the last guest line of stderr. A probe
+		// prints its rows on stdout, so a row never names the failure. WSL-152.
+		return AdapterState{Name: spec.Name, Problems: []string{fmt.Sprintf("the probe exited %d: %s", code, guestReason(errOut, out))}}
 	}
 	return parseAdapterProbe(spec.Name, out)
 }

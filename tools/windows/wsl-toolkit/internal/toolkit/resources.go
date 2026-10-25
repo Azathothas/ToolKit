@@ -131,9 +131,14 @@ func ReadHostEngineHolding(ctx context.Context) *HostEngineHolding {
 	}
 	h.Engine = e.Name + " at " + e.Path
 	ask := func(args ...string) (string, error) {
-		bounded, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		defer cancel()
-		out, stderr, err := Output(bounded, e.Path, args...)
+		// ⛔ THROUGH THE ONE DEADLINE DOOR. This reached the host engine with a
+		// WithTimeout of its own, outside engineCall, which is the shape finding
+		// 90 named: a deadline chosen at a call site is one the next reader
+		// forgets. engineCall carries the ceiling and the stall watch, and the
+		// guard case now reads every non-test file so this cannot recur. WSL-163.
+		// ⚠ NO What: the refusal below names the operation, and a What would
+		// name it a second time inside the same sentence.
+		out, stderr, err := (engineCall{Timeout: 2 * time.Minute}).run(ctx, e.Path, args...)
 		if err != nil {
 			return "", fmt.Errorf("%s %s: %w: %s", e.Name, strings.Join(args[:2], " "), err, firstLine(stderr))
 		}

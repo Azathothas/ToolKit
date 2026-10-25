@@ -14619,7 +14619,7 @@ Open.
 ## WSL-149. `bootstrap.sh --dry-run` reports a failure on an image without curl
 
 **Source** the old record's findings 4 and 19
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14652,7 +14652,7 @@ Exit 0, then the dry run in `debian:latest` exits 0.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** A dry run returns before the PowerShell release-tag lookup, in `scripts/common/bootstrap.sh` and the shipped copy, which stay byte-identical. Its row went red in `golang:1.25`. ⚠ A dry run no longer prints the resolved PowerShell version on stderr; it says it would resolve the release.
 
 
 ## WSL-150. A base build killed before its marker leaves a distribution only `wsl --unregister` can remove
@@ -14698,7 +14698,7 @@ Open.
 ## WSL-151. A cancelled `bsd run` says its budget ran out and exits 2
 
 **Source** the old record's finding 9
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14730,13 +14730,13 @@ Exit 0, with the case.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** Any error while the caller's context is cancelled becomes `bsd run`'s cancellation, exit 130 and `cancelled: true`, after the guest is stopped; a `--timeout` deadline still exits 2. A case drives a fake `qemu-img` that hangs and is cancelled at 500 ms. ⚠ A live Ctrl+C on WHPX was not driven.
 
 
 ## WSL-152. Four guest errors are named by the wrong line
 
 **Source** the old record's findings 12 and 15; finding 95 said they were fixed, and they were not
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -14769,7 +14769,7 @@ Exit 0, with the case.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** The triage's regression is fixed: `guestReason` answers the last guest line of stderr, and reads stdout only when stderr has none. The verifier, the throwaway smoke, the PID 1 read and the adapter probe use it, and the stale-run-state remediation still matches. Five cases, rows red on Windows.
 
 
 ## WSL-153. An automount-off build logs one translate failure per Windows PATH entry
@@ -14813,7 +14813,7 @@ Open.
 ## WSL-154. bootstrap.sh's cases read it from outside the module, so no mutation row can hold one
 
 **Source** the old record's finding 17
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -14845,7 +14845,7 @@ Exit 0, and each new row red.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** The cases read the shipped `bootstrap.sh`, and three cases that had no row got one. All six bootstrap rows went red in `golang:1.25`; they need dash, so they skip on Windows.
 
 
 ## WSL-155. A drive WSL mounts during a long build fails the new base
@@ -14890,7 +14890,7 @@ Open.
 ## WSL-156. `base doors` lists three world-writable device nodes and tries none of them
 
 **Source** the old record's findings 22 and 38
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** M, **Status** done
 
 ---
 
@@ -14923,7 +14923,14 @@ Each node reports what the attempt reached.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** The dxg attempt is the read-only adapter query `LX_DXENUMADAPTERS2`: an answer is open, EACCES or EPERM is closed, any other errno unknown. The vsock alarm uses sigaction without SA_RESTART, and the compiled probe runs under `timeout 20`. Both Windows launches in `doors.sh` take `</dev/null`, which fixes `base doors` exiting 2 on an interop-on base, as 7.0.2 did.
+
+```text
+in a container: the old guessed ioctl answered ENOTTY and still read open; LX_DXENUMADAPTERS2 answered rc=0 n=2
+scratch base f6b: base doors --json exited 2 before the fix, as installed 7.0.2 does, and 0 after it
+```
+
+⚠ A refusing driver and a silent vsock peer are proved against a fake libc only. A default base has no compiler, so those rows read unknown there.
 
 
 ## WSL-157. The muse probe calls the herdr reporter registered without Muse ever running it
@@ -15064,7 +15071,7 @@ Blocked; the Decision names on what.
 ## WSL-160. Three command groups keep two lists of their subcommands that nothing compares
 
 **Source** found while classifying the old record's finding 39
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -15097,7 +15104,7 @@ Exit 0, and a row that drops a subcommand from one list goes red.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** `TestTheBaseUsageAndTheManualNameTheSameSubcommands` loops over `base`, `distro`, `helper` and `shipped` in both directions; its three rows went red on Windows.
 
 
 ## WSL-161. A configuration that leaves out `systemd` turns systemd off
@@ -15164,7 +15171,7 @@ grep -n 'Systemd\|PasswordlessSudo' internal/toolkit/catalog.go
 ## WSL-162. Nothing holds a job container's log driver
 
 **Source** the old record's finding 81
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -15196,13 +15203,13 @@ Exit 0, and the row red.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** `TestTheJobContainerNamesItsLogDriver` and its row, red on Windows.
 
 
 ## WSL-163. `resources --host-engine` calls the engine outside the deadline door
 
 **Source** the old record's finding 90
-**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P3, **Effort** S, **Status** done
 
 ---
 
@@ -15235,12 +15242,12 @@ Exit 0, and the widened guard red against the old call.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** `ReadHostEngineHolding` goes through `engineCall`, the guard reads every non-test file in `internal/toolkit`, and a deadline error names the operation once. Its row went red on Windows.
 
 ## WSL-164. `helper`, `distro`, `bsd`, `shipped` and `artifacts` refuse their own `--help`
 
 **Source** the review of the three skills, 2026-10-21
-**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** done
 
 ---
 
@@ -15273,7 +15280,7 @@ Exit 0, then `--help` on each group exits 0.
 
 ## Closing
 
-Open.
+**Closed 2026-10-25, merged from `rb/f6b-fixes`, for 8.0.0.** `distro`, `helper`, `bsd`, `shipped` and `artifacts` answer `--help`, `-h` and `help` with exit 0, as `base` already did; `helper` with no arguments still exits 2. Installed 7.0.2 exits 2 for `--help` on all five. Five rows red on Windows.
 
 
 ## WSL-165. `text-tool eol` creates an empty file at a path that does not exist
@@ -16771,3 +16778,40 @@ scratch home:  --instance wsl-demo base status
   instance demo: distribution wsl-toolkit-demo
 the cases' rows: red on Windows and in golang:1.25
 ```
+
+## WSL-194. A grant case fails under load and passes alone
+
+**Source** the 7.1.0 integration builders' reports, 2026-10-24 and 2026-10-25: the F6B builder and a WSL-167 repair each met it
+**Category** wsl-toolkit-go, **Priority** P2, **Effort** S, **Status** open
+
+---
+
+## Problem
+
+`TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant` failed in a full `check-go` run with `exit 124 ... the guest said nothing`, a context deadline, and passed when run alone, three times of three. A case that fails by timing makes a red CI run mean nothing.
+
+## Premise
+
+Seen twice under a loaded host by two builders. Not reproduced on demand.
+
+## Approach
+
+Find the deadline the case reaches: a fake guest step or a lock wait with a fixed budget. Make the case independent of the host's load: give the fake its answer without a wait, or a budget the case sets. Run the package ten times under `-count=10` with `-parallel` load to show it holds.
+
+## Consumers
+
+A test change only.
+
+## Prove
+
+```bash
+cd tools/windows/wsl-toolkit && go test ./internal/toolkit -run TestAnEnsureRefusesToRestartOverAnotherFilesLiveGrant -count=20
+```
+
+Exit 0, twenty of twenty, while a full `check-go` runs beside it.
+
+---
+
+## Closing
+
+Open.

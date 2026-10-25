@@ -2,6 +2,348 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "doors: the PE attempt leaves the probe's stdin alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "stub_out=$(\"$stub\" 2>&1 </dev/null)\n",
+      "replace": "stub_out=$(\"$stub\" 2>&1)\n",
+      "run": "TestTheWindowsAttemptsLeaveTheProbesStdinAlone",
+      "args": []
+    },
+    {
+      "label": "doors: the cmd.exe attempt leaves the probe's stdin alone",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "elif out=$(\"$winexe\" /c echo DOORS 2>&1 </dev/null); then\n",
+      "replace": "elif out=$(\"$winexe\" /c echo DOORS 2>&1); then\n",
+      "run": "TestTheWindowsAttemptsLeaveTheProbesStdinAlone",
+      "args": []
+    },
+    {
+      "label": "doors: a dxg query the driver does not answer is unknown, not open",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "                row(\"dxg\", \"unknown\", d);\n",
+      "replace": "                row(\"dxg\", \"open\", d);\n",
+      "run": "TestTheDxgVerdictIsWhatTheDriverAnswered",
+      "args": []
+    },
+    {
+      "label": "doors: the vsock alarm ends the connect",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "            sigaction(SIGALRM, &sa, NULL);\n",
+      "replace": "            sa.sa_flags = SA_RESTART;\n            sigaction(SIGALRM, &sa, NULL);\n",
+      "run": "TestTheVsockConnectIsEndedByItsAlarm",
+      "args": []
+    },
+    {
+      "label": "doors: the compiled device probe is bounded by timeout",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "      timeout 20 \"$dev_dir/probe\" > \"$dev_dir/out\" 2>/dev/null\n",
+      "replace": "      \"$dev_dir/probe\" > \"$dev_dir/out\" 2>/dev/null\n",
+      "run": "TestAProbeThatNeverFinishesIsBoundedFromOutside",
+      "args": []
+    },
+    {
+      "label": "doors: a guest with no compiler reports the devices unknown",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "      say \"plumbing.$dev_id\" unknown \"$dev_node is reachable and $dev_why\"\n",
+      "replace": "      say \"plumbing.$dev_id\" closed \"$dev_node is reachable and $dev_why\"\n",
+      "run": "TestAGuestWithNoCompilerReportsTheDevicesUnknown",
+      "args": []
+    },
+    {
+      "label": "doors: the device probe looks for a compiler",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "if command -v cc >/dev/null 2>&1; then\n  dev_cc=cc\nelif command -v gcc >/dev/null 2>&1; then\n  dev_cc=gcc\nfi\n",
+      "replace": "dev_cc=\n",
+      "run": "TestTheParavirtDevicesAreAttackedNotJustListed",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a bsd run cancelled before the boot exits 130",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tif err != nil && !res.Cancelled && errors.Is(caller.Err(), context.Canceled) {\n",
+      "replace": "\t\tif false && err != nil && !res.Cancelled && errors.Is(caller.Err(), context.Canceled) {\n",
+      "run": "TestABsdRunCancelledBeforeTheBootAnswersOneThreeZero",
+      "args": []
+    },
+    {
+      "label": "bootstrap: npm's archive directory is named for the package",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "  fv_dir=\"$fv_work/$fv_name\"\n",
+      "replace": "  fv_dir=\"$fv_work\"\n",
+      "run": "TestBootstrapFetchesAnNpmArchiveIntoANamedDirectoryUnderDash",
+      "args": []
+    },
+    {
+      "label": "bootstrap: codegraph is refused on a kernel it publishes no package for",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "  case \"$KERNEL\" in\n    Linux) ;;\n",
+      "replace": "  case \"$KERNEL\" in\n    *) ;;\n",
+      "run": "TestBootstrapNamesAKernelCodegraphPublishesNoPackageFor",
+      "args": []
+    },
+    {
+      "label": "bootstrap: NetBSD's pkg_add is given a repository",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "  if [ \"$KERNEL\" != NetBSD ]; then\n    return 0\n  fi\n",
+      "replace": "  if [ \"$KERNEL\" = NetBSD ]; then\n    return 0\n  fi\n",
+      "run": "TestBootstrapGivesTheNetBSDPkgAddARepository",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a verifier failure is named by stderr, not by a stdout row",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tdetail := guestReason(stderr, stdout)\n",
+      "replace": "\tdetail := guestFailure(stderr, stdout)\n",
+      "run": "TestAVerifierFailureIsNamedByStderrNotByItsRows",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: guestReason reads stderr before stdout",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif lines := guestLines(stderr); len(lines) > 0 {\n\t\treturn lines[len(lines)-1]\n",
+      "replace": "\tif lines := guestLines(stderr + stdout); len(lines) > 0 {\n\t\treturn lines[len(lines)-1]\n",
+      "run": "TestAThrowawaySmokeFailureIsNamedByTheGuestsReason",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a throwaway smoke failure names the guest's reason",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "\"the command channel needs /dev/fd\", name, code, guestReason(stderr, out))",
+      "replace": "\"the command channel needs /dev/fd\", name, code, firstLine(stderr+out))",
+      "run": "TestAThrowawaySmokeFailureIsNamedByTheGuestsReason",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a throwaway PID 1 failure names the guest's reason",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/throwaway.go",
+      "find": "could not be read (exit %d): %s\", name, code, guestReason(stderr, out))",
+      "replace": "could not be read (exit %d): %s\", name, code, firstLine(stderr+out))",
+      "run": "TestAThrowawayPid1FailureIsNamedByTheGuestsReason",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an adapter probe failure names the guest's reason",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters.go",
+      "find": "\"the probe exited %d: %s\", code, guestReason(errOut, out))",
+      "replace": "\"the probe exited %d: %s\", code, firstLine(errOut))",
+      "run": "TestAnAdapterProbeFailureIsNamedByTheGuestsReason",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: distro --help answers its usage and exit 0",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "\tif isGroupHelp(args) {\n",
+      "replace": "\tif isGroupHelp(args) && false {\n",
+      "run": "TestAskingEachGroupForHelpIsNotAFailure",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: helper --help answers its usage and exit 0",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_helper.go",
+      "find": "\tif isGroupHelp(args) {\n",
+      "replace": "\tif isGroupHelp(args) && false {\n",
+      "run": "TestAskingEachGroupForHelpIsNotAFailure",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: bsd --help answers its usage and exit 0",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_bsd.go",
+      "find": "\tif isGroupHelp(args) {\n",
+      "replace": "\tif isGroupHelp(args) && false {\n",
+      "run": "TestAskingEachGroupForHelpIsNotAFailure",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: shipped --help answers its usage and exit 0",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_shipped.go",
+      "find": "\tif isGroupHelp(args) {\n",
+      "replace": "\tif isGroupHelp(args) && false {\n",
+      "run": "TestAskingEachGroupForHelpIsNotAFailure",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: artifacts --help answers its usage and exit 0",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_actionable.go",
+      "find": "\tif isGroupHelp(args) {\n",
+      "replace": "\tif isGroupHelp(args) && false {\n",
+      "run": "TestAskingEachGroupForHelpIsNotAFailure",
+      "args": []
+    },
+    {
+      "label": "distro: the usage line names every subcommand the manual does",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_distro.go",
+      "find": "<list|new|run|enter|remove|purge|snapshot|replay|compare>",
+      "replace": "<list|new|run|enter|remove|purge|snapshot|replay>",
+      "run": "TestTheBaseUsageAndTheManualNameTheSameSubcommands",
+      "args": []
+    },
+    {
+      "label": "helper: the usage line names every subcommand the manual does",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_helper.go",
+      "find": "<serve|status|stop>",
+      "replace": "<serve|status>",
+      "run": "TestTheBaseUsageAndTheManualNameTheSameSubcommands",
+      "args": []
+    },
+    {
+      "label": "shipped: the usage line names every subcommand the manual does",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_shipped.go",
+      "find": "<list|cat|write>",
+      "replace": "<list|cat>",
+      "run": "TestTheBaseUsageAndTheManualNameTheSameSubcommands",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cancelled bsd wait carries the cancellation rather than the context's error",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\t\tif errors.Is(ctx.Err(), context.Canceled) {\n\t\t\t\treturn errBsdCancelled\n",
+      "replace": "\t\t\tif false {\n\t\t\t\treturn errBsdCancelled\n",
+      "run": "TestACancelledBsdWaitCarriesTheCancellation",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cancelled bsd command is not reported as a budget that ran out",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tif errors.Is(err, errBsdCancelled) {\n\t\t\treturn 0, cleanConsole(g.after(before)), errBsdCancelled\n",
+      "replace": "\t\tif false {\n\t\t\treturn 0, cleanConsole(g.after(before)), errBsdCancelled\n",
+      "run": "TestACancelledBsdCommandAnswersCancellationNotABudget",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a bsd command cancelled while it is typed answers the cancellation",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "\t\tif errors.Is(err, context.Canceled) {\n\t\t\treturn 0, \"\", errBsdCancelled\n",
+      "replace": "\t\tif false {\n\t\t\treturn 0, \"\", errBsdCancelled\n",
+      "run": "TestABsdCommandCancelledWhileTypingAnswersCancellation",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cancelled bsd run carries exit 130",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/bsd.go",
+      "find": "res.Cancelled, res.Exit = true, 130",
+      "replace": "res.Cancelled, res.Exit = true, 2",
+      "run": "TestABsdCancellationIsOneThreeZeroAndSaysSo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: bsd run exits 130 on a cancellation",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_bsd.go",
+      "find": "\tif res.Cancelled {\n\t\treturn 130, nil\n",
+      "replace": "\tif false {\n\t\treturn 130, nil\n",
+      "run": "TestACancelledBsdRunExitsOneThreeZero",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a verifier failure behind a podman warning names the error",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/base.go",
+      "find": "\tdetail := guestReason(stderr, stdout)\n",
+      "replace": "\tdetail := firstLine(strings.Join(append(guestLines(stderr), guestLines(stdout)...), \"\\n\"))\n",
+      "run": "TestAVerifierRefusalIsReadPastWslsOwnLines",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the job container names its log driver",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\t\t\"--log-driver\", ContainerLogDriver,\n",
+      "replace": "",
+      "run": "TestTheJobContainerNamesItsLogDriver",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the host engine's holding is asked through engineCall",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/resources.go",
+      "find": "(engineCall{Timeout: 2 * time.Minute}).run(ctx, e.Path, args...)",
+      "replace": "Output(ctx, e.Path, args...)",
+      "run": "TestEveryEngineCallCarriesADeadline",
+      "args": []
+    },
+    {
+      "label": "doors: the KVM_CREATE_VM attempt reports a verdict row",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "kvm)   say plumbing.kvm-create-vm \"$d_verdict\" \"$d_detail\" ;;",
+      "replace": "kvm)   : ;;",
+      "run": "TestEveryRequiredDoorIsEmittedByTheEmbeddedProbe",
+      "args": []
+    },
+    {
+      "label": "doors: the vsock connect to the host reports a verdict row",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "vsock) say plumbing.vsock-connect-host \"$d_verdict\" \"$d_detail\" ;;",
+      "replace": "vsock) : ;;",
+      "run": "TestEveryRequiredDoorIsEmittedByTheEmbeddedProbe",
+      "args": []
+    },
+    {
+      "label": "doors: the /dev/dxg ioctl reports a verdict row",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/doors.sh",
+      "find": "dxg)   say plumbing.dxg-ioctl \"$d_verdict\" \"$d_detail\" ;;",
+      "replace": "dxg)   : ;;",
+      "run": "TestEveryRequiredDoorIsEmittedByTheEmbeddedProbe",
+      "args": []
+    },
+    {
+      "label": "bootstrap: a dry run returns before the powershell release-tag lookup",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "below $PREFIX/share/powershell\"\n    return 0\n  fi\n",
+      "replace": "below $PREFIX/share/powershell\"\n  fi\n",
+      "run": "TestBootstrapDryRunReturnsBeforeTheReleaseLookup",
+      "args": []
+    },
+    {
+      "label": "bootstrap: an npm before 7.18 is named too old to pack to a directory",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "7.[0-9].*|7.1[0-7].*) return 1 ;;",
+      "replace": "7.[0-9].*) return 1 ;;",
+      "run": "TestBootstrapNamesAnNpmTooOldToPackToADirectory",
+      "args": []
+    },
+    {
+      "label": "bootstrap: NetBSD falls back to the pkg_add in its base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/shipped/bootstrap.sh",
+      "find": "      if have pkgin; then printf 'pkgin'; return 0; fi\n      if have pkg_add; then printf 'pkg_add'; return 0; fi\n",
+      "replace": "      if have pkgin; then printf 'pkgin'; return 0; fi\n",
+      "run": "TestBootstrapFallsBackToTheNetBSDBasePkgAdd",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a lending project's older jobs keys are read",
       "file": "internal/toolkit/configlayer.go",
       "find": "\tc.projectHeld = heldKeys(b)\n",

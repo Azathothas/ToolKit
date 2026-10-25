@@ -10,6 +10,16 @@ import (
 	"strings"
 )
 
+// isGroupHelp answers whether a command group was asked for its own help: one
+// argument, and it is `--help`, `-h` or `help`.
+//
+// ⛔ ASKING A GROUP FOR HELP IS NOT AN UNKNOWN SUBCOMMAND. `base` answers it with
+// its usage and exit 0, and the other groups fell through to their default arm
+// and exited 2 saying the help flag was not a subcommand. WSL-164.
+func isGroupHelp(args []string) bool {
+	return len(args) == 1 && (args[0] == "--help" || args[0] == "-h" || args[0] == "help")
+}
+
 // sharedFlags is a command group whose subcommands share one flag set. bind
 // defines the whole set on fs, bound to f. reads names the flags each
 // subcommand reads, keyed by the subcommand as it is typed, and "" is the group

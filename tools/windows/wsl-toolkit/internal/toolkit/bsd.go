@@ -267,6 +267,10 @@ type BsdResult struct {
 	DiskBytes int64  `json:"disk_bytes"`
 	RootBytes int64  `json:"root_bytes"`
 	Error     string `json:"error,omitempty"`
+	// Cancelled is set when the run's caller ended it (Ctrl+C) before the guest
+	// finished. ⛔ It is 130 and says so, as `distro run` answers a cancellation,
+	// rather than the budget message a deadline earns. WSL-151, finding 9.
+	Cancelled bool `json:"cancelled,omitempty"`
 	// ShutdownPanic is a kernel panic the guest printed while it powered off,
 	// after the payload had answered. ⚠ The payload's exit stands. The panic's
 	// writes went to the run's overlay and went with it. WSL-81, WSL-83.
@@ -276,6 +280,21 @@ type BsdResult struct {
 	// overlay, so the line means the image itself is in that state and every run
 	// boots on it until `bsd fetch --force`. WSL-83.
 	RootNotDismounted string `json:"root_not_dismounted,omitempty"`
+}
+
+// errBsdCancelled is a run its caller ended (Ctrl+C), carried up from the wait
+// that saw the cancelled context so a step does not dress it as a budget that
+// ran out. ⛔ A deadline is context.DeadlineExceeded and answers the budget
+// message at exit 2; a cancellation is context.Canceled and answers 130, as
+// `distro run` does. WSL-151, finding 9.
+var errBsdCancelled = errors.New("the run was cancelled before the guest finished")
+
+// bsdCancelled fills res for a cancelled run and answers 130.
+func bsdCancelled(res BsdResult, started time.Time) (BsdResult, error) {
+	res.Cancelled, res.Exit = true, 130
+	res.Error = "the run was cancelled, so the guest was stopped. The answer is 130"
+	res.Duration = time.Since(started)
+	return res, errors.New(res.Error)
 }
 
 // ⭐ A RUN WRITES TO AN OVERLAY, AND NEVER TO THE IMAGE.
@@ -492,6 +511,17 @@ var bsdPromptRE = regexp.MustCompile(`root@[^\r\n]*# `)
 // BsdRun boots the guest, runs one payload at a root shell, and powers it off.
 func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	started := time.Now()
+	// ⛔ EVERY STEP A CTRL+C CAN LAND IN IS 130, not only the waits. The overlay's
+	// qemu-img, QEMU's start and the typed `root` login answered the caller's
+	// cancellation with their own error at exit 2. The caller's context is read
+	// rather than the run's, because the run's deadline is a budget and not a
+	// cancellation. This runs last, after the guest is stopped. WSL-151.
+	caller := ctx
+	defer func() {
+		if err != nil && !res.Cancelled && errors.Is(caller.Err(), context.Canceled) {
+			res, err = bsdCancelled(res, started)
+		}
+	}()
 	img, err := BsdImagePath()
 	if err != nil {
 		return res, err
@@ -567,6 +597,12 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	defer func() { res.ShutdownPanic = g.stopAndReadPanic() }()
 
 	if failure, ok := g.waitBoot(ctx); !ok {
+		// ⛔ A CANCELLED BOOT IS 130, NOT THE BUDGET. waitBoot ends on the
+		// cancelled context with no failure line of its own; a real boot failure
+		// sets `failure` and keeps its own message. WSL-151.
+		if failure == "" && errors.Is(ctx.Err(), context.Canceled) {
+			return bsdCancelled(res, started)
+		}
 		res.Error = "the guest did not reach a login prompt within " + spec.Timeout.String()
 		if failure != "" {
 			res.Error = "the guest cannot boot, and stopped at: " + failure +
@@ -581,13 +617,20 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	// anything sent while it does is lost.
 	select {
 	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.Canceled) {
+			return bsdCancelled(res, started)
+		}
 		return res, ctx.Err()
 	case <-time.After(750 * time.Millisecond):
 	}
 	if err := g.send(ctx, "root"); err != nil {
+		// ⚠ A cancellation here is answered by the deferred check above. WSL-151.
 		return res, err
 	}
 	if err := g.wait(ctx, bsdPromptRE); err != nil {
+		if errors.Is(err, errBsdCancelled) {
+			return bsdCancelled(res, started)
+		}
 		res.Error = "the guest did not present a root shell"
 		var gone *guestGoneError
 		if errors.As(err, &gone) {
@@ -600,6 +643,9 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	// ⭐ THE FILESYSTEM FOLLOWS THE DISK BEFORE THE PAYLOAD RUNS, so a payload
 	// never meets a grown file with the old root still inside it.
 	growExit, growOut, err := g.run(ctx, bsdGrowRootScript)
+	if errors.Is(err, errBsdCancelled) {
+		return bsdCancelled(res, started)
+	}
 	if err != nil || growExit != 0 {
 		res.Error = stepError("the root filesystem did not grow to the "+HumanBytes(disk)+" disk", growExit, growOut, err)
 		res.Duration = time.Since(started)
@@ -614,6 +660,9 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 
 	extract, runScript := bsdPayloadSteps(bsdPayloadDevice, "/tmp", strings.ToLower(token))
 	if code, out, err := g.run(ctx, extract); err != nil || code != 0 {
+		if errors.Is(err, errBsdCancelled) {
+			return bsdCancelled(res, started)
+		}
 		res.Error = stepError("the script did not come off its disk in the guest", code, out, err)
 		res.Duration = time.Since(started)
 		g.graceful = err == nil
@@ -622,6 +671,9 @@ func BsdRun(ctx context.Context, spec BsdRunSpec) (res BsdResult, err error) {
 	exit, out, err := g.run(ctx, runScript)
 	res.Exit, res.Output, res.Duration = exit, out, time.Since(started)
 	if err != nil {
+		if errors.Is(err, errBsdCancelled) {
+			return bsdCancelled(res, started)
+		}
 		res.Error = err.Error()
 		return res, err
 	}
@@ -863,6 +915,13 @@ func (g *guest) waitFrom(ctx context.Context, re *regexp.Regexp, from int) error
 			if panicked != "" {
 				return &guestGoneError{reason: "the guest's kernel panicked: " + panicked}
 			}
+			// ⛔ A CANCELLATION IS TOLD FROM A DEADLINE HERE, at the wait the root
+			// shell's prompt and every command run through, so a caller reads 130
+			// from the error rather than guessing it from the context. The boot's
+			// own wait is waitBoot, and BsdRun asks it separately. WSL-151.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return errBsdCancelled
+			}
 			return ctx.Err()
 		case <-g.gone:
 			// ⚠ One more look. What the pattern waits for can arrive in the same
@@ -965,6 +1024,12 @@ func (g *guest) run(ctx context.Context, payload string) (int, string, error) {
 
 	before := len(g.seen())
 	if err := g.send(ctx, line); err != nil {
+		// ⛔ A CANCELLATION WHILE THE LINE IS STILL BEING TYPED IS ALSO 130, not a
+		// could-not-type error. g.send answers a cancelled context with it, and a
+		// Ctrl+C can land there as easily as in the wait below. WSL-151.
+		if errors.Is(err, context.Canceled) {
+			return 0, "", errBsdCancelled
+		}
 		return 0, "", err
 	}
 	doneRE := regexp.MustCompile(`(?m)^` + tail + ` ([0-9]+)\s*$`)
@@ -976,6 +1041,12 @@ func (g *guest) run(ctx context.Context, payload string) (int, string, error) {
 			// with the run's overlay, so the next run boots the image as it was. WSL-83.
 			return 0, cleanConsole(g.after(before)), fmt.Errorf("%s, before the command finished. "+
 				"What the guest wrote goes with this run's overlay, and the image is as it was", gone.reason)
+		}
+		// ⛔ A CANCELLED RUN IS NOT A BUDGET THAT RAN OUT. It carries up unchanged
+		// so the caller answers 130 and says so, rather than the deadline message
+		// a real budget earns. WSL-151.
+		if errors.Is(err, errBsdCancelled) {
+			return 0, cleanConsole(g.after(before)), errBsdCancelled
 		}
 		return 0, cleanConsole(g.after(before)), errors.New("the guest did not finish the command within the budget")
 	}

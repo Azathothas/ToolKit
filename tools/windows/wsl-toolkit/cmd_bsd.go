@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,9 +17,25 @@ import (
 	"github.com/Azathothas/ToolKit/tools/windows/wsl-toolkit/internal/toolkit"
 )
 
+const bsdUsage = `wsl-toolkit bsd <status|fetch|run>
+
+  status   is the FreeBSD image present, and what it holds
+  fetch    download the published FreeBSD image, or --force a re-download
+  run      boot the image on this host's own hypervisor and run a command in it
+
+  --json   a structured answer, where the subcommand writes one
+`
+
 func cmdBsd(ctx context.Context, args []string) (int, error) {
 	if len(args) == 0 {
+		fmt.Fprint(os.Stderr, bsdUsage)
 		return exitCannot, errors.New("bsd takes a subcommand: status, fetch or run")
+	}
+	// ⛔ `bsd --help` exited 2 as an unknown subcommand, where `base` answers 0.
+	// WSL-164.
+	if isGroupHelp(args) {
+		fmt.Fprint(os.Stderr, bsdUsage)
+		return exitOK, flag.ErrHelp
 	}
 	switch args[0] {
 	case "status":
@@ -28,6 +45,7 @@ func cmdBsd(ctx context.Context, args []string) (int, error) {
 	case "run":
 		return cmdBsdRun(ctx, args[1:])
 	}
+	fmt.Fprint(os.Stderr, bsdUsage)
 	return exitCannot, fmt.Errorf("bsd has no subcommand %q. It takes status, fetch or run", args[0])
 }
 
@@ -311,11 +329,31 @@ func cmdBsdRun(ctx context.Context, args []string) (int, error) {
 	if res.ShutdownPanic != "" {
 		logf("  ⚠ the guest's kernel panicked while it powered off: %s. The payload had already answered, and what the panic wrote went with the run's overlay", res.ShutdownPanic)
 	}
+	switch {
+	case res.Cancelled:
+		// ⛔ A CANCELLED RUN SAYS SO, as `distro run` answers one, rather than a
+		// budget that never ran out. The code is bsdRunExit's. WSL-151, finding 9.
+		logf("  %s", res.Error)
+	case runErr == nil:
+		logf("  login at %s, session %s, disk %s, root filesystem %s, exit %d",
+			res.BootTime.Round(time.Second), res.Duration.Round(time.Second),
+			toolkit.HumanBytes(res.DiskBytes), toolkit.HumanBytes(res.RootBytes), res.Exit)
+	}
+	return bsdRunExit(res, runErr)
+}
+
+// bsdRunExit maps a finished run to this process's exit code.
+//
+// ⛔ A CANCELLED RUN IS 130, as `distro run` answers one; any other
+// could-not-run is exit 2, and otherwise the guest's own exit stands. The
+// cancellation is read from the result rather than from runErr, because both
+// carry the same error and only the result knows which it was. WSL-151.
+func bsdRunExit(res toolkit.BsdResult, runErr error) (int, error) {
+	if res.Cancelled {
+		return 130, nil
+	}
 	if runErr != nil {
 		return exitCannot, runErr
 	}
-	logf("  login at %s, session %s, disk %s, root filesystem %s, exit %d",
-		res.BootTime.Round(time.Second), res.Duration.Round(time.Second),
-		toolkit.HumanBytes(res.DiskBytes), toolkit.HumanBytes(res.RootBytes), res.Exit)
 	return res.Exit, nil
 }

@@ -55,6 +55,45 @@ func TestAskingTheBaseGroupForHelpIsNotAFailure(t *testing.T) {
 	}
 }
 
+// TestAskingEachGroupForHelpIsNotAFailure is WSL-164, the same contract
+// TestAskingTheBaseGroupForHelpIsNotAFailure holds for `base`, for every other
+// group.
+//
+// ⛔ `base --help` ANSWERED ITS USAGE WITH EXIT 0 AND THE REST DID NOT. `distro`,
+// `helper`, `bsd`, `shipped` and `artifacts` fell through to their default arm
+// and exited 2 saying the help flag was not a subcommand, so a page that told a
+// reader to run one and to read the exit code told them their correct command
+// had failed.
+func TestAskingEachGroupForHelpIsNotAFailure(t *testing.T) {
+	groups := map[string]func(context.Context, []string) (int, error){
+		"distro":    cmdDistro,
+		"helper":    cmdHelper,
+		"bsd":       cmdBsd,
+		"shipped":   cmdShipped,
+		"artifacts": cmdArtifacts,
+	}
+	for name, run := range groups {
+		// ⭐ ONE CASE PER GROUP, so a group that loses its answer is named by the
+		// case that failed rather than by a line inside a loop.
+		t.Run(name, func(t *testing.T) {
+			for _, spelling := range []string{"--help", "-h", "help"} {
+				code, err := run(context.Background(), []string{spelling})
+				if code != exitOK {
+					t.Errorf("%s %s exited %d, and asking for help is not a failure", name, spelling, code)
+				}
+				if !errors.Is(err, flag.ErrHelp) {
+					t.Errorf("%s %s returned %v, and the dispatcher reads flag.ErrHelp to mean help was asked for", name, spelling, err)
+				}
+			}
+			// ⚠ THE GROUP WITH NO ARGUMENTS STAYS 2, which is not the same
+			// question: nothing was asked, so "could not run" is the honest answer.
+			if code, _ := run(context.Background(), nil); code != exitCannot {
+				t.Errorf("%s with no arguments exited %d, and nothing was asked, so it could not run", name, code)
+			}
+		})
+	}
+}
+
 // TestTheBaseUsageAndTheManualNameTheSameSubcommands closes the gap finding 39
 // named and left open.
 //
@@ -66,51 +105,72 @@ func TestAskingTheBaseGroupForHelpIsNotAFailure(t *testing.T) {
 // documented anywhere, and `agent` was in the manual and in no usage, so a
 // reader of the group never learned it exists.
 //
+// ⛔ EVERY GROUP WITH ONE, NOT base ALONE. `distro`, `helper` and `shipped` each
+// keep the same two lists written from memory, and a sweep that held only `base`
+// would never catch the next drift in one of them. WSL-160 widened this from the
+// one group finding 39 happened to name to every group that opens its usage with
+// an angle-bracket list of subcommands.
+//
 // ⚠ IT READS THE ANGLE-BRACKET LIST, which is the line a reader actually
 // sees, rather than the descriptions under it. A subcommand described below the
 // line but missing from it is still missing from the sentence that lists them.
 func TestTheBaseUsageAndTheManualNameTheSameSubcommands(t *testing.T) {
-	m := regexp.MustCompile(`^wsl-toolkit base <([^>]+)>`).FindStringSubmatch(baseUsage)
-	if m == nil {
-		t.Fatal("baseUsage does not open with `wsl-toolkit base <a|b|c>`, so nothing can be read from it")
+	// ⭐ ONE ROW PER GROUP: the command name, and the usage string a reader of
+	// that group sees. The manual half comes from the registered spec of the
+	// same name, so adding a group here is adding its usage const and nothing
+	// else.
+	groups := []struct {
+		name  string
+		usage string
+	}{
+		{"base", baseUsage},
+		{"distro", distroUsage},
+		{"helper", helperUsage},
+		{"shipped", shippedUsage},
 	}
-	inUsage := map[string]bool{}
-	for _, name := range strings.Split(m[1], "|") {
-		inUsage[strings.TrimSpace(name)] = true
-	}
+	for _, g := range groups {
+		m := regexp.MustCompile(`^wsl-toolkit ` + g.name + ` <([^>]+)>`).FindStringSubmatch(g.usage)
+		if m == nil {
+			t.Fatalf("%sUsage does not open with `wsl-toolkit %s <a|b|c>`, so nothing can be read from it", g.name, g.name)
+		}
+		inUsage := map[string]bool{}
+		for _, name := range strings.Split(m[1], "|") {
+			inUsage[strings.TrimSpace(name)] = true
+		}
 
-	inManual := map[string]bool{}
-	for _, spec := range registeredCommandSpecs() {
-		if spec.Name != "base" {
-			continue
+		inManual := map[string]bool{}
+		for _, spec := range registeredCommandSpecs() {
+			if spec.Name != g.name {
+				continue
+			}
+			for _, form := range spec.HelpForms {
+				inManual[strings.TrimPrefix(form, g.name+" ")] = true
+			}
 		}
-		for _, form := range spec.HelpForms {
-			inManual[strings.TrimPrefix(form, "base ")] = true
+		if len(inManual) == 0 {
+			t.Fatalf("the %s command spec registers no help form, so this group is asserting nothing", g.name)
 		}
-	}
-	if len(inManual) == 0 {
-		t.Fatal("the base command spec registers no help form, so this case is asserting nothing")
-	}
 
-	// ⭐ BOTH DIRECTIONS. Each one was the real defect once.
-	var missingFromManual, missingFromUsage []string
-	for name := range inUsage {
-		if !inManual[name] {
-			missingFromManual = append(missingFromManual, name)
+		// ⭐ BOTH DIRECTIONS. Each one was the real defect once.
+		var missingFromManual, missingFromUsage []string
+		for name := range inUsage {
+			if !inManual[name] {
+				missingFromManual = append(missingFromManual, name)
+			}
 		}
-	}
-	for name := range inManual {
-		if !inUsage[name] {
-			missingFromUsage = append(missingFromUsage, name)
+		for name := range inManual {
+			if !inUsage[name] {
+				missingFromUsage = append(missingFromUsage, name)
+			}
 		}
-	}
-	sort.Strings(missingFromManual)
-	sort.Strings(missingFromUsage)
-	if len(missingFromManual) > 0 {
-		t.Errorf("baseUsage names %v, which the base HelpForms do not, so they reach no manual and no flag of theirs is documented", missingFromManual)
-	}
-	if len(missingFromUsage) > 0 {
-		t.Errorf("the base HelpForms name %v, which baseUsage does not, so a reader of `wsl-toolkit base` never learns they exist", missingFromUsage)
+		sort.Strings(missingFromManual)
+		sort.Strings(missingFromUsage)
+		if len(missingFromManual) > 0 {
+			t.Errorf("%sUsage names %v, which the %s HelpForms do not, so they reach no manual and no flag of theirs is documented", g.name, missingFromManual, g.name)
+		}
+		if len(missingFromUsage) > 0 {
+			t.Errorf("the %s HelpForms name %v, which %sUsage does not, so a reader of `wsl-toolkit %s` never learns they exist", g.name, missingFromUsage, g.name, g.name)
+		}
 	}
 }
 

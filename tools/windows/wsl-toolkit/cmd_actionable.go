@@ -59,6 +59,12 @@ func cmdArtifacts(ctx context.Context, args []string) (int, error) {
 		fmt.Fprint(os.Stderr, artifactsUsage)
 		return exitCannot, nil
 	}
+	// ⛔ `artifacts --help` exited 2 as an unknown subcommand, where `base`
+	// answers 0. WSL-164.
+	if isGroupHelp(args) {
+		fmt.Fprint(os.Stderr, artifactsUsage)
+		return exitOK, flag.ErrHelp
+	}
 	sub, rest := args[0], args[1:]
 	fs := newFlagSet("artifacts " + sub)
 	to := fs.String("to", "", "the directory to write the retained copy into")
