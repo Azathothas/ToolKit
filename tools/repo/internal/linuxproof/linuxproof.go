@@ -442,7 +442,8 @@ var olderMutateSays = `echo 'linux-proof: the repo mutate in this tree takes no 
 // the flag would exit 2 there, and every push of it would be refused. So the
 // job asks the tree's own mutate first. An older one runs each row alone
 // through --only, as the hook did before, and says so. Every row runs, and the
-// first that did not pass decides the exit.
+// first that did not pass decides the exit. ⚠ Each row reads /dev/null, so a
+// row that reads stdin cannot eat the labels after it.
 //
 // ⚠ IT IS NOT ALL OF CI. The `checks` job also runs the doctor probe and the
 // gate, and the sharded `mutations` job runs every row. Those run in CI alone,
@@ -459,7 +460,7 @@ func Jobs(p Plan) []Job {
 		}
 		labels := ShellQuote(p.Labels)
 		exact := fmt.Sprintf("sh scripts/common/repo.sh mutate --jobs %d --labels-file %s", n, labels)
-		older := `rc=0; while IFS= read -r l; do sh scripts/common/repo.sh mutate --only "$l" || { c=$?; [ "$rc" -ne 0 ] || rc=$c; }; done < ` + labels + `; (exit "$rc")`
+		older := `rc=0; while IFS= read -r l; do sh scripts/common/repo.sh mutate --only "$l" </dev/null || { c=$?; [ "$rc" -ne 0 ] || rc=$c; }; done < ` + labels + `; (exit "$rc")`
 		body := fmt.Sprintf("if %s; then %s; else %s; %s; fi", labelsFileProbe, exact, olderMutateSays, older)
 		jobs = append(jobs, Job{Name: "mutations", Image: GoImage, Body: body, Go: true})
 	}

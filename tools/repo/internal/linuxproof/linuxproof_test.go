@@ -314,9 +314,11 @@ func TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly(t *testing.T) {
 	if err != nil {
 		t.Skip("no sh on PATH")
 	}
-	// fake is a tree's repo.sh. It logs its arguments, answers -h with the
-	// flags its mutate takes, and exits 1 or 2 for a label that says so.
+	// fake is a tree's repo.sh. It logs its arguments, reads all of its
+	// stdin, answers -h with the flags its mutate takes, and exits 1 or 2 for
+	// a label that says so.
 	const fake = `printf '%s\n' "$*" >> calls
+cat >/dev/null
 case "$*" in
 "mutate -h") [ -f newer ] && echo '  -labels-file string' >&2; echo '  -only string' >&2; exit 0 ;;
 *fails*) exit 1 ;;
@@ -358,7 +360,7 @@ esac
 	}
 	code, calls, said := run(false, "a row", "it's a row")
 	if code != 0 || strings.Join(calls, "|") != "mutate -h|mutate --only a row|mutate --only it's a row" {
-		t.Fatalf("an older tree: exit %d, ran %q; want each row alone through --only", code, calls)
+		t.Fatalf("an older tree: exit %d, ran %q; want each row alone through --only, the second not eaten by the first's stdin", code, calls)
 	}
 	if !strings.Contains(said, "takes no --labels-file") {
 		t.Fatalf("an older tree's rows ran through --only and the job did not say why: %q", said)

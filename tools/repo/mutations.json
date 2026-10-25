@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "linux-proof: a row of an older tree cannot read the labels after it",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/linuxproof.go",
+      "find": "--only \"$l\" </dev/null ||",
+      "replace": "--only \"$l\" ||",
+      "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
+      "args": []
+    },
+    {
       "label": "linux-proof: the jobs run one after another unless linux-proof.parallel is set",
       "module": "tools/repo",
       "file": "internal/linuxproof/run.go",
@@ -86,8 +95,8 @@
       "label": "linux-proof: every row of an older tree runs after one fails",
       "module": "tools/repo",
       "file": "internal/linuxproof/linuxproof.go",
-      "find": "--only \"$l\" || { c=$?;",
-      "replace": "--only \"$l\" || { c=$?; rc=$c; break;",
+      "find": "--only \"$l\" </dev/null || { c=$?;",
+      "replace": "--only \"$l\" </dev/null || { c=$?; rc=$c; break;",
       "run": "TestATreeWhoseMutateTakesNoLabelsFileRunsEachRowThroughOnly",
       "args": []
     },
