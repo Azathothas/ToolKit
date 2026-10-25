@@ -6,10 +6,10 @@
 // moment it does. Only the broken code waits out the timeout, so a slow host
 // cannot turn a serial run green.
 //
-// ⚠ ONE CASE CANNOT. A bound promises that something does NOT happen, so
-// TestAChildWaitsForAFreeSlot gives a second child two seconds to break it. A
-// correct bound passes whatever the timing; a broken one is red unless the host
-// cannot start a goroutine in two seconds.
+// ⭐ THE BOUND IS ASKED, NOT WAITED FOR. A bound promises that something does
+// NOT happen, and waiting for it to happen can only give up after a while.
+// TestAChildWaitsForAFreeSlot asks the pool the way a second child would, and
+// the answer comes at once on any host.
 //
 // SPDX-License-Identifier: 0BSD
 
@@ -77,38 +77,35 @@ func TestEachMakesEveryCallOnce(t *testing.T) {
 	}
 }
 
-// TestAChildWaitsForAFreeSlot is the bound. With one slot, the second child
-// may not start while the first holds it, so the first never sees it start.
+// TestAChildWaitsForAFreeSlot is the bound. With one slot, a running child holds
+// it, so a second child would wait. The case asks for a slot as child does,
+// but without waiting, and the pool must say it is full. Once the child
+// returns, the same ask must find the slot free again.
+//
+// ⭐ IT ANSWERS AT ONCE, BOTH WAYS. It used to give a second child two seconds to
+// start, which every run paid. A broken bound then passed if the host could not
+// start a goroutine in that time.
 func TestAChildWaitsForAFreeSlot(t *testing.T) {
 	withSlots(t, 1)
-	firstIn := make(chan struct{})
-	secondIn := make(chan struct{})
-	var overlapped atomic.Bool
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		_, _ = child(nil, func(*exec.Cmd) ([]byte, error) {
-			close(firstIn)
-			select {
-			case <-secondIn:
-				overlapped.Store(true)
-			case <-time.After(2 * time.Second):
-			}
-			return nil, nil
-		})
-	}()
-	go func() {
-		defer wg.Done()
-		<-firstIn
-		_, _ = child(nil, func(*exec.Cmd) ([]byte, error) {
-			close(secondIn)
-			return nil, nil
-		})
-	}()
-	wg.Wait()
-	if overlapped.Load() {
-		t.Fatal("a second child started while the only slot was held; the bound on children is gone")
+	free := func() bool {
+		select {
+		case slots <- struct{}{}:
+			<-slots
+			return true
+		default:
+			return false
+		}
+	}
+	var whileHeld bool
+	_, _ = child(nil, func(*exec.Cmd) ([]byte, error) {
+		whileHeld = free()
+		return nil, nil
+	})
+	if whileHeld {
+		t.Fatal("a second child could take a slot while the only one was held; the bound on children is gone")
+	}
+	if !free() {
+		t.Fatal("the only slot was still held after its child returned, so the next child would wait forever")
 	}
 }
 
@@ -142,8 +139,8 @@ func TestEveryChildTakesASlot(t *testing.T) {
 	}
 }
 
-// TestBalanceDealsEveryFileOnce is the guard that matters most in a batch: a
-// file dealt to no group is never linted and never named.
+// TestBalanceDealsEveryFileOnce is the guard that matters most in a share: a
+// file dealt to no PowerShell session is never analysed and never named.
 func TestBalanceDealsEveryFileOnce(t *testing.T) {
 	cases := []struct {
 		weight []int64

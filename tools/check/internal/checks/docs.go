@@ -46,8 +46,9 @@ func Docs(t *Tree) Result {
 
 	// ⭐ EVERY FENCED SHELL BLOCK IS ASKED AT ONCE, BEFORE ANY PAGE IS READ.
 	// One `sh -n` per block, one after another, was 345 children and most of
-	// a 51 s check on this host. Rule 5 below reads each answer where it used
-	// to ask, so the findings are the same ones in the same order.
+	// the check's time on a Windows development host. Rule 5 below reads each
+	// answer where it used to ask, so the findings are the same ones in the
+	// same order.
 	parsed := parseShellBlocks(t, md)
 
 	for _, f := range md {

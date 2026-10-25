@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "gate: a shellcheck run over many scripts that passes is not taken as final",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\tfound := make([]string, len(files))\n",
+      "replace": "\tif _, err := lint(files); err == nil {\n\t\treturn nil\n\t}\n\tfound := make([]string, len(files))\n",
+      "run": "TestTheShellcheckCheckFailsAScriptThatSourcesASibling",
+      "args": []
+    },
+    {
+      "label": "gate: each shellcheck script is linted alone, never in a batch",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\tif out, err := lint(files[i : i+1]); err != nil {\n",
+      "replace": "\t\tif out, err := lint(files); err != nil {\n",
+      "run": "TestEachScriptIsLintedAlone",
+      "args": []
+    },
+    {
+      "label": "gate: a failing shellcheck script is named with its own finding",
+      "module": "tools/check",
+      "file": "internal/checks/tools.go",
+      "find": "\t\t\tfound[i] = files[i] + \": \" + firstFinding(out)\n",
+      "replace": "\t\t\tfound[i] = files[0] + \": \" + firstFinding(out)\n",
+      "run": "TestEveryFailingScriptIsNamedWithItsOwnFinding",
+      "args": []
+    },
+    {
+      "label": "gate: each makes every call exactly once",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\t\t\t\ti := int(next.Add(1)) - 1\n",
+      "replace": "\t\t\t\ti := int(next.Add(1))\n",
+      "run": "TestEachMakesEveryCallOnce",
+      "args": []
+    },
+    {
+      "label": "gate: a child gives its slot back when it returns",
+      "module": "tools/check",
+      "file": "internal/checks/slots.go",
+      "find": "\tdefer func() { <-slots }()\n",
+      "replace": "",
+      "run": "TestAChildWaitsForAFreeSlot",
+      "args": []
+    },
+    {
       "label": "gate: the checks run at once and print in list order",
       "module": "tools/check",
       "file": "main.go",
@@ -38,30 +83,12 @@
       "args": []
     },
     {
-      "label": "gate: balance deals every file to exactly one batch",
+      "label": "gate: balance deals every file to exactly one PowerShell session",
       "module": "tools/check",
       "file": "internal/checks/tools.go",
       "find": "\tfor _, i := range order {\n",
       "replace": "\tfor _, i := range order[1:] {\n",
       "run": "TestBalanceDealsEveryFileOnce",
-      "args": []
-    },
-    {
-      "label": "gate: a shellcheck batch that passes is asked once",
-      "module": "tools/check",
-      "file": "internal/checks/tools.go",
-      "find": "\t\tif _, err := lint(batch); err == nil {\n",
-      "replace": "\t\tif _, err := lint(batch); err == nil && false {\n",
-      "run": "TestABatchThatPassesIsAskedOnce",
-      "args": []
-    },
-    {
-      "label": "gate: a failing shellcheck batch names only its failing file",
-      "module": "tools/check",
-      "file": "internal/checks/tools.go",
-      "find": "\t\t\tif out, err := lint([]string{batch[i]}); err != nil {\n",
-      "replace": "\t\t\tif out, err := lint(batch); err != nil {\n",
-      "run": "TestAFailingBatchNamesOnlyItsFailingFile",
       "args": []
     },
     {

@@ -233,6 +233,11 @@ func gate(t *checks.Tree, asJSON bool) int {
 // child a check starts holds one of a fixed number of slots, one per CPU, so
 // the host bounds "at once" and the number of checks does not.
 //
+// ⚠ ON FOUR LINUX CPUS IT SAVES NOTHING. The go check sets the floor there, and
+// the other checks added little to it. On four Windows CPUs the gate finishes
+// sooner. A CI run waits on its slowest job either way, which is a mutation
+// shard. scripts/README.md has the figures.
+//
 // ⛔ THE ROWS ARE PRINTED IN LIST ORDER, NOT IN THE ORDER THEY FINISH. Row i
 // is check i, whatever finished first. Nothing is printed until every check
 // has returned, so the output for a tree is the one a serial run gave.

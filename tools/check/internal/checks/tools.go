@@ -46,44 +46,34 @@ func Shellcheck(t *Tree) Result {
 		out, err := combined(cmd)
 		return string(out), err
 	}
-	for _, f := range lintInBatches(scripts, weights(t, scripts), lint) {
+	for _, f := range lintEach(scripts, lint) {
 		r.bad("%s", f)
 	}
 	r.Extra["scripts"] = len(scripts)
 	return r
 }
 
-// lintInBatches runs lint over files in batches, one per slot, all at once.
-// It returns one finding per failing file, in the order files lists them.
+// lintEach runs lint over each file alone, all at once. It returns one finding
+// per failing file, in the order files lists them, with the text that file's
+// own run gave.
 //
-// ⭐ ONE PROCESS PER BATCH, NOT PER FILE. On this host shellcheck took 25 s over
-// 53 scripts one at a time, and 19 s over all of them in one process. Most of
-// the cost is the analysis, so the batches run side by side.
+// ⛔ ONE PROCESS PER SCRIPT, NEVER A BATCH. shellcheck follows a `.` or `source`
+// only to a file that is also on its command line. Alone, a script that sources
+// a sibling reports SC1091, and SC2154 for each name the sibling sets. Beside
+// it in one batch, the same script passes. Batches were dealt by file size and
+// CPU count, so one tree could pass on one host and fail on another.
+// TestEachScriptIsLintedAlone holds it with a lint that acts as shellcheck
+// does, and TestTheShellcheckCheckFailsAScriptThatSourcesASibling with the tool.
 //
-// ⛔ A BATCH THAT FAILS IS ASKED AGAIN ONE FILE AT A TIME, and only those
-// answers are findings. A batch's output runs every file's findings together.
-// So a failing file is named with the text its own run gives, and a clean file
-// is never named for its neighbour's finding. A batch that passes needs no
-// second run, because shellcheck exits 0 only when no file it read has one.
-func lintInBatches(files []string, weight []int64, lint func([]string) (string, error)) []string {
-	if len(files) == 0 {
-		return nil
-	}
-	groups := balance(weight, cap(slots))
+// ⚠ THE LONE RUNS COST LITTLE MORE THAN BATCHES DID. Most of a run is the
+// analysis, not the process start, so they run side by side. scripts/README.md
+// has the figures.
+func lintEach(files []string, lint func([]string) (string, error)) []string {
 	found := make([]string, len(files))
-	each(len(groups), func(g int) {
-		batch := make([]string, len(groups[g]))
-		for i, at := range groups[g] {
-			batch[i] = files[at]
+	each(len(files), func(i int) {
+		if out, err := lint(files[i : i+1]); err != nil {
+			found[i] = files[i] + ": " + firstFinding(out)
 		}
-		if _, err := lint(batch); err == nil {
-			return
-		}
-		each(len(batch), func(i int) {
-			if out, err := lint([]string{batch[i]}); err != nil {
-				found[groups[g][i]] = batch[i] + ": " + firstFinding(out)
-			}
-		})
 	})
 	var out []string
 	for _, f := range found {
@@ -157,9 +147,11 @@ func PowerShell(t *Tree) Result {
 	// of the check it replaced.
 	//
 	// ⭐ AND A FEW SESSIONS AT ONCE, each over its own share of the files. The
-	// analyzer's cost is per file and uneven. On this host one session took 42 s
-	// over all 26 files. With cc_profile.ps1 in a session of its own, the two
-	// sessions took 20 s. psSessions says how many share the work.
+	// analyzer's cost is per file and uneven. In one run on a loaded Windows
+	// host, one session took 42 s over all 26 files. With cc_profile.ps1 in a
+	// session of its own, the two sessions took 20 s. That is one run, not a
+	// median. In golang:1.25 on four CPUs the split made no difference, at
+	// about 2.5 s and 9 s in two sets. psSessions says how many share the work.
 	//
 	// ⛔ THE FILE LIST ARRIVES IN THE ENVIRONMENT, NEVER AS ARGUMENTS. `pwsh
 	// -Command <text> -- a.ps1 b.ps1` does NOT bind those names to $args the way
@@ -260,7 +252,8 @@ if (Get-Module -ListAvailable PSScriptAnalyzer) {
 // psSessions is how many sessions share the scripts. It is enough that no share
 // outweighs the heaviest file, which sets the floor whatever the split, and it
 // is never more than the slots or the scripts. ⚠ Each session pays pwsh's start
-// and the analyzer's import, about 2.5 s here, so more would buy nothing.
+// and the analyzer's import, about 2.5 s on a Windows development host, so more
+// would buy nothing.
 func psSessions(weight []int64) int {
 	var total, heaviest int64
 	for _, w := range weight {
@@ -367,6 +360,13 @@ func GoModules(t *Tree) Result {
 
 // goModules runs check over every module at once and returns what each found,
 // modules in the order mods lists them.
+//
+// ⚠ ON FOUR CPUS FROM A COLD BUILD CACHE, AS CI HAS, THIS IS SLOWER. The
+// slowest module sets the floor, and the others compete with it for the CPUs.
+// Pinned to four CPUs in golang:1.25, the go check's median was 107 s against
+// 103 s one module after another, and 171 s against 139 s in a second set.
+// Building the shared standard packages first did not shorten it either.
+// Whether it helps a host with spare CPUs is not measured.
 func goModules(mods []string, check func(m string) []string) []string {
 	found := make([][]string, len(mods))
 	each(len(mods), func(i int) { found[i] = check(mods[i]) })
