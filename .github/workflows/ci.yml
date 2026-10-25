@@ -24,8 +24,9 @@ on:
     branches: [main]
   pull_request:
   # ⭐ EVERY NIGHT, EVERY MUTATION ROW. A push proves only the modules whose
-  # proof key moved, and the key does not name the runner's image. A case that
-  # a new image turns red, or one that flakes, is found here.
+  # proof key moved. The key names the runner's image, so a new image proves
+  # every module on its first push. A case that flakes, or one that time alone
+  # turns red, is found here. ⛔ A red night deletes every kept proof.
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
@@ -35,7 +36,8 @@ on:
         type: boolean
         default: false
 
-# Least privilege. No job here needs more than reading the tree.
+# Least privilege. No job here needs more than reading the tree, but one: the
+# job that deletes kept proofs after a red night asks for that alone.
 permissions:
   contents: read
 
@@ -49,17 +51,28 @@ concurrency:
 # cache, and that cache also holds test results. A case that reads something Go
 # does not track, such as a tool on PATH, would be reported green from a run
 # on another tree. `-count=1` reaches only commands that take it.
+# ⛔ THE SHARDS' --jobs IS WRITTEN ONCE, HERE. Every proof key names it and
+# GOFLAGS, so the plan, the shards and the keep step all read these two.
 env:
   GOFLAGS: -count=1
+  MUTATE_JOBS: 2
 
-# ⭐ THE GO CACHES. Each job asks Go where its build and module caches are.
-# It restores both under a key of the Go version and every go.mod and go.sum.
-# The restore keys take the newest entry of an older version when the key moves.
-# ⚠ AN ENTRY IS WRITTEN ONCE PER KEY. A package changed since is compiled
-# fresh, so a stale entry costs time and never a wrong answer.
-# ⚠ ONLY THE GATE JOBS AND THE go JOB WRITE. The gate's `go test ./...` builds
-# what every mutation baseline builds, so the mutation jobs and the twins
-# restore its entry. A shard's own cache is full of mutated packages.
+# ⭐ THE GO CACHES. A job that builds in the checkout restores Go's build and
+# module caches. A stale entry costs time and never a wrong answer.
+# ⛔ A COMPILE IS KEYED ON ITS PACKAGE'S DIRECTORY, unless -trimpath drops it.
+# The gate builds in the checkout, so an entry helps the gate jobs, the twins
+# and the `go run` of the plan and keep steps. The harness stages each module
+# under the temporary directory, where only the standard library would hit. So
+# no shard restores an entry, and twelve runners skip that download.
+# ⛔ GO DELETES WHAT FIVE DAYS LEFT UNUSED, at most once a day, as its first
+# build ends. A restored file keeps the time it was saved with, so an old
+# entry lost all but that build's packages. Each job writes a fresh trim.txt
+# after its restore, and Go then trims nothing for a day.
+# ⭐ THE ENTRY MOVES WITH main. Its key ends in the commit, and its restore
+# keys take the newest entry of the same Go version. Only a push to main saves
+# one. Go first trims what no run used for five days, so it does not grow.
+# ⚠ NO ENTRY OF ANOTHER GO VERSION IS RESTORED. Each compile is keyed on its
+# compiler too, so none of it would hit.
 # ⚠ actions/cache v6.1.0 declares node24. Resolve it again with:
 #   gh api repos/actions/cache/git/ref/tags/v6.1.0 --jq .object.sha
 
@@ -99,15 +112,26 @@ jobs:
           echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
           echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: restore
         with:
           path: |
             ${{ steps.gocache.outputs.build }}
             ${{ steps.gocache.outputs.mod }}
-          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-${{ github.sha }}
           restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-
             go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
-            go-gate-${{ runner.os }}-
+
+      # ⛔ BEFORE THE FIRST go COMMAND, which would trim the restored entry.
+      - name: go leaves the restored cache whole for a day
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          mkdir -p "$GOCACHE_DIR"
+          date +%s > "$GOCACHE_DIR/trim.txt"
+          echo "$(find "$GOCACHE_DIR" -type f | wc -l) file(s) restored, and trim.txt reads $(cat "$GOCACHE_DIR/trim.txt")"
 
       - name: shellcheck, which the gate runs and this host has a different one of
         run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
@@ -162,6 +186,30 @@ jobs:
           sys.exit(bad)
           "
 
+      # ⭐ A PUSH TO main SAVES THE ENTRY, AND GO TRIMS IT FIRST. trim.txt is
+      # set to zero, so the next build deletes what no run used for five days.
+      # ⛔ Go writes the time it trimmed, so a zero left there fails the step.
+      - name: go trims what no run used for five days
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          before=$(find "$GOCACHE_DIR" -type f | wc -l)
+          echo 0 > "$GOCACHE_DIR/trim.txt"
+          (cd tools/check && go build -o "$RUNNER_TEMP/trim-probe" .)
+          echo "$before file(s) before the trim, $(find "$GOCACHE_DIR" -type f | wc -l) after"
+          [ "$(cat "$GOCACHE_DIR/trim.txt")" != 0 ]
+
+      - name: go's caches, for the next run
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: ${{ steps.restore.outputs.cache-primary-key }}
+
   # -- the Windows half: where the PowerShell in this repository actually runs -
   windows:
     name: powershell (windows)
@@ -186,15 +234,26 @@ jobs:
           echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
           echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: restore
         with:
           path: |
             ${{ steps.gocache.outputs.build }}
             ${{ steps.gocache.outputs.mod }}
-          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-${{ github.sha }}
           restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-
             go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
-            go-gate-${{ runner.os }}-
+
+      # ⛔ BEFORE THE FIRST go COMMAND, which would trim the restored entry.
+      - name: go leaves the restored cache whole for a day
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          mkdir -p "$GOCACHE_DIR"
+          date +%s > "$GOCACHE_DIR/trim.txt"
+          echo "$(find "$GOCACHE_DIR" -type f | wc -l) file(s) restored, and trim.txt reads $(cat "$GOCACHE_DIR/trim.txt")"
 
       # ⭐ THE POINT OF THIS JOB. Each check has a PowerShell twin because the
       # sh one cannot be assumed to run on Windows: a native PowerShell session
@@ -244,6 +303,28 @@ jobs:
           if ($bad) { exit 1 }
           exit 0
 
+      # ⭐ A PUSH TO main SAVES THE ENTRY, AND GO TRIMS IT FIRST, as on ubuntu.
+      - name: go trims what no run used for five days
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          before=$(find "$GOCACHE_DIR" -type f | wc -l)
+          echo 0 > "$GOCACHE_DIR/trim.txt"
+          (cd tools/check && go build -o "$RUNNER_TEMP/trim-probe.exe" .)
+          echo "$before file(s) before the trim, $(find "$GOCACHE_DIR" -type f | wc -l) after"
+          [ "$(cat "$GOCACHE_DIR/trim.txt")" != 0 ]
+
+      - name: go's caches, for the next run
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: ${{ steps.restore.outputs.cache-primary-key }}
+
   # -- the compiled half. Two hosts, because it is written for one and has to
   #    keep building on the other: the ubuntu job is what caught a guard that
   #    split a path with the RUNNING host's separators, on a tool that only ever
@@ -289,15 +370,26 @@ jobs:
           echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
           echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: restore
         with:
           path: |
             ${{ steps.gocache.outputs.build }}
             ${{ steps.gocache.outputs.mod }}
-          key: go-cross-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          key: go-cross-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-${{ github.sha }}
           restore-keys: |
+            go-cross-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-
             go-cross-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
-            go-cross-${{ runner.os }}-
+
+      # ⛔ BEFORE THE FIRST go COMMAND, which would trim the restored entry.
+      - name: go leaves the restored cache whole for a day
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          mkdir -p "$GOCACHE_DIR"
+          date +%s > "$GOCACHE_DIR/trim.txt"
+          echo "$(find "$GOCACHE_DIR" -type f | wc -l) file(s) restored, and trim.txt reads $(cat "$GOCACHE_DIR/trim.txt")"
 
       - name: every go.mod a job reads asks for one Go
         shell: bash
@@ -324,6 +416,30 @@ jobs:
             ls -l "/tmp/wsl-toolkit-$arch.exe"
           done
 
+      # ⭐ A PUSH TO main SAVES THE ENTRY, AND GO TRIMS IT FIRST. The build that
+      # trims repeats one above, so it comes from the cache.
+      # ⛔ Go writes the time it trimmed, so a zero left there fails the step.
+      - name: go trims what no run used for five days
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          before=$(find "$GOCACHE_DIR" -type f | wc -l)
+          echo 0 > "$GOCACHE_DIR/trim.txt"
+          (cd tools/windows/wsl-toolkit && GOOS=windows GOARCH=amd64 go build -trimpath -o "$RUNNER_TEMP/trim-probe.exe" .)
+          echo "$before file(s) before the trim, $(find "$GOCACHE_DIR" -type f | wc -l) after"
+          [ "$(cat "$GOCACHE_DIR/trim.txt")" != 0 ]
+
+      - name: go's caches, for the next run
+        if: github.event_name == 'push' && steps.restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ${{ steps.gocache.outputs.build }}
+            ${{ steps.gocache.outputs.mod }}
+          key: ${{ steps.restore.outputs.cache-primary-key }}
+
   # -- the guards are guards. The instrument nobody was running -------------
   #
   # ⛔ WHY THESE ARE JOBS AND NOT A GATE CHECK. `repo mutate` deletes each guard
@@ -339,13 +455,16 @@ jobs:
   # It runs here. ⚠ The harness reports such a row as SKIPPED rather than as
   # theatre, and it used to conflate the two.
   #
-  # ⭐ THREE JOBS: A PLAN, THE SHARDS, AND A KEEP. The plan gives every module
-  # a proof key from its committed tree, its own rows, the harness and the Go
-  # version. A module whose proof is kept under its key is printed with that key
-  # and each row it holds unproved. None of its rows run. The shards prove the
-  # rest. The keep step saves the proof of each module whose every row
-  # passed. tools/repo/internal/mutate/proof.go carries each reason beside the
-  # code that holds it.
+  # ⭐ FOUR JOBS: A PLAN, THE SHARDS, A KEEP, AND A FORGET. The plan gives every
+  # module a proof key from its committed tree, its own rows, the harness, the
+  # Go version and the runner. A module whose proof is kept under its key is
+  # printed with that key and each row it holds unproved. None of its rows run.
+  # The shards prove the rest. The keep step saves the proof of each module
+  # whose every row passed on the runner its key names. A full run that went
+  # red deletes every kept proof. tools/repo/internal/mutate/proof.go carries
+  # each reason beside the code that holds it.
+  # ⛔ THE RUNNER IS THE IMAGE, MUTATE_JOBS AND GOFLAGS. Every step passes the
+  # image as $ImageOS/$ImageVersion, and a runner naming none fails the step.
   # ⛔ A PUSH THAT MOVES NO KEY RUNS NO SHARD, AND THE PLAN SAYS SO. The shard
   # and keep jobs then show as skipped, never as passed.
   # ⚠ FOUR SLOTS, ONE PER MODULE. A step can look up one cache key, and
@@ -357,6 +476,7 @@ jobs:
     env:
       FULL: ${{ github.event_name == 'schedule' || inputs.full == true }}
     outputs:
+      full: ${{ env.FULL }}
       run: ${{ steps.plan.outputs.run }}
       modules: ${{ steps.plan.outputs.modules }}
       shards: ${{ steps.plan.outputs.shards }}
@@ -382,16 +502,28 @@ jobs:
           path: |
             ${{ steps.gocache.outputs.build }}
             ${{ steps.gocache.outputs.mod }}
-          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-${{ github.sha }}
           restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-
             go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
-            go-gate-${{ runner.os }}-
+
+      # ⛔ BEFORE THE FIRST go COMMAND, which would trim the restored entry.
+      - name: go leaves the restored cache whole for a day
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          mkdir -p "$GOCACHE_DIR"
+          date +%s > "$GOCACHE_DIR/trim.txt"
+          echo "$(find "$GOCACHE_DIR" -type f | wc -l) file(s) restored, and trim.txt reads $(cat "$GOCACHE_DIR/trim.txt")"
 
       - name: every module's proof key
         id: keys
         shell: bash
         working-directory: tools/repo
-        run: go run . mutate-keys --slots 4 --github-output "$GITHUB_OUTPUT"
+        run: |
+          image="${ImageOS:?the runner names no image}/${ImageVersion:?the runner names no image version}"
+          go run . mutate-keys --slots 4 --image "$image" --jobs "$MUTATE_JOBS" --github-output "$GITHUB_OUTPUT"
 
       # ⚠ A FULL RUN LOOKS NOTHING UP, and the plan reads no proof either.
       - name: the kept proof of module 1
@@ -429,18 +561,22 @@ jobs:
         shell: bash
         working-directory: tools/repo
         run: |
+          image="${ImageOS:?the runner names no image}/${ImageVersion:?the runner names no image version}"
           set --
           if [ "$FULL" = true ]; then set -- --full; fi
-          go run . mutate-plan --slots 4 --shards 12 --github-output "$GITHUB_OUTPUT" "$@"
+          go run . mutate-plan --slots 4 --shards 12 --image "$image" --jobs "$MUTATE_JOBS" --github-output "$GITHUB_OUTPUT" "$@"
 
   # ⭐ TWELVE SHARES OF THE ROWS THAT RUN, ON TWELVE RUNNERS, two rows at a time
   # on each. Six runners took 1,228 to 1,371 seconds each over 1,262 rows,
   # inside a 30-minute limit. `--shard K/N` gives each runner whole pattern
   # groups, heaviest first, so a group's unmutated baseline runs once and every
-  # row runs exactly once. `--jobs 2` proves two rows at once in separate
-  # copies on these 4-processor runners. Two workers measured 1.8 times as fast
-  # as one, and four were slower. Each verdict prints as its row finishes, so a share the limit
-  # stops still shows what it proved and what was running.
+  # row runs exactly once. MUTATE_JOBS is 2, so two rows run at once in
+  # separate copies on these 4-processor runners. Two workers measured 1.8
+  # times as fast as one, and four were slower. Each verdict prints as its row
+  # finishes, so a share the limit stops still shows what it proved and what
+  # was running.
+  # ⚠ NO GO CACHE IS RESTORED HERE. The harness builds each module in a staged
+  # copy, so the gate's entry would hit only the standard library.
   mutations:
     name: the guards go red when the guard is gone (${{ matrix.shard }})
     needs: mutation-plan
@@ -461,37 +597,21 @@ jobs:
           go-version-file: tools/repo/go.mod
           cache: false
 
-      - name: where Go keeps its caches
-        id: gocache
-        shell: bash
-        run: |
-          echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
-          echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: |
-            ${{ steps.gocache.outputs.build }}
-            ${{ steps.gocache.outputs.mod }}
-          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
-          restore-keys: |
-            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
-            go-gate-${{ runner.os }}-
-
       # ⚠ THE EXIT CODE IS READ FROM THE PROCESS, unpiped. The harness exits 1
       # on a theatre row and on a broken one, and 0 when the only unproved rows
       # are ones this host could not reach. The verdict file is what the keep
-      # step reads, and it names each SKIPPED row too.
+      # step reads. It names each SKIPPED row too, and the runner they ran on.
       - name: one share of the rows the plan runs
         shell: bash
         env:
           SHARD: ${{ matrix.shard }}
           MODULES: ${{ needs.mutation-plan.outputs.modules }}
         run: |
+          image="${ImageOS:?the runner names no image}/${ImageVersion:?the runner names no image version}"
           set --
           for m in $MODULES; do set -- "$@" --module "$m"; done
           cd tools/repo
-          go run . mutate --shard "$SHARD" --jobs 2 --verdicts "$RUNNER_TEMP/verdicts.json" "$@"
+          go run . mutate --shard "$SHARD" --jobs "$MUTATE_JOBS" --image "$image" --verdicts "$RUNNER_TEMP/verdicts.json" "$@"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -504,7 +624,8 @@ jobs:
   # ⛔ A MODULE IS KEPT ONLY WHEN EVERY SHARD PASSED, because its rows are
   # spread over all of them. `repo mutate-keep` keeps each module whose every
   # row has one verdict, ok or SKIPPED, and fails on a module that ran and is
-  # not whole.
+  # not whole. ⚠ A module a shard proved on another image is printed, not
+  # kept. Runners move to a new image a few at a time.
   mutation-keep:
     name: the guards go red when the guard is gone (kept)
     needs: [mutation-plan, mutations]
@@ -534,10 +655,20 @@ jobs:
           path: |
             ${{ steps.gocache.outputs.build }}
             ${{ steps.gocache.outputs.mod }}
-          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-${{ github.sha }}
           restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-
             go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
-            go-gate-${{ runner.os }}-
+
+      # ⛔ BEFORE THE FIRST go COMMAND, which would trim the restored entry.
+      - name: go leaves the restored cache whole for a day
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          mkdir -p "$GOCACHE_DIR"
+          date +%s > "$GOCACHE_DIR/trim.txt"
+          echo "$(find "$GOCACHE_DIR" -type f | wc -l) file(s) restored, and trim.txt reads $(cat "$GOCACHE_DIR/trim.txt")"
 
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -548,7 +679,9 @@ jobs:
         id: keep
         shell: bash
         working-directory: tools/repo
-        run: go run . mutate-keep --slots 4 --verdicts "$RUNNER_TEMP/verdicts" --github-output "$GITHUB_OUTPUT"
+        run: |
+          image="${ImageOS:?the runner names no image}/${ImageVersion:?the runner names no image version}"
+          go run . mutate-keep --slots 4 --image "$image" --jobs "$MUTATE_JOBS" --verdicts "$RUNNER_TEMP/verdicts" --github-output "$GITHUB_OUTPUT"
 
       - name: keep the proof of module 1
         if: steps.keep.outputs.save1 != ''
@@ -578,6 +711,41 @@ jobs:
           path: ${{ steps.keep.outputs.path4 }}
           key: ${{ steps.keep.outputs.save4 }}
 
+  # ⛔ A RED FULL RUN TAKES BACK EVERY KEPT PROOF. A cache entry cannot be
+  # replaced, so a proof kept before stays under its key. Every push would read
+  # it and run none of its rows, while the nightly stayed red. This deletes
+  # every mutate-proof entry on every ref, so the next push proves every row.
+  # ⚠ A cancelled share counts as red here. Proving again costs time, and
+  # keeping a proof a red night doubted could cost a wrong answer.
+  # ⛔ THE ONE JOB THAT MAY WRITE, and it writes only to the cache list.
+  mutation-forget:
+    name: the guards go red when the guard is gone (forgotten)
+    needs: [mutation-plan, mutations]
+    if: always() && needs.mutation-plan.outputs.full == 'true' && (needs.mutations.result == 'failure' || needs.mutations.result == 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+    steps:
+      - name: delete every kept proof, so the next push proves every row
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh cache list --key mutate-proof- --limit 1000 --json id,key,ref \
+            --jq '.[] | "\(.id) \(.ref) \(.key)"' > "$RUNNER_TEMP/proofs"
+          n=0
+          while read -r id ref key <&3; do
+            gh cache delete "$id"
+            echo "deleted $key, kept on $ref"
+            n=$((n + 1))
+          done 3< "$RUNNER_TEMP/proofs"
+          echo "$n kept proof(s) deleted"
+          left=$(gh cache list --key mutate-proof- --limit 1000 --json id --jq length)
+          echo "$left kept proof(s) left"
+          [ "$left" = 0 ]
+
   # -- the two probes must agree. The drift rule, with a machine behind it ----
   twins:
     name: the two probes agree
@@ -606,10 +774,20 @@ jobs:
           path: |
             ${{ steps.gocache.outputs.build }}
             ${{ steps.gocache.outputs.mod }}
-          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}
+          key: go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-${{ github.sha }}
           restore-keys: |
+            go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('tools/**/go.mod', 'tools/**/go.sum') }}-
             go-gate-${{ runner.os }}-${{ steps.go.outputs.go-version }}-
-            go-gate-${{ runner.os }}-
+
+      # ⛔ BEFORE THE FIRST go COMMAND, which would trim the restored entry.
+      - name: go leaves the restored cache whole for a day
+        shell: bash
+        env:
+          GOCACHE_DIR: ${{ steps.gocache.outputs.build }}
+        run: |
+          mkdir -p "$GOCACHE_DIR"
+          date +%s > "$GOCACHE_DIR/trim.txt"
+          echo "$(find "$GOCACHE_DIR" -type f | wc -l) file(s) restored, and trim.txt reads $(cat "$GOCACHE_DIR/trim.txt")"
 
       - name: both probes, same machine, compared field by field
         shell: bash

@@ -120,7 +120,7 @@ func TestMutateRefusesJobsBelowZero(t *testing.T) {
 // touched unkept, and every later push runs them again.
 func TestMutateWritesItsVerdictsBeforeTheTally(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "verdicts.json")
-	a, err := mutateFlags([]string{"--verdicts", file, "--shard", "1/2"})
+	a, err := mutateFlags([]string{"--verdicts", file, "--shard", "1/2", "--image", "ubuntu24/20261020.1"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,6 +137,59 @@ func TestMutateWritesItsVerdictsBeforeTheTally(t *testing.T) {
 	}
 	if !strings.Contains(string(raw), `"module": "tools/x"`) || !strings.Contains(string(raw), `"shard": "1/2"`) {
 		t.Fatalf("the verdict file holds %s", raw)
+	}
+}
+
+// TestMutateRecordsTheRunnerItRanOn: the image --image names, the --jobs it
+// ran with, the default as the number it is, and GOFLAGS.
+//
+// ⛔ THE KEEP STEP COMPARES ALL THREE WITH THE KEY. A file recording another
+// runner keeps nothing, and a file recording too little keeps a proof under a
+// runner its rows did not run on.
+func TestMutateRecordsTheRunnerItRanOn(t *testing.T) {
+	t.Setenv("GOFLAGS", "-count=1")
+	a, err := mutateFlags([]string{"--image", "ubuntu24/20261020.1", "--jobs", "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := mutate.Runner{Image: "ubuntu24/20261020.1", Jobs: 2, GoFlags: "-count=1"}
+	if a.runner != want {
+		t.Fatalf("mutate records runner %+v, want %+v", a.runner, want)
+	}
+	a, err = mutateFlags([]string{"--image", "ubuntu24/20261020.1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.runner.Jobs != mutate.DefaultJobs() {
+		t.Fatalf("no --jobs records %d, and the harness runs %d", a.runner.Jobs, mutate.DefaultJobs())
+	}
+}
+
+// TestMutateRefusesVerdictsWithNoImage. ⛔ Before any row runs. A verdict file
+// naming no image keeps nothing, after a whole shard's work.
+func TestMutateRefusesVerdictsWithNoImage(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "verdicts.json")
+	if _, err := mutateFlags([]string{"--verdicts", file}); err == nil || !strings.Contains(err.Error(), "--image") {
+		t.Fatalf("--verdicts with no --image answered %v", err)
+	}
+	if _, err := mutateFlags([]string{"--image", "ubuntu24/20261020.1"}); err != nil {
+		t.Fatalf("--image with no --verdicts answered %v", err)
+	}
+}
+
+// TestTheProofStepsKeyOnTheShardsRunner. ⛔ The plan looks a proof up and the
+// keep step saves one under the runner these flags name. A flag that did not
+// reach it would key every proof on a runner no shard ran on.
+func TestTheProofStepsKeyOnTheShardsRunner(t *testing.T) {
+	t.Setenv("GOFLAGS", "-count=1")
+	fs := newFlagSet("mutate-keys")
+	a := proofFlags(fs)
+	if err := parseArgs(fs, []string{"--image", "ubuntu24/20261020.1", "--jobs", "2"}); err != nil {
+		t.Fatal(err)
+	}
+	want := mutate.Runner{Image: "ubuntu24/20261020.1", Jobs: 2, GoFlags: "-count=1"}
+	if got := a.runner(); got != want {
+		t.Fatalf("the proof steps key on %+v, want %+v", got, want)
 	}
 }
 

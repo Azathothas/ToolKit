@@ -69,7 +69,7 @@ func commands() []command {
 		{"linux-proof", "run ShellCheck, the go job and the added rows on Linux over a commit's tree, and record a proof for the pre-push hook", runLinuxProof},
 		{"mutate", "delete each guard in the table and confirm the test named for it goes red", runMutate},
 		{"mutate-keep", "keep the proof of every module whose rows all passed in CI's shards", runMutateKeep},
-		{"mutate-keys", "every module's proof key, from its tree, its rows, the harness and the Go version", runMutateKeys},
+		{"mutate-keys", "every module's proof key, from its tree, its rows, the harness, the Go version and the runner", runMutateKeys},
 		{"mutate-plan", "which modules a kept proof answers, and how many shards the rest need", runMutatePlan},
 		{"nightly-prune", "the herdr nightlies older than the newest seven, by published_at, and optionally delete them", runNightlyPrune},
 		{"nightly-publish", "create a herdr nightly empty, upload each staged file, and read the set back", runNightlyPublish},
@@ -210,7 +210,7 @@ func runMutate(args []string) int {
 // keep step would find a shard missing and keep nothing.
 func finishMutate(a mutateArgs, t *mutate.Table, verdicts []mutate.Verdict, out, errOut io.Writer) int {
 	if a.verdicts != "" {
-		if err := mutate.WriteVerdicts(a.verdicts, t, a.sel.Shard, verdicts); err != nil {
+		if err := mutate.WriteVerdicts(a.verdicts, t, a.sel.Shard, a.runner, verdicts); err != nil {
 			fmt.Fprintf(errOut, "mutate: --verdicts: %v\n", err)
 			return 2
 		}
@@ -240,6 +240,14 @@ func openTable(name, table string) (*gitrepo.Repo, *mutate.Table, int) {
 type mutateArgs struct {
 	table, verdicts string
 	sel             mutate.Selection
+	// runner is what the verdict file records the rows ran on.
+	runner mutate.Runner
+}
+
+// runnerOf is the runner a proof names. It is the image a flag names, the
+// --jobs the shards run with, and this process's GOFLAGS.
+func runnerOf(image string, jobs int) mutate.Runner {
+	return mutate.Runner{Image: strings.TrimSpace(image), Jobs: jobs, GoFlags: os.Getenv("GOFLAGS")}
 }
 
 // mutateFlags reads mutate's command line into the table path and selection.
@@ -255,11 +263,22 @@ func mutateFlags(args []string) (mutateArgs, error) {
 	fs.Var(&modules, "module", "run only this module's rows, as tools/check. Repeatable")
 	shardFlag := fs.String("shard", "", "K/N: run the K-th of N shares of the table, so N runners prove it together")
 	jobs := fs.Int("jobs", 0, fmt.Sprintf("how many rows run at once, each worker in its own staged copy. Zero is half this host's processors, %d here", mutate.DefaultJobs()))
+	image := fs.String("image", "", "the runner image the rows run on, as CI's $ImageOS/$ImageVersion. The verdict file records it")
 	if err := parseArgs(fs, args); err != nil {
 		return mutateArgs{}, err
 	}
 	if *jobs < 0 {
 		return mutateArgs{}, fmt.Errorf("mutate: --jobs %d is below zero", *jobs)
+	}
+	// ⛔ REFUSED BEFORE ANY ROW RUNS. The keep step keeps a proof only under the
+	// image its rows ran on. A file naming none would keep nothing after a
+	// whole shard's work.
+	if *verdicts != "" && strings.TrimSpace(*image) == "" {
+		return mutateArgs{}, fmt.Errorf("mutate: --verdicts needs --image, because a proof is kept only for the image its rows ran on")
+	}
+	ran := *jobs
+	if ran == 0 {
+		ran = mutate.DefaultJobs()
 	}
 	shard, err := mutate.ParseShard(*shardFlag)
 	if err != nil {
@@ -278,23 +297,31 @@ func mutateFlags(args []string) (mutateArgs, error) {
 		labels = append(labels, got...)
 	}
 	sel := mutate.Selection{Only: *only, Labels: labels, Modules: modules, Shard: shard, Jobs: *jobs}
-	return mutateArgs{table: *table, verdicts: *verdicts, sel: sel}, nil
+	return mutateArgs{table: *table, verdicts: *verdicts, sel: sel, runner: runnerOf(*image, ran)}, nil
 }
 
 // proofArgs is the command line the three CI proof steps share.
 type proofArgs struct {
-	table, output string
-	slots         int
+	table, output, image string
+	slots, jobs          int
 }
 
 // proofFlags adds the shared flags to fs, which the caller parses.
+//
+// ⛔ --image AND --jobs NAME THE SHARDS' RUNNER, and every step passes the
+// same. The plan looks a proof up under them, and the keep step saves one.
 func proofFlags(fs *flag.FlagSet) *proofArgs {
 	a := &proofArgs{}
 	fs.StringVar(&a.table, "table", "", "the mutation table. Empty reads tools/repo/mutations.json from the repository root")
 	fs.StringVar(&a.output, "github-output", "", "a file to append the step's outputs to, as GITHUB_OUTPUT. Empty prints them")
 	fs.IntVar(&a.slots, "slots", 0, "how many modules the workflow looks a proof up for")
+	fs.StringVar(&a.image, "image", "", "the runner image the shards run on, as CI's $ImageOS/$ImageVersion")
+	fs.IntVar(&a.jobs, "jobs", 0, "the --jobs every shard runs mutate with")
 	return a
 }
+
+// runner is the shards' runner, as the flags name it.
+func (a *proofArgs) runner() mutate.Runner { return runnerOf(a.image, a.jobs) }
 
 // proofKeys opens the table and computes every module's key, refusing a
 // workflow with too few slots.
@@ -303,7 +330,7 @@ func proofKeys(name string, a *proofArgs) (*gitrepo.Repo, *mutate.Table, []mutat
 	if code != 0 {
 		return nil, nil, nil, code
 	}
-	keys, err := moduleKeys(repo.Root, t, a.slots)
+	keys, err := moduleKeys(repo.Root, t, a.slots, a.runner())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
 		return nil, nil, nil, 2
@@ -311,12 +338,12 @@ func proofKeys(name string, a *proofArgs) (*gitrepo.Repo, *mutate.Table, []mutat
 	return repo, t, keys, 0
 }
 
-func moduleKeys(root string, t *mutate.Table, slots int) ([]mutate.ModuleKey, error) {
+func moduleKeys(root string, t *mutate.Table, slots int, rn mutate.Runner) ([]mutate.ModuleKey, error) {
 	goVersion, err := mutate.GoVersion(root)
 	if err != nil {
 		return nil, err
 	}
-	keys, err := mutate.ProofKeys(root, t, goVersion)
+	keys, err := mutate.ProofKeys(root, t, goVersion, rn)
 	if err != nil {
 		return nil, err
 	}

@@ -2,6 +2,168 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "mutate-keys: a key names the runner's image",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tfmt.Fprintf(h, \"image %s\\n\", rn.Image)\n",
+      "replace": "",
+      "run": "TestAProofKeyMovesWithTheRunner",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a key names the --jobs the shards run with",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tfmt.Fprintf(h, \"jobs %d\\n\", rn.Jobs)\n",
+      "replace": "",
+      "run": "TestAProofKeyMovesWithTheRunner",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a key names GOFLAGS",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\tfmt.Fprintf(h, \"goflags %s\\n\", rn.GoFlags)\n",
+      "replace": "",
+      "run": "TestAProofKeyMovesWithTheRunner",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a runner with no image is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if strings.TrimSpace(r.Image) == \"\" {",
+      "replace": "if false {",
+      "run": "TestAProofKeyRefusesARunnerItCannotName",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a runner with no --jobs is refused",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if r.Jobs < 1 {",
+      "replace": "if false {",
+      "run": "TestAProofKeyRefusesARunnerItCannotName",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a key is made only for a runner it can name",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\tif err := rn.check(); err != nil {\n\t\treturn nil, err\n\t}\n",
+      "replace": "",
+      "run": "TestAProofKeyRefusesARunnerItCannotName",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: a key carries the runner it names",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\t\tRunner: rn,\n",
+      "replace": "",
+      "run": "TestKeepKeepsOnlyAWholeModule",
+      "args": []
+    },
+    {
+      "label": "mutate: a verdict file names its runner",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "Runner: rn, Verdicts: []RowVerdict{}",
+      "replace": "Verdicts: []RowVerdict{}",
+      "run": "TestAVerdictFileNamesEachRowsModule",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a module a shard ran on another runner is not kept",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if why := elsewhere(k, ranOn[k.Module]); why != \"\" {",
+      "replace": "if why := elsewhere(k, ranOn[k.Module]); false && why != \"\" {",
+      "run": "TestKeepKeepsAModuleOnlyUnderTheRunnerItRanOn",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: each runner a module ran on is compared with its key's",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "if r != k.Runner {",
+      "replace": "if false {",
+      "run": "TestKeepKeepsAModuleOnlyUnderTheRunnerItRanOn",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: the runners a module ran on are read from its files",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "\t\t\tranOn[v.Module][f.Runner] = file\n",
+      "replace": "",
+      "run": "TestKeepKeepsAModuleOnlyUnderTheRunnerItRanOn",
+      "args": []
+    },
+    {
+      "label": "mutate-keep: a kept proof records its runner",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "Key: k.Key, Runner: k.Runner, Verdicts: got}",
+      "replace": "Key: k.Key, Verdicts: got}",
+      "run": "TestKeepKeepsOnlyAWholeModule",
+      "args": []
+    },
+    {
+      "label": "mutate-plan: a kept proof names the runner it was proved on",
+      "module": "tools/repo",
+      "file": "internal/mutate/proof.go",
+      "find": "proved on %s, under %s\\n\", pr.Module, ok, len(pr.Verdicts), pr.Runner, pr.Key)",
+      "replace": "proved, under %s\\n\", pr.Module, ok, len(pr.Verdicts), pr.Key)",
+      "run": "TestAKeptProofAnswersItsModule",
+      "args": []
+    },
+    {
+      "label": "mutate: --verdicts with no --image is refused before any row runs",
+      "module": "tools/repo",
+      "file": "main.go",
+      "find": "\tif *verdicts != \"\" && strings.TrimSpace(*image) == \"\" {",
+      "replace": "\tif false {",
+      "run": "TestMutateRefusesVerdictsWithNoImage",
+      "args": []
+    },
+    {
+      "label": "mutate: the runner names GOFLAGS",
+      "module": "tools/repo",
+      "file": "main.go",
+      "find": "GoFlags: os.Getenv(\"GOFLAGS\")",
+      "replace": "GoFlags: \"\"",
+      "run": "TestMutateRecordsTheRunnerItRanOn",
+      "args": []
+    },
+    {
+      "label": "mutate: no --jobs is recorded as the count the harness runs",
+      "module": "tools/repo",
+      "file": "main.go",
+      "find": "\tif ran == 0 {\n\t\tran = mutate.DefaultJobs()\n\t}\n",
+      "replace": "",
+      "run": "TestMutateRecordsTheRunnerItRanOn",
+      "args": []
+    },
+    {
+      "label": "mutate: the verdict file records --image",
+      "module": "tools/repo",
+      "file": "main.go",
+      "find": "runner: runnerOf(*image, ran)",
+      "replace": "runner: runnerOf(\"\", ran)",
+      "run": "TestMutateRecordsTheRunnerItRanOn",
+      "args": []
+    },
+    {
+      "label": "mutate-keys: --image and --jobs reach the key",
+      "module": "tools/repo",
+      "file": "main.go",
+      "find": "return runnerOf(a.image, a.jobs)",
+      "replace": "return runnerOf(\"\", 0)",
+      "run": "TestTheProofStepsKeyOnTheShardsRunner",
+      "args": []
+    },
+    {
       "label": "check: a pinned action's commit is not reported as a fingerprint",
       "module": "tools/check",
       "file": "internal/checks/secrets.go",

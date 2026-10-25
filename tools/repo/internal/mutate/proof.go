@@ -3,22 +3,29 @@
 // ⭐ A MODULE IS PROVED BY WHAT IT HOLDS, NOT BY THE PUSH THAT CARRIED IT. A
 // push that changed a document ran all 1,262 rows. The proof key names
 // everything a row's verdict can read: the module's committed tree, its own
-// rows, the harness and the Go version. A row runs in a staged copy of its
-// module alone, so nothing outside the module reaches a case. A CI run that
-// finds a proof kept under that key prints it and runs none of that module's
-// rows.
+// rows, the harness, the Go version and the runner. A row runs in a staged
+// copy of its module alone, so nothing outside the module reaches a case. A
+// CI run that finds a proof kept under that key prints it and runs none of
+// that module's rows.
 //
 // ⛔ A KEPT PROOF CARRIES EVERY VERDICT, AND THE PLAN PRINTS THEM AGAIN. A row
-// whose case skipped on the runner stays SKIPPED in every later plan. A cache
-// never turns a row that was not proved into one that was.
+// whose case skipped on the runner stays SKIPPED in every plan that reads the
+// proof. A cache never turns a row that was not proved into one that was.
 //
 // ⛔ A MODULE IS KEPT ONLY WHOLE. Its rows are spread over every shard, so no
 // one shard proves it. The keep step reads every shard's verdicts and keeps a
 // module only when each of its rows has exactly one, and none failed.
 //
-// ⚠ THE KEY DOES NOT NAME THE RUNNER'S IMAGE. A case that goes red on a new
-// image with no change here is found by the nightly full run, which reads no
-// kept proof. So is a case that flakes.
+// ⛔ THE KEY NAMES THE RUNNER, because a verdict reads it too. A case can go
+// red on a new image with nothing changed here, and a SKIPPED row can become
+// provable there. So the key names the image, the rows run at once and
+// GOFLAGS. A new image proves every module again on its first push. It used
+// not to, and a proof kept on an old image answered for the new one.
+//
+// ⛔ A CACHE ENTRY CANNOT BE REPLACED, SO A RED FULL RUN DELETES THEM ALL. The
+// nightly reads no kept proof. When one of its rows fails, ci.yml deletes every
+// kept proof, and the next push proves every row again. A flake is found that
+// way too.
 //
 // SPDX-License-Identifier: 0BSD
 
@@ -38,11 +45,39 @@ import (
 	"strings"
 )
 
-// The shapes of the two files this writes.
+// The shapes of the two files this writes. ⚠ Both name their Runner since /2.
 const (
-	ProofSchema    = "repo-mutate-proof/1"
-	VerdictsSchema = "repo-mutate-verdicts/1"
+	ProofSchema    = "repo-mutate-proof/2"
+	VerdictsSchema = "repo-mutate-verdicts/2"
 )
+
+// Runner is what a verdict reads besides the module, the harness and the Go
+// version. It is the image the runner booted, the --jobs the harness ran
+// with, and GOFLAGS, which every test process inherits.
+type Runner struct {
+	Image   string `json:"image"`
+	Jobs    int    `json:"jobs"`
+	GoFlags string `json:"goflags"`
+}
+
+// check says why r cannot name a proof, or nil when it can.
+//
+// ⛔ NO IMAGE IS AN ERROR, NEVER AN EMPTY LINE IN THE KEY. A key that named no
+// image would let a proof from one image answer on every other.
+func (r Runner) check() error {
+	if strings.TrimSpace(r.Image) == "" {
+		return fmt.Errorf("no runner image was named, so no key can say what a verdict ran on. Pass --image")
+	}
+	if r.Jobs < 1 {
+		return fmt.Errorf("--jobs %d names no count of rows run at once, so no key can say how the rows ran", r.Jobs)
+	}
+	return nil
+}
+
+// String is r as a plan and a keep step print it.
+func (r Runner) String() string {
+	return fmt.Sprintf("%s with --jobs %d and GOFLAGS %q", r.Image, r.Jobs, r.GoFlags)
+}
 
 // ProofDir is where kept proofs live, under the repository root. ⚠ Under
 // .tmp, which is gitignored, so a restored proof never reads as a change.
@@ -66,6 +101,8 @@ type ModuleKey struct {
 	Path string
 	// Rows are its rows, by place in the table.
 	Rows []int
+	// Runner is the runner the key names.
+	Runner Runner
 }
 
 // RowVerdict is one row's verdict as a file carries it.
@@ -82,6 +119,7 @@ type RowVerdict struct {
 type VerdictFile struct {
 	Schema   string       `json:"schema"`
 	Shard    string       `json:"shard,omitempty"`
+	Runner   Runner       `json:"runner"`
 	Verdicts []RowVerdict `json:"verdicts"`
 }
 
@@ -90,6 +128,7 @@ type Proof struct {
 	Schema   string       `json:"schema"`
 	Module   string       `json:"module"`
 	Key      string       `json:"key"`
+	Runner   Runner       `json:"runner"`
 	Verdicts []RowVerdict `json:"verdicts"`
 }
 
@@ -119,14 +158,17 @@ func GoVersion(root string) (string, error) {
 	return v, nil
 }
 
-// ProofKeys is each module's key, in Modules order.
+// ProofKeys is each module's key on rn, in Modules order.
 //
 // ⛔ A MODULE WITH UNCOMMITTED CHANGES IS REFUSED, and so is the harness. The
 // key names HEAD, and a run proves the working tree. Keeping a proof of one
 // under the name of the other is a proof of something nobody committed.
-func ProofKeys(root string, t *Table, goVersion string) ([]ModuleKey, error) {
+func ProofKeys(root string, t *Table, goVersion string, rn Runner) ([]ModuleKey, error) {
 	if goVersion == "" {
 		return nil, fmt.Errorf("no Go version, so no key can name the toolchain")
+	}
+	if err := rn.check(); err != nil {
+		return nil, err
 	}
 	for _, p := range append([]string{harnessModule}, Modules(t)...) {
 		dirty, err := gitOut(root, "status", "--porcelain", "--", p)
@@ -166,11 +208,15 @@ func ProofKeys(root string, t *Table, goVersion string) ([]ModuleKey, error) {
 		fmt.Fprintf(h, "harness %s\n", harness)
 		fmt.Fprintf(h, "go %s\n", goVersion)
 		fmt.Fprintf(h, "rows %x\n", rh.Sum(nil))
+		fmt.Fprintf(h, "image %s\n", rn.Image)
+		fmt.Fprintf(h, "jobs %d\n", rn.Jobs)
+		fmt.Fprintf(h, "goflags %s\n", rn.GoFlags)
 		out = append(out, ModuleKey{
 			Module: m,
 			Key:    "mutate-proof-" + path.Base(m) + "-" + hex.EncodeToString(h.Sum(nil))[:40],
 			Path:   ProofDir + "/" + moduleKey(m) + ".json",
 			Rows:   rows,
+			Runner: rn,
 		})
 	}
 	return out, nil
@@ -307,7 +353,7 @@ func writeKept(w io.Writer, pr Proof) {
 			skipped = append(skipped, v)
 		}
 	}
-	fmt.Fprintf(w, "  kept:  %s, %d of %d row(s) proved, under %s\n", pr.Module, ok, len(pr.Verdicts), pr.Key)
+	fmt.Fprintf(w, "  kept:  %s, %d of %d row(s) proved on %s, under %s\n", pr.Module, ok, len(pr.Verdicts), pr.Runner, pr.Key)
 	for _, v := range skipped {
 		fmt.Fprintf(w, "    SKIPPED: %s: %s, so it is unproved rather than proved or theatre\n", v.Label, v.Reason)
 	}
@@ -363,14 +409,14 @@ func whole(t *Table, k ModuleKey, verdicts []RowVerdict) string {
 	return ""
 }
 
-// WriteVerdicts writes one run's verdicts, each with its module, for the keep
-// step to read.
-func WriteVerdicts(file string, t *Table, shard Shard, verdicts []Verdict) error {
+// WriteVerdicts writes one run's verdicts, each with its module, and the
+// runner they ran on, for the keep step to read.
+func WriteVerdicts(file string, t *Table, shard Shard, rn Runner, verdicts []Verdict) error {
 	module := map[string]string{}
 	for _, m := range t.Mutations {
 		module[m.Label] = m.Module
 	}
-	f := VerdictFile{Schema: VerdictsSchema, Verdicts: []RowVerdict{}}
+	f := VerdictFile{Schema: VerdictsSchema, Runner: rn, Verdicts: []RowVerdict{}}
 	if shard.N > 1 {
 		f.Shard = fmt.Sprintf("%d/%d", shard.K, shard.N)
 	}
@@ -396,6 +442,11 @@ func WriteVerdicts(file string, t *Table, shard Shard, verdicts []Verdict) error
 // so two verdicts for one row say the files are not this run's.
 // ⛔ A MODULE THAT RAN AND IS NOT WHOLE IS A FAILURE, not a quiet miss. Every
 // shard passed, so a missing verdict is a missing file.
+//
+// ⛔ A MODULE IS KEPT ONLY UNDER THE RUNNER ITS ROWS RAN ON. A shard that ran
+// on another image, or with another --jobs or GOFLAGS, proved nothing for this
+// key. ⚠ It is printed and not kept, and the step does not fail. Runners move
+// to a new image a few at a time, so one run can hold two images.
 func Keep(root string, t *Table, keys []ModuleKey, dir string, w io.Writer) (kept []ModuleKey, short bool, err error) {
 	files, err := verdictFiles(dir)
 	if err != nil {
@@ -407,6 +458,8 @@ func Keep(root string, t *Table, keys []ModuleKey, dir string, w io.Writer) (kep
 	}
 	byModule := map[string][]RowVerdict{}
 	seen := map[string]string{}
+	// ranOn is each module's runners, with a file that ran on each.
+	ranOn := map[string]map[Runner]string{}
 	for _, file := range files {
 		raw, err := os.ReadFile(file)
 		if err != nil {
@@ -429,6 +482,10 @@ func Keep(root string, t *Table, keys []ModuleKey, dir string, w io.Writer) (kep
 			}
 			seen[v.Label] = file
 			byModule[v.Module] = append(byModule[v.Module], v)
+			if ranOn[v.Module] == nil {
+				ranOn[v.Module] = map[Runner]string{}
+			}
+			ranOn[v.Module][f.Runner] = file
 		}
 	}
 	for _, k := range keys {
@@ -437,13 +494,17 @@ func Keep(root string, t *Table, keys []ModuleKey, dir string, w io.Writer) (kep
 			fmt.Fprintf(w, "  not run here: %s\n", k.Module)
 			continue
 		}
+		if why := elsewhere(k, ranOn[k.Module]); why != "" {
+			fmt.Fprintf(w, "  NOT KEPT: %s, because %s\n", k.Module, why)
+			continue
+		}
 		if why := whole(t, k, got); why != "" {
 			fmt.Fprintf(w, "  NOT KEPT: %s, because %s\n", k.Module, why)
 			short = true
 			continue
 		}
 		sort.Slice(got, func(a, b int) bool { return at[got[a].Label] < at[got[b].Label] })
-		pr := Proof{Schema: ProofSchema, Module: k.Module, Key: k.Key, Verdicts: got}
+		pr := Proof{Schema: ProofSchema, Module: k.Module, Key: k.Key, Runner: k.Runner, Verdicts: got}
 		raw, err := json.MarshalIndent(pr, "", "  ")
 		if err != nil {
 			return nil, false, err
@@ -459,6 +520,22 @@ func Keep(root string, t *Table, keys []ModuleKey, dir string, w io.Writer) (kep
 		kept = append(kept, k)
 	}
 	return kept, short, nil
+}
+
+// elsewhere names each runner other than k's that rows of k's module ran on,
+// with a file that ran there. It is empty when every row ran on k's runner.
+func elsewhere(k ModuleKey, ran map[Runner]string) string {
+	var files []string
+	for r, file := range ran {
+		if r != k.Runner {
+			files = append(files, fmt.Sprintf("%s ran on %s", file, r))
+		}
+	}
+	if len(files) == 0 {
+		return ""
+	}
+	sort.Strings(files)
+	return fmt.Sprintf("%s, and its key names %s", strings.Join(files, "; "), k.Runner)
 }
 
 // verdictFiles is every .json file under dir, sorted.

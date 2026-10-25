@@ -62,9 +62,9 @@ jobs:
 
   # ⛔ EVERY GUARD IS PROVED BEFORE ANYTHING IS PUBLISHED, and no kept proof
   # answers for one. CI proves a push only where a module's proof key moved,
-  # and that key does not name the runner's image. A release reads no cache,
-  # so every row of tools/repo/mutations.json runs here, on twelve runners,
-  # two rows at a time on each. ci.yml carries why it is cut that way.
+  # so a kept proof can be as old as the image it ran on. A release reads no
+  # cache, so every row of tools/repo/mutations.json runs here, on twelve
+  # runners, two rows at a time on each. ci.yml carries why it is cut that way.
   mutations:
     name: the guards go red when the guard is gone (${{ matrix.shard }})
     runs-on: ubuntu-latest

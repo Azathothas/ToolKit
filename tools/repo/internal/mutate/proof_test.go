@@ -69,9 +69,17 @@ func commitTable(t *testing.T, root string, tb *Table) {
 	gitIn(t, root, "commit", "-q", "-m", "x")
 }
 
+// testRunner is the runner a case keys on, unless it says otherwise.
+var testRunner = Runner{Image: "ubuntu24/20261020.1", Jobs: 2, GoFlags: "-count=1"}
+
 func keysOf(t *testing.T, root string, tb *Table, goVersion string) map[string]string {
 	t.Helper()
-	keys, err := ProofKeys(root, tb, goVersion)
+	return keysOn(t, root, tb, goVersion, testRunner)
+}
+
+func keysOn(t *testing.T, root string, tb *Table, goVersion string, rn Runner) map[string]string {
+	t.Helper()
+	keys, err := ProofKeys(root, tb, goVersion, rn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +142,42 @@ func TestAProofKeyMovesWithTheHarnessAndTheGoVersion(t *testing.T) {
 	}
 }
 
+// TestAProofKeyMovesWithTheRunner. ⛔ A case can go red on a new image with
+// nothing changed here, and a SKIPPED row can become provable there. So a new
+// image, another --jobs and other GOFLAGS each prove every module again.
+func TestAProofKeyMovesWithTheRunner(t *testing.T) {
+	t.Parallel()
+	root, tb := proofRepo(t)
+	before := keysOf(t, root, tb, "go1.25.0")
+	image, jobs, flags := testRunner, testRunner, testRunner
+	image.Image = "ubuntu24/20261027.1"
+	jobs.Jobs = 3
+	flags.GoFlags = "-count=1 -race"
+	for name, rn := range map[string]Runner{"another image": image, "another --jobs": jobs, "other GOFLAGS": flags} {
+		after := keysOn(t, root, tb, "go1.25.0", rn)
+		if after["mods/a"] == before["mods/a"] || after["mods/b"] == before["mods/b"] {
+			t.Errorf("%s gave the same keys, so a proof from one runner would answer on the other", name)
+		}
+	}
+}
+
+// TestAProofKeyRefusesARunnerItCannotName. ⛔ A key that named no image would
+// let one image's proof answer on every other. A runner with no --jobs is
+// refused too.
+func TestAProofKeyRefusesARunnerItCannotName(t *testing.T) {
+	t.Parallel()
+	root, tb := proofRepo(t)
+	blank, none := testRunner, testRunner
+	blank.Image = " "
+	none.Jobs = 0
+	if _, err := ProofKeys(root, tb, "go1.25.0", blank); err == nil || !strings.Contains(err.Error(), "--image") {
+		t.Errorf("a runner with no image answered %v", err)
+	}
+	if _, err := ProofKeys(root, tb, "go1.25.0", none); err == nil || !strings.Contains(err.Error(), "--jobs 0") {
+		t.Errorf("a runner with no --jobs answered %v", err)
+	}
+}
+
 // TestAProofKeyRefusesUncommittedChanges. ⛔ The key names HEAD and a run
 // proves the working tree. A proof of the one kept under the other's name is
 // a proof of something nobody committed.
@@ -141,13 +185,13 @@ func TestAProofKeyRefusesUncommittedChanges(t *testing.T) {
 	t.Parallel()
 	root, tb := proofRepo(t)
 	put(t, root, "mods/b/new.go", "package b\n")
-	if _, err := ProofKeys(root, tb, "go1.25.0"); err == nil || !strings.Contains(err.Error(), "mods/b") {
+	if _, err := ProofKeys(root, tb, "go1.25.0", testRunner); err == nil || !strings.Contains(err.Error(), "mods/b") {
 		t.Fatalf("an untracked file in mods/b answered %v", err)
 	}
 	gitIn(t, root, "add", "-A")
 	gitIn(t, root, "commit", "-q", "-m", "b")
 	put(t, root, "tools/repo/harness.go", "package harness\n\nconst edited = true\n")
-	if _, err := ProofKeys(root, tb, "go1.25.0"); err == nil || !strings.Contains(err.Error(), "tools/repo") {
+	if _, err := ProofKeys(root, tb, "go1.25.0", testRunner); err == nil || !strings.Contains(err.Error(), "tools/repo") {
 		t.Fatalf("an edited harness answered %v", err)
 	}
 }
@@ -172,7 +216,7 @@ func TestMoreModulesThanSlotsIsRefused(t *testing.T) {
 // keep writes a kept proof of k holding verdicts.
 func keep(t *testing.T, root string, k ModuleKey, verdicts ...RowVerdict) {
 	t.Helper()
-	raw, err := json.Marshal(Proof{Schema: ProofSchema, Module: k.Module, Key: k.Key, Verdicts: verdicts})
+	raw, err := json.Marshal(Proof{Schema: ProofSchema, Module: k.Module, Key: k.Key, Runner: k.Runner, Verdicts: verdicts})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +226,7 @@ func keep(t *testing.T, root string, k ModuleKey, verdicts ...RowVerdict) {
 func planKeys(t *testing.T) (string, *Table, []ModuleKey) {
 	t.Helper()
 	root, tb := proofRepo(t)
-	keys, err := ProofKeys(root, tb, "go1.25.0")
+	keys, err := ProofKeys(root, tb, "go1.25.0", testRunner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,10 +254,15 @@ func TestAKeptProofAnswersItsModule(t *testing.T) {
 	if !strings.Contains(log.String(), "SKIPPED: a two") || !strings.Contains(log.String(), keys[0].Key) {
 		t.Fatalf("the plan does not name the kept key and the row it holds unproved:\n%s", log.String())
 	}
+	// ⚠ AND THE IMAGE IT WAS PROVED ON, so a reader can tell which image the
+	// proof answers for.
+	if !strings.Contains(log.String(), "proved on "+testRunner.Image) {
+		t.Fatalf("the plan does not name the image the kept proof ran on:\n%s", log.String())
+	}
 }
 
-// TestAFullRunReadsNoKeptProof. ⚠ The nightly and the release run every row,
-// because the key does not name the runner's image.
+// TestAFullRunReadsNoKeptProof. ⚠ The nightly and the release run every row.
+// A kept proof cannot see a case that flakes, or one that time alone turns red.
 func TestAFullRunReadsNoKeptProof(t *testing.T) {
 	t.Parallel()
 	root, tb, keys := planKeys(t)
@@ -304,10 +353,15 @@ func TestThePlanCutsWhatRunsIntoNoMoreShardsThanGroups(t *testing.T) {
 	}
 }
 
-// writeVerdicts is one shard's verdict file in dir.
+// writeVerdicts is one shard's verdict file in dir, run on testRunner.
 func writeVerdicts(t *testing.T, dir, name string, verdicts ...RowVerdict) {
 	t.Helper()
-	raw, err := json.Marshal(VerdictFile{Schema: VerdictsSchema, Verdicts: verdicts})
+	writeVerdictsOn(t, dir, name, testRunner, verdicts...)
+}
+
+func writeVerdictsOn(t *testing.T, dir, name string, rn Runner, verdicts ...RowVerdict) {
+	t.Helper()
+	raw, err := json.Marshal(VerdictFile{Schema: VerdictsSchema, Runner: rn, Verdicts: verdicts})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,11 +384,46 @@ func TestKeepKeepsOnlyAWholeModule(t *testing.T) {
 	if len(kept) != 1 || kept[0].Module != "mods/a" || !short {
 		t.Fatalf("kept %v, short %v; want mods/a alone, and short for mods/b:\n%s", kept, short, log.String())
 	}
-	if _, why := readProof(root, tb, keys[0]); why != "" {
+	pr, why := readProof(root, tb, keys[0])
+	if why != "" {
 		t.Fatalf("the kept proof of mods/a does not read back: %s", why)
+	}
+	// ⚠ THE PROOF RECORDS ITS RUNNER, which every plan that reads it prints.
+	if pr.Runner != testRunner || !strings.Contains(log.String(), "proved on "+testRunner.Image) {
+		t.Fatalf("the kept proof names runner %+v, and the step printed:\n%s", pr.Runner, log.String())
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(keys[1].Path))); err == nil {
 		t.Fatal("mods/b was written a proof with a row short")
+	}
+}
+
+// TestKeepKeepsAModuleOnlyUnderTheRunnerItRanOn. ⛔ A shard on another image
+// proved nothing for this key. ⚠ It is printed and the step does not fail,
+// because one run can hold two images while runners move to a new one.
+func TestKeepKeepsAModuleOnlyUnderTheRunnerItRanOn(t *testing.T) {
+	t.Parallel()
+	root, tb, keys := planKeys(t)
+	moved := testRunner
+	moved.Image = "ubuntu24/20261027.1"
+	dir := t.TempDir()
+	writeVerdicts(t, dir, "shard-1",
+		RowVerdict{Label: "a one", Module: "mods/a", State: "ok"},
+		RowVerdict{Label: "b one", Module: "mods/b", State: "ok"},
+		RowVerdict{Label: "b two", Module: "mods/b", State: "ok"})
+	writeVerdictsOn(t, dir, "shard-2", moved, RowVerdict{Label: "a two", Module: "mods/a", State: "ok"})
+	var log bytes.Buffer
+	kept, short, err := Keep(root, tb, keys, dir, &log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) != 1 || kept[0].Module != "mods/b" || short {
+		t.Fatalf("kept %v, short %v; want mods/b alone, and not short:\n%s", kept, short, log.String())
+	}
+	if !strings.Contains(log.String(), "NOT KEPT: mods/a") || !strings.Contains(log.String(), moved.Image) {
+		t.Fatalf("the step does not say mods/a was not kept, and the image a row ran on:\n%s", log.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(keys[0].Path))); err == nil {
+		t.Fatal("mods/a was kept with a row another image proved")
 	}
 }
 
@@ -374,7 +463,7 @@ func TestAVerdictFileNamesEachRowsModule(t *testing.T) {
 	_, tb := proofRepo(t)
 	file := filepath.Join(t.TempDir(), "v.json")
 	proved := Verdict{Label: "b two", State: "ok", Cases: 1}
-	if err := WriteVerdicts(file, tb, Shard{K: 2, N: 3}, []Verdict{proved}); err != nil {
+	if err := WriteVerdicts(file, tb, Shard{K: 2, N: 3}, testRunner, []Verdict{proved}); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := os.ReadFile(file)
@@ -388,8 +477,13 @@ func TestAVerdictFileNamesEachRowsModule(t *testing.T) {
 	if f.Schema != VerdictsSchema || f.Shard != "2/3" || len(f.Verdicts) != 1 || f.Verdicts[0].Module != "mods/b" {
 		t.Fatalf("the file holds %+v", f)
 	}
+	// ⛔ THE FILE NAMES ITS RUNNER. The keep step keeps a module only under the
+	// runner its rows ran on, and a file naming none would keep nothing.
+	if f.Runner != testRunner {
+		t.Fatalf("the file names runner %+v, want %+v", f.Runner, testRunner)
+	}
 	stray := Verdict{Label: "no such row"}
-	if err := WriteVerdicts(file, tb, Shard{}, []Verdict{stray}); err == nil {
+	if err := WriteVerdicts(file, tb, Shard{}, testRunner, []Verdict{stray}); err == nil {
 		t.Fatal("a verdict for a row the table does not hold was written")
 	}
 }
