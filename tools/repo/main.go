@@ -35,6 +35,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -67,6 +68,9 @@ func commands() []command {
 		{"license", "write LICENSE from a template, with the holder filled in", runLicense},
 		{"linux-proof", "run ShellCheck, the go job and the added rows on Linux over a commit's tree, and record a proof for the pre-push hook", runLinuxProof},
 		{"mutate", "delete each guard in the table and confirm the test named for it goes red", runMutate},
+		{"mutate-keep", "keep the proof of every module whose rows all passed in CI's shards", runMutateKeep},
+		{"mutate-keys", "every module's proof key, from its tree, its rows, the harness, the Go version and the runner", runMutateKeys},
+		{"mutate-plan", "which modules a kept proof answers, and how many shards the rest need", runMutatePlan},
 		{"nightly-prune", "the herdr nightlies older than the newest seven, by published_at, and optionally delete them", runNightlyPrune},
 		{"nightly-publish", "create a herdr nightly empty, upload each staged file, and read the set back", runNightlyPublish},
 		{"nightly-stage", "stage a herdr nightly's four builds and BUILD-INFO.json, assert the set, write SHA256SUMS and the sign count", runNightlyStage},
@@ -182,66 +186,302 @@ func runDeslop(args []string) int {
 // and then both run. --label and --labels-file match whole labels, for a caller
 // that computed the rows it wants.
 func runMutate(args []string) int {
-	table, sel, err := mutateFlags(args)
+	a, err := mutateFlags(args)
 	if code, done := exitFor(err); done {
 		return code
 	}
-	repo, err := gitrepo.Open()
+	repo, t, code := openTable("mutate", a.table)
+	if code != 0 {
+		return code
+	}
+	verdicts, err := mutate.Run(repo.Root, t, a.sel, os.Stdout)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
 		return 2
+	}
+	return finishMutate(a, t, verdicts, os.Stdout, os.Stderr)
+}
+
+// finishMutate writes the verdict file when one is asked for, then the tally.
+//
+// ⭐ THE FILE IS WRITTEN BEFORE THE TALLY, whatever it says. CI's keep step
+// reads the files of shards that passed, and a failed shard's file is still
+// worth reading. ⛔ A FILE THAT COULD NOT BE WRITTEN IS "COULD NOT RUN". The
+// keep step would find a shard missing and keep nothing.
+func finishMutate(a mutateArgs, t *mutate.Table, verdicts []mutate.Verdict, out, errOut io.Writer) int {
+	if a.verdicts != "" {
+		if err := mutate.WriteVerdicts(a.verdicts, t, a.sel.Shard, a.runner, verdicts); err != nil {
+			fmt.Fprintf(errOut, "mutate: --verdicts: %v\n", err)
+			return 2
+		}
+	}
+	return mutate.Report(out, verdicts)
+}
+
+// openTable finds the repository and loads the table, or says why not.
+func openTable(name, table string) (*gitrepo.Repo, *mutate.Table, int) {
+	repo, err := gitrepo.Open()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+		return nil, nil, 2
 	}
 	if table == "" {
 		table = filepath.Join(repo.Root, "tools", "repo", "mutations.json")
 	}
 	t, err := mutate.Load(table)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
-		return 2
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+		return nil, nil, 2
 	}
-	verdicts, err := mutate.Run(repo.Root, t, sel, os.Stdout)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "mutate: %v\n", err)
-		return 2
-	}
-	return mutate.Report(os.Stdout, verdicts)
+	return repo, t, 0
+}
+
+// mutateArgs is mutate's command line, read.
+type mutateArgs struct {
+	table, verdicts string
+	sel             mutate.Selection
+	// runner is what the verdict file records the rows ran on.
+	runner mutate.Runner
+}
+
+// runnerOf is the runner a proof names. It is the image a flag names, the
+// --jobs the shards run with, and this process's GOFLAGS.
+func runnerOf(image string, jobs int) mutate.Runner {
+	return mutate.Runner{Image: strings.TrimSpace(image), Jobs: jobs, GoFlags: os.Getenv("GOFLAGS")}
 }
 
 // mutateFlags reads mutate's command line into the table path and selection.
 // ⚠ Apart from runMutate so a case can read it with no repository around it.
-func mutateFlags(args []string) (string, mutate.Selection, error) {
+func mutateFlags(args []string) (mutateArgs, error) {
 	fs := newFlagSet("mutate")
 	var labels, modules stringList
 	table := fs.String("table", "", "the mutation table. Empty reads tools/repo/mutations.json from the repository root")
+	verdicts := fs.String("verdicts", "", "a file to write every verdict to, with its module, as CI's keep step reads them")
 	only := fs.String("only", "", "run just the mutations whose label contains this")
 	fs.Var(&labels, "label", "run the row with exactly this label. Repeatable. An unknown label is an error")
 	labelsFile := fs.String("labels-file", "", "a file of exact labels, one per line, LF or CRLF")
 	fs.Var(&modules, "module", "run only this module's rows, as tools/check. Repeatable")
 	shardFlag := fs.String("shard", "", "K/N: run the K-th of N shares of the table, so N runners prove it together")
 	jobs := fs.Int("jobs", 0, fmt.Sprintf("how many rows run at once, each worker in its own staged copy. Zero is half this host's processors, %d here", mutate.DefaultJobs()))
+	image := fs.String("image", "", "the runner image the rows run on, as CI's $ImageOS/$ImageVersion. The verdict file records it")
 	if err := parseArgs(fs, args); err != nil {
-		return "", mutate.Selection{}, err
+		return mutateArgs{}, err
 	}
 	if *jobs < 0 {
-		return "", mutate.Selection{}, fmt.Errorf("mutate: --jobs %d is below zero", *jobs)
+		return mutateArgs{}, fmt.Errorf("mutate: --jobs %d is below zero", *jobs)
+	}
+	// ⛔ REFUSED BEFORE ANY ROW RUNS. The keep step keeps a proof only under the
+	// image its rows ran on. A file naming none would keep nothing after a
+	// whole shard's work.
+	if *verdicts != "" && strings.TrimSpace(*image) == "" {
+		return mutateArgs{}, fmt.Errorf("mutate: --verdicts needs --image, because a proof is kept only for the image its rows ran on")
+	}
+	ran := *jobs
+	if ran == 0 {
+		ran = mutate.DefaultJobs()
 	}
 	shard, err := mutate.ParseShard(*shardFlag)
 	if err != nil {
-		return "", mutate.Selection{}, fmt.Errorf("mutate: %w", err)
+		return mutateArgs{}, fmt.Errorf("mutate: %w", err)
 	}
 	if *labelsFile != "" {
 		f, err := os.Open(*labelsFile)
 		if err != nil {
-			return "", mutate.Selection{}, fmt.Errorf("mutate: %w", err)
+			return mutateArgs{}, fmt.Errorf("mutate: %w", err)
 		}
 		got, err := mutate.ReadLabels(f)
 		f.Close()
 		if err != nil {
-			return "", mutate.Selection{}, fmt.Errorf("mutate: --labels-file %s: %w", *labelsFile, err)
+			return mutateArgs{}, fmt.Errorf("mutate: --labels-file %s: %w", *labelsFile, err)
 		}
 		labels = append(labels, got...)
 	}
-	return *table, mutate.Selection{Only: *only, Labels: labels, Modules: modules, Shard: shard, Jobs: *jobs}, nil
+	sel := mutate.Selection{Only: *only, Labels: labels, Modules: modules, Shard: shard, Jobs: *jobs}
+	return mutateArgs{table: *table, verdicts: *verdicts, sel: sel, runner: runnerOf(*image, ran)}, nil
+}
+
+// proofArgs is the command line the three CI proof steps share.
+type proofArgs struct {
+	table, output, image string
+	slots, jobs          int
+}
+
+// proofFlags adds the shared flags to fs, which the caller parses.
+//
+// ⛔ --image AND --jobs NAME THE SHARDS' RUNNER, and every step passes the
+// same. The plan looks a proof up under them, and the keep step saves one.
+func proofFlags(fs *flag.FlagSet) *proofArgs {
+	a := &proofArgs{}
+	fs.StringVar(&a.table, "table", "", "the mutation table. Empty reads tools/repo/mutations.json from the repository root")
+	fs.StringVar(&a.output, "github-output", "", "a file to append the step's outputs to, as GITHUB_OUTPUT. Empty prints them")
+	fs.IntVar(&a.slots, "slots", 0, "how many modules the workflow looks a proof up for")
+	fs.StringVar(&a.image, "image", "", "the runner image the shards run on, as CI's $ImageOS/$ImageVersion")
+	fs.IntVar(&a.jobs, "jobs", 0, "the --jobs every shard runs mutate with")
+	return a
+}
+
+// runner is the shards' runner, as the flags name it.
+func (a *proofArgs) runner() mutate.Runner { return runnerOf(a.image, a.jobs) }
+
+// proofKeys opens the table and computes every module's key, refusing a
+// workflow with too few slots.
+func proofKeys(name string, a *proofArgs) (*gitrepo.Repo, *mutate.Table, []mutate.ModuleKey, int) {
+	repo, t, code := openTable(name, a.table)
+	if code != 0 {
+		return nil, nil, nil, code
+	}
+	keys, err := moduleKeys(repo.Root, t, a.slots, a.runner())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s: %v\n", name, err)
+		return nil, nil, nil, 2
+	}
+	return repo, t, keys, 0
+}
+
+func moduleKeys(root string, t *mutate.Table, slots int, rn mutate.Runner) ([]mutate.ModuleKey, error) {
+	goVersion, err := mutate.GoVersion(root)
+	if err != nil {
+		return nil, err
+	}
+	keys, err := mutate.ProofKeys(root, t, goVersion, rn)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := mutate.SlotOutputs(keys, slots, func(k mutate.ModuleKey) string { return k.Key }, "key"); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+// writeOutputs appends lines to a GITHUB_OUTPUT file, or prints them.
+func writeOutputs(file string, lines []string) error {
+	body := strings.Join(lines, "\n") + "\n"
+	if file == "" {
+		_, err := fmt.Print(body)
+		return err
+	}
+	f, err := os.OpenFile(file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(body); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
+
+// runMutateKeys is CI's first plan step: every module's proof key, and the
+// path its proof is kept at, one slot each.
+func runMutateKeys(args []string) int {
+	fs := newFlagSet("mutate-keys")
+	a := proofFlags(fs)
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	_, _, keys, code := proofKeys("mutate-keys", a)
+	if code != 0 {
+		return code
+	}
+	var lines []string
+	for _, f := range []struct {
+		name  string
+		value func(mutate.ModuleKey) string
+	}{
+		{"module", func(k mutate.ModuleKey) string { return k.Module }},
+		{"key", func(k mutate.ModuleKey) string { return k.Key }},
+		{"path", func(k mutate.ModuleKey) string { return k.Path }},
+	} {
+		got, _ := mutate.SlotOutputs(keys, a.slots, f.value, f.name)
+		lines = append(lines, got...)
+	}
+	for _, k := range keys {
+		fmt.Printf("  %s, %d row(s): %s\n", k.Module, len(k.Rows), k.Key)
+	}
+	if err := writeOutputs(a.output, lines); err != nil {
+		fmt.Fprintf(os.Stderr, "mutate-keys: %v\n", err)
+		return 2
+	}
+	return 0
+}
+
+// runMutatePlan is CI's second plan step: which modules a kept proof answers,
+// and how many shards the rest are cut into.
+func runMutatePlan(args []string) int {
+	fs := newFlagSet("mutate-plan")
+	a := proofFlags(fs)
+	shards := fs.Int("shards", 0, "the most shards the rows that run are cut into")
+	full := fs.Bool("full", false, "read no kept proof and run every module, as the nightly and the release do")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	repo, t, keys, code := proofKeys("mutate-plan", a)
+	if code != 0 {
+		return code
+	}
+	p, err := mutate.MakePlan(repo.Root, t, keys, *full, *shards, os.Stdout)
+	if err == nil {
+		err = writeOutputs(a.output, p.Outputs())
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mutate-plan: %v\n", err)
+		return 2
+	}
+	return 0
+}
+
+// runMutateKeep is CI's last proof step: the proof of every module whose rows
+// all passed in the shards, written where the workflow saves it from.
+func runMutateKeep(args []string) int {
+	fs := newFlagSet("mutate-keep")
+	a := proofFlags(fs)
+	dir := fs.String("verdicts", "", "a directory holding every shard's verdict file")
+	if code, done := exitFor(parseArgs(fs, args)); done {
+		return code
+	}
+	repo, t, keys, code := proofKeys("mutate-keep", a)
+	if code != 0 {
+		return code
+	}
+	kept, short, err := mutate.Keep(repo.Root, t, keys, *dir, os.Stdout)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "mutate-keep: %v\n", err)
+		return 2
+	}
+	lines, code := keepOutputs(keys, kept, short, a.slots)
+	paths, _ := mutate.SlotOutputs(keys, a.slots, func(k mutate.ModuleKey) string { return k.Path }, "path")
+	if err := writeOutputs(a.output, append(lines, paths...)); err != nil {
+		fmt.Fprintf(os.Stderr, "mutate-keep: %v\n", err)
+		return 2
+	}
+	if code != 0 {
+		fmt.Fprintln(os.Stderr, "mutate-keep: a module that ran is not whole, so it is not kept and every later push runs it again")
+	}
+	return code
+}
+
+// keepOutputs names each slot's key to save, empty where nothing was kept,
+// and the exit code.
+//
+// ⛔ A MODULE THAT RAN AND WAS NOT KEPT FAILS THE STEP. Every shard passed, so
+// its missing verdicts are a missing file. A green step would hide that the
+// module runs again on every push.
+func keepOutputs(keys, kept []mutate.ModuleKey, short bool, slots int) ([]string, int) {
+	saved := map[string]bool{}
+	for _, k := range kept {
+		saved[k.Module] = true
+	}
+	lines, _ := mutate.SlotOutputs(keys, slots, func(k mutate.ModuleKey) string {
+		if saved[k.Module] {
+			return k.Key
+		}
+		return ""
+	}, "save")
+	code := 0
+	if short {
+		code = 1
+	}
+	return lines, code
 }
 
 func runLicense(args []string) int {

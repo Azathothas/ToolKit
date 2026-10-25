@@ -102,7 +102,7 @@ var (
 	emailRe          = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 	homePathRe       = regexp.MustCompile(`([A-Za-z]:[\\/]+Users[\\/]+|/home/|/Users/)[A-Za-z0-9_][A-Za-z0-9._-]*`)
 	longHexRe        = regexp.MustCompile(`\b[0-9a-f]{24,}\b`)
-	pinnedAction     = regexp.MustCompile(`uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+@[0-9a-f]{40}`)
+	pinnedAction     = regexp.MustCompile(`uses:\s*[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*@[0-9a-f]{40}`)
 	declaredPinRe    = regexp.MustCompile(`[Pp]inned(Ref|Sha256|Commit|Digest)|PINNED_(REF|SHA256)`)
 )
 
@@ -131,6 +131,9 @@ func genericHome(m string) bool {
 // moved tag runs unreviewed code. A rule that fires on correct hardening is a
 // rule somebody disables, so the two shapes are excluded BY NAME rather than
 // the whole hex rule being dropped.
+// ⛔ AN ACTION IN A DIRECTORY OF ITS REPOSITORY IS PINNED THE SAME WAY.
+// actions/cache/restore reads a cache without writing one, and the rule
+// reported every such pin in ci.yml as a fingerprint.
 func declaredPin(line string) bool {
 	return pinnedAction.MatchString(line) || declaredPinRe.MatchString(line)
 }

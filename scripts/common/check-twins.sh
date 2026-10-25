@@ -119,20 +119,217 @@ TMP="${TMPDIR:-/tmp}/.checktwins.$$"
 mkdir -p "$TMP" || { printf 'check-twins: cannot write to %s\n' "$TMP" >&2; exit 2; }
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
+# ⭐ THE PROBES START FIRST AND RUN BESIDE THE PAIRS BELOW. Each takes about
+# half a minute, and no pair reads what they answer. Sections 1 to 6 compare
+# them once both have ended, and print before the pairs, as they always did.
 # ⚠ Run both from the repo root, so `repo.*` describes the same tree.
-( cd "$REPO_ROOT" && sh "$SH_PROBE" --json > "$TMP/sh.json" 2> "$TMP/sh.err" ) || {
-  printf 'check-twins: doctor.sh failed\n' >&2; cat "$TMP/sh.err" >&2; exit 2; }
-( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File "$PS_PROBE" -Json > "$TMP/ps.json" 2> "$TMP/ps.err" ) || {
-  printf 'check-twins: doctor.ps1 failed\n' >&2; cat "$TMP/ps.err" >&2; exit 2; }
-
-jq -e . "$TMP/sh.json" >/dev/null 2>&1 || { printf 'check-twins: doctor.sh emitted invalid json\n' >&2; exit 2; }
-jq -e . "$TMP/ps.json" >/dev/null 2>&1 || { printf 'check-twins: doctor.ps1 emitted invalid json\n' >&2; exit 2; }
+( cd "$REPO_ROOT" && sh "$SH_PROBE" --json > "$TMP/sh.json" 2> "$TMP/sh.err" ) &
+SH_PID=$!
+( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File "$PS_PROBE" -Json > "$TMP/ps.json" 2> "$TMP/ps.err" ) &
+PS_PID=$!
 
 DRIFT=0
 note() { printf '  DRIFT  %s\n' "$1"; DRIFT=$((DRIFT + 1)); }
 ok()   { [ "$JSON" = "1" ] || printf '  ok     %s\n' "$1"; }
 
 j() { jq -r "$1" "$2" 2>/dev/null; }
+
+# ⭐ THE GATE AND THE TOOL BOX ARE BUILT ONCE, HERE, BEFORE ANY PAIR RUNS.
+# Both halves of a pair run at once below, and each half used to build its
+# binary into one file under .tmp at the same moment. check.sh and repo.sh run
+# the binary this hands them through TOOLKIT_CHECK_BIN and TOOLKIT_REPO_BIN.
+# ⚠ A BUILD THAT FAILS HANDS NOTHING DOWN. Each half then builds for itself and
+# fails alike, which is the comparison this file made before.
+# ⚠ ONE PATH BOTH HALVES CAN OPEN. On Windows the PowerShell half cannot read
+# an msys path, and cygpath -m writes one that both can.
+unset TOOLKIT_CHECK_BIN TOOLKIT_REPO_BIN
+native() {
+  if command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s\n' "$1"; fi
+}
+EXE=''
+case "$(uname -s 2>/dev/null || echo unknown)" in
+  MINGW*|MSYS*|CYGWIN*|Windows_NT) EXE='.exe' ;;
+esac
+if command -v go >/dev/null 2>&1; then
+  if built=$(native "$TMP/check$EXE") && ( cd "$REPO_ROOT/tools/check" && go build -o "$built" . ) >/dev/null 2>&1; then
+    TOOLKIT_CHECK_BIN=$built
+    export TOOLKIT_CHECK_BIN
+  fi
+  if built=$(native "$TMP/repo$EXE") && ( cd "$REPO_ROOT/tools/repo" && go build -o "$built" . ) >/dev/null 2>&1; then
+    TOOLKIT_REPO_BIN=$built
+    export TOOLKIT_REPO_BIN
+  fi
+fi
+
+# ⚠ THE PAIRS' LINES ARE HELD BACK until the probes are compared, so the report
+# reads in the order it always has.
+exec 3>&1 > "$TMP/pairs.out"
+
+# --- 7. every OTHER twin pair, compared on this tree --------------------------
+# ⛔ THE PROBE IS NO LONGER THE ONLY TWIN, so it is no longer the only thing
+# compared. Every check in common/ has a PowerShell implementation, because the
+# sh ones cannot run on a Windows host that has no POSIX layer: measured on one
+# Windows 11 machine, native PowerShell had no `sed` at all and `sort` resolved
+# to PowerShell's own Sort-Object alias rather than the coreutils binary. ⚠ The
+# second is the dangerous one: a missing tool fails loudly, an aliased one
+# silently returns a different answer.
+#
+# ⭐ THE COMPARISON IS THE --json OUTPUT AND THE EXIT CODE, both read from the
+# process that produced them. Two implementations of one rule agreeing on a
+# clean tree proves very little; they are mutation-proven together, which is
+# what scripts/README.md asks for.
+# ⚠ IT COMPARES ANSWERS ON THIS TREE, NOT THE RULES THEMSELVES. A scope
+# difference with nothing in the tree to exercise it is INVISIBLE here:
+# dropping `.py` from one twin's extension list changed no number, because this
+# repository has no `.py` file. Dropping `.md` was caught instantly. ⭐ So a
+# scope rule is proven by adding a fixture that exercises it, not by trusting
+# this comparison to notice.
+printf '\n  twin pairs, same tree:\n'
+compare_pair() {
+  _p_name="$1"; _p_sh="$2"; _p_shargs="$3"; _p_ps="$4"; _p_psargs="$5"
+
+  # shellcheck disable=SC2086
+  # The argument strings are deliberately word-split: each is a fixed literal
+  # written in the table below, never user input.
+  # ⛔ RUN UNPIPED, READ THE EXIT CODE, THEN FILTER. Writing this as
+  # `check | grep '^{'` and reading $? gives the GREP's status, so a check that
+  # exited 1 reads as 0 and a check that exited 2 reads as 1. That is this
+  # repository's oldest stated rule and it was broken here, in the file whose
+  # job is comparing guards, while writing this very function.
+  #
+  # ⚠ ONLY THE MACHINE-READABLE LINE IS COMPARED. git-sync --check also prints
+  # timestamped progress, and two runs a second apart are never byte-identical,
+  # which reported a disagreement on a pair that agreed exactly. Comparing the
+  # JSON compares the ANSWER; comparing the transcript compares the clock.
+  #
+  # ⭐ BOTH HALVES RUN AT ONCE, each into a file of its own, and `wait` reads
+  # each one's exit code from its own process.
+  ( cd "$REPO_ROOT" && sh "$REPO_ROOT/scripts/common/$_p_sh" $_p_shargs > "$TMP/pair.sh" 2>/dev/null ) &
+  _p_a=$!
+  # shellcheck disable=SC2086
+  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File "$REPO_ROOT/scripts/common/$_p_ps" $_p_psargs > "$TMP/pair.ps" 2>/dev/null ) &
+  _p_b=$!
+  wait "$_p_a"; ra=$?
+  wait "$_p_b"; rb=$?
+  _a_raw=$(cat "$TMP/pair.sh"); _b_raw=$(cat "$TMP/pair.ps")
+  # ⚠ THE WHOLE DOCUMENT, not its first line. The shell checks printed
+  # compact JSON, so `grep '^{'` captured all of it by accident; the Go tools
+  # print an indented document and the same grep captured a single `{`, which
+  # compares equal to every other `{` and proves nothing.
+  a=$(printf '%s\n' "$_a_raw" | sed -n '/^{/,/^}/p')
+  b=$(printf '%s\n' "$_b_raw" | sed -n '/^{/,/^}/p')
+
+  if [ "$a" = "$b" ] && [ "$ra" = "$rb" ]; then
+    ok "$_p_name: both say $( [ -n "$a" ] && printf '%s' "$a" || printf 'nothing' ), exit $ra"
+  else
+    note "$_p_name: the twins disagree"
+    printf '           sh: exit %s  %s\n' "$ra" "$a"
+    printf '           ps: exit %s  %s\n' "$rb" "$b"
+    printf '           ⛔ One rule, two answers. Fix BOTH; do not widen this\n'
+    printf '           comparison to make the failure go away.\n'
+  fi
+}
+
+compare_pair "check-docs"           check-docs.sh           "--json"          check-docs.ps1           "-Json"
+compare_pair "check-markers"        check-markers.sh        "--json"          check-markers.ps1        "-Json"
+compare_pair "check-one-home"       check-one-home.sh       "--json"          check-one-home.ps1       "-Json"
+compare_pair "check-placeholders"   check-placeholders.sh   "--json"          check-placeholders.ps1   "-Json"
+compare_pair "check-control-bytes"  check-control-bytes.sh  "--json"          check-control-bytes.ps1  "-Json"
+compare_pair "check-changelog"      check-changelog.sh      "--json"          check-changelog.ps1      "-Json"
+compare_pair "check-record"         check-record.sh         "--json"          check-record.ps1         "-Json"
+compare_pair "check-go"             check-go.sh             "--json"          check-go.ps1             "-Json"
+compare_pair "check-no-secrets"     check-no-secrets.sh     "--json"          check-no-secrets.ps1     "-Json"
+compare_pair "check-no-secrets pub" check-no-secrets.sh     "--public --json" check-no-secrets.ps1     "-Public -Json"
+
+# ⚠ THE GATE RUNNER'S TWO HALVES RUN DIFFERENT PROGRAMS TO REACH THE SAME
+# ANSWER, which is exactly the drift this file exists to catch. The sh half
+# runs every check's sh implementation and spawns a PowerShell for the
+# analyzer; the ps half runs every check's PowerShell twin and spawns an sh
+# only for what has none. ⭐ So this row is the one comparison in the file that
+# exercises BOTH implementations of every twinned check at once. ⛔ If it ever
+# fails because one half quietly stopped running something, fix the half, never
+# the comparison.
+compare_pair "check-gate"           check-gate.sh           "--json"          check-gate.ps1           "-Json"
+
+# ⚠ deslop IS A WRAPPER PAIR, and what it proves is narrower than a rule.
+# Both halves run the same Go subcommand, so they cannot disagree about the
+# rule; what they CAN disagree about is the FORWARDING, and that has already
+# happened once. After the gate was ported, a `.ps1` wrapper passed `-Json`
+# straight through to a binary that takes `--json`, and this file is what
+# reported it. A row here costs a second and catches that class.
+#
+# ⛔ THE OTHER FOUR ALREADY HAVE ROWS BELOW, and adding a second one for each
+# was a duplicate this file's own run caught: check-binfmt, git-sync and
+# check-remote-items were compared twice in one pass. fill-license has
+# something better than a row, in the licence-text section further down.
+compare_pair "deslop"               deslop.sh               "--json"          deslop.ps1               "-Json"
+
+# ⚠ THIS PAIR NEEDS A RUNNING WSL DISTRO and both twins exit 2 without one. Two
+# 2s is agreement: it says the pair could not run, not that it passed. ⛔ Do not
+# drop the row on a machine with no podman machine, for the same reason the
+# check-remote-items row stays on a machine with no gh.
+compare_pair "check-binfmt"         check-binfmt.sh         "--json"          check-binfmt.ps1         "-Json"
+
+# ⚠ git-sync is compared through its READ-ONLY half only. -Check reports on
+# HEAD and changes nothing; running the writing half here would commit.
+compare_pair "git-sync --check"     git-sync.sh             "--check --json"  git-sync.ps1             "-Check -Json"
+
+# ⚠ THIS PAIR NEEDS THE NETWORK AND AN AUTHENTICATED gh, and both twins exit 2
+# when they do not have them. Two 2s is agreement: it says the pair could not
+# run, not that it passed. ⛔ Do not drop the row on a machine with no gh; a
+# comparison skipped for convenience is a comparison that stops happening.
+compare_pair "check-remote-items"   check-remote-items.sh   "--json"          check-remote-items.ps1   "-Json"
+
+# ⭐ fill-license IS COMPARED ON ITS OUTPUT, not on a status line, because its
+# output IS the artefact and a corrupted licence exits 0. The over-replacement
+# that produced this rule wrote a valid-looking file with a mangled warranty
+# clause.
+#
+# ⚠ THE COMPARISON WAS ABSENT FOR A WHILE AND THE FILLER WAS ABSENT WITH IT.
+# It came back on 2026-08-29 when the tool moved here, and the rule it
+# demonstrates is that a twin test comparing two ERROR paths passes vacuously:
+# with no LICENSES/ to read, both halves failed identically and agreed.
+printf '\n  licence texts, byte-for-byte:\n'
+LIC_DIFFS=0
+for id in MIT Apache-2.0 BSD-2-Clause BSD-3-Clause 0BSD Unlicense CC0-1.0 MPL-2.0; do
+  ( cd "$REPO_ROOT" && sh scripts/common/fill-license.sh --id "$id" --holder "Twin Check" --year 2026 --out "$TMP/lic.sh.$id" >/dev/null 2>&1 ) &
+  _l_a=$!
+  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File scripts/common/fill-license.ps1 -Id "$id" -Holder "Twin Check" -Year 2026 -Out "$TMP/lic.ps.$id" >/dev/null 2>&1 ) &
+  _l_b=$!
+  wait "$_l_a"; wait "$_l_b"
+  if cmp -s "$TMP/lic.sh.$id" "$TMP/lic.ps.$id"; then :; else
+    note "fill-license $id: the two implementations wrote different bytes"
+    LIC_DIFFS=$((LIC_DIFFS + 1))
+  fi
+done
+[ "$LIC_DIFFS" = "0" ] && ok "all 8 fillable licences byte-identical"
+
+# ⛔ And the four refusals, in both. A version that stopped refusing would
+# silently corrupt an attribution, and exit 0 while doing it.
+REF_BAD=0
+for id in GPL-3.0-only AGPL-3.0-only LGPL-3.0-only ISC; do
+  ( cd "$REPO_ROOT" && sh scripts/common/fill-license.sh --id "$id" --holder "Twin Check" --out "$TMP/r.sh" >/dev/null 2>&1 ) &
+  _l_a=$!
+  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File scripts/common/fill-license.ps1 -Id "$id" -Holder "Twin Check" -Out "$TMP/r.ps" >/dev/null 2>&1 ) &
+  _l_b=$!
+  wait "$_l_a"; ra=$?
+  wait "$_l_b"; rb=$?
+  if [ "$ra" = "1" ] && [ "$rb" = "1" ]; then :; else
+    note "fill-license $id: not refused by both (sh=$ra ps=$rb)"
+    REF_BAD=$((REF_BAD + 1))
+  fi
+done
+[ "$REF_BAD" = "0" ] && ok "all 4 refusals hold in both implementations"
+
+exec 1>&3 3>&-
+
+wait "$SH_PID" || {
+  printf 'check-twins: doctor.sh failed\n' >&2; cat "$TMP/sh.err" >&2; exit 2; }
+wait "$PS_PID" || {
+  printf 'check-twins: doctor.ps1 failed\n' >&2; cat "$TMP/ps.err" >&2; exit 2; }
+
+jq -e . "$TMP/sh.json" >/dev/null 2>&1 || { printf 'check-twins: doctor.sh emitted invalid json\n' >&2; exit 2; }
+jq -e . "$TMP/ps.json" >/dev/null 2>&1 || { printf 'check-twins: doctor.ps1 emitted invalid json\n' >&2; exit 2; }
 
 # --- 1. the schema string -----------------------------------------------------
 s_schema=$(j '.schema' "$TMP/sh.json"); p_schema=$(j '.schema' "$TMP/ps.json")
@@ -257,146 +454,8 @@ else
   printf '           schema comparison cannot see. Add it to BOTH.\n'
 fi
 
-# --- 7. every OTHER twin pair, compared on this tree --------------------------
-# ⛔ THE PROBE IS NO LONGER THE ONLY TWIN, so it is no longer the only thing
-# compared. Every check in common/ has a PowerShell implementation, because the
-# sh ones cannot run on a Windows host that has no POSIX layer: measured on one
-# Windows 11 machine, native PowerShell had no `sed` at all and `sort` resolved
-# to PowerShell's own Sort-Object alias rather than the coreutils binary. ⚠ The
-# second is the dangerous one: a missing tool fails loudly, an aliased one
-# silently returns a different answer.
-#
-# ⭐ THE COMPARISON IS THE --json OUTPUT AND THE EXIT CODE, both read from the
-# process that produced them. Two implementations of one rule agreeing on a
-# clean tree proves very little; they are mutation-proven together, which is
-# what scripts/README.md asks for.
-# ⚠ IT COMPARES ANSWERS ON THIS TREE, NOT THE RULES THEMSELVES. A scope
-# difference with nothing in the tree to exercise it is INVISIBLE here:
-# dropping `.py` from one twin's extension list changed no number, because this
-# repository has no `.py` file. Dropping `.md` was caught instantly. ⭐ So a
-# scope rule is proven by adding a fixture that exercises it, not by trusting
-# this comparison to notice.
-printf '\n  twin pairs, same tree:\n'
-compare_pair() {
-  _p_name="$1"; _p_sh="$2"; _p_shargs="$3"; _p_ps="$4"; _p_psargs="$5"
-
-  # shellcheck disable=SC2086
-  # The argument strings are deliberately word-split: each is a fixed literal
-  # written in the table below, never user input.
-  # ⛔ RUN UNPIPED, READ THE EXIT CODE, THEN FILTER. Writing this as
-  # `check | grep '^{'` and reading $? gives the GREP's status, so a check that
-  # exited 1 reads as 0 and a check that exited 2 reads as 1. That is this
-  # repository's oldest stated rule and it was broken here, in the file whose
-  # job is comparing guards, while writing this very function.
-  #
-  # ⚠ ONLY THE MACHINE-READABLE LINE IS COMPARED. git-sync --check also prints
-  # timestamped progress, and two runs a second apart are never byte-identical,
-  # which reported a disagreement on a pair that agreed exactly. Comparing the
-  # JSON compares the ANSWER; comparing the transcript compares the clock.
-  _a_raw=$( cd "$REPO_ROOT" && sh "$REPO_ROOT/scripts/common/$_p_sh" $_p_shargs 2>/dev/null ); ra=$?
-  # shellcheck disable=SC2086
-  _b_raw=$( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File "$REPO_ROOT/scripts/common/$_p_ps" $_p_psargs 2>/dev/null ); rb=$?
-  # ⚠ THE WHOLE DOCUMENT, not its first line. The shell checks printed
-  # compact JSON, so `grep '^{'` captured all of it by accident; the Go tools
-  # print an indented document and the same grep captured a single `{`, which
-  # compares equal to every other `{` and proves nothing.
-  a=$(printf '%s\n' "$_a_raw" | sed -n '/^{/,/^}/p')
-  b=$(printf '%s\n' "$_b_raw" | sed -n '/^{/,/^}/p')
-
-  if [ "$a" = "$b" ] && [ "$ra" = "$rb" ]; then
-    ok "$_p_name: both say $( [ -n "$a" ] && printf '%s' "$a" || printf 'nothing' ), exit $ra"
-  else
-    note "$_p_name: the twins disagree"
-    printf '           sh: exit %s  %s\n' "$ra" "$a"
-    printf '           ps: exit %s  %s\n' "$rb" "$b"
-    printf '           ⛔ One rule, two answers. Fix BOTH; do not widen this\n'
-    printf '           comparison to make the failure go away.\n'
-  fi
-}
-
-compare_pair "check-docs"           check-docs.sh           "--json"          check-docs.ps1           "-Json"
-compare_pair "check-markers"        check-markers.sh        "--json"          check-markers.ps1        "-Json"
-compare_pair "check-one-home"       check-one-home.sh       "--json"          check-one-home.ps1       "-Json"
-compare_pair "check-placeholders"   check-placeholders.sh   "--json"          check-placeholders.ps1   "-Json"
-compare_pair "check-control-bytes"  check-control-bytes.sh  "--json"          check-control-bytes.ps1  "-Json"
-compare_pair "check-changelog"      check-changelog.sh      "--json"          check-changelog.ps1      "-Json"
-compare_pair "check-record"         check-record.sh         "--json"          check-record.ps1         "-Json"
-compare_pair "check-go"             check-go.sh             "--json"          check-go.ps1             "-Json"
-compare_pair "check-no-secrets"     check-no-secrets.sh     "--json"          check-no-secrets.ps1     "-Json"
-compare_pair "check-no-secrets pub" check-no-secrets.sh     "--public --json" check-no-secrets.ps1     "-Public -Json"
-
-# ⚠ THE GATE RUNNER'S TWO HALVES RUN DIFFERENT PROGRAMS TO REACH THE SAME
-# ANSWER, which is exactly the drift this file exists to catch. The sh half
-# runs every check's sh implementation and spawns a PowerShell for the
-# analyzer; the ps half runs every check's PowerShell twin and spawns an sh
-# only for what has none. ⭐ So this row is the one comparison in the file that
-# exercises BOTH implementations of every twinned check at once. ⛔ If it ever
-# fails because one half quietly stopped running something, fix the half, never
-# the comparison.
-compare_pair "check-gate"           check-gate.sh           "--json"          check-gate.ps1           "-Json"
-
-# ⚠ deslop IS A WRAPPER PAIR, and what it proves is narrower than a rule.
-# Both halves run the same Go subcommand, so they cannot disagree about the
-# rule; what they CAN disagree about is the FORWARDING, and that has already
-# happened once. After the gate was ported, a `.ps1` wrapper passed `-Json`
-# straight through to a binary that takes `--json`, and this file is what
-# reported it. A row here costs a second and catches that class.
-#
-# ⛔ THE OTHER FOUR ALREADY HAVE ROWS BELOW, and adding a second one for each
-# was a duplicate this file's own run caught: check-binfmt, git-sync and
-# check-remote-items were compared twice in one pass. fill-license has
-# something better than a row, in the licence-text section further down.
-compare_pair "deslop"               deslop.sh               "--json"          deslop.ps1               "-Json"
-
-# ⚠ THIS PAIR NEEDS A RUNNING WSL DISTRO and both twins exit 2 without one. Two
-# 2s is agreement: it says the pair could not run, not that it passed. ⛔ Do not
-# drop the row on a machine with no podman machine, for the same reason the
-# check-remote-items row stays on a machine with no gh.
-compare_pair "check-binfmt"         check-binfmt.sh         "--json"          check-binfmt.ps1         "-Json"
-
-# ⚠ git-sync is compared through its READ-ONLY half only. -Check reports on
-# HEAD and changes nothing; running the writing half here would commit.
-compare_pair "git-sync --check"     git-sync.sh             "--check --json"  git-sync.ps1             "-Check -Json"
-
-# ⚠ THIS PAIR NEEDS THE NETWORK AND AN AUTHENTICATED gh, and both twins exit 2
-# when they do not have them. Two 2s is agreement: it says the pair could not
-# run, not that it passed. ⛔ Do not drop the row on a machine with no gh; a
-# comparison skipped for convenience is a comparison that stops happening.
-compare_pair "check-remote-items"   check-remote-items.sh   "--json"          check-remote-items.ps1   "-Json"
-
-# ⭐ fill-license IS COMPARED ON ITS OUTPUT, not on a status line, because its
-# output IS the artefact and a corrupted licence exits 0. The over-replacement
-# that produced this rule wrote a valid-looking file with a mangled warranty
-# clause.
-#
-# ⚠ THE COMPARISON WAS ABSENT FOR A WHILE AND THE FILLER WAS ABSENT WITH IT.
-# It came back on 2026-08-29 when the tool moved here, and the rule it
-# demonstrates is that a twin test comparing two ERROR paths passes vacuously:
-# with no LICENSES/ to read, both halves failed identically and agreed.
-printf '\n  licence texts, byte-for-byte:\n'
-LIC_DIFFS=0
-for id in MIT Apache-2.0 BSD-2-Clause BSD-3-Clause 0BSD Unlicense CC0-1.0 MPL-2.0; do
-  ( cd "$REPO_ROOT" && sh scripts/common/fill-license.sh --id "$id" --holder "Twin Check" --year 2026 --out "$TMP/lic.sh.$id" >/dev/null 2>&1 )
-  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File scripts/common/fill-license.ps1 -Id "$id" -Holder "Twin Check" -Year 2026 -Out "$TMP/lic.ps.$id" >/dev/null 2>&1 )
-  if cmp -s "$TMP/lic.sh.$id" "$TMP/lic.ps.$id"; then :; else
-    note "fill-license $id: the two implementations wrote different bytes"
-    LIC_DIFFS=$((LIC_DIFFS + 1))
-  fi
-done
-[ "$LIC_DIFFS" = "0" ] && ok "all 8 fillable licences byte-identical"
-
-# ⛔ And the four refusals, in both. A version that stopped refusing would
-# silently corrupt an attribution, and exit 0 while doing it.
-REF_BAD=0
-for id in GPL-3.0-only AGPL-3.0-only LGPL-3.0-only ISC; do
-  ( cd "$REPO_ROOT" && sh scripts/common/fill-license.sh --id "$id" --holder "Twin Check" --out "$TMP/r.sh" >/dev/null 2>&1 ); ra=$?
-  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File scripts/common/fill-license.ps1 -Id "$id" -Holder "Twin Check" -Out "$TMP/r.ps" >/dev/null 2>&1 ); rb=$?
-  if [ "$ra" = "1" ] && [ "$rb" = "1" ]; then :; else
-    note "fill-license $id: not refused by both (sh=$ra ps=$rb)"
-    REF_BAD=$((REF_BAD + 1))
-  fi
-done
-[ "$REF_BAD" = "0" ] && ok "all 4 refusals hold in both implementations"
+# --- the pairs, held back until the probes were compared ---------------------
+cat "$TMP/pairs.out"
 
 # --- 8. per-tool verdicts, on request ----------------------------------------
 if [ "$VERBOSE" = "1" ]; then

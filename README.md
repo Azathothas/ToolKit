@@ -54,7 +54,7 @@ not this one**, before using it.
 | `scripts/` | the tools and the checks |
 | `tools/` | the Go modules: `check` holds every gate rule, `repo` the tools that are not rules, `text-tool` the file writer, and `windows/wsl-toolkit` the compiled tool |
 | `LICENSES/` | licence texts, not code |
-| `.github/workflows/` | CI. `ci.yml` on every push, across ubuntu and windows; `release.yml` on a version tag; `release-smoke.yml` and `remote-items.yml` weekly. [`TODO/RULES.md`](TODO/RULES.md) has the counts and which of them `main` requires. |
+| `.github/workflows/` | CI. `ci.yml` on every push and every night, across ubuntu and windows; `release.yml` on a version tag; `release-smoke.yml` and `remote-items.yml` weekly. [`TODO/RULES.md`](TODO/RULES.md) has the counts and which of them `main` requires. |
 
 ## The documents
 
