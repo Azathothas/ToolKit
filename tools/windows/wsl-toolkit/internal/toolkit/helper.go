@@ -63,7 +63,12 @@ import (
 // archive carried rather than from a .git the client sent. A version 5 helper
 // left running answers that gc with exit 0 and runs git in the upload, so a
 // client refuses it until it is restarted. WSL-115, and a safety review.
-const HelperSchema = "wsl-toolkit-helper/6"
+// ⛔ VERSION 7 CARRIES THE CALLER'S CONFIGURATION FILE on base/ensure and
+// base/status, and the helper's base acts for that file. A version 6 helper
+// ignores it: its ensure drops every other file's grant at the restart, and its
+// probe refuses each one an 8.x build kept. So a client refuses it until it is
+// restarted. WSL-190.
+const HelperSchema = "wsl-toolkit-helper/7"
 
 // HelperEndpoint is what a client reads to find a listening helper.
 type HelperEndpoint struct {
@@ -185,10 +190,7 @@ func (h *HelperServer) runnerFor(cfg *Config, nameFrom string, guest bool) (*Run
 	if err := effective.Validate(); err != nil {
 		return nil, effective, fmt.Errorf("the configuration sent with this request is not usable: %w", err)
 	}
-	// ⛔ THE STEP AND THE CALLER'S OWNERSHIP ARE PART OF THE KEY. A runner cached for
-	// the owner, or for a name the configuration chose, served a later request that
-	// was neither. WSL-167.
-	key := fmt.Sprintf("%s|%s|%t", effective.Fingerprint(), effective.nameFrom, guest)
+	key := helperRunnerKey(effective, guest)
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if r, ok := h.runners[key]; ok {
@@ -206,6 +208,64 @@ func (h *HelperServer) runnerFor(cfg *Config, nameFrom string, guest bool) (*Run
 	return r, effective, nil
 }
 
+// helperRunnerKey is what a cached runner is found by.
+//
+// ⛔ THE STEP AND THE CALLER'S OWNERSHIP ARE PART OF THE KEY. A runner cached for
+// the owner, or for a name the configuration chose, served a later request that
+// was neither. WSL-167. ⛔ SO IS THE CALLER'S FILE. Two files with the same
+// settings share a fingerprint, and a runner cached for one would name it in the
+// grant ledger for the other. WSL-190.
+func helperRunnerKey(effective Config, guest bool) string {
+	return fmt.Sprintf("%s|%s|%t|%s", effective.Fingerprint(), effective.nameFrom, guest, effective.path)
+}
+
+// callerFile puts the client's configuration file on the configuration it sent,
+// so the helper's base names the caller in the grant ledger as the CLI does.
+//
+// ⛔ THE HELPER ROUTE HAD NO FILE. Its grants step kept no other file's line, so
+// its ensure dropped every other file's grant at the restart. Its verifier refused
+// every Windows mount its configuration did not name, so after any restart its
+// probe failed on another file's kept grant, and its ensure then refused. WSL-190.
+//
+// ⚠ AN ABSOLUTE PATH ALONE. A relative one would resolve against the helper's own
+// working directory, and name a file the caller never read.
+//
+// ⚠ THE REST OF THE CLI'S READING COMES WITH IT. The helper's ensure reads the
+// grants again from that file under the base's lock, and a relative grant source
+// resolves against its directory. WSL-172.
+func callerFile(cfg *Config, file string) error {
+	if cfg == nil || file == "" {
+		return nil
+	}
+	if !filepath.IsAbs(file) {
+		return fmt.Errorf("config_path %q is not an absolute path", file)
+	}
+	cfg.path = filepath.Clean(file)
+	return nil
+}
+
+// helperEnsureRequest is what /v1/base/ensure reads.
+type helperEnsureRequest struct {
+	Force  bool    `json:"force"`
+	Repair bool    `json:"repair,omitempty"`
+	Config *Config `json:"config,omitempty"`
+	// NameFrom is the step that chose the client's base name, and Guest says
+	// the client does not own the base. WSL-167.
+	NameFrom string `json:"name_from,omitempty"`
+	Guest    bool   `json:"guest,omitempty"`
+	// ConfigPath is the client's configuration file. WSL-190.
+	ConfigPath string `json:"config_path,omitempty"`
+}
+
+// runnerForEnsure is the runner an ensure request is served by, with the
+// configuration it acts on.
+func (h *HelperServer) runnerForEnsure(req helperEnsureRequest) (*Runner, Config, error) {
+	if err := callerFile(req.Config, req.ConfigPath); err != nil {
+		return nil, Config{}, err
+	}
+	return h.runnerFor(req.Config, req.NameFrom, req.Guest)
+}
+
 // runnerForBody reads an optional configuration from a GET's query string,
 // where a body would be unusual, and falls back to the helper's own.
 //
@@ -213,20 +273,28 @@ func (h *HelperServer) runnerFor(cfg *Config, nameFrom string, guest bool) (*Run
 // are free to drop. The config travels base64 in the query so the route keeps
 // its shape.
 func (h *HelperServer) runnerForBody(r *http.Request) (*Runner, error) {
+	runner, _, err := h.runnerForQuery(r)
+	return runner, err
+}
+
+// runnerForQuery is runnerForBody with the configuration it acts on.
+func (h *HelperServer) runnerForQuery(r *http.Request) (*Runner, Config, error) {
 	raw := r.URL.Query().Get("config_b64")
 	if raw == "" {
-		return h.runner, nil
+		return h.runner, h.cfg, nil
 	}
 	data, err := base64.StdEncoding.DecodeString(raw)
 	if err != nil {
-		return nil, fmt.Errorf("config_b64 is not base64: %w", err)
+		return nil, Config{}, fmt.Errorf("config_b64 is not base64: %w", err)
 	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("config_b64 does not parse: %w", err)
+		return nil, Config{}, fmt.Errorf("config_b64 does not parse: %w", err)
 	}
-	runner, _, err := h.runnerFor(&cfg, r.URL.Query().Get("name_from"), false)
-	return runner, err
+	if err := callerFile(&cfg, r.URL.Query().Get("config_path")); err != nil {
+		return nil, Config{}, err
+	}
+	return h.runnerFor(&cfg, r.URL.Query().Get("name_from"), false)
 }
 
 // Serve listens on the loopback interface and blocks until stopped.
@@ -908,15 +976,7 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 	// {force}: the client announced Alpine, saved Alpine to its own config, and
 	// the helper rebuilt from whatever image ITS startup config named. A
 	// reporter watched a client say Alpine while the guest stayed Arch.
-	var req struct {
-		Force  bool    `json:"force"`
-		Repair bool    `json:"repair,omitempty"`
-		Config *Config `json:"config,omitempty"`
-		// NameFrom is the step that chose the client's base name, and Guest says
-		// the client does not own the base. WSL-167.
-		NameFrom string `json:"name_from,omitempty"`
-		Guest    bool   `json:"guest,omitempty"`
-	}
+	var req helperEnsureRequest
 	if r.ContentLength > 0 {
 		if err := decodeHelperBody(r, &req); err != nil {
 			writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -925,7 +985,8 @@ func (h *HelperServer) handleBaseEnsure(w http.ResponseWriter, r *http.Request) 
 	}
 	// ⛔ A CALLER THAT DOES NOT OWN THE BASE IS REFUSED WHAT ITS OWN ENSURE WOULD BE,
 	// at the same points: the helper's base runs as the caller's guest. WSL-167.
-	runner, _, err := h.runnerFor(req.Config, req.NameFrom, req.Guest)
+	// ⛔ AND IT ACTS FOR THE CALLER'S FILE, as the CLI's ensure does. WSL-190.
+	runner, _, err := h.runnerForEnsure(req)
 	if err != nil {
 		writeHelperJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

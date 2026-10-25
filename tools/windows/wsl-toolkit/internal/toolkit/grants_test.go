@@ -7,7 +7,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -262,7 +264,18 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 	if err != nil {
 		t.Fatal(err)
 	}
-	standIns := `
+	return grantsRun(t, dir, map[string]string{
+		"TK_USER": "agent", "TK_GRANTS_MODE": mode,
+		"TK_FSTAB_B64": fstab64, "TK_MOUNT_CHECKS": checks, "TK_GRANT_TARGET": target,
+		"TK_GRANT_SOURCE": source64, "TK_GRANT_OWNER": b64(owner), "TK_GRANT_OWNER_NAME": b64(owner),
+	})
+}
+
+// grantsStandIns are mount, umount and runuser, and the two commands that would
+// touch the host. umount fails once when dir holds umount.fail, and on its Nth call
+// when dir's umount.failat holds N. With umount.gone it takes the mount away
+// before it fails, as when another process unmounted it first. WSL-189.
+const grantsStandIns = `
 mkdir() { :; }
 chmod() { :; }
 runuser() { [ ! -e "$TK_TEST_DIR/runuser.fail" ]; }
@@ -279,8 +292,14 @@ mount() {
 }
 umount() {
   printf 'umount %s\n' "$1" >> "$TK_TEST_DIR/log"
-  if [ -e "$TK_TEST_DIR/umount.fail" ]; then
+  umounts=$(($(cat "$TK_TEST_DIR/umount.count" 2>/dev/null || echo 0) + 1))
+  printf '%s\n' "$umounts" > "$TK_TEST_DIR/umount.count"
+  if [ -e "$TK_TEST_DIR/umount.fail" ] || [ "$(cat "$TK_TEST_DIR/umount.failat" 2>/dev/null || :)" = "$umounts" ]; then
     rm -f "$TK_TEST_DIR/umount.fail"
+    if [ -e "$TK_TEST_DIR/umount.gone" ]; then
+      grep -v " $1 drvfs " "$TK_TEST_DIR/mounts" > "$TK_TEST_DIR/mounts.new" || :
+      mv "$TK_TEST_DIR/mounts.new" "$TK_TEST_DIR/mounts"
+    fi
     printf 'the stand-in umount failed\n' >&2
     return 1
   fi
@@ -288,17 +307,85 @@ umount() {
   mv "$TK_TEST_DIR/mounts.new" "$TK_TEST_DIR/mounts"
 }
 `
-	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", dir+"/fstab")
-	script = strings.ReplaceAll(script, "/proc/mounts", dir+"/mounts")
-	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", dir+"/owners")
-	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", dir+"/grants.lock")
-	script = strings.Replace(script, "set -eu\n", "set -eu\n"+standIns, 1)
-	cmd := exec.Command(posixShell(t), "-c", script)
-	cmd.Env = append(os.Environ(), "TK_TEST_DIR="+dir, "TK_USER=agent", "TK_GRANTS_MODE="+mode,
-		"TK_FSTAB_B64="+fstab64, "TK_MOUNT_CHECKS="+checks, "TK_GRANT_TARGET="+target,
-		"TK_GRANT_SOURCE="+source64, "TK_GRANT_OWNER="+b64(owner), "TK_GRANT_OWNER_NAME="+b64(owner))
+
+// grantsRun runs grants.sh under grantsShell, handed env as the guest hands it,
+// with dir's fstab, mounts and owners files for the guest's and grantsStandIns.
+//
+// ⚠ FROM A FILE, AND WITH FORWARD SLASHES. A Windows command line holds 32767
+// characters, which the script with its stand-ins nears, and a backslash in a path
+// is an escape to the shell. WSL-189, WSL-190.
+func grantsRun(t *testing.T, dir string, env map[string]string) (string, error) {
+	t.Helper()
+	sh, bin := grantsShell(t)
+	at := filepath.ToSlash(dir)
+	script := strings.ReplaceAll(string(grantsScript), "/etc/fstab", at+"/fstab")
+	script = strings.ReplaceAll(script, "/proc/mounts", at+"/mounts")
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", at+"/owners")
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grants.lock", at+"/grants.lock")
+	script = strings.Replace(script, "set -eu\n", "set -eu\n"+grantsStandIns, 1)
+	run := filepath.Join(dir, "grants-run.sh")
+	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(sh, filepath.ToSlash(run))
+	cmd.Env = append(shellEnv(bin), "TK_TEST_DIR="+at)
+	for k, v := range env {
+		cmd.Env = append(cmd.Env, k+"="+v)
+	}
 	out, err := cmd.CombinedOutput()
 	return string(out), err
+}
+
+// grantsShell is the POSIX shell grants.sh and verify.sh are driven under, and on
+// Windows the directory its tools come from, or a skip.
+//
+// ⭐ ON WINDOWS IT IS GIT FOR WINDOWS' sh, found beside the git on PATH. A drive
+// needs sh, grep, sed, cut, awk, base64 and mktemp, which Git carries, and flock,
+// which it does not and which grants.sh runs without. Skipped there, every WSL-189
+// and WSL-190 case passed with its fix reverted. WSL-189, WSL-190.
+//
+// ⚠ KEPT ONCE FOUND, so a case that puts the fake host's PATH in place first still
+// finds it. A miss is not kept.
+func grantsShell(t *testing.T) (sh, bin string) {
+	t.Helper()
+	if runtime.GOOS != "windows" {
+		return posixShell(t), ""
+	}
+	gitShell.mu.Lock()
+	defer gitShell.mu.Unlock()
+	if gitShell.sh != "" {
+		return gitShell.sh, filepath.Dir(gitShell.sh)
+	}
+	if git, err := exec.LookPath("git"); err == nil {
+		dir := filepath.Dir(git)
+		for range 3 {
+			dir = filepath.Dir(dir)
+			candidate := filepath.Join(dir, "usr", "bin", "sh.exe")
+			if _, err := os.Stat(candidate); err == nil {
+				gitShell.sh = candidate
+				return candidate, filepath.Dir(candidate)
+			}
+		}
+	}
+	t.Skip("no Git for Windows sh beside the git on PATH, so no POSIX shell to drive the script under")
+	return "", ""
+}
+
+// gitShell is the sh.exe grantsShell found.
+var gitShell struct {
+	mu sync.Mutex
+	sh string
+}
+
+// shellEnv is this process's environment with bin first on PATH, where bin is set.
+// ⚠ A later PATH wins over the Path Windows names it, since exec drops a key's
+// earlier copies.
+func shellEnv(bin string) []string {
+	env := os.Environ()
+	if bin != "" {
+		env = append(env, "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	}
+	return env
 }
 
 // TestALiveGrantOrRevokeLeavesAnotherCallersMount drives a base holding a mount

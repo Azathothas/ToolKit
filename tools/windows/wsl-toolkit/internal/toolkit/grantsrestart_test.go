@@ -3,9 +3,14 @@
 package toolkit
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,7 +88,7 @@ const grantsTheirs = "/cfg/theirs.json"
 // dropped the first, and with automount off the first file's ensure then refused,
 // or with --repair restarted over the second. Both come back. WSL-190.
 func TestARestartMountsEveryFilesGrants(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, "", "", "")
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -107,7 +112,7 @@ func TestARestartMountsEveryFilesGrants(t *testing.T) {
 // once. A block written kept-first would read as changed on every other file's
 // ensure. WSL-175, WSL-190.
 func TestAnEnsureLeavesABlockTwoFilesShareAsItWas(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, "LABEL=root / ext4 defaults 0 1\n", "", "")
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -142,7 +147,7 @@ func TestAnEnsureLeavesABlockTwoFilesShareAsItWas(t *testing.T) {
 // ⛔ The block names the target once, as this file grants it, and the ledger row
 // moves with it. Two lines would mount two directories there. WSL-190.
 func TestAWriteTakesTheTargetsItsConfigurationNames(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "ro"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
@@ -163,7 +168,7 @@ func TestAWriteTakesTheTargetsItsConfigurationNames(t *testing.T) {
 // ⛔ The grant's own line replaces it, so the mount comes from this file's
 // directory, now and after a restart. WSL-190.
 func TestALiveGrantTakesItsTargetFromAnotherFilesLine(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
@@ -189,7 +194,7 @@ func TestALiveGrantTakesItsTargetFromAnotherFilesLine(t *testing.T) {
 // with it: kept, it would mount at the next restart a grant no file holds. The
 // other file's line at another target stays. WSL-190.
 func TestARevokeTakesItsTargetsLineWithItsRow(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
 	other := BaseMount{Source: t.TempDir(), Target: "/workspaces/o", Mode: "rw"}
@@ -216,7 +221,7 @@ func TestARevokeTakesItsTargetsLineWithItsRow(t *testing.T) {
 // stays the block's one line there, so a restart mounts its checkout and not this
 // file's directory over it. WSL-190.
 func TestAKeptLineWinsOverThisFilesOwnForItsTarget(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/q", Mode: "rw"}
 	alsoMine := BaseMount{Source: t.TempDir(), Target: "/workspaces/q", Mode: "rw"}
@@ -240,7 +245,7 @@ func TestAKeptLineWinsOverThisFilesOwnForItsTarget(t *testing.T) {
 // once its configuration no longer names it: an ensure after a hand edit to the
 // file, and a revoke, leave no line behind. WSL-190.
 func TestALineTheLedgerGivesNoOtherFileIsReplaced(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	old := BaseMount{Source: t.TempDir(), Target: "/workspaces/old", Mode: "rw"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -278,11 +283,12 @@ func TestALineTheLedgerGivesNoOtherFileIsReplaced(t *testing.T) {
 }
 
 // TestACallerWithNoFileWritesItsOwnGrantsAlone drives a write from a
-// configuration with no file, as the helper route sends. ⚠ It keeps nothing for
-// another file, as before: its verifier refuses every mount it does not name, so a
-// kept line would fail its own ensure after the restart. WSL-190.
+// configuration with no file, as the helper route sent before it sent its
+// caller's. ⚠ It keeps nothing for another file, as before: its verifier refuses
+// every mount it does not name, so a kept line would fail its own ensure after the
+// restart. WSL-190.
 func TestACallerWithNoFileWritesItsOwnGrantsAlone(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/theirs", Mode: "rw"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -301,7 +307,7 @@ func TestACallerWithNoFileWritesItsOwnGrantsAlone(t *testing.T) {
 // unconfigured. It is unmounted, and a mode switch gets its old mount back alone.
 // WSL-189.
 func TestAGrantWhoseReadBackFailsTakesItsMountAway(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	src := t.TempDir()
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
 	dir := t.TempDir()
@@ -336,7 +342,7 @@ func TestAGrantWhoseReadBackFailsTakesItsMountAway(t *testing.T) {
 // mount will not unmount. The refusal names it, so nobody reads the base as
 // unchanged. WSL-189.
 func TestAMountAFailedGrantCannotTakeAwayIsNamed(t *testing.T) {
-	posixShell(t)
+	grantsShell(t)
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
 	dir := t.TempDir()
 	grantsSeed(t, dir, "", "", "")
@@ -348,5 +354,251 @@ func TestAMountAFailedGrantCannotTakeAwayIsNamed(t *testing.T) {
 	out, err := grantsDrive(t, dir, []BaseMount{mine}, b64(mine.Target))
 	if err == nil || !strings.Contains(out, "/workspaces/mine stays mounted, because it could not be unmounted: the stand-in umount failed") {
 		t.Fatalf("a failed grant whose mount stayed answered %v:\n%s", err, out)
+	}
+}
+
+// TestAFailedSwitchMountsNothingOverAMountThatStayed drives a switch from ro to rw
+// whose read-back fails and whose new mount then will not unmount. ⛔ The old mount
+// was mounted again on top of it, so the target held two mounts, and the refusal
+// said only that the target stayed mounted. The new mount stays alone, the
+// refusal says it is in the new mode, and the block and the ledger are as they
+// were. WSL-189.
+func TestAFailedSwitchMountsNothingOverAMountThatStayed(t *testing.T) {
+	grantsShell(t)
+	src := t.TempDir()
+	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
+	fstab := blockOf(blockLine(t, BaseMount{Source: src, Target: mine.Target, Mode: "ro"}))
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, fstab, liveLine(src, mine.Target, "ro"), ownedBy(mine.Target, grantsMine))
+	for name, body := range map[string]string{"runuser.fail": "", "umount.failat": "2\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := grantsDrive(t, dir, []BaseMount{mine}, b64(mine.Target))
+	if err == nil || !strings.Contains(out, "/workspaces/mine stays mounted rw, the new mode, because it could not be unmounted: the stand-in umount failed. Its old mount was not put back over it") {
+		t.Fatalf("a failed switch whose new mount stayed answered %v:\n%s", err, out)
+	}
+	if got := read("mounts"); got != liveLine(src, mine.Target, "rw") {
+		t.Fatalf("a failed switch whose new mount stayed left the mounts:\n%s\nlog:\n%s", got, read("log"))
+	}
+	if read("fstab") != fstab || read("owners") != ownedBy(mine.Target, grantsMine) {
+		t.Fatalf("a failed switch changed the block or the ledger:\n%s\n%s", read("fstab"), read("owners"))
+	}
+}
+
+// TestAFailedUnmountOfAMountAlreadyGoneIsNotNamed drives a failed switch whose new
+// mount another process took away first, so its unmount fails. ⚠ The refusal said
+// the target stayed mounted when nothing was. Nothing is named as staying, and the
+// old mount is put back. WSL-189.
+func TestAFailedUnmountOfAMountAlreadyGoneIsNotNamed(t *testing.T) {
+	grantsShell(t)
+	src := t.TempDir()
+	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
+	fstab := blockOf(blockLine(t, BaseMount{Source: src, Target: mine.Target, Mode: "ro"}))
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, fstab, liveLine(src, mine.Target, "ro"), ownedBy(mine.Target, grantsMine))
+	for name, body := range map[string]string{"runuser.fail": "", "umount.failat": "2\n", "umount.gone": ""} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out, err := grantsDrive(t, dir, []BaseMount{mine}, b64(mine.Target))
+	if err == nil || !strings.Contains(out, "agent cannot write in /workspaces/mine") || strings.Contains(out, "stays mounted") {
+		t.Fatalf("a failed switch whose new mount was already gone answered %v:\n%s", err, out)
+	}
+	if got := read("mounts"); got != liveLine(src, mine.Target, "ro") {
+		t.Fatalf("a failed switch whose new mount was already gone left the mounts:\n%s\nlog:\n%s", got, read("log"))
+	}
+}
+
+// verifyHeldRun runs verify.sh's sweep of the live Windows mounts under
+// grantsShell, over dir's mounts and owners files, handed env as verifyEnv makes
+// it. The targets env's TK_MOUNT_CHECKS names are the configured ones, as the
+// script's own check of each one leaves them.
+func verifyHeldRun(t *testing.T, dir string, env map[string]string) (string, error) {
+	t.Helper()
+	sh, bin := grantsShell(t)
+	at := filepath.ToSlash(dir)
+	var allow strings.Builder
+	fields := strings.Fields(env["TK_MOUNT_CHECKS"])
+	for i := 0; i+1 < len(fields); i += 2 {
+		target, err := base64.StdEncoding.DecodeString(fields[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		allow.WriteString(string(target) + "\n")
+	}
+	if err := os.WriteFile(filepath.Join(dir, "allow"), []byte(allow.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// ⚠ FROM THE EMBEDDED SCRIPT, since a case may run from a directory of its own.
+	verify := string(verifyScript)
+	from := strings.Index(verify, "if [ \"$TK_AUTOMOUNT\" = off ]; then\n")
+	to := -1
+	if from >= 0 {
+		to = strings.Index(verify[from:], "done < /proc/mounts\n")
+	}
+	if to < 0 {
+		t.Fatal("verify.sh holds no sweep of the live Windows mounts, so this case is reading a script that moved")
+	}
+	script := "mount_allowlist=" + at + "/allow\n" + verify[from:from+to] + "done < /proc/mounts\nfi\n"
+	script = strings.ReplaceAll(script, "/proc/mounts", at+"/mounts")
+	script = strings.ReplaceAll(script, "/var/lib/wsl-toolkit/grant-owners", at+"/owners")
+	run := filepath.Join(dir, "verify-run.sh")
+	if err := os.WriteFile(run, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(sh, filepath.ToSlash(run))
+	cmd.Env = append(shellEnv(bin), "TK_AUTOMOUNT="+env["TK_AUTOMOUNT"], "TK_CONFIG_OWNER="+env["TK_CONFIG_OWNER"])
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// TestTheHelperRouteActsForTheCallersFile drives an ensure and then a probe through
+// the helper, for a file whose base holds another file's grant too, across a
+// restart. ⛔ The helper was sent no file. Its write kept no other file's line, so
+// the restart dropped that grant, and its verifier refused each kept one as
+// unconfigured after any restart, so its ensure then refused. Each now names the
+// caller as the CLI does, keeps the other file's line, and passes. WSL-190.
+func TestTheHelperRouteActsForTheCallersFile(t *testing.T) {
+	grantsShell(t)
+	_ = newFakeHost(t)
+	_ = newDefaultBaseCase(t)
+	cfg := grantBase(t)
+	cfg.Base.Name = "wsl-toolkit-g190"
+	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
+	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/theirs", Mode: "rw"}
+	cfg.Base.Mounts = []BaseMount{mine}
+
+	var ensure helperEnsureRequest
+	status := ""
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			_ = json.NewDecoder(r.Body).Decode(&ensure)
+		} else {
+			status = r.URL.RequestURI()
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"schema":"` + HelperSchema + `","state":{}}`))
+	}))
+	defer srv.Close()
+	client := &HelperClient{endpoint: HelperEndpoint{Address: strings.TrimPrefix(srv.URL, "http://"), Token: "t"}, http: srv.Client(), cfg: cfg}
+	_, _ = client.BaseEnsureWith(context.Background(), false, true)
+	_, _ = client.BaseStatus(context.Background(), true)
+
+	// ⚠ THE RUNNER ITSELF NEEDS wsl.exe, which a Linux host has not. The
+	// configuration it acts on is read before the runner is made.
+	h := &HelperServer{log: func(string) {}, runners: map[string]*Runner{}}
+	_, ensured, _ := h.runnerForEnsure(ensure)
+	_, probed, _ := h.runnerForQuery(httptest.NewRequest(http.MethodGet, status, nil))
+	key, name := grantOwner(cfg)
+	for label, got := range map[string]Config{"ensure": ensured, "probe": probed} {
+		if k, _ := grantOwner(got); k != key {
+			t.Fatalf("the helper's %s names its caller %q in the grant ledger, want %q, the CLI's", label, k, key)
+		}
+	}
+
+	dir := t.TempDir()
+	read := grantsSeed(t, dir, blockOf(blockLine(t, mine), blockLine(t, theirs)),
+		liveLine(mine.Source, mine.Target, "rw")+liveLine(theirs.Source, theirs.Target, "rw"),
+		mine.Target+" "+key+" "+name+"\n"+ownedBy(theirs.Target, grantsTheirs))
+	env, err := grantsEnv(ensured, GrantsWrite, BaseMount{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := grantsRun(t, dir, env); err != nil {
+		t.Fatalf("the helper's provisioning write failed: %v\n%s", err, out)
+	}
+	if got := blockLinesAt(t, dir, theirs.Target); len(got) != 1 || got[0] != blockLine(t, theirs) {
+		t.Fatalf("the helper's write left the other file's line as %q:\n%s", got, read("fstab"))
+	}
+	grantsRestart(t, dir)
+	venv, err := verifyEnv(probed, "a", "b")
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := verifyHeldRun(t, dir, venv)
+	if err != nil {
+		t.Fatalf("the helper's probe after a restart refused: %v\n%s\nmounts:\n%s", err, out, read("mounts"))
+	}
+	if got := parseHeldMounts(out); len(got) != 1 || got[0] != theirs.Target+", granted by "+grantsTheirs {
+		t.Fatalf("the helper's probe names the held mounts %q:\n%s", got, out)
+	}
+}
+
+// TestAHelpersRunnerIsKeptForItsCallersFile holds the helper's runner cache and the
+// file it is sent. ⛔ Two files with the same settings share a fingerprint, so a
+// runner cached for one served the other and named the wrong file in the grant
+// ledger. ⚠ A file named relative to nothing is refused. WSL-190.
+func TestAHelpersRunnerIsKeptForItsCallersFile(t *testing.T) {
+	_ = newFakeHost(t)
+	_ = newDefaultBaseCase(t)
+	cfg := grantBase(t)
+	cfg.Base.Name = "wsl-toolkit-g190"
+	other := cfg
+	other.path = filepath.Join(t.TempDir(), "other.json")
+	h := &HelperServer{log: func(string) {}, runners: map[string]*Runner{}}
+	mine := &Runner{base: &Base{cfg: cfg}}
+	h.runners[helperRunnerKey(cfg, false)] = mine
+	if r, _, _ := h.runnerFor(&cfg, "", false); r != mine {
+		t.Fatal("the runner cached for this file was not found again")
+	}
+	if r, _, _ := h.runnerFor(&other, "", false); r == mine {
+		t.Fatal("a runner cached for one file served another with the same settings")
+	}
+	sent := DefaultConfig()
+	if err := callerFile(&sent, "config.json"); err == nil || sent.Path() != "" {
+		t.Fatalf("a relative caller file answered %v and set %q", err, sent.Path())
+	}
+}
+
+// TestTheHelpersEnsureReadsItsCallersGrantsAsUnchanged holds the helper's ensure,
+// now that it is sent its caller's file, reading that file's grants again under the
+// base's lock. ⚠ It is handed each source resolved and reads the file as written,
+// so a relative source read as a change on every ensure, and the log said the
+// grants changed while it waited. A real change is still taken. WSL-172, WSL-190.
+func TestTheHelpersEnsureReadsItsCallersGrantsAsUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "src"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := grantBase(t)
+	cfg.path = filepath.Join(dir, "config.json")
+	cfg.Base.Mounts = []BaseMount{{Source: filepath.Join(dir, "src"), Target: "/workspaces/src", Mode: "rw"}}
+	if err := cfg.WriteTo(cfg.path); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(cfg.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var file map[string]any
+	if err := json.Unmarshal(raw, &file); err != nil {
+		t.Fatal(err)
+	}
+	mounts := file["base"].(map[string]any)["mounts"].([]any)
+	mounts[0].(map[string]any)["source"] = "src"
+	if raw, err = json.Marshal(file); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg.path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := loadConfigFile(cfg.path, "the case")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loaded.Base.Mounts[0].Source != "src" {
+		t.Fatalf("the file's grant reads %q, want the relative src", loaded.Base.Mounts[0].Source)
+	}
+	s := &sayings{}
+	b := &Base{cfg: loaded.Portable(), log: s.log}
+	if changed, err := b.adoptStoredGrants(); err != nil || changed || s.said("the grants changed") {
+		t.Fatalf("the same grants handed resolved read as changed %v, %v: %v", changed, err, s.lines)
+	}
+	b.cfg.Base.Mounts[0].Mode = "ro"
+	if changed, err := b.adoptStoredGrants(); err != nil || !changed || b.cfg.Base.Mounts[0].Mode != "rw" {
+		t.Fatalf("a grant the file changed was not taken: %v, %v, %+v", changed, err, b.cfg.Base.Mounts)
 	}
 }

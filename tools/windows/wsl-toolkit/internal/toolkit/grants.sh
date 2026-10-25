@@ -15,7 +15,9 @@
 # The owners ledger, /var/lib/wsl-toolkit/grant-owners, says which configuration
 # file made each live grant: one line of target, owner key and owner name, the two
 # in base64. verify.sh reads it. WSL-179. The block keeps each line whose target the
-# ledger gives another file, so a restart mounts every file's grants. WSL-190.
+# ledger gives another file, so a restart mounts every grant whose line it holds.
+# ⚠ Not one whose line is already gone, as a 7.0.2 build's write leaves it: the row
+# carries no line to write back. A caller with no file keeps no line. WSL-190.
 #
 #   TK_GRANTS_MODE=write   rewrite the block and create each target, and mount nothing
 #   TK_GRANTS_MODE=live    rewrite the block, unmount or mount TK_GRANT_TARGET alone,
@@ -125,7 +127,8 @@ line_for() {
 #
 # ⚠ A CALLER WITH NO FILE KEEPS NOTHING, as before. It has no ledger key, and its
 # verifier refuses every Windows mount it does not name, so a line kept for another
-# file would fail its own ensure after the restart. The helper route is one. WSL-190.
+# file would fail its own ensure after the restart. The helper route was one, and
+# now sends its caller's file. WSL-190.
 : > "$WORK/fstab"
 : > "$WORK/old-block"
 if [ -f /etc/fstab ]; then
@@ -230,8 +233,9 @@ fi
 
 # ⭐ HELD, NOTHING IS CHANGED. It names each live DrvFS mount the ledger gives a
 # file other than TK_GRANT_OWNER, one `held-mount TARGET FILE64` row each, for
-# `base ensure` to refuse the restart that would drop them. It reads under the
-# lock, so a grant still running is read once it has finished. WSL-179.
+# `base ensure` to refuse the restart that would end the work under them. It reads
+# under the lock, so a grant still running is read once it has finished. WSL-179.
+# ⚠ The restart no longer drops a grant whose line the block holds. WSL-190.
 if [ "$TK_GRANTS_MODE" = held ]; then
   if [ -f "$OWNERS" ]; then
     while read -r held_target held_key held_name _rest; do
@@ -341,16 +345,32 @@ changed=false
 # old block back and left the new mount, with no ledger row and in no configuration,
 # so the next `base ensure` read it as unconfigured. Met on an Alpine base, whose
 # read-back failed for want of runuser. A mount that will not go is named. WSL-189.
+#
+# ⛔ NOTHING IS MOUNTED BACK OVER A MOUNT THAT WOULD NOT GO. A mode switch whose new
+# mount stayed had its old one mounted on top, so the target held two mounts, and
+# the live mode read one while the block put back said the other. The refusal says
+# the target stays in the new mode. ⚠ A failed unmount is named only while the
+# target is still mounted. WSL-189.
 fail_back() {
   fail_reason=$1
+  : > "$WORK/stuck"
   while IFS= read -r made; do
-    if [ -n "$made" ] && ! umount "$made" 2>"$WORK/umount.err"; then
+    [ -n "$made" ] || continue
+    if umount "$made" 2>"$WORK/umount.err"; then
+      continue
+    fi
+    stuck_mode=$(live_mode "$made")
+    [ -n "$stuck_mode" ] || continue
+    printf '%s\n' "$made" >> "$WORK/stuck"
+    if grep -Fxq -e "$made" "$WORK/unmounted"; then
+      fail_reason="$fail_reason. $made stays mounted $stuck_mode, the new mode, because it could not be unmounted: $(head -1 "$WORK/umount.err"). Its old mount was not put back over it"
+    else
       fail_reason="$fail_reason. $made stays mounted, because it could not be unmounted: $(head -1 "$WORK/umount.err")"
     fi
   done < "$WORK/mounted"
   install_fstab "$WORK/fstab.before"
   while IFS= read -r again; do
-    if [ -n "$again" ]; then
+    if [ -n "$again" ] && ! grep -Fxq -e "$again" "$WORK/stuck"; then
       mount "$again" 2>/dev/null || :
     fi
   done < "$WORK/unmounted"

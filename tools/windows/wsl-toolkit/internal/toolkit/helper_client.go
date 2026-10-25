@@ -267,6 +267,12 @@ func (c *HelperClient) BaseStatus(ctx context.Context, probe bool) (BaseState, e
 		if c.cfg.nameFrom != "" {
 			path += "&name_from=" + url.QueryEscape(c.cfg.nameFrom)
 		}
+		// ⛔ THE FILE GOES WITH IT, so the helper's verifier names this caller as
+		// the CLI's does. Without it a probe after any restart refused another
+		// file's kept grant as unconfigured. WSL-190.
+		if file := ownerFile(c.cfg); file != "" {
+			path += "&config_path=" + url.QueryEscape(file)
+		}
 	}
 	err := c.call(ctx, http.MethodGet, path, nil, &out)
 	return out.State, err
@@ -298,9 +304,15 @@ func (c *HelperClient) BaseEnsureWith(ctx context.Context, force, repair bool) (
 	// name only when it knows the name was not the configuration's, and refuses an
 	// owner-only change only when it knows this caller does not own the base.
 	// WSL-167.
+	//
+	// ⛔ SO DOES THE FILE. The grant ledger names a caller by its file, and this one
+	// arrived with none. Its write kept no other file's line, so an ensure here
+	// dropped every other file's grant at the restart, and its verifier refused
+	// each kept one after any restart. WSL-190.
 	body := map[string]any{
 		"force": force, "repair": repair, "config": c.cfg,
 		"name_from": c.cfg.nameFrom, "guest": helperGuest(c.cfg),
+		"config_path": ownerFile(c.cfg),
 	}
 	if err := c.call(ctx, http.MethodPost, "/v1/base/ensure", body, &out); err != nil {
 		return out.State, err

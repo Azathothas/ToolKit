@@ -180,13 +180,21 @@ They ship in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 
 ### ⚠ What a grant that survives a restart changes, and what a caller does
 
-`WSL-190`. Not released yet. No exit code changes, and a grant that works today
-keeps working.
+`WSL-190`. Not released yet. A grant that works today keeps working. ⛔ The helper
+protocol moves to `wsl-toolkit-helper/7`, a break by the table above, so it ships
+in `wsl-toolkit-v8.0.0`, a major release by ruling 34.
 
 | change | it breaks a caller that | the caller does |
 | --- | --- | --- |
-| a restart mounts again each grant the guest's ledger gives another configuration file, after `base ensure --repair` too | relied on a restart, or on `--repair`, to drop a grant another file made | revokes it with that file: `wsl-toolkit --config FILE base revoke --target TARGET`. A file that is gone is written again, naming the grant, first |
+| a restart mounts again each grant the guest's ledger gives another configuration file, after `base ensure --repair` too, directly or through the helper | relied on a restart, or on `--repair`, to drop a grant another file made | revokes it with that file: `wsl-toolkit --config FILE base revoke --target TARGET`. A file that is gone is written again, naming the grant, first |
 | an ensure refused over another file's live grant says the restart ends that work, where it said the restart drops the grants | parses the refusal's words | reads the targets, files and revokes it names, which are unchanged |
+| the helper protocol is `wsl-toolkit-helper/7`, and a 7.x helper and an 8.x client refuse each other. An ensure or a probe through the helper sends the caller's configuration file, and acts for it as the CLI does | leaves a 7.x helper running after the update | stops it and starts it again: `wsl-toolkit helper stop`, then `wsl-toolkit helper serve --detach`, each with the `--instance` it serves |
+
+⚠ **A grant a 7.0.2 build left without its fstab line is not written back.** The
+ledger row carries no line. On a base a 7.0.2 build left with two files' live
+grants, the next restart can drop one file's grant, as 7.0.2 did. That file's next
+`base grant` or `base revoke` of another target writes its lines back. After the
+restart, its `base ensure --repair` does, and restarts over the other file's work.
 
 ### ⛔ What `wsl-toolkit-v7.0.0` breaks, and what a caller does
 

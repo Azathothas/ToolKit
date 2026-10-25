@@ -889,6 +889,12 @@ func (b *Base) adoptStoredGrants() (bool, error) {
 	if reflect.DeepEqual(stored.Base.Mounts, b.cfg.Base.Mounts) {
 		return false, nil
 	}
+	// ⚠ THE SAME GRANTS SPELLED ANOTHER WAY ARE NOT A CHANGE. The helper is handed
+	// each source resolved and reads the file as written, so since it is sent its
+	// caller's file, a relative source read as a change on every ensure. WSL-190.
+	if reflect.DeepEqual(stored.Portable().Base.Mounts, b.cfg.Portable().Base.Mounts) {
+		return false, nil
+	}
 	b.log("the grants changed while this waited; using the ones " + path + " names now")
 	b.cfg.Base.Mounts = stored.Base.Mounts
 	return true, nil

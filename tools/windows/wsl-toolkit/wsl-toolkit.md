@@ -1187,16 +1187,26 @@ restarts over them. `WSL-179`
 
 ⭐ **A restart mounts every configuration's grants again.** The fstab block keeps
 each line whose target the ledger gives another file. So a Windows restart, or a
-restart this tool makes, mounts every file's grants. `base ensure --repair` keeps
-them too. An ensure writes its own line at each target its file names, and the
-ledger row moves with it. A grant writes its own line at its target, and a revoke
-removes the line there, each with its ledger row. The block names each target once.
-`WSL-190`
+restart this tool makes, mounts each grant whose line the block holds. `base
+ensure --repair` keeps them too. An ensure writes its own line at each target its
+file names, and the ledger row moves with it. A grant writes its own line at its
+target, and a revoke removes the line there, each with its ledger row. The block
+names each target once. `WSL-190`
+
+⭐ **The helper acts for its caller's file.** An ensure or a probe through the
+helper sends the caller's configuration file. So the helper keeps another file's
+lines, and its probe leaves that file's mounts alone, as the CLI's does. A
+helper started by an earlier release is refused until it is restarted. `WSL-190`
 
 ⚠ **A line no ledger row names is still replaced.** A grant made before 7.0.2 has
-no row, so another file's grant or ensure drops its line. An ensure through the
-helper sends no configuration file, so it writes its own grants alone, as before.
-`WSL-190`
+no row, so another file's grant or ensure drops its line. `WSL-190`
+
+⚠ **A row whose line is already gone is not written back.** The ledger keeps no
+line, and a 7.0.2 build wrote its caller's lines alone. So on a base it left with
+two files' live grants, the next restart can drop one file's grant, as before. That
+file's next `base grant` or `base revoke` of another target writes its lines back.
+After the restart, its `base ensure --repair` does, and restarts over the other
+file's work. `WSL-190`
 
 ⚠ **A grant whose file is gone comes back at each restart.** No other file can
 revoke it while it is mounted. Write that file again, naming the grant, then run
@@ -1211,6 +1221,10 @@ the revoke answers exit 1 naming `target is busy`.
 after it mounted unmounts that mount first. It then puts the old fstab block back
 and mounts again what it unmounted. A mount that will not unmount is named in the
 refusal. `WSL-189`
+
+⚠ **A mode switch whose new mount will not unmount stays in the new mode.** Its
+old mount is not mounted on top, so the target never holds two mounts. The refusal
+names the target and its mode. `WSL-189`
 
 ⚠ **A grant whose Windows directory is gone is kept and marked, not refused.** `base
 status` names it with the `base revoke` that removes it, and `--json` carries it as
@@ -1683,10 +1697,10 @@ That is a working tree's own where it lends a named instance its `workspace` or 
 `base exec` reads a relative `--script`, `--env-file`, `--input` and `--artifacts`
 from the current directory, and so does `base sync` its `HOST-DIR`.
 
-⭐ **A relative grant source resolves against its file on every route.** A file's
-path does not cross the helper protocol, so the client sends each `base.mounts`
-source resolved. It resolved against the helper's own working directory before.
-`WSL-131`
+⭐ **A relative grant source resolves against its file on every route.** The client
+sends each `base.mounts` source resolved. An ensure or a probe through the helper
+also sends the file itself, and a job's request does not. A source resolved
+against the helper's own working directory before. `WSL-131`, `WSL-190`
 
 Without one, a relative path resolves against the current directory, and the
 resolved value is printed when the workspace is copied.

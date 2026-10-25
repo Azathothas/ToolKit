@@ -81,20 +81,30 @@ func grantsEnv(cfg Config, mode string, grant BaseMount) (map[string]string, err
 // compared as Windows compares paths, and the file's own spelling to show. Both are
 // base64, and both are empty for a configuration with no file. WSL-179.
 func grantOwner(cfg Config) (key, name string) {
-	p := cfg.Path()
+	p := ownerFile(cfg)
 	if p == "" {
 		return "", ""
 	}
-	if abs, err := filepath.Abs(p); err == nil {
-		p = abs
-	}
-	p = filepath.Clean(p)
 	k := p
 	if runtime.GOOS == "windows" {
 		k = strings.ToLower(p)
 	}
 	enc := base64.StdEncoding.EncodeToString
 	return enc([]byte(k)), enc([]byte(p))
+}
+
+// ownerFile is the configuration file the grant ledger names a caller by, absolute
+// and clean, or an empty string for a configuration with no file. The helper's
+// client sends it, so the helper's base names the same file. WSL-179, WSL-190.
+func ownerFile(cfg Config) string {
+	p := cfg.Path()
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	return filepath.Clean(p)
 }
 
 // applyGrants runs grants.sh in the base for a configuration's grants. grant is
