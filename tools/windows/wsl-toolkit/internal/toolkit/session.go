@@ -402,11 +402,21 @@ bootmark() {
 // an unrelated process and `stop` signalled its group. The start of the base and
 // the start of the process are what a reused id cannot carry.
 //
-// ⚠ A SESSION AN OLDER BUILD STARTED HAS NONE OF THESE FILES, and is read as
-// before.
+// ⛔ A SESSION AN OLDER BUILD STARTED HAS NONE OF THESE FILES, so its supervisor
+// is held to its command line instead. Every 7.x launch ran it as `/bin/sh -c
+// SCRIPT wtk-session DIR`, so a process whose arguments do not carry that pair
+// is another process. That reads no clock, which a restart of WSL's VM moves.
 // ⚠ Its names carry a prefix: a shell function shares every variable with the
 // script that calls it, and the follow script's t is its tail.
-const sessionOwnerRead = sessionProcStart + `sup() {
+const sessionOwnerRead = sessionProcStart + `supcmd() {
+  sc_l=$(tr "\000" "\n" < "/proc/$1/cmdline" 2>/dev/null) || return 1
+  case "$sc_l" in *"
+wtk-session
+$d
+"*) return 0 ;; esac
+  return 1
+}
+sup() {
   lost=
   sup_s=$(cat "$d/supervisor.pid" 2>/dev/null) || sup_s=
   [ -n "$sup_s" ] || return 1
@@ -415,6 +425,10 @@ const sessionOwnerRead = sessionProcStart + `sup() {
   kill -0 "$sup_s" 2>/dev/null || return 1
   sup_t=$(cat "$d/supervisor.start" 2>/dev/null) || sup_t=
   if [ -n "$sup_t" ] && [ "$sup_t" != "$(pstart "$sup_s")" ]; then lost=reused; return 1; fi
+  if [ -z "$sup_t" ] && ! supcmd "$sup_s"; then
+    lost=reused
+    return 1
+  fi
   return 0
 }
 `
@@ -482,7 +496,7 @@ func (s SessionState) LostReason() string {
 	case SessionLostRestart:
 		return "the base started again after this session did, and its supervisor went without an exit"
 	case SessionLostReused:
-		return "its supervisor's process id now names another process, and the supervisor went without an exit"
+		return "its process ids now name other processes, and its supervisor went without an exit"
 	}
 	return ""
 }
@@ -631,14 +645,28 @@ func parseSessionState(out string) SessionState {
 }
 
 // StopSession sends the payload's process group TERM, then KILL a grace later,
-// and waits for the supervisor to record the exit.
-func StopSession(ctx context.Context, w *Wsl, rec SessionRecord, grace time.Duration) (SessionState, error) {
+// and waits for the supervisor to record the exit. It answers the state after
+// the stop, and the stop's own LOST reason where it signalled nothing.
+//
+// ⛔ THE STOP'S OWN FINDING, NOT THE STATE'S. A session read as running can be
+// found lost by the stop itself, which then signals nothing, and a group whose
+// leader started later leaves the state reading only that the supervisor is
+// gone. A caller that said it stopped such a session said what did not happen.
+// WSL-184.
+func StopSession(ctx context.Context, w *Wsl, rec SessionRecord, grace time.Duration) (SessionState, string, error) {
 	budget := grace + 30*time.Second
 	out, stderr, code, err := w.Capture(ctx, rec.Distro, rec.User, stopSessionScript(rec.GuestDir, grace), budget)
 	if err != nil || code != 0 {
-		return SessionState{}, fmt.Errorf("could not stop session %s (exit %d): %s", rec.ID, code, guestFailure(stderr, out))
+		return SessionState{}, "", fmt.Errorf("could not stop session %s (exit %d): %s", rec.ID, code, guestFailure(stderr, out))
 	}
-	return ReadSessionState(ctx, w, rec)
+	st, err := ReadSessionState(ctx, w, rec)
+	return st, stopLost(out), err
+}
+
+// stopLost is the reason a stop printed LOST, or an empty string where it
+// signalled. ⭐ No process in it, so its case runs on any host. WSL-184.
+func stopLost(out string) string {
+	return parseSessionState(out).Lost
 }
 
 // stopSessionScript marks the session stopped, sends its process group TERM,

@@ -34,7 +34,7 @@ func TestALostSessionIsReadAsGoneWithoutAnExit(t *testing.T) {
 		t.Errorf("a restart reads %q", restarted.LostReason())
 	}
 	reused := got["/h/.wsl-toolkit/sessions/fedcba9876543210"]
-	if reused.Lost != SessionLostReused || !strings.Contains(reused.LostReason(), "another process") {
+	if reused.Lost != SessionLostReused || !strings.Contains(reused.LostReason(), "other processes") {
 		t.Errorf("a reused supervisor id reads as %+v, %q", reused, reused.LostReason())
 	}
 	if odd := got["/h/.wsl-toolkit/sessions/00000000000000aa"]; odd.Lost != "" || odd.LostReason() != "" {
@@ -298,5 +298,105 @@ func TestASessionIdThatNamesAnotherProcessIsNotItsOwn(t *testing.T) {
 	out, stderr, code, _ = s.run(t, stopSessionScript(group, time.Second), 30*time.Second)
 	if code != 0 || !strings.Contains(out, "LOST|reused") || !running(other) {
 		t.Fatalf("the stop of a group whose leader is another process: exit %d, out %q, stderr %q, bystander running %v", code, out, stderr, running(other))
+	}
+}
+
+// stage puts a session directory under the shell's home with the files given.
+func (s sessionShell) stage(t *testing.T, name string, files map[string]string) string {
+	t.Helper()
+	dir := filepath.Join(s.home, GuestRoot, "sessions", name)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for f, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, f), []byte(body+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// TestASessionAnOlderBuildStartedIsHeldToItsSupervisorsCommandLine: a session a
+// 7.x launch started has no record of its boot or of its processes' starts. ⛔
+// Its supervisor id is held to the command line every 7.x launch gave it, so an
+// id that names another of the account's processes is gone, a stop leaves it,
+// and a follow ends. A supervisor that carries its own arguments still runs.
+// WSL-184.
+func TestASessionAnOlderBuildStartedIsHeldToItsSupervisorsCommandLine(t *testing.T) {
+	s := newSessionShell(t)
+	other := s.bystander(t)
+	pid := strconv.Itoa(other)
+	reused := s.stage(t, "00000000000000b1", map[string]string{"supervisor.pid": pid, "payload.pid": pid,
+		"started": "2026-01-01T00:00:00Z", "stdout": "", "stderr": ""})
+	if st := s.state(t, reused); st.Alive || st.Lost != SessionLostReused || st.Exit != nil {
+		t.Fatalf("an older build's session whose supervisor id names another process reads as %+v", st)
+	}
+	out, stderr, code, _ := s.run(t, stopSessionScript(reused, time.Second), 30*time.Second)
+	if code != 0 || !strings.Contains(out, "LOST|reused") || !running(other) {
+		t.Fatalf("the stop of an older build's reused supervisor id: exit %d, out %q, stderr %q, bystander running %v", code, out, stderr, running(other))
+	}
+	if _, _, code, hung := s.run(t, followSessionScript(reused, 0), 30*time.Second); hung || code != 0 {
+		t.Fatalf("following an older build's session whose supervisor id names another process: exit %d, hung %v", code, hung)
+	}
+
+	// ⭐ An older build's own supervisor, as every 7.x launch ran it.
+	own := filepath.Join(s.home, GuestRoot, "sessions", "00000000000000b2")
+	out, stderr, code, _ = s.run(t, []byte("setsid /bin/sh -c 'sleep 600; :' wtk-session '"+own+"' 0 1 </dev/null >/dev/null 2>&1 &\necho $!\n"), 30*time.Second)
+	sup, err := strconv.Atoi(strings.TrimSpace(out))
+	if code != 0 || err != nil {
+		t.Fatalf("the older build's supervisor did not start (exit %d): %q %s", code, out, stderr)
+	}
+	s.killOnCleanup(t, "-"+strconv.Itoa(sup))
+	s.stage(t, "00000000000000b2", map[string]string{"supervisor.pid": strconv.Itoa(sup), "payload.pid": pid,
+		"started": "2026-01-01T00:00:00Z", "stdout": "", "stderr": ""})
+	if st := s.state(t, own); !st.Alive || st.Lost != "" {
+		t.Fatalf("an older build's running supervisor reads as %+v", st)
+	}
+}
+
+// standInWsl is a wsl.exe that runs the script it is handed in this host's own
+// shell, so StopSession runs the real stop and state scripts.
+func standInWsl(t *testing.T) *Wsl {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "wsl")
+	body := "#!/bin/sh\nwhile [ \"$#\" -gt 0 ] && [ \"$1\" != -- ]; do shift; done\nshift\nexec \"$@\"\n"
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return &Wsl{Path: path}
+}
+
+// TestAStopThatFindsItsSessionLostAnswersWhy: StopSession answers the stop
+// script's own LOST line. ⛔ A group whose leader started later leaves the state
+// read after the stop saying only that the supervisor is gone, so the stop's own
+// finding is what says nothing was signalled. WSL-184.
+func TestAStopThatFindsItsSessionLostAnswersWhy(t *testing.T) {
+	s := newSessionShell(t)
+	other := s.bystander(t)
+	pid := strconv.Itoa(other)
+	boot := readTrim(t, "/proc/sys/kernel/random/boot_id") + " " + procStart(t, 1)
+	dead := exec.Command("true")
+	if err := dead.Run(); err != nil {
+		t.Fatal(err)
+	}
+	dir := s.stage(t, "00000000000000c1", map[string]string{"boot": boot, "supervisor.pid": strconv.Itoa(dead.Process.Pid),
+		"supervisor.start": "1", "payload.pid": pid, "payload.start": "1", "stdout": "", "stderr": ""})
+	rec := SessionRecord{ID: "00000000000000c1", Distro: "stand-in", User: "me", GuestDir: dir}
+	st, lost, err := StopSession(context.Background(), standInWsl(t), rec, time.Second)
+	if err != nil || lost != SessionLostReused || !running(other) {
+		t.Fatalf("a stop over a group another process leads answered %+v, lost %q, %v; bystander running %v", st, lost, err, running(other))
+	}
+	if st.Lost != "" {
+		t.Fatalf("the state after the stop carries %q itself, so this case proves nothing", st.Lost)
+	}
+}
+
+// TestAStopsLostLineIsRead: the reason a stop printed LOST, and nothing where it
+// printed none. WSL-184.
+func TestAStopsLostLineIsRead(t *testing.T) {
+	for out, want := range map[string]string{"LOST|restart\n": SessionLostRestart, "LOST|reused\n": SessionLostReused, "": "", "LOST|elsewhere\n": ""} {
+		if got := stopLost(out); got != want {
+			t.Errorf("a stop that printed %q read as %q, want %q", out, got, want)
+		}
 	}
 }

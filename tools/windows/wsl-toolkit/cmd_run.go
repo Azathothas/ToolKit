@@ -1080,6 +1080,9 @@ func reportJob(res toolkit.JobResult, asJSON bool) (int, error) {
 		logf("  %s", line)
 	}
 	logf("  %s exited %d in %s", res.Label, res.Exit, res.Duration.Round(time.Millisecond))
+	if hint := nestedEngineHint(res); hint != "" {
+		logf("  ! %s", hint)
+	}
 	if hint := transcriptHint(res); hint != "" {
 		logf("  %s", hint)
 	}
@@ -1117,6 +1120,24 @@ func limitsLine(l *toolkit.LimitsReport) string {
 			toolkit.ToolCommand("base status --probe") + " names the base's cgroup mechanism"
 	}
 	return "limits " + what + ": whether they were enforced is unknown, because the container did not say"
+}
+
+// nestedEngineFuse is what a nested podman's storage driver says in a job given
+// no /dev/fuse. Measured on a scratch base, with exit 127. WSL-170.
+const nestedEngineFuse = "fuse: device /dev/fuse not found"
+
+// nestedEngineHint names the shape a container engine inside a job runs in,
+// after a job whose engine found no /dev/fuse. WSL-170.
+//
+// ⚠ A NOTE AFTER THE FACT, NOT A REFUSAL. Nothing here knows that a job runs an
+// engine before it does, and the shape that failed harmed nothing: the nested
+// podman refused in its own words, and the base kept running.
+func nestedEngineHint(res toolkit.JobResult) string {
+	if res.Exit == 0 || !strings.Contains(res.Stderr, nestedEngineFuse) {
+		return ""
+	}
+	return "the job found no /dev/fuse. A container engine inside a job runs rootless: --user with an account of the image's other than root, and --device /dev/fuse. " +
+		toolkit.ToolCommand("examples") + " shows one"
 }
 
 // transcriptHint is the one line that makes `logs` reachable.

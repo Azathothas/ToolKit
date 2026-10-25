@@ -2,6 +2,303 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the stale check reads a record held to an earlier start of the base as stale",
+      "file": "internal/toolkit/stale.sh",
+      "find": "  [ -n \"$ss_was\" ] && [ \"$ss_was\" != \"$tk_stale_now\" ]\n",
+      "replace": "  false\n",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a current run state is held to this start of the base",
+      "file": "internal/toolkit/stale.sh",
+      "find": "    { printf '%s\\n' \"$tk_stale_now\" > \"$tk_stale_mark.$$\" && mv -f \"$tk_stale_mark.$$\" \"$tk_stale_mark\"; } 2>/dev/null ||\n",
+      "replace": "    false ||\n",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: repair.sh reads a record held to an earlier start as another boot's under the lock",
+      "file": "internal/toolkit/repair.sh",
+      "find": "        tk_record=other-boot\n        tk_earlier=yes\n",
+      "replace": "        :\n",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a cleared run state is held to this start of the base",
+      "file": "internal/toolkit/repair.sh",
+      "find": "printf '%s\\n' \"$tk_start\" > \"$tk_mark.$$\" && mv -f \"$tk_mark.$$\" \"$tk_mark\"",
+      "replace": "false",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a container of this start keeps the earlier start's run state it runs on",
+      "file": "internal/toolkit/repair.sh",
+      "find": "  if [ -n \"$tk_earlier\" ] && a_container_runs; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: only a conmon of this account keeps its run state",
+      "file": "internal/toolkit/repair.sh",
+      "find": "    if [ -z \"$acr_u\" ] || [ \"$acr_u\" = \"$acr_me\" ]; then\n",
+      "replace": "    if true; then\n",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the run-state check carries bootmark",
+      "file": "internal/toolkit/stale.go",
+      "find": "\tpayload := append([]byte{}, sessionProcStart...)\n",
+      "replace": "\tpayload := []byte{}\n",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure --repair's payload carries bootmark",
+      "file": "internal/toolkit/stale.go",
+      "find": "\treturn append([]byte(sessionProcStart), repairScript...)\n",
+      "replace": "\treturn append([]byte{}, repairScript...)\n",
+      "run": "TestTheStaleCheckClearsAStateAnEarlierStartLeft|TestBaseEnsureRepairSendsBootmark",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure --repair sends repair.sh after bootmark",
+      "file": "internal/toolkit/base.go",
+      "find": "b.captureAs(ctx, b.cfg.Base.User, repairPayload(), nil, 2*time.Minute)",
+      "replace": "b.captureAs(ctx, b.cfg.Base.User, repairScript, nil, 2*time.Minute)",
+      "run": "TestBaseEnsureRepairSendsBootmark",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's note says an earlier start's cleared state as that",
+      "file": "internal/toolkit/stale.go",
+      "find": "\t\tif earlier {\n\t\t\treturn true,",
+      "replace": "\t\tif false {\n\t\t\treturn true,",
+      "run": "TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's note says an earlier start's kept state as that",
+      "file": "internal/toolkit/stale.go",
+      "find": "\t\tif earlier {\n\t\t\treturn false,",
+      "replace": "\t\tif false {\n\t\t\treturn false,",
+      "run": "TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's note gives the guest's reason for keeping a stale state",
+      "file": "internal/toolkit/stale.go",
+      "find": "\t\tif why, ok := keptRunState(out); ok {\n\t\t\treason = why\n\t\t}\n",
+      "replace": "",
+      "run": "TestTheStaleRunStateVerdictIsReadFromWhatTheGuestSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: base ensure --repair over a kept run state is no repair",
+      "file": "internal/toolkit/base.go",
+      "find": "\tif why, ok := keptRunState(out); ok {\n\t\treturn fmt.Errorf(\"the run state was kept, because %s\", why)\n\t}\n",
+      "replace": "",
+      "run": "TestBaseEnsureRepairReadsWhatRepairShSaid",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every owner's ensure installs the boot script",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  install_file \"$tmp\" \"$BOOT\" 0755 || :\n",
+      "replace": "  rm -f \"$tmp\"\n",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every ensure puts the boot line where an earlier release left a blank one",
+      "file": "internal/toolkit/engines.sh",
+      "find": "      inboot && !done && after && $0 == \"\" { put(); after = 0; next }\n",
+      "replace": "",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: every ensure moves a sealed base's boot line to the boot script",
+      "file": "internal/toolkit/engines.sh",
+      "find": "      inboot && !done && $0 == old { put(); next }\n",
+      "replace": "",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the boot script keeps a sealed earlier base sealed",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  if grep -qxF \"command=$OLD_BOOT\" \"$WSL_CONF\" 2>/dev/null; then seal=off; else seal=on; fi\n",
+      "replace": "  seal=on\n",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the boot script keeps the seal it names",
+      "file": "internal/toolkit/engines.sh",
+      "find": "seal=$(sed -n '2s/^seal=//p' \"$BOOT\" 2>/dev/null) || seal=\n",
+      "replace": "seal=\n",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a wsl.conf this tool did not write keeps its lines",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  elif [ \"$(head -n 1 \"$WSL_CONF\" 2>/dev/null)\" != '# Written by wsl-toolkit.' ]; then\n",
+      "replace": "  elif false; then\n",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a wsl.conf naming another boot command keeps it",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  elif grep '^command=' \"$WSL_CONF\" 2>/dev/null | grep -qvxF \"command=$OLD_BOOT\"; then\n",
+      "replace": "  elif false; then\n",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: seal-boot.sh goes only once nothing names it",
+      "file": "internal/toolkit/engines.sh",
+      "find": "  if ! grep -qF \"$OLD_BOOT\" \"$WSL_CONF\" 2>/dev/null; then\n",
+      "replace": "  if true; then\n",
+      "run": "TestEnginesShGivesAnEarlierBaseTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: engines.sh is handed the boot script",
+      "file": "internal/toolkit/engines.go",
+      "find": "\t\t\t\"TK_BOOT_B64\":      base64.StdEncoding.EncodeToString(bootScript),\n",
+      "replace": "",
+      "run": "TestEveryBaseGetsTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning is handed the boot script",
+      "file": "internal/toolkit/base.go",
+      "find": "\t\t\t\"TK_BOOT_B64\": base64.StdEncoding.EncodeToString(bootScript),\n",
+      "replace": "",
+      "run": "TestEveryBaseGetsTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning writes the boot script from the text it is handed",
+      "file": "internal/toolkit/provision.sh",
+      "find": "  printf '%s' \"$TK_BOOT_B64\" | base64 -d\n",
+      "replace": "  :\n",
+      "run": "TestProvisioningWritesTheBootScriptItIsHanded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning refuses a boot script cut short",
+      "file": "internal/toolkit/provision.sh",
+      "find": "grep -qx '# <<< the boot script: end' \"$BOOT_SCRIPT.new\" ||\n",
+      "replace": "true ||\n",
+      "run": "TestProvisioningWritesTheBootScriptItIsHanded",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: provisioning removes seal-boot.sh only after wsl.conf names boot.sh",
+      "file": "internal/toolkit/provision.sh",
+      "find": "wsl_conf=$(install_changed /etc/wsl.conf.wsl-toolkit.new /etc/wsl.conf) ||\n",
+      "replace": "rm -f /usr/local/lib/wsl-toolkit/seal-boot.sh\nwsl_conf=$(install_changed /etc/wsl.conf.wsl-toolkit.new /etc/wsl.conf) ||\n",
+      "run": "TestEveryBaseGetsTheBootScript",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an older build's session is held to its supervisor's command line",
+      "file": "internal/toolkit/session.go",
+      "find": "  if [ -z \"$sup_t\" ] && ! supcmd \"$sup_s\"; then\n",
+      "replace": "  if false; then\n",
+      "run": "TestASessionAnOlderBuildStartedIsHeldToItsSupervisorsCommandLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an older build's supervisor is read by its own arguments",
+      "file": "internal/toolkit/session.go",
+      "find": "wtk-session\n$d\n\"*) return 0 ;; esac",
+      "replace": "wtk-session-never\n$d\n\"*) return 0 ;; esac",
+      "run": "TestASessionAnOlderBuildStartedIsHeldToItsSupervisorsCommandLine",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a stop's own LOST line is read",
+      "file": "internal/toolkit/session.go",
+      "find": "\treturn parseSessionState(out).Lost\n",
+      "replace": "\treturn \"\"\n",
+      "run": "TestAStopsLostLineIsRead",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: StopSession answers the stop's own finding",
+      "file": "internal/toolkit/session.go",
+      "find": "\treturn st, stopLost(out), err\n",
+      "replace": "\treturn st, \"\", err\n",
+      "run": "TestAStopThatFindsItsSessionLostAnswersWhy",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: stop says a session it found lost was not stopped",
+      "file": "cmd_jobs.go",
+      "find": "\tif lost != \"\" {\n\t\tafter.Alive, after.Lost = false, lost\n",
+      "replace": "\tif false {\n\t\tafter.Alive, after.Lost = false, lost\n",
+      "run": "TestAStopThatFoundItsSessionLostSaysItStoppedNothing",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job whose nested engine found no /dev/fuse is told the shape",
+      "file": "cmd_run.go",
+      "find": "\tif res.Exit == 0 || !strings.Contains(res.Stderr, nestedEngineFuse) {\n",
+      "replace": "\tif true {\n",
+      "run": "TestAJobWhoseEngineFoundNoFuseIsToldTheNestedShape",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: run prints the nested engine note",
+      "file": "cmd_run.go",
+      "find": "\tif hint := nestedEngineHint(res); hint != \"\" {\n",
+      "replace": "\tif hint := \"\"; hint != \"\" {\n",
+      "run": "TestAJobWhoseEngineFoundNoFuseIsToldTheNestedShape",
+      "module": "tools/windows/wsl-toolkit",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: a session's state holds its supervisor to the boot its launch recorded",
       "file": "internal/toolkit/session.go",
       "find": "then lost=restart; return 1; fi",
@@ -201,7 +498,7 @@
     },
     {
       "label": "wsl-toolkit: the boot script checks the run state as the account",
-      "file": "internal/toolkit/provision.sh",
+      "file": "internal/toolkit/boot.sh",
       "find": "    runuser -u \"$account\" -- /bin/sh \"$rs\" </dev/null || printf 'run state check exited %s\\n' \"$?\"",
       "replace": "    /bin/sh \"$rs\" </dev/null || printf 'run state check exited %s\\n' \"$?\"",
       "run": "TestTheBootScriptChecksTheRunStateAsTheAccount",
@@ -210,7 +507,7 @@
     },
     {
       "label": "wsl-toolkit: the boot script uses su where there is no runuser",
-      "file": "internal/toolkit/provision.sh",
+      "file": "internal/toolkit/boot.sh",
       "find": "    su -s /bin/sh -c \"/bin/sh $rs\" \"$account\" </dev/null || printf 'run state check exited %s\\n' \"$?\"",
       "replace": "    printf 'run state not checked\\n'",
       "run": "TestTheBootScriptChecksTheRunStateAsTheAccount",
@@ -219,7 +516,7 @@
     },
     {
       "label": "wsl-toolkit: the boot script closes the shared tmpfs only where it is off",
-      "file": "internal/toolkit/provision.sh",
+      "file": "internal/toolkit/boot.sh",
       "find": "  if [ \"$seal\" = off ]; then",
       "replace": "  if true; then",
       "run": "TestTheBootScriptChecksTheRunStateAsTheAccount",

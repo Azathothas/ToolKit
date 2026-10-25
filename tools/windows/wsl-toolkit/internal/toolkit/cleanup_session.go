@@ -183,7 +183,7 @@ func (r *Runner) removeSessions(ctx context.Context, plan *CleanupPlan, targets 
 			continue
 		}
 		if t.Live {
-			if _, err := StopSession(ctx, r.wsl, rec, SessionGrace); err != nil {
+			if _, _, err := StopSession(ctx, r.wsl, rec, SessionGrace); err != nil {
 				plan.Failed = append(plan.Failed, "session "+t.Name+": "+err.Error())
 				done[t.JobID] = err
 				continue

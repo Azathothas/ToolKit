@@ -126,17 +126,11 @@ func cmdStop(ctx context.Context, args []string) (int, error) {
 			held, still, err := toolkit.StopSessionLeftovers(ctx, w, rec, *grace)
 			applyLeftovers(&rep, held, still, err)
 		default:
-			rep.Before, rep.Stopped = "running", true
-			after, err := toolkit.StopSession(ctx, w, rec, *grace)
+			after, lost, err := toolkit.StopSession(ctx, w, rec, *grace)
 			if err != nil {
 				return exitFailed, err
 			}
-			rep.After = "ended"
-			if after.Alive {
-				rep.After = "running"
-			}
-			v := after.Verdict()
-			rep.Exit = &v
+			stoppedSession(&rep, after, lost)
 		}
 		return renderStop(rep, *asJSON)
 	}
@@ -504,6 +498,30 @@ func sessionEnd(ctx context.Context, rec toolkit.SessionRecord, tail int, stdout
 		out.verdict = deliveryVerdict(out.verdict, out.Artifacts)
 	}
 	return out, nil
+}
+
+// stoppedSession fills a stop's report from what the stop of a session read as
+// running found, and the state after it.
+//
+// ⛔ A STOP THAT FOUND THE SESSION LOST SIGNALLED NOTHING, AND SAYS SO. The stop
+// script reads the session again before it sends anything, and over a session
+// the base outlived it prints LOST and exits 0. That was reported as `running`,
+// then stopped. WSL-184.
+func stoppedSession(rep *toolkit.StopReport, after toolkit.SessionState, lost string) {
+	if lost != "" {
+		after.Alive, after.Lost = false, lost
+		rep.Before, rep.Note = "ended", goneNote(after, "the session had already ended")+", so nothing was stopped"
+		v := after.Verdict()
+		rep.Exit = &v
+		return
+	}
+	rep.Before, rep.Stopped = "running", true
+	rep.After = "ended"
+	if after.Alive {
+		rep.After = "running"
+	}
+	v := after.Verdict()
+	rep.Exit = &v
 }
 
 // goneNote is what a reader is told about a session that is not running and

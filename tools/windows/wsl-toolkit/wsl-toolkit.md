@@ -704,6 +704,16 @@ guest, and holds `--timeout` itself. Nothing on Windows has to stay alive.
   says the session is gone. `lost` says why, `restart` or `reused`, in
   `session` of `wait --json` and in `session_state` of `inspect --json`.
   `WSL-184`
+- ⛔ **A session an older build started is held to its supervisor's command
+  line.** It has none of those records. Every 7.x launch gave its supervisor
+  `wtk-session` and the session's directory as arguments. A process whose
+  arguments lack them is another process, so the session reads as `reused`.
+- A stop that finds a session lost as it reaches it signals nothing and says
+  so. It answers `ended`, with why, and exits 0.
+- `gc` and `resources` read a lost session as ended, so `gc --apply` removes it.
+- ⚠ **On a base with systemd, a session in a scope may end with 143 at
+  `wsl --terminate`.** systemd sends its scope TERM, and the session records
+  that exit itself. It then reads as ended, not as lost.
 
 ---
 
@@ -772,11 +782,18 @@ same start of its init, and with no process left behind.
 | `--user podman --device /dev/fuse`, with a nested `--privileged` container | ran |
 | the `SYS_ADMIN` shape and the rootless shape, each cut by its `--timeout` while the nested container ran | ended with 124, and left no process in the base |
 
-⚠ **A base reported stopped under a nested engine had met a restart of WSL's VM.**
-`base ensure --repair` cleared it, and that clears only where podman refused
-over a record naming another boot. A new boot id means a new VM, and no shape
-above made one. The state such a restart leaves is cleared at the next start,
-and before each job. `WSL-178`
+⚠ **What stopped the one base reported stopped under a nested engine is not
+measured.** `base ensure --repair` recovered it. In 7.0.2 that cleared only a
+record naming another boot, so a restart of WSL's VM probably happened. Its
+cause is unknown: memory, a crash, or an idle stop. No shape above made one, and
+each ran one small nested container. The cause stays an open question.
+
+⭐ **The state any restart leaves is cleared at the next start, and before each
+job.** `WSL-178`
+
+⭐ **A job whose nested engine found no `/dev/fuse` is told the shape above.** The
+nested podman refuses with `fuse: device /dev/fuse not found`. `run` then prints
+a note naming `--user` and `--device /dev/fuse`, after the job's own exit.
 
 ---
 
@@ -2033,6 +2050,11 @@ tmpfs.** The script also checks the engine's state at each start. A base that
 keeps `shared_tmpfs` on keeps `/mnt/wsl` mounted. Its log is
 `/run/wsl-toolkit-boot.log`. `WSL-178`
 
+⚠ **It replaces `/usr/local/lib/wsl-toolkit/seal-boot.sh`, which an earlier
+release installed on a sealed base.** Its log was `/run/wsl-toolkit-seal.log`.
+`base ensure` moves a sealed base's line in `/etc/wsl.conf` to `boot.sh`. The
+old script goes only once nothing names it, and the base stays sealed.
+
 ⚠ **It costs DNS, and that is why it is opt-in and why the order matters.**
 `/etc/resolv.conf` is a symlink INTO that directory, so a base that unmounts it and
 does nothing else cannot resolve a name. So, in this order and no other:
@@ -2108,11 +2130,10 @@ state before the job's container. What it removed is in the helper's log, not on
 this stderr.
 
 ⛔ **Nothing is removed on a guess.** The automatic clear leaves alone a record
-that names this boot, an empty one and a missing one. Every clear,
+of this start of the base, an empty one and a missing one. Every clear,
 `base ensure --repair` included, takes one lock and reads the record again under
-it. A record
-that now names this boot stops it, so no caller clears what another has started
-on. A base with no `flock` keeps the state, and stderr names
+it. A record that now belongs to this start stops it, so no caller clears what
+another has started on. A base with no `flock` keeps the state, and stderr names
 `base ensure --repair`. BusyBox's `flock`, which an alpine base has, works.
 
 ⛔ **A clear stops at the first directory still there.** The record of the other
@@ -2130,17 +2151,39 @@ disk. So every restart of WSL's VM left a record naming another boot. `WSL-178`
 
 - `base ensure` writes the check jobs send to
   `/usr/local/lib/wsl-toolkit/run-state.sh`, at every ensure.
-- On a base with systemd, `wsl-toolkit-run-state.service` runs it as the account
-  at every start. Arch's systemd puts a tmpfs on `/tmp`, where it finds nothing
-  to clear.
-- Without systemd, `/usr/local/lib/wsl-toolkit/boot.sh` runs it as the account,
+- On every base, `/usr/local/lib/wsl-toolkit/boot.sh` runs it as the account,
   through `runuser`, or `su` where there is none. WSL runs that script at every
   start, named by `/etc/wsl.conf`.
-- ⚠ Only provisioning writes that line in `/etc/wsl.conf`. A base an earlier
-  release built without systemd gets it at its next `base recreate`, and every
-  `base ensure` says whether it has it.
+- On a base with systemd, `wsl-toolkit-run-state.service` runs it as well. The
+  second run finds the state current. Arch's systemd puts a tmpfs on `/tmp`,
+  where neither finds anything to clear.
+- ⭐ Every owner's `base ensure` writes the boot script and its line in
+  `/etc/wsl.conf`, so a base an earlier release built gets both with no rebuild.
+  WSL reads that line at the next start, so nothing restarts for it.
 - ⛔ Root removes nothing in the account's directory. The check runs as the
   account, with the lock and the second read a job's check takes.
+
+⛔ **A restart of the distribution alone keeps the boot id.** `wsl --terminate`,
+an idle stop of the distribution and this tool's own restart keep WSL's VM. So
+podman's record still names this boot, and podman reads the containers of the
+start before as running. Measured on a scratch base, `podman ps` showed one
+`Up` with no `conmon` left.
+
+- Each check holds a current state to this start of the base. A start is the
+  boot id and when the base's init started, as a session records it.
+- A record held to an earlier start is cleared as another boot's is, and the
+  cleared state is held to this start.
+- A state no check has held yet, such as one an older build left, is taken as
+  this start's. So a restart before the first check after an upgrade is not
+  caught.
+- ⚠ **WSL does not wait for the boot script before the first command.** Measured
+  on a scratch base: a command at once read the boot log before its check had
+  run. So podman typed at once can still meet an earlier start's state.
+- ⛔ **A container of this start keeps the state it runs on.** podman does not
+  refuse an earlier start's record, so podman typed by hand may have started one
+  over it. A live `conmon` of the account keeps the state, and the check says so.
+- ⚠ No probe fails over such a state, so `base ensure --repair` is not the way
+  through. The next job or start clears it once no container of this start runs.
 
 ⛔ **The cleaner leaves the engine's state alone.** Arch ages `/tmp` at 10 days,
 which can remove the state of a container that runs longer.

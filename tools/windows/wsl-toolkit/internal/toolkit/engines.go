@@ -64,9 +64,11 @@ func (b *Base) enginesRequest(out io.Writer) ExecRequest {
 			"TK_RUNTIME_DIR": strconv.FormatBool(b.cfg.Base.RuntimeDir),
 			"TK_KVM":         strconv.FormatBool(b.cfg.Base.Kvm),
 
-			// WSL-178: the run directory, and the check a start runs.
+			// WSL-178: the run directory, the check a start runs, and the script
+			// WSL runs at a start, which provisioning alone wrote.
 			"TK_RUN_PREFIX":    guestRunRootPrefix,
 			"TK_RUN_STATE_B64": base64.StdEncoding.EncodeToString(staleRunStatePayload()),
+			"TK_BOOT_B64":      base64.StdEncoding.EncodeToString(bootScript),
 		},
 		Timeout: 10 * time.Minute, Stdout: out, Stderr: out,
 	}

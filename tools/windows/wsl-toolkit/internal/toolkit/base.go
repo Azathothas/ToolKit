@@ -22,6 +22,16 @@ import (
 //go:embed provision.sh
 var provisionScript []byte
 
+// bootScript is the text of the script WSL runs at every start of a base.
+//
+// ⛔ ONE TEXT FOR TWO WRITERS. Provisioning writes it, and so does every
+// owner's `base ensure`, through engines.sh. A base that verifies is never
+// provisioned again, so the default base an earlier release built had no boot
+// script, and its run state was cleared by a job alone. WSL-178.
+//
+//go:embed boot.sh
+var bootScript []byte
+
 // packagesScript is the shared package table, generated from the block in
 // scripts/common/bootstrap.sh. TODO/RULES.md section 4 owns the rule.
 //
@@ -1580,6 +1590,8 @@ func (b *Base) provisionRequest(automount, interop, toolset, sharedTmpfs string,
 			"TK_PASSWORDLESS_SUDO": strconv.FormatBool(b.cfg.Base.PasswordlessSudo),
 			"TK_TOOLSET":           toolset,
 			"TK_SHARED_TMPFS":      sharedTmpfs,
+			// WSL-178: the boot script's text, which engines.sh is handed too.
+			"TK_BOOT_B64": base64.StdEncoding.EncodeToString(bootScript),
 		},
 		Timeout: 30 * time.Minute,
 		Stdout:  out,
@@ -2846,7 +2858,7 @@ func managedInstances() []string {
 // Nothing here takes a path from a caller, so there is no path to contain, and
 // TODO/RULES.md section 3 is the rule that says where that line is drawn.
 func (b *Base) repairRunState(ctx context.Context) (string, error) {
-	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, repairScript, nil, 2*time.Minute)
+	out, stderr, code, err := b.captureAs(ctx, b.cfg.Base.User, repairPayload(), nil, 2*time.Minute)
 	return out, repairRunStateVerdict(out, stderr, code, err)
 }
 
@@ -2872,6 +2884,11 @@ func repairRunStateVerdict(out, stderr string, code int, err error) error {
 	// the base works, as it does after a clear. WSL-137.
 	if strings.Contains(out, "run-state current: another caller cleared it first") {
 		return nil
+	}
+	// ⛔ A STATE KEPT IS NOT A REPAIR. repair.sh keeps an earlier start's state
+	// while a container of this start runs on it, and says why. WSL-178.
+	if why, ok := keptRunState(out); ok {
+		return fmt.Errorf("the run state was kept, because %s", why)
 	}
 	return fmt.Errorf("repair exited 0 without saying what it did: %s", guestFailure(out, stderr))
 }

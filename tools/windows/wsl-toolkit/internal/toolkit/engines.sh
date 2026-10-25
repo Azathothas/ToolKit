@@ -7,7 +7,8 @@
 # says whether the base is configured to run systemd. TK_ROOT_ENGINE,
 # TK_RUNTIME_DIR and TK_KVM are the configuration's opt-in settings, each true or
 # false. TK_RUN_PREFIX names the engine's run directory, which the account's uid
-# ends, and TK_RUN_STATE_B64 is the check `run` sends for a stale one. WSL-178.
+# ends, and TK_RUN_STATE_B64 is the check `run` sends for a stale one.
+# TK_BOOT_B64 is the text of the script WSL runs at every start. WSL-178.
 #
 # ⭐ EVERY FILE HERE BELONGS TO ONE SETTING, and that setting turned off removes
 # it. The cgroup delegation and the run state's upkeep are the parts that are not
@@ -26,6 +27,7 @@ set -u
 : "${TK_KVM:?TK_KVM is required}"
 : "${TK_RUN_PREFIX:?TK_RUN_PREFIX is required}"
 : "${TK_RUN_STATE_B64:?TK_RUN_STATE_B64 is required}"
+: "${TK_BOOT_B64:?TK_BOOT_B64 is required}"
 
 say() { printf '  * %s\n' "$*"; }
 die() { printf 'engines: %s\n' "$*" >&2; exit 3; }
@@ -197,18 +199,76 @@ UNIT_FILE
   else
     say "⚠ run state: systemctl could not enable $RUN_UNIT, so only a job clears another boot's record"
   fi
+elif [ -f "$RUN_UNIT_PATH" ]; then
+  systemctl disable "$RUN_UNIT" >/dev/null 2>&1 || :
+  rm -f "$RUN_UNIT_PATH"
+fi
+
+# -- the boot script, WSL-178 ------------------------------------------------------
+# ⛔ EVERY ENSURE PUTS IT IN PLACE, NOT ONLY PROVISIONING. A base that verifies is
+# never provisioned again, so the default base an earlier release built had no
+# boot line. Only a job cleared another start's state there, and its herdr panes,
+# its `base shell` and podman typed by hand met that state first. The script
+# runs the check above on every base, and the unit runs it too where systemd does.
+#
+# ⭐ NOTHING RESTARTS FOR IT. WSL reads /etc/wsl.conf at a start, which is when the
+# script is needed. The line written here is where provisioning writes it, so the
+# next provisioning finds wsl.conf unchanged and restarts nothing for it either.
+#
+# ⛔ THE SEAL IS THE BASE'S OWN, NEVER THE CONFIGURATION'S. Closing /mnt/wsl needs
+# the resolver provisioning writes first, so this never seals or unseals a base.
+# It keeps the seal the script there names, and a sealed base an earlier release
+# built names seal-boot.sh. WSL-68.
+BOOT=/usr/local/lib/wsl-toolkit/boot.sh
+OLD_BOOT=/usr/local/lib/wsl-toolkit/seal-boot.sh
+BOOT_LINE="command=$BOOT"
+WSL_CONF=/etc/wsl.conf
+seal=$(sed -n '2s/^seal=//p' "$BOOT" 2>/dev/null) || seal=
+if [ -z "$seal" ]; then
+  if grep -qxF "command=$OLD_BOOT" "$WSL_CONF" 2>/dev/null; then seal=off; else seal=on; fi
+fi
+if [ "$seal" != on ] && [ "$seal" != off ]; then
+  say "⚠ boot script: $BOOT names the seal '$seal', so it was left as it is"
 else
-  if [ -f "$RUN_UNIT_PATH" ]; then
-    systemctl disable "$RUN_UNIT" >/dev/null 2>&1 || :
-    rm -f "$RUN_UNIT_PATH"
-  fi
-  # ⚠ WITHOUT systemd THE BOOT SCRIPT RUNS IT, and only provisioning writes the
-  # line in wsl.conf that names that script, so a base an earlier release built
-  # says which it has.
-  if grep -q '^command=/usr/local/lib/wsl-toolkit/boot.sh$' /etc/wsl.conf 2>/dev/null; then
-    say "run state: the boot script clears another boot's record at every start"
+  tmp=$(mktemp "$BOOT.XXXXXX") || die "no temporary file beside $BOOT"
+  {
+    printf '#!/bin/sh\nseal=%s\naccount=%s\n' "$seal" "$TK_USER"
+    printf '%s' "$TK_BOOT_B64" | base64 -d
+  } > "$tmp" || die "could not write $BOOT"
+  grep -qx '# <<< the boot script: end' "$tmp" ||
+    { rm -f "$tmp"; die "the boot script handed to engines.sh was cut short"; }
+  install_file "$tmp" "$BOOT" 0755 || :
+  # ⚠ THE LINE GOES WHERE PROVISIONING PUTS IT: over the old script's line, or
+  # over the blank line an earlier release left after systemd= in [boot]. A file
+  # this tool did not write, or one naming another boot command, is left alone.
+  if grep -qxF "$BOOT_LINE" "$WSL_CONF" 2>/dev/null; then
+    say "boot script: /etc/wsl.conf names $BOOT, which runs at every start"
+  elif [ "$(head -n 1 "$WSL_CONF" 2>/dev/null)" != '# Written by wsl-toolkit.' ]; then
+    say "⚠ boot script: /etc/wsl.conf is not this tool's, so it names no boot script until base recreate writes one"
+  elif grep '^command=' "$WSL_CONF" 2>/dev/null | grep -qvxF "command=$OLD_BOOT"; then
+    say "⚠ boot script: /etc/wsl.conf names another boot command, so it was left as it is"
   else
-    say "⚠ run state: /etc/wsl.conf names no boot script, so only a job clears another boot's record until base recreate writes one"
+    tmp=$(mktemp "$WSL_CONF.XXXXXX") || die "no temporary file beside $WSL_CONF"
+    awk -v line="$BOOT_LINE" -v old="command=$OLD_BOOT" '
+      function put() { if (!done) { print line; done = 1 } }
+      /^\[/ { if (inboot) put(); inboot = ($0 == "[boot]"); after = 0; print; next }
+      inboot && !done && $0 == old { put(); next }
+      inboot && !done && after && $0 == "" { put(); after = 0; next }
+      { after = (inboot && $0 ~ /^systemd=/); print }
+      END { if (inboot) put(); if (!done) { print ""; print "[boot]"; print line } }
+    ' "$WSL_CONF" > "$tmp" || die "could not write $WSL_CONF"
+    if grep -qxF "$BOOT_LINE" "$tmp" && chmod 0644 "$tmp" && mv -f "$tmp" "$WSL_CONF"; then
+      say "boot script: /etc/wsl.conf names $BOOT from the next start, and nothing restarts for it"
+    else
+      rm -f "$tmp"
+      say "⚠ boot script: /etc/wsl.conf could not be given the line that names $BOOT"
+    fi
+  fi
+  # ⛔ THE OLD NAME GOES ONLY ONCE NOTHING NAMES IT. Removed first, a base whose
+  # wsl.conf could not be rewritten would start naming a script that was gone,
+  # and a sealed one would keep /mnt/wsl mounted with nothing logged.
+  if ! grep -qF "$OLD_BOOT" "$WSL_CONF" 2>/dev/null; then
+    rm -f "$OLD_BOOT"
   fi
 fi
 

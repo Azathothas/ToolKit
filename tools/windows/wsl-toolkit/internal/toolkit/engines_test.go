@@ -186,7 +186,8 @@ func (h *enginesHost) run(rootEngine, runtimeDir, kvm bool) (string, time.Durati
 		"TK_USER="+h.user, "TK_SYSTEMD=true",
 		"TK_ROOT_ENGINE="+b(rootEngine), "TK_RUNTIME_DIR="+b(runtimeDir), "TK_KVM="+b(kvm),
 		"TK_RUN_PREFIX="+filepath.ToSlash(h.dir)+"/tmp/wsl-toolkit-run-",
-		"TK_RUN_STATE_B64="+base64.StdEncoding.EncodeToString(staleRunStatePayload()))
+		"TK_RUN_STATE_B64="+base64.StdEncoding.EncodeToString(staleRunStatePayload()),
+		"TK_BOOT_B64="+base64.StdEncoding.EncodeToString(bootScript))
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	start := time.Now()
