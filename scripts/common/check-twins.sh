@@ -204,10 +204,12 @@ compare_pair() {
   #
   # ⭐ BOTH HALVES RUN AT ONCE, each into a file of its own, and `wait` reads
   # each one's exit code from its own process.
-  ( cd "$REPO_ROOT" && sh "$REPO_ROOT/scripts/common/$_p_sh" $_p_shargs > "$TMP/pair.sh" 2>/dev/null ) &
+  # ⚠ EACH HALF'S STDERR IS KEPT, never compared. A disagreement prints its
+  # tail, so a check that failed on one runner says what it found there.
+  ( cd "$REPO_ROOT" && sh "$REPO_ROOT/scripts/common/$_p_sh" $_p_shargs > "$TMP/pair.sh" 2> "$TMP/pair.sh.err" ) &
   _p_a=$!
   # shellcheck disable=SC2086
-  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File "$REPO_ROOT/scripts/common/$_p_ps" $_p_psargs > "$TMP/pair.ps" 2>/dev/null ) &
+  ( cd "$REPO_ROOT" && "$PWSH" -NoProfile -File "$REPO_ROOT/scripts/common/$_p_ps" $_p_psargs > "$TMP/pair.ps" 2> "$TMP/pair.ps.err" ) &
   _p_b=$!
   wait "$_p_a"; ra=$?
   wait "$_p_b"; rb=$?
@@ -224,7 +226,9 @@ compare_pair() {
   else
     note "$_p_name: the twins disagree"
     printf '           sh: exit %s  %s\n' "$ra" "$a"
+    tail -n 12 "$TMP/pair.sh.err" | sed 's/^/             sh said: /'
     printf '           ps: exit %s  %s\n' "$rb" "$b"
+    tail -n 12 "$TMP/pair.ps.err" | sed 's/^/             ps said: /'
     printf '           ⛔ One rule, two answers. Fix BOTH; do not widen this\n'
     printf '           comparison to make the failure go away.\n'
   fi

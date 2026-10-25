@@ -96,6 +96,20 @@ func TestAGateSkipIsReportedAsASkip(t *testing.T) {
 	}
 }
 
+// ⛔ A CHECK RUN WITH --json SAYS WHAT IT FOUND, on stderr, and its stdout stays
+// one JSON document a twin can be compared on.
+func TestAJSONCheckNamesItsFindingsOnStderr(t *testing.T) {
+	var out, errw bytes.Buffer
+	emit(&out, &errw, "check-go/1", checks.Result{Problems: 1, Detail: []string{"tools/x: go test: --- FAIL: TestX (1.2s) | x_test.go:9: it broke"}})
+	var doc map[string]any
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil || doc["problems"] != float64(1) {
+		t.Fatalf("stdout is not the one JSON document: %q (%v)", out.String(), err)
+	}
+	if got := errw.String(); !strings.Contains(got, "FAIL   tools/x: go test: --- FAIL: TestX (1.2s) | x_test.go:9: it broke") {
+		t.Fatalf("a failed check with --json said %q on stderr, want its finding", got)
+	}
+}
+
 // TestASingleCheckSkipIsReportedAsASkip is the same rule for `check NAME`, which
 // prints through its own function and printed `ok` over a skip the same way.
 func TestASingleCheckSkipIsReportedAsASkip(t *testing.T) {

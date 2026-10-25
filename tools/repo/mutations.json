@@ -2,6 +2,15 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "check: a --json check names its findings on stderr",
+      "file": "main.go",
+      "find": "\t\tfmt.Fprintf(errw, \"  FAIL   %s\\n\", d)\n",
+      "replace": "\t\t_ = d\n",
+      "run": "TestAJSONCheckNamesItsFindingsOnStderr",
+      "module": "tools/check",
+      "args": []
+    },
+    {
       "label": "linux-proof: a row of an older tree cannot read the labels after it",
       "module": "tools/repo",
       "file": "internal/linuxproof/linuxproof.go",

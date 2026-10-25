@@ -100,7 +100,7 @@ func main() {
 		}
 		res := checks.Message(msgPath)
 		if asJSON {
-			emit("check-commits/1", res)
+			emit(os.Stdout, os.Stderr, "check-commits/1", res)
 		} else {
 			report(os.Stdout, "commit-msg", res)
 		}
@@ -158,7 +158,7 @@ func main() {
 		}
 		res := c.run(tree)
 		if asJSON {
-			emit(c.schema, res)
+			emit(os.Stdout, os.Stderr, c.schema, res)
 		} else {
 			report(os.Stdout, c.name, res)
 		}
@@ -181,13 +181,23 @@ func usage() {
 	fmt.Fprint(os.Stderr, "\nexit: 0 agreed, 1 disagreed, 2 could not run\n")
 }
 
-func emit(schema string, r checks.Result) {
+// emit prints a check's JSON document on out and each of its findings on
+// errw.
+//
+// ⛔ THE FINDINGS GO TO STDERR, AND STDOUT STAYS ONE DOCUMENT. With --json a
+// check printed its counts alone, so CI's probes job reported `check-go` with
+// one problem and no word of which case failed or what it said.
+func emit(out, errw io.Writer, schema string, r checks.Result) {
 	m := map[string]any{"schema": schema, "problems": r.Problems}
 	for k, v := range r.Extra {
 		m[k] = v
 	}
 	b, _ := json.Marshal(m)
-	fmt.Println(string(b))
+	fmt.Fprintln(out, string(b))
+	sort.Strings(r.Detail)
+	for _, d := range r.Detail {
+		fmt.Fprintf(errw, "  FAIL   %s\n", d)
+	}
 }
 
 // skipReason is why a check ran nothing, when it ran nothing.
