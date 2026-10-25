@@ -27,7 +27,7 @@ Measured on this host unless a row says read.
 | `check-go.ps1` | 72 to 75 s | the last two runs |
 | CI's Linux jobs in containers | Go 68 to 82 s, ShellCheck 0.9.0 over 52 scripts 30 to 43 s | the last two runs |
 | mutation rows | 600 at `9784821` | `tools/repo/mutations.json` |
-| CI | 8 runs, 3 of them required; one guard shard 9 to 17 min | `gh run view` on `9784821` and `d81910f` |
+| CI | 11 runs, 3 of them required; 3 guard shards of 1,202 rows all ran out at 30 min, so the job is cut into 6 | `gh run view` on `9784821` and `d81910f` |
 | the acceptance suite | 102 cases quick, 109 full; 399 s with the installed 7.0.0 | `acceptance.ps1`; the last run |
 | the last release | `wsl-toolkit-v7.0.2`, 22 assets, 7 release jobs green | `gh release view`, `gh run view` |
 | this host | Windows 11 Pro 26300, PowerShell 7.6.7, WSL 3.0.3.0, git 2.55.0, Go 1.27.0 | the doctor |
