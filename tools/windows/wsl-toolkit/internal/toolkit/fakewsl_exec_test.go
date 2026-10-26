@@ -176,8 +176,15 @@ func execFakeShell(script string, catStdin bool) int {
 		os.Stdout.WriteString("REMOVED\n")
 		return 0
 	case execFakeJobMarker.MatchString(script):
-		// A job's container: its wrapper's marker, and its own exit.
-		os.Stderr.WriteString("\n" + execFakeJobMarker.FindString(script) + "\n")
+		// A job's container: its wrapper's marker, and its own exit. ⭐ An
+		// image that never ran writes no marker, and a job whose streams outlive
+		// it leaves a child holding its stdout. WSL-127.
+		if os.Getenv(execFakeNoMarkerEnv) == "" {
+			os.Stderr.WriteString("\n" + execFakeJobMarker.FindString(script) + "\n")
+		}
+		if os.Getenv(execFakeLingerEnv) != "" {
+			execFakeLinger()
+		}
 		code, _ := strconv.Atoi(os.Getenv(execFakeExitEnv))
 		return code
 	}

@@ -77,6 +77,11 @@ MSYS2_ARG_CONV_EXCL='*'` stops it, and the tool then reads a host path such as
 gives you the pipeline's status, not the tool's. Read `$LASTEXITCODE` on the line
 after the command.
 
+⭐ **A job's code and the tool's are apart.** `run`, `wait`, `logs ID --follow`,
+`base exec` and `base agent` answer the job's own code. Where the tool could not run
+the job, they answer 125. Every other command answers 2 for a refusal. Under `--json`,
+`job_started` says whether the job started, because a job can exit 125 itself.
+
 ---
 
 ## 4. The shape of a base
@@ -164,7 +169,7 @@ wsl-toolkit base grant --source . --mode rw
 
 Grants **one** Windows directory, live, under `/workspaces`. Use `--mode ro` when the
 work must not change it. ⛔ `base agent NAME` refuses a directory no grant covers, with
-exit 2 and the `base grant` line that would cover it. **That refusal is the design
+exit 125 and the `base grant` line that would cover it. **That refusal is the design
 working. Do not widen a grant to make a step pass.** Report it instead.
 
 To take one away:
@@ -183,7 +188,8 @@ wsl-toolkit base exec --script LOCAL-FILE.sh
 wsl-toolkit base shell
 ```
 
-`base exec` runs one command as the account and returns its exit code. `--script`
+`base exec` runs one command as the account and returns its exit code, or 125 where
+it could not run the command. `--script`
 sends a local file's bytes, which avoids every quoting problem, and `--script -` reads
 them from stdin. `--env-file FILE` exports its `NAME=VALUE` lines to the command, and
 no shell reads them. `base shell` opens an interactive login shell. It is for a
@@ -235,7 +241,8 @@ back unless the job writes it to `/out` and the run passes `--artifacts DIR`.
 streams as they are written and exits with the job's own code. `wait ID` answers that
 code alone. When `wait --timeout` runs out, it answers 124 and the job keeps running.
 `stop ID` ends the job. `wait` then answers 130, unless the job traps TERM and keeps
-its own code.
+its own code. Each answers 125 where it could not read the job, such as an id this
+instance does not hold.
 
 ```powershell
 $sid = wsl-toolkit base exec --detach --timeout 0 -c './serve.sh'

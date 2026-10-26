@@ -175,7 +175,7 @@ func TestAJobTheCapRefusesRecordsItsEnd(t *testing.T) {
 		t.Fatalf("a job over the cap answered %v, %d, %v", ended, code, err)
 	}
 	st, err := toolkit.ReadJobState(root, cliJobID)
-	if err != nil || st.Owned || st.Result == nil || st.Result.Verdict() != exitCannot {
+	if err != nil || st.Owned || st.Result == nil || st.Result.Verdict() != toolkit.ExitTool {
 		t.Fatalf("the refused job reads as %+v, %v", st, err)
 	}
 	if _, ended, _, _ := (&ownerFlags{}).admit(context.Background(), nil, "", "", false); ended {

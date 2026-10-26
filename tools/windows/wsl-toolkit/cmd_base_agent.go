@@ -170,15 +170,22 @@ func agentEnv(raw []string) ([]toolkit.EnvPair, error) {
 
 // runLauncher is this executable started under an agent's launcher name: the agent's
 // command, for the instance the name carries, with every argument the agent's.
+//
+// ⭐ IT ANSWERS THE AGENT'S CODE, so its own failure answers toolkit.ToolExit,
+// as `base agent` does. WSL-127.
 func runLauncher(ctx context.Context, agent, instance string, args []string) int {
 	quiet = true
+	if err := readToolExit(); err != nil {
+		fmt.Fprintln(os.Stderr, agent+": "+err.Error())
+		return ownExit(true, exitCannot, err)
+	}
 	// ⛔ A NAME WITH NO SUFFIX SELECTS THE DEFAULT BASE, so neither the environment
 	// nor a working tree's pointer moves it to another instance. WSL-167.
 	if instance == toolkit.DefaultInstance {
 		os.Unsetenv(toolkit.InstanceEnv)
 	} else if code, err := applyInstance(ctx, instance); err != nil {
 		fmt.Fprintln(os.Stderr, agent+": "+err.Error())
-		return code
+		return ownExit(true, code, err)
 	}
 	code, err := cmdBaseAgent(ctx, append([]string{agent, "--"}, args...))
 	if err != nil {
@@ -187,5 +194,5 @@ func runLauncher(ctx context.Context, agent, instance string, args []string) int
 			code = exitCannot
 		}
 	}
-	return code
+	return ownExit(true, code, err)
 }

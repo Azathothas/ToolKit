@@ -347,9 +347,27 @@ func (o *ownerFlags) admit(ctx context.Context, owner *toolkit.JobOwner, label, 
 		code, err = reportJob(res, asJSON)
 		return waited, true, code, err
 	}
-	res := toolkit.JobResult{ID: owner.ID, Label: label, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot, WaitedToRun: waited}
+	res := toolkit.JobResult{ID: owner.ID, Label: label, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), WaitedToRun: waited}
+	code, err = o.refuseClaimed(owner, res, asJSON, err)
+	return waited, true, code, err
+}
+
+// refuseClaimed ends a job refused after it was claimed: it records the end, and
+// answers the recorded result under --json, which says job_started false.
+// `run` and the cap refuse through here. WSL-127.
+//
+// ⚠ exitCannot HERE, and the dispatcher moves it to toolkit.ToolExit as it
+// moves every refusal of `run`. The result's effective_exit already says that
+// code, because Seal reads the same setting.
+func (o *ownerFlags) refuseClaimed(owner *toolkit.JobOwner, res toolkit.JobResult, asJSON bool, err error) (int, error) {
+	res.Seal()
 	o.finish(owner, &res)
-	return waited, true, exitCannot, err
+	if asJSON {
+		if werr := writeJSON(res); werr != nil {
+			logf("  ! could not write the refused job's result: %s", werr.Error())
+		}
+	}
+	return exitCannot, err
 }
 
 // rowAdmit is the cap as a fleet holds it: each row is held as its runner

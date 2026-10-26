@@ -443,7 +443,7 @@ func TestJobVerdict(t *testing.T) {
 		{"a clean run", toolkit.JobResult{Exit: 0}, exitOK},
 		{"the container's own code is forwarded", toolkit.JobResult{Exit: 37}, 37},
 		{"a deadline", toolkit.JobResult{Exit: 124, TimedOut: true}, exitTimeout},
-		{"an image that never ran", toolkit.JobResult{Exit: 125, Unreached: true}, exitCannot},
+		{"an image that never ran", toolkit.JobResult{Exit: 125, Unreached: true}, toolkit.ExitTool},
 		{"the command passed and its output did not arrive", toolkit.JobResult{Exit: 0, ArtifactError: "refused"}, exitFailed},
 		{"the command failed AND its output did not arrive", toolkit.JobResult{Exit: 7, ArtifactError: "refused"}, 7},
 	}
@@ -465,8 +465,8 @@ func TestUnreachedIsNotInferredFromAStatus(t *testing.T) {
 			t.Errorf("a payload that exited %d was reported as %d; a classifier keyed to these numbers calls a working job unreached", code, got)
 		}
 	}
-	if got := jobVerdict(toolkit.JobResult{Exit: 125, Unreached: true}); got != exitCannot {
-		t.Errorf("an image that could not be acquired reported %d, want %d", got, exitCannot)
+	if got := jobVerdict(toolkit.JobResult{Exit: 125, Unreached: true}); got != toolkit.ExitTool {
+		t.Errorf("an image that could not be acquired reported %d, want %d", got, toolkit.ExitTool)
 	}
 }
 

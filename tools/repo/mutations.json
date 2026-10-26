@@ -20,6 +20,231 @@
       "args": []
     },
     {
+      "label": "linux-proof: a job wsl-toolkit 8 could not run is exit 2, not a red job",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\tif e.code == ToolCannot {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestAJobWsltoolkit8CouldNotRunIsExitTwo",
+      "args": []
+    },
+    {
+      "label": "linux-proof: a job's tool code is pinned against the caller's shell",
+      "module": "tools/repo",
+      "file": "internal/linuxproof/run.go",
+      "find": "\t\t\tcmd.Env = append(cmd.Env, ToolExitPin)\n",
+      "replace": "\t\t\t_ = ToolExitPin\n",
+      "run": "TestAJobWsltoolkit8CouldNotRunIsExitTwo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job command's own refusal answers the tool's code, not a job's 2",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\tif forwards && err != nil && code == exitCannot {\n",
+      "replace": "\tif false && forwards && err != nil && code == exitCannot {\n",
+      "run": "TestAJobCommandsOwnRefusalIsNotAJobsTwo|TestAJobsOwnTwoIsForwardedUnchanged",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a forwarded 2 that came with no error stays the job's",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "forwards && err != nil && code == exitCannot",
+      "replace": "forwards && code == exitCannot",
+      "run": "TestAJobsOwnTwoIsForwardedUnchanged",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: logs answers a job's code only with --follow",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\treturn hasFlag(args, \"follow\")\n",
+      "replace": "\t\treturn true\n",
+      "run": "TestAJobCommandsOwnRefusalIsNotAJobsTwo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: distro new answers a job's code only when it runs a command",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\t\treturn hasFlag(args[1:], \"c\") || hasFlag(args[1:], \"command-base64\") || hasFlag(args[1:], \"script\")\n",
+      "replace": "\t\t\treturn true\n",
+      "run": "TestAJobCommandsOwnRefusalIsNotAJobsTwo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a flag written =false is not set",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\t\tif b, err := strconv.ParseBool(value); err == nil {\n\t\t\treturn b\n\t\t}\n",
+      "replace": "\t\tif _, err := strconv.ParseBool(value); err == nil {\n\t\t\treturn true\n\t\t}\n",
+      "run": "TestAFlagIsReadInEverySpelling|TestAJobCommandsOwnRefusalIsNotAJobsTwo",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: --tool-exit moves the tool's code for one call",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "main.go",
+      "find": "\t\t\tos.Setenv(toolkit.ToolExitEnv, args[i])\n",
+      "replace": "\t\t\t_ = args[i]\n",
+      "run": "TestTheToolsOwnCodeIsConfigurable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: WSL_TOOLKIT_TOOL_EXIT moves the tool's code",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\ttoolkit.SetToolExit(code)\n\treturn nil\n",
+      "replace": "\t_ = code\n\treturn nil\n",
+      "run": "TestTheToolsOwnCodeIsConfigurable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a tool code the deadline already answers is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/toolexit.go",
+      "find": "\tcase n == ExitTimeout:\n",
+      "replace": "\tcase false:\n",
+      "run": "TestToolExitTakesOnlyACodeWithNoOtherMeaning|TestTheToolsOwnCodeIsConfigurable",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an unreached job answers the tool's code",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\tcase j.Unreached || j.ToolFailed:\n",
+      "replace": "\tcase j.ToolFailed:\n",
+      "run": "TestAJobThisToolCouldNotRunIsNotAJobThatExitedTwo|TestVerdictCarriesWhatTheProcessReturns|TestAJobSaysWhetherItStartedAndWhoseCodeItAnswers",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job whose end was lost answers the tool's code",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\tcase j.Unreached || j.ToolFailed:\n",
+      "replace": "\tcase j.Unreached:\n",
+      "run": "TestAJobThisToolCouldNotRunIsNotAJobThatExitedTwo|TestAJobSaysWhetherItStartedAndWhoseCodeItAnswers",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job's result says whether its payload was entered",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\tres.JobStarted = marker.Seen()\n",
+      "replace": "\tres.JobStarted = !marker.Seen()\n",
+      "run": "TestAJobSaysWhetherItStartedAndWhoseCodeItAnswers",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a payload whose end was lost is the tool's failure, not the job's 2",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\tcase lostEnd(execErr):\n",
+      "replace": "\tcase false && lostEnd(execErr):\n",
+      "run": "TestAJobSaysWhetherItStartedAndWhoseCodeItAnswers",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an exit status is never a lost end",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\treturn execErr != nil && !errors.As(execErr, &exited)\n",
+      "replace": "\treturn execErr != nil || errors.As(execErr, &exited)\n",
+      "run": "TestOnlyAnErrorWithNoExitStatusIsALostEnd|TestAJobSaysWhetherItStartedAndWhoseCodeItAnswers",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: job_started is on every result",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/job.go",
+      "find": "\tJobStarted bool `json:\"job_started\"`\n",
+      "replace": "\tJobStarted bool `json:\"job_started,omitempty\"`\n",
+      "run": "TestJobStartedIsOnEveryResult|TestAJobTheCapRefusesAnswersThatItNeverStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the helper protocol moved, so a helper of the one before is refused",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/helper.go",
+      "find": "const HelperSchema = \"wsl-toolkit-helper/7\"",
+      "replace": "const HelperSchema = \"wsl-toolkit-helper/6\"",
+      "run": "TestAHelperOfTheEarlierProtocolIsRefused",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refused run --json answers a document that says no job started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "main.go",
+      "find": "\t\tif refusesWithDocument(cmd, cmdArgs) {\n",
+      "replace": "\t\tif false {\n",
+      "run": "TestARefusedRunUnderJSONSaysNoJobStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a refusal is never a second document",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "exit_tool.go",
+      "find": "\tif answered {\n\t\treturn\n\t}\n",
+      "replace": "",
+      "run": "TestARefusalIsNotASecondDocument",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job refused after its claim records the tool's code",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_owner.go",
+      "find": "\tres.Seal()\n\to.finish(owner, &res)\n\tif asJSON {\n",
+      "replace": "\to.finish(owner, &res)\n\tif asJSON {\n",
+      "run": "TestAJobTheCapRefusesAnswersThatItNeverStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a job refused after its claim answers its result under --json",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_owner.go",
+      "find": "\tif asJSON {\n\t\tif werr := writeJSON(res); werr != nil {\n\t\t\tlogf(\"  ! could not write the refused job's result: %s\", werr.Error())\n",
+      "replace": "\tif false {\n\t\tif werr := writeJSON(res); werr != nil {\n\t\t\tlogf(\"  ! could not write the refused job's result: %s\", werr.Error())\n",
+      "run": "TestAJobTheCapRefusesAnswersThatItNeverStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: wait --json says whether the job started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_jobs.go",
+      "find": "\t\tend.JobStarted = endStarted(end)\n",
+      "replace": "",
+      "run": "TestAWaitSaysWhetherTheJobStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a session a wait read had started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_jobs.go",
+      "find": "\tcase end.Session != nil:\n\t\treturn true\n",
+      "replace": "\tcase end.Session != nil:\n\t\treturn false\n",
+      "run": "TestAWaitSaysWhetherTheJobStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an orphan whose container has an exit started",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_jobs.go",
+      "find": "res := toolkit.JobResult{ID: id, JobStarted: exit != nil}",
+      "replace": "res := toolkit.JobResult{ID: id, JobStarted: false}",
+      "run": "TestAnOrphanWithAnExitStarted",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: a launcher's own failure answers the tool's code",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "cmd_base_agent.go",
+      "find": "\treturn ownExit(true, code, err)\n}\n",
+      "replace": "\treturn code\n}\n",
+      "run": "TestALaunchersOwnFailureAnswersTheToolsCode",
+      "args": []
+    },
+    {
       "label": "check: a --json check names its findings on stderr",
       "file": "main.go",
       "find": "\t\tfmt.Fprintf(errw, \"  FAIL   %s\\n\", d)\n",
@@ -4738,8 +4963,8 @@
     {
       "label": "wsl-toolkit: a job the cap refuses records its end",
       "file": "cmd_owner.go",
-      "find": "\to.finish(owner, &res)\n\treturn waited, true, exitCannot, err\n",
-      "replace": "\t_ = res\n\treturn waited, true, exitCannot, err\n",
+      "find": "\to.finish(owner, &res)\n\tif asJSON {\n",
+      "replace": "\t_ = res\n\tif asJSON {\n",
       "run": "TestAJobTheCapRefusesRecordsItsEnd",
       "module": "tools/windows/wsl-toolkit",
       "args": []

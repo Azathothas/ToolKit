@@ -84,6 +84,13 @@ func fake(log string, args []string) int {
 	case "cannot":
 		// wsl-toolkit's answer for a base it cannot use.
 		return 2
+	case "cannot-8":
+		// wsl-toolkit 8's answer for a base it cannot use: its own code, which
+		// WSL_TOOLKIT_TOOL_EXIT moves. WSL-127.
+		if code, err := strconv.Atoi(os.Getenv("WSL_TOOLKIT_TOOL_EXIT")); err == nil {
+			return code
+		}
+		return 125
 	}
 	return 0
 }
@@ -547,6 +554,23 @@ func TestAJobThatCouldNotRunIsExitTwo(t *testing.T) {
 	c.tool = filepath.Join(c.work, "no-such-wsl-toolkit")
 	if code, msg := c.run(t, Options{}); code != 2 || Has(c.common, tree) || !strings.Contains(msg, "could not be started") {
 		t.Fatalf("a job tool that cannot start: exit %d, %q; want 2 and no proof", code, msg)
+	}
+}
+
+// TestAJobWsltoolkit8CouldNotRunIsExitTwo. ⚠ wsl-toolkit 8 answers 125 for a job
+// it could not run, and a value of WSL_TOOLKIT_TOOL_EXIT in the caller's shell
+// moves it. The job's own variable is pinned, so the proof still reads "could
+// not run" and not a red job. WSL-127.
+func TestAJobWsltoolkit8CouldNotRunIsExitTwo(t *testing.T) {
+	c := newProofCase(t)
+	tree := gitIn(t, c.work, "rev-parse", "HEAD^{tree}")
+	t.Setenv(fakeModeEnv, "cannot-8")
+	t.Setenv("WSL_TOOLKIT_TOOL_EXIT", "7")
+	if code, msg := c.run(t, Options{}); code != 2 || Has(c.common, tree) || !strings.Contains(msg, "exited 125") {
+		t.Fatalf("a wsl-toolkit 8 job that could not run: exit %d, proved %v, %q; want 2 and no proof", code, Has(c.common, tree), msg)
+	}
+	if got := exitOf([]jobEnd{{ran: true}, {ran: true, code: ToolCannot}}); got != 2 {
+		t.Fatalf("a job that answered %d is read as %d", ToolCannot, got)
 	}
 }
 

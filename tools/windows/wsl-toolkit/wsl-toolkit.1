@@ -46,9 +46,20 @@ Global: --instance N  one isolated instance: distribution wsl-toolkit-N and
         --quiet       progress off. Answers still go to stdout
         --json-compact  each --json answer on one line. Also
                       WSL_TOOLKIT_JSON=compact
+        --tool-exit N the code a command that answers with a job's own
+                      code answers where this tool could not run it:
+                      2 to 255, other than 124 and 130. 125 by default,
+                      and 2 is what 7.x answered. Also
+                      WSL_TOOLKIT_TOOL_EXIT
 
 Every command takes --json where an answer has structure.
 Progress goes to stderr; stdout carries the answer alone.
+
+Exit: 0 it ran and agreed, 1 it ran and disagreed, 2 it could not run,
+124 a deadline, 130 a stop. run, wait, logs --follow, base exec, base
+shell, base agent, distro new -c, distro run, distro enter and bsd run
+answer the job's own code, and the --tool-exit code, 125, where this
+tool could not run it.
 .fi
 .SH COMMAND REFERENCE
 .SS doctor

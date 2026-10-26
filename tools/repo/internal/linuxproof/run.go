@@ -364,6 +364,12 @@ func Prove(req Request, out, errOut io.Writer) int {
 			cmd.Dir = req.Repo.Root
 		}
 		cmd.Env = JobEnv(os.Environ())
+		if !native {
+			// ⭐ THE TOOL'S OWN CODE IS PINNED, so a value in the caller's
+			// shell cannot turn a job that could not run into a red one.
+			// WSL-127.
+			cmd.Env = append(cmd.Env, ToolExitPin)
+		}
 		prefix := fmt.Sprintf("%-*s | ", width, j.Name)
 		stdout := &lineWriter{mu: &mu, w: out, prefix: prefix}
 		stderr := &lineWriter{mu: &mu, w: errOut, prefix: prefix}
@@ -430,6 +436,13 @@ func Prove(req Request, out, errOut io.Writer) int {
 	return 0
 }
 
+// ToolCannot is what wsl-toolkit 8 answers where it could not run a job, and
+// ToolExitPin is the variable that keeps it so for one job. WSL-127.
+const (
+	ToolCannot  = 125
+	ToolExitPin = "WSL_TOOLKIT_TOOL_EXIT=125"
+)
+
 // exitOf is the exit code of a proof whose jobs ended so: 0 when every one
 // passed, and otherwise the code of the first in order that did not.
 //
@@ -440,6 +453,12 @@ func exitOf(ends []jobEnd) int {
 	for _, e := range ends {
 		if e.passed() {
 			continue
+		}
+		// ⭐ wsl-toolkit 8 ANSWERS 125 FOR A JOB IT COULD NOT RUN, and 2 stays
+		// for an older one, which answered 2 for that and for a job's own 2.
+		// WSL-127.
+		if e.code == ToolCannot {
+			return 2
 		}
 		if e.err != nil || e.code == 2 {
 			return 2

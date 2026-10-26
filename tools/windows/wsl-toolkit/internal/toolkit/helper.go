@@ -63,7 +63,10 @@ import (
 // archive carried rather than from a .git the client sent. A version 5 helper
 // left running answers that gc with exit 0 and runs git in the upload, so a
 // client refuses it until it is restarted. WSL-115, and a safety review.
-const HelperSchema = "wsl-toolkit-helper/6"
+// ⛔ VERSION 7 ADDS job_started AND tool_failed TO A JOB'S RESULT. A version 6
+// helper sends neither, so a job it ran would read as one that never started,
+// and an end it lost as the payload's own 2. WSL-127.
+const HelperSchema = "wsl-toolkit-helper/7"
 
 // HelperEndpoint is what a client reads to find a listening helper.
 type HelperEndpoint struct {

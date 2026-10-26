@@ -784,9 +784,8 @@ func cmdRun(ctx context.Context, args []string) (int, error) {
 		return exitCannot, err
 	}
 	refuse := func(err error) (int, error) {
-		res := toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error(), EffectiveExit: exitCannot}
-		o.finish(owner, &res)
-		return exitCannot, err
+		res := toolkit.JobResult{ID: owner.ID, Label: *image, Image: ref, Exit: exitCannot, Unreached: true, Error: err.Error()}
+		return o.refuseClaimed(owner, res, j.asJSON, err)
 	}
 	// ⭐ THE PROJECT IS RECORDED WITH THE CLAIM, so `gc --workspace` finds even a
 	// job refused before it copied anything. WSL-114.
