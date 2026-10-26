@@ -2248,12 +2248,14 @@ fully qualified is refused the same way. `WSL-169`
 
 ⭐ **A pull may be silent for as long as its largest layer takes at 256 KiB/s.**
 podman on Windows prints a line as a layer starts and one as it ends, and nothing
-between. So a build first reads the image's manifest from its registry, over HTTPS
-and with no credential, for at most 30 seconds. It says so before the read. The
-engine is not asked, because podman prints no layers for one image. The pull's stall
-limit is that layer's time at the floor rate, and never under four minutes. The
-build's `pulling` line says the limit and where it came from. Its total ceiling grows
-past thirty minutes where every layer at that rate needs it. `WSL-176`
+between. The pull's stall limit is that layer's time at the floor rate, and never
+under four minutes. The build's `pulling` line says the limit and where it came from.
+Its total ceiling grows past thirty minutes where every layer at that rate needs it.
+`WSL-176`
+
+⭐ **The layers are read from the image's registry**, over HTTPS and with no
+credential, for at most 30 seconds. The build says so before the read. The engine is
+not asked, because podman prints no layers for one image. `WSL-176`
 
 ⚠ **On a slower link, set `WSL_TOOLKIT_PULL_STALL`** to a duration such as `45m`. It
 names every pull's stall limit outright. The layers are still read for the ceiling.
