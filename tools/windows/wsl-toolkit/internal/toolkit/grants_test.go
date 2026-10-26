@@ -275,6 +275,9 @@ func grantsDriveFrom(t *testing.T, dir, mode string, mounts []BaseMount, target,
 // touch the host. umount fails once when dir holds umount.fail, and on its Nth call
 // when dir's umount.failat holds N. With umount.gone it takes the mount away
 // before it fails, as when another process unmounted it first. WSL-189.
+//
+// ⚠ IN THE SHELL, WITH NO PIPE AND NO SUBSHELL. Git for Windows' sh pays a tenth of
+// a second a fork, and the stand-ins ran on every mount. WSL-190.
 const grantsStandIns = `
 mkdir() { :; }
 chmod() { :; }
@@ -286,25 +289,45 @@ mount() {
     printf 'the stand-in mount failed\n' >&2
     return 1
   fi
-  m=$(grep " $1 drvfs " "$TK_TEST_DIR/fstab" | sed 's/.* drvfs metadata,\([a-z]*\),.*/\1/')
-  s=$(grep " $1 drvfs " "$TK_TEST_DIR/fstab" | cut -d' ' -f1)
-  printf '%s %s drvfs %s,noatime 0 0\n' "$s" "$1" "$m" >> "$TK_TEST_DIR/mounts"
+  sm_from= sm_mode=
+  while read -r sm_source sm_target sm_type sm_options sm_rest; do
+    if [ "$sm_target" = "$1" ] && [ "$sm_type" = drvfs ]; then
+      sm_from=$sm_source
+      sm_mode=${sm_options#metadata,}
+      sm_mode=${sm_mode%%,*}
+      break
+    fi
+  done < "$TK_TEST_DIR/fstab"
+  printf '%s %s drvfs %s,noatime 0 0\n' "$sm_from" "$1" "$sm_mode" >> "$TK_TEST_DIR/mounts"
+}
+su_count=0
+su_drop() {
+  su_keep=
+  while IFS= read -r su_line; do
+    case "$su_line" in
+      *" $1 drvfs "*) ;;
+      *) su_keep="$su_keep$su_line
+" ;;
+    esac
+  done < "$TK_TEST_DIR/mounts"
+  printf '%s' "$su_keep" > "$TK_TEST_DIR/mounts"
 }
 umount() {
   printf 'umount %s\n' "$1" >> "$TK_TEST_DIR/log"
-  umounts=$(($(cat "$TK_TEST_DIR/umount.count" 2>/dev/null || echo 0) + 1))
-  printf '%s\n' "$umounts" > "$TK_TEST_DIR/umount.count"
-  if [ -e "$TK_TEST_DIR/umount.fail" ] || [ "$(cat "$TK_TEST_DIR/umount.failat" 2>/dev/null || :)" = "$umounts" ]; then
+  su_count=$((su_count + 1))
+  su_at=
+  if [ -e "$TK_TEST_DIR/umount.failat" ]; then
+    read -r su_at < "$TK_TEST_DIR/umount.failat" || :
+  fi
+  if [ -e "$TK_TEST_DIR/umount.fail" ] || [ "$su_at" = "$su_count" ]; then
     rm -f "$TK_TEST_DIR/umount.fail"
     if [ -e "$TK_TEST_DIR/umount.gone" ]; then
-      grep -v " $1 drvfs " "$TK_TEST_DIR/mounts" > "$TK_TEST_DIR/mounts.new" || :
-      mv "$TK_TEST_DIR/mounts.new" "$TK_TEST_DIR/mounts"
+      su_drop "$1"
     fi
     printf 'the stand-in umount failed\n' >&2
     return 1
   fi
-  grep -v " $1 drvfs " "$TK_TEST_DIR/mounts" > "$TK_TEST_DIR/mounts.new" || :
-  mv "$TK_TEST_DIR/mounts.new" "$TK_TEST_DIR/mounts"
+  su_drop "$1"
 }
 `
 

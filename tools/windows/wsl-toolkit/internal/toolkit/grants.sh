@@ -78,36 +78,49 @@ decode64() {
   base64 -d "$WORK/$1.b64" > "$WORK/$1" || die "the $1 payload could not be decoded"
 }
 
-# holder TARGET: the owner key and owner name the ledger gives TARGET, or nothing.
+# ⚠ THE THREE BELOW SET A VARIABLE, AND NONE FORKS. Each answered on stdout, so
+# each call cost a subshell and a pipe, several per line of the block. A guest
+# hardly notices, and on a Windows test host a fork costs a tenth of a second, so
+# the drives of this script ran past go test's limit. WSL-190.
+
+# holder TARGET: sets holder_of to the owner key and owner name the ledger gives
+# TARGET, or to nothing.
 holder() {
+  holder_of=
   [ -f "$OWNERS" ] || return 0
-  while read -r held_target held_key held_name _rest; do
-    if [ "$held_target" = "$1" ]; then
-      printf '%s %s\n' "$held_key" "$held_name"
+  while read -r holder_target holder_key holder_name _rest; do
+    if [ "$holder_target" = "$1" ]; then
+      holder_of="$holder_key $holder_name"
       return 0
     fi
   done < "$OWNERS"
   return 0
 }
 
-# fstab_target LINE: the mount point an fstab line names, or nothing for a blank
-# line or a comment. A target holds letters, digits and `/._-` alone, so fstab
-# never escapes it.
+# fstab_target LINE: sets target_of to the mount point an fstab line names, or to
+# nothing for a blank line or a comment. A target holds letters, digits and `/._-`
+# alone, so fstab never escapes it. The line is split as `read` split it, with
+# globbing off.
 fstab_target() {
-  printf '%s\n' "$1" | {
-    read -r fstab_from fstab_to _rest || :
-    case "$fstab_from" in
-      ''|'#'*) ;;
-      *) printf '%s\n' "${fstab_to:-}" ;;
-    esac
-  }
+  target_of=
+  set -f
+  # shellcheck disable=SC2086
+  set -- $1
+  set +f
+  case "${1:-}" in
+    ''|'#'*) ;;
+    *) target_of=${2:-} ;;
+  esac
 }
 
-# line_for TARGET FILE: the first line of FILE that mounts at TARGET, or nothing.
+# line_for TARGET FILE: sets line_of to the first line of FILE that mounts at
+# TARGET, or to nothing.
 line_for() {
+  line_of=
   while IFS= read -r for_line || [ -n "$for_line" ]; do
-    if [ "$(fstab_target "$for_line")" = "$1" ]; then
-      printf '%s\n' "$for_line"
+    fstab_target "$for_line"
+    if [ "$target_of" = "$1" ]; then
+      line_of=$for_line
       return 0
     fi
   done < "$2"
@@ -161,23 +174,35 @@ fi
 : > "$WORK/claimed"
 if [ "$TK_GRANTS_MODE" = write ]; then
   while IFS= read -r line || [ -n "$line" ]; do
-    fstab_target "$line" >> "$WORK/claimed"
+    fstab_target "$line"
+    [ -z "$target_of" ] || printf '%s\n' "$target_of" >> "$WORK/claimed"
   done < "$WORK/block"
 elif [ "$TK_GRANTS_MODE" = live ] && [ -n "$TK_GRANT_TARGET" ]; then
   decode64 claim "$TK_GRANT_TARGET"
   printf '%s\n' "$(cat "$WORK/claim")" >> "$WORK/claimed"
 fi
 
+# listed WORD FILE: whether a line of FILE is WORD. In the shell, for the reason
+# the three above set a variable. WSL-190.
+listed() {
+  while IFS= read -r listed_line || [ -n "$listed_line" ]; do
+    [ "$listed_line" != "$1" ] || return 0
+  done < "$2"
+  return 1
+}
+
 # kept: each line kept for another file, and kept-targets its target.
 : > "$WORK/kept"
 : > "$WORK/kept-targets"
 if [ -n "$TK_GRANT_OWNER" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
-    kept_to=$(fstab_target "$line")
+    fstab_target "$line"
+    kept_to=$target_of
     [ -n "$kept_to" ] || continue
-    kept_by=$(holder "$kept_to")
+    holder "$kept_to"
+    kept_by=$holder_of
     if [ -n "$kept_by" ] && [ "${kept_by%% *}" != "$TK_GRANT_OWNER" ] &&
-      ! grep -Fxq -e "$kept_to" "$WORK/claimed"; then
+      ! listed "$kept_to" "$WORK/claimed"; then
       printf '%s\n' "$line" >> "$WORK/kept"
       printf '%s\n' "$kept_to" >> "$WORK/kept-targets"
     fi
@@ -192,17 +217,18 @@ cat "$WORK/old-block" "$WORK/block" > "$WORK/order"
 : > "$WORK/placed"
 printf '%s\n' "$FSTAB_BEGIN" >> "$WORK/fstab"
 while IFS= read -r line || [ -n "$line" ]; do
-  at=$(fstab_target "$line")
-  if [ -z "$at" ] || grep -Fxq -e "$at" "$WORK/placed"; then
+  fstab_target "$line"
+  at=$target_of
+  if [ -z "$at" ] || listed "$at" "$WORK/placed"; then
     continue
   fi
-  if grep -Fxq -e "$at" "$WORK/kept-targets"; then
-    line_for "$at" "$WORK/kept" >> "$WORK/fstab"
+  if listed "$at" "$WORK/kept-targets"; then
+    line_for "$at" "$WORK/kept"
   else
-    placed=$(line_for "$at" "$WORK/block")
-    [ -n "$placed" ] || continue
-    printf '%s\n' "$placed" >> "$WORK/fstab"
+    line_for "$at" "$WORK/block"
+    [ -n "$line_of" ] || continue
   fi
+  printf '%s\n' "$line_of" >> "$WORK/fstab"
   printf '%s\n' "$at" >> "$WORK/placed"
 done < "$WORK/order"
 printf '%s\n' "$FSTAB_END" >> "$WORK/fstab"
@@ -427,7 +453,8 @@ source_key() {
 # ⛔ A LIVE TARGET ANOTHER CONFIGURATION HOLDS IS REFUSED, NOT CHANGED. The ledger
 # names the file that granted it, and a grant or a revoke from this one unmounted
 # or replaced that file's checkout. The refusal names the file. WSL-179.
-held=$(holder "$OWN")
+holder "$OWN"
+held=$holder_of
 held_key=${held%% *}
 if [ -n "$held" ] && [ -n "$TK_GRANT_OWNER" ] && [ "$held_key" != "$TK_GRANT_OWNER" ] &&
   [ -n "$(live_mode "$OWN")" ]; then

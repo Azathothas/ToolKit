@@ -148,7 +148,7 @@
     {
       "label": "wsl-toolkit: a provisioning write takes the targets its configuration names",
       "file": "internal/toolkit/grants.sh",
-      "find": "    fstab_target \"$line\" >> \"$WORK/claimed\"\n",
+      "find": "    [ -z \"$target_of\" ] || printf '%s\\n' \"$target_of\" >> \"$WORK/claimed\"\n",
       "replace": "    :\n",
       "run": "TestAWriteTakesTheTargetsItsConfigurationNames",
       "module": "tools/windows/wsl-toolkit",
@@ -166,7 +166,7 @@
     {
       "label": "wsl-toolkit: a kept line wins over the caller's own for its target",
       "file": "internal/toolkit/grants.sh",
-      "find": "  if grep -Fxq -e \"$at\" \"$WORK/kept-targets\"; then\n",
+      "find": "  if listed \"$at\" \"$WORK/kept-targets\"; then\n",
       "replace": "  if false; then\n",
       "run": "TestAKeptLineWinsOverThisFilesOwnForItsTarget",
       "module": "tools/windows/wsl-toolkit",
@@ -184,7 +184,7 @@
     {
       "label": "wsl-toolkit: the fstab block names each target once",
       "file": "internal/toolkit/grants.sh",
-      "find": "  if [ -z \"$at\" ] || grep -Fxq -e \"$at\" \"$WORK/placed\"; then\n",
+      "find": "  if [ -z \"$at\" ] || listed \"$at\" \"$WORK/placed\"; then\n",
       "replace": "  if [ -z \"$at\" ]; then\n",
       "run": "TestAnEnsureLeavesABlockTwoFilesShareAsItWas",
       "module": "tools/windows/wsl-toolkit",
@@ -193,8 +193,8 @@
     {
       "label": "wsl-toolkit: a caller with no file keeps no other file's line",
       "file": "internal/toolkit/grants.sh",
-      "find": "if [ -n \"$TK_GRANT_OWNER\" ]; then\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    kept_to=$(fstab_target \"$line\")\n",
-      "replace": "if true; then\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    kept_to=$(fstab_target \"$line\")\n",
+      "find": "if [ -n \"$TK_GRANT_OWNER\" ]; then\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    fstab_target \"$line\"\n    kept_to=$target_of\n",
+      "replace": "if true; then\n  while IFS= read -r line || [ -n \"$line\" ]; do\n    fstab_target \"$line\"\n    kept_to=$target_of\n",
       "run": "TestACallerWithNoFileWritesItsOwnGrantsAlone",
       "module": "tools/windows/wsl-toolkit",
       "args": []

@@ -16,6 +16,18 @@ import (
 	"testing"
 )
 
+// grantsCase starts a case that drives grants.sh alone: the shell, or a skip, and
+// then the case runs beside the others like it.
+//
+// ⚠ IN PARALLEL, because Git for Windows' sh pays a tenth of a second a fork, and
+// these cases one after another took a minute of the package's ten. Each owns its
+// directories and sets no variable of the process. WSL-189, WSL-190.
+func grantsCase(t *testing.T) {
+	t.Helper()
+	grantsShell(t)
+	t.Parallel()
+}
+
 // grantsRestart is a restart of the base a drive of grants.sh left: every live
 // mount ends, and each drvfs line of dir's fstab is mounted again in its mode, as
 // WSL mounts /etc/fstab when the distribution starts. WSL-190.
@@ -88,7 +100,7 @@ const grantsTheirs = "/cfg/theirs.json"
 // dropped the first, and with automount off the first file's ensure then refused,
 // or with --repair restarted over the second. Both come back. WSL-190.
 func TestARestartMountsEveryFilesGrants(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, "", "", "")
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -112,7 +124,7 @@ func TestARestartMountsEveryFilesGrants(t *testing.T) {
 // once. A block written kept-first would read as changed on every other file's
 // ensure. WSL-175, WSL-190.
 func TestAnEnsureLeavesABlockTwoFilesShareAsItWas(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	read := grantsSeed(t, dir, "LABEL=root / ext4 defaults 0 1\n", "", "")
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -147,7 +159,7 @@ func TestAnEnsureLeavesABlockTwoFilesShareAsItWas(t *testing.T) {
 // ⛔ The block names the target once, as this file grants it, and the ledger row
 // moves with it. Two lines would mount two directories there. WSL-190.
 func TestAWriteTakesTheTargetsItsConfigurationNames(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "ro"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
@@ -168,7 +180,7 @@ func TestAWriteTakesTheTargetsItsConfigurationNames(t *testing.T) {
 // ⛔ The grant's own line replaces it, so the mount comes from this file's
 // directory, now and after a restart. WSL-190.
 func TestALiveGrantTakesItsTargetFromAnotherFilesLine(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
@@ -194,7 +206,7 @@ func TestALiveGrantTakesItsTargetFromAnotherFilesLine(t *testing.T) {
 // with it: kept, it would mount at the next restart a grant no file holds. The
 // other file's line at another target stays. WSL-190.
 func TestARevokeTakesItsTargetsLineWithItsRow(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/s", Mode: "rw"}
 	other := BaseMount{Source: t.TempDir(), Target: "/workspaces/o", Mode: "rw"}
@@ -221,7 +233,7 @@ func TestARevokeTakesItsTargetsLineWithItsRow(t *testing.T) {
 // stays the block's one line there, so a restart mounts its checkout and not this
 // file's directory over it. WSL-190.
 func TestAKeptLineWinsOverThisFilesOwnForItsTarget(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/q", Mode: "rw"}
 	alsoMine := BaseMount{Source: t.TempDir(), Target: "/workspaces/q", Mode: "rw"}
@@ -245,7 +257,7 @@ func TestAKeptLineWinsOverThisFilesOwnForItsTarget(t *testing.T) {
 // once its configuration no longer names it: an ensure after a hand edit to the
 // file, and a revoke, leave no line behind. WSL-190.
 func TestALineTheLedgerGivesNoOtherFileIsReplaced(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	old := BaseMount{Source: t.TempDir(), Target: "/workspaces/old", Mode: "rw"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -288,7 +300,7 @@ func TestALineTheLedgerGivesNoOtherFileIsReplaced(t *testing.T) {
 // every mount it does not name, so a kept line would fail its own ensure after the
 // restart. WSL-190.
 func TestACallerWithNoFileWritesItsOwnGrantsAlone(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	dir := t.TempDir()
 	theirs := BaseMount{Source: t.TempDir(), Target: "/workspaces/theirs", Mode: "rw"}
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
@@ -307,7 +319,7 @@ func TestACallerWithNoFileWritesItsOwnGrantsAlone(t *testing.T) {
 // unconfigured. It is unmounted, and a mode switch gets its old mount back alone.
 // WSL-189.
 func TestAGrantWhoseReadBackFailsTakesItsMountAway(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	src := t.TempDir()
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
 	dir := t.TempDir()
@@ -342,7 +354,7 @@ func TestAGrantWhoseReadBackFailsTakesItsMountAway(t *testing.T) {
 // mount will not unmount. The refusal names it, so nobody reads the base as
 // unchanged. WSL-189.
 func TestAMountAFailedGrantCannotTakeAwayIsNamed(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	mine := BaseMount{Source: t.TempDir(), Target: "/workspaces/mine", Mode: "rw"}
 	dir := t.TempDir()
 	grantsSeed(t, dir, "", "", "")
@@ -364,7 +376,7 @@ func TestAMountAFailedGrantCannotTakeAwayIsNamed(t *testing.T) {
 // refusal says it is in the new mode, and the block and the ledger are as they
 // were. WSL-189.
 func TestAFailedSwitchMountsNothingOverAMountThatStayed(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	src := t.TempDir()
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
 	fstab := blockOf(blockLine(t, BaseMount{Source: src, Target: mine.Target, Mode: "ro"}))
@@ -392,7 +404,7 @@ func TestAFailedSwitchMountsNothingOverAMountThatStayed(t *testing.T) {
 // the target stayed mounted when nothing was. Nothing is named as staying, and the
 // old mount is put back. WSL-189.
 func TestAFailedUnmountOfAMountAlreadyGoneIsNotNamed(t *testing.T) {
-	grantsShell(t)
+	grantsCase(t)
 	src := t.TempDir()
 	mine := BaseMount{Source: src, Target: "/workspaces/mine", Mode: "rw"}
 	fstab := blockOf(blockLine(t, BaseMount{Source: src, Target: mine.Target, Mode: "ro"}))
