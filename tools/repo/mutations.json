@@ -2,6 +2,51 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the acceptance search-order case asks from a home with no instance file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "foreach ($a in @('--home', $empty, 'config', '--json'))",
+      "replace": "foreach ($a in @('config', '--json'))",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance refused-spelling case asks from a home with no instance file",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "foreach ($a in @('--home', $bare, 'config', '--json'))",
+      "replace": "foreach ($a in @('config', '--json'))",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance helper-lifecycle home asks for the suite's base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "$null = Set-StateConfig -StateHome $home3 -Config @{ base = (Get-SuiteBase) }",
+      "replace": "",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the acceptance mid-flight catalog asks for the suite's base",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "base   = (Get-SuiteBase)",
+      "replace": "",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: the suite's base copied into a scratch home leaves its name out",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "acceptance.ps1",
+      "find": "if ($p.Name -ne 'name') { $kept[$p.Name] = $p.Value }",
+      "replace": "$kept[$p.Name] = $p.Value",
+      "run": "TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: the acceptance marker case changes one key and keeps every other",
       "module": "tools/windows/wsl-toolkit",
       "file": "acceptance.ps1",

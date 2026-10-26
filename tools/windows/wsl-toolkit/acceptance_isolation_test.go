@@ -1,10 +1,12 @@
-// acceptance_marker_test.go - the acceptance suite's marker case changes the one
-// key it is about and gives the configuration back byte for byte. WSL-132.
+// acceptance_isolation_test.go - the acceptance suite's cases stand apart from
+// the instance they run on. WSL-132.
 //
-// ⛔ THE CASE WROTE AN INSTANCE'S OWN CONFIGURATION WHOLE, with three keys, so the
-// `base ensure` it ran read an instance that asked for systemd as asking for none.
-// The suite runs only against a real machine, so these read the case itself and
-// run its one helper wherever PowerShell is.
+// ⛔ THE MARKER CASE WROTE AN INSTANCE'S OWN CONFIGURATION WHOLE, with three keys,
+// so the `base ensure` it ran read an instance that asked for systemd as asking for
+// none. Four more cases failed on such an instance: two read its own file where
+// they meant the working directory's, and two gave a helper a home that asked for
+// no systemd. The suite runs only against a real machine, so these read the cases
+// themselves and run the marker case's one helper wherever PowerShell is.
 //
 // SPDX-License-Identifier: 0BSD
 
@@ -123,6 +125,36 @@ $edited = Edit-ConfigKey -Text $text -Section 'base' -Key 'image' -Value $args[2
 		if have := decodeConfig(t, got); !reflect.DeepEqual(have, tc.want) {
 			t.Errorf("%s: Edit-ConfigKey wrote\n%s\nand only base.image should differ from\n%s", tc.name, got, tc.in)
 		}
+	}
+}
+
+// TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile holds four cases to
+// the configuration they mean, on an instance that has a file of its own.
+//
+// ⛔ A NAMED INSTANCE'S OWN FILE OUTRANKS THE WORKING DIRECTORY, so a case that
+// asks which project file wins asks from an empty home. ⛔ AND A HOME WITH NO FILE
+// ASKS FOR NO SYSTEMD, so a case that gives a helper a home of its own writes the
+// suite's base into it. Measured on an instance that asked for systemd: all four
+// failed, and the rest of the suite passed.
+func TestNoCaseReadsTheInstancesOwnConfigurationForAnotherFile(t *testing.T) {
+	for _, tc := range []struct{ name, want string }{
+		{"the nearer configuration wins whole and config names the order",
+			"foreach ($a in @('--home', $empty, 'config', '--json'))"},
+		{"a configuration this tool does not read is refused by name",
+			"foreach ($a in @('--home', $bare, 'config', '--json'))"},
+		{"a helper job leaves no uploaded workspace or artifact set behind",
+			"Set-StateConfig -StateHome $home3 -Config @{ base = (Get-SuiteBase) }"},
+		{"a helper resolves a catalog id against the config as it is now",
+			"base   = (Get-SuiteBase)\n                images = @("},
+	} {
+		if body := acceptanceCaseBody(t, tc.name); !strings.Contains(body, tc.want) {
+			t.Errorf("%q no longer says %q", tc.name, tc.want)
+		}
+	}
+	// ⚠ The base it copies leaves the name out, so a scratch home names its base
+	// as it did with no file.
+	if fn := acceptanceFunction(t, "Get-SuiteBase"); !strings.Contains(fn, "if ($p.Name -ne 'name')") {
+		t.Errorf("Get-SuiteBase copies the base's name, which a scratch home did not name before:\n%s", fn)
 	}
 }
 

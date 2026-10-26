@@ -136,6 +136,10 @@ changes `base.image` alone in the file `config` resolves, then runs `base ensure
 against that drift. The file's own bytes are written back whatever the case
 answers, and a file not restored byte for byte fails the case. `WSL-132`
 
+⭐ **An instance with a configuration of its own runs every case.** The cases
+that ask which working-directory file wins ask from an empty home. A helper's
+scratch home asks for the base the suite runs on. `WSL-132`
+
 ⭐ **A herdr `--remote` client is proved by its own probe**, because nothing in the
 Go suite can see it: a release and a development build of it answer the same
 `--version`, so the version tells them apart from nothing. `WSL-141`

@@ -289,6 +289,23 @@ function Edit-ConfigKey {
     return $doc.ToJsonString([Text.Json.JsonSerializerOptions]@{ WriteIndented = $true })
 }
 
+# Get-SuiteBase is the base section of the configuration every case runs under,
+# for a scratch home to write as its own. WSL-132: a scratch home with no file
+# read an instance that asked for systemd as asking for none. Its helper found
+# the base unlike that, and a caller that does not own a base is refused the
+# re-provision that follows. The name is left out, so a scratch home still names
+# its base the way it did with no file.
+function Get-SuiteBase {
+    $r = Invoke-Tool @('config', '--json')
+    if ($r.Code -ne 0) { throw "config --json exited $($r.Code): $($r.Err)" }
+    $base = (Read-ToolJson -Stdout $r.Out -What 'config --json').base
+    $kept = [ordered]@{}
+    foreach ($p in $base.PSObject.Properties) {
+        if ($p.Name -ne 'name') { $kept[$p.Name] = $p.Value }
+    }
+    return $kept
+}
+
 # A THROW BEFORE THE FIRST CASE IS "COULD NOT RUN", AND THAT IS EXIT 2. Under
 # $ErrorActionPreference = 'Stop' an unhandled throw ends the script with 1, which
 # reads as a case that failed. The trap turns a throw during setup into a refusal,
@@ -1065,9 +1082,11 @@ try {
     }
 
     # issue 12: the helper releases what it staged.
+    # WSL-132: its home asks for the base the suite runs on. Get-SuiteBase says why.
     Test-Case 'a helper job leaves no uploaded workspace or artifact set behind' 'True' {
         $home3 = Join-Path $script:Scratch 'home-helper-life'
         $null = New-Item -ItemType Directory -Path $home3 -Force
+        $null = Set-StateConfig -StateHome $home3 -Config @{ base = (Get-SuiteBase) }
         $null = Invoke-Tool @('--home', $home3, 'helper', 'serve', '--detach')
         try {
             $ws = Join-Path $script:Scratch 'ws-life'
@@ -1197,11 +1216,15 @@ try {
     # acts and asserts. This one starts a helper against a catalog, replaces the
     # catalog underneath it, and asks the helper to resolve an id only the new
     # one has.
+    #
+    # WSL-132: the new file asks for the base the suite runs on, because a request
+    # carries its client's file. Get-SuiteBase says why.
     Test-Case 'a helper resolves a catalog id against the config as it is now' 'True' {
         $h = New-StateHome 'home-midflight'
         $null = Invoke-Tool @('--home', $h, 'helper', 'serve', '--detach')
         try {
             $null = Set-StateConfig -StateHome $h -Config @{
+                base   = (Get-SuiteBase)
                 images = @(
                     @{ id = 'midflight'; ref = 'docker.io/library/alpine:latest'
                        libc = 'musl'; family = 'apk'; kind = 'musl' }
@@ -1365,10 +1388,15 @@ try {
 
     # WSL-51: the nearest configuration wins WHOLE, and `config` says which file
     # it resolved and everything it looked at on the way.
+    #
+    # WSL-132. A NAMED INSTANCE'S OWN FILE OUTRANKS THE WORKING DIRECTORY, so under
+    # an instance that has one this case read that file and failed. An empty home
+    # holds no file for the instance, so the search reaches the ones written here.
     Test-Case 'the nearer configuration wins whole and config names the order' 'True' {
         $outer = Join-Path $script:Scratch 'cfg-outer'
         $inner = Join-Path $outer 'inner'
         $null = New-Item -ItemType Directory -Path $inner -Force
+        $empty = New-StateHome 'home-search-order'
         $write = {
             param($dir, $image)
             [IO.File]::WriteAllText((Join-Path $dir 'wsl-toolkit.json'), (@{
@@ -1380,7 +1408,7 @@ try {
         & $write $inner 'docker.io/library/alpine:latest'
         $psi = [Diagnostics.ProcessStartInfo]::new()
         $psi.FileName = $script:Binary
-        foreach ($a in @('config', '--json')) { $null = $psi.ArgumentList.Add($a) }
+        foreach ($a in @('--home', $empty, 'config', '--json')) { $null = $psi.ArgumentList.Add($a) }
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
         $psi.UseShellExecute = $false
@@ -1401,13 +1429,15 @@ try {
     }
 
     # WSL-51: a spelling this tool does not read is REFUSED rather than skipped.
+    # WSL-132: from an empty home, for the reason the case above gives.
     Test-Case 'a configuration this tool does not read is refused by name' 'True' {
         $dir = Join-Path $script:Scratch 'cfg-toml'
         $null = New-Item -ItemType Directory -Path $dir -Force
+        $bare = New-StateHome 'home-refused-spelling'
         [IO.File]::WriteAllText((Join-Path $dir 'wsl-toolkit.toml'), "[base]`nname = '$($script:BaseName)'`n")
         $psi = [Diagnostics.ProcessStartInfo]::new()
         $psi.FileName = $script:Binary
-        foreach ($a in @('config', '--json')) { $null = $psi.ArgumentList.Add($a) }
+        foreach ($a in @('--home', $bare, 'config', '--json')) { $null = $psi.ArgumentList.Add($a) }
         $psi.RedirectStandardOutput = $true
         $psi.RedirectStandardError = $true
         $psi.UseShellExecute = $false
