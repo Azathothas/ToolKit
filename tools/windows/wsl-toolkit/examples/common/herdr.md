@@ -144,7 +144,8 @@ exits 2.
 ⚠ **Submit a prompt with `herdr agent prompt`, not with `pane send-text` and
 `pane send-keys enter`.** Muse Code 1.3.0 keeps text that arrives through the two
 pane commands in its input, a new line after it, unsent. `agent prompt` sends it.
-The one exception is an agent a cancelled approval left `blocked`, as
+The one exception is an agent a cancelled approval left `blocked`. There the two
+commands were measured to start a turn, as
 [the section below](#-after-a-cancelled-approval-herdr-refuses-every-prompt) says.
 
 ---
@@ -220,11 +221,21 @@ then keeps the agent `blocked` and refuses every `agent prompt` with
 wsl-toolkit base herdr -- pane send-text $pane 'continue with the task'
 wsl-toolkit base herdr -- pane send-keys $pane enter
 wsl-toolkit base herdr -- agent get work
+wsl-toolkit base herdr -- pane read $pane --source recent --lines 40
 ```
 
-herdr's own screen detection sees the turn start and moves the agent off `blocked`.
-`agent prompt` is then accepted again. ⚠ Read the agent's state before the next
-prompt, because the hook reports nothing for this recovery.
+⚠ **On a `blocked` Muse the two pane commands started a turn, where an idle Muse
+keeps the text unsent.** `WSL-76` drove this once. herdr's own screen detection moved
+the agent to `working`, and `agent prompt` was accepted again. The record does not
+say why the two states differ.
+
+⛔ **So confirm the turn before the next prompt.** `agent get` must no longer read
+`blocked`, and `pane read` must show the turn rather than the text in the input.
+The hook reports nothing for this recovery.
+
+⚠ **Text left waiting in the input stays there.** The next `agent prompt` can
+send it along with its own text. Clear it first in Muse's own pane, through the
+line `base attach` prints.
 
 ⚠ **Registering more hooks does not help.** `Interrupt` and `PostToolUse` were both
 registered and driven through the same cancel, and neither fired. The missing hook
