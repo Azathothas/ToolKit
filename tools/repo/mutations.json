@@ -2,6 +2,24 @@
   "schema": "repo-mutations/1",
   "mutations": [
     {
+      "label": "wsl-toolkit: the adapter contract's probe line is the one the agent probes run",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "adapters/README.md",
+      "find": "   pane_path=$(runuser -l \"$TK_USER\" -c \"command -v NAME\" 2>/dev/null | tr -d '\\r' | head -1)\n",
+      "replace": "   pane_path=$(as_account sh -lc 'command -v NAME' 2>/dev/null | tr -d '\\r' | head -1)\n",
+      "run": "TestTheAdapterContractsProbeLineIsTheOneTheAgentProbesRun",
+      "args": []
+    },
+    {
+      "label": "wsl-toolkit: an agent probe reads its name the way the adapter contract says",
+      "module": "tools/windows/wsl-toolkit",
+      "file": "internal/toolkit/adapters/pi/probe.sh",
+      "find": "pane_path=$(runuser -l \"$TK_USER\" -c \"command -v pi\" 2>/dev/null",
+      "replace": "pane_path=$(runuser -u \"$TK_USER\" -- sh -lc \"command -v pi\" 2>/dev/null",
+      "run": "TestTheAdapterContractsProbeLineIsTheOneTheAgentProbesRun",
+      "args": []
+    },
+    {
       "label": "wsl-toolkit: base exec takes --input-exec",
       "module": "tools/windows/wsl-toolkit",
       "file": "cmd_base_exec.go",

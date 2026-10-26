@@ -97,12 +97,19 @@ found`, and `herdr agent start` waits for an agent that cannot appear. `WSL-88`
 
 1. ⭐ **A root-owned wrapper at `/usr/local/bin/NAME`** that refuses any account but
    the configured one and execs the real binary.
-2. ⛔ **A probe line that reads the name back on a LOGIN shell**, not on the PATH the
-   adapter itself set up:
+2. ⛔ **A probe line that reads the name back on a LOGIN shell**, through
+   `runuser -l`, not on the PATH the adapter itself set up. It is the line the three
+   agent probes run:
 
    ```sh
-   pane_path=$(as_account sh -lc 'command -v NAME' 2>/dev/null | tr -d '\r' | head -1)
+   pane_path=$(runuser -l "$TK_USER" -c "command -v NAME" 2>/dev/null | tr -d '\r' | head -1)
    ```
+
+   ⛔ **Not `as_account sh -lc`, which passes with no wrapper.** `as_account` hands
+   the shell a PATH with the account's npm prefix first. On the `arch` preset,
+   `/etc/profile` appends to that PATH, so the prefix stays first. `command -v` then
+   finds npm's own binary before the wrapper. `runuser -l` starts from the account's
+   own login environment, which is the PATH a pane has. `WSL-145`
 
    ⚠ A probe that reads the name on the adapter's own curated PATH passes over an
    agent herdr cannot start. The probe asks the question herdr asks.
